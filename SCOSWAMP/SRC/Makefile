@@ -14,9 +14,9 @@ SRCDIR = .
 OUTDIR = ..
 
 # Fichiers source
-SOURCES = scoswamp.c paths.c
-HEADERS = paths.h
-OBJECTS = scoswamp.o paths.o
+SOURCES = scoswamp.c paths.c memory_swap.c
+HEADERS = paths.h memory_swap.h
+OBJECTS = scoswamp.o paths.o memory_swap.o
 
 # Flags de compilation
 # -t $(TARGET) : cible Apple IIe Enhanced
@@ -39,13 +39,17 @@ $(OUTDIR)/$(PROGRAM): $(OBJECTS)
 	@echo "    Adresse de démarrage : \$$4000 (HGR préservé à \$$2000-\$$3FFF)"
 
 # Compilation des fichiers .c en .o
-scoswamp.o: scoswamp.c paths.h
+scoswamp.o: scoswamp.c paths.h memory_swap.h
 	$(CC) $(CFLAGS) -o scoswamp.s scoswamp.c
 	$(AS) -t $(TARGET) -o scoswamp.o scoswamp.s
 
 paths.o: paths.c paths.h
 	$(CC) $(CFLAGS) -o paths.s paths.c
 	$(AS) -t $(TARGET) -o paths.o paths.s
+
+memory_swap.o: memory_swap.c memory_swap.h
+	$(CC) $(CFLAGS) -o memory_swap.s memory_swap.c
+	$(AS) -t $(TARGET) -o memory_swap.o memory_swap.s
 
 # Nettoyage des fichiers intermédiaires
 clean:
