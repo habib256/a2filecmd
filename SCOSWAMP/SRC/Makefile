@@ -27,16 +27,28 @@ CFLAGS = -t $(TARGET) -O -Oirs
 # Flags de linkage
 # -Wl -S,0x4000 : démarrage à $4000 (préserve HGR Page 1 à $2000-$3FFF)
 # -Wl -D,__EXEHDR__=0 : binaire brut sans en-tête AppleSingle
-LDFLAGS = -t $(TARGET) -Wl -D,__EXEHDR__=0 -Wl -S,0x4000
+# -Wl -m,$(MAPFILE) : produit la carte mémoire, indispensable pour vérifier
+#                     la BSS (absente du .BIN, allouée au lancement)
+LDFLAGS = -t $(TARGET) -Wl -D,__EXEHDR__=0 -Wl -S,0x4000 -Wl -m,$(MAPFILE)
+
+MAPFILE = build.map
 
 # Cible par défaut
 all: $(OUTDIR)/$(PROGRAM)
 
 # Règle principale : lier les objets pour créer le binaire
+# Le contrôle mémoire est systématique : un link réussi ne prouve pas que le
+# binaire tient (ld65 peut manquer un débordement BSS, voir tools/check-memory.sh).
 $(OUTDIR)/$(PROGRAM): $(OBJECTS)
 	$(CL) $(CFLAGS) $(LDFLAGS) -o $(OUTDIR)/$(PROGRAM) $(OBJECTS)
 	@echo "==> Compilation terminée : $(OUTDIR)/$(PROGRAM)"
 	@echo "    Adresse de démarrage : \$$4000 (HGR préservé à \$$2000-\$$3FFF)"
+	@echo ""
+	@../../tools/check-memory.sh $(MAPFILE)
+
+# Contrôle mémoire seul (nécessite une compilation préalable)
+check: $(MAPFILE)
+	@../../tools/check-memory.sh $(MAPFILE)
 
 # Compilation des fichiers .c en .o
 scoswamp.o: scoswamp.c paths.h memory_swap.h
@@ -53,7 +65,7 @@ memory_swap.o: memory_swap.c memory_swap.h
 
 # Nettoyage des fichiers intermédiaires
 clean:
-	rm -f *.o *.s
+	rm -f *.o *.s $(MAPFILE)
 	@echo "==> Fichiers intermédiaires supprimés"
 
 # Nettoyage complet (inclut le binaire)
@@ -80,5 +92,5 @@ install: all
 	@echo "==> Binaire disponible dans $(OUTDIR)/$(PROGRAM)"
 
 # Déclaration des cibles "phony" (ne correspondent pas à des fichiers)
-.PHONY: all clean distclean rebuild info install
+.PHONY: all check clean distclean rebuild info install
 
