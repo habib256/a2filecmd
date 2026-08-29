@@ -15,9 +15,9 @@ SRCDIR = .
 OUTDIR = ..
 
 # Fichiers source
-SOURCES = scoswamp.c paths.c memory_swap.c rules.c dice.c messages.c hgr_loader.s
-HEADERS = paths.h memory_swap.h hgr_rle.h rules.h dice.h messages.h
-OBJECTS = scoswamp.o paths.o memory_swap.o rules.o dice.o messages.o hgr_loader.o
+SOURCES = scoswamp.c paths.c memory_swap.c rules.c dice.c messages.c hgr_loader.s sfx.s
+HEADERS = paths.h memory_swap.h hgr_rle.h rules.h dice.h messages.h sfx.h
+OBJECTS = scoswamp.o paths.o memory_swap.o rules.o dice.o messages.o hgr_loader.o sfx.o
 
 # Flags de compilation
 # -t $(TARGET) : cible Apple IIe Enhanced
@@ -105,6 +105,9 @@ paths.o: paths.c paths.h
 memory_swap.o: memory_swap.c memory_swap.h
 	$(CC) $(CFLAGS) -o memory_swap.s memory_swap.c
 	$(AS) -t $(TARGET) -o memory_swap.o memory_swap.s
+
+sfx.o: sfx.s sfx.h
+	$(AS) -t $(TARGET) -o sfx.o sfx.s
 
 hgr_loader.o: hgr_loader.s hgr_rle.h
 	$(AS) -t $(TARGET) -o hgr_loader.o hgr_loader.s
