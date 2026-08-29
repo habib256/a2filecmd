@@ -1,18 +1,20 @@
 /*
- * MEMORY SWAP - Optimisation Apple II
- * Évite le rechargement du texte lors des switches HGR ↔ TXT
- * 
- * Principe : Sauvegarder la zone texte ($400-$7FF) avant HGR
- * et la restaurer au retour en mode texte
+ * MEMORY SWAP - Bascules video (texte 80 col / HGR plein / HGR mixte)
+ *
+ * Aucune copie d'ecran ici, et c'est le point important : le texte ne quitte
+ * jamais $400-$7FF pendant qu'on est en graphique. Le decodeur RLE ecrit dans
+ * $2000-$3FFF, le tampon d'E/S ProDOS vit en $800-$BFF (page texte 2), et rien
+ * ne tourne entre deux appuis de touche. Revenir au texte, c'est donc juste
+ * rallumer TXTSET.
+ *
+ * L'ancienne version sauvegardait et restaurait 2 Ko a chaque bascule -- deux
+ * copies de 1 Ko, une par banque, l'ecran 80 colonnes etant a cheval sur les
+ * deux -- soit ~4000 iterations de boucle C pour reecrire l'ecran avec ce
+ * qu'il contenait deja. C'etait la lenteur des transitions, et les 2 Ko de BSS
+ * partent avec (la memoire est LA contrainte du projet, cf. TODO.md).
  */
 
 #include <stdint.h>
-#include <peekpoke.h>
-#include <string.h>
-
-/* Zones mémoire Apple II */
-#define TEXT_SCREEN_START  0x400   /* Début zone texte */
-#define TEXT_SCREEN_SIZE   1024    /* 40×24 = 1024 octets */
 
 /* Soft switches Apple II */
 #define TXTCLR  (*(volatile uint8_t*)0xC050)  /* Mode graphique */
@@ -23,106 +25,97 @@
 #define HISCR   (*(volatile uint8_t*)0xC055)  /* Page 2 visible */
 #define LORES   (*(volatile uint8_t*)0xC056)  /* Low-res */
 #define HIRES   (*(volatile uint8_t*)0xC057)  /* Hi-res */
+#define STORE80ON  (*(volatile uint8_t*)0xC001)
+#define STORE80OFF (*(volatile uint8_t*)0xC000)
+#define RAMRDOFF   (*(volatile uint8_t*)0xC002)
+#define RAMWRTOFF  (*(volatile uint8_t*)0xC004)
+#define COL80OFF   (*(volatile uint8_t*)0xC00C)
+#define COL80ON    (*(volatile uint8_t*)0xC00D)
+#define DHIRESON   (*(volatile uint8_t*)0xC05E)
+#define DHIRESOFF  (*(volatile uint8_t*)0xC05F)
 
-/* Structure pour un choix (doit correspondre à Choice dans scoswamp.c) */
-typedef struct {
-    int scene_id;
-    char title[80];
-} SwapChoice;
-
-/* Constantes */
-#define MAX_CHOICES 10
-
-/* Variables globales pour l'état */
-static uint8_t text_backup[TEXT_SCREEN_SIZE];  /* Sauvegarde zone texte */
-static uint8_t text_saved = 0;                 /* Flag : texte sauvegardé ? */
 static uint8_t current_mode = 0;               /* 0=texte, 1=HGR, 2=mixte */
 
-/* Sauvegarde des choix */
-static SwapChoice choices_backup[MAX_CHOICES]; /* Sauvegarde des choix */
-static int num_choices_backup = 0;             /* Nombre de choix sauvegardés */
-static uint8_t choices_saved = 0;              /* Flag : choix sauvegardés ? */
-
 /*
- * Sauvegarde la zone texte vers la zone de backup
+ * Entree en graphique : routage memoire, puis page HGR 1 visible.
+ *
+ * Les quatre impulsions AN3 programment la FIFO de l'observateur Le Chat
+ * Mauve / Video-7 en COL140 : 80COL est sa ligne de donnee, le front d'AN3 son
+ * horloge. Elles ne se jouent qu'ICI, a l'entree en graphique. Les rejouer a
+ * chaque bascule plein <-> mixte ferait clignoter l'ecran pour rien, alors que
+ * l'image est deja a l'antenne.
+ *
+ * Le mode double resolution reste eteint (DHIRESOFF en dernier) : c'est lui,
+ * pas 80COL, qui decide du DHGR. On peut donc rallumer 80COL en mixte pour
+ * avoir les 4 lignes du bas en 80 colonnes sans toucher a l'image.
  */
-void save_text_screen(void) {
-    uint16_t i;
-    
-    /* Copier $400-$7FF vers backup */
-    for (i = 0; i < TEXT_SCREEN_SIZE; i++) {
-        text_backup[i] = PEEK(TEXT_SCREEN_START + i);
-    }
-    
-    text_saved = 1;
+static void enter_graphics(void) {
+    /* Le texte 80 colonnes route $400-$7FF (et $2000-$3FFF) par la RAM
+     * auxiliaire. Retablir la RAM principale avant de montrer HGR page 1,
+     * c'est la ou le decodeur a ecrit. */
+    STORE80OFF = 1;
+    RAMRDOFF = 1;
+    RAMWRTOFF = 1;
+
+    COL80ON = 1;
+    DHIRESON = 1; DHIRESOFF = 1;
+    DHIRESON = 1; DHIRESOFF = 1;
+    COL80OFF = 1;
+
+    TXTCLR = 1;   /* Mode graphique */
+    HIRES = 1;    /* Hi-res */
+    LOWSCR = 1;   /* Page 1 */
 }
 
 /*
- * Restaure la zone texte depuis la sauvegarde
- */
-void restore_text_screen(void) {
-    uint16_t i;
-    
-    if (!text_saved) return;  /* Rien à restaurer */
-    
-    /* Copier backup vers $400-$7FF */
-    for (i = 0; i < TEXT_SCREEN_SIZE; i++) {
-        POKE(TEXT_SCREEN_START + i, text_backup[i]);
-    }
-}
-
-/*
- * Bascule vers mode HGR en sauvegardant le texte
+ * HGR plein ecran
  */
 void switch_to_hgr(void) {
-    /* Toujours sauvegarder et activer HGR, même si on pense y être déjà */
-    /* Car l'état peut avoir été modifié par d'autres fonctions */
-    
-    /* Sauvegarder le texte actuel */
-    save_text_screen();
-    
-    /* Activer HGR */
-    TXTCLR = 0;   /* Mode graphique */
-    HIRES = 0;    /* Hi-res */
-    LOWSCR = 0;   /* Page 1 */
-    MIXCLR = 0;   /* Pas de mode mixte */
-    
+    if (current_mode == 2) {
+        /* Deja en graphique : une seule bascule suffit. */
+        MIXCLR = 1;
+        COL80OFF = 1;
+    } else if (current_mode != 1) {
+        enter_graphics();
+        MIXCLR = 1;
+    }
     current_mode = 1;
 }
 
 /*
- * Bascule vers mode texte en restaurant le contenu
+ * HGR + 4 lignes de texte 80 colonnes en bas
  */
-void switch_to_text(void) {
-    /* Toujours activer le mode texte, même si on pense y être déjà */
-    /* Car l'état peut avoir été modifié par d'autres fonctions */
-    
-    /* Activer mode texte */
-    TXTSET = 0;
-    
-    /* Restaurer le contenu texte sauvegardé */
-    restore_text_screen();
-    
-    current_mode = 0;
+void switch_to_mixed(void) {
+    if (current_mode != 1 && current_mode != 2) {
+        enter_graphics();
+    }
+    /* Les 4 lignes du bas lisent la page texte entrelacee : sans 80COL elles
+     * s'afficheraient en 40 colonnes, c'est-a-dire une colonne sur deux.
+     *
+     * Et il faut REMETTRE 80STORE, que enter_graphics venait de couper : le
+     * mixte est le seul mode graphique ou l'on ECRIT du texte, et le firmware
+     * 80 colonnes atteint la banque auxiliaire par 80STORE + PAGE2. Sans lui,
+     * la moitie des caracteres part dans le vide et l'ecran affiche deux
+     * textes entrelaces -- l'ancien dans les colonnes paires, le nouveau dans
+     * les impaires. L'image ne bouge pas pour autant : sous 80STORE l'ecran
+     * hi-res reste force sur la page 1 en banque principale. */
+    STORE80ON = 1;
+    COL80ON = 1;
+    MIXSET = 1;
+    current_mode = 2;
 }
 
 /*
- * Bascule vers mode mixte (HGR + 4 lignes texte)
+ * Texte 80 colonnes
  */
-void switch_to_mixed(void) {
-    /* Toujours activer le mode mixte, même si on pense y être déjà */
-    /* Car l'état peut avoir été modifié par d'autres fonctions */
-    
-    /* Sauvegarder le texte actuel */
-    save_text_screen();
-    
-    /* Activer mode mixte */
-    TXTCLR = 0;   /* Mode graphique */
-    HIRES = 0;    /* Hi-res */
-    LOWSCR = 0;   /* Page 1 */
-    MIXSET = 0;   /* Mode mixte ON */
-    
-    current_mode = 2;
+void switch_to_text(void) {
+    /* Rien a repeindre : $400-$7FF n'a pas bouge. On remet le routage que le
+     * firmware 80 colonnes attend pour ses prochaines ecritures, on rallume
+     * l'affichage 80 colonnes, et on rend le texte visible en dernier. */
+    STORE80ON = 1;
+    COL80ON = 1;
+    TXTSET = 1;
+    current_mode = 0;
 }
 
 /*
@@ -130,78 +123,4 @@ void switch_to_mixed(void) {
  */
 uint8_t get_current_mode(void) {
     return current_mode;
-}
-
-/*
- * Fonction utilitaire : forcer la sauvegarde
- */
-void force_save_text(void) {
-    save_text_screen();
-}
-
-/*
- * Fonction utilitaire : effacer la sauvegarde texte
- */
-void clear_text_backup(void) {
-    text_saved = 0;
-    memset(text_backup, 0, TEXT_SCREEN_SIZE);
-}
-
-/*
- * Sauvegarde les choix
- */
-void save_choices(SwapChoice* choices, int num_choices) {
-    int i;
-    
-    if (num_choices < 0 || num_choices > MAX_CHOICES) {
-        return;  /* Nombre invalide */
-    }
-    
-    /* Copier les choix */
-    for (i = 0; i < num_choices; i++) {
-        choices_backup[i].scene_id = choices[i].scene_id;
-        strncpy(choices_backup[i].title, choices[i].title, 79);
-        choices_backup[i].title[79] = '\0';
-    }
-    
-    num_choices_backup = num_choices;
-    choices_saved = 1;
-}
-
-/*
- * Restaure les choix
- */
-void restore_choices(SwapChoice* choices, int* num_choices) {
-    int i;
-    
-    if (!choices_saved) {
-        *num_choices = 0;
-        return;  /* Rien à restaurer */
-    }
-    
-    /* Copier les choix sauvegardés */
-    for (i = 0; i < num_choices_backup; i++) {
-        choices[i].scene_id = choices_backup[i].scene_id;
-        strncpy(choices[i].title, choices_backup[i].title, 79);
-        choices[i].title[79] = '\0';
-    }
-    
-    *num_choices = num_choices_backup;
-}
-
-/*
- * Vérifie si des choix sont sauvegardés
- */
-uint8_t has_saved_choices(void) {
-    return choices_saved;
-}
-
-/*
- * Efface tout (texte + choix)
- */
-void clear_all_backup(void) {
-    clear_text_backup();
-    choices_saved = 0;
-    num_choices_backup = 0;
-    memset(choices_backup, 0, sizeof(choices_backup));
 }
