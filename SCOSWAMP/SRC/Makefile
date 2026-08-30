@@ -48,8 +48,15 @@ IOBUF   = apple2enh-iobuf-0800.o
 # memoire la recoit telle quelle. Elle n'apparait PAS dans la carte quand elle
 # vient de la ligne de commande -- le script ne peut donc pas la deviner.
 HIMEM   = 0xBF00
+# Pile C ramenee de 2 Ko a 1,5 Ko (2026-08-30) : la chaine d'appels la plus
+# profonde du jeu est load_scene -> run_* -> cprintf -> vsnprintf, quelques
+# centaines d'octets ; les tampons de fichiers sont statiques (iobuf) et la
+# boucle principale interdit la recursion de load_scene. Les 512 octets
+# rendus ont paye les directives CS/MB/DV. Passe a check-memory.sh, qui
+# comptait 2048 en dur.
+STACK   = 0x0600
 LDFLAGS = -t $(TARGET) -Wl -D,__EXEHDR__=0 -Wl -S,0x4000 \
-          -Wl -D,__HIMEM__=$(HIMEM) -Wl -m,$(MAPFILE)
+          -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__STACKSIZE__=$(STACK) -Wl -m,$(MAPFILE)
 
 MAPFILE = build.map
 
@@ -64,11 +71,11 @@ $(OUTDIR)/$(PROGRAM): $(OBJECTS)
 	@echo "==> Compilation terminée : $(OUTDIR)/$(PROGRAM)"
 	@echo "    Adresse de démarrage : \$$4000 (HGR préservé à \$$2000-\$$3FFF)"
 	@echo ""
-	@../../tools/check-memory.sh --himem $(HIMEM) $(MAPFILE)
+	@../../tools/check-memory.sh --himem $(HIMEM) --stack $(STACK) $(MAPFILE)
 
 # Contrôle mémoire seul (nécessite une compilation préalable)
 check: $(MAPFILE)
-	@../../tools/check-memory.sh --himem $(HIMEM) $(MAPFILE)
+	@../../tools/check-memory.sh --himem $(HIMEM) --stack $(STACK) $(MAPFILE)
 
 # Le lanceur ProDOS. Charge en $2000 par ProDOS lui-meme, il lit le jeu en
 # $4000 et lui saute dedans -- BASIC.SYSTEM ne peut plus le faire depuis que
