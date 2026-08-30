@@ -137,9 +137,18 @@ STAGE    = ../../dist/.stage
 # le premier fichier .SYSTEM du repertoire, et B vient avant S).
 STAGE_EXCLUDE = DOCS SRC BASIC.SYSTEM.SYS STARTUP.BAS
 
+# Le disque porte les DONNEES autant que le binaire : le moteur est
+# data-driven, donc une page de texte corrigee ou une image reconvertie doit
+# reconstruire l'image disque. Sans ces dependances, `make hdv` repondait
+# "Nothing to be done" apres une correction du corpus et le joueur testait un
+# disque perime -- ce qui nous a deja coute une seance de debogage sur un bug
+# qui n'existait plus.
+PAYLOAD = $(shell find $(OUTDIR)/TEXTFR $(OUTDIR)/TEXTEN $(OUTDIR)/IMG \
+                       $(OUTDIR)/MSGFR $(OUTDIR)/MSGEN -type f 2>/dev/null)
+
 hdv: $(HDV)
 
-$(HDV): $(OUTDIR)/$(PROGRAM) $(OUTDIR)/$(LAUNCHER) $(BOOTTMPL) | $(VOLBUILD)
+$(HDV): $(OUTDIR)/$(PROGRAM) $(OUTDIR)/$(LAUNCHER) $(BOOTTMPL) $(PAYLOAD) | $(VOLBUILD)
 	@rm -rf $(STAGE) && mkdir -p $(STAGE) $(dir $(HDV))
 	@for f in $(OUTDIR)/*; do \
 		b=`basename "$$f"`; \
