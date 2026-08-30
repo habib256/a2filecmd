@@ -162,6 +162,7 @@ STAGE_EXCLUDE = DOCS SRC BASIC.SYSTEM.SYS STARTUP.BAS
 PAYLOAD = $(shell find $(OUTDIR)/TEXTFR $(OUTDIR)/TEXTEN $(OUTDIR)/IMG \
                        $(OUTDIR)/MSGFR.TXT $(OUTDIR)/MSGEN.TXT \
                        $(OUTDIR)/HELPFR.TXT $(OUTDIR)/HELPEN.TXT \
+                       $(OUTDIR)/TITLE.TXT \
                        -type f 2>/dev/null)
 
 hdv: $(HDV)
