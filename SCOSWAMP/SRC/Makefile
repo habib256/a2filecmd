@@ -143,8 +143,19 @@ STAGE_EXCLUDE = DOCS SRC BASIC.SYSTEM.SYS STARTUP.BAS
 # "Nothing to be done" apres une correction du corpus et le joueur testait un
 # disque perime -- ce qui nous a deja coute une seance de debogage sur un bug
 # qui n'existait plus.
+# Les noms doivent etre EXACTS. `find` ne peut pas se plaindre d'un chemin
+# absent ici -- le 2>/dev/null qui protege des repertoires optionnels avale
+# aussi la faute de frappe -- donc un mauvais nom se lit comme "aucune
+# dependance". `MSGFR` / `MSGEN` etaient dans ce cas, les fichiers s'appelant
+# MSGFR.TXT / MSGEN.TXT : ajouter une paire de messages ne reconstruisait pas
+# l'image, le disque gardait un catalogue a MSG_COUNT-2 lignes, et
+# messages_load rejette un fichier qui n'a pas exactement MSG_COUNT lignes --
+# toute l'interface partait vide, pas seulement les deux nouveaux messages.
+# HELPFR.TXT / HELPEN.TXT n'y figuraient pas du tout.
 PAYLOAD = $(shell find $(OUTDIR)/TEXTFR $(OUTDIR)/TEXTEN $(OUTDIR)/IMG \
-                       $(OUTDIR)/MSGFR $(OUTDIR)/MSGEN -type f 2>/dev/null)
+                       $(OUTDIR)/MSGFR.TXT $(OUTDIR)/MSGEN.TXT \
+                       $(OUTDIR)/HELPFR.TXT $(OUTDIR)/HELPEN.TXT \
+                       -type f 2>/dev/null)
 
 hdv: $(HDV)
 
