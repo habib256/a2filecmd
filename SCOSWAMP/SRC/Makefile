@@ -178,6 +178,30 @@ $(HDV): $(OUTDIR)/$(PROGRAM) $(OUTDIR)/$(LAUNCHER) $(BOOTTMPL) $(PAYLOAD) | $(VO
 	@rm -rf $(STAGE)
 	@echo "==> Image disque : $(HDV)"
 
+# ── Images de release ──────────────────────────────────────────────────────
+# `make hdv` produit l'image de travail, toujours au meme nom, que l'emulateur
+# voisin relance sans qu'on retape un chemin. `make release` en tire les deux
+# fichiers qu'un joueur telecharge, portant le numero de version :
+#
+#   dist/scoswamp-$(VERSION).hdv   les blocs ProDOS bruts
+#   dist/scoswamp-$(VERSION).2mg   les memes blocs + 64 octets d'en-tete 2MG
+#
+# Le .2mg existe parce que plusieurs emulateurs refusent de deviner la
+# geometrie d'un .hdv d'apres sa taille ; l'en-tete la leur dit.
+VERSION  = 0.9
+RELHDV   = ../../dist/scoswamp-$(VERSION).hdv
+REL2MG   = ../../dist/scoswamp-$(VERSION).2mg
+WRAP2MG  = $(TOOLS)/wrap_2mg.py
+
+release: $(REL2MG)
+
+$(RELHDV): $(HDV)
+	@cp $(HDV) $@
+	@echo "==> Image de release : $@"
+
+$(REL2MG): $(RELHDV) $(WRAP2MG)
+	@python3 $(WRAP2MG) $(RELHDV) $@
+
 # Prérequis d'ordre seulement : on ne sait pas le construire depuis ici, on dit
 # comment. Le tenir hors des dépendances normales évite de refaire l'image
 # chaque fois que l'outil est relié.
@@ -219,4 +243,4 @@ install: all
 	@echo "==> Binaire disponible dans $(OUTDIR)/$(PROGRAM)"
 
 # Déclaration des cibles "phony" (ne correspondent pas à des fichiers)
-.PHONY: all hdv check clean distclean rebuild info install
+.PHONY: all hdv release check clean distclean rebuild info install
