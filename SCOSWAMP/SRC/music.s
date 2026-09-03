@@ -518,7 +518,14 @@ music_irq:
         beq @vol
         cmp #$E0
         beq @end
+        cmp #$F0
+        beq @fade
         jmp @next               ; paquet inconnu : ignore
+
+@fade:  lda #1                  ; FADE : la fin du morceau s'efface en 0,9 s
+        sta fade
+        sta fstep
+        jmp @next
 
 @note:  lda (cur)               ; index de note 0-59
         NEXT
@@ -577,6 +584,7 @@ music_irq:
         lda (tmp),y
         adc tmp2
         sta cur+1
+        jsr fade_in_setup       ; et la boucle remonte en fondu
         jmp @next
 @stop:  jsr _music_stop
         sec
