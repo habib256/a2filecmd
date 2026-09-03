@@ -137,16 +137,16 @@ MUSICS   = $(OUTDIR)/MUSIC/SALTARELLO.MB.BIN $(OUTDIR)/MUSIC/GREENSLEEVES.MB.BIN
 musics: $(MUSICS)
 
 $(OUTDIR)/MUSIC/SALTARELLO.MB.BIN: $(MUSIC)/src/saltarello.mid $(MUSIC)/midi_to_mb.py
-	$(MB) $< $@ --bpm 160 --vol 13,9,11 --wav $(MUSIC)/saltarello.wav --notes-inc ay_notes.inc
+	$(MB) $< $@ --bpm 160 --wav $(MUSIC)/saltarello.wav --notes-inc ay_notes.inc
 $(OUTDIR)/MUSIC/GREENSLEEVES.MB.BIN: $(MUSIC)/src/greensleeves.mid $(MUSIC)/midi_to_mb.py
-	$(MB) $< $@ --bpm 140 --vol 13,8,11 --wav $(MUSIC)/greensleeves.wav
+	$(MB) $< $@ --bpm 140 --wav $(MUSIC)/greensleeves.wav
 $(OUTDIR)/MUSIC/COMEAGAIN.MB.BIN: $(MUSIC)/src/comeagain.mid $(MUSIC)/midi_to_mb.py
-	$(MB) $< $@ --bpm 170 --vol 13,8,11 --wav $(MUSIC)/comeagain.wav
+	$(MB) $< $@ --bpm 170 --wav $(MUSIC)/comeagain.wav
 # La composition maison (accueil.py), gardee comme quatrieme fichier.
 $(MUSIC)/accueil.mid: $(MUSIC)/accueil.py
 	python3 $(MUSIC)/accueil.py
 $(OUTDIR)/MUSIC/ACCUEIL.MB.BIN: $(MUSIC)/accueil.mid $(MUSIC)/midi_to_mb.py
-	$(MB) $< $@ --bpm 150 --vol 13,8,10
+	$(MB) $< $@ --bpm 150
 
 ay_notes.inc: $(OUTDIR)/MUSIC/SALTARELLO.MB.BIN
 

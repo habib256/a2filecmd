@@ -1,4 +1,5 @@
-/* music.h -- la Mockingboard joue les musiques du disque. Voir music.s.
+/* music.h -- la Mockingboard joue les musiques du disque, six voix en
+ * stereo (puce 1 a gauche, puce 2 a droite). Voir music.s.
  *
  * Chaque musique est un fichier MUSIC/<NOM>.MB au format MB1 ; la page qui la
  * veut le nomme par une ligne "MU <NOM>.MB", et load_scene la charge dans

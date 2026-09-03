@@ -1,9 +1,14 @@
-; music.s -- la Mockingboard joue le _music_buf d'accueil.
+; music.s -- la Mockingboard joue les musiques du disque, sur six voix.
 ;
 ; Un lecteur de flux MB1 (DOCS/MUSIQUE.md § 5.2) en interruption : le Timer 1
 ; du premier 6522 de la carte bat a 50 Hz, et chaque tick decode les paquets
 ; du flux jusqu'au prochain DELAY. Tout est en assembleur et en segment CODE :
 ; jamais en LC, ProDOS commute l'autre banque sous IRQ.
+;
+; Six voix : les Mockingboard A et C portent deux AY-3-8910, l'un derriere le
+; VIA #1 en $Cn00, l'autre derriere le VIA #2 en $Cn80. Les voix 0-2 du flux
+; vont a la premiere puce (a gauche sur POM2), les voix 3-5 a la seconde (a
+; droite) : la voix v >= 3 s'ecrit dans la puce 2 sous le numero v-3.
 ;
 ; Trois regles apprises a la lecture de POM2 (DOCS/MUSIQUE.md § 1) :
 ;  - acquitter l'IRQ en ECRIVANT $7F dans l'IFR ($Cn0D), jamais en lisant un
@@ -22,7 +27,7 @@
 ;
 ; API C (music.h) :
 ;   unsigned char music_detect(void);   slot trouve (1-7) ou 0 ; initialise
-;   void music_play(void);              joue le _music_buf d'accueil en boucle
+;   void music_play(void);              joue le flux de music_buf en boucle
 ;   void music_stop(void);              silence net, timer desarme
 
         .setcpu "65C02"
@@ -30,7 +35,7 @@
         .interruptor music_irq
         .destructor  music_done         ; exit() coupe le timer avant DEALLOC
 
-via     = $FA           ; pointeur vers $Cn00, le VIA #1
+via     = $FA           ; pointeur vers $Cn00 (VIA #1) ou $Cn80 (VIA #2)
 cur     = $FC           ; curseur de flux (copie de travail sous IRQ)
 tmp     = $FE
 tmp2    = $FF
@@ -58,7 +63,7 @@ playing:        .res 1
 delay:          .res 1
 cur_lo:         .res 1
 cur_hi:         .res 1
-vols:           .res 3
+vols:           .res 6
 
 .segment "RODATA"
         .include "ay_notes.inc"
@@ -72,12 +77,24 @@ vols:           .res 3
 :
 .endmacro
 
-; via := $Cn00 d'apres mb_slot
+; via := $Cn00 d'apres mb_slot (VIA #1)
 set_via:
         stz via
         lda mb_slot
         ora #$C0
         sta via+1
+        rts
+
+; via := la puce de la voix A (0-5) ; rend dans A le numero de voix dans la
+; puce (0-2).
+chip_of:
+        cmp #3
+        bcc :+
+        sbc #3                  ; retenue deja a 1
+        ldy #$80
+        sty via
+        rts
+:       stz via
         rts
 
 ; Ecrit A dans le registre X de l'AY #1. Preserve X, detruit Y.
@@ -103,8 +120,8 @@ ay_write:
         sta (via),y
         rts
 
-; Mixeur ferme, trois volumes a zero.
-silence:
+; Mixeur ferme, trois volumes a zero -- sur la puce que `via` designe.
+silence1:
         ldx #7
         lda #$3F
         jsr ay_write
@@ -115,6 +132,44 @@ silence:
         jsr ay_write
         inx
         jmp ay_write
+
+; Les deux puces.
+silence:
+        stz via
+        jsr silence1
+        lda #$80
+        sta via
+        jsr silence1
+        stz via
+        rts
+
+; Ports en sortie et /RESET bas puis haut -- sur la puce que `via` designe.
+init1:
+        lda #$FF
+        ldy #DDRA
+        sta (via),y
+        ldy #DDRB
+        sta (via),y
+        ldy #VIA_ORB
+        lda #$00
+        sta (via),y
+        lda #$04
+        sta (via),y
+        rts
+
+; Mixeur ouvert sur les tons A, B, C, bruit ferme -- les deux puces.
+mixer1:
+        ldx #7
+        lda #$38
+        jmp ay_write
+mixer_on:
+        stz via
+        jsr mixer1
+        lda #$80
+        sta via
+        jsr mixer1
+        stz via
+        rts
 
 ; Z=1 si le compteur T1 a recule de 8 entre deux lectures a 8 cycles
 ; d'ecart : la sonde de 4am, reprise par Total Replay et par les tests de POM2.
@@ -139,17 +194,12 @@ _music_detect:
         bne @next
         jsr t1_probe
         bne @next
-        ; trouvee : ports en sortie, /RESET bas puis haut
-        lda #$FF
-        ldy #DDRA
-        sta (via),y
-        ldy #DDRB
-        sta (via),y
-        ldy #VIA_ORB
-        lda #$00
-        sta (via),y
-        lda #$04
-        sta (via),y
+        ; trouvee : les deux VIA en sortie, les deux AY remis a zero
+        jsr init1
+        lda #$80
+        sta via
+        jsr init1
+        stz via
         txa
         ldx #0
         rts
@@ -165,9 +215,7 @@ _music_play:
         beq @rts
         jsr set_via
         jsr silence
-        ldx #7                  ; tons A, B, C ouverts, bruit ferme
-        lda #$38
-        jsr ay_write
+        jsr mixer_on
         lda #<(_music_buf+8)
         sta cur_lo
         lda #>(_music_buf+8)
@@ -176,9 +224,10 @@ _music_play:
         sta delay
         sta playing
         lda #12
-        sta vols
-        sta vols+1
-        sta vols+2
+        ldx #5
+:       sta vols,x
+        dex
+        bpl :-
         ldy #ACR                ; T1 continu
         lda #$40
         sta (via),y
@@ -262,6 +311,7 @@ music_irq:
         asl a
         sta tmp2
         lda tmp
+        jsr chip_of             ; via -> la puce, A = voix 0-2 dans la puce
         asl a
         tax                     ; R0/R2/R4 : periode, poids faible
         ldy tmp2
@@ -282,13 +332,15 @@ music_irq:
         bra @amp
 
 @off:   lda #0
-@amp:   pha                     ; A = amplitude, tmp = voix -> R8+voix
+@amp:   pha                     ; A = amplitude, tmp = voix 0-5 -> R8+voix de sa puce
         lda tmp
+        jsr chip_of
         clc
         adc #8
         tax
         pla
         jsr ay_write
+        stz via                 ; retour sur le VIA #1 (IFR, T1)
         jmp @next
 
 @end:   lda _music_buf+5             ; drapeau de boucle
