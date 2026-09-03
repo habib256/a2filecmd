@@ -64,10 +64,18 @@ STACK   = 0x0180
 # -C scoswamp.cfg : apple2enh.cfg plus la zone LOWRAM ($1000-$1FFF) et son
 # segment LOWBSS, ou vivent les gros tampons. Voir le fichier lui-meme.
 LDCFG   = scoswamp.cfg
+# -Wl -Ln,$(LBLFILE) : la table des symboles au format VICE, une ligne
+# "al 009E8E ._app" par symbole global. build.map ne liste que les symboles
+# qu'un AUTRE module importe : _app, _restoring, _state n'y figurent pas, et
+# ce sont precisement ceux que le banc de test (SCOSWAMP.MORE/TOOLS/playtest.py)
+# doit poker. Le .lbl est produit DANS LA MEME COMMANDE que le .BIN : un .lbl
+# perime avec un .BIN neuf, c'est un banc qui ecrit au hasard dans le tas.
 LDFLAGS = -t $(TARGET) -C $(LDCFG) -Wl -D,__EXEHDR__=0 -Wl -S,0x4000 \
-          -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__STACKSIZE__=$(STACK) -Wl -m,$(MAPFILE)
+          -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__STACKSIZE__=$(STACK) \
+          -Wl -m,$(MAPFILE) -Wl -Ln,$(LBLFILE)
 
 MAPFILE = build.map
+LBLFILE = build.lbl
 
 # Cible par défaut
 all: $(OUTDIR)/$(PROGRAM) $(OUTDIR)/$(LAUNCHER)
