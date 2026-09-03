@@ -250,19 +250,43 @@ class Symbols(object):
                     (name, got, want))
         self.sym.update(self.lbl)
         for need in ("_app", "_restoring", "_state", "_visited", "_seen",
-                     "_music_buf", "_music_cur", "_music_zone"):
+                     "_file_buffer", "_music_buf", "_music_cur", "_music_zone"):
             if need not in self.sym:
                 raise SymbolError("symbole %s introuvable" % need)
-        size = self.sym["_restoring"] - self.sym["_app"]
+        # `app` et `file_buffer` se suivent en RAM basse depuis que le menu MAP
+        # a chasse l'etat de l'application de la fenetre principale (segment
+        # LOWBSS) : c'est cet ecart-la qui donne la taille de la structure, et
+        # non `_restoring - _app`, qui n'est plus dans le meme segment.
+        size = self.sym["_file_buffer"] - self.sym["_app"]
         if size != APP_SIZE:
             raise SymbolError(
                 "AppState fait %d octets et non %d : la table OFF de "
                 "playtest.py est perimee (scoswamp.c a bouge)." % (size, APP_SIZE))
-        if self.sym["_visited"] - self.sym["_seen"] != 160:
-            raise SymbolError("rules.c a change : _seen ne fait plus 160 octets")
+        # `seen` (RAM basse) et `visited` ($0C00, segment MAPBSS) ne sont plus
+        # voisins : leur ecart ne dit plus rien. On lit les tailles a la source,
+        # dans rules.h, qui est de toute facon ce que le banc recopie.
+        rules = header_defines(os.path.join(SRCDIR, "rules.h"))
+        if rules.get("MONSTER_SLOTS") != 40:
+            raise SymbolError("rules.h : MONSTER_SLOTS n'est plus 40, "
+                              "slots160() est perimee")
+        if rules.get("SCENE_MEMORY_SIZE", 0) < 52:
+            raise SymbolError("rules.h : SCENE_MEMORY_SIZE est tombe sous 52, "
+                              "bits52() ecrirait hors du bitmap")
 
     def __getitem__(self, k):
         return self.sym[k]
+
+
+def header_defines(path):
+    """Les `#define NOM <entier>` d'un en-tete, pour les rares constantes que
+    le banc doit connaitre sans les recopier. Les valeurs non numeriques sont
+    ignorees."""
+    out = {}
+    for line in open(path, encoding="utf-8", errors="replace"):
+        m = re.match(r"\s*#define\s+(\w+)\s+(\d+)\s*(?:/\*.*)?$", line)
+        if m:
+            out[m.group(1)] = int(m.group(2))
+    return out
 
 
 def expr(s, env=None):
@@ -1432,6 +1456,56 @@ def sc_anglais(g, b):
     g.press("I")
     rows = g.press("H")
     b.has("l'aide vient de HELPEN", rows, "KEYS")
+
+
+# ── La carte du Marais ────────────────────────────────────────────────────
+
+@scenario("carte", "[M] la carte : ligne de lieu, brouillard, et l'Anneau")
+def sc_carte(g, b):
+    # La ligne de lieu s'installe dans la ligne de marge que render_scene
+    # laisse sous la barre de titre, quand le corps tient en 18 rangs. La 058
+    # est la page-hub de la clairiere 1, le rond-point du depart.
+    rows = g.goto(58, objects=("ANNEAU",), visited=(195,))
+    b.has("la ligne de lieu nomme la clairiere", rows[1:2], "Rond-point")
+    b.has("elle annonce les sorties", rows[1:2], "sorties")
+    b.has("et dit qu'on y est deja venu", rows[1:2], "deja visitee")
+
+    # 297 pages sur 412 ne sont d'aucun lieu : la clairiere reste COLLANTE, et
+    # s'affiche alors entre parentheses -- un souvenir, pas une position.
+    rows = g.goto(28, objects=("ANNEAU",), visited=(195, 58))
+    b.has("hors clairiere, la clairiere collante est entre parentheses",
+          rows[1:2], "(Rond-point)")
+
+    # L'ecran lui-meme. Le brouillard de guerre sort du seul bitmap visited :
+    # une clairiere est vue des qu'UNE de ses pages l'est.
+    g.goto(58, objects=("ANNEAU",), visited=(195,))
+    rows = g.press("M")
+    b.has("la carte s'ouvre", rows, "CARTE DU MARAIS")
+    b.has("elle compte les clairieres vues", rows, "1 clairieres sur 35")
+    b.has("la clairiere courante est marquee", rows, "< 1>")
+    b.has("le panneau nomme le lieu", rows, "Rond-point")
+    b.has("la legende est la", rows, "vous etes ici")
+    b.has("et la ligne des touches", rows, "M ou ESC")
+    b.hasnt("une clairiere jamais vue ne s'affiche pas", rows, "(12)")
+    rows = g.press("M")
+    b.hasnt("[M] referme la carte", rows, "CARTE DU MARAIS")
+    b.has("et rend la page", rows[1:2], "Rond-point")
+
+    # Deux pages d'une meme clairiere allument la meme case, quelle que soit
+    # la porte : c'est le rabattement page -> clairiere du fichier MAP.
+    g.goto(58, objects=("ANNEAU",), visited=(195, 118, 303))
+    rows = g.press("M")
+    b.has("118 et 303 sont la meme clairiere, comptee une fois",
+          rows, "2 clairieres sur 35")
+    g.press("M")
+
+    # « Les boussoles elles-memes en perdent le nord » : sans l'Anneau, la
+    # touche est refusee. Vendre l'anneau (page 049), c'est perdre la carte.
+    g.goto(58, objects=(), visited=(195,))
+    rows = g.press("M")
+    b.hasnt("sans l'Anneau, la carte ne s'ouvre pas", rows, "CARTE DU MARAIS")
+    b.has("elle dit pourquoi", rows, "boussoles")
+    g.press(" ")
 
 
 # ── L'inventaire des illustrations ────────────────────────────────────────
