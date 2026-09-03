@@ -70,10 +70,18 @@ STACK   = 0x0180
 # -C scoswamp.cfg : apple2enh.cfg plus la zone LOWRAM ($1000-$1FFF) et son
 # segment LOWBSS, ou vivent les gros tampons. Voir le fichier lui-meme.
 LDCFG   = scoswamp.cfg
+# -Wl -Ln,$(LBLFILE) : la table des symboles au format VICE, une ligne
+# "al 009E8E ._app" par symbole global. build.map ne liste que les symboles
+# qu'un AUTRE module importe : _app, _restoring, _state n'y figurent pas, et
+# ce sont precisement ceux que le banc de test (SCOSWAMP.MORE/TOOLS/playtest.py)
+# doit poker. Le .lbl est produit DANS LA MEME COMMANDE que le .BIN : un .lbl
+# perime avec un .BIN neuf, c'est un banc qui ecrit au hasard dans le tas.
 LDFLAGS = -t $(TARGET) -C $(LDCFG) -Wl -D,__EXEHDR__=0 -Wl -S,0x4000 \
-          -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__STACKSIZE__=$(STACK) -Wl -m,$(MAPFILE)
+          -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__STACKSIZE__=$(STACK) \
+          -Wl -m,$(MAPFILE) -Wl -Ln,$(LBLFILE)
 
 MAPFILE = build.map
+LBLFILE = build.lbl
 
 # Cible par défaut
 all: $(OUTDIR)/$(PROGRAM) $(OUTDIR)/$(LAUNCHER)
@@ -495,6 +503,25 @@ $(RELHDV): $(HDV)
 $(REL2MG): $(RELHDV) $(WRAP2MG)
 	@python3 $(WRAP2MG) $(RELHDV) $@
 
+# ── Banc de traversée ──────────────────────────────────────────────────────
+# `make playtest` reconstruit l'image disque, puis rejoue le jeu sous POM2 :
+# le prologue, les trois employeurs, un combat, la mort, les sauvegardes, les
+# trois fins, la musique, et un balayage de quarante pages. Une trentaine de
+# scénarios, environ deux minutes, une fenêtre d'émulateur qui s'ouvre et se
+# ferme toute seule.
+#
+# Le banc lit build.map ET build.lbl pour connaître les adresses de _app, de
+# la graine des dés et des mémoires de clairières : il dépend donc du LIEN,
+# pas seulement de l'image. Un .lbl périmé avec un binaire neuf, c'est un banc
+# qui écrit au hasard dans le tas — d'où la dépendance sur $(PROGRAM).
+#
+# Arguments : `make playtest PLAYTEST=--list`, `PLAYTEST="--only combat --keep"`
+# (--keep laisse l'émulateur ouvert pour regarder), `PLAYTEST="--port 6530"`.
+# Les ports 6503-6506 et 6510 sont déjà pris ailleurs : le défaut est 6520.
+PLAYTEST =
+playtest: $(HDV) $(OUTDIR)/$(PROGRAM)
+	python3 $(TOOLS)/playtest.py $(PLAYTEST)
+
 # Prérequis d'ordre seulement : on ne sait pas le construire depuis ici, on dit
 # comment. Le tenir hors des dépendances normales évite de refaire l'image
 # chaque fois que l'outil est relié.
@@ -537,4 +564,4 @@ install: all
 	@echo "==> Binaire disponible dans $(OUTDIR)/$(PROGRAM)"
 
 # Déclaration des cibles "phony" (ne correspondent pas à des fichiers)
-.PHONY: all hdv map release check clean distclean rebuild info install
+.PHONY: all hdv map release check playtest clean distclean rebuild info install
