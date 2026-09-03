@@ -17,6 +17,12 @@
 #define MUSIC_H
 
 #define MUSIC_ZONE     2304         /* moitie 0 : les themes de zone (max 2 285 o) */
+/* 1 280 et non 1 216. Le menu MAP avait pris ces 64 octets, la plus grosse
+ * surcouche faisant alors 1 216 octets a l'octet pres ; la reprise des
+ * partitions « d'un cran, avec la batterie » a porte VICTOIRE.MB a 1 265 et
+ * COMBAT.MB a 1 228. Le levier est rendu a la musique : il ne restait que
+ * quinze octets de marge, et une surcouche refusee a la fabrication aurait
+ * coute plus cher que 64 octets de moteur. */
 #define MUSIC_OVER     1280         /* moitie 1 : combat, mort, victoire */
 #define MUSIC_BUF_SIZE (MUSIC_ZONE + MUSIC_OVER)   /* = .res de _music_buf dans music.s */
 extern unsigned char music_buf[MUSIC_BUF_SIZE];

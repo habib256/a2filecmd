@@ -29,7 +29,13 @@ OBJECTS = scoswamp.o paths.o memory_swap.o rules.o dice.o messages.o hgr_loader.
 # fonction ne doit etre reentrante -- le graphe d'appels (jsr entre .proc des
 # .s generes) n'a aucun cycle, verifie le meme jour ; a re-verifier si une
 # fonction se met a s'appeler elle-meme, directement ou non.
-CFLAGS = -t $(TARGET) -O -Oirs -Cl
+# --codesize 100 : le facteur de gonflement que l'optimiseur s'autorise pour
+# aller plus vite. cc65 2.19 en prend nettement plus par defaut -- mesure le
+# 2026-09-04 sur scoswamp.c : 17 248 octets de CODE sans l'option, 16 309 avec,
+# soit 939 octets, plus 68 dans la Language Card. En dessous de 100 le
+# generateur cesse d'employer certaines sequences en ligne et le code REGROSSIT
+# (19 255 a 90) : le minimum est un plateau de 100 a 130.
+CFLAGS = -t $(TARGET) -O -Oirs -Cl --codesize 100
 
 # Flags de linkage
 # -Wl -S,0x4000 : démarrage à $4000 (préserve HGR Page 1 à $2000-$3FFF)
@@ -428,17 +434,33 @@ STAGE_EXCLUDE = DOCS SRC BASIC.SYSTEM.SYS STARTUP.BAS
 # l'image, le disque gardait un catalogue a MSG_COUNT-2 lignes, et
 # messages_load rejette un fichier qui n'a pas exactement MSG_COUNT lignes --
 # toute l'interface partait vide, pas seulement les deux nouveaux messages.
-# HELPFR.TXT / HELPEN.TXT n'y figuraient pas du tout.
+# HELPFR.TXT / HELPEN.TXT n'y figuraient pas du tout, OBJFR/OBJEN non plus,
+# et MAP.BIN arrive avec le meme piege : une carte perimee sur le disque ne se
+# voit pas, elle montre seulement les mauvaises clairieres.
 PAYLOAD = $(shell find $(OUTDIR)/TEXTFR $(OUTDIR)/TEXTEN $(OUTDIR)/IMG $(OUTDIR)/MUSIC \
                        $(OUTDIR)/MSGFR.TXT $(OUTDIR)/MSGEN.TXT \
                        $(OUTDIR)/HELPFR.TXT $(OUTDIR)/HELPEN.TXT \
+                       $(OUTDIR)/OBJFR.TXT $(OUTDIR)/OBJEN.TXT \
+                       $(OUTDIR)/MAP.BIN \
                        $(OUTDIR)/SAVE \
                        $(OUTDIR)/TITLE.TXT \
                        -type f 2>/dev/null)
 
+# La carte du Marais : 35 clairieres, leurs sorties, la table de rabattement
+# page -> clairiere et les noms dans les deux langues, tires de la bible
+# topologique SCOSWAMP.MORE/carte.json (voir SCOSWAMP/DOCS/CARTOGRAPHIE.md).
+# L'empaqueteur retire la derniere extension : MAP.BIN devient MAP sur le
+# volume, comme MUSIC/<NOM>.MB.BIN devient MUSIC/<NOM>.MB.
+CARTE    = ../../SCOSWAMP.MORE/carte.json
+$(OUTDIR)/MAP.BIN: $(TOOLS)/build_map.py $(CARTE)
+	python3 $(TOOLS)/build_map.py --root ../..
+
+map: $(OUTDIR)/MAP.BIN
+
 hdv: $(HDV)
 
-$(HDV): $(OUTDIR)/$(PROGRAM) $(OUTDIR)/$(LAUNCHER) $(BOOTTMPL) $(MUSICS) $(PAYLOAD) | $(VOLBUILD)
+$(HDV): $(OUTDIR)/$(PROGRAM) $(OUTDIR)/$(LAUNCHER) $(BOOTTMPL) $(MUSICS) \
+        $(OUTDIR)/MAP.BIN $(PAYLOAD) | $(VOLBUILD)
 	@rm -rf $(STAGE) && mkdir -p $(STAGE) $(dir $(HDV))
 	@for f in $(OUTDIR)/*; do \
 		b=`basename "$$f"`; \
@@ -515,4 +537,4 @@ install: all
 	@echo "==> Binaire disponible dans $(OUTDIR)/$(PROGRAM)"
 
 # Déclaration des cibles "phony" (ne correspondent pas à des fichiers)
-.PHONY: all hdv release check clean distclean rebuild info install
+.PHONY: all hdv map release check clean distclean rebuild info install
