@@ -82,9 +82,16 @@ atten:          .res 1
 fade:           .res 1
 fstep:          .res 1
 amps:           .res 6
+mix:            .res 2          ; R7 de chaque puce : tons et bruit par voix
 
 .segment "RODATA"
         .include "ay_notes.inc"
+; bits du mixeur R7 pour la voix 0-2 d'une puce : ton (bit v) et bruit (bit 3+v),
+; actifs a ZERO ; les masques les eteignent.
+tbit:   .byte $01, $02, $04
+nbit:   .byte $08, $10, $20
+tmask:  .byte $FE, $FD, $FB
+nmask:  .byte $F7, $EF, $DF
 
 .segment "CODE"
 
@@ -190,6 +197,45 @@ mix1:   ldx #7
         lda tmp2
         jmp ay_write
 
+; R7 := mix[] sur les deux puces : la reouverture apres une pause, et le
+; depart d'un flux (tons ouverts, bruit ferme).
+mixer_restore:
+        stz via
+        ldx #7
+        lda mix
+        jsr ay_write
+        lda #$80
+        sta via
+        ldx #7
+        lda mix+1
+        jsr ay_write
+        stz via
+        rts
+
+; Le mixeur de la voix `tmp` (0-5) : entree C=1 -> bruit ouvert, ton coupe
+; (percussion) ; C=0 -> ton ouvert, bruit coupe (note). Pose via sur sa puce.
+mix_voice:
+        php
+        lda tmp
+        cmp #3
+        lda #0
+        adc #0
+        tax                     ; X = puce 0/1
+        lda tmp
+        jsr chip_of
+        tay                     ; Y = voix 0-2 dans la puce
+        lda mix,x
+        plp
+        bcs @noise
+        and tmask,y
+        ora nbit,y
+        bra @w
+@noise: ora tbit,y
+        and nmask,y
+@w:     sta mix,x
+        ldx #7
+        jmp ay_write
+
 ; tmp/tmp2 := adresse du demi-tampon selectionne.
 set_base:
         lda #<_music_buf
@@ -251,8 +297,10 @@ _music_play:
         beq @rts
         jsr set_via
         jsr silence
-        lda #$38
-        jsr mixer_set
+        lda #$38                ; tons ouverts, bruit ferme, sur les deux puces
+        sta mix
+        sta mix+1
+        jsr mixer_restore
         jsr set_base            ; le flux commence apres l'en-tete de 8 octets
         lda tmp
         clc
@@ -380,8 +428,7 @@ _music_continue:
         stz paused
         jsr fade_in_setup
 rearm:  jsr set_via
-        lda #$38
-        jsr mixer_set
+        jsr mixer_restore
         ldy #IFR
         lda #$7F
         sta (via),y
@@ -519,13 +566,12 @@ music_irq:
         cmp #$E0
         beq @end
         cmp #$F0
-        beq @fade
-        jmp @next               ; paquet inconnu : ignore
-
-@fade:  lda #1                  ; FADE : la fin du morceau s'efface en 0,9 s
-        sta fade
-        sta fstep
-        jmp @next
+        bne :+
+        jmp @fade
+:       cmp #$B0
+        bne :+
+        jmp @noise
+:       jmp @next               ; paquet inconnu : ignore
 
 @note:  lda (cur)               ; index de note 0-59
         NEXT
@@ -542,15 +588,17 @@ music_irq:
         ldy tmp2
         lda note_table+1,y
         jsr ay_write
+        clc
+        jsr mix_voice           ; ton ouvert, bruit coupe (la voix a pu battre)
         ldy tmp
         lda vols,y
-        bra @amp
+        jmp @amp
 
 @vol:   lda (cur)
         NEXT
         ldy tmp
         sta vols,y
-        bra @amp
+        jmp @amp
 
 @off:   lda #0
 @amp:   ldy tmp                 ; A = amplitude brute, tmp = voix 0-5
@@ -589,3 +637,20 @@ music_irq:
 @stop:  jsr _music_stop
         sec
         rts
+
+@fade:  lda #1                  ; FADE : la fin du morceau s'efface en 0,9 s
+        sta fade
+        sta fstep
+        jmp @next
+
+@noise: lda (cur)               ; NOISE : periode de bruit (R6 de la puce)
+        NEXT
+        pha
+        sec
+        jsr mix_voice           ; ton coupe, bruit ouvert ; via -> la puce
+        ldx #6
+        pla
+        jsr ay_write
+        ldy tmp
+        lda vols,y
+        jmp @amp
