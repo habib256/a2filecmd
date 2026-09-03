@@ -23,7 +23,13 @@ OBJECTS = scoswamp.o paths.o memory_swap.o rules.o dice.o messages.o hgr_loader.
 # -t $(TARGET) : cible Apple IIe Enhanced
 # -O : optimisation
 # -Oirs : optimisation inline, registres, size
-CFLAGS = -t $(TARGET) -O -Oirs
+# -Cl : locales statiques. Sur 6502 une variable de pile coute un calcul
+# d'adresse (ldy #n ; lda (sp),y) a chaque acces, une statique un lda absolu.
+# Mesure le 2026-09-03 : 547 octets de code rendus. Contrepartie : aucune
+# fonction ne doit etre reentrante -- le graphe d'appels (jsr entre .proc des
+# .s generes) n'a aucun cycle, verifie le meme jour ; a re-verifier si une
+# fonction se met a s'appeler elle-meme, directement ou non.
+CFLAGS = -t $(TARGET) -O -Oirs -Cl
 
 # Flags de linkage
 # -Wl -S,0x4000 : démarrage à $4000 (préserve HGR Page 1 à $2000-$3FFF)
@@ -55,7 +61,10 @@ HIMEM   = 0xBF00
 # rendus ont paye les directives CS/MB/DV. Passe a check-memory.sh, qui
 # comptait 2048 en dur.
 STACK   = 0x0180
-LDFLAGS = -t $(TARGET) -Wl -D,__EXEHDR__=0 -Wl -S,0x4000 \
+# -C scoswamp.cfg : apple2enh.cfg plus la zone LOWRAM ($1000-$1FFF) et son
+# segment LOWBSS, ou vivent les gros tampons. Voir le fichier lui-meme.
+LDCFG   = scoswamp.cfg
+LDFLAGS = -t $(TARGET) -C $(LDCFG) -Wl -D,__EXEHDR__=0 -Wl -S,0x4000 \
           -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__STACKSIZE__=$(STACK) -Wl -m,$(MAPFILE)
 
 MAPFILE = build.map
@@ -66,7 +75,7 @@ all: $(OUTDIR)/$(PROGRAM) $(OUTDIR)/$(LAUNCHER)
 # Règle principale : lier les objets pour créer le binaire
 # Le contrôle mémoire est systématique : un link réussi ne prouve pas que le
 # binaire tient (ld65 peut manquer un débordement BSS, voir tools/check-memory.sh).
-$(OUTDIR)/$(PROGRAM): $(OBJECTS)
+$(OUTDIR)/$(PROGRAM): $(OBJECTS) $(LDCFG)
 	$(CL) $(CFLAGS) $(LDFLAGS) -o $(OUTDIR)/$(PROGRAM) $(OBJECTS) $(IOBUF)
 	@echo "==> Compilation terminée : $(OUTDIR)/$(PROGRAM)"
 	@echo "    Adresse de démarrage : \$$4000 (HGR préservé à \$$2000-\$$3FFF)"
@@ -101,7 +110,7 @@ dice.o: dice.c dice.h
 	$(CC) $(CFLAGS) -o dice.s dice.c
 	$(AS) -t $(TARGET) -o dice.o dice.s
 
-scoswamp.o: scoswamp.c paths.h memory_swap.h rules.h dice.h
+scoswamp.o: scoswamp.c paths.h memory_swap.h rules.h dice.h messages.h hgr_rle.h sfx.h
 	$(CC) $(CFLAGS) -o scoswamp.s scoswamp.c
 	$(AS) -t $(TARGET) -o scoswamp.o scoswamp.s
 
