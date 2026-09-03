@@ -191,6 +191,189 @@ $(MODERNE)/victoire/victoire.mid: $(MODERNE)/victoire/victoire.py $(MODERNE)/com
 	cd $(MODERNE)/victoire && python3 victoire.py
 $(OUTDIR)/MUSIC/VICTOIRE.MB.BIN: $(MODERNE)/victoire/victoire.mid $(MUSIC)/midi_to_mb.py
 	$(MB) $< $@ --bpm 150 --max 1280 --no-loop --wav $(MODERNE)/victoire/VICTOIRE.wav
+# Une musique par clairiere : 35 pieces du dossier moderne, clairieres/NN-nom,
+# nommees d'apres le lieu ; les pages de chaque clairiere portent
+# "MU <NOM>.MB" (SCOSWAMP.MORE/MUSIC/plan_mu.json, carte.json).
+CLAIR    = $(MODERNE)/clairieres
+CLAIRS   = $(OUTDIR)/MUSIC/COURBENS.MB.BIN \
+           $(OUTDIR)/MUSIC/PATROUIL.MB.BIN \
+           $(OUTDIR)/MUSIC/JARDINS.MB.BIN \
+           $(OUTDIR)/MUSIC/LOUPS.MB.BIN \
+           $(OUTDIR)/MUSIC/FEUFOLLET.MB.BIN \
+           $(OUTDIR)/MUSIC/CROISEMENT.MB.BIN \
+           $(OUTDIR)/MUSIC/GEANT.MB.BIN \
+           $(OUTDIR)/MUSIC/BRIGANDS.MB.BIN \
+           $(OUTDIR)/MUSIC/VASE.MB.BIN \
+           $(OUTDIR)/MUSIC/SCORPNAIN.MB.BIN \
+           $(OUTDIR)/MUSIC/AIGLE.MB.BIN \
+           $(OUTDIR)/MUSIC/SABLES.MB.BIN \
+           $(OUTDIR)/MUSIC/CROUPIE.MB.BIN \
+           $(OUTDIR)/MUSIC/FALAISE.MB.BIN \
+           $(OUTDIR)/MUSIC/PONT.MB.BIN \
+           $(OUTDIR)/MUSIC/OISEAUX.MB.BIN \
+           $(OUTDIR)/MUSIC/BRUME.MB.BIN \
+           $(OUTDIR)/MUSIC/PIQUENIQUE.MB.BIN \
+           $(OUTDIR)/MUSIC/SCORPIONS.MB.BIN \
+           $(OUTDIR)/MUSIC/HERBEUX.MB.BIN \
+           $(OUTDIR)/MUSIC/CRISTAL.MB.BIN \
+           $(OUTDIR)/MUSIC/ANGOISSE.MB.BIN \
+           $(OUTDIR)/MUSIC/LICORNE.MB.BIN \
+           $(OUTDIR)/MUSIC/ARENE.MB.BIN \
+           $(OUTDIR)/MUSIC/PINCES.MB.BIN \
+           $(OUTDIR)/MUSIC/ORQUES.MB.BIN \
+           $(OUTDIR)/MUSIC/BETE.MB.BIN \
+           $(OUTDIR)/MUSIC/ARBRESEPEES.MB.BIN \
+           $(OUTDIR)/MUSIC/ARAIGNEES.MB.BIN \
+           $(OUTDIR)/MUSIC/GRENOUILLES.MB.BIN \
+           $(OUTDIR)/MUSIC/PROFONDE.MB.BIN \
+           $(OUTDIR)/MUSIC/MAITRELOUPS.MB.BIN \
+           $(OUTDIR)/MUSIC/RONDPOINT.MB.BIN \
+           $(OUTDIR)/MUSIC/TRONC.MB.BIN \
+           $(OUTDIR)/MUSIC/BASSIN.MB.BIN
+MUSICS  += $(CLAIRS)
+musics: $(CLAIRS)      # la cible musics est definie plus haut : ses prerequis sont deja developpes
+
+$(CLAIR)/01-courbens/courbens.mid: $(CLAIR)/01-courbens/courbens.py $(MODERNE)/compose.py
+	cd $(CLAIR)/01-courbens && python3 courbens.py
+$(OUTDIR)/MUSIC/COURBENS.MB.BIN: $(CLAIR)/01-courbens/courbens.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 172 --max 2304 --wav $(CLAIR)/01-courbens/COURBENS.wav
+$(CLAIR)/02-patrouil/patrouil.mid: $(CLAIR)/02-patrouil/patrouil.py $(MODERNE)/compose.py
+	cd $(CLAIR)/02-patrouil && python3 patrouil.py
+$(OUTDIR)/MUSIC/PATROUIL.MB.BIN: $(CLAIR)/02-patrouil/patrouil.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 156 --max 2304 --wav $(CLAIR)/02-patrouil/PATROUIL.wav
+$(CLAIR)/03-jardins/jardins.mid: $(CLAIR)/03-jardins/jardins.py $(MODERNE)/compose.py
+	cd $(CLAIR)/03-jardins && python3 jardins.py
+$(OUTDIR)/MUSIC/JARDINS.MB.BIN: $(CLAIR)/03-jardins/jardins.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 138 --max 2304 --wav $(CLAIR)/03-jardins/JARDINS.wav
+$(CLAIR)/04-loups/loups.mid: $(CLAIR)/04-loups/loups.py $(MODERNE)/compose.py
+	cd $(CLAIR)/04-loups && python3 loups.py
+$(OUTDIR)/MUSIC/LOUPS.MB.BIN: $(CLAIR)/04-loups/loups.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 168 --max 2304 --wav $(CLAIR)/04-loups/LOUPS.wav
+$(CLAIR)/05-feufollet/feufollet.mid: $(CLAIR)/05-feufollet/feufollet.py $(MODERNE)/compose.py
+	cd $(CLAIR)/05-feufollet && python3 feufollet.py
+$(OUTDIR)/MUSIC/FEUFOLLET.MB.BIN: $(CLAIR)/05-feufollet/feufollet.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 150 --max 2304 --wav $(CLAIR)/05-feufollet/FEUFOLLET.wav
+$(CLAIR)/06-croisement/croisement.mid: $(CLAIR)/06-croisement/croisement.py $(MODERNE)/compose.py
+	cd $(CLAIR)/06-croisement && python3 croisement.py
+$(OUTDIR)/MUSIC/CROISEMENT.MB.BIN: $(CLAIR)/06-croisement/croisement.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 144 --max 2304 --wav $(CLAIR)/06-croisement/CROISEMENT.wav
+$(CLAIR)/07-geant/geant.mid: $(CLAIR)/07-geant/geant.py $(MODERNE)/compose.py
+	cd $(CLAIR)/07-geant && python3 geant.py
+$(OUTDIR)/MUSIC/GEANT.MB.BIN: $(CLAIR)/07-geant/geant.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 132 --max 2304 --wav $(CLAIR)/07-geant/GEANT.wav
+$(CLAIR)/08-brigands/brigands.mid: $(CLAIR)/08-brigands/brigands.py $(MODERNE)/compose.py
+	cd $(CLAIR)/08-brigands && python3 brigands.py
+$(OUTDIR)/MUSIC/BRIGANDS.MB.BIN: $(CLAIR)/08-brigands/brigands.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 176 --max 2304 --wav $(CLAIR)/08-brigands/BRIGANDS.wav
+$(CLAIR)/09-vase/vase.mid: $(CLAIR)/09-vase/vase.py $(MODERNE)/compose.py
+	cd $(CLAIR)/09-vase && python3 vase.py
+$(OUTDIR)/MUSIC/VASE.MB.BIN: $(CLAIR)/09-vase/vase.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 132 --max 2304 --wav $(CLAIR)/09-vase/VASE.wav
+$(CLAIR)/10-scorpnain/scorpnain.mid: $(CLAIR)/10-scorpnain/scorpnain.py $(MODERNE)/compose.py
+	cd $(CLAIR)/10-scorpnain && python3 scorpnain.py
+$(OUTDIR)/MUSIC/SCORPNAIN.MB.BIN: $(CLAIR)/10-scorpnain/scorpnain.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 176 --max 2304 --wav $(CLAIR)/10-scorpnain/SCORPNAIN.wav
+$(CLAIR)/11-aigle/aigle.mid: $(CLAIR)/11-aigle/aigle.py $(MODERNE)/compose.py
+	cd $(CLAIR)/11-aigle && python3 aigle.py
+$(OUTDIR)/MUSIC/AIGLE.MB.BIN: $(CLAIR)/11-aigle/aigle.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 152 --max 2304 --wav $(CLAIR)/11-aigle/AIGLE.wav
+$(CLAIR)/12-sables/sables.mid: $(CLAIR)/12-sables/sables.py $(MODERNE)/compose.py
+	cd $(CLAIR)/12-sables && python3 sables.py
+$(OUTDIR)/MUSIC/SABLES.MB.BIN: $(CLAIR)/12-sables/sables.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 138 --max 2304 --wav $(CLAIR)/12-sables/SABLES.wav
+$(CLAIR)/13-croupie/croupie.mid: $(CLAIR)/13-croupie/croupie.py $(MODERNE)/compose.py
+	cd $(CLAIR)/13-croupie && python3 croupie.py
+$(OUTDIR)/MUSIC/CROUPIE.MB.BIN: $(CLAIR)/13-croupie/croupie.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 132 --max 2304 --wav $(CLAIR)/13-croupie/CROUPIE.wav
+$(CLAIR)/14-falaise/falaise.mid: $(CLAIR)/14-falaise/falaise.py $(MODERNE)/compose.py
+	cd $(CLAIR)/14-falaise && python3 falaise.py
+$(OUTDIR)/MUSIC/FALAISE.MB.BIN: $(CLAIR)/14-falaise/falaise.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 140 --max 2304 --wav $(CLAIR)/14-falaise/FALAISE.wav
+$(CLAIR)/15-pont/pont.mid: $(CLAIR)/15-pont/pont.py $(MODERNE)/compose.py
+	cd $(CLAIR)/15-pont && python3 pont.py
+$(OUTDIR)/MUSIC/PONT.MB.BIN: $(CLAIR)/15-pont/pont.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 150 --max 2304 --wav $(CLAIR)/15-pont/PONT.wav
+$(CLAIR)/16-oiseaux/oiseaux.mid: $(CLAIR)/16-oiseaux/oiseaux.py $(MODERNE)/compose.py
+	cd $(CLAIR)/16-oiseaux && python3 oiseaux.py
+$(OUTDIR)/MUSIC/OISEAUX.MB.BIN: $(CLAIR)/16-oiseaux/oiseaux.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 168 --max 2304 --wav $(CLAIR)/16-oiseaux/OISEAUX.wav
+$(CLAIR)/17-brume/brume.mid: $(CLAIR)/17-brume/brume.py $(MODERNE)/compose.py
+	cd $(CLAIR)/17-brume && python3 brume.py
+$(OUTDIR)/MUSIC/BRUME.MB.BIN: $(CLAIR)/17-brume/brume.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 128 --max 2304 --wav $(CLAIR)/17-brume/BRUME.wav
+$(CLAIR)/18-piquenique/piquenique.mid: $(CLAIR)/18-piquenique/piquenique.py $(MODERNE)/compose.py
+	cd $(CLAIR)/18-piquenique && python3 piquenique.py
+$(OUTDIR)/MUSIC/PIQUENIQUE.MB.BIN: $(CLAIR)/18-piquenique/piquenique.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 176 --max 2304 --wav $(CLAIR)/18-piquenique/PIQUENIQUE.wav
+$(CLAIR)/19-scorpions/scorpions.mid: $(CLAIR)/19-scorpions/scorpions.py $(MODERNE)/compose.py
+	cd $(CLAIR)/19-scorpions && python3 scorpions.py
+$(OUTDIR)/MUSIC/SCORPIONS.MB.BIN: $(CLAIR)/19-scorpions/scorpions.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 180 --max 2304 --wav $(CLAIR)/19-scorpions/SCORPIONS.wav
+$(CLAIR)/20-herbeux/herbeux.mid: $(CLAIR)/20-herbeux/herbeux.py $(MODERNE)/compose.py
+	cd $(CLAIR)/20-herbeux && python3 herbeux.py
+$(OUTDIR)/MUSIC/HERBEUX.MB.BIN: $(CLAIR)/20-herbeux/herbeux.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 145 --max 2304 --wav $(CLAIR)/20-herbeux/HERBEUX.wav
+$(CLAIR)/21-cristal/cristal.mid: $(CLAIR)/21-cristal/cristal.py $(MODERNE)/compose.py
+	cd $(CLAIR)/21-cristal && python3 cristal.py
+$(OUTDIR)/MUSIC/CRISTAL.MB.BIN: $(CLAIR)/21-cristal/cristal.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 152 --max 2304 --wav $(CLAIR)/21-cristal/CRISTAL.wav
+$(CLAIR)/22-angoisse/angoisse.mid: $(CLAIR)/22-angoisse/angoisse.py $(MODERNE)/compose.py
+	cd $(CLAIR)/22-angoisse && python3 angoisse.py
+$(OUTDIR)/MUSIC/ANGOISSE.MB.BIN: $(CLAIR)/22-angoisse/angoisse.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 144 --max 2304 --wav $(CLAIR)/22-angoisse/ANGOISSE.wav
+$(CLAIR)/23-licorne/licorne.mid: $(CLAIR)/23-licorne/licorne.py $(MODERNE)/compose.py
+	cd $(CLAIR)/23-licorne && python3 licorne.py
+$(OUTDIR)/MUSIC/LICORNE.MB.BIN: $(CLAIR)/23-licorne/licorne.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 138 --max 2304 --wav $(CLAIR)/23-licorne/LICORNE.wav
+$(CLAIR)/24-arene/arene.mid: $(CLAIR)/24-arene/arene.py $(MODERNE)/compose.py
+	cd $(CLAIR)/24-arene && python3 arene.py
+$(OUTDIR)/MUSIC/ARENE.MB.BIN: $(CLAIR)/24-arene/arene.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 160 --max 2304 --wav $(CLAIR)/24-arene/ARENE.wav
+$(CLAIR)/25-pinces/pinces.mid: $(CLAIR)/25-pinces/pinces.py $(MODERNE)/compose.py
+	cd $(CLAIR)/25-pinces && python3 pinces.py
+$(OUTDIR)/MUSIC/PINCES.MB.BIN: $(CLAIR)/25-pinces/pinces.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 176 --max 2304 --wav $(CLAIR)/25-pinces/PINCES.wav
+$(CLAIR)/26-orques/orques.mid: $(CLAIR)/26-orques/orques.py $(MODERNE)/compose.py
+	cd $(CLAIR)/26-orques && python3 orques.py
+$(OUTDIR)/MUSIC/ORQUES.MB.BIN: $(CLAIR)/26-orques/orques.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 158 --max 2304 --wav $(CLAIR)/26-orques/ORQUES.wav
+$(CLAIR)/27-bete/bete.mid: $(CLAIR)/27-bete/bete.py $(MODERNE)/compose.py
+	cd $(CLAIR)/27-bete && python3 bete.py
+$(OUTDIR)/MUSIC/BETE.MB.BIN: $(CLAIR)/27-bete/bete.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 143 --max 2304 --wav $(CLAIR)/27-bete/BETE.wav
+$(CLAIR)/28-arbresepees/arbresepees.mid: $(CLAIR)/28-arbresepees/arbresepees.py $(MODERNE)/compose.py
+	cd $(CLAIR)/28-arbresepees && python3 arbresepees.py
+$(OUTDIR)/MUSIC/ARBRESEPEES.MB.BIN: $(CLAIR)/28-arbresepees/arbresepees.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 166 --max 2304 --wav $(CLAIR)/28-arbresepees/ARBRESEPEES.wav
+$(CLAIR)/29-araignees/araignees.mid: $(CLAIR)/29-araignees/araignees.py $(MODERNE)/compose.py
+	cd $(CLAIR)/29-araignees && python3 araignees.py
+$(OUTDIR)/MUSIC/ARAIGNEES.MB.BIN: $(CLAIR)/29-araignees/araignees.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 150 --max 2304 --wav $(CLAIR)/29-araignees/ARAIGNEES.wav
+$(CLAIR)/30-grenouilles/grenouilles.mid: $(CLAIR)/30-grenouilles/grenouilles.py $(MODERNE)/compose.py
+	cd $(CLAIR)/30-grenouilles && python3 grenouilles.py
+$(OUTDIR)/MUSIC/GRENOUILLES.MB.BIN: $(CLAIR)/30-grenouilles/grenouilles.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 166 --max 2304 --wav $(CLAIR)/30-grenouilles/GRENOUILLES.wav
+$(CLAIR)/31-profonde/profonde.mid: $(CLAIR)/31-profonde/profonde.py $(MODERNE)/compose.py
+	cd $(CLAIR)/31-profonde && python3 profonde.py
+$(OUTDIR)/MUSIC/PROFONDE.MB.BIN: $(CLAIR)/31-profonde/profonde.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 136 --max 2304 --wav $(CLAIR)/31-profonde/PROFONDE.wav
+$(CLAIR)/32-maitreloups/maitreloups.mid: $(CLAIR)/32-maitreloups/maitreloups.py $(MODERNE)/compose.py
+	cd $(CLAIR)/32-maitreloups && python3 maitreloups.py
+$(OUTDIR)/MUSIC/MAITRELOUPS.MB.BIN: $(CLAIR)/32-maitreloups/maitreloups.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 143 --max 2304 --wav $(CLAIR)/32-maitreloups/MAITRELOUPS.wav
+$(CLAIR)/33-rondpoint/rondpoint.mid: $(CLAIR)/33-rondpoint/rondpoint.py $(MODERNE)/compose.py
+	cd $(CLAIR)/33-rondpoint && python3 rondpoint.py
+$(OUTDIR)/MUSIC/RONDPOINT.MB.BIN: $(CLAIR)/33-rondpoint/rondpoint.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 158 --max 2304 --wav $(CLAIR)/33-rondpoint/RONDPOINT.wav
+$(CLAIR)/34-tronc/tronc.mid: $(CLAIR)/34-tronc/tronc.py $(MODERNE)/compose.py
+	cd $(CLAIR)/34-tronc && python3 tronc.py
+$(OUTDIR)/MUSIC/TRONC.MB.BIN: $(CLAIR)/34-tronc/tronc.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 150 --max 2304 --wav $(CLAIR)/34-tronc/TRONC.wav
+$(CLAIR)/35-bassin/bassin.mid: $(CLAIR)/35-bassin/bassin.py $(MODERNE)/compose.py
+	cd $(CLAIR)/35-bassin && python3 bassin.py
+$(OUTDIR)/MUSIC/BASSIN.MB.BIN: $(CLAIR)/35-bassin/bassin.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 143 --max 2304 --wav $(CLAIR)/35-bassin/BASSIN.wav
+
 # La composition maison (accueil.py) reste disponible hors disque.
 $(MUSIC)/accueil.mid: $(MUSIC)/accueil.py
 	python3 $(MUSIC)/accueil.py
