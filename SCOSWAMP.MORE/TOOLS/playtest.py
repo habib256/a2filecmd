@@ -44,7 +44,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import urllib.error
 import urllib.request
 
 # ── Racines ────────────────────────────────────────────────────────────────
@@ -560,12 +559,19 @@ class Game(object):
         return struct.unpack("<h", self.p.peek(self.A("current_scene"), 2))[0]
 
     def choices(self, rows=None):
-        """Les lettres offertes, lignes 20-23. Un choix barre porte '-)'."""
+        """Les choix affiches, lignes 20-23. Un choix visible mais interdit --
+        Pierre absente, objet manquant -- porte '-)' au lieu de sa lettre :
+        le livre le montre, et savoir ce qu'un objet aurait permis fait partie
+        du jeu (choice_tag, scoswamp.c)."""
         rows = rows or self.p.screen()
         out = []
         for r in rows[20:24]:
             out += re.findall(r"(?:^|\s\s)([A-Z-])\)", r)
         return out
+
+    def letters(self, rows=None):
+        """Seulement les choix REELLEMENT prenables."""
+        return [c for c in self.choices(rows) if c != "-"]
 
     def stones(self):
         h = self.hero()
@@ -610,6 +616,16 @@ class Game(object):
         return rows
 
     # -- la porte cachee ----------------------------------------------------
+    #
+    # Les touches que goto() essaie, dans l'ordre, une par tentative :
+    #   'Z'  inerte dans la boucle principale (choice_num 25 >= num_choices),
+    #        c'est elle qui reveille la boucle pour qu'elle lise pending_scene ;
+    #   ' '  denoue une invite (jet de des, assaut de combat, « continuer ») ;
+    #   'A'  celles qui exigent une lettre (choix des Pierres, six de suite) ;
+    #   ESC  referme le sac, l'aide, la page des sauvegardes ;
+    #   'R'  la SEULE sortie de l'ecran de mort qui ne quitte pas le jeu ;
+    #   puis une longue serie d'ESPACE, de quoi mener un combat a son terme.
+    ESCAPE = b"Z" + b"    " + b"AAAAAA" + b"\x1b" + b"R" + b" " * 10 + b"Z"
     def sheet_bytes(self, hab=12, end=20, cha=11, hab0=None, end0=None,
                     cha0=None, gold=20, bonus=0, stones=(), objects=(),
                     amulets=()):
@@ -629,7 +645,7 @@ class Game(object):
                 + struct.pack("<H", om) + bytes([am]))
 
     def goto(self, page, seed=0x1234, replay=True, visited=(), foes=(),
-             land=None, tries=8, **hero):
+             land=None, **hero):
         """Teleporte le heros a `page` avec l'etat demande.
 
         La boucle principale relit pending_scene AVANT chaque cgetc() : il
@@ -638,11 +654,14 @@ class Game(object):
         calcule choice_num = 25, superieur a num_choices, et ne fait rien.
 
         Mais le jeu n'est pas toujours dans cette boucle : un jet de des, un
-        combat, le sac ou la page des sauvegardes ont leur propre cgetc(), et
-        la touche y serait avalee. On insiste donc : a chaque essai on repose
-        TOUT l'etat puis on frappe -- d'abord ESPACE, qui denoue n'importe
-        quelle invite interne, puis 'Z'. Le dernier essai est celui qui a
-        reussi, donc l'etat pose est bien celui qu'on lit ensuite.
+        combat, le sac, l'aide, la page des sauvegardes et l'ecran de mort ont
+        chacun leur propre cgetc(), et la touche y serait avalee. On insiste
+        donc, mais UNE TOUCHE A LA FOIS (voir ESCAPE) : la file de POM2 est
+        auto-cadencee et garde ce qui n'a pas ete lu, si bien qu'une rafale
+        envoyee pendant que le jeu etait bloque se deversait ensuite d'un coup
+        et faisait traverser le Marais au hasard. A chaque essai on repose
+        TOUT l'etat puis on frappe une touche ; l'essai qui reussit est donc
+        celui dont l'etat vient d'etre pose.
 
         replay=False met restoring a 1, ce qui inhibe les effets d'entree
         (E, E0, ED, G, GX, GA, P, PC, PD, PO, PX, CE, TR, V) exactement comme
@@ -652,7 +671,8 @@ class Game(object):
         renvoie vers une autre -- une ligne V, par exemple."""
         want = page if land is None else land
         self.assert_addresses()
-        for attempt in range(tries):
+        first = True
+        for key in self.ESCAPE:
             self.p.poke(self.s["_state"], struct.pack("<I", seed))
             self.p.poke(self.A("hero"), self.sheet_bytes(**hero))
             self.p.poke(self.A("hero_ready"), b"\x01")   # sinon roll_character
@@ -660,11 +680,17 @@ class Game(object):
             self.p.poke(self.s["_seen"], slots160(foes))
             self.p.poke(self.s["_restoring"], b"\x00" if replay else b"\x01")
             self.p.poke(self.A("pending_scene"), struct.pack("<h", page))
-            # ESPACE denoue les invites (jet de des, assaut, « continuer »),
-            # 'A' celles qui exigent une lettre (choix des Pierres, sac), et
-            # 'Z' est la touche inerte qui rend la main a la boucle
-            # principale. On insiste un peu plus a chaque essai.
-            self.p.keys(" A" * (2 * attempt) + "Z")
+            if not first:
+                # Un combat en cours ne se denoue qu'a coups d'assauts, et la
+                # file du 120 en compte trois : on couche les adversaires
+                # (end <= stop_at, rules.c:253) pour que deux ou trois ESPACE
+                # suffisent. Sans effet quand aucun combat ne tourne, et de
+                # toute facon load_scene remet foes[] a zero en arrivant.
+                n = self.p.peek(self.A("foe_count"), 1)[0]
+                for i in range(min(n, 3)):
+                    self.p.poke(self.A("foes") + i * 29 + 1, b"\x00")
+            first = False
+            self.p.raw(bytes([key]))
             rows = self.p.stable()
             pending = struct.unpack("<h", self.p.peek(self.A("pending_scene"), 2))[0]
             if pending == -1 and self.scene() == want:
@@ -717,7 +743,13 @@ import forge_save  # noqa: E402
 
 
 def prodos_find(hdv, path):
-    """Rend (bloc_de_l_entree, offset, bloc_cle, storage_type) d'un fichier."""
+    """Rend (bloc_de_l_entree, offset, bloc_cle, storage_type) d'un fichier.
+
+    Parcours du catalogue ProDOS : le repertoire racine commence au bloc 2 et
+    chaque bloc de repertoire porte, apres quatre octets de chainage, treize
+    entrees de 39 octets. Un demi-octet de type de stockage, un demi-octet de
+    longueur de nom, puis le nom ; la cle du fichier (ou du sous-repertoire)
+    est en $11-$12, la fin de fichier en $15-$17."""
     with open(hdv, "rb") as f:
         def block(n):
             f.seek(n * 512)
@@ -776,12 +808,16 @@ def install_save(hdv, blob, slot=9):
 SCENARIOS = []
 
 
-def scenario(name, title, forge=None):
-    """Enregistre un scenario. `forge` est un dict d'arguments pour
-    forge_save.build : le disque est alors patche avant le lancement de POM2,
-    et le scenario reprend la partie par [L] 9."""
+def scenario(name, title, forge=None, manual=False):
+    """Enregistre un scenario.
+
+    `forge` est un dict d'arguments pour forge_save.build : le disque est
+    alors patche avant le lancement de POM2, et le scenario reprend la partie
+    par [L] 9. `manual` dit que le scenario mene lui-meme le demarrage (choix
+    de la langue compris) au lieu de le recevoir tout fait."""
     def deco(fn):
-        SCENARIOS.append(dict(name=name, title=title, fn=fn, forge=forge))
+        SCENARIOS.append(dict(name=name, title=title, fn=fn, forge=forge,
+                              manual=manual or bool(forge)))
         return fn
     return deco
 
@@ -793,6 +829,7 @@ class Bench(object):
         self.name = name
         self.verbose = verbose
         self.ok = 0
+        self.seconds = 0.0
         self.failures = []
 
     def check(self, label, cond, detail=""):
@@ -819,7 +856,8 @@ class Bench(object):
 
 # ── (a) Le prologue, les trois employeurs, l'entree dans le Marais ────────
 
-@scenario("demarrage", "Demarrage, langue, accueil, creation du personnage")
+@scenario("demarrage", "Demarrage, langue, accueil, creation du personnage",
+          manual=True)
 def sc_demarrage(g, b):
     rows = g.p.wait_for("LANGUE")
     b.has("l'ecran de langue propose [F] et [E]", rows, "[F]")
@@ -925,8 +963,10 @@ def sc_combat(g, b):
     # 2 points par defaut du livre. Des deterministes : la graine est posee.
     rows = g.goto(222, seed=0x2222, hab=12, end=20, cha=11)
     b.has("le Demon attend", rows, "DEMON")
-    b.has("le bandeau porte les deux combattants", rows, "VOUS")
+    b.has("le bandeau porte les deux combattants", rows, "VOUS HAB 12")
+    b.has("la jauge de l'adversaire est pleine", rows, "[##########] 16/16")
     b.has("l'invite propose d'engager", rows, "engager")
+    b.has("le sac est encore ouvrable avant le premier coup", rows, "sac a dos")
     end0 = g.hero()["end"]
     foe0 = g.p.peek(g.A("foes") + 1, 1)[0]
     losses, hits, rounds = 0, 0, 0
@@ -967,8 +1007,10 @@ def sc_mort(g, b):
     b.eq("[R] ramene a l'accueil (page 000)", g.scene(), 0)
     b.eq("le heros n'est plus pret : les des seront rejetes",
          g.p.peek(g.A("hero_ready"), 1)[0], 0)
-    b.eq("la memoire des clairieres est videe",
-         g.p.peek(g.s["_visited"], 52), bytes(52))
+    # die_and_restart vide les deux memoires, puis charge la page 000 -- qui
+    # se marque elle-meme visitee. Seul le bit 0 doit donc rester.
+    b.eq("la memoire des clairieres est videe (hors l'accueil lui-meme)",
+         g.p.peek(g.s["_visited"], 52), bytes([1]) + bytes(51))
     b.eq("la memoire des monstres est videe",
          g.p.peek(g.s["_seen"], 160), bytes(160))
 
@@ -977,16 +1019,17 @@ def sc_mort(g, b):
 
 @scenario("benediction", "Page 155 : E0 CHANCE +2 leve la valeur ET le plafond")
 def sc_benediction(g, b):
-    g.goto(155, cha=9, hab=11, end=18)
-    before = g.hero()
-    b.eq("le heros arrive a 9 de CHANCE sur 9", (before["cha"], before["cha0"]), (9, 9))
-    rows = g.screen()
+    # La ligne E0 est un effet d'ENTREE : elle a deja joue quand goto rend la
+    # main. On compare donc a ce qu'on a injecte, 9 sur 9.
+    rows = g.goto(155, cha=9, hab=11, end=18)
     b.has("la benediction de Grognard", rows, "La benediction de Grognard")
     after = g.hero()
-    b.eq("la CHANCE monte de 2", after["cha"], before["cha"] + 2)
-    b.eq("le PLAFOND de CHANCE monte aussi (E0)", after["cha0"], before["cha0"] + 2)
+    b.eq("la CHANCE injectee a 9 monte a 11", after["cha"], 11)
+    b.eq("le PLAFOND de CHANCE monte aussi (E0)", after["cha0"], 11)
     s = g.sheet(rows)
     b.eq("la barre affiche 11/11", (s["cha"], s["cha0"]), (11, 11))
+    # Un E ordinaire, lui, plafonne : la CHANCE ne peut plus monter.
+    g.p.poke(g.H("cha"), bytes([11]))
     # restoring=1 : les effets d'entree sont inhibes, comme a la reprise.
     g.goto(155, cha=9, hab=11, end=18, replay=False)
     again = g.hero()
@@ -1000,16 +1043,17 @@ def sc_benediction(g, b):
 def sc_sauvegardes(g, b):
     g.goto(195, hab=12, end=20, cha=11, gold=77,
            stones={"FEU": 2}, objects=("ANNEAU",))
-    titre = g.screen()[0].strip().split("  ")[0]
     rows = g.press("S")
     b.has("la page de sauvegarde s'ouvre", rows, "SAUVER")
     b.has("dix emplacements sont listes", rows, "9)")
+    b.has("l'emplacement 7 est vide au depart", rows, "7) -- vide --")
     rows = g.press("7")
     b.has("la partie est sauvee", rows, "Partie sauvee")
+    g.press(" ")                            # l'accuse de reception
     rows = g.press("L")
     b.has("la page de chargement s'ouvre", rows, "REPRENDRE")
-    b.check("l'emplacement 7 porte le titre de la page",
-            any(re.search(r"7\)\s+\S", r) and "vide" not in r for r in rows),
+    b.check("l'emplacement 7 porte desormais le titre de la page",
+            any("7) Le large rond-point" in r for r in rows),
             repr([r.strip() for r in rows if r.strip().startswith("7)")]))
     # On abime volontairement le heros, puis on recharge : tout doit revenir.
     g.p.poke(g.H("end"), bytes([3]))
@@ -1018,8 +1062,9 @@ def sc_sauvegardes(g, b):
     b.eq("le rechargement rend l'or", g.hero()["gold"], 77)
     b.eq("le rechargement rend l'ENDURANCE", g.hero()["end"], 20)
     b.eq("le rechargement rend les Pierres", g.stones(), {"FEU": 2})
+    b.eq("le rechargement rend les objets", g.objects(), ["ANNEAU"])
     b.eq("on est revenu a la page sauvee", g.scene(), 195)
-    rows = g.press("L")
+    g.press("L")
     rows = g.press("0")
     b.has("un emplacement vide est refuse proprement", rows,
           "Emplacement vide ou fichier corrompu")
@@ -1063,17 +1108,19 @@ def sc_interface(g, b):
     rows = g.press("I")
     b.has("le sac s'ouvre", rows, "SAC A DOS")
     b.has("l'or y figure", rows, "42 Pieces d'Or")
-    b.has("les Pierres y figurent", rows, "Feu")
-    b.has("les objets y figurent", rows, "Anneau de Cuivre")
-    b.has("les amulettes y figurent", rows, "Loup")
+    b.has("les Pierres y figurent, avec leur categorie", rows, "FEU")
+    b.has("les objets y figurent", rows, "Anneau Cuivre")
+    b.has("les amulettes y figurent", rows, "Amulette du Loup")
+    b.has("le rappel d'usage est en bas", rows, "[A-Z] utiliser")
     g.press("I")
     b.check("[I] referme le sac et restitue la page a l'identique",
             g.p.digest() == avant)
     rows = g.press("H")
-    b.check("[H] ouvre l'aide", any("MARAIS" in r or "Pierre" in r for r in rows),
-            repr(rows[2][:60]))
+    b.has("[H] ouvre l'aide", rows, "LES TOUCHES")
+    b.has("l'aide parle des sauvegardes", rows, "SAUVEGARDES")
     g.press("ESC")
-    b.check("l'aide se referme et rend la page", g.p.digest() == avant)
+    b.check("l'aide se referme et rend la page a l'identique",
+            g.p.digest() == avant)
     # Sac vide : le message dedie.
     g.goto(195, stones=(), objects=(), amulets=())
     rows = g.press("I")
@@ -1116,16 +1163,21 @@ def sc_graines(g, b):
     rows = g.press("I")
     b.has("elles ont un nom dans le sac", rows, "Graines")
     g.press("I")
-    # Sans les graines, la page 374 n'offre que quatre sortileges.
+    # Sans les graines, le sortilege de Croissance est montre mais barre : le
+    # livre veut qu'on voie ce qu'un objet manquant aurait permis.
     rows = g.goto(374, objects=())
-    n_sans = len(g.choices(rows))
-    b.hasnt("sans les Graines, aucun sortilege de Croissance", rows, "Croissance")
+    n_sans = len(g.letters(rows))
+    b.has("sans les Graines, le sortilege est montre", rows, "Croissance")
+    b.check("mais il est barre : pas de lettre",
+            "-" in g.choices(rows), repr(g.choices(rows)))
     rows = g.goto(374, objects=("GRAINES",))
-    b.has("avec les Graines, le sortilege de Croissance apparait",
+    b.has("avec les Graines, le sortilege de Croissance est offert",
           rows, "Croissance")
-    b.eq("il ajoute exactement un choix", len(g.choices(rows)), n_sans + 1)
-    letters = g.choices(rows)
-    rows = g.choose(letters[0])
+    b.eq("il ajoute exactement une lettre prenable",
+         len(g.letters(rows)), n_sans + 1)
+    b.check("plus aucun choix barre", "-" not in g.choices(rows),
+            repr(g.choices(rows)))
+    rows = g.choose(g.letters(rows)[0])
     b.eq("le sortilege mene aux graines-armes (page 228)", g.scene(), 228)
     b.check("les Graines sont consommees (GU)", "GRAINES" not in g.objects(),
             repr(g.objects()))
@@ -1133,11 +1185,21 @@ def sc_graines(g, b):
 
 @scenario("baie_anneau", "La Baie chez Gayolard, l'Anneau vendu chez Pompatarte")
 def sc_baie_anneau(g, b):
+    # 006 oppose deux directives symetriques : `GU BA 175` (n'apparait qu'avec
+    # la baie, et la consomme) et `CN BA 052` (n'apparait que SANS elle). Le
+    # joueur voit toujours les deux lignes, mais une seule porte une lettre.
     rows = g.goto(6, objects=("ANNEAU",))
     b.has("Gayolard demande la baie", rows, "Maison de Gayolard")
-    b.eq("sans la baie, un seul aveu est offert", len(g.choices(rows)), 1)
+    b.eq("sans la baie, une seule reponse est prenable", len(g.letters(rows)), 1)
+    b.check("et la remise de la baie est montree, barree",
+            "-" in g.choices(rows), repr(g.choices(rows)))
+    g.choose(g.letters(rows)[0])
+    b.eq("elle mene a l'aveu (page 052)", g.scene(), 52)
     rows = g.goto(6, objects=("ANNEAU", "BAIE"))
-    b.eq("avec la baie, deux reponses sont offertes", len(g.choices(rows)), 2)
+    b.eq("avec la baie, une seule reponse est prenable aussi",
+         len(g.letters(rows)), 1)
+    g.choose(g.letters(rows)[0])
+    b.eq("mais c'est l'autre : la baie remise mene au 175", g.scene(), 175)
     # L'Anneau : page 049, GX ANNEAU, la vente qui termine l'aventure.
     rows = g.goto(49, objects=("ANNEAU",), gold=20)
     b.check("la vente retire l'Anneau du sac", "ANNEAU" not in g.objects(),
@@ -1158,16 +1220,16 @@ def sc_revisite(g, b):
     b.eq("premiere visite : on reste sur la page 350", g.scene(), 350)
     b.check("la premiere visite affiche du texte",
             any(r.strip() for r in rows[2:18]))
-    rows = g.goto(350, visited=(350,))
+    g.goto(350, visited=(350,), land=target)
     b.eq("deja vue par la meme porte : detour immediat", g.scene(), target)
     if others:
-        rows = g.goto(350, visited=(others[0],))
+        g.goto(350, visited=(others[0],), land=target)
         b.eq("deja vue par une AUTRE porte (liste de la ligne V) : "
              "detour aussi", g.scene(), target)
     else:
         b.check("la ligne V porte une liste de pages soeurs", False,
                 "aucune page citee apres la cible")
-    rows = g.goto(350, visited=(350,), replay=False)
+    g.goto(350, visited=(350,), replay=False, land=350)
     b.eq("a la reprise d'une sauvegarde, V est inhibe", g.scene(), 350)
 
 
@@ -1222,9 +1284,10 @@ def sc_fin_358(g, b):
     rows = g.press("9")
     b.eq("la sauvegarde forgee ouvre a la porte de la tour", g.scene(), 226)
     b.eq("trois amulettes ont ete rapportees", len(g.amulets()), 3)
-    letters = g.choices(rows)
     b.check("seule la branche « trois ou plus » porte une lettre (CA 3 6)",
-            letters == ["C"], repr(letters))
+            g.letters(rows) == ["C"], repr(g.choices(rows)))
+    b.eq("les deux autres branches sont montrees, barrees",
+         g.choices(rows).count("-"), 2)
     rows = g.choose("C")
     b.eq("elle mene a la page 194", g.scene(), 194)
     rows = g.choose("B")                 # exiger d'abord le paiement -> 207
@@ -1258,8 +1321,11 @@ def sc_musique(g, b):
     time.sleep(0.6)
     b.check("le curseur de lecture avance", g.music()["cursor"] != c1,
             "cur reste a %d" % c1)
-    # Une autre page de la MEME clairiere : le nom ne doit pas changer.
-    same = g.goto(208)
+    b.eq("l'air de la clairiere 1 est celui du rond-point", m1["cur"],
+         "RONDPOINT.MB")
+    # Une autre page de la MEME clairiere (058 est l'un des trois hubs de la
+    # clairiere 1) : la ligne MU nomme le meme air, il ne doit pas repartir.
+    g.goto(58)
     m2 = g.music()
     b.eq("a l'interieur d'une clairiere, l'air ne change pas", m2["cur"], m1["cur"])
     # Une clairiere differente : le nom change.
@@ -1271,26 +1337,166 @@ def sc_musique(g, b):
     b.eq("la zone memorisee suit l'air courant", m3["zone"], m3["cur"])
 
 
+# ── Le hasard, rendu reproductible par la graine ──────────────────────────
+
+@scenario("hasard", "Des deterministes : ED, CS, CL, DV, MB")
+def sc_hasard(g, b):
+    # Meme graine, meme jet : c'est ce qui transforme « l'ENDURANCE a baisse »
+    # en « elle valait 24, elle vaut 21 ».
+    g.goto(44, seed=0xBEEF, end=24)
+    rows = g.press(" ")                     # ED ENDURANCE -1 : lancer le de
+    m = re.search(r"Vous jetez : (\d+)", "\n".join(rows))
+    b.check("la page 044 annonce son jet", bool(m), repr(rows[20][:60]))
+    jet1, end1 = (int(m.group(1)) if m else 0), g.hero()["end"]
+    b.eq("l'ENDURANCE baisse exactement du jet", 24 - end1, jet1)
+    g.goto(44, seed=0xBEEF, end=24)
+    rows = g.press(" ")
+    m2 = re.search(r"Vous jetez : (\d+)", "\n".join(rows))
+    b.eq("la meme graine redonne le meme jet", int(m2.group(1)) if m2 else -1, jet1)
+    g.goto(44, seed=0x0BAD, end=24)
+    rows = g.press(" ")
+    m3 = re.search(r"Vous jetez : (\d+)", "\n".join(rows))
+    b.check("une autre graine finit par donner un autre jet",
+            m3 is not None, "aucun jet lisible")
+
+    # CL : le point de CHANCE part dans les DEUX cas.
+    rows = g.goto(5, seed=0x1234, cha=9)
+    b.has("la page 005 propose de Tenter sa Chance", rows, "Tentez votre Chance")
+    rows = g.press(" ")
+    b.has("le jet est annonce contre la CHANCE", rows, "contre une CHANCE de 9")
+    b.eq("le point de CHANCE est consomme", g.hero()["cha"], 8)
+    g.press(" ")                             # l'accuse de reception du jet
+    b.check("on part vers l'une des deux branches (273 ou 297)",
+            g.scene() in (273, 297), "page %d" % g.scene())
+
+    # CS : un test contre l'ENDURANCE, GRATUIT -- pas de CHANCE depensee.
+    g.goto(91, seed=0x4321, end=20, cha=11)
+    g.press(" ")
+    b.eq("un test CS ne coute aucun point de CHANCE", g.hero()["cha"], 11)
+    g.press(" ")
+    b.check("il branche sur 404 ou 405", g.scene() in (404, 405),
+            "page %d" % g.scene())
+
+    # DV : la cascade lit l'ENDURANCE perdue au dernier combat et fabrique
+    # l'unique choix « continuer » de la page. Le moteur repond ainsi a
+    # « Evaluez vos blessures » a la place du joueur.
+    for perte, cible in ((0, 241), (3, 193), (12, 326)):
+        g.goto(195)                          # une page calme, pour repartir
+        g.p.poke(g.A("last_loss"), bytes([perte]))
+        g.p.poke(g.A("pending_scene"), struct.pack("<h", 156))
+        g.p.raw(b"Z")
+        rows = g.p.stable()
+        b.eq("la cascade DV n'offre qu'un choix", len(g.letters(rows)), 1)
+        g.press("A")
+        b.eq("apres un combat a -%d, la cascade DV mene au %d" % (perte, cible),
+             g.scene(), cible)
+
+
+@scenario("premier_sang", "Page 079 : MB, le duel s'arrete a la premiere blessure")
+def sc_premier_sang(g, b):
+    rows = g.goto(79, seed=0x5A5A, hab=12, end=20, cha=11)
+    b.has("le Chef des Brigands se met en garde", rows, "CHEF DES BRIGANDS")
+    for _ in range(12):
+        rows = g.press(" ")
+        if g.scene() in (360, 128):
+            break
+    b.check("la premiere blessure arrete le combat (360 ou 128)",
+            g.scene() in (360, 128), "page %d" % g.scene())
+    b.check("le combat s'est joue en quelques assauts, pas jusqu'a la mort",
+            g.hero()["end"] > 0, "END=%d" % g.hero()["end"])
+
+
+# ── L'anglais, l'autre moitie du corpus ───────────────────────────────────
+
+@scenario("anglais", "Le jeu en anglais : catalogue, pages et Feuille d'Aventure",
+          manual=True)
+def sc_anglais(g, b):
+    rows = g.p.wait_for("LANGUE")
+    b.has("l'ecran de langue propose [E]", rows, "[E]")
+    g.p.keys("E")
+    rows = g.p.wait_for("SCORPION SWAMP")
+    b.has("l'accueil anglais s'affiche", rows, "Create my character")
+    b.eq("app.language vaut EN", g.p.peek(g.A("language"), 2), b"EN")
+    b.has("la barre est traduite", rows, "I=BAG")
+    g.assert_addresses()
+    rows = g.goto(195, hab=12, end=20, cha=11)
+    b.has("la page 195 vient de TEXTEN", rows, "The Wide Roundabout")
+    b.check("la Feuille d'Aventure prend les mots de Fighting Fantasy",
+            re.search(r"SKL 12/12\s+STA 20/20\s+LCK 11/11", rows[0]) is not None,
+            repr(rows[0][40:]))
+    rows = g.press("I")
+    b.has("le sac est traduit", rows, "BACKPACK")
+    g.press("I")
+    rows = g.press("H")
+    b.has("l'aide vient de HELPEN", rows, "KEYS")
+
+
+# ── L'inventaire des illustrations ────────────────────────────────────────
+
+@scenario("images", "Chaque page du corpus a son illustration sur le disque")
+def sc_images(g, b):
+    # Le banc lit le disque monte, pas l'arborescence : c'est ce que le joueur
+    # a entre les mains. Une page sans image n'est pas fatale -- le moteur
+    # affiche alors du texte seul -- mais c'est une planche oubliee.
+    manquantes = []
+    img = os.path.join(ROOT, "SCOSWAMP", "IMG")
+    txt = os.path.join(ROOT, "SCOSWAMP", "TEXTFR")
+    for d in sorted(os.listdir(txt)):
+        for f in sorted(os.listdir(os.path.join(txt, d))):
+            p = int(f[1:4])
+            if not os.path.exists(os.path.join(img, d, "N%03d.RLE.BIN" % p)):
+                manquantes.append(p)
+    b.check("les 412 pages ont toutes leur planche", not manquantes,
+            "il en manque %d : %s" % (len(manquantes), manquantes))
+    # Et le moteur la charge vraiment, pour une page prise au hasard.
+    g.goto(195)
+    b.eq("le moteur decode l'illustration de la page 195",
+         g.p.peek(g.A("has_image"), 1)[0], 1)
+    g.goto(12)                               # page de combat : image B012
+    b.eq("et l'image de bataille d'une page de combat",
+         g.p.peek(g.A("has_image"), 1)[0], 1)
+
+
 # ── Le balayage large : ce que la porte cachee rend possible ──────────────
 
-@scenario("balayage", "Balayage : trente pages tirees du corpus, sans erreur")
+@scenario("balayage", "Balayage : quarante pages tirees du corpus, sans erreur")
 def sc_balayage(g, b):
+    # Quarante pages choisies pour couvrir les directives rares : ED (044,
+    # 135), CS (091), CL (005 via 195), CE (058), DV (156), MB (079), MD/MS
+    # (012), plusieurs lignes M (120), V (350), CU (400), TR (408), CA (226),
+    # PC (206), la page la plus longue du corpus (361), les cinq choix (152,
+    # 191, 256, 374, 387) et deux pages terminales.
     pages = [1, 9, 12, 22, 41, 44, 58, 79, 87, 91, 92, 105, 118, 120, 135,
              138, 144, 152, 155, 156, 157, 170, 183, 191, 195, 204, 206, 226,
-             240, 256, 275, 290, 304, 320, 336, 350, 361, 374, 387, 400]
-    bad = []
+             240, 256, 275, 290, 304, 320, 336, 350, 361, 374, 387, 408]
+    bad, erreurs, hors_format, sans_titre, avec_image = [], [], [], [], 0
     for p in pages:
-        rows = g.goto(p, hab=12, end=24, cha=12, gold=50,
-                      stones={"FEU": 2, "CHANCE": 2},
-                      objects=("ANNEAU", "AIMANT", "BAIE", "GRAINES"),
-                      amulets=("LOUP",))
+        try:
+            rows = g.goto(p, hab=12, end=24, cha=12, gold=50,
+                          stones={"FEU": 2, "CHANCE": 2, "GLACE": 2},
+                          objects=("ANNEAU", "AIMANT", "BAIE", "GRAINES"),
+                          amulets=("LOUP",))
+        except AssertionError as exc:
+            bad.append((p, str(exc)[:60]))
+            continue
         txt = "\n".join(rows)
         if "Erreur" in txt or "errno=" in txt:
-            bad.append((p, "message d'erreur"))
-        elif any(len(r) != 80 for r in rows):
-            bad.append((p, "ligne hors format"))
-    b.check("les %d pages du balayage se chargent sans erreur" % len(pages),
-            not bad, repr(bad[:5]))
+            erreurs.append(p)
+        if any(len(r) != 80 for r in rows):
+            hors_format.append(p)
+        if not rows[0].strip():
+            sans_titre.append(p)
+        avec_image += g.p.peek(g.A("has_image"), 1)[0]
+    b.check("les %d pages du balayage sont toutes atteignables" % len(pages),
+            not bad, repr(bad[:3]))
+    b.check("aucune n'affiche d'erreur d'ouverture de fichier",
+            not erreurs, repr(erreurs))
+    b.check("aucune ne deborde des 80 colonnes", not hors_format,
+            repr(hors_format))
+    b.check("toutes portent un titre dans la barre", not sans_titre,
+            repr(sans_titre))
+    b.check("la plupart sont illustrees", avec_image >= len(pages) // 2,
+            "%d/%d" % (avec_image, len(pages)))
     b.check("la barre de titre reste lisible apres le balayage",
             bool(BAR_FR.search(g.screen()[0])), repr(g.screen()[0][:60]))
 
@@ -1318,7 +1524,7 @@ def run_one(spec, args, sym, workdir):
     try:
         pom.start()
         g = Game(pom, sym)
-        if not spec["forge"] and spec["name"] not in ("demarrage",):
+        if not spec["manual"]:
             g.boot("F")
         spec["fn"](g, b)
     except Exception as exc:
