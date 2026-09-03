@@ -33,6 +33,7 @@
         .setcpu "65C02"
         .export _music_detect, _music_play, _music_stop, _music_buf
         .export _music_select, _music_pause, _music_resume, _music_continue
+        .export _music_fade_out, _music_fade_in, _music_fading
         .interruptor music_irq
         .destructor  music_done         ; exit() coupe le timer avant DEALLOC
 
@@ -54,6 +55,7 @@ IER     = $0E
 
 ; 50 Hz : 1 022 727 / 50 = 20 454,5 cycles ; periode effective = latch + 2
 T1_50HZ = 20452
+FADE_STEP = 3           ; ticks entre deux pas de fondu
 
 .segment "BSS"
 ; Deux tampons : 2304 octets (moitie 0, les themes de zone) et 1280 octets
@@ -71,6 +73,15 @@ cur_lo:         .res 1
 cur_hi:         .res 1
 saved:          .res 6          ; cur_lo, cur_hi, delay de chaque moitie
 vols:           .res 6
+; Le fondu : `atten` (0-15) se retranche de toute amplitude ecrite ; `fade`
+; vaut 1 pour un fondu sortant (atten monte), 2 pour un entrant (atten
+; descend), 0 sinon ; un pas tous les FADE_STEP ticks, soit 45 ticks = 0,9 s
+; d'un bout a l'autre. `amps` garde la derniere amplitude brute de chaque
+; voix pour pouvoir la reecrire attenuee.
+atten:          .res 1
+fade:           .res 1
+fstep:          .res 1
+amps:           .res 6
 
 .segment "RODATA"
         .include "ay_notes.inc"
@@ -257,8 +268,10 @@ _music_play:
         lda #12
         ldx #5
 :       sta vols,x
+        stz amps,x
         dex
         bpl :-
+        jsr fade_in_setup
         ldy #ACR                ; T1 continu
         lda #$40
         sta (via),y
@@ -283,6 +296,8 @@ music_done:
         beq @rts
         stz playing
         stz paused
+        stz fade
+        stz atten
         jsr set_via
         ldy #IER                ; interdire T1
         lda #$40
@@ -363,6 +378,7 @@ _music_continue:
         lda #1
         sta playing
         stz paused
+        jsr fade_in_setup
 rearm:  jsr set_via
         lda #$38
         jsr mixer_set
@@ -375,6 +391,89 @@ rearm:  jsr set_via
 rearm_rts:
         rts
 
+; ── Le fondu ────────────────────────────────────────────────────────────
+fade_in_setup:
+        lda #15
+        sta atten
+        lda #2
+        sta fade
+        lda #1
+        sta fstep
+        rts
+
+; void music_fade_out(void) : la musique en cours s'efface en 0,9 s ; le
+; tick continue de la faire avancer, on ne fait que baisser le son.
+_music_fade_out:
+        lda playing
+        beq @rts
+        lda #1
+        sta fade
+        sta fstep
+@rts:   rts
+
+; void music_fade_in(void) : depuis l'attenuation courante, remonte.
+_music_fade_in:
+        lda playing
+        beq @rts
+        lda #2
+        sta fade
+        lda #1
+        sta fstep
+@rts:   rts
+
+; unsigned char music_fading(void) : 0 quand le fondu en cours est fini.
+_music_fading:
+        lda fade
+        ldx #0
+        rts
+
+; Reecrit les six amplitudes, attenuees. Detruit A, X, Y, tmp.
+apply_amps:
+        ldy #0
+@l:     sty tmp
+        lda amps,y
+        sec
+        sbc atten
+        bcs :+
+        lda #0
+:       pha
+        tya
+        jsr chip_of
+        clc
+        adc #8
+        tax
+        pla
+        jsr ay_write
+        ldy tmp
+        iny
+        cpy #6
+        bne @l
+        stz via
+        rts
+
+; Un pas de fondu par FADE_STEP ticks ; a l'arrivee, fade repasse a zero.
+fade_tick:
+        lda fade
+        beq @rts
+        dec fstep
+        bne @rts
+        lda #FADE_STEP
+        sta fstep
+        lda fade
+        cmp #1
+        bne @in
+        lda atten
+        cmp #15
+        bcs @done
+        inc atten
+        jmp apply_amps
+@in:    lda atten
+        beq @done
+        dec atten
+        jmp apply_amps
+@done:  stz fade
+@rts:   rts
+
 ; ── Le tick ─────────────────────────────────────────────────────────────
 ; Entree : retenue a zero. Sortie : retenue a un si l'IRQ etait la notre.
 music_irq:
@@ -384,6 +483,7 @@ music_irq:
         ldy #IFR
         lda #$7F
         sta (via),y             ; acquitter, par ecriture seulement
+        jsr fade_tick
         dec delay
         bne @done
         lda cur_lo
@@ -446,7 +546,13 @@ music_irq:
         bra @amp
 
 @off:   lda #0
-@amp:   pha                     ; A = amplitude, tmp = voix 0-5 -> R8+voix de sa puce
+@amp:   ldy tmp                 ; A = amplitude brute, tmp = voix 0-5
+        sta amps,y
+        sec
+        sbc atten               ; attenuee par le fondu en cours
+        bcs :+
+        lda #0
+:       pha
         lda tmp
         jsr chip_of
         clc

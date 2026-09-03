@@ -28,5 +28,8 @@ void music_pause(void);             /* mixeur ferme, timer desarme, curseur inta
 void music_resume(void);            /* apres music_pause */
 void music_continue(void);          /* reprend le demi-tampon selectionne ou il en etait */
 void music_stop(void);              /* silence net, timer desarme */
+void music_fade_out(void);          /* s'efface en 0,9 s, le flux continue d'avancer */
+void music_fade_in(void);           /* remonte depuis l'attenuation courante */
+unsigned char music_fading(void);   /* 0 quand le fondu est fini */
 
 #endif /* MUSIC_H */
