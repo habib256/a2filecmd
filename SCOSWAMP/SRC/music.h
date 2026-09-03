@@ -8,7 +8,7 @@
  * revient au theme de zone si une surcouche jouait. Le disque n'est lu que
  * quand le nom change : deux pages d'une meme clairiere ne relancent rien.
  *
- * Deux demi-tampons, chacun avec son curseur : le nouveau flux se lit dans
+ * Deux tampons, 2 304 et 1 280 octets, chacun avec son curseur : le nouveau flux se lit dans
  * celui qui ne joue pas, l'autre continue pendant la lecture, et la zone
  * reprend ou elle en etait apres une surcouche. La musique ne s'arrete
  * jamais pour un chargement. Sans carte, music_detect rend 0 et rien n'est
@@ -16,8 +16,9 @@
 #ifndef MUSIC_H
 #define MUSIC_H
 
-#define MUSIC_BUF_SIZE 2560         /* = .res de _music_buf dans music.s */
-#define MUSIC_HALF     1280         /* un demi-tampon : la plus grosse piece fait 1 058 o */
+#define MUSIC_ZONE     2304         /* moitie 0 : les themes de zone (max 2 285 o) */
+#define MUSIC_OVER     1280         /* moitie 1 : combat, mort, victoire */
+#define MUSIC_BUF_SIZE (MUSIC_ZONE + MUSIC_OVER)   /* = .res de _music_buf dans music.s */
 extern unsigned char music_buf[MUSIC_BUF_SIZE];
 
 unsigned char music_detect(void);   /* balaye les slots 7..1 ; 0 = absente */

@@ -56,12 +56,12 @@ IER     = $0E
 T1_50HZ = 20452
 
 .segment "BSS"
-; Deux demi-tampons de 1280 octets : le theme de la zone (0) et la surcouche
-; (1 : combat, mort, victoire), lus depuis MUSIC/<NOM>.MB par music_load
-; (scoswamp.c). MUSIC_BUF_SIZE et MUSIC_HALF de music.h disent les memes
-; tailles. Chaque moitie garde son curseur : revenir a la zone apres un
-; combat la reprend ou elle en etait, sans rien relire.
-_music_buf:     .res 2560
+; Deux tampons : 2304 octets (moitie 0, les themes de zone) et 1280 octets
+; (moitie 1, les surcouches : combat, mort, victoire), lus depuis
+; MUSIC/<NOM>.MB par music_load (scoswamp.c). MUSIC_ZONE et MUSIC_OVER de
+; music.h disent les memes tailles. Chaque moitie garde son curseur : revenir
+; a la zone apres un combat la reprend ou elle en etait, sans rien relire.
+_music_buf:     .res 3584
 mb_slot:        .res 1
 playing:        .res 1
 paused:         .res 1
@@ -187,11 +187,11 @@ set_base:
         sta tmp2
         lda half
         beq :+
-        lda #<1280
+        lda #<2304
         clc
         adc tmp
         sta tmp
-        lda #>1280
+        lda #>2304
         adc tmp2
         sta tmp2
 :       rts
