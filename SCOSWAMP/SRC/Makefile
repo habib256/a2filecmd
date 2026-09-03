@@ -131,24 +131,46 @@ memory_swap.o: memory_swap.c memory_swap.h
 # ligne "MU <NOM>.MB". Le tempo est fixe ici, pas dans le MIDI.
 MUSIC    = ../../SCOSWAMP.MORE/MUSIC
 MB       = python3 $(MUSIC)/midi_to_mb.py
-MUSICS   = $(OUTDIR)/MUSIC/SALTARELLO.MB.BIN $(OUTDIR)/MUSIC/GREENSLEEVES.MB.BIN \
-           $(OUTDIR)/MUSIC/COMEAGAIN.MB.BIN $(OUTDIR)/MUSIC/ACCUEIL.MB.BIN
+# Les onze musiques du plan DOCS/MUSIQUE-CLAIRIERES.md : un theme par zone du
+# Marais, plus l'accueil, le village, la tour, et trois surcouches (combat,
+# mort, victoire -- ces deux-la ne bouclent pas). Aucune ne doit depasser un
+# demi-tampon (1280 o) : midi_to_mb.py refuse au-dela.
+MUSICS   = $(OUTDIR)/MUSIC/COMEAGAIN.MB.BIN $(OUTDIR)/MUSIC/VILLAGE.MB.BIN \
+           $(OUTDIR)/MUSIC/COURBENS.MB.BIN $(OUTDIR)/MUSIC/MARAISUD.MB.BIN \
+           $(OUTDIR)/MUSIC/MARAISNO.MB.BIN $(OUTDIR)/MUSIC/RIVIERE.MB.BIN \
+           $(OUTDIR)/MUSIC/DANGER.MB.BIN $(OUTDIR)/MUSIC/TOUR.MB.BIN \
+           $(OUTDIR)/MUSIC/COMBAT.MB.BIN $(OUTDIR)/MUSIC/MORT.MB.BIN \
+           $(OUTDIR)/MUSIC/VICTOIRE.MB.BIN
 
 musics: $(MUSICS)
 
-$(OUTDIR)/MUSIC/SALTARELLO.MB.BIN: $(MUSIC)/src/saltarello.mid $(MUSIC)/midi_to_mb.py
-	$(MB) $< $@ --bpm 160 --wav $(MUSIC)/saltarello.wav --notes-inc ay_notes.inc
-$(OUTDIR)/MUSIC/GREENSLEEVES.MB.BIN: $(MUSIC)/src/greensleeves.mid $(MUSIC)/midi_to_mb.py
-	$(MB) $< $@ --bpm 140 --wav $(MUSIC)/greensleeves.wav
 $(OUTDIR)/MUSIC/COMEAGAIN.MB.BIN: $(MUSIC)/src/comeagain.mid $(MUSIC)/midi_to_mb.py
-	$(MB) $< $@ --bpm 170 --wav $(MUSIC)/comeagain.wav
-# La composition maison (accueil.py), gardee comme quatrieme fichier.
+	$(MB) $< $@ --bpm 170 --wav $(MUSIC)/comeagain.wav --notes-inc ay_notes.inc
+$(OUTDIR)/MUSIC/VILLAGE.MB.BIN: $(MUSIC)/src/village.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 150 --wav $(MUSIC)/village.wav
+$(OUTDIR)/MUSIC/COURBENS.MB.BIN: $(MUSIC)/src/saltarello.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 180 --wav $(MUSIC)/courbens.wav
+$(OUTDIR)/MUSIC/MARAISUD.MB.BIN: $(MUSIC)/src/belle.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 125 --wav $(MUSIC)/maraisud.wav
+$(OUTDIR)/MUSIC/MARAISNO.MB.BIN: $(MUSIC)/src/tmeiskin.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 200 --wav $(MUSIC)/maraisno.wav
+$(OUTDIR)/MUSIC/RIVIERE.MB.BIN: $(MUSIC)/src/silverswan.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 136 --wav $(MUSIC)/riviere.wav
+$(OUTDIR)/MUSIC/DANGER.MB.BIN: $(MUSIC)/src/unquietthoughts.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 140 --wav $(MUSIC)/danger.wav
+$(OUTDIR)/MUSIC/TOUR.MB.BIN: $(MUSIC)/src/milan_pavan2.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 150 --wav $(MUSIC)/tour.wav
+$(OUTDIR)/MUSIC/COMBAT.MB.BIN: $(MUSIC)/src/bourree.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 180 --wav $(MUSIC)/combat.wav
+$(OUTDIR)/MUSIC/MORT.MB.BIN: $(MUSIC)/src/k453a.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 120 --no-loop --wav $(MUSIC)/mort.wav
+$(OUTDIR)/MUSIC/VICTOIRE.MB.BIN: $(MUSIC)/src/old100.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 150 --no-loop --wav $(MUSIC)/victoire.wav
+# La composition maison (accueil.py) reste disponible hors disque.
 $(MUSIC)/accueil.mid: $(MUSIC)/accueil.py
 	python3 $(MUSIC)/accueil.py
-$(OUTDIR)/MUSIC/ACCUEIL.MB.BIN: $(MUSIC)/accueil.mid $(MUSIC)/midi_to_mb.py
-	$(MB) $< $@ --bpm 150
 
-ay_notes.inc: $(OUTDIR)/MUSIC/SALTARELLO.MB.BIN
+ay_notes.inc: $(OUTDIR)/MUSIC/COMEAGAIN.MB.BIN
 
 music.o: music.s ay_notes.inc
 	$(AS) -t $(TARGET) -o music.o music.s

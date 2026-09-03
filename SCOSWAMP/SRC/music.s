@@ -32,6 +32,7 @@
 
         .setcpu "65C02"
         .export _music_detect, _music_play, _music_stop, _music_buf
+        .export _music_select, _music_pause, _music_resume, _music_continue
         .interruptor music_irq
         .destructor  music_done         ; exit() coupe le timer avant DEALLOC
 
@@ -55,14 +56,20 @@ IER     = $0E
 T1_50HZ = 20452
 
 .segment "BSS"
-; Le flux MB1 courant, lu depuis MUSIC/<NOM>.MB par music_load (scoswamp.c).
-; MUSIC_BUF_SIZE de music.h doit dire la meme taille.
+; Deux demi-tampons de 1280 octets : le theme de la zone (0) et la surcouche
+; (1 : combat, mort, victoire), lus depuis MUSIC/<NOM>.MB par music_load
+; (scoswamp.c). MUSIC_BUF_SIZE et MUSIC_HALF de music.h disent les memes
+; tailles. Chaque moitie garde son curseur : revenir a la zone apres un
+; combat la reprend ou elle en etait, sans rien relire.
 _music_buf:     .res 2560
 mb_slot:        .res 1
 playing:        .res 1
+paused:         .res 1
+half:           .res 1          ; la moitie selectionnee, 0 ou 1
 delay:          .res 1
 cur_lo:         .res 1
 cur_hi:         .res 1
+saved:          .res 6          ; cur_lo, cur_hi, delay de chaque moitie
 vols:           .res 6
 
 .segment "RODATA"
@@ -157,19 +164,37 @@ init1:
         sta (via),y
         rts
 
-; Mixeur ouvert sur les tons A, B, C, bruit ferme -- les deux puces.
-mixer1:
-        ldx #7
-        lda #$38
-        jmp ay_write
-mixer_on:
+; R7 := A sur les deux puces. $38 ouvre les tons A, B, C (bruit ferme),
+; $3F ferme tout sans toucher aux amplitudes : c'est la pause.
+mixer_set:
+        sta tmp2
         stz via
-        jsr mixer1
+        jsr mix1
         lda #$80
         sta via
-        jsr mixer1
+        jsr mix1
         stz via
         rts
+mix1:   ldx #7
+        lda tmp2
+        jmp ay_write
+
+; tmp/tmp2 := adresse du demi-tampon selectionne.
+set_base:
+        lda #<_music_buf
+        sta tmp
+        lda #>_music_buf
+        sta tmp2
+        lda half
+        beq :+
+        lda #<1280
+        clc
+        adc tmp
+        sta tmp
+        lda #>1280
+        adc tmp2
+        sta tmp2
+:       rts
 
 ; Z=1 si le compteur T1 a recule de 8 entre deux lectures a 8 cycles
 ; d'ecart : la sonde de 4am, reprise par Total Replay et par les tests de POM2.
@@ -215,14 +240,20 @@ _music_play:
         beq @rts
         jsr set_via
         jsr silence
-        jsr mixer_on
-        lda #<(_music_buf+8)
+        lda #$38
+        jsr mixer_set
+        jsr set_base            ; le flux commence apres l'en-tete de 8 octets
+        lda tmp
+        clc
+        adc #8
         sta cur_lo
-        lda #>(_music_buf+8)
+        lda tmp2
+        adc #0
         sta cur_hi
         lda #1
         sta delay
         sta playing
+        stz paused
         lda #12
         ldx #5
 :       sta vols,x
@@ -251,6 +282,7 @@ music_done:
         lda mb_slot
         beq @rts
         stz playing
+        stz paused
         jsr set_via
         ldy #IER                ; interdire T1
         lda #$40
@@ -260,6 +292,88 @@ music_done:
         sta (via),y
         jmp silence
 @rts:   rts
+
+; ── void __fastcall__ music_select(unsigned char half) ──────────────────
+; Change de demi-tampon en gardant le curseur de chacun. A appeler arrete
+; ou en pause : le tick ne doit pas courir pendant l'echange.
+_music_select:
+        cmp half
+        beq @rts
+        pha
+        lda half                ; x = 3 * moitie courante
+        asl a
+        adc half
+        tax
+        lda cur_lo
+        sta saved,x
+        lda cur_hi
+        sta saved+1,x
+        lda delay
+        sta saved+2,x
+        pla
+        sta half
+        asl a
+        adc half
+        tax
+        lda saved,x
+        sta cur_lo
+        lda saved+1,x
+        sta cur_hi
+        lda saved+2,x
+        sta delay
+@rts:   rts
+
+; ── void music_pause(void) ──────────────────────────────────────────────
+; Mixeur ferme, timer desarme, curseur et amplitudes intacts : pour les
+; lectures disque, pendant lesquelles ProDOS masque les IRQ.
+_music_pause:
+        lda mb_slot
+        beq @rts
+        lda playing
+        beq @rts
+        lda #1
+        sta paused
+        jsr set_via
+        ldy #IER
+        lda #$40
+        sta (via),y
+        ldy #IFR
+        lda #$7F
+        sta (via),y
+        lda #$3F
+        jmp mixer_set
+@rts:   rts
+
+; ── void music_resume(void) ─────────────────────────────────────────────
+; Apres music_pause seulement : rouvre le mixeur et rearme le timer.
+_music_resume:
+        lda paused
+        beq @rts
+        stz paused
+        bra rearm
+@rts:   rts
+
+; ── void music_continue(void) ───────────────────────────────────────────
+; Reprend le demi-tampon selectionne la ou son curseur en est -- apres un
+; music_stop et un music_select. L'appelant garantit que cette moitie a
+; deja ete lancee par music_play.
+_music_continue:
+        lda mb_slot
+        beq rearm_rts
+        lda #1
+        sta playing
+        stz paused
+rearm:  jsr set_via
+        lda #$38
+        jsr mixer_set
+        ldy #IFR
+        lda #$7F
+        sta (via),y
+        ldy #IER
+        lda #$C0
+        sta (via),y
+rearm_rts:
+        rts
 
 ; ── Le tick ─────────────────────────────────────────────────────────────
 ; Entree : retenue a zero. Sortie : retenue a un si l'IRQ etait la notre.
@@ -343,15 +457,19 @@ music_irq:
         stz via                 ; retour sur le VIA #1 (IFR, T1)
         jmp @next
 
-@end:   lda _music_buf+5             ; drapeau de boucle
+@end:   jsr set_base            ; tmp/tmp2 = le demi-tampon qui joue
+        ldy #5
+        lda (tmp),y             ; drapeau de boucle
         and #1
         beq @stop
-        lda _music_buf+6
+        ldy #6
+        lda (tmp),y
         clc
-        adc #<_music_buf
+        adc tmp
         sta cur
-        lda _music_buf+7
-        adc #>_music_buf
+        ldy #7
+        lda (tmp),y
+        adc tmp2
         sta cur+1
         jmp @next
 @stop:  jsr _music_stop

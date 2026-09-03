@@ -1,19 +1,28 @@
 /* music.h -- la Mockingboard joue les musiques du disque, six voix en
  * stereo (puce 1 a gauche, puce 2 a droite). Voir music.s.
  *
- * Chaque musique est un fichier MUSIC/<NOM>.MB au format MB1 ; la page qui la
- * veut le nomme par une ligne "MU <NOM>.MB", et load_scene la charge dans
- * music_buf une fois ses propres lectures finies. Sans carte, music_detect
- * rend 0 et rien n'est lu ni ecrit : le jeu est identique, les bruitages de
- * sfx.s continuent seuls sur le haut-parleur. */
+ * Chaque musique est un fichier MUSIC/<NOM>.MB au format MB1. La page qui la
+ * veut le nomme par une ligne MU : "MU NOM.MB" pose le theme de la zone,
+ * "MU +NOM.MB" une surcouche pour cette page (combat, mort, victoire),
+ * "MU -" le silence, et une page sans MU laisse la musique continuer -- ou
+ * revient au theme de zone si une surcouche jouait. Le disque n'est lu que
+ * quand le nom change : deux pages d'une meme clairiere ne relancent rien.
+ *
+ * Deux demi-tampons : la zone en 0, la surcouche en 1, chacun avec son
+ * curseur. Sans carte, music_detect rend 0 et rien n'est lu ni ecrit. */
 #ifndef MUSIC_H
 #define MUSIC_H
 
 #define MUSIC_BUF_SIZE 2560         /* = .res de _music_buf dans music.s */
+#define MUSIC_HALF     1280         /* un demi-tampon : la plus grosse piece fait 1 058 o */
 extern unsigned char music_buf[MUSIC_BUF_SIZE];
 
 unsigned char music_detect(void);   /* balaye les slots 7..1 ; 0 = absente */
-void music_play(void);              /* joue music_buf en boucle, a 50 Hz */
+void __fastcall__ music_select(unsigned char half);  /* 0 zone, 1 surcouche ; a l'arret ou en pause */
+void music_play(void);              /* (re)demarre le demi-tampon selectionne, a 50 Hz */
+void music_pause(void);             /* mixeur ferme, timer desarme, curseur intact */
+void music_resume(void);            /* apres music_pause */
+void music_continue(void);          /* reprend le demi-tampon selectionne ou il en etait */
 void music_stop(void);              /* silence net, timer desarme */
 
 #endif /* MUSIC_H */
