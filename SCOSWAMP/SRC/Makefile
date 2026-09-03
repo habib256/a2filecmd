@@ -54,7 +54,7 @@ HIMEM   = 0xBF00
 # boucle principale interdit la recursion de load_scene. Les 512 octets
 # rendus ont paye les directives CS/MB/DV. Passe a check-memory.sh, qui
 # comptait 2048 en dur.
-STACK   = 0x0600
+STACK   = 0x0180
 LDFLAGS = -t $(TARGET) -Wl -D,__EXEHDR__=0 -Wl -S,0x4000 \
           -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__STACKSIZE__=$(STACK) -Wl -m,$(MAPFILE)
 
@@ -162,6 +162,7 @@ STAGE_EXCLUDE = DOCS SRC BASIC.SYSTEM.SYS STARTUP.BAS
 PAYLOAD = $(shell find $(OUTDIR)/TEXTFR $(OUTDIR)/TEXTEN $(OUTDIR)/IMG \
                        $(OUTDIR)/MSGFR.TXT $(OUTDIR)/MSGEN.TXT \
                        $(OUTDIR)/HELPFR.TXT $(OUTDIR)/HELPEN.TXT \
+                       $(OUTDIR)/SAVE \
                        $(OUTDIR)/TITLE.TXT \
                        -type f 2>/dev/null)
 
