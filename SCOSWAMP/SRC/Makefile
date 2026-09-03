@@ -15,9 +15,9 @@ SRCDIR = .
 OUTDIR = ..
 
 # Fichiers source
-SOURCES = scoswamp.c paths.c memory_swap.c rules.c dice.c messages.c hgr_loader.s sfx.s
-HEADERS = paths.h memory_swap.h hgr_rle.h rules.h dice.h messages.h sfx.h
-OBJECTS = scoswamp.o paths.o memory_swap.o rules.o dice.o messages.o hgr_loader.o sfx.o
+SOURCES = scoswamp.c paths.c memory_swap.c rules.c dice.c messages.c hgr_loader.s sfx.s music.s
+HEADERS = paths.h memory_swap.h hgr_rle.h rules.h dice.h messages.h sfx.h music.h
+OBJECTS = scoswamp.o paths.o memory_swap.o rules.o dice.o messages.o hgr_loader.o sfx.o music.o
 
 # Flags de compilation
 # -t $(TARGET) : cible Apple IIe Enhanced
@@ -110,7 +110,7 @@ dice.o: dice.c dice.h
 	$(CC) $(CFLAGS) -o dice.s dice.c
 	$(AS) -t $(TARGET) -o dice.o dice.s
 
-scoswamp.o: scoswamp.c paths.h memory_swap.h rules.h dice.h messages.h hgr_rle.h sfx.h
+scoswamp.o: scoswamp.c paths.h memory_swap.h rules.h dice.h messages.h hgr_rle.h sfx.h music.h
 	$(CC) $(CFLAGS) -o scoswamp.s scoswamp.c
 	$(AS) -t $(TARGET) -o scoswamp.o scoswamp.s
 
@@ -121,6 +121,16 @@ paths.o: paths.c paths.h
 memory_swap.o: memory_swap.c memory_swap.h
 	$(CC) $(CFLAGS) -o memory_swap.s memory_swap.c
 	$(AS) -t $(TARGET) -o memory_swap.o memory_swap.s
+
+# La musique : le flux MB1 et la table de notes sortent du meme script que le
+# MIDI et le WAV d'ecoute. Le .mb est inclus dans le binaire (.incbin), il
+# n'y a donc rien a ajouter a PAYLOAD.
+MUSIC    = ../../SCOSWAMP.MORE/MUSIC
+$(MUSIC)/accueil.mb ay_notes.inc: $(MUSIC)/accueil.py
+	python3 $(MUSIC)/accueil.py
+
+music.o: music.s ay_notes.inc $(MUSIC)/accueil.mb
+	$(AS) -t $(TARGET) -o music.o music.s
 
 sfx.o: sfx.s sfx.h
 	$(AS) -t $(TARGET) -o sfx.o sfx.s
@@ -226,6 +236,7 @@ clean:
 	# Pas de `rm *.s` : hgr_loader.s est un source 6502 ecrit a la main, pas
 	# un intermediaire cc65. On ne nomme que les .s reellement generes.
 	rm -f *.o scoswamp.s paths.s memory_swap.s rules.s dice.s messages.s $(MAPFILE)
+	# music.s et hgr_loader.s sont ecrits a la main : on ne les touche pas
 	@echo "==> Fichiers intermédiaires supprimés"
 
 # Nettoyage complet (inclut le binaire)
