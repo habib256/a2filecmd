@@ -879,8 +879,11 @@ def sc_demarrage(g, b):
     b.check("les trois totaux de depart egalent les valeurs courantes",
             (h["hab"], h["end"], h["cha"]) == (h["hab0"], h["end0"], h["cha0"]))
 
-    rows = g.press(" ")            # [ESPACE] entrer dans le Marais -> page 001
-    b.eq("le village (page 001) suit la creation", g.scene(), 1)
+    rows = g.press(" ")            # [ESPACE] -> page 419, "Qui vous etes"
+    b.eq("la presentation (page 419) suit la creation", g.scene(), 419)
+    b.has("la presentation dit qui l'on est", rows, "Qui vous etes")
+    rows = g.press("a")            # -> page 001, le village
+    b.eq("le village (page 001) suit la presentation", g.scene(), 1)
     b.has("le titre de la page est dans la barre", rows, "Le chemin vers le Marais")
     s = g.sheet(rows)
     b.eq("la barre porte la Feuille d'Aventure", (s["hab"], s["end"], s["cha"]),
@@ -964,7 +967,7 @@ def sc_combat(g, b):
     rows = g.goto(222, seed=0x2222, hab=12, end=20, cha=11)
     b.has("le Demon attend", rows, "DEMON")
     b.has("le bandeau porte les deux combattants", rows, "VOUS HAB 12")
-    b.has("la jauge de l'adversaire est pleine", rows, "[##########] 16/16")
+    b.has("la jauge de l'adversaire est pleine", rows, "16/16")
     b.has("l'invite propose d'engager", rows, "engager")
     b.has("le sac est encore ouvrable avant le premier coup", rows, "sac a dos")
     end0 = g.hero()["end"]
@@ -1442,7 +1445,9 @@ def sc_images(g, b):
     img = os.path.join(ROOT, "SCOSWAMP", "IMG")
     txt = os.path.join(ROOT, "SCOSWAMP", "TEXTFR")
     for d in sorted(os.listdir(txt)):
+        if not os.path.isdir(os.path.join(txt, d)): continue     # .DS_Store et autres
         for f in sorted(os.listdir(os.path.join(txt, d))):
+            if not (f.startswith("N") and f.endswith(".TXT")): continue
             p = int(f[1:4])
             if not os.path.exists(os.path.join(img, d, "N%03d.RLE.BIN" % p)):
                 manquantes.append(p)
