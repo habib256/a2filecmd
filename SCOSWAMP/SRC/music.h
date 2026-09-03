@@ -8,8 +8,11 @@
  * revient au theme de zone si une surcouche jouait. Le disque n'est lu que
  * quand le nom change : deux pages d'une meme clairiere ne relancent rien.
  *
- * Deux demi-tampons : la zone en 0, la surcouche en 1, chacun avec son
- * curseur. Sans carte, music_detect rend 0 et rien n'est lu ni ecrit. */
+ * Deux demi-tampons, chacun avec son curseur : le nouveau flux se lit dans
+ * celui qui ne joue pas, l'autre continue pendant la lecture, et la zone
+ * reprend ou elle en etait apres une surcouche. La musique ne s'arrete
+ * jamais pour un chargement. Sans carte, music_detect rend 0 et rien n'est
+ * lu ni ecrit. */
 #ifndef MUSIC_H
 #define MUSIC_H
 
