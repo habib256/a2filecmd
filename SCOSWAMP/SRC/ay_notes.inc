@@ -1,4 +1,4 @@
-; Genere par SCOSWAMP.MORE/MUSIC/accueil.py -- ne pas editer.
+; Genere par SCOSWAMP.MORE/MUSIC/midi_to_mb.py -- ne pas editer.
 ; Periode AY (12 bits) par note, index 0 = C2 (MIDI 36) ... 59 = B6.
 ; f = 1022727 / (16 * TP), soit TP = 63920 / f.
 note_table:

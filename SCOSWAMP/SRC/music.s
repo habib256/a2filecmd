@@ -1,4 +1,4 @@
-; music.s -- la Mockingboard joue le theme d'accueil.
+; music.s -- la Mockingboard joue le _music_buf d'accueil.
 ;
 ; Un lecteur de flux MB1 (DOCS/MUSIQUE.md § 5.2) en interruption : le Timer 1
 ; du premier 6522 de la carte bat a 50 Hz, et chaque tick decode les paquets
@@ -22,11 +22,11 @@
 ;
 ; API C (music.h) :
 ;   unsigned char music_detect(void);   slot trouve (1-7) ou 0 ; initialise
-;   void music_play(void);              joue le theme d'accueil en boucle
+;   void music_play(void);              joue le _music_buf d'accueil en boucle
 ;   void music_stop(void);              silence net, timer desarme
 
         .setcpu "65C02"
-        .export _music_detect, _music_play, _music_stop
+        .export _music_detect, _music_play, _music_stop, _music_buf
         .interruptor music_irq
         .destructor  music_done         ; exit() coupe le timer avant DEALLOC
 
@@ -50,6 +50,9 @@ IER     = $0E
 T1_50HZ = 20452
 
 .segment "BSS"
+; Le flux MB1 courant, lu depuis MUSIC/<NOM>.MB par music_load (scoswamp.c).
+; MUSIC_BUF_SIZE de music.h doit dire la meme taille.
+_music_buf:     .res 2560
 mb_slot:        .res 1
 playing:        .res 1
 delay:          .res 1
@@ -58,7 +61,6 @@ cur_hi:         .res 1
 vols:           .res 3
 
 .segment "RODATA"
-theme:  .incbin "../../SCOSWAMP.MORE/MUSIC/accueil.mb"
         .include "ay_notes.inc"
 
 .segment "CODE"
@@ -166,9 +168,9 @@ _music_play:
         ldx #7                  ; tons A, B, C ouverts, bruit ferme
         lda #$38
         jsr ay_write
-        lda #<(theme+8)
+        lda #<(_music_buf+8)
         sta cur_lo
-        lda #>(theme+8)
+        lda #>(_music_buf+8)
         sta cur_hi
         lda #1
         sta delay
@@ -289,15 +291,15 @@ music_irq:
         jsr ay_write
         jmp @next
 
-@end:   lda theme+5             ; drapeau de boucle
+@end:   lda _music_buf+5             ; drapeau de boucle
         and #1
         beq @stop
-        lda theme+6
+        lda _music_buf+6
         clc
-        adc #<theme
+        adc #<_music_buf
         sta cur
-        lda theme+7
-        adc #>theme
+        lda _music_buf+7
+        adc #>_music_buf
         sta cur+1
         jmp @next
 @stop:  jsr _music_stop

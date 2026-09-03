@@ -122,14 +122,35 @@ memory_swap.o: memory_swap.c memory_swap.h
 	$(CC) $(CFLAGS) -o memory_swap.s memory_swap.c
 	$(AS) -t $(TARGET) -o memory_swap.o memory_swap.s
 
-# La musique : le flux MB1 et la table de notes sortent du meme script que le
-# MIDI et le WAV d'ecoute. Le .mb est inclus dans le binaire (.incbin), il
-# n'y a donc rien a ajouter a PAYLOAD.
+# ── Musiques ───────────────────────────────────────────────────────────────
+# Chaque musique est une donnee sur le disque : MUSIC/<NOM>.MB.BIN ici, donc
+# MUSIC/<NOM>.MB sur le volume (l'empaqueteur retire la derniere extension).
+# Elles sortent de partitions MIDI du domaine public (SCOSWAMP.MORE/MUSIC/src,
+# voir SOURCES.md) par midi_to_mb.py, qui reduit a trois voix et ecrit aussi
+# la table de notes de music.s. La page qui veut une musique la nomme par une
+# ligne "MU <NOM>.MB". Le tempo est fixe ici, pas dans le MIDI.
 MUSIC    = ../../SCOSWAMP.MORE/MUSIC
-$(MUSIC)/accueil.mb ay_notes.inc: $(MUSIC)/accueil.py
-	python3 $(MUSIC)/accueil.py
+MB       = python3 $(MUSIC)/midi_to_mb.py
+MUSICS   = $(OUTDIR)/MUSIC/SALTARELLO.MB.BIN $(OUTDIR)/MUSIC/GREENSLEEVES.MB.BIN \
+           $(OUTDIR)/MUSIC/COMEAGAIN.MB.BIN $(OUTDIR)/MUSIC/ACCUEIL.MB.BIN
 
-music.o: music.s ay_notes.inc $(MUSIC)/accueil.mb
+musics: $(MUSICS)
+
+$(OUTDIR)/MUSIC/SALTARELLO.MB.BIN: $(MUSIC)/src/saltarello.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 120 --vol 13,9,11 --wav $(MUSIC)/saltarello.wav --notes-inc ay_notes.inc
+$(OUTDIR)/MUSIC/GREENSLEEVES.MB.BIN: $(MUSIC)/src/greensleeves.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 100 --vol 13,8,11 --wav $(MUSIC)/greensleeves.wav
+$(OUTDIR)/MUSIC/COMEAGAIN.MB.BIN: $(MUSIC)/src/comeagain.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 120 --vol 13,8,11 --wav $(MUSIC)/comeagain.wav
+# La composition maison (accueil.py), gardee comme quatrieme fichier.
+$(MUSIC)/accueil.mid: $(MUSIC)/accueil.py
+	python3 $(MUSIC)/accueil.py
+$(OUTDIR)/MUSIC/ACCUEIL.MB.BIN: $(MUSIC)/accueil.mid $(MUSIC)/midi_to_mb.py
+	$(MB) $< $@ --bpm 125 --vol 13,8,10
+
+ay_notes.inc: $(OUTDIR)/MUSIC/SALTARELLO.MB.BIN
+
+music.o: music.s ay_notes.inc
 	$(AS) -t $(TARGET) -o music.o music.s
 
 sfx.o: sfx.s sfx.h
@@ -178,7 +199,7 @@ STAGE_EXCLUDE = DOCS SRC BASIC.SYSTEM.SYS STARTUP.BAS
 # messages_load rejette un fichier qui n'a pas exactement MSG_COUNT lignes --
 # toute l'interface partait vide, pas seulement les deux nouveaux messages.
 # HELPFR.TXT / HELPEN.TXT n'y figuraient pas du tout.
-PAYLOAD = $(shell find $(OUTDIR)/TEXTFR $(OUTDIR)/TEXTEN $(OUTDIR)/IMG \
+PAYLOAD = $(shell find $(OUTDIR)/TEXTFR $(OUTDIR)/TEXTEN $(OUTDIR)/IMG $(OUTDIR)/MUSIC \
                        $(OUTDIR)/MSGFR.TXT $(OUTDIR)/MSGEN.TXT \
                        $(OUTDIR)/HELPFR.TXT $(OUTDIR)/HELPEN.TXT \
                        $(OUTDIR)/SAVE \
@@ -187,7 +208,7 @@ PAYLOAD = $(shell find $(OUTDIR)/TEXTFR $(OUTDIR)/TEXTEN $(OUTDIR)/IMG \
 
 hdv: $(HDV)
 
-$(HDV): $(OUTDIR)/$(PROGRAM) $(OUTDIR)/$(LAUNCHER) $(BOOTTMPL) $(PAYLOAD) | $(VOLBUILD)
+$(HDV): $(OUTDIR)/$(PROGRAM) $(OUTDIR)/$(LAUNCHER) $(BOOTTMPL) $(MUSICS) $(PAYLOAD) | $(VOLBUILD)
 	@rm -rf $(STAGE) && mkdir -p $(STAGE) $(dir $(HDV))
 	@for f in $(OUTDIR)/*; do \
 		b=`basename "$$f"`; \
