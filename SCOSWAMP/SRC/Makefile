@@ -525,11 +525,20 @@ playtest: $(HDV) $(OUTDIR)/$(PROGRAM)
 # Prérequis d'ordre seulement : on ne sait pas le construire depuis ici, on dit
 # comment. Le tenir hors des dépendances normales évite de refaire l'image
 # chaque fois que l'outil est relié.
+# Le constructeur de volume se CONSTRUIT, il ne se reclame pas. Cette regle
+# imprimait les deux lignes cmake puis `exit 1`, ce qui donnait le piege
+# suivant : $(TOOLS)/build/ est gitignore, donc il disparait au premier
+# nettoyage ou sur un clone frais ; `make hdv` s'arretait alors AVANT de
+# toucher l'image ; et comme $(HDV) est lui aussi gitignore mais survit dans
+# l'arbre de travail, on continuait a lancer l'emulateur sur une image
+# perimee sans rien remarquer. Observe le 2026-09-04 : le .HDV avait 13 h de
+# retard sur le SCOSWAMP.BIN qu'il etait cense contenir. Les deux commandes
+# etaient deja ecrites ici -- les executer coute une seconde et supprime le
+# mode de panne.
 $(VOLBUILD):
-	@echo "Absent : $(VOLBUILD)"
-	@echo "  cmake -S $(TOOLS) -B $(TOOLS)/build"
-	@echo "  cmake --build $(TOOLS)/build --target build_prodos_volume"
-	@exit 1
+	@echo "==> Construction de l'outil : $(VOLBUILD)"
+	cmake -S $(TOOLS) -B $(TOOLS)/build
+	cmake --build $(TOOLS)/build --target build_prodos_volume
 
 # Nettoyage des fichiers intermédiaires
 clean:
