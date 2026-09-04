@@ -57,7 +57,14 @@ static void enter_graphics(void) {
     RAMRDOFF = 1;
     RAMWRTOFF = 1;
 
+    /* La carte RGB garde son propre verrou deux bits. Deux fronts AN3 avec
+     * 80COL=1 chargent 11 = COL140 sur Féline / Video-7. Le dernier C05E
+     * réactive ensuite le DHGR natif du //e sans créer un troisième front.
+     * Le composite ignore ce verrou ; c'est pourquoi l'ancienne séquence
+     * semblait correcte sous OpenEmulator mais pas via Le Chat Mauve. */
     COL80ON = 1;
+    DHIRESON = 1; DHIRESOFF = 1;
+    DHIRESON = 1; DHIRESOFF = 1;
     DHIRESON = 1;
 
     TXTCLR = 1;   /* Mode graphique */

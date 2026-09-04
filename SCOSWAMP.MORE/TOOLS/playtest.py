@@ -613,9 +613,11 @@ class Game(object):
     def music(self):
         cur = self.p.peek(self.s["_music_cur"], 16).split(b"\0")[0].decode("ascii", "replace")
         zone = self.p.peek(self.s["_music_zone"], 16).split(b"\0")[0].decode("ascii", "replace")
+        half = self.p.peek(self.M("half"), 1)[0]
         return dict(slot=self.p.peek(self.M("mb_slot"), 1)[0],
                     playing=self.p.peek(self.M("playing"), 1)[0],
                     cur=cur, zone=zone,
+                    loop=self.p.peek(self.s["_music_buf"] + half * 2304 + 5, 1)[0] & 1,
                     cursor=struct.unpack("<H", self.p.peek(self.M("cur_lo"), 2))[0])
 
     # -- frappe -------------------------------------------------------------
@@ -1001,6 +1003,11 @@ def sc_combat(g, b):
     for _ in range(40):
         rows = g.press(" ")
         rounds += 1
+        if rounds == 1:
+            music = g.music()
+            b.eq("le premier assaut lance sa musique", music["cur"], "COMBAT.MB")
+            b.eq("la musique d'action porte seule le drapeau de boucle",
+                 music["loop"], 1)
         if any("ENDURANCE est tombee" in r for r in rows):
             break
         if any("s'effondre" in r for r in rows):

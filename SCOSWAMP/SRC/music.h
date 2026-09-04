@@ -8,7 +8,7 @@
  * qu'à l'entrée dans une nouvelle clairière ; hors clairières, elle lance les
  * morceaux scénarisés (accueil, village, prologue, fins). Chaque flux est joué
  * une fois puis s'arrête : aucune page interne à une clairière ne le relance
- * et aucun flux ne boucle.
+ * et aucun flux ne boucle, sauf COMBAT.MB tant que le combat est actif.
  *
  * Deux tampons, 2 304 et 1 280 octets, chacun avec son curseur : le nouveau flux se lit dans
  * celui qui ne joue pas, l'autre continue pendant la lecture, et la zone
