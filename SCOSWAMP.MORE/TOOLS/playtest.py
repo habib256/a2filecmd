@@ -366,7 +366,8 @@ class Pom2(object):
         cwd = os.path.dirname(self.hdv)          # le jail de safeCwdRelativePath
         log = open(os.path.join(cwd, "pom2.log"), "w")
         self.proc = subprocess.Popen(
-            [self.exe, "--ai-control=%d" % self.port, "--speed", str(self.speed),
+            [self.exe, "--preset", "iie",
+             "--ai-control=%d" % self.port, "--speed", str(self.speed),
              os.path.basename(self.hdv)],
             cwd=cwd, stdout=log, stderr=subprocess.STDOUT,
             start_new_session=True)
@@ -1166,12 +1167,12 @@ def sc_video(g, b):
     b.eq("on demarre en mode texte", g.p.peek(g.A("video_mode"), 1)[0], 0)
     txt0 = g.screen()
     g.press(" ")
-    b.eq("[ESPACE] passe en HGR plein ecran",
+    b.eq("[ESPACE] passe en DHGR plein ecran",
          g.p.peek(g.A("video_mode"), 1)[0], 1)
     b.check("la page texte survit au plein ecran (memory_swap.c)",
             g.screen() == txt0)
     g.press(" ")
-    b.eq("[ESPACE] passe en mode mixte", g.p.peek(g.A("video_mode"), 1)[0], 2)
+    b.eq("[ESPACE] passe en DHGR mixte", g.p.peek(g.A("video_mode"), 1)[0], 2)
     g.press(" ")
     b.eq("[ESPACE] revient au texte", g.p.peek(g.A("video_mode"), 1)[0], 0)
 

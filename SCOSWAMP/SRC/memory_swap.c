@@ -1,5 +1,5 @@
 /*
- * MEMORY SWAP - Bascules video (texte 80 col / HGR plein / HGR mixte)
+ * MEMORY SWAP - Bascules video (texte 80 col / DHGR plein / DHGR mixte)
  *
  * Aucune copie d'ecran ici, et c'est le point important : le texte ne quitte
  * jamais $400-$7FF pendant qu'on est en graphique. Le decodeur RLE ecrit dans
@@ -66,27 +66,25 @@ static void enter_graphics(void) {
 }
 
 /*
- * HGR plein ecran
+ * DHGR plein ecran
  */
 void switch_to_hgr(void) {
-    if (current_mode == 2) {
-        /* Deja en graphique : une seule bascule suffit. */
-        MIXCLR = 1;
-        COL80ON = 1;
-    } else if (current_mode != 1) {
-        enter_graphics();
-        MIXCLR = 1;
-    }
+    /* Toujours rejouer la sequence complete. current_mode décrit ce que le
+     * jeu a demandé, pas nécessairement l'état matériel laissé par ProDOS,
+     * le firmware 80 colonnes ou une surcouche. Une optimisation fondée sur
+     * current_mode pouvait donc laisser l'Apple II en HGR simple. */
+    enter_graphics();
+    MIXCLR = 1;
     current_mode = 1;
 }
 
 /*
- * HGR + 4 lignes de texte 80 colonnes en bas
+ * DHGR + 4 lignes de texte 80 colonnes en bas
  */
 void switch_to_mixed(void) {
-    if (current_mode != 1 && current_mode != 2) {
-        enter_graphics();
-    }
+    /* Même règle qu'en plein écran : rétablir d'abord un DHGR page 1 connu,
+     * puis seulement ouvrir les quatre lignes de texte. */
+    enter_graphics();
     /* Les 4 lignes du bas lisent la page texte entrelacee : sans 80COL elles
      * s'afficheraient en 40 colonnes, c'est-a-dire une colonne sur deux.
      *
@@ -114,6 +112,7 @@ void switch_to_text(void) {
     STORE80ON = 1;
     COL80ON = 1;
     DHIRESOFF = 1;
+    MIXCLR = 1;
     TXTSET = 1;
     current_mode = 0;
 }
