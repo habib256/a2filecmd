@@ -4,9 +4,11 @@
  * Chaque musique est un fichier MUSIC/<NOM>.MB au format MB1. La page qui la
  * veut le nomme par une ligne MU : "MU NOM.MB" pose le theme de la zone,
  * "MU +NOM.MB" une surcouche pour cette page (combat, mort, victoire),
- * "MU -" le silence. Le moteur ne consulte cette directive qu'à l'entrée
- * dans une nouvelle clairière. Chaque flux est joué une fois puis s'arrête :
- * aucune page interne à la clairière ne le relance et aucun flux ne boucle.
+ * "MU -" le silence. Dans le Marais, le moteur ne consulte cette directive
+ * qu'à l'entrée dans une nouvelle clairière ; hors clairières, elle lance les
+ * morceaux scénarisés (accueil, village, prologue, fins). Chaque flux est joué
+ * une fois puis s'arrête : aucune page interne à une clairière ne le relance
+ * et aucun flux ne boucle.
  *
  * Deux tampons, 2 304 et 1 280 octets, chacun avec son curseur : le nouveau flux se lit dans
  * celui qui ne joue pas, l'autre continue pendant la lecture, et la zone

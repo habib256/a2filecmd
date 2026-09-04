@@ -1340,6 +1340,14 @@ def sc_musique(g, b):
             "mb_slot=%d -- POM2 la met dans le slot de state.cfg" % m["slot"])
     if m["slot"] == 0:
         return
+    b.eq("l'accueil joue son introduction", m["cur"], "ACCUEIL.MB")
+    b.check("l'introduction joue effectivement", m["playing"] == 1,
+            "playing=%d" % m["playing"])
+    g.goto(1)                                    # hors Marais, MU VILLAGE.MB
+    mv = g.music()
+    b.eq("le village joue son propre morceau", mv["cur"], "VILLAGE.MB")
+    b.check("le morceau du village joue", mv["playing"] == 1,
+            "playing=%d" % mv["playing"])
     g.goto(195)                                  # clairiere 1, MU MARAISUD.MB
     m1 = g.music()
     b.check("une musique joue sur la page 195", m1["playing"] == 1,
