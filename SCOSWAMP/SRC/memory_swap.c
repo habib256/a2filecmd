@@ -45,9 +45,9 @@ static uint8_t current_mode = 0;               /* 0=texte, 1=HGR, 2=mixte */
  * chaque bascule plein <-> mixte ferait clignoter l'ecran pour rien, alors que
  * l'image est deja a l'antenne.
  *
- * Le mode double resolution reste eteint (DHIRESOFF en dernier) : c'est lui,
- * pas 80COL, qui decide du DHGR. On peut donc rallumer 80COL en mixte pour
- * avoir les 4 lignes du bas en 80 colonnes sans toucher a l'image.
+ * Le mode double haute resolution reste actif : 80COL entrelace les plans
+ * auxiliaire et principal, AN3/DHIRES sélectionne le décodage 140x192 en
+ * seize couleurs.
  */
 static void enter_graphics(void) {
     /* Le texte 80 colonnes route $400-$7FF (et $2000-$3FFF) par la RAM
@@ -58,9 +58,7 @@ static void enter_graphics(void) {
     RAMWRTOFF = 1;
 
     COL80ON = 1;
-    DHIRESON = 1; DHIRESOFF = 1;
-    DHIRESON = 1; DHIRESOFF = 1;
-    COL80OFF = 1;
+    DHIRESON = 1;
 
     TXTCLR = 1;   /* Mode graphique */
     HIRES = 1;    /* Hi-res */
@@ -74,7 +72,7 @@ void switch_to_hgr(void) {
     if (current_mode == 2) {
         /* Deja en graphique : une seule bascule suffit. */
         MIXCLR = 1;
-        COL80OFF = 1;
+        COL80ON = 1;
     } else if (current_mode != 1) {
         enter_graphics();
         MIXCLR = 1;
@@ -101,6 +99,7 @@ void switch_to_mixed(void) {
      * hi-res reste force sur la page 1 en banque principale. */
     STORE80ON = 1;
     COL80ON = 1;
+    DHIRESON = 1;
     MIXSET = 1;
     current_mode = 2;
 }
@@ -114,6 +113,7 @@ void switch_to_text(void) {
      * l'affichage 80 colonnes, et on rend le texte visible en dernier. */
     STORE80ON = 1;
     COL80ON = 1;
+    DHIRESOFF = 1;
     TXTSET = 1;
     current_mode = 0;
 }
