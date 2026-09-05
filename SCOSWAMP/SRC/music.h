@@ -4,9 +4,11 @@
  * Chaque musique est un fichier MUSIC/<NOM>.MB au format MB1. La page qui la
  * veut le nomme par une ligne MU : "MU NOM.MB" pose le theme de la zone,
  * "MU +NOM.MB" une surcouche pour cette page (combat, mort, victoire),
- * "MU -" le silence, et une page sans MU laisse la musique continuer -- ou
- * revient au theme de zone si une surcouche jouait. Le disque n'est lu que
- * quand le nom change : deux pages d'une meme clairiere ne relancent rien.
+ * "MU -" le silence. Dans le Marais, le moteur ne consulte cette directive
+ * qu'à l'entrée dans une nouvelle clairière ; hors clairières, elle lance les
+ * morceaux scénarisés (accueil, village, prologue, fins). Chaque flux est joué
+ * une fois puis s'arrête : aucune page interne à une clairière ne le relance
+ * et aucun flux ne boucle, sauf COMBAT.MB tant que le combat est actif.
  *
  * Deux tampons, 2 304 et 1 280 octets, chacun avec son curseur : le nouveau flux se lit dans
  * celui qui ne joue pas, l'autre continue pendant la lecture, et la zone
@@ -29,7 +31,7 @@ extern unsigned char music_buf[MUSIC_BUF_SIZE];
 
 unsigned char music_detect(void);   /* balaye les slots 7..1 ; 0 = absente */
 void __fastcall__ music_select(unsigned char half);  /* 0 zone, 1 surcouche ; a l'arret ou en pause */
-void music_play(void);              /* (re)demarre le demi-tampon selectionne, a 50 Hz */
+void music_play(void);              /* demarre le demi-tampon une fois, a 50 Hz */
 void music_pause(void);             /* mixeur ferme, timer desarme, curseur intact */
 void music_resume(void);            /* apres music_pause */
 void music_continue(void);          /* reprend le demi-tampon selectionne ou il en etait */

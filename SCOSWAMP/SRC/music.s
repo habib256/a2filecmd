@@ -27,7 +27,7 @@
 ;
 ; API C (music.h) :
 ;   unsigned char music_detect(void);   slot trouve (1-7) ou 0 ; initialise
-;   void music_play(void);              joue le flux de music_buf en boucle
+;   void music_play(void);              joue le flux une seule fois
 ;   void music_stop(void);              silence net, timer desarme
 
         .setcpu "65C02"
@@ -618,9 +618,9 @@ music_irq:
         stz via                 ; retour sur le VIA #1 (IFR, T1)
         jmp @next
 
-@end:   jsr set_base            ; tmp/tmp2 = le demi-tampon qui joue
+@end:   jsr set_base            ; seul COMBAT porte encore le drapeau boucle
         ldy #5
-        lda (tmp),y             ; drapeau de boucle
+        lda (tmp),y
         and #1
         beq @stop
         ldy #6
@@ -632,7 +632,7 @@ music_irq:
         lda (tmp),y
         adc tmp2
         sta cur+1
-        jsr fade_in_setup       ; et la boucle remonte en fondu
+        jsr fade_in_setup
         jmp @next
 @stop:  jsr _music_stop
         sec
