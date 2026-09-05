@@ -617,6 +617,7 @@ class Game(object):
         return dict(slot=self.p.peek(self.M("mb_slot"), 1)[0],
                     playing=self.p.peek(self.M("playing"), 1)[0],
                     cur=cur, zone=zone,
+                    half=half,
                     loop=self.p.peek(self.s["_music_buf"] + half * 2304 + 5, 1)[0] & 1,
                     cursor=struct.unpack("<H", self.p.peek(self.M("cur_lo"), 2))[0])
 
@@ -975,6 +976,17 @@ def sc_stratagus(g, b):
     b.has("la mission de Stratagus", rows, "Mission de Stratagus")
     b.has("l'ecran des Pierres s'ouvre", rows, "CHOISISSEZ VOS PIERRES")
     b.has("il en reste six a prendre", rows, "il en reste 6")
+    b.has("l'invite Pierres occupe les quatre lignes du bas",
+          rows[20:24], "CHOISISSEZ VOS PIERRES")
+    b.check("le DHGR du donateur est disponible pendant le choix",
+            g.p.peek(g.A("has_image"), 1)[0] == 1, "has_image absent")
+    g.press("ESC")
+    b.eq("ESC montre le donateur en DHGR mixte",
+         g.p.peek(g.A("video_mode"), 1)[0], 2)
+    g.press("ESC")
+    b.eq("ESC peut passer au DHGR plein", g.p.peek(g.A("video_mode"), 1)[0], 1)
+    g.press("ESC")
+    b.eq("ESC revient au texte pour choisir", g.p.peek(g.A("video_mode"), 1)[0], 0)
     b.hasnt("aucune Pierre benefique (PC 6 NM)", rows, "Benediction")
     for _ in range(6):
         rows = g.press("A")
@@ -1038,6 +1050,10 @@ def sc_mort(g, b):
     b.has("l'ecran de mort annonce l'ENDURANCE a zero", rows,
           "Votre ENDURANCE est tombee a zero")
     b.has("il propose [R], [L] et [Q]", rows, "[R] recommencer")
+    death_music = g.music()
+    b.eq("la mort en combat coupe la boucle et lance son theme",
+         death_music["cur"], "MORT.MB")
+    b.eq("le theme de mort ne boucle pas", death_music["loop"], 0)
     rows = g.press("R")
     b.eq("[R] ramene a l'accueil (page 000)", g.scene(), 0)
     b.eq("le heros n'est plus pret : les des seront rejetes",
@@ -1174,12 +1190,13 @@ def sc_video(g, b):
     b.eq("on demarre en mode texte", g.p.peek(g.A("video_mode"), 1)[0], 0)
     txt0 = g.screen()
     g.press(" ")
-    b.eq("[ESPACE] passe en DHGR plein ecran",
-         g.p.peek(g.A("video_mode"), 1)[0], 1)
-    b.check("la page texte survit au plein ecran (memory_swap.c)",
+    b.eq("[ESPACE] passe en DHGR mixte avec texte 80 colonnes",
+         g.p.peek(g.A("video_mode"), 1)[0], 2)
+    b.check("la page texte survit au mode mixte (memory_swap.c)",
             g.screen() == txt0)
     g.press(" ")
-    b.eq("[ESPACE] passe en DHGR mixte", g.p.peek(g.A("video_mode"), 1)[0], 2)
+    b.eq("[ESPACE] passe en DHGR plein ecran",
+         g.p.peek(g.A("video_mode"), 1)[0], 1)
     g.press(" ")
     b.eq("[ESPACE] revient au texte", g.p.peek(g.A("video_mode"), 1)[0], 0)
 
@@ -1355,6 +1372,12 @@ def sc_musique(g, b):
     b.eq("le village joue son propre morceau", mv["cur"], "VILLAGE.MB")
     b.check("le morceau du village joue", mv["playing"] == 1,
             "playing=%d" % mv["playing"])
+    g.goto(412)                                  # place de Bourbenville
+    mv2 = g.music()
+    b.eq("Bourbenville garde le meme tampon musical", mv2["half"], mv["half"])
+    g.goto(413)                                  # autre page de la meme zone
+    b.eq("changer de page dans Bourbenville ne relance pas l'air",
+         g.music()["half"], mv["half"])
     g.goto(195)                                  # clairiere 1, MU MARAISUD.MB
     m1 = g.music()
     b.check("une musique joue sur la page 195", m1["playing"] == 1,
@@ -1478,19 +1501,19 @@ def sc_anglais(g, b):
 
 @scenario("carte", "[M] la carte : ligne de lieu, brouillard, et l'Anneau")
 def sc_carte(g, b):
-    # La ligne de lieu s'installe dans la ligne de marge que render_scene
-    # laisse sous la barre de titre, quand le corps tient en 18 rangs. La 058
-    # est la page-hub de la clairiere 1, le rond-point du depart.
+    # La ligne de lieu s'installe en inverse ligne 20, juste au-dessus des
+    # quatre lignes visibles du mode mixte. La 058 est la page-hub de la
+    # clairiere 1, le rond-point du depart.
     rows = g.goto(58, objects=("ANNEAU",), visited=(195,))
-    b.has("la ligne de lieu nomme la clairiere", rows[1:2], "Rond-point")
-    b.has("elle annonce les sorties", rows[1:2], "sorties")
-    b.has("et dit qu'on y est deja venu", rows[1:2], "deja visitee")
+    b.has("la ligne de lieu nomme la clairiere", rows[19:20], "Rond-point")
+    b.has("elle annonce les sorties", rows[19:20], "sorties")
+    b.hasnt("la barre de lieu ne duplique pas la carte", rows[19:20], "deja")
 
     # 297 pages sur 412 ne sont d'aucun lieu : la clairiere reste COLLANTE, et
     # s'affiche alors entre parentheses -- un souvenir, pas une position.
     rows = g.goto(28, objects=("ANNEAU",), visited=(195, 58))
     b.has("hors clairiere, la clairiere collante est entre parentheses",
-          rows[1:2], "(Rond-point)")
+          rows[19:20], "(Rond-point)")
 
     # L'ecran lui-meme. Le brouillard de guerre sort du seul bitmap visited :
     # une clairiere est vue des qu'UNE de ses pages l'est.
@@ -1498,14 +1521,14 @@ def sc_carte(g, b):
     rows = g.press("M")
     b.has("la carte s'ouvre", rows, "CARTE DU MARAIS")
     b.has("elle compte les clairieres vues", rows, "1 clairieres sur 35")
-    b.has("la clairiere courante est marquee", rows, "< 1>")
+    b.has("la clairiere courante est marquee par une etoile", rows, "*")
     b.has("le panneau nomme le lieu", rows, "Rond-point")
     b.has("la legende est la", rows, "vous etes ici")
     b.has("et la ligne des touches", rows, "M ou ESC")
     b.hasnt("une clairiere jamais vue ne s'affiche pas", rows, "(12)")
     rows = g.press("M")
     b.hasnt("[M] referme la carte", rows, "CARTE DU MARAIS")
-    b.has("et rend la page", rows[1:2], "Rond-point")
+    b.has("et rend la page", rows[19:20], "Rond-point")
 
     # Deux pages d'une meme clairiere allument la meme case, quelle que soit
     # la porte : c'est le rabattement page -> clairiere du fichier MAP.
