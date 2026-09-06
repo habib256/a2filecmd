@@ -1,17 +1,9 @@
-/*
- * SCOSWAMP.SYSTEM - le lanceur ProDOS.
- *
- * Pourquoi il existe. Le jeu est lie a $4000 (pour laisser la page HGR 1 libre
- * en $2000-$3FFF) avec __HIMEM__ = $BF00 : son image fait 21 914 octets et
- * s'etend jusqu'a $9556, son BSS jusqu'a $A3D9. BASIC.SYSTEM, lui, vit en
- * $9600-$BEFF et place ses tampons de fichier juste sous lui. Un BRUN depuis
- * BASIC.SYSTEM ecraserait donc ses propres tampons : il refuse, avec un
- * "NO BUFFERS AVAILABLE" suivi d'un BREAK.
- *
- * D'ou ce lanceur. ProDOS charge les fichiers SYSTEM en $2000 et leur saute
- * dedans sans BASIC.SYSTEM ; celui-ci lit le binaire du jeu en $4000 et lui
- * passe la main. Il meurt a cet instant, et $2000 redevient la page HGR --
- * c'est exactement la memoire que le decodeur d'images va reutiliser.
+/* SCOSWAMP.SYSTEM: ProDOS loads this launcher at $2000.
+ * The game file starts with a fixed $0C00-byte LC image staged at $1000.
+ * The remainder is loaded at $4000; entry remains $4000. Local crt0.s
+ * copies the prefix to LC bank 2 before main clears LOWBSS at $1000.
+ * Thus LC does not occupy the top of MAIN during startup. This file is
+ * a split-load image, not a flat binary suitable for BASIC.SYSTEM BRUN.
  */
 
 #include <stdio.h>
@@ -19,8 +11,14 @@
 #include <unistd.h>
 #include <errno.h>
 
+#ifndef GAME_FILE
+#define GAME_FILE "SCOSWAMP"
+#endif
+
 #define GAME_ADDR 0x4000
 #define CHUNK     1024
+#define LC_STAGE  0x1000
+#define LC_BYTES  0x0C00
 
 int main(void)
 {
@@ -30,10 +28,21 @@ int main(void)
 
     videomode(VIDEOMODE_80COL);
     clrscr();
+#ifdef DIAPO_LOADER
+    cputs("PLEASE WAIT");
+#endif
 
-    if (chdir("/SCOSWAMP") != 0 || (f = fopen("SCOSWAMP", "rb")) == NULL) {
+    if (chdir("/SCOSWAMP") != 0 || (f = fopen(GAME_FILE, "rb")) == NULL) {
         cprintf("SCOSWAMP introuvable sur /SCOSWAMP (errno=%d).\r\n", errno);
         cprintf("Appuyez sur une touche...\r\n");
+        cgetc();
+        return 1;
+    }
+    /* The first 3 KiB are transient LC code, consumed by crt0 before
+     * main() initializes LOWBSS at the same address. */
+    if (fread((void*)LC_STAGE, 1, LC_BYTES, f) != LC_BYTES) {
+        fclose(f);
+        cputs("Image LC incomplete.\r\n");
         cgetc();
         return 1;
     }

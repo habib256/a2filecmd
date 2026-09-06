@@ -32,6 +32,8 @@
 
         .setcpu "65C02"
         .export _music_detect, _music_play, _music_stop, _music_buf
+        .export _music_store, _music_set_loop, aux_read_cur, aux_mirror_end
+        .import popax
         .export _music_select, _music_pause, _music_resume, _music_continue
         .export _music_fade_out, _music_fade_in, _music_fading
         .interruptor music_irq
@@ -58,12 +60,14 @@ T1_50HZ = 20452
 FADE_STEP = 3           ; ticks entre deux pas de fondu
 
 .segment "BSS"
-; Deux tampons : 2304 octets (moitie 0, les themes de zone) et 1280 octets
+; Deux tampons AUX : 2304 octets (moitie 0, les themes de zone) et 1280 octets
 ; (moitie 1, les surcouches : combat, mort, victoire), lus depuis
 ; MUSIC/<NOM>.MB par music_load (scoswamp.c). MUSIC_ZONE et MUSIC_OVER de
 ; music.h disent les memes tailles. Chaque moitie garde son curseur : revenir
 ; a la zone apres un combat la reprend ou elle en etait, sans rien relire.
-_music_buf:     .res 3584
+; Seule la page de transit ci-dessous est reservee en MAIN.
+_music_buf:     .res 256         ; staging disque, flux residents en AUX
+AUX_MUSIC = $1000
 mb_slot:        .res 1
 playing:        .res 1
 paused:         .res 1
@@ -238,9 +242,9 @@ mix_voice:
 
 ; tmp/tmp2 := adresse du demi-tampon selectionne.
 set_base:
-        lda #<_music_buf
+        lda #<AUX_MUSIC
         sta tmp
-        lda #>_music_buf
+        lda #>AUX_MUSIC
         sta tmp2
         lda half
         beq :+
@@ -267,6 +271,7 @@ t1_probe:
 
 ; ── unsigned char music_detect(void) ────────────────────────────────────
 _music_detect:
+        jsr init_aux_reader
         ldx #7
 @slot:  cpx #3
         beq @next
@@ -537,7 +542,7 @@ music_irq:
         sta cur
         lda cur_hi
         sta cur+1
-@next:  lda (cur)
+@next:  jsr aux_read_cur
         NEXT
         cmp #$80
         bcs @cmd
@@ -573,7 +578,7 @@ music_irq:
         jmp @noise
 :       jmp @next               ; paquet inconnu : ignore
 
-@note:  lda (cur)               ; index de note 0-59
+@note:  jsr aux_read_cur               ; index de note 0-59
         NEXT
         asl a
         sta tmp2
@@ -594,7 +599,7 @@ music_irq:
         lda vols,y
         jmp @amp
 
-@vol:   lda (cur)
+@vol:   jsr aux_read_cur
         NEXT
         ldy tmp
         sta vols,y
@@ -620,16 +625,16 @@ music_irq:
 
 @end:   jsr set_base            ; seul COMBAT porte encore le drapeau boucle
         ldy #5
-        lda (tmp),y
+        jsr aux_read_header
         and #1
         beq @stop
         ldy #6
-        lda (tmp),y
+        jsr aux_read_header
         clc
         adc tmp
         sta cur
         ldy #7
-        lda (tmp),y
+        jsr aux_read_header
         adc tmp2
         sta cur+1
         jsr fade_in_setup
@@ -643,7 +648,7 @@ music_irq:
         sta fstep
         jmp @next
 
-@noise: lda (cur)               ; NOISE : periode de bruit (R6 de la puce)
+@noise: jsr aux_read_cur               ; NOISE : periode de bruit (R6 de la puce)
         NEXT
         pha
         sec
@@ -654,3 +659,70 @@ music_irq:
         ldy tmp
         lda vols,y
         jmp @amp
+
+; MAIN and AUX contain the same instructions across RAMRD transitions.
+; AUX $1000-$1DFF holds both streams; the mirror lives at its linked CODE
+; address, above $4000, separate from DHGR page 1 and stream storage.
+; All entries require MAIN RAMRD/RAMWRT and MAIN ZP, as the existing driver.
+; Copying uses SEI so its temporary RAMWRT AUX cannot redirect IRQ globals.
+init_aux_reader:
+        php
+        sei
+        ldx #aux_mirror_end-aux_read_cur-1
+@copy:  lda aux_read_cur,x
+        sta $C005
+        sta aux_read_cur,x
+        sta $C004
+        dex
+        bpl @copy
+        plp
+        rts
+aux_read_cur:
+        sta $C003
+        lda (cur)
+        sta $C002
+        rts
+aux_read_header:
+        sta $C003
+        lda (tmp),y
+        sta $C002
+        rts
+aux_mirror_end:
+        .assert aux_read_cur >= $4000, lderror, "AUX mirror overlaps low RAM"
+
+; music_store(offset, count): count is 1..256, offset within both streams.
+; The C caller has validated bounds and placed count bytes in _music_buf.
+_music_store:
+        php
+        sei
+        sta tmp                 ; low byte 0 denotes 256
+        jsr popax               ; offset, A low / X high
+        sta cur
+        txa
+        clc
+        adc #>AUX_MUSIC
+        sta cur+1
+        ldy #0
+@copy:  lda _music_buf,y
+        sta $C005
+        sta (cur),y
+        sta $C004
+        iny
+        cpy tmp
+        bne @copy
+        plp
+        rts
+
+; Set the selected stream's loop byte, with the reader paused.
+_music_set_loop:
+        php
+        sei
+        pha
+        jsr set_base
+        pla
+        ldy #5
+        sta $C005
+        sta (tmp),y
+        sta $C004
+        plp
+        rts

@@ -9,8 +9,8 @@ auraient tous ete attrapes par un banc qui rejoue les missions. Le voici.
 
 Le principe, en trois phrases :
 
-  1. On lance POM2 sur une COPIE de dist/SCOSWAMP.HDV -- l'original n'est
-     jamais ouvert en ecriture.
+  1. On lance le coeur POM2 sans fenetre, avec Mockingboard, sur une COPIE
+     de dist/SCOSWAMP.HDV -- l'original n'est jamais ouvert en ecriture.
   2. On lit l'ecran texte 80 colonnes directement en RAM ($400-$7FF, page
      principale = colonnes impaires, page auxiliaire = colonnes paires), ce
      que memory_swap.c garantit valable meme en HGR plein ecran.
@@ -24,6 +24,7 @@ produit par `ld65 -Ln`) et de la carte memoire, jamais d'une constante ecrite
 a la main -- voir la classe Symbols.
 
 Usage :
+    sh SCOSWAMP.MORE/TOOLS/build_pom2_playtest.sh     # hote headless macOS
     python3 SCOSWAMP.MORE/TOOLS/playtest.py            # tout le banc
     python3 SCOSWAMP.MORE/TOOLS/playtest.py --list
     python3 SCOSWAMP.MORE/TOOLS/playtest.py --only combat_degats --keep
@@ -51,7 +52,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))          # le depot
 SRCDIR = os.path.join(ROOT, "SCOSWAMP", "SRC")
 HDV_SRC = os.path.join(ROOT, "dist", "SCOSWAMP.HDV")
-POM2 = os.environ.get("POM2", "/Users/gistair/src/pom2/build/POM2")
+POM2 = os.environ.get("POM2", os.path.join(HERE, "build", "pom2_playtest"))
 
 # 6503..6506, 6510 sont pris (POM2 par defaut, et les bancs voisins) : on
 # commence a 6520.
@@ -269,9 +270,9 @@ class Symbols(object):
         if rules.get("MONSTER_SLOTS") != 40:
             raise SymbolError("rules.h : MONSTER_SLOTS n'est plus 40, "
                               "slots160() est perimee")
-        if rules.get("SCENE_MEMORY_SIZE", 0) < 52:
-            raise SymbolError("rules.h : SCENE_MEMORY_SIZE est tombe sous 52, "
-                              "bits52() ecrirait hors du bitmap")
+        if rules.get("SCENE_MEMORY_SIZE", 0) < 53:
+            raise SymbolError("rules.h : SCENE_MEMORY_SIZE est tombe sous 53, "
+                              "scene_bits() ecrirait hors du bitmap")
 
     def __getitem__(self, k):
         return self.sym[k]
@@ -334,14 +335,14 @@ STONES = ["HABILETE", "ENDURANCE", "CHANCE", "FEU", "GLACE", "ILLUSION",
           "AMITIE", "CROISSANCE", "BENEDICTION", "TERREUR", "FLETRISSURE",
           "MALEDICTION"]
 OBJECTS = ["ANNEAU", "CAPE", "CHAINE", "AIMANT", "FIOLE", "BAIE", "EPEMAGIQUE",
-           "BIJOU", "CORNE", "PLUMES", "GRAINES", "ANTHERIQUE"]
+           "BIJOU", "CORNE", "PLUMES", "GRAINES", "ANTHERIQUE", "MISSION_GAYOLARD", "MISSION_POMPATARTE", "MISSION_STRATAGUS", "POTION_NAINE"]
 AMULETS = ["LOUP", "FLEUR", "OISEAU", "ARAIGNEE", "GRENOUILLE", "FAUSSE_OISEAU"]
 
 # music.s : mb_slot, playing... suivent _music_buf, seul symbole exporte du
 # module. Les offsets sont resolus par Symbols ; ces noms servent de secours
 # si un jour le parseur ne les trouvait plus.
-MUSIC_FALLBACK = dict(mb_slot=3584, playing=3585, paused=3586, half=3587,
-                      delay=3588, cur_lo=3589, cur_hi=3590)
+MUSIC_FALLBACK = dict(mb_slot=256, playing=257, paused=258, half=259,
+                      delay=260, cur_lo=261, cur_hi=262)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -591,7 +592,12 @@ class Game(object):
         rows = rows or self.p.screen()
         out = []
         for r in rows[20:24]:
-            out += re.findall(r"(?:^|\s\s)([A-Z-])\)", r)
+            # Native render_choices starts tags at columns 0 and 40. A
+            # full first title leaves only ONE space before the second tag.
+            for column in (0, 40):
+                match = re.match(r"([A-Z-])\) ", r[column:])
+                if match:
+                    out.append(match.group(1))
         return out
 
     def letters(self, rows=None):
@@ -618,7 +624,7 @@ class Game(object):
                     playing=self.p.peek(self.M("playing"), 1)[0],
                     cur=cur, zone=zone,
                     half=half,
-                    loop=self.p.peek(self.s["_music_buf"] + half * 2304 + 5, 1)[0] & 1,
+                    loop=self.p.peek(0x1000 + half * 2304 + 5, 1, bank="aux")[0] & 1,
                     cursor=struct.unpack("<H", self.p.peek(self.M("cur_lo"), 2))[0])
 
     # -- frappe -------------------------------------------------------------
@@ -704,7 +710,7 @@ class Game(object):
             self.p.poke(self.s["_state"], struct.pack("<I", seed))
             self.p.poke(self.A("hero"), self.sheet_bytes(**hero))
             self.p.poke(self.A("hero_ready"), b"\x01")   # sinon roll_character
-            self.p.poke(self.s["_visited"], bits52(visited))
+            self.p.poke(self.s["_visited"], scene_bits(visited))
             self.p.poke(self.s["_seen"], slots160(foes))
             self.p.poke(self.s["_restoring"], b"\x00" if replay else b"\x01")
             self.p.poke(self.A("pending_scene"), struct.pack("<h", page))
@@ -742,8 +748,8 @@ class Game(object):
         return rows
 
 
-def bits52(scenes):
-    b = bytearray(52)
+def scene_bits(scenes):
+    b = bytearray(53)
     for s in scenes:
         b[s >> 3] |= 1 << (s & 7)
     return bytes(b)
@@ -761,7 +767,7 @@ def slots160(foes):
 # ═══════════════════════════════════════════════════════════════════════════
 #
 # forge_save.build() fabrique les 276 octets SCS3. Reste a les poser dans le
-# volume ProDOS. Les numeros de bloc de PARTIE9 changent a chaque
+# volume ProDOS. Les numeros de bloc de SAVE9 changent a chaque
 # reconstruction de l'image : on parcourt le catalogue plutot que de porter
 # des constantes -- sinon un jour on ecrit 276 octets au milieu d'une image
 # RLE, et le bug qui en sort coute une soiree.
@@ -813,14 +819,14 @@ def prodos_find(hdv, path):
 
 
 def install_save(hdv, blob, slot=9):
-    """Ecrit `blob` dans PARTIE<slot> du volume, EOF compris.
+    """Ecrit `blob` dans SAVE<slot> du volume, EOF compris.
 
     Un seedling ProDOS porte jusqu'a 512 octets : les 276 d'une sauvegarde y
     entrent sans reallocation, sans toucher la bitmap ni le type de stockage.
     """
-    blk, off, key, st = prodos_find(hdv, "/SCOSWAMP/SAVE/PARTIE%d" % slot)
+    blk, off, key, st = prodos_find(hdv, "/SCOSWAMP/SAVE/SAVE%d" % slot)
     if st != 1:
-        raise RuntimeError("PARTIE%d n'est pas un seedling (type %d)" % (slot, st))
+        raise RuntimeError("SAVE%d n'est pas un seedling (type %d)" % (slot, st))
     with open(hdv, "r+b") as f:
         f.seek(key * 512)
         f.write(blob.ljust(512, b"\0"))
@@ -839,7 +845,8 @@ SCENARIOS = []
 def scenario(name, title, forge=None, manual=False):
     """Enregistre un scenario.
 
-    `forge` est un dict d'arguments pour forge_save.build : le disque est
+    `forge` est un dict d'arguments pour forge_save.build, ou une fonction
+    sans argument qui rend les octets exacts d'un fichier : le disque est
     alors patche avant le lancement de POM2, et le scenario reprend la partie
     par [L] 9. `manual` dit que le scenario mene lui-meme le demarrage (choix
     de la langue compris) au lieu de le recevoir tout fait."""
@@ -924,10 +931,11 @@ def sc_demarrage(g, b):
 
 @scenario("gayolard", "Gayolard : la quete de l'Antherique et six Pierres")
 def sc_gayolard(g, b):
-    g.goto(335)
+    g.goto(335, objects=("MISSION_STRATAGUS",))
     b.has("on arrive Chez Gayolard", g.screen(), "Chez Gayolard")
     rows = g.choose("A")                 # 371 : lui reveler l'Anneau
     b.eq("la quete de l'Antherique est la page 371", g.scene(), 371)
+    b.eq("Gayolard remplace l'ancien employeur", g.hero()["objects"] & 0x7000, 0x1000)
     b.has("l'ecran des Pierres s'ouvre", rows, "CHOISISSEZ VOS PIERRES")
     b.has("il reste six Pierres a prendre", rows, "il en reste 6")
     b.hasnt("aucune Pierre malefique n'est proposee (PC 6 NB)", rows, "Maledicti")
@@ -942,10 +950,11 @@ def sc_gayolard(g, b):
 
 @scenario("pompatarte", "Pompatarte : la carte, et ses cinq Pierres neutres")
 def sc_pompatarte(g, b):
-    g.goto(27)
+    g.goto(27, objects=("MISSION_STRATAGUS",))
     b.has("on arrive Chez Pompatarte", g.screen(), "Chez Pompatarte")
     rows = g.choose("B")                 # 173 : le guerrier hors pair
     b.eq("le Marchand Rouge est la page 173", g.scene(), 173)
+    b.eq("Pompatarte remplace l'ancien employeur", g.hero()["objects"] & 0x7000, 0x2000)
     # Le bug de septembre : la page 173 n'avait PAS de ligne PC, et le heros
     # partait de chez Pompatarte les mains vides alors que le texte lui offre
     # cinq Pierres. C'est cette assertion qui l'aurait attrape.
@@ -973,6 +982,7 @@ def sc_stratagus(g, b):
     # La mission elle-meme est page 206, au bout d'une epreuve. On y va
     # directement : c'est l'offre de Pierres qu'on veut mesurer.
     rows = g.goto(206)
+    b.eq("Stratagus devient l'employeur", g.hero()["objects"] & 0x7000, 0x4000)
     b.has("la mission de Stratagus", rows, "Mission de Stratagus")
     b.has("l'ecran des Pierres s'ouvre", rows, "CHOISISSEZ VOS PIERRES")
     b.has("il en reste six a prendre", rows, "il en reste 6")
@@ -981,10 +991,10 @@ def sc_stratagus(g, b):
     b.check("le DHGR du donateur est disponible pendant le choix",
             g.p.peek(g.A("has_image"), 1)[0] == 1, "has_image absent")
     g.press("ESC")
-    b.eq("ESC montre le donateur en DHGR mixte",
-         g.p.peek(g.A("video_mode"), 1)[0], 2)
+    b.eq("ESC montre le donateur en DHGR plein",
+         g.p.peek(g.A("video_mode"), 1)[0], 1)
     g.press("ESC")
-    b.eq("ESC peut passer au DHGR plein", g.p.peek(g.A("video_mode"), 1)[0], 1)
+    b.eq("ESC passe ensuite au DHGR mixte", g.p.peek(g.A("video_mode"), 1)[0], 2)
     g.press("ESC")
     b.eq("ESC revient au texte pour choisir", g.p.peek(g.A("video_mode"), 1)[0], 0)
     b.hasnt("aucune Pierre benefique (PC 6 NM)", rows, "Benediction")
@@ -1017,7 +1027,7 @@ def sc_combat(g, b):
         rounds += 1
         if rounds == 1:
             music = g.music()
-            b.eq("le premier assaut lance sa musique", music["cur"], "COMBAT.MB")
+            b.eq("le premier assaut lance sa musique", music["cur"], "BATTLE.MB")
             b.eq("la musique d'action porte seule le drapeau de boucle",
                  music["loop"], 1)
         if any("ENDURANCE est tombee" in r for r in rows):
@@ -1039,6 +1049,67 @@ def sc_combat(g, b):
     b.check("au moins un camp a ete touche", losses + hits > 0)
 
 
+@scenario("combat_sans_magie", "MM interdit toutes les Pierres et se reinitialise au prochain combat")
+def sc_combat_sans_magie(g, b):
+    for page in (215, 355):
+        stones = {"HABILETE": 1, "FEU": 1}
+        g.goto(page, hab=12, end=60, end0=60, stones=stones)
+        for phase in range(2):
+            before = (g.hero(), g.p.peek(g.s["_state"], 4))
+            rows = g.press("I")
+            b.eq("toutes les Pierres sont interdites", sum("interdite en plein combat" in r for r in rows), 2)
+            for key in "AB":
+                b.has("la magie est refusee", g.press(key), "Choix indisponible")
+                g.press(" ")
+            g.press("I")
+            b.eq("ni Pierre, ni effet, ni des consommes", (g.hero(), g.p.peek(g.s["_state"], 4)), before)
+            g.press(" ")
+        g.goto(222, hab=10, hab0=12, stones=stones)
+        g.press("I"); g.press("A"); g.press(" "); g.press("I")
+        b.eq("le combat suivant autorise de nouveau la Pierre", g.hero()["stones"][0], 0)
+
+
+@scenario("sac_combat", "Le sac reste consultable sans modifier l'assaut en attente")
+def sc_sac_combat(g, b):
+    stones = {"HABILETE": 1, "ENDURANCE": 1, "CHANCE": 1}
+    g.goto(222, seed=0x2222, hab=10, hab0=12, end=12, end0=24,
+           cha=8, cha0=12, stones=stones)
+    rounds = 0
+    while rounds < 8:
+        rows = g.press(" ")
+        rounds += 1
+        if "Tentez votre Chance" in rows[23]:
+            break
+    b.has("une blessure attend sa resolution", rows[23:], "Tentez votre Chance")
+    before = (g.hero(), g.p.peek(g.A("foes"), 29), g.p.peek(g.s["_state"], 4))
+    for close in ("I", "ESC", "i"):
+        combat_rows = rows[20:24]
+        mode = g.p.peek(g.A("video_mode"), 1)
+        rows = g.press("i")
+        b.has("le sac s'ouvre apres le premier assaut", rows, "SAC A DOS")
+        b.eq("les trois pierres de caracteristique sont indiquees interdites",
+             sum("interdite en plein combat" in row for row in rows), 3)
+        for key in "ABC":
+            rows = g.press(key)
+            b.has("la pierre %s est refusee" % key, rows, "Le premier coup")
+            g.press(" ")
+        rows = g.press(close)
+        b.eq("le retour conserve le mode video", g.p.peek(g.A("video_mode"), 1), mode)
+        b.eq("les jets, le verdict et l'invite sont restitues", rows[20:24], combat_rows)
+        b.eq("ni statistiques, ni adversaire, ni des ne changent",
+             (g.hero(), g.p.peek(g.A("foes"), 29), g.p.peek(g.s["_state"], 4)), before)
+        rows = g.press("ESC")  # verifier les trois modes video
+    g.press(" ")
+    after_bag = (g.hero(), g.p.peek(g.A("foes"), 29), g.p.peek(g.s["_state"], 4))
+    # Meme combat et meme graine, cette fois sans ouvrir le sac.
+    g.goto(222, seed=0x2222, hab=10, hab0=12, end=12, end0=24,
+           cha=8, cha0=12, stones=stones)
+    for _ in range(rounds + 1):
+        g.press(" ")
+    b.eq("la blessure et le jet suivant sont identiques au combat sans sac",
+         (g.hero(), g.p.peek(g.A("foes"), 29), g.p.peek(g.s["_state"], 4)), after_bag)
+
+
 @scenario("mort", "La mort : ecran de mort, [R] recommence")
 def sc_mort(g, b):
     rows = g.goto(222, seed=0x1111, hab=6, end=2, cha=4)
@@ -1052,7 +1123,7 @@ def sc_mort(g, b):
     b.has("il propose [R], [L] et [Q]", rows, "[R] recommencer")
     death_music = g.music()
     b.eq("la mort en combat coupe la boucle et lance son theme",
-         death_music["cur"], "MORT.MB")
+         death_music["cur"], "DEATH.MB")
     b.eq("le theme de mort ne boucle pas", death_music["loop"], 0)
     rows = g.press("R")
     b.eq("[R] ramene a l'accueil (page 000)", g.scene(), 0)
@@ -1061,7 +1132,7 @@ def sc_mort(g, b):
     # die_and_restart vide les deux memoires, puis charge la page 000 -- qui
     # se marque elle-meme visitee. Seul le bit 0 doit donc rester.
     b.eq("la memoire des clairieres est videe (hors l'accueil lui-meme)",
-         g.p.peek(g.s["_visited"], 52), bytes([1]) + bytes(51))
+         g.p.peek(g.s["_visited"], 53), bytes([1]) + bytes(52))
     b.eq("la memoire des monstres est videe",
          g.p.peek(g.s["_seen"], 160), bytes(160))
 
@@ -1089,6 +1160,28 @@ def sc_benediction(g, b):
 
 
 # ── (d) Sauvegarde et chargement ──────────────────────────────────────────
+
+@scenario("save_langue_invalide", "Une langue invalide est refusee avant mutation",
+          forge=dict(scene=195, lang="Q", gold=999))
+@scenario("save_page_invalide", "Une page hors bitmap est refusee avant mutation",
+          forge=dict(scene=65535, gold=999))
+@scenario("save_octet_en_trop", "Une sauvegarde avec suffixe est refusee",
+          forge=lambda: forge_save.build(scene=195, gold=999) + b"X")
+def sc_save_invalide(g, b):
+    g.boot("F")
+    g.goto(195, hab=12, end=20, gold=77, objects=("ANNEAU",))
+    g.p.stable(need=24)
+    before = g.hero()
+    visited = g.p.peek(g.s["_visited"], 53)
+    monsters = g.p.peek(g.s["_seen"], 160)
+    g.press("L")
+    rows = g.press("9")
+    b.has("le fichier invalide est refuse", rows, "Emplacement vide ou fichier corrompu")
+    b.eq("le heros reste intact", g.hero(), before)
+    b.eq("la page active reste intacte", g.scene(), 195)
+    b.eq("les visites restent intactes", g.p.peek(g.s["_visited"], 53), visited)
+    b.eq("les rencontres restent intactes", g.p.peek(g.s["_seen"], 160), monsters)
+
 
 @scenario("sauvegardes", "Sauvegarde [S], liste des titres, rechargement [L]")
 def sc_sauvegardes(g, b):
@@ -1122,8 +1215,103 @@ def sc_sauvegardes(g, b):
     b.eq("la partie en cours survit au refus", g.hero()["gold"], 77)
 
 
+@scenario("malediction", "Le choix de Malediction ne fait payer qu'un seul de")
+def sc_malediction(g, b):
+    g.goto(145, end=24, stones={"MALEDICTION": 1})
+    rows = g.press("A")
+    b.eq("le choix rejoint la page du sort", g.scene(), 252)
+    b.eq("la Pierre est consommee", g.stones(), {})
+    b.eq("le contrecoup attend le jet annonce", g.hero()["end"], 24)
+    rows = g.press(" ")
+    roll = re.search(r"Vous jetez : (\d+)", "\n".join(rows))
+    b.check("le contrecoup montre son de", roll is not None)
+    if roll:
+        b.eq("un seul de est retire", g.hero()["end"], 24 - int(roll.group(1)))
+
+
+@scenario("mort_dans_sac", "Une Malediction fatale dans le sac termine la partie")
+def sc_mort_dans_sac(g, b):
+    # L'accueil a une ENDURANCE nulle, mais le personnage n'existe pas encore.
+    g.press("I")
+    rows = g.press("I")
+    b.has("fermer le sac a l'accueil ne tue personne", rows, "MARAIS AUX SCORPIONS")
+    b.hasnt("pas de fausse mort avant la creation", rows, "ENDURANCE est tombee")
+    for page, engaged in ((195, False), (222, False), (222, True)):
+        g.goto(page, end=1, end0=20,
+               stones={"ENDURANCE": 1, "MALEDICTION": 1})
+        if engaged:
+            g.press(" ")  # premier jet affiche, blessure encore en attente
+        g.press("I")
+        g.press("B")  # A = ENDURANCE, B = MALEDICTION : le contrecoup tue toujours.
+        b.eq("page %d : la Malediction est fatale" % page, g.hero()["end"], 0)
+        rows = g.press(" ")
+        b.has("page %d : la mort remplace le sac" % page, rows,
+              "ENDURANCE est tombee")
+        g.press("A")  # une Pierre de soin ne peut plus ressusciter le heros.
+        b.eq("page %d : aucun soin apres la mort" % page, g.hero()["end"], 0)
+
+
+@scenario("blessures_apres_soin", "Les soins avant le combat ne masquent pas ses blessures")
+def sc_blessures_apres_soin(g, b):
+    g.goto(284, seed=0x2222, hab=7, end=10, end0=24,
+           stones={"ENDURANCE": 1})
+    g.press("I")
+    g.press("A")
+    g.press(" ")
+    g.press("I")
+    before = g.hero()["end"]
+    loss = 0
+    for _ in range(100):
+        g.press(" ")
+        after = g.hero()["end"]
+        loss += max(0, before - after)
+        before = after
+        if g.scene() == 156 or after == 0:
+            break
+    b.eq("le combat atteint la page des blessures", g.scene(), 156)
+    b.check("le combat a inflige des blessures", loss > 0, "perte=%d" % loss)
+    b.eq("les soins ne sont pas deduits des blessures",
+         g.p.peek(g.A("last_loss"), 1)[0], loss)
+    g.press("A")
+    b.eq("DV choisit selon les blessures reelles", g.scene(),
+         241 if loss == 0 else 193 if loss <= 5 else 326)
+
+
+@scenario("sac_douze", "Les douze Pierres sont selectionnables sans conflit avec I")
+def sc_sac_douze(g, b):
+    for stone in STONES[8:]:
+        g.goto(195, stones={s: 1 for s in STONES})
+        rows = g.press("I")
+        line = next((r for r in rows if stone in r), "")
+        match = re.match(r"([A-Z])\)", line)
+        b.check(stone + " a une touche visible", match is not None)
+        if match:
+            g.press(match.group(1))
+            b.eq(stone + " est utilisable", g.stones().get(stone, 0), 0)
+            g.press(" ")
+            g.press("I")
+
+
+@scenario("sauvegarde_blessures", "Sauver puis reprendre conserve la branche des blessures")
+def sc_sauvegarde_blessures(g, b):
+    g.goto(195)
+    g.p.poke(g.A("last_loss"), bytes([12]))
+    g.goto(156)
+    g.press("S")
+    g.press("6")
+    g.press(" ")
+    g.goto(195)
+    g.p.poke(g.A("last_loss"), bytes([0]))
+    g.press("L")
+    g.press("6")
+    b.eq("les blessures du combat sont restaurees",
+         g.p.peek(g.A("last_loss"), 1)[0], 12)
+    g.press("A")
+    b.eq("la reprise conserve la branche severe de DV", g.scene(), 326)
+
+
 @scenario("forge", "Une sauvegarde forgee hors du jeu se recharge",
-          forge=dict(scene=195, title="BANC FORGE 195", hab=(10, 12),
+          forge=dict(scene=195, title="BANC FORGE 195", version=4, hab=(10, 12),
                      end=(15, 22), cha=(8, 11), gold=1234,
                      stones={"FEU": 3, "GLACE": 1},
                      objects=("ANNEAU", "BAIE"), amulets=("LOUP", "OISEAU"),
@@ -1132,12 +1320,15 @@ def sc_forge(g, b):
     rows = g.p.wait_for("LANGUE")
     g.p.keys("F")
     g.p.wait_for("LE MARAIS AUX SCORPIONS")
+    g.p.poke(g.A("last_loss"), bytes([12]))
     rows = g.press("L")
     b.has("la page de chargement s'ouvre depuis l'accueil", rows, "REPRENDRE")
     b.has("l'emplacement 9 porte le titre forge", rows, "BANC FORGE 195")
     rows = g.press("9")
     h = g.hero()
     b.eq("la page forgee est chargee", g.scene(), 195)
+    b.eq("SCS4 initialise les blessures absentes a zero",
+         g.p.peek(g.A("last_loss"), 1)[0], 0)
     b.eq("les trois caracteristiques sont celles du fichier",
          (h["hab"], h["hab0"], h["end"], h["end0"], h["cha"], h["cha0"]),
          (10, 12, 15, 22, 8, 11))
@@ -1146,10 +1337,53 @@ def sc_forge(g, b):
     b.eq("les objets aussi", sorted(g.objects()), ["ANNEAU", "BAIE"])
     b.eq("les amulettes aussi", sorted(g.amulets()), ["LOUP", "OISEAU"])
     b.eq("la memoire des clairieres est restauree",
-         g.p.peek(g.s["_visited"], 52), bits52((1, 195)))
+         g.p.peek(g.s["_visited"], 53), scene_bits((1, 195)))
 
 
 # ── (e) L'interface : sac, aide, page sans issue ──────────────────────────
+
+@scenario("aux_music_probe", "Experience isolee : lecture de 3584 octets AUX par trampoline miroir")
+def sc_aux_music_probe(g, b):
+    # run_one creates a fresh disposable emulator and disk per scenario.
+    # This probe deliberately replaces game RAM, with interrupts disabled;
+    # it is not an integration test of the music IRQ or ProDOS.
+    source = os.path.join(ROOT, "SCOSWAMP.MORE/TOOLS/experiments/aux_music_probe.s")
+    with tempfile.TemporaryDirectory(prefix="aux-probe-") as work:
+        obj, binary = os.path.join(work, "probe.o"), os.path.join(work, "probe.bin")
+        subprocess.check_call(["ca65", "-t", "apple2enh", source, "-o", obj])
+        subprocess.check_call(["ld65", "-t", "none", "--start-addr", "0x9000", obj, "-o", binary])
+        with open(binary, "rb") as f:
+            g.p.poke(0x9000, f.read())
+    g.p.rq("/cpu", {"pc": 0x9000, "p": 0x24})
+    deadline = time.time() + 3
+    result = 0
+    while time.time() < deadline:
+        result = g.p.peek(0x0800, 1)[0]
+        if result in (0xa5, 0xff):
+            break
+        time.sleep(0.02)
+    b.eq("tous les octets AUX relus, MAIN preservee et banques restaurees", result, 0xa5)
+
+
+@scenario("sac_sans_pierres", "Le message des Pierres ne depend pas des objets ou drapeaux")
+def sc_sac_sans_pierres(g, b):
+    for label, objects, amulets in (
+            ("vide", (), ()),
+            ("mission cachee", ("MISSION_GAYOLARD",), ()),
+            ("objet visible", ("CAPE",), ()),
+            ("amulette", (), ("LOUP",))):
+        g.p.stable(need=24)
+        g.goto(195, stones=(), objects=objects, amulets=amulets)
+        before = g.hero()
+        rows = g.press("I")
+        b.has(label + " : aucune Pierre", rows, "Aucune Pierre Magique")
+        if amulets:
+            b.has("l'amulette reste visible a droite", rows, "Amulette du Loup")
+        if objects == ("CAPE",):
+            b.has("l'objet reste visible a droite", rows, "Cape Rouge")
+        g.press("I")
+        b.eq(label + " : consulter preserve le heros", g.hero(), before)
+
 
 @scenario("interface", "[I] le sac, [H] l'aide, page sans issue R/L/Q")
 def sc_interface(g, b):
@@ -1183,22 +1417,57 @@ def sc_interface(g, b):
     b.has("elle propose [R], [L] et [Q]", rows, "[R] recommencer")
 
 
+@scenario("carte_retour_combat", "La carte conserve aussi le recit et l'assaut en combat")
+def sc_carte_retour_combat(g, b):
+    for presses,mode in ((1,1),(2,2)):
+        g.goto(28,objects=("ANNEAU",))
+        text=g.screen();before=g.hero()
+        picture=g.p.peek(0x2000,8192)+g.p.peek(0x2000,8192,"aux")
+        for _ in range(presses):g.press("ESC")
+        g.press("M");g.press("M")
+        b.eq("mode combat retrouve",g.p.peek(g.A("video_mode"),1)[0],mode)
+        b.eq("recit combat restaure",g.screen(),text)
+        b.eq("image combat intacte",g.p.peek(0x2000,8192)+g.p.peek(0x2000,8192,"aux"),picture)
+        b.eq("aucun assaut joue dans la carte",g.hero(),before)
+
+
+@scenario("carte_retour_dhgr", "La carte restaure le texte et les deux banques DHGR")
+def sc_carte_retour_dhgr(g, b):
+    from pathlib import Path
+    folder=Path(ROOT)/"DOCS/VALIDATION-CARTE-DHGR";folder.mkdir(exist_ok=True)
+    def shot(name):
+        data=urllib.request.urlopen(g.p.base+"/screen.ppm").read()
+        (folder/(name+".ppm")).write_bytes(data)
+        return data
+    for presses,mode in ((1,1),(2,2)):
+        for close in ("M","ESC"):
+            g.goto(195,objects=("ANNEAU",))
+            text=g.screen();picture=g.p.peek(0x2000,8192)+g.p.peek(0x2000,8192,"aux")
+            before=g.hero()
+            for _ in range(presses):g.press(" ")
+            tag="%d-%s" % (mode,close);pixels=shot(tag+"-before")
+            rows=g.press("M");b.has("la carte s'ouvre depuis DHGR",rows,"CARTE DU MARAIS")
+            g.press(close)
+            b.check("rendu visible identique apres la carte",shot(tag+"-after")==pixels)
+            b.eq("retour au mode choisi",g.p.peek(g.A("video_mode"),1)[0],mode)
+            b.eq("texte restaure sans colonnes corrompues",g.screen(),text)
+            b.eq("image DHGR intacte",g.p.peek(0x2000,8192)+g.p.peek(0x2000,8192,"aux"),picture)
+            b.eq("aucun effet de jeu rejoue",g.hero(),before)
+
+
 @scenario("video", "[ESPACE] fait tourner les trois modes video")
 def sc_video(g, b):
     rows = g.goto(195)
     b.eq("la page 195 est illustree", g.p.peek(g.A("has_image"), 1)[0], 1)
     b.eq("on demarre en mode texte", g.p.peek(g.A("video_mode"), 1)[0], 0)
     txt0 = g.screen()
-    g.press(" ")
-    b.eq("[ESPACE] passe en DHGR mixte avec texte 80 colonnes",
-         g.p.peek(g.A("video_mode"), 1)[0], 2)
-    b.check("la page texte survit au mode mixte (memory_swap.c)",
-            g.screen() == txt0)
-    g.press(" ")
-    b.eq("[ESPACE] passe en DHGR plein ecran",
-         g.p.peek(g.A("video_mode"), 1)[0], 1)
-    g.press(" ")
-    b.eq("[ESPACE] revient au texte", g.p.peek(g.A("video_mode"), 1)[0], 0)
+    image0=g.p.peek(0x2000,8192)+g.p.peek(0x2000,8192,"aux")
+    for _ in range(2):
+        for mode,label in ((1,"DHGR plein"),(2,"DHGR mixed"),(0,"texte 80 colonnes")):
+            g.press(" ")
+            b.eq("ESPACE passe au "+label,g.p.peek(g.A("video_mode"),1)[0],mode)
+            b.eq("la bascule preserve le texte",g.screen(),txt0)
+            b.eq("la bascule preserve les deux banques DHGR",g.p.peek(0x2000,8192)+g.p.peek(0x2000,8192,"aux"),image0)
 
 
 # ── (f) Un objet donne puis exige ─────────────────────────────────────────
@@ -1272,20 +1541,92 @@ def sc_revisite(g, b):
     b.eq("premiere visite : on reste sur la page 350", g.scene(), 350)
     b.check("la premiere visite affiche du texte",
             any(r.strip() for r in rows[2:18]))
-    g.goto(350, visited=(350,), land=target)
-    b.eq("deja vue par la meme porte : detour immediat", g.scene(), target)
+    g.goto(350, visited=(350,), land=112)
+    b.eq("deja vue par la meme porte : detour immediat", g.scene(), 112)
     if others:
-        g.goto(350, visited=(others[0],), land=target)
+        g.goto(350, visited=(others[0],), land=112)
         b.eq("deja vue par une AUTRE porte (liste de la ligne V) : "
-             "detour aussi", g.scene(), target)
+             "detour aussi", g.scene(), 112)
     else:
         b.check("la ligne V porte une liste de pages soeurs", False,
                 "aucune page citee apres la cible")
+    g.goto(350, visited=(target,), land=112)
+    b.eq("la cible deja visitee suffit aussi au detour V", g.scene(), 112)
     g.goto(350, visited=(350,), replay=False, land=350)
     b.eq("a la reprise d'une sauvegarde, V est inhibe", g.scene(), 350)
 
 
 # ── (h) Les trois fins ────────────────────────────────────────────────────
+
+def check_end_transitions(g, b, page):
+    def memories():
+        return (g.p.peek(g.s["_visited"], 53), g.p.peek(g.s["_seen"], 160))
+
+    g.goto(195, gold=37, end=13, end0=24, stones={"FEU": 2},
+           objects=("ANNEAU", "CAPE", "MISSION_STRATAGUS"),
+           visited=(206, 280), foes=((34, 0, 3),))
+    saved = (g.hero(), memories())
+    g.press("S"); g.press("1"); g.press(" ")
+    g.goto(page, gold=1500, objects=("BAIE",), visited=(371, 366))
+    terminal = (g.hero(), memories())
+    b.eq("la fin est terminale", g.choices(), [])
+    b.has("Q demande confirmation", g.press("Q"), "QUITTER vraiment")
+    g.press("N")
+    b.eq("annuler Q conserve la fin", g.scene(), page)
+    b.eq("annuler Q conserve l'etat", (g.hero(), memories()), terminal)
+    g.press("L"); g.press("ESC")
+    b.eq("annuler L restitue la fin", g.scene(), page)
+    b.eq("annuler L conserve l'etat", (g.hero(), memories()), terminal)
+    g.press("L"); g.press("1")
+    b.eq("L reprend la page sauvegardee", g.scene(), 195)
+    b.eq("L restaure le heros et les memoires", (g.hero(), memories()), saved)
+    g.p.stable(need=24)
+    g.goto(page, gold=1500, stones={"FEU": 2}, objects=("BAIE",),
+           visited=(371, 366), foes=((34, 0, 3),))
+    g.press("R")
+    b.eq("R revient a l'accueil", g.scene(), 0)
+    b.eq("R invalide l'ancien personnage", g.p.peek(g.A("hero_ready"), 1)[0], 0)
+    b.eq("R efface les visites", memories()[0], bytes([1]) + bytes(52))
+    b.eq("R efface les monstres", memories()[1], bytes(160))
+    g.press("A")
+    fresh = g.hero()
+    b.eq("la nouvelle feuille commence avec 20 pieces", fresh["gold"], 20)
+    b.eq("les anciennes Pierres sont effacees", sum(fresh["stones"]), 0)
+    b.eq("seul l'Anneau initial demeure", fresh["objects"], 1)
+    b.eq("aucune amulette n'est heritee", fresh["amulets"], 0)
+    g.press(" ")
+    g.press("L"); g.press("1")
+    b.eq("recommencer conserve la sauvegarde sur disque", g.scene(), 195)
+    b.eq("la sauvegarde conserve l'ancien heros", (g.hero(), memories()), saved)
+    g.p.stable(need=24)
+    g.goto(page)
+    g.press("Q"); g.press("O")
+    # Bitsy Bye uses 40 columns. Game.screen() interleaves stale AUX text
+    # and is therefore deliberately not used to recognize the OS screen.
+    main = g.p.peek(0x400, 1024)
+    rows = []
+    for row in range(24):
+        base = 0x80 * (row % 8) + 0x28 * (row // 8)
+        rows.append("".join(g.p._cell(c) for c in main[base:base + 40]))
+    b.has("Q confirme rend la main a Bitsy Bye", rows, "BITSY  BYE")
+    b.has("ProDOS affiche le volume du jeu", rows, "/SCOSWAMP")
+    b.has("le selecteur ProDOS propose ses commandes", rows, "RETURN:SELECT")
+
+
+@scenario("fin_transitions_175", "R/L et sortie ProDOS apres Gayolard")
+def sc_fin_transitions_175(g, b):
+    check_end_transitions(g, b, 175)
+
+
+@scenario("fin_transitions_158", "R/L et sortie ProDOS apres Pompatarte")
+def sc_fin_transitions_158(g, b):
+    check_end_transitions(g, b, 158)
+
+
+@scenario("fin_transitions_358", "R/L et sortie ProDOS apres Stratagus")
+def sc_fin_transitions_358(g, b):
+    check_end_transitions(g, b, 358)
+
 
 @scenario("fin_175", "Fin 175 : la baie rendue a Gayolard, succes complet",
           forge=dict(scene=6, title="AVANT LA FIN 175", hab=(10, 12),
@@ -1309,7 +1650,7 @@ def sc_fin_175(g, b):
 
 @scenario("fin_158", "Fin 158 : la carte rendue a Pompatarte",
           forge=dict(scene=56, title="AVANT LA FIN 158", hab=(11, 12),
-                     end=(16, 22), cha=(7, 11), gold=90, visited=(1, 56)))
+                     end=(16, 22), cha=(7, 11), gold=90, visited=(1, 56, 173, 280)))
 def sc_fin_158(g, b):
     g.p.wait_for("LANGUE")
     g.p.keys("F")
@@ -1320,7 +1661,7 @@ def sc_fin_158(g, b):
     b.has("il reclame la carte de Courbensaule", rows, "Courbensaule")
     rows = g.choose("A")
     b.eq("« oui » mene a la page 158", g.scene(), 158)
-    b.has("la carte est complete", rows, "la carte est complete")
+    b.has("la mission est reussie", rows, "mission a reussi")
     b.eq("la fin est terminale", g.choices(rows), [])
 
 
@@ -1364,7 +1705,7 @@ def sc_musique(g, b):
             "mb_slot=%d -- POM2 la met dans le slot de state.cfg" % m["slot"])
     if m["slot"] == 0:
         return
-    b.eq("l'accueil joue son introduction", m["cur"], "ACCUEIL.MB")
+    b.eq("l'accueil joue son introduction", m["cur"], "WELCOME.MB")
     b.check("l'introduction joue effectivement", m["playing"] == 1,
             "playing=%d" % m["playing"])
     g.goto(1)                                    # hors Marais, MU VILLAGE.MB
@@ -1378,7 +1719,7 @@ def sc_musique(g, b):
     g.goto(413)                                  # autre page de la meme zone
     b.eq("changer de page dans Bourbenville ne relance pas l'air",
          g.music()["half"], mv["half"])
-    g.goto(195)                                  # clairiere 1, MU MARAISUD.MB
+    g.goto(195)                                  # clairiere 1, MU SOUTHSWAMP.MB
     m1 = g.music()
     b.check("une musique joue sur la page 195", m1["playing"] == 1,
             "playing=%d" % m1["playing"])
@@ -1388,7 +1729,7 @@ def sc_musique(g, b):
     b.check("le curseur de lecture avance", g.music()["cursor"] != c1,
             "cur reste a %d" % c1)
     b.eq("l'air de la clairiere 1 est celui du rond-point", m1["cur"],
-         "RONDPOINT.MB")
+         "ROUNDABOUT.MB")
     # Une autre page de la MEME clairiere (058 est l'un des trois hubs de la
     # clairiere 1) : la ligne MU nomme le meme air, il ne doit pas repartir.
     g.goto(58)
@@ -1401,6 +1742,69 @@ def sc_musique(g, b):
             m3["cur"] != m1["cur"], "%r partout" % m3["cur"])
     b.check("et il joue toujours", m3["playing"] == 1, "playing=%d" % m3["playing"])
     b.eq("la zone memorisee suit l'air courant", m3["zone"], m3["cur"])
+
+
+@scenario("musique_aux", "Les flux AUX restent identiques pendant video, disque et combat")
+def sc_musique_aux(g, b):
+    def stream(name, half, loop):
+        with open(os.path.join(ROOT, "SCOSWAMP/MUSIC", name + ".BIN"), "rb") as f:
+            expected = bytearray(f.read())
+        expected[5] = loop
+        got = g.p.peek(0x1000 + half * 2304, len(expected), bank="aux")
+        b.check(name + " : flux AUX integral", got == bytes(expected),
+                "premier ecart a %s; obtenu %s; attendu %s; musique %r" % (
+                    next((i for i, (a, c) in enumerate(zip(got, expected)) if a != c), "aucun"),
+                    got[:40].hex(), bytes(expected[:40]).hex(), g.music()))
+
+    g.goto(275, hab=12, end=60, end0=60)
+    g.p.stable(need=24)
+    stream("GIANT.MB", 0, 0)
+    g.press(" ")
+    g.press(" ")
+    g.press(" ")
+    stream("GIANT.MB", 0, 0)
+    g.press("A")
+    b.eq("le combat du Geant est actif", g.scene(), 12)
+    g.press(" ")  # COMBAT commence au premier assaut, pas a la lecture.
+    g.p.stable(need=24)
+    b.eq("le combat utilise la surcouche", g.music()["half"], 1)
+    stream("BATTLE.MB", 1, 1)
+    stream("GIANT.MB", 0, 0)
+    cursor = g.music()["cursor"]
+    g.press("I")
+    time.sleep(0.1)
+    b.check("l'IRQ continue pendant le sac", g.music()["cursor"] != cursor)
+    g.press("I")
+    for _ in range(40):
+        if g.scene() != 12:
+            break
+        g.press(" ")
+    b.eq("la sortie du combat reste fonctionnelle", g.scene(), 61)
+    stream("GIANT.MB", 0, 0)
+    start, end = g.s["aux_read_cur"], g.s["aux_mirror_end"]
+    b.eq("les instructions miroir restent intactes apres les lectures disque",
+         g.p.peek(start, end - start, bank="aux"), g.p.peek(start, end - start))
+
+
+@scenario("musique_transitions", "Musique aux revisites et a la reprise de sauvegarde")
+def sc_musique_transitions(g, b):
+    # Les pages 364 et 108 n'ont pas de MU : le theme doit venir de la page
+    # d'entree, meme quand V court-circuite son recit et ses effets.
+    for page, proof, target, name in ((350, 350, 112, "EAGLE.MB"),
+                                      (31, 77, 364, "CRYSTAL.MB"),
+                                      (92, 232, 108, "WOLVES.MB")):
+        g.goto(195)
+        g.goto(page, visited=(proof,), land=target)
+        b.eq("revisite %d : musique du lieu" % page, g.music()["cur"], name)
+    g.goto(195)
+    g.press("S")
+    g.press("7")
+    g.press(" ")
+    g.goto(78)
+    g.press("L")
+    g.press("7")
+    b.eq("reprendre au rond-point restaure son theme",
+         g.music()["cur"], "ROUNDABOUT.MB")
 
 
 # ── Le hasard, rendu reproductible par la graine ──────────────────────────
@@ -1497,6 +1901,876 @@ def sc_anglais(g, b):
     b.has("l'aide vient de HELPEN", rows, "KEYS")
 
 
+@scenario("contrats_soins_or", "Contrats du recit : guerison, vente et auberges")
+def sc_contrats_soins_or(g, b):
+    def arrive(page, **state):
+        # Un fondu dure 0,9 s apres le rendu : ne pas injecter restoring
+        # pendant que le chargement precedent va encore le remettre a zero.
+        g.p.stable(need=24)
+        return g.goto(page, **state)
+
+    rows = arrive(56)
+    b.eq("56 refuse la victoire sans Courbensaule", g.choices(rows), ["-", "B"])
+    rows = arrive(56, visited=(280,))
+    b.eq("56 accepte une vraie visite de Courbensaule", g.choices(rows), ["A", "-"])
+    before = g.hero()
+    g.choose("A")
+    b.eq("la visite autorise l'arrivee a la victoire", g.scene(), 158)
+    b.eq("le choix de visite ne consomme ni ne donne de Pierre", g.hero(), before)
+    arrive(193, hab=3, hab0=12, end=4, end0=24, cha=1, cha0=11)
+    h = g.hero()
+    b.eq("193 restaure les trois caracteristiques",
+         (h["hab"], h["end"], h["cha"]), (12, 24, 11))
+    arrive(193, replay=False, hab=3, hab0=12, end=4, end0=24, cha=1, cha0=11)
+    h = g.hero()
+    b.eq("reprendre 193 ne rejoue pas la guerison",
+         (h["hab"], h["end"], h["cha"]), (3, 4, 1))
+    arrive(49, gold=20, objects=("ANNEAU",))
+    b.eq("49 paie les cent pieces promises", g.hero()["gold"], 120)
+    b.eq("49 retire l'anneau vendu", g.hero()["objects"] & 1, 0)
+    arrive(272, cha=8)
+    b.eq("272 retire deux points de CHANCE", g.hero()["cha"], 6)
+    arrive(365, hab=10)
+    b.eq("365 retire un point d'HABILETE", g.hero()["hab"], 9)
+    arrive(228, objects=("GRAINES", "ANNEAU"))
+    b.eq("228 consomme les graines semees et conserve l'anneau", g.hero()["objects"], 1)
+    for page, delta in ((78, 2), (395, -1)):
+        arrive(page, gold=3, end=10, end0=24)
+        b.eq("%d facture une piece" % page, g.hero()["gold"], 2)
+        b.eq("%d applique le repos annonce" % page, g.hero()["end"], 10 + delta)
+        arrive(page, replay=False, gold=2, end=10, end0=24)
+        b.eq("reprendre %d ne facture pas deux fois" % page, g.hero()["gold"], 2)
+
+
+@scenario("contrats_speciaux", "Faiblesse, Pierres rendues et Arbres-Epees brules")
+def sc_contrats_speciaux(g, b):
+    g.goto(141, end=3, end0=24, gold=7, objects=("ANNEAU", "CAPE"),
+           stones={"FEU": 2, "HABILETE": 1}, amulets=("LOUP",))
+    h = g.hero()
+    b.eq("141 rend toutes les Pierres", sum(h["stones"]), 0)
+    b.eq("141 guerit les blessures", h["end"], 24)
+    b.eq("141 conserve les autres biens", (h["gold"], h["objects"], h["amulets"]), (7, 3, 1))
+    for endurance in (20, 19, 2):
+        g.p.stable(need=24)
+        g.goto(285, end=endurance, end0=24)
+        b.eq("285 divise %d par deux" % endurance, g.hero()["end"], endurance // 2)
+    g.p.stable(need=24)
+    g.goto(285, replay=False, end=9, end0=24)
+    b.eq("reprendre 285 ne divise pas deux fois", g.hero()["end"], 9)
+    g.p.stable(need=24)
+    g.goto(75)
+    foe = g.p.peek(g.A("foes"), 2)
+    b.eq("75 combat les arbres affaiblis par le Feu", tuple(foe), (9, 10))
+    b.eq("75 enchaine sur le butin des arbres", struct.unpack("<h", g.p.peek(g.A("win_scene"), 2))[0], 362)
+
+
+@scenario("contrats_missions", "La mission choisie conditionne les rencontres")
+def sc_contrats_missions(g, b):
+    # Colonnes Gayolard, Pompatarte, Stratagus ; lettres conservees du livre.
+    pages = {13: "ACB", 131: "BAC", 159: "ACB", 170: "CBA",
+             286: "ACB", 305: "ABC", 328: "ACB"}
+    for role, name in enumerate(("GAYOLARD", "POMPATARTE", "STRATAGUS")):
+        for page, keys in pages.items():
+            g.p.stable(need=24)
+            rows = g.goto(page, objects=("MISSION_" + name,))
+            b.eq("%d n'autorise que %s" % (page, name),
+                 [k for k in g.choices(rows) if k != "-"], [keys[role]])
+    g.p.stable(need=24)
+    g.goto(17, objects=("ANNEAU", "CAPE", "ANTHERIQUE", "MISSION_STRATAGUS"),
+           stones={"FEU": 1}, amulets=("LOUP",))
+    h = g.hero()
+    b.eq("le vol conserve les faits narratifs", h["objects"], (1 << 11) | (1 << 14))
+    b.eq("le vol retire les biens du sac", (sum(h["stones"]), h["amulets"]), (0, 0))
+    for amulets in (("LOUP",), ("LOUP", "FLEUR")):
+        g.p.stable(need=24)
+        g.goto(266, gold=20, amulets=amulets)
+        b.eq("266 paie le lot de %d amulettes" % len(amulets), g.hero()["gold"], 270)
+        b.eq("266 prend le lot", g.hero()["amulets"], 0)
+
+
+@scenario("contrats_retours", "L'historique decide des retours de clairiere")
+def sc_contrats_retours(g, b):
+    for page, visit, no, yes in ((129,69,181,268),(210,125,143,243),
+                               (342,366,300,197),(343,214,301,199),
+                               (331,392,112,202),(330,55,268,181)):
+        for visited, target in (((),no),((visit,),yes)):
+            for replay in (True,False):
+                g.p.stable(need=24)
+                g.goto(page, visited=visited, land=target, replay=replay)
+                b.eq("%d visites %r entree %r : automatique" % (page,visited,replay),g.scene(),target)
+
+
+@scenario("mission_ancienne", "SCS4 : retrouver la mission apres reconversion",
+          forge=dict(scene=159, title="ANCIENNE MISSION", version=4,
+                     objects=("ANNEAU",), visited=(206, 371)))
+def sc_mission_ancienne(g, b):
+    g.p.wait_for("LANGUE")
+    g.p.keys("F")
+    g.p.wait_for("LE MARAIS AUX SCORPIONS")
+    g.press("L")
+    rows = g.press("9")
+    b.eq("159 est reprise", g.scene(), 159)
+    b.eq("Gayolard succede a Stratagus", g.hero()["objects"], 1 | (1 << 12))
+    b.eq("seul le retour chez Gayolard est permis", g.choices(rows), ["A", "-", "-"])
+
+
+@scenario("potion_naine", "La potion naine attend le prochain combat puis cesse")
+def sc_potion_naine(g, b):
+    g.goto(253, hab=12, end=24, objects=("ANNEAU", "FIOLE"))
+    b.eq("253 boit la fiole et arme le malus", g.hero()["objects"], 1 | (1 << 15))
+    for key, page in (("A", 88), ("A", 121), ("C", 275), ("A", 12)):
+        g.p.stable(need=24)
+        g.press(key)
+        b.eq("le trajet atteint %d" % page, g.scene(), page)
+    b.check("le malus attend encore dans le combat", bool(g.hero()["objects"] & (1 << 15)))
+    for _ in range(40):
+        if g.scene() != 12:
+            break
+        g.press(" ")
+    b.eq("le combat du Geant se termine", g.scene(), 61)
+    b.eq("le malus a cesse", g.hero()["objects"] & (1 << 15), 0)
+    b.eq("l'HABILETE retrouve sa valeur sans gain artificiel", g.hero()["hab"], 12)
+
+
+@scenario("troc_alphonse", "Le troc respecte les biens acceptes, la limite et la reprise")
+def sc_troc_alphonse(g, b):
+    for objects, amulets, left_objects, left_amulets, count in [
+            (["ANNEAU", "CHAINE", "AIMANT", "BIJOU", "CORNE"], ["LOUP"], ["ANNEAU", "CORNE"], ["LOUP"], 3),
+            (["ANNEAU", "CHAINE"], ["LOUP", "FLEUR", "FAUSSE_OISEAU"], ["ANNEAU"], ["FAUSSE_OISEAU"], 3),
+            (["ANNEAU", "CORNE"], [], ["ANNEAU"], [], 1),
+            (["ANNEAU", "CAPE"], [], ["ANNEAU", "CAPE"], [], 0)]:
+        g.p.stable(need=24)
+        g.goto(408, objects=objects, amulets=amulets, stones={"FEU": 2})
+        b.eq("les objets acceptes sont preleves", g.objects(), left_objects)
+        b.eq("les amulettes respectent le plafond global", g.amulets(), left_amulets)
+        for _ in range(count):
+            g.press("A")  # HABILETE, premiere Pierre neutre
+        b.eq("une Pierre neutre par bien", g.stones(), {"FEU": 2, **({"HABILETE": count} if count else {})})
+        before = g.hero()
+        g.press("S"); g.press("1"); g.press(" ")
+        g.press("L"); g.press("1")
+        b.eq("la reprise ne troque pas les biens restants", g.hero(), before)
+        b.eq("la reprise ne relance pas le choix des Pierres", g.p.peek(g.A("choose_n"), 1)[0], 0)
+
+
+@scenario("auberges_solvabilite", "Les auberges a une piece exigent encore de quoi payer")
+def sc_auberges_solvabilite(g, b):
+    g.goto(280, gold=0, end=10, end0=20)
+    b.eq("les trois chambres sont interdites sans or", g.letters(), ["D"])
+    for key in ("A", "B", "C"):
+        g.press(key)
+        b.eq("le choix refuse reste en ville", g.scene(), 280)
+        b.eq("le choix refuse n'accorde pas de repos", g.hero()["end"], 10)
+        g.press(" ")
+    g.press("D")
+    b.eq("sans argent le heros peut repartir", g.scene(), 301)
+    g.goto(280, gold=1, end=10, end0=20)
+    b.eq("une piece autorise les trois auberges", g.letters(), ["A", "B", "C", "D"])
+    g.press("A")
+    b.eq("la premiere chambre est payee", g.hero()["gold"], 0)
+    b.eq("l'Ours Noir empeche le repos", g.hero()["end"], 9)
+    b.eq("changer pour une autre chambre payante exige une autre piece", g.letters(), ["A", "B"])
+    g.press("C")
+    b.eq("la deuxieme chambre gratuite est refusee", g.scene(), 395)
+    g.press(" ")
+    g.goto(280, gold=2, end=10, end0=20)
+    g.press("A"); g.press("C")
+    b.eq("deux pieces permettent le changement d'auberge", g.scene(), 78)
+    b.eq("les deux paiements ont eu lieu", g.hero()["gold"], 0)
+    b.eq("les deux nuits appliquent leurs effets", g.hero()["end"], 11)
+    g.press("I"); g.press("I")
+    b.eq("le retour du sac ne rejoue pas le repos", g.hero()["end"], 11)
+    g.press("S"); g.press("1"); g.press(" ")
+    g.press("L"); g.press("1")
+    b.eq("la reprise ne rejoue pas le paiement", g.hero()["gold"], 0)
+    b.eq("la reprise ne rejoue pas le repos", g.hero()["end"], 11)
+    g.goto(280, gold=1, end=10, end0=20, stones={"FEU": 2}, objects=["ANNEAU"])
+    g.press("C")
+    b.eq("le Cheval Volant est atteint", g.scene(), 289)
+    b.eq("le Cheval Volant facture une piece entiere", g.hero()["gold"], 0)
+    b.eq("la nuit rend deux points", g.hero()["end"], 12)
+    b.eq("le vol retire encore deux Pierres", g.stones(), {})
+    b.eq("l'Anneau reste au doigt", g.objects(), ["ANNEAU"])
+
+
+@scenario("echange_dernieres_pierres", "La potion exige des Pierres encore presentes dans le sac")
+def sc_echange_dernieres_pierres(g, b):
+    g.goto(8, end=5, end0=20)
+    b.eq("sans Pierres, seule la declaration du sac vide est permise", g.letters(), ["B", "C"])
+    g.press("A")
+    b.eq("pas de potion gratuite", g.scene(), 8)
+    b.eq("le choix refuse ne soigne pas", g.hero()["end"], 5)
+    g.goto(8, end=5, end0=20, hab=8, hab0=12, stones={"HABILETE": 1})
+    b.eq("une Pierre permet l'echange", g.letters(), ["A", "C"])
+    g.press("I"); g.press("A"); g.press(" "); g.press("I")
+    b.eq("la derniere Pierre est consommee", g.stones(), {})
+    b.eq("les choix suivent le sac sans changer de page", g.letters(), ["B", "C"])
+    g.press("A")
+    b.eq("l'ancien choix ne donne pas la potion", g.scene(), 8)
+    g.press(" ")  # accuse reception du refus avant d'ouvrir un menu
+    g.p.stable(need=24)
+    b.has("le menu de sauvegarde s'ouvre", g.press("S"), "SAUVER")
+    b.has("la page est sauvegardee", g.press("1"), "Partie sauvee")
+    g.press(" ")
+    b.has("le menu de reprise s'ouvre", g.press("L"), "REPRENDRE")
+    rows = g.press("1")
+    b.eq("la reprise revient a l'echange", g.scene(), 8)
+    b.eq("la reprise conserve la condition du sac vide", g.letters(), ["B", "C"])
+    g.goto(8, end=5, end0=20, stones={"FEU": 255, "GLACE": 255}, objects=["ANNEAU"])
+    b.eq("le total ne deborde pas avec plusieurs grosses piles", g.letters(), ["A", "C"])
+    g.press("A")
+    b.eq("l'echange atteint la fin", g.scene(), 141)
+    b.eq("toutes les Pierres sont remises", g.stones(), {})
+    b.eq("la potion soigne completement", g.hero()["end"], 20)
+    b.eq("les objets sont conserves", g.objects(), ["ANNEAU"])
+
+
+@scenario("lc_integrite", "Le code Language Card reste intact apres les constructeurs")
+def sc_lc_integrite(g, b):
+    # Destructive inspection on this scenario's disposable emulator only.
+    # Stop IRQ, select LC bank 2, copy its code to raw MAIN for the HTTP API.
+    start = g.s["__LC_START__"]
+    size = g.s["__LC_LAST__"] - start
+    source = g.s["__LCIMAGE_START__"]
+    b.check("mliparam est protege dans DATA", g.s.seg["DATA"] <= g.s["mliparam"]
+            and g.s["mliparam"] + 18 <= g.s.seg["INIT"])
+    if start % 256 or not 0 < size <= 3072:
+        raise AssertionError("adapter la sonde LC a cette nouvelle implantation")
+    code = bytearray([0x78, 0x2c, 0x80, 0xc0])
+    for page in range((size + 255) // 256):
+        code.extend([0xa2, 0, 0xbd, 0, (start >> 8)+page, 0x9d, 0, 0x08+page, 0xe8])
+        tail = min(256, size - page*256)
+        if tail < 256:
+            code.extend([0xe0, tail, 0xd0, 0xf5])
+        else:
+            code.extend([0xd0, 0xf7])
+    stop = 0x9000 + len(code)
+    code.extend([0x4c, stop & 255, stop >> 8])
+    g.p.poke(0x9000, code)
+    g.p.rq("/cpu", {"pc": 0x9000, "p": 0x24})
+    deadline = time.time() + 3
+    while g.p.rq("/cpu")["pc"] != stop and time.time() < deadline:
+        time.sleep(.02)
+    b.eq("la copie de controle est terminee", g.p.rq("/cpu")["pc"], stop)
+    with open(os.path.join(ROOT, "SCOSWAMP/SCOSWAMP.BIN"), "rb") as f:
+        f.seek(0)  # fixed LC prefix, staged at __LCIMAGE_START__
+        expected = f.read(size)
+    actual = g.p.peek(0x0800, size)
+    differences = [(hex(start+i), x, y) for i, (x, y) in enumerate(zip(expected, actual)) if x != y]
+    b.check("les %d octets LC correspondent au binaire" % size,
+            len(expected) == size and not differences, repr(differences[:12]))
+
+
+@scenario("patrouilleur_historique", "Le retour au Patrouilleur respecte l'issue precedente")
+def sc_patrouilleur_historique(g, b):
+    for visited, target in [((115,),133),((378,219),234),((378,),306),((219,),234)]:
+        for replay in (True,False):
+            g.p.stable(need=24)
+            g.goto(363, visited=visited, land=target, replay=replay)
+            b.eq("issue automatique %r entree %r" % (visited,replay),g.scene(),target)
+        before=g.hero()
+        g.press("S");g.press("1");g.press(" ");g.press("L");g.press("1")
+        b.eq("reprise conserve la destination",g.scene(),target)
+        b.eq("reprise ne rejoue pas d'effet",g.hero(),before)
+
+
+@scenario("fuite_differee", "La Licorne exige deux assauts resolus avant la fuite")
+def sc_fuite_differee(g, b):
+    g.goto(221, hab=1, hab0=1, end=60, end0=60)
+    before = g.hero()
+    rng = g.p.peek(g.s["_state"], 4)
+    g.press("F")
+    b.eq("F avant engagement ne change pas la page", g.scene(), 221)
+    b.eq("F refuse ne blesse pas", g.hero(), before)
+    b.eq("F refuse ne tire pas de des", g.p.peek(g.s["_state"], 4), rng)
+    g.press(" ")
+    g.press("F")
+    b.eq("le premier jet en attente ne permet pas de fuir", g.scene(), 221)
+    b.eq("le premier coup attend encore", g.hero()["end"], 60)
+    g.press(" ")
+    g.press("F")
+    b.eq("un seul assaut resolu ne suffit pas", g.hero()["end"], 58)
+    g.press("I"); g.press("I")
+    b.eq("le sac conserve le delai et les blessures", g.hero()["end"], 58)
+    g.press(" ")
+    b.eq("deux blessures ont ete appliquees", g.hero()["end"], 56)
+    g.press("F"); g.press(" "); g.press(" ")
+    b.eq("la fuite devient possible apres deux assauts", g.scene(), 348)
+    b.eq("la blessure de fuite est appliquee une seule fois", g.hero()["end"], 54)
+    g.goto(200)
+    g.press("F"); g.press(" "); g.press(" ")
+    b.eq("une autre page ne conserve pas le delai", g.scene(), 390)
+
+
+@scenario("rencontre_ours_recupere", "L'Ours recupere un point, sans double soin apres sauvegarde")
+def sc_ours_recupere(g, b):
+    g.goto(330, land=268)  # etablit la clairiere, les pages de combat la conservent
+    g.p.stable(need=24)
+    g.goto(181, foes=((34, 0, 3),))
+    b.eq("le retour rend exactement un point", g.p.peek(g.s["_seen"] + 3, 1)[0], 4)
+    g.press("S"); g.press("1"); g.press(" ")
+    g.press("L"); g.press("1")
+    b.eq("la sauvegarde revient au retour de l'Ours", g.scene(), 181)
+    b.eq("charger ne rejoue pas MR", g.p.peek(g.s["_seen"] + 3, 1)[0], 4)
+    g.p.stable(need=24)
+    g.press("A")
+    b.eq("la suite ouvre le combat de l'Ours", g.scene(), 200)
+    b.eq("le combattant porte l'endurance recuperee", g.p.peek(g.A("foes") + 1, 1)[0], 4)
+
+
+@scenario("rencontre_patrouilleur_recupere", "Le Patrouilleur recupere toute son endurance")
+def sc_patrouilleur_recupere(g, b):
+    g.goto(363, land=133)
+    g.p.stable(need=24)
+    g.goto(306, foes=((2, 0, 2),))
+    b.eq("le retour rend toute l'endurance", g.p.peek(g.s["_seen"] + 3, 1)[0], 10)
+    g.press("A")
+    b.eq("la suite ouvre le combat", g.scene(), 378)
+    b.eq("le combattant a retrouve son maximum", g.p.peek(g.A("foes") + 1, 1)[0], 10)
+
+
+@scenario("brigands_paiement", "Le Chef exige un bien si le sac en contient")
+def sc_brigands_paiement(g, b):
+    for inventory, available in [
+        ({}, ["A"]),
+        ({"objects": ("ANNEAU", "MISSION_STRATAGUS")}, ["A"]),
+        ({"objects": ("ANNEAU", "CAPE")}, ["B"]),
+        ({"objects": ("ANNEAU",), "amulets": ("LOUP",)}, ["B"]),
+        ({"objects": ("ANNEAU",), "stones": {"HABILETE": 1}}, ["B"]),
+    ]:
+        g.p.stable(need=24)
+        g.goto(128, **inventory)
+        b.eq("le choix correspond aux biens reellement payables", g.letters(), available)
+        before = g.hero()
+        g.press(available[0])
+        b.eq("la consequence correspond au paiement", g.scene(), 180 if available == ["A"] else 407)
+        if available == ["A"]:
+            b.eq("la dispense ne retire aucun bien", g.hero(), before)
+        else:
+            b.eq("le dernier bien est preleve", (sum(g.hero()["stones"]), g.hero()["amulets"], g.hero()["objects"]), (0, 0, 1))
+        paid = g.hero()
+        g.press("S"); g.press("1"); g.press(" ")
+        g.press("L"); g.press("1")
+        b.eq("la reprise ne paie pas deux fois", g.hero(), paid)
+    g.p.stable(need=24)
+    g.goto(128, stones={"HABILETE": 1}, objects=("ANNEAU",))
+    g.press("I"); g.press("A"); g.press(" "); g.press("I")
+    b.eq("consommer la derniere Pierre actualise la condition", g.letters(), ["A"])
+
+
+@scenario("orques_terreur", "La Terreur laisse deux Orques et renoncer reste dans leur clairiere")
+def sc_orques_terreur(g, b):
+    g.goto(309)
+    g.goto(399, stones={})
+    before = g.hero()
+    g.press("C")
+    b.eq("renoncer rejoint les sorties des Orques", g.scene(), 309)
+    b.eq("renoncer ne lance aucun sort et ne blesse pas", g.hero(), before)
+    g.p.stable(need=24)
+    g.goto(399, hab=12, end=60, end0=60, stones={"TERREUR": 1})
+    g.press("A")
+    b.eq("la Terreur ouvre sa variante de combat", g.scene(), 346)
+    b.eq("la Pierre de Terreur est consommee", sum(g.hero()["stones"]), 0)
+    b.eq("deux Orques restent a combattre", g.p.peek(g.A("foe_count"), 1)[0], 2)
+    b.eq("le premier conserve ses caracteristiques", tuple(g.p.peek(g.A("foes"), 3)), (6, 7, 7))
+    b.eq("le deuxieme conserve ses caracteristiques", tuple(g.p.peek(g.A("foes") + 29, 3)), (7, 7, 7))
+    before = (g.hero(), g.p.peek(g.A("foes"), 58))
+    g.press("I"); g.press("I")
+    b.eq("le sac conserve les deux adversaires", (g.hero(), g.p.peek(g.A("foes"), 58)), before)
+    for _ in range(100):
+        if g.scene() != 346:
+            break
+        g.press(" ")
+    b.eq("vaincre les deux Orques ouvre le butin", g.scene(), 135)
+    g.press(" ")  # resoudre le jet d'or
+    before = g.hero()
+    memory = g.p.peek(g.s["_seen"], 160)
+    b.eq("la memoire marque deux adversaires vaincus", memory[2:4], bytes([2, 0]))
+    g.press("S"); g.press("1"); g.press(" ")
+    g.press("L"); g.press("1")
+    b.eq("la reprise ne paie pas une seconde fois le butin", g.hero(), before)
+    b.eq("la reprise conserve la rencontre vaincue", g.p.peek(g.s["_seen"], 160), memory)
+
+
+@scenario("sorts_consommation", "Neuf sorts exigent leur Pierre et ne la consomment qu'une fois")
+def sc_sorts_consommation(g, b):
+    for source, free, choices in (
+        (34, ["D"], (("A", "FLETRISSURE", 237), ("B", "FEU", 291), ("C", "TERREUR", 356))),
+        (374, ["E"], (("B", "TERREUR", 299), ("C", "ILLUSION", 60), ("D", "AMITIE", 160))),
+        (324, ["A", "C"], (("B", "BENEDICTION", 383),)),
+        (258, ["C"], (("A", "TERREUR", 198), ("B", "AMITIE", 127))),
+    ):
+        g.p.stable(need=24)
+        g.goto(source, stones={})
+        b.eq("%03d sans Pierre conserve les choix gratuits" % source, g.letters(), free)
+        for key, stone, destination in choices:
+            g.p.stable(need=24)
+            g.goto(source, stones={stone: 1}, objects=("ANNEAU",))
+            b.eq("une seule Pierre ouvre le bon choix", g.letters(), sorted(free + [key]))
+            g.press(key)
+            b.eq("le sort atteint la consequence annoncee", g.scene(), destination)
+            b.eq("la derniere Pierre est consommee", sum(g.hero()["stones"]), 0)
+            before = g.hero()
+            g.press("I"); g.press("I")
+            g.press("S"); g.press("1"); g.press(" ")
+            g.press("L"); g.press("1")
+            b.eq("sac et reprise ne rejouent pas le sort", g.hero(), before)
+            b.eq("la reprise conserve sa consequence", g.scene(), destination)
+
+
+@scenario("stratagus_pierres", "Les sorts contre Stratagus exigent et consomment une Pierre")
+def sc_stratagus_pierres(g, b):
+    g.goto(256, stones={})
+    b.eq("sans Pierre seule l'abstention est possible", g.letters(), ["E"])
+    for key, stone, page in (("A", "MALEDICTION", 274), ("B", "TERREUR", 365),
+                             ("C", "FEU", 385), ("D", "ILLUSION", 351)):
+        g.p.stable(need=24)
+        g.goto(256, end=24, stones={stone: 2}, objects=("ANNEAU",))
+        b.eq("seul le sort possede est disponible", g.letters(), [key, "E"])
+        g.press(key)
+        if page == 274:
+            g.press(" ")  # jet visible de la Malediction
+        b.eq("le sort atteint son paragraphe", g.scene(), page)
+        b.eq("le sort consomme exactement une Pierre", g.hero()["stones"][STONES.index(stone)], 1)
+        before = g.hero()
+        g.press("I"); g.press("I")
+        b.eq("le sac ne consomme pas une seconde Pierre", g.hero(), before)
+        g.press("S"); g.press("1"); g.press(" ")
+        g.press("L"); g.press("1")
+        b.eq("la reprise conserve le resultat du sort", g.hero(), before)
+        b.eq("la reprise conserve la page", g.scene(), page)
+
+
+@scenario("araignee_retour", "Renoncer au choix magique ne tue pas le Maitre ni ne brule sa clairiere")
+def sc_araignee_retour(g, b):
+    g.goto(144, end=24, stones={})
+    g.press("A")
+    b.eq("le choix magique est ouvert", g.scene(), 74)
+    before = g.hero()
+    g.press("D")
+    b.eq("renoncer retrouve le Maitre vivant", g.scene(), 144)
+    b.eq("renoncer ne provoque aucune brulure", g.hero(), before)
+    g.press("S"); g.press("1"); g.press(" ")
+    g.press("L"); g.press("1")
+    b.eq("la reprise laisse le Maitre vivant", g.scene(), 144)
+    for visited, target in (((144,), 144), ((165,), 144), ((345,), 144), ((113,), 345), ((354,), 345)):
+        g.goto(74, end=24, stones={}, visited=visited)
+        g.press("D")
+        b.eq("seules les issues incendiaires declenchent le detour %s" % (visited,), g.scene(), target)
+        b.eq("seul le vrai incendie blesse", g.hero()["end"], 23 if target == 345 else 24)
+    before = g.hero()
+    g.press("S"); g.press("1"); g.press(" ")
+    g.press("L"); g.press("1")
+    b.eq("la reprise de l'incendie ne blesse pas une seconde fois", g.hero(), before)
+
+
+@scenario("chance_effet_visible", "CE : jet visible, cout unique, caracteristique correcte et mort")
+def sc_chance_effet_visible(g, b):
+    for page, field, loss in ((24,"end",2),(58,"end",1),(73,"end",2),(190,"end",2),(249,"hab",1)):
+        for chance in (0,12):
+            rows=g.goto(page,cha=chance,hab=12,end=24,objects=("ANNEAU",))
+            b.has("%d annonce le test" % page,rows,"Tentez votre Chance")
+            b.check("les choix sont masques pendant le jet",not rows[21].strip() and not rows[22].strip())
+            b.eq("pas de CHANCE depensee avant le jet",g.hero()["cha"],chance)
+            b.eq("pas d'effet avant le jet",g.hero()[field],24 if field=="end" else 12)
+            rows=g.press(" ")
+            b.has("le jet est affiche",rows,"Vous jetez les deux des")
+            b.has("le verdict est affiche",rows,"Malchanceux" if chance==0 else "Chanceux")
+            if page==249 and chance==0:
+                from pathlib import Path
+                folder=Path(ROOT)/"DOCS/VALIDATION-CHANCE-VISIBLE";folder.mkdir(exist_ok=True)
+                (folder/"malchance-habilete.txt").write_text("\n".join(rows)+"\n")
+            b.eq("CHANCE debitee sans debordement",g.hero()["cha"],max(0,chance-1))
+            b.eq("seule la caracteristique prevue est touchee",g.hero()[field],(24 if field=="end" else 12)-(loss if chance==0 else 0))
+            g.press(" ")
+            before=g.hero()
+            g.press("I");g.press("I")
+            b.eq("retour du sac sans nouveau jet",g.hero(),before)
+            g.press("S");g.press("3");g.press(" ");g.press("L");g.press("3")
+            b.eq("reprise sans nouveau jet",g.hero(),before)
+            b.eq("reprise sur la meme page",g.scene(),page)
+    g.goto(190,cha=0,end=1,end0=24)
+    g.press(" ");rows=g.press(" ")
+    b.has("la chute mortelle termine avant les choix",rows,"ENDURANCE est tombee")
+
+
+@scenario("sables_magie", "La traversee magique exige une Pierre adaptee")
+def sc_sables_magie(g, b):
+    g.goto(382,stones=())
+    b.eq("sans Pierre seuls saut et retour sont disponibles",g.letters(),["C","D"])
+    g.press("A");b.eq("le passage glace refuse sans Pierre",g.scene(),382)
+    g.press("B");b.eq("la croissance refuse sans Pierre",g.scene(),382)
+    g.goto(382,stones={"FEU":1})
+    b.eq("une autre Pierre ne convient pas",g.letters(),["C","D"])
+    g.goto(382,stones={"GLACE":2})
+    b.eq("glace disponible seule",g.letters(),["A","C","D"])
+    g.press("A");b.eq("glace traverse",g.scene(),270)
+    b.eq("une Pierre glace consommee",g.stones().get("GLACE",0),1)
+    g.goto(41,visited=(270,),land=382,stones=())
+    b.eq("la glace ne cree pas de passage permanent",g.scene(),382)
+    g.goto(382,stones={"CROISSANCE":2})
+    g.press("B");b.eq("croissance cree le sentier",g.scene(),421)
+    b.eq("une Pierre croissance consommee",g.stones().get("CROISSANCE",0),1)
+    before=g.hero();g.press("I");g.press("I")
+    b.eq("le sac ne consomme pas une autre Pierre",g.hero(),before)
+    g.press("S");g.press("3");g.press(" ");g.press("L");g.press("3")
+    b.eq("le sentier se sauvegarde sur sa page",g.scene(),421)
+    b.eq("reprise sans nouvelle consommation",g.hero(),before)
+    g.press("A");b.eq("sorties apres creation",g.scene(),270)
+    g.goto(41,visited=(270,421),land=270,stones=(),cha=9,end=20)
+    b.eq("revisite traverse directement sans Pierre",g.scene(),270)
+    b.eq("le passage permanent ne teste pas la Chance",g.hero()["cha"],9)
+    b.eq("le passage permanent ne blesse pas",g.hero()["end"],20)
+
+
+
+@scenario("bassin_observe", "Observer le bassin sans boire ne consomme pas le soin")
+def sc_bassin_observe(g, b):
+    g.goto(31,visited=(31,394),land=394,end=20,end0=24)
+    b.eq("observer ne signifie pas avoir bu",g.scene(),394)
+    g.press("B");b.eq("boire reste possible",g.scene(),77)
+    b.eq("eau soigne de trois END",g.hero()["end"],23)
+    before=g.hero();g.press("I");g.press("I")
+    b.eq("le sac ne redonne pas le soin",g.hero(),before)
+    g.press("S");g.press("3");g.press(" ");g.press("L");g.press("3")
+    b.eq("sauvegarde ne redonne pas le soin",g.hero(),before)
+    for proof in (77,364):
+        g.goto(31,visited=(31,394,proof),land=364,end=20,end0=24)
+        b.eq("apres avoir bu les fleches empechent un second soin",g.scene(),364)
+        b.eq("pas de soin sur la revisite",g.hero()["end"],20)
+    g.goto(31,visited=(31,),end=23,end0=24)
+    b.eq("passer sans boire ni observer conserve le bassin",g.scene(),31)
+    g.press("C");b.eq("le soin respecte le plafond",g.hero()["end"],24)
+
+
+
+@scenario("epee_remplacement", "Une epee offerte ne reprend pas le bonus de l'arme perdue")
+def sc_epee_remplacement(g, b):
+    g.goto(407,bonus=2,objects=("ANNEAU","EPEMAGIQUE"))
+    b.check("le paiement retire l'epee", "EPEMAGIQUE" not in g.objects())
+    # Conserver le bonus reel apres la perte dans la fixture de l'acquisition.
+    old_bonus=g.hero()["bonus"]
+    g.goto(241,bonus=old_bonus,objects=("ANNEAU",))
+    b.eq("le cadeau annonce +1, meme apres une epee +2 perdue",g.hero()["bonus"],1)
+    before=g.hero();g.press("I");g.press("I")
+    b.eq("sac conserve le bonus remplace",g.hero(),before)
+    g.press("S");g.press("3");g.press(" ");g.press("L");g.press("3")
+    b.eq("sauvegarde conserve le bonus remplace",g.hero(),before)
+    for page,expected in ((140,2),(340,2),(241,1)):
+        g.goto(page,bonus=1,objects=("ANNEAU","EPEMAGIQUE"))
+        b.eq("une nouvelle epee definit son propre bonus",g.hero()["bonus"],expected)
+
+
+
+@scenario("epees_recompenses", "Les trois epees donnent le bonus annonce, sans cumul au retour du sac")
+def sc_epees_recompenses(g, b):
+    for page, bonus in ((241,1),(140,2),(340,2)):
+        g.goto(page,bonus=0,objects=("ANNEAU",),cha=5,cha0=12)
+        b.check("l'epee est dans le sac", "EPEMAGIQUE" in g.objects())
+        b.eq("bonus conforme au texte",g.hero()["bonus"],bonus)
+        b.eq("seul le cadeau restaure la Chance",g.hero()["cha"],12 if page==241 else 5)
+        before=g.hero();g.press("I");g.press("I")
+        b.eq("retour du sac sans cumul du bonus",g.hero(),before)
+        g.press("S");g.press("3");g.press(" ");g.press("L");g.press("3")
+        b.eq("sauvegarde conserve bonus et Chance",g.hero(),before)
+        b.eq("reprise sur la page de recompense",g.scene(),page)
+
+
+@scenario("baie_laissee", "Une baie laissee sur le buisson reste disponible a la revisite")
+def sc_baie_laissee(g, b):
+    g.goto(92,visited=(92,247),land=247,objects=("ANNEAU",),end=20,end0=24,cha=8,cha0=12)
+    b.eq("buisson vu mais baie non cueillie",g.scene(),247)
+    b.eq("manger ranger ou laisser restent proposes",g.letters(),["A","B","C"])
+    g.press("I");g.press("I");b.eq("sac conserve le buisson disponible",g.scene(),247)
+    g.press("S");g.press("3");g.press(" ");g.press("L");g.press("3")
+    b.eq("sauvegarde conserve le buisson disponible",g.scene(),247)
+    g.press("A");b.eq("la baie peut etre mangee au retour",g.scene(),20)
+    b.eq("la baie soigne de deux END",g.hero()["end"],22)
+    b.eq("la baie rend un point de Chance",g.hero()["cha"],9)
+    before=g.hero();g.press("I");g.press("I")
+    b.eq("aucun second soin apres le sac",g.hero(),before)
+    for proof in (20,232,389,108):
+        g.goto(92,visited=(92,247,proof),land=108,objects=("ANNEAU",))
+        b.eq("baie utilisee ou emportee ne repousse pas",g.scene(),108)
+        b.check("aucune baie recréée", "BAIE" not in g.objects())
+    g.goto(92,visited=(92,247),land=247,objects=("ANNEAU",))
+    g.press("B");b.eq("la baie laissee peut etre rangee",g.scene(),232)
+    b.check("la baie est bien dans le sac", "BAIE" in g.objects())
+
+
+@scenario("sauts_contrats", "CS : trois sauts, deux issues, effets et reprise sans repetition")
+def sc_sauts_contrats(g, b):
+    for page, field, ok, ko in ((91,"end",404,405),(257,"hab",403,311),(377,"end",319,406)):
+        for success in (False,True):
+            values={"hab":12,"end":24,"cha":8,"cha0":12,"hab0":12,"end0":24}
+            values[field]=12 if success else 1
+            g.goto(page,**values)
+            b.eq("avant CS aucune Chance depensee",g.hero()["cha"],8)
+            g.press(" ")
+            b.eq("le jet CS est gratuit",g.hero()["cha"],8)
+            rows=g.press(" ")
+            b.eq("la branche correspond au seuil",g.scene(),ok if success else ko)
+            expected_end=values["end"]-(3 if page==377 and not success else 0)
+            expected_hab=max(0,values["hab"]-(1 if page==91 and not success else 2 if page==257 and not success else 0))
+            b.eq("degats END exacts",g.hero()["end"],max(0,expected_end))
+            b.eq("degats HAB exacts",g.hero()["hab"],expected_hab)
+            b.eq("bonus Chance seulement pour le bond parfait",g.hero()["cha"],10 if page==257 and success else 8)
+            if expected_end<=0:
+                rows=g.press("A")  # accuse lecture de la blessure, jamais le choix C 319
+                b.eq("un heros mort ne rejoint pas 319",g.scene(),406)
+                b.has("les piqures mortelles terminent avant les choix",rows,"ENDURANCE est tombee")
+                continue
+            before=g.hero();g.press("I");g.press("I")
+            b.eq("sac sans repetition des effets",g.hero(),before)
+            g.press("S");g.press("3");g.press(" ");g.press("L");g.press("3")
+            b.eq("reprise sans repetition",g.hero(),before)
+            b.eq("reprise sur la page resultat",g.scene(),ok if success else ko)
+
+
+@scenario("feufollet_parcours", "Le piege revient a sa clairiere, sans fuite de tour ni second jet")
+def sc_feufollet_parcours(g, b):
+    for key, target in (("A",336),("B",121)):
+        g.goto(218,cha=0,hab=12,end=24,objects=("ANNEAU",))
+        g.press("A");b.eq("le leurre mene a 072",g.scene(),72)
+        g.press("B");b.eq("suivre le leurre mene au piege",g.scene(),24)
+        g.press(" ");g.press(" ")
+        b.eq("le piege coute deux END",g.hero()["end"],22)
+        b.eq("deux sorties apres le piege",g.letters(),["A","B"])
+        g.press(key);b.eq("sortie de la clairiere correcte",g.scene(),target)
+        b.eq("aucun second test sur le retour",g.hero()["end"],22)
+    g.goto(24,cha=0,end=1,end0=24)
+    g.press(" ");rows=g.press(" ")
+    b.has("le piege ne laisse pas repartir un heros mort",rows,"ENDURANCE est tombee")
+
+
+@scenario("aigle_butin_unique", "Le nid ne recree pas une chaine deja prise puis perdue")
+def sc_aigle_butin_unique(g, b):
+    g.goto(73, visited=(73,), land=202, cha=10, end=24, objects=("ANNEAU",))
+    b.eq("un nid deja fouille ne redonne pas la chaine", g.objects(), ["ANNEAU"])
+    b.eq("un nid vide ne rejoue pas la Chance", g.hero()["cha"], 10)
+    b.eq("un nid vide ne rejoue pas la chute", g.hero()["end"], 24)
+    g.goto(73, cha=10, end=24, objects=("ANNEAU",))
+    g.press(" "); g.press(" ")
+    b.eq("premiere fouille donne la chaine", g.objects(), ["ANNEAU", "CHAINE"])
+    b.eq("premiere fouille teste la Chance une fois", g.hero()["cha"], 9)
+    before = g.hero()
+    g.press("S"); g.press("4"); g.press(" "); g.press("L"); g.press("4")
+    b.eq("reprendre le nid ne rejoue aucun effet", g.hero(), before)
+    b.eq("reprendre conserve la page fouillee", g.scene(), 73)
+
+
+@scenario("jardins_parcours", "Jardins : combat complet, fuite et retour par les sentiers")
+def sc_jardins_parcours(g, b):
+    for flee in (False, True):
+        g.goto(305, hab=12, end=24, cha=10, objects=("ANNEAU", "MISSION_STRATAGUS"))
+        b.eq("Stratagus seul est propose", g.letters(), ["C"])
+        g.press("C"); g.press("A")
+        b.eq("305->334->379 atteint le combat", g.scene(), 379)
+        b.eq("le sort initial retire trois HAB", g.hero()["hab"], 9)
+        before = g.hero()
+        g.press("I"); g.press("I")
+        b.eq("le sac avant le duel ne rejoue pas le sort", g.hero(), before)
+        if flee:
+            g.press("F")
+            # La fuite affiche sa blessure avant de rendre la page.
+            for _ in range(4):
+                if g.scene() == 133: break
+                g.press(" ")
+            b.eq("la fuite atteint directement 133", g.scene(), 133)
+            b.eq("aucune amulette apres fuite", g.amulets(), [])
+            b.eq("la fuite ne retire pas la CHANCE du meurtre", g.hero()["cha"], 10)
+        else:
+            for _ in range(100):
+                if g.scene() != 379 or not g.hero()["end"]: break
+                g.press(" ")
+            b.eq("le duel termine atteint 251", g.scene(), 251)
+            b.check("le heros survit au duel", g.hero()["end"] > 0)
+            b.eq("la victoire donne FLEUR", g.amulets(), ["FLEUR"])
+            b.eq("la victoire coute trois CHANCE", g.hero()["cha"], 7)
+            before = g.hero()
+            g.press("S"); g.press("5"); g.press(" "); g.press("L"); g.press("5")
+            b.eq("reprendre la victoire ne rejoue pas le butin", g.hero(), before)
+            g.press("A")
+            b.eq("251 sort directement vers 133", g.scene(), 133)
+        before = g.hero()
+        for expected in (234, 238):
+            g.press("A")
+            b.eq("le sentier atteint %d" % expected, g.scene(), expected)
+        b.eq("la revisite deserte conserve le heros", g.hero(), before)
+
+
+@scenario("jardins_contrats", "Jardins : recompense, amulette reprise, brulure et butin uniques")
+def sc_jardins_contrats(g, b):
+    def restore_same(label):
+        before = (g.hero(), g.stones(), g.scene())
+        g.press("S"); g.press("6"); g.press(" ")
+        g.press("L"); g.press("6")
+        b.eq(label + " : reprise sans nouvel effet", (g.hero(), g.stones(), g.scene()), before)
+
+    for page in (283, 396):
+        rows = g.goto(page, stones={}, objects=("ANNEAU", "MISSION_GAYOLARD"))
+        b.has("%d offre une Pierre benefique" % page, rows, "AMITIE")
+        b.check("%d exclut le Feu et la Terreur" % page,
+                not any("FEU" in r or "TERREUR" in r for r in rows[4:16]), repr(rows[4:16]))
+        g.press("A")
+        b.eq("%d donne exactement une Amitie" % page, g.stones(), {"AMITIE": 1})
+        restore_same(str(page))
+
+    g.goto(152, stones={"AMITIE": 1}, objects=("ANNEAU", "MISSION_STRATAGUS"))
+    g.press("D")
+    b.eq("Amitie arrive en 117", g.scene(), 117)
+    b.eq("Amitie coute une Pierre", g.stones(), {})
+    b.eq("117 reprend l'amulette pretee", g.amulets(), [])
+    restore_same("117")
+    g.goto(292, objects=("ANNEAU", "MISSION_STRATAGUS"))
+    b.eq("292 reprend aussi l'amulette pretee", g.amulets(), [])
+
+    g.goto(152, end=24, stones={"FLETRISSURE": 1}, objects=("ANNEAU", "MISSION_STRATAGUS"))
+    g.press("B")
+    b.eq("Fletrissure arrive en 264", g.scene(), 264)
+    b.eq("Fletrissure consommee une fois", g.stones(), {})
+    b.eq("264 inflige deux points de brulure", g.hero()["end"], 22)
+    restore_same("264")
+    g.press("A")
+    b.eq("La brulure conduit au combat 379", g.scene(), 379)
+    b.eq("379 retire trois HABILETE", g.hero()["hab"], 9)
+    b.eq("379 conserve les deux blessures", g.hero()["end"], 22)
+
+    g.goto(251, cha=10, objects=("ANNEAU", "MISSION_STRATAGUS"))
+    b.eq("251 donne l'amulette Fleur", g.amulets(), ["FLEUR"])
+    b.eq("251 retire trois CHANCE", g.hero()["cha"], 7)
+    restore_same("251")
+
+
+@scenario("araignee_feu_amitie", "Le Feu blesse sans butin ; l'Amitie termine l'aventure")
+def sc_araignee_feu_amitie(g, b):
+    g.goto(74, end=24, stones={"FEU": 1})
+    g.press("B")
+    b.eq("le Feu atteint le brasier", g.scene(), 113)
+    b.eq("la Pierre de Feu est consommee", sum(g.hero()["stones"]), 0)
+    b.eq("le brasier blesse de trois points", g.hero()["end"], 21)
+    b.eq("aucune amulette ne survit au brasier", g.hero()["amulets"], 0)
+    before = g.hero()
+    g.press("I"); g.press("I")
+    g.press("S"); g.press("1"); g.press(" ")
+    g.press("L"); g.press("1")
+    b.eq("sac et reprise ne rejouent ni cout ni brulure", g.hero(), before)
+    g.press("A")
+    b.eq("sortir du feu rejoint les deux chemins", g.scene(), 165)
+    g.goto(74, end=24, stones={"AMITIE": 1})
+    rows = g.press("C")
+    b.eq("l'Amitie atteint le piege", g.scene(), 361)
+    b.eq("la Pierre d'Amitie est consommee", sum(g.hero()["stones"]), 0)
+    b.eq("le piege n'offre aucun chemin de sortie", g.choices(), [])
+    b.has("la fin propose de recommencer ou reprendre", rows, "[R] recommencer")
+    g.press("R")
+    b.eq("recommencer quitte le piege", g.scene(), 0)
+
+
+@scenario("araignee_malediction", "Une seule Pierre, un seul de de blessure, puis combat ou mort")
+def sc_araignee_malediction(g, b):
+    g.goto(144)
+    g.goto(74, hab=12, end=60, end0=60, stones={"MALEDICTION": 1})
+    before = g.hero()
+    g.press("S"); g.press("1"); g.press(" ")
+    g.press("L"); g.press("1")
+    b.eq("reprendre le choix ne lance pas la Malediction", g.hero(), before)
+    g.press("A")
+    b.eq("la Pierre ouvre la transformation", g.scene(), 261)
+    b.eq("exactement une Pierre est consommee", sum(g.hero()["stones"]), 0)
+    b.eq("le jet attend encore la touche", g.hero()["end"], 60)
+    g.press(" ")
+    remaining = g.hero()["end"]
+    b.check("la Malediction inflige un de de blessure", 54 <= remaining <= 59)
+    g.press(" ")
+    b.eq("l'Araignee a HAB 8 et END 9", tuple(g.p.peek(g.A("foes"), 3)), (8, 9, 9))
+    b.eq("un seul adversaire", g.p.peek(g.A("foe_count"), 1)[0], 1)
+    before = (g.hero(), g.p.peek(g.s["_state"], 4))
+    g.press("F")
+    b.eq("la fuite interdite ne change aucun etat", (g.hero(), g.p.peek(g.s["_state"], 4)), before)
+    g.press("I"); g.press("I")
+    b.eq("le sac ne rejoue pas le de de Malediction", (g.hero(), g.p.peek(g.s["_state"], 4)), before)
+    for _ in range(100):
+        if g.scene() != 261: break
+        g.press(" ")
+    b.eq("la victoire rejoint l'amulette", g.scene(), 354)
+    b.eq("l'Amulette Araignee est acquise", g.hero()["amulets"], 1 << AMULETS.index("ARAIGNEE"))
+    before = g.hero()
+    g.press("S"); g.press("1"); g.press(" ")
+    g.press("L"); g.press("1")
+    b.eq("reprendre le butin ne rejoue aucun effet", g.hero(), before)
+    g.p.stable(need=24)
+    g.goto(74, end=1, end0=60, stones={"MALEDICTION": 1})
+    g.press("A"); g.press(" ")
+    b.eq("la Malediction peut tuer avant le combat", g.hero()["end"], 0)
+    rows = g.press(" ")
+    b.has("la mort precede tout assaut", rows, "Votre ENDURANCE est tombee a zero")
+    b.eq("aucun coup ne touche l'Araignee avant cette mort", g.p.peek(g.A("foes") + 1, 1)[0], 9)
+
+
+@scenario("geant_feu", "La Pierre de Feu affaiblit le Geant sans autoriser la fuite")
+def sc_geant_feu(g, b):
+    g.goto(275, hab=12, end=60, end0=60, stones={"FEU": 1})
+    g.press("C")
+    b.eq("la magie ouvre le choix des Pierres", g.scene(), 145)
+    b.check("la Pierre de Feu est disponible", "C" in g.letters())
+    before = g.hero()
+    g.press("S"); g.press("1"); g.press(" ")
+    g.press("L"); g.press("1")
+    b.eq("la reprise revient au choix magique", g.scene(), 145)
+    b.eq("la reprise ne consomme aucune Pierre", g.hero(), before)
+    g.press("C")
+    b.eq("la Pierre de Feu ouvre le combat affaibli", g.scene(), 211)
+    b.eq("une seule Pierre est consommee", sum(g.hero()["stones"]), 0)
+    b.eq("le Geant affaibli a HAB 6, END 12 et degats 2",
+         tuple(g.p.peek(g.A("foes"), 5)), (6, 12, 12, 2, 0))
+    b.eq("aucune retraite n'est proposee", g.choices(), [])
+    before = (g.hero(), g.p.peek(g.A("foes"), 29), g.p.peek(g.s["_state"], 4))
+    g.press("I"); g.press("I")
+    b.eq("le sac conserve heros, adversaire et prochain tirage",
+         (g.hero(), g.p.peek(g.A("foes"), 29), g.p.peek(g.s["_state"], 4)), before)
+    for _ in range(50):
+        if g.scene() != 211:
+            break
+        g.press(" ")
+    b.eq("la victoire suit la mort du Geant sans dialogue a mi-combat", g.scene(), 366)
+    g.p.stable(need=24)
+    g.goto(275, stones={})
+    g.press("C")
+    b.eq("sans Pierre de Feu le choix reste inaccessible", g.letters(), ["E"])
+
+
+@scenario("combat_interrompu", "Un combat interrompu reprend apres sauvegarde")
+def sc_combat_interrompu(g, b):
+    # Enter through the clearing: encounters are keyed by location, and a
+    # direct injection at 012 leaves map_here unset in a fresh game.
+    g.goto(275, hab=12, end=60, end0=60)
+    g.press("A")
+    for _ in range(40):
+        if g.scene() != 12:
+            break
+        g.press(" ")
+    b.eq("le Geant interrompt le combat a mi-ENDURANCE", g.scene(), 61)
+    if g.scene() != 61:
+        return
+    before = g.hero()
+    g.p.stable(need=24)
+    g.press("S"); g.press("1"); g.press(" ")
+    g.press("L"); g.press("1")
+    b.eq("la sauvegarde reprend au dialogue", g.scene(), 61)
+    b.eq("elle conserve le heros blesse", g.hero(), before)
+    g.p.stable(need=24)
+    g.press("B")
+    b.eq("continuer lance vraiment un nouveau combat", g.scene(), 420)
+    foe = g.p.peek(g.A("foes"), 5)
+    b.eq("le Geant conserve ses blessures et ses coups puissants", tuple(foe), (9, 6, 12, 4, 0))
+    for _ in range(40):
+        if g.scene() != 420:
+            break
+        g.press(" ")
+    b.eq("seule la mort du Geant ouvre la victoire", g.scene(), 366)
+
+
 # ── La carte du Marais ────────────────────────────────────────────────────
 
 @scenario("carte", "[M] la carte : ligne de lieu, brouillard, et l'Anneau")
@@ -1521,7 +2795,8 @@ def sc_carte(g, b):
     rows = g.press("M")
     b.has("la carte s'ouvre", rows, "CARTE DU MARAIS")
     b.has("elle compte les clairieres vues", rows, "1 clairieres sur 35")
-    b.has("la clairiere courante est marquee par une etoile", rows, "*")
+    b.eq("la grille contient une clairiere (*), hors legende",
+         sum(row[:36].count("(*)") for row in rows[2:19]), 1)
     b.has("le panneau nomme le lieu", rows, "Rond-point")
     b.has("la legende est la", rows, "vous etes ici")
     b.has("et la ligne des touches", rows, "M ou ESC")
@@ -1536,6 +2811,8 @@ def sc_carte(g, b):
     rows = g.press("M")
     b.has("118 et 303 sont la meme clairiere, comptee une fois",
           rows, "2 clairieres sur 35")
+    b.eq("chaque clairiere vue a ses parentheses",
+         sum(row[:36].count("(*)") for row in rows[2:19]), 2)
     g.press("M")
 
     # « Les boussoles elles-memes en perdent le nord » : sans l'Anneau, la
@@ -1547,6 +2824,48 @@ def sc_carte(g, b):
     g.press(" ")
 
 
+@scenario("carte_effets", "Fermer la carte conserve la page, ses effets et le mode video")
+def sc_carte_effets(g, b):
+    g.goto(155, cha=8, objects=("ANNEAU",))
+    before = g.hero()
+    g.press("M")
+    g.press("M")
+    b.eq("la benediction ne se rejoue pas", g.hero(), before)
+
+    rows = g.goto(350, objects=("ANNEAU",))
+    choices = g.choices(rows)
+    g.press("M")
+    rows = g.press("M")
+    b.eq("la premiere visite garde ses choix", g.choices(rows), choices)
+    b.eq("ouvrir la carte ne declenche pas V",
+         struct.unpack("<h", g.p.peek(g.A("revisit"), 2))[0], -1)
+
+    g.goto(58, objects=("ANNEAU",))
+    g.press(" ")
+    g.press("M")
+    g.press("M")
+    b.eq("le retour conserve le mode mixte",
+         g.p.peek(g.A("video_mode"), 1)[0], 2)
+
+
+@scenario("langue_sauvee", "Une sauvegarde anglaise recharge aussi les catalogues",
+          forge=dict(scene=195, title="ENGLISH SAVE", lang="E",
+                     objects=("ANNEAU",)))
+def sc_langue_sauvee(g, b):
+    g.boot("F")
+    g.press("L")
+    rows = g.press("9")
+    b.eq("la langue de la sauvegarde est reprise",
+         g.p.peek(g.A("language"), 2), b"EN")
+    b.has("la page est anglaise", rows, "The Wide Roundabout")
+    rows = g.press("I")
+    b.has("le catalogue du sac suit la sauvegarde", rows, "BACKPACK")
+    g.press("I")
+    rows = g.press("M")
+    b.has("le catalogue de la carte suit la sauvegarde", rows, "MAP OF THE SWAMP")
+    g.press("M")
+
+
 # ── L'inventaire des illustrations ────────────────────────────────────────
 
 @scenario("images", "Chaque page du corpus a son illustration sur le disque")
@@ -1555,7 +2874,7 @@ def sc_images(g, b):
     # a entre les mains. Une page sans image n'est pas fatale -- le moteur
     # affiche alors du texte seul -- mais c'est une planche oubliee.
     manquantes = []
-    img = os.path.join(ROOT, "SCOSWAMP", "IMG")
+    img = os.path.join(ROOT, "SCOSWAMP", "DHGR")
     txt = os.path.join(ROOT, "SCOSWAMP", "TEXTFR")
     for d in sorted(os.listdir(txt)):
         if not os.path.isdir(os.path.join(txt, d)): continue     # .DS_Store et autres
@@ -1635,7 +2954,7 @@ def run_one(spec, args, sym, workdir):
     hdv = os.path.join(workdir, "SCOSWAMP-%s.hdv" % spec["name"])
     shutil.copyfile(args.hdv, hdv)
     if spec["forge"]:
-        blob = forge_save.build(**spec["forge"])
+        blob = spec["forge"]() if callable(spec["forge"]) else forge_save.build(**spec["forge"])
         install_save(hdv, blob, slot=9)
     pom = Pom2(hdv, port=args.port, speed=args.speed, pom2=args.pom2)
     t0 = time.time()
@@ -1690,7 +3009,7 @@ def main():
         print("Image absente : %s\n  make -C SCOSWAMP/SRC hdv" % args.hdv)
         return 2
     if not os.path.exists(args.pom2):
-        print("Emulateur absent : %s" % args.pom2)
+        print("Emulateur absent : %s\n  sh SCOSWAMP.MORE/TOOLS/build_pom2_playtest.sh" % args.pom2)
         return 2
 
     try:
@@ -1705,7 +3024,7 @@ def main():
           % (sym["_state"], sym["_visited"], sym["_seen"]))
     print("  music    _music_buf $%04X   mb_slot $%04X"
           % (sym["_music_buf"], sym.sym.get("mb_slot",
-                                            sym["_music_buf"] + 3584)))
+                                            sym["_music_buf"] + 256)))
     print("")
 
     todo = [s for s in SCENARIOS if not args.only or s["name"] in args.only]
