@@ -1,0 +1,24 @@
+/SCOSWAMP                              |/SCOSWAMP/DHGR/N000                     
+Name*            Type  Aux     Size    |Name*            Type  Aux     Size     
+..               <UP>                  |..               <UP>                   
+DHGR             <DIR>              1  |B012.RLE         BIN $0000    12555     
+DIAPO            <DIR>              1  |B026.RLE         BIN $0000    11912     
+JSON             <DIR>              1  |B028.RLE         BIN $0000    12464     
+MUSIC            <DIR>              4  |N000.RLE         BIN $0000    10903     
+SAVE             <DIR>              1  |N001.RLE         BIN $0000    10417     
+TEXTEN           <DIR>              1  |N002.RLE         BIN $0000    11396     
+TEXTFR           <DIR>              1  |N003.RLE         BIN $0000    10892     
+TOTAL            <DIR>              1  |N004.RLE         BIN $0000    12423     
+MAP              BIN $0000     1842    |N005.RLE         BIN $0000    12207     
+PRODOS           SYS $0000    17128    |N006.RLE         BIN $0000     9031     
+SCOSWAMP         BIN $4000    32797    |N007.RLE         BIN $0000    12163     
+SCOSWAMP.SYSTEM  SYS $0000     4437    |N008.RLE         BIN $0000    12072     
+TITLE            TXT $0000      684    |N009.RLE         BIN $0000    11575     
+                                       |N010.RLE         BIN $0000    13694     
+                                       |N011.RLE         BIN $0000    11299     
+                                       |N012.RLE         BIN $0000    10075     
+                                       |N013.RLE         BIN $0000    11289     
+__ TOTAL _____________________ 1326 of 14594 blocks free _______________________
+Parent directory                                                                
+                                                                                
+TAB panel RET open SPC tag C copy V move R ren D del K mkdir S sort ? help Q    

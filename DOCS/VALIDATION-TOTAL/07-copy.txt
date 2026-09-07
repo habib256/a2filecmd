@@ -1,0 +1,24 @@
+/SCOSWAMP                              |/SCOSWAMP/DHGR/BANC                     
+Name*            Type  Aux     Size    |Name*            Type  Aux     Size     
+..               <UP>                  |..               <UP>                   
+DHGR             <DIR>              1  |TITLE            TXT $0000      684     
+DIAPO            <DIR>              1  |                                        
+JSON             <DIR>              1  |                                        
+MUSIC            <DIR>              4  |                                        
+SAVE             <DIR>              1  |                                        
+TEXTEN           <DIR>              1  |                                        
+TEXTFR           <DIR>              1  |                                        
+TOTAL            <DIR>              1  |                                        
+MAP              BIN $0000     1842    |                                        
+PRODOS           SYS $0000    17128    |                                        
+SCOSWAMP         BIN $4000    32797    |                                        
+SCOSWAMP.SYSTEM  SYS $0000     4437    |                                        
+TITLE            TXT $0000      684    |                                        
+                                       |                                        
+                                       |                                        
+                                       |                                        
+                                       |                                        
+__ TOTAL _____________________ 1322 of 14594 blocks free _______________________
+TITLE  type $04  aux $0000  3 blocks  684 bytes  00/00/00                       
+1 file copied.                                                                  
+TAB panel RET open SPC tag C copy V move R ren D del K mkdir S sort ? help Q    

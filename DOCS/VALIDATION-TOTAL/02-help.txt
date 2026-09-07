@@ -1,0 +1,24 @@
+                              T O T A L  -  keys                                
+                                                                                
+  Up / Down        move        < > or - +   page        [ ]  first / last       
+  TAB              other panel =            same directory in the other panel   
+  RETURN / Right   open : directory, .RLE image, TXT text, SYS program, else hex
+  ESC / Left       parent directory        /   list of volumes                  
+  SPACE            tag / untag the file and move down (* after the name)        
+                                                                                
+  C  copy to the other panel      V  move (copy, then delete the original)      
+  R  rename                       D  delete (a directory with its contents)     
+  K  make a directory             S  sort by name, size or type                 
+  T  view as text                 H  view as hexadecimal                        
+  X  run a SYS or BIN program     Q  quit to ProDOS (Bitsy Bye)                 
+                                                                                
+  C, V and D act on every tagged file of the panel, else on the cursor.         
+  Directories are copied whole; copies keep type and auxtype, never overwrite.  
+  In an image: Left / Right show the previous / next image of the folder.       
+  In a text or hex view: SPACE next page, B previous page, ESC back.            
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+Press any key to return to the panels                                           

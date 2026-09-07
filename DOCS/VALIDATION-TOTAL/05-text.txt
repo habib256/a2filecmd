@@ -1,0 +1,24 @@
+ck                                                                              
+          ====================================================                  
+                     SCORPIONS SWAMP                                            
+                          LE MARAIS AUX SCORPIONS                               
+          ====================================================                  
+                                                                                
+           Un livre dont vous etes le heros                                     
+                               A Fighting Fantasy Gamebook                      
+                                                                                
+               (1985) by Steve JACKSON & Ian LIVINGSTONE                        
+                                                                                
+                    SELECT YOUR LANGUAGE / LANGUE                               
+                                                                                
+                         [F] - Francais                                         
+                                                                                
+                         [E] - English                                          
+                                                                                
+                                                                                
+               2025 Apple II Port by : Arnaud VERHILLE                          
+                                  (gist974@gmail.com)                           
+                                                                                
+                                                                                
+                                                                                
+/SCOSWAMP/TITLE                          page 1       SPACE next  B prev  ESC b 
