@@ -1,7 +1,7 @@
 /SCOSWAMP                              |/SCOSWAMP/DHGR/BANC                     
 Name*            Type  Aux     Size    |Name*            Type  Aux     Size     
 ..               <UP>                  |..               <UP>                   
-DHGR             <DIR>              1  |TITLE            TXT $0000      824     
+DHGR             <DIR>              1  |TITLE            TXT $0000      892     
 DIAPO            <DIR>              1  |                                        
 JSON             <DIR>              1  |                                        
 MUSIC            <DIR>              4  |                                        
@@ -13,12 +13,12 @@ MAP              BIN $0000     1842    |
 PRODOS           SYS $0000    17128    |                                        
 SCOSWAMP         BIN $4000    32960    |                                        
 SCOSWAMP.SYSTEM  SYS $0000     4437    |                                        
-TITLE            TXT $0000      824    |                                        
+TITLE            TXT $0000      892    |                                        
                                        |                                        
                                        |                                        
                                        |                                        
                                        |                                        
-__ TOTAL 1.0 _________________ 1323 of 14612 blocks free _______________________
-TITLE  type $04  aux $0000  3 blocks  824 bytes  00/00/00                       
+__ TOTAL 1.0 _________________ 1325 of 14639 blocks free _______________________
+TITLE  type $04  aux $0000  3 blocks  892 bytes  00/00/00                       
 1 file copied.                                                                  
 TABPanel RETOpen SPCTag  C Copy  V Move  R Ren  D Del  K Mkdir  S Sort  ? Help  

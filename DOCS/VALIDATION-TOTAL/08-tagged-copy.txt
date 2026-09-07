@@ -3,7 +3,7 @@ Name*            Type  Aux     Size    |Name*            Type  Aux     Size
 ..               <UP>                  |..               <UP>                   
 B012.RLE         BIN $0000    12555    |B012.RLE         BIN $0000    12555     
 B026.RLE         BIN $0000    11912    |B026.RLE         BIN $0000    11912     
-B028.RLE         BIN $0000    12464    |TITLE            TXT $0000      824     
+B028.RLE         BIN $0000    12464    |TITLE            TXT $0000      892     
 N000.RLE         BIN $0000    10903    |                                        
 N001.RLE         BIN $0000    10417    |                                        
 N002.RLE         BIN $0000    11396    |                                        
@@ -18,7 +18,7 @@ N010.RLE         BIN $0000    13694    |
 N011.RLE         BIN $0000    11299    |                                        
 N012.RLE         BIN $0000    10075    |                                        
 N013.RLE         BIN $0000    11289    |                                        
-__ TOTAL 1.0 _________________ 1272 of 14612 blocks free _______________________
+__ TOTAL 1.0 _________________ 1274 of 14639 blocks free _______________________
 B028.RLE  type $06  aux $0000  26 blocks  12464 bytes  00/00/00                 
 2 files copied.                                                                 
 TABPanel RETOpen SPCTag  C Copy  V Move  R Ren  D Del  K Mkdir  S Sort  ? Help  

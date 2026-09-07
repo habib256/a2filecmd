@@ -30,6 +30,7 @@
 /* Resident bytes live in AUX $1000-$1DFF; only this staging page is MAIN. */
 #define MUSIC_STAGE 256
 extern unsigned char music_buf[MUSIC_STAGE];
+extern unsigned char music_active;  /* 1 tant qu'un flux joue (ou est en pause) */
 void __fastcall__ music_store(unsigned int offset, unsigned int count);
 void __fastcall__ music_set_loop(unsigned char loop);
 

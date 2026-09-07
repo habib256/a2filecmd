@@ -70,6 +70,8 @@ _music_buf:     .res 256         ; staging disque, flux residents en AUX
 AUX_MUSIC = $1000
 mb_slot:        .res 1
 playing:        .res 1
+_music_active   = playing       ; lu par TOTAL : 0 quand le flux est fini
+        .export _music_active
 paused:         .res 1
 half:           .res 1          ; la moitie selectionnee, 0 ou 1
 delay:          .res 1

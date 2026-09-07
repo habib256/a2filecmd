@@ -3,7 +3,9 @@
 Un gestionnaire de fichiers ProDOS à deux panneaux, dans l'esprit de Total
 Commander, pour l'Apple IIe 128 Ko ; son nom complet est **Apple Total
 Commander 1.0** (le numéro vit dans `TOTAL_VERSION` du Makefile, repris par
-le lanceur, la ligne de statut et l'aide). Trois façons de le lancer : la touche **T** de l'écran-titre de
+le lanceur, la ligne de statut et l'aide). C'est un logiciel libre sous
+licence GNU GPL v3, d'Arnaud Verhille, comme le reste du dépôt ; le lanceur
+et l'aide le rappellent. Trois façons de le lancer : la touche **T** de l'écran-titre de
 SCOSWAMP (la ligne « Utilitaires », en bas, propose aussi **D** pour DIAPO) ;
 depuis Bitsy Bye, le dossier **TOTAL** puis **TOTAL.SYSTEM** et **Entrée** ;
 ou la disquette dédiée décrite plus bas.
@@ -57,6 +59,7 @@ avec le chemin et la page à gauche.
 | **E** | éditer le fichier sélectionné comme du texte ; sur un dossier ou `..`, créer un fichier texte neuf dans le dossier courant |
 | **I** | afficher le fichier sélectionné comme une image, quel que soit son nom : HGR ou DHGR, brut ou compressé RLE |
 | **P** | mettre en pause ou reprendre la musique Mockingboard ; Entrée sur un fichier `.MB` la lance |
+| **F** | ouvrir le formateur, `TOTAL/FORMAT.SYS`, qui revient à TOTAL en sortant |
 | **Q** | quitter vers ProDOS après confirmation : Bitsy Bye reprend |
 
 Dans une image, **Gauche** et **Droite** passent à l'image précédente ou
@@ -89,13 +92,46 @@ taille d'une page, ou nom en `.RLE`). Un banc à part,
 `validate_images.py`, monte un volume avec les quatre formats et compare la
 page graphique octet à octet : 12 contrôles.
 
+## Formater un disque
+
+`F` (ou `TOTAL/FORMAT.SYS` depuis Bitsy Bye) lance le formateur, un
+programme à part qui revient à TOTAL en sortant. Il liste les lecteurs que
+ProDOS connaît, avec slot, lecteur, type (Disk II 5,25 pouces, SmartPort,
+/RAM, périphérique de bloc), volume actuel s'il en a un et taille en blocs.
+Le disque d'où tourne le programme est marqué IN USE et refusé. Trois
+étapes : choisir un lecteur par son numéro, nommer le volume (BLANK par
+défaut), puis lire l'avertissement, qui nomme le lecteur, son volume actuel
+et sa taille, et taper le mot ERASE en capitales suivi d'Entrée. Rien n'est
+écrit avant ce mot ; Échap annule à chaque étape.
+
+Une disquette Disk II est formatée physiquement, piste par piste avec la
+progression à l'écran : c'est le ProDOS Hyper-FORMAT de Jerry Hewett (1985,
+domaine public) et Gary Desrochers (1989) tel qu'ADTPro l'a repris,
+découpé en trois appels pour afficher l'avancement (`format_diskii.s`). Le
+GAP1 de tête est allongé de 512 octets de synchro pour qu'une piste écrite
+recouvre un tour complet, quel que soit le lecteur ou l'émulateur. Un
+SmartPort qui le permet reçoit l'ordre de formatage bas niveau, le /RAM
+celui de son pilote, un disque dur rien. Puis, pour tous, les structures
+ProDOS sont écrites par WRITE_BLOCK (`format.c`) : l'amorce d'Hyper-FORMAT
+au bloc 0, le catalogue racine aux blocs 2 à 5 avec la date de l'horloge,
+la table d'allocation à partir du bloc 6. L'amorce et l'en-tête sont relus
+et comparés. Le banc `validate_format.py` formate une disquette vierge dans
+le Disk II émulé et le /RAM, vérifie le refus du disque en usage et d'un
+mot inexact, le retour à TOTAL, la création d'un dossier sur le volume neuf
+et, l'émulateur arrêté, l'image `.dsk` elle-même : 17 contrôles.
+
 ## La musique Mockingboard
 
 Entrée sur un fichier `.MB` (flux MB1, 2 304 octets au plus) le monte en
-mémoire auxiliaire par le lecteur six voix du jeu et le joue en boucle, en
+mémoire auxiliaire par le lecteur six voix du jeu et le joue une fois, en
 interruption : la navigation, les visionneuses et l'éditeur continuent
-pendant la musique. P la met en pause et la reprend, un autre `.MB` la
-remplace, Q et X la coupent. La carte est cherchée dans les slots 1 à 7 à la
+pendant la musique, et les lectures disque ne l'arrêtent pas (vérifié dans
+l'émulateur : le curseur du flux avance pendant la lecture des dossiers et
+le chargement d'une image). Sur une disquette 5,25 pouces, le pilote Disk II
+de ProDOS coupe les interruptions pendant chaque lecture de bloc : le lecteur
+se fige le temps de la lecture, puis reprend ; TOTAL n'y peut rien. P la met
+en pause et la reprend, un autre `.MB` la remplace, Q et X la coupent ; une
+fois le morceau fini, P le dit. La carte est cherchée dans les slots 1 à 7 à la
 première demande ; sans carte, TOTAL le dit.
 
 ## L'éditeur de texte
@@ -132,6 +168,7 @@ chargement. Les lignes plus longues que l'écran ne sont pas repliées.
 | `TOTAL/TOTAL.SYSTEM` | Programme SYS sélectionnable dans Bitsy Bye (`loader.c`, comme DIAPO) |
 | `TOTAL/TOTAL.CODE` | Le gestionnaire lui-même (`SCOSWAMP/SRC/total.c`, plus `total_mli.s` pour GET_FILE_INFO et SET_FILE_INFO : espace libre, type, auxtype, verrou) |
 | `TOTAL/TOTAL.CFG` | Écrit par TOTAL en quittant : les deux dossiers, le tri et le panneau actif, trois lignes de texte |
+| `TOTAL/FORMAT.SYS` | Le formateur (`format.c`, `format_diskii.s`, `format_mli.s`). Pas de suffixe .SYSTEM : ProDOS amorce le premier fichier .SYSTEM du catalogue, et F passe avant S |
 | `TOTAL/TOTAL.HELP` | Le texte de la page d'aide (`SCOSWAMP/TOTAL/TOTAL.HELP.TXT`), une ligne par élément : `x,y,TOUCHE,libellé`, `x,y,=TITRE` pour une section, `x,y,-texte` pour du texte en clair. Il passe par la page graphique, rien de l'aide ne reste en mémoire |
 
 Les noms tiennent dans les quinze caractères de ProDOS.
@@ -173,7 +210,10 @@ Les visionneuses, les saisies et le fichier de préférences vivent dans la
 carte langage, `$D400-$DF56` en banque 2, copiés par `crt0.s` comme pour le
 jeu ; avant de lancer un programme, TOTAL remet la ROM en lecture. La pile C
 fait 512 octets ; le lecteur Mockingboard (1,5 Ko) a pris presque tout le
-reste, il demeure environ 180 octets libres. TOTAL n'utilise plus ni
+reste, il ne demeure que quelques octets libres. Les programmes lancés par
+X et F le sont par un talon recopié en page `$0300` (`chain.s`), qui lit le
+fichier entier à son adresse et y saute : aucune limite de taille, et
+FORMAT.SYS revient à TOTAL par le même talon. TOTAL n'utilise plus ni
 `opendir` ni `malloc` : les dossiers sont lus comme des fichiers, bloc par
 bloc, dans le tampon de copie, ce qui est aussi plus rapide. Pour loger
 l'éditeur et le visionneur, il a aussi rendu `hgr_loader.s` (le décodeur C

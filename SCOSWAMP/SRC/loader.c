@@ -36,10 +36,12 @@ int main(void)
      * ProDOS, la date si une horloge est la (bit 0 de MACHID, $BF98 ; ProDOS
      * tient alors $BF90-$BF93 a jour), puis le chargement. */
     {
+        static const char* const months[] = { "January", "February", "March", "April", "May", "June",
+            "July", "August", "September", "October", "November", "December" };
         unsigned char machid = *(unsigned char*)0xBF98;
         unsigned int date = *(unsigned int*)0xBF90;
         unsigned char minute = *(unsigned char*)0xBF92, hour = *(unsigned char*)0xBF93;
-        unsigned char year = date >> 9;
+        unsigned char year = date >> 9, month = (date >> 5) & 15, day = date & 31;
         gotoxy(26, 2);
         revers(1);
         cputs("  APPLE TOTAL COMMANDER " TOTAL_VERSION "  ");
@@ -48,9 +50,13 @@ int main(void)
         cputs("A two-panel file manager for the Apple IIe with 128 KB.");
         gotoxy(14, 5);
         cputs("It runs under ProDOS 8 only, launched from Bitsy Bye or at boot.");
+        gotoxy(14, 6);
+        cputs("Free software under the GNU GPL v3, by Arnaud VERHILLE.");
         gotoxy(14, 8);
-        if (machid & 1)
-            cprintf("Date: %02u/%02u/%u  %02u:%02u", date & 31, (date >> 5) & 15,
+        /* ProDOS : annee sur 7 bits (0-39 = 2000-2039), mois 1-12, jour 1-31,
+         * heure 0-23 -- deja en 24 heures. Une date hors bornes vaut absence. */
+        if ((machid & 1) && month >= 1 && month <= 12 && day >= 1 && day <= 31 && hour < 24 && minute < 60)
+            cprintf("%u %s %u, %02u:%02u", day, months[month - 1],
                     year < 40 ? 2000 + year : 1900 + year, hour, minute);
         else
             cputs("No clock: new files will carry no date.");

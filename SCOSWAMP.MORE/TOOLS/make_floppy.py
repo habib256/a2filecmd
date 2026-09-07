@@ -26,12 +26,20 @@ def stretch(volume):
     total = int.from_bytes(v[2 * 512 + 4 + 0x25:2 * 512 + 4 + 0x27], 'little')
     bitmap = int.from_bytes(v[2 * 512 + 4 + 0x23:2 * 512 + 4 + 0x25], 'little')
     if total > BLOCKS:
-        raise SystemExit(f'{total} blocs : le contenu ne tient pas sur une disquette de {BLOCKS}')
+        # Le constructeur ajoute une marge de 64 blocs au moins ; les fichiers,
+        # eux, sont alloues lineairement depuis le bloc 7. Si le dernier bloc
+        # occupe tient dans la disquette, on la coupe a 280 blocs.
+        used = [b for b in range(total) if not (v[bitmap * 512 + b // 8] >> (7 - b % 8)) & 1]
+        if max(used) >= BLOCKS:
+            raise SystemExit(f'{total} blocs : le contenu ne tient pas sur une disquette de {BLOCKS}')
+        del v[SIZE:]
     if len(v) < SIZE:
         v.extend(bytes(SIZE - len(v)))
     v[2 * 512 + 4 + 0x25:2 * 512 + 4 + 0x27] = BLOCKS.to_bytes(2, 'little')
-    for b in range(total, BLOCKS):
+    for b in range(min(total, BLOCKS), BLOCKS):
         v[bitmap * 512 + b // 8] |= 0x80 >> (b % 8)
+    for b in range(BLOCKS, 4096):
+        v[bitmap * 512 + b // 8] &= ~(0x80 >> (b % 8)) & 0xFF
     return bytes(v[:SIZE]), total
 
 
@@ -52,7 +60,9 @@ def main():
     po, used = stretch(Path(sys.argv[1]).read_bytes())
     Path(sys.argv[2]).write_bytes(po)
     Path(sys.argv[3]).write_bytes(to_dsk(po))
-    print(f'disquette : {BLOCKS} blocs, {used} occupes par le contenu, {BLOCKS - used} libres')
+    bitmap = int.from_bytes(po[2 * 512 + 4 + 0x23:2 * 512 + 4 + 0x25], 'little')
+    free = sum(bin(x).count('1') for x in po[bitmap * 512:(bitmap + 1) * 512])
+    print(f'disquette : {BLOCKS} blocs, {BLOCKS - free} occupes, {free} libres')
 
 
 if __name__ == '__main__':
