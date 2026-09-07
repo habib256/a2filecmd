@@ -187,7 +187,7 @@ des émulateurs), une disquette amorçable de 280 blocs, volume `/APPLE.TOTAL` :
 | `TOTAL/TOTAL.CODE`, `TOTAL/TOTAL.HELP` | le même binaire et la même aide que sur le volume du jeu ; `TOTAL.CFG` sera écrit à côté |
 | `TEST/` | de quoi essayer : `HGR.RAW` (page HGR brute de SPACETRIP), `HGR.RLE` (la même en HGRR), `DHGR.RLE` (une image du jeu en DHRR), `WELCOME.MB` (une musique) et `README`. Une DHGR brute de 16 Ko aurait pris 33 des blocs restants |
 
-Il reste 88 blocs libres. Au démarrage, le panneau gauche montre la racine
+Il reste 60 blocs libres. Au démarrage, le panneau gauche montre la racine
 de la disquette et le panneau droit la liste des volumes, faute de dossier
 `DHGR`. `build_prodos_volume` taille ses volumes au contenu ;
 `make_floppy.py` porte ensuite le compte de blocs à 280, libère les blocs
@@ -209,10 +209,12 @@ La RAM basse `$1000-$1FFF` reçoit toute la BSS de `total.c` (panneaux,
 chemins, copie, débuts de page du texte), mise à zéro par `main`. La réserve
 des parcours récursifs emprunte la table d'entrées du panneau inactif.
 Les visionneuses, les saisies et le fichier de préférences vivent dans la
-carte langage, `$D400-$DFFD` en banque 2 (2 octets libres : `check_lc_layout.py` veille), copiés par `crt0.s` comme pour le
+carte langage, `$D400-$DFFF` en banque 2 (une vingtaine d'octets libres : `check_lc_layout.py` veille), copiés par `crt0.s` comme pour le
 jeu ; avant de lancer un programme, TOTAL remet la ROM en lecture. La pile C
 fait 512 octets ; le lecteur Mockingboard (1,5 Ko) a pris presque tout le
-reste, il ne demeure que quelques centaines d'octets libres en RAM principale. Les programmes lancés par
+reste, il ne demeure qu'une vingtaine d'octets libres en RAM principale : chaque
+correction se paie par un message raccourci ou une fonction déplacée d'une banque
+à l'autre. Les programmes lancés par
 X et F le sont par un talon recopié en page `$0300` (`chain.s`), qui lit le
 fichier entier à son adresse et y saute : aucune limite de taille, et
 FORMAT.SYS revient à TOTAL par le même talon. TOTAL n'utilise plus ni
@@ -271,4 +273,18 @@ au démarrage pour la Mockingboard (ProDOS n'en a que quatre, et le vecteur
 pointait dans de la mémoire recouverte) ; au troisième aller-retour F/ESC,
 TOTAL plantait dans le moniteur. `chain.s` appelle désormais `donelib`
 (les destructeurs cc65) avant de sauter, et le lanceur D/T du jeu fait de
-même.
+même. Une troisième relecture, centrée sur l'éditeur, les images et la
+musique, a encore corrigé : l'éditeur n'avait pas de curseur visible
+(`cursor(1)` de conio), un fichier créé par E décalait les marques restaurées
+sur d'autres entrées (elles sont effacées dans ce cas), une sauvegarde sur un
+volume plein vidait le fichier avant d'échouer (la place est vérifiée avant
+le `fopen "wb"` qui tronque), Entrée au milieu d'une ligne laissait
+l'ancienne fin à l'écran, les erreurs d'ouverture de l'éditeur disparaissaient
+sous le redessin, le lanceur lisait TOTAL.CODE sans borne sous `$BF00`, le
+destructeur de la musique passait après la libération de l'interruption
+(priorité 11 dans `music.s`), le visionneur d'images gardait un index périmé
+si le dossier changeait sous lui, et un .MB sans END faisait lire l'AUX
+au-delà du flux. `explore2.py` couvre l'éditeur (raccourcir, sans CR final,
+LF seuls, fichier verrouillé), les marques en fenêtre pleine et en seconde
+fenêtre, le déplacement vers /RAM et la suppression d'un arbre de 150
+fichiers.

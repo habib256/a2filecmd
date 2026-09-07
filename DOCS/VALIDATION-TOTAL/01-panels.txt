@@ -12,7 +12,7 @@ TOTAL            <DIR>              1  |N350             <DIR>              5
 MAP              BIN $0000     1842    |N400             <DIR>              2   
 PRODOS           SYS $0000    17128    |                                        
 SCOSWAMP         BIN $4000    32963    |                                        
-SCOSWAMP.SYSTEM  SYS $0000     4437    |                                        
+SCOSWAMP.SYSTEM  SYS $0000     4472    |                                        
 TITLE            TXT $0000      890    |                                        
                                        |                                        
                                        |                                        

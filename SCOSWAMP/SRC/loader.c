@@ -72,7 +72,7 @@ int main(void)
 #else
     if (chdir("/SCOSWAMP") != 0 || (f = fopen(GAME_FILE, "rb")) == NULL) {
 #endif
-        cprintf("SCOSWAMP introuvable sur /SCOSWAMP (errno=%d).\r\n", errno);
+        cprintf("%s introuvable (errno=%d).\r\n", GAME_FILE, errno);
         cprintf("Appuyez sur une touche...\r\n");
         cgetc();
         return 1;
@@ -85,7 +85,8 @@ int main(void)
         cgetc();
         return 1;
     }
-    while ((n = fread(dst, 1, CHUNK, f)) > 0) dst += n;
+    /* Jamais au-dela de $BEFF : la page globale ProDOS est a $BF00. */
+    while (dst < (unsigned char*)0xBF00 && (n = fread(dst, 1, (unsigned char*)0xBF00 - dst < CHUNK ? (unsigned char*)0xBF00 - dst : CHUNK, f)) > 0) dst += n;
     fclose(f);
 
     /* Le jeu ne revient jamais : il sort par le QUIT ProDOS. */
