@@ -1,0 +1,162 @@
+{
+  "hdv_sha256": "cc2a8b4350f1fb88cee184404b5ac3f5b1e76903830553324f51c2c7fe94ab8a",
+  "headless": "/Users/gistair/src/pom2adventure/SCOSWAMP.MORE/TOOLS/build/pom2_playtest",
+  "checks": [
+    {
+      "label": "lancement depuis Bitsy Bye, deux panneaux",
+      "ok": true
+    },
+    {
+      "label": "barre d aide",
+      "ok": true
+    },
+    {
+      "label": "barre d aide en inverse sur 80 colonnes",
+      "ok": true
+    },
+    {
+      "label": "espace libre du volume affiche",
+      "ok": true
+    },
+    {
+      "label": "] va au dernier, la ligne d information porte la date",
+      "ok": true
+    },
+    {
+      "label": "? affiche l aide",
+      "ok": true
+    },
+    {
+      "label": "entree dans DHGR/N000",
+      "ok": true
+    },
+    {
+      "label": "tri : dossiers puis fichiers",
+      "ok": true
+    },
+    {
+      "label": "image N000.RLE decodee AUX+MAIN a l identique",
+      "ok": true
+    },
+    {
+      "label": "fleche droite : image suivante N001.RLE sans quitter",
+      "ok": true
+    },
+    {
+      "label": "fleche gauche : retour a N000.RLE",
+      "ok": true
+    },
+    {
+      "label": "retour aux panneaux apres l image, curseur sur N000.RLE",
+      "ok": true
+    },
+    {
+      "label": "ESC remonte et reselectionne N000",
+      "ok": true
+    },
+    {
+      "label": "S trie par taille",
+      "ok": true
+    },
+    {
+      "label": "S trie par type",
+      "ok": true
+    },
+    {
+      "label": "S revient au tri par nom",
+      "ok": true
+    },
+    {
+      "label": "TITLE (TXT) lu page par page",
+      "ok": true
+    },
+    {
+      "label": "MAP en hexadecimal",
+      "ok": true
+    },
+    {
+      "label": "K cree le dossier BANC",
+      "ok": true
+    },
+    {
+      "label": "C copie TITLE dans BANC, type TXT conserve",
+      "ok": true
+    },
+    {
+      "label": "recopier refuse d ecraser",
+      "ok": true
+    },
+    {
+      "label": "Espace marque deux fichiers",
+      "ok": true
+    },
+    {
+      "label": "C copie les deux fichiers marques",
+      "ok": true
+    },
+    {
+      "label": "D supprime les deux fichiers marques",
+      "ok": true
+    },
+    {
+      "label": "= ouvre le meme dossier dans l autre panneau",
+      "ok": true
+    },
+    {
+      "label": "R renomme en COPIE",
+      "ok": true
+    },
+    {
+      "label": "D supprime COPIE",
+      "ok": true
+    },
+    {
+      "label": "C copie le dossier TOTAL entier (mkdir + 2 fichiers)",
+      "ok": true
+    },
+    {
+      "label": "la copie garde noms, types et tailles",
+      "ok": true
+    },
+    {
+      "label": "aucun reste de la liste precedente en fin de ligne de fichier",
+      "ok": true
+    },
+    {
+      "label": "refus de copier un dossier dans lui-meme",
+      "ok": true
+    },
+    {
+      "label": "C copie un arbre a deux niveaux (BANC/TOTAL/2 fichiers)",
+      "ok": true
+    },
+    {
+      "label": "D supprime /SCOSWAMP/BANC et ses deux niveaux",
+      "ok": true
+    },
+    {
+      "label": "D supprime DHGR/BANC et tout son contenu",
+      "ok": true
+    },
+    {
+      "label": "aucune erreur ProDOS",
+      "ok": true
+    },
+    {
+      "label": "/ liste les volumes",
+      "ok": true
+    },
+    {
+      "label": "Q rend la main a Bitsy Bye",
+      "ok": true
+    },
+    {
+      "label": "X lance DIAPO.SYSTEM (exec ProDOS)",
+      "ok": true
+    },
+    {
+      "label": "DIAPO rend la main a Bitsy Bye",
+      "ok": true
+    }
+  ]
+}

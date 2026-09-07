@@ -1,0 +1,24 @@
+/SCOSWAMP/DHGR/N000                    |/SCOSWAMP/DHGR/BANC                     
+Name*            Type  Aux     Size    |Name*            Type  Aux     Size     
+..               <UP>                  |..               <UP>                   
+B012.RLE         BIN $0000    12555    |B012.RLE         BIN $0000    12555     
+B026.RLE         BIN $0000    11912    |B026.RLE         BIN $0000    11912     
+B028.RLE         BIN $0000    12464    |TITLE            TXT $0000      684     
+N000.RLE         BIN $0000    10903    |                                        
+N001.RLE         BIN $0000    10417    |                                        
+N002.RLE         BIN $0000    11396    |                                        
+N003.RLE         BIN $0000    10892    |                                        
+N004.RLE         BIN $0000    12423    |                                        
+N005.RLE         BIN $0000    12207    |                                        
+N006.RLE         BIN $0000     9031    |                                        
+N007.RLE         BIN $0000    12163    |                                        
+N008.RLE         BIN $0000    12072    |                                        
+N009.RLE         BIN $0000    11575    |                                        
+N010.RLE         BIN $0000    13694    |                                        
+N011.RLE         BIN $0000    11299    |                                        
+N012.RLE         BIN $0000    10075    |                                        
+N013.RLE         BIN $0000    11289    |                                        
+__ TOTAL _____________________ 1271 of 14594 blocks free _______________________
+B028.RLE  type $06  aux $0000  26 blocks  12464 bytes  00/00/00                 
+2 files copied.                                                                 
+TAB panel RET open SPC tag C copy V move R ren D del K mkdir S sort ? help Q    

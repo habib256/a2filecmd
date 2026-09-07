@@ -493,10 +493,29 @@ $(OUTDIR)/DIAPO/DIAPO.CODE.BIN: diapo.c music.h music.o crt0.o hgr_loader.o memo
 	@mkdir -p $(OUTDIR)/DIAPO
 	$(CL) $(CFLAGS) -C scoswamp.cfg -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -m,diapo.map -Wl -Ln,diapo.lbl -o $@ crt0.o diapo.c music.o hgr_loader.o memory_swap.o mli_safe.o $(IOBUF)
 
+# TOTAL : le gestionnaire de fichiers a deux panneaux (total.c),
+# construit comme DIAPO -- meme lanceur, meme disposition LC/MAIN, meme
+# decodeur DHGR et memes bascules video. Il ne depend ni de la musique ni
+# des catalogues de DIAPO.
+.PHONY: total
+total: $(OUTDIR)/TOTAL/TOTAL.SYSTEM.SYS $(OUTDIR)/TOTAL/TOTAL.CODE.BIN
+
+$(OUTDIR)/TOTAL/TOTAL.SYSTEM.SYS: loader.c Makefile
+	@mkdir -p $(OUTDIR)/TOTAL
+	$(CL) $(CFLAGS) -D DIAPO_LOADER -D 'GAME_FILE="TOTAL/TOTAL.CODE"' --start-addr 0x2000 -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__FILETYPE__=0xFF -o $@ loader.c $(IOBUF)
+
+total_mli.o: total_mli.s
+	$(AS) -t $(TARGET) -o $@ $<
+
+$(OUTDIR)/TOTAL/TOTAL.CODE.BIN: total.c total_mli.o crt0.o hgr_loader.o memory_swap.o mli_safe.o scoswamp.cfg
+	@mkdir -p $(OUTDIR)/TOTAL
+	$(CL) $(CFLAGS) -C scoswamp.cfg -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__STACKSIZE__=0x0300 -Wl -m,total.map -Wl -Ln,total.lbl -o $@ crt0.o total.c total_mli.o hgr_loader.o memory_swap.o mli_safe.o $(IOBUF)
+
 hdv: $(HDV)
 
 $(HDV): $(OUTDIR)/$(PROGRAM) $(OUTDIR)/$(LAUNCHER) $(BOOTTMPL) $(MUSICS) \
-        $(OUTDIR)/MAP.BIN $(OUTDIR)/DIAPO/DIAPO.SYSTEM.SYS $(OUTDIR)/DIAPO/DIAPO.CODE.BIN diapo-catalog $(PAYLOAD) | $(VOLBUILD) check
+        $(OUTDIR)/MAP.BIN $(OUTDIR)/DIAPO/DIAPO.SYSTEM.SYS $(OUTDIR)/DIAPO/DIAPO.CODE.BIN diapo-catalog \
+        $(OUTDIR)/TOTAL/TOTAL.SYSTEM.SYS $(OUTDIR)/TOTAL/TOTAL.CODE.BIN $(PAYLOAD) | $(VOLBUILD) check
 	@rm -rf $(STAGE) && mkdir -p $(STAGE) $(dir $(HDV))
 	@for f in $(OUTDIR)/*; do \
 		b=`basename "$$f"`; \
