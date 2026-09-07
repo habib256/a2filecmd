@@ -37,7 +37,9 @@
         .export _music_select, _music_pause, _music_resume, _music_continue
         .export _music_fade_out, _music_fade_in, _music_fading
         .interruptor music_irq
-        .destructor  music_done         ; exit() coupe le timer avant DEALLOC
+        .destructor  music_done, 11     ; exit() coupe le timer avant DEALLOC :
+                                        ; donelib parcourt la table a rebours,
+                                        ; irq_done (priorite 10) doit venir apres
 
 via     = $FA           ; pointeur vers $Cn00 (VIA #1) ou $Cn80 (VIA #2)
 cur     = $FC           ; curseur de flux (copie de travail sous IRQ)

@@ -994,6 +994,7 @@ static void view_image(void)
         key = cgetc();
         if (key != KEY_LEFT && key != KEY_RIGHT) break;
         read_panel(active);
+        if (index >= pan->count) break;   /* le dossier a change sous nos pieds */
         next = index;
         for (;;) {
             if (key == KEY_LEFT) { if (!next) break; --next; }
@@ -1024,17 +1025,17 @@ static void view_image(void)
  * Le curseur est un decalage dans le tampon ; l'ecran montre 22 lignes a
  * partir de `etop`, debut d'une ligne, sans repli des lignes longues. */
 #define EDIT_ROWS 22
-static unsigned int elen, ecur, etop, ewant;
+static unsigned int elen, ecur, etop, ewant, eblocks;   /* eblocks : ceux du fichier avant l'edition */
 static unsigned char edirty, etype;
 static unsigned int eaux;
 
-#pragma code-name (push, "LC")
 static unsigned int line_start(unsigned int pos)
 {
     while (pos && EDIT_BUF[pos - 1] != '\r') --pos;
     return pos;
 }
 
+#pragma code-name (push, "LC")
 static unsigned int line_end(unsigned int pos)
 {
     while (pos < elen && EDIT_BUF[pos] != '\r') ++pos;
@@ -1116,6 +1117,7 @@ static unsigned char edit_insert(char c)
     edirty = 1;
     return 1;
 }
+#pragma code-name (pop)
 
 static void edit_delete(void)
 {
@@ -1124,11 +1126,15 @@ static void edit_delete(void)
     --elen;
     edirty = 1;
 }
-#pragma code-name (pop)
 
+/* fopen "wb" tronque le fichier avant d'ecrire (SET_EOF de cc65) : on
+ * s'assure d'abord de la place, l'ancien contenu libere ses blocs. */
+#pragma code-name (push, "LC")
+#pragma rodata-name (push, "LC")
 static unsigned char edit_save(void)
 {
     FILE* f;
+    if ((elen + 511) / 512 + 1 > panels[active].free_blocks + eblocks) { message("Volume full."); return 0; }
     _filetype = etype;
     _auxtype = eaux;
     f = fopen(full, "wb");
@@ -1139,6 +1145,8 @@ static unsigned char edit_save(void)
     ++total_ops;
     return 1;
 }
+#pragma rodata-name (pop)
+#pragma code-name (pop)
 
 /* E : edite le fichier `full` (type et auxtype conserves a l'ecriture), ou
  * un fichier neuf si `fresh`. Rend 1 si quelque chose a ete ecrit. */
@@ -1154,14 +1162,15 @@ static unsigned char edit_file(unsigned char fresh, unsigned char type, unsigned
     eaux = aux;
     if (!fresh) {
         f = fopen(full, "rb");
-        if (!f) { report_error("Open"); return 0; }
+        if (!f) { report_error("Open"); return 0xFF; }
         elen = fread(EDIT_BUF, 1, EDIT_MAX + 1, f);
         fclose(f);
-        if (elen > EDIT_MAX) { message("Too big for the editor (8 KB)."); return 0; }
+        if (elen > EDIT_MAX) { message("Too big for the editor (8 KB)."); return 0xFF; }
         for (i = 0; i < elen; ++i) { EDIT_BUF[i] &= 0x7F; if (EDIT_BUF[i] == '\n') EDIT_BUF[i] = '\r'; }
     }
     total_view = 5;
     clrscr();
+    cursor(1);
     edit_draw(0);
     edit_place();
     for (;;) {
@@ -1186,7 +1195,7 @@ static unsigned char edit_file(unsigned char fresh, unsigned char type, unsigned
         case 4:                                               /* Ctrl-D */
             if (ecur < elen) { row = EDIT_BUF[ecur] == '\r' ? 0 : 1; edit_delete(); }
             break;
-        case KEY_RETURN: if (edit_insert('\r')) row = 0; ewant = 0; break;
+        case KEY_RETURN: if (edit_insert('\r')) row = 2; ewant = 0; break;   /* 2 : depuis la ligne coupee */
         case KEY_TAB: for (i = 0; i < 4; ++i) edit_insert(' '); row = 1; ewant = ecur - ls; break;
         case KEY_ESC:
             bar_begin();
@@ -1200,17 +1209,18 @@ static unsigned char edit_file(unsigned char fresh, unsigned char type, unsigned
             if (key >= 32 && key < 127) { if (edit_insert(key)) row = 1; else message("Buffer full."); ewant = ecur - ls; }
             break;
         }
-        /* row 1 : la ligne seule ; row 0 : elle et les suivantes. */
+        /* row 0/1 : redessiner depuis la ligne courante ; 2 : depuis la
+         * precedente, dont la fin vient de partir a la ligne. */
         if (row != 0xFF && !edit_place()) {
             unsigned int pos = etop; unsigned char r = 0;
-            ls = line_start(ecur);
+            ls = line_start(row == 2 ? ecur - 1 : ecur);
             while (pos < ls) { pos = next_line(pos); ++r; }
-            edit_draw(row ? r : r);
-            if (row == 1) { /* seule la ligne courante a change */ }
+            edit_draw(r);
             edit_place();
         } else edit_place();
     }
 leave:
+    cursor(0);
     total_view = 0;
     return written;
 }
@@ -1219,7 +1229,7 @@ static void edit_selected(void)
 {
     struct Panel* pan = &panels[active];
     const struct Entry* e;
-    unsigned char fresh = 0;
+    unsigned char fresh = 0, r;
     if (!pan->count || !pan->path[0]) { message("Open a directory first."); return; }
     e = &pan->e[pan->cursor];
     if (is_dir(e)) {
@@ -1230,14 +1240,18 @@ static void edit_selected(void)
         fresh = 1;
     } else if (!build_full(full, pan, e)) { too_long(); return; }
     strcpy(question, fresh ? input : e->name);
+    eblocks = fresh ? 0 : e->blocks;
     memcpy(picked, panels[0].tags, sizeof panels[0].tags);
     memcpy(picked + sizeof panels[0].tags, panels[1].tags, sizeof panels[1].tags);
-    edit_file(fresh, fresh ? 0x04 : e->type, fresh ? 0 : e->aux);
+    r = edit_file(fresh, fresh ? 0x04 : e->type, fresh ? 0 : e->aux);
+    if (r == 0xFF) return;       /* rien d'ouvert : les panneaux et le message restent */
     switch_to_text();
     read_panel(0);
     read_panel(1);
-    memcpy(panels[0].tags, picked, sizeof panels[0].tags);
-    memcpy(panels[1].tags, picked + sizeof panels[0].tags, sizeof panels[1].tags);
+    if (!(fresh && r)) {         /* les marques sont des index tries : un fichier nouveau les decale */
+        memcpy(panels[0].tags, picked, sizeof panels[0].tags);
+        memcpy(panels[1].tags, picked + sizeof panels[0].tags, sizeof panels[1].tags);
+    }
     select_name(pan, question);
     draw_all();
 }
@@ -1246,11 +1260,15 @@ static void edit_selected(void)
 /* Musique Mockingboard                                                   */
 /* ---------------------------------------------------------------------- */
 
+#pragma code-name (push, "LC")
+#pragma rodata-name (push, "LC")
 static unsigned char looks_like_music(const struct Entry* e)
 {
     unsigned char n = strlen(e->name);
     return !is_dir(e) && e->type == 0x06 && n > 3 && !strcmp(e->name + n - 3, ".MB");
 }
+#pragma rodata-name (pop)
+#pragma code-name (pop)
 
 /* Entree sur un .MB : le flux MB1 est monte en AUX par le lecteur du jeu
  * (six voix, en interruption) et joue une fois pendant que l'on continue
@@ -1261,10 +1279,10 @@ static void play_music(const struct Entry* e)
 {
     FILE* f;
     unsigned int n, total = 0;
-    unsigned char valid = 1;
+    unsigned char valid = 1, last = 0;
     if (total_slot == 0xFF) total_slot = music_detect();
-    if (!total_slot) { message("No Mockingboard found in slots 1-7."); return; }
-    if (e->size > MUSIC_ZONE) { message("MB file too large (2304 bytes at most)."); return; }
+    if (!total_slot) { message("No Mockingboard in slots 1-7."); return; }
+    if (e->size > MUSIC_ZONE) { message("MB file too large (2304 bytes max)."); return; }
     f = fopen(full, "rb");
     if (!f) { report_error("Open"); return; }
     music_stop();
@@ -1272,11 +1290,12 @@ static void play_music(const struct Entry* e)
     do {
         n = fread(music_buf, 1, MUSIC_STAGE, f);
         if (!total && (n <= 8 || memcmp(music_buf, "MB1", 3))) { valid = 0; break; }
-        if (n) music_store(total, n);
+        if (n) { music_store(total, n); last = music_buf[n - 1]; }
         total += n;
     } while (n == MUSIC_STAGE);
     fclose(f);
-    if (!valid) { message("Not an MB1 Mockingboard stream."); return; }
+    if ((last & 0xF0) != 0xE0) valid = 0;   /* sans END, le lecteur lirait l'AUX au-dela */
+    if (!valid) { message("Not an MB1 stream."); return; }
     music_select(0);
     music_set_loop(0);
     music_play();
@@ -1727,11 +1746,11 @@ static void launch_file(unsigned int addr)
 static void run_selected(const struct Entry* e)
 {
     unsigned int addr = e->type == 0xFF ? 0x2000 : e->aux;
-    if (is_dir(e) || !panels[active].path[0]) { message("Select a SYS or BIN program."); return; }
+    if (is_dir(e) || !panels[active].path[0]) { message("Select a SYS or BIN."); return; }
     if (e->type != 0xFF && e->type != 0x06) { message("Only SYS and BIN run."); return; }
-    if (addr < 0x0800 || (unsigned long)addr + e->size > 0xBB00) { message("A BIN must load between $0800 and $BAFF."); return; }
+    if (addr < 0x0800 || (unsigned long)addr + e->size > 0xBB00) { message("BIN must load in $0800-$BAFF."); return; }
     if (!build_full(full, &panels[active], e)) { too_long(); return; }
-    sprintf(question, "Run %s? TOTAL will not resume.", e->name);
+    sprintf(question, "Run %s? No return to TOTAL.", e->name);
     if (!confirm(question)) return;
     chdir(panels[active].path);
     launch_file(addr);
