@@ -1,11 +1,11 @@
-# Le manuel d'A2 Retro Cmd
+# Le manuel d'A2 File Cmd
 
 Un gestionnaire de fichiers ProDOS à deux panneaux, dans l'esprit de Total
-Commander, pour l'Apple IIe 128 Ko ; à l'écran il se nomme **A2 RETRO CMD
-1.0** (le numéro vit dans `A2RC_VERSION` du Makefile, repris par le lanceur,
+Commander, pour l'Apple IIe 128 Ko ; à l'écran il se nomme **A2 FILE CMD
+1.0** (le numéro vit dans `A2FC_VERSION` du Makefile, repris par le lanceur,
 la ligne de statut et l'aide). C'est un logiciel libre sous licence GNU GPL
 v3, d'Arnaud Verhille ; le lanceur et l'aide le rappellent. Deux façons de le
-lancer : amorcer la disquette `/A2RETROCMD`, ou choisir `A2RETRO.SYSTEM`
+lancer : amorcer la disquette `/A2FILECMD`, ou choisir `A2FILE.SYSTEM`
 depuis un sélecteur comme Bitsy Bye.
 
 Le lanceur affiche un écran d'attente pendant le chargement : le titre, la
@@ -13,7 +13,7 @@ mention « ProDOS 8 only », la date et l'heure si une horloge est présente
 (bit 0 de MACHID, `$BF98`) ou « No clock » sinon, puis **PLEASE WAIT**. Suivent
 les deux panneaux en texte 80 colonnes : à gauche le volume amorcé, à droite
 son dossier `DEMO` la première fois ; ensuite les deux dossiers, le tri et le
-panneau actif de la session précédente, lus dans `A2RETRO/A2RETRO.CFG`.
+panneau actif de la session précédente, lus dans `A2FILE/A2FILE.CFG`.
 
 Chaque panneau liste un dossier : nom, type ProDOS, auxtype et taille en
 octets, les dossiers d'abord (avec leur nombre de blocs), puis les fichiers,
@@ -42,7 +42,7 @@ avec le chemin et la page à gauche.
 | **Entrée** | ouvrir : un dossier s'ouvre ; une image s'affiche plein écran, en HGR ou en DHGR selon son contenu (une touche pour revenir, la ligne de message dit le format reconnu) ; un TXT se lit page par page ; un SYS ou un BAS se lance après confirmation ; tout autre fichier s'affiche en hexadécimal |
 | **Échap** | remonter au dossier parent, la sélection revient sur le dossier quitté ; depuis la racine d'un volume, la liste des volumes |
 | **/** | la liste des volumes en ligne |
-| **C** | copier les entrées marquées, sinon l'entrée sélectionnée, dans le dossier de l'autre panneau ; un dossier est copié entier, sous-dossiers compris, un sous-dossier déjà présent est complété ; même nom, même type et auxtype. Quand le fichier existe, A2RC demande : **O** écraser, **S** passer, **A** tout écraser, **N** ne rien écraser. Une barre de progression montre le fichier en cours, son rang sur le total et les octets copiés ; le message final compte les fichiers copiés et passés |
+| **C** | copier les entrées marquées, sinon l'entrée sélectionnée, dans le dossier de l'autre panneau ; un dossier est copié entier, sous-dossiers compris, un sous-dossier déjà présent est complété ; même nom, même type et auxtype. Quand le fichier existe, A2FC demande : **O** écraser, **S** passer, **A** tout écraser, **N** ne rien écraser. Une barre de progression montre le fichier en cours, son rang sur le total et les octets copiés ; le message final compte les fichiers copiés et passés |
 | **V** | déplacer : copie, puis suppression de l'original, dossiers compris |
 | **R** | renommer (nom ProDOS : une lettre, puis lettres, chiffres ou points, 15 au plus) |
 | **D** | supprimer les entrées marquées, sinon l'entrée sélectionnée, après une confirmation ; un dossier est supprimé avec tout son contenu |
@@ -51,19 +51,34 @@ avec le chemin et la page à gauche.
 | **M** | marquer les fichiers absents de l'autre panneau ou de taille différente : suivi de C, c'est une synchronisation |
 | **A** | changer le type et l'auxtype d'un fichier, en hexadécimal |
 | **L** | verrouiller ou déverrouiller ; un fichier verrouillé porte un L après son nom et refuse la suppression et le renommage |
-| **?** | l'aide, un écran qui résume toutes les touches, sous le titre « A2 Retro Cmd » |
+| **?** | l'aide, un écran qui résume toutes les touches, sous le titre « A2 File Cmd » |
 | **T** | lire le fichier sélectionné comme du texte |
 | **H** | afficher le fichier sélectionné en hexadécimal |
-| **X** | lancer le fichier sélectionné après confirmation ; A2RC ne reprend pas la main. Un SYS est lu en `$2000`, un BIN à son auxtype, entre `$0800` et `$BAFF` (le talon garde son tampon ProDOS en `$BB00`). Un BAS (Applesoft) passe par `BASIC.SYSTEM`, voir ci-dessous |
+| **X** | lancer le fichier sélectionné après confirmation ; A2FC ne reprend pas la main. Un SYS est lu en `$2000`, un BIN à son auxtype, entre `$0800` et `$BAFF` (le talon garde son tampon ProDOS en `$BB00`). Un BAS (Applesoft) passe par `BASIC.SYSTEM`, voir ci-dessous |
 | **E** | éditer le fichier sélectionné comme du texte ; sur un dossier ou `..`, créer un fichier texte neuf dans le dossier courant |
 | **I** | afficher le fichier sélectionné comme une image, quel que soit son nom : HGR ou DHGR, brut ou compressé RLE |
 | **P** | mettre en pause ou reprendre la musique Mockingboard ; Entrée sur un fichier `.MB` la lance |
-| **F** | ouvrir le formateur, `A2RETRO/FORMAT.SYS`, qui revient à A2RC en sortant |
+| **F** | ouvrir le formateur, `A2FILE/FORMAT.SYS`, qui revient à A2FC en sortant |
 | **Q** | quitter vers ProDOS après confirmation : Bitsy Bye reprend |
 
 Dans une image, **Gauche** et **Droite** passent à l'image précédente ou
 suivante du même dossier sans revenir aux panneaux : le dossier DHGR se
-feuillette comme un album, et le curseur suit. Toute autre touche revient.
+feuillette comme un album, et le curseur suit. Une flèche sans voisine de
+son côté ne fait rien, l'image reste. Toute autre touche revient.
+
+## La souris
+
+Une carte AppleMouse II, dans n'importe quel slot, est reconnue au
+démarrage (`Mouse` apparaît dans la ligne de séparation) et le clavier reste
+entier : rien n'exige la souris. Le pointeur, une flèche MouseText, ne
+paraît qu'une fois la souris bougée, et suit ensuite la souris sur les
+panneaux. Un clic sur une ligne la sélectionne — le panneau devient actif
+s'il ne l'était pas — et un second clic sur la ligne sélectionnée l'ouvre,
+comme Entrée. Un clic sur la ligne des colonnes d'un panneau change le tri,
+un clic sur son chemin remonte au dossier parent. Un clic sur un bouton de
+la barre de touches vaut la touche. Dans les visionneuses, l'éditeur et les
+questions, seul le clavier répond. La carte est lue en mode passif, sans
+interruption : la Mockingboard garde les siennes.
 Dans les visionneuses de texte et d'hexadécimal : **Espace**, **Entrée** ou
 **Bas** page suivante, **B** ou **Haut** page précédente, **Échap** retour aux
 panneaux.
@@ -74,7 +89,7 @@ octets et leur rendu ASCII.
 
 ## Les images
 
-À l'ouverture, A2RC lit les huit premiers octets et la taille :
+À l'ouverture, A2FC lit les huit premiers octets et la taille :
 
 | Contenu | Format reconnu | Affichage |
 |---|---|---|
@@ -96,21 +111,21 @@ routage mémoire sur la banque principale avant toute lecture : le firmware 80
 colonnes laisse `80STORE` armé, et avec `HIRES` encore actif d'une image
 précédente une page HGR brute serait partie en banque auxiliaire.
 
-**Une image DHGR détruit le contenu de `/RAM`, alors A2RC le refait à
+**Une image DHGR détruit le contenu de `/RAM`, alors A2FC le refait à
 neuf.** Le disque virtuel de ProDOS vit en RAM auxiliaire, et la moitié
 auxiliaire d'une page DHGR (`$2000-$3FFF` en banque AUX) lui appartient : 18
 blocs, mesurés au banc, et c'est justement là que commencent les données d'un
 fichier écrit sur `/RAM`. C'est la contrainte de la machine, pas un défaut de
-A2RC — le double haute résolution et `/RAM` se partagent les mêmes octets —
+A2FC — le double haute résolution et `/RAM` se partagent les mêmes octets —
 mais elle laissait un volume à moitié faux, dont la prochaine écriture rendait
 n'importe quoi.
 
-En quittant une image DHGR, A2RC demande donc à `/RAM` de se reformater : il
+En quittant une image DHGR, A2FC demande donc à `/RAM` de se reformater : il
 reconnaît son pilote à son adresse `$FF00` dans `DEVADR` (`$BF10`), comme le
 formateur, et lui envoie la commande FORMAT, carte langage commutée en banque
-1 comme ce pilote l'exige (`ram_format`, dans `a2rc_mli.s` — une quarantaine
+1 comme ce pilote l'exige (`ram_format`, dans `a2fc_mli.s` — une quarantaine
 d'instructions ; le pilote reconstruit lui-même le répertoire de volume, il
-n'y a aucune structure à écrire, et l'appel rend à A2RC la banque 2 de la
+n'y a aucune structure à écrire, et l'appel rend à A2FC la banque 2 de la
 carte langage, pas la ROM). Le volume revient vide et cohérent, 119
 blocs libres sur 127, et la ligne de message le dit : `/RAM was rebuilt
 empty.` On perd ce qu'il contenait — c'était déjà perdu — mais plus rien
@@ -123,6 +138,25 @@ parmi les fichiers qui ressemblent à une image (type FOT, ou BIN de la
 taille d'une page, ou nom en `.RLE`). Le banc décode les deux mires de la
 disquette avec le même algorithme, en Python, et compare la page graphique
 octet à octet, banque auxiliaire comprise.
+
+**L'écran texte n'est jamais effacé.** Les panneaux restent en `$400-$7FF`
+pendant tout le feuilletage, et A2FC n'y réécrit que ce qui change : la ligne
+de message dit `Loading NOM...` dès qu'une flèche est pressée, avant même de
+relire le dossier — les noms des deux voisines sont gardés hors de la page
+graphique —, puis le curseur rejoint la nouvelle image (deux lignes réécrites,
+le panneau entier seulement s'il défile) et la ligne d'information suit. Au
+retour, les deux tables d'entrées sont relues, mais un panneau n'est redessiné
+que si sa relecture montre autre chose qu'à l'entrée : `/RAM` refait à neuf
+sous un panneau, une disquette changée. C'est `panel_hash` (`a2fc_mli.s`) qui
+en juge, une empreinte de la table d'entrées pliée en un mot, bien moins
+chère qu'un panneau redessiné.
+
+**Le chargeur et le décodeur sont une surcouche.** Ils ne sont pas dans le
+programme résident mais dans `A2FILE/IMAGE.PLG`, que A2FC lit dans la
+fenêtre `$1B00-$1FFF` à la première image et garde en place tant qu'une autre
+surcouche (`TEXT.PLG`, `HEX.PLG`, `DELETE.PLG`, `HELP.PLG`) ne la remplace pas ; voir
+« Construction et mémoire ». Sans ce fichier, ou avec celui d'une autre
+construction, la ligne de message le dit et rien ne s'affiche.
 
 ## Lancer un programme Applesoft
 
@@ -137,14 +171,14 @@ et `BASIC.SYSTEM` en fait la commande `-NOM` à son démarrage. `chain_command`
 
 Le préfixe ProDOS part sur le dossier du programme : `-NOM` s'y résout, un BAS
 rangé dans un sous-dossier se lance donc aussi. Sans `BASIC.SYSTEM` à la
-racine du volume, le lancement s'arrête sur `Run failed` et A2RC garde la
-main. Comme pour un SYS, A2RC ne reprend pas la main ensuite : on revient
+racine du volume, le lancement s'arrête sur `Run failed` et A2FC garde la
+main. Comme pour un SYS, A2FC ne reprend pas la main ensuite : on revient
 par Applesoft.
 
 ## Formater un disque
 
-`F` (ou `A2RETRO/FORMAT.SYS` depuis Bitsy Bye) lance le formateur, un
-programme à part qui revient à A2RC en sortant. Il liste les lecteurs que
+`F` (ou `A2FILE/FORMAT.SYS` depuis Bitsy Bye) lance le formateur, un
+programme à part qui revient à A2FC en sortant. Il liste les lecteurs que
 ProDOS connaît, avec slot, lecteur, type (Disk II 5,25 pouces, SmartPort,
 /RAM, périphérique de bloc), volume actuel s'il en a un et taille en blocs.
 Le disque d'où tourne le programme est marqué IN USE et refusé. Trois
@@ -177,10 +211,10 @@ pendant la musique, et les lectures disque ne l'arrêtent pas (vérifié dans
 l'émulateur : le curseur du flux avance pendant la lecture des dossiers et
 le chargement d'une image). Sur une disquette 5,25 pouces, le pilote Disk II
 de ProDOS coupe les interruptions pendant chaque lecture de bloc : le lecteur
-se fige le temps de la lecture, puis reprend ; A2RC n'y peut rien. P la met
+se fige le temps de la lecture, puis reprend ; A2FC n'y peut rien. P la met
 en pause et la reprend, un autre `.MB` la remplace, Q et X la coupent ; une
 fois le morceau fini, P le dit. La carte est cherchée dans les slots 1 à 7 à la
-première demande ; sans carte, A2RC le dit.
+première demande ; sans carte, A2FC le dit.
 
 ## L'éditeur de texte
 
@@ -195,7 +229,7 @@ sortir, Q quitter sans sauver (avec confirmation si le texte a changé),
 dans la page graphique, donc 8 Ko au plus, fins de ligne CR, bit 7 ôté au
 chargement. Les lignes plus longues que l'écran ne sont pas repliées.
 
-## Ce que A2RC ne fait pas
+## Ce que A2FC ne fait pas
 
 - Il refuse de copier un dossier dans lui-même, et un arbre dont un chemin
   cumule plus de 213 entrées (la réserve des parcours récursifs, logée dans
@@ -214,34 +248,34 @@ chargement. Les lignes plus longues que l'écran ne sont pas repliées.
 
 | Nom ProDOS | Fonction |
 |---|---|
-| `A2RETRO.SYSTEM` | Le lanceur, à la racine : seul fichier `.SYSTEM` du volume, donc celui que ProDOS démarre (`src/loader.c`) |
-| `A2RETRO/A2RETRO.CODE` | Le gestionnaire lui-même (`src/a2rc.c`, plus `src/a2rc_mli.s` pour GET_FILE_INFO, SET_FILE_INFO et le reformatage du /RAM) |
-| `A2RETRO/A2RETRO.CFG` | Écrit par A2RC en quittant : les deux dossiers, le tri et le panneau actif, trois lignes de texte |
-| `A2RETRO/FORMAT.SYS` | Le formateur (`format.c`, `format_diskii.s`, `format_mli.s`). Pas de suffixe .SYSTEM : ProDOS amorce le premier fichier .SYSTEM du catalogue, et F passe avant S |
-| `A2RETRO/A2RETRO.HELP` | Le texte de la page d'aide (`data/A2RETRO.HELP.TXT`), une ligne par élément : `x,y,TOUCHE,libellé`, `x,y,#TITRE` pour une section, `x,y,~texte` pour du texte en clair. Il passe par la page graphique, rien de l'aide ne reste en mémoire |
+| `A2FILE.SYSTEM` | Le lanceur, à la racine : seul fichier `.SYSTEM` du volume, donc celui que ProDOS démarre (`src/loader.c`) |
+| `A2FILE/A2FILE.CODE` | Le gestionnaire lui-même (`src/a2fc.c`, plus `src/a2fc_mli.s` pour GET_FILE_INFO, SET_FILE_INFO et le reformatage du /RAM) |
+| `A2FILE/A2FILE.CFG` | Écrit par A2FC en quittant : les deux dossiers, le tri et le panneau actif, trois lignes de texte |
+| `A2FILE/FORMAT.SYS` | Le formateur (`format.c`, `format_diskii.s`, `format_mli.s`). Pas de suffixe .SYSTEM : ProDOS amorce le premier fichier .SYSTEM du catalogue, et F passe avant S |
+| `A2FILE/A2FILE.HELP` | Le texte de la page d'aide (`data/A2FILE.HELP.TXT`), une ligne par élément : `x,y,TOUCHE,libellé`, `x,y,#TITRE` pour une section, `x,y,~texte` pour du texte en clair. Il passe par la page graphique, rien de l'aide ne reste en mémoire |
 
 Les noms tiennent dans les quinze caractères de ProDOS.
 
 ## La disquette 5,25 pouces
 
-`make disk` produit `dist/A2RETROCMD.po` (ordre ProDOS)
-et `dist/A2RETROCMD.dsk` (ordre DOS 3.3, celui d'ADTPro et de la plupart
-des émulateurs), une disquette amorçable de 280 blocs, volume `/A2RETROCMD` :
+`make disk` produit `dist/A2FILECMD.po` (ordre ProDOS)
+et `dist/A2FILECMD.dsk` (ordre DOS 3.3, celui d'ADTPro et de la plupart
+des émulateurs), une disquette amorçable de 280 blocs, volume `/A2FILECMD` :
 
 | Fichier | Contenu |
 |---|---|
 | `PRODOS`, `BASIC.SYSTEM` | ProDOS 8 2.4.3, la dernière version stable, et son interpréteur Applesoft : librement distribués pour la communauté Apple II, ils ne sont pas de l'auteur |
-| `A2RETRO.SYSTEM` | le lanceur, seul programme `.SYSTEM` : la disquette démarre directement dans A2RC. Compilé avec `NO_CHDIR`, il se fie au préfixe du volume amorcé |
-| `A2RETRO/A2RETRO.CODE`, `A2RETRO/A2RETRO.HELP`, `A2RETRO/FORMAT.SYS` | le programme, son aide et le formateur ; `A2RETRO.CFG` sera écrit à côté |
+| `A2FILE.SYSTEM` | le lanceur, seul programme `.SYSTEM` : la disquette démarre directement dans A2FC. Compilé avec `NO_CHDIR`, il se fie au préfixe du volume amorcé |
+| `A2FILE/A2FILE.CODE`, `A2FILE/*.PLG`, `A2FILE/A2FILE.HELP`, `A2FILE/FORMAT.SYS` | le programme, ses cinq surcouches (`IMAGE` le chargeur et le décodeur d'images, `TEXT` et `HEX` les visionneuses, `DELETE` la suppression, `HELP` la page d'aide : des BIN chargés en `$1B00` à la demande), le texte de l'aide et le formateur ; `A2FILE.CFG` sera écrit à côté |
 | `DEMO/` | de quoi essayer, entièrement calculé par `tools/mkdemo.py` : deux mires (`DHGR.RLE`, `HGR.RLE`), une fanfare trois voix (`WELCOME.MB`), un texte (`SAMPLE`), un programme Applesoft (`HELLO`) et un `README` |
 
-Il reste 60 blocs libres. Au démarrage, le panneau gauche montre la racine
+Il reste 46 blocs libres. Au démarrage, le panneau gauche montre la racine
 de la disquette et le panneau droit la liste des volumes, faute de dossier
 `DHGR`. `build_prodos_volume` taille ses volumes au contenu ;
 `make_floppy.py` porte ensuite le compte de blocs à 280, libère les blocs
 ajoutés dans la table d'allocation et écrit les deux ordres de secteurs. Le
-banc a démarré cette image comme disque dur dans POM2 : A2RC s'ouvre sur
-`/A2RETROCMD`, Q rend la main à Bitsy Bye sur ce volume. Une version 2.5
+banc a démarré cette image comme disque dur dans POM2 : A2FC s'ouvre sur
+`/A2FILECMD`, Q rend la main à Bitsy Bye sur ce volume. Une version 2.5
 alpha 8 de ProDOS existe ; elle n'est pas retenue, faute d'être publiée.
 
 ## Construction et mémoire
@@ -250,23 +284,53 @@ alpha 8 de ProDOS existe ; elle n'est pas retenue, faute d'être publiée.
 tourne à `$4000`. Les deux tables de 140 entrées occupent la page graphique
 MAIN `$2000-$3FFF`, libre tant qu'aucune image n'est affichée : une image
 la recouvre, et les deux panneaux sont relus au retour, marques conservées.
-La RAM basse `$1000-$1FFF` reçoit toute la BSS de `a2rc.c` (panneaux,
-chemins, copie, débuts de page du texte), mise à zéro par `main`, et depuis
-`a2rc.cfg` la BSS principale de cc65 avec elle. Son dernier kilo-octet,
-`$1C00-$1FFF`, est **du code** : segment `LOWEXE`, le décodeur RLE et ce qui
-l'entoure. Le lanceur met en scène en `$1000` un préfixe de 4 Ko au lieu de 3
-(`STAGE_BYTES` dans `loader.c`) ; `crt0` n'en emporte que les trois premiers
-vers la carte langage, le quatrième reste sur place. Personne d'autre n'y
-touche : la zone `LOWRAM` est bornée à `$0C00` pour que le lieur refuse une
-BSS qui monterait jusque-là, et `check_lc_layout.py` le vérifie aussi. C'était
-la dernière réserve de place de la machine — la fenêtre principale bute sur la
-pile C, la carte langage est pleine. **`A2RETRO.SYSTEM` et `A2RETRO.CODE` vont
-désormais par paire** : un ancien lanceur ne lit que 3 Ko et laisserait le
-décodeur d'images absent. La réserve
-des parcours récursifs emprunte la table d'entrées du panneau inactif.
+La RAM basse `$1000-$1AFF` reçoit toute la BSS de `a2fc.c` (panneaux,
+chemins, copie, débuts de page du texte, la souris), mise à zéro par `main`,
+et depuis `a2fc.cfg` la BSS principale de cc65 avec elle. Au-dessus,
+`$1B00-$1FFF` est **la fenêtre de surcouche** : 1 280 octets où A2FC charge,
+au moment d'ouvrir un fichier, le module qui sait le lire, et qu'il oublie
+en revenant aux panneaux. Cinq surcouches, sous `A2FILE/` : `IMAGE.PLG`
+(le chargeur et le décodeur d'images), `TEXT.PLG` et `HEX.PLG` (les deux
+visionneuses, sorties de la carte langage), `DELETE.PLG` (la commande D et
+`delete_tree`, que le déplacement d'un dossier charge aussi une fois la copie
+faite) et `HELP.PLG` (la page d'aide). Elles sont **liées avec le
+programme** — elles appellent `fopen`, `memcpy`, `view_getc` comme n'importe
+quelle fonction, et le noyau appelle `load_image` ou `view_text` à leur
+adresse dans la fenêtre — mais `a2fc.cfg` les écrit dans des fichiers à part
+(une zone `MEMORY` par surcouche, toutes en `$1B00`, un fichier `%O.NOM`
+chacune) que `make disk` range sous `A2FILE/` avec l'auxtype `$1B00`.
+`view_getc` et `view_seek`, que partagent le décodeur et la visionneuse de
+texte, restent dans le noyau. `overlay()`
+les lit avec un simple `fread`, et n'en relit aucune tant qu'elle est en
+place : feuilleter un dossier d'images ne relit rien. Le mot en tête de
+chaque surcouche est l'adresse de `main` dans le lien qui l'a produite
+(`overlay.s`, premier objet du lien) : une surcouche d'une autre
+construction est refusée comme une surcouche absente, la ligne de message le
+dit. **`A2FILE.CODE` et ses `.PLG` vont donc par ensemble.** C'est ce qui a
+rendu près d'un kilo-octet à la fenêtre principale, qui bute sur la pile C,
+et a payé la souris. Le lanceur ne met plus en scène en `$1000` que les 3 Ko
+de l'image de la carte langage (`STAGE_BYTES` dans `loader.c`). La zone
+`LOWRAM` est bornée à `$0B00` pour que le lieur refuse une BSS qui monterait
+dans la fenêtre, et `check_layout.py` vérifie que chaque surcouche tient
+entre la RAM basse et la page graphique et que chaque fichier a la longueur
+du lien. La réserve des parcours récursifs emprunte la table d'entrées du
+panneau inactif.
+
+**La souris** (`mouse.s`) cherche la carte AppleMouse II par sa signature
+(`$Cn05=$38`, `$Cn07=$18`, `$Cn0B=$01`, `$Cn0C=$20`, `$CnFB=$D6`) de `$C7` à
+`$C1` en sautant le slot 3, où le firmware 80 colonnes du //e répond ;
+`INITMOUSE`, puis `CLAMPMOUSE` à 0..79 et 0..23 — la position arrive
+directement en cases de l'écran, aucun calcul — et `SETMOUSE` mode 1 : la
+carte compte toute seule, `READMOUSE` à chaque tour de `wait_key` suffit,
+aucune interruption n'est réservée. Le pointeur est un caractère MouseText
+(`$42`) posé sur la cellule, l'octet caché étant rendu avant tout redessin ;
+la colonne paire vit en banque AUX, atteinte par `PAGE2` sous `80STORE`. Le
+banc met une AppleMouse II (HLE AppleWin) en slot 4 pour toute la session et
+vérifie le pointeur, les bornes du firmware, le clic, le second clic, le
+changement de panneau et la barre de touches.
 Les visionneuses, les saisies et le fichier de préférences vivent dans la
 carte langage, `$D400-$DFFF` en banque 2 (une vingtaine d'octets libres : `check_lc_layout.py` veille), copiés par `crt0.s` comme pour le
-jeu ; avant de lancer un programme, A2RC remet la ROM en lecture.
+jeu ; avant de lancer un programme, A2FC remet la ROM en lecture.
 
 **Le plafond de la fenêtre principale.** Ce qui survit à l'initialisation —
 CODE, RODATA, DATA, INIT — doit finir sous le plancher de la pile C,
@@ -275,7 +339,7 @@ avant `main`. ld65 ne le vérifie pas : la zone BSS se dimensionne par
 `__HIMEM__ - __STACKSIZE__ - __ONCE_RUN__` et, dès que cette différence passe
 en négatif, il la lit en entier non signé, ne signale rien et pose la BSS au
 milieu de la pile. Le lien réussit, le programme se corrompt à l'usage. Deux
-mesures ferment ce piège : A2RC est lié par `a2rc.cfg`, où la BSS descend en
+mesures ferment ce piège : A2FC est lié par `a2fc.cfg`, où la BSS descend en
 RAM basse (il ne lie ni `malloc` ni `free` — les tampons ProDOS viennent de
 `$0800` — donc aucun tas ne la suit), et
 `check_lc_layout.py` contrôle le plancher à chaque lien. La pile C fait 256
@@ -286,10 +350,10 @@ loger le lanceur Applesoft, là où il ne restait qu'une vingtaine d'octets.
 Les programmes lancés par
 X et F le sont par un talon recopié en page `$0300` (`chain.s`), qui lit le
 fichier entier à son adresse et y saute : aucune limite de taille, et
-FORMAT.SYS revient à A2RC par le même talon ; `chain_command` y ajoute le nom
+FORMAT.SYS revient à A2FC par le même talon ; `chain_command` y ajoute le nom
 que `BASIC.SYSTEM` attend en `$2006`, seize octets de plus dans le talon, et
 une assertion d'assemblage garde l'ensemble sous `$03D0`, où commencent les
-vecteurs. A2RC n'utilise plus ni
+vecteurs. A2FC n'utilise plus ni
 `opendir` ni `malloc` : les dossiers sont lus comme des fichiers, bloc par
 bloc, dans le tampon de copie, ce qui est aussi plus rapide. Pour loger
 l'éditeur et le visionneur, il a aussi rendu `hgr_loader.s` (le décodeur C
@@ -297,14 +361,14 @@ le remplace, par tranches `memset`/`memcpy` jusqu'à la frontière des
 banques), `qsort` (un tri par insertion) et `exec()` (un lanceur de
 quelques lignes) ; les messages répétés sont partagés et l'aide vit sur le
 disque. Les deux fichiers ouverts pendant une copie utilisent les tampons
-ProDOS `$0800` et `$0C00` ; A2RC n'utilise pas MAPBSS. Le programme est
+ProDOS `$0800` et `$0C00` ; A2FC n'utilise pas MAPBSS. Le programme est
 compilé avec `-Cl` (variables locales statiques) ; les trois
 parcours récursifs (compte, copie, suppression d'un arbre) repassent leurs
 variables sur la pile par `#pragma static-locals`, sans quoi le niveau
 interne écrase la longueur de chemin du niveau externe. La sortie suit le QUIT ProDOS du démarrage cc65.
 
 Les preuves viennent de [bancs POM2 sans fenêtre](../bench/README.md), qui
-partent tous de `dist/A2RETROCMD.po` **tel qu'il sera téléchargé**.
+partent tous de `dist/A2FILECMD.po` **tel qu'il sera téléchargé**.
 `bench/run.py` joue une session complète — amorçage, navigation, pages,
 marquage, copie, déplacement, renommage, verrou refusant la suppression,
 changement de type et d'auxtype, création de dossier, suppression,
@@ -326,15 +390,15 @@ la fin, une fenêtre après la première comptait 140 entrées et en répétait 
 un dossier vidé en mode fenêtré restait bloqué, le formateur calculait la
 carte des blocs sur 16 bits (nulle pour 65 535 blocs), prenait la taille dans
 l'en-tête de l'ancien volume, acceptait un lecteur sans disque, et revenait à
-Bitsy Bye depuis la disquette (A2RETRO.SYSTEM y est à la racine) ; un BIN chargé
-en `$0800` écrasait le tampon du talon ; un A2RETRO.HELP ou un A2RETRO.CFG abîmé
+Bitsy Bye depuis la disquette (A2FILE.SYSTEM y est à la racine) ; un BIN chargé
+en `$0800` écrasait le tampon du talon ; un A2FILE.HELP ou un A2FILE.CFG abîmé
 pouvait faire écrire n'importe où ; la copie détruisait la cible avant d'avoir
 ouvert la source, et pouvait remplacer un dossier vide par un fichier. Le
 plus grave, trouvé par la relecture finale et reproduit par `roundtrips.py` :
 le talon de lancement ne rendait pas à ProDOS l'entrée d'interruption prise
 au démarrage pour la Mockingboard (ProDOS n'en a que quatre, et le vecteur
 pointait dans de la mémoire recouverte) ; au troisième aller-retour F/ESC,
-A2RC plantait dans le moniteur. `chain.s` appelle désormais `donelib`
+A2FC plantait dans le moniteur. `chain.s` appelle désormais `donelib`
 (les destructeurs cc65) avant de sauter, et le lanceur fait de
 même. Une troisième relecture, centrée sur l'éditeur, les images et la
 musique, a encore corrigé : l'éditeur n'avait pas de curseur visible
@@ -343,7 +407,7 @@ sur d'autres entrées (elles sont effacées dans ce cas), une sauvegarde sur un
 volume plein vidait le fichier avant d'échouer (la place est vérifiée avant
 le `fopen "wb"` qui tronque), Entrée au milieu d'une ligne laissait
 l'ancienne fin à l'écran, les erreurs d'ouverture de l'éditeur disparaissaient
-sous le redessin, le lanceur lisait A2RETRO.CODE sans borne sous `$BF00`, le
+sous le redessin, le lanceur lisait A2FILE.CODE sans borne sous `$BF00`, le
 destructeur de la musique passait après la libération de l'interruption
 (priorité 11 dans `music.s`), le visionneur d'images gardait un index périmé
 si le dossier changeait sous lui, et un .MB sans END faisait lire l'AUX

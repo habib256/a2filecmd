@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Construit une image de volume ProDOS 8 amorcable a partir d'un dossier.
 
-    mkvolume.py STAGE SORTIE.po --volume A2RETROCMD --boot data/prodos_boot.tmpl
+    mkvolume.py STAGE SORTIE.po --volume A2FILECMD --boot data/prodos_boot.tmpl
                 --blocks 280
 
-Pourquoi en Python : A2 Retro Cmd doit se construire avec cc65 et rien
+Pourquoi en Python : A2 File Cmd doit se construire avec cc65 et rien
 d'autre. Un outil C++ tiers pour ecrire les structures ProDOS obligerait
 quiconque -- l'integration continue comprise -- a compiler un emulateur pour
 obtenir une disquette. Trois cents lignes ici suffisent, et le format est
@@ -26,7 +26,7 @@ ce qui rend les SHA256 d'une publication verifiables.
 Un fichier de plus de 512 octets devient "sapling" : un bloc d'index de 256
 pointeurs (poids faibles en premiere moitie, poids forts en seconde) et ses
 blocs de donnees. Au-dela de 128 Ko il faudrait un arbre a trois niveaux ;
-aucun fichier d'A2 Retro Cmd n'en approche, et l'outil refuse plutot que de
+aucun fichier d'A2 File Cmd n'en approche, et l'outil refuse plutot que de
 mentir.
 """
 import argparse

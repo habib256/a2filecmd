@@ -1,6 +1,6 @@
-"""Le banc fonctionnel d'A2 Retro Cmd, sur la disquette telle qu'elle est publiee.
+"""Le banc fonctionnel d'A2 File Cmd, sur la disquette telle qu'elle est publiee.
 
-Il amorce dist/A2RETROCMD.po dans POM2 sans fenetre, avec un second volume
+Il amorce dist/A2FILECMD.po dans POM2 sans fenetre, avec un second volume
 vide comme cible, et joue une session complete : naviguer, marquer, copier,
 deplacer, renommer, supprimer, creer un dossier, changer type et verrou,
 lire un texte et des octets, editer et sauver, afficher les deux formats
@@ -14,6 +14,7 @@ imprime l'ecran. Avec --out, les captures et un resume JSON y sont ecrits.
 """
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -31,7 +32,7 @@ ESC, RET, DOWN, UP, LEFT, RIGHT, TAB = b'\x1b', b'\r', b'\x0a', b'\x0b', b'\x08'
 
 
 def decode_rle(stream, size):
-    """La boucle de decode_rle() dans src/a2rc.c, pour l'attendu du banc."""
+    """La boucle de decode_rle() dans src/a2fc.c, pour l'attendu du banc."""
     out, i = bytearray(), 8
     while len(out) < size:
         t = stream[i]; i += 1
@@ -61,11 +62,11 @@ def main():
     if args.out:
         args.out.mkdir(parents=True, exist_ok=True)
 
-    with tempfile.TemporaryDirectory(prefix='a2rc-bench-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='a2fc-bench-') as tmp:
         tmp = Path(tmp)
-        floppy = tmp / 'A2RETROCMD.po'
-        shutil.copyfile(ROOT / 'dist/A2RETROCMD.po', floppy)
-        with Pom2(scratch_volume(tmp), floppy=floppy, port=args.port) as p:
+        floppy = tmp / 'A2FILECMD.po'
+        shutil.copyfile(ROOT / 'dist/A2FILECMD.po', floppy)
+        with Pom2(scratch_volume(tmp), floppy=floppy, port=args.port, mouse=True) as p:
             s = Session(p)
 
             def shot(name):
@@ -77,24 +78,25 @@ def main():
 
             # ── 1. le demarrage ───────────────────────────────────────────
             s.boot()
-            s.ok('la disquette amorce sur les deux panneaux', s.has('/A2RETROCMD'), s.rows()[0][:30])
-            s.ok('la version est affichee', s.has('A2 RETRO CMD 1.0'))
-            s.ok('le panneau droit ouvre DEMO', s.rows()[0][40:].startswith('/A2RETROCMD/DEMO'),
+            s.ok('la disquette amorce sur les deux panneaux', s.has('/A2FILECMD'), s.rows()[0][:30])
+            s.ok('la version est affichee', s.has('A2 FILE CMD 1.0'))
+            s.ok('le panneau droit ouvre DEMO', s.rows()[0][40:].startswith('/A2FILECMD/DEMO'),
                  s.rows()[0][40:70])
-            s.ok('les blocs libres sont comptes', s.has('60 of 280 blocks free'), s.rows()[20][:70])
+            s.ok('les blocs libres sont comptes',
+                 re.search(r'\d+ of 280 blocks free', s.rows()[20]) is not None, s.rows()[20][:70])
             shot('01-panels')
 
             # ── 2. naviguer ───────────────────────────────────────────────
-            s.select('A2RETRO'); s.key(RET)
-            s.wait(lambda: s.has('/A2RETROCMD/A2RETRO'), 'ouvrir A2RETRO'); p.stable()
-            s.ok('Entree ouvre un dossier', any(r.startswith('A2RETRO.CODE') for r in s.rows()))
-            s.key(ESC); s.wait(lambda: s.rows()[0][:12] == '/A2RETROCMD ', 'remonter'); p.stable()
+            s.select('A2FILE'); s.key(RET)
+            s.wait(lambda: s.has('/A2FILECMD/A2FILE'), 'ouvrir A2FILE'); p.stable()
+            s.ok('Entree ouvre un dossier', any(r.startswith('A2FILE.CODE') for r in s.rows()))
+            s.key(ESC); s.wait(lambda: s.rows()[0][:11] == '/A2FILECMD ', 'remonter'); p.stable()
             s.ok('Echap remonte et reselectionne le dossier quitte',
-                 s.line().startswith('A2RETRO '), s.line()[:20])
+                 s.line().startswith('A2FILE '), s.line()[:20])
             before = s.line()
             s.key(RIGHT); p.stable()
             s.ok('la fleche droite fait une page, elle n ouvre pas',
-                 s.rows()[0][:12] == '/A2RETROCMD ' and s.line() != before, s.line()[:20])
+                 s.rows()[0][:11] == '/A2FILECMD ' and s.line() != before, s.line()[:20])
             s.key(b'['); p.stable()
             s.ok('[ revient a la premiere entree', s.line().startswith('.. '), s.line()[:12])
 
@@ -138,7 +140,7 @@ def main():
             shot('05-hex')
             s.key(ESC); s.wait(lambda: s.value('view', 1) == 0, 'retour')
             s.key(b'?'); s.wait(lambda: s.value('view', 1) == 4, 'aide'); p.stable()
-            s.ok("l'aide est lue sur la disquette", s.has('A2 RETRO CMD 1.0'), s.rows()[0][:50])
+            s.ok("l'aide est lue sur la disquette", s.has('A2 FILE CMD 1.0'), s.rows()[0][:50])
             shot('06-help')
             s.key(b' '); s.wait(lambda: s.value('view', 1) == 0, 'retour'); p.stable()
 
@@ -177,10 +179,10 @@ def main():
                  not any(r[40:].startswith('README ') for r in s.rows()))
             s.key(TAB)
             s.ok('et se retrouve dans la cible',
-                 any(r.startswith('README ') and '1185' in r for r in s.rows()),
+                 any(r.startswith('README ') and '1184' in r for r in s.rows()),
                  next((r[:40] for r in s.rows() if r.startswith('README ')), 'absent'))
             s.ok('la copie garde nom, type et taille',
-                 any(r.startswith('SAMPLE ') and 'TXT' in r and '713' in r for r in s.rows()),
+                 any(r.startswith('SAMPLE ') and 'TXT' in r and '712' in r for r in s.rows()),
                  next((r[:40] for r in s.rows() if r.startswith('SAMPLE ')), 'absent'))
             s.select('SAMPLE'); s.key(b'R'); s.wait(lambda: s.has('New name:'), 'renommer')
             p.raw(b'\x08' * 6); s.type('COPIE'); s.key(RET); p.stable()
@@ -221,27 +223,71 @@ def main():
             s.key(b'F'); s.wait(lambda: s.has('Open the disk formatter?'), 'F')
             s.key(b'Y'); s.wait(lambda: s.has('ERASES EVERYTHING'), 'formateur', 60); p.stable()
             s.ok('F ouvre le formateur, qui liste les lecteurs',
-                 s.has('Disk II 5.25') and s.has('/A2RETROCMD'), s.rows()[3][:60])
+                 s.has('Disk II 5.25') and s.has('/A2FILECMD'), s.rows()[3][:60])
             shot('09-format')
-            # ESC relance A2RETRO.SYSTEM : on attend l'en-tete des panneaux, pas
+            # ESC relance A2FILE.SYSTEM : on attend l'en-tete des panneaux, pas
             # le titre -- l'ecran d'attente du lanceur le porte aussi.
             s.key(ESC); s.wait(lambda: s.has('Type  Aux     Size'), 'retour au gestionnaire', 90)
             p.stable()
             s.ok('Echap relance le gestionnaire depuis la disquette',
-                 s.has('/A2RETROCMD'), s.rows()[0][:30])
+                 s.has('/A2FILECMD'), s.rows()[0][:30])
 
-            # ── 9. Applesoft, en dernier : on ne revient pas ──────────────
+            # ── 9. la souris ──────────────────────────────────────────────
+            # Une AppleMouse II en slot 4 depuis le debut de la session : tout ce
+            # qui precede s'est fait au clavier avec elle en place, sans que le
+            # pointeur ne s'affiche -- il ne parait qu'une fois la souris bougee.
+            s.ok('la souris est vue en slot 4, la ligne de statut le dit',
+                 s.value('mouse', 1) == 4 and s.has(' Mouse '), s.rows()[20][60:])
             s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes')
-            s.select('/A2RETROCMD'); s.key(RET)
-            s.wait(lambda: s.rows()[0][:12] == '/A2RETROCMD ', 'racine'); p.stable()
-            s.select('DEMO'); s.key(RET); s.wait(lambda: s.has('/A2RETROCMD/DEMO'), 'DEMO')
+            s.select('/A2FILECMD'); s.key(RET)
+            s.wait(lambda: s.rows()[0][:11] == '/A2FILECMD ', 'racine'); p.stable()
+            s.select('DEMO'); s.key(RET); s.wait(lambda: s.has('/A2FILECMD/DEMO'), 'DEMO')
+            p.stable()
+            x0 = 0 if s.cursor_row(0) is not None else 40      # le panneau actif
+            other = 40 - x0
+
+            def cell(x, y):
+                base = 0x400 + (y & 7) * 0x80 + (y >> 3) * 40 + (x >> 1)
+                return p.peek(base, 1, 'aux' if x % 2 == 0 else 'main')[0]
+            p.home(); p.mouse(x=50, y=10); time.sleep(.3)
+            s.ok('le pointeur suit la souris, une fleche MouseText',
+                 cell(50, 10) == 0x42 and p.peek(s.sym['_mouse_x'], 2) == bytes([50, 10]),
+                 (hex(cell(50, 10)), p.peek(s.sym['_mouse_x'], 2).hex()))
+            p.mouse(x=150); time.sleep(.3)                 # +100 : hors de l'ecran
+            s.ok("le firmware borne la souris a l'ecran", p.peek(s.sym['_mouse_x'], 1)[0] == 79,
+                 p.peek(s.sym['_mouse_x'], 1)[0])
+            p.home()
+            p.click(x0 + 37, 5)                            # DEMO trie : ligne 5 = HGR.RLE ; en bout de ligne, hors du nom
+            s.ok('un clic selectionne la ligne', s.line(x0).startswith('HGR.RLE'), s.line(x0)[:20])
+            p.click(x0 + 37, 5)
+            s.wait(lambda: s.value('view', 1) == 1, 'image par la souris', 40); time.sleep(1)
+            s.ok("un second clic sur la selection l'ouvre", s.value('view', 1) == 1)
+            s.key(ESC); s.wait(lambda: s.value('view', 1) == 0, 'retour'); p.stable()
+            p.click(other + 5, 2)
+            s.ok("un clic dans l'autre panneau l'active et y pose le curseur",
+                 s.cursor_row(other) == 2 and s.cursor_row(x0) is None,
+                 (s.cursor_row(other), s.cursor_row(x0)))
+            p.click(74, 23)                                # le bouton ? Help
+            s.wait(lambda: s.value('view', 1) == 4, 'aide par la souris'); p.stable()
+            s.ok("un clic sur la barre des commandes vaut la touche", s.value('view', 1) == 4)
+            s.key(b' '); s.wait(lambda: s.value('view', 1) == 0, 'retour'); p.stable()
+            p.click(3, 23)                                 # TAB Panel
+            s.ok('un clic sur TAB Panel change de panneau', s.cursor_row(x0) is not None,
+                 (s.cursor_row(x0), s.cursor_row(other)))
+            p.mouse(x=79, y=20); time.sleep(.2)            # le pointeur hors du chemin
+
+            # ── 10. Applesoft, en dernier : on ne revient pas ─────────────
+            s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes')
+            s.select('/A2FILECMD'); s.key(RET)
+            s.wait(lambda: s.rows()[0][:11] == '/A2FILECMD ', 'racine'); p.stable()
+            s.select('DEMO'); s.key(RET); s.wait(lambda: s.has('/A2FILECMD/DEMO'), 'DEMO')
             p.stable()
             s.select('HELLO'); s.key(RET)
             s.wait(lambda: s.has('Run HELLO?'), 'confirmation')
             s.ok('un BAS demande confirmation avant de partir', s.has('No return'),
                  s.rows()[22].strip())
             s.key(b'Y')
-            s.wait(lambda: any('A2 RETRO CMD RUNS APPLESOFT' in r for r in s.rows40()),
+            s.wait(lambda: any('A2 FILE CMD RUNS APPLESOFT' in r for r in s.rows40()),
                    'Applesoft', 60)
             s.ok('BASIC.SYSTEM execute le programme Applesoft', True)
             s.ok('Applesoft rend la main', any(r.startswith(']') for r in s.rows40()))

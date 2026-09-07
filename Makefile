@@ -1,7 +1,7 @@
-# A2 Retro Cmd -- gestionnaire de fichiers ProDOS a deux panneaux, Apple IIe.
+# A2 File Cmd -- gestionnaire de fichiers ProDOS a deux panneaux, Apple IIe.
 #
 #   make            les trois binaires ProDOS, dans build/
-#   make disk       les images de disquette dist/A2RETROCMD.po et .dsk
+#   make disk       les images de disquette dist/A2FILECMD.po et .dsk
 #   make test       les tests hors emulateur (disposition memoire, volume)
 #   make bench      les bancs POM2 (demande l'emulateur, voir bench/README.md)
 #   make clean
@@ -10,8 +10,8 @@
 # lien est verifie a chaque fois par tools/check_layout.py, qui attrape les
 # deux debordements que ld65 laisse passer en silence. Voir docs/MANUAL.md.
 
-A2RC_VERSION = 1.0
-VOLUME       = A2RETROCMD
+A2FC_VERSION = 1.0
+VOLUME       = A2FILECMD
 
 TARGET = apple2enh
 CL     = cl65
@@ -25,7 +25,7 @@ DIST  = dist
 
 # -Cl : locales statiques. Sur 6502 une variable de pile coute un calcul
 # d'adresse a chaque acces, une statique un lda absolu. Contrepartie : aucune
-# fonction ne doit etre reentrante, et les trois parcours recursifs de a2rc.c
+# fonction ne doit etre reentrante, et les trois parcours recursifs de a2fc.c
 # reprennent la pile par #pragma static-locals.
 # --codesize 100 : le gonflement que l'optimiseur s'autorise. Mesure : en
 # dessous de 100 le generateur cesse d'employer certaines sequences en ligne
@@ -35,19 +35,22 @@ CFLAGS = -t $(TARGET) -O -Oirs -Cl --codesize 100
 # __HIMEM__ = $BF00 : juste sous la page globale ProDOS. La pile C tient en
 # 256 octets -- creux maximal mesure au banc : 94 (bench/stack.py).
 HIMEM      = 0xBF00
-A2RC_STACK = 0x0100
+A2FC_STACK = 0x0100
 # Les tampons d'E/S ProDOS viennent de $0800 vers le haut au lieu du tas :
 # sans ce module le tas ne fait que 270 octets et tout fopen echoue.
 IOBUF = apple2enh-iobuf-0800.o
 
-CODE   = $(BUILD)/A2RETRO.CODE.BIN
-SYSTEM = $(BUILD)/A2RETRO.SYSTEM.SYS
+CODE   = $(BUILD)/A2FILE.CODE.BIN
+# Les surcouches, ecrites par le meme lien : le decodeur d'images, les
+# visionneuses de texte et d'hexadecimal, la suppression, la page d'aide.
+PLUGINS = IMAGE TEXT HEX DELETE HELP
+SYSTEM = $(BUILD)/A2FILE.SYSTEM.SYS
 FORMAT = $(BUILD)/FORMAT.SYS.SYS
 PO     = $(DIST)/$(VOLUME).po
 DSK    = $(DIST)/$(VOLUME).dsk
 
-OBJS = $(BUILD)/crt0.o $(BUILD)/a2rc_mli.o $(BUILD)/chain.o $(BUILD)/music.o \
-       $(BUILD)/memory_swap.o $(BUILD)/mli_safe.o
+OBJS = $(BUILD)/crt0.o $(BUILD)/overlay.o $(BUILD)/a2fc_mli.o $(BUILD)/chain.o \
+       $(BUILD)/music.o $(BUILD)/memory_swap.o $(BUILD)/mli_safe.o $(BUILD)/mouse.o
 
 .PHONY: all disk test bench clean
 all: $(SYSTEM) $(CODE) $(FORMAT)
@@ -67,45 +70,48 @@ $(BUILD)/music.o: $(SRC)/music.s $(SRC)/ay_notes.inc | $(BUILD)
 	$(AS) -t $(TARGET) -D LOWBUF -I $(SRC) -o $@ $<
 
 # Le lanceur : un vrai programme SYS, charge en $2000 par ProDOS, qui lit
-# A2RETRO.CODE a ses trois adresses (voir src/loader.c).
+# A2FILE.CODE a ses trois adresses (voir src/loader.c).
 $(SYSTEM): $(SRC)/loader.c Makefile | $(BUILD)
-	$(CL) $(CFLAGS) -D 'A2RC_VERSION="$(A2RC_VERSION)"' --start-addr 0x2000 \
+	$(CL) $(CFLAGS) -D 'A2FC_VERSION="$(A2FC_VERSION)"' --start-addr 0x2000 \
 	  -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__FILETYPE__=0xFF \
 	  -o $@ $< $(IOBUF)
 
-$(CODE): $(SRC)/a2rc.c $(SRC)/a2rc.cfg $(SRC)/music.h $(SRC)/memory_swap.h $(OBJS) Makefile | $(BUILD)
-	$(CL) $(CFLAGS) -D 'A2RC_VERSION="$(A2RC_VERSION)"' -C $(SRC)/a2rc.cfg \
-	  -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__STACKSIZE__=$(A2RC_STACK) \
-	  -Wl -m,$(BUILD)/a2rc.map -Wl -Ln,$(BUILD)/a2rc.lbl \
-	  -o $@ $(BUILD)/crt0.o $(SRC)/a2rc.c $(BUILD)/a2rc_mli.o $(BUILD)/chain.o \
-	  $(BUILD)/music.o $(BUILD)/memory_swap.o $(BUILD)/mli_safe.o $(IOBUF)
-	@python3 $(TOOLS)/check_layout.py --lbl $(BUILD)/a2rc.lbl --bin $@
+$(CODE): $(SRC)/a2fc.c $(SRC)/a2fc.cfg $(SRC)/music.h $(SRC)/memory_swap.h $(OBJS) Makefile | $(BUILD)
+	$(CL) $(CFLAGS) -D 'A2FC_VERSION="$(A2FC_VERSION)"' -C $(SRC)/a2fc.cfg \
+	  -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__STACKSIZE__=$(A2FC_STACK) \
+	  -Wl -m,$(BUILD)/a2fc.map -Wl -Ln,$(BUILD)/a2fc.lbl \
+	  -o $@ $(BUILD)/crt0.o $(BUILD)/overlay.o $(SRC)/a2fc.c $(BUILD)/a2fc_mli.o \
+	  $(BUILD)/chain.o $(BUILD)/music.o $(BUILD)/memory_swap.o $(BUILD)/mli_safe.o \
+	  $(BUILD)/mouse.o $(IOBUF)
+	@python3 $(TOOLS)/check_layout.py --lbl $(BUILD)/a2fc.lbl --bin $@
 
-# Le formateur, programme a part : il ecrase A2 Retro Cmd en memoire et le
+# Le formateur, programme a part : il ecrase A2 File Cmd en memoire et le
 # relance en sortant. Pas de suffixe .SYSTEM : ProDOS amorce le premier
 # fichier .SYSTEM du catalogue, et il ne doit pas passer avant le lanceur.
 $(FORMAT): $(SRC)/format.c $(SRC)/format_diskii.s $(SRC)/format_mli.s $(SRC)/format.cfg $(BUILD)/chain.o Makefile | $(BUILD)
-	$(CL) $(CFLAGS) -D 'A2RC_VERSION="$(A2RC_VERSION)"' -C $(SRC)/format.cfg \
+	$(CL) $(CFLAGS) -D 'A2FC_VERSION="$(A2FC_VERSION)"' -C $(SRC)/format.cfg \
 	  --start-addr 0x2000 -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=0x6400 \
 	  -Wl -D,__FILETYPE__=0xFF -o $@ \
 	  $(SRC)/format.c $(SRC)/format_diskii.s $(SRC)/format_mli.s $(BUILD)/chain.o $(IOBUF)
 
 # ── La disquette ───────────────────────────────────────────────────────────
-# Volume /A2RETROCMD, 280 blocs, amorcable : ProDOS 2.4.3, le lanceur a la
-# racine (seul fichier .SYSTEM), le programme et son aide dans A2RETRO/, et
+# Volume /A2FILECMD, 280 blocs, amorcable : ProDOS 2.4.3, le lanceur a la
+# racine (seul fichier .SYSTEM), le programme, ses surcouches (des BIN
+# charges en $1B00, d'ou leur auxtype) et son aide dans A2FILE/, et
 # un dossier DEMO fabrique de toutes pieces pour essayer le visionneur, le
 # lecteur Mockingboard et l'editeur.
 STAGE = $(BUILD)/vol
 disk: $(PO)
-$(PO): $(SYSTEM) $(CODE) $(FORMAT) $(DATA)/A2RETRO.HELP.TXT $(DATA)/PRODOS.SYS $(DATA)/BASIC.SYSTEM.SYS \
+$(PO): $(SYSTEM) $(CODE) $(FORMAT) $(DATA)/A2FILE.HELP.TXT $(DATA)/PRODOS.SYS $(DATA)/BASIC.SYSTEM.SYS \
        $(DATA)/README.TXT $(DATA)/prodos_boot.tmpl \
        $(TOOLS)/mkvolume.py $(TOOLS)/mkdemo.py $(TOOLS)/po2dsk.py | $(DIST)
-	@rm -rf $(STAGE) && mkdir -p $(STAGE)/A2RETRO $(STAGE)/DEMO
+	@rm -rf $(STAGE) && mkdir -p $(STAGE)/A2FILE $(STAGE)/DEMO
 	cp $(DATA)/PRODOS.SYS $(DATA)/BASIC.SYSTEM.SYS $(STAGE)/
-	cp $(SYSTEM) $(STAGE)/A2RETRO.SYSTEM.SYS
-	cp $(CODE) $(STAGE)/A2RETRO/A2RETRO.CODE.BIN
-	cp $(DATA)/A2RETRO.HELP.TXT $(STAGE)/A2RETRO/A2RETRO.HELP.TXT
-	cp $(FORMAT) $(STAGE)/A2RETRO/FORMAT.SYS.SYS
+	cp $(SYSTEM) $(STAGE)/A2FILE.SYSTEM.SYS
+	cp $(CODE) $(STAGE)/A2FILE/A2FILE.CODE.BIN
+	for p in $(PLUGINS); do cp $(CODE).$$p "$(STAGE)/A2FILE/$$p.PLG#061B00"; done
+	cp $(DATA)/A2FILE.HELP.TXT $(STAGE)/A2FILE/A2FILE.HELP.TXT
+	cp $(FORMAT) $(STAGE)/A2FILE/FORMAT.SYS.SYS
 	cp $(DATA)/README.TXT $(STAGE)/DEMO/README.TXT
 	python3 $(TOOLS)/mkdemo.py $(STAGE)/DEMO
 	python3 $(TOOLS)/mkvolume.py $(STAGE) $(PO) --volume $(VOLUME) \

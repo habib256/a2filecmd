@@ -1,25 +1,27 @@
 # Les bancs
 
-Ils jouent d'A2 Retro Cmd comme un utilisateur, dans un Apple IIe emule sans
+Ils jouent d'A2 File Cmd comme un utilisateur, dans un Apple IIe emule sans
 fenetre, et verifient ce que l'ecran affiche. Rien n'est ajoute au binaire
 livre pour cela : les adresses des variables observees viennent de la table de
-symboles du lien (`build/a2rc.lbl`), et l'ecran est lu la ou l'Apple II le
+symboles du lien (`build/a2fc.lbl`), et l'ecran est lu la ou l'Apple II le
 range, en `$400-$7FF`.
 
-Ils partent tous de **`dist/A2RETROCMD.po` tel qu'il sera telecharge** : ce
+Ils partent tous de **`dist/A2FILECMD.po` tel qu'il sera telecharge** : ce
 qui passe ici est ce que recevra celui qui amorce la disquette.
 
 | | |
 |---|---|
 | `smoke.py` | la disquette publiee demarre-t-elle sur les panneaux ? |
-| `run.py` | la session complete : naviguer, marquer, copier, deplacer, renommer, verrouiller, changer type et auxtype, creer un dossier, supprimer, lire un texte et des octets, editer, afficher les deux formats d'image et les comparer octet a octet, jouer la fanfare, ouvrir le formateur, lancer un programme Applesoft. **39 controles.** |
+| `run.py` | la session complete : naviguer, marquer, copier, deplacer, renommer, verrouiller, changer type et auxtype, creer un dossier, supprimer, lire un texte et des octets, editer, afficher les deux formats d'image et les comparer octet a octet, jouer la fanfare, ouvrir le formateur, cliquer a la souris (pointeur, bornes, selection, ouverture, changement de panneau, barre de touches), lancer un programme Applesoft. **47 controles.** |
 | `memory.py` | le creux maximal de la pile C, mesure en faisant travailler le programme |
 | `pom2.py` | le pilote d'emulateur commun |
 
 ## Les faire tourner
 
 Il faut [POM2](https://github.com/habib256/pom2) construit sans interface
-graphique, avec son serveur de commande (`--ai-control`) :
+graphique, avec son serveur de commande (`--ai-control`) et une option
+`--mouse` qui branche une AppleMouse II (HLE AppleWin) en slot 4 -- c'est
+`pom2_playtest`, l'hote minimal du depot voisin, qui les a :
 
 ```sh
 make disk

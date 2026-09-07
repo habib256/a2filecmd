@@ -7,8 +7,8 @@
 ; depuis un talon recopie en page $0300 (libre sous ProDOS, hors de tout
 ; programme), qui ouvre le fichier, le lit tout entier a chain_addr, le
 ; ferme, remet la ROM en lecture et y saute. Un echec renvoie a ProDOS
-; (QUIT, Bitsy Bye). Partage par A2RC (touches X et F) et par FORMAT.SYSTEM
-; (retour a A2RC).
+; (QUIT, Bitsy Bye). Partage par A2FC (touches X et F) et par FORMAT.SYSTEM
+; (retour a A2FC).
 ;
 ;   void __fastcall__ chain_command(const char* name);
 ;

@@ -3,7 +3,7 @@
 
 POM2 (https://github.com/habib256/pom2) sait tourner sans interface et
 accepte des commandes sur un port local : lire la memoire, taper des
-touches, rendre l'ecran. C'est tout ce qu'il faut pour jouer d'A2 Retro Cmd
+touches, rendre l'ecran. C'est tout ce qu'il faut pour jouer d'A2 File Cmd
 comme un utilisateur et verifier ce qu'il affiche.
 
 L'ecran texte 80 colonnes est lu directement en $400-$7FF : colonnes paires
@@ -11,8 +11,8 @@ en banque auxiliaire, impaires en banque principale. Cela reste valable meme
 quand une image occupe l'ecran, ce qui permet de verifier ce que le
 programme croit afficher.
 
-Les adresses des variables de diagnostic (a2rc_view, a2rc_ops...) viennent
-de la table de symboles du lien (build/a2rc.lbl) : aucune constante ecrite a
+Les adresses des variables de diagnostic (a2fc_view, a2fc_ops...) viennent
+de la table de symboles du lien (build/a2fc.lbl) : aucune constante ecrite a
 la main, aucune porte derobee dans le binaire livre.
 
     POM2=/chemin/vers/pom2_headless python3 bench/run.py
@@ -28,12 +28,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 POM2 = os.environ.get('POM2', str(Path.home() / 'src/pom2adventure/SCOSWAMP.MORE/TOOLS/build/pom2_playtest'))
-DISK = ROOT / 'dist/A2RETROCMD.po'
+DISK = ROOT / 'dist/A2FILECMD.po'
 
 
 def labels(path=None):
-    """Les symboles du lien : {'_a2rc_view': 0x1234, ...}"""
-    text = (path or ROOT / 'build/a2rc.lbl').read_text()
+    """Les symboles du lien : {'_a2fc_view': 0x1234, ...}"""
+    text = (path or ROOT / 'build/a2fc.lbl').read_text()
     return {n: int(a, 16) for a, n in re.findall(r'al ([0-9A-F]+) \.(\w+)', text)}
 
 
@@ -44,12 +44,14 @@ class Timeout(AssertionError):
 class Pom2:
     """Un emulateur, sa copie de la disquette, et de quoi la piloter."""
 
-    def __init__(self, hdv, floppy=None, port=6600, speed=200000, exe=POM2):
+    def __init__(self, hdv, floppy=None, port=6600, speed=200000, exe=POM2, mouse=False):
         """`hdv` : le disque dur (toujours present, POM2 en veut un).
-        `floppy` : la disquette 5,25 a mettre en slot 6 et a amorcer."""
+        `floppy` : la disquette 5,25 a mettre en slot 6 et a amorcer.
+        `mouse` : une AppleMouse II en slot 4, que mouse() fait bouger."""
         self.port, self.base = port, 'http://127.0.0.1:%d' % port
         self.hdv, self.floppy = str(hdv), str(floppy) if floppy else None
         self.speed, self.exe, self.proc = speed, exe, None
+        self.with_mouse = mouse
 
     # ── cycle de vie ───────────────────────────────────────────────────────
     def start(self):
@@ -59,6 +61,8 @@ class Pom2:
                 '--speed', str(self.speed)]
         if self.floppy:
             args += ['--disk', self.floppy, '--boot', '6']
+        if self.with_mouse:
+            args += ['--mouse']
         args += [os.path.basename(self.hdv)]
         self.proc = subprocess.Popen(args, cwd=cwd, stdout=log, stderr=subprocess.STDOUT,
                                      start_new_session=True)
@@ -113,6 +117,40 @@ class Pom2:
 
     def keys(self, text):
         return self.rq('/keyboard', {'text': text})['queued']
+
+    def mouse(self, x=None, y=None, dx=None, dy=None, btn=None, reset=False):
+        """La souris : une position absolue du compteur de l'hote, ou un
+        deplacement (127 au plus par appel), le bouton, la remise a zero du
+        compteur. La carte ne voit que des deplacements, que le firmware
+        borne a l'ecran : apres home(), tant qu'on reste dans les bornes, x
+        et y sont des cases de l'ecran 80 colonnes."""
+        body = {}
+        if reset: body['reset'] = 1
+        if x is not None: body['x'] = x
+        if y is not None: body['y'] = y
+        if dx is not None: body['dx'] = dx
+        if dy is not None: body['dy'] = dy
+        if btn is not None: body['btn'] = btn
+        return self.rq('/mouse', body)
+
+    def home(self):
+        """Ramene la souris en (0, 0) des deux cotes : le pointeur de l'Apple II
+        contre ses bornes, puis le compteur de l'hote a zero -- par des pas
+        negatifs, jamais par reset : la carte garde sa derniere position et
+        verrait dans la suivante un deplacement qui deborde."""
+        r = None
+        for _ in range(2):
+            r = self.mouse(dx=-127, dy=-127)
+            time.sleep(0.05)
+        while r['x'] or r['y']:
+            r = self.mouse(dx=-min(r['x'], 127), dy=-min(r['y'], 127))
+            time.sleep(0.05)
+
+    def click(self, x, y, pause=0.3):
+        """Un clic en (x, y) : la souris y va, le bouton s'enfonce, se relache."""
+        self.mouse(x=x, y=y); time.sleep(0.15)
+        self.mouse(btn=1); time.sleep(0.15)
+        self.mouse(btn=0); time.sleep(pause)
 
     def raw(self, data):
         """Des octets bruts (ESC = \\x1b, Bas = \\x0a).
@@ -193,7 +231,7 @@ class Session:
         return any(needle in r for r in self.rows())
 
     def value(self, name, n=2):
-        return int.from_bytes(self.p.peek(self.sym['_a2rc_' + name], n), 'little')
+        return int.from_bytes(self.p.peek(self.sym['_a2fc_' + name], n), 'little')
 
     def wait(self, test, what, seconds=30):
         deadline = time.time() + seconds

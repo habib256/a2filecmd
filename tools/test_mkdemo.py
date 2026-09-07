@@ -1,6 +1,6 @@
-"""Les fichiers de demonstration doivent se relire comme A2 Retro Cmd les lit.
+"""Les fichiers de demonstration doivent se relire comme A2 File Cmd les lit.
 
-Le decodeur ci-dessous est la transcription de decode_rle() dans src/a2rc.c :
+Le decodeur ci-dessous est la transcription de decode_rle() dans src/a2fc.c :
 si l'aller-retour passe ici, la disquette montrera bien l'image.
 
     python3 tools/test_mkdemo.py
@@ -15,7 +15,7 @@ import mkdemo
 
 
 def decode(stream, size):
-    """La boucle de a2rc.c : $80|n-3 puis l'octet a repeter, sinon n-1 litteraux."""
+    """La boucle de a2fc.c : $80|n-3 puis l'octet a repeter, sinon n-1 litteraux."""
     out, i = bytearray(), 8
     while len(out) < size:
         t = stream[i]; i += 1
@@ -62,7 +62,7 @@ class Demo(unittest.TestCase):
         self.assertEqual(mb[:3], b'MB1')
         self.assertEqual(mb[6:8], b'\x08\x00', "le flux commence apres 8 octets d'en-tete")
         self.assertEqual(len(mb) - 8, int.from_bytes(mb[4:6], 'little'))
-        # a2rc.c refuse un flux dont le dernier paquet n'est pas un END ($Ex)
+        # a2fc.c refuse un flux dont le dernier paquet n'est pas un END ($Ex)
         self.assertEqual(mb[-1] & 0xF0, 0xE0)
         self.assertLess(len(mb), 2304, 'MUSIC_ZONE : 2304 octets au plus')
 

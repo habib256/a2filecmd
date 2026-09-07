@@ -1,4 +1,4 @@
-A2 RETRO CMD 1.0 - free software, GNU GPL v3, by Arnaud VERHILLE
+A2 FILE CMD 1.0 - free software, GNU GPL v3, by Arnaud VERHILLE
 TEST FILES / FICHIERS DE TEST
 
 Open each file with RETURN, or I to force the image viewer:

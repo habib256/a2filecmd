@@ -3,7 +3,7 @@
     python3 bench/smoke.py
 
 C'est le controle qui garde tout le reste honnete : il part de
-dist/A2RETROCMD.po tel qu'il sera telecharge, l'amorce comme une vraie
+dist/A2FILECMD.po tel qu'il sera telecharge, l'amorce comme une vraie
 disquette en slot 6, et regarde ce que l'Apple IIe affiche.
 """
 import shutil
@@ -29,21 +29,21 @@ def scratch(dirpath, name='SCRATCH', blocks=1600):
 
 
 def main():
-    with tempfile.TemporaryDirectory(prefix='a2rc-smoke-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='a2fc-smoke-') as tmp:
         tmp = Path(tmp)
-        floppy = tmp / 'A2RETROCMD.po'
-        shutil.copyfile(ROOT / 'dist/A2RETROCMD.po', floppy)
+        floppy = tmp / 'A2FILECMD.po'
+        shutil.copyfile(ROOT / 'dist/A2FILECMD.po', floppy)
         with Pom2(scratch(tmp), floppy=floppy, port=6601) as p:
             s = Session(p)
             s.boot()
             s.ok('la disquette publiee demarre sur les panneaux',
-                 s.has('/A2RETROCMD'), s.rows()[0][:40])
+                 s.has('/A2FILECMD'), s.rows()[0][:40])
             s.ok('la barre de statut porte le nom et la version',
-                 s.has('A2 RETRO CMD 1.0'), s.rows()[20][:60].strip())
+                 s.has('A2 FILE CMD 1.0'), s.rows()[20][:60].strip())
             s.ok('le lanceur est le seul .SYSTEM du volume',
-                 any(r.startswith('A2RETRO.SYSTEM') for r in s.rows()))
+                 any(r.startswith('A2FILE.SYSTEM') for r in s.rows()))
             s.ok('les deux dossiers livres sont la',
-                 s.has('A2RETRO ') and s.has('DEMO '))
+                 s.has('A2FILE ') and s.has('DEMO '))
             print('\n'.join(r.rstrip() for r in s.rows()[:22]), flush=True)
     return 0
 

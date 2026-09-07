@@ -1,4 +1,4 @@
-/* A2 RETRO CMD -- un gestionnaire de fichiers ProDOS a deux panneaux, dans
+/* A2 FILE CMD -- un gestionnaire de fichiers ProDOS a deux panneaux, dans
  * l'esprit de Total Commander, tournant nativement sur Apple IIe 128 Ko.
  *
  * Programme SYS autonome, amorcable seul ou lance depuis un selecteur comme
@@ -7,7 +7,7 @@
  * lui-meme : seules les commandes explicites (copie, deplacement, renommage,
  * suppression, creation de dossier, type, verrou) ecrivent sur le disque,
  * apres confirmation quand elles detruisent quelque chose. Il ecrit aussi
- * A2RETRO/A2RETRO.CFG en quittant : les deux dossiers, le tri, le panneau actif.
+ * A2FILE/A2FILE.CFG en quittant : les deux dossiers, le tri, le panneau actif.
  *
  * Ouvrir (Entree) choisit d'apres le type : un dossier s'ouvre, une image
  * DHGR (.RLE, flux DHRR) s'affiche plein ecran, un TXT se lit page par page,
@@ -15,13 +15,16 @@
  * Espace marque plusieurs fichiers : copie, deplacement et suppression
  * portent alors sur tous les fichiers marques.
  *
- * Memoire : code a $4000, tampons de travail en $1000-$1FFF (LOWBSS),
+ * Memoire : code a $4000, tampons de travail en $1000-$1AFF (LOWBSS),
  * visionneuses et saisies dans la carte langage ($D400-$DFFF, segment LC,
- * copie par crt0 comme pour le jeu). Les deux tables d'entrees occupent la
+ * copie par crt0 comme pour le jeu), et une fenetre de surcouche en
+ * $1B00-$1FFF ou les surcouches (A2FILE/IMAGE.PLG, TEXT, HEX, DELETE,
+ * HELP : liees avec le programme mais ecrites a part) sont lues a la
+ * demande, voir overlay(). Les deux tables d'entrees occupent la
  * page graphique MAIN $2000-$3FFF, libre tant qu'aucune image n'est
  * affichee : une image la recouvre (MAIN et AUX), et les deux panneaux sont
  * relus au retour. Deux fichiers ouverts au plus (copie) : tampons ProDOS
- * $0800 et $0C00, A2RC n'utilise pas MAPBSS. Un dossier qui deborde la
+ * $0800 et $0C00, A2FC n'utilise pas MAPBSS. Un dossier qui deborde la
  * table est lu par fenetres, dans l'ordre du disque.
  */
 #include <stdio.h>
@@ -41,18 +44,25 @@
 extern unsigned char _filetype;
 extern unsigned int _auxtype;
 
-unsigned char __fastcall__ mli_gfi(void* params);   /* a2rc_mli.s */
+unsigned char __fastcall__ mli_gfi(void* params);   /* a2fc_mli.s */
 unsigned char ram_format(void);
 extern unsigned int chain_addr;                    /* chain.s */
 void __fastcall__ chain_load(const char* path);
 void __fastcall__ chain_command(const char* name);
 unsigned char __fastcall__ mli_sfi(void* params);
+/* La souris (mouse.s) : une carte AppleMouse II, dans n'importe quel slot. */
+unsigned char mouse_init(void);
+unsigned char mouse_read(void);
+void mouse_show(void);
+void mouse_hide(void);
+extern unsigned char mouse_x, mouse_y;
 static unsigned char exists(const char* path);
+int main(void);
 static void too_long(void);
 static void dir_fail(void);
 
-#ifndef A2RC_VERSION
-#define A2RC_VERSION "1.0"
+#ifndef A2FC_VERSION
+#define A2FC_VERSION "1.0"
 #endif
 #define MAX_ENTRIES 140         /* 2 x 140 x 29 octets = 8120, dans les 8 Ko de $2000 */
 #define WINDOW (MAX_ENTRIES - 1)   /* entrees du disque par fenetre : ".." en plus */
@@ -79,14 +89,21 @@ struct Entry {
     unsigned int mdate;         /* jour 5 bits, mois 4 bits, annee 7 bits ; volume : unite */
 };
 
-struct Panel {
-    char path[PATH_LEN];        /* "" : la liste des volumes en ligne */
-    unsigned char count, cursor, top, more;
-    unsigned int first;         /* premiere entree du disque dans la fenetre */
+struct Panel {                  /* decalages lus par panel_hash (a2fc_mli.s) : */
+    char path[PATH_LEN];        /* 0 ; "" : la liste des volumes en ligne */
+    unsigned char count, cursor, top, more;   /* 64, 65, 66, 67 */
+    unsigned int first;         /* 68 ; premiere entree du disque dans la fenetre */
     unsigned int free_blocks, total_blocks;
-    struct Entry* e;
+    struct Entry* e;            /* 74 ; des entrees de 29 octets */
     unsigned char tags[(MAX_ENTRIES + 7) / 8];
 };
+
+/* L'empreinte de ce qu'un panneau montre (a2fc_mli.s, en LOWEXE) : nombre,
+ * fenetre, chemin ou son absence, et chaque octet de la table d'entrees.
+ * Elle dit si une relecture a change l'ecran, pour bien moins cher que de
+ * le redessiner. L'assembleur lit le panneau par les decalages notes en
+ * face des champs de struct Panel : les deplacer, c'est le mettre a jour. */
+unsigned int __fastcall__ panel_hash(const struct Panel* pan);
 
 enum { SORT_NAME, SORT_SIZE, SORT_TYPE, SORT_MODES };
 enum { ASK, OVERWRITE_ALL, SKIP_ALL };
@@ -95,7 +112,7 @@ enum { ASK, OVERWRITE_ALL, SKIP_ALL };
 #define EDIT_BUF ((char*)0x2000)          /* la meme page pour l'editeur et l'aide */
 #define EDIT_MAX 0x1FF0
 /* Toute la BSS de ce fichier vit en RAM basse ($1000-$1FFF, segment LOWBSS
- * d'a2rc.cfg) : main() la met a zero, crt0 ne le fait que pour BSS.
+ * d'a2fc.cfg) : main() la met a zero, crt0 ne le fait que pour BSS.
  * Bornes du segment exportees par le lieur. */
 extern char _LOWBSS_RUN__[];
 extern char _LOWBSS_SIZE__[];
@@ -103,11 +120,13 @@ extern char _LOWBSS_SIZE__[];
 static struct Panel panels[2];
 static unsigned char active, sort_mode, over_policy;
 static unsigned int progress_done, progress_total, progress_skipped;
-/* Diagnostics lisibles par le banc de test POM2 (voir a2rc.lbl). */
-unsigned int a2rc_draws, a2rc_ops, a2rc_errors;
-unsigned char a2rc_view;       /* 0 panneaux, 1 image, 2 texte, 3 hexa, 4 aide, 5 editeur */
-unsigned char a2rc_slot;       /* la Mockingboard, 0 sans ; 0xFF pas encore cherchee */
-unsigned char a2rc_playing;    /* 0 silence, 1 joue, 2 en pause */
+/* Diagnostics lisibles par le banc de test POM2 (voir a2fc.lbl). */
+unsigned int a2fc_draws, a2fc_ops, a2fc_errors;
+unsigned char a2fc_view;       /* 0 panneaux, 1 image, 2 texte, 3 hexa, 4 aide, 5 editeur */
+unsigned char a2fc_slot;       /* la Mockingboard, 0 sans ; 0xFF pas encore cherchee */
+unsigned char a2fc_playing;    /* 0 silence, 1 joue, 2 en pause */
+unsigned char a2fc_mouse;      /* le slot de la souris, 0 sans */
+static unsigned char pointer;  /* la souris a bouge une fois : le pointeur s'affiche */
 
 static char full[PATH_LEN + NAME_LEN];
 static char other_full[PATH_LEN + NAME_LEN];
@@ -118,6 +137,9 @@ static unsigned char copy_buf[512];
 static unsigned char gfi[18];
 static unsigned char gfi_path[PATH_LEN + 1];
 static unsigned char picked[MAX_ENTRIES];
+static char album[2][NAME_LEN];    /* visionneuse d'images : les voisines de gauche et de droite */
+static unsigned int seen[2];       /* et l'empreinte des deux panneaux a l'entree */
+static char overlay_loaded[8];     /* la surcouche en place dans la fenetre $1B00, "" sans */
 static long text_starts[96];
 /* Les parcours recursifs (copie et suppression d'un dossier) empilent
  * les entrees de chaque niveau : un niveau occupe pool[base..base+n[, le
@@ -358,6 +380,20 @@ static unsigned char tag_count(const struct Panel* pan)
     return n;
 }
 
+/* Les marques des deux panneaux, mises de cote dans picked[] pendant qu'une
+ * image, l'aide ou l'editeur recouvre les tables d'entrees (save = 1), puis
+ * rendues une fois les panneaux relus (save = 0). */
+static void keep_tags(unsigned char save)
+{
+    if (save) {
+        memcpy(picked, panels[0].tags, sizeof panels[0].tags);
+        memcpy(picked + sizeof panels[0].tags, panels[1].tags, sizeof panels[1].tags);
+    } else {
+        memcpy(panels[0].tags, picked, sizeof panels[0].tags);
+        memcpy(panels[1].tags, picked + sizeof panels[0].tags, sizeof panels[1].tags);
+    }
+}
+
 /* Une ligne d'entree, 38 caracteres exactement (une ligne plus courte
  * laisserait a l'ecran la fin de la ligne precedente), en inverse quand le
  * curseur y est ; une etoile apres le nom marque un fichier selectionne par
@@ -387,7 +423,7 @@ static void draw_panel(unsigned char p)
         "Name*            Type  Aux     Size",
         "Name             Type  Aux     Size*",
         "Name             Type* Aux     Size" };
-    ++a2rc_draws;
+    ++a2fc_draws;
     cclearxy(x, 0, 38);
     if (p == active) revers(1);
     gotoxy(x, 0);
@@ -407,11 +443,12 @@ static void draw_status(void)
 {
     struct Panel* pan = &panels[active];
     chlinexy(0, 20, 80);
-    cputsxy(2, 20, " A2 RETRO CMD " A2RC_VERSION " ");
+    cputsxy(2, 20, " A2 FILE CMD " A2FC_VERSION " ");
     if (pan->total_blocks) {
         gotoxy(30, 20);
         cprintf(" %u of %u blocks free ", pan->free_blocks, pan->total_blocks);
     }
+    if (a2fc_mouse) cputsxy(70, 20, " Mouse ");
 }
 
 static void draw_frame(void)
@@ -579,6 +616,19 @@ static void set_cursor(struct Panel* pan, unsigned char index)
     if (pan->cursor >= pan->top + ROWS) pan->top = pan->cursor - ROWS + 1;
 }
 
+/* Pose le curseur du panneau actif sur `index` et ne reecrit que ce qui
+ * bouge : les deux lignes quand la fenetre ne defile pas, le panneau
+ * entier sinon, puis la ligne d'information. */
+static void land(unsigned char index)
+{
+    struct Panel* pan = &panels[active];
+    unsigned char previous = pan->cursor, old_top = pan->top;
+    set_cursor(pan, index);
+    if (pan->top != old_top) draw_panel(active);
+    else { draw_entry(active, previous); draw_entry(active, pan->cursor); }
+    draw_info();
+}
+
 static void select_name(struct Panel* pan, const char* name)
 {
     unsigned char i;
@@ -681,7 +731,7 @@ static unsigned int hex_value(void)
 
 static void report_error(const char* what)
 {
-    ++a2rc_errors;
+    ++a2fc_errors;
     clear_row(22);
     gotoxy(0, 22);
     cprintf("%s failed (errno %d, ProDOS $%02X).", what, errno, _oserror);
@@ -696,14 +746,22 @@ static void report_error(const char* what)
  * En RAM principale : la carte langage est pleine. */
 #pragma code-name (push, "CODE")
 #pragma rodata-name (push, "RODATA")
+/* La taille d'une page HGR (8 192 ou 8 184 octets) ou DHGR (16 384), lue en
+ * deux mots : cc65 compare un long par une routine, et chaque comparaison
+ * se payait une trentaine d'octets. */
+static unsigned char page_size(const unsigned long* size)
+{
+    const unsigned int* w = (const unsigned int*)size;
+    return !w[1] && (w[0] == 8192 || w[0] == 8184 || w[0] == 16384);
+}
+
 static unsigned char looks_like_image(const struct Entry* e)
 {
     unsigned char n = strlen(e->name);
     if (is_dir(e)) return 0;
     if (e->type == 0x08) return 1;
     if (e->type != 0x06) return 0;
-    return e->size == 8192 || e->size == 8184 || e->size == 16384
-        || (n > 4 && !strcmp(e->name + n - 4, ".RLE"));
+    return page_size(&e->size) || (n > 4 && !strcmp(e->name + n - 4, ".RLE"));
 }
 #pragma rodata-name (pop)
 #pragma code-name (pop)
@@ -736,6 +794,9 @@ static void view_seek(long offset)
 
 /* Une page de 22 lignes ; les retours ProDOS sont des CR. Les debuts de
  * page sont memorises au passage : la page precedente est un fseek. */
+/* La surcouche TEXT : la visionneuse de texte, dans A2FILE/TEXT.PLG. */
+#pragma code-name (push, "TEXT")
+#pragma rodata-name (push, "TEXT")
 static void view_text(const char* path)
 {
     long* starts = text_starts;
@@ -744,7 +805,7 @@ static void view_text(const char* path)
     char key;
     vf = fopen(path, "rb");
     if (!vf) { report_error("Open"); return; }
-    a2rc_view = 2;
+    a2fc_view = 2;
     starts[0] = 0;
     for (;;) {
         view_seek(starts[page]);
@@ -773,20 +834,25 @@ static void view_text(const char* path)
         if ((key == 'b' || key == 'B' || key == KEY_LEFT || key == KEY_UP) && page) --page;
     }
     fclose(vf);
-    a2rc_view = 0;
+    a2fc_view = 0;
     draw_all();
 }
+#pragma rodata-name (pop)
+#pragma code-name (pop)
 
 #define HEX_ROWS 20
 #define HEX_PAGE (HEX_ROWS * 16)
 
+/* La surcouche HEX : la visionneuse hexadecimale, dans A2FILE/HEX.PLG. */
+#pragma code-name (push, "HEX")
+#pragma rodata-name (push, "HEX")
 static void view_hex(const char* path, unsigned long size)
 {
     unsigned int page = 0, pages = (unsigned int)((size + HEX_PAGE - 1) / HEX_PAGE), n, i, j;
     char key;
     vf = fopen(path, "rb");
     if (!vf) { report_error("Open"); return; }
-    a2rc_view = 3;
+    a2fc_view = 3;
     if (!pages) pages = 1;
     for (;;) {
         fseek(vf, (long)page * HEX_PAGE, SEEK_SET);
@@ -814,12 +880,14 @@ static void view_hex(const char* path, unsigned long size)
         if ((key == 'b' || key == 'B' || key == KEY_LEFT || key == KEY_UP) && page) --page;
     }
     fclose(vf);
-    a2rc_view = 0;
+    a2fc_view = 0;
     draw_all();
 }
+#pragma rodata-name (pop)
+#pragma code-name (pop)
 
 /* ---------------------------------------------------------------------- */
-/* Preferences : A2RETRO/A2RETRO.CFG -- dans la carte langage                 */
+/* Preferences : A2FILE/A2FILE.CFG -- dans la carte langage                 */
 /* ---------------------------------------------------------------------- */
 
 /* Trois lignes CR : panneau gauche, panneau droit, "S<tri>A<actif>". */
@@ -875,14 +943,7 @@ static unsigned char img_kind;
 static const char* ram_note;
 
 #define HGR_MAIN ((unsigned char*)0x2000)
-
-/* Aiguille les ecritures $2000-$3FFF vers AUX (80STORE + HIRES + PAGE2),
- * comme hgr_loader.s ; le MLI y ecrit alors aussi. */
-static void aux_writes(unsigned char on)
-{
-    if (on) { *(unsigned char*)0xC002 = 0; *(unsigned char*)0xC004 = 0; *(unsigned char*)0xC057 = 0; *(unsigned char*)0xC001 = 0; *(unsigned char*)0xC055 = 0; }
-    else { *(unsigned char*)0xC054 = 0; *(unsigned char*)0xC000 = 0; }
-}
+#define OVERLAY ((unsigned char*)0x1B00)   /* la fenetre de surcouche, voir a2fc.cfg */
 
 /* HGR simple, page 1, sans le mode double : 80COL et DHIRES coupes.
  * TXTCLR ($C050) en DERNIER : allumer le graphique avant d'avoir arme HIRES
@@ -895,11 +956,63 @@ static void show_hgr(void)
     *(unsigned char*)0xC050 = 0;
 }
 
-/* Le decodeur et le chargeur tiennent dans LOWEXE, le kilo-octet de RAM
- * basse en $1C00-$1FFF que le lanceur met en scene avec l'image LC (voir
- * a2rc.cfg) : de la RAM ordinaire, au meme prix que $4000, et c'est ce qui
- * a rendu a la fenetre principale de quoi refaire /RAM. */
-#pragma code-name (push, "LOWEXE")
+/* Le chemin d'un fichier range a cote du programme : "/VOL/A2FILE/name",
+ * dans other_full, d'apres celui de la configuration. Vide si le programme
+ * ne sait pas d'ou il vient. */
+static void a2file_file(const char* name)
+{
+    char* slash = strrchr(cfg_path, '/');
+    other_full[0] = 0;
+    if (!slash) return;
+    memcpy(other_full, cfg_path, slash + 1 - cfg_path);
+    strcpy(other_full + (slash + 1 - cfg_path), name);
+}
+
+/* Charge la surcouche `name` -- A2FILE/NAME.PLG, un fichier BIN de 1 280
+ * octets au plus, lie avec le programme -- dans la fenetre $1B00-$1FFF, si
+ * elle n'y est pas deja : feuilleter un dossier d'images ne relit rien. Le
+ * mot en tete de la surcouche est l'adresse de main dans le lien qui l'a
+ * produite (overlay.s) ; un fichier d'une autre construction est refuse,
+ * comme un fichier absent, et la ligne de message le dit. Rend 0 alors. */
+static unsigned char overlay(const char* name)
+{
+    FILE* f;
+    if (!strcmp(overlay_loaded, name)) return 1;
+    overlay_loaded[0] = 0;
+    a2file_file(name);
+    strcat(other_full, ".PLG");
+    f = fopen(other_full, "rb");
+    if (f) {
+        fread(OVERLAY, 1, 0x500, f);
+        fclose(f);
+        if (*(unsigned int*)OVERLAY == (unsigned int)main) { strcpy(overlay_loaded, name); return 1; }
+    }
+    clear_row(22);
+    gotoxy(0, 22);
+    cprintf("A2FILE/%s.PLG is missing or stale on this volume.", name);
+    return 0;
+}
+
+/* ---------------------------------------------------------------------- */
+/* La surcouche IMAGE : le chargeur et le decodeur, dans A2FILE/IMAGE.PLG */
+/* ---------------------------------------------------------------------- */
+
+/* Tout ce qui suit jusqu'au pop est lie a part, dans la fenetre $1B00 :
+ * de la RAM ordinaire, au meme prix que $4000, mais qui ne coute rien au
+ * programme resident. Le noyau sait reconnaitre une image (looks_like_image)
+ * et charger la surcouche ; il ne sait plus decoder. Les visionneuses de
+ * texte et d'hexadecimal (TEXT, HEX), la suppression (DELETE) et l'aide
+ * (HELP) sont d'autres surcouches, chacune marquee de la meme facon. */
+#pragma code-name (push, "IMAGE")
+#pragma rodata-name (push, "IMAGE")
+
+/* Aiguille les ecritures $2000-$3FFF vers AUX (80STORE + HIRES + PAGE2),
+ * comme hgr_loader.s ; le MLI y ecrit alors aussi. */
+static void aux_writes(unsigned char on)
+{
+    if (on) { *(unsigned char*)0xC002 = 0; *(unsigned char*)0xC004 = 0; *(unsigned char*)0xC057 = 0; *(unsigned char*)0xC001 = 0; *(unsigned char*)0xC055 = 0; }
+    else { *(unsigned char*)0xC054 = 0; *(unsigned char*)0xC000 = 0; }
+}
 
 /* Un flux RLE v1 (HGRR ou DHRR) decompresse en $2000 : `bytes` octets, la
  * premiere moitie d'un DHRR vers AUX. Le fichier est ouvert sur l'en-tete.
@@ -915,7 +1028,7 @@ static void advance(unsigned int n)
     if (dn == 8192) { dn = 0; ++dplane; if (dplane == 1 && dplanes == 2) aux_writes(0); }
 }
 
-static unsigned char decode_rle(FILE* f, unsigned long bytes)
+static unsigned char decode_rle(FILE* f, unsigned int bytes)
 {
     unsigned int count, chunk;
     int t, v;
@@ -956,13 +1069,12 @@ static unsigned char decode_rle(FILE* f, unsigned long bytes)
     return dplane == dplanes;
 }
 
-#pragma code-name (pop)
-
-/* Identifie et charge l'image `full` en page 1. Rend le format, IMG_NONE
- * si le fichier n'en est pas une. */
-static unsigned char load_image(unsigned long size)
+/* Identifie et charge l'image `full` (l'entree `e`) en page 1. Rend le
+ * format, IMG_NONE si le fichier n'en est pas une. */
+static unsigned char load_image(const struct Entry* e)
 {
     FILE* f;
+    unsigned int size = page_size(&e->size) ? (unsigned int)e->size : 0;
     unsigned char kind = IMG_NONE, ok = 0;
     /* Le firmware 80 colonnes laisse 80STORE arme et se sert de PAGE2 pour
      * atteindre la banque auxiliaire. Avec HIRES encore actif (une image
@@ -975,8 +1087,8 @@ static unsigned char load_image(unsigned long size)
     if (fread(copy_buf, 1, 8, f) == 8) {
         if (!memcmp(copy_buf, "DHRR\1\0\0\x40", 8)) kind = IMG_DHRR;
         else if (!memcmp(copy_buf, "HGRR\1\0\0\x20", 8)) kind = IMG_HGRR;
-        else if (size == 8192 || size == 8184) kind = IMG_HGR;
         else if (size == 16384) kind = IMG_DHGR;
+        else if (size) kind = IMG_HGR;
     }
     if (kind == IMG_DHRR) ok = decode_rle(f, 16384);
     else if (kind == IMG_HGRR) ok = decode_rle(f, 8192);
@@ -992,70 +1104,105 @@ static unsigned char load_image(unsigned long size)
     return ok ? kind : IMG_NONE;
 }
 
+#pragma rodata-name (pop)
+#pragma code-name (pop)
+
+static void loading(const char* name)
+{
+    clear_row(22);
+    gotoxy(0, 22);
+    cprintf("Loading %s...", name);
+}
+
 /* L'image du curseur, plein ecran, HGR ou DHGR selon ce que le fichier
  * contient. Gauche / Droite passent a l'image precedente / suivante du
  * meme dossier sans revenir aux panneaux : le dossier DHGR se feuillette
- * comme un album. Toute autre touche revient, et la ligne de message dit
- * le format reconnu. */
+ * comme un album, et le curseur suit. Toute autre touche revient, et la
+ * ligne de message dit le format reconnu.
+ *
+ * L'ecran texte n'est jamais efface : les panneaux restent en $400-$7FF
+ * pendant tout le feuilletage, et seul ce qui change est reecrit -- les
+ * deux lignes du curseur, la ligne d'information, la ligne de message. Au
+ * retour, un panneau n'est redessine que si sa relecture montre autre
+ * chose qu'a l'entree (/RAM refait a neuf, disquette changee). */
 static void view_image(void)
 {
     struct Panel* pan = &panels[active];
-    unsigned char index = pan->cursor, next;
+    unsigned char index = pan->cursor, next, p, dir, dhgr = 0;
     char key;
+    if (!overlay("IMAGE")) return;
     /* L'image recouvre les tables d'entrees : les marques sont mises de
-     * cote, les panneaux relus au retour (et avant chaque image suivante). */
-    memcpy(picked, panels[0].tags, sizeof panels[0].tags);
-    memcpy(picked + sizeof panels[0].tags, panels[1].tags, sizeof panels[1].tags);
+     * cote, les panneaux relus au retour, et le panneau actif avant chaque
+     * image suivante pour y retrouver la voisine. */
+    keep_tags(1);
+    for (p = 0; p < 2; ++p) seen[p] = panel_hash(&panels[p]);
+    a2fc_view = 1;
+    loading(pan->e[index].name);
     for (;;) {
-        if (!build_full(full, pan, &pan->e[index])) { too_long(); break; }
+        full[0] = 0;
+        if (!build_full(full, pan, &pan->e[index])) break;
         strcpy(input, pan->e[index].name);
-        a2rc_view = 1;
+        /* Les voisines qui ressemblent a une image, de chaque cote : leurs
+         * noms survivent a l'image qui va recouvrir la table. Une fleche
+         * sait ainsi, sans relire le dossier, si elle a quelque part ou
+         * aller, et annonce la suivante avant meme de la chercher. */
+        for (dir = 0; dir < 2; ++dir) {
+            album[dir][0] = 0;
+            next = index;
+            for (;;) {
+                if (!dir) { if (!next) break; --next; }
+                else { if (next + 1 >= pan->count) break; ++next; }
+                if (looks_like_image(&pan->e[next])) { strcpy(album[dir], pan->e[next].name); break; }
+            }
+        }
         /* RIEN ne doit ecrire dans $2000-$3FFF pendant que la page graphique
          * est a l'antenne : on y voyait sinon l'image precedente se faire
          * ronger par la table d'entrees, puis la nouvelle se peindre bande
          * par bande (et, en DHGR, le plan AUX avant le plan MAIN). L'ecran
-         * revient donc au texte -- les panneaux, intacts en $400-$7FF -- le
+         * est donc au texte -- les panneaux, intacts en $400-$7FF -- le
          * temps du decodage, et l'image ne s'allume qu'une fois complete. */
-        switch_to_text();
-        message(input);
-        img_kind = load_image(pan->e[index].size);
+        img_kind = load_image(&pan->e[index]);
         if (img_kind == IMG_NONE) break;
-        if (img_kind == IMG_HGR || img_kind == IMG_HGRR) show_hgr(); else switch_to_hgr();
-        key = cgetc();
+        if (img_kind == IMG_HGR || img_kind == IMG_HGRR) show_hgr();
+        else { switch_to_hgr(); dhgr = 1; }
+        /* Une fleche sans voisine de son cote ne fait rien : l'image reste. */
+        do key = cgetc(); while ((key == KEY_LEFT || key == KEY_RIGHT) && !album[key == KEY_RIGHT][0]);
         if (key != KEY_LEFT && key != KEY_RIGHT) break;
-        /* read_panel reecrit la table d'entrees, donc la page graphique. */
+        dir = key == KEY_RIGHT;
+        /* Retour au texte avant que read_panel ne reecrive la table
+         * d'entrees, donc la page graphique ; le nom de la voisine s'affiche
+         * pendant qu'on la cherche, le curseur la rejoint des qu'elle est la. */
         switch_to_text();
+        loading(album[dir]);
         read_panel(active);
-        if (index >= pan->count) break;   /* le dossier a change sous nos pieds */
-        next = index;
-        for (;;) {
-            if (key == KEY_LEFT) { if (!next) break; --next; }
-            else { if (next + 1 >= pan->count) break; ++next; }
-            if (looks_like_image(&pan->e[next])) { index = next; break; }
-        }
+        keep_tags(0);
+        for (next = 0; next < pan->count && strcmp(pan->e[next].name, album[dir]); ++next) {}
+        if (next >= pan->count) break;   /* le dossier a change sous nos pieds */
+        land(next);
+        index = next;
     }
     switch_to_text();
-    a2rc_view = 0;
+    a2fc_view = 0;
     /* Le prix du DHGR : sa moitie auxiliaire ($2000-$3FFF en banque AUX) est
      * de la memoire que le disque virtuel de ProDOS utilise -- 18 blocs,
      * mesures au banc, et c'est justement la que commencent les donnees d'un
      * fichier ecrit sur /RAM. Ils sont perdus, le volume est donc faux : la
      * prochaine ecriture rendrait n'importe quoi. On le refait a neuf par son
-     * propre pilote, ce qui rend un volume vide et coherent, et on le dit.
-     * Une image HGR simple n'ecrit qu'en banque principale et ne declenche
-     * rien. */
-    ram_note = (img_kind == IMG_DHGR || img_kind == IMG_DHRR) && ram_format()
-             ? "  /RAM was rebuilt empty." : "";
-    read_panel(0);
-    read_panel(1);
-    memcpy(panels[0].tags, picked, sizeof panels[0].tags);
-    memcpy(panels[1].tags, picked + sizeof panels[0].tags, sizeof panels[1].tags);
-    /* Le panneau a pu retrecir pendant qu'on regardait : un dossier change
-     * sous nos pieds, ou /RAM refait a neuf sous celui qui s'y trouvait --
-     * read_panel le ramene alors a la liste des volumes. */
-    if (index >= pan->count) index = pan->count ? pan->count - 1 : 0;
-    set_cursor(pan, index);
-    draw_all();
+     * propre pilote, ce qui rend un volume vide et coherent, et on le dit --
+     * des qu'une image DHGR est passee a l'ecran, meme si la derniere etait
+     * une HGR. Une image HGR simple n'ecrit qu'en banque principale et ne
+     * declenche rien. */
+    ram_note = dhgr && ram_format() ? "  /RAM was rebuilt empty." : "";
+    /* Les tables sont relues ; l'ecran, lui, n'a pas bouge, et un panneau
+     * qui montre la meme chose qu'a l'entree n'est pas redessine. read_panel
+     * ramene le curseur dans le panneau si celui-ci a retreci (dossier
+     * change sous nos pieds, /RAM refait a neuf sous celui qui s'y trouvait). */
+    for (p = 0; p < 2; ++p) read_panel(p);
+    keep_tags(0);
+    for (p = 0; p < 2; ++p) if (panel_hash(&panels[p]) != seen[p]) draw_panel(p);
+    draw_status();
+    draw_info();
+    if (!full[0]) { too_long(); return; }
     clear_row(22);
     gotoxy(0, 22);
     if (img_kind == IMG_NONE) cprintf("%s: not an image.", input);
@@ -1188,7 +1335,7 @@ static unsigned char edit_save(void)
     if (fwrite(EDIT_BUF, 1, elen, f) != elen) { fclose(f); report_error("Save"); return 0; }
     if (fclose(f)) { report_error("Save"); return 0; }
     edirty = 0;
-    ++a2rc_ops;
+    ++a2fc_ops;
     return 1;
 }
 #pragma rodata-name (pop)
@@ -1214,7 +1361,7 @@ static unsigned char edit_file(unsigned char fresh, unsigned char type, unsigned
         if (elen > EDIT_MAX) { message("Too big for the editor (8 KB)."); return 0xFF; }
         for (i = 0; i < elen; ++i) { EDIT_BUF[i] &= 0x7F; if (EDIT_BUF[i] == '\n') EDIT_BUF[i] = '\r'; }
     }
-    a2rc_view = 5;
+    a2fc_view = 5;
     clrscr();
     cursor(1);
     edit_draw(0);
@@ -1267,7 +1414,7 @@ static unsigned char edit_file(unsigned char fresh, unsigned char type, unsigned
     }
 leave:
     cursor(0);
-    a2rc_view = 0;
+    a2fc_view = 0;
     return written;
 }
 
@@ -1287,16 +1434,14 @@ static void edit_selected(void)
     } else if (!build_full(full, pan, e)) { too_long(); return; }
     strcpy(question, fresh ? input : e->name);
     eblocks = fresh ? 0 : e->blocks;
-    memcpy(picked, panels[0].tags, sizeof panels[0].tags);
-    memcpy(picked + sizeof panels[0].tags, panels[1].tags, sizeof panels[1].tags);
+    keep_tags(1);
     r = edit_file(fresh, fresh ? 0x04 : e->type, fresh ? 0 : e->aux);
     if (r == 0xFF) return;       /* rien d'ouvert : les panneaux et le message restent */
     switch_to_text();
     read_panel(0);
     read_panel(1);
     if (!(fresh && r)) {         /* les marques sont des index tries : un fichier nouveau les decale */
-        memcpy(panels[0].tags, picked, sizeof panels[0].tags);
-        memcpy(panels[1].tags, picked + sizeof panels[0].tags, sizeof panels[1].tags);
+        keep_tags(0);
     }
     select_name(pan, question);
     draw_all();
@@ -1318,7 +1463,7 @@ static unsigned char looks_like_music(const struct Entry* e)
 
 /* Entree sur un .MB : le flux MB1 est monte en AUX par le lecteur du jeu
  * (six voix, en interruption) et joue une fois pendant que l'on continue
- * de naviguer -- les lectures disque ne l'arretent pas, A2RC n'y touche
+ * de naviguer -- les lectures disque ne l'arretent pas, A2FC n'y touche
  * jamais ; P le met en pause, un autre .MB le remplace, Q et X le coupent.
  * La carte est cherchee a la premiere demande. */
 static void play_music(const struct Entry* e)
@@ -1326,13 +1471,13 @@ static void play_music(const struct Entry* e)
     FILE* f;
     unsigned int n, total = 0;
     unsigned char valid = 1, last = 0;
-    if (a2rc_slot == 0xFF) a2rc_slot = music_detect();
-    if (!a2rc_slot) { message("No Mockingboard in slots 1-7."); return; }
+    if (a2fc_slot == 0xFF) a2fc_slot = music_detect();
+    if (!a2fc_slot) { message("No Mockingboard in slots 1-7."); return; }
     if (e->size > MUSIC_ZONE) { message("MB file too large (2304 bytes max)."); return; }
     f = fopen(full, "rb");
     if (!f) { report_error("Open"); return; }
     music_stop();
-    a2rc_playing = 0;
+    a2fc_playing = 0;
     do {
         n = fread(music_buf, 1, MUSIC_STAGE, f);
         if (!total && (n <= 8 || memcmp(music_buf, "MB1", 3))) { valid = 0; break; }
@@ -1345,44 +1490,45 @@ static void play_music(const struct Entry* e)
     music_select(0);
     music_set_loop(0);
     music_play();
-    a2rc_playing = 1;
+    a2fc_playing = 1;
     clear_row(22);
     gotoxy(0, 22);
-    cprintf("Playing %s once on the Mockingboard in slot %u. P pauses.", e->name, a2rc_slot);
+    cprintf("Playing %s once on the Mockingboard in slot %u. P pauses.", e->name, a2fc_slot);
 }
 
 static void toggle_music(void)
 {
-    if (!music_active) { a2rc_playing = 0; message("No music playing: open a .MB file."); }
-    else if (a2rc_playing == 1) { music_pause(); a2rc_playing = 2; message("Music paused. P resumes."); }
-    else { music_resume(); a2rc_playing = 1; message("Music resumed."); }
+    if (!music_active) { a2fc_playing = 0; message("No music playing: open a .MB file."); }
+    else if (a2fc_playing == 1) { music_pause(); a2fc_playing = 2; message("Music paused. P resumes."); }
+    else { music_resume(); a2fc_playing = 1; message("Music resumed."); }
 }
 
 /* ---------------------------------------------------------------------- */
 /* Aide                                                                   */
 /* ---------------------------------------------------------------------- */
 
-/* L'aide est lue dans A2RETRO/A2RETRO.HELP (a cote de A2RETRO.CODE), une ligne
+/* L'aide est lue dans A2FILE/A2FILE.HELP (a cote de A2FILE.CODE), une ligne
  * par element : "x,y,TOUCHE,libelle" pour un bouton, "x,y,#TITRE" pour un
  * titre de section, "x,y,~texte" pour du texte en clair ('=' et '-' sont
  * des touches). Le texte passe par
  * la page HGR, comme l'editeur : rien en memoire hors de l'aide. */
+/* La surcouche HELP : la page d'aide, dans A2FILE/HELP.PLG. */
+#pragma code-name (push, "HELP")
+#pragma rodata-name (push, "HELP")
 static void view_help(void)
 {
     const char* s = EDIT_BUF;
     FILE* f;
     unsigned int n;
     unsigned char x, y, klen, i, kind;
-    strcpy(other_full, cfg_path);
-    strcpy(other_full + strlen(other_full) - 3, "HELP");
+    a2file_file("A2FILE.HELP");
     f = fopen(other_full, "rb");
-    if (!f) { message("A2RETRO/A2RETRO.HELP is missing: no help on this volume."); return; }
+    if (!f) { message("A2FILE/A2FILE.HELP is missing: no help on this volume."); return; }
     n = fread(EDIT_BUF, 1, EDIT_MAX, f);
     fclose(f);
     EDIT_BUF[n] = 0;
-    memcpy(picked, panels[0].tags, sizeof panels[0].tags);
-    memcpy(picked + sizeof panels[0].tags, panels[1].tags, sizeof panels[1].tags);
-    a2rc_view = 4;
+    keep_tags(1);
+    a2fc_view = 4;
     clrscr();
     while (*s) {
         x = 0; while (*s >= '0' && *s <= '9') x = x * 10 + (*s++ - '0');
@@ -1412,13 +1558,14 @@ static void view_help(void)
     bar_begin();
     keys_bar(0, HELP_KEYS);
     cgetc();
-    a2rc_view = 0;
+    a2fc_view = 0;
     read_panel(0);
     read_panel(1);
-    memcpy(panels[0].tags, picked, sizeof panels[0].tags);
-    memcpy(panels[1].tags, picked + sizeof panels[0].tags, sizeof panels[1].tags);
+    keep_tags(0);
     draw_all();
 }
+#pragma rodata-name (pop)
+#pragma code-name (pop)
 
 /* ---------------------------------------------------------------------- */
 /* Operations sur les fichiers                                            */
@@ -1531,7 +1678,7 @@ static unsigned char copy_file(const char* name, unsigned char type, unsigned in
     fclose(in);
     if (fclose(out)) ok = 0;
     if (!ok) { remove(other_full); report_error("Copy"); return 0; }
-    ++a2rc_ops;
+    ++a2fc_ops;
     ++progress_done;
     return 1;
 }
@@ -1581,6 +1728,10 @@ static unsigned char copy_tree(unsigned char base)
 }
 
 /* Supprime tout ce que contient le dossier `full`, puis le dossier. */
+/* La surcouche DELETE, premiere moitie : delete_tree, que le deplacement d'un
+ * dossier charge aussi, une fois la copie faite. */
+#pragma code-name (push, "DELETE")
+#pragma rodata-name (push, "DELETE")
 static unsigned char delete_tree(unsigned char base)
 {
     unsigned char n, i, len = strlen(full), ok = 1;
@@ -1589,13 +1740,15 @@ static unsigned char delete_tree(unsigned char base)
         if (!push_name(full, pool[base + i].name)) { too_long(); ok = 0; break; }
         if (pool[base + i].type == 0x0F) ok = delete_tree(base + n);
         else if (remove(full)) { report_error("Delete"); ok = 0; }
-        else ++a2rc_ops;
+        else ++a2fc_ops;
         full[len] = 0;
     }
     if (ok && rmdir(full)) { report_error("Delete"); ok = 0; }
-    if (ok) ++a2rc_ops;
+    if (ok) ++a2fc_ops;
     return ok;
 }
+#pragma rodata-name (pop)
+#pragma code-name (pop)
 
 #pragma static-locals (pop)
 
@@ -1614,7 +1767,7 @@ static unsigned char copy_one(const struct Entry* e)
     }
     if (!exists(other_full)) {
         if (mkdir(other_full)) { report_error("Mkdir"); return 0; }
-        ++a2rc_ops;
+        ++a2fc_ops;
     }
     return copy_tree(0);
 }
@@ -1674,7 +1827,7 @@ static void copy_or_move(unsigned char move)
          * passe reste aussi, entier, plutot que d'en perdre une partie. */
         if (move && progress_skipped == skipped_before) {
             build_full(full, pan, e);
-            if (is_dir(e) ? !delete_tree(0) : remove(full) != 0) { if (!is_dir(e)) report_error("Delete source"); break; }
+            if (is_dir(e) ? !(overlay("DELETE") && delete_tree(0)) : remove(full) != 0) { if (!is_dir(e)) report_error("Delete source"); break; }
         }
         ++done;
     }
@@ -1688,6 +1841,9 @@ static void copy_or_move(unsigned char move)
     }
 }
 
+/* La surcouche DELETE, seconde moitie : la commande D. */
+#pragma code-name (push, "DELETE")
+#pragma rodata-name (push, "DELETE")
 static void delete_targets(void)
 {
     struct Panel* pan = &panels[active];
@@ -1707,7 +1863,7 @@ static void delete_targets(void)
         if (!build_full(full, pan, e)) { too_long(); break; }
         if (is_dir(e)) { if (!delete_tree(0)) break; }
         else if (remove(full)) { report_error("Delete"); break; }
-        else ++a2rc_ops;
+        else ++a2fc_ops;
         ++done;
     }
     refresh_both();
@@ -1717,6 +1873,8 @@ static void delete_targets(void)
         cprintf("%u item%s deleted.", done, done > 1 ? "s" : "");
     }
 }
+#pragma rodata-name (pop)
+#pragma code-name (pop)
 
 static void rename_selected(const struct Entry* e)
 {
@@ -1726,7 +1884,7 @@ static void rename_selected(const struct Entry* e)
     if (strlen(panels[active].path) + 1 + strlen(input) >= PATH_LEN) { too_long(); return; }
     sprintf(other_full, "%s/%s", panels[active].path, input);
     if (rename(full, other_full)) { report_error("Rename"); return; }
-    ++a2rc_ops;
+    ++a2fc_ops;
     read_panel(active);
     select_name(&panels[active], input);
     show_active();
@@ -1740,7 +1898,7 @@ static void make_directory(void)
     if (strlen(pan->path) + 1 + strlen(input) >= PATH_LEN) { too_long(); return; }
     sprintf(full, "%s/%s", pan->path, input);
     if (mkdir(full)) { report_error("Mkdir"); return; }
-    ++a2rc_ops;
+    ++a2fc_ops;
     refresh_both();
     select_name(pan, input);
     show_active();
@@ -1767,7 +1925,7 @@ static void change_attributes(const struct Entry* e, unsigned char lock)
     if (lock) gfi[3] = is_locked(e) ? 0xC3 : 0x01;   /* tout, ou lecture seule */
     else { gfi[4] = type; gfi[5] = (unsigned char)(aux & 0xFF); gfi[6] = (unsigned char)(aux >> 8); }
     if (!set_info()) { report_error("Set info"); return; }
-    ++a2rc_ops;
+    ++a2fc_ops;
     strcpy(input, e->name);
     read_panel(active);
     select_name(&panels[active], input);
@@ -1775,7 +1933,7 @@ static void change_attributes(const struct Entry* e, unsigned char lock)
 }
 
 /* Charge le fichier `full` a `addr` et y saute, sans retour, par le talon
- * de chain.s : quelle que soit sa taille, il ecrase A2RC sans dommage.
+ * de chain.s : quelle que soit sa taille, il ecrase A2FC sans dommage.
  * La musique est coupee, les preferences ecrites. */
 static void launch_file(unsigned int addr)
 {
@@ -1809,23 +1967,23 @@ static void run_selected(const struct Entry* e)
         if (addr < 0x0800 || (unsigned long)addr + e->size > 0xBB00) { message("BIN must load in $0800-$BAFF."); return; }
         if (!build_full(full, &panels[active], e)) { too_long(); return; }
     }
-    sprintf(question, "Run %s? No return to A2RC.", e->name);
+    sprintf(question, "Run %s? No return to A2FC.", e->name);
     if (!confirm(question)) return;
     if (bas) chain_command(e->name);
     chdir(panels[active].path);
     launch_file(addr);
 }
 
-/* F : le formateur, A2RETRO/FORMAT.SYS a cote de A2RETRO.CODE (Bitsy Bye le
- * propose aussi), lance depuis la racine du volume ; il relance A2RC en
+/* F : le formateur, A2FILE/FORMAT.SYS a cote de A2FILE.CODE (Bitsy Bye le
+ * propose aussi), lance depuis la racine du volume ; il relance A2FC en
  * sortant. */
 static void format_disk(void)
 {
     if (!confirm("Open the disk formatter?")) return;
     strcpy(full, cfg_path);
-    { char* s = strchr(full + 1, '/'); if (s) *s = 0; }   /* "/VOL/A2RETRO/A2RETRO.CFG" -> "/VOL" */
+    { char* s = strchr(full + 1, '/'); if (s) *s = 0; }   /* "/VOL/A2FILE/A2FILE.CFG" -> "/VOL" */
     chdir(full);
-    strcpy(full, "A2RETRO/FORMAT.SYS");
+    strcpy(full, "A2FILE/FORMAT.SYS");
     launch_file(0x2000);
 }
 
@@ -1839,9 +1997,9 @@ static void open_selected(void)
     if (!build_full(full, pan, e)) { too_long(); return; }
     if (looks_like_image(e)) view_image();
     else if (looks_like_music(e)) play_music(e);
-    else if (e->type == 0x04) view_text(full);
+    else if (e->type == 0x04) { if (overlay("TEXT")) view_text(full); }
     else if (e->type == 0xFF || e->type == 0xFC) run_selected(e);
-    else view_hex(full, e->size);
+    else if (overlay("HEX")) view_hex(full, e->size);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -1855,12 +2013,7 @@ static void toggle_tag(void)
     if (!pan->count || !pan->path[0]) return;
     e = &pan->e[pan->cursor];
     if (!is_dir(e)) set_tag(pan, pan->cursor, !tagged(pan, pan->cursor));
-    if (pan->cursor + 1 < pan->count) {
-        ++pan->cursor;
-        if (pan->cursor >= pan->top + ROWS) { pan->top = pan->cursor - ROWS + 1; draw_panel(active); }
-        else { draw_entry(active, pan->cursor - 1); draw_entry(active, pan->cursor); }
-    } else draw_entry(active, pan->cursor);
-    draw_info();
+    land(pan->cursor + 1 < pan->count ? pan->cursor + 1 : pan->cursor);
 }
 
 static void invert_tags(void)
@@ -1914,7 +2067,7 @@ static void resort(void)
 static void find_letter(void)
 {
     struct Panel* pan = &panels[active];
-    unsigned char i, j, previous = pan->cursor, old_top = pan->top;
+    unsigned char i, j;
     char key;
     message("Jump to name starting with: ");
     key = cgetc();
@@ -1923,13 +2076,7 @@ static void find_letter(void)
     if (!pan->count) return;
     for (i = 1; i <= pan->count; ++i) {
         j = (pan->cursor + i) % pan->count;
-        if (pan->e[j].name[pan->path[0] ? 0 : 1] == key) {
-            set_cursor(pan, j);
-            if (pan->top != old_top) draw_panel(active);
-            else { draw_entry(active, previous); draw_entry(active, pan->cursor); }
-            draw_info();
-            return;
-        }
+        if (pan->e[j].name[pan->path[0] ? 0 : 1] == key) { land(j); return; }
     }
     message("No such name in this panel.");
 }
@@ -1943,7 +2090,6 @@ static void find_letter(void)
 static void move_cursor(int delta)
 {
     struct Panel* pan = &panels[active];
-    unsigned char previous = pan->cursor, old_top = pan->top;
     int target;
     if (!pan->count) return;
     target = (int)pan->cursor + delta;
@@ -1964,10 +2110,78 @@ static void move_cursor(int delta)
     }
     if (target < 0) target = 0;
     if (target >= pan->count) target = pan->count - 1;
-    set_cursor(pan, (unsigned char)target);
-    if (pan->top != old_top) draw_panel(active);
-    else { draw_entry(active, previous); draw_entry(active, pan->cursor); }
+    land((unsigned char)target);
+}
+
+static void swap_panels(void)
+{
+    active = !active;
+    draw_panel(0);
+    draw_panel(1);
+    draw_status();
     draw_info();
+}
+
+/* La touche du bouton de la barre des commandes sous la colonne x, d'apres
+ * MAIN_KEYS et la mise en page de keys_bar : trois colonnes de touche, le
+ * libelle, un espace. Une touche d'une lettre est elle-meme ; TAB, RET et
+ * SPC sont les touches qu'ils nomment. 0 entre deux boutons. */
+static char bar_key(unsigned char x)
+{
+    const char* s = MAIN_KEYS;
+    unsigned char x0 = 0, w;
+    char key;
+    while (*s) {
+        key = s[1] == ' ' ? *s : *s == 'T' ? KEY_TAB : *s == 'R' ? KEY_RETURN : ' ';
+        s = strchr(s, ' ') + 1;
+        for (w = 3; *s && *s != ','; ++s) ++w;
+        if (x < x0 + w) return key;
+        x0 += w + 1;
+        if (*s) ++s;
+    }
+    return 0;
+}
+
+/* Un clic. Sur la barre des commandes, la touche du bouton. Sur une entree,
+ * la selection -- le panneau devient actif s'il ne l'etait pas -- ou
+ * l'ouverture si elle etait deja selectionnee : deux clics ouvrent. Sur
+ * l'en-tete d'un panneau, le tri (la ligne des colonnes) ou le dossier
+ * parent (le chemin). Rend la touche equivalente, 0 quand tout est fait. */
+static char click(void)
+{
+    unsigned char x = mouse_x, y = mouse_y, i, swapped;
+    struct Panel* pan;
+    if (y == 23) return bar_key(x);
+    if (y >= 20) return 0;
+    swapped = (x >= 40) != active;
+    if (swapped) swap_panels();
+    pan = &panels[active];
+    if (y < 2) return swapped ? 0 : y ? 's' : KEY_ESC;
+    i = pan->top + y - 2;
+    if (i >= pan->count) return 0;
+    if (i == pan->cursor) return swapped ? 0 : KEY_RETURN;
+    land(i);
+    return 0;
+}
+
+/* Attend une touche, ou un clic quand une souris est la. Le pointeur suit
+ * la souris des qu'elle a bouge une fois, et s'efface avant que la main ne
+ * revienne, pour qu'aucun redessin ne le recouvre. Un clic rend la touche
+ * qu'il vaut, 0 s'il a tout fait lui-meme. */
+static char wait_key(void)
+{
+    unsigned char st;
+    char key;
+    if (!a2fc_mouse) return cgetc();
+    if (pointer) mouse_show();
+    for (;;) {
+        if (kbhit()) { key = cgetc(); break; }
+        st = mouse_read();
+        if (st & 0x20) { pointer = 1; mouse_show(); }
+        if ((st & 0xC0) == 0x80) { mouse_hide(); key = click(); break; }
+    }
+    mouse_hide();
+    return key;
 }
 
 int main(void)
@@ -1976,7 +2190,7 @@ int main(void)
     struct Panel* pan;
     videomode(VIDEOMODE_80COL);
     memset(_LOWBSS_RUN__, 0, (size_t)_LOWBSS_SIZE__);
-    a2rc_slot = 0xFF;
+    a2fc_slot = 0xFF;
     panels[0].e = ENTRIES;
     panels[1].e = ENTRIES + MAX_ENTRIES;
     /* Le panneau gauche s'ouvre sur le volume amorce, le droit sur son
@@ -1987,14 +2201,15 @@ int main(void)
     if (panels[1].path[0] && strlen(panels[1].path) + 5 < PATH_LEN)
         strcat(panels[1].path, "/DEMO");
     strcpy(cfg_path, panels[0].path);
-    if (strlen(cfg_path) + 20 < PATH_LEN) strcat(cfg_path, "/A2RETRO/A2RETRO.CFG");
+    if (strlen(cfg_path) + 20 < PATH_LEN) strcat(cfg_path, "/A2FILE/A2FILE.CFG");
     load_config();
+    a2fc_mouse = mouse_init();
     read_panel(0);
     read_panel(1);
     draw_all();
     for (;;) {
         pan = &panels[active];
-        key = cgetc();
+        key = wait_key();
         if (key != KEY_ESC && key != 'q' && key != 'Q') clear_row(22);
         switch (key) {
         case KEY_UP: move_cursor(-1); break;
@@ -2011,13 +2226,7 @@ int main(void)
         case ' ': toggle_tag(); break;
         case '*': invert_tags(); break;
         case '\'': find_letter(); break;
-        case KEY_TAB:
-            active = !active;
-            draw_panel(0);
-            draw_panel(1);
-            draw_status();
-            draw_info();
-            break;
+        case KEY_TAB: swap_panels(); break;
         case KEY_RETURN: open_selected(); break;
         case KEY_ESC:
             if (pan->path[0]) { go_up(pan); show_active(); }
@@ -2035,7 +2244,7 @@ int main(void)
         case 'c': case 'C': copy_or_move(0); break;
         case 'v': case 'V': copy_or_move(1); break;
         case 'r': case 'R': if (pan->count) rename_selected(&pan->e[pan->cursor]); break;
-        case 'd': case 'D': delete_targets(); break;
+        case 'd': case 'D': if (overlay("DELETE")) delete_targets(); break;
         case 'k': case 'K': make_directory(); break;
         case 's': case 'S': resort(); break;
         case 'm': case 'M': mark_differences(); break;
@@ -2043,18 +2252,18 @@ int main(void)
         case 'l': case 'L': if (pan->count) change_attributes(&pan->e[pan->cursor], 1); break;
         case 't': case 'T':
             if (pan->count && !is_dir(&pan->e[pan->cursor]) && build_full(full, pan, &pan->e[pan->cursor]))
-                view_text(full);
+                if (overlay("TEXT")) view_text(full);
             break;
         case 'h': case 'H':
             if (pan->count && !is_dir(&pan->e[pan->cursor]) && build_full(full, pan, &pan->e[pan->cursor]))
-                view_hex(full, pan->e[pan->cursor].size);
+                if (overlay("HEX")) view_hex(full, pan->e[pan->cursor].size);
             break;
         case 'x': case 'X': if (pan->count) run_selected(&pan->e[pan->cursor]); break;
         case 'e': case 'E': edit_selected(); break;
         case 'p': case 'P': toggle_music(); break;
         case 'f': case 'F': format_disk(); break;
         case 'i': case 'I': if (pan->count && !is_dir(&pan->e[pan->cursor]) && pan->path[0]) view_image(); break;
-        case '?': view_help(); break;
+        case '?': if (overlay("HELP")) view_help(); break;
         case 'q': case 'Q':
             if (confirm("Quit to ProDOS?")) {
                 music_stop();

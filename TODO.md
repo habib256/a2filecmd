@@ -1,4 +1,4 @@
-# A2 Retro Cmd — ce qui reste à faire
+# A2 File Cmd — ce qui reste à faire
 
 `🟠 haute · 🟡 moyenne · 🟢 basse`, effort indicatif en *italique*, fichier en
 `backticks`. Les mesures datent du 2026-09-07, sur la 1.0.
@@ -7,16 +7,44 @@
 
 | Zone | État mesuré |
 | --- | --- |
-| Fenêtre principale `$4000`-plancher de la pile | ~1 130 octets libres |
-| `LOWEXE` `$1C00-$1FFF` | 671 octets sur 1 024 |
-| Carte langage `$D400-$DFFF` | 26 octets |
+| Fenêtre principale `$4000`-plancher de la pile | ~1 100 octets libres, souris comprise |
+| Fenêtre de surcouche `$1B00-$1FFF` (1 280 octets) | `IMAGE.PLG` 1 144, `HELP.PLG` 920, `DELETE.PLG` 750, `HEX.PLG` 699, `TEXT.PLG` 579 |
+| RAM basse `$1000-$1AFF` (BSS) | ~250 octets libres |
+| Carte langage `$D400-$DFFF` | ~1 300 octets libres |
 | Pile C | 86 octets utilisés sur 256 réservés |
-| Disquette | 60 blocs libres sur 280 |
+| Disquette | 46 blocs libres sur 280 |
 
-## Étude 2026-09-07 — la souris
+## Fait le 2026-09-07 — les surcouches et la souris
+
+Le segment `LOWEXE` est devenu la **fenêtre de surcouche** : le chargeur et
+le décodeur d'images (`A2FILE/IMAGE.PLG`) et la page d'aide (`HELP.PLG`)
+sont liés avec le programme mais écrits à part, lus en `$1B00` à la demande
+(`overlay()`), reconnus à l'adresse de `main` en tête ; puis les visionneuses
+de texte et d'hexadécimal (`TEXT.PLG`, `HEX.PLG`, sorties de la carte
+langage) et la suppression (`DELETE.PLG`) ont suivi. Près d'un kilo-octet
+rendu à la fenêtre principale, qui a payé **la souris** (`mouse.s`, mode
+passif, pointeur MouseText, clic = sélection, second clic = ouvrir, barre de
+touches cliquable, tri et dossier parent par l'en-tête). Reste de l'idée :
+
+- 🟡 **La musique en surcouche** (`play_music`, ~390 octets, le pilote AY
+  restant résident) : elle joue pendant qu'on navigue, la surcouche devrait
+  rester en place tant que `P` n'a pas arrêté la lecture, et une image
+  demandée entre-temps devrait attendre ou couper la musique. *1 jour.*
+- 🟢 **Une table de reconnaissance** (type, auxtype, suffixe, en-tête → nom
+  de surcouche) à la place de `looks_like_image` et de l'aiguillage
+  d'`open_selected`, pour qu'un format de plus ne coûte qu'une ligne.
+- 🟢 **Une ABI stable** (table de services en tête de la fenêtre) pour
+  qu'une surcouche d'un tiers survive à une reconstruction ; aujourd'hui
+  `.CODE` et `.PLG` vont par ensemble.
+- 🟢 **La souris dans les visionneuses** : un clic pour tourner la page ou
+  revenir, et le double-clic à la durée plutôt qu'au second clic sur la
+  sélection.
+
+## Étude 2026-09-07 — la souris (réalisée le soir même, voir ci-dessus)
 
 **Verdict : faisable, ~0,7 Ko de code, et il faut d'abord ouvrir la place.**
-🟡 moyenne · *2 à 3 jours*
+🟡 moyenne · *2 à 3 jours* — mesuré : 868 octets, la place ouverte par les
+surcouches.
 
 **Le matériel.** Carte Apple Mouse II (341-0270). Ne jamais supposer un
 slot : POM2 la met en **slot 2** par défaut (`mouseaw`, la carte AppleWin

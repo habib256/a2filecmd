@@ -1,15 +1,15 @@
-## A2 Retro Cmd 1.0 — *Two panels. One Apple II.*
+## A2 File Cmd 1.0 — *Two panels. One Apple II.*
 
-A two-pane ProDOS file manager running natively on an Apple IIe. It copies,
+A two-pane ProDOS file manager running natively on Apple IIe. It copies,
 moves, renames, deletes and tags files across two panels; it reads texts,
 dumps bytes and edits files; it shows HGR and DHGR pictures full screen,
 plays Mockingboard music, runs SYS, BIN and Applesoft programs, and formats
 disks. Everything in 80 columns, in 128 KB, from a bootable 5.25" floppy.
 
-![Two panels](https://raw.githubusercontent.com/habib256/a2retrocmd/main/docs/screenshots/01-panels.png)
-![The picture viewer, showing the DHGR test card](https://raw.githubusercontent.com/habib256/a2retrocmd/main/docs/screenshots/02-dhgr.png)
-![The help page](https://raw.githubusercontent.com/habib256/a2retrocmd/main/docs/screenshots/06-help.png)
-![The disk formatter](https://raw.githubusercontent.com/habib256/a2retrocmd/main/docs/screenshots/09-format.png)
+![Two panels](https://raw.githubusercontent.com/habib256/a2filecmd/main/docs/screenshots/01-panels.png)
+![The picture viewer, showing the DHGR test card](https://raw.githubusercontent.com/habib256/a2filecmd/main/docs/screenshots/02-dhgr.png)
+![The help page](https://raw.githubusercontent.com/habib256/a2filecmd/main/docs/screenshots/06-help.png)
+![The disk formatter](https://raw.githubusercontent.com/habib256/a2filecmd/main/docs/screenshots/09-format.png)
 
 ### Requirements
 
@@ -39,14 +39,14 @@ disks. Everything in 80 columns, in 128 KB, from a bootable 5.25" floppy.
 * Launching a program does not come back — the manager is overwritten by what
   it starts. The formatter is the exception, it returns.
 * **Viewing a DHGR picture destroys the contents of `/RAM`**: double hi-res
-  and the ProDOS RAM disk share the same auxiliary memory. A2 Retro Cmd
+  and the ProDOS RAM disk share the same auxiliary memory. A2 File Cmd
   rebuilds `/RAM` empty on the way out and says so, rather than leaving a
   half-overwritten volume behind.
 
 ### Getting started
 
-1. Take **`A2RETROCMD.dsk`** for ADTPro and most emulators, or
-   **`A2RETROCMD.po`** if your tool wants ProDOS sector order. Both hold the
+1. Take **`A2FILECMD.dsk`** for ADTPro and most emulators, or
+   **`A2FILECMD.po`** if your tool wants ProDOS sector order. Both hold the
    same 143 360 bytes.
 2. Boot it. The left panel opens on the volume, the right one on `DEMO/`.
 3. Press **?** for the whole key map. `TAB` switches panels, `RETURN` opens by
@@ -79,6 +79,6 @@ same author.
 
 ### Sources
 
-<https://github.com/habib256/a2retrocmd> — build it with `make disk`, needing
+<https://github.com/habib256/a2filecmd> — build it with `make disk`, needing
 only cc65 and Python 3. The manual is in
-[`docs/MANUAL.md`](https://github.com/habib256/a2retrocmd/blob/main/docs/MANUAL.md).
+[`docs/MANUAL.md`](https://github.com/habib256/a2filecmd/blob/main/docs/MANUAL.md).

@@ -1,5 +1,5 @@
-/* A2RETRO/FORMAT.SYS -- formate un disque pour ProDOS, depuis Apple Total
- * Commander (touche F) ou Bitsy Bye, et revient a A2RC.
+/* A2FILE/FORMAT.SYS -- formate un disque pour ProDOS, depuis Apple Total
+ * Commander (touche F) ou Bitsy Bye, et revient a A2FC.
  *
  * Le formatage physique d'une disquette Disk II vient du ProDOS
  * Hyper-FORMAT de Jerry Hewett (1985, domaine public) et Gary Desrochers
@@ -17,8 +17,8 @@
 #include <string.h>
 #include <conio.h>
 
-#ifndef A2RC_VERSION
-#define A2RC_VERSION "1.0"
+#ifndef A2FC_VERSION
+#define A2FC_VERSION "1.0"
 #endif
 
 unsigned char __fastcall__ mli_call(unsigned char cmd, void* parms);
@@ -85,7 +85,7 @@ static void title(const char* sub)
     clrscr();
     gotoxy(0, 0);
     revers(1);
-    cprintf("%-79.79s", "  A2 RETRO CMD " A2RC_VERSION "  -  FORMAT A DISK FOR PRODOS");
+    cprintf("%-79.79s", "  A2 FILE CMD " A2FC_VERSION "  -  FORMAT A DISK FOR PRODOS");
     revers(0);
     gotoxy(1, 1);
     cputs(sub);
@@ -442,10 +442,10 @@ int main(void)
     }
 back:
     clrscr();
-    cputs("Loading A2 Retro Cmd ...");
+    cputs("Loading A2 File Cmd ...");
     /* Le prefixe ProDOS est ramene a la racine du volume : lance depuis
-     * Bitsy Bye, FORMAT.SYSTEM herite du dossier A2RETRO, et A2RETRO.SYSTEM
-     * cherche A2RETRO/A2RETRO.CODE depuis la racine. */
+     * Bitsy Bye, FORMAT.SYSTEM herite du dossier A2FILE, et A2FILE.SYSTEM
+     * cherche A2FILE/A2FILE.CODE depuis la racine. */
     {
         static unsigned char parms[3], prefix[65];
         unsigned char i;
@@ -462,11 +462,11 @@ back:
     chain_addr = 0x2000;
     {
         static unsigned char gfi[18];
-        static const char in_dir[] = "\x16" "A2RETRO/A2RETRO.SYSTEM";
+        static const char in_dir[] = "\x14" "A2FILE/A2FILE.SYSTEM";
         gfi[0] = 0x0A;
         gfi[1] = (unsigned char)((unsigned)in_dir & 0xFF);
         gfi[2] = (unsigned char)((unsigned)in_dir >> 8);
-        chain_load(mli_call(0xC4, gfi) ? "A2RETRO.SYSTEM" : "A2RETRO/A2RETRO.SYSTEM");
+        chain_load(mli_call(0xC4, gfi) ? "A2FILE.SYSTEM" : "A2FILE/A2FILE.SYSTEM");
     }
     return 0;
 }

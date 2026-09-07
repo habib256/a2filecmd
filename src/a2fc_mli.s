@@ -1,4 +1,4 @@
-; a2rc_mli.s -- deux appels MLI pour A2RC.
+; a2fc_mli.s -- deux appels MLI pour A2FC.
 ;
 ; unsigned char __fastcall__ mli_gfi(void* params);   GET_FILE_INFO ($C4)
 ; unsigned char __fastcall__ mli_sfi(void* params);   SET_FILE_INFO ($C3)
@@ -32,7 +32,7 @@ block:  .word   $0000
 ; demande FORMAT ($03). Le pilote vit au-dessus de $D000 : la carte langage
 ; passe en banque 1, lecture et ecriture, autour de l'appel, comme
 ; format_mli.s le fait pour le formateur -- mais le retour se fait sur la
-; banque 2 de A2RC, pas sur la ROM. Rend 1 si un /RAM a ete refait a neuf,
+; banque 2 de A2FC, pas sur la ROM. Rend 1 si un /RAM a ete refait a neuf,
 ; 0 sinon (aucun /RAM en ligne, ou refus du pilote).
 ;
 ; Le tampon annonce est $2000, la page graphique : cet appel n'a lieu qu'au
@@ -82,7 +82,7 @@ found:  lda $BF10,x
         lda #1
         ; On rend l'etat que crt0 laisse -- banque 2 en lecture, protegee en
         ; ecriture -- et non la ROM ($C082, ce que fait le formateur, qui
-        ; n'a rien dans la carte langage). A2RC, lui, execute ses
+        ; n'a rien dans la carte langage). A2FC, lui, execute ses
         ; visionneuses, ses saisies et sa configuration depuis $D400. En
         ; pratique le premier appel MLI qui suit remet deja la banque 2
         ; (mesure : confirm() repond meme si l'on rend la ROM), mais cela
@@ -95,3 +95,75 @@ indirect:
         jmp (vec)
 vec:    .word 0
 unit:   .byte 0
+
+; unsigned int __fastcall__ panel_hash(const struct Panel* pan);
+;
+; L'empreinte d'un panneau : chaque octet de sa table d'entrees (count
+; entrees de 29 octets, a l'adresse e), plie dans un mot par rotation et
+; addition, plus le nombre d'entrees, la fenetre (first, more) et le premier
+; caractere du chemin. Les decalages des champs sont ceux que a2fc.c verifie
+; en face des champs de struct Panel. En C, cc65 en faisait 325 octets ; ici
+; une centaine. Une table pleine (4 060 octets) se plie en un dixieme de
+; seconde, bien moins qu'un panneau ne se redessine.
+        .export _panel_hash
+        .importzp ptr1, ptr2, tmp1, tmp2, tmp3
+        .segment "CODE"
+_panel_hash:
+        sta ptr1
+        stx ptr1+1
+        ldy #74                 ; e
+        lda (ptr1),y
+        sta ptr2
+        iny
+        lda (ptr1),y
+        sta ptr2+1
+        ldy #69                 ; first, octet haut
+        lda (ptr1),y
+        sta tmp3                ; h haut
+        dey
+        lda (ptr1),y            ; first, octet bas
+        ldy #64                 ; count
+        clc
+        adc (ptr1),y
+        bcc :+
+        inc tmp3
+:       lda (ptr1),y
+        sta tmp1                ; entrees restantes
+        ldy #67                 ; more
+        clc
+        adc (ptr1),y
+        bcc :+
+        inc tmp3
+:       ldy #0                  ; path[0]
+        clc
+        adc (ptr1),y
+        bcc :+
+        inc tmp3
+:       sta tmp2                ; h bas
+entry:  lda tmp1
+        beq done
+        dec tmp1
+        ldy #0
+byte:   lda tmp3
+        cmp #$80                ; C = bit 15
+        rol tmp2
+        rol tmp3                ; h tourne d'un bit
+        lda (ptr2),y
+        clc
+        adc tmp2
+        sta tmp2
+        bcc :+
+        inc tmp3
+:       iny
+        cpy #29
+        bne byte
+        clc
+        lda ptr2
+        adc #29
+        sta ptr2
+        bcc entry
+        inc ptr2+1
+        bne entry               ; toujours pris
+done:   lda tmp2
+        ldx tmp3
+        rts

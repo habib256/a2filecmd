@@ -1,38 +1,47 @@
-/* A2RETRO.SYSTEM : le lanceur ProDOS d'A2 Retro Cmd.
+/* A2FILE.SYSTEM : le lanceur ProDOS d'A2 File Cmd.
  *
- * ProDOS charge tout programme SYS en $2000 et lui donne la main. Or A2 Retro
+ * ProDOS charge tout programme SYS en $2000 et lui donne la main. Or A2 File
  * Cmd tourne en $4000 et occupe presque tout jusqu'a $BEFF : il ne PEUT pas
  * etre un SYS. Ce petit lanceur en est un, et lit le vrai programme a sa
  * place.
  *
- * A2RETRO.CODE n'est pas un binaire plat : c'est une image a charge separee.
- * Ses 4 premiers kilo-octets vont en $1000 -- 3 Ko de code destines a la carte
- * langage, que crt0.s recopie en $D400 avant que main() n'efface la RAM basse,
- * puis 1 Ko de code qui reste sur place en $1C00 (segment LOWEXE). Le reste va
- * en $4000, ou commence l'execution. Un BLOAD ne saurait pas faire cela : le
- * fichier n'est pas BRUNable, il se lance par ici.
+ * A2FILE.CODE n'est pas un binaire plat : c'est une image a charge separee.
+ * Ses 3 premiers kilo-octets vont en $1000 -- du code destine a la carte
+ * langage, que crt0.s recopie en $D400 avant que main() n'efface la RAM
+ * basse. Le reste va en $4000, ou commence l'execution. Un BLOAD ne saurait
+ * pas faire cela : le fichier n'est pas BRUNable, il se lance par ici. (Les
+ * surcouches, A2FILE/IMAGE.PLG, c'est A2FC lui-meme qui les charge en
+ * $1B00 quand il en a besoin.)
  *
  * Le prefixe ProDOS est celui du volume amorce : le lanceur ouvre
- * "A2RETRO/A2RETRO.CODE" en relatif, sans avoir a connaitre le nom du volume.
+ * "A2FILE/A2FILE.CODE" en relatif, sans avoir a connaitre le nom du volume.
  */
 
 #include <stdio.h>
 #include <conio.h>
 #include <unistd.h>
 #include <errno.h>
+#include <string.h>
 
 #ifndef CODE_FILE
-#define CODE_FILE "A2RETRO/A2RETRO.CODE"
+#define CODE_FILE "A2FILE/A2FILE.CODE"
 #endif
-#ifndef A2RC_VERSION
-#define A2RC_VERSION "1.0"
+#ifndef A2FC_VERSION
+#define A2FC_VERSION "1.0"
 #endif
 
 #define CODE_ADDR   0x4000
 #define CHUNK       1024
 #define LC_STAGE    0x1000
 #define LC_BYTES    0x0C00      /* l'image de la carte langage */
-#define STAGE_BYTES 0x1000      /* elle, plus le kilo-octet LOWEXE de $1C00 */
+#define STAGE_BYTES 0x0C00      /* rien d'autre : la RAM au-dessus est aux surcouches */
+
+/* Une ligne centree sur les 80 colonnes. */
+static void centre(unsigned char y, const char* text)
+{
+    gotoxy((80 - strlen(text)) / 2, y);
+    cputs(text);
+}
 
 int main(void)
 {
@@ -52,19 +61,29 @@ int main(void)
         unsigned int date = *(unsigned int*)0xBF90;
         unsigned char minute = *(unsigned char*)0xBF92, hour = *(unsigned char*)0xBF93;
         unsigned char year = date >> 9, month = (date >> 5) & 15, day = date & 31;
-        gotoxy(26, 2);
+        /* Un cadre, le titre en inverse, ce que le programme sait faire en
+         * deux colonnes, ce qu'il demande, la licence, la date, et le
+         * chargement en bas : la page qu'on lit le temps que la disquette
+         * tourne. */
+        chlinexy(0, 0, 80);
+        chlinexy(0, 4, 80);
+        for (n = 1; n < 4; ++n) { cputcxy(0, n, '|'); cputcxy(79, n, '|'); }
         revers(1);
-        cputs("  A2 RETRO CMD " A2RC_VERSION "  ");
+        centre(2, "  A2 FILE CMD " A2FC_VERSION "  ");
         revers(0);
-        gotoxy(28, 3);
-        cputs("Two panels. One Apple II.");
-        gotoxy(14, 5);
-        cputs("A two-pane ProDOS file manager for the Apple IIe with 128 KB.");
-        gotoxy(14, 6);
-        cputs("It runs under ProDOS 8 only, at boot or from a selector.");
-        gotoxy(14, 7);
-        cputs("Free software under the GNU GPL v3, by Arnaud VERHILLE.");
-        gotoxy(14, 9);
+        centre(3, "Two panels. One Apple II.");
+        centre(6, "A two-pane ProDOS file manager running natively on Apple IIe.");
+        cputsxy(4, 8,  "Copy, move, rename, delete, tag, sort.");
+        cputsxy(44, 8, "Text viewer, hex dump, text editor.");
+        cputsxy(4, 9,  "HGR and DHGR pictures, full screen.");
+        cputsxy(44, 9, "Mockingboard music player.");
+        cputsxy(4, 10,  "Disk formatter, program launcher.");
+        cputsxy(44, 10, "Mouse or keyboard: press ? for help.");
+        cputsxy(4, 12, "Needs an enhanced Apple IIe, 128 KB, 80 columns, ProDOS 8.");
+        cputsxy(4, 13, "Optional: a Mockingboard and an AppleMouse II, in any slot.");
+        cputsxy(4, 15, "Free software under the GNU GPL v3, by Arnaud VERHILLE.");
+        cputsxy(4, 16, "https://github.com/habib256/a2filecmd");
+        gotoxy(4, 18);
         /* ProDOS : annee sur 7 bits (0-39 = 2000-2039), mois 1-12, jour 1-31,
          * heure 0-23 -- deja en 24 heures. Une date hors bornes vaut absence. */
         if ((machid & 1) && month >= 1 && month <= 12 && day >= 1 && day <= 31 && hour < 24 && minute < 60)
@@ -72,8 +91,9 @@ int main(void)
                     year < 40 ? 2000 + year : 1900 + year, hour, minute);
         else
             cputs("No clock: new files will carry no date.");
-        gotoxy(14, 12);
-        cputs("PLEASE WAIT, loading A2RETRO.CODE ...");
+        chlinexy(0, 20, 80);
+        gotoxy(4, 22);
+        cputs("PLEASE WAIT, loading A2FILE.CODE ...");
     }
 
     if ((f = fopen(CODE_FILE, "rb")) == NULL) {
@@ -92,7 +112,7 @@ int main(void)
     while (dst < (unsigned char*)0xBF00 && (n = fread(dst, 1, (unsigned char*)0xBF00 - dst < CHUNK ? (unsigned char*)0xBF00 - dst : CHUNK, f)) > 0) dst += n;
     fclose(f);
 
-    /* A2 Retro Cmd ne revient jamais ici : il sort par le QUIT ProDOS. */
+    /* A2 File Cmd ne revient jamais ici : il sort par le QUIT ProDOS. */
     ((void (*)(void))CODE_ADDR)();
     return 0;
 }

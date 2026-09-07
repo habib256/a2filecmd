@@ -15,18 +15,25 @@ class SplitLoadLayout(unittest.TestCase):
         # Une disposition saine, celle que produit le lien.
         self.s = dict(__LCIMAGE_FILEOFFS__=0, __LCIMAGE_START__=0x1000,
                       __LCIMAGE_SIZE__=0xC00, __LCIMAGE_LAST__=0x1C00,
-                      __MAIN_FILEOFFS__=0x1000, __MAIN_START__=0x4000,
+                      __MAIN_FILEOFFS__=0xC00, __MAIN_START__=0x4000,
                       __MAIN_LAST__=0xBCC5, __LC_START__=0xD400, __LC_LAST__=0xE000,
-                      __LOWEXE_RUN__=0x1C00, __LOWEXE_SIZE__=0x2A0,
+                      __LOWRAM_START__=0x1000, __LOWRAM_SIZE__=0xB00,
+                      __IMAGE_START__=0x1B00, __IMAGE_LAST__=0x1F60,
+                      __HELP_START__=0x1B00, __HELP_LAST__=0x1EE0,
+                      __TEXT_START__=0x1B00, __TEXT_LAST__=0x1D80,
+                      __HEX_START__=0x1B00, __HEX_LAST__=0x1DF0,
+                      __DELETE_START__=0x1B00, __DELETE_LAST__=0x1E00,
                       __LOWBSS_RUN__=0x1058, __LOWBSS_SIZE__=0x953,
                       __HIMEM__=0xBF00, __STACKSIZE__=0x100,
                       __ONCE_RUN__=0xBBCB, __BSS_RUN__=0x1000, __BSS_SIZE__=0x58)
         self.loader = dict(LC_STAGE=0x1000, LC_BYTES=0xC00, CODE_ADDR=0x4000,
-                           STAGE_BYTES=0x1000)
-        self.length = 0x1000 + 0xBCC5 - 0x4000
+                           STAGE_BYTES=0xC00)
+        self.length = 0xC00 + 0xBCC5 - 0x4000
+        self.overlays = dict(IMAGE=0x1F60 - 0x1B00, HELP=0x1EE0 - 0x1B00, TEXT=0x280,
+                             HEX=0x2F0, DELETE=0x300)
 
     def check(self):
-        return check_layout(self.s, self.loader, self.length)
+        return check_layout(self.s, self.loader, self.length, self.overlays)
 
     def test_valid(self):
         self.assertEqual(self.check(), [])
@@ -49,7 +56,6 @@ class SplitLoadLayout(unittest.TestCase):
     def test_stage_overlaps_the_graphics_page(self):
         self.loader['LC_STAGE'] = self.s['__LCIMAGE_START__'] = 0x1500
         self.s['__LCIMAGE_LAST__'] = 0x2100
-        self.s['__LOWEXE_RUN__'] = 0x2100
         self.assertIn('staging overlaps the ProDOS buffers or the graphics page', self.check())
 
     def test_main_and_bank_overflow(self):
@@ -69,16 +75,23 @@ class SplitLoadLayout(unittest.TestCase):
         self.s['__BSS_RUN__'] = 0xBDF0
         self.assertTrue(any('BSS' in e for e in self.check()))
 
-    def test_low_code_must_sit_above_the_lc_image_and_below_the_prefix(self):
-        self.s['__LOWEXE_RUN__'] = 0x1800
-        self.assertIn('LOWEXE starts inside the LC staging area', self.check())
-        self.s['__LOWEXE_RUN__'] = 0x1C00
-        self.s['__LOWEXE_SIZE__'] = 0x401
-        self.assertIn('LOWEXE runs past the staged prefix', self.check())
+    def test_overlay_between_low_ram_and_graphics_page(self):
+        self.s['__IMAGE_START__'] = 0x1A00
+        self.assertIn('IMAGE overlay starts inside the low RAM', self.check())
+        self.s['__IMAGE_START__'] = 0x1B00
+        self.s['__IMAGE_LAST__'] = 0x2001
+        self.assertIn('IMAGE overlay runs into the graphics page', self.check())
 
-    def test_low_bss_may_not_climb_into_the_low_code(self):
-        self.s['__LOWBSS_SIZE__'] = 0xC00                     # jusqu'en $1C57
-        self.assertIn('low BSS runs into LOWEXE', self.check())
+    def test_overlay_file_must_be_as_long_as_the_link_says(self):
+        self.overlays['IMAGE'] += 1
+        self.assertIn('IMAGE overlay file length does not match the link', self.check())
+        self.overlays['IMAGE'] = None                         # fichier absent
+        self.assertIn('IMAGE overlay file length does not match the link', self.check())
+        self.assertEqual(check_layout(self.s, self.loader, self.length), [])
+
+    def test_low_bss_may_not_climb_into_the_overlay_window(self):
+        self.s['__LOWBSS_SIZE__'] = 0xB00                     # jusqu'en $1B57
+        self.assertIn('low BSS runs into the overlay window', self.check())
 
 
 if __name__ == '__main__':

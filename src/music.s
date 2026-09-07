@@ -19,7 +19,7 @@
 ;    teste d'abord. Le jeu reste identique, sfx.s continue seul.
 ;
 ; cc65 fait la plomberie ProDOS : `.interruptor` entre dans la table que
-; a2rc.cfg declare, le runtime fait ALLOC_INTERRUPT au lancement et
+; a2fc.cfg declare, le runtime fait ALLOC_INTERRUPT au lancement et
 ; DEALLOC a la sortie, et appelle music_irq avec la retenue a zero ; on la
 ; met a un si l'IRQ est la notre. ProDOS sauve A, X, Y et $FA-$FF autour du
 ; gestionnaire : ces six octets de page zero sont donc a nous, ici et hors
@@ -68,7 +68,7 @@ FADE_STEP = 3           ; ticks entre deux pas de fondu
 ; music.h disent les memes tailles. Chaque moitie garde son curseur : revenir
 ; a la zone apres un combat la reprend ou elle en etait, sans rien relire.
 ; Seule la page de transit ci-dessous est reservee en MAIN -- ou en RAM
-; basse (LOWBSS) pour A2RC, assemble avec -D LOWBUF : sa BSS
+; basse (LOWBSS) pour A2FC, assemble avec -D LOWBUF : sa BSS
 ; principale est pleine, le jeu garde la sienne telle quelle.
 .ifdef LOWBUF
 .segment "LOWBSS"
@@ -80,7 +80,7 @@ _music_buf:     .res 256         ; staging disque, flux residents en AUX
 AUX_MUSIC = $1000
 mb_slot:        .res 1
 playing:        .res 1
-_music_active   = playing       ; lu par A2RC : 0 quand le flux est fini
+_music_active   = playing       ; lu par A2FC : 0 quand le flux est fini
         .export _music_active
 paused:         .res 1
 half:           .res 1          ; la moitie selectionnee, 0 ou 1

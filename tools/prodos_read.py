@@ -2,7 +2,7 @@
 """Relire une image ProDOS : l'inverse de mkvolume.py, en cinquante lignes.
 
 Sert au test de l'ecrivain (aller-retour octet a octet) et au controle d'une
-image publiee : `python3 tools/prodos_read.py dist/A2RETROCMD.po` liste ce
+image publiee : `python3 tools/prodos_read.py dist/A2FILECMD.po` liste ce
 qu'elle contient, comme le ferait un CATALOG.
 """
 import sys

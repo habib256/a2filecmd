@@ -2,7 +2,7 @@
 
 La pile logicielle de cc65 part de $BF00 vers le bas et rien ne la surveille :
 si elle descend sous le bout froid du binaire, elle mange du code. Le lien
-reserve 256 octets (A2RC_STACK dans le Makefile) et tools/check_layout.py
+reserve 256 octets (A2FC_STACK dans le Makefile) et tools/check_layout.py
 verifie que le code s'arrete au-dessus ; ce banc mesure ce qui est REELLEMENT
 consomme, arbre de dossiers, images, visionneuses, editeur et copie recursive
 compris.
@@ -25,10 +25,10 @@ BUDGET = 256                    # ce que le lien reserve
 def main():
     sym = labels()
     lo, hi = sym['__ONCE_RUN__'], sym['__HIMEM__']
-    with tempfile.TemporaryDirectory(prefix='a2rc-stack-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='a2fc-stack-') as tmp:
         tmp = Path(tmp)
-        floppy = tmp / 'A2RETROCMD.po'
-        shutil.copyfile(ROOT / 'dist/A2RETROCMD.po', floppy)
+        floppy = tmp / 'A2FILECMD.po'
+        shutil.copyfile(ROOT / 'dist/A2FILECMD.po', floppy)
         with Pom2(scratch_volume(tmp), floppy=floppy, port=6620) as p:
             s = Session(p, sym)
             s.boot()
@@ -44,9 +44,9 @@ def main():
                 return hi
 
             s.ok('le motif est pose sur toute la pile', low_water() == hi)
-            s.select('A2RETRO'); s.key(RET)
-            s.wait(lambda: s.has('/A2RETROCMD/A2RETRO'), 'dossier'); s.key(ESC)
-            s.wait(lambda: s.has('/A2RETROCMD '), 'retour'); p.stable()
+            s.select('A2FILE'); s.key(RET)
+            s.wait(lambda: s.has('/A2FILECMD/A2FILE'), 'dossier'); s.key(ESC)
+            s.wait(lambda: s.has('/A2FILECMD '), 'retour'); p.stable()
             s.key(TAB); s.select('DHGR.RLE', 40); s.key(RET)
             s.wait(lambda: s.value('view', 1) == 1, 'image', 40); time.sleep(1)
             s.key(ESC); s.wait(lambda: s.value('view', 1) == 0, 'retour'); p.stable()
@@ -66,7 +66,7 @@ def main():
             s.select('/SCRATCH', 40); s.key(RET)
             s.wait(lambda: s.rows()[0][40:].startswith('/SCRATCH '), 'scratch'); p.stable()
             s.key(TAB)
-            s.select('A2RETRO'); s.key(b'C')
+            s.select('A2FILE'); s.key(b'C')
             s.wait(lambda: s.has('copied') or s.has('failed'), 'copie recursive', 180); p.stable()
             deep = low_water()
             used = hi - deep

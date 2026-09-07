@@ -37,34 +37,34 @@ jobs:
 
       - name: Relire l'image produite
         run: |
-          python3 tools/prodos_read.py dist/A2RETROCMD.po
-          test "$(stat -c%s dist/A2RETROCMD.po)" = 143360
-          test "$(stat -c%s dist/A2RETROCMD.dsk)" = 143360
-          python3 tools/po2dsk.py dist/A2RETROCMD.po /tmp/again.dsk
-          cmp /tmp/again.dsk dist/A2RETROCMD.dsk
+          python3 tools/prodos_read.py dist/A2FILECMD.po
+          test "$(stat -c%s dist/A2FILECMD.po)" = 143360
+          test "$(stat -c%s dist/A2FILECMD.dsk)" = 143360
+          python3 tools/po2dsk.py dist/A2FILECMD.po /tmp/again.dsk
+          cmp /tmp/again.dsk dist/A2FILECMD.dsk
 
       - name: Empreintes
         run: |
-          cd dist && sha256sum A2RETROCMD.po A2RETROCMD.dsk | tee SHA256SUMS.txt
+          cd dist && sha256sum A2FILECMD.po A2FILECMD.dsk | tee SHA256SUMS.txt
 
       - name: La carte memoire, pour le journal de construction
         run: |
           echo '## Disposition' >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          sed -n '/^Name  *Start/,/^LC /p' build/a2rc.map >> $GITHUB_STEP_SUMMARY
+          sed -n '/^Name  *Start/,/^LC /p' build/a2fc.map >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          python3 tools/prodos_read.py dist/A2RETROCMD.po >> $GITHUB_STEP_SUMMARY
+          python3 tools/prodos_read.py dist/A2FILECMD.po >> $GITHUB_STEP_SUMMARY
 
       - uses: actions/upload-artifact@v4
         with:
-          name: a2retrocmd-disk
+          name: a2filecmd-disk
           path: |
-            dist/A2RETROCMD.po
-            dist/A2RETROCMD.dsk
+            dist/A2FILECMD.po
+            dist/A2FILECMD.dsk
             dist/SHA256SUMS.txt
-            build/a2rc.map
-            build/A2RETRO.CODE.BIN
-            build/A2RETRO.SYSTEM.SYS
+            build/a2fc.map
+            build/A2FILE.CODE.BIN
+            build/A2FILE.SYSTEM.SYS
             build/FORMAT.SYS.SYS
 
   # Les bancs jouent une session complete dans POM2 sans fenetre : navigation,
@@ -87,7 +87,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: a2retrocmd-bench
+          name: a2filecmd-bench
           path: bench-out
 
   release:
@@ -101,13 +101,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: a2retrocmd-disk
+          name: a2filecmd-disk
           path: dist
       - name: Publier
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/A2RETROCMD.po
-            dist/A2RETROCMD.dsk
+            dist/A2FILECMD.po
+            dist/A2FILECMD.dsk
             dist/SHA256SUMS.txt
           body_path: docs/RELEASE.md

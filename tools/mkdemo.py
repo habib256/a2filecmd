@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fabrique les fichiers de demonstration de la disquette A2 Retro Cmd.
+"""Fabrique les fichiers de demonstration de la disquette A2 File Cmd.
 
     mkdemo.py DOSSIER
 
@@ -9,7 +9,7 @@ mire vaut mieux qu'une photo pour cela -- on voit tout de suite si le
 decodage des couleurs est juste.
 
   DHGR.RLE   les seize couleurs du double haute resolution, en barres,
-             compressees dans le flux DHRR v1 que lit A2 Retro Cmd
+             compressees dans le flux DHRR v1 que lit A2 File Cmd
   HGR.RLE    les six couleurs du haute resolution simple, flux HGRR v1
   WELCOME.MB une fanfare de trois voix pour la Mockingboard, flux MB1
   SAMPLE.TXT un texte pour la visionneuse et l'editeur
@@ -57,7 +57,7 @@ def dhgr_card():
 
 
 def rle(data):
-    """Le flux v1 que decode a2rc.c : $80|n-3 puis l'octet, ou n-1 litteraux."""
+    """Le flux v1 que decode a2fc.c : $80|n-3 puis l'octet, ou n-1 litteraux."""
     out, i, n = bytearray(), 0, len(data)
     while i < n:
         run = 1
@@ -121,7 +121,7 @@ def applesoft(lines):
 HOME, PRINT, FOR, TO, NEXT, END = 0x97, 0xBA, 0x81, 0xC1, 0x82, 0x80
 
 SAMPLE = """\
-A2 RETRO CMD -- SAMPLE TEXT
+A2 FILE CMD -- SAMPLE TEXT
 
 This file is here so you can try the viewers and the editor.
 
@@ -152,9 +152,9 @@ def main():
     (out / 'SAMPLE.TXT').write_bytes(SAMPLE.replace('\n', '\r').encode('ascii'))
     (out / 'HELLO#FC0801').write_bytes(applesoft([
         (10, bytes([HOME])),
-        (20, bytes([PRINT]) + b'"A2 RETRO CMD RUNS APPLESOFT."'),
+        (20, bytes([PRINT]) + b'"A2 FILE CMD RUNS APPLESOFT."'),
         (30, bytes([PRINT])),
-        (40, bytes([PRINT]) + b'"TYPE  -A2RETRO.SYSTEM  TO COME BACK."'),
+        (40, bytes([PRINT]) + b'"TYPE  -A2FILE.SYSTEM  TO COME BACK."'),
         (50, bytes([END])),
     ]))
     for f in sorted(out.iterdir()):
