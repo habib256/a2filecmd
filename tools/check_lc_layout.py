@@ -34,15 +34,19 @@ def check_layout(s, loader, length):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--src', type=Path, default=Path(__file__).resolve().parents[1]/'SCOSWAMP/SRC')
+    # TOTAL partage le lanceur et la disposition du jeu : memes controles,
+    # sur sa propre table de symboles et son propre fichier.
+    ap.add_argument('--lbl', default='build.lbl', help='table de symboles ld65 (defaut : build.lbl)')
+    ap.add_argument('--bin', default='../SCOSWAMP.BIN', help='image a charge separee (defaut : ../SCOSWAMP.BIN)')
     args = ap.parse_args()
     args.src = args.src.resolve()
     s = {name: int(value,16) for value,name in re.findall(
-        r'^al ([0-9A-Fa-f]+) \.([\w]+)$', (args.src/'build.lbl').read_text(), re.M)}
+        r'^al ([0-9A-Fa-f]+) \.([\w]+)$', (args.src/args.lbl).read_text(), re.M)}
     loader = {name:int(value,0) for name,value in re.findall(
         r'^#define (LC_STAGE|LC_BYTES|GAME_ADDR)\s+(0x[0-9A-Fa-f]+|\d+)',
         (args.src/'loader.c').read_text(), re.M)}
     try:
-        errors = check_layout(s,loader,(args.src.parent/'SCOSWAMP.BIN').stat().st_size)
+        errors = check_layout(s,loader,(args.src/args.bin).stat().st_size)
     except KeyError as exc:
         errors = [f'missing layout symbol or loader constant: {exc}']
     if errors:

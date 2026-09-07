@@ -18,7 +18,7 @@ TITLE            TXT $0000      684    |
                                        |                                        
                                        |                                        
                                        |                                        
-__ TOTAL _____________________ 1257 of 14594 blocks free _______________________
+__ TOTAL _____________________ 1255 of 14596 blocks free _______________________
 TOTAL  directory  1 blocks                                                      
 2 files copied.                                                                 
-TAB panel RET open SPC tag C copy V move R ren D del K mkdir S sort ? help Q    
+TAB panel RET open SPC tag ' find C copy V move R ren D del K mkdir S sort ? he 

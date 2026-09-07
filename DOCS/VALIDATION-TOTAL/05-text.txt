@@ -1,4 +1,4 @@
-ck                                                                              
+                                                                                
           ====================================================                  
                      SCORPIONS SWAMP                                            
                           LE MARAIS AUX SCORPIONS                               
@@ -21,4 +21,4 @@ ck
                                                                                 
                                                                                 
                                                                                 
-/SCOSWAMP/TITLE                          page 1       SPACE next  B prev  ESC b 
+/SCOSWAMP/TITLE                          page 1  SPACE next  B prev  ESC back   

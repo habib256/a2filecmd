@@ -510,6 +510,7 @@ total_mli.o: total_mli.s
 $(OUTDIR)/TOTAL/TOTAL.CODE.BIN: total.c total_mli.o crt0.o hgr_loader.o memory_swap.o mli_safe.o scoswamp.cfg
 	@mkdir -p $(OUTDIR)/TOTAL
 	$(CL) $(CFLAGS) -C scoswamp.cfg -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__STACKSIZE__=0x0300 -Wl -m,total.map -Wl -Ln,total.lbl -o $@ crt0.o total.c total_mli.o hgr_loader.o memory_swap.o mli_safe.o $(IOBUF)
+	@python3 ../../tools/check_lc_layout.py --src . --lbl total.lbl --bin ../TOTAL/TOTAL.CODE.BIN
 
 hdv: $(HDV)
 

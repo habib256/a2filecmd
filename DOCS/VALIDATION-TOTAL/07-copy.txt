@@ -18,7 +18,7 @@ TITLE            TXT $0000      684    |
                                        |                                        
                                        |                                        
                                        |                                        
-__ TOTAL _____________________ 1322 of 14594 blocks free _______________________
+__ TOTAL _____________________ 1322 of 14596 blocks free _______________________
 TITLE  type $04  aux $0000  3 blocks  684 bytes  00/00/00                       
 1 file copied.                                                                  
-TAB panel RET open SPC tag C copy V move R ren D del K mkdir S sort ? help Q    
+TAB panel RET open SPC tag ' find C copy V move R ren D del K mkdir S sort ? he 

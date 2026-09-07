@@ -1,24 +1,24 @@
                               T O T A L  -  keys                                
                                                                                 
-  Up / Down        move        < > or - +   page        [ ]  first / last       
-  TAB              other panel =            same directory in the other panel   
-  RETURN / Right   open : directory, .RLE image, TXT text, SYS program, else hex
-  ESC / Left       parent directory        /   list of volumes                  
-  SPACE            tag / untag the file and move down (* after the name)        
+ Up / Down      move          < > or - +  page          [ ]  first / last       
+ TAB            other panel   =           same directory in the other panel     
+ RETURN / Right open : directory, .RLE image, TXT text, SYS program, else hex   
+ ESC / Left     parent directory          /  list of volumes                    
+ SPACE          tag / untag the file (* after the name)     *  invert tags      
+ ' then a key   jump to the next name starting with that letter or digit        
                                                                                 
-  C  copy to the other panel      V  move (copy, then delete the original)      
-  R  rename                       D  delete (a directory with its contents)     
-  K  make a directory             S  sort by name, size or type                 
-  T  view as text                 H  view as hexadecimal                        
-  X  run a SYS or BIN program     Q  quit to ProDOS (Bitsy Bye)                 
+ C  copy to the other panel      V  move (copy, then delete the original)       
+ R  rename                       D  delete (a directory with its contents)      
+ K  make a directory             S  sort by name, size or type                  
+ T  view as text                 H  view as hexadecimal                         
+ X  run a SYS or BIN program     Q  quit to ProDOS (Bitsy Bye)                  
+ A  change type and auxtype      L  lock / unlock (L after the name)            
+ M  mark the files missing from the other panel or of a different size          
                                                                                 
-  C, V and D act on every tagged file of the panel, else on the cursor.         
-  Directories are copied whole; copies keep type and auxtype, never overwrite.  
-  In an image: Left / Right show the previous / next image of the folder.       
-  In a text or hex view: SPACE next page, B previous page, ESC back.            
-                                                                                
-                                                                                
-                                                                                
-                                                                                
+ C, V and D act on every tagged file of the panel, else on the cursor.          
+ Directories are copied whole; copies keep type and auxtype. When a file        
+ exists, TOTAL asks: Overwrite, Skip, All, None. Large directories are shown    
+ by windows in disk order. In an image: Left / Right show the previous / next.  
+ Both directories, the sort and the panel are saved in TOTAL/TOTAL.CFG.         
                                                                                 
 Press any key to return to the panels                                           

@@ -1,7 +1,7 @@
 /SCOSWAMP                              |[Volumes]                               
-Name*            Type  Aux     Size    |Name*            Type  Aux     Size     
-..               <UP>                  |/SCOSWAMP        <DIR>              0   
-DHGR             <DIR>              1  |/RAM             <DIR>              0   
+Name*            Type  Aux     Size    |Volume          Slot   Free/Total       
+..               <UP>                  |/SCOSWAMP       S5,D1  1326/14596 free  
+DHGR             <DIR>              1  |/RAM            S3,D2   119/  127 free  
 DIAPO            <DIR>              1  |                                        
 JSON             <DIR>              1  |                                        
 MUSIC            <DIR>              4  |                                        
@@ -19,6 +19,6 @@ TITLE            TXT $0000      684    |
                                        |                                        
                                        |                                        
 __ TOTAL _______________________________________________________________________
-Volume /SCOSWAMP                                                                
+Volume /SCOSWAMP  slot 5 drive 1  14596 blocks, 1326 free                       
                                                                                 
-TAB panel RET open SPC tag C copy V move R ren D del K mkdir S sort ? help Q    
+TAB panel RET open SPC tag ' find C copy V move R ren D del K mkdir S sort ? he 
