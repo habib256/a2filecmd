@@ -13,12 +13,12 @@ MAP              BIN $0000     1842    |
 PRODOS           SYS $0000    17128    |                                        
 SCOSWAMP         BIN $4000    32960    |                                        
 SCOSWAMP.SYSTEM  SYS $0000     4437    |                                        
-TITLE            TXT $0000      824    |                                        
+TITLE            TXT $0000      892    |                                        
                                        |                                        
                                        |                                        
                                        |                                        
                                        |                                        
-__ TOTAL 1.0 _________________ 1241 of 14612 blocks free _______________________
+__ TOTAL 1.0 _________________ 1218 of 14639 blocks free _______________________
 TOTAL  directory  1 blocks                                                      
-4 files copied.                                                                 
+5 files copied.                                                                 
 TABPanel RETOpen SPCTag  C Copy  V Move  R Ren  D Del  K Mkdir  S Sort  ? Help  

@@ -1,0 +1,24 @@
+  APPLE TOTAL COMMANDER 1.0  -  FORMAT A DISK FOR PRODOS                        
+ Formatting. Do not open the drive door or switch off the computer.             
+                                                                                
+ Slot 6, drive 1, Disk II 5.25" -> /TESTDISK                                    
+                                                                                
+ Writing the ProDOS boot blocks, directory and bitmap ...                       
+ Read back and verified.                                                        
+                                                                                
+ Done: /TESTDISK, 280 blocks, 273 free.                                         
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+Any key: back to the list    ESC: Total Commander                               

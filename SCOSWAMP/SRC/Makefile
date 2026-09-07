@@ -505,7 +505,16 @@ TOTAL_VERSION = 1.0
 # decodeur DHGR et memes bascules video. Il ne depend ni de la musique ni
 # des catalogues de DIAPO.
 .PHONY: total
-total: $(OUTDIR)/TOTAL/TOTAL.SYSTEM.SYS $(OUTDIR)/TOTAL/TOTAL.CODE.BIN
+total: $(OUTDIR)/TOTAL/TOTAL.SYSTEM.SYS $(OUTDIR)/TOTAL/TOTAL.CODE.BIN $(OUTDIR)/TOTAL/FORMAT.SYS.SYS
+
+# FORMAT.SYS : le formateur, programme SYS a part entiere dans le dossier
+# TOTAL, ou Bitsy Bye le propose ; la touche F de TOTAL le lance aussi, et
+# il relance TOTAL en sortant. Il ne s'appelle pas .SYSTEM : ProDOS amorce
+# le premier fichier .SYSTEM du catalogue, et F passe avant S.
+# Disposition cc65 standard a $2000, HIMEM $6400 : l'image de piste
+# Hyper-FORMAT vit en $6500-$7FFF.
+$(OUTDIR)/TOTAL/FORMAT.SYS.SYS: format.c format_diskii.s format_mli.s chain.o format.cfg Makefile
+	$(CL) $(CFLAGS) -D 'TOTAL_VERSION="$(TOTAL_VERSION)"' -C format.cfg --start-addr 0x2000 -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=0x6400 -Wl -D,__FILETYPE__=0xFF -Wl -m,format.map -Wl -Ln,format.lbl -o $@ format.c format_diskii.s format_mli.s chain.o $(IOBUF)
 
 $(OUTDIR)/TOTAL/TOTAL.SYSTEM.SYS: loader.c Makefile
 	@mkdir -p $(OUTDIR)/TOTAL
@@ -514,9 +523,12 @@ $(OUTDIR)/TOTAL/TOTAL.SYSTEM.SYS: loader.c Makefile
 total_mli.o: total_mli.s
 	$(AS) -t $(TARGET) -o $@ $<
 
-$(OUTDIR)/TOTAL/TOTAL.CODE.BIN: total.c total_mli.o crt0.o memory_swap.o mli_safe.o music.o music.h scoswamp.cfg
+chain.o: chain.s
+	$(AS) -t $(TARGET) -o $@ $<
+
+$(OUTDIR)/TOTAL/TOTAL.CODE.BIN: total.c total_mli.o chain.o crt0.o memory_swap.o mli_safe.o music.o music.h scoswamp.cfg
 	@mkdir -p $(OUTDIR)/TOTAL
-	$(CL) $(CFLAGS) -D 'TOTAL_VERSION="$(TOTAL_VERSION)"' -C scoswamp.cfg -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__STACKSIZE__=0x0200 -Wl -m,total.map -Wl -Ln,total.lbl -o $@ crt0.o total.c total_mli.o music.o memory_swap.o mli_safe.o $(IOBUF)
+	$(CL) $(CFLAGS) -D 'TOTAL_VERSION="$(TOTAL_VERSION)"' -C scoswamp.cfg -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__STACKSIZE__=0x0200 -Wl -m,total.map -Wl -Ln,total.lbl -o $@ crt0.o total.c total_mli.o chain.o music.o memory_swap.o mli_safe.o $(IOBUF)
 	@python3 ../../tools/check_lc_layout.py --src . --lbl total.lbl --bin ../TOTAL/TOTAL.CODE.BIN
 
 # La disquette 5,25 pouces d'Apple Total Commander : ProDOS 2.4.3, un
@@ -531,10 +543,10 @@ floppy: $(FLOPPY_PO)
 $(FSTAGE)/TOTAL.SYSTEM.SYS: loader.c Makefile
 	@mkdir -p $(FSTAGE)
 	$(CL) $(CFLAGS) -D TOTAL_LOADER -D NO_CHDIR -D 'TOTAL_VERSION="$(TOTAL_VERSION)"' -D 'GAME_FILE="TOTAL/TOTAL.CODE"' --start-addr 0x2000 -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__FILETYPE__=0xFF -o $@ loader.c $(IOBUF)
-$(FLOPPY_PO): $(FSTAGE)/TOTAL.SYSTEM.SYS $(OUTDIR)/TOTAL/TOTAL.CODE.BIN $(OUTDIR)/TOTAL/TOTAL.HELP.TXT $(OUTDIR)/PRODOS.SYS $(TOOLS)/floppy_readme.txt $(BOOTTMPL) $(TOOLS)/make_floppy.py | $(VOLBUILD)
+$(FLOPPY_PO): $(FSTAGE)/TOTAL.SYSTEM.SYS $(OUTDIR)/TOTAL/TOTAL.CODE.BIN $(OUTDIR)/TOTAL/TOTAL.HELP.TXT $(OUTDIR)/TOTAL/FORMAT.SYS.SYS $(OUTDIR)/PRODOS.SYS $(TOOLS)/floppy_readme.txt $(BOOTTMPL) $(TOOLS)/make_floppy.py | $(VOLBUILD)
 	@rm -rf $(FSTAGE)/vol && mkdir -p $(FSTAGE)/vol/TOTAL $(FSTAGE)/vol/TEST
 	cp $(OUTDIR)/PRODOS.SYS $(FSTAGE)/TOTAL.SYSTEM.SYS $(FSTAGE)/vol/
-	cp $(OUTDIR)/TOTAL/TOTAL.CODE.BIN $(OUTDIR)/TOTAL/TOTAL.HELP.TXT $(FSTAGE)/vol/TOTAL/
+	cp $(OUTDIR)/TOTAL/TOTAL.CODE.BIN $(OUTDIR)/TOTAL/TOTAL.HELP.TXT $(OUTDIR)/TOTAL/FORMAT.SYS.SYS $(FSTAGE)/vol/TOTAL/
 	# TEST : de quoi essayer le visionneur, le lecteur MB et l'editeur
 	cp ../../SPACETRIP/IMG/N001.HGR.BIN $(FSTAGE)/vol/TEST/HGR.RAW.BIN
 	$(TOOLS)/build/scoswamp_hgr encode ../../SPACETRIP/IMG/N001.HGR.BIN $(FSTAGE)/vol/TEST/HGR.RLE.BIN > /dev/null
@@ -549,7 +561,7 @@ hdv: $(HDV)
 
 $(HDV): $(OUTDIR)/$(PROGRAM) $(OUTDIR)/$(LAUNCHER) $(BOOTTMPL) $(MUSICS) \
         $(OUTDIR)/MAP.BIN $(OUTDIR)/DIAPO/DIAPO.SYSTEM.SYS $(OUTDIR)/DIAPO/DIAPO.CODE.BIN diapo-catalog \
-        $(OUTDIR)/TOTAL/TOTAL.SYSTEM.SYS $(OUTDIR)/TOTAL/TOTAL.CODE.BIN $(OUTDIR)/TOTAL/TOTAL.HELP.TXT $(PAYLOAD) | $(VOLBUILD) check
+        $(OUTDIR)/TOTAL/TOTAL.SYSTEM.SYS $(OUTDIR)/TOTAL/TOTAL.CODE.BIN $(OUTDIR)/TOTAL/TOTAL.HELP.TXT $(OUTDIR)/TOTAL/FORMAT.SYS.SYS $(PAYLOAD) | $(VOLBUILD) check
 	@rm -rf $(STAGE) && mkdir -p $(STAGE) $(dir $(HDV))
 	@for f in $(OUTDIR)/*; do \
 		b=`basename "$$f"`; \

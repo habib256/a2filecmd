@@ -42,9 +42,12 @@ extern unsigned char _filetype;
 extern unsigned int _auxtype;
 
 unsigned char __fastcall__ mli_gfi(void* params);   /* total_mli.s */
+extern unsigned int chain_addr;                    /* chain.s */
+void __fastcall__ chain_load(const char* path);
 unsigned char __fastcall__ mli_sfi(void* params);
 static unsigned char exists(const char* path);
 static void too_long(void);
+static void dir_fail(void);
 
 #ifndef TOTAL_VERSION
 #define TOTAL_VERSION "1.0"
@@ -255,6 +258,11 @@ static void message(const char* text)
 static void too_long(void)
 {
     message("Path too long for ProDOS.");
+}
+
+static void dir_fail(void)
+{
+    message("Directory unreadable or too many files.");
 }
 
 /* La barre de touches, facon Norton Commander : chaque touche dans un bloc
@@ -848,7 +856,7 @@ static void load_config(void)
  * (16 384 : AUX puis MAIN, l'ordre des fichiers A2FC et du jeu), un flux
  * HGRR v1 (RLE, 8 192 decompresses) ou DHRR v1 (RLE, 16 384). */
 enum { IMG_NONE, IMG_HGR, IMG_DHGR, IMG_HGRR, IMG_DHRR };
-static const char* const IMG_NAMES[] = { "not an image", "HGR raw", "DHGR raw (AUX then MAIN)", "HGR RLE (HGRR v1)", "DHGR RLE (DHRR v1)" };
+static const char* const IMG_NAMES[] = { "not an image", "HGR raw", "DHGR raw", "HGR RLE", "DHGR RLE" };
 static const unsigned long IMG_BYTES[] = { 0, 8192, 16384, 8192, 16384 };
 static unsigned char img_kind;
 
@@ -992,7 +1000,7 @@ static void view_image(void)
     draw_all();
     clear_row(22);
     gotoxy(0, 22);
-    if (img_kind == IMG_NONE) cprintf("%s: not an image (HGR/DHGR raw, HGRR or DHRR stream expected).", input);
+    if (img_kind == IMG_NONE) cprintf("%s: not an image.", input);
     else cprintf("%s: %s, %lu bytes on screen.", input, IMG_NAMES[img_kind], IMG_BYTES[img_kind]);
 }
 
@@ -1234,9 +1242,10 @@ static unsigned char looks_like_music(const struct Entry* e)
 }
 
 /* Entree sur un .MB : le flux MB1 est monte en AUX par le lecteur du jeu
- * (six voix, en interruption) et joue en boucle pendant que l'on continue
- * de naviguer ; P le met en pause, un autre .MB le remplace, Q et X le
- * coupent. La carte est cherchee a la premiere demande. */
+ * (six voix, en interruption) et joue une fois pendant que l'on continue
+ * de naviguer -- les lectures disque ne l'arretent pas, TOTAL n'y touche
+ * jamais ; P le met en pause, un autre .MB le remplace, Q et X le coupent.
+ * La carte est cherchee a la premiere demande. */
 static void play_music(const struct Entry* e)
 {
     FILE* f;
@@ -1258,19 +1267,19 @@ static void play_music(const struct Entry* e)
     fclose(f);
     if (!valid) { message("Not an MB1 Mockingboard stream."); return; }
     music_select(0);
-    music_set_loop(1);
+    music_set_loop(0);
     music_play();
     total_playing = 1;
     clear_row(22);
     gotoxy(0, 22);
-    cprintf("Playing %s on the Mockingboard in slot %u, looping. P pauses.", e->name, total_slot);
+    cprintf("Playing %s once on the Mockingboard in slot %u. P pauses.", e->name, total_slot);
 }
 
 static void toggle_music(void)
 {
-    if (total_playing == 1) { music_pause(); total_playing = 2; message("Music paused. P resumes."); }
-    else if (total_playing == 2) { music_resume(); total_playing = 1; message("Music resumed."); }
-    else message("Open a .MB file to play it.");
+    if (!music_active) { total_playing = 0; message("No music playing: open a .MB file."); }
+    else if (total_playing == 1) { music_pause(); total_playing = 2; message("Music paused. P resumes."); }
+    else { music_resume(); total_playing = 1; message("Music resumed."); }
 }
 
 /* ---------------------------------------------------------------------- */
@@ -1278,8 +1287,9 @@ static void toggle_music(void)
 /* ---------------------------------------------------------------------- */
 
 /* L'aide est lue dans TOTAL/TOTAL.HELP (a cote de TOTAL.CODE), une ligne
- * par element : "x,y,TOUCHE,libelle" pour un bouton, "x,y,=TITRE" pour un
- * titre de section, "x,y,-texte" pour du texte en clair. Le texte passe par
+ * par element : "x,y,TOUCHE,libelle" pour un bouton, "x,y,#TITRE" pour un
+ * titre de section, "x,y,~texte" pour du texte en clair ('=' et '-' sont
+ * des touches). Le texte passe par
  * la page HGR, comme l'editeur : rien en memoire hors de l'aide. */
 static void view_help(void)
 {
@@ -1303,11 +1313,11 @@ static void view_help(void)
         y = 0; while (*s != ',') y = y * 10 + (*s++ - '0'); ++s;
         gotoxy(x, y);
         kind = *s;
-        if (kind == '=' || kind == '-') {
-            if (kind == '=') { revers(1); cputc(' '); }
+        if (kind == '#' || kind == '~') {         /* # titre de section, ~ texte en clair */
+            if (kind == '#') { revers(1); cputc(' '); }
             ++s;
             while (*s && *s != '\n' && *s != '\r') cputc(*s++);
-            if (kind == '=') { cputc(' '); revers(0); }
+            if (kind == '#') { cputc(' '); revers(0); }
         } else {
             for (klen = 0; s[klen] != ','; ++klen) {}
             revers(1);
@@ -1478,7 +1488,7 @@ static unsigned int count_tree(unsigned char base)
 static unsigned char copy_tree(unsigned char base)
 {
     unsigned char n, i, sl = strlen(full), dl = strlen(other_full), ok = 1;
-    if (!list_dir(full, base, &n)) { message("Directory unreadable or too many files at once."); return 0; }
+    if (!list_dir(full, base, &n)) { dir_fail(); return 0; }
     for (i = 0; i < n && ok; ++i) {
         const struct Mini* m = &pool[base + i];
         if (!push_name(full, m->name) || !push_name(other_full, m->name)) { too_long(); ok = 0; }
@@ -1496,7 +1506,7 @@ static unsigned char copy_tree(unsigned char base)
 static unsigned char delete_tree(unsigned char base)
 {
     unsigned char n, i, len = strlen(full), ok = 1;
-    if (!list_dir(full, base, &n)) { message("Directory unreadable or too many files at once."); return 0; }
+    if (!list_dir(full, base, &n)) { dir_fail(); return 0; }
     for (i = 0; i < n && ok; ++i) {
         if (!push_name(full, pool[base + i].name)) { too_long(); ok = 0; break; }
         if (pool[base + i].type == 0x0F) ok = delete_tree(base + n);
@@ -1572,14 +1582,18 @@ static void copy_or_move(unsigned char move)
         if (!is_dir(e)) { ++progress_total; continue; }
         if (!build_full(full, pan, e)) { too_long(); return; }
         sub = count_tree(0);
-        if (sub == 0xFFFF) { message("Directory unreadable or too many files at once."); return; }
+        if (sub == 0xFFFF) { dir_fail(); return; }
         progress_total += sub;
     }
     for (i = 0; i < n; ++i) {
         const struct Entry* e = &pan->e[picked[i]];
+        unsigned int skipped_before = progress_skipped;
         if (is_up(e)) { ++done; continue; }
         if (!copy_one(e)) break;
-        if (move) {
+        /* Deplacer, c'est copier puis effacer : un fichier passe (Skip)
+         * n'a pas ete copie, il reste ; un dossier dont un fichier a ete
+         * passe reste aussi, entier, plutot que d'en perdre une partie. */
+        if (move && progress_skipped == skipped_before) {
             build_full(full, pan, e);
             if (is_dir(e) ? !delete_tree(0) : remove(full) != 0) { if (!is_dir(e)) report_error("Delete source"); break; }
         }
@@ -1680,32 +1694,45 @@ static void change_attributes(const struct Entry* e, unsigned char lock)
     show_active();
 }
 
+/* Charge le fichier `full` a `addr` et y saute, sans retour, par le talon
+ * de chain.s : quelle que soit sa taille, il ecrase TOTAL sans dommage.
+ * La musique est coupee, les preferences ecrites. */
+static void launch_file(unsigned int addr)
+{
+    if (!exists(full)) { report_error("Run"); return; }
+    music_stop();
+    save_config();
+    clrscr();
+    chain_addr = addr;
+    chain_load(full);
+}
+
 /* X : un SYS est lu en $2000, la ou ProDOS l'aurait mis, un BIN a son
- * auxtype s'il tient sous $4000 (au-dessus, il ecraserait TOTAL pendant la
- * lecture) ; puis l'on y saute, sans retour. Cette page est libre : les
- * tables d'entrees n'ont plus d'importance. Bien moins cher que exec(). */
+ * auxtype. */
 static void run_selected(const struct Entry* e)
 {
-    FILE* f;
-    unsigned int addr = e->type == 0xFF ? 0x2000 : e->aux, n;
+    unsigned int addr = e->type == 0xFF ? 0x2000 : e->aux;
     if (is_dir(e) || !panels[active].path[0]) { message("Select a SYS or BIN program."); return; }
     if (e->type != 0xFF && e->type != 0x06) { message("Only SYS and BIN files can be run."); return; }
-    if (addr < 0x0800 || (unsigned long)addr + e->size > 0x4000) { message("A BIN program must load between $0800 and $3FFF."); return; }
+    if (addr < 0x0800 || (unsigned long)addr + e->size > 0xBF00) { message("A BIN must load between $0800 and $BEFF."); return; }
     if (!build_full(full, &panels[active], e)) { too_long(); return; }
     sprintf(question, "Run %s? TOTAL will not resume.", e->name);
     if (!confirm(question)) return;
-    music_stop();
-    save_config();
     chdir(panels[active].path);
-    f = fopen(full, "rb");
-    if (!f) { report_error("Run"); return; }
-    clrscr();
-    n = fread((void*)addr, 1, 0x4000 - addr, f);
-    fclose(f);
-    if (!n) { draw_all(); report_error("Run"); return; }
-    /* Le programme lance attend la ROM, pas la carte langage de TOTAL. */
-    __asm__("bit $C082");
-    ((void (*)(void))addr)();
+    launch_file(addr);
+}
+
+/* F : le formateur, TOTAL/FORMAT.SYS a cote de TOTAL.CODE (Bitsy Bye le
+ * propose aussi), lance depuis la racine du volume ; il relance TOTAL en
+ * sortant. */
+static void format_disk(void)
+{
+    if (!confirm("Open the disk formatter?")) return;
+    strcpy(full, cfg_path);
+    if (strlen(full) > 16) full[strlen(full) - 16] = 0;   /* "/TOTAL/TOTAL.CFG" -> la racine */
+    chdir(full);
+    strcpy(full, "TOTAL/FORMAT.SYS");
+    launch_file(0x2000);
 }
 
 static void open_selected(void)
@@ -1922,6 +1949,7 @@ int main(void)
         case 'x': case 'X': if (pan->count) run_selected(&pan->e[pan->cursor]); break;
         case 'e': case 'E': edit_selected(); break;
         case 'p': case 'P': toggle_music(); break;
+        case 'f': case 'F': format_disk(); break;
         case 'i': case 'I': if (pan->count && !is_dir(&pan->e[pan->cursor]) && pan->path[0]) view_image(); break;
         case '?': view_help(); break;
         case 'q': case 'Q':

@@ -70,9 +70,9 @@ with tempfile.TemporaryDirectory(prefix='total-images-') as work:
         ok('le volume de test demarre dans TOTAL', has('/IMGTEST'))
         select(0, 'IMG'); key(b'\r'); wait(lambda: has('/IMGTEST/IMG'), 'IMG'); p.stable()
         cases = [('HGR.RAW', 'HGR raw, 8192 bytes', None, hgr_raw, 'hgr'),
-                 ('HGR.RLE', 'HGR RLE (HGRR v1), 8192 bytes', None, hgr_raw, 'hgr'),
-                 ('DHGR.RAW', 'DHGR raw (AUX then MAIN), 16384 bytes', dhgr_raw[:8192], dhgr_raw[8192:], 'dhgr'),
-                 ('DHGR.RLE', 'DHGR RLE (DHRR v1), 16384 bytes', dhgr_raw[:8192], dhgr_raw[8192:], 'dhgr')]
+                 ('HGR.RLE', 'HGR RLE, 8192 bytes', None, hgr_raw, 'hgr'),
+                 ('DHGR.RAW', 'DHGR raw, 16384 bytes', dhgr_raw[:8192], dhgr_raw[8192:], 'dhgr'),
+                 ('DHGR.RLE', 'DHGR RLE, 16384 bytes', dhgr_raw[:8192], dhgr_raw[8192:], 'dhgr')]
         for name, text, aux_expected, main_expected, mode in cases:
             select(0, name); key(b'\r'); wait(lambda: value('view', 1) == 1, 'image ' + name); time.sleep(2.5)
             got = page()

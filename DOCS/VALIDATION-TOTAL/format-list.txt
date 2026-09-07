@@ -1,0 +1,24 @@
+  APPLE TOTAL COMMANDER 1.0  -  FORMAT A DISK FOR PRODOS                        
+ This ERASES EVERYTHING on the disk you choose. Read the list carefully.        
+                                                                                
+      Where             Type            Current volume     Size                 
+   1  Slot 6, drive 2  Disk II 5.25"   (no ProDOS volume)   280 blocks          
+   2  Slot 6, drive 1  Disk II 5.25"   (no ProDOS volume)   280 blocks          
+   3  Slot 5, drive 1  block device    /SCOSWAMP          14639 blocks  IN USE  
+   4  Slot 3, drive 2  /RAM disk       /RAM                 127 blocks          
+                                                                                
+                                                                                
+ Press the number of the disk to format. Nothing is written before you confirm. 
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+1-9 Choose a disk    ESC Back to Total Commander                                
