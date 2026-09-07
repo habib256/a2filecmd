@@ -18,12 +18,14 @@ static bool readFile(const std::string& path, std::vector<std::uint8_t>& out)
 
 int main(int argc, char** argv)
 {
-    if (argc != 4) {
-        std::cerr << "usage: build_prodos_volume FOLDER BOOT_TEMPLATE OUTPUT.HDV\n";
+    if (argc != 4 && argc != 5) {
+        std::cerr << "usage: build_prodos_volume FOLDER BOOT_TEMPLATE OUTPUT.HDV [SCOSWAMP|SPACETRIP]\n";
         return 2;
     }
     std::vector<std::uint8_t> volume;
-    const auto built = pom2::buildVolumeFromFolder(argv[1], "SCOSWAMP", volume);
+    const std::string game = argc == 5 ? argv[4] : "SCOSWAMP";
+    if (game != "SCOSWAMP" && game != "SPACETRIP") return 2;
+    const auto built = pom2::buildVolumeFromFolder(argv[1], game, volume);
     if (!built.ok) {
         std::cerr << "build failed: " << built.error << '\n';
         return 1;
@@ -60,7 +62,7 @@ int main(int argc, char** argv)
         for (std::size_t off = 4; off + 39 <= 512; off += 39) {
             auto* entry = volume.data() + block * 512 + off;
             const std::size_t nameLen = entry[0] & 0x0f;
-            if (nameLen == 8 && std::equal(entry + 1, entry + 9, "SCOSWAMP") &&
+            if (nameLen == game.size() && std::equal(entry + 1, entry + 1 + nameLen, game.begin()) &&
                 entry[0x10] == 0x06) {
                 entry[0x1f] = 0x00;
                 entry[0x20] = 0x40;
@@ -70,7 +72,7 @@ int main(int argc, char** argv)
         }
     }
     if (!patchedLoadAddress) {
-        std::cerr << "SCOSWAMP BIN entry not found\n";
+        std::cerr << game + " BIN entry not found\n";
         return 1;
     }
     std::ofstream out(argv[3], std::ios::binary | std::ios::trunc);
@@ -80,6 +82,6 @@ int main(int argc, char** argv)
         std::cerr << "cannot write " << argv[3] << '\n';
         return 1;
     }
-    std::cout << "SCOSWAMP: " << built.filesIncluded << " files, "
+    std::cout << game << ": " << built.filesIncluded << " files, "
               << built.totalBlocks << " blocks\n";
 }
