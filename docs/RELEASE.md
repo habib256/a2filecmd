@@ -1,6 +1,7 @@
 ## A2 File Cmd 1.0 — *Two panels. One Apple II.*
 
-A two-pane ProDOS file manager running natively on Apple IIe. It copies,
+A2FileCmd is a modern two-pane ProDOS file manager for Apple IIe, carrying
+forward the spirit of A2Command and Norton Commander. It copies,
 moves, renames, deletes and tags files across two panels; it reads texts,
 dumps bytes and edits files; it shows HGR and DHGR pictures full screen,
 plays Mockingboard music, runs SYS, BIN and Applesoft programs, and formats

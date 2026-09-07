@@ -2,8 +2,9 @@
 
 **Two panels. One Apple II.**
 
-A two-pane ProDOS file manager running natively on Apple IIe. Copy, move,
-rename, delete, tag, sort; read texts, dump bytes, edit files; view HGR and
+A2FileCmd is a modern two-pane ProDOS file manager for Apple IIe, carrying
+forward the spirit of A2Command and Norton Commander. Copy, move, rename,
+delete, tag, sort; read texts, dump bytes, edit files; view HGR and
 DHGR pictures full screen; play Mockingboard music; format a disk. All of it
 in 80 columns, on 128 KB, from a bootable 5.25" floppy.
 
