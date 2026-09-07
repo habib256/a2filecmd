@@ -25,7 +25,7 @@ int main(int argc, char** argv)
     std::vector<std::uint8_t> volume;
     // The fourth argument names the volume. For the two games it also names
     // the BIN file whose aux type gets patched below; any other name (the
-    // Apple Total Commander floppy, for instance) builds a plain volume.
+    // Apple IIe Total Commander floppy, for instance) builds a plain volume.
     const std::string game = argc == 5 ? argv[4] : "SCOSWAMP";
     const bool isGame = game == "SCOSWAMP" || game == "SPACETRIP";
     if (game.empty() || game.size() > 15) return 2;

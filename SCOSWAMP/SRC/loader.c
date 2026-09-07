@@ -32,7 +32,7 @@ int main(void)
     cputs("PLEASE WAIT");
 #endif
 #ifdef TOTAL_LOADER
-    /* L'ecran d'attente d'Apple Total Commander : le titre, la condition
+    /* L'ecran d'attente d'Apple IIe Total Commander : le titre, la condition
      * ProDOS, la date si une horloge est la (bit 0 de MACHID, $BF98 ; ProDOS
      * tient alors $BF90-$BF93 a jour), puis le chargement. */
     {
@@ -44,7 +44,7 @@ int main(void)
         unsigned char year = date >> 9, month = (date >> 5) & 15, day = date & 31;
         gotoxy(26, 2);
         revers(1);
-        cputs("  APPLE TOTAL COMMANDER " TOTAL_VERSION "  ");
+        cputs("  APPLE IIe TOTAL COMMANDER " TOTAL_VERSION "  ");
         revers(0);
         gotoxy(14, 4);
         cputs("A two-panel file manager for the Apple IIe with 128 KB.");
@@ -65,7 +65,7 @@ int main(void)
     }
 #endif
 
-    /* Sur la disquette Apple Total Commander (NO_CHDIR), le prefixe est deja
+    /* Sur la disquette Apple IIe Total Commander (NO_CHDIR), le prefixe est deja
      * la racine du volume amorce : pas de nom de volume a connaitre. */
 #ifdef NO_CHDIR
     if ((f = fopen(GAME_FILE, "rb")) == NULL) {

@@ -19,6 +19,6 @@
                2025 Apple II Port by : Arnaud VERHILLE                          
                                   (gist974@gmail.com)                           
 ------------------------------------------------------------------------------- 
-          Utilitaires / Utilities :  [D] Diaporama   [T] Apple Total Commander  
+    Utilitaires / Utilities :  [D] Diaporama   [T] Apple IIe Total Commander    
                                                                                 
 /SCOSWAMP/TITLE                        page 1       SPCNext  B Prev ESCBack     

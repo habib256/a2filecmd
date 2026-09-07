@@ -1,4 +1,4 @@
-  APPLE TOTAL COMMANDER 1.0  -  FORMAT A DISK FOR PRODOS                        
+  APPLE IIe TOTAL COMMANDER 1.0  -  FORMAT A DISK FOR PRODOS                    
  Step 3 of 3: the final confirmation.                                           
                                                                                 
    WARNING                                                                      

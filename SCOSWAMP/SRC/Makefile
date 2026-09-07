@@ -414,6 +414,10 @@ ay_notes.inc: $(OUTDIR)/MUSIC/WELCOME.MB.BIN
 music.o: music.s ay_notes.inc
 	$(AS) -t $(TARGET) -o music.o music.s
 
+# Le meme lecteur pour TOTAL, page de transit en RAM basse (LOWBUF).
+music_total.o: music.s ay_notes.inc
+	$(AS) -t $(TARGET) -D LOWBUF -o music_total.o music.s
+
 sfx.o: sfx.s sfx.h
 	$(AS) -t $(TARGET) -o sfx.o sfx.s
 
@@ -497,7 +501,7 @@ $(OUTDIR)/DIAPO/DIAPO.CODE.BIN: diapo.c music.h music.o crt0.o hgr_loader.o memo
 	@mkdir -p $(OUTDIR)/DIAPO
 	$(CL) $(CFLAGS) -C scoswamp.cfg -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -m,diapo.map -Wl -Ln,diapo.lbl -o $@ crt0.o diapo.c music.o hgr_loader.o memory_swap.o mli_safe.o $(IOBUF)
 
-# Le numero de version d'Apple Total Commander : lanceur, ligne de statut,
+# Le numero de version d'Apple IIe Total Commander : lanceur, ligne de statut,
 # aide (TOTAL/TOTAL.HELP.TXT le porte aussi, a la main) et doc.
 TOTAL_VERSION = 1.0
 # TOTAL : le gestionnaire de fichiers a deux panneaux (total.c),
@@ -526,12 +530,12 @@ total_mli.o: total_mli.s
 chain.o: chain.s
 	$(AS) -t $(TARGET) -o $@ $<
 
-$(OUTDIR)/TOTAL/TOTAL.CODE.BIN: total.c total_mli.o chain.o crt0.o memory_swap.o mli_safe.o music.o music.h scoswamp.cfg
+$(OUTDIR)/TOTAL/TOTAL.CODE.BIN: total.c total_mli.o chain.o crt0.o memory_swap.o mli_safe.o music_total.o music.h scoswamp.cfg
 	@mkdir -p $(OUTDIR)/TOTAL
-	$(CL) $(CFLAGS) -D 'TOTAL_VERSION="$(TOTAL_VERSION)"' -C scoswamp.cfg -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__STACKSIZE__=0x0200 -Wl -m,total.map -Wl -Ln,total.lbl -o $@ crt0.o total.c total_mli.o chain.o music.o memory_swap.o mli_safe.o $(IOBUF)
+	$(CL) $(CFLAGS) -D 'TOTAL_VERSION="$(TOTAL_VERSION)"' -C scoswamp.cfg -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__STACKSIZE__=0x0200 -Wl -m,total.map -Wl -Ln,total.lbl -o $@ crt0.o total.c total_mli.o chain.o music_total.o memory_swap.o mli_safe.o $(IOBUF)
 	@python3 ../../tools/check_lc_layout.py --src . --lbl total.lbl --bin ../TOTAL/TOTAL.CODE.BIN
 
-# La disquette 5,25 pouces d'Apple Total Commander : ProDOS 2.4.3, un
+# La disquette 5,25 pouces d'Apple IIe Total Commander : ProDOS 2.4.3, un
 # lanceur sans chdir (le prefixe est la racine du volume amorce), le meme
 # TOTAL.CODE que le volume du jeu, dans un dossier TOTAL comme sur celui-ci
 # (TOTAL.CFG y sera ecrit). Volume /APPLE.TOTAL, 280 blocs, en .po et .dsk.

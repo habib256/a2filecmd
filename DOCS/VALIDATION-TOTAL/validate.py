@@ -112,7 +112,7 @@ with tempfile.TemporaryDirectory(prefix='total-validate-') as work:
             wait_text('Type  Aux     Size')
         # l'ecran-titre du jeu : [T] lance TOTAL, [D] lance DIAPO
         p.start(); p.wait_for('LANGUE')
-        ok('l ecran-titre propose les utilitaires en bas', has('Utilitaires / Utilities') and has('[D] Diaporama') and has('[T] Apple Total Commander'))
+        ok('l ecran-titre propose les utilitaires en bas', has('Utilitaires / Utilities') and has('[D] Diaporama') and has('[T] Apple IIe Total Commander'))
         p.keys('T'); wait_text('Type  Aux     Size', 20)
         ok('[T] de l ecran-titre lance TOTAL', has('/SCOSWAMP/DHGR'))
         key(b'Q'); wait_text('Quit to ProDOS?'); key(b'Y')
@@ -135,7 +135,7 @@ with tempfile.TemporaryDirectory(prefix='total-validate-') as work:
         ok('] va au dernier, la ligne d information porte la date', re.search(r'bytes  \d\d/\d\d/\d\d', rows()[21]) is not None)
         key(b'['); p.stable()
         key(b'?'); wait(lambda: value('view', 1) == 4, 'help'); p.stable(); shot('help')
-        ok('? affiche l aide', has('APPLE TOTAL COMMANDER') and has('NAVIGATION') and has('FILES') and has('VIEWERS') and rows()[23].startswith('ANYReturn to the panels'))
+        ok('? affiche l aide', has('APPLE IIe TOTAL COMMANDER') and has('NAVIGATION') and has('FILES') and has('VIEWERS') and rows()[23].startswith('ANYReturn to the panels'))
         key(b' '); wait(lambda: value('view', 1) == 0, 'back from help'); p.stable()
         key(b"'"); wait_text('Jump to name starting with'); key(b'T'); p.stable()
         ok("' T saute a TEXTEN", rows()[cursor_row(0)].startswith('TEXTEN '))

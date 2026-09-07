@@ -11,6 +11,7 @@
 ; (retour a TOTAL).
 
         .export _chain_load, _chain_addr
+        .import donelib
         .importzp ptr1
 
         .segment "BSS"
@@ -40,7 +41,8 @@ fail:   jsr $BF00               ; QUIT : Bitsy Bye
         .word quit_p
 open_p: .byte 3
         .word path
-        .word $0800             ; tampon ProDOS de 1 Ko
+        .word $BB00             ; tampon ProDOS de 1 Ko, hors de portee d'un
+                                ; programme charge entre $0800 et $BAFF
 ref_num:
         .byte 0
 read_p: .byte 4
@@ -65,6 +67,12 @@ stub_len = stub_end - stub
 _chain_load:
         sta ptr1
         stx ptr1+1
+        ; Les destructeurs cc65 d'abord : doneirq rend a ProDOS l'entree
+        ; d'interruption prise au demarrage (music_irq). Sans cela chaque
+        ; lancement en gardait une, avec un vecteur vers de la memoire
+        ; recouverte : au troisieme aller-retour F/ESC, plantage dans le
+        ; moniteur. ProDOS n'en a que quatre.
+        jsr donelib
         ldy #0                  ; copier le talon en $0300
 :       lda stub_src,y
         sta $0300,y
