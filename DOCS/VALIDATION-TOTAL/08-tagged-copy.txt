@@ -18,7 +18,7 @@ N010.RLE         BIN $0000    13694    |
 N011.RLE         BIN $0000    11299    |                                        
 N012.RLE         BIN $0000    10075    |                                        
 N013.RLE         BIN $0000    11289    |                                        
-__ TOTAL _____________________ 1271 of 14594 blocks free _______________________
+__ TOTAL _____________________ 1271 of 14596 blocks free _______________________
 B028.RLE  type $06  aux $0000  26 blocks  12464 bytes  00/00/00                 
 2 files copied.                                                                 
-TAB panel RET open SPC tag C copy V move R ren D del K mkdir S sort ? help Q    
+TAB panel RET open SPC tag ' find C copy V move R ren D del K mkdir S sort ? he 

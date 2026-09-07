@@ -21,4 +21,4 @@
                                                                                 
                                                                                 
                                                                                 
-/SCOSWAMP/MAP                  1842 bytes  page 1/6     SPACE next  B prev  ESC 
+/SCOSWAMP/MAP                  1842 bytes  page 1/6  SPACE next  B prev  ESC    

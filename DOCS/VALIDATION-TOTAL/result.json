@@ -1,5 +1,5 @@
 {
-  "hdv_sha256": "cc2a8b4350f1fb88cee184404b5ac3f5b1e76903830553324f51c2c7fe94ab8a",
+  "hdv_sha256": "d06c0eadf9bd34559c52a2f4530ebb1a5b3cd7d3fc7825344f1180c4bfa609df",
   "headless": "/Users/gistair/src/pom2adventure/SCOSWAMP.MORE/TOOLS/build/pom2_playtest",
   "checks": [
     {
@@ -24,6 +24,14 @@
     },
     {
       "label": "? affiche l aide",
+      "ok": true
+    },
+    {
+      "label": "' T saute a TEXTEN",
+      "ok": true
+    },
+    {
+      "label": "' T encore : TEXTFR",
       "ok": true
     },
     {
@@ -83,7 +91,19 @@
       "ok": true
     },
     {
-      "label": "recopier refuse d ecraser",
+      "label": "recopier demande, S passe le fichier",
+      "ok": true
+    },
+    {
+      "label": "O ecrase le fichier",
+      "ok": true
+    },
+    {
+      "label": "M marque les fichiers absents de l autre panneau",
+      "ok": true
+    },
+    {
+      "label": "* inverse les marques",
       "ok": true
     },
     {
@@ -104,6 +124,22 @@
     },
     {
       "label": "R renomme en COPIE",
+      "ok": true
+    },
+    {
+      "label": "L verrouille COPIE",
+      "ok": true
+    },
+    {
+      "label": "un fichier verrouille ne se supprime pas",
+      "ok": true
+    },
+    {
+      "label": "L deverrouille",
+      "ok": true
+    },
+    {
+      "label": "A change type et auxtype",
       "ok": true
     },
     {
@@ -139,15 +175,23 @@
       "ok": true
     },
     {
-      "label": "aucune erreur ProDOS",
+      "label": "une seule erreur ProDOS, celle du fichier verrouille",
       "ok": true
     },
     {
-      "label": "/ liste les volumes",
+      "label": "/ liste les volumes avec slot et espace libre",
       "ok": true
     },
     {
       "label": "Q rend la main a Bitsy Bye",
+      "ok": true
+    },
+    {
+      "label": "TOTAL.CFG restaure le panneau droit sur /SCOSWAMP/DIAPO",
+      "ok": true
+    },
+    {
+      "label": "TOTAL.CFG restaure le panneau actif (droit)",
       "ok": true
     },
     {
