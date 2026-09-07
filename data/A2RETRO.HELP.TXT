@@ -1,0 +1,35 @@
+16,0,#  A2 RETRO CMD 1.0  -  ProDOS file manager  
+9,1,~Free software, GNU GPL v3  -  Arnaud VERHILLE, gist974@gmail.com
+1,3,#NAVIGATION
+1,4,U/D,Move up / down
+41,4,</>,Page up / down (L/R too, - +)
+1,5,[/],First / last entry
+41,5,TAB,Switch panel
+1,6,RET,Open the entry
+41,6,ESC,Parent directory
+1,7,/,List of volumes
+41,7,=,Same directory in other panel
+1,8,',Jump to the next name starting with the key pressed next
+1,10,#FILES
+1,11,SPC,Tag / untag: C V D use tags
+41,11,*,Invert tags
+1,12,C,Copy to the other panel
+41,12,V,Move (copy, then delete)
+1,13,R,Rename
+41,13,D,Delete, directories too
+1,14,K,Make a directory
+41,14,S,Sort by name, size or type
+1,15,M,Mark files differing from other
+41,15,A,Change type and auxtype
+1,16,L,Lock / unlock (L after name)
+41,16,X,Run SYS, BIN or BAS (Applesoft)
+1,17,E,Edit a text (on a dir: new file)
+41,17,I,View as image: HGR/DHGR, raw/RLE
+1,18,P,Pause / resume the music
+41,18,F,Format a disk (asks twice)
+1,20,#VIEWERS AND EDITOR
+1,21,RET,By type: dir, image, text, .MB music, SYS
+41,21,T,Text
+52,21,H,Hex
+1,22,L/R,Previous / next image
+41,22,ESC,Editor menu; Ctrl-A/E/P/N/T/B/D

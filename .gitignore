@@ -1,0 +1,7 @@
+build/
+dist/
+*.o
+*.map
+*.lbl
+__pycache__/
+pom2.log

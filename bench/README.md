@@ -1,0 +1,42 @@
+# Les bancs
+
+Ils jouent d'A2 Retro Cmd comme un utilisateur, dans un Apple IIe emule sans
+fenetre, et verifient ce que l'ecran affiche. Rien n'est ajoute au binaire
+livre pour cela : les adresses des variables observees viennent de la table de
+symboles du lien (`build/a2rc.lbl`), et l'ecran est lu la ou l'Apple II le
+range, en `$400-$7FF`.
+
+Ils partent tous de **`dist/A2RETROCMD.po` tel qu'il sera telecharge** : ce
+qui passe ici est ce que recevra celui qui amorce la disquette.
+
+| | |
+|---|---|
+| `smoke.py` | la disquette publiee demarre-t-elle sur les panneaux ? |
+| `run.py` | la session complete : naviguer, marquer, copier, deplacer, renommer, verrouiller, changer type et auxtype, creer un dossier, supprimer, lire un texte et des octets, editer, afficher les deux formats d'image et les comparer octet a octet, jouer la fanfare, ouvrir le formateur, lancer un programme Applesoft. **39 controles.** |
+| `memory.py` | le creux maximal de la pile C, mesure en faisant travailler le programme |
+| `pom2.py` | le pilote d'emulateur commun |
+
+## Les faire tourner
+
+Il faut [POM2](https://github.com/habib256/pom2) construit sans interface
+graphique, avec son serveur de commande (`--ai-control`) :
+
+```sh
+make disk
+POM2=/chemin/vers/pom2_headless python3 bench/run.py --out /tmp/bench
+POM2=/chemin/vers/pom2_headless python3 bench/memory.py
+```
+
+Sans la variable `POM2`, les bancs cherchent l'executable a l'emplacement par
+defaut de l'auteur et s'arretent proprement s'il n'y est pas.
+
+## En integration continue
+
+L'emulateur n'est pas sur les executeurs de GitHub, et il ne serait pas
+raisonnable de l'y construire a chaque commit. Le travail `bench` du
+[workflow](../.github/workflows/ci.yml) ne se declenche donc que si la
+variable de depot **`POM2_RUNNER`** contient l'etiquette d'un executeur
+auto-heberge qui a POM2 ; sinon il est saute, et la publication n'exige que
+la construction et les tests hors emulateur. C'est la limite honnete du
+dispositif : la compilation, les budgets memoire et la fabrication des images
+sont verifies partout, la session complete la ou l'Apple II existe.
