@@ -1,5 +1,5 @@
-/* A2FILE/FORMAT.SYS -- formate un disque pour ProDOS, depuis Apple Total
- * Commander (touche F) ou Bitsy Bye, et revient a A2FC.
+/* A2FILE/FORMAT.SYS -- formate un disque pour ProDOS, depuis A2 File
+ * Cmd (touche F) ou Bitsy Bye, et revient a A2FC.
  *
  * Le formatage physique d'une disquette Disk II vient du ProDOS
  * Hyper-FORMAT de Jerry Hewett (1985, domaine public) et Gary Desrochers
@@ -18,7 +18,7 @@
 #include <conio.h>
 
 #ifndef A2FC_VERSION
-#define A2FC_VERSION "1.0"
+#define A2FC_VERSION "0.5"
 #endif
 
 unsigned char __fastcall__ mli_call(unsigned char cmd, void* parms);
@@ -205,7 +205,7 @@ static void list_devices(void)
     }
     gotoxy(1, 6 + ndev);
     cputs("Press the number of the disk to format. Nothing is written before you confirm.");
-    bar("1-9 Choose a disk    ESC Back to Total Commander");
+    bar("1-9 Choose a disk    ESC Back to A2 File Cmd");
 }
 
 /* ---------------------------------------------------------------------- */
@@ -304,7 +304,7 @@ static unsigned char ask_name(void)
     cputs("A ProDOS volume name: a letter, then letters, digits or periods, 15 at most.");
     gotoxy(1, 6);
     cputs("RETURN alone names it BLANK.");
-    bar("RETURN Accept    DEL Erase    ESC Back to Total Commander");
+    bar("RETURN Accept    DEL Erase    ESC Back to A2 File Cmd");
     volname[0] = 0;
     for (;;) {
         gotoxy(1, 8);
@@ -436,7 +436,7 @@ int main(void)
             gotoxy(1, 8);
             cprintf("Done: /%s, %u blocks, %u free.", volname, target->blocks, target->blocks - 6 - bitmap_size(target->blocks));
         }
-        bar("Any key: back to the list    ESC: Total Commander");
+        bar("Any key: back to the list    ESC: A2 File Cmd");
         key = cgetc();
         if (key == 27) break;
     }

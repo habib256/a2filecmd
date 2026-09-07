@@ -2,7 +2,7 @@
 
 Un gestionnaire de fichiers ProDOS à deux panneaux, dans l'esprit de Total
 Commander, pour l'Apple IIe 128 Ko ; à l'écran il se nomme **A2 FILE CMD
-1.0** (le numéro vit dans `A2FC_VERSION` du Makefile, repris par le lanceur,
+0.5** (le numéro vit dans `A2FC_VERSION` du Makefile, repris par le lanceur,
 la ligne de statut et l'aide). C'est un logiciel libre sous licence GNU GPL
 v3, d'Arnaud Verhille ; le lanceur et l'aide le rappellent. Deux façons de le
 lancer : amorcer la disquette `/A2FILECMD`, ou choisir `A2FILE.SYSTEM`
@@ -216,6 +216,24 @@ en pause et la reprend, un autre `.MB` la remplace, Q et X la coupent ; une
 fois le morceau fini, P le dit. La carte est cherchée dans les slots 1 à 7 à la
 première demande ; sans carte, A2FC le dit.
 
+**Un morceau chargé refait `/RAM` à neuf, comme une image DHGR.** Le flux
+vit en `$1000-$18FF` de la banque auxiliaire, et cette mémoire appartient
+au disque virtuel de ProDOS : mesuré dans l'émulateur avec ProDOS 2.4.3, son
+pilote y range les blocs 9, 26, 43… (un sur dix-sept), sa carte des blocs
+est en `$0C00` et son répertoire, d'un seul bloc, en `$0E00` ; il n'y a nulle
+part en AUX 2 304 octets hors de sa portée. Avant le correctif du
+2026-09-07, la fanfare de 56 octets suffisait à écraser le bloc 9 de
+`/RAM`, en silence. Désormais A2FC monte le flux, demande à `/RAM` de se
+reformater (`ram_format`, comme au retour d'une image DHGR) et l'écrit dans
+la ligne de message : `Playing WELCOME.MB, slot 4. P pauses.  /RAM was
+rebuilt empty.` Le volume refait ne relit jamais ses blocs libres, la
+musique joue donc sans risque ; écrire sur `/RAM` pendant qu'elle joue
+abîmerait le morceau, pas le volume. Refaire `/RAM` protège du même coup le
+petit miroir que le lecteur recopie en banque auxiliaire à l'adresse de son
+code (au-dessus de `$4000`, pour lire le flux sous interruption) : sur un
+`/RAM` rempli jusque-là, ce miroir aurait été écrasé et l'IRQ serait partie
+dans le décor.
+
 ## L'éditeur de texte
 
 `E` ouvre le fichier dans un éditeur plein écran de 22 lignes : flèches,
@@ -270,12 +288,10 @@ des émulateurs), une disquette amorçable de 280 blocs, volume `/A2FILECMD` :
 | `DEMO/` | de quoi essayer, entièrement calculé par `tools/mkdemo.py` : deux mires (`DHGR.RLE`, `HGR.RLE`), une fanfare trois voix (`WELCOME.MB`), un texte (`SAMPLE`), un programme Applesoft (`HELLO`) et un `README` |
 
 Il reste 46 blocs libres. Au démarrage, le panneau gauche montre la racine
-de la disquette et le panneau droit la liste des volumes, faute de dossier
-`DHGR`. `build_prodos_volume` taille ses volumes au contenu ;
-`make_floppy.py` porte ensuite le compte de blocs à 280, libère les blocs
-ajoutés dans la table d'allocation et écrit les deux ordres de secteurs. Le
-banc a démarré cette image comme disque dur dans POM2 : A2FC s'ouvre sur
-`/A2FILECMD`, Q rend la main à Bitsy Bye sur ce volume. Une version 2.5
+de la disquette et le panneau droit son dossier `DEMO`. `mkvolume.py` écrit
+le volume de 280 blocs, `po2dsk.py` en tire l'ordre DOS 3.3. Le banc amorce
+cette image en slot 6 dans POM2 : A2FC s'ouvre sur `/A2FILECMD`, Q rend la
+main à Bitsy Bye sur ce volume. Une version 2.5
 alpha 8 de ProDOS existe ; elle n'est pas retenue, faute d'être publiée.
 
 ## Construction et mémoire
@@ -329,7 +345,7 @@ banc met une AppleMouse II (HLE AppleWin) en slot 4 pour toute la session et
 vérifie le pointeur, les bornes du firmware, le clic, le second clic, le
 changement de panneau et la barre de touches.
 Les visionneuses, les saisies et le fichier de préférences vivent dans la
-carte langage, `$D400-$DFFF` en banque 2 (une vingtaine d'octets libres : `check_lc_layout.py` veille), copiés par `crt0.s` comme pour le
+carte langage, `$D400-$DFFF` en banque 2 (une vingtaine d'octets libres : `check_layout.py` veille), copiés par `crt0.s` comme pour le
 jeu ; avant de lancer un programme, A2FC remet la ROM en lecture.
 
 **Le plafond de la fenêtre principale.** Ce qui survit à l'initialisation —
@@ -342,7 +358,7 @@ milieu de la pile. Le lien réussit, le programme se corrompt à l'usage. Deux
 mesures ferment ce piège : A2FC est lié par `a2fc.cfg`, où la BSS descend en
 RAM basse (il ne lie ni `malloc` ni `free` — les tampons ProDOS viennent de
 `$0800` — donc aucun tas ne la suit), et
-`check_lc_layout.py` contrôle le plancher à chaque lien. La pile C fait 256
+`check_layout.py` contrôle le plancher à chaque lien. La pile C fait 256
 octets : le banc a mesuré son creux maximal à **94 octets** sous `$BF00`, la
 copie récursive d'un arbre comprise, `-Cl` mettant les locales en statique.
 Les 512 octets d'avant, plus les 88 de la BSS, sont rendus au code — de quoi
@@ -376,7 +392,7 @@ visionneuses texte et hexadécimale, aide, les deux mires comparées **octet à
 octet dans les deux banques**, `/RAM` refait après une DHGR et intact après
 une HGR, la fanfare qui se termine seule, l'éditeur, le formateur qui liste
 les lecteurs et relance le gestionnaire, enfin un programme Applesoft lancé
-par `BASIC.SYSTEM` : **39 contrôles**. `bench/memory.py` mesure le creux de la
+par `BASIC.SYSTEM` : **47 contrôles**. `bench/memory.py` mesure le creux de la
 pile C en faisant travailler le programme (86 octets sur les 256 réservés),
 et `bench/smoke.py` se contente de vérifier que la disquette publiée démarre.
 Hors émulateur, `make test` vérifie le contrat de disposition mémoire,
@@ -415,3 +431,17 @@ au-delà du flux. `explore2.py` couvre l'éditeur (raccourcir, sans CR final,
 LF seuls, fichier verrouillé), les marques en fenêtre pleine et en seconde
 fenêtre, le déplacement vers /RAM et la suppression d'un arbre de 150
 fichiers.
+
+La chasse du 2026-09-07 au soir, après les surcouches et la souris, a
+trouvé et reproduit dans POM2 quatre bugs de plus : E sur un fichier de
+plus de 8 Ko le lisait dans la page graphique avant de le refuser, et
+laissait les deux tables d'entrées écrasées par son début sans les relire
+(la ligne suivante du panneau affichait du bruit) — la taille est
+désormais refusée avant tout `fread` ; un BAS lancé sans `BASIC.SYSTEM`
+sur le volume (`Run failed`) laissait son nom dans le talon de `chain.s`,
+et le prochain SYS lancé par X recevait ce « -NOM » en `$2006`, au milieu
+de son code (écran vide, machine plantée) — le nom est effacé dès l'échec ;
+un chargement DHGR qui échouait à mi-chemin (fichier tronqué) avait déjà
+écrit en banque auxiliaire mais ne refaisait pas `/RAM` — il est refait
+dès qu'un chargement DHGR a commencé ; et la musique, voir plus haut,
+écrasait `/RAM` en silence.

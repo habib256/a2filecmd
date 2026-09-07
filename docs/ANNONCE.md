@@ -6,7 +6,7 @@ de téléchargement sont ceux de la Release.*
 
 ## Post pour le groupe Facebook « Apple II Enthusiasts »
 
-**A2 File Cmd 1.0 – a two-panel file manager for the Apple IIe (ProDOS 8, free software)**
+**A2 File Cmd 0.5 – a two-panel file manager for the Apple IIe (ProDOS 8, free software)**
 
 Hi everyone! I'd like to share a new utility for the Apple IIe: **A2 File Cmd**, a two-panel file manager for ProDOS 8 in the spirit of the good old Total Commander / Norton Commander, written in C and 6502 assembly with cc65.
 
@@ -32,7 +32,7 @@ Enjoy, and tell me what you'd like to see next!
 
 Version française, si vous préférez la poster telle quelle :
 
-**A2 File Cmd 1.0 – un gestionnaire de fichiers à deux panneaux pour l'Apple IIe (ProDOS 8, logiciel libre)**
+**A2 File Cmd 0.5 – un gestionnaire de fichiers à deux panneaux pour l'Apple IIe (ProDOS 8, logiciel libre)**
 
 Bonjour à tous ! Je vous présente **A2 File Cmd**, un gestionnaire de fichiers à deux panneaux pour ProDOS 8, dans l'esprit de Total Commander et de Norton Commander, écrit en C et en assembleur 6502 avec cc65, pour l'Apple IIe 128 Ko en 80 colonnes.
 

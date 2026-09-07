@@ -27,7 +27,7 @@
 #define CODE_FILE "A2FILE/A2FILE.CODE"
 #endif
 #ifndef A2FC_VERSION
-#define A2FC_VERSION "1.0"
+#define A2FC_VERSION "0.5"
 #endif
 
 #define CODE_ADDR   0x4000

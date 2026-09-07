@@ -1,4 +1,4 @@
-## A2 File Cmd 1.0 — *Two panels. One Apple II.*
+## A2 File Cmd 0.5 — *Two panels. One Apple II.*
 
 A2FileCmd is a modern two-pane ProDOS file manager for Apple IIe, carrying
 forward the spirit of A2Command and Norton Commander. It copies,
@@ -39,10 +39,10 @@ disks. Everything in 80 columns, in 128 KB, from a bootable 5.25" floppy.
 * The editor holds 8 KB; a `.MB` music file, 2304 bytes
 * Launching a program does not come back — the manager is overwritten by what
   it starts. The formatter is the exception, it returns.
-* **Viewing a DHGR picture destroys the contents of `/RAM`**: double hi-res
-  and the ProDOS RAM disk share the same auxiliary memory. A2 File Cmd
-  rebuilds `/RAM` empty on the way out and says so, rather than leaving a
-  half-overwritten volume behind.
+* **Viewing a DHGR picture or playing a `.MB` tune destroys the contents of
+  `/RAM`**: double hi-res, the music stream and the ProDOS RAM disk share
+  the same auxiliary memory. A2 File Cmd rebuilds `/RAM` empty and says so,
+  rather than leaving a half-overwritten volume behind.
 
 ### Getting started
 

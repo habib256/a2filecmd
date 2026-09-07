@@ -18,7 +18,7 @@ A2FILE.SYSTEM    SYS $0000     5763    |HGR.RLE          BIN $0000      978
 BASIC.SYSTEM     SYS $0000    10240    |README           TXT $0000     1184
 PRODOS           SYS $0000    17128    |SAMPLE           TXT $0000      712
                                        |WELCOME.MB       BIN $0000       56
-__ A2 FILE CMD 1.0 ___________ 46 of 280 blocks free _________________ Mouse ___
+__ A2 FILE CMD 0.5 ___________ 46 of 280 blocks free _________________ Mouse ___
 Parent directory
 
 TABPanel RETOpen SPCTag  C Copy  V Move  R Ren  D Del  K Mkdir  S Sort  ? Help
@@ -95,10 +95,12 @@ writer, the sector-order converter and the demo files are all in `tools/`.
 * A `.MB` music file must be 2304 bytes or less.
 * Running a program does not come back: the file manager is overwritten by
   what it launches. The formatter is the exception, it returns.
-* **Viewing a DHGR picture destroys the contents of `/RAM`** — double hi-res
-  and the ProDOS RAM disk share the same auxiliary memory. A2 File Cmd
-  rebuilds `/RAM` empty on the way out and says so, rather than leaving a
-  half-overwritten volume behind.
+* **Viewing a DHGR picture or playing a `.MB` tune destroys the contents of
+  `/RAM`** — double hi-res, the music stream and the ProDOS RAM disk share
+  the same auxiliary memory. A2 File Cmd rebuilds `/RAM` empty (after the
+  picture, before the tune starts) and says so, rather than leaving a
+  half-overwritten volume behind. Do not write to `/RAM` while a tune plays:
+  the tune, not the volume, would be garbled.
 
 ## Credits
 

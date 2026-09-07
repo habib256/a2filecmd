@@ -1,6 +1,6 @@
 ; format_diskii.s -- le formatage physique d'une disquette 5,25 pouces
-; (Disk II, 16 secteurs, volume 254), pour FORMAT.SYSTEM d'Apple Total
-; Commander.
+; (Disk II, 16 secteurs, volume 254), pour le formateur d'A2 File Cmd
+; (touche F).
 ;
 ; Le coeur vient du « ProDOS Hyper-FORMAT » de Jerry Hewett (Living Legends
 ; Software, 1985, domaine public), repris par Gary Desrochers (1989), puis

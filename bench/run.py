@@ -79,7 +79,7 @@ def main():
             # ── 1. le demarrage ───────────────────────────────────────────
             s.boot()
             s.ok('la disquette amorce sur les deux panneaux', s.has('/A2FILECMD'), s.rows()[0][:30])
-            s.ok('la version est affichee', s.has('A2 FILE CMD 1.0'))
+            s.ok('la version est affichee', s.has('A2 FILE CMD 0.5'))
             s.ok('le panneau droit ouvre DEMO', s.rows()[0][40:].startswith('/A2FILECMD/DEMO'),
                  s.rows()[0][40:70])
             s.ok('les blocs libres sont comptes',
@@ -140,7 +140,7 @@ def main():
             shot('05-hex')
             s.key(ESC); s.wait(lambda: s.value('view', 1) == 0, 'retour')
             s.key(b'?'); s.wait(lambda: s.value('view', 1) == 4, 'aide'); p.stable()
-            s.ok("l'aide est lue sur la disquette", s.has('A2 FILE CMD 1.0'), s.rows()[0][:50])
+            s.ok("l'aide est lue sur la disquette", s.has('A2 FILE CMD 0.5'), s.rows()[0][:50])
             shot('06-help')
             s.key(b' '); s.wait(lambda: s.value('view', 1) == 0, 'retour'); p.stable()
 

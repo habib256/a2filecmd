@@ -1,7 +1,7 @@
 # A2 File Cmd — ce qui reste à faire
 
 `🟠 haute · 🟡 moyenne · 🟢 basse`, effort indicatif en *italique*, fichier en
-`backticks`. Les mesures datent du 2026-09-07, sur la 1.0.
+`backticks`. Les mesures datent du 2026-09-07, sur la 0.5.
 
 ## La place disponible
 
@@ -13,6 +13,76 @@
 | Carte langage `$D400-$DFFF` | ~1 300 octets libres |
 | Pile C | 86 octets utilisés sur 256 réservés |
 | Disquette | 46 blocs libres sur 280 |
+
+## Étude 2026-09-07 — faire mieux qu'A2Command
+
+A2Command (Payton Byrd, 2011-2013, CodePlex, v1.1 « stable » du 19 août
+2013, dérivé de CBM-Command) est le seul autre gestionnaire à deux panneaux
+de l'Apple II. Ce que sa page annonce : deux panneaux, visionneuse de texte,
+copie et suppression en lot, renommage, dossiers (créer, supprimer,
+parcourir), **écriture d'une image disque sur une disquette, d'une
+disquette dans une image, copie disquette à disquette** ; touches à la
+Norton, `1` aide, `2` quitter, `5` copier, `6` renommer, `7`/`M` dossier,
+`8` supprimer, `9`/`RET` entrer, `0`/`ESC` sortir, `D` et `OA-D` choix du
+lecteur par panneau, `A` tout sélectionner, `S` tout désélectionner,
+`ESPACE` sélectionner, crochets pour les pages, `W` écrire une image, `C`
+créer une image, `O` copier un disque ; machines : //e 65C02 80 colonnes
+**avec carte souris exigée**, //c, //c+, IIgs ROM01/03.
+
+Ce que A2FC a déjà en plus : hexa, images HGR/DHGR, musique, éditeur, tri,
+verrou, type et auxtype, marquage des différences, formateur, lanceur SYS/
+BIN/BAS, souris facultative, et surtout **les surcouches** : un module lu à
+la demande en `$1B00`, lié au programme, qui ne coûte rien au résident.
+C'est par là qu'on dépasse A2Command sans toucher au noyau. Par ordre :
+
+- 🟠 **Les images disque** (`DISKIMG.PLG`) : écrire un `.PO`/`.DSK`/`.2MG`
+  sur une disquette, lire une disquette dans une image, copier disquette à
+  disquette — le seul terrain où A2Command gagne. Tout existe déjà : le
+  formatage physique de `format_diskii.s`, READ_BLOCK/WRITE_BLOCK de
+  `format.c`, l'ordre des secteurs de `po2dsk.py`. Le tampon : la page
+  graphique `$2000-$3FFF`, 16 blocs par passe, les panneaux relus après
+  comme au retour d'une image. Demande la convention de **« grande
+  surcouche »** ci-dessous. *2 à 3 jours.*
+- 🟠 **Une image disque comme dossier** (`IMGFS.PLG`) : Entrée sur un
+  `.PO`/`.2MG`/`.DSK` l'ouvre en lecture comme un dossier, et `C` en
+  extrait les fichiers. `dir_open`/`dir_next` lisent déjà un répertoire
+  bloc par bloc : il suffit d'un `read_block` qui fait un `fseek` dans le
+  fichier (et la permutation de secteurs pour un `.DSK`). A2Command ne sait
+  pas faire ça. *2 jours.*
+- 🟡 **DOS 3.3** (`DOS33.PLG`) : le catalogue d'une disquette DOS 3.3 et la
+  copie de ses fichiers vers ProDOS. Les secteurs physiques sont les mêmes :
+  READ_BLOCK sur le pilote Disk II, la table `SECTORS` de `po2dsk.py` à
+  l'envers, VTOC en piste 17, et les fichiers T/A/I/B se relisent par leurs
+  listes de secteurs. *2 jours.*
+- 🟡 **La convention « grande surcouche »** : une surcouche déclare (un
+  octet après l'adresse de `main`) qu'elle prend aussi `$2000-$3FFF` ; le
+  noyau met les marques de côté, l'appelle, relit les deux panneaux au
+  retour. C'est ce que fait déjà `view_image` à la main. Et la **table de
+  services** en tête de fenêtre (`fopen`, `view_getc`, `message`,
+  `confirm`, `prompt`, `progress_bar`, `dir_open`/`dir_next`, `read_panel`)
+  pour qu'une surcouche d'un tiers survive à une reconstruction : c'est
+  l'ABI stable déjà notée plus bas, elle devient prioritaire dès qu'on
+  écrit trois surcouches de plus. *1 jour.*
+- 🟡 **Un menu des surcouches** (`!`) : la liste d'`A2FILE/*.PLG`, chacune
+  lancée sur la sélection — une commande de plus ne demande plus de touche
+  ni de recompilation. *½ journée, une fois l'ABI en place.*
+- 🟡 **//c et IIgs** : A2Command tourne dessus, A2FC ne l'a jamais essayé.
+  Rien ne suppose un slot (souris cherchée par signature, Mockingboard par
+  sonde), mais le //c n'a pas de Mockingboard et son /RAM est le même ;
+  vérifier dans POM2 avec les presets `iic` et `iigs` s'ils existent, puis
+  l'écrire dans les prérequis. *1 jour.*
+- 🟢 **Les chiffres comme touches de fonction** : `1`..`0` valent les dix
+  boutons de la barre, dans l'ordre (`bar_key` sait déjà les compter) ; c'est
+  l'habitude Norton et A2Command. *40 octets.*
+- 🟢 **Tout marquer / tout démarquer** (`Ctrl-T` / `Ctrl-U`, `*` inverse
+  déjà) et **relire les panneaux** sur demande (`Ctrl-R`) : disquette
+  changée, /RAM refait. *60 octets.*
+- 🟢 **Lister un BAS** (`BASLIST.PLG`) : `T` sur un programme Applesoft le
+  détokenise (la table des 107 mots, ~700 octets) au lieu de l'afficher en
+  hexa. *1 jour.*
+- 🟢 **Chercher un texte** dans les fichiers du panneau (`SEARCH.PLG`), et
+  **comparer deux fichiers** octet à octet (`M` ne compare que les tailles).
+  *1 jour les deux.*
 
 ## Fait le 2026-09-07 — les surcouches et la souris
 

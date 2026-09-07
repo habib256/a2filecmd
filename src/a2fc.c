@@ -62,7 +62,7 @@ static void too_long(void);
 static void dir_fail(void);
 
 #ifndef A2FC_VERSION
-#define A2FC_VERSION "1.0"
+#define A2FC_VERSION "0.5"
 #endif
 #define MAX_ENTRIES 140         /* 2 x 140 x 29 octets = 8120, dans les 8 Ko de $2000 */
 #define WINDOW (MAX_ENTRIES - 1)   /* entrees du disque par fenetre : ".." en plus */
@@ -940,7 +940,9 @@ enum { IMG_NONE, IMG_HGR, IMG_DHGR, IMG_HGRR, IMG_DHRR };
 static const char* const IMG_NAMES[] = { "not an image", "HGR raw", "DHGR raw", "HGR RLE", "DHGR RLE" };
 static const unsigned long IMG_BYTES[] = { 0, 8192, 16384, 8192, 16384 };
 static unsigned char img_kind;
+static unsigned char aux_dirty;    /* une image a ecrit en AUX : /RAM est a refaire */
 static const char* ram_note;
+static const char RAM_NOTE[] = "  /RAM was rebuilt empty.";
 
 #define HGR_MAIN ((unsigned char*)0x2000)
 #define OVERLAY ((unsigned char*)0x1B00)   /* la fenetre de surcouche, voir a2fc.cfg */
@@ -1090,10 +1092,11 @@ static unsigned char load_image(const struct Entry* e)
         else if (size == 16384) kind = IMG_DHGR;
         else if (size) kind = IMG_HGR;
     }
-    if (kind == IMG_DHRR) ok = decode_rle(f, 16384);
+    if (kind == IMG_DHRR) { aux_dirty = 1; ok = decode_rle(f, 16384); }
     else if (kind == IMG_HGRR) ok = decode_rle(f, 8192);
     else if (kind == IMG_HGR) { rewind(f); ok = fread(HGR_MAIN, 1, 8192, f) >= 8184; }
     else if (kind == IMG_DHGR) {
+        aux_dirty = 1;
         rewind(f);
         aux_writes(1);
         ok = fread(HGR_MAIN, 1, 8192, f) == 8192;
@@ -1128,9 +1131,10 @@ static void loading(const char* name)
 static void view_image(void)
 {
     struct Panel* pan = &panels[active];
-    unsigned char index = pan->cursor, next, p, dir, dhgr = 0;
+    unsigned char index = pan->cursor, next, p, dir;
     char key;
     if (!overlay("IMAGE")) return;
+    aux_dirty = 0;
     /* L'image recouvre les tables d'entrees : les marques sont mises de
      * cote, les panneaux relus au retour, et le panneau actif avant chaque
      * image suivante pour y retrouver la voisine. */
@@ -1164,7 +1168,7 @@ static void view_image(void)
         img_kind = load_image(&pan->e[index]);
         if (img_kind == IMG_NONE) break;
         if (img_kind == IMG_HGR || img_kind == IMG_HGRR) show_hgr();
-        else { switch_to_hgr(); dhgr = 1; }
+        else switch_to_hgr();
         /* Une fleche sans voisine de son cote ne fait rien : l'image reste. */
         do key = cgetc(); while ((key == KEY_LEFT || key == KEY_RIGHT) && !album[key == KEY_RIGHT][0]);
         if (key != KEY_LEFT && key != KEY_RIGHT) break;
@@ -1189,10 +1193,11 @@ static void view_image(void)
      * fichier ecrit sur /RAM. Ils sont perdus, le volume est donc faux : la
      * prochaine ecriture rendrait n'importe quoi. On le refait a neuf par son
      * propre pilote, ce qui rend un volume vide et coherent, et on le dit --
-     * des qu'une image DHGR est passee a l'ecran, meme si la derniere etait
-     * une HGR. Une image HGR simple n'ecrit qu'en banque principale et ne
-     * declenche rien. */
-    ram_note = dhgr && ram_format() ? "  /RAM was rebuilt empty." : "";
+     * des qu'un chargement DHGR a ECRIT en AUX, qu'il ait abouti ou non
+     * (un fichier tronque a deja fait le degat), meme si la derniere image
+     * etait une HGR. Une image HGR simple n'ecrit qu'en banque principale
+     * et ne declenche rien. */
+    ram_note = aux_dirty && ram_format() ? RAM_NOTE : (const char*)"";
     /* Les tables sont relues ; l'ecran, lui, n'a pas bouge, et un panneau
      * qui montre la meme chose qu'a l'entree n'est pas redessine. read_panel
      * ramene le curseur dans le panneau si celui-ci a retreci (dossier
@@ -1356,9 +1361,8 @@ static unsigned char edit_file(unsigned char fresh, unsigned char type, unsigned
     if (!fresh) {
         f = fopen(full, "rb");
         if (!f) { report_error("Open"); return 0xFF; }
-        elen = fread(EDIT_BUF, 1, EDIT_MAX + 1, f);
+        elen = fread(EDIT_BUF, 1, EDIT_MAX, f);   /* la taille est verifiee par l'appelant */
         fclose(f);
-        if (elen > EDIT_MAX) { message("Too big for the editor (8 KB)."); return 0xFF; }
         for (i = 0; i < elen; ++i) { EDIT_BUF[i] &= 0x7F; if (EDIT_BUF[i] == '\n') EDIT_BUF[i] = '\r'; }
     }
     a2fc_view = 5;
@@ -1432,6 +1436,13 @@ static void edit_selected(void)
         if (exists(full)) { message("File exists: select it to edit."); return; }
         fresh = 1;
     } else if (!build_full(full, pan, e)) { too_long(); return; }
+    else if (e->size > (unsigned long)EDIT_MAX) {
+        /* Avant tout fread : la table d'entrees vit dans la page que
+         * l'editeur remplirait, et un refus apres coup la laissait
+         * ecrasee par le debut du fichier, sans relecture. */
+        message("Too big for the editor (8 KB).");
+        return;
+    }
     strcpy(question, fresh ? input : e->name);
     eblocks = fresh ? 0 : e->blocks;
     keep_tags(1);
@@ -1465,7 +1476,17 @@ static unsigned char looks_like_music(const struct Entry* e)
  * (six voix, en interruption) et joue une fois pendant que l'on continue
  * de naviguer -- les lectures disque ne l'arretent pas, A2FC n'y touche
  * jamais ; P le met en pause, un autre .MB le remplace, Q et X le coupent.
- * La carte est cherchee a la premiere demande. */
+ * La carte est cherchee a la premiere demande.
+ *
+ * Le flux vit en AUX $1000-$18FF, et cette memoire appartient au /RAM de
+ * ProDOS : mesure dans l'emulateur, son pilote y range les blocs 9, 26,
+ * 43... (un sur dix-sept), sa carte des blocs est en $0C00 et son
+ * repertoire en $0E00. Il n'y a nulle part en AUX 2 304 octets hors de sa
+ * portee. Une fois le flux monte, le volume est donc faux -- comme apres
+ * une image DHGR -- et on le refait a neuf de la meme facon, en le disant.
+ * Refait, il ne relit jamais les blocs libres : la musique joue sans
+ * risque, tant qu'on n'ecrit pas sur /RAM pendant qu'elle joue (ce qui
+ * abimerait le morceau, pas le volume). */
 static void play_music(const struct Entry* e)
 {
     FILE* f;
@@ -1487,13 +1508,26 @@ static void play_music(const struct Entry* e)
     fclose(f);
     if ((last & 0xF0) != 0xE0) valid = 0;   /* sans END, le lecteur lirait l'AUX au-dela */
     if (!valid) { message("Not an MB1 stream."); return; }
+    /* Le flux vit sur des blocs de /RAM (AUX $1000+) : on le refait a neuf,
+     * comme au retour d'une image DHGR. ram_format se sert de la page $2000
+     * comme tampon, donc des tables d'entrees ; on garde le nom du fichier
+     * (e pointe dans la table) puis on relit et redessine les panneaux. */
+    strcpy(input, e->name);
+    if (ram_format()) {
+        keep_tags(1);
+        read_panel(0);
+        read_panel(1);
+        keep_tags(0);
+        draw_all();
+        ram_note = RAM_NOTE;
+    } else ram_note = (const char*)"";
     music_select(0);
     music_set_loop(0);
     music_play();
     a2fc_playing = 1;
     clear_row(22);
     gotoxy(0, 22);
-    cprintf("Playing %s once on the Mockingboard in slot %u. P pauses.", e->name, a2fc_slot);
+    cprintf("Playing %s, slot %u. P pauses.%s", input, a2fc_slot, ram_note);
 }
 
 static void toggle_music(void)
@@ -1937,7 +1971,11 @@ static void change_attributes(const struct Entry* e, unsigned char lock)
  * La musique est coupee, les preferences ecrites. */
 static void launch_file(unsigned int addr)
 {
-    if (!exists(full)) { report_error("Run"); return; }
+    if (!exists(full)) {
+        chain_command("");   /* sinon un SYS lance ensuite recevrait le "-NOM" en $2006 */
+        report_error("Run");
+        return;
+    }
     music_stop();
     save_config();
     clrscr();
