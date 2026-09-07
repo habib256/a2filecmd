@@ -1,0 +1,52 @@
+{
+  "checks": [
+    {
+      "label": "le volume de test demarre dans TOTAL",
+      "ok": true
+    },
+    {
+      "label": "HGR.RAW : page MAIN identique",
+      "ok": true
+    },
+    {
+      "label": "HGR.RAW : format annonce",
+      "ok": true
+    },
+    {
+      "label": "HGR.RLE : page MAIN identique",
+      "ok": true
+    },
+    {
+      "label": "HGR.RLE : format annonce",
+      "ok": true
+    },
+    {
+      "label": "DHGR.RAW : page MAIN identique",
+      "ok": true
+    },
+    {
+      "label": "DHGR.RAW : page AUX identique",
+      "ok": true
+    },
+    {
+      "label": "DHGR.RAW : format annonce",
+      "ok": true
+    },
+    {
+      "label": "DHGR.RLE : page MAIN identique",
+      "ok": true
+    },
+    {
+      "label": "DHGR.RLE : page AUX identique",
+      "ok": true
+    },
+    {
+      "label": "DHGR.RLE : format annonce",
+      "ok": true
+    },
+    {
+      "label": "I sur un texte : refus explicite",
+      "ok": true
+    }
+  ]
+}

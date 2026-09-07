@@ -29,12 +29,12 @@
 #include <string.h>
 #include <conio.h>
 #include <unistd.h>
-#include <dirent.h>
+#include <fcntl.h>
 #include <device.h>
 #include <errno.h>
 #include <apple2.h>
-#include "hgr_rle.h"
 #include "memory_swap.h"
+#include "music.h"
 
 /* cc65 les lit a la creation d'un fichier (fopen "wb") : la copie garde le
  * type et l'auxtype de l'original, une image reste une image. */
@@ -43,7 +43,12 @@ extern unsigned int _auxtype;
 
 unsigned char __fastcall__ mli_gfi(void* params);   /* total_mli.s */
 unsigned char __fastcall__ mli_sfi(void* params);
+static unsigned char exists(const char* path);
+static void too_long(void);
 
+#ifndef TOTAL_VERSION
+#define TOTAL_VERSION "1.0"
+#endif
 #define MAX_ENTRIES 140         /* 2 x 140 x 29 octets = 8120, dans les 8 Ko de $2000 */
 #define WINDOW (MAX_ENTRIES - 1)   /* entrees du disque par fenetre : ".." en plus */
 #define ROWS 18                 /* lignes 2..19 de chaque panneau */
@@ -82,12 +87,19 @@ enum { SORT_NAME, SORT_SIZE, SORT_TYPE, SORT_MODES };
 enum { ASK, OVERWRITE_ALL, SKIP_ALL };
 
 #define ENTRIES ((struct Entry*)0x2000)   /* la page HGR MAIN, voir l'en-tete */
+#define EDIT_BUF ((char*)0x2000)          /* la meme page pour l'editeur et l'aide */
+#define EDIT_MAX 0x1FF0
+/* Les deux panneaux en RAM basse aussi : main() les initialise avant usage. */
+#pragma bss-name (push, "LOWBSS")
 static struct Panel panels[2];
+#pragma bss-name (pop)
 static unsigned char active, sort_mode, over_policy;
 static unsigned int progress_done, progress_total, progress_skipped;
 /* Diagnostics lisibles par le banc de test POM2 (voir total.lbl). */
 unsigned int total_draws, total_ops, total_errors;
-unsigned char total_view;       /* 0 panneaux, 1 image, 2 texte, 3 hexa, 4 aide */
+unsigned char total_view;       /* 0 panneaux, 1 image, 2 texte, 3 hexa, 4 aide, 5 editeur */
+unsigned char total_slot;       /* la Mockingboard, 0 sans ; 0xFF pas encore cherchee */
+unsigned char total_playing;    /* 0 silence, 1 joue, 2 en pause */
 
 /* Les tampons de travail vivent en RAM basse ($1000-$1FFF, segment LOWBSS
  * de scoswamp.cfg, a cote du tampon RLE) : aucun n'a besoin d'etre mis a
@@ -163,6 +175,69 @@ static void volume_space(struct Panel* pan)
 }
 
 /* ---------------------------------------------------------------------- */
+/* Lecture directe d'un repertoire                                         */
+/* ---------------------------------------------------------------------- */
+
+/* ProDOS laisse lire un repertoire comme un fichier : des blocs de 512
+ * octets, quatre octets de chainage puis des entrees de 39 octets, la
+ * premiere du premier bloc etant l'en-tete (longueur d'entree, entrees par
+ * bloc). Lire ainsi evite opendir/readdir de cc65 et leur malloc : c'est
+ * moins de code, et plus aucun tas a reserver. Le bloc courant vit dans
+ * copy_buf, qui n'est jamais utilise en meme temps. */
+struct DirEntry {
+    char name[NAME_LEN];
+    unsigned char type, access;
+    unsigned int aux, blocks, mdate;
+    unsigned long size;
+};
+static int dir_fd = -1;
+static unsigned char dir_index, dir_per_block, dir_entry_len;
+static struct DirEntry dir_entry;
+
+static unsigned char dir_open(const char* path)
+{
+    dir_fd = open(path, O_RDONLY);
+    if (dir_fd < 0) return 0;
+    if (read(dir_fd, copy_buf, 512) != 512 || (copy_buf[4] >> 4) < 0x0E) { close(dir_fd); dir_fd = -1; return 0; }
+    dir_entry_len = copy_buf[4 + 0x1F];
+    dir_per_block = copy_buf[4 + 0x20];
+    dir_index = 1;                   /* l'entree 0 est l'en-tete */
+    return 1;
+}
+
+static void dir_close(void)
+{
+    if (dir_fd >= 0) close(dir_fd);
+    dir_fd = -1;
+}
+
+/* L'entree suivante dans dir_entry, ou 0 a la fin. */
+static unsigned char dir_next(void)
+{
+    const unsigned char* e;
+    unsigned char len;
+    for (;;) {
+        if (dir_index >= dir_per_block) {
+            if (read(dir_fd, copy_buf, 512) != 512) return 0;
+            dir_index = 0;
+        }
+        e = copy_buf + 4 + dir_index * dir_entry_len;
+        ++dir_index;
+        if (!(e[0] & 0xF0)) continue;   /* entree effacee */
+        len = e[0] & 0x0F;
+        memcpy(dir_entry.name, e + 1, len);
+        dir_entry.name[len] = 0;
+        dir_entry.type = e[0x10];
+        dir_entry.blocks = e[0x13] | ((unsigned int)e[0x14] << 8);
+        dir_entry.size = (unsigned long)e[0x15] | ((unsigned long)e[0x16] << 8) | ((unsigned long)e[0x17] << 16);
+        dir_entry.access = e[0x1E];
+        dir_entry.aux = e[0x1F] | ((unsigned int)e[0x20] << 8);
+        dir_entry.mdate = e[0x21] | ((unsigned int)e[0x22] << 8);
+        return 1;
+    }
+}
+
+/* ---------------------------------------------------------------------- */
 /* Affichage                                                              */
 /* ---------------------------------------------------------------------- */
 
@@ -177,22 +252,50 @@ static void message(const char* text)
     cputsxy(0, 22, text);
 }
 
-/* Une barre en inverse sur toute la largeur. conio ecrit 79 colonnes : la
- * 80e passerait a la ligne et ferait defiler l'ecran, elle est posee
- * directement dans la page texte (ligne 23, colonne impaire : MAIN,
- * $7D0 + 39). */
-static void bar(const char* text)
+static void too_long(void)
 {
-    revers(1);
+    message("Path too long for ProDOS.");
+}
+
+/* La barre de touches, facon Norton Commander : chaque touche dans un bloc
+ * inverse de trois colonnes, son libelle en clair juste apres, un espace
+ * entre les boutons. `spec` enchaine "TOUCHE Libelle" separes par des
+ * virgules ; une touche d'une lettre est centree dans son bloc. La ligne 23
+ * n'est jamais ecrite au-dela de la colonne 78 : conio passerait a la ligne
+ * sur la 80e et ferait defiler l'ecran. */
+static const char MAIN_KEYS[] = "TAB Panel,RET Open,SPC Tag,C Copy,V Move,R Ren,D Del,K Mkdir,S Sort,? Help";
+static const char VIEW_KEYS[] = "SPC Next,B Prev,ESC Back";
+static const char HELP_KEYS[] = "ANY Return to the panels";
+
+static void keys_bar(unsigned char x, const char* spec)
+{
+    const char* s = spec;
+    unsigned char klen, i;
+    gotoxy(x, 23);
+    while (*s) {
+        for (klen = 0; s[klen] && s[klen] != ' '; ++klen) {}
+        revers(1);
+        if (klen == 1) { cputc(' '); cputc(*s); cputc(' '); }
+        else for (i = 0; i < 3; ++i) cputc(i < klen ? s[i] : ' ');
+        revers(0);
+        s += klen;
+        if (*s == ' ') ++s;
+        while (*s && *s != ',') cputc(*s++);
+        if (*s == ',') { cputc(' '); ++s; }
+    }
+}
+
+/* Efface la ligne 23 (79 colonnes, voir keys_bar) avant de la reecrire. */
+static void bar_begin(void)
+{
+    cclearxy(0, 23, 79);
     gotoxy(0, 23);
-    cprintf("%-79.79s", text);
-    revers(0);
-    *(unsigned char*)0x07F7 = 0x20;
 }
 
 static void help_bar(void)
 {
-    bar("TAB panel RET open SPC tag ' find C copy V move R ren D del K mkdir S sort ? help");
+    bar_begin();
+    keys_bar(0, MAIN_KEYS);
 }
 
 static const char* type_name(unsigned char type)
@@ -293,7 +396,7 @@ static void draw_status(void)
 {
     struct Panel* pan = &panels[active];
     chlinexy(0, 20, 80);
-    cputsxy(2, 20, " TOTAL ");
+    cputsxy(2, 20, " TOTAL " TOTAL_VERSION " ");
     if (pan->total_blocks) {
         gotoxy(30, 20);
         cprintf(" %u of %u blocks free ", pan->free_blocks, pan->total_blocks);
@@ -360,6 +463,19 @@ static int compare(const void* a, const void* b)
     return strcmp(x->name, y->name);
 }
 
+/* Tri par insertion, ".." reste en tete : moins de code que qsort, et les
+ * dossiers du disque arrivent presque tries. */
+static void sort_entries(struct Panel* pan)
+{
+    unsigned char i, j;
+    struct Entry tmp;
+    for (i = 2; i < pan->count; ++i) {
+        tmp = pan->e[i];
+        for (j = i; j > 1 && compare(&pan->e[j - 1], &tmp) > 0; --j) pan->e[j] = pan->e[j - 1];
+        pan->e[j] = tmp;
+    }
+}
+
 static struct Entry* add_entry(struct Panel* pan, const char* name, unsigned char type)
 {
     struct Entry* e = &pan->e[pan->count++];
@@ -402,8 +518,6 @@ static void read_volumes(struct Panel* pan)
 static unsigned char read_panel(unsigned char p)
 {
     struct Panel* pan = &panels[p];
-    DIR* dir;
-    struct dirent* d;
     struct Entry* e;
     unsigned int skip = pan->first;
     unsigned char ok = 1;
@@ -414,27 +528,25 @@ static unsigned char read_panel(unsigned char p)
         pan->first = 0;
         read_volumes(pan);
     } else {
-        dir = opendir(pan->path);
-        if (!dir) {
+        if (!dir_open(pan->path)) {
             ok = 0;
             pan->path[0] = 0;
             pan->first = 0;
             read_volumes(pan);
         } else {
             if (!pan->first) add_entry(pan, "..", 0x0F);
-            while ((d = readdir(dir)) != NULL) {
+            while (dir_next()) {
                 if (skip) { --skip; continue; }
                 if (pan->count >= MAX_ENTRIES) { pan->more = 1; break; }
-                e = add_entry(pan, d->d_name, d->d_type);
-                e->access = d->d_access;
-                e->aux = d->d_auxtype;
-                e->blocks = d->d_blocks;
-                e->size = d->d_size;
-                e->mdate = *(unsigned int*)&d->d_mdate;
+                e = add_entry(pan, dir_entry.name, dir_entry.type);
+                e->access = dir_entry.access;
+                e->aux = dir_entry.aux;
+                e->blocks = dir_entry.blocks;
+                e->size = dir_entry.size;
+                e->mdate = dir_entry.mdate;
             }
-            closedir(dir);
-            if (!pan->first && !pan->more && pan->count > 2)
-                qsort(pan->e + 1, pan->count - 1, sizeof(struct Entry), compare);
+            dir_close();
+            if (!pan->first && !pan->more && pan->count > 2) sort_entries(pan);
         }
     }
     volume_space(pan);
@@ -492,7 +604,7 @@ static void go_up(struct Panel* pan)
 static void enter_dir(struct Panel* pan, const struct Entry* e)
 {
     if (is_up(e)) { go_up(pan); return; }
-    if (!build_full(full, pan, e)) { message("Path too long for ProDOS."); return; }
+    if (!build_full(full, pan, e)) { too_long(); return; }
     strcpy(pan->path, full);
     open_path(pan);
 }
@@ -563,10 +675,16 @@ static void report_error(const char* what)
 /* Visionneuses -- dans la carte langage                                  */
 /* ---------------------------------------------------------------------- */
 
+/* Sans ouvrir le fichier : un FOT ($08), ou un BIN de la taille d'une page
+ * HGR ou DHGR, ou un flux .RLE. L'ouverture tranche ensuite sur l'en-tete. */
 static unsigned char looks_like_image(const struct Entry* e)
 {
     unsigned char n = strlen(e->name);
-    return e->type == 0x06 && n > 4 && !strcmp(e->name + n - 4, ".RLE");
+    if (is_dir(e)) return 0;
+    if (e->type == 0x08) return 1;
+    if (e->type != 0x06) return 0;
+    return e->size == 8192 || e->size == 8184 || e->size == 16384
+        || (n > 4 && !strcmp(e->name + n - 4, ".RLE"));
 }
 
 /* Lecture tamponnee : fgetc de cc65 passe par ProDOS a chaque octet. */
@@ -625,8 +743,9 @@ static void view_text(const char* path)
             starts[page + 1] = vbase + vpos;
             known = page + 2;
         }
-        sprintf(question, "%-40.40s page %u%s  SPACE next  B prev  ESC back", path, page + 1, done ? " (end)" : "");
-        bar(question);
+        bar_begin();
+        cprintf("%-38.38s page %u%s", path, page + 1, done ? " (end)" : "");
+        keys_bar(52, VIEW_KEYS);
         key = cgetc();
         if (key == KEY_ESC || key == 'q' || key == 'Q') break;
         if ((key == ' ' || key == KEY_RETURN || key == KEY_RIGHT || key == KEY_DOWN) && !done && page + 1 < known) ++page;
@@ -665,43 +784,15 @@ static void view_hex(const char* path, unsigned long size)
                 cputc(c < 32 || c == 127 ? '.' : (char)c);
             }
         }
-        sprintf(question, "%-30.30s %lu bytes  page %u/%u  SPACE next  B prev  ESC", path, size, page + 1, pages);
-        bar(question);
+        bar_begin();
+        cprintf("%-22.22s %lu bytes page %u/%u", path, size, page + 1, pages);
+        keys_bar(52, VIEW_KEYS);
         key = cgetc();
         if (key == KEY_ESC || key == 'q' || key == 'Q') break;
         if ((key == ' ' || key == KEY_RETURN || key == KEY_RIGHT || key == KEY_DOWN) && page + 1 < pages) ++page;
         if ((key == 'b' || key == 'B' || key == KEY_LEFT || key == KEY_UP) && page) --page;
     }
     fclose(vf);
-    total_view = 0;
-    draw_all();
-}
-
-static void view_help(void)
-{
-    total_view = 4;
-    clrscr();
-    cputsxy(30, 0, "T O T A L  -  keys");
-    cputsxy(1, 2,  "Up / Down      move          < > or - +  page          [ ]  first / last");
-    cputsxy(1, 3,  "TAB            other panel   =           same directory in the other panel");
-    cputsxy(1, 4,  "RETURN / Right open : directory, .RLE image, TXT text, SYS program, else hex");
-    cputsxy(1, 5,  "ESC / Left     parent directory          /  list of volumes");
-    cputsxy(1, 6,  "SPACE          tag / untag the file (* after the name)     *  invert tags");
-    cputsxy(1, 7,  "' then a key   jump to the next name starting with that letter or digit");
-    cputsxy(1, 9,  "C  copy to the other panel      V  move (copy, then delete the original)");
-    cputsxy(1, 10, "R  rename                       D  delete (a directory with its contents)");
-    cputsxy(1, 11, "K  make a directory             S  sort by name, size or type");
-    cputsxy(1, 12, "T  view as text                 H  view as hexadecimal");
-    cputsxy(1, 13, "X  run a SYS or BIN program     Q  quit to ProDOS (Bitsy Bye)");
-    cputsxy(1, 14, "A  change type and auxtype      L  lock / unlock (L after the name)");
-    cputsxy(1, 15, "M  mark the files missing from the other panel or of a different size");
-    cputsxy(1, 17, "C, V and D act on every tagged file of the panel, else on the cursor.");
-    cputsxy(1, 18, "Directories are copied whole; copies keep type and auxtype. When a file");
-    cputsxy(1, 19, "exists, TOTAL asks: Overwrite, Skip, All, None. Large directories are shown");
-    cputsxy(1, 20, "by windows in disk order. In an image: Left / Right show the previous / next.");
-    cputsxy(1, 21, "Both directories, the sort and the panel are saved in TOTAL/TOTAL.CFG.");
-    bar("Press any key to return to the panels");
-    cgetc();
     total_view = 0;
     draw_all();
 }
@@ -752,23 +843,135 @@ static void load_config(void)
 /* Image                                                                  */
 /* ---------------------------------------------------------------------- */
 
-/* L'image du curseur, plein ecran. Gauche / Droite passent a l'image
- * precedente / suivante du meme dossier sans revenir aux panneaux : le
- * dossier DHGR se feuillette comme un album. Toute autre touche revient. */
+/* Les formats d'image reconnus, d'apres les huit premiers octets et la
+ * taille : une page HGR brute (8 192 ou 8 184 octets), une page DHGR brute
+ * (16 384 : AUX puis MAIN, l'ordre des fichiers A2FC et du jeu), un flux
+ * HGRR v1 (RLE, 8 192 decompresses) ou DHRR v1 (RLE, 16 384). */
+enum { IMG_NONE, IMG_HGR, IMG_DHGR, IMG_HGRR, IMG_DHRR };
+static const char* const IMG_NAMES[] = { "not an image", "HGR raw", "DHGR raw (AUX then MAIN)", "HGR RLE (HGRR v1)", "DHGR RLE (DHRR v1)" };
+static const unsigned long IMG_BYTES[] = { 0, 8192, 16384, 8192, 16384 };
+static unsigned char img_kind;
+
+#define HGR_MAIN ((unsigned char*)0x2000)
+
+/* Aiguille les ecritures $2000-$3FFF vers AUX (80STORE + HIRES + PAGE2),
+ * comme hgr_loader.s ; le MLI y ecrit alors aussi. */
+static void aux_writes(unsigned char on)
+{
+    if (on) { *(unsigned char*)0xC002 = 0; *(unsigned char*)0xC004 = 0; *(unsigned char*)0xC057 = 0; *(unsigned char*)0xC001 = 0; *(unsigned char*)0xC055 = 0; }
+    else { *(unsigned char*)0xC054 = 0; *(unsigned char*)0xC000 = 0; }
+}
+
+/* HGR simple, page 1, sans le mode double : 80COL et DHIRES coupes. */
+static void show_hgr(void)
+{
+    *(unsigned char*)0xC000 = 0; *(unsigned char*)0xC00C = 0; *(unsigned char*)0xC05F = 0;
+    *(unsigned char*)0xC050 = 0; *(unsigned char*)0xC057 = 0; *(unsigned char*)0xC054 = 0; *(unsigned char*)0xC052 = 0;
+}
+
+/* Un flux RLE v1 (HGRR ou DHRR) decompresse en $2000 : `bytes` octets, la
+ * premiere moitie d'un DHRR vers AUX. Le fichier est ouvert sur l'en-tete.
+ * Une repetition peut chevaucher la frontiere des deux plans : l'ecriture
+ * se fait octet par octet, et le plan bascule au passage de $4000. */
+static unsigned int dn;
+static unsigned char dplane, dplanes;
+
+/* Avance de `n` octets ecrits ; bascule le plan a $4000. */
+static void advance(unsigned int n)
+{
+    dn += n;
+    if (dn == 8192) { dn = 0; ++dplane; if (dplane == 1 && dplanes == 2) aux_writes(0); }
+}
+
+static unsigned char decode_rle(FILE* f, unsigned long bytes)
+{
+    unsigned int count, chunk;
+    int t, v;
+    dn = 0; dplane = 0; dplanes = bytes > 8192 ? 2 : 1;
+    vf = f;
+    view_seek(8);
+    if (dplanes == 2) aux_writes(1);
+    while (dplane < dplanes) {
+        t = view_getc();
+        if (t < 0) break;
+        if (t & 0x80) {
+            count = (t & 0x7F) + 3;
+            v = view_getc();
+            if (v < 0) break;
+            while (count && dplane < dplanes) {
+                chunk = count < 8192 - dn ? count : 8192 - dn;
+                memset(HGR_MAIN + dn, v, chunk);
+                count -= chunk;
+                advance(chunk);
+            }
+        } else {
+            count = t + 1;
+            while (count && dplane < dplanes) {
+                /* tampon vide : view_getc le recharge et prend un octet, rendu ici */
+                if (vpos >= vlen) { if (view_getc() < 0) { count = 0xFFFF; break; } --vpos; }
+                chunk = vlen - vpos;
+                if (chunk > count) chunk = count;
+                if (chunk > 8192 - dn) chunk = 8192 - dn;
+                memcpy(HGR_MAIN + dn, copy_buf + vpos, chunk);
+                vpos += chunk;
+                count -= chunk;
+                advance(chunk);
+            }
+            if (count == 0xFFFF) break;
+        }
+    }
+    aux_writes(0);
+    return dplane == dplanes;
+}
+
+/* Identifie et charge l'image `full` en page 1. Rend le format, IMG_NONE
+ * si le fichier n'en est pas une. */
+static unsigned char load_image(unsigned long size)
+{
+    FILE* f = fopen(full, "rb");
+    unsigned char kind = IMG_NONE, ok = 0;
+    if (!f) return IMG_NONE;
+    if (fread(copy_buf, 1, 8, f) == 8) {
+        if (!memcmp(copy_buf, "DHRR\1\0\0\x40", 8)) kind = IMG_DHRR;
+        else if (!memcmp(copy_buf, "HGRR\1\0\0\x20", 8)) kind = IMG_HGRR;
+        else if (size == 8192 || size == 8184) kind = IMG_HGR;
+        else if (size == 16384) kind = IMG_DHGR;
+    }
+    if (kind == IMG_DHRR) ok = decode_rle(f, 16384);
+    else if (kind == IMG_HGRR) ok = decode_rle(f, 8192);
+    else if (kind == IMG_HGR) { rewind(f); ok = fread(HGR_MAIN, 1, 8192, f) >= 8184; }
+    else if (kind == IMG_DHGR) {
+        rewind(f);
+        aux_writes(1);
+        ok = fread(HGR_MAIN, 1, 8192, f) == 8192;
+        aux_writes(0);
+        ok = ok && fread(HGR_MAIN, 1, 8192, f) == 8192;
+    }
+    fclose(f);
+    return ok ? kind : IMG_NONE;
+}
+
+/* L'image du curseur, plein ecran, HGR ou DHGR selon ce que le fichier
+ * contient. Gauche / Droite passent a l'image precedente / suivante du
+ * meme dossier sans revenir aux panneaux : le dossier DHGR se feuillette
+ * comme un album. Toute autre touche revient, et la ligne de message dit
+ * le format reconnu. */
 static void view_image(void)
 {
     struct Panel* pan = &panels[active];
-    unsigned char index = pan->cursor, next, bad = 0;
+    unsigned char index = pan->cursor, next;
     char key;
     /* L'image recouvre les tables d'entrees : les marques sont mises de
      * cote, les panneaux relus au retour (et avant chaque image suivante). */
     memcpy(picked, panels[0].tags, sizeof panels[0].tags);
     memcpy(picked + sizeof panels[0].tags, panels[1].tags, sizeof panels[1].tags);
     for (;;) {
-        if (!build_full(full, pan, &pan->e[index])) { message("Path too long for ProDOS."); break; }
+        if (!build_full(full, pan, &pan->e[index])) { too_long(); break; }
+        strcpy(input, pan->e[index].name);
         total_view = 1;
-        if (!hgr_rle_load(full)) { bad = 1; break; }
-        switch_to_hgr();
+        img_kind = load_image(pan->e[index].size);
+        if (img_kind == IMG_NONE) break;
+        if (img_kind == IMG_HGR || img_kind == IMG_HGRR) show_hgr(); else switch_to_hgr();
         key = cgetc();
         if (key != KEY_LEFT && key != KEY_RIGHT) break;
         read_panel(active);
@@ -787,7 +990,345 @@ static void view_image(void)
     memcpy(panels[1].tags, picked + sizeof panels[0].tags, sizeof panels[1].tags);
     set_cursor(pan, index);
     draw_all();
-    if (bad) message("Not a DHGR image (DHRR stream expected).");
+    clear_row(22);
+    gotoxy(0, 22);
+    if (img_kind == IMG_NONE) cprintf("%s: not an image (HGR/DHGR raw, HGRR or DHRR stream expected).", input);
+    else cprintf("%s: %s, %lu bytes on screen.", input, IMG_NAMES[img_kind], IMG_BYTES[img_kind]);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Editeur de texte                                                       */
+/* ---------------------------------------------------------------------- */
+
+/* Le texte vit dans la page HGR MAIN, comme les tables d'entrees (relues
+ * a la sortie) : 8 Ko au plus, fins de ligne CR, bit 7 ote au chargement.
+ * Le curseur est un decalage dans le tampon ; l'ecran montre 22 lignes a
+ * partir de `etop`, debut d'une ligne, sans repli des lignes longues. */
+#define EDIT_ROWS 22
+static unsigned int elen, ecur, etop, ewant;
+static unsigned char edirty, etype;
+static unsigned int eaux;
+
+#pragma code-name (push, "LC")
+static unsigned int line_start(unsigned int pos)
+{
+    while (pos && EDIT_BUF[pos - 1] != '\r') --pos;
+    return pos;
+}
+
+static unsigned int line_end(unsigned int pos)
+{
+    while (pos < elen && EDIT_BUF[pos] != '\r') ++pos;
+    return pos;
+}
+
+static unsigned int next_line(unsigned int pos)
+{
+    pos = line_end(pos);
+    return pos < elen ? pos + 1 : pos;
+}
+#pragma code-name (pop)
+
+/* Redessine les lignes a partir de `from` (numero d'ecran). */
+static void edit_draw(unsigned char from)
+{
+    unsigned int pos = etop;
+    unsigned char row, col;
+    for (row = 0; row < from; ++row) pos = next_line(pos);
+    for (row = from; row < EDIT_ROWS; ++row) {
+        gotoxy(0, row);
+        col = 0;
+        while (pos < elen && EDIT_BUF[pos] != '\r') {
+            if (col < 79) cputc(EDIT_BUF[pos] < 32 ? '.' : EDIT_BUF[pos]);
+            ++pos;
+            ++col;
+        }
+        if (col < 79) cclear(79 - col);
+        if (pos < elen) ++pos;
+    }
+}
+
+static void edit_status(void)
+{
+    unsigned int line = 0, pos = 0, ls = line_start(ecur);
+    while (pos < ls) { pos = next_line(pos); ++line; }
+    bar_begin();
+    revers(1);
+    cprintf(" %-30.30s  Line %u  Col %u  %u/%u bytes %s", full, line + 1, ecur - ls + 1, elen, EDIT_MAX, edirty ? "*" : " ");
+    revers(0);
+    keys_bar(69, "ESC Menu");
+}
+
+/* Place le curseur a l'ecran ; fait defiler si la ligne n'est pas visible. */
+static unsigned char edit_place(void)
+{
+    unsigned int ls = line_start(ecur), pos;
+    unsigned char row, scrolled = 0;
+    while (ls < etop) { etop = line_start(etop - 1); scrolled = 1; }
+    for (;;) {
+        pos = etop;
+        for (row = 0; row < EDIT_ROWS && pos < ls; ++row) pos = next_line(pos);
+        if (pos == ls && row < EDIT_ROWS) break;
+        etop = next_line(etop);
+        scrolled = 1;
+    }
+    if (scrolled) edit_draw(0);
+    edit_status();
+    gotoxy(ecur - ls < 79 ? (unsigned char)(ecur - ls) : 79, row);
+    return scrolled;
+}
+
+static void edit_vertical(int lines)
+{
+    unsigned int ls = line_start(ecur), target = ls;
+    while (lines > 0 && next_line(target) < elen + 1 && line_end(target) < elen) { target = next_line(target); --lines; }
+    while (lines < 0 && target) { target = line_start(target - 1); ++lines; }
+    ecur = target + ewant;
+    if (ecur > line_end(target)) ecur = line_end(target);
+}
+
+#pragma code-name (push, "LC")
+static unsigned char edit_insert(char c)
+{
+    if (elen >= EDIT_MAX) { return 0; }
+    memmove(EDIT_BUF + ecur + 1, EDIT_BUF + ecur, elen - ecur);
+    EDIT_BUF[ecur++] = c;
+    ++elen;
+    edirty = 1;
+    return 1;
+}
+
+static void edit_delete(void)
+{
+    if (ecur >= elen) return;
+    memmove(EDIT_BUF + ecur, EDIT_BUF + ecur + 1, elen - ecur - 1);
+    --elen;
+    edirty = 1;
+}
+#pragma code-name (pop)
+
+static unsigned char edit_save(void)
+{
+    FILE* f;
+    _filetype = etype;
+    _auxtype = eaux;
+    f = fopen(full, "wb");
+    if (!f) { report_error("Save"); return 0; }
+    if (fwrite(EDIT_BUF, 1, elen, f) != elen) { fclose(f); report_error("Save"); return 0; }
+    if (fclose(f)) { report_error("Save"); return 0; }
+    edirty = 0;
+    ++total_ops;
+    return 1;
+}
+
+/* E : edite le fichier `full` (type et auxtype conserves a l'ecriture), ou
+ * un fichier neuf si `fresh`. Rend 1 si quelque chose a ete ecrit. */
+static unsigned char edit_file(unsigned char fresh, unsigned char type, unsigned int aux)
+{
+    FILE* f;
+    unsigned int i, ls;
+    unsigned char row, written = 0;
+    char key;
+    elen = ecur = etop = ewant = 0;
+    edirty = 0;
+    etype = type;
+    eaux = aux;
+    if (!fresh) {
+        f = fopen(full, "rb");
+        if (!f) { report_error("Open"); return 0; }
+        elen = fread(EDIT_BUF, 1, EDIT_MAX + 1, f);
+        fclose(f);
+        if (elen > EDIT_MAX) { message("Too big for the editor (8 KB at most)."); return 0; }
+        for (i = 0; i < elen; ++i) { EDIT_BUF[i] &= 0x7F; if (EDIT_BUF[i] == '\n') EDIT_BUF[i] = '\r'; }
+    }
+    total_view = 5;
+    clrscr();
+    edit_draw(0);
+    edit_place();
+    for (;;) {
+        key = cgetc();
+        ls = line_start(ecur);
+        row = 0xFF;                     /* 0xFF : rien a redessiner */
+        switch (key) {
+        case KEY_LEFT: if (ecur) --ecur; ewant = ecur - line_start(ecur); break;
+        case KEY_RIGHT: if (ecur < elen) ++ecur; ewant = ecur - line_start(ecur); break;
+        case KEY_UP: edit_vertical(-1); break;
+        case KEY_DOWN: edit_vertical(1); break;
+        case 16: edit_vertical(-(EDIT_ROWS - 2)); break;      /* Ctrl-P */
+        case 14: edit_vertical(EDIT_ROWS - 2); break;         /* Ctrl-N */
+        case 1: ecur = ls; ewant = 0; break;                  /* Ctrl-A */
+        case 5: ecur = line_end(ecur); ewant = ecur - ls; break;   /* Ctrl-E */
+        case 20: ecur = 0; ewant = 0; break;                  /* Ctrl-T */
+        case 2: ecur = elen; ewant = ecur - line_start(ecur); break;   /* Ctrl-B */
+        case KEY_DELETE:
+            if (ecur) { --ecur; row = EDIT_BUF[ecur] == '\r' ? 0 : 1; edit_delete(); }
+            ewant = ecur - line_start(ecur);
+            break;
+        case 4:                                               /* Ctrl-D */
+            if (ecur < elen) { row = EDIT_BUF[ecur] == '\r' ? 0 : 1; edit_delete(); }
+            break;
+        case KEY_RETURN: if (edit_insert('\r')) row = 0; ewant = 0; break;
+        case KEY_TAB: for (i = 0; i < 4; ++i) edit_insert(' '); row = 1; ewant = ecur - ls; break;
+        case KEY_ESC:
+            bar_begin();
+            keys_bar(0, "S Save,X Save and exit,Q Quit without saving,ESC Continue editing");
+            key = cgetc();
+            if (key == 's' || key == 'S') written |= edit_save();
+            else if (key == 'x' || key == 'X') { if (edit_save()) { written = 1; goto leave; } }
+            else if (key == 'q' || key == 'Q') { if (!edirty) goto leave; bar_begin(); keys_bar(0, "Y Discard the changes,N Keep editing"); key = cgetc(); if (key == 'y' || key == 'Y') goto leave; }
+            break;
+        default:
+            if (key >= 32 && key < 127) { if (edit_insert(key)) row = 1; else message("Buffer full."); ewant = ecur - ls; }
+            break;
+        }
+        /* row 1 : la ligne seule ; row 0 : elle et les suivantes. */
+        if (row != 0xFF && !edit_place()) {
+            unsigned int pos = etop; unsigned char r = 0;
+            ls = line_start(ecur);
+            while (pos < ls) { pos = next_line(pos); ++r; }
+            edit_draw(row ? r : r);
+            if (row == 1) { /* seule la ligne courante a change */ }
+            edit_place();
+        } else edit_place();
+    }
+leave:
+    total_view = 0;
+    return written;
+}
+
+static void edit_selected(void)
+{
+    struct Panel* pan = &panels[active];
+    const struct Entry* e;
+    unsigned char fresh = 0;
+    if (!pan->count || !pan->path[0]) { message("Open a directory first."); return; }
+    e = &pan->e[pan->cursor];
+    if (is_dir(e)) {
+        if (!prompt("New text file", NULL, 0)) return;
+        if (strlen(pan->path) + 1 + strlen(input) >= PATH_LEN) { too_long(); return; }
+        sprintf(full, "%s/%s", pan->path, input);
+        if (exists(full)) { message("This file exists: select it to edit it."); return; }
+        fresh = 1;
+    } else if (!build_full(full, pan, e)) { too_long(); return; }
+    strcpy(question, fresh ? input : e->name);
+    memcpy(picked, panels[0].tags, sizeof panels[0].tags);
+    memcpy(picked + sizeof panels[0].tags, panels[1].tags, sizeof panels[1].tags);
+    edit_file(fresh, fresh ? 0x04 : e->type, fresh ? 0 : e->aux);
+    switch_to_text();
+    read_panel(0);
+    read_panel(1);
+    memcpy(panels[0].tags, picked, sizeof panels[0].tags);
+    memcpy(panels[1].tags, picked + sizeof panels[0].tags, sizeof panels[1].tags);
+    select_name(pan, question);
+    draw_all();
+}
+
+/* ---------------------------------------------------------------------- */
+/* Musique Mockingboard                                                   */
+/* ---------------------------------------------------------------------- */
+
+static unsigned char looks_like_music(const struct Entry* e)
+{
+    unsigned char n = strlen(e->name);
+    return !is_dir(e) && e->type == 0x06 && n > 3 && !strcmp(e->name + n - 3, ".MB");
+}
+
+/* Entree sur un .MB : le flux MB1 est monte en AUX par le lecteur du jeu
+ * (six voix, en interruption) et joue en boucle pendant que l'on continue
+ * de naviguer ; P le met en pause, un autre .MB le remplace, Q et X le
+ * coupent. La carte est cherchee a la premiere demande. */
+static void play_music(const struct Entry* e)
+{
+    FILE* f;
+    unsigned int n, total = 0;
+    unsigned char valid = 1;
+    if (total_slot == 0xFF) total_slot = music_detect();
+    if (!total_slot) { message("No Mockingboard found in slots 1-7."); return; }
+    if (e->size > MUSIC_ZONE) { message("MB file too large (2304 bytes at most)."); return; }
+    f = fopen(full, "rb");
+    if (!f) { report_error("Open"); return; }
+    music_stop();
+    total_playing = 0;
+    do {
+        n = fread(music_buf, 1, MUSIC_STAGE, f);
+        if (!total && (n <= 8 || memcmp(music_buf, "MB1", 3))) { valid = 0; break; }
+        if (n) music_store(total, n);
+        total += n;
+    } while (n == MUSIC_STAGE);
+    fclose(f);
+    if (!valid) { message("Not an MB1 Mockingboard stream."); return; }
+    music_select(0);
+    music_set_loop(1);
+    music_play();
+    total_playing = 1;
+    clear_row(22);
+    gotoxy(0, 22);
+    cprintf("Playing %s on the Mockingboard in slot %u, looping. P pauses.", e->name, total_slot);
+}
+
+static void toggle_music(void)
+{
+    if (total_playing == 1) { music_pause(); total_playing = 2; message("Music paused. P resumes."); }
+    else if (total_playing == 2) { music_resume(); total_playing = 1; message("Music resumed."); }
+    else message("Open a .MB file to play it.");
+}
+
+/* ---------------------------------------------------------------------- */
+/* Aide                                                                   */
+/* ---------------------------------------------------------------------- */
+
+/* L'aide est lue dans TOTAL/TOTAL.HELP (a cote de TOTAL.CODE), une ligne
+ * par element : "x,y,TOUCHE,libelle" pour un bouton, "x,y,=TITRE" pour un
+ * titre de section, "x,y,-texte" pour du texte en clair. Le texte passe par
+ * la page HGR, comme l'editeur : rien en memoire hors de l'aide. */
+static void view_help(void)
+{
+    const char* s = EDIT_BUF;
+    FILE* f;
+    unsigned int n;
+    unsigned char x, y, klen, i, kind;
+    strcpy(other_full, cfg_path);
+    strcpy(other_full + strlen(other_full) - 3, "HELP");
+    f = fopen(other_full, "rb");
+    if (!f) { message("TOTAL/TOTAL.HELP is missing: no help on this volume."); return; }
+    n = fread(EDIT_BUF, 1, EDIT_MAX, f);
+    fclose(f);
+    EDIT_BUF[n] = 0;
+    memcpy(picked, panels[0].tags, sizeof panels[0].tags);
+    memcpy(picked + sizeof panels[0].tags, panels[1].tags, sizeof panels[1].tags);
+    total_view = 4;
+    clrscr();
+    while (*s) {
+        x = 0; while (*s != ',') x = x * 10 + (*s++ - '0'); ++s;
+        y = 0; while (*s != ',') y = y * 10 + (*s++ - '0'); ++s;
+        gotoxy(x, y);
+        kind = *s;
+        if (kind == '=' || kind == '-') {
+            if (kind == '=') { revers(1); cputc(' '); }
+            ++s;
+            while (*s && *s != '\n' && *s != '\r') cputc(*s++);
+            if (kind == '=') { cputc(' '); revers(0); }
+        } else {
+            for (klen = 0; s[klen] != ','; ++klen) {}
+            revers(1);
+            if (klen == 1) { cputc(' '); cputc(*s); cputc(' '); }
+            else for (i = 0; i < 3; ++i) cputc(i < klen ? s[i] : ' ');
+            revers(0);
+            cputc(' ');
+            s += klen + 1;
+            while (*s && *s != '\n' && *s != '\r') cputc(*s++);
+        }
+        while (*s == '\n' || *s == '\r') ++s;
+    }
+    bar_begin();
+    keys_bar(0, HELP_KEYS);
+    cgetc();
+    total_view = 0;
+    read_panel(0);
+    read_panel(1);
+    memcpy(panels[0].tags, picked, sizeof panels[0].tags);
+    memcpy(panels[1].tags, picked + sizeof panels[0].tags, sizeof panels[1].tags);
+    draw_all();
 }
 
 /* ---------------------------------------------------------------------- */
@@ -808,19 +1349,16 @@ static void refresh_both(void)
  * dossier ne se lit pas ou si la reserve deborde. */
 static unsigned char list_dir(const char* path, unsigned char base, unsigned char* count)
 {
-    DIR* dir = opendir(path);
-    struct dirent* d;
     unsigned char n = 0;
-    if (!dir) return 0;
-    while ((d = readdir(dir)) != NULL) {
-        if (base + n >= POOL_SIZE) { closedir(dir); return 0; }
-        strncpy(pool[base + n].name, d->d_name, 15);
-        pool[base + n].name[15] = 0;
-        pool[base + n].type = d->d_type;
-        pool[base + n].aux = d->d_auxtype;
+    if (!dir_open(path)) return 0;
+    while (dir_next()) {
+        if (base + n >= POOL_SIZE) { dir_close(); return 0; }
+        strcpy(pool[base + n].name, dir_entry.name);
+        pool[base + n].type = dir_entry.type;
+        pool[base + n].aux = dir_entry.aux;
         ++n;
     }
-    closedir(dir);
+    dir_close();
     *count = n;
     return 1;
 }
@@ -943,7 +1481,7 @@ static unsigned char copy_tree(unsigned char base)
     if (!list_dir(full, base, &n)) { message("Directory unreadable or too many files at once."); return 0; }
     for (i = 0; i < n && ok; ++i) {
         const struct Mini* m = &pool[base + i];
-        if (!push_name(full, m->name) || !push_name(other_full, m->name)) { message("Path too long for ProDOS."); ok = 0; }
+        if (!push_name(full, m->name) || !push_name(other_full, m->name)) { too_long(); ok = 0; }
         else if (m->type == 0x0F) {
             if (!exists(other_full) && mkdir(other_full)) { report_error("Mkdir"); ok = 0; }
             else ok = copy_tree(base + n);
@@ -960,7 +1498,7 @@ static unsigned char delete_tree(unsigned char base)
     unsigned char n, i, len = strlen(full), ok = 1;
     if (!list_dir(full, base, &n)) { message("Directory unreadable or too many files at once."); return 0; }
     for (i = 0; i < n && ok; ++i) {
-        if (!push_name(full, pool[base + i].name)) { message("Path too long for ProDOS."); ok = 0; break; }
+        if (!push_name(full, pool[base + i].name)) { too_long(); ok = 0; break; }
         if (pool[base + i].type == 0x0F) ok = delete_tree(base + n);
         else if (remove(full)) { report_error("Delete"); ok = 0; }
         else ++total_ops;
@@ -979,7 +1517,7 @@ static unsigned char copy_one(const struct Entry* e)
 {
     struct Panel* dst = &panels[!active];
     unsigned char len;
-    if (!build_full(full, &panels[active], e) || !build_full(other_full, dst, e)) { message("Path too long for ProDOS."); return 0; }
+    if (!build_full(full, &panels[active], e) || !build_full(other_full, dst, e)) { too_long(); return 0; }
     if (!is_dir(e)) return copy_file(e->name, e->type, e->aux) != 0;
     len = strlen(full);
     if (!strncmp(dst->path, full, len) && (dst->path[len] == '/' || !dst->path[len])) {
@@ -1032,7 +1570,7 @@ static void copy_or_move(unsigned char move)
         const struct Entry* e = &pan->e[picked[i]];
         if (is_up(e)) continue;
         if (!is_dir(e)) { ++progress_total; continue; }
-        if (!build_full(full, pan, e)) { message("Path too long for ProDOS."); return; }
+        if (!build_full(full, pan, e)) { too_long(); return; }
         sub = count_tree(0);
         if (sub == 0xFFFF) { message("Directory unreadable or too many files at once."); return; }
         progress_total += sub;
@@ -1072,7 +1610,7 @@ static void delete_targets(void)
     for (i = 0; i < n; ++i) {
         e = &pan->e[picked[i]];
         if (is_up(e)) continue;
-        if (!build_full(full, pan, e)) { message("Path too long for ProDOS."); break; }
+        if (!build_full(full, pan, e)) { too_long(); break; }
         if (is_dir(e)) { if (!delete_tree(0)) break; }
         else if (remove(full)) { report_error("Delete"); break; }
         else ++total_ops;
@@ -1090,8 +1628,8 @@ static void rename_selected(const struct Entry* e)
 {
     if (is_up(e) || !panels[active].path[0]) { message("Select a file or directory to rename."); return; }
     if (!prompt("New name", e->name, 0)) return;
-    if (!build_full(full, &panels[active], e)) { message("Path too long for ProDOS."); return; }
-    if (strlen(panels[active].path) + 1 + strlen(input) >= PATH_LEN) { message("Path too long for ProDOS."); return; }
+    if (!build_full(full, &panels[active], e)) { too_long(); return; }
+    if (strlen(panels[active].path) + 1 + strlen(input) >= PATH_LEN) { too_long(); return; }
     sprintf(other_full, "%s/%s", panels[active].path, input);
     if (rename(full, other_full)) { report_error("Rename"); return; }
     ++total_ops;
@@ -1105,7 +1643,7 @@ static void make_directory(void)
     struct Panel* pan = &panels[active];
     if (!pan->path[0]) { message("Open a volume first."); return; }
     if (!prompt("New directory", NULL, 0)) return;
-    if (strlen(pan->path) + 1 + strlen(input) >= PATH_LEN) { message("Path too long for ProDOS."); return; }
+    if (strlen(pan->path) + 1 + strlen(input) >= PATH_LEN) { too_long(); return; }
     sprintf(full, "%s/%s", pan->path, input);
     if (mkdir(full)) { report_error("Mkdir"); return; }
     ++total_ops;
@@ -1121,7 +1659,7 @@ static void change_attributes(const struct Entry* e, unsigned char lock)
     unsigned char type;
     unsigned int aux;
     if (is_up(e) || !panels[active].path[0]) { message("Select a file or directory."); return; }
-    if (!build_full(full, &panels[active], e)) { message("Path too long for ProDOS."); return; }
+    if (!build_full(full, &panels[active], e)) { too_long(); return; }
     if (!lock) {
         if (is_dir(e)) { message("A directory keeps its type."); return; }
         sprintf(input, "%02X", e->type);
@@ -1142,22 +1680,32 @@ static void change_attributes(const struct Entry* e, unsigned char lock)
     show_active();
 }
 
+/* X : un SYS est lu en $2000, la ou ProDOS l'aurait mis, un BIN a son
+ * auxtype s'il tient sous $4000 (au-dessus, il ecraserait TOTAL pendant la
+ * lecture) ; puis l'on y saute, sans retour. Cette page est libre : les
+ * tables d'entrees n'ont plus d'importance. Bien moins cher que exec(). */
 static void run_selected(const struct Entry* e)
 {
+    FILE* f;
+    unsigned int addr = e->type == 0xFF ? 0x2000 : e->aux, n;
     if (is_dir(e) || !panels[active].path[0]) { message("Select a SYS or BIN program."); return; }
     if (e->type != 0xFF && e->type != 0x06) { message("Only SYS and BIN files can be run."); return; }
-    if (!build_full(full, &panels[active], e)) { message("Path too long for ProDOS."); return; }
+    if (addr < 0x0800 || (unsigned long)addr + e->size > 0x4000) { message("A BIN program must load between $0800 and $3FFF."); return; }
+    if (!build_full(full, &panels[active], e)) { too_long(); return; }
     sprintf(question, "Run %s? TOTAL will not resume.", e->name);
     if (!confirm(question)) return;
+    music_stop();
     save_config();
+    chdir(panels[active].path);
+    f = fopen(full, "rb");
+    if (!f) { report_error("Run"); return; }
     clrscr();
+    n = fread((void*)addr, 1, 0x4000 - addr, f);
+    fclose(f);
+    if (!n) { draw_all(); report_error("Run"); return; }
     /* Le programme lance attend la ROM, pas la carte langage de TOTAL. */
     __asm__("bit $C082");
-    exec(full, NULL);
-    /* Ici seulement si le lancement a echoue. */
-    __asm__("bit $C080");
-    draw_all();
-    report_error("Run");
+    ((void (*)(void))addr)();
 }
 
 static void open_selected(void)
@@ -1167,8 +1715,9 @@ static void open_selected(void)
     if (!pan->count) return;
     e = &pan->e[pan->cursor];
     if (is_dir(e)) { enter_dir(pan, e); show_active(); return; }
-    if (!build_full(full, pan, e)) { message("Path too long for ProDOS."); return; }
+    if (!build_full(full, pan, e)) { too_long(); return; }
     if (looks_like_image(e)) view_image();
+    else if (looks_like_music(e)) play_music(e);
     else if (e->type == 0x04) view_text(full);
     else if (e->type == 0xFF) run_selected(e);
     else view_hex(full, e->size);
@@ -1305,6 +1854,8 @@ int main(void)
     char key;
     struct Panel* pan;
     videomode(VIDEOMODE_80COL);
+    total_slot = 0xFF;
+    memset(panels, 0, sizeof panels);
     panels[0].e = ENTRIES;
     panels[1].e = ENTRIES + MAX_ENTRIES;
     if (!getcwd(panels[0].path, PATH_LEN)) strcpy(panels[0].path, "/SCOSWAMP");
@@ -1369,9 +1920,13 @@ int main(void)
                 view_hex(full, pan->e[pan->cursor].size);
             break;
         case 'x': case 'X': if (pan->count) run_selected(&pan->e[pan->cursor]); break;
+        case 'e': case 'E': edit_selected(); break;
+        case 'p': case 'P': toggle_music(); break;
+        case 'i': case 'I': if (pan->count && !is_dir(&pan->e[pan->cursor]) && pan->path[0]) view_image(); break;
         case '?': view_help(); break;
         case 'q': case 'Q':
             if (confirm("Quit to ProDOS?")) {
+                music_stop();
                 save_config();
                 /* Le prefixe ProDOS suit le panneau actif : Bitsy Bye
                  * reprend dans le dossier ou l'on etait. */

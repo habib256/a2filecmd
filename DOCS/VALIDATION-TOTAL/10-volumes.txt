@@ -1,6 +1,6 @@
 /SCOSWAMP                              |[Volumes]                               
 Name*            Type  Aux     Size    |Volume          Slot   Free/Total       
-..               <UP>                  |/SCOSWAMP       S5,D1  1326/14596 free  
+..               <UP>                  |/SCOSWAMP       S5,D1  1327/14612 free  
 DHGR             <DIR>              1  |/RAM            S3,D2   119/  127 free  
 DIAPO            <DIR>              1  |                                        
 JSON             <DIR>              1  |                                        
@@ -11,14 +11,14 @@ TEXTFR           <DIR>              1  |
 TOTAL            <DIR>              1  |                                        
 MAP              BIN $0000     1842    |                                        
 PRODOS           SYS $0000    17128    |                                        
-SCOSWAMP         BIN $4000    32797    |                                        
+SCOSWAMP         BIN $4000    32960    |                                        
 SCOSWAMP.SYSTEM  SYS $0000     4437    |                                        
-TITLE            TXT $0000      684    |                                        
+TITLE            TXT $0000      824    |                                        
                                        |                                        
                                        |                                        
                                        |                                        
                                        |                                        
-__ TOTAL _______________________________________________________________________
-Volume /SCOSWAMP  slot 5 drive 1  14596 blocks, 1326 free                       
+__ TOTAL 1.0 ___________________________________________________________________
+Volume /SCOSWAMP  slot 5 drive 1  14612 blocks, 1327 free                       
                                                                                 
-TAB panel RET open SPC tag ' find C copy V move R ren D del K mkdir S sort ? he 
+TABPanel RETOpen SPCTag  C Copy  V Move  R Ren  D Del  K Mkdir  S Sort  ? Help  

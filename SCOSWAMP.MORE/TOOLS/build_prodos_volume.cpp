@@ -19,12 +19,16 @@ static bool readFile(const std::string& path, std::vector<std::uint8_t>& out)
 int main(int argc, char** argv)
 {
     if (argc != 4 && argc != 5) {
-        std::cerr << "usage: build_prodos_volume FOLDER BOOT_TEMPLATE OUTPUT.HDV [SCOSWAMP|SPACETRIP]\n";
+        std::cerr << "usage: build_prodos_volume FOLDER BOOT_TEMPLATE OUTPUT.HDV [SCOSWAMP|SPACETRIP|VOLUME.NAME]\n";
         return 2;
     }
     std::vector<std::uint8_t> volume;
+    // The fourth argument names the volume. For the two games it also names
+    // the BIN file whose aux type gets patched below; any other name (the
+    // Apple Total Commander floppy, for instance) builds a plain volume.
     const std::string game = argc == 5 ? argv[4] : "SCOSWAMP";
-    if (game != "SCOSWAMP" && game != "SPACETRIP") return 2;
+    const bool isGame = game == "SCOSWAMP" || game == "SPACETRIP";
+    if (game.empty() || game.size() > 15) return 2;
     const auto built = pom2::buildVolumeFromFolder(argv[1], game, volume);
     if (!built.ok) {
         std::cerr << "build failed: " << built.error << '\n';
@@ -71,7 +75,7 @@ int main(int argc, char** argv)
             }
         }
     }
-    if (!patchedLoadAddress) {
+    if (isGame && !patchedLoadAddress) {
         std::cerr << game + " BIN entry not found\n";
         return 1;
     }
