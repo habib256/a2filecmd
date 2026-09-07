@@ -11,14 +11,14 @@ TEXTFR           <DIR>              1  |
 TOTAL            <DIR>              1  |                                        
 MAP              BIN $0000     1842    |                                        
 PRODOS           SYS $0000    17128    |                                        
-SCOSWAMP         BIN $4000    32797    |                                        
+SCOSWAMP         BIN $4000    32960    |                                        
 SCOSWAMP.SYSTEM  SYS $0000     4437    |                                        
-TITLE            TXT $0000      684    |                                        
+TITLE            TXT $0000      824    |                                        
                                        |                                        
                                        |                                        
                                        |                                        
                                        |                                        
-__ TOTAL _____________________ 1255 of 14596 blocks free _______________________
+__ TOTAL 1.0 _________________ 1241 of 14612 blocks free _______________________
 TOTAL  directory  1 blocks                                                      
-2 files copied.                                                                 
-TAB panel RET open SPC tag ' find C copy V move R ren D del K mkdir S sort ? he 
+4 files copied.                                                                 
+TABPanel RETOpen SPCTag  C Copy  V Move  R Ren  D Del  K Mkdir  S Sort  ? Help  

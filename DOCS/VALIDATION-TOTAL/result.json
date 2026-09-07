@@ -1,17 +1,29 @@
 {
-  "hdv_sha256": "d06c0eadf9bd34559c52a2f4530ebb1a5b3cd7d3fc7825344f1180c4bfa609df",
+  "hdv_sha256": "9284a15ef212b1db36d52ce3ae51c1a4585839d898a70fc6d1f27bbf9b5791e9",
   "headless": "/Users/gistair/src/pom2adventure/SCOSWAMP.MORE/TOOLS/build/pom2_playtest",
   "checks": [
+    {
+      "label": "l ecran-titre propose les utilitaires en bas",
+      "ok": true
+    },
+    {
+      "label": "[T] de l ecran-titre lance TOTAL",
+      "ok": true
+    },
+    {
+      "label": "[D] de l ecran-titre lance DIAPO",
+      "ok": true
+    },
     {
       "label": "lancement depuis Bitsy Bye, deux panneaux",
       "ok": true
     },
     {
-      "label": "barre d aide",
+      "label": "barre d aide facon Norton",
       "ok": true
     },
     {
-      "label": "barre d aide en inverse sur 80 colonnes",
+      "label": "les touches sont en inverse, les libelles en clair",
       "ok": true
     },
     {
@@ -56,6 +68,10 @@
     },
     {
       "label": "retour aux panneaux apres l image, curseur sur N000.RLE",
+      "ok": true
+    },
+    {
+      "label": "le format reconnu est annonce",
       "ok": true
     },
     {
@@ -147,7 +163,7 @@
       "ok": true
     },
     {
-      "label": "C copie le dossier TOTAL entier (mkdir + 2 fichiers)",
+      "label": "C copie le dossier TOTAL entier (mkdir + 4 fichiers, aide et TOTAL.CFG compris)",
       "ok": true
     },
     {
@@ -163,7 +179,7 @@
       "ok": true
     },
     {
-      "label": "C copie un arbre a deux niveaux (BANC/TOTAL/2 fichiers)",
+      "label": "C copie un arbre a deux niveaux (BANC/TOTAL/4 fichiers)",
       "ok": true
     },
     {
@@ -176,6 +192,42 @@
     },
     {
       "label": "une seule erreur ProDOS, celle du fichier verrouille",
+      "ok": true
+    },
+    {
+      "label": "E sur un dossier cree un fichier neuf dans l editeur",
+      "ok": true
+    },
+    {
+      "label": "la saisie s affiche, deux lignes, texte modifie",
+      "ok": true
+    },
+    {
+      "label": "X sauve et revient : NOTE, TXT, 11 octets",
+      "ok": true
+    },
+    {
+      "label": "le fichier relu contient les deux lignes",
+      "ok": true
+    },
+    {
+      "label": "NOTE supprime",
+      "ok": true
+    },
+    {
+      "label": "Entree sur un .MB le joue sur la Mockingboard",
+      "ok": true
+    },
+    {
+      "label": "le flux MB1 est monte en AUX $1000",
+      "ok": true
+    },
+    {
+      "label": "P met la musique en pause",
+      "ok": true
+    },
+    {
+      "label": "P la reprend",
       "ok": true
     },
     {

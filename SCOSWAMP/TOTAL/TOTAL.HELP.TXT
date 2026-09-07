@@ -1,0 +1,35 @@
+18,0,=  APPLE TOTAL COMMANDER 1.0  -  ProDOS file manager  
+1,2,=NAVIGATION
+1,3,U/D,Move up / down
+41,3,</>,Page up / down (or - +)
+1,4,[/],First / last entry
+41,4,TAB,Switch panel
+1,5,RET,Open (Right arrow too)
+41,5,ESC,Parent directory (Left too)
+1,6,/,List of volumes
+41,6,=,Same directory in other panel
+1,7,',Jump to next name starting with the key pressed next
+1,9,=FILES
+1,10,SPC,Tag / untag (* after name)
+41,10,*,Invert tags
+1,11,C,Copy to the other panel
+41,11,V,Move (copy, then delete)
+1,12,R,Rename
+41,12,D,Delete, directories too
+1,13,K,Make a directory
+41,13,S,Sort by name, size or type
+1,14,M,Mark files differing from other panel
+41,14,A,Change type and auxtype
+1,15,L,Lock / unlock (L after name)
+41,15,X,Run a SYS or BIN program
+1,16,E,Edit a text (on a dir: new file)
+41,16,I,View as image: HGR/DHGR, raw/RLE
+1,17,P,Pause / resume the Mockingboard music (RET on a .MB file plays it)
+1,18,=VIEWERS AND EDITOR
+1,19,RET,By type: directory, image (HGR/DHGR, raw or RLE), TXT, SYS runs, else hex
+1,20,T,Text
+11,20,H,Hex
+20,20,L/R,Prev / next image
+45,20,ESC,Editor menu: save, quit
+1,21,-Editor: arrows, DEL, Ctrl-D delete, Ctrl-A/E line ends, Ctrl-P/N pages, Ctrl-T/B.
+1,22,-C, V, D act on tagged files; existing files ask Overwrite/Skip/All/None.

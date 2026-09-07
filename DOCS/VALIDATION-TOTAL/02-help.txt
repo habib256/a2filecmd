@@ -1,24 +1,24 @@
-                              T O T A L  -  keys                                
+                     APPLE TOTAL COMMANDER 1.0  -  ProDOS file manager          
                                                                                 
- Up / Down      move          < > or - +  page          [ ]  first / last       
- TAB            other panel   =           same directory in the other panel     
- RETURN / Right open : directory, .RLE image, TXT text, SYS program, else hex   
- ESC / Left     parent directory          /  list of volumes                    
- SPACE          tag / untag the file (* after the name)     *  invert tags      
- ' then a key   jump to the next name starting with that letter or digit        
+  NAVIGATION                                                                    
+ U/D Move up / down                      </> Page up / down (or - +)            
+ [/] First / last entry                  TAB Switch panel                       
+ RET Open (Right arrow too)              ESC Parent directory (Left too)        
+  /  List of volumes                      ,Same directory in other panel        
+  '  Jump to next name starting with the key pressed next                       
                                                                                 
- C  copy to the other panel      V  move (copy, then delete the original)       
- R  rename                       D  delete (a directory with its contents)      
- K  make a directory             S  sort by name, size or type                  
- T  view as text                 H  view as hexadecimal                         
- X  run a SYS or BIN program     Q  quit to ProDOS (Bitsy Bye)                  
- A  change type and auxtype      L  lock / unlock (L after the name)            
- M  mark the files missing from the other panel or of a different size          
-                                                                                
- C, V and D act on every tagged file of the panel, else on the cursor.          
- Directories are copied whole; copies keep type and auxtype. When a file        
- exists, TOTAL asks: Overwrite, Skip, All, None. Large directories are shown    
- by windows in disk order. In an image: Left / Right show the previous / next.  
- Both directories, the sort and the panel are saved in TOTAL/TOTAL.CFG.         
-                                                                                
-Press any key to return to the panels                                           
+  FILES                                                                         
+ SPC Tag / untag (* after name)           *  Invert tags                        
+  C  Copy to the other panel              V  Move (copy, then delete)           
+  R  Rename                               D  Delete, directories too            
+  K  Make a directory                     S  Sort by name, size or type         
+  M  Mark files differing from other pane A  Change type and auxtype            
+  L  Lock / unlock (L after name)         X  Run a SYS or BIN program           
+  E  Edit a text (on a dir: new file)     I  View as image: HGR/DHGR, raw/RLE   
+  P  Pause / resume the Mockingboard music (RET on a .MB file plays it)         
+  VIEWERS AND EDITOR                                                            
+ RET By type: directory, image (HGR/DHGR, raw or RLE), TXT, SYS runs, else hex  
+  T  Text   H  Hex  L/R Prev / next image    ESC Editor menu: save, quit        
+ Editor: arrows, DEL, Ctrl-D delete, Ctrl-A/E line ends, Ctrl-P/N pages, Ctrl-T/
+BC, V, D act on tagged files; existing files ask Overwrite/Skip/All/None.       
+ANYReturn to the panels                                                         

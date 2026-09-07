@@ -68,7 +68,11 @@ STACK   = 0x0180
 # Reserve de croissance du moteur, distincte de la pile C ci-dessus.
 # Le deplacement musical AUX rend cette marge possible ; ne pas la consommer
 # silencieusement lors de l'ajout de regles partagees.
-MIN_FREE = 2048
+# 2026-09-07 : 2048 -> 1792. Les touches [D] et [T] de l'ecran-titre, qui
+# lancent DIAPO et TOTAL (launch() dans scoswamp.c : lecture du SYS en $2000
+# et saut), coutent 165 octets ; la marge mesuree est de 1886. Bitsy Bye
+# n'honore pas le QUIT etendu avec chemin, qui aurait coute trois fois moins.
+MIN_FREE = 1792
 # -C scoswamp.cfg : apple2enh.cfg plus la zone LOWRAM ($1000-$1FFF) et son
 # segment LOWBSS, ou vivent les gros tampons. Voir le fichier lui-meme.
 LDCFG   = scoswamp.cfg
@@ -493,6 +497,9 @@ $(OUTDIR)/DIAPO/DIAPO.CODE.BIN: diapo.c music.h music.o crt0.o hgr_loader.o memo
 	@mkdir -p $(OUTDIR)/DIAPO
 	$(CL) $(CFLAGS) -C scoswamp.cfg -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -m,diapo.map -Wl -Ln,diapo.lbl -o $@ crt0.o diapo.c music.o hgr_loader.o memory_swap.o mli_safe.o $(IOBUF)
 
+# Le numero de version d'Apple Total Commander : lanceur, ligne de statut,
+# aide (TOTAL/TOTAL.HELP.TXT le porte aussi, a la main) et doc.
+TOTAL_VERSION = 1.0
 # TOTAL : le gestionnaire de fichiers a deux panneaux (total.c),
 # construit comme DIAPO -- meme lanceur, meme disposition LC/MAIN, meme
 # decodeur DHGR et memes bascules video. Il ne depend ni de la musique ni
@@ -502,21 +509,47 @@ total: $(OUTDIR)/TOTAL/TOTAL.SYSTEM.SYS $(OUTDIR)/TOTAL/TOTAL.CODE.BIN
 
 $(OUTDIR)/TOTAL/TOTAL.SYSTEM.SYS: loader.c Makefile
 	@mkdir -p $(OUTDIR)/TOTAL
-	$(CL) $(CFLAGS) -D DIAPO_LOADER -D 'GAME_FILE="TOTAL/TOTAL.CODE"' --start-addr 0x2000 -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__FILETYPE__=0xFF -o $@ loader.c $(IOBUF)
+	$(CL) $(CFLAGS) -D TOTAL_LOADER -D 'TOTAL_VERSION="$(TOTAL_VERSION)"' -D 'GAME_FILE="TOTAL/TOTAL.CODE"' --start-addr 0x2000 -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__FILETYPE__=0xFF -o $@ loader.c $(IOBUF)
 
 total_mli.o: total_mli.s
 	$(AS) -t $(TARGET) -o $@ $<
 
-$(OUTDIR)/TOTAL/TOTAL.CODE.BIN: total.c total_mli.o crt0.o hgr_loader.o memory_swap.o mli_safe.o scoswamp.cfg
+$(OUTDIR)/TOTAL/TOTAL.CODE.BIN: total.c total_mli.o crt0.o memory_swap.o mli_safe.o music.o music.h scoswamp.cfg
 	@mkdir -p $(OUTDIR)/TOTAL
-	$(CL) $(CFLAGS) -C scoswamp.cfg -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__STACKSIZE__=0x0300 -Wl -m,total.map -Wl -Ln,total.lbl -o $@ crt0.o total.c total_mli.o hgr_loader.o memory_swap.o mli_safe.o $(IOBUF)
+	$(CL) $(CFLAGS) -D 'TOTAL_VERSION="$(TOTAL_VERSION)"' -C scoswamp.cfg -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__STACKSIZE__=0x0200 -Wl -m,total.map -Wl -Ln,total.lbl -o $@ crt0.o total.c total_mli.o music.o memory_swap.o mli_safe.o $(IOBUF)
 	@python3 ../../tools/check_lc_layout.py --src . --lbl total.lbl --bin ../TOTAL/TOTAL.CODE.BIN
+
+# La disquette 5,25 pouces d'Apple Total Commander : ProDOS 2.4.3, un
+# lanceur sans chdir (le prefixe est la racine du volume amorce), le meme
+# TOTAL.CODE que le volume du jeu, dans un dossier TOTAL comme sur celui-ci
+# (TOTAL.CFG y sera ecrit). Volume /APPLE.TOTAL, 280 blocs, en .po et .dsk.
+FLOPPY_PO  = ../../dist/APPLE.TOTAL.po
+FLOPPY_DSK = ../../dist/APPLE.TOTAL.dsk
+FSTAGE     = ../../dist/.floppy
+.PHONY: floppy
+floppy: $(FLOPPY_PO)
+$(FSTAGE)/TOTAL.SYSTEM.SYS: loader.c Makefile
+	@mkdir -p $(FSTAGE)
+	$(CL) $(CFLAGS) -D TOTAL_LOADER -D NO_CHDIR -D 'TOTAL_VERSION="$(TOTAL_VERSION)"' -D 'GAME_FILE="TOTAL/TOTAL.CODE"' --start-addr 0x2000 -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__FILETYPE__=0xFF -o $@ loader.c $(IOBUF)
+$(FLOPPY_PO): $(FSTAGE)/TOTAL.SYSTEM.SYS $(OUTDIR)/TOTAL/TOTAL.CODE.BIN $(OUTDIR)/TOTAL/TOTAL.HELP.TXT $(OUTDIR)/PRODOS.SYS $(TOOLS)/floppy_readme.txt $(BOOTTMPL) $(TOOLS)/make_floppy.py | $(VOLBUILD)
+	@rm -rf $(FSTAGE)/vol && mkdir -p $(FSTAGE)/vol/TOTAL $(FSTAGE)/vol/TEST
+	cp $(OUTDIR)/PRODOS.SYS $(FSTAGE)/TOTAL.SYSTEM.SYS $(FSTAGE)/vol/
+	cp $(OUTDIR)/TOTAL/TOTAL.CODE.BIN $(OUTDIR)/TOTAL/TOTAL.HELP.TXT $(FSTAGE)/vol/TOTAL/
+	# TEST : de quoi essayer le visionneur, le lecteur MB et l'editeur
+	cp ../../SPACETRIP/IMG/N001.HGR.BIN $(FSTAGE)/vol/TEST/HGR.RAW.BIN
+	$(TOOLS)/build/scoswamp_hgr encode ../../SPACETRIP/IMG/N001.HGR.BIN $(FSTAGE)/vol/TEST/HGR.RLE.BIN > /dev/null
+	cp $(OUTDIR)/DHGR/N000/N000.RLE.BIN $(FSTAGE)/vol/TEST/DHGR.RLE.BIN
+	cp $(OUTDIR)/MUSIC/WELCOME.MB.BIN $(FSTAGE)/vol/TEST/WELCOME.MB.BIN
+	cp $(TOOLS)/floppy_readme.txt $(FSTAGE)/vol/TEST/README.TXT
+	$(VOLBUILD) $(FSTAGE)/vol $(BOOTTMPL) $(FSTAGE)/volume.po APPLE.TOTAL
+	python3 $(TOOLS)/make_floppy.py $(FSTAGE)/volume.po $(FLOPPY_PO) $(FLOPPY_DSK)
+	@echo "==> Disquette : $(FLOPPY_PO) et $(FLOPPY_DSK)"
 
 hdv: $(HDV)
 
 $(HDV): $(OUTDIR)/$(PROGRAM) $(OUTDIR)/$(LAUNCHER) $(BOOTTMPL) $(MUSICS) \
         $(OUTDIR)/MAP.BIN $(OUTDIR)/DIAPO/DIAPO.SYSTEM.SYS $(OUTDIR)/DIAPO/DIAPO.CODE.BIN diapo-catalog \
-        $(OUTDIR)/TOTAL/TOTAL.SYSTEM.SYS $(OUTDIR)/TOTAL/TOTAL.CODE.BIN $(PAYLOAD) | $(VOLBUILD) check
+        $(OUTDIR)/TOTAL/TOTAL.SYSTEM.SYS $(OUTDIR)/TOTAL/TOTAL.CODE.BIN $(OUTDIR)/TOTAL/TOTAL.HELP.TXT $(PAYLOAD) | $(VOLBUILD) check
 	@rm -rf $(STAGE) && mkdir -p $(STAGE) $(dir $(HDV))
 	@for f in $(OUTDIR)/*; do \
 		b=`basename "$$f"`; \
@@ -621,7 +654,7 @@ install: all
 	@echo "==> Binaire disponible dans $(OUTDIR)/$(PROGRAM)"
 
 # Déclaration des cibles "phony" (ne correspondent pas à des fichiers)
-.PHONY: all hdv map release check playtest clean distclean rebuild info install
+.PHONY: all hdv map release check playtest clean distclean rebuild info install floppy
 
 crt0.o: crt0.s
 	$(AS) -t $(TARGET) -o $@ $<

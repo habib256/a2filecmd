@@ -11,14 +11,14 @@ TEXTFR           <DIR>              1  |N003.RLE         BIN $0000    10892
 TOTAL            <DIR>              1  |N004.RLE         BIN $0000    12423     
 MAP              BIN $0000     1842    |N005.RLE         BIN $0000    12207     
 PRODOS           SYS $0000    17128    |N006.RLE         BIN $0000     9031     
-SCOSWAMP         BIN $4000    32797    |N007.RLE         BIN $0000    12163     
+SCOSWAMP         BIN $4000    32960    |N007.RLE         BIN $0000    12163     
 SCOSWAMP.SYSTEM  SYS $0000     4437    |N008.RLE         BIN $0000    12072     
-TITLE            TXT $0000      684    |N009.RLE         BIN $0000    11575     
+TITLE            TXT $0000      824    |N009.RLE         BIN $0000    11575     
                                        |N010.RLE         BIN $0000    13694     
                                        |N011.RLE         BIN $0000    11299     
                                        |N012.RLE         BIN $0000    10075     
                                        |N013.RLE         BIN $0000    11289     
-__ TOTAL _____________________ 1326 of 14596 blocks free _______________________
+__ TOTAL 1.0 _________________ 1327 of 14612 blocks free _______________________
 N000.RLE  type $06  aux $0000  23 blocks  10903 bytes  00/00/00                 
                                                                                 
-TAB panel RET open SPC tag ' find C copy V move R ren D del K mkdir S sort ? he 
+TABPanel RETOpen SPCTag  C Copy  V Move  R Ren  D Del  K Mkdir  S Sort  ? Help  
