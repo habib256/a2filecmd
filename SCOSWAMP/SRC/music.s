@@ -65,8 +65,16 @@ FADE_STEP = 3           ; ticks entre deux pas de fondu
 ; MUSIC/<NOM>.MB par music_load (scoswamp.c). MUSIC_ZONE et MUSIC_OVER de
 ; music.h disent les memes tailles. Chaque moitie garde son curseur : revenir
 ; a la zone apres un combat la reprend ou elle en etait, sans rien relire.
-; Seule la page de transit ci-dessous est reservee en MAIN.
+; Seule la page de transit ci-dessous est reservee en MAIN -- ou en RAM
+; basse (LOWBSS) pour TOTAL, assemble avec -D LOWBUF : sa BSS
+; principale est pleine, le jeu garde la sienne telle quelle.
+.ifdef LOWBUF
+.segment "LOWBSS"
+.endif
 _music_buf:     .res 256         ; staging disque, flux residents en AUX
+.ifdef LOWBUF
+.segment "BSS"
+.endif
 AUX_MUSIC = $1000
 mb_slot:        .res 1
 playing:        .res 1

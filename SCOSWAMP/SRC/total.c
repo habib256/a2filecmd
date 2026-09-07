@@ -83,7 +83,7 @@ struct Panel {
     unsigned int first;         /* premiere entree du disque dans la fenetre */
     unsigned int free_blocks, total_blocks;
     struct Entry* e;
-    unsigned char tags[MAX_ENTRIES / 8];
+    unsigned char tags[(MAX_ENTRIES + 7) / 8];
 };
 
 enum { SORT_NAME, SORT_SIZE, SORT_TYPE, SORT_MODES };
@@ -92,10 +92,13 @@ enum { ASK, OVERWRITE_ALL, SKIP_ALL };
 #define ENTRIES ((struct Entry*)0x2000)   /* la page HGR MAIN, voir l'en-tete */
 #define EDIT_BUF ((char*)0x2000)          /* la meme page pour l'editeur et l'aide */
 #define EDIT_MAX 0x1FF0
-/* Les deux panneaux en RAM basse aussi : main() les initialise avant usage. */
+/* Toute la BSS de ce fichier vit en RAM basse ($1000-$1FFF, segment LOWBSS
+ * de scoswamp.cfg) : main() la met a zero, crt0 ne le fait que pour BSS.
+ * Bornes du segment exportees par le lieur (voir scoswamp.c). */
+extern char _LOWBSS_RUN__[];
+extern char _LOWBSS_SIZE__[];
 #pragma bss-name (push, "LOWBSS")
 static struct Panel panels[2];
-#pragma bss-name (pop)
 static unsigned char active, sort_mode, over_policy;
 static unsigned int progress_done, progress_total, progress_skipped;
 /* Diagnostics lisibles par le banc de test POM2 (voir total.lbl). */
@@ -104,11 +107,6 @@ unsigned char total_view;       /* 0 panneaux, 1 image, 2 texte, 3 hexa, 4 aide,
 unsigned char total_slot;       /* la Mockingboard, 0 sans ; 0xFF pas encore cherchee */
 unsigned char total_playing;    /* 0 silence, 1 joue, 2 en pause */
 
-/* Les tampons de travail vivent en RAM basse ($1000-$1FFF, segment LOWBSS
- * de scoswamp.cfg, a cote du tampon RLE) : aucun n'a besoin d'etre mis a
- * zero, chacun est rempli avant d'etre lu -- crt0 y a d'ailleurs lu l'image
- * de la carte langage avant main. */
-#pragma bss-name (push, "LOWBSS")
 static char full[PATH_LEN + NAME_LEN];
 static char other_full[PATH_LEN + NAME_LEN];
 static char cfg_path[PATH_LEN];
@@ -119,14 +117,15 @@ static unsigned char gfi[18];
 static unsigned char gfi_path[PATH_LEN + 1];
 static unsigned char picked[MAX_ENTRIES];
 static long text_starts[96];
-/* Les parcours recursifs (copie et suppression d'un dossier) empilent ici
+/* Les parcours recursifs (copie et suppression d'un dossier) empilent
  * les entrees de chaque niveau : un niveau occupe pool[base..base+n[, le
  * niveau suivant commence a base+n. Un arbre dont un chemin cumule plus de
- * POOL_SIZE entrees est refuse avant toute ecriture. */
-#define POOL_SIZE 120
+ * POOL_SIZE entrees est refuse avant toute ecriture. La reserve occupe la
+ * table d'entrees du panneau inactif (4060 octets), inutile pendant
+ * l'operation puisque les deux panneaux sont relus ensuite. */
+#define POOL_SIZE 213
 struct Mini { char name[16]; unsigned char type; unsigned int aux; };
-static struct Mini pool[POOL_SIZE];
-#pragma bss-name (pop)
+static struct Mini* pool;
 
 /* ---------------------------------------------------------------------- */
 /* MLI : GET_FILE_INFO et SET_FILE_INFO                                    */
@@ -204,6 +203,7 @@ static unsigned char dir_open(const char* path)
     if (read(dir_fd, copy_buf, 512) != 512 || (copy_buf[4] >> 4) < 0x0E) { close(dir_fd); dir_fd = -1; return 0; }
     dir_entry_len = copy_buf[4 + 0x1F];
     dir_per_block = copy_buf[4 + 0x20];
+    if (dir_entry_len != 0x27 || dir_per_block != 0x0D) { close(dir_fd); dir_fd = -1; return 0; }
     dir_index = 1;                   /* l'entree 0 est l'en-tete */
     return 1;
 }
@@ -370,7 +370,7 @@ static void draw_entry(unsigned char p, unsigned char index)
     if (p == active && index == pan->cursor) revers(1);
     gotoxy(x, row);
     if (is_up(e)) cprintf("%-15s  <UP>                 ", e->name);
-    else if (!pan->path[0]) cprintf("%-15s S%u,D%u %5u/%5u free ", e->name, e->mdate & 7, (e->mdate >> 3) + 1, e->aux, e->blocks);
+    else if (!pan->path[0]) cprintf("%-15s S%u,D%u %5u/%5u free", e->name, e->mdate & 7, (e->mdate >> 3) + 1, e->aux, e->blocks);
     else if (is_dir(e)) cprintf("%-15s  <DIR>          %5u ", e->name, e->blocks);
     else cprintf("%-15s%c%c%s $%04X %8lu   ", e->name, tagged(pan, index) ? '*' : ' ',
                  is_locked(e) ? 'L' : ' ', type_name(e->type), e->aux, e->size);
@@ -389,7 +389,8 @@ static void draw_panel(unsigned char p)
     cclearxy(x, 0, 38);
     if (p == active) revers(1);
     gotoxy(x, 0);
-    cprintf("%-38.38s", pan->path[0] ? pan->path : "[Volumes]");
+    i = strlen(pan->path);
+    cprintf("%-38.38s", !pan->path[0] ? "[Volumes]" : i > 38 ? pan->path + i - 38 : pan->path);
     revers(0);
     gotoxy(x, 1);
     if (!pan->path[0]) cprintf("%-38s", "Volume          Slot   Free/Total");
@@ -432,10 +433,14 @@ static void draw_info(void)
     if (is_up(e)) cputs("Parent directory");
     else if (!pan->path[0]) cprintf("Volume %s  slot %u drive %u  %u blocks, %u free", e->name, e->mdate & 7, (e->mdate >> 3) + 1, e->blocks, e->aux);
     else if (is_dir(e)) cprintf("%s  directory  %u blocks", e->name, e->blocks);
-    else cprintf("%s  type $%02X  aux $%04X  %u blocks  %lu bytes  %02u/%02u/%02u%s",
-                 e->name, e->type, e->aux, e->blocks, e->size,
-                 e->mdate & 31, (e->mdate >> 5) & 15, (e->mdate >> 9) % 100,
-                 is_locked(e) ? "  locked" : "");
+    else {                      /* 83 colonnes au pire (nom de 15, 16 Mo, verrou) : coupee a 79 */
+        sprintf((char*)copy_buf, "%s  type $%02X  aux $%04X  %u blocks  %lu bytes  %02u/%02u/%02u%s",
+                e->name, e->type, e->aux, e->blocks, e->size,
+                e->mdate & 31, (e->mdate >> 5) & 15, (e->mdate >> 9) % 100,
+                is_locked(e) ? "  locked" : "");
+        copy_buf[79] = 0;
+        cputs((char*)copy_buf);
+    }
     n = tag_count(pan);
     if (n) { gotoxy(70, 21); cprintf("%u tagged", n); }
 }
@@ -545,7 +550,7 @@ static unsigned char read_panel(unsigned char p)
             if (!pan->first) add_entry(pan, "..", 0x0F);
             while (dir_next()) {
                 if (skip) { --skip; continue; }
-                if (pan->count >= MAX_ENTRIES) { pan->more = 1; break; }
+                if (pan->count >= (pan->first ? WINDOW : MAX_ENTRIES)) { pan->more = 1; break; }
                 e = add_entry(pan, dir_entry.name, dir_entry.type);
                 e->access = dir_entry.access;
                 e->aux = dir_entry.aux;
@@ -554,6 +559,7 @@ static unsigned char read_panel(unsigned char p)
                 e->mdate = dir_entry.mdate;
             }
             dir_close();
+            if (pan->first && !pan->count) { pan->first = 0; return read_panel(p); }
             if (!pan->first && !pan->more && pan->count > 2) sort_entries(pan);
         }
     }
@@ -602,7 +608,7 @@ static void go_up(struct Panel* pan)
     char last[NAME_LEN];
     char* slash = strrchr(pan->path, '/');
     if (!slash) return;
-    strcpy(last, slash + 1);
+    strcpy(last, slash == pan->path ? slash : slash + 1);   /* la liste des volumes nomme "/VOL" */
     if (slash == pan->path) pan->path[0] = 0;   /* "/VOL" -> volumes */
     else *slash = 0;
     open_path(pan);
@@ -684,7 +690,10 @@ static void report_error(const char* what)
 /* ---------------------------------------------------------------------- */
 
 /* Sans ouvrir le fichier : un FOT ($08), ou un BIN de la taille d'une page
- * HGR ou DHGR, ou un flux .RLE. L'ouverture tranche ensuite sur l'en-tete. */
+ * HGR ou DHGR, ou un flux .RLE. L'ouverture tranche ensuite sur l'en-tete.
+ * En RAM principale : la carte langage est pleine. */
+#pragma code-name (push, "CODE")
+#pragma rodata-name (push, "RODATA")
 static unsigned char looks_like_image(const struct Entry* e)
 {
     unsigned char n = strlen(e->name);
@@ -694,6 +703,8 @@ static unsigned char looks_like_image(const struct Entry* e)
     return e->size == 8192 || e->size == 8184 || e->size == 16384
         || (n > 4 && !strcmp(e->name + n - 4, ".RLE"));
 }
+#pragma rodata-name (pop)
+#pragma code-name (pop)
 
 /* Lecture tamponnee : fgetc de cc65 passe par ProDOS a chaque octet. */
 static FILE* vf;
@@ -743,7 +754,7 @@ static void view_text(const char* path)
             c &= 0x7F;
             if (c == 13 || c == 10) { ++row; col = 0; if (row < TEXT_ROWS) gotoxy(0, row); continue; }
             if (c < 32) c = '.';
-            if (col == 80) { ++row; col = 0; if (row >= TEXT_ROWS) { --row; break; } gotoxy(0, row); }
+            if (col == 80) { ++row; col = 0; if (row >= TEXT_ROWS) { --row; --vpos; break; } gotoxy(0, row); }   /* le caractere ouvrira la page suivante */
             cputc((char)c);
             ++col;
         }
@@ -835,8 +846,8 @@ static void load_config(void)
         if (copy_buf[i] != '\r') { if (len < PATH_LEN - 1) line[len++] = copy_buf[i]; continue; }
         line[len] = 0;
         if (p < 2 && line[0] == '/') strcpy(panels[p].path, line);
-        if (p == 2 && line[0] == 'S' && line[2] == 'A') {
-            sort_mode = (line[1] - '0') % SORT_MODES;
+        if (p == 2 && len >= 4 && line[0] == 'S' && line[2] == 'A' && (unsigned char)(line[1] - '0') < SORT_MODES) {
+            sort_mode = line[1] - '0';
             active = (line[3] - '0') & 1;
         }
         ++p;
@@ -1146,7 +1157,7 @@ static unsigned char edit_file(unsigned char fresh, unsigned char type, unsigned
         if (!f) { report_error("Open"); return 0; }
         elen = fread(EDIT_BUF, 1, EDIT_MAX + 1, f);
         fclose(f);
-        if (elen > EDIT_MAX) { message("Too big for the editor (8 KB at most)."); return 0; }
+        if (elen > EDIT_MAX) { message("Too big for the editor (8 KB)."); return 0; }
         for (i = 0; i < elen; ++i) { EDIT_BUF[i] &= 0x7F; if (EDIT_BUF[i] == '\n') EDIT_BUF[i] = '\r'; }
     }
     total_view = 5;
@@ -1215,7 +1226,7 @@ static void edit_selected(void)
         if (!prompt("New text file", NULL, 0)) return;
         if (strlen(pan->path) + 1 + strlen(input) >= PATH_LEN) { too_long(); return; }
         sprintf(full, "%s/%s", pan->path, input);
-        if (exists(full)) { message("This file exists: select it to edit it."); return; }
+        if (exists(full)) { message("File exists: select it to edit."); return; }
         fresh = 1;
     } else if (!build_full(full, pan, e)) { too_long(); return; }
     strcpy(question, fresh ? input : e->name);
@@ -1309,8 +1320,10 @@ static void view_help(void)
     total_view = 4;
     clrscr();
     while (*s) {
-        x = 0; while (*s != ',') x = x * 10 + (*s++ - '0'); ++s;
-        y = 0; while (*s != ',') y = y * 10 + (*s++ - '0'); ++s;
+        x = 0; while (*s >= '0' && *s <= '9') x = x * 10 + (*s++ - '0');
+        if (*s++ != ',') break;
+        y = 0; while (*s >= '0' && *s <= '9') y = y * 10 + (*s++ - '0');
+        if (*s++ != ',' || x >= 80 || y >= 23) break;
         gotoxy(x, y);
         kind = *s;
         if (kind == '#' || kind == '~') {         /* # titre de section, ~ texte en clair */
@@ -1319,7 +1332,8 @@ static void view_help(void)
             while (*s && *s != '\n' && *s != '\r') cputc(*s++);
             if (kind == '#') { cputc(' '); revers(0); }
         } else {
-            for (klen = 0; s[klen] != ','; ++klen) {}
+            for (klen = 0; s[klen] && s[klen] != ',' && s[klen] != '\r' && s[klen] != '\n'; ++klen) {}
+            if (s[klen] != ',') break;
             revers(1);
             if (klen == 1) { cputc(' '); cputc(*s); cputc(' '); }
             else for (i = 0; i < 3; ++i) cputc(i < klen ? s[i] : ' ');
@@ -1383,12 +1397,10 @@ static unsigned char push_name(char* path, const char* name)
     return 1;
 }
 
+/* GET_FILE_INFO : plus leger qu'un fopen, et gfi[4] garde le type. */
 static unsigned char exists(const char* path)
 {
-    FILE* f = fopen(path, "rb");
-    if (!f) return 0;
-    fclose(f);
-    return 1;
+    return file_info(path);
 }
 
 static void progress_bar(const char* name, unsigned long copied, unsigned long size)
@@ -1429,12 +1441,13 @@ static unsigned char copy_file(const char* name, unsigned char type, unsigned in
     unsigned int n;
     unsigned long size, copied = 0;
     unsigned char ok = 1;
-    if (exists(other_full)) {
-        if (!may_overwrite(name)) { ++progress_skipped; ++progress_done; return 2; }
-        if (remove(other_full)) { report_error("Overwrite"); return 0; }
-    }
     in = fopen(full, "rb");
     if (!in) { report_error("Open"); return 0; }
+    if (exists(other_full)) {
+        if (gfi[4] == 0x0F) { fclose(in); message("Skipped: a directory."); ++progress_skipped; ++progress_done; return 2; }
+        if (!may_overwrite(name)) { fclose(in); ++progress_skipped; ++progress_done; return 2; }
+        if (remove(other_full)) { fclose(in); report_error("Overwrite"); return 0; }
+    }
     fseek(in, 0, SEEK_END);
     size = ftell(in);
     rewind(in);
@@ -1557,7 +1570,7 @@ static unsigned char target_check(void)
 {
     struct Panel* dst = &panels[!active];
     if (!panels[active].path[0]) { message("Open a directory first."); return 0; }
-    if (!dst->path[0]) { message("Open a directory in the other panel first."); return 0; }
+    if (!dst->path[0]) { message("Open a directory in the other panel."); return 0; }
     if (!strcmp(dst->path, panels[active].path)) { message("Both panels show the same directory."); return 0; }
     return 1;
 }
@@ -1570,6 +1583,7 @@ static void copy_or_move(unsigned char move)
     if (!target_check()) return;
     n = pick_targets();
     if (!n) return;
+    pool = (struct Mini*)panels[!active].e;
     /* Le compteur "fichier x sur y" demande de connaitre y : un premier
      * parcours compte les fichiers, dossiers compris. */
     progress_total = 0;
@@ -1580,9 +1594,9 @@ static void copy_or_move(unsigned char move)
         const struct Entry* e = &pan->e[picked[i]];
         if (is_up(e)) continue;
         if (!is_dir(e)) { ++progress_total; continue; }
-        if (!build_full(full, pan, e)) { too_long(); return; }
+        if (!build_full(full, pan, e)) { too_long(); refresh_both(); return; }   /* la reserve a recouvert l'autre panneau */
         sub = count_tree(0);
-        if (sub == 0xFFFF) { dir_fail(); return; }
+        if (sub == 0xFFFF) { dir_fail(); refresh_both(); return; }
         progress_total += sub;
     }
     for (i = 0; i < n; ++i) {
@@ -1616,6 +1630,7 @@ static void delete_targets(void)
     const struct Entry* e;
     n = pick_targets();
     if (!n) { message("Nothing to delete here."); return; }
+    pool = (struct Mini*)panels[!active].e;
     e = &pan->e[picked[0]];
     if (n == 1 && is_up(e)) { message("Nothing to delete here."); return; }
     if (n == 1) sprintf(question, "Delete %s%s?", e->name, is_dir(e) ? " and everything inside" : "");
@@ -1640,7 +1655,7 @@ static void delete_targets(void)
 
 static void rename_selected(const struct Entry* e)
 {
-    if (is_up(e) || !panels[active].path[0]) { message("Select a file or directory to rename."); return; }
+    if (is_up(e) || !panels[active].path[0]) { message("Select something to rename."); return; }
     if (!prompt("New name", e->name, 0)) return;
     if (!build_full(full, &panels[active], e)) { too_long(); return; }
     if (strlen(panels[active].path) + 1 + strlen(input) >= PATH_LEN) { too_long(); return; }
@@ -1713,8 +1728,8 @@ static void run_selected(const struct Entry* e)
 {
     unsigned int addr = e->type == 0xFF ? 0x2000 : e->aux;
     if (is_dir(e) || !panels[active].path[0]) { message("Select a SYS or BIN program."); return; }
-    if (e->type != 0xFF && e->type != 0x06) { message("Only SYS and BIN files can be run."); return; }
-    if (addr < 0x0800 || (unsigned long)addr + e->size > 0xBF00) { message("A BIN must load between $0800 and $BEFF."); return; }
+    if (e->type != 0xFF && e->type != 0x06) { message("Only SYS and BIN run."); return; }
+    if (addr < 0x0800 || (unsigned long)addr + e->size > 0xBB00) { message("A BIN must load between $0800 and $BAFF."); return; }
     if (!build_full(full, &panels[active], e)) { too_long(); return; }
     sprintf(question, "Run %s? TOTAL will not resume.", e->name);
     if (!confirm(question)) return;
@@ -1729,7 +1744,7 @@ static void format_disk(void)
 {
     if (!confirm("Open the disk formatter?")) return;
     strcpy(full, cfg_path);
-    if (strlen(full) > 16) full[strlen(full) - 16] = 0;   /* "/TOTAL/TOTAL.CFG" -> la racine */
+    { char* s = strchr(full + 1, '/'); if (s) *s = 0; }   /* "/VOL/TOTAL/TOTAL.CFG" -> "/VOL" */
     chdir(full);
     strcpy(full, "TOTAL/FORMAT.SYS");
     launch_file(0x2000);
@@ -1881,8 +1896,8 @@ int main(void)
     char key;
     struct Panel* pan;
     videomode(VIDEOMODE_80COL);
+    memset(_LOWBSS_RUN__, 0, (size_t)_LOWBSS_SIZE__);
     total_slot = 0xFF;
-    memset(panels, 0, sizeof panels);
     panels[0].e = ENTRIES;
     panels[1].e = ENTRIES + MAX_ENTRIES;
     if (!getcwd(panels[0].path, PATH_LEN)) strcpy(panels[0].path, "/SCOSWAMP");

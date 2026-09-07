@@ -1,4 +1,4 @@
-APPLE TOTAL COMMANDER 1.0 - free software, GNU GPL v3, by Arnaud VERHILLE
+APPLE IIe TOTAL COMMANDER 1.0 - free software, GNU GPL v3, by Arnaud VERHILLE
 TEST FILES / FICHIERS DE TEST
 
 Open each file with RETURN, or I to force the image viewer:

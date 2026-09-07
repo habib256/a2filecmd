@@ -1,7 +1,7 @@
 # TOTAL
 
 Un gestionnaire de fichiers ProDOS à deux panneaux, dans l'esprit de Total
-Commander, pour l'Apple IIe 128 Ko ; son nom complet est **Apple Total
+Commander, pour l'Apple IIe 128 Ko ; son nom complet est **Apple IIe Total
 Commander 1.0** (le numéro vit dans `TOTAL_VERSION` du Makefile, repris par
 le lanceur, la ligne de statut et l'aide). C'est un logiciel libre sous
 licence GNU GPL v3, d'Arnaud Verhille, comme le reste du dépôt ; le lanceur
@@ -52,10 +52,10 @@ avec le chemin et la page à gauche.
 | **M** | marquer les fichiers absents de l'autre panneau ou de taille différente : suivi de C, c'est une synchronisation |
 | **A** | changer le type et l'auxtype d'un fichier, en hexadécimal |
 | **L** | verrouiller ou déverrouiller ; un fichier verrouillé porte un L après son nom et refuse la suppression et le renommage |
-| **?** | l'aide, un écran qui résume toutes les touches, sous le titre « Apple Total Commander » |
+| **?** | l'aide, un écran qui résume toutes les touches, sous le titre « Apple IIe Total Commander » |
 | **T** | lire le fichier sélectionné comme du texte |
 | **H** | afficher le fichier sélectionné en hexadécimal |
-| **X** | lancer le fichier sélectionné après confirmation ; TOTAL ne reprend pas la main. Un SYS est lu en `$2000`, un BIN à son auxtype s'il tient sous `$4000` |
+| **X** | lancer le fichier sélectionné après confirmation ; TOTAL ne reprend pas la main. Un SYS est lu en `$2000`, un BIN à son auxtype, entre `$0800` et `$BAFF` (le talon garde son tampon ProDOS en `$BB00`) |
 | **E** | éditer le fichier sélectionné comme du texte ; sur un dossier ou `..`, créer un fichier texte neuf dans le dossier courant |
 | **I** | afficher le fichier sélectionné comme une image, quel que soit son nom : HGR ou DHGR, brut ou compressé RLE |
 | **P** | mettre en pause ou reprendre la musique Mockingboard ; Entrée sur un fichier `.MB` la lance |
@@ -150,7 +150,8 @@ chargement. Les lignes plus longues que l'écran ne sont pas repliées.
 ## Ce que TOTAL ne fait pas
 
 - Il refuse de copier un dossier dans lui-même, et un arbre dont un chemin
-  cumule plus de 120 entrées (la réserve des parcours récursifs).
+  cumule plus de 213 entrées (la réserve des parcours récursifs, logée dans
+  la table du panneau inactif pendant l'opération).
 - Il ne lance pas les programmes BASIC (BAS) : BASIC.SYSTEM n'est pas sur le
   volume, le jeu occupe sa mémoire.
 - Un dossier de plus de 139 entrées est lu par fenêtres, dans l'ordre du
@@ -169,7 +170,7 @@ chargement. Les lignes plus longues que l'écran ne sont pas repliées.
 | `TOTAL/TOTAL.CODE` | Le gestionnaire lui-même (`SCOSWAMP/SRC/total.c`, plus `total_mli.s` pour GET_FILE_INFO et SET_FILE_INFO : espace libre, type, auxtype, verrou) |
 | `TOTAL/TOTAL.CFG` | Écrit par TOTAL en quittant : les deux dossiers, le tri et le panneau actif, trois lignes de texte |
 | `TOTAL/FORMAT.SYS` | Le formateur (`format.c`, `format_diskii.s`, `format_mli.s`). Pas de suffixe .SYSTEM : ProDOS amorce le premier fichier .SYSTEM du catalogue, et F passe avant S |
-| `TOTAL/TOTAL.HELP` | Le texte de la page d'aide (`SCOSWAMP/TOTAL/TOTAL.HELP.TXT`), une ligne par élément : `x,y,TOUCHE,libellé`, `x,y,=TITRE` pour une section, `x,y,-texte` pour du texte en clair. Il passe par la page graphique, rien de l'aide ne reste en mémoire |
+| `TOTAL/TOTAL.HELP` | Le texte de la page d'aide (`SCOSWAMP/TOTAL/TOTAL.HELP.TXT`), une ligne par élément : `x,y,TOUCHE,libellé`, `x,y,#TITRE` pour une section, `x,y,~texte` pour du texte en clair. Il passe par la page graphique, rien de l'aide ne reste en mémoire |
 
 Les noms tiennent dans les quinze caractères de ProDOS.
 
@@ -204,13 +205,14 @@ disposition LC/MAIN, le décodeur DHGR (`hgr_loader.s`) et les bascules vidéo
 tourne à `$4000`. Les deux tables de 140 entrées occupent la page graphique
 MAIN `$2000-$3FFF`, libre tant qu'aucune image n'est affichée : une image
 la recouvre, et les deux panneaux sont relus au retour, marques conservées.
-La RAM basse `$1000-$1EF9` reçoit le tampon RLE et les tampons de travail
-(chemins, copie, débuts de page du texte, réserve des parcours récursifs).
+La RAM basse `$1000-$1FFF` reçoit toute la BSS de `total.c` (panneaux,
+chemins, copie, débuts de page du texte), mise à zéro par `main`. La réserve
+des parcours récursifs emprunte la table d'entrées du panneau inactif.
 Les visionneuses, les saisies et le fichier de préférences vivent dans la
-carte langage, `$D400-$DF56` en banque 2, copiés par `crt0.s` comme pour le
+carte langage, `$D400-$DFFD` en banque 2 (2 octets libres : `check_lc_layout.py` veille), copiés par `crt0.s` comme pour le
 jeu ; avant de lancer un programme, TOTAL remet la ROM en lecture. La pile C
 fait 512 octets ; le lecteur Mockingboard (1,5 Ko) a pris presque tout le
-reste, il ne demeure que quelques octets libres. Les programmes lancés par
+reste, il ne demeure que quelques centaines d'octets libres en RAM principale. Les programmes lancés par
 X et F le sont par un talon recopié en page `$0300` (`chain.s`), qui lit le
 fichier entier à son adresse et y saute : aucune limite de taille, et
 FORMAT.SYS revient à TOTAL par le même talon. TOTAL n'utilise plus ni
@@ -225,9 +227,7 @@ ProDOS `$0800` et `$0C00` ; TOTAL n'utilise pas MAPBSS. Le programme est
 compilé avec `-Cl` (variables locales statiques) comme le jeu ; les trois
 parcours récursifs (compte, copie, suppression d'un arbre) repassent leurs
 variables sur la pile par `#pragma static-locals`, sans quoi le niveau
-interne écrase la longueur de chemin du niveau externe. La sortie suit le QUIT ProDOS du démarrage cc65. Le lancement d'un
-programme passe par `exec()` de cc65, qui charge un SYS en `$2000` ou un BIN à
-son auxtype et y saute.
+interne écrase la longueur de chemin du niveau externe. La sortie suit le QUIT ProDOS du démarrage cc65.
 
 Les preuves POM2 headless sont dans
 [VALIDATION-TOTAL](../../DOCS/VALIDATION-TOTAL/result.json) :
@@ -242,4 +242,33 @@ tailles, refus de copier un dossier dans lui-même, copie puis suppression
 d'un arbre à deux niveaux, renommage, liste des volumes avec slot et espace
 libre, retour à Bitsy Bye, restauration des panneaux par `TOTAL.CFG`, puis
 lancement de `DIAPO.SYSTEM` depuis TOTAL : 50 contrôles. Le banc travaille sur
-une copie du disque ; `SCOSWAMP/DHGR` n'est jamais modifié.
+une copie du disque ; `SCOSWAMP/DHGR` n'est jamais modifié. Trois autres
+bancs le complètent : `validate_images.py` (visionneur HGR/DHGR brut et RLE,
+comparaison octet à octet), `validate_format.py` (formatage d'une disquette
+vierge et du /RAM, image vérifiée à l'arrêt), `validate_floppy.py`
+(`dist/APPLE.TOTAL.dsk` amorcée seule avec `pom2_playtest --disk ... --boot 6` :
+racine, F puis ESC qui revient à TOTAL, aide, musique de TEST jouée une fois
+pendant l'image) ; et `explore.py`, la chasse aux bugs de la 1.0 sur un
+volume artificiel : dossier de 150 fichiers lu par fenêtres puis copié vers un
+/RAM trop petit, dossier vide, fichiers de 0 octet, lignes de 200 caractères
+dans le visionneur et l'éditeur, chemin de 56 caractères, renommage vers un
+nom existant.
+
+Bugs corrigés par cette chasse (et une relecture indépendante du code) avant
+la 1.0 : la carte des marques faisait un octet de trop court (quatre entrées
+fantômes dans une fenêtre pleine), le panneau tronquait les chemins longs par
+la fin, une fenêtre après la première comptait 140 entrées et en répétait une,
+un dossier vidé en mode fenêtré restait bloqué, le formateur calculait la
+carte des blocs sur 16 bits (nulle pour 65 535 blocs), prenait la taille dans
+l'en-tête de l'ancien volume, acceptait un lecteur sans disque, et revenait à
+Bitsy Bye depuis la disquette (TOTAL.SYSTEM y est à la racine) ; un BIN chargé
+en `$0800` écrasait le tampon du talon ; un TOTAL.HELP ou un TOTAL.CFG abîmé
+pouvait faire écrire n'importe où ; la copie détruisait la cible avant d'avoir
+ouvert la source, et pouvait remplacer un dossier vide par un fichier. Le
+plus grave, trouvé par la relecture finale et reproduit par `roundtrips.py` :
+le talon de lancement ne rendait pas à ProDOS l'entrée d'interruption prise
+au démarrage pour la Mockingboard (ProDOS n'en a que quatre, et le vecteur
+pointait dans de la mémoire recouverte) ; au troisième aller-retour F/ESC,
+TOTAL plantait dans le moniteur. `chain.s` appelle désormais `donelib`
+(les destructeurs cc65) avant de sauter, et le lanceur D/T du jeu fait de
+même.

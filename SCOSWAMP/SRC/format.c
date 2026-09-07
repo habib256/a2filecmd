@@ -44,7 +44,7 @@ struct Dev {
     char name[16];              /* le volume actuel, sans la barre */
     unsigned int blocks;
 };
-static struct Dev devs[14];
+static struct Dev devs[9];
 static unsigned char ndev;
 static unsigned char boot_unit;
 static char volname[16];
@@ -85,7 +85,7 @@ static void title(const char* sub)
     clrscr();
     gotoxy(0, 0);
     revers(1);
-    cprintf("%-79.79s", "  APPLE TOTAL COMMANDER " TOTAL_VERSION "  -  FORMAT A DISK FOR PRODOS");
+    cprintf("%-79.79s", "  APPLE IIe TOTAL COMMANDER " TOTAL_VERSION "  -  FORMAT A DISK FOR PRODOS");
     revers(0);
     gotoxy(1, 1);
     cputs(sub);
@@ -115,19 +115,33 @@ static void error_line(unsigned char row, unsigned char code)
 /* ---------------------------------------------------------------------- */
 
 static unsigned char slot_of(unsigned char unit) { return (unit >> 4) & 7; }
+/* Blocs de la carte des blocs libres : 4096 blocs par bloc, sans debordement
+ * 16 bits pour une partition de 65535 blocs (32 Mo). */
+static unsigned char bitmap_size(unsigned int total) { return (unsigned char)((total >> 12) + ((total & 4095) != 0)); }
 static unsigned char drive_of(unsigned char unit) { return (unit >> 7) + 1; }
 
 /* Le type d'apres la signature de la ROM du slot ($Cs01/03/05/07 et
  * $CsFF), comme Hyper-FORMAT ; le pilote /RAM se reconnait a son adresse
  * $FF00 dans DEVADR. Tout le reste est un peripherique de bloc sans
  * formatage physique : on n'y ecrit que les structures ProDOS. */
+/* La ROM de la carte qui pilote l'unite : celle du slot du pilote quand
+ * ProDOS l'appelle en ROM ($C100-$C7FF), ce qui suit aussi un troisieme ou
+ * quatrieme lecteur SmartPort renumerote en slot 2 ; sinon celle du slot de
+ * l'unite (pilote interne de ProDOS : Disk II). */
+static const unsigned char* rom_of(unsigned char unit)
+{
+    unsigned int drv = DEVADR[unit >> 4];
+    if (drv >= 0xC100 && drv < 0xC800) return (const unsigned char*)(drv & 0xFF00);
+    return (const unsigned char*)(0xC000 + slot_of(unit) * 256);
+}
+
 static unsigned char kind_of(unsigned char unit)
 {
-    const unsigned char* rom = (const unsigned char*)(0xC000 + slot_of(unit) * 256);
+    const unsigned char* rom = rom_of(unit);
     if (DEVADR[unit >> 4] == 0xFF00) return KIND_RAM;
     if (rom[1] == 0x20 && rom[3] == 0x00 && rom[5] == 0x03) {
-        if (rom[0xFF] == 0x00) return KIND_DISKII;
-        if (rom[7] == 0x3C || rom[7] == 0x55) return KIND_SMART;
+        if (rom[0xFF] == 0x00 && DEVADR[unit >> 4] >= 0xD000) return KIND_DISKII;
+        if (rom[7] == 0x00) return KIND_SMART;      /* $Cn07 = 0 : interface SmartPort */
     }
     return KIND_BLOCK;
 }
@@ -138,7 +152,7 @@ static void scan_devices(void)
     static unsigned char parms[4], online[16], gfi[18];
     static char path[18];
     ndev = 0;
-    for (i = 0; i < n && ndev < 14; ++i) {
+    for (i = 0; i < n && ndev < 9; ++i) {
         struct Dev* d = &devs[ndev];
         d->unit = DEVLST[i] & 0xF0;
         d->kind = kind_of(d->unit);
@@ -162,11 +176,15 @@ static void scan_devices(void)
             gfi[2] = (unsigned char)((unsigned)path >> 8);
             if (!mli_call(0xC4, gfi)) d->blocks = gfi[5] | ((unsigned int)gfi[6] << 8);
         }
-        /* sinon STATUS du pilote : le nombre de blocs, meme sans volume.
+        /* STATUS du pilote : le nombre de blocs sans volume, et la taille
+         * reelle quand un en-tete annonce plus que le disque. L'en-tete
+         * l'emporte quand il annonce moins : le pilote /RAM de ProDOS rend
+         * 255 blocs pour un volume de 127, et il n'y a bien que 128 blocs.
          * Un pilote loge au-dessus de $D000 (Disk II, /RAM) vit en banque 1
          * de la carte langage : l'appel direct doit la commuter. */
-        if (d->kind == KIND_DISKII) { if (!d->blocks) d->blocks = 280; }   /* son STATUS ne compte pas les blocs */
-        else if (!d->blocks && !driver_call(d->unit, 0, DEVADR[d->unit >> 4] >= 0xD000)) d->blocks = driver_blocks;
+        if (d->kind == KIND_DISKII) d->blocks = 280;   /* son STATUS ne compte pas les blocs, et un en-tete peut mentir */
+        else if (!driver_call(d->unit, 0, DEVADR[d->unit >> 4] >= 0xD000) && driver_blocks && (!d->blocks || driver_blocks < d->blocks)) d->blocks = driver_blocks;
+        if (d->kind == KIND_RAM && d->blocks > 127) d->blocks = 127;   /* STATUS dit 255 : 128 blocs, dont ProDOS en garde un */
         ++ndev;
     }
 }
@@ -217,7 +235,7 @@ static unsigned char read_block(unsigned char unit, unsigned int block)
 static unsigned char write_structures(struct Dev* d)
 {
     unsigned char r, len = strlen(volname), i;
-    unsigned int total = d->blocks, bitmap_blocks = (total + 4095) / 4096, used = 6 + bitmap_blocks, b;
+    unsigned int total = d->blocks, bitmap_blocks = bitmap_size(total), used = 6 + bitmap_blocks, b;
     static const unsigned char timep[1] = { 0 };
     memset(BLOCK, 0, 512);
     memcpy(BLOCK, boot_code, sizeof boot_code);
@@ -252,7 +270,7 @@ static unsigned char write_structures(struct Dev* d)
     for (i = 0; i < bitmap_blocks; ++i) {
         memset(BLOCK, 0, 512);
         for (b = 0; b < 4096; ++b) {
-            unsigned int block = i * 4096 + b;
+            unsigned int block = ((unsigned int)i << 12) + b;
             if (block >= used && block < total) BLOCK[b >> 3] |= 0x80 >> (b & 7);
         }
         if ((r = write_block(d->unit, 6 + i))) return r;
@@ -363,9 +381,9 @@ static unsigned char do_format(void)
     } else if (target->kind == KIND_RAM) {
         r = driver_call(target->unit, 3, DEVADR[target->unit >> 4] >= 0xD000);
         if (r) return r;
-    } else if (target->kind == KIND_SMART) {
-        const unsigned char* rom = (const unsigned char*)(0xC000 + slot_of(target->unit) * 256);
-        if (rom[0xFE] & 0x08) { r = driver_call(target->unit, 3, DEVADR[target->unit >> 4] >= 0xD000); if (r) return r; }
+    } else if (target->kind == KIND_SMART && (rom_of(target->unit)[0xFE] & 0x08)) {   /* SmartPort : FORMAT vise l'unite ; une autre carte pourrait formater tout le disque */
+        r = driver_call(target->unit, 3, DEVADR[target->unit >> 4] >= 0xD000);
+        if (r) return r;
     }
     gotoxy(1, 5);
     cputs("Writing the ProDOS boot blocks, directory and bitmap ...");
@@ -399,6 +417,14 @@ int main(void)
             cgetc();
             continue;
         }
+        if (target->blocks < 7 + bitmap_size(target->blocks)) {
+            gotoxy(1, 8 + ndev);
+            revers(1);
+            cputs(" No disk, or its size is unknown: nothing to format. ");
+            revers(0);
+            cgetc();
+            continue;
+        }
         if (!ask_name()) continue;
         if (!confirm()) continue;
         r = do_format();
@@ -408,7 +434,7 @@ int main(void)
             cputs("The disk may be unusable until formatted again.");
         } else {
             gotoxy(1, 8);
-            cprintf("Done: /%s, %u blocks, %u free.", volname, target->blocks, target->blocks - 6 - (target->blocks + 4095) / 4096);
+            cprintf("Done: /%s, %u blocks, %u free.", volname, target->blocks, target->blocks - 6 - bitmap_size(target->blocks));
         }
         bar("Any key: back to the list    ESC: Total Commander");
         key = cgetc();
@@ -434,6 +460,13 @@ back:
         }
     }
     chain_addr = 0x2000;
-    chain_load("TOTAL/TOTAL.SYSTEM");
+    {
+        static unsigned char gfi[18];
+        static const char in_dir[] = "\x12TOTAL/TOTAL.SYSTEM";
+        gfi[0] = 0x0A;
+        gfi[1] = (unsigned char)((unsigned)in_dir & 0xFF);
+        gfi[2] = (unsigned char)((unsigned)in_dir >> 8);
+        chain_load(mli_call(0xC4, gfi) ? "TOTAL.SYSTEM" : "TOTAL/TOTAL.SYSTEM");
+    }
     return 0;
 }

@@ -1,4 +1,4 @@
-"""Banc POM2 du formateur d'Apple Total Commander : une disquette vierge dans
+"""Banc POM2 du formateur d'Apple IIe Total Commander : une disquette vierge dans
 un Disk II en slot 6, TOTAL lance depuis l'ecran-titre du jeu, F, le choix du
 lecteur, le nom, le mot ERASE ; puis le volume neuf est verifie depuis
 TOTAL (liste des volumes, dossier vide, creation d'un dossier) et, une fois
