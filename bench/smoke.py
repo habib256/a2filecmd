@@ -13,7 +13,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from pom2 import Pom2, Session, ROOT
+from pom2 import Pom2, Session, ROOT, DISK
 
 
 def scratch(dirpath, name='SCRATCH', blocks=1600):
@@ -32,7 +32,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='a2fc-smoke-') as tmp:
         tmp = Path(tmp)
         floppy = tmp / 'A2FILECMD.po'
-        shutil.copyfile(ROOT / 'dist/A2FILECMD.po', floppy)
+        shutil.copyfile(DISK, floppy)
         with Pom2(scratch(tmp), floppy=floppy, port=6601) as p:
             s = Session(p)
             s.boot()

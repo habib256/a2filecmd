@@ -30,7 +30,26 @@
 ;   void music_play(void);              joue le flux une seule fois
 ;   void music_stop(void);              silence net, timer desarme
 
+.ifdef A2_6502
+; Le IIe non enhanced n'a ni STZ ni BRA : les memes noms, en 6502. STZ garde
+; A, X et Y comme l'original ; seuls N et Z changent (ceux de A), et aucun
+; emploi ci-dessous ne les lit apres.
+.macro  stz     addr, idx
+        pha
+        lda     #0
+.ifblank idx
+        sta     addr
+.else
+        sta     addr,idx
+.endif
+        pla
+.endmacro
+.macro  bra     target
+        jmp     target
+.endmacro
+.else
         .setcpu "65C02"
+.endif
         .export _music_detect, _music_play, _music_stop, _music_buf
         .export _music_store, _music_set_loop, aux_read_cur, aux_mirror_end
         .import popax
@@ -689,7 +708,12 @@ init_aux_reader:
         rts
 aux_read_cur:
         sta $C003
+.ifdef A2_6502
+        ldy #0                  ; pas de (zp) sans Y sur 6502 ; Y est libre ici
+        lda (cur),y
+.else
         lda (cur)
+.endif
         sta $C002
         rts
 aux_read_header:

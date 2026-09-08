@@ -11,7 +11,26 @@
         .export         __STARTUP__ : absolute = 1      ; Mark as startup
 
         .import         initlib, donelib
-        .import         zerobss, callmain
+        .import         zerobss
+.ifndef CC65_MASTER
+        .import         callmain
+.endif
+
+.ifdef CC65_MASTER
+        ; cc65 master (la version 6502) : apple2/callmain.s y definit aussi
+        ; _exit, que nous avons ici avec nos propres sorties. Ce callmain-ci
+        ; le remplace -- main(void), pas d'arguments -- et la bibliotheque
+        ; garde le sien.
+        .export         callmain
+        .import         _main, pushax
+callmain:
+        lda     #0
+        tax
+        jsr     pushax          ; argc = 0
+        jsr     pushax          ; argv = NULL
+        ldy     #4
+        jmp     _main           ; son rts revient a l'appelant, sur _exit
+.endif
         .import         __LCIMAGE_START__                        ; Linker generated
         .import         __LC_START__, __LC_LAST__       ; Linker generated
 
@@ -31,9 +50,17 @@
         ; Save space by putting some of the start-up code in the ONCE segment,
         ; which can be re-used by the BSS segment, the heap and the C stack.
         jsr     init
+.ifdef A2FC_TRACE
+        lda #1
+        sta $03A1
+.endif
 
         ; Clear the BSS data.
         jsr     zerobss
+.ifdef A2FC_TRACE
+        lda #2
+        sta $03A1
+.endif
 
         ; Push the command-line arguments; and, call main().
         jsr     callmain
@@ -128,8 +155,18 @@ basic:  lda     HIMEM
         lda     #>_exit
         jsr     reset           ; Setup RESET vector
 
+        ; The ROM first: a SYSTEM program launched by ProDOS starts with the
+        ; ROM in, and the library's constructors count on it (the apple2
+        ; target's initostype does jsr $FE1F, no bank switch). But A2FC is
+        ; launched by its own loader, whose videomode() leaves language-card
+        ; bank 2 mapped for reading -- and $FE1F then lands in ProDOS.
+        bit     $C082
         ; Call the module constructors.
         jsr     initlib
+.ifdef A2FC_TRACE
+        lda #3
+        sta $03A1
+.endif
 
         ; Switch in LC bank 2 for W/O.
         bit     $C081

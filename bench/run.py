@@ -25,7 +25,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-from pom2 import Pom2, Session, ROOT
+from pom2 import Pom2, Session, ROOT, DISK, IMG
+HAS_MOUSE = not IMG.endswith('-6502')
 import mkdemo
 import mkdos33
 
@@ -90,7 +91,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='a2fc-bench-') as tmp:
         tmp = Path(tmp)
         floppy = tmp / 'A2FILECMD.po'
-        shutil.copyfile(ROOT / 'dist/A2FILECMD.po', floppy)
+        shutil.copyfile(DISK, floppy)
         with Pom2(scratch_volume(tmp), floppy=floppy, port=args.port, mouse=True) as p:
             s = Session(p)
 
@@ -468,49 +469,50 @@ def main():
             s.ok('Echap relance le gestionnaire, qui retrouve ses panneaux (A2FILE.CFG)',
                  s.rows()[0].startswith('/SCRATCH ') and '/SCRATCH/DEMO' in s.rows()[0], s.rows()[0][:60])
 
-            # ── 10. la souris ─────────────────────────────────────────────
-            # Une AppleMouse II en slot 4 depuis le debut de la session : tout ce
-            # qui precede s'est fait au clavier avec elle en place, sans que le
-            # pointeur ne s'affiche -- il ne parait qu'une fois la souris bougee.
-            s.ok('la souris est vue en slot 4, la ligne de statut le dit',
-                 s.value('mouse', 1) == 4 and s.has(' Mouse '), s.rows()[20][60:])
-            s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes')
-            s.select('/SCRATCH'); s.key(RET)
-            s.wait(lambda: s.rows()[0][:9] == '/SCRATCH ', 'racine'); p.stable()
-            s.select('DEMO'); s.key(RET); s.wait(lambda: s.has('/SCRATCH/DEMO'), 'DEMO')
-            p.stable()
-            x0 = 0 if s.cursor_row(0) is not None else 40      # le panneau actif
-            other = 40 - x0
+            if HAS_MOUSE:   # pas de souris dans la version 6502
+                # ── 10. la souris ─────────────────────────────────────────────
+                # Une AppleMouse II en slot 4 depuis le debut de la session : tout ce
+                # qui precede s'est fait au clavier avec elle en place, sans que le
+                # pointeur ne s'affiche -- il ne parait qu'une fois la souris bougee.
+                s.ok('la souris est vue en slot 4, la ligne de statut le dit',
+                     s.value('mouse', 1) == 4 and s.has(' Mouse '), s.rows()[20][60:])
+                s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes')
+                s.select('/SCRATCH'); s.key(RET)
+                s.wait(lambda: s.rows()[0][:9] == '/SCRATCH ', 'racine'); p.stable()
+                s.select('DEMO'); s.key(RET); s.wait(lambda: s.has('/SCRATCH/DEMO'), 'DEMO')
+                p.stable()
+                x0 = 0 if s.cursor_row(0) is not None else 40      # le panneau actif
+                other = 40 - x0
 
-            def cell(x, y):
-                base = 0x400 + (y & 7) * 0x80 + (y >> 3) * 40 + (x >> 1)
-                return p.peek(base, 1, 'aux' if x % 2 == 0 else 'main')[0]
-            p.home(); p.mouse(x=50, y=10); time.sleep(.3)
-            s.ok('le pointeur suit la souris, une fleche MouseText',
-                 cell(50, 10) == 0x42 and p.peek(s.sym['_mouse_x'], 2) == bytes([50, 10]),
-                 (hex(cell(50, 10)), p.peek(s.sym['_mouse_x'], 2).hex()))
-            p.mouse(x=150); time.sleep(.3)                 # +100 : hors de l'ecran
-            s.ok("le firmware borne la souris a l'ecran", p.peek(s.sym['_mouse_x'], 1)[0] == 79,
-                 p.peek(s.sym['_mouse_x'], 1)[0])
-            p.home()
-            p.click(x0 + 37, 5)                            # DEMO trie : ligne 5 = HGR.RLE ; en bout de ligne, hors du nom
-            s.ok('un clic selectionne la ligne', s.line(x0).startswith('HGR.RLE'), s.line(x0)[:20])
-            p.click(x0 + 37, 5)
-            s.wait(lambda: s.value('view', 1) == 1, 'image par la souris', 40); time.sleep(1)
-            s.ok("un second clic sur la selection l'ouvre", s.value('view', 1) == 1)
-            s.key(ESC); s.wait(lambda: s.value('view', 1) == 0, 'retour'); p.stable()
-            p.click(other + 5, 2)
-            s.ok("un clic dans l'autre panneau l'active et y pose le curseur",
-                 s.cursor_row(other) == 2 and s.cursor_row(x0) is None,
-                 (s.cursor_row(other), s.cursor_row(x0)))
-            p.click(74, 23)                                # le bouton ? Help
-            s.wait(lambda: s.value('view', 1) == 4, 'aide par la souris'); p.stable()
-            s.ok("un clic sur la barre des commandes vaut la touche", s.value('view', 1) == 4)
-            s.key(b' '); s.wait(lambda: s.value('view', 1) == 0, 'retour'); p.stable()
-            p.click(3, 23)                                 # TAB Panel
-            s.ok('un clic sur TAB Panel change de panneau', s.cursor_row(x0) is not None,
-                 (s.cursor_row(x0), s.cursor_row(other)))
-            p.mouse(x=79, y=20); time.sleep(.2)            # le pointeur hors du chemin
+                def cell(x, y):
+                    base = 0x400 + (y & 7) * 0x80 + (y >> 3) * 40 + (x >> 1)
+                    return p.peek(base, 1, 'aux' if x % 2 == 0 else 'main')[0]
+                p.home(); p.mouse(x=50, y=10); time.sleep(.3)
+                s.ok('le pointeur suit la souris, une fleche MouseText',
+                     cell(50, 10) == 0x42 and p.peek(s.sym['_mouse_x'], 2) == bytes([50, 10]),
+                     (hex(cell(50, 10)), p.peek(s.sym['_mouse_x'], 2).hex()))
+                p.mouse(x=150); time.sleep(.3)                 # +100 : hors de l'ecran
+                s.ok("le firmware borne la souris a l'ecran", p.peek(s.sym['_mouse_x'], 1)[0] == 79,
+                     p.peek(s.sym['_mouse_x'], 1)[0])
+                p.home()
+                p.click(x0 + 37, 5)                            # DEMO trie : ligne 5 = HGR.RLE ; en bout de ligne, hors du nom
+                s.ok('un clic selectionne la ligne', s.line(x0).startswith('HGR.RLE'), s.line(x0)[:20])
+                p.click(x0 + 37, 5)
+                s.wait(lambda: s.value('view', 1) == 1, 'image par la souris', 40); time.sleep(1)
+                s.ok("un second clic sur la selection l'ouvre", s.value('view', 1) == 1)
+                s.key(ESC); s.wait(lambda: s.value('view', 1) == 0, 'retour'); p.stable()
+                p.click(other + 5, 2)
+                s.ok("un clic dans l'autre panneau l'active et y pose le curseur",
+                     s.cursor_row(other) == 2 and s.cursor_row(x0) is None,
+                     (s.cursor_row(other), s.cursor_row(x0)))
+                p.click(74, 23)                                # le bouton ? Help
+                s.wait(lambda: s.value('view', 1) == 4, 'aide par la souris'); p.stable()
+                s.ok("un clic sur la barre des commandes vaut la touche", s.value('view', 1) == 4)
+                s.key(b' '); s.wait(lambda: s.value('view', 1) == 0, 'retour'); p.stable()
+                p.click(3, 23)                                 # TAB Panel
+                s.ok('un clic sur TAB Panel change de panneau', s.cursor_row(x0) is not None,
+                     (s.cursor_row(x0), s.cursor_row(other)))
+                p.mouse(x=79, y=20); time.sleep(.2)            # le pointeur hors du chemin
 
             # ── 11. Applesoft, en dernier : on ne revient pas ─────────────
             s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes')

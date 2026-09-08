@@ -101,11 +101,14 @@ def check_layout(s, loader, length, overlays=None):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--loader', type=Path, default=ROOT / 'src/loader.c')
+    ap.add_argument('--big', default='', help='surcouches grandes dans cette construction (ARCH=6502 : BINARY2), separees par des virgules')
     ap.add_argument('--lbl', type=Path, default=ROOT / 'build/a2fc.lbl',
                     help='table de symboles ld65 (-Ln)')
     ap.add_argument('--bin', type=Path, default=ROOT / 'build/A2FILE.CODE.BIN',
                     help="l'image a charge separee")
     args = ap.parse_args()
+    for name in filter(None, args.big.split(',')):
+        OVERLAYS[name] = 0x2800   # grande : jusqu'a la page graphique
     s = {name: int(value, 16) for value, name in re.findall(
         r'^al ([0-9A-Fa-f]+) \.([\w]+)$', args.lbl.read_text(), re.M)}
     loader = {name: int(value, 0) for name, value in re.findall(

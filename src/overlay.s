@@ -25,6 +25,13 @@
 
 BIG = 1
 
+; L'identite du lien, lisible du C : l'adresse de main, que cc65 master
+; n'accepte plus qu'on prenne en C (&main) mais que l'assembleur donne.
+        .export _a2fc_link_id
+        .segment "RODATA"
+_a2fc_link_id:
+        .word   _main
+
 .macro  header  flags, entry, desc
         .word   _main
         .byte   flags
@@ -46,7 +53,11 @@ BIG = 1
         .segment "SEARCH"
         header  0, _search_entry, "Search the panel files for text, tag those that match"
         .segment "BINARY2"
+.ifdef A2_6502
+        header  1, _binary2_entry, "Extract a Binary II (.BNY) archive to the other panel"
+.else
         header  0, _binary2_entry, "Extract a Binary II (.BNY) archive to the other panel"
+.endif
 
         .segment "AWP"
         header  0, _awp_entry, "Read an AppleWorks word-processor document"

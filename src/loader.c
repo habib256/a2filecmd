@@ -125,6 +125,9 @@ int main(void)
     fclose(f);
 
     /* A2 File Cmd ne revient jamais ici : il sort par le QUIT ProDOS. */
+#ifdef A2FC_TRACE
+    *(unsigned char*)0x03A2 = 1; *(unsigned char*)0x03A0 = 0; *(unsigned char*)0x03A1 = 0;
+#endif
     ((void (*)(void))CODE_ADDR)();
     return 0;
 }

@@ -3,6 +3,10 @@
 Changes in upcoming and published releases. See the [README](README.md) for features,
 downloads and installation.
 
+## Unreleased
+
+- Added a 6502 build for the unenhanced Apple IIe (`make disk ARCH=6502` with cc65 master, `A2FILECMD-6502.*`): the same program, keyboard only — no mouse driver.
+
 ## [0.6.7](https://github.com/habib256/a2filecmd/releases/tag/v0.6.7) — 2026-09-08
 
 - Added VDrive: two ProDOS volumes served over a Super Serial Card (or a //c's port 2) at 115 200 bps by ADTPro, `veserver.py` or surl-server, with the ADTPro VSDrive protocol; installed for the session, like Ammonoid.
