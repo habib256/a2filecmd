@@ -29,6 +29,8 @@ from pom2 import Pom2, Session, ROOT
 import mkdemo
 import mkdos33
 
+README_LEN = (ROOT / 'data/README.TXT').stat().st_size
+
 ESC, RET, DOWN, UP, LEFT, RIGHT, TAB = b'\x1b', b'\r', b'\x0a', b'\x0b', b'\x08', b'\x15', b'\t'
 
 
@@ -70,6 +72,10 @@ def scratch_volume(dirpath, name='SCRATCH', blocks=1600):
     ])[:18 * 16 * 256]
     (stage / 'DOS33.DSK').write_bytes(dos)
     (stage / 'OUT').mkdir()
+    # le dossier DEMO, tel que le .2mg le livre mais en petit : la disquette
+    # publiee n'en porte plus, c'est ici que le banc l'essaie
+    mkdemo.make(stage / 'DEMO', full=False)
+    shutil.copyfile(ROOT / 'data/README.TXT', stage / 'DEMO/README.TXT')
     return volume(stage, dirpath / 'SCRATCH.hdv', name, blocks)
 
 
@@ -99,8 +105,8 @@ def main():
             s.boot()
             s.ok('la disquette amorce sur les deux panneaux', s.has('/A2FILECMD'), s.rows()[0][:30])
             s.ok('la version est affichee', s.has('A2 FILE CMD 0.6.1'))
-            s.ok('le panneau droit ouvre DEMO', s.rows()[0][40:].startswith('/A2FILECMD/DEMO'),
-                 s.rows()[0][40:70])
+            s.ok('le panneau droit, sans DEMO sur la disquette, montre les volumes',
+                 '[Volumes]' in s.rows()[0][40:], s.rows()[0][40:70])
             s.ok('les blocs libres sont comptes',
                  re.search(r'\d+ of 280 blocks free', s.rows()[20]) is not None, s.rows()[20][:70])
             shot('01-panels')
@@ -122,7 +128,11 @@ def main():
             # ── 3. les images ─────────────────────────────────────────────
             dhgr = decode_rle(mkdemo.image(b'DHRR', 16384, mkdemo.dhgr_card()), 16384)
             hgr = decode_rle(mkdemo.image(b'HGRR', 8192, mkdemo.hgr_card()), 8192)
-            s.key(TAB)                                    # le panneau droit est sur DEMO
+            s.key(TAB)                                    # le panneau droit : /SCRATCH/DEMO
+            s.select('/SCRATCH', 40); s.key(RET)
+            s.wait(lambda: s.rows()[0][40:].startswith('/SCRATCH '), 'SCRATCH droit'); p.stable()
+            s.select('DEMO', 40); s.key(RET)
+            s.wait(lambda: s.has('/SCRATCH/DEMO'), 'DEMO droit'); p.stable()
             s.select('DHGR.RLE', 40); s.key(RET)
             s.wait(lambda: s.value('view', 1) == 1, 'image DHGR', 40); time.sleep(1.5)
             page = p.peek(0x2000, 8192, 'aux') + p.peek(0x2000, 8192)
@@ -328,10 +338,10 @@ def main():
                 s.key(TAB)
             s.key(ESC); s.wait(lambda: s.rows()[0][40:].startswith('/SCRATCH '), 'sortir image'); p.stable()
             s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes')
-            s.select('/A2FILECMD', 40); s.key(RET)
-            s.wait(lambda: s.rows()[0][40:].startswith('/A2FILECMD '), 'racine droite'); p.stable()
+            s.select('/SCRATCH', 40); s.key(RET)
+            s.wait(lambda: s.rows()[0][40:].startswith('/SCRATCH '), 'racine droite'); p.stable()
             s.select('DEMO', 40); s.key(RET)
-            s.wait(lambda: s.has('/A2FILECMD/DEMO'), 'DEMO droit'); p.stable()
+            s.wait(lambda: s.has('/SCRATCH/DEMO'), 'DEMO droit'); p.stable()
 
             # ── 5d. une disquette DOS 3.3 (image) ─────────────────────────
             # Entree sur DOS33.DSK montre son catalogue DOS 3.3 (types T/A/B) ;
@@ -376,10 +386,10 @@ def main():
                 s.key(TAB)
             s.key(ESC); s.wait(lambda: s.rows()[0][40:].startswith('/SCRATCH '), 'sortir DOS 3.3'); p.stable()
             s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes')
-            s.select('/A2FILECMD', 40); s.key(RET)
-            s.wait(lambda: s.rows()[0][40:].startswith('/A2FILECMD '), 'racine droite'); p.stable()
+            s.select('/SCRATCH', 40); s.key(RET)
+            s.wait(lambda: s.rows()[0][40:].startswith('/SCRATCH '), 'racine droite'); p.stable()
             s.select('DEMO', 40); s.key(RET)
-            s.wait(lambda: s.has('/A2FILECMD/DEMO'), 'DEMO droit 2'); p.stable()
+            s.wait(lambda: s.has('/SCRATCH/DEMO'), 'DEMO droit 2'); p.stable()
 
             # ── 6. copier, deplacer, renommer, supprimer ──────────────────
             s.key(TAB)                                    # le panneau gauche, la racine
@@ -405,7 +415,7 @@ def main():
                  not any(r[40:].startswith('README ') for r in s.rows()))
             s.key(TAB)
             s.ok('et se retrouve dans la cible',
-                 any(r.startswith('README ') and '1184' in r for r in s.rows()),
+                 any(r.startswith('README ') and '%d' % README_LEN in r for r in s.rows()),
                  next((r[:40] for r in s.rows() if r.startswith('README ')), 'absent'))
             s.ok('la copie garde nom, type et taille',
                  any(r.startswith('SAMPLE ') and 'TXT' in r and '712' in r for r in s.rows()),
@@ -455,8 +465,8 @@ def main():
             # le titre -- l'ecran d'attente du lanceur le porte aussi.
             s.key(ESC); s.wait(lambda: s.has('Type  Aux     Size'), 'retour au gestionnaire', 90)
             p.stable()
-            s.ok('Echap relance le gestionnaire depuis la disquette',
-                 s.has('/A2FILECMD'), s.rows()[0][:30])
+            s.ok('Echap relance le gestionnaire, qui retrouve ses panneaux (A2FILE.CFG)',
+                 s.rows()[0].startswith('/SCRATCH ') and '/SCRATCH/DEMO' in s.rows()[0], s.rows()[0][:60])
 
             # ── 10. la souris ─────────────────────────────────────────────
             # Une AppleMouse II en slot 4 depuis le debut de la session : tout ce
@@ -465,9 +475,9 @@ def main():
             s.ok('la souris est vue en slot 4, la ligne de statut le dit',
                  s.value('mouse', 1) == 4 and s.has(' Mouse '), s.rows()[20][60:])
             s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes')
-            s.select('/A2FILECMD'); s.key(RET)
-            s.wait(lambda: s.rows()[0][:11] == '/A2FILECMD ', 'racine'); p.stable()
-            s.select('DEMO'); s.key(RET); s.wait(lambda: s.has('/A2FILECMD/DEMO'), 'DEMO')
+            s.select('/SCRATCH'); s.key(RET)
+            s.wait(lambda: s.rows()[0][:9] == '/SCRATCH ', 'racine'); p.stable()
+            s.select('DEMO'); s.key(RET); s.wait(lambda: s.has('/SCRATCH/DEMO'), 'DEMO')
             p.stable()
             x0 = 0 if s.cursor_row(0) is not None else 40      # le panneau actif
             other = 40 - x0
@@ -504,9 +514,9 @@ def main():
 
             # ── 11. Applesoft, en dernier : on ne revient pas ─────────────
             s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes')
-            s.select('/A2FILECMD'); s.key(RET)
-            s.wait(lambda: s.rows()[0][:11] == '/A2FILECMD ', 'racine'); p.stable()
-            s.select('DEMO'); s.key(RET); s.wait(lambda: s.has('/A2FILECMD/DEMO'), 'DEMO')
+            s.select('/SCRATCH'); s.key(RET)
+            s.wait(lambda: s.rows()[0][:9] == '/SCRATCH ', 'racine'); p.stable()
+            s.select('DEMO'); s.key(RET); s.wait(lambda: s.has('/SCRATCH/DEMO'), 'DEMO')
             p.stable()
             # T sur un BAS : la surcouche BASLIST le detokenise (au lieu de l'hexa)
             s.select('HELLO'); p.stable()
@@ -525,15 +535,17 @@ def main():
             s.ok('BASIC.SYSTEM execute le programme Applesoft', True)
             s.wait(lambda: any(r.startswith(']') for r in s.rows40()), 'invite Applesoft', 30)
             s.ok('Applesoft rend la main', any(r.startswith(']') for r in s.rows40()))
-            # Le retour annonce par le programme : le prefixe etant reste la
-            # racine du volume, -A2FILE.SYSTEM relance A2FILE.SYSTEM, qui
-            # recharge A2 File Cmd. Le lanceur repose le prefixe sur le volume
-            # amorce (BASIC.SYSTEM l'a vide en partant), donc A2FC revient sur
-            # ses panneaux, pas sur la liste des volumes -- on l'exige ici.
+            # HELLO est sur /SCRATCH, qui n'a pas de BASIC.SYSTEM : RUN a pris
+            # celui de la disquette amorcee et lance "-/SCRATCH/DEMO/HELLO".
+            # BASIC.SYSTEM pose le prefixe sur son propre volume, /A2FILECMD :
+            # le retour annonce par le programme, -A2FILE.SYSTEM, s'y resout.
+            # Le lanceur repose le prefixe sur le volume amorce (BASIC.SYSTEM
+            # l'a vide en partant), donc A2FC revient sur ses panneaux (ceux
+            # d'A2FILE.CFG), pas sur la liste des volumes -- on l'exige ici.
             s.type('-A2FILE.SYSTEM'); s.key(RET)
             s.wait(lambda: s.has('Type  Aux     Size'), 'retour a A2FC', 90); p.stable()
-            s.ok('-A2FILE.SYSTEM relance A2 File Cmd depuis Applesoft', s.has('/A2FILECMD'),
-                 s.rows()[0][:30])
+            s.ok('-A2FILE.SYSTEM relance A2 File Cmd depuis Applesoft',
+                 s.rows()[0].startswith('/SCRATCH') and '/SCRATCH/DEMO' in s.rows()[0], s.rows()[0][:60])
 
             passed = sum(1 for c in s.checks if c['ok'])
             print(f'\n{passed} controles, tous passes', flush=True)

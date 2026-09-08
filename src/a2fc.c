@@ -3741,44 +3741,59 @@ static void launch_file(unsigned int addr)
  * auxtype. Un BAS ne se lance pas seul : c'est BASIC.SYSTEM qu'on charge, le
  * nom du programme depose en $2006 par chain_command -- il en fait la
  * commande "-NOM" au demarrage, exactement comme Bitsy Bye. BASIC.SYSTEM est
- * cherche a la racine du volume, sa place d'usage ; le prefixe part sur le
- * dossier du programme, c'est de la que "-NOM" se resout. */
+ * cherche a la racine du volume du programme, sa place d'usage, sinon sur
+ * le volume amorce (basic_path). */
+static const char run_pick[]  = "Select a program.";
+static const char run_range[] = "BIN must load in $0800-$BAFF.";
+static const char run_ask[]   = "Run %s? No return to A2FC.";
+static const char run_basic[] = "/BASIC.SYSTEM";
+
+/* BASIC.SYSTEM dans `full` : a la racine du volume du programme, sa place
+ * d'usage ; sinon a celle du volume amorce -- un BAS sur /RAM, sur un disque
+ * de donnees ou sur le disque dur part quand meme, avec le BASIC.SYSTEM de
+ * la disquette d'A2FC. */
+static void basic_path(void)
+{
+    char* s;
+    strcpy(full, panels[active].path);
+    s = strchr(full + 1, '/'); if (s) *s = 0;          /* "/VOL/DIR" -> "/VOL" */
+    strcat(full, run_basic);
+    if (exists(full)) return;
+    strcpy(full, cfg_path);
+    s = strchr(full + 1, '/'); if (s) *s = 0;          /* "/VOL/A2FILE/A2FILE.CFG" -> "/VOL" */
+    strcat(full, run_basic);
+}
+
 static void run_selected(const struct Entry* e)
 {
     unsigned int addr = e->type == 0xFF ? 0x2000 : e->aux;
-    unsigned char bas = e->type == 0xFC;
-    if (is_dir(e) || !panels[active].path[0]) { message("Select a program."); return; }
+    unsigned char bas = e->type == 0xFC, whole = 0;
+    if (is_dir(e) || !panels[active].path[0]) { message(run_pick); return; }
     if (bas) {
-        /* BASIC.SYSTEM depuis la racine du volume. Le programme est lance par
-         * son chemin relatif a la racine ("SOUS/NOM") quand il y tient, ce qui
-         * laisse le prefixe sur la racine : "-A2FILE.SYSTEM" (le retour que
-         * l'aide annonce) s'y resout alors. Trop profond, on retombe sur
-         * l'ancien comportement (prefixe = dossier du programme, "-NOM", sans
-         * retour possible). `input` porte le chemin relatif, ou "" sinon.
-         * BASIC.SYSTEM absent : launch_file dira "Run failed". */
-        char* slash = strchr(panels[active].path + 1, '/');   /* fin de "/VOL" */
-        input[0] = 0;
-        if (slash && strlen(slash + 1) + 1 + strlen(e->name) < 16)
-            sprintf(input, "%s/%s", slash + 1, e->name);
-        else if (!slash && strlen(e->name) < 16)
-            strcpy(input, e->name);
-        strcpy(full, panels[active].path);
-        { char* s = strchr(full + 1, '/'); if (s) *s = 0; }   /* "/VOL/DIR" -> "/VOL" */
-        strcat(full, "/BASIC.SYSTEM");
+        /* BASIC.SYSTEM (basic_path) recoit le programme par son chemin
+         * complet "-/VOL/DIR/NOM" quand il tient dans le talon de chain.s
+         * (46 caracteres) : il se resout quel que soit le prefixe -- et
+         * BASIC.SYSTEM pose le sien sur son propre volume, d'ou
+         * "-A2FILE.SYSTEM" (le retour que l'aide annonce) revient quand il
+         * vient de la disquette d'A2FC. Trop long, on retombe sur l'ancien
+         * comportement (prefixe = dossier du programme, "-NOM", sans retour
+         * possible). BASIC.SYSTEM absent : launch_file dira "Run failed". */
+        whole = build_full(other_full, &panels[active], e) && strlen(other_full) <= 46;
+        basic_path();
         addr = 0x2000;
     } else {
         if (e->type != 0xFF && e->type != 0x06) { extern const char msg_sysonly[]; message(msg_sysonly); return; }
-        if (addr < 0x0800 || (unsigned long)addr + e->size > 0xBB00) { message("BIN must load in $0800-$BAFF."); return; }
+        if (addr < 0x0800 || (unsigned long)addr + e->size > 0xBB00) { message(run_range); return; }
         if (!build_full(full, &panels[active], e)) { too_long(); return; }
     }
-    sprintf(question, "Run %s? No return to A2FC.", e->name);
+    sprintf(question, run_ask, e->name);
     if (!confirm(question)) return;
-    if (bas && input[0]) {                 /* prefixe = racine, "-SOUS/NOM" */
-        chain_command(input);
+    if (bas && whole) {                    /* prefixe = racine, "-/VOL/DIR/NOM" */
+        chain_command(other_full);
         strcpy(full, panels[active].path);
         { char* s = strchr(full + 1, '/'); if (s) *s = 0; }
         chdir(full);
-        strcat(full, "/BASIC.SYSTEM");
+        basic_path();
     } else {
         if (bas) chain_command(e->name);
         chdir(panels[active].path);
@@ -3789,13 +3804,16 @@ static void run_selected(const struct Entry* e)
 /* F : le formateur, A2FILE/FORMAT.SYS a cote de A2FILE.CODE (Bitsy Bye le
  * propose aussi), lance depuis la racine du volume ; il relance A2FC en
  * sortant. */
+static const char fmt_ask[] = "Open the disk formatter?";
+static const char fmt_sys[] = "A2FILE/FORMAT.SYS";
+
 static void format_disk(void)
 {
-    if (!confirm("Open the disk formatter?")) return;
+    if (!confirm(fmt_ask)) return;
     strcpy(full, cfg_path);
     { char* s = strchr(full + 1, '/'); if (s) *s = 0; }   /* "/VOL/A2FILE/A2FILE.CFG" -> "/VOL" */
     chdir(full);
-    strcpy(full, "A2FILE/FORMAT.SYS");
+    strcpy(full, fmt_sys);
     launch_file(0x2000);
 }
 
@@ -3817,7 +3835,7 @@ static unsigned char open_image(struct Panel* pan, const struct Entry* e)
 {
     unsigned char ord = pan->fs ? FS_PRODOS : image_order(e->name);
     char* slash;
-    if (!ord || e->size < 512 || (e->size & 511)) return 0;
+    if (!ord || e->size < 512 || ((e->size & 511) && (e->size & 511) != 64)) return 0;   /* 64 : l'en-tete 2IMG */
     if (!build_full(full, pan, e)) { too_long(); return 1; }
     strcpy(input, e->name);
     strcpy(pan->path, full);

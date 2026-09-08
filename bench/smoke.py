@@ -42,8 +42,8 @@ def main():
                  s.has('A2 FILE CMD 0.6.1'), s.rows()[20][:60].strip())
             s.ok('le lanceur est le seul .SYSTEM du volume',
                  any(r.startswith('A2FILE.SYSTEM') for r in s.rows()))
-            s.ok('les deux dossiers livres sont la',
-                 s.has('A2FILE ') and s.has('DEMO '))
+            s.ok('le dossier A2FILE est la, et pas de DEMO : la disquette est nue',
+                 s.has('A2FILE ') and not s.has('DEMO '))
             print('\n'.join(r.rstrip() for r in s.rows()[:22]), flush=True)
     return 0
 

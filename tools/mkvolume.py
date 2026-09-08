@@ -25,9 +25,9 @@ ce qui rend les SHA256 d'une publication verifiables.
 
 Un fichier de plus de 512 octets devient "sapling" : un bloc d'index de 256
 pointeurs (poids faibles en premiere moitie, poids forts en seconde) et ses
-blocs de donnees. Au-dela de 128 Ko il faudrait un arbre a trois niveaux ;
-aucun fichier d'A2 File Cmd n'en approche, et l'outil refuse plutot que de
-mentir.
+blocs de donnees. Au-dela de 128 Ko c'est un arbre ("tree") : un index
+maitre qui pointe jusqu'a 256 index d'arbrisseaux -- la disquette DOS 3.3
+de demonstration du .2mg, 143 360 octets, en a besoin.
 """
 import argparse
 import re
@@ -126,15 +126,27 @@ class Volume:
             self.block(key)[:len(data)] = data
             return 1, key, 1
         chunks = [data[i:i + BLOCK] for i in range(0, len(data), BLOCK)]
-        if len(chunks) > 256:
-            raise SystemExit('fichier de plus de 128 Ko : il faudrait un arbre')
+        if len(chunks) <= 256:
+            return 2, self.write_index(chunks), 1 + len(chunks)
+        # un arbre : l'index maitre pointe des index d'arbrisseaux de 256 blocs
+        if len(chunks) > 256 * 256:
+            raise SystemExit('fichier de plus de 16 Mo : ProDOS ne sait pas')
+        master = self.alloc()
+        for i in range(0, len(chunks), 256):
+            index = self.write_index(chunks[i:i + 256])
+            self.block(master)[i // 256] = index & 0xFF
+            self.block(master)[256 + i // 256] = index >> 8
+        return 3, master, 1 + (len(chunks) + 255) // 256 + len(chunks)
+
+    def write_index(self, chunks):
+        """Un index d'arbrisseau (256 blocs au plus) et ses blocs ; rend l'index."""
         index = self.alloc()
         blocks = [self.alloc() for _ in chunks]
         for i, (b, chunk) in enumerate(zip(blocks, chunks)):
             self.block(b)[:len(chunk)] = chunk
             self.block(index)[i] = b & 0xFF
             self.block(index)[256 + i] = b >> 8
-        return 2, index, 1 + len(chunks)
+        return index
 
     # ── les repertoires ────────────────────────────────────────────────────
     def dir_blocks_needed(self, count):

@@ -49,10 +49,13 @@ class Image:
         eof = int.from_bytes(entry[0x15:0x18], 'little')
         if storage == 1:
             return self.block(key)[:eof]
-        if storage == 2:
-            index, out = self.block(key), bytearray()
-            for i in range((eof + BLOCK - 1) // BLOCK):
-                out += self.block(index[i] | (index[256 + i] << 8))
+        if storage in (2, 3):
+            out = bytearray()
+            for n in range((eof + BLOCK - 1) // BLOCK):
+                index = self.block(key)
+                if storage == 3:             # l'index maitre, puis l'arbrisseau
+                    index = self.block(index[n >> 8] | (index[256 + (n >> 8)] << 8))
+                out += self.block(index[n & 255] | (index[256 + (n & 255)] << 8))
             return bytes(out[:eof])
         raise ValueError(f'storage type {storage} non gere')
 

@@ -97,30 +97,40 @@ $(FORMAT): $(SRC)/format.c $(SRC)/format_diskii.s $(SRC)/format_mli.s $(SRC)/for
 	  -Wl -D,__FILETYPE__=0xFF -o $@ \
 	  $(SRC)/format.c $(SRC)/format_diskii.s $(SRC)/format_mli.s $(BUILD)/chain.o $(IOBUF)
 
-# ── La disquette ───────────────────────────────────────────────────────────
-# Volume /A2FILECMD, 280 blocs, amorcable : ProDOS 2.4.3, le lanceur a la
-# racine (seul fichier .SYSTEM), le programme, ses surcouches (des BIN
-# charges en $1B00, d'ou leur auxtype) et son aide dans A2FILE/, et
-# un dossier DEMO fabrique de toutes pieces pour essayer le visionneur, le
-# lecteur Mockingboard et l'editeur.
+# ── La disquette et le disque dur ──────────────────────────────────────────
+# Volume /A2FILECMD, amorcable : ProDOS 2.4.3, le lanceur a la racine (seul
+# fichier .SYSTEM), le programme, ses surcouches (des BIN charges en $1B00,
+# d'ou leur auxtype) et son aide dans A2FILE/. Deux tailles du meme volume :
+# la disquette 5,25 (280 blocs, .po et .dsk), qui ne porte que le programme
+# pour laisser le plus de place possible ; et le disque dur .2mg (65535
+# blocs, le maximum de ProDOS), qui ajoute un dossier DEMO fabrique de toutes
+# pieces avec un exemplaire de chaque chose qu'A2 File Cmd sait ouvrir.
 STAGE = $(BUILD)/vol
+HDV = $(BUILD)/A2FILECMD.hdv
+TWOMG = $(DIST)/A2FILECMD.2mg
 disk: $(PO)
 $(PO): $(SYSTEM) $(CODE) $(FORMAT) $(DATA)/A2FILE.HELP.TXT $(DATA)/PRODOS.SYS $(DATA)/BASIC.SYSTEM.SYS \
        $(DATA)/README.TXT $(DATA)/prodos_boot.tmpl \
-       $(TOOLS)/mkvolume.py $(TOOLS)/mkdemo.py $(TOOLS)/po2dsk.py | $(DIST)
-	@rm -rf $(STAGE) && mkdir -p $(STAGE)/A2FILE $(STAGE)/DEMO
+       $(TOOLS)/mkvolume.py $(TOOLS)/mkdemo.py $(TOOLS)/po2dsk.py $(TOOLS)/po22mg.py \
+       $(TOOLS)/mkshk.py $(TOOLS)/mkbny.py $(TOOLS)/mkdos33.py | $(DIST)
+	@rm -rf $(STAGE) && mkdir -p $(STAGE)/A2FILE
 	cp $(DATA)/PRODOS.SYS $(DATA)/BASIC.SYSTEM.SYS $(STAGE)/
 	cp $(SYSTEM) $(STAGE)/A2FILE.SYSTEM.SYS
 	cp $(CODE) $(STAGE)/A2FILE/A2FILE.CODE.BIN
 	for p in $(PLUGINS); do cp $(CODE).$$p "$(STAGE)/A2FILE/$$p.PLG#061B00"; done
 	cp $(DATA)/A2FILE.HELP.TXT $(STAGE)/A2FILE/A2FILE.HELP.TXT
 	cp $(FORMAT) $(STAGE)/A2FILE/FORMAT.SYS.SYS
-	cp $(DATA)/README.TXT $(STAGE)/DEMO/README.TXT
-	python3 $(TOOLS)/mkdemo.py $(STAGE)/DEMO
 	python3 $(TOOLS)/mkvolume.py $(STAGE) $(PO) --volume $(VOLUME) \
 	  --boot $(DATA)/prodos_boot.tmpl --blocks 280
 	python3 $(TOOLS)/po2dsk.py $(PO) $(DSK)
-	@echo "==> $(PO) et $(DSK)"
+	mkdir -p $(STAGE)/DEMO
+	cp $(DATA)/README.TXT $(STAGE)/DEMO/README.TXT
+	python3 $(TOOLS)/mkdemo.py $(STAGE)/DEMO
+	python3 $(TOOLS)/mkvolume.py $(STAGE) $(HDV) --volume $(VOLUME) \
+	  --boot $(DATA)/prodos_boot.tmpl --blocks 65535
+	python3 $(TOOLS)/po22mg.py $(HDV) $(TWOMG)
+	@rm -rf $(STAGE)/DEMO   # le stage redevient la disquette nue (bench/plugin.py le reprend)
+	@echo "==> $(PO), $(DSK) et $(TWOMG)"
 
 test:
 	python3 $(TOOLS)/test_check_layout.py
