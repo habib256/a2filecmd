@@ -13,7 +13,7 @@
 | RAM basse `$1000-$1AFF` (BSS) | ~40 octets libres |
 | Carte langage `$D400-$DFFF` | ~1 750 octets libres |
 | Pile C | 86 octets utilisés sur 256 réservés |
-| Disquette | 18 blocs libres sur 280 |
+| Disquette | 19 blocs libres sur 280 (sans DEMO depuis la 0.6.6 : le `.2mg` `/A2FILEHD` le porte, avec 64 771 blocs libres) |
 
 ## Fait le 2026-09-08 — finir l'étude A2Command
 
@@ -108,6 +108,20 @@ du TODO précédent :
   l'ouvre par `!` et vérifie qu'il paraît dans le menu (décrit par son
   en-tête) puis qu'il tourne (6 contrôles). `sdk/README.md` explique tout.
 
+## Fait le 2026-09-08 — 0.6.6
+
+- ✅ **Lister un BAS** (`BASLIST.PLG`), **chercher un texte** (`SEARCH.PLG`),
+  **comparer deux fichiers** (`COMPARE.PLG`), **ShrinkIt** (`UNSHRINK.PLG`,
+  LZW en assembleur dans la mémoire auxiliaire), **Binary II**
+  (`BINARY2.PLG`), **AppleWorks** (`AWP.PLG`) : six surcouches de plus, sur
+  le modèle du SDK, chacune avec son banc.
+- ✅ **La disquette nue et le disque dur `.2mg`** (`/A2FILEHD`, 32 Mo) avec un
+  `DEMO` complet ; `mkvolume.py` écrit les fichiers *tree*.
+- ✅ **S'installer n'importe où** : le lanceur garde le prefixe (ou le refait
+  du chemin en `$0280`), le formateur et `RUN` partent du dossier du
+  programme ; `bench/subdir.py`. Un `.2MG` s'ouvre enfin comme un dossier
+  (sa taille n'est pas un multiple de 512).
+
 ## Ce qui reste
 
 - 🟡 **//c et IIgs** : A2Command tourne dessus, A2FC ne l'a jamais essayé.
@@ -129,11 +143,14 @@ du TODO précédent :
   chargement d'un `.MB` est déjà une surcouche (`MUSIC.PLG`), mais le pilote
   AY reste résident. Le rendre entièrement en surcouche demanderait qu'elle
   survive à la navigation, ce que la fenêtre unique interdit. *À laisser.*
-- 🟢 **Lister un BAS** (`BASLIST.PLG`), **chercher un texte** (`SEARCH.PLG`),
-  **comparer deux fichiers** octet à octet : chacune est maintenant une
-  surcouche de plus sur le modèle de `sdk/hello.c` (l'ABI et le SDK sont
-  prouvés). Le seul coût résident est un aiguillage — que la table de
-  reconnaissance ci-dessous supprimerait. *1 à 2 jours les trois.*
+- 🟡 **VDrive / VSDRIVE** (idée reçue d'un utilisateur, 2026-09-08) : un
+  lecteur virtuel servi par la ligne série depuis un hôte, comme Ammonoid de
+  Colin Leroy-Mira le fait — un pilote de blocs ProDOS chargé en mémoire qui
+  parle au serveur de l'hôte (le VSDRIVE d'ADTPro en est un). Le volume
+  apparaîtrait dans la liste des volumes et tout le reste suivrait (copier,
+  ouvrir). À étudier : où loger le pilote (la carte langage ? une surcouche
+  résidente ?), quel protocole, et un banc — POM2 n'émule pas de port série
+  aujourd'hui. *2 à 3 jours, avec le banc.*
 - 🟢 **Une table de reconnaissance** (type, auxtype, suffixe, en-tête → nom
   de surcouche) à la place de `looks_like_image` et de l'aiguillage
   d'`open_selected`, pour qu'un format de plus ne coûte qu'une ligne.
