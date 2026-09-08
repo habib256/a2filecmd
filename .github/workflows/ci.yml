@@ -87,18 +87,20 @@ jobs:
           done
           python3 tools/prodos_read.py dist/A2FILECMD.po >> $GITHUB_STEP_SUMMARY
 
+      # Les six images seules : tous les chemins sous dist/, dont
+      # upload-artifact retire le prefixe commun -- le telechargement du
+      # travail de publication les remet dans dist/ et les trouve la. Y
+      # mêler build/*.map ferait un artefact a deux racines, donc des
+      # fichiers en dist/dist/ a la publication.
       - uses: actions/upload-artifact@v4
         with:
           name: a2filecmd-disk
+          path: dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: a2filecmd-maps
           path: |
-            dist/A2FILECMD.po
-            dist/A2FILECMD.dsk
-            dist/A2FILECMD.2mg
-            dist/A2FILECMD-6502.po
-            dist/A2FILECMD-6502.dsk
-            dist/A2FILECMD-6502.2mg
-            dist/SHA256SUMS.txt
-            dist/RELEASE_NOTES.md
             build/a2fc.map
             build-6502/a2fc.map
 
@@ -142,10 +144,14 @@ jobs:
         with:
           name: a2filecmd-disk
           path: dist
+      - name: Ce qui va etre publie
+        run: |
+          ls -l dist && sha256sum -c dist/SHA256SUMS.txt
+          echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV   # le titre porte 0.6.8, pas v0.6.8
       - name: Publier
         uses: softprops/action-gh-release@v2
         with:
-          name: "A2 File Cmd ${{ github.ref_name }} — Two panels. One Apple II."
+          name: "A2 File Cmd ${{ env.VERSION }} — Two panels. One Apple II."
           body_path: dist/RELEASE_NOTES.md
           files: |
             dist/A2FILECMD.po
