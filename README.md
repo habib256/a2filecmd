@@ -35,7 +35,7 @@ Three images of the same bootable volume, from the
 * `A2FILECMD.2mg`: a 32 MB hard-disk image for emulators and CFFA-style cards,
   with a `DEMO/` folder holding one example of everything A2 File Cmd can open —
   raw and RLE test cards for the picture viewer, a Mockingboard fanfare, a text,
-  an Applesoft program, ProDOS (`.PO`, `.2MG`) and DOS 3.3 (`.DSK`) disk
+  an Applesoft program, an AppleWorks letter, ProDOS (`.PO`, `.2MG`) and DOS 3.3 (`.DSK`) disk
   images, a ShrinkIt and a Binary II archive, and a `README` that says what to
   press.
 
@@ -48,11 +48,11 @@ the list of on-line volumes.
 | `TAB` | switch panel |
 | `Up` / `Down` | move the selection |
 | `Left` / `Right` (or `<` `>`, `-` `+`) | one page up / down |
-| `RETURN` | open by type: directory, disk image (`.PO`/`.DSK`/`.2MG`, ProDOS or DOS 3.3) as a folder, picture, text, `.MB` music, SYS or BAS program |
+| `RETURN` | open by type: directory, disk image (`.PO`/`.DSK`/`.2MG`, ProDOS or DOS 3.3) as a folder, picture, text, AppleWorks document, `.MB` music, SYS or BAS program |
 | `ESC` | parent directory; from a volume root, the list of on-line volumes |
 | `SPACE` | tag a file — `C`, `V` and `D` then work on every tagged file |
 | `C` `V` `R` `D` `K` | copy, move, rename, delete, make directory |
-| `T` `H` `I` `E` | text viewer (an Applesoft `.BAS` is listed, detokenized), hex viewer, picture viewer, text editor |
+| `T` `H` `I` `E` | text viewer (an Applesoft `.BAS` is listed detokenized, an AppleWorks `.AWP` document is rendered), hex viewer, picture viewer, text editor |
 | `A` `L` `S` `M` | type and auxtype, lock, sort, mark differences |
 | `X` `P` `F` `Q` | run a program, pause the music, format a disk, quit |
 | mouse | click a line to select it, click it again to open; click the column header to sort, the path to go up, a key-bar button for its key |
@@ -75,9 +75,9 @@ writer, the sector-order converter and the demo files are all in `tools/`.
 
 | | |
 |---|---|
-| `src/` | the program (`a2fc.c`), its launcher, the formatter, the Mockingboard player, the mouse driver; the picture decoder, the viewers, the editor, the music and program launchers, the delete/attribute commands, the overlay menu, the disk-image tool, the Applesoft lister, a byte compare and a text search, and the ProDOS-image, DOS-3.3, ShrinkIt (`.SHK`) and Binary II (`.BNY`) extractors are overlays (`A2FILE/*.PLG`) loaded on demand into `$1B00`, some reaching into `$2000-$3FFF`; a third party can add one against the stable ABI in `src/a2fc_plugin.h` |
+| `src/` | the program (`a2fc.c`), its launcher, the formatter, the Mockingboard player, the mouse driver; the picture decoder, the viewers, the editor, the music and program launchers, the delete/attribute commands, the overlay menu, the disk-image tool, the Applesoft lister, the AppleWorks reader, a byte compare and a text search, and the ProDOS-image, DOS-3.3, ShrinkIt (`.SHK`) and Binary II (`.BNY`) extractors are overlays (`A2FILE/*.PLG`) loaded on demand into `$1B00`, some reaching into `$2000-$3FFF`; a third party can add one against the stable ABI in `src/a2fc_plugin.h` |
 | `sdk/` | write your own overlay: [the guide](sdk/README.md), a worked example (`hello.c`), the link config and build script, all against `src/a2fc_plugin.h` alone |
-| `tools/` | ProDOS volume writer, sector-order and 2IMG converters, DOS 3.3 disk writer, memory-layout checker, demo maker, ShrinkIt (`.SHK`) and Binary II (`.BNY`) readers/writers |
+| `tools/` | ProDOS volume writer, sector-order and 2IMG converters, DOS 3.3 disk writer, memory-layout checker, demo maker, ShrinkIt (`.SHK`), Binary II (`.BNY`) and AppleWorks (`.AWP`) readers/writers |
 | `bench/` | the headless emulator benches |
 | `data/` | the help text, the ProDOS boot blocks, ProDOS 8 and BASIC.SYSTEM |
 | `docs/` | [the manual](docs/MANUAL.md), screenshots |

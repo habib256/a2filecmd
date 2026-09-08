@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from pom2 import Pom2, Session, ROOT
 from run import RET, TAB, ESC
 
-DEMO = ['DHGR.RAW', 'DHGR.RLE', 'DOS33.DSK', 'HELLO', 'HGR.RAW', 'HGR.RLE', 'README',
+DEMO = ['DHGR.RAW', 'DHGR.RLE', 'DOS33.DSK', 'HELLO', 'HGR.RAW', 'HGR.RLE', 'LETTER', 'README',
         'SAMPLE', 'SAMPLE.BNY', 'SAMPLE.SHK', 'TINY.2MG', 'TINY.PO', 'WELCOME.MB']
 
 
