@@ -38,7 +38,10 @@ donne un Apple //c (ROM 32 Ko) : son lecteur integre est le Disk II du slot
 6, donc `--boot 6` amorce la disquette comme sur le //e, et le disque dur est
 une unite SmartPort sur le port arriere, servie par le firmware du //c en
 slot 5 (pas de carte, pas de Mockingboard). Les deux presets amorcent
-`dist/A2FILECMD.po` jusqu'aux panneaux.
+`dist/A2FILECMD.po` jusqu'aux panneaux. `Pom2(..., floppy2=...)` met une
+seconde disquette dans le lecteur 2 du meme Disk II des l'amorcage
+(`pom2_playtest --disk2`) : un vrai DOS 3.3 dans un lecteur, sans passer par
+`/disk` -- ce que le banc des disques physiques attendait.
 
 ## En integration continue
 
