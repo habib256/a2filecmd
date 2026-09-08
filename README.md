@@ -64,9 +64,9 @@ No build required. Choose the image that fits your setup:
 | [**A2FILECMD.dsk**](https://github.com/habib256/a2filecmd/releases/latest/download/A2FILECMD.dsk) | Tools and emulators that expect a `.dsk` file | The same 140 KB ProDOS floppy, its sectors stored in the `.dsk` (DOS-order) layout — a ProDOS volume, no DOS 3.3 on it |
 
 1. Boot the image on an **Enhanced Apple IIe with 128 KB and an 80-column display**, or an emulator configured that way. ProDOS 8 is included.
-   An **unenhanced IIe** (6502, no MouseText) has its own images, `A2FILECMD-6502.po/.dsk/.2mg`,
-   from the `iie-6502` branch: the same program, keyboard only (no mouse driver), built with
-   cc65 master and `make disk ARCH=6502`.
+   An **unenhanced IIe** (6502, no MouseText) takes the `A2FILECMD-6502.po/.dsk/.2mg` images
+   of the same release: the same program, keyboard only (no mouse driver). Every release ships
+   both builds from the same tree (`make disk` and `make disk ARCH=6502`).
 
 2. Press **`TAB`** to switch panels, **`RETURN`** to open and **`ESC`** to go up. Press **`?`** for the full key map.
 3. On the `.2mg`, explore the `DEMO/` folder already open in the right panel. On the floppy, the right panel shows the available volumes.

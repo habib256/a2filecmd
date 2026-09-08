@@ -7,18 +7,43 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Deux versions du meme arbre, a chaque fois : 65C02 (IIe enhanced, //c,
+# IIgs, avec la souris ; cc65 2.19, celui d'Ubuntu) et 6502 (IIe non
+# enhanced, clavier seul ; cc65 master, dont la cible apple2 a la console
+# 80 colonnes en 6502 -- construit ici depuis git, a un commit fixe, et
+# garde en cache). Une publication porte les six images et une seule
+# liste d'empreintes.
+env:
+  CC65_HEAD_COMMIT: e11fb5c
+
 jobs:
   build:
-    name: cc65, budgets memoire, images disque
+    name: cc65, budgets memoire, images disque (65C02 et 6502)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Installer cc65
+      - name: Installer cc65 2.19
         run: |
           sudo apt-get update
           sudo apt-get install -y cc65
           cl65 --version 2>&1 | head -1
+
+      - name: cc65 master, pour la version 6502 (cache)
+        id: cc65head
+        uses: actions/cache@v4
+        with:
+          path: ~/opt/cc65-head
+          key: cc65-head-${{ env.CC65_HEAD_COMMIT }}-${{ runner.os }}
+
+      - name: Construire cc65 master
+        if: steps.cc65head.outputs.cache-hit != 'true'
+        run: |
+          git clone -q https://github.com/cc65/cc65.git /tmp/cc65-head
+          cd /tmp/cc65-head && git checkout -q ${{ env.CC65_HEAD_COMMIT }}
+          make -j"$(nproc)" > /dev/null
+          make install PREFIX="$HOME/opt/cc65-head" > /dev/null
+          "$HOME/opt/cc65-head/bin/cl65" --version 2>&1 | head -1
 
       # Les tests qui ne demandent pas de machine Apple II : le contrat de
       # disposition memoire, l'ecrivain de volume ProDOS et son aller-retour,
@@ -29,30 +54,37 @@ jobs:
       # Le lien echoue si le code passe sous le plancher de la pile C ou si
       # la coupe du fichier ne correspond plus au lanceur : check_layout.py
       # tourne dans la recette, pas apres coup.
-      - name: Construire les trois binaires ProDOS
-        run: make all
+      - name: Version 65C02 (IIe enhanced, //c, IIgs, souris)
+        run: make all disk
 
-      - name: Construire la disquette .po et .dsk
-        run: make disk
+      - name: Version 6502 (IIe non enhanced, clavier)
+        run: make all disk ARCH=6502
 
-      - name: Relire l'image produite
+      - name: Relire les images produites
         run: |
-          python3 tools/prodos_read.py dist/A2FILECMD.po
-          test "$(stat -c%s dist/A2FILECMD.po)" = 143360
-          test "$(stat -c%s dist/A2FILECMD.dsk)" = 143360
-          python3 tools/po2dsk.py dist/A2FILECMD.po /tmp/again.dsk
-          cmp /tmp/again.dsk dist/A2FILECMD.dsk
+          for img in A2FILECMD A2FILECMD-6502; do
+            python3 tools/prodos_read.py dist/$img.po
+            test "$(stat -c%s dist/$img.po)" = 143360
+            test "$(stat -c%s dist/$img.dsk)" = 143360
+            python3 tools/po2dsk.py dist/$img.po /tmp/again.dsk
+            cmp /tmp/again.dsk dist/$img.dsk
+            test "$(stat -c%s dist/$img.2mg)" = 33553984
+          done
 
-      - name: Empreintes
+      - name: Empreintes et notes de version
         run: |
-          cd dist && sha256sum A2FILECMD.po A2FILECMD.dsk | tee SHA256SUMS.txt
+          cd dist && sha256sum A2FILECMD.po A2FILECMD.dsk A2FILECMD.2mg \
+            A2FILECMD-6502.po A2FILECMD-6502.dsk A2FILECMD-6502.2mg | tee SHA256SUMS.txt
+          cd .. && python3 tools/release_notes.py "${GITHUB_REF_NAME}" > dist/RELEASE_NOTES.md
 
-      - name: La carte memoire, pour le journal de construction
+      - name: Les cartes memoire, pour le journal de construction
         run: |
-          echo '## Disposition' >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          sed -n '/^Name  *Start/,/^LC /p' build/a2fc.map >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          for b in build build-6502; do
+            echo "## Disposition ($b)" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            sed -n '/^Name  *Start/,/^LC /p' $b/a2fc.map >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          done
           python3 tools/prodos_read.py dist/A2FILECMD.po >> $GITHUB_STEP_SUMMARY
 
       - uses: actions/upload-artifact@v4
@@ -61,17 +93,20 @@ jobs:
           path: |
             dist/A2FILECMD.po
             dist/A2FILECMD.dsk
+            dist/A2FILECMD.2mg
+            dist/A2FILECMD-6502.po
+            dist/A2FILECMD-6502.dsk
+            dist/A2FILECMD-6502.2mg
             dist/SHA256SUMS.txt
+            dist/RELEASE_NOTES.md
             build/a2fc.map
-            build/A2FILE.CODE.BIN
-            build/A2FILE.SYSTEM.SYS
-            build/FORMAT.SYS.SYS
+            build-6502/a2fc.map
 
-  # Les bancs jouent une session complete dans POM2 sans fenetre : navigation,
-  # copie, deplacement, edition, images comparees octet a octet, formatage,
-  # Applesoft. L'emulateur n'est pas sur les executeurs de GitHub ; declarez la
-  # variable de depot POM2_RUNNER (l'etiquette d'un executeur auto-heberge qui
-  # a POM2) pour que ce travail tourne. Voir bench/README.md.
+  # Les bancs jouent une session complete dans POM2 sans fenetre, sur les
+  # deux versions. L'emulateur n'est pas sur les executeurs de GitHub ;
+  # declarez la variable de depot POM2_RUNNER (l'etiquette d'un executeur
+  # auto-heberge qui a POM2 et un cc65 master dans ~/opt/cc65-head) pour que
+  # ce travail tourne. Voir bench/README.md.
   bench:
     name: bancs POM2 (executeur auto-heberge)
     needs: build
@@ -79,16 +114,20 @@ jobs:
     runs-on: ${{ vars.POM2_RUNNER }}
     steps:
       - uses: actions/checkout@v4
-      - run: make all disk
-      - name: Session complete
+      - run: make all disk && make all disk ARCH=6502
+      - name: Session complete, 65C02
         run: python3 bench/run.py --out bench-out
+      - name: Session complete, 6502
+        run: A2FC_IMG=A2FILECMD-6502 A2FC_BUILD=build-6502 python3 bench/run.py --out bench-out-6502
       - name: Budget de pile
         run: python3 bench/memory.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: a2filecmd-bench
-          path: bench-out
+          path: |
+            bench-out
+            bench-out-6502
 
   release:
     name: publication
@@ -106,8 +145,13 @@ jobs:
       - name: Publier
         uses: softprops/action-gh-release@v2
         with:
+          name: "A2 File Cmd ${{ github.ref_name }} — Two panels. One Apple II."
+          body_path: dist/RELEASE_NOTES.md
           files: |
             dist/A2FILECMD.po
             dist/A2FILECMD.dsk
+            dist/A2FILECMD.2mg
+            dist/A2FILECMD-6502.po
+            dist/A2FILECMD-6502.dsk
+            dist/A2FILECMD-6502.2mg
             dist/SHA256SUMS.txt
-          body_path: docs/RELEASE.md

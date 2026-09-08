@@ -8,7 +8,7 @@ downloads and installation.
 - Fixed the DHGR test card in `DEMO/`: twelve of its sixteen bands showed as vertical stripes (a repeated byte is not a solid colour); the bench now checks the rendered picture, not only memory.
 - Changed SPACE: tagging a file no longer moves the cursor down.
 - Added Left/Right in the overlay menu, five entries at a time.
-- Added a 6502 build for the unenhanced Apple IIe (`make disk ARCH=6502` with cc65 master, `A2FILECMD-6502.*`): the same program, keyboard only — no mouse driver.
+- Added a 6502 build for the unenhanced Apple IIe (`make disk ARCH=6502` with cc65 master, `A2FILECMD-6502.*`): the same program, keyboard only — no mouse driver. Releases now ship both builds, made together by the CI.
 - Fixed the Binary II extractor leaving the other panel stale: the extracted files now appear in it at once.
 
 
