@@ -29,12 +29,25 @@ they are Apple's). Sources, manual and benches:
 
 
 def main():
-    version = sys.argv[1].lstrip('v') if len(sys.argv) > 1 else ''
+    """Le premier argument est le nom de la reference : "v0.6.8" sur un tag,
+    "main" sur un push de branche -- seul un vrai numero choisit une
+    section ; sinon on prend l'inedit, ou a defaut la derniere version
+    publiee, pour que l'artefact de construction porte quand meme des
+    notes lisibles."""
+    ref = sys.argv[1].lstrip('v') if len(sys.argv) > 1 else ''
+    version = ref if re.fullmatch(r'\d+(\.\d+)*', ref) else ''
     text = Path(__file__).resolve().parents[1].joinpath('CHANGELOG.md').read_text()
     m = re.search(r'^## \[%s\][^\n]*\n(.*?)(?=^## |\Z)' % re.escape(version), text, re.S | re.M) if version else None
     if not m:
         m = re.search(r'^## Unreleased\n(.*?)(?=^## |\Z)', text, re.S | re.M)
-    body = (m.group(1).strip() if m else '').replace('[Full changelog]', '\n[Full changelog]')
+    if not m or not m.group(1).strip():
+        m = re.search(r'^## \[([^\]]+)\][^\n]*\n(.*?)(?=^## |\Z)', text, re.S | re.M)
+        if m and not version:
+            version = m.group(1)
+        body = m.group(2) if m and m.lastindex == 2 else (m.group(1) if m else '')
+    else:
+        body = m.group(1)
+    body = body.strip().replace('[Full changelog]', '\n[Full changelog]')
     title = 'A2 File Cmd %s' % version if version else 'A2 File Cmd'
     sys.stdout.write('## %s — *Two panels. One Apple II.*\n\n%s\n%s' % (title, body, FILES))
     return 0
