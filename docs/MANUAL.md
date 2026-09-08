@@ -312,6 +312,17 @@ readable only the boot floppy and an image file; reading a real physical disk
 shares all the code of reading an image, only the source of the sectors
 changes.)
 
+### A raw DHGR page and the auxiliary bank
+
+A 16 KB raw DHGR file is two planes: the first belongs in the auxiliary
+bank. A2FC reads it 512 bytes at a time into main memory and carries each
+chunk over with `AUXMOVE`, rather than setting `80STORE` and letting ProDOS
+write into the routed window — a trick that works on many machines but that
+ProDOS does not promise, its calls being specified for main memory only.
+Where it failed, a raw DHGR came back as `not an image` while the same
+picture in RLE went through, that path having always copied with the
+processor. The main plane is read straight in: it is ordinary memory.
+
 ## VDrive: two volumes over the serial line
 
 If a serial card answers at startup — a Super Serial Card, or a //c's

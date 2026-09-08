@@ -1980,11 +1980,24 @@ static unsigned char load_image(const struct Entry* e)
     else if (kind == IMG_HGRR) ok = decode_rle(f, 8192);
     else if (kind == IMG_HGR) { rewind(f); ok = fread(HGR_MAIN, 1, 8192, f) >= 8184; }
     else if (kind == IMG_DHGR) {
+        /* Le plan auxiliaire passe par copy_buf et AUXMOVE, pas par un MLI
+         * qui ecrirait lui-meme dans la fenetre routee vers AUX : ProDOS ne
+         * promet ses appels qu'en memoire principale, et le tour du
+         * 80STORE, s'il marche sur bien des machines, n'est pas garanti --
+         * la ou il echoue, un DHGR BRUT devenait "not an image" alors que
+         * le meme en RLE passait, celui-la ayant toujours recopie par le
+         * processeur (decode_rle). Le plan principal, lui, se lit tout
+         * droit : c'est de la memoire ordinaire. */
+        unsigned int aux = 0x2000;
+        unsigned char page = 16;
         aux_dirty = 1;
         rewind(f);
-        aux_writes(1);
-        ok = fread(HGR_MAIN, 1, 8192, f) == 8192;
-        aux_writes(0);
+        do {
+            ok = fread(copy_buf, 1, 512, f) == 512;
+            if (!ok) break;
+            aux_copy((unsigned int)copy_buf, aux, 1);
+            aux += 512;
+        } while (--page);
         ok = ok && fread(HGR_MAIN, 1, 8192, f) == 8192;
     }
     fclose(f);

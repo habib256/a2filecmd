@@ -3,6 +3,10 @@
 Changes in upcoming and published releases. See the [README](README.md) for features,
 downloads and installation.
 
+## Unreleased
+
+- Fixed a raw DHGR page refused as `not an image` on some machines: its auxiliary plane no longer asks ProDOS to write into memory routed to the auxiliary bank (which ProDOS does not promise), but goes through `AUXMOVE`, as the RLE path always did.
+
 ## [0.6.8](https://github.com/habib256/a2filecmd/releases/tag/v0.6.8) — 2026-09-09
 
 - Added a 6502 build for the unenhanced Apple IIe (`A2FILECMD-6502.*`, `make disk ARCH=6502` with cc65 master): the same program, keyboard only — no mouse driver. Both builds are made and published together.
