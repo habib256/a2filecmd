@@ -53,16 +53,16 @@ vec:            .res 2
         .segment "CODE"
 
 ; Appelle la routine du firmware dont l'index de table est en Y, A en
-; argument.
+; argument. $Cn est charge une fois, dans X, qui le garde pour l'appel ;
+; l'octet bas de l'entree se lit dans la ROM avant que Y ne recoive $n0.
+; (Colin Leroy-Mira, 2026-09-08 : trois chargements de cn ou un seul.)
 call:   pha
         stz ptr1
-        lda cn
-        sta ptr1+1
+        ldx cn
+        stx ptr1+1
+        stx vec+1
         lda (ptr1),y
         sta vec
-        lda cn
-        sta vec+1
-        ldx cn
         ldy n0
         pla
         php
@@ -104,14 +104,13 @@ _mouse_init:
         sta n0
         ldy #$19                ; INITMOUSE
         jsr call
+        lda #79
+        sta $4F8                ; maximum, octet bas
         lda #0
         sta $478                ; minimum 0, octets bas et haut
         sta $578
         sta $5F8                ; maximum, octet haut
-        lda #79
-        sta $4F8                ; maximum, octet bas
-        lda #0                  ; X : 0..79
-        ldy #$17                ; CLAMPMOUSE
+        ldy #$17                ; CLAMPMOUSE, A = 0 : X, 0..79
         jsr call
         lda #23
         sta $4F8
