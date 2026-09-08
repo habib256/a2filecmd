@@ -443,19 +443,19 @@ int main(void)
 back:
     clrscr();
     cputs("Loading A2 File Cmd ...");
-    /* Le prefixe ProDOS est ramene a la racine du volume : lance depuis
-     * Bitsy Bye, FORMAT.SYSTEM herite du dossier A2FILE, et A2FILE.SYSTEM
-     * cherche A2FILE/A2FILE.CODE depuis la racine. */
+    /* Le prefixe ProDOS doit etre le dossier du programme, celui qui a
+     * A2FILE.SYSTEM et A2FILE/ -- a la racine d'un volume ou non. Lance par
+     * A2FC, il l'est deja ; lance depuis Bitsy Bye, FORMAT.SYS herite du
+     * dossier A2FILE lui-meme : on remonte alors d'un cran. */
     {
         static unsigned char parms[3], prefix[65];
         unsigned char i;
         parms[0] = 1;
         parms[1] = (unsigned char)((unsigned)prefix & 0xFF);
         parms[2] = (unsigned char)((unsigned)prefix >> 8);
-        if (!mli_call(0xC7, parms) && prefix[0] > 1) {
-            for (i = 2; i <= prefix[0] && prefix[i] != '/'; ++i) {}
-            prefix[0] = i;                 /* "/VOL/" : la racine, barre finale comprise */
-            prefix[i] = '/';
+        if (!mli_call(0xC7, parms) && (i = prefix[0]) >= 8
+            && prefix[i - 7] == '/' && !memcmp(prefix + i - 6, "A2FILE/", 7)) {
+            prefix[0] = i - 7;             /* ".../A2FILE/" -> ".../", barre finale comprise */
             mli_call(0xC6, parms);
         }
     }

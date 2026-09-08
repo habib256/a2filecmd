@@ -67,7 +67,7 @@ static void progress_bar(const char* name, unsigned long copied, unsigned long s
 static void dir_fail(void);
 
 #ifndef A2FC_VERSION
-#define A2FC_VERSION "0.6.1"
+#define A2FC_VERSION "0.6.6"
 #endif
 #define WINDOW (MAX_ENTRIES - 1)   /* entrees du disque par fenetre : ".." en plus */
 
@@ -3894,16 +3894,20 @@ static void run_selected(const struct Entry* e)
 }
 
 /* F : le formateur, A2FILE/FORMAT.SYS a cote de A2FILE.CODE (Bitsy Bye le
- * propose aussi), lance depuis la racine du volume ; il relance A2FC en
- * sortant. */
+ * propose aussi), lance depuis le dossier du programme -- celui d'ou vient
+ * A2FILE.CFG, a la racine d'un volume ou non ; il relance A2FC en sortant. */
 static const char fmt_ask[] = "Open the disk formatter?";
 static const char fmt_sys[] = "A2FILE/FORMAT.SYS";
 
+static const char fmt_cfg[] = "/A2FILE/A2FILE.CFG";
+
 static void format_disk(void)
 {
+    unsigned char n;
     if (!confirm(fmt_ask)) return;
     strcpy(full, cfg_path);
-    { char* s = strchr(full + 1, '/'); if (s) *s = 0; }   /* "/VOL/A2FILE/A2FILE.CFG" -> "/VOL" */
+    n = strlen(full);                                      /* "/VOL/DIR/A2FILE/A2FILE.CFG" -> "/VOL/DIR" : */
+    if (n > 18 && !strcmp(full + n - 18, fmt_cfg)) full[n - 18] = 0;   /* le dossier du programme */
     chdir(full);
     strcpy(full, fmt_sys);
     launch_file(0x2000);

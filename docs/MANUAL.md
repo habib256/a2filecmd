@@ -1,7 +1,7 @@
 # The A2 File Cmd manual
 
 A two-pane ProDOS file manager in the spirit of Total Commander, for the
-128 KB Apple IIe; on screen it calls itself **A2 FILE CMD 0.6.1** (the number
+128 KB Apple IIe; on screen it calls itself **A2 FILE CMD 0.6.6** (the number
 lives in `A2FC_VERSION` in the Makefile, picked up by the launcher, the status
 line and the help). It is free software under the GNU GPL v3, by Arnaud
 Verhille; the launcher and the help say so. Two ways to start it: boot the
@@ -191,10 +191,23 @@ on a blank screen just after switching to 80 columns:
   overwrote as it grew. `src/crt0.s` (A2FC) and `src/crt0_loader.s` (the
   launcher) therefore always place the stack at `$BF00`, never on
   `BASIC.SYSTEM`'s `HIMEM`, and always quit through the ProDOS dispatcher.
-- **The prefix.** `BASIC.SYSTEM` empties the ProDOS prefix when it launches a
-  SYS. The launcher therefore rebuilds it itself (`src/loader_mli.s`, `ON_LINE`
-  on the last device `$BF30`, then `SET_PREFIX`) before jumping into A2FC,
-  which then reopens its panels and re-reads `A2FILE.CFG`, as on a cold boot.
+- **The prefix.** Everything A2FC loads — `A2FILE/A2FILE.CODE`, the
+  overlays, the help, `A2FILE.CFG`, the formatter — is a path relative to the
+  ProDOS prefix, which must therefore be the directory holding
+  `A2FILE.SYSTEM` and `A2FILE/`. On a cold boot ProDOS sets it to the boot
+  volume, and Bitsy Bye to the directory of the program it launches; the
+  launcher keeps whatever it finds (`src/loader_mli.s`, `GET_PREFIX`), which
+  is what lets A2FC live anywhere on a hard disk, not only at the root of a
+  volume called `/A2FILECMD`. `BASIC.SYSTEM`, though, empties the prefix when
+  it launches a SYS, but leaves the full path of that SYS at `$0280`: the
+  launcher then takes its directory (`/VOL/DIR/A2FILE.SYSTEM` → `/VOL/DIR/`),
+  falling back on `ON_LINE` on the last device `$BF30` for a bare volume name.
+  All of this before opening `A2FILE.CODE`, so that the relative path resolves.
+  A2FC then reopens its panels and re-reads `A2FILE.CFG`, as on a cold boot.
+  `FORMAT.SYS`, when it comes back, likewise keeps the prefix it was given —
+  only stripping a trailing `A2FILE/` when Bitsy Bye launched it from inside
+  that directory. `bench/subdir.py` installs the program in `/HD/APPS` and
+  checks all of it.
 
 ## Disk images
 
@@ -433,13 +446,14 @@ The names fit in ProDOS's fifteen characters.
 `make disk` produces `dist/A2FILECMD.po` (ProDOS order) and
 `dist/A2FILECMD.dsk` (DOS 3.3 order, that of ADTPro and most emulators), a
 bootable floppy of 280 blocks, volume `/A2FILECMD`, and `dist/A2FILECMD.2mg`,
-the same volume as a 65535-block hard disk (the ProDOS maximum, 32 MB) with
-the `DEMO` directory the floppy has no room for:
+the same content as a 65535-block hard disk (the ProDOS maximum, 32 MB),
+volume `/A2FILEHD` so that it can sit next to the floppy, with the `DEMO`
+directory the floppy has no room for:
 
 | File | Content |
 |---|---|
 | `PRODOS`, `BASIC.SYSTEM` | ProDOS 8 2.4.3, the last stable version, and its Applesoft interpreter: freely distributed for the Apple II community, they are not the author's |
-| `A2FILE.SYSTEM` | the launcher, the only `.SYSTEM` program: the floppy boots straight into A2FC. Compiled with `NO_CHDIR`, it relies on the boot volume's prefix |
+| `A2FILE.SYSTEM` | the launcher, the only `.SYSTEM` program: the floppy boots straight into A2FC. Compiled with `NO_CHDIR`, it relies on the ProDOS prefix — the directory it lives in — and rebuilds it only when `BASIC.SYSTEM` has emptied it |
 | `A2FILE/A2FILE.CODE`, `A2FILE/*.PLG`, `A2FILE/A2FILE.HELP`, `A2FILE/FORMAT.SYS` | the program, its thirteen overlays (`IMAGE`, `TEXT`, `HEX`, `HELP`, `DELETE`, `MUSIC`, `RUN`, `ATTR`, `IMGFS`, `DOS33`, and the big ones `EDIT`, `MENU`, `DISKIMG`: BINs loaded at `$1B00` on demand), the help text and the formatter; `A2FILE.CFG` will be written alongside |
 | `DEMO/` (`.2mg` only) | one example of everything A2FC can open, entirely computed by `tools/mkdemo.py`: the two test cards raw (`DHGR.RAW`, `HGR.RAW`) and RLE (`DHGR.RLE`, `HGR.RLE`), a three-voice fanfare (`WELCOME.MB`), a text (`SAMPLE`), an Applesoft program (`HELLO`), an AppleWorks document (`LETTER`), a ProDOS disk image as `.PO` and as `.2MG` (`TINY.PO`, `TINY.2MG`), a DOS 3.3 disk (`DOS33.DSK`), the text and the program packed by ShrinkIt (`SAMPLE.SHK`) and by Binary II (`SAMPLE.BNY`), and a `README` that says what to press |
 

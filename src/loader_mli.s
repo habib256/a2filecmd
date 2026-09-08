@@ -1,11 +1,18 @@
-; Poser le prefixe ProDOS sur le volume amorce, pour le lanceur
-; (src/loader.c). Relance depuis le "]" de BASIC.SYSTEM ("-A2FILE.SYSTEM"),
-; ProDOS a un prefixe VIDE quand le lanceur reprend la main (BASIC.SYSTEM le
-; vide en lancant un programme SYS). A2 File Cmd s'ouvre alors sur la liste
-; des volumes au lieu des deux panneaux, et ne retrouve pas ses preferences.
-; On refait le prefixe nous-memes : ON_LINE sur le dernier peripherique
-; utilise ($BF30, celui d'ou A2FILE.CODE vient d'etre lu, donc le volume
-; amorce) donne le nom du volume, qu'on pose par SET_PREFIX en "/NOM".
+; Poser le prefixe ProDOS pour A2 File Cmd, depuis le lanceur (src/loader.c).
+;
+; Tout part du prefixe : A2FILE/A2FILE.CODE, les surcouches A2FILE/*.PLG,
+; l'aide, A2FILE.CFG s'y lisent en relatif. Trois cas :
+;  - il est deja pose (amorcage a froid : ProDOS met "/VOL/" ; Bitsy Bye :
+;    le dossier du .SYSTEM lance ; retour de FORMAT.SYS : ce qu'il a laisse) :
+;    on n'y touche pas. C'est ce qui permet d'installer A2FILE.SYSTEM et son
+;    dossier A2FILE n'importe ou sur un disque dur, pas seulement a la racine
+;    d'un volume nomme /A2FILECMD.
+;  - il est VIDE : relance par "-A2FILE.SYSTEM" depuis BASIC.SYSTEM, qui le
+;    vide en lancant un SYS mais laisse en $0280 le chemin complet du
+;    programme lance ("/VOL/DIR/A2FILE.SYSTEM") : son dossier est le notre.
+;  - sinon (chemin relatif en $0280, ou rien) : ON_LINE sur le dernier
+;    peripherique utilise ($BF30, celui d'ou A2FILE.CODE vient d'etre lu)
+;    donne le nom du volume, qu'on pose en "/NOM".
 ;
 ; Appel MLI direct plutot que chdir()/getcwd() de cc65, dont l'edition de
 ; liens (module cwd, tas) desequilibrait la pile serree du lanceur et
@@ -18,11 +25,42 @@ MLI          = $BF00
 DEVNUM       = $BF30            ; dernier peripherique ProDOS utilise
 ON_LINE      = $C5
 SET_PREFIX   = $C6
+GET_PREFIX   = $C7
+SYSPATH      = $0280            ; le chemin du .SYSTEM lance, longueur en tete
 
         .code
 
 ; void set_boot_prefix(void);
 _set_boot_prefix:
+        jsr     MLI
+        .byte   GET_PREFIX
+        .word   pfx_parm
+        bcs     sbp_online
+        lda     pfx_buf
+        bne     sbp_fail        ; deja pose : on le garde
+        ldy     SYSPATH         ; vide : le dossier du programme lance
+        beq     sbp_online
+        lda     SYSPATH+1
+        cmp     #'/'
+        bne     sbp_online      ; chemin relatif : sans prefixe, insoluble
+sbp_last:
+        lda     SYSPATH,y       ; la derniere barre, en partant de la fin
+        cmp     #'/'
+        beq     sbp_dir
+        dey
+        bne     sbp_last
+sbp_dir:
+        cpy     #2
+        bcc     sbp_online      ; "/NOM" seul : pas un dossier
+        sty     pfx_buf         ; le dossier, sa barre finale comprise
+sbp_cpy:
+        lda     SYSPATH,y
+        sta     pfx_buf,y
+        dey
+        bne     sbp_cpy
+        jmp     sbp_set
+
+sbp_online:
         lda     DEVNUM
         beq     sbp_fail        ; unit 0 = « tous les lecteurs » : ON_LINE
                                 ; deborderait ol_buf (16 octets par volume).
@@ -53,6 +91,7 @@ sbp_cp: lda     ol_buf+1,y
         dex
         bne     sbp_cp
 
+sbp_set:
         jsr     MLI
         .byte   SET_PREFIX
         .word   pfx_parm

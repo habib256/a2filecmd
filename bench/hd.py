@@ -38,8 +38,8 @@ def main():
         with Pom2(hdv, port=6715) as p:
             s = Session(p)
             s.boot()
-            ok('le disque dur amorce sur les deux panneaux', s.has('/A2FILECMD'), s.rows()[0][:40])
-            ok('le panneau droit ouvre DEMO', s.rows()[0][40:].startswith('/A2FILECMD/DEMO'),
+            ok('le disque dur /A2FILEHD amorce sur les deux panneaux', s.rows()[0].startswith('/A2FILEHD'), s.rows()[0][:40])
+            ok('le panneau droit ouvre DEMO', s.rows()[0][40:].startswith('/A2FILEHD/DEMO'),
                s.rows()[0][40:70])
             ok('le volume fait 65535 blocs', 'of 65535 blocks free' in s.rows()[20], s.rows()[20][:70])
             names = [r[40:].split(' ')[0] for r in s.rows()[2:20]]
@@ -54,7 +54,7 @@ def main():
             s.wait(lambda: s.has('HELLO ') and s.has('INSIDE '), 'ouvrir le .2MG', 30); p.stable()
             ok('le .2MG s ouvre comme un dossier', s.has('HELLO ') and s.has('INSIDE '),
                s.rows()[0][40:70])
-            s.key(ESC); s.wait(lambda: s.has('/A2FILECMD/DEMO'), 'sortir'); p.stable()
+            s.key(ESC); s.wait(lambda: s.has('/A2FILEHD/DEMO'), 'sortir'); p.stable()
 
     passed = sum(1 for c in checks if c)
     print(f'\n{passed}/{len(checks)} controles', flush=True)

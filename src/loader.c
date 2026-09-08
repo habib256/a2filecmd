@@ -27,7 +27,7 @@
 #define CODE_FILE "A2FILE/A2FILE.CODE"
 #endif
 #ifndef A2FC_VERSION
-#define A2FC_VERSION "0.6.1"
+#define A2FC_VERSION "0.6.6"
 #endif
 
 /* src/loader_mli.s : poser le prefixe ProDOS sur le volume amorce avant de
@@ -100,6 +100,14 @@ int main(void)
         cputs("PLEASE WAIT, loading A2FILE.CODE ...");
     }
 
+    /* Le prefixe d'abord : A2FILE/A2FILE.CODE se lit en relatif. Au
+     * demarrage a froid ProDOS l'a pose, Bitsy Bye aussi (le dossier du
+     * .SYSTEM), mais la relance par "-A2FILE.SYSTEM" depuis BASIC.SYSTEM le
+     * laisse VIDE : set_boot_prefix le refait alors du chemin complet que
+     * BASIC.SYSTEM laisse en $0280, ou du volume amorce. Sans lui A2FC
+     * s'ouvrirait sur la liste des volumes, sans A2FILE.CFG -- ou ne se
+     * chargerait pas du tout, installe ailleurs qu'a la racine. */
+    set_boot_prefix();
     if ((f = fopen(CODE_FILE, "rb")) == NULL) {
         cprintf("\r\n%s not found (errno=%d).\r\n", CODE_FILE, errno);
         cputs("Press a key ...\r\n");
@@ -115,13 +123,6 @@ int main(void)
     /* Jamais au-dela de $BEFF : la page globale ProDOS est a $BF00. */
     while (dst < (unsigned char*)0xBF00 && (n = fread(dst, 1, (unsigned char*)0xBF00 - dst < CHUNK ? (unsigned char*)0xBF00 - dst : CHUNK, f)) > 0) dst += n;
     fclose(f);
-
-    /* Poser le prefixe sur le volume amorce : au demarrage a froid ProDOS
-     * l'a deja fait, mais pas la relance par "-A2FILE.SYSTEM" depuis
-     * BASIC.SYSTEM. Sans lui A2FC s'ouvre sur la liste des volumes au lieu
-     * des panneaux, et ne recharge pas A2FILE.CFG. La lecture ci-dessus
-     * vient du volume amorce : $BF30 le designe. */
-    set_boot_prefix();
 
     /* A2 File Cmd ne revient jamais ici : il sort par le QUIT ProDOS. */
     ((void (*)(void))CODE_ADDR)();
