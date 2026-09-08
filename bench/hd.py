@@ -15,7 +15,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from pom2 import Pom2, Session, ROOT, DISK
-from run import RET, TAB, ESC
+from run import RET, TAB, ESC, solid_bands
+import urllib.request
 
 DEMO = ['DHGR.RAW', 'DHGR.RLE', 'DOS33.DSK', 'HELLO', 'HGR.RAW', 'HGR.RLE', 'LETTER', 'README',
         'SAMPLE', 'SAMPLE.BNY', 'SAMPLE.SHK', 'TINY.2MG', 'TINY.PO', 'WELCOME.MB']
@@ -49,6 +50,8 @@ def main():
             s.select('DHGR.RAW', 40); s.key(RET)
             s.wait(lambda: s.value('view', 1) == 1, 'image DHGR brute', 40); time.sleep(1)
             ok('la page DHGR brute s affiche', s.value('view', 1) == 1)
+            solid, rows, colours = solid_bands(urllib.request.urlopen(p.base + '/screen.ppm').read())
+            ok('en bandes unies, quinze couleurs', solid == rows and colours >= 15, (solid, rows, colours))
             s.key(ESC); s.wait(lambda: s.value('view', 1) == 0, 'retour'); p.stable()
             s.select('TINY.2MG', 40); s.key(RET)
             s.wait(lambda: s.has('HELLO ') and s.has('INSIDE '), 'ouvrir le .2MG', 30); p.stable()
