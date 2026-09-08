@@ -11,6 +11,9 @@ downloads and installation.
 - Added a 6502 build for the unenhanced Apple IIe (`make disk ARCH=6502` with cc65 master, `A2FILECMD-6502.*`): the same program, keyboard only — no mouse driver. Releases now ship both builds, made together by the CI.
 - Fixed the Binary II extractor leaving the other panel stale: the extracted files now appear in it at once.
 - Added `IMGHGR/` at the root of the `.2mg`: nine HGR pictures from POM1, to leaf through with the arrows.
+- Changed the panels: a directory name ends with `/`, like Ammonoid; a volume row reads `/VOL/`.
+- Changed the volume list to ProDOS's own `ON_LINE` enumeration, so that every unit ProDOS knows is listed, mirrored SmartPort units included.
+- Fixed VDrive on a //c picking the printer port: slot 2 (the modem port) is probed first, then 1, 3 to 7.
 
 
 ## [0.6.7](https://github.com/habib256/a2filecmd/releases/tag/v0.6.7) — 2026-09-08

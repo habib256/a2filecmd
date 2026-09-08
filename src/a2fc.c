@@ -524,9 +524,12 @@ static void draw_entry(unsigned char p, unsigned char index)
          * voisin a gauche, ou passaient a la ligne suivante, colonnes 0-1, a
          * droite -- les "carres blancs" en mode DOS 3.3. */
         if (!e->access) cprintf("%-15s S%u,D%u  DOS 3.3 disk   ", e->name, (e->mdate >> 4) & 7, (e->mdate >> 7) + 1);
-        else cprintf("%-15s S%u,D%u %5u/%5u free", e->name, e->mdate & 7, (e->mdate >> 3) + 1, e->aux, e->blocks);
+        else {                                   /* "/VOL/" : un dossier, comme Ammonoid le montre */
+            sprintf(question, "%s/", e->name);
+            cprintf("%-16sS%u,D%u %5u/%5u free", question, e->mdate & 7, (e->mdate >> 3) + 1, e->aux, e->blocks);
+        }
     }
-    else if (is_dir(e)) cprintf("%-15s  <DIR>          %5u ", e->name, e->blocks);
+    else if (is_dir(e)) { sprintf(question, "%s/", e->name); cprintf("%-17s<DIR>          %5u ", question, e->blocks); }
     else cprintf("%-15s%c%c%s $%04X %8lu   ", e->name, tagged(pan, index) ? '*' : ' ',
                  is_locked(e) ? 'L' : ' ', type_name(e->type), e->aux, e->size);
     revers(0);
@@ -666,20 +669,37 @@ static struct Entry* add_entry(struct Panel* pan, const char* name, unsigned cha
  * et Bitsy Bye s'ouvrirait la au retour : on le remet tel qu'il etait. */
 #define DEVNUM (*(volatile unsigned char*)0xBF30)
 
+/* La liste des volumes telle que ProDOS la donne : ON_LINE sur l'unite 0
+ * rend, seize octets par unite de DEVLST, l'unite (DSSS) et le nom -- ou
+ * une longueur nulle et un code d'erreur pour un lecteur sans volume. C'est
+ * la liste de Bitsy Bye et de CAT ; cc65 (getfirstdevice, getdevicedir)
+ * refaisait un ON_LINE par slot et lecteur qu'il connait, et une machine
+ * a plus d'unites que cela (ProDOS 2.4 en refleche jusqu'a quatorze par
+ * carte SmartPort) en perdait. mdate garde le numero DSSS >> 4 : le lecteur
+ * en bit 3, le slot en bits 0-2. */
 static void read_volumes(struct Panel* pan)
 {
-    unsigned char dev = getfirstdevice();
-    unsigned char saved = DEVNUM;
+    unsigned char saved = DEVNUM, i, b, len;
+    unsigned char* online = copy_buf;
+    unsigned char parms[4];
     char name[NAME_LEN];
     struct Entry* e;
-    while (dev != INVALID_DEVICE && pan->count < MAX_ENTRIES) {
-        if (getdevicedir(dev, name, sizeof name)) {
+    parms[0] = 2; parms[1] = 0;
+    parms[2] = (unsigned char)((unsigned)online & 0xFF);
+    parms[3] = (unsigned char)((unsigned)online >> 8);
+    if (!mli_call(0xC5, parms))
+        for (i = 0; i < 16 && pan->count < MAX_ENTRIES; ++i) {
+            b = online[i * 16];
+            if (!b) break;
+            len = b & 15;
+            if (!len) continue;                  /* pas de volume : l'erreur suit */
+            name[0] = '/';
+            memcpy(name + 1, online + i * 16 + 1, len);
+            name[len + 1] = 0;
             e = add_entry(pan, name, 0x0F);
-            e->mdate = dev;
+            e->mdate = b >> 4;
             volume_blocks(name, &e->blocks, &e->aux);
         }
-        dev = getnextdevice(dev);
-    }
     /* Les disques DOS 3.3 n'ont pas de volume ProDOS : on sonde chaque unite
      * (DEVLST) pour une VTOC DOS 3.3 et on la propose comme un dossier. Un
      * disque ProDOS ou un lecteur vide echoue au controle et n'est pas

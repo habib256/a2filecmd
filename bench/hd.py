@@ -46,7 +46,7 @@ def main():
             names = [r[40:].split(' ')[0] for r in s.rows()[2:20]]
             ok('DEMO montre un exemplaire de chaque type', all(n in names for n in DEMO),
                [n for n in DEMO if n not in names])
-            names_left = [r[:16].split(' ')[0] for r in s.rows()[2:20]]
+            names_left = [r[:16].split(' ')[0].rstrip('/') for r in s.rows()[2:20]]
             ok('IMGHGR est a la racine', 'IMGHGR' in names_left, names_left[:6])
             s.select('IMGHGR', 0); s.key(RET); s.wait(lambda: s.has('/A2FILEHD/IMGHGR'), 'IMGHGR'); p.stable()
             imgs = [r[:16].split(' ')[0] for r in s.rows()[2:20] if r[:16].strip() and not r.startswith('..')]
@@ -63,8 +63,8 @@ def main():
             ok('en bandes unies, quinze couleurs', solid == rows and colours >= 15, (solid, rows, colours))
             s.key(ESC); s.wait(lambda: s.value('view', 1) == 0, 'retour'); p.stable()
             s.select('TINY.2MG', 40); s.key(RET)
-            s.wait(lambda: s.has('HELLO ') and s.has('INSIDE '), 'ouvrir le .2MG', 30); p.stable()
-            ok('le .2MG s ouvre comme un dossier', s.has('HELLO ') and s.has('INSIDE '),
+            s.wait(lambda: s.has('HELLO ') and s.has('INSIDE/'), 'ouvrir le .2MG', 30); p.stable()
+            ok('le .2MG s ouvre comme un dossier', s.has('HELLO ') and s.has('INSIDE/'),
                s.rows()[0][40:70])
             s.key(ESC); s.wait(lambda: s.has('/A2FILEHD/DEMO'), 'sortir'); p.stable()
 

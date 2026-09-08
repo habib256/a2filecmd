@@ -301,7 +301,7 @@ class Session:
         for _ in range(12):
             self.key(b'<')                       # remonter page par page
         for _ in range(tries):
-            if self.line(x).startswith(name + ' '):
+            if self.line(x).startswith(name + ' ') or self.line(x).startswith(name + '/'):
                 return
             self.key(b'\x0a')
         raise AssertionError(f'introuvable dans le panneau : {name}\n' + '\n'.join(self.rows()))

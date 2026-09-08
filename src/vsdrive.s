@@ -135,6 +135,11 @@ un_done:
 ; La signature Pascal 1.1 d'une carte serie ou parallele de type 1.
 id_ofs: .byte   $05, $07, $0B, $0C
 id_val: .byte   $38, $18, $01, $31
+; Les slots dans l'ordre ou on les sonde : le 2 d'abord -- le port modem
+; d'un //c, dont le port 1 (imprimante) porte la meme signature et le meme
+; 6551 ; la place habituelle d'un modem sur un IIe --, puis 1, 3 a 7.
+; (Michel Sitruk, //c, 0.6.7 : le VDrive partait sur le port imprimante.)
+slots:  .byte   $C2, $C1, $C3, $C4, $C5, $C6, $C7, 0
 
 ; Le talon, recopie en $0300. Sa source est en memoire principale (segment
 ; CODE), pas en carte langage : l'image LC est pleine a 7 octets pres, et
@@ -237,9 +242,13 @@ _vsdrive_install:
         lda     #0                      ; la page 3 n'est pas initialisee :
         sta     vs_on                   ; sans carte, le destructeur ne doit
         sta     ptr1                    ; rien defaire
-        lda     #$C1                    ; la carte serie : slots 1..7
-        sta     ptr1+1
+        sta     vs_to                   ; l'index dans slots
 ins_card:
+        ldx     vs_to
+        lda     slots,x
+        beq     ins_none                ; la table est finie : pas de carte
+        sta     ptr1+1                  ; $Cn : la page ROM du slot
+        inc     vs_to
         ldx     #0
 ins_id: ldy     id_ofs,x
         lda     (ptr1),y
@@ -281,10 +290,7 @@ ins_not:
         pla
         sta     ACIA_STATUS,x
 ins_next:
-        inc     ptr1+1
-        lda     ptr1+1
-        cmp     #$C8
-        bcc     ins_card
+        jmp     ins_card
 ins_none:
         lda     #0
         tax

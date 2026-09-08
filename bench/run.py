@@ -146,7 +146,7 @@ def main():
             s.ok('Entree ouvre un dossier', any(r.startswith('A2FILE.CODE') for r in s.rows()))
             s.key(ESC); s.wait(lambda: s.rows()[0][:11] == '/A2FILECMD ', 'remonter'); p.stable()
             s.ok('Echap remonte et reselectionne le dossier quitte',
-                 s.line().startswith('A2FILE '), s.line()[:20])
+                 s.line().startswith('A2FILE/'), s.line()[:20])
             before = s.line()
             s.key(RIGHT); p.stable()
             s.ok('la fleche droite fait une page, elle n ouvre pas',
@@ -347,7 +347,7 @@ def main():
                  any(r[40:].startswith('DEEP ') for r in s.rows()))
             s.key(ESC); s.wait(lambda: s.rows()[0][40:].startswith('/SCRATCH/TINY.PO '), 'remonter'); p.stable()
             s.ok("Echap remonte a la racine de l'image",
-                 any(r[40:].startswith('INSIDE ') for r in s.rows()))
+                 any(r[40:].startswith('INSIDE/') for r in s.rows()))
             # C : extraire HELLO vers le panneau gauche (/SCRATCH)
             s.select('HELLO', 40); s.key(b' '); p.stable()
             s.key(b'C'); s.wait(lambda: s.has('extracted') or s.has('folder') or s.has('failed'), 'extraction', 30)
@@ -428,7 +428,7 @@ def main():
             s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes')
             s.select('/SCRATCH'); s.key(RET)
             s.wait(lambda: s.rows()[0][:9] == '/SCRATCH ', 'ouvrir SCRATCH'); p.stable()
-            s.ok('la liste des volumes ouvre le disque dur', s.has('WORK '), s.line()[:20])
+            s.ok('la liste des volumes ouvre le disque dur', s.has('WORK/'), s.line()[:20])
             s.key(TAB)                                    # retour a DEMO, la source
             s.select('SAMPLE', 40); row = s.cursor_row(40); s.key(b' '); p.stable()
             s.ok('Espace marque sans descendre : le curseur reste sur la ligne', s.cursor_row(40) == row,
@@ -473,7 +473,7 @@ def main():
                  next((r[:40] for r in s.rows() if r.startswith('COPIE ')), ''))
             s.key(b'K'); s.wait(lambda: s.has('New directory'), 'mkdir')
             s.type('NEUF'); s.key(RET); p.stable()
-            s.ok('K cree un dossier', any(r.startswith('NEUF ') and '<DIR>' in r for r in s.rows()))
+            s.ok('K cree un dossier', any(r.startswith('NEUF/') and '<DIR>' in r for r in s.rows()))
             s.select('COPIE'); s.key(b'D'); s.wait(lambda: s.has('Delete COPIE?'), 'suppression')
             s.key(b'Y'); p.stable()
             s.ok('D supprime', not any(r.startswith('COPIE ') for r in s.rows()))

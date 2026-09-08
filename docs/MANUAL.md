@@ -314,9 +314,12 @@ changes.)
 
 ## VDrive: two volumes over the serial line
 
-If a serial card answers at startup — a Super Serial Card in any slot, or
-the built-in port 2 of a //c, identified by the Pascal 1.1 signature of its
-ROM and a 6551 that responds — A2FC installs a **VDrive**: two ProDOS block
+If a serial card answers at startup — a Super Serial Card, or a //c's
+built-in port, identified by the Pascal 1.1 signature of its ROM and a 6551
+that responds; **slot 2 is probed first** (the //c's modem port, the usual
+place of a modem on a IIe; its printer port in slot 1 carries the same
+signature and the same 6551, and 0.6.7 took it by mistake), then 1, 3 to 7 —
+A2FC installs a **VDrive**: two ProDOS block
 devices, in the first slot whose drives 1 and 2 are free, served by whatever
 sits at the other end of the cable at 115 200 bps: the ADTPro server with its
 `Virtual.po` / `Virtual2.po`, `veserver.py` from ProDOS-Utils, or a

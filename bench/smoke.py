@@ -43,7 +43,7 @@ def main():
             s.ok('le lanceur est le seul .SYSTEM du volume',
                  any(r.startswith('A2FILE.SYSTEM') for r in s.rows()))
             s.ok('le dossier A2FILE est la, et pas de DEMO : la disquette est nue',
-                 s.has('A2FILE ') and not s.has('DEMO '))
+                 s.has('A2FILE/') and not s.has('DEMO/'))
             print('\n'.join(r.rstrip() for r in s.rows()[:22]), flush=True)
     return 0
 
