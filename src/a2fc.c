@@ -73,7 +73,7 @@ static void refresh_both(void);
 static void dir_fail(void);
 
 #ifndef A2FC_VERSION
-#define A2FC_VERSION "0.6.7"
+#define A2FC_VERSION "0.6.8"
 #endif
 #define WINDOW (MAX_ENTRIES - 1)   /* entrees du disque par fenetre : ".." en plus */
 
