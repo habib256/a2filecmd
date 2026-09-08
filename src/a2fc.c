@@ -1063,6 +1063,8 @@ static const char pdE4E[] = "the file is locked";
 static const char pdE52[] = "not a ProDOS disk";
 const char msg_dirfail[] = "Directory unreadable or too many files.";
 const char msg_toolong[] = "Path too long for ProDOS.";
+const char msg_sysonly[] = "SYS, BIN or BAS only.";
+const char msg_nomb[] = "No Mockingboard in slots 1-7.";
 const char VIEW_KEYS[] = "SPC Next,B Prev,ESC Back";
 /* Les 107 mots Applesoft ($80-$EA), separes par des zeros. Tableau NOMME
  * (const char[]), pas des litteraux "..." : cc65 regroupe les litteraux dans
@@ -1428,6 +1430,93 @@ void __fastcall__ search_entry(const struct A2fcApi* a)
     }
     draw_panel(active);
     sprintf(question, srch_res, found, input);
+    message(question);
+}
+#pragma static-locals (pop)
+#pragma rodata-name (pop)
+#pragma code-name (pop)
+
+/* ---------------------------------------------------------------------- */
+/* La surcouche BINARY2 : extraire une archive Binary II (.BNY), dans        */
+/* A2FILE/BINARY2.PLG. Lancee par le menu !. Chaque fichier : un en-tete de  */
+/* 128 octets (magie 0A 47 4C), les donnees (EOF octets) completees au       */
+/* multiple de 128. Pas de compression : on recopie. tools/mkbny.py ecrit et */
+/* relit le meme format.                                                     */
+/* ---------------------------------------------------------------------- */
+#pragma code-name (push, "BINARY2")
+#pragma rodata-name (push, "BINARY2RO")
+#pragma static-locals (push, off)
+
+static const char b2_pick[]  = "Select a Binary II archive.";
+static const char b2_notdir[] = "Other panel must be a ProDOS folder.";
+static const char b2_bad[]   = "Not a Binary II archive.";
+static const char b2_path[]  = "%s/%s";
+static const char b2_done[]  = "%u file(s) extracted.";
+
+/* Un nom ProDOS a partir de celui de l'archive : lettres, chiffres et
+ * points, une lettre en tete, 15 au plus. */
+static void b2_name(const unsigned char* src, unsigned char len, char* out)
+{
+    unsigned char i, n = 0, start = 0;
+    char c;
+    for (i = 0; i < len; ++i) if (src[i] == '/' || src[i] == ':') start = i + 1;
+    for (i = start; i < len && n < 15; ++i) {
+        c = src[i];
+        if (c >= 'a' && c <= 'z') c -= 32;
+        if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.')) c = '.';
+        if (!n && !(c >= 'A' && c <= 'Z')) { out[n++] = 'X'; if (n == 15) break; }
+        out[n++] = c;
+    }
+    if (!n) out[n++] = 'X';
+    out[n] = 0;
+}
+
+void __fastcall__ binary2_entry(const struct A2fcApi* a)
+{
+    struct Panel* oth = &panels[!active];
+    FILE* in;
+    FILE* out;
+    unsigned long eof, pad;
+    unsigned int n, k;
+    unsigned char more = 1, done = 0;
+    char name[17];
+    (void)a;
+    if (!selected.name[0] || is_dir(&selected) || !full[0]) { message(b2_pick); return; }
+    if (!oth->path[0] || oth->fs) { message(b2_notdir); return; }
+    in = fopen(full, "rb");
+    if (!in) { report_error("Open"); return; }
+    while (more) {
+        if (fread(copy_buf, 1, 128, in) != 128) break;
+        if (copy_buf[0] != 0x0A || copy_buf[1] != 0x47 || copy_buf[2] != 0x4C) {
+            if (!done) { message(b2_bad); fclose(in); return; }
+            break;
+        }
+        /* EOF sur 3 octets ($14-$16), le nom en $17/$18, "a suivre" en $7F.
+         * Tout est lu de l'en-tete AVANT la boucle de copie, qui recouvre
+         * copy_buf. Le bourrage au multiple de 128 se calcule ici. */
+        eof = (unsigned long)copy_buf[0x14] | ((unsigned long)copy_buf[0x15] << 8)
+              | ((unsigned long)copy_buf[0x16] << 16);   /* EOF sur 3 octets, $14-$16 */
+        pad = (128 - (eof & 127)) & 127;
+        more = copy_buf[0x7F] != 0;                       /* "a suivre" en $7F */
+        b2_name(copy_buf + 0x18, copy_buf[0x17], name);   /* nom : longueur $17, texte $18 */
+        _filetype = copy_buf[4];
+        _auxtype = copy_buf[5] | (copy_buf[6] << 8);
+        sprintf(other_full, b2_path, oth->path, name);
+        out = fopen(other_full, "wb");
+        if (!out) { report_error("Create"); fclose(in); return; }
+        while (eof) {
+            n = eof > 512 ? 512 : (unsigned int)eof;
+            k = fread(copy_buf, 1, n, in);
+            if (!k || fwrite(copy_buf, 1, k, out) != k) break;
+            eof -= k;
+        }
+        fclose(out);
+        if (eof) { remove(other_full); report_error("Extract"); fclose(in); return; }
+        ++done;
+        if (pad) fseek(in, (long)pad, SEEK_CUR);
+    }
+    fclose(in);
+    sprintf(question, b2_done, done);
     message(question);
 }
 #pragma static-locals (pop)
@@ -2185,7 +2274,7 @@ void __fastcall__ music_entry(const struct A2fcApi* a)
     if (api.arg == 'S') { resort(); return; }
     if (api.arg == 'M') { mark_differences(); return; }
     if (a2fc_slot == 0xFF) a2fc_slot = music_detect();
-    if (!a2fc_slot) { message("No Mockingboard in slots 1-7."); return; }
+    if (!a2fc_slot) { extern const char msg_nomb[]; message(msg_nomb); return; }
     if (e->size > MUSIC_ZONE) { message("MB file too large (2304 bytes max)."); return; }
     f = fopen(full, "rb");
     if (!f) { report_error("Open"); return; }
@@ -3678,7 +3767,7 @@ static void run_selected(const struct Entry* e)
         strcat(full, "/BASIC.SYSTEM");
         addr = 0x2000;
     } else {
-        if (e->type != 0xFF && e->type != 0x06) { message("SYS, BIN or BAS only."); return; }
+        if (e->type != 0xFF && e->type != 0x06) { extern const char msg_sysonly[]; message(msg_sysonly); return; }
         if (addr < 0x0800 || (unsigned long)addr + e->size > 0xBB00) { message("BIN must load in $0800-$BAFF."); return; }
         if (!build_full(full, &panels[active], e)) { too_long(); return; }
     }

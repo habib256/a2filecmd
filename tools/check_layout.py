@@ -38,7 +38,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # menu).
 OVERLAYS = {'IMAGE': 0x2000, 'TEXT': 0x2000, 'HEX': 0x2000, 'DELETE': 0x2000, 'HELP': 0x2000,
             'MUSIC': 0x2000, 'RUN': 0x2000, 'ATTR': 0x2000, 'EDIT': 0x2800, 'MENU': 0x3000,
-            'DISKIMG': 0x3400, 'IMGFS': 0x2000, 'DOS33': 0x2000, 'UNSHRINK': 0x3000, 'BASLIST': 0x2000, 'COMPARE': 0x2000, 'SEARCH': 0x2000}
+            'DISKIMG': 0x3400, 'IMGFS': 0x2000, 'DOS33': 0x2000, 'UNSHRINK': 0x3000, 'BASLIST': 0x2000, 'COMPARE': 0x2000, 'SEARCH': 0x2000, 'BINARY2': 0x2000}
 
 
 def check_layout(s, loader, length, overlays=None):
