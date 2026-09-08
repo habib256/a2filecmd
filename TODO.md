@@ -122,6 +122,18 @@ du TODO précédent :
   programme ; `bench/subdir.py`. Un `.2MG` s'ouvre enfin comme un dossier
   (sa taille n'est pas un multiple de 512).
 
+## Fait le 2026-09-08 — les operations longues
+
+- ✅ **La barre de progression sur toute la ligne** (40 cases, compteur,
+  octets), redessinee seulement quand elle change ; **aussi pour D** ;
+  **ESC interrompt** copie, deplacement, suppression (fichier partiel
+  retire, message « Interrupted: x of y ») ; **les panneaux suivent fichier
+  par fichier** (la cible montre chaque arrivee, la source chaque depart,
+  sans relire le disque : `drop_entry`). `bench/ops.py`, 7 controles. Pour
+  la place : les litteraux des surcouches (EDIT, MUSIC, MENU, IMGFS, DOS33,
+  DELETE, ATTR) sont devenus des tableaux nommes dans leur segment, ~600
+  octets rendus au resident.
+
 ## Ce qui reste
 
 - 🟡 **//c et IIgs** : A2Command tourne dessus, A2FC ne l'a jamais essayé.
