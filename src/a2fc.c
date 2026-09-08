@@ -378,7 +378,7 @@ static void message(const char* text)
 
 static void too_long(void)
 {
-    message("Path too long for ProDOS.");
+    extern const char msg_toolong[]; message(msg_toolong);
 }
 
 static void dir_fail(void)
@@ -1062,6 +1062,7 @@ static const char pdE49[] = "the directory is full";
 static const char pdE4E[] = "the file is locked";
 static const char pdE52[] = "not a ProDOS disk";
 const char msg_dirfail[] = "Directory unreadable or too many files.";
+const char msg_toolong[] = "Path too long for ProDOS.";
 const char VIEW_KEYS[] = "SPC Next,B Prev,ESC Back";
 /* Les 107 mots Applesoft ($80-$EA), separes par des zeros. Tableau NOMME
  * (const char[]), pas des litteraux "..." : cc65 regroupe les litteraux dans
@@ -1093,6 +1094,8 @@ const char a2fc_hdr_name[] = "Name*            Type  Aux     Size";
 const char a2fc_hdr_size[] = "Name             Type  Aux     Size*";
 const char a2fc_hdr_type[] = "Name             Type* Aux     Size";
 const char MAIN_KEYS[] = "TAB Panel,RET Open,SPC Tag,C Copy,V Move,R Ren,D Del,K Mkdir,! More,? Help";
+static const char re_fmt1[] = "%s failed: %s.";
+static const char re_fmt2[] = "%s failed (ProDOS $%02X, errno %d).";
 static const char* prodos_error(unsigned char e)
 {
     switch (e) {
@@ -1121,9 +1124,9 @@ static void report_error(const char* what)
     clear_row(22);
     gotoxy(0, 22);
     if (prodos_error(_oserror))
-        cprintf("%s failed: %s.", what, prodos_error(_oserror));
+        cprintf(re_fmt1, what, prodos_error(_oserror));
     else
-        cprintf("%s failed (ProDOS $%02X, errno %d).", what, _oserror, errno);
+        cprintf(re_fmt2, what, _oserror, errno);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -1309,6 +1312,123 @@ void __fastcall__ baslist_entry(const struct A2fcApi* a)
     fclose(vf);
     a2fc_view = 0;
     draw_all();
+}
+#pragma static-locals (pop)
+#pragma rodata-name (pop)
+#pragma code-name (pop)
+
+/* ---------------------------------------------------------------------- */
+/* La surcouche COMPARE : le fichier selectionne et celui de meme nom dans  */
+/* l'autre panneau, octet par octet, dans A2FILE/COMPARE.PLG. Lancee par le */
+/* menu ! (M ne compare que les tailles). Deux moities du tampon de copie   */
+/* resident, pas de reserve : petite surcouche.                             */
+/* ---------------------------------------------------------------------- */
+#pragma code-name (push, "COMPARE")
+#pragma rodata-name (push, "COMPARERO")
+#pragma static-locals (push, off)
+
+static const char cmp_pick[]   = "Select a file to compare.";
+static const char cmp_nooth[]  = "No file of that name in the other panel.";
+static const char cmp_ident[]  = "Identical: %lu bytes.";
+static const char cmp_diff[]   = "Differ at byte %lu.";
+static const char cmp_short[]  = "Same for %lu bytes, then one is longer.";
+
+void __fastcall__ compare_entry(const struct A2fcApi* a)
+{
+    struct Panel* oth = &panels[!active];
+    FILE* fa;
+    FILE* fb;
+    unsigned int na, nb, i, m;
+    unsigned long pos = 0;
+    (void)a;
+    if (!selected.name[0] || is_dir(&selected) || !full[0]) { message(cmp_pick); return; }
+    if (!oth->path[0] || oth->fs) { message(cmp_nooth); return; }
+    sprintf(other_full, "%s/%s", oth->path, selected.name);
+    fa = fopen(full, "rb");
+    if (!fa) { report_error("Open"); return; }
+    fb = fopen(other_full, "rb");
+    if (!fb) { fclose(fa); message(cmp_nooth); return; }
+    for (;;) {
+        na = fread(copy_buf, 1, 256, fa);
+        nb = fread(copy_buf + 256, 1, 256, fb);
+        m = na < nb ? na : nb;
+        for (i = 0; i < m; ++i)
+            if (copy_buf[i] != copy_buf[256 + i]) {
+                fclose(fa); fclose(fb);
+                sprintf(question, cmp_diff, pos + i);
+                message(question);
+                return;
+            }
+        pos += m;
+        if (na != nb) { fclose(fa); fclose(fb); sprintf(question, cmp_short, pos); message(question); return; }
+        if (na < 256) break;
+    }
+    fclose(fa); fclose(fb);
+    sprintf(question, cmp_ident, pos);
+    message(question);
+}
+#pragma static-locals (pop)
+#pragma rodata-name (pop)
+#pragma code-name (pop)
+
+/* ---------------------------------------------------------------------- */
+/* La surcouche SEARCH : un texte cherche dans les fichiers du panneau, ceux */
+/* qui le contiennent sont marques, dans A2FILE/SEARCH.PLG. Lancee par le    */
+/* menu !. Recherche insensible a la casse ; le texte est un nom ProDOS      */
+/* (prompt resident : lettres, chiffres, points), ce qui couvre les mots-    */
+/* cles et les noms. Une fenetre glissante gere les bords de bloc.           */
+/* ---------------------------------------------------------------------- */
+#pragma code-name (push, "SEARCH")
+#pragma rodata-name (push, "SEARCHRO")
+#pragma static-locals (push, off)
+
+static const char srch_label[] = "Search for";
+static const char srch_none[]  = "No file in this panel.";
+static const char srch_res[]   = "%u file(s) contain \"%s\", now tagged.";
+
+/* fread (deja resident) plutot que fgetc (qui se lierait dans la fenetre
+ * principale, pleine) : un bloc dans copy_buf, une fenetre glissante de plen
+ * octets par-dessus, insensible a la casse. */
+static unsigned char file_has(const char* path, const char* pat, unsigned char plen)
+{
+    FILE* f = fopen(path, "rb");
+    unsigned char win[16], wlen = 0, i, c;
+    unsigned int n, j;
+    if (!f) return 0;
+    for (;;) {
+        n = fread(copy_buf, 1, 512, f);
+        for (j = 0; j < n; ++j) {
+            c = copy_buf[j] & 0x7F;
+            if (c >= 'a' && c <= 'z') c -= 32;
+            if (wlen < plen) win[wlen++] = c;
+            else { for (i = 1; i < plen; ++i) win[i - 1] = win[i]; win[plen - 1] = c; }
+            if (wlen == plen) {
+                for (i = 0; i < plen && win[i] == (unsigned char)pat[i]; ++i) ;
+                if (i == plen) { fclose(f); return 1; }
+            }
+        }
+        if (n < 512) break;
+    }
+    fclose(f);
+    return 0;
+}
+
+void __fastcall__ search_entry(const struct A2fcApi* a)
+{
+    struct Panel* pan = &panels[active];
+    unsigned char plen, i, found = 0;
+    (void)a;
+    if (!pan->count) { message(srch_none); return; }
+    if (!prompt(srch_label, 0, 0)) return;          /* input : le texte, en majuscules */
+    plen = strlen(input);
+    if (!plen || plen > 15) return;
+    for (i = 0; i < pan->count; ++i) {
+        if (is_dir(&pan->e[i]) || !build_full(full, pan, &pan->e[i])) continue;
+        if (file_has(full, input, plen)) { set_tag(pan, i, 1); ++found; }
+    }
+    draw_panel(active);
+    sprintf(question, srch_res, found, input);
+    message(question);
 }
 #pragma static-locals (pop)
 #pragma rodata-name (pop)
