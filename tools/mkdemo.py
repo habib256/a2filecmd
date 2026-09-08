@@ -39,16 +39,16 @@ def hgr_card():
 
 
 def dhgr_card():
-    """16 384 octets, plan AUX puis plan MAIN : les seize couleurs DHGR."""
+    """16 384 octets, plan AUX puis plan MAIN : les seize couleurs DHGR en
+    bandes horizontales (une couleur par bande), qui se compressent bien en
+    RLE et gardent la disquette au large."""
     aux, main = bytearray(8192), bytearray(8192)
     for row in range(192):
         off = hgr_offset(row)
+        band = 15 if row < 3 or row >= 189 else min((row - 3) * 16 // 186, 15)
         bits = []
         for x in range(140):
-            if row < 3 or row >= 189 or x < 2 or x >= 138:
-                nib = 15                                  # le cadre, en blanc
-            else:
-                nib = min(x * 16 // 140, 15)
+            nib = 15 if x < 2 or x >= 138 else band     # cadre blanc a gauche/droite
             bits += [(nib >> b) & 1 for b in range(4)]
         for j in range(80):
             byte = sum(bits[j * 7 + k] << k for k in range(7))

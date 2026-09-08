@@ -27,8 +27,12 @@
 #define CODE_FILE "A2FILE/A2FILE.CODE"
 #endif
 #ifndef A2FC_VERSION
-#define A2FC_VERSION "0.5"
+#define A2FC_VERSION "0.6"
 #endif
+
+/* src/loader_mli.s : poser le prefixe ProDOS sur le volume amorce avant de
+ * sauter dans A2FC (voir la note dans ce fichier et devant l'appel plus bas). */
+extern void set_boot_prefix(void);
 
 #define CODE_ADDR   0x4000
 #define CHUNK       1024
@@ -111,6 +115,13 @@ int main(void)
     /* Jamais au-dela de $BEFF : la page globale ProDOS est a $BF00. */
     while (dst < (unsigned char*)0xBF00 && (n = fread(dst, 1, (unsigned char*)0xBF00 - dst < CHUNK ? (unsigned char*)0xBF00 - dst : CHUNK, f)) > 0) dst += n;
     fclose(f);
+
+    /* Poser le prefixe sur le volume amorce : au demarrage a froid ProDOS
+     * l'a deja fait, mais pas la relance par "-A2FILE.SYSTEM" depuis
+     * BASIC.SYSTEM. Sans lui A2FC s'ouvre sur la liste des volumes au lieu
+     * des panneaux, et ne recharge pas A2FILE.CFG. La lecture ci-dessus
+     * vient du volume amorce : $BF30 le designe. */
+    set_boot_prefix();
 
     /* A2 File Cmd ne revient jamais ici : il sort par le QUIT ProDOS. */
     ((void (*)(void))CODE_ADDR)();

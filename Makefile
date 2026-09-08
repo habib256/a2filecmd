@@ -10,7 +10,7 @@
 # lien est verifie a chaque fois par tools/check_layout.py, qui attrape les
 # deux debordements que ld65 laisse passer en silence. Voir docs/MANUAL.md.
 
-A2FC_VERSION = 0.5
+A2FC_VERSION = 0.6
 VOLUME       = A2FILECMD
 
 TARGET = apple2enh
@@ -35,15 +35,18 @@ CFLAGS = -t $(TARGET) -O -Oirs -Cl --codesize 100
 # __HIMEM__ = $BF00 : juste sous la page globale ProDOS. La pile C tient en
 # 256 octets -- creux maximal mesure au banc : 94 (bench/stack.py).
 HIMEM      = 0xBF00
-A2FC_STACK = 0x0100
+A2FC_STACK = 0x00C0
 # Les tampons d'E/S ProDOS viennent de $0800 vers le haut au lieu du tas :
 # sans ce module le tas ne fait que 270 octets et tout fopen echoue.
 IOBUF = apple2enh-iobuf-0800.o
 
 CODE   = $(BUILD)/A2FILE.CODE.BIN
-# Les surcouches, ecrites par le meme lien : le decodeur d'images, les
-# visionneuses de texte et d'hexadecimal, la suppression, la page d'aide.
-PLUGINS = IMAGE TEXT HEX DELETE HELP
+# Les surcouches, ecrites par le meme lien (A2FILE/NOM.PLG, lus en $1B00 a la
+# demande) : le decodeur d'images, les visionneuses, l'aide, la suppression,
+# la musique, le lanceur, les attributs, l'editeur, le menu, les images
+# disque. Chacune a deux segments dans son fichier : NOM (code) puis NOMRO
+# (chaines). Voir src/a2fc_plugin.h pour l'en-tete et la table de services.
+PLUGINS = IMAGE TEXT HEX DELETE HELP EDIT MUSIC RUN ATTR MENU DISKIMG IMGFS DOS33
 SYSTEM = $(BUILD)/A2FILE.SYSTEM.SYS
 FORMAT = $(BUILD)/FORMAT.SYS.SYS
 PO     = $(DIST)/$(VOLUME).po
@@ -52,7 +55,7 @@ DSK    = $(DIST)/$(VOLUME).dsk
 OBJS = $(BUILD)/crt0.o $(BUILD)/overlay.o $(BUILD)/a2fc_mli.o $(BUILD)/chain.o \
        $(BUILD)/music.o $(BUILD)/memory_swap.o $(BUILD)/mli_safe.o $(BUILD)/mouse.o
 
-.PHONY: all disk test bench clean
+.PHONY: all disk test bench example clean
 all: $(SYSTEM) $(CODE) $(FORMAT)
 
 $(BUILD) $(DIST):
@@ -71,12 +74,12 @@ $(BUILD)/music.o: $(SRC)/music.s $(SRC)/ay_notes.inc | $(BUILD)
 
 # Le lanceur : un vrai programme SYS, charge en $2000 par ProDOS, qui lit
 # A2FILE.CODE a ses trois adresses (voir src/loader.c).
-$(SYSTEM): $(SRC)/loader.c Makefile | $(BUILD)
+$(SYSTEM): $(SRC)/loader.c $(BUILD)/crt0_loader.o $(BUILD)/loader_mli.o Makefile | $(BUILD)
 	$(CL) $(CFLAGS) -D 'A2FC_VERSION="$(A2FC_VERSION)"' --start-addr 0x2000 \
 	  -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__FILETYPE__=0xFF \
-	  -o $@ $< $(IOBUF)
+	  -o $@ $(BUILD)/crt0_loader.o $(BUILD)/loader_mli.o $< $(IOBUF)
 
-$(CODE): $(SRC)/a2fc.c $(SRC)/a2fc.cfg $(SRC)/music.h $(SRC)/memory_swap.h $(OBJS) Makefile | $(BUILD)
+$(CODE): $(SRC)/a2fc.c $(SRC)/a2fc.cfg $(SRC)/a2fc_plugin.h $(SRC)/music.h $(SRC)/memory_swap.h $(OBJS) Makefile | $(BUILD)
 	$(CL) $(CFLAGS) -D 'A2FC_VERSION="$(A2FC_VERSION)"' -C $(SRC)/a2fc.cfg \
 	  -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__STACKSIZE__=$(A2FC_STACK) \
 	  -Wl -m,$(BUILD)/a2fc.map -Wl -Ln,$(BUILD)/a2fc.lbl \
@@ -126,6 +129,13 @@ test:
 
 bench: all disk
 	python3 bench/run.py
+
+# La surcouche d'exemple d'un tiers (sdk/), compilee HORS de l'arbre avec le
+# seul src/a2fc_plugin.h : la preuve que l'ABI tient. Produit build/HELLO.PLG,
+# a poser sous A2FILE/. bench/plugin.py le construit et le lance dans POM2.
+example: $(BUILD)/HELLO.PLG
+$(BUILD)/HELLO.PLG: sdk/hello.c sdk/plugin.cfg sdk/build.sh $(SRC)/a2fc_plugin.h | $(BUILD)
+	sh sdk/build.sh sdk/hello.c HELLO
 
 clean:
 	rm -rf $(BUILD) $(DIST)

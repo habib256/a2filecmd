@@ -30,7 +30,15 @@ class SplitLoadLayout(unittest.TestCase):
                            STAGE_BYTES=0xC00)
         self.length = 0xC00 + 0xBCC5 - 0x4000
         self.overlays = dict(IMAGE=0x1F60 - 0x1B00, HELP=0x1EE0 - 0x1B00, TEXT=0x280,
-                             HEX=0x2F0, DELETE=0x300)
+                             HEX=0x2F0, DELETE=0x300, MUSIC=0x200, RUN=0x200, ATTR=0x300,
+                             EDIT=0xC00, MENU=0x600, DISKIMG=0x900, IMGFS=0x300, DOS33=0x400)
+        for name in ('MUSIC', 'RUN', 'ATTR', 'EDIT', 'MENU', 'DISKIMG', 'IMGFS', 'DOS33'):
+            self.s['__%s_START__' % name] = 0x1B00
+            self.s['__%s_LAST__' % name] = 0x1B00 + self.overlays[name]
+        for name in ('IMAGE', 'TEXT', 'HEX', 'DELETE', 'HELP', 'MUSIC', 'RUN', 'ATTR', 'EDIT', 'MENU', 'DISKIMG', 'IMGFS', 'DOS33'):
+            # the RO segment ends where the file ends
+            self.s['__%sRO_LAST__' % name] = self.s['__%s_START__' % name] + self.overlays[name]
+            self.s['__%s_LAST__' % name] = self.s['__%s_START__' % name]
 
     def check(self):
         return check_layout(self.s, self.loader, self.length, self.overlays)
@@ -79,8 +87,8 @@ class SplitLoadLayout(unittest.TestCase):
         self.s['__IMAGE_START__'] = 0x1A00
         self.assertIn('IMAGE overlay starts inside the low RAM', self.check())
         self.s['__IMAGE_START__'] = 0x1B00
-        self.s['__IMAGE_LAST__'] = 0x2001
-        self.assertIn('IMAGE overlay runs into the graphics page', self.check())
+        self.s['__IMAGERO_LAST__'] = 0x2001
+        self.assertIn('IMAGE overlay runs past $2000', self.check())
 
     def test_overlay_file_must_be_as_long_as_the_link_says(self):
         self.overlays['IMAGE'] += 1
