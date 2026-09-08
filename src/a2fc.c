@@ -3569,6 +3569,7 @@ static unsigned char us_extract_thread(void)
     sprintf(other_full, us_path, panels[!active].path, US->name);
     US->out = fopen(other_full, us_wb);
     if (!US->out) { report_error(us_create); return 0; }
+    progress_bar(US->name, 0, US->total);
     US->rem_in = US->ceof;
     if (US->fmt == 0) {                    /* stocke tel quel */
         while (US->rem_out && r) {
@@ -3617,6 +3618,11 @@ void __fastcall__ unshrink_entry(const struct A2fcApi* a)
     if (!strcmp(panels[!active].path, "/RAM")) { strcpy(note, us_noram); return; }
     music_stop();                          /* la banque auxiliaire va servir de dictionnaire */
     a2fc_playing = 0;
+    /* Apres une image, HIRES reste arme. Avec 80STORE, PAGE2 impose alors
+     * la banque de $2000-$3FFF meme sous RAMRD/RAMWRT AUX : le dictionnaire
+     * LZW ecraserait le pilote C et les tables des panneaux en MAIN.
+     * LORES rend cette zone a RAMRD/RAMWRT sans toucher au texte 80 colonnes. */
+    *(volatile unsigned char*)0xC056 = 0;
     /* Le coeur, en tete de la surcouche ($1B00-$1FFF), recopie en AUX a la
      * meme adresse : c'est cette copie qui s'executera sous RAMRD AUX. */
     aux_copy(0x1B00, 0x1B00, 1);
@@ -3631,7 +3637,9 @@ void __fastcall__ unshrink_entry(const struct A2fcApi* a)
     }
     if (!us_eq(US->hdr, us_magic_master, 6)) { strcpy(note, us_notarch); fclose(US->in); return; }
     US->records = U16(US->hdr, 8);
+    progress_total = US->records;
     for (i = 0; i < US->records; ++i) {
+        progress_done = i;
         /* l'enregistrement : magic, crc, attrib_count, puis le reste des attributs */
         if (fread(US->hdr, 1, 8, US->in) != 8 || !us_eq(US->hdr, us_magic_record, 4)) goto corrupt;
         US->attrib = U16(US->hdr, 6);

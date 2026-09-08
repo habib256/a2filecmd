@@ -1,7 +1,12 @@
 # Changelog
 
-Changes in published releases. See the [README](README.md) for features,
+Changes in upcoming and published releases. See the [README](README.md) for features,
 downloads and installation.
+
+## Unreleased
+
+- Fixed ShrinkIt extraction after viewing HGR/DHGR images: the LZW dictionary no longer overwrites main memory through the graphics banking switches.
+- Fixed extraction progress: show each file from the start, with its archive position, progress bar and extracted byte count.
 
 ## [0.6.6](https://github.com/habib256/a2filecmd/releases/tag/v0.6.6) — 2026-09-08
 
