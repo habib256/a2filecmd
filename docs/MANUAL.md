@@ -335,14 +335,23 @@ block (a byte comes every 87 cycles at that speed; the receive loop takes
 about 60), and every byte waited for has a 0.3 s timeout, so a host that is
 absent or unplugged gives a clean I/O error (`$27`) instead of a hang — the
 volume list then shows the drive without a name, as it does for an empty
-Disk II.
+Disk II. Two things the bench taught: ProDOS's own buffer for `ON_LINE` and
+directory blocks (`GBUF`, `$DC00`) is in *its* bank of the language card,
+where a store from ours cannot land — the two accesses to the caller's
+buffer therefore go through page 3 as well, bank 1 for the time of one
+byte; and a 6551 raises an interrupt whenever DCD or DSR changes, whatever
+its registers say, so unplugging a cable that carries those lines would
+have killed ProDOS (`RESTART SYSTEM - $01`) — the driver registers a small
+ProDOS interrupt handler (page 3 too) that reads the status register, which
+acknowledges the interrupt, and claims it when bit 7 says it was ours.
 
 `bench/vsdrive_server.py` is a host for the protocol over a TCP socket, and
 `bench/vdrive.py` the bench that plugs it into POM2's Super Serial Card
-bridge; it waits for `pom2_playtest --ssc` (requested in POM2's TODO) and
-says so until then. **The driver has not yet run against an emulated or real
-card**: treat it as 0.6.7's experimental feature, and tell me what a real
-Super Serial Card or //c makes of it.
+bridge (`pom2_playtest --ssc PORT`, raw mode): the two volumes appear in the
+list, a file is read from the remote image and one is copied to it and read
+back on the host byte for byte, then the host is cut off and the volume list
+still comes back, and Q leaves `DEVLST` as it found it. It has not yet been
+tried on a real Super Serial Card or //c: tell me what yours makes of it.
 
 ## Reading an AppleWorks document
 

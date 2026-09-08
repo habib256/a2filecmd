@@ -19,6 +19,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from pom2 import Pom2, Session, ROOT, POM2
 from run import scratch_volume, RET, TAB, ESC, volume
 from vsdrive_server import Server
+sys.path.insert(0, str(ROOT / 'tools'))
+from prodos_read import Image
 
 SSC_PORT = 6740
 
@@ -72,10 +74,22 @@ def main():
                 s.wait(lambda: s.has('copied') or s.has('failed'), 'copie', 60); p.stable()
                 ok('C ecrit sur le volume distant', s.has('1 file copied') and any(e[0] == 'write' for e in server.log),
                    s.rows()[22].strip()[:50])
+                img = Image(image.read_bytes())
+                got = {name: (kind, size) for name, kind, size in img.walk()}
+                note = next((img.read(e) for e in img.entries(2) if e[1:5] == b'NOTE'), None)
+                ok("l'image sur l'hote porte le fichier, octet pour octet",
+                   got.get('/NOTE') == ('TXT', 8) and note == b'scratch\r', (got.get('/NOTE'), note))
+                devcnt = p.peek(0xBF31, 1)[0]
+                ok('les deux unites sont dans DEVLST', devcnt >= 2, devcnt)
                 # l'hote s'en va : la prochaine lecture doit echouer proprement
                 server.close(); time.sleep(0.5)
                 s.key(TAB); s.key(ESC); s.wait(lambda: s.has('[Volumes]'), 'volumes sans hote', 60); p.stable()
                 ok("sans hote, la liste des volumes revient quand meme", s.has('[Volumes]') and s.has('/SCRATCH'))
+                # Q : le destructeur retire les deux unites et rend DEVADR
+                s.key(b'Q'); s.wait(lambda: s.has('Quit to ProDOS?'), 'Q'); s.key(b'Y')
+                s.wait(lambda: not s.has('Type  Aux     Size'), 'sortie', 30); time.sleep(1)
+                ok('en quittant, les deux unites quittent DEVLST (le destructeur)',
+                   p.peek(0xBF31, 1)[0] == devcnt - 2, (devcnt, p.peek(0xBF31, 1)[0]))
         finally:
             server.close()
 

@@ -155,13 +155,53 @@ du TODO précédent :
   chargement d'un `.MB` est déjà une surcouche (`MUSIC.PLG`), mais le pilote
   AY reste résident. Le rendre entièrement en surcouche demanderait qu'elle
   survive à la navigation, ce que la fenêtre unique interdit. *À laisser.*
-- 🟡 **VDrive : le banc, puis une vraie carte** *(pilote écrit le
+- 🟡 **VDrive : le banc tourne, reste la vraie carte** *(pilote écrit le
   2026-09-08, `src/vsdrive.s`, à la Ammonoid : deux volumes ProDOS servis
   par un 6551 à 115 200 bauds, protocole du VDrive d'ADTPro, en carte
-  langage derrière un talon en page 3)*. Il n'a encore tourné nulle part :
-  `bench/vdrive.py` attend `pom2_playtest --ssc` (demandé dans le TODO de
-  POM2), `bench/vsdrive_server.py` est prêt. Puis un retour d'utilisateur
-  sur une Super Serial Card réelle et sur un //c. *½ jour quand POM2 suit.*
+  langage derrière un talon en page 3)*. `bench/vdrive.py` passe 6/6 sur
+  POM2 depuis que `pom2_playtest --ssc PORT` existe (pomadventure,
+  `SCOSWAMP.MORE/TOOLS/pom2_playtest.cpp`). Le banc a trouvé deux choses
+  du premier coup : le `sta (P_BUF),y` du pilote s'exécutait depuis la
+  banque 2 de la carte langage alors que GBUF, le tampon de ProDOS visé
+  par ON_LINE, est en `$DC00` banque 1 — le volume distant paraissait
+  sous le nom de la disquette ; les accès au tampon passent maintenant par
+  la page 3 (banque 1 le temps d'un octet). Et un pilote sans gestionnaire
+  d'interruption meurt d'un `RESTART SYSTEM - $01` si DCD tombe : POM2
+  strappe les lignes modem de sa SSC pour ce banc (un câble USB-série n'en
+  a pas), mais une vraie SSC derrière un modem les a — le pilote pose
+  maintenant un gestionnaire ProDOS (ALLOC_INTERRUPT, en page 3 : lire le
+  registre d'état acquitte et dit si c'était nous), retiré par le
+  destructeur. Reste un retour d'utilisateur sur une Super Serial Card
+  réelle et sur un //c. *Selon retour.*
+- 🟡 **VDrive par l'Uthernet II : le même protocole sur une prise TCP du
+  W5100** *(demandé le 2026-09-08 ; POM2 est prêt : `pom2_playtest
+  --uthernet` branche une Uthernet II en slot 3 du //e avec le loopback
+  ouvert, `Pom2(..., uthernet=True)` dans `bench/pom2.py` passe le
+  drapeau)*. À écrire, `src/vsdrive_w5100.s`, la moitié transport du
+  pilote — l'enveloppe, les XOR, l'installation dans `DEVADR`/`DEVLST` et
+  le talon sont à partager avec `vsdrive.s` : (1) trouver la carte, qui
+  n'a pas de ROM : sur chaque slot 1..7, écrire le registre de mode par
+  la fenêtre `$C0n4` (mode) / `$C0n5-6` (adresse) / `$C0n7` (donnée), poser
+  l'auto-incrément (`MR = $02`) et relire `MR` — c'est ce que font IP65 et
+  AppleWin ; (2) un reset logiciel (`MR = $80`), `RMSR`/`TMSR = $55`
+  (2 Ko par prise), une adresse source quelconque dans `SIPR` (les prises
+  sont celles de l'hôte sous POM2 ; sur une vraie carte l'adresse vient
+  de la configuration) ; (3) la prise 0 en TCP : `S0_MR = $01`, `S0_PORT`
+  quelconque, `S0_DIPR` = l'adresse du serveur, `S0_DPORT` = son port,
+  `S0_CR = OPEN ($01)` puis `CONNECT ($04)`, attendre `S0_SR = $17`
+  (ESTABLISHED) avec un délai ; (4) `putc` = écrire au pointeur `S0_TX_WR`
+  dans le tampon `$4000+` (2 Ko, modulo), avancer le pointeur, `S0_CR =
+  SEND ($20)` — grouper l'enveloppe et le bloc en un seul SEND ; `getc` =
+  attendre `S0_RX_RSR ≠ 0`, lire à `S0_RX_RD` dans `$6000+`, avancer,
+  `S0_CR = RECV ($40)` ; l'hôte parti se voit à `S0_SR = $00` (CLOSED) ou
+  à un délai, et donne `E_IO` comme le 6551. (5) L'adresse et le port du
+  serveur : une ligne `vdrive=127.0.0.1:6740` dans `A2FILE/A2FILE.CFG`,
+  lue par `load_config` ; (6) `bench/vsdrive_server.py --listen` : ici
+  c'est l'Apple qui se connecte, le serveur doit écouter au lieu d'aller
+  au pont de la SSC ; `bench/vdrive_net.py` = `vdrive.py` avec
+  `uthernet=True` et ce serveur, mêmes six contrôles. Sur une vraie
+  Uthernet II le même code parle à `surl-server` ou à un `vsdrive_server`
+  sur un Raspberry. *1 jour.*
 - 🟢 **Une table de reconnaissance** (type, auxtype, suffixe, en-tête → nom
   de surcouche) à la place de `looks_like_image` et de l'aiguillage
   d'`open_selected`, pour qu'un format de plus ne coûte qu'une ligne.

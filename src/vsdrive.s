@@ -79,6 +79,8 @@ vs_cmd          = $03B8
 vs_to           = $03B9         ; le compte a rebours du delai (2 octets)
 vs_dt           = $03BB         ; heure et date recues (4 octets)
 vs_pg           = $03BF         ; les pages du bloc qui restent
+vs_int          = $03C0         ; le numero ProDOS de notre gestionnaire d'interruption, 0 sans
+vs_ip           = $03C1         ; ses parametres MLI (3 octets) : compte, numero, adresse
 
 ; ----------------------------------------------------------------------
 ; Le destructeur : en fenetre principale, car _exit (crt0) remet la ROM
@@ -91,6 +93,7 @@ _vsdrive_uninstall:
         beq     un_done
         lda     #0
         sta     vs_on
+        jsr     del_irq
         lda     vs_slot                 ; l'ancien pilote reprend DEVADR
         asl
         tax
@@ -132,7 +135,22 @@ un_done:
 id_ofs: .byte   $05, $07, $0B, $0C
 id_val: .byte   $38, $18, $01, $31
 
-; Le talon, recopie en $0300.
+; Le talon, recopie en $0300. Sa source est en memoire principale (segment
+; CODE), pas en carte langage : l'image LC est pleine a 7 octets pres, et
+; une source qu'on ne fait que recopier n'a rien a y faire.
+;
+; Le pilote vit dans le banc 2 de la carte langage ($D400-$DFFF, l'image LC
+; de cc65) et ProDOS dans le banc 1 -- avec son tampon general GBUF en
+; $DC00 : c'est la que ON_LINE, la lecture d'un repertoire et l'ecriture
+; d'un bloc de repertoire posent P_BUF. Un `sta (P_BUF),y` execute depuis
+; le banc 2 ne peut pas y arriver (les deux bancs se partagent les memes
+; adresses, et le banc 2 etait meme en lecture seule) : le tampon gardait
+; le dernier bloc lu par le pilote du Disk II, et le volume distant
+; paraissait sous le nom de la disquette. Les deux acces au tampon passent
+; donc par ici, en page 3, hors carte langage : banc 1 en lecture/ecriture
+; le temps d'un octet, puis retour au banc 2 pour retrouver le pilote.
+; (Banc de POM2, bench/vdrive.py, 2026-09-08.)
+        .segment "CODE"
 thunk_src:
         bit     $C080                   ; le banc 2 en lecture : nous
         jsr     vs_driver
@@ -143,7 +161,77 @@ thunk_src:
         pla                             ; retrouver
         plp
         rts
+st_src:                                 ; A -> (P_BUF),y dans le banc de ProDOS
+        bit     $C08B
+        bit     $C08B
+        sta     (P_BUF),y
+        bit     $C080
+        rts
+ld_src:                                 ; A <- (P_BUF),y dans le banc de ProDOS
+        bit     $C08B
+        bit     $C08B
+        lda     (P_BUF),y
+        bit     $C080
+        rts
+; Le gestionnaire d'interruption ProDOS. Un 6551 leve IRQ quand DCD ou DSR
+; change, quoi qu'en disent ses registres : sur une vraie SSC dont le cable
+; porte ces lignes, debrancher l'hote tuerait ProDOS ("RESTART SYSTEM -
+; $01", personne n'a reclame l'interruption). Lire le registre d'etat
+; l'acquitte ; bit 7 dit si c'etait nous. L'adresse est posee a
+; l'installation (page 3 : modifiable).
+irq_src:
+        lda     $C089                   ; -> $C089 + slot x 16
+        and     #$80
+        beq     irq_no
+        clc                             ; reclamee
+        rts
+irq_no: sec
+        rts
 thunk_len = * - thunk_src
+irq_adr = THUNK + (irq_src - thunk_src) + 1
+IRQH    = THUNK + (irq_src - thunk_src)
+
+; L'inscription et le retrait du gestionnaire (MLI $40 / $41), en fenetre
+; principale : le retrait sert au destructeur, hors carte langage.
+ins_irq:
+        lda     vs_acia                 ; l'adresse du registre d'etat
+        sec
+        sbc     #ACIA_OFS
+        clc
+        adc     #$89
+        sta     irq_adr
+        lda     #$C0
+        sta     irq_adr+1
+        lda     #2
+        sta     vs_ip
+        lda     #<IRQH
+        sta     vs_ip+2
+        lda     #>IRQH
+        sta     vs_ip+3
+        jsr     $BF00
+        .byte   $40                     ; ALLOC_INTERRUPT
+        .word   vs_ip
+        bcc     :+
+        lda     #0                      ; plus de place chez ProDOS : sans gestionnaire
+        sta     vs_ip+1
+:       lda     vs_ip+1
+        sta     vs_int
+        rts
+del_irq:
+        lda     vs_int
+        beq     :+
+        sta     vs_ip+1
+        lda     #1
+        sta     vs_ip
+        jsr     $BF00
+        .byte   $41                     ; DEALLOC_INTERRUPT
+        .word   vs_ip
+        lda     #0
+        sta     vs_int
+:       rts
+st_buf  = THUNK + (st_src - thunk_src)
+ld_buf  = THUNK + (ld_src - thunk_src)
+        .segment "LC"
 
 ; unsigned char vsdrive_install(void)
 _vsdrive_install:
@@ -263,6 +351,7 @@ ins_cpy:
         sta     THUNK,y
         dey
         bpl     ins_cpy
+        jsr     ins_irq
         lda     #1
         sta     vs_on
         lda     vs_acia                 ; (slot serie << 4) | slot des volumes
@@ -333,7 +422,7 @@ rd_dt:  jsr     getc
         ldy     #0
 rd_blk: jsr     getc
         bcs     drv_fail
-        sta     (P_BUF),y
+        jsr     st_buf                  ; dans le banc de ProDOS (voir le talon)
         eor     vs_chk
         sta     vs_chk
         iny
@@ -375,7 +464,7 @@ drv_write:
         lda     #2
         sta     vs_pg
         ldy     #0
-wr_blk: lda     (P_BUF),y
+wr_blk: jsr     ld_buf                  ; depuis le banc de ProDOS (voir le talon)
         jsr     putc_chk
         iny
         bne     wr_blk
