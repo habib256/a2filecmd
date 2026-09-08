@@ -34,6 +34,35 @@
         ldx     #$FF
         txs                     ; Init stack pointer
 
+        ; The machine check, in plain 6502 before anything from the
+        ; apple2enh library runs (65C02 opcodes, the 80-column firmware):
+        ; on a II+, an unenhanced IIe or a 64 KB machine the screen would
+        ; just go blank, ProDOS alive underneath (a user saw exactly that,
+        ; 2026-09-08). IIe or later ($FBB3 = $06), not the unenhanced IIe
+        ; ($FBC0 = $EA : 6502, no MouseText), 128 KB and an 80-column card
+        ; (MACHID $BF98, bits 5 and 1). Otherwise say so on the 40-column
+        ; screen, wait for a key, and quit to ProDOS.
+        lda     $FBB3
+        cmp     #$06
+        bne     unfit
+        lda     $FBC0
+        cmp     #$EA
+        beq     unfit
+        lda     $BF98
+        and     #$22
+        cmp     #$22
+        beq     fit
+unfit:  jsr     $FC58           ; HOME
+        ldx     #0
+:       lda     unfit_msg,x
+        beq     :+
+        ora     #$80
+        jsr     $FDED           ; COUT
+        inx
+        bne     :-
+:       jsr     $FD0C           ; RDKEY
+        jmp     quit
+fit:
         jsr     init
 
         ; Clear the BSS data.
@@ -142,6 +171,12 @@ reset:  stx     SOFTEV
 return: rts
 
         ; Quit to the ProDOS dispatcher.
+unfit_msg:
+        .byte   $0D, "A2 FILE CMD NEEDS AN ENHANCED APPLE IIE,", $0D
+        .byte   "A IIC OR A IIGS, WITH 128K AND", $0D
+        .byte   "AN 80-COLUMN CARD.", $0D, $0D
+        .byte   "PRESS A KEY TO RETURN TO PRODOS.", $0D, 0
+
 quit:   jsr     $BF00           ; MLI call entry point
         .byte   $65             ; Quit
         .word   q_param

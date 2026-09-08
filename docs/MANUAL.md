@@ -7,6 +7,17 @@ line and the help). It is free software under the GNU GPL v3, by Arnaud
 Verhille; the launcher and the help say so. Two ways to start it: boot the
 `/A2FILECMD` floppy, or pick `A2FILE.SYSTEM` from a selector such as Bitsy Bye.
 
+The launcher first checks the machine, in plain 6502 code before anything
+else runs: an Apple IIe or later (`$FBB3 = $06`), not the unenhanced IIe
+(`$FBC0 = $EA`: a 6502 without the 65C02 opcodes cc65 emits, and no
+MouseText), 128 KB and an 80-column card (`MACHID`, `$BF98`, bits 5 and 1).
+A machine that fails gets a plain 40-column message — *A2 FILE CMD NEEDS AN
+ENHANCED APPLE IIE, A IIC OR A IIGS, WITH 128K AND AN 80-COLUMN CARD* — and
+a key returns to ProDOS. Before this check, such a machine showed a blank
+screen with ProDOS alive underneath (Control-Open-Apple-Reset brought Bitsy
+Bye back), which is what a user reported. `bench/machine.py` fakes a 64 KB
+`MACHID` from BASIC and checks the refusal, then boots a //c.
+
 The launcher shows a splash screen while it loads: the title, the "ProDOS 8
 only" note, the date and time if a clock is present (bit 0 of MACHID, `$BF98`)
 or "No clock" otherwise, then **PLEASE WAIT**. Then come the two panels in
