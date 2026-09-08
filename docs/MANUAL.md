@@ -70,6 +70,21 @@ the same directory without returning to the panels: the DHGR directory is
 paged through like an album, and the cursor follows. An arrow with no neighbor
 on its side does nothing, the picture stays. Any other key returns.
 
+### Long operations: the bar, ESC, and what the panels show
+
+A copy, a move or a delete of more than a moment shows its progress on line
+22, across the whole line: the file counter (`3/12`), the name of the file
+in hand, a forty-cell bar and the bytes done over the size — for a delete,
+the items done over the count. The bar is only redrawn when a cell or the
+name changes, so it costs the copy nothing. **ESC** interrupts any of them
+at the end of the file in hand: a half-copied file is removed from the
+target, the panels are re-read, and the message says how far it got
+(`Interrupted: 2 of 5 done.`). Meanwhile the panels keep up: each file
+copied appears in the target panel as it lands, each file moved or deleted
+leaves its panel the moment it is gone — not only when everything is over.
+`bench/ops.py` reads the bar during a 300 KB copy, interrupts it, and
+watches the three-file copy and delete.
+
 ## The mouse
 
 An AppleMouse II card, in any slot, is recognized at startup (`Mouse` appears

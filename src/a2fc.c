@@ -97,6 +97,9 @@ extern char _LOWBSS_SIZE__[];
 static struct Panel panels[2];
 static unsigned char active, sort_mode, over_policy;
 static unsigned int progress_done, progress_total, progress_skipped;
+static unsigned char progress_abort;   /* ESC pendant une operation : on s'arrete au fichier en cours */
+static unsigned char bar_last;         /* la barre telle qu'elle est dessinee : on ne la redessine que si elle change */
+static const char* bar_name;
 /* Diagnostics lisibles par le banc de test POM2 (voir a2fc.lbl). */
 unsigned int a2fc_draws, a2fc_ops, a2fc_errors;
 unsigned char a2fc_view;       /* 0 panneaux, 1 image, 2 texte, 3 hexa, 4 aide, 5 editeur */
@@ -2064,6 +2067,13 @@ static void view_image(void)
 /* ---------------------------------------------------------------------- */
 #pragma code-name (push, "EDIT")
 #pragma rodata-name (push, "EDITRO")
+static const char ed_status[]  = " %-30.30s  Line %u  Col %u  %u/%u bytes %s";
+static const char ed_volfull[] = "Volume full.";
+static const char ed_openf[]   = "Open failed.";
+static const char ed_buffull[] = "Buffer full.";
+static const char ed_nodir[]   = "Open a directory first.";
+static const char ed_exists[]  = "File exists: select it to edit.";
+static const char ed_toobig[]  = "Too big for the editor (6 KB).";
 
 /* Le texte vit dans la page HGR MAIN, au-dessus du code de la surcouche
  * ($2800-$3FEF : 6 Ko), fins de ligne CR, bit 7 ote au chargement.
@@ -2117,7 +2127,7 @@ static void edit_status(void)
     while (pos < ls) { pos = next_line(pos); ++line; }
     bar_begin();
     revers(1);
-    cprintf(" %-30.30s  Line %u  Col %u  %u/%u bytes %s", full, line + 1, ecur - ls + 1, elen, EDIT_MAX, edirty ? "*" : " ");
+    cprintf(ed_status, full, line + 1, ecur - ls + 1, elen, EDIT_MAX, edirty ? "*" : " ");
     revers(0);
     keys_bar(69, "ESC Menu");
 }
@@ -2173,7 +2183,7 @@ static void edit_delete(void)
 static unsigned char edit_save(void)
 {
     FILE* f;
-    if ((elen + 511) / 512 + 1 > panels[active].free_blocks + eblocks) { message("Volume full."); return 0; }
+    if ((elen + 511) / 512 + 1 > panels[active].free_blocks + eblocks) { message(ed_volfull); return 0; }
     _filetype = etype;
     _auxtype = eaux;
     f = fopen(full, "wb");
@@ -2199,7 +2209,7 @@ static unsigned char edit_file(unsigned char fresh, unsigned char type, unsigned
     eaux = aux;
     if (!fresh) {
         f = fopen(full, "rb");
-        if (!f) { strcpy(note, "Open failed."); return 0xFF; }
+        if (!f) { strcpy(note, ed_openf); return 0xFF; }
         elen = fread(EDIT_BUF, 1, EDIT_MAX, f);   /* la taille est verifiee par l'appelant */
         fclose(f);
         for (i = 0; i < elen; ++i) { EDIT_BUF[i] &= 0x7F; if (EDIT_BUF[i] == '\n') EDIT_BUF[i] = '\r'; }
@@ -2242,7 +2252,7 @@ static unsigned char edit_file(unsigned char fresh, unsigned char type, unsigned
             else if (key == 'q' || key == 'Q') { if (!edirty) goto leave; bar_begin(); keys_bar(0, "Y Discard the changes,N Keep editing"); key = cgetc(); if (key == 'y' || key == 'Y') goto leave; }
             break;
         default:
-            if (key >= 32 && key < 127) { if (edit_insert(key)) row = 1; else message("Buffer full."); ewant = ecur - ls; }
+            if (key >= 32 && key < 127) { if (edit_insert(key)) row = 1; else message(ed_buffull); ewant = ecur - ls; }
             break;
         }
         /* row 0/1 : redessiner depuis la ligne courante ; 2 : depuis la
@@ -2269,15 +2279,15 @@ void __fastcall__ edit_entry(const struct A2fcApi* a)
     const struct Entry* e = &selected;
     unsigned char fresh = 0;
     (void)a;
-    if (!pan->count || !pan->path[0]) { strcpy(note, "Open a directory first."); return; }
+    if (!pan->count || !pan->path[0]) { strcpy(note, ed_nodir); return; }
     if (is_dir(e)) {
         if (!prompt("New text file", NULL, 0)) return;
-        if (strlen(pan->path) + 1 + strlen(input) >= PATH_LEN) { strcpy(note, "Path too long for ProDOS."); return; }
+        if (strlen(pan->path) + 1 + strlen(input) >= PATH_LEN) { extern const char msg_toolong[]; strcpy(note, msg_toolong); return; }
         sprintf(full, "%s/%s", pan->path, input);
-        if (exists(full)) { strcpy(note, "File exists: select it to edit."); return; }
+        if (exists(full)) { strcpy(note, ed_exists); return; }
         fresh = 1;
-    } else if (!build_full(full, pan, e)) { strcpy(note, "Path too long for ProDOS."); return; }
-    else if (e->size > (unsigned long)EDIT_MAX) { strcpy(note, "Too big for the editor (6 KB)."); return; }
+    } else if (!build_full(full, pan, e)) { extern const char msg_toolong[]; strcpy(note, msg_toolong); return; }
+    else if (e->size > (unsigned long)EDIT_MAX) { strcpy(note, ed_toobig); return; }
     strcpy(reselect, fresh ? input : e->name);
     eblocks = fresh ? 0 : e->blocks;
     /* Les marques sont des index tries : un fichier nouveau les decale,
@@ -2321,6 +2331,9 @@ static unsigned char looks_like_music(const struct Entry* e)
  * morceau joue. */
 #pragma code-name (push, "MUSIC")
 #pragma rodata-name (push, "MUSICRO")
+static const char mu_toobig[]  = "MB file too large (2304 bytes max).";
+static const char mu_notmb1[]  = "Not an MB1 stream.";
+static const char mu_playing[] = "Playing %s, slot %u. P pauses.%s";
 /* M : marque les fichiers absents de l'autre panneau ou de taille
  * differente ; S : le tri suivant. Surcouche, la RAM basse etant pleine. */
 static void mark_differences(void)
@@ -2369,7 +2382,7 @@ void __fastcall__ music_entry(const struct A2fcApi* a)
     if (api.arg == 'M') { mark_differences(); return; }
     if (a2fc_slot == 0xFF) a2fc_slot = music_detect();
     if (!a2fc_slot) { extern const char msg_nomb[]; message(msg_nomb); return; }
-    if (e->size > MUSIC_ZONE) { message("MB file too large (2304 bytes max)."); return; }
+    if (e->size > MUSIC_ZONE) { message(mu_toobig); return; }
     f = fopen(full, "rb");
     if (!f) { report_error("Open"); return; }
     music_stop();
@@ -2382,7 +2395,7 @@ void __fastcall__ music_entry(const struct A2fcApi* a)
     } while (n == MUSIC_STAGE);
     fclose(f);
     if ((last & 0xF0) != 0xE0) valid = 0;   /* sans END, le lecteur lirait l'AUX au-dela */
-    if (!valid) { message("Not an MB1 stream."); return; }
+    if (!valid) { message(mu_notmb1); return; }
     /* Le flux vit sur des blocs de /RAM (AUX $1000+) : on le refait a neuf,
      * comme au retour d'une image DHGR. ram_format se sert de la page $2000
      * comme tampon, donc des tables d'entrees ; on garde le nom du fichier
@@ -2402,7 +2415,7 @@ void __fastcall__ music_entry(const struct A2fcApi* a)
     a2fc_playing = 1;
     clear_row(22);
     gotoxy(0, 22);
-    cprintf("Playing %s, slot %u. P pauses.%s", input, a2fc_slot, ram_note);
+    cprintf(mu_playing, input, a2fc_slot, ram_note);
 }
 #pragma rodata-name (pop)
 #pragma code-name (pop)
@@ -2899,6 +2912,9 @@ out:
  * du code de cette surcouche. */
 #pragma code-name (push, "MENU")
 #pragma rodata-name (push, "MENURO")
+static const char mn_nodir[]   = "The program directory is unknown.";
+static const char mn_unread[]  = "A2FILE/ is unreadable.";
+static const char mn_row[]     = "%-12s %-52s";
 struct MenuItem { char name[12]; char desc[52]; };
 #define MENU_ITEMS ((struct MenuItem*)0x3000)
 #define MENU_MAX 20
@@ -2912,9 +2928,9 @@ void __fastcall__ menu_entry(const struct A2fcApi* a)
     (void)a;
     input[0] = 0;
     a2file_file("");
-    if (!other_full[0]) { strcpy(note, "The program directory is unknown."); return; }
+    if (!other_full[0]) { strcpy(note, mn_nodir); return; }
     other_full[strlen(other_full) - 1] = 0;   /* "/VOL/A2FILE/" -> "/VOL/A2FILE" */
-    if (!dir_open(other_full)) { strcpy(note, "A2FILE/ is unreadable."); return; }
+    if (!dir_open(other_full)) { strcpy(note, mn_unread); return; }
     while (n < MENU_MAX && dir_next()) {
         len = strlen(dir_entry.name);
         if (dir_entry.type != 0x06 || len < 5 || strcmp(dir_entry.name + len - 4, ".PLG") || !strcmp(dir_entry.name, "MENU.PLG")) continue;
@@ -2946,7 +2962,7 @@ void __fastcall__ menu_entry(const struct A2fcApi* a)
         for (i = 0; i < n; ++i) {
             if (i == cur) revers(1);
             gotoxy(2, 2 + i);
-            cprintf("%-12s %-52s", m[i].name, m[i].desc);
+            cprintf(mn_row, m[i].name, m[i].desc);
             revers(0);
         }
         bar_begin();
@@ -3013,13 +3029,37 @@ static unsigned char exists(const char* path)
     return file_info(path);
 }
 
+/* ESC pendant une copie, un deplacement, une suppression : l'operation
+ * s'arrete a la fin du fichier en cours, les panneaux sont relus. Sonde le
+ * clavier sans attendre ; une autre touche est avalee. */
+static unsigned char abort_key(void)
+{
+    if (!progress_abort && kbhit() && cgetc() == KEY_ESC) progress_abort = 1;
+    return progress_abort;
+}
+
+/* La ligne 22 entiere : "  3/12  NOM             [####....] 12345/67890".
+ * Quarante cases de barre. Redessinee seulement quand une case change ou
+ * que le nom change : cprintf a chaque bloc de 512 octets ralentissait la
+ * copie plus que le disque. */
 static void progress_bar(const char* name, unsigned long copied, unsigned long size)
 {
-    unsigned char filled = size ? (unsigned char)(copied * 20 / size) : 20, i;
+    unsigned char filled = size ? (unsigned char)(copied * 40 / size) : 40, i;
+    if (copied && filled == bar_last && name == bar_name) return;
+    bar_last = filled;
+    bar_name = name;
     gotoxy(0, 22);
-    cprintf("%u/%u %-15s [", progress_done + 1, progress_total, name);
-    for (i = 0; i < 20; ++i) cputc(i < filled ? '#' : '.');
-    cprintf("] %6lu/%-6lu", copied, size);
+    cprintf("%3u/%-3u %-15.15s [", progress_done + 1, progress_total, name);
+    for (i = 0; i < 40; ++i) cputc(i < filled ? '#' : '.');
+    cprintf("] %6lu/%-5lu", copied, size);
+}
+
+/* Retire l'entree i de la table du panneau, sans relire le disque : un
+ * fichier supprime ou deplace disparait a l'instant. */
+static void drop_entry(struct Panel* pan, unsigned char i)
+{
+    memmove(&pan->e[i], &pan->e[i + 1], (pan->count - i - 1) * sizeof(struct Entry));
+    if (--pan->count && pan->cursor >= pan->count) pan->cursor = pan->count - 1;
 }
 
 /* Le fichier `other_full` existe deja : la regle de la copie en cours, ou
@@ -3068,14 +3108,14 @@ static unsigned char copy_file(const char* name, unsigned char type, unsigned in
     clear_row(22);
     progress_bar(name, 0, size);
     while ((n = fread(copy_buf, 1, sizeof copy_buf, in)) > 0) {
-        if (fwrite(copy_buf, 1, n, out) != n) { ok = 0; break; }
+        if (fwrite(copy_buf, 1, n, out) != n || abort_key()) { ok = 0; break; }
         copied += n;
         progress_bar(name, copied, size);
     }
     if (ferror(in)) ok = 0;
     fclose(in);
     if (fclose(out)) ok = 0;
-    if (!ok) { remove(other_full); report_error("Copy"); return 0; }
+    if (!ok) { remove(other_full); if (!progress_abort) report_error("Copy"); return 0; }
     ++a2fc_ops;
     ++progress_done;
     return 1;
@@ -3114,6 +3154,7 @@ static unsigned char copy_tree(unsigned char base)
     if (!list_dir(full, base, &n)) { dir_fail(); return 0; }
     for (i = 0; i < n && ok; ++i) {
         const struct Mini* m = &pool[base + i];
+        if (abort_key()) { ok = 0; break; }
         if (!push_name(full, m->name) || !push_name(other_full, m->name)) { too_long(); ok = 0; }
         else if (m->type == 0x0F) {
             if (!exists(other_full) && mkdir(other_full)) { report_error("Mkdir"); ok = 0; }
@@ -3135,6 +3176,8 @@ static unsigned char delete_tree(unsigned char base)
     unsigned char n, i, len = strlen(full), ok = 1;
     if (!list_dir(full, base, &n)) { dir_fail(); return 0; }
     for (i = 0; i < n && ok; ++i) {
+        progress_bar(pool[base + i].name, progress_done, progress_total);
+        if (abort_key()) { ok = 0; break; }
         if (!push_name(full, pool[base + i].name)) { too_long(); ok = 0; break; }
         if (pool[base + i].type == 0x0F) ok = delete_tree(base + n);
         else if (remove(full)) { report_error("Delete"); ok = 0; }
@@ -3197,6 +3240,8 @@ static unsigned char target_check(void)
 /* ---------------------------------------------------------------------- */
 #pragma code-name (push, "IMGFS")
 #pragma rodata-name (push, "IMGFSRO")
+static const char im_target[]  = "Open a ProDOS folder in the other panel.";
+static const char im_reopen[]  = "Cannot reopen the image.";
 #pragma static-locals (push, off)
 
 /* Ecrit le fichier ProDOS de bloc-cle `key`, taille `size`, dans `out`, lu
@@ -3236,7 +3281,7 @@ static void extract_targets(void)
     unsigned char* idx = (unsigned char*)dst->e;
     unsigned char n, i, done = 0, big = 0, r;
     FILE* out;
-    if (dst->fs || !dst->path[0]) { message("Open a ProDOS folder in the other panel."); return; }
+    if (dst->fs || !dst->path[0]) { message(im_target); return; }
     n = pick_targets();
     if (!n) return;
     progress_total = n;
@@ -3245,7 +3290,7 @@ static void extract_targets(void)
     pan->path[pan->img_len] = 0;
     r = img_open(pan->path);
     pan->path[pan->img_len] = i;
-    if (!r) { message("Cannot reopen the image."); return; }
+    if (!r) { message(im_reopen); return; }
     for (i = 0; i < n; ++i) {
         const struct Entry* e = &pan->e[picked[i]];
         if (is_up(e) || is_dir(e)) { ++progress_done; continue; }
@@ -3286,6 +3331,9 @@ void __fastcall__ imgfs_entry(const struct A2fcApi* a)
 /* ---------------------------------------------------------------------- */
 #pragma code-name (push, "DOS33")
 #pragma rodata-name (push, "DOS33RO")
+static const char d3_target[]  = "Open a ProDOS folder in the other panel.";
+static const char d3_reopen[]  = "Cannot reopen the image.";
+static const char d3_done[]    = "%u file%s extracted.";
 #pragma static-locals (push, off)
 
 /* C sur une image ou un disque DOS 3.3 : extrait les fichiers marques (sinon
@@ -3302,7 +3350,7 @@ static void dos_extract(void)
     unsigned char* tsbuf = (unsigned char*)dst->e;
     unsigned char n, i, done = 0, r;
     FILE* out;
-    if (dst->fs || !dst->path[0]) { message("Open a ProDOS folder in the other panel."); return; }
+    if (dst->fs || !dst->path[0]) { message(d3_target); return; }
     n = pick_targets();
     if (!n) return;
     dos_unit = 0;
@@ -3311,7 +3359,7 @@ static void dos_extract(void)
         pan->path[pan->img_len] = 0;
         r = img_open(pan->path);
         pan->path[pan->img_len] = i;
-        if (!r) { message("Cannot reopen the image."); return; }
+        if (!r) { message(d3_reopen); return; }
     } else dos_unit = (unsigned char)pan->dir_key;
     for (i = 0; i < n; ++i) {
         const struct Entry* e = &pan->e[picked[i]];
@@ -3349,7 +3397,7 @@ static void dos_extract(void)
     refresh_both();
     clear_row(22);
     gotoxy(0, 22);
-    cprintf("%u file%s extracted.", done, done == 1 ? "" : "s");
+    cprintf(d3_done, done, done == 1 ? "" : "s");
 }
 
 void __fastcall__ dos33_entry(const struct A2fcApi* a)
@@ -3646,7 +3694,7 @@ out:
 static void copy_or_move(unsigned char move)
 {
     struct Panel* pan = &panels[active];
-    unsigned char n, i, done = 0;
+    unsigned char n, i, done = 0, removed = 0;
     unsigned int sub;
     if (pan->fs == FS_DOS33) { overlay_run("DOS33", 'C'); return; }   /* extraction DOS 3.3 */
     if (pan->fs) { overlay_run("IMGFS", 0); return; }   /* extraction d'une image ProDOS */
@@ -3659,7 +3707,9 @@ static void copy_or_move(unsigned char move)
     progress_total = 0;
     progress_done = 0;
     progress_skipped = 0;
+    progress_abort = 0;
     over_policy = ASK;
+    if (move) memset(pan->tags, 0, sizeof pan->tags);   /* les marques sont dans picked : les entrees vont bouger */
     for (i = 0; i < n; ++i) {
         const struct Entry* e = &pan->e[picked[i]];
         if (is_up(e)) continue;
@@ -3670,21 +3720,27 @@ static void copy_or_move(unsigned char move)
         progress_total += sub;
     }
     for (i = 0; i < n; ++i) {
-        const struct Entry* e = &pan->e[picked[i]];
+        const struct Entry* e = &pan->e[picked[i] - removed];
         unsigned int skipped_before = progress_skipped;
         if (is_up(e)) { ++done; continue; }
-        if (!copy_one(e)) break;
+        if (abort_key() || !copy_one(e)) break;
         /* Deplacer, c'est copier puis effacer : un fichier passe (Skip)
          * n'a pas ete copie, il reste ; un dossier dont un fichier a ete
          * passe reste aussi, entier, plutot que d'en perdre une partie. */
         if (move && progress_skipped == skipped_before) {
             build_full(full, pan, e);
-            if (is_dir(e) ? !(overlay("DELETE") && delete_tree(0)) : remove(full) != 0) { if (!is_dir(e)) report_error("Delete source"); break; }
+            if (is_dir(e) ? !(overlay("DELETE") && delete_tree(0)) : remove(full) != 0) { if (!is_dir(e) && !progress_abort) report_error("Delete source"); break; }
+            drop_entry(pan, picked[i] - removed);      /* parti : la source le montre tout de suite */
+            ++removed;
+            draw_panel(active);
         }
         ++done;
+        read_panel(!active);                           /* arrive : la cible le montre tout de suite */
+        draw_panel(!active);
     }
     refresh_both();
-    if (done == n) {
+    if (progress_abort) { sprintf(question, "Interrupted: %u of %u done.", done, n); message(question); }
+    else if (done == n) {
         clear_row(22);
         gotoxy(0, 22);
         cprintf("%u file%s %s", progress_done - progress_skipped, progress_done - progress_skipped == 1 ? "" : "s", move ? "moved" : "copied");
@@ -3696,33 +3752,49 @@ static void copy_or_move(unsigned char move)
 /* La surcouche DELETE, seconde moitie : la commande D. */
 #pragma code-name (push, "DELETE")
 #pragma rodata-name (push, "DELETERO")
+static const char dl_nothing[] = "Nothing to delete here.";
+static const char dl_ask1[]    = "Delete %s%s?";
+static const char dl_inside[]  = " and everything inside";
+static const char dl_askn[]    = "Delete %u tagged files?";
+static const char dl_done[]    = "%u item%s deleted.";
+static const char dl_stop[]    = "Interrupted: %u of %u deleted.";
 static void delete_targets(void)
 {
     struct Panel* pan = &panels[active];
-    unsigned char n, i, done = 0;
+    unsigned char n, i, done = 0, removed = 0;
     const struct Entry* e;
     n = pick_targets();
-    if (!n) { message("Nothing to delete here."); return; }
+    if (!n) { message(dl_nothing); return; }
     pool = (struct Mini*)panels[!active].e;
     e = &pan->e[picked[0]];
-    if (n == 1 && is_up(e)) { message("Nothing to delete here."); return; }
-    if (n == 1) sprintf(question, "Delete %s%s?", e->name, is_dir(e) ? " and everything inside" : "");
-    else sprintf(question, "Delete %u tagged files?", n);
+    if (n == 1 && is_up(e)) { message(dl_nothing); return; }
+    if (n == 1) sprintf(question, dl_ask1, e->name, dl_inside + (is_dir(e) ? 0 : sizeof dl_inside - 1));   /* "" : la fin du tableau */
+    else sprintf(question, dl_askn, n);
     if (!confirm(question)) return;
+    progress_total = n;
+    progress_abort = 0;
+    memset(pan->tags, 0, sizeof pan->tags);            /* les marques sont dans picked : les entrees vont bouger */
     for (i = 0; i < n; ++i) {
-        e = &pan->e[picked[i]];
+        e = &pan->e[picked[i] - removed];
         if (is_up(e)) continue;
+        progress_done = i;
+        progress_bar(e->name, i, n);
+        if (abort_key()) break;
         if (!build_full(full, pan, e)) { too_long(); break; }
         if (is_dir(e)) { if (!delete_tree(0)) break; }
         else if (remove(full)) { report_error("Delete"); break; }
         else ++a2fc_ops;
         ++done;
+        drop_entry(pan, picked[i] - removed);          /* parti : le panneau le montre tout de suite */
+        ++removed;
+        draw_panel(active);
     }
     refresh_both();
-    if (done == n) {
+    if (progress_abort) { sprintf(question, dl_stop, done, n); message(question); }
+    else if (done == n) {
         clear_row(22);
         gotoxy(0, 22);
-        cprintf("%u item%s deleted.", done, done > 1 ? "s" : "");
+        cprintf(dl_done, done, done > 1 ? "s" : "");
     }
 }
 
@@ -3737,9 +3809,13 @@ void __fastcall__ delete_entry(const struct A2fcApi* a)
 /* La surcouche ATTR, dans A2FILE/ATTR.PLG : R, K, A et L. */
 #pragma code-name (push, "ATTR")
 #pragma rodata-name (push, "ATTRRO")
+static const char at_rename[]  = "Select something to rename.";
+static const char at_novol[]   = "Open a volume first.";
+static const char at_pick[]    = "Select a file or directory.";
+static const char at_dirtype[] = "A directory keeps its type.";
 static void rename_selected(const struct Entry* e)
 {
-    if (is_up(e) || !panels[active].path[0]) { message("Select something to rename."); return; }
+    if (is_up(e) || !panels[active].path[0]) { message(at_rename); return; }
     if (!prompt("New name", e->name, 0)) return;
     if (!build_full(full, &panels[active], e)) { too_long(); return; }
     if (strlen(panels[active].path) + 1 + strlen(input) >= PATH_LEN) { too_long(); return; }
@@ -3754,7 +3830,7 @@ static void rename_selected(const struct Entry* e)
 static void make_directory(void)
 {
     struct Panel* pan = &panels[active];
-    if (!pan->path[0]) { message("Open a volume first."); return; }
+    if (!pan->path[0]) { message(at_novol); return; }
     if (!prompt("New directory", NULL, 0)) return;
     if (strlen(pan->path) + 1 + strlen(input) >= PATH_LEN) { too_long(); return; }
     sprintf(full, "%s/%s", pan->path, input);
@@ -3771,10 +3847,10 @@ static void change_attributes(const struct Entry* e, unsigned char lock)
 {
     unsigned char type;
     unsigned int aux;
-    if (is_up(e) || !panels[active].path[0]) { message("Select a file or directory."); return; }
+    if (is_up(e) || !panels[active].path[0]) { message(at_pick); return; }
     if (!build_full(full, &panels[active], e)) { too_long(); return; }
     if (!lock) {
-        if (is_dir(e)) { message("A directory keeps its type."); return; }
+        if (is_dir(e)) { message(at_dirtype); return; }
         sprintf(input, "%02X", e->type);
         if (!prompt("File type", input, 2)) return;
         type = (unsigned char)hex_value();
