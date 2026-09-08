@@ -15,7 +15,7 @@ import shutil, subprocess, sys, tempfile, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from pom2 import Pom2, Session, ROOT
+from pom2 import Pom2, Session, ROOT, DISK, BUILD
 from run import RET, scratch_volume
 
 
@@ -33,8 +33,8 @@ def main():
         tmp = Path(tmp)
         stage = tmp / 'hd'
         apps = stage / 'APPS'                # pas a la racine : A2FILE.SYSTEM y passerait avant BASIC.SYSTEM
-        shutil.copytree(ROOT / 'build/vol/A2FILE', apps / 'A2FILE')
-        shutil.copyfile(ROOT / 'build/vol/A2FILE.SYSTEM.SYS', apps / 'A2FILE.SYSTEM.SYS')
+        shutil.copytree(BUILD / 'vol/A2FILE', apps / 'A2FILE')
+        shutil.copyfile(BUILD / 'vol/A2FILE.SYSTEM.SYS', apps / 'A2FILE.SYSTEM.SYS')
         shutil.copyfile(ROOT / 'data/PRODOS.SYS', stage / 'PRODOS.SYS')
         shutil.copyfile(ROOT / 'data/BASIC.SYSTEM.SYS', stage / 'BASIC.SYSTEM.SYS')
         hdv = tmp / 'HD.hdv'                 # amorce sur BASIC.SYSTEM, seul .SYSTEM de la racine
@@ -49,7 +49,7 @@ def main():
             ok('MACHID dit 128 Ko et 80 colonnes sur le IIe de POM2', machid & 0x22 == 0x22, hex(machid))
             p.poke(0xBF98, bytes([machid & ~0x20]))          # une machine de 64 Ko
             s.type('-APPS/A2FILE.SYSTEM'); s.key(RET)
-            s.wait(lambda: has40(s, 'NEEDS AN ENHANCED APPLE IIE'), 'le refus', 30); time.sleep(0.5)
+            s.wait(lambda: has40(s, 'A2 FILE CMD NEEDS AN'), 'le refus', 30); time.sleep(0.5)   # enhanced ou 6502 : le texte differe
             ok('sur 64 Ko, le lanceur le dit en 40 colonnes au lieu d un ecran vide',
                has40(s, '128K AND') and has40(s, 'PRESS A KEY'), [r for r in s.rows40() if r.strip()][:3])
             s.key(b' ')
@@ -59,7 +59,7 @@ def main():
             p.poke(0xBF98, bytes([machid]))                   # la machine telle qu elle est
 
         floppy = tmp / 'A2FILECMD.po'
-        shutil.copyfile(ROOT / 'dist/A2FILECMD.po', floppy)
+        shutil.copyfile(DISK, floppy)
         with Pom2(scratch_volume(tmp), floppy=floppy, port=6744, preset='iic') as p:
             s = Session(p)
             s.boot()

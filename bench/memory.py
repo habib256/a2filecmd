@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from pom2 import Pom2, Session, ROOT, labels
+from pom2 import Pom2, Session, ROOT, labels, DISK
 from run import scratch_volume, ESC, RET, DOWN, TAB
 
 BUDGET = 256                    # ce que le lien reserve
@@ -28,7 +28,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='a2fc-stack-') as tmp:
         tmp = Path(tmp)
         floppy = tmp / 'A2FILECMD.po'
-        shutil.copyfile(ROOT / 'dist/A2FILECMD.po', floppy)
+        shutil.copyfile(DISK, floppy)
         with Pom2(scratch_volume(tmp), floppy=floppy, port=6620) as p:
             s = Session(p, sym)
             s.boot()

@@ -14,7 +14,7 @@ import shutil, subprocess, sys, tempfile, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from pom2 import Pom2, Session, ROOT
+from pom2 import Pom2, Session, ROOT, BUILD
 from run import RET, TAB, ESC
 
 
@@ -28,8 +28,8 @@ def main():
         tmp = Path(tmp)
         stage = tmp / 'hd'
         apps = stage / 'APPS'
-        shutil.copytree(ROOT / 'build/vol/A2FILE', apps / 'A2FILE')
-        shutil.copyfile(ROOT / 'build/vol/A2FILE.SYSTEM.SYS', apps / 'A2FILE.SYSTEM.SYS')
+        shutil.copytree(BUILD / 'vol/A2FILE', apps / 'A2FILE')
+        shutil.copyfile(BUILD / 'vol/A2FILE.SYSTEM.SYS', apps / 'A2FILE.SYSTEM.SYS')
         (apps / 'NOTE.TXT').write_bytes(b'a note next to the program\r' * 3)
         shutil.copyfile(ROOT / 'data/PRODOS.SYS', stage / 'PRODOS.SYS')
         shutil.copyfile(ROOT / 'data/BASIC.SYSTEM.SYS', stage / 'BASIC.SYSTEM.SYS')

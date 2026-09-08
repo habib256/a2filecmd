@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-from pom2 import Pom2, Session, ROOT
+from pom2 import Pom2, Session, ROOT, DISK
 from run import scratch_volume, RET, TAB, ESC, volume
 import mkawp, mkdemo
 
@@ -30,7 +30,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='a2fc-awp-') as tmp:
         tmp = Path(tmp)
         floppy = tmp / 'A2FILECMD.po'
-        shutil.copyfile(ROOT / 'dist/A2FILECMD.po', floppy)
+        shutil.copyfile(DISK, floppy)
         scratch_volume(tmp)
         stage = tmp / 'scratch'
         mkawp.write_awp(stage / 'LETTER#1A0000', mkdemo.LETTER)

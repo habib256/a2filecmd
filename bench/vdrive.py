@@ -16,7 +16,7 @@ import shutil, subprocess, sys, tempfile, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from pom2 import Pom2, Session, ROOT, POM2
+from pom2 import Pom2, Session, ROOT, POM2, DISK, IMG
 from run import scratch_volume, RET, TAB, ESC, volume
 from vsdrive_server import Server
 sys.path.insert(0, str(ROOT / 'tools'))
@@ -43,7 +43,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='a2fc-vdrive-') as tmp:
         tmp = Path(tmp)
         floppy = tmp / 'A2FILECMD.po'
-        shutil.copyfile(ROOT / 'dist/A2FILECMD.po', floppy)
+        shutil.copyfile(DISK, floppy)
         hdv = scratch_volume(tmp)
         remote = tmp / 'remote'
         remote.mkdir()

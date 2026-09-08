@@ -28,7 +28,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 POM2 = os.environ.get('POM2', str(Path.home() / 'src/pom2adventure/SCOSWAMP.MORE/TOOLS/build/pom2_playtest'))
-DISK = ROOT / 'dist/A2FILECMD.po'
+# A2FC_IMG=A2FILECMD-6502 A2FC_BUILD=build-6502 : le banc sur la version 6502
+# (make disk ARCH=6502), qui tourne aussi sur le IIe enhanced de POM2.
+IMG = os.environ.get('A2FC_IMG', 'A2FILECMD')
+BUILD = ROOT / os.environ.get('A2FC_BUILD', 'build')
+DISK = ROOT / ('dist/%s.po' % IMG)
 
 
 def labels(path=None):

@@ -19,7 +19,26 @@
         .export         __STARTUP__ : absolute = 1      ; Mark as startup
 
         .import         initlib, donelib
-        .import         zerobss, callmain
+        .import         zerobss
+.ifndef CC65_MASTER
+        .import         callmain
+.endif
+
+.ifdef CC65_MASTER
+        ; cc65 master (la version 6502) : apple2/callmain.s y definit aussi
+        ; _exit, que nous avons ici avec nos propres sorties. Ce callmain-ci
+        ; le remplace -- main(void), pas d'arguments -- et la bibliotheque
+        ; garde le sien.
+        .export         callmain
+        .import         _main, pushax
+callmain:
+        lda     #0
+        tax
+        jsr     pushax          ; argc = 0
+        jsr     pushax          ; argv = NULL
+        ldy     #4
+        jmp     _main           ; son rts revient a l'appelant, sur _exit
+.endif
 
         .include        "zeropage.inc"
         .include        "apple2.inc"
@@ -45,9 +64,11 @@
         lda     $FBB3
         cmp     #$06
         bne     unfit
+.ifndef A2_6502
         lda     $FBC0
         cmp     #$EA
         beq     unfit
+.endif
         lda     $BF98
         and     #$22
         cmp     #$22
@@ -172,9 +193,14 @@ return: rts
 
         ; Quit to the ProDOS dispatcher.
 unfit_msg:
+.ifdef A2_6502
+        .byte   $0D, "A2 FILE CMD NEEDS AN APPLE IIE, IIC OR", $0D
+        .byte   "IIGS WITH 128K AND AN 80-COLUMN CARD.", $0D, $0D
+.else
         .byte   $0D, "A2 FILE CMD NEEDS AN ENHANCED APPLE IIE,", $0D
         .byte   "A IIC OR A IIGS, WITH 128K AND", $0D
         .byte   "AN 80-COLUMN CARD.", $0D, $0D
+.endif
         .byte   "PRESS A KEY TO RETURN TO PRODOS.", $0D, 0
 
 quit:   jsr     $BF00           ; MLI call entry point

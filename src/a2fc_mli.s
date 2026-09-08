@@ -13,7 +13,16 @@
 ;   ON_LINE...) : la commande est le premier argument, le bloc le second.
         .export _mli_gfi, _mli_sfi, _mli_call
         .import popa
-        .import __oserror       ; _oserror de cc65 : report_error le lit
+; _oserror de cc65 : report_error le lit. cc65 master (la version 6502) le
+; nomme ___oserror, avec un souligne de plus pour les identifiants C qui en
+; commencent par un.
+.ifdef CC65_MASTER
+        .import ___oserror
+oserror = ___oserror
+.else
+        .import __oserror
+oserror = __oserror
+.endif
         .segment "DATA"
 _mli_call:
         sta     block
@@ -37,7 +46,7 @@ block:  .word   $0000
         ; _oserror : seule la stdio de cc65 le tenait a jour, et report_error
         ; affichait sinon la raison de l'echec PRECEDENT -- en clair, donc
         ; avec assurance, depuis que prodos_error traduit les codes.
-        sta     __oserror
+        sta     oserror
         ldx     #0
         rts
 

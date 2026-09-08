@@ -527,6 +527,36 @@ file layout; and `dist/A2FILECMD.2mg`, the same content as a 65535-block
 hard disk (the ProDOS maximum, 32 MB), volume `/A2FILEHD` so that it can sit
 next to the floppy, with the `DEMO` directory the floppy has no room for.
 
+### The 6502 build for the unenhanced IIe
+
+`make disk ARCH=6502` builds the same program for the Apple IIe that was never
+enhanced — a 6502 without the 65C02 opcodes, no MouseText; 128 KB and an
+80-column card are still required — into `build-6502/` and
+`dist/A2FILECMD-6502.po`, `.dsk` and `.2mg`. It needs **cc65 master** (the
+git tree after 2.19: `make; make install PREFIX=~/opt/cc65-head`, pointed to
+by `CC65_HEAD`), because only there does the `apple2` target have the
+80-column console in plain 6502 (`machinetype`, `aux80col`, `videomode`);
+in 2.19 the 80-column console exists only in `apple2enh`, compiled for the
+65C02. The enhanced build keeps the machine's cc65 2.19 on purpose, so that
+its byte counts do not move. What the 6502 variant changes: `stz`/`bra`
+macros and `(zp),y` in `music.s`; the launcher's machine check accepts
+`$FBC0 = $EA`; `BINARY2` becomes a big overlay; **no mouse** (`A2FC_NOMOUSE`:
+keyboard only), which is what pays for everything else — the resident window
+ends at `$BC27`, VDrive included. Master also changed a few runtime details
+that `CC65_MASTER` covers: `callmain` now defines `_exit` (ours replaces it),
+`_oserror` is `___oserror`, `&main` is refused in C (the overlay link id is
+now `a2fc_link_id`, taken in assembly).
+
+One lesson the bench taught: the `apple2` target's `initostype` constructor
+calls the ROM (`$FE1F`) without switching it in, as a `.SYSTEM` launched by
+ProDOS may assume — but A2FC is launched by its own loader, whose
+`videomode()` leaves language-card bank 2 readable, so `$FE1F` landed in
+ProDOS and the machine died before `main()`. `crt0.s` now puts the ROM back
+(`bit $C082`) before running the constructors, for both builds. The benches
+run on the 6502 images with `A2FC_IMG=A2FILECMD-6502 A2FC_BUILD=build-6502`,
+on POM2's enhanced IIe — a 6502 program runs on a 65C02; the unenhanced
+preset requested from POM2 will prove the reverse.
+
 ### `.po` and `.dsk`: one floppy, two layouts
 
 The two floppy images hold the same ProDOS volume, byte for byte — the same

@@ -14,7 +14,7 @@ import re, shutil, sys, tempfile, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from pom2 import Pom2, Session, ROOT
+from pom2 import Pom2, Session, ROOT, DISK
 from run import scratch_volume, RET, TAB, ESC, volume
 
 BAR = re.compile(r'^ *1/1 {2,}BIG +\[[#.]{40}\] +\d+/\d+ *$')
@@ -29,7 +29,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='a2fc-ops-') as tmp:
         tmp = Path(tmp)
         floppy = tmp / 'A2FILECMD.po'
-        shutil.copyfile(ROOT / 'dist/A2FILECMD.po', floppy)
+        shutil.copyfile(DISK, floppy)
         scratch_volume(tmp)
         stage = tmp / 'scratch'
         (stage / 'BIG.BIN').write_bytes(bytes(range(256)) * 1200)        # 300 Ko

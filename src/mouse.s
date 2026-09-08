@@ -38,6 +38,13 @@
         .export _mouse_x, _mouse_y
         .importzp ptr1
 
+.ifdef A2_6502
+.macro  stz     addr            ; le IIe non enhanced n'a pas STZ (A est libre ici)
+        lda     #0
+        sta     addr
+.endmacro
+.endif
+
         .segment "LOWBSS"
 _mouse_x:       .res 1
 _mouse_y:       .res 1
@@ -175,7 +182,8 @@ _mouse_hide:
         stz shown
         jsr cell
         lda under
-        sta (ptr1)
+        ldy #0
+        sta (ptr1),y
         sta $C054
 @done:  rts
 
@@ -186,10 +194,15 @@ _mouse_show:
         lda _mouse_y
         sta py
         jsr cell
-        lda (ptr1)
+        ldy #0
+        lda (ptr1),y
         sta under
+.ifdef A2_6502
+        lda #$2B                ; sans MouseText : un '+' en inverse
+.else
         lda #$42                ; MouseText : la fleche
-        sta (ptr1)
+.endif
+        sta (ptr1),y
         sta $C054
         inc shown
         rts

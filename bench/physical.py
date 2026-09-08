@@ -17,7 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-from pom2 import Pom2, Session, ROOT
+from pom2 import Pom2, Session, ROOT, DISK
 from run import scratch_volume, TAB
 import mkdos33
 
@@ -42,7 +42,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='a2fc-physical-') as tmp:
         tmp = Path(tmp)
         floppy = tmp / 'A2FILECMD.po'
-        shutil.copyfile(ROOT / 'dist/A2FILECMD.po', floppy)
+        shutil.copyfile(DISK, floppy)
         # Une vraie disquette DOS 3.3 : 35 pistes, fichiers verrouilles (bit 7).
         dos = tmp / 'REAL33.dsk'
         dos.write_bytes(mkdos33.build([('HELLO', 0x82, b'\x00' * 300),

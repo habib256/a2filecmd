@@ -51,20 +51,25 @@ extern unsigned int chain_addr;                    /* chain.s */
 void __fastcall__ chain_load(const char* path);
 void __fastcall__ chain_command(const char* name);
 unsigned char vsdrive_install(void);                /* vsdrive.s : VDrive, deux volumes par la ligne serie */
+extern const unsigned int a2fc_link_id;            /* overlay.s : l'adresse de main, l'identite du lien des surcouches */
 unsigned char __fastcall__ mli_sfi(void* params);
 unsigned char __fastcall__ mli_call(unsigned char cmd, void* params);
 void __fastcall__ aux_copy(unsigned int main_addr, unsigned int aux_addr, unsigned char to_aux);
-/* La souris (mouse.s) : une carte AppleMouse II, dans n'importe quel slot. */
+/* La souris (mouse.s) : une carte AppleMouse II, dans n'importe quel slot.
+ * Pas dans la version 6502 (A2FC_NOMOUSE, make ARCH=6502) : la place. */
+#ifndef A2FC_NOMOUSE
 unsigned char mouse_init(void);
 unsigned char mouse_read(void);
 void mouse_show(void);
 void mouse_hide(void);
 extern unsigned char mouse_x, mouse_y;
+#endif
 static unsigned char exists(const char* path);
 int main(void);
 static void too_long(void);
 static unsigned char target_check(void);
 static void progress_bar(const char* name, unsigned long copied, unsigned long size);
+static void refresh_both(void);
 static void dir_fail(void);
 
 #ifndef A2FC_VERSION
@@ -106,7 +111,9 @@ unsigned char a2fc_view;       /* 0 panneaux, 1 image, 2 texte, 3 hexa, 4 aide, 
 unsigned char a2fc_slot;       /* la Mockingboard, 0 sans ; 0xFF pas encore cherchee */
 unsigned char a2fc_playing;    /* 0 silence, 1 joue, 2 en pause */
 unsigned char a2fc_mouse;      /* le slot de la souris, 0 sans */
+#ifndef A2FC_NOMOUSE
 static unsigned char pointer;  /* la souris a bouge une fois : le pointeur s'affiche */
+#endif
 
 static char full[PATH_LEN + NAME_LEN];
 static char other_full[PATH_LEN + NAME_LEN];
@@ -557,7 +564,9 @@ static void draw_status(void)
         gotoxy(30, 20);
         cprintf(" %u of %u blocks free ", pan->free_blocks, pan->total_blocks);
     }
+#ifndef A2FC_NOMOUSE
     if (a2fc_mouse) cputsxy(70, 20, " Mouse ");
+#endif
 }
 
 static void draw_frame(void)
@@ -1568,6 +1577,16 @@ static void b2_name(const unsigned char* src, unsigned char len, char* out)
     out[n] = 0;
 }
 
+/* Petite surcouche, message() suffit ; grande (ARCH=6502, ou elle deborde
+ * la fenetre : A2FC_BIG_BINARY2 avec le drapeau de l'en-tete), overlay_run
+ * relit les panneaux au retour et effacerait le message : c'est note qu'il
+ * affiche ensuite. */
+#ifdef A2FC_BIG_BINARY2
+#define b2_say(m) strcpy(note, m)
+#else
+#define b2_say(m) message(m)
+#endif
+
 void __fastcall__ binary2_entry(const struct A2fcApi* a)
 {
     struct Panel* oth = &panels[!active];
@@ -1578,14 +1597,14 @@ void __fastcall__ binary2_entry(const struct A2fcApi* a)
     unsigned char more = 1, done = 0;
     char name[17];
     (void)a;
-    if (!selected.name[0] || is_dir(&selected) || !full[0]) { message(b2_pick); return; }
-    if (!oth->path[0] || oth->fs) { message(b2_notdir); return; }
+    if (!selected.name[0] || is_dir(&selected) || !full[0]) { b2_say(b2_pick); return; }
+    if (!oth->path[0] || oth->fs) { b2_say(b2_notdir); return; }
     in = fopen(full, "rb");
     if (!in) { report_error("Open"); return; }
     while (more) {
         if (fread(copy_buf, 1, 128, in) != 128) break;
         if (copy_buf[0] != 0x0A || copy_buf[1] != 0x47 || copy_buf[2] != 0x4C) {
-            if (!done) { message(b2_bad); fclose(in); return; }
+            if (!done) { b2_say(b2_bad); fclose(in); return; }
             break;
         }
         /* EOF sur 3 octets ($14-$16), le nom en $17/$18, "a suivre" en $7F.
@@ -1613,8 +1632,11 @@ void __fastcall__ binary2_entry(const struct A2fcApi* a)
         if (pad) fseek(in, (long)pad, SEEK_CUR);
     }
     fclose(in);
+#ifndef A2FC_BIG_BINARY2
+    refresh_both();                    /* l'autre panneau montre ce qui vient d'arriver (grande : overlay_run le fait) */
+#endif
     sprintf(question, b2_done, done);
-    message(question);
+    b2_say(question);
 }
 #pragma static-locals (pop)
 #pragma rodata-name (pop)
@@ -1778,7 +1800,7 @@ static unsigned char load_overlay(const char* name, unsigned char any)
     f = fopen(other_full, "rb");
     if (f) {
         if (fread(OVERLAY_WINDOW, 1, 8, f) == 8
-            && (OVL->signature == (unsigned int)main || (any && OVL->signature == PLUGIN_MAGIC))) {
+            && (OVL->signature == a2fc_link_id || (any && OVL->signature == PLUGIN_MAGIC))) {
             if (OVL->flags & OVERLAY_BIG) keep_tags(1);
             fread(OVERLAY_WINDOW + 8, 1, (OVL->flags & OVERLAY_BIG ? OVERLAY_LARGE : OVERLAY_SMALL) - 8, f);
             strcpy(overlay_loaded, name);
@@ -2948,7 +2970,7 @@ void __fastcall__ menu_entry(const struct A2fcApi* a)
         len = fread(copy_buf, 1, 64, f);
         fclose(f);
         copy_buf[8 + 51] = 0;
-        if (len < 9 || (hdr->signature != (unsigned int)main && hdr->signature != PLUGIN_MAGIC)) strcpy(m[i].desc, "(from another build of A2 File Cmd)");
+        if (len < 9 || (hdr->signature != a2fc_link_id && hdr->signature != PLUGIN_MAGIC)) strcpy(m[i].desc, "(from another build of A2 File Cmd)");
         else if (!hdr->entry) strcpy(m[i].desc, "(no entry point)");
         else strcpy(m[i].desc, hdr->desc);
     }
@@ -4163,6 +4185,7 @@ static char key_of(const char* s)
     return s[1] == ' ' ? *s : *s == 'T' ? KEY_TAB : *s == 'R' ? KEY_RETURN : ' ';
 }
 
+#ifndef A2FC_NOMOUSE
 static char bar_key(unsigned char x)
 {
     const char* s = MAIN_KEYS;
@@ -4178,6 +4201,7 @@ static char bar_key(unsigned char x)
     }
     return 0;
 }
+#endif
 
 /* 1..9 et 0 : les dix boutons de la barre, dans l'ordre -- les touches de
  * fonction de Norton Commander et d'A2Command. */
@@ -4193,6 +4217,7 @@ static char bar_nth(unsigned char n)
  * l'ouverture si elle etait deja selectionnee : deux clics ouvrent. Sur
  * l'en-tete d'un panneau, le tri (la ligne des colonnes) ou le dossier
  * parent (le chemin). Rend la touche equivalente, 0 quand tout est fait. */
+#ifndef A2FC_NOMOUSE
 static char click(void)
 {
     unsigned char x = mouse_x, y = mouse_y, i, swapped;
@@ -4214,8 +4239,12 @@ static char click(void)
  * la souris des qu'elle a bouge une fois, et s'efface avant que la main ne
  * revienne, pour qu'aucun redessin ne le recouvre. Un clic rend la touche
  * qu'il vaut, 0 s'il a tout fait lui-meme. */
+#endif
 static char wait_key(void)
 {
+#ifdef A2FC_NOMOUSE
+    return cgetc();
+#else
     unsigned char st;
     char key;
     if (!a2fc_mouse) return cgetc();
@@ -4228,6 +4257,7 @@ static char wait_key(void)
     }
     mouse_hide();
     return key;
+#endif
 }
 
 /* La table de services : ce qu'une surcouche d'un tiers recoit a son point
@@ -4246,7 +4276,13 @@ int main(void)
     char key;
     struct Panel* pan;
     videomode(VIDEOMODE_80COL);
+#ifdef A2FC_TRACE
+    *(unsigned char*)0x03A0 = 1;
+#endif
     memset(_LOWBSS_RUN__, 0, (size_t)_LOWBSS_SIZE__);
+#ifdef A2FC_TRACE
+    *(unsigned char*)0x03A0 = 2;
+#endif
     a2fc_slot = 0xFF;
     panels[0].e = ENTRIES;
     panels[1].e = ENTRIES + MAX_ENTRIES;
@@ -4260,14 +4296,34 @@ int main(void)
     strcpy(cfg_path, panels[0].path);
     if (strlen(cfg_path) + 20 < PATH_LEN) strcat(cfg_path, "/A2FILE/A2FILE.CFG");
     load_config();
+#ifdef A2FC_TRACE
+    *(unsigned char*)0x03A0 = 3;
+#endif
+#ifndef A2FC_NOMOUSE
     a2fc_mouse = mouse_init();
+#endif
     /* VDrive : une carte serie et deux volumes de plus dans DEVLST, avant
      * de lire les panneaux (la liste des volumes les montre). */
+#ifndef A2FC_NOVDRIVE
     key = vsdrive_install();
+#else
+    key = 0;                    /* ARCH=6502 : pas de VDrive, la place manque */
+#endif
+#ifdef A2FC_TRACE
+    *(unsigned char*)0x03A0 = 4;
+#endif
     read_panel(0);
     read_panel(1);
+#ifdef A2FC_TRACE
+    *(unsigned char*)0x03A0 = 5;
+#endif
     draw_all();
+#ifndef A2FC_NOVDRIVE
+#ifdef A2FC_TRACE
+    *(unsigned char*)0x03A0 = 6;
+#endif
     if (key) { extern const char msg_vdrive[]; sprintf(question, msg_vdrive, key >> 4, key & 15); message(question); }
+#endif
     for (;;) {
         pan = &panels[active];
         key = wait_key();

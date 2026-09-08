@@ -22,6 +22,13 @@ qui passe ici est ce que recevra celui qui amorce la disquette.
 | `memory.py` | le creux maximal de la pile C, mesure en faisant travailler le programme |
 | `pom2.py` | le pilote d'emulateur commun |
 
+## La version 6502
+
+`A2FC_IMG=A2FILECMD-6502 A2FC_BUILD=build-6502 python3 bench/run.py` (et les
+autres) prend les images de `make disk ARCH=6502` ; `run.py` saute alors la
+section souris, `vdrive.py` tourne. C'est sur le IIe enhanced de POM2 -- un
+programme 6502 y tourne ; le preset non enhanced est demande a POM2.
+
 ## Les faire tourner
 
 Il faut [POM2](https://github.com/habib256/pom2) construit sans interface
