@@ -508,6 +508,13 @@ def main():
             s.wait(lambda: s.rows()[0][:11] == '/A2FILECMD ', 'racine'); p.stable()
             s.select('DEMO'); s.key(RET); s.wait(lambda: s.has('/A2FILECMD/DEMO'), 'DEMO')
             p.stable()
+            # T sur un BAS : la surcouche BASLIST le detokenise (au lieu de l'hexa)
+            s.select('HELLO'); p.stable()
+            s.key(b'T'); s.wait(lambda: s.value('view', 1) == 2, 'BASLIST', 20); p.stable()
+            s.ok('T sur un BAS liste le programme Applesoft detokenise',
+                 s.has('10  HOME') and s.has('PRINT "A2 FILE CMD RUNS APPLESOFT."'),
+                 s.rows()[0].strip()[:40])
+            s.key(ESC); s.wait(lambda: s.value('view', 1) == 0, 'retour liste'); p.stable()
             s.select('HELLO'); s.key(RET)
             s.wait(lambda: s.has('Run HELLO?'), 'confirmation')
             s.ok('un BAS demande confirmation avant de partir', s.has('No return'),

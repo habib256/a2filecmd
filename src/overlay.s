@@ -18,6 +18,7 @@
         .import _imgfs_entry
         .import _dos33_entry
         .import _unshrink_entry
+        .import _baslist_entry
 
 BIG = 1
 
@@ -35,6 +36,8 @@ BIG = 1
         header  0, _help_entry, "The help page: every key on one screen"
         .segment "TEXT"
         header  0, _text_entry, "Read the selection as text, page by page"
+        .segment "BASLIST"
+        header  0, _baslist_entry, "List an Applesoft BAS program (T on a BAS)"
         .segment "HEX"
         header  0, _hex_entry, "Show the selection in hexadecimal"
         .segment "DELETE"
