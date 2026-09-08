@@ -521,12 +521,33 @@ The names fit in ProDOS's fifteen characters.
 
 ## The 5.25" floppy
 
-`make disk` produces `dist/A2FILECMD.po` (ProDOS order) and
-`dist/A2FILECMD.dsk` (DOS 3.3 order, that of ADTPro and most emulators), a
-bootable floppy of 280 blocks, volume `/A2FILECMD`, and `dist/A2FILECMD.2mg`,
-the same content as a 65535-block hard disk (the ProDOS maximum, 32 MB),
-volume `/A2FILEHD` so that it can sit next to the floppy, with the `DEMO`
-directory the floppy has no room for:
+`make disk` produces `dist/A2FILECMD.po`, a bootable floppy of 280 blocks,
+volume `/A2FILECMD`; `dist/A2FILECMD.dsk`, the **same floppy** in another
+file layout; and `dist/A2FILECMD.2mg`, the same content as a 65535-block
+hard disk (the ProDOS maximum, 32 MB), volume `/A2FILEHD` so that it can sit
+next to the floppy, with the `DEMO` directory the floppy has no room for.
+
+### `.po` and `.dsk`: one floppy, two layouts
+
+The two floppy images hold the same ProDOS volume, byte for byte — the same
+`A2FILE/` subdirectory, the same files; **there is no DOS 3.3 in the `.dsk`**.
+What differs is only the order in which the sixteen 256-byte sectors of each
+track are laid out in the file:
+
+- `.po` ("ProDOS order") stores the 512 bytes of ProDOS block *n* in one
+  piece, block after block;
+- `.dsk` ("DOS order") stores each track's sectors in the physical order DOS
+  3.3 gave them, so block 0 lands on track 0, sectors 0 and 14, block 1 on
+  sectors 13 and 12, and so on down to block 7 on sectors 1 and 15. That is
+  the layout `.dsk` files have had since the DOS 3.3 days, hence the name —
+  but any content can be stored that way, DOS 3.3 or ProDOS.
+
+Both files are 143 360 bytes, and once written to a real disk there is no
+difference at all. `po2dsk.py` does that permutation and nothing else. Two
+files are published because writing tools and emulators guess the layout
+from the extension: hand one a `.po` renamed `.dsk`, or the reverse, and the
+floppy it writes is unreadable. Take the one your tool expects; ADTPro,
+CiderPress and most emulators take the `.po`.
 
 | File | Content |
 |---|---|
