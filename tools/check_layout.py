@@ -38,7 +38,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # menu).
 OVERLAYS = {'IMAGE': 0x2000, 'TEXT': 0x2000, 'HEX': 0x2000, 'DELETE': 0x2000, 'HELP': 0x2000,
             'MUSIC': 0x2000, 'RUN': 0x2000, 'ATTR': 0x2000, 'EDIT': 0x2800, 'MENU': 0x3000,
-            'DISKIMG': 0x3400, 'IMGFS': 0x2000, 'DOS33': 0x2000}
+            'DISKIMG': 0x3400, 'IMGFS': 0x2000, 'DOS33': 0x2000, 'UNSHRINK': 0x3000}
 
 
 def check_layout(s, loader, length, overlays=None):
@@ -79,6 +79,13 @@ def check_layout(s, loader, length, overlays=None):
             'LC staging and execution lengths differ')
     require(entry < s['__MAIN_LAST__'] <= 0xBF00,
             'MAIN image is empty or overlaps the ProDOS system page')
+    # Le lanceur (loader.c) tient sa pile C en $BF00 et lit A2FILE.CODE jusqu'a
+    # __MAIN_LAST__ : il lui faut au moins 32 octets sous $BF00, sinon son dernier
+    # fread ecrase son propre cadre et l'amorcage se fige sur l'ecran-titre. Vu
+    # deux fois (un tableau local de 64 octets, puis 31 octets de litteral).
+    require(s['__MAIN_LAST__'] <= 0xBEE0,
+            'A2FILE.CODE ends at ${:04X}: under 32 bytes below $BF00 for the loader stack (ceiling $BEE0)'.format(
+                s['__MAIN_LAST__']))
     require(length == prefix + s['__MAIN_LAST__'] - entry,
             'file length does not match the split-load layout')
     floor = s['__HIMEM__'] - s['__STACKSIZE__']

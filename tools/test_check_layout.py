@@ -31,11 +31,11 @@ class SplitLoadLayout(unittest.TestCase):
         self.length = 0xC00 + 0xBCC5 - 0x4000
         self.overlays = dict(IMAGE=0x1F60 - 0x1B00, HELP=0x1EE0 - 0x1B00, TEXT=0x280,
                              HEX=0x2F0, DELETE=0x300, MUSIC=0x200, RUN=0x200, ATTR=0x300,
-                             EDIT=0xC00, MENU=0x600, DISKIMG=0x900, IMGFS=0x300, DOS33=0x400)
-        for name in ('MUSIC', 'RUN', 'ATTR', 'EDIT', 'MENU', 'DISKIMG', 'IMGFS', 'DOS33'):
+                             EDIT=0xC00, MENU=0x600, DISKIMG=0x900, IMGFS=0x300, DOS33=0x400, UNSHRINK=0x600)
+        for name in ('MUSIC', 'RUN', 'ATTR', 'EDIT', 'MENU', 'DISKIMG', 'IMGFS', 'DOS33', 'UNSHRINK'):
             self.s['__%s_START__' % name] = 0x1B00
             self.s['__%s_LAST__' % name] = 0x1B00 + self.overlays[name]
-        for name in ('IMAGE', 'TEXT', 'HEX', 'DELETE', 'HELP', 'MUSIC', 'RUN', 'ATTR', 'EDIT', 'MENU', 'DISKIMG', 'IMGFS', 'DOS33'):
+        for name in ('IMAGE', 'TEXT', 'HEX', 'DELETE', 'HELP', 'MUSIC', 'RUN', 'ATTR', 'EDIT', 'MENU', 'DISKIMG', 'IMGFS', 'DOS33', 'UNSHRINK'):
             # the RO segment ends where the file ends
             self.s['__%sRO_LAST__' % name] = self.s['__%s_START__' % name] + self.overlays[name]
             self.s['__%s_LAST__' % name] = self.s['__%s_START__' % name]
@@ -100,6 +100,16 @@ class SplitLoadLayout(unittest.TestCase):
     def test_low_bss_may_not_climb_into_the_overlay_window(self):
         self.s['__LOWBSS_SIZE__'] = 0xB00                     # jusqu'en $1B57
         self.assertIn('low BSS runs into the overlay window', self.check())
+
+    def test_the_loader_needs_32_bytes_under_bf00(self):
+        # loader.c tient sa pile C en $BF00 et lit A2FILE.CODE jusqu'a __MAIN_LAST__ :
+        # a $BEE1 le dernier fread ecraserait son propre cadre.
+        self.s['__MAIN_LAST__'] = 0xBEE0
+        self.length = 0xC00 + 0xBEE0 - 0x4000
+        self.assertEqual(self.check(), [])
+        self.s['__MAIN_LAST__'] = 0xBEE1
+        self.length = 0xC00 + 0xBEE1 - 0x4000
+        self.assertTrue(any('loader stack' in e for e in self.check()), self.check())
 
 
 if __name__ == '__main__':

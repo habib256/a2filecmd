@@ -265,6 +265,30 @@ readable only the boot floppy and an image file; reading a real physical disk
 shares all the code of reading an image, only the source of the sectors
 changes.)
 
+## Unpacking a ShrinkIt archive
+
+`.SHK` is the NuFX archive of ShrinkIt, the way Apple II software has been
+packed and shared for decades. Put an archive under the cursor, press `!`, and
+pick **Extract a ShrinkIt .SHK archive**: every file in it is written into the
+directory shown in the *other* panel, its ProDOS type and auxtype restored, its
+name shortened to a valid ProDOS name. Compressed files are decoded on the way
+out — both the LZW/1 of the ProDOS-8 ShrinkIt and the LZW/2 of GS/ShrinkIt and
+CiderPress, as well as stored (uncompressed) files; the RLE pre-pass too. A
+disk image inside an archive comes out as a `.PO`, which you can then open as a
+folder (see above). Resource forks and comments are skipped.
+
+The decoder lives in `A2FILE/UNSHRINK.PLG`. Its heart is hand-written assembly
+(`src/unshrink.s`): the 4 KB LZW dictionary does not fit beside the code in the
+main window, so it lives in auxiliary memory, and the decode loop is copied
+there and runs from it, reading and writing the aux bank around a `RDAUX`
+switch. That is also why the target cannot be `/RAM`: the ProDOS RAM disk
+shares that same aux memory, so it is rebuilt empty after each extraction, and
+the program refuses `/RAM` as a destination. The C driver (`unshrink_entry` in
+`a2fc.c`) walks the NuFX headers, opens the files and feeds the core block by
+block. `tools/mkshk.py` builds and reads the same format on the host (verified
+byte-for-byte against `nulib2`); `bench/shk.py` extracts a stored, an LZW/1 and
+an LZW/2 archive in the emulator and compares each result to the original.
+
 ## Formatting a disk
 
 `F` (or `A2FILE/FORMAT.SYS` from Bitsy Bye) launches the formatter, a separate
