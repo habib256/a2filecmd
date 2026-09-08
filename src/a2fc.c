@@ -1035,12 +1035,59 @@ static unsigned int hex_value(void)
     return v;
 }
 
+/* Le code d'erreur ProDOS ($BF00 le laisse dans _oserror, que cc65 tient a
+ * jour meme apres un echec de fopen/fread) en clair : "errno 3, ProDOS $2B"
+ * ne dit rien a l'utilisateur, "the disk is write-protected" si. Les codes
+ * rares gardent leur hexa et l'errno cc65, pour le diagnostic. Table nommee
+ * (pas un switch a return "...") pour que ses chaines suivent la carte
+ * langage : la fenetre principale est pleine au bit pres. */
+/* Chaines en tableaux NOMMES (const char[]), pas en litteraux "..." : cc65
+ * regroupe les litteraux dans RODATA (fenetre principale, pleine), mais pose
+ * un tableau nomme dans le segment rodata courant -- ici LC, la carte
+ * langage, ou il reste de la place. */
+static const char pdE27[] = "disk I/O error";
+static const char pdE2B[] = "the disk is write-protected";
+static const char pdE2F[] = "no disk in the drive";
+static const char pdE40[] = "invalid file name";
+static const char pdE44[] = "directory not found";
+static const char pdE45[] = "volume not found";
+static const char pdE46[] = "file not found";
+static const char pdE47[] = "name already in use";
+static const char pdE48[] = "the disk is full";
+static const char pdE49[] = "the directory is full";
+static const char pdE4E[] = "the file is locked";
+static const char pdE52[] = "not a ProDOS disk";
+static const char* prodos_error(unsigned char e)
+{
+    switch (e) {
+    case 0x27: return pdE27;
+    case 0x2B: return pdE2B;
+    case 0x2F: return pdE2F;
+    case 0x40: return pdE40;
+    case 0x44: return pdE44;
+    case 0x45: return pdE45;
+    case 0x46: return pdE46;
+    case 0x47: return pdE47;
+    case 0x48: return pdE48;
+    case 0x49: return pdE49;
+    case 0x4E: return pdE4E;
+    case 0x52: return pdE52;
+    default:   return 0;
+    }
+}
+
+/* prodos_error appele deux fois plutot qu'une locale `why` : LOWBSS est plein
+ * au bit pres et -Cl mettrait la locale dedans ; le second appel n'est que du
+ * code, en carte langage ou il reste de la place. */
 static void report_error(const char* what)
 {
     ++a2fc_errors;
     clear_row(22);
     gotoxy(0, 22);
-    cprintf("%s failed (errno %d, ProDOS $%02X).", what, errno, _oserror);
+    if (prodos_error(_oserror))
+        cprintf("%s failed: %s.", what, prodos_error(_oserror));
+    else
+        cprintf("%s failed (ProDOS $%02X, errno %d).", what, _oserror, errno);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -3069,6 +3116,12 @@ void __fastcall__ attr_entry(const struct A2fcApi* a)
 static void launch_file(unsigned int addr)
 {
     if (!exists(full)) {
+        /* file_info ne touche pas _oserror : sans ca "Run failed (ProDOS
+         * $00)" reste le code d'une operation anterieure. La cause est ici le
+         * fichier absent -- typiquement BASIC.SYSTEM manquant sur le volume
+         * d'un BAS (un /RAM ou un disque sans systeme) : $46, "file not
+         * found", que prodos_error rend en clair. */
+        _oserror = 0x46;
         chain_command("");   /* sinon un SYS lance ensuite recevrait le "-NOM" en $2006 */
         report_error("Run");
         return;

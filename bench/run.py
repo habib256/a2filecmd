@@ -164,7 +164,11 @@ def main():
             s.key(b' '); s.wait(lambda: s.value('view', 1) == 0, 'retour'); p.stable()
 
             # ── 5. la musique ─────────────────────────────────────────────
-            s.select('WELCOME.MB', 40); s.key(RET); time.sleep(.5)
+            # Attendre le message plutot qu'un sleep fixe : la surcouche MUSIC
+            # se charge du disque, et selon la vitesse de l'emulateur le
+            # message arrive juste avant ou juste apres un demi-quart de seconde.
+            s.select('WELCOME.MB', 40); s.key(RET)
+            s.wait(lambda: s.has('Playing WELCOME.MB'), 'la fanfare demarre', 10)
             s.ok('la fanfare joue sur la Mockingboard', s.has('Playing WELCOME.MB'),
                  s.rows()[22].strip())
             # Le banc fait tourner la machine bien plus vite que le temps reel :

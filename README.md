@@ -8,21 +8,10 @@ delete, tag, sort; read texts, dump bytes, edit files; view HGR and
 DHGR pictures full screen; play Mockingboard music; format a disk. All of it
 in 80 columns, on 128 KB, from a bootable 5.25" floppy.
 
-```
-/A2FILECMD                             |/A2FILECMD/DEMO
-Name*            Type  Aux     Size    |Name*            Type  Aux     Size
-..               <UP>                  |..               <UP>
-A2FILE           <DIR>              1  |DHGR.RLE         BIN $0000    12030
-DEMO             <DIR>              1  |HELLO            BAS $0801       98
-A2FILE.SYSTEM    SYS $0000     5763    |HGR.RLE          BIN $0000      978
-BASIC.SYSTEM     SYS $0000    10240    |README           TXT $0000     1184
-PRODOS           SYS $0000    17128    |SAMPLE           TXT $0000      712
-                                       |WELCOME.MB       BIN $0000       56
-__ A2 FILE CMD 0.6 ___________  6 of 280 blocks free _________________ Mouse ___
-Parent directory
-
-TABPanel RETOpen SPCTag  C Copy  V Move  R Ren  D Del  K Mkdir  S Sort  ? Help
-```
+![Two panels](docs/screenshots/01-panels.png)
+![The picture viewer, showing the DHGR test card](docs/screenshots/02-dhgr.png)
+![The help page](docs/screenshots/06-help.png)
+![The disk formatter](docs/screenshots/09-format.png)
 
 ## Requirements
 
