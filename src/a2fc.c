@@ -392,7 +392,7 @@ static void dir_fail(void)
  * virgules ; une touche d'une lettre est centree dans son bloc. La ligne 23
  * n'est jamais ecrite au-dela de la colonne 78 : conio passerait a la ligne
  * sur la 80e et ferait defiler l'ecran. */
-static const char MAIN_KEYS[] = "TAB Panel,RET Open,SPC Tag,C Copy,V Move,R Ren,D Del,K Mkdir,! More,? Help";
+extern const char MAIN_KEYS[];   /* defini en carte langage, plus bas (LC) */
 static const char VIEW_KEYS[] = "SPC Next,B Prev,ESC Back";
 static const char HELP_KEYS[] = "ANY Return to the panels";
 
@@ -524,10 +524,9 @@ static void draw_panel(unsigned char p)
 {
     struct Panel* pan = &panels[p];
     unsigned char x = p ? 40 : 0, i;
+    extern const char a2fc_hdr_name[], a2fc_hdr_size[], a2fc_hdr_type[];
     static const char* const headers[SORT_MODES] = {
-        "Name*            Type  Aux     Size",
-        "Name             Type  Aux     Size*",
-        "Name             Type* Aux     Size" };
+        a2fc_hdr_name, a2fc_hdr_size, a2fc_hdr_type };
     ++a2fc_draws;
     cclearxy(x, 0, 38);
     if (p == active) revers(1);
@@ -1062,6 +1061,14 @@ static const char pdE48[] = "the disk is full";
 static const char pdE49[] = "the directory is full";
 static const char pdE4E[] = "the file is locked";
 static const char pdE52[] = "not a ProDOS disk";
+/* Les trois en-tetes de colonne des panneaux, en carte langage plutot que
+ * dans RODATA (fenetre principale pleine) : ~100 octets rendus au resident,
+ * la marge qu'il fallait pour la surcouche UNSHRINK et ses calculs 32 bits.
+ * draw_panel les designe par un tableau de pointeurs (six octets). */
+const char a2fc_hdr_name[] = "Name*            Type  Aux     Size";
+const char a2fc_hdr_size[] = "Name             Type  Aux     Size*";
+const char a2fc_hdr_type[] = "Name             Type* Aux     Size";
+const char MAIN_KEYS[] = "TAB Panel,RET Open,SPC Tag,C Copy,V Move,R Ren,D Del,K Mkdir,! More,? Help";
 static const char* prodos_error(unsigned char e)
 {
     switch (e) {
@@ -2944,6 +2951,288 @@ void __fastcall__ dos33_entry(const struct A2fcApi* a)
     (void)a;
     dos_extract();
 }
+#pragma static-locals (pop)
+#pragma rodata-name (pop)
+#pragma code-name (pop)
+
+/* ---------------------------------------------------------------------- */
+/* La surcouche UNSHRINK : une archive ShrinkIt (.SHK, NuFX) extraite vers   */
+/* le dossier de l'autre panneau -- dans A2FILE/UNSHRINK.PLG, grande         */
+/* surcouche. Le coeur LZW/RLE est en assembleur (src/unshrink.s), en tete    */
+/* de la surcouche ($1B00-$1FFF) et recopie en AUX a la meme adresse pour    */
+/* tourner sous RAMRD/RAMWRT AUX, ou vivent les tables du dictionnaire ; ce  */
+/* pilote C, lui, reste en MAIN ($2000-$2FFF). Lancee par le menu ! sur     */
+/* l'archive selectionnee.                                                   */
+/* ---------------------------------------------------------------------- */
+#pragma code-name (push, "UNSHRINK")
+#pragma rodata-name (push, "UNSHRINKRO")
+#pragma static-locals (push, off)
+
+/* Toute chaine de cette surcouche est un tableau NOMME (const char[]), pas
+ * un litteral "..." : cc65 regroupe les litteraux dans RODATA -- la fenetre
+ * principale, pleine au bit pres, et dont chaque octet de plus rapproche la
+ * fin d'A2FILE.CODE de $BF00, ou le lanceur tient sa pile C (31 octets de
+ * litteral ont suffi a figer l'amorcage). Un tableau nomme suit le segment
+ * UNSHRINKRO, dans le fichier de la surcouche. De meme, l'etat volumineux
+ * vit dans une structure a adresse fixe, $3000, hors de LOWBSS (plein) et
+ * de la pile C (192 octets) ; les locales vraies vont sur la pile C
+ * (static-locals off). */
+
+/* Le coeur en assembleur, src/unshrink.s. Ses adresses AUX, repetees ici. */
+void __fastcall__ us_init(unsigned int fmt_esc);
+unsigned int __fastcall__ us_chunk(unsigned int in_addr);
+#define US_INBUF  0x6000            /* la fenetre d'entree, 8 Ko, en AUX */
+#define US_OUTBUF 0x8000            /* le bloc decode, 4096 octets, en AUX */
+#define US_WINDOW 8192
+#define US_NEED   4100              /* un bloc comprime entier, en-tete compris */
+
+struct UsState {
+    FILE* in;
+    FILE* out;
+    unsigned int records, threads, attrib, filetype, auxtype, storage;
+    unsigned int win_len, win_pos, n_done, name_len;
+    unsigned long teof, ceof, rem_in, rem_out, total, done;
+    unsigned char fmt, klass, kind, sep, disk;
+    char name[17];
+    unsigned char th[8 * 16];       /* jusqu'a huit en-tetes de fil */
+    unsigned char hdr[256];         /* les attributs d'un enregistrement */
+};
+#define US ((struct UsState*)0x3000)
+#define U16(p, o) ((unsigned int)(p)[o] | ((unsigned int)(p)[(o) + 1] << 8))
+/* 32 bits sans aucune routine d'appui (decalage long, multiplication) : le
+ * moindre helper de cc65 que le resident n'a pas deja se lie dans SA fenetre,
+ * pleine au bit pres -- memcmp et la multiplication 32 bits ont coute 91
+ * octets de trop au premier essai. D'ou l'union par octets, le compare a la
+ * main, et blocs*512 en decalages. */
+static unsigned long us_u32(const unsigned char* p)
+{
+    union { unsigned long l; unsigned char b[4]; } u;
+    u.b[0] = p[0]; u.b[1] = p[1]; u.b[2] = p[2]; u.b[3] = p[3];
+    return u.l;
+}
+static unsigned char us_eq(const unsigned char* a, const unsigned char* b, unsigned char n)
+{
+    while (n--) if (*a++ != *b++) return 0;
+    return 1;
+}
+#define U32(p, o) us_u32((p) + (o))
+
+static const char us_notfile[]  = "Select a ShrinkIt archive (.SHK).";
+static const char us_notarch[]  = "Not a ShrinkIt (NuFX) archive.";
+static const char us_notdir[]   = "The other panel must show a ProDOS directory.";
+static const char us_noram[]    = "Extract to a disk, not /RAM (it shares aux memory).";
+static const char us_corrupt[]  = "Corrupt archive.";
+static const char us_unsupp[]   = "Unsupported compression (only LZW/1, LZW/2, stored).";
+static const char us_done[]     = "%u file(s) extracted.";
+static const char us_doneram[]  = "%u file(s) extracted. /RAM was rebuilt empty.";
+static const char us_path[]     = "%s/%s";
+static const char us_po[]       = ".PO";
+static const char us_create[]   = "Create";
+static const char us_extract[]  = "Extract";
+static const char us_rb[]       = "rb";
+static const char us_wb[]       = "wb";
+static const unsigned char us_magic_master[] = { 0x4E, 0xF5, 0x46, 0xE9, 0x6C, 0xE5 };
+static const unsigned char us_magic_record[] = { 0x4E, 0xF5, 0x46, 0xD8 };
+
+/* Garde la fenetre d'entree AUX pleine d'au moins un bloc entier : ramene
+ * le reste en tete (par la principale, 512 par 512), puis lit la suite du
+ * fil. Rend 0 sur une lecture manquee. */
+static unsigned char us_fill(void)
+{
+    unsigned int left = US->win_len - US->win_pos, off, n;
+    if (left >= US_NEED || !US->rem_in) return 1;
+    for (off = 0; off < left; off += 512) {
+        aux_copy((unsigned int)copy_buf, US_INBUF + US->win_pos + off, 0);
+        aux_copy((unsigned int)copy_buf, US_INBUF + off, 1);
+    }
+    US->win_len = left;
+    US->win_pos = 0;
+    while (US->win_len <= US_WINDOW - 512 && US->rem_in) {
+        n = US->rem_in > 512 ? 512 : (unsigned int)US->rem_in;
+        if (fread(copy_buf, 1, n, US->in) != n) return 0;
+        if (n < 512) memset(copy_buf + n, 0, 512 - n);
+        aux_copy((unsigned int)copy_buf, US_INBUF + US->win_len, 1);
+        US->win_len += 512;
+        US->rem_in -= n;
+    }
+    return 1;
+}
+
+/* Les n premiers octets du bloc decode (OUTBUF, AUX) dans le fichier. */
+static unsigned char us_write(unsigned int n)
+{
+    unsigned int off, k;
+    for (off = 0; off < n; off += 512) {
+        k = n - off > 512 ? 512 : n - off;
+        aux_copy((unsigned int)copy_buf, US_OUTBUF + off, 0);
+        if (fwrite(copy_buf, 1, k, US->out) != k) return 0;
+    }
+    return 1;
+}
+
+/* Un nom ProDOS a partir du nom archive : le dernier composant, majuscules,
+ * lettres, chiffres et points, une lettre en tete, 15 caracteres. */
+static void us_prodos_name(const char* src, unsigned int len)
+{
+    unsigned int i, start = 0, n = 0;
+    char c;
+    for (i = 0; i < len; ++i) if (src[i] == (char)US->sep) start = i + 1;
+    for (i = start; i < len && n < 15; ++i) {
+        c = src[i];
+        if (c >= 'a' && c <= 'z') c -= 32;
+        if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.')) c = '.';
+        if (!n && !(c >= 'A' && c <= 'Z')) { US->name[n++] = 'X'; if (n == 15) break; }
+        US->name[n++] = c;
+    }
+    if (!n) US->name[n++] = 'X';
+    US->name[n] = 0;
+    US->name_len = n;
+}
+
+/* Un fil de donnees (fourche de donnees ou image disque) vers le dossier de
+ * l'autre panneau. Rend 0 sur un echec deja signale. */
+static unsigned char us_extract_thread(void)
+{
+    unsigned int n, used, hdr;
+    unsigned char r = 1;
+    if (US->disk) {                        /* une image disque : NOM.PO, bloc par 512 */
+        if (US->name_len > 12) US->name_len = 12;
+        strcpy(US->name + US->name_len, us_po);
+        /* blocs * 512, par une union de deux entiers 16 bits (pas de decalage
+         * long, dont les routines d'appui se lieraient dans le resident, plein) :
+         * mot faible = blocs << 9, mot fort = blocs >> 7. */
+        { union { unsigned long l; unsigned int w[2]; } ro;
+          ro.w[0] = US->auxtype << 9; ro.w[1] = US->auxtype >> 7; US->rem_out = ro.l; }
+        _filetype = 0x06;
+        _auxtype = 0;
+    } else {
+        US->rem_out = US->teof;
+        _filetype = (unsigned char)US->filetype;
+        _auxtype = US->auxtype;
+    }
+    US->total = US->rem_out;
+    US->done = 0;
+    sprintf(other_full, us_path, panels[!active].path, US->name);
+    US->out = fopen(other_full, us_wb);
+    if (!US->out) { report_error(us_create); return 0; }
+    US->rem_in = US->ceof;
+    if (US->fmt == 0) {                    /* stocke tel quel */
+        while (US->rem_out && r) {
+            n = US->rem_out > 512 ? 512 : (unsigned int)US->rem_out;
+            if (fread(copy_buf, 1, n, US->in) != n || fwrite(copy_buf, 1, n, US->out) != n) r = 0;
+            else { US->rem_out -= n; US->rem_in -= n; US->done += n; progress_bar(US->name, US->done, US->total); }
+        }
+    } else {                               /* LZW/1 ou LZW/2 : l'en-tete du flux, puis bloc par bloc */
+        hdr = US->fmt == 2 ? 4 : 2;        /* LZW/1 : crc(2) vol esc ; LZW/2 : vol esc */
+        if (fread(copy_buf, 1, hdr, US->in) != hdr) r = 0;
+        else {
+            US->rem_in -= hdr;
+            us_init(((unsigned int)copy_buf[hdr - 1] << 8) | US->fmt);
+            US->win_len = US->win_pos = 0;
+            while (US->rem_out && r) {
+                if (!us_fill()) { r = 0; break; }
+                used = us_chunk(US_INBUF + US->win_pos);
+                US->win_pos += used;
+                n = US->rem_out > 4096 ? 4096 : (unsigned int)US->rem_out;
+                if (!us_write(n)) { r = 0; break; }
+                US->rem_out -= n;
+                US->done += n;
+                progress_bar(US->name, US->done, US->total);
+            }
+        }
+    }
+    fclose(US->out);
+    if (!r) { remove(other_full); report_error(us_extract); return 0; }
+    /* ce qui reste du fil (l'octet de bourrage de ShrinkIt, un fil tronque) */
+    if (US->rem_in) fseek(US->in, (long)US->rem_in, SEEK_CUR);
+    ++US->n_done;
+    return 1;
+}
+
+void __fastcall__ unshrink_entry(const struct A2fcApi* a)
+{
+    struct Panel* pan = &panels[active];
+    unsigned int i, t, len;
+    unsigned char* th;
+    (void)a;
+    if (!pan->count || !pan->path[0] || is_dir(&selected) || !full[0]) { strcpy(note, us_notfile); return; }
+    if (!panels[!active].path[0] || panels[!active].fs) { strcpy(note, us_notdir); return; }
+    /* La banque auxiliaire porte le dictionnaire LZW ET le disque /RAM :
+     * extraire vers /RAM le detruirait (et ram_format le refait vide
+     * ensuite). On refuse ; toute autre volume convient. */
+    if (!strcmp(panels[!active].path, "/RAM")) { strcpy(note, us_noram); return; }
+    music_stop();                          /* la banque auxiliaire va servir de dictionnaire */
+    a2fc_playing = 0;
+    /* Le coeur, en tete de la surcouche ($1B00-$1FFF), recopie en AUX a la
+     * meme adresse : c'est cette copie qui s'executera sous RAMRD AUX. */
+    aux_copy(0x1B00, 0x1B00, 1);
+    aux_copy(0x1D00, 0x1D00, 1);
+    aux_copy(0x1F00, 0x1F00, 1);
+    US->n_done = 0;
+    US->in = fopen(full, us_rb);
+    if (!US->in) { report_error(us_extract); return; }
+    if (fread(US->hdr, 1, 48, US->in) != 48) goto corrupt;
+    if (US->hdr[0] == 0x0A && US->hdr[1] == 0x47 && US->hdr[2] == 0x4C) {   /* Binary II : 128 octets a sauter */
+        if (fread(US->hdr + 48, 1, 80, US->in) != 80 || fread(US->hdr, 1, 48, US->in) != 48) goto corrupt;
+    }
+    if (!us_eq(US->hdr, us_magic_master, 6)) { strcpy(note, us_notarch); fclose(US->in); return; }
+    US->records = U16(US->hdr, 8);
+    for (i = 0; i < US->records; ++i) {
+        /* l'enregistrement : magic, crc, attrib_count, puis le reste des attributs */
+        if (fread(US->hdr, 1, 8, US->in) != 8 || !us_eq(US->hdr, us_magic_record, 4)) goto corrupt;
+        US->attrib = U16(US->hdr, 6);
+        if (US->attrib < 8 || US->attrib > 256) goto corrupt;
+        if (fread(US->hdr + 8, 1, US->attrib - 8, US->in) != US->attrib - 8) goto corrupt;
+        US->threads = U16(US->hdr, 0x0A);
+        US->sep = US->hdr[0x10];
+        US->filetype = U16(US->hdr, 0x16);
+        US->auxtype = U16(US->hdr, 0x1A);
+        US->storage = U16(US->hdr, 0x1E);
+        len = U16(US->hdr, US->attrib - 2);            /* nom dans l'en-tete (ancien ShrinkIt) */
+        US->name[0] = 0;
+        US->name_len = 0;
+        if (len) {
+            if (len > 255 || fread(US->hdr, 1, len, US->in) != len) goto corrupt;
+            us_prodos_name((char*)US->hdr, len);
+        }
+        if (US->threads > 8) goto corrupt;
+        if (fread(US->th, 1, US->threads * 16, US->in) != US->threads * 16) goto corrupt;
+        for (t = 0; t < US->threads; ++t) {
+            th = US->th + t * 16;
+            US->klass = th[0];
+            US->fmt = th[2];
+            US->kind = th[4];
+            US->teof = U32(th, 8);
+            US->ceof = U32(th, 12);
+            if (US->klass == 3 && US->kind == 0) {              /* le nom du fichier */
+                len = US->ceof > 512 ? 512 : (unsigned int)US->ceof;
+                if (fread(copy_buf, 1, len, US->in) != len) goto corrupt;
+                if (US->ceof > len) fseek(US->in, (long)(US->ceof - len), SEEK_CUR);
+                us_prodos_name((char*)copy_buf, US->teof > len ? len : (unsigned int)US->teof);
+            } else if (US->klass == 2 && (US->kind == 0 || US->kind == 1)) {   /* donnees ou image disque */
+                if (US->fmt != 0 && US->fmt != 2 && US->fmt != 3) {
+                    strcpy(note, us_unsupp);
+                    fseek(US->in, (long)US->ceof, SEEK_CUR);
+                    continue;
+                }
+                US->disk = US->kind == 1;
+                if (!US->name_len) us_prodos_name(us_create, 6);   /* sans nom : "CREATE" */
+                if (!us_extract_thread()) { fclose(US->in); goto out; }
+            } else {
+                fseek(US->in, (long)US->ceof, SEEK_CUR);       /* fourche de ressources, commentaire */
+            }
+        }
+    }
+    fclose(US->in);
+    sprintf(note, ram_format() ? us_doneram : us_done, US->n_done);
+    goto out;
+corrupt:
+    fclose(US->in);
+    strcpy(note, us_corrupt);
+out:
+    strcpy(reselect, selected.name);
+}
+
 #pragma static-locals (pop)
 #pragma rodata-name (pop)
 #pragma code-name (pop)

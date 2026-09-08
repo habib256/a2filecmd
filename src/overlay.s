@@ -17,6 +17,7 @@
         .import _diskimg_entry
         .import _imgfs_entry
         .import _dos33_entry
+        .import _unshrink_entry
 
 BIG = 1
 
@@ -52,5 +53,7 @@ BIG = 1
         header  0, _imgfs_entry, "Extract the tagged files from an image (C)"
         .segment "DOS33"
         header  0, _dos33_entry, "DOS 3.3 catalog: extract files, mark differences"
+        .segment "UNSHRINK"
+        header  BIG, _unshrink_entry, "Extract a ShrinkIt .SHK archive to the other panel"
         .segment "MENU"
         header  BIG, _menu_entry, "This menu"
