@@ -59,20 +59,27 @@ def hgr_card():
 
 
 def dhgr_card():
-    """16 384 octets, plan AUX puis plan MAIN : seize bandes horizontales, une
-    valeur d'octet par bande, la meme dans les deux plans -- des aplats pleine
-    largeur que le RLE ecrase a un kilo-octet, sans cadre pour ne pas couper
-    les series (la place sur la disquette est comptee, chaque surcouche pese).
-    La mire a motifs de quatre octets faisait douze kilo-octets."""
-    bands = [0x00, 0x08, 0x11, 0x19, 0x22, 0x2A, 0x33, 0x3B,
-             0x44, 0x4C, 0x55, 0x5D, 0x66, 0x6E, 0x77, 0x7F]
+    """16 384 octets, plan AUX puis plan MAIN : les seize couleurs DHGR en
+    bandes horizontales (une couleur par bande), un cadre blanc.
+
+    Une couleur DHGR est un quartet repete en un flux CONTINU de bits, que les
+    octets de 7 bits decoupent sans egard pour lui : la meme couleur donne
+    quatre octets differents par periode de 28 bits, deux par plan. Un seul
+    octet repete ne fait une couleur unie que pour 0, 5, 10 et 15 -- la
+    version "un octet par bande" de la 0.6.6 et de la 0.6.7 rayait les douze
+    autres (bench/run.py regarde maintenant le rendu, pas la memoire seule).
+    Douze kilo-octets en RLE : c'est le .2mg qui la porte, pas la disquette."""
     aux, main = bytearray(8192), bytearray(8192)
     for row in range(192):
         off = hgr_offset(row)
-        b = bands[min(row * 16 // 192, 15)]
-        for j in range(40):
-            aux[off + j] = b
-            main[off + j] = b
+        band = 15 if row < 3 or row >= 189 else min((row - 3) * 16 // 186, 15)
+        bits = []
+        for x in range(140):
+            nib = 15 if x < 2 or x >= 138 else band     # cadre blanc a gauche/droite
+            bits += [(nib >> b) & 1 for b in range(4)]
+        for j in range(80):
+            byte = sum(bits[j * 7 + k] << k for k in range(7))
+            (aux if j % 2 == 0 else main)[off + j // 2] = byte
     return bytes(aux) + bytes(main)
 
 

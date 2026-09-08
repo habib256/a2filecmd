@@ -34,6 +34,34 @@ README_LEN = (ROOT / 'data/README.TXT').stat().st_size
 ESC, RET, DOWN, UP, LEFT, RIGHT, TAB = b'\x1b', b'\r', b'\x0a', b'\x0b', b'\x08', b'\x15', b'\t'
 
 
+def ppm_pixel(ppm, x, y):
+    """Le pixel (x, y) d'un P6 -- l'ecran de POM2 : 560 x 384."""
+    parts = ppm.split(maxsplit=4)
+    w, h = int(parts[1]), int(parts[2])
+    data = parts[4]
+    if len(data) < w * h * 3:                  # l'en-tete comptait un seul blanc
+        data = ppm[len(ppm) - w * h * 3:]
+    i = (y * w + x) * 3
+    return tuple(data[i:i + 3])
+
+
+def solid_bands(ppm):
+    """La mire DHGR a l'ecran : chaque ligne est-elle unie d'un bord a
+    l'autre (hors le cadre blanc), et combien de couleurs sur la hauteur ?
+    Un octet repete au lieu d'un flux de quartets continu (la mire des 0.6.6
+    et 0.6.7) donnait des rayures verticales : la memoire etait bonne, pas
+    l'image. Rend (lignes unies, lignes, couleurs distinctes) ; le DHGR a
+    deux gris identiques, seize bandes font donc quinze couleurs."""
+    solid, colours, rows = 0, set(), 0
+    for y in range(0, 384, 2):
+        px = {ppm_pixel(ppm, x, y) for x in range(120, 440, 4)}
+        rows += 1
+        if len(px) == 1:
+            solid += 1
+            colours.add(next(iter(px)))
+    return solid, rows, len(colours)
+
+
 def decode_rle(stream, size):
     """La boucle de decode_rle() dans src/a2fc.c, pour l'attendu du banc."""
     out, i = bytearray(), 8
@@ -138,6 +166,9 @@ def main():
             page = p.peek(0x2000, 8192, 'aux') + p.peek(0x2000, 8192)
             s.ok('la mire DHGR est decodee octet a octet dans les deux banques', page == dhgr)
             shot('02-dhgr')
+            solid, rows, colours = solid_bands(urllib.request.urlopen(p.base + '/screen.ppm').read())
+            s.ok('et elle s AFFICHE : des bandes unies, quinze couleurs (pas de rayures)',
+                 solid == rows and colours >= 15, (solid, rows, colours))
             s.key(ESC); s.wait(lambda: s.value('view', 1) == 0, 'retour'); p.stable()
             s.ok('le format et la taille sont annonces', s.has('DHGR RLE, 16384 bytes on screen'),
                  s.rows()[22].strip())
@@ -398,7 +429,10 @@ def main():
             s.wait(lambda: s.rows()[0][:9] == '/SCRATCH ', 'ouvrir SCRATCH'); p.stable()
             s.ok('la liste des volumes ouvre le disque dur', s.has('WORK '), s.line()[:20])
             s.key(TAB)                                    # retour a DEMO, la source
-            s.select('SAMPLE', 40); s.key(b' '); s.select('HGR.RLE', 40); s.key(b' '); p.stable()
+            s.select('SAMPLE', 40); row = s.cursor_row(40); s.key(b' '); p.stable()
+            s.ok('Espace marque sans descendre : le curseur reste sur la ligne', s.cursor_row(40) == row,
+                 (row, s.cursor_row(40)))
+            s.select('HGR.RLE', 40); s.key(b' '); p.stable()
             s.ok('Espace marque deux fichiers', s.has('2 tagged'), s.rows()[21][60:])
             ops = s.value('ops')
             s.key(b'C'); s.wait(lambda: s.has('files copied') or s.has('failed'), 'copie', 90)

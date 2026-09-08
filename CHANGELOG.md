@@ -3,6 +3,12 @@
 Changes in upcoming and published releases. See the [README](README.md) for features,
 downloads and installation.
 
+## Unreleased
+
+- Fixed the DHGR test card in `DEMO/`: twelve of its sixteen bands showed as vertical stripes (a repeated byte is not a solid colour); the bench now checks the rendered picture, not only memory.
+- Changed SPACE: tagging a file no longer moves the cursor down.
+- Added Left/Right in the overlay menu, five entries at a time.
+
 ## [0.6.7](https://github.com/habib256/a2filecmd/releases/tag/v0.6.7) — 2026-09-08
 
 - Added VDrive: two ProDOS volumes served over a Super Serial Card (or a //c's port 2) at 115 200 bps by ADTPro, `veserver.py` or surl-server, with the ADTPro VSDrive protocol; installed for the session, like Ammonoid.

@@ -47,7 +47,7 @@ their own, with the path and the page on the left.
 | **[ / ]** | first / last entry |
 | **TAB** | switch panel |
 | **=** | open the active panel's directory in the other panel |
-| **SPACE** | tag or untag the selected file (star after the name) and move down |
+| **SPACE** | tag or untag the selected file (star after the name); the cursor stays put |
 | **\*** | invert the panel's tags |
 | **'** then a key | jump to the next entry whose name starts with that letter or digit, as in Bitsy Bye |
 | **RETURN** | open: a directory opens; a disk image `.PO`/`.DSK`/`.2MG`, ProDOS or DOS 3.3, opens read-only as a folder (see "A disk image as a folder"); a picture shows full screen, in HGR or DHGR depending on its content (a key to return, the message line names the recognized format); a TXT is read page by page; a SYS or a BAS runs after confirmation; any other file shows in hexadecimal |
@@ -70,7 +70,7 @@ their own, with the path and the page on the left.
 | **I** | show the selected file as a picture, whatever its name: HGR or DHGR, raw or RLE-compressed |
 | **P** | pause or resume the Mockingboard music; RETURN on a `.MB` file starts it |
 | **W** | disk images: write a `.PO`/`.DSK`/`.2MG` to a floppy, read a floppy into a fresh image, copy one floppy onto another (see below) |
-| **!** | the overlay menu: the list of `A2FILE/*.PLG` with their description, each run on the selection. Among them: **COMPARE** confronts the selection with the file of the same name in the other panel byte by byte, and **SEARCH** asks for a text and tags the panel files that contain it (case-insensitive) |
+| **!** | the overlay menu: the list of `A2FILE/*.PLG` with their description, each run on the selection (Up/Down one line, Left/Right five, a letter jumps to the next name starting with it). Among them: **COMPARE** confronts the selection with the file of the same name in the other panel byte by byte, and **SEARCH** asks for a text and tags the panel files that contain it (case-insensitive) |
 | **F** | open the formatter, `A2FILE/FORMAT.SYS`, which returns to A2FC on exit |
 | **1** … **0** | the ten buttons of the key bar, in order, like Norton Commander and A2Command |
 | **Ctrl-T** / **Ctrl-N** | tag all / untag all; **Ctrl-R** re-reads both panels (floppy swapped, `/RAM` rebuilt) |
