@@ -554,7 +554,7 @@ The continuous integration (`.github/workflows/ci.yml`) builds both on every
 push — cc65 2.19 from Ubuntu for the 65C02 build, cc65 master cloned at a
 pinned commit (`CC65_HEAD_COMMIT`) and cached for the 6502 one — checks the
 images, and a `v*` tag publishes the six of them with one `SHA256SUMS.txt`
-and notes taken from `CHANGELOG.md` (`tools/release_notes.py`).
+and notes taken from `CHANGELOG.md` (`tools/release_notes.py`) — the changelog is the only place a release's text is written.
 
 One lesson the bench taught: the `apple2` target's `initostype` constructor
 calls the ROM (`$FE1F`) without switching it in, as a `.SYSTEM` launched by
