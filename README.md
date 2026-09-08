@@ -181,7 +181,7 @@ that inspired it, from the classic two-panel workflow to serial virtual drives:
 
 ## Credits
 
-Created by **Arnaud VERHILLE** (`gist974@gmail.com`). Free software under the
+Created by **Arnaud VERHILLE** (`@habib256`). Free software under the
 [GNU GPL v3](LICENSE), in the spirit of A2Command, Ammonoid and Norton Commander.
 
 The disk images include **ProDOS 8 2.4.3** and **BASIC.SYSTEM**, distributed
