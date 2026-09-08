@@ -286,6 +286,49 @@ readable only the boot floppy and an image file; reading a real physical disk
 shares all the code of reading an image, only the source of the sectors
 changes.)
 
+## VDrive: two volumes over the serial line
+
+If a serial card answers at startup — a Super Serial Card in any slot, or
+the built-in port 2 of a //c, identified by the Pascal 1.1 signature of its
+ROM and a 6551 that responds — A2FC installs a **VDrive**: two ProDOS block
+devices, in the first slot whose drives 1 and 2 are free, served by whatever
+sits at the other end of the cable at 115 200 bps: the ADTPro server with its
+`Virtual.po` / `Virtual2.po`, `veserver.py` from ProDOS-Utils, or a
+Raspberry running Colin Leroy-Mira's `surl-server` — the same wire protocol
+that ADTPro's `VSDRIVE` speaks. The status line says so (`VDrive: serial card in
+slot 2, volumes in slot 1, drives 1 and 2.`), the volumes
+appear in the list like any disk, and copying to and from them is plain
+copying. The host also sends its date and time with every block read, and
+A2FC sets the ProDOS clock from it: a IIe without a clock card dates its files
+all the same.
+
+The driver (`src/vsdrive.s`) lives *inside the program*, the way Ammonoid
+does it, not inside ProDOS: it is installed by `vsdrive_install` before the
+panels are read, and a cc65 destructor removes it — `DEVADR` restored,
+the two units taken out of `DEVLST`, DTR dropped — on Q, X, F and every other
+way out, so ProDOS never points at code that is gone. The main window being
+full, the driver and its 6551 layer sit in the language card (segment `LC`);
+ProDOS calls its drivers from *its* bank of that card, so a 17-byte thunk in
+page `$0300` (free under ProDOS; `chain.s` only borrows it after the
+destructor has run) switches bank 2 in, calls the driver, and puts bank 1
+back read/write before returning to the MLI. The card being read-only at
+run time, the driver's variables live in page 3 as well. Each block is an
+envelope — `$C5`, the command (read 3/5, write 2/4 by drive), the block
+number, their XOR — then 512 bytes and their XOR; a read answer also carries
+four bytes of date and time. Interrupts are masked for the duration of a
+block (a byte comes every 87 cycles at that speed; the receive loop takes
+about 60), and every byte waited for has a 0.3 s timeout, so a host that is
+absent or unplugged gives a clean I/O error (`$27`) instead of a hang — the
+volume list then shows the drive without a name, as it does for an empty
+Disk II.
+
+`bench/vsdrive_server.py` is a host for the protocol over a TCP socket, and
+`bench/vdrive.py` the bench that plugs it into POM2's Super Serial Card
+bridge; it waits for `pom2_playtest --ssc` (requested in POM2's TODO) and
+says so until then. **The driver has not yet run against an emulated or real
+card**: treat it as 0.6.7's experimental feature, and tell me what a real
+Super Serial Card or //c makes of it.
+
 ## Reading an AppleWorks document
 
 An AppleWorks word-processor file (type `$1A`, shown as `AWP` in the Type
@@ -454,7 +497,7 @@ directory the floppy has no room for:
 |---|---|
 | `PRODOS`, `BASIC.SYSTEM` | ProDOS 8 2.4.3, the last stable version, and its Applesoft interpreter: freely distributed for the Apple II community, they are not the author's |
 | `A2FILE.SYSTEM` | the launcher, the only `.SYSTEM` program: the floppy boots straight into A2FC. Compiled with `NO_CHDIR`, it relies on the ProDOS prefix — the directory it lives in — and rebuilds it only when `BASIC.SYSTEM` has emptied it |
-| `A2FILE/A2FILE.CODE`, `A2FILE/*.PLG`, `A2FILE/A2FILE.HELP`, `A2FILE/FORMAT.SYS` | the program, its thirteen overlays (`IMAGE`, `TEXT`, `HEX`, `HELP`, `DELETE`, `MUSIC`, `RUN`, `ATTR`, `IMGFS`, `DOS33`, and the big ones `EDIT`, `MENU`, `DISKIMG`: BINs loaded at `$1B00` on demand), the help text and the formatter; `A2FILE.CFG` will be written alongside |
+| `A2FILE/A2FILE.CODE`, `A2FILE/*.PLG`, `A2FILE/A2FILE.HELP`, `A2FILE/FORMAT.SYS` | the program (with the VDrive serial driver), its overlays (`IMAGE`, `TEXT`, `HEX`, `HELP`, `DELETE`, `MUSIC`, `RUN`, `ATTR`, `IMGFS`, `DOS33`, and the big ones `EDIT`, `MENU`, `DISKIMG`: BINs loaded at `$1B00` on demand), the help text and the formatter; `A2FILE.CFG` will be written alongside |
 | `DEMO/` (`.2mg` only) | one example of everything A2FC can open, entirely computed by `tools/mkdemo.py`: the two test cards raw (`DHGR.RAW`, `HGR.RAW`) and RLE (`DHGR.RLE`, `HGR.RLE`), a three-voice fanfare (`WELCOME.MB`), a text (`SAMPLE`), an Applesoft program (`HELLO`), an AppleWorks document (`LETTER`), a ProDOS disk image as `.PO` and as `.2MG` (`TINY.PO`, `TINY.2MG`), a DOS 3.3 disk (`DOS33.DSK`), the text and the program packed by ShrinkIt (`SAMPLE.SHK`) and by Binary II (`SAMPLE.BNY`), and a `README` that says what to press |
 
 The floppy keeps 19 free blocks. At startup, the left panel shows the boot

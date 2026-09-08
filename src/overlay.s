@@ -40,7 +40,7 @@ BIG = 1
         .segment "TEXT"
         header  0, _text_entry, "Read the selection as text, page by page"
         .segment "BASLIST"
-        header  0, _baslist_entry, "List an Applesoft BAS program (T on a BAS)"
+        header  1, _baslist_entry, "List an Applesoft BAS program (T on a BAS)"
         .segment "COMPARE"
         header  0, _compare_entry, "Compare the selection with the other panel, byte by byte"
         .segment "SEARCH"
