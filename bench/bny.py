@@ -64,6 +64,9 @@ def main():
             s.wait(lambda: s.has('extracted') or s.has('failed') or s.has('Binary'), 'extraction', 30)
             p.stable()
             ok('BINARY2 : deux fichiers extraits', s.has('2 file(s) extracted'), s.rows()[22].strip()[:40])
+            ok('BINARY2 : l autre panneau les montre tout de suite, sans y entrer',
+               any(r[40:].startswith('ONE ') for r in s.rows()) and any(r[40:].startswith('TWO ') for r in s.rows()),
+               [r[40:56].strip() for r in s.rows()[2:8]])
 
             open_panel(0, 'OUT')             # regarder la cible
             s.select('ONE', 0); p.stable()

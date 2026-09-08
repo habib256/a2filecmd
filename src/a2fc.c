@@ -69,6 +69,7 @@ int main(void);
 static void too_long(void);
 static unsigned char target_check(void);
 static void progress_bar(const char* name, unsigned long copied, unsigned long size);
+static void refresh_both(void);
 static void dir_fail(void);
 
 #ifndef A2FC_VERSION
@@ -1631,6 +1632,9 @@ void __fastcall__ binary2_entry(const struct A2fcApi* a)
         if (pad) fseek(in, (long)pad, SEEK_CUR);
     }
     fclose(in);
+#ifndef A2FC_BIG_BINARY2
+    refresh_both();                    /* l'autre panneau montre ce qui vient d'arriver (grande : overlay_run le fait) */
+#endif
     sprintf(question, b2_done, done);
     b2_say(question);
 }
