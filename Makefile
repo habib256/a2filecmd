@@ -145,7 +145,7 @@ disk: $(PO)
 $(PO): $(SYSTEM) $(CODE) $(FORMAT) $(DATA)/A2FILE.HELP.TXT $(DATA)/PRODOS.SYS $(DATA)/BASIC.SYSTEM.SYS \
        $(DATA)/README.TXT $(DATA)/prodos_boot.tmpl \
        $(TOOLS)/mkvolume.py $(TOOLS)/mkdemo.py $(TOOLS)/po2dsk.py $(TOOLS)/po22mg.py \
-       $(TOOLS)/mkshk.py $(TOOLS)/mkbny.py $(TOOLS)/mkdos33.py | $(DIST)
+       $(TOOLS)/mkshk.py $(TOOLS)/mkbny.py $(TOOLS)/mkdos33.py $(wildcard $(DATA)/IMGHGR/*) | $(DIST)
 	@rm -rf $(STAGE) && mkdir -p $(STAGE)/A2FILE
 	cp $(DATA)/PRODOS.SYS $(DATA)/BASIC.SYSTEM.SYS $(STAGE)/
 	cp $(SYSTEM) $(STAGE)/A2FILE.SYSTEM.SYS
@@ -159,10 +159,11 @@ $(PO): $(SYSTEM) $(CODE) $(FORMAT) $(DATA)/A2FILE.HELP.TXT $(DATA)/PRODOS.SYS $(
 	mkdir -p $(STAGE)/DEMO
 	cp $(DATA)/README.TXT $(STAGE)/DEMO/README.TXT
 	python3 $(TOOLS)/mkdemo.py $(STAGE)/DEMO
+	cp -R $(DATA)/IMGHGR $(STAGE)/IMGHGR
 	python3 $(TOOLS)/mkvolume.py $(STAGE) $(HDV) --volume $(VOLUME_HD) \
 	  --boot $(DATA)/prodos_boot.tmpl --blocks 65535
 	python3 $(TOOLS)/po22mg.py $(HDV) $(TWOMG)
-	@rm -rf $(STAGE)/DEMO   # le stage redevient la disquette nue (bench/plugin.py le reprend)
+	@rm -rf $(STAGE)/DEMO $(STAGE)/IMGHGR   # le stage redevient la disquette nue (bench/plugin.py le reprend)
 	@echo "==> $(PO), $(DSK) et $(TWOMG)"
 
 test:

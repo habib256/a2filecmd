@@ -46,6 +46,15 @@ def main():
             names = [r[40:].split(' ')[0] for r in s.rows()[2:20]]
             ok('DEMO montre un exemplaire de chaque type', all(n in names for n in DEMO),
                [n for n in DEMO if n not in names])
+            names_left = [r[:16].split(' ')[0] for r in s.rows()[2:20]]
+            ok('IMGHGR est a la racine', 'IMGHGR' in names_left, names_left[:6])
+            s.select('IMGHGR', 0); s.key(RET); s.wait(lambda: s.has('/A2FILEHD/IMGHGR'), 'IMGHGR'); p.stable()
+            imgs = [r[:16].split(' ')[0] for r in s.rows()[2:20] if r[:16].strip() and not r.startswith('..')]
+            ok('neuf pages HGR de POM1, aux noms ProDOS anglais', len(imgs) == 9 and 'TIGER' in imgs and 'VILLAGE' in imgs and 'LIZARD' in imgs, imgs)
+            s.select('TIGER', 0); s.key(RET)
+            s.wait(lambda: s.value('view', 1) == 1, 'image TIGER', 40); time.sleep(1)
+            ok('une page HGR de la collection s affiche', s.value('view', 1) == 1)
+            s.key(ESC); s.wait(lambda: s.value('view', 1) == 0, 'retour'); p.stable()
             s.key(TAB)
             s.select('DHGR.RAW', 40); s.key(RET)
             s.wait(lambda: s.value('view', 1) == 1, 'image DHGR brute', 40); time.sleep(1)

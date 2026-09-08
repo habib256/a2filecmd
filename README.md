@@ -59,7 +59,7 @@ No build required. Choose the image that fits your setup:
 
 | Download | Best for | Included |
 |---|---|---|
-| [**A2FILECMD.2mg**](https://github.com/habib256/a2filecmd/releases/latest/download/A2FILECMD.2mg) | Emulators and CFFA-style storage that support 2IMG hard disks | Bootable 32 MB volume `/A2FILEHD`, the complete program and a `DEMO/` collection |
+| [**A2FILECMD.2mg**](https://github.com/habib256/a2filecmd/releases/latest/download/A2FILECMD.2mg) | Emulators and CFFA-style storage that support 2IMG hard disks | Bootable 32 MB volume `/A2FILEHD`, the complete program, a `DEMO/` collection and `IMGHGR/`, nine HGR pictures from [POM1](https://github.com/habib256/pom1) |
 | [**A2FILECMD.po**](https://github.com/habib256/a2filecmd/releases/latest/download/A2FILECMD.po) | ADTPro, CiderPress and most emulators | Bootable 140 KB ProDOS floppy with the complete program, blocks in ProDOS order |
 | [**A2FILECMD.dsk**](https://github.com/habib256/a2filecmd/releases/latest/download/A2FILECMD.dsk) | Tools and emulators that expect a `.dsk` file | The same 140 KB ProDOS floppy, its sectors stored in the `.dsk` (DOS-order) layout — a ProDOS volume, no DOS 3.3 on it |
 
