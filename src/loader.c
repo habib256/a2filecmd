@@ -27,7 +27,7 @@
 #define CODE_FILE "A2FILE/A2FILE.CODE"
 #endif
 #ifndef A2FC_VERSION
-#define A2FC_VERSION "0.6"
+#define A2FC_VERSION "0.6.1"
 #endif
 
 /* src/loader_mli.s : poser le prefixe ProDOS sur le volume amorce avant de

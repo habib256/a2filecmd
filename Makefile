@@ -10,7 +10,7 @@
 # lien est verifie a chaque fois par tools/check_layout.py, qui attrape les
 # deux debordements que ld65 laisse passer en silence. Voir docs/MANUAL.md.
 
-A2FC_VERSION = 0.6
+A2FC_VERSION = 0.6.1
 VOLUME       = A2FILECMD
 
 TARGET = apple2enh

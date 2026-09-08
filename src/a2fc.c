@@ -67,7 +67,7 @@ static void progress_bar(const char* name, unsigned long copied, unsigned long s
 static void dir_fail(void);
 
 #ifndef A2FC_VERSION
-#define A2FC_VERSION "0.5"
+#define A2FC_VERSION "0.6.1"
 #endif
 #define WINDOW (MAX_ENTRIES - 1)   /* entrees du disque par fenetre : ".." en plus */
 
@@ -506,7 +506,12 @@ static void draw_entry(unsigned char p, unsigned char index)
     gotoxy(x, row);
     if (is_up(e)) cprintf("%-15s  <UP>                 ", e->name);
     else if (!pan->path[0]) {
-        if (!e->access) cprintf("%-15s S%u,D%u  DOS 3.3 disk       ", e->name, (e->mdate >> 4) & 7, (e->mdate >> 7) + 1);
+        /* 38 colonnes exactement, comme les autres lignes : avec 7 espaces
+         * de queue cette ligne en faisait 42, et en inverse (selection) ses
+         * 4 cellules de trop debordaient sur le separateur et le panneau
+         * voisin a gauche, ou passaient a la ligne suivante, colonnes 0-1, a
+         * droite -- les "carres blancs" en mode DOS 3.3. */
+        if (!e->access) cprintf("%-15s S%u,D%u  DOS 3.3 disk   ", e->name, (e->mdate >> 4) & 7, (e->mdate >> 7) + 1);
         else cprintf("%-15s S%u,D%u %5u/%5u free", e->name, e->mdate & 7, (e->mdate >> 3) + 1, e->aux, e->blocks);
     }
     else if (is_dir(e)) cprintf("%-15s  <DIR>          %5u ", e->name, e->blocks);
@@ -3116,12 +3121,10 @@ void __fastcall__ attr_entry(const struct A2fcApi* a)
 static void launch_file(unsigned int addr)
 {
     if (!exists(full)) {
-        /* file_info ne touche pas _oserror : sans ca "Run failed (ProDOS
-         * $00)" reste le code d'une operation anterieure. La cause est ici le
-         * fichier absent -- typiquement BASIC.SYSTEM manquant sur le volume
-         * d'un BAS (un /RAM ou un disque sans systeme) : $46, "file not
-         * found", que prodos_error rend en clair. */
-        _oserror = 0x46;
+        /* _oserror porte le vrai code de GET_FILE_INFO (a2fc_mli.s le pose) :
+         * $46 "file not found" -- typiquement BASIC.SYSTEM absent du volume
+         * d'un BAS (un /RAM, un disque sans systeme) -- ou $2E/$2F si le
+         * disque a change ou manque. report_error le rend en clair. */
         chain_command("");   /* sinon un SYS lance ensuite recevrait le "-NOM" en $2006 */
         report_error("Run");
         return;

@@ -1,4 +1,4 @@
-16,0,#  A2 FILE CMD 0.6  -  ProDOS file manager
+16,0,#  A2 FILE CMD 0.6.1  -  ProDOS file manager
 9,1,~Free software, GNU GPL v3  -  Arnaud VERHILLE, gist974@gmail.com
 1,3,#NAVIGATION
 1,4,U/D,Move up / down
