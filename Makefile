@@ -46,7 +46,7 @@ CODE   = $(BUILD)/A2FILE.CODE.BIN
 # la musique, le lanceur, les attributs, l'editeur, le menu, les images
 # disque. Chacune a deux segments dans son fichier : NOM (code) puis NOMRO
 # (chaines). Voir src/a2fc_plugin.h pour l'en-tete et la table de services.
-PLUGINS = IMAGE TEXT HEX DELETE HELP EDIT MUSIC RUN ATTR MENU DISKIMG IMGFS DOS33 UNSHRINK BASLIST
+PLUGINS = IMAGE TEXT HEX DELETE HELP EDIT MUSIC RUN ATTR MENU DISKIMG IMGFS DOS33 UNSHRINK BASLIST COMPARE SEARCH
 SYSTEM = $(BUILD)/A2FILE.SYSTEM.SYS
 FORMAT = $(BUILD)/FORMAT.SYS.SYS
 PO     = $(DIST)/$(VOLUME).po

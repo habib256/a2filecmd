@@ -19,6 +19,7 @@
         .import _dos33_entry
         .import _unshrink_entry
         .import _baslist_entry
+        .import _compare_entry, _search_entry
 
 BIG = 1
 
@@ -38,6 +39,10 @@ BIG = 1
         header  0, _text_entry, "Read the selection as text, page by page"
         .segment "BASLIST"
         header  0, _baslist_entry, "List an Applesoft BAS program (T on a BAS)"
+        .segment "COMPARE"
+        header  0, _compare_entry, "Compare the selection with the other panel, byte by byte"
+        .segment "SEARCH"
+        header  0, _search_entry, "Search the panel files for text, tag those that match"
         .segment "HEX"
         header  0, _hex_entry, "Show the selection in hexadecimal"
         .segment "DELETE"

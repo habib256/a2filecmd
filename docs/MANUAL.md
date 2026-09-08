@@ -57,7 +57,7 @@ their own, with the path and the page on the left.
 | **I** | show the selected file as a picture, whatever its name: HGR or DHGR, raw or RLE-compressed |
 | **P** | pause or resume the Mockingboard music; RETURN on a `.MB` file starts it |
 | **W** | disk images: write a `.PO`/`.DSK`/`.2MG` to a floppy, read a floppy into a fresh image, copy one floppy onto another (see below) |
-| **!** | the overlay menu: the list of `A2FILE/*.PLG` with their description, each run on the selection |
+| **!** | the overlay menu: the list of `A2FILE/*.PLG` with their description, each run on the selection. Two of them: **COMPARE** confronts the selection with the file of the same name in the other panel byte by byte, and **SEARCH** asks for a text and tags the panel files that contain it (case-insensitive) |
 | **F** | open the formatter, `A2FILE/FORMAT.SYS`, which returns to A2FC on exit |
 | **1** … **0** | the ten buttons of the key bar, in order, like Norton Commander and A2Command |
 | **Ctrl-T** / **Ctrl-N** | tag all / untag all; **Ctrl-R** re-reads both panels (floppy swapped, `/RAM` rebuilt) |
