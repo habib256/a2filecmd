@@ -19,9 +19,9 @@ Browse disks, unpack archives, read documents, view pictures and play music — 
 
 </div>
 
-Inspired by A2Command and Norton Commander, A2FileCmd brings the familiar
-source-and-destination workflow to your Apple II. Tag a group of files and
-copy them across. Open a disk image like a folder. Unpack a ShrinkIt archive,
+Inspired by [A2Command, Ammonoid and Norton Commander](#inspirations),
+A2FileCmd brings the familiar source-and-destination workflow to your Apple II.
+Tag a group of files and copy them across. Open a disk image like a folder. Unpack a ShrinkIt archive,
 read an AppleWorks letter, or leaf through a directory of double hi-res
 pictures. The tools are right there, beside your files.
 
@@ -168,10 +168,21 @@ and work with the selected file.
 Found a bug or have an idea? [Open an issue](https://github.com/habib256/a2filecmd/issues).
 For a bug, include the release, machine or emulator, disk format and steps to reproduce it.
 
+## Inspirations
+
+A2FileCmd owes a tip of the hat to these file managers. Explore the programs
+that inspired it, from the classic two-panel workflow to serial virtual drives:
+
+| Inspiration | What it brings to A2FileCmd | Disk-image download |
+|---|---|---|
+| **A2Command** | The Commander-style file and disk manager on Apple II. | [A2Command 1.1 — ZIP containing `a2cmd-1.1-140k.po`](https://mirrors.apple2.org.za/ftp.apple.asimov.net/utility/A2Command%20v1.1.zip), preserved by the Asimov mirror. |
+| **[Ammonoid](https://github.com/colinleroy/a2tools)**, by Colin Leroy | An Apple II file manager and an inspiration for integrated serial virtual drives. | [Download `ammonoid.po`](https://github.com/colinleroy/a2tools/releases/latest/download/ammonoid.po) from the author's latest release. |
+| **Norton Commander** | The classic two-panel interface and keyboard command bar. | [Norton Commander 3.0 — floppy images on WinWorld](https://winworldpc.com/download/d0ee2b62-911a-11ec-84e0-0200008a0da4) (7z archive; choose a download mirror). **For IBM PC compatibles running DOS.** |
+
 ## Credits
 
 Created by **Arnaud VERHILLE** (`gist974@gmail.com`). Free software under the
-[GNU GPL v3](LICENSE), in the spirit of A2Command and Norton Commander.
+[GNU GPL v3](LICENSE), in the spirit of A2Command, Ammonoid and Norton Commander.
 
 The disk images include **ProDOS 8 2.4.3** and **BASIC.SYSTEM**, distributed
 for the Apple II community by John Brooks; these are Apple's software.
