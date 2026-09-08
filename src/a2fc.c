@@ -2990,6 +2990,8 @@ void __fastcall__ menu_entry(const struct A2fcApi* a)
         if (key == KEY_RETURN && n) { strcpy(input, m[cur].name); return; }
         if (key == KEY_UP && cur) --cur;
         else if (key == KEY_DOWN && cur + 1 < n) ++cur;
+        else if (key == KEY_LEFT) cur = cur >= 5 ? cur - 5 : 0;              /* de cinq en cinq */
+        else if (key == KEY_RIGHT) cur = cur + 5 < n ? cur + 5 : n - 1;
         else {
             if (key >= 'a' && key <= 'z') key -= 32;
             for (i = 1; i <= n; ++i) if (m[(cur + i) % n].name[0] == key) { cur = (cur + i) % n; break; }
@@ -4094,7 +4096,7 @@ static void toggle_tag(void)
     if (!pan->count || !pan->path[0]) return;
     e = &pan->e[pan->cursor];
     if (!is_dir(e)) set_tag(pan, pan->cursor, !tagged(pan, pan->cursor));
-    land(pan->cursor + 1 < pan->count ? pan->cursor + 1 : pan->cursor);
+    land(pan->cursor);                 /* la marque se voit ; le curseur reste ou il est */
 }
 
 /* Ctrl-T marque tous les fichiers du panneau (mode 1), Ctrl-N les demarque

@@ -430,7 +430,10 @@ def main():
             s.wait(lambda: s.rows()[0][:9] == '/SCRATCH ', 'ouvrir SCRATCH'); p.stable()
             s.ok('la liste des volumes ouvre le disque dur', s.has('WORK '), s.line()[:20])
             s.key(TAB)                                    # retour a DEMO, la source
-            s.select('SAMPLE', 40); s.key(b' '); s.select('HGR.RLE', 40); s.key(b' '); p.stable()
+            s.select('SAMPLE', 40); row = s.cursor_row(40); s.key(b' '); p.stable()
+            s.ok('Espace marque sans descendre : le curseur reste sur la ligne', s.cursor_row(40) == row,
+                 (row, s.cursor_row(40)))
+            s.select('HGR.RLE', 40); s.key(b' '); p.stable()
             s.ok('Espace marque deux fichiers', s.has('2 tagged'), s.rows()[21][60:])
             ops = s.value('ops')
             s.key(b'C'); s.wait(lambda: s.has('files copied') or s.has('failed'), 'copie', 90)
