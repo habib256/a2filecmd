@@ -18,7 +18,8 @@
 ; longueur, et s'il existe l'execute comme la commande "-NOM" -- ce qui
 ; lance un programme Applesoft. Le talon depose donc le nom en
 ; chain_addr+6 juste avant de sauter. Sans appel, le premier octet reste
-; nul et rien n'est ecrit.
+; nul et rien n'est ecrit. 46 caracteres au plus : un chemin complet
+; "/VOL/DIR/NOM" y tient presque toujours (voir run_selected).
 
         .export _chain_load, _chain_addr, _chain_command
         .import donelib
@@ -82,7 +83,8 @@ quit_p: .byte 4, 0
         .byte 0
         .word 0
 path:   .res 64
-cmd:    .res 16                 ; longueur puis nom, zero = pas de commande
+cmd:    .res 47                 ; longueur puis nom (46 au plus : ce que la page 3
+                                ; laisse), zero = pas de commande
 stub_end:
         .reloc
 stub_len = stub_end - stub
@@ -138,7 +140,7 @@ _chain_command:
         beq :+
         sta cmd_src+1,y
         iny
-        cpy #15
+        cpy #46
         bne :-
 :       sty cmd_src
         rts

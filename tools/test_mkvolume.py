@@ -60,6 +60,16 @@ class Roundtrip(unittest.TestCase):
             if e[1:4] == b'BIG':
                 self.assertEqual(img.read(e), self.big, 'un sapling doit se relire entier')
 
+    def test_a_tree_file_comes_back_whole(self):
+        tree = bytes(range(256)) * 700          # 175 Ko : plus de 256 blocs
+        (self.stage / 'TREE.BIN').write_bytes(tree)
+        img, _ = build(self.stage, blocks=1600)
+        for e in img.entries(2):
+            if e[1:5] == b'TREE':
+                self.assertEqual(e[0] >> 4, 3, 'storage type 3 : un arbre')
+                self.assertEqual(img.read(e), tree, 'un arbre doit se relire entier')
+                self.assertEqual(int.from_bytes(e[0x13:0x15], 'little'), 1 + 2 + 350)
+
     def test_aux_type_from_the_host_name(self):
         img, _ = build(self.stage)
         sub = next(e for e in img.entries(2) if e[1:4] == b'SUB')
@@ -96,7 +106,7 @@ class Roundtrip(unittest.TestCase):
         (self.stage / 'nom impossible.txt').unlink()
         (self.stage / 'HUGE.BIN').write_bytes(bytes(200 * 1024))
         with self.assertRaises(subprocess.CalledProcessError):
-            build(self.stage)
+            build(self.stage)                     # 200 Ko sur 280 blocs : deborde
 
 
 if __name__ == '__main__':

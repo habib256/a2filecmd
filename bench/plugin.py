@@ -53,9 +53,9 @@ def main():
             s.boot()
             # Descendre dans DEMO, curseur sur HELLO (un BAS, type $FC).
             s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes')
-            s.select('/A2FILECMD'); s.key(RET)
-            s.wait(lambda: s.rows()[0][:11] == '/A2FILECMD ', 'racine'); p.stable()
-            s.select('DEMO'); s.key(RET); s.wait(lambda: s.has('/A2FILECMD/DEMO'), 'DEMO'); p.stable()
+            s.select('/SCRATCH'); s.key(RET)
+            s.wait(lambda: s.rows()[0][:9] == '/SCRATCH ', 'racine'); p.stable()
+            s.select('DEMO'); s.key(RET); s.wait(lambda: s.has('/SCRATCH/DEMO'), 'DEMO'); p.stable()
             s.select('HELLO'); p.stable()
 
             # Le menu des surcouches lit l'en-tete de chaque .PLG.
@@ -74,7 +74,7 @@ def main():
             ok('la surcouche a tourne par la table de services',
                'Plugin:' in row22, row22)
             ok('elle a lu le nom, le type et le chemin de la selection',
-               '"HELLO"' in row22 and 'FC' in row22 and '/A2FILECMD/DEMO' in row22, row22)
+               '"HELLO"' in row22 and 'FC' in row22 and '/SCRATCH/DEMO' in row22, row22)
             ok('A2FC a repris la main sur ses panneaux', s.has('Type  Aux'))
 
     passed = sum(1 for c in checks if c)

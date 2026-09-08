@@ -11,8 +11,10 @@ The launcher shows a splash screen while it loads: the title, the "ProDOS 8
 only" note, the date and time if a clock is present (bit 0 of MACHID, `$BF98`)
 or "No clock" otherwise, then **PLEASE WAIT**. Then come the two panels in
 80-column text: on the left the boot volume, on the right its `DEMO` directory
-the first time; afterwards the two directories, the sort order and the active
-panel from the previous session, read from `A2FILE/A2FILE.CFG`.
+the first time (the `.2mg` has one; the bare floppy has not, and the right
+panel then shows the list of volumes); afterwards the two directories, the
+sort order and the active panel from the previous session, read from
+`A2FILE/A2FILE.CFG`.
 
 Each panel lists a directory: name, ProDOS type, auxtype and size in bytes,
 directories first (with their block count), then the files, sorted by name,
@@ -157,17 +159,23 @@ line says so and nothing shows.
 ## Running an Applesoft program
 
 A BAS file does not run on its own: it is `BASIC.SYSTEM` that runs it. **X**
-(or **RETURN**) on a BAS therefore loads `BASIC.SYSTEM` from the volume root
-and passes it the program name in the buffer that all its launchers use —
+(or **RETURN**) on a BAS therefore loads `BASIC.SYSTEM` — from the root of the
+program's volume, its usual place, or failing that from the volume A2FC booted
+from, so a BAS on a data disk, on `/RAM` or on the hard disk runs with the
+floppy's `BASIC.SYSTEM` — and passes it the program name in the buffer that
+all its launchers use —
 Bitsy Bye included: the first eight bytes of a SYSTEM program are a jump then a
 name preceded by its length, at `$2006`, and `BASIC.SYSTEM` turns it into the
 `-NAME` command at startup. `chain_command` (chain.s) drops that name into the
 stub on page `$0300`, which writes it at `chain_addr+6` just before jumping.
 
-The ProDOS prefix stays the volume root, and the program is launched by its
-path relative to the root (`-SUB/NAME`) as long as it fits — a BAS tucked in a
-subdirectory therefore runs too. Without `BASIC.SYSTEM` at the volume root —
-a `/RAM` disk, or any volume with no system — the launch stops on `Run failed:
+The program is launched by its full path (`-/VOL/DIR/NAME`) as long as it
+fits the 46 characters the stub has room for, so it resolves whatever the
+prefix is; `BASIC.SYSTEM` then sets the prefix to its own volume, which is why
+`-A2FILE.SYSTEM` brings A2FC back whenever `BASIC.SYSTEM` came from its disk.
+A longer path falls back to the old way: prefix on the program's directory and
+`-NAME`, with no return. Without any `BASIC.SYSTEM` — neither on the
+program's volume nor on the boot volume — the launch stops on `Run failed:
 file not found` and A2FC keeps control.
 
 **Coming back to A2 File Cmd.** As with a SYS, A2FC does not take control back
@@ -404,20 +412,25 @@ The names fit in ProDOS's fifteen characters.
 
 `make disk` produces `dist/A2FILECMD.po` (ProDOS order) and
 `dist/A2FILECMD.dsk` (DOS 3.3 order, that of ADTPro and most emulators), a
-bootable floppy of 280 blocks, volume `/A2FILECMD`:
+bootable floppy of 280 blocks, volume `/A2FILECMD`, and `dist/A2FILECMD.2mg`,
+the same volume as a 65535-block hard disk (the ProDOS maximum, 32 MB) with
+the `DEMO` directory the floppy has no room for:
 
 | File | Content |
 |---|---|
 | `PRODOS`, `BASIC.SYSTEM` | ProDOS 8 2.4.3, the last stable version, and its Applesoft interpreter: freely distributed for the Apple II community, they are not the author's |
 | `A2FILE.SYSTEM` | the launcher, the only `.SYSTEM` program: the floppy boots straight into A2FC. Compiled with `NO_CHDIR`, it relies on the boot volume's prefix |
 | `A2FILE/A2FILE.CODE`, `A2FILE/*.PLG`, `A2FILE/A2FILE.HELP`, `A2FILE/FORMAT.SYS` | the program, its thirteen overlays (`IMAGE`, `TEXT`, `HEX`, `HELP`, `DELETE`, `MUSIC`, `RUN`, `ATTR`, `IMGFS`, `DOS33`, and the big ones `EDIT`, `MENU`, `DISKIMG`: BINs loaded at `$1B00` on demand), the help text and the formatter; `A2FILE.CFG` will be written alongside |
-| `DEMO/` | something to try, entirely computed by `tools/mkdemo.py`: two test cards (`DHGR.RLE`, `HGR.RLE`), a three-voice fanfare (`WELCOME.MB`), a text (`SAMPLE`), an Applesoft program (`HELLO`) and a `README` |
+| `DEMO/` (`.2mg` only) | one example of everything A2FC can open, entirely computed by `tools/mkdemo.py`: the two test cards raw (`DHGR.RAW`, `HGR.RAW`) and RLE (`DHGR.RLE`, `HGR.RLE`), a three-voice fanfare (`WELCOME.MB`), a text (`SAMPLE`), an Applesoft program (`HELLO`), a ProDOS disk image as `.PO` and as `.2MG` (`TINY.PO`, `TINY.2MG`), a DOS 3.3 disk (`DOS33.DSK`), the text and the program packed by ShrinkIt (`SAMPLE.SHK`) and by Binary II (`SAMPLE.BNY`), and a `README` that says what to press |
 
-There are 46 free blocks left. At startup, the left panel shows the floppy's
-root and the right panel its `DEMO` directory. `mkvolume.py` writes the
-280-block volume, `po2dsk.py` derives the DOS 3.3 order. The bench boots this
-image in slot 6 in POM2: A2FC opens on `/A2FILECMD`, Q hands control back to
-Bitsy Bye on that volume. A 2.5 alpha 8 version of ProDOS exists; it is not
+The floppy keeps 19 free blocks. At startup, the left panel shows the boot
+volume's root and the right panel its `DEMO` directory when there is one, the
+list of volumes otherwise. `mkvolume.py` writes both volumes (files above
+128 KB, such as the 143 KB DOS 3.3 image, become ProDOS *tree* files),
+`po2dsk.py` derives the DOS 3.3 order and `po22mg.py` puts the 64-byte 2IMG
+header on the hard disk. The bench boots the floppy in slot 6 in POM2 with a
+scratch hard disk that carries its own `DEMO`; `bench/hd.py` boots the `.2mg`
+itself, in slot 7. Q hands control back to Bitsy Bye on the boot volume. A 2.5 alpha 8 version of ProDOS exists; it is not
 used, for lack of being published.
 
 ## Building and memory
@@ -505,7 +518,7 @@ Applesoft launcher, where only about twenty bytes were left. The programs
 launched by X and F are launched by a stub copied to page `$0300` (`chain.s`),
 which reads the whole file at its address and jumps to it: no size limit, and
 FORMAT.SYS returns to A2FC by the same stub; `chain_command` adds to it the
-name that `BASIC.SYSTEM` expects at `$2006`, sixteen more bytes in the stub, and
+name that `BASIC.SYSTEM` expects at `$2006`, 47 more bytes in the stub, and
 an assembly assertion keeps the whole thing below `$03D0`, where the vectors
 begin. A2FC no longer uses either `opendir` or `malloc`: directories are read
 like files, block by block, in the copy buffer, which is also faster. To house
