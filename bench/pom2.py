@@ -44,20 +44,22 @@ class Timeout(AssertionError):
 class Pom2:
     """Un emulateur, sa copie de la disquette, et de quoi la piloter."""
 
-    def __init__(self, hdv, floppy=None, port=6600, speed=200000, exe=POM2, mouse=False):
+    def __init__(self, hdv, floppy=None, port=6600, speed=200000, exe=POM2, mouse=False,
+                 preset='iie'):
         """`hdv` : le disque dur (toujours present, POM2 en veut un).
         `floppy` : la disquette 5,25 a mettre en slot 6 et a amorcer.
         `mouse` : une AppleMouse II en slot 4, que mouse() fait bouger."""
         self.port, self.base = port, 'http://127.0.0.1:%d' % port
         self.hdv, self.floppy = str(hdv), str(floppy) if floppy else None
         self.speed, self.exe, self.proc = speed, exe, None
+        self.preset = preset
         self.with_mouse = mouse
 
     # ── cycle de vie ───────────────────────────────────────────────────────
     def start(self):
         cwd = os.path.dirname(self.hdv)
         log = open(os.path.join(cwd, 'pom2.log'), 'w')
-        args = [self.exe, '--preset', 'iie', '--ai-control=%d' % self.port,
+        args = [self.exe, '--preset', self.preset, '--ai-control=%d' % self.port,
                 '--speed', str(self.speed)]
         if self.floppy:
             args += ['--disk', self.floppy, '--boot', '6']
@@ -151,6 +153,15 @@ class Pom2:
         self.mouse(x=x, y=y); time.sleep(0.15)
         self.mouse(btn=1); time.sleep(0.15)
         self.mouse(btn=0); time.sleep(pause)
+
+    def insert(self, drive, path):
+        """Une disquette dans le lecteur `drive` (0 ou 1) du Disk II : `path`
+        est relatif au dossier de l'emulateur (celui du disque dur)."""
+        return self.rq('/disk', {'drive': drive, 'path': path})
+
+    def eject(self, drive):
+        """Sort la disquette du lecteur : POM2 la recopie dans son fichier."""
+        return self.rq('/eject', {'drive': drive})
 
     def raw(self, data):
         """Des octets bruts (ESC = \\x1b, Bas = \\x0a).

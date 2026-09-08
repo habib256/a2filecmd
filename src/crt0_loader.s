@@ -1,19 +1,25 @@
-; Derived from cc65 V2.19 libsrc/apple2/crt0.s (Oliver Schmidt).
-; Source: https://github.com/cc65/cc65/blob/V2.19/libsrc/apple2/crt0.s
-; Local change: loader stages LC at __LCIMAGE_START__ before transient LOWBSS use.
+; Startup code for A2FILE.SYSTEM, the launcher (src/loader.c).
+;
+; Derived from cc65 V2.19 libsrc/apple2/crt0.s (Oliver Schmidt), trimmed for
+; the launcher: no language-card image to relocate, and -- the point of this
+; copy -- the C stack is ALWAYS placed at $BF00, never at BASIC's HIMEM.
+;
+; Why: when A2 File Cmd's "]" prompt is left with "-A2FILE.SYSTEM", the
+; launcher is run from a resident BASIC.SYSTEM. The stock crt0 sees the
+; ProDOS bit map say "BASIC.SYSTEM is here" and sets the C stack to BASIC's
+; HIMEM (~$9600). But the launcher then reads A2FILE.CODE across $4000-$BE40,
+; straight over $9600 -- clobbering its own stack mid-load, which hangs the
+; machine right after the 80-column switch. A2FILE.CODE ends by $BE40 (A2FC
+; keeps $BE40-$BF00 for its own stack), so $BF00 down is always clear of the
+; bytes we load. We use it unconditionally.
 ;
 ; Oliver Schmidt, 2009-09-15
-;
-; Startup code for cc65 (Apple2 version)
-;
 
         .export         _exit, done, return
         .export         __STARTUP__ : absolute = 1      ; Mark as startup
 
         .import         initlib, donelib
         .import         zerobss, callmain
-        .import         __LCIMAGE_START__                        ; Linker generated
-        .import         __LC_START__, __LC_LAST__       ; Linker generated
 
         .include        "zeropage.inc"
         .include        "apple2.inc"
@@ -28,8 +34,6 @@
         ldx     #$FF
         txs                     ; Init stack pointer
 
-        ; Save space by putting some of the start-up code in the ONCE segment,
-        ; which can be re-used by the BSS segment, the heap and the C stack.
         jsr     init
 
         ; Clear the BSS data.
@@ -95,15 +99,9 @@ init:   ldx     #zpspace-1
         cpy     #$4C            ; Is MLI present? (JMP opcode)
         bne     basic
 
-        ; A2 File Cmd takes over the whole machine: A2FILE.SYSTEM loads it up
-        ; to $BEFF, clobbering BASIC.SYSTEM if one was resident. So we ignore
-        ; the ProDOS system bit map -- when relaunched via "-A2FILE.SYSTEM"
-        ; from BASIC.SYSTEM's "]" prompt, BASIC.SYSTEM is still resident and
-        ; its bit map would send us down the "basic" path, setting the C stack
-        ; to BASIC's HIMEM (~$9600) -- right inside our own code, which the
-        ; stack then corrupts as it grows. We always use the standalone stack
-        ; top ($BF00, just under the ProDOS global page) and always quit to
-        ; the ProDOS dispatcher, never back to a BASIC.SYSTEM we have erased.
+        ; The launcher takes over the whole machine on behalf of A2 File Cmd:
+        ; the C stack is always $BF00 (see the file header), and we always
+        ; quit to the ProDOS dispatcher, never back to BASIC.SYSTEM.
         lda     #<quit
         ldx     #>quit
         sta     done+1
@@ -113,7 +111,7 @@ init:   ldx     #zpspace-1
         ldx     #>$BF00
         bne     :+              ; Branch always
 
-        ; Get the highest available mem addr from the BASIC interpreter.
+        ; No ProDOS at all (never, for a SYS program): fall back to HIMEM.
 basic:  lda     HIMEM
         ldx     HIMEM+1
 
@@ -130,38 +128,6 @@ basic:  lda     HIMEM
 
         ; Call the module constructors.
         jsr     initlib
-
-        ; Switch in LC bank 2 for W/O.
-        bit     $C081
-        bit     $C081
-
-        ; Set the source start address.
-        ; Aka __LCIMAGE_START__ iff segment LC exists.
-        lda     #<__LCIMAGE_START__
-        ldy     #>__LCIMAGE_START__
-        sta     $9B
-        sty     $9C
-
-        ; Set the source last address.
-        ; Aka __LCIMAGE_START__ + __LC_SIZE__ iff segment LC exists.
-        lda     #<(__LCIMAGE_START__ + (__LC_LAST__ - __LC_START__))
-        ldy     #>(__LCIMAGE_START__ + (__LC_LAST__ - __LC_START__))
-        sta     $96
-        sty     $97
-
-        ; Set the destination last address.
-        ; Aka __LC_RUN__ + __LC_SIZE__ iff segment LC exists.
-        lda     #<__LC_LAST__
-        ldy     #>__LC_LAST__
-        sta     $94
-        sty     $95
-
-        ; Call into Applesoft Block Transfer Up -- which handles zero-
-        ; sized blocks well -- to move the content of the LC memory area.
-        jsr     $D39A           ; BLTU2
-
-        ; Switch in LC bank 2 for R/O and return.
-        bit     $C080
         rts
 
 ; ------------------------------------------------------------------------

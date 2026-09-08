@@ -12,7 +12,7 @@ qui passe ici est ce que recevra celui qui amorce la disquette.
 | | |
 |---|---|
 | `smoke.py` | la disquette publiee demarre-t-elle sur les panneaux ? |
-| `run.py` | la session complete : naviguer, marquer, copier, deplacer, renommer, verrouiller, changer type et auxtype, creer un dossier, supprimer, lire un texte et des octets, editer, afficher les deux formats d'image et les comparer octet a octet, jouer la fanfare, ouvrir le formateur, cliquer a la souris (pointeur, bornes, selection, ouverture, changement de panneau, barre de touches), lancer un programme Applesoft. **47 controles.** |
+| `run.py` | la session complete : naviguer, marquer, copier, deplacer, renommer, verrouiller, changer type et auxtype, creer un dossier, supprimer, lire un texte et des octets, editer, afficher les deux formats d'image et les comparer octet a octet, jouer la fanfare, ecrire et relire des images disque (.PO et .DSK) et copier une disquette, ouvrir une image comme un dossier et en extraire un fichier, lire un catalogue DOS 3.3 et en extraire un fichier, ouvrir le formateur, cliquer a la souris (pointeur, bornes, selection, ouverture, changement de panneau, barre de touches), lancer un programme Applesoft et revenir sur les panneaux par -A2FILE.SYSTEM. **69 controles.** |
 | `memory.py` | le creux maximal de la pile C, mesure en faisant travailler le programme |
 | `pom2.py` | le pilote d'emulateur commun |
 
@@ -31,6 +31,14 @@ POM2=/chemin/vers/pom2_headless python3 bench/memory.py
 
 Sans la variable `POM2`, les bancs cherchent l'executable a l'emplacement par
 defaut de l'auteur et s'arretent proprement s'il n'y est pas.
+
+`Pom2(..., preset='iie')` est la machine par defaut, un Apple //e Enhanced
+avec la carte HDV en slot 5 et un Mockingboard en slot 2. `preset='iic'`
+donne un Apple //c (ROM 32 Ko) : son lecteur integre est le Disk II du slot
+6, donc `--boot 6` amorce la disquette comme sur le //e, et le disque dur est
+une unite SmartPort sur le port arriere, servie par le firmware du //c en
+slot 5 (pas de carte, pas de Mockingboard). Les deux presets amorcent
+`dist/A2FILECMD.po` jusqu'aux panneaux.
 
 ## En integration continue
 

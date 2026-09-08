@@ -8,8 +8,18 @@
 ;
 ; cc65 n'admet ni .byte ni .word dans l'asm en ligne, et l'adresse du bloc
 ; suit l'appel : la routine vit donc en DATA, ou elle peut se modifier.
-        .export _mli_gfi, _mli_sfi
+; unsigned char __fastcall__ mli_call(unsigned char cmd, void* params);
+;   Un appel MLI quelconque, pour les surcouches (READ_BLOCK, WRITE_BLOCK,
+;   ON_LINE...) : la commande est le premier argument, le bloc le second.
+        .export _mli_gfi, _mli_sfi, _mli_call
+        .import popa
         .segment "DATA"
+_mli_call:
+        sta     block
+        stx     block+1
+        jsr     popa
+        sta     command
+        bne     go              ; toujours pris : aucune commande n'est 0
 _mli_sfi:
         ldy     #$C3
         bne     call            ; toujours pris
@@ -18,7 +28,7 @@ _mli_gfi:
 call:   sty     command
         sta     block
         stx     block+1
-        jsr     $BF00
+go:     jsr     $BF00
 command:
         .byte   $C4
 block:  .word   $0000
@@ -167,3 +177,52 @@ byte:   lda tmp3
 done:   lda tmp2
         ldx tmp3
         rts
+
+; void __fastcall__ aux_copy(unsigned int main_addr, unsigned int aux_addr,
+;                            unsigned char to_aux);
+;
+; 512 octets entre la banque principale et la banque auxiliaire, par
+; AUXMOVE ($C311) du firmware du //e : A1/A2 la source, A4 la destination,
+; C = 1 de la principale vers l'auxiliaire. Interruptions coupees le temps
+; de la copie : AUXMOVE commute RAMRD et RAMWRT, et le lecteur Mockingboard
+; ne s'attend pas a etre reveille dans l'autre banque.
+        .export _aux_copy
+        .import popax
+        .segment "CODE"
+_aux_copy:
+        sta dir
+        jsr popax
+        sta aux
+        stx aux+1
+        jsr popax               ; l'adresse principale
+        ldy dir
+        beq from_aux
+        sta $3C                 ; source : principale
+        stx $3D
+        ldy aux
+        sty $42                 ; destination : auxiliaire
+        ldy aux+1
+        sty $43
+        bne move                ; toujours pris : AUX >= $2000
+from_aux:
+        sta $42                 ; destination : principale
+        stx $43
+        lda aux
+        ldx aux+1
+        sta $3C                 ; source : auxiliaire
+        stx $3D
+move:   clc
+        adc #$FF                ; A2 = A1 + 511
+        sta $3E
+        txa
+        adc #$01
+        sta $3F
+        php
+        sei
+        lda dir
+        cmp #1                  ; C = 1 : principale vers auxiliaire
+        jsr $C311
+        plp
+        rts
+dir:    .byte 0
+aux:    .word 0

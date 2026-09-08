@@ -12,13 +12,13 @@ in 80 columns, on 128 KB, from a bootable 5.25" floppy.
 /A2FILECMD                             |/A2FILECMD/DEMO
 Name*            Type  Aux     Size    |Name*            Type  Aux     Size
 ..               <UP>                  |..               <UP>
-A2FILE           <DIR>              1  |DHGR.RLE         BIN $0000    15217
+A2FILE           <DIR>              1  |DHGR.RLE         BIN $0000    12030
 DEMO             <DIR>              1  |HELLO            BAS $0801       98
 A2FILE.SYSTEM    SYS $0000     5763    |HGR.RLE          BIN $0000      978
 BASIC.SYSTEM     SYS $0000    10240    |README           TXT $0000     1184
 PRODOS           SYS $0000    17128    |SAMPLE           TXT $0000      712
                                        |WELCOME.MB       BIN $0000       56
-__ A2 FILE CMD 0.5 ___________ 46 of 280 blocks free _________________ Mouse ___
+__ A2 FILE CMD 0.6 ___________  6 of 280 blocks free _________________ Mouse ___
 Parent directory
 
 TABPanel RETOpen SPCTag  C Copy  V Move  R Ren  D Del  K Mkdir  S Sort  ? Help
@@ -52,7 +52,7 @@ editor, and an Applesoft program.
 | `TAB` | switch panel |
 | `Up` / `Down` | move the selection |
 | `Left` / `Right` (or `<` `>`, `-` `+`) | one page up / down |
-| `RETURN` | open by type: directory, picture, text, `.MB` music, SYS or BAS program |
+| `RETURN` | open by type: directory, disk image (`.PO`/`.DSK`/`.2MG`, ProDOS or DOS 3.3) as a folder, picture, text, `.MB` music, SYS or BAS program |
 | `ESC` | parent directory; from a volume root, the list of on-line volumes |
 | `SPACE` | tag a file — `C`, `V` and `D` then work on every tagged file |
 | `C` `V` `R` `D` `K` | copy, move, rename, delete, make directory |
@@ -79,7 +79,8 @@ writer, the sector-order converter and the demo files are all in `tools/`.
 
 | | |
 |---|---|
-| `src/` | the program (`a2fc.c`), its launcher, the formatter, the Mockingboard player, the mouse driver; the picture decoder, the text and hex viewers, the delete command and the help page are overlays (`A2FILE/*.PLG`) loaded on demand into `$1B00` |
+| `src/` | the program (`a2fc.c`), its launcher, the formatter, the Mockingboard player, the mouse driver; the picture decoder, the viewers, the editor, the music and program launchers, the delete/attribute commands, the overlay menu, the disk-image tool, and the ProDOS-image and DOS-3.3 extractors are overlays (`A2FILE/*.PLG`) loaded on demand into `$1B00`, some reaching into `$2000-$3FFF`; a third party can add one against the stable ABI in `src/a2fc_plugin.h` |
+| `sdk/` | write your own overlay: [the guide](sdk/README.md), a worked example (`hello.c`), the link config and build script, all against `src/a2fc_plugin.h` alone |
 | `tools/` | ProDOS volume writer, sector-order converter, memory-layout checker, demo maker |
 | `bench/` | the headless emulator benches |
 | `data/` | the help text, the ProDOS boot blocks, ProDOS 8 and BASIC.SYSTEM |

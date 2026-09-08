@@ -1,166 +1,158 @@
 # A2 File Cmd — ce qui reste à faire
 
 `🟠 haute · 🟡 moyenne · 🟢 basse`, effort indicatif en *italique*, fichier en
-`backticks`. Les mesures datent du 2026-09-07, sur la 0.5.
+`backticks`. Les mesures datent du 2026-09-08, sur la 0.6.
 
 ## La place disponible
 
 | Zone | État mesuré |
 | --- | --- |
-| Fenêtre principale `$4000`-plancher de la pile | ~1 100 octets libres, souris comprise |
-| Fenêtre de surcouche `$1B00-$1FFF` (1 280 octets) | `IMAGE.PLG` 1 144, `HELP.PLG` 920, `DELETE.PLG` 750, `HEX.PLG` 699, `TEXT.PLG` 579 |
-| RAM basse `$1000-$1AFF` (BSS) | ~250 octets libres |
-| Carte langage `$D400-$DFFF` | ~1 300 octets libres |
+| Fenêtre principale `$4000`-plancher de la pile | ~4 100 octets libres (les commandes sont passées en surcouches) |
+| Fenêtre de surcouche `$1B00-$1FFF` (1 280 octets) | `IMAGE.PLG` 1 213, `HELP.PLG` 974, `ATTR.PLG` 1 088, `DELETE.PLG` 807, `HEX.PLG` 826, `RUN.PLG` 719, `TEXT.PLG` 644, `MUSIC.PLG` 585 |
+| Grandes surcouches `$1B00-$3FFF` | `EDIT.PLG` 3 058, `MENU.PLG` 1 070, `DISKIMG.PLG` 5 896 |
+| RAM basse `$1000-$1AFF` (BSS) | ~40 octets libres |
+| Carte langage `$D400-$DFFF` | ~1 750 octets libres |
 | Pile C | 86 octets utilisés sur 256 réservés |
-| Disquette | 46 blocs libres sur 280 |
+| Disquette | 18 blocs libres sur 280 |
 
-## Étude 2026-09-07 — faire mieux qu'A2Command
+## Fait le 2026-09-08 — finir l'étude A2Command
 
-A2Command (Payton Byrd, 2011-2013, CodePlex, v1.1 « stable » du 19 août
-2013, dérivé de CBM-Command) est le seul autre gestionnaire à deux panneaux
-de l'Apple II. Ce que sa page annonce : deux panneaux, visionneuse de texte,
-copie et suppression en lot, renommage, dossiers (créer, supprimer,
-parcourir), **écriture d'une image disque sur une disquette, d'une
-disquette dans une image, copie disquette à disquette** ; touches à la
-Norton, `1` aide, `2` quitter, `5` copier, `6` renommer, `7`/`M` dossier,
-`8` supprimer, `9`/`RET` entrer, `0`/`ESC` sortir, `D` et `OA-D` choix du
-lecteur par panneau, `A` tout sélectionner, `S` tout désélectionner,
-`ESPACE` sélectionner, crochets pour les pages, `W` écrire une image, `C`
-créer une image, `O` copier un disque ; machines : //e 65C02 80 colonnes
-**avec carte souris exigée**, //c, //c+, IIgs ROM01/03.
+La restructuration en surcouches a rendu **près de 3,5 Ko** à la fenêtre
+principale (`$4000-$ADC2` au lieu de `$4000-$BADF`) : l'éditeur, la musique,
+le lanceur, les attributs, la suppression, le menu et les images disque ont
+quitté le résident pour des `A2FILE/*.PLG`. Ce qui a été livré, dans l'ordre
+du TODO précédent :
 
-Ce que A2FC a déjà en plus : hexa, images HGR/DHGR, musique, éditeur, tri,
-verrou, type et auxtype, marquage des différences, formateur, lanceur SYS/
-BIN/BAS, souris facultative, et surtout **les surcouches** : un module lu à
-la demande en `$1B00`, lié au programme, qui ne coûte rien au résident.
-C'est par là qu'on dépasse A2Command sans toucher au noyau. Par ordre :
+- ✅ **Les images disque** (`DISKIMG.PLG`, `W`) : écrire un `.PO`/`.DSK`/`.DO`/
+  `.2MG` sur une disquette, lire une disquette dans une image neuve, copier
+  disquette à disquette (un seul lecteur : on échange les disquettes à chaque
+  passe). Blocs par READ_BLOCK/WRITE_BLOCK, tampon en RAM principale
+  (`$3400`) et auxiliaire (`$2000`, d'où `/RAM` refait). Le mot `ERASE`
+  protège toute écriture. Le seul terrain où A2Command gagnait est comblé.
+- ✅ **La convention « grande surcouche »** : l'octet de drapeaux de
+  l'en-tête (`OVERLAY_BIG`, `overlay.s`/`a2fc_plugin.h`) déclare qu'une
+  surcouche prend aussi `$2000-$3FFF` ; `overlay_run` met les marques de
+  côté, appelle le point d'entrée, relit les deux panneaux au retour.
+  L'éditeur, le menu et les images disque en sont.
+- ✅ **La table de services** (`struct A2fcApi`, `a2fc_plugin.h`) : l'ABI
+  stable qu'une surcouche d'un tiers reçoit à son point d'entrée (`fopen`,
+  `message`, `confirm`, `prompt`, `dir_open`/`dir_next`, `read_panel`,
+  `mli`...). Le noyau la passe à toute surcouche marquée `PLUGIN_MAGIC`.
+- ✅ **Un menu des surcouches** (`!`, `MENU.PLG`) : la liste d'`A2FILE/*.PLG`
+  avec la description d'une ligne de chaque en-tête, lancée sur la sélection.
+  Une commande de plus ne demande plus ni touche ni recompilation.
+- ✅ **Les chiffres comme touches de fonction** : `1`..`0` valent les dix
+  boutons de la barre, dans l'ordre.
+- ✅ **Tout marquer / tout démarquer** (`Ctrl-T` / `Ctrl-N`) et **relire les
+  panneaux** (`Ctrl-R`).
 
-- 🟠 **Les images disque** (`DISKIMG.PLG`) : écrire un `.PO`/`.DSK`/`.2MG`
-  sur une disquette, lire une disquette dans une image, copier disquette à
-  disquette — le seul terrain où A2Command gagne. Tout existe déjà : le
-  formatage physique de `format_diskii.s`, READ_BLOCK/WRITE_BLOCK de
-  `format.c`, l'ordre des secteurs de `po2dsk.py`. Le tampon : la page
-  graphique `$2000-$3FFF`, 16 blocs par passe, les panneaux relus après
-  comme au retour d'une image. Demande la convention de **« grande
-  surcouche »** ci-dessous. *2 à 3 jours.*
-- 🟠 **Une image disque comme dossier** (`IMGFS.PLG`) : Entrée sur un
-  `.PO`/`.2MG`/`.DSK` l'ouvre en lecture comme un dossier, et `C` en
-  extrait les fichiers. `dir_open`/`dir_next` lisent déjà un répertoire
-  bloc par bloc : il suffit d'un `read_block` qui fait un `fseek` dans le
-  fichier (et la permutation de secteurs pour un `.DSK`). A2Command ne sait
-  pas faire ça. *2 jours.*
-- 🟡 **DOS 3.3** (`DOS33.PLG`) : le catalogue d'une disquette DOS 3.3 et la
-  copie de ses fichiers vers ProDOS. Les secteurs physiques sont les mêmes :
-  READ_BLOCK sur le pilote Disk II, la table `SECTORS` de `po2dsk.py` à
-  l'envers, VTOC en piste 17, et les fichiers T/A/I/B se relisent par leurs
-  listes de secteurs. *2 jours.*
-- 🟡 **La convention « grande surcouche »** : une surcouche déclare (un
-  octet après l'adresse de `main`) qu'elle prend aussi `$2000-$3FFF` ; le
-  noyau met les marques de côté, l'appelle, relit les deux panneaux au
-  retour. C'est ce que fait déjà `view_image` à la main. Et la **table de
-  services** en tête de fenêtre (`fopen`, `view_getc`, `message`,
-  `confirm`, `prompt`, `progress_bar`, `dir_open`/`dir_next`, `read_panel`)
-  pour qu'une surcouche d'un tiers survive à une reconstruction : c'est
-  l'ABI stable déjà notée plus bas, elle devient prioritaire dès qu'on
-  écrit trois surcouches de plus. *1 jour.*
-- 🟡 **Un menu des surcouches** (`!`) : la liste d'`A2FILE/*.PLG`, chacune
-  lancée sur la sélection — une commande de plus ne demande plus de touche
-  ni de recompilation. *½ journée, une fois l'ABI en place.*
+## Fait le 2026-09-08 — l'image disque comme dossier
+
+- ✅ **Une image disque comme dossier** (`IMGFS.PLG`) : Entrée sur un
+  `.PO`/`.2MG`/`.DSK`/`.DO` l'ouvre en lecture comme un dossier, on y navigue
+  (sous-dossiers, `..`, sortie), et `C` extrait les fichiers marqués vers le
+  dossier ProDOS de l'autre panneau. La lecture des blocs (`img_read_block`,
+  résident, avec la permutation DOS 3.3 pour un `.DSK` et l'en-tête d'un
+  `.2MG`) réutilise le lecteur de répertoire ProDOS bloc par bloc ; les
+  champs `fs`/`img_len`/`dir_key` de `struct Panel` portent l'état. Les
+  fichiers germe et plant (≤ 128 Ko) sont extraits ; les rares fichiers
+  arborescents sont refusés. Le noyau ne fait que naviguer et lister ; la
+  lecture des fichiers (germe/plant, index) est la surcouche `IMGFS.PLG`,
+  lancée par `C`. A2Command ne sait pas faire ça.
+
+## Fait le 2026-09-08 — DOS 3.3, image et vrai disque
+
+- ✅ **DOS 3.3** : le catalogue d'une disquette DOS 3.3 et la copie de ses
+  fichiers vers ProDOS, aussi bien depuis une image (`.DSK`/`.DO`/`.2MG`)
+  que depuis un **vrai disque** dans un lecteur. La lecture des secteurs
+  (`dos_read_sector`) réutilise READ_BLOCK sur le demi-bloc ProDOS
+  correspondant (la table `DOS_TS`, l'inverse de `SECTORS`/`po2dsk.py`) pour
+  un disque physique, `fseek` pour une image ; la VTOC en piste 17, le
+  catalogue chaîné, les listes T/S. Un disque DOS 3.3 sans volume ProDOS
+  apparaît dans la liste des volumes (`/`), reconnu à sa VTOC ; Entrée
+  l'ouvre comme un dossier plat, `C` extrait les fichiers (l'en-tête DOS d'un
+  Applesoft, Integer ou binaire est ôté). L'extraction est la surcouche
+  `DOS33.PLG`, le catalogue est résident. Le banc lit une image DOS 3.3 et
+  en extrait un fichier, comparé octet à octet.
+
+## Fait le 2026-09-08 — le retour du BASIC, fiable
+
+- ✅ **Revenir d'Applesoft** (`-A2FILE.SYSTEM`) sans figer la machine. Une
+  version antérieure restait sur un écran noir juste après le passage en 80
+  colonnes, sur vrai IIe comme au banc où A2FC rouvrait sur la liste des
+  volumes. Deux causes, deux corrections :
+  - **La pile C.** `crt0`, voyant `BASIC.SYSTEM` résident à la relance,
+    posait la pile sur son `HIMEM` (~`$9600`) — au milieu du code qu'on lit
+    jusqu'à `$BE40`, que la pile écrasait en grandissant. `src/crt0.s` (A2FC)
+    et le nouveau `src/crt0_loader.s` (le lanceur) placent toujours la pile
+    en `$BF00` et quittent par le répartiteur ProDOS. Le banc vérifie que le
+    pointeur de pile revient bien à `$BEFC`, comme à froid.
+  - **Le préfixe.** `BASIC.SYSTEM` vide le préfixe ProDOS en lançant un SYS.
+    Le lanceur le refait (`src/loader_mli.s` : `ON_LINE` sur `$BF30` puis
+    `SET_PREFIX` en `/VOLUME`) avant de sauter dans A2FC, qui rouvre ses
+    panneaux et relit `A2FILE.CFG` comme au démarrage à froid. Le banc exige
+    le retour sur les panneaux, pas sur la liste des volumes.
+
+## Fait le 2026-09-08 — la surcouche d'exemple d'un tiers
+
+- ✅ **Une surcouche d'exemple pour un tiers** (`sdk/`), compilée HORS de
+  l'arbre avec le seul `src/a2fc_plugin.h`, pour prouver que l'ABI tient et
+  donner un modèle. `sdk/hello.c` porte son en-tête `struct Overlay` signé
+  `PLUGIN_MAGIC` dans le segment `OVLHDR` (en tête, `$1B00`) et un point
+  d'entrée `plugin_entry(const struct A2fcApi*)` qui ne touche au programme
+  que par la table de services : il lit l'entrée sélectionnée et en écrit le
+  nom, le type et le chemin en ligne de message. `sdk/build.sh` le lie avec
+  `ld65` sur `sdk/plugin.cfg` et `apple2enh.lib`, **sans** crt0 ni
+  `A2FILE.CODE` (`make example` → `build/HELLO.PLG`, 593 octets). `bench/`
+  `plugin.py` le construit, le pose sous `A2FILE/HELLO.PLG` sur une disquette,
+  l'ouvre par `!` et vérifie qu'il paraît dans le menu (décrit par son
+  en-tête) puis qu'il tourne (6 contrôles). `sdk/README.md` explique tout.
+
+## Ce qui reste
+
 - 🟡 **//c et IIgs** : A2Command tourne dessus, A2FC ne l'a jamais essayé.
   Rien ne suppose un slot (souris cherchée par signature, Mockingboard par
-  sonde), mais le //c n'a pas de Mockingboard et son /RAM est le même ;
-  vérifier dans POM2 avec les presets `iic` et `iigs` s'ils existent, puis
-  l'écrire dans les prérequis. *1 jour.*
-- 🟢 **Les chiffres comme touches de fonction** : `1`..`0` valent les dix
-  boutons de la barre, dans l'ordre (`bar_key` sait déjà les compter) ; c'est
-  l'habitude Norton et A2Command. *40 octets.*
-- 🟢 **Tout marquer / tout démarquer** (`Ctrl-T` / `Ctrl-U`, `*` inverse
-  déjà) et **relire les panneaux** sur demande (`Ctrl-R`) : disquette
-  changée, /RAM refait. *60 octets.*
-- 🟢 **Lister un BAS** (`BASLIST.PLG`) : `T` sur un programme Applesoft le
-  détokenise (la table des 107 mots, ~700 octets) au lieu de l'afficher en
-  hexa. *1 jour.*
-- 🟢 **Chercher un texte** dans les fichiers du panneau (`SEARCH.PLG`), et
-  **comparer deux fichiers** octet à octet (`M` ne compare que les tailles).
-  *1 jour les deux.*
-
-## Fait le 2026-09-07 — les surcouches et la souris
-
-Le segment `LOWEXE` est devenu la **fenêtre de surcouche** : le chargeur et
-le décodeur d'images (`A2FILE/IMAGE.PLG`) et la page d'aide (`HELP.PLG`)
-sont liés avec le programme mais écrits à part, lus en `$1B00` à la demande
-(`overlay()`), reconnus à l'adresse de `main` en tête ; puis les visionneuses
-de texte et d'hexadécimal (`TEXT.PLG`, `HEX.PLG`, sorties de la carte
-langage) et la suppression (`DELETE.PLG`) ont suivi. Près d'un kilo-octet
-rendu à la fenêtre principale, qui a payé **la souris** (`mouse.s`, mode
-passif, pointeur MouseText, clic = sélection, second clic = ouvrir, barre de
-touches cliquable, tri et dossier parent par l'en-tête). Reste de l'idée :
-
-- 🟡 **La musique en surcouche** (`play_music`, ~390 octets, le pilote AY
-  restant résident) : elle joue pendant qu'on navigue, la surcouche devrait
-  rester en place tant que `P` n'a pas arrêté la lecture, et une image
-  demandée entre-temps devrait attendre ou couper la musique. *1 jour.*
+  sonde), mais le //c n'a pas de Mockingboard et son `/RAM` est le même. Le
+  banc sait choisir la machine (`Pom2(..., preset=...)`, `bench/pom2.py`) et
+  `pom2_playtest` a maintenant un vrai `--preset iic` (2026-09-08) : sur un
+  //c, le lecteur intégré EST le Disk II du slot 6 — POM2 amorce bien
+  `A2FILECMD.po` depuis ce slot, par le scan de la ROM comme par `--boot 6`
+  (vérifié : les panneaux arrivent sur les deux presets). Le disque dur du
+  banc est servi par le firmware SmartPort du //c (slot 5, unité 0 sur le
+  port arrière) et ProDOS le liste (`DEVLST` : `$5B`) ; le //c a toujours
+  son Disk II branché, sans quoi le port arrière ne voit pas les lignes de
+  phase et le firmware attend à `$CC2C`. Reste à faire tourner `run.py` et
+  `memory.py` sous `preset='iic'` et à regarder ce qui casse (pas de
+  Mockingboard : la fanfare doit se taire proprement). Le IIgs n'a pas de
+  profil dans POM2 : cette moitié se fera avec un autre émulateur. *½ jour.*
+- 🟢 **La musique en surcouche résidente le temps de la lecture** : le
+  chargement d'un `.MB` est déjà une surcouche (`MUSIC.PLG`), mais le pilote
+  AY reste résident. Le rendre entièrement en surcouche demanderait qu'elle
+  survive à la navigation, ce que la fenêtre unique interdit. *À laisser.*
+- 🟢 **Lister un BAS** (`BASLIST.PLG`), **chercher un texte** (`SEARCH.PLG`),
+  **comparer deux fichiers** octet à octet : chacune est maintenant une
+  surcouche de plus sur le modèle de `sdk/hello.c` (l'ABI et le SDK sont
+  prouvés). Le seul coût résident est un aiguillage — que la table de
+  reconnaissance ci-dessous supprimerait. *1 à 2 jours les trois.*
 - 🟢 **Une table de reconnaissance** (type, auxtype, suffixe, en-tête → nom
   de surcouche) à la place de `looks_like_image` et de l'aiguillage
   d'`open_selected`, pour qu'un format de plus ne coûte qu'une ligne.
-- 🟢 **Une ABI stable** (table de services en tête de la fenêtre) pour
-  qu'une surcouche d'un tiers survive à une reconstruction ; aujourd'hui
-  `.CODE` et `.PLG` vont par ensemble.
-- 🟢 **La souris dans les visionneuses** : un clic pour tourner la page ou
-  revenir, et le double-clic à la durée plutôt qu'au second clic sur la
-  sélection.
 
-## Étude 2026-09-07 — la souris (réalisée le soir même, voir ci-dessus)
+## Les surcouches, telles qu'elles sont
 
-**Verdict : faisable, ~0,7 Ko de code, et il faut d'abord ouvrir la place.**
-🟡 moyenne · *2 à 3 jours* — mesuré : 868 octets, la place ouverte par les
-surcouches.
+Le segment `LOWEXE` est la **fenêtre de surcouche**. Une surcouche est un
+`A2FILE/NOM.PLG`, un BIN lu en `$1B00` à la demande (`load_overlay`), reconnu
+par l'en-tête `struct Overlay` (`a2fc_plugin.h`) : la signature (l'adresse de
+`main`, ou `PLUGIN_MAGIC` pour un tiers), un octet de drapeaux, l'adresse du
+point d'entrée, une description d'une ligne. Le code d'une surcouche est dans
+son segment `NOM`, ses chaînes dans `NOMRO` : les deux vont dans le même
+fichier, code d'abord, pour que les mots à zéro que cc65 pose en tête d'une
+`.proc` (`-Cl`) n'atterrissent pas sur le point d'entrée. Treize surcouches
+du programme : `IMAGE`, `TEXT`, `HEX`, `HELP`, `DELETE`, `MUSIC`, `RUN`,
+`ATTR`, `IMGFS`, `DOS33` (petites, `$1B00-$1FFF`) ; `EDIT`, `MENU`, `DISKIMG`
+(grandes, jusqu'à `$3FFF`). `check_layout.py` vérifie que chacune tient sous
+son plafond.
 
-**Le matériel.** Carte Apple Mouse II (341-0270). Ne jamais supposer un
-slot : POM2 la met en **slot 2** par défaut (`mouseaw`, la carte AppleWin
-haut niveau ; la carte MC68705 `mouse` existe aussi) et le **slot 4 est
-occupé par la Mockingboard**. Balayage des slots 7→1 sur la signature du
-firmware (`$Cn05=$38`, `$Cn07=$18`, `$Cn0B=$01`, `$Cn0C=$20`, `$CnFB=$D6`).
-Les points d'entrée se lisent dans la table d'offsets `$Cn12..$Cn1B`
-(SETMOUSE, SERVEMOUSE, READMOUSE, CLEARMOUSE, POSMOUSE, CLAMPMOUSE,
-HOMEMOUSE, INITMOUSE) ; l'appel se fait `SEI`, ROM en lecture, `X=$n0` et
-`Y=$Cn` comme le firmware l'exige, et il faut relâcher `$C800` par `$CFFF`
-après coup — le firmware 80 colonnes du //e s'en sert aussi.
-
-**Mode passif, aucune interruption.** `SETMOUSE` mode `$01` : la carte
-compte toute seule, `READMOUSE` à chaque tour de boucle suffit. On évite
-`ALLOC_INTERRUPT` (ProDOS n'a que quatre entrées et la musique en prend
-une) et tout risque dans les temps critiques du Disk II. `CLAMPMOUSE` à
-0..79 et 0..23 rend la position directement en cases de l'écran 80
-colonnes : aucun calcul. L'état arrive dans les *screen holes* de la page
-texte principale (`$0478+s`, `$0578+s`, `$04F8+s`, `$05F8+s`, statut
-`$0778+s`).
-
-**Ce que ça change dans le programme.** La boucle principale attend sur `cgetc()`,
-bloquant : il faut une attente `kbhit()` + scrutation qui sorte sur touche
-ou sur clic, dans la boucle principale et dans les visionneuses. Le curseur
-est un caractère inversé (on est en texte, pas de sprite) : un octet
-sauvegardé, réécrit à chaque déplacement. Actions : clic sur une ligne =
-sélection, et changement de panneau actif si c'est l'autre ; double-clic =
-Entrée ; clic sur la barre de touches ligne 23 = la commande ; clic sur la
-ligne de titre = tri.
-
-**Le prix.** Détection et init ~80 o, scrutation et curseur ~200 o,
-cartographie des clics ~300 à 500 o : **0,6 à 0,8 Ko**. La place existe
-désormais : le segment `LOWEXE` (`$1C00-$1FFF`, ouvert le 2026-09-07 pour
-loger le décodeur d'images et payer le reformatage de `/RAM`) garde **~350
-octets libres**, et la fenêtre principale **~1 100** sous le plancher de la
-pile. De quoi tenir sans rien sacrifier — la carte langage, elle, reste
-pleine à 26 octets près.
-
-**Le banc.** POM2 émule les deux cartes et son API AI-control a un point
-`/mouse` (déplacements et boutons, deltas accumulés) : un
-`validate_mouse.py` cliquera comme les autres bancs frappent des touches.
-
-**Étapes.** (1) `mouse.s` : détection, init, clamp, `READMOUSE`, curseur
-texte, un `M` dans la ligne de statut quand la souris est vue ;
-(2) scrutation dans la boucle principale ; (3) clic = sélection,
-double-clic = ouvrir ; (4) barre de touches cliquable ; (5) le banc. Tout doit rester intégralement au
-clavier : la majorité des machines n'a pas de souris.
-
----
+Une surcouche d'un TIERS suit la même convention mais signe `PLUGIN_MAGIC`,
+se lie hors de l'arbre (`sdk/`, sans crt0 ni `A2FILE.CODE`) et ne touche au
+programme que par la table de services `struct A2fcApi` — voir `sdk/README.md`.

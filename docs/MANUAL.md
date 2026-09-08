@@ -2,7 +2,7 @@
 
 Un gestionnaire de fichiers ProDOS à deux panneaux, dans l'esprit de Total
 Commander, pour l'Apple IIe 128 Ko ; à l'écran il se nomme **A2 FILE CMD
-0.5** (le numéro vit dans `A2FC_VERSION` du Makefile, repris par le lanceur,
+0.6** (le numéro vit dans `A2FC_VERSION` du Makefile, repris par le lanceur,
 la ligne de statut et l'aide). C'est un logiciel libre sous licence GNU GPL
 v3, d'Arnaud Verhille ; le lanceur et l'aide le rappellent. Deux façons de le
 lancer : amorcer la disquette `/A2FILECMD`, ou choisir `A2FILE.SYSTEM`
@@ -39,7 +39,7 @@ avec le chemin et la page à gauche.
 | **Espace** | marquer ou démarquer le fichier sélectionné (étoile après le nom) et descendre |
 | **\*** | inverser les marques du panneau |
 | **'** puis une touche | sauter à l'entrée suivante dont le nom commence par cette lettre ou ce chiffre, comme dans Bitsy Bye |
-| **Entrée** | ouvrir : un dossier s'ouvre ; une image s'affiche plein écran, en HGR ou en DHGR selon son contenu (une touche pour revenir, la ligne de message dit le format reconnu) ; un TXT se lit page par page ; un SYS ou un BAS se lance après confirmation ; tout autre fichier s'affiche en hexadécimal |
+| **Entrée** | ouvrir : un dossier s'ouvre ; une image disque `.PO`/`.DSK`/`.2MG`, ProDOS ou DOS 3.3, s'ouvre en lecture comme un dossier (voir « Une image disque comme dossier ») ; une image graphique s'affiche plein écran, en HGR ou en DHGR selon son contenu (une touche pour revenir, la ligne de message dit le format reconnu) ; un TXT se lit page par page ; un SYS ou un BAS se lance après confirmation ; tout autre fichier s'affiche en hexadécimal |
 | **Échap** | remonter au dossier parent, la sélection revient sur le dossier quitté ; depuis la racine d'un volume, la liste des volumes |
 | **/** | la liste des volumes en ligne |
 | **C** | copier les entrées marquées, sinon l'entrée sélectionnée, dans le dossier de l'autre panneau ; un dossier est copié entier, sous-dossiers compris, un sous-dossier déjà présent est complété ; même nom, même type et auxtype. Quand le fichier existe, A2FC demande : **O** écraser, **S** passer, **A** tout écraser, **N** ne rien écraser. Une barre de progression montre le fichier en cours, son rang sur le total et les octets copiés ; le message final compte les fichiers copiés et passés |
@@ -58,7 +58,11 @@ avec le chemin et la page à gauche.
 | **E** | éditer le fichier sélectionné comme du texte ; sur un dossier ou `..`, créer un fichier texte neuf dans le dossier courant |
 | **I** | afficher le fichier sélectionné comme une image, quel que soit son nom : HGR ou DHGR, brut ou compressé RLE |
 | **P** | mettre en pause ou reprendre la musique Mockingboard ; Entrée sur un fichier `.MB` la lance |
+| **W** | les images disque : écrire un `.PO`/`.DSK`/`.2MG` sur une disquette, lire une disquette dans une image neuve, copier une disquette sur une autre (voir plus bas) |
+| **!** | le menu des surcouches : la liste d'`A2FILE/*.PLG` avec leur description, chacune lancée sur la sélection |
 | **F** | ouvrir le formateur, `A2FILE/FORMAT.SYS`, qui revient à A2FC en sortant |
+| **1** … **0** | les dix boutons de la barre de touches, dans l'ordre, comme Norton Commander et A2Command |
+| **Ctrl-T** / **Ctrl-N** | tout marquer / tout démarquer ; **Ctrl-R** relit les deux panneaux (disquette changée, `/RAM` refait) |
 | **Q** | quitter vers ProDOS après confirmation : Bitsy Bye reprend |
 
 Dans une image, **Gauche** et **Droite** passent à l'image précédente ou
@@ -169,11 +173,110 @@ et `BASIC.SYSTEM` en fait la commande `-NOM` à son démarrage. `chain_command`
 (chain.s) dépose ce nom dans le talon de la page `$0300`, qui l'écrit en
 `chain_addr+6` juste avant de sauter.
 
-Le préfixe ProDOS part sur le dossier du programme : `-NOM` s'y résout, un BAS
+Le préfixe ProDOS reste la racine du volume, et le programme est lancé par
+son chemin relatif à la racine (`-SOUS/NOM`) tant qu'il y tient — un BAS
 rangé dans un sous-dossier se lance donc aussi. Sans `BASIC.SYSTEM` à la
 racine du volume, le lancement s'arrête sur `Run failed` et A2FC garde la
-main. Comme pour un SYS, A2FC ne reprend pas la main ensuite : on revient
-par Applesoft.
+main.
+
+**Revenir à A2 File Cmd.** Comme pour un SYS, A2FC ne reprend pas la main
+tout seul. Mais depuis l'invite `]` d'Applesoft, `-A2FILE.SYSTEM` relance le
+lanceur, qui recharge A2 File Cmd — le programme le rappelle à l'écran. Deux
+détails rendent ce retour fiable, là où une version antérieure figeait la
+machine sur un écran noir juste après le passage en 80 colonnes :
+
+- **La pile C.** Le lanceur et A2FC prennent toute la machine : ils lisent
+  `A2FILE.CODE` jusqu'à `$BE40`, par-dessus `BASIC.SYSTEM` s'il était là. Or
+  `crt0`, voyant `BASIC.SYSTEM` résident, plaçait la pile C sur son `HIMEM`
+  (~`$9600`) — en plein dans le code qu'on charge, que la pile écrasait
+  ensuite en grandissant. `src/crt0.s` (A2FC) et `src/crt0_loader.s` (le
+  lanceur) placent donc toujours la pile en `$BF00`, jamais sur le `HIMEM`
+  de `BASIC.SYSTEM`, et quittent toujours par le répartiteur ProDOS.
+- **Le préfixe.** `BASIC.SYSTEM` vide le préfixe ProDOS en lançant un SYS.
+  Le lanceur le refait donc lui-même (`src/loader_mli.s`, `ON_LINE` sur le
+  dernier périphérique `$BF30`, puis `SET_PREFIX`) avant de sauter dans
+  A2FC, qui rouvre alors ses panneaux et relit `A2FILE.CFG`, comme à froid.
+
+## Les images disque
+
+`W` ouvre la surcouche `A2FILE/DISKIMG.PLG`, trois façons de déplacer une
+disquette entière, c'est le seul terrain où A2Command gagnait encore :
+
+- **Écrire** une image (`.PO` ordre ProDOS, `.DSK`/`.DO` ordre DOS 3.3,
+  `.2MG` dont l'en-tête donne l'ordre) sur une disquette. La sélection est
+  l'image ; on choisit le lecteur cible, qui doit être formaté.
+- **Lire** une disquette dans une image neuve, déposée dans le dossier
+  ProDOS du panneau actif, en ordre ProDOS ou DOS 3.3 au choix.
+- **Copier** une disquette sur une autre. Avec un seul lecteur, on choisit
+  deux fois le même : A2FC lit une passe, demande la disquette cible, écrit,
+  redemande la source, et ainsi de suite.
+
+Les blocs passent par READ_BLOCK et WRITE_BLOCK, quel que soit le pilote
+(Disk II, SmartPort, /RAM). Le tampon d'une passe est en RAM principale
+(`$3400`, six blocs) et, pour la copie à un lecteur, quatre-vingts blocs de
+plus en RAM auxiliaire `$2000` : `/RAM` est donc refait à neuf en sortant,
+comme après une image DHGR. La conversion d'ordre est celle de `po2dsk.py`.
+Comme le formateur, l'écriture exige le mot `ERASE` en capitales, la
+disquette du programme est refusée, et l'avertissement nomme le lecteur et
+son volume ; Échap annule avant toute écriture. Le banc lit la disquette
+d'amorce dans une image DOS 3.3 et la compare octet à octet, écrit une image
+de 64 blocs sur une disquette vierge et vérifie la disquette après éjection,
+puis mène la copie jusqu'à l'avertissement.
+
+## Une image disque comme dossier
+
+**Entrée** sur un fichier `.PO`, `.2MG`, `.DSK` ou `.DO` l'ouvre en lecture
+comme un dossier : le panneau montre le contenu du volume ProDOS de l'image,
+et l'on y navigue comme partout ailleurs — **Entrée** dans un sous-dossier,
+**Échap** pour remonter, **Échap** à la racine pour sortir et retrouver le
+fichier image dans son dossier. Le chemin porté par le panneau devient
+`/VOL/DISK.PO/SOUS-DOSSIER`. A2Command ne sait pas faire cela.
+
+Les blocs sont lus par `fseek` dans le fichier image (`img_read_block`) : un
+`.DSK`/`.DO` est en ordre DOS 3.3, permuté secteur par secteur comme
+`po2dsk.py` à l'envers ; un `.2MG` donne son ordre et le décalage de ses
+données dans son en-tête. Le répertoire se lit alors bloc par bloc en
+suivant le chaînage ProDOS, exactement comme un vrai dossier. Une image qui
+n'est pas un volume ProDOS lisible (un DOS 3.3, par exemple) est refusée et
+le panneau revient à son dossier.
+
+Une image ouverte ainsi est en **lecture seule** : seules la navigation, le
+marquage (Espace) et **C** agissent ; les commandes qui écriraient sont
+refusées en clair. **C** extrait les fichiers marqués — sinon celui sous le
+curseur — vers le dossier ProDOS de l'autre panneau, avec leur type et leur
+auxtype. Les sous-dossiers sont à entrer et extraire un à un ; les fichiers
+germe et plant (≤ 128 Ko) sont extraits, les rares fichiers arborescents
+sont refusés. L'extraction est la surcouche `IMGFS.PLG` : elle lit le fichier
+ProDOS (bloc de données pour un germe, bloc d'index de 256 pointeurs pour un
+plant, un pointeur nul étant un trou de zéros) et l'écrit sur le disque. Le
+banc ouvre `TINY.PO`, descend dans un sous-dossier, en extrait un fichier et
+compare son contenu **octet à octet**.
+
+### Une disquette DOS 3.3
+
+A2FC lit aussi les disquettes **DOS 3.3**, aussi bien depuis une image
+(`.DSK`/`.DO`, ou un `.2MG` en ordre DOS) que depuis un **vrai disque** dans
+un lecteur — c'est ce que réclamaient les premiers essais. Une image `.DSK`
+qui n'est pas un volume ProDOS est essayée en DOS 3.3 : si sa VTOC (piste 17,
+secteur 0) est valable, son catalogue s'ouvre comme un dossier plat. Un vrai
+disque DOS 3.3, qui n'a pas de volume ProDOS, apparaît dans la liste des
+volumes (`/`) sous le nom `DOS 3.3`, avec son slot et son lecteur : Entrée
+l'ouvre. Les types DOS (T, I, A, B) sont montrés en leur plus proche type
+ProDOS (TXT, INT, BAS, BIN), et **C** extrait les fichiers marqués vers le
+dossier ProDOS de l'autre panneau, l'en-tête DOS ôté (les deux octets de
+longueur d'un Applesoft ou Integer, les quatre d'un binaire) pour que le
+fichier soit utilisable.
+
+Les secteurs se lisent par le même code, quelle que soit la source : `fseek`
+dans une image, ou **READ_BLOCK** sur le pilote Disk II pour un vrai disque,
+le secteur DOS logique traduit en demi-bloc ProDOS par la table `DOS_TS`,
+l'inverse de celle de `po2dsk.py`. Le catalogue chaîné en piste 17 et les
+listes secteur par secteur des fichiers font le reste. Le catalogue est lu
+par le noyau, l'extraction par la surcouche `DOS33.PLG`. Le banc ouvre une
+image DOS 3.3, vérifie ses types et en extrait un fichier, comparé **octet à
+octet**. (POM2 ne rend lisible que la disquette d'amorce et un fichier-image ;
+la lecture d'un vrai disque physique partage tout le code de la lecture d'une
+image, seule la source des secteurs change.)
 
 ## Formater un disque
 
@@ -284,7 +387,7 @@ des émulateurs), une disquette amorçable de 280 blocs, volume `/A2FILECMD` :
 |---|---|
 | `PRODOS`, `BASIC.SYSTEM` | ProDOS 8 2.4.3, la dernière version stable, et son interpréteur Applesoft : librement distribués pour la communauté Apple II, ils ne sont pas de l'auteur |
 | `A2FILE.SYSTEM` | le lanceur, seul programme `.SYSTEM` : la disquette démarre directement dans A2FC. Compilé avec `NO_CHDIR`, il se fie au préfixe du volume amorcé |
-| `A2FILE/A2FILE.CODE`, `A2FILE/*.PLG`, `A2FILE/A2FILE.HELP`, `A2FILE/FORMAT.SYS` | le programme, ses cinq surcouches (`IMAGE` le chargeur et le décodeur d'images, `TEXT` et `HEX` les visionneuses, `DELETE` la suppression, `HELP` la page d'aide : des BIN chargés en `$1B00` à la demande), le texte de l'aide et le formateur ; `A2FILE.CFG` sera écrit à côté |
+| `A2FILE/A2FILE.CODE`, `A2FILE/*.PLG`, `A2FILE/A2FILE.HELP`, `A2FILE/FORMAT.SYS` | le programme, ses treize surcouches (`IMAGE`, `TEXT`, `HEX`, `HELP`, `DELETE`, `MUSIC`, `RUN`, `ATTR`, `IMGFS`, `DOS33`, et les grandes `EDIT`, `MENU`, `DISKIMG` : des BIN chargés en `$1B00` à la demande), le texte de l'aide et le formateur ; `A2FILE.CFG` sera écrit à côté |
 | `DEMO/` | de quoi essayer, entièrement calculé par `tools/mkdemo.py` : deux mires (`DHGR.RLE`, `HGR.RLE`), une fanfare trois voix (`WELCOME.MB`), un texte (`SAMPLE`), un programme Applesoft (`HELLO`) et un `README` |
 
 Il reste 46 blocs libres. Au démarrage, le panneau gauche montre la racine
@@ -305,31 +408,47 @@ chemins, copie, débuts de page du texte, la souris), mise à zéro par `main`,
 et depuis `a2fc.cfg` la BSS principale de cc65 avec elle. Au-dessus,
 `$1B00-$1FFF` est **la fenêtre de surcouche** : 1 280 octets où A2FC charge,
 au moment d'ouvrir un fichier, le module qui sait le lire, et qu'il oublie
-en revenant aux panneaux. Cinq surcouches, sous `A2FILE/` : `IMAGE.PLG`
-(le chargeur et le décodeur d'images), `TEXT.PLG` et `HEX.PLG` (les deux
-visionneuses, sorties de la carte langage), `DELETE.PLG` (la commande D et
-`delete_tree`, que le déplacement d'un dossier charge aussi une fois la copie
-faite) et `HELP.PLG` (la page d'aide). Elles sont **liées avec le
-programme** — elles appellent `fopen`, `memcpy`, `view_getc` comme n'importe
-quelle fonction, et le noyau appelle `load_image` ou `view_text` à leur
-adresse dans la fenêtre — mais `a2fc.cfg` les écrit dans des fichiers à part
-(une zone `MEMORY` par surcouche, toutes en `$1B00`, un fichier `%O.NOM`
-chacune) que `make disk` range sous `A2FILE/` avec l'auxtype `$1B00`.
-`view_getc` et `view_seek`, que partagent le décodeur et la visionneuse de
-texte, restent dans le noyau. `overlay()`
-les lit avec un simple `fread`, et n'en relit aucune tant qu'elle est en
-place : feuilleter un dossier d'images ne relit rien. Le mot en tête de
-chaque surcouche est l'adresse de `main` dans le lien qui l'a produite
-(`overlay.s`, premier objet du lien) : une surcouche d'une autre
-construction est refusée comme une surcouche absente, la ligne de message le
-dit. **`A2FILE.CODE` et ses `.PLG` vont donc par ensemble.** C'est ce qui a
-rendu près d'un kilo-octet à la fenêtre principale, qui bute sur la pile C,
-et a payé la souris. Le lanceur ne met plus en scène en `$1000` que les 3 Ko
+en revenant aux panneaux. **Treize surcouches**, sous `A2FILE/` : `IMAGE.PLG`
+(le décodeur d'images), `TEXT.PLG` et `HEX.PLG` (les visionneuses),
+`HELP.PLG` (l'aide), `DELETE.PLG` (la commande D et `delete_tree`, que le
+déplacement d'un dossier charge aussi), `MUSIC.PLG` (le chargement d'un
+`.MB`), `RUN.PLG` (X, F, et Entrée sur un SYS ou un BAS), `ATTR.PLG` (R, K,
+A, L), `IMGFS.PLG` (l'extraction d'une image ProDOS ouverte comme un
+dossier) et `DOS33.PLG` (l'extraction d'une disquette DOS 3.3, voir « Une
+image disque comme dossier ») ; `MUSIC.PLG` porte aussi M et S ; et **trois grandes
+surcouches** qui prennent aussi la page graphique `$2000-$3FFF` :
+`EDIT.PLG` (l'éditeur, son texte au-dessus de son code), `MENU.PLG` (le menu
+`!`) et `DISKIMG.PLG` (les images disque). Elles sont
+**liées avec le programme** — elles appellent `fopen`, `memcpy`, `view_getc`
+comme n'importe quelle fonction, et le noyau appelle leur point d'entrée à
+son adresse dans la fenêtre — mais `a2fc.cfg` les écrit dans des fichiers à
+part (deux segments par surcouche, `NOM` pour le code et `NOMRO` pour les
+chaînes, dans le même fichier `%O.NOM`, code d'abord pour que les mots à zéro
+que cc65 pose en tête d'une `.proc` sous `-Cl` n'atterrissent pas sur le
+point d'entrée) que `make disk` range sous `A2FILE/` avec l'auxtype `$1B00`.
+Passer un module en surcouche a rendu **près de 3,5 Ko** à la fenêtre
+principale, qui finit désormais à `$ADC2` au lieu de `$BADF`.
+
+Chaque surcouche s'ouvre sur l'en-tête `struct Overlay` (`a2fc_plugin.h`,
+`overlay.s`, premier objet du lien) : la **signature** — l'adresse de `main`
+dans le lien qui l'a produite, ou `PLUGIN_MAGIC` pour une surcouche d'un
+tiers —, un octet de **drapeaux** (`OVERLAY_BIG` : grande surcouche), le
+**point d'entrée** que le menu `!` appelle sur la sélection, et une
+**description** d'une ligne. Une surcouche d'une autre construction est
+refusée comme une absente, la ligne de message le dit. **`A2FILE.CODE` et
+ses `.PLG` vont donc par ensemble.** Une surcouche d'un tiers, elle, ne
+touche au programme que par la **table de services** (`struct A2fcApi`) que
+le noyau lui passe : `fopen`, `message`, `confirm`, `prompt`, `dir_open`/
+`dir_next`, `read_panel`, `mli`… — l'ABI stable, dont les champs ne changent
+pas de place et à qui l'on n'ajoute qu'à la fin (`api->version` le dit).
+`overlay()` lit chaque surcouche avec un simple `fread`, et n'en relit aucune
+tant qu'elle est en place : feuilleter un dossier d'images ne relit rien.
+Le lanceur ne met plus en scène en `$1000` que les 3 Ko
 de l'image de la carte langage (`STAGE_BYTES` dans `loader.c`). La zone
 `LOWRAM` est bornée à `$0B00` pour que le lieur refuse une BSS qui monterait
 dans la fenêtre, et `check_layout.py` vérifie que chaque surcouche tient
-entre la RAM basse et la page graphique et que chaque fichier a la longueur
-du lien. La réserve des parcours récursifs emprunte la table d'entrées du
+entre la RAM basse et son plafond — la page graphique, ou ce qu'une grande
+surcouche y garde pour elle — et que chaque fichier a la longueur du lien. La réserve des parcours récursifs emprunte la table d'entrées du
 panneau inactif.
 
 **La souris** (`mouse.s`) cherche la carte AppleMouse II par sa signature
@@ -391,8 +510,13 @@ changement de type et d'auxtype, création de dossier, suppression,
 visionneuses texte et hexadécimale, aide, les deux mires comparées **octet à
 octet dans les deux banques**, `/RAM` refait après une DHGR et intact après
 une HGR, la fanfare qui se termine seule, l'éditeur, le formateur qui liste
-les lecteurs et relance le gestionnaire, enfin un programme Applesoft lancé
-par `BASIC.SYSTEM` : **47 contrôles**. `bench/memory.py` mesure le creux de la
+les lecteurs et relance le gestionnaire, les images disque écrites et relues
+(`.PO` et `.DSK`) et une disquette copiée lecteur à lecteur, une image
+ouverte comme un dossier et un fichier extrait et comparé, un catalogue
+DOS 3.3 lu et un fichier extrait, enfin un programme Applesoft lancé par
+`BASIC.SYSTEM` puis le retour sur les panneaux par `-A2FILE.SYSTEM` :
+**69 contrôles**.
+`bench/memory.py` mesure le creux de la
 pile C en faisant travailler le programme (86 octets sur les 256 réservés),
 et `bench/smoke.py` se contente de vérifier que la disquette publiée démarre.
 Hors émulateur, `make test` vérifie le contrat de disposition mémoire,

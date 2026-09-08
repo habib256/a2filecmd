@@ -8,11 +8,12 @@ Trois choses que ld65 ne verifie pas, et qui ont chacune coute une soiree :
      constante changee d'un cote seulement produit un binaire qui se charge
      et part dans le decor.
 
-  3. Les surcouches (IMAGE, le chargeur et le decodeur d'images ; TEXT et
-     HEX, les visionneuses ; DELETE, la suppression ; HELP, la page d'aide :
-     des fichiers a part que A2FC lit en $1B00 a la demande)
-     doivent tenir entre la fin de la RAM basse et la page graphique, et
-     chaque fichier doit faire exactement la longueur que le lieur annonce.
+  3. Les surcouches (des fichiers a part que A2FC lit en $1B00 a la
+     demande : IMAGE, TEXT, HEX, DELETE, HELP, MUSIC, RUN, ATTR, et les
+     grandes EDIT et MENU qui prennent aussi la page graphique) doivent
+     tenir entre la fin de la RAM basse et leur plafond -- la page graphique,
+     ou ce qu'une grande surcouche y garde pour elle --, et chaque fichier
+     doit faire exactement la longueur que le lieur annonce.
 
   2. Tout ce qui survit a l'initialisation -- CODE, RODATA, DATA, INIT, et la
      BSS ou qu'elle soit -- doit finir sous le plancher de la pile C. ld65
@@ -31,7 +32,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-OVERLAYS = ('IMAGE', 'TEXT', 'HEX', 'DELETE', 'HELP')   # les surcouches, une zone memoire chacune
+# Les surcouches, une zone memoire chacune, et le plafond de chacune : la
+# page graphique pour les petites ; pour les grandes (EDIT, MENU), le debut
+# de ce qu'elles y gardent pour elles (le texte de l'editeur, la liste du
+# menu).
+OVERLAYS = {'IMAGE': 0x2000, 'TEXT': 0x2000, 'HEX': 0x2000, 'DELETE': 0x2000, 'HELP': 0x2000,
+            'MUSIC': 0x2000, 'RUN': 0x2000, 'ATTR': 0x2000, 'EDIT': 0x2800, 'MENU': 0x3000,
+            'DISKIMG': 0x3400, 'IMGFS': 0x2000, 'DOS33': 0x2000}
 
 
 def check_layout(s, loader, length, overlays=None):
@@ -56,10 +63,12 @@ def check_layout(s, loader, length, overlays=None):
     low_end = s['__LOWRAM_START__'] + s['__LOWRAM_SIZE__']
     require(s['__LOWBSS_RUN__'] + s['__LOWBSS_SIZE__'] <= low_end,
             'low BSS runs into the overlay window')
-    for name in OVERLAYS:
-        start, last = s['__%s_START__' % name], s['__%s_LAST__' % name]
+    for name, ceiling in OVERLAYS.items():
+        start = s['__%s_START__' % name]
+        # code segment NAME then rodata segment NAMERO, both in the same file
+        last = s.get('__%sRO_LAST__' % name) or s['__%s_LAST__' % name]
         require(start >= low_end, name + ' overlay starts inside the low RAM')
-        require(last <= 0x2000, name + ' overlay runs into the graphics page')
+        require(last <= ceiling, name + ' overlay runs past ${:04X}'.format(ceiling))
         if overlays is not None:
             require(overlays.get(name) == last - start,
                     name + ' overlay file length does not match the link')
