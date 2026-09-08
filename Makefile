@@ -10,9 +10,10 @@
 # lien est verifie a chaque fois par tools/check_layout.py, qui attrape les
 # deux debordements que ld65 laisse passer en silence. Voir docs/MANUAL.md.
 
-A2FC_VERSION = 0.6.1
+A2FC_VERSION = 0.6.6
 VOLUME       = A2FILECMD
 
+VOLUME_HD    = A2FILEHD     # le disque dur .2mg : un autre nom, pour cohabiter avec la disquette
 TARGET = apple2enh
 CL     = cl65
 AS     = ca65
@@ -126,7 +127,7 @@ $(PO): $(SYSTEM) $(CODE) $(FORMAT) $(DATA)/A2FILE.HELP.TXT $(DATA)/PRODOS.SYS $(
 	mkdir -p $(STAGE)/DEMO
 	cp $(DATA)/README.TXT $(STAGE)/DEMO/README.TXT
 	python3 $(TOOLS)/mkdemo.py $(STAGE)/DEMO
-	python3 $(TOOLS)/mkvolume.py $(STAGE) $(HDV) --volume $(VOLUME) \
+	python3 $(TOOLS)/mkvolume.py $(STAGE) $(HDV) --volume $(VOLUME_HD) \
 	  --boot $(DATA)/prodos_boot.tmpl --blocks 65535
 	python3 $(TOOLS)/po22mg.py $(HDV) $(TWOMG)
 	@rm -rf $(STAGE)/DEMO   # le stage redevient la disquette nue (bench/plugin.py le reprend)

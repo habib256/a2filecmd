@@ -32,8 +32,9 @@ Three images of the same bootable volume, from the
 * `A2FILECMD.po` (ProDOS order) or `A2FILECMD.dsk` (DOS 3.3 order — what
   ADTPro and most emulators expect for a 5.25" floppy): the program alone,
   so that the floppy keeps as much room as it can.
-* `A2FILECMD.2mg`: a 32 MB hard-disk image for emulators and CFFA-style cards,
-  with a `DEMO/` folder holding one example of everything A2 File Cmd can open —
+* `A2FILECMD.2mg`: a 32 MB hard-disk image (volume `/A2FILEHD`) for emulators
+  and CFFA-style cards, with a `DEMO/` folder holding one example of everything
+  A2 File Cmd can open —
   raw and RLE test cards for the picture viewer, a Mockingboard fanfare, a text,
   an Applesoft program, an AppleWorks letter, ProDOS (`.PO`, `.2MG`) and DOS 3.3 (`.DSK`) disk
   images, a ShrinkIt and a Binary II archive, and a `README` that says what to
@@ -42,6 +43,12 @@ Three images of the same bootable volume, from the
 Boot either, and press `?` for the full key map. The left panel opens on the
 boot volume, the right one on its `DEMO/` folder when it has one, otherwise on
 the list of on-line volumes.
+
+To install on a hard disk you already have, copy `A2FILE.SYSTEM` and the
+`A2FILE/` folder side by side into any directory — the root of the volume or
+a subdirectory, whatever its name — and launch `A2FILE.SYSTEM` from Bitsy Bye
+or with `-` from BASIC. The program finds its overlays, its help and its
+settings next to itself.
 
 | Key | |
 |---|---|
