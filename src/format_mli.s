@@ -44,11 +44,10 @@ _driver_call:
         sta vector
         lda $BF11,x
         sta vector+1
-        lda #$00
-        sta $44
         lda #$68
         sta $45                 ; tampon $6800
         lda #$00
+        sta $44
         sta $46
         sta $47                 ; bloc 0
         lda lcflag

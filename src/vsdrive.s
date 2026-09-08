@@ -195,11 +195,9 @@ IRQH    = THUNK + (irq_src - thunk_src)
 ; L'inscription et le retrait du gestionnaire (MLI $40 / $41), en fenetre
 ; principale : le retrait sert au destructeur, hors carte langage.
 ins_irq:
-        lda     vs_acia                 ; l'adresse du registre d'etat
-        sec
-        sbc     #ACIA_OFS
-        clc
-        adc     #$89
+        lda     vs_acia                 ; l'adresse du registre d'etat :
+        sec                             ; $C089 + slot x 16 = vs_acia - $8F + $89
+        sbc     #ACIA_OFS-$89
         sta     irq_adr
         lda     #$C0
         sta     irq_adr+1

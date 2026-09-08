@@ -221,8 +221,7 @@ mixer_restore:
         lda mix
         jsr ay_write
         lda #$80
-        sta via
-        ldx #7
+        sta via                 ; X vaut toujours 7 : ay_write le rend intact
         lda mix+1
         jsr ay_write
         stz via
@@ -232,13 +231,12 @@ mixer_restore:
 ; (percussion) ; C=0 -> ton ouvert, bruit coupe (note). Pose via sur sa puce.
 mix_voice:
         php
+        ldx #0                  ; X = puce 0/1
         lda tmp
         cmp #3
-        lda #0
-        adc #0
-        tax                     ; X = puce 0/1
-        lda tmp
-        jsr chip_of
+        bcc :+
+        inx
+:       jsr chip_of             ; A = tmp, intact apres cmp
         tay                     ; Y = voix 0-2 dans la puce
         lda mix,x
         plp

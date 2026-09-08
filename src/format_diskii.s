@@ -129,11 +129,9 @@ Build:
         ldy #$00
         lda #$7F
         sta LByte
-        ldx #$F0                ; GAP1 : $2F0 octets de synchro ($7F)
+        ldx #$F0                ; GAP1 : $2F0 octets de synchro ($7F) --
+        jsr LFill               ; LFill rend X = 0 : les deux suivants font 256
         jsr LFill
-        ldx #$00
-        jsr LFill
-        ldx #$00
         jsr LFill
         lda #$10
         sta Count

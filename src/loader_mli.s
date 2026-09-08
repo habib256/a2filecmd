@@ -76,14 +76,12 @@ sbp_online:
         and     #$0F
         beq     sbp_fail        ; longueur 0 : ol_buf+1 porte un code d'erreur
 
-        pha                     ; garder la longueur du nom
+        tax                     ; X = longueur du nom
         clc
         adc     #1              ; + le '/' de tete
         sta     pfx_buf         ; octet de longueur pour SET_PREFIX
         lda     #'/'
         sta     pfx_buf+1
-        pla
-        tax                     ; X = longueur du nom
         ldy     #0
 sbp_cp: lda     ol_buf+1,y
         sta     pfx_buf+2,y
