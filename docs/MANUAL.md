@@ -57,7 +57,7 @@ their own, with the path and the page on the left.
 | **I** | show the selected file as a picture, whatever its name: HGR or DHGR, raw or RLE-compressed |
 | **P** | pause or resume the Mockingboard music; RETURN on a `.MB` file starts it |
 | **W** | disk images: write a `.PO`/`.DSK`/`.2MG` to a floppy, read a floppy into a fresh image, copy one floppy onto another (see below) |
-| **!** | the overlay menu: the list of `A2FILE/*.PLG` with their description, each run on the selection. Two of them: **COMPARE** confronts the selection with the file of the same name in the other panel byte by byte, and **SEARCH** asks for a text and tags the panel files that contain it (case-insensitive) |
+| **!** | the overlay menu: the list of `A2FILE/*.PLG` with their description, each run on the selection. Among them: **COMPARE** confronts the selection with the file of the same name in the other panel byte by byte, and **SEARCH** asks for a text and tags the panel files that contain it (case-insensitive) |
 | **F** | open the formatter, `A2FILE/FORMAT.SYS`, which returns to A2FC on exit |
 | **1** … **0** | the ten buttons of the key bar, in order, like Norton Commander and A2Command |
 | **Ctrl-T** / **Ctrl-N** | tag all / untag all; **Ctrl-R** re-reads both panels (floppy swapped, `/RAM` rebuilt) |
@@ -288,6 +288,23 @@ the program refuses `/RAM` as a destination. The C driver (`unshrink_entry` in
 block. `tools/mkshk.py` builds and reads the same format on the host (verified
 byte-for-byte against `nulib2`); `bench/shk.py` extracts a stored, an LZW/1 and
 an LZW/2 archive in the emulator and compares each result to the original.
+
+## Unpacking a Binary II archive
+
+`.BNY` (or `.BQY`) is Binary II, the older and simpler wrapper that carried
+Apple II files over modems and BBSes: each file is preceded by a 128-byte
+header holding its name, type, auxtype and length, and padded to a 128-byte
+boundary. Put an archive under the cursor, press `!` and pick **Extract a
+Binary II (.BNY) archive**: every file goes into the directory shown in the
+*other* panel, with its ProDOS name, type and auxtype restored. Binary II
+carries no compression of its own; a `.BQY` whose members are themselves
+ShrinkIt-packed comes out as `.SHK` files, which the ShrinkIt extractor above
+then unpacks. Directory entries inside an archive are skipped.
+
+`A2FILE/BINARY2.PLG` is a small overlay written entirely in C
+(`binary2_entry` in `a2fc.c`); `tools/mkbny.py` writes and reads the format on
+the host (verified against `nulib2`) and `bench/bny.py` extracts a two-file
+archive in the emulator and checks each name, size, type and auxtype.
 
 ## Formatting a disk
 

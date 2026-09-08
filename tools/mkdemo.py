@@ -40,22 +40,19 @@ def hgr_card():
 
 def dhgr_card():
     """16 384 octets, plan AUX puis plan MAIN : seize bandes horizontales, une
-    valeur d'octet par bande, la meme dans les deux plans -- des aplats que le
-    RLE ecrase a moins d'un kilo-octet (la mire a motifs de quatre octets en
-    faisait douze : vingt-deux blocs rendus a la disquette pour les
-    surcouches). Un cadre blanc ($7F) borde chaque ligne."""
-    # seize valeurs distinctes, du noir ($00) au blanc ($7F) : chaque bande
-    # rend un aplat ou une trame fine propre au DHGR, toutes differentes.
+    valeur d'octet par bande, la meme dans les deux plans -- des aplats pleine
+    largeur que le RLE ecrase a un kilo-octet, sans cadre pour ne pas couper
+    les series (la place sur la disquette est comptee, chaque surcouche pese).
+    La mire a motifs de quatre octets faisait douze kilo-octets."""
     bands = [0x00, 0x08, 0x11, 0x19, 0x22, 0x2A, 0x33, 0x3B,
              0x44, 0x4C, 0x55, 0x5D, 0x66, 0x6E, 0x77, 0x7F]
     aux, main = bytearray(8192), bytearray(8192)
     for row in range(192):
         off = hgr_offset(row)
-        b = 0x7F if row < 3 or row >= 189 else bands[min((row - 3) * 16 // 186, 15)]
+        b = bands[min(row * 16 // 192, 15)]
         for j in range(40):
-            v = 0x7F if j == 0 or j == 39 else b
-            aux[off + j] = v
-            main[off + j] = v
+            aux[off + j] = b
+            main[off + j] = b
     return bytes(aux) + bytes(main)
 
 

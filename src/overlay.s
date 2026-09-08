@@ -20,6 +20,7 @@
         .import _unshrink_entry
         .import _baslist_entry
         .import _compare_entry, _search_entry
+        .import _binary2_entry
 
 BIG = 1
 
@@ -43,6 +44,8 @@ BIG = 1
         header  0, _compare_entry, "Compare the selection with the other panel, byte by byte"
         .segment "SEARCH"
         header  0, _search_entry, "Search the panel files for text, tag those that match"
+        .segment "BINARY2"
+        header  0, _binary2_entry, "Extract a Binary II (.BNY) archive to the other panel"
         .segment "HEX"
         header  0, _hex_entry, "Show the selection in hexadecimal"
         .segment "DELETE"
