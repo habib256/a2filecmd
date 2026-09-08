@@ -146,7 +146,8 @@ jobs:
           path: dist
       - name: Ce qui va etre publie
         run: |
-          ls -l dist && sha256sum -c dist/SHA256SUMS.txt
+          ls -l dist
+          cd dist && sha256sum -c SHA256SUMS.txt   # des noms nus : se verifie depuis dist/
           echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV   # le titre porte 0.6.8, pas v0.6.8
       - name: Publier
         uses: softprops/action-gh-release@v2
