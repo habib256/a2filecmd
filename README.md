@@ -117,7 +117,7 @@ sha256sum -c SHA256SUMS.txt
 | `TAB` · `RETURN` · `ESC` | Switch panel · open · go up |
 | Up / Down · Left / Right | Select an entry · page through a directory |
 | `SPACE` | Tag a file for a batch operation |
-| `C` · `V` · `R` · `D` · `K` | Copy · move · rename · delete · make directory |
+| `C` · `V` · `R` · `D` · `K` | Copy · move · rename · delete · make directory — a full-width progress bar, panels updating file by file, `ESC` to stop |
 | `T` · `H` · `I` · `E` | Read text or a document · inspect hex · view a picture · edit text |
 | `W` · `F` | Disk-image tools · format a disk |
 | `!` | Open the plugin menu, including archive extraction, compare and search |
