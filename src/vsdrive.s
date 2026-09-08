@@ -12,7 +12,8 @@
 ; echo, suivie de quatre octets d'heure et de date ProDOS, puis son XOR ; on
 ; en profite pour regler l'horloge ($BF90). Un XOR faux signale l'erreur.
 ;
-; A la Ammonoid : le pilote vit DANS le programme, pas dans ProDOS. A
+; A la Ammonoid (Colin Leroy-Mira, a2tools/src/lib/vsdrive.s, dont ce
+; pilote s'inspire) : le pilote vit DANS le programme, pas dans ProDOS. A
 ; l'installation on cherche une carte serie (la signature Pascal 1.1 de son
 ; ROM : $Cn05=$38 $Cn07=$18 $Cn0B=$01 $Cn0C=$31, puis un 6551 qui repond), on
 ; la regle a 115 200 bauds 8N1, et on prend le premier slot 1..7 dont ni le
