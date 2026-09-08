@@ -119,7 +119,7 @@ static char overlay_loaded[12];     /* la surcouche en place dans la fenetre $1B
 static char reselect[NAME_LEN];    /* au retour d'une grande surcouche : le nom a reselectionner */
 static struct Entry selected;      /* l'entree sous le curseur, copiee avant qu'une grande surcouche ne recouvre la table */
 static char note[80];              /* ... et le message a ecrire en ligne 22 */
-static long text_starts[96];
+static long text_starts[80];   /* debuts de page connus */
 /* Les parcours recursifs (copie et suppression d'un dossier) empilent
  * les entrees de chaque niveau : un niveau occupe pool[base..base+n[, le
  * niveau suivant commence a base+n. Un arbre dont un chemin cumule plus de
@@ -383,7 +383,7 @@ static void too_long(void)
 
 static void dir_fail(void)
 {
-    message("Directory unreadable or too many files.");
+    extern const char msg_dirfail[]; message(msg_dirfail);
 }
 
 /* La barre de touches, facon Norton Commander : chaque touche dans un bloc
@@ -393,7 +393,7 @@ static void dir_fail(void)
  * n'est jamais ecrite au-dela de la colonne 78 : conio passerait a la ligne
  * sur la 80e et ferait defiler l'ecran. */
 extern const char MAIN_KEYS[];   /* defini en carte langage, plus bas (LC) */
-static const char VIEW_KEYS[] = "SPC Next,B Prev,ESC Back";
+extern const char VIEW_KEYS[];   /* en carte langage, defini plus bas */
 static const char HELP_KEYS[] = "ANY Return to the panels";
 
 static void keys_bar(unsigned char x, const char* spec)
@@ -1061,6 +1061,30 @@ static const char pdE48[] = "the disk is full";
 static const char pdE49[] = "the directory is full";
 static const char pdE4E[] = "the file is locked";
 static const char pdE52[] = "not a ProDOS disk";
+const char msg_dirfail[] = "Directory unreadable or too many files.";
+const char VIEW_KEYS[] = "SPC Next,B Prev,ESC Back";
+/* Les 107 mots Applesoft ($80-$EA), separes par des zeros. Tableau NOMME
+ * (const char[]), pas des litteraux "..." : cc65 regroupe les litteraux dans
+ * RODATA (fenetre principale pleine), un tableau nomme suit le segment de la
+ * surcouche. */
+static const char BAS_TOK[] =
+    "END\0FOR\0NEXT\0DATA\0INPUT\0DEL\0DIM\0READ\0GR\0TEXT\0PR#\0IN#\0CALL\0"
+    "PLOT\0HLIN\0VLIN\0HGR2\0HGR\0HCOLOR=\0HPLOT\0DRAW\0XDRAW\0HTAB\0HOME\0"
+    "ROT=\0SCALE=\0SHLOAD\0TRACE\0NOTRACE\0NORMAL\0INVERSE\0FLASH\0COLOR=\0"
+    "POP\0VTAB\0HIMEM:\0LOMEM:\0ONERR\0RESUME\0RECALL\0STORE\0SPEED=\0LET\0"
+    "GOTO\0RUN\0IF\0RESTORE\0&\0GOSUB\0RETURN\0REM\0STOP\0ON\0WAIT\0LOAD\0"
+    "SAVE\0DEF\0POKE\0PRINT\0CONT\0LIST\0CLEAR\0GET\0NEW\0TAB(\0TO\0FN\0SPC(\0"
+    "THEN\0AT\0NOT\0STEP\0+\0-\0*\0/\0^\0AND\0OR\0>\0=\0<\0SGN\0INT\0ABS\0USR\0"
+    "FRE\0SCRN(\0PDL\0POS\0SQR\0RND\0LOG\0EXP\0COS\0SIN\0TAN\0ATN\0PEEK\0LEN\0"
+    "STR$\0VAL\0ASC\0CHR$\0LEFT$\0RIGHT$\0MID$";
+
+static const char* bas_token(unsigned char n)
+{
+    const char* s = BAS_TOK;
+    while (n--) { while (*s) ++s; ++s; }
+    return s;
+}
+
 /* Les trois en-tetes de colonne des panneaux, en carte langage plutot que
  * dans RODATA (fenetre principale pleine) : ~100 octets rendus au resident,
  * la marge qu'il fallait pour la surcouche UNSHRINK et ses calculs 32 bits.
@@ -1155,7 +1179,7 @@ static void view_seek(long offset)
 }
 
 #define TEXT_ROWS 22
-#define TEXT_PAGES 96           /* text_starts[] : les debuts de page connus */
+#define TEXT_PAGES 80           /* text_starts[] : les debuts de page connus */
 
 /* Une page de 22 lignes ; les retours ProDOS sont des CR. Les debuts de
  * page sont memorises au passage : la page precedente est un fseek. */
@@ -1208,6 +1232,85 @@ void __fastcall__ text_entry(const struct A2fcApi* a)
     (void)a;
     if (full[0]) view_text(full);
 }
+#pragma rodata-name (pop)
+#pragma code-name (pop)
+
+/* ---------------------------------------------------------------------- */
+/* La surcouche BASLIST : lister un programme Applesoft, dans BASLIST.PLG. */
+/* `T` sur un BAS ($FC) la charge au lieu de la visionneuse de texte : au   */
+/* lieu de l'hexa des jetons, le listing detokenise. Elle relit le fichier  */
+/* par view_getc (resident) et pagine comme la visionneuse de texte, en     */
+/* retenant le debut de chaque page dans text_starts. Pas de tampon : elle  */
+/* reste une petite surcouche.                                              */
+/* ---------------------------------------------------------------------- */
+#pragma code-name (push, "BASLIST")
+#pragma rodata-name (push, "BASLISTRO")
+#pragma static-locals (push, off)
+
+extern const char* bas_token(unsigned char n);   /* en carte langage, plus haut */
+#define bl_row input[0]      /* 2 octets du tampon resident input[] : LOWBSS est plein */
+#define bl_col input[1]
+
+/* Un caractere a l'ecran, coupe a 80 colonnes, 22 lignes ; au-dela on cesse
+ * d'ecrire mais on continue de consommer le fichier. CR passe a la ligne. */
+static void bl_putc(char c)
+{
+    if (bl_row >= TEXT_ROWS) return;
+    if (c == 13) { ++bl_row; bl_col = 0; if (bl_row < TEXT_ROWS) gotoxy(0, bl_row); return; }
+    if (bl_col == 80) { ++bl_row; bl_col = 0; if (bl_row >= TEXT_ROWS) return; gotoxy(0, bl_row); }
+    cputc(c);
+    ++bl_col;
+}
+
+static void bl_puts(const char* s) { while (*s) bl_putc(*s++); }
+
+void __fastcall__ baslist_entry(const struct A2fcApi* a)
+{
+    unsigned char page = 0, known = 1, done;
+    unsigned int num;
+    int lo, hi, t;
+    char key, buf[7];
+    (void)a;
+    vf = fopen(full, "rb");
+    if (!vf) { report_error("Open"); return; }
+    a2fc_view = 2;
+    text_starts[0] = 0;
+    for (;;) {
+        view_seek(text_starts[page]);
+        clrscr();
+        bl_row = 0; bl_col = 0; done = 0;
+        while (bl_row < TEXT_ROWS) {
+            lo = view_getc(); hi = view_getc();      /* le pointeur de ligne suivante */
+            if (lo < 0 || (lo == 0 && hi == 0)) { done = 1; break; }
+            num = (unsigned int)view_getc();
+            num |= (unsigned int)view_getc() << 8;    /* le numero de ligne */
+            sprintf(buf, "%u ", num);
+            bl_puts(buf);
+            for (;;) {
+                t = view_getc();
+                if (t <= 0) break;                    /* $00 finit la ligne (ou EOF) */
+                if (t >= 0x80 && t <= 0xEA) { bl_putc(' '); bl_puts(bas_token((unsigned char)(t - 0x80))); bl_putc(' '); }
+                else bl_putc((char)(t & 0x7F));
+            }
+            bl_putc(13);
+        }
+        if (!done && page + 1 < TEXT_PAGES && known == page + 1) {
+            text_starts[page + 1] = vbase + vpos;     /* le debut de la page suivante */
+            known = page + 2;
+        }
+        bar_begin();
+        cprintf("%-38.38s page %u%s", full, page + 1, done ? " (end)" : "");
+        keys_bar(52, VIEW_KEYS);
+        key = cgetc();
+        if (key == KEY_ESC || key == 'q' || key == 'Q') break;
+        if ((key == ' ' || key == KEY_RETURN || key == KEY_RIGHT || key == KEY_DOWN) && !done && page + 1 < known) ++page;
+        if ((key == 'b' || key == 'B' || key == KEY_LEFT || key == KEY_UP) && page) --page;
+    }
+    fclose(vf);
+    a2fc_view = 0;
+    draw_all();
+}
+#pragma static-locals (pop)
 #pragma rodata-name (pop)
 #pragma code-name (pop)
 
@@ -3804,8 +3907,10 @@ int main(void)
         case 'd': case 'D': if (overlay("DELETE")) delete_targets(); break;
         case 's': case 'S': overlay_run("MUSIC", 'S'); break;
         case 't': case 'T':
-            if (pan->count && !is_dir(&pan->e[pan->cursor]) && build_full(full, pan, &pan->e[pan->cursor]))
-                if (overlay("TEXT")) view_text(full);
+            if (pan->count && !is_dir(&pan->e[pan->cursor]) && build_full(full, pan, &pan->e[pan->cursor])) {
+                if (pan->e[pan->cursor].type == 0xFC) { if (overlay("BASLIST")) baslist_entry(0); }
+                else if (overlay("TEXT")) view_text(full);
+            }
             break;
         case 'h': case 'H':
             if (pan->count && !is_dir(&pan->e[pan->cursor]) && build_full(full, pan, &pan->e[pan->cursor]))

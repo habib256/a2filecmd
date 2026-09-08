@@ -50,7 +50,7 @@ their own, with the path and the page on the left.
 | **A** | change a file's type and auxtype, in hexadecimal |
 | **L** | lock or unlock; a locked file carries an L after its name and refuses deletion and renaming |
 | **?** | the help, a screen that sums up every key, under the title "A2 File Cmd" |
-| **T** | read the selected file as text |
+| **T** | read the selected file as text; an Applesoft (`BAS`) program is listed detokenized (line numbers and keywords) instead of hex, by the `BASLIST.PLG` overlay |
 | **H** | show the selected file in hexadecimal |
 | **X** | run the selected file after confirmation; A2FC does not come back. A SYS is read at `$2000`, a BIN at its auxtype, between `$0800` and `$BAFF` (the stub keeps its ProDOS buffer at `$BB00`). A BAS (Applesoft) goes through `BASIC.SYSTEM`, see below |
 | **E** | edit the selected file as text; on a directory or `..`, create a new text file in the current directory |

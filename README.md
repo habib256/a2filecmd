@@ -45,7 +45,7 @@ editor, and an Applesoft program.
 | `ESC` | parent directory; from a volume root, the list of on-line volumes |
 | `SPACE` | tag a file — `C`, `V` and `D` then work on every tagged file |
 | `C` `V` `R` `D` `K` | copy, move, rename, delete, make directory |
-| `T` `H` `I` `E` | text viewer, hex viewer, picture viewer, text editor |
+| `T` `H` `I` `E` | text viewer (an Applesoft `.BAS` is listed, detokenized), hex viewer, picture viewer, text editor |
 | `A` `L` `S` `M` | type and auxtype, lock, sort, mark differences |
 | `X` `P` `F` `Q` | run a program, pause the music, format a disk, quit |
 | mouse | click a line to select it, click it again to open; click the column header to sort, the path to go up, a key-bar button for its key |
@@ -68,7 +68,7 @@ writer, the sector-order converter and the demo files are all in `tools/`.
 
 | | |
 |---|---|
-| `src/` | the program (`a2fc.c`), its launcher, the formatter, the Mockingboard player, the mouse driver; the picture decoder, the viewers, the editor, the music and program launchers, the delete/attribute commands, the overlay menu, the disk-image tool, and the ProDOS-image, DOS-3.3 and ShrinkIt (`.SHK`) extractors are overlays (`A2FILE/*.PLG`) loaded on demand into `$1B00`, some reaching into `$2000-$3FFF`; a third party can add one against the stable ABI in `src/a2fc_plugin.h` |
+| `src/` | the program (`a2fc.c`), its launcher, the formatter, the Mockingboard player, the mouse driver; the picture decoder, the viewers, the editor, the music and program launchers, the delete/attribute commands, the overlay menu, the disk-image tool, the Applesoft lister, and the ProDOS-image, DOS-3.3 and ShrinkIt (`.SHK`) extractors are overlays (`A2FILE/*.PLG`) loaded on demand into `$1B00`, some reaching into `$2000-$3FFF`; a third party can add one against the stable ABI in `src/a2fc_plugin.h` |
 | `sdk/` | write your own overlay: [the guide](sdk/README.md), a worked example (`hello.c`), the link config and build script, all against `src/a2fc_plugin.h` alone |
 | `tools/` | ProDOS volume writer, sector-order converter, memory-layout checker, demo maker, ShrinkIt (`.SHK`) reader/writer |
 | `bench/` | the headless emulator benches |
