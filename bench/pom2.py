@@ -45,18 +45,21 @@ class Pom2:
     """Un emulateur, sa copie de la disquette, et de quoi la piloter."""
 
     def __init__(self, hdv, floppy=None, port=6600, speed=200000, exe=POM2, mouse=False,
-                 preset='iie', floppy2=None):
+                 preset='iie', floppy2=None, ssc=None):
         """`hdv` : le disque dur (toujours present, POM2 en veut un).
         `floppy` : la disquette 5,25 a mettre en slot 6 et a amorcer.
         `floppy2` : une seconde disquette, lecteur 2 du meme Disk II, presente
         des l'amorcage (un vrai DOS 3.3 dans un lecteur, sans passer par /disk).
-        `mouse` : une AppleMouse II en slot 4, que mouse() fait bouger."""
+        `mouse` : une AppleMouse II en slot 4, que mouse() fait bouger.
+        `ssc` : le port TCP du pont de la Super Serial Card (slot 2), en mode
+        brut, pour le banc VDrive -- si pom2_playtest a le drapeau --ssc."""
         self.port, self.base = port, 'http://127.0.0.1:%d' % port
         self.hdv, self.floppy = str(hdv), str(floppy) if floppy else None
         self.floppy2 = str(floppy2) if floppy2 else None
         self.speed, self.exe, self.proc = speed, exe, None
         self.preset = preset
         self.with_mouse = mouse
+        self.ssc = ssc
 
     # ── cycle de vie ───────────────────────────────────────────────────────
     def start(self):
@@ -70,6 +73,8 @@ class Pom2:
             args += ['--disk2', self.floppy2]
         if self.with_mouse:
             args += ['--mouse']
+        if self.ssc:
+            args += ['--ssc', str(self.ssc)]
         args += [os.path.basename(self.hdv)]
         self.proc = subprocess.Popen(args, cwd=cwd, stdout=log, stderr=subprocess.STDOUT,
                                      start_new_session=True)

@@ -53,7 +53,7 @@ FORMAT = $(BUILD)/FORMAT.SYS.SYS
 PO     = $(DIST)/$(VOLUME).po
 DSK    = $(DIST)/$(VOLUME).dsk
 
-OBJS = $(BUILD)/crt0.o $(BUILD)/overlay.o $(BUILD)/unshrink.o $(BUILD)/a2fc_mli.o $(BUILD)/chain.o \
+OBJS = $(BUILD)/crt0.o $(BUILD)/overlay.o $(BUILD)/unshrink.o $(BUILD)/vsdrive.o $(BUILD)/a2fc_mli.o $(BUILD)/chain.o \
        $(BUILD)/music.o $(BUILD)/memory_swap.o $(BUILD)/mli_safe.o $(BUILD)/mouse.o
 
 .PHONY: all disk test bench example clean
@@ -84,7 +84,7 @@ $(CODE): $(SRC)/a2fc.c $(SRC)/a2fc.cfg $(SRC)/a2fc_plugin.h $(SRC)/music.h $(SRC
 	$(CL) $(CFLAGS) -D 'A2FC_VERSION="$(A2FC_VERSION)"' -C $(SRC)/a2fc.cfg \
 	  -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__STACKSIZE__=$(A2FC_STACK) \
 	  -Wl -m,$(BUILD)/a2fc.map -Wl -Ln,$(BUILD)/a2fc.lbl \
-	  -o $@ $(BUILD)/crt0.o $(BUILD)/overlay.o $(BUILD)/unshrink.o $(SRC)/a2fc.c $(BUILD)/a2fc_mli.o \
+	  -o $@ $(BUILD)/crt0.o $(BUILD)/overlay.o $(BUILD)/unshrink.o $(BUILD)/vsdrive.o $(SRC)/a2fc.c $(BUILD)/a2fc_mli.o \
 	  $(BUILD)/chain.o $(BUILD)/music.o $(BUILD)/memory_swap.o $(BUILD)/mli_safe.o \
 	  $(BUILD)/mouse.o $(IOBUF)
 	@python3 $(TOOLS)/check_layout.py --lbl $(BUILD)/a2fc.lbl --bin $@

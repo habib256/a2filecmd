@@ -143,14 +143,13 @@ du TODO précédent :
   chargement d'un `.MB` est déjà une surcouche (`MUSIC.PLG`), mais le pilote
   AY reste résident. Le rendre entièrement en surcouche demanderait qu'elle
   survive à la navigation, ce que la fenêtre unique interdit. *À laisser.*
-- 🟡 **VDrive / VSDRIVE** (idée reçue d'un utilisateur, 2026-09-08) : un
-  lecteur virtuel servi par la ligne série depuis un hôte, comme Ammonoid de
-  Colin Leroy-Mira le fait — un pilote de blocs ProDOS chargé en mémoire qui
-  parle au serveur de l'hôte (le VSDRIVE d'ADTPro en est un). Le volume
-  apparaîtrait dans la liste des volumes et tout le reste suivrait (copier,
-  ouvrir). À étudier : où loger le pilote (la carte langage ? une surcouche
-  résidente ?), quel protocole, et un banc — POM2 n'émule pas de port série
-  aujourd'hui. *2 à 3 jours, avec le banc.*
+- 🟡 **VDrive : le banc, puis une vraie carte** *(pilote écrit le
+  2026-09-08, `src/vsdrive.s`, à la Ammonoid : deux volumes ProDOS servis
+  par un 6551 à 115 200 bauds, protocole du VDrive d'ADTPro, en carte
+  langage derrière un talon en page 3)*. Il n'a encore tourné nulle part :
+  `bench/vdrive.py` attend `pom2_playtest --ssc` (demandé dans le TODO de
+  POM2), `bench/vsdrive_server.py` est prêt. Puis un retour d'utilisateur
+  sur une Super Serial Card réelle et sur un //c. *½ jour quand POM2 suit.*
 - 🟢 **Une table de reconnaissance** (type, auxtype, suffixe, en-tête → nom
   de surcouche) à la place de `looks_like_image` et de l'aiguillage
   d'`open_selected`, pour qu'un format de plus ne coûte qu'une ligne.

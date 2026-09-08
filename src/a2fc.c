@@ -50,6 +50,7 @@ unsigned char ram_format(void);
 extern unsigned int chain_addr;                    /* chain.s */
 void __fastcall__ chain_load(const char* path);
 void __fastcall__ chain_command(const char* name);
+unsigned char vsdrive_install(void);                /* vsdrive.s : VDrive, deux volumes par la ligne serie */
 unsigned char __fastcall__ mli_sfi(void* params);
 unsigned char __fastcall__ mli_call(unsigned char cmd, void* params);
 void __fastcall__ aux_copy(unsigned int main_addr, unsigned int aux_addr, unsigned char to_aux);
@@ -1066,35 +1067,14 @@ const char msg_dirfail[] = "Directory unreadable or too many files.";
 const char msg_toolong[] = "Path too long for ProDOS.";
 const char msg_sysonly[] = "SYS, BIN or BAS only.";
 const char msg_nomb[] = "No Mockingboard in slots 1-7.";
+const char msg_vdrive[] = "VDrive: serial card in slot %u, volumes in slot %u, drives 1 and 2.";
 const char msg_notimg[] = "Not a ProDOS disk image (or DOS 3.3).";
 const char msg_roimg[] = "Read-only disk image; C extracts to the other panel.";
 const char msg_samedir[] = "Both panels show the same directory.";
 const char msg_otherro[] = "The other panel is a read-only disk image.";
-const char msg_nohelp[] = "A2FILE/A2FILE.HELP is missing: no help on this volume.";
+const char msg_nohelp[] = "A2FILE/A2FILE.HELP is missing.";
 const char msg_intoself[] = "Cannot copy a directory into itself.";
 const char VIEW_KEYS[] = "SPC Next,B Prev,ESC Back";
-/* Les 107 mots Applesoft ($80-$EA), separes par des zeros. Tableau NOMME
- * (const char[]), pas des litteraux "..." : cc65 regroupe les litteraux dans
- * RODATA (fenetre principale pleine), un tableau nomme suit le segment de la
- * surcouche. */
-static const char BAS_TOK[] =
-    "END\0FOR\0NEXT\0DATA\0INPUT\0DEL\0DIM\0READ\0GR\0TEXT\0PR#\0IN#\0CALL\0"
-    "PLOT\0HLIN\0VLIN\0HGR2\0HGR\0HCOLOR=\0HPLOT\0DRAW\0XDRAW\0HTAB\0HOME\0"
-    "ROT=\0SCALE=\0SHLOAD\0TRACE\0NOTRACE\0NORMAL\0INVERSE\0FLASH\0COLOR=\0"
-    "POP\0VTAB\0HIMEM:\0LOMEM:\0ONERR\0RESUME\0RECALL\0STORE\0SPEED=\0LET\0"
-    "GOTO\0RUN\0IF\0RESTORE\0&\0GOSUB\0RETURN\0REM\0STOP\0ON\0WAIT\0LOAD\0"
-    "SAVE\0DEF\0POKE\0PRINT\0CONT\0LIST\0CLEAR\0GET\0NEW\0TAB(\0TO\0FN\0SPC(\0"
-    "THEN\0AT\0NOT\0STEP\0+\0-\0*\0/\0^\0AND\0OR\0>\0=\0<\0SGN\0INT\0ABS\0USR\0"
-    "FRE\0SCRN(\0PDL\0POS\0SQR\0RND\0LOG\0EXP\0COS\0SIN\0TAN\0ATN\0PEEK\0LEN\0"
-    "STR$\0VAL\0ASC\0CHR$\0LEFT$\0RIGHT$\0MID$";
-
-static const char* bas_token(unsigned char n)
-{
-    const char* s = BAS_TOK;
-    while (n--) { while (*s) ++s; ++s; }
-    return s;
-}
-
 /* Les trois en-tetes de colonne des panneaux, en carte langage plutot que
  * dans RODATA (fenetre principale pleine) : ~100 octets rendus au resident,
  * la marge qu'il fallait pour la surcouche UNSHRINK et ses calculs 32 bits.
@@ -1259,7 +1239,29 @@ void __fastcall__ text_entry(const struct A2fcApi* a)
 #pragma rodata-name (push, "BASLISTRO")
 #pragma static-locals (push, off)
 
-extern const char* bas_token(unsigned char n);   /* en carte langage, plus haut */
+/* Les 107 mots Applesoft ($80-$EA), separes par des zeros. Tableau NOMME
+ * (const char[]), pas des litteraux "..." : cc65 regroupe les litteraux dans
+ * RODATA (fenetre principale pleine), un tableau nomme suit le segment de la
+ * surcouche -- BASLISTRO, ce qui fait de BASLIST une grande surcouche
+ * (1,4 Ko) : la carte langage, pleine, ne pouvait plus l'heberger. */
+static const char BAS_TOK[] =
+    "END\0FOR\0NEXT\0DATA\0INPUT\0DEL\0DIM\0READ\0GR\0TEXT\0PR#\0IN#\0CALL\0"
+    "PLOT\0HLIN\0VLIN\0HGR2\0HGR\0HCOLOR=\0HPLOT\0DRAW\0XDRAW\0HTAB\0HOME\0"
+    "ROT=\0SCALE=\0SHLOAD\0TRACE\0NOTRACE\0NORMAL\0INVERSE\0FLASH\0COLOR=\0"
+    "POP\0VTAB\0HIMEM:\0LOMEM:\0ONERR\0RESUME\0RECALL\0STORE\0SPEED=\0LET\0"
+    "GOTO\0RUN\0IF\0RESTORE\0&\0GOSUB\0RETURN\0REM\0STOP\0ON\0WAIT\0LOAD\0"
+    "SAVE\0DEF\0POKE\0PRINT\0CONT\0LIST\0CLEAR\0GET\0NEW\0TAB(\0TO\0FN\0SPC(\0"
+    "THEN\0AT\0NOT\0STEP\0+\0-\0*\0/\0^\0AND\0OR\0>\0=\0<\0SGN\0INT\0ABS\0USR\0"
+    "FRE\0SCRN(\0PDL\0POS\0SQR\0RND\0LOG\0EXP\0COS\0SIN\0TAN\0ATN\0PEEK\0LEN\0"
+    "STR$\0VAL\0ASC\0CHR$\0LEFT$\0RIGHT$\0MID$";
+
+static const char* bas_token(unsigned char n)
+{
+    const char* s = BAS_TOK;
+    while (n--) { while (*s) ++s; ++s; }
+    return s;
+}
+
 #define bl_row input[0]      /* 2 octets du tampon resident input[] : LOWBSS est plein */
 #define bl_col input[1]
 
@@ -4173,9 +4175,13 @@ int main(void)
     if (strlen(cfg_path) + 20 < PATH_LEN) strcat(cfg_path, "/A2FILE/A2FILE.CFG");
     load_config();
     a2fc_mouse = mouse_init();
+    /* VDrive : une carte serie et deux volumes de plus dans DEVLST, avant
+     * de lire les panneaux (la liste des volumes les montre). */
+    key = vsdrive_install();
     read_panel(0);
     read_panel(1);
     draw_all();
+    if (key) { extern const char msg_vdrive[]; sprintf(question, msg_vdrive, key >> 4, key & 15); message(question); }
     for (;;) {
         pan = &panels[active];
         key = wait_key();
@@ -4233,7 +4239,7 @@ int main(void)
         case 't': case 'T':
             if (pan->count && !is_dir(&pan->e[pan->cursor]) && build_full(full, pan, &pan->e[pan->cursor])) {
                 key = pan->e[pan->cursor].type;
-                if ((unsigned char)key == 0xFC) { if (overlay("BASLIST")) baslist_entry(0); }
+                if ((unsigned char)key == 0xFC) overlay_run("BASLIST", 0);   /* grande surcouche */
                 else if ((unsigned char)key == 0x1A) overlay_run("AWP", 0);
                 else if (overlay("TEXT")) view_text(full);
             }

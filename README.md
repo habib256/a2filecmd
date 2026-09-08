@@ -23,6 +23,9 @@ in 80 columns, on 128 KB, from a bootable 5.25" floppy.
 * Optional: a Mockingboard in any slot, for the music player
 * Optional: an AppleMouse II card in any slot — click to select, click again
   to open, click a button of the key bar; the keyboard does everything too
+* Optional: a Super Serial Card (or the //c's port 2) — at startup A2 File Cmd
+  mounts two **VDrive** volumes served over the cable at 115 200 bps by
+  ADTPro, `veserver.py` or `surl-server` (experimental, see the manual)
 
 ## Getting started
 
@@ -82,7 +85,7 @@ writer, the sector-order converter and the demo files are all in `tools/`.
 
 | | |
 |---|---|
-| `src/` | the program (`a2fc.c`), its launcher, the formatter, the Mockingboard player, the mouse driver; the picture decoder, the viewers, the editor, the music and program launchers, the delete/attribute commands, the overlay menu, the disk-image tool, the Applesoft lister, the AppleWorks reader, a byte compare and a text search, and the ProDOS-image, DOS-3.3, ShrinkIt (`.SHK`) and Binary II (`.BNY`) extractors are overlays (`A2FILE/*.PLG`) loaded on demand into `$1B00`, some reaching into `$2000-$3FFF`; a third party can add one against the stable ABI in `src/a2fc_plugin.h` |
+| `src/` | the program (`a2fc.c`), its launcher, the formatter, the Mockingboard player, the mouse driver, the VDrive serial driver (`vsdrive.s`); the picture decoder, the viewers, the editor, the music and program launchers, the delete/attribute commands, the overlay menu, the disk-image tool, the Applesoft lister, the AppleWorks reader, a byte compare and a text search, and the ProDOS-image, DOS-3.3, ShrinkIt (`.SHK`) and Binary II (`.BNY`) extractors are overlays (`A2FILE/*.PLG`) loaded on demand into `$1B00`, some reaching into `$2000-$3FFF`; a third party can add one against the stable ABI in `src/a2fc_plugin.h` |
 | `sdk/` | write your own overlay: [the guide](sdk/README.md), a worked example (`hello.c`), the link config and build script, all against `src/a2fc_plugin.h` alone |
 | `tools/` | ProDOS volume writer, sector-order and 2IMG converters, DOS 3.3 disk writer, memory-layout checker, demo maker, ShrinkIt (`.SHK`), Binary II (`.BNY`) and AppleWorks (`.AWP`) readers/writers |
 | `bench/` | the headless emulator benches |
