@@ -52,7 +52,7 @@ their own, with the path and the page on the left.
 | **A** | change a file's type and auxtype, in hexadecimal |
 | **L** | lock or unlock; a locked file carries an L after its name and refuses deletion and renaming |
 | **?** | the help, a screen that sums up every key, under the title "A2 File Cmd" |
-| **T** | read the selected file as text; an Applesoft (`BAS`) program is listed detokenized (line numbers and keywords) instead of hex, by the `BASLIST.PLG` overlay |
+| **T** | read the selected file as text; an Applesoft (`BAS`) program is listed detokenized (line numbers and keywords) instead of hex, by the `BASLIST.PLG` overlay; an AppleWorks (`AWP`) document is rendered by `AWP.PLG` |
 | **H** | show the selected file in hexadecimal |
 | **X** | run the selected file after confirmation; A2FC does not come back. A SYS is read at `$2000`, a BIN at its auxtype, between `$0800` and `$BAFF` (the stub keeps its ProDOS buffer at `$BB00`). A BAS (Applesoft) goes through `BASIC.SYSTEM`, see below |
 | **E** | edit the selected file as text; on a directory or `..`, create a new text file in the current directory |
@@ -273,6 +273,26 @@ readable only the boot floppy and an image file; reading a real physical disk
 shares all the code of reading an image, only the source of the sectors
 changes.)
 
+## Reading an AppleWorks document
+
+An AppleWorks word-processor file (type `$1A`, shown as `AWP` in the Type
+column) opens with **RETURN** or **T** in a reader that works like the text
+viewer: 22 lines a page, SPACE or RETURN for the next page, B for the previous
+one, ESC to come back. The file is 300 bytes of header (byte 183, the minimum
+version, says whether two more bytes follow it — AppleWorks 3.0 files) then
+one record per line, two header bytes each: a carriage-return record (`$D0`),
+a formatting command (`$D1` and above, skipped), the end (`$FF`), or a text
+line whose first byte counts what follows. Inside a line the codes below `$20`
+are formatting — bold, underline, superscript, dates and page numbers — and
+are skipped; `$16` and `$17`, the tabs, are rendered to the next stop of 8.
+A ruler line (first byte `$FF`) is skipped. Every text record is one screen
+line, exactly as AppleWorks wrapped it.
+
+`A2FILE/AWP.PLG` is a small overlay in C (`awp_entry` in `a2fc.c`), launched
+by the `!` menu as well. `tools/mkawp.py` writes and reads the format on the
+host — the `LETTER` of the `.2mg`'s `DEMO` comes from it — and `bench/awp.py`
+checks, line by line, that the page the Apple IIe shows is the one written.
+
 ## Unpacking a ShrinkIt archive
 
 `.SHK` is the NuFX archive of ShrinkIt, the way Apple II software has been
@@ -421,7 +441,7 @@ the `DEMO` directory the floppy has no room for:
 | `PRODOS`, `BASIC.SYSTEM` | ProDOS 8 2.4.3, the last stable version, and its Applesoft interpreter: freely distributed for the Apple II community, they are not the author's |
 | `A2FILE.SYSTEM` | the launcher, the only `.SYSTEM` program: the floppy boots straight into A2FC. Compiled with `NO_CHDIR`, it relies on the boot volume's prefix |
 | `A2FILE/A2FILE.CODE`, `A2FILE/*.PLG`, `A2FILE/A2FILE.HELP`, `A2FILE/FORMAT.SYS` | the program, its thirteen overlays (`IMAGE`, `TEXT`, `HEX`, `HELP`, `DELETE`, `MUSIC`, `RUN`, `ATTR`, `IMGFS`, `DOS33`, and the big ones `EDIT`, `MENU`, `DISKIMG`: BINs loaded at `$1B00` on demand), the help text and the formatter; `A2FILE.CFG` will be written alongside |
-| `DEMO/` (`.2mg` only) | one example of everything A2FC can open, entirely computed by `tools/mkdemo.py`: the two test cards raw (`DHGR.RAW`, `HGR.RAW`) and RLE (`DHGR.RLE`, `HGR.RLE`), a three-voice fanfare (`WELCOME.MB`), a text (`SAMPLE`), an Applesoft program (`HELLO`), a ProDOS disk image as `.PO` and as `.2MG` (`TINY.PO`, `TINY.2MG`), a DOS 3.3 disk (`DOS33.DSK`), the text and the program packed by ShrinkIt (`SAMPLE.SHK`) and by Binary II (`SAMPLE.BNY`), and a `README` that says what to press |
+| `DEMO/` (`.2mg` only) | one example of everything A2FC can open, entirely computed by `tools/mkdemo.py`: the two test cards raw (`DHGR.RAW`, `HGR.RAW`) and RLE (`DHGR.RLE`, `HGR.RLE`), a three-voice fanfare (`WELCOME.MB`), a text (`SAMPLE`), an Applesoft program (`HELLO`), an AppleWorks document (`LETTER`), a ProDOS disk image as `.PO` and as `.2MG` (`TINY.PO`, `TINY.2MG`), a DOS 3.3 disk (`DOS33.DSK`), the text and the program packed by ShrinkIt (`SAMPLE.SHK`) and by Binary II (`SAMPLE.BNY`), and a `README` that says what to press |
 
 The floppy keeps 19 free blocks. At startup, the left panel shows the boot
 volume's root and the right panel its `DEMO` directory when there is one, the

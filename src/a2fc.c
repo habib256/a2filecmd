@@ -434,6 +434,7 @@ static const char* type_name(unsigned char type)
     case 0x04: return "TXT";
     case 0x06: return "BIN";
     case 0x0F: return "DIR";
+    case 0x1A: return "AWP";
     case 0xB3: return "S16";
     case 0xFA: return "INT";
     case 0xFC: return "BAS";
@@ -1065,6 +1066,12 @@ const char msg_dirfail[] = "Directory unreadable or too many files.";
 const char msg_toolong[] = "Path too long for ProDOS.";
 const char msg_sysonly[] = "SYS, BIN or BAS only.";
 const char msg_nomb[] = "No Mockingboard in slots 1-7.";
+const char msg_notimg[] = "Not a ProDOS disk image (or DOS 3.3).";
+const char msg_roimg[] = "Read-only disk image; C extracts to the other panel.";
+const char msg_samedir[] = "Both panels show the same directory.";
+const char msg_otherro[] = "The other panel is a read-only disk image.";
+const char msg_nohelp[] = "A2FILE/A2FILE.HELP is missing: no help on this volume.";
+const char msg_intoself[] = "Cannot copy a directory into itself.";
 const char VIEW_KEYS[] = "SPC Next,B Prev,ESC Back";
 /* Les 107 mots Applesoft ($80-$EA), separes par des zeros. Tableau NOMME
  * (const char[]), pas des litteraux "..." : cc65 regroupe les litteraux dans
@@ -1301,6 +1308,91 @@ void __fastcall__ baslist_entry(const struct A2fcApi* a)
         }
         if (!done && page + 1 < TEXT_PAGES && known == page + 1) {
             text_starts[page + 1] = vbase + vpos;     /* le debut de la page suivante */
+            known = page + 2;
+        }
+        bar_begin();
+        cprintf("%-38.38s page %u%s", full, page + 1, done ? " (end)" : "");
+        keys_bar(52, VIEW_KEYS);
+        key = cgetc();
+        if (key == KEY_ESC || key == 'q' || key == 'Q') break;
+        if ((key == ' ' || key == KEY_RETURN || key == KEY_RIGHT || key == KEY_DOWN) && !done && page + 1 < known) ++page;
+        if ((key == 'b' || key == 'B' || key == KEY_LEFT || key == KEY_UP) && page) --page;
+    }
+    fclose(vf);
+    a2fc_view = 0;
+    draw_all();
+}
+#pragma static-locals (pop)
+#pragma rodata-name (pop)
+#pragma code-name (pop)
+
+/* ---------------------------------------------------------------------- */
+/* La surcouche AWP : un document AppleWorks (traitement de texte, type    */
+/* $1A) lu page par page, dans A2FILE/AWP.PLG. Entree ou T sur un AWP, ou   */
+/* le menu !. Le format : 300 octets d'en-tete (SFMinVers en +183 : a       */
+/* partir de 30, deux octets de plus), puis des enregistrements de deux     */
+/* octets d'en-tete : $D0 en second = un retour chariot seul, > $D0 = une   */
+/* commande de mise en page (sautee), $FF $FF = la fin, sinon le premier    */
+/* octet compte les octets d'une ligne de texte : position du curseur et    */
+/* drapeaux ($FF = une regle, sautee), puis les caracteres, ou les codes    */
+/* sous $20 sont des enrichissements (ignores) et des tabulations.         */
+/* ---------------------------------------------------------------------- */
+#pragma code-name (push, "AWP")
+#pragma rodata-name (push, "AWPRO")
+#pragma static-locals (push, off)
+
+#define aw_row input[0]
+#define aw_col input[1]
+
+static const char aw_bad[] = "Not an AppleWorks word-processor file.";
+
+static void aw_putc(char c)
+{
+    if (aw_row >= TEXT_ROWS) return;
+    if (c == 13) { ++aw_row; aw_col = 0; if (aw_row < TEXT_ROWS) gotoxy(0, aw_row); return; }
+    if (aw_col == 80) { ++aw_row; aw_col = 0; if (aw_row >= TEXT_ROWS) return; gotoxy(0, aw_row); }
+    cputc(c);
+    ++aw_col;
+}
+
+void __fastcall__ awp_entry(const struct A2fcApi* a)
+{
+    unsigned char page = 0, known = 1, done, len;
+    int c, kind;
+    char key;
+    (void)a;
+    if (!selected.name[0] || selected.type != 0x1A || !full[0]) { message(aw_bad); return; }
+    vf = fopen(full, "rb");
+    if (!vf) { report_error("Open"); return; }
+    view_seek(183);
+    c = view_getc();                              /* SFMinVers */
+    a2fc_view = 2;
+    text_starts[0] = c >= 30 ? 302 : 300;
+    for (;;) {
+        view_seek(text_starts[page]);
+        clrscr();
+        aw_row = 0; aw_col = 0; done = 0;
+        while (aw_row < TEXT_ROWS) {
+            c = view_getc(); kind = view_getc();
+            if (c < 0 || kind < 0 || kind == 0xFF) { done = 1; break; }
+            if (kind == 0xD0) { aw_putc(13); continue; }       /* un retour chariot seul */
+            if (kind > 0xD0) continue;                          /* une commande de mise en page */
+            len = (unsigned char)c;
+            if (len < 2) { done = 1; break; }
+            c = view_getc(); view_getc();                       /* position, puis compte et drapeau CR */
+            len -= 2;
+            if (c == 0xFF) { while (len--) view_getc(); continue; }   /* une regle */
+            while (len--) {
+                c = view_getc();
+                if (c < 0) { done = 1; break; }
+                if (c >= 0x20 && c < 0x7F) aw_putc((char)c);
+                else if (c == 0x16 || c == 0x17) do aw_putc(' '); while (aw_col & 7);   /* tabulation */
+                else if (c == 0x0B) aw_putc(' ');                                      /* espace insecable */
+            }
+            aw_putc(13);
+        }
+        if (!done && page + 1 < TEXT_PAGES && known == page + 1) {
+            text_starts[page + 1] = vbase + vpos;
             known = page + 2;
         }
         bar_begin();
@@ -2340,7 +2432,7 @@ static void view_help(void)
     unsigned char x, y, klen, i, kind;
     a2file_file("A2FILE.HELP");
     f = fopen(other_full, "rb");
-    if (!f) { message("A2FILE/A2FILE.HELP is missing: no help on this volume."); return; }
+    if (!f) { { extern const char msg_nohelp[]; message(msg_nohelp); }; return; }
     n = fread(HELP_BUF, 1, 0x1FF0, f);
     fclose(f);
     HELP_BUF[n] = 0;
@@ -3066,7 +3158,7 @@ static unsigned char copy_one(const struct Entry* e)
     if (!is_dir(e)) return copy_file(e->name, e->type, e->aux) != 0;
     len = strlen(full);
     if (!strncmp(dst->path, full, len) && (dst->path[len] == '/' || !dst->path[len])) {
-        message("Cannot copy a directory into itself.");
+        { extern const char msg_intoself[]; message(msg_intoself); };
         return 0;
     }
     if (!exists(other_full)) {
@@ -3092,9 +3184,9 @@ static unsigned char target_check(void)
 {
     struct Panel* dst = &panels[!active];
     if (!panels[active].path[0]) { message("Open a directory first."); return 0; }
-    if (dst->fs) { message("The other panel is a read-only disk image."); return 0; }
+    if (dst->fs) { { extern const char msg_otherro[]; message(msg_otherro); }; return 0; }
     if (!dst->path[0]) { message("Open a directory in the other panel."); return 0; }
-    if (!strcmp(dst->path, panels[active].path)) { message("Both panels show the same directory."); return 0; }
+    if (!strcmp(dst->path, panels[active].path)) { { extern const char msg_samedir[]; message(msg_samedir); }; return 0; }
     return 1;
 }
 
@@ -3850,7 +3942,7 @@ static unsigned char open_image(struct Panel* pan, const struct Entry* e)
         pan->fs = FS_PRODOS;
         open_path(pan);
         select_name(pan, input);
-        message("Not a ProDOS disk image (or DOS 3.3).");
+        { extern const char msg_notimg[]; message(msg_notimg); };
     }
     show_active();
     return 1;
@@ -3878,6 +3970,7 @@ static void open_selected(void)
     if (looks_like_image(e)) view_image();
     else if (looks_like_music(e)) overlay_run("MUSIC", 0);
     else if (e->type == 0x04) { if (overlay("TEXT")) view_text(full); }
+    else if (e->type == 0x1A) overlay_run("AWP", 0);
     else if (e->type == 0xFF || e->type == 0xFC) overlay_run("RUN", 'X');
     else if (overlay("HEX")) view_hex(full, e->size);
 }
@@ -4089,7 +4182,7 @@ int main(void)
          * les commandes qui ecriraient ou qui ont besoin d'un vrai chemin
          * sont refusees en clair. */
         if (pan->fs && strchr("RKALDXEWTHIM", key & 0xDF)) {
-            message("Read-only disk image; C extracts to the other panel.");
+            { extern const char msg_roimg[]; message(msg_roimg); };
             continue;
         }
         switch (key) {
@@ -4135,7 +4228,9 @@ int main(void)
         case 's': case 'S': overlay_run("MUSIC", 'S'); break;
         case 't': case 'T':
             if (pan->count && !is_dir(&pan->e[pan->cursor]) && build_full(full, pan, &pan->e[pan->cursor])) {
-                if (pan->e[pan->cursor].type == 0xFC) { if (overlay("BASLIST")) baslist_entry(0); }
+                key = pan->e[pan->cursor].type;
+                if ((unsigned char)key == 0xFC) { if (overlay("BASLIST")) baslist_entry(0); }
+                else if ((unsigned char)key == 0x1A) overlay_run("AWP", 0);
                 else if (overlay("TEXT")) view_text(full);
             }
             break;
