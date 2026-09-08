@@ -60,8 +60,8 @@ No build required. Choose the image that fits your setup:
 | Download | Best for | Included |
 |---|---|---|
 | [**A2FILECMD.2mg**](https://github.com/habib256/a2filecmd/releases/latest/download/A2FILECMD.2mg) | Emulators and CFFA-style storage that support 2IMG hard disks | Bootable 32 MB volume `/A2FILEHD`, the complete program and a `DEMO/` collection |
-| [**A2FILECMD.dsk**](https://github.com/habib256/a2filecmd/releases/latest/download/A2FILECMD.dsk) | ADTPro and emulators using DOS 3.3 sector order | Bootable 140 KB ProDOS floppy with the complete program |
-| [**A2FILECMD.po**](https://github.com/habib256/a2filecmd/releases/latest/download/A2FILECMD.po) | Tools and emulators using ProDOS sector order | The same bootable floppy, in ProDOS sector order |
+| [**A2FILECMD.po**](https://github.com/habib256/a2filecmd/releases/latest/download/A2FILECMD.po) | ADTPro, CiderPress and most emulators | Bootable 140 KB ProDOS floppy with the complete program, blocks in ProDOS order |
+| [**A2FILECMD.dsk**](https://github.com/habib256/a2filecmd/releases/latest/download/A2FILECMD.dsk) | Tools and emulators that expect a `.dsk` file | The same 140 KB ProDOS floppy, its sectors stored in the `.dsk` (DOS-order) layout — a ProDOS volume, no DOS 3.3 on it |
 
 1. Boot the image on an **Enhanced Apple IIe with 128 KB and an 80-column display**, or an emulator configured that way. ProDOS 8 is included.
 2. Press **`TAB`** to switch panels, **`RETURN`** to open and **`ESC`** to go up. Press **`?`** for the full key map.
