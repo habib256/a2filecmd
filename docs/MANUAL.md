@@ -1,7 +1,7 @@
 # The A2 File Cmd manual
 
 A two-pane ProDOS file manager in the spirit of Total Commander, for the
-128 KB Apple IIe; on screen it calls itself **A2 FILE CMD 0.6** (the number
+128 KB Apple IIe; on screen it calls itself **A2 FILE CMD 0.6.1** (the number
 lives in `A2FC_VERSION` in the Makefile, picked up by the launcher, the status
 line and the help). It is free software under the GNU GPL v3, by Arnaud
 Verhille; the launcher and the help say so. Two ways to start it: boot the

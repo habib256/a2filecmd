@@ -1,7 +1,7 @@
 # A2 File Cmd — ce qui reste à faire
 
 `🟠 haute · 🟡 moyenne · 🟢 basse`, effort indicatif en *italique*, fichier en
-`backticks`. Les mesures datent du 2026-09-08, sur la 0.6.
+`backticks`. Les mesures datent du 2026-09-08, sur la 0.6.1.
 
 ## La place disponible
 

@@ -13,6 +13,7 @@
 ;   ON_LINE...) : la commande est le premier argument, le bloc le second.
         .export _mli_gfi, _mli_sfi, _mli_call
         .import popa
+        .import __oserror       ; _oserror de cc65 : report_error le lit
         .segment "DATA"
 _mli_call:
         sta     block
@@ -32,6 +33,11 @@ go:     jsr     $BF00
 command:
         .byte   $C4
 block:  .word   $0000
+        ; Le code ProDOS rendu par le MLI (0 si tout va bien) va aussi dans
+        ; _oserror : seule la stdio de cc65 le tenait a jour, et report_error
+        ; affichait sinon la raison de l'echec PRECEDENT -- en clair, donc
+        ; avec assurance, depuis que prodos_error traduit les codes.
+        sta     __oserror
         ldx     #0
         rts
 
