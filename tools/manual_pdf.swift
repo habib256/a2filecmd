@@ -15,6 +15,8 @@ dateFormatter.dateFormat = "d MMMM yyyy"
 let generatedDate = dateFormatter.string(from: Date())
 let input = CommandLine.arguments[1], output = CommandLine.arguments[2]
 let source = try String(contentsOfFile: input, encoding: .utf8)
+let versionRange = source.range(of: #"(?<=\*\*Version )[0-9.]+"#, options: .regularExpression)
+let guideVersion = versionRange.map { String(source[$0]) } ?? ""
 let W: CGFloat = 595.28, H: CGFloat = 841.89, margin: CGFloat = 46
 let width = W - 2 * margin
 let ink = CGColor(gray: 0.16, alpha: 1)
@@ -22,7 +24,7 @@ let blue = CGColor(red: 0.12, green: 0.28, blue: 0.40, alpha: 1)
 var rect = CGRect(x: 0, y: 0, width: W, height: H)
 let url = URL(fileURLWithPath: output)
 let consumer = CGDataConsumer(url: url as CFURL)!
-let ctx = CGContext(consumer: consumer, mediaBox: &rect, [kCGPDFContextTitle: "A2 File Cmd — Complete Manual", kCGPDFContextAuthor: "Arnaud Verhille", kCGPDFContextSubject: "Printable edition of docs/MANUAL.md"] as CFDictionary)!
+let ctx = CGContext(consumer: consumer, mediaBox: &rect, [kCGPDFContextTitle: "A2 File Cmd — User Guide", kCGPDFContextAuthor: "Arnaud Verhille", kCGPDFContextSubject: "Printable edition of docs/MANUAL.md"] as CFDictionary)!
 var page = 0, y: CGFloat = 0
 var headings: [(String, Int, CGFloat)] = []
 func plain(_ s: String) -> String {
@@ -60,42 +62,49 @@ func draw(_ text: NSAttributedString, _ x: CGFloat, _ top: CGFloat, _ w: CGFloat
 func newPage() {
     if page > 0 { ctx.endPDFPage() }
     page += 1; ctx.beginPDFPage(nil); y = 66
-    draw(attributed("A2 FILE CMD  /  COMPLETE MANUAL", 8, "Arial-BoldMT", blue), margin, 27, width, 16)
+    draw(attributed("A2 FILE CMD  /  USER GUIDE", 8, "Arial-BoldMT", blue), margin, 27, width, 16)
     ctx.setStrokeColor(CGColor(gray: 0.8, alpha: 1)); ctx.setLineWidth(0.5)
     ctx.move(to: CGPoint(x: margin, y: H-48)); ctx.addLine(to: CGPoint(x: W-margin, y: H-48)); ctx.strokePath()
     draw(attributed("A2 File Cmd · English edition", 8), margin, H-35, width-45, 15)
     draw(attributed("\(page)", 8), W-margin-25, H-35, 25, 15)
 }
 func ensure(_ needed: CGFloat) { if y + needed > H-55 { newPage() } }
-func paragraph(_ s: String, size: CGFloat = 10.3, font: String = "ArialMT", indent: CGFloat = 0, gap: CGFloat = 8) {
+func paragraph(_ s: String, size: CGFloat = 10.3, font: String = "ArialMT", indent: CGFloat = 0, gap: CGFloat = 6) {
     let text = attributed(s, size, font)
     let h = height(text, width-indent)
     ensure(h+gap)
     draw(text, margin+indent, y, width-indent, h); y += h+gap
 }
 newPage()
-y = 165
-paragraph("A2 FILE CMD", size: 34, font: "Arial-BoldMT", gap: 18)
-paragraph("The complete manual", size: 22, gap: 24)
-paragraph("Two panels. One Apple II.", size: 15, gap: 36)
-paragraph("6502 and 65C02 editions\nBOOT · EXTRA · XL", size: 13, gap: 35)
-paragraph("By Arnaud Verhille\nGNU General Public License v3", size: 11, gap: 28)
-paragraph("Printable edition of the project's English manual.\nSource: docs/MANUAL.md", size: 10, gap: 12)
-paragraph("Generated \(generatedDate). This PDF reproduces the documentation available when it was generated; development may continue in the source manual.", size: 9)
-// Reserve a contents page, filled with page references after pagination.
-newPage()
+y = 84
+paragraph("A2 FILE CMD", size: 30, font: "Arial-BoldMT", gap: 12)
+paragraph("User guide · \(guideVersion)", size: 19, gap: 16)
+paragraph("6502 and 65C02 · BOOT / EXTRA / XL", size: 12, gap: 12)
+// The current panels screenshot and clickable contents share the cover.
+let screenshotURL = URL(fileURLWithPath:input).deletingLastPathComponent().appendingPathComponent("screenshots/01-panels-0.7.5.png")
+guard let screenshot = NSImage(contentsOf:screenshotURL),
+      let panelImage = screenshot.cgImage(forProposedRect:nil,context:nil,hints:nil) else {
+    fatalError("Missing panels screenshot: \(screenshotURL.path)")
+}
+let imageWidth:CGFloat = 400
+let imageHeight = imageWidth * 384 / 560
+ctx.interpolationQuality = .none
+ctx.draw(panelImage,in:CGRect(x:(W-imageWidth)/2,y:H-210-imageHeight,width:imageWidth,height:imageHeight))
+
 let contentsIndex = page-1
 newPage()
 let lines = source.components(separatedBy: .newlines)
 var i = 0
 while i < lines.count {
     let line = lines[i]
+    if line.hasPrefix("![") { i += 1; continue }
     if line.trimmingCharacters(in: .whitespaces).isEmpty { i += 1; continue }
     if line.hasPrefix("#") {
         let level = line.prefix(while: {$0 == "#"}).count
         let title = String(line.dropFirst(level)).trimmingCharacters(in: .whitespaces)
+        if level == 1 { i += 1; continue }
         ensure(level <= 2 ? 100 : 70)
-        y += level <= 2 ? 14 : 7
+        y += level <= 2 ? 10 : 5
         if level <= 2 { headings.append((plain(title),page-1,y)) }
         paragraph(title, size: level <= 2 ? 18 : 13, font: "Arial-BoldMT", gap: 12)
         i += 1; continue
@@ -118,12 +127,12 @@ while i < lines.count {
         let ratios: [CGFloat] = count == 2 ? [0.25,0.75] : (count == 3 ? [0.22,0.16,0.62] : Array(repeating: 1/CGFloat(count), count: count))
         func tableRow(_ cells: [String], header: Bool) {
             let texts = cells.enumerated().map { (j,s) in attributed(s, header ? 9 : 9.2, header ? "Arial-BoldMT" : "ArialMT") }
-            let h = max(24, texts.enumerated().map { height($0.element, width*ratios[$0.offset]-14)+12 }.max() ?? 24)
+            let h = max(21, texts.enumerated().map { height($0.element, width*ratios[$0.offset]-14)+8 }.max() ?? 24)
             ensure(h)
             if header { ctx.setFillColor(CGColor(red:0.90,green:0.94,blue:0.96,alpha:1));ctx.fill(CGRect(x:margin,y:H-y-h,width:width,height:h)) }
             var x = margin
             for j in 0..<texts.count {
-                draw(texts[j],x+7,y+6,width*ratios[j]-14,h-10)
+                draw(texts[j],x+7,y+4,width*ratios[j]-14,h-6)
                 x += width*ratios[j]
             }
             ctx.setStrokeColor(CGColor(gray:0.80,alpha:1));ctx.setLineWidth(0.4)
@@ -132,11 +141,11 @@ while i < lines.count {
         }
         tableRow(rows[0], header:true)
         for row in rows.dropFirst() {
-            let h = row.enumerated().map { height(attributed($0.element,9.2),width*ratios[$0.offset]-14)+12 }.max() ?? 24
+            let h = row.enumerated().map { height(attributed($0.element,9.2),width*ratios[$0.offset]-14)+8 }.max() ?? 24
             if y+h > H-55 { newPage(); tableRow(rows[0],header:true) }
             tableRow(row,header:false)
         }
-        y += 12; continue
+        y += 8; continue
     }
     var text = line; i += 1
     let bullet = line.hasPrefix("- ") || line.hasPrefix("* ")
@@ -163,15 +172,17 @@ func annotation(_ text: String, _ x: CGFloat, _ top: CGFloat, _ width: CGFloat, 
     a.contents=text;a.font=NSFont(name:"Arial",size:size);a.fontColor=NSColor.black;a.color=NSColor.clear
     a.shouldPrint=true; toc.addAnnotation(a)
 }
-annotation("Contents",margin,80,width,24)
-var top: CGFloat = 135
+annotation("Contents",margin,510,width,18)
+var top: CGFloat = 548
 for (title,index,_) in headings {
     annotation(title,margin,top,width-45,10)
     annotation("\(index+1)",W-margin-30,top,30,10)
     let link = PDFAnnotation(bounds:CGRect(x:margin,y:H-top-24,width:width,height:24),forType:.link,withProperties:nil)
     link.destination = PDFDestination(page:document.page(at:index)!,at:CGPoint(x:margin,y:H-margin))
-    toc.addAnnotation(link);top += 24
+    toc.addAnnotation(link);top += 20
 }
+annotation("By Arnaud Verhille · GNU GPL v3",margin,750,width,9)
+annotation("English guide · Generated \(generatedDate)",margin,774,width,8)
 let finalURL = url.deletingPathExtension().appendingPathExtension("final.pdf")
 if !document.write(to:finalURL) { fatalError("Cannot save PDF") }
 try FileManager.default.removeItem(at:url);try FileManager.default.moveItem(at:finalURL,to:url)
