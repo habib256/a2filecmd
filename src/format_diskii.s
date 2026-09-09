@@ -8,7 +8,8 @@
 ; (Trans) comes from FASTDSK, via ADTPro. Here: split into three C calls,
 ; one track at a time, to display the progress, and without ADTPro's
 ; message system. The track image occupies $6500-$7FFF, outside
-; FORMAT.SYS which fits below $6400: the sixteen sectors are at their
+; the resident. Each track call saves $6500-$80FF in AUX and restores it
+; before returning to C (also on error). The sixteen sectors are at their
 ; original place ($6800-$7FFF), but the GAP1 preceding them is extended by
 ; 512 sync bytes. A track written longer than one disk revolution
 ; (6,862 bytes, against 6,250 to 6,400 depending on the drive speed, 6,656
@@ -45,7 +46,7 @@ DiskWR  = $C08D
 ModeRD  = $C08E
 ModeWR  = $C08F
 
-        .segment "BSS"
+        .segment "FORMATBSS"
 Slot:   .res 1                  ; slot x 16, bit 7 = drive 2
 SlotF:  .res 1                  ; slot x 16 only
 LByte:  .res 1
@@ -56,7 +57,7 @@ TRKcur: .res 1
 TRKdes: .res 1
 LInOut: .res 1
 
-        .segment "RODATA"
+        .segment "FORMATRO"
 LAddr:  .byte $D5,$AA,$96       ; address prologue
         .byte $AA,$AA,$AA,$AA,$AA,$AA,$AA,$AA   ; volume, track, sector, checksum (4&4)
         .byte $DE,$AA,$EB       ; address epilogue
@@ -69,7 +70,7 @@ LData:  .byte $DE,$AA,$EB       ; data epilogue
 LTable: .byte $02,$04,$06,$00   ; phases inward
         .byte $06,$04,$02,$00   ; outward
 
-        .segment "CODE"
+        .segment "FORMAT"
 
 ; -- diskii_begin ----------------------------------------------------------
 _diskii_begin:
@@ -97,22 +98,51 @@ _diskii_begin:
         lda Step2,x
         lda Step4,x
         lda Step6,x
-        jsr Build
         lda #0
         ldx #0
         rts
 
 ; -- diskii_track ---------------------------------------------------------
 _diskii_track:
+        php
+        sei
         sta Track
+        sec
+        jsr ResidentCopy
+        jsr Build
+        lda Track
         sta TRKdes
         jsr Seek
         jsr Calc
         jsr Trans
         bcs @err
         lda #0
-@err:   ldx #0
+@err:   pha
+        clc
+        jsr ResidentCopy
+        pla
+        plp
+        ldx #0
         rts
+
+; Preserve $6500-$80FF: Build emits a final gap through $800F even
+; though the cycle-counted write loop stops reading at $8000.
+; No C/runtime/MLI call may run between these two copies. Interrupts stay
+; disabled until the resident has been restored, including on write error.
+; AUXMOVE's carry chooses main -> AUX (set) or AUX -> main (clear).
+ResidentCopy:
+        lda #$00
+        sta $3C
+        sta $42
+        lda #$65
+        sta $3D
+        sta $43
+        lda #$FF
+        sta $3E
+        lda #$80
+        sta $3F
+        jmp $C311
+
 
 ; -- diskii_end -----------------------------------------------------------
 _diskii_end:
@@ -317,3 +347,7 @@ LWRprot:
         lda #$2B
         sec
         rts
+
+; A taken branch must never add a page-crossing cycle to the write loop.
+        .assert >LSync1 = >MStore, lderror, "Disk II write loop crosses a page"
+        .assert >LSync2 = >(MStore+12), lderror, "Disk II write branch crosses a page"

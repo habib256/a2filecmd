@@ -1104,7 +1104,6 @@ const char msg_notimg[] = "Not a ProDOS disk image (or DOS 3.3).";
 const char msg_roimg[] = "Read-only disk image; C extracts to the other panel.";
 const char msg_samedir[] = "Both panels show the same directory.";
 const char msg_otherro[] = "The other panel is a read-only disk image.";
-const char msg_nohelp[] = "A2FILE/A2FILE.HELP is missing.";
 const char msg_intoself[] = "Cannot copy a directory into itself.";
 const char VIEW_KEYS[] = "SPC Next,B Prev,ESC Back";
 /* The three column headers of the panels, in the language card rather
@@ -1773,6 +1772,7 @@ void __fastcall__ hex_entry(const struct A2fcApi* a)
 /* ---------------------------------------------------------------------- */
 
 /* Three CR-terminated lines: left panel, right panel, "S<sort>A<active>". */
+static const char cfg_format[] = "%s\r%s\rS%uA%u\r";
 static void save_config(void)
 {
     FILE* f;
@@ -1781,7 +1781,7 @@ static void save_config(void)
     _auxtype = 0;
     f = fopen(cfg_path, "wb");
     if (!f) return;
-    n = sprintf((char*)copy_buf, "%s\r%s\rS%uA%u\r", panels[0].path, panels[1].path, sort_mode, active);
+    n = sprintf((char*)copy_buf, cfg_format, panels[0].path, panels[1].path, sort_mode, active);
     fwrite(copy_buf, 1, n, f);
     fclose(f);
 }
@@ -1904,7 +1904,7 @@ static unsigned char ask_disk(const char* name)
 {
     const char* local;
     /* Keep aligned with PLUGINS_FLOPPY and XPLUGINS_FLOPPY in Makefile. */
-    static const char locals[] = "HELP\0TEXT\0HEX\0DELETE\0RUN\0ATTR\0MENU\0DISKIMG\0IMGFS\0DOS33\0COMPARE\0TXTCONV\0DATE\0VERIFY\0TAGPAT\0VOLNAME\0WIPE\0";
+    static const char locals[] = "HELP\0TEXT\0HEX\0DELETE\0RUN\0FORMAT\0ATTR\0MENU\0DISKIMG\0IMGFS\0DOS33\0COMPARE\0TXTCONV\0DATE\0VERIFY\0TAGPAT\0VOLNAME\0WIPE\0";
     for (local = locals; *local; local += strlen(local) + 1)
         if (!strcmp(local, name)) break;
     if (*local) {
@@ -2612,6 +2612,8 @@ static void toggle_music(void)
 /* The HELP overlay: the help page, in A2FILE/HELP.PLG. */
 #pragma code-name (push, "HELP")
 #pragma rodata-name (push, "HELPRO")
+const char msg_nohelp[] = "A2FILE/A2FILE.HELP is missing.";
+static const char help_file[] = "A2FILE.HELP";
 static const char HELP_KEYS[] = "ANY Return to the panels";
 static void view_help(void)
 {
@@ -2619,7 +2621,7 @@ static void view_help(void)
     FILE* f;
     unsigned int n;
     unsigned char x, y, klen, i, kind;
-    a2file_file("A2FILE.HELP");
+    a2file_file(help_file);
     f = fopen(other_full, "rb");
     if (!f) { { extern const char msg_nohelp[]; message(msg_nohelp); }; return; }
     n = fread(HELP_BUF, 1, 0x1FF0, f);
@@ -4205,32 +4207,11 @@ static void run_selected(const struct Entry* e)
     launch_file(addr);
 }
 
-/* F: the formatter, A2FILE/FORMAT.SYS next to A2FILE.CODE (Bitsy Bye offers
- * it too), launched from the program's directory -- the one A2FILE.CFG comes
- * from, at the root of a volume or not; it relaunches A2FC on exit. */
-static const char fmt_ask[] = "Open the disk formatter?";
-static const char fmt_sys[] = "A2FILE/FORMAT.SYS";
-
-static const char fmt_cfg[] = "/A2FILE/A2FILE.CFG";
-
-static void format_disk(void)
-{
-    unsigned char n;
-    if (!confirm(fmt_ask)) return;
-    strcpy(full, cfg_path);
-    n = strlen(full);                                      /* "/VOL/DIR/A2FILE/A2FILE.CFG" -> "/VOL/DIR" : */
-    if (n > 18 && !strcmp(full + n - 18, fmt_cfg)) full[n - 18] = 0;   /* the program's directory */
-    chdir(full);
-    strcpy(full, fmt_sys);
-    launch_file(0x2000);
-}
-
 void __fastcall__ run_entry(const struct A2fcApi* a)
 {
     struct Panel* pan = &panels[active];
     (void)a;
-    if (api.arg == 'F') format_disk();
-    else if (pan->count) run_selected(&pan->e[pan->cursor]);
+    if (pan->count) run_selected(&pan->e[pan->cursor]);
 }
 #pragma rodata-name (pop)
 #pragma code-name (pop)
@@ -4598,7 +4579,8 @@ int main(void)
             if (pan->count && !is_dir(&pan->e[pan->cursor]) && build_full(full, pan, &pan->e[pan->cursor]))
                 if (overlay("HEX")) view_hex(full, pan->e[pan->cursor].size);
             break;
-        case 'x': case 'X': case 'f': case 'F': overlay_run("RUN", key & 0xDF); break;
+        case 'x': case 'X': overlay_run("RUN", 'X'); break;
+        case 'f': case 'F': overlay_run("FORMAT", 'F'); break;
         case 'e': case 'E': overlay_run("EDIT", 'E'); break;
         case 'w': case 'W': overlay_run("DISKIMG", 'W'); break;
         case 'p': case 'P': toggle_music(); break;

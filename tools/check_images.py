@@ -34,6 +34,8 @@ def check_cpu(cpu):
         assert image.header()['name'] == volume, path
         root = entries(image, 2)
         directory = entries(image, int.from_bytes(root['A2FILE'][17:19], 'little'))
+        assert 'FORMAT.SYS' not in directory, path
+        assert ('FORMAT.PLG' in directory) == (role != 'EXTRA'), path
         plugins[role] = {name for name in directory if name.endswith('.PLG')}
         for name in plugins[role]:
             entry = directory[name]

@@ -1,5 +1,5 @@
-/* A2FILE/FORMAT.SYS -- formats a disk for ProDOS, from A2 File Cmd
- * (key F) or Bitsy Bye, and returns to A2FC.
+/* FORMAT.PLG -- native large overlay, entered by F or the overlay menu.
+ * Returns directly to the resident file manager.
  *
  * The physical formatting of a Disk II floppy comes from the ProDOS
  * Hyper-FORMAT by Jerry Hewett (1985, public domain) and Gary Desrochers
@@ -16,28 +16,87 @@
 #include <stdio.h>
 #include <string.h>
 #include <conio.h>
+#include "a2fc_plugin.h"
+#include "music.h"
+
+#pragma code-name (push, "FORMAT")
+#pragma rodata-name (push, "FORMATRO")
+#pragma data-name (push, "FORMATRO")
+#pragma bss-name (push, "FORMATBSS")
 
 #ifndef A2FC_VERSION
-#define A2FC_VERSION "0.5"
+#define A2FC_VERSION "0.7"
 #endif
 
 unsigned char __fastcall__ mli_call(unsigned char cmd, void* parms);
-unsigned char __fastcall__ driver_call(unsigned char unit, unsigned char cmd, unsigned char lc);
-extern unsigned int driver_blocks;
-extern unsigned int chain_addr;
-void __fastcall__ chain_load(const char* path);
+unsigned char __fastcall__ format_driver_call(unsigned char unit, unsigned char cmd, unsigned char lc);
+extern unsigned int format_driver_blocks;
 unsigned char __fastcall__ diskii_begin(unsigned char slotdrive);
 unsigned char __fastcall__ diskii_track(unsigned char track);
 void diskii_end(void);
 
-#define DEVNUM (*(unsigned char*)0xBF30)
 #define DEVCNT (*(unsigned char*)0xBF31)
 #define DEVLST ((unsigned char*)0xBF32)
 #define DEVADR ((unsigned int*)0xBF10)
-#define BLOCK  ((unsigned char*)0x6800)   /* Hyper-FORMAT's block buffer */
+#define BLOCK  ((unsigned char*)0x3E00)   /* outside FORMAT code and BSS */
+
+static const char fm_line_format[] = "%-79.79s";
+static const char fm_title_text[] = "  A2 FILE CMD " A2FC_VERSION " - FORMAT A DISK FOR PRODOS";
+static const char fm_bar_format[] = "%-79.79s";
+static const char fm_generic_error[] = "ProDOS error";
+static const char fm_protected_error[] = "the disk is write protected";
+static const char fm_io_error[] = "I/O error, the disk may be missing or damaged";
+static const char fm_device_error[] = "no device connected there";
+static const char fm_switched_error[] = "the disk was switched";
+static const char fm_error_format[] = "Failed: %s ($%02X).";
+static const char fm_list_intro[] = "This ERASES EVERYTHING on the disk you choose. Read the list carefully.";
+static const char fm_list_columns[] = "     Where             Type            Current volume     Size";
+static const char fm_volume_format[] = "/%s";
+static const char fm_no_volume[] = "(no ProDOS volume)";
+static const char fm_device_format[] = "  %c  Slot %u, drive %u  %-15s %-18s %5u blocks%s";
+static const char fm_in_use[] = "  IN USE";
+static const char fm_empty[] = "";
+static const char fm_list_hint[] = "Press the number of the disk to format. Nothing is written before you confirm.";
+static const char fm_list_keys[] = "1-9 Choose a disk    ESC Back to A2 File Cmd";
+static const char fm_name_intro[] = "Step 2 of 3: the name of the new volume.";
+static const char fm_target_format[] = "Disk: slot %u, drive %u, %s, %u blocks.";
+static const char fm_name_rules[] = "A ProDOS volume name: a letter, then letters, digits or periods, 15 at most.";
+static const char fm_default_hint[] = "RETURN alone names it BLANK.";
+static const char fm_name_keys[] = "RETURN Accept    DEL Erase    ESC Back to A2 File Cmd";
+static const char fm_name_format[] = "New volume name: /%s_   ";
+static const char fm_default_name[] = "BLANK";
+static const char fm_confirm_intro[] = "Step 3 of 3: the final confirmation.";
+static const char fm_warning[] = "  WARNING  ";
+static const char fm_confirm_target[] = "You are about to FORMAT the disk in slot %u, drive %u (%s),";
+static const char fm_confirm_volume[] = "currently the volume /%s, %u blocks.";
+static const char fm_confirm_no_volume[] = "which holds no ProDOS volume, %u blocks.";
+static const char fm_erase_warning[] = " EVERYTHING ON THAT DISK WILL BE LOST FOREVER. ";
+static const char fm_confirm_name[] = "The new, empty volume will be named /%s.";
+static const char fm_erase_hint[] = "To confirm, type the word ERASE in capital letters, then press RETURN.";
+static const char fm_cancel_hint[] = "Anything else, or ESC, cancels without touching the disk.";
+static const char fm_ram_warning[] = "Disk II formatting also clears /RAM: copy its files elsewhere first.";
+static const char fm_confirm_keys[] = "Type ERASE then RETURN to format    ESC Cancel";
+static const char fm_typed_format[] = "> %s_   ";
+static const char fm_erase_word[] = "ERASE";
+static const char fm_format_intro[] = "Formatting. Do not open the drive door or switch off the computer.";
+static const char fm_format_target[] = "Slot %u, drive %u, %s -> /%s";
+static const char fm_wait_text[] = "Please wait ...";
+static const char fm_track_format[] = "Track %2u of 35 ";
+static const char fm_structures_text[] = "Writing the ProDOS boot blocks, directory and bitmap ...";
+static const char fm_verified_text[] = "Read back and verified.";
+static const char fm_in_use_error[] = " That disk holds the running program: it cannot be formatted from here. ";
+static const char fm_unknown_size[] = " No disk, or its size is unknown: nothing to format. ";
+static const char fm_failed_hint[] = "The disk may be unusable until formatted again.";
+static const char fm_done_format[] = "Done: /%s, %u blocks, %u free.";
+static const char fm_done_keys[] = "Any key: back to the list    ESC: A2 File Cmd";
+static const char fm_ram_note[] = "/RAM was rebuilt empty.";
 
 enum { KIND_DISKII, KIND_SMART, KIND_RAM, KIND_BLOCK };
-static const char* const KIND_NAMES[] = { "Disk II 5.25\"", "SmartPort", "/RAM disk", "block device" };
+static const char kind_disk[] = "Disk II 5.25\"";
+static const char kind_smart[] = "SmartPort";
+static const char kind_ram[] = "/RAM disk";
+static const char kind_block[] = "block device";
+static const char* const KIND_NAMES[] = { kind_disk, kind_smart, kind_ram, kind_block };
 
 struct Dev {
     unsigned char unit, kind, inuse, valid;
@@ -49,6 +108,9 @@ static unsigned char ndev;
 static unsigned char boot_unit;
 static char volname[16];
 static struct Dev* target;
+extern unsigned char a2fc_playing;
+static const struct A2fcApi* A;
+static unsigned char ram_cleared;
 
 /* The ProDOS boot block of a floppy (block 0), Hyper-FORMAT's; block 1
  * stays zero. */
@@ -85,7 +147,7 @@ static void title(const char* sub)
     clrscr();
     gotoxy(0, 0);
     revers(1);
-    cprintf("%-79.79s", "  A2 FILE CMD " A2FC_VERSION "  -  FORMAT A DISK FOR PRODOS");
+    cprintf(fm_line_format, fm_title_text);
     revers(0);
     gotoxy(1, 1);
     cputs(sub);
@@ -95,19 +157,19 @@ static void bar(const char* text)
 {
     gotoxy(0, 23);
     revers(1);
-    cprintf("%-79.79s", text);
+    cprintf(fm_bar_format, text);
     revers(0);
 }
 
 static void error_line(unsigned char row, unsigned char code)
 {
-    const char* what = "ProDOS error";
-    if (code == 0x2B) what = "the disk is write protected";
-    else if (code == 0x27) what = "I/O error, the disk may be missing or damaged";
-    else if (code == 0x28) what = "no device connected there";
-    else if (code == 0x2E) what = "the disk was switched";
+    const char* what = fm_generic_error;
+    if (code == 0x2B) what = fm_protected_error;
+    else if (code == 0x27) what = fm_io_error;
+    else if (code == 0x28) what = fm_device_error;
+    else if (code == 0x2E) what = fm_switched_error;
     gotoxy(1, row);
-    cprintf("Failed: %s ($%02X).", what, code);
+    cprintf(fm_error_format, what, code);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -156,7 +218,7 @@ static void scan_devices(void)
         struct Dev* d = &devs[ndev];
         d->unit = DEVLST[i] & 0xF0;
         d->kind = kind_of(d->unit);
-        d->inuse = d->unit == boot_unit;
+        d->inuse = boot_unit && d->unit == boot_unit;
         d->name[0] = 0;
         d->valid = 0;
         d->blocks = 0;
@@ -168,6 +230,9 @@ static void scan_devices(void)
         if (len) {
             memcpy(d->name, online + 1, len);
             d->name[len] = 0;
+            if (A->cfg_path[0] == '/' && !strncmp(A->cfg_path + 1, d->name, len) && A->cfg_path[len + 1] == '/') {
+                boot_unit = d->unit; d->inuse = 1;
+            }
             d->valid = 1;
             /* GET_FILE_INFO on "/NAME": aux_type = the volume size */
             path[0] = len + 1; path[1] = '/'; memcpy(path + 2, d->name, len);
@@ -183,7 +248,7 @@ static void scan_devices(void)
          * A driver living above $D000 (Disk II, /RAM) sits in bank 1 of the
          * language card: the direct call must switch it in. */
         if (d->kind == KIND_DISKII) d->blocks = 280;   /* its STATUS does not count blocks, and a header may lie */
-        else if (!driver_call(d->unit, 0, DEVADR[d->unit >> 4] >= 0xD000) && driver_blocks && (!d->blocks || driver_blocks < d->blocks)) d->blocks = driver_blocks;
+        else if (!format_driver_call(d->unit, 0, DEVADR[d->unit >> 4] >= 0xD000) && format_driver_blocks && (!d->blocks || format_driver_blocks < d->blocks)) d->blocks = format_driver_blocks;
         if (d->kind == KIND_RAM && d->blocks > 127) d->blocks = 127;   /* STATUS says 255: 128 blocks, of which ProDOS keeps one */
         ++ndev;
     }
@@ -192,20 +257,20 @@ static void scan_devices(void)
 static void list_devices(void)
 {
     unsigned char i;
-    title("This ERASES EVERYTHING on the disk you choose. Read the list carefully.");
+    title(fm_list_intro);
     gotoxy(1, 3);
-    cputs("     Where             Type            Current volume     Size");
+    cputs(fm_list_columns);
     for (i = 0; i < ndev; ++i) {
         struct Dev* d = &devs[i];
         static char shown[20];
-        if (d->valid) sprintf(shown, "/%s", d->name); else strcpy(shown, "(no ProDOS volume)");
+        if (d->valid) sprintf(shown, fm_volume_format, d->name); else strcpy(shown, fm_no_volume);
         gotoxy(1, 4 + i);
-        cprintf("  %c  Slot %u, drive %u  %-15s %-18s %5u blocks%s", '1' + i, slot_of(d->unit), drive_of(d->unit),
-                KIND_NAMES[d->kind], shown, d->blocks, d->inuse ? "  IN USE" : "");
+        cprintf(fm_device_format, '1' + i, slot_of(d->unit), drive_of(d->unit),
+                KIND_NAMES[d->kind], shown, d->blocks, d->inuse ? fm_in_use : fm_empty);
     }
     gotoxy(1, 6 + ndev);
-    cputs("Press the number of the disk to format. Nothing is written before you confirm.");
-    bar("1-9 Choose a disk    ESC Back to A2 File Cmd");
+    cputs(fm_list_hint);
+    bar(fm_list_keys);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -216,7 +281,7 @@ static unsigned char write_block(unsigned char unit, unsigned int block)
 {
     static unsigned char parms[6];
     parms[0] = 3; parms[1] = unit;
-    parms[2] = 0x00; parms[3] = 0x68;
+    parms[2] = 0x00; parms[3] = 0x3E;
     parms[4] = (unsigned char)(block & 0xFF); parms[5] = (unsigned char)(block >> 8);
     return mli_call(0x81, parms);
 }
@@ -225,7 +290,7 @@ static unsigned char read_block(unsigned char unit, unsigned int block)
 {
     static unsigned char parms[6];
     parms[0] = 3; parms[1] = unit;
-    parms[2] = 0x00; parms[3] = 0x68;
+    parms[2] = 0x00; parms[3] = 0x3E;
     parms[4] = (unsigned char)(block & 0xFF); parms[5] = (unsigned char)(block >> 8);
     return mli_call(0x80, parms);
 }
@@ -297,21 +362,21 @@ static unsigned char ask_name(void)
 {
     unsigned char len = 0;
     char key;
-    title("Step 2 of 3: the name of the new volume.");
+    title(fm_name_intro);
     gotoxy(1, 3);
-    cprintf("Disk: slot %u, drive %u, %s, %u blocks.", slot_of(target->unit), drive_of(target->unit), KIND_NAMES[target->kind], target->blocks);
+    cprintf(fm_target_format, slot_of(target->unit), drive_of(target->unit), KIND_NAMES[target->kind], target->blocks);
     gotoxy(1, 5);
-    cputs("A ProDOS volume name: a letter, then letters, digits or periods, 15 at most.");
+    cputs(fm_name_rules);
     gotoxy(1, 6);
-    cputs("RETURN alone names it BLANK.");
-    bar("RETURN Accept    DEL Erase    ESC Back to A2 File Cmd");
+    cputs(fm_default_hint);
+    bar(fm_name_keys);
     volname[0] = 0;
     for (;;) {
         gotoxy(1, 8);
-        cprintf("New volume name: /%s_   ", volname);
+        cprintf(fm_name_format, volname);
         key = cgetc();
         if (key == 27) return 0;
-        if (key == 13) { if (!len) strcpy(volname, "BLANK"); return 1; }
+        if (key == 13) { if (!len) strcpy(volname, fm_default_name); return 1; }
         if (key == 8 || key == 127) { if (len) volname[--len] = 0; continue; }
         if (key >= 'a' && key <= 'z') key -= 32;
         if (len >= 15) continue;
@@ -328,34 +393,37 @@ static unsigned char confirm(void)
     char typed[8];
     unsigned char len = 0;
     char key;
-    title("Step 3 of 3: the final confirmation.");
+    title(fm_confirm_intro);
     gotoxy(1, 3);
     revers(1);
-    cputs("  WARNING  ");
+    cputs(fm_warning);
     revers(0);
     gotoxy(1, 5);
-    cprintf("You are about to FORMAT the disk in slot %u, drive %u (%s),", slot_of(target->unit), drive_of(target->unit), KIND_NAMES[target->kind]);
+    cprintf(fm_confirm_target, slot_of(target->unit), drive_of(target->unit), KIND_NAMES[target->kind]);
     gotoxy(1, 6);
-    if (target->valid) cprintf("currently the volume /%s, %u blocks.", target->name, target->blocks);
-    else cprintf("which holds no ProDOS volume, %u blocks.", target->blocks);
+    if (target->valid) cprintf(fm_confirm_volume, target->name, target->blocks);
+    else cprintf(fm_confirm_no_volume, target->blocks);
     gotoxy(1, 8);
     revers(1);
-    cputs(" EVERYTHING ON THAT DISK WILL BE LOST FOREVER. ");
+    cputs(fm_erase_warning);
     revers(0);
     gotoxy(1, 10);
-    cprintf("The new, empty volume will be named /%s.", volname);
+    cprintf(fm_confirm_name, volname);
     gotoxy(1, 12);
-    cputs("To confirm, type the word ERASE in capital letters, then press RETURN.");
+    cputs(fm_erase_hint);
     gotoxy(1, 13);
-    cputs("Anything else, or ESC, cancels without touching the disk.");
-    bar("Type ERASE then RETURN to format    ESC Cancel");
+    cputs(fm_cancel_hint);
+    if (target->kind == KIND_DISKII) {
+        gotoxy(1, 17); cputs(fm_ram_warning);
+    }
+    bar(fm_confirm_keys);
     typed[0] = 0;
     for (;;) {
         gotoxy(1, 15);
-        cprintf("> %s_   ", typed);
+        cprintf(fm_typed_format, typed);
         key = cgetc();
         if (key == 27) return 0;
-        if (key == 13) return strcmp(typed, "ERASE") == 0;
+        if (key == 13) return strcmp(typed, fm_erase_word) == 0;
         if (key == 8 || key == 127) { if (len) typed[--len] = 0; continue; }
         if (len < 7 && key >= 32 && key < 127) { typed[len++] = key; typed[len] = 0; }
     }
@@ -365,41 +433,53 @@ static unsigned char confirm(void)
 static unsigned char do_format(void)
 {
     unsigned char r = 0, t;
-    title("Formatting. Do not open the drive door or switch off the computer.");
+    title(fm_format_intro);
     gotoxy(1, 3);
-    cprintf("Slot %u, drive %u, %s -> /%s", slot_of(target->unit), drive_of(target->unit), KIND_NAMES[target->kind], volname);
-    bar("Please wait ...");
+    cprintf(fm_format_target, slot_of(target->unit), drive_of(target->unit), KIND_NAMES[target->kind], volname);
+    bar(fm_wait_text);
     if (target->kind == KIND_DISKII) {
         r = diskii_begin((unsigned char)((slot_of(target->unit) << 4) | (drive_of(target->unit) == 2 ? 0x80 : 0)));
         for (t = 0; t < 35 && !r; ++t) {
             gotoxy(1, 5);
-            cprintf("Track %2u of 35 ", t + 1);
+            cprintf(fm_track_format, t + 1);
             r = diskii_track(t);
         }
         diskii_end();
+        /* The physical writer borrowed auxiliary RAM to preserve resident
+         * code. Rebuild /RAM before anything can read its old allocation. */
+        {
+            unsigned char i, e;
+            for (i = 0; i < ndev; ++i) if (devs[i].kind == KIND_RAM) {
+                e = format_driver_call(devs[i].unit, 3, 1);
+                if (e && !r) r = e;
+                if (!e) ram_cleared = 1;
+            }
+        }
         if (r) return r;
     } else if (target->kind == KIND_RAM) {
-        r = driver_call(target->unit, 3, DEVADR[target->unit >> 4] >= 0xD000);
+        r = format_driver_call(target->unit, 3, DEVADR[target->unit >> 4] >= 0xD000);
         if (r) return r;
     } else if (target->kind == KIND_SMART && (rom_of(target->unit)[0xFE] & 0x08)) {   /* SmartPort: FORMAT targets the unit; another card could format the whole disk */
-        r = driver_call(target->unit, 3, DEVADR[target->unit >> 4] >= 0xD000);
+        r = format_driver_call(target->unit, 3, DEVADR[target->unit >> 4] >= 0xD000);
         if (r) return r;
     }
     gotoxy(1, 5);
-    cputs("Writing the ProDOS boot blocks, directory and bitmap ...");
+    cputs(fm_structures_text);
     r = write_structures(target);
     if (r) return r;
     gotoxy(1, 6);
-    cputs("Read back and verified.");
+    cputs(fm_verified_text);
     return 0;
 }
 
-int main(void)
+void __fastcall__ format_entry(const struct A2fcApi* api)
 {
     char key;
     unsigned char r;
-    videomode(VIDEOMODE_80COL);
-    boot_unit = DEVNUM & 0xF0;
+    A = api;
+    boot_unit = ram_cleared = 0;
+    music_stop();
+    a2fc_playing = 0;
     for (;;) {
         scan_devices();
         list_devices();
@@ -409,10 +489,10 @@ int main(void)
             if (key >= '1' && key < '1' + ndev) break;
         }
         target = &devs[key - '1'];
-        if (target->inuse) {
+        if (target->inuse || (target->kind == KIND_DISKII && boot_unit && DEVADR[boot_unit >> 4] == 0xFF00)) {
             gotoxy(1, 8 + ndev);
             revers(1);
-            cputs(" That disk holds the running program: it cannot be formatted from here. ");
+            cputs(fm_in_use_error);
             revers(0);
             cgetc();
             continue;
@@ -420,7 +500,7 @@ int main(void)
         if (target->blocks < 7 + bitmap_size(target->blocks)) {
             gotoxy(1, 8 + ndev);
             revers(1);
-            cputs(" No disk, or its size is unknown: nothing to format. ");
+            cputs(fm_unknown_size);
             revers(0);
             cgetc();
             continue;
@@ -431,42 +511,19 @@ int main(void)
         if (r) {
             error_line(8, r);
             gotoxy(1, 9);
-            cputs("The disk may be unusable until formatted again.");
+            cputs(fm_failed_hint);
         } else {
             gotoxy(1, 8);
-            cprintf("Done: /%s, %u blocks, %u free.", volname, target->blocks, target->blocks - 6 - bitmap_size(target->blocks));
+            cprintf(fm_done_format, volname, target->blocks, target->blocks - 6 - bitmap_size(target->blocks));
         }
-        bar("Any key: back to the list    ESC: A2 File Cmd");
+        bar(fm_done_keys);
         key = cgetc();
         if (key == 27) break;
     }
 back:
-    clrscr();
-    cputs("Loading A2 File Cmd ...");
-    /* The ProDOS prefix must be the program's directory, the one holding
-     * A2FILE.SYSTEM and A2FILE/ -- at the root of a volume or not. Launched
-     * by A2FC, it already is; launched from Bitsy Bye, FORMAT.SYS inherits
-     * the A2FILE directory itself: then go up one level. */
-    {
-        static unsigned char parms[3], prefix[65];
-        unsigned char i;
-        parms[0] = 1;
-        parms[1] = (unsigned char)((unsigned)prefix & 0xFF);
-        parms[2] = (unsigned char)((unsigned)prefix >> 8);
-        if (!mli_call(0xC7, parms) && (i = prefix[0]) >= 8
-            && prefix[i - 7] == '/' && !memcmp(prefix + i - 6, "A2FILE/", 7)) {
-            prefix[0] = i - 7;             /* ".../A2FILE/" -> ".../", trailing slash included */
-            mli_call(0xC6, parms);
-        }
-    }
-    chain_addr = 0x2000;
-    {
-        static unsigned char gfi[18];
-        static const char in_dir[] = "\x14" "A2FILE/A2FILE.SYSTEM";
-        gfi[0] = 0x0A;
-        gfi[1] = (unsigned char)((unsigned)in_dir & 0xFF);
-        gfi[2] = (unsigned char)((unsigned)in_dir >> 8);
-        chain_load(mli_call(0xC4, gfi) ? "A2FILE.SYSTEM" : "A2FILE/A2FILE.SYSTEM");
-    }
-    return 0;
+    if (ram_cleared) strcpy(A->note, fm_ram_note);
 }
+#pragma bss-name (pop)
+#pragma data-name (pop)
+#pragma rodata-name (pop)
+#pragma code-name (pop)

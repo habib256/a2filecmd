@@ -8,7 +8,7 @@
 ; program), which opens the file, reads it whole to chain_addr, closes
 ; it, switches the ROM back in for reading and jumps to it. A failure
 ; returns to ProDOS (QUIT, Bitsy Bye). Shared by A2FC (keys X and F) and
-; by FORMAT.SYSTEM (return to A2FC).
+; when launching an external SYS, BIN or BASIC.SYSTEM.
 ;
 ;   void __fastcall__ chain_command(const char* name);
 ;

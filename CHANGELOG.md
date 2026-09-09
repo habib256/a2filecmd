@@ -5,7 +5,9 @@ downloads and installation.
 
 ## Unreleased
 
-- Added BOOT and EXTRA 140 KB floppies plus a complete XL 2mg for **each** CPU. Names group alphabetically as `A2FILECMD-6502-{BOOT,EXTRA,XL}` and `A2FILECMD-65C02-{BOOT,EXTRA,XL}`. Each EXTRA contains only its own CPU's plugins, leaving 135 blocks free on 6502 and 136 on 65C02. Each XL contains all 34 overlays, BASIC.SYSTEM, DEMO and IMGHGR.
+- Replaced FORMAT.SYS with the native FORMAT.PLG overlay on both CPUs. F and the overlay menu return directly to the panels. BOOT now has 39 free blocks (8 reclaimed on 6502, 6 on 65C02); XL contains 35 overlays. Kept explicit ERASE confirmation and protection of the running program. Physical Disk II formatting preserves resident memory in AUX, warns that /RAM will be cleared, and restores memory even on a write error. Added formatting and memory-preservation benches for both CPUs.
+
+- Added BOOT and EXTRA 140 KB floppies plus a complete XL 2mg for **each** CPU. Names group alphabetically as `A2FILECMD-6502-{BOOT,EXTRA,XL}` and `A2FILECMD-65C02-{BOOT,EXTRA,XL}`. Each EXTRA contains only its own CPU's plugins, leaving 135 blocks free on 6502 and 136 on 65C02. Each XL contains all 35 overlays, BASIC.SYSTEM, DEMO and IMGHGR.
 - Enabled companion loading and guided single-drive swaps on 65C02 as well as 6502. Prompts identify the CPU-specific volume and selected drive. BOOT and XL have distinct launch screens. Moved the jump-by-letter command into TEXT and overlay strings out of resident memory to preserve the checked memory limits.
 
 - Added disk-swap prompts naming the expected volume and slot/drive, with a session choice of drive 1 or 2 in slot 6. With one drive, the input volume is requested after the overlay loads; Escape restores the panels. BASIC.SYSTEM can be loaded from the companion too.

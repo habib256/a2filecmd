@@ -109,6 +109,10 @@ jobs:
         run: |
           A2FC_PRESET=iie_unenh python3 bench/extras.py
           A2FC_IMG=A2FILECMD-65C02-BOOT python3 bench/extras.py
+      - name: FORMAT, protections et retour resident sur les deux CPU
+        run: |
+          A2FC_PRESET=iie_unenh python3 bench/format.py
+          A2FC_IMG=A2FILECMD-65C02-BOOT python3 bench/format.py
       - name: Session complete, 65C02 (disquette de banc, toutes les surcouches)
         run: A2FC_IMG=A2FILECMD-full python3 bench/run.py --out bench-out
       - name: Les deux disques XL publies

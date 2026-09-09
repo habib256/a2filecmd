@@ -1,6 +1,6 @@
 # A2 File Cmd -- two-panel ProDOS file manager, Apple IIe.
 #
-#   make            the three ProDOS binaries, in build/ (ARCH=enh) or build-6502/
+#   make            the launcher, resident and overlays, in build/ or build-6502/
 #   make disk       BOOT and EXTRA 140 KB floppies (.po/.dsk), plus XL .2mg,
 #                   for both CPUs: dist/A2FILECMD-{6502,65C02}-{BOOT,EXTRA,XL}.*
 #                   ARCH=6502 or ARCH=enh builds that CPU's three volumes.
@@ -88,13 +88,13 @@ CODE   = $(BUILD)/A2FILE.CODE.BIN
 # launcher, the attributes, the editor, the menu, the disk images. Each has
 # two segments in its file: NAME (code) then NAMERO (strings). See
 # src/a2fc_plugin.h for the header and the service table.
-PLUGINS = IMAGE TEXT HEX DELETE HELP EDIT MUSIC RUN ATTR MENU DISKIMG IMGFS DOS33 UNSHRINK BASLIST COMPARE SEARCH BINARY2 AWP
+PLUGINS = FORMAT IMAGE TEXT HEX DELETE HELP EDIT MUSIC RUN ATTR MENU DISKIMG IMGFS DOS33 UNSHRINK BASLIST COMPARE SEARCH BINARY2 AWP
 # The floppy edition: the commands, the two viewers that cost four blocks,
 # and the disk tools. The editor, the pictures, the music, the archives and
 # the document readers stay on the hard disk (45 blocks, with BASIC.SYSTEM's
 # 21, given back to the disk tools to come -- see TODO.md, "Les deux editions").
 # COMPARE also carries the S (sort) and M (mark differences) commands.
-PLUGINS_FLOPPY = HELP TEXT HEX DELETE RUN ATTR MENU DISKIMG IMGFS DOS33 COMPARE
+PLUGINS_FLOPPY = FORMAT HELP TEXT HEX DELETE RUN ATTR MENU DISKIMG IMGFS DOS33 COMPARE
 # The service-table overlays: src/plugins/NAME.c, each compiled and linked
 # on its own like a third party's (sdk/plugin.cfg, no crt0, nothing of
 # A2FILE.CODE), because the resident is full -- they reach the program only
@@ -120,7 +120,6 @@ XPLG = $(patsubst %,$(BUILD)/%.PLG,$(XPLUGINS))
 XPLG_FLOPPY = $(patsubst %,$(BUILD)/%.PLG,$(XPLUGINS_FLOPPY))
 SYSTEM = $(BUILD)/A2FILE.SYSTEM.SYS
 FLOPPY_SYSTEM = $(BUILD)/A2FILE.FLOPPY.SYS
-FORMAT = $(BUILD)/FORMAT.SYS.SYS
 PO     = $(DIST)/$(IMG).po
 DSK    = $(DIST)/$(IMG).dsk
 EXTRAS = $(DIST)/A2FILECMD-$(CPU)-EXTRA.po
@@ -131,12 +130,12 @@ CATALOG = $(BUILD)/EXTRAS.CAT
 XPLG_EXTRAS = $(patsubst %,$(BUILD)/%.PLG,$(XPLUGINS_EXTRAS))
 
 OBJS = $(BUILD)/crt0.o $(BUILD)/overlay.o $(BUILD)/unshrink.o $(VDRIVEOBJ) $(BUILD)/a2fc_mli.o $(BUILD)/chain.o \
-       $(BUILD)/music.o $(BUILD)/memory_swap.o $(BUILD)/mli_safe.o $(MOUSEOBJ)
+       $(BUILD)/music.o $(BUILD)/memory_swap.o $(BUILD)/mli_safe.o $(MOUSEOBJ) $(BUILD)/format_diskii.o $(BUILD)/format_mli.o
 
 .DELETE_ON_ERROR:
 
 .PHONY: all disk benchfloppy xplugins test bench example clean
-all: $(SYSTEM) $(CODE) $(FORMAT)
+all: $(SYSTEM) $(CODE)
 
 $(BUILD) $(DIST):
 	@mkdir -p $@
@@ -169,23 +168,14 @@ $(SYSTEM) $(FLOPPY_SYSTEM): $(BUILD)/crt0_loader.o $(BUILD)/loader_mli.o Makefil
 	  -o $@ $(BUILD)/crt0_loader.o $(BUILD)/loader_mli.o \
 	  $(BUILD)/$(if $(filter $(FLOPPY_SYSTEM),$@),launcher_floppy,launcher).o $(IOBUF)
 
-$(CODE): $(SRC)/a2fc.c $(SRC)/a2fc.cfg $(SRC)/a2fc_plugin.h $(SRC)/music.h $(SRC)/memory_swap.h $(OBJS) Makefile | $(BUILD)
+$(CODE): $(SRC)/format.c $(SRC)/a2fc.c $(SRC)/a2fc.cfg $(SRC)/a2fc_plugin.h $(SRC)/music.h $(SRC)/memory_swap.h $(OBJS) Makefile | $(BUILD)
 	$(CL) $(CFLAGS) -D 'A2FC_VERSION="$(A2FC_VERSION)"' -C $(SRC)/a2fc.cfg \
 	  -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__STACKSIZE__=$(A2FC_STACK) -Wl -D,__BIN2SIZE__=$(BIN2SIZE) \
 	  -Wl -m,$(BUILD)/a2fc.map -Wl -Ln,$(BUILD)/a2fc.lbl \
-	  -o $@ $(BUILD)/crt0.o $(BUILD)/overlay.o $(BUILD)/unshrink.o $(VDRIVEOBJ) $(SRC)/a2fc.c $(BUILD)/a2fc_mli.o \
+	  -o $@ $(BUILD)/crt0.o $(BUILD)/overlay.o $(BUILD)/unshrink.o $(VDRIVEOBJ) $(SRC)/a2fc.c $(SRC)/format.c $(BUILD)/format_diskii.o $(BUILD)/format_mli.o $(BUILD)/a2fc_mli.o \
 	  $(BUILD)/chain.o $(BUILD)/music.o $(BUILD)/memory_swap.o $(BUILD)/mli_safe.o \
 	  $(MOUSEOBJ) $(IOBUF)
 	@python3 $(TOOLS)/check_layout.py --lbl $(BUILD)/a2fc.lbl --bin $@ $(LAYOUT_BIG)
-
-# The formatter, a separate program: it overwrites A2 File Cmd in memory and
-# relaunches it on exit. No .SYSTEM suffix: ProDOS boots the first .SYSTEM
-# file of the catalog, and it must not come before the launcher.
-$(FORMAT): $(SRC)/format.c $(SRC)/format_diskii.s $(SRC)/format_mli.s $(SRC)/format.cfg $(BUILD)/chain.o Makefile | $(BUILD)
-	$(CL) $(CFLAGS) -D 'A2FC_VERSION="$(A2FC_VERSION)"' -C $(SRC)/format.cfg \
-	  --start-addr 0x2000 -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=0x6400 \
-	  -Wl -D,__FILETYPE__=0xFF -o $@ \
-	  $(SRC)/format.c $(SRC)/format_diskii.s $(SRC)/format_mli.s $(BUILD)/chain.o $(IOBUF)
 
 # -- The service-table overlays ---------------------------------------------
 $(BUILD)/%.PLG: $(SRC)/plugins/%.c $(SRC)/a2fc_plugin.h sdk/plugin.cfg Makefile | $(BUILD)
@@ -206,7 +196,7 @@ STAGE = $(BUILD)/vol
 HDV = $(BUILD)/$(IMG).hdv
 TWOMG = $(DIST)/A2FILECMD-$(CPU)-XL.2mg
 FULLPO = $(BUILD)/A2FILECMD-full.po
-STAGE_DEPS = $(SYSTEM) $(CODE) $(FORMAT) $(DATA)/A2FILE.HELP.TXT $(DATA)/PRODOS.SYS \
+STAGE_DEPS = $(SYSTEM) $(CODE) $(DATA)/A2FILE.HELP.TXT $(DATA)/PRODOS.SYS \
        $(DATA)/prodos_boot.tmpl $(TOOLS)/mkvolume.py
 
 ifdef BOTH_EDITIONS
@@ -227,7 +217,6 @@ define stage
 	for p in $(1); do cp $(CODE).$$p "$(STAGE)/A2FILE/$$p.PLG#061B00"; done
 	for p in $(2); do cp $(BUILD)/$$p.PLG "$(STAGE)/A2FILE/$$(echo $$p | tr a-z A-Z).PLG#061B00"; done
 	cp $(DATA)/A2FILE.HELP.TXT $(STAGE)/A2FILE/A2FILE.HELP.TXT
-	cp $(FORMAT) $(STAGE)/A2FILE/FORMAT.SYS.SYS
 endef
 
 # BOOT: a 140 KB floppy for the selected CPU.

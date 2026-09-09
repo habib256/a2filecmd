@@ -20,17 +20,16 @@ tout ce qui s'ajoute au noyau doit être payé par une surcouche ou par une
 
 | Zone | État mesuré |
 | --- | --- |
-| Fenêtre principale `$4000`-plancher de la pile (`$BE40`) | 112 octets libres après `INIT` (`$BDD0`) ; fin de `ONCE` à `$BEC6`, 26 octets avant le plafond de chargement `$BEE0`. En 6502 : 817 octets avant la pile, 542 avant le plafond du lanceur. |
+| Fenêtre principale `$4000`-plancher de la pile (`$BE40`) | 90 octets libres après `INIT` (`$BDE6`) ; fin de `ONCE` à `$BEDC`, 4 octets avant le plafond du lanceur `$BEE0`. |
 | RAM basse `$1000-$1AFF` (BSS) | 48 octets libres (6502 : 73) |
 | Carte langage `$D400-$DFFF` | **16 octets libres** (`vsdrive.s` a pris le reste depuis la 0.6.7) |
 | Pile C | 192 octets réservés (`A2FC_STACK`), creux maximal mesuré 94 (`bench/memory.py`) |
-| Petites surcouches `$1B00-$1FFF` (1 280 octets) | `BINARY2` 1272, `IMGFS` 1270, `MUSIC` 668, `DOS33` 1216, `DELETE` 1218, `ATTR` 1246, `IMAGE` 1203, `RUN` 1261, `AWP` 1020, `HELP` 1018, `SEARCH` 847, `HEX` 901, `COMPARE` 1194, `TEXT` 1176 |
-| Grandes surcouches | `DISKIMG` 6079 / 6400, `UNSHRINK` 5212 / 5376, `EDIT` 3308 / 3328, `BASLIST` 1419 / 3328, `MENU` 1901 / 5376 ; `BINARY2` est grande en 6502 (3 328). |
-| BOOT / EXTRA / XL | BOOT : 31 blocs libres en 6502, 33 en 65C02. EXTRA : 135 / 136 blocs libres. XL : 64 485 / 64 488 blocs libres. |
+| Petites surcouches `$1B00-$1FFF` (1 280 octets) | `BINARY2` 1272, `IMGFS` 1270, `MUSIC` 668, `DOS33` 1216, `DELETE` 1218, `ATTR` 1246, `IMAGE` 1203, `RUN` 1064, `AWP` 1020, `HELP` 1061, `SEARCH` 847, `HEX` 901, `COMPARE` 1194, `TEXT` 1176 |
+| Grandes surcouches | `FORMAT` 8018 / 8448, `DISKIMG` 6079 / 6400, `UNSHRINK` 5212 / 5376, `EDIT` 3308 / 3328, `BASLIST` 1419 / 3328, `MENU` 1901 / 5376 ; `BINARY2` est grande en 6502 (3 328). |
+| BOOT / EXTRA / XL | BOOT : 39 blocs libres sur les deux processeurs. EXTRA : 135 / 136 blocs libres. XL : 64 493 / 64 494 blocs libres. |
 
-Trois petites surcouches sont à moins de 40 octets du plafond (`BINARY2`,
-`IMGFS`, `MUSIC`) : la prochaine ligne qu'on y ajoute les fait passer
-grandes, ou demande de sortir leurs chaînes dans une table.
+Certaines petites surcouches restent proches du plafond (`BINARY2`,
+`IMGFS`, `ATTR`) : leur agrandissement doit être vérifié au lien.
 
 ## Les deux éditions
 
@@ -43,11 +42,13 @@ sans souris sur le IIe de 1983 ; le 65C02 ajoute MouseText et la souris.
 EXTRA garde 135 blocs libres en 6502, 136 en 65C02, pour les nouveaux plugins : ne pas
 mélanger les deux processeurs sur une même disquette.
 
-- 🟠 **`FORMAT` en surcouche** : `FORMAT.SYS` est un programme SYS à part avec
-  son propre crt0 et sa bibliothèque, 24 blocs. En grande surcouche
-  (`$1B00-$3FFF`, ses tampons `$6700-$8000` passent en mémoire auxiliaire ou
-  dans la page graphique), il en coûterait 6 : **18 blocs rendus**, et le
-  formateur ne quitte plus le programme. *1 jour.*
+- ✅ **`FORMAT` en surcouche** : `FORMAT.PLG` remplace le programme SYS sur
+  BOOT et XL. Gain mesuré : 8 blocs en 6502, 6 en 65C02 (39 libres sur
+  chaque BOOT), inférieur aux 18 blocs initialement estimés. Retour direct
+  aux panneaux, protections et confirmation ERASE conservées. Le tampon
+  de piste préserve le résident via AUX ; le vidage de `/RAM` est annoncé
+  avant confirmation. Bancs Disk II, protection en écriture, RAM, SmartPort
+  et intégrité mémoire sur les deux processeurs.
 - ✅ **La seconde disquette** : chaque `A2FILECMD-<CPU>-EXTRA.po` contient les 17 outils
   absents du disque principal et `BASIC.SYSTEM`. Chargement depuis S6,D2,
   ou échanges sur S6,D1 : l'invite nomme le volume attendu et le lecteur,

@@ -58,13 +58,13 @@ def main():
             ok('le menu ! liste les surcouches', s.has('the overlays') and s.has('AppleWorks'),
                s.rows()[22].strip()[:60])
             s.key(ESC); p.stable()
-            # F : le formateur, A2FILE/FORMAT.SYS, puis ESC le fait relancer A2FILE.SYSTEM
-            s.key(b'F'); s.wait(lambda: s.has('Open the disk formatter?'), 'F'); s.key(b'Y')
+            # F : le formateur natif, puis ESC revient au meme dossier
+            s.key(b'F')
             s.wait(lambda: s.has('ERASES EVERYTHING') or s.has('failed'), 'formateur', 60); p.stable()
-            ok('F trouve A2FILE/FORMAT.SYS dans le dossier du programme', s.has('ERASES EVERYTHING'),
+            ok('F trouve A2FILE/FORMAT.PLG dans le dossier du programme', s.has('ERASES EVERYTHING'),
                s.rows()[22].strip()[:60])
             s.key(ESC); s.wait(lambda: s.has('Type  Aux     Size'), 'retour au gestionnaire', 90); p.stable()
-            ok('le formateur relance A2FC, qui retrouve /HD/APPS', s.rows()[0].startswith('/HD/APPS '),
+            ok('le formateur revient directement dans /HD/APPS', s.rows()[0].startswith('/HD/APPS '),
                s.rows()[0][:40])
             s.key(b'?'); s.wait(lambda: s.value('view', 1) == 4 or s.has('missing'), 'aide 2', 30); p.stable()
             ok("et ses surcouches apres ce retour", s.value('view', 1) == 4, s.rows()[22].strip()[:60])

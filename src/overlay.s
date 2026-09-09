@@ -83,3 +83,7 @@ _a2fc_link_id:
         header  BIG, _unshrink_entry, "Extract a ShrinkIt (.SHK) archive into the other panel"
         .segment "MENU"
         header  BIG, _menu_entry, "This menu"
+
+        .import _format_entry
+        .segment "FORMAT"
+        header BIG, _format_entry, "Format a ProDOS disk, with explicit erase confirmation (F)"

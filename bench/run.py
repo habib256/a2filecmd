@@ -491,16 +491,14 @@ def main():
                  next((r[:40] for r in s.rows() if r.startswith('HGR.RLE ')), ''))
 
             # ── 9. le formateur ───────────────────────────────────────────
-            s.key(b'F'); s.wait(lambda: s.has('Open the disk formatter?'), 'F')
-            s.key(b'Y'); s.wait(lambda: s.has('ERASES EVERYTHING'), 'formateur', 60); p.stable()
+            s.key(b'F'); s.wait(lambda: s.has('ERASES EVERYTHING'), 'formateur', 60); p.stable()
             s.ok('F ouvre le formateur, qui liste les lecteurs',
                  s.has('Disk II 5.25') and s.has('/A2FILECMD'), s.rows()[3][:60])
             shot('09-format')
-            # ESC relance A2FILE.SYSTEM : on attend l'en-tete des panneaux, pas
-            # le titre -- l'ecran d'attente du lanceur le porte aussi.
+            # ESC quitte la surcouche et restaure directement les panneaux.
             s.key(ESC); s.wait(lambda: s.has('Type  Aux     Size'), 'retour au gestionnaire', 90)
             p.stable()
-            s.ok('Echap relance le gestionnaire, qui retrouve ses panneaux (A2FILE.CFG)',
+            s.ok('Echap retourne aux panneaux sans relancer le gestionnaire',
                  s.rows()[0].startswith('/SCRATCH ') and '/SCRATCH/DEMO' in s.rows()[0], s.rows()[0][:60])
 
             if HAS_MOUSE:   # pas de souris dans la version 6502

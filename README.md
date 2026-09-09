@@ -66,10 +66,10 @@ No build required. Choose the image that fits your setup:
 |---|---|---|
 | `A2FILECMD-6502-BOOT.po` / `.dsk` | 6502 | Bootable 140 KB floppy: file manager, disk tools and formatter |
 | `A2FILECMD-6502-EXTRA.po` / `.dsk` | 6502 | 140 KB companion: 17 additional tools, menu and BASIC.SYSTEM; 67.5 KB free |
-| `A2FILECMD-6502-XL.2mg` | 6502 | Bootable 32 MB disk: all 34 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
+| `A2FILECMD-6502-XL.2mg` | 6502 | Bootable 32 MB disk: all 35 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
 | `A2FILECMD-65C02-BOOT.po` / `.dsk` | 65C02 | Bootable 140 KB floppy: file manager, disk tools and formatter |
 | `A2FILECMD-65C02-EXTRA.po` / `.dsk` | 65C02 | 140 KB companion: 17 additional tools, menu and BASIC.SYSTEM; 68 KB free |
-| `A2FILECMD-65C02-XL.2mg` | 65C02 | Bootable 32 MB disk: all 34 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
+| `A2FILECMD-65C02-XL.2mg` | 65C02 | Bootable 32 MB disk: all 35 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
 
 The names sort by CPU, then BOOT, EXTRA, XL. Choose **6502** for an Apple II
 with 128 KB and 80 columns, including the original IIe; choose **65C02** for
@@ -157,7 +157,7 @@ The [manual](docs/MANUAL.md) covers every shortcut and file format.
 - ProDOS paths are limited to 64 characters.
 - The text editor holds 8 KB; a `.MB` tune must fit in 2,304 bytes.
 - Images opened as folders are read-only. Extract files before viewing or editing them; ProDOS image extraction supports files up to 128 KB, and subdirectories must be entered individually.
-- Launching another program replaces A2FileCmd. The formatter returns; from Applesoft, you can relaunch A2FileCmd as described in the manual.
+- Launching another program replaces A2FileCmd. The FORMAT overlay returns directly to the panels; from Applesoft, you can relaunch A2FileCmd as described in the manual.
 
 </details>
 

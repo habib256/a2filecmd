@@ -124,3 +124,9 @@ après chargement d'une grande surcouche, puis BASIC.SYSTEM du complément.
 Validation du complément (2026-09-09) : 19 contrôles POM2 et le contrôle
 des images passent sur IIe non enhanced ; les 72 contrôles de la session
 complète 65C02 et les 23 tests hors émulateur passent également.
+
+`bench/format.py` vérifie la surcouche FORMAT depuis le BOOT publié :
+protection du volume du programme, annulations sans écriture, disquette
+protégée, formatage Disk II et RAM, SmartPort de 65535 blocs, bitmap,
+restauration du résident et retour direct. Exécuter une fois avec
+`A2FC_PRESET=iie_unenh`, puis avec `A2FC_IMG=A2FILECMD-65C02-BOOT`.

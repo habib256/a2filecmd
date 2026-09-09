@@ -3,7 +3,7 @@
 ; Everything starts from the prefix: A2FILE/A2FILE.CODE, the A2FILE/*.PLG
 ; overlays, the help, A2FILE.CFG are all read relative to it. Three cases:
 ;  - it is already set (cold boot: ProDOS sets "/VOL/"; Bitsy Bye: the
-;    directory of the launched .SYSTEM; return from FORMAT.SYS: whatever it
+;    directory of the launched .SYSTEM; relaunch from a selector: whatever it
 ;    left): we leave it alone. This is what allows A2FILE.SYSTEM and its
 ;    A2FILE directory to be installed anywhere on a hard disk, not only at
 ;    the root of a volume named /A2FILECMD.

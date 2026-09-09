@@ -13,7 +13,7 @@ from check_layout import check_layout
 class SplitLoadLayout(unittest.TestCase):
     def setUp(self):
         # Une disposition saine, celle que produit le lien.
-        self.s = dict(__LCIMAGE_FILEOFFS__=0, __LCIMAGE_START__=0x1000,
+        self.s = dict(__FORMATBSS_RUN__=0x3C00, __FORMATBSS_SIZE__=0x180, __LCIMAGE_FILEOFFS__=0, __LCIMAGE_START__=0x1000,
                       __LCIMAGE_SIZE__=0xC00, __LCIMAGE_LAST__=0x1C00,
                       __MAIN_FILEOFFS__=0xC00, __MAIN_START__=0x4000,
                       __MAIN_LAST__=0xBCC5, __LC_START__=0xD400, __LC_LAST__=0xE000,
@@ -29,19 +29,23 @@ class SplitLoadLayout(unittest.TestCase):
         self.loader = dict(LC_STAGE=0x1000, LC_BYTES=0xC00, CODE_ADDR=0x4000,
                            STAGE_BYTES=0xC00)
         self.length = 0xC00 + 0xBCC5 - 0x4000
-        self.overlays = dict(IMAGE=0x1F60 - 0x1B00, HELP=0x1EE0 - 0x1B00, TEXT=0x280,
+        self.overlays = dict(FORMAT=0x1800, IMAGE=0x1F60 - 0x1B00, HELP=0x1EE0 - 0x1B00, TEXT=0x280,
                              HEX=0x2F0, DELETE=0x300, MUSIC=0x200, RUN=0x200, ATTR=0x300,
                              EDIT=0xC00, MENU=0x600, DISKIMG=0x900, IMGFS=0x300, DOS33=0x400, UNSHRINK=0x600, BASLIST=0x340, COMPARE=0x200, SEARCH=0x200, BINARY2=0x300, AWP=0x300)
-        for name in ('MUSIC', 'RUN', 'ATTR', 'EDIT', 'MENU', 'DISKIMG', 'IMGFS', 'DOS33', 'UNSHRINK', 'BASLIST', 'COMPARE', 'SEARCH', 'BINARY2', 'AWP'):
+        for name in ('FORMAT', 'MUSIC', 'RUN', 'ATTR', 'EDIT', 'MENU', 'DISKIMG', 'IMGFS', 'DOS33', 'UNSHRINK', 'BASLIST', 'COMPARE', 'SEARCH', 'BINARY2', 'AWP'):
             self.s['__%s_START__' % name] = 0x1B00
             self.s['__%s_LAST__' % name] = 0x1B00 + self.overlays[name]
-        for name in ('IMAGE', 'TEXT', 'HEX', 'DELETE', 'HELP', 'MUSIC', 'RUN', 'ATTR', 'EDIT', 'MENU', 'DISKIMG', 'IMGFS', 'DOS33', 'UNSHRINK', 'BASLIST', 'COMPARE', 'SEARCH', 'BINARY2', 'AWP'):
+        for name in ('FORMAT', 'IMAGE', 'TEXT', 'HEX', 'DELETE', 'HELP', 'MUSIC', 'RUN', 'ATTR', 'EDIT', 'MENU', 'DISKIMG', 'IMGFS', 'DOS33', 'UNSHRINK', 'BASLIST', 'COMPARE', 'SEARCH', 'BINARY2', 'AWP'):
             # the RO segment ends where the file ends
             self.s['__%sRO_LAST__' % name] = self.s['__%s_START__' % name] + self.overlays[name]
             self.s['__%s_LAST__' % name] = self.s['__%s_START__' % name]
 
     def check(self):
         return check_layout(self.s, self.loader, self.length, self.overlays)
+
+    def test_format_state_cannot_reach_block_buffer(self):
+        self.s['__FORMATBSS_SIZE__'] = 0x201
+        self.assertIn('FORMAT state overlaps code or its $3E00 block buffer', self.check())
 
     def test_valid(self):
         self.assertEqual(self.check(), [])

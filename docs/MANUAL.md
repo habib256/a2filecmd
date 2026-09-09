@@ -67,7 +67,7 @@ their own, with the path and the page on the left.
 | **P** | pause or resume the Mockingboard music; RETURN on a `.MB` file starts it |
 | **W** | disk images: write a `.PO`/`.DSK`/`.2MG` to a floppy, read a floppy into a fresh image, copy one floppy onto another (see below) |
 | **!** | the overlay menu: the list of `A2FILE/*.PLG` with their description, each run on the selection (Up/Down one line, Left/Right a page, a letter jumps to the next name starting with it). Among them: **COMPARE** confronts the selection with the file of the same name in the other panel byte by byte, and **SEARCH** asks for a text and tags the panel files that contain it (case-insensitive) |
-| **F** | open the formatter, `A2FILE/FORMAT.SYS`, on the main disk, which returns to A2FC on exit |
+| **F** | open the `FORMAT.PLG` overlay; Escape returns directly to the panels |
 | **1** … **0** | the ten buttons of the key bar, in order, like Norton Commander and A2Command |
 | **Ctrl-T** / **Ctrl-N** | tag all / untag all; **Ctrl-R** re-reads both panels (floppy swapped, `/RAM` rebuilt) |
 | **Q** | quit to ProDOS after confirmation: Bitsy Bye takes over |
@@ -100,7 +100,7 @@ removed disk, A2FC next names that volume and waits for it before reading
 it. **Escape** cancels, including after a large overlay has loaded; the
 panels are restored. The last drive choice is kept for the session.
 
-The catalog keeps all 33 commands selectable even when the companion is
+The catalog keeps all 34 commands selectable even when the companion is
 absent. The slot is currently fixed at 6; the drive can be 1 or 2. Disk
 swapping does not provide simultaneous access to two files on different
 floppies in one drive: tools whose source and destination must both be
@@ -292,10 +292,8 @@ on a blank screen just after switching to 80 columns:
   falling back on `ON_LINE` on the last device `$BF30` for a bare volume name.
   All of this before opening `A2FILE.CODE`, so that the relative path resolves.
   A2FC then reopens its panels and re-reads `A2FILE.CFG`, as on a cold boot.
-  `FORMAT.SYS`, when it comes back, likewise keeps the prefix it was given —
-  only stripping a trailing `A2FILE/` when Bitsy Bye launched it from inside
-  that directory. `bench/subdir.py` installs the program in `/HD/APPS` and
-  checks all of it.
+  The FORMAT overlay returns directly and preserves the panels and prefix.
+  `bench/subdir.py` also checks it from `/HD/APPS`.
 
 ## Disk images
 
@@ -503,14 +501,21 @@ archive in the emulator and checks each name, size, type and auxtype.
 
 ## Formatting a disk
 
-`F` (or `A2FILE/FORMAT.SYS` from Bitsy Bye) launches the formatter, a separate
-program that returns to A2FC on exit. It lists the drives ProDOS knows, with
-slot, drive, type (Disk II 5.25", SmartPort, /RAM, block device), current
-volume if it has one and size in blocks. The disk the program is running from
-is marked IN USE and refused. Three steps: choose a drive by its number, name
-the volume (BLANK by default), then read the warning, which names the drive,
-its current volume and its size, and type the word ERASE in capitals followed
-by RETURN. Nothing is written before that word; ESC cancels at each step.
+`F` or **FORMAT** in the **!** menu loads `A2FILE/FORMAT.PLG`, a native
+large overlay on BOOT and XL for each CPU. Escape returns directly to the
+panels, without relaunching A2FC or depending on saved settings. The overlay
+lists slot, drive, device type, current volume and capacity. The program's
+volume is marked **IN USE** and refused, including when A2FC is installed
+in a subdirectory. Choose a drive, enter a volume name (BLANK by default),
+then type **ERASE** in capitals and press **Return**. Escape or any other
+word cancels; nothing is written before confirmation.
+
+**Physical Disk II formatting also clears `/RAM`.** Its track buffer needs
+auxiliary memory to preserve the resident program. The confirmation screen
+states this: copy any files in `/RAM` elsewhere first. Physical formatting
+is refused when A2FC itself runs from the RAM disk. This extra RAM reset
+is not needed when formatting a SmartPort or other block device. Music
+stops when opening FORMAT.
 
 A Disk II floppy is physically formatted, track by track with the progress on
 screen: it is Jerry Hewett's (1985, public domain) and Gary Desrochers's (1989)
@@ -522,9 +527,17 @@ emulator. A SmartPort that allows it receives the low-level format command,
 ProDOS structures are written by WRITE_BLOCK (`format.c`): the Hyper-FORMAT boot
 at block 0, the root catalog at blocks 2 to 5 with the clock date, the
 allocation table starting at block 6. The boot and the header are read back and
-compared. The bench opens the formatter, checks that it lists the drives with
-their volume and their size, and that ESC relaunches the manager from the
-floppy.
+compared. `bench/format.py` checks both CPUs: cancellation, boot-volume
+protection, a write-protected floppy, physical formatting, /RAM, a 65535-block
+SmartPort volume, memory restoration, the C stack and direct return.
+
+FORMAT code and strings stay below `$3C00`; state occupies `$3C00-$3DFF`
+and the MLI block buffer `$3E00-$3FFF`. While writing a physical track,
+`format_diskii.s` preserves resident `$6500-$80FF` in auxiliary RAM and
+restores it before returning to C, including on error. No resident call or
+interrupt can run while that region holds the track image. The buffer also
+covers the final sixteen bytes emitted by Build beyond the write loop's
+`$8000` limit. The linker bounds the overlay and state separately.
 
 ## The Mockingboard music
 
@@ -574,7 +587,7 @@ wrapped.
   up to more than 213 entries (the reserve for the recursive walks, housed in
   the inactive panel's table during the operation).
 - It does not come back from a launched program: what is loaded overwrites it.
-  Only the formatter, which relaunches it on exit, is the exception.
+  FORMAT is an overlay and returns directly; it does not launch another program.
 - A directory of more than 139 entries is read in windows, in disk order and
   without sorting: the header shows the rank of the first entry followed by a
   plus sign, and the cursor moves from one window to the next by crossing the
@@ -590,7 +603,7 @@ wrapped.
 | `A2FILE.SYSTEM` | The launcher, at the root: the only `.SYSTEM` file on the volume, hence the one ProDOS starts (`src/loader.c`) |
 | `A2FILE/A2FILE.CODE` | The manager itself (`src/a2fc.c`, plus `src/a2fc_mli.s` for GET_FILE_INFO, SET_FILE_INFO and the /RAM reformat) |
 | `A2FILE/A2FILE.CFG` | Written by A2FC on quit: the two directories, the sort and the active panel, three lines of text |
-| `A2FILE/FORMAT.SYS` | The formatter (`format.c`, `format_diskii.s`, `format_mli.s`). No .SYSTEM suffix: ProDOS boots the first .SYSTEM file in the catalog, and F comes before S |
+| `A2FILE/FORMAT.PLG` | Native formatter overlay (`format.c`, `format_diskii.s`, `format_mli.s`), loaded by F or the ! menu |
 | `A2FILE/A2FILE.HELP` | The text of the help page (`data/A2FILE.HELP.TXT`), one line per element: `x,y,KEY,label`, `x,y,#TITLE` for a section, `x,y,~text` for plain text. It goes through the graphics page, none of the help stays in memory |
 
 The names fit in ProDOS's fifteen characters.
@@ -609,7 +622,7 @@ bootable ProDOS volume with the file manager, disk tools and formatter.
 EXTRA is a non-bootable companion holding the remaining plugins and
 BASIC.SYSTEM. EXTRA currently keeps 135 free blocks (67.5 KB) on 6502 and 136 (68 KB)
 on 65C02 for future tools.
-XL is bootable and contains all 34 overlays, BASIC.SYSTEM, `DEMO/` and
+XL is bootable and contains all 35 overlays, BASIC.SYSTEM, `DEMO/` and
 `IMGHGR/` on the same 65535-block disk; it needs no EXTRA floppy.
 
 ProDOS volume names also identify the CPU and role: `/A2FC6502`,
@@ -682,7 +695,7 @@ CiderPress and most emulators take the `.po`.
 |---|---|
 | `PRODOS`, `BASIC.SYSTEM` | ProDOS 8 2.4.3, the last stable version, and its Applesoft interpreter: freely distributed for the Apple II community, they are not the author's |
 | `A2FILE.SYSTEM` | the launcher, the only `.SYSTEM` program: the floppy boots straight into A2FC. Compiled with `NO_CHDIR`, it relies on the ProDOS prefix — the directory it lives in — and rebuilds it only when `BASIC.SYSTEM` has emptied it |
-| `A2FILE/A2FILE.CODE`, `A2FILE/*.PLG`, `A2FILE/A2FILE.HELP`, `A2FILE/FORMAT.SYS` | the program (with the VDrive serial driver), its overlays (`IMAGE`, `TEXT`, `HEX`, `HELP`, `DELETE`, `MUSIC`, `RUN`, `ATTR`, `IMGFS`, `DOS33`, and the big ones `EDIT`, `MENU`, `DISKIMG`: BINs loaded at `$1B00` on demand), the help text and the formatter; `A2FILE.CFG` will be written alongside |
+| `A2FILE/A2FILE.CODE`, `A2FILE/*.PLG`, `A2FILE/A2FILE.HELP` | the program (with the VDrive serial driver), its overlays (`IMAGE`, `TEXT`, `HEX`, `HELP`, `DELETE`, `MUSIC`, `RUN`, `ATTR`, `IMGFS`, `DOS33`, and the big ones `EDIT`, `MENU`, `DISKIMG`: BINs loaded at `$1B00` on demand), the help text and the formatter; `A2FILE.CFG` will be written alongside |
 | `IMGHGR/` (`.2mg` only) | nine raw HGR pages from [POM1](https://github.com/habib256/pom1) (`data/IMGHGR`, ProDOS names in English: `ALIEN`, `BEAR`, `DRAGON`, `GOBLIN`, `LIZARD`, `MAZE3D`, `TIGER`, `UBERNIE`, `VILLAGE`): open one, then Left and Right leaf through the folder |
 | `DEMO/` (`.2mg` only) | one example of everything A2FC can open, entirely computed by `tools/mkdemo.py`: the two test cards raw (`DHGR.RAW`, `HGR.RAW`) and RLE (`DHGR.RLE`, `HGR.RLE`), a three-voice fanfare (`WELCOME.MB`), a text (`SAMPLE`), an Applesoft program (`HELLO`), an AppleWorks document (`LETTER`), a ProDOS disk image as `.PO` and as `.2MG` (`TINY.PO`, `TINY.2MG`), a DOS 3.3 disk (`DOS33.DSK`), the text and the program packed by ShrinkIt (`SAMPLE.SHK`) and by Binary II (`SAMPLE.BNY`), and a `README` that says what to press |
 
@@ -778,9 +791,9 @@ bench measured its deepest low at **94 bytes** below `$BF00`, the recursive
 copy of a tree included, `-Cl` making the locals static. The 512 bytes before,
 plus the 88 of the BSS, are handed back to the code — enough to house the
 Applesoft launcher, where only about twenty bytes were left. The programs
-launched by X and F are launched by a stub copied to page `$0300` (`chain.s`),
-which reads the whole file at its address and jumps to it: no size limit, and
-FORMAT.SYS returns to A2FC by the same stub; `chain_command` adds to it the
+launched by X are launched by a stub copied to page `$0300` (`chain.s`),
+which reads the whole file at its address and jumps to it: no size limit.
+`chain_command` adds to it the
 name that `BASIC.SYSTEM` expects at `$2006`, 47 more bytes in the stub, and
 an assembly assertion keeps the whole thing below `$03D0`, where the vectors
 begin. A2FC no longer uses either `opendir` or `malloc`: directories are read
