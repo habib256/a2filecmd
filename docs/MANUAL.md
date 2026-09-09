@@ -75,7 +75,7 @@ their own, with the path and the page on the left.
 | **P** | pause or resume the Mockingboard music; RETURN on a `.MB` file starts it |
 | **W** | disk images: write a `.PO`/`.DSK`/`.2MG` to a floppy, read a floppy into a fresh image, copy one floppy onto another (see below) |
 | **!** | the overlay menu: the list of `A2FILE/*.PLG` with their description, each run on the selection (Up/Down one line, Left/Right a page, a letter jumps to the next name starting with it). Among them: **COMPARE** confronts the selection with the file of the same name in the other panel byte by byte, and **SEARCH** asks for a text and tags the panel files that contain it (case-insensitive) |
-| **F** | open the formatter, `A2FILE/FORMAT.SYS`, which returns to A2FC on exit |
+| **F** | open the formatter, `A2FILE/FORMAT.SYS`, on the main disk, which returns to A2FC on exit |
 | **1** … **0** | the ten buttons of the key bar, in order, like Norton Commander and A2Command |
 | **Ctrl-T** / **Ctrl-N** | tag all / untag all; **Ctrl-R** re-reads both panels (floppy swapped, `/RAM` rebuilt) |
 | **Q** | quit to ProDOS after confirmation: Bitsy Bye takes over |
@@ -84,6 +84,40 @@ In a picture, **Left** and **Right** move to the previous or next picture in
 the same directory without returning to the panels: the DHGR directory is
 paged through like an album, and the cursor follows. An arrow with no neighbor
 on its side does nothing, the picture stays. Any other key returns.
+
+### The companion floppy and disk swaps
+
+`A2FILECMD-EXTRAS.po` is a data disk for the **6502 floppy edition**; boot
+`A2FILECMD-6502.po` first. Download both from the same release: native
+overlays retain their build-signature check. The companion contains the
+17 tools absent from the main disk, BASIC.SYSTEM, and copies of the menu
+and its catalog so the menu remains available during an exchange.
+
+With two Disk II drives, insert `/A2EXTRAS` in **slot 6, drive 2**. The
+main disk's tools take precedence, and **!** lists tools from both disks.
+The current volume name is resolved on each access, so renaming the
+companion does not break loading.
+
+With one drive, select the tool as usual. A missing file opens a message
+such as `Insert A2EXTRAS S6,D2: EDIT. 1/2 drive RET ESC`. Press **1** to
+choose **slot 6, drive 1**; the message then names that drive. Insert the
+requested disk and press **Return**. If the tool's input file is on the
+removed disk, A2FC next names that volume and waits for it before reading
+it. **Escape** cancels, including after a large overlay has loaded; the
+panels are restored. The last drive choice is kept for the session.
+
+The catalog keeps all 33 commands selectable even when the companion is
+absent. The slot is currently fixed at 6; the drive can be 1 or 2. Disk
+swapping does not provide simultaneous access to two files on different
+floppies in one drive: tools whose source and destination must both be
+online still need a second drive, `/RAM` or a hard disk.
+
+BASIC.SYSTEM is also searched for on the companion. With one drive, keep
+the Applesoft program on `/RAM` or another online volume so BASIC can read
+it after launch. After running an
+Applesoft program, reinsert the main floppy if needed and use
+`-/A2FILECMD/A2FILE.SYSTEM` to return to the main
+floppy (adjust the volume name if renamed).
 
 ### More tools in the ! menu
 

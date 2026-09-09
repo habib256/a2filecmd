@@ -3,7 +3,8 @@
 #   make            the three ProDOS binaries, in build/ (ARCH=enh) or build-6502/
 #   make disk       the two editions: the floppy dist/A2FILECMD-6502.po and
 #                   .dsk (6502 build, the file manager and the disk tools only)
-#                   and the hard disk dist/A2FILECMDXL-65C02.2mg, volume
+#                   its companion dist/A2FILECMD-EXTRAS.po, and the hard
+#                   disk dist/A2FILECMDXL-65C02.2mg, volume
 #                   /A2FILECMDXL (65C02 build, everything).
 #                   With ARCH=6502 or ARCH=enh given, only that edition.
 #   make benchfloppy  build/A2FILECMD-full.po: a 65C02 floppy with the core
@@ -135,6 +136,11 @@ SYSTEM = $(BUILD)/A2FILE.SYSTEM.SYS
 FORMAT = $(BUILD)/FORMAT.SYS.SYS
 PO     = $(DIST)/$(IMG).po
 DSK    = $(DIST)/$(IMG).dsk
+EXTRAS = $(DIST)/A2FILECMD-EXTRAS.po
+PLUGINS_EXTRAS = $(filter-out $(PLUGINS_FLOPPY),$(PLUGINS))
+XPLUGINS_EXTRAS = $(filter-out $(XPLUGINS_FLOPPY),$(XPLUGINS))
+CATALOG = $(BUILD)/EXTRAS.CAT
+XPLG_EXTRAS = $(patsubst %,$(BUILD)/%.PLG,$(XPLUGINS_EXTRAS))
 
 OBJS = $(BUILD)/crt0.o $(BUILD)/overlay.o $(BUILD)/unshrink.o $(VDRIVEOBJ) $(BUILD)/a2fc_mli.o $(BUILD)/chain.o \
        $(BUILD)/music.o $(BUILD)/memory_swap.o $(BUILD)/mli_safe.o $(MOUSEOBJ)
@@ -214,7 +220,7 @@ disk:
 	$(MAKE) ARCH=6502 disk
 	$(MAKE) ARCH=enh disk
 else ifeq ($(ARCH),6502)
-disk: $(PO)
+disk: $(PO) $(EXTRAS)
 else
 disk: $(TWOMG)
 endif
@@ -233,13 +239,31 @@ define stage
 endef
 
 # The floppy edition (ARCH=6502).
-$(PO): $(STAGE_DEPS) $(XPLG_FLOPPY) $(TOOLS)/po2dsk.py | $(DIST)
+$(PO): $(STAGE_DEPS) $(XPLG_FLOPPY) $(CATALOG) $(TOOLS)/po2dsk.py | $(DIST)
 	$(call stage,$(PLUGINS_FLOPPY),$(XPLUGINS_FLOPPY))
+	cp $(CATALOG) $(STAGE)/A2FILE/EXTRAS.CAT.BIN
 	python3 $(TOOLS)/mkvolume.py $(STAGE) $(PO) --volume $(VOLUME) \
 	  --boot $(DATA)/prodos_boot.tmpl --blocks 280
 	python3 $(TOOLS)/po2dsk.py $(PO) $(DSK)
 	@python3 $(TOOLS)/prodos_read.py $(PO) | head -1
 	@echo "==> $(PO) and $(DSK): the floppy edition ($(ARCH))"
+
+# Companion data disk, built with the same 6502 link as the boot floppy.
+# It needs neither ProDOS nor a launcher: A2FC opens A2FILE/ on drive 2.
+ifeq ($(ARCH),6502)
+$(CATALOG): $(CODE) $(XPLG) $(TOOLS)/mkoverlay_catalog.py Makefile
+	python3 $(TOOLS)/mkoverlay_catalog.py $@ $(BUILD) --native $(PLUGINS) --plugins $(XPLUGINS)
+
+$(EXTRAS): $(CODE) $(CATALOG) $(XPLG_EXTRAS) $(DATA)/BASIC.SYSTEM.SYS $(TOOLS)/mkvolume.py Makefile | $(DIST)
+	rm -rf $(BUILD)/extras
+	mkdir -p $(BUILD)/extras/A2FILE
+	cp $(CATALOG) $(BUILD)/extras/A2FILE/EXTRAS.CAT.BIN
+	cp $(CODE).MENU $(BUILD)/extras/A2FILE/MENU.PLG#061B00
+	for p in $(PLUGINS_EXTRAS); do cp $(CODE).$$p "$(BUILD)/extras/A2FILE/$$p.PLG#061B00"; done
+	for p in $(XPLUGINS_EXTRAS); do cp $(BUILD)/$$p.PLG "$(BUILD)/extras/A2FILE/$$(echo $$p | tr a-z A-Z).PLG#061B00"; done
+	cp $(DATA)/BASIC.SYSTEM.SYS $(BUILD)/extras/
+	python3 $(TOOLS)/mkvolume.py $(BUILD)/extras $@ --volume A2EXTRAS --blocks 280
+endif
 
 # The complete edition (ARCH=enh).
 $(TWOMG): $(STAGE_DEPS) $(XPLG) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/README.TXT \

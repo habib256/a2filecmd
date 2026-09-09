@@ -1846,11 +1846,83 @@ static void show_hgr(void)
  * not know where it came from. */
 static void a2file_file(const char* name)
 {
-    char* slash = strrchr(cfg_path, '/');
-    other_full[0] = 0;
-    if (!slash) return;
-    memcpy(other_full, cfg_path, slash + 1 - cfg_path);
-    strcpy(other_full + (slash + 1 - cfg_path), name);
+    char* slash;
+    strcpy(other_full, cfg_path);
+    slash = strrchr(other_full, '/');
+    if (slash) strcpy(slash + 1, name);
+    else other_full[0] = 0;
+}
+
+#ifdef A2FC_6502
+/* Start with slot 6, drive 2; the swap prompt can select drive 1. Resolve
+ * the volume each time: swapping or renaming must not leave a cached path. */
+static unsigned char companion_unit = 0xE0;
+static unsigned char companion_path(const char* suffix)
+{
+    unsigned char parms[4], n;
+    parms[0] = 2; parms[1] = companion_unit;
+    parms[2] = (unsigned char)((unsigned)copy_buf & 0xFF);
+    parms[3] = (unsigned char)((unsigned)copy_buf >> 8);
+    if (mli_call(0xC5, parms) || !(n = copy_buf[0] & 15)) return 0;
+    other_full[0] = '/';
+    memcpy(other_full + 1, copy_buf + 1, n);
+    strcpy(other_full + n + 1, suffix);
+    return 1;
+}
+#endif
+
+#ifdef A2FC_6502
+static unsigned char disk_question(const char* name)
+{
+    char key;
+    clear_row(22); gotoxy(0, 22);
+    cprintf("Insert %s S6,D%u: %s. 1/2 drive RET ESC",
+            question, (companion_unit >> 7) + 1, name);
+    key = cgetc();
+    if (key == KEY_ESC) return 0;
+    if (key == '1' || key == '2') companion_unit = key == '1' ? 0x60 : 0xE0;
+    return 1;
+}
+
+static unsigned char ask_disk(const char* name)
+{
+    const char* local;
+    /* Keep aligned with PLUGINS_FLOPPY and XPLUGINS_FLOPPY in Makefile. */
+    static const char locals[] = "HELP\0TEXT\0HEX\0DELETE\0RUN\0ATTR\0MENU\0DISKIMG\0IMGFS\0DOS33\0COMPARE\0TXTCONV\0DATE\0VERIFY\0TAGPAT\0VOLNAME\0WIPE\0";
+    for (local = locals; *local; local += strlen(local) + 1)
+        if (!strcmp(local, name)) break;
+    if (*local) {
+        strcpy(question, cfg_path + 1);
+        *strchr(question, '/') = 0;
+    } else strcpy(question, "A2EXTRAS");
+    return disk_question(name);
+}
+#endif
+
+/* Local overlays take precedence. A stale local file is still rejected by
+ * the caller: the companion only supplies files absent from the boot disk. */
+static FILE* open_overlay(const char* name, unsigned char ask)
+{
+    FILE* f;
+#ifdef A2FC_6502
+    for (;;) {
+#endif
+    a2file_file(name);
+    strcat(other_full, ".PLG");
+    f = fopen(other_full, "rb");
+#ifdef A2FC_6502
+    if (!f && companion_path("/A2FILE/")) {
+        strcat(other_full, name);
+        strcat(other_full, ".PLG");
+        f = fopen(other_full, "rb");
+    }
+    if (f || !ask) return f;
+    if (!ask_disk(name)) return 0;
+    }
+#else
+    (void)ask;
+    return f;
+#endif
 }
 
 /* Loads the overlay `name` -- A2FILE/NAME.PLG, a BIN file linked with the
@@ -1870,9 +1942,7 @@ static unsigned char load_overlay(const char* name, unsigned char any)
     unsigned char ok = 0;
     if (!strcmp(overlay_loaded, name)) return 1;
     overlay_loaded[0] = 0;
-    a2file_file(name);
-    strcat(other_full, ".PLG");
-    f = fopen(other_full, "rb");
+    f = open_overlay(name, 1);
     if (f) {
         if (fread(OVERLAY_WINDOW, 1, 8, f) == 8
             && (OVL->signature == a2fc_link_id || (any && OVL->signature == PLUGIN_MAGIC))) {
@@ -1883,6 +1953,26 @@ static unsigned char load_overlay(const char* name, unsigned char any)
         }
         fclose(f);
     }
+#ifdef A2FC_6502
+    /* A one-drive swap loaded the code, but its input may be on the disk
+     * just removed. Restore that volume before the overlay opens its file. */
+    if (ok && companion_unit == 0x60) {
+        char* slash;
+        strncpy(other_full, full[0] == '/' ? full : cfg_path, 16);
+        other_full[16] = 0;
+        slash = strchr(other_full + 1, '/'); if (slash) *slash = 0;
+        strcpy(question, other_full + 1);
+        while (!exists(other_full)) {
+            if (!disk_question(name)) {
+                overlay_loaded[0] = 0;
+                if (OVL->flags & OVERLAY_BIG) {
+                    read_panel(0); read_panel(1); keep_tags(0); draw_all();
+                }
+                return 0;
+            }
+        }
+    }
+#endif
     if (!ok) {
         clear_row(22);
         gotoxy(0, 22);
@@ -2987,8 +3077,21 @@ out:
  * outside this overlay's code. */
 #pragma code-name (push, "MENU")
 #pragma rodata-name (push, "MENURO")
+static const char mn_catalog[] = "EXTRAS.CAT";
+static const char mn_catalog_path[] = "/A2FILE/EXTRAS.CAT";
+static const char mn_dir[] = "/A2FILE";
+static const char mn_suffix[] = ".PLG";
+static const char mn_self[] = "MENU.PLG";
+static const char mn_bad[] = "(unreadable)";
+static const char mn_stale[] = "(from another build of A2 File Cmd)";
+static const char mn_noentry[] = "(no entry point)";
+static const char mn_title[] = "  A2FILE/*.PLG  -  the overlays, run on the selected entry";
+static const char mn_empty[] = "No overlay here.";
+static const char mn_keys[] = "U/D Choose,L/R Page,RET Run,ESC Back";
+static const char mn_count[] = "%2u/%-2u";
+static const char mn_titlefmt[] = "%-79.79s";
 static const char mn_nodir[]   = "The program directory is unknown.";
-static const char mn_unread[]  = "A2FILE/ is unreadable.";
+
 /* The row uses the whole 80 columns: two of margin, twelve for the name
  * (a .PLG name is eleven characters at most), the rest for the description. */
 static const char mn_row[]     = "  %-12s%-65s";
@@ -3000,7 +3103,7 @@ void __fastcall__ menu_entry(const struct A2fcApi* a)
 {
     struct MenuItem* m = MENU_ITEMS;
     const struct Overlay* hdr = (const struct Overlay*)copy_buf;
-    unsigned char n = 0, i, cur = 0, len;
+    unsigned char n = 0, i, cur = 0, len, pass;
     FILE* f;
     char key;
     (void)a;
@@ -3008,34 +3111,60 @@ void __fastcall__ menu_entry(const struct A2fcApi* a)
     a2file_file("");
     if (!other_full[0]) { strcpy(note, mn_nodir); return; }
     other_full[strlen(other_full) - 1] = 0;   /* "/VOL/A2FILE/" -> "/VOL/A2FILE" */
-    if (!dir_open(other_full)) { strcpy(note, mn_unread); return; }
-    while (n < MENU_MAX && dir_next()) {
-        len = strlen(dir_entry.name);
-        if (dir_entry.type != 0x06 || len < 5 || strcmp(dir_entry.name + len - 4, ".PLG") || !strcmp(dir_entry.name, "MENU.PLG")) continue;
-        memcpy(m[n].name, dir_entry.name, len - 4);
-        m[n].name[len - 4] = 0;
-        ++n;
+    for (pass = 0; pass <
+#ifdef A2FC_6502
+         2
+#else
+         1
+#endif
+         ; ++pass) {
+#ifdef A2FC_6502
+        if (pass && !companion_path(mn_dir)) continue;
+#endif
+        if (!dir_open(other_full)) continue;
+        while (n < MENU_MAX && dir_next()) {
+            len = strlen(dir_entry.name);
+            if (dir_entry.type != 0x06 || len < 5 || strcmp(dir_entry.name + len - 4, mn_suffix) || !strcmp(dir_entry.name, mn_self)) continue;
+            dir_entry.name[len - 4] = 0;
+            for (i = 0; i < n; ++i) if (!strcmp(m[i].name, dir_entry.name)) break;
+            if (i < n) continue;
+            strcpy(m[n].name, dir_entry.name);
+            ++n;
+        }
+        dir_close();
     }
-    dir_close();
     for (i = 0; i < n; ++i) {          /* the header of each: its description */
-        a2file_file(m[i].name);
-        strcat(other_full, ".PLG");
-        strcpy(m[i].desc, "(unreadable)");
-        f = fopen(other_full, "rb");
+        strcpy(m[i].desc, mn_bad);
+        f = open_overlay(m[i].name, 0);
         if (!f) continue;
         len = fread(copy_buf, 1, 80, f);
         fclose(f);
         copy_buf[8 + 65] = 0;
-        if (len < 9 || (hdr->signature != a2fc_link_id && hdr->signature != PLUGIN_MAGIC)) strcpy(m[i].desc, "(from another build of A2 File Cmd)");
-        else if (!hdr->entry) strcpy(m[i].desc, "(no entry point)");
+        if (len < 9 || (hdr->signature != a2fc_link_id && hdr->signature != PLUGIN_MAGIC)) strcpy(m[i].desc, mn_stale);
+        else if (!hdr->entry) strcpy(m[i].desc, mn_noentry);
         else strcpy(m[i].desc, hdr->desc);
     }
+#ifdef A2FC_6502
+    /* The catalog keeps all commands visible during a one-drive swap.
+     * Only selecting a command can ask for its disk, never listing it. */
+    a2file_file(mn_catalog);
+    f = fopen(other_full, "rb");
+    if (!f && companion_path(mn_catalog_path)) f = fopen(other_full, "rb");
+    if (f) {
+        while (n < MENU_MAX && fread(copy_buf, 1, sizeof(struct MenuItem), f) == sizeof(struct MenuItem)) {
+            copy_buf[11] = 0; copy_buf[77] = 0;
+            for (i = 0; i < n; ++i) if (!strcmp(m[i].name, (char*)copy_buf)) break;
+            if (i == n) { memcpy(&m[n], copy_buf, sizeof(struct MenuItem)); ++n; }
+        }
+        fclose(f);
+    }
+#endif
     clrscr();
     revers(1);
     gotoxy(0, 0);
-    cprintf("%-79.79s", "  A2FILE/*.PLG  -  the overlays, run on the selected entry");
+    cprintf(mn_titlefmt, mn_title);
     revers(0);
-    if (!n) cputsxy(2, 2, "No overlay here.");
+    if (!n) cputsxy(2, 2, mn_empty);
     for (;;) {
         /* A page of MENU_ROWS around the cursor; the rest scrolls. */
         unsigned char top = cur - cur % MENU_ROWS;
@@ -3048,10 +3177,10 @@ void __fastcall__ menu_entry(const struct A2fcApi* a)
             } else cclearxy(0, 2 + i, 79);
         }
         gotoxy(70, 0); revers(1);
-        cprintf("%2u/%-2u", cur + 1, n);
+        cprintf(mn_count, cur + 1, n);
         revers(0);
         bar_begin();
-        keys_bar(0, "U/D Choose,L/R Page,RET Run,ESC Back");
+        keys_bar(0, mn_keys);
         key = cgetc();
         if (key == KEY_ESC) return;
         if (key == KEY_RETURN && n) { strcpy(input, m[cur].name); return; }
@@ -4027,6 +4156,13 @@ static void basic_path(void)
     strcpy(full, cfg_path);
     s = strchr(full + 1, '/'); if (s) *s = 0;          /* "/VOL/A2FILE/A2FILE.CFG" -> "/VOL" */
     strcat(full, run_basic);
+#ifdef A2FC_6502
+    if (!exists(full) && companion_path(run_basic)) strcpy(full, other_full);
+    while (!exists(full)) {
+        if (!ask_disk(run_basic + 1)) { full[0] = 0; return; }
+        if (companion_path(run_basic)) strcpy(full, other_full);
+    }
+#endif
 }
 
 static void run_selected(const struct Entry* e)
@@ -4043,8 +4179,9 @@ static void run_selected(const struct Entry* e)
          * comes from the A2FC floppy. Too long, we fall back to the old
          * behaviour (prefix = program's directory, "-NAME", no way back).
          * BASIC.SYSTEM missing: launch_file will say "Run failed". */
-        whole = build_full(other_full, &panels[active], e) && strlen(other_full) <= 46;
         basic_path();
+        if (!full[0]) return;
+        whole = build_full(other_full, &panels[active], e) && strlen(other_full) <= 46;
         addr = 0x2000;
     } else {
         if (e->type != 0xFF && e->type != 0x06) { extern const char msg_sysonly[]; message(msg_sysonly); return; }

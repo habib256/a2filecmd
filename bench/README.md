@@ -107,3 +107,13 @@ toutes dessus et se testent avec `plugins.py` sur disque dur.
 Validation du 2026-09-09 : les quinze bancs passent sur IIe non enhanced
 (6502) et IIe enhanced (65C02), **239 contrôles par processeur**. Les
 contrôles d’amorçage des deux images publiées passent également.
+
+`A2FC_PRESET=iie_unenh python3 bench/extras.py` amorce la disquette publiée
+avec son complément : surcouche native, surcouche à table de services, menu
+commun, renommage du volume, absence du disque, choix explicite du lecteur,
+échanges sur un seul lecteur et retour au disque du fichier, annulation
+après chargement d'une grande surcouche, puis BASIC.SYSTEM du complément.
+
+Validation du complément (2026-09-09) : 19 contrôles POM2 et le contrôle
+des images passent sur IIe non enhanced ; les 72 contrôles de la session
+complète 65C02 et les 23 tests hors émulateur passent également.

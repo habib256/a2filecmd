@@ -44,8 +44,8 @@ Décidé le 2026-09-09 : deux produits, pas quatre paires d'images.
 | Public | la machine d'origine, la disquette qu'on prête | l'émulateur, la CFFA, le disque dur |
 
 **Budget actuel de la disquette** (image reconstruite le 2026-09-09) :
-240 blocs occupés, **40 libres** sur 280, avec `COMPARE` et les six nouveaux
-outils. Le disque dur complet garde 64 490 blocs libres sur 65 535.
+249 blocs occupés, **31 libres** sur 280, avec `COMPARE`, les six nouveaux
+outils et le catalogue du complément. Le complément garde 136 blocs libres. Le disque dur complet garde 64 490 blocs libres sur 65 535.
 Les anciennes estimations de trois blocs par outil sous-estimaient les
 grandes surcouches `TXTCONV` et `WIPE`. Pour financer les outils du palier 2 :
 
@@ -54,13 +54,17 @@ grandes surcouches `TXTCONV` et `WIPE`. Pour financer les outils du palier 2 :
   (`$1B00-$3FFF`, ses tampons `$6700-$8000` passent en mémoire auxiliaire ou
   dans la page graphique), il en coûterait 6 : **18 blocs rendus**, et le
   formateur ne quitte plus le programme. *1 jour.*
-- 🟡 **La seconde disquette** : `A2FILECMD-EXTRAS.po` avec les neuf surcouches
-  sorties, et `load_overlay` qui, après `A2FILE/` sur le disque de démarrage,
-  cherche aussi `A2FILE/` sur le lecteur 2. L'utilisateur à deux lecteurs a
-  tout ; celui à un lecteur échange. *½ jour.*
+- ✅ **La seconde disquette** : `A2FILECMD-EXTRAS.po` contient les 17 outils
+  absents du disque principal et `BASIC.SYSTEM`. Chargement depuis S6,D2,
+  ou échanges sur S6,D1 : l'invite nomme le volume attendu et le lecteur,
+  `1`/`2` change le lecteur, Retour réessaie, Échap annule. Le catalogue
+  conserve tous les outils dans le menu ; le disque du fichier est
+  redemandé après chargement de la surcouche s'il a été retiré. Le choix
+  du slot (autre que 6) et la copie entre deux disquettes dans un seul
+  lecteur restent hors de ce mécanisme de chargement.
 - ✅ **Les deux éditions dans le Makefile et le CI** (fait le 2026-09-09) :
   `make disk` produit la disquette 6502 minimale (`PLUGINS_FLOPPY`, sans
-  `BASIC.SYSTEM`, initialement 77 blocs libres, 40 avec les nouveaux outils) et le `.2mg` 65C02 complet ; plus de
+  `BASIC.SYSTEM`, initialement 77 blocs libres, 31 avec les outils et le catalogue) et le `.2mg` 65C02 complet ; plus de
   `.2mg` 6502 ni de disquette 65C02 ; la page de titre, le README, le manuel
   et les notes de version disent l'édition. Les bancs amorcent la disquette
   publiée avec les symboles de `build-6502/` ; ceux qui ont besoin de

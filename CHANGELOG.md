@@ -5,6 +5,9 @@ downloads and installation.
 
 ## Unreleased
 
+- Added `A2FILECMD-EXTRAS.po`, the companion to the 6502 boot floppy, with 17 additional tools and BASIC.SYSTEM. The menu merges both disks and keeps all commands visible through a catalog. The main disk takes precedence.
+- Added disk-swap prompts naming the expected volume and slot/drive, with a session choice of drive 1 or 2 in slot 6. With one drive, the input volume is requested after the overlay loads; Escape restores the panels. BASIC.SYSTEM can be loaded from the companion too.
+
 - Added fifteen service-table overlays, reached from **!**: TXTCONV, DATE, VERIFY, TAGPAT, VOLNAME and WIPE on both editions; FIXTYPES, GOTO, FIND, CRC, IDENT, MDVIEW, RENAME, IMGCONV and BOOTBLK on the complete edition. See the [manual](docs/MANUAL.md#more-tools-in-the--menu) for controls and limits.
 - Added a POM2 bench for each new overlay and `bench/plugins.py` to run them together. CRC checks use Python's `zlib.crc32`; file-writing benches reread a drive-2 image on the host.
 - Enforced the code-plus-BSS boundary below `$3000` for overlays using graphics-page scratch, and below VERIFY's copied service table. Each service-table overlay now produces a linker map.

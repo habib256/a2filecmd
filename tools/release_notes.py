@@ -19,9 +19,10 @@ FILES = """
 | `A2FILECMD-6502.po` — bootable 140 KB floppy, ProDOS order | **Floppy edition**, 6502 build: the file manager and the disk tools | Any Apple II with 128 KB and 80 columns, the 1983 IIe included; keyboard only |
 | `A2FILECMD-6502.dsk` — the same floppy, `.dsk` (DOS-order) layout | The same | The same |
 | `A2FILECMDXL-65C02.2mg` — 32 MB hard disk | **Complete edition**, 65C02 build: every tool, `DEMO/`, `IMGHGR/`, BASIC.SYSTEM | Enhanced IIe, //c, IIgs; mouse optional |
+| `A2FILECMD-EXTRAS.po` — non-bootable 140 KB companion | 17 extra tools and BASIC.SYSTEM; slot 6 drive 2, or prompted swaps in drive 1 | Same machines as the 6502 floppy |
 
 Boot an image and press **?** for the key map; `sha256sum -c SHA256SUMS.txt`
-checks the download. The images carry ProDOS 8 2.4.3, and the `.2mg` also
+checks the download. The bootable images carry ProDOS 8 2.4.3; the `.2mg` and companion carry
 BASIC.SYSTEM (John Brooks' free distribution; they are Apple's). Sources,
 manual and benches:
 <https://github.com/habib256/a2filecmd>.
