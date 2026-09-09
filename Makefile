@@ -1,12 +1,9 @@
 # A2 File Cmd -- two-panel ProDOS file manager, Apple IIe.
 #
 #   make            the three ProDOS binaries, in build/ (ARCH=enh) or build-6502/
-#   make disk       the two editions: the floppy dist/A2FILECMD-6502.po and
-#                   .dsk (6502 build, the file manager and the disk tools only)
-#                   its companion dist/A2FILECMD-EXTRAS.po, and the hard
-#                   disk dist/A2FILECMDXL-65C02.2mg, volume
-#                   /A2FILECMDXL (65C02 build, everything).
-#                   With ARCH=6502 or ARCH=enh given, only that edition.
+#   make disk       BOOT and EXTRA 140 KB floppies (.po/.dsk), plus XL .2mg,
+#                   for both CPUs: dist/A2FILECMD-{6502,65C02}-{BOOT,EXTRA,XL}.*
+#                   ARCH=6502 or ARCH=enh builds that CPU's three volumes.
 #   make benchfloppy  build/A2FILECMD-full.po: a 65C02 floppy with the core
 #                   overlay, for the benches only -- never shipped
 #   make test       the tests outside the emulator (memory layout, volume)
@@ -18,28 +15,15 @@
 # ld65 lets through silently. See docs/MANUAL.md.
 
 A2FC_VERSION = 0.7
-VOLUME       = A2FILECMD
+VOLUME       = A2FC$(CPU)
 
 # The .2mg hard disk: another volume name, to coexist with the floppy.
 # (Comments stay on their own line: make keeps the blanks before a `#`.)
-VOLUME_HD    = A2FILECMDXL
-# Two editions, one tree (decided 2026-09-09, see TODO.md):
-#
-#   ARCH=6502  the FLOPPY edition, dist/A2FILECMD-6502.po and .dsk: target
-#              apple2 (6502, no MouseText), so it runs on any Apple II with
-#              128 KB and 80 columns, the 1983 IIe included; no mouse (for
-#              room), big BINARY2. Carries the file manager and the disk
-#              tools only (PLUGINS_FLOPPY), no BASIC.SYSTEM: what a user with
-#              two Disk II drives and no hard disk cannot do otherwise.
-#              The apple2 target's 80-column console only exists in cc65
-#              master (git, after 2.19: machinetype, aux80col, videomode):
-#              CC65_HEAD is a cc65 built from master (make ; make install
-#              PREFIX=~/opt/cc65-head), kept apart from the 2.19 build.
-#   ARCH=enh   the COMPLETE edition, dist/A2FILECMDXL-65C02.2mg: apple2enh
-#              (65C02, MouseText) for the enhanced IIe, //c and IIgs, with
-#              the mouse, every overlay, BASIC.SYSTEM, DEMO/ and IMGHGR/.
-#
-# `make disk` with no ARCH builds both; with ARCH given, that edition only.
+VOLUME_HD    = A2XL$(CPU)
+# Two CPU builds, each offered as BOOT + EXTRA floppies and a complete XL.
+# ARCH=6502 uses cc65 master (apple2, 128 KB / 80 columns, no mouse).
+# ARCH=enh uses cc65 2.19 (apple2enh, 65C02, MouseText and optional mouse).
+# CC65_HEAD points to the separately installed cc65 master toolchain.
 ifeq ($(origin ARCH),undefined)
 BOTH_EDITIONS = yes
 endif
@@ -52,7 +36,8 @@ ASDEFS = -D A2_6502 -D CC65_MASTER
 CLDEFS = --asm-define A2_6502 --asm-define CC65_MASTER -DA2FC_6502 -DA2FC_NOMOUSE -DA2FC_BIG_BINARY2
 MOUSEOBJ =
 # The edition and the processor, in the file name.
-IMG    = A2FILECMD-6502
+CPU = 6502
+IMG = A2FILECMD-$(CPU)-BOOT
 BUILD_SUFFIX = -6502
 BIN2SIZE = 0x0D00
 LAYOUT_BIG = --big BINARY2
@@ -62,8 +47,9 @@ TARGET = apple2enh
 ASDEFS =
 CLDEFS =
 MOUSEOBJ = $(BUILD)/mouse.o
-# The volume /A2FILECMDXL and the processor, in the file name.
-IMG    = A2FILECMDXL-65C02
+# The processor precedes the disk role for alphabetical grouping.
+CPU = 65C02
+IMG = A2FILECMD-$(CPU)-BOOT
 BUILD_SUFFIX =
 BIN2SIZE = 0x0500
 LAYOUT_BIG =
@@ -133,10 +119,12 @@ XPLUGINS_SCRATCH = find goto imgconv mdview wipe
 XPLG = $(patsubst %,$(BUILD)/%.PLG,$(XPLUGINS))
 XPLG_FLOPPY = $(patsubst %,$(BUILD)/%.PLG,$(XPLUGINS_FLOPPY))
 SYSTEM = $(BUILD)/A2FILE.SYSTEM.SYS
+FLOPPY_SYSTEM = $(BUILD)/A2FILE.FLOPPY.SYS
 FORMAT = $(BUILD)/FORMAT.SYS.SYS
 PO     = $(DIST)/$(IMG).po
 DSK    = $(DIST)/$(IMG).dsk
-EXTRAS = $(DIST)/A2FILECMD-EXTRAS.po
+EXTRAS = $(DIST)/A2FILECMD-$(CPU)-EXTRA.po
+EXTRAS_DSK = $(EXTRAS:.po=.dsk)
 PLUGINS_EXTRAS = $(filter-out $(PLUGINS_FLOPPY),$(PLUGINS))
 XPLUGINS_EXTRAS = $(filter-out $(XPLUGINS_FLOPPY),$(XPLUGINS))
 CATALOG = $(BUILD)/EXTRAS.CAT
@@ -144,6 +132,8 @@ XPLG_EXTRAS = $(patsubst %,$(BUILD)/%.PLG,$(XPLUGINS_EXTRAS))
 
 OBJS = $(BUILD)/crt0.o $(BUILD)/overlay.o $(BUILD)/unshrink.o $(VDRIVEOBJ) $(BUILD)/a2fc_mli.o $(BUILD)/chain.o \
        $(BUILD)/music.o $(BUILD)/memory_swap.o $(BUILD)/mli_safe.o $(MOUSEOBJ)
+
+.DELETE_ON_ERROR:
 
 .PHONY: all disk benchfloppy xplugins test bench example clean
 all: $(SYSTEM) $(CODE) $(FORMAT)
@@ -164,10 +154,20 @@ $(BUILD)/music.o: $(SRC)/music.s $(SRC)/ay_notes.inc | $(BUILD)
 
 # The launcher: a real SYS program, loaded at $2000 by ProDOS, which reads
 # A2FILE.CODE to its three addresses (see src/loader.c).
-$(SYSTEM): $(SRC)/loader.c $(BUILD)/crt0_loader.o $(BUILD)/loader_mli.o Makefile | $(BUILD)
-	$(CL) $(CFLAGS) -D 'A2FC_VERSION="$(A2FC_VERSION)"' --start-addr 0x2000 \
+# Separate intermediates: cl65 would otherwise overwrite src/loader.s
+# when BOOT and XL are built concurrently.
+$(BUILD)/launcher.o $(BUILD)/launcher_floppy.o: $(SRC)/loader.c Makefile | $(BUILD)
+	$(CC65BIN)cc65 -t $(TARGET) $(CCDEFS) -O -Oirs -Cl --codesize $(CODESIZE) \
+	  $(if $(filter %/launcher_floppy.o,$@),-DA2FC_FLOPPY) -D 'A2FC_VERSION="$(A2FC_VERSION)"' -o $(@:.o=.s) $<
+	$(AS) -t $(TARGET) $(ASDEFS) -o $@ $(@:.o=.s)
+
+$(SYSTEM): $(BUILD)/launcher.o
+$(FLOPPY_SYSTEM): $(BUILD)/launcher_floppy.o
+$(SYSTEM) $(FLOPPY_SYSTEM): $(BUILD)/crt0_loader.o $(BUILD)/loader_mli.o Makefile | $(BUILD)
+	$(CL) $(CFLAGS) --start-addr 0x2000 \
 	  -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__FILETYPE__=0xFF \
-	  -o $@ $(BUILD)/crt0_loader.o $(BUILD)/loader_mli.o $< $(IOBUF)
+	  -o $@ $(BUILD)/crt0_loader.o $(BUILD)/loader_mli.o \
+	  $(BUILD)/$(if $(filter $(FLOPPY_SYSTEM),$@),launcher_floppy,launcher).o $(IOBUF)
 
 $(CODE): $(SRC)/a2fc.c $(SRC)/a2fc.cfg $(SRC)/a2fc_plugin.h $(SRC)/music.h $(SRC)/memory_swap.h $(OBJS) Makefile | $(BUILD)
 	$(CL) $(CFLAGS) -D 'A2FC_VERSION="$(A2FC_VERSION)"' -C $(SRC)/a2fc.cfg \
@@ -199,18 +199,12 @@ $(BUILD)/%.PLG: $(SRC)/plugins/%.c $(SRC)/a2fc_plugin.h sdk/plugin.cfg Makefile 
 xplugins: $(XPLG)
 all: xplugins
 
-# -- The floppy and the hard disk -------------------------------------------
-# Two volumes, bootable: ProDOS 2.4.3, the launcher at the root (the only
-# .SYSTEM file), the program, its overlays (BINs loaded at $1B00, hence
-# their auxtype) and its help in A2FILE/.
-#   The floppy /A2FILECMD (280 blocks, .po and .dsk), the 6502 build: the
-# file manager and the disk tools (PLUGINS_FLOPPY), nothing else.
-#   The hard disk /A2FILECMDXL (.2mg, 65535 blocks, ProDOS's maximum), the
-# 65C02 build: every overlay, BASIC.SYSTEM, and a DEMO directory built from
-# scratch with one specimen of everything A2 File Cmd knows how to open.
+# -- Published disks --------------------------------------------------------
+# BOOT has ProDOS, the launcher, file manager and disk tools; EXTRA carries
+# the remaining tools and BASIC.SYSTEM. XL contains everything plus demos.
 STAGE = $(BUILD)/vol
 HDV = $(BUILD)/$(IMG).hdv
-TWOMG = $(DIST)/$(IMG).2mg
+TWOMG = $(DIST)/A2FILECMD-$(CPU)-XL.2mg
 FULLPO = $(BUILD)/A2FILECMD-full.po
 STAGE_DEPS = $(SYSTEM) $(CODE) $(FORMAT) $(DATA)/A2FILE.HELP.TXT $(DATA)/PRODOS.SYS \
        $(DATA)/prodos_boot.tmpl $(TOOLS)/mkvolume.py
@@ -219,10 +213,8 @@ ifdef BOTH_EDITIONS
 disk:
 	$(MAKE) ARCH=6502 disk
 	$(MAKE) ARCH=enh disk
-else ifeq ($(ARCH),6502)
-disk: $(PO) $(EXTRAS)
 else
-disk: $(TWOMG)
+disk: $(PO) $(DSK) $(TWOMG) $(EXTRAS) $(EXTRAS_DSK)
 endif
 
 # The stage: the launcher, the program, the overlays named in $(1), the help,
@@ -238,34 +230,38 @@ define stage
 	cp $(FORMAT) $(STAGE)/A2FILE/FORMAT.SYS.SYS
 endef
 
-# The floppy edition (ARCH=6502).
-$(PO): $(STAGE_DEPS) $(XPLG_FLOPPY) $(CATALOG) $(TOOLS)/po2dsk.py | $(DIST)
+# BOOT: a 140 KB floppy for the selected CPU.
+$(PO): STAGE = $(BUILD)/floppy
+$(PO): $(FLOPPY_SYSTEM) $(STAGE_DEPS) $(XPLG_FLOPPY) $(CATALOG) $(TOOLS)/po2dsk.py | $(DIST)
 	$(call stage,$(PLUGINS_FLOPPY),$(XPLUGINS_FLOPPY))
+	cp $(FLOPPY_SYSTEM) $(STAGE)/A2FILE.SYSTEM.SYS
 	cp $(CATALOG) $(STAGE)/A2FILE/EXTRAS.CAT.BIN
 	python3 $(TOOLS)/mkvolume.py $(STAGE) $(PO) --volume $(VOLUME) \
 	  --boot $(DATA)/prodos_boot.tmpl --blocks 280
-	python3 $(TOOLS)/po2dsk.py $(PO) $(DSK)
 	@python3 $(TOOLS)/prodos_read.py $(PO) | head -1
-	@echo "==> $(PO) and $(DSK): the floppy edition ($(ARCH))"
+	@echo "==> $(PO): the boot floppy ($(CPU))"
 
-# Companion data disk, built with the same 6502 link as the boot floppy.
-# It needs neither ProDOS nor a launcher: A2FC opens A2FILE/ on drive 2.
-ifeq ($(ARCH),6502)
+$(DSK): $(PO) $(TOOLS)/po2dsk.py
+	python3 $(TOOLS)/po2dsk.py $< $@
+
+# Each companion uses the exact same CPU/link as its boot and XL images.
 $(CATALOG): $(CODE) $(XPLG) $(TOOLS)/mkoverlay_catalog.py Makefile
 	python3 $(TOOLS)/mkoverlay_catalog.py $@ $(BUILD) --native $(PLUGINS) --plugins $(XPLUGINS)
 
-$(EXTRAS): $(CODE) $(CATALOG) $(XPLG_EXTRAS) $(DATA)/BASIC.SYSTEM.SYS $(TOOLS)/mkvolume.py Makefile | $(DIST)
-	rm -rf $(BUILD)/extras
-	mkdir -p $(BUILD)/extras/A2FILE
-	cp $(CATALOG) $(BUILD)/extras/A2FILE/EXTRAS.CAT.BIN
-	cp $(CODE).MENU $(BUILD)/extras/A2FILE/MENU.PLG#061B00
-	for p in $(PLUGINS_EXTRAS); do cp $(CODE).$$p "$(BUILD)/extras/A2FILE/$$p.PLG#061B00"; done
-	for p in $(XPLUGINS_EXTRAS); do cp $(BUILD)/$$p.PLG "$(BUILD)/extras/A2FILE/$$(echo $$p | tr a-z A-Z).PLG#061B00"; done
-	cp $(DATA)/BASIC.SYSTEM.SYS $(BUILD)/extras/
-	python3 $(TOOLS)/mkvolume.py $(BUILD)/extras $@ --volume A2EXTRAS --blocks 280
-endif
+EXTRA_STAGE = $(BUILD)/extras
+$(EXTRAS): $(CODE) $(CATALOG) $(XPLG_EXTRAS) $(DATA)/BASIC.SYSTEM.SYS $(TOOLS)/mkvolume.py $(TOOLS)/po2dsk.py Makefile | $(DIST)
+	rm -rf $(EXTRA_STAGE)
+	mkdir -p $(EXTRA_STAGE)/A2FILE
+	cp $(CATALOG) $(EXTRA_STAGE)/A2FILE/EXTRAS.CAT.BIN
+	for p in MENU $(PLUGINS_EXTRAS); do cp $(CODE).$$p "$(EXTRA_STAGE)/A2FILE/$$p.PLG#061B00"; done
+	for p in $(XPLUGINS_EXTRAS); do cp $(BUILD)/$$p.PLG "$(EXTRA_STAGE)/A2FILE/$$(echo $$p | tr a-z A-Z).PLG#061B00"; done
+	cp $(DATA)/BASIC.SYSTEM.SYS $(EXTRA_STAGE)/
+	python3 $(TOOLS)/mkvolume.py $(EXTRA_STAGE) $@ --volume A2EXTRA$(CPU) --blocks 280
 
-# The complete edition (ARCH=enh).
+$(EXTRAS_DSK): $(EXTRAS) $(TOOLS)/po2dsk.py
+	python3 $(TOOLS)/po2dsk.py $< $@
+
+# XL: the complete edition for the selected CPU.
 $(TWOMG): $(STAGE_DEPS) $(XPLG) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/README.TXT \
        $(TOOLS)/mkdemo.py $(TOOLS)/po22mg.py \
        $(TOOLS)/mkshk.py $(TOOLS)/mkbny.py $(TOOLS)/mkdos33.py $(wildcard $(DATA)/IMGHGR/*) | $(DIST)
@@ -285,10 +281,11 @@ $(TWOMG): $(STAGE_DEPS) $(XPLG) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/README.TXT \
 # exercise the editor, the pictures, the archives and the readers from a
 # floppy (bench/run.py and friends, A2FC_IMG=A2FILECMD-full). Never shipped.
 benchfloppy: $(FULLPO)
+$(FULLPO): STAGE = $(BUILD)/benchvol
 $(FULLPO): $(STAGE_DEPS) $(DATA)/BASIC.SYSTEM.SYS
 	$(call stage,$(PLUGINS),)
 	cp $(DATA)/BASIC.SYSTEM.SYS $(STAGE)/
-	python3 $(TOOLS)/mkvolume.py $(STAGE) $(FULLPO) --volume $(VOLUME) \
+	python3 $(TOOLS)/mkvolume.py $(STAGE) $(FULLPO) --volume A2FILECMD \
 	  --boot $(DATA)/prodos_boot.tmpl --blocks 280
 	@echo "==> $(FULLPO): the bench floppy, core overlays ($(ARCH))"
 

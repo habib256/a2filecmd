@@ -4,9 +4,7 @@
     release_notes.py 0.6.8 > dist/RELEASE_NOTES.md
 
 Prend la section "## [0.6.8]" du CHANGELOG (ou "## Unreleased" si le numero
-n'y est pas encore), et y ajoute le tableau des deux editions : la
-disquette (6502, le gestionnaire et les outils disque) et le disque dur
-(65C02, tout)."""
+n'y est pas encore), et y ajoute les trois supports (BOOT, EXTRA et XL) de chaque processeur."""
 import re
 import sys
 from pathlib import Path
@@ -14,12 +12,16 @@ from pathlib import Path
 FILES = """
 ### Files
 
-| | Contents | Runs on |
-|---|---|---|
-| `A2FILECMD-6502.po` — bootable 140 KB floppy, ProDOS order | **Floppy edition**, 6502 build: the file manager and the disk tools | Any Apple II with 128 KB and 80 columns, the 1983 IIe included; keyboard only |
-| `A2FILECMD-6502.dsk` — the same floppy, `.dsk` (DOS-order) layout | The same | The same |
-| `A2FILECMDXL-65C02.2mg` — 32 MB hard disk | **Complete edition**, 65C02 build: every tool, `DEMO/`, `IMGHGR/`, BASIC.SYSTEM | Enhanced IIe, //c, IIgs; mouse optional |
-| `A2FILECMD-EXTRAS.po` — non-bootable 140 KB companion | 17 extra tools and BASIC.SYSTEM; slot 6 drive 2, or prompted swaps in drive 1 | Same machines as the 6502 floppy |
+| CPU | BOOT: 140 KB, bootable | EXTRA: 140 KB, companion | XL: 32 MB, complete |
+|---|---|---|---|
+| 6502 | `A2FILECMD-6502-BOOT.po` / `.dsk` | `A2FILECMD-6502-EXTRA.po` / `.dsk` | `A2FILECMD-6502-XL.2mg` |
+| 65C02 | `A2FILECMD-65C02-BOOT.po` / `.dsk` | `A2FILECMD-65C02-EXTRA.po` / `.dsk` | `A2FILECMD-65C02-XL.2mg` |
+
+Choose BOOT and EXTRA for the same CPU and release. EXTRA has 17 additional
+tools and BASIC.SYSTEM; XL has all 34 overlays, BASIC.SYSTEM, DEMO and IMGHGR.
+The 6502 versions run on an Apple II with 128 KB and 80 columns, including
+the original IIe. The 65C02 versions support enhanced IIe, //c and IIgs,
+with optional mouse. EXTRA keeps 67.5 KB free on 6502 and 68 KB on 65C02 for future plugins.
 
 Boot an image and press **?** for the key map; `sha256sum -c SHA256SUMS.txt`
 checks the download. The bootable images carry ProDOS 8 2.4.3; the `.2mg` and companion carry

@@ -72,33 +72,37 @@ int main(void)
         for (n = 1; n < 4; ++n) { cputcxy(0, n, '|'); cputcxy(79, n, '|'); }
         revers(1);
 #ifdef A2FC_6502
-        centre(2, "  A2 FILE CMD " A2FC_VERSION " - 6502 FLOPPY EDITION  ");
+#define CPU_LABEL "6502"
 #else
-        centre(2, "  A2 FILE CMD " A2FC_VERSION " - 65C02 COMPLETE EDITION  ");
+#define CPU_LABEL "65C02"
+#endif
+#ifdef A2FC_FLOPPY
+        centre(2, "  A2 FILE CMD " A2FC_VERSION " - " CPU_LABEL " FLOPPY EDITION  ");
+#else
+        centre(2, "  A2 FILE CMD " A2FC_VERSION " - " CPU_LABEL " COMPLETE EDITION  ");
 #endif
         revers(0);
         centre(3, "Two panels. One Apple II.");
         centre(6, "A two-pane ProDOS file manager running natively on Apple IIe.");
         cputsxy(4, 8,  "Copy, move, rename, delete, tag, sort.");
-#ifdef A2FC_6502
-        /* The floppy edition, the 6502 build: the file manager and the disk
-         * tools, on any Apple II with 128 KB and 80 columns -- the page says
-         * so, and where the rest is. */
+#ifdef A2FC_FLOPPY
         cputsxy(44, 8, "Text viewer, hex dump, attributes.");
         cputsxy(4, 9,  "Copy, write and read floppy images.");
         cputsxy(44, 9, "DOS 3.3 disks, images as folders.");
-        cputsxy(4, 10,  "Disk formatter, program launcher.");
-        cputsxy(44, 10, "Keyboard: press ? for help.");
-        cputsxy(4, 12, "FLOPPY EDITION, 6502 BUILD: any Apple II with 128 KB and 80 columns.");
-        cputsxy(4, 13, "Editor, pictures, music, archives, readers: see A2FILECMDXL-65C02.2mg.");
+        cputsxy(4, 13, "More tools: insert the EXTRA floppy for this CPU when requested.");
 #else
         cputsxy(44, 8, "Text viewer, hex dump, text editor.");
         cputsxy(4, 9,  "HGR and DHGR pictures, full screen.");
         cputsxy(44, 9, "Mockingboard music player.");
-        cputsxy(4, 10,  "Disk formatter, program launcher.");
+        cputsxy(4, 13, "All tools and BASIC.SYSTEM on this disk. Optional: Mockingboard.");
+#endif
+        cputsxy(4, 10, "Disk formatter, program launcher.");
+#ifdef A2FC_6502
+        cputsxy(44, 10, "Keyboard: press ? for help.");
+        cputsxy(4, 12, "6502 BUILD: any Apple II with 128 KB and 80 columns.");
+#else
         cputsxy(44, 10, "Mouse or keyboard: press ? for help.");
-        cputsxy(4, 12, "COMPLETE EDITION, 65C02 BUILD: enhanced IIe, //c, IIgs; 128 KB, 80 cols.");
-        cputsxy(4, 13, "Optional: a Mockingboard and an AppleMouse II, in any slot.");
+        cputsxy(4, 12, "65C02 BUILD: enhanced IIe, //c, IIgs; 128 KB, 80 columns.");
 #endif
         cputsxy(4, 15, "Free software under the GNU GPL v3, by Arnaud VERHILLE.");
         cputsxy(4, 16, "https://github.com/habib256/a2filecmd");

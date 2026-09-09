@@ -5,26 +5,18 @@ A two-pane ProDOS file manager in the spirit of Total Commander, for the
 lives in `A2FC_VERSION` in the Makefile, picked up by the launcher, the status
 line and the help). It is free software under the GNU GPL v3, by Arnaud
 Verhille; the launcher and the help say so. Two ways to start it: boot the
-`/A2FILECMD` floppy, or pick `A2FILE.SYSTEM` from a selector such as Bitsy Bye.
+`/A2FC6502` or `/A2FC65C02` floppy, or pick `A2FILE.SYSTEM` from a selector such as Bitsy Bye.
 
-The launcher first checks the machine, in plain 6502 code before anything
-else runs: an Apple IIe or later (`$FBB3 = $06`), not the unenhanced IIe
-(`$FBC0 = $EA`: a 6502 without the 65C02 opcodes cc65 emits, and no
-MouseText), 128 KB and an 80-column card (`MACHID`, `$BF98`, bits 5 and 1).
-A machine that fails gets a plain 40-column message — *A2 FILE CMD NEEDS AN
-ENHANCED APPLE IIE, A IIC OR A IIGS, WITH 128K AND AN 80-COLUMN CARD* — and
-a key returns to ProDOS. Before this check, such a machine showed a blank
-screen with ProDOS alive underneath (Control-Open-Apple-Reset brought Bitsy
-Bye back), which is what a user reported. `bench/machine.py` fakes a 64 KB
-`MACHID` from BASIC and checks the refusal, then boots a //c.
+The launcher first checks the machine in plain 6502 code. Both CPU builds
+require 128 KB and an 80-column card. The 65C02 build additionally rejects
+an unenhanced IIe before executing enhanced instructions; the 6502 build
+accepts it. A failed check displays a 40-column message and a key returns
+to ProDOS. `bench/machine.py` tests the insufficient-memory refusal.
 
-The launcher shows a splash screen while it loads: the title, which names the
-edition (`A2 FILE CMD 0.7 - 65C02 COMPLETE EDITION` or `- 6502 FLOPPY
-EDITION`, with a requirements line reading *COMPLETE EDITION, 65C02 BUILD:
-enhanced IIe, //c, IIgs* or *FLOPPY EDITION, 6502 BUILD: any Apple II with
-128 KB and 80 columns*), the "ProDOS 8
-only" note, the date and time if a clock is present (bit 0 of MACHID, `$BF98`)
-or "No clock" otherwise, then **PLEASE WAIT**. Then come the two panels in
+The splash screen identifies both the CPU and edition, for example
+`6502 FLOPPY EDITION` on BOOT or `65C02 COMPLETE EDITION` on XL. It shows
+the machine requirements, available tools, the date and time if a clock
+is present, then **PLEASE WAIT**. Then come the two panels in
 80-column text: on the left the boot volume, on the right its `DEMO` directory
 the first time (the `.2mg` has one; the bare floppy has not, and the right
 panel then shows the list of volumes); afterwards the two directories, the
@@ -87,19 +79,21 @@ on its side does nothing, the picture stays. Any other key returns.
 
 ### The companion floppy and disk swaps
 
-`A2FILECMD-EXTRAS.po` is a data disk for the **6502 floppy edition**; boot
-`A2FILECMD-6502.po` first. Download both from the same release: native
-overlays retain their build-signature check. The companion contains the
-17 tools absent from the main disk, BASIC.SYSTEM, and copies of the menu
-and its catalog so the menu remains available during an exchange.
+Each CPU has its own companion: `A2FILECMD-6502-EXTRA.po` or
+`A2FILECMD-65C02-EXTRA.po` (also supplied as `.dsk`). Boot the matching
+`A2FILECMD-<CPU>-BOOT.po` first. Use images from the same release: native
+overlays retain their build-signature check. Each companion contains the
+17 tools absent from BOOT, BASIC.SYSTEM, and copies of the menu and its
+catalog. No space is spent storing the other CPU's plugins.
 
-With two Disk II drives, insert `/A2EXTRAS` in **slot 6, drive 2**. The
+With two Disk II drives, insert `/A2EXTRA6502` or `/A2EXTRA65C02` in
+**slot 6, drive 2**, matching the CPU of BOOT. The
 main disk's tools take precedence, and **!** lists tools from both disks.
 The current volume name is resolved on each access, so renaming the
 companion does not break loading.
 
 With one drive, select the tool as usual. A missing file opens a message
-such as `Insert A2EXTRAS S6,D2: EDIT. 1/2 drive RET ESC`. Press **1** to
+such as `Insert A2EXTRA6502 S6,D2: EDIT. 1/2 drive RET ESC`. Press **1** to
 choose **slot 6, drive 1**; the message then names that drive. Insert the
 requested disk and press **Return**. If the tool's input file is on the
 removed disk, A2FC next names that volume and waits for it before reading
@@ -116,8 +110,8 @@ BASIC.SYSTEM is also searched for on the companion. With one drive, keep
 the Applesoft program on `/RAM` or another online volume so BASIC can read
 it after launch. After running an
 Applesoft program, reinsert the main floppy if needed and use
-`-/A2FILECMD/A2FILE.SYSTEM` to return to the main
-floppy (adjust the volume name if renamed).
+`-/A2FC6502/A2FILE.SYSTEM` or `-/A2FC65C02/A2FILE.SYSTEM` to return to
+the matching BOOT floppy (adjust the volume name if renamed).
 
 ### More tools in the ! menu
 
@@ -603,29 +597,29 @@ The names fit in ProDOS's fifteen characters.
 
 ## The 5.25" floppy
 
-`make disk` produces `dist/A2FILECMD-6502.po`, a bootable floppy of 280 blocks,
-volume `/A2FILECMD`; `dist/A2FILECMD-6502.dsk`, the **same floppy** in another
-file layout; and `dist/A2FILECMDXL-65C02.2mg`, the same content as a 65535-block
-hard disk (the ProDOS maximum, 32 MB), volume `/A2FILECMDXL` so that it can sit
-next to the floppy, with the `DEMO` directory the floppy has no room for.
+`make disk` produces six volumes, grouped alphabetically by processor:
 
-### The two editions: the 6502 floppy and the 65C02 hard disk
+| CPU | BOOT, 140 KB | EXTRA, 140 KB | XL, 32 MB |
+|---|---|---|---|
+| 6502 | `A2FILECMD-6502-BOOT.po` | `A2FILECMD-6502-EXTRA.po` | `A2FILECMD-6502-XL.2mg` |
+| 65C02 | `A2FILECMD-65C02-BOOT.po` | `A2FILECMD-65C02-EXTRA.po` | `A2FILECMD-65C02-XL.2mg` |
 
-Since 0.7.1 a release is two products from one tree. The **floppy edition**,
-`dist/A2FILECMD-6502.po` and `.dsk`, is the 6502 build (`make disk ARCH=6502`,
-`build-6502/`): the file manager and the disk tools only — `HELP`, `TEXT`,
-`HEX`, `DELETE`, `RUN`, `ATTR`, `MENU`, `DISKIMG`, `IMGFS`, `DOS33` and the
-formatter, no BASIC.SYSTEM — so that it runs on any Apple II with 128 KB and
-80 columns, the 1983 IIe included, and leaves the floppy's blocks to the disk
-tools to come (`TODO.md`, "Les deux éditions"). The **complete edition**,
-`dist/A2FILECMDXL-65C02.2mg`, is the 65C02 build (`make disk ARCH=enh`, `build/`)
-with every overlay, the mouse, BASIC.SYSTEM, `DEMO/` and `IMGHGR/`. `make
-disk` alone builds both. On the floppy, a key whose overlay is absent (`E`,
-`I`, the archive and reader entries) answers *A2FILE/NAME.PLG is missing or
-stale on this volume*; copying the missing `.PLG` files from the `.2mg` into
-`A2FILE/` turns the floppy back into the complete program, if it fits.
-`make benchfloppy ARCH=enh` writes `build/A2FILECMD-full.po`, a 65C02 floppy
-with everything, for the benches only.
+Both floppy types also have a `.dsk` copy in DOS sector order. BOOT is a
+bootable ProDOS volume with the file manager, disk tools and formatter.
+EXTRA is a non-bootable companion holding the remaining plugins and
+BASIC.SYSTEM. EXTRA currently keeps 135 free blocks (67.5 KB) on 6502 and 136 (68 KB)
+on 65C02 for future tools.
+XL is bootable and contains all 34 overlays, BASIC.SYSTEM, `DEMO/` and
+`IMGHGR/` on the same 65535-block disk; it needs no EXTRA floppy.
+
+ProDOS volume names also identify the CPU and role: `/A2FC6502`,
+`/A2EXTRA6502`, `/A2XL6502`, and `/A2FC65C02`, `/A2EXTRA65C02`,
+`/A2XL65C02`. Use BOOT and EXTRA from the same CPU and release.
+`make disk ARCH=6502` builds the three 6502 volumes; `ARCH=enh` builds the
+three 65C02 volumes. The latter support MouseText and an optional mouse;
+the 6502 versions use the keyboard and run on the original IIe.
+`make benchfloppy ARCH=enh` keeps a private `build/A2FILECMD-full.po`
+with native overlays for regression tests; it is not published.
 
 The 6502 build — a 6502 without the 65C02 opcodes, no MouseText; 128 KB and
 an 80-column card are still required — needs **cc65 master** (the
@@ -655,7 +649,7 @@ ProDOS may assume — but A2FC is launched by its own loader, whose
 `videomode()` leaves language-card bank 2 readable, so `$FE1F` landed in
 ProDOS and the machine died before `main()`. `crt0.s` now puts the ROM back
 (`bit $C082`) before running the constructors, for both builds. The benches
-run on the 6502 images with `A2FC_IMG=A2FILECMD-6502 A2FC_BUILD=build-6502`,
+run on the 6502 images with `A2FC_IMG=A2FILECMD-6502-BOOT A2FC_BUILD=build-6502`,
 and with `A2FC_PRESET=iie_unenh` they run on POM2's unenhanced IIe of 1983
 (NMOS 6502, the 16 KB firmware without MouseText, `$FBC0 = $EA`) — the only
 machine that proves this build, since a `stz` or a `bra` there is an
@@ -802,7 +796,7 @@ is compiled with `-Cl` (static local variables); the three recursive walks
 level's path length. The exit follows the ProDOS QUIT of the cc65 startup.
 
 The proofs come from [windowless POM2 benches](../bench/README.md), which all
-start from `dist/A2FILECMD-6502.po` **as it will be downloaded**. `bench/run.py`
+start from `dist/A2FILECMD-6502-BOOT.po` **as it will be downloaded**. `bench/run.py`
 plays a complete session — boot, navigation, pages, tagging, copy, move,
 rename, a lock refusing deletion, change of type and auxtype, directory
 creation, deletion, text and hex viewers, help, both test cards compared **byte

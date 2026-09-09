@@ -2,7 +2,7 @@
 
 `🟠 haute · 🟡 moyenne · 🟢 basse`, effort indicatif en *italique*, fichier en
 `backticks`. `💾` marque ce qui va **aussi** dans l'édition disquette ; le reste
-n'est que dans l'édition complète (voir « Les deux éditions »). Les mesures datent du 2026-09-09, sur la 0.7 (version stable).
+va sur EXTRA et dans XL (voir « Les deux éditions »). Les mesures datent du 2026-09-09, sur la 0.7 (version stable).
 Ce qui est fait est dans le [CHANGELOG](CHANGELOG.md), avec le détail
 technique de chaque version.
 
@@ -14,19 +14,19 @@ sous POM2 en //c (`preset='iic'`) comme en IIe non enhanced avec la version
 
 ## La place disponible
 
-Mesurée sur `build/a2fc.map` de la 0.7 (65C02). Le résident est **plein** :
+Mesurée après la séparation BOOT / EXTRA / XL (`build/a2fc.map`, 65C02). Le résident est **plein** :
 tout ce qui s'ajoute au noyau doit être payé par une surcouche ou par une
 économie ailleurs.
 
 | Zone | État mesuré |
 | --- | --- |
-| Fenêtre principale `$4000`-plancher de la pile (`$BE40`) | **~240 octets libres** après `INIT` (`$BD51`) ; `ONCE` finit à `$BE47` et le lanceur charge jusqu'à `$BEE0` : ~150 octets de marge avant de heurter le lanceur (`check_layout.py` veille). Version 6502 : ~900 octets. |
-| RAM basse `$1000-$1AFF` (BSS) | ~50 octets libres (6502 : ~75) |
+| Fenêtre principale `$4000`-plancher de la pile (`$BE40`) | 112 octets libres après `INIT` (`$BDD0`) ; fin de `ONCE` à `$BEC6`, 26 octets avant le plafond de chargement `$BEE0`. En 6502 : 817 octets avant la pile, 542 avant le plafond du lanceur. |
+| RAM basse `$1000-$1AFF` (BSS) | 48 octets libres (6502 : 73) |
 | Carte langage `$D400-$DFFF` | **16 octets libres** (`vsdrive.s` a pris le reste depuis la 0.6.7) |
 | Pile C | 192 octets réservés (`A2FC_STACK`), creux maximal mesuré 94 (`bench/memory.py`) |
-| Petites surcouches `$1B00-$1FFF` (1 280 octets) | `BINARY2` 1 270, `IMGFS` 1 247, `MUSIC` 1 246, `MENU` 1 212, `DOS33` 1 211, `DELETE` 1 194, `ATTR` 1 193, `IMAGE` 1 187, `RUN` 1 152, `AWP` 980, `HELP` 974, `SEARCH` 838, `HEX` 826, `COMPARE` 768, `TEXT` 644 |
-| Grandes surcouches (plafond dans `src/a2fc.cfg`) | `DISKIMG` 6 068 / 6 400, `UNSHRINK` 5 208 / 5 376, `EDIT` 3 227 / 3 328, `BASLIST` 1 369 / 3 328 ; `BINARY2` passe grande en 6502 (3 328) |
-| Disquette `A2FILECMD-6502.po` | **12 blocs libres** sur 280 (6502 : 11). Le `.2mg` `/A2FILECMDXL` porte `DEMO` et `IMGHGR`, 64 584 blocs libres |
+| Petites surcouches `$1B00-$1FFF` (1 280 octets) | `BINARY2` 1272, `IMGFS` 1270, `MUSIC` 668, `DOS33` 1216, `DELETE` 1218, `ATTR` 1246, `IMAGE` 1203, `RUN` 1261, `AWP` 1020, `HELP` 1018, `SEARCH` 847, `HEX` 901, `COMPARE` 1194, `TEXT` 1176 |
+| Grandes surcouches | `DISKIMG` 6079 / 6400, `UNSHRINK` 5212 / 5376, `EDIT` 3308 / 3328, `BASLIST` 1419 / 3328, `MENU` 1901 / 5376 ; `BINARY2` est grande en 6502 (3 328). |
+| BOOT / EXTRA / XL | BOOT : 31 blocs libres en 6502, 33 en 65C02. EXTRA : 135 / 136 blocs libres. XL : 64 485 / 64 488 blocs libres. |
 
 Trois petites surcouches sont à moins de 40 octets du plafond (`BINARY2`,
 `IMGFS`, `MUSIC`) : la prochaine ligne qu'on y ajoute les fait passer
@@ -34,27 +34,21 @@ grandes, ou demande de sortir leurs chaînes dans une table.
 
 ## Les deux éditions
 
-Décidé le 2026-09-09 : deux produits, pas quatre paires d'images.
-
-| | **Édition disquette** | **Édition complète** |
-| --- | --- | --- |
-| Image | `A2FILECMD-6502.po` et `.dsk`, 140 Ko | `A2FILECMDXL-65C02.2mg`, 32 Mo, `/A2FILECMDXL` |
-| Processeur | **6502** (`make disk ARCH=6502`) : tourne sur tout Apple II 128 Ko à 80 colonnes, IIe de 1983 compris ; sans souris | **65C02** : IIe enhanced, //c, IIgs ; souris, MouseText |
-| Contenu | le gestionnaire et les **outils disque** : ce qu'un utilisateur à deux Disk II et sans disque dur ne peut faire autrement | **tout** : les trente-quatre surcouches, `DEMO/`, `IMGHGR/`, `BASIC.SYSTEM` |
-| Public | la machine d'origine, la disquette qu'on prête | l'émulateur, la CFFA, le disque dur |
-
-**Budget actuel de la disquette** (image reconstruite le 2026-09-09) :
-249 blocs occupés, **31 libres** sur 280, avec `COMPARE`, les six nouveaux
-outils et le catalogue du complément. Le complément garde 136 blocs libres. Le disque dur complet garde 64 490 blocs libres sur 65 535.
-Les anciennes estimations de trois blocs par outil sous-estimaient les
-grandes surcouches `TXTCONV` et `WIPE`. Pour financer les outils du palier 2 :
+Décidé le 2026-09-09 : deux processeurs, chacun avec BOOT, EXTRA et XL.
+Les noms `A2FILECMD-6502-{BOOT,EXTRA,XL}` puis
+`A2FILECMD-65C02-{BOOT,EXTRA,XL}` regroupent les images par processeur
+au tri alphabétique. BOOT et EXTRA sont des disquettes 140 Ko (`.po` et
+`.dsk`), XL est un disque complet de 32 Mo (`.2mg`). Le 6502 fonctionne
+sans souris sur le IIe de 1983 ; le 65C02 ajoute MouseText et la souris.
+EXTRA garde 135 blocs libres en 6502, 136 en 65C02, pour les nouveaux plugins : ne pas
+mélanger les deux processeurs sur une même disquette.
 
 - 🟠 **`FORMAT` en surcouche** : `FORMAT.SYS` est un programme SYS à part avec
   son propre crt0 et sa bibliothèque, 24 blocs. En grande surcouche
   (`$1B00-$3FFF`, ses tampons `$6700-$8000` passent en mémoire auxiliaire ou
   dans la page graphique), il en coûterait 6 : **18 blocs rendus**, et le
   formateur ne quitte plus le programme. *1 jour.*
-- ✅ **La seconde disquette** : `A2FILECMD-EXTRAS.po` contient les 17 outils
+- ✅ **La seconde disquette** : chaque `A2FILECMD-<CPU>-EXTRA.po` contient les 17 outils
   absents du disque principal et `BASIC.SYSTEM`. Chargement depuis S6,D2,
   ou échanges sur S6,D1 : l'invite nomme le volume attendu et le lecteur,
   `1`/`2` change le lecteur, Retour réessaie, Échap annule. Le catalogue
@@ -62,16 +56,12 @@ grandes surcouches `TXTCONV` et `WIPE`. Pour financer les outils du palier 2 :
   redemandé après chargement de la surcouche s'il a été retiré. Le choix
   du slot (autre que 6) et la copie entre deux disquettes dans un seul
   lecteur restent hors de ce mécanisme de chargement.
-- ✅ **Les deux éditions dans le Makefile et le CI** (fait le 2026-09-09) :
-  `make disk` produit la disquette 6502 minimale (`PLUGINS_FLOPPY`, sans
-  `BASIC.SYSTEM`, initialement 77 blocs libres, 31 avec les outils et le catalogue) et le `.2mg` 65C02 complet ; plus de
-  `.2mg` 6502 ni de disquette 65C02 ; la page de titre, le README, le manuel
-  et les notes de version disent l'édition. Les bancs amorcent la disquette
-  publiée avec les symboles de `build-6502/` ; ceux qui ont besoin de
-  l'éditeur, des images, des archives et des lecteurs prennent
-  `build/A2FILECMD-full.po` (`make benchfloppy ARCH=enh`, jamais publiée).
-  Reste à faire : porter `run.py` et ces bancs sur le `.2mg` publié, pour
-  revenir au principe « tout part de ce qui sera téléchargé ». *½ jour.*
+- ✅ **Deux processeurs, trois supports chacun dans le Makefile et le CI** :
+  `make disk` produit les six volumes ; `ARCH=6502` ou `ARCH=enh` sélectionne
+  les trois volumes du processeur. BOOT et XL ont chacun leur page de titre.
+  Les bancs EXTRA et XL vérifient les images publiées pour les deux CPU.
+  La régression générale utilise encore `build/A2FILECMD-full.po` : porter
+  entièrement `run.py` sur les XL publiées reste à faire. *½ jour.*
 
 ## L'objectif : Copy II Plus, Locksmith et ProSel en un seul outil
 

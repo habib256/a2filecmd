@@ -7,12 +7,8 @@ on:
   pull_request:
   workflow_dispatch:
 
-# Deux editions du meme arbre, a chaque fois : la disquette (6502, le
-# gestionnaire et les outils disque ; cc65 master, dont la cible apple2 a la
-# console 80 colonnes en 6502 -- construit ici depuis git, a un commit fixe,
-# et garde en cache) et le disque dur .2mg (65C02, tout ; cc65 2.19, celui
-# d'Ubuntu). Une publication porte les trois images et une seule liste
-# d'empreintes.
+# Each CPU ships BOOT and EXTRA floppies plus a complete XL 2mg.
+# cc65 master provides the 6502 console; cc65 2.19 builds apple2enh.
 env:
   CC65_HEAD_COMMIT: e11fb5c
 
@@ -54,26 +50,15 @@ jobs:
       # Le lien echoue si le code passe sous le plancher de la pile C ou si
       # la coupe du fichier ne correspond plus au lanceur : check_layout.py
       # tourne dans la recette, pas apres coup.
-      - name: Les deux editions (disquette 6502, disque dur 65C02)
+      - name: BOOT, EXTRA et XL pour chaque processeur
         run: make disk && make xplugins ARCH=6502
 
-      - name: Relire les images produites
-        run: |
-          python3 tools/prodos_read.py dist/A2FILECMD-6502.po
-          test "$(stat -c%s dist/A2FILECMD-6502.po)" = 143360
-          test "$(stat -c%s dist/A2FILECMD-6502.dsk)" = 143360
-          test "$(stat -c%s dist/A2FILECMD-EXTRAS.po)" = 143360
-          python3 tools/prodos_read.py dist/A2FILECMD-EXTRAS.po
-          python3 tools/po2dsk.py dist/A2FILECMD-6502.po /tmp/again.dsk
-          cmp /tmp/again.dsk dist/A2FILECMD-6502.dsk
-          test "$(stat -c%s dist/A2FILECMDXL-65C02.2mg)" = 33553984
-          # la disquette ne porte que le gestionnaire et les outils disque
-          python3 tools/prodos_read.py dist/A2FILECMD-6502.po | grep -q 'DISKIMG.PLG'
-          ! python3 tools/prodos_read.py dist/A2FILECMD-6502.po | grep -q 'EDIT.PLG\|BASIC.SYSTEM'
+      - name: Relire les six volumes et verifier leurs surcouches
+        run: python3 tools/check_images.py
 
       - name: Empreintes et notes de version
         run: |
-          cd dist && sha256sum A2FILECMD-6502.po A2FILECMD-6502.dsk A2FILECMD-EXTRAS.po A2FILECMDXL-65C02.2mg | tee SHA256SUMS.txt
+          cd dist && sha256sum A2FILECMD-*-BOOT.po A2FILECMD-*-BOOT.dsk A2FILECMD-*-EXTRA.po A2FILECMD-*-EXTRA.dsk A2FILECMD-*-XL.2mg | tee SHA256SUMS.txt
           cd .. && python3 tools/release_notes.py "${GITHUB_REF_NAME}" > dist/RELEASE_NOTES.md
 
       - name: Les cartes memoire, pour le journal de construction
@@ -84,9 +69,9 @@ jobs:
             sed -n '/^Name  *Start/,/^LC /p' $b/a2fc.map >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
           done
-          python3 tools/prodos_read.py dist/A2FILECMD-6502.po >> $GITHUB_STEP_SUMMARY
+          python3 tools/prodos_read.py dist/A2FILECMD-6502-BOOT.po >> $GITHUB_STEP_SUMMARY
 
-      # Les quatre images seules : tous les chemins sous dist/, dont
+      # Les images seules : tous les chemins sous dist/, dont
       # upload-artifact retire le prefixe commun -- le telechargement du
       # travail de publication les remet dans dist/ et les trouve la. Y
       # mêler build/*.map ferait un artefact a deux racines, donc des
@@ -116,14 +101,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: make disk && make benchfloppy ARCH=enh
-      - name: La disquette publiee (6502) demarre
-        run: python3 bench/smoke.py
+      - name: Les deux disquettes BOOT publiees demarrent
+        run: |
+          A2FC_PRESET=iie_unenh python3 bench/smoke.py
+          A2FC_IMG=A2FILECMD-65C02-BOOT python3 bench/smoke.py
       - name: Complement, deux lecteurs et echanges sur un lecteur
-        run: A2FC_PRESET=iie_unenh python3 bench/extras.py
+        run: |
+          A2FC_PRESET=iie_unenh python3 bench/extras.py
+          A2FC_IMG=A2FILECMD-65C02-BOOT python3 bench/extras.py
       - name: Session complete, 65C02 (disquette de banc, toutes les surcouches)
         run: A2FC_IMG=A2FILECMD-full python3 bench/run.py --out bench-out
-      - name: Le disque dur publie (65C02)
-        run: python3 bench/hd.py
+      - name: Les deux disques XL publies
+        run: |
+          A2FC_CPU=6502 A2FC_PRESET=iie_unenh python3 bench/hd.py
+          python3 bench/hd.py
       - name: Nouvelles surcouches, IIe non enhanced
         run: |
           make xplugins ARCH=6502
@@ -162,8 +153,9 @@ jobs:
           name: "A2 File Cmd ${{ env.VERSION }} — Two panels. One Apple II."
           body_path: dist/RELEASE_NOTES.md
           files: |
-            dist/A2FILECMD-6502.po
-            dist/A2FILECMD-6502.dsk
-            dist/A2FILECMDXL-65C02.2mg
-            dist/A2FILECMD-EXTRAS.po
+            dist/A2FILECMD-*-BOOT.po
+            dist/A2FILECMD-*-BOOT.dsk
+            dist/A2FILECMD-*-EXTRA.po
+            dist/A2FILECMD-*-EXTRA.dsk
+            dist/A2FILECMD-*-XL.2mg
             dist/SHA256SUMS.txt

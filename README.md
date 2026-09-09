@@ -62,22 +62,29 @@ readers and more disk tools. See the [changelog](CHANGELOG.md).*
 **Start with the [latest release](https://github.com/habib256/a2filecmd/releases/latest).**
 No build required. Choose the image that fits your setup:
 
-| Download | Best for | Included |
+| Image family (next release) | CPU | Contents |
 |---|---|---|
-| [**A2FILECMDXL-65C02.2mg**](https://github.com/habib256/a2filecmd/releases/latest/download/A2FILECMDXL-65C02.2mg) | **Complete edition.** Emulators, CFFA-style storage and hard disks that take 2IMG images; Enhanced IIe, //c and IIgs | Bootable 32 MB volume `/A2FILECMDXL`, the 65C02 build with every tool and the mouse, BASIC.SYSTEM, a `DEMO/` collection and `IMGHGR/`, nine HGR pictures from [POM1](https://github.com/habib256/pom1) |
-| [**A2FILECMD-6502.po**](https://github.com/habib256/a2filecmd/releases/latest/download/A2FILECMD-6502.po) | **Floppy edition.** A real Apple II with Disk II drives, ADTPro, CiderPress and most emulators | Bootable 140 KB ProDOS floppy, blocks in ProDOS order: the 6502 build with the file manager and the disk tools, for any Apple II with 128 KB and 80 columns, the 1983 IIe included; keyboard only |
-| [**A2FILECMD-6502.dsk**](https://github.com/habib256/a2filecmd/releases/latest/download/A2FILECMD-6502.dsk) | The floppy edition for tools and emulators that expect a `.dsk` file | The same 140 KB ProDOS floppy, its sectors stored in the `.dsk` (DOS-order) layout — a ProDOS volume, no DOS 3.3 on it |
-| **A2FILECMD-EXTRAS.po** (next release) | Companion to the 6502 floppy edition | Non-bootable 140 KB volume `/A2EXTRAS`: the 17 extra tools and BASIC.SYSTEM. Put it in slot 6, drive 2; with one drive, A2FC names the disk to insert and lets you choose drive 1 or 2. |
+| `A2FILECMD-6502-BOOT.po` / `.dsk` | 6502 | Bootable 140 KB floppy: file manager, disk tools and formatter |
+| `A2FILECMD-6502-EXTRA.po` / `.dsk` | 6502 | 140 KB companion: 17 additional tools, menu and BASIC.SYSTEM; 67.5 KB free |
+| `A2FILECMD-6502-XL.2mg` | 6502 | Bootable 32 MB disk: all 34 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
+| `A2FILECMD-65C02-BOOT.po` / `.dsk` | 65C02 | Bootable 140 KB floppy: file manager, disk tools and formatter |
+| `A2FILECMD-65C02-EXTRA.po` / `.dsk` | 65C02 | 140 KB companion: 17 additional tools, menu and BASIC.SYSTEM; 68 KB free |
+| `A2FILECMD-65C02-XL.2mg` | 65C02 | Bootable 32 MB disk: all 34 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
 
-1. Boot the image on an **Apple IIe or //c with 128 KB and an 80-column display**, or an emulator configured that way. ProDOS 8 is included.
-   The **floppy edition** runs on any such machine, enhanced or not, with the keyboard; it carries
-   the file manager, the viewers, the disk-image tools, DOS 3.3 reading and the formatter. The
-   **complete edition** on the `.2mg` needs an Enhanced IIe, //c or IIgs (65C02) and adds the editor,
-   the pictures, the music, the archive extractors, the document readers and the mouse.
-   Both come from the same tree: `make disk` builds the two (`ARCH=6502` and `ARCH=enh`).
+The names sort by CPU, then BOOT, EXTRA, XL. Choose **6502** for an Apple II
+with 128 KB and 80 columns, including the original IIe; choose **65C02** for
+an enhanced IIe, //c or IIgs, with MouseText and optional mouse support.
+Use the EXTRA disk for the **same CPU and release** as BOOT. Each EXTRA
+keeps its own free space for future plugins. `.po` and `.dsk` are the same
+ProDOS floppy in two sector layouts.
+
+1. Boot BOOT or XL. ProDOS 8 is included. With floppies, put EXTRA in slot 6,
+   drive 2. With one drive, A2FC names the required disk and drive; press
+   **1** to choose drive 1, insert the disk, then press **Return**.
+   `make disk` builds all six volumes; `ARCH=6502` or `ARCH=enh` selects a CPU.
 
 2. Press **`TAB`** to switch panels, **`RETURN`** to open and **`ESC`** to go up. Press **`?`** for the full key map.
-3. On the `.2mg`, explore the `DEMO/` folder already open in the right panel. On the floppy, the right panel shows the available volumes; `E`, `I` and the `!` menu entries of the complete edition answer that their overlay is not on this volume.
+3. On the `.2mg`, explore the `DEMO/` folder already open in the right panel. On BOOT, the right panel shows the available volumes; `E`, `I` and the `!` menu load missing tools from the matching EXTRA disk.
 
 A **Mockingboard** enables music playback; an **AppleMouse II** enables point
 and click navigation. Both are optional and can be in any supported slot.
@@ -114,7 +121,7 @@ Download `SHA256SUMS.txt` from the same release into the image's directory.
 To verify one image on macOS:
 
 ```sh
-shasum -a 256 A2FILECMDXL-65C02.2mg
+shasum -a 256 A2FILECMD-65C02-XL.2mg
 ```
 
 Compare the result with its line in `SHA256SUMS.txt`. If you downloaded all
@@ -161,7 +168,7 @@ and **Python 3**. The disk-image tools and demo generators are included.
 
 ```sh
 make          # build the ProDOS program and its overlays
-make disk     # main 6502 floppy (.po/.dsk), EXTRAS.po, and complete 65C02 .2mg
+make disk     # BOOT + EXTRA (.po/.dsk) and XL (.2mg), for 6502 and 65C02
 make test     # run checks that do not need an Apple II
 ```
 

@@ -7,7 +7,7 @@ import tempfile
 import zlib
 from pathlib import Path
 
-from pom2 import Pom2, Session, ROOT
+from pom2 import Pom2, Session, ROOT, BUILD, FULL
 from smoke import scratch
 from xplug import menu_run, ok_all, RET, ESC
 from volname import rename_to
@@ -26,8 +26,10 @@ def catalog(image):
 
 
 def main():
-    boot = ROOT / 'dist/A2FILECMD-6502.po'
-    extra = ROOT / 'dist/A2FILECMD-EXTRAS.po'
+    cpu = '65C02' if FULL else '6502'
+    bootvol, extravol = 'A2FC' + cpu, 'A2EXTRA' + cpu
+    boot = ROOT / ('dist/A2FILECMD-%s-BOOT.po' % cpu)
+    extra = ROOT / ('dist/A2FILECMD-%s-EXTRA.po' % cpu)
     bi, br, bc = catalog(boot)
     xi, xr, xc = catalog(extra)
     assert len(extra.read_bytes()) == 143360
@@ -38,9 +40,9 @@ def main():
         if not name.endswith('.PLG'): continue
         assert entry[16] == 6 and int.from_bytes(entry[31:33], 'little') == 0x1B00
         stem = name[:-4]
-        path = ROOT / 'build-6502' / (stem.lower() + '.PLG')
+        path = BUILD / (stem.lower() + '.PLG')
         if not path.exists():
-            path = ROOT / 'build-6502' / ('A2FILE.CODE.BIN.' + stem)
+            path = BUILD / ('A2FILE.CODE.BIN.' + stem)
         assert xi.read(entry) == path.read_bytes(), name
     print('PASS les images publiees reunissent 34 surcouches, avec menu commun, aux bons octets et attributs', flush=True)
 
@@ -70,8 +72,8 @@ def main():
             s.key(b'!'); s.wait(lambda: s.has('the overlays'), 'menu fusionne', 30); p.stable()
             s.ok('le menu contient les 33 commandes des deux disquettes', '/33' in s.rows()[0], s.rows()[0])
             s.key(ESC)
-            s.key(b'/'); s.select('/A2EXTRAS'); p.stable()
-            rename_to(s, p, 'A2EXTRAS', 'TOOLS')
+            s.key(b'/'); s.select('/' + extravol); p.stable()
+            rename_to(s, p, extravol, 'TOOLS')
             s.ok('le complement peut etre renomme', s.has('Volume renamed to /TOOLS'))
             s.select('/SCRATCH'); s.key(RET); s.select('WORK'); s.key(RET); s.select('NOTE')
             menu_run(s, p, 'CRC')
@@ -79,8 +81,8 @@ def main():
             s.ok('le chargeur retrouve le nom actuel du lecteur 2', expected in s.rows()[22])
             p.eject(1)
             s.key(b'E')
-            s.wait(lambda: s.has('Insert A2EXTRAS S6,D2'), 'complement absent', 30)
-            s.ok('la demande nomme le disque et le lecteur', s.has('Insert A2EXTRAS S6,D2'))
+            s.wait(lambda: s.has('Insert ' + extravol + ' S6,D2'), 'complement absent', 30)
+            s.ok('la demande nomme le disque et le lecteur', s.has('Insert ' + extravol + ' S6,D2'))
             s.key(ESC)
             s.ok('sans complement E signale la surcouche absente', s.has('EDIT.PLG is missing or stale'))
             s.key(b'T'); s.wait(lambda: s.has('scratch volume'), 'texte principal', 30)
@@ -99,10 +101,10 @@ def main():
             s.key(b'/'); s.select('/SCRATCH'); s.key(RET)
             s.select('WORK'); s.key(RET); s.select('NOTE'); p.stable()
             menu_run(s, p, 'CRC')
-            s.wait(lambda: s.has('Insert A2EXTRAS S6,D2'), 'demande de complement', 30)
+            s.wait(lambda: s.has('Insert ' + extravol + ' S6,D2'), 'demande de complement', 30)
             s.key(b'1')
-            s.wait(lambda: s.has('Insert A2EXTRAS S6,D1'), 'lecteur choisi', 30)
-            s.ok('un seul lecteur : nom du complement et lecteur 1 explicites', s.has('Insert A2EXTRAS S6,D1'))
+            s.wait(lambda: s.has('Insert ' + extravol + ' S6,D1'), 'lecteur choisi', 30)
+            s.ok('un seul lecteur : nom du complement et lecteur 1 explicites', s.has('Insert ' + extravol + ' S6,D1'))
             p.insert(0, str(companion)); s.key(RET)
             s.wait(lambda: expected in s.rows()[22], 'CRC apres echange', 30)
             s.ok('CRC charge apres remplacement de la disquette dans le lecteur 1', expected in s.rows()[22])
@@ -111,30 +113,30 @@ def main():
             s.wait(lambda: s.has('Text, CR ends'), 'IDENT sur le meme disque', 30)
             s.ok('le menu reste accessible pendant l echange', s.has('Text, CR ends'))
             s.key(b'T')
-            s.wait(lambda: s.has('Insert A2FILECMD S6,D1'), 'demande du disque principal', 30)
-            s.ok('le retour nomme la disquette principale et le meme lecteur', s.has('Insert A2FILECMD S6,D1'))
+            s.wait(lambda: s.has('Insert ' + bootvol + ' S6,D1'), 'demande du disque principal', 30)
+            s.ok('le retour nomme la disquette principale et le meme lecteur', s.has('Insert ' + bootvol + ' S6,D1'))
             p.insert(0, str(floppy)); s.key(RET)
             s.wait(lambda: s.value('view', 1) == 2, 'TEXT apres retour du disque principal', 30)
             s.ok('TEXT fonctionne apres restitution de la disquette principale', s.has('scratch volume'))
             s.key(ESC)
             # The file itself can be on the boot floppy, without a hard disk.
-            s.key(b'/'); s.select('/A2FILECMD'); s.key(RET)
+            s.key(b'/'); s.select('/' + bootvol); s.key(RET)
             s.select('A2FILE'); s.key(RET); s.select('A2FILE.HELP')
             s.key(b'E')
-            s.wait(lambda: s.has('Insert A2EXTRAS S6,D1'), 'disque de l editeur', 30)
+            s.wait(lambda: s.has('Insert ' + extravol + ' S6,D1'), 'disque de l editeur', 30)
             p.insert(0, str(companion)); s.key(RET)
-            s.wait(lambda: s.has('Insert A2FILECMD S6,D1'), 'disque du fichier', 30)
-            s.ok('apres le code, le disque contenant le fichier est demande', s.has('Insert A2FILECMD S6,D1'))
+            s.wait(lambda: s.has('Insert ' + bootvol + ' S6,D1'), 'disque du fichier', 30)
+            s.ok('apres le code, le disque contenant le fichier est demande', s.has('Insert ' + bootvol + ' S6,D1'))
             p.insert(0, str(floppy)); s.key(RET)
-            s.wait(lambda: s.value('view', 1) == 5, 'edition depuis une seule disquette', 30)
+            s.wait(lambda: s.value('view', 1) == 5 and s.has('A2 FILE CMD'), 'edition depuis une seule disquette', 30)
             s.ok('le fichier de la disquette principale est lu apres l echange', s.has('A2 FILE CMD'))
             s.key(ESC); p.stable()
             if not s.has('Type  Aux'): s.key(b'Q')
             s.wait(lambda: s.has('Type  Aux'), 'retour des panneaux', 30)
             s.key(b'E')
-            s.wait(lambda: s.has('Insert A2EXTRAS S6,D1'), 'editeur encore', 30)
+            s.wait(lambda: s.has('Insert ' + extravol + ' S6,D1'), 'editeur encore', 30)
             p.insert(0, str(companion)); s.key(RET)
-            s.wait(lambda: s.has('Insert A2FILECMD S6,D1'), 'annuler la lecture du fichier', 30)
+            s.wait(lambda: s.has('Insert ' + bootvol + ' S6,D1'), 'annuler la lecture du fichier', 30)
             s.key(ESC); p.stable()
             s.ok('ESC apres une grande surcouche restaure les panneaux', s.has('Type  Aux') or s.has('Volume          Slot'))
     second = ok_all(s, 'extras, un lecteur')
@@ -156,7 +158,7 @@ def main():
             s.key(b'Y')
             s.wait(lambda: any('EXTRAS BASIC OK' in r for r in s.rows40()), 'BASIC du complement', 60)
             s.ok('BASIC.SYSTEM du lecteur 2 execute le programme du disque de travail', True)
-            s.type('-/A2FILECMD/A2FILE.SYSTEM'); s.key(RET)
+            s.type('-/' + bootvol + '/A2FILE.SYSTEM'); s.key(RET)
             s.wait(lambda: s.has('Type  Aux'), 'retour de BASIC', 90)
             s.ok('le chemin absolu relance A2FC sur sa disquette', s.has('Type  Aux'))
     return first or second or ok_all(s, 'extras, BASIC')

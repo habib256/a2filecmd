@@ -5,7 +5,9 @@ downloads and installation.
 
 ## Unreleased
 
-- Added `A2FILECMD-EXTRAS.po`, the companion to the 6502 boot floppy, with 17 additional tools and BASIC.SYSTEM. The menu merges both disks and keeps all commands visible through a catalog. The main disk takes precedence.
+- Added BOOT and EXTRA 140 KB floppies plus a complete XL 2mg for **each** CPU. Names group alphabetically as `A2FILECMD-6502-{BOOT,EXTRA,XL}` and `A2FILECMD-65C02-{BOOT,EXTRA,XL}`. Each EXTRA contains only its own CPU's plugins, leaving 135 blocks free on 6502 and 136 on 65C02. Each XL contains all 34 overlays, BASIC.SYSTEM, DEMO and IMGHGR.
+- Enabled companion loading and guided single-drive swaps on 65C02 as well as 6502. Prompts identify the CPU-specific volume and selected drive. BOOT and XL have distinct launch screens. Moved the jump-by-letter command into TEXT and overlay strings out of resident memory to preserve the checked memory limits.
+
 - Added disk-swap prompts naming the expected volume and slot/drive, with a session choice of drive 1 or 2 in slot 6. With one drive, the input volume is requested after the overlay loads; Escape restores the panels. BASIC.SYSTEM can be loaded from the companion too.
 
 - Added fifteen service-table overlays, reached from **!**: TXTCONV, DATE, VERIFY, TAGPAT, VOLNAME and WIPE on both editions; FIXTYPES, GOTO, FIND, CRC, IDENT, MDVIEW, RENAME, IMGCONV and BOOTBLK on the complete edition. See the [manual](docs/MANUAL.md#more-tools-in-the--menu) for controls and limits.
@@ -15,7 +17,6 @@ downloads and installation.
 - Fixed the `S` (sort) and `M` (mark differences) keys on the floppy edition: both lived in `MUSIC.PLG`, which the floppy no longer carries. Sorting now lives in `TEXT.PLG` and the comparison in `COMPARE.PLG`, both on the floppy; and `M` also flags files whose modification date differs (Cat Doctor's "compare directories").
 - Changed the overlay menu to use all 80 columns: the description of each overlay has 65 characters instead of 51, so none is cut short, and every description was rewritten to say more. The menu also pages now: 52 overlays at most, 18 per page, Left/Right turn the page, and a counter at the top right.
 - Added `cfg_path` to the service table (API version 2): the path of `A2FILE.CFG`, from which an overlay finds the program directory.
-- Changed the release to two editions from one tree. The **floppy edition**, `A2FILECMD-6502.po` and `.dsk`, is now the 6502 build with the file manager and the disk tools only (`HELP`, `TEXT`, `HEX`, `DELETE`, `RUN`, `ATTR`, `MENU`, `DISKIMG`, `IMGFS`, `DOS33`, the formatter; no BASIC.SYSTEM), so it runs on any Apple II with 128 KB and 80 columns, the 1983 IIe included, and keeps 77 blocks free for the disk tools to come. The **complete edition**, `A2FILECMDXL-65C02.2mg`, volume `/A2FILECMDXL`, is the 65C02 build with every overlay, the mouse, BASIC.SYSTEM, `DEMO/` and `IMGHGR/`. `make disk` builds both; the file names carry the edition and the processor. The title page names the edition. On the floppy, a key whose overlay is absent says so.
 - Changed the language of the source: every comment in `src/`, the `Makefile` and `sdk/` is now in English, along with the SDK guide (`sdk/README.md`). Comments only: the binaries and disk images are byte-for-byte identical to 0.7.
 - Added to the README the platforms the release is tested on (a real Enhanced IIe, Virtual II, and an Apple //c and an unenhanced IIe under POM2).
 

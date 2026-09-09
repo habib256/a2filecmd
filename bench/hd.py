@@ -10,7 +10,7 @@ c'est lui qui amorce. On verifie les deux panneaux, le compte des blocs, la
 liste de DEMO, puis qu'une page brute s'affiche et qu'un .2MG s'ouvre comme
 un dossier."""
 
-import shutil, sys, tempfile, time
+import os, shutil, sys, tempfile, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -31,16 +31,19 @@ def main():
     with tempfile.TemporaryDirectory(prefix='a2fc-hd-') as tmp:
         tmp = Path(tmp)
         hdv = tmp / 'A2FILECMD.hdv'
-        two = (ROOT / 'dist/A2FILECMDXL-65C02.2mg').read_bytes()
+        cpu = os.environ.get('A2FC_CPU', '65C02')
+        build = ROOT / ('build-6502' if cpu == '6502' else 'build')
+        volume = '/A2XL' + cpu
+        two = (ROOT / ('dist/A2FILECMD-%s-XL.2mg' % cpu)).read_bytes()
         ok('le .2mg porte l en-tete 2IMG, format ProDOS, 65535 blocs',
            two[:4] == b'2IMG' and two[12] == 1 and int.from_bytes(two[20:24], 'little') == 65535)
         hdv.write_bytes(two[64:])
 
         with Pom2(hdv, port=6715) as p:
-            s = Session(p, labels(ROOT / 'build/a2fc.lbl'))   # l'edition complete, 65C02
+            s = Session(p, labels(build / 'a2fc.lbl'))   # les symboles du processeur choisi
             s.boot()
-            ok('le disque dur /A2FILECMDXL amorce sur les deux panneaux', s.rows()[0].startswith('/A2FILECMDXL'), s.rows()[0][:40])
-            ok('le panneau droit ouvre DEMO', s.rows()[0][40:].startswith('/A2FILECMDXL/DEMO'),
+            ok('le disque XL amorce sur les deux panneaux', s.rows()[0].startswith(volume), s.rows()[0][:40])
+            ok('le panneau droit ouvre DEMO', s.rows()[0][40:].startswith(volume + '/DEMO'),
                s.rows()[0][40:70])
             ok('le volume fait 65535 blocs', 'of 65535 blocks free' in s.rows()[20], s.rows()[20][:70])
             names = [r[40:].split(' ')[0] for r in s.rows()[2:20]]
@@ -48,7 +51,7 @@ def main():
                [n for n in DEMO if n not in names])
             names_left = [r[:16].split(' ')[0].rstrip('/') for r in s.rows()[2:20]]
             ok('IMGHGR est a la racine', 'IMGHGR' in names_left, names_left[:6])
-            s.select('IMGHGR', 0); s.key(RET); s.wait(lambda: s.has('/A2FILECMDXL/IMGHGR'), 'IMGHGR'); p.stable()
+            s.select('IMGHGR', 0); s.key(RET); s.wait(lambda: s.has(volume + '/IMGHGR'), 'IMGHGR'); p.stable()
             imgs = [r[:16].split(' ')[0] for r in s.rows()[2:20] if r[:16].strip() and not r.startswith('..')]
             ok('neuf pages HGR de POM1, aux noms ProDOS anglais', len(imgs) == 9 and 'TIGER' in imgs and 'VILLAGE' in imgs and 'LIZARD' in imgs, imgs)
             s.select('TIGER', 0); s.key(RET)
@@ -66,7 +69,7 @@ def main():
             s.wait(lambda: s.has('HELLO ') and s.has('INSIDE/'), 'ouvrir le .2MG', 30); p.stable()
             ok('le .2MG s ouvre comme un dossier', s.has('HELLO ') and s.has('INSIDE/'),
                s.rows()[0][40:70])
-            s.key(ESC); s.wait(lambda: s.has('/A2FILECMDXL/DEMO'), 'sortir'); p.stable()
+            s.key(ESC); s.wait(lambda: s.has(volume + '/DEMO'), 'sortir'); p.stable()
 
     passed = sum(1 for c in checks if c)
     print(f'\n{passed}/{len(checks)} controles', flush=True)

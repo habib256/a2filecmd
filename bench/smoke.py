@@ -3,7 +3,7 @@
     python3 bench/smoke.py
 
 C'est le controle qui garde tout le reste honnete : il part de
-dist/A2FILECMD-6502.po tel qu'il sera telecharge, l'amorce comme une vraie
+dist/A2FILECMD-6502-BOOT.po tel qu'il sera telecharge, l'amorce comme une vraie
 disquette en slot 6, et regarde ce que l'Apple IIe affiche.
 """
 import shutil
@@ -36,24 +36,23 @@ def main():
         with Pom2(scratch(tmp), floppy=floppy, port=6601) as p:
             s = Session(p)
             # la page de titre du lanceur, le temps du chargement : chaque
-            # edition s'y nomme, "6502 FLOPPY EDITION" ou "65C02 COMPLETE EDITION"
+            # edition s'y nomme, "6502 FLOPPY EDITION" ou "65C02 FLOPPY EDITION"
             s.wait(lambda: s.has('A2 FILE CMD'), 'page de titre', 60)
             title = next((r for r in s.rows() if 'A2 FILE CMD' in r), '')
             s.boot()
-            s.ok('la page de titre nomme l edition (6502 FLOPPY ou 65C02 COMPLETE)',
-                 ('65C02 COMPLETE' if FULL else '6502 FLOPPY') in title,
+            s.ok('la page de titre nomme l edition (6502 FLOPPY ou 65C02 FLOPPY)',
+                 ('65C02 FLOPPY' if FULL else '6502 FLOPPY') in title,
                  title.strip()[:60])
             s.ok('la disquette publiee demarre sur les panneaux',
-                 s.has('/A2FILECMD'), s.rows()[0][:40])
+                 s.has('/A2FC' + ('65C02' if FULL else '6502')), s.rows()[0][:40])
             s.ok('la barre de statut porte le nom et la version',
                  s.has('A2 FILE CMD 0.7'), s.rows()[20][:60].strip())
             s.ok('le lanceur est le seul .SYSTEM du volume',
                  any(r.startswith('A2FILE.SYSTEM') for r in s.rows()))
             s.ok('le dossier A2FILE est la, et pas de DEMO : la disquette est nue',
                  s.has('A2FILE/') and not s.has('DEMO/'))
-            if not FULL:
-                s.ok('l edition disquette n a pas BASIC.SYSTEM',
-                     not any(r.startswith('BASIC.SYSTEM') for r in s.rows()))
+            s.ok('l edition disquette n a pas BASIC.SYSTEM',
+                 not any(r.startswith('BASIC.SYSTEM') for r in s.rows()))
             # S (le tri) vit dans TEXT.PLG, present sur la disquette : trois S
             # font le tour des ordres et reviennent au tri par nom
             head = s.rows()[1]
@@ -62,7 +61,15 @@ def main():
                  s.rows()[1] != head and not s.has('missing or stale'), s.rows()[1][:38])
             s.key(b'S'); p.stable(); s.key(b'S'); p.stable()
             s.ok('trois S ramenent au tri par nom', s.rows()[1] == head, s.rows()[1][:38])
-            print('\n'.join(r.rstrip() for r in s.rows()[:22]), flush=True)
+            s.key(b"'"); s.wait(lambda: s.has('Jump to name'), 'saut par initiale', 30)
+            s.key(b'P'); p.stable()
+            s.ok('apostrophe charge TEXT et trouve PRODOS', s.line().startswith('PRODOS '))
+            s.key(b'?'); s.wait(lambda: s.has('ANY'), 'aide', 30)
+            s.key(b'\x1b'); p.stable()
+            s.key(b"'"); s.wait(lambda: s.has('Jump to name'), 'saut apres aide', 30)
+            s.key(b'A'); p.stable()
+            s.ok('le saut recharge TEXT apres HELP', s.line().startswith('A2FILE/'))
+
     return 0
 
 

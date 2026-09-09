@@ -406,7 +406,6 @@ static void dir_fail(void)
  * scroll the screen. */
 extern const char MAIN_KEYS[];   /* defined in the language card, further down (LC) */
 extern const char VIEW_KEYS[];   /* in the language card, defined further down */
-static const char HELP_KEYS[] = "ANY Return to the panels";
 
 static void keys_bar(unsigned char x, const char* spec)
 {
@@ -1211,6 +1210,9 @@ static void view_seek(long offset)
 /* The TEXT overlay: the text viewer, in A2FILE/TEXT.PLG. */
 #pragma code-name (push, "TEXT")
 #pragma rodata-name (push, "TEXTRO")
+static const char tx_status[] = "%-38.38s page %u%s";
+static const char tx_end[] = " (end)";
+
 static void view_text(const char* path)
 {
     long* starts = text_starts;
@@ -1240,7 +1242,7 @@ static void view_text(const char* path)
             known = page + 2;
         }
         bar_begin();
-        cprintf("%-38.38s page %u%s", path, page + 1, done ? " (end)" : "");
+        cprintf(tx_status, path, page + 1, done ? tx_end : (const char*)"");
         keys_bar(52, VIEW_KEYS);
         key = cgetc();
         if (key == KEY_ESC || key == 'q' || key == 'Q') break;
@@ -1286,6 +1288,10 @@ void __fastcall__ text_entry(const struct A2fcApi* a)
 /* ---------------------------------------------------------------------- */
 #pragma code-name (push, "BASLIST")
 #pragma rodata-name (push, "BASLISTRO")
+static const char bl_status[] = "%-38.38s page %u%s";
+static const char bl_end[] = " (end)";
+static const char bl_number[] = "%u ";
+
 #pragma static-locals (push, off)
 
 /* The 107 Applesoft keywords ($80-$EA), separated by zeros. A NAMED array
@@ -1347,7 +1353,7 @@ void __fastcall__ baslist_entry(const struct A2fcApi* a)
             if (lo < 0 || (lo == 0 && hi == 0)) { done = 1; break; }
             num = (unsigned int)view_getc();
             num |= (unsigned int)view_getc() << 8;    /* the line number */
-            sprintf(buf, "%u ", num);
+            sprintf(buf, bl_number, num);
             bl_puts(buf);
             for (;;) {
                 t = view_getc();
@@ -1362,7 +1368,7 @@ void __fastcall__ baslist_entry(const struct A2fcApi* a)
             known = page + 2;
         }
         bar_begin();
-        cprintf("%-38.38s page %u%s", full, page + 1, done ? " (end)" : "");
+        cprintf(bl_status, full, page + 1, done ? bl_end : (const char*)"");
         keys_bar(52, VIEW_KEYS);
         key = cgetc();
         if (key == KEY_ESC || key == 'q' || key == 'Q') break;
@@ -1390,6 +1396,9 @@ void __fastcall__ baslist_entry(const struct A2fcApi* a)
 /* ---------------------------------------------------------------------- */
 #pragma code-name (push, "AWP")
 #pragma rodata-name (push, "AWPRO")
+static const char aw_status[] = "%-38.38s page %u%s";
+static const char aw_end[] = " (end)";
+
 #pragma static-locals (push, off)
 
 #define aw_row input[0]
@@ -1447,7 +1456,7 @@ void __fastcall__ awp_entry(const struct A2fcApi* a)
             known = page + 2;
         }
         bar_begin();
-        cprintf("%-38.38s page %u%s", full, page + 1, done ? " (end)" : "");
+        cprintf(aw_status, full, page + 1, done ? aw_end : (const char*)"");
         keys_bar(52, VIEW_KEYS);
         key = cgetc();
         if (key == KEY_ESC || key == 'q' || key == 'Q') break;
@@ -1709,6 +1718,10 @@ void __fastcall__ binary2_entry(const struct A2fcApi* a)
 /* The HEX overlay: the hex viewer, in A2FILE/HEX.PLG. */
 #pragma code-name (push, "HEX")
 #pragma rodata-name (push, "HEXRO")
+static const char hx_offset[] = "%05lX ";
+static const char hx_byte[] = "%02X ";
+static const char hx_status[] = "%-22.22s %lu bytes page %u/%u";
+
 static void view_hex(const char* path, unsigned long size)
 {
     unsigned int page = 0, pages = (unsigned int)((size + HEX_PAGE - 1) / HEX_PAGE), n, i, j;
@@ -1723,9 +1736,9 @@ static void view_hex(const char* path, unsigned long size)
         clrscr();
         for (i = 0; i < n; i += 16) {
             gotoxy(0, i / 16);
-            cprintf("%05lX ", (unsigned long)page * HEX_PAGE + i);
+            cprintf(hx_offset, (unsigned long)page * HEX_PAGE + i);
             for (j = 0; j < 16; ++j) {
-                if (i + j < n) cprintf("%02X ", copy_buf[i + j]);
+                if (i + j < n) cprintf(hx_byte, copy_buf[i + j]);
                 else cputs("   ");
             }
             cputc(' ');
@@ -1735,7 +1748,7 @@ static void view_hex(const char* path, unsigned long size)
             }
         }
         bar_begin();
-        cprintf("%-22.22s %lu bytes page %u/%u", path, size, page + 1, pages);
+        cprintf(hx_status, path, size, page + 1, pages);
         keys_bar(52, VIEW_KEYS);
         key = cgetc();
         if (key == KEY_ESC || key == 'q' || key == 'Q') break;
@@ -1854,6 +1867,11 @@ static void a2file_file(const char* name)
 }
 
 #ifdef A2FC_6502
+#define COMPANION_VOLUME "A2EXTRA6502"
+#else
+#define COMPANION_VOLUME "A2EXTRA65C02"
+#endif
+
 /* Start with slot 6, drive 2; the swap prompt can select drive 1. Resolve
  * the volume each time: swapping or renaming must not leave a cached path. */
 static unsigned char companion_unit = 0xE0;
@@ -1869,9 +1887,7 @@ static unsigned char companion_path(const char* suffix)
     strcpy(other_full + n + 1, suffix);
     return 1;
 }
-#endif
 
-#ifdef A2FC_6502
 static unsigned char disk_question(const char* name)
 {
     char key;
@@ -1894,23 +1910,19 @@ static unsigned char ask_disk(const char* name)
     if (*local) {
         strcpy(question, cfg_path + 1);
         *strchr(question, '/') = 0;
-    } else strcpy(question, "A2EXTRAS");
+    } else strcpy(question, COMPANION_VOLUME);
     return disk_question(name);
 }
-#endif
 
 /* Local overlays take precedence. A stale local file is still rejected by
  * the caller: the companion only supplies files absent from the boot disk. */
 static FILE* open_overlay(const char* name, unsigned char ask)
 {
     FILE* f;
-#ifdef A2FC_6502
     for (;;) {
-#endif
     a2file_file(name);
     strcat(other_full, ".PLG");
     f = fopen(other_full, "rb");
-#ifdef A2FC_6502
     if (!f && companion_path("/A2FILE/")) {
         strcat(other_full, name);
         strcat(other_full, ".PLG");
@@ -1919,10 +1931,7 @@ static FILE* open_overlay(const char* name, unsigned char ask)
     if (f || !ask) return f;
     if (!ask_disk(name)) return 0;
     }
-#else
-    (void)ask;
-    return f;
-#endif
+
 }
 
 /* Loads the overlay `name` -- A2FILE/NAME.PLG, a BIN file linked with the
@@ -1953,7 +1962,6 @@ static unsigned char load_overlay(const char* name, unsigned char any)
         }
         fclose(f);
     }
-#ifdef A2FC_6502
     /* A one-drive swap loaded the code, but its input may be on the disk
      * just removed. Restore that volume before the overlay opens its file. */
     if (ok && companion_unit == 0x60) {
@@ -1972,7 +1980,6 @@ static unsigned char load_overlay(const char* name, unsigned char any)
             }
         }
     }
-#endif
     if (!ok) {
         clear_row(22);
         gotoxy(0, 22);
@@ -2271,6 +2278,7 @@ static void view_image(void)
 /* ---------------------------------------------------------------------- */
 #pragma code-name (push, "EDIT")
 #pragma rodata-name (push, "EDITRO")
+static const char ed_savekeys[] = "S Save,X Save and exit,Q Quit without saving,ESC Continue editing";
 static const char ed_status[]  = " %-30.30s  Line %u  Col %u  %u/%u bytes %s";
 static const char ed_volfull[] = "Volume full.";
 static const char ed_openf[]   = "Open failed.";
@@ -2449,7 +2457,7 @@ static unsigned char edit_file(unsigned char fresh, unsigned char type, unsigned
         case KEY_TAB: for (i = 0; i < 4; ++i) edit_insert(' '); row = 1; ewant = ecur - ls; break;
         case KEY_ESC:
             bar_begin();
-            keys_bar(0, "S Save,X Save and exit,Q Quit without saving,ESC Continue editing");
+            keys_bar(0, ed_savekeys);
             key = cgetc();
             if (key == 's' || key == 'S') written |= edit_save();
             else if (key == 'x' || key == 'X') { if (edit_save()) { written = 1; goto leave; } }
@@ -2604,6 +2612,7 @@ static void toggle_music(void)
 /* The HELP overlay: the help page, in A2FILE/HELP.PLG. */
 #pragma code-name (push, "HELP")
 #pragma rodata-name (push, "HELPRO")
+static const char HELP_KEYS[] = "ANY Return to the panels";
 static void view_help(void)
 {
     const char* s = HELP_BUF;
@@ -3111,16 +3120,8 @@ void __fastcall__ menu_entry(const struct A2fcApi* a)
     a2file_file("");
     if (!other_full[0]) { strcpy(note, mn_nodir); return; }
     other_full[strlen(other_full) - 1] = 0;   /* "/VOL/A2FILE/" -> "/VOL/A2FILE" */
-    for (pass = 0; pass <
-#ifdef A2FC_6502
-         2
-#else
-         1
-#endif
-         ; ++pass) {
-#ifdef A2FC_6502
+    for (pass = 0; pass < 2; ++pass) {
         if (pass && !companion_path(mn_dir)) continue;
-#endif
         if (!dir_open(other_full)) continue;
         while (n < MENU_MAX && dir_next()) {
             len = strlen(dir_entry.name);
@@ -3144,7 +3145,6 @@ void __fastcall__ menu_entry(const struct A2fcApi* a)
         else if (!hdr->entry) strcpy(m[i].desc, mn_noentry);
         else strcpy(m[i].desc, hdr->desc);
     }
-#ifdef A2FC_6502
     /* The catalog keeps all commands visible during a one-drive swap.
      * Only selecting a command can ask for its disk, never listing it. */
     a2file_file(mn_catalog);
@@ -3158,7 +3158,6 @@ void __fastcall__ menu_entry(const struct A2fcApi* a)
         }
         fclose(f);
     }
-#endif
     clrscr();
     revers(1);
     gotoxy(0, 0);
@@ -4033,6 +4032,11 @@ void __fastcall__ delete_entry(const struct A2fcApi* a)
 /* The ATTR overlay, in A2FILE/ATTR.PLG: R, K, A and L. */
 #pragma code-name (push, "ATTR")
 #pragma rodata-name (push, "ATTRRO")
+static const char at_name[] = "New name";
+static const char at_dir[] = "New directory";
+static const char at_type[] = "File type";
+static const char at_aux[] = "Aux type";
+
 static const char at_rename[]  = "Select something to rename.";
 static const char at_novol[]   = "Open a volume first.";
 static const char at_pick[]    = "Select a file or directory.";
@@ -4040,7 +4044,7 @@ static const char at_dirtype[] = "A directory keeps its type.";
 static void rename_selected(const struct Entry* e)
 {
     if (is_up(e) || !panels[active].path[0]) { message(at_rename); return; }
-    if (!prompt("New name", e->name, 0)) return;
+    if (!prompt(at_name, e->name, 0)) return;
     if (!build_full(full, &panels[active], e)) { too_long(); return; }
     if (strlen(panels[active].path) + 1 + strlen(input) >= PATH_LEN) { too_long(); return; }
     sprintf(other_full, "%s/%s", panels[active].path, input);
@@ -4055,7 +4059,7 @@ static void make_directory(void)
 {
     struct Panel* pan = &panels[active];
     if (!pan->path[0]) { message(at_novol); return; }
-    if (!prompt("New directory", NULL, 0)) return;
+    if (!prompt(at_dir, NULL, 0)) return;
     if (strlen(pan->path) + 1 + strlen(input) >= PATH_LEN) { too_long(); return; }
     sprintf(full, "%s/%s", pan->path, input);
     if (mkdir(full)) { report_error("Mkdir"); return; }
@@ -4076,10 +4080,10 @@ static void change_attributes(const struct Entry* e, unsigned char lock)
     if (!lock) {
         if (is_dir(e)) { message(at_dirtype); return; }
         sprintf(input, "%02X", e->type);
-        if (!prompt("File type", input, 2)) return;
+        if (!prompt(at_type, input, 2)) return;
         type = (unsigned char)hex_value();
         sprintf(input, "%04X", e->aux);
-        if (!prompt("Aux type", input, 4)) return;
+        if (!prompt(at_aux, input, 4)) return;
         aux = hex_value();
     }
     if (!file_info(full)) { report_error("Get info"); return; }
@@ -4156,13 +4160,11 @@ static void basic_path(void)
     strcpy(full, cfg_path);
     s = strchr(full + 1, '/'); if (s) *s = 0;          /* "/VOL/A2FILE/A2FILE.CFG" -> "/VOL" */
     strcat(full, run_basic);
-#ifdef A2FC_6502
     if (!exists(full) && companion_path(run_basic)) strcpy(full, other_full);
     while (!exists(full)) {
         if (!ask_disk(run_basic + 1)) { full[0] = 0; return; }
         if (companion_path(run_basic)) strcpy(full, other_full);
     }
-#endif
 }
 
 static void run_selected(const struct Entry* e)
@@ -4315,15 +4317,18 @@ static void retag(unsigned char mode)
     show_active();
 }
 
-/* M: tags the files missing from the other panel or of a different size,
- * the basis of a synchronisation by C. */
-/* ' then a key: the next entry whose name starts with it. */
+/* ' then a key: the next entry whose name starts with it. Hosted in TEXT,
+ * alongside sort, to leave resident space for the companion-disk loader. */
+#pragma code-name (push, "TEXT")
+#pragma rodata-name (push, "TEXTRO")
+static const char tx_jump[] = "Jump to name starting with: ";
+static const char tx_noname[] = "No such name in this panel.";
 static void find_letter(void)
 {
     struct Panel* pan = &panels[active];
     unsigned char i, j;
     char key;
-    message("Jump to name starting with: ");
+    message(tx_jump);
     key = cgetc();
     clear_row(22);
     if (key >= 'a' && key <= 'z') key -= 32;
@@ -4332,8 +4337,11 @@ static void find_letter(void)
         j = (pan->cursor + i) % pan->count;
         if (pan->e[j].name[pan->path[0] ? 0 : 1] == key) { land(j); return; }
     }
-    message("No such name in this panel.");
+    message(tx_noname);
 }
+
+#pragma rodata-name (pop)
+#pragma code-name (pop)
 
 /* ---------------------------------------------------------------------- */
 /* Main loop                                                              */
@@ -4554,7 +4562,7 @@ int main(void)
         case 20: retag(1); break;                             /* Ctrl-T: tag everything */
         case 14: retag(0); break;                             /* Ctrl-N: nothing */
         case 18: refresh_both(); break;                       /* Ctrl-R: reread the panels */
-        case '\'': find_letter(); break;
+        case '\'': if (overlay("TEXT")) find_letter(); break;
         case KEY_TAB: swap_panels(); break;
         case KEY_RETURN: open_selected(); break;
         case KEY_ESC:
