@@ -2989,10 +2989,12 @@ out:
 #pragma rodata-name (push, "MENURO")
 static const char mn_nodir[]   = "The program directory is unknown.";
 static const char mn_unread[]  = "A2FILE/ is unreadable.";
-static const char mn_row[]     = "%-12s %-52s";
-struct MenuItem { char name[12]; char desc[52]; };
+/* The row uses the whole 80 columns: two of margin, twelve for the name
+ * (a .PLG name is eleven characters at most), the rest for the description. */
+static const char mn_row[]     = "  %-12s%-65s";
+struct MenuItem { char name[12]; char desc[66]; };
 #define MENU_ITEMS ((struct MenuItem*)0x3000)
-#define MENU_MAX 64                 /* 64 x 64 bytes: $3000-$3FFF */
+#define MENU_MAX 52                 /* 52 x 78 bytes: $3000-$3FF8 */
 #define MENU_ROWS 18                /* rows 2..19 per page, like a panel */
 void __fastcall__ menu_entry(const struct A2fcApi* a)
 {
@@ -3021,9 +3023,9 @@ void __fastcall__ menu_entry(const struct A2fcApi* a)
         strcpy(m[i].desc, "(unreadable)");
         f = fopen(other_full, "rb");
         if (!f) continue;
-        len = fread(copy_buf, 1, 64, f);
+        len = fread(copy_buf, 1, 80, f);
         fclose(f);
-        copy_buf[8 + 51] = 0;
+        copy_buf[8 + 65] = 0;
         if (len < 9 || (hdr->signature != a2fc_link_id && hdr->signature != PLUGIN_MAGIC)) strcpy(m[i].desc, "(from another build of A2 File Cmd)");
         else if (!hdr->entry) strcpy(m[i].desc, "(no entry point)");
         else strcpy(m[i].desc, hdr->desc);
@@ -3038,12 +3040,12 @@ void __fastcall__ menu_entry(const struct A2fcApi* a)
         /* A page of MENU_ROWS around the cursor; the rest scrolls. */
         unsigned char top = cur - cur % MENU_ROWS;
         for (i = 0; i < MENU_ROWS; ++i) {
-            gotoxy(2, 2 + i);
+            gotoxy(0, 2 + i);
             if (top + i < n) {
                 if (top + i == cur) revers(1);
                 cprintf(mn_row, m[top + i].name, m[top + i].desc);
                 revers(0);
-            } else cclearxy(2, 2 + i, 66);
+            } else cclearxy(0, 2 + i, 79);
         }
         gotoxy(70, 0); revers(1);
         cprintf("%2u/%-2u", cur + 1, n);

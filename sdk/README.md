@@ -27,7 +27,7 @@ once survive later versions of the program.
      `$2000-$3FFF` (then raise `RAM` to `$2500` in the `.cfg`);
    - the **address of the entry point**;
    - three reserved bytes, then a one-line **description**, shown in the menu
-     (51 characters at most).
+     (65 characters at most: the menu row uses all 80 columns).
 2. **The entry point** `void __fastcall__ plugin_entry(const struct A2fcApi*)`.
    The core calls it on the selection. `api->panels[*api->active]` is the
    active panel, `api->selected` the entry under the cursor (copied out of the

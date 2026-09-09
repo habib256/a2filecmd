@@ -18,12 +18,12 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api);
 struct PluginHeader {
     unsigned int signature; unsigned char flags;
     void __fastcall__ (*entry)(const struct A2fcApi*);
-    unsigned char r0, r1, r2; char desc[52];
+    unsigned char r0, r1, r2; char desc[66];
 };
 #pragma rodata-name (push, "OVLHDR")
 const struct PluginHeader __plugin_header = {
     PLUGIN_MAGIC, 0, plugin_entry, 0, 0, 0,     /* `PLUGIN_MAGIC, OVERLAY_BIG,` for a big one, on this line */
-    "Menu line: what it does, 51 characters at most"
+    "Menu line: what it does, 65 characters at most"
 };
 #pragma rodata-name (pop)
 
@@ -40,7 +40,7 @@ line of the source. The link refuses a file over its window:
 | Overlay | Window | File at most | Scratch memory |
 | --- | --- | --- | --- |
 | small (`flags = 0`) | `$1B00-$1FFF` | 1,280 bytes | `api->copy_buf` (512), `api->input` (17), `api->other_full` (81, if you do not need the other panel's path) |
-| big (`OVERLAY_BIG`) | `$1B00-$3FFF` | 9,472 bytes | the same, plus `$3000-$3FFF` (4 KB) **if the file is under 5,376 bytes** (the code stops before `$3000`) |
+| big (`OVERLAY_BIG`) | `$1B00-$3FFF` | 9,472 bytes | the same, plus `$3000-$3FFF` (4 KB) **only if the ld65 map shows BSS ending under `$3000`** — the file size alone does not prove it, since BSS is not in the file |
 
 The disk copies are `A2FILE/NAME.PLG` (upper case). The floppy edition
 carries only the ones named in `XPLUGINS_FLOPPY` (Makefile); the `.2mg`
@@ -82,7 +82,8 @@ Read `struct A2fcApi` in `src/a2fc_plugin.h`; the useful parts:
   `api->draw_all()`), `fs` (`FS_PRODOS` = 0; else a read-only image or
   DOS 3.3 disk: refuse to write there), `free_blocks`, `total_blocks`.
   In the volume list an entry is a volume: `name` = `"/VOL"`, `mdate` = its
-  ProDOS **unit number** (slot/drive byte for `READ_BLOCK`), `aux` = free
+  ProDOS unit number **shifted right by four** (`read_volumes` stores `b >> 4`),
+  so `READ_BLOCK` wants `mdate << 4`; `aux` = free
   blocks, `blocks` = total blocks.
 - **Change directory.** `api->strcpy(pan->path, "/VOL/DIR")`, `pan->first =
   0`, `api->read_panel(index)`, then `api->draw_all()`; set `api->reselect`
@@ -127,6 +128,32 @@ Read `struct A2fcApi` in `src/a2fc_plugin.h`; the useful parts:
   ERASE to confirm", 0, 0)` then `strcmp(api->input, "ERASE")`), like
   `DISKIMG`.
 
+## Pitfalls met so far
+
+- **cc65 2.19 miscompiles `BUF[i++] = c`** when `i` is an `unsigned char`
+  static and `BUF` a constant address (`(char*)0x3200`): it increments before
+  the store. Write `BUF[i] = c; ++i;` (found by MDVIEW).
+- **Every service call costs 25-40 bytes** of cc65 glue. A small overlay
+  with many calls will not fit; `volname.c` shows the cure: 6-byte stubs
+  (`ldy #offset; jmp tramp`) behind one plain-6502 trampoline, compiled with
+  `#pragma optimize(off)`, and inline assembly for the hot loops (1,712 ->
+  1,087 bytes).
+- **A big overlay covers the entry tables** (`$2000-$3FDC`), so on entry the
+  panels' names and tags are gone, and it must NEVER call `api->read_panel`
+  or `api->draw_all`: those refill the tables straight over its own code and
+  scratch. The core rereads, restores the tags and redraws by itself when a
+  big overlay returns, and its last words must go through `api->note`. An
+  overlay that walks the tagged entries therefore has to be **small**
+  (FIXTYPES, TAGPAT, RENAME, DATE); a big one reads the directory again
+  through `dir_open`/`dir_next` (which uses the core's own buffer, not
+  yours) and knows only `api->selected`.
+- **A small overlay changes nothing on screen by itself**: after it returns
+  the core redraws only the message line, so call `api->read_panel(0)`,
+  `api->read_panel(1)` and `api->draw_all()` yourself when you touched the
+  disk.
+- **Renaming the boot volume** invalidates `api->cfg_path` (the core loads
+  overlays by that absolute path); VOLNAME rewrites it in place.
+
 ## Bench
 
 Each overlay has `bench/name.py`, built on `bench/xplug.py`: it stages a
@@ -144,4 +171,11 @@ edition) is done. Test files are host files staged by `tools/mkvolume.py`: a hos
 `NAME#TTAAAA` sets type `$TT` and auxtype `$AAAA` explicitly; any other name
 is a `$06` BIN with the name kept. Check what the disk holds afterwards by reading the `.hdv`
 back on the host (`tools/prodos_read.py`, or the ProDOS structures directly)
-rather than trusting the screen alone.
+rather than trusting the screen alone. Mind that POM2 never writes the
+boot `.hdv` back to the host: anything you must verify on the host has to
+be written to a floppy in drive 2 (`boot_hd(..., floppy2=po)`, a `.po` made
+with `tools/mkvolume.py`, flushed when POM2 stops), as `bench/txtconv.py`
+does. Two more facts learned the hard way: after a **big** overlay the core
+clears the screen and redraws, so its last words must go through
+`api->note`, not `api->message`; and `api->progress_bar` shows the core's
+own file counters, which an overlay cannot set (cosmetic).

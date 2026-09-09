@@ -61,7 +61,8 @@ struct Entry {
     unsigned int aux;           /* volume: free blocks */
     unsigned int blocks;        /* volume: total blocks */
     unsigned long size;
-    unsigned int mdate;         /* day 5 bits, month 4 bits, year 7 bits; volume: unit;
+    unsigned int mdate;         /* day 5 bits, month 4 bits, year 7 bits; volume: the unit
+                                 * number SHIFTED RIGHT BY FOUR (READ_BLOCK wants mdate << 4);
                                  * in an image or a DOS 3.3: the key block */
 };
 
@@ -96,7 +97,8 @@ struct Overlay {                /* the overlay header, at $1B00 */
     unsigned char flags;        /* OVERLAY_BIG */
     void __fastcall__ (*entry)(const struct A2fcApi*);   /* 0: no entry point */
     unsigned char reserved[3];
-    char desc[1];               /* one line, zero terminated; the code follows */
+    char desc[1];               /* one line, zero terminated, 65 characters at most
+                                 * (the menu shows it in the 80-column row); code follows */
 };
 
 struct A2fcApi {
