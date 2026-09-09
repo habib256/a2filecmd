@@ -24,7 +24,7 @@ It runs under ProDOS 2.4.3 (Bitsy Bye launches it), and it is **free software un
 
 The disk formatter reuses the public-domain ProDOS Hyper-FORMAT routines (Jerry Hewett, 1985) as integrated in ADTPro, so thanks to those authors. Everything was tested in the POM2 emulator, including formatting a blank floppy in an emulated Disk II; feedback from real hardware is very welcome, especially on 5.25" drives and SmartPort devices.
 
-Download and sources: https://github.com/habib256/a2filecmd — the release carries `A2FILECMD.po` and `.dsk` with their SHA-256 sums, and `make disk` rebuilds them from source with nothing but cc65 and Python 3.
+Download and sources: https://github.com/habib256/a2filecmd — the release carries `A2FILECMD-6502.po` and `.dsk` with their SHA-256 sums, and `make disk` rebuilds them from source with nothing but cc65 and Python 3.
 
 Enjoy, and tell me what you'd like to see next!
 

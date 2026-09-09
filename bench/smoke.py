@@ -3,7 +3,7 @@
     python3 bench/smoke.py
 
 C'est le controle qui garde tout le reste honnete : il part de
-dist/A2FILECMD.po tel qu'il sera telecharge, l'amorce comme une vraie
+dist/A2FILECMD-6502.po tel qu'il sera telecharge, l'amorce comme une vraie
 disquette en slot 6, et regarde ce que l'Apple IIe affiche.
 """
 import shutil

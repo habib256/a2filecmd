@@ -16,9 +16,9 @@ FILES = """
 
 | | Contents | Runs on |
 |---|---|---|
-| `A2FILECMD.po` — bootable 140 KB floppy, ProDOS order | **Floppy edition**, 6502 build: the file manager and the disk tools | Any Apple II with 128 KB and 80 columns, the 1983 IIe included; keyboard only |
-| `A2FILECMD.dsk` — the same floppy, `.dsk` (DOS-order) layout | The same | The same |
-| `A2FILECMD.2mg` — 32 MB hard disk | **Complete edition**, 65C02 build: every tool, `DEMO/`, `IMGHGR/`, BASIC.SYSTEM | Enhanced IIe, //c, IIgs; mouse optional |
+| `A2FILECMD-6502.po` — bootable 140 KB floppy, ProDOS order | **Floppy edition**, 6502 build: the file manager and the disk tools | Any Apple II with 128 KB and 80 columns, the 1983 IIe included; keyboard only |
+| `A2FILECMD-6502.dsk` — the same floppy, `.dsk` (DOS-order) layout | The same | The same |
+| `A2FILECMDXL-65C02.2mg` — 32 MB hard disk | **Complete edition**, 65C02 build: every tool, `DEMO/`, `IMGHGR/`, BASIC.SYSTEM | Enhanced IIe, //c, IIgs; mouse optional |
 
 Boot an image and press **?** for the key map; `sha256sum -c SHA256SUMS.txt`
 checks the download. The images carry ProDOS 8 2.4.3, and the `.2mg` also

@@ -1,6 +1,6 @@
 """Le banc fonctionnel d'A2 File Cmd, sur la disquette telle qu'elle est publiee.
 
-Il amorce dist/A2FILECMD.po dans POM2 sans fenetre, avec un second volume
+Il amorce dist/A2FILECMD-6502.po dans POM2 sans fenetre, avec un second volume
 vide comme cible, et joue une session complete : naviguer, marquer, copier,
 deplacer, renommer, supprimer, creer un dossier, changer type et verrou,
 lire un texte et des octets, editer et sauver, afficher les deux formats

@@ -19,9 +19,10 @@ Bye back), which is what a user reported. `bench/machine.py` fakes a 64 KB
 `MACHID` from BASIC and checks the refusal, then boots a //c.
 
 The launcher shows a splash screen while it loads: the title, which names the
-build (`A2 FILE CMD 0.7 - 65C02` or `- 6502`, with a requirements line
-reading *65C02 BUILD for the ENHANCED Apple IIe* or *6502 BUILD for the
-UNENHANCED Apple IIe*, no mouse), the "ProDOS 8
+edition (`A2 FILE CMD 0.7 - 65C02 COMPLETE EDITION` or `- 6502 FLOPPY
+EDITION`, with a requirements line reading *COMPLETE EDITION, 65C02 BUILD:
+enhanced IIe, //c, IIgs* or *FLOPPY EDITION, 6502 BUILD: any Apple II with
+128 KB and 80 columns*), the "ProDOS 8
 only" note, the date and time if a clock is present (bit 0 of MACHID, `$BF98`)
 or "No clock" otherwise, then **PLEASE WAIT**. Then come the two panels in
 80-column text: on the left the boot volume, on the right its `DEMO` directory
@@ -538,18 +539,32 @@ The names fit in ProDOS's fifteen characters.
 
 ## The 5.25" floppy
 
-`make disk` produces `dist/A2FILECMD.po`, a bootable floppy of 280 blocks,
-volume `/A2FILECMD`; `dist/A2FILECMD.dsk`, the **same floppy** in another
-file layout; and `dist/A2FILECMD.2mg`, the same content as a 65535-block
-hard disk (the ProDOS maximum, 32 MB), volume `/A2FILEHD` so that it can sit
+`make disk` produces `dist/A2FILECMD-6502.po`, a bootable floppy of 280 blocks,
+volume `/A2FILECMD`; `dist/A2FILECMD-6502.dsk`, the **same floppy** in another
+file layout; and `dist/A2FILECMDXL-65C02.2mg`, the same content as a 65535-block
+hard disk (the ProDOS maximum, 32 MB), volume `/A2FILECMDXL` so that it can sit
 next to the floppy, with the `DEMO` directory the floppy has no room for.
 
-### The 6502 build for the unenhanced IIe
+### The two editions: the 6502 floppy and the 65C02 hard disk
 
-`make disk ARCH=6502` builds the same program for the Apple IIe that was never
-enhanced — a 6502 without the 65C02 opcodes, no MouseText; 128 KB and an
-80-column card are still required — into `build-6502/` and
-`dist/A2FILECMD-6502.po`, `.dsk` and `.2mg`. It needs **cc65 master** (the
+Since 0.7.1 a release is two products from one tree. The **floppy edition**,
+`dist/A2FILECMD-6502.po` and `.dsk`, is the 6502 build (`make disk ARCH=6502`,
+`build-6502/`): the file manager and the disk tools only — `HELP`, `TEXT`,
+`HEX`, `DELETE`, `RUN`, `ATTR`, `MENU`, `DISKIMG`, `IMGFS`, `DOS33` and the
+formatter, no BASIC.SYSTEM — so that it runs on any Apple II with 128 KB and
+80 columns, the 1983 IIe included, and leaves the floppy's blocks to the disk
+tools to come (`TODO.md`, "Les deux éditions"). The **complete edition**,
+`dist/A2FILECMDXL-65C02.2mg`, is the 65C02 build (`make disk ARCH=enh`, `build/`)
+with every overlay, the mouse, BASIC.SYSTEM, `DEMO/` and `IMGHGR/`. `make
+disk` alone builds both. On the floppy, a key whose overlay is absent (`E`,
+`I`, the archive and reader entries) answers *A2FILE/NAME.PLG is missing or
+stale on this volume*; copying the missing `.PLG` files from the `.2mg` into
+`A2FILE/` turns the floppy back into the complete program, if it fits.
+`make benchfloppy ARCH=enh` writes `build/A2FILECMD-full.po`, a 65C02 floppy
+with everything, for the benches only.
+
+The 6502 build — a 6502 without the 65C02 opcodes, no MouseText; 128 KB and
+an 80-column card are still required — needs **cc65 master** (the
 git tree after 2.19: `make; make install PREFIX=~/opt/cc65-head`, pointed to
 by `CC65_HEAD`), because only there does the `apple2` target have the
 80-column console in plain 6502 (`machinetype`, `aux80col`, `videomode`);
@@ -567,7 +582,7 @@ now `a2fc_link_id`, taken in assembly).
 The continuous integration (`.github/workflows/ci.yml`) builds both on every
 push — cc65 2.19 from Ubuntu for the 65C02 build, cc65 master cloned at a
 pinned commit (`CC65_HEAD_COMMIT`) and cached for the 6502 one — checks the
-images, and a `v*` tag publishes the six of them with one `SHA256SUMS.txt`
+images, and a `v*` tag publishes the three of them with one `SHA256SUMS.txt`
 and notes taken from `CHANGELOG.md` (`tools/release_notes.py`) — the changelog is the only place a release's text is written.
 
 One lesson the bench taught: the `apple2` target's `initostype` constructor
@@ -723,7 +738,7 @@ is compiled with `-Cl` (static local variables); the three recursive walks
 level's path length. The exit follows the ProDOS QUIT of the cc65 startup.
 
 The proofs come from [windowless POM2 benches](../bench/README.md), which all
-start from `dist/A2FILECMD.po` **as it will be downloaded**. `bench/run.py`
+start from `dist/A2FILECMD-6502.po` **as it will be downloaded**. `bench/run.py`
 plays a complete session — boot, navigation, pages, tagging, copy, move,
 rename, a lock refusing deletion, change of type and auxtype, directory
 creation, deletion, text and hex viewers, help, both test cards compared **byte

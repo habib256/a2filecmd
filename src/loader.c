@@ -90,7 +90,7 @@ int main(void)
         cputsxy(4, 10,  "Disk formatter, program launcher.");
         cputsxy(44, 10, "Keyboard: press ? for help.");
         cputsxy(4, 12, "FLOPPY EDITION, 6502 BUILD: any Apple II with 128 KB and 80 columns.");
-        cputsxy(4, 13, "Editor, pictures, music, archives, readers: see A2FILECMD.2mg.");
+        cputsxy(4, 13, "Editor, pictures, music, archives, readers: see A2FILECMDXL-65C02.2mg.");
 #else
         cputsxy(44, 8, "Text viewer, hex dump, text editor.");
         cputsxy(4, 9,  "HGR and DHGR pictures, full screen.");

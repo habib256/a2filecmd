@@ -59,9 +59,9 @@ No build required. Choose the image that fits your setup:
 
 | Download | Best for | Included |
 |---|---|---|
-| [**A2FILECMD.2mg**](https://github.com/habib256/a2filecmd/releases/latest/download/A2FILECMD.2mg) | **Complete edition.** Emulators, CFFA-style storage and hard disks that take 2IMG images; Enhanced IIe, //c and IIgs | Bootable 32 MB volume `/A2FILEHD`, the 65C02 build with every tool and the mouse, BASIC.SYSTEM, a `DEMO/` collection and `IMGHGR/`, nine HGR pictures from [POM1](https://github.com/habib256/pom1) |
-| [**A2FILECMD.po**](https://github.com/habib256/a2filecmd/releases/latest/download/A2FILECMD.po) | **Floppy edition.** A real Apple II with Disk II drives, ADTPro, CiderPress and most emulators | Bootable 140 KB ProDOS floppy, blocks in ProDOS order: the 6502 build with the file manager and the disk tools, for any Apple II with 128 KB and 80 columns, the 1983 IIe included; keyboard only |
-| [**A2FILECMD.dsk**](https://github.com/habib256/a2filecmd/releases/latest/download/A2FILECMD.dsk) | The floppy edition for tools and emulators that expect a `.dsk` file | The same 140 KB ProDOS floppy, its sectors stored in the `.dsk` (DOS-order) layout — a ProDOS volume, no DOS 3.3 on it |
+| [**A2FILECMDXL-65C02.2mg**](https://github.com/habib256/a2filecmd/releases/latest/download/A2FILECMDXL-65C02.2mg) | **Complete edition.** Emulators, CFFA-style storage and hard disks that take 2IMG images; Enhanced IIe, //c and IIgs | Bootable 32 MB volume `/A2FILECMDXL`, the 65C02 build with every tool and the mouse, BASIC.SYSTEM, a `DEMO/` collection and `IMGHGR/`, nine HGR pictures from [POM1](https://github.com/habib256/pom1) |
+| [**A2FILECMD-6502.po**](https://github.com/habib256/a2filecmd/releases/latest/download/A2FILECMD-6502.po) | **Floppy edition.** A real Apple II with Disk II drives, ADTPro, CiderPress and most emulators | Bootable 140 KB ProDOS floppy, blocks in ProDOS order: the 6502 build with the file manager and the disk tools, for any Apple II with 128 KB and 80 columns, the 1983 IIe included; keyboard only |
+| [**A2FILECMD-6502.dsk**](https://github.com/habib256/a2filecmd/releases/latest/download/A2FILECMD-6502.dsk) | The floppy edition for tools and emulators that expect a `.dsk` file | The same 140 KB ProDOS floppy, its sectors stored in the `.dsk` (DOS-order) layout — a ProDOS volume, no DOS 3.3 on it |
 
 1. Boot the image on an **Apple IIe or //c with 128 KB and an 80-column display**, or an emulator configured that way. ProDOS 8 is included.
    The **floppy edition** runs on any such machine, enhanced or not, with the keyboard; it carries
@@ -108,7 +108,7 @@ Download `SHA256SUMS.txt` from the same release into the image's directory.
 To verify one image on macOS:
 
 ```sh
-shasum -a 256 A2FILECMD.2mg
+shasum -a 256 A2FILECMDXL-65C02.2mg
 ```
 
 Compare the result with its line in `SHA256SUMS.txt`. If you downloaded all
@@ -155,7 +155,7 @@ and **Python 3**. The disk-image tools and demo generators are included.
 
 ```sh
 make          # build the ProDOS program and its overlays
-make disk     # create dist/A2FILECMD.po, .dsk and .2mg
+make disk     # create dist/A2FILECMD-6502.po and .dsk, and dist/A2FILECMDXL-65C02.2mg
 make test     # run checks that do not need an Apple II
 ```
 

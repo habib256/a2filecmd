@@ -1,9 +1,10 @@
 # A2 File Cmd -- two-panel ProDOS file manager, Apple IIe.
 #
 #   make            the three ProDOS binaries, in build/ (ARCH=enh) or build-6502/
-#   make disk       the two editions: the floppy dist/A2FILECMD.po and .dsk
-#                   (6502 build, the file manager and the disk tools only) and
-#                   the hard disk dist/A2FILECMD.2mg (65C02 build, everything).
+#   make disk       the two editions: the floppy dist/A2FILECMD-6502.po and
+#                   .dsk (6502 build, the file manager and the disk tools only)
+#                   and the hard disk dist/A2FILECMDXL-65C02.2mg, volume
+#                   /A2FILECMDXL (65C02 build, everything).
 #                   With ARCH=6502 or ARCH=enh given, only that edition.
 #   make benchfloppy  build/A2FILECMD-full.po: a 65C02 floppy with every
 #                   overlay, for the benches only -- never shipped
@@ -18,10 +19,12 @@
 A2FC_VERSION = 0.7
 VOLUME       = A2FILECMD
 
-VOLUME_HD    = A2FILEHD     # the .2mg hard disk: another name, to coexist with the floppy
+# The .2mg hard disk: another volume name, to coexist with the floppy.
+# (Comments stay on their own line: make keeps the blanks before a `#`.)
+VOLUME_HD    = A2FILECMDXL
 # Two editions, one tree (decided 2026-09-09, see TODO.md):
 #
-#   ARCH=6502  the FLOPPY edition, dist/A2FILECMD.po and .dsk: cc65 target
+#   ARCH=6502  the FLOPPY edition, dist/A2FILECMD-6502.po and .dsk: target
 #              apple2 (6502, no MouseText), so it runs on any Apple II with
 #              128 KB and 80 columns, the 1983 IIe included; no mouse (for
 #              room), big BINARY2. Carries the file manager and the disk
@@ -31,7 +34,7 @@ VOLUME_HD    = A2FILEHD     # the .2mg hard disk: another name, to coexist with 
 #              master (git, after 2.19: machinetype, aux80col, videomode):
 #              CC65_HEAD is a cc65 built from master (make ; make install
 #              PREFIX=~/opt/cc65-head), kept apart from the 2.19 build.
-#   ARCH=enh   the COMPLETE edition, dist/A2FILECMD.2mg: target apple2enh
+#   ARCH=enh   the COMPLETE edition, dist/A2FILECMDXL-65C02.2mg: apple2enh
 #              (65C02, MouseText) for the enhanced IIe, //c and IIgs, with
 #              the mouse, every overlay, BASIC.SYSTEM, DEMO/ and IMGHGR/.
 #
@@ -47,7 +50,8 @@ TARGET = apple2
 ASDEFS = -D A2_6502 -D CC65_MASTER
 CLDEFS = --asm-define A2_6502 --asm-define CC65_MASTER -DA2FC_6502 -DA2FC_NOMOUSE -DA2FC_BIG_BINARY2
 MOUSEOBJ =
-IMG    = A2FILECMD
+# The edition and the processor, in the file name.
+IMG    = A2FILECMD-6502
 BUILD_SUFFIX = -6502
 BIN2SIZE = 0x0D00
 LAYOUT_BIG = --big BINARY2
@@ -57,7 +61,8 @@ TARGET = apple2enh
 ASDEFS =
 CLDEFS =
 MOUSEOBJ = $(BUILD)/mouse.o
-IMG    = A2FILECMD
+# The volume /A2FILECMDXL and the processor, in the file name.
+IMG    = A2FILECMDXL-65C02
 BUILD_SUFFIX =
 BIN2SIZE = 0x0500
 LAYOUT_BIG =
@@ -158,13 +163,13 @@ $(FORMAT): $(SRC)/format.c $(SRC)/format_diskii.s $(SRC)/format_mli.s $(SRC)/for
 # their auxtype) and its help in A2FILE/.
 #   The floppy /A2FILECMD (280 blocks, .po and .dsk), the 6502 build: the
 # file manager and the disk tools (PLUGINS_FLOPPY), nothing else.
-#   The hard disk /A2FILEHD (.2mg, 65535 blocks, ProDOS's maximum), the
+#   The hard disk /A2FILECMDXL (.2mg, 65535 blocks, ProDOS's maximum), the
 # 65C02 build: every overlay, BASIC.SYSTEM, and a DEMO directory built from
 # scratch with one specimen of everything A2 File Cmd knows how to open.
 STAGE = $(BUILD)/vol
 HDV = $(BUILD)/$(IMG).hdv
 TWOMG = $(DIST)/$(IMG).2mg
-FULLPO = $(BUILD)/$(IMG)-full.po
+FULLPO = $(BUILD)/A2FILECMD-full.po
 STAGE_DEPS = $(SYSTEM) $(CODE) $(FORMAT) $(DATA)/A2FILE.HELP.TXT $(DATA)/PRODOS.SYS \
        $(DATA)/prodos_boot.tmpl $(TOOLS)/mkvolume.py
 

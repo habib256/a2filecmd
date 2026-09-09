@@ -26,7 +26,7 @@ tout ce qui s'ajoute au noyau doit être payé par une surcouche ou par une
 | Pile C | 192 octets réservés (`A2FC_STACK`), creux maximal mesuré 94 (`bench/memory.py`) |
 | Petites surcouches `$1B00-$1FFF` (1 280 octets) | `BINARY2` 1 270, `IMGFS` 1 247, `MUSIC` 1 246, `MENU` 1 212, `DOS33` 1 211, `DELETE` 1 194, `ATTR` 1 193, `IMAGE` 1 187, `RUN` 1 152, `AWP` 980, `HELP` 974, `SEARCH` 838, `HEX` 826, `COMPARE` 768, `TEXT` 644 |
 | Grandes surcouches (plafond dans `src/a2fc.cfg`) | `DISKIMG` 6 068 / 6 400, `UNSHRINK` 5 208 / 5 376, `EDIT` 3 227 / 3 328, `BASLIST` 1 369 / 3 328 ; `BINARY2` passe grande en 6502 (3 328) |
-| Disquette `A2FILECMD.po` | **12 blocs libres** sur 280 (6502 : 11). Le `.2mg` `/A2FILEHD` porte `DEMO` et `IMGHGR`, 64 584 blocs libres |
+| Disquette `A2FILECMD-6502.po` | **12 blocs libres** sur 280 (6502 : 11). Le `.2mg` `/A2FILECMDXL` porte `DEMO` et `IMGHGR`, 64 584 blocs libres |
 
 Trois petites surcouches sont à moins de 40 octets du plafond (`BINARY2`,
 `IMGFS`, `MUSIC`) : la prochaine ligne qu'on y ajoute les fait passer
@@ -38,7 +38,7 @@ Décidé le 2026-09-09 : deux produits, pas quatre paires d'images.
 
 | | **Édition disquette** | **Édition complète** |
 | --- | --- | --- |
-| Image | `A2FILECMD.po` et `.dsk`, 140 Ko | `A2FILECMD.2mg`, 32 Mo, `/A2FILEHD` |
+| Image | `A2FILECMD-6502.po` et `.dsk`, 140 Ko | `A2FILECMDXL-65C02.2mg`, 32 Mo, `/A2FILECMDXL` |
 | Processeur | **6502** (`make disk ARCH=6502`) : tourne sur tout Apple II 128 Ko à 80 colonnes, IIe de 1983 compris ; sans souris | **65C02** : IIe enhanced, //c, IIgs ; souris, MouseText |
 | Contenu | le gestionnaire et les **outils disque** : ce qu'un utilisateur à deux Disk II et sans disque dur ne peut faire autrement | **tout** : les dix-neuf surcouches, `DEMO/`, `IMGHGR/`, `BASIC.SYSTEM` |
 | Public | la machine d'origine, la disquette qu'on prête | l'émulateur, la CFFA, le disque dur |
