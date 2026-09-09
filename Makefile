@@ -107,6 +107,26 @@ PLUGINS = IMAGE TEXT HEX DELETE HELP EDIT MUSIC RUN ATTR MENU DISKIMG IMGFS DOS3
 # the document readers stay on the hard disk (45 blocks, with BASIC.SYSTEM's
 # 21, given back to the disk tools to come -- see TODO.md, "Les deux editions").
 PLUGINS_FLOPPY = HELP TEXT HEX DELETE RUN ATTR MENU DISKIMG IMGFS DOS33
+# The service-table overlays: src/plugins/NAME.c, each compiled and linked
+# on its own like a third party's (sdk/plugin.cfg, no crt0, nothing of
+# A2FILE.CODE), because the resident is full -- they reach the program only
+# through struct A2fcApi. Lower-case source names, upper-case .PLG on disk.
+# A header written `PLUGIN_MAGIC, OVERLAY_BIG,` (one line) is linked as a big
+# overlay ($1B00-$3FFF); `PLUGIN_MAGIC, 0,` as a small one.
+XPLUGINS = $(sort $(basename $(notdir $(wildcard $(SRC)/plugins/*.c))))
+# The ones that also go on the floppy edition (TODO.md, the floppy budget).
+XPLUGINS_FLOPPY = $(filter txtconv date verify tagpat volname drivespd wipe,$(XPLUGINS))
+# The cc65 target library for the plugin link: the one of the machine's cc65
+# for apple2enh, the one of cc65 master for apple2.
+ifeq ($(ARCH),6502)
+CC65LIB = $(CC65_HEAD)/share/cc65/lib/apple2.lib
+CCDEFS = -DA2FC_6502 -DA2FC_NOMOUSE -DA2FC_BIG_BINARY2
+else
+CC65LIB = $(dir $(shell command -v cc65))../share/cc65/lib/apple2enh.lib
+CCDEFS =
+endif
+XPLG = $(patsubst %,$(BUILD)/%.PLG,$(XPLUGINS))
+XPLG_FLOPPY = $(patsubst %,$(BUILD)/%.PLG,$(XPLUGINS_FLOPPY))
 SYSTEM = $(BUILD)/A2FILE.SYSTEM.SYS
 FORMAT = $(BUILD)/FORMAT.SYS.SYS
 PO     = $(DIST)/$(IMG).po
@@ -115,7 +135,7 @@ DSK    = $(DIST)/$(IMG).dsk
 OBJS = $(BUILD)/crt0.o $(BUILD)/overlay.o $(BUILD)/unshrink.o $(VDRIVEOBJ) $(BUILD)/a2fc_mli.o $(BUILD)/chain.o \
        $(BUILD)/music.o $(BUILD)/memory_swap.o $(BUILD)/mli_safe.o $(MOUSEOBJ)
 
-.PHONY: all disk benchfloppy test bench example clean
+.PHONY: all disk benchfloppy xplugins test bench example clean
 all: $(SYSTEM) $(CODE) $(FORMAT)
 
 $(BUILD) $(DIST):
@@ -157,6 +177,18 @@ $(FORMAT): $(SRC)/format.c $(SRC)/format_diskii.s $(SRC)/format_mli.s $(SRC)/for
 	  -Wl -D,__FILETYPE__=0xFF -o $@ \
 	  $(SRC)/format.c $(SRC)/format_diskii.s $(SRC)/format_mli.s $(BUILD)/chain.o $(IOBUF)
 
+# -- The service-table overlays ---------------------------------------------
+$(BUILD)/%.PLG: $(SRC)/plugins/%.c $(SRC)/a2fc_plugin.h sdk/plugin.cfg Makefile | $(BUILD)
+	$(CC65BIN)cc65 -t $(TARGET) $(CCDEFS) -O -Oirs -Cl --codesize $(CODESIZE) -o $(BUILD)/$*.s $<
+	$(CC65BIN)ca65 -t $(TARGET) -o $(BUILD)/$*.o $(BUILD)/$*.s
+	@if grep -qE 'PLUGIN_MAGIC, *OVERLAY_BIG' $<; then big=1; else big=0; fi; \
+	  $(CC65BIN)ld65 -C sdk/plugin.cfg $$( [ $$big = 1 ] && echo -D __OVLSIZE__=0x2500 ) -o $@ $(BUILD)/$*.o $(CC65LIB) && \
+	  limit=$$( [ $$big = 1 ] && echo 9472 || echo 1280 ) && \
+	  { test $$(wc -c < $@) -le $$limit || { echo "$@: $$(wc -c < $@) bytes, more than its $$limit-byte window"; rm -f $@; exit 1; }; } && \
+	  echo "$@: $$(wc -c < $@) bytes ($$( [ $$big = 1 ] && echo big || echo small ) overlay)"
+xplugins: $(XPLG)
+all: xplugins
+
 # -- The floppy and the hard disk -------------------------------------------
 # Two volumes, bootable: ProDOS 2.4.3, the launcher at the root (the only
 # .SYSTEM file), the program, its overlays (BINs loaded at $1B00, hence
@@ -191,13 +223,14 @@ define stage
 	cp $(SYSTEM) $(STAGE)/A2FILE.SYSTEM.SYS
 	cp $(CODE) $(STAGE)/A2FILE/A2FILE.CODE.BIN
 	for p in $(1); do cp $(CODE).$$p "$(STAGE)/A2FILE/$$p.PLG#061B00"; done
+	for p in $(2); do cp $(BUILD)/$$p.PLG "$(STAGE)/A2FILE/$$(echo $$p | tr a-z A-Z).PLG#061B00"; done
 	cp $(DATA)/A2FILE.HELP.TXT $(STAGE)/A2FILE/A2FILE.HELP.TXT
 	cp $(FORMAT) $(STAGE)/A2FILE/FORMAT.SYS.SYS
 endef
 
 # The floppy edition (ARCH=6502).
-$(PO): $(STAGE_DEPS) $(TOOLS)/po2dsk.py | $(DIST)
-	$(call stage,$(PLUGINS_FLOPPY))
+$(PO): $(STAGE_DEPS) $(XPLG_FLOPPY) $(TOOLS)/po2dsk.py | $(DIST)
+	$(call stage,$(PLUGINS_FLOPPY),$(XPLUGINS_FLOPPY))
 	python3 $(TOOLS)/mkvolume.py $(STAGE) $(PO) --volume $(VOLUME) \
 	  --boot $(DATA)/prodos_boot.tmpl --blocks 280
 	python3 $(TOOLS)/po2dsk.py $(PO) $(DSK)
@@ -205,10 +238,10 @@ $(PO): $(STAGE_DEPS) $(TOOLS)/po2dsk.py | $(DIST)
 	@echo "==> $(PO) and $(DSK): the floppy edition ($(ARCH))"
 
 # The complete edition (ARCH=enh).
-$(TWOMG): $(STAGE_DEPS) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/README.TXT \
+$(TWOMG): $(STAGE_DEPS) $(XPLG) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/README.TXT \
        $(TOOLS)/mkdemo.py $(TOOLS)/po22mg.py \
        $(TOOLS)/mkshk.py $(TOOLS)/mkbny.py $(TOOLS)/mkdos33.py $(wildcard $(DATA)/IMGHGR/*) | $(DIST)
-	$(call stage,$(PLUGINS))
+	$(call stage,$(PLUGINS),$(XPLUGINS))
 	cp $(DATA)/BASIC.SYSTEM.SYS $(STAGE)/
 	mkdir -p $(STAGE)/DEMO
 	cp $(DATA)/README.TXT $(STAGE)/DEMO/README.TXT
@@ -224,8 +257,8 @@ $(TWOMG): $(STAGE_DEPS) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/README.TXT \
 # exercise the editor, the pictures, the archives and the readers from a
 # floppy (bench/run.py and friends, A2FC_IMG=A2FILECMD-full). Never shipped.
 benchfloppy: $(FULLPO)
-$(FULLPO): $(STAGE_DEPS) $(DATA)/BASIC.SYSTEM.SYS
-	$(call stage,$(PLUGINS))
+$(FULLPO): $(STAGE_DEPS) $(XPLG) $(DATA)/BASIC.SYSTEM.SYS
+	$(call stage,$(PLUGINS),$(XPLUGINS))
 	cp $(DATA)/BASIC.SYSTEM.SYS $(STAGE)/
 	python3 $(TOOLS)/mkvolume.py $(STAGE) $(FULLPO) --volume $(VOLUME) \
 	  --boot $(DATA)/prodos_boot.tmpl --blocks 280

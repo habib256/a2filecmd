@@ -33,7 +33,7 @@
 
 #include <stdio.h>
 
-#define A2FC_API_VERSION 1
+#define A2FC_API_VERSION 2
 #define PLUGIN_MAGIC 0xA2FC        /* the signature of a third-party overlay */
 #define OVERLAY_BIG 0x01           /* also takes $2000-$3FFF */
 #define OVERLAY_WINDOW ((unsigned char*)0x1B00)
@@ -159,6 +159,10 @@ struct A2fcApi {
      * (which a big overlay covers); name[0] = 0 if the panel is empty.
      * api->full is its complete path, "" if it does not fit. */
     struct Entry* selected;
+    /* since version 2: the path of the program's settings file,
+     * "/VOL/A2FILE/A2FILE.CFG" -- its directory is where the overlays live,
+     * and where an overlay keeps its own files (GOTO.CFG...). */
+    const char* cfg_path;
 };
 
 #endif /* A2FC_PLUGIN_H */

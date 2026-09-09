@@ -2991,7 +2991,8 @@ static const char mn_unread[]  = "A2FILE/ is unreadable.";
 static const char mn_row[]     = "%-12s %-52s";
 struct MenuItem { char name[12]; char desc[52]; };
 #define MENU_ITEMS ((struct MenuItem*)0x3000)
-#define MENU_MAX 20
+#define MENU_MAX 64                 /* 64 x 64 bytes: $3000-$3FFF */
+#define MENU_ROWS 18                /* rows 2..19 per page, like a panel */
 void __fastcall__ menu_entry(const struct A2fcApi* a)
 {
     struct MenuItem* m = MENU_ITEMS;
@@ -3033,21 +3034,28 @@ void __fastcall__ menu_entry(const struct A2fcApi* a)
     revers(0);
     if (!n) cputsxy(2, 2, "No overlay here.");
     for (;;) {
-        for (i = 0; i < n; ++i) {
-            if (i == cur) revers(1);
+        /* A page of MENU_ROWS around the cursor; the rest scrolls. */
+        unsigned char top = cur - cur % MENU_ROWS;
+        for (i = 0; i < MENU_ROWS; ++i) {
             gotoxy(2, 2 + i);
-            cprintf(mn_row, m[i].name, m[i].desc);
-            revers(0);
+            if (top + i < n) {
+                if (top + i == cur) revers(1);
+                cprintf(mn_row, m[top + i].name, m[top + i].desc);
+                revers(0);
+            } else cclearxy(2, 2 + i, 66);
         }
+        gotoxy(70, 0); revers(1);
+        cprintf("%2u/%-2u", cur + 1, n);
+        revers(0);
         bar_begin();
-        keys_bar(0, "U/D Choose,RET Run,ESC Back to the panels");
+        keys_bar(0, "U/D Choose,L/R Page,RET Run,ESC Back");
         key = cgetc();
         if (key == KEY_ESC) return;
         if (key == KEY_RETURN && n) { strcpy(input, m[cur].name); return; }
         if (key == KEY_UP && cur) --cur;
         else if (key == KEY_DOWN && cur + 1 < n) ++cur;
-        else if (key == KEY_LEFT) cur = cur >= 5 ? cur - 5 : 0;              /* five at a time */
-        else if (key == KEY_RIGHT) cur = cur + 5 < n ? cur + 5 : n - 1;
+        else if (key == KEY_LEFT) cur = cur >= MENU_ROWS ? cur - MENU_ROWS : 0;   /* a page at a time */
+        else if (key == KEY_RIGHT) cur = cur + MENU_ROWS < n ? cur + MENU_ROWS : n - 1;
         else {
             if (key >= 'a' && key <= 'z') key -= 32;
             for (i = 1; i <= n; ++i) if (m[(cur + i) % n].name[0] == key) { cur = (cur + i) % n; break; }
@@ -4321,7 +4329,7 @@ static struct A2fcApi api = {
     message, confirm, prompt, progress_bar, keys_bar, bar_begin, draw_all, read_panel, report_error, wait_key,
     build_full, dir_open, dir_next, dir_close, mli_call,
     fopen, fread, fwrite, fclose, fseek, remove, cprintf, sprintf, cputs, cputc, gotoxy, revers, cclearxy, clrscr, cgetc,
-    memcpy, memset, strcpy, strcmp, strlen, &_filetype, &_auxtype, reselect, note, &selected };
+    memcpy, memset, strcpy, strcmp, strlen, &_filetype, &_auxtype, reselect, note, &selected, cfg_path };
 
 int main(void)
 {
