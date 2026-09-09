@@ -133,6 +133,14 @@ Read `struct A2fcApi` in `src/a2fc_plugin.h`; the useful parts:
 - **cc65 2.19 miscompiles `BUF[i++] = c`** when `i` is an `unsigned char`
   static and `BUF` a constant address (`(char*)0x3200`): it increments before
   the store. Write `BUF[i] = c; ++i;` (found by MDVIEW).
+- **In inline assembly, a `jsr`/`jmp` to a label defined further down the
+  same function is taken for an external symbol**, and ld65 ends on
+  `Unresolved external`. Backward jumps are fine, and so are branches in
+  both directions (`bne`, `beq`...). Cure: make the target a real static
+  function and `jsr %v` it, or turn the jump into an unconditional branch
+  (found by TAGPAT).
+- **`#<%v+2` is read by ca65 as `(<%v)+2`**, so the high byte gets the
+  offset too. Write `#<(%v+2)` and `#>(%v+2)`.
 - **Every service call costs 25-40 bytes** of cc65 glue. A small overlay
   with many calls will not fit; `volname.c` shows the cure: 6-byte stubs
   (`ldy #offset; jmp tramp`) behind one plain-6502 trampoline, compiled with

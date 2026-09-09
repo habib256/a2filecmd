@@ -63,7 +63,7 @@ their own, with the path and the page on the left.
 | **D** | delete the tagged entries, otherwise the selected one, after a confirmation; a directory is deleted with all its contents |
 | **K** | make a directory in the active panel |
 | **S** | change the sort: name, decreasing size, type; both panels follow |
-| **M** | mark the files absent from the other panel or of a different size: followed by C, it is a synchronization |
+| **M** | mark the files absent from the other panel, or of a different size or modification date: followed by C, it is a synchronization |
 | **A** | change a file's type and auxtype, in hexadecimal |
 | **L** | lock or unlock; a locked file carries an L after its name and refuses deletion and renaming |
 | **?** | the help, a screen that sums up every key, under the title "A2 File Cmd" |
