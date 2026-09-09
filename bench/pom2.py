@@ -35,9 +35,10 @@ POM2 = os.environ.get('POM2', str(Path.home() / 'src/pom2adventure/SCOSWAMP.MORE
 # la disquette 65C02 avec toutes les surcouches, jamais publiee, pour les
 # bancs de l'editeur, des images, des archives et des lecteurs ; sa table de
 # symboles est build/. A2FC_BUILD force le dossier de construction.
+VERSION = re.search(r'^A2FC_VERSION\s*=\s*(\S+)', (ROOT / 'Makefile').read_text(), re.M)[1]
 IMG = os.environ.get('A2FC_IMG', 'A2FILECMD-6502-BOOT')
 BUILD = ROOT / os.environ.get('A2FC_BUILD', 'build' if IMG.endswith('-full') or '65C02' in IMG else 'build-6502')
-DISK = ROOT / ('dist/%s.po' % IMG)
+DISK = ROOT / ('dist/%s.po' % (IMG + '-' + VERSION if IMG.endswith('-BOOT') else IMG))
 if not DISK.exists() and (ROOT / ('build/%s.po' % IMG)).exists():
     DISK = ROOT / ('build/%s.po' % IMG)
 FULL = 'build-6502' not in BUILD.name   # la version 65C02 : souris, opcodes enhanced

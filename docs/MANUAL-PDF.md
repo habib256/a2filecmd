@@ -2,7 +2,8 @@
 
 `A2FILECMD-MANUAL-EN.pdf` is the printable English edition of `MANUAL.md`.
 It includes a clickable contents page, section bookmarks, page numbers and
-repeated table headings. The release workflow copies it into `dist/`, adds
+repeated table headings. The release workflow copies it into `dist/` as
+`A2FILECMD-MANUAL-EN-<version>.pdf`, adds
 its SHA-256 checksum and attaches it to the GitHub release.
 
 Regenerate the PDF after updating the manual, before publishing a release.

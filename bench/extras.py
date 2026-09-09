@@ -7,7 +7,7 @@ import tempfile
 import zlib
 from pathlib import Path
 
-from pom2 import Pom2, Session, ROOT, BUILD, FULL
+from pom2 import VERSION, Pom2, Session, ROOT, BUILD, FULL
 from smoke import scratch
 from xplug import menu_run, ok_all, RET, ESC
 from volname import rename_to
@@ -28,8 +28,8 @@ def catalog(image):
 def main():
     cpu = '65C02' if FULL else '6502'
     bootvol, extravol = 'A2FC' + cpu, 'A2EXTRA' + cpu
-    boot = ROOT / ('dist/A2FILECMD-%s-BOOT.po' % cpu)
-    extra = ROOT / ('dist/A2FILECMD-%s-EXTRA.po' % cpu)
+    boot = ROOT / ('dist/A2FILECMD-%s-BOOT-%s.po' % (cpu, VERSION))
+    extra = ROOT / ('dist/A2FILECMD-%s-EXTRA-%s.po' % (cpu, VERSION))
     bi, br, bc = catalog(boot)
     xi, xr, xc = catalog(extra)
     assert len(extra.read_bytes()) == 143360

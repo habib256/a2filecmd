@@ -58,8 +58,9 @@ jobs:
 
       - name: Empreintes et notes de version
         run: |
-          cp docs/A2FILECMD-MANUAL-EN.pdf dist/
-          cd dist && sha256sum A2FILECMD-*-BOOT.po A2FILECMD-*-BOOT.dsk A2FILECMD-*-EXTRA.po A2FILECMD-*-EXTRA.dsk A2FILECMD-*-XL.2mg A2FILECMD-MANUAL-EN.pdf | tee SHA256SUMS.txt
+          VERSION=$(sed -n 's/^A2FC_VERSION *= *//p' Makefile)
+          cp docs/A2FILECMD-MANUAL-EN.pdf "dist/A2FILECMD-MANUAL-EN-$VERSION.pdf"
+          cd dist && sha256sum A2FILECMD-*-BOOT-*.po A2FILECMD-*-BOOT-*.dsk A2FILECMD-*-EXTRA-*.po A2FILECMD-*-EXTRA-*.dsk A2FILECMD-*-XL-*.2mg "A2FILECMD-MANUAL-EN-$VERSION.pdf" | tee "SHA256SUMS-$VERSION.txt"
           cd .. && python3 tools/release_notes.py "${GITHUB_REF_NAME}" > dist/RELEASE_NOTES.md
 
       - name: Les cartes memoire, pour le journal de construction
@@ -70,7 +71,7 @@ jobs:
             sed -n '/^Name  *Start/,/^LC /p' $b/a2fc.map >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
           done
-          python3 tools/prodos_read.py dist/A2FILECMD-6502-BOOT.po >> $GITHUB_STEP_SUMMARY
+          python3 tools/prodos_read.py dist/A2FILECMD-6502-BOOT-*.po >> $GITHUB_STEP_SUMMARY
 
       # Les images seules : tous les chemins sous dist/, dont
       # upload-artifact retire le prefixe commun -- le telechargement du
@@ -159,7 +160,7 @@ jobs:
       - name: Ce qui va etre publie
         run: |
           ls -l dist
-          cd dist && sha256sum -c SHA256SUMS.txt   # des noms nus : se verifie depuis dist/
+          cd dist && sha256sum -c SHA256SUMS-*.txt   # des noms nus : se verifie depuis dist/
           echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV   # le titre porte 0.6.8, pas v0.6.8
       - name: Publier
         uses: softprops/action-gh-release@v2
@@ -167,10 +168,10 @@ jobs:
           name: "A2 File Cmd ${{ env.VERSION }} — Two panels. One Apple II."
           body_path: dist/RELEASE_NOTES.md
           files: |
-            dist/A2FILECMD-*-BOOT.po
-            dist/A2FILECMD-*-BOOT.dsk
-            dist/A2FILECMD-*-EXTRA.po
-            dist/A2FILECMD-*-EXTRA.dsk
-            dist/A2FILECMD-*-XL.2mg
-            dist/A2FILECMD-MANUAL-EN.pdf
-            dist/SHA256SUMS.txt
+            dist/A2FILECMD-*-BOOT-*.po
+            dist/A2FILECMD-*-BOOT-*.dsk
+            dist/A2FILECMD-*-EXTRA-*.po
+            dist/A2FILECMD-*-EXTRA-*.dsk
+            dist/A2FILECMD-*-XL-*.2mg
+            dist/A2FILECMD-MANUAL-EN-*.pdf
+            dist/SHA256SUMS-*.txt

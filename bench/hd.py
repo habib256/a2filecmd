@@ -14,7 +14,7 @@ import os, shutil, sys, tempfile, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from pom2 import Pom2, Session, ROOT, DISK, labels
+from pom2 import VERSION, Pom2, Session, ROOT, DISK, labels
 from run import RET, TAB, ESC, solid_bands
 import urllib.request
 
@@ -34,7 +34,7 @@ def main():
         cpu = os.environ.get('A2FC_CPU', '65C02')
         build = ROOT / ('build-6502' if cpu == '6502' else 'build')
         volume = '/A2XL' + cpu
-        two = (ROOT / ('dist/A2FILECMD-%s-XL.2mg' % cpu)).read_bytes()
+        two = (ROOT / ('dist/A2FILECMD-%s-XL-%s.2mg' % (cpu, VERSION))).read_bytes()
         ok('le .2mg porte l en-tete 2IMG, format ProDOS, 65535 blocs',
            two[:4] == b'2IMG' and two[12] == 1 and int.from_bytes(two[20:24], 'little') == 65535)
         hdv.write_bytes(two[64:])

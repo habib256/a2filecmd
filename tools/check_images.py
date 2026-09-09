@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Check the published BOOT / EXTRA / XL set against each CPU's build."""
 from pathlib import Path
+import re
 
 from po2dsk import to_dsk
 from prodos_read import Image
 
 ROOT = Path(__file__).resolve().parents[1]
+VERSION = re.search(r'^A2FC_VERSION\s*=\s*(\S+)', (ROOT / 'Makefile').read_text(), re.M)[1]
 
 
 def entries(image, block):
@@ -20,7 +22,7 @@ def check_cpu(cpu):
                      for p in (ROOT / 'src/plugins').glob('*.c')})
     plugins = {}
     for role in ('BOOT', 'EXTRA', 'XL'):
-        path = ROOT / 'dist' / ('A2FILECMD-%s-%s.%s' % (cpu, role, '2mg' if role == 'XL' else 'po'))
+        path = ROOT / 'dist' / ('A2FILECMD-%s-%s-%s.%s' % (cpu, role, VERSION, '2mg' if role == 'XL' else 'po'))
         data = path.read_bytes()
         if role == 'XL':
             assert len(data) == 64 + 65535 * 512 and data[:4] == b'2IMG', path

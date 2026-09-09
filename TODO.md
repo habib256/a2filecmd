@@ -34,8 +34,8 @@ Certaines petites surcouches restent proches du plafond (`BINARY2`,
 ## Les deux éditions
 
 Décidé le 2026-09-09 : deux processeurs, chacun avec BOOT, EXTRA et XL.
-Les noms `A2FILECMD-6502-{BOOT,EXTRA,XL}` puis
-`A2FILECMD-65C02-{BOOT,EXTRA,XL}` regroupent les images par processeur
+Les noms `A2FILECMD-6502-{BOOT,EXTRA,XL}-0.7.5` puis
+`A2FILECMD-65C02-{BOOT,EXTRA,XL}-0.7.5` regroupent les images par processeur
 au tri alphabétique. BOOT et EXTRA sont des disquettes 140 Ko (`.po` et
 `.dsk`), XL est un disque complet de 32 Mo (`.2mg`). Le 6502 fonctionne
 sans souris sur le IIe de 1983 ; le 65C02 ajoute MouseText et la souris.

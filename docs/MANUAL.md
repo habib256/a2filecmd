@@ -79,8 +79,8 @@ on its side does nothing, the picture stays. Any other key returns.
 
 ### The companion floppy and disk swaps
 
-Each CPU has its own companion: `A2FILECMD-6502-EXTRA.po` or
-`A2FILECMD-65C02-EXTRA.po` (also supplied as `.dsk`). Boot the matching
+Each CPU has its own companion: `A2FILECMD-6502-EXTRA-0.7.5.po` or
+`A2FILECMD-65C02-EXTRA-0.7.5.po` (also supplied as `.dsk`). Boot the matching
 `A2FILECMD-<CPU>-BOOT.po` first. Use images from the same release: native
 overlays retain their build-signature check. Each companion contains the
 17 tools absent from BOOT, BASIC.SYSTEM, and copies of the menu and its
@@ -665,8 +665,8 @@ The names fit in ProDOS's fifteen characters.
 
 | CPU | BOOT, 140 KB | EXTRA, 140 KB | XL, 32 MB |
 |---|---|---|---|
-| 6502 | `A2FILECMD-6502-BOOT.po` | `A2FILECMD-6502-EXTRA.po` | `A2FILECMD-6502-XL.2mg` |
-| 65C02 | `A2FILECMD-65C02-BOOT.po` | `A2FILECMD-65C02-EXTRA.po` | `A2FILECMD-65C02-XL.2mg` |
+| 6502 | `A2FILECMD-6502-BOOT-0.7.5.po` | `A2FILECMD-6502-EXTRA-0.7.5.po` | `A2FILECMD-6502-XL-0.7.5.2mg` |
+| 65C02 | `A2FILECMD-65C02-BOOT-0.7.5.po` | `A2FILECMD-65C02-EXTRA-0.7.5.po` | `A2FILECMD-65C02-XL-0.7.5.2mg` |
 
 Both floppy types also have a `.dsk` copy in DOS sector order. BOOT is a
 bootable ProDOS volume with the file manager, disk tools and formatter.
@@ -704,7 +704,7 @@ now `a2fc_link_id`, taken in assembly).
 The continuous integration (`.github/workflows/ci.yml`) builds both on every
 push — cc65 2.19 from Ubuntu for the 65C02 build, cc65 master cloned at a
 pinned commit (`CC65_HEAD_COMMIT`) and cached for the 6502 one — checks the
-images, and a `v*` tag publishes the three of them with one `SHA256SUMS.txt`
+images, and a `v*` tag publishes the ten image files with one `SHA256SUMS-0.7.5.txt`
 and notes taken from `CHANGELOG.md` (`tools/release_notes.py`) — the changelog is the only place a release's text is written.
 
 One lesson the bench taught: the `apple2` target's `initostype` constructor
@@ -860,7 +860,7 @@ is compiled with `-Cl` (static local variables); the three recursive walks
 level's path length. The exit follows the ProDOS QUIT of the cc65 startup.
 
 The proofs come from [windowless POM2 benches](../bench/README.md), which all
-start from `dist/A2FILECMD-6502-BOOT.po` **as it will be downloaded**. `bench/run.py`
+start from `dist/A2FILECMD-6502-BOOT-0.7.5.po` **as it will be downloaded**. `bench/run.py`
 plays a complete session — boot, navigation, pages, tagging, copy, move,
 rename, a lock refusing deletion, change of type and auxtype, directory
 creation, deletion, text and hex viewers, help, both test cards compared **byte

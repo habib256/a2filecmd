@@ -14,10 +14,10 @@ FILES = """
 
 | CPU | BOOT: 140 KB, bootable | EXTRA: 140 KB, companion | XL: 32 MB, complete |
 |---|---|---|---|
-| 6502 | `A2FILECMD-6502-BOOT.po` / `.dsk` | `A2FILECMD-6502-EXTRA.po` / `.dsk` | `A2FILECMD-6502-XL.2mg` |
-| 65C02 | `A2FILECMD-65C02-BOOT.po` / `.dsk` | `A2FILECMD-65C02-EXTRA.po` / `.dsk` | `A2FILECMD-65C02-XL.2mg` |
+| 6502 | `A2FILECMD-6502-BOOT-{version}.po` / `.dsk` | `A2FILECMD-6502-EXTRA-{version}.po` / `.dsk` | `A2FILECMD-6502-XL-{version}.2mg` |
+| 65C02 | `A2FILECMD-65C02-BOOT-{version}.po` / `.dsk` | `A2FILECMD-65C02-EXTRA-{version}.po` / `.dsk` | `A2FILECMD-65C02-XL-{version}.2mg` |
 
-The complete English manual is included as `A2FILECMD-MANUAL-EN.pdf`, with a clickable contents page and bookmarks.
+The complete English manual is included as `A2FILECMD-MANUAL-EN-{version}.pdf`, with a clickable contents page and bookmarks.
 
 Choose BOOT and EXTRA for the same CPU and release. EXTRA has 23 additional
 tools and BASIC.SYSTEM; XL has all 42 overlays, BASIC.SYSTEM, DEMO and IMGHGR.
@@ -25,7 +25,7 @@ The 6502 versions run on an Apple II with 128 KB and 80 columns, including
 the original IIe. The 65C02 versions support enhanced IIe, //c and IIgs,
 with optional mouse. EXTRA keeps free space for future CPU-specific plugins.
 
-Boot an image and press **?** for the key map; `sha256sum -c SHA256SUMS.txt`
+Boot an image and press **?** for the key map; `sha256sum -c SHA256SUMS-{version}.txt`
 checks the download. The bootable images carry ProDOS 8 2.4.3; the `.2mg` and companion carry
 BASIC.SYSTEM (John Brooks' free distribution; they are Apple's). Sources,
 manual and benches:
@@ -54,7 +54,7 @@ def main():
         body = m.group(1)
     body = body.strip().replace('[Full changelog]', '\n[Full changelog]')
     title = 'A2 File Cmd %s' % version if version else 'A2 File Cmd'
-    sys.stdout.write('## %s — *Two panels. One Apple II.*\n\n%s\n%s' % (title, body, FILES))
+    sys.stdout.write('## %s — *Two panels. One Apple II.*\n\n%s\n%s' % (title, body, FILES.replace('{version}', version)))
     return 0
 
 

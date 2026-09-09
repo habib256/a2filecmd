@@ -65,12 +65,12 @@ No build required. Choose the image that fits your setup:
 
 | Image family (0.7.5) | CPU | Contents |
 |---|---|---|
-| `A2FILECMD-6502-BOOT.po` / `.dsk` | 6502 | Bootable 140 KB floppy: file manager, disk tools and formatter |
-| `A2FILECMD-6502-EXTRA.po` / `.dsk` | 6502 | 140 KB companion: 23 additional tools, menu and BASIC.SYSTEM; 28.5 KB free |
-| `A2FILECMD-6502-XL.2mg` | 6502 | Bootable 32 MB disk: all 42 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
-| `A2FILECMD-65C02-BOOT.po` / `.dsk` | 65C02 | Bootable 140 KB floppy: file manager, disk tools and formatter |
-| `A2FILECMD-65C02-EXTRA.po` / `.dsk` | 65C02 | 140 KB companion: 23 additional tools, menu and BASIC.SYSTEM; 29 KB free |
-| `A2FILECMD-65C02-XL.2mg` | 65C02 | Bootable 32 MB disk: all 42 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
+| `A2FILECMD-6502-BOOT-0.7.5.po` / `.dsk` | 6502 | Bootable 140 KB floppy: file manager, disk tools and formatter |
+| `A2FILECMD-6502-EXTRA-0.7.5.po` / `.dsk` | 6502 | 140 KB companion: 23 additional tools, menu and BASIC.SYSTEM; 28.5 KB free |
+| `A2FILECMD-6502-XL-0.7.5.2mg` | 6502 | Bootable 32 MB disk: all 42 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
+| `A2FILECMD-65C02-BOOT-0.7.5.po` / `.dsk` | 65C02 | Bootable 140 KB floppy: file manager, disk tools and formatter |
+| `A2FILECMD-65C02-EXTRA-0.7.5.po` / `.dsk` | 65C02 | 140 KB companion: 23 additional tools, menu and BASIC.SYSTEM; 29 KB free |
+| `A2FILECMD-65C02-XL-0.7.5.2mg` | 65C02 | Bootable 32 MB disk: all 42 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
 
 The names sort by CPU, then BOOT, EXTRA, XL. Choose **6502** for an Apple II
 with 128 KB and 80 columns, including the original IIe; choose **65C02** for
@@ -118,18 +118,18 @@ in that directory. Settings and support files live beside the program.
 <details>
 <summary>Verify your download</summary>
 
-Download `SHA256SUMS.txt` from the same release into the image's directory.
+Download `SHA256SUMS-0.7.5.txt` from the same release into the image's directory.
 To verify one image on macOS:
 
 ```sh
-shasum -a 256 A2FILECMD-65C02-XL.2mg
+shasum -a 256 A2FILECMD-65C02-XL-0.7.5.2mg
 ```
 
-Compare the result with its line in `SHA256SUMS.txt`. If you downloaded all
+Compare the result with its line in `SHA256SUMS-0.7.5.txt`. If you downloaded all
 three images, check them together on Linux with:
 
 ```sh
-sha256sum -c SHA256SUMS.txt
+sha256sum -c SHA256SUMS-0.7.5.txt
 ```
 
 </details>

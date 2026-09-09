@@ -120,9 +120,9 @@ XPLG = $(patsubst %,$(BUILD)/%.PLG,$(XPLUGINS))
 XPLG_FLOPPY = $(patsubst %,$(BUILD)/%.PLG,$(XPLUGINS_FLOPPY))
 SYSTEM = $(BUILD)/A2FILE.SYSTEM.SYS
 FLOPPY_SYSTEM = $(BUILD)/A2FILE.FLOPPY.SYS
-PO     = $(DIST)/$(IMG).po
-DSK    = $(DIST)/$(IMG).dsk
-EXTRAS = $(DIST)/A2FILECMD-$(CPU)-EXTRA.po
+PO     = $(DIST)/$(IMG)-$(A2FC_VERSION).po
+DSK    = $(DIST)/$(IMG)-$(A2FC_VERSION).dsk
+EXTRAS = $(DIST)/A2FILECMD-$(CPU)-EXTRA-$(A2FC_VERSION).po
 EXTRAS_DSK = $(EXTRAS:.po=.dsk)
 PLUGINS_EXTRAS = $(filter-out $(PLUGINS_FLOPPY),$(PLUGINS))
 XPLUGINS_EXTRAS = $(filter-out $(XPLUGINS_FLOPPY),$(XPLUGINS))
@@ -194,7 +194,7 @@ all: xplugins
 # the remaining tools and BASIC.SYSTEM. XL contains everything plus demos.
 STAGE = $(BUILD)/vol
 HDV = $(BUILD)/$(IMG).hdv
-TWOMG = $(DIST)/A2FILECMD-$(CPU)-XL.2mg
+TWOMG = $(DIST)/A2FILECMD-$(CPU)-XL-$(A2FC_VERSION).2mg
 FULLPO = $(BUILD)/A2FILECMD-full.po
 STAGE_DEPS = $(SYSTEM) $(CODE) $(DATA)/A2FILE.HELP.TXT $(DATA)/PRODOS.SYS \
        $(DATA)/prodos_boot.tmpl $(TOOLS)/mkvolume.py
