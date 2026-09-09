@@ -38,7 +38,7 @@ pictures. The tools are right there, beside your files.
 
 The **!** menu also offers text and disk-image conversion, CRC-32, file
 identification, Markdown reading, volume-wide search, favourite directories,
-batch renaming and type repair. DATE, VERIFY, TAGPAT, TXTCONV, VOLNAME and
+batch renaming and type repair. DATE, VERIFY, TAGPAT, TXTCONV, VOLNAME, VOLINFO and
 WIPE also fit the floppy edition. See the [tool reference](docs/MANUAL.md#more-tools-in-the--menu).
 
 ## See it in action
@@ -66,10 +66,10 @@ No build required. Choose the image that fits your setup:
 |---|---|---|
 | `A2FILECMD-6502-BOOT.po` / `.dsk` | 6502 | Bootable 140 KB floppy: file manager, disk tools and formatter |
 | `A2FILECMD-6502-EXTRA.po` / `.dsk` | 6502 | 140 KB companion: 17 additional tools, menu and BASIC.SYSTEM; 67.5 KB free |
-| `A2FILECMD-6502-XL.2mg` | 6502 | Bootable 32 MB disk: all 35 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
+| `A2FILECMD-6502-XL.2mg` | 6502 | Bootable 32 MB disk: all 36 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
 | `A2FILECMD-65C02-BOOT.po` / `.dsk` | 65C02 | Bootable 140 KB floppy: file manager, disk tools and formatter |
 | `A2FILECMD-65C02-EXTRA.po` / `.dsk` | 65C02 | 140 KB companion: 17 additional tools, menu and BASIC.SYSTEM; 68 KB free |
-| `A2FILECMD-65C02-XL.2mg` | 65C02 | Bootable 32 MB disk: all 35 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
+| `A2FILECMD-65C02-XL.2mg` | 65C02 | Bootable 32 MB disk: all 36 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
 
 The names sort by CPU, then BOOT, EXTRA, XL. Choose **6502** for an Apple II
 with 128 KB and 80 columns, including the original IIe; choose **65C02** for

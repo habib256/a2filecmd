@@ -20,6 +20,7 @@ qui passe ici est ce que recevra celui qui amorce la disquette.
 | `machine.py` | le controle de machine du lanceur : MACHID falsifie a 64 Ko depuis BASIC, `-A2FILE.SYSTEM` refuse en 40 colonnes et rend la main ; un //c passe |
 | `hd.py` | le disque dur `.2mg` publie amorce-t-il, avec son dossier DEMO au complet ; une page brute s'affiche, un `.2MG` s'ouvre comme un dossier |
 | `run.py` | la session complete : naviguer, marquer, copier, deplacer, renommer, verrouiller, changer type et auxtype, creer un dossier, supprimer, lire un texte et des octets, editer, afficher les deux formats d'image et les comparer octet a octet, jouer la fanfare, ecrire et relire des images disque (.PO et .DSK) et copier une disquette, ouvrir une image comme un dossier et en extraire un fichier, lire un catalogue DOS 3.3 et en extraire un fichier, ouvrir le formateur, cliquer a la souris (pointeur, bornes, selection, ouverture, changement de panneau, barre de touches), lancer un programme Applesoft (depuis le disque dur, avec le BASIC.SYSTEM de la disquette) et revenir sur les panneaux par -A2FILE.SYSTEM. **70 controles.** |
+| `volinfo.py` | diagnostic ProDOS en lecture seule, disquette saine/corrompue et volume de 32 Mo, carte paginée et retour avec pile préservée, sur les deux processeurs |
 | `memory.py` | le creux maximal de la pile C, mesure en faisant travailler le programme |
 | `pom2.py` | le pilote d'emulateur commun |
 

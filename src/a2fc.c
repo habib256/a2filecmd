@@ -1892,7 +1892,7 @@ static unsigned char disk_question(const char* name)
 {
     char key;
     clear_row(22); gotoxy(0, 22);
-    cprintf("Insert %s S6,D%u: %s. 1/2 drive RET ESC",
+    cprintf("Insert %s S6,D%u: %s. D1/2 RET ESC",
             question, (companion_unit >> 7) + 1, name);
     key = cgetc();
     if (key == KEY_ESC) return 0;
@@ -1904,7 +1904,7 @@ static unsigned char ask_disk(const char* name)
 {
     const char* local;
     /* Keep aligned with PLUGINS_FLOPPY and XPLUGINS_FLOPPY in Makefile. */
-    static const char locals[] = "HELP\0TEXT\0HEX\0DELETE\0RUN\0FORMAT\0ATTR\0MENU\0DISKIMG\0IMGFS\0DOS33\0COMPARE\0TXTCONV\0DATE\0VERIFY\0TAGPAT\0VOLNAME\0WIPE\0";
+    static const char locals[] = "HELP\0TEXT\0HEX\0DELETE\0RUN\0FORMAT\0ATTR\0MENU\0DISKIMG\0IMGFS\0DOS33\0COMPARE\0TXTCONV\0DATE\0VERIFY\0TAGPAT\0VOLNAME\0VOLINFO\0WIPE\0";
     for (local = locals; *local; local += strlen(local) + 1)
         if (!strcmp(local, name)) break;
     if (*local) {

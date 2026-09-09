@@ -103,7 +103,7 @@ PLUGINS_FLOPPY = FORMAT HELP TEXT HEX DELETE RUN ATTR MENU DISKIMG IMGFS DOS33 C
 # overlay ($1B00-$3FFF); `PLUGIN_MAGIC, 0,` as a small one.
 XPLUGINS = $(sort $(basename $(notdir $(wildcard $(SRC)/plugins/*.c))))
 # The ones that also go on the floppy edition (TODO.md, the floppy budget).
-XPLUGINS_FLOPPY = $(filter txtconv date verify tagpat volname drivespd wipe,$(XPLUGINS))
+XPLUGINS_FLOPPY = $(filter txtconv date verify tagpat volname volinfo drivespd wipe,$(XPLUGINS))
 # The cc65 target library for the plugin link: the one of the machine's cc65
 # for apple2enh, the one of cc65 master for apple2.
 ifeq ($(ARCH),6502)
@@ -282,6 +282,7 @@ test:
 	python3 $(TOOLS)/test_check_layout.py
 	python3 $(TOOLS)/test_mkvolume.py
 	python3 $(TOOLS)/test_mkdemo.py
+	python3 $(TOOLS)/test_volinfo.py
 
 bench: disk
 	$(MAKE) ARCH=enh benchfloppy

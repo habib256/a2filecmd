@@ -20,13 +20,13 @@ tout ce qui s'ajoute au noyau doit être payé par une surcouche ou par une
 
 | Zone | État mesuré |
 | --- | --- |
-| Fenêtre principale `$4000`-plancher de la pile (`$BE40`) | 90 octets libres après `INIT` (`$BDE6`) ; fin de `ONCE` à `$BEDC`, 4 octets avant le plafond du lanceur `$BEE0`. |
+| Fenêtre principale `$4000`-plancher de la pile (`$BE40`) | 87 octets libres après `INIT` (`$BDE9`) ; fin de `ONCE` à `$BEDE`, 2 octets avant le plafond du lanceur `$BEE0`. |
 | RAM basse `$1000-$1AFF` (BSS) | 48 octets libres (6502 : 73) |
 | Carte langage `$D400-$DFFF` | **16 octets libres** (`vsdrive.s` a pris le reste depuis la 0.6.7) |
 | Pile C | 192 octets réservés (`A2FC_STACK`), creux maximal mesuré 94 (`bench/memory.py`) |
 | Petites surcouches `$1B00-$1FFF` (1 280 octets) | `BINARY2` 1272, `IMGFS` 1270, `MUSIC` 668, `DOS33` 1216, `DELETE` 1218, `ATTR` 1246, `IMAGE` 1203, `RUN` 1064, `AWP` 1020, `HELP` 1061, `SEARCH` 847, `HEX` 901, `COMPARE` 1194, `TEXT` 1176 |
-| Grandes surcouches | `FORMAT` 8018 / 8448, `DISKIMG` 6079 / 6400, `UNSHRINK` 5212 / 5376, `EDIT` 3308 / 3328, `BASLIST` 1419 / 3328, `MENU` 1901 / 5376 ; `BINARY2` est grande en 6502 (3 328). |
-| BOOT / EXTRA / XL | BOOT : 39 blocs libres sur les deux processeurs. EXTRA : 135 / 136 blocs libres. XL : 64 493 / 64 494 blocs libres. |
+| Grandes surcouches | `FORMAT` 8018 / 8448, `DISKIMG` 6079 / 6400, `UNSHRINK` 5212 / 5376, `EDIT` 3308 / 3328, `BASLIST` 1419 / 3328, `MENU` 1901 / 5376 ; `VOLINFO` 6369 octets fichier, code et BSS jusqu’à `$3D6E` ; `BINARY2` est grande en 6502 (3 328). |
+| BOOT / EXTRA / XL | BOOT : 25 blocs libres sur les deux processeurs. EXTRA : 135 / 136 blocs libres. XL : 64 479 / 64 480 blocs libres. |
 
 Certaines petites surcouches restent proches du plafond (`BINARY2`,
 `IMGFS`, `ATTR`) : leur agrandissement doit être vérifié au lien.
@@ -134,15 +134,13 @@ partagent la lecture brute de piste avec `NIBREAD` et `NIBBLE`.
   II Plus : marquer `?` un fichier dont des blocs ont été réalloués depuis
   (« lost file »), et montrer les caractères de contrôle cachés dans un nom
   DOS 3.3. Petite surcouche. *1 jour.*
-- 🟠 💾 **`VOLINFO`** : carte des blocs du volume en 80 colonnes (libres,
-  occupés, fragmentation), la liste des blocs d'un fichier, et le contrôle
-  de la table d'allocation contre les listes de blocs de tous les fichiers :
-  blocs perdus, blocs partagés, compteurs d'entrées faux. Aussi la carte
-  piste/secteur d'une disquette DOS 3.3 avec les secteurs d'un fichier
-  (flèches, comme Copy II Plus). Les cinq sorties d'Info Desk, à l'écran,
-  sur l'imprimante ou dans un fichier texte : catalogue en arbre, blocs par
-  fichier, fichiers par bloc, carte, arbre des dossiers (avec `TREE`). La
-  moitié de Mr. Fixit. *1 jour.*
+- 🟠 💾 **`VOLINFO`** : première version ProDOS en lecture seule livrée sur
+  BOOT et XL, 6502 et 65C02 : espace libre, fragmentation, carte paginée,
+  allocations partagées/perdues/marquées libres et compteurs. Parcours
+  seedling/sapling/tree, deux forks et sous-dossiers ; résultats incomplets
+  explicitement signalés. **Reste :** liste des blocs d'un fichier, carte
+  piste/secteur DOS 3.3, rapports catalogue/arbre/blocs par fichier/fichiers
+  par bloc vers écran, imprimante ou fichier texte (avec `TREE`).
 - 🟠 💾 **`FIXIT`** : réparer ce que `VOLINFO` a trouvé : reconstruire la table
   d'allocation, corriger les compteurs, détacher un bloc partagé, après
   `ERASE`. La liste de Mr. Fixit, à reprendre telle quelle : pointeurs

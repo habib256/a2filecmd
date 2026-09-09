@@ -100,7 +100,7 @@ removed disk, A2FC next names that volume and waits for it before reading
 it. **Escape** cancels, including after a large overlay has loaded; the
 panels are restored. The last drive choice is kept for the session.
 
-The catalog keeps all 34 commands selectable even when the companion is
+The catalog keeps all 35 commands selectable even when the companion is
 absent. The slot is currently fixed at 6; the drive can be 1 or 2. Disk
 swapping does not provide simultaneous access to two files on different
 floppies in one drive: tools whose source and destination must both be
@@ -126,6 +126,7 @@ initial; Left/Right turns the menu page.
 | **DATE** | both | S enters twelve digits `DDMMYYYYHHMM` (1940–2039); F stamps modification dates on tagged files, or the selection. The date comes from ProDOS; a hardware clock can replace a manually entered value. |
 | **VERIFY** | both | Read every block of a selected volume, or every byte of the selected file, and report read errors. ESC interrupts volume verification. This is a read test, without certification writes. |
 | **TAGPAT** | both | Match `=` (any string) and `?` (one character), with comma-separated filters: `T04` for TXT, `>2000` or `<2000` for size, `D` for modified today. T tags, U untags, X replaces the selection. |
+| **VOLINFO** | both | Read-only ProDOS volume audit: free/used blocks, fragmented files, shared references, used blocks marked free, lost blocks and count mismatches. M opens an 80-column bitmap; N/P change page. ESC cancels a scan or returns. |
 | **VOLNAME** | both | Rename a ProDOS volume and update the panel paths, including the program path when renaming its boot volume. |
 | **WIPE** | both | F zeroes free blocks after Y/N confirmation; W zeroes the whole volume after `ERASE`. Whole-volume wiping refuses the running program's volume. |
 | **FIXTYPES** | complete | Set type and auxtype from suffixes on tagged files or the selection, optionally removing the suffix. Image suffixes and `.SYSTEM` stay. |
@@ -140,6 +141,17 @@ initial; Left/Right turns the menu page.
 
 FIND keeps up to 20 matches and a bounded directory queue; it reports when
 its queue fills. DATE does not install a session clock driver or change creation dates or volume dates.
+VOLINFO audits the volume containing the active panel, or the selected volume
+in the volume list. It handles seedling, sapling, tree and extended files,
+and nested directories (up to 16 levels including the root). Sparse holes
+break a run; fragmentation means nonconsecutive data blocks within a fork.
+The bitmap shows one block per character: `.` free, `#` allocated. Large
+volumes need one traversal per 4,096 blocks, so XL scans take longer.
+Unreadable, unsupported or structurally invalid directories produce an
+incomplete result; lost blocks are reported only after a complete traversal.
+Counts saturate at 65,535. VOLINFO never writes to the volume. DOS 3.3,
+per-file block lists, report export and repairs remain planned.
+
 VERIFY handles the selected file, without a tagged batch mode. These limits
 and the remaining disk tools are tracked in [TODO.md](../TODO.md).
 
@@ -622,7 +634,7 @@ bootable ProDOS volume with the file manager, disk tools and formatter.
 EXTRA is a non-bootable companion holding the remaining plugins and
 BASIC.SYSTEM. EXTRA currently keeps 135 free blocks (67.5 KB) on 6502 and 136 (68 KB)
 on 65C02 for future tools.
-XL is bootable and contains all 35 overlays, BASIC.SYSTEM, `DEMO/` and
+XL is bootable and contains all 36 overlays, BASIC.SYSTEM, `DEMO/` and
 `IMGHGR/` on the same 65535-block disk; it needs no EXTRA floppy.
 
 ProDOS volume names also identify the CPU and role: `/A2FC6502`,

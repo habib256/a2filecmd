@@ -18,7 +18,7 @@ FILES = """
 | 65C02 | `A2FILECMD-65C02-BOOT.po` / `.dsk` | `A2FILECMD-65C02-EXTRA.po` / `.dsk` | `A2FILECMD-65C02-XL.2mg` |
 
 Choose BOOT and EXTRA for the same CPU and release. EXTRA has 17 additional
-tools and BASIC.SYSTEM; XL has all 35 overlays, BASIC.SYSTEM, DEMO and IMGHGR.
+tools and BASIC.SYSTEM; XL has all 36 overlays, BASIC.SYSTEM, DEMO and IMGHGR.
 The 6502 versions run on an Apple II with 128 KB and 80 columns, including
 the original IIe. The 65C02 versions support enhanced IIe, //c and IIgs,
 with optional mouse. EXTRA keeps 67.5 KB free on 6502 and 68 KB on 65C02 for future plugins.
