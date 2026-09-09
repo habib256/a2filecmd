@@ -5,6 +5,9 @@ downloads and installation.
 
 ## Unreleased
 
+- Fixed the `S` (sort) and `M` (mark differences) keys on the floppy edition: both lived in `MUSIC.PLG`, which the floppy no longer carries. Sorting now lives in `TEXT.PLG` and the comparison in `COMPARE.PLG`, both on the floppy; and `M` also flags files whose modification date differs (Cat Doctor's "compare directories").
+- Added the overlay menu's pages: 64 overlays at most, 18 per page, Left/Right turn the page, and a counter at the top right.
+- Added `cfg_path` to the service table (API version 2): the path of `A2FILE.CFG`, from which an overlay finds the program directory.
 - Changed the release to two editions from one tree. The **floppy edition**, `A2FILECMD-6502.po` and `.dsk`, is now the 6502 build with the file manager and the disk tools only (`HELP`, `TEXT`, `HEX`, `DELETE`, `RUN`, `ATTR`, `MENU`, `DISKIMG`, `IMGFS`, `DOS33`, the formatter; no BASIC.SYSTEM), so it runs on any Apple II with 128 KB and 80 columns, the 1983 IIe included, and keeps 77 blocks free for the disk tools to come. The **complete edition**, `A2FILECMDXL-65C02.2mg`, volume `/A2FILECMDXL`, is the 65C02 build with every overlay, the mouse, BASIC.SYSTEM, `DEMO/` and `IMGHGR/`. `make disk` builds both; the file names carry the edition and the processor. The title page names the edition. On the floppy, a key whose overlay is absent says so.
 - Changed the language of the source: every comment in `src/`, the `Makefile` and `sdk/` is now in English, along with the SDK guide (`sdk/README.md`). Comments only: the binaries and disk images are byte-for-byte identical to 0.7.
 - Added to the README the platforms the release is tested on (a real Enhanced IIe, Virtual II, and an Apple //c and an unenhanced IIe under POM2).

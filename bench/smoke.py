@@ -54,6 +54,14 @@ def main():
             if not FULL:
                 s.ok('l edition disquette n a pas BASIC.SYSTEM',
                      not any(r.startswith('BASIC.SYSTEM') for r in s.rows()))
+            # S (le tri) vit dans TEXT.PLG, present sur la disquette : trois S
+            # font le tour des ordres et reviennent au tri par nom
+            head = s.rows()[1]
+            s.key(b'S'); p.stable()
+            s.ok('S change le tri depuis la disquette (TEXT.PLG)',
+                 s.rows()[1] != head and not s.has('missing or stale'), s.rows()[1][:38])
+            s.key(b'S'); p.stable(); s.key(b'S'); p.stable()
+            s.ok('trois S ramenent au tri par nom', s.rows()[1] == head, s.rows()[1][:38])
             print('\n'.join(r.rstrip() for r in s.rows()[:22]), flush=True)
     return 0
 

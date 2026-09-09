@@ -137,13 +137,17 @@ par ce qui débloque les transferts depuis le PC.
 - 🟡 💾 **Renommer un volume** : à vérifier ; s'il manque, une ligne dans
   `ATTR` ou dans `VOLINFO` (`RENAME` sur `/VOL`, comme Copy II Plus et Cat
   Doctor). *¼ jour.*
-- 🟡 💾 **Déplacer sans copier** : à vérifier que `V` dans un même volume
-  déplace l'entrée de répertoire au lieu de copier puis effacer (Cat Doctor
-  « move files » : instantané, même pour un dossier entier). *½ jour si
-  ce n'est pas le cas.*
-- 🟡 **Comparer deux dossiers** : à vérifier que le marquage des différences
-  entre panneaux couvre les types et les dates de modification, pas
-  seulement les noms (Cat Doctor « compare directories »). *¼ jour.*
+- 🟡 💾 **Déplacer sans copier** : vérifié le 2026-09-09, `V` copie puis
+  efface, même dans un volume. Le `RENAME` de ProDOS 8 ne change qu'un nom
+  dans son dossier, il ne déplace pas ; Cat Doctor déplace en réécrivant les
+  blocs de répertoire (l'entrée copiée dans le dossier cible, effacée dans
+  la source, le pointeur de parent d'un sous-dossier corrigé). C'est la
+  même chirurgie que `DIRSORT` et `FIXIT` : à faire avec eux, en grande
+  surcouche `MOVE`. *½ jour après `DIRSORT`.*
+- ✅ **Comparer deux dossiers** (fait le 2026-09-09) : `M` marquait les
+  fichiers absents de l'autre panneau ou de taille différente ; il compare
+  aussi la date de modification. MUSIC.PLG, qui héberge ce code, était
+  plein : deux messages raccourcis.
 - 🟡 **`IDENT`** : dire ce qu'est un fichier d'après son contenu, comme
   `file(1)` : archive, image, Applesoft, AppleWorks, texte à bit 7, fins de
   ligne, nombre de lignes. Partage la table de reconnaissance du TODO.

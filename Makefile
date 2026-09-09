@@ -106,7 +106,8 @@ PLUGINS = IMAGE TEXT HEX DELETE HELP EDIT MUSIC RUN ATTR MENU DISKIMG IMGFS DOS3
 # and the disk tools. The editor, the pictures, the music, the archives and
 # the document readers stay on the hard disk (45 blocks, with BASIC.SYSTEM's
 # 21, given back to the disk tools to come -- see TODO.md, "Les deux editions").
-PLUGINS_FLOPPY = HELP TEXT HEX DELETE RUN ATTR MENU DISKIMG IMGFS DOS33
+# COMPARE also carries the S (sort) and M (mark differences) commands.
+PLUGINS_FLOPPY = HELP TEXT HEX DELETE RUN ATTR MENU DISKIMG IMGFS DOS33 COMPARE
 # The service-table overlays: src/plugins/NAME.c, each compiled and linked
 # on its own like a third party's (sdk/plugin.cfg, no crt0, nothing of
 # A2FILE.CODE), because the resident is full -- they reach the program only

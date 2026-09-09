@@ -1252,9 +1252,25 @@ static void view_text(const char* path)
     draw_all();
 }
 
+/* S: the next sort order. Hosted by the TEXT overlay, which has room and is
+ * on the floppy edition (the low RAM and the resident being full). */
+static void resort(void)
+{
+    unsigned char p;
+    char keep[NAME_LEN];
+    sort_mode = (sort_mode + 1) % SORT_MODES;
+    for (p = 0; p < 2; ++p) {
+        strcpy(keep, panels[p].count ? panels[p].e[panels[p].cursor].name : "");
+        read_panel(p);
+        select_name(&panels[p], keep);
+        draw_panel(p);
+    }
+    draw_info();
+}
+
 void __fastcall__ text_entry(const struct A2fcApi* a)
 {
-    (void)a;
+    if (a->arg == 'S') { resort(); return; }
     if (full[0]) view_text(full);
 }
 #pragma rodata-name (pop)
@@ -1457,10 +1473,34 @@ void __fastcall__ awp_entry(const struct A2fcApi* a)
 #pragma static-locals (push, off)
 
 static const char cmp_pick[]   = "Select a file to compare.";
-static const char cmp_nooth[]  = "No file of that name in the other panel.";
+static const char cmp_nooth[]  = "No such file in the other panel.";
 static const char cmp_ident[]  = "Identical: %lu bytes.";
 static const char cmp_diff[]   = "Differ at byte %lu.";
-static const char cmp_short[]  = "Same for %lu bytes, then one is longer.";
+static const char cmp_short[]  = "Same for %lu bytes, then longer.";
+
+/* M: tags the files missing from the other panel, or of a different size
+ * or modification date (Cat Doctor's "compare directories"). Hosted by the
+ * COMPARE overlay, on the floppy edition too (the resident being full). */
+static void mark_differences(void)
+{
+    struct Panel* pan = &panels[active];
+    struct Panel* other = &panels[!active];
+    unsigned char i, j, n = 0;
+    if (!target_check()) return;
+    for (i = 0; i < pan->count; ++i) {
+        const struct Entry* e = &pan->e[i];
+        unsigned char differs = 1;
+        if (is_dir(e)) continue;
+        for (j = 0; j < other->count; ++j)
+            if (!strcmp(other->e[j].name, e->name)) { differs = other->e[j].size != e->size || other->e[j].mdate != e->mdate; break; }
+        set_tag(pan, i, differs);
+        n += differs;
+    }
+    show_active();
+    clear_row(22);
+    gotoxy(0, 22);
+    cprintf("%u missing from the other panel or of another size/date.", n);
+}
 
 void __fastcall__ compare_entry(const struct A2fcApi* a)
 {
@@ -1469,7 +1509,7 @@ void __fastcall__ compare_entry(const struct A2fcApi* a)
     FILE* fb;
     unsigned int na, nb, i, m;
     unsigned long pos = 0;
-    (void)a;
+    if (a->arg == 'M') { mark_differences(); return; }
     if (!selected.name[0] || is_dir(&selected) || !full[0]) { message(cmp_pick); return; }
     if (!oth->path[0] || oth->fs) { message(cmp_nooth); return; }
     sprintf(other_full, "%s/%s", oth->path, selected.name);
@@ -2405,46 +2445,9 @@ static unsigned char looks_like_music(const struct Entry* e)
  * plays. */
 #pragma code-name (push, "MUSIC")
 #pragma rodata-name (push, "MUSICRO")
-static const char mu_toobig[]  = "MB file too large (2304 bytes max).";
-static const char mu_notmb1[]  = "Not an MB1 stream.";
+static const char mu_toobig[]  = "MB over 2304 bytes.";
+static const char mu_notmb1[]  = "Not an MB1 file.";
 static const char mu_playing[] = "Playing %s, slot %u. P pauses.%s";
-/* M: tags the files missing from the other panel or of a different size;
- * S: the next sort order. An overlay, the low RAM being full. */
-static void mark_differences(void)
-{
-    struct Panel* pan = &panels[active];
-    struct Panel* other = &panels[!active];
-    unsigned char i, j, n = 0;
-    if (!target_check()) return;
-    for (i = 0; i < pan->count; ++i) {
-        const struct Entry* e = &pan->e[i];
-        unsigned char differs = 1;
-        if (is_dir(e)) continue;
-        for (j = 0; j < other->count; ++j)
-            if (!strcmp(other->e[j].name, e->name)) { differs = other->e[j].size != e->size; break; }
-        set_tag(pan, i, differs);
-        n += differs;
-    }
-    show_active();
-    clear_row(22);
-    gotoxy(0, 22);
-    cprintf("%u file%s missing from the other panel or of a different size.", n, n == 1 ? "" : "s");
-}
-
-static void resort(void)
-{
-    unsigned char p;
-    char keep[NAME_LEN];
-    sort_mode = (sort_mode + 1) % SORT_MODES;
-    for (p = 0; p < 2; ++p) {
-        strcpy(keep, panels[p].count ? panels[p].e[panels[p].cursor].name : "");
-        read_panel(p);
-        select_name(&panels[p], keep);
-        draw_panel(p);
-    }
-    draw_info();
-}
-
 void __fastcall__ music_entry(const struct A2fcApi* a)
 {
     const struct Entry* e = &panels[active].e[panels[active].cursor];
@@ -2452,8 +2455,6 @@ void __fastcall__ music_entry(const struct A2fcApi* a)
     unsigned int n, total = 0;
     unsigned char valid = 1, last = 0;
     (void)a;
-    if (api.arg == 'S') { resort(); return; }
-    if (api.arg == 'M') { mark_differences(); return; }
     if (a2fc_slot == 0xFF) a2fc_slot = music_detect();
     if (!a2fc_slot) { extern const char msg_nomb[]; message(msg_nomb); return; }
     if (e->size > MUSIC_ZONE) { message(mu_toobig); return; }
@@ -4435,9 +4436,9 @@ int main(void)
         case 'r': case 'R': case 'k': case 'K': case 'a': case 'A': case 'l': case 'L':
             overlay_run("ATTR", key & 0xDF);
             break;
-        case 'm': case 'M': overlay_run("MUSIC", 'M'); break;
+        case 'm': case 'M': overlay_run("COMPARE", 'M'); break;
         case 'd': case 'D': if (overlay("DELETE")) delete_targets(); break;
-        case 's': case 'S': overlay_run("MUSIC", 'S'); break;
+        case 's': case 'S': overlay_run("TEXT", 'S'); break;
         case 't': case 'T':
             if (pan->count && !is_dir(&pan->e[pan->cursor]) && build_full(full, pan, &pan->e[pan->cursor])) {
                 key = pan->e[pan->cursor].type;
