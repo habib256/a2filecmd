@@ -127,6 +127,13 @@ _mouse_init:
         lda #1                  ; allumee, sans interruption
         ldy #$12                ; SETMOUSE
         jsr call
+        ; Une lecture a vide etablit l'etat du bouton. Sans elle, le premier
+        ; READMOUSE rend un front $80 (bouton enfonce, pas avant) alors que
+        ; rien n'est presse : le firmware souris du //c (et l'etat initial de
+        ; bien des emulateurs) part ainsi. wait_key le prenait pour un clic
+        ; en (0,0), soit un ESC : a la racine, on retombait sur les volumes.
+        ldy #$14                ; READMOUSE
+        jsr call
         lda slot
         ldx #0
         rts

@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from pom2 import Pom2, Session, ROOT, DISK, BUILD
-from run import RET, scratch_volume
+from run import RET, ESC, scratch_volume
 
 
 def has40(s, needle):
@@ -64,6 +64,15 @@ def main():
             s = Session(p)
             s.boot()
             ok('un //c passe le controle et arrive sur les panneaux', s.has('/A2FILECMD'), s.rows()[0][:30])
+            # Le //c a une souris integree (slot 4). Sa premiere lecture rendait
+            # un faux clic bouton-enfonce en (0,0) : un ESC, qui a la racine
+            # retombait sur la liste des volumes. Le panneau doit tenir bon.
+            time.sleep(2); p.stable()
+            ok('la souris du //c ne provoque pas de clic fantome au demarrage',
+               s.rows()[0].startswith('/A2FILECMD'), s.rows()[0][:20])
+            s.select('A2FILE'); s.key(RET); s.wait(lambda: s.has('/A2FILECMD/A2FILE'), 'sous-dossier')
+            s.key(ESC); s.wait(lambda: s.rows()[0].startswith('/A2FILECMD'), 'retour'); p.stable()
+            ok('et un aller-retour dans un sous-dossier garde le chemin', s.rows()[0].startswith('/A2FILECMD'), s.rows()[0][:20])
 
     passed = sum(1 for c in checks if c)
     print(f'\n{passed}/{len(checks)} controles', flush=True)

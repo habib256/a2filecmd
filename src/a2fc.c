@@ -55,6 +55,7 @@ extern const unsigned int a2fc_link_id;            /* overlay.s : l'adresse de m
 unsigned char __fastcall__ mli_sfi(void* params);
 unsigned char __fastcall__ mli_call(unsigned char cmd, void* params);
 void __fastcall__ aux_copy(unsigned int main_addr, unsigned int aux_addr, unsigned char to_aux);
+void aux_hgr_to_aux(void);   /* $2000-$3FFF, principale vers auxiliaire, AUXMOVE en une fois */
 /* La souris (mouse.s) : une carte AppleMouse II, dans n'importe quel slot.
  * Pas dans la version 6502 (A2FC_NOMOUSE, make ARCH=6502) : la place. */
 #ifndef A2FC_NOMOUSE
@@ -1915,9 +1916,10 @@ static void aux_writes(unsigned char on)
 }
 
 /* Un flux RLE v1 (HGRR ou DHRR) decompresse en $2000 : `bytes` octets, la
- * premiere moitie d'un DHRR vers AUX. Le fichier est ouvert sur l'en-tete.
- * Une repetition peut chevaucher la frontiere des deux plans : l'ecriture
- * se fait octet par octet, et le plan bascule au passage de $4000. */
+ * premiere moitie d'un DHRR vers AUX (par AUXMOVE, voir advance). Le
+ * fichier est ouvert sur l'en-tete. Une repetition peut chevaucher la
+ * frontiere des deux plans : l'ecriture se fait par morceaux, et le plan
+ * bascule au passage de $4000. */
 static unsigned int dn;
 static unsigned char dplane, dplanes;
 
@@ -1925,7 +1927,19 @@ static unsigned char dplane, dplanes;
 static void advance(unsigned int n)
 {
     dn += n;
-    if (dn == 8192) { dn = 0; ++dplane; if (dplane == 1 && dplanes == 2) aux_writes(0); }
+    if (dn == 8192) {
+        dn = 0; ++dplane;
+        if (dplane == 1 && dplanes == 2) {
+            /* Le premier plan d'un DHRR est celui de la banque auxiliaire :
+             * decode en banque principale, il y part par AUXMOVE, comme le
+             * plan brut. Le fichier n'est ainsi jamais lu sous un routage
+             * AUX de $2000-$3FFF (80STORE + PAGE2), routage qui deplace
+             * aussi $400-$7FF : sur le //c, le firmware SmartPort garde son
+             * etat dans les trous de la page texte, et une lecture faite
+             * sous ce routage ne revenait pas. */
+            aux_hgr_to_aux();
+        }
+    }
 }
 
 static unsigned char decode_rle(FILE* f, unsigned int bytes)
@@ -1935,7 +1949,6 @@ static unsigned char decode_rle(FILE* f, unsigned int bytes)
     dn = 0; dplane = 0; dplanes = bytes > 8192 ? 2 : 1;
     vf = f;
     view_seek(8);
-    if (dplanes == 2) aux_writes(1);
     while (dplane < dplanes) {
         t = view_getc();
         if (t < 0) break;
@@ -1994,25 +2007,17 @@ static unsigned char load_image(const struct Entry* e)
     else if (kind == IMG_HGRR) ok = decode_rle(f, 8192);
     else if (kind == IMG_HGR) { rewind(f); ok = fread(HGR_MAIN, 1, 8192, f) >= 8184; }
     else if (kind == IMG_DHGR) {
-        /* Le plan auxiliaire passe par copy_buf et AUXMOVE, pas par un MLI
-         * qui ecrirait lui-meme dans la fenetre routee vers AUX : ProDOS ne
-         * promet ses appels qu'en memoire principale, et le tour du
-         * 80STORE, s'il marche sur bien des machines, n'est pas garanti --
-         * la ou il echoue, un DHGR BRUT devenait "not an image" alors que
-         * le meme en RLE passait, celui-la ayant toujours recopie par le
-         * processeur (decode_rle). Le plan principal, lui, se lit tout
-         * droit : c'est de la memoire ordinaire. */
-        unsigned int aux = 0x2000;
-        unsigned char page = 16;
+        /* Le plan auxiliaire se lit en $2000 principal, puis part en AUX par
+         * AUXMOVE (aux_hgr_to_aux), pas par un MLI qui ecrirait lui-meme
+         * dans une fenetre routee vers AUX : ProDOS ne promet ses appels
+         * qu'en memoire principale, et le tour du 80STORE, s'il marche sur
+         * bien des machines, n'est pas garanti -- la ou il echoue, l'image
+         * devenait "not an image". Le plan principal, lui, se lit ensuite
+         * tout droit : c'est de la memoire ordinaire. */
         aux_dirty = 1;
         rewind(f);
-        do {
-            ok = fread(copy_buf, 1, 512, f) == 512;
-            if (!ok) break;
-            aux_copy((unsigned int)copy_buf, aux, 1);
-            aux += 512;
-        } while (--page);
-        ok = ok && fread(HGR_MAIN, 1, 8192, f) == 8192;
+        ok = fread(HGR_MAIN, 1, 8192, f) == 8192;
+        if (ok) { aux_hgr_to_aux(); ok = fread(HGR_MAIN, 1, 8192, f) == 8192; }
     }
     fclose(f);
     return ok ? kind : IMG_NONE;

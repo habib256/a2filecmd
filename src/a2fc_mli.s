@@ -201,9 +201,30 @@ done:   lda tmp2
 ; C = 1 de la principale vers l'auxiliaire. Interruptions coupees le temps
 ; de la copie : AUXMOVE commute RAMRD et RAMWRT, et le lecteur Mockingboard
 ; ne s'attend pas a etre reveille dans l'autre banque.
-        .export _aux_copy
+        .export _aux_copy, _aux_hgr_to_aux
         .import popax
         .segment "CODE"
+; void aux_hgr_to_aux(void) : la page HGR 1 entiere, $2000-$3FFF, de la
+; principale vers l'auxiliaire, en un seul AUXMOVE (le plan AUX d'une image
+; DHGR, decode ou lu en principale). Meme garde d'interruptions.
+_aux_hgr_to_aux:
+        lda #$00
+        sta $3C                 ; A1 = $2000
+        sta $42                 ; A4 = $2000
+        lda #$20
+        sta $3D
+        sta $43
+        lda #$FF                ; A2 = $3FFF
+        sta $3E
+        lda #$3F
+        sta $3F
+        php
+        sei
+        sec                     ; principale vers auxiliaire
+        jsr $C311
+        plp
+        rts
+
 _aux_copy:
         sta dir
         jsr popax
