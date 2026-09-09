@@ -1,31 +1,31 @@
-/* A2 FILE CMD -- un gestionnaire de fichiers ProDOS a deux panneaux, dans
- * l'esprit de Total Commander, tournant nativement sur Apple IIe 128 Ko.
+/* A2 FILE CMD -- a two-panel ProDOS file manager in the spirit of Total
+ * Commander, running natively on a 128 KB Apple IIe.
  *
- * Programme SYS autonome, amorcable seul ou lance depuis un selecteur comme
- * Bitsy Bye, avec son propre lanceur (loader.c) et ses bascules video
- * (memory_swap.c). Il ne modifie jamais un fichier de
- * lui-meme : seules les commandes explicites (copie, deplacement, renommage,
- * suppression, creation de dossier, type, verrou) ecrivent sur le disque,
- * apres confirmation quand elles detruisent quelque chose. Il ecrit aussi
- * A2FILE/A2FILE.CFG en quittant : les deux dossiers, le tri, le panneau actif.
+ * A standalone SYS program, bootable on its own or launched from a selector
+ * such as Bitsy Bye, with its own launcher (loader.c) and its video
+ * switches (memory_swap.c). It never modifies a file on its
+ * own: only the explicit commands (copy, move, rename, delete, directory
+ * creation, type, lock) write to the disk, after confirmation whenever
+ * they destroy something. It also writes A2FILE/A2FILE.CFG on exit: the
+ * two directories, the sort order, the active panel.
  *
- * Ouvrir (Entree) choisit d'apres le type : un dossier s'ouvre, une image
- * DHGR (.RLE, flux DHRR) s'affiche plein ecran, un TXT se lit page par page,
- * un SYS se lance apres confirmation, le reste se voit en hexadecimal.
- * Espace marque plusieurs fichiers : copie, deplacement et suppression
- * portent alors sur tous les fichiers marques.
+ * Open (Return) chooses by type: a directory opens, a DHGR image (.RLE,
+ * DHRR stream) is shown full screen, a TXT is read page by page, a SYS is
+ * launched after confirmation, everything else is viewed in hexadecimal.
+ * Space tags several files: copy, move and delete then apply to all the
+ * tagged files.
  *
- * Memoire : code a $4000, tampons de travail en $1000-$1AFF (LOWBSS),
- * visionneuses et saisies dans la carte langage ($D400-$DFFF, segment LC,
- * copie par crt0 comme pour le jeu), et une fenetre de surcouche en
- * $1B00-$1FFF ou les surcouches (A2FILE/IMAGE.PLG, TEXT, HEX, DELETE,
- * HELP : liees avec le programme mais ecrites a part) sont lues a la
- * demande, voir overlay(). Les deux tables d'entrees occupent la
- * page graphique MAIN $2000-$3FFF, libre tant qu'aucune image n'est
- * affichee : une image la recouvre (MAIN et AUX), et les deux panneaux sont
- * relus au retour. Deux fichiers ouverts au plus (copie) : tampons ProDOS
- * $0800 et $0C00, A2FC n'utilise pas MAPBSS. Un dossier qui deborde la
- * table est lu par fenetres, dans l'ordre du disque.
+ * Memory: code at $4000, working buffers in $1000-$1AFF (LOWBSS),
+ * viewers and prompts in the language card ($D400-$DFFF, segment LC,
+ * copied by crt0 as for the game), and an overlay window at $1B00-$1FFF
+ * where the overlays (A2FILE/IMAGE.PLG, TEXT, HEX, DELETE, HELP: linked
+ * with the program but written separately) are read on demand, see
+ * overlay(). The two entry tables occupy the MAIN graphics page
+ * $2000-$3FFF, free as long as no image is displayed: an image overwrites
+ * it (MAIN and AUX), and both panels are reread on return. At most two
+ * open files (copy): ProDOS buffers $0800 and $0C00, A2FC does not use
+ * MAPBSS. A directory that overflows the table is read in windows, in
+ * disk order.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,8 +40,8 @@
 #include "music.h"
 #include "a2fc_plugin.h"
 
-/* cc65 les lit a la creation d'un fichier (fopen "wb") : la copie garde le
- * type et l'auxtype de l'original, une image reste une image. */
+/* cc65 reads these when a file is created (fopen "wb"): the copy keeps the
+ * type and auxtype of the original, an image stays an image. */
 extern unsigned char _filetype;
 extern unsigned int _auxtype;
 
@@ -50,14 +50,14 @@ unsigned char ram_format(void);
 extern unsigned int chain_addr;                    /* chain.s */
 void __fastcall__ chain_load(const char* path);
 void __fastcall__ chain_command(const char* name);
-unsigned char vsdrive_install(void);                /* vsdrive.s : VDrive, deux volumes par la ligne serie */
-extern const unsigned int a2fc_link_id;            /* overlay.s : l'adresse de main, l'identite du lien des surcouches */
+unsigned char vsdrive_install(void);                /* vsdrive.s : VDrive, two volumes over the serial line */
+extern const unsigned int a2fc_link_id;            /* overlay.s : the address of main, the identity of the overlays' link */
 unsigned char __fastcall__ mli_sfi(void* params);
 unsigned char __fastcall__ mli_call(unsigned char cmd, void* params);
 void __fastcall__ aux_copy(unsigned int main_addr, unsigned int aux_addr, unsigned char to_aux);
-void aux_hgr_to_aux(void);   /* $2000-$3FFF, principale vers auxiliaire, AUXMOVE en une fois */
-/* La souris (mouse.s) : une carte AppleMouse II, dans n'importe quel slot.
- * Pas dans la version 6502 (A2FC_NOMOUSE, make ARCH=6502) : la place. */
+void aux_hgr_to_aux(void);   /* $2000-$3FFF, main to auxiliary, AUXMOVE in one go */
+/* The mouse (mouse.s): an AppleMouse II card, in any slot.
+ * Not in the 6502 version (A2FC_NOMOUSE, make ARCH=6502): the space. */
 #ifndef A2FC_NOMOUSE
 unsigned char mouse_init(void);
 unsigned char mouse_read(void);
@@ -76,44 +76,44 @@ static void dir_fail(void);
 #ifndef A2FC_VERSION
 #define A2FC_VERSION "0.6.8"
 #endif
-#define WINDOW (MAX_ENTRIES - 1)   /* entrees du disque par fenetre : ".." en plus */
+#define WINDOW (MAX_ENTRIES - 1)   /* disk entries per window: ".." on top of them */
 
-/* L'empreinte de ce qu'un panneau montre (a2fc_mli.s, en LOWEXE) : nombre,
- * fenetre, chemin ou son absence, et chaque octet de la table d'entrees.
- * Elle dit si une relecture a change l'ecran, pour bien moins cher que de
- * le redessiner. L'assembleur lit le panneau par les decalages notes en
- * face des champs de struct Panel : les deplacer, c'est le mettre a jour. */
+/* The fingerprint of what a panel shows (a2fc_mli.s, in LOWEXE): count,
+ * window, path or its absence, and every byte of the entry table.
+ * It tells whether a reread changed the screen, far more cheaply than
+ * redrawing it. The assembler reads the panel through the offsets noted
+ * next to the fields of struct Panel: moving them means updating it. */
 unsigned int __fastcall__ panel_hash(const struct Panel* pan);
 
 enum { SORT_NAME, SORT_SIZE, SORT_TYPE, SORT_MODES };
 enum { ASK, OVERWRITE_ALL, SKIP_ALL };
 
-#define ENTRIES ((struct Entry*)0x2000)   /* la page HGR MAIN, voir l'en-tete */
-#define HELP_BUF ((char*)0x2000)          /* la meme page pour l'aide */
-/* L'editeur est une grande surcouche : son code va de $1B00 a $27FF, le
- * texte occupe le reste de la page graphique. */
+#define ENTRIES ((struct Entry*)0x2000)   /* the HGR MAIN page, see the header */
+#define HELP_BUF ((char*)0x2000)          /* the same page for the help */
+/* The editor is a big overlay: its code runs from $1B00 to $27FF, the
+ * text occupies the rest of the graphics page. */
 #define EDIT_BUF ((char*)0x2800)
 #define EDIT_MAX 0x17F0
-/* Toute la BSS de ce fichier vit en RAM basse ($1000-$1FFF, segment LOWBSS
- * d'a2fc.cfg) : main() la met a zero, crt0 ne le fait que pour BSS.
- * Bornes du segment exportees par le lieur. */
+/* All the BSS of this file lives in low RAM ($1000-$1FFF, segment LOWBSS
+ * of a2fc.cfg): main() zeroes it, crt0 only does so for BSS.
+ * Segment bounds exported by the linker. */
 extern char _LOWBSS_RUN__[];
 extern char _LOWBSS_SIZE__[];
 #pragma bss-name (push, "LOWBSS")
 static struct Panel panels[2];
 static unsigned char active, sort_mode, over_policy;
 static unsigned int progress_done, progress_total, progress_skipped;
-static unsigned char progress_abort;   /* ESC pendant une operation : on s'arrete au fichier en cours */
-static unsigned char bar_last;         /* la barre telle qu'elle est dessinee : on ne la redessine que si elle change */
+static unsigned char progress_abort;   /* ESC during an operation: we stop at the current file */
+static unsigned char bar_last;         /* the bar as it is drawn: we only redraw it if it changes */
 static const char* bar_name;
-/* Diagnostics lisibles par le banc de test POM2 (voir a2fc.lbl). */
+/* Diagnostics readable by the POM2 test bench (see a2fc.lbl). */
 unsigned int a2fc_draws, a2fc_ops, a2fc_errors;
-unsigned char a2fc_view;       /* 0 panneaux, 1 image, 2 texte, 3 hexa, 4 aide, 5 editeur */
-unsigned char a2fc_slot;       /* la Mockingboard, 0 sans ; 0xFF pas encore cherchee */
-unsigned char a2fc_playing;    /* 0 silence, 1 joue, 2 en pause */
-unsigned char a2fc_mouse;      /* le slot de la souris, 0 sans */
+unsigned char a2fc_view;       /* 0 panels, 1 image, 2 text, 3 hex, 4 help, 5 editor */
+unsigned char a2fc_slot;       /* the Mockingboard, 0 without; 0xFF not searched for yet */
+unsigned char a2fc_playing;    /* 0 silent, 1 playing, 2 paused */
+unsigned char a2fc_mouse;      /* the slot of the mouse, 0 without */
 #ifndef A2FC_NOMOUSE
-static unsigned char pointer;  /* la souris a bouge une fois : le pointeur s'affiche */
+static unsigned char pointer;  /* the mouse has moved once: the pointer is shown */
 #endif
 
 static char full[PATH_LEN + NAME_LEN];
@@ -125,28 +125,28 @@ static unsigned char copy_buf[512];
 static unsigned char gfi[18];
 static unsigned char gfi_path[PATH_LEN + 1];
 static unsigned char picked[MAX_ENTRIES];
-static char album[2][NAME_LEN];    /* visionneuse d'images : les voisines de gauche et de droite */
-static unsigned int seen[2];       /* et l'empreinte des deux panneaux a l'entree */
-static char overlay_loaded[12];     /* la surcouche en place dans la fenetre $1B00, "" sans */
-static char reselect[NAME_LEN];    /* au retour d'une grande surcouche : le nom a reselectionner */
-static struct Entry selected;      /* l'entree sous le curseur, copiee avant qu'une grande surcouche ne recouvre la table */
-static char note[80];              /* ... et le message a ecrire en ligne 22 */
-static long text_starts[80];   /* debuts de page connus */
-/* Les parcours recursifs (copie et suppression d'un dossier) empilent
- * les entrees de chaque niveau : un niveau occupe pool[base..base+n[, le
- * niveau suivant commence a base+n. Un arbre dont un chemin cumule plus de
- * POOL_SIZE entrees est refuse avant toute ecriture. La reserve occupe la
- * table d'entrees du panneau inactif (4060 octets), inutile pendant
- * l'operation puisque les deux panneaux sont relus ensuite. */
+static char album[2][NAME_LEN];    /* image viewer: the left and right neighbours */
+static unsigned int seen[2];       /* and the fingerprint of both panels on entry */
+static char overlay_loaded[12];     /* the overlay in place in the $1B00 window, "" if none */
+static char reselect[NAME_LEN];    /* on return from a big overlay: the name to reselect */
+static struct Entry selected;      /* the entry under the cursor, copied before a big overlay overwrites the table */
+static char note[80];              /* ... and the message to write on line 22 */
+static long text_starts[80];   /* known page starts */
+/* The recursive walks (copying and deleting a directory) stack the
+ * entries of each level: a level occupies pool[base..base+n[, the next
+ * level starts at base+n. A tree in which one path accumulates more than
+ * POOL_SIZE entries is refused before any write. The pool occupies the
+ * entry table of the inactive panel (4060 bytes), useless during the
+ * operation since both panels are reread afterwards. */
 #define POOL_SIZE 213
 struct Mini { char name[16]; unsigned char type; unsigned int aux; };
 static struct Mini* pool;
 
 /* ---------------------------------------------------------------------- */
-/* MLI : GET_FILE_INFO et SET_FILE_INFO                                    */
+/* MLI: GET_FILE_INFO and SET_FILE_INFO                                    */
 /* ---------------------------------------------------------------------- */
 
-/* Remplit gfi[] pour `path` (nom ProDOS complet). Rend 0 sur erreur. */
+/* Fills gfi[] for `path` (full ProDOS name). Returns 0 on error. */
 static unsigned char file_info(const char* path)
 {
     unsigned char len = strlen(path);
@@ -158,16 +158,16 @@ static unsigned char file_info(const char* path)
     return mli_gfi(gfi) == 0;
 }
 
-/* Reecrit acces, type et auxtype de gfi[] : SET_FILE_INFO partage la
- * disposition de GET_FILE_INFO sur ses sept premiers parametres. */
+/* Rewrites access, type and auxtype from gfi[]: SET_FILE_INFO shares the
+ * layout of GET_FILE_INFO for its first seven parameters. */
 static unsigned char set_info(void)
 {
     gfi[0] = 0x07;
     return mli_sfi(gfi) == 0;
 }
 
-/* Sur un repertoire de volume, aux_type = blocs du volume et blocks_used
- * = blocs occupes. */
+/* On a volume directory, aux_type = blocks of the volume and blocks_used
+ * = blocks in use. */
 static unsigned char volume_blocks(const char* volume, unsigned int* total, unsigned int* free)
 {
     if (!file_info(volume)) return 0;
@@ -192,44 +192,44 @@ static void volume_space(struct Panel* pan)
 }
 
 /* ---------------------------------------------------------------------- */
-/* Lecture directe d'un repertoire                                         */
+/* Direct reading of a directory                                          */
 /* ---------------------------------------------------------------------- */
 
-/* ProDOS laisse lire un repertoire comme un fichier : des blocs de 512
- * octets, quatre octets de chainage puis des entrees de 39 octets, la
- * premiere du premier bloc etant l'en-tete (longueur d'entree, entrees par
- * bloc). Lire ainsi evite opendir/readdir de cc65 et leur malloc : c'est
- * moins de code, et plus aucun tas a reserver. Le bloc courant vit dans
- * copy_buf, qui n'est jamais utilise en meme temps. */
+/* ProDOS lets a directory be read like a file: 512-byte blocks, four
+ * bytes of chaining then 39-byte entries, the first one of the first
+ * block being the header (entry length, entries per block). Reading it
+ * this way avoids cc65's opendir/readdir and their malloc: less code, and
+ * no heap left to reserve. The current block lives in copy_buf, which is
+ * never in use at the same time. */
 static int dir_fd = -1;
 static unsigned char dir_index, dir_per_block, dir_entry_len;
 static struct DirEntry dir_entry;
 
 /* ---------------------------------------------------------------------- */
-/* Une image disque lue comme un dossier (IMGFS)                          */
+/* A disk image read as a directory (IMGFS)                               */
 /* ---------------------------------------------------------------------- */
 
-/* Une image disque ProDOS ouverte en lecture : ses blocs se lisent par
- * fseek dans le fichier (un .DSK est en ordre DOS 3.3, permute comme
- * po2dsk.py ; un .2MG porte son ordre et le decalage de ses donnees dans
- * son en-tete). Le repertoire se lit alors bloc par bloc en suivant le
- * chainage ProDOS, exactement comme un vrai dossier. */
+/* A ProDOS disk image opened for reading: its blocks are read by fseek
+ * within the file (a .DSK is in DOS 3.3 order, permuted like po2dsk.py
+ * does; a .2MG carries its order and the offset of its data in its
+ * header). The directory is then read block by block following the
+ * ProDOS chaining, exactly like a real directory. */
 static FILE* img_f;
-static unsigned char img_dsk;        /* 1 : ordre DOS 3.3 */
-static long img_base;                /* decalage des donnees (.2MG) */
+static unsigned char img_dsk;        /* 1: DOS 3.3 order */
+static long img_base;                /* offset of the data (.2MG) */
 static const unsigned char IMG_SECT[16] = { 0x0, 0xE, 0xD, 0xC, 0xB, 0xA, 0x9, 0x8, 0x7, 0x6, 0x5, 0x4, 0x3, 0x2, 0x1, 0xF };
-static unsigned char dir_img;        /* dir_next lit depuis une image */
+static unsigned char dir_img;        /* dir_next reads from an image */
 
-/* La source d'un secteur DOS 3.3 : 0 = image ouverte (img_f), sinon l'unite
- * ProDOS d'un vrai disque, lue par READ_BLOCK. */
+/* The source of a DOS 3.3 sector: 0 = open image (img_f), otherwise the
+ * ProDOS unit of a real disk, read by READ_BLOCK. */
 static unsigned char dos_unit;
-/* Un secteur DOS 3.3 logique (T, S) vers un demi-bloc ProDOS, sur le meme
- * disque : l'inverse de la table SECTORS de po2dsk.py. Valeur = bloc dans la
- * piste (T x 8 + valeur >> 1) et moitie (valeur & 1). */
+/* A logical DOS 3.3 sector (T, S) to a ProDOS half-block, on the same
+ * disk: the inverse of the SECTORS table of po2dsk.py. Value = block within
+ * the track (T x 8 + value >> 1) and half (value & 1). */
 static const unsigned char DOS_TS[16] = { 0, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 15 };
 
-/* Reconnait une image disque a son suffixe. Rend 1 (FS_IMG) si c'en est une,
- * FS_PRODOS (0) sinon. L'ordre des secteurs est deduit du suffixe par
+/* Recognises a disk image by its suffix. Returns 1 (FS_IMG) if it is one,
+ * FS_PRODOS (0) otherwise. The sector order is deduced from the suffix by
  * img_open. */
 static unsigned char image_order(const char* name)
 {
@@ -238,8 +238,8 @@ static unsigned char image_order(const char* name)
         || (n > 3 && (!strcmp(name + n - 3, ".PO") || !strcmp(name + n - 3, ".DO"))) ? FS_IMG : FS_PRODOS;
 }
 
-/* Ouvre l'image `path` : l'ordre des secteurs vient du suffixe (.PO ProDOS,
- * .DSK/.DO DOS 3.3, .2MG de son en-tete). Rend 0 sur echec ; img_f ouvert. */
+/* Opens the image `path`: the sector order comes from the suffix (.PO ProDOS,
+ * .DSK/.DO DOS 3.3, .2MG from its header). Returns 0 on failure; img_f open. */
 static unsigned char img_open(const char* path)
 {
     unsigned char n = strlen(path);
@@ -255,9 +255,9 @@ static unsigned char img_open(const char* path)
     return 1;
 }
 
-/* Lit le secteur DOS 3.3 logique (track, sector), 256 octets, dans copy_buf.
- * Source : l'image ouverte (fseek dans l'ordre DOS) ou un vrai disque
- * (READ_BLOCK sur le demi-bloc ProDOS correspondant). Rend 1 si complet. */
+/* Reads the logical DOS 3.3 sector (track, sector), 256 bytes, into copy_buf.
+ * Source: the open image (fseek in DOS order) or a real disk
+ * (READ_BLOCK on the corresponding ProDOS half-block). Returns 1 if complete. */
 static unsigned char dos_read_sector(unsigned char track, unsigned char sector)
 {
     unsigned char code, parms[6];
@@ -272,13 +272,13 @@ static unsigned char dos_read_sector(unsigned char track, unsigned char sector)
     parms[4] = (unsigned char)((unsigned)track * 8 + (code >> 1));
     parms[5] = (unsigned char)(((unsigned)track * 8 + (code >> 1)) >> 8);
     if (mli_call(0x80, parms)) return 0;
-    if (code & 1) memmove(copy_buf, copy_buf + 256, 256);   /* la moitie haute du bloc */
+    if (code & 1) memmove(copy_buf, copy_buf + 256, 256);   /* the upper half of the block */
     return 1;
 }
 
-/* Un vrai volume DOS 3.3 ? La VTOC (piste 17 secteur 0) : version DOS 1-3,
- * piste et secteur de catalogue plausibles, 35 pistes, 256 octets par
- * secteur, 122 paires par liste. Laisse la VTOC dans copy_buf. */
+/* A real DOS 3.3 volume? The VTOC (track 17 sector 0): DOS version 1-3,
+ * plausible catalog track and sector, 35 tracks, 256 bytes per sector,
+ * 122 pairs per list. Leaves the VTOC in copy_buf. */
 static unsigned char dos_vtoc_ok(void)
 {
     return dos_read_sector(17, 0) && copy_buf[3] >= 1 && copy_buf[3] <= 3
@@ -286,7 +286,7 @@ static unsigned char dos_vtoc_ok(void)
         && copy_buf[0x34] == 35 && copy_buf[0x27] == 0x7A;
 }
 
-/* Lit le bloc ProDOS `block` de l'image dans `buf`. Rend 1 si complet. */
+/* Reads ProDOS block `block` of the image into `buf`. Returns 1 if complete. */
 static unsigned char img_read_block(unsigned int block, unsigned char* buf)
 {
     unsigned char half;
@@ -301,8 +301,8 @@ static unsigned char img_read_block(unsigned int block, unsigned char* buf)
     return 1;
 }
 
-/* Ouvre le repertoire de bloc-cle `key` dans l'image deja ouverte. Rend 0
- * si ce n'est pas un repertoire ProDOS. */
+/* Opens the directory with key block `key` in the already open image.
+ * Returns 0 if it is not a ProDOS directory. */
 static unsigned char dir_open_image(unsigned int key)
 {
     dir_img = 1;
@@ -323,7 +323,7 @@ static unsigned char dir_open(const char* path)
     dir_entry_len = copy_buf[4 + 0x1F];
     dir_per_block = copy_buf[4 + 0x20];
     if (dir_entry_len != 0x27 || dir_per_block != 0x0D) { close(dir_fd); dir_fd = -1; return 0; }
-    dir_index = 1;                   /* l'entree 0 est l'en-tete */
+    dir_index = 1;                   /* entry 0 is the header */
     return 1;
 }
 
@@ -334,9 +334,9 @@ static void dir_close(void)
     dir_fd = -1;
 }
 
-/* Charge le bloc de repertoire suivant dans copy_buf. Pour une image, on
- * suit le pointeur de chainage avant (octets 2-3 du bloc courant) ; pour un
- * vrai dossier, ProDOS assemble les blocs, une simple lecture suffit. */
+/* Loads the next directory block into copy_buf. For an image, we follow
+ * the forward chaining pointer (bytes 2-3 of the current block); for a
+ * real directory, ProDOS assembles the blocks, a plain read is enough. */
 static unsigned char dir_block_next(void)
 {
     if (dir_img) {
@@ -346,7 +346,7 @@ static unsigned char dir_block_next(void)
     return read(dir_fd, copy_buf, 512) == 512;
 }
 
-/* L'entree suivante dans dir_entry, ou 0 a la fin. */
+/* The next entry into dir_entry, or 0 at the end. */
 static unsigned char dir_next(void)
 {
     const unsigned char* e;
@@ -358,7 +358,7 @@ static unsigned char dir_next(void)
         }
         e = copy_buf + 4 + dir_index * dir_entry_len;
         ++dir_index;
-        if (!(e[0] & 0xF0)) continue;   /* entree effacee */
+        if (!(e[0] & 0xF0)) continue;   /* deleted entry */
         len = e[0] & 0x0F;
         memcpy(dir_entry.name, e + 1, len);
         dir_entry.name[len] = 0;
@@ -374,7 +374,7 @@ static unsigned char dir_next(void)
 }
 
 /* ---------------------------------------------------------------------- */
-/* Affichage                                                              */
+/* Display                                                                */
 /* ---------------------------------------------------------------------- */
 
 static void clear_row(unsigned char row)
@@ -398,14 +398,14 @@ static void dir_fail(void)
     extern const char msg_dirfail[]; message(msg_dirfail);
 }
 
-/* La barre de touches, facon Norton Commander : chaque touche dans un bloc
- * inverse de trois colonnes, son libelle en clair juste apres, un espace
- * entre les boutons. `spec` enchaine "TOUCHE Libelle" separes par des
- * virgules ; une touche d'une lettre est centree dans son bloc. La ligne 23
- * n'est jamais ecrite au-dela de la colonne 78 : conio passerait a la ligne
- * sur la 80e et ferait defiler l'ecran. */
-extern const char MAIN_KEYS[];   /* defini en carte langage, plus bas (LC) */
-extern const char VIEW_KEYS[];   /* en carte langage, defini plus bas */
+/* The key bar, Norton Commander style: each key in an inverse block of
+ * three columns, its label in plain text right after, one space between
+ * the buttons. `spec` chains "KEY Label" items separated by commas; a
+ * one-letter key is centred in its block. Line 23 is never written
+ * beyond column 78: conio would wrap to the next line on the 80th and
+ * scroll the screen. */
+extern const char MAIN_KEYS[];   /* defined in the language card, further down (LC) */
+extern const char VIEW_KEYS[];   /* in the language card, defined further down */
 static const char HELP_KEYS[] = "ANY Return to the panels";
 
 static void keys_bar(unsigned char x, const char* spec)
@@ -426,7 +426,7 @@ static void keys_bar(unsigned char x, const char* spec)
     }
 }
 
-/* Efface la ligne 23 (79 colonnes, voir keys_bar) avant de la reecrire. */
+/* Clears line 23 (79 columns, see keys_bar) before rewriting it. */
 static void bar_begin(void)
 {
     cclearxy(0, 23, 79);
@@ -490,9 +490,9 @@ static unsigned char tag_count(const struct Panel* pan)
     return n;
 }
 
-/* Les marques des deux panneaux, mises de cote dans picked[] pendant qu'une
- * image, l'aide ou l'editeur recouvre les tables d'entrees (save = 1), puis
- * rendues une fois les panneaux relus (save = 0). */
+/* The tags of both panels, set aside in picked[] while an image, the help
+ * or the editor overwrites the entry tables (save = 1), then given back
+ * once the panels have been reread (save = 0). */
 static void keep_tags(unsigned char save)
 {
     if (save) {
@@ -504,10 +504,10 @@ static void keep_tags(unsigned char save)
     }
 }
 
-/* Une ligne d'entree, 38 caracteres exactement (une ligne plus courte
- * laisserait a l'ecran la fin de la ligne precedente), en inverse quand le
- * curseur y est ; une etoile apres le nom marque un fichier selectionne par
- * Espace, un L un fichier verrouille. */
+/* One entry line, exactly 38 characters (a shorter line would leave the
+ * end of the previous line on screen), in inverse when the cursor is on
+ * it; a star after the name marks a file selected with Space, an L a
+ * locked file. */
 static void draw_entry(unsigned char p, unsigned char index)
 {
     struct Panel* pan = &panels[p];
@@ -519,13 +519,13 @@ static void draw_entry(unsigned char p, unsigned char index)
     gotoxy(x, row);
     if (is_up(e)) cprintf("%-15s  <UP>                 ", e->name);
     else if (!pan->path[0]) {
-        /* 38 colonnes exactement, comme les autres lignes : avec 7 espaces
-         * de queue cette ligne en faisait 42, et en inverse (selection) ses
-         * 4 cellules de trop debordaient sur le separateur et le panneau
-         * voisin a gauche, ou passaient a la ligne suivante, colonnes 0-1, a
-         * droite -- les "carres blancs" en mode DOS 3.3. */
+        /* Exactly 38 columns, like the other lines: with 7 trailing spaces
+         * this line was 42 long, and in inverse (selection) its 4 extra
+         * cells spilled over the separator and the neighbouring panel on
+         * the left, or wrapped to the next line, columns 0-1, on the
+         * right -- the "white squares" in DOS 3.3 mode. */
         if (!e->access) cprintf("%-15s S%u,D%u  DOS 3.3 disk   ", e->name, (e->mdate >> 4) & 7, (e->mdate >> 7) + 1);
-        else {                                   /* "/VOL/" : un dossier, comme Ammonoid le montre */
+        else {                                   /* "/VOL/" : a directory, as Ammonoid shows it */
             sprintf(question, "%s/", e->name);
             cprintf("%-16sS%u,D%u %5u/%5u free", question, e->mdate & 7, (e->mdate >> 3) + 1, e->aux, e->blocks);
         }
@@ -557,8 +557,8 @@ static void draw_panel(unsigned char p)
     for (i = 0; i < ROWS; ++i) draw_entry(p, pan->top + i);
 }
 
-/* La ligne de separation porte le nom du programme et l'espace libre du
- * volume du panneau actif. */
+/* The separator line carries the program name and the free space of the
+ * active panel's volume. */
 static void draw_status(void)
 {
     struct Panel* pan = &panels[active];
@@ -594,10 +594,10 @@ static void draw_info(void)
     if (is_up(e)) cputs("Parent directory");
     else if (!pan->path[0]) cprintf("Volume %s  slot %u drive %u  %u blocks, %u free", e->name, e->mdate & 7, (e->mdate >> 3) + 1, e->blocks, e->aux);
     else if (is_dir(e)) cprintf("%s  directory  %u blocks", e->name, e->blocks);
-    else if (pan->fs)           /* dans une image : mdate porte le bloc-cle, pas une date */
+    else if (pan->fs)           /* in an image: mdate holds the key block, not a date */
         cprintf("%s  type $%02X  aux $%04X  %u blocks  %lu bytes  (in image)",
                 e->name, e->type, e->aux, e->blocks, e->size);
-    else {                      /* 83 colonnes au pire (nom de 15, 16 Mo, verrou) : coupee a 79 */
+    else {                      /* 83 columns at worst (15-char name, 16 MB, lock): cut to 79 */
         sprintf((char*)copy_buf, "%s  type $%02X  aux $%04X  %u blocks  %lu bytes  %02u/%02u/%02u%s",
                 e->name, e->type, e->aux, e->blocks, e->size,
                 e->mdate & 31, (e->mdate >> 5) & 15, (e->mdate >> 9) % 100,
@@ -625,7 +625,7 @@ static void show_active(void)
 }
 
 /* ---------------------------------------------------------------------- */
-/* Lecture des repertoires                                                */
+/* Reading directories                                                    */
 /* ---------------------------------------------------------------------- */
 
 static int compare(const void* a, const void* b)
@@ -640,8 +640,8 @@ static int compare(const void* a, const void* b)
     return strcmp(x->name, y->name);
 }
 
-/* Tri par insertion, ".." reste en tete : moins de code que qsort, et les
- * dossiers du disque arrivent presque tries. */
+/* Insertion sort, ".." stays first: less code than qsort, and the
+ * directories on disk arrive almost sorted. */
 static void sort_entries(struct Panel* pan)
 {
     unsigned char i, j;
@@ -665,19 +665,19 @@ static struct Entry* add_entry(struct Panel* pan, const char* name, unsigned cha
     return e;
 }
 
-/* DEVNUM ($BF30) : le dernier peripherique touche par ProDOS. L'enumeration
- * des volumes le laisse sur le dernier lecteur interroge (/RAM sur un IIe),
- * et Bitsy Bye s'ouvrirait la au retour : on le remet tel qu'il etait. */
+/* DEVNUM ($BF30): the last device ProDOS touched. Enumerating the volumes
+ * leaves it on the last drive queried (/RAM on a IIe), and Bitsy Bye would
+ * open there on return: we put it back the way it was. */
 #define DEVNUM (*(volatile unsigned char*)0xBF30)
 
-/* La liste des volumes telle que ProDOS la donne : ON_LINE sur l'unite 0
- * rend, seize octets par unite de DEVLST, l'unite (DSSS) et le nom -- ou
- * une longueur nulle et un code d'erreur pour un lecteur sans volume. C'est
- * la liste de Bitsy Bye et de CAT ; cc65 (getfirstdevice, getdevicedir)
- * refaisait un ON_LINE par slot et lecteur qu'il connait, et une machine
- * a plus d'unites que cela (ProDOS 2.4 en refleche jusqu'a quatorze par
- * carte SmartPort) en perdait. mdate garde le numero DSSS >> 4 : le lecteur
- * en bit 3, le slot en bits 0-2. */
+/* The volume list as ProDOS gives it: ON_LINE on unit 0 returns, sixteen
+ * bytes per DEVLST unit, the unit (DSSS) and the name -- or a zero length
+ * and an error code for a drive without a volume. This is the list of
+ * Bitsy Bye and CAT; cc65 (getfirstdevice, getdevicedir) redid one
+ * ON_LINE per slot and drive it knows of, and a machine with more units
+ * than that (ProDOS 2.4 mirrors up to fourteen per SmartPort card) lost
+ * some. mdate keeps the DSSS >> 4 number: the drive in bit 3, the slot in
+ * bits 0-2. */
 static void read_volumes(struct Panel* pan)
 {
     unsigned char saved = DEVNUM, i, b, len;
@@ -693,7 +693,7 @@ static void read_volumes(struct Panel* pan)
             b = online[i * 16];
             if (!b) break;
             len = b & 15;
-            if (!len) continue;                  /* pas de volume : l'erreur suit */
+            if (!len) continue;                  /* no volume: the error follows */
             name[0] = '/';
             memcpy(name + 1, online + i * 16 + 1, len);
             name[len + 1] = 0;
@@ -701,10 +701,10 @@ static void read_volumes(struct Panel* pan)
             e->mdate = b >> 4;
             volume_blocks(name, &e->blocks, &e->aux);
         }
-    /* Les disques DOS 3.3 n'ont pas de volume ProDOS : on sonde chaque unite
-     * (DEVLST) pour une VTOC DOS 3.3 et on la propose comme un dossier. Un
-     * disque ProDOS ou un lecteur vide echoue au controle et n'est pas
-     * ajoute ; l'unite ProDOS est gardee dans mdate, access = 0 la marque. */
+    /* DOS 3.3 disks have no ProDOS volume: we probe each unit (DEVLST) for
+     * a DOS 3.3 VTOC and offer it as a directory. A ProDOS disk or an empty
+     * drive fails the check and is not added; the ProDOS unit is kept in
+     * mdate, access = 0 marks it. */
     {
         unsigned char nd = *(unsigned char*)0xBF31 + 1, i, unit;
         for (i = 0; i < nd && pan->count < MAX_ENTRIES; ++i) {
@@ -723,17 +723,17 @@ static void read_volumes(struct Panel* pan)
     DEVNUM = saved;
 }
 
-/* Remplit le panneau et oublie ses marques. La fenetre commence a l'entree
- * pan->first du disque ; ".." n'apparait que dans la premiere, et le tri ne
- * s'applique que si le dossier tient entier. Rend 0 si le dossier ne se lit
- * pas : le panneau retombe alors sur la liste des volumes, jamais sur un
- * ecran vide. */
-/* read_image_panel, dos33_type et read_dos33_panel gardent leurs locales sur
- * la pile C (la RAM basse est pleine) ; aucun n'est recursif. */
+/* Fills the panel and forgets its tags. The window starts at entry
+ * pan->first of the disk; ".." only appears in the first one, and sorting
+ * only applies if the whole directory fits. Returns 0 if the directory
+ * cannot be read: the panel then falls back to the volume list, never to
+ * an empty screen. */
+/* read_image_panel, dos33_type and read_dos33_panel keep their locals on
+ * the C stack (low RAM is full); none of them is recursive. */
 #pragma static-locals (push, off)
 
-/* Le type ProDOS le plus proche d'un type DOS 3.3 (octet de catalogue, bit 7
- * = verrouille) : T texte, I Integer, A Applesoft, B binaire, le reste BIN. */
+/* The closest ProDOS type to a DOS 3.3 type (catalog byte, bit 7 =
+ * locked): T text, I Integer, A Applesoft, B binary, everything else BIN. */
 static unsigned char dos33_type(unsigned char t)
 {
     switch (t & 0x7F) {
@@ -745,12 +745,12 @@ static unsigned char dos33_type(unsigned char t)
     return 0x06;
 }
 
-/* Remplit le panneau depuis le catalogue DOS 3.3 de la source deja etablie
- * (dos_unit : une image ouverte ou un vrai disque). Le catalogue est plat :
- * pas de sous-dossiers, pas de "..". Chaque entree garde dans mdate la piste
- * et le secteur de sa premiere liste T/S, pour l'extraction. Le nom DOS est
- * ramene a un nom ProDOS valable (lettres, chiffres, points, 15 au plus).
- * Rend 0 si ce n'est pas un volume DOS 3.3. */
+/* Fills the panel from the DOS 3.3 catalog of the already established
+ * source (dos_unit: an open image or a real disk). The catalog is flat: no
+ * subdirectories, no "..". Each entry keeps in mdate the track and sector
+ * of its first T/S list, for extraction. The DOS name is reduced to a
+ * valid ProDOS name (letters, digits, periods, 15 at most). Returns 0 if
+ * this is not a DOS 3.3 volume. */
 static unsigned char read_dos33_panel(struct Panel* pan)
 {
     struct Entry* e;
@@ -768,8 +768,8 @@ static unsigned char read_dos33_panel(struct Panel* pan)
         ct = copy_buf[1]; cs = copy_buf[2];
         for (i = 0; i < 7 && pan->count < MAX_ENTRIES; ++i) {
             d = copy_buf + 0x0B + i * 0x23;
-            if (!d[0]) { ct = 0; break; }        /* jamais utilise : fin du catalogue */
-            if (d[0] == 0xFF) continue;          /* efface */
+            if (!d[0]) { ct = 0; break; }        /* never used: end of the catalog */
+            if (d[0] == 0xFF) continue;          /* deleted */
             len = 30;
             while (len && (d[2 + len] & 0x7F) == ' ') --len;
             for (k = 0; k < len && k < 15; ++k) {
@@ -779,33 +779,33 @@ static unsigned char read_dos33_panel(struct Panel* pan)
                 name[k] = c;
             }
             name[k] = 0;
-            if (name[0] < 'A' || name[0] > 'Z') name[0] = 'X';   /* ProDOS : une lettre d'abord */
+            if (name[0] < 'A' || name[0] > 'Z') name[0] = 'X';   /* ProDOS: a letter first */
             e = add_entry(pan, name, dos33_type(d[2]));
-            e->blocks = d[0x21] | ((unsigned int)d[0x22] << 8);   /* secteurs, listes T/S comprises */
+            e->blocks = d[0x21] | ((unsigned int)d[0x22] << 8);   /* sectors, T/S lists included */
             e->size = (unsigned long)e->blocks << 8;
             e->access = (d[2] & 0x80) ? 0x01 : 0xC3;
             e->aux = 0;
-            e->mdate = ((unsigned int)d[0] << 8) | d[1];          /* piste/secteur de la 1re liste T/S */
+            e->mdate = ((unsigned int)d[0] << 8) | d[1];          /* track/sector of the 1st T/S list */
         }
     }
     return 1;
 }
 
 
-/* Remplit le panneau depuis une image ou un vrai disque ouvert comme un
- * dossier (pan->fs != 0). La source est une image fichier quand pan->img_len
- * > 0 (chemin dans pan->path[0..img_len], puis le chemin interne), sinon un
- * vrai disque DOS 3.3 dont l'unite ProDOS est dans pan->dir_key. Un volume
- * ProDOS se navigue par bloc-cle (dir_key), avec ".." et les sous-dossiers ;
- * un DOS 3.3 est un catalogue plat. Rend 0 si la source n'est pas lisible ;
- * le panneau retombe alors sur la liste des volumes. */
+/* Fills the panel from an image or a real disk opened as a directory
+ * (pan->fs != 0). The source is a file image when pan->img_len > 0 (path
+ * in pan->path[0..img_len], then the internal path), otherwise a real DOS
+ * 3.3 disk whose ProDOS unit is in pan->dir_key. A ProDOS volume is
+ * navigated by key block (dir_key), with ".." and the subdirectories; a
+ * DOS 3.3 is a flat catalog. Returns 0 if the source is not readable; the
+ * panel then falls back to the volume list. */
 
 
 
 
 
-/* M : marque les fichiers absents de l'autre panneau ou de taille
- * differente, la base d'une synchronisation par C. */
+/* M: tags the files missing from the other panel or of a different size,
+ * the basis of a synchronization by C. */
 
 static unsigned char read_image_panel(struct Panel* pan)
 {
@@ -813,24 +813,24 @@ static unsigned char read_image_panel(struct Panel* pan)
     unsigned int parent = 2;
     unsigned char i;
     dos_unit = 0;
-    if (pan->img_len) {             /* une image fichier */
+    if (pan->img_len) {             /* a file image */
         unsigned char tail = pan->path[pan->img_len];
         pan->path[pan->img_len] = 0;
         i = img_open(pan->path);
         pan->path[pan->img_len] = tail;
         if (!i) goto fail;
-    } else {                        /* un vrai disque DOS 3.3, par son unite ProDOS */
+    } else {                        /* a real DOS 3.3 disk, by its ProDOS unit */
         dos_unit = (unsigned char)pan->dir_key;
         img_f = 0;
     }
-    if (pan->fs == FS_DOS33) {       /* catalogue plat, lu par la surcouche */
+    if (pan->fs == FS_DOS33) {       /* flat catalog, read by the overlay */
         i = read_dos33_panel(pan);
         if (img_f) { fclose(img_f); img_f = 0; }
         if (!i) goto fail;
         return 1;
     }
-    /* ProDOS ; si la lecture echoue et l'image est en ordre DOS, essayer
-     * DOS 3.3 (une disquette DOS 3.3 lue par erreur comme ProDOS). */
+    /* ProDOS; if reading fails and the image is in DOS order, try DOS 3.3
+     * (a DOS 3.3 floppy read by mistake as ProDOS). */
     pan->count = 0;
     pan->more = 0;
     memset(pan->tags, 0, sizeof pan->tags);
@@ -843,7 +843,7 @@ static unsigned char read_image_panel(struct Panel* pan)
         dir_close();
         goto fail;
     }
-    if (pan->dir_key != 2)          /* pointeur parent d'un sous-dossier (0x23 dans l'en-tete) */
+    if (pan->dir_key != 2)          /* parent pointer of a subdirectory (0x23 in the header) */
         parent = copy_buf[4 + 0x23] | ((unsigned int)copy_buf[4 + 0x24] << 8);
     if (pan->dir_key != 2) { e = add_entry(pan, "..", 0x0F); e->mdate = parent; }
     while (dir_next()) {
@@ -853,7 +853,7 @@ static unsigned char read_image_panel(struct Panel* pan)
         e->aux = dir_entry.aux;
         e->blocks = dir_entry.blocks;
         e->size = dir_entry.size;
-        e->mdate = dir_entry.key;   /* le bloc-cle, pour naviguer et extraire */
+        e->mdate = dir_entry.key;   /* the key block, to navigate and extract */
     }
     dir_close();
     if (pan->count > 2) sort_entries(pan);
@@ -920,9 +920,9 @@ static void set_cursor(struct Panel* pan, unsigned char index)
     if (pan->cursor >= pan->top + ROWS) pan->top = pan->cursor - ROWS + 1;
 }
 
-/* Pose le curseur du panneau actif sur `index` et ne reecrit que ce qui
- * bouge : les deux lignes quand la fenetre ne defile pas, le panneau
- * entier sinon, puis la ligne d'information. */
+/* Puts the active panel's cursor on `index` and redraws only what moves:
+ * the two lines when the window does not scroll, the whole panel
+ * otherwise, then the information line. */
 static void land(unsigned char index)
 {
     struct Panel* pan = &panels[active];
@@ -942,8 +942,8 @@ static void select_name(struct Panel* pan, const char* name)
         if (!strcmp(pan->e[i].name, name)) { set_cursor(pan, i); break; }
 }
 
-/* Chemin complet de l'entree : "/VOL/DIR/NAME", ou "/VOL" depuis la liste
- * des volumes. Rend 0 si le resultat depasserait les 64 caracteres ProDOS. */
+/* Full path of the entry: "/VOL/DIR/NAME", or "/VOL" from the volume
+ * list. Returns 0 if the result would exceed the 64 ProDOS characters. */
 static unsigned char build_full(char* out, const struct Panel* pan, const struct Entry* e)
 {
     if (!pan->path[0]) { strcpy(out, e->name); return 1; }
@@ -964,7 +964,7 @@ static void go_up(struct Panel* pan)
     char last[NAME_LEN];
     char* slash;
     if (pan->fs) {
-        if (!pan->img_len) {   /* un vrai disque DOS 3.3 : retour a la liste des volumes */
+        if (!pan->img_len) {   /* a real DOS 3.3 disk: back to the volume list */
             pan->fs = FS_PRODOS;
             pan->path[0] = 0;
             pan->dir_key = 2;
@@ -973,8 +973,8 @@ static void go_up(struct Panel* pan)
             return;
         }
         if (pan->dir_key == 2) {
-            /* racine de l'image : en sortir, revenir au dossier qui la
-             * contient, curseur sur le fichier image. */
+            /* root of the image: leave it, go back to the directory that
+             * contains it, cursor on the image file. */
             pan->path[pan->img_len] = 0;
             slash = strrchr(pan->path, '/');
             strcpy(input, slash ? slash + 1 : pan->path);
@@ -984,7 +984,7 @@ static void go_up(struct Panel* pan)
             open_path(pan);
             select_name(pan, input);
         } else {
-            /* remonter d'un cran dans l'image : ".." porte le bloc du parent */
+            /* go up one level in the image: ".." holds the parent's block */
             slash = strrchr(pan->path + pan->img_len, '/');
             pan->dir_key = pan->count ? pan->e[0].mdate : 2;
             if (slash) *slash = 0;
@@ -995,7 +995,7 @@ static void go_up(struct Panel* pan)
     }
     slash = strrchr(pan->path, '/');
     if (!slash) return;
-    strcpy(last, slash == pan->path ? slash : slash + 1);   /* la liste des volumes nomme "/VOL" */
+    strcpy(last, slash == pan->path ? slash : slash + 1);   /* the volume list names "/VOL" */
     if (slash == pan->path) pan->path[0] = 0;   /* "/VOL" -> volumes */
     else *slash = 0;
     open_path(pan);
@@ -1006,7 +1006,7 @@ static void enter_dir(struct Panel* pan, const struct Entry* e)
 {
     if (is_up(e)) { go_up(pan); return; }
     if (pan->fs) {
-        /* un sous-dossier dans l'image : son bloc-cle est dans mdate */
+        /* a subdirectory in the image: its key block is in mdate */
         if (strlen(pan->path) + 1 + strlen(e->name) >= PATH_LEN) { too_long(); return; }
         pan->dir_key = e->mdate;
         strcat(pan->path, "/");
@@ -1021,7 +1021,7 @@ static void enter_dir(struct Panel* pan, const struct Entry* e)
 }
 
 /* ---------------------------------------------------------------------- */
-/* Saisie -- dans la carte langage                                        */
+/* Input -- in the language card                                          */
 /* ---------------------------------------------------------------------- */
 #pragma code-name (push, "LC")
 #pragma rodata-name (push, "LC")
@@ -1039,9 +1039,9 @@ static unsigned char confirm(const char* text)
     }
 }
 
-/* Une saisie dans `input` : un nom ProDOS (lettre, puis lettres, chiffres
- * ou points, 15 au plus) ou, avec hex != 0, ce nombre de chiffres
- * hexadecimaux. Rend 0 si l'utilisateur annule (Echap) ou ne saisit rien. */
+/* An input into `input`: a ProDOS name (a letter, then letters, digits
+ * or periods, 15 at most) or, with hex != 0, that many hexadecimal
+ * digits. Returns 0 if the user cancels (Escape) or enters nothing. */
 static unsigned char prompt(const char* label, const char* initial, unsigned char hex)
 {
     unsigned char len = 0, max = hex ? hex : 15;
@@ -1074,16 +1074,16 @@ static unsigned int hex_value(void)
     return v;
 }
 
-/* Le code d'erreur ProDOS ($BF00 le laisse dans _oserror, que cc65 tient a
- * jour meme apres un echec de fopen/fread) en clair : "errno 3, ProDOS $2B"
- * ne dit rien a l'utilisateur, "the disk is write-protected" si. Les codes
- * rares gardent leur hexa et l'errno cc65, pour le diagnostic. Table nommee
- * (pas un switch a return "...") pour que ses chaines suivent la carte
- * langage : la fenetre principale est pleine au bit pres. */
-/* Chaines en tableaux NOMMES (const char[]), pas en litteraux "..." : cc65
- * regroupe les litteraux dans RODATA (fenetre principale, pleine), mais pose
- * un tableau nomme dans le segment rodata courant -- ici LC, la carte
- * langage, ou il reste de la place. */
+/* The ProDOS error code ($BF00 leaves it in _oserror, which cc65 keeps up
+ * to date even after a failed fopen/fread) in plain words: "errno 3, ProDOS
+ * $2B" tells the user nothing, "the disk is write-protected" does. The rare
+ * codes keep their hex and the cc65 errno, for diagnosis. A named table
+ * (not a switch of return "...") so that its strings follow the language
+ * card: the main window is full to the last bit. */
+/* Strings in NAMED arrays (const char[]), not in "..." literals: cc65
+ * groups the literals in RODATA (main window, full), but places a named
+ * array in the current rodata segment -- here LC, the language card, where
+ * there is still room. */
 static const char pdE27[] = "disk I/O error";
 static const char pdE2B[] = "the disk is write-protected";
 static const char pdE2F[] = "no disk in the drive";
@@ -1108,10 +1108,10 @@ const char msg_otherro[] = "The other panel is a read-only disk image.";
 const char msg_nohelp[] = "A2FILE/A2FILE.HELP is missing.";
 const char msg_intoself[] = "Cannot copy a directory into itself.";
 const char VIEW_KEYS[] = "SPC Next,B Prev,ESC Back";
-/* Les trois en-tetes de colonne des panneaux, en carte langage plutot que
- * dans RODATA (fenetre principale pleine) : ~100 octets rendus au resident,
- * la marge qu'il fallait pour la surcouche UNSHRINK et ses calculs 32 bits.
- * draw_panel les designe par un tableau de pointeurs (six octets). */
+/* The three column headers of the panels, in the language card rather
+ * than in RODATA (main window full): ~100 bytes given back to the resident,
+ * the margin needed for the UNSHRINK overlay and its 32-bit arithmetic.
+ * draw_panel refers to them through an array of pointers (six bytes). */
 const char a2fc_hdr_name[] = "Name*            Type  Aux     Size";
 const char a2fc_hdr_size[] = "Name             Type  Aux     Size*";
 const char a2fc_hdr_type[] = "Name             Type* Aux     Size";
@@ -1137,9 +1137,9 @@ static const char* prodos_error(unsigned char e)
     }
 }
 
-/* prodos_error appele deux fois plutot qu'une locale `why` : LOWBSS est plein
- * au bit pres et -Cl mettrait la locale dedans ; le second appel n'est que du
- * code, en carte langage ou il reste de la place. */
+/* prodos_error called twice rather than through a local `why`: LOWBSS is full
+ * to the last bit and -Cl would put the local there; the second call is only
+ * code, in the language card where room remains. */
 static void report_error(const char* what)
 {
     ++a2fc_errors;
@@ -1152,17 +1152,17 @@ static void report_error(const char* what)
 }
 
 /* ---------------------------------------------------------------------- */
-/* Visionneuses -- dans la carte langage                                  */
+/* Viewers -- in the language card                                        */
 /* ---------------------------------------------------------------------- */
 
-/* Sans ouvrir le fichier : un FOT ($08), ou un BIN de la taille d'une page
- * HGR ou DHGR, ou un flux .RLE. L'ouverture tranche ensuite sur l'en-tete.
- * En RAM principale : la carte langage est pleine. */
+/* Without opening the file: a FOT ($08), or a BIN the size of an HGR or DHGR
+ * page, or an .RLE stream. Opening it then settles the matter on the header.
+ * In main RAM: the language card is full. */
 #pragma code-name (push, "CODE")
 #pragma rodata-name (push, "RODATA")
-/* La taille d'une page HGR (8 192 ou 8 184 octets) ou DHGR (16 384), lue en
- * deux mots : cc65 compare un long par une routine, et chaque comparaison
- * se payait une trentaine d'octets. */
+/* The size of an HGR page (8,192 or 8,184 bytes) or a DHGR page (16,384), read
+ * as two words: cc65 compares a long through a routine, and each comparison
+ * used to cost some thirty bytes. */
 static unsigned char page_size(const unsigned long* size)
 {
     const unsigned int* w = (const unsigned int*)size;
@@ -1180,7 +1180,7 @@ static unsigned char looks_like_image(const struct Entry* e)
 #pragma rodata-name (pop)
 #pragma code-name (pop)
 
-/* Lecture tamponnee : fgetc de cc65 passe par ProDOS a chaque octet. */
+/* Buffered reading: cc65's fgetc goes through ProDOS for every byte. */
 static FILE* vf;
 static unsigned int vlen, vpos;
 static long vbase;
@@ -1204,11 +1204,11 @@ static void view_seek(long offset)
 }
 
 #define TEXT_ROWS 22
-#define TEXT_PAGES 80           /* text_starts[] : les debuts de page connus */
+#define TEXT_PAGES 80           /* text_starts[]: the known page starts */
 
-/* Une page de 22 lignes ; les retours ProDOS sont des CR. Les debuts de
- * page sont memorises au passage : la page precedente est un fseek. */
-/* La surcouche TEXT : la visionneuse de texte, dans A2FILE/TEXT.PLG. */
+/* A page of 22 rows; ProDOS line ends are CRs. The page starts are
+ * remembered on the way through: the previous page is an fseek. */
+/* The TEXT overlay: the text viewer, in A2FILE/TEXT.PLG. */
 #pragma code-name (push, "TEXT")
 #pragma rodata-name (push, "TEXTRO")
 static void view_text(const char* path)
@@ -1231,7 +1231,7 @@ static void view_text(const char* path)
             c &= 0x7F;
             if (c == 13 || c == 10) { ++row; col = 0; if (row < TEXT_ROWS) gotoxy(0, row); continue; }
             if (c < 32) c = '.';
-            if (col == 80) { ++row; col = 0; if (row >= TEXT_ROWS) { --row; --vpos; break; } gotoxy(0, row); }   /* le caractere ouvrira la page suivante */
+            if (col == 80) { ++row; col = 0; if (row >= TEXT_ROWS) { --row; --vpos; break; } gotoxy(0, row); }   /* the character will open the next page */
             cputc((char)c);
             ++col;
         }
@@ -1261,22 +1261,22 @@ void __fastcall__ text_entry(const struct A2fcApi* a)
 #pragma code-name (pop)
 
 /* ---------------------------------------------------------------------- */
-/* La surcouche BASLIST : lister un programme Applesoft, dans BASLIST.PLG. */
-/* `T` sur un BAS ($FC) la charge au lieu de la visionneuse de texte : au   */
-/* lieu de l'hexa des jetons, le listing detokenise. Elle relit le fichier  */
-/* par view_getc (resident) et pagine comme la visionneuse de texte, en     */
-/* retenant le debut de chaque page dans text_starts. Pas de tampon : elle  */
-/* reste une petite surcouche.                                              */
+/* The BASLIST overlay: listing an Applesoft program, in BASLIST.PLG.     */
+/* `T` on a BAS ($FC) loads it instead of the text viewer: instead of the */
+/* hex of the tokens, the detokenised listing. It reads the file back     */
+/* through view_getc (resident) and pages the way the text viewer does,   */
+/* remembering the start of each page in text_starts. No buffer: it stays */
+/* a small overlay.                                                       */
 /* ---------------------------------------------------------------------- */
 #pragma code-name (push, "BASLIST")
 #pragma rodata-name (push, "BASLISTRO")
 #pragma static-locals (push, off)
 
-/* Les 107 mots Applesoft ($80-$EA), separes par des zeros. Tableau NOMME
- * (const char[]), pas des litteraux "..." : cc65 regroupe les litteraux dans
- * RODATA (fenetre principale pleine), un tableau nomme suit le segment de la
- * surcouche -- BASLISTRO, ce qui fait de BASLIST une grande surcouche
- * (1,4 Ko) : la carte langage, pleine, ne pouvait plus l'heberger. */
+/* The 107 Applesoft keywords ($80-$EA), separated by zeros. A NAMED array
+ * (const char[]), not "..." literals: cc65 gathers literals into RODATA
+ * (main window full), a named array follows the overlay's segment --
+ * BASLISTRO, which makes BASLIST a big overlay (1.4 KB): the language card,
+ * full, could no longer host it. */
 static const char BAS_TOK[] =
     "END\0FOR\0NEXT\0DATA\0INPUT\0DEL\0DIM\0READ\0GR\0TEXT\0PR#\0IN#\0CALL\0"
     "PLOT\0HLIN\0VLIN\0HGR2\0HGR\0HCOLOR=\0HPLOT\0DRAW\0XDRAW\0HTAB\0HOME\0"
@@ -1295,11 +1295,11 @@ static const char* bas_token(unsigned char n)
     return s;
 }
 
-#define bl_row input[0]      /* 2 octets du tampon resident input[] : LOWBSS est plein */
+#define bl_row input[0]      /* 2 bytes of the resident input[] buffer: LOWBSS is full */
 #define bl_col input[1]
 
-/* Un caractere a l'ecran, coupe a 80 colonnes, 22 lignes ; au-dela on cesse
- * d'ecrire mais on continue de consommer le fichier. CR passe a la ligne. */
+/* One character on screen, cut at 80 columns, 22 rows; beyond that we stop
+ * writing but keep consuming the file. CR moves to the next line. */
 static void bl_putc(char c)
 {
     if (bl_row >= TEXT_ROWS) return;
@@ -1327,22 +1327,22 @@ void __fastcall__ baslist_entry(const struct A2fcApi* a)
         clrscr();
         bl_row = 0; bl_col = 0; done = 0;
         while (bl_row < TEXT_ROWS) {
-            lo = view_getc(); hi = view_getc();      /* le pointeur de ligne suivante */
+            lo = view_getc(); hi = view_getc();      /* the next-line pointer */
             if (lo < 0 || (lo == 0 && hi == 0)) { done = 1; break; }
             num = (unsigned int)view_getc();
-            num |= (unsigned int)view_getc() << 8;    /* le numero de ligne */
+            num |= (unsigned int)view_getc() << 8;    /* the line number */
             sprintf(buf, "%u ", num);
             bl_puts(buf);
             for (;;) {
                 t = view_getc();
-                if (t <= 0) break;                    /* $00 finit la ligne (ou EOF) */
+                if (t <= 0) break;                    /* $00 ends the line (or EOF) */
                 if (t >= 0x80 && t <= 0xEA) { bl_putc(' '); bl_puts(bas_token((unsigned char)(t - 0x80))); bl_putc(' '); }
                 else bl_putc((char)(t & 0x7F));
             }
             bl_putc(13);
         }
         if (!done && page + 1 < TEXT_PAGES && known == page + 1) {
-            text_starts[page + 1] = vbase + vpos;     /* le debut de la page suivante */
+            text_starts[page + 1] = vbase + vpos;     /* the start of the next page */
             known = page + 2;
         }
         bar_begin();
@@ -1362,15 +1362,15 @@ void __fastcall__ baslist_entry(const struct A2fcApi* a)
 #pragma code-name (pop)
 
 /* ---------------------------------------------------------------------- */
-/* La surcouche AWP : un document AppleWorks (traitement de texte, type    */
-/* $1A) lu page par page, dans A2FILE/AWP.PLG. Entree ou T sur un AWP, ou   */
-/* le menu !. Le format : 300 octets d'en-tete (SFMinVers en +183 : a       */
-/* partir de 30, deux octets de plus), puis des enregistrements de deux     */
-/* octets d'en-tete : $D0 en second = un retour chariot seul, > $D0 = une   */
-/* commande de mise en page (sautee), $FF $FF = la fin, sinon le premier    */
-/* octet compte les octets d'une ligne de texte : position du curseur et    */
-/* drapeaux ($FF = une regle, sautee), puis les caracteres, ou les codes    */
-/* sous $20 sont des enrichissements (ignores) et des tabulations.         */
+/* The AWP overlay: an AppleWorks document (word processor, type $1A)     */
+/* read page by page, in A2FILE/AWP.PLG. Return or T on an AWP, or the    */
+/* ! menu. The format: 300 header bytes (SFMinVers at +183: from 30 on,   */
+/* two more bytes), then records with a two-byte header: $D0 as second    */
+/* byte = a lone carriage return, > $D0 = a page-layout command (skipped) */
+/* $FF $FF = the end, otherwise the first byte counts the bytes of a line */
+/* of text: cursor position and flags ($FF = a ruler, skipped), then the  */
+/* characters, where the codes below $20 are formatting attributes        */
+/* (ignored) and tabs.                                                    */
 /* ---------------------------------------------------------------------- */
 #pragma code-name (push, "AWP")
 #pragma rodata-name (push, "AWPRO")
@@ -1410,19 +1410,19 @@ void __fastcall__ awp_entry(const struct A2fcApi* a)
         while (aw_row < TEXT_ROWS) {
             c = view_getc(); kind = view_getc();
             if (c < 0 || kind < 0 || kind == 0xFF) { done = 1; break; }
-            if (kind == 0xD0) { aw_putc(13); continue; }       /* un retour chariot seul */
-            if (kind > 0xD0) continue;                          /* une commande de mise en page */
+            if (kind == 0xD0) { aw_putc(13); continue; }       /* a lone carriage return */
+            if (kind > 0xD0) continue;                          /* a page-layout command */
             len = (unsigned char)c;
             if (len < 2) { done = 1; break; }
-            c = view_getc(); view_getc();                       /* position, puis compte et drapeau CR */
+            c = view_getc(); view_getc();                       /* position, then count and CR flag */
             len -= 2;
-            if (c == 0xFF) { while (len--) view_getc(); continue; }   /* une regle */
+            if (c == 0xFF) { while (len--) view_getc(); continue; }   /* a ruler */
             while (len--) {
                 c = view_getc();
                 if (c < 0) { done = 1; break; }
                 if (c >= 0x20 && c < 0x7F) aw_putc((char)c);
-                else if (c == 0x16 || c == 0x17) do aw_putc(' '); while (aw_col & 7);   /* tabulation */
-                else if (c == 0x0B) aw_putc(' ');                                      /* espace insecable */
+                else if (c == 0x16 || c == 0x17) do aw_putc(' '); while (aw_col & 7);   /* tab */
+                else if (c == 0x0B) aw_putc(' ');                                      /* non-breaking space */
             }
             aw_putc(13);
         }
@@ -1447,10 +1447,10 @@ void __fastcall__ awp_entry(const struct A2fcApi* a)
 #pragma code-name (pop)
 
 /* ---------------------------------------------------------------------- */
-/* La surcouche COMPARE : le fichier selectionne et celui de meme nom dans  */
-/* l'autre panneau, octet par octet, dans A2FILE/COMPARE.PLG. Lancee par le */
-/* menu ! (M ne compare que les tailles). Deux moities du tampon de copie   */
-/* resident, pas de reserve : petite surcouche.                             */
+/* The COMPARE overlay: the selected file and the one of the same name in */
+/* the other panel, byte by byte, in A2FILE/COMPARE.PLG. Run from the !   */
+/* menu (M only compares sizes). Two halves of the resident copy buffer,  */
+/* no reserve: a small overlay.                                           */
 /* ---------------------------------------------------------------------- */
 #pragma code-name (push, "COMPARE")
 #pragma rodata-name (push, "COMPARERO")
@@ -1501,11 +1501,11 @@ void __fastcall__ compare_entry(const struct A2fcApi* a)
 #pragma code-name (pop)
 
 /* ---------------------------------------------------------------------- */
-/* La surcouche SEARCH : un texte cherche dans les fichiers du panneau, ceux */
-/* qui le contiennent sont marques, dans A2FILE/SEARCH.PLG. Lancee par le    */
-/* menu !. Recherche insensible a la casse ; le texte est un nom ProDOS      */
-/* (prompt resident : lettres, chiffres, points), ce qui couvre les mots-    */
-/* cles et les noms. Une fenetre glissante gere les bords de bloc.           */
+/* The SEARCH overlay: a text searched for in the panel's files, those    */
+/* that contain it get tagged, in A2FILE/SEARCH.PLG. Run from the ! menu. */
+/* The search is case-insensitive; the text is a ProDOS name (resident    */
+/* prompt: letters, digits, periods), which covers keywords and names. A  */
+/* sliding window handles the block edges.                                */
 /* ---------------------------------------------------------------------- */
 #pragma code-name (push, "SEARCH")
 #pragma rodata-name (push, "SEARCHRO")
@@ -1515,9 +1515,9 @@ static const char srch_label[] = "Search for";
 static const char srch_none[]  = "No file in this panel.";
 static const char srch_res[]   = "%u file(s) contain \"%s\", now tagged.";
 
-/* fread (deja resident) plutot que fgetc (qui se lierait dans la fenetre
- * principale, pleine) : un bloc dans copy_buf, une fenetre glissante de plen
- * octets par-dessus, insensible a la casse. */
+/* fread (already resident) rather than fgetc (which would link into the main
+ * window, which is full): one block in copy_buf, a sliding window of plen
+ * bytes over it, case-insensitive. */
 static unsigned char file_has(const char* path, const char* pat, unsigned char plen)
 {
     FILE* f = fopen(path, "rb");
@@ -1548,7 +1548,7 @@ void __fastcall__ search_entry(const struct A2fcApi* a)
     unsigned char plen, i, found = 0;
     (void)a;
     if (!pan->count) { message(srch_none); return; }
-    if (!prompt(srch_label, 0, 0)) return;          /* input : le texte, en majuscules */
+    if (!prompt(srch_label, 0, 0)) return;          /* input: the text, in upper case */
     plen = strlen(input);
     if (!plen || plen > 15) return;
     for (i = 0; i < pan->count; ++i) {
@@ -1564,11 +1564,11 @@ void __fastcall__ search_entry(const struct A2fcApi* a)
 #pragma code-name (pop)
 
 /* ---------------------------------------------------------------------- */
-/* La surcouche BINARY2 : extraire une archive Binary II (.BNY), dans        */
-/* A2FILE/BINARY2.PLG. Lancee par le menu !. Chaque fichier : un en-tete de  */
-/* 128 octets (magie 0A 47 4C), les donnees (EOF octets) completees au       */
-/* multiple de 128. Pas de compression : on recopie. tools/mkbny.py ecrit et */
-/* relit le meme format.                                                     */
+/* The BINARY2 overlay: extract a Binary II archive (.BNY), in            */
+/* A2FILE/BINARY2.PLG. Run from the ! menu. Each file: a 128-byte header  */
+/* (magic 0A 47 4C), the data (EOF bytes) padded to a multiple of 128. No */
+/* compression: a plain copy. tools/mkbny.py writes and reads back the    */
+/* same format.                                                           */
 /* ---------------------------------------------------------------------- */
 #pragma code-name (push, "BINARY2")
 #pragma rodata-name (push, "BINARY2RO")
@@ -1580,8 +1580,8 @@ static const char b2_bad[]   = "Not a Binary II archive.";
 static const char b2_path[]  = "%s/%s";
 static const char b2_done[]  = "%u file(s) extracted.";
 
-/* Un nom ProDOS a partir de celui de l'archive : lettres, chiffres et
- * points, une lettre en tete, 15 au plus. */
+/* A ProDOS name out of the one in the archive: letters, digits and
+ * periods, a letter first, 15 at most. */
 static void b2_name(const unsigned char* src, unsigned char len, char* out)
 {
     unsigned char i, n = 0, start = 0;
@@ -1598,10 +1598,10 @@ static void b2_name(const unsigned char* src, unsigned char len, char* out)
     out[n] = 0;
 }
 
-/* Petite surcouche, message() suffit ; grande (ARCH=6502, ou elle deborde
- * la fenetre : A2FC_BIG_BINARY2 avec le drapeau de l'en-tete), overlay_run
- * relit les panneaux au retour et effacerait le message : c'est note qu'il
- * affiche ensuite. */
+/* Small overlay, message() is enough; big (ARCH=6502, where it overflows
+ * the window: A2FC_BIG_BINARY2 with the header flag), overlay_run reloads
+ * the panels on return and would erase the message: so it goes into note,
+ * which it displays afterwards. */
 #ifdef A2FC_BIG_BINARY2
 #define b2_say(m) strcpy(note, m)
 #else
@@ -1628,14 +1628,14 @@ void __fastcall__ binary2_entry(const struct A2fcApi* a)
             if (!done) { b2_say(b2_bad); fclose(in); return; }
             break;
         }
-        /* EOF sur 3 octets ($14-$16), le nom en $17/$18, "a suivre" en $7F.
-         * Tout est lu de l'en-tete AVANT la boucle de copie, qui recouvre
-         * copy_buf. Le bourrage au multiple de 128 se calcule ici. */
+        /* EOF on 3 bytes ($14-$16), the name at $17/$18, "more follows" at $7F.
+         * All of the header is read BEFORE the copy loop, which overwrites
+         * copy_buf. The padding to a multiple of 128 is computed here. */
         eof = (unsigned long)copy_buf[0x14] | ((unsigned long)copy_buf[0x15] << 8)
-              | ((unsigned long)copy_buf[0x16] << 16);   /* EOF sur 3 octets, $14-$16 */
+              | ((unsigned long)copy_buf[0x16] << 16);   /* EOF on 3 bytes, $14-$16 */
         pad = (128 - (eof & 127)) & 127;
-        more = copy_buf[0x7F] != 0;                       /* "a suivre" en $7F */
-        b2_name(copy_buf + 0x18, copy_buf[0x17], name);   /* nom : longueur $17, texte $18 */
+        more = copy_buf[0x7F] != 0;                       /* "more follows" at $7F */
+        b2_name(copy_buf + 0x18, copy_buf[0x17], name);   /* name: length at $17, text at $18 */
         _filetype = copy_buf[4];
         _auxtype = copy_buf[5] | (copy_buf[6] << 8);
         sprintf(other_full, b2_path, oth->path, name);
@@ -1654,7 +1654,7 @@ void __fastcall__ binary2_entry(const struct A2fcApi* a)
     }
     fclose(in);
 #ifndef A2FC_BIG_BINARY2
-    refresh_both();                    /* l'autre panneau montre ce qui vient d'arriver (grande : overlay_run le fait) */
+    refresh_both();                    /* the other panel shows what just arrived (big: overlay_run does it) */
 #endif
     sprintf(question, b2_done, done);
     b2_say(question);
@@ -1666,7 +1666,7 @@ void __fastcall__ binary2_entry(const struct A2fcApi* a)
 #define HEX_ROWS 20
 #define HEX_PAGE (HEX_ROWS * 16)
 
-/* La surcouche HEX : la visionneuse hexadecimale, dans A2FILE/HEX.PLG. */
+/* The HEX overlay: the hex viewer, in A2FILE/HEX.PLG. */
 #pragma code-name (push, "HEX")
 #pragma rodata-name (push, "HEXRO")
 static void view_hex(const char* path, unsigned long size)
@@ -1716,10 +1716,10 @@ void __fastcall__ hex_entry(const struct A2fcApi* a)
 #pragma code-name (pop)
 
 /* ---------------------------------------------------------------------- */
-/* Preferences : A2FILE/A2FILE.CFG -- dans la carte langage                 */
+/* Preferences: A2FILE/A2FILE.CFG -- in the language card                 */
 /* ---------------------------------------------------------------------- */
 
-/* Trois lignes CR : panneau gauche, panneau droit, "S<tri>A<actif>". */
+/* Three CR-terminated lines: left panel, right panel, "S<sort>A<active>". */
 static void save_config(void)
 {
     FILE* f;
@@ -1761,49 +1761,49 @@ static void load_config(void)
 /* Image                                                                  */
 /* ---------------------------------------------------------------------- */
 
-/* Les formats d'image reconnus, d'apres les huit premiers octets et la
- * taille : une page HGR brute (8 192 ou 8 184 octets), une page DHGR brute
- * (16 384 : AUX puis MAIN, l'ordre des fichiers A2FC et du jeu), un flux
- * HGRR v1 (RLE, 8 192 decompresses) ou DHRR v1 (RLE, 16 384). */
+/* The image formats recognised, from the first eight bytes and the size:
+ * a raw HGR page (8,192 or 8,184 bytes), a raw DHGR page (16,384: AUX then
+ * MAIN, the file order of A2FC and of the game), an HGRR v1 stream (RLE,
+ * 8,192 decompressed) or a DHRR v1 stream (RLE, 16,384). */
 enum { IMG_NONE, IMG_HGR, IMG_DHGR, IMG_HGRR, IMG_DHRR };
 static const char* const IMG_NAMES[] = { "not an image", "HGR raw", "DHGR raw", "HGR RLE", "DHGR RLE" };
 static const unsigned long IMG_BYTES[] = { 0, 8192, 16384, 8192, 16384 };
 static unsigned char img_kind;
-static unsigned char aux_dirty;    /* une image a ecrit en AUX : /RAM est a refaire */
+static unsigned char aux_dirty;    /* an image wrote to AUX: /RAM must be rebuilt */
 static const char* ram_note;
 static const char RAM_NOTE[] = "  /RAM was rebuilt empty.";
 
 #define HGR_MAIN ((unsigned char*)0x2000)
-#define OVERLAY ((unsigned char*)0x1B00)   /* la fenetre de surcouche, voir a2fc.cfg */
+#define OVERLAY ((unsigned char*)0x1B00)   /* the overlay window, see a2fc.cfg */
 
-/* HGR simple, page 1, sans le mode double : 80COL et DHIRES coupes.
- * TXTCLR ($C050) en DERNIER : allumer le graphique avant d'avoir arme HIRES
- * montre la page texte relue en basse resolution -- un damier de couleurs le
- * temps de deux ecritures, juste assez pour une trame sur un moniteur lent.
+/* Plain HGR, page 1, without double mode: 80COL and DHIRES off.
+ * TXTCLR ($C050) LAST: turning graphics on before HIRES is armed shows the
+ * text page read back in low resolution -- a checkerboard of colours for the
+ * duration of two writes, just enough for one frame on a slow monitor.
  *
- * Une carte RGB (Le Chat Mauve, Video-7) tient un verrou de deux bits
- * cadence par le front $C05E -> $C05F, sa donnee etant 80COL : poser AN3
- * haut pour l'HGR simple le cadence donc, qu'on le veuille ou non. En
- * coupant 80COL AVANT ce front, on lui poussait un zero a chaque image --
- * deux HGR de suite et le verrou tombait sur BW560, un mode que le
- * programme n'a jamais demande. On le cadence donc avec des uns, deux
- * fois, ce qui le laisse sur COL140, son etat d'allumage ; 80COL retombe
- * ensuite, l'HGR simple se lisant en 40 colonnes. Sans carte RGB ces
- * ecritures ne changent rien : ce sont les memes bascules qu'avant. */
+ * An RGB card (Le Chat Mauve, Video-7) holds a two-bit latch clocked by the
+ * $C05E -> $C05F edge, its data being 80COL: raising AN3 for plain HGR
+ * therefore clocks it, whether we want it or not. By turning 80COL off
+ * BEFORE that edge, we pushed a zero into it on every image -- two HGRs in
+ * a row and the latch fell to BW560, a mode the program never asked for. So
+ * we clock it with ones, twice, which leaves it on COL140, its power-on
+ * state; 80COL then drops again, plain HGR being read in 40 columns. Without
+ * an RGB card these writes change nothing: they are the same soft switches
+ * as before. */
 static void show_hgr(void)
 {
     *(unsigned char*)0xC000 = 0;                              /* 80STORE off */
-    *(unsigned char*)0xC00D = 0;                              /* 80COL on : la donnee du verrou */
-    *(unsigned char*)0xC05E = 0; *(unsigned char*)0xC05F = 0; /* un front, donnee 1 */
-    *(unsigned char*)0xC05E = 0; *(unsigned char*)0xC05F = 0; /* deux : COL140, AN3 haut */
+    *(unsigned char*)0xC00D = 0;                              /* 80COL on: the latch data */
+    *(unsigned char*)0xC05E = 0; *(unsigned char*)0xC05F = 0; /* one edge, data 1 */
+    *(unsigned char*)0xC05E = 0; *(unsigned char*)0xC05F = 0; /* two: COL140, AN3 high */
     *(unsigned char*)0xC00C = 0;                              /* 80COL off */
     *(unsigned char*)0xC057 = 0; *(unsigned char*)0xC054 = 0; *(unsigned char*)0xC052 = 0;
     *(unsigned char*)0xC050 = 0;
 }
 
-/* Le chemin d'un fichier range a cote du programme : "/VOL/A2FILE/name",
- * dans other_full, d'apres celui de la configuration. Vide si le programme
- * ne sait pas d'ou il vient. */
+/* The path of a file stored next to the program: "/VOL/A2FILE/name", in
+ * other_full, derived from the configuration's. Empty if the program does
+ * not know where it came from. */
 static void a2file_file(const char* name)
 {
     char* slash = strrchr(cfg_path, '/');
@@ -1813,16 +1813,16 @@ static void a2file_file(const char* name)
     strcpy(other_full + (slash + 1 - cfg_path), name);
 }
 
-/* Charge la surcouche `name` -- A2FILE/NAME.PLG, un fichier BIN lie avec le
- * programme -- dans la fenetre $1B00, si elle n'y est pas deja : feuilleter
- * un dossier d'images ne relit rien. Ses huit premiers octets sont l'en-tete
- * decrit dans a2fc_plugin.h : le mot de signature est l'adresse de main dans
- * le lien qui l'a produite (overlay.s), ou PLUGIN_MAGIC pour une surcouche
- * d'un tiers, que seul `any` accepte (le menu des surcouches) ; un fichier
- * d'une autre construction est refuse, comme un fichier absent, et la ligne
- * de message le dit. Une grande surcouche (OVERLAY_BIG) prend aussi la page
- * graphique : les marques sont mises de cote avant de l'ecraser, et c'est
- * overlay_run qui relit les panneaux au retour. Rend 0 si rien n'est charge. */
+/* Loads the overlay `name` -- A2FILE/NAME.PLG, a BIN file linked with the
+ * program -- into the $1B00 window, unless it is already there: leafing
+ * through a directory of images rereads nothing. Its first eight bytes are
+ * the header described in a2fc_plugin.h: the signature word is the address
+ * of main in the link that produced it (overlay.s), or PLUGIN_MAGIC for a
+ * third-party overlay, which only `any` accepts (the overlay menu); a file
+ * from another build is refused, like a missing file, and the message line
+ * says so. A big overlay (OVERLAY_BIG) also takes the graphics page: the
+ * tags are set aside before overwriting it, and overlay_run rereads the
+ * panels on return. Returns 0 if nothing is loaded. */
 #define OVL ((struct Overlay*)OVERLAY_WINDOW)
 static unsigned char load_overlay(const char* name, unsigned char any)
 {
@@ -1852,30 +1852,30 @@ static unsigned char load_overlay(const char* name, unsigned char any)
 }
 #define overlay(name) load_overlay(name, 0)
 
-/* Lance la surcouche `name` par son point d'entree, avec `arg` (la touche
- * qui l'appelle, 0 depuis le menu) dans la table de services. Une grande
- * surcouche rend la main sur une page graphique a elle : l'ecran revient au
- * texte, les deux panneaux sont relus, les marques rendues, le nom qu'elle a
- * laisse dans `reselect` retrouve, tout redessine, et son `note` ecrit en
- * ligne 22. */
+/* Runs the overlay `name` through its entry point, with `arg` (the key
+ * that invokes it, 0 from the menu) in the service table. A big overlay
+ * hands control back on a graphics page of its own: the screen returns to
+ * text, both panels are reread, the tags restored, the name it left in
+ * `reselect` found again, everything redrawn, and its `note` written on
+ * row 22. */
 static struct A2fcApi api;
 static void select_name(struct Panel* pan, const char* name);
 static void overlay_run(const char* name, unsigned char arg)
 {
     struct Panel* pan = &panels[active];
     unsigned char big;
-    /* L'entree sous le curseur et son chemin, mis a l'abri : une grande
-     * surcouche recouvre la table d'entrees en se chargeant. */
+    /* The entry under the cursor and its path, kept safe: a big overlay
+     * covers the entry table as it loads. */
     full[0] = 0;
     if (pan->count) { selected = pan->e[pan->cursor]; build_full(full, pan, &selected); }
     else selected.name[0] = 0;
     if (!load_overlay(name, 1)) return;
-    /* Une grande surcouche a deja mis les marques de cote et recouvert la
-     * table d'entrees en se chargeant (load_overlay) : meme sans point
-     * d'entree, il faut passer par la relecture des panneaux, sinon l'ecran
-     * garde la moitie haute de la surcouche a la place des entrees. Le point
-     * d'entree manquant ne peut venir que d'une surcouche d'un tiers malformee
-     * (PLUGIN_MAGIC sans entree). */
+    /* A big overlay has already set the tags aside and covered the entry
+     * table as it loaded (load_overlay): even without an entry point, the
+     * panels must be reread, otherwise the screen keeps the upper half of
+     * the overlay in place of the entries. A missing entry point can only
+     * come from a malformed third-party overlay (PLUGIN_MAGIC without an
+     * entry). */
     big = OVL->flags & OVERLAY_BIG;
     api.arg = arg;
     reselect[0] = 0;
@@ -1883,7 +1883,7 @@ static void overlay_run(const char* name, unsigned char arg)
     if (OVL->entry) OVL->entry(&api);
     else strcpy(note, "This overlay has no entry point.");
     if (big) {
-        overlay_loaded[0] = 0;   /* sa moitie haute est deja recouverte par les tables */
+        overlay_loaded[0] = 0;   /* its upper half is already covered by the tables */
         switch_to_text();
         read_panel(0);
         read_panel(1);
@@ -1895,48 +1895,48 @@ static void overlay_run(const char* name, unsigned char arg)
 }
 
 /* ---------------------------------------------------------------------- */
-/* La surcouche IMAGE : le chargeur et le decodeur, dans A2FILE/IMAGE.PLG */
+/* The IMAGE overlay: the loader and the decoder, in A2FILE/IMAGE.PLG     */
 /* ---------------------------------------------------------------------- */
 
-/* Tout ce qui suit jusqu'au pop est lie a part, dans la fenetre $1B00 :
- * de la RAM ordinaire, au meme prix que $4000, mais qui ne coute rien au
- * programme resident. Le noyau sait reconnaitre une image (looks_like_image)
- * et charger la surcouche ; il ne sait plus decoder. Les visionneuses de
- * texte et d'hexadecimal (TEXT, HEX), la suppression (DELETE) et l'aide
- * (HELP) sont d'autres surcouches, chacune marquee de la meme facon. */
+/* Everything from here to the pop is linked separately, into the $1B00
+ * window: ordinary RAM, at the same price as $4000, but which costs the
+ * resident program nothing. The core knows how to recognise an image
+ * (looks_like_image) and load the overlay; it no longer knows how to decode.
+ * The text and hex viewers (TEXT, HEX), deletion (DELETE) and help (HELP)
+ * are other overlays, each marked the same way. */
 #pragma code-name (push, "IMAGE")
 #pragma rodata-name (push, "IMAGERO")
 
-/* Aiguille les ecritures $2000-$3FFF vers AUX (80STORE + HIRES + PAGE2),
- * comme hgr_loader.s ; le MLI y ecrit alors aussi. */
+/* Routes writes to $2000-$3FFF to AUX (80STORE + HIRES + PAGE2), as
+ * hgr_loader.s does; the MLI then writes there too. */
 static void aux_writes(unsigned char on)
 {
     if (on) { *(unsigned char*)0xC002 = 0; *(unsigned char*)0xC004 = 0; *(unsigned char*)0xC057 = 0; *(unsigned char*)0xC001 = 0; *(unsigned char*)0xC055 = 0; }
     else { *(unsigned char*)0xC054 = 0; *(unsigned char*)0xC000 = 0; }
 }
 
-/* Un flux RLE v1 (HGRR ou DHRR) decompresse en $2000 : `bytes` octets, la
- * premiere moitie d'un DHRR vers AUX (par AUXMOVE, voir advance). Le
- * fichier est ouvert sur l'en-tete. Une repetition peut chevaucher la
- * frontiere des deux plans : l'ecriture se fait par morceaux, et le plan
- * bascule au passage de $4000. */
+/* An RLE v1 stream (HGRR or DHRR) decompressed to $2000: `bytes` bytes,
+ * the first half of a DHRR going to AUX (by AUXMOVE, see advance). The
+ * file is open on the header. A run may straddle the boundary between the
+ * two planes: it is written in pieces, and the plane switches on crossing
+ * $4000. */
 static unsigned int dn;
 static unsigned char dplane, dplanes;
 
-/* Avance de `n` octets ecrits ; bascule le plan a $4000. */
+/* Advances by `n` bytes written; switches plane at $4000. */
 static void advance(unsigned int n)
 {
     dn += n;
     if (dn == 8192) {
         dn = 0; ++dplane;
         if (dplane == 1 && dplanes == 2) {
-            /* Le premier plan d'un DHRR est celui de la banque auxiliaire :
-             * decode en banque principale, il y part par AUXMOVE, comme le
-             * plan brut. Le fichier n'est ainsi jamais lu sous un routage
-             * AUX de $2000-$3FFF (80STORE + PAGE2), routage qui deplace
-             * aussi $400-$7FF : sur le //c, le firmware SmartPort garde son
-             * etat dans les trous de la page texte, et une lecture faite
-             * sous ce routage ne revenait pas. */
+            /* The first plane of a DHRR is the auxiliary bank's: decoded in
+             * the main bank, it goes there by AUXMOVE, like the raw plane.
+             * The file is thus never read under an AUX routing of
+             * $2000-$3FFF (80STORE + PAGE2), a routing that also moves
+             * $400-$7FF: on the //c, the SmartPort firmware keeps its state
+             * in the holes of the text page, and a read done under that
+             * routing never came back. */
             aux_hgr_to_aux();
         }
     }
@@ -1965,7 +1965,7 @@ static unsigned char decode_rle(FILE* f, unsigned int bytes)
         } else {
             count = t + 1;
             while (count && dplane < dplanes) {
-                /* tampon vide : view_getc le recharge et prend un octet, rendu ici */
+                /* empty buffer: view_getc refills it and takes one byte, given back here */
                 if (vpos >= vlen) { if (view_getc() < 0) { count = 0xFFFF; break; } --vpos; }
                 chunk = vlen - vpos;
                 if (chunk > count) chunk = count;
@@ -1982,18 +1982,18 @@ static unsigned char decode_rle(FILE* f, unsigned int bytes)
     return dplane == dplanes;
 }
 
-/* Identifie et charge l'image `full` (l'entree `e`) en page 1. Rend le
- * format, IMG_NONE si le fichier n'en est pas une. */
+/* Identifies and loads the image `full` (entry `e`) into page 1. Returns
+ * the format, IMG_NONE if the file is not an image. */
 static unsigned char load_image(const struct Entry* e)
 {
     FILE* f;
     unsigned int size = page_size(&e->size) ? (unsigned int)e->size : 0;
     unsigned char kind = IMG_NONE, ok = 0;
-    /* Le firmware 80 colonnes laisse 80STORE arme et se sert de PAGE2 pour
-     * atteindre la banque auxiliaire. Avec HIRES encore actif (une image
-     * precedente), $2000-$3FFF suivrait ce routage et la lecture partirait
-     * en AUX : ecran fige sur l'ancienne image, ou moitie d'image. On part
-     * donc toujours d'un routage MAIN connu. */
+    /* The 80-column firmware leaves 80STORE armed and uses PAGE2 to reach
+     * the auxiliary bank. With HIRES still active (a previous image),
+     * $2000-$3FFF would follow that routing and the read would go to AUX:
+     * screen frozen on the old image, or half an image. So we always start
+     * from a known MAIN routing. */
     aux_writes(0);
     f = fopen(full, "rb");
     if (!f) return IMG_NONE;
@@ -2007,13 +2007,13 @@ static unsigned char load_image(const struct Entry* e)
     else if (kind == IMG_HGRR) ok = decode_rle(f, 8192);
     else if (kind == IMG_HGR) { rewind(f); ok = fread(HGR_MAIN, 1, 8192, f) >= 8184; }
     else if (kind == IMG_DHGR) {
-        /* Le plan auxiliaire se lit en $2000 principal, puis part en AUX par
-         * AUXMOVE (aux_hgr_to_aux), pas par un MLI qui ecrirait lui-meme
-         * dans une fenetre routee vers AUX : ProDOS ne promet ses appels
-         * qu'en memoire principale, et le tour du 80STORE, s'il marche sur
-         * bien des machines, n'est pas garanti -- la ou il echoue, l'image
-         * devenait "not an image". Le plan principal, lui, se lit ensuite
-         * tout droit : c'est de la memoire ordinaire. */
+        /* The auxiliary plane is read into main $2000, then goes to AUX by
+         * AUXMOVE (aux_hgr_to_aux), not by an MLI call that would itself
+         * write into a window routed to AUX: ProDOS only promises its calls
+         * in main memory, and the 80STORE trick, though it works on many
+         * machines, is not guaranteed -- where it failed, the image became
+         * "not an image". The main plane is then read straight in: that is
+         * ordinary memory. */
         aux_dirty = 1;
         rewind(f);
         ok = fread(HGR_MAIN, 1, 8192, f) == 8192;
@@ -2039,17 +2039,17 @@ static void loading(const char* name)
     cprintf("Loading %s...", name);
 }
 
-/* L'image du curseur, plein ecran, HGR ou DHGR selon ce que le fichier
- * contient. Gauche / Droite passent a l'image precedente / suivante du
- * meme dossier sans revenir aux panneaux : le dossier DHGR se feuillette
- * comme un album, et le curseur suit. Toute autre touche revient, et la
- * ligne de message dit le format reconnu.
+/* The image under the cursor, full screen, HGR or DHGR according to what
+ * the file holds. Left / Right move to the previous / next image of the
+ * same directory without going back to the panels: the DHGR directory is
+ * leafed through like an album, and the cursor follows. Any other key
+ * returns, and the message line says which format was recognised.
  *
- * L'ecran texte n'est jamais efface : les panneaux restent en $400-$7FF
- * pendant tout le feuilletage, et seul ce qui change est reecrit -- les
- * deux lignes du curseur, la ligne d'information, la ligne de message. Au
- * retour, un panneau n'est redessine que si sa relecture montre autre
- * chose qu'a l'entree (/RAM refait a neuf, disquette changee). */
+ * The text screen is never cleared: the panels stay in $400-$7FF for the
+ * whole browsing session, and only what changes is rewritten -- the two
+ * cursor lines, the info line, the message line. On return, a panel is
+ * redrawn only if rereading it shows something other than on entry (/RAM
+ * rebuilt from scratch, floppy changed). */
 static void view_image(void)
 {
     struct Panel* pan = &panels[active];
@@ -2057,9 +2057,9 @@ static void view_image(void)
     char key;
     if (!overlay("IMAGE")) return;
     aux_dirty = 0;
-    /* L'image recouvre les tables d'entrees : les marques sont mises de
-     * cote, les panneaux relus au retour, et le panneau actif avant chaque
-     * image suivante pour y retrouver la voisine. */
+    /* The image covers the entry tables: the tags are set aside, the panels
+     * reread on return, and the active panel before each next image so as
+     * to find the neighbour there. */
     keep_tags(1);
     for (p = 0; p < 2; ++p) seen[p] = panel_hash(&panels[p]);
     a2fc_view = 1;
@@ -2068,10 +2068,10 @@ static void view_image(void)
         full[0] = 0;
         if (!build_full(full, pan, &pan->e[index])) break;
         strcpy(input, pan->e[index].name);
-        /* Les voisines qui ressemblent a une image, de chaque cote : leurs
-         * noms survivent a l'image qui va recouvrir la table. Une fleche
-         * sait ainsi, sans relire le dossier, si elle a quelque part ou
-         * aller, et annonce la suivante avant meme de la chercher. */
+        /* The neighbours that look like an image, on each side: their names
+         * survive the image that is about to cover the table. An arrow thus
+         * knows, without rereading the directory, whether it has somewhere
+         * to go, and announces the next one before even looking for it. */
         for (dir = 0; dir < 2; ++dir) {
             album[dir][0] = 0;
             next = index;
@@ -2081,49 +2081,49 @@ static void view_image(void)
                 if (looks_like_image(&pan->e[next])) { strcpy(album[dir], pan->e[next].name); break; }
             }
         }
-        /* RIEN ne doit ecrire dans $2000-$3FFF pendant que la page graphique
-         * est a l'antenne : on y voyait sinon l'image precedente se faire
-         * ronger par la table d'entrees, puis la nouvelle se peindre bande
-         * par bande (et, en DHGR, le plan AUX avant le plan MAIN). L'ecran
-         * est donc au texte -- les panneaux, intacts en $400-$7FF -- le
-         * temps du decodage, et l'image ne s'allume qu'une fois complete. */
+        /* NOTHING may write to $2000-$3FFF while the graphics page is on
+         * the air: otherwise we saw the previous image being eaten away by
+         * the entry table, then the new one painted band by band (and, in
+         * DHGR, the AUX plane before the MAIN plane). So the screen stays
+         * on text -- the panels, intact in $400-$7FF -- for the duration of
+         * the decoding, and the image lights up only once complete. */
         img_kind = load_image(&pan->e[index]);
         if (img_kind == IMG_NONE) break;
         if (img_kind == IMG_HGR || img_kind == IMG_HGRR) show_hgr();
         else switch_to_hgr();
-        /* Une fleche sans voisine de son cote ne fait rien : l'image reste. */
+        /* An arrow with no neighbour on its side does nothing: the image stays. */
         do key = cgetc(); while ((key == KEY_LEFT || key == KEY_RIGHT) && !album[key == KEY_RIGHT][0]);
         if (key != KEY_LEFT && key != KEY_RIGHT) break;
         dir = key == KEY_RIGHT;
-        /* Retour au texte avant que read_panel ne reecrive la table
-         * d'entrees, donc la page graphique ; le nom de la voisine s'affiche
-         * pendant qu'on la cherche, le curseur la rejoint des qu'elle est la. */
+        /* Back to text before read_panel rewrites the entry table, hence the
+         * graphics page; the neighbour's name is shown while it is looked
+         * for, and the cursor joins it as soon as it is there. */
         switch_to_text();
         loading(album[dir]);
         read_panel(active);
         keep_tags(0);
         for (next = 0; next < pan->count && strcmp(pan->e[next].name, album[dir]); ++next) {}
-        if (next >= pan->count) break;   /* le dossier a change sous nos pieds */
+        if (next >= pan->count) break;   /* the directory changed under our feet */
         land(next);
         index = next;
     }
     switch_to_text();
     a2fc_view = 0;
-    /* Le prix du DHGR : sa moitie auxiliaire ($2000-$3FFF en banque AUX) est
-     * de la memoire que le disque virtuel de ProDOS utilise -- 18 blocs,
-     * mesures au banc, et c'est justement la que commencent les donnees d'un
-     * fichier ecrit sur /RAM. Ils sont perdus, le volume est donc faux : la
-     * prochaine ecriture rendrait n'importe quoi. On le refait a neuf par son
-     * propre pilote, ce qui rend un volume vide et coherent, et on le dit --
-     * des qu'un chargement DHGR a ECRIT en AUX, qu'il ait abouti ou non
-     * (un fichier tronque a deja fait le degat), meme si la derniere image
-     * etait une HGR. Une image HGR simple n'ecrit qu'en banque principale
-     * et ne declenche rien. */
+    /* The price of DHGR: its auxiliary half ($2000-$3FFF in the AUX bank) is
+     * memory that the ProDOS virtual disk uses -- 18 blocks, measured on the
+     * bench, and that is exactly where the data of a file written to /RAM
+     * begins. They are lost, so the volume is wrong: the next write would
+     * return anything at all. We rebuild it from scratch through its own
+     * driver, which gives an empty and consistent volume, and we say so --
+     * as soon as a DHGR load has WRITTEN to AUX, whether it succeeded or not
+     * (a truncated file has already done the damage), even if the last image
+     * was an HGR. A plain HGR image only writes to the main bank and
+     * triggers nothing. */
     ram_note = aux_dirty && ram_format() ? RAM_NOTE : (const char*)"";
-    /* Les tables sont relues ; l'ecran, lui, n'a pas bouge, et un panneau
-     * qui montre la meme chose qu'a l'entree n'est pas redessine. read_panel
-     * ramene le curseur dans le panneau si celui-ci a retreci (dossier
-     * change sous nos pieds, /RAM refait a neuf sous celui qui s'y trouvait). */
+    /* The tables are reread; the screen, though, has not moved, and a panel
+     * that shows the same thing as on entry is not redrawn. read_panel
+     * brings the cursor back inside the panel if it has shrunk (directory
+     * changed under our feet, /RAM rebuilt under whoever was in it). */
     for (p = 0; p < 2; ++p) read_panel(p);
     keep_tags(0);
     for (p = 0; p < 2; ++p) if (panel_hash(&panels[p]) != seen[p]) draw_panel(p);
@@ -2137,7 +2137,7 @@ static void view_image(void)
 }
 
 /* ---------------------------------------------------------------------- */
-/* Editeur de texte -- la grande surcouche EDIT, dans A2FILE/EDIT.PLG      */
+/* Text editor -- the big EDIT overlay, in A2FILE/EDIT.PLG                */
 /* ---------------------------------------------------------------------- */
 #pragma code-name (push, "EDIT")
 #pragma rodata-name (push, "EDITRO")
@@ -2149,12 +2149,12 @@ static const char ed_nodir[]   = "Open a directory first.";
 static const char ed_exists[]  = "File exists: select it to edit.";
 static const char ed_toobig[]  = "Too big for the editor (6 KB).";
 
-/* Le texte vit dans la page HGR MAIN, au-dessus du code de la surcouche
- * ($2800-$3FEF : 6 Ko), fins de ligne CR, bit 7 ote au chargement.
- * Le curseur est un decalage dans le tampon ; l'ecran montre 22 lignes a
- * partir de `etop`, debut d'une ligne, sans repli des lignes longues. */
+/* The text lives in the HGR MAIN page, above the overlay's code
+ * ($2800-$3FEF: 6 KB), CR line endings, bit 7 stripped on loading.
+ * The cursor is an offset into the buffer; the screen shows 22 lines from
+ * `etop`, the start of a line, with no wrapping of long lines. */
 #define EDIT_ROWS 22
-static unsigned int elen, ecur, etop, ewant, eblocks;   /* eblocks : ceux du fichier avant l'edition */
+static unsigned int elen, ecur, etop, ewant, eblocks;   /* eblocks: those of the file before editing */
 static unsigned char edirty, etype;
 static unsigned int eaux;
 
@@ -2176,7 +2176,7 @@ static unsigned int next_line(unsigned int pos)
     return pos < elen ? pos + 1 : pos;
 }
 
-/* Redessine les lignes a partir de `from` (numero d'ecran). */
+/* Redraws the lines from `from` (screen row number) on. */
 static void edit_draw(unsigned char from)
 {
     unsigned int pos = etop;
@@ -2206,7 +2206,7 @@ static void edit_status(void)
     keys_bar(69, "ESC Menu");
 }
 
-/* Place le curseur a l'ecran ; fait defiler si la ligne n'est pas visible. */
+/* Places the cursor on screen; scrolls if the line is not visible. */
 static unsigned char edit_place(void)
 {
     unsigned int ls = line_start(ecur), pos;
@@ -2252,8 +2252,8 @@ static void edit_delete(void)
     edirty = 1;
 }
 
-/* fopen "wb" tronque le fichier avant d'ecrire (SET_EOF de cc65) : on
- * s'assure d'abord de la place, l'ancien contenu libere ses blocs. */
+/* fopen "wb" truncates the file before writing (cc65's SET_EOF): we make
+ * sure of the room first, the old contents free their blocks. */
 static unsigned char edit_save(void)
 {
     FILE* f;
@@ -2269,8 +2269,8 @@ static unsigned char edit_save(void)
     return 1;
 }
 
-/* E : edite le fichier `full` (type et auxtype conserves a l'ecriture), ou
- * un fichier neuf si `fresh`. Rend 1 si quelque chose a ete ecrit. */
+/* E: edits the file `full` (type and auxtype kept when writing), or a new
+ * file if `fresh`. Returns 1 if something was written. */
 static unsigned char edit_file(unsigned char fresh, unsigned char type, unsigned int aux)
 {
     FILE* f;
@@ -2284,7 +2284,7 @@ static unsigned char edit_file(unsigned char fresh, unsigned char type, unsigned
     if (!fresh) {
         f = fopen(full, "rb");
         if (!f) { strcpy(note, ed_openf); return 0xFF; }
-        elen = fread(EDIT_BUF, 1, EDIT_MAX, f);   /* la taille est verifiee par l'appelant */
+        elen = fread(EDIT_BUF, 1, EDIT_MAX, f);   /* the size is checked by the caller */
         fclose(f);
         for (i = 0; i < elen; ++i) { EDIT_BUF[i] &= 0x7F; if (EDIT_BUF[i] == '\n') EDIT_BUF[i] = '\r'; }
     }
@@ -2296,7 +2296,7 @@ static unsigned char edit_file(unsigned char fresh, unsigned char type, unsigned
     for (;;) {
         key = cgetc();
         ls = line_start(ecur);
-        row = 0xFF;                     /* 0xFF : rien a redessiner */
+        row = 0xFF;                     /* 0xFF: nothing to redraw */
         switch (key) {
         case KEY_LEFT: if (ecur) --ecur; ewant = ecur - line_start(ecur); break;
         case KEY_RIGHT: if (ecur < elen) ++ecur; ewant = ecur - line_start(ecur); break;
@@ -2315,7 +2315,7 @@ static unsigned char edit_file(unsigned char fresh, unsigned char type, unsigned
         case 4:                                               /* Ctrl-D */
             if (ecur < elen) { row = EDIT_BUF[ecur] == '\r' ? 0 : 1; edit_delete(); }
             break;
-        case KEY_RETURN: if (edit_insert('\r')) row = 2; ewant = 0; break;   /* 2 : depuis la ligne coupee */
+        case KEY_RETURN: if (edit_insert('\r')) row = 2; ewant = 0; break;   /* 2: from the split line */
         case KEY_TAB: for (i = 0; i < 4; ++i) edit_insert(' '); row = 1; ewant = ecur - ls; break;
         case KEY_ESC:
             bar_begin();
@@ -2329,8 +2329,8 @@ static unsigned char edit_file(unsigned char fresh, unsigned char type, unsigned
             if (key >= 32 && key < 127) { if (edit_insert(key)) row = 1; else message(ed_buffull); ewant = ecur - ls; }
             break;
         }
-        /* row 0/1 : redessiner depuis la ligne courante ; 2 : depuis la
-         * precedente, dont la fin vient de partir a la ligne. */
+        /* row 0/1: redraw from the current line; 2: from the previous
+         * one, whose end has just moved down to a new line. */
         if (row != 0xFF && !edit_place()) {
             unsigned int pos = etop; unsigned char r = 0;
             ls = line_start(row == 2 ? ecur - 1 : ecur);
@@ -2345,8 +2345,8 @@ leave:
     return written;
 }
 
-/* E : edite le fichier sous le curseur, ou un fichier neuf si c'est un
- * dossier ; le noyau relit les panneaux et remet le curseur sur `reselect`. */
+/* E: edits the file under the cursor, or a new file if it is a directory;
+ * the core rereads the panels and puts the cursor back on `reselect`. */
 void __fastcall__ edit_entry(const struct A2fcApi* a)
 {
     struct Panel* pan = &panels[active];
@@ -2364,15 +2364,15 @@ void __fastcall__ edit_entry(const struct A2fcApi* a)
     else if (e->size > (unsigned long)EDIT_MAX) { strcpy(note, ed_toobig); return; }
     strcpy(reselect, fresh ? input : e->name);
     eblocks = fresh ? 0 : e->blocks;
-    /* Les marques sont des index tries : un fichier nouveau les decale,
-     * elles sont oubliees dans ce cas. */
+    /* The tags are sorted indexes: a new file shifts them, so they are
+     * forgotten in that case. */
     if (edit_file(fresh, fresh ? 0x04 : e->type, fresh ? 0 : e->aux) == 1 && fresh) memset(picked, 0, sizeof picked);
 }
 #pragma rodata-name (pop)
 #pragma code-name (pop)
 
 /* ---------------------------------------------------------------------- */
-/* Musique Mockingboard                                                   */
+/* Mockingboard music                                                     */
 /* ---------------------------------------------------------------------- */
 
 #pragma code-name (push, "LC")
@@ -2385,31 +2385,31 @@ static unsigned char looks_like_music(const struct Entry* e)
 #pragma rodata-name (pop)
 #pragma code-name (pop)
 
-/* Entree sur un .MB : le flux MB1 est monte en AUX par le lecteur du jeu
- * (six voix, en interruption) et joue une fois pendant que l'on continue
- * de naviguer -- les lectures disque ne l'arretent pas, A2FC n'y touche
- * jamais ; P le met en pause, un autre .MB le remplace, Q et X le coupent.
- * La carte est cherchee a la premiere demande.
+/* Return on a .MB: the MB1 stream is loaded into AUX by the game's player
+ * (six voices, interrupt driven) and plays once while one keeps browsing
+ * -- disk reads do not stop it, A2FC never touches it; P pauses it,
+ * another .MB replaces it, Q and X cut it off. The card is looked for on
+ * the first request.
  *
- * Le flux vit en AUX $1000-$18FF, et cette memoire appartient au /RAM de
- * ProDOS : mesure dans l'emulateur, son pilote y range les blocs 9, 26,
- * 43... (un sur dix-sept), sa carte des blocs est en $0C00 et son
- * repertoire en $0E00. Il n'y a nulle part en AUX 2 304 octets hors de sa
- * portee. Une fois le flux monte, le volume est donc faux -- comme apres
- * une image DHGR -- et on le refait a neuf de la meme facon, en le disant.
- * Refait, il ne relit jamais les blocs libres : la musique joue sans
- * risque, tant qu'on n'ecrit pas sur /RAM pendant qu'elle joue (ce qui
- * abimerait le morceau, pas le volume). */
-/* La surcouche MUSIC, dans A2FILE/MUSIC.PLG : le chargement du flux ; le
- * lecteur (music.s) reste resident, la surcouche peut partir des que le
- * morceau joue. */
+ * The stream lives in AUX $1000-$18FF, and that memory belongs to the
+ * ProDOS /RAM: measured in the emulator, its driver stores blocks 9, 26,
+ * 43... there (one in seventeen), its block map is at $0C00 and its
+ * directory at $0E00. Nowhere in AUX are there 2,304 bytes out of its
+ * reach. Once the stream is loaded the volume is therefore corrupt -- as
+ * after a DHGR image -- and it is rebuilt from scratch the same way, and
+ * says so. Rebuilt, it never rereads the free blocks: the music plays
+ * safely, as long as nothing is written to /RAM while it plays (which
+ * would damage the tune, not the volume). */
+/* The MUSIC overlay, in A2FILE/MUSIC.PLG: loading the stream; the player
+ * (music.s) stays resident, the overlay can go away as soon as the tune
+ * plays. */
 #pragma code-name (push, "MUSIC")
 #pragma rodata-name (push, "MUSICRO")
 static const char mu_toobig[]  = "MB file too large (2304 bytes max).";
 static const char mu_notmb1[]  = "Not an MB1 stream.";
 static const char mu_playing[] = "Playing %s, slot %u. P pauses.%s";
-/* M : marque les fichiers absents de l'autre panneau ou de taille
- * differente ; S : le tri suivant. Surcouche, la RAM basse etant pleine. */
+/* M: tags the files missing from the other panel or of a different size;
+ * S: the next sort order. An overlay, the low RAM being full. */
 static void mark_differences(void)
 {
     struct Panel* pan = &panels[active];
@@ -2468,12 +2468,12 @@ void __fastcall__ music_entry(const struct A2fcApi* a)
         total += n;
     } while (n == MUSIC_STAGE);
     fclose(f);
-    if ((last & 0xF0) != 0xE0) valid = 0;   /* sans END, le lecteur lirait l'AUX au-dela */
+    if ((last & 0xF0) != 0xE0) valid = 0;   /* without END the player would read AUX past it */
     if (!valid) { message(mu_notmb1); return; }
-    /* Le flux vit sur des blocs de /RAM (AUX $1000+) : on le refait a neuf,
-     * comme au retour d'une image DHGR. ram_format se sert de la page $2000
-     * comme tampon, donc des tables d'entrees ; on garde le nom du fichier
-     * (e pointe dans la table) puis on relit et redessine les panneaux. */
+    /* The stream lives on /RAM blocks (AUX $1000+): it is rebuilt from
+     * scratch, as on return from a DHGR image. ram_format uses page $2000
+     * as a buffer, hence the entry tables; we keep the file name (e points
+     * into the table) then reread and redraw the panels. */
     strcpy(input, e->name);
     if (ram_format()) {
         keep_tags(1);
@@ -2502,15 +2502,15 @@ static void toggle_music(void)
 }
 
 /* ---------------------------------------------------------------------- */
-/* Aide                                                                   */
+/* Help                                                                   */
 /* ---------------------------------------------------------------------- */
 
-/* L'aide est lue dans A2FILE/A2FILE.HELP (a cote de A2FILE.CODE), une ligne
- * par element : "x,y,TOUCHE,libelle" pour un bouton, "x,y,#TITRE" pour un
- * titre de section, "x,y,~texte" pour du texte en clair ('=' et '-' sont
- * des touches). Le texte passe par
- * la page HGR, comme l'editeur : rien en memoire hors de l'aide. */
-/* La surcouche HELP : la page d'aide, dans A2FILE/HELP.PLG. */
+/* The help is read from A2FILE/A2FILE.HELP (next to A2FILE.CODE), one line
+ * per element: "x,y,KEY,label" for a button, "x,y,#TITLE" for a section
+ * title, "x,y,~text" for plain text ('=' and '-' are keys). The text goes
+ * through the HGR page, like the editor: nothing in memory
+ * besides the help. */
+/* The HELP overlay: the help page, in A2FILE/HELP.PLG. */
 #pragma code-name (push, "HELP")
 #pragma rodata-name (push, "HELPRO")
 static void view_help(void)
@@ -2535,7 +2535,7 @@ static void view_help(void)
         if (*s++ != ',' || x >= 80 || y >= 23) break;
         gotoxy(x, y);
         kind = *s;
-        if (kind == '#' || kind == '~') {         /* # titre de section, ~ texte en clair */
+        if (kind == '#' || kind == '~') {         /* # section title, ~ plain text */
             if (kind == '#') { revers(1); cputc(' '); }
             ++s;
             while (*s && *s != '\n' && *s != '\r') cputc(*s++);
@@ -2572,28 +2572,28 @@ void __fastcall__ help_entry(const struct A2fcApi* a)
 #pragma code-name (pop)
 
 /* ---------------------------------------------------------------------- */
-/* Les images disque -- la grande surcouche DISKIMG                        */
+/* Disk images -- the DISKIMG big overlay                                  */
 /* ---------------------------------------------------------------------- */
 
-/* W : ecrire une image (.PO, .DSK ou .DO, .2MG) sur une disquette, lire
- * une disquette dans une image neuve, copier une disquette sur une autre
- * -- ou sur elle-meme avec un seul lecteur, en changeant de disquette a
- * chaque passe. Les blocs passent par READ_BLOCK et WRITE_BLOCK, que le
- * pilote soit celui du Disk II, d'un SmartPort ou du /RAM : la disquette
- * cible doit deja etre formatee (F le fait), rien ici n'ecrit de piste.
+/* W: write an image (.PO, .DSK or .DO, .2MG) to a floppy, read a floppy
+ * into a new image, copy a floppy to another one -- or onto itself with a
+ * single drive, swapping the floppy at each pass. The blocks go through
+ * READ_BLOCK and WRITE_BLOCK, whether the driver is the Disk II's, a
+ * SmartPort's or /RAM's: the target floppy must already be formatted (F
+ * does it), nothing here writes a track.
  *
- * La reserve d'une passe : quatre blocs en banque principale ($3400-$3BFF,
- * au-dessus du code de la surcouche), et pour la copie a un seul lecteur
- * quatre-vingts blocs de plus en banque auxiliaire, $2000-$BFFF, la ou vit
- * /RAM -- qui est donc refait a neuf ensuite, comme apres une image DHGR.
- * Une disquette de 280 blocs se copie ainsi en quatre passes. Les
- * variables de la surcouche vivent en $3E00, hors de la RAM basse. */
+ * The staging area of one pass: four blocks in the main bank ($3400-$3BFF,
+ * above the overlay's code), and for the single-drive copy eighty more
+ * blocks in the auxiliary bank, $2000-$BFFF, where /RAM lives -- which is
+ * therefore rebuilt from scratch afterwards, as after a DHGR image. A
+ * 280-block floppy is thus copied in four passes. The overlay's variables
+ * live at $3E00, outside the low RAM. */
 #pragma code-name (push, "DISKIMG")
 #pragma rodata-name (push, "DISKIMGRO")
 
-/* Les textes, en tableaux nommes : cc65 2.18 range les litteraux de chaine
- * dans RODATA quel que soit le pragma rodata-name, et ceux d'une surcouche
- * peseraient sur la fenetre principale. */
+/* The texts, as named arrays: cc65 2.18 puts string literals in RODATA
+ * whatever the rodata-name pragma, and those of an overlay would weigh on
+ * the main window. */
 static const char S_TITLE[] = "  A2 FILE CMD  -  DISK IMAGES";
 static const char S_INTRO[] = "ProDOS order .PO, DOS 3.3 order .DSK or .DO, and .2MG. The target must be formatted.";
 static const char S_W[] = "W  Write %s to a disk";
@@ -2646,10 +2646,10 @@ static const char S_E_SWITCH[] = "the disk was switched";
 static const char S_E_CODE[] = "ProDOS error $%02X";
 static const char S_RAM[] = "  /RAM was rebuilt empty.";
 
-#define DI_BLOCK ((unsigned char*)0x3C00)   /* le bloc des appels MLI */
-#define DI_MAIN ((unsigned char*)0x3400)    /* quatre blocs de reserve */
+#define DI_BLOCK ((unsigned char*)0x3C00)   /* the block for MLI calls */
+#define DI_MAIN ((unsigned char*)0x3400)    /* four staging blocks */
 #define DI_MAIN_BLOCKS 4
-#define DI_AUX 0x2000                       /* quatre-vingts de plus en AUX */
+#define DI_AUX 0x2000                       /* eighty more in AUX */
 #define DI_AUX_BLOCKS 80
 #define DI ((struct DiskImg*)0x3E00)
 
@@ -2664,19 +2664,19 @@ struct DiskImg {
     unsigned char parms[6];
 };
 
-/* Le bloc ProDOS b d'une piste occupe deux secteurs physiques (moitie basse
- * puis haute) : ceux-ci, par paire, comme po2dsk.py. */
+/* ProDOS block b of a track occupies two physical sectors (low half then
+ * high half): these, in pairs, as in po2dsk.py. */
 static const unsigned char DSK_SECTORS[16] = { 0x0, 0xE, 0xD, 0xC, 0xB, 0xA, 0x9, 0x8, 0x7, 0x6, 0x5, 0x4, 0x3, 0x2, 0x1, 0xF };
 
-/* "slot s drive d" de l'unite, dans input. */
+/* "slot s drive d" of the unit, in input. */
 static const char* di_where(unsigned char unit)
 {
     sprintf(input, S_WHERE, (unit >> 4) & 7, (unit >> 7) + 1);
     return input;
 }
 
-/* Lit (write = 0) ou ecrit le bloc `block` du cote `s`, via DI_BLOCK. Rend
- * 0 ou l'erreur ProDOS ; un fichier court vaut une erreur d'E/S. */
+/* Reads (write = 0) or writes block `block` of side `s`, via DI_BLOCK.
+ * Returns 0 or the ProDOS error; a short file counts as an I/O error. */
 static unsigned char di_xfer(struct Side* s, unsigned int block, unsigned char write)
 {
     unsigned char half, n = 1;
@@ -2699,7 +2699,7 @@ static unsigned char di_xfer(struct Side* s, unsigned int block, unsigned char w
     return 0;
 }
 
-/* Le bloc i de la reserve : DI_BLOCK y va (put) ou en revient. */
+/* Staging block i: DI_BLOCK goes there (put) or comes back from it. */
 static void di_stage(unsigned char i, unsigned char put)
 {
     if (i < DI_MAIN_BLOCKS) {
@@ -2719,13 +2719,13 @@ static unsigned char di_ask(const char* which)
     return cgetc() != KEY_ESC;
 }
 
-/* Une image .DSK ecrit ses secteurs a des positions eparses dans le fichier
- * (l'ordre DOS 3.3, voir DSK_SECTORS) : le premier saute au-dela de la fin
- * d'un fichier tout neuf, et ProDOS refuse SET_MARK au-dela de l'EOF. On
- * donne donc au fichier sa taille pleine, en zeros et dans l'ordre, avant
- * les ecritures eparses -- elles tombent alors toutes sous l'EOF. Un .PO
- * ecrit bloc apres bloc et n'en aurait pas besoin, mais le pre-remplir ne
- * coute qu'une passe et garde le code simple. */
+/* A .DSK image writes its sectors at scattered positions in the file (the
+ * DOS 3.3 order, see DSK_SECTORS): the first one jumps past the end of a
+ * brand new file, and ProDOS refuses SET_MARK beyond the EOF. So the file
+ * is given its full size first, in zeros and in order, before the
+ * scattered writes -- they then all fall below the EOF. A .PO writes block
+ * after block and would not need it, but pre-filling it only costs one
+ * pass and keeps the code simple. */
 static unsigned char di_presize(struct Side* s, unsigned int blocks)
 {
     unsigned int b;
@@ -2736,9 +2736,9 @@ static unsigned char di_presize(struct Side* s, unsigned int blocks)
     return 0;
 }
 
-/* Copie DI->total blocs de src vers dst, par passes de la reserve ; avec
- * `swap` (un seul lecteur), demande la disquette a chaque passe. Rend 0,
- * l'erreur ProDOS, ou $FF si l'utilisateur a renonce. */
+/* Copies DI->total blocks from src to dst, one staging area per pass; with
+ * `swap` (a single drive), asks for the floppy at each pass. Returns 0,
+ * the ProDOS error, or $FF if the user gave up. */
 static unsigned char di_copy(unsigned char swap)
 {
     unsigned int done = 0, total = DI->total, left;
@@ -2765,10 +2765,10 @@ static unsigned char di_copy(unsigned char swap)
     return 0;
 }
 
-/* Les unites de bloc que ProDOS connait (DEVLST), leur volume s'il y en a
- * un (ON_LINE), leur taille (celle du volume, ou 280 pour un Disk II : son
- * pilote est en carte langage, sous $FF00 ou vit celui du /RAM), et si le
- * programme tourne dessus. */
+/* The block devices ProDOS knows (DEVLST), their volume if there is one
+ * (ON_LINE), their size (the volume's, or 280 for a Disk II: its driver
+ * is in the language card, below $FF00 where the /RAM one lives), and
+ * whether the program is running on them. */
 static void di_scan(void)
 {
     unsigned char i, n = *(unsigned char*)0xBF31 + 1, len;
@@ -2790,9 +2790,9 @@ static void di_scan(void)
             d->name[0] = '/';
             memcpy(d->name + 1, online + 1, len);
             d->name[len + 1] = 0;
-            /* la taille du volume vaut pour celle du disque, sauf sur un
-             * Disk II : une disquette fait 280 blocs, quel que soit le
-             * volume qu'on y a ecrit */
+            /* the volume size stands for the disk's, except on a
+             * Disk II: a floppy is 280 blocks, whatever volume was
+             * written on it */
             if (!d->blocks) volume_blocks(d->name, &d->blocks, &dummy);
             d->inuse = !strncmp(cfg_path, d->name, len + 1) && cfg_path[len + 1] == '/';
         }
@@ -2810,9 +2810,9 @@ static void di_title(const char* sub)
     cputsxy(0, 2, sub);
 }
 
-/* La liste des unites ; rend celle que l'utilisateur choisit par son
- * numero, NULL sur Echap. Pour ecrire (writing), la disquette du programme
- * est refusee. */
+/* The list of devices; returns the one the user picks by its number,
+ * NULL on Escape. For writing (`writing`), the program's floppy is
+ * refused. */
 static struct Dev* di_pick(const char* what, unsigned char writing)
 {
     struct Dev* d = DI->dev;
@@ -2835,8 +2835,8 @@ static struct Dev* di_pick(const char* what, unsigned char writing)
     }
 }
 
-/* L'avertissement, puis le mot ERASE en toutes lettres : rien n'est ecrit
- * avant. */
+/* The warning, then the word ERASE spelled out in full: nothing is
+ * written before that. */
 static unsigned char di_erase(const struct Dev* d)
 {
     gotoxy(0, 20);
@@ -2846,9 +2846,9 @@ static unsigned char di_erase(const struct Dev* d)
     return prompt(S_ERASE, NULL, 0) && !strcmp(input, S_WORD);
 }
 
-/* Ouvre l'image `full` (l'entree e) : l'ordre des secteurs d'apres son nom
- * (.DSK ou .DO : DOS 3.3 ; .2MG : son en-tete le dit ; sinon ProDOS), le
- * nombre de blocs d'apres sa taille. Rend 0 si ce n'est pas une image. */
+/* Opens the image `full` (entry e): the sector order from its name (.DSK
+ * or .DO: DOS 3.3; .2MG: its header says; otherwise ProDOS), the number
+ * of blocks from its size. Returns 0 if it is not an image. */
 static unsigned char di_open_image(struct Side* s, const struct Entry* e)
 {
     unsigned char n = strlen(e->name);
@@ -2894,17 +2894,17 @@ void __fastcall__ diskimg_entry(const struct A2fcApi* a)
     unsigned char r = 0, image = pan->count && pan->path[0] && !is_dir(e);
     char key;
     (void)a;
-    music_stop();                      /* la banque auxiliaire va servir de reserve */
+    music_stop();                      /* the auxiliary bank is about to serve as scratch space */
     a2fc_playing = 0;
-    /* Les tampons de blocs vivent dans la page graphique ($2800-$3FFF) : une
-     * image vue avant a pu laisser HIRES arme, et 80STORE y router $2000-$3FFF
-     * vers la banque AUX -- READ_BLOCK y lirait a cote. On coupe HIRES (le
-     * texte, lui, garde 80STORE pour ses colonnes paires) et on remet la
-     * lecture/ecriture sur la banque principale. aux_copy fait son propre
-     * routage pour la reserve auxiliaire. */
-    *(unsigned char*)0xC056 = 0;       /* LORES : $2000-$3FFF hors du routage 80STORE */
-    *(unsigned char*)0xC002 = 0;       /* RAMRD banque principale */
-    *(unsigned char*)0xC004 = 0;       /* RAMWRT banque principale */
+    /* The block buffers live in the graphics page ($2800-$3FFF): a picture
+     * viewed earlier may have left HIRES armed, with 80STORE then routing
+     * $2000-$3FFF to the AUX bank -- READ_BLOCK would read the wrong place.
+     * We switch HIRES off (text itself keeps 80STORE for its even columns)
+     * and put reads/writes back on the main bank. aux_copy does its own
+     * routing for the auxiliary scratch space. */
+    *(unsigned char*)0xC056 = 0;       /* LORES: $2000-$3FFF out of the 80STORE routing */
+    *(unsigned char*)0xC002 = 0;       /* RAMRD main bank */
+    *(unsigned char*)0xC004 = 0;       /* RAMWRT main bank */
     DI->aux_used = 0;
     src->f = dst->f = NULL;
     di_title(S_INTRO);
@@ -2974,16 +2974,16 @@ out:
 #pragma code-name (pop)
 
 /* ---------------------------------------------------------------------- */
-/* Le menu des surcouches -- la grande surcouche MENU                     */
+/* The overlay menu -- the big overlay MENU                               */
 /* ---------------------------------------------------------------------- */
 
-/* ! : la liste des surcouches A2FILE/ .PLG, chacune avec la ligne de description de
- * son en-tete, lancee sur la selection courante. Une commande de plus ne
- * demande plus ni touche ni recompilation : une surcouche d'un tiers, dont
- * la signature est PLUGIN_MAGIC, y parait comme les autres. Entree depose
- * le nom choisi dans `input`, Echap le laisse vide ; le noyau lance ensuite
- * la surcouche par overlay_run. La liste vit dans la page graphique, hors
- * du code de cette surcouche. */
+/* ! : the list of the A2FILE/ .PLG overlays, each with the description line
+ * of its header, run on the current selection. One more command no longer
+ * needs a key nor a rebuild: a third-party overlay whose signature is
+ * PLUGIN_MAGIC shows up there like the others. Return drops the chosen
+ * name into `input`, Escape leaves it empty; the core then runs the
+ * overlay through overlay_run. The list lives in the graphics page,
+ * outside this overlay's code. */
 #pragma code-name (push, "MENU")
 #pragma rodata-name (push, "MENURO")
 static const char mn_nodir[]   = "The program directory is unknown.";
@@ -3013,7 +3013,7 @@ void __fastcall__ menu_entry(const struct A2fcApi* a)
         ++n;
     }
     dir_close();
-    for (i = 0; i < n; ++i) {          /* l'en-tete de chacune : sa description */
+    for (i = 0; i < n; ++i) {          /* the header of each: its description */
         a2file_file(m[i].name);
         strcat(other_full, ".PLG");
         strcpy(m[i].desc, "(unreadable)");
@@ -3046,7 +3046,7 @@ void __fastcall__ menu_entry(const struct A2fcApi* a)
         if (key == KEY_RETURN && n) { strcpy(input, m[cur].name); return; }
         if (key == KEY_UP && cur) --cur;
         else if (key == KEY_DOWN && cur + 1 < n) ++cur;
-        else if (key == KEY_LEFT) cur = cur >= 5 ? cur - 5 : 0;              /* de cinq en cinq */
+        else if (key == KEY_LEFT) cur = cur >= 5 ? cur - 5 : 0;              /* five at a time */
         else if (key == KEY_RIGHT) cur = cur + 5 < n ? cur + 5 : n - 1;
         else {
             if (key >= 'a' && key <= 'z') key -= 32;
@@ -3058,7 +3058,7 @@ void __fastcall__ menu_entry(const struct A2fcApi* a)
 #pragma code-name (pop)
 
 /* ---------------------------------------------------------------------- */
-/* Operations sur les fichiers                                            */
+/* File operations                                                        */
 /* ---------------------------------------------------------------------- */
 
 static void refresh_both(void)
@@ -3071,8 +3071,8 @@ static void refresh_both(void)
     draw_info();
 }
 
-/* Lit un dossier dans pool[base..] : noms, types, auxtypes. Rend 0 si le
- * dossier ne se lit pas ou si la reserve deborde. */
+/* Reads a directory into pool[base..]: names, types, auxtypes. Returns 0
+ * if the directory cannot be read or if the pool overflows. */
 static unsigned char list_dir(const char* path, unsigned char base, unsigned char* count)
 {
     unsigned char n = 0;
@@ -3089,7 +3089,7 @@ static unsigned char list_dir(const char* path, unsigned char base, unsigned cha
     return 1;
 }
 
-/* Ajoute "/name" a un chemin ; rend 0 au-dela des 64 caracteres ProDOS. */
+/* Appends "/name" to a path; returns 0 beyond the 64 ProDOS characters. */
 static unsigned char push_name(char* path, const char* name)
 {
     unsigned char len = strlen(path);
@@ -3099,25 +3099,25 @@ static unsigned char push_name(char* path, const char* name)
     return 1;
 }
 
-/* GET_FILE_INFO : plus leger qu'un fopen, et gfi[4] garde le type. */
+/* GET_FILE_INFO: lighter than an fopen, and gfi[4] keeps the type. */
 static unsigned char exists(const char* path)
 {
     return file_info(path);
 }
 
-/* ESC pendant une copie, un deplacement, une suppression : l'operation
- * s'arrete a la fin du fichier en cours, les panneaux sont relus. Sonde le
- * clavier sans attendre ; une autre touche est avalee. */
+/* ESC during a copy, a move, a delete: the operation stops at the end of
+ * the current file, the panels are re-read. Polls the keyboard without
+ * waiting; any other key is swallowed. */
 static unsigned char abort_key(void)
 {
     if (!progress_abort && kbhit() && cgetc() == KEY_ESC) progress_abort = 1;
     return progress_abort;
 }
 
-/* La ligne 22 entiere : "  3/12  NOM             [####....] 12345/67890".
- * Quarante cases de barre. Redessinee seulement quand une case change ou
- * que le nom change : cprintf a chaque bloc de 512 octets ralentissait la
- * copie plus que le disque. */
+/* The whole row 22: "  3/12  NAME            [####....] 12345/67890".
+ * Forty bar cells. Redrawn only when a cell changes or the name changes:
+ * a cprintf on every 512-byte block slowed the copy down more than the
+ * disk did. */
 static void progress_bar(const char* name, unsigned long copied, unsigned long size)
 {
     unsigned char filled = size ? (unsigned char)(copied * 40 / size) : 40, i;
@@ -3130,16 +3130,16 @@ static void progress_bar(const char* name, unsigned long copied, unsigned long s
     cprintf("] %6lu/%-5lu", copied, size);
 }
 
-/* Retire l'entree i de la table du panneau, sans relire le disque : un
- * fichier supprime ou deplace disparait a l'instant. */
+/* Removes entry i from the panel's table without re-reading the disk: a
+ * deleted or moved file disappears at once. */
 static void drop_entry(struct Panel* pan, unsigned char i)
 {
     memmove(&pan->e[i], &pan->e[i + 1], (pan->count - i - 1) * sizeof(struct Entry));
     if (--pan->count && pan->cursor >= pan->count) pan->cursor = pan->count - 1;
 }
 
-/* Le fichier `other_full` existe deja : la regle de la copie en cours, ou
- * la question. Rend 1 pour ecraser, 0 pour passer. */
+/* The file `other_full` already exists: the rule of the copy in progress,
+ * or the question. Returns 1 to overwrite, 0 to skip. */
 static unsigned char may_overwrite(const char* name)
 {
     char key;
@@ -3157,9 +3157,9 @@ static unsigned char may_overwrite(const char* name)
     }
 }
 
-/* Copie le fichier `full` vers `other_full`, meme type et auxtype, avec la
- * barre de progression. Rend 1 si la copie est complete, 2 si elle a ete
- * passee, 0 sur erreur. */
+/* Copies the file `full` to `other_full`, same type and auxtype, with the
+ * progress bar. Returns 1 if the copy is complete, 2 if it was skipped,
+ * 0 on error. */
 static unsigned char copy_file(const char* name, unsigned char type, unsigned int aux)
 {
     FILE* in;
@@ -3197,14 +3197,14 @@ static unsigned char copy_file(const char* name, unsigned char type, unsigned in
     return 1;
 }
 
-/* Les trois parcours qui suivent sont recursifs : leurs variables locales
- * doivent vivre sur la pile, pas en statique comme le veut -Cl pour le
- * reste du programme, sinon le niveau interne ecrase la longueur de chemin
- * du niveau externe et le dossier parent n'est jamais retrouve. */
+/* The three tree walks that follow are recursive: their local variables
+ * must live on the stack, not in statics as -Cl wants for the rest of the
+ * program, otherwise the inner level overwrites the outer level's path
+ * length and the parent directory is never found again. */
 #pragma static-locals (push, off)
 
-/* Le nombre de fichiers sous `full` (dossiers exclus), pour le compteur de
- * progression. 0xFFFF si l'arbre ne se parcourt pas. */
+/* The number of files under `full` (directories excluded), for the
+ * progress counter. 0xFFFF if the tree cannot be walked. */
 static unsigned int count_tree(unsigned char base)
 {
     unsigned char n, i, len = strlen(full);
@@ -3221,9 +3221,9 @@ static unsigned int count_tree(unsigned char base)
     return files;
 }
 
-/* Copie le contenu du dossier `full` dans le dossier `other_full`, qui
- * existe deja, sous-dossiers compris ; un sous-dossier deja present est
- * complete, pas recree. */
+/* Copies the contents of directory `full` into directory `other_full`,
+ * which already exists, subdirectories included; a subdirectory already
+ * present is filled in, not recreated. */
 static unsigned char copy_tree(unsigned char base)
 {
     unsigned char n, i, sl = strlen(full), dl = strlen(other_full), ok = 1;
@@ -3242,9 +3242,9 @@ static unsigned char copy_tree(unsigned char base)
     return ok;
 }
 
-/* Supprime tout ce que contient le dossier `full`, puis le dossier. */
-/* La surcouche DELETE, premiere moitie : delete_tree, que le deplacement d'un
- * dossier charge aussi, une fois la copie faite. */
+/* Deletes everything the directory `full` contains, then the directory. */
+/* The DELETE overlay, first half: delete_tree, which moving a directory
+ * also loads, once the copy is done. */
 #pragma code-name (push, "DELETE")
 #pragma rodata-name (push, "DELETERO")
 static unsigned char delete_tree(unsigned char base)
@@ -3269,8 +3269,8 @@ static unsigned char delete_tree(unsigned char base)
 
 #pragma static-locals (pop)
 
-/* Copie l'entree dans le dossier de l'autre panneau : un fichier, ou un
- * dossier entier. Rend 1 si tout est copie. */
+/* Copies the entry into the other panel's directory: a file, or a whole
+ * directory. Returns 1 if everything is copied. */
 static unsigned char copy_one(const struct Entry* e)
 {
     struct Panel* dst = &panels[!active];
@@ -3289,8 +3289,8 @@ static unsigned char copy_one(const struct Entry* e)
     return copy_tree(0);
 }
 
-/* Les fichiers vises par C, V et D : les marques du panneau, sinon le
- * curseur. Rend leur nombre et les depose dans `picked`. */
+/* The files targeted by C, V and D: the panel's tags, otherwise the
+ * cursor. Returns their number and drops them into `picked`. */
 static unsigned char pick_targets(void)
 {
     struct Panel* pan = &panels[active];
@@ -3312,7 +3312,7 @@ static unsigned char target_check(void)
 }
 
 /* ---------------------------------------------------------------------- */
-/* La surcouche IMGFS : extraire des fichiers d'une image (C)              */
+/* The IMGFS overlay: extracting files from an image (C)                   */
 /* ---------------------------------------------------------------------- */
 #pragma code-name (push, "IMGFS")
 #pragma rodata-name (push, "IMGFSRO")
@@ -3320,14 +3320,14 @@ static const char im_target[]  = "Open a ProDOS folder in the other panel.";
 static const char im_reopen[]  = "Cannot reopen the image.";
 #pragma static-locals (push, off)
 
-/* Ecrit le fichier ProDOS de bloc-cle `key`, taille `size`, dans `out`, lu
- * dans l'image ouverte (img_f). Le type de stockage vient de la taille :
- * germe (<= 512 : la cle est le bloc de donnees) ou plant (la cle est un
- * bloc d'index de 256 pointeurs, poids faibles [0..255] puis forts
- * [256..511]) ; un bloc-pointeur nul est un trou (zeros). Les fichiers
- * arborescents (> 128 Ko) sont rares sur une disquette et refuses. `idx`
- * est un tampon de 512 octets hors des tables de panneaux. Rend 0 sur
- * erreur, 2 si le fichier est trop grand. */
+/* Writes the ProDOS file with key block `key`, size `size`, to `out`, read
+ * from the open image (img_f). The storage type follows from the size:
+ * seedling (<= 512: the key is the data block) or sapling (the key is an
+ * index block of 256 pointers, low bytes [0..255] then high bytes
+ * [256..511]); a null block pointer is a hole (zeros). Tree files
+ * (> 128 KB) are rare on a floppy and refused. `idx` is a 512-byte buffer
+ * outside the panel tables. Returns 0 on error, 2 if the file is too
+ * large. */
 static unsigned char img_read_file(unsigned int key, unsigned long size, FILE* out, unsigned char* idx)
 {
     unsigned int need = (unsigned int)((size + 511) >> 9), i, n, blk;
@@ -3345,11 +3345,11 @@ static unsigned char img_read_file(unsigned int key, unsigned long size, FILE* o
     return 1;
 }
 
-/* C sur une image ouverte comme un dossier : extrait les fichiers marques,
- * sinon le fichier sous le curseur, vers le dossier ProDOS de l'autre
- * panneau (les sous-dossiers sont a entrer et extraire un a un). Le tampon
- * d'index emprunte la table du panneau destination, inutile pendant
- * l'operation ; les panneaux sont relus au retour. */
+/* C on an image opened as a directory: extracts the tagged files, else the
+ * file under the cursor, to the ProDOS directory of the other panel
+ * (subdirectories have to be entered and extracted one at a time). The
+ * index buffer borrows the destination panel's table, unused during the
+ * operation; both panels are re-read on return. */
 static void extract_targets(void)
 {
     struct Panel* pan = &panels[active];
@@ -3362,7 +3362,7 @@ static void extract_targets(void)
     if (!n) return;
     progress_total = n;
     progress_done = 0;
-    i = pan->path[pan->img_len];         /* rouvrir l'image sans perdre le chemin interne */
+    i = pan->path[pan->img_len];         /* reopen the image without losing the inner path */
     pan->path[pan->img_len] = 0;
     r = img_open(pan->path);
     pan->path[pan->img_len] = i;
@@ -3385,7 +3385,7 @@ static void extract_targets(void)
         progress_bar(e->name, e->size, e->size);
     }
     fclose(img_f);
-    refresh_both();                       /* la table de destination a servi de tampon */
+    refresh_both();                       /* the destination table was used as a buffer */
     clear_row(22);
     gotoxy(0, 22);
     cprintf("%u file%s extracted", done, done == 1 ? "" : "s");
@@ -3403,7 +3403,7 @@ void __fastcall__ imgfs_entry(const struct A2fcApi* a)
 #pragma code-name (pop)
 
 /* ---------------------------------------------------------------------- */
-/* La surcouche DOS33 : catalogue DOS 3.3, extraction, et M                */
+/* The DOS33 overlay: DOS 3.3 catalog, extraction, and M                  */
 /* ---------------------------------------------------------------------- */
 #pragma code-name (push, "DOS33")
 #pragma rodata-name (push, "DOS33RO")
@@ -3412,13 +3412,13 @@ static const char d3_reopen[]  = "Cannot reopen the image.";
 static const char d3_done[]    = "%u file%s extracted.";
 #pragma static-locals (push, off)
 
-/* C sur une image ou un disque DOS 3.3 : extrait les fichiers marques (sinon
- * celui sous le curseur) vers le dossier ProDOS de l'autre panneau. On suit
- * la liste T/S de chaque fichier ; les octets de tete propres a DOS sont otes
- * (deux pour un Applesoft/Integer, quatre pour un binaire) pour que le
- * fichier soit utilisable, le reste des secteurs est ecrit tel quel (le
- * remplissage final d'un dernier secteur est sans consequence). Le tampon T/S
- * emprunte la table du panneau destination, inutile pendant l'operation. */
+/* C on a DOS 3.3 image or disk: extracts the tagged files (else the one
+ * under the cursor) to the ProDOS directory of the other panel. Each file's
+ * T/S list is followed; the DOS-specific leading bytes are stripped (two for
+ * an Applesoft/Integer program, four for a binary) so that the file is
+ * usable, the rest of the sectors is written as is (the trailing padding of
+ * a last sector is harmless). The T/S buffer borrows the destination
+ * panel's table, unused during the operation. */
 static void dos_extract(void)
 {
     struct Panel* pan = &panels[active];
@@ -3486,35 +3486,35 @@ void __fastcall__ dos33_entry(const struct A2fcApi* a)
 #pragma code-name (pop)
 
 /* ---------------------------------------------------------------------- */
-/* La surcouche UNSHRINK : une archive ShrinkIt (.SHK, NuFX) extraite vers   */
-/* le dossier de l'autre panneau -- dans A2FILE/UNSHRINK.PLG, grande         */
-/* surcouche. Le coeur LZW/RLE est en assembleur (src/unshrink.s), en tete    */
-/* de la surcouche ($1B00-$1FFF) et recopie en AUX a la meme adresse pour    */
-/* tourner sous RAMRD/RAMWRT AUX, ou vivent les tables du dictionnaire ; ce  */
-/* pilote C, lui, reste en MAIN ($2000-$2FFF). Lancee par le menu ! sur     */
-/* l'archive selectionnee.                                                   */
+/* The UNSHRINK overlay: a ShrinkIt archive (.SHK, NuFX) extracted to the   */
+/* directory of the other panel -- in A2FILE/UNSHRINK.PLG, a big overlay.    */
+/* The LZW/RLE core is in assembly (src/unshrink.s), at the head of the      */
+/* overlay ($1B00-$1FFF) and copied to AUX at the same address so it runs    */
+/* under RAMRD/RAMWRT AUX, where the dictionary tables live; this C driver,  */
+/* for its part, stays in MAIN ($2000-$2FFF). Launched from the ! menu on    */
+/* the selected archive.                                                     */
 /* ---------------------------------------------------------------------- */
 #pragma code-name (push, "UNSHRINK")
 #pragma rodata-name (push, "UNSHRINKRO")
 #pragma static-locals (push, off)
 
-/* Toute chaine de cette surcouche est un tableau NOMME (const char[]), pas
- * un litteral "..." : cc65 regroupe les litteraux dans RODATA -- la fenetre
- * principale, pleine au bit pres, et dont chaque octet de plus rapproche la
- * fin d'A2FILE.CODE de $BF00, ou le lanceur tient sa pile C (31 octets de
- * litteral ont suffi a figer l'amorcage). Un tableau nomme suit le segment
- * UNSHRINKRO, dans le fichier de la surcouche. De meme, l'etat volumineux
- * vit dans une structure a adresse fixe, $3000, hors de LOWBSS (plein) et
- * de la pile C (192 octets) ; les locales vraies vont sur la pile C
+/* Every string of this overlay is a NAMED array (const char[]), not a
+ * "..." literal: cc65 gathers literals into RODATA -- the main window, full
+ * to the last bit, where every extra byte brings the end of A2FILE.CODE
+ * closer to $BF00, where the launcher keeps its C stack (31 bytes of
+ * literal were enough to freeze the boot). A named array follows the
+ * UNSHRINKRO segment, in the overlay's file. Likewise, the bulky state
+ * lives in a structure at a fixed address, $3000, outside LOWBSS (full) and
+ * the C stack (192 bytes); true locals go on the C stack
  * (static-locals off). */
 
-/* Le coeur en assembleur, src/unshrink.s. Ses adresses AUX, repetees ici. */
+/* The assembly core, src/unshrink.s. Its AUX addresses, repeated here. */
 void __fastcall__ us_init(unsigned int fmt_esc);
 unsigned int __fastcall__ us_chunk(unsigned int in_addr);
-#define US_INBUF  0x6000            /* la fenetre d'entree, 8 Ko, en AUX */
-#define US_OUTBUF 0x8000            /* le bloc decode, 4096 octets, en AUX */
+#define US_INBUF  0x6000            /* the input window, 8 KB, in AUX */
+#define US_OUTBUF 0x8000            /* the decoded block, 4096 bytes, in AUX */
 #define US_WINDOW 8192
-#define US_NEED   4100              /* un bloc comprime entier, en-tete compris */
+#define US_NEED   4100              /* a whole compressed block, header included */
 
 struct UsState {
     FILE* in;
@@ -3524,16 +3524,16 @@ struct UsState {
     unsigned long teof, ceof, rem_in, rem_out, total, done;
     unsigned char fmt, klass, kind, sep, disk;
     char name[17];
-    unsigned char th[8 * 16];       /* jusqu'a huit en-tetes de fil */
-    unsigned char hdr[256];         /* les attributs d'un enregistrement */
+    unsigned char th[8 * 16];       /* up to eight thread headers */
+    unsigned char hdr[256];         /* the attributes of one record */
 };
 #define US ((struct UsState*)0x3000)
 #define U16(p, o) ((unsigned int)(p)[o] | ((unsigned int)(p)[(o) + 1] << 8))
-/* 32 bits sans aucune routine d'appui (decalage long, multiplication) : le
- * moindre helper de cc65 que le resident n'a pas deja se lie dans SA fenetre,
- * pleine au bit pres -- memcmp et la multiplication 32 bits ont coute 91
- * octets de trop au premier essai. D'ou l'union par octets, le compare a la
- * main, et blocs*512 en decalages. */
+/* 32 bits without any support routine (long shift, multiplication): the
+ * slightest cc65 helper the resident does not already have gets linked into
+ * ITS window, full to the last bit -- memcmp and the 32-bit multiplication
+ * cost 91 bytes too many on the first try. Hence the byte-wise union, the
+ * hand-written compare, and blocks*512 done with shifts. */
 static unsigned long us_u32(const unsigned char* p)
 {
     union { unsigned long l; unsigned char b[4]; } u;
@@ -3564,9 +3564,9 @@ static const char us_wb[]       = "wb";
 static const unsigned char us_magic_master[] = { 0x4E, 0xF5, 0x46, 0xE9, 0x6C, 0xE5 };
 static const unsigned char us_magic_record[] = { 0x4E, 0xF5, 0x46, 0xD8 };
 
-/* Garde la fenetre d'entree AUX pleine d'au moins un bloc entier : ramene
- * le reste en tete (par la principale, 512 par 512), puis lit la suite du
- * fil. Rend 0 sur une lecture manquee. */
+/* Keeps the AUX input window holding at least one whole block: brings the
+ * remainder back to the head (through main memory, 512 bytes at a time),
+ * then reads the rest of the thread. Returns 0 on a failed read. */
 static unsigned char us_fill(void)
 {
     unsigned int left = US->win_len - US->win_pos, off, n;
@@ -3588,7 +3588,7 @@ static unsigned char us_fill(void)
     return 1;
 }
 
-/* Les n premiers octets du bloc decode (OUTBUF, AUX) dans le fichier. */
+/* The first n bytes of the decoded block (OUTBUF, AUX) into the file. */
 static unsigned char us_write(unsigned int n)
 {
     unsigned int off, k;
@@ -3600,8 +3600,8 @@ static unsigned char us_write(unsigned int n)
     return 1;
 }
 
-/* Un nom ProDOS a partir du nom archive : le dernier composant, majuscules,
- * lettres, chiffres et points, une lettre en tete, 15 caracteres. */
+/* A ProDOS name from the archive name: the last component, upper case,
+ * letters, digits and periods, a letter first, 15 characters. */
 static void us_prodos_name(const char* src, unsigned int len)
 {
     unsigned int i, start = 0, n = 0;
@@ -3619,18 +3619,18 @@ static void us_prodos_name(const char* src, unsigned int len)
     US->name_len = n;
 }
 
-/* Un fil de donnees (fourche de donnees ou image disque) vers le dossier de
- * l'autre panneau. Rend 0 sur un echec deja signale. */
+/* A data thread (data fork or disk image) to the directory of the other
+ * panel. Returns 0 on a failure already reported. */
 static unsigned char us_extract_thread(void)
 {
     unsigned int n, used, hdr;
     unsigned char r = 1;
-    if (US->disk) {                        /* une image disque : NOM.PO, bloc par 512 */
+    if (US->disk) {                        /* a disk image: NAME.PO, blocks of 512 */
         if (US->name_len > 12) US->name_len = 12;
         strcpy(US->name + US->name_len, us_po);
-        /* blocs * 512, par une union de deux entiers 16 bits (pas de decalage
-         * long, dont les routines d'appui se lieraient dans le resident, plein) :
-         * mot faible = blocs << 9, mot fort = blocs >> 7. */
+        /* blocks * 512, through a union of two 16-bit integers (no long shift,
+         * whose support routines would get linked into the resident, full):
+         * low word = blocks << 9, high word = blocks >> 7. */
         { union { unsigned long l; unsigned int w[2]; } ro;
           ro.w[0] = US->auxtype << 9; ro.w[1] = US->auxtype >> 7; US->rem_out = ro.l; }
         _filetype = 0x06;
@@ -3647,14 +3647,14 @@ static unsigned char us_extract_thread(void)
     if (!US->out) { report_error(us_create); return 0; }
     progress_bar(US->name, 0, US->total);
     US->rem_in = US->ceof;
-    if (US->fmt == 0) {                    /* stocke tel quel */
+    if (US->fmt == 0) {                    /* stored as is */
         while (US->rem_out && r) {
             n = US->rem_out > 512 ? 512 : (unsigned int)US->rem_out;
             if (fread(copy_buf, 1, n, US->in) != n || fwrite(copy_buf, 1, n, US->out) != n) r = 0;
             else { US->rem_out -= n; US->rem_in -= n; US->done += n; progress_bar(US->name, US->done, US->total); }
         }
-    } else {                               /* LZW/1 ou LZW/2 : l'en-tete du flux, puis bloc par bloc */
-        hdr = US->fmt == 2 ? 4 : 2;        /* LZW/1 : crc(2) vol esc ; LZW/2 : vol esc */
+    } else {                               /* LZW/1 or LZW/2: the stream header, then block by block */
+        hdr = US->fmt == 2 ? 4 : 2;        /* LZW/1: crc(2) vol esc; LZW/2: vol esc */
         if (fread(copy_buf, 1, hdr, US->in) != hdr) r = 0;
         else {
             US->rem_in -= hdr;
@@ -3674,7 +3674,7 @@ static unsigned char us_extract_thread(void)
     }
     fclose(US->out);
     if (!r) { remove(other_full); report_error(us_extract); return 0; }
-    /* ce qui reste du fil (l'octet de bourrage de ShrinkIt, un fil tronque) */
+    /* what remains of the thread (ShrinkIt's padding byte, a truncated thread) */
     if (US->rem_in) fseek(US->in, (long)US->rem_in, SEEK_CUR);
     ++US->n_done;
     return 1;
@@ -3688,19 +3688,19 @@ void __fastcall__ unshrink_entry(const struct A2fcApi* a)
     (void)a;
     if (!pan->count || !pan->path[0] || is_dir(&selected) || !full[0]) { strcpy(note, us_notfile); return; }
     if (!panels[!active].path[0] || panels[!active].fs) { strcpy(note, us_notdir); return; }
-    /* La banque auxiliaire porte le dictionnaire LZW ET le disque /RAM :
-     * extraire vers /RAM le detruirait (et ram_format le refait vide
-     * ensuite). On refuse ; toute autre volume convient. */
+    /* The auxiliary bank carries the LZW dictionary AND the /RAM disk:
+     * extracting to /RAM would destroy it (and ram_format rebuilds it empty
+     * afterwards). We refuse; any other volume will do. */
     if (!strcmp(panels[!active].path, "/RAM")) { strcpy(note, us_noram); return; }
-    music_stop();                          /* la banque auxiliaire va servir de dictionnaire */
+    music_stop();                          /* the auxiliary bank is about to serve as the dictionary */
     a2fc_playing = 0;
-    /* Apres une image, HIRES reste arme. Avec 80STORE, PAGE2 impose alors
-     * la banque de $2000-$3FFF meme sous RAMRD/RAMWRT AUX : le dictionnaire
-     * LZW ecraserait le pilote C et les tables des panneaux en MAIN.
-     * LORES rend cette zone a RAMRD/RAMWRT sans toucher au texte 80 colonnes. */
+    /* After a picture, HIRES stays armed. With 80STORE, PAGE2 then dictates
+     * the bank for $2000-$3FFF even under RAMRD/RAMWRT AUX: the LZW
+     * dictionary would overwrite the C driver and the panel tables in MAIN.
+     * LORES hands that area back to RAMRD/RAMWRT without touching 80-column text. */
     *(volatile unsigned char*)0xC056 = 0;
-    /* Le coeur, en tete de la surcouche ($1B00-$1FFF), recopie en AUX a la
-     * meme adresse : c'est cette copie qui s'executera sous RAMRD AUX. */
+    /* The core, at the head of the overlay ($1B00-$1FFF), copied to AUX at
+     * the same address: that copy is the one that will run under RAMRD AUX. */
     aux_copy(0x1B00, 0x1B00, 1);
     aux_copy(0x1D00, 0x1D00, 1);
     aux_copy(0x1F00, 0x1F00, 1);
@@ -3708,7 +3708,7 @@ void __fastcall__ unshrink_entry(const struct A2fcApi* a)
     US->in = fopen(full, us_rb);
     if (!US->in) { report_error(us_extract); return; }
     if (fread(US->hdr, 1, 48, US->in) != 48) goto corrupt;
-    if (US->hdr[0] == 0x0A && US->hdr[1] == 0x47 && US->hdr[2] == 0x4C) {   /* Binary II : 128 octets a sauter */
+    if (US->hdr[0] == 0x0A && US->hdr[1] == 0x47 && US->hdr[2] == 0x4C) {   /* Binary II: 128 bytes to skip */
         if (fread(US->hdr + 48, 1, 80, US->in) != 80 || fread(US->hdr, 1, 48, US->in) != 48) goto corrupt;
     }
     if (!us_eq(US->hdr, us_magic_master, 6)) { strcpy(note, us_notarch); fclose(US->in); return; }
@@ -3716,7 +3716,7 @@ void __fastcall__ unshrink_entry(const struct A2fcApi* a)
     progress_total = US->records;
     for (i = 0; i < US->records; ++i) {
         progress_done = i;
-        /* l'enregistrement : magic, crc, attrib_count, puis le reste des attributs */
+        /* the record: magic, crc, attrib_count, then the rest of the attributes */
         if (fread(US->hdr, 1, 8, US->in) != 8 || !us_eq(US->hdr, us_magic_record, 4)) goto corrupt;
         US->attrib = U16(US->hdr, 6);
         if (US->attrib < 8 || US->attrib > 256) goto corrupt;
@@ -3726,7 +3726,7 @@ void __fastcall__ unshrink_entry(const struct A2fcApi* a)
         US->filetype = U16(US->hdr, 0x16);
         US->auxtype = U16(US->hdr, 0x1A);
         US->storage = U16(US->hdr, 0x1E);
-        len = U16(US->hdr, US->attrib - 2);            /* nom dans l'en-tete (ancien ShrinkIt) */
+        len = U16(US->hdr, US->attrib - 2);            /* name in the header (old ShrinkIt) */
         US->name[0] = 0;
         US->name_len = 0;
         if (len) {
@@ -3742,22 +3742,22 @@ void __fastcall__ unshrink_entry(const struct A2fcApi* a)
             US->kind = th[4];
             US->teof = U32(th, 8);
             US->ceof = U32(th, 12);
-            if (US->klass == 3 && US->kind == 0) {              /* le nom du fichier */
+            if (US->klass == 3 && US->kind == 0) {              /* the file name */
                 len = US->ceof > 512 ? 512 : (unsigned int)US->ceof;
                 if (fread(copy_buf, 1, len, US->in) != len) goto corrupt;
                 if (US->ceof > len) fseek(US->in, (long)(US->ceof - len), SEEK_CUR);
                 us_prodos_name((char*)copy_buf, US->teof > len ? len : (unsigned int)US->teof);
-            } else if (US->klass == 2 && (US->kind == 0 || US->kind == 1)) {   /* donnees ou image disque */
+            } else if (US->klass == 2 && (US->kind == 0 || US->kind == 1)) {   /* data or disk image */
                 if (US->fmt != 0 && US->fmt != 2 && US->fmt != 3) {
                     strcpy(note, us_unsupp);
                     fseek(US->in, (long)US->ceof, SEEK_CUR);
                     continue;
                 }
                 US->disk = US->kind == 1;
-                if (!US->name_len) us_prodos_name(us_create, 6);   /* sans nom : "CREATE" */
+                if (!US->name_len) us_prodos_name(us_create, 6);   /* no name: "CREATE" */
                 if (!us_extract_thread()) { fclose(US->in); goto out; }
             } else {
-                fseek(US->in, (long)US->ceof, SEEK_CUR);       /* fourche de ressources, commentaire */
+                fseek(US->in, (long)US->ceof, SEEK_CUR);       /* resource fork, comment */
             }
         }
     }
@@ -3780,25 +3780,25 @@ static void copy_or_move(unsigned char move)
     struct Panel* pan = &panels[active];
     unsigned char n, i, done = 0, removed = 0;
     unsigned int sub;
-    if (pan->fs == FS_DOS33) { overlay_run("DOS33", 'C'); return; }   /* extraction DOS 3.3 */
-    if (pan->fs) { overlay_run("IMGFS", 0); return; }   /* extraction d'une image ProDOS */
+    if (pan->fs == FS_DOS33) { overlay_run("DOS33", 'C'); return; }   /* DOS 3.3 extraction */
+    if (pan->fs) { overlay_run("IMGFS", 0); return; }   /* extraction from a ProDOS image */
     if (!target_check()) return;
     n = pick_targets();
     if (!n) return;
     pool = (struct Mini*)panels[!active].e;
-    /* Le compteur "fichier x sur y" demande de connaitre y : un premier
-     * parcours compte les fichiers, dossiers compris. */
+    /* The "file x of y" counter needs to know y: a first pass counts the
+     * files, directories included. */
     progress_total = 0;
     progress_done = 0;
     progress_skipped = 0;
     progress_abort = 0;
     over_policy = ASK;
-    if (move) memset(pan->tags, 0, sizeof pan->tags);   /* les marques sont dans picked : les entrees vont bouger */
+    if (move) memset(pan->tags, 0, sizeof pan->tags);   /* the tags are in picked: the entries are about to move */
     for (i = 0; i < n; ++i) {
         const struct Entry* e = &pan->e[picked[i]];
         if (is_up(e)) continue;
         if (!is_dir(e)) { ++progress_total; continue; }
-        if (!build_full(full, pan, e)) { too_long(); refresh_both(); return; }   /* la reserve a recouvert l'autre panneau */
+        if (!build_full(full, pan, e)) { too_long(); refresh_both(); return; }   /* the pool has overwritten the other panel */
         sub = count_tree(0);
         if (sub == 0xFFFF) { dir_fail(); refresh_both(); return; }
         progress_total += sub;
@@ -3808,18 +3808,18 @@ static void copy_or_move(unsigned char move)
         unsigned int skipped_before = progress_skipped;
         if (is_up(e)) { ++done; continue; }
         if (abort_key() || !copy_one(e)) break;
-        /* Deplacer, c'est copier puis effacer : un fichier passe (Skip)
-         * n'a pas ete copie, il reste ; un dossier dont un fichier a ete
-         * passe reste aussi, entier, plutot que d'en perdre une partie. */
+        /* Moving is copying then deleting: a skipped file (Skip) has not
+         * been copied, it stays; a directory in which a file was skipped
+         * stays as well, whole, rather than losing part of it. */
         if (move && progress_skipped == skipped_before) {
             build_full(full, pan, e);
             if (is_dir(e) ? !(overlay("DELETE") && delete_tree(0)) : remove(full) != 0) { if (!is_dir(e) && !progress_abort) report_error("Delete source"); break; }
-            drop_entry(pan, picked[i] - removed);      /* parti : la source le montre tout de suite */
+            drop_entry(pan, picked[i] - removed);      /* gone: the source shows it right away */
             ++removed;
             draw_panel(active);
         }
         ++done;
-        read_panel(!active);                           /* arrive : la cible le montre tout de suite */
+        read_panel(!active);                           /* arrived: the target shows it right away */
         draw_panel(!active);
     }
     refresh_both();
@@ -3833,7 +3833,7 @@ static void copy_or_move(unsigned char move)
     }
 }
 
-/* La surcouche DELETE, seconde moitie : la commande D. */
+/* The DELETE overlay, second half: the D command. */
 #pragma code-name (push, "DELETE")
 #pragma rodata-name (push, "DELETERO")
 static const char dl_nothing[] = "Nothing to delete here.";
@@ -3852,12 +3852,12 @@ static void delete_targets(void)
     pool = (struct Mini*)panels[!active].e;
     e = &pan->e[picked[0]];
     if (n == 1 && is_up(e)) { message(dl_nothing); return; }
-    if (n == 1) sprintf(question, dl_ask1, e->name, dl_inside + (is_dir(e) ? 0 : sizeof dl_inside - 1));   /* "" : la fin du tableau */
+    if (n == 1) sprintf(question, dl_ask1, e->name, dl_inside + (is_dir(e) ? 0 : sizeof dl_inside - 1));   /* "": the end of the array */
     else sprintf(question, dl_askn, n);
     if (!confirm(question)) return;
     progress_total = n;
     progress_abort = 0;
-    memset(pan->tags, 0, sizeof pan->tags);            /* les marques sont dans picked : les entrees vont bouger */
+    memset(pan->tags, 0, sizeof pan->tags);            /* the tags are in picked: the entries are about to move */
     for (i = 0; i < n; ++i) {
         e = &pan->e[picked[i] - removed];
         if (is_up(e)) continue;
@@ -3869,7 +3869,7 @@ static void delete_targets(void)
         else if (remove(full)) { report_error("Delete"); break; }
         else ++a2fc_ops;
         ++done;
-        drop_entry(pan, picked[i] - removed);          /* parti : le panneau le montre tout de suite */
+        drop_entry(pan, picked[i] - removed);          /* gone: the panel shows it right away */
         ++removed;
         draw_panel(active);
     }
@@ -3890,7 +3890,7 @@ void __fastcall__ delete_entry(const struct A2fcApi* a)
 #pragma rodata-name (pop)
 #pragma code-name (pop)
 
-/* La surcouche ATTR, dans A2FILE/ATTR.PLG : R, K, A et L. */
+/* The ATTR overlay, in A2FILE/ATTR.PLG: R, K, A and L. */
 #pragma code-name (push, "ATTR")
 #pragma rodata-name (push, "ATTRRO")
 static const char at_rename[]  = "Select something to rename.";
@@ -3925,8 +3925,8 @@ static void make_directory(void)
     show_active();
 }
 
-/* A : type et auxtype ; L : verrou. Les deux passent par GET_FILE_INFO puis
- * SET_FILE_INFO sur le meme bloc, et relisent le panneau. */
+/* A: type and auxtype; L: lock. Both go through GET_FILE_INFO then
+ * SET_FILE_INFO on the same block, and reread the panel. */
 static void change_attributes(const struct Entry* e, unsigned char lock)
 {
     unsigned char type;
@@ -3943,7 +3943,7 @@ static void change_attributes(const struct Entry* e, unsigned char lock)
         aux = hex_value();
     }
     if (!file_info(full)) { report_error("Get info"); return; }
-    if (lock) gfi[3] = is_locked(e) ? 0xC3 : 0x01;   /* tout, ou lecture seule */
+    if (lock) gfi[3] = is_locked(e) ? 0xC3 : 0x01;   /* everything, or read-only */
     else { gfi[4] = type; gfi[5] = (unsigned char)(aux & 0xFF); gfi[6] = (unsigned char)(aux >> 8); }
     if (!set_info()) { report_error("Set info"); return; }
     ++a2fc_ops;
@@ -3966,21 +3966,21 @@ void __fastcall__ attr_entry(const struct A2fcApi* a)
 #pragma rodata-name (pop)
 #pragma code-name (pop)
 
-/* La surcouche RUN, dans A2FILE/RUN.PLG : X, F, et Entree sur un SYS ou un
+/* The RUN overlay, in A2FILE/RUN.PLG: X, F, and Return on a SYS or a
  * BAS. */
 #pragma code-name (push, "RUN")
 #pragma rodata-name (push, "RUNRO")
-/* Charge le fichier `full` a `addr` et y saute, sans retour, par le talon
- * de chain.s : quelle que soit sa taille, il ecrase A2FC sans dommage.
- * La musique est coupee, les preferences ecrites. */
+/* Loads the file `full` at `addr` and jumps to it, with no return, through
+ * the thunk of chain.s: whatever its size, it overwrites A2FC harmlessly.
+ * The music is stopped, the preferences written. */
 static void launch_file(unsigned int addr)
 {
     if (!exists(full)) {
-        /* _oserror porte le vrai code de GET_FILE_INFO (a2fc_mli.s le pose) :
-         * $46 "file not found" -- typiquement BASIC.SYSTEM absent du volume
-         * d'un BAS (un /RAM, un disque sans systeme) -- ou $2E/$2F si le
-         * disque a change ou manque. report_error le rend en clair. */
-        chain_command("");   /* sinon un SYS lance ensuite recevrait le "-NOM" en $2006 */
+        /* _oserror carries the real GET_FILE_INFO code (a2fc_mli.s sets it):
+         * $46 "file not found" -- typically BASIC.SYSTEM missing from the
+         * volume of a BAS (a /RAM, a disk without a system) -- or $2E/$2F if
+         * the disk has changed or is missing. report_error spells it out. */
+        chain_command("");   /* otherwise a SYS launched later would get the "-NAME" at $2006 */
         report_error("Run");
         return;
     }
@@ -3991,21 +3991,21 @@ static void launch_file(unsigned int addr)
     chain_load(full);
 }
 
-/* X : un SYS est lu en $2000, la ou ProDOS l'aurait mis, un BIN a son
- * auxtype. Un BAS ne se lance pas seul : c'est BASIC.SYSTEM qu'on charge, le
- * nom du programme depose en $2006 par chain_command -- il en fait la
- * commande "-NOM" au demarrage, exactement comme Bitsy Bye. BASIC.SYSTEM est
- * cherche a la racine du volume du programme, sa place d'usage, sinon sur
- * le volume amorce (basic_path). */
+/* X: a SYS is read at $2000, where ProDOS would have put it, a BIN at its
+ * auxtype. A BAS does not launch by itself: it is BASIC.SYSTEM that gets
+ * loaded, the program name deposited at $2006 by chain_command -- it turns
+ * it into the "-NAME" command at startup, exactly like Bitsy Bye.
+ * BASIC.SYSTEM is looked for at the root of the program's volume, its usual
+ * place, otherwise on the boot volume (basic_path). */
 static const char run_pick[]  = "Select a program.";
 static const char run_range[] = "BIN must load in $0800-$BAFF.";
 static const char run_ask[]   = "Run %s? No return to A2FC.";
 static const char run_basic[] = "/BASIC.SYSTEM";
 
-/* BASIC.SYSTEM dans `full` : a la racine du volume du programme, sa place
- * d'usage ; sinon a celle du volume amorce -- un BAS sur /RAM, sur un disque
- * de donnees ou sur le disque dur part quand meme, avec le BASIC.SYSTEM de
- * la disquette d'A2FC. */
+/* BASIC.SYSTEM into `full`: at the root of the program's volume, its usual
+ * place; otherwise at the root of the boot volume -- a BAS on /RAM, on a
+ * data disk or on the hard disk still starts, with the BASIC.SYSTEM of the
+ * A2FC floppy. */
 static void basic_path(void)
 {
     char* s;
@@ -4024,14 +4024,14 @@ static void run_selected(const struct Entry* e)
     unsigned char bas = e->type == 0xFC, whole = 0;
     if (is_dir(e) || !panels[active].path[0]) { message(run_pick); return; }
     if (bas) {
-        /* BASIC.SYSTEM (basic_path) recoit le programme par son chemin
-         * complet "-/VOL/DIR/NOM" quand il tient dans le talon de chain.s
-         * (46 caracteres) : il se resout quel que soit le prefixe -- et
-         * BASIC.SYSTEM pose le sien sur son propre volume, d'ou
-         * "-A2FILE.SYSTEM" (le retour que l'aide annonce) revient quand il
-         * vient de la disquette d'A2FC. Trop long, on retombe sur l'ancien
-         * comportement (prefixe = dossier du programme, "-NOM", sans retour
-         * possible). BASIC.SYSTEM absent : launch_file dira "Run failed". */
+        /* BASIC.SYSTEM (basic_path) receives the program by its full path
+         * "-/VOL/DIR/NAME" when it fits in the thunk of chain.s
+         * (46 characters): it resolves whatever the prefix is -- and
+         * BASIC.SYSTEM sets its own prefix to its own volume, which is why
+         * "-A2FILE.SYSTEM" (the return the help announces) works when it
+         * comes from the A2FC floppy. Too long, we fall back to the old
+         * behaviour (prefix = program's directory, "-NAME", no way back).
+         * BASIC.SYSTEM missing: launch_file will say "Run failed". */
         whole = build_full(other_full, &panels[active], e) && strlen(other_full) <= 46;
         basic_path();
         addr = 0x2000;
@@ -4042,7 +4042,7 @@ static void run_selected(const struct Entry* e)
     }
     sprintf(question, run_ask, e->name);
     if (!confirm(question)) return;
-    if (bas && whole) {                    /* prefixe = racine, "-/VOL/DIR/NOM" */
+    if (bas && whole) {                    /* prefix = root, "-/VOL/DIR/NAME" */
         chain_command(other_full);
         strcpy(full, panels[active].path);
         { char* s = strchr(full + 1, '/'); if (s) *s = 0; }
@@ -4055,9 +4055,9 @@ static void run_selected(const struct Entry* e)
     launch_file(addr);
 }
 
-/* F : le formateur, A2FILE/FORMAT.SYS a cote de A2FILE.CODE (Bitsy Bye le
- * propose aussi), lance depuis le dossier du programme -- celui d'ou vient
- * A2FILE.CFG, a la racine d'un volume ou non ; il relance A2FC en sortant. */
+/* F: the formatter, A2FILE/FORMAT.SYS next to A2FILE.CODE (Bitsy Bye offers
+ * it too), launched from the program's directory -- the one A2FILE.CFG comes
+ * from, at the root of a volume or not; it relaunches A2FC on exit. */
 static const char fmt_ask[] = "Open the disk formatter?";
 static const char fmt_sys[] = "A2FILE/FORMAT.SYS";
 
@@ -4069,7 +4069,7 @@ static void format_disk(void)
     if (!confirm(fmt_ask)) return;
     strcpy(full, cfg_path);
     n = strlen(full);                                      /* "/VOL/DIR/A2FILE/A2FILE.CFG" -> "/VOL/DIR" : */
-    if (n > 18 && !strcmp(full + n - 18, fmt_cfg)) full[n - 18] = 0;   /* le dossier du programme */
+    if (n > 18 && !strcmp(full + n - 18, fmt_cfg)) full[n - 18] = 0;   /* the program's directory */
     chdir(full);
     strcpy(full, fmt_sys);
     launch_file(0x2000);
@@ -4085,15 +4085,15 @@ void __fastcall__ run_entry(const struct A2fcApi* a)
 #pragma rodata-name (pop)
 #pragma code-name (pop)
 
-/* Entree sur un fichier .PO/.DSK/.DO/.2MG d'un vrai dossier : l'ouvrir en
- * lecture comme un dossier (read_image_panel). Le chemin de l'image devient
- * pan->path, pan->fs son ordre, et le repertoire de volume (bloc 2) s'affiche.
- * Rend 1 si l'entree etait une image (traitee), 0 sinon. */
+/* Return on a .PO/.DSK/.DO/.2MG file of a real directory: open it read-only
+ * as a directory (read_image_panel). The image's path becomes pan->path,
+ * pan->fs its sector order, and the volume directory (block 2) is displayed.
+ * Returns 1 if the entry was an image (handled), 0 otherwise. */
 static unsigned char open_image(struct Panel* pan, const struct Entry* e)
 {
     unsigned char ord = pan->fs ? FS_PRODOS : image_order(e->name);
     char* slash;
-    if (!ord || e->size < 512 || ((e->size & 511) && (e->size & 511) != 64)) return 0;   /* 64 : l'en-tete 2IMG */
+    if (!ord || e->size < 512 || ((e->size & 511) && (e->size & 511) != 64)) return 0;   /* 64: the 2IMG header */
     if (!build_full(full, pan, e)) { too_long(); return 1; }
     strcpy(input, e->name);
     strcpy(pan->path, full);
@@ -4101,7 +4101,7 @@ static unsigned char open_image(struct Panel* pan, const struct Entry* e)
     pan->fs = ord;
     pan->dir_key = 2;
     pan->cursor = pan->top = pan->first = 0;
-    if (!read_panel(active)) {      /* pas un volume ProDOS : revenir au dossier */
+    if (!read_panel(active)) {      /* not a ProDOS volume: back to the directory */
         strcpy(pan->path, full);
         slash = strrchr(pan->path, '/');
         if (slash) *slash = 0; else pan->path[0] = 0;
@@ -4120,10 +4120,10 @@ static void open_selected(void)
     const struct Entry* e;
     if (!pan->count) return;
     e = &pan->e[pan->cursor];
-    if (!pan->path[0] && is_dir(e) && !e->access) {   /* un vrai disque DOS 3.3 de la liste */
+    if (!pan->path[0] && is_dir(e) && !e->access) {   /* a real DOS 3.3 disk from the list */
         pan->fs = FS_DOS33;
         pan->img_len = 0;
-        pan->dir_key = e->mdate;                       /* l'unite ProDOS */
+        pan->dir_key = e->mdate;                       /* the ProDOS unit */
         strcpy(pan->path, "/DOS 3.3");
         pan->cursor = pan->top = pan->first = 0;
         read_panel(active);
@@ -4142,7 +4142,7 @@ static void open_selected(void)
 }
 
 /* ---------------------------------------------------------------------- */
-/* Marques, tri, recherche                                                */
+/* Tags, sort, search                                                     */
 /* ---------------------------------------------------------------------- */
 
 static void toggle_tag(void)
@@ -4152,11 +4152,11 @@ static void toggle_tag(void)
     if (!pan->count || !pan->path[0]) return;
     e = &pan->e[pan->cursor];
     if (!is_dir(e)) set_tag(pan, pan->cursor, !tagged(pan, pan->cursor));
-    land(pan->cursor);                 /* la marque se voit ; le curseur reste ou il est */
+    land(pan->cursor);                 /* the tag shows; the cursor stays where it is */
 }
 
-/* Ctrl-T marque tous les fichiers du panneau (mode 1), Ctrl-N les demarque
- * tous (0), * inverse les marques (2) ; les dossiers ne se marquent pas. */
+/* Ctrl-T tags every file of the panel (mode 1), Ctrl-N untags them all
+ * (0), * inverts the tags (2); directories are never tagged. */
 static void retag(unsigned char mode)
 {
     struct Panel* pan = &panels[active];
@@ -4167,9 +4167,9 @@ static void retag(unsigned char mode)
     show_active();
 }
 
-/* M : marque les fichiers absents de l'autre panneau ou de taille
- * differente, la base d'une synchronisation par C. */
-/* ' puis une touche : l'entree suivante dont le nom commence par elle. */
+/* M: tags the files missing from the other panel or of a different size,
+ * the basis of a synchronisation by C. */
+/* ' then a key: the next entry whose name starts with it. */
 static void find_letter(void)
 {
     struct Panel* pan = &panels[active];
@@ -4188,11 +4188,11 @@ static void find_letter(void)
 }
 
 /* ---------------------------------------------------------------------- */
-/* Boucle principale                                                      */
+/* Main loop                                                              */
 /* ---------------------------------------------------------------------- */
 
-/* Deplace le curseur ; au-dela des bords d'un dossier lu par fenetres,
- * charge la fenetre suivante ou precedente. */
+/* Moves the cursor; past the edges of a directory read by windows, loads
+ * the next or previous window. */
 static void move_cursor(int delta)
 {
     struct Panel* pan = &panels[active];
@@ -4228,10 +4228,10 @@ static void swap_panels(void)
     draw_info();
 }
 
-/* La touche du bouton de la barre des commandes sous la colonne x, d'apres
- * MAIN_KEYS et la mise en page de keys_bar : trois colonnes de touche, le
- * libelle, un espace. Une touche d'une lettre est elle-meme ; TAB, RET et
- * SPC sont les touches qu'ils nomment. 0 entre deux boutons. */
+/* The key of the command bar button under column x, according to
+ * MAIN_KEYS and the layout of keys_bar: three columns of key, the label,
+ * one space. A one-letter key is itself; TAB, RET and SPC are the keys
+ * they name. 0 between two buttons. */
 static char key_of(const char* s)
 {
     return s[1] == ' ' ? *s : *s == 'T' ? KEY_TAB : *s == 'R' ? KEY_RETURN : ' ';
@@ -4255,8 +4255,8 @@ static char bar_key(unsigned char x)
 }
 #endif
 
-/* 1..9 et 0 : les dix boutons de la barre, dans l'ordre -- les touches de
- * fonction de Norton Commander et d'A2Command. */
+/* 1..9 and 0: the ten buttons of the bar, in order -- the function keys
+ * of Norton Commander and A2Command. */
 static char bar_nth(unsigned char n)
 {
     const char* s = MAIN_KEYS;
@@ -4264,11 +4264,11 @@ static char bar_nth(unsigned char n)
     return key_of(s);
 }
 
-/* Un clic. Sur la barre des commandes, la touche du bouton. Sur une entree,
- * la selection -- le panneau devient actif s'il ne l'etait pas -- ou
- * l'ouverture si elle etait deja selectionnee : deux clics ouvrent. Sur
- * l'en-tete d'un panneau, le tri (la ligne des colonnes) ou le dossier
- * parent (le chemin). Rend la touche equivalente, 0 quand tout est fait. */
+/* A click. On the command bar, the button's key. On an entry, selection
+ * -- the panel becomes active if it was not -- or opening if it was
+ * already selected: two clicks open. On a panel's header, the sort (the
+ * column line) or the parent directory (the path). Returns the equivalent
+ * key, 0 when everything has already been done. */
 #ifndef A2FC_NOMOUSE
 static char click(void)
 {
@@ -4287,10 +4287,10 @@ static char click(void)
     return 0;
 }
 
-/* Attend une touche, ou un clic quand une souris est la. Le pointeur suit
- * la souris des qu'elle a bouge une fois, et s'efface avant que la main ne
- * revienne, pour qu'aucun redessin ne le recouvre. Un clic rend la touche
- * qu'il vaut, 0 s'il a tout fait lui-meme. */
+/* Waits for a key, or a click when a mouse is present. The pointer follows
+ * the mouse once it has moved once, and is erased before control returns,
+ * so that no redraw paints over it. A click returns the key it stands
+ * for, 0 if it did everything itself. */
 #endif
 static char wait_key(void)
 {
@@ -4312,9 +4312,9 @@ static char wait_key(void)
 #endif
 }
 
-/* La table de services : ce qu'une surcouche d'un tiers recoit a son point
- * d'entree (a2fc_plugin.h). Les surcouches du programme n'en ont pas
- * besoin, elles sont liees avec lui. */
+/* The service table: what a third party's overlay receives at its entry
+ * point (a2fc_plugin.h). The program's own overlays do not need it, they
+ * are linked with it. */
 static struct A2fcApi api = {
     A2FC_API_VERSION, 0,
     panels, &active, full, other_full, input, copy_buf, &dir_entry,
@@ -4338,9 +4338,9 @@ int main(void)
     a2fc_slot = 0xFF;
     panels[0].e = ENTRIES;
     panels[1].e = ENTRIES + MAX_ENTRIES;
-    /* Le panneau gauche s'ouvre sur le volume amorce, le droit sur son
-     * dossier DEMO ; sans prefixe, ou sans DEMO, read_panel retombe sur la
-     * liste des volumes, ce qui est aussi un bon point de depart. */
+    /* The left panel opens on the boot volume, the right one on its DEMO
+     * directory; without a prefix, or without DEMO, read_panel falls back
+     * to the volume list, which is also a good starting point. */
     if (!getcwd(panels[0].path, PATH_LEN)) panels[0].path[0] = 0;
     strcpy(panels[1].path, panels[0].path);
     if (panels[1].path[0] && strlen(panels[1].path) + 5 < PATH_LEN)
@@ -4354,12 +4354,12 @@ int main(void)
 #ifndef A2FC_NOMOUSE
     a2fc_mouse = mouse_init();
 #endif
-    /* VDrive : une carte serie et deux volumes de plus dans DEVLST, avant
-     * de lire les panneaux (la liste des volumes les montre). */
+    /* VDrive: a serial card and two more volumes in DEVLST, before reading
+     * the panels (the volume list shows them). */
 #ifndef A2FC_NOVDRIVE
     key = vsdrive_install();
 #else
-    key = 0;                    /* ARCH=6502 : pas de VDrive, la place manque */
+    key = 0;                    /* ARCH=6502: no VDrive, no room for it */
 #endif
 #ifdef A2FC_TRACE
     *(unsigned char*)0x03A0 = 4;
@@ -4381,10 +4381,10 @@ int main(void)
         key = wait_key();
         if (key >= '0' && key <= '9') key = bar_nth(key == '0' ? 9 : key - '1');
         if (key != KEY_ESC && key != 'q' && key != 'Q') clear_row(22);
-        /* Une image ouverte comme un dossier est en lecture seule : seules la
-         * navigation, le marquage, C/V (extraire) et le formateur agissent ;
-         * les commandes qui ecriraient ou qui ont besoin d'un vrai chemin
-         * sont refusees en clair. */
+        /* An image opened as a directory is read-only: only navigation,
+         * tagging, C/V (extract) and the formatter act; the commands that
+         * would write or that need a real path are refused with a clear
+         * message. */
         if (pan->fs && strchr("RKALDXEWTHIM", key & 0xDF)) {
             { extern const char msg_roimg[]; message(msg_roimg); };
             continue;
@@ -4392,20 +4392,20 @@ int main(void)
         switch (key) {
         case KEY_UP: move_cursor(-1); break;
         case KEY_DOWN: move_cursor(1); break;
-        /* Les fleches horizontales font la page, pas l'ouverture : sur un
-         * dossier de cent fichiers, monter et descendre est ce qu'on fait
-         * le plus souvent, et le clavier de l'Apple IIe n'a pas de PgUp.
-         * RET ouvre, ESC remonte -- les deux seules autres facons de le
-         * faire restent inchangees. */
+        /* The horizontal arrows page, they do not open: in a directory of
+         * a hundred files, going up and down is what one does most often,
+         * and the Apple IIe keyboard has no PgUp. RET opens, ESC goes up
+         * to the parent -- the only two other ways of doing it stay
+         * unchanged. */
         case '<': case '-': case KEY_LEFT: move_cursor(-ROWS); break;
         case '>': case '+': case KEY_RIGHT: move_cursor(ROWS); break;
         case '[': set_cursor(pan, 0); show_active(); break;
         case ']': if (pan->count) set_cursor(pan, pan->count - 1); show_active(); break;
         case ' ': toggle_tag(); break;
         case '*': retag(2); break;
-        case 20: retag(1); break;                             /* Ctrl-T : tout marquer */
-        case 14: retag(0); break;                             /* Ctrl-N : rien */
-        case 18: refresh_both(); break;                       /* Ctrl-R : relire les panneaux */
+        case 20: retag(1); break;                             /* Ctrl-T: tag everything */
+        case 14: retag(0); break;                             /* Ctrl-N: nothing */
+        case 18: refresh_both(); break;                       /* Ctrl-R: reread the panels */
         case '\'': find_letter(); break;
         case KEY_TAB: swap_panels(); break;
         case KEY_RETURN: open_selected(); break;
@@ -4433,7 +4433,7 @@ int main(void)
         case 't': case 'T':
             if (pan->count && !is_dir(&pan->e[pan->cursor]) && build_full(full, pan, &pan->e[pan->cursor])) {
                 key = pan->e[pan->cursor].type;
-                if ((unsigned char)key == 0xFC) overlay_run("BASLIST", 0);   /* grande surcouche */
+                if ((unsigned char)key == 0xFC) overlay_run("BASLIST", 0);   /* big overlay */
                 else if ((unsigned char)key == 0x1A) overlay_run("AWP", 0);
                 else if (overlay("TEXT")) view_text(full);
             }
@@ -4453,12 +4453,12 @@ int main(void)
             if (confirm("Quit to ProDOS?")) {
                 music_stop();
                 save_config();
-                /* Le prefixe ProDOS suit le panneau actif : Bitsy Bye
-                 * reprend dans le dossier ou l'on etait. */
+                /* The ProDOS prefix follows the active panel: Bitsy Bye
+                 * resumes in the directory we were in. */
                 if (pan->path[0]) chdir(pan->path);
                 switch_to_text();
                 clrscr();
-                return 0;   /* crt0 : QUIT ProDOS, Bitsy Bye reprend. */
+                return 0;   /* crt0: QUIT ProDOS, Bitsy Bye resumes. */
             }
             break;
         }

@@ -74,6 +74,10 @@ No build required. Choose the image that fits your setup:
 A **Mockingboard** enables music playback; an **AppleMouse II** enables point
 and click navigation. Both are optional and can be in any supported slot.
 
+**Tested on:** a real Enhanced Apple IIe; the [Virtual II](https://www.virtualii.com/) emulator;
+and, under [POM2](https://github.com/habib256/pom2), an Apple //c and an unenhanced 1983 IIe
+running the 6502 build. The Apple IIgs has not been tried yet.
+
 ### Take a quick tour
 
 The hard-disk image includes examples generated especially for A2FileCmd:

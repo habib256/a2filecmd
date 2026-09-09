@@ -1,20 +1,19 @@
-/* A2FILE.SYSTEM : le lanceur ProDOS d'A2 File Cmd.
+/* A2FILE.SYSTEM: the ProDOS launcher of A2 File Cmd.
  *
- * ProDOS charge tout programme SYS en $2000 et lui donne la main. Or A2 File
- * Cmd tourne en $4000 et occupe presque tout jusqu'a $BEFF : il ne PEUT pas
- * etre un SYS. Ce petit lanceur en est un, et lit le vrai programme a sa
+ * ProDOS loads every SYS program at $2000 and hands it control. But A2 File
+ * Cmd runs at $4000 and fills almost everything up to $BEFF: it CANNOT be
+ * a SYS. This small launcher is one, and reads the real program in its
  * place.
  *
- * A2FILE.CODE n'est pas un binaire plat : c'est une image a charge separee.
- * Ses 3 premiers kilo-octets vont en $1000 -- du code destine a la carte
- * langage, que crt0.s recopie en $D400 avant que main() n'efface la RAM
- * basse. Le reste va en $4000, ou commence l'execution. Un BLOAD ne saurait
- * pas faire cela : le fichier n'est pas BRUNable, il se lance par ici. (Les
- * surcouches, A2FILE/IMAGE.PLG, c'est A2FC lui-meme qui les charge en
- * $1B00 quand il en a besoin.)
+ * A2FILE.CODE is not a flat binary: it is a split-load image. Its first
+ * 3 kilobytes go to $1000 -- code meant for the language card, which
+ * crt0.s copies to $D400 before main() clears low RAM. The rest goes to
+ * $4000, where execution starts. A BLOAD could not do this: the file is
+ * not BRUNable, it is started from here. (The overlays, A2FILE/IMAGE.PLG,
+ * are loaded by A2FC itself at $1B00 when it needs them.)
  *
- * Le prefixe ProDOS est celui du volume amorce : le lanceur ouvre
- * "A2FILE/A2FILE.CODE" en relatif, sans avoir a connaitre le nom du volume.
+ * The ProDOS prefix is that of the boot volume: the launcher opens
+ * "A2FILE/A2FILE.CODE" relatively, without having to know the volume name.
  */
 
 #include <stdio.h>
@@ -30,17 +29,17 @@
 #define A2FC_VERSION "0.6.8"
 #endif
 
-/* src/loader_mli.s : poser le prefixe ProDOS sur le volume amorce avant de
- * sauter dans A2FC (voir la note dans ce fichier et devant l'appel plus bas). */
+/* src/loader_mli.s: set the ProDOS prefix to the boot volume before
+ * jumping into A2FC (see the note in that file and before the call below). */
 extern void set_boot_prefix(void);
 
 #define CODE_ADDR   0x4000
 #define CHUNK       1024
 #define LC_STAGE    0x1000
-#define LC_BYTES    0x0C00      /* l'image de la carte langage */
-#define STAGE_BYTES 0x0C00      /* rien d'autre : la RAM au-dessus est aux surcouches */
+#define LC_BYTES    0x0C00      /* the language card image */
+#define STAGE_BYTES 0x0C00      /* nothing else: the RAM above belongs to the overlays */
 
-/* Une ligne centree sur les 80 colonnes. */
+/* A line centred on the 80 columns. */
 static void centre(unsigned char y, const char* text)
 {
     gotoxy((80 - strlen(text)) / 2, y);
@@ -55,9 +54,9 @@ int main(void)
 
     videomode(VIDEOMODE_80COL);
     clrscr();
-    /* L'ecran d'attente : le titre, la condition ProDOS, la date si une
-     * horloge est la (bit 0 de MACHID, $BF98 ; ProDOS tient alors
-     * $BF90-$BF93 a jour), puis le chargement. */
+    /* The waiting screen: the title, the ProDOS requirement, the date if a
+     * clock is present (bit 0 of MACHID, $BF98; ProDOS then keeps
+     * $BF90-$BF93 up to date), then the loading. */
     {
         static const char* const months[] = { "January", "February", "March", "April", "May", "June",
             "July", "August", "September", "October", "November", "December" };
@@ -65,10 +64,9 @@ int main(void)
         unsigned int date = *(unsigned int*)0xBF90;
         unsigned char minute = *(unsigned char*)0xBF92, hour = *(unsigned char*)0xBF93;
         unsigned char year = date >> 9, month = (date >> 5) & 15, day = date & 31;
-        /* Un cadre, le titre en inverse, ce que le programme sait faire en
-         * deux colonnes, ce qu'il demande, la licence, la date, et le
-         * chargement en bas : la page qu'on lit le temps que la disquette
-         * tourne. */
+        /* A frame, the title in inverse, what the program can do in two
+         * columns, what it requires, the licence, the date, and the loading
+         * at the bottom: the page one reads while the floppy spins. */
         chlinexy(0, 0, 80);
         chlinexy(0, 4, 80);
         for (n = 1; n < 4; ++n) { cputcxy(0, n, '|'); cputcxy(79, n, '|'); }
@@ -87,8 +85,8 @@ int main(void)
         cputsxy(44, 9, "Mockingboard music player.");
         cputsxy(4, 10,  "Disk formatter, program launcher.");
 #ifdef A2FC_6502
-        /* La version 6502 : le IIe non enhanced, sans souris -- la page le
-         * dit, pour qu'on sache laquelle on a amorcee. */
+        /* The 6502 build: the unenhanced IIe, without mouse -- the page says
+         * so, so that one knows which build was booted. */
         cputsxy(44, 10, "Keyboard: press ? for help.");
         cputsxy(4, 12, "6502 BUILD for the UNENHANCED Apple IIe: 128 KB, 80 columns, ProDOS 8.");
         cputsxy(4, 13, "Optional: a Mockingboard in any slot. No mouse in this build.");
@@ -100,8 +98,8 @@ int main(void)
         cputsxy(4, 15, "Free software under the GNU GPL v3, by Arnaud VERHILLE.");
         cputsxy(4, 16, "https://github.com/habib256/a2filecmd");
         gotoxy(4, 18);
-        /* ProDOS : annee sur 7 bits (0-39 = 2000-2039), mois 1-12, jour 1-31,
-         * heure 0-23 -- deja en 24 heures. Une date hors bornes vaut absence. */
+        /* ProDOS: 7-bit year (0-39 = 2000-2039), month 1-12, day 1-31,
+         * hour 0-23 -- already in 24-hour form. An out-of-range date means none. */
         if ((machid & 1) && month >= 1 && month <= 12 && day >= 1 && day <= 31 && hour < 24 && minute < 60)
             cprintf("%u %s %u, %02u:%02u", day, months[month - 1],
                     year < 40 ? 2000 + year : 1900 + year, hour, minute);
@@ -112,13 +110,13 @@ int main(void)
         cputs("PLEASE WAIT, loading A2FILE.CODE ...");
     }
 
-    /* Le prefixe d'abord : A2FILE/A2FILE.CODE se lit en relatif. Au
-     * demarrage a froid ProDOS l'a pose, Bitsy Bye aussi (le dossier du
-     * .SYSTEM), mais la relance par "-A2FILE.SYSTEM" depuis BASIC.SYSTEM le
-     * laisse VIDE : set_boot_prefix le refait alors du chemin complet que
-     * BASIC.SYSTEM laisse en $0280, ou du volume amorce. Sans lui A2FC
-     * s'ouvrirait sur la liste des volumes, sans A2FILE.CFG -- ou ne se
-     * chargerait pas du tout, installe ailleurs qu'a la racine. */
+    /* The prefix first: A2FILE/A2FILE.CODE is read relatively. On a cold
+     * boot ProDOS has set it, Bitsy Bye too (the directory of the .SYSTEM),
+     * but relaunching by "-A2FILE.SYSTEM" from BASIC.SYSTEM leaves it EMPTY:
+     * set_boot_prefix then rebuilds it from the full path that BASIC.SYSTEM
+     * leaves at $0280, or from the boot volume. Without it A2FC would open
+     * on the volume list, without A2FILE.CFG -- or would not load at all,
+     * when installed elsewhere than at the root. */
     set_boot_prefix();
     if ((f = fopen(CODE_FILE, "rb")) == NULL) {
         cprintf("\r\n%s not found (errno=%d).\r\n", CODE_FILE, errno);
@@ -132,11 +130,11 @@ int main(void)
         cgetc();
         return 1;
     }
-    /* Jamais au-dela de $BEFF : la page globale ProDOS est a $BF00. */
+    /* Never beyond $BEFF: the ProDOS global page is at $BF00. */
     while (dst < (unsigned char*)0xBF00 && (n = fread(dst, 1, (unsigned char*)0xBF00 - dst < CHUNK ? (unsigned char*)0xBF00 - dst : CHUNK, f)) > 0) dst += n;
     fclose(f);
 
-    /* A2 File Cmd ne revient jamais ici : il sort par le QUIT ProDOS. */
+    /* A2 File Cmd never comes back here: it leaves through the ProDOS QUIT. */
 #ifdef A2FC_TRACE
     *(unsigned char*)0x03A2 = 1; *(unsigned char*)0x03A0 = 0; *(unsigned char*)0x03A1 = 0;
 #endif

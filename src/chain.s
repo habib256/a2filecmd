@@ -1,25 +1,25 @@
-; chain.s -- lancer un programme ProDOS quelle que soit sa taille.
+; chain.s -- launch a ProDOS program whatever its size.
 ;
-;   extern unsigned int chain_addr;         adresse de chargement ($2000 pour un SYS)
+;   extern unsigned int chain_addr;         load address ($2000 for a SYS)
 ;   void __fastcall__ chain_load(const char* path);
 ;
-; Le programme appelant est ecrase par ce qu'il charge : le travail se fait
-; depuis un talon recopie en page $0300 (libre sous ProDOS, hors de tout
-; programme), qui ouvre le fichier, le lit tout entier a chain_addr, le
-; ferme, remet la ROM en lecture et y saute. Un echec renvoie a ProDOS
-; (QUIT, Bitsy Bye). Partage par A2FC (touches X et F) et par FORMAT.SYSTEM
-; (retour a A2FC).
+; The calling program is overwritten by what it loads: the work is done
+; from a thunk copied to page $0300 (free under ProDOS, outside any
+; program), which opens the file, reads it whole to chain_addr, closes
+; it, switches the ROM back in for reading and jumps to it. A failure
+; returns to ProDOS (QUIT, Bitsy Bye). Shared by A2FC (keys X and F) and
+; by FORMAT.SYSTEM (return to A2FC).
 ;
 ;   void __fastcall__ chain_command(const char* name);
 ;
-; Une commande facultative pour le programme charge, a appeler AVANT
-; chain_load. C'est la porte que BASIC.SYSTEM ouvre a ses lanceurs, Bitsy
-; Bye compris : a son demarrage il regarde en $2006 un nom precede de sa
-; longueur, et s'il existe l'execute comme la commande "-NOM" -- ce qui
-; lance un programme Applesoft. Le talon depose donc le nom en
-; chain_addr+6 juste avant de sauter. Sans appel, le premier octet reste
-; nul et rien n'est ecrit. 46 caracteres au plus : un chemin complet
-; "/VOL/DIR/NOM" y tient presque toujours (voir run_selected).
+; An optional command for the loaded program, to be called BEFORE
+; chain_load. This is the door BASIC.SYSTEM opens to its launchers, Bitsy
+; Bye included: at startup it looks at $2006 for a name preceded by its
+; length, and if there is one executes it as the command "-NAME" -- which
+; runs an Applesoft program. So the thunk stores the name at
+; chain_addr+6 just before jumping. Without a call, the first byte stays
+; zero and nothing is written. 46 characters at most: a full path
+; "/VOL/DIR/NAME" almost always fits (see run_selected).
 
         .export _chain_load, _chain_addr, _chain_command
         .import donelib
@@ -45,9 +45,9 @@ stub:   jsr $BF00               ; OPEN
         jsr $BF00               ; CLOSE
         .byte $CC
         .word close_p
-        ldy cmd                 ; une commande a passer ?
+        ldy cmd                 ; a command to pass?
         beq run
-        clc                     ; oui : en chain_addr+6, longueur comprise
+        clc                     ; yes: at chain_addr+6, length included
         lda rd_addr
         adc #6
         sta put+1
@@ -65,8 +65,8 @@ fail:   jsr $BF00               ; QUIT : Bitsy Bye
         .word quit_p
 open_p: .byte 3
         .word path
-        .word $BB00             ; tampon ProDOS de 1 Ko, hors de portee d'un
-                                ; programme charge entre $0800 et $BAFF
+        .word $BB00             ; 1 KB ProDOS buffer, out of reach of a
+                                ; program loaded between $0800 and $BAFF
 ref_num:
         .byte 0
 read_p: .byte 4
@@ -83,33 +83,33 @@ quit_p: .byte 4, 0
         .byte 0
         .word 0
 path:   .res 64
-cmd:    .res 47                 ; longueur puis nom (46 au plus : ce que la page 3
-                                ; laisse), zero = pas de commande
+cmd:    .res 47                 ; length then name (46 at most: what page 3
+                                ; leaves), zero = no command
 stub_end:
         .reloc
 stub_len = stub_end - stub
-; Le talon vit en $0300-$03CF : au-dela commencent les vecteurs (BRK, RESET,
-; entree DOS) que ProDOS et le moniteur s'attendent a trouver intacts.
-        .assert stub_len <= $D0, error, "le talon de chain.s deborde la page 3"
+; The thunk lives at $0300-$03CF: beyond that begin the vectors (BRK, RESET,
+; DOS entry) that ProDOS and the monitor expect to find intact.
+        .assert stub_len <= $D0, error, "the chain.s thunk overflows page 3"
 cmd_src = stub_src + (cmd - stub)
 
         .segment "CODE"
 _chain_load:
         sta ptr1
         stx ptr1+1
-        ; Les destructeurs cc65 d'abord : doneirq rend a ProDOS l'entree
-        ; d'interruption prise au demarrage (music_irq). Sans cela chaque
-        ; lancement en gardait une, avec un vecteur vers de la memoire
-        ; recouverte : au troisieme aller-retour F/ESC, plantage dans le
-        ; moniteur. ProDOS n'en a que quatre.
+        ; The cc65 destructors first: doneirq gives back to ProDOS the
+        ; interrupt entry taken at startup (music_irq). Without this each
+        ; launch kept one, with a vector into overwritten memory: on the
+        ; third F/ESC round trip, a crash into the monitor. ProDOS only
+        ; has four of them.
         jsr donelib
-        ldy #0                  ; copier le talon en $0300
+        ldy #0                  ; copy the thunk to $0300
 :       lda stub_src,y
         sta $0300,y
         iny
         cpy #stub_len
         bne :-
-        lda _chain_addr         ; l'adresse, et la longueur jusqu'a $BF00
+        lda _chain_addr         ; the address, and the length up to $BF00
         sta rd_addr
         sec
         lda #$00
@@ -120,7 +120,7 @@ _chain_load:
         lda #$BF
         sbc _chain_addr+1
         sta rd_len+1
-        ldy #0                  ; le chemin, prefixe de sa longueur
+        ldy #0                  ; the path, prefixed with its length
 :       lda (ptr1),y
         beq :+
         sta path+1,y
@@ -130,8 +130,8 @@ _chain_load:
 :       sty path
         jmp stub
 
-; Depose le nom dans le talon SOURCE (RODATA, donc en RAM et modifiable) :
-; le prochain chain_load l'emporte avec le reste du talon.
+; Stores the name in the SOURCE thunk (RODATA, so in RAM and writable):
+; the next chain_load carries it along with the rest of the thunk.
 _chain_command:
         sta ptr1
         stx ptr1+1

@@ -1,32 +1,32 @@
-; Poser le prefixe ProDOS pour A2 File Cmd, depuis le lanceur (src/loader.c).
+; Set the ProDOS prefix for A2 File Cmd, from the launcher (src/loader.c).
 ;
-; Tout part du prefixe : A2FILE/A2FILE.CODE, les surcouches A2FILE/*.PLG,
-; l'aide, A2FILE.CFG s'y lisent en relatif. Trois cas :
-;  - il est deja pose (amorcage a froid : ProDOS met "/VOL/" ; Bitsy Bye :
-;    le dossier du .SYSTEM lance ; retour de FORMAT.SYS : ce qu'il a laisse) :
-;    on n'y touche pas. C'est ce qui permet d'installer A2FILE.SYSTEM et son
-;    dossier A2FILE n'importe ou sur un disque dur, pas seulement a la racine
-;    d'un volume nomme /A2FILECMD.
-;  - il est VIDE : relance par "-A2FILE.SYSTEM" depuis BASIC.SYSTEM, qui le
-;    vide en lancant un SYS mais laisse en $0280 le chemin complet du
-;    programme lance ("/VOL/DIR/A2FILE.SYSTEM") : son dossier est le notre.
-;  - sinon (chemin relatif en $0280, ou rien) : ON_LINE sur le dernier
-;    peripherique utilise ($BF30, celui d'ou A2FILE.CODE vient d'etre lu)
-;    donne le nom du volume, qu'on pose en "/NOM".
+; Everything starts from the prefix: A2FILE/A2FILE.CODE, the A2FILE/*.PLG
+; overlays, the help, A2FILE.CFG are all read relative to it. Three cases:
+;  - it is already set (cold boot: ProDOS sets "/VOL/"; Bitsy Bye: the
+;    directory of the launched .SYSTEM; return from FORMAT.SYS: whatever it
+;    left): we leave it alone. This is what allows A2FILE.SYSTEM and its
+;    A2FILE directory to be installed anywhere on a hard disk, not only at
+;    the root of a volume named /A2FILECMD.
+;  - it is EMPTY: relaunch by "-A2FILE.SYSTEM" from BASIC.SYSTEM, which
+;    clears it when launching a SYS but leaves at $0280 the full path of
+;    the launched program ("/VOL/DIR/A2FILE.SYSTEM"): its directory is ours.
+;  - otherwise (relative path at $0280, or nothing): ON_LINE on the last
+;    device used ($BF30, the one A2FILE.CODE has just been read from) gives
+;    the volume name, which we set as "/NAME".
 ;
-; Appel MLI direct plutot que chdir()/getcwd() de cc65, dont l'edition de
-; liens (module cwd, tas) desequilibrait la pile serree du lanceur et
-; faisait planter le chargement. Les tampons sont en BSS basse ($35xx),
-; hors de la zone que la lecture d'A2FILE.CODE remplit.
+; A direct MLI call rather than cc65's chdir()/getcwd(), whose linking
+; (cwd module, heap) unbalanced the launcher's tight stack and made the
+; load crash. The buffers are in low BSS ($35xx), outside the area that
+; the read of A2FILE.CODE fills.
 
         .export         _set_boot_prefix
 
 MLI          = $BF00
-DEVNUM       = $BF30            ; dernier peripherique ProDOS utilise
+DEVNUM       = $BF30            ; last ProDOS device used
 ON_LINE      = $C5
 SET_PREFIX   = $C6
 GET_PREFIX   = $C7
-SYSPATH      = $0280            ; le chemin du .SYSTEM lance, longueur en tete
+SYSPATH      = $0280            ; path of the launched .SYSTEM, length first
 
         .code
 
@@ -37,22 +37,22 @@ _set_boot_prefix:
         .word   pfx_parm
         bcs     sbp_online
         lda     pfx_buf
-        bne     sbp_fail        ; deja pose : on le garde
-        ldy     SYSPATH         ; vide : le dossier du programme lance
+        bne     sbp_fail        ; already set: keep it
+        ldy     SYSPATH         ; empty: the launched program's directory
         beq     sbp_online
         lda     SYSPATH+1
         cmp     #'/'
-        bne     sbp_online      ; chemin relatif : sans prefixe, insoluble
+        bne     sbp_online      ; relative path: without a prefix, unsolvable
 sbp_last:
-        lda     SYSPATH,y       ; la derniere barre, en partant de la fin
+        lda     SYSPATH,y       ; the last slash, scanning from the end
         cmp     #'/'
         beq     sbp_dir
         dey
         bne     sbp_last
 sbp_dir:
         cpy     #2
-        bcc     sbp_online      ; "/NOM" seul : pas un dossier
-        sty     pfx_buf         ; le dossier, sa barre finale comprise
+        bcc     sbp_online      ; "/NAME" alone: not a directory
+        sty     pfx_buf         ; the directory, its trailing slash included
 sbp_cpy:
         lda     SYSPATH,y
         sta     pfx_buf,y
@@ -62,24 +62,24 @@ sbp_cpy:
 
 sbp_online:
         lda     DEVNUM
-        beq     sbp_fail        ; unit 0 = « tous les lecteurs » : ON_LINE
-                                ; deborderait ol_buf (16 octets par volume).
-                                ; Jamais le cas apres la lecture d'A2FILE.CODE,
-                                ; mais une garde si la routine sert ailleurs.
+        beq     sbp_fail        ; unit 0 = "all drives": ON_LINE would
+                                ; overflow ol_buf (16 bytes per volume).
+                                ; Never the case after reading A2FILE.CODE,
+                                ; but a guard if the routine is used elsewhere.
         sta     ol_unit
         jsr     MLI
         .byte   ON_LINE
         .word   ol_parm
-        bcs     sbp_fail        ; erreur MLI : on laisse le prefixe tel quel
+        bcs     sbp_fail        ; MLI error: leave the prefix as it is
 
-        lda     ol_buf          ; nibble haut = slot/drive, bas = longueur du nom
+        lda     ol_buf          ; high nibble = slot/drive, low = name length
         and     #$0F
-        beq     sbp_fail        ; longueur 0 : ol_buf+1 porte un code d'erreur
+        beq     sbp_fail        ; length 0: ol_buf+1 carries an error code
 
-        tax                     ; X = longueur du nom
+        tax                     ; X = name length
         clc
-        adc     #1              ; + le '/' de tete
-        sta     pfx_buf         ; octet de longueur pour SET_PREFIX
+        adc     #1              ; + the leading '/'
+        sta     pfx_buf         ; length byte for SET_PREFIX
         lda     #'/'
         sta     pfx_buf+1
         ldy     #0
@@ -101,16 +101,16 @@ sbp_fail:
 ol_parm:
         .byte   2               ; param_count
 ol_unit:
-        .byte   0               ; unit_num, rempli a l'appel
+        .byte   0               ; unit_num, filled in at call time
         .word   ol_buf          ; data_buffer
 
 pfx_parm:
         .byte   1               ; param_count
-        .word   pfx_buf         ; pathname (octet de longueur + chaine)
+        .word   pfx_buf         ; pathname (length byte + string)
 
         .bss
 
 ol_buf:
-        .res    16              ; octet d'etat + 15 du nom de volume
+        .res    16              ; status byte + 15 of volume name
 pfx_buf:
         .res    64

@@ -17,10 +17,10 @@
 .endif
 
 .ifdef CC65_MASTER
-        ; cc65 master (la version 6502) : apple2/callmain.s y definit aussi
-        ; _exit, que nous avons ici avec nos propres sorties. Ce callmain-ci
-        ; le remplace -- main(void), pas d'arguments -- et la bibliotheque
-        ; garde le sien.
+        ; cc65 master (the 6502 version): apple2/callmain.s also defines
+        ; _exit there, which we have here with our own exits. This callmain
+        ; replaces it -- main(void), no arguments -- and the library keeps
+        ; its own.
         .export         callmain
         .import         _main, pushax
 callmain:
@@ -29,7 +29,7 @@ callmain:
         jsr     pushax          ; argc = 0
         jsr     pushax          ; argv = NULL
         ldy     #4
-        jmp     _main           ; son rts revient a l'appelant, sur _exit
+        jmp     _main           ; its rts returns to the caller, at _exit
 .endif
         .import         __LCIMAGE_START__                        ; Linker generated
         .import         __LC_START__, __LC_LAST__       ; Linker generated

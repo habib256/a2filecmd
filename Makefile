@@ -1,27 +1,27 @@
-# A2 File Cmd -- gestionnaire de fichiers ProDOS a deux panneaux, Apple IIe.
+# A2 File Cmd -- two-panel ProDOS file manager for the Apple IIe.
 #
-#   make            les trois binaires ProDOS, dans build/
-#   make disk       les images de disquette dist/A2FILECMD.po et .dsk
-#   make test       les tests hors emulateur (disposition memoire, volume)
-#   make bench      les bancs POM2 (demande l'emulateur, voir bench/README.md)
+#   make            the three ProDOS binaries, in build/
+#   make disk       the floppy images dist/A2FILECMD.po and .dsk
+#   make test       the tests outside the emulator (memory layout, volume)
+#   make bench      the POM2 benches (needs the emulator, see bench/README.md)
 #   make clean
 #
-# Le programme ne tient dans la memoire de la machine que de justesse : le
-# lien est verifie a chaque fois par tools/check_layout.py, qui attrape les
-# deux debordements que ld65 laisse passer en silence. Voir docs/MANUAL.md.
+# The program only just fits in the machine's memory: the link is checked
+# every time by tools/check_layout.py, which catches the two overflows that
+# ld65 lets through silently. See docs/MANUAL.md.
 
 A2FC_VERSION = 0.7
 VOLUME       = A2FILECMD
 
-VOLUME_HD    = A2FILEHD     # le disque dur .2mg : un autre nom, pour cohabiter avec la disquette
-# ARCH=enh (defaut) : Apple IIe enhanced, //c, IIgs -- cible cc65 apple2enh
-# (du 65C02, le MouseText), avec le cc65 2.19 de la machine. ARCH=6502 : le
-# IIe NON enhanced (6502, pas de MouseText), cible apple2 -- dont la console
-# 80 colonnes n'existe que dans cc65 master (git, apres la 2.19 : machinetype,
-# aux80col, videomode pour apple2) : CC65_HEAD est un cc65 construit depuis
-# master (make ; make install PREFIX=~/opt/cc65-head), a part pour ne pas
-# changer la construction enhanced. Sans souris (la place), BINARY2 grande.
-# Les images prennent le suffixe -6502 (make disk ARCH=6502).
+VOLUME_HD    = A2FILEHD     # the .2mg hard disk: another name, to coexist with the floppy
+# ARCH=enh (default): Apple IIe enhanced, //c, IIgs -- cc65 target apple2enh
+# (65C02, MouseText), with the machine's cc65 2.19. ARCH=6502: the NON
+# enhanced IIe (6502, no MouseText), target apple2 -- whose 80-column
+# console only exists in cc65 master (git, after 2.19: machinetype,
+# aux80col, videomode for apple2): CC65_HEAD is a cc65 built from master
+# (make ; make install PREFIX=~/opt/cc65-head), kept apart so as not to
+# change the enhanced build. No mouse (for room), big BINARY2.
+# The images take the -6502 suffix (make disk ARCH=6502).
 ARCH ?= enh
 CC65_HEAD ?= $(HOME)/opt/cc65-head
 ifeq ($(ARCH),6502)
@@ -56,29 +56,29 @@ TOOLS = tools
 BUILD = build$(BUILD_SUFFIX)
 DIST  = dist
 
-# -Cl : locales statiques. Sur 6502 une variable de pile coute un calcul
-# d'adresse a chaque acces, une statique un lda absolu. Contrepartie : aucune
-# fonction ne doit etre reentrante, et les trois parcours recursifs de a2fc.c
-# reprennent la pile par #pragma static-locals.
-# --codesize 100 : le gonflement que l'optimiseur s'autorise. Mesure : en
-# dessous de 100 le generateur cesse d'employer certaines sequences en ligne
-# et le code REGROSSIT ; le minimum est un plateau de 100 a 130.
+# -Cl: static locals. On a 6502 a stack variable costs an address
+# computation at every access, a static one an absolute lda. The price: no
+# function may be reentrant, and the three recursive walks in a2fc.c
+# take the stack back with #pragma static-locals.
+# --codesize 100: the growth the optimiser allows itself. Measured: below
+# 100 the generator stops using some inline sequences and the code GROWS
+# AGAIN; the minimum is a plateau from 100 to 130.
 CODESIZE ?= 100
 CFLAGS = -t $(TARGET) $(CLDEFS) -O -Oirs -Cl --codesize $(CODESIZE)
 
-# __HIMEM__ = $BF00 : juste sous la page globale ProDOS. La pile C tient en
-# 256 octets -- creux maximal mesure au banc : 94 (bench/stack.py).
+# __HIMEM__ = $BF00: just below the ProDOS global page. The C stack fits in
+# 256 bytes -- maximum depth measured on the bench: 94 (bench/stack.py).
 HIMEM      = 0xBF00
 A2FC_STACK = 0x00C0
-# Les tampons d'E/S ProDOS viennent de $0800 vers le haut au lieu du tas :
-# sans ce module le tas ne fait que 270 octets et tout fopen echoue.
+# The ProDOS I/O buffers come from $0800 upward instead of the heap:
+# without this module the heap is only 270 bytes and every fopen fails.
 
 CODE   = $(BUILD)/A2FILE.CODE.BIN
-# Les surcouches, ecrites par le meme lien (A2FILE/NOM.PLG, lus en $1B00 a la
-# demande) : le decodeur d'images, les visionneuses, l'aide, la suppression,
-# la musique, le lanceur, les attributs, l'editeur, le menu, les images
-# disque. Chacune a deux segments dans son fichier : NOM (code) puis NOMRO
-# (chaines). Voir src/a2fc_plugin.h pour l'en-tete et la table de services.
+# The overlays, written by the same link (A2FILE/NAME.PLG, read at $1B00 on
+# demand): the image decoder, the viewers, the help, deletion, music, the
+# launcher, the attributes, the editor, the menu, the disk images. Each has
+# two segments in its file: NAME (code) then NAMERO (strings). See
+# src/a2fc_plugin.h for the header and the service table.
 PLUGINS = IMAGE TEXT HEX DELETE HELP EDIT MUSIC RUN ATTR MENU DISKIMG IMGFS DOS33 UNSHRINK BASLIST COMPARE SEARCH BINARY2 AWP
 SYSTEM = $(BUILD)/A2FILE.SYSTEM.SYS
 FORMAT = $(BUILD)/FORMAT.SYS.SYS
@@ -100,13 +100,13 @@ $(BUILD)/%.o: $(SRC)/%.s | $(BUILD)
 $(BUILD)/memory_swap.o: $(SRC)/memory_swap.c $(SRC)/memory_swap.h | $(BUILD)
 	$(CL) $(CFLAGS) -c -o $@ $<
 
-# Le lecteur Mockingboard lit son flux par tranches en RAM basse (-D LOWBUF) :
-# sa BSS descend dans LOWBSS au lieu de la fenetre principale.
+# The Mockingboard player reads its stream in slices in low RAM (-D LOWBUF):
+# its BSS moves down into LOWBSS instead of the main window.
 $(BUILD)/music.o: $(SRC)/music.s $(SRC)/ay_notes.inc | $(BUILD)
 	$(AS) -t $(TARGET) $(ASDEFS) -D LOWBUF -I $(SRC) -o $@ $<
 
-# Le lanceur : un vrai programme SYS, charge en $2000 par ProDOS, qui lit
-# A2FILE.CODE a ses trois adresses (voir src/loader.c).
+# The launcher: a real SYS program, loaded at $2000 by ProDOS, which reads
+# A2FILE.CODE to its three addresses (see src/loader.c).
 $(SYSTEM): $(SRC)/loader.c $(BUILD)/crt0_loader.o $(BUILD)/loader_mli.o Makefile | $(BUILD)
 	$(CL) $(CFLAGS) -D 'A2FC_VERSION="$(A2FC_VERSION)"' --start-addr 0x2000 \
 	  -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__FILETYPE__=0xFF \
@@ -121,23 +121,23 @@ $(CODE): $(SRC)/a2fc.c $(SRC)/a2fc.cfg $(SRC)/a2fc_plugin.h $(SRC)/music.h $(SRC
 	  $(MOUSEOBJ) $(IOBUF)
 	@python3 $(TOOLS)/check_layout.py --lbl $(BUILD)/a2fc.lbl --bin $@ $(LAYOUT_BIG)
 
-# Le formateur, programme a part : il ecrase A2 File Cmd en memoire et le
-# relance en sortant. Pas de suffixe .SYSTEM : ProDOS amorce le premier
-# fichier .SYSTEM du catalogue, et il ne doit pas passer avant le lanceur.
+# The formatter, a separate program: it overwrites A2 File Cmd in memory and
+# relaunches it on exit. No .SYSTEM suffix: ProDOS boots the first .SYSTEM
+# file of the catalog, and it must not come before the launcher.
 $(FORMAT): $(SRC)/format.c $(SRC)/format_diskii.s $(SRC)/format_mli.s $(SRC)/format.cfg $(BUILD)/chain.o Makefile | $(BUILD)
 	$(CL) $(CFLAGS) -D 'A2FC_VERSION="$(A2FC_VERSION)"' -C $(SRC)/format.cfg \
 	  --start-addr 0x2000 -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=0x6400 \
 	  -Wl -D,__FILETYPE__=0xFF -o $@ \
 	  $(SRC)/format.c $(SRC)/format_diskii.s $(SRC)/format_mli.s $(BUILD)/chain.o $(IOBUF)
 
-# ── La disquette et le disque dur ──────────────────────────────────────────
-# Volume /A2FILECMD, amorcable : ProDOS 2.4.3, le lanceur a la racine (seul
-# fichier .SYSTEM), le programme, ses surcouches (des BIN charges en $1B00,
-# d'ou leur auxtype) et son aide dans A2FILE/. Deux tailles du meme volume :
-# la disquette 5,25 (280 blocs, .po et .dsk), qui ne porte que le programme
-# pour laisser le plus de place possible ; et le disque dur .2mg (65535
-# blocs, le maximum de ProDOS), qui ajoute un dossier DEMO fabrique de toutes
-# pieces avec un exemplaire de chaque chose qu'A2 File Cmd sait ouvrir.
+# -- The floppy and the hard disk -------------------------------------------
+# Volume /A2FILECMD, bootable: ProDOS 2.4.3, the launcher at the root (the
+# only .SYSTEM file), the program, its overlays (BINs loaded at $1B00,
+# hence their auxtype) and its help in A2FILE/. Two sizes of the same
+# volume: the 5.25 floppy (280 blocks, .po and .dsk), which carries only
+# the program to leave as much room as possible; and the .2mg hard disk
+# (65535 blocks, ProDOS's maximum), which adds a DEMO directory built from
+# scratch with one specimen of everything A2 File Cmd knows how to open.
 STAGE = $(BUILD)/vol
 HDV = $(BUILD)/$(IMG).hdv
 TWOMG = $(DIST)/$(IMG).2mg
@@ -163,8 +163,8 @@ $(PO): $(SYSTEM) $(CODE) $(FORMAT) $(DATA)/A2FILE.HELP.TXT $(DATA)/PRODOS.SYS $(
 	python3 $(TOOLS)/mkvolume.py $(STAGE) $(HDV) --volume $(VOLUME_HD) \
 	  --boot $(DATA)/prodos_boot.tmpl --blocks 65535
 	python3 $(TOOLS)/po22mg.py $(HDV) $(TWOMG)
-	@rm -rf $(STAGE)/DEMO $(STAGE)/IMGHGR   # le stage redevient la disquette nue (bench/plugin.py le reprend)
-	@echo "==> $(PO), $(DSK) et $(TWOMG)"
+	@rm -rf $(STAGE)/DEMO $(STAGE)/IMGHGR   # the stage becomes the bare floppy again (bench/plugin.py picks it up)
+	@echo "==> $(PO), $(DSK) and $(TWOMG)"
 
 test:
 	python3 $(TOOLS)/test_check_layout.py
@@ -174,9 +174,9 @@ test:
 bench: all disk
 	python3 bench/run.py
 
-# La surcouche d'exemple d'un tiers (sdk/), compilee HORS de l'arbre avec le
-# seul src/a2fc_plugin.h : la preuve que l'ABI tient. Produit build/HELLO.PLG,
-# a poser sous A2FILE/. bench/plugin.py le construit et le lance dans POM2.
+# The third-party example overlay (sdk/), compiled OUTSIDE the tree with only
+# src/a2fc_plugin.h: the proof that the ABI holds. Produces build/HELLO.PLG,
+# to be put under A2FILE/. bench/plugin.py builds it and launches it in POM2.
 example: $(BUILD)/HELLO.PLG
 $(BUILD)/HELLO.PLG: sdk/hello.c sdk/plugin.cfg sdk/build.sh $(SRC)/a2fc_plugin.h | $(BUILD)
 	sh sdk/build.sh sdk/hello.c HELLO

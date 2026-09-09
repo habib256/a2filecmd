@@ -1,26 +1,26 @@
 /*
- * MEMORY SWAP - Bascules video (texte 80 col / DHGR plein / DHGR mixte)
+ * MEMORY SWAP - Video switches (80-column text / full DHGR / mixed DHGR)
  *
- * Aucune copie d'ecran ici, et c'est le point important : le texte ne quitte
- * jamais $400-$7FF pendant qu'on est en graphique. Le decodeur RLE ecrit dans
- * $2000-$3FFF, le tampon d'E/S ProDOS vit en $800-$BFF (page texte 2), et rien
- * ne tourne entre deux appuis de touche. Revenir au texte, c'est donc juste
- * rallumer TXTSET.
+ * No screen copy here, and that is the important point: the text never
+ * leaves $400-$7FF while we are in graphics. The RLE decoder writes to
+ * $2000-$3FFF, the ProDOS I/O buffer lives at $800-$BFF (text page 2), and
+ * nothing runs between two key presses. Going back to text is therefore
+ * just turning TXTSET back on.
  *
- * L'ancienne version sauvegardait et restaurait 2 Ko a chaque bascule -- deux
- * copies de 1 Ko, une par banque, l'ecran 80 colonnes etant a cheval sur les
- * deux -- soit ~4000 iterations de boucle C pour reecrire l'ecran avec ce
- * qu'il contenait deja. C'etait la lenteur des transitions, et les 2 Ko de BSS
- * partent avec (la memoire est LA contrainte du projet, cf. TODO.md).
+ * The old version saved and restored 2 KB at every switch -- two 1 KB
+ * copies, one per bank, the 80-column screen straddling both -- that is
+ * ~4000 iterations of a C loop to rewrite the screen with what it already
+ * held. That was the slowness of the transitions, and the 2 KB of BSS go
+ * away with it (memory is THE constraint of the project, cf. TODO.md).
  */
 
 #include <stdint.h>
 
-/* Soft switches Apple II */
-#define TXTCLR  (*(volatile uint8_t*)0xC050)  /* Mode graphique */
-#define TXTSET  (*(volatile uint8_t*)0xC051)  /* Mode texte */
-#define MIXCLR  (*(volatile uint8_t*)0xC052)  /* Mode mixte OFF */
-#define MIXSET  (*(volatile uint8_t*)0xC053)  /* Mode mixte ON */
+/* Apple II soft switches */
+#define TXTCLR  (*(volatile uint8_t*)0xC050)  /* Graphics mode */
+#define TXTSET  (*(volatile uint8_t*)0xC051)  /* Text mode */
+#define MIXCLR  (*(volatile uint8_t*)0xC052)  /* Mixed mode OFF */
+#define MIXSET  (*(volatile uint8_t*)0xC053)  /* Mixed mode ON */
 #define LOWSCR  (*(volatile uint8_t*)0xC054)  /* Page 1 visible */
 #define HISCR   (*(volatile uint8_t*)0xC055)  /* Page 2 visible */
 #define LORES   (*(volatile uint8_t*)0xC056)  /* Low-res */
@@ -34,34 +34,34 @@
 #define DHIRESON   (*(volatile uint8_t*)0xC05E)
 #define DHIRESOFF  (*(volatile uint8_t*)0xC05F)
 
-static uint8_t current_mode = 0;               /* 0=texte, 1=HGR, 2=mixte */
+static uint8_t current_mode = 0;               /* 0=text, 1=HGR, 2=mixed */
 
 /*
- * Entree en graphique : routage memoire, puis page HGR 1 visible.
+ * Entering graphics: memory routing, then HGR page 1 visible.
  *
- * Les quatre impulsions AN3 programment la FIFO de l'observateur Le Chat
- * Mauve / Video-7 en COL140 : 80COL est sa ligne de donnee, le front d'AN3 son
- * horloge. Elles ne se jouent qu'ICI, a l'entree en graphique. Les rejouer a
- * chaque bascule plein <-> mixte ferait clignoter l'ecran pour rien, alors que
- * l'image est deja a l'antenne.
+ * The four AN3 pulses program the FIFO of the Le Chat Mauve / Video-7
+ * observer into COL140: 80COL is its data line, the AN3 edge its clock.
+ * They are played ONLY HERE, on entering graphics. Replaying them at every
+ * full <-> mixed switch would make the screen flicker for nothing, while
+ * the picture is already on air.
  *
- * Le mode double haute resolution reste actif : 80COL entrelace les plans
- * auxiliaire et principal, AN3/DHIRES sélectionne le décodage 140x192 en
- * seize couleurs.
+ * Double hi-res mode stays active: 80COL interleaves the auxiliary and
+ * main planes, AN3/DHIRES selects the 140x192 decoding in sixteen
+ * colours.
  */
 static void enter_graphics(void) {
-    /* Le texte 80 colonnes route $400-$7FF (et $2000-$3FFF) par la RAM
-     * auxiliaire. Retablir la RAM principale avant de montrer HGR page 1,
-     * c'est la ou le decodeur a ecrit. */
+    /* 80-column text routes $400-$7FF (and $2000-$3FFF) through auxiliary
+     * RAM. Restore main RAM before showing HGR page 1, which is where the
+     * decoder wrote. */
     STORE80OFF = 1;
     RAMRDOFF = 1;
     RAMWRTOFF = 1;
 
-    /* La carte RGB garde son propre verrou deux bits. Deux fronts AN3 avec
-     * 80COL=1 chargent 11 = COL140 sur Féline / Video-7. Le dernier C05E
-     * réactive ensuite le DHGR natif du //e sans créer un troisième front.
-     * Le composite ignore ce verrou ; c'est pourquoi l'ancienne séquence
-     * semblait correcte sous OpenEmulator mais pas via Le Chat Mauve. */
+    /* The RGB card keeps its own two-bit latch. Two AN3 edges with 80COL=1
+     * load 11 = COL140 on Feline / Video-7. The last C05E then re-enables
+     * the //e's native DHGR without creating a third edge. Composite
+     * ignores this latch; that is why the old sequence looked correct
+     * under OpenEmulator but not through Le Chat Mauve. */
     COL80ON = 1;
     DHIRESON = 1; DHIRESOFF = 1;
     DHIRESON = 1; DHIRESOFF = 1;
@@ -69,59 +69,59 @@ static void enter_graphics(void) {
 
     HIRES = 1;    /* Hi-res */
     LOWSCR = 1;   /* Page 1 */
-    /* Pas de TXTCLR ici : c'est l'appelant qui allume le graphique, une fois
-     * MIXCLR ou MIXSET pose. Eteindre le texte avant d'avoir arme HIRES fait
-     * paraitre la page texte relue en basse resolution, et avant MIXSET fait
-     * clignoter les quatre lignes du bas. Quelques microsecondes, mais elles
-     * tombent parfois dans la trame affichee. */
+    /* No TXTCLR here: the caller turns graphics on, once MIXCLR or MIXSET
+     * is set. Turning text off before HIRES is armed makes the text page
+     * show up reread as low resolution, and before MIXSET makes the four
+     * bottom lines flicker. A few microseconds, but they sometimes land in
+     * the displayed frame. */
 }
 
 /*
- * DHGR plein ecran
+ * Full-screen DHGR
  */
 void switch_to_hgr(void) {
-    /* Toujours rejouer la sequence complete. current_mode décrit ce que le
-     * jeu a demandé, pas nécessairement l'état matériel laissé par ProDOS,
-     * le firmware 80 colonnes ou une surcouche. Une optimisation fondée sur
-     * current_mode pouvait donc laisser l'Apple II en HGR simple. */
+    /* Always replay the full sequence. current_mode describes what the
+     * game asked for, not necessarily the hardware state left by ProDOS,
+     * the 80-column firmware or an overlay. An optimisation based on
+     * current_mode could therefore leave the Apple II in plain HGR. */
     enter_graphics();
     MIXCLR = 1;
-    TXTCLR = 1;   /* graphique en dernier : la page est prete */
+    TXTCLR = 1;   /* graphics last: the page is ready */
     current_mode = 1;
 }
 
 /*
- * DHGR + 4 lignes de texte 80 colonnes en bas
+ * DHGR + 4 lines of 80-column text at the bottom
  */
 void switch_to_mixed(void) {
-    /* Même règle qu'en plein écran : rétablir d'abord un DHGR page 1 connu,
-     * puis seulement ouvrir les quatre lignes de texte. */
+    /* Same rule as full screen: first restore a known DHGR page 1, then
+     * only open the four text lines. */
     enter_graphics();
-    /* Les 4 lignes du bas lisent la page texte entrelacee : sans 80COL elles
-     * s'afficheraient en 40 colonnes, c'est-a-dire une colonne sur deux.
+    /* The 4 bottom lines read the interleaved text page: without 80COL they
+     * would show in 40 columns, that is every other column.
      *
-     * Et il faut REMETTRE 80STORE, que enter_graphics venait de couper : le
-     * mixte est le seul mode graphique ou l'on ECRIT du texte, et le firmware
-     * 80 colonnes atteint la banque auxiliaire par 80STORE + PAGE2. Sans lui,
-     * la moitie des caracteres part dans le vide et l'ecran affiche deux
-     * textes entrelaces -- l'ancien dans les colonnes paires, le nouveau dans
-     * les impaires. L'image ne bouge pas pour autant : sous 80STORE l'ecran
-     * hi-res reste force sur la page 1 en banque principale. */
+     * And 80STORE, which enter_graphics had just cut, must be PUT BACK: mixed
+     * is the only graphics mode in which text is WRITTEN, and the 80-column
+     * firmware reaches the auxiliary bank through 80STORE + PAGE2. Without
+     * it, half the characters go nowhere and the screen shows two
+     * interleaved texts -- the old one in the even columns, the new one in
+     * the odd ones. The picture does not move for all that: under 80STORE
+     * the hi-res screen stays forced onto page 1 in the main bank. */
     STORE80ON = 1;
     COL80ON = 1;
     DHIRESON = 1;
     MIXSET = 1;
-    TXTCLR = 1;   /* graphique en dernier : la page est prete */
+    TXTCLR = 1;   /* graphics last: the page is ready */
     current_mode = 2;
 }
 
 /*
- * Texte 80 colonnes
+ * 80-column text
  */
 void switch_to_text(void) {
-    /* Rien a repeindre : $400-$7FF n'a pas bouge. On remet le routage que le
-     * firmware 80 colonnes attend pour ses prochaines ecritures, on rallume
-     * l'affichage 80 colonnes, et on rend le texte visible en dernier. */
+    /* Nothing to repaint: $400-$7FF has not moved. Put back the routing the
+     * 80-column firmware expects for its next writes, turn the 80-column
+     * display back on, and make the text visible last. */
     STORE80ON = 1;
     COL80ON = 1;
     DHIRESOFF = 1;
@@ -131,7 +131,7 @@ void switch_to_text(void) {
 }
 
 /*
- * Fonction utilitaire : état actuel
+ * Utility function: current state
  */
 uint8_t get_current_mode(void) {
     return current_mode;

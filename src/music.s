@@ -1,39 +1,39 @@
-; music.s -- la Mockingboard joue les musiques du disque, sur six voix.
+; music.s -- the Mockingboard plays the disk's music, on six voices.
 ;
-; Un lecteur de flux MB1 (DOCS/MUSIQUE.md § 5.2) en interruption : le Timer 1
-; du premier 6522 de la carte bat a 50 Hz, et chaque tick decode les paquets
-; du flux jusqu'au prochain DELAY. Tout est en assembleur et en segment CODE :
-; jamais en LC, ProDOS commute l'autre banque sous IRQ.
+; An MB1 stream reader (DOCS/MUSIQUE.md section 5.2) under interrupt: Timer 1
+; of the card's first 6522 ticks at 50 Hz, and each tick decodes the packets
+; of the stream up to the next DELAY. Everything is in assembly and in the
+; CODE segment: never in the LC, ProDOS switches the other bank in under IRQ.
 ;
-; Six voix : les Mockingboard A et C portent deux AY-3-8910, l'un derriere le
-; VIA #1 en $Cn00, l'autre derriere le VIA #2 en $Cn80. Les voix 0-2 du flux
-; vont a la premiere puce (a gauche sur POM2), les voix 3-5 a la seconde (a
-; droite) : la voix v >= 3 s'ecrit dans la puce 2 sous le numero v-3.
+; Six voices: Mockingboards A and C carry two AY-3-8910s, one behind VIA #1
+; at $Cn00, the other behind VIA #2 at $Cn80. Stream voices 0-2 go to the
+; first chip (on the left in POM2), voices 3-5 to the second (on the
+; right): voice v >= 3 is written to chip 2 under the number v-3.
 ;
-; Trois regles apprises a la lecture de POM2 (DOCS/MUSIQUE.md § 1) :
-;  - acquitter l'IRQ en ECRIVANT $7F dans l'IFR ($Cn0D), jamais en lisant un
-;    registre : l'entree IRQ du Moniteur //e route $C100-$CFFF vers la ROM ;
-;  - balayer les slots de $C7 a $C1 en sautant le 3 : POM2 met la carte en
-;    slot 2 par defaut, et un //e muet en slot 3 y a son firmware 80 colonnes ;
-;  - sans carte, aucune ecriture ne part : mb_slot = 0 et chaque entree le
-;    teste d'abord. Le jeu reste identique, sfx.s continue seul.
+; Three rules learned from reading POM2 (DOCS/MUSIQUE.md section 1):
+;  - acknowledge the IRQ by WRITING $7F to the IFR ($Cn0D), never by reading
+;    a register: the //e Monitor's IRQ entry routes $C100-$CFFF to the ROM;
+;  - scan the slots from $C7 down to $C1 skipping 3: POM2 puts the card in
+;    slot 2 by default, and a silent //e has its 80-column firmware in slot 3;
+;  - without a card, no write goes out: mb_slot = 0 and every entry point
+;    tests it first. The game stays identical, sfx.s carries on alone.
 ;
-; cc65 fait la plomberie ProDOS : `.interruptor` entre dans la table que
-; a2fc.cfg declare, le runtime fait ALLOC_INTERRUPT au lancement et
-; DEALLOC a la sortie, et appelle music_irq avec la retenue a zero ; on la
-; met a un si l'IRQ est la notre. ProDOS sauve A, X, Y et $FA-$FF autour du
-; gestionnaire : ces six octets de page zero sont donc a nous, ici et hors
-; IRQ (cc65 n'occupe que $80-$99).
+; cc65 does the ProDOS plumbing: `.interruptor` enters the table that
+; a2fc.cfg declares, the runtime does ALLOC_INTERRUPT at startup and
+; DEALLOC at exit, and calls music_irq with the carry clear; we set it
+; if the IRQ is ours. ProDOS saves A, X, Y and $FA-$FF around the
+; handler: those six zero-page bytes are therefore ours, here and outside
+; the IRQ (cc65 only occupies $80-$99).
 ;
-; API C (music.h) :
-;   unsigned char music_detect(void);   slot trouve (1-7) ou 0 ; initialise
-;   void music_play(void);              joue le flux une seule fois
-;   void music_stop(void);              silence net, timer desarme
+; C API (music.h):
+;   unsigned char music_detect(void);   slot found (1-7) or 0; initialises
+;   void music_play(void);              plays the stream once only
+;   void music_stop(void);              clean silence, timer disarmed
 
 .ifdef A2_6502
-; Le IIe non enhanced n'a ni STZ ni BRA : les memes noms, en 6502. STZ garde
-; A, X et Y comme l'original ; seuls N et Z changent (ceux de A), et aucun
-; emploi ci-dessous ne les lit apres.
+; The non-enhanced IIe has neither STZ nor BRA: the same names, in 6502. STZ
+; keeps A, X and Y like the original; only N and Z change (those of A), and
+; no use below reads them afterwards.
 .macro  stz     addr, idx
         pha
         lda     #0
@@ -56,16 +56,16 @@
         .export _music_select, _music_pause, _music_resume, _music_continue
         .export _music_fade_out, _music_fade_in, _music_fading
         .interruptor music_irq
-        .destructor  music_done, 11     ; exit() coupe le timer avant DEALLOC :
-                                        ; donelib parcourt la table a rebours,
-                                        ; irq_done (priorite 10) doit venir apres
+        .destructor  music_done, 11     ; exit() cuts the timer before DEALLOC:
+                                        ; donelib walks the table backwards,
+                                        ; irq_done (priority 10) must come after
 
-via     = $FA           ; pointeur vers $Cn00 (VIA #1) ou $Cn80 (VIA #2)
-cur     = $FC           ; curseur de flux (copie de travail sous IRQ)
+via     = $FA           ; pointer to $Cn00 (VIA #1) or $Cn80 (VIA #2)
+cur     = $FC           ; stream cursor (working copy under IRQ)
 tmp     = $FE
 tmp2    = $FF
 
-; registres du 6522, offsets depuis $Cn00
+; 6522 registers, offsets from $Cn00
 VIA_ORB = $00
 VIA_ORA = $01
 DDRB    = $02
@@ -76,53 +76,53 @@ ACR     = $0B
 IFR     = $0D
 IER     = $0E
 
-; 50 Hz : 1 022 727 / 50 = 20 454,5 cycles ; periode effective = latch + 2
+; 50 Hz: 1,022,727 / 50 = 20,454.5 cycles; effective period = latch + 2
 T1_50HZ = 20452
-FADE_STEP = 3           ; ticks entre deux pas de fondu
+FADE_STEP = 3           ; ticks between two fade steps
 
 .segment "BSS"
-; Deux tampons AUX : 2304 octets (moitie 0, les themes de zone) et 1280 octets
-; (moitie 1, les surcouches : combat, mort, victoire), lus depuis
-; un fichier .MB par le programme hote. MUSIC_ZONE et MUSIC_OVER de
-; music.h disent les memes tailles. Chaque moitie garde son curseur : revenir
-; a la zone apres un combat la reprend ou elle en etait, sans rien relire.
-; Seule la page de transit ci-dessous est reservee en MAIN -- ou en RAM
-; basse (LOWBSS) pour A2FC, assemble avec -D LOWBUF : sa BSS
-; principale est pleine, le jeu garde la sienne telle quelle.
+; Two AUX buffers: 2304 bytes (half 0, the zone themes) and 1280 bytes
+; (half 1, the overlays: combat, death, victory), read from
+; a .MB file by the host program. MUSIC_ZONE and MUSIC_OVER in
+; music.h state the same sizes. Each half keeps its cursor: coming back
+; to the zone after a combat resumes it where it was, without rereading.
+; Only the staging page below is reserved in MAIN -- or in low RAM
+; (LOWBSS) for A2FC, assembled with -D LOWBUF: its main BSS
+; is full, the game keeps its own as it is.
 .ifdef LOWBUF
 .segment "LOWBSS"
 .endif
-_music_buf:     .res 256         ; staging disque, flux residents en AUX
+_music_buf:     .res 256         ; disk staging, resident streams in AUX
 .ifdef LOWBUF
 .segment "BSS"
 .endif
 AUX_MUSIC = $1000
 mb_slot:        .res 1
 playing:        .res 1
-_music_active   = playing       ; lu par A2FC : 0 quand le flux est fini
+_music_active   = playing       ; read by A2FC: 0 when the stream is finished
         .export _music_active
 paused:         .res 1
-half:           .res 1          ; la moitie selectionnee, 0 ou 1
+half:           .res 1          ; the selected half, 0 or 1
 delay:          .res 1
 cur_lo:         .res 1
 cur_hi:         .res 1
-saved:          .res 6          ; cur_lo, cur_hi, delay de chaque moitie
+saved:          .res 6          ; cur_lo, cur_hi, delay of each half
 vols:           .res 6
-; Le fondu : `atten` (0-15) se retranche de toute amplitude ecrite ; `fade`
-; vaut 1 pour un fondu sortant (atten monte), 2 pour un entrant (atten
-; descend), 0 sinon ; un pas tous les FADE_STEP ticks, soit 45 ticks = 0,9 s
-; d'un bout a l'autre. `amps` garde la derniere amplitude brute de chaque
-; voix pour pouvoir la reecrire attenuee.
+; The fade: `atten` (0-15) is subtracted from every amplitude written; `fade`
+; is 1 for a fade-out (atten rises), 2 for a fade-in (atten falls),
+; 0 otherwise; one step every FADE_STEP ticks, i.e. 45 ticks = 0.9 s
+; from one end to the other. `amps` keeps the last raw amplitude of each
+; voice so it can be rewritten attenuated.
 atten:          .res 1
 fade:           .res 1
 fstep:          .res 1
 amps:           .res 6
-mix:            .res 2          ; R7 de chaque puce : tons et bruit par voix
+mix:            .res 2          ; R7 of each chip: tones and noise per voice
 
 .segment "RODATA"
         .include "ay_notes.inc"
-; bits du mixeur R7 pour la voix 0-2 d'une puce : ton (bit v) et bruit (bit 3+v),
-; actifs a ZERO ; les masques les eteignent.
+; R7 mixer bits for voice 0-2 of a chip: tone (bit v) and noise (bit 3+v),
+; active at ZERO; the masks turn them off.
 tbit:   .byte $01, $02, $04
 nbit:   .byte $08, $10, $20
 tmask:  .byte $FE, $FD, $FB
@@ -137,7 +137,7 @@ nmask:  .byte $F7, $EF, $DF
 :
 .endmacro
 
-; via := $Cn00 d'apres mb_slot (VIA #1)
+; via := $Cn00 from mb_slot (VIA #1)
 set_via:
         stz via
         lda mb_slot
@@ -145,21 +145,21 @@ set_via:
         sta via+1
         rts
 
-; via := la puce de la voix A (0-5) ; rend dans A le numero de voix dans la
-; puce (0-2).
+; via := the chip of voice A (0-5); returns in A the voice number within
+; the chip (0-2).
 chip_of:
         cmp #3
         bcc :+
-        sbc #3                  ; retenue deja a 1
+        sbc #3                  ; carry already set
         ldy #$80
         sty via
         rts
 :       stz via
         rts
 
-; Ecrit A dans le registre X de l'AY #1. Preserve X, detruit Y.
-; Sequence BDIR/BC1 sur le port B : LATCH ($07), INACTIVE ($04), WRITE ($06),
-; INACTIVE. PB2 (/RESET) reste haut.
+; Writes A to register X of AY #1. Preserves X, destroys Y.
+; BDIR/BC1 sequence on port B: LATCH ($07), INACTIVE ($04), WRITE ($06),
+; INACTIVE. PB2 (/RESET) stays high.
 ay_write:
         pha
         txa
@@ -180,7 +180,7 @@ ay_write:
         sta (via),y
         rts
 
-; Mixeur ferme, trois volumes a zero -- sur la puce que `via` designe.
+; Mixer closed, three volumes at zero -- on the chip that `via` designates.
 silence1:
         ldx #7
         lda #$3F
@@ -193,7 +193,7 @@ silence1:
         inx
         jmp ay_write
 
-; Les deux puces.
+; Both chips.
 silence:
         stz via
         jsr silence1
@@ -203,7 +203,7 @@ silence:
         stz via
         rts
 
-; Ports en sortie et /RESET bas puis haut -- sur la puce que `via` designe.
+; Ports as outputs and /RESET low then high -- on the chip that `via` designates.
 init1:
         lda #$FF
         ldy #DDRA
@@ -217,8 +217,8 @@ init1:
         sta (via),y
         rts
 
-; R7 := A sur les deux puces. $38 ouvre les tons A, B, C (bruit ferme),
-; $3F ferme tout sans toucher aux amplitudes : c'est la pause.
+; R7 := A on both chips. $38 opens tones A, B, C (noise closed),
+; $3F closes everything without touching the amplitudes: that is the pause.
 mixer_set:
         sta tmp2
         stz via
@@ -232,31 +232,31 @@ mix1:   ldx #7
         lda tmp2
         jmp ay_write
 
-; R7 := mix[] sur les deux puces : la reouverture apres une pause, et le
-; depart d'un flux (tons ouverts, bruit ferme).
+; R7 := mix[] on both chips: the reopening after a pause, and the
+; start of a stream (tones open, noise closed).
 mixer_restore:
         stz via
         ldx #7
         lda mix
         jsr ay_write
         lda #$80
-        sta via                 ; X vaut toujours 7 : ay_write le rend intact
+        sta via                 ; X is still 7: ay_write leaves it intact
         lda mix+1
         jsr ay_write
         stz via
         rts
 
-; Le mixeur de la voix `tmp` (0-5) : entree C=1 -> bruit ouvert, ton coupe
-; (percussion) ; C=0 -> ton ouvert, bruit coupe (note). Pose via sur sa puce.
+; The mixer of voice `tmp` (0-5): entry C=1 -> noise open, tone off
+; (percussion); C=0 -> tone open, noise off (note). Sets via to its chip.
 mix_voice:
         php
-        ldx #0                  ; X = puce 0/1
+        ldx #0                  ; X = chip 0/1
         lda tmp
         cmp #3
         bcc :+
         inx
-:       jsr chip_of             ; A = tmp, intact apres cmp
-        tay                     ; Y = voix 0-2 dans la puce
+:       jsr chip_of             ; A = tmp, intact after cmp
+        tay                     ; Y = voice 0-2 within the chip
         lda mix,x
         plp
         bcs @noise
@@ -269,7 +269,7 @@ mix_voice:
         ldx #7
         jmp ay_write
 
-; tmp/tmp2 := adresse du demi-tampon selectionne.
+; tmp/tmp2 := address of the selected half-buffer.
 set_base:
         lda #<AUX_MUSIC
         sta tmp
@@ -286,8 +286,8 @@ set_base:
         sta tmp2
 :       rts
 
-; Z=1 si le compteur T1 a recule de 8 entre deux lectures a 8 cycles
-; d'ecart : la sonde de 4am, reprise par Total Replay et par les tests de POM2.
+; Z=1 if the T1 counter went down by 8 between two reads 8 cycles
+; apart: 4am's probe, taken up by Total Replay and by POM2's tests.
 t1_probe:
         ldy #T1CL
         lda (via),y
@@ -298,7 +298,7 @@ t1_probe:
         cmp #$F8
         rts
 
-; ── unsigned char music_detect(void) ────────────────────────────────────
+; -- unsigned char music_detect(void) ------------------------------------
 _music_detect:
         jsr init_aux_reader
         ldx #7
@@ -310,7 +310,7 @@ _music_detect:
         bne @next
         jsr t1_probe
         bne @next
-        ; trouvee : les deux VIA en sortie, les deux AY remis a zero
+        ; found: both VIAs as outputs, both AYs reset
         jsr init1
         lda #$80
         sta via
@@ -325,17 +325,17 @@ _music_detect:
         txa                     ; 0
         rts
 
-; ── void music_play(void) ───────────────────────────────────────────────
+; -- void music_play(void) -----------------------------------------------
 _music_play:
         lda mb_slot
         beq @rts
         jsr set_via
         jsr silence
-        lda #$38                ; tons ouverts, bruit ferme, sur les deux puces
+        lda #$38                ; tones open, noise closed, on both chips
         sta mix
         sta mix+1
         jsr mixer_restore
-        jsr set_base            ; le flux commence apres l'en-tete de 8 octets
+        jsr set_base            ; the stream starts after the 8-byte header
         lda tmp
         clc
         adc #8
@@ -354,7 +354,7 @@ _music_play:
         dex
         bpl :-
         jsr fade_in_setup
-        ldy #ACR                ; T1 continu
+        ldy #ACR                ; T1 free-running
         lda #$40
         sta (via),y
         ldy #T1CL
@@ -362,16 +362,16 @@ _music_play:
         sta (via),y
         ldy #T1CH
         lda #>T1_50HZ
-        sta (via),y             ; charge et demarre
+        sta (via),y             ; loads and starts
         ldy #IFR
         lda #$7F
         sta (via),y
-        ldy #IER                ; autoriser T1
+        ldy #IER                ; enable T1
         lda #$C0
         sta (via),y
 @rts:   rts
 
-; ── void music_stop(void) ───────────────────────────────────────────────
+; -- void music_stop(void) -----------------------------------------------
 _music_stop:
 music_done:
         lda mb_slot
@@ -381,7 +381,7 @@ music_done:
         stz fade
         stz atten
         jsr set_via
-        ldy #IER                ; interdire T1
+        ldy #IER                ; disable T1
         lda #$40
         sta (via),y
         ldy #IFR
@@ -390,14 +390,14 @@ music_done:
         jmp silence
 @rts:   rts
 
-; ── void __fastcall__ music_select(unsigned char half) ──────────────────
-; Change de demi-tampon en gardant le curseur de chacun. A appeler arrete
-; ou en pause : le tick ne doit pas courir pendant l'echange.
+; -- void __fastcall__ music_select(unsigned char half) ------------------
+; Switches half-buffer while keeping the cursor of each. To be called while
+; stopped or paused: the tick must not run during the swap.
 _music_select:
         cmp half
         beq @rts
         pha
-        lda half                ; x = 3 * moitie courante
+        lda half                ; x = 3 * current half
         asl a
         adc half
         tax
@@ -420,9 +420,9 @@ _music_select:
         sta delay
 @rts:   rts
 
-; ── void music_pause(void) ──────────────────────────────────────────────
-; Mixeur ferme, timer desarme, curseur et amplitudes intacts : pour les
-; lectures disque, pendant lesquelles ProDOS masque les IRQ.
+; -- void music_pause(void) ----------------------------------------------
+; Mixer closed, timer disarmed, cursor and amplitudes intact: for disk
+; reads, during which ProDOS masks IRQs.
 _music_pause:
         lda mb_slot
         beq @rts
@@ -441,8 +441,8 @@ _music_pause:
         jmp mixer_set
 @rts:   rts
 
-; ── void music_resume(void) ─────────────────────────────────────────────
-; Apres music_pause seulement : rouvre le mixeur et rearme le timer.
+; -- void music_resume(void) ---------------------------------------------
+; After music_pause only: reopens the mixer and rearms the timer.
 _music_resume:
         lda paused
         beq @rts
@@ -450,10 +450,10 @@ _music_resume:
         bra rearm
 @rts:   rts
 
-; ── void music_continue(void) ───────────────────────────────────────────
-; Reprend le demi-tampon selectionne la ou son curseur en est -- apres un
-; music_stop et un music_select. L'appelant garantit que cette moitie a
-; deja ete lancee par music_play.
+; -- void music_continue(void) -------------------------------------------
+; Resumes the selected half-buffer where its cursor stands -- after a
+; music_stop and a music_select. The caller guarantees that this half has
+; already been started by music_play.
 _music_continue:
         lda mb_slot
         beq rearm_rts
@@ -472,7 +472,7 @@ rearm:  jsr set_via
 rearm_rts:
         rts
 
-; ── Le fondu ────────────────────────────────────────────────────────────
+; -- The fade ------------------------------------------------------------
 fade_in_setup:
         lda #15
         sta atten
@@ -482,8 +482,8 @@ fade_in_setup:
         sta fstep
         rts
 
-; void music_fade_out(void) : la musique en cours s'efface en 0,9 s ; le
-; tick continue de la faire avancer, on ne fait que baisser le son.
+; void music_fade_out(void): the current music fades away in 0.9 s; the
+; tick keeps advancing it, we only turn the sound down.
 _music_fade_out:
         lda playing
         beq @rts
@@ -492,7 +492,7 @@ _music_fade_out:
         sta fstep
 @rts:   rts
 
-; void music_fade_in(void) : depuis l'attenuation courante, remonte.
+; void music_fade_in(void): from the current attenuation, goes back up.
 _music_fade_in:
         lda playing
         beq @rts
@@ -502,13 +502,13 @@ _music_fade_in:
         sta fstep
 @rts:   rts
 
-; unsigned char music_fading(void) : 0 quand le fondu en cours est fini.
+; unsigned char music_fading(void): 0 when the current fade is finished.
 _music_fading:
         lda fade
         ldx #0
         rts
 
-; Reecrit les six amplitudes, attenuees. Detruit A, X, Y, tmp.
+; Rewrites the six amplitudes, attenuated. Destroys A, X, Y, tmp.
 apply_amps:
         ldy #0
 @l:     sty tmp
@@ -532,7 +532,7 @@ apply_amps:
         stz via
         rts
 
-; Un pas de fondu par FADE_STEP ticks ; a l'arrivee, fade repasse a zero.
+; One fade step every FADE_STEP ticks; on arrival, fade goes back to zero.
 fade_tick:
         lda fade
         beq @rts
@@ -555,15 +555,15 @@ fade_tick:
 @done:  stz fade
 @rts:   rts
 
-; ── Le tick ─────────────────────────────────────────────────────────────
-; Entree : retenue a zero. Sortie : retenue a un si l'IRQ etait la notre.
+; -- The tick ------------------------------------------------------------
+; Entry: carry clear. Exit: carry set if the IRQ was ours.
 music_irq:
         lda playing
         beq @notours
         jsr set_via
         ldy #IFR
         lda #$7F
-        sta (via),y             ; acquitter, par ecriture seulement
+        sta (via),y             ; acknowledge, by writing only
         jsr fade_tick
         dec delay
         bne @done
@@ -588,7 +588,7 @@ music_irq:
 
 @cmd:   tax
         and #$0F
-        sta tmp                 ; la voix
+        sta tmp                 ; the voice
         txa
         and #$F0
         cmp #$80
@@ -605,25 +605,25 @@ music_irq:
 :       cmp #$B0
         bne :+
         jmp @noise
-:       jmp @next               ; paquet inconnu : ignore
+:       jmp @next               ; unknown packet: ignored
 
-@note:  jsr aux_read_cur               ; index de note 0-59
+@note:  jsr aux_read_cur               ; note index 0-59
         NEXT
         asl a
         sta tmp2
         lda tmp
-        jsr chip_of             ; via -> la puce, A = voix 0-2 dans la puce
+        jsr chip_of             ; via -> the chip, A = voice 0-2 within the chip
         asl a
-        tax                     ; R0/R2/R4 : periode, poids faible
+        tax                     ; R0/R2/R4: period, low byte
         ldy tmp2
         lda note_table,y
         jsr ay_write
-        inx                     ; R1/R3/R5 : poids fort
+        inx                     ; R1/R3/R5: high byte
         ldy tmp2
         lda note_table+1,y
         jsr ay_write
         clc
-        jsr mix_voice           ; ton ouvert, bruit coupe (la voix a pu battre)
+        jsr mix_voice           ; tone open, noise off (the voice may have been drumming)
         ldy tmp
         lda vols,y
         jmp @amp
@@ -635,10 +635,10 @@ music_irq:
         jmp @amp
 
 @off:   lda #0
-@amp:   ldy tmp                 ; A = amplitude brute, tmp = voix 0-5
+@amp:   ldy tmp                 ; A = raw amplitude, tmp = voice 0-5
         sta amps,y
         sec
-        sbc atten               ; attenuee par le fondu en cours
+        sbc atten               ; attenuated by the fade in progress
         bcs :+
         lda #0
 :       pha
@@ -649,10 +649,10 @@ music_irq:
         tax
         pla
         jsr ay_write
-        stz via                 ; retour sur le VIA #1 (IFR, T1)
+        stz via                 ; back on VIA #1 (IFR, T1)
         jmp @next
 
-@end:   jsr set_base            ; seul COMBAT porte encore le drapeau boucle
+@end:   jsr set_base            ; only COMBAT still carries the loop flag
         ldy #5
         jsr aux_read_header
         and #1
@@ -672,16 +672,16 @@ music_irq:
         sec
         rts
 
-@fade:  lda #1                  ; FADE : la fin du morceau s'efface en 0,9 s
+@fade:  lda #1                  ; FADE: the end of the piece fades away in 0.9 s
         sta fade
         sta fstep
         jmp @next
 
-@noise: jsr aux_read_cur               ; NOISE : periode de bruit (R6 de la puce)
+@noise: jsr aux_read_cur               ; NOISE: noise period (the chip's R6)
         NEXT
         pha
         sec
-        jsr mix_voice           ; ton coupe, bruit ouvert ; via -> la puce
+        jsr mix_voice           ; tone off, noise open; via -> the chip
         ldx #6
         pla
         jsr ay_write
@@ -709,7 +709,7 @@ init_aux_reader:
 aux_read_cur:
         sta $C003
 .ifdef A2_6502
-        ldy #0                  ; pas de (zp) sans Y sur 6502 ; Y est libre ici
+        ldy #0                  ; no (zp) without Y on 6502; Y is free here
         lda (cur),y
 .else
         lda (cur)

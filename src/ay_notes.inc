@@ -1,6 +1,6 @@
-; Table des periodes AY-3-8910, generee -- ne pas editer.
-; Periode AY (12 bits) par note, index 0 = C2 (MIDI 36) ... 59 = B6.
-; f = 1022727 / (16 * TP), soit TP = 63920 / f.
+; AY-3-8910 period table, generated -- do not edit.
+; AY period (12 bits) per note, index 0 = C2 (MIDI 36) ... 59 = B6.
+; f = 1022727 / (16 * TP), i.e. TP = 63920 / f.
 note_table:
         .word   977    ;  0 C2     65.41 Hz
         .word   922    ;  1 C#2    69.30 Hz

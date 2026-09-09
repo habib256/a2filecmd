@@ -1,15 +1,15 @@
-; overlay.s -- l'en-tete de chaque surcouche (a2fc_plugin.h, struct Overlay).
+; overlay.s -- the header of each overlay (a2fc_plugin.h, struct Overlay).
 ;
-; Une surcouche est liee avec le programme : elle appelle ses fonctions a
-; leurs adresses de ce lien-la, et une surcouche d'une autre construction
-; partirait dans le decor. Ses deux premiers octets sont donc l'adresse de
-; main dans le programme qui l'a liee, et le noyau la compare a la sienne
-; avant d'y entrer (load_overlay, dans a2fc.c). Suivent un octet de drapeaux
-; (bit 0 : grande surcouche, qui prend aussi la page graphique $2000-$3FFF),
-; l'adresse du point d'entree que le menu des surcouches (!) appelle sur la
-; selection, trois octets de reserve, et la description d'une ligne que ce
-; menu affiche. Ce fichier est le premier objet du lien apres crt0 pour que
-; l'en-tete soit bien en tete de chaque segment.
+; An overlay is linked with the program: it calls its functions at their
+; addresses from that particular link, and an overlay from another build
+; would go off the rails. So its first two bytes are the address of main
+; in the program that linked it, and the core compares it with its own
+; before entering it (load_overlay, in a2fc.c). Then come a flags byte
+; (bit 0: big overlay, which also takes the graphics page $2000-$3FFF),
+; the address of the entry point that the overlay menu (!) calls on
+; selection, three reserved bytes, and the one-line description that this
+; menu displays. This file is the first object of the link after crt0 so
+; that the header sits right at the head of each segment.
 
         .import _main
         .import _image_entry, _help_entry, _text_entry, _hex_entry, _delete_entry
@@ -25,8 +25,8 @@
 
 BIG = 1
 
-; L'identite du lien, lisible du C : l'adresse de main, que cc65 master
-; n'accepte plus qu'on prenne en C (&main) mais que l'assembleur donne.
+; The link's identity, readable from C: the address of main, which cc65
+; master no longer lets us take in C (&main) but which the assembler gives.
         .export _a2fc_link_id
         .segment "RODATA"
 _a2fc_link_id:

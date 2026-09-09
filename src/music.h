@@ -1,48 +1,48 @@
-/* music.h -- la Mockingboard joue les musiques du disque, six voix en
- * stereo (puce 1 a gauche, puce 2 a droite). Voir music.s.
+/* music.h -- the Mockingboard plays the music from the disk, six voices in
+ * stereo (chip 1 on the left, chip 2 on the right). See music.s.
  *
- * Chaque musique est un fichier MUSIC/<NOM>.MB au format MB1. La page qui la
- * veut le nomme par une ligne MU : "MU NOM.MB" pose le theme de la zone,
- * "MU +NOM.MB" une surcouche pour cette page (combat, mort, victoire),
- * "MU -" le silence. Dans le Marais, le moteur ne consulte cette directive
- * qu'à l'entrée dans une nouvelle clairière ; hors clairières, elle lance les
- * morceaux scénarisés (accueil, village, prologue, fins). Chaque flux est joué
- * une fois puis s'arrête : aucune page interne à une clairière ne le relance
- * et aucun flux ne boucle, sauf BATTLE.MB tant que le combat est actif.
+ * Each piece of music is a file MUSIC/<NAME>.MB in MB1 format. The page that
+ * wants it names it with an MU line: "MU NAME.MB" sets the zone theme,
+ * "MU +NAME.MB" an overlay for that page (battle, death, victory),
+ * "MU -" silence. In the Swamp, the engine consults this directive only
+ * on entering a new clearing; outside clearings, it starts the scripted
+ * pieces (welcome, village, prologue, endings). Each stream is played once
+ * and then stops: no page inside a clearing restarts it and no stream
+ * loops, except BATTLE.MB while the battle is active.
  *
- * Deux tampons AUX, 2 304 et 1 280 octets, chacun avec son curseur : le nouveau flux se lit dans
- * celui qui ne joue pas, l'autre continue pendant la lecture, et la zone
- * reprend ou elle en etait apres une surcouche. La musique ne s'arrete
- * jamais pour un chargement. Un tampon MAIN de 256 octets sert au disque.
- * Sans carte, music_detect rend 0 et aucun morceau n'est charge. */
+ * Two AUX buffers, 2,304 and 1,280 bytes, each with its own cursor: the new
+ * stream is read into the one that is not playing, the other keeps going
+ * during the read, and the zone resumes where it was after an overlay. The
+ * music never stops for a load. A 256-byte MAIN buffer serves the disk.
+ * Without a card, music_detect returns 0 and no piece is loaded. */
 #ifndef MUSIC_H
 #define MUSIC_H
 
-#define MUSIC_ZONE     2304         /* moitie 0 : les themes de zone (max actuel 2 277 o) */
-/* 1 280 et non 1 216. Le menu MAP avait pris ces 64 octets, la plus grosse
- * surcouche faisant alors 1 216 octets a l'octet pres ; la reprise des
- * partitions « d'un cran, avec la batterie » a porte VICTORY.MB a 1 265 et
- * BATTLE.MB a 1 228. Le levier est rendu a la musique : il ne restait que
- * quinze octets de marge, et une surcouche refusee a la fabrication aurait
- * coute plus cher que 64 octets de moteur. */
-#define MUSIC_OVER     1280         /* moitie 1 : combat, mort, victoire */
-#define MUSIC_BUF_SIZE (MUSIC_ZONE + MUSIC_OVER)   /* capacite AUX totale */
+#define MUSIC_ZONE     2304         /* half 0: the zone themes (current max 2,277 bytes) */
+/* 1,280 and not 1,216. The MAP menu had taken those 64 bytes, the biggest
+ * overlay then being 1,216 bytes to the byte; reworking the scores "one
+ * notch up, with the drums" brought VICTORY.MB to 1,265 and BATTLE.MB to
+ * 1,228. The lever is given back to the music: only fifteen bytes of margin
+ * were left, and an overlay refused at build time would have cost more
+ * than 64 bytes of engine. */
+#define MUSIC_OVER     1280         /* half 1: battle, death, victory */
+#define MUSIC_BUF_SIZE (MUSIC_ZONE + MUSIC_OVER)   /* total AUX capacity */
 /* Resident bytes live in AUX $1000-$1DFF; only this staging page is MAIN. */
 #define MUSIC_STAGE 256
 extern unsigned char music_buf[MUSIC_STAGE];
-extern unsigned char music_active;  /* 1 tant qu'un flux joue (ou est en pause) */
+extern unsigned char music_active;  /* 1 while a stream plays (or is paused) */
 void __fastcall__ music_store(unsigned int offset, unsigned int count);
 void __fastcall__ music_set_loop(unsigned char loop);
 
-unsigned char music_detect(void);   /* balaye les slots 7..1 ; 0 = absente */
-void __fastcall__ music_select(unsigned char half);  /* 0 zone, 1 surcouche ; a l'arret ou en pause */
-void music_play(void);              /* demarre le demi-tampon une fois, a 50 Hz */
-void music_pause(void);             /* mixeur ferme, timer desarme, curseur intact */
-void music_resume(void);            /* apres music_pause */
-void music_continue(void);          /* reprend le demi-tampon selectionne ou il en etait */
-void music_stop(void);              /* silence net, timer desarme */
-void music_fade_out(void);          /* s'efface en 0,9 s, le flux continue d'avancer */
-void music_fade_in(void);           /* remonte depuis l'attenuation courante */
-unsigned char music_fading(void);   /* 0 quand le fondu est fini */
+unsigned char music_detect(void);   /* scans slots 7..1; 0 = absent */
+void __fastcall__ music_select(unsigned char half);  /* 0 zone, 1 overlay; when stopped or paused */
+void music_play(void);              /* starts the half-buffer once, at 50 Hz */
+void music_pause(void);             /* mixer closed, timer disarmed, cursor intact */
+void music_resume(void);            /* after music_pause */
+void music_continue(void);          /* resumes the selected half-buffer where it was */
+void music_stop(void);              /* clean silence, timer disarmed */
+void music_fade_out(void);          /* fades out in 0.9 s, the stream keeps advancing */
+void music_fade_in(void);           /* comes back up from the current attenuation */
+unsigned char music_fading(void);   /* 0 when the fade is finished */
 
 #endif /* MUSIC_H */

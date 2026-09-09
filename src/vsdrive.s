@@ -1,91 +1,91 @@
-; vsdrive.s -- VDrive : deux volumes ProDOS servis par la ligne serie.
+; vsdrive.s -- VDrive: two ProDOS volumes served over the serial line.
 ;
-;   unsigned char vsdrive_install(void);     rend (slot serie << 4) | slot des
-;                                            volumes, ou 0 sans carte serie
-;   void vsdrive_uninstall(void);            destructeur cc65 : Q, X, F, exit
+;   unsigned char vsdrive_install(void);     returns (serial slot << 4) | slot of
+;                                            the volumes, or 0 without a serial card
+;   void vsdrive_uninstall(void);            cc65 destructor: Q, X, F, exit
 ;
-; Le protocole est celui du VSDrive d'ADTPro, que servent aussi veserver.py
-; (ProDOS-Utils) et surl-server (a2tools, Raspberry) : pour chaque bloc, une
-; enveloppe de cinq octets -- $C5, la commande (lecture 3 ou 5, ecriture 2 ou
-; 4 selon le lecteur), le bloc (faible, fort), le XOR des quatre -- puis les
-; 512 octets et leur XOR. En lecture l'hote renvoie d'abord l'enveloppe en
-; echo, suivie de quatre octets d'heure et de date ProDOS, puis son XOR ; on
-; en profite pour regler l'horloge ($BF90). Un XOR faux signale l'erreur.
+; The protocol is that of ADTPro's VSDrive, also served by veserver.py
+; (ProDOS-Utils) and surl-server (a2tools, Raspberry): for each block, a
+; five-byte envelope -- $C5, the command (read 3 or 5, write 2 or 4
+; depending on the drive), the block (low, high), the XOR of the four -- then
+; the 512 bytes and their XOR. On a read the host first echoes the envelope
+; back, followed by four bytes of ProDOS time and date, then their XOR; we
+; take the opportunity to set the clock ($BF90). A wrong XOR signals the error.
 ;
-; A la Ammonoid (Colin Leroy-Mira, a2tools/src/lib/vsdrive.s, dont ce
-; pilote s'inspire) : le pilote vit DANS le programme, pas dans ProDOS. A
-; l'installation on cherche une carte serie (la signature Pascal 1.1 de son
-; ROM : $Cn05=$38 $Cn07=$18 $Cn0B=$01 $Cn0C=$31, puis un 6551 qui repond), on
-; la regle a 115 200 bauds 8N1, et on prend le premier slot 1..7 dont ni le
-; lecteur 1 ni le 2 ne figurent dans DEVLST : son entree DEVADR recoit notre
-; pilote, ses deux unites entrent dans DEVLST, et la liste des volumes les
-; montre comme n'importe quel disque. Le destructeur defait tout : ProDOS ne
-; doit plus pointer chez nous une fois le programme parti.
+; As in Ammonoid (Colin Leroy-Mira, a2tools/src/lib/vsdrive.s, which this
+; driver draws on): the driver lives INSIDE the program, not inside ProDOS. At
+; install time we look for a serial card (the Pascal 1.1 signature of its
+; ROM: $Cn05=$38 $Cn07=$18 $Cn0B=$01 $Cn0C=$31, then a 6551 that answers), we
+; set it to 115 200 baud 8N1, and we take the first slot 1..7 of which neither
+; drive 1 nor drive 2 appears in DEVLST: its DEVADR entry receives our
+; driver, its two units enter DEVLST, and the volume list shows them like
+; any other disk. The destructor undoes everything: ProDOS must no longer
+; point at us once the program is gone.
 ;
-; La place : la fenetre principale est pleine, le pilote et sa couche serie
-; sont donc en carte langage (segment LC, banc 2, $D400-$DFFF). ProDOS, lui,
-; appelle ses pilotes depuis SON banc 1 : un talon de 17 octets en page 3
-; ($0300, libre sous ProDOS ; chain.s n'y pose son propre talon qu'apres le
-; destructeur) bascule le banc 2 en lecture, appelle le pilote, et rend le
-; banc 1 en lecture/ecriture avant de revenir au MLI. La carte langage est
-; en lecture seule (crt0 : bit $C080) : les variables sont en page 3 aussi.
+; Space: the main window is full, so the driver and its serial layer live
+; in the language card (segment LC, bank 2, $D400-$DFFF). ProDOS, though,
+; calls its drivers from ITS bank 1: a 17-byte thunk in page 3 ($0300, free
+; under ProDOS; chain.s only puts its own thunk there after the destructor)
+; switches bank 2 in for reading, calls the driver, and restores bank 1 for
+; read/write before returning to the MLI. The language card is read-only
+; (crt0: bit $C080): the variables are in page 3 as well.
 ;
-; Les temps : a 115 200 bauds un octet toutes les 87 cycles environ ; la
-; boucle de reception en fait ~60, interruptions coupees (SEI) le temps d'un
-; bloc, sinon la musique Mockingboard ferait perdre des octets. Chaque
-; attente d'octet a un delai (~0,3 s) : un hote absent rend une erreur d'E/S
-; ($27) au lieu de figer la machine -- la liste des volumes le dit.
+; Timing: at 115 200 baud a byte arrives about every 87 cycles; the receive
+; loop takes ~60, with interrupts disabled (SEI) for the duration of a
+; block, otherwise the Mockingboard music would lose bytes. Each wait for a
+; byte has a timeout (~0.3 s): an absent host yields an I/O error ($27)
+; instead of freezing the machine -- the volume list reports it.
 
         .export         _vsdrive_install, _vsdrive_uninstall
         .destructor     _vsdrive_uninstall, 9
         .importzp       ptr1
 
 ; ProDOS
-DEVADR          = $BF10         ; 16 mots : slot 0..7, lecteur 1 puis 2
-DEVCNT          = $BF31         ; unites moins une
+DEVADR          = $BF10         ; 16 words: slot 0..7, drive 1 then 2
+DEVCNT          = $BF31         ; units minus one
 DEVLST          = $BF32
 DATE            = $BF90
 TIME            = $BF92
 P_CMD           = $42           ; 0 STATUS, 1 READ, 2 WRITE, 3 FORMAT
-P_UNIT          = $43           ; slot x 16, + $80 pour le lecteur 2
+P_UNIT          = $43           ; slot x 16, + $80 for drive 2
 P_BUF           = $44
 P_BLK           = $46
 E_IO            = $27
 E_NODEV         = $28
 
-; Le 6551 : $C088 + slot x 16 (donnees, etat, commande, controle). La base
-; $BFF9 = $C088 - $8F fait tomber la fausse lecture de l'indexation en page
-; $BF, jamais dans les entrees-sorties (le tour de cc65 et d'a2tools).
+; The 6551: $C088 + slot x 16 (data, status, command, control). The base
+; $BFF9 = $C088 - $8F makes the spurious read of the indexing fall in page
+; $BF, never in the I/O space (the trick of cc65 and a2tools).
 ACIA_OFS        = $8F
 ACIA_DATA       = $C088 - ACIA_OFS
 ACIA_STATUS     = $C089 - ACIA_OFS
 ACIA_CMD        = $C08A - ACIA_OFS
 ACIA_CTRL       = $C08B - ACIA_OFS
 
-; Le protocole
+; The protocol
 VD_ENV          = $C5
 VD_WRITE        = $02
 VD_READ         = $03
 
-; Page 3 : le talon en $0300, les variables derriere lui.
+; Page 3: the thunk at $0300, the variables behind it.
 THUNK           = $0300
-vs_slot         = $03B0         ; le slot des volumes
-vs_dev1         = $03B1         ; son unite lecteur 1 (slot x 16)
-vs_dev2         = $03B2         ; lecteur 2 (+ $80)
-vs_orig         = $03B3         ; l'ancien DEVADR de ce slot (2 octets)
-vs_on           = $03B5         ; 1 : installe
-vs_acia         = $03B6         ; l'index X du 6551 (slot x 16 + $8F)
+vs_slot         = $03B0         ; the slot of the volumes
+vs_dev1         = $03B1         ; its drive 1 unit (slot x 16)
+vs_dev2         = $03B2         ; drive 2 (+ $80)
+vs_orig         = $03B3         ; the former DEVADR of this slot (2 bytes)
+vs_on           = $03B5         ; 1: installed
+vs_acia         = $03B6         ; the X index of the 6551 (slot x 16 + $8F)
 vs_chk          = $03B7
 vs_cmd          = $03B8
-vs_to           = $03B9         ; le compte a rebours du delai (2 octets)
-vs_dt           = $03BB         ; heure et date recues (4 octets)
-vs_pg           = $03BF         ; les pages du bloc qui restent
-vs_int          = $03C0         ; le numero ProDOS de notre gestionnaire d'interruption, 0 sans
-vs_ip           = $03C1         ; ses parametres MLI (3 octets) : compte, numero, adresse
+vs_to           = $03B9         ; the timeout countdown (2 bytes)
+vs_dt           = $03BB         ; time and date received (4 bytes)
+vs_pg           = $03BF         ; the pages of the block still to go
+vs_int          = $03C0         ; the ProDOS number of our interrupt handler, 0 without
+vs_ip           = $03C1         ; its MLI parameters (3 bytes): count, number, address
 
 ; ----------------------------------------------------------------------
-; Le destructeur : en fenetre principale, car _exit (crt0) remet la ROM
-; avant d'appeler donelib -- la carte langage n'est plus lisible alors.
+; The destructor: in the main window, because _exit (crt0) restores the ROM
+; before calling donelib -- the language card is no longer readable then.
 ; ----------------------------------------------------------------------
         .segment "CODE"
 
@@ -95,7 +95,7 @@ _vsdrive_uninstall:
         lda     #0
         sta     vs_on
         jsr     del_irq
-        lda     vs_slot                 ; l'ancien pilote reprend DEVADR
+        lda     vs_slot                 ; the former driver takes DEVADR back
         asl
         tax
         lda     vs_orig
@@ -104,9 +104,9 @@ _vsdrive_uninstall:
         lda     vs_orig+1
         sta     DEVADR+1,x
         sta     DEVADR+17,x
-        ldx     #0                      ; nos deux unites quittent DEVLST,
-        ldy     #0                      ; ou qu'elles soient (/RAM refait
-un_scan:                                ; peut en avoir ajoute apres nous)
+        ldx     #0                      ; our two units leave DEVLST,
+        ldy     #0                      ; wherever they are (a rebuilt /RAM
+un_scan:                                ; may have added some after us)
         lda     DEVLST,y
         cmp     vs_dev1
         beq     un_skip
@@ -121,75 +121,75 @@ un_skip:
         beq     un_scan
         dex
         stx     DEVCNT
-        ldx     vs_acia                 ; DTR retombe : le port se ferme
+        ldx     vs_acia                 ; DTR drops: the port closes
         lda     #$0A
         sta     ACIA_CMD,x
 un_done:
         rts
 
 ; ----------------------------------------------------------------------
-; Le reste en carte langage.
+; The rest in the language card.
 ; ----------------------------------------------------------------------
         .segment "LC"
 
-; La signature Pascal 1.1 d'une carte serie ou parallele de type 1.
+; The Pascal 1.1 signature of a type 1 serial or parallel card.
 id_ofs: .byte   $05, $07, $0B, $0C
 id_val: .byte   $38, $18, $01, $31
-; Les slots dans l'ordre ou on les sonde : le 2 d'abord -- le port modem
-; d'un //c, dont le port 1 (imprimante) porte la meme signature et le meme
-; 6551 ; la place habituelle d'un modem sur un IIe --, puis 1, 3 a 7.
-; (Michel Sitruk, //c, 0.6.7 : le VDrive partait sur le port imprimante.)
+; The slots in the order we probe them: 2 first -- the modem port of a
+; //c, whose port 1 (printer) carries the same signature and the same
+; 6551; the usual place of a modem on a IIe --, then 1, 3 to 7.
+; (Michel Sitruk, //c, 0.6.7: the VDrive went out on the printer port.)
 slots:  .byte   $C2, $C1, $C3, $C4, $C5, $C6, $C7, 0
 
-; Le talon, recopie en $0300. Sa source est en memoire principale (segment
-; CODE), pas en carte langage : l'image LC est pleine a 7 octets pres, et
-; une source qu'on ne fait que recopier n'a rien a y faire.
+; The thunk, copied to $0300. Its source is in main memory (segment CODE),
+; not in the language card: the LC image is full to within 7 bytes, and a
+; source that is only ever copied has no business there.
 ;
-; Le pilote vit dans le banc 2 de la carte langage ($D400-$DFFF, l'image LC
-; de cc65) et ProDOS dans le banc 1 -- avec son tampon general GBUF en
-; $DC00 : c'est la que ON_LINE, la lecture d'un repertoire et l'ecriture
-; d'un bloc de repertoire posent P_BUF. Un `sta (P_BUF),y` execute depuis
-; le banc 2 ne peut pas y arriver (les deux bancs se partagent les memes
-; adresses, et le banc 2 etait meme en lecture seule) : le tampon gardait
-; le dernier bloc lu par le pilote du Disk II, et le volume distant
-; paraissait sous le nom de la disquette. Les deux acces au tampon passent
-; donc par ici, en page 3, hors carte langage : banc 1 en lecture/ecriture
-; le temps d'un octet, puis retour au banc 2 pour retrouver le pilote.
-; (Banc de POM2, bench/vdrive.py, 2026-09-08.)
+; The driver lives in bank 2 of the language card ($D400-$DFFF, the LC
+; image of cc65) and ProDOS in bank 1 -- with its general buffer GBUF at
+; $DC00: that is where ON_LINE, reading a directory and writing a
+; directory block put P_BUF. A `sta (P_BUF),y` executed from bank 2
+; cannot reach it (the two banks share the same addresses, and bank 2 was
+; even read-only): the buffer kept the last block read by the Disk II
+; driver, and the remote volume showed up under the floppy's name. Both
+; buffer accesses therefore go through here, in page 3, outside the
+; language card: bank 1 read/write for the duration of one byte, then back
+; to bank 2 to find the driver again.
+; (POM2 bench, bench/vdrive.py, 2026-09-08.)
         .segment "CODE"
 thunk_src:
-        bit     $C080                   ; le banc 2 en lecture : nous
+        bit     $C080                   ; bank 2 readable: us
         jsr     vs_driver
-        php                             ; A et le report : le verdict
+        php                             ; A and the carry: the verdict
         pha
-        bit     $C08B                   ; le banc 1 en lecture/ecriture :
-        bit     $C08B                   ; ProDOS, tel qu'il s'attend a se
-        pla                             ; retrouver
+        bit     $C08B                   ; bank 1 read/write: ProDOS, the
+        bit     $C08B                   ; way it expects to find itself
+        pla                             ; again
         plp
         rts
-st_src:                                 ; A -> (P_BUF),y dans le banc de ProDOS
+st_src:                                 ; A -> (P_BUF),y in ProDOS's bank
         bit     $C08B
         bit     $C08B
         sta     (P_BUF),y
         bit     $C080
         rts
-ld_src:                                 ; A <- (P_BUF),y dans le banc de ProDOS
+ld_src:                                 ; A <- (P_BUF),y in ProDOS's bank
         bit     $C08B
         bit     $C08B
         lda     (P_BUF),y
         bit     $C080
         rts
-; Le gestionnaire d'interruption ProDOS. Un 6551 leve IRQ quand DCD ou DSR
-; change, quoi qu'en disent ses registres : sur une vraie SSC dont le cable
-; porte ces lignes, debrancher l'hote tuerait ProDOS ("RESTART SYSTEM -
-; $01", personne n'a reclame l'interruption). Lire le registre d'etat
-; l'acquitte ; bit 7 dit si c'etait nous. L'adresse est posee a
-; l'installation (page 3 : modifiable).
+; The ProDOS interrupt handler. A 6551 raises IRQ when DCD or DSR changes,
+; whatever its registers say: on a real SSC whose cable carries those
+; lines, unplugging the host would kill ProDOS ("RESTART SYSTEM -
+; $01", nobody claimed the interrupt). Reading the status register
+; acknowledges it; bit 7 says whether it was us. The address is filled in
+; at install time (page 3: writable).
 irq_src:
         lda     $C089                   ; -> $C089 + slot x 16
         and     #$80
         beq     irq_no
-        clc                             ; reclamee
+        clc                             ; claimed
         rts
 irq_no: sec
         rts
@@ -197,10 +197,10 @@ thunk_len = * - thunk_src
 irq_adr = THUNK + (irq_src - thunk_src) + 1
 IRQH    = THUNK + (irq_src - thunk_src)
 
-; L'inscription et le retrait du gestionnaire (MLI $40 / $41), en fenetre
-; principale : le retrait sert au destructeur, hors carte langage.
+; Registering and removing the handler (MLI $40 / $41), in the main
+; window: the removal serves the destructor, outside the language card.
 ins_irq:
-        lda     vs_acia                 ; l'adresse du registre d'etat :
+        lda     vs_acia                 ; the address of the status register:
         sec                             ; $C089 + slot x 16 = vs_acia - $8F + $89
         sbc     #ACIA_OFS-$89
         sta     irq_adr
@@ -216,7 +216,7 @@ ins_irq:
         .byte   $40                     ; ALLOC_INTERRUPT
         .word   vs_ip
         bcc     :+
-        lda     #0                      ; plus de place chez ProDOS : sans gestionnaire
+        lda     #0                      ; no room left in ProDOS: no handler
         sta     vs_ip+1
 :       lda     vs_ip+1
         sta     vs_int
@@ -239,15 +239,15 @@ ld_buf  = THUNK + (ld_src - thunk_src)
 
 ; unsigned char vsdrive_install(void)
 _vsdrive_install:
-        lda     #0                      ; la page 3 n'est pas initialisee :
-        sta     vs_on                   ; sans carte, le destructeur ne doit
-        sta     ptr1                    ; rien defaire
-        sta     vs_to                   ; l'index dans slots
+        lda     #0                      ; page 3 is not initialised: without
+        sta     vs_on                   ; a card, the destructor must not
+        sta     ptr1                    ; undo anything
+        sta     vs_to                   ; the index into slots
 ins_card:
         ldx     vs_to
         lda     slots,x
-        beq     ins_none                ; la table est finie : pas de carte
-        sta     ptr1+1                  ; $Cn : la page ROM du slot
+        beq     ins_none                ; end of the table: no card
+        sta     ptr1+1                  ; $Cn: the ROM page of the slot
         inc     vs_to
         ldx     #0
 ins_id: ldy     id_ofs,x
@@ -257,7 +257,7 @@ ins_id: ldy     id_ofs,x
         inx
         cpx     #4
         bcc     ins_id
-        lda     ptr1+1                  ; signature vue : slot x 16 + $8F
+        lda     ptr1+1                  ; signature seen: slot x 16 + $8F
         asl
         asl
         asl
@@ -265,8 +265,8 @@ ins_id: ldy     id_ofs,x
         clc
         adc     #ACIA_OFS
         tax
-        ; Un 6551 y repond-il ? Deux valeurs ecrites dans son registre de
-        ; commande doivent s'y relire (a2tools) ; sinon on remet tout.
+        ; Does a 6551 answer there? Two values written to its command
+        ; register must read back (a2tools); otherwise we put everything back.
         lda     ACIA_STATUS,x
         pha
         lda     ACIA_CMD,x
@@ -280,10 +280,10 @@ ins_try:
         iny
         cpy     #%00000100
         bne     ins_try
-        sta     ACIA_STATUS,x           ; reset logiciel
+        sta     ACIA_STATUS,x           ; software reset
         lda     ACIA_CMD,x
         lsr
-        bcc     ins_acia                ; DTR retombe : c'est bien un 6551
+        bcc     ins_acia                ; DTR dropped: it really is a 6551
 ins_not:
         pla
         sta     ACIA_CMD,x
@@ -297,21 +297,21 @@ ins_none:
         rts
 
 ins_acia:
-        pla                             ; les deux registres sauves, sans suite
+        pla                             ; the two saved registers, discarded
         pla
         stx     vs_acia
-        lda     #%00010000              ; 115 200 bauds (horloge externe x16),
+        lda     #%00010000              ; 115 200 baud (external clock x16),
         sta     ACIA_CTRL,x             ; 8 bits, 1 stop
-        lda     #%00001011              ; DTR, pas d'interruption, RTS bas
+        lda     #%00001011              ; DTR, no interrupt, RTS low
         sta     ACIA_CMD,x
-        ; Le slot des volumes : le premier dont aucune unite n'est prise.
+        ; The slot of the volumes: the first one of which no unit is taken.
         lda     #0
         sta     vs_slot
 ins_slot:
         inc     vs_slot
         lda     vs_slot
         cmp     #8
-        bcs     ins_none                ; sept slots pris : pas de place
+        bcs     ins_none                ; seven slots taken: no room
         asl
         asl
         asl
@@ -328,7 +328,7 @@ ins_dev:
         beq     ins_slot
         dey
         bpl     ins_dev
-        ; Le slot est libre : DEVADR, DEVLST, le talon.
+        ; The slot is free: DEVADR, DEVLST, the thunk.
         lda     vs_slot
         asl
         tax
@@ -359,7 +359,7 @@ ins_cpy:
         jsr     ins_irq
         lda     #1
         sta     vs_on
-        lda     vs_acia                 ; (slot serie << 4) | slot des volumes
+        lda     vs_acia                 ; (serial slot << 4) | slot of the volumes
         sec
         sbc     #ACIA_OFS
         ora     vs_slot
@@ -367,12 +367,12 @@ ins_cpy:
         rts
 
 ; ----------------------------------------------------------------------
-; Le pilote, tel que ProDOS l'appelle (par le talon) : $42-$47 poses,
-; A = erreur et report leve en cas d'echec.
+; The driver, as ProDOS calls it (through the thunk): $42-$47 set up,
+; A = error and carry set on failure.
 ; ----------------------------------------------------------------------
 vs_driver:
         cld
-        lda     #0                      ; A = 0 (lecteur 1) ou 2 (lecteur 2)
+        lda     #0                      ; A = 0 (drive 1) or 2 (drive 2)
         ldx     P_UNIT
         cpx     vs_dev1
         beq     drv_cmd
@@ -391,11 +391,11 @@ drv_cmd:
         bne     drv_other
         jmp     drv_write
 drv_other:
-        lda     #0                      ; FORMAT et le reste : rien a faire
+        lda     #0                      ; FORMAT and the rest: nothing to do
         clc
         rts
 drv_status:
-        lda     #0                      ; taille inconnue : $FFFF blocs
+        lda     #0                      ; unknown size: $FFFF blocks
         ldx     #$FF
         ldy     #$FF
         clc
@@ -403,11 +403,11 @@ drv_status:
 
 drv_read:
         clc
-        adc     #VD_READ                ; 3 ou 5
-        jsr     envelope                ; php, sei, X = 6551, l'enveloppe partie
-        jsr     expect_env              ; son echo
+        adc     #VD_READ                ; 3 or 5
+        jsr     envelope                ; php, sei, X = 6551, the envelope sent
+        jsr     expect_env              ; its echo
         bcs     drv_fail
-        ldy     #0                      ; l'heure et la date, dans le XOR
+        ldy     #0                      ; the time and date, into the XOR
 rd_dt:  jsr     getc
         bcs     drv_fail
         sta     vs_dt,y
@@ -416,18 +416,18 @@ rd_dt:  jsr     getc
         iny
         cpy     #4
         bcc     rd_dt
-        jsr     getc                    ; le XOR de l'en-tete
+        jsr     getc                    ; the XOR of the header
         bcs     drv_fail
         cmp     vs_chk
         bne     drv_fail
         lda     #0
         sta     vs_chk
-        lda     #2                      ; les 512 octets : deux pages
+        lda     #2                      ; the 512 bytes: two pages
         sta     vs_pg
         ldy     #0
 rd_blk: jsr     getc
         bcs     drv_fail
-        jsr     st_buf                  ; dans le banc de ProDOS (voir le talon)
+        jsr     st_buf                  ; into ProDOS's bank (see the thunk)
         eor     vs_chk
         sta     vs_chk
         iny
@@ -435,13 +435,13 @@ rd_blk: jsr     getc
         inc     P_BUF+1
         dec     vs_pg
         bne     rd_blk
-        jsr     getc                    ; le XOR du bloc
+        jsr     getc                    ; the XOR of the block
         bcs     drv_fail
         cmp     vs_chk
         bne     drv_fail
-        dec     P_BUF+1                 ; le tampon comme on l'a recu
+        dec     P_BUF+1                 ; the buffer as we received it
         dec     P_BUF+1
-        lda     vs_dt                   ; l'horloge ProDOS a l'heure de l'hote
+        lda     vs_dt                   ; the ProDOS clock set to the host's time
         sta     TIME
         lda     vs_dt+1
         sta     TIME+1
@@ -450,7 +450,7 @@ rd_blk: jsr     getc
         lda     vs_dt+3
         sta     DATE+1
 drv_ok:
-        plp                             ; les interruptions comme avant
+        plp                             ; interrupts as before
         lda     #0
         clc
         rts
@@ -462,14 +462,14 @@ drv_fail:
 
 drv_write:
         clc
-        adc     #VD_WRITE               ; 2 ou 4
+        adc     #VD_WRITE               ; 2 or 4
         jsr     envelope
         lda     #0
         sta     vs_chk
         lda     #2
         sta     vs_pg
         ldy     #0
-wr_blk: jsr     ld_buf                  ; depuis le banc de ProDOS (voir le talon)
+wr_blk: jsr     ld_buf                  ; from ProDOS's bank (see the thunk)
         jsr     putc_chk
         iny
         bne     wr_blk
@@ -478,11 +478,11 @@ wr_blk: jsr     ld_buf                  ; depuis le banc de ProDOS (voir le talo
         bne     wr_blk
         dec     P_BUF+1
         dec     P_BUF+1
-        lda     vs_chk                  ; le XOR du bloc
+        lda     vs_chk                  ; the XOR of the block
         jsr     putc
-        jsr     expect_env              ; l'echo de l'enveloppe
+        jsr     expect_env              ; the echo of the envelope
         bcs     wr_fail
-        jsr     getc                    ; le XOR du bloc, tel que l'hote l'a vu
+        jsr     getc                    ; the XOR of the block, as the host saw it
         bcs     wr_fail
         cmp     vs_chk
         beq     wr_ok
@@ -490,8 +490,8 @@ wr_fail:
         jmp     drv_fail
 wr_ok:  jmp     drv_ok
 
-; L'echo de l'enveloppe : $C5, la commande, le bloc. Report leve si un octet
-; manque ou differe.
+; The echo of the envelope: $C5, the command, the block. Carry set if a
+; byte is missing or differs.
 expect_env:
         jsr     getc
         bcs     ex_bad
@@ -514,12 +514,12 @@ expect_env:
 ex_bad: sec
         rts
 
-; L'enveloppe : A = la commande. Coupe les interruptions (php sur la pile
-; de l'appelant, repris par drv_ok/drv_fail), charge X, envoie les cinq
-; octets et laisse vs_chk a leur XOR.
+; The envelope: A = the command. Disables interrupts (php on the caller's
+; stack, picked up again by drv_ok/drv_fail), loads X, sends the five
+; bytes and leaves vs_chk at their XOR.
 envelope:
         sta     vs_cmd
-        pla                             ; l'adresse de retour, sous le php
+        pla                             ; the return address, under the php
         tay
         pla
         php
@@ -541,14 +541,14 @@ envelope:
         lda     vs_chk
         jmp     putc
 
-; Un octet envoye, et dans le XOR.
+; One byte sent, and folded into the XOR.
 putc_chk:
         jsr     putc
         eor     vs_chk
         sta     vs_chk
         rts
 
-; Un octet envoye (A garde). X = le 6551.
+; One byte sent (A preserved). X = the 6551.
 putc:
         pha
 :       lda     ACIA_STATUS,x
@@ -558,8 +558,8 @@ putc:
         sta     ACIA_DATA,x
         rts
 
-; Un octet recu dans A, report bas ; report leve apres ~0,3 s sans rien.
-; X = le 6551, Y intact.
+; One byte received in A, carry clear; carry set after ~0.3 s with nothing.
+; X = the 6551, Y intact.
 getc:
         lda     #0
         sta     vs_to

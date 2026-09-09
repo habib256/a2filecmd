@@ -1,18 +1,18 @@
-/* A2FILE/FORMAT.SYS -- formate un disque pour ProDOS, depuis A2 File
- * Cmd (touche F) ou Bitsy Bye, et revient a A2FC.
+/* A2FILE/FORMAT.SYS -- formats a disk for ProDOS, from A2 File Cmd
+ * (key F) or Bitsy Bye, and returns to A2FC.
  *
- * Le formatage physique d'une disquette Disk II vient du ProDOS
- * Hyper-FORMAT de Jerry Hewett (1985, domaine public) et Gary Desrochers
- * (1989), tel qu'ADTPro (David Schmidt, GPL) l'a integre : voir
- * format_diskii.s. Les structures ProDOS (amorce, catalogue, table
- * d'allocation) sont ecrites ici par WRITE_BLOCK, en C, pour tout
- * peripherique de bloc : Disk II, SmartPort, disque dur, /RAM.
+ * The physical formatting of a Disk II floppy comes from the ProDOS
+ * Hyper-FORMAT by Jerry Hewett (1985, public domain) and Gary Desrochers
+ * (1989), as ADTPro (David Schmidt, GPL) integrated it: see
+ * format_diskii.s. The ProDOS structures (boot blocks, directory,
+ * allocation bitmap) are written here by WRITE_BLOCK, in C, for any
+ * block device: Disk II, SmartPort, hard disk, /RAM.
  *
- * La securite tient a trois choses : le disque d'ou tourne le programme
- * n'est jamais proposable ; la cible est decrite en clair (slot, lecteur,
- * type, nom actuel, taille) avec l'avertissement que tout sera perdu ; et
- * la confirmation exige de taper le mot ERASE en toutes lettres, Echap
- * annulant a chaque etape. Rien n'est ecrit avant ce mot. */
+ * Safety rests on three things: the disk the program runs from is never
+ * offered; the target is described in plain words (slot, drive, type,
+ * current name, size) with the warning that everything will be lost; and
+ * confirming requires typing the word ERASE in full, with Escape
+ * cancelling at every step. Nothing is written before that word. */
 #include <stdio.h>
 #include <string.h>
 #include <conio.h>
@@ -34,14 +34,14 @@ void diskii_end(void);
 #define DEVCNT (*(unsigned char*)0xBF31)
 #define DEVLST ((unsigned char*)0xBF32)
 #define DEVADR ((unsigned int*)0xBF10)
-#define BLOCK  ((unsigned char*)0x6800)   /* le tampon de bloc d'Hyper-FORMAT */
+#define BLOCK  ((unsigned char*)0x6800)   /* Hyper-FORMAT's block buffer */
 
 enum { KIND_DISKII, KIND_SMART, KIND_RAM, KIND_BLOCK };
 static const char* const KIND_NAMES[] = { "Disk II 5.25\"", "SmartPort", "/RAM disk", "block device" };
 
 struct Dev {
     unsigned char unit, kind, inuse, valid;
-    char name[16];              /* le volume actuel, sans la barre */
+    char name[16];              /* the current volume, without the slash */
     unsigned int blocks;
 };
 static struct Dev devs[9];
@@ -50,8 +50,8 @@ static unsigned char boot_unit;
 static char volname[16];
 static struct Dev* target;
 
-/* L'amorce ProDOS d'une disquette (bloc 0), celle d'Hyper-FORMAT ; le
- * bloc 1 reste a zero. */
+/* The ProDOS boot block of a floppy (block 0), Hyper-FORMAT's; block 1
+ * stays zero. */
 static const unsigned char boot_code[] = {
     0x01,0x38,0xB0,0x03,0x4C,0x32,0xA1,0x86,0x43,0xC9,0x03,0x08,0x8A,0x29,0x70,0x4A,0x4A,0x4A,0x4A,0x09,0xC0,0x85,0x49,0xA0,
     0xFF,0x84,0x48,0x28,0xC8,0xB1,0x48,0xD0,0x3A,0xB0,0x0E,0xA9,0x03,0x8D,0x00,0x08,0xE6,0x3D,0xA5,0x49,0x48,0xA9,0x5B,0x48,
@@ -77,7 +77,7 @@ static const unsigned char boot_code[] = {
     0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00 };
 
 /* ---------------------------------------------------------------------- */
-/* Ecran                                                                  */
+/* Screen                                                                 */
 /* ---------------------------------------------------------------------- */
 
 static void title(const char* sub)
@@ -111,23 +111,23 @@ static void error_line(unsigned char row, unsigned char code)
 }
 
 /* ---------------------------------------------------------------------- */
-/* Les peripheriques                                                      */
+/* Devices                                                                */
 /* ---------------------------------------------------------------------- */
 
 static unsigned char slot_of(unsigned char unit) { return (unit >> 4) & 7; }
-/* Blocs de la carte des blocs libres : 4096 blocs par bloc, sans debordement
- * 16 bits pour une partition de 65535 blocs (32 Mo). */
+/* Blocks of the free-block map: 4096 blocks per block, without 16-bit
+ * overflow for a 65535-block partition (32 MB). */
 static unsigned char bitmap_size(unsigned int total) { return (unsigned char)((total >> 12) + ((total & 4095) != 0)); }
 static unsigned char drive_of(unsigned char unit) { return (unit >> 7) + 1; }
 
-/* Le type d'apres la signature de la ROM du slot ($Cs01/03/05/07 et
- * $CsFF), comme Hyper-FORMAT ; le pilote /RAM se reconnait a son adresse
- * $FF00 dans DEVADR. Tout le reste est un peripherique de bloc sans
- * formatage physique : on n'y ecrit que les structures ProDOS. */
-/* La ROM de la carte qui pilote l'unite : celle du slot du pilote quand
- * ProDOS l'appelle en ROM ($C100-$C7FF), ce qui suit aussi un troisieme ou
- * quatrieme lecteur SmartPort renumerote en slot 2 ; sinon celle du slot de
- * l'unite (pilote interne de ProDOS : Disk II). */
+/* The type from the signature of the slot ROM ($Cs01/03/05/07 and
+ * $CsFF), like Hyper-FORMAT; the /RAM driver is recognised by its
+ * address $FF00 in DEVADR. Everything else is a block device without
+ * physical formatting: only the ProDOS structures are written to it. */
+/* The ROM of the card driving the unit: that of the driver's slot when
+ * ProDOS calls it in ROM ($C100-$C7FF), which also follows a third or
+ * fourth SmartPort drive renumbered into slot 2; otherwise that of the
+ * unit's slot (ProDOS internal driver: Disk II). */
 static const unsigned char* rom_of(unsigned char unit)
 {
     unsigned int drv = DEVADR[unit >> 4];
@@ -141,7 +141,7 @@ static unsigned char kind_of(unsigned char unit)
     if (DEVADR[unit >> 4] == 0xFF00) return KIND_RAM;
     if (rom[1] == 0x20 && rom[3] == 0x00 && rom[5] == 0x03) {
         if (rom[0xFF] == 0x00 && DEVADR[unit >> 4] >= 0xD000) return KIND_DISKII;
-        if (rom[7] == 0x00) return KIND_SMART;      /* $Cn07 = 0 : interface SmartPort */
+        if (rom[7] == 0x00) return KIND_SMART;      /* $Cn07 = 0: SmartPort interface */
     }
     return KIND_BLOCK;
 }
@@ -160,7 +160,7 @@ static void scan_devices(void)
         d->name[0] = 0;
         d->valid = 0;
         d->blocks = 0;
-        /* ON_LINE : le nom du volume de l'unite, ou son erreur */
+        /* ON_LINE: the unit's volume name, or its error */
         parms[0] = 2; parms[1] = d->unit;
         parms[2] = (unsigned char)((unsigned)online & 0xFF);
         parms[3] = (unsigned char)((unsigned)online >> 8);
@@ -169,22 +169,22 @@ static void scan_devices(void)
             memcpy(d->name, online + 1, len);
             d->name[len] = 0;
             d->valid = 1;
-            /* GET_FILE_INFO sur "/NOM" : aux_type = la taille du volume */
+            /* GET_FILE_INFO on "/NAME": aux_type = the volume size */
             path[0] = len + 1; path[1] = '/'; memcpy(path + 2, d->name, len);
             gfi[0] = 0x0A;
             gfi[1] = (unsigned char)((unsigned)path & 0xFF);
             gfi[2] = (unsigned char)((unsigned)path >> 8);
             if (!mli_call(0xC4, gfi)) d->blocks = gfi[5] | ((unsigned int)gfi[6] << 8);
         }
-        /* STATUS du pilote : le nombre de blocs sans volume, et la taille
-         * reelle quand un en-tete annonce plus que le disque. L'en-tete
-         * l'emporte quand il annonce moins : le pilote /RAM de ProDOS rend
-         * 255 blocs pour un volume de 127, et il n'y a bien que 128 blocs.
-         * Un pilote loge au-dessus de $D000 (Disk II, /RAM) vit en banque 1
-         * de la carte langage : l'appel direct doit la commuter. */
-        if (d->kind == KIND_DISKII) d->blocks = 280;   /* son STATUS ne compte pas les blocs, et un en-tete peut mentir */
+        /* Driver STATUS: the block count when there is no volume, and the
+         * real size when a header claims more than the disk has. The header
+         * wins when it claims less: the ProDOS /RAM driver returns 255
+         * blocks for a volume of 127, and there really are only 128 blocks.
+         * A driver living above $D000 (Disk II, /RAM) sits in bank 1 of the
+         * language card: the direct call must switch it in. */
+        if (d->kind == KIND_DISKII) d->blocks = 280;   /* its STATUS does not count blocks, and a header may lie */
         else if (!driver_call(d->unit, 0, DEVADR[d->unit >> 4] >= 0xD000) && driver_blocks && (!d->blocks || driver_blocks < d->blocks)) d->blocks = driver_blocks;
-        if (d->kind == KIND_RAM && d->blocks > 127) d->blocks = 127;   /* STATUS dit 255 : 128 blocs, dont ProDOS en garde un */
+        if (d->kind == KIND_RAM && d->blocks > 127) d->blocks = 127;   /* STATUS says 255: 128 blocks, of which ProDOS keeps one */
         ++ndev;
     }
 }
@@ -209,7 +209,7 @@ static void list_devices(void)
 }
 
 /* ---------------------------------------------------------------------- */
-/* Les structures ProDOS                                                  */
+/* The ProDOS structures                                                  */
 /* ---------------------------------------------------------------------- */
 
 static unsigned char write_block(unsigned char unit, unsigned int block)
@@ -230,8 +230,8 @@ static unsigned char read_block(unsigned char unit, unsigned int block)
     return mli_call(0x80, parms);
 }
 
-/* Amorce, catalogue racine (blocs 2-5), table d'allocation (des le bloc 6).
- * Rend 0 ou le code d'erreur. */
+/* Boot blocks, root directory (blocks 2-5), allocation bitmap (from block 6
+ * on). Returns 0 or the error code. */
 static unsigned char write_structures(struct Dev* d)
 {
     unsigned char r, len = strlen(volname), i;
@@ -242,31 +242,31 @@ static unsigned char write_structures(struct Dev* d)
     if ((r = write_block(d->unit, 0))) return r;
     memset(BLOCK, 0, 512);
     if ((r = write_block(d->unit, 1))) return r;
-    /* les blocs 3, 4, 5 : chainage seulement */
+    /* blocks 3, 4, 5: linkage only */
     for (b = 3; b <= 5; ++b) {
         memset(BLOCK, 0, 512);
         BLOCK[0] = (unsigned char)(b - 1);
         BLOCK[2] = b < 5 ? (unsigned char)(b + 1) : 0;
         if ((r = write_block(d->unit, b))) return r;
     }
-    /* le bloc 2 : l'en-tete du volume */
-    mli_call(0x82, (void*)timep);           /* GET_TIME : $BF90-$BF93 a jour */
+    /* block 2: the volume header */
+    mli_call(0x82, (void*)timep);           /* GET_TIME: $BF90-$BF93 up to date */
     memset(BLOCK, 0, 512);
     BLOCK[2] = 3;
     BLOCK[4] = 0xF0 | len;
     memcpy(BLOCK + 5, volname, len);
-    memcpy(BLOCK + 0x1C, (void*)0xBF90, 4);   /* date et heure de creation */
-    BLOCK[0x20] = 0;                          /* version ProDOS 1.0 */
+    memcpy(BLOCK + 0x1C, (void*)0xBF90, 4);   /* creation date and time */
+    BLOCK[0x20] = 0;                          /* ProDOS version 1.0 */
     BLOCK[0x21] = 0;
-    BLOCK[0x22] = 0xC3;                       /* acces : tout permis */
-    BLOCK[0x23] = 0x27;                       /* 39 octets par entree */
-    BLOCK[0x24] = 0x0D;                       /* 13 entrees par bloc */
-    BLOCK[0x25] = 0; BLOCK[0x26] = 0;         /* aucun fichier */
-    BLOCK[0x27] = 6; BLOCK[0x28] = 0;         /* la table commence au bloc 6 */
+    BLOCK[0x22] = 0xC3;                       /* access: everything allowed */
+    BLOCK[0x23] = 0x27;                       /* 39 bytes per entry */
+    BLOCK[0x24] = 0x0D;                       /* 13 entries per block */
+    BLOCK[0x25] = 0; BLOCK[0x26] = 0;         /* no files */
+    BLOCK[0x27] = 6; BLOCK[0x28] = 0;         /* the bitmap starts at block 6 */
     BLOCK[0x29] = (unsigned char)(total & 0xFF);
     BLOCK[0x2A] = (unsigned char)(total >> 8);
     if ((r = write_block(d->unit, 2))) return r;
-    /* la table d'allocation : un bit par bloc, 1 = libre */
+    /* the allocation bitmap: one bit per block, 1 = free */
     for (i = 0; i < bitmap_blocks; ++i) {
         memset(BLOCK, 0, 512);
         for (b = 0; b < 4096; ++b) {
@@ -275,9 +275,9 @@ static unsigned char write_structures(struct Dev* d)
         }
         if ((r = write_block(d->unit, 6 + i))) return r;
     }
-    /* relecture de l'amorce et de l'en-tete : la preuve que le disque
-     * repond et que ses deux premiers secteurs sont bons */
-    if (d->kind != KIND_RAM) {              /* le /RAM ne garde pas ses blocs d'amorce */
+    /* read back the boot block and the header: the proof that the disk
+     * responds and that its first two sectors are good */
+    if (d->kind != KIND_RAM) {              /* /RAM does not keep its boot blocks */
         memset(BLOCK, 0, 512);
         if ((r = read_block(d->unit, 0))) return r;
         if (memcmp(BLOCK, boot_code, sizeof boot_code)) return 0x27;
@@ -289,10 +289,10 @@ static unsigned char write_structures(struct Dev* d)
 }
 
 /* ---------------------------------------------------------------------- */
-/* Les etapes                                                             */
+/* The steps                                                              */
 /* ---------------------------------------------------------------------- */
 
-/* Rend 0 si Echap. */
+/* Returns 0 on Escape. */
 static unsigned char ask_name(void)
 {
     unsigned char len = 0;
@@ -322,7 +322,7 @@ static unsigned char ask_name(void)
     }
 }
 
-/* Rend 1 seulement si l'utilisateur a tape ERASE puis RETURN. */
+/* Returns 1 only if the user typed ERASE then RETURN. */
 static unsigned char confirm(void)
 {
     char typed[8];
@@ -361,7 +361,7 @@ static unsigned char confirm(void)
     }
 }
 
-/* Rend 0 ou le code d'erreur. */
+/* Returns 0 or the error code. */
 static unsigned char do_format(void)
 {
     unsigned char r = 0, t;
@@ -381,7 +381,7 @@ static unsigned char do_format(void)
     } else if (target->kind == KIND_RAM) {
         r = driver_call(target->unit, 3, DEVADR[target->unit >> 4] >= 0xD000);
         if (r) return r;
-    } else if (target->kind == KIND_SMART && (rom_of(target->unit)[0xFE] & 0x08)) {   /* SmartPort : FORMAT vise l'unite ; une autre carte pourrait formater tout le disque */
+    } else if (target->kind == KIND_SMART && (rom_of(target->unit)[0xFE] & 0x08)) {   /* SmartPort: FORMAT targets the unit; another card could format the whole disk */
         r = driver_call(target->unit, 3, DEVADR[target->unit >> 4] >= 0xD000);
         if (r) return r;
     }
@@ -443,10 +443,10 @@ int main(void)
 back:
     clrscr();
     cputs("Loading A2 File Cmd ...");
-    /* Le prefixe ProDOS doit etre le dossier du programme, celui qui a
-     * A2FILE.SYSTEM et A2FILE/ -- a la racine d'un volume ou non. Lance par
-     * A2FC, il l'est deja ; lance depuis Bitsy Bye, FORMAT.SYS herite du
-     * dossier A2FILE lui-meme : on remonte alors d'un cran. */
+    /* The ProDOS prefix must be the program's directory, the one holding
+     * A2FILE.SYSTEM and A2FILE/ -- at the root of a volume or not. Launched
+     * by A2FC, it already is; launched from Bitsy Bye, FORMAT.SYS inherits
+     * the A2FILE directory itself: then go up one level. */
     {
         static unsigned char parms[3], prefix[65];
         unsigned char i;
@@ -455,7 +455,7 @@ back:
         parms[2] = (unsigned char)((unsigned)prefix >> 8);
         if (!mli_call(0xC7, parms) && (i = prefix[0]) >= 8
             && prefix[i - 7] == '/' && !memcmp(prefix + i - 6, "A2FILE/", 7)) {
-            prefix[0] = i - 7;             /* ".../A2FILE/" -> ".../", barre finale comprise */
+            prefix[0] = i - 7;             /* ".../A2FILE/" -> ".../", trailing slash included */
             mli_call(0xC6, parms);
         }
     }

@@ -1,36 +1,36 @@
-; format_diskii.s -- le formatage physique d'une disquette 5,25 pouces
-; (Disk II, 16 secteurs, volume 254), pour le formateur d'A2 File Cmd
-; (touche F).
+; format_diskii.s -- the physical formatting of a 5.25-inch floppy
+; (Disk II, 16 sectors, volume 254), for the A2 File Cmd formatter
+; (F key).
 ;
-; Le coeur vient du « ProDOS Hyper-FORMAT » de Jerry Hewett (Living Legends
-; Software, 1985, domaine public), repris par Gary Desrochers (1989), puis
-; integre par David Schmidt dans ADTPro (GPL) ; la boucle d'ecriture d'une
-; piste (Trans) vient de FASTDSK, via ADTPro. Ici : decoupe en trois appels
-; C, une piste a la fois, pour afficher la progression, et sans le systeme
-; de messages d'ADTPro. L'image de piste occupe $6500-$7FFF, hors de
-; FORMAT.SYS qui tient sous $6400 : les seize secteurs sont a leur place
-; d'origine ($6800-$7FFF), mais le GAP1 qui les precede est allonge de 512
-; octets de synchro. Une piste ecrite plus longue qu'un tour de disque
-; (6 862 octets, contre 6 250 a 6 400 selon la vitesse du lecteur, 6 656
-; pour POM2) recouvre le debut du tour, c'est-a-dire ce GAP1 : rien de
-; l'ancien contenu ne survit, et le champ d'adresse du secteur 0 reste hors
-; de portee. Avec le GAP1 d'origine, un emulateur au tour long gardait un
-; bout de l'ancienne piste, et le secteur 0 devenait illisible.
+; The core comes from Jerry Hewett's "ProDOS Hyper-FORMAT" (Living Legends
+; Software, 1985, public domain), taken up by Gary Desrochers (1989), then
+; integrated by David Schmidt into ADTPro (GPL); the track write loop
+; (Trans) comes from FASTDSK, via ADTPro. Here: split into three C calls,
+; one track at a time, to display the progress, and without ADTPro's
+; message system. The track image occupies $6500-$7FFF, outside
+; FORMAT.SYS which fits below $6400: the sixteen sectors are at their
+; original place ($6800-$7FFF), but the GAP1 preceding them is extended by
+; 512 sync bytes. A track written longer than one disk revolution
+; (6,862 bytes, against 6,250 to 6,400 depending on the drive speed, 6,656
+; for POM2) overwrites the start of the revolution, that is this GAP1:
+; nothing of the old contents survives, and the address field of sector 0
+; stays out of reach. With the original GAP1, an emulator with a long
+; revolution kept a piece of the old track, and sector 0 became unreadable.
 ;
 ;   unsigned char __fastcall__ diskii_begin(unsigned char slotdrive);
-;       slotdrive : $60 pour slot 6 lecteur 1, $E0 pour le lecteur 2.
-;       Moteur en marche, tete en piste 0, image de piste construite. Rend 0.
+;       slotdrive: $60 for slot 6 drive 1, $E0 for drive 2.
+;       Motor on, head on track 0, track image built. Returns 0.
 ;   unsigned char __fastcall__ diskii_track(unsigned char track);
-;       Calcule les champs d'adresse, positionne la tete, ecrit la piste.
-;       Rend 0 ou un code d'erreur ProDOS.
-;   void diskii_end(void);   Moteur coupe.
+;       Computes the address fields, positions the head, writes the track.
+;       Returns 0 or a ProDOS error code.
+;   void diskii_end(void);   Motor off.
 ;
-; Les softswitches sont indexes par le slot x 16 (SlotF = $60 pour le slot
-; 6) : Step0+SlotF = $C0E0, etc.
+; The softswitches are indexed by slot x 16 (SlotF = $60 for slot 6):
+; Step0+SlotF = $C0E0, etc.
 
         .export _diskii_begin, _diskii_track, _diskii_end
 
-Buffer  = $1D                   ; pointeur (2 octets), libre pour cc65 et ProDOS
+Buffer  = $1D                   ; pointer (2 bytes), free for cc65 and ProDOS
 
 Step0   = $C080
 Step1   = $C081
@@ -46,8 +46,8 @@ ModeRD  = $C08E
 ModeWR  = $C08F
 
         .segment "BSS"
-Slot:   .res 1                  ; slot x 16, bit 7 = lecteur 2
-SlotF:  .res 1                  ; slot x 16 seul
+Slot:   .res 1                  ; slot x 16, bit 7 = drive 2
+SlotF:  .res 1                  ; slot x 16 only
 LByte:  .res 1
 Count:  .res 1
 Track:  .res 1
@@ -57,43 +57,43 @@ TRKdes: .res 1
 LInOut: .res 1
 
         .segment "RODATA"
-LAddr:  .byte $D5,$AA,$96       ; en-tete d'adresse
-        .byte $AA,$AA,$AA,$AA,$AA,$AA,$AA,$AA   ; volume, piste, secteur, somme (4&4)
-        .byte $DE,$AA,$EB       ; fin d'adresse
+LAddr:  .byte $D5,$AA,$96       ; address prologue
+        .byte $AA,$AA,$AA,$AA,$AA,$AA,$AA,$AA   ; volume, track, sector, checksum (4&4)
+        .byte $DE,$AA,$EB       ; address epilogue
         .byte $7F,$7F,$7F,$7F,$7F,$7F           ; GAP2
-        .byte $D5,$AA,$AD       ; en-tete de donnees
+        .byte $D5,$AA,$AD       ; data prologue
         .byte $00
-LData:  .byte $DE,$AA,$EB       ; fin de donnees
+LData:  .byte $DE,$AA,$EB       ; data epilogue
         .byte $7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F   ; GAP3
         .byte $00
-LTable: .byte $02,$04,$06,$00   ; phases vers l'interieur
-        .byte $06,$04,$02,$00   ; vers l'exterieur
+LTable: .byte $02,$04,$06,$00   ; phases inward
+        .byte $06,$04,$02,$00   ; outward
 
         .segment "CODE"
 
-; ── diskii_begin ──────────────────────────────────────────────────────────
+; -- diskii_begin ----------------------------------------------------------
 _diskii_begin:
         sta Slot
         and #$70
         sta SlotF
-        tax                     ; $60 : lecteur 1
+        tax                     ; $60: drive 1
         lda Slot
         bpl :+
-        inx                     ; $61 : lecteur 2
-:       lda Select,x            ; choisir le lecteur
+        inx                     ; $61: drive 2
+:       lda Select,x            ; select the drive
         ldx SlotF
-        lda DiskON,x            ; moteur
+        lda DiskON,x            ; motor
         lda ModeRD,x
         lda DiskRD,x
-        ; la protection en ecriture se lit dans Trans, toutes phases
-        ; coupees : la phase 1 encore alimentee la ferait croire protegee
-        lda #$23                ; on suppose la tete en piste 35
+        ; the write protection is read in Trans, with all phases off:
+        ; phase 1 still energized would make it look write-protected
+        lda #$23                ; assume the head is on track 35
         sta TRKcur
         lda #$00
         sta TRKdes
-        jsr Seek                ; ... et on la ramene en piste 0
+        jsr Seek                ; ... and bring it back to track 0
         ldx SlotF
-        lda Step0,x             ; toutes les phases coupees
+        lda Step0,x             ; all phases off
         lda Step2,x
         lda Step4,x
         lda Step6,x
@@ -102,7 +102,7 @@ _diskii_begin:
         ldx #0
         rts
 
-; ── diskii_track ─────────────────────────────────────────────────────────
+; -- diskii_track ---------------------------------------------------------
 _diskii_track:
         sta Track
         sta TRKdes
@@ -114,13 +114,13 @@ _diskii_track:
 @err:   ldx #0
         rts
 
-; ── diskii_end ───────────────────────────────────────────────────────────
+; -- diskii_end -----------------------------------------------------------
 _diskii_end:
         ldx SlotF
         lda DiskOFF,x
         rts
 
-; ── Build : GAP1 puis 16 images de secteur entre $6700 et $8000 ───────────
+; -- Build: GAP1 then 16 sector images between $6700 and $8000 -----------
 Build:
         lda #$10
         ldx #$65
@@ -129,8 +129,8 @@ Build:
         ldy #$00
         lda #$7F
         sta LByte
-        ldx #$F0                ; GAP1 : $2F0 octets de synchro ($7F) --
-        jsr LFill               ; LFill rend X = 0 : les deux suivants font 256
+        ldx #$F0                ; GAP1: $2F0 sync bytes ($7F) --
+        jsr LFill               ; LFill returns X = 0: the next two do 256
         jsr LFill
         jsr LFill
         lda #$10
@@ -143,7 +143,7 @@ ELoop:  lda LAddr,x
         jsr LInc
         inx
         bne ELoop
-LInfo:  ldx #$AB                ; 343 octets de donnees a $96 (zero en 6&2)
+LInfo:  ldx #$AB                ; 343 data bytes at $96 (zero in 6&2)
         lda #$96
         sta LByte
         jsr LFill
@@ -171,7 +171,7 @@ LInc:   inc Buffer
         inc Buffer+1
 :       rts
 
-; ── Calc : volume, piste, secteur, somme en 4&4 dans les 16 en-tetes ──────
+; -- Calc: volume, track, sector, checksum in 4&4 into the 16 headers ----
 Calc:
         lda #$03
         ldx #$68
@@ -190,7 +190,7 @@ ZLoop:  ldy #$00
         eor Track
         eor Sector
         jsr LEncode
-        clc                     ; secteur suivant : + 385
+        clc                     ; next sector: + 385
         lda Buffer
         adc #$81
         sta Buffer
@@ -214,7 +214,7 @@ LEncode:
         iny
         rts
 
-; ── Seek : deplacer la tete de TRKcur a TRKdes ────────────────────────────
+; -- Seek: move the head from TRKcur to TRKdes ---------------------------
 Seek:
         lda #$00
         sta LInOut
@@ -246,15 +246,15 @@ LExit:  rts
 
 Phase:  ora SlotF
         tax
-        lda Step1,x             ; phase active
+        lda Step1,x             ; phase on
         jsr Wait20              ; 20 ms
-        lda Step0,x             ; phase coupee
+        lda Step0,x             ; phase off
         rts
 
-; 20 ms sans la ROM : cc65 laisse la carte langage en lecture, et $FCA8 y
-; tombe dans ProDOS, pas dans le moniteur. 15 x 256 x 5 cycles = 19 200.
-; A, X et Y sont preserves : Phase coupe la phase avec X juste apres, et
-; une phase 1 restee alimentee se lit comme une disquette protegee.
+; 20 ms without the ROM: cc65 leaves the language card readable, and $FCA8
+; lands in ProDOS there, not in the monitor. 15 x 256 x 5 cycles = 19,200.
+; A, X and Y are preserved: Phase turns the phase off with X right after,
+; and a phase 1 left energized reads as a write-protected floppy.
 Wait20: pha
         txa
         pha
@@ -273,9 +273,9 @@ Wait20: pha
         pla
         rts
 
-; ── Trans : ecrire l'image de piste sur le disque ─────────────────────────
-; La boucle est calibree au cycle pres : elle doit tenir dans une page,
-; d'ou l'alignement. Rend C=1 et A=$2B si la disquette est protegee.
+; -- Trans: write the track image to the disk ----------------------------
+; The loop is calibrated to the cycle: it must fit within one page, hence
+; the alignment. Returns C=1 and A=$2B if the floppy is write-protected.
         .align 256
 Trans:
         lda #$00
@@ -308,7 +308,7 @@ MStore: sta DiskWR,x
         iny
         bne LSync2
         inc Buffer+1
-        bpl LSync3              ; jusqu'a $8000
+        bpl LSync3              ; up to $8000
         lda ModeRD,x
         lda DiskRD,x
         clc
