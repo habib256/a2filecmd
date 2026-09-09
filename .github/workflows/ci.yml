@@ -21,7 +21,10 @@ jobs:
 
       - name: Installer cc65 2.19
         run: |
-          sudo apt-get update
+          # cc65 comes from Ubuntu; unrelated preinstalled Chrome/Microsoft
+          # repositories must not prevent refreshing its package index.
+          sudo apt-get -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources \
+            -o Dir::Etc::sourceparts=- update
           sudo apt-get install -y cc65
           cl65 --version 2>&1 | head -1
 
