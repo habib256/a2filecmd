@@ -16,6 +16,7 @@ qui passe ici est ce que recevra celui qui amorce la disquette.
 | `subdir.py` | A2FILE.SYSTEM et A2FILE/ copies dans /HD/APPS d'un disque dur, lances de BASIC par `-APPS/A2FILE.SYSTEM` : surcouches, aide, formateur et retour se trouvent depuis ce dossier |
 | `vdrive.py` | deux volumes par la ligne serie (VDrive) : le serveur `vsdrive_server.py` sert un .po au pont TCP de la Super Serial Card de POM2 (`pom2_playtest --ssc PORT`, 6 controles). La version Uthernet II (`pom2_playtest --uthernet`, `Pom2(uthernet=True)`) attend son pilote, voir le TODO |
 | `ops.py` | les operations longues : la barre de progression sur toute la ligne pendant une copie de 300 Ko, ESC qui l'interrompt (fichier partiel retire), trois fichiers marques copies puis supprimes avec la barre |
+| `chatmauve.py` | la carte RGB Le Chat Mauve en slot 7 (`pom2_playtest --chatmauve [variante]`, `Pom2(chatmauve=...)`) : ALIEN vu depuis A2FC est, pixel pour pixel, l'ecran que BASIC en fait avec la carte ; une seconde HGR, puis la mire DHGR brute (bandes unies, seize couleurs), puis ALIEN de nouveau identique -- le verrou de mode de la carte ne derive pas (6 controles par variante ; `python3 bench/chatmauve.py feline video7 eve`) |
 | `machine.py` | le controle de machine du lanceur : MACHID falsifie a 64 Ko depuis BASIC, `-A2FILE.SYSTEM` refuse en 40 colonnes et rend la main ; un //c passe |
 | `hd.py` | le disque dur `.2mg` publie amorce-t-il, avec son dossier DEMO au complet ; une page brute s'affiche, un `.2MG` s'ouvre comme un dossier |
 | `run.py` | la session complete : naviguer, marquer, copier, deplacer, renommer, verrouiller, changer type et auxtype, creer un dossier, supprimer, lire un texte et des octets, editer, afficher les deux formats d'image et les comparer octet a octet, jouer la fanfare, ecrire et relire des images disque (.PO et .DSK) et copier une disquette, ouvrir une image comme un dossier et en extraire un fichier, lire un catalogue DOS 3.3 et en extraire un fichier, ouvrir le formateur, cliquer a la souris (pointeur, bornes, selection, ouverture, changement de panneau, barre de touches), lancer un programme Applesoft (depuis le disque dur, avec le BASIC.SYSTEM de la disquette) et revenir sur les panneaux par -A2FILE.SYSTEM. **70 controles.** |
@@ -26,8 +27,11 @@ qui passe ici est ce que recevra celui qui amorce la disquette.
 
 `A2FC_IMG=A2FILECMD-6502 A2FC_BUILD=build-6502 python3 bench/run.py` (et les
 autres) prend les images de `make disk ARCH=6502` ; `run.py` saute alors la
-section souris, `vdrive.py` tourne. C'est sur le IIe enhanced de POM2 -- un
-programme 6502 y tourne ; le preset non enhanced est demande a POM2.
+section souris, `vdrive.py` tourne. Avec en plus `A2FC_PRESET=iie_unenh`, POM2
+est le IIe de 1983 (`pom2_playtest --preset iie_unenh` : 6502 NMOS, firmware
+sans MouseText, `$FBC0 = $EA`) -- la seule machine qui prouve la version
+6502, puisqu'un `stz` ou un `bra` y sont des opcodes indefinis. Toute la
+suite y passe ; la version 65C02 y affiche son refus.
 
 ## Les faire tourner
 

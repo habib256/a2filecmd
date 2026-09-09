@@ -1,7 +1,7 @@
 # The A2 File Cmd manual
 
 A two-pane ProDOS file manager in the spirit of Total Commander, for the
-128 KB Apple IIe; on screen it calls itself **A2 FILE CMD 0.6.8** (the number
+128 KB Apple IIe; on screen it calls itself **A2 FILE CMD 0.7** (the number
 lives in `A2FC_VERSION` in the Makefile, picked up by the launcher, the status
 line and the help). It is free software under the GNU GPL v3, by Arnaud
 Verhille; the launcher and the help say so. Two ways to start it: boot the
@@ -19,7 +19,7 @@ Bye back), which is what a user reported. `bench/machine.py` fakes a 64 KB
 `MACHID` from BASIC and checks the refusal, then boots a //c.
 
 The launcher shows a splash screen while it loads: the title, which names the
-build (`A2 FILE CMD 0.6.8 - 65C02` or `- 6502`, with a requirements line
+build (`A2 FILE CMD 0.7 - 65C02` or `- 6502`, with a requirements line
 reading *65C02 BUILD for the ENHANCED Apple IIe* or *6502 BUILD for the
 UNENHANCED Apple IIe*, no mouse), the "ProDOS 8
 only" note, the date and time if a clock is present (bit 0 of MACHID, `$BF98`)
@@ -577,8 +577,11 @@ ProDOS may assume — but A2FC is launched by its own loader, whose
 ProDOS and the machine died before `main()`. `crt0.s` now puts the ROM back
 (`bit $C082`) before running the constructors, for both builds. The benches
 run on the 6502 images with `A2FC_IMG=A2FILECMD-6502 A2FC_BUILD=build-6502`,
-on POM2's enhanced IIe — a 6502 program runs on a 65C02; the unenhanced
-preset requested from POM2 will prove the reverse.
+and with `A2FC_PRESET=iie_unenh` they run on POM2's unenhanced IIe of 1983
+(NMOS 6502, the 16 KB firmware without MouseText, `$FBC0 = $EA`) — the only
+machine that proves this build, since a `stz` or a `bra` there is an
+undefined opcode. The whole suite passes on it, and the 65C02 build shows
+its refusal there, as the real machine would.
 
 ### `.po` and `.dsk`: one floppy, two layouts
 

@@ -10,7 +10,7 @@
 # lien est verifie a chaque fois par tools/check_layout.py, qui attrape les
 # deux debordements que ld65 laisse passer en silence. Voir docs/MANUAL.md.
 
-A2FC_VERSION = 0.6.8
+A2FC_VERSION = 0.7
 VOLUME       = A2FILECMD
 
 VOLUME_HD    = A2FILEHD     # le disque dur .2mg : un autre nom, pour cohabiter avec la disquette

@@ -33,11 +33,14 @@ POM2 = os.environ.get('POM2', str(Path.home() / 'src/pom2adventure/SCOSWAMP.MORE
 IMG = os.environ.get('A2FC_IMG', 'A2FILECMD')
 BUILD = ROOT / os.environ.get('A2FC_BUILD', 'build')
 DISK = ROOT / ('dist/%s.po' % IMG)
+# A2FC_PRESET=iie_unenh : la machine de POM2, le IIe non enhanced (6502 NMOS,
+# firmware de 1983) -- la seule qui prouve la version 6502.
+PRESET = os.environ.get('A2FC_PRESET', 'iie')
 
 
 def labels(path=None):
     """Les symboles du lien : {'_a2fc_view': 0x1234, ...}"""
-    text = (path or ROOT / 'build/a2fc.lbl').read_text()
+    text = (path or BUILD / 'a2fc.lbl').read_text()
     return {n: int(a, 16) for a, n in re.findall(r'al ([0-9A-F]+) \.(\w+)', text)}
 
 
@@ -49,7 +52,7 @@ class Pom2:
     """Un emulateur, sa copie de la disquette, et de quoi la piloter."""
 
     def __init__(self, hdv, floppy=None, port=6600, speed=200000, exe=POM2, mouse=False,
-                 preset='iie', floppy2=None, ssc=None, uthernet=False):
+                 preset=None, floppy2=None, ssc=None, uthernet=False, chatmauve=None):
         """`hdv` : le disque dur (toujours present, POM2 en veut un).
         `floppy` : la disquette 5,25 a mettre en slot 6 et a amorcer.
         `floppy2` : une seconde disquette, lecteur 2 du meme Disk II, presente
@@ -58,12 +61,18 @@ class Pom2:
         `ssc` : le port TCP du pont de la Super Serial Card (slot 2), en mode
         brut, pour le banc VDrive -- si pom2_playtest a le drapeau --ssc.
         `uthernet` : une Uthernet II (W5100) en slot 3, loopback ouvert, pour
-        la version reseau du meme banc (pom2_playtest --uthernet)."""
+        la version reseau du meme banc (pom2_playtest --uthernet).
+        `preset` : la machine, `iie` (enhanced), `iic` ou `iie_unenh` (le IIe
+        de 1983, 6502 NMOS, pour la version 6502) ; par defaut A2FC_PRESET.
+        `chatmauve` : la carte RGB Le Chat Mauve en slot 7, l'ecran rendu par
+        elle (`True` = Feline, ou une variante : feline, iic, eve, video7,
+        rvbgraph)."""
         self.port, self.base = port, 'http://127.0.0.1:%d' % port
         self.hdv, self.floppy = str(hdv), str(floppy) if floppy else None
         self.floppy2 = str(floppy2) if floppy2 else None
         self.speed, self.exe, self.proc = speed, exe, None
-        self.preset = preset
+        self.preset = preset or PRESET
+        self.chatmauve = chatmauve
         self.with_mouse = mouse
         self.ssc = ssc
         self.uthernet = uthernet
@@ -84,6 +93,8 @@ class Pom2:
             args += ['--ssc', str(self.ssc)]
         if self.uthernet:
             args += ['--uthernet']
+        if self.chatmauve:
+            args += ['--chatmauve'] + ([self.chatmauve] if isinstance(self.chatmauve, str) else [])
         args += [os.path.basename(self.hdv)]
         self.proc = subprocess.Popen(args, cwd=cwd, stdout=log, stderr=subprocess.STDOUT,
                                      start_new_session=True)

@@ -3,11 +3,11 @@
 Changes in upcoming and published releases. See the [README](README.md) for features,
 downloads and installation.
 
-## Unreleased
+## [0.7](https://github.com/habib256/a2filecmd/releases/tag/v0.7) — 2026-09-09
 
 - Changed the title page: each build names itself (`- 65C02`, *ENHANCED Apple IIe* / `- 6502`, *UNENHANCED Apple IIe*, no mouse) so one knows which build booted.
 - Fixed the HGR viewer leaving an RGB card (Le Chat Mauve, Video-7) in a mode it never asked for: raising AN3 clocked the card's mode latch with 80COL off, so two HGR pictures in a row drifted it to BW560; it is now clocked to COL140, its power-on state.
-- Fixed a raw DHGR page refused as `not an image` on some machines: its auxiliary plane no longer asks ProDOS to write into memory routed to the auxiliary bank (which ProDOS does not promise), but goes through `AUXMOVE`, as the RLE path always did.
+- Fixed a raw DHGR page refused as `not an image`, then the next HGR picture shown corrupted, on some machines (seen on POM2 with a Le Chat Mauve card): its auxiliary plane no longer asks ProDOS to write into memory routed to the auxiliary bank (which ProDOS does not promise), but goes through `AUXMOVE`, as the RLE path always did.
 
 ## [0.6.8](https://github.com/habib256/a2filecmd/releases/tag/v0.6.8) — 2026-09-09
 
