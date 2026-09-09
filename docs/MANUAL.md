@@ -23,12 +23,11 @@ The download names include the CPU, role and version:
 
 | CPU | Image names |
 |---|---|
-| 6502 | `A2FILECMD-6502-BOOT-0.7.5.po`, `A2FILECMD-6502-EXTRA-0.7.5.po`, `A2FILECMD-6502-XL-0.7.5.2mg` |
-| 65C02 | `A2FILECMD-65C02-BOOT-0.7.5.po`, `A2FILECMD-65C02-EXTRA-0.7.5.po`, `A2FILECMD-65C02-XL-0.7.5.2mg` |
+| 6502 | `A2FILECMD-6502-BOOT-0.7.5.dsk`, `A2FILECMD-6502-EXTRA-0.7.5.dsk`, `A2FILECMD-6502-XL-0.7.5.2mg` |
+| 65C02 | `A2FILECMD-65C02-BOOT-0.7.5.dsk`, `A2FILECMD-65C02-EXTRA-0.7.5.dsk`, `A2FILECMD-65C02-XL-0.7.5.2mg` |
 
-BOOT and EXTRA also come as `.dsk`. The `.po` and `.dsk` contain the same
-ProDOS files in different sector orders. Use the format your emulator or
-transfer tool expects; changing the extension does not convert an image.
+BOOT and EXTRA are supplied as `.dsk` in DOS sector order; XL uses `.2mg`.
+Use the downloaded files directly: changing an extension does not convert an image.
 Each floppy image is 143,360 bytes. Check downloads against
 `SHA256SUMS-0.7.5.txt`; if all release files are together, run:
 

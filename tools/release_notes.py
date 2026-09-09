@@ -14,8 +14,8 @@ FILES = """
 
 | CPU | BOOT: 140 KB, bootable | EXTRA: 140 KB, companion | XL: 32 MB, complete |
 |---|---|---|---|
-| 6502 | `A2FILECMD-6502-BOOT-{version}.po` / `.dsk` | `A2FILECMD-6502-EXTRA-{version}.po` / `.dsk` | `A2FILECMD-6502-XL-{version}.2mg` |
-| 65C02 | `A2FILECMD-65C02-BOOT-{version}.po` / `.dsk` | `A2FILECMD-65C02-EXTRA-{version}.po` / `.dsk` | `A2FILECMD-65C02-XL-{version}.2mg` |
+| 6502 | `A2FILECMD-6502-BOOT-{version}.dsk` | `A2FILECMD-6502-EXTRA-{version}.dsk` | `A2FILECMD-6502-XL-{version}.2mg` |
+| 65C02 | `A2FILECMD-65C02-BOOT-{version}.dsk` | `A2FILECMD-65C02-EXTRA-{version}.dsk` | `A2FILECMD-65C02-XL-{version}.2mg` |
 
 The concise English user guide is included as `A2FILECMD-MANUAL-EN-{version}.pdf`, with a screenshot of both panels, clickable contents and bookmarks.
 

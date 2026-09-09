@@ -65,19 +65,19 @@ No build required. Choose the image that fits your setup:
 
 | Image family (0.7.5) | CPU | Contents |
 |---|---|---|
-| `A2FILECMD-6502-BOOT-0.7.5.po` / `.dsk` | 6502 | Bootable 140 KB floppy: file manager, disk tools and formatter |
-| `A2FILECMD-6502-EXTRA-0.7.5.po` / `.dsk` | 6502 | 140 KB companion: 23 additional tools, menu and BASIC.SYSTEM; 28.5 KB free |
+| `A2FILECMD-6502-BOOT-0.7.5.dsk` | 6502 | Bootable 140 KB floppy: file manager, disk tools and formatter |
+| `A2FILECMD-6502-EXTRA-0.7.5.dsk` | 6502 | 140 KB companion: 23 additional tools, menu and BASIC.SYSTEM; 28.5 KB free |
 | `A2FILECMD-6502-XL-0.7.5.2mg` | 6502 | Bootable 32 MB disk: all 42 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
-| `A2FILECMD-65C02-BOOT-0.7.5.po` / `.dsk` | 65C02 | Bootable 140 KB floppy: file manager, disk tools and formatter |
-| `A2FILECMD-65C02-EXTRA-0.7.5.po` / `.dsk` | 65C02 | 140 KB companion: 23 additional tools, menu and BASIC.SYSTEM; 29 KB free |
+| `A2FILECMD-65C02-BOOT-0.7.5.dsk` | 65C02 | Bootable 140 KB floppy: file manager, disk tools and formatter |
+| `A2FILECMD-65C02-EXTRA-0.7.5.dsk` | 65C02 | 140 KB companion: 23 additional tools, menu and BASIC.SYSTEM; 29 KB free |
 | `A2FILECMD-65C02-XL-0.7.5.2mg` | 65C02 | Bootable 32 MB disk: all 42 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
 
 The names sort by CPU, then BOOT, EXTRA, XL. Choose **6502** for an Apple II
 with 128 KB and 80 columns, including the original IIe; choose **65C02** for
 an enhanced IIe, //c or IIgs, with MouseText and optional mouse support.
 Use the EXTRA disk for the **same CPU and release** as BOOT. Each EXTRA
-keeps its own free space for future plugins. `.po` and `.dsk` are the same
-ProDOS floppy in two sector layouts.
+keeps its own free space for future plugins. Floppies are distributed as
+`.dsk`; complete XL disks use `.2mg`.
 
 1. Boot BOOT or XL. ProDOS 8 is included. With floppies, put EXTRA in slot 6,
    drive 2. With one drive, A2FC names the required disk and drive; press
@@ -126,7 +126,7 @@ shasum -a 256 A2FILECMD-65C02-XL-0.7.5.2mg
 ```
 
 Compare the result with its line in `SHA256SUMS-0.7.5.txt`. If you downloaded all
-three images, check them together on Linux with:
+six images and the PDF, check them together on Linux with:
 
 ```sh
 sha256sum -c SHA256SUMS-0.7.5.txt

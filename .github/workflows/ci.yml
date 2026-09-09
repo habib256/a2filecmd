@@ -60,7 +60,7 @@ jobs:
         run: |
           VERSION=$(sed -n 's/^A2FC_VERSION *= *//p' Makefile)
           cp docs/A2FILECMD-MANUAL-EN.pdf "dist/A2FILECMD-MANUAL-EN-$VERSION.pdf"
-          cd dist && sha256sum A2FILECMD-*-BOOT-*.po A2FILECMD-*-BOOT-*.dsk A2FILECMD-*-EXTRA-*.po A2FILECMD-*-EXTRA-*.dsk A2FILECMD-*-XL-*.2mg "A2FILECMD-MANUAL-EN-$VERSION.pdf" | tee "SHA256SUMS-$VERSION.txt"
+          cd dist && sha256sum A2FILECMD-*-BOOT-*.dsk A2FILECMD-*-EXTRA-*.dsk A2FILECMD-*-XL-*.2mg "A2FILECMD-MANUAL-EN-$VERSION.pdf" | tee "SHA256SUMS-$VERSION.txt"
           cd .. && python3 tools/release_notes.py "${GITHUB_REF_NAME}" > dist/RELEASE_NOTES.md
 
       - name: Les cartes memoire, pour le journal de construction
@@ -81,7 +81,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: a2filecmd-disk
-          path: dist/
+          path: |
+            dist/
+            !dist/*.po
 
       - uses: actions/upload-artifact@v4
         with:
@@ -168,9 +170,7 @@ jobs:
           name: "A2 File Cmd ${{ env.VERSION }} — Two panels. One Apple II."
           body_path: dist/RELEASE_NOTES.md
           files: |
-            dist/A2FILECMD-*-BOOT-*.po
             dist/A2FILECMD-*-BOOT-*.dsk
-            dist/A2FILECMD-*-EXTRA-*.po
             dist/A2FILECMD-*-EXTRA-*.dsk
             dist/A2FILECMD-*-XL-*.2mg
             dist/A2FILECMD-MANUAL-EN-*.pdf
