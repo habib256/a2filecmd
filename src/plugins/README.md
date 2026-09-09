@@ -42,6 +42,10 @@ line of the source. The link refuses a file over its window:
 | small (`flags = 0`) | `$1B00-$1FFF` | 1,280 bytes | `api->copy_buf` (512), `api->input` (17), `api->other_full` (81, if you do not need the other panel's path) |
 | big (`OVERLAY_BIG`) | `$1B00-$3FFF` | 9,472 bytes | the same, plus `$3000-$3FFF` (4 KB) **only if the ld65 map shows BSS ending under `$3000`** — the file size alone does not prove it, since BSS is not in the file |
 
+The Makefile writes `build/name.map` (or `build-6502/name.map`) and checks
+code **and BSS** against the window. Add an overlay using `$3000` scratch
+to `XPLUGINS_SCRATCH`; VERIFY has a separate `$1FC2` ceiling for its table.
+
 The disk copies are `A2FILE/NAME.PLG` (upper case). The floppy edition
 carries only the ones named in `XPLUGINS_FLOPPY` (Makefile); the `.2mg`
 carries them all.
@@ -55,8 +59,8 @@ carries them all.
   the active panel, `api->other_full` the same path in the other panel.
 - After a **big** overlay returns, the core re-reads and redraws both panels,
   reselects `api->reselect` (a name) in the active panel if set, and writes
-  `api->note` (79 characters) on the message line. It does the same tag
-  bookkeeping: a big overlay may tag freely.
+  `api->note` (79 characters) on the message line. The entry tables are covered while a big overlay runs: it must use
+  `api->selected` or reread directories, and leave panel restoration to the core.
 - After a **small** overlay returns, the core only redraws the message line.
   If you changed the disk, call `api->read_panel(0)`, `api->read_panel(1)`
   (each returns 1 on success) and `api->draw_all()` yourself. If you drew a
@@ -116,8 +120,9 @@ Read `struct A2fcApi` in `src/a2fc_plugin.h`; the useful parts:
   `RENAME $C2` `{2, old*, new*}` (Pascal strings: a length byte then the
   characters; works on `"/VOL"` to rename a volume); `SET_FILE_INFO $C3`
   `{7, path*, access, type, aux, ?, ?, mdate, mtime, cdate, ctime}` after a
-  `GET_FILE_INFO $C4` `{10, path*, ...}` of the same shape (see the ProDOS 8
-  TRM); `ON_LINE $C5` `{2, unit, buffer*}` gives a volume name per unit
+  `GET_FILE_INFO $C4` `{10, path*, ...}` of the same shape. Only the
+  modification date/time belongs to the seven SET_FILE_INFO parameters;
+  creation date/time is returned by GET_FILE_INFO and stays unchanged by SET. `ON_LINE $C5` `{2, unit, buffer*}` gives a volume name per unit
   (16 bytes: length-in-low-nibble byte then the name; unit 0 = all, 16
   entries); `GET_TIME $82` `{0}`. The system date is `$BF90-$BF91` (day 5
   bits, month 4 bits, year 7 bits, from bit 0), the time `$BF92` (minute) and

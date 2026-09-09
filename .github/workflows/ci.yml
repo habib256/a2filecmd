@@ -55,7 +55,7 @@ jobs:
       # la coupe du fichier ne correspond plus au lanceur : check_layout.py
       # tourne dans la recette, pas apres coup.
       - name: Les deux editions (disquette 6502, disque dur 65C02)
-        run: make disk
+        run: make disk && make xplugins ARCH=6502
 
       - name: Relire les images produites
         run: |
@@ -98,8 +98,8 @@ jobs:
         with:
           name: a2filecmd-maps
           path: |
-            build/a2fc.map
-            build-6502/a2fc.map
+            build/*.map
+            build-6502/*.map
 
   # Les bancs jouent une session complete dans POM2 sans fenetre, sur les
   # deux versions. L'emulateur n'est pas sur les executeurs de GitHub ;
@@ -120,6 +120,12 @@ jobs:
         run: A2FC_IMG=A2FILECMD-full python3 bench/run.py --out bench-out
       - name: Le disque dur publie (65C02)
         run: python3 bench/hd.py
+      - name: Nouvelles surcouches, IIe non enhanced
+        run: |
+          make xplugins ARCH=6502
+          A2FC_PRESET=iie_unenh python3 bench/plugins.py --out bench-out/plugins-6502
+      - name: Nouvelles surcouches, 65C02
+        run: A2FC_BUILD=build python3 bench/plugins.py --out bench-out/plugins-enh
       - name: Budget de pile
         run: python3 bench/memory.py
       - uses: actions/upload-artifact@v4
@@ -155,7 +161,4 @@ jobs:
             dist/A2FILECMD-6502.po
             dist/A2FILECMD-6502.dsk
             dist/A2FILECMDXL-65C02.2mg
-            dist/A2FILECMD-6502.po
-            dist/A2FILECMD-6502.dsk
-            dist/A2FILECMD-6502.2mg
             dist/SHA256SUMS.txt

@@ -5,6 +5,10 @@ downloads and installation.
 
 ## Unreleased
 
+- Added fifteen service-table overlays, reached from **!**: TXTCONV, DATE, VERIFY, TAGPAT, VOLNAME and WIPE on both editions; FIXTYPES, GOTO, FIND, CRC, IDENT, MDVIEW, RENAME, IMGCONV and BOOTBLK on the complete edition. See the [manual](docs/MANUAL.md#more-tools-in-the--menu) for controls and limits.
+- Added a POM2 bench for each new overlay and `bench/plugins.py` to run them together. CRC checks use Python's `zlib.crc32`; file-writing benches reread a drive-2 image on the host.
+- Enforced the code-plus-BSS boundary below `$3000` for overlays using graphics-page scratch, and below VERIFY's copied service table. Each service-table overlay now produces a linker map.
+
 - Fixed the `S` (sort) and `M` (mark differences) keys on the floppy edition: both lived in `MUSIC.PLG`, which the floppy no longer carries. Sorting now lives in `TEXT.PLG` and the comparison in `COMPARE.PLG`, both on the floppy; and `M` also flags files whose modification date differs (Cat Doctor's "compare directories").
 - Changed the overlay menu to use all 80 columns: the description of each overlay has 65 characters instead of 51, so none is cut short, and every description was rewritten to say more. The menu also pages now: 52 overlays at most, 18 per page, Left/Right turn the page, and a counter at the top right.
 - Added `cfg_path` to the service table (API version 2): the path of `A2FILE.CFG`, from which an overlay finds the program directory.

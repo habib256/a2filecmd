@@ -20,6 +20,7 @@ disquette ; A2FC_IMG=A2FILECMD-full pour la 65C02.
 `menu_run` ouvre le menu des surcouches (`!`), saute par la premiere lettre
 du nom jusqu'a ce que la ligne en inverse soit la bonne, et fait Entree.
 """
+import os
 import shutil
 import subprocess
 import sys
@@ -55,7 +56,7 @@ def stage_hd(tmp, files=None, blocks=4000, name='WORKHD', plugins=()):
 def boot_hd(tmp, files=None, port=6800, blocks=4000, name='WORKHD', floppy=None, plugins=(), **kw):
     """POM2 amorce sur le disque dur de banc ; rend (p, s) avec les panneaux affiches."""
     hdv = stage_hd(tmp, files, blocks, name, plugins)
-    with Pom2(hdv, floppy=floppy, port=port, **kw) as p:
+    with Pom2(hdv, floppy=floppy, port=port + int(os.environ.get('A2FC_PORT_OFFSET', '0')), **kw) as p:
         s = Session(p)
         s.boot()
         yield p, s

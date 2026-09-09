@@ -74,7 +74,7 @@ their own, with the path and the page on the left.
 | **I** | show the selected file as a picture, whatever its name: HGR or DHGR, raw or RLE-compressed |
 | **P** | pause or resume the Mockingboard music; RETURN on a `.MB` file starts it |
 | **W** | disk images: write a `.PO`/`.DSK`/`.2MG` to a floppy, read a floppy into a fresh image, copy one floppy onto another (see below) |
-| **!** | the overlay menu: the list of `A2FILE/*.PLG` with their description, each run on the selection (Up/Down one line, Left/Right five, a letter jumps to the next name starting with it). Among them: **COMPARE** confronts the selection with the file of the same name in the other panel byte by byte, and **SEARCH** asks for a text and tags the panel files that contain it (case-insensitive) |
+| **!** | the overlay menu: the list of `A2FILE/*.PLG` with their description, each run on the selection (Up/Down one line, Left/Right a page, a letter jumps to the next name starting with it). Among them: **COMPARE** confronts the selection with the file of the same name in the other panel byte by byte, and **SEARCH** asks for a text and tags the panel files that contain it (case-insensitive) |
 | **F** | open the formatter, `A2FILE/FORMAT.SYS`, which returns to A2FC on exit |
 | **1** … **0** | the ten buttons of the key bar, in order, like Norton Commander and A2Command |
 | **Ctrl-T** / **Ctrl-N** | tag all / untag all; **Ctrl-R** re-reads both panels (floppy swapped, `/RAM` rebuilt) |
@@ -84,6 +84,36 @@ In a picture, **Left** and **Right** move to the previous or next picture in
 the same directory without returning to the panels: the DHGR directory is
 paged through like an album, and the cursor follows. An arrow with no neighbor
 on its side does nothing, the picture stays. Any other key returns.
+
+### More tools in the ! menu
+
+The complete edition includes these fifteen service-table overlays. The six
+marked **both** also ship on the floppy. Select the file, directory or volume
+first, then press **!** and choose the tool. A letter selects the next matching
+initial; Left/Right turns the menu page.
+
+| Tool | Edition | Operation |
+| --- | --- | --- |
+| **TXTCONV** | both | Convert the selected text: C = CR, L = LF, D = CRLF, H = clear high bit, S = set it, T = expand tabs, A = transliterate UTF-8 accents. Choose in place or the other panel. |
+| **DATE** | both | S enters twelve digits `DDMMYYYYHHMM` (1940–2039); F stamps modification dates on tagged files, or the selection. The date comes from ProDOS; a hardware clock can replace a manually entered value. |
+| **VERIFY** | both | Read every block of a selected volume, or every byte of the selected file, and report read errors. ESC interrupts volume verification. This is a read test, without certification writes. |
+| **TAGPAT** | both | Match `=` (any string) and `?` (one character), with comma-separated filters: `T04` for TXT, `>2000` or `<2000` for size, `D` for modified today. T tags, U untags, X replaces the selection. |
+| **VOLNAME** | both | Rename a ProDOS volume and update the panel paths, including the program path when renaming its boot volume. |
+| **WIPE** | both | F zeroes free blocks after Y/N confirmation; W zeroes the whole volume after `ERASE`. Whole-volume wiping refuses the running program's volume. |
+| **FIXTYPES** | complete | Set type and auxtype from suffixes on tagged files or the selection, optionally removing the suffix. Image suffixes and `.SYSTEM` stay. |
+| **GOTO** | complete | Nine favourite directories: A adds the current directory, D and a digit removes one, 1–9 jumps. Saved in `A2FILE/GOTO.CFG`. |
+| **FIND** | complete | Search the volume for a name pattern, or prefix the query with `"` to search file contents (case-insensitive). Choose a result and press Return to jump to it. |
+| **CRC** | complete | CRC-32 of the selected file or each tagged file, compatible with `zlib.crc32`. |
+| **IDENT** | complete | Identify archives, images, Applesoft, AppleWorks and text conventions from file contents; text statistics describe the first 512 bytes. |
+| **MDVIEW** | complete | Read Markdown and long text with wrapped lines, inverse headings, lists and code; page forward or backward. |
+| **RENAME** | complete | Rename tagged files or the selection: prefix, suffix, extension replacement/removal, or numbering. Enter BAK with E to set `.BAK`; fragments start with a letter. Conflicts are counted as skipped. |
+| **IMGCONV** | complete | Convert `.PO`/`.HDV`, `.DSK`/`.DO` and `.2MG` containers into the other panel, preserving the image's blocks. |
+| **BOOTBLK** | complete | Copy ProDOS boot blocks from the boot volume to another ProDOS volume after confirmation. |
+
+FIND keeps up to 20 matches and a bounded directory queue; it reports when
+its queue fills. DATE does not install a session clock driver or change creation dates or volume dates.
+VERIFY handles the selected file, without a tagged batch mode. These limits
+and the remaining disk tools are tracked in [TODO.md](../TODO.md).
 
 ### Long operations: the bar, ESC, and what the panels show
 

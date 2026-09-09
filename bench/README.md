@@ -78,3 +78,32 @@ auto-heberge qui a POM2 ; sinon il est saute, et la publication n'exige que
 la construction et les tests hors emulateur. C'est la limite honnete du
 dispositif : la compilation, les budgets memoire et la fabrication des images
 sont verifies partout, la session complete la ou l'Apple II existe.
+
+## Les quinze nouvelles surcouches
+
+`bench/plugins.py` exécute les quinze bancs, avec un journal par outil.
+Chaque banc construit son disque dur de travail et y ajoute explicitement
+sa surcouche ; ceux qui écrivent vérifient ensuite la disquette du lecteur 2
+sur l'hôte. Ces volumes sont des fixtures, pas les images publiées.
+
+```sh
+make disk
+make xplugins ARCH=6502
+A2FC_PRESET=iie_unenh python3 bench/plugins.py --jobs 3 --out /tmp/plugins-6502
+A2FC_BUILD=build python3 bench/plugins.py --jobs 3 --out /tmp/plugins-enh
+```
+
+Les noms de bancs peuvent suivre les options pour une reprise ciblée
+(`date fixtypes`, par exemple). Deux suites simultanées doivent utiliser
+un décalage de ports distinct : `A2FC_PORT_OFFSET=100` pour la seconde.
+`findfile.py` teste FIND ; l'ancien `find.py` teste SEARCH/COMPARE.
+`crc.py` compare les résultats avec `zlib.crc32`, y compris un fichier vide,
+les limites 255/256 et 511/512/513 octets, et les fichiers marqués.
+
+La disquette `benchfloppy` garde les dix-neuf surcouches du noyau et
+BASIC.SYSTEM pour les anciens bancs ; les quinze nouvelles ne tiennent pas
+toutes dessus et se testent avec `plugins.py` sur disque dur.
+
+Validation du 2026-09-09 : les quinze bancs passent sur IIe non enhanced
+(6502) et IIe enhanced (65C02), **239 contrôles par processeur**. Les
+contrôles d’amorçage des deux images publiées passent également.

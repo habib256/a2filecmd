@@ -40,23 +40,14 @@ Décidé le 2026-09-09 : deux produits, pas quatre paires d'images.
 | --- | --- | --- |
 | Image | `A2FILECMD-6502.po` et `.dsk`, 140 Ko | `A2FILECMDXL-65C02.2mg`, 32 Mo, `/A2FILECMDXL` |
 | Processeur | **6502** (`make disk ARCH=6502`) : tourne sur tout Apple II 128 Ko à 80 colonnes, IIe de 1983 compris ; sans souris | **65C02** : IIe enhanced, //c, IIgs ; souris, MouseText |
-| Contenu | le gestionnaire et les **outils disque** : ce qu'un utilisateur à deux Disk II et sans disque dur ne peut faire autrement | **tout** : les dix-neuf surcouches, `DEMO/`, `IMGHGR/`, `BASIC.SYSTEM` |
+| Contenu | le gestionnaire et les **outils disque** : ce qu'un utilisateur à deux Disk II et sans disque dur ne peut faire autrement | **tout** : les trente-quatre surcouches, `DEMO/`, `IMGHGR/`, `BASIC.SYSTEM` |
 | Public | la machine d'origine, la disquette qu'on prête | l'émulateur, la CFFA, le disque dur |
 
-**Le budget de la disquette**, en blocs de 512 octets (280 sur le disque,
-dont 7 de structure ; un fichier de plus de 512 octets coûte un bloc d'index
-en plus de ses données) :
-
-| | Blocs |
-| --- | --- |
-| Socle : `PRODOS`, `A2FILE.SYSTEM`, `A2FILE.CODE`, `A2FILE.HELP`, `MENU`, `HELP`, `DELETE`, `ATTR`, `RUN`, `TEXT`, `HEX`, `DISKIMG`, `FORMAT.SYS`, `DOS33`, `IMGFS` | 168 |
-| Sortent de la disquette : `EDIT`, `MUSIC`, `IMAGE`, `AWP`, `BASLIST`, `COMPARE`, `SEARCH`, `UNSHRINK`, `BINARY2` (45) et `BASIC.SYSTEM` (21) | −66 |
-| **Libre pour les outils disque à venir** (mesuré sur la disquette construite : 77) | **77** |
-| À venir, marqué `💾` : `NIBCOPY` 17, `ADTPRO` 13, `FIXIT` 7, `UNDELETE` 4, `VOLINFO` 4, `NIBBLE` 4, `DIRSORT` 4, `RESCUE` 4, `DOS33W` 4, `VERIFY` 3, `DATE` 3, `TXTCONV` 3, `TAGPAT` 3, `DRIVESPD` 3, `WIPE` 2 (estimations d'après les surcouches actuelles) | 78 |
-| `BLKEDIT` (grande surcouche, ~13), s'il doit y tenir aussi | +13 |
-
-C'est juste : zéro bloc de marge avant `BLKEDIT`. Deux façons de respirer,
-à faire dans cet ordre :
+**Budget actuel de la disquette** (image reconstruite le 2026-09-09) :
+240 blocs occupés, **40 libres** sur 280, avec `COMPARE` et les six nouveaux
+outils. Le disque dur complet garde 64 490 blocs libres sur 65 535.
+Les anciennes estimations de trois blocs par outil sous-estimaient les
+grandes surcouches `TXTCONV` et `WIPE`. Pour financer les outils du palier 2 :
 
 - 🟠 **`FORMAT` en surcouche** : `FORMAT.SYS` est un programme SYS à part avec
   son propre crt0 et sa bibliothèque, 24 blocs. En grande surcouche
@@ -69,7 +60,7 @@ C'est juste : zéro bloc de marge avant `BLKEDIT`. Deux façons de respirer,
   tout ; celui à un lecteur échange. *½ jour.*
 - ✅ **Les deux éditions dans le Makefile et le CI** (fait le 2026-09-09) :
   `make disk` produit la disquette 6502 minimale (`PLUGINS_FLOPPY`, sans
-  `BASIC.SYSTEM`, 77 blocs libres) et le `.2mg` 65C02 complet ; plus de
+  `BASIC.SYSTEM`, initialement 77 blocs libres, 40 avec les nouveaux outils) et le `.2mg` 65C02 complet ; plus de
   `.2mg` 6502 ni de disquette 65C02 ; la page de titre, le README, le manuel
   et les notes de version disent l'édition. Les bancs amorcent la disquette
   publiée avec les symboles de `build-6502/` ; ceux qui ont besoin de
@@ -97,46 +88,30 @@ carte RAM et son analyseur de bits de cadrage ; et, de ProSel, le cache
 disque, les pilotes de cartes RAM, la file d'attente programmée (QUEUEP), la
 partition DOS 3.3 sur disque dur (UNODOS) et les versions Videoterm.
 
-## Palier 1 — le meilleur rendement : quelques heures chacune, effet immédiat
+## Palier 1 — livré dans la prochaine version, et compléments restants
 
-Des petites surcouches ou des vérifications, sans risque, qui changent
-l'usage quotidien ou lèvent un doute. À faire dans cet ordre, en commençant
-par ce qui débloque les transferts depuis le PC.
+Les quinze surcouches en cours sont intégrées : `TXTCONV`, `FIXTYPES`,
+`GOTO`, `DATE`, `VERIFY`, `TAGPAT`, `FIND`, `CRC`, `VOLNAME`, `IDENT`,
+`MDVIEW`, `RENAME`, `IMGCONV`, `BOOTBLK`, `WIPE`. Leurs commandes sont
+précisées dans le [manuel](docs/MANUAL.md#more-tools-in-the--menu).
+`TXTCONV`, `DATE`, `VERIFY`, `TAGPAT`, `VOLNAME` et `WIPE` sont aussi sur
+la disquette. Le résident n'a pas grandi : ces outils utilisent la table
+publique de services. `S` et `M` fonctionnent dans les deux éditions.
 
-- 🟠 💾 **`TXTCONV`** : convertir un texte sur place ou vers l'autre panneau :
-  CR ↔ LF ↔ CRLF, bit 7 posé ou ôté, tabulations, accents UTF-8
-  translittérés en ASCII. Un fichier venu d'un Mac ou de Linux par VDrive ou
-  par image est illisible sans cela, un source Merlin aussi. *½ jour.*
-- 🟠 **`FIXTYPES`** : poser le type ProDOS d'après le suffixe sur les
-  fichiers marqués (`.SHK` → `$E0/$8002`, `.BNY` → `$E0/$8000`, `.PO` →
-  `$E0/$0005`, `.AWP` → `$1A`, `.BAS` → `$FC`, `.SYS` → `$FF`), et retirer le
-  suffixe si on veut. *½ jour.*
-- 🟡 **`GOTO`** : des chemins favoris dans `A2FILE.CFG`, atteints en deux
-  touches. *½ jour.*
-- 🟡 💾 **`DATE`** : entrer la date dans `$BF90-$BF93` sans horloge, poser une
-  date de création ou de modification sur les fichiers marqués
-  (`SET_FILE_INFO`) et sur le volume (Cat Doctor « change file date »). Et
-  garder la date pour la session : un pilote d'horloge minimal installé dans
-  `$BF06` qui rend la date entrée, pour que ProDOS date les fichiers créés
-  ensuite, ce qu'un `$BF90` seul ne fait qu'une fois. *½ jour.*
-- 🟡 💾 **`VERIFY`** : lire tous les blocs d'un volume ou d'un fichier marqué et
-  signaler ceux qui rendent une erreur (Copy II Plus « verify disk »,
-  « verify files »). Et `CERTIFY`, destructif après `ERASE` : écrire un motif
-  sur chaque piste et le relire, pour qualifier une disquette neuve ou
-  douteuse (Locksmith). *½ jour.*
-- 🟡 💾 **`TAGPAT`** : marquer par motif avec `=` et `?` (les jokers de Copy II
-  Plus), par type, par date, par taille ; la copie « avec confirmation
-  fichier par fichier ». *½ jour.*
-- 🟡 **`FIND`** : chercher un fichier par nom ou motif dans tout le volume,
-  récursivement, et sauter dessus ; et chercher un texte dans tous les
-  fichiers d'un volume ou d'un dossier, filtrés par type et par date, avec
-  le contexte de chaque occurrence (ProSel `FIND.FILE`). `SEARCH` ne cherche
-  que dans un fichier. *1 jour.*
-- 🟡 **`CRC`** : CRC-32 du fichier sélectionné, pour vérifier un transfert
-  contre le PC (`tools/` en oracle). *½ jour.*
-- 🟡 💾 **Renommer un volume** : à vérifier ; s'il manque, une ligne dans
-  `ATTR` ou dans `VOLINFO` (`RENAME` sur `/VOL`, comme Copy II Plus et Cat
-  Doctor). *¼ jour.*
+Ce lot couvre les usages de base ; les extensions suivantes restent à faire :
+
+- 🟡 💾 **`DATE`** : modifier les dates de création et du volume ; installer
+  le pilote de date de session. Aujourd'hui `S` pose la date système et `F`
+  la date de modification des fichiers marqués, en conservant leur création.
+- 🟡 💾 **`VERIFY`** : vérifier tous les fichiers marqués ; ajouter `CERTIFY`,
+  écriture puis relecture d'un motif après `ERASE`. Aujourd'hui : lecture
+  du volume entier ou du fichier sélectionné, avec compte des erreurs.
+- 🟡 💾 **`TAGPAT`** : plages de dates (aujourd'hui : date système avec `D`)
+  et copie avec confirmation fichier par fichier. Motifs, type et taille
+  sont disponibles.
+- 🟡 **`FIND`** : filtres par type/date, contexte de chaque occurrence et
+  poursuite au-delà des 20 résultats ; aujourd'hui : nom ou contenu dans
+  le volume, saut au résultat et signalement des limites de la file.
 - 🟡 💾 **Déplacer sans copier** : vérifié le 2026-09-09, `V` copie puis
   efface, même dans un volume. Le `RENAME` de ProDOS 8 ne change qu'un nom
   dans son dossier, il ne déplace pas ; Cat Doctor déplace en réécrivant les
@@ -144,29 +119,10 @@ par ce qui débloque les transferts depuis le PC.
   la source, le pointeur de parent d'un sous-dossier corrigé). C'est la
   même chirurgie que `DIRSORT` et `FIXIT` : à faire avec eux, en grande
   surcouche `MOVE`. *½ jour après `DIRSORT`.*
-- ✅ **Comparer deux dossiers** (fait le 2026-09-09) : `M` marquait les
-  fichiers absents de l'autre panneau ou de taille différente ; il compare
-  aussi la date de modification. MUSIC.PLG, qui héberge ce code, était
-  plein : deux messages raccourcis.
-- 🟡 **`IDENT`** : dire ce qu'est un fichier d'après son contenu, comme
-  `file(1)` : archive, image, Applesoft, AppleWorks, texte à bit 7, fins de
-  ligne, nombre de lignes. Partage la table de reconnaissance du TODO.
-  *½ jour.*
-- 🟡 **`MDVIEW`** : lire un Markdown ou tout texte à lignes longues : repli à
-  80 colonnes, titres en inverse, listes, code tel quel. *½ jour.*
-- 🟢 **`RENAME`** par motif sur les fichiers marqués : préfixe, suffixe,
-  extension, majuscules. *½ jour.*
-- 🟢 **`IMGCONV`** : `.DSK` ↔ `.PO` ↔ `.2MG` sur l'Apple, même table que
-  `po2dsk.py`. *½ jour.*
-- 🟢 **`BOOTBLK`** : réécrire les blocs d'amorce ProDOS (données dans
-  `data/`). *¼ jour.*
 - 🟢 💾 **`DRIVESPD`** : la vitesse d'un lecteur Disk II, mesurée sur le temps
   d'un tour, affichée en tours par minute avec la cible de 300, ou en
   millisecondes (198 à 202) comme Copy II Plus, pour régler le
   potentiomètre. *½ jour.*
-- 🟢 💾 **`WIPE`** : effacer les blocs libres d'un volume, ou un disque entier
-  (Locksmith « erase disk », Copy II Plus « delete disk »), après `ERASE`.
-  *¼ jour.*
 
 ## Palier 2 — ce qui fait d'A2FC l'outil disque complet
 

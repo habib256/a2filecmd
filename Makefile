@@ -6,7 +6,7 @@
 #                   and the hard disk dist/A2FILECMDXL-65C02.2mg, volume
 #                   /A2FILECMDXL (65C02 build, everything).
 #                   With ARCH=6502 or ARCH=enh given, only that edition.
-#   make benchfloppy  build/A2FILECMD-full.po: a 65C02 floppy with every
+#   make benchfloppy  build/A2FILECMD-full.po: a 65C02 floppy with the core
 #                   overlay, for the benches only -- never shipped
 #   make test       the tests outside the emulator (memory layout, volume)
 #   make bench      the POM2 benches (needs the emulator, see bench/README.md)
@@ -126,6 +126,9 @@ else
 CC65LIB = $(dir $(shell command -v cc65))../share/cc65/lib/apple2enh.lib
 CCDEFS =
 endif
+# These overlays reserve $3000-$3FFF for scratch: code AND BSS must
+# stop before $3000. ld65 enforces the smaller window for their link.
+XPLUGINS_SCRATCH = find goto imgconv mdview wipe
 XPLG = $(patsubst %,$(BUILD)/%.PLG,$(XPLUGINS))
 XPLG_FLOPPY = $(patsubst %,$(BUILD)/%.PLG,$(XPLUGINS_FLOPPY))
 SYSTEM = $(BUILD)/A2FILE.SYSTEM.SYS
@@ -183,7 +186,7 @@ $(BUILD)/%.PLG: $(SRC)/plugins/%.c $(SRC)/a2fc_plugin.h sdk/plugin.cfg Makefile 
 	$(CC65BIN)cc65 -t $(TARGET) $(CCDEFS) -O -Oirs -Cl --codesize $(CODESIZE) -o $(BUILD)/$*.s $<
 	$(CC65BIN)ca65 -t $(TARGET) -o $(BUILD)/$*.o $(BUILD)/$*.s
 	@if grep -qE 'PLUGIN_MAGIC, *OVERLAY_BIG' $<; then big=1; else big=0; fi; \
-	  $(CC65BIN)ld65 -C sdk/plugin.cfg $$( [ $$big = 1 ] && echo -D __OVLSIZE__=0x2500 ) -o $@ $(BUILD)/$*.o $(CC65LIB) && \
+	  $(CC65BIN)ld65 -C sdk/plugin.cfg -D __OVLSIZE__=$$( if [ $$big = 1 ]; then echo $(if $(filter $*,$(XPLUGINS_SCRATCH)),0x1500,0x2500); elif [ "$*" = verify ]; then echo 0x04C2; else echo 0x0500; fi ) -m $(BUILD)/$*.map -o $@ $(BUILD)/$*.o $(CC65LIB) && \
 	  limit=$$( [ $$big = 1 ] && echo 9472 || echo 1280 ) && \
 	  { test $$(wc -c < $@) -le $$limit || { echo "$@: $$(wc -c < $@) bytes, more than its $$limit-byte window"; rm -f $@; exit 1; }; } && \
 	  echo "$@: $$(wc -c < $@) bytes ($$( [ $$big = 1 ] && echo big || echo small ) overlay)"
@@ -254,16 +257,16 @@ $(TWOMG): $(STAGE_DEPS) $(XPLG) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/README.TXT \
 	@rm -rf $(STAGE)/DEMO $(STAGE)/IMGHGR   # the stage keeps the program alone (bench/plugin.py picks it up)
 	@echo "==> $(TWOMG): the complete edition ($(ARCH))"
 
-# A 65C02 floppy with every overlay and BASIC.SYSTEM, for the benches that
+# A 65C02 floppy with the core overlays and BASIC.SYSTEM, for the benches that
 # exercise the editor, the pictures, the archives and the readers from a
 # floppy (bench/run.py and friends, A2FC_IMG=A2FILECMD-full). Never shipped.
 benchfloppy: $(FULLPO)
-$(FULLPO): $(STAGE_DEPS) $(XPLG) $(DATA)/BASIC.SYSTEM.SYS
-	$(call stage,$(PLUGINS),$(XPLUGINS))
+$(FULLPO): $(STAGE_DEPS) $(DATA)/BASIC.SYSTEM.SYS
+	$(call stage,$(PLUGINS),)
 	cp $(DATA)/BASIC.SYSTEM.SYS $(STAGE)/
 	python3 $(TOOLS)/mkvolume.py $(STAGE) $(FULLPO) --volume $(VOLUME) \
 	  --boot $(DATA)/prodos_boot.tmpl --blocks 280
-	@echo "==> $(FULLPO): the bench floppy, every overlay ($(ARCH))"
+	@echo "==> $(FULLPO): the bench floppy, core overlays ($(ARCH))"
 
 test:
 	python3 $(TOOLS)/test_check_layout.py

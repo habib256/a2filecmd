@@ -36,6 +36,11 @@ pictures. The tools are right there, beside your files.
 | **Enjoy pictures and sound** | Full-screen HGR and DHGR, raw or RLE-compressed. Use the arrow keys to browse pictures like an album. Play `.MB` music on a Mockingboard while managing files. |
 | **Make it yours** | Keyboard shortcuts throughout, optional AppleMouse II support and remembered panel settings. Launch SYS, BIN and Applesoft programs, or add your own tools with the plugin SDK. |
 
+The **!** menu also offers text and disk-image conversion, CRC-32, file
+identification, Markdown reading, volume-wide search, favourite directories,
+batch renaming and type repair. DATE, VERIFY, TAGPAT, TXTCONV, VOLNAME and
+WIPE also fit the floppy edition. See the [tool reference](docs/MANUAL.md#more-tools-in-the--menu).
+
 ## See it in action
 
 <table>
