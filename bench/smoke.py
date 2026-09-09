@@ -35,13 +35,14 @@ def main():
         shutil.copyfile(DISK, floppy)
         with Pom2(scratch(tmp), floppy=floppy, port=6601) as p:
             s = Session(p)
-            # la page de titre du lanceur, le temps du chargement : la version
-            # 6502 s'y nomme (" - 6502"), l'autre non
+            # la page de titre du lanceur, le temps du chargement : chaque
+            # version s'y nomme, " - 65C02" ou " - 6502"
             s.wait(lambda: s.has('A2 FILE CMD'), 'page de titre', 60)
             title = next((r for r in s.rows() if 'A2 FILE CMD' in r), '')
             s.boot()
-            s.ok('la page de titre nomme la version (6502 ou non)',
-                 (' - 6502' in title) == IMG.endswith('-6502'), title.strip()[:40])
+            s.ok('la page de titre nomme la version (65C02 ou 6502)',
+                 (' - 6502 ' if IMG.endswith('-6502') else ' - 65C02 ') in title,
+                 title.strip()[:40])
             s.ok('la disquette publiee demarre sur les panneaux',
                  s.has('/A2FILECMD'), s.rows()[0][:40])
             s.ok('la barre de statut porte le nom et la version',

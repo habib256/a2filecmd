@@ -76,7 +76,7 @@ int main(void)
 #ifdef A2FC_6502
         centre(2, "  A2 FILE CMD " A2FC_VERSION " - 6502  ");
 #else
-        centre(2, "  A2 FILE CMD " A2FC_VERSION "  ");
+        centre(2, "  A2 FILE CMD " A2FC_VERSION " - 65C02  ");
 #endif
         revers(0);
         centre(3, "Two panels. One Apple II.");
@@ -94,7 +94,7 @@ int main(void)
         cputsxy(4, 13, "Optional: a Mockingboard in any slot. No mouse in this build.");
 #else
         cputsxy(44, 10, "Mouse or keyboard: press ? for help.");
-        cputsxy(4, 12, "Needs an enhanced Apple IIe, 128 KB, 80 columns, ProDOS 8.");
+        cputsxy(4, 12, "65C02 BUILD for the ENHANCED Apple IIe: 128 KB, 80 columns, ProDOS 8.");
         cputsxy(4, 13, "Optional: a Mockingboard and an AppleMouse II, in any slot.");
 #endif
         cputsxy(4, 15, "Free software under the GNU GPL v3, by Arnaud VERHILLE.");

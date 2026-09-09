@@ -18,9 +18,10 @@ screen with ProDOS alive underneath (Control-Open-Apple-Reset brought Bitsy
 Bye back), which is what a user reported. `bench/machine.py` fakes a 64 KB
 `MACHID` from BASIC and checks the refusal, then boots a //c.
 
-The launcher shows a splash screen while it loads: the title (the 6502 build
-says so — `A2 FILE CMD 0.6.8 - 6502`, and its requirements line reads *6502
-BUILD for the UNENHANCED Apple IIe*, no mouse), the "ProDOS 8
+The launcher shows a splash screen while it loads: the title, which names the
+build (`A2 FILE CMD 0.6.8 - 65C02` or `- 6502`, with a requirements line
+reading *65C02 BUILD for the ENHANCED Apple IIe* or *6502 BUILD for the
+UNENHANCED Apple IIe*, no mouse), the "ProDOS 8
 only" note, the date and time if a clock is present (bit 0 of MACHID, `$BF98`)
 or "No clock" otherwise, then **PLEASE WAIT**. Then come the two panels in
 80-column text: on the left the boot volume, on the right its `DEMO` directory

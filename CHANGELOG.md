@@ -5,7 +5,7 @@ downloads and installation.
 
 ## Unreleased
 
-- Changed the 6502 build's title page: it names itself (`- 6502`, *unenhanced Apple IIe*, no mouse) so one knows which build booted.
+- Changed the title page: each build names itself (`- 65C02`, *ENHANCED Apple IIe* / `- 6502`, *UNENHANCED Apple IIe*, no mouse) so one knows which build booted.
 - Fixed the HGR viewer leaving an RGB card (Le Chat Mauve, Video-7) in a mode it never asked for: raising AN3 clocked the card's mode latch with 80COL off, so two HGR pictures in a row drifted it to BW560; it is now clocked to COL140, its power-on state.
 - Fixed a raw DHGR page refused as `not an image` on some machines: its auxiliary plane no longer asks ProDOS to write into memory routed to the auxiliary bank (which ProDOS does not promise), but goes through `AUXMOVE`, as the RLE path always did.
 
