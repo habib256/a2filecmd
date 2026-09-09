@@ -1,7 +1,7 @@
 # The A2 File Cmd manual
 
 A two-pane ProDOS file manager in the spirit of Total Commander, for the
-128 KB Apple IIe; on screen it calls itself **A2 FILE CMD 0.7** (the number
+128 KB Apple IIe; on screen it calls itself **A2 FILE CMD 0.7.5** (the number
 lives in `A2FC_VERSION` in the Makefile, picked up by the launcher, the status
 line and the help). It is free software under the GNU GPL v3, by Arnaud
 Verhille; the launcher and the help say so. Two ways to start it: boot the
@@ -100,7 +100,7 @@ removed disk, A2FC next names that volume and waits for it before reading
 it. **Escape** cancels, including after a large overlay has loaded; the
 panels are restored. The last drive choice is kept for the session.
 
-The catalog keeps all 35 commands selectable even when the companion is
+The catalog keeps all 41 commands selectable even when the companion is
 absent. The slot is currently fixed at 6; the drive can be 1 or 2. Disk
 swapping does not provide simultaneous access to two files on different
 floppies in one drive: tools whose source and destination must both be
@@ -138,6 +138,45 @@ initial; Left/Right turns the menu page.
 | **RENAME** | complete | Rename tagged files or the selection: prefix, suffix, extension replacement/removal, or numbering. Enter BAK with E to set `.BAK`; fragments start with a letter. Conflicts are counted as skipped. |
 | **IMGCONV** | complete | Convert `.PO`/`.HDV`, `.DSK`/`.DO` and `.2MG` containers into the other panel, preserving the image's blocks. |
 | **BOOTBLK** | complete | Copy ProDOS boot blocks from the boot volume to another ProDOS volume after confirmation. |
+| **UNDELETE** | EXTRA / XL | Browse deleted entries in the active ProDOS directory. N skips, R recovers a validated candidate to the other panel, on a different online volume; existing names are refused. The source is unchanged. |
+| **DISKCMP** | EXTRA / XL | V compares online ProDOS volumes; I compares the selected image with a named image in the other panel. Supports PO/HDV, DSK/DO and ProDOS-order 2MG. S compares two Disk II disks using one drive, with named slot/drive prompts. |
+| **MKIMAGE** | EXTRA / XL | Create an empty formatted PO or 2MG in the active directory. Choose 140 KB, 800 KB, 2/4/8 MB or 32,767 blocks. Existing names are refused; cancelled or incomplete new images are removed. |
+| **RESCUE** | EXTRA / XL | Recover a selected file (F) or active ProDOS volume (V) to another online volume, with up to 30 read attempts per 512-byte chunk. Missing chunks are zero-filled and listed in a companion LOG. |
+| **SYNC** | EXTRA / XL | Recursively copy missing or newer files from the active directory to the other panel after direction confirmation. Destination-only files remain. Copies are read back before replacing older files. |
+| **TREE** | EXTRA / XL | Paginated directory tree, file sizes and cumulative directory totals. Space advances a page; Escape exits. |
+
+UNDELETE recovers standard seedling, sapling and tree file candidates, including
+sparse blocks, only when their retained pointers and block count agree and all
+referenced blocks remain free. Index halves swapped by ProDOS DESTROY are normalized in memory. The deleted storage type is inferred from EOF;
+reused, inconsistent, ambiguous and unsupported entries are refused. An error
+during DESTROY can leave a deleted entry with partially processed indexes or
+bitmap; the deleted marker alone never authorizes recovery. No source directory,
+index or bitmap is rewritten. This is recovery to
+a new file on another volume, not an in-place directory repair. Inspect recovered
+data before relying on it. Deleted directories and resource forks are not restored.
+
+RESCUE writes `BASE.REC` for a file. Disk output is raw ProDOS block order in
+`BASE.P01`, `BASE.P02`, etc., at most 16,000 blocks per part; concatenate the
+parts in numeric order to reconstruct a PO image. A single part can be renamed
+with the PO suffix. `BASE.LOG` identifies every zero-filled chunk and records
+completion or interruption. Partial output is retained after cancellation or an
+output failure. Sources and destinations must be on different online volumes.
+
+SYNC compares ProDOS modification date and time (1940–2039), preserves file
+metadata and refuses overlapping directory trees. Equal-date and newer destination
+files are skipped. It reserves `A2FC.SYNC` for a temporary copy and `A2FC.BAK`
+for rollback; pre-existing files with those names are never overwritten. An
+installation failure restores the original name where possible; a remaining
+backup stays under `A2FC.BAK`. SYNC and TREE support paths shorter than 64 bytes
+and up to 16 directory levels; unreadable, deeper or unsupported resource-fork
+entries produce an incomplete/error result. They do not silently claim success.
+
+DISKCMP reports differing block count and the first mismatch; read errors and
+cancellation do not produce an identical verdict. Single-drive comparison is exact
+and buffers two blocks per exchange, so it requires many disk changes; each prompt
+names the expected volume, slot and drive. Keys 1/2 change the drive.
+MKIMAGE creates a data volume without an operating system or boot program. The
+32,767-block limit keeps a complete image within ProDOS's single-file size limit.
 
 FIND keeps up to 20 matches and a bounded directory queue; it reports when
 its queue fills. DATE does not install a session clock driver or change creation dates or volume dates.
@@ -632,9 +671,9 @@ The names fit in ProDOS's fifteen characters.
 Both floppy types also have a `.dsk` copy in DOS sector order. BOOT is a
 bootable ProDOS volume with the file manager, disk tools and formatter.
 EXTRA is a non-bootable companion holding the remaining plugins and
-BASIC.SYSTEM. EXTRA currently keeps 135 free blocks (67.5 KB) on 6502 and 136 (68 KB)
+BASIC.SYSTEM. EXTRA currently keeps 57 free blocks (28.5 KB) on 6502 and 58 (29 KB)
 on 65C02 for future tools.
-XL is bootable and contains all 36 overlays, BASIC.SYSTEM, `DEMO/` and
+XL is bootable and contains all 42 overlays, BASIC.SYSTEM, `DEMO/` and
 `IMGHGR/` on the same 65535-block disk; it needs no EXTRA floppy.
 
 ProDOS volume names also identify the CPU and role: `/A2FC6502`,

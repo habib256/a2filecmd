@@ -17,11 +17,13 @@ FILES = """
 | 6502 | `A2FILECMD-6502-BOOT.po` / `.dsk` | `A2FILECMD-6502-EXTRA.po` / `.dsk` | `A2FILECMD-6502-XL.2mg` |
 | 65C02 | `A2FILECMD-65C02-BOOT.po` / `.dsk` | `A2FILECMD-65C02-EXTRA.po` / `.dsk` | `A2FILECMD-65C02-XL.2mg` |
 
-Choose BOOT and EXTRA for the same CPU and release. EXTRA has 17 additional
-tools and BASIC.SYSTEM; XL has all 36 overlays, BASIC.SYSTEM, DEMO and IMGHGR.
+The complete English manual is included as `A2FILECMD-MANUAL-EN.pdf`, with a clickable contents page and bookmarks.
+
+Choose BOOT and EXTRA for the same CPU and release. EXTRA has 23 additional
+tools and BASIC.SYSTEM; XL has all 42 overlays, BASIC.SYSTEM, DEMO and IMGHGR.
 The 6502 versions run on an Apple II with 128 KB and 80 columns, including
 the original IIe. The 65C02 versions support enhanced IIe, //c and IIgs,
-with optional mouse. EXTRA keeps 67.5 KB free on 6502 and 68 KB on 65C02 for future plugins.
+with optional mouse. EXTRA keeps free space for future CPU-specific plugins.
 
 Boot an image and press **?** for the key map; `sha256sum -c SHA256SUMS.txt`
 checks the download. The bootable images carry ProDOS 8 2.4.3; the `.2mg` and companion carry

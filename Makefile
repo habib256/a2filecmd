@@ -14,7 +14,7 @@
 # every time by tools/check_layout.py, which catches the two overflows that
 # ld65 lets through silently. See docs/MANUAL.md.
 
-A2FC_VERSION = 0.7
+A2FC_VERSION = 0.7.5
 VOLUME       = A2FC$(CPU)
 
 # The .2mg hard disk: another volume name, to coexist with the floppy.
@@ -178,7 +178,7 @@ $(CODE): $(SRC)/format.c $(SRC)/a2fc.c $(SRC)/a2fc.cfg $(SRC)/a2fc_plugin.h $(SR
 	@python3 $(TOOLS)/check_layout.py --lbl $(BUILD)/a2fc.lbl --bin $@ $(LAYOUT_BIG)
 
 # -- The service-table overlays ---------------------------------------------
-$(BUILD)/%.PLG: $(SRC)/plugins/%.c $(SRC)/a2fc_plugin.h sdk/plugin.cfg Makefile | $(BUILD)
+$(BUILD)/%.PLG: $(SRC)/plugins/%.c $(wildcard $(SRC)/plugins/*.h) $(SRC)/a2fc_plugin.h sdk/plugin.cfg Makefile | $(BUILD)
 	$(CC65BIN)cc65 -t $(TARGET) $(CCDEFS) -O -Oirs -Cl --codesize $(CODESIZE) -o $(BUILD)/$*.s $<
 	$(CC65BIN)ca65 -t $(TARGET) -o $(BUILD)/$*.o $(BUILD)/$*.s
 	@if grep -qE 'PLUGIN_MAGIC, *OVERLAY_BIG' $<; then big=1; else big=0; fi; \
@@ -283,6 +283,7 @@ test:
 	python3 $(TOOLS)/test_mkvolume.py
 	python3 $(TOOLS)/test_mkdemo.py
 	python3 $(TOOLS)/test_volinfo.py
+	python3 $(TOOLS)/test_six_plugins.py
 
 bench: disk
 	$(MAKE) ARCH=enh benchfloppy

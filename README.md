@@ -38,7 +38,8 @@ pictures. The tools are right there, beside your files.
 
 The **!** menu also offers text and disk-image conversion, CRC-32, file
 identification, Markdown reading, volume-wide search, favourite directories,
-batch renaming and type repair. DATE, VERIFY, TAGPAT, TXTCONV, VOLNAME, VOLINFO and
+batch renaming and type repair. EXTRA and XL also provide UNDELETE recovery,
+DISKCMP comparison, MKIMAGE creation, RESCUE extraction, SYNC updates and TREE totals. DATE, VERIFY, TAGPAT, TXTCONV, VOLNAME, VOLINFO and
 WIPE also fit the floppy edition. See the [tool reference](docs/MANUAL.md#more-tools-in-the--menu).
 
 ## See it in action
@@ -62,14 +63,14 @@ readers and more disk tools. See the [changelog](CHANGELOG.md).*
 **Start with the [latest release](https://github.com/habib256/a2filecmd/releases/latest).**
 No build required. Choose the image that fits your setup:
 
-| Image family (next release) | CPU | Contents |
+| Image family (0.7.5) | CPU | Contents |
 |---|---|---|
 | `A2FILECMD-6502-BOOT.po` / `.dsk` | 6502 | Bootable 140 KB floppy: file manager, disk tools and formatter |
-| `A2FILECMD-6502-EXTRA.po` / `.dsk` | 6502 | 140 KB companion: 17 additional tools, menu and BASIC.SYSTEM; 67.5 KB free |
-| `A2FILECMD-6502-XL.2mg` | 6502 | Bootable 32 MB disk: all 36 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
+| `A2FILECMD-6502-EXTRA.po` / `.dsk` | 6502 | 140 KB companion: 23 additional tools, menu and BASIC.SYSTEM; 28.5 KB free |
+| `A2FILECMD-6502-XL.2mg` | 6502 | Bootable 32 MB disk: all 42 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
 | `A2FILECMD-65C02-BOOT.po` / `.dsk` | 65C02 | Bootable 140 KB floppy: file manager, disk tools and formatter |
-| `A2FILECMD-65C02-EXTRA.po` / `.dsk` | 65C02 | 140 KB companion: 17 additional tools, menu and BASIC.SYSTEM; 68 KB free |
-| `A2FILECMD-65C02-XL.2mg` | 65C02 | Bootable 32 MB disk: all 36 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
+| `A2FILECMD-65C02-EXTRA.po` / `.dsk` | 65C02 | 140 KB companion: 23 additional tools, menu and BASIC.SYSTEM; 29 KB free |
+| `A2FILECMD-65C02-XL.2mg` | 65C02 | Bootable 32 MB disk: all 42 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
 
 The names sort by CPU, then BOOT, EXTRA, XL. Choose **6502** for an Apple II
 with 128 KB and 80 columns, including the original IIe; choose **65C02** for
@@ -149,6 +150,7 @@ sha256sum -c SHA256SUMS.txt
 With a mouse, click a file to select it and click again to open it. Column
 headers change the sort order; the path goes up; the bottom bar runs commands.
 The [manual](docs/MANUAL.md) covers every shortcut and file format.
+A [printable PDF](docs/A2FILECMD-MANUAL-EN.pdf) is also included in each release.
 
 <details>
 <summary>Limits to keep in mind</summary>

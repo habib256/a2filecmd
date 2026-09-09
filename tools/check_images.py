@@ -37,6 +37,8 @@ def check_cpu(cpu):
         assert 'FORMAT.SYS' not in directory, path
         assert ('FORMAT.PLG' in directory) == (role != 'EXTRA'), path
         assert ('VOLINFO.PLG' in directory) == (role != 'EXTRA'), path
+        for new in ('UNDELETE', 'DISKCMP', 'MKIMAGE', 'RESCUE', 'SYNC', 'TREE'):
+            assert (new + '.PLG' in directory) == (role != 'BOOT'), (path, new)
         plugins[role] = {name for name in directory if name.endswith('.PLG')}
         for name in plugins[role]:
             entry = directory[name]

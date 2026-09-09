@@ -1892,7 +1892,7 @@ static unsigned char disk_question(const char* name)
 {
     char key;
     clear_row(22); gotoxy(0, 22);
-    cprintf("Insert %s S6,D%u: %s. D1/2 RET ESC",
+    cprintf("Insert %s S6,D%u: %s D1/2 RET ESC",
             question, (companion_unit >> 7) + 1, name);
     key = cgetc();
     if (key == KEY_ESC) return 0;

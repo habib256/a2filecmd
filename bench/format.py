@@ -66,6 +66,8 @@ def main():
                 p.stable()
 
             def choose(text):
+                s.wait(lambda: any(text in r and re.match(r'\s+[1-9]\s+Slot', r)
+                                   for r in s.rows()), 'lecteur disponible: '+text, 40)
                 row = next(r for r in s.rows() if text in r and re.match(r'\s+[1-9]\s+Slot', r))
                 s.key(row.strip()[0].encode())
 

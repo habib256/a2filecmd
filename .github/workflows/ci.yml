@@ -58,7 +58,8 @@ jobs:
 
       - name: Empreintes et notes de version
         run: |
-          cd dist && sha256sum A2FILECMD-*-BOOT.po A2FILECMD-*-BOOT.dsk A2FILECMD-*-EXTRA.po A2FILECMD-*-EXTRA.dsk A2FILECMD-*-XL.2mg | tee SHA256SUMS.txt
+          cp docs/A2FILECMD-MANUAL-EN.pdf dist/
+          cd dist && sha256sum A2FILECMD-*-BOOT.po A2FILECMD-*-BOOT.dsk A2FILECMD-*-EXTRA.po A2FILECMD-*-EXTRA.dsk A2FILECMD-*-XL.2mg A2FILECMD-MANUAL-EN.pdf | tee SHA256SUMS.txt
           cd .. && python3 tools/release_notes.py "${GITHUB_REF_NAME}" > dist/RELEASE_NOTES.md
 
       - name: Les cartes memoire, pour le journal de construction
@@ -109,6 +110,11 @@ jobs:
         run: |
           A2FC_PRESET=iie_unenh python3 bench/extras.py
           A2FC_IMG=A2FILECMD-65C02-BOOT python3 bench/extras.py
+      - name: Six nouveaux plugins sur les deux CPU
+        run: |
+          A2FC_PRESET=iie_unenh python3 bench/six.py
+          A2FC_IMG=A2FILECMD-65C02-BOOT python3 bench/six.py
+          A2FC_PRESET=iie_unenh python3 bench/disksingle.py
       - name: VOLINFO, diagnostic en lecture seule sur les deux CPU
         run: |
           A2FC_PRESET=iie_unenh python3 bench/volinfo.py
@@ -130,7 +136,7 @@ jobs:
       - name: Nouvelles surcouches, 65C02
         run: A2FC_BUILD=build python3 bench/plugins.py --out bench-out/plugins-enh
       - name: Budget de pile
-        run: python3 bench/memory.py
+        run: A2FC_IMG=A2FILECMD-full python3 bench/memory.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -166,4 +172,5 @@ jobs:
             dist/A2FILECMD-*-EXTRA.po
             dist/A2FILECMD-*-EXTRA.dsk
             dist/A2FILECMD-*-XL.2mg
+            dist/A2FILECMD-MANUAL-EN.pdf
             dist/SHA256SUMS.txt

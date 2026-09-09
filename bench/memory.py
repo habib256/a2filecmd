@@ -19,11 +19,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from pom2 import Pom2, Session, ROOT, labels, DISK
 from run import scratch_volume, ESC, RET, DOWN, TAB
 
-BUDGET = 256                    # ce que le lien reserve
-
-
 def main():
     sym = labels()
+    budget = sym['__STACKSIZE__']
     lo, hi = sym['__ONCE_RUN__'], sym['__HIMEM__']
     with tempfile.TemporaryDirectory(prefix='a2fc-stack-') as tmp:
         tmp = Path(tmp)
@@ -78,9 +76,9 @@ def main():
             print(f'creux apres les visionneuses : ${after_views:04X}', flush=True)
             print(f'creux le plus bas            : ${deep:04X}  ({used} octets sous ${hi:04X})',
                   flush=True)
-            s.ok(f'la pile reste sous les {BUDGET} octets reserves ({used} utilises)',
-                 used <= BUDGET, f'${deep:04X}')
-            s.ok('et garde au moins la moitie de marge', used <= BUDGET // 2, f'{used} octets')
+            s.ok(f'la pile reste sous les {budget} octets reserves ({used} utilises)',
+                 used <= budget, f'${deep:04X}')
+            s.ok('et garde au moins la moitie de marge', used <= budget // 2, f'{used} octets')
     return 0
 
 

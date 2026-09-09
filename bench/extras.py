@@ -35,7 +35,7 @@ def main():
     assert len(extra.read_bytes()) == 143360
     assert 'PRODOS' not in xr and 'BASIC.SYSTEM' in xr
     assert set(bc).intersection(xc) == {'MENU.PLG', 'EXTRAS.CAT'}, 'seuls le menu et le catalogue accompagnent les deux disques'
-    assert len([n for n in set(bc) | set(xc) if n.endswith('.PLG')]) == 36
+    assert len([n for n in set(bc) | set(xc) if n.endswith('.PLG')]) == 42
     for name, entry in xc.items():
         if not name.endswith('.PLG'): continue
         assert entry[16] == 6 and int.from_bytes(entry[31:33], 'little') == 0x1B00
@@ -44,7 +44,7 @@ def main():
         if not path.exists():
             path = BUILD / ('A2FILE.CODE.BIN.' + stem)
         assert xi.read(entry) == path.read_bytes(), name
-    print('PASS les images publiees reunissent 36 surcouches, avec menu commun, aux bons octets et attributs', flush=True)
+    print('PASS les images publiees reunissent 42 surcouches, avec menu commun, aux bons octets et attributs', flush=True)
 
     with tempfile.TemporaryDirectory(prefix='a2fc-extras-') as tmp:
         tmp = Path(tmp)
@@ -70,7 +70,7 @@ def main():
             s.wait(lambda: expected in s.rows()[22], 'CRC du complement', 30)
             s.ok('le menu charge une surcouche a table de services du lecteur 2', s.rows()[22].strip() == expected)
             s.key(b'!'); s.wait(lambda: s.has('the overlays'), 'menu fusionne', 30); p.stable()
-            s.ok('le menu contient les 35 commandes des deux disquettes', '/35' in s.rows()[0], s.rows()[0])
+            s.ok('le menu contient les 41 commandes des deux disquettes', '/41' in s.rows()[0], s.rows()[0])
             s.key(ESC)
             s.key(b'/'); s.select('/' + extravol); p.stable()
             rename_to(s, p, extravol, 'TOOLS')
@@ -89,7 +89,7 @@ def main():
             s.ok('les outils de la disquette principale restent utilisables', s.has('scratch volume'))
             s.key(ESC)
             s.key(b'!'); s.wait(lambda: s.has('the overlays'), 'menu sans complement', 30); p.stable()
-            s.ok('sans complement le catalogue garde les 35 commandes', '/35' in s.rows()[0], s.rows()[0])
+            s.ok('sans complement le catalogue garde les 41 commandes', '/41' in s.rows()[0], s.rows()[0])
             s.key(ESC)
     first = ok_all(s, 'extras, deux lecteurs')
     with tempfile.TemporaryDirectory(prefix='a2fc-extras-one-') as tmp:
@@ -116,7 +116,7 @@ def main():
             s.wait(lambda: s.has('Insert ' + bootvol + ' S6,D1'), 'demande du disque principal', 30)
             s.ok('le retour nomme la disquette principale et le meme lecteur', s.has('Insert ' + bootvol + ' S6,D1'))
             p.insert(0, str(floppy)); s.key(RET)
-            s.wait(lambda: s.value('view', 1) == 2, 'TEXT apres retour du disque principal', 30)
+            s.wait(lambda: s.value('view', 1) == 2 and s.has('scratch volume'), 'TEXT apres retour du disque principal', 30)
             s.ok('TEXT fonctionne apres restitution de la disquette principale', s.has('scratch volume'))
             s.key(ESC)
             # The file itself can be on the boot floppy, without a hard disk.

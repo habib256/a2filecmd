@@ -2,7 +2,7 @@
 
 `🟠 haute · 🟡 moyenne · 🟢 basse`, effort indicatif en *italique*, fichier en
 `backticks`. `💾` marque ce qui va **aussi** dans l'édition disquette ; le reste
-va sur EXTRA et dans XL (voir « Les deux éditions »). Les mesures datent du 2026-09-09, sur la 0.7 (version stable).
+va sur EXTRA et dans XL (voir « Les deux éditions »). Les mesures datent du 2026-09-09, sur les images candidates 0.7.5.
 Ce qui est fait est dans le [CHANGELOG](CHANGELOG.md), avec le détail
 technique de chaque version.
 
@@ -20,13 +20,13 @@ tout ce qui s'ajoute au noyau doit être payé par une surcouche ou par une
 
 | Zone | État mesuré |
 | --- | --- |
-| Fenêtre principale `$4000`-plancher de la pile (`$BE40`) | 87 octets libres après `INIT` (`$BDE9`) ; fin de `ONCE` à `$BEDE`, 2 octets avant le plafond du lanceur `$BEE0`. |
+| Fenêtre principale `$4000`-plancher de la pile (`$BE40`) | 86 octets libres après `INIT` (`$BDE9`) ; fin de `ONCE` à `$BEDF`, 1 octet avant le plafond du lanceur `$BEE0`. |
 | RAM basse `$1000-$1AFF` (BSS) | 48 octets libres (6502 : 73) |
 | Carte langage `$D400-$DFFF` | **16 octets libres** (`vsdrive.s` a pris le reste depuis la 0.6.7) |
-| Pile C | 192 octets réservés (`A2FC_STACK`), creux maximal mesuré 94 (`bench/memory.py`) |
+| Pile C | 192 octets réservés (`A2FC_STACK`), creux maximal mesuré 86 (`bench/memory.py`) |
 | Petites surcouches `$1B00-$1FFF` (1 280 octets) | `BINARY2` 1272, `IMGFS` 1270, `MUSIC` 668, `DOS33` 1216, `DELETE` 1218, `ATTR` 1246, `IMAGE` 1203, `RUN` 1064, `AWP` 1020, `HELP` 1061, `SEARCH` 847, `HEX` 901, `COMPARE` 1194, `TEXT` 1176 |
-| Grandes surcouches | `FORMAT` 8018 / 8448, `DISKIMG` 6079 / 6400, `UNSHRINK` 5212 / 5376, `EDIT` 3308 / 3328, `BASLIST` 1419 / 3328, `MENU` 1901 / 5376 ; `VOLINFO` 6369 octets fichier, code et BSS jusqu’à `$3D6E` ; `BINARY2` est grande en 6502 (3 328). |
-| BOOT / EXTRA / XL | BOOT : 25 blocs libres sur les deux processeurs. EXTRA : 135 / 136 blocs libres. XL : 64 479 / 64 480 blocs libres. |
+| Grandes surcouches | `FORMAT` 8020 / 8448, `DISKIMG` 6079 / 6400, `UNSHRINK` 5212 / 5376, `EDIT` 3308 / 3328, `BASLIST` 1419 / 3328, `MENU` 1901 / 5376 ; `VOLINFO` 6369 octets fichier, code et BSS jusqu’à `$3D6E` ; `BINARY2` est grande en 6502 (3 328). |
+| BOOT / EXTRA / XL | BOOT : 24 blocs libres sur les deux processeurs. EXTRA : 57 / 58 blocs libres. XL : 64 401 / 64 402 blocs libres. |
 
 Certaines petites surcouches restent proches du plafond (`BINARY2`,
 `IMGFS`, `ATTR`) : leur agrandissement doit être vérifié au lien.
@@ -39,7 +39,7 @@ Les noms `A2FILECMD-6502-{BOOT,EXTRA,XL}` puis
 au tri alphabétique. BOOT et EXTRA sont des disquettes 140 Ko (`.po` et
 `.dsk`), XL est un disque complet de 32 Mo (`.2mg`). Le 6502 fonctionne
 sans souris sur le IIe de 1983 ; le 65C02 ajoute MouseText et la souris.
-EXTRA garde 135 blocs libres en 6502, 136 en 65C02, pour les nouveaux plugins : ne pas
+EXTRA garde 57 blocs libres en 6502, 58 en 65C02, pour les nouveaux plugins : ne pas
 mélanger les deux processeurs sur une même disquette.
 
 - ✅ **`FORMAT` en surcouche** : `FORMAT.PLG` remplace le programme SYS sur
@@ -49,7 +49,7 @@ mélanger les deux processeurs sur une même disquette.
   de piste préserve le résident via AUX ; le vidage de `/RAM` est annoncé
   avant confirmation. Bancs Disk II, protection en écriture, RAM, SmartPort
   et intégrité mémoire sur les deux processeurs.
-- ✅ **La seconde disquette** : chaque `A2FILECMD-<CPU>-EXTRA.po` contient les 17 outils
+- ✅ **La seconde disquette** : chaque `A2FILECMD-<CPU>-EXTRA.po` contient les 23 outils
   absents du disque principal et `BASIC.SYSTEM`. Chargement depuis S6,D2,
   ou échanges sur S6,D1 : l'invite nomme le volume attendu et le lecteur,
   `1`/`2` change le lecteur, Retour réessaie, Échap annule. Le catalogue
@@ -127,13 +127,11 @@ réparation d'abord (`UNDELETE`, `VOLINFO`, `FIXIT`, `BLKEDIT` partagent la
 lecture de la table d'allocation), puis `ADTPRO` et `NIBCOPY`, qui
 partagent la lecture brute de piste avec `NIBREAD` et `NIBBLE`.
 
-- 🟠 💾 **`UNDELETE`** : ProDOS efface un fichier en mettant son type de
-  stockage à zéro, l'entrée reste lisible. Lister les entrées effacées du
-  dossier, vérifier que leurs blocs sont encore libres, restaurer. Aussi sur
-  une disquette DOS 3.3 (l'entrée du catalogue marquée `$FF`). Comme Copy
-  II Plus : marquer `?` un fichier dont des blocs ont été réalloués depuis
-  (« lost file »), et montrer les caractères de contrôle cachés dans un nom
-  DOS 3.3. Petite surcouche. *1 jour.*
+- ✅ **`UNDELETE`**, EXTRA / XL : copie les candidats ProDOS seedling,
+  sapling et tree vers un autre volume, sans modifier la source. Vérifie
+  les blocs libres, les doublons, les comptes et les index inversés par
+  DESTROY ; refuse les interprétations ambiguës et les effacements partiels
+  incohérents. **Reste :** DOS 3.3 et fichiers étendus.
 - 🟠 💾 **`VOLINFO`** : première version ProDOS en lecture seule livrée sur
   BOOT et XL, 6502 et 65C02 : espace libre, fragmentation, carte paginée,
   allocations partagées/perdues/marquées libres et compteurs. Parcours
@@ -250,13 +248,12 @@ partagent la lecture brute de piste avec `NIBREAD` et `NIBBLE`.
   qu'A2FC ne trie pas en mémoire, se retrouve trié pour de bon. Et le geste
   caché de Cat Doctor : retirer une entrée abîmée du répertoire sans toucher
   aux blocs, `FIXIT` faisant le reste. *1 jour.*
-- 🟡 💾 **`RESCUE`** : relire un bloc ou un secteur illisible jusqu'à trente
-  fois, garder ce qui passe, remplir de zéros le reste et le dire ; copier
-  un fichier ou un disque entier ainsi (Locksmith « advanced disk
-  recovery »). *1 jour.*
-- 🟡 💾 **`DISKCMP`** : comparer deux disquettes ou deux images bloc à bloc, et
-  la copie de disquette avec relecture (Copy II Plus, Locksmith « 16-sector
-  compare »). Dans `DISKIMG`. *½ jour.*
+- ✅ **`RESCUE`**, EXTRA / XL : copie fichier ou volume ProDOS vers un
+  autre volume, trente tentatives de lecture par bloc, zéros et journal
+  pour les blocs illisibles. **Reste :** récupération brute DOS 3.3.
+- ✅ **`DISKCMP`**, EXTRA / XL : comparaison exacte de volumes ou d'images
+  PO, DSK, HDV et 2MG. Mode Disk II à un lecteur avec noms des disques et
+  choix D1/D2 à chaque échange. **Reste :** vérification intégrée à DISKIMG.
 - 🟡 💾 **`DISKIMG`, ce qui lui manque face à Copy II Plus** : formater la cible
   pendant la copie ; continuer après une erreur de lecture en listant les
   pistes ou blocs fautifs au lieu de s'arrêter ; plusieurs copies de suite
@@ -307,8 +304,9 @@ II, et les formats qui ouvrent la production du IIgs et des hackers.
   automatique des disquettes). En variante par fichiers, l'incrémental de
   Cat Doctor (`^C`, `^E` : ne copier que les plus récents), qui est `SYNC`.
   Avec VDrive, vers le PC. *2 jours.*
-- 🟡 **`SYNC`** : ne copier que les fichiers manquants ou plus récents entre
-  les deux panneaux. *1 jour.*
+- ✅ **`SYNC`**, EXTRA / XL : copie récursive des fichiers absents ou plus
+  récents entre les panneaux, relecture avant remplacement, sauvegarde et
+  restauration si installation impossible. Fichiers destination seuls conservés.
 - 🟡 💾 **`DOS33W`** : copier un fichier ProDOS vers une disquette DOS 3.3, avec
   l'en-tête Applesoft ou binaire ajouté et le nom converti ; changer le
   programme d'amorce (`HELLO`) ; retirer le DOS d'une disquette pour gagner
@@ -334,16 +332,15 @@ II, et les formats qui ouvrent la production du IIgs et des hackers.
 - 🟡 **`TOKENIZE`** : texte → Applesoft tokenisé, table des mots-clés
   partagée avec `BASLIST` ; avec l'éditeur, on écrit un programme BASIC sans
   quitter A2FC. *1 jour.*
-- 🟢 **`MKIMAGE`** : créer une image `.PO` ou `.2MG` vide et formatée.
-  *½ jour.*
+- ✅ **`MKIMAGE`**, EXTRA / XL : images de données ProDOS `.PO` et `.2MG`
+  vides, de 140 Ko à 32 767 blocs (limite de taille d’un fichier ProDOS).
 - 🟢 **Écrire dans une image disque** ouverte comme dossier (copier VERS un
   `.PO`/`.2MG`) : la lecture existe (`IMGFS.PLG`), l'écriture demande la
   carte des blocs libres et l'allocation, c'est-à-dire un mini-ProDOS. Une
   grande surcouche. *2 jours.*
 - 🟢 **`PRINT`** : catalogue ou texte vers l'imprimante du slot 1, avec
   numéro de page (Copy II Plus, ProSel). *½ jour.*
-- 🟢 **`TREE`** : l'arborescence avec la taille cumulée des dossiers.
-  *½ jour.*
+- ✅ **`TREE`**, EXTRA / XL : arborescence paginée et tailles cumulées des dossiers.
 - 🟢 **`SETUP`** : éditer `A2FILE.CFG` depuis le programme. *½ jour.*
 - 🟢 **`SYSINFO`** : les cartes par slot d'après les ROM, la mémoire,
   l'identifiant machine, l'horloge ; et un test de la mémoire auxiliaire

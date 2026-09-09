@@ -5,24 +5,17 @@ downloads and installation.
 
 ## Unreleased
 
-- Added VOLINFO.PLG to BOOT and XL for both CPUs: read-only ProDOS space and fragmentation statistics, paginated 80-column bitmap, shared/lost blocks, referenced blocks marked free, and allocation/directory count checks. Supports seedling, sapling, tree, extended forks and nested directories; incomplete scans never present a lost-block verdict. XL now has 36 overlays; BOOT keeps 25 free blocks. Added host corruption fixtures and POM2 benches for both CPUs.
+## [0.7.5] - 2026-09-09
 
-- Replaced FORMAT.SYS with the native FORMAT.PLG overlay on both CPUs. F and the overlay menu return directly to the panels. BOOT now has 39 free blocks (8 reclaimed on 6502, 6 on 65C02); XL contains 35 overlays. Kept explicit ERASE confirmation and protection of the running program. Physical Disk II formatting preserves resident memory in AUX, warns that /RAM will be cleared, and restores memory even on a write error. Added formatting and memory-preservation benches for both CPUs.
-
-- Added BOOT and EXTRA 140 KB floppies plus a complete XL 2mg for **each** CPU. Names group alphabetically as `A2FILECMD-6502-{BOOT,EXTRA,XL}` and `A2FILECMD-65C02-{BOOT,EXTRA,XL}`. Each EXTRA contains only its own CPU's plugins, leaving 135 blocks free on 6502 and 136 on 65C02. Each XL contains all 35 overlays, BASIC.SYSTEM, DEMO and IMGHGR.
-- Enabled companion loading and guided single-drive swaps on 65C02 as well as 6502. Prompts identify the CPU-specific volume and selected drive. BOOT and XL have distinct launch screens. Moved the jump-by-letter command into TEXT and overlay strings out of resident memory to preserve the checked memory limits.
-
-- Added disk-swap prompts naming the expected volume and slot/drive, with a session choice of drive 1 or 2 in slot 6. With one drive, the input volume is requested after the overlay loads; Escape restores the panels. BASIC.SYSTEM can be loaded from the companion too.
-
-- Added fifteen service-table overlays, reached from **!**: TXTCONV, DATE, VERIFY, TAGPAT, VOLNAME and WIPE on both editions; FIXTYPES, GOTO, FIND, CRC, IDENT, MDVIEW, RENAME, IMGCONV and BOOTBLK on the complete edition. See the [manual](docs/MANUAL.md#more-tools-in-the--menu) for controls and limits.
-- Added a POM2 bench for each new overlay and `bench/plugins.py` to run them together. CRC checks use Python's `zlib.crc32`; file-writing benches reread a drive-2 image on the host.
-- Enforced the code-plus-BSS boundary below `$3000` for overlays using graphics-page scratch, and below VERIFY's copied service table. Each service-table overlay now produces a linker map.
-
-- Fixed the `S` (sort) and `M` (mark differences) keys on the floppy edition: both lived in `MUSIC.PLG`, which the floppy no longer carries. Sorting now lives in `TEXT.PLG` and the comparison in `COMPARE.PLG`, both on the floppy; and `M` also flags files whose modification date differs (Cat Doctor's "compare directories").
-- Changed the overlay menu to use all 80 columns: the description of each overlay has 65 characters instead of 51, so none is cut short, and every description was rewritten to say more. The menu also pages now: 52 overlays at most, 18 per page, Left/Right turn the page, and a counter at the top right.
-- Added `cfg_path` to the service table (API version 2): the path of `A2FILE.CFG`, from which an overlay finds the program directory.
-- Changed the language of the source: every comment in `src/`, the `Makefile` and `sdk/` is now in English, along with the SDK guide (`sdk/README.md`). Comments only: the binaries and disk images are byte-for-byte identical to 0.7.
-- Added to the README the platforms the release is tested on (a real Enhanced IIe, Virtual II, and an Apple //c and an unenhanced IIe under POM2).
+- Added six service overlays on EXTRA and XL for both CPUs: UNDELETE recovers deleted ProDOS file candidates to another volume; DISKCMP compares volumes and PO/DSK/2MG images; MKIMAGE creates formatted data images; RESCUE extracts readable data with retries and a missing-block log; SYNC copies missing/newer files recursively; TREE shows cumulative directory sizes.
+- Recovery leaves source volumes unchanged. UNDELETE recognizes index halves swapped by ProDOS DESTROY and refuses ambiguous or reused blocks. SYNC reads back temporary copies before replacing older files, with rollback backups. DISKCMP supports exact single-drive comparison with prompts naming the expected disk and slot/drive.
+- Added VOLINFO to BOOT and XL: free space, fragmentation, a paginated bitmap, shared/lost blocks, used blocks marked free and count checks. Incomplete scans never present a lost-block verdict.
+- Replaced FORMAT.SYS with FORMAT.PLG, returning directly to the panels. Kept ERASE confirmation and protection of the running program. Physical Disk II formatting preserves resident memory, including on errors, and explicitly warns that /RAM is cleared.
+- Published separate 6502 and 65C02 BOOT/EXTRA 140 KB floppies and complete XL 2mg images. Each XL has all 42 overlays, BASIC.SYSTEM, DEMO and IMGHGR; BOOT and EXTRA share a 41-command catalog. The two CPU families never share an EXTRA disk. Missing-disk prompts support selecting drive 1 or 2 and returning the source disk after an overlay loads.
+- Added fifteen other service overlays: TXTCONV, DATE, VERIFY, TAGPAT, VOLNAME, WIPE, FIXTYPES, GOTO, FIND, CRC, IDENT, MDVIEW, RENAME, IMGCONV and BOOTBLK. See the [manual](docs/MANUAL.md#more-tools-in-the--menu) for their controls and limits.
+- Fixed floppy sorting, jump-by-letter and marking differences after other overlays run. Expanded the paginated overlay menu to 80 columns and added the program configuration path to service API version 2.
+- Included a printable English PDF manual with a clickable contents page and bookmarks.
+- Added CPU-specific POM2 benches and host tests covering malformed allocation, real file deletion, reversed and partially processed indices, image bitmaps, failed writes, rollback, cancellation and memory bounds. Source comments and the SDK guide are in English.
 
 ## [0.7](https://github.com/habib256/a2filecmd/releases/tag/v0.7) — 2026-09-09
 
