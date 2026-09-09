@@ -13,7 +13,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from pom2 import Pom2, Session, ROOT, DISK
+from pom2 import Pom2, Session, ROOT, DISK, IMG
 
 
 def scratch(dirpath, name='SCRATCH', blocks=1600):
@@ -35,7 +35,13 @@ def main():
         shutil.copyfile(DISK, floppy)
         with Pom2(scratch(tmp), floppy=floppy, port=6601) as p:
             s = Session(p)
+            # la page de titre du lanceur, le temps du chargement : la version
+            # 6502 s'y nomme (" - 6502"), l'autre non
+            s.wait(lambda: s.has('A2 FILE CMD'), 'page de titre', 60)
+            title = next((r for r in s.rows() if 'A2 FILE CMD' in r), '')
             s.boot()
+            s.ok('la page de titre nomme la version (6502 ou non)',
+                 (' - 6502' in title) == IMG.endswith('-6502'), title.strip()[:40])
             s.ok('la disquette publiee demarre sur les panneaux',
                  s.has('/A2FILECMD'), s.rows()[0][:40])
             s.ok('la barre de statut porte le nom et la version',

@@ -73,7 +73,11 @@ int main(void)
         chlinexy(0, 4, 80);
         for (n = 1; n < 4; ++n) { cputcxy(0, n, '|'); cputcxy(79, n, '|'); }
         revers(1);
+#ifdef A2FC_6502
+        centre(2, "  A2 FILE CMD " A2FC_VERSION " - 6502  ");
+#else
         centre(2, "  A2 FILE CMD " A2FC_VERSION "  ");
+#endif
         revers(0);
         centre(3, "Two panels. One Apple II.");
         centre(6, "A two-pane ProDOS file manager running natively on Apple IIe.");
@@ -82,9 +86,17 @@ int main(void)
         cputsxy(4, 9,  "HGR and DHGR pictures, full screen.");
         cputsxy(44, 9, "Mockingboard music player.");
         cputsxy(4, 10,  "Disk formatter, program launcher.");
+#ifdef A2FC_6502
+        /* La version 6502 : le IIe non enhanced, sans souris -- la page le
+         * dit, pour qu'on sache laquelle on a amorcee. */
+        cputsxy(44, 10, "Keyboard: press ? for help.");
+        cputsxy(4, 12, "6502 BUILD for the UNENHANCED Apple IIe: 128 KB, 80 columns, ProDOS 8.");
+        cputsxy(4, 13, "Optional: a Mockingboard in any slot. No mouse in this build.");
+#else
         cputsxy(44, 10, "Mouse or keyboard: press ? for help.");
         cputsxy(4, 12, "Needs an enhanced Apple IIe, 128 KB, 80 columns, ProDOS 8.");
         cputsxy(4, 13, "Optional: a Mockingboard and an AppleMouse II, in any slot.");
+#endif
         cputsxy(4, 15, "Free software under the GNU GPL v3, by Arnaud VERHILLE.");
         cputsxy(4, 16, "https://github.com/habib256/a2filecmd");
         gotoxy(4, 18);
