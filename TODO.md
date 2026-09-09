@@ -1,7 +1,8 @@
 # A2 File Cmd — ce qui reste à faire
 
 `🟠 haute · 🟡 moyenne · 🟢 basse`, effort indicatif en *italique*, fichier en
-`backticks`. Les mesures datent du 2026-09-09, sur la 0.7 (version stable).
+`backticks`. `💾` marque ce qui va **aussi** dans l'édition disquette ; le reste
+n'est que dans l'édition complète (voir « Les deux éditions »). Les mesures datent du 2026-09-09, sur la 0.7 (version stable).
 Ce qui est fait est dans le [CHANGELOG](CHANGELOG.md), avec le détail
 technique de chaque version.
 
@@ -31,6 +32,48 @@ Trois petites surcouches sont à moins de 40 octets du plafond (`BINARY2`,
 `IMGFS`, `MUSIC`) : la prochaine ligne qu'on y ajoute les fait passer
 grandes, ou demande de sortir leurs chaînes dans une table.
 
+## Les deux éditions
+
+Décidé le 2026-09-09 : deux produits, pas quatre paires d'images.
+
+| | **Édition disquette** | **Édition complète** |
+| --- | --- | --- |
+| Image | `A2FILECMD.po` et `.dsk`, 140 Ko | `A2FILECMD.2mg`, 32 Mo, `/A2FILEHD` |
+| Processeur | **6502** (`make disk ARCH=6502`) : tourne sur tout Apple II 128 Ko à 80 colonnes, IIe de 1983 compris ; sans souris | **65C02** : IIe enhanced, //c, IIgs ; souris, MouseText |
+| Contenu | le gestionnaire et les **outils disque** : ce qu'un utilisateur à deux Disk II et sans disque dur ne peut faire autrement | **tout** : les dix-neuf surcouches, `DEMO/`, `IMGHGR/`, `BASIC.SYSTEM` |
+| Public | la machine d'origine, la disquette qu'on prête | l'émulateur, la CFFA, le disque dur |
+
+**Le budget de la disquette**, en blocs de 512 octets (280 sur le disque,
+dont 7 de structure ; un fichier de plus de 512 octets coûte un bloc d'index
+en plus de ses données) :
+
+| | Blocs |
+| --- | --- |
+| Socle : `PRODOS`, `A2FILE.SYSTEM`, `A2FILE.CODE`, `A2FILE.HELP`, `MENU`, `HELP`, `DELETE`, `ATTR`, `RUN`, `TEXT`, `HEX`, `DISKIMG`, `FORMAT.SYS`, `DOS33`, `IMGFS` | 168 |
+| Sortent de la disquette : `EDIT`, `MUSIC`, `IMAGE`, `AWP`, `BASLIST`, `COMPARE`, `SEARCH`, `UNSHRINK`, `BINARY2` (45) et `BASIC.SYSTEM` (21) | −66 |
+| **Libre pour les outils disque à venir** | **78** |
+| À venir, marqué `💾` : `NIBCOPY` 17, `ADTPRO` 13, `FIXIT` 7, `UNDELETE` 4, `VOLINFO` 4, `NIBBLE` 4, `DIRSORT` 4, `RESCUE` 4, `DOS33W` 4, `VERIFY` 3, `DATE` 3, `TXTCONV` 3, `TAGPAT` 3, `DRIVESPD` 3, `WIPE` 2 (estimations d'après les surcouches actuelles) | 78 |
+| `BLKEDIT` (grande surcouche, ~13), s'il doit y tenir aussi | +13 |
+
+C'est juste : zéro bloc de marge avant `BLKEDIT`. Deux façons de respirer,
+à faire dans cet ordre :
+
+- 🟠 **`FORMAT` en surcouche** : `FORMAT.SYS` est un programme SYS à part avec
+  son propre crt0 et sa bibliothèque, 24 blocs. En grande surcouche
+  (`$1B00-$3FFF`, ses tampons `$6700-$8000` passent en mémoire auxiliaire ou
+  dans la page graphique), il en coûterait 6 : **18 blocs rendus**, et le
+  formateur ne quitte plus le programme. *1 jour.*
+- 🟡 **La seconde disquette** : `A2FILECMD-EXTRAS.po` avec les neuf surcouches
+  sorties, et `load_overlay` qui, après `A2FILE/` sur le disque de démarrage,
+  cherche aussi `A2FILE/` sur le lecteur 2. L'utilisateur à deux lecteurs a
+  tout ; celui à un lecteur échange. *½ jour.*
+- 🟠 **Les deux éditions dans le Makefile et le CI** : `make disk` produit la
+  disquette 6502 minimale (liste `PLUGINS_FLOPPY`, sans `BASIC.SYSTEM`) et le
+  `.2mg` 65C02 complet ; plus de `.2mg` 6502 ni de disquette 65C02 (le banc
+  `run.py` tourne sur le `.2mg`, `smoke.py` et les bancs disque sur la
+  disquette avec `A2FC_BUILD=build-6502`) ; le README et la page de titre
+  disent l'édition. *½ jour.*
+
 ## L'objectif : Copy II Plus, Locksmith et ProSel en un seul outil
 
 **L'objectif** : sur un vrai Apple IIe ou //c, A2FC seul doit suffire à
@@ -56,7 +99,7 @@ Des petites surcouches ou des vérifications, sans risque, qui changent
 l'usage quotidien ou lèvent un doute. À faire dans cet ordre, en commençant
 par ce qui débloque les transferts depuis le PC.
 
-- 🟠 **`TXTCONV`** : convertir un texte sur place ou vers l'autre panneau :
+- 🟠 💾 **`TXTCONV`** : convertir un texte sur place ou vers l'autre panneau :
   CR ↔ LF ↔ CRLF, bit 7 posé ou ôté, tabulations, accents UTF-8
   translittérés en ASCII. Un fichier venu d'un Mac ou de Linux par VDrive ou
   par image est illisible sans cela, un source Merlin aussi. *½ jour.*
@@ -66,18 +109,18 @@ par ce qui débloque les transferts depuis le PC.
   suffixe si on veut. *½ jour.*
 - 🟡 **`GOTO`** : des chemins favoris dans `A2FILE.CFG`, atteints en deux
   touches. *½ jour.*
-- 🟡 **`DATE`** : entrer la date dans `$BF90-$BF93` sans horloge, poser une
+- 🟡 💾 **`DATE`** : entrer la date dans `$BF90-$BF93` sans horloge, poser une
   date de création ou de modification sur les fichiers marqués
   (`SET_FILE_INFO`) et sur le volume (Cat Doctor « change file date »). Et
   garder la date pour la session : un pilote d'horloge minimal installé dans
   `$BF06` qui rend la date entrée, pour que ProDOS date les fichiers créés
   ensuite, ce qu'un `$BF90` seul ne fait qu'une fois. *½ jour.*
-- 🟡 **`VERIFY`** : lire tous les blocs d'un volume ou d'un fichier marqué et
+- 🟡 💾 **`VERIFY`** : lire tous les blocs d'un volume ou d'un fichier marqué et
   signaler ceux qui rendent une erreur (Copy II Plus « verify disk »,
   « verify files »). Et `CERTIFY`, destructif après `ERASE` : écrire un motif
   sur chaque piste et le relire, pour qualifier une disquette neuve ou
   douteuse (Locksmith). *½ jour.*
-- 🟡 **`TAGPAT`** : marquer par motif avec `=` et `?` (les jokers de Copy II
+- 🟡 💾 **`TAGPAT`** : marquer par motif avec `=` et `?` (les jokers de Copy II
   Plus), par type, par date, par taille ; la copie « avec confirmation
   fichier par fichier ». *½ jour.*
 - 🟡 **`FIND`** : chercher un fichier par nom ou motif dans tout le volume,
@@ -87,10 +130,10 @@ par ce qui débloque les transferts depuis le PC.
   que dans un fichier. *1 jour.*
 - 🟡 **`CRC`** : CRC-32 du fichier sélectionné, pour vérifier un transfert
   contre le PC (`tools/` en oracle). *½ jour.*
-- 🟡 **Renommer un volume** : à vérifier ; s'il manque, une ligne dans
+- 🟡 💾 **Renommer un volume** : à vérifier ; s'il manque, une ligne dans
   `ATTR` ou dans `VOLINFO` (`RENAME` sur `/VOL`, comme Copy II Plus et Cat
   Doctor). *¼ jour.*
-- 🟡 **Déplacer sans copier** : à vérifier que `V` dans un même volume
+- 🟡 💾 **Déplacer sans copier** : à vérifier que `V` dans un même volume
   déplace l'entrée de répertoire au lieu de copier puis effacer (Cat Doctor
   « move files » : instantané, même pour un dossier entier). *½ jour si
   ce n'est pas le cas.*
@@ -109,11 +152,11 @@ par ce qui débloque les transferts depuis le PC.
   `po2dsk.py`. *½ jour.*
 - 🟢 **`BOOTBLK`** : réécrire les blocs d'amorce ProDOS (données dans
   `data/`). *¼ jour.*
-- 🟢 **`DRIVESPD`** : la vitesse d'un lecteur Disk II, mesurée sur le temps
+- 🟢 💾 **`DRIVESPD`** : la vitesse d'un lecteur Disk II, mesurée sur le temps
   d'un tour, affichée en tours par minute avec la cible de 300, ou en
   millisecondes (198 à 202) comme Copy II Plus, pour régler le
   potentiomètre. *½ jour.*
-- 🟢 **`WIPE`** : effacer les blocs libres d'un volume, ou un disque entier
+- 🟢 💾 **`WIPE`** : effacer les blocs libres d'un volume, ou un disque entier
   (Locksmith « erase disk », Copy II Plus « delete disk »), après `ERASE`.
   *¼ jour.*
 
@@ -125,14 +168,14 @@ réparation d'abord (`UNDELETE`, `VOLINFO`, `FIXIT`, `BLKEDIT` partagent la
 lecture de la table d'allocation), puis `ADTPRO` et `NIBCOPY`, qui
 partagent la lecture brute de piste avec `NIBREAD` et `NIBBLE`.
 
-- 🟠 **`UNDELETE`** : ProDOS efface un fichier en mettant son type de
+- 🟠 💾 **`UNDELETE`** : ProDOS efface un fichier en mettant son type de
   stockage à zéro, l'entrée reste lisible. Lister les entrées effacées du
   dossier, vérifier que leurs blocs sont encore libres, restaurer. Aussi sur
   une disquette DOS 3.3 (l'entrée du catalogue marquée `$FF`). Comme Copy
   II Plus : marquer `?` un fichier dont des blocs ont été réalloués depuis
   (« lost file »), et montrer les caractères de contrôle cachés dans un nom
   DOS 3.3. Petite surcouche. *1 jour.*
-- 🟠 **`VOLINFO`** : carte des blocs du volume en 80 colonnes (libres,
+- 🟠 💾 **`VOLINFO`** : carte des blocs du volume en 80 colonnes (libres,
   occupés, fragmentation), la liste des blocs d'un fichier, et le contrôle
   de la table d'allocation contre les listes de blocs de tous les fichiers :
   blocs perdus, blocs partagés, compteurs d'entrées faux. Aussi la carte
@@ -141,7 +184,7 @@ partagent la lecture brute de piste avec `NIBREAD` et `NIBBLE`.
   sur l'imprimante ou dans un fichier texte : catalogue en arbre, blocs par
   fichier, fichiers par bloc, carte, arbre des dossiers (avec `TREE`). La
   moitié de Mr. Fixit. *1 jour.*
-- 🟠 **`FIXIT`** : réparer ce que `VOLINFO` a trouvé : reconstruire la table
+- 🟠 💾 **`FIXIT`** : réparer ce que `VOLINFO` a trouvé : reconstruire la table
   d'allocation, corriger les compteurs, détacher un bloc partagé, après
   `ERASE`. La liste de Mr. Fixit, à reprendre telle quelle : pointeurs
   d'en-tête et de parent des sous-dossiers, chaînage arrière des blocs de
@@ -155,7 +198,7 @@ partagent la lecture brute de piste avec `NIBREAD` et `NIBBLE`.
   `BAD.BLOCKS` en déplaçant ce qui se lit encore). Côté DOS 3.3 : vérifier
   et refaire la VTOC, corriger les comptes de secteurs du catalogue
   (Locksmith « fix sector counts »). *2 jours.*
-- 🟠 **`BLKEDIT`** : l'éditeur de blocs de Block Warden et Copy II Plus :
+- 🟠 💾 **`BLKEDIT`** : l'éditeur de blocs de Block Warden et Copy II Plus :
   aller au bloc N, suivre les blocs d'un fichier, hexa et ASCII, décodage
   d'un bloc de répertoire ou d'index, modifier, écrire après `ERASE`,
   extraire une suite de blocs vers un fichier (récupérer un fichier dont
@@ -166,7 +209,7 @@ partagent la lecture brute de piste avec `NIBREAD` et `NIBBLE`.
   disque à un autre, l'imprimer, et lister tous les blocs qui ressemblent à
   un bloc d'index ou de répertoire pour reconstruire un répertoire perdu
   (Block Warden `^`). Grande surcouche. *2 jours.*
-- 🟠 **`ADTPRO`** : le client ADTPro dans A2FC, face au **vrai serveur
+- 🟠 💾 **`ADTPRO`** : le client ADTPro dans A2FC, face au **vrai serveur
   ADTPro** du PC, sans le modifier, pour faire des images de disques de
   l'Apple II vers un PC ordinaire et les ramener, par la Super Serial Card ou
   le port 2 du //c à 115 200 bauds (fixé le 2026-09-09 ; l'Uthernet II
@@ -199,7 +242,7 @@ partagent la lecture brute de piste avec `NIBREAD` et `NIBBLE`.
   envoyée puis reçue, comparée octet à octet ; le nibble contre un `.woz`
   monté dans POM2. *2 jours pour `P`/`G`/`D`/`C`, 1 jour pour `N` après
   `NIBCOPY`.*
-- 🟠 **`NIBCOPY`** : copier une disquette piste à piste, brute, d'un lecteur
+- 🟠 💾 **`NIBCOPY`** : copier une disquette piste à piste, brute, d'un lecteur
   Disk II à l'autre, ou sur un seul lecteur avec échanges. Le cœur :
   - **lire** une piste par les bascules du contrôleur (`$C08C,X` / `$C08E,X`),
     un tour complet et un peu plus, dans un tampon de `$1A00` (6 656 nibbles
@@ -229,55 +272,55 @@ partagent la lecture brute de piste avec `NIBREAD` et `NIBBLE`.
   une image `.woz` protégée du lecteur 1 vers une `.nib` en lecteur 2 et
   vérifier que la copie amorce, sur quelques protections classiques. Grande
   surcouche, `$1B00-$3FFF`, tampons en AUX. *3 jours.*
-- 🟠 **`NIBREAD` / `NIBWRITE`** : lire une disquette entière en image `.NIB`
+- 🟠 💾 **`NIBREAD` / `NIBWRITE`** : lire une disquette entière en image `.NIB`
   (35 × 6 656 = 232 960 octets) sur le disque dur ou sur VDrive, et écrire
   un `.NIB` sur une disquette. C'est l'archivage des disquettes protégées
   vers le PC et vers les émulateurs, sans autre matériel qu'un Apple II. En
   lecture d'image, accepter aussi le `.WOZ` (plus riche : quarts de piste,
   bits faibles) ; en écriture, produire du `.NIB` seulement, ce qu'un Disk
   II sait reproduire. Dans `DISKIMG`. *1 jour après `NIBCOPY`.*
-- 🟡 **`NIBBLE`** : lire une piste brute et la montrer nibble par nibble,
+- 🟡 💾 **`NIBBLE`** : lire une piste brute et la montrer nibble par nibble,
   avec les marques d'adresse repérées, pour diagnostiquer une disquette qui
   ne se lit plus ; la vue « scan » de Locksmith, une ligne par piste avec la
   longueur des zones de synchronisation et les secteurs trouvés ; puis,
   avec `NIBCOPY`, l'édition : marquer un nibble comme synchronisation,
   insérer, supprimer, réécrire la piste (le disk editor de Locksmith).
   *1 jour, sur la lecture et l'écriture de piste de `NIBCOPY`.*
-- 🟡 **`DIRSORT`** : trier physiquement un dossier sur le disque, par nom,
+- 🟡 💾 **`DIRSORT`** : trier physiquement un dossier sur le disque, par nom,
   type, date de création ou de modification, type puis nom, ou à l'envers,
   et déplacer une entrée à la main avant d'écrire (Cat Doctor « sort
   directory »), en réécrivant ses blocs. Un dossier de plus de 139 entrées,
   qu'A2FC ne trie pas en mémoire, se retrouve trié pour de bon. Et le geste
   caché de Cat Doctor : retirer une entrée abîmée du répertoire sans toucher
   aux blocs, `FIXIT` faisant le reste. *1 jour.*
-- 🟡 **`RESCUE`** : relire un bloc ou un secteur illisible jusqu'à trente
+- 🟡 💾 **`RESCUE`** : relire un bloc ou un secteur illisible jusqu'à trente
   fois, garder ce qui passe, remplir de zéros le reste et le dire ; copier
   un fichier ou un disque entier ainsi (Locksmith « advanced disk
   recovery »). *1 jour.*
-- 🟡 **`DISKCMP`** : comparer deux disquettes ou deux images bloc à bloc, et
+- 🟡 💾 **`DISKCMP`** : comparer deux disquettes ou deux images bloc à bloc, et
   la copie de disquette avec relecture (Copy II Plus, Locksmith « 16-sector
   compare »). Dans `DISKIMG`. *½ jour.*
-- 🟡 **`DISKIMG`, ce qui lui manque face à Copy II Plus** : formater la cible
+- 🟡 💾 **`DISKIMG`, ce qui lui manque face à Copy II Plus** : formater la cible
   pendant la copie ; continuer après une erreur de lecture en listant les
   pistes ou blocs fautifs au lieu de s'arrêter ; plusieurs copies de suite
   quand l'image tient en mémoire ; ne copier que les blocs utilisés d'un
   volume, et accepter une cible plus grande en agrandissant le volume
   (ProSel `COPY`) ; et vérifier qu'un lecteur 3,5" SmartPort de 800 Ko passe
   en copie et en image. *1 jour.*
-- 🟡 **Les décodeurs face à des données corrompues.** `UNSHRINK`, `BINARY2`,
+- 🟡 💾 **Les décodeurs face à des données corrompues.** `UNSHRINK`, `BINARY2`,
   `AWP`, `DOS33` et `IMGFS` lisent des fichiers qu'on ne contrôle pas, sans
   protection mémoire. Une archive ou une image tronquée ou malformée peut
   figer la machine. Compiler ces décodeurs sur l'hôte (ils sont déjà isolés
   en surcouches ; le cœur LZW est en assembleur, à couvrir par
   `tools/mkshk.py` en oracle inversé) et les passer au fuzz. *1 à 2 jours.*
-- 🟡 **Le //c au banc complet.** Les panneaux arrivent sous `preset='iic'` ;
+- 🟡 💾 **Le //c au banc complet.** Les panneaux arrivent sous `preset='iic'` ;
   reste à faire tourner `bench/run.py` et `bench/memory.py` dessus et à
   regarder ce qui casse. Sans Mockingboard, la fanfare doit se taire
   proprement ; `/RAM` est le même. Rappel POM2 : le lecteur intégré du //c
   EST le Disk II du slot 6, le disque dur du banc est l'unité SmartPort du
   port arrière (slot 5, `DEVLST` `$5B`), et le //c doit garder son Disk II
   branché sinon le firmware attend à `$CC2C`. *½ jour.*
-- 🟡 **VDrive sur une vraie Super Serial Card et sur un //c.** Le pilote
+- 🟡 💾 **VDrive sur une vraie Super Serial Card et sur un //c.** Le pilote
   (`src/vsdrive.s`) passe 6/6 au banc (`bench/vdrive.py`, `pom2_playtest
   --ssc`), avec son gestionnaire d'interruption pour la chute de DCD.
   Reste un retour d'utilisateur sur une SSC réelle, derrière un câble USB
@@ -309,11 +352,11 @@ II, et les formats qui ouvrent la production du IIgs et des hackers.
   Avec VDrive, vers le PC. *2 jours.*
 - 🟡 **`SYNC`** : ne copier que les fichiers manquants ou plus récents entre
   les deux panneaux. *1 jour.*
-- 🟡 **`DOS33W`** : copier un fichier ProDOS vers une disquette DOS 3.3, avec
+- 🟡 💾 **`DOS33W`** : copier un fichier ProDOS vers une disquette DOS 3.3, avec
   l'en-tête Applesoft ou binaire ajouté et le nom converti ; changer le
   programme d'amorce (`HELLO`) ; retirer le DOS d'une disquette pour gagner
   ses deux pistes (« delete DOS »). Le sens inverse de `DOS33.PLG`. *1 jour.*
-- 🟡 **`DOS33FMT`** : initialiser une disquette 16 secteurs. Sans DOS écrit
+- 🟡 💾 **`DOS33FMT`** : initialiser une disquette 16 secteurs. Sans DOS écrit
   dessus (le DOS 3.3 n'est pas librement redistribuable, ProDOS 8 2.4 l'est
   par John Brooks) : une disquette de données, VTOC et catalogue vides, que
   `DOS33W` remplit. Pour la rendre amorçable, « copy DOS » : recopier les
