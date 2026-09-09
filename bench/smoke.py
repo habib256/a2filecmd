@@ -13,7 +13,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from pom2 import Pom2, Session, ROOT, DISK, IMG
+from pom2 import Pom2, Session, ROOT, DISK, FULL
 
 
 def scratch(dirpath, name='SCRATCH', blocks=1600):
@@ -36,13 +36,13 @@ def main():
         with Pom2(scratch(tmp), floppy=floppy, port=6601) as p:
             s = Session(p)
             # la page de titre du lanceur, le temps du chargement : chaque
-            # version s'y nomme, " - 65C02" ou " - 6502"
+            # edition s'y nomme, "6502 FLOPPY EDITION" ou "65C02 COMPLETE EDITION"
             s.wait(lambda: s.has('A2 FILE CMD'), 'page de titre', 60)
             title = next((r for r in s.rows() if 'A2 FILE CMD' in r), '')
             s.boot()
-            s.ok('la page de titre nomme la version (65C02 ou 6502)',
-                 (' - 6502 ' if IMG.endswith('-6502') else ' - 65C02 ') in title,
-                 title.strip()[:40])
+            s.ok('la page de titre nomme l edition (6502 FLOPPY ou 65C02 COMPLETE)',
+                 ('65C02 COMPLETE' if FULL else '6502 FLOPPY') in title,
+                 title.strip()[:60])
             s.ok('la disquette publiee demarre sur les panneaux',
                  s.has('/A2FILECMD'), s.rows()[0][:40])
             s.ok('la barre de statut porte le nom et la version',
@@ -51,6 +51,9 @@ def main():
                  any(r.startswith('A2FILE.SYSTEM') for r in s.rows()))
             s.ok('le dossier A2FILE est la, et pas de DEMO : la disquette est nue',
                  s.has('A2FILE/') and not s.has('DEMO/'))
+            if not FULL:
+                s.ok('l edition disquette n a pas BASIC.SYSTEM',
+                     not any(r.startswith('BASIC.SYSTEM') for r in s.rows()))
             print('\n'.join(r.rstrip() for r in s.rows()[:22]), flush=True)
     return 0
 

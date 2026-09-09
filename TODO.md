@@ -51,7 +51,7 @@ en plus de ses données) :
 | --- | --- |
 | Socle : `PRODOS`, `A2FILE.SYSTEM`, `A2FILE.CODE`, `A2FILE.HELP`, `MENU`, `HELP`, `DELETE`, `ATTR`, `RUN`, `TEXT`, `HEX`, `DISKIMG`, `FORMAT.SYS`, `DOS33`, `IMGFS` | 168 |
 | Sortent de la disquette : `EDIT`, `MUSIC`, `IMAGE`, `AWP`, `BASLIST`, `COMPARE`, `SEARCH`, `UNSHRINK`, `BINARY2` (45) et `BASIC.SYSTEM` (21) | −66 |
-| **Libre pour les outils disque à venir** | **78** |
+| **Libre pour les outils disque à venir** (mesuré sur la disquette construite : 77) | **77** |
 | À venir, marqué `💾` : `NIBCOPY` 17, `ADTPRO` 13, `FIXIT` 7, `UNDELETE` 4, `VOLINFO` 4, `NIBBLE` 4, `DIRSORT` 4, `RESCUE` 4, `DOS33W` 4, `VERIFY` 3, `DATE` 3, `TXTCONV` 3, `TAGPAT` 3, `DRIVESPD` 3, `WIPE` 2 (estimations d'après les surcouches actuelles) | 78 |
 | `BLKEDIT` (grande surcouche, ~13), s'il doit y tenir aussi | +13 |
 
@@ -67,12 +67,16 @@ C'est juste : zéro bloc de marge avant `BLKEDIT`. Deux façons de respirer,
   sorties, et `load_overlay` qui, après `A2FILE/` sur le disque de démarrage,
   cherche aussi `A2FILE/` sur le lecteur 2. L'utilisateur à deux lecteurs a
   tout ; celui à un lecteur échange. *½ jour.*
-- 🟠 **Les deux éditions dans le Makefile et le CI** : `make disk` produit la
-  disquette 6502 minimale (liste `PLUGINS_FLOPPY`, sans `BASIC.SYSTEM`) et le
-  `.2mg` 65C02 complet ; plus de `.2mg` 6502 ni de disquette 65C02 (le banc
-  `run.py` tourne sur le `.2mg`, `smoke.py` et les bancs disque sur la
-  disquette avec `A2FC_BUILD=build-6502`) ; le README et la page de titre
-  disent l'édition. *½ jour.*
+- ✅ **Les deux éditions dans le Makefile et le CI** (fait le 2026-09-09) :
+  `make disk` produit la disquette 6502 minimale (`PLUGINS_FLOPPY`, sans
+  `BASIC.SYSTEM`, 77 blocs libres) et le `.2mg` 65C02 complet ; plus de
+  `.2mg` 6502 ni de disquette 65C02 ; la page de titre, le README, le manuel
+  et les notes de version disent l'édition. Les bancs amorcent la disquette
+  publiée avec les symboles de `build-6502/` ; ceux qui ont besoin de
+  l'éditeur, des images, des archives et des lecteurs prennent
+  `build/A2FILECMD-full.po` (`make benchfloppy ARCH=enh`, jamais publiée).
+  Reste à faire : porter `run.py` et ces bancs sur le `.2mg` publié, pour
+  revenir au principe « tout part de ce qui sera téléchargé ». *½ jour.*
 
 ## L'objectif : Copy II Plus, Locksmith et ProSel en un seul outil
 

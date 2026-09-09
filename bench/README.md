@@ -23,15 +23,23 @@ qui passe ici est ce que recevra celui qui amorce la disquette.
 | `memory.py` | le creux maximal de la pile C, mesure en faisant travailler le programme |
 | `pom2.py` | le pilote d'emulateur commun |
 
-## La version 6502
+## Les deux editions
 
-`A2FC_IMG=A2FILECMD-6502 A2FC_BUILD=build-6502 python3 bench/run.py` (et les
-autres) prend les images de `make disk ARCH=6502` ; `run.py` saute alors la
-section souris, `vdrive.py` tourne. Avec en plus `A2FC_PRESET=iie_unenh`, POM2
-est le IIe de 1983 (`pom2_playtest --preset iie_unenh` : 6502 NMOS, firmware
-sans MouseText, `$FBC0 = $EA`) -- la seule machine qui prouve la version
-6502, puisqu'un `stz` ou un `bra` y sont des opcodes indefinis. Toute la
-suite y passe ; la version 65C02 y affiche son refus.
+`dist/A2FILECMD.po` est l'**edition disquette**, construite en 6502
+(`build-6502/`) avec le gestionnaire et les outils disque seulement : c'est
+elle que les bancs amorcent par defaut, et sa table de symboles est prise
+dans `build-6502/` sans rien dire. `run.py` y saute la section souris, et les
+bancs de l'editeur, des images, des archives et des lecteurs (`shk.py`,
+`bny.py`, `awp.py`, `find.py`, la session complete de `run.py`) ont besoin de
+`make benchfloppy ARCH=enh` : `A2FC_IMG=A2FILECMD-full python3 bench/run.py`
+prend `build/A2FILECMD-full.po`, la disquette 65C02 avec toutes les
+surcouches et BASIC.SYSTEM, jamais publiee, et les symboles de `build/`.
+`hd.py` amorce `dist/A2FILECMD.2mg`, l'**edition complete** publiee.
+
+Avec `A2FC_PRESET=iie_unenh`, POM2 est le IIe de 1983 (`pom2_playtest
+--preset iie_unenh` : 6502 NMOS, firmware sans MouseText, `$FBC0 = $EA`) --
+la seule machine qui prouve l'edition disquette, puisqu'un `stz` ou un `bra`
+y sont des opcodes indefinis. La version 65C02 y affiche son refus.
 
 ## Les faire tourner
 

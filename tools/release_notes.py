@@ -4,9 +4,9 @@
     release_notes.py 0.6.8 > dist/RELEASE_NOTES.md
 
 Prend la section "## [0.6.8]" du CHANGELOG (ou "## Unreleased" si le numero
-n'y est pas encore), et y ajoute le tableau des six images : la disquette
-et le disque dur, chacun dans les deux versions -- 65C02 (IIe enhanced, //c,
-IIgs, avec la souris) et 6502 (IIe non enhanced, clavier seul)."""
+n'y est pas encore), et y ajoute le tableau des deux editions : la
+disquette (6502, le gestionnaire et les outils disque) et le disque dur
+(65C02, tout)."""
 import re
 import sys
 from pathlib import Path
@@ -14,16 +14,16 @@ from pathlib import Path
 FILES = """
 ### Files
 
-| | Enhanced IIe, //c, IIgs (65C02, mouse) | Unenhanced IIe (6502, keyboard only) |
+| | Contents | Runs on |
 |---|---|---|
-| Bootable 140 KB floppy, ProDOS order | `A2FILECMD.po` | `A2FILECMD-6502.po` |
-| The same floppy, `.dsk` (DOS-order) layout | `A2FILECMD.dsk` | `A2FILECMD-6502.dsk` |
-| 32 MB hard disk with `DEMO/` | `A2FILECMD.2mg` | `A2FILECMD-6502.2mg` |
+| `A2FILECMD.po` — bootable 140 KB floppy, ProDOS order | **Floppy edition**, 6502 build: the file manager and the disk tools | Any Apple II with 128 KB and 80 columns, the 1983 IIe included; keyboard only |
+| `A2FILECMD.dsk` — the same floppy, `.dsk` (DOS-order) layout | The same | The same |
+| `A2FILECMD.2mg` — 32 MB hard disk | **Complete edition**, 65C02 build: every tool, `DEMO/`, `IMGHGR/`, BASIC.SYSTEM | Enhanced IIe, //c, IIgs; mouse optional |
 
-Every build needs 128 KB and an 80-column card. Boot an image and press **?**
-for the key map; `sha256sum -c SHA256SUMS.txt` checks the download. The disks
-also carry ProDOS 8 2.4.3 and BASIC.SYSTEM (John Brooks' free distribution;
-they are Apple's). Sources, manual and benches:
+Boot an image and press **?** for the key map; `sha256sum -c SHA256SUMS.txt`
+checks the download. The images carry ProDOS 8 2.4.3, and the `.2mg` also
+BASIC.SYSTEM (John Brooks' free distribution; they are Apple's). Sources,
+manual and benches:
 <https://github.com/habib256/a2filecmd>.
 """
 

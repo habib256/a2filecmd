@@ -14,7 +14,7 @@ import shutil, sys, tempfile, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from pom2 import Pom2, Session, ROOT, DISK
+from pom2 import Pom2, Session, ROOT, DISK, labels
 from run import RET, TAB, ESC, solid_bands
 import urllib.request
 
@@ -31,13 +31,13 @@ def main():
     with tempfile.TemporaryDirectory(prefix='a2fc-hd-') as tmp:
         tmp = Path(tmp)
         hdv = tmp / 'A2FILECMD.hdv'
-        two = DISK.with_suffix('.2mg').read_bytes()
+        two = (ROOT / 'dist/A2FILECMD.2mg').read_bytes()
         ok('le .2mg porte l en-tete 2IMG, format ProDOS, 65535 blocs',
            two[:4] == b'2IMG' and two[12] == 1 and int.from_bytes(two[20:24], 'little') == 65535)
         hdv.write_bytes(two[64:])
 
         with Pom2(hdv, port=6715) as p:
-            s = Session(p)
+            s = Session(p, labels(ROOT / 'build/a2fc.lbl'))   # l'edition complete, 65C02
             s.boot()
             ok('le disque dur /A2FILEHD amorce sur les deux panneaux', s.rows()[0].startswith('/A2FILEHD'), s.rows()[0][:40])
             ok('le panneau droit ouvre DEMO', s.rows()[0][40:].startswith('/A2FILEHD/DEMO'),

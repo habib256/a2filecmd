@@ -28,11 +28,19 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 POM2 = os.environ.get('POM2', str(Path.home() / 'src/pom2adventure/SCOSWAMP.MORE/TOOLS/build/pom2_playtest'))
-# A2FC_IMG=A2FILECMD-6502 A2FC_BUILD=build-6502 : le banc sur la version 6502
-# (make disk ARCH=6502), qui tourne aussi sur le IIe enhanced de POM2.
+# Les deux editions (Makefile, TODO.md) : dist/A2FILECMD.po est l'edition
+# disquette, construite en 6502 (build-6502/), et c'est elle que les bancs
+# amorcent par defaut -- elle tourne aussi sur le IIe enhanced de POM2.
+# A2FC_IMG=A2FILECMD-full prend build/A2FILECMD-full.po (make benchfloppy) :
+# la disquette 65C02 avec toutes les surcouches, jamais publiee, pour les
+# bancs de l'editeur, des images, des archives et des lecteurs ; sa table de
+# symboles est build/. A2FC_BUILD force le dossier de construction.
 IMG = os.environ.get('A2FC_IMG', 'A2FILECMD')
-BUILD = ROOT / os.environ.get('A2FC_BUILD', 'build')
+BUILD = ROOT / os.environ.get('A2FC_BUILD', 'build' if IMG.endswith('-full') else 'build-6502')
 DISK = ROOT / ('dist/%s.po' % IMG)
+if not DISK.exists() and (ROOT / ('build/%s.po' % IMG)).exists():
+    DISK = ROOT / ('build/%s.po' % IMG)
+FULL = 'build-6502' not in BUILD.name   # la version 65C02 : souris, toutes les surcouches
 # A2FC_PRESET=iie_unenh : la machine de POM2, le IIe non enhanced (6502 NMOS,
 # firmware de 1983) -- la seule qui prouve la version 6502.
 PRESET = os.environ.get('A2FC_PRESET', 'iie')

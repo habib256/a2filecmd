@@ -1,7 +1,12 @@
-# A2 File Cmd -- two-panel ProDOS file manager for the Apple IIe.
+# A2 File Cmd -- two-panel ProDOS file manager, Apple IIe.
 #
-#   make            the three ProDOS binaries, in build/
-#   make disk       the floppy images dist/A2FILECMD.po and .dsk
+#   make            the three ProDOS binaries, in build/ (ARCH=enh) or build-6502/
+#   make disk       the two editions: the floppy dist/A2FILECMD.po and .dsk
+#                   (6502 build, the file manager and the disk tools only) and
+#                   the hard disk dist/A2FILECMD.2mg (65C02 build, everything).
+#                   With ARCH=6502 or ARCH=enh given, only that edition.
+#   make benchfloppy  build/A2FILECMD-full.po: a 65C02 floppy with every
+#                   overlay, for the benches only -- never shipped
 #   make test       the tests outside the emulator (memory layout, volume)
 #   make bench      the POM2 benches (needs the emulator, see bench/README.md)
 #   make clean
@@ -14,14 +19,26 @@ A2FC_VERSION = 0.7
 VOLUME       = A2FILECMD
 
 VOLUME_HD    = A2FILEHD     # the .2mg hard disk: another name, to coexist with the floppy
-# ARCH=enh (default): Apple IIe enhanced, //c, IIgs -- cc65 target apple2enh
-# (65C02, MouseText), with the machine's cc65 2.19. ARCH=6502: the NON
-# enhanced IIe (6502, no MouseText), target apple2 -- whose 80-column
-# console only exists in cc65 master (git, after 2.19: machinetype,
-# aux80col, videomode for apple2): CC65_HEAD is a cc65 built from master
-# (make ; make install PREFIX=~/opt/cc65-head), kept apart so as not to
-# change the enhanced build. No mouse (for room), big BINARY2.
-# The images take the -6502 suffix (make disk ARCH=6502).
+# Two editions, one tree (decided 2026-09-09, see TODO.md):
+#
+#   ARCH=6502  the FLOPPY edition, dist/A2FILECMD.po and .dsk: cc65 target
+#              apple2 (6502, no MouseText), so it runs on any Apple II with
+#              128 KB and 80 columns, the 1983 IIe included; no mouse (for
+#              room), big BINARY2. Carries the file manager and the disk
+#              tools only (PLUGINS_FLOPPY), no BASIC.SYSTEM: what a user with
+#              two Disk II drives and no hard disk cannot do otherwise.
+#              The apple2 target's 80-column console only exists in cc65
+#              master (git, after 2.19: machinetype, aux80col, videomode):
+#              CC65_HEAD is a cc65 built from master (make ; make install
+#              PREFIX=~/opt/cc65-head), kept apart from the 2.19 build.
+#   ARCH=enh   the COMPLETE edition, dist/A2FILECMD.2mg: target apple2enh
+#              (65C02, MouseText) for the enhanced IIe, //c and IIgs, with
+#              the mouse, every overlay, BASIC.SYSTEM, DEMO/ and IMGHGR/.
+#
+# `make disk` with no ARCH builds both; with ARCH given, that edition only.
+ifeq ($(origin ARCH),undefined)
+BOTH_EDITIONS = yes
+endif
 ARCH ?= enh
 CC65_HEAD ?= $(HOME)/opt/cc65-head
 ifeq ($(ARCH),6502)
@@ -30,7 +47,7 @@ TARGET = apple2
 ASDEFS = -D A2_6502 -D CC65_MASTER
 CLDEFS = --asm-define A2_6502 --asm-define CC65_MASTER -DA2FC_6502 -DA2FC_NOMOUSE -DA2FC_BIG_BINARY2
 MOUSEOBJ =
-IMG    = A2FILECMD-6502
+IMG    = A2FILECMD
 BUILD_SUFFIX = -6502
 BIN2SIZE = 0x0D00
 LAYOUT_BIG = --big BINARY2
@@ -80,6 +97,11 @@ CODE   = $(BUILD)/A2FILE.CODE.BIN
 # two segments in its file: NAME (code) then NAMERO (strings). See
 # src/a2fc_plugin.h for the header and the service table.
 PLUGINS = IMAGE TEXT HEX DELETE HELP EDIT MUSIC RUN ATTR MENU DISKIMG IMGFS DOS33 UNSHRINK BASLIST COMPARE SEARCH BINARY2 AWP
+# The floppy edition: the commands, the two viewers that cost four blocks,
+# and the disk tools. The editor, the pictures, the music, the archives and
+# the document readers stay on the hard disk (45 blocks, with BASIC.SYSTEM's
+# 21, given back to the disk tools to come -- see TODO.md, "Les deux editions").
+PLUGINS_FLOPPY = HELP TEXT HEX DELETE RUN ATTR MENU DISKIMG IMGFS DOS33
 SYSTEM = $(BUILD)/A2FILE.SYSTEM.SYS
 FORMAT = $(BUILD)/FORMAT.SYS.SYS
 PO     = $(DIST)/$(IMG).po
@@ -88,7 +110,7 @@ DSK    = $(DIST)/$(IMG).dsk
 OBJS = $(BUILD)/crt0.o $(BUILD)/overlay.o $(BUILD)/unshrink.o $(VDRIVEOBJ) $(BUILD)/a2fc_mli.o $(BUILD)/chain.o \
        $(BUILD)/music.o $(BUILD)/memory_swap.o $(BUILD)/mli_safe.o $(MOUSEOBJ)
 
-.PHONY: all disk test bench example clean
+.PHONY: all disk benchfloppy test bench example clean
 all: $(SYSTEM) $(CODE) $(FORMAT)
 
 $(BUILD) $(DIST):
@@ -131,31 +153,58 @@ $(FORMAT): $(SRC)/format.c $(SRC)/format_diskii.s $(SRC)/format_mli.s $(SRC)/for
 	  $(SRC)/format.c $(SRC)/format_diskii.s $(SRC)/format_mli.s $(BUILD)/chain.o $(IOBUF)
 
 # -- The floppy and the hard disk -------------------------------------------
-# Volume /A2FILECMD, bootable: ProDOS 2.4.3, the launcher at the root (the
-# only .SYSTEM file), the program, its overlays (BINs loaded at $1B00,
-# hence their auxtype) and its help in A2FILE/. Two sizes of the same
-# volume: the 5.25 floppy (280 blocks, .po and .dsk), which carries only
-# the program to leave as much room as possible; and the .2mg hard disk
-# (65535 blocks, ProDOS's maximum), which adds a DEMO directory built from
+# Two volumes, bootable: ProDOS 2.4.3, the launcher at the root (the only
+# .SYSTEM file), the program, its overlays (BINs loaded at $1B00, hence
+# their auxtype) and its help in A2FILE/.
+#   The floppy /A2FILECMD (280 blocks, .po and .dsk), the 6502 build: the
+# file manager and the disk tools (PLUGINS_FLOPPY), nothing else.
+#   The hard disk /A2FILEHD (.2mg, 65535 blocks, ProDOS's maximum), the
+# 65C02 build: every overlay, BASIC.SYSTEM, and a DEMO directory built from
 # scratch with one specimen of everything A2 File Cmd knows how to open.
 STAGE = $(BUILD)/vol
 HDV = $(BUILD)/$(IMG).hdv
 TWOMG = $(DIST)/$(IMG).2mg
+FULLPO = $(BUILD)/$(IMG)-full.po
+STAGE_DEPS = $(SYSTEM) $(CODE) $(FORMAT) $(DATA)/A2FILE.HELP.TXT $(DATA)/PRODOS.SYS \
+       $(DATA)/prodos_boot.tmpl $(TOOLS)/mkvolume.py
+
+ifdef BOTH_EDITIONS
+disk:
+	$(MAKE) ARCH=6502 disk
+	$(MAKE) ARCH=enh disk
+else ifeq ($(ARCH),6502)
 disk: $(PO)
-$(PO): $(SYSTEM) $(CODE) $(FORMAT) $(DATA)/A2FILE.HELP.TXT $(DATA)/PRODOS.SYS $(DATA)/BASIC.SYSTEM.SYS \
-       $(DATA)/README.TXT $(DATA)/prodos_boot.tmpl \
-       $(TOOLS)/mkvolume.py $(TOOLS)/mkdemo.py $(TOOLS)/po2dsk.py $(TOOLS)/po22mg.py \
-       $(TOOLS)/mkshk.py $(TOOLS)/mkbny.py $(TOOLS)/mkdos33.py $(wildcard $(DATA)/IMGHGR/*) | $(DIST)
+else
+disk: $(TWOMG)
+endif
+
+# The stage: the launcher, the program, the overlays named in $(1), the help,
+# the formatter. Called with the plugin list.
+define stage
 	@rm -rf $(STAGE) && mkdir -p $(STAGE)/A2FILE
-	cp $(DATA)/PRODOS.SYS $(DATA)/BASIC.SYSTEM.SYS $(STAGE)/
+	cp $(DATA)/PRODOS.SYS $(STAGE)/
 	cp $(SYSTEM) $(STAGE)/A2FILE.SYSTEM.SYS
 	cp $(CODE) $(STAGE)/A2FILE/A2FILE.CODE.BIN
-	for p in $(PLUGINS); do cp $(CODE).$$p "$(STAGE)/A2FILE/$$p.PLG#061B00"; done
+	for p in $(1); do cp $(CODE).$$p "$(STAGE)/A2FILE/$$p.PLG#061B00"; done
 	cp $(DATA)/A2FILE.HELP.TXT $(STAGE)/A2FILE/A2FILE.HELP.TXT
 	cp $(FORMAT) $(STAGE)/A2FILE/FORMAT.SYS.SYS
+endef
+
+# The floppy edition (ARCH=6502).
+$(PO): $(STAGE_DEPS) $(TOOLS)/po2dsk.py | $(DIST)
+	$(call stage,$(PLUGINS_FLOPPY))
 	python3 $(TOOLS)/mkvolume.py $(STAGE) $(PO) --volume $(VOLUME) \
 	  --boot $(DATA)/prodos_boot.tmpl --blocks 280
 	python3 $(TOOLS)/po2dsk.py $(PO) $(DSK)
+	@python3 $(TOOLS)/prodos_read.py $(PO) | head -1
+	@echo "==> $(PO) and $(DSK): the floppy edition ($(ARCH))"
+
+# The complete edition (ARCH=enh).
+$(TWOMG): $(STAGE_DEPS) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/README.TXT \
+       $(TOOLS)/mkdemo.py $(TOOLS)/po22mg.py \
+       $(TOOLS)/mkshk.py $(TOOLS)/mkbny.py $(TOOLS)/mkdos33.py $(wildcard $(DATA)/IMGHGR/*) | $(DIST)
+	$(call stage,$(PLUGINS))
+	cp $(DATA)/BASIC.SYSTEM.SYS $(STAGE)/
 	mkdir -p $(STAGE)/DEMO
 	cp $(DATA)/README.TXT $(STAGE)/DEMO/README.TXT
 	python3 $(TOOLS)/mkdemo.py $(STAGE)/DEMO
@@ -163,15 +212,27 @@ $(PO): $(SYSTEM) $(CODE) $(FORMAT) $(DATA)/A2FILE.HELP.TXT $(DATA)/PRODOS.SYS $(
 	python3 $(TOOLS)/mkvolume.py $(STAGE) $(HDV) --volume $(VOLUME_HD) \
 	  --boot $(DATA)/prodos_boot.tmpl --blocks 65535
 	python3 $(TOOLS)/po22mg.py $(HDV) $(TWOMG)
-	@rm -rf $(STAGE)/DEMO $(STAGE)/IMGHGR   # the stage becomes the bare floppy again (bench/plugin.py picks it up)
-	@echo "==> $(PO), $(DSK) and $(TWOMG)"
+	@rm -rf $(STAGE)/DEMO $(STAGE)/IMGHGR   # the stage keeps the program alone (bench/plugin.py picks it up)
+	@echo "==> $(TWOMG): the complete edition ($(ARCH))"
+
+# A 65C02 floppy with every overlay and BASIC.SYSTEM, for the benches that
+# exercise the editor, the pictures, the archives and the readers from a
+# floppy (bench/run.py and friends, A2FC_IMG=A2FILECMD-full). Never shipped.
+benchfloppy: $(FULLPO)
+$(FULLPO): $(STAGE_DEPS) $(DATA)/BASIC.SYSTEM.SYS
+	$(call stage,$(PLUGINS))
+	cp $(DATA)/BASIC.SYSTEM.SYS $(STAGE)/
+	python3 $(TOOLS)/mkvolume.py $(STAGE) $(FULLPO) --volume $(VOLUME) \
+	  --boot $(DATA)/prodos_boot.tmpl --blocks 280
+	@echo "==> $(FULLPO): the bench floppy, every overlay ($(ARCH))"
 
 test:
 	python3 $(TOOLS)/test_check_layout.py
 	python3 $(TOOLS)/test_mkvolume.py
 	python3 $(TOOLS)/test_mkdemo.py
 
-bench: all disk
+bench: disk
+	$(MAKE) ARCH=enh benchfloppy
 	python3 bench/run.py
 
 # The third-party example overlay (sdk/), compiled OUTSIDE the tree with only

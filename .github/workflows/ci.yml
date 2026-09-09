@@ -7,12 +7,12 @@ on:
   pull_request:
   workflow_dispatch:
 
-# Deux versions du meme arbre, a chaque fois : 65C02 (IIe enhanced, //c,
-# IIgs, avec la souris ; cc65 2.19, celui d'Ubuntu) et 6502 (IIe non
-# enhanced, clavier seul ; cc65 master, dont la cible apple2 a la console
-# 80 colonnes en 6502 -- construit ici depuis git, a un commit fixe, et
-# garde en cache). Une publication porte les six images et une seule
-# liste d'empreintes.
+# Deux editions du meme arbre, a chaque fois : la disquette (6502, le
+# gestionnaire et les outils disque ; cc65 master, dont la cible apple2 a la
+# console 80 colonnes en 6502 -- construit ici depuis git, a un commit fixe,
+# et garde en cache) et le disque dur .2mg (65C02, tout ; cc65 2.19, celui
+# d'Ubuntu). Une publication porte les trois images et une seule liste
+# d'empreintes.
 env:
   CC65_HEAD_COMMIT: e11fb5c
 
@@ -54,27 +54,24 @@ jobs:
       # Le lien echoue si le code passe sous le plancher de la pile C ou si
       # la coupe du fichier ne correspond plus au lanceur : check_layout.py
       # tourne dans la recette, pas apres coup.
-      - name: Version 65C02 (IIe enhanced, //c, IIgs, souris)
-        run: make all disk
-
-      - name: Version 6502 (IIe non enhanced, clavier)
-        run: make all disk ARCH=6502
+      - name: Les deux editions (disquette 6502, disque dur 65C02)
+        run: make disk
 
       - name: Relire les images produites
         run: |
-          for img in A2FILECMD A2FILECMD-6502; do
-            python3 tools/prodos_read.py dist/$img.po
-            test "$(stat -c%s dist/$img.po)" = 143360
-            test "$(stat -c%s dist/$img.dsk)" = 143360
-            python3 tools/po2dsk.py dist/$img.po /tmp/again.dsk
-            cmp /tmp/again.dsk dist/$img.dsk
-            test "$(stat -c%s dist/$img.2mg)" = 33553984
-          done
+          python3 tools/prodos_read.py dist/A2FILECMD.po
+          test "$(stat -c%s dist/A2FILECMD.po)" = 143360
+          test "$(stat -c%s dist/A2FILECMD.dsk)" = 143360
+          python3 tools/po2dsk.py dist/A2FILECMD.po /tmp/again.dsk
+          cmp /tmp/again.dsk dist/A2FILECMD.dsk
+          test "$(stat -c%s dist/A2FILECMD.2mg)" = 33553984
+          # la disquette ne porte que le gestionnaire et les outils disque
+          python3 tools/prodos_read.py dist/A2FILECMD.po | grep -q 'DISKIMG.PLG'
+          ! python3 tools/prodos_read.py dist/A2FILECMD.po | grep -q 'EDIT.PLG\|BASIC.SYSTEM'
 
       - name: Empreintes et notes de version
         run: |
-          cd dist && sha256sum A2FILECMD.po A2FILECMD.dsk A2FILECMD.2mg \
-            A2FILECMD-6502.po A2FILECMD-6502.dsk A2FILECMD-6502.2mg | tee SHA256SUMS.txt
+          cd dist && sha256sum A2FILECMD.po A2FILECMD.dsk A2FILECMD.2mg | tee SHA256SUMS.txt
           cd .. && python3 tools/release_notes.py "${GITHUB_REF_NAME}" > dist/RELEASE_NOTES.md
 
       - name: Les cartes memoire, pour le journal de construction
@@ -87,7 +84,7 @@ jobs:
           done
           python3 tools/prodos_read.py dist/A2FILECMD.po >> $GITHUB_STEP_SUMMARY
 
-      # Les six images seules : tous les chemins sous dist/, dont
+      # Les trois images seules : tous les chemins sous dist/, dont
       # upload-artifact retire le prefixe commun -- le telechargement du
       # travail de publication les remet dans dist/ et les trouve la. Y
       # mêler build/*.map ferait un artefact a deux racines, donc des
@@ -116,20 +113,20 @@ jobs:
     runs-on: ${{ vars.POM2_RUNNER }}
     steps:
       - uses: actions/checkout@v4
-      - run: make all disk && make all disk ARCH=6502
-      - name: Session complete, 65C02
-        run: python3 bench/run.py --out bench-out
-      - name: Session complete, 6502
-        run: A2FC_IMG=A2FILECMD-6502 A2FC_BUILD=build-6502 python3 bench/run.py --out bench-out-6502
+      - run: make disk && make benchfloppy ARCH=enh
+      - name: La disquette publiee (6502) demarre
+        run: python3 bench/smoke.py
+      - name: Session complete, 65C02 (disquette de banc, toutes les surcouches)
+        run: A2FC_IMG=A2FILECMD-full python3 bench/run.py --out bench-out
+      - name: Le disque dur publie (65C02)
+        run: python3 bench/hd.py
       - name: Budget de pile
         run: python3 bench/memory.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: a2filecmd-bench
-          path: |
-            bench-out
-            bench-out-6502
+          path: bench-out
 
   release:
     name: publication

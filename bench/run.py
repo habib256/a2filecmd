@@ -25,8 +25,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-from pom2 import Pom2, Session, ROOT, DISK, IMG
-HAS_MOUSE = not IMG.endswith('-6502')
+from pom2 import BUILD, Pom2, Session, ROOT, DISK, IMG
+HAS_MOUSE = 'build-6502' not in str(BUILD)   # pas de souris dans la version 6502
 import mkdemo
 import mkdos33
 
