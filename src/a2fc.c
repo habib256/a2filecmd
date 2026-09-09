@@ -1778,10 +1778,24 @@ static const char RAM_NOTE[] = "  /RAM was rebuilt empty.";
 /* HGR simple, page 1, sans le mode double : 80COL et DHIRES coupes.
  * TXTCLR ($C050) en DERNIER : allumer le graphique avant d'avoir arme HIRES
  * montre la page texte relue en basse resolution -- un damier de couleurs le
- * temps de deux ecritures, juste assez pour une trame sur un moniteur lent. */
+ * temps de deux ecritures, juste assez pour une trame sur un moniteur lent.
+ *
+ * Une carte RGB (Le Chat Mauve, Video-7) tient un verrou de deux bits
+ * cadence par le front $C05E -> $C05F, sa donnee etant 80COL : poser AN3
+ * haut pour l'HGR simple le cadence donc, qu'on le veuille ou non. En
+ * coupant 80COL AVANT ce front, on lui poussait un zero a chaque image --
+ * deux HGR de suite et le verrou tombait sur BW560, un mode que le
+ * programme n'a jamais demande. On le cadence donc avec des uns, deux
+ * fois, ce qui le laisse sur COL140, son etat d'allumage ; 80COL retombe
+ * ensuite, l'HGR simple se lisant en 40 colonnes. Sans carte RGB ces
+ * ecritures ne changent rien : ce sont les memes bascules qu'avant. */
 static void show_hgr(void)
 {
-    *(unsigned char*)0xC000 = 0; *(unsigned char*)0xC00C = 0; *(unsigned char*)0xC05F = 0;
+    *(unsigned char*)0xC000 = 0;                              /* 80STORE off */
+    *(unsigned char*)0xC00D = 0;                              /* 80COL on : la donnee du verrou */
+    *(unsigned char*)0xC05E = 0; *(unsigned char*)0xC05F = 0; /* un front, donnee 1 */
+    *(unsigned char*)0xC05E = 0; *(unsigned char*)0xC05F = 0; /* deux : COL140, AN3 haut */
+    *(unsigned char*)0xC00C = 0;                              /* 80COL off */
     *(unsigned char*)0xC057 = 0; *(unsigned char*)0xC054 = 0; *(unsigned char*)0xC052 = 0;
     *(unsigned char*)0xC050 = 0;
 }
