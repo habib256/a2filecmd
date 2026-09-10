@@ -17,7 +17,7 @@ starting and identifies the edition on its title screen.
 | Edition | What to use |
 |---|---|
 | **BOOT + EXTRA** | Two 140 KB floppies for the same CPU and release. Boot BOOT; EXTRA supplies the additional tools and BASIC.SYSTEM. |
-| **XL** | One bootable 32 MB `.2mg` with all 43 overlays, BASIC.SYSTEM and demonstration files. No EXTRA disk is needed. |
+| **XL** | One bootable 32 MB `.2mg` with all 44 overlays, BASIC.SYSTEM and demonstration files. No EXTRA disk is needed. |
 
 The download names include the CPU, role and version:
 
@@ -53,7 +53,7 @@ opens `DEMO/`; try its text, pictures, music and sample archives.
 
 ### The companion floppy and disk swaps
 
-EXTRA contains 24 tools absent from BOOT, plus the common menu and
+EXTRA contains 25 tools absent from BOOT, plus the common menu and
 BASIC.SYSTEM. Use the **same CPU and version** on both disks.
 
 With two Disk II drives, keep BOOT in **slot 6, drive 1** and put EXTRA in
@@ -71,7 +71,7 @@ session; these plugin-loading prompts use slot 6.
 | 6502 | BOOT `/A2FC6502`; EXTRA `/A2EXTRA6502`; XL `/A2XL6502` |
 | 65C02 | BOOT `/A2FC65C02`; EXTRA `/A2EXTRA65C02`; XL `/A2XL65C02` |
 
-The menu retains all 42 commands when EXTRA is absent. Tools that need both
+The menu retains all 43 commands when EXTRA is absent. Tools that need both
 source and destination online still require another drive or volume.
 **DISKCMP S** and **W → Copy** have their own single-drive exchange modes.
 
@@ -149,6 +149,7 @@ The following tools supplement the main keys and readers.
 | **GOTO** | Nine favourite directories: A adds, D then a digit removes, 1–9 jumps. Saved in `A2FILE/GOTO.CFG`. |
 | **FIND** | Search the volume by name pattern; start with `"` to search contents, ignoring case. Return jumps to a result. Up to 20 results; a full search queue is reported. |
 | **BLKVIEW** | Read device or image blocks: H hex/ASCII, D directory, I index, N/P block, Space page, G four-digit hex block, F find four bytes (8 hex digits), A find next, X extract blocks, ESC back. Source stays unchanged. |
+| **DISASM** | Read BIN/SYS as assembly: N/Space next, P previous (last 64 pages), C 6502/65C02, G six-digit hex file offset, L four-digit load address, R start, ESC back. BIN uses its auxtype; SYS starts at $2000. |
 | **CRC** | Calculate CRC-32 for the selection or tagged files. |
 | **IDENT** | Identify a file by content; text statistics cover its first 512 bytes. |
 | **MDVIEW** | Read Markdown or long text with wrapping, headings, lists and code; page forward/back. |
@@ -200,6 +201,10 @@ are refused. Only complete exports end with `END REPORT`; partial files remain.
 **MKIMAGE** refuses
 existing names and removes cancelled/incomplete new images; 32,767 blocks
 is the maximum that fits in a single ProDOS image file.
+
+**DISASM** shows file offsets, 16-bit CPU addresses, bytes and instructions.
+C changes decoding at the current offset and resets page history; 65C02 includes
+Rockwell/WDC extensions. Unknown/truncated instructions appear as `.BYTE`.
 
 **BLKVIEW F** searches forward from the current block, including matches across
 block boundaries; A continues without wrapping. X extracts from the current block:

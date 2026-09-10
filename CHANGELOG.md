@@ -5,6 +5,8 @@ downloads and installation.
 
 ## Unreleased
 
+- Added DISASM on EXTRA and XL for both CPUs: read-only BIN/SYS disassembly, selectable 6502 or 65C02 (including Rockwell/WDC extensions), instruction-aligned pages, file-offset jumps and load-address override. Unknown or truncated instructions remain visible as data bytes; short reads are reported. Opcode tables adapted from cc65 da65 (notice retained in source).
+
 - Extended BLKVIEW with four-byte hexadecimal search, overlapping/cross-block matches, find-next and bounded block extraction to a new binary file in the other panel. Extraction normalizes PO/DSK/2MG order, refuses existing names and writes device copies to another volume; cancellation/read/write errors retain partial output.
 
 - Fixed TREE falsely reporting an incomplete XL root scan despite correct totals: ProDOS GET_FILE_INFO returns volume allocation for a root directory. TREE and SYNC now count its linked directory blocks, with bounded reads and error/cancellation handling.

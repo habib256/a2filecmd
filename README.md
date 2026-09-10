@@ -40,6 +40,7 @@ The **!** menu also offers text and disk-image conversion, CRC-32, file
 identification, Markdown reading, volume-wide search, favourite directories,
 batch renaming and type repair. EXTRA and XL also provide UNDELETE recovery,
 DISKCMP comparison, MKIMAGE creation, RESCUE extraction, SYNC updates and TREE totals. BLKVIEW searches and extracts blocks while preserving the source; DISKIMG reads back disk writes.
+DISASM reads BIN/SYS files as 6502 or 65C02 assembly.
 VERIFY handles tagged files and VOLINFO exports allocation reports and file blocks.
 DATE, TAGPAT, TXTCONV, VOLNAME and
 WIPE also fit the floppy edition. See the [tool reference](docs/MANUAL.md#more-tools-in-the--menu).
@@ -71,11 +72,11 @@ is 0.7.5; its downloads retain their own version numbers.
 | Image family (0.7.6) | CPU | Contents |
 |---|---|---|
 | `A2FILECMD-6502-BOOT-0.7.6.dsk` | 6502 | Bootable 140 KB floppy: file manager, disk tools and formatter |
-| `A2FILECMD-6502-EXTRA-0.7.6.dsk` | 6502 | 140 KB companion: 24 additional tools, menu and BASIC.SYSTEM |
-| `A2FILECMD-6502-XL-0.7.6.2mg` | 6502 | Bootable 32 MB disk: all 43 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
+| `A2FILECMD-6502-EXTRA-0.7.6.dsk` | 6502 | 140 KB companion: 25 additional tools, menu and BASIC.SYSTEM |
+| `A2FILECMD-6502-XL-0.7.6.2mg` | 6502 | Bootable 32 MB disk: all 44 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
 | `A2FILECMD-65C02-BOOT-0.7.6.dsk` | 65C02 | Bootable 140 KB floppy: file manager, disk tools and formatter |
-| `A2FILECMD-65C02-EXTRA-0.7.6.dsk` | 65C02 | 140 KB companion: 24 additional tools, menu and BASIC.SYSTEM |
-| `A2FILECMD-65C02-XL-0.7.6.2mg` | 65C02 | Bootable 32 MB disk: all 43 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
+| `A2FILECMD-65C02-EXTRA-0.7.6.dsk` | 65C02 | 140 KB companion: 25 additional tools, menu and BASIC.SYSTEM |
+| `A2FILECMD-65C02-XL-0.7.6.2mg` | 65C02 | Bootable 32 MB disk: all 44 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
 
 The names sort by CPU, then BOOT, EXTRA, XL. Choose **6502** for an Apple II
 with 128 KB and 80 columns, including the original IIe; choose **65C02** for

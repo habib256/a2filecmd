@@ -330,8 +330,10 @@ II, et les formats qui ouvrent la production du IIgs et des hackers.
   suivent : `$C0/$0001` Paintworks et `$C0/$0002` APF en PackBytes,
   `$C1/$0002` 3 200 couleurs à palette par ligne. Grande surcouche, tables en
   mémoire auxiliaire. *2 jours.*
-- 🟡 **`DISASM`** : désassembleur 6502 et 65C02 d'un BIN ou d'un SYS, depuis
-  son adresse de chargement, page par page comme `BASLIST`. *1 jour.*
+- ✅ **`DISASM`**, EXTRA / XL, 0.7.6 : désassembleur BIN/SYS en lecture seule,
+  choix 6502 ou 65C02 (extensions Rockwell/WDC incluses), pages d’instructions,
+  retour sur les 64 dernières pages, saut par offset et adresse de chargement
+  réglable. Octets inconnus/tronqués affichés comme données, erreurs signalées.
 - 🟡 **`TOKENIZE`** : texte → Applesoft tokenisé, table des mots-clés
   partagée avec `BASLIST` ; avec l'éditeur, on écrit un programme BASIC sans
   quitter A2FC. *1 jour.*

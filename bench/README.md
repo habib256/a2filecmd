@@ -25,6 +25,7 @@ pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 | `six.py` | UNDELETE, DISKCMP, MKIMAGE, RESCUE, SYNC et TREE : volumes jetables, effacement ProDOS réel, contenu relu sur l’hôte et pile surveillée |
 | `volinfo.py` | diagnostic ProDOS en lecture seule, disquette saine/corrompue et volume de 32 Mo, carte paginée et retour avec pile préservée, sur les deux processeurs |
 | `blocktools.py` | VERIFY par lots avec fichier illisible, rapport VOLINFO relu sur la disquette éjectée, refus d’écrasement, BLKVIEW, recherche traversant les blocs, extraction exacte et bornes de navigation |
+| `disasm.py` | désassemblage BIN/SYS, choix 6502/65C02, adresses de chargement, pagination, offsets 24 bits, fin tronquée et pile ; `A2FC_CAPTURE=/tmp/disasm.ppm` conserve une capture POM2 |
 | `tree.py` | parcours de la racine XL jusqu’au résultat complet, totaux exacts comparés à l’image et pile préservée |
 | `memory.py` | le creux maximal de la pile C, mesure en faisant travailler le programme |
 | `pom2.py` | le pilote d'emulateur commun |

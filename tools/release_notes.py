@@ -19,8 +19,8 @@ FILES = """
 
 The concise English user guide is included as `A2FILECMD-MANUAL-EN-{version}.pdf`, with a screenshot of both panels, clickable contents and bookmarks.
 
-Choose BOOT and EXTRA for the same CPU and release. EXTRA has 24 additional
-tools and BASIC.SYSTEM; XL has all 43 overlays, BASIC.SYSTEM, DEMO and IMGHGR.
+Choose BOOT and EXTRA for the same CPU and release. EXTRA has 25 additional
+tools and BASIC.SYSTEM; XL has all 44 overlays, BASIC.SYSTEM, DEMO and IMGHGR.
 The 6502 versions run on an Apple II with 128 KB and 80 columns, including
 the original IIe. The 65C02 versions support enhanced IIe, //c and IIgs,
 with optional mouse. EXTRA keeps free space for future CPU-specific plugins.

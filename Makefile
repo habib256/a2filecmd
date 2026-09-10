@@ -287,6 +287,7 @@ test:
 	python3 $(TOOLS)/test_diskimg_verify.py
 	python3 $(TOOLS)/test_dirscan.py
 	python3 $(TOOLS)/test_blkview.py
+	python3 $(TOOLS)/test_disasm.py
 	python3 $(TOOLS)/test_six_plugins.py
 
 bench: disk
