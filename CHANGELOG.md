@@ -5,6 +5,8 @@ downloads and installation.
 
 ## Unreleased
 
+- The English manual is now ten pages and includes a credits/inspirations
+  list with URLs for external projects, authors and adapted code lineage.
 - DELETE now expands its progress total as directory contents are discovered,
   so recursive deletions show each file and directory instead of remaining at
   a top-level count.
