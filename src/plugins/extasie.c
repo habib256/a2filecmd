@@ -8,19 +8,23 @@ struct Header { unsigned int signature; unsigned char flags;
     char desc[52]; };
 void __fastcall__ plugin_entry(const struct A2fcApi*);
 #pragma rodata-name (push, "OVLHDR")
+#ifdef A2FC_6502
 const struct Header __plugin_header = { PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry,
+#else
+const struct Header __plugin_header = { PLUGIN_MAGIC, 0, plugin_entry,
+#endif
     {0,0,0}, "View Extasie $F2 nibble images" };
 #pragma rodata-name (pop)
 
 static FILE* in;
-static unsigned char buf[256], have, at;
+static unsigned char have, at;
 static unsigned char row, col;
 static unsigned char* dst;
 
 static int getb(const struct A2fcApi* a)
 {
-    if (at == have) { have = (unsigned char)a->fread(buf, 1, sizeof buf, in); at = 0; if (!have) return -1; }
-    return buf[at++];
+    if (at == have) { have = (unsigned char)a->fread(a->copy_buf, 1, 256, in); at = 0; if (!have) return -1; }
+    return a->copy_buf[at++];
 }
 
 static void putb(unsigned char v)

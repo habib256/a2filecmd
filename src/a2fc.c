@@ -1171,8 +1171,8 @@ static unsigned char looks_like_image(const struct Entry* e)
     unsigned char n = strlen(e->name);
     if (is_dir(e)) return 0;
     if (e->type == 0x08) return 1;
-#ifdef A2FC_6502
     /* Extasie/Chat Mauve images use the ProDOS graphics file type $F2. */
+#ifdef A2FC_6502
     if (e->type == 0xF2) return 1;
 #endif
     if (e->type != 0x06) return 0;
@@ -2234,13 +2234,6 @@ static void view_image(void)
     struct Panel* pan = &panels[active];
     unsigned char index = pan->cursor, next, p, dir;
     char key;
-    /* Extasie images need their own large decoder and Féline-aware renderer. */
-#ifdef A2FC_6502
-    if (pan->e[index].type == 0xF2) {
-        overlay_run("EXTASIE", 'i');
-        return;
-    }
-#endif
     if (!overlay("IMAGE")) return;
     aux_dirty = 0;
     /* The image covers the entry tables: the tags are set aside, the panels
@@ -4660,7 +4653,16 @@ int main(void)
         case 'w': case 'W': overlay_run("DISKIMG", 'W'); break;
         case 'p': case 'P': toggle_music(); break;
         case '!': overlay_run("MENU", 0); if (input[0]) overlay_run(input, 0); break;
-        case 'i': case 'I': if (pan->count && !is_dir(&pan->e[pan->cursor]) && pan->path[0]) view_image(); break;
+        case 'i': case 'I':
+            if (pan->count && !is_dir(&pan->e[pan->cursor]) && pan->path[0]) {
+#ifdef A2FC_6502
+                if (pan->e[pan->cursor].type == 0xF2) overlay_run("EXTASIE", 'i');
+                else view_image();
+#else
+                view_image();
+#endif
+            }
+            break;
         case '?': if (overlay("HELP")) view_help(); break;
         case 'q': case 'Q':
             if (confirm("Quit to ProDOS?")) {
