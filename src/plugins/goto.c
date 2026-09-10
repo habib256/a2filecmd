@@ -157,7 +157,7 @@ static char* __fastcall__ slot(unsigned char i)
     return p;
 }
 
-/* GOTO.CFG into the slots: its CR-terminated lines, nine at most, cut at
+/* GOTO.CFG into the slots: CR, LF or CRLF lines, nine at most, cut at
  * PATH_LEN, empty ones dropped. A missing file simply means no favourites. */
 static void load(void)
 {
@@ -174,13 +174,13 @@ static void load(void)
     while (*p && count < MAXFAV) {
         d = slot(count);
         j = 0;
-        while (*p && *p != '\r') {
+        while (*p && *p != '\r' && *p != '\n') {
             if (j < PATH_LEN - 1) d[j++] = *p;
             ++p;
         }
         d[j] = 0;
         if (j) ++count;
-        if (*p) ++p;                    /* the CR */
+        if (*p) ++p;                    /* CR or LF; the second byte of CRLF becomes an empty line */
     }
 }
 

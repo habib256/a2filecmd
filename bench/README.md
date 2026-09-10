@@ -145,6 +145,9 @@ protégée, formatage Disk II et RAM, SmartPort de 65535 blocs, bitmap,
 restauration du résident et retour direct. Exécuter une fois avec
 `A2FC_PRESET=iie_unenh`, puis avec `A2FC_IMG=A2FILECMD-65C02-BOOT`.
 
+`gotocfg.py` vérifie les fins de ligne CR/LF/CRLF mélangées, les lignes vides,
+le dernier favori sans terminateur, les sauts et la relecture après sauvegarde.
+
 `goto.py` vérifie les favoris et les chemins directs (P) : casse, correction,
 annulation, chemin absent, limite de 63 caractères et choix du panneau actif.
 Il vérifie aussi le déplacement des favoris (M), sa persistance et les annulations.
