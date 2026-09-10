@@ -333,7 +333,8 @@ II, et les formats qui ouvrent la production du IIgs et des hackers.
 - ✅ **`DISASM`**, EXTRA / XL, 0.7.6 : désassembleur BIN/SYS en lecture seule,
   choix 6502 ou 65C02 (extensions Rockwell/WDC incluses), pages d’instructions,
   retour sur les 64 dernières pages, saut par offset et adresse de chargement
-  réglable. Octets inconnus/tronqués affichés comme données, erreurs signalées.
+  réglable, export texte vers l’autre panneau depuis l’offset courant.
+  Octets inconnus/tronqués affichés comme données, erreurs signalées.
 - 🟡 **`TOKENIZE`** : texte → Applesoft tokenisé, table des mots-clés
   partagée avec `BASLIST` ; avec l'éditeur, on écrit un programme BASIC sans
   quitter A2FC. *1 jour.*

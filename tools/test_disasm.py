@@ -9,7 +9,18 @@ from test_six_plugins import PREFIX, ROOT
 HARNESS = PREFIX + r'''
 #include "src/plugins/disasm.c"
 static int seekfail;
+static int writes,writefail,cancelafter;
+static long readfail;
 static int seek_(FILE* f,long o,int w) { return seekfail ? -1 : fseek(f,o,w); }
+static size_t read_(void* p,size_t s,size_t n,FILE* f) {
+    return readfail>=0 && ftell(f)>=readfail ? 0 : fread(p,s,n,f);
+}
+static size_t write_(const void* p,size_t s,size_t n,FILE* f) {
+    ++writes;
+    if(cancelafter && writes>=cancelafter)cancelled=1;
+    if(writefail && writes>=writefail)return 0;
+    return fwrite(p,s,n,f);
+}
 static void clear_(void) {}
 static void xy_(unsigned char x,unsigned char y) {}
 int main(int argc,char** argv) {
@@ -17,6 +28,14 @@ int main(int argc,char** argv) {
     struct Entry entry;
     a.sprintf=sprintf;a.strcpy=strcpy;a.strlen=strlen;
     cpu=atoi(argv[1]);
+    if(!strcmp(argv[2],"export")) {
+        FILE* out;
+        a.fseek=seek_;a.fread=read_;a.fwrite=write_;a.full="/SOURCE/CODE";buf=data;
+        file=fopen(argv[3],"rb");size=strtoul(argv[4],0,10);offset=strtoul(argv[5],0,10);
+        origin=strtoul(argv[6],0,16);readfail=atol(argv[7]);writefail=atoi(argv[8]);cancelafter=atoi(argv[9]);
+        out=fopen(argv[10],"wb");n=export_text(out);fclose(out);fclose(file);
+        printf("%u %lu\n",n,offset);return 0;
+    }
     if(!strcmp(argv[2],"page")) {
         a.clrscr=clear_;a.cprintf=printf;a.cputs=(void(*)(const char*))puts;a.gotoxy=xy_;
         a.fseek=seek_;a.fread=fread;a.selected=&entry;strcpy(entry.name,"TEST");buf=data;
@@ -46,6 +65,12 @@ class Disasm(unittest.TestCase):
         result=subprocess.check_output([self.exe,'0','page',path,str(len(data) if size is None else size),str(offset),f'{origin:X}',str(seekfail)],text=True)
         self.assertEqual(path.read_bytes(),data)
         return result
+    def export(self,data,offset=0,cpu=1,origin=0x2000,readfail=-1,writefail=0,cancelafter=0,size=None):
+        path=self.p/'source';out=self.p/'export';path.write_bytes(data)
+        args=[self.exe,str(cpu),'export',path,str(len(data) if size is None else size),str(offset),f'{origin:X}',str(readfail),str(writefail),str(cancelafter),out]
+        status,position=map(int,subprocess.check_output(args,text=True).split())
+        self.assertEqual(position,offset);self.assertEqual(path.read_bytes(),data)
+        return status,out.read_bytes()
     def test_every_opcode_roundtrips_through_assembler(self):
         self.assertIsNotNone(shutil.which('ca65'))
         for cpu,count in ((0,151),(1,212)):
@@ -92,5 +117,32 @@ class Disasm(unittest.TestCase):
     def test_large_offset_and_wrapped_address(self):
         text=self.page(bytes(0x10001)+bytes.fromhex('A942'),offset=0x10001,origin=0xFFFF)
         self.assertIn('010001  0000  A9 42',text);self.assertIn('LDA #$42',text)
+    def test_export_exact_bytes_across_pages_and_eof(self):
+        data=bytes.fromhex('A9428D00C080F9')*100+bytes.fromhex('4C34')
+        for cpu in (0,1):
+            status,text=self.export(data,offset=2,cpu=cpu,origin=0xFFFF)
+            self.assertEqual(status,0);self.assertTrue(text.endswith(b'; END DISASM\r\n'))
+            self.assertIn(b'OFFSET $000002',text)
+            rebuilt=bytearray();pos=2
+            for row in text.decode().splitlines():
+                if row.startswith(';'):continue
+                self.assertEqual(int(row[:6],16),pos)
+                self.assertEqual(int(row[8:12],16),(0xFFFF+pos)&65535)
+                raw=bytes.fromhex(row[14:23]);rebuilt+=raw;pos+=len(raw)
+            self.assertEqual(rebuilt,data[2:])
+            if cpu:self.assertIn(b'.BYTE $4C\r\n',text)
+    def test_export_uses_selected_cpu_and_origin(self):
+        for cpu,instruction in ((0,b'.BYTE $80'),(1,b'BRA $4000')):
+            status,text=self.export(bytes.fromhex('80FE'),cpu=cpu,origin=0x4000)
+            self.assertEqual(status,0);self.assertIn(instruction,text)
+    def test_export_failures_leave_partial_without_end_marker(self):
+        for kw,expected in (({'readfail':60},2),({'writefail':4},1),({'cancelafter':4},3),({'size':1000},2)):
+            with self.subTest(kw=kw):
+                status,text=self.export(b'\xEA'*200,**kw)
+                self.assertEqual(status,expected);self.assertNotIn(b'END DISASM',text)
+                self.assertTrue(text.startswith(b'; DISASM /SOURCE/CODE\r\n'))
+    def test_export_empty_file(self):
+        status,text=self.export(b'')
+        self.assertEqual(status,0);self.assertTrue(text.endswith(b'; END DISASM\r\n'))
 
 if __name__=='__main__': unittest.main()
