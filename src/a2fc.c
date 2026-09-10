@@ -1211,6 +1211,7 @@ static void view_seek(long offset)
 #pragma rodata-name (push, "TEXTRO")
 static const char tx_status[] = "%-38.38s page %u%s";
 static const char tx_end[] = " (end)";
+static const char tx_keys[] = "SPC Next,B Prev,R First,ESC Back";
 
 static void view_text(const char* path)
 {
@@ -1242,9 +1243,10 @@ static void view_text(const char* path)
         }
         bar_begin();
         cprintf(tx_status, path, page + 1, done ? tx_end : (const char*)"");
-        keys_bar(52, VIEW_KEYS);
+        keys_bar(52, tx_keys);
         key = cgetc();
         if (key == KEY_ESC || key == 'q' || key == 'Q') break;
+        if (key == 'r' || key == 'R') page = 0;
         if ((key == ' ' || key == KEY_RETURN || key == KEY_RIGHT || key == KEY_DOWN) && !done && page + 1 < known) ++page;
         if ((key == 'b' || key == 'B' || key == KEY_LEFT || key == KEY_UP) && page) --page;
     }

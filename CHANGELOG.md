@@ -5,6 +5,8 @@ downloads and installation.
 
 ## Unreleased
 
+- The built-in TEXT reader adds R to return directly to its first page. The
+  key is scoped to TEXT and does not change BASLIST, AWP or image viewers.
 - GOTO also rejects relative paths, empty components, trailing slashes and
   ProDOS path components longer than 15 characters before showing favourites.
   Malformed entries therefore cannot be selected as delayed jump targets.
