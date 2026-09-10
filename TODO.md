@@ -27,8 +27,13 @@ BOOT/les disquettes. Les nouveaux plugins vont sur EXTRA et XL, séparément en
 - 🟠 💾 **`BLKEDIT`** — éditeur de blocs inspiré de Block Warden/Copy II Plus :
   navigation, suivi de fichiers, hexa/ASCII, décodage répertoire/index,
   écriture après `ERASE`, extraction et recherche d’octets.
-- 🟠 💾 **`NIBCOPY`** — copie brute piste par piste entre deux lecteurs Disk II,
-  avec mode à un lecteur, synchronisation, vérification et rapport d’erreurs.
+- 🟠 💾 **`NIBCOPY`** — copie brute piste par piste entre deux lecteurs 5¼
+  Disk II, avec mode à un lecteur, synchronisation, vérification et rapport
+  d’erreurs. Le cœur doit rester en RAM après le retrait du disque BOOT pour
+  permettre les échanges source/cible sur un seul lecteur.
+- 🟠 💾 **Cœur nibble 3½** — ajouter un transport séparé pour les lecteurs
+  3½ (SmartPort/drive adapté), sans mélanger ses timings avec le flux Disk II
+  5¼; réutiliser le tampon, la vérification et le rapport de NIBCOPY.
 - 🟠 💾 **`ADTPRO`** — client du serveur ADTPro réel : dossiers, envoi/réception
   d’images, CRC, reprise sur NAK et mode nibble après NIBCOPY.
 - 🟠 💾 **`NIBREAD` / `NIBWRITE`** — lecture et écriture d’une image `.NIB`
@@ -74,6 +79,30 @@ BOOT/les disquettes. Les nouveaux plugins vont sur EXTRA et XL, séparément en
 
 ## Formats et extensions de niche
 
+- 🟡 **`EXTASIE`** — visionneuse des images Chat Mauve/Féline : détecter les
+  images normales `IMA` (16 Ko), les images compactées `CMP` (souvent 8–12 Ko)
+  et les sections enregistrées séparément; décoder le mode COL 140/560×192.
+  Référence : [manuel Extasie](https://mirrors.apple2.org.za/ftp.apple.asimov.net/documentation/non_english/french/crealude_extasie_manuel_ocr.pdf).
+- 🟡 **`PURPLESOFT` / `GRLOAD`** — visualiser les images sauvegardées par
+  Purplesoft/Féline et détecter leur mode graphique; traiter Purplesoft comme
+  une bibliothèque de routines (`PURPLESOFT`, `PURPLESOFT*`), pas comme un
+  format d’image ou d’animation unique. Référence : [manuel EVE/Purplesoft](https://mirrors.apple2.org.za/ftp.apple.asimov.net/documentation/hardware/video/lechatmauve_eve_manuel_ocr.pdf).
+- 🟡 **`FANTAVISION` Apple II** — visionneuse de films vectoriels avec objets,
+  images-clés, interpolation (*tweening*), écrans, sons et polices associés;
+  analyser les fichiers des disques Fantavision pour documenter le format
+  Apple II. Ne pas réutiliser directement le format `FANT`/IFF, qui concerne
+  surtout Amiga; séparer aussi la variante IIGS. Références : [manuel
+  Fantavision](https://mirrors.apple2.org.za/ftp.apple.asimov.net/documentation/applications/misc/Fantavision-Manual.pdf),
+  [images de référence](https://mirrors.apple2.org.za/ftp.apple.asimov.net/images/productivity/graphics/fantavision).
+- 🟢 **`ANIMATE` / `MOVIE MAKER`** — étudier les formats d’animations qui
+  séparent personnages, fonds, scènes et séquences; ajouter des détecteurs et
+  une lecture image par image après obtention d’échantillons. Référence :
+  [manuel Animate Apple II](https://www.cvxmelody.net/Animate%20manual%20for%20Apple%20II%20%281986%20Broderbund%29.pdf).
+- 🟢 **Échantillons et reverse engineering** — conserver pour chaque format
+  une image `.dsk`/`.po`, le catalogue ProDOS ou DOS 3.3, les types/aux-types,
+  les tailles, les signatures et une capture de rendu; ne pas supposer que le
+  format Amiga ou IIGS est compatible avec l’Apple II 8 bits.
+
 - 🟢 **`MACPAINT`, `BMP`, `GIF`, `GR`, `PRINTSHOP`, `SHAPES`, `SLIDESHOW`** —
   visionneuses d’images supplémentaires.
 - 🟢 **`INTLIST`, `ADB`, `ASP`, `AWRITER`, `CALC`** — lecteurs Apple II et
@@ -88,6 +117,18 @@ BOOT/les disquettes. Les nouveaux plugins vont sur EXTRA et XL, séparément en
 - 🟢 Défragmentation après FIXIT et VERIFY.
 - 🟢 Déplacer le pilote Mockingboard dans une surcouche si l’espace le permet.
 - 🟢 Étendre les parcours aux très grands répertoires.
+
+## Visionneuse Extasie / Chat Mauve
+
+- 🟡 **`EXTASIE`** — ajouter à IMAGE la détection du type ProDOS `$F2`, la
+  décompression du flux Extasie (compteur, répétitions, écriture colonne par
+  colonne AUX puis MAIN) et l’affichage du DHGR mixte 560/140 de la carte
+  Féline. Feuilleter les images `$F2` d’un dossier avec Gauche/Droite, signaler
+  les flux tronqués et préserver le retour aux panneaux.
+- Références de format et de rendu : [manuel Extasie](https://mirrors.apple2.org.za/ftp.apple.asimov.net/documentation/non_english/french/crealude_extasie_manuel_ocr.pdf),
+  [notes Chat Mauve/POM2](https://github.com/habib256/pom2/blob/main/docs/chatmauve_plan.md)
+  et les disques de test `Extasie disk1.dsk` / `Extasie disk2.dsk` du corpus
+  POM2.
 
 ## Règle de livraison
 
