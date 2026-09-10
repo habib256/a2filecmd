@@ -379,19 +379,92 @@ identify the projects that shaped its interface, supplied technical references,
 or contributed code patterns. They are listed so that the provenance of every
 borrowed or adapted fragment is easy to check.
 
-| Project or author | How it is used or acknowledged | URL |
-|---|---|---|
-| **cc65**, including Oliver Schmidt | The C/6502 toolchain and Apple II startup code. `src/crt0.s` and `src/crt0_loader.s` retain the cc65 V2.19 provenance notice; local loader changes are marked in those files. | [cc65 repository](https://github.com/cc65/cc65) · [Apple II startup source](https://github.com/cc65/cc65/blob/V2.19/libsrc/apple2/crt0.s) |
-| **Colin Leroy** and **a2tools / Ammonoid** | The serial virtual-drive glue in `src/vsdrive.s` follows the documented a2tools approach; the source comment names the corresponding file and author. | [a2tools repository](https://github.com/colinleroy/a2tools) · [Ammonoid releases](https://github.com/colinleroy/a2tools/releases) |
-| **Jerry Hewett** | The Disk II ProDOS formatter routines descend from the public-domain Hyper-FORMAT work. | [ADTPro source tree](https://github.com/ADTPro/adtpro) |
-| **Gary Desrochers** | Additional Hyper-FORMAT lineage carried by ADTPro is credited in `src/format.c` and `src/format_diskii.s`. | [ADTPro repository](https://github.com/ADTPro/adtpro) |
-| **ProDOS 8 documentation** | File-system structures, MLI calls, allocation blocks and path rules follow the published Apple II technical references. | [ProDOS 8 technical information](https://prodos8.com/) |
-| **A2Command** | The Apple II two-panel file-manager model and command-oriented disk workflow are an explicit design inspiration. | [A2Command archive](https://mirrors.apple2.org.za/ftp.apple.asimov.net/utility/A2Command%20v1.1.zip) |
-| **Norton Commander** | The two-panel layout, selection marks and bottom key bar are acknowledged as interface inspiration. | [Norton Commander archive](https://winworldpc.com/product/norton-commander/3x) |
-| **ShrinkIt / NuFX** | `UNSHRINK` implements the documented LZW/1 and LZW/2 formats; no ShrinkIt executable code is bundled. | [NuFX notes and references](https://ciderpress2.com/formatdoc/NuFX-notes.html) |
-| **Binary II** | `BINARY2` follows the public Binary II member-header format; extraction code is A2FileCmd code. | [NuLib format library](https://nulib.com/library/) |
-| **POM2**, by Arnaud Verhille | The emulator is used for repeatable Apple IIe, //c and disk-device verification; it is a separate project. | [POM2 repository](https://github.com/habib256/pom2) |
-| **ADTPro** | Virtual-drive and disk-transfer workflows are supported for users moving the supplied `.dsk` images to real hardware. | [ADTPro project](https://adtpro.com/) |
+**cc65 — Oliver Schmidt**
+Toolchain and Apple II startup code. `src/crt0.s` and `src/crt0_loader.s`
+retain the V2.19 provenance notice; local loader changes are marked there.
+URL: [cc65 repository](https://github.com/cc65/cc65) · [Apple II startup source](https://github.com/cc65/cc65/blob/V2.19/libsrc/apple2/crt0.s)
+
+**Colin Leroy — a2tools / Ammonoid**
+The serial virtual-drive glue in `src/vsdrive.s` follows the documented
+a2tools approach; the source comment names the corresponding file and author.
+URL: [a2tools repository](https://github.com/colinleroy/a2tools) · [Ammonoid releases](https://github.com/colinleroy/a2tools/releases)
+
+**Jerry Hewett and Gary Desrochers — Hyper-FORMAT**
+The Disk II ProDOS formatter descends from their public-domain routines,
+carried by ADTPro and credited in `src/format.c` and `src/format_diskii.s`.
+URL: [ADTPro source tree](https://github.com/ADTPro/adtpro)
+
+**ProDOS 8 documentation**
+File-system structures, MLI calls, allocation blocks and path rules follow the
+published Apple II technical references.
+URL: [ProDOS 8 technical information](https://prodos8.com/)
+
+**A2Command**
+The Apple II two-panel file-manager model and command-oriented disk workflow
+are explicit design inspirations.
+URL: [A2Command archive](https://mirrors.apple2.org.za/ftp.apple.asimov.net/utility/A2Command%20v1.1.zip)
+
+**Norton Commander**
+The two-panel layout, selection marks and bottom key bar are interface
+inspirations.
+URL: [Norton Commander archive](https://winworldpc.com/product/norton-commander/3x)
+
+**ShrinkIt / NuFX and Binary II**
+`UNSHRINK` implements documented LZW/1 and LZW/2 formats; `BINARY2` follows
+the public member-header format. No archive executable code is bundled.
+URLs: [NuFX notes](https://ciderpress2.com/formatdoc/NuFX-notes.html) · [NuLib format library](https://nulib.com/library/)
+
+**POM2 — Arnaud Verhille**
+Separate emulator project used for repeatable Apple IIe, //c and disk-device
+verification.
+URL: [POM2 repository](https://github.com/habib256/pom2)
+
+**ADTPro**
+Virtual-drive and disk-transfer workflows support moving the supplied `.dsk`
+images to real hardware.
+URL: [ADTPro project](https://adtpro.com/)
+
+### Reading the source notices
+
+The repository keeps attribution next to the affected implementation:
+
+- `src/crt0.s` and `src/crt0_loader.s` identify the cc65 startup source and
+  describe the local staging changes.
+- `src/vsdrive.s` identifies the a2tools file and explains the adapted serial
+  entry points.
+- `src/format.c` and `src/format_diskii.s` identify the Hyper-FORMAT lineage
+  and separate the original formatter work from A2FileCmd integration.
+- `src/unshrink.s` describes the documented archive algorithms; its decoder
+  is an independent implementation written for the overlay memory limits.
+
+The project does not copy Norton Commander, A2Command, ProDOS or ADTPro
+executables. Their interfaces, manuals and protocols are references or
+inspirations. The generated demo files are also original: `tools/mkdemo.py`
+creates the pictures, music, text and sample archives during the build.
+When redistributing a modified build, keep this section, the source notices
+and `LICENSE` with the program so the attribution remains visible.
+
+### Reference index
+
+For readers who want to compare the implementation with its references:
+
+- [A2FileCmd source and issue tracker](https://github.com/habib256/a2filecmd)
+- [cc65 documentation](https://cc65.github.io/doc/)
+- [cc65 Apple II library sources](https://github.com/cc65/cc65/tree/V2.19/libsrc/apple2)
+- [a2tools source and releases](https://github.com/colinleroy/a2tools)
+- [ADTPro documentation](https://adtpro.com/docs.htm)
+- [ADTPro source](https://github.com/ADTPro/adtpro)
+- [ProDOS 8 technical reference](https://prodos8.com/docs/)
+- [CiderPress II format notes](https://ciderpress2.com/formatdoc/)
+- [NuLib library and Binary II references](https://nulib.com/library/)
+- [Apple II FAQ archive](https://mirrors.apple2.org.za/ftp.apple.asimov.net/documentation/)
+- [A2Command archive mirror](https://mirrors.apple2.org.za/ftp.apple.asimov.net/utility/)
+- [Norton Commander archive](https://winworldpc.com/product/norton-commander/3x)
+- [POM2 emulator](https://github.com/habib256/pom2)
+
+These URLs were checked when this edition was prepared. A historical archive
+may move or disappear; the repository copies the relevant attribution and
+source-path information so the record remains useful if a mirror changes.
 
 Only the fragments identified above are derived from external code or
 documented routines. The A2FileCmd overlays, ProDOS walkers, image readers,
