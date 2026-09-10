@@ -5,6 +5,8 @@ downloads and installation.
 
 ## Unreleased
 
+- SEARCH now polls ESC between files during long scans. Already tagged files
+  remain tagged and the completion message reports the partial count.
 - The built-in TEXT reader adds R to return directly to its first page.
 - BASLIST and the AppleWorks reader now also accept R to return to their first
   rendered page after paging.

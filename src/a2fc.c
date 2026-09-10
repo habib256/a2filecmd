@@ -1567,6 +1567,17 @@ void __fastcall__ compare_entry(const struct A2fcApi* a)
 static const char srch_label[] = "Search for";
 static const char srch_none[]  = "No file in this panel.";
 static const char srch_res[]   = "%u file(s) contain \"%s\", now tagged.";
+static const char srch_cancel[] = "%u file(s) tagged; search cancelled.";
+
+/* SEARCH can spend several seconds opening and scanning a large panel.  The
+ * keyboard strobe is safe to poll between files; consume ESC so it cannot
+ * leak into the next menu action. */
+static unsigned char search_cancel(void)
+{
+    if (*(volatile unsigned char*)0xC000 != 155) return 0;
+    (void)*(volatile unsigned char*)0xC010;
+    return 1;
+}
 
 /* fread (already resident) rather than fgetc (which would link into the main
  * window, which is full): one block in copy_buf, a sliding window of plen
@@ -1598,18 +1609,20 @@ static unsigned char file_has(const char* path, const char* pat, unsigned char p
 void __fastcall__ search_entry(const struct A2fcApi* a)
 {
     struct Panel* pan = &panels[active];
-    unsigned char plen, i, found = 0;
+    unsigned char plen, i, found = 0, cancelled = 0;
     (void)a;
     if (!pan->count) { message(srch_none); return; }
     if (!prompt(srch_label, 0, 0)) return;          /* input: the text, in upper case */
     plen = strlen(input);
     if (!plen || plen > 15) return;
     for (i = 0; i < pan->count; ++i) {
+        if (search_cancel()) { cancelled = 1; break; }
         if (is_dir(&pan->e[i]) || !build_full(full, pan, &pan->e[i])) continue;
         if (file_has(full, input, plen)) { set_tag(pan, i, 1); ++found; }
     }
     draw_panel(active);
-    sprintf(question, srch_res, found, input);
+    if (cancelled) sprintf(question, srch_cancel, found);
+    else sprintf(question, srch_res, found, input);
     message(question);
 }
 #pragma static-locals (pop)
