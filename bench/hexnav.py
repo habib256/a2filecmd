@@ -26,19 +26,19 @@ def main():
                 s.ok('page %05X : adresse et octets exacts' % base, s.rows()[0].startswith(want), s.rows()[0])
 
             def go(value, end=RET):
-                s.key(b'G'); s.wait(lambda: s.has('Offset:'), 'offset prompt')
+                s.key(b'G'); s.wait(lambda: s.has('File offset:'), 'offset prompt')
                 if value: s.type(value)
                 s.key(end)
 
             s.select('LARGE'); s.key(b'H'); page(0)
-            go('010023'); page(0x10023)
+            go('0010023'); page(0x10023)
             s.key(b' '); page(0x10023 // 320 * 320 + 320)
             s.key(b'B'); page(0x10023)
-            go('000100', ESC); page(0x10023)
-            go('FFFFFE'); s.wait(lambda: s.has('Past EOF'), 'past EOF')
+            go('0000100', ESC); page(0x10023)
+            go('0FFFFFE'); s.wait(lambda: s.has('Past EOF'), 'past EOF')
             s.ok('adresse hors fichier signalee', s.has('Past EOF'))
             s.key(RET); page(0x10023)
-            go('%06X' % len(DATA)); s.wait(lambda: s.has('Past EOF'), 'exact EOF'); s.key(RET); page(0x10023)
+            go('%07X' % len(DATA)); s.wait(lambda: s.has('Past EOF'), 'exact EOF'); s.key(RET); page(0x10023)
             s.key(b'e'); page(len(DATA) - 1)
             s.key(b' '); page(len(DATA) - 1)
             s.ok('derniere page : dernier octet et remplissage',

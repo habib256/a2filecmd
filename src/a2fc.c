@@ -1065,10 +1065,9 @@ static unsigned char prompt(const char* label, const char* initial, unsigned cha
     }
 }
 
-static unsigned int hex_value(void)
+static unsigned int hex_value(const char* s)
 {
     unsigned int v = 0;
-    const char* s = input;
     for (; *s; ++s) v = (v << 4) | (*s <= '9' ? *s - '0' : *s - 'A' + 10);
     return v;
 }
@@ -1725,7 +1724,7 @@ void __fastcall__ binary2_entry(const struct A2fcApi* a)
 #pragma rodata-name (push, "HEXRO")
 static const char hx_offset[] = "%05lX ";
 static const char hx_keys[] = "G Go,R Top,E End,ESC";
-static const char hx_go[] = "Offset";
+static const char hx_go[] = "File offset";
 static const char hx_bad[] = "Past EOF. Press a key.";
 static const char hx_byte[] = "%02X ";
 static const char hx_status[] = "%-22.22s %lu bytes page %u/%u";
@@ -1764,11 +1763,16 @@ static void view_hex(const char* path, unsigned long size)
         if ((key == ' ' || key == KEY_RETURN || key == KEY_RIGHT || key == KEY_DOWN) && page + 1 < pages) ++page;
         if (key == 'r' || key == 'R') page = 0;
         if (key == 'e' || key == 'E') page = pages - 1;
-        if ((key == 'g' || key == 'G') && prompt(hx_go, 0, 6)) {
-            /* hex_value keeps the low 16 bits; parse the first byte separately. */
-            off = hex_value();
-            input[2] = 0;
-            off |= (unsigned long)hex_value() << 16;
+        if ((key == 'g' || key == 'G') && prompt(hx_go, 0, 7)) {
+            /* A file offset is independent of the 16-bit CPU address bus.
+             * Seven hex digits cover the complete 32-MB XL image. */
+            {
+                unsigned char cut = input[3];
+                input[3] = 0;
+                off = (unsigned long)hex_value(input) << 16;
+                input[3] = cut;
+                off |= hex_value(input + 3);
+            }
             if (off < size || !off) page = (unsigned int)(off / HEX_PAGE);
             else { message(hx_bad); cgetc(); }
         }
@@ -4123,10 +4127,10 @@ static void change_attributes(const struct Entry* e, unsigned char lock)
         if (is_dir(e)) { message(at_dirtype); return; }
         sprintf(input, "%02X", e->type);
         if (!prompt(at_type, input, 2)) return;
-        type = (unsigned char)hex_value();
+        type = (unsigned char)hex_value(input);
         sprintf(input, "%04X", e->aux);
         if (!prompt(at_aux, input, 4)) return;
-        aux = hex_value();
+        aux = hex_value(input);
     }
     if (!file_info(full)) { report_error("Get info"); return; }
     if (lock) gfi[3] = is_locked(e) ? 0xC3 : 0x01;   /* everything, or read-only */
