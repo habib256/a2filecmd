@@ -151,7 +151,7 @@ The following tools supplement the main keys and readers.
 | **BLKVIEW** | Read device or image blocks: H hex/ASCII, D directory, I index, N/P block, Space page, G four-digit hex block, F find four bytes (8 hex digits), A find next, X extract blocks, ESC back. Source stays unchanged. |
 | **DISASM** | Read BIN/SYS as assembly: N/Space next, P previous (last 64 pages), C 6502/65C02, G six-digit hex file offset, L four-digit load address, R start, E export, ESC back. BIN uses its auxtype; SYS starts at $2000. |
 | **CRC** | Calculate CRC-32 for the selection or tagged files. Results appear in pages of 20; a key continues, ESC at a page boundary stops the batch. |
-| **IDENT** | Identify a file by content; text statistics cover its first 512 bytes. |
+| **IDENT** | Identify content, UTF-8 or Apple text; statistics cover the first 512 bytes. |
 | **MDVIEW** | Wrapped Markdown/text; no forward limit. Up: last 64 pages. R: restart. |
 | **RENAME** | Batch prefix, suffix, extension replacement/removal or numbering. For example E then BAK sets `.BAK`. Conflicts are skipped. |
 | **IMGCONV** | Convert PO/HDV, DSK/DO and 2MG into the other panel, preserving disk blocks. |

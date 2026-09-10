@@ -45,6 +45,23 @@ RANDOM = bytes(_RNG.getrandbits(8) for _ in range(700))
 assert min(RANDOM[:512]) < 9, 'le binaire doit tenir un octet de commande'        # sinon IDENT y verrait du texte
 
 
+UTF_CASES = {
+    'EURO': ('prix 10 €\n'.encode(), 'Text (UTF-8), LF ends, 1 lines in 12 B'),
+    'CJK': ('漢字\r\n'.encode(), 'Text (UTF-8), CRLF ends, 1 lines in 8 B'),
+    'EMOJI': ('hello 😀\n'.encode(), 'Text (UTF-8), LF ends, 1 lines in 11 B'),
+    'BOM': (b'\xef\xbb\xbfhello\n', 'Text (UTF-8), LF ends, 1 lines in 9 B'),
+    'NONASCII': ('é漢😀'.encode(), 'Text (UTF-8), no ends, 0 lines in 9 B'),
+    'CRUNICODE': ('a\ré\nb'.encode(), 'Text (UTF-8), mixed ends, 2 lines in 6 B'),
+    'CUT': (b'a' * 511 + '😀'.encode(), 'Text (UTF-8), no ends, 0 lines in 512 B'),
+    'OVERLONG': (b'a\xe0\x80\x80', 'Binary data'),
+    'SURROGATE': (b'a\xed\xa0\x80', 'Binary data'),
+    'TOOHIGH': (b'a\xf4\x90\x80\x80', 'Binary data'),
+    'TRUNCATED': (b'a\xf0\x9f', 'Binary data'),
+    'BADCONT': (b'a\xe2\x82x', 'Binary data'),
+    'CONTROL': ('漢'.encode() + b'\x01', 'Binary data'),
+}
+
+
 def specimens(tmp):
     """{chemin ProDOS: octets} des fichiers a poser dans WORK/."""
     sample = b'hello from the archive\r' * 8
@@ -92,6 +109,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='a2fc-ident-') as tmp:
         tmp = Path(tmp)
         files = specimens(tmp)
+        files.update({'WORK/' + name + '#040000': data for name, (data, _) in UTF_CASES.items()})
         size = {rel.split('/')[1].split('#')[0]: len(data) for rel, data in files.items()}
         for host in list(size):
             for suf in ('.TXT', '.BIN'):
@@ -121,6 +139,7 @@ def main():
             ('CODE', expect('CODE', 'Binary, maybe 6502 code')),
             ('RANDOM', expect('RANDOM', 'Binary data')),
         ]
+        cases.extend((name, expect(name, what)) for name, (_, what) in UTF_CASES.items())
         with boot_hd(tmp, files, port=PORT, plugins=['ident']) as (p, s):
             # 1. A directory is refused: WORK, at the root of the boot volume.
             s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes')

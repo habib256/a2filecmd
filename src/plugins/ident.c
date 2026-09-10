@@ -28,8 +28,7 @@
  *   text            every byte, high bit off, is printable, CR, LF or TAB:
  *                   "Text[ (UTF-8)], CR|LF|CRLF|mixed ends[, high bit
  *                   set|clear|mixed], N lines in M B[, tabs]" -- UTF-8 when
- *                   a lead byte $C2-$EF is followed by a continuation byte
- *                   and some bytes have the high bit off
+ *                   the sample has valid two-, three- or four-byte sequences
  *   otherwise       "Binary data"
  *
  * A big overlay, for want of room: the twenty-odd descriptions alone
@@ -107,14 +106,48 @@ static unsigned char applesoft(void)
     return tok && k < n && (b[0] | (b[1] << 8)) == 0x0802 + k;
 }
 
+/* Validate the complete sample before treating high bytes as UTF-8. A
+ * sequence cut by the 512-byte sampling limit is allowed only when the
+ * file continues, never at EOF. Reject overlong forms, surrogates and
+ * values beyond U+10FFFF. ASCII-only samples retain their old description. */
+static unsigned char utf8(void)
+{
+    unsigned int i = 0;
+    unsigned char c, d, left, seen = 0;
+    while (i < n) {
+        c = b[i++];
+        if (c < 0x80) continue;
+        if (c < 0xC2 || c > 0xF4) return 0;
+        left = c < 0xE0 ? 1 : c < 0xF0 ? 2 : 3;
+        seen = 1;
+        while (left) {
+            if (i == n) return n == 512 && sz.l > 512;
+            d = b[i++];
+            if (d < 0x80 || d > 0xBF) return 0;
+            if ((c == 0xE0 && d < 0xA0) || (c == 0xED && d >= 0xA0) ||
+                (c == 0xF0 && d < 0x90) || (c == 0xF4 && d >= 0x90)) return 0;
+            c = 0;                      /* special bounds apply to byte 2 only */
+            --left;
+        }
+    }
+    return seen;
+}
+
 /* Text, or binary data: the line written at b + 256. */
 static const char* text(void)
 {
     unsigned int i, lines = 0;
     unsigned char c, k, hi = 0, lo = 0, utf = 0, tabs = 0, pend = 0, ends = 0;
     const char* hb;
+    utf = utf8();
     for (i = 0; i < n; ++i) {
         c = b[i];
+        /* Valid UTF-8 high bytes are part of a character, not Apple
+         * high-bit CR/LF or control bytes. A preceding CR stands alone. */
+        if (utf && c >= 0x80) {
+            if (pend) { ends |= 1; pend = 0; }
+            continue;
+        }
         k = c & 0x7F;
         if (c & 0x80) hi = 1; else lo = 1;
         if (k == 13) { ++lines; pend = 1; continue; }
@@ -126,10 +159,8 @@ static const char* text(void)
         if (pend) { ends |= 1; pend = 0; }
         if (k == 9) tabs = 1;
         else if (k < 32 || k == 127) return "Binary data";
-        if (c >= 0xC2 && c < 0xF0 && i + 1 < n && (b[i + 1] & 0xC0) == 0x80) utf = 1;
     }
     if (pend) ends |= 1;
-    if (!lo) utf = 0;                             /* all high: Apple text, not UTF-8 */
     hb = utf ? "" : hi ? (lo ? ", high bit mixed" : ", high bit set") : ", high bit clear";
     A->sprintf((char*)b + 256, m_text, utf ? " (UTF-8)" : "", ends_name[ends], hb, lines, n, tabs ? ", tabs" : "");
     return (const char*)b + 256;
