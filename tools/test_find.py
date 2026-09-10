@@ -42,10 +42,30 @@ static FILE* open_file(const char* p,const char* mode) {
     }
     abort();return NULL;
 }
-static void message_(const char* p) {}
+static unsigned char viewing;
+static const char* view_keys;
+static void message_(const char* p) { if(viewing)printf("\nMSG %s\n",p); }
+static void puts_(const char* p) { printf("%s",p); }
+static void putc_(char c) { putchar(c); }
+static void xy_(unsigned char x,unsigned char y) { printf("\n"); }
+static void clear_(void) { puts("\nCLEAR"); }
+static char key_(void) { return *view_keys ? *view_keys++ : KEY_ESC; }
 int main(int argc,char** argv) {
     FILE* manifest;char row[160],pbuf[80],dbuf[80],rbuf[17];
     unsigned char scratch[512];struct DirEntry de;int type,content,round=0,i,date;
+    if(argc>2 && !strcmp(argv[1],"view")) {
+        viewing=1;view_keys=argc>4 ? argv[4] : "";
+        a.fopen=fopen;a.fread=fread;a.fclose=fclose;a.copy_buf=scratch;
+        a.cprintf=printf;a.cputs=puts_;a.cputc=putc_;a.gotoxy=xy_;
+        a.clrscr=clear_;a.cgetc=key_;a.message=message_;
+        strcpy(pat,argv[3]);plen=strlen(pat);
+        memset(QUEUE,0xA5,sizeof host_queue);memset(RESULTS,0xA5,sizeof host_results);memset(POOL,0xA5,sizeof host_pool);
+        file_has(argv[2],1);
+        for(i=0;i<sizeof host_queue;++i)if((unsigned char)QUEUE[i]!=0xA5)abort();
+        for(i=0;i<sizeof host_results;++i)if((unsigned char)RESULTS[i]!=0xA5)abort();
+        for(i=0;i<sizeof host_pool;++i)if((unsigned char)POOL[i]!=0xA5)abort();
+        return 0;
+    }
     if(argc==2) {
         printf("message %zu\n",2+(offsetof(struct A2fcApi,message)-offsetof(struct A2fcApi,panels))/sizeof(void*)*2);
         printf("prompt %zu\n",2+(offsetof(struct A2fcApi,prompt)-offsetof(struct A2fcApi,panels))/sizeof(void*)*2);
@@ -59,6 +79,7 @@ int main(int argc,char** argv) {
         printf("fclose %zu\n",2+(offsetof(struct A2fcApi,fclose)-offsetof(struct A2fcApi,panels))/sizeof(void*)*2);
         printf("cprintf %zu\n",2+(offsetof(struct A2fcApi,cprintf)-offsetof(struct A2fcApi,panels))/sizeof(void*)*2);
         printf("sprintf %zu\n",2+(offsetof(struct A2fcApi,sprintf)-offsetof(struct A2fcApi,panels))/sizeof(void*)*2);
+        printf("cputc %zu\n",2+(offsetof(struct A2fcApi,cputc)-offsetof(struct A2fcApi,panels))/sizeof(void*)*2);
         printf("cputs %zu\n",2+(offsetof(struct A2fcApi,cputs)-offsetof(struct A2fcApi,panels))/sizeof(void*)*2);
         printf("gotoxy %zu\n",2+(offsetof(struct A2fcApi,gotoxy)-offsetof(struct A2fcApi,panels))/sizeof(void*)*2);
         printf("revers %zu\n",2+(offsetof(struct A2fcApi,revers)-offsetof(struct A2fcApi,panels))/sizeof(void*)*2);
@@ -109,6 +130,31 @@ class Find(unittest.TestCase):
         pages=[list(map(int,r.split()[1:])) for r in lines if r.startswith('PAGE ')]
         paths=[r for r in lines if r.startswith('/')];reads=int(lines[-1].split()[1])
         return pages,paths,reads
+    def view(self,data,pattern,keys='NNNN'):
+        f=self.p/'content';f.write_bytes(data)
+        output=subprocess.check_output([self.exe,'view',f,pattern,keys],text=True,timeout=15)
+        hits=[(int(m[0],16),m[1]) for m in re.findall(r'^([0-9A-F]{6}) (.*)$',output,re.M)]
+        return output,hits
+    def test_occurrence_offsets_overlap_boundary_and_24bit(self):
+        data=b'x'*507+b'aaaa'+b'x'*66000+b'AAAA'
+        output,hits=self.view(data,'AAA')
+        self.assertEqual([p for p,_ in hits],[507,508,66511,66512])
+        self.assertTrue(all('AAA' in excerpt for _,excerpt in hits))
+        self.assertIn('End. ESC Back',output)
+    def test_occurrence_pages_and_early_return(self):
+        data=b'needle\r'*45
+        output,hits=self.view(data,'NEEDLE')
+        self.assertEqual([p for p,_ in hits],list(range(0,len(data),7)))
+        self.assertEqual(output.count('N Next occurrences'),2)
+        _,hits=self.view(data,'NEEDLE','\x1b')
+        self.assertEqual(len(hits),20)
+        output,hits=self.view(b'needle\r'*20,'NEEDLE')
+        self.assertEqual(len(hits),20);self.assertNotIn('N Next occurrences',output)
+    def test_occurrence_normalization_eof_and_no_match(self):
+        output,hits=self.view(b'\x00\x81'+bytes(c|128 for c in b'needle'),'NEEDLE')
+        self.assertEqual(hits,[(2,'..NEEDLE')])
+        output,hits=self.view(b'nothing','NEEDLE')
+        self.assertEqual(hits,[]);self.assertIn('No occurrences.',output)
     def test_resident_service_addresses_match_api_layout(self):
         offsets=dict(line.split() for line in subprocess.check_output([self.exe,'api'],text=True).splitlines())
         assembly=(ROOT/'src/plugins/find.s').read_text()

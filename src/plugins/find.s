@@ -26,6 +26,8 @@ _f_cprintf: jmp ($3FD8)
 _f_sprintf: jmp ($3FDA)
 .export _f_cputs
 _f_cputs: jmp ($3FDC)
+.export _f_cputc
+_f_cputc: jmp ($3FDE)
 .export _f_gotoxy
 _f_gotoxy: jmp ($3FE0)
 .export _f_revers

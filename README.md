@@ -42,7 +42,8 @@ batch renaming and type repair. EXTRA and XL also provide UNDELETE recovery,
 DISKCMP comparison, MKIMAGE creation, RESCUE extraction, SYNC updates and TREE totals. BLKVIEW searches and extracts blocks while preserving the source; DISKIMG reads back disk writes.
 DISASM reads BIN/SYS files as 6502 or 65C02 assembly and exports text listings.
 FIND combines name/content searches with type and modification-date filters (TAB),
-then continues through successive pages of 20 matches.
+then continues through successive pages of 20 matches. V on a text result
+shows occurrence offsets and excerpts; ESC returns to the same list.
 VERIFY handles tagged files and VOLINFO exports allocation reports and file blocks.
 DATE, TAGPAT, TXTCONV, VOLNAME and
 WIPE also fit the floppy edition. See the [tool reference](docs/MANUAL.md#more-tools-in-the--menu).

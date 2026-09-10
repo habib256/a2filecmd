@@ -25,6 +25,7 @@ from xplug import boot_hd, menu_run, ok_all, RET, ESC
 PORT = 6806
 DOWN, UP = b'\x0a', b'\x0b'
 FILES = {
+    'WORK/OCCURS.TXT': b'context marker\r'*45,
     'WORK/A.TXT': b'a plain text file\r',
     'WORK/SUB/DEEP/TARGET.TXT': b'needle in a haystack\r',
     'WORK/SUB/OTHER.BIN': bytes(range(256)),
@@ -92,6 +93,10 @@ def main():
             find(s, p, '"CROSSING THE')
             s.ok('"CROSSING THE : trouve a cheval sur la frontiere de 512 octets',
                  s.rows()[0].startswith('1 match(es)') and listed(s) == ['/WORKHD/WORK/EDGE'], listed(s))
+            s.key(b'V');s.wait(lambda:s.has('End. ESC Back'),'context at buffer boundary',30);p.stable()
+            s.ok('occurrence shows hexadecimal offset across a read boundary',any(r.startswith('0001FB ') and 'CROSSING THE' in r for r in s.rows()))
+            s.key(ESC);s.wait(lambda:s.has('1 match(es)'),'back to results');p.stable()
+            s.ok('preview returns to same result',listed(s)==['/WORKHD/WORK/EDGE'])
             s.key(ESC)
             s.wait(lambda: s.has('Type  Aux     Size'), 'le retour aux panneaux', 30); p.stable()
 
@@ -121,6 +126,11 @@ def main():
             for pattern in ('HIT=','"PAGE MARKER'):
                 find(s,p,pattern)
                 all_paths=listed(s)
+                if pattern.startswith('"'):
+                    s.key(DOWN);p.stable();before=s.rows();s.key(b'V')
+                    s.wait(lambda:s.has('End. ESC Back'),'one occurrence',30);s.key(ESC)
+                    s.wait(lambda:s.has('Results 1-20'),'results after preview');p.stable()
+                    s.ok('preview preserves selected row and pending next page',s.rows()==before)
                 s.ok(pattern+' : first 20, continuation available',len(all_paths)==20 and s.has('Results 1-20; more matches'))
                 s.key(b'N');s.wait(lambda:s.has('Results 21-40'),'second result page',60);p.stable();all_paths+=listed(s)
                 s.key(b'N');s.wait(lambda:s.has('Results 41-46'),'last result page',60);p.stable();last=listed(s);all_paths+=last
@@ -133,6 +143,15 @@ def main():
             find(s,p,'ONLY=')
             s.ok('exactly 20 results are complete without empty next page',len(listed(s))==20 and s.has('Results 1-20; complete') and not s.has('N Next'))
             s.key(ESC);p.stable()
+            find(s,p,'"CONTEXT MARKER');s.key(b'V')
+            s.wait(lambda:s.has('N Next occurrences'),'occurrences first page',30);p.stable()
+            s.ok('20 occurrence excerpts on first page',len([r for r in s.rows()[2:22] if 'CONTEXT MARKER' in r])==20)
+            s.key(b'N');p.stable();s.ok('second occurrence page starts at correct offset',s.rows()[2].startswith('00012C '))
+            s.key(b' ');s.wait(lambda:s.has('End. ESC Back'),'last occurrence page',30);p.stable()
+            s.ok('final five occurrences without empty next page',len([r for r in s.rows()[2:22] if 'CONTEXT MARKER' in r])==5 and s.rows()[2].startswith('000258 '))
+            s.key(ESC);s.wait(lambda:s.has('1 match(es)'),'results');s.key(b'V')
+            s.wait(lambda:s.has('N Next occurrences'),'preview again',30);s.key(ESC)
+            s.wait(lambda:s.has('1 match(es)'),'cancel preview');s.key(ESC);p.stable()
             # Filters combine with the existing query and survive result pages.
             menu_run(s,p,'FIND');s.wait(lambda:s.has(PROMPT),'FIND prompt',20)
             s.type('"PAGE MARKER');s.key(b'\x09');s.wait(lambda:s.has('FIND FILTERS'),'filters')
@@ -154,6 +173,8 @@ def main():
             s.ok('cancelled edit retains previous range',s.has('20260907-20260907'))
             s.key(RET);s.wait(lambda:s.has(PROMPT),'query retained');s.key(RET)
             s.wait(lambda:s.has('Results 1-20'),'filtered results',60);p.stable()
+            s.key(b'V');s.wait(lambda:s.has('End. ESC Back'),'filtered preview',30);s.key(ESC)
+            s.wait(lambda:s.has('Results 1-20'),'filtered results restored');p.stable()
             s.ok('query, volume and filters retained',s.has('Type $04') and s.has('20260907-20260907') and s.has('in /WORKHD'))
             s.key(b'N');s.wait(lambda:s.has('Results 21-40'),'filtered second page',60)
             s.key(b'N');s.wait(lambda:s.has('Results 41-46'),'filtered final page',60)

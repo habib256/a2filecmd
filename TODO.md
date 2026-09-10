@@ -104,11 +104,12 @@ Ce lot couvre les usages de base ; les extensions suivantes restent à faire :
 - 🟡 💾 **`TAGPAT`** : plages de dates (aujourd'hui : date système avec `D`)
   et copie avec confirmation fichier par fichier. Motifs, type et taille
   sont disponibles.
-- 🟡 **`FIND`** : nom ou contenu dans le volume, N pour poursuivre par lots de
+- 🟢 **`FIND`** : nom ou contenu dans le volume, N pour poursuivre par lots de
   20 résultats sans recommencer le parcours, saut au résultat et limites
   signalées. Grands répertoires et sous-dossiers après le premier lot corrigés
   en 0.7.6. TAB combine type ProDOS et plage de dates de modification.
-  **Reste :** contexte de chaque occurrence.
+  V affiche les occurrences textuelles, leurs positions hexadécimales et
+  leurs extraits, par pages de 20 ; ESC retrouve la sélection et le parcours.
 - 🟡 💾 **Déplacer sans copier** : vérifié le 2026-09-09, `V` copie puis
   efface, même dans un volume. Le `RENAME` de ProDOS 8 ne change qu'un nom
   dans son dossier, il ne déplace pas ; Cat Doctor déplace en réécrivant les

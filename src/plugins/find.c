@@ -23,10 +23,17 @@
  * choose, Return sets the active panel on the directory of the chosen
  * file with the cursor on it (the core rereads and redraws after a big
  * overlay), N continues with the next 20 matches, Escape leaves. Escape
- * during the walk aborts it. Traversal state survives each result page. "Nothing
+ * during the walk aborts it. V on a text result shows all its occurrences,
+ * with hexadecimal byte offsets and sanitized uppercase excerpts, 20 per
+ * page. ESC restores the selection and pending traversal. Excerpts are
+ * bounded by the current read window; matches across reads are retained.
+ * Traversal state survives each result page. "Nothing
  * found." when there is no match.
  *
- * A big overlay under 5,632 bytes: $3100-$3FFF is its scratch memory --
+ * Resident code/BSS stays below $3100. Setup code is initially loaded in
+ * $3100-$38FF and discarded after read_pattern returns, before the queue
+ * is initialized. sdk/find.cfg fills the gap for the linear loader.
+ * $3100-$3FFF is then scratch memory --
  * the queue (32 paths of 64), the matches (20 paths of 64) and the name
  * pool (25 names of 16). api->full carries the path being built (and
  * the line being written), api->other_full the directory being read --
@@ -95,6 +102,7 @@ static struct A2fcApi a;
 #define f_cprintf (a.cprintf)
 #define f_sprintf (a.sprintf)
 #define f_cputs (a.cputs)
+#define f_cputc (a.cputc)
 #define f_gotoxy (a.gotoxy)
 #define f_revers (a.revers)
 #define f_clrscr (a.clrscr)
@@ -116,6 +124,7 @@ int __fastcall__ f_fclose(FILE*);
 int __cdecl__ f_cprintf(const char*,...);
 int __cdecl__ f_sprintf(char*,const char*,...);
 void __fastcall__ f_cputs(const char*);
+void __fastcall__ f_cputc(char);
 void __fastcall__ f_gotoxy(unsigned char,unsigned char);
 unsigned char __fastcall__ f_revers(unsigned char);
 void __fastcall__ f_clrscr(void);
@@ -163,15 +172,6 @@ static unsigned char pair(const char* s)
 #else
 unsigned char __fastcall__ pair(const char* s);
 #endif
-static unsigned int parse_date(const char* s)
-{
-    unsigned char century,year,month,day;
-    century=pair(s);year=pair(s+2);month=pair(s+4);day=pair(s+6);
-    if(year>99 || month>12 || day>31)return 0;
-    if(century==19) { if(year<40)return 0; }
-    else if(century!=20 || year>39)return 0;
-    return date_key(((unsigned int)year<<9)|((unsigned int)month<<5)|day);
-}
 static unsigned char eligible(const struct DirEntry* de)
 {
     unsigned int d;
@@ -185,6 +185,18 @@ static void filters_line(void)
     f_gotoxy(0,1);
     f_cprintf(type_on ? "Type $%02X" : "Any type",filter_type);
     f_cprintf(date_on ? "  Dates %s" : "  All dates",date_range);
+}
+/* Setup code is discarded into the directory queue once searching starts. */
+#pragma code-name (push, "SETUPCODE")
+#pragma rodata-name (push, "SETUPRODATA")
+static unsigned int parse_date(const char* s)
+{
+    unsigned char century,year,month,day;
+    century=pair(s);year=pair(s+2);month=pair(s+4);day=pair(s+6);
+    if(year>99 || month>12 || day>31)return 0;
+    if(century==19) { if(year<40)return 0; }
+    else if(century!=20 || year>39)return 0;
+    return date_key(((unsigned int)year<<9)|((unsigned int)month<<5)|day);
 }
 /* Each completed prompt applies one filter. Cancelling either date prompt
  * leaves the old range intact. TAB edits filters without losing the query. */
@@ -220,6 +232,9 @@ static void filters(void)
     f_clrscr();f_cputs("FIND");filters_line();
 }
 
+#pragma rodata-name (pop)
+#pragma code-name (pop)
+
 static void msg(const char* s) { f_message(s); }
 
 /* Escape pressed? Any other key waiting is dropped. */
@@ -252,16 +267,26 @@ static unsigned char match(const char* s)
     return *p == 0;
 }
 
-/* Does the file at `path` contain the text? Reads of 512 bytes into
+/* Does filename contain the text? view=1 instead enumerates every match,
+ * without modifying a.full (the pending result), a.other_full, or the
+ * traversal scratch. The caller saves/restores abort state for previews.
+ * Reads of 512 bytes into
  * copy_buf, the first plen-1 bytes of the buffer being the tail of the
  * previous read, normalised: high bit off, upper case. */
-static unsigned char file_has(void)
+static unsigned char file_has(const char* filename,unsigned char view)
 {
     unsigned char* buf = a.copy_buf;
     unsigned char keep = plen - 1, i, c;
     unsigned int n, end, j;
-    FILE* f = f_fopen(path, "rb");
-    if (!f) { cut=1;return 0; }
+    unsigned char row=0,key;
+    unsigned int start,stop;
+    unsigned long base=0;
+    FILE* f = f_fopen(filename, "rb");
+    if (!f) {
+        if(view) { msg("Cannot open file. ESC Back");while(f_cgetc()!=KEY_ESC); }
+        else cut=1;
+        return 0;
+    }
     n = 0;                                 /* nothing kept yet: the first read starts at 0 */
     for (;;) {
         unsigned char* p = buf + n;
@@ -277,14 +302,36 @@ static unsigned char file_has(void)
             for (j = 0; j <= end - plen; ++j) {
                 if (buf[j] != (unsigned char)pat[0]) continue;
                 for (i = 1; i < plen && buf[j + i] == (unsigned char)pat[i]; ++i) ;
-                if (i == plen) { f_fclose(f); return 1; }
+                if (i == plen) {
+                    if(!view) { f_fclose(f);return 1; }
+                    if(row==22) {
+                        msg("N Next occurrences, ESC Back");
+                        do { key=f_cgetc(); } while(key!='N' && key!='n' && key!=' ' && key!=KEY_ESC);
+                        if(key==KEY_ESC)goto closed;
+                        row=0;
+                    }
+                    if(!row) {
+                        f_clrscr();f_cputs(filename);f_gotoxy(0,1);
+                        f_cputs("Offset  Occurrences (case ignored)");row=2;
+                    }
+                    f_gotoxy(0,row++);f_cprintf("%06lX ",base+j);
+                    start=j>16 ? j-16 : 0;stop=j+plen+24;if(stop>end)stop=end;
+                    while(start<stop) {
+                        c=buf[start++];f_cputc(c>=' ' && c<127 ? c : '.');
+                    }
+                }
             }
         }
         if (end < 512) break;
         for (j = 0; j < keep; ++j) buf[j] = buf[512 - keep + j];
-        n = keep;
+        n = keep;base+=512-keep;
         if (abort_key()) break;
     }
+    if(view && !aborted) {
+        msg(row ? "End. ESC Back" : "No occurrences. ESC Back");
+        while(f_cgetc()!=KEY_ESC);
+    }
+closed:
     f_fclose(f);
     return 0;
 }
@@ -357,7 +404,7 @@ static unsigned char next_result(void)
     while(!abort_key()) {
         if(pool_pos<pool_count) {
             name=POOL+pool_pos*PLEN;++pool_pos;
-            if((text || match(name)) && join(dir,name) && (!text || file_has()))return 1;
+            if((text || match(name)) && join(dir,name) && (!text || file_has(path,0)))return 1;
             continue;
         }
         if(!dir_active) {
@@ -382,6 +429,8 @@ static void next_page(void)
 
 /* The key loop on line 22: the pattern, echoed as it is typed. Returns 0
  * on Escape, or an empty pattern. */
+#pragma code-name (push, "SETUPCODE")
+#pragma rodata-name (push, "SETUPRODATA")
 static unsigned char read_pattern(void)
 {
     char k;
@@ -402,16 +451,21 @@ static unsigned char read_pattern(void)
     }
 }
 
+#pragma rodata-name (pop)
+#pragma code-name (pop)
+
 /* The list of matches, one per row from ROW0, the chosen one in
  * inverse video. Returns the index chosen, or 0xFF on Escape. */
 static unsigned char choose(void)
 {
-    unsigned char sel = 0, i;
+    unsigned char sel = 0, i, saved;
     char k;
+redraw:
     f_clrscr();
     f_gotoxy(0, 0);
     f_cprintf("%u match(es) for %s%s in %s", nres, text ? "\"" : "", pat, root);
     filters_line();
+    if(text)f_cputs("  V Occurrences");
     f_bar_begin();
     f_keys_bar(0, ready ? "UP/DN,RET Go,N Next,ESC Back" : "UP/DN,RET Go,ESC Back");
     f_gotoxy(0,22);
@@ -426,6 +480,11 @@ static unsigned char choose(void)
         k = f_cgetc();
         if (k == KEY_ESC) return 0xFF;
         if (k == KEY_RETURN) return sel;
+        if(text && (k=='V' || k=='v')) {
+            saved=aborted;aborted=0;
+            file_has(RESULTS+sel*RLEN,1);aborted=saved;
+            goto redraw;
+        }
         if ((k=='N' || k=='n') && ready)return 0xFE;
         if (k == KEY_UP && sel) --sel;
         else if (k == KEY_DOWN && sel + 1 < nres) ++sel;
@@ -450,8 +509,8 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     for (i = 1; s[i] && s[i] != '/' && i < NAME_LEN - 1; ++i) root[i] = s[i];
     root[0] = '/';
     root[i] = 0;
-    f_strcpy(QUEUE, root);
     if (!read_pattern()) { a.note[0]=0;return; }
+    f_strcpy(QUEUE, root);
     text = pat[0] == '"';
     if (text) {
         for (i = 0; i < plen; ++i) pat[i] = pat[i + 1];

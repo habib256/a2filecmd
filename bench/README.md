@@ -112,7 +112,7 @@ Les noms de bancs peuvent suivre les options pour une reprise ciblée
 un décalage de ports distinct : `A2FC_PORT_OFFSET=100` pour la seconde.
 `findfile.py` teste FIND : filtres type/date combinés, annulation et remise à zéro,
 poursuite au-delà de 40 résultats par nom et contenu, sous-dossiers après le
-premier lot, fin exacte et pile ;
+premier lot, fin exacte, extraits avec positions, retour depuis l’aperçu et pile ;
 l'ancien `find.py` teste SEARCH/COMPARE.
 `crc.py` compare les résultats avec `zlib.crc32`, y compris un fichier vide,
 les limites 255/256 et 511/512/513 octets, et les fichiers marqués.
