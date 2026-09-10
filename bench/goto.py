@@ -128,6 +128,34 @@ def main():
             s.ok('la liste montre les deux favoris numerotes, dans l\'ordre',
                  listed == ['1 ' + DEEP, '2 ' + OTHER], listed)
 
+            # Three entries exercise shifts past multiple neighbours.
+            leave(b'A')
+            def favourites():return rows_of(open_goto())
+            original=['1 '+DEEP,'2 '+OTHER,'3 /WORKHD']
+            s.ok('third favourite added for reordering',favourites()==original)
+            def move(source,target=None):
+                s.key(b'M');s.wait(lambda:s.has('Move which favourite?'),'move source',20)
+                if target is None:return leave(source)
+                s.key(source);s.wait(lambda:s.has('New position?'),'move destination',20)
+                return leave(target)
+            line=move(b'1',b'3')
+            s.ok('move confirms without changing directory',line=='Favourite moved.' and s.rows()[0].startswith('/WORKHD '))
+            s.ok('moving first to last persists order',favourites()==['1 '+OTHER,'2 /WORKHD','3 '+DEEP])
+            move(b'3',b'1')
+            s.ok('moving last to first preserves neighbours',favourites()==original)
+            line=move(b'2',b'2')
+            s.ok('same position is a no-op',line=='Already at that position.' and favourites()==original)
+            move(ESC)
+            s.ok('ESC at source preserves saved order',favourites()==original)
+            move(b'1',ESC)
+            s.ok('ESC at destination preserves saved order',favourites()==original)
+            move(b'9')
+            s.ok('unavailable source preserves saved order',favourites()==original)
+            move(b'1',b'9')
+            s.ok('unavailable destination preserves saved order',favourites()==original)
+            s.key(b'D');s.wait(lambda:s.has('Delete which one?'),'delete third',20);leave(b'3')
+            s.ok('temporary third entry removed',favourites()==['1 '+DEEP,'2 '+OTHER])
+
             # 7. 1 : le panneau actif saute au premier favori.
             line = leave(b'1')
             s.ok('1 emmene le panneau sur %s' % DEEP,
@@ -184,6 +212,17 @@ def main():
                  line == 'Gone: /WORKHD/GONESOON' and s.rows()[0].startswith('/WORKHD '),
                  (s.rows()[0][:38], line))
 
+            # Inject a short fwrite on the disposable test volume. The stub
+            # returns zero and discards fwrite's six stacked argument bytes.
+            open_goto()
+            address=s.sym['_fwrite'];original_code=p.peek(address,7)
+            stub=b'\xA9\x00\xA2\x00\x4C'+s.sym['incsp6'].to_bytes(2,'little')
+            try:
+                p.poke(address,stub)
+                line=move(b'1',b'2')
+            finally:
+                p.poke(address,original_code)
+            s.ok('short write reports save failure instead of success',line=='GOTO.CFG cannot be written.')
             s.ok('stack restored and bounded',p.peek(0x80,2)==stack and p.peek(floor,8)==b'\xA5'*8)
 
     return ok_all(s, 'goto')

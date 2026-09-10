@@ -15,6 +15,8 @@
  *   A    the active panel's path is appended and the file rewritten --
  *        unless it is the volume list, an image or a DOS 3.3 panel, a path
  *        already listed, or the list already holds nine;
+ *   M    source digit then destination digit: reorder the saved list;
+ *        ESC or an unavailable number cancels without writing.
  *   D    then a digit: that favourite is dropped and the file rewritten;
  *   ESC  nothing.
  *
@@ -84,7 +86,7 @@ static const char f_name[] = "GOTO.CFG";
 static const char f_rb[]   = "rb";
 static const char f_wb[]   = "wb";
 static const char m_title[] = "GOTO -- favourite directories";
-static const char m_keys[]  = "1-9 Go,P Path,A Add this directory,D Delete,ESC Back";
+static const char m_keys[]  = "1-9 Go,P Path,A Add,M Move,D Delete,ESC Back";
 static const char m_none[]  = "No favourites yet: A adds this directory";
 static const char m_dir[]   = "Not a ProDOS directory: nothing to add.";
 static const char m_room[]  = "The list is full: nine favourites.";
@@ -140,7 +142,7 @@ static unsigned char __fastcall__ slen(const char* s) STUB(strlen)
 static FILE* __fastcall__ fopn(const char* path, const char* mode) STUB(fopen)
 static unsigned int __fastcall__ frd(void* p, unsigned int sz, unsigned int n, FILE* f) STUB(fread)
 static unsigned int __fastcall__ fwr(const void* p, unsigned int sz, unsigned int n, FILE* f) STUB(fwrite)
-static void __fastcall__ fcls(FILE* f) STUB(fclose)
+static int __fastcall__ fcls(FILE* f) STUB(fclose)
 #pragma optimize (pop)
 
 /* Slot `i` of the list, without a multiplication. */
@@ -195,8 +197,8 @@ static void save(unsigned char dead)
     *A->auxtype = 0;
     fh = fopn(cfg, f_wb);
     if (!fh) { scpy(N, m_err); return; }
-    fwr(TEXT, 1, p - TEXT, fh);
-    fcls(fh);
+    i = fwr(TEXT, 1, p - TEXT, fh) != (unsigned int)(p - TEXT);
+    if (fcls(fh) || i) scpy(N, m_err);
 }
 
 /* The whole screen: the title, one numbered row per favourite, the keys. */
@@ -247,6 +249,24 @@ static void jump(const char* p)
     }
 }
 
+/* Move a favourite to its final numbered position, preserving the order
+ * of all the others. TEXT holds one path until the shift is complete;
+ * save() can then reuse it to serialize the complete list. */
+static void move_favourite(void)
+{
+    unsigned char from,to,i;
+    msg("Move which favourite? 1-9, ESC cancels");
+    from=getkey(0)-'1';if(from>=count)return;
+    msg("New position? 1-9, ESC cancels");
+    to=getkey(0)-'1';if(to>=count)return;
+    if(from==to) { scpy(N,"Already at that position.");return; }
+    scpy(TEXT,slot(from));i=from;
+    while(i<to) { scpy(slot(i),slot(i+1));++i; }
+    while(i>to) { scpy(slot(i),slot(i-1));--i; }
+    scpy(slot(to),TEXT);
+    scpy(N,"Favourite moved.");save(NONE);
+}
+
 void __fastcall__ plugin_entry(const struct A2fcApi* api)
 {
     unsigned char i, k, del = 0;
@@ -270,6 +290,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
      * only be true for a digit key. */
     k = getkey(0) | 0x20;
     if(k=='p') { if(path_input())jump(TEXT);return; }
+    if(k=='m' && count) { move_favourite();return; }
     if (count && k == 'd') {
         msg(m_which);
         k = getkey(0) | 0x20;

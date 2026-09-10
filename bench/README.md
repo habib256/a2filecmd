@@ -145,3 +145,4 @@ restauration du résident et retour direct. Exécuter une fois avec
 
 `goto.py` vérifie les favoris et les chemins directs (P) : casse, correction,
 annulation, chemin absent, limite de 63 caractères et choix du panneau actif.
+Il vérifie aussi le déplacement des favoris (M), sa persistance et les annulations.
