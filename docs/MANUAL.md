@@ -147,7 +147,7 @@ The following tools supplement the main keys and readers.
 | **SEARCH** | Find text in the active directory and tag matching files, ignoring case. |
 | **FIXTYPES** | Set type/auxtype from suffixes on tagged files or the selection; optionally remove suffixes. Image suffixes and `.SYSTEM` stay. |
 | **GOTO** | Nine favourite directories: A adds, D then a digit removes, 1–9 jumps. Saved in `A2FILE/GOTO.CFG`. |
-| **FIND** | Search the volume by name pattern; start with `"` to search contents, ignoring case. Return jumps to a result. Up to 20 results; a full search queue is reported. |
+| **FIND** | Search the volume by name pattern; start with `"` to search contents, ignoring case. N continues with the next 20 results; Return jumps to a result. Skipped paths and cancellation are reported. |
 | **BLKVIEW** | Read device or image blocks: H hex/ASCII, D directory, I index, N/P block, Space page, G four-digit hex block, F find four bytes (8 hex digits), A find next, X extract blocks, ESC back. Source stays unchanged. |
 | **DISASM** | Read BIN/SYS as assembly: N/Space next, P previous (last 64 pages), C 6502/65C02, G six-digit hex file offset, L four-digit load address, R start, E export, ESC back. BIN uses its auxtype; SYS starts at $2000. |
 | **CRC** | Calculate CRC-32 for the selection or tagged files. |

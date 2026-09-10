@@ -31,6 +31,9 @@ FILES = {
     'WORK/TARGET2.TXT': b'the second target\r',
     'WORK/EDGE.BIN': b'x' * 507 + b'crossing the edge\r' + b'y' * 100,   # le texte a cheval sur l'octet 512
 }
+FILES.update({f'MANY/HIT{i:03}#040000':b'page marker\r' for i in range(45)})
+FILES['MANY/ZZZ/DEEP/HITEND#040000']=b'page marker\r'
+FILES.update({f'EXACT/ONLY{i:02}#040000':b'exact marker\r' for i in range(20)})
 PROMPT = 'Find (= any run'
 
 
@@ -52,6 +55,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='a2fc-findfile-') as tmp:
         tmp = Path(tmp)
         with boot_hd(tmp, FILES, port=PORT, plugins=['find']) as (p, s):
+            stack=p.peek(0x80,2);floor=s.sym['__HIMEM__']-s.sym['__STACKSIZE__'];p.poke(floor,b'\xA5'*8)
             s.select('WORK'); s.key(RET); s.wait(lambda: s.has('/WORKHD/WORK'), 'WORK'); p.stable()
 
             # -- TARGET= : deux fichiers, le plus profond choisi --------------
@@ -114,6 +118,22 @@ def main():
             s.wait(lambda: s.rows()[0].startswith('/WORKHD/WORK/SUB '), 'le panneau sur SUB', 30); p.stable()
             s.ok('Return depuis la liste des volumes ouvre /WORKHD/WORK/SUB sur OTHER',
                  s.line(0).startswith('OTHER '), s.line(0).strip()[:24])
+            for pattern in ('HIT=','"PAGE MARKER'):
+                find(s,p,pattern)
+                all_paths=listed(s)
+                s.ok(pattern+' : first 20, continuation available',len(all_paths)==20 and s.has('Results 1-20; more matches'))
+                s.key(b'N');s.wait(lambda:s.has('Results 21-40'),'second result page',60);p.stable();all_paths+=listed(s)
+                s.key(b'N');s.wait(lambda:s.has('Results 41-46'),'last result page',60);p.stable();last=listed(s);all_paths+=last
+                s.ok(pattern+' : all 46 results exactly once',len(all_paths)==46 and len(set(all_paths))==46,all_paths)
+                s.ok(pattern+' : late subdirectory scanned',last[-1]=='/WORKHD/MANY/ZZZ/DEEP/HITEND' and s.has('; complete'))
+                s.key(b'N');p.stable();s.ok('N at end leaves final results visible',listed(s)==last)
+                for _ in range(len(last)-1):s.key(DOWN)
+                s.key(RET);s.wait(lambda:s.rows()[0].startswith('/WORKHD/MANY/ZZZ/DEEP'),'late result opened',30);p.stable()
+                s.ok('result beyond 40 opens correct file',s.line(0).startswith('HITEND ') and s.rows()[22].startswith('46 match(es).'))
+            find(s,p,'ONLY=')
+            s.ok('exactly 20 results are complete without empty next page',len(listed(s))==20 and s.has('Results 1-20; complete') and not s.has('N Next'))
+            s.key(ESC);p.stable()
+            s.ok('stack restored and budget respected',p.peek(0x80,2)==stack and p.peek(floor,8)==b'\xA5'*8)
     return ok_all(s, 'findfile')
 
 

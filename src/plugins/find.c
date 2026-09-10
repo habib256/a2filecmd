@@ -22,11 +22,12 @@
  * The matches, full paths, are listed on a full screen: up and down to
  * choose, Return sets the active panel on the directory of the chosen
  * file with the cursor on it (the core rereads and redraws after a big
- * overlay), Escape leaves. Escape during the walk aborts it. "Nothing
+ * overlay), N continues with the next 20 matches, Escape leaves. Escape
+ * during the walk aborts it. Traversal state survives each result page. "Nothing
  * found." when there is no match.
  *
- * A big overlay under 5,376 bytes: $3000-$3FFF is its scratch memory --
- * the queue (32 paths of 64), the matches (20 paths of 80) and the name
+ * A big overlay under 5,632 bytes: $3100-$3FFF is its scratch memory --
+ * the queue (32 paths of 64), the matches (20 paths of 64) and the name
  * pool (28 names of 16). api->full carries the path being built (and
  * the line being written), api->other_full the directory being read --
  * not a pointer into the queue, which is packed when it fills up. The
@@ -54,16 +55,24 @@ const struct PluginHeader __plugin_header = {
 
 #define QMAX   32                          /* directories waiting, 64 bytes each */
 #define QLEN   64
-#define RMAX   20                          /* matches kept, 80 bytes each */
-#define RLEN   80
+#define RMAX   20                          /* matches kept, 64 bytes each */
+#define RLEN   64
 #define PMAX   28                          /* names pooled per directory read, 16 each */
 #define PLEN   16
 #define PATMAX 32                          /* the pattern, or the text */
 #define ROW0   2                           /* the first row of the list */
 
-#define QUEUE   ((char*)0x3000)            /* 32 x 64 = 2048: $3000-$37FF */
-#define RESULTS ((char*)0x3800)            /* 20 x 80 = 1600: $3800-$3E3F */
-#define POOL    ((char*)0x3E40)            /* 28 x 16 =  448: $3E40-$3FFF */
+#ifdef PLUGIN_HOST
+static char host_queue[QMAX*QLEN], host_results[RMAX*RLEN], host_pool[PMAX*PLEN];
+#define QUEUE host_queue
+#define RESULTS host_results
+#define POOL host_pool
+#else
+#define QUEUE   ((char*)0x3100)            /* 32 x 64 = 2048: $3100-$38FF */
+#define RESULTS ((char*)0x3900)            /* 20 x 64 = 1280: $3900-$3DFF */
+#define POOL    ((char*)0x3E00)            /* 28 x 16 =  448: $3E00-$3FBF */
+
+#endif
 
 /* BSS: nothing zeroes it; everything below is written before it is read. */
 static struct A2fcApi a;                   /* the service table, copied */
@@ -75,18 +84,23 @@ static char pat[PATMAX + 1];               /* the pattern, or the text, upper ca
 static unsigned char plen;
 static unsigned char text;                 /* 1: a text search */
 static unsigned char nres, qhead, qtail;
-static unsigned char aborted, cut;         /* cut: queue or list overflow, or a path too long */
+static unsigned char pool_count, pool_pos, dir_active, ready;
+static unsigned int dir_skip;
+static unsigned long total;
+static unsigned char aborted, cut;         /* cut: queue/path limit or failed open */
 
 static void msg(const char* s) { a.message(s); }
 
 /* Escape pressed? Any other key waiting is dropped. */
 static unsigned char abort_key(void)
 {
+#ifndef PLUGIN_HOST
     if (KBD & 0x80) {
         unsigned char k = KBD & 0x7F;
         KBDSTRB = 0;
         if (k == KEY_ESC) aborted = 1;
     }
+#endif
     return aborted;
 }
 
@@ -116,7 +130,7 @@ static unsigned char file_has(void)
     unsigned char keep = plen - 1, i, c;
     unsigned int n, end, j;
     FILE* f = a.fopen(path, "rb");
-    if (!f) return 0;
+    if (!f) { cut=1;return 0; }
     n = 0;                                 /* nothing kept yet: the first read starts at 0 */
     for (;;) {
         unsigned char* p = buf + n;
@@ -144,10 +158,9 @@ static unsigned char file_has(void)
     return 0;
 }
 
-/* The path in a.full becomes a match, if the list has room. */
+/* Append the path in a.full; next_page reserves room before calling. */
 static void add_result(void)
 {
-    if (nres >= RMAX) { cut = 1; return; }
     a.strcpy(RESULTS + nres * RLEN, path);
     ++nres;
 }
@@ -156,7 +169,7 @@ static void add_result(void)
 static unsigned char join(const char* dir, const char* name)
 {
     unsigned char dl = a.strlen(dir), nl = a.strlen(name);
-    if (dl + 1 + nl >= RLEN) return 0;
+    if (dl + 1 + nl >= PATH_LEN) { cut=1;return 0; }
     a.memcpy(path, dir, dl);
     path[dl] = '/';
     a.strcpy(path + dl + 1, name);
@@ -180,32 +193,60 @@ static void enqueue(const char* name)
     ++qtail;
 }
 
-/* One directory of the queue: its subdirectories queued, its files
- * matched by name, or pooled then read for the text. */
-static void walk_dir(void)
+/* Reopen the current directory at its saved entry ordinal. Pool names for
+ * both search modes, so the directory is closed before reading file content
+ * or showing results. Subdirectories are queued exactly once, including ones
+ * after the first pool. Count ALL live entries, using 16 bits rather than 8. */
+static void fill_pool(void)
 {
-    unsigned char skip = 0, seen, n, more, i;
-    const struct DirEntry* de = a.dir_entry;
-    a.sprintf(path, "Searching %s...", dir);
-    msg(path);
-    for (;;) {
-        if (!a.dir_open(dir)) return;
-        n = 0; seen = 0; more = 0;
-        while (a.dir_next()) {
-            if (abort_key()) break;
-            if (de->type == 0x0F) { if (!skip) enqueue(de->name); continue; }
-            if (!text) { if (match(de->name) && join(dir, de->name)) add_result(); continue; }
-            if (seen++ < skip) continue;
-            if (n >= PMAX) { more = 1; break; }
-            a.strcpy(POOL + n * PLEN, de->name);
-            ++n;
+    unsigned int seen=0;
+    const struct DirEntry* de=a.dir_entry;
+    pool_count=pool_pos=0;
+    a.sprintf(path,"Searching %s...",dir);msg(path);
+    if(!a.dir_open(dir)) { cut=1;dir_active=0;return; }
+    while(a.dir_next()) {
+        if(abort_key())break;
+        if(seen<dir_skip) { ++seen;continue; }
+        if(seen==65535U) { cut=1;break; }
+        ++seen;
+        if(de->type==0x0F)enqueue(de->name);
+        else {
+            a.strcpy(POOL+pool_count*PLEN,de->name);++pool_count;
+            if(pool_count==PMAX) { dir_skip=seen;a.dir_close();return; }
         }
-        a.dir_close();
-        for (i = 0; i < n && !aborted && nres < RMAX; ++i)
-            if (join(dir, POOL + i * PLEN) && file_has()) add_result();
-        if (!more || aborted || nres >= RMAX) return;
-        skip += n;
     }
+    dir_active=0;a.dir_close();
+}
+
+/* Produce one next matching path, retaining the queue, directory position
+ * and unconsumed file names between result pages. */
+static unsigned char next_result(void)
+{
+    const char* name;
+    while(!abort_key()) {
+        if(pool_pos<pool_count) {
+            name=POOL+pool_pos*PLEN;++pool_pos;
+            if((text || match(name)) && join(dir,name) && (!text || file_has()))return 1;
+            continue;
+        }
+        if(!dir_active) {
+            if(qhead==qtail)return 0;
+            a.strcpy(dir,QUEUE+qhead*QLEN);++qhead;dir_skip=0;dir_active=1;
+        }
+        fill_pool();
+    }
+    return 0;
+}
+
+/* One lookahead match in a.full makes N truthful even for exact multiples
+ * of 20. choose() only draws the UI and must preserve this borrowed buffer. */
+static void next_page(void)
+{
+    nres=0;
+    if(ready) { add_result();ready=0; }
+    while(nres<RMAX && next_result())add_result();
+    if(nres==RMAX)ready=next_result();
+    total+=nres;
 }
 
 /* The key loop on line 22: the pattern, echoed as it is typed. Returns 0
@@ -239,7 +280,9 @@ static unsigned char choose(void)
     a.gotoxy(0, 0);
     a.cprintf("%u match(es) for %s%s in %s", nres, text ? "\"" : "", pat, root);
     a.bar_begin();
-    a.keys_bar(0, "UP/DN Choose,RET Go there,ESC Leave");
+    a.keys_bar(0, ready ? "UP/DN Choose,RET Go there,N Next,ESC Leave" : "UP/DN Choose,RET Go there,ESC Leave");
+    a.gotoxy(0,22);
+    a.cprintf("Results %lu-%lu%s",total-nres+1,total,aborted ? "; aborted" : cut ? "; some paths skipped" : ready ? "; more matches" : "; complete");
     for (;;) {
         for (i = 0; i < nres; ++i) {
             a.gotoxy(0, ROW0 + i);
@@ -250,6 +293,7 @@ static unsigned char choose(void)
         k = a.cgetc();
         if (k == KEY_ESC) return 0xFF;
         if (k == KEY_RETURN) return sel;
+        if ((k=='N' || k=='n') && ready)return 0xFE;
         if (k == KEY_UP && sel) --sel;
         else if (k == KEY_DOWN && sel + 1 < nres) ++sel;
     }
@@ -281,14 +325,14 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         --plen;
         if (!plen) { msg(""); return; }
     }
-    nres = 0; qhead = 0; qtail = 1; aborted = 0; cut = 0;
-    while (qhead < qtail && !aborted && nres < RMAX) {
-        a.strcpy(dir, QUEUE + qhead * QLEN);
-        ++qhead;
-        walk_dir();
+    nres=0;qhead=0;qtail=1;aborted=cut=0;
+    pool_count=pool_pos=dir_active=ready=0;dir_skip=0;total=0;
+    next_page();
+    if(!nres) { a.strcpy(a.note,aborted ? "Search aborted." : cut ? "Nothing found; some paths skipped." : "Nothing found.");return; }
+    for(;;) {
+        sel=choose();if(sel!=0xFE)break;
+        next_page();
     }
-    if (!nres) { a.strcpy(a.note, aborted ? "Search aborted." : "Nothing found."); return; }
-    sel = choose();
     if (sel != 0xFF) {
         /* The directory of the match into the panel's path, its name reselected. */
         s = RESULTS + sel * RLEN;
@@ -297,6 +341,6 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         s[i] = 0;                          /* a file at the root: "/VOL" */
         if (a.strlen(s) < PATH_LEN) { a.strcpy(pan->path, s); pan->first = 0; }
     }
-    a.sprintf(a.note, "%u match(es)%s.", nres, aborted ? ", search aborted"
-              : nres >= RMAX ? ", the first ones only" : cut ? ", some directories skipped" : "");
+    a.sprintf(a.note, "%lu match(es)%s.", total, aborted ? ", search aborted"
+              : ready ? ", more available" : cut ? ", some paths skipped" : "");
 }

@@ -5,6 +5,8 @@ downloads and installation.
 
 ## Unreleased
 
+- FIND continues with N beyond the first 20 matches, preserving traversal state and showing cumulative result ranges. A lookahead avoids empty pages at exact multiples of 20. Fixed skipped late subdirectories and the 8-bit directory-position limit in content search; unreachable/overlong paths and queue limits are reported.
+
 - DISASM can export a text listing from the current offset to EOF, with the chosen CPU/load address, source path, offsets and raw bytes. New files are created exclusively in the other panel; errors/cancellation retain partial output and returning to the viewer preserves its position.
 
 - Added DISASM on EXTRA and XL for both CPUs: read-only BIN/SYS disassembly, selectable 6502 or 65C02 (including Rockwell/WDC extensions), instruction-aligned pages, file-offset jumps and load-address override. Unknown or truncated instructions remain visible as data bytes; short reads are reported. Opcode tables adapted from cc65 da65 (notice retained in source).
