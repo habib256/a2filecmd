@@ -1171,6 +1171,10 @@ static unsigned char looks_like_image(const struct Entry* e)
     unsigned char n = strlen(e->name);
     if (is_dir(e)) return 0;
     if (e->type == 0x08) return 1;
+#ifdef A2FC_6502
+    /* Extasie/Chat Mauve images use the ProDOS graphics file type $F2. */
+    if (e->type == 0xF2) return 1;
+#endif
     if (e->type != 0x06) return 0;
     return page_size(&e->size) || (n > 4 && !strcmp(e->name + n - 4, ".RLE"));
 }
@@ -2156,6 +2160,7 @@ static unsigned char decode_rle(FILE* f, unsigned int bytes)
     return dplane == dplanes;
 }
 
+
 /* Identifies and loads the image `full` (entry `e`) into page 1. Returns
  * the format, IMG_NONE if the file is not an image. */
 static unsigned char load_image(const struct Entry* e)
@@ -2229,6 +2234,13 @@ static void view_image(void)
     struct Panel* pan = &panels[active];
     unsigned char index = pan->cursor, next, p, dir;
     char key;
+    /* Extasie images need their own large decoder and Féline-aware renderer. */
+#ifdef A2FC_6502
+    if (pan->e[index].type == 0xF2) {
+        overlay_run("EXTASIE", 'i');
+        return;
+    }
+#endif
     if (!overlay("IMAGE")) return;
     aux_dirty = 0;
     /* The image covers the entry tables: the tags are set aside, the panels

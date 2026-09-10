@@ -5,6 +5,10 @@ downloads and installation.
 
 ## Unreleased
 
+- Added the EXTASIE service overlay: ProDOS `$F2` Extasie/Chat Mauve streams
+  are decoded from their original count/repeat format and shown as HGR on
+  every Apple II. On 6502 builds, selecting an `$F2` entry and pressing `I`
+  opens it directly; 65C02 builds expose the same viewer from the plugin menu.
 - The English manual is now ten pages and includes a credits/inspirations
   list with URLs for external projects, authors and adapted code lineage.
 - DELETE now expands its progress total as directory contents are discovered,
