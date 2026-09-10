@@ -5,6 +5,8 @@ downloads and installation.
 
 ## Unreleased
 
+- MDVIEW prefers valid UTF-8 over its Apple II high-bit heuristic, fixing mostly non-ASCII text. An initial UTF-8 BOM is skipped so Markdown headings work, including after R restarts. Detection handles sequences split at the 2 KB read boundary; accents remain transliterated and unsupported characters display as question marks.
+
 - MDVIEW no longer repeats earlier text when a single logical line wraps beyond 255 screen rows. Wrapped-row positions use 32-bit counters, preserving forward/back navigation and restart for very long lines without changing the 64-page history.
 
 - IDENT recognizes valid UTF-8 sequences of two, three and four bytes, including BOM-prefixed and non-ASCII-only text. It rejects overlong encodings, surrogates and out-of-range sequences as UTF-8, while retaining Apple II high-bit text detection. A sequence split by the 512-byte sample boundary is handled without confusing its bytes with line endings or controls.

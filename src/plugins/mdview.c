@@ -4,7 +4,7 @@
  *
  * The file is streamed 2 KB at a time (fseek/fread) and rendered line by
  * line: CR, LF or CRLF line ends; the high bit stripped when the file is
- * mostly high-bit ASCII (a ProDOS text), else UTF-8, whose C3 xx accented
+ * mostly high-bit ASCII and not valid UTF-8 (a ProDOS text). UTF-8 C3 xx accented
  * letters become plain letters and any other multibyte sequence a `?`;
  * tabs to the next multiple of 4; word-wrap at the last space before
  * column 79, a hard break when there is none. Markdown: `#` headings in
@@ -115,15 +115,43 @@ static int rd(void)
     return c;
 }
 
-/* Mostly high-bit bytes in the first read: a ProDOS text, not UTF-8. */
-static void sniff(void)
+/* Prefer valid UTF-8 to the high-bit heuristic, even without ASCII.
+ * A final sequence may continue beyond the initial read buffer. */
+static unsigned char is_utf8(void)
+{
+    unsigned int i = 0;
+    unsigned char c, d, left, seen = 0;
+    while (i < vlen) {
+        c = VBUF[i++];
+        if (c < 0x80) continue;
+        if (c < 0xC2 || c > 0xF4) return 0;
+        left = c < 0xE0 ? 1 : c < 0xF0 ? 2 : 3;
+        seen = 1;
+        while (left) {
+            if (i == vlen) return a.selected->size > vlen;
+            d = VBUF[i++];
+            if (d < 0x80 || d > 0xBF) return 0;
+            if ((c == 0xE0 && d < 0xA0) || (c == 0xED && d >= 0xA0) ||
+                (c == 0xF0 && d < 0x90) || (c == 0xF4 && d >= 0x90)) return 0;
+            c = 0;
+            --left;
+        }
+    }
+    return seen;
+}
+
+/* Return the first content offset: skip only an initial UTF-8 BOM. */
+static unsigned char sniff(void)
 {
     unsigned int i, n = 0;
     hibit = 0;
     seek_(0);
-    if (getc_() < 0) return;
+    if (getc_() < 0) return 0;
+    if (vlen >= 3 && VBUF[0] == 0xEF && VBUF[1] == 0xBB && VBUF[2] == 0xBF) return 3;
+    if (is_utf8()) return 0;
     for (i = 0; i < vlen; ++i) if (VBUF[i] & 0x80) ++n;
     hibit = n > vlen / 2;
+    return 0;
 }
 
 /* -- writing ------------------------------------------------------------- */
@@ -256,7 +284,7 @@ static void render_page(const struct Start* st)
 void __fastcall__ plugin_entry(const struct A2fcApi* api)
 {
     struct Panel* pan;
-    unsigned char page = 0, known = 1, head = 0;
+    unsigned char page = 0, known = 1, head = 0, start;
     unsigned long first = 1;
     char k;
     api->memcpy(&a, api, sizeof a);
@@ -268,8 +296,8 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     vf = a.fopen(a.full, "rb");
     if (!vf) { a.strcpy(a.note, m_open); return; }
     vbase = 0; vlen = vpos = 0;
-    sniff();
-    STARTS->off = 0; STARTS->skip = 0; STARTS->fence = 0;
+    start = sniff();
+    STARTS->off = start; STARTS->skip = 0; STARTS->fence = 0;
     for (;;) {
         a.clrscr();
         a.revers(1);
@@ -290,7 +318,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         }
         if (k == 'r' || k == 'R') {
             page = head = 0; known = 1; first = 1;
-            STARTS->off = 0; STARTS->skip = 0; STARTS->fence = 0;
+            STARTS->off = start; STARTS->skip = 0; STARTS->fence = 0;
         }
         if ((k == 'b' || k == 'B' || k == KEY_LEFT || k == KEY_UP) && page) --page;
     }

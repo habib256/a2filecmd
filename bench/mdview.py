@@ -56,7 +56,13 @@ MANY = ('```\n' + '\n'.join(MANY_ROWS) + '\n```\n# Last heading\n').encode('asci
 SOLID_ROWS = ['%04d' % i + 'x' * 75 for i in range(280)]
 SOLID = (''.join(SOLID_ROWS) + '\nlast\n').encode('ascii')
 
-FILES = {'WORK/SOLID.TXT': SOLID, 'WORK/MANY.MD#040000': MANY, 'WORK/README.MD#040000': README, 'WORK/LONG.TXT': LONG, 'WORK/HI.TXT': HI}
+UTF_ROWS = ['ee?? %02d' % i for i in range(32)]
+UTF = ''.join('éé漢😀 %02d\n' % i for i in range(32)).encode('utf-8')
+BOM = b'\xef\xbb\xbf' + README
+
+SPLIT = ('é' * 1023 + '漢\nEND\n').encode('utf-8')
+
+FILES = {'WORK/SPLIT.TXT': SPLIT, 'WORK/UTF.TXT': UTF, 'WORK/BOM.MD#040000': BOM, 'WORK/SOLID.TXT': SOLID, 'WORK/MANY.MD#040000': MANY, 'WORK/README.MD#040000': README, 'WORK/LONG.TXT': LONG, 'WORK/HI.TXT': HI}
 
 
 def wrap(text, first='', rest=''):
@@ -222,6 +228,30 @@ def main():
             s.key(ESC)
             s.wait(lambda: s.has('Type  Aux     Size'), 'panneaux apres SOLID', 30); p.stable()
             s.ok('la selection revient apres la longue ligne', s.line(0).startswith('SOLID '))
+
+            view(s, p, 'UTF')
+            s.ok('UTF-8 majoritaire : accents translitteres, autres caracteres remplaces',
+                 text_rows(s) == UTF_ROWS[:21], text_rows(s)[:2])
+            s.key(DOWN); s.wait(lambda: s.has('Page 2'), 'UTF page 2'); p.stable()
+            s.ok('UTF-8 : seconde page exacte', text_rows(s) == UTF_ROWS[21:] + [''] * 10)
+            s.key(UP); s.wait(lambda: s.has('Page 1:'), 'UTF back'); p.stable()
+            s.ok('UTF-8 : retour exact', text_rows(s) == UTF_ROWS[:21])
+            s.key(ESC); s.wait(lambda: s.has('Type  Aux     Size'), 'UTF panels'); p.stable()
+
+            view(s, p, 'SPLIT')
+            s.ok('UTF-8 coupe a 2048 octets : detection et decodage corrects',
+                 text_rows(s) == ['e' * 79] * 12 + ['e' * 75 + '?', 'END'] + [''] * 7,
+                 text_rows(s)[12:14])
+            s.key(ESC); s.wait(lambda: s.has('Type  Aux     Size'), 'SPLIT panels'); p.stable()
+
+            view(s, p, 'BOM.MD')
+            s.ok('BOM retire : titre Markdown reconnu en inverse',
+                 text_rows(s) == PAGE1 and inverse(p, 1, 18), text_rows(s)[:2])
+            s.key(DOWN); s.wait(lambda: s.has('Page 2'), 'BOM page 2'); p.stable()
+            s.key(b'R'); s.wait(lambda: s.has('Page 1:'), 'BOM restart'); p.stable()
+            s.ok('R saute encore le BOM et restaure le titre',
+                 text_rows(s) == PAGE1 and inverse(p, 1, 18))
+            s.key(ESC); s.wait(lambda: s.has('Type  Aux     Size'), 'BOM panels'); p.stable()
 
             # -- HI.TXT : un texte ProDOS, le bit haut sur chaque octet, CR ------
             view(s, p, 'HI')
