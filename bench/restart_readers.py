@@ -22,10 +22,12 @@ def main():
         with boot_hd(Path(tmp), files, port=6822) as (p, s):
             s.select('WORK'); s.key(RET); s.wait(lambda: s.has('/WORKHD/WORK'), 'WORK'); p.stable()
             s.select('HELLO'); s.key(b'T'); s.wait(lambda: s.value('view', 1) == 2, 'BASLIST'); p.stable()
+            s.ok('BASLIST explique R', s.has('R First'))
             s.key(b' '); p.stable(); s.key(b'R'); p.stable()
             s.ok('BASLIST R revient au debut', s.has('10 '), '\n'.join(s.rows()[:3]))
             s.key(ESC); s.wait(lambda: s.has('Type  Aux     Size'), 'panneaux BAS'); p.stable()
             s.select('NOTE.AWP'); s.key(b'T'); s.wait(lambda: s.value('view', 1) == 2, 'AWP'); p.stable()
+            s.ok('AppleWorks explique R', s.has('R First'))
             s.key(b' '); p.stable(); s.key(b'R'); p.stable()
             s.ok('AppleWorks R revient au debut', s.has('Page one text'), '\n'.join(s.rows()[:3]))
             s.key(ESC); s.wait(lambda: s.has('Type  Aux     Size'), 'panneaux AWP'); p.stable()

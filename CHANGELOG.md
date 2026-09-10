@@ -8,6 +8,8 @@ downloads and installation.
 - The built-in TEXT reader adds R to return directly to its first page.
 - BASLIST and the AppleWorks reader now also accept R to return to their first
   rendered page after paging.
+- Their key bars now advertise the R shortcut alongside the existing page
+  controls.
 - GOTO also rejects relative paths, empty components, trailing slashes and
   ProDOS path components longer than 15 characters before showing favourites.
   Malformed entries therefore cannot be selected as delayed jump targets.

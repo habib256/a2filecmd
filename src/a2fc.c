@@ -1291,6 +1291,7 @@ void __fastcall__ text_entry(const struct A2fcApi* a)
 #pragma rodata-name (push, "BASLISTRO")
 static const char bl_status[] = "%-38.38s page %u%s";
 static const char bl_end[] = " (end)";
+static const char bl_keys[] = "SPC Next,B Prev,R First,ESC";
 static const char bl_number[] = "%u ";
 
 #pragma static-locals (push, off)
@@ -1370,7 +1371,7 @@ void __fastcall__ baslist_entry(const struct A2fcApi* a)
         }
         bar_begin();
         cprintf(bl_status, full, page + 1, done ? bl_end : (const char*)"");
-        keys_bar(52, VIEW_KEYS);
+        keys_bar(52, bl_keys);
         key = cgetc();
         if (key == KEY_ESC || key == 'q' || key == 'Q') break;
         if (key == 'r' || key == 'R') page = 0;
@@ -1400,6 +1401,7 @@ void __fastcall__ baslist_entry(const struct A2fcApi* a)
 #pragma rodata-name (push, "AWPRO")
 static const char aw_status[] = "%-38.38s page %u%s";
 static const char aw_end[] = " (end)";
+static const char aw_keys[] = "SPC Next,B Prev,R First,ESC";
 
 #pragma static-locals (push, off)
 
@@ -1459,7 +1461,7 @@ void __fastcall__ awp_entry(const struct A2fcApi* a)
         }
         bar_begin();
         cprintf(aw_status, full, page + 1, done ? aw_end : (const char*)"");
-        keys_bar(52, VIEW_KEYS);
+        keys_bar(52, aw_keys);
         key = cgetc();
         if (key == KEY_ESC || key == 'q' || key == 'Q') break;
         if (key == 'r' || key == 'R') page = 0;
