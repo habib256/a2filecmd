@@ -5,6 +5,8 @@ downloads and installation.
 
 ## Unreleased
 
+- MDVIEW no longer repeats earlier text when a single logical line wraps beyond 255 screen rows. Wrapped-row positions use 32-bit counters, preserving forward/back navigation and restart for very long lines without changing the 64-page history.
+
 - IDENT recognizes valid UTF-8 sequences of two, three and four bytes, including BOM-prefixed and non-ASCII-only text. It rejects overlong encodings, surrogates and out-of-range sequences as UTF-8, while retaining Apple II high-bit text detection. A sequence split by the 512-byte sample boundary is handled without confusing its bytes with line endings or controls.
 
 - MDVIEW continues beyond page 64 using a rolling history of 64 page starts. Up revisits retained pages, R restarts at page 1, and page numbers no longer wrap at 255. Markdown fence state is preserved across the history boundary.

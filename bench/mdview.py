@@ -53,7 +53,10 @@ HI = bytes(b | 0x80 for b in b'HELLO WORLD\rSECOND LINE\r')   # un texte ProDOS,
 MANY_ROWS = ['row %04d **literal**' % i for i in range(21 * 66)]
 MANY = ('```\n' + '\n'.join(MANY_ROWS) + '\n```\n# Last heading\n').encode('ascii')
 
-FILES = {'WORK/MANY.MD#040000': MANY, 'WORK/README.MD#040000': README, 'WORK/LONG.TXT': LONG, 'WORK/HI.TXT': HI}
+SOLID_ROWS = ['%04d' % i + 'x' * 75 for i in range(280)]
+SOLID = (''.join(SOLID_ROWS) + '\nlast\n').encode('ascii')
+
+FILES = {'WORK/SOLID.TXT': SOLID, 'WORK/MANY.MD#040000': MANY, 'WORK/README.MD#040000': README, 'WORK/LONG.TXT': LONG, 'WORK/HI.TXT': HI}
 
 
 def wrap(text, first='', rest=''):
@@ -195,6 +198,30 @@ def main():
             s.key(ESC)
             s.wait(lambda: s.has('Type  Aux     Size'), 'les panneaux apres MANY', 30); p.stable()
             s.ok('ESC restaure la selection du document long', s.line(0).startswith('MANY.MD '))
+
+            # A single logical line crosses the old 8-bit wrapped-row limit.
+            view(s, p, 'SOLID')
+            expected = SOLID_ROWS + ['last']
+            for page in range(1, 15):
+                if page > 1:
+                    s.key(DOWN)
+                    s.wait(lambda: s.rows()[22].startswith('Page %d' % page), 'solid page %d' % page, 60)
+                    p.stable()
+                want = expected[(page - 1) * 21:page * 21]
+                s.ok('ligne sans saut : page %d exacte' % page,
+                     text_rows(s) == want + [''] * (21 - len(want)), text_rows(s)[:1])
+            s.ok('la longue ligne atteint la vraie fin', s.rows()[22].startswith('Page 14 (end)'))
+            for page in (13, 12):
+                s.key(UP)
+                s.wait(lambda: s.rows()[22].startswith('Page %d:' % page), 'solid back %d' % page, 60)
+                p.stable()
+                s.ok('retour dans la longue ligne : page %d exacte' % page,
+                     text_rows(s) == expected[(page - 1) * 21:page * 21])
+            s.key(b'R'); s.wait(lambda: s.has('Page 1:'), 'solid restart', 60); p.stable()
+            s.ok('R retrouve le debut de la longue ligne', text_rows(s) == SOLID_ROWS[:21])
+            s.key(ESC)
+            s.wait(lambda: s.has('Type  Aux     Size'), 'panneaux apres SOLID', 30); p.stable()
+            s.ok('la selection revient apres la longue ligne', s.line(0).startswith('SOLID '))
 
             # -- HI.TXT : un texte ProDOS, le bit haut sur chaque octet, CR ------
             view(s, p, 'HI')

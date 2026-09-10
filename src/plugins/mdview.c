@@ -23,7 +23,7 @@
  * return.
  *
  * A big overlay under 5,376 bytes: $3000-$3FFF is its scratch memory --
- * the page table (64 x 8 at $3000), the row being built ($3200) and the
+ * the page table (64 x 12 at $3000), the row being built ($3300) and the
  * read buffer (2 KB at $3800). The service table is copied into a static:
  * a call through it costs half of one through api->. */
 
@@ -51,10 +51,10 @@ const struct PluginHeader __plugin_header = {
 #define MAXPAGES  64
 #define VBUFSZ    2048
 
-struct Start { long off; unsigned char skip, fence, r0, r1; };
+struct Start { long off; unsigned long skip; unsigned char fence, r0, r1, r2; };
 
-#define STARTS ((struct Start*)0x3000)     /* 64 x 8 = 512: $3000-$31FF */
-#define RB     ((char*)0x3200)             /* the row being built, 80: $3200-$327F */
+#define STARTS ((struct Start*)0x3000)     /* 64 x 12 = 768: $3000-$32FF */
+#define RB     ((char*)0x3300)             /* the row being built, 80: $3300-$337F */
 #define VBUF   ((unsigned char*)0x3800)    /* the read buffer: $3800-$3FFF */
 
 /* BSS: nothing zeroes it; everything below is written before it is read. */
@@ -66,7 +66,9 @@ static long line_off;                      /* where the line being rendered star
 static struct Start next;                  /* where the next page starts */
 static unsigned char hibit;                /* 1: a high-bit ASCII text, the bit stripped */
 static unsigned char fence, line_fence;    /* inside a ``` fence; the state at line start */
-static unsigned char row, skip, rows_done; /* the row being written; rows to skip; rows of this line so far */
+static unsigned char row;                 /* the screen row being written */
+/* One ProDOS logical line can wrap far beyond 255 or even 65535 rows. */
+static unsigned long skip, rows_done;
 static unsigned char inv, indent, rc;      /* inverse (a heading); the hanging indent; the row's length */
 static unsigned char done;                 /* the end of the file was reached on this page */
 
