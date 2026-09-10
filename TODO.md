@@ -107,7 +107,8 @@ Ce lot couvre les usages de base ; les extensions suivantes restent à faire :
 - 🟡 **`FIND`** : nom ou contenu dans le volume, N pour poursuivre par lots de
   20 résultats sans recommencer le parcours, saut au résultat et limites
   signalées. Grands répertoires et sous-dossiers après le premier lot corrigés
-  en 0.7.6. **Reste :** filtres par type/date et contexte de chaque occurrence.
+  en 0.7.6. TAB combine type ProDOS et plage de dates de modification.
+  **Reste :** contexte de chaque occurrence.
 - 🟡 💾 **Déplacer sans copier** : vérifié le 2026-09-09, `V` copie puis
   efface, même dans un volume. Le `RENAME` de ProDOS 8 ne change qu'un nom
   dans son dossier, il ne déplace pas ; Cat Doctor déplace en réécrivant les

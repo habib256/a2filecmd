@@ -110,8 +110,9 @@ A2FC_BUILD=build python3 bench/plugins.py --jobs 3 --out /tmp/plugins-enh
 Les noms de bancs peuvent suivre les options pour une reprise ciblée
 (`date fixtypes`, par exemple). Deux suites simultanées doivent utiliser
 un décalage de ports distinct : `A2FC_PORT_OFFSET=100` pour la seconde.
-`findfile.py` teste FIND, dont la poursuite au-delà de 40 résultats par nom et
-contenu, les sous-dossiers après le premier lot, la fin exacte et la pile ;
+`findfile.py` teste FIND : filtres type/date combinés, annulation et remise à zéro,
+poursuite au-delà de 40 résultats par nom et contenu, sous-dossiers après le
+premier lot, fin exacte et pile ;
 l'ancien `find.py` teste SEARCH/COMPARE.
 `crc.py` compare les résultats avec `zlib.crc32`, y compris un fichier vide,
 les limites 255/256 et 511/512/513 octets, et les fichiers marqués.

@@ -5,6 +5,7 @@ downloads and installation.
 
 ## Unreleased
 
+- FIND adds optional ProDOS type and inclusive modification-date filters (TAB, then T/D; A clears). Filters combine with name/content searches and persist across result pages; invalid dates are rejected and cancelling an edit preserves the previous range.
 - FIND continues with N beyond the first 20 matches, preserving traversal state and showing cumulative result ranges. A lookahead avoids empty pages at exact multiples of 20. Fixed skipped late subdirectories and the 8-bit directory-position limit in content search; unreachable/overlong paths and queue limits are reported.
 
 - DISASM can export a text listing from the current offset to EOF, with the chosen CPU/load address, source path, offsets and raw bytes. New files are created exclusively in the other panel; errors/cancellation retain partial output and returning to the viewer preserves its position.

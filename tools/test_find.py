@@ -1,4 +1,5 @@
 """Exercise FIND's resumable walk against ordered directories and text files."""
+import re
 import subprocess
 import tempfile
 import unittest
@@ -6,8 +7,9 @@ from pathlib import Path
 from test_six_plugins import PREFIX, ROOT
 
 HARNESS=PREFIX+r'''
+#include <stddef.h>
 #include "src/plugins/find.c"
-struct MockEntry { char dir[64],name[16];unsigned char type,content; };
+struct MockEntry { char dir[64],name[16];unsigned char type,content;unsigned int date; };
 static struct MockEntry entries[1024];
 static int count,cursor,opened,reads,cancel_after;
 static char current[64];
@@ -19,7 +21,7 @@ static unsigned char next_dir(void) {
     while(cursor<count) {
         struct MockEntry* e=&entries[cursor++];
         if(strcmp(e->dir,current))continue;
-        strcpy(a.dir_entry->name,e->name);a.dir_entry->type=e->type;return 1;
+        strcpy(a.dir_entry->name,e->name);a.dir_entry->type=e->type;a.dir_entry->mdate=e->date;return 1;
     }
     return 0;
 }
@@ -42,20 +44,47 @@ static FILE* open_file(const char* p,const char* mode) {
 }
 static void message_(const char* p) {}
 int main(int argc,char** argv) {
-    FILE* manifest=fopen(argv[1],"r");char row[160],pbuf[80],dbuf[80],rbuf[17];
-    unsigned char scratch[512];struct DirEntry de;int type,content,round=0,i;
+    FILE* manifest;char row[160],pbuf[80],dbuf[80],rbuf[17];
+    unsigned char scratch[512];struct DirEntry de;int type,content,round=0,i,date;
+    if(argc==2) {
+        printf("message %zu\n",2+(offsetof(struct A2fcApi,message)-offsetof(struct A2fcApi,panels))/sizeof(void*)*2);
+        printf("prompt %zu\n",2+(offsetof(struct A2fcApi,prompt)-offsetof(struct A2fcApi,panels))/sizeof(void*)*2);
+        printf("keys_bar %zu\n",2+(offsetof(struct A2fcApi,keys_bar)-offsetof(struct A2fcApi,panels))/sizeof(void*)*2);
+        printf("bar_begin %zu\n",2+(offsetof(struct A2fcApi,bar_begin)-offsetof(struct A2fcApi,panels))/sizeof(void*)*2);
+        printf("dir_open %zu\n",2+(offsetof(struct A2fcApi,dir_open)-offsetof(struct A2fcApi,panels))/sizeof(void*)*2);
+        printf("dir_next %zu\n",2+(offsetof(struct A2fcApi,dir_next)-offsetof(struct A2fcApi,panels))/sizeof(void*)*2);
+        printf("dir_close %zu\n",2+(offsetof(struct A2fcApi,dir_close)-offsetof(struct A2fcApi,panels))/sizeof(void*)*2);
+        printf("fopen %zu\n",2+(offsetof(struct A2fcApi,fopen)-offsetof(struct A2fcApi,panels))/sizeof(void*)*2);
+        printf("fread %zu\n",2+(offsetof(struct A2fcApi,fread)-offsetof(struct A2fcApi,panels))/sizeof(void*)*2);
+        printf("fclose %zu\n",2+(offsetof(struct A2fcApi,fclose)-offsetof(struct A2fcApi,panels))/sizeof(void*)*2);
+        printf("cprintf %zu\n",2+(offsetof(struct A2fcApi,cprintf)-offsetof(struct A2fcApi,panels))/sizeof(void*)*2);
+        printf("sprintf %zu\n",2+(offsetof(struct A2fcApi,sprintf)-offsetof(struct A2fcApi,panels))/sizeof(void*)*2);
+        printf("cputs %zu\n",2+(offsetof(struct A2fcApi,cputs)-offsetof(struct A2fcApi,panels))/sizeof(void*)*2);
+        printf("gotoxy %zu\n",2+(offsetof(struct A2fcApi,gotoxy)-offsetof(struct A2fcApi,panels))/sizeof(void*)*2);
+        printf("revers %zu\n",2+(offsetof(struct A2fcApi,revers)-offsetof(struct A2fcApi,panels))/sizeof(void*)*2);
+        printf("clrscr %zu\n",2+(offsetof(struct A2fcApi,clrscr)-offsetof(struct A2fcApi,panels))/sizeof(void*)*2);
+        printf("cgetc %zu\n",2+(offsetof(struct A2fcApi,cgetc)-offsetof(struct A2fcApi,panels))/sizeof(void*)*2);
+        printf("memcpy %zu\n",2+(offsetof(struct A2fcApi,memcpy)-offsetof(struct A2fcApi,panels))/sizeof(void*)*2);
+        printf("strcpy %zu\n",2+(offsetof(struct A2fcApi,strcpy)-offsetof(struct A2fcApi,panels))/sizeof(void*)*2);
+        printf("strlen %zu\n",2+(offsetof(struct A2fcApi,strlen)-offsetof(struct A2fcApi,panels))/sizeof(void*)*2);
+        return 0;
+    }
+    manifest=fopen(argv[1],"r");
     while(fgets(row,sizeof row,manifest)) {
         struct MockEntry* e=&entries[count++];
-        if(sscanf(row,"%63s %15s %d %d",e->dir,e->name,&type,&content)!=4)abort();
-        e->type=type;e->content=content;
+        date=0;if(sscanf(row,"%63s %15s %d %d %d",e->dir,e->name,&type,&content,&date)<4)abort();
+        e->type=type;e->content=content;e->date=date;
     }
     fclose(manifest);
     a.sprintf=sprintf;a.strcpy=strcpy;a.strlen=strlen;a.memcpy=memcpy;a.message=message_;
     a.dir_open=open_dir;a.dir_next=next_dir;a.dir_close=close_dir;a.dir_entry=&de;
     a.fopen=open_file;a.fread=fread;a.fclose=fclose;a.copy_buf=scratch;
-    path=pbuf;dir=dbuf;root=rbuf;strcpy(root,"/V");strcpy(QUEUE,root);
+    path=pbuf;dir=dbuf;strcpy(root,"/V");strcpy(QUEUE,root);
     text=atoi(argv[2]);strcpy(pat,text ? "NEEDLE ACROSS" : argv[3]);plen=strlen(pat);
     cancel_after=argc>4 ? atoi(argv[4]) : 0;
+    if(argc>5 && atoi(argv[5])>=0) { type_on=1;filter_type=atoi(argv[5]); }
+    if(argc>6) { date_on=1;date_from=parse_date(argv[6]);date_to=parse_date(argv[7]);
+        printf("DATES %u %u\n",date_from,date_to); }
     nres=0;qhead=0;qtail=1;aborted=cut=0;pool_count=pool_pos=dir_active=ready=0;dir_skip=0;total=0;
     do {
         next_page();printf("PAGE %u %u %u %lu\n",nres,ready,cut,total);
@@ -74,12 +103,39 @@ class Find(unittest.TestCase):
         subprocess.run(['cc','-std=c99','-Wno-unknown-pragmas','-I',str(ROOT),str(cls.p/'test.c'),'-o',str(cls.exe)],check=True,capture_output=True)
     @classmethod
     def tearDownClass(cls):cls.tmp.cleanup()
-    def run_tree(self,entries,text=0,pattern='=',cancel_after=0):
-        manifest=self.p/'tree';manifest.write_text(''.join('%s %s %d %d\n'%e for e in entries))
-        lines=subprocess.check_output([self.exe,manifest,str(text),pattern,str(cancel_after)],text=True,timeout=15).splitlines()
+    def run_tree(self,entries,text=0,pattern='=',cancel_after=0,filetype=-1,dates=None):
+        manifest=self.p/'tree';manifest.write_text(''.join(' '.join(map(str,e))+'\n' for e in entries))
+        lines=subprocess.check_output([self.exe,manifest,str(text),pattern,str(cancel_after),str(filetype)]+(list(dates) if dates else []),text=True,timeout=15).splitlines()
         pages=[list(map(int,r.split()[1:])) for r in lines if r.startswith('PAGE ')]
         paths=[r for r in lines if r.startswith('/')];reads=int(lines[-1].split()[1])
         return pages,paths,reads
+    def test_resident_service_addresses_match_api_layout(self):
+        offsets=dict(line.split() for line in subprocess.check_output([self.exe,'api'],text=True).splitlines())
+        assembly=(ROOT/'src/plugins/find.s').read_text()
+        jumps=re.findall(r'_f_(\w+): jmp \(\$(\w+)\)',assembly)
+        self.assertEqual(len(jumps),len(offsets))
+        for name,address in jumps:self.assertEqual(int(address,16),0x3F9E+int(offsets[name]),name)
+    def test_type_and_dates_across_pages_and_directories(self):
+        def packed(y,m,d):return (y%100)<<9|m<<5|d
+        entries=[('/V',f'F{i:03}',4 if i%2 else 6,1,packed(2000,1,1)) for i in range(100)]
+        entries += [('/V','SUB',15,0,0),('/V/SUB','LAST',4,1,packed(1999,12,31)),
+                    ('/V','OLD',4,1,packed(1999,12,30)),('/V','NEW',4,1,packed(2000,1,2)),
+                    ('/V','UNKNOWN',4,1,0),('/V','BAD',4,1,packed(2001,2,29))]
+        for text in (0,1):
+            pages,paths,reads=self.run_tree(entries,text,filetype=4,dates=('19991231','20000101'))
+            self.assertEqual(paths,[f'/V/F{i:03}' for i in range(1,100,2)]+['/V/SUB/LAST'])
+            self.assertEqual([p[0] for p in pages],[20,20,11])
+            self.assertEqual(reads,51 if text else 0)
+    def test_date_calendar_and_type_zero(self):
+        valid=['19400101','19991231','20000229','20240229','20391231']
+        for date in valid:
+            y,m,d=int(date[:4]),int(date[4:6]),int(date[6:])
+            entries=[('/V','MATCH',0,1,(y%100)<<9|m<<5|d)]
+            self.assertEqual(self.run_tree(entries,filetype=0,dates=(date,date))[1],['/V/MATCH'])
+        for date in ['19391231','20400101','19000229','20010229','20260431','20260001','20260100','20261301','202A0101']:
+            self.assertEqual(self.run_tree([('/V','F',4,1,0)],dates=(date,date))[1],[])
+            output=subprocess.check_output([self.exe,self.p/'tree','0','=','0','-1',date,date],text=True)
+            self.assertIn('DATES 0 0',output)
     def test_page_boundaries_with_truthful_lookahead(self):
         for text in (0,1):
             for n in (0,1,19,20,21,40,41,65):
