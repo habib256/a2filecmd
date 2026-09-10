@@ -226,7 +226,7 @@ Use **T** for text, **H** for hexadecimal. **Space**, **Return** or **Down**
 advances a page; **B** or **Up** goes back; **ESC** returns to the panels.
 The text reader clips lines beyond 80 columns and remembers up to 96 page
 starts. Use **MDVIEW** for wrapped text. The hex reader shows addresses,
-bytes and their text representation.
+bytes and text. In hex: **G** opens the page at a six-digit hex offset; **R/E** go to first/last.
 
 T on a BAS file lists Applesoft line numbers and keywords. T or Return on
 an AWP document reads AppleWorks word-processor text; formatting commands

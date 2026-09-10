@@ -5,6 +5,8 @@ downloads and installation.
 
 ## Unreleased
 
+- HEX adds G to jump to the page containing a six-digit hexadecimal byte offset, R for the first page and E for the last. Out-of-file addresses are reported without moving; cancelling preserves the position and empty files remain bounded. The reader still fits the small overlay on both CPUs.
+
 - GOTO reads favourites from CR, LF or CRLF configuration files, including mixed line endings, blank lines and a final line without a terminator. Files edited on a host no longer merge favourites or retain stray line-feed bytes in paths; saves keep the native CR format.
 
 - MDVIEW prefers valid UTF-8 over its Apple II high-bit heuristic, fixing mostly non-ASCII text. An initial UTF-8 BOM is skipped so Markdown headings work, including after R restarts. Detection handles sequences split at the 2 KB read boundary; accents remain transliterated and unsupported characters display as question marks.

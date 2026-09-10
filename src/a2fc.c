@@ -1718,6 +1718,9 @@ void __fastcall__ binary2_entry(const struct A2fcApi* a)
 #pragma code-name (push, "HEX")
 #pragma rodata-name (push, "HEXRO")
 static const char hx_offset[] = "%05lX ";
+static const char hx_keys[] = "G Go,R Top,E End,ESC";
+static const char hx_go[] = "Offset";
+static const char hx_bad[] = "Past EOF. Press a key.";
 static const char hx_byte[] = "%02X ";
 static const char hx_status[] = "%-22.22s %lu bytes page %u/%u";
 
@@ -1725,6 +1728,7 @@ static void view_hex(const char* path, unsigned long size)
 {
     unsigned int page = 0, pages = (unsigned int)((size + HEX_PAGE - 1) / HEX_PAGE), n, i, j;
     char key;
+    unsigned long off;
     vf = fopen(path, "rb");
     if (!vf) { report_error("Open"); return; }
     a2fc_view = 3;
@@ -1748,10 +1752,20 @@ static void view_hex(const char* path, unsigned long size)
         }
         bar_begin();
         cprintf(hx_status, path, size, page + 1, pages);
-        keys_bar(52, VIEW_KEYS);
+        keys_bar(52, hx_keys);
         key = cgetc();
         if (key == KEY_ESC || key == 'q' || key == 'Q') break;
         if ((key == ' ' || key == KEY_RETURN || key == KEY_RIGHT || key == KEY_DOWN) && page + 1 < pages) ++page;
+        if (key == 'r' || key == 'R') page = 0;
+        if (key == 'e' || key == 'E') page = pages - 1;
+        if ((key == 'g' || key == 'G') && prompt(hx_go, 0, 6)) {
+            /* hex_value keeps the low 16 bits; parse the first byte separately. */
+            off = hex_value();
+            input[2] = 0;
+            off |= (unsigned long)hex_value() << 16;
+            if (off < size || !off) page = (unsigned int)(off / HEX_PAGE);
+            else { message(hx_bad); cgetc(); }
+        }
         if ((key == 'b' || key == 'B' || key == KEY_LEFT || key == KEY_UP) && page) --page;
     }
     fclose(vf);
