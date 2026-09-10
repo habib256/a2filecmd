@@ -3449,17 +3449,21 @@ static unsigned char delete_tree(unsigned char base)
 {
     unsigned char n, i, len = strlen(full), ok = 1;
     if (!list_dir(full, base, &n)) { dir_fail(); return 0; }
+    progress_total += n;
     for (i = 0; i < n && ok; ++i) {
         progress_bar(pool[base + i].name, progress_done, progress_total);
         if (abort_key()) { ok = 0; break; }
         if (!push_name(full, pool[base + i].name)) { too_long(); ok = 0; break; }
         if (pool[base + i].type == 0x0F) ok = delete_tree(base + n);
         else if (remove(full)) { report_error("Delete"); ok = 0; }
-        else ++a2fc_ops;
+        else { ++a2fc_ops; ++progress_done; }
         full[len] = 0;
     }
     if (ok && rmdir(full)) { report_error("Delete"); ok = 0; }
-    if (ok) ++a2fc_ops;
+    if (ok) {
+        ++a2fc_ops;
+        ++progress_done;
+    }
     return ok;
 }
 #pragma rodata-name (pop)
@@ -4053,19 +4057,21 @@ static void delete_targets(void)
     if (n == 1) sprintf(question, dl_ask1, e->name, dl_inside + (is_dir(e) ? 0 : sizeof dl_inside - 1));   /* "": the end of the array */
     else sprintf(question, dl_askn, n);
     if (!confirm(question)) return;
+    /* Start with the selected entries.  Directory walks add their children
+     * to the denominator as they are discovered, so nested deletes show
+     * useful progress without a slow preliminary scan. */
     progress_total = n;
     progress_abort = 0;
     memset(pan->tags, 0, sizeof pan->tags);            /* the tags are in picked: the entries are about to move */
     for (i = 0; i < n; ++i) {
         e = &pan->e[picked[i] - removed];
         if (is_up(e)) continue;
-        progress_done = i;
-        progress_bar(e->name, i, n);
+        progress_bar(e->name, progress_done, progress_total);
         if (abort_key()) break;
         if (!build_full(full, pan, e)) { too_long(); break; }
         if (is_dir(e)) { if (!delete_tree(0)) break; }
         else if (remove(full)) { report_error("Delete"); break; }
-        else ++a2fc_ops;
+        else { ++a2fc_ops; ++progress_done; }
         ++done;
         drop_entry(pan, picked[i] - removed);          /* gone: the panel shows it right away */
         ++removed;

@@ -5,6 +5,9 @@ downloads and installation.
 
 ## Unreleased
 
+- DELETE now expands its progress total as directory contents are discovered,
+  so recursive deletions show each file and directory instead of remaining at
+  a top-level count.
 - SEARCH now polls ESC between files during long scans. Already tagged files
   remain tagged and the completion message reports the partial count.
 - The built-in TEXT reader adds R to return directly to its first page.

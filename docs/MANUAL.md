@@ -110,7 +110,8 @@ choose **O** overwrite, **S** skip, **A** overwrite all or **N** overwrite
 none. Existing destination directories are filled in. Copying into the same
 or a nested source directory is refused.
 
-Long operations display progress. **ESC** interrupts; completed work remains,
+Long operations display progress, including each item during recursive deletes.
+**ESC** interrupts; completed work remains,
 an incomplete ordinary file copy is removed, and the final message reports
 what was done. Read the result before removing a disk.
 
