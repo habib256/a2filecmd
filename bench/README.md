@@ -146,6 +146,9 @@ protégée, formatage Disk II et RAM, SmartPort de 65535 blocs, bitmap,
 restauration du résident et retour direct. Exécuter une fois avec
 `A2FC_PRESET=iie_unenh`, puis avec `A2FC_IMG=A2FILECMD-65C02-BOOT`.
 
+`gotobad.py` vérifie le refus des configurations GOTO hors limites ou avec NUL,
+et leur conservation par CRC relu sur le disque.
+
 `gotocfg.py` vérifie les fins de ligne CR/LF/CRLF mélangées, les lignes vides,
 le dernier favori sans terminateur, les sauts et la relecture après sauvegarde.
 

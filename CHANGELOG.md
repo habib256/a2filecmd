@@ -5,6 +5,8 @@ downloads and installation.
 
 ## Unreleased
 
+- GOTO refuses configuration files over 2000 bytes, paths over 63 characters, embedded NUL bytes and more than nine favourites. It reports the invalid configuration before offering actions, preventing truncated paths or partial lists from being used or saved over the original.
+
 - HEX adds G to jump to the page containing a six-digit hexadecimal byte offset, R for the first page and E for the last. Out-of-file addresses are reported without moving; cancelling preserves the position and empty files remain bounded. The reader still fits the small overlay on both CPUs.
 
 - GOTO reads favourites from CR, LF or CRLF configuration files, including mixed line endings, blank lines and a final line without a terminator. Files edited on a host no longer merge favourites or retain stray line-feed bytes in paths; saves keep the native CR format.

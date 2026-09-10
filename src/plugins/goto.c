@@ -157,31 +157,36 @@ static char* __fastcall__ slot(unsigned char i)
     return p;
 }
 
-/* GOTO.CFG into the slots: CR, LF or CRLF lines, nine at most, cut at
- * PATH_LEN, empty ones dropped. A missing file simply means no favourites. */
-static void load(void)
+/* Parse the entire bounded file before offering actions. Never turn an
+ * overlong path, embedded NUL or extra favourite into a partial list that
+ * a later save could silently write over the original. Missing is empty. */
+static unsigned char load(void)
 {
     unsigned int n;
     unsigned char j;
     char* p = TEXT;
+    char* end;
     char* d;
     count = 0;
     fh = fopn(cfg, f_rb);
-    if (!fh) return;
-    n = frd(p, 1, MAXTEXT, fh);
+    if (!fh) return 1;
+    n = frd(p, 1, MAXTEXT + 1, fh);
     fcls(fh);
-    p[n] = 0;
-    while (*p && count < MAXFAV) {
+    if (n > MAXTEXT) return 0;
+    end = p + n;
+    while (p < end) {
+        if (*p == '\r' || *p == '\n') { ++p; continue; }
+        if (count == MAXFAV) return 0;
         d = slot(count);
         j = 0;
-        while (*p && *p != '\r' && *p != '\n') {
-            if (j < PATH_LEN - 1) d[j++] = *p;
-            ++p;
+        while (p < end && *p != '\r' && *p != '\n') {
+            if (!*p || j == PATH_LEN - 1) return 0;
+            d[j++] = *p++;
         }
         d[j] = 0;
-        if (j) ++count;
-        if (*p) ++p;                    /* CR or LF; the second byte of CRLF becomes an empty line */
+        ++count;
     }
+    return 1;
 }
 
 static void pascal(char* out,const char* path)
@@ -329,7 +334,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     scpy(temp,cfg);scpy(temp+i+1,"GOTO.TMP");
     scpy(backup,cfg);scpy(backup+i+1,"GOTO.BAK");
 
-    load();
+    if (!load()) { scpy(N,"Invalid GOTO.CFG: check size, paths and nine-entry limit."); return; }
     draw();
     /* One key. Bit 5 is set on every digit, so `| 0x20` lower-cases the
      * letters and leaves 1-9 alone; and since count <= 9, i < count can
