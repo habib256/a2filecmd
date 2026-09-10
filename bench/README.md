@@ -114,7 +114,9 @@ un décalage de ports distinct : `A2FC_PORT_OFFSET=100` pour la seconde.
 poursuite au-delà de 40 résultats par nom et contenu, sous-dossiers après le
 premier lot, fin exacte, extraits avec positions, retour depuis l’aperçu et pile ;
 l'ancien `find.py` teste SEARCH/COMPARE.
-`crc.py` compare les résultats avec `zlib.crc32`, y compris un fichier vide,
+`crc.py` vérifie aussi les pages de 20 résultats sur un lot de 45 fichiers,
+l’arrêt par ESC et la conservation des marques. Il compare les résultats avec
+`zlib.crc32`, y compris un fichier vide,
 les limites 255/256 et 511/512/513 octets, et les fichiers marqués.
 
 La disquette `benchfloppy` garde les dix-neuf surcouches du noyau et

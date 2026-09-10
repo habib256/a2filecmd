@@ -5,6 +5,7 @@ downloads and installation.
 
 ## Unreleased
 
+- CRC displays tagged-file checksums in pages of 20 instead of scrolling earlier results away. A key continues; ESC returns to the panels without processing the remaining files. Exact multiples of 20 finish without an empty page, and tags are preserved.
 - DATE rejects impossible calendar dates (including non-leap February 29 and day 31 in 30-day months), preserving the previous system date/time. Leap years from 1940 through 2039, including 2000, remain supported.
 - FIND adds V on text results to browse every occurrence with hexadecimal byte offsets and excerpts, including overlapping and cross-read matches. N/Space continues by 20; ESC restores the selected result and pending search page. Setup code now shares the future directory queue to preserve the resident memory budget.
 - FIND adds optional ProDOS type and inclusive modification-date filters (TAB, then T/D; A clears). Filters combine with name/content searches and persist across result pages; invalid dates are rejected and cancelling an edit preserves the previous range.

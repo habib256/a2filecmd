@@ -8,8 +8,9 @@
  * lookup table, keeping both code and BSS inside the small window.
  * One file: its line on the message line, "NAME: CRC-32 $XXXXXXXX, N
  * bytes". Several tagged files: the same line for each on a cleared
- * screen, then a key, then the panels again with the last line on the
- * message line.
+ * screen, 20 per page. A key continues; ESC at a page boundary returns
+ * to the panels without reading later files. The final page waits for a
+ * key before restoring the panels. No empty page at exact multiples of 20.
  *
  * A small overlay is 1,280 bytes, and that window holds the file AND its
  * BSS -- above $2000 are the panels' entry tables, which a small overlay
@@ -53,12 +54,12 @@ void plugin_entry(void);
 struct PluginHeader {
     unsigned int signature; unsigned char flags;
     void (*entry)(void);
-    unsigned char r0, r1, r2; char desc[22];
+    unsigned char r0, r1, r2; char desc[7];
 };
 #pragma rodata-name (push, "OVLHDR")
 const struct PluginHeader __plugin_header = {
     PLUGIN_MAGIC, 0, plugin_entry, 0, 0, 0,
-    "CRC-32 selected files"
+    "CRC-32"
 };
 #pragma rodata-name (pop)
 
@@ -104,7 +105,7 @@ static unsigned char* buf;         /* s.copy_buf: the chunk, then the line */
 static unsigned int n;             /* the bytes of the chunk */
 static unsigned char TG[(MAX_ENTRIES + 7) / 8];   /* the tag bits, copied */
 static unsigned char any;          /* files tagged: the list, no progress bar */
-static unsigned char count, cursor, tags, bit, i, did;
+static unsigned char count, cursor, tags, bit, i, did, page;
 static unsigned char off;          /* the thunks' service (see the head) */
 static union { unsigned long l; unsigned char b[4]; } crc;
 static unsigned long done;
@@ -270,7 +271,7 @@ copy:
     pan = s.panels;
     if (*s.active) ++pan;
     buf = s.copy_buf;
-    did = 0;
+    did = page = 0;
 
     /* Everything wanted of the panel, in one pass through it: how many
      * entries and where, where the cursor is, the tag bits (ored together
@@ -333,9 +334,14 @@ ready:
         asm("sta %v", bit);
         if (any ? bit : i == cursor) {
             if (e->type != 0x0F) {
+                if(any && page==20) {
+                    t_message("Key Next/ESC");
+                    if(s.wait_key()==KEY_ESC) { s.draw_all();return; }
+                    s.clrscr();page=0;
+                }
                 crc_file();
                 did = 1;
-                if (any) t_cputs((char*)buf);
+                if (any) { t_cputs((char*)buf);++page; }
             }
         }
         asm("inc %v", i);             /* the next entry, 29 bytes on */
