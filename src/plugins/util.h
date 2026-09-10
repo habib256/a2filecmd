@@ -1,6 +1,10 @@
 /* Shared service-overlay helpers. No resident addresses or writable source disks. */
 #include "../a2fc_plugin.h"
+#if defined(UTIL_FIXED_API) && !defined(PLUGIN_HOST)
+#define a (*(struct A2fcApi*)0x3F9E)
+#else
 static struct A2fcApi a;
+#endif
 static unsigned char* buf;
 static unsigned char cancelled;
 static struct Panel *pan, *other;

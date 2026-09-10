@@ -5,6 +5,8 @@ downloads and installation.
 
 ## Unreleased
 
+- Extended BLKVIEW with four-byte hexadecimal search, overlapping/cross-block matches, find-next and bounded block extraction to a new binary file in the other panel. Extraction normalizes PO/DSK/2MG order, refuses existing names and writes device copies to another volume; cancellation/read/write errors retain partial output.
+
 - Fixed TREE falsely reporting an incomplete XL root scan despite correct totals: ProDOS GET_FILE_INFO returns volume allocation for a root directory. TREE and SYNC now count its linked directory blocks, with bounded reads and error/cancellation handling.
 
 - DISKIMG automatically reads back every block written to a device, stops at the first mismatch/read error and reports its block number. Single-drive copy prompts name the source volume and slot/drive; readback needs no additional swaps.

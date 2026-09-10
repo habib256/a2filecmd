@@ -12,14 +12,19 @@ static unsigned char size_of(const char* path) {
     }
     a.dir_close();return 0;
 }
+/* 0 unknown; 1 ProDOS order; 2 DOS sector order; 3 ProDOS 2MG. */
+static unsigned char image_kind(const char* path) {
+    unsigned char n=a.strlen(path);
+    if(n>4 && !a.strcmp(path+n-4,".2MG"))return 3;
+    if((n>4 && !a.strcmp(path+n-4,".DSK")) || (n>3 && !a.strcmp(path+n-3,".DO")))return 2;
+    if((n>3 && !a.strcmp(path+n-3,".PO")) || (n>4 && !a.strcmp(path+n-4,".HDV")))return 1;
+    return 0;
+}
 static unsigned char image_open(struct Source* s) {
     unsigned char n;unsigned long count;
     s->file=0;s->unit=0;s->base=0;s->kind=0;
     if(!size_of(s->path))return 0;
-    n=a.strlen(s->path);
-    if(n>4 && !a.strcmp(s->path+n-4,".2MG"))s->kind=2;
-    else if((n>4 && !a.strcmp(s->path+n-4,".DSK")) || (n>3 && !a.strcmp(s->path+n-3,".DO")))s->kind=1;
-    else if(!((n>3 && !a.strcmp(s->path+n-3,".PO")) || (n>4 && !a.strcmp(s->path+n-4,".HDV"))))return 0;
+    n=image_kind(s->path);if(!n)return 0;s->kind=n-1;
     s->file=a.fopen(s->path,"rb");if(!s->file)return 0;
     if(s->kind==2) {
         if(a.fread(buf,1,64,s->file)!=64 || rd16(buf)!=0x4932 || rd16(buf+2)!=0x474D ||

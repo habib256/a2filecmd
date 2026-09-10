@@ -154,7 +154,8 @@ partagent la lecture brute de piste avec `NIBREAD` et `NIBBLE`.
   et refaire la VTOC, corriger les comptes de secteurs du catalogue
   (Locksmith « fix sector counts »). *2 jours.*
 - ✅ **`BLKVIEW`**, EXTRA / XL, 0.7.6 : blocs de volumes et images,
-  hexadécimal/ASCII, répertoires et index, navigation bornée en lecture seule.
+  hexadécimal/ASCII, répertoires et index, navigation bornée, recherche de quatre
+  octets et extraction de plages vers l’autre panneau. La source reste intacte.
 - 🟠 💾 **`BLKEDIT`** : l'éditeur de blocs de Block Warden et Copy II Plus :
   aller au bloc N, suivre les blocs d'un fichier, hexa et ASCII, décodage
   d'un bloc de répertoire ou d'index, modifier, écrire après `ERASE`,

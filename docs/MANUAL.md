@@ -148,7 +148,7 @@ The following tools supplement the main keys and readers.
 | **FIXTYPES** | Set type/auxtype from suffixes on tagged files or the selection; optionally remove suffixes. Image suffixes and `.SYSTEM` stay. |
 | **GOTO** | Nine favourite directories: A adds, D then a digit removes, 1–9 jumps. Saved in `A2FILE/GOTO.CFG`. |
 | **FIND** | Search the volume by name pattern; start with `"` to search contents, ignoring case. Return jumps to a result. Up to 20 results; a full search queue is reported. |
-| **BLKVIEW** | Read device or image blocks: H hex/ASCII, D directory, I index, N/P block, Space page, G four-digit hex block, ESC back. Never writes. |
+| **BLKVIEW** | Read device or image blocks: H hex/ASCII, D directory, I index, N/P block, Space page, G four-digit hex block, F find four bytes (8 hex digits), A find next, X extract blocks, ESC back. Source stays unchanged. |
 | **CRC** | Calculate CRC-32 for the selection or tagged files. |
 | **IDENT** | Identify a file by content; text statistics cover its first 512 bytes. |
 | **MDVIEW** | Read Markdown or long text with wrapping, headings, lists and code; page forward/back. |
@@ -200,6 +200,11 @@ are refused. Only complete exports end with `END REPORT`; partial files remain.
 **MKIMAGE** refuses
 existing names and removes cancelled/incomplete new images; 32,767 blocks
 is the maximum that fits in a single ProDOS image file.
+
+**BLKVIEW F** searches forward from the current block, including matches across
+block boundaries; A continues without wrapping. X extracts from the current block:
+enter a four-digit hex count (maximum `7FFF`) and a new filename in the other panel.
+Device sources require another destination volume. Errors retain partial output.
 
 **Disk writes and copies** automatically read back every written block. A readback
 error stops at the first failing block. On one drive, each prompt identifies

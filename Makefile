@@ -183,7 +183,7 @@ $(BUILD)/%.PLG: $(SRC)/plugins/%.c $(wildcard $(SRC)/plugins/*.h) $(wildcard $(S
 	$(CC65BIN)ca65 -t $(TARGET) -o $(BUILD)/$*.o $(BUILD)/$*.s
 	@helper=; if [ -f $(SRC)/plugins/$*.s ]; then $(AS) -t $(TARGET) -o $(BUILD)/$*_svc.o $(SRC)/plugins/$*.s || exit; helper=$(BUILD)/$*_svc.o; fi; \
 	  if grep -qE 'PLUGIN_MAGIC, *OVERLAY_BIG' $<; then big=1; else big=0; fi; \
-	  $(CC65BIN)ld65 -C sdk/plugin.cfg -D __OVLSIZE__=$$( if [ $$big = 1 ]; then echo $(if $(filter $*,$(XPLUGINS_SCRATCH)),0x1500,$(if $(filter volinfo,$*),0x249E,0x2500)); elif [ "$*" = verify ]; then echo 0x04C2; else echo 0x0500; fi ) -m $(BUILD)/$*.map -o $@ $(BUILD)/$*.o $$helper $(CC65LIB) && \
+	  $(CC65BIN)ld65 -C sdk/plugin.cfg -D __OVLSIZE__=$$( if [ $$big = 1 ]; then echo $(if $(filter $*,$(XPLUGINS_SCRATCH)),0x1500,$(if $(filter volinfo blkview,$*),0x249E,0x2500)); elif [ "$*" = verify ]; then echo 0x04C2; else echo 0x0500; fi ) -m $(BUILD)/$*.map -o $@ $(BUILD)/$*.o $$helper $(CC65LIB) && \
 	  limit=$$( [ $$big = 1 ] && echo 9472 || echo 1280 ) && \
 	  { test $$(wc -c < $@) -le $$limit || { echo "$@: $$(wc -c < $@) bytes, more than its $$limit-byte window"; rm -f $@; exit 1; }; } && \
 	  echo "$@: $$(wc -c < $@) bytes ($$( [ $$big = 1 ] && echo big || echo small ) overlay)"
@@ -286,6 +286,7 @@ test:
 	python3 $(TOOLS)/test_volinfo.py
 	python3 $(TOOLS)/test_diskimg_verify.py
 	python3 $(TOOLS)/test_dirscan.py
+	python3 $(TOOLS)/test_blkview.py
 	python3 $(TOOLS)/test_six_plugins.py
 
 bench: disk
