@@ -9,6 +9,9 @@
  * and reads one key:
  *
  *   1-9  the active panel jumps to that favourite;
+ *   P    type an absolute ProDOS directory path (63 characters maximum);
+ *        Return opens it, Delete/Left edits, ESC cancels. It is not saved
+ *        as a favourite; lowercase is normalized and trailing slashes removed.
  *   A    the active panel's path is appended and the file rewritten --
  *        unless it is the volume list, an image or a DOS 3.3 panel, a path
  *        already listed, or the list already holds nine;
@@ -81,7 +84,7 @@ static const char f_name[] = "GOTO.CFG";
 static const char f_rb[]   = "rb";
 static const char f_wb[]   = "wb";
 static const char m_title[] = "GOTO -- favourite directories";
-static const char m_keys[]  = "1-9 Go,A Add this directory,D Delete,ESC Back";
+static const char m_keys[]  = "1-9 Go,P Path,A Add this directory,D Delete,ESC Back";
 static const char m_none[]  = "No favourites yet: A adds this directory";
 static const char m_dir[]   = "Not a ProDOS directory: nothing to add.";
 static const char m_room[]  = "The list is full: nine favourites.";
@@ -213,6 +216,37 @@ static void draw(void)
     kbar(0, m_keys);
 }
 
+/* TEXT is no longer needed once load() has parsed the favourites. */
+static unsigned char path_input(void)
+{
+    unsigned char len=0,k;
+    for(;;) {
+        TEXT[len]=0;
+        scpy(N,"Path: ");scpy(N+6,TEXT);N[6+len]='_';N[7+len]=0;
+        msg(N);k=getkey(0);
+        if(k==KEY_ESC) { N[0]=0;return 0; }
+        if(k==KEY_RETURN) {
+            if(TEXT[0]!='/' || !TEXT[1]) { scpy(N,"Use /VOLUME/DIRECTORY.");return 0; }
+            while(len>1 && TEXT[len-1]=='/') { --len;TEXT[len]=0; }
+            return 1;
+        }
+        if(k==KEY_DELETE || k==KEY_LEFT) { if(len)--len; }
+        else if(k>=' ' && k<127 && len<PATH_LEN-1) {
+            if(k>='a' && k<='z')k-=32;
+            TEXT[len]=k;++len;
+        }
+    }
+}
+
+static void jump(const char* p)
+{
+    if(!dopen(p))scpy(scpy(N,m_gone)+TAIL(m_gone),p);
+    else {
+        dclose(0);scpy(P->path,p);P->first=P->cursor=0;P->fs=FS_PRODOS;
+        scpy(scpy(N,m_jump)+TAIL(m_jump),p);
+    }
+}
+
 void __fastcall__ plugin_entry(const struct A2fcApi* api)
 {
     unsigned char i, k, del = 0;
@@ -235,6 +269,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
      * letters and leaves 1-9 alone; and since count <= 9, i < count can
      * only be true for a digit key. */
     k = getkey(0) | 0x20;
+    if(k=='p') { if(path_input())jump(TEXT);return; }
     if (count && k == 'd') {
         msg(m_which);
         k = getkey(0) | 0x20;
@@ -247,16 +282,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         if (del) {                      /* dropped, and the file rewritten */
             scpy(scpy(N, m_del) + TAIL(m_del), p);
             save(i);
-        } else if (!dopen(p)) {         /* read_panel is out of reach: see the head */
-            scpy(scpy(N, m_gone) + TAIL(m_gone), p);
-        } else {
-            dclose(0);
-            scpy(P->path, p);
-            P->first = 0;
-            P->cursor = 0;              /* read_panel's top follows the cursor */
-            P->fs = FS_PRODOS;
-            scpy(scpy(N, m_jump) + TAIL(m_jump), p);
-        }
+        } else jump(p);
     } else if (!del && k == 'a') {
         p = P->path;
         if (!*p || P->fs) scpy(N, m_dir);

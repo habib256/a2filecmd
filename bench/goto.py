@@ -22,13 +22,16 @@ PORT = 6812
 DEEP = '/WORKHD/WORK/SUB/DEEP'
 OTHER = '/WORKHD/OTHER'
 TITLE = 'GOTO -- favourite directories'
+LONG = '/WORKHD/'+'A'*15+'/'+'B'*15+'/'+'C'*15+'/'+'D'*7
 
-HD_FILES = {'WORK/SUB/DEEP/X.TXT': b'deep\r', 'OTHER/Y.TXT': b'other\r'}
+HD_FILES = {'WORK/SUB/DEEP/X.TXT': b'deep\r', 'OTHER/Y.TXT': b'other\r', LONG[len('/WORKHD/'):]+ '/X.TXT':b'long\r'}
 
 
 def main():
     with tempfile.TemporaryDirectory(prefix='a2fc-goto-') as tmp:
         with boot_hd(Path(tmp), HD_FILES, port=PORT, plugins=['goto']) as (p, s):
+
+            stack=p.peek(0x80,2);floor=s.sym['__HIMEM__']-s.sym['__STACKSIZE__'];p.poke(floor,b'\xA5'*8)
 
             def open_panel(x, vol, *names):
                 """Amene le panneau qui commence en colonne x sur /vol/names..."""
@@ -62,12 +65,10 @@ def main():
                 """Les lignes numerotees de la liste affichee."""
                 return [r.strip() for r in screen[2:14] if r.strip() and r.strip()[0].isdigit()]
 
-            # 1. La surcouche parait dans le menu, decrite par son en-tete.
-            s.key(b'!'); s.wait(lambda: s.has('the overlays'), 'le menu', 30); p.stable()
-            s.ok('GOTO parait dans le menu avec sa description',
-                 s.has('Favourite directories: jump in two keys'),
-                 [r.strip() for r in s.rows() if 'Favourite' in r])
-            s.key(ESC); s.wait(lambda: s.has('Type  Aux'), 'les panneaux', 30); p.stable()
+            # The menu now spans several pages: use its normal navigation.
+            open_goto()
+            s.ok('GOTO opens from the plugin menu',s.has(TITLE))
+            leave(ESC)
 
             # 2. Liste vide : l'ecran le dit, et le message aussi en sortant.
             screen = open_goto()
@@ -77,6 +78,30 @@ def main():
             line = leave(ESC)
             s.ok('ESC sur une liste vide : "No favourites yet: A adds this directory"',
                  line == 'No favourites yet: A adds this directory', line)
+
+            def path_to(value,key=RET):
+                open_goto();s.key(b'P');s.wait(lambda:s.has('Path: '),'path input',20)
+                if value:s.type(value)
+                return leave(key)
+            line=path_to(DEEP.lower()+'///')
+            s.ok('P opens lowercase path with trailing slashes',line=='Jumped to '+DEEP and s.rows()[0].startswith(DEEP))
+            screen=open_goto();s.ok('direct path is not added to favourites',rows_of(screen)==[]);leave(ESC)
+            line=path_to(OTHER,ESC)
+            s.ok('ESC cancels direct path without moving panel',s.rows()[0].startswith(DEEP) and not line)
+            open_goto();s.key(b'P');s.wait(lambda:s.has('Path: '),'path input',20)
+            s.type(OTHER+'X');s.key(b'\x7f');line=leave(RET)
+            s.ok('Delete edits the path',line=='Jumped to '+OTHER)
+            for value in ('OTHER','/',''):
+                line=path_to(value)
+                s.ok('relative or empty path rejected: '+repr(value),line=='Use /VOLUME/DIRECTORY.' and s.rows()[0].startswith(OTHER))
+            for value in ('/NO.VOLUME/MISSING',OTHER+'/Y'):
+                line=path_to(value)
+                s.ok('missing directory or file leaves panel unchanged',line=='Gone: '+value and s.rows()[0].startswith(OTHER))
+            line=path_to(LONG+'EXCESS')
+            s.ok('full 63-character path fits; excess input is bounded',len(LONG)==63 and line=='Jumped to '+LONG)
+            left=s.rows()[0][:39];s.key(TAB)
+            line=path_to(DEEP)
+            s.ok('P acts on the right panel when active',line=='Jumped to '+DEEP and s.rows()[0][40:].startswith(DEEP) and s.rows()[0][:39]==left)
 
             # 3. A dans /WORKHD/WORK/SUB/DEEP : le premier favori.
             open_panel(0, '/WORKHD', 'WORK', 'SUB', 'DEEP')
@@ -158,6 +183,8 @@ def main():
             s.ok('un favori disparu : "Gone: ..." et le panneau reste ou il est',
                  line == 'Gone: /WORKHD/GONESOON' and s.rows()[0].startswith('/WORKHD '),
                  (s.rows()[0][:38], line))
+
+            s.ok('stack restored and bounded',p.peek(0x80,2)==stack and p.peek(floor,8)==b'\xA5'*8)
 
     return ok_all(s, 'goto')
 

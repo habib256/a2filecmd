@@ -142,3 +142,6 @@ protection du volume du programme, annulations sans écriture, disquette
 protégée, formatage Disk II et RAM, SmartPort de 65535 blocs, bitmap,
 restauration du résident et retour direct. Exécuter une fois avec
 `A2FC_PRESET=iie_unenh`, puis avec `A2FC_IMG=A2FILECMD-65C02-BOOT`.
+
+`goto.py` vérifie les favoris et les chemins directs (P) : casse, correction,
+annulation, chemin absent, limite de 63 caractères et choix du panneau actif.
