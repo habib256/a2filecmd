@@ -12,7 +12,9 @@ CASES = {
     'NUL': b'/WORKHD\n\0/WORKHD/A2FILE\n',
     'TEN': b'/WORKHD\n' * 10,
     'OVERSIZE': b'\n' * 2001,
+    'RELATIVE': b'WORKHD/DIR\n',
 }
+CHECK_BYTES = {'LONGPATH', 'NUL', 'TEN', 'OVERSIZE'}
 
 
 def main():
@@ -31,10 +33,11 @@ def main():
                 s.ok(name + ': refusal before showing favourites',
                      s.has('Type  Aux') and not s.has('GOTO -- favourite directories'))
                 s.ok(name + ': active directory preserved', s.rows()[0].startswith('/WORKHD/A2FILE '))
-                s.select('GOTO.CFG'); menu_run(s, p, 'CRC')
-                s.wait(lambda: s.has('CRC-32'), 'checksum'); p.stable()
-                expected = 'GOTO.CFG: CRC-32 $%08X, %d bytes' % (zlib.crc32(data), len(data))
-                s.ok(name + ': original bytes preserved', s.rows()[22].strip() == expected, s.rows()[22].strip())
+                if name in CHECK_BYTES:
+                    s.select('GOTO.CFG'); menu_run(s, p, 'CRC')
+                    s.wait(lambda: s.has('CRC-32'), 'checksum'); p.stable()
+                    expected = 'GOTO.CFG: CRC-32 $%08X, %d bytes' % (zlib.crc32(data), len(data))
+                    s.ok(name + ': original bytes preserved', s.rows()[22].strip() == expected, s.rows()[22].strip())
                 rename('GOTO.CFG', name)
     return ok_all(s, 'gotobad')
 

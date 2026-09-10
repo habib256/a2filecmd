@@ -157,6 +157,27 @@ static char* __fastcall__ slot(unsigned char i)
     return p;
 }
 
+/* A favourite is an absolute ProDOS path.  Check its component boundaries
+ * before presenting it: otherwise a malformed line could be shown as a
+ * favourite and only fail much later when the user tries to jump. */
+static unsigned char valid_path(const char* p)
+{
+    unsigned char n = 0;
+    if (*p++ != '/') return 0;
+    if (!*p) return 1;                  /* the volume list root */
+    while (*p) {
+        if (*p == '/') {
+            if (!n) return 0;           /* empty component */
+            n = 0;
+        } else {
+            if (*p < ' ' || *p >= 127 || n == 15) return 0;
+            ++n;
+        }
+        ++p;
+    }
+    return n != 0;                      /* no trailing slash in saved paths */
+}
+
 /* Parse the entire bounded file before offering actions. Never turn an
  * overlong path, embedded NUL or extra favourite into a partial list that
  * a later save could silently write over the original. Missing is empty. */
@@ -184,6 +205,7 @@ static unsigned char load(void)
             d[j++] = *p++;
         }
         d[j] = 0;
+        if (!valid_path(d)) return 0;
         ++count;
     }
     return 1;
