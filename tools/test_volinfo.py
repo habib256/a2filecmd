@@ -13,7 +13,8 @@ HARNESS = r'''
 #include <stdlib.h>
 static FILE* disk;
 static unsigned int reject;
-static unsigned char selection_mode;
+static unsigned char selection_mode, listing_mode;
+static char line[81];
 static unsigned char scratch[512];
 static unsigned char mock_mli(unsigned char cmd, void* p) {
     struct Blk* b = p;
@@ -43,17 +44,22 @@ int main(int argc, char** argv) {
     disk = fopen(argv[1], "rb");
     if (!disk) return 2;
     selection_mode = argc > 2 && !strcmp(argv[2], "unit");
-    reject = argc > 2 && !selection_mode ? atoi(argv[2]) : 65535U;
+    listing_mode = argc > 2 && !strcmp(argv[2], "list");
+    reject = argc > 2 && !selection_mode && !listing_mode ? atoi(argv[2]) : 65535U;
     api.mli = mock_mli; api.memcpy = memcpy; api.memset = memset;
     A = &api; buf = scratch; io.n = 3;
     io.unit = 0xE0;
     total = 65535U; base = failed = cancelled = 0;
     if (!readblock(2, buf)) return 3;
     total = word(buf+41); bitmap = word(buf+39);
-    if (selection_mode) {
+    if (listing_mode) {
+        api.sprintf = sprintf; api.fwrite = fwrite; api.other_full = line;
+        memcpy(entry, buf+43, 39); listing = 1;
+        reportfile = fopen(argv[3], "wb"); file(); fclose(reportfile); reportfile = 0;
+    } else if (selection_mode) {
         api.panels = panels; api.active = &active; api.selected = &selected;
         api.copy_buf = scratch; api.clrscr = noop; api.cputs = puts_noop;
-        api.cprintf = printf_noop; api.cgetc = key_return; api.message = unexpected;
+        api.sprintf = sprintf; api.cprintf = printf_noop; api.cgetc = key_return; api.message = unexpected;
         strcpy(selected.name, "/V"); selected.mdate = 14;
         plugin_entry(&api);
     } else audit();
@@ -132,6 +138,36 @@ class Volinfo(unittest.TestCase):
     def clean(self, r):
         for key in ('lost', 'shared', 'usedfree', 'bad', 'counts', 'incomplete', 'failed'):
             self.assertEqual(r[key], 0, (key, r))
+
+    def block_list(self, d):
+        path = self.work/'disk.po'; path.write_bytes(d)
+        report = self.work/'blocks.txt'
+        subprocess.check_output([str(self.exe), str(path), 'list', str(report)], timeout=10)
+        self.assertEqual(path.read_bytes(), d)
+        return report.read_text()
+
+    def test_selected_tree_lists_roles_in_order(self):
+        d = fixture(entries=[entry(3, 4, 4, 1024)])
+        ptr(d, 4, 0, 5); ptr(d, 5, 0, 6); ptr(d, 5, 1, 8)
+        lines = self.block_list(d).splitlines()
+        self.assertEqual(lines, ['M     4 ($0004)', 'I     5 ($0005)',
+                                 'D     6 ($0006)', 'D     8 ($0008)'])
+
+    def test_selected_extended_lists_both_forks(self):
+        d = fixture(entries=[entry(5, 4, 3, 1)])
+        d[2048] = d[2304] = 1
+        word(d, 2049, 5); word(d, 2305, 6)
+        self.assertEqual(self.block_list(d).splitlines(),
+                         ['E     4 ($0004)', 'D     5 ($0005)', 'D     6 ($0006)'])
+
+    def test_selected_invalid_pointer_is_explicit(self):
+        d = fixture(entries=[entry(key=280)])
+        self.assertEqual(self.block_list(d).strip(), 'D   280 ($0118) INVALID')
+
+    def test_selected_sparse_holes_are_not_block_zero(self):
+        d = fixture(entries=[entry(2, 4, 2, 1024)])
+        ptr(d, 4, 1, 5)
+        self.assertEqual(self.block_list(d).splitlines(), ['I     4 ($0004)', 'D     5 ($0005)'])
 
     def test_empty(self):
         r = self.scan(fixture())

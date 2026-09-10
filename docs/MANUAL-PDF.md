@@ -7,7 +7,7 @@ repeated table headings. The release workflow copies it into `dist/` as
 `A2FILECMD-MANUAL-EN-<version>.pdf`, adds
 its SHA-256 checksum and attaches it to the GitHub release.
 
-The screenshot is `screenshots/01-panels-0.7.5.png`.
+The screenshot is `screenshots/01-panels-0.7.6.png`.
 
 Regenerate the PDF after updating the manual, before publishing a release.
 On macOS, no additional packages are needed:

@@ -2697,10 +2697,10 @@ void __fastcall__ help_entry(const struct A2fcApi* a)
  * whatever the rodata-name pragma, and those of an overlay would weigh on
  * the main window. */
 static const char S_TITLE[] = "  A2 FILE CMD  -  DISK IMAGES";
-static const char S_INTRO[] = "ProDOS order .PO, DOS 3.3 order .DSK or .DO, and .2MG. The target must be formatted.";
+static const char S_INTRO[] = "PO/DSK/DO/2MG. Target must be formatted. Disk writes are read back.";
 static const char S_W[] = "W  Write %s to a disk";
 static const char S_R[] = "R  Read a disk into a new image file, in this directory";
-static const char S_O[] = "O  Copy a disk to another disk (one drive: swap the disks at each pass)";
+static const char S_O[] = "O  Copy disk (one drive: swap SOURCE and TARGET)";
 static const char S_KEYS[] = "W Write,R Read,O Copy,ESC Back";
 static const char S_PICK_KEYS[] = "1-8 Choose the disk,ESC Back";
 static const char S_DEV[] = "%c  %s  %-17s %5u blocks%s";
@@ -2708,14 +2708,14 @@ static const char S_WHERE[] = "slot %u drive %u";
 static const char S_NOVOL[] = "(no ProDOS volume)";
 static const char S_INUSE[] = "  IN USE";
 static const char S_EMPTY[] = "";
-static const char S_HOLDS[] = "That disk holds the running program: choose another.";
+static const char S_HOLDS[] = "Program disk: choose another.";
 static const char S_LOST[] = " EVERYTHING on %s (%s) WILL BE LOST. ";
 static const char S_ERASE[] = "Type ERASE then RETURN to go on";
 static const char S_WORD[] = "ERASE";
 static const char S_TO[] = "Write the image to which disk?";
 static const char S_FROM[] = "Read which disk into an image?";
 static const char S_CFROM[] = "Copy FROM which disk?";
-static const char S_CTO[] = "Copy TO which disk? (the same one: one drive, swapping the disks)";
+static const char S_CTO[] = "Copy TO which drive? Same drive: swap disks.";
 static const char S_NOTIMG[] = "The selection is not a disk image (.PO, .DSK, .2MG).";
 static const char S_SMALL[] = "That disk is smaller than the image.";
 static const char S_NODIR[] = "Open a ProDOS directory first: the image goes there.";
@@ -2730,18 +2730,21 @@ static const char S_DSK[] = "DSK";
 static const char S_PO[] = "PO";
 static const char S_EXISTS[] = "A file of that name exists.";
 static const char S_CREATE[] = "Cannot create the image file.";
-static const char S_DONE[] = "%u blocks %s %s.";
+static const char S_DONE[] = "%u blocks %s %s.%s";
+static const char S_VERIFIED[] = " Verified.";
 static const char S_WRITTEN[] = "written to";
 static const char S_READ[] = "read from";
 static const char S_COPIED[] = "copied to";
-static const char S_INSERT[] = "Insert the %s disk, then press a key (ESC cancels).";
+static const char S_INSERT[] = "Insert %s for %s in %s. Key/ESC.";
 static const char S_SOURCE[] = "SOURCE";
-static const char S_TARGET[] = "TARGET";
+static const char S_TARGET[] = "TARGET copy";
 static const char S_READING[] = "Reading";
-static const char S_WRITING[] = "Writing";
+static const char S_WRITING[] = "Writing / verifying";
+static const char S_CHECKFAIL[] = "Readback failed at block %u: %s.";
+static const char S_DIFFER[] = "data mismatch";
 static const char S_FAILED[] = "Failed: %s.";
 static const char S_E_CANCEL[] = "cancelled";
-static const char S_E_IO[] = "I/O error, no disk or an unformatted one";
+static const char S_E_IO[] = "I/O error";
 static const char S_E_NODEV[] = "no device there";
 static const char S_E_WP[] = "the disk is write protected";
 static const char S_E_SWITCH[] = "the disk was switched";
@@ -2764,6 +2767,9 @@ struct DiskImg {
     unsigned char ndev, aux_used;
     unsigned int total;
     unsigned char parms[6];
+    unsigned char checking;
+    unsigned int checkblock;
+    const char* source_name;
 };
 
 /* ProDOS block b of a track occupies two physical sectors (low half then
@@ -2795,7 +2801,7 @@ static unsigned char di_xfer(struct Side* s, unsigned int block, unsigned char w
     for (half = 0; half < n; ++half) {
         if (s->kind == SIDE_DSK) off = (((unsigned long)(block >> 3) << 4) + DSK_SECTORS[((block & 7) << 1) + half]) << 8;
         else off = (unsigned long)block << 9;
-        fseek(s->f, s->base + off, SEEK_SET);
+        if (fseek(s->f, s->base + off, SEEK_SET)) return 0x27;
         if ((write ? fwrite(DI_BLOCK + half * 256, 1, len, s->f) : fread(DI_BLOCK + half * 256, 1, len, s->f)) != len) return 0x27;
     }
     return 0;
@@ -2817,7 +2823,7 @@ static unsigned char di_ask(const char* which)
 {
     clear_row(22);
     gotoxy(0, 22);
-    cprintf(S_INSERT, which);
+    cprintf(S_INSERT, which, DI->source_name, di_where(DI->src.unit));
     return cgetc() != KEY_ESC;
 }
 
@@ -2860,6 +2866,14 @@ static unsigned char di_copy(unsigned char swap)
         for (i = 0; i < n; ++i) {
             di_stage(i, 0);
             if ((r = di_xfer(&DI->dst, done + i, 1))) return r;
+            if (DI->dst.kind == SIDE_DEVICE) {
+                DI->checking = 1;
+                DI->checkblock = done + i;
+                memcpy(copy_buf, DI_BLOCK, 512);
+                if ((r = di_xfer(&DI->dst, DI->checkblock, 0))) return r;
+                if (memcmp(copy_buf, DI_BLOCK, 512)) return 0xFE;
+                DI->checking = 0;
+            }
             progress_bar(S_WRITING, done + i + 1, total);
         }
         done += n;
@@ -3008,6 +3022,7 @@ void __fastcall__ diskimg_entry(const struct A2fcApi* a)
     *(unsigned char*)0xC002 = 0;       /* RAMRD main bank */
     *(unsigned char*)0xC004 = 0;       /* RAMWRT main bank */
     DI->aux_used = 0;
+    DI->checking = 0;
     src->f = dst->f = NULL;
     di_title(S_INTRO);
     if (image) { gotoxy(2, 4); cprintf(S_W, e->name); }
@@ -3063,13 +3078,18 @@ void __fastcall__ diskimg_entry(const struct A2fcApi* a)
         src->kind = dst->kind = SIDE_DEVICE;
         src->unit = from->unit;
         dst->unit = to->unit;
+        DI->source_name = from->name;
         r = di_copy(from == to);
     }
-    if (!r) sprintf(note, S_DONE, DI->total, verb, di_where(to->unit));
+    if (!r) sprintf(note, S_DONE, DI->total, verb, di_where(to->unit), dst->kind == SIDE_DEVICE ? S_VERIFIED : S_EMPTY);
 out:
     if (src->f) fclose(src->f);
     if (dst->f && fclose(dst->f) && !r) r = 0x27;
-    if (r) { sprintf(note, S_FAILED, di_error(r)); reselect[0] = 0; }
+    if (r) {
+        if (DI->checking) sprintf(note, S_CHECKFAIL, DI->checkblock, r == 0xFE ? S_DIFFER : di_error(r));
+        else sprintf(note, S_FAILED, di_error(r));
+        reselect[0] = 0;
+    }
     if (DI->aux_used && ram_format()) strcat(note, S_RAM);
 }
 #pragma rodata-name (pop)

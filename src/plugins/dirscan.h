@@ -5,8 +5,25 @@ static char cachedpath[PATH_LEN];
 static unsigned int cachedblock;
 static void dir_reset(void){cachedpath[0]=0;}
 static unsigned char dir_begin(const char* path,unsigned int* blocks) {
+    FILE* f;
     if(getinfo(path) || (info.storage!=13 && info.storage!=15))return 0;
-    *blocks=info.blocks;return *blocks!=0;
+    *blocks=info.blocks;
+    if(info.storage==15) {
+        /* GET_FILE_INFO on a volume returns all allocated blocks, not
+         * the root directory length. Count its linked blocks instead;
+         * roots need not be four blocks. Keep the allocation as a bound.
+         * https://prodos8.com/docs/techref/calls-to-the-mli/#445---get_file_info-c4 */
+        f=a.fopen(path,"rb");if(!f)return 0;
+        *blocks=0;
+        do {
+            if(stop() || *blocks==info.blocks || a.fread(buf,1,512,f)!=512) {
+                a.fclose(f);return 0;
+            }
+            ++*blocks;
+        } while(rd16(buf+2));
+        if(a.fclose(f))return 0;
+    }
+    return *blocks!=0;
 }
 /* 1 entry, 0 end, 2 malformed/unreadable. */
 static unsigned char dir_next(const char* path,unsigned int blocks,unsigned long* pos) {

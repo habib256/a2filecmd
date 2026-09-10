@@ -50,6 +50,11 @@ already holds. The result is a raw BIN to be placed under `A2FILE/HELLO.PLG`
 (ProDOS type `$06`, address `$1B00`), next to `A2FILE.CODE`. From the root of
 the repository, `make example` does the same thing.
 
+The main Makefile also discovers `src/plugins/NAME.c`. A matching `NAME.s`
+is assembled and linked as an optional helper (see VERIFY and VOLINFO's
+service-call trampolines). Their linker limits reserve the fixed API copies
+above code and BSS; keep those limits in sync with the assembly tables.
+
 ## Rules to keep
 
 - **No uninitialised static that must be zero**: nothing clears the overlay

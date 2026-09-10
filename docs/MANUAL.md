@@ -1,9 +1,9 @@
 # The A2 File Cmd manual
 
-**Version 0.7.5** — A two-panel ProDOS file manager for an Apple II with
+**Version 0.7.6** — A two-panel ProDOS file manager for an Apple II with
 128 KB and 80-column support. Free software by Arnaud Verhille, under GPL v3.
 
-![The two panels in A2 File Cmd 0.7.5](screenshots/01-panels-0.7.5.png)
+![The two panels in A2 File Cmd 0.7.6](screenshots/01-panels-0.7.6.png)
 
 ## Start here
 
@@ -17,22 +17,22 @@ starting and identifies the edition on its title screen.
 | Edition | What to use |
 |---|---|
 | **BOOT + EXTRA** | Two 140 KB floppies for the same CPU and release. Boot BOOT; EXTRA supplies the additional tools and BASIC.SYSTEM. |
-| **XL** | One bootable 32 MB `.2mg` with all 42 overlays, BASIC.SYSTEM and demonstration files. No EXTRA disk is needed. |
+| **XL** | One bootable 32 MB `.2mg` with all 43 overlays, BASIC.SYSTEM and demonstration files. No EXTRA disk is needed. |
 
 The download names include the CPU, role and version:
 
 | CPU | Image names |
 |---|---|
-| 6502 | `A2FILECMD-6502-BOOT-0.7.5.dsk`, `A2FILECMD-6502-EXTRA-0.7.5.dsk`, `A2FILECMD-6502-XL-0.7.5.2mg` |
-| 65C02 | `A2FILECMD-65C02-BOOT-0.7.5.dsk`, `A2FILECMD-65C02-EXTRA-0.7.5.dsk`, `A2FILECMD-65C02-XL-0.7.5.2mg` |
+| 6502 | `A2FILECMD-6502-BOOT-0.7.6.dsk`, `A2FILECMD-6502-EXTRA-0.7.6.dsk`, `A2FILECMD-6502-XL-0.7.6.2mg` |
+| 65C02 | `A2FILECMD-65C02-BOOT-0.7.6.dsk`, `A2FILECMD-65C02-EXTRA-0.7.6.dsk`, `A2FILECMD-65C02-XL-0.7.6.2mg` |
 
 BOOT and EXTRA are supplied as `.dsk` in DOS sector order; XL uses `.2mg`.
 Use the downloaded files directly: changing an extension does not convert an image.
 Each floppy image is 143,360 bytes. Check downloads against
-`SHA256SUMS-0.7.5.txt`; if all release files are together, run:
+`SHA256SUMS-0.7.6.txt`; if all release files are together, run:
 
 ```sh
-sha256sum -c SHA256SUMS-0.7.5.txt
+sha256sum -c SHA256SUMS-0.7.6.txt
 ```
 
 Boot the image, or launch `A2FILE.SYSTEM` from a ProDOS selector. To install
@@ -53,7 +53,7 @@ opens `DEMO/`; try its text, pictures, music and sample archives.
 
 ### The companion floppy and disk swaps
 
-EXTRA contains 23 tools absent from BOOT, plus the common menu and
+EXTRA contains 24 tools absent from BOOT, plus the common menu and
 BASIC.SYSTEM. Use the **same CPU and version** on both disks.
 
 With two Disk II drives, keep BOOT in **slot 6, drive 1** and put EXTRA in
@@ -71,7 +71,7 @@ session; these plugin-loading prompts use slot 6.
 | 6502 | BOOT `/A2FC6502`; EXTRA `/A2EXTRA6502`; XL `/A2XL6502` |
 | 65C02 | BOOT `/A2FC65C02`; EXTRA `/A2EXTRA65C02`; XL `/A2XL65C02` |
 
-The menu retains all 41 commands when EXTRA is absent. Tools that need both
+The menu retains all 42 commands when EXTRA is absent. Tools that need both
 source and destination online still require another drive or volume.
 **DISKCMP S** and **W → Copy** have their own single-drive exchange modes.
 
@@ -134,9 +134,9 @@ The following tools supplement the main keys and readers.
 | **COMPARE** | Compare the selected file byte by byte with the same name in the other panel. |
 | **TXTCONV** | C = CR, L = LF, D = CRLF, H = clear high bit, S = set it, T = expand tabs, A = transliterate UTF-8 accents. Write in place or to the other panel. |
 | **DATE** | S sets date/time from `DDMMYYYYHHMM` (1940–2039). F stamps modification dates on tagged files or the selection. Creation dates stay unchanged; a hardware clock may replace the entered time. |
-| **VERIFY** | Read the selected file or every block of the selected volume; report read errors. ESC interrupts volume scans. No writes or tagged-file batch mode. |
+| **VERIFY** | Read tagged files (skip directories), the selection, or every block of a volume. Report processed files and errors; ESC cancels. No writes. |
 | **TAGPAT** | Name patterns: `=` any string, `?` one character. Add comma-separated filters: `T04` TXT, `>2000` or `<2000` bytes, `D` modified today. T tags, U untags, X replaces tags. |
-| **VOLINFO** | Audit ProDOS allocation, free space, fragmentation, shared/lost blocks and count mismatches. M shows the bitmap (`.` free, `#` allocated); N/P changes page, ESC returns. Read-only. |
+| **VOLINFO** | Audit allocation and fragmentation. M = bitmap (`.` free, `#` used), F = selected file blocks, E = export to the other panel. N/P pages; ESC returns. No repairs. |
 | **VOLNAME** | Rename a ProDOS volume and update the affected panel/program paths. |
 | **WIPE** | F zeroes free blocks after confirmation. W zeroes the whole volume after `ERASE`; the running program's volume is refused. |
 
@@ -148,6 +148,7 @@ The following tools supplement the main keys and readers.
 | **FIXTYPES** | Set type/auxtype from suffixes on tagged files or the selection; optionally remove suffixes. Image suffixes and `.SYSTEM` stay. |
 | **GOTO** | Nine favourite directories: A adds, D then a digit removes, 1–9 jumps. Saved in `A2FILE/GOTO.CFG`. |
 | **FIND** | Search the volume by name pattern; start with `"` to search contents, ignoring case. Return jumps to a result. Up to 20 results; a full search queue is reported. |
+| **BLKVIEW** | Read device or image blocks: H hex/ASCII, D directory, I index, N/P block, Space page, G four-digit hex block, ESC back. Never writes. |
 | **CRC** | Calculate CRC-32 for the selection or tagged files. |
 | **IDENT** | Identify a file by content; text statistics cover its first 512 bytes. |
 | **MDVIEW** | Read Markdown or long text with wrapping, headings, lists and code; page forward/back. |
@@ -192,10 +193,17 @@ never produces an “identical” verdict. Image comparison supports PO/HDV,
 DSK/DO and ProDOS-order 2MG.
 
 **VOLINFO** supports ProDOS files, both forks and directories up to 16 levels.
-Large volumes take longer. An incomplete scan does not report lost blocks
-as a final verdict. It does not repair the volume. **MKIMAGE** refuses
+Large volumes take longer; incomplete counts are unconfirmed. File lists show
+data, index, master and extended blocks, omitting sparse holes. Exports include
+the selected file and describe the scan before report creation; existing names
+are refused. Only complete exports end with `END REPORT`; partial files remain.
+**MKIMAGE** refuses
 existing names and removes cancelled/incomplete new images; 32,767 blocks
 is the maximum that fits in a single ProDOS image file.
+
+**Disk writes and copies** automatically read back every written block. A readback
+error stops at the first failing block. On one drive, each prompt identifies
+SOURCE or TARGET copy, the source volume and the slot/drive.
 
 ## Reading files and pictures
 

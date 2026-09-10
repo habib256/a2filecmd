@@ -261,14 +261,14 @@ def main():
                 s.key(b'W'); s.wait(lambda: s.has('to which disk?'), 'lecteur ' + label); p.stable()
                 s.key(drive_key(6, 2)); s.wait(lambda: s.has('Type ERASE'), 'erase ' + label)
                 s.type('ERASE'); s.key(RET)
-                s.wait(lambda: s.has('written to slot 6 drive 2') or s.has('Failed'), label, 200)
+                s.wait(lambda: s.has('written to slot 6 drive 2') or s.has('Failed') or s.has('Readback failed'), label, 200)
                 p.stable()
 
             # R : lire la disquette d'amorce dans une image DOS 3.3
             s.select('WORK'); s.key(b'W')
             s.wait(lambda: s.has('DISK IMAGES'), 'menu des images'); p.stable()
             s.ok('W ouvre la surcouche des images disque',
-                 s.has('R  Read a disk') and s.has('O  Copy a disk'), s.rows()[5:7])
+                 s.has('R  Read a disk') and s.has('O  Copy disk'), s.rows()[5:7])
             shot('10-diskimg')
             s.key(b'R'); s.wait(lambda: s.has('Read which disk'), 'choix du lecteur'); p.stable()
             s.ok('la liste des lecteurs nomme la disquette du programme et la vierge',
@@ -276,7 +276,7 @@ def main():
             s.key(drive_key(6, 1)); s.wait(lambda: s.has('Image name'), 'nom')
             s.type('BACK'); s.key(RET); s.wait(lambda: s.has('ProDOS order (.PO) or D'), 'ordre')
             s.key(b'D')
-            s.wait(lambda: s.has('280 blocks read from slot 6 drive 1') or s.has('Failed'), 'lecture', 200)
+            s.wait(lambda: s.has('280 blocks read from slot 6 drive 1') or s.has('Failed') or s.has('Readback failed'), 'lecture', 200)
             p.stable()
             s.ok('R lit la disquette d amorce dans BACK.DSK, selectionnee au retour',
                  s.has('280 blocks read from') and s.line().startswith('BACK.DSK ') and '143360' in s.line(),
@@ -284,7 +284,7 @@ def main():
             # aller-retour : reecrire BACK.DSK sur la disquette vierge
             s.select('BACK.DSK'); write_back('reecriture')
             s.ok('l aller-retour DOS 3.3 reecrit 280 blocs sur la disquette',
-                 s.has('280 blocks written to slot 6 drive 2'), s.rows()[22].strip())
+                 s.has('280 blocks written to slot 6 drive 2') and s.has('Verified.'), s.rows()[22].strip())
             p.eject(1); time.sleep(.5)
             s.ok("l'image DOS 3.3 reproduit la disquette d amorce octet a octet",
                  blank.read_bytes() == floppy.read_bytes())
@@ -298,10 +298,10 @@ def main():
             s.ok("l'avertissement nomme le lecteur et son volume",
                  s.has('slot 6 drive 2 (/BLANK) WILL BE LOST'), s.rows()[20].strip())
             s.type('ERASE'); s.key(RET)
-            s.wait(lambda: s.has('64 blocks written to slot 6 drive 2') or s.has('Failed'), 'ecriture', 120)
+            s.wait(lambda: s.has('64 blocks written to slot 6 drive 2') or s.has('Failed') or s.has('Readback failed'), 'ecriture', 120)
             p.stable()
             s.ok("l'image .PO est ecrite sur la disquette, les panneaux reviennent",
-                 s.has('64 blocks written to slot 6 drive 2') and s.rows()[0][:9] == '/SCRATCH ',
+                 s.has('64 blocks written to slot 6 drive 2') and s.has('Verified.') and s.rows()[0][:9] == '/SCRATCH ',
                  s.rows()[22].strip())
             p.eject(1); time.sleep(.5)
             tiny = (tmp / 'scratch/TINY.PO').read_bytes()
@@ -312,15 +312,15 @@ def main():
             # O : copier la disquette d'amorce sur la vierge, lecteur a lecteur
             s.key(b'W'); s.wait(lambda: s.has('DISK IMAGES'), 'menu des images')
             s.key(b'O'); s.wait(lambda: s.has('Copy FROM which disk'), 'source'); p.stable()
-            s.key(drive_key(6, 1)); s.wait(lambda: s.has('Copy TO which disk'), 'cible'); p.stable()
+            s.key(drive_key(6, 1)); s.wait(lambda: s.has('Copy TO which drive'), 'cible'); p.stable()
             s.key(drive_key(6, 2)); s.wait(lambda: s.has('Type ERASE'), 'avertissement'); p.stable()
             s.ok('O enchaine source, cible et avertissement avant toute ecriture',
                  s.has('slot 6 drive 2') and s.has('WILL BE LOST'), s.rows()[20].strip())
             s.type('ERASE'); s.key(RET)
-            s.wait(lambda: s.has('280 blocks copied to slot 6 drive 2') or s.has('Failed'), 'copie', 300)
+            s.wait(lambda: s.has('280 blocks copied to slot 6 drive 2') or s.has('Failed') or s.has('Readback failed'), 'copie', 300)
             p.stable()
             s.ok('O copie la disquette d amorce sur l autre lecteur',
-                 s.has('280 blocks copied to slot 6 drive 2'), s.rows()[22].strip())
+                 s.has('280 blocks copied to slot 6 drive 2') and s.has('Verified.'), s.rows()[22].strip())
             p.eject(1); time.sleep(.5)
             s.ok('la copie est la disquette d amorce, octet a octet',
                  blank.read_bytes() == floppy.read_bytes())

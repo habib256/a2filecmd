@@ -39,7 +39,9 @@ pictures. The tools are right there, beside your files.
 The **!** menu also offers text and disk-image conversion, CRC-32, file
 identification, Markdown reading, volume-wide search, favourite directories,
 batch renaming and type repair. EXTRA and XL also provide UNDELETE recovery,
-DISKCMP comparison, MKIMAGE creation, RESCUE extraction, SYNC updates and TREE totals. DATE, VERIFY, TAGPAT, TXTCONV, VOLNAME, VOLINFO and
+DISKCMP comparison, MKIMAGE creation, RESCUE extraction, SYNC updates and TREE totals. BLKVIEW inspects blocks without writing; DISKIMG reads back disk writes.
+VERIFY handles tagged files and VOLINFO exports allocation reports and file blocks.
+DATE, TAGPAT, TXTCONV, VOLNAME and
 WIPE also fit the floppy edition. See the [tool reference](docs/MANUAL.md#more-tools-in-the--menu).
 
 ## See it in action
@@ -63,14 +65,17 @@ readers and more disk tools. See the [changelog](CHANGELOG.md).*
 **Start with the [latest release](https://github.com/habib256/a2filecmd/releases/latest).**
 No build required. Choose the image that fits your setup:
 
-| Image family (0.7.5) | CPU | Contents |
+The table describes the current 0.7.6 source build. The latest published release
+is 0.7.5; its downloads retain their own version numbers.
+
+| Image family (0.7.6) | CPU | Contents |
 |---|---|---|
-| `A2FILECMD-6502-BOOT-0.7.5.dsk` | 6502 | Bootable 140 KB floppy: file manager, disk tools and formatter |
-| `A2FILECMD-6502-EXTRA-0.7.5.dsk` | 6502 | 140 KB companion: 23 additional tools, menu and BASIC.SYSTEM; 28.5 KB free |
-| `A2FILECMD-6502-XL-0.7.5.2mg` | 6502 | Bootable 32 MB disk: all 42 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
-| `A2FILECMD-65C02-BOOT-0.7.5.dsk` | 65C02 | Bootable 140 KB floppy: file manager, disk tools and formatter |
-| `A2FILECMD-65C02-EXTRA-0.7.5.dsk` | 65C02 | 140 KB companion: 23 additional tools, menu and BASIC.SYSTEM; 29 KB free |
-| `A2FILECMD-65C02-XL-0.7.5.2mg` | 65C02 | Bootable 32 MB disk: all 42 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
+| `A2FILECMD-6502-BOOT-0.7.6.dsk` | 6502 | Bootable 140 KB floppy: file manager, disk tools and formatter |
+| `A2FILECMD-6502-EXTRA-0.7.6.dsk` | 6502 | 140 KB companion: 24 additional tools, menu and BASIC.SYSTEM |
+| `A2FILECMD-6502-XL-0.7.6.2mg` | 6502 | Bootable 32 MB disk: all 43 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
+| `A2FILECMD-65C02-BOOT-0.7.6.dsk` | 65C02 | Bootable 140 KB floppy: file manager, disk tools and formatter |
+| `A2FILECMD-65C02-EXTRA-0.7.6.dsk` | 65C02 | 140 KB companion: 24 additional tools, menu and BASIC.SYSTEM |
+| `A2FILECMD-65C02-XL-0.7.6.2mg` | 65C02 | Bootable 32 MB disk: all 43 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
 
 The names sort by CPU, then BOOT, EXTRA, XL. Choose **6502** for an Apple II
 with 128 KB and 80 columns, including the original IIe; choose **65C02** for

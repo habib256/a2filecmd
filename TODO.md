@@ -98,9 +98,9 @@ Ce lot couvre les usages de base ; les extensions suivantes restent à faire :
 - 🟡 💾 **`DATE`** : modifier les dates de création et du volume ; installer
   le pilote de date de session. Aujourd'hui `S` pose la date système et `F`
   la date de modification des fichiers marqués, en conservant leur création.
-- 🟡 💾 **`VERIFY`** : vérifier tous les fichiers marqués ; ajouter `CERTIFY`,
-  écriture puis relecture d'un motif après `ERASE`. Aujourd'hui : lecture
-  du volume entier ou du fichier sélectionné, avec compte des erreurs.
+- 🟡 💾 **`VERIFY`** : lots marqués, fichier sélectionné et volume entier
+  disponibles en 0.7.6, avec bilan d’erreurs et annulation. **Reste :**
+  `CERTIFY`, écriture puis relecture d’un motif après `ERASE`.
 - 🟡 💾 **`TAGPAT`** : plages de dates (aujourd'hui : date système avec `D`)
   et copie avec confirmation fichier par fichier. Motifs, type et taille
   sont disponibles.
@@ -136,9 +136,9 @@ partagent la lecture brute de piste avec `NIBREAD` et `NIBBLE`.
   BOOT et XL, 6502 et 65C02 : espace libre, fragmentation, carte paginée,
   allocations partagées/perdues/marquées libres et compteurs. Parcours
   seedling/sapling/tree, deux forks et sous-dossiers ; résultats incomplets
-  explicitement signalés. **Reste :** liste des blocs d'un fichier, carte
-  piste/secteur DOS 3.3, rapports catalogue/arbre/blocs par fichier/fichiers
-  par bloc vers écran, imprimante ou fichier texte (avec `TREE`).
+  explicitement signalés. En 0.7.6 : liste des blocs du fichier sélectionné
+  et rapport texte vers l’autre panneau. **Reste :** carte piste/secteur
+  DOS 3.3, catalogue/arbre complet, fichiers par bloc et impression.
 - 🟠 💾 **`FIXIT`** : réparer ce que `VOLINFO` a trouvé : reconstruire la table
   d'allocation, corriger les compteurs, détacher un bloc partagé, après
   `ERASE`. La liste de Mr. Fixit, à reprendre telle quelle : pointeurs
@@ -153,6 +153,8 @@ partagent la lecture brute de piste avec `NIBREAD` et `NIBBLE`.
   `BAD.BLOCKS` en déplaçant ce qui se lit encore). Côté DOS 3.3 : vérifier
   et refaire la VTOC, corriger les comptes de secteurs du catalogue
   (Locksmith « fix sector counts »). *2 jours.*
+- ✅ **`BLKVIEW`**, EXTRA / XL, 0.7.6 : blocs de volumes et images,
+  hexadécimal/ASCII, répertoires et index, navigation bornée en lecture seule.
 - 🟠 💾 **`BLKEDIT`** : l'éditeur de blocs de Block Warden et Copy II Plus :
   aller au bloc N, suivre les blocs d'un fichier, hexa et ASCII, décodage
   d'un bloc de répertoire ou d'index, modifier, écrire après `ERASE`,
@@ -253,7 +255,7 @@ partagent la lecture brute de piste avec `NIBREAD` et `NIBBLE`.
   pour les blocs illisibles. **Reste :** récupération brute DOS 3.3.
 - ✅ **`DISKCMP`**, EXTRA / XL : comparaison exacte de volumes ou d'images
   PO, DSK, HDV et 2MG. Mode Disk II à un lecteur avec noms des disques et
-  choix D1/D2 à chaque échange. **Reste :** vérification intégrée à DISKIMG.
+  choix D1/D2 à chaque échange. DISKIMG relit chaque bloc écrit depuis la 0.7.6.
 - 🟡 💾 **`DISKIMG`, ce qui lui manque face à Copy II Plus** : formater la cible
   pendant la copie ; continuer après une erreur de lecture en listant les
   pistes ou blocs fautifs au lieu de s'arrêter ; plusieurs copies de suite

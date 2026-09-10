@@ -5,6 +5,14 @@ downloads and installation.
 
 ## Unreleased
 
+- Fixed TREE falsely reporting an incomplete XL root scan despite correct totals: ProDOS GET_FILE_INFO returns volume allocation for a root directory. TREE and SYNC now count its linked directory blocks, with bounded reads and error/cancellation handling.
+
+- DISKIMG automatically reads back every block written to a device, stops at the first mismatch/read error and reports its block number. Single-drive copy prompts name the source volume and slot/drive; readback needs no additional swaps.
+- VERIFY reads tagged files, skips tagged directories and reports processed files and read errors. Escape interrupts files as well as volumes, preserving the tags. Single-file results now use the same compact summary as batches.
+- VOLINFO lists selected-file data/index/master/extended blocks, and exports its scan and file block list as a new text report in the other panel. Existing names are never overwritten; interrupted/error reports remain visibly partial. Lost-block counts are explicitly unconfirmed after incomplete scans.
+- Added read-only BLKVIEW on EXTRA and XL: device and PO/DSK/DO/2MG/HDV image blocks, hex/ASCII, explicit directory/index interpretations, paging and four-digit hexadecimal block selection.
+- The 0.7.6 source builds keep separate CPU families: 43 overlays on XL, a 42-command shared catalog, DSK floppies and versioned filenames. Updated the eight-page English manual with the current two-panel screenshot.
+
 ## [0.7.5] - 2026-09-09
 
 - Added six service overlays on EXTRA and XL for both CPUs: UNDELETE recovers deleted ProDOS file candidates to another volume; DISKCMP compares volumes and PO/DSK/2MG images; MKIMAGE creates formatted data images; RESCUE extracts readable data with retries and a missing-block log; SYNC copies missing/newer files recursively; TREE shows cumulative directory sizes.

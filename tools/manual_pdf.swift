@@ -81,7 +81,7 @@ paragraph("A2 FILE CMD", size: 30, font: "Arial-BoldMT", gap: 12)
 paragraph("User guide · \(guideVersion)", size: 19, gap: 16)
 paragraph("6502 and 65C02 · BOOT / EXTRA / XL", size: 12, gap: 12)
 // The current panels screenshot and clickable contents share the cover.
-let screenshotURL = URL(fileURLWithPath:input).deletingLastPathComponent().appendingPathComponent("screenshots/01-panels-0.7.5.png")
+let screenshotURL = URL(fileURLWithPath:input).deletingLastPathComponent().appendingPathComponent("screenshots/01-panels-0.7.6.png")
 guard let screenshot = NSImage(contentsOf:screenshotURL),
       let panelImage = screenshot.cgImage(forProposedRect:nil,context:nil,hints:nil) else {
     fatalError("Missing panels screenshot: \(screenshotURL.path)")
