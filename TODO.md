@@ -98,6 +98,7 @@ Ce lot couvre les usages de base ; les extensions suivantes restent à faire :
 - 🟡 💾 **`DATE`** : modifier les dates de création et du volume ; installer
   le pilote de date de session. Aujourd'hui `S` pose la date système et `F`
   la date de modification des fichiers marqués, en conservant leur création.
+  En 0.7.6, les jours impossibles et les faux 29 février sont refusés.
 - 🟡 💾 **`VERIFY`** : lots marqués, fichier sélectionné et volume entier
   disponibles en 0.7.6, avec bilan d’erreurs et annulation. **Reste :**
   `CERTIFY`, écriture puis relecture d’un motif après `ERASE`.

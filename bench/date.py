@@ -74,7 +74,7 @@ def main():
             row = s.rows()[22].rstrip()
             s.ok('DATE montre la date systeme (aucune sur POM2) et l horloge (MACHID)',
                  ('No date' in row) == (year == 0) and ('clock:%s' % ('Y' if clock else 'N')) in row
-                 and 'S Set date' in row, row)
+                 and 'S Set' in row, row)
 
             # 2. S : douze chiffres, la date se retrouve en $BF90-$BF93.
             s.key(b'S'); p.stable()
@@ -102,6 +102,26 @@ def main():
             s.type('311320261430')
             s.wait(lambda: s.has('Not a date'), 'le refus', 20); p.stable()
             s.ok('31/13 est refuse, la date systeme reste', p.peek(0xBF90, 4) == want, s.rows()[22].rstrip())
+
+            # Gregorian month lengths, leap years and unchanged state on errors.
+            for day,month,year,hour,minute in (
+                (29,2,2026,14,30),(31,4,2026,14,30),(31,6,2026,14,30),
+                (31,9,2026,14,30),(31,11,2026,14,30),(30,2,2000,14,30),
+                (0,1,2026,14,30),(1,0,2026,14,30),(31,12,1939,14,30),
+                (1,1,2040,14,30),(1,1,2026,24,0),(1,1,2026,23,60)):
+                menu_run(s,p,'DATE');s.key(b'S');p.stable()
+                value=f'{day:02}{month:02}{year:04}{hour:02}{minute:02}'
+                s.type(value);s.wait(lambda:s.has('Not a date'),'invalid calendar date',20)
+                s.ok('invalid '+value+' preserves date and time',p.peek(0xBF90,4)==want)
+            for day,month,year in ((29,2,1940),(29,2,1996),(29,2,2000),(29,2,2024),(30,4,2026),(31,12,2039)):
+                menu_run(s,p,'DATE');s.key(b'S');p.stable()
+                s.type(f'{day:02}{month:02}{year:04}2359')
+                shown=f'{day:02}/{month:02}/{year:04} 23:59'
+                s.wait(lambda:shown in s.rows()[22],'valid calendar date',20)
+                packed=(((year%100)<<9)|(month<<5)|day).to_bytes(2,'little')+bytes((59,23))
+                s.ok('valid '+shown,p.peek(0xBF90,4)==packed)
+            menu_run(s,p,'DATE');s.key(b'S');p.stable()
+            s.type('150620261430');s.wait(lambda:SHOWN in s.rows()[22],'restore stamping date',20)
 
             # 4. A et B marques, F les horodate ; le panneau montre la date.
             s.select('A', 0); s.key(b' ')

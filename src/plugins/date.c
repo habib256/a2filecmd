@@ -10,7 +10,8 @@
  *      prompt takes the characters of a ProDOS name, not a free run of
  *      digits, so the keys are read here; anything that is not a digit is
  *      ignored (the separators may be typed or not), Escape cancels. The
- *      ranges are checked (1-31, 1-12, 1940-2039, 0-23, 0-59) and the
+ *      calendar and time are checked (month lengths, leap years,
+ *      1940-2039, 0-23, 0-59) and the
  *      fields packed the ProDOS way: the day in bits 0-4 of $BF90-$BF91,
  *      the month in bits 5-8, the year in bits 9-15 -- 0-39 is 2000-2039
  *      and 40-99 is 1940-1999 -- then the minute in $BF92, the hour in
@@ -63,12 +64,12 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api);
 struct PluginHeader {
     unsigned int signature; unsigned char flags;
     void __fastcall__ (*entry)(const struct A2fcApi*);
-    unsigned char r0, r1, r2; char desc[22];
+    unsigned char r0, r1, r2; char desc[5];
 };
 #pragma rodata-name (push, "OVLHDR")
 const struct PluginHeader __plugin_header = {
     PLUGIN_MAGIC, 0, plugin_entry, 0, 0, 0,
-    "Set date; stamp files"
+    "Date"
 };
 #pragma rodata-name (pop)
 
@@ -91,10 +92,11 @@ static const char m_none[]  = "No date";
 static const char m_null[]  = "";
 static const char m_ask[]   = "DDMMYYYYHHMM: ";
 static const char m_clock[] = "  clock:";
-static const char m_keys[]  = " S Set date F Stamp ESC";
+static const char m_keys[]  = " S Set F Stamp";
 static const char m_files[] = " files dated";
 /* The six pairs of digits read, and what is echoed before each of them. */
 static const char sepr[6] = { 0, '/', '/', 0, ' ', ':' };
+static const unsigned char days[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
 static const unsigned char ten[10] = { 0, 10, 20, 30, 40, 50, 60, 70, 80, 90 };
 
 /* Nothing here is read before being written at entry. */
@@ -104,7 +106,7 @@ static const struct Entry* E;           /* the entry being stamped */
 static unsigned char* PATH;             /* api->other_full: a Pascal path, its length first */
 static unsigned char* tp;               /* the tag byte of E */
 static unsigned char mask;              /* its bit */
-static unsigned char i, n, any, done, root, pfs, g, j, acc, pad, u1, u2;
+static unsigned char i, n, any, done, g, j, acc, pad, u1, u2;
 static unsigned char fld[6];            /* day, month, century, year, hour, minute */
 static struct Gfi gfi;
 
@@ -281,8 +283,10 @@ static void set_date(void)
 {
     asm("jsr %v\n cmp #0\n bne sd1\n rts", digits);             /* Escape */
     asm("sd1: lda %v+3\n sta %v", fld, acc);                    /* the year, 0-99 */
-    asm("lda %v\n beq sd8\n cmp #32\n bcs sd8", fld);           /* the day, 1-31 */
-    asm("lda %v+1\n beq sd8\n cmp #13\n bcs sd8", fld);         /* the month, 1-12 */
+    asm("ldx %v+1\n dex\n cpx #12\n bcs sd8", fld);             /* month 1-12 */
+    asm("ldy %v,x\n cpx #1\n bne sd_day", days);                 /* days in month */
+    asm("lda %v+3\n and #3\n bne sd_day\n iny", fld);           /* leap years, 1940-2039 (includes 2000) */
+    asm("sd_day: tya\n cmp %v\n bcc sd8\n lda %v\n beq sd8", fld, fld);
     asm("lda %v+4\n cmp #24\n bcs sd8", fld);                   /* the hour */
     asm("lda %v+5\n cmp #60\n bcs sd8", fld);                   /* the minute */
     asm("lda %v+2\n cmp #20\n bne sd2", fld);                   /* the century */

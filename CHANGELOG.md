@@ -5,6 +5,7 @@ downloads and installation.
 
 ## Unreleased
 
+- DATE rejects impossible calendar dates (including non-leap February 29 and day 31 in 30-day months), preserving the previous system date/time. Leap years from 1940 through 2039, including 2000, remain supported.
 - FIND adds V on text results to browse every occurrence with hexadecimal byte offsets and excerpts, including overlapping and cross-read matches. N/Space continues by 20; ESC restores the selected result and pending search page. Setup code now shares the future directory queue to preserve the resident memory budget.
 - FIND adds optional ProDOS type and inclusive modification-date filters (TAB, then T/D; A clears). Filters combine with name/content searches and persist across result pages; invalid dates are rejected and cancelling an edit preserves the previous range.
 - FIND continues with N beyond the first 20 matches, preserving traversal state and showing cumulative result ranges. A lookahead avoids empty pages at exact multiples of 20. Fixed skipped late subdirectories and the 8-bit directory-position limit in content search; unreachable/overlong paths and queue limits are reported.
