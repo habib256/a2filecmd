@@ -224,7 +224,7 @@ SOURCE or TARGET copy, the source volume and the slot/drive.
 
 Use **T** for text, **H** for hexadecimal. **Space**, **Return** or **Down**
 advances a page; **B** or **Up** goes back; **R** restarts TEXT at page one;
-**ESC** returns to the panels.
+**R** also restarts BASLIST and AppleWorks; **ESC** returns to the panels.
 The text reader clips lines beyond 80 columns and remembers up to 96 page
 starts. Use **MDVIEW** for wrapped text. The hex reader shows addresses,
 bytes and text. In hex: **G** opens the page at a six-digit hex offset; **R/E** go to first/last.

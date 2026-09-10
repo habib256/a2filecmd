@@ -1373,6 +1373,7 @@ void __fastcall__ baslist_entry(const struct A2fcApi* a)
         keys_bar(52, VIEW_KEYS);
         key = cgetc();
         if (key == KEY_ESC || key == 'q' || key == 'Q') break;
+        if (key == 'r' || key == 'R') page = 0;
         if ((key == ' ' || key == KEY_RETURN || key == KEY_RIGHT || key == KEY_DOWN) && !done && page + 1 < known) ++page;
         if ((key == 'b' || key == 'B' || key == KEY_LEFT || key == KEY_UP) && page) --page;
     }
@@ -1461,6 +1462,7 @@ void __fastcall__ awp_entry(const struct A2fcApi* a)
         keys_bar(52, VIEW_KEYS);
         key = cgetc();
         if (key == KEY_ESC || key == 'q' || key == 'Q') break;
+        if (key == 'r' || key == 'R') page = 0;
         if ((key == ' ' || key == KEY_RETURN || key == KEY_RIGHT || key == KEY_DOWN) && !done && page + 1 < known) ++page;
         if ((key == 'b' || key == 'B' || key == KEY_LEFT || key == KEY_UP) && page) --page;
     }
