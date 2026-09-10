@@ -348,11 +348,10 @@ volumes at **115,200 bps**. Slot 2 is tried first. The status line identifies
 the serial card and assigned drive slots; the remote volumes then work like
 local ones for browsing and copying.
 
-Use a compatible host such as ADTPro's virtual-drive server, `veserver.py`
-or `surl-server`. The host supplies date/time during reads. A missing or
-disconnected server produces an I/O error. The driver is removed when A2FC
-quits or launches another program. VDrive is tested in POM2; operation on a
-real Super Serial Card or //c remains unverified.
+Use ADTPro's virtual-drive server, `veserver.py` or `surl-server`; the host
+supplies date/time during reads. Disconnection produces an I/O error.
+The driver is removed on quit or program launch. Tested in POM2; real
+Super Serial Card and //c operation remains unverified.
 
 ## Limits and troubleshooting
 
@@ -360,6 +359,7 @@ real Super Serial Card or //c remains unverified.
 |---|---|
 | CPU or memory refusal at startup | Use the matching CPU build, with 128 KB and 80-column support. |
 | Missing or stale plugin | Insert matching BOOT/EXTRA from the same release. Keep A2FILE.CODE and its native plugins together. |
+| GOTO.TMP or GOTO.BAK remains | If GOTO.CFG is missing, rename GOTO.BAK to GOTO.CFG. Inspect remaining TMP/BAK files before deleting them. |
 | Disk changed but old contents remain | Press Ctrl-R to reread both panels. |
 | Run failed: file not found | Check the selected program, its path and BASIC.SYSTEM for BAS files. |
 | Image cannot be opened | Check its actual format; renaming PO to DSK does not convert it. Some file/image features are unsupported. |
@@ -367,6 +367,5 @@ real Super Serial Card or //c remains unverified.
 | Very deep directory copy refused | Simplify the tree or copy smaller subdirectories; recursive operations have bounded working space. |
 | Incomplete scan or recovery | Read the reported limits or errors; inspect recovered data and keep originals/backups. |
 
-For building and plugin development, see the project README, `sdk/README.md`
-and `bench/README.md`. `make disk` builds both CPU families; `make test`
-runs host checks. Planned features and remaining limits are in `TODO.md`.
+`make disk` builds both CPU families; `make test` runs host checks.
+Development: README, `sdk/README.md`, `bench/README.md`. Remaining work: `TODO.md`.

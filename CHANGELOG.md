@@ -5,6 +5,7 @@ downloads and installation.
 
 ## Unreleased
 
+- GOTO saves through an exclusively created GOTO.TMP, closes it successfully before moving the old list to GOTO.BAK, and restores the original if installation fails. Existing recovery files are never overwritten; failed rollback retains both files and reports recovery instructions.
 - GOTO adds M to move a favourite to a chosen numbered position while preserving the order of the others. ESC or unavailable positions cancel; choosing the same position does not rewrite the file. Saving favourites now checks short writes and close errors.
 - GOTO adds P to open a directly typed absolute ProDOS directory path without saving a favourite. Supports lowercase input, Delete/Left editing and trailing slashes; invalid paths or ESC preserve the active panel. Input is bounded to 63 characters.
 - CRC displays tagged-file checksums in pages of 20 instead of scrolling earlier results away. A key continues; ESC returns to the panels without processing the remaining files. Exact multiples of 20 finish without an empty page, and tags are preserved.

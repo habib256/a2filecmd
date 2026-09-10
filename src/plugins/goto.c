@@ -105,6 +105,9 @@ static struct Panel* P;                 /* the active panel */
 static char* N;                         /* api->note: what line 22 will say */
 static FILE* fh;
 static unsigned char count;
+static char temp[PATH_LEN], backup[PATH_LEN];
+static struct { unsigned char n; char* path; unsigned char fields[15]; } info;
+static struct { unsigned char n; char* from; char* to; } ren;
 static char cfg[PATH_LEN];              /* "/VOL/A2FILE/GOTO.CFG" */
 
 /* The stubs into the service table (see above). */
@@ -128,6 +131,7 @@ static void tramp(void)
     asm("jmp jmpvec");
 }
 #define STUB(field) { asm("ldy #%b", offsetof(struct A2fcApi, field)); asm("jmp %v", tramp); }
+static unsigned char __fastcall__ mli(unsigned char cmd,void* params) STUB(mli)
 static void __fastcall__ msg(const char* s) STUB(message)
 static void __fastcall__ cls(unsigned int unused) STUB(clrscr)
 static void __fastcall__ at(unsigned char x, unsigned int y) STUB(gotoxy)
@@ -180,8 +184,32 @@ static void load(void)
     }
 }
 
-/* The slots back to GOTO.CFG, one "PATH\r" line each, type $04, in one
- * write; slot `dead` is left out, which is how a favourite is removed. */
+static void pascal(char* out,const char* path)
+{
+    scpy(out+1,path);out[0]=slen(path);
+}
+static unsigned char fileop(unsigned char cmd,const char* path)
+{
+    pascal(A->full,path);info.path=A->full;
+    info.n=cmd==0xC4 ? 10 : cmd==0xC0 ? 7 : 1;
+    return mli(cmd,&info);
+}
+static unsigned char rename_file(const char* from,const char* to)
+{
+    pascal(A->full,from);pascal(A->other_full,to);
+    ren.n=2;ren.from=A->full;ren.to=A->other_full;
+    return mli(0xC2,&ren);
+}
+static void discard_temp(void)
+{
+    scpy(N,fileop(0xC1,temp) ? (const char*)"Save failed; GOTO.TMP kept." : m_err);
+}
+
+/* Serialize to an exclusively created GOTO.TMP. Only after successful write
+ * and close do we rename CFG to BAK, then TMP to CFG. A failed install rolls
+ * BAK back; if rollback fails both recovery files are retained. No existing
+ * TMP or BAK is ever overwritten. This is recoverable replacement, not an
+ * atomic filesystem transaction across a power failure. */
 static void save(unsigned char dead)
 {
     unsigned char i;
@@ -193,12 +221,28 @@ static void save(unsigned char dead)
         while (*q) *p++ = *q++;
         *p++ = '\r';
     }
-    *A->filetype = 0x04;
-    *A->auxtype = 0;
-    fh = fopn(cfg, f_wb);
-    if (!fh) { scpy(N, m_err); return; }
-    i = fwr(TEXT, 1, p - TEXT, fh) != (unsigned int)(p - TEXT);
-    if (fcls(fh) || i) scpy(N, m_err);
+    /* Never truncate either recovery file. Existing ones require review. */
+    i=fileop(0xC4,backup);
+    if(i!=0x46) { scpy(N,i ? m_err : (const char*)"GOTO.BAK exists; check saved files.");return; }
+    for(i=0;i<15;++i)info.fields[i]=0;
+    info.fields[0]=0xE3;info.fields[1]=0x04;info.fields[4]=1;
+    i=fileop(0xC0,temp);
+    if(i) { scpy(N,i==0x47 ? (const char*)"GOTO.TMP exists; check saved files." : m_err);return; }
+    *A->filetype=0x04;*A->auxtype=0;
+    fh=fopn(temp,f_wb);
+    if(!fh) { discard_temp();return; }
+    i=fwr(TEXT,1,p-TEXT,fh)!=(unsigned int)(p-TEXT);
+    if(fcls(fh) || i) { discard_temp();return; }
+    /* The old list remains intact until the new file has closed cleanly. */
+    i=rename_file(cfg,backup);
+    if(i && i!=0x46) { discard_temp();return; }
+    if(rename_file(temp,cfg)) {
+        if(!i && rename_file(backup,cfg)) {
+            scpy(N,"Save failed; restore GOTO.BAK. GOTO.TMP kept.");return;
+        }
+        discard_temp();return;
+    }
+    if(!i && fileop(0xC1,backup))scpy(N,"Saved; GOTO.BAK kept.");
 }
 
 /* The whole screen: the title, one numbered row per favourite, the keys. */
@@ -282,6 +326,8 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     i = slen(cfg);
     while (i && cfg[i] != '/') --i;
     scpy(cfg + i + 1, f_name);
+    scpy(temp,cfg);scpy(temp+i+1,"GOTO.TMP");
+    scpy(backup,cfg);scpy(backup+i+1,"GOTO.BAK");
 
     load();
     draw();

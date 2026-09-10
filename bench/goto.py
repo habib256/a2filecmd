@@ -13,6 +13,7 @@ affichee par une SECONDE ouverture qui prouve ce que GOTO.CFG contient,
 puisqu'elle sort d'une relecture du fichier."""
 import sys
 import tempfile
+import zlib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -24,7 +25,7 @@ OTHER = '/WORKHD/OTHER'
 TITLE = 'GOTO -- favourite directories'
 LONG = '/WORKHD/'+'A'*15+'/'+'B'*15+'/'+'C'*15+'/'+'D'*7
 
-HD_FILES = {'WORK/SUB/DEEP/X.TXT': b'deep\r', 'OTHER/Y.TXT': b'other\r', LONG[len('/WORKHD/'):]+ '/X.TXT':b'long\r'}
+HD_FILES = {'A2FILE/GOTO.RES#040000':b'keep this recovery file\r', 'WORK/SUB/DEEP/X.TXT': b'deep\r', 'OTHER/Y.TXT': b'other\r', LONG[len('/WORKHD/'):]+ '/X.TXT':b'long\r'}
 
 
 def main():
@@ -223,6 +224,56 @@ def main():
             finally:
                 p.poke(address,original_code)
             s.ok('short write reports save failure instead of success',line=='GOTO.CFG cannot be written.')
+            preserved=['1 '+OTHER,'2 /WORKHD/GONESOON']
+            s.ok('short write preserves the original configuration',favourites()==preserved);leave(ESC)
+
+            def fail_rename(which):
+                # Trap selected RENAME calls; forward every other MLI call.
+                address=s.sym['_mli_call'];saved=p.peek(address,3)
+                location=0x3C00;counter=0x3C80;code=bytearray();branches=[]
+                def emit(*v):code.extend(v)
+                def branch(op,label):emit(op,0);branches.append((len(code)-1,label))
+                emit(0x48,0xA0,0,0xB1,0x80,0xC9,0xC2);branch(0xD0,'pass')
+                emit(0xEE,counter&255,counter>>8,0xAD,counter&255,counter>>8)
+                for n in which:emit(0xC9,n);branch(0xF0,'fail')
+                branch(0xD0,'pass') # final comparison was unequal
+                labels={'fail':len(code)}
+                emit(0x68,0x20,s.sym['popa']&255,s.sym['popa']>>8,0xA9,0x27,0xA2,0,0x60)
+                labels['pass']=len(code);emit(0x68);code.extend(saved)
+                emit(0x4C,(address+3)&255,(address+3)>>8)
+                for at,label in branches:code[at]=(labels[label]-at-1)&255
+                open_goto();p.poke(location,bytes(code));p.poke(counter,b'\x00')
+                try:
+                    p.poke(address,b'\x4C'+location.to_bytes(2,'little'))
+                    result=move(b'1',b'2')
+                finally:p.poke(address,saved)
+                return result
+            for call in (1,2):
+                line=fail_rename((call,))
+                s.ok('rename failure '+str(call)+' reports error',line=='GOTO.CFG cannot be written.')
+                s.ok('rename failure '+str(call)+' preserves old favourites',favourites()==preserved);leave(ESC)
+            open_goto();line=move(b'1',b'2')
+            s.ok('retry after failures saves successfully',line=='Favourite moved.' and favourites()==['1 /WORKHD/GONESOON','2 '+OTHER]);leave(ESC)
+            def rename_saved(old,new):
+                path_to('/WORKHD/A2FILE');s.select(old)
+                s.key(b'R');s.wait(lambda:s.has('New name'),'rename recovery file',20)
+                s.key(b'\x7f'*len(old));s.type(new);s.key(RET);p.stable();s.select(new)
+            current=['1 /WORKHD/GONESOON','2 '+OTHER]
+            line=fail_rename((2,3))
+            s.ok('failed rollback retains named recovery files',line=='Save failed; restore GOTO.BAK. GOTO.TMP kept.')
+            rename_saved('GOTO.BAK','GOTO.CFG')
+            s.select('GOTO.TMP');s.key(b'D');s.wait(lambda:s.has('Delete GOTO.TMP'),'delete test temporary',20)
+            s.key(b'Y');p.stable()
+            s.ok('original list can be recovered from backup',favourites()==current);leave(ESC)
+            for reserved in ('GOTO.TMP','GOTO.BAK'):
+                rename_saved('GOTO.RES',reserved)
+                open_goto();line=move(b'1',b'2')
+                s.ok('existing '+reserved+' blocks replacement',line==reserved+' exists; check saved files.')
+                s.ok('collision preserves configuration',favourites()==current);leave(ESC)
+                rename_saved(reserved,'GOTO.RES')
+                menu_run(s,p,'CRC');s.wait(lambda:s.has('CRC-32'),'reserved file checksum',30)
+                expected=f'GOTO.RES: CRC-32 ${zlib.crc32(HD_FILES["A2FILE/GOTO.RES#040000"]):08X}, 24 bytes'
+                s.ok('recovery file contents preserved',s.rows()[22].strip()==expected,s.rows()[22].strip())
             s.ok('stack restored and bounded',p.peek(0x80,2)==stack and p.peek(floor,8)==b'\xA5'*8)
 
     return ok_all(s, 'goto')
