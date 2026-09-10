@@ -50,7 +50,10 @@ HUGE = HUGE[:HUGE.rfind(' ')]                       # a cheval sur les pages 1 e
 LONG = ('First line.\r\n' + LONGLINE + '\r\nend\r\n\r\nafter blank\r\n' + HUGE + '\r\nlast\r\n').encode('ascii')
 HI = bytes(b | 0x80 for b in b'HELLO WORLD\rSECOND LINE\r')   # un texte ProDOS, bit haut
 
-FILES = {'WORK/README.MD#040000': README, 'WORK/LONG.TXT': LONG, 'WORK/HI.TXT': HI}
+MANY_ROWS = ['row %04d **literal**' % i for i in range(21 * 66)]
+MANY = ('```\n' + '\n'.join(MANY_ROWS) + '\n```\n# Last heading\n').encode('ascii')
+
+FILES = {'WORK/MANY.MD#040000': MANY, 'WORK/README.MD#040000': README, 'WORK/LONG.TXT': LONG, 'WORK/HI.TXT': HI}
 
 
 def wrap(text, first='', rest=''):
@@ -118,7 +121,7 @@ def main():
             s.ok('e pour e accent aigu, e pour e accent grave, ** et ` supprimes', rows[c + 2] == ACC_OUT, rows[c + 2])
             s.ok('toute la page 1 est celle attendue', rows == PAGE1,
                  [(i, a, b) for i, (a, b) in enumerate(zip(rows, PAGE1)) if a != b][:3])
-            s.ok('la ligne 22 dit la page 1', s.rows()[22].startswith('Page 1: Space/Down next, Up previous, ESC quits'),
+            s.ok('la ligne 22 dit la page 1', s.rows()[22].startswith('Page 1: Space/Down next, Up back, R start, ESC quits'),
                  s.rows()[22].strip())
 
             # -- Espace : page 2, la fin ; Haut : page 1 ------------------------
@@ -162,6 +165,36 @@ def main():
             s.key(ESC)
             s.wait(lambda: s.has('Type  Aux     Size'), 'le retour aux panneaux', 30); p.stable()
             s.ok('ESC rend les panneaux, le curseur sur LONG', s.line(0).startswith('LONG '), s.line(0).strip()[:24])
+
+            # A fence crosses the 64-slot ring boundary; return through retained
+            # history, then restart and verify that its fence state was reset.
+            view(s, p, 'MANY.MD')
+            for page in range(2, 68):
+                s.key(DOWN)
+                s.wait(lambda: s.rows()[22].startswith('Page %d' % page), 'long page %d' % page, 20)
+            p.stable()
+            s.ok('lecture au-dela de 64 pages, fin et titre hors du bloc',
+                 text_rows(s)[0] == 'Last heading' and inverse(p, 1, 12)
+                 and s.rows()[22].startswith('Page 67 (end)'), s.rows()[22].strip())
+            s.key(DOWN); p.stable()
+            s.ok('la fin au-dela de 64 reste stable', s.rows()[22].startswith('Page 67 (end)'))
+            for page in range(66, 3, -1):
+                s.key(UP)
+                s.wait(lambda: s.rows()[22].startswith('Page %d:' % page), 'back page %d' % page, 20)
+            p.stable()
+            s.ok('les 64 pages retenues gardent le texte et le bloc de code',
+                 text_rows(s) == MANY_ROWS[63:84], text_rows(s)[:2])
+            s.key(UP); p.stable()
+            s.ok('Haut reste sur la plus ancienne page retenue', s.rows()[22].startswith('Page 4:'))
+            s.key(DOWN); s.wait(lambda: s.has('Page 5:'), 'forward retained'); p.stable()
+            s.ok('retour avant dans les pages retenues', text_rows(s) == MANY_ROWS[84:105])
+            s.key(b'r'); s.wait(lambda: s.has('Page 1:'), 'restart'); p.stable()
+            s.ok('R repart au debut avec le bon etat Markdown', text_rows(s) == MANY_ROWS[:21])
+            s.key(UP); p.stable()
+            s.ok('Haut ne depasse pas la premiere page', s.rows()[22].startswith('Page 1:'))
+            s.key(ESC)
+            s.wait(lambda: s.has('Type  Aux     Size'), 'les panneaux apres MANY', 30); p.stable()
+            s.ok('ESC restaure la selection du document long', s.line(0).startswith('MANY.MD '))
 
             # -- HI.TXT : un texte ProDOS, le bit haut sur chaque octet, CR ------
             view(s, p, 'HI')

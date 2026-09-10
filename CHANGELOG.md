@@ -5,6 +5,8 @@ downloads and installation.
 
 ## Unreleased
 
+- MDVIEW continues beyond page 64 using a rolling history of 64 page starts. Up revisits retained pages, R restarts at page 1, and page numbers no longer wrap at 255. Markdown fence state is preserved across the history boundary.
+
 - GOTO saves through an exclusively created GOTO.TMP, closes it successfully before moving the old list to GOTO.BAK, and restores the original if installation fails. Existing recovery files are never overwritten; failed rollback retains both files and reports recovery instructions.
 - GOTO adds M to move a favourite to a chosen numbered position while preserving the order of the others. ESC or unavailable positions cancel; choosing the same position does not rewrite the file. Saving favourites now checks short writes and close errors.
 - GOTO adds P to open a directly typed absolute ProDOS directory path without saving a favourite. Supports lowercase input, Delete/Left editing and trailing slashes; invalid paths or ESC preserve the active panel. Input is bounded to 63 characters.

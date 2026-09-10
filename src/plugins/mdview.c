@@ -12,13 +12,14 @@
  * two-column hanging indent; the lines of a ``` fence shown verbatim,
  * truncated at 79; `**` and backticks dropped.
  *
- * Paging both ways: the start of every page seen is kept in a table in
+ * Paging both ways: the starts of the last 64 pages seen are kept in a ring in
  * the scratch memory ($3000, 64 pages) -- the file offset of the logical
  * line the page starts in, how many of that line's wrapped rows precede
  * the page, and whether a fence was open -- so a page is always rendered
  * by replaying its first line from its start. Space/Down go forward
  * (the next start is known once a page has been rendered), Up goes back,
- * Escape leaves; being a big overlay, the core redraws the panels on
+ * R restarts at page 1; Escape leaves. Forward reading is unlimited;
+ * Up stops at the oldest retained page. Being a big overlay, the core redraws the panels on
  * return.
  *
  * A big overlay under 5,376 bytes: $3000-$3FFF is its scratch memory --
@@ -74,7 +75,7 @@ static const char latin[] = "AAAAAAACEEEEIIIIDNOOOOO?OUUUUY?y";
 
 static const char m_pick[] = "Select a text file to read.";
 static const char m_open[] = "Open failed.";
-static const char m_page[] = "Page %u%s: Space/Down next, Up previous, ESC quits";
+static const char m_page[] = "Page %lu%s: Space/Down next, Up back, R start, ESC quits";
 static const char m_end[]  = " (end)";
 static const char m_nil[]  = "";
 
@@ -253,7 +254,8 @@ static void render_page(const struct Start* st)
 void __fastcall__ plugin_entry(const struct A2fcApi* api)
 {
     struct Panel* pan;
-    unsigned char page = 0, known = 1;
+    unsigned char page = 0, known = 1, head = 0;
+    unsigned long first = 1;
     char k;
     api->memcpy(&a, api, sizeof a);
     pan = a.panels + *a.active;
@@ -271,16 +273,23 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         a.revers(1);
         a.cprintf("%-79.79s", a.full);
         a.revers(0);
-        render_page(STARTS + page);
-        if (!done && known == page + 1 && known < MAXPAGES) {
-            a.memcpy(STARTS + known, &next, sizeof next);
-            ++known;
-        }
+        render_page(STARTS + ((head + page) & (MAXPAGES - 1)));
         a.gotoxy(0, 22);
-        a.cprintf(m_page, page + 1, done ? m_end : m_nil);
+        a.cprintf(m_page, first + page, done ? m_end : m_nil);
         k = a.cgetc();
         if (k == KEY_ESC || k == 'q' || k == 'Q') break;
-        if ((k == ' ' || k == KEY_RETURN || k == KEY_RIGHT || k == KEY_DOWN) && !done && page + 1 < known) ++page;
+        if ((k == ' ' || k == KEY_RETURN || k == KEY_RIGHT || k == KEY_DOWN) && !done) {
+            if (page + 1 < known) ++page;
+            else {
+                if (known < MAXPAGES) { ++known; ++page; }
+                else { head = (head + 1) & (MAXPAGES - 1); ++first; }
+                a.memcpy(STARTS + ((head + page) & (MAXPAGES - 1)), &next, sizeof next);
+            }
+        }
+        if (k == 'r' || k == 'R') {
+            page = head = 0; known = 1; first = 1;
+            STARTS->off = 0; STARTS->skip = 0; STARTS->fence = 0;
+        }
         if ((k == 'b' || k == 'B' || k == KEY_LEFT || k == KEY_UP) && page) --page;
     }
     a.fclose(vf);
