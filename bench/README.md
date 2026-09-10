@@ -25,7 +25,7 @@ pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 | `six.py` | UNDELETE, DISKCMP, MKIMAGE, RESCUE, SYNC et TREE : volumes jetables, effacement ProDOS réel, contenu relu sur l’hôte et pile surveillée |
 | `volinfo.py` | diagnostic ProDOS en lecture seule, disquette saine/corrompue et volume de 32 Mo, carte paginée et retour avec pile préservée, sur les deux processeurs |
 | `blocktools.py` | VERIFY par lots avec fichier illisible, rapport VOLINFO relu sur la disquette éjectée, refus d’écrasement, BLKVIEW, recherche traversant les blocs, extraction exacte et bornes de navigation |
-| `disasm.py` | désassemblage BIN/SYS, choix 6502/65C02, pagination, offsets 24 bits, export TXT relu octet par octet, refus d’écrasement, annulation et pile ; `A2FC_CAPTURE=/tmp/disasm.ppm` conserve une capture POM2 |
+| `disasm.py` | désassemblage BIN/SYS, choix 6502/65C02, pagination, offsets fichier sur sept chiffres et adresses CPU 16 bits, export TXT relu octet par octet, refus d’écrasement, annulation et pile ; `A2FC_CAPTURE=/tmp/disasm.ppm` conserve une capture POM2 |
 | `ident.py` | formats de fichiers, textes Apple à bit haut, UTF-8 sur 2/3/4 octets, BOM, fins de ligne et séquences invalides ou coupées à 512 octets |
 | `hexnav.py` | HEX : offset fichier sur sept chiffres, G/R/E, pages avant/arrière, annulation, hors fichier, dernier octet, fichier vide et pile |
 | `textrestart.py` | TEXT : pages, R vers le début, retour borné et sélection restaurée |

@@ -16,6 +16,8 @@ downloads and installation.
 - GOTO refuses configuration files over 2000 bytes, paths over 63 characters, embedded NUL bytes and more than nine favourites. It reports the invalid configuration before offering actions, preventing truncated paths or partial lists from being used or saved over the original.
 
 - HEX adds G to jump to the page containing a seven-digit hexadecimal file offset, R for the first page and E for the last. Out-of-file offsets are reported without moving; cancelling preserves the position and empty files remain bounded. CPU addresses remain a separate 16-bit concept, and the reader still fits the small overlay on both CPUs.
+- DISASM now accepts seven-digit file offsets with G for XL files; its load
+  address remains a four-digit 16-bit CPU address.
 
 - GOTO reads favourites from CR, LF or CRLF configuration files, including mixed line endings, blank lines and a final line without a terminator. Files edited on a host no longer merge favourites or retain stray line-feed bytes in paths; saves keep the native CR format.
 

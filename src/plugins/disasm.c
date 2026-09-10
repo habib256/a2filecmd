@@ -1,5 +1,6 @@
 /* Streaming BIN/SYS disassembler. No execution and no source writes.
- * File offsets are 24-bit; displayed CPU addresses wrap at 16 bits.
+ * File offsets are independent of the 16-bit CPU address bus; displayed CPU
+ * addresses wrap at 16 bits. Seven hex digits cover a 32-MB XL image.
  * All state is initialized on entry: the overlay loader does not clear BSS. */
 #define UTIL_CREATE
 #include "util.h"
@@ -216,8 +217,8 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         if(key=='C') { cpu^=1;depth=0; }
         if(key=='E')export();
         if(key=='L' && a.prompt("Load address (4 hex digits)",NULL,4))origin=(unsigned int)hex_number(4);
-        if(key=='G' && a.prompt("File offset (6 hex digits)",NULL,6)) {
-            dest=hex_number(6);
+        if(key=='G' && a.prompt("File offset (7 hex digits)",NULL,7)) {
+            dest=hex_number(7);
             if(dest<size) { offset=dest;depth=0; }
             else { a.message("Offset outside file.");a.cgetc(); }
         }
