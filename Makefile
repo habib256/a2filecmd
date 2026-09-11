@@ -322,6 +322,7 @@ test:
 	python3 $(TOOLS)/test_packfot.py
 	python3 $(TOOLS)/test_paint816.py
 	python3 $(TOOLS)/test_extasie.py
+	python3 $(TOOLS)/test_intbasic.py
 	python3 $(TOOLS)/test_find.py
 	python3 $(TOOLS)/test_six_plugins.py
 

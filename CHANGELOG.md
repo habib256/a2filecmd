@@ -5,6 +5,32 @@ downloads and installation.
 
 ## Unreleased
 
+- Added the INTBASIC service overlay: an Integer BASIC listing, ProDOS type
+  `$FA`. BASLIST served the `$FC` and nothing served the `$FA`, which fell to
+  the hex viewer or to the text reader, both of which show its tokens as the
+  control characters they are -- and Integer BASIC is what the Apple II
+  shipped with, and what Woz's own Breakout is written in.
+
+  A line is `[length][number][ ... ][$01]`, the length counting its own byte,
+  so the next line starts that many bytes on. A byte under $80 is one of 128
+  tokens, several values sharing one text; a byte above is a character with
+  the high bit set; and a byte in $B0-$B9 that does NOT follow a letter or a
+  digit is the leading digit of a constant whose value is the next two bytes.
+  That last test is the corner that matters: inside a string or after a REM
+  everything is characters, and reading a $B5 there as a constant turns
+  "WITH 5 BALLS" into "WITH 49824ALLS". The spacing is the interpreter's own
+  -- a space before a keyword that begins with a letter, one after a keyword
+  that ends with one, none around the punctuation -- which is what makes
+  ": GR : PRINT : INPUT" out of bytes that hold no space at all.
+
+  Pages with SPC, B and R like the other readers. Checked against the rule
+  written out in the tests, and in the emulator against the first lines of
+  Breakout read off the screen.
+
+- IDENT names two more families it used to call binary: the 816/Paint packed
+  pictures (`$06` with auxtype `$E001`/`$E002`) and the Extasie `$F2`
+  pictures, which open with their own length.
+
 - Added the PAINT816 service overlay: the pictures 816/Paint saves packed,
   its own default -- ProDOS type `$06` with auxtype `$E001` for a hi-res page
   and `$E002` for a double hi-res one. 816/Paint is what most Apple II double
@@ -38,10 +64,6 @@ downloads and installation.
   says so. A truncated stream is reported rather than shown, and the two
   planes are decoded as one stream, so a record crossing the boundary is not
   cut in two.
-
-- IDENT names two more families it used to call binary: the 816/Paint packed
-  pictures (`$06` with auxtype `$E001`/`$E002`) and the Extasie `$F2`
-  pictures, which open with their own length.
 
 - There are now TWO tool floppies, EXTRA and EXTRA2. The extras stopped
   fitting 140 KB -- 313 blocks for 280 -- so EXTRA keeps BASIC.SYSTEM, the

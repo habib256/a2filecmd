@@ -138,11 +138,13 @@ BOOT/les disquettes. Les nouveaux plugins vont sur EXTRA et XL, séparément en
   visionneuses d’images supplémentaires. Corpus `PRINTSHOP` :
   `GISTDATA/IMG/SAMPLE.MEDIA/BBROS.MINI` (BIN `$5800`, 576 o, lignes de onze
   octets soit 88 pixels — vignette 88x52 à confirmer).
-- 🟢 **`INTLIST`, `ADB`, `ASP`, `AWRITER`, `CALC`** — lecteurs Apple II et
-  AppleWorks supplémentaires. `INTLIST` comble un vrai trou : un `$FA` tombe
-  sur l’hexadécimal (Return) ou sur le lecteur texte (`T`), qui affichent ses
-  jetons en clair, alors que `BASLIST` ne sert que le `$FC`. Corpus :
-  `GISTDATA/IMG/SAMPLE.MEDIA/WOZ.BREAKOUT` (1 859 o), `APPLEVISION` (5 964 o).
+- 🟢 **`ADB`, `ASP`, `AWRITER`, `CALC`** — lecteurs Apple II et AppleWorks
+  supplémentaires. Le trou du `$FA` est comblé : `INTBASIC` liste l’Integer
+  BASIC depuis le menu `!`. Reste à le brancher sur `T`, comme `BASLIST` pour
+  le `$FC` et `AWP` pour le `$1A` — une vingtaine d’octets dans le résident,
+  qui finit à `$BEDF` pour une limite de `$BEE0` en 65C02 (l’édition 6502 a
+  de la place). Corpus : `GISTDATA/IMG/SAMPLE.MEDIA/WOZ.BREAKOUT` (1 859 o),
+  `APPLEVISION` (5 964 o).
 - 🟢 **`DUET`, `SAMPLE`** — musique et échantillons audio additionnels.
 - 🟢 **`TERM`, `XMODEM`, `CPMFS`, `SPLIT`** — communication série et formats
   de disquettes supplémentaires.
