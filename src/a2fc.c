@@ -4561,6 +4561,7 @@ int main(void)
 {
     char key;
     struct Panel* pan;
+    struct Entry* ent;
     videomode(VIDEOMODE_80COL);
 #ifdef A2FC_TRACE
     *(unsigned char*)0x03A0 = 1;
@@ -4673,17 +4674,25 @@ int main(void)
         case 'm': case 'M': overlay_run("COMPARE", 'M'); break;
         case 'd': case 'D': if (overlay("DELETE")) delete_targets(); break;
         case 's': case 'S': overlay_run("TEXT", 'S'); break;
+        /* The entry under the cursor ONCE: pan->e[pan->cursor] is an entry of
+         * 29 bytes, so each mention costs a multiplication, and these two
+         * cases used it three times apiece. The pointer paid for the reader
+         * below, which would not have fitted under $BEE0 otherwise. */
         case 't': case 'T':
-            if (pan->count && !is_dir(&pan->e[pan->cursor]) && build_full(full, pan, &pan->e[pan->cursor])) {
-                key = pan->e[pan->cursor].type;
-                if ((unsigned char)key == 0xFC) overlay_run("BASLIST", 0);   /* big overlay */
-                else if ((unsigned char)key == 0x1A) overlay_run("AWP", 0);
-                else if (overlay("TEXT")) view_text(full);
-            }
+            if (!pan->count) break;
+            ent = &pan->e[pan->cursor];
+            if (is_dir(ent) || !build_full(full, pan, ent)) break;
+            key = ent->type;
+            if ((unsigned char)key == 0xFC) overlay_run("BASLIST", 0);   /* big overlay */
+            else if ((unsigned char)key == 0x1A) overlay_run("AWP", 0);
+            else if ((unsigned char)key == 0xFA) overlay_run("INTBASIC", 0);
+            else if (overlay("TEXT")) view_text(full);
             break;
         case 'h': case 'H':
-            if (pan->count && !is_dir(&pan->e[pan->cursor]) && build_full(full, pan, &pan->e[pan->cursor]))
-                if (overlay("HEX")) view_hex(full, pan->e[pan->cursor].size);
+            if (!pan->count) break;
+            ent = &pan->e[pan->cursor];
+            if (is_dir(ent) || !build_full(full, pan, ent)) break;
+            if (overlay("HEX")) view_hex(full, ent->size);
             break;
         case 'x': case 'X': overlay_run("RUN", 'X'); break;
         case 'f': case 'F': overlay_run("FORMAT", 'F'); break;

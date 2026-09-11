@@ -23,9 +23,22 @@ downloads and installation.
   that ends with one, none around the punctuation -- which is what makes
   ": GR : PRINT : INPUT" out of bytes that hold no space at all.
 
-  Pages with SPC, B and R like the other readers. Checked against the rule
-  written out in the tests, and in the emulator against the first lines of
-  Breakout read off the screen.
+  Pages with SPC, B and R like the other readers. **T** on a `$FA` opens it,
+  as T on a `$FC` opens BASLIST and on a `$1A` opens AWP; it is also in the
+  ! menu like every other service overlay. Checked against the rule written
+  out in the tests, and in the emulator against the first lines of Breakout
+  read off the screen.
+
+- The resident is 110 bytes smaller, which is what paid for that T. The T
+  and H cases of the main switch each wrote `pan->e[pan->cursor]` three
+  times, and an entry is 29 bytes, so every mention cost a multiplication:
+  the entry is taken once into a pointer now. Without it the 65C02 link went
+  22 bytes past its ceiling -- it had one byte of room, and the language card
+  reserve had one as well.
+
+- Fixed: the smoke bench still looked for "A2 FILE CMD 0.7.5" in the status
+  bar and had been failing since the version bump. It reads the version from
+  the Makefile now, like the rest of bench/pom2.py.
 
 - IDENT names two more families it used to call binary: the 816/Paint packed
   pictures (`$06` with auxtype `$E001`/`$E002`) and the Extasie `$F2`
