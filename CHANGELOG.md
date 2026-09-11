@@ -5,6 +5,18 @@ downloads and installation.
 
 ## Unreleased
 
+- Fixed: the second tool floppy was not in the release. `tools/check_images.py`
+  still demanded that every service overlay be on EXTRA, so it failed on the
+  ten that had moved to EXTRA2 -- and it runs in CI. The CI's own file globs
+  (`A2FILECMD-*-EXTRA-*.dsk`) did not match `EXTRA2` either, so the disk would
+  have been left out of the checksums and the published release. The checker
+  now reads the split from the Makefile's `XPLUGINS_EXTRA2`, so the two cannot
+  drift, and asserts that the three floppies partition the set of overlays
+  with MENU the one deliberate overlap. README, the manual and the release
+  notes describe four media per CPU, and the counts they quote (19 overlays
+  on BOOT, 22 plus the menu on EXTRA, 10 on EXTRA2, 51 on XL) are the ones
+  the images actually hold.
+
 - MOVE no longer stops at a full target directory. It allocates a block from
   the volume bitmap, links it onto the end of the directory's chain and tells
   the directory's own entry that it is a block longer -- after asking, and

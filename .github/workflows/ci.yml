@@ -7,7 +7,7 @@ on:
   pull_request:
   workflow_dispatch:
 
-# Each CPU ships BOOT and EXTRA floppies plus a complete XL 2mg.
+# Each CPU ships BOOT, EXTRA and EXTRA2 floppies plus a complete XL 2mg.
 # cc65 master provides the 6502 console; cc65 2.19 builds apple2enh.
 env:
   CC65_HEAD_COMMIT: e11fb5c
@@ -53,17 +53,17 @@ jobs:
       # Le lien echoue si le code passe sous le plancher de la pile C ou si
       # la coupe du fichier ne correspond plus au lanceur : check_layout.py
       # tourne dans la recette, pas apres coup.
-      - name: BOOT, EXTRA et XL pour chaque processeur
+      - name: BOOT, EXTRA, EXTRA2 et XL pour chaque processeur
         run: make disk && make xplugins ARCH=6502
 
-      - name: Relire les six volumes et verifier leurs surcouches
+      - name: Relire les huit volumes et verifier leurs surcouches
         run: python3 tools/check_images.py
 
       - name: Empreintes et notes de version
         run: |
           VERSION=$(sed -n 's/^A2FC_VERSION *= *//p' Makefile)
           cp docs/A2FILECMD-MANUAL-EN.pdf "dist/A2FILECMD-MANUAL-EN-$VERSION.pdf"
-          cd dist && sha256sum A2FILECMD-*-BOOT-*.dsk A2FILECMD-*-EXTRA-*.dsk A2FILECMD-*-XL-*.2mg "A2FILECMD-MANUAL-EN-$VERSION.pdf" | tee "SHA256SUMS-$VERSION.txt"
+          cd dist && sha256sum A2FILECMD-*-BOOT-*.dsk A2FILECMD-*-EXTRA-*.dsk A2FILECMD-*-EXTRA2-*.dsk A2FILECMD-*-XL-*.2mg "A2FILECMD-MANUAL-EN-$VERSION.pdf" | tee "SHA256SUMS-$VERSION.txt"
           cd .. && python3 tools/release_notes.py "${GITHUB_REF_NAME}" > dist/RELEASE_NOTES.md
 
       - name: Les cartes memoire, pour le journal de construction
@@ -179,6 +179,7 @@ jobs:
           files: |
             dist/A2FILECMD-*-BOOT-*.dsk
             dist/A2FILECMD-*-EXTRA-*.dsk
+            dist/A2FILECMD-*-EXTRA2-*.dsk
             dist/A2FILECMD-*-XL-*.2mg
             dist/A2FILECMD-MANUAL-EN-*.pdf
             dist/SHA256SUMS-*.txt

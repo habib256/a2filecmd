@@ -38,7 +38,7 @@ pictures. The tools are right there, beside your files.
 
 The **!** menu also offers text and disk-image conversion, CRC-32, file
 identification, Markdown reading, volume-wide search, favourite directories,
-batch renaming and type repair. EXTRA and XL also provide UNDELETE recovery,
+batch renaming and type repair. EXTRA2 and XL also provide UNDELETE recovery,
 DISKCMP comparison, MKIMAGE creation, RESCUE extraction, SYNC updates and TREE totals. BLKVIEW searches and extracts blocks while preserving the source; DISKIMG reads back disk writes.
 DISASM reads BIN/SYS files as 6502 or 65C02 assembly and exports text listings.
 FIND combines name/content searches with type and modification-date filters (TAB),
@@ -75,26 +75,29 @@ is 0.7.5; its downloads retain their own version numbers.
 | Image family (0.7.6) | CPU | Contents |
 |---|---|---|
 | `A2FILECMD-6502-BOOT-0.7.6.dsk` | 6502 | Bootable 140 KB floppy: file manager, disk tools and formatter |
-| `A2FILECMD-6502-EXTRA-0.7.6.dsk` | 6502 | 140 KB companion: 25 additional tools, menu and BASIC.SYSTEM |
-| `A2FILECMD-6502-XL-0.7.6.2mg` | 6502 | Bootable 32 MB disk: all 44 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
+| `A2FILECMD-6502-EXTRA-0.7.6.dsk` | 6502 | 140 KB companion: 22 everyday tools, menu and BASIC.SYSTEM |
+| `A2FILECMD-6502-EXTRA2-0.7.6.dsk` | 6502 | 140 KB companion: 10 disk and block tools |
+| `A2FILECMD-6502-XL-0.7.6.2mg` | 6502 | Bootable 32 MB disk: all 51 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
 | `A2FILECMD-65C02-BOOT-0.7.6.dsk` | 65C02 | Bootable 140 KB floppy: file manager, disk tools and formatter |
-| `A2FILECMD-65C02-EXTRA-0.7.6.dsk` | 65C02 | 140 KB companion: 25 additional tools, menu and BASIC.SYSTEM |
-| `A2FILECMD-65C02-XL-0.7.6.2mg` | 65C02 | Bootable 32 MB disk: all 44 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
+| `A2FILECMD-65C02-EXTRA-0.7.6.dsk` | 65C02 | 140 KB companion: 22 everyday tools, menu and BASIC.SYSTEM |
+| `A2FILECMD-65C02-EXTRA2-0.7.6.dsk` | 65C02 | 140 KB companion: 10 disk and block tools |
+| `A2FILECMD-65C02-XL-0.7.6.2mg` | 65C02 | Bootable 32 MB disk: all 51 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
 
-The names sort by CPU, then BOOT, EXTRA, XL. Choose **6502** for an Apple II
+The names sort by CPU, then BOOT, EXTRA, EXTRA2, XL. Choose **6502** for an Apple II
 with 128 KB and 80 columns, including the original IIe; choose **65C02** for
 an enhanced IIe, //c or IIgs, with MouseText and optional mouse support.
-Use the EXTRA disk for the **same CPU and release** as BOOT. Each EXTRA
-keeps its own free space for future plugins. Floppies are distributed as
+Use the companion disks for the **same CPU and release** as BOOT. EXTRA
+carries the everyday tools and BASIC.SYSTEM, EXTRA2 the disk and block
+surgery; both keep free space for future plugins. Floppies are distributed as
 `.dsk`; complete XL disks use `.2mg`.
 
-1. Boot BOOT or XL. ProDOS 8 is included. With floppies, put EXTRA in slot 6,
-   drive 2. With one drive, A2FC names the required disk and drive; press
+1. Boot BOOT or XL. ProDOS 8 is included. With floppies, put EXTRA (or
+   EXTRA2, for the tools it holds) in slot 6, drive 2. With one drive, A2FC names the required disk and drive; press
    **1** to choose drive 1, insert the disk, then press **Return**.
-   `make disk` builds all six volumes; `ARCH=6502` or `ARCH=enh` selects a CPU.
+   `make disk` builds all eight volumes; `ARCH=6502` or `ARCH=enh` selects a CPU.
 
 2. Press **`TAB`** to switch panels, **`RETURN`** to open and **`ESC`** to go up. Press **`?`** for the full key map.
-3. On the `.2mg`, explore the `DEMO/` folder already open in the right panel. On BOOT, the right panel shows the available volumes; `E`, `I` and the `!` menu load missing tools from the matching EXTRA disk.
+3. On the `.2mg`, explore the `DEMO/` folder already open in the right panel. On BOOT, the right panel shows the available volumes; `E`, `I` and the `!` menu load missing tools from the matching EXTRA or EXTRA2 disk.
 
 A **Mockingboard** enables music playback; an **AppleMouse II** enables point
 and click navigation. Both are optional and can be in any supported slot.
@@ -127,18 +130,19 @@ in that directory. Settings and support files live beside the program.
 <details>
 <summary>Verify your download</summary>
 
-Download `SHA256SUMS-0.7.5.txt` from the same release into the image's directory.
-To verify one image on macOS:
+Download `SHA256SUMS-<version>.txt` from the same release into the image's
+directory, with `<version>` the release you downloaded. To verify one image
+on macOS:
 
 ```sh
-shasum -a 256 A2FILECMD-65C02-XL-0.7.5.2mg
+shasum -a 256 A2FILECMD-65C02-XL-<version>.2mg
 ```
 
-Compare the result with its line in `SHA256SUMS-0.7.5.txt`. If you downloaded all
-six images and the PDF, check them together on Linux with:
+Compare the result with its line in `SHA256SUMS-<version>.txt`. To check
+every image and the PDF together on Linux:
 
 ```sh
-sha256sum -c SHA256SUMS-0.7.5.txt
+sha256sum -c SHA256SUMS-<version>.txt
 ```
 
 </details>
@@ -179,7 +183,7 @@ and **Python 3**. The disk-image tools and demo generators are included.
 
 ```sh
 make          # build the ProDOS program and its overlays
-make disk     # BOOT + EXTRA (.po/.dsk) and XL (.2mg), for 6502 and 65C02
+make disk     # BOOT + EXTRA + EXTRA2 (.po/.dsk) and XL (.2mg), for 6502 and 65C02
 make test     # run checks that do not need an Apple II
 ```
 
