@@ -11,13 +11,13 @@ HARNESS = r'''
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#define DI_MAIN_BLOCKS 4
+#define DI_MAIN_BLOCKS 3
 #define DI_AUX_BLOCKS 80
 #define SIDE_DEVICE 0
 struct Side { unsigned char kind; };
 struct DiskImg { struct Side src,dst; unsigned int total,checkblock; unsigned char checking; } state;
 #define DI (&state)
-static unsigned char blockbuf[512], copy_buf[512], staged[84][512], disk[280][512];
+static unsigned char blockbuf[512], copy_buf[512], staged[83][512], disk[280][512];
 #define DI_BLOCK blockbuf
 #define S_SOURCE "SOURCE"
 #define S_TARGET "TARGET"

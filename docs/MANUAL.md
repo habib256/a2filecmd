@@ -85,8 +85,12 @@ source and destination online still require another drive or volume.
 **Copy anything important out of `/RAM` before displaying DHGR, loading
 music, extracting ShrinkIt, using disk-image operations or physically
 formatting a Disk II floppy.** These operations use auxiliary memory and
-rebuild `/RAM` empty; the message line reports it. Plain HGR pictures do not
-clear `/RAM`. Avoid writing to `/RAM` while music is playing.
+can rebuild `/RAM` empty. A warning explicitly says that ALL `/RAM` files
+will be lost and asks for consent **before** AUX is used. Declining preserves
+its contents. The viewer may ask even for a plain HGR file because the same
+viewer can browse subsequent DHGR pictures; plain HGR itself does not need
+the reconstruction. The message line reports a reconstruction afterwards.
+Avoid writing to `/RAM` while music is playing.
 
 ## Keys
 
@@ -113,7 +117,11 @@ clear `/RAM`. Avoid writing to `/RAM` while music is playing.
 Copying preserves name, type and auxiliary type. For an existing target,
 choose **O** overwrite, **S** skip, **A** overwrite all or **N** overwrite
 none. Existing destination directories are filled in. Copying into the same
-or a nested source directory is refused.
+or a nested source directory is refused. Files are read back and compared
+before a move can delete its source. Overwrites protect the old destination
+as `A2FC.BAK`; failures attempt to restore it. A leftover backup must be
+examined before another replacement. Archive and image extraction refuse
+existing output files instead of silently overwriting them.
 
 Long operations display progress, including each item during recursive deletes.
 **ESC** interrupts; completed work remains,
@@ -144,7 +152,7 @@ The following tools supplement the main keys and readers.
 | **TAGPAT** | Name patterns: `=` any string, `?` one character. Add comma-separated filters: `T04` TXT, `>2000` or `<2000` bytes, `D` modified today. T tags, U untags, X replaces tags. |
 | **VOLINFO** | Audit allocation and fragmentation. M = bitmap (`.` free, `#` used), F = selected file blocks, E = export to the other panel. N/P pages; ESC returns. No repairs. |
 | **VOLNAME** | Rename a ProDOS volume and update the affected panel/program paths. |
-| **WIPE** | F zeroes free blocks after confirmation, refusing bitmap locations that overlap boot/header blocks or extend outside the volume. W zeroes the whole volume after `ERASE`; the running program's volume is refused. |
+| **WIPE** | F checks live directory/file references against the bitmap before zeroing free blocks. Unreadable, inconsistent or unsupported allocation is refused. W zeroes the whole volume after `ERASE`; the running program's volume is refused. |
 
 ### On EXTRA and XL
 
@@ -262,7 +270,7 @@ it briefly. Loading music clears `/RAM`; an absent Mockingboard is reported.
 ## The text editor
 
 **E** edits a file; on a directory or `..`, it creates one. The editor holds
-up to 8 KB, uses CR line endings and strips the high bit on loading. Long
+up to 5,104 bytes, uses CR line endings and strips the high bit on loading. Long
 lines do not wrap. A star on the status bar means unsaved changes.
 
 **Arrows** move; **Delete / Ctrl-D** erase left / right. **Ctrl-A / Ctrl-E**
@@ -273,7 +281,11 @@ go to line start / end; **Ctrl-P / Ctrl-N** changes page;
 **ESC** opens the menu: **S** save, **X** save and exit, **Q** quit without
 saving (confirm if changed), **ESC** continue editing.
 
-Saving preserves the file's ProDOS type and auxiliary type.
+Saving preserves the file's ProDOS type and auxiliary type. It writes and
+reads back `A2FC.EDIT` before installing it, using `A2FC.ED.BAK` to protect the
+previous file during renaming. Extra free space is required. If either name
+already exists, examine/recover it before removing it; A2FC never overwrites
+a previous recovery file.
 
 ## Disk images and formatting
 
@@ -481,3 +493,6 @@ tests, demo data and user interface were written for this project. Generated
 demo files are created by `tools/mkdemo.py`; they are not copied from the
 inspiration projects. See the repository source comments and `LICENSE` for
 the complete copyright and redistribution terms.
+
+See [Data safety](DATA-SAFETY.md) for recovery-file names, failure coverage
+and the limits of recovery after interrupted physical writes.

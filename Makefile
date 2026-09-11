@@ -45,14 +45,14 @@ else
 CC65BIN =
 TARGET = apple2enh
 ASDEFS =
-CLDEFS =
+CLDEFS = -DA2FC_BIG_BINARY2
 MOUSEOBJ = $(BUILD)/mouse.o
 # The processor precedes the disk role for alphabetical grouping.
 CPU = 65C02
 IMG = A2FILECMD-$(CPU)-BOOT
 BUILD_SUFFIX =
-BIN2SIZE = 0x0500
-LAYOUT_BIG =
+BIN2SIZE = 0x0D00
+LAYOUT_BIG = --big BINARY2
 endif
 IOBUF  = $(TARGET)-iobuf-0800.o
 VDRIVEOBJ = $(BUILD)/vsdrive.o
@@ -88,13 +88,13 @@ CODE   = $(BUILD)/A2FILE.CODE.BIN
 # launcher, the attributes, the editor, the menu, the disk images. Each has
 # two segments in its file: NAME (code) then NAMERO (strings). See
 # src/a2fc_plugin.h for the header and the service table.
-PLUGINS = FORMAT IMAGE TEXT HEX DELETE HELP EDIT MUSIC RUN ATTR MENU DISKIMG IMGFS DOS33 UNSHRINK BASLIST COMPARE SEARCH BINARY2 AWP
+PLUGINS = COPY FORMAT IMAGE TEXT HEX DELETE HELP EDIT MUSIC RUN ATTR MENU DISKIMG IMGFS DOS33 UNSHRINK BASLIST COMPARE SEARCH BINARY2 AWP
 # The floppy edition: the commands, the two viewers that cost four blocks,
 # and the disk tools. The editor, the pictures, the music, the archives and
 # the document readers stay on the hard disk (45 blocks, with BASIC.SYSTEM's
 # 21, given back to the disk tools to come -- see TODO.md, "Les deux editions").
 # COMPARE also carries the S (sort) and M (mark differences) commands.
-PLUGINS_FLOPPY = FORMAT HELP TEXT HEX DELETE RUN ATTR MENU DISKIMG IMGFS DOS33 COMPARE
+PLUGINS_FLOPPY = COPY FORMAT HELP TEXT HEX DELETE RUN ATTR MENU DISKIMG IMGFS DOS33 COMPARE
 # The service-table overlays: src/plugins/NAME.c, each compiled and linked
 # on its own like a third party's (sdk/plugin.cfg, no crt0, nothing of
 # A2FILE.CODE), because the resident is full -- they reach the program only
@@ -308,12 +308,16 @@ $(FULLPO): $(STAGE_DEPS) $(DATA)/BASIC.SYSTEM.SYS
 	@echo "==> $(FULLPO): the bench floppy, core overlays ($(ARCH))"
 
 test:
+	python3 $(TOOLS)/test_file_safety.py
+	python3 $(TOOLS)/test_core_dirscan.py
+	python3 $(TOOLS)/test_imgconv_safety.py
 	python3 $(TOOLS)/test_check_layout.py
 	python3 $(TOOLS)/test_mkvolume.py
 	python3 $(TOOLS)/test_prodos_read.py
 	python3 $(TOOLS)/test_mkdemo.py
 	python3 $(TOOLS)/test_volinfo.py
 	python3 $(TOOLS)/test_diskimg_verify.py
+	python3 $(TOOLS)/test_diskimg_input.py
 	python3 $(TOOLS)/test_dirscan.py
 	python3 $(TOOLS)/test_blkview.py
 	python3 $(TOOLS)/test_blkedit.py

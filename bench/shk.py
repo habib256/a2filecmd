@@ -81,7 +81,7 @@ def main():
                 open_panel(40, out, vol='OUTPUT')                          # panneau droit : la cible
                 if picture:
                     open_panel(0, 'DEMO')
-                    s.select(picture, 0); s.key(RET)
+                    s.select(picture, 0); s.key(RET); s.allow_aux()
                     s.wait(lambda: s.value('view', 1) == 1, 'image ' + picture)
                     p.stable()
                     s.key(b'\x1b')
@@ -91,7 +91,7 @@ def main():
                 s.select(out + '.SHK', 0); p.stable()
                 source_rows = [r[:38] for r in s.rows()[2:20]]
                 s.key(b'!'); s.wait(lambda: s.has('the overlays'), 'menu', 30); p.stable()
-                s.key(b'U'); p.stable(); s.key(RET, pause=0)
+                s.key(b'U'); p.stable(); s.key(RET, pause=0); s.allow_aux()
                 progress = []
                 deadline = time.time() + 60
                 while time.time() < deadline:

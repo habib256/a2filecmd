@@ -68,6 +68,7 @@ class Wipe(unittest.TestCase):
         data = bytearray(b'\xA5' * (512 * total))
         data[1024:1536] = bytes(512)
         data[1028] = 0xF4
+        data[1059:1061] = bytes([39,13])
         data[1024 + 0x27:1024 + 0x29] = bitmap.to_bytes(2, 'little')
         data[1024 + 0x29:1024 + 0x2B] = total.to_bytes(2, 'little')
         return data
@@ -88,6 +89,49 @@ class Wipe(unittest.TestCase):
         self.assertEqual(writes, 1)
         self.assertEqual(after, data)
         self.assertIn('1 blocks zeroed', note)
+
+    def assert_refused(self, data):
+        writes,note,after=self.run_wipe(data)
+        self.assertEqual(writes,0)
+        self.assertIn('refused',note)
+        self.assertEqual(after,data)
+
+    def test_metadata_marked_free_is_never_erased(self):
+        for block in (0,1,2,6):
+            with self.subTest(block=block):
+                data=self.volume();data[3072:3584]=bytes(512)
+                data[3072+block//8]|=0x80>>(block&7)
+                self.assert_refused(data)
+
+    def live_file(self,kind=1):
+        data=self.volume();data[3072:3584]=bytes(512)
+        data[1067]=kind<<4|1;data[1068]=ord('A')
+        data[1084:1086]=(20).to_bytes(2,'little')
+        return data
+
+    def test_live_data_marked_free_is_never_erased(self):
+        data=self.live_file();data[3072+20//8]=0x80>>(20&7)
+        self.assert_refused(data)
+
+    def test_sapling_data_marked_free_is_never_erased(self):
+        data=self.live_file(2);data[20*512:21*512]=bytes(512)
+        data[20*512]=21;data[3072+21//8]=0x80>>(21&7)
+        self.assert_refused(data)
+
+    def test_tree_data_marked_free_is_never_erased(self):
+        data=self.live_file(3);data[20*512:22*512]=bytes(1024)
+        data[20*512]=21;data[21*512]=22
+        data[3072+22//8]=0x80>>(22&7)
+        self.assert_refused(data)
+
+    def test_unreadable_or_cyclic_directory_never_writes(self):
+        for next_block in (2,280):
+            data=self.volume();data[3072:3584]=bytes(512)
+            data[1026:1028]=next_block.to_bytes(2,'little')
+            self.assert_refused(data)
+
+    def test_unknown_storage_refuses_free_wipe(self):
+        self.assert_refused(self.live_file(5))
 
     def test_invalid_bitmap_location_never_writes(self):
         for total, bitmap in ((280, 0), (280, 1), (280, 2), (280, 280),

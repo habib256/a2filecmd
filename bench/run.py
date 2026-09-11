@@ -162,7 +162,7 @@ def main():
             s.wait(lambda: s.rows()[0][40:].startswith('/SCRATCH '), 'SCRATCH droit'); p.stable()
             s.select('DEMO', 40); s.key(RET)
             s.wait(lambda: s.has('/SCRATCH/DEMO'), 'DEMO droit'); p.stable()
-            s.select('DHGR.RLE', 40); s.key(RET)
+            s.select('DHGR.RLE', 40); s.key(RET); s.allow_aux()
             s.wait(lambda: s.value('view', 1) == 1, 'image DHGR', 40); time.sleep(1.5)
             page = p.peek(0x2000, 8192, 'aux') + p.peek(0x2000, 8192)
             s.ok('la mire DHGR est decodee octet a octet dans les deux banques', page == dhgr)
@@ -175,13 +175,13 @@ def main():
                  s.rows()[22].strip())
             s.ok('/RAM est refait a neuf apres une image DHGR', s.has('/RAM was rebuilt empty'),
                  s.rows()[22].strip())
-            s.select('DHGR.RLE', 40); s.key(RET)
+            s.select('DHGR.RLE', 40); s.key(RET); s.allow_aux()
             s.wait(lambda: s.value('view', 1) == 1, 'image DHGR'); time.sleep(1.5)
             s.key(RIGHT); time.sleep(1.5)
             s.ok("la fleche droite feuillette l'album sans revenir aux panneaux",
                  s.value('view', 1) == 1)
             s.key(ESC); s.wait(lambda: s.value('view', 1) == 0, 'retour'); p.stable()
-            s.select('HGR.RLE', 40); s.key(RET)
+            s.select('HGR.RLE', 40); s.key(RET); s.allow_aux()
             s.wait(lambda: s.value('view', 1) == 1, 'image HGR', 40); time.sleep(1.5)
             s.ok('la mire HGR est decodee en banque principale',
                  p.peek(0x2000, 8192) == hgr)
@@ -209,7 +209,7 @@ def main():
             # Attendre le message plutot qu'un sleep fixe : la surcouche MUSIC
             # se charge du disque, et selon la vitesse de l'emulateur le
             # message arrive juste avant ou juste apres un demi-quart de seconde.
-            s.select('WELCOME.MB', 40); s.key(RET)
+            s.select('WELCOME.MB', 40); s.key(RET); s.allow_aux()
             s.wait(lambda: s.has('Playing WELCOME.MB'), 'la fanfare demarre', 10)
             s.ok('la fanfare joue sur la Mockingboard', s.has('Playing WELCOME.MB'),
                  s.rows()[22].strip())
@@ -257,7 +257,7 @@ def main():
                 raise AssertionError('lecteur absent de la liste\n' + '\n'.join(s.rows()))
 
             def write_back(label):
-                s.key(b'W'); s.wait(lambda: s.has('DISK IMAGES'), 'menu ' + label)
+                s.key(b'W'); s.allow_aux(); s.wait(lambda: s.has('DISK IMAGES'), 'menu ' + label)
                 s.key(b'W'); s.wait(lambda: s.has('to which disk?'), 'lecteur ' + label); p.stable()
                 s.key(drive_key(6, 2)); s.wait(lambda: s.has('Type ERASE'), 'erase ' + label)
                 s.type('ERASE'); s.key(RET)
@@ -265,7 +265,7 @@ def main():
                 p.stable()
 
             # R : lire la disquette d'amorce dans une image DOS 3.3
-            s.select('WORK'); s.key(b'W')
+            s.select('WORK'); s.key(b'W'); s.allow_aux()
             s.wait(lambda: s.has('DISK IMAGES'), 'menu des images'); p.stable()
             s.ok('W ouvre la surcouche des images disque',
                  s.has('R  Read a disk') and s.has('O  Copy disk'), s.rows()[5:7])
@@ -291,7 +291,7 @@ def main():
             blank_disk()
 
             # W : ecrire l'image .PO de 64 blocs sur la disquette vierge
-            s.select('TINY.PO'); s.key(b'W')
+            s.select('TINY.PO'); s.key(b'W'); s.allow_aux()
             s.wait(lambda: s.has('W  Write TINY.PO to a disk'), 'menu W'); p.stable()
             s.key(b'W'); s.wait(lambda: s.has('to which disk?'), 'choix du lecteur'); p.stable()
             s.key(drive_key(6, 2)); s.wait(lambda: s.has('Type ERASE'), 'avertissement')
@@ -310,7 +310,7 @@ def main():
             blank_disk()
 
             # O : copier la disquette d'amorce sur la vierge, lecteur a lecteur
-            s.key(b'W'); s.wait(lambda: s.has('DISK IMAGES'), 'menu des images')
+            s.key(b'W'); s.allow_aux(); s.wait(lambda: s.has('DISK IMAGES'), 'menu des images')
             s.key(b'O'); s.wait(lambda: s.has('Copy FROM which disk'), 'source'); p.stable()
             s.key(drive_key(6, 1)); s.wait(lambda: s.has('Copy TO which drive'), 'cible'); p.stable()
             s.key(drive_key(6, 2)); s.wait(lambda: s.has('Type ERASE'), 'avertissement'); p.stable()
@@ -530,6 +530,7 @@ def main():
                 p.click(x0 + 37, 5)                            # DEMO trie : ligne 5 = HGR.RLE ; en bout de ligne, hors du nom
                 s.ok('un clic selectionne la ligne', s.line(x0).startswith('HGR.RLE'), s.line(x0)[:20])
                 p.click(x0 + 37, 5)
+                s.allow_aux()
                 s.wait(lambda: s.value('view', 1) == 1, 'image par la souris', 40); time.sleep(1)
                 s.ok("un second clic sur la selection l'ouvre", s.value('view', 1) == 1)
                 s.key(ESC); s.wait(lambda: s.value('view', 1) == 0, 'retour'); p.stable()

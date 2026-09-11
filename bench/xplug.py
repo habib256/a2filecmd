@@ -62,7 +62,7 @@ def boot_hd(tmp, files=None, port=6800, blocks=4000, name='WORKHD', floppy=None,
         yield p, s
 
 
-def menu_run(s, p, name, tries=40):
+def menu_run(s, p, name, tries=40, allow_aux=True):
     """Ouvre le menu des surcouches et lance `name` (en majuscules)."""
     s.key(b'!')
     s.wait(lambda: s.has('the overlays'), 'le menu des surcouches', 30)
@@ -71,6 +71,8 @@ def menu_run(s, p, name, tries=40):
         r = s.cursor_row(2)
         if r is not None and s.rows()[r][2:14].strip() == name:
             s.key(RET)
+            if allow_aux and name in ('EXTASIE','PACKFOT','PAINT816','MUSIC','UNSHRINK','DISKIMG','IMAGE'):
+                s.allow_aux()
             time.sleep(0.5)
             p.stable()
             return

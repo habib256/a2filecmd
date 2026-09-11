@@ -36,9 +36,9 @@ ROOT = Path(__file__).resolve().parents[1]
 # page graphique pour les petites ; pour les grandes (EDIT, MENU), le debut
 # de ce qu'elles y gardent pour elles (le texte de l'editeur, la liste du
 # menu).
-OVERLAYS = {'FORMAT': 0x3C00, 'IMAGE': 0x2000, 'TEXT': 0x2000, 'HEX': 0x2000, 'DELETE': 0x2000, 'HELP': 0x2000,
-            'MUSIC': 0x2000, 'RUN': 0x2000, 'ATTR': 0x2000, 'EDIT': 0x2800, 'MENU': 0x3000,
-            'DISKIMG': 0x3400, 'IMGFS': 0x2000, 'DOS33': 0x2000, 'UNSHRINK': 0x3000, 'BASLIST': 0x2800, 'COMPARE': 0x2000, 'SEARCH': 0x2000, 'BINARY2': 0x2000, 'AWP': 0x2000}
+OVERLAYS = {'COPY': 0x2000, 'FORMAT': 0x3C00, 'IMAGE': 0x2000, 'TEXT': 0x2000, 'HEX': 0x2000, 'DELETE': 0x2000, 'HELP': 0x2000,
+            'MUSIC': 0x2000, 'RUN': 0x2000, 'ATTR': 0x2000, 'EDIT': 0x2C00, 'MENU': 0x3000,
+            'DISKIMG': 0x3600, 'IMGFS': 0x2000, 'DOS33': 0x2000, 'UNSHRINK': 0x3000, 'BASLIST': 0x2800, 'COMPARE': 0x2000, 'SEARCH': 0x2000, 'BINARY2': 0x2000, 'AWP': 0x2000}
 
 
 def check_layout(s, loader, length, overlays=None):
@@ -104,7 +104,7 @@ def check_layout(s, loader, length, overlays=None):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--loader', type=Path, default=ROOT / 'src/loader.c')
-    ap.add_argument('--big', default='', help='surcouches grandes dans cette construction (ARCH=6502 : BINARY2), separees par des virgules')
+    ap.add_argument('--big', default='', help='surcouches grandes dans cette construction (BINARY2 pour les deux CPUs), separees par des virgules')
     ap.add_argument('--lbl', type=Path, default=ROOT / 'build/a2fc.lbl',
                     help='table de symboles ld65 (-Ln)')
     ap.add_argument('--bin', type=Path, default=ROOT / 'build/A2FILE.CODE.BIN',

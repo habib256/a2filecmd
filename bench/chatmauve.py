@@ -70,14 +70,14 @@ def main(variants):
                 ok('A2FC demarre sur /HD', s.rows()[0].startswith('/HD'), s.rows()[0][:20])
                 s.select('..', 0); s.key(RET); s.wait(lambda: s.has('IMGHGR/'), 'racine'); p.stable()   # A2FC part de /HD/APPS
                 s.select('IMGHGR', 0); s.key(RET); s.wait(lambda: s.has('/HD/IMGHGR'), 'IMGHGR'); p.stable()
-                s.select('ALIEN', 0); s.key(RET)
+                s.select('ALIEN', 0); s.key(RET); s.allow_aux()
                 s.wait(lambda: s.value('view', 1) == 1, 'image ALIEN', 40); time.sleep(1.5)
                 d = ppm_diff(ref, shot())
                 ok('ALIEN vu depuis A2FC : le meme ecran que BASIC, pixel pour pixel', d == 0, f'{d} pixels differents')
                 # une seconde HGR de suite : jusqu'en 0.6.8, chaque affichage
                 # HGR faisait avancer le verrou de mode de la carte
                 s.key(ESC); s.wait(lambda: s.value('view', 1) == 0, 'retour'); p.stable()
-                s.select('ALIEN', 0); s.key(RET)
+                s.select('ALIEN', 0); s.key(RET); s.allow_aux()
                 s.wait(lambda: s.value('view', 1) == 1, 'image ALIEN', 40); time.sleep(1.5)
                 d = ppm_diff(ref, shot())
                 ok('une seconde HGR de suite : toujours le meme ecran (le verrou de la carte ne derive pas)',
@@ -86,14 +86,14 @@ def main(variants):
                 s.key(TAB)                   # le panneau droit liste les volumes : /HD puis DEMO
                 s.select('/HD', 40); s.key(RET); s.wait(lambda: s.rows()[0][40:].startswith('/HD '), 'volume /HD'); p.stable()
                 s.select('DEMO', 40); s.key(RET); s.wait(lambda: s.has('/HD/DEMO'), 'DEMO'); p.stable()
-                s.select('DHGR.RAW', 40); s.key(RET)
+                s.select('DHGR.RAW', 40); s.key(RET); s.allow_aux()
                 s.wait(lambda: s.value('view', 1) == 1, 'image DHGR brute', 40); time.sleep(1.5)
                 solid, rows, colours = solid_bands(shot())
                 ok('la mire DHGR brute : bandes unies, seize couleurs, avec la carte',
                    solid == rows and colours >= 15, (solid, rows, colours))
                 s.key(ESC); s.wait(lambda: s.value('view', 1) == 0, 'retour'); p.stable()
                 s.key(TAB)
-                s.select('ALIEN', 0); s.key(RET)
+                s.select('ALIEN', 0); s.key(RET); s.allow_aux()
                 s.wait(lambda: s.value('view', 1) == 1, 'image ALIEN', 40); time.sleep(1.5)
                 d = ppm_diff(ref, shot())
                 ok('apres la DHGR, ALIEN est toujours rendu a l identique (verrou de la carte intact)',

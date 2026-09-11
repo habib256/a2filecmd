@@ -15,7 +15,7 @@ def main():
     paths = [(n, a.build / ('A2FILE.CODE.BIN.' + n)) for n in a.native]
     paths += [(n.upper(), a.build / (n + '.PLG')) for n in a.plugins]
     for name, path in sorted(paths):
-        if name == 'MENU':
+        if name in ('MENU', 'COPY', 'CHECK'):
             continue
         data = path.read_bytes()
         description = data[8:].split(b'\0', 1)[0]

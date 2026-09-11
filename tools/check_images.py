@@ -21,8 +21,9 @@ def entries(image, block):
 
 def check_cpu(cpu):
     build = ROOT / ('build-6502' if cpu == '6502' else 'build')
-    expected = {p.name.split('.BIN.')[1] + '.PLG': p.read_bytes()
-                for p in build.glob('A2FILE.CODE.BIN.*')}
+    native = re.search(r'^PLUGINS = (.+)$', MAKEFILE, re.M)[1].split()
+    expected = {name + '.PLG': (build / ('A2FILE.CODE.BIN.' + name)).read_bytes()
+                for name in native}
     expected.update({p.stem.upper() + '.PLG': (build / (p.stem + '.PLG')).read_bytes()
                      for p in (ROOT / 'src/plugins').glob('*.c')})
     plugins = {}

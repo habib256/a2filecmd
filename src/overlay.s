@@ -5,7 +5,8 @@
 ; would go off the rails. So its first two bytes are the address of main
 ; in the program that linked it, and the core compares it with its own
 ; before entering it (load_overlay, in a2fc.c). Then come a flags byte
-; (bit 0: big overlay, which also takes the graphics page $2000-$3FFF),
+; (bit 0: big overlay, which also takes the graphics page $2000-$3FFF;
+; bit 1: requires prior consent to destroy the auxiliary RAM disk),
 ; the address of the entry point that the overlay menu (!) calls on
 ; selection, three reserved bytes, and the one-line description that this
 ; menu displays. This file is the first object of the link after crt0 so
@@ -24,6 +25,7 @@
         .import _awp_entry
 
 BIG = 1
+AUX = 2
 
 ; The link's identity, readable from C: the address of main, which cc65
 ; master no longer lets us take in C (&main) but which the assembler gives.
@@ -40,8 +42,10 @@ _a2fc_link_id:
         .asciiz desc
 .endmacro
 
+        .segment "COPY"
+        header 0, 0, "Internal file copy"
         .segment "IMAGE"
-        header  0, _image_entry, "View the selection full screen as an HGR or DHGR picture (I)"
+        header  AUX, _image_entry, "View the selection full screen as an HGR or DHGR picture (I)"
         .segment "HELP"
         header  0, _help_entry, "The help page: every key of A2 File Cmd on one screen (?)"
         .segment "TEXT"
@@ -53,12 +57,7 @@ _a2fc_link_id:
         .segment "SEARCH"
         header  0, _search_entry, "Search every file of the panel for a text, and tag those found"
         .segment "BINARY2"
-.ifdef A2_6502
         header  1, _binary2_entry, "Extract a Binary II (.BNY) archive into the other panel"
-.else
-        header  0, _binary2_entry, "Extract a Binary II (.BNY) archive into the other panel"
-.endif
-
         .segment "AWP"
         header  0, _awp_entry, "Read an AppleWorks word-processor document, page by page"
         .segment "HEX"
@@ -66,21 +65,21 @@ _a2fc_link_id:
         .segment "DELETE"
         header  0, _delete_entry, "Delete the tagged files, or the selection, after confirmation (D)"
         .segment "EDIT"
-        header  BIG, _edit_entry, "Edit the selection as text, up to 6 KB, or write a new file (E)"
+        header  BIG, _edit_entry, "Edit the selection as text, up to 5 KB, or write a new file (E)"
         .segment "MUSIC"
-        header  0, _music_entry, "Play the selected .MB tune on a Mockingboard, P pauses it"
+        header  AUX, _music_entry, "Play the selected .MB tune on a Mockingboard, P pauses it"
         .segment "RUN"
         header  0, _run_entry, "Run the selected SYS, BIN or Applesoft program, and leave A2FC"
         .segment "ATTR"
         header  0, _attr_entry, "Change the ProDOS type and auxtype of the selection (A)"
         .segment "DISKIMG"
-        header  BIG, _diskimg_entry, "Disk images: write one to a floppy, read a floppy, copy a floppy"
+        header  BIG|AUX, _diskimg_entry, "Disk images: write one to a floppy, read a floppy, copy a floppy"
         .segment "IMGFS"
         header  0, _imgfs_entry, "Extract the tagged files of a disk image into the other panel (C)"
         .segment "DOS33"
         header  0, _dos33_entry, "A DOS 3.3 disk or image: extract its tagged files (C)"
         .segment "UNSHRINK"
-        header  BIG, _unshrink_entry, "Extract a ShrinkIt (.SHK) archive into the other panel"
+        header  BIG|AUX, _unshrink_entry, "Extract a ShrinkIt (.SHK) archive into the other panel"
         .segment "MENU"
         header  BIG, _menu_entry, "This menu"
 

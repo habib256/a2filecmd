@@ -57,6 +57,7 @@
  * A big overlay: the graphics page is its own, the core sets the tags aside,
  * rereads both panels and redraws. The block being rewritten lives in
  * api->copy_buf; the readback needs a second 512 bytes of its own. */
+#define UTIL_STUBS
 #define UTIL_VOLUME
 #define UTIL_WRITE
 #include "util.h"
@@ -121,7 +122,6 @@ static const char m_gone[]  = "%s is no longer in this directory.";
 static const char m_full[]  = "The volume directory is full and cannot grow.";
 static const char m_grew[]  = "Move %s into %s? Its directory must grow a block.";
 static const char m_nogrow[] = "The target directory could not be made longer.";
-static const char m_io[]    = "Block %u failed: the move is INCOMPLETE, run VOLINFO.";
 static const char m_ok[]    = "%s moved: %u block%s untouched, nothing copied.";
 static const char m_ask[]   = "Move %s into %s without copying it?";
 
@@ -147,7 +147,7 @@ static void name_of(unsigned char k)
 {
     unsigned char* e = buf + 4 + (unsigned int)k * ENTRY_LEN;
     unsigned char n = e[0] & 15;
-    a.memcpy(found, e + 1, n);
+    RF(memcpy)(found, e + 1, n);
     found[n] = 0;
 }
 
@@ -164,7 +164,7 @@ static unsigned char locate(unsigned int key, unsigned int* blk, unsigned char* 
             kind = buf[4 + (unsigned int)k * ENTRY_LEN] >> 4;
             if (!kind || kind >= 14) continue;
             name_of(k);
-            if (!a.strcmp(found, seek)) { *blk = b; *slot = k; return 1; }
+            if (!RF(strcmp)(found, seek)) { *blk = b; *slot = k; return 1; }
         }
         b = rd16(buf + 2);
     }
@@ -343,68 +343,69 @@ static void copy_across(const struct Entry* e)
     if (!join(target, other->path, e->name)) { note(m_walk); return; }
 
     a.sprintf((char*)scratch, m_cask, e->name);
-    if (!a.confirm((char*)scratch)) { note(""); return; }
+    if (!RF(confirm)((char*)scratch)) { note(""); return; }
 
     /* CREATE must grant us a new entry before fopen("wb") or failure
      * cleanup can touch this path. Use the readback buffer for its Pascal
      * path; it is free until copying starts. */
-    scratch[0] = a.strlen(target);
-    a.strcpy((char*)scratch + 1, target);
+    scratch[0] = RF(strlen)(target);
+    RF(strcpy)((char*)scratch + 1, target);
     create.n = 7; create.path = scratch; create.access = 0xC3;
     create.type = e->type; create.aux = e->aux; create.storage = 1;
     create.date = create.time = 0;
-    err = a.mli(0xC0, &create);
+    err = RF(mli)(0xC0, &create);
     if (err) {
         a.sprintf(a.note, err == 0x47 ? m_here : m_cbad, e->name);
         return;
     }
     *a.filetype = e->type;
     *a.auxtype = e->aux;
-    in = a.fopen(a.full, "rb");
-    out = a.fopen(target, "wb");
+    in = RF(fopen)(a.full, "rb");
+    out = RF(fopen)(target, "wb");
     if (!in || !out) bad = 1;
     for (left = e->size; left && !bad; left -= n) {
         n = left > 512 ? 512 : (unsigned int)left;
-        if (a.fread(buf, 1, n, in) != n || a.fwrite(buf, 1, n, out) != n) bad = 1;
+        if (RF(fread)(buf, 1, n, in) != n || RF(fwrite)(buf, 1, n, out) != n) bad = 1;
         else { done += n; a.progress_bar(e->name, done, e->size); }
     }
-    if (in) a.fclose(in);
-    if (out && a.fclose(out)) bad = 1;
-    if (bad) { a.remove(target); a.sprintf(a.note, m_cbad, e->name); return; }
+    if (in) RF(fclose)(in);
+    if (out && RF(fclose)(out)) bad = 1;
+    if (bad) { RF(remove)(target); a.sprintf(a.note, m_cbad, e->name); return; }
 
     /* Read both back and compare before the original is touched. */
-    in = a.fopen(a.full, "rb");
-    out = a.fopen(target, "rb");
+    in = RF(fopen)(a.full, "rb");
+    out = RF(fopen)(target, "rb");
     if (!in || !out) bad = 1;
     for (left = e->size; left && !bad; left -= n) {
         n = left > 512 ? 512 : (unsigned int)left;
-        if (a.fread(buf, 1, n, in) != n || a.fread(scratch, 1, n, out) != n) bad = 1;
+        if (RF(fread)(buf, 1, n, in) != n || RF(fread)(scratch, 1, n, out) != n) bad = 1;
         else for (i = 0; i < n; ++i) if (buf[i] != scratch[i]) { bad = 1; break; }
     }
     /* The panel's size can be stale. Matching that prefix is not enough:
      * deleting a longer source would silently discard its remaining bytes.
      * Both streams must end at the size we copied, including empty files. */
-    if (!bad && (a.fread(buf, 1, 1, in) || a.fread(scratch, 1, 1, out))) bad = 1;
-    if (in) a.fclose(in);
-    if (out) a.fclose(out);
-    if (bad) { a.remove(target); a.sprintf(a.note, m_vbad, e->name); return; }
+    if (!bad && (RF(fread)(buf, 1, 1, in) || RF(fread)(scratch, 1, 1, out))) bad = 1;
+    if (in) RF(fclose)(in);
+    if (out) RF(fclose)(out);
+    if (bad) { RF(remove)(target); a.sprintf(a.note, m_vbad, e->name); return; }
 
-    if (a.remove(a.full)) { a.sprintf(a.note, m_del, e->name); return; }
-    a.strcpy(a.reselect, e->name);
+    if (RF(remove)(a.full)) { a.sprintf(a.note, m_del, e->name); return; }
+    RF(strcpy)(a.reselect, e->name);
     a.sprintf(a.note, m_cok, e->name);
 }
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api)
 {
     const struct Entry* e;
-    unsigned int sblk, dblk, subkey, blocks, bad = 0;
-    unsigned char sslot, dslot, isdir, room;
+    unsigned int sblk, dblk, subkey, blocks;
+    unsigned char sslot, dslot, isdir, room, restored;
+    unsigned int src_count, dst_count;
 
     init(api);
     e = a.selected;
 
     if (pan->fs || other->fs || !pan->path[0] || !other->path[0]) { note(m_dirs); return; }
-    if (!a.strcmp(pan->path, other->path)) { note(m_same); return; }
+    if (!RF(strcmp)(pan->path, other->path)) { note(m_same); return; }
     if (program_dir(pan->path) || program_dir(other->path)) { note(m_prog); return; }
     if (!e->name[0] || (e->name[0] == '.' && e->name[1] == '.')) { note(m_pick); return; }
     if (!a.full[0]) { note(m_pick); return; }
@@ -417,18 +418,22 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
 
     srckey = key_of(pan->path);
     dstkey = key_of(other->path);
-    if (!srckey || !dstkey) { note(m_walk); return; }
+    if (!srckey || !dstkey || srckey == dstkey) { note(m_walk); return; }
 
-    a.strcpy(seek, e->name);
+    RF(strcpy)(seek, e->name);
     if (locate(dstkey, &dblk, &dslot)) { a.sprintf(a.note, m_taken, e->name); return; }
     if (!locate(srckey, &sblk, &sslot)) { a.sprintf(a.note, m_gone, e->name); return; }
-    a.memcpy(ent, buf + 4 + (unsigned int)sslot * ENTRY_LEN, ENTRY_LEN);
+    RF(memcpy)(ent, buf + 4 + (unsigned int)sslot * ENTRY_LEN, ENTRY_LEN);
     /* Raw directory writes bypass ProDOS DESTROY's access check. Use the
      * freshly read entry, not a possibly stale panel access flag. */
     if (!(ent[30] & 0x80)) { note(m_locked); return; }
     isdir = (ent[0] >> 4) == 13;
     subkey = rd16(ent + 0x11);
     blocks = rd16(ent + 0x13);
+    if (!isdir && ((ent[0] >> 4) < 1 || (ent[0] >> 4) > 3)) { note(m_walk); return; }
+    if (isdir && (!rd(subkey) || (buf[4] >> 4) != 14 ||
+        rd16(buf + 4 + H_PARENT) != sblk || buf[4 + H_PARENTNUM] != sslot + 1 ||
+        buf[4 + H_PARENTLEN] != ENTRY_LEN)) { note(m_walk); return; }
     /* A target with no free entry is grown by a block -- but only after the
      * user has said yes, and never the volume directory, whose four blocks
      * are fixed and which has no entry of its own to rewrite. */
@@ -436,42 +441,73 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     if (!room && dstkey == 2) { note(m_full); return; }
 
     a.sprintf((char*)scratch, room ? m_ask : m_grew, e->name, other->path);
-    if (!a.confirm((char*)scratch)) { note(""); return; }
+    if (!RF(confirm)((char*)scratch)) { note(""); return; }
 
     if (!room && (!grow_dir(dstkey) || !free_slot(dstkey, &dblk, &dslot))) {
         note(m_nogrow);
         return;
     }
 
+    if (!rd(srckey)) { note(m_walk); return; }
+    src_count = rd16(buf + 4 + H_COUNT);
+    if (!rd(dstkey)) { note(m_walk); return; }
+    dst_count = rd16(buf + 4 + H_COUNT);
+
     /* 1. The entry into the target directory, its header pointer put right.
      *    This one first: interrupted after it, the file is in two places,
      *    which is recoverable; the other way round it would be in none. */
     wr16(ent + E_HDRPTR, dstkey);
-    if (!rd(dblk)) { bad = dblk; goto fail; }
-    a.memcpy(buf + 4 + (unsigned int)dslot * ENTRY_LEN, ent, ENTRY_LEN);
-    if (!wr(dblk)) { bad = dblk; goto fail; }
+    if (!rd(dblk)) { goto fail; }
+    RF(memcpy)(buf + 4 + (unsigned int)dslot * ENTRY_LEN, ent, ENTRY_LEN);
+    if (!wr(dblk)) { goto fail; }
 
     /* 2. A moved subdirectory says where its own entry now lives. */
     if (isdir) {
-        if (!rd(subkey)) { bad = subkey; goto fail; }
+        if (!rd(subkey)) { goto fail; }
         wr16(buf + 4 + H_PARENT, dblk);
         buf[4 + H_PARENTNUM] = dslot + 1;           /* counted from one */
         buf[4 + H_PARENTLEN] = ENTRY_LEN;
-        if (!wr(subkey)) { bad = subkey; goto fail; }
+        if (!wr(subkey)) { goto fail; }
     }
 
     /* 3. The old entry goes. Storage type 0 is what DESTROY leaves. */
-    if (!rd(sblk)) { bad = sblk; goto fail; }
+    if (!rd(sblk)) { goto fail; }
     buf[4 + (unsigned int)sslot * ENTRY_LEN] = 0;
-    if (!wr(sblk)) { bad = sblk; goto fail; }
+    if (!wr(sblk)) { goto fail; }
 
     /* 4. Both counts. */
-    if (!count_add(srckey, 0xFFFF)) { bad = srckey; goto fail; }
-    if (!count_add(dstkey, 1)) { bad = dstkey; goto fail; }
+    if (!count_add(srckey, 0xFFFF)) { goto fail; }
+    if (!count_add(dstkey, 1)) { goto fail; }
 
-    a.strcpy(a.reselect, e->name);
+    RF(strcpy)(a.reselect, e->name);
     a.sprintf(a.note, m_ok, e->name, blocks, blocks == 1 ? "" : "s");
     return;
 fail:
-    a.sprintf(a.note, m_io, bad);
+    /* A reported I/O failure may have committed its write. Restore the
+     * source FIRST, then its backlink, then remove the duplicate entry.
+     * Never destroy the destination if restoring the source failed. */
+    restored = 0;
+    wr16(ent + E_HDRPTR, srckey);
+    if (rd(sblk)) {
+        RF(memcpy)(buf + 4 + (unsigned int)sslot * ENTRY_LEN, ent, ENTRY_LEN);
+        restored = wr(sblk);
+    }
+    if (restored && isdir) {
+        restored = rd(subkey);
+        if (restored) {
+            wr16(buf + 4 + H_PARENT, sblk);
+            buf[4 + H_PARENTNUM] = sslot + 1;
+            restored = wr(subkey);
+        }
+    }
+    if (restored && rd(dblk)) {
+        buf[4 + (unsigned int)dslot * ENTRY_LEN] = 0;
+        restored = wr(dblk);
+    } else restored = 0;
+    if (restored && rd(srckey)) { wr16(buf + 4 + H_COUNT, src_count); restored = wr(srckey); }
+    else restored = 0;
+    if (restored && rd(dstkey)) { wr16(buf + 4 + H_COUNT, dst_count); restored = wr(dstkey); }
+    else restored = 0;
+    if (restored) note("Move failed; original restored.");
+    else note("Move incomplete: DO NOT DELETE either entry. Run VOLINFO; recover first.");
 }

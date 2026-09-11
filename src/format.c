@@ -507,6 +507,8 @@ void __fastcall__ format_entry(const struct A2fcApi* api)
         }
         if (!ask_name()) continue;
         if (!confirm()) continue;
+        if (target->kind == KIND_DISKII &&
+            !A->confirm("Formatting uses AUX: ALL /RAM files will be LOST. Continue?")) continue;
         r = do_format();
         if (r) {
             error_line(8, r);

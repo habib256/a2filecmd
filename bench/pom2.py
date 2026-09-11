@@ -297,6 +297,15 @@ class Session:
         self.p.raw(k if isinstance(k, bytes) else k.encode())
         time.sleep(pause)
 
+    def allow_aux(self):
+        """Explicit consent for a scenario using only disposable RAM data.
+
+        Do not auto-accept this from wait/key: refusal tests must observe the
+        warning before any destructive memory use.
+        """
+        self.wait(lambda: self.has('ALL /RAM files will be LOST'), 'AUX loss warning')
+        self.key(b'Y')
+
     def type(self, text):
         self.p.keys(text)
         time.sleep(0.2)

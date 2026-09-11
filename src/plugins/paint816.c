@@ -53,7 +53,7 @@ struct Header { unsigned int signature; unsigned char flags;
     void __fastcall__ (*entry)(const struct A2fcApi*); unsigned char r[3];
     char desc[34]; };
 #pragma rodata-name (push, "OVLHDR")
-const struct Header __plugin_header = { PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry,
+const struct Header __plugin_header = { PLUGIN_MAGIC, OVERLAY_BIG | OVERLAY_AUX, plugin_entry,
     {0,0,0}, "816/Paint packed picture" };
 #pragma rodata-name (pop)
 

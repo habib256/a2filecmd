@@ -50,7 +50,7 @@ def main():
             s.wait(lambda: s.rows()[0][40:].startswith('/SCRATCH '), 'SCRATCH droit'); p.stable()
             s.select('DEMO', 40); s.key(RET)
             s.wait(lambda: s.has('/SCRATCH/DEMO'), 'DEMO droit'); p.stable()
-            s.select('DHGR.RLE', 40); s.key(RET)
+            s.select('DHGR.RLE', 40); s.key(RET); s.allow_aux()
             s.wait(lambda: s.value('view', 1) == 1, 'image', 40); time.sleep(1)
             s.key(ESC); s.wait(lambda: s.value('view', 1) == 0, 'retour'); p.stable()
             s.select('SAMPLE', 40); s.key(RET)

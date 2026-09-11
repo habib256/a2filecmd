@@ -25,6 +25,10 @@ once survive later versions of the program.
    - a **flags** byte — `0` for a small overlay (`$1B00-$1FFF`, 1,280 bytes),
      `OVERLAY_BIG` for a big one, which also takes the graphics page
      `$2000-$3FFF` (then raise `RAM` to `$2500` in the `.cfg`);
+   - add `OVERLAY_AUX` when the overlay uses auxiliary memory belonging to
+     the ProDOS RAM disk: the core requires explicit consent before entry,
+     including a cached overlay. `OVERLAY_BIG` alone does not authorize AUX
+     destruction. Rebuild the RAM disk on every exit after damaging its memory;
    - the **address of the entry point**;
    - three reserved bytes, then a one-line **description**, shown in the menu
      (65 characters at most: the menu row uses all 80 columns).
@@ -67,3 +71,8 @@ above code and BSS; keep those limits in sync with the assembly tables.
   (cdecl), everything else in the table is `fastcall`.
 - **Test it**: `python3 bench/plugin.py` builds `hello.c`, puts it on a
   floppy, opens it with `!` and checks that it runs in POM2.
+
+All plugins must follow [the data-safety rules](../AGENTS.md): exclusive
+creation, preservation of originals during replacement, checked I/O and
+cleanup limited to files owned by the current operation. Declaring flags is
+not a sandbox: a third-party plugin is native code and must be audited.

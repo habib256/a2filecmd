@@ -22,6 +22,8 @@ static unsigned char vollen;
 static unsigned char answer = 1;                 /* what confirm() replies */
 static unsigned char io_fault;
 static unsigned char probed;
+static unsigned int write_number, fail_write;
+static unsigned char fail_after;
 
 struct Blk { unsigned char n, unit; unsigned char* buffer; unsigned int block; };
 struct Onl { unsigned char n, unit; unsigned char* buffer; };
@@ -45,9 +47,11 @@ static unsigned char mock_mli(unsigned char cmd, void* p)
     if (cmd == 0x80 || cmd == 0x81) {
         if (fseek(disk, (long)b->block * 512, SEEK_SET)) return 0x27;
         if (cmd == 0x80) return fread(b->buffer, 1, 512, disk) == 512 ? 0 : 0x27;
+        ++write_number;
+        if(write_number==fail_write && !fail_after)return 0x27;
         if (fwrite(b->buffer, 1, 512, disk) != 512) return 0x27;
         fflush(disk);
-        return 0;
+        return write_number==fail_write?0x27:0;
     }
     if (cmd == 0xC5) {                           /* ON_LINE: one drive, our volume */
         memset(o->buffer, 0, 256);
@@ -112,6 +116,8 @@ int main(int argc, char** argv)
     if (argc > 8) host_sel.size = atol(argv[8]);
     if (argc > 9) corrupt_at = atol(argv[9]);
     if (argc > 10) io_fault = atoi(argv[10]);
+    if (argc > 11) fail_write = atoi(argv[11]);
+    if (argc > 12) fail_after = atoi(argv[12]);
     host_note[0] = 0;
     host_active = 0;
 
@@ -354,6 +360,34 @@ class Move(unittest.TestCase):
         self.assertEqual(int.from_bytes(moved[0x25:0x27], 'little'), dstkey)
         _, _, inside = find(after, subkey, 'INSIDE')
         self.assertEqual(after.read(inside), b'inside' * 100)
+
+    def test_failed_raw_writes_restore_source_and_remove_duplicate(self):
+        for name,count in (('HELLO',4),('SUB',5)):
+            for fail_at in range(1,count+1):
+                for after_write in (0,1):
+                    with self.subTest(name=name,fail_at=fail_at,after_write=after_write):
+                        path=self.volume();before=Image(path.read_bytes())
+                        src=child_key(before,2,'SRC');dst=child_key(before,2,'DST')
+                        _,_,original=find(before,src,name)
+                        note=subprocess.check_output([self.exe,path,'MOVE','/MOVE/SRC','/MOVE/DST',name,
+                            '1','0','0','-1','0',str(fail_at),str(after_write)],text=True)
+                        self.assertIn('original restored',note)
+                        current=Image(path.read_bytes())
+                        self.assertEqual(find(current,src,name)[2],original)
+                        self.assertIsNone(find(current,dst,name)[2])
+                        self.assertEqual(header_count(current,src),header_count(before,src))
+                        self.assertEqual(header_count(current,dst),header_count(before,dst))
+                        if name=='HELLO':self.assertEqual(current.read(original),before.read(original))
+                        else:
+                            key=child_key(before,src,name)
+                            self.assertEqual(current.block(key),before.block(key))
+
+    def test_bad_subdirectory_backlink_refuses_every_write(self):
+        path=self.volume();original=Image(path.read_bytes());src=child_key(original,2,'SRC')
+        key=child_key(original,src,'SUB');damaged=bytearray(path.read_bytes())
+        damaged[key*512+4+0x23:key*512+4+0x25]=bytes([1,0]);path.write_bytes(damaged)
+        self.run_move(path,'/MOVE/SRC','/MOVE/DST','SUB')
+        self.assertEqual(path.read_bytes(),damaged)
 
     def run_move(self, img, src, dst, name, confirm=1):
         return subprocess.check_output(

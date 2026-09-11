@@ -19,6 +19,11 @@ static FILE* open_file(const char* path, const char* mode) {
     if (fault == 4 && strstr(path, "/D/") && !strcmp(mode, "rb")) return NULL;
     return fopen(path, mode);
 }
+static size_t write_file(const void* p,size_t sz,size_t n,FILE* f) {
+    if(fault==6)return 0;
+    return fwrite(p,sz,n,f);
+}
+static int close_file(FILE* f) {int r=fclose(f);return fault==7?-1:r;}
 static void message(const char* s) { (void)s; }
 static void progress(const char* s, unsigned long d, unsigned long t)
 { (void)s; (void)d; (void)t; }
@@ -30,14 +35,14 @@ static size_t read_file(void* p, size_t size, size_t count, FILE* f) {
 static unsigned char mli(unsigned char cmd, void* p) {
     char from[128], to[128];
     if (cmd == 0xC4) {
-        struct InfoPath { unsigned char n; unsigned char* path; };
+        struct InfoPath { unsigned char n; unsigned char* path; unsigned char result[15]; };
         struct InfoPath* i = p;
         FILE* f;
         if (fault == 3) return 0x27;
         memcpy(from, i->path + 1, i->path[0]); from[i->path[0]] = 0;
         f = fopen(from, "rb");
         if (!f) return errno == ENOENT ? 0x46 : 0x27;
-        fclose(f); return 0;
+        fclose(f); memset(i->result,0,15); i->result[0]=0xC3; i->result[4]=1; return 0;
     }
     if (cmd == 0xC0) {
         struct CreatePath { unsigned char n; unsigned char* path; };
@@ -52,9 +57,17 @@ static unsigned char mli(unsigned char cmd, void* p) {
         return fclose(f) ? 0x27 : 0;
     }
     if (cmd != 0xC2) return 1;
-    memcpy(from, rp.old + 1, rp.old[0]); from[rp.old[0]] = 0;
-    memcpy(to, rp.new_ + 1, rp.new_[0]); to[rp.new_[0]] = 0;
-    return rename(from, to) ? 0x27 : 0;
+    {
+        struct RenamePath { unsigned char n; unsigned char *old,*newpath; };
+        struct RenamePath* r=p;
+        FILE* f;
+        memcpy(from,r->old+1,r->old[0]);from[r->old[0]]=0;
+        memcpy(to,r->newpath+1,r->newpath[0]);to[r->newpath[0]]=0;
+        if(fault==8 && strstr(from,"TXTCONV.TMP"))return 0x27;
+        if(fault==9 && (strstr(from,"TXTCONV.TMP") || strstr(from,"A2FC.BAK")))return 0x27;
+        f=fopen(to,"rb");if(f){fclose(f);return 0x47;}
+        return rename(from,to)?0x27:0;
+    }
 }
 int main(int argc, char** argv) {
     static struct A2fcApi api;
@@ -77,8 +90,8 @@ int main(int argc, char** argv) {
     api.note = note; api.reselect = reselect; api.filetype = &filetype; api.auxtype = &aux;
     api.memcpy = memcpy; api.strcpy = strcpy; api.strcmp = strcmp;
     api.strlen = strlen; api.sprintf = sprintf;
-    api.fopen = open_file; api.fread = read_file; api.fwrite = fwrite;
-    api.fclose = fclose; api.remove = remove; api.mli = mli;
+    api.fopen = open_file; api.fread = read_file; api.fwrite = write_file;
+    api.fclose = close_file; api.remove = remove; api.mli = mli;
     api.cgetc = key; api.confirm = yes; api.message = message; api.progress_bar = progress;
     plugin_entry(&api);
     puts(note);
@@ -172,6 +185,32 @@ class Txtconv(unittest.TestCase):
         note, data = self.convert(b'\xC1' * 400, name='TXTCONV.TMP')
         self.assertIn('TXTCONV.TMP already exists', note)
         self.assertEqual(data, b'\xC1' * 400)
+
+    def test_overwrite_errors_preserve_both_originals(self):
+        dest=self.root/'D'/'TEXT';dest.parent.mkdir(exist_ok=True)
+        dest.write_bytes(b'old result');self.addCleanup(dest.unlink,missing_ok=True)
+        for fault in (1,2,6,7):
+            with self.subTest(fault=fault):
+                note,data=self.convert(b'\xC1'*800,fault=fault,fail_at=256,inplace=False,overwrite=True)
+                self.assertNotIn('Converted',note)
+                self.assertEqual(dest.read_bytes(),b'old result')
+                self.assertEqual(data,b'\xC1'*800)
+
+    def test_install_failure_keeps_original_and_temporary(self):
+        tmp=self.root/'TXTCONV.TMP';self.addCleanup(tmp.unlink,missing_ok=True)
+        note,data=self.convert(b'\xC1'*400,fault=8)
+        self.assertIn('Install failed',note)
+        self.assertEqual(data,b'\xC1'*400)
+        self.assertEqual(tmp.read_bytes(),b'A'*400)
+
+    def test_existing_backup_is_preserved(self):
+        bak=self.root/'A2FC.BAK';bak.write_bytes(b'recover original')
+        self.addCleanup(bak.unlink,missing_ok=True)
+        self.addCleanup((self.root/'TXTCONV.TMP').unlink,missing_ok=True)
+        note,data=self.convert(b'\xC1'*400)
+        self.assertIn('Install failed',note)
+        self.assertEqual(data,b'\xC1'*400)
+        self.assertEqual(bak.read_bytes(),b'recover original')
 
     def test_success_including_empty_and_exact_chunk_boundary(self):
         for size in (0, 255, 256, 257, 512, 800):

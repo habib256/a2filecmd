@@ -35,6 +35,7 @@
 
 #define A2FC_API_VERSION 3
 #define PLUGIN_MAGIC 0xA2FC        /* the signature of a third-party overlay */
+#define OVERLAY_AUX 0x02           /* requires consent: destroys the auxiliary RAM disk */
 #define OVERLAY_BIG 0x01           /* also takes $2000-$3FFF */
 #define OVERLAY_WINDOW ((unsigned char*)0x1B00)
 #define OVERLAY_SMALL 0x0500       /* $1B00-$1FFF */

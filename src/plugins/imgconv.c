@@ -47,8 +47,10 @@ const struct PluginHeader __plugin_header = {
 #ifndef TRACK
 #define TRACK ((unsigned char*)0x3000)
 #endif
+#ifndef KBD
 #define KBD   ((unsigned char*)0xC000)
 #define STROBE ((unsigned char*)0xC010)
+#endif
 
 /* The containers. 0 and 2 hold ProDOS blocks in order (2 behind a header),
  * 1 holds them in DOS 3.3 sector order. */
@@ -73,7 +75,7 @@ static const char m_pick[]   = "Select a .PO/.HDV/.DSK/.DO/.2MG image.";
 static const char m_keys[]   = "Convert to P) .PO, D) .DSK, 2) .2MG, ESC cancels";
 static const char m_same[]   = "Image already in that format.";
 static const char m_other[]  = "Other panel: same directory or not ProDOS.";
-static const char m_blocks[] = "Not a whole number of 512-byte blocks.";
+static const char m_blocks[] = "Partial 512-byte block.";
 static const char m_track[]  = "DSK needs whole tracks (8-block multiples).";
 static const char m_2mg[]    = "Not a ProDOS-order 2IMG file.";
 static const char m_over[]   = "Overwrite destination?";
@@ -84,6 +86,14 @@ static const char f_path[]   = "%s/%s";
 
 /* Nothing zeroes the BSS: each of these is written before it is read. */
 static struct A2fcApi T;
+#define SERVICE_API T
+#include "service_stubs.h"
+#define replace_backup ((char*)T.copy_buf + 256)
+#include "replace.h"
+#define final_path T.note /* idle until the final result is reported */
+static unsigned char replacing;
+static struct { unsigned char n; unsigned char* path; unsigned char access,type;
+    unsigned int aux; unsigned char storage; unsigned int date,time; } create;
 static FILE* in;
 static FILE* out;
 static unsigned char* buf;              /* api->copy_buf: one ProDOS block */
@@ -96,15 +106,15 @@ static char nname[NAME_LEN];            /* the name of the result */
  * characters of the name the suffix takes). 0: not an image we know. */
 static unsigned char __fastcall__ classify(const char* s)
 {
-    unsigned char len = T.strlen(s);
+    unsigned char len = RF(strlen)(s);
     if (len > 4) {
-        if (!T.strcmp(s + len - 4, s_dsk)) { skind = K_DSK; cut = 4; return 1; }
-        if (!T.strcmp(s + len - 4, s_2mg)) { skind = K_2MG; cut = 4; return 1; }
-        if (!T.strcmp(s + len - 4, s_hdv)) { skind = K_PO;  cut = 4; return 1; }
+        if (!RF(strcmp)(s + len - 4, s_dsk)) { skind = K_DSK; cut = 4; return 1; }
+        if (!RF(strcmp)(s + len - 4, s_2mg)) { skind = K_2MG; cut = 4; return 1; }
+        if (!RF(strcmp)(s + len - 4, s_hdv)) { skind = K_PO;  cut = 4; return 1; }
     }
     if (len > 3) {
-        if (!T.strcmp(s + len - 3, s_po)) { skind = K_PO;  cut = 3; return 1; }
-        if (!T.strcmp(s + len - 3, s_do)) { skind = K_DSK; cut = 3; return 1; }
+        if (!RF(strcmp)(s + len - 3, s_po)) { skind = K_PO;  cut = 3; return 1; }
+        if (!RF(strcmp)(s + len - 3, s_do)) { skind = K_DSK; cut = 3; return 1; }
     }
     return 0;
 }
@@ -117,13 +127,13 @@ static unsigned char read_block(void)
     unsigned char i;
     long off;
     if (skind != K_DSK)
-        return T.fread(buf, 1, 512, in) == 512;
+        return RF(fread)(buf, 1, 512, in) == 512;
     i = (unsigned char)(n & 7) << 1;
     off = (long)(n >> 3) << 12;          /* raw DSK data always starts at zero */
-    if (T.fseek(in, off + ((long)SECT[i] << 8), SEEK_SET)) return 0;
-    if (T.fread(buf, 1, 256, in) != 256) return 0;
-    if (T.fseek(in, off + ((long)SECT[i + 1] << 8), SEEK_SET)) return 0;
-    return T.fread(buf + 256, 1, 256, in) == 256;
+    if (RF(fseek)(in, off + ((long)SECT[i] << 8), SEEK_SET)) return 0;
+    if (RF(fread)(buf, 1, 256, in) != 256) return 0;
+    if (RF(fseek)(in, off + ((long)SECT[i + 1] << 8), SEEK_SET)) return 0;
+    return RF(fread)(buf + 256, 1, 256, in) == 256;
 }
 
 /* Writes what read_block brought: straight out, or into the track page,
@@ -132,12 +142,12 @@ static unsigned char write_block(void)
 {
     unsigned char i;
     if (dkind != K_DSK)
-        return T.fwrite(buf, 1, 512, out) == 512;
+        return RF(fwrite)(buf, 1, 512, out) == 512;
     i = (unsigned char)(n & 7) << 1;
-    T.memcpy(TRACK + ((unsigned int)SECT[i] << 8), buf, 256);
-    T.memcpy(TRACK + ((unsigned int)SECT[i + 1] << 8), buf + 256, 256);
+    RF(memcpy)(TRACK + ((unsigned int)SECT[i] << 8), buf, 256);
+    RF(memcpy)(TRACK + ((unsigned int)SECT[i + 1] << 8), buf + 256, 256);
     if ((n & 7) != 7) return 1;
-    return T.fwrite(TRACK, 1, 4096, out) == 4096;
+    return RF(fwrite)(TRACK, 1, 4096, out) == 4096;
 }
 
 /* The 64-byte 2IMG header of tools/po22mg.py, byte for byte: creator
@@ -147,8 +157,8 @@ static unsigned char write_2mg_header(void)
 {
     unsigned long len = (unsigned long)blocks << 9;
     T.memset(TRACK, 0, 64);
-    T.memcpy(TRACK, "2IMG", 4);
-    T.memcpy(TRACK + 4, "A2FC", 4);
+    RF(memcpy)(TRACK, "2IMG", 4);
+    RF(memcpy)(TRACK + 4, "A2FC", 4);
     TRACK[0x08] = 64;                   /* size of the header */
     TRACK[0x0A] = 1;                    /* version */
     TRACK[0x0C] = 1;                    /* format: ProDOS block order */
@@ -159,7 +169,7 @@ static unsigned char write_2mg_header(void)
     TRACK[0x1D] = (unsigned char)(len >> 8);
     TRACK[0x1E] = (unsigned char)(len >> 16);
     TRACK[0x1F] = (unsigned char)(len >> 24);
-    return T.fwrite(TRACK, 1, 64, out) == 64;
+    return RF(fwrite)(TRACK, 1, 64, out) == 64;
 }
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api)
@@ -186,7 +196,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     }
 
     /* The target container, one key. */
-    T.message(m_keys);
+    RF(message)(m_keys);
     for (;;) {
         k = T.cgetc();
         if (k == KEY_ESC) return;
@@ -196,19 +206,19 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         if (k == '2') { dkind = K_2MG; break; }
     }
     if (dkind == skind) { what = m_same; goto note; }
-    if (!oth->path[0] || oth->fs || !T.strcmp(oth->path, pan->path)) {
+    if (!oth->path[0] || oth->fs || !RF(strcmp)(oth->path, pan->path)) {
         what = m_other;
         goto note;
     }
 
     /* The source, and how many blocks it holds. */
     what = "Open";
-    in = T.fopen(T.full, "rb");
+    in = RF(fopen)(T.full, "rb");
     if (!in) goto err;
     if (skind == K_2MG) {
         /* The track page is idle while reading the header. Its fixed
          * address also keeps these field checks small on the 6502. */
-        if (T.fread(TRACK, 1, 64, in) != 64 || TRACK[0] != '2' || TRACK[1] != 'I'
+        if (RF(fread)(TRACK, 1, 64, in) != 64 || TRACK[0] != '2' || TRACK[1] != 'I'
             || TRACK[2] != 'M' || TRACK[3] != 'G' || TRACK[0x0C] != 1
             /* Both fields are 32-bit. Only format 1 and a block count
              * representable by our 16-bit loop are supported. */
@@ -220,8 +230,8 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
          * cannot wrap. Refuse before opening or removing the destination. */
         if (sbase < 64 || sbase > e->size
             || (unsigned long)blocks > ((e->size - sbase) >> 9)) goto bad2mg;
-        if (T.fseek(in, sbase, SEEK_SET)) {
-            T.fclose(in);
+        if (RF(fseek)(in, sbase, SEEK_SET)) {
+            RF(fclose)(in);
             what = "Read";
             goto err;
         }
@@ -238,23 +248,30 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
      * within the 15 characters of a ProDOS name. */
     suf = SUF[dkind];
     n = dkind ? 11 : 12;                /* 15 less the suffix: ".PO" 3, the others 4 */
-    k = T.strlen(e->name) - cut;
+    k = RF(strlen)(e->name) - cut;
     if (k > (unsigned char)n) k = (unsigned char)n;
-    T.memcpy(nname, e->name, k);
-    T.strcpy(nname + k, suf);
+    RF(memcpy)(nname, e->name, k);
+    RF(strcpy)(nname + k, suf);
+    if (RF(strlen)(oth->path) + RF(strlen)(nname) + 1 >= PATH_LEN) { what = "Path too long"; goto badsource; }
     T.sprintf(target, f_path, oth->path, nname);
 
-    out = T.fopen(target, "rb");
-    if (out) {
-        T.fclose(out);
-        if (!T.confirm(m_over)) { T.fclose(in); return; }
+    k = replace_info(target);
+    replacing = !k;
+    if (k && k != 0x46) { what = "Destination check"; goto badsource; }
+    if (replacing) {
+        if (!RF(confirm)(m_over)) { RF(fclose)(in); return; }
+        RF(strcpy)(final_path, target);
+        if (RF(strlen)(oth->path) + 13 >= PATH_LEN) { what = "Path too long"; goto badsource; }
+        T.sprintf(target, f_path, oth->path, "IMGCONV.TMP");
     }
-    T.remove(target);
-    *T.filetype = 0x06;
-    *T.auxtype = 0;
+    *T.filetype = 0x06; *T.auxtype = 0;
     what = "Create";
-    out = T.fopen(target, "wb");
-    if (!out) { T.fclose(in); goto err; }
+    T.copy_buf[0] = RF(strlen)(target); RF(strcpy)((char*)T.copy_buf + 1, target);
+    create.n = 7; create.path = T.copy_buf; create.access = 0xC3;
+    create.type = 6; create.aux = 0; create.storage = 1; create.date = create.time = 0;
+    if (RF(mli)(0xC0, &create)) { RF(fclose)(in); goto err; }
+    out = RF(fopen)(target, "wb");
+    if (!out) { RF(fclose)(in); goto errrm2; }
 
     what = "Write";
     if (dkind == K_2MG && !write_2mg_header()) goto errrm;
@@ -264,9 +281,9 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
             T.progress_bar(nname, n, blocks);
             if (*KBD == (KEY_ESC | 0x80)) {
                 *STROBE = 0;
-                T.fclose(in);
-                T.fclose(out);
-                T.remove(target);
+                RF(fclose)(in);
+                RF(fclose)(out);
+                RF(remove)(target);
                 T.sprintf(T.note, m_stop, nname);
                 return;
             }
@@ -274,26 +291,31 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         if (!read_block()) goto errrm;
         if (!write_block()) { what = "Write"; goto errrm; }
     }
-    T.fclose(in);
+    RF(fclose)(in);
     what = "Write";
-    if (T.fclose(out)) goto errrm2;
+    if (RF(fclose)(out)) goto errrm2;
 
-    T.strcpy(T.reselect, e->name);
+    if (replacing) {
+        k = replace_commit(target, final_path);
+        if (!k) { RF(strcpy)(T.note, "Recover IMGCONV.TMP / A2FC.BAK."); return; }
+        if (k == 2) { RF(strcpy)(T.note, "Converted; A2FC.BAK retained."); return; }
+    }
+    RF(strcpy)(T.reselect, e->name);
     T.sprintf(T.note, m_done, e->name, nname, blocks);
     return;
 
 errrm:
-    T.fclose(in);
-    T.fclose(out);
+    RF(fclose)(in);
+    RF(fclose)(out);
 errrm2:
-    T.remove(target);
+    RF(remove)(target);
 err:
     T.sprintf(T.note, m_fail, what);    /* report_error would not survive the redraw */
     return;
 bad2mg:
     what = m_2mg;
 badsource:
-    T.fclose(in);
+    RF(fclose)(in);
 note:
-    T.strcpy(T.note, what);
+    RF(strcpy)(T.note, what);
 }

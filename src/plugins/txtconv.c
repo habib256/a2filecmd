@@ -39,7 +39,8 @@ static unsigned char* obuf;             /* copy_buf + 256 */
 static unsigned int olen;
 static unsigned long nin, nout;
 static unsigned char mode, prev, col, pend, lead, fail;
-static struct { unsigned char count; unsigned char* old; unsigned char* new_; } rp;
+#include "replace.h"
+static char final_path[PATH_LEN];
 static struct {
     unsigned char count; unsigned char* path; unsigned char access, type;
     unsigned int aux; unsigned char storage; unsigned int date, time;
@@ -55,7 +56,6 @@ static const char m_pick[]    = "Select a file to convert.";
 static const char m_other[]   = "Other panel: same directory, or not ProDOS.";
 static const char m_inplace[] = "In place? (N = to the other panel)";
 static const char m_over[]    = "Overwrite it in the other panel?";
-static const char m_rename[]  = "Rename: ProDOS $%02X, result left as TXTCONV.TMP";
 static const char m_done[]    = "Converted %lu bytes -> %lu bytes";
 static const char m_fail[]    = "%s failed.";
 static const char m_temp[]    = "TXTCONV.TMP already exists: rename or remove it first.";
@@ -152,9 +152,14 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     }
     mode = k;
     inplace = T.confirm(m_inplace);
-    if (inplace) T.sprintf(target, f_tmp, pan->path);
+    if (inplace) {
+        T.strcpy(final_path, T.full);
+        if (T.strlen(pan->path) + 13 >= PATH_LEN) { T.strcpy(T.note, "Path too long."); return; }
+        T.sprintf(target, f_tmp, pan->path);
+    }
     else {
         if (!oth->path[0] || oth->fs || !T.strcmp(oth->path, pan->path)) { T.strcpy(T.note, m_other); return; }
+        if (T.strlen(oth->path) + T.strlen(e->name) + 1 >= PATH_LEN) { T.strcpy(T.note, "Path too long."); return; }
         T.sprintf(target, f_other, oth->path, e->name);
         pascal(T.copy_buf, target);
         ip.count = 10; ip.path = T.copy_buf;
@@ -166,13 +171,18 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
             T.strcpy(T.note, "Destination check failed."); return;
         }
     }
+    if (replace) {
+        T.strcpy(final_path, target);
+        if (T.strlen(oth->path) + 13 >= PATH_LEN) { T.strcpy(T.note, "Path too long."); return; }
+        T.sprintf(target, f_tmp, oth->path);
+    }
     what = "Open";
     in = T.fopen(T.full, "rb");
     if (!in) goto err;
     *T.filetype = e->type;
     *T.auxtype = e->aux;
     what = "Create";
-    if (inplace || !replace) {
+    {
         /* A leftover may be the only recoverable result of an earlier
          * failed rename, or even the selected source. Never overwrite it. */
         pascal(T.copy_buf, target);
@@ -187,7 +197,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
             }
             goto err;
         }
-    } else T.remove(target);                       /* confirmed replacement */
+    }
     out = T.fopen(target, "wb");
     if (!out) { T.fclose(in); goto errrm; }
     what = "Write";
@@ -207,18 +217,13 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
      * service API, require the panel's full byte count before replacing
      * the source; a stale size also leaves the original intact. */
     if (nin != e->size) { fail = 1; what = "Read"; }
-    T.fclose(in);
+    if (T.fclose(in)) fail = 1;
     if (T.fclose(out)) fail = 1;
     if (fail) goto errrm;
-    if (inplace) {
-        /* the original goes, TXTCONV.TMP takes its name: MLI RENAME ($C2) on two Pascal strings */
-        what = "Delete";
-        if (T.remove(T.full)) goto errrm;
-        pascal(T.copy_buf, target);
-        pascal(T.copy_buf + 128, T.full);
-        rp.count = 2; rp.old = T.copy_buf; rp.new_ = T.copy_buf + 128;
-        k = T.mli(0xC2, &rp);
-        if (k) { T.sprintf(T.note, m_rename, k); return; }
+    if (inplace || replace) {
+        k = replace_commit(target, final_path);
+        if (!k) { T.strcpy(T.note, "Install failed: recover TXTCONV.TMP / A2FC.BAK."); return; }
+        if (k == 2) { T.strcpy(T.note, "Converted; A2FC.BAK retained."); return; }
     }
     T.strcpy(T.reselect, e->name);
     T.sprintf(T.note, m_done, nin, nout);        /* the core re-reads and redraws, then writes it */

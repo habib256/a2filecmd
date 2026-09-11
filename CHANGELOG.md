@@ -5,6 +5,15 @@ downloads and installation.
 
 ## Unreleased
 
+- Data safety is now an explicit repository requirement in AGENTS.md, with a
+  documented audit and recovery limits. Copies and editor saves preserve old
+  files and verify results; extraction exclusively creates new files. TXTCONV
+  and IMGCONV stage replacements, MOVE restores metadata after reported write
+  failures, WIPE F validates live allocation, and DISKIMG rejects malformed
+  sources and self-targeting. Destructive AUX use requires prior RAM-loss
+  consent. Fault-injection and native emulator regressions accompany the fixes.
+  The editor now holds 5,104 bytes; COPY.PLG is an internal BOOT dependency.
+
 - Fixed: IMGCONV trusted 2MG data offsets and block counts without checking
   that the data lay outside the header and within the source file. Invalid
   offsets could convert header bytes, and truncated input could destroy an

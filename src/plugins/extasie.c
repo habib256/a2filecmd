@@ -41,7 +41,7 @@ struct Header { unsigned int signature; unsigned char flags;
     void __fastcall__ (*entry)(const struct A2fcApi*); unsigned char r[3];
     char desc[52]; };
 #pragma rodata-name (push, "OVLHDR")
-const struct Header __plugin_header = { PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry,
+const struct Header __plugin_header = { PLUGIN_MAGIC, OVERLAY_BIG | OVERLAY_AUX, plugin_entry,
     {0,0,0}, "Extasie $F2 pictures (Chat Mauve 560/140)" };
 #pragma rodata-name (pop)
 
@@ -119,7 +119,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* a)
     if (!in) { a->strcpy(a->note, m_bad); return; }
     k = picture();
     a->fclose(in);
-    if (!k) { a->strcpy(a->note, m_cut); return; }
+    if (!k) { a->ram_format(); a->strcpy(a->note, m_cut); return; }
     ex_show();
     while (a->cgetc() != KEY_ESC) {}
     a->strcpy(a->reselect, a->selected->name);

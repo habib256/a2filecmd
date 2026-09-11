@@ -172,6 +172,84 @@ static void wipe_free(void)
     }
 }
 
+/* Never trust a free bit until every live reference has been checked.
+ * BM caches allocation bits, ZERO holds a sapling index, copy_buf a directory
+ * or tree index. No write occurs during this entire preflight. */
+static unsigned int map_page;
+static unsigned int word(const unsigned char* p) { return p[0] | ((unsigned int)p[1] << 8); }
+static unsigned char read_at(unsigned int b, unsigned char* dst) {
+    bp.block = b; bp.buf = dst; return !A->mli(0x80, &bp);
+}
+static unsigned char allocated(unsigned int b) {
+    unsigned int page;
+    if (b >= total) return 0;
+    page = bitmap + (b >> 12);
+    if (page != map_page) {
+        if (!read_at(page, BM)) return 0;
+        map_page = page;
+    }
+    return !(BM[(b & 4095) >> 3] & (0x80 >> (b & 7)));
+}
+static unsigned char index_safe(unsigned int b) {
+    unsigned int i, ref;
+    if (!allocated(b) || !read_at(b, ZERO)) return 0;
+    for (i = 0; i < 256; ++i) {
+        ref = ZERO[i] | ((unsigned int)ZERO[256 + i] << 8);
+        if (ref && !allocated(ref)) return 0;
+    }
+    return 1;
+}
+static unsigned char file_safe(unsigned char kind, unsigned int b) {
+    unsigned int i, ref;
+    if (kind > 3 || !kind || !b) return 0; /* extended files: cannot prove safe */
+    if (kind == 1) return allocated(b);
+    if (kind == 2) return index_safe(b);
+    if (!allocated(b) || !read_at(b, A->copy_buf)) return 0;
+    for (i = 0; i < 256; ++i) {
+        ref = A->copy_buf[i] | ((unsigned int)A->copy_buf[256 + i] << 8);
+        if (ref && !index_safe(ref)) return 0;
+    }
+    return 1;
+}
+struct WipeFrame { unsigned int block; unsigned char slot; };
+static struct WipeFrame walk[16];
+static unsigned char free_safe(void) {
+    unsigned char depth = 0, kind;
+    unsigned int b, visits = 0;
+    unsigned char* e;
+    map_page = 0xFFFF;
+    for (b = 0; b < 3; ++b) if (!allocated(b)) return 0;
+    for (b = bitmap; b <= bitmap + ((total - 1) >> 12); ++b)
+        if (!allocated(b)) return 0;
+    walk[0].block = 2; walk[0].slot = 0;
+    for (;;) {
+        if (stopped() || !allocated(walk[depth].block) ||
+            !read_at(walk[depth].block, A->copy_buf)) return 0;
+        if (!walk[depth].slot) {
+            if (++visits > total) return 0; /* chained cycles, including empty blocks */
+            kind = A->copy_buf[4] >> 4;
+            if (kind >= 14) {
+                if (A->copy_buf[35] != 39 || A->copy_buf[36] != 13) return 0;
+                walk[depth].slot = 1;
+            }
+        }
+        if (walk[depth].slot == 13) {
+            b = word(A->copy_buf + 2);
+            if (b) { walk[depth].block = b; walk[depth].slot = 0; }
+            else { if (!depth) return 1; --depth; }
+            continue;
+        }
+        e = A->copy_buf + 4 + (unsigned int)walk[depth].slot++ * 39;
+        kind = e[0] >> 4;
+        if (!kind) continue;
+        b = word(e + 17);
+        if (kind == 13) {
+            if (depth == 15 || !b) return 0;
+            ++depth; walk[depth].block = b; walk[depth].slot = 0;
+        } else if (!file_safe(kind, b)) return 0;
+    }
+}
+
 void __fastcall__ plugin_entry(const struct A2fcApi* api)
 {
     const struct Panel* pan;
@@ -255,6 +333,9 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         return;
     }
 
+    if (!whole && !free_safe()) {
+        api->strcpy(api->note, "Free wipe refused: unreadable/unsafe allocation or cancelled."); return;
+    }
     api->memset(ZERO, 0, 512);
     done = 0;
     err = 0;

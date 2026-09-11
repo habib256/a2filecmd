@@ -190,7 +190,7 @@ static void write_block(void)
     /* Read back into `check`, never over the buffer we just wrote: if the
      * readback fails the edit is still there to try again. */
     if (!source_read(&source, block, check)) {
-        dirty = 0; v_message(m_rfail); v_cgetc(); return;
+        v_message(m_rfail); v_cgetc(); return;
     }
     for (i = 0; i < 512 && buf[i] == check[i]; ++i) ;
     if (i < 512) { v_message(m_diff); v_cgetc(); return; }

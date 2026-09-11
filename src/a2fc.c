@@ -28,6 +28,7 @@
  * disk order.
  */
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <conio.h>
@@ -66,6 +67,8 @@ void mouse_hide(void);
 extern unsigned char mouse_x, mouse_y;
 #endif
 static unsigned char exists(const char* path);
+static FILE* new_output(const char* path);
+static unsigned char push_name(char* path, const char* name);
 int main(void);
 static void too_long(void);
 static unsigned char target_check(void);
@@ -91,9 +94,9 @@ enum { ASK, OVERWRITE_ALL, SKIP_ALL };
 #define ENTRIES ((struct Entry*)0x2000)   /* the HGR MAIN page, see the header */
 #define HELP_BUF ((char*)0x2000)          /* the same page for the help */
 /* The editor is a big overlay: its code runs from $1B00 to $27FF, the
- * text occupies the rest of the graphics page. */
-#define EDIT_BUF ((char*)0x2800)
-#define EDIT_MAX 0x17F0
+ * text occupies $2C00-$3FFF of the graphics page. */
+#define EDIT_BUF ((char*)0x2C00)
+#define EDIT_MAX 0x13F0
 /* All the BSS of this file lives in low RAM ($1000-$1FFF, segment LOWBSS
  * of a2fc.cfg): main() zeroes it, crt0 only does so for BSS.
  * Segment bounds exported by the linker. */
@@ -158,6 +161,19 @@ static unsigned char file_info(const char* path)
     return mli_gfi(gfi) == 0;
 }
 
+/* Reserve a new directory entry before any truncating open. A failed
+ * lookup never grants permission to overwrite an existing file. */
+static FILE* new_output(const char* path)
+{
+    FILE* f;
+    int fd = open(path, O_WRONLY | O_CREAT | O_EXCL);
+    if (fd < 0) return NULL;
+    if (close(fd)) { remove(path); return NULL; }
+    f = fopen(path, "wb");
+    if (!f) remove(path);            /* only the entry just created */
+    return f;
+}
+
 /* Rewrites access, type and auxtype from gfi[]: SET_FILE_INFO shares the
  * layout of GET_FILE_INFO for its first seven parameters. */
 static unsigned char set_info(void)
@@ -202,7 +218,7 @@ static void volume_space(struct Panel* pan)
  * no heap left to reserve. The current block lives in copy_buf, which is
  * never in use at the same time. */
 static int dir_fd = -1;
-static unsigned char dir_index, dir_per_block, dir_entry_len;
+static unsigned char dir_index, dir_per_block, dir_entry_len, dir_error;
 static struct DirEntry dir_entry;
 
 /* ---------------------------------------------------------------------- */
@@ -291,11 +307,11 @@ static unsigned char img_read_block(unsigned int block, unsigned char* buf)
 {
     unsigned char half;
     if (!img_dsk) {
-        fseek(img_f, img_base + ((long)block << 9), SEEK_SET);
+        if (fseek(img_f, img_base + ((long)block << 9), SEEK_SET)) return 0;
         return fread(buf, 1, 512, img_f) == 512;
     }
     for (half = 0; half < 2; ++half) {
-        fseek(img_f, img_base + ((((long)(block >> 3) << 4) + IMG_SECT[((block & 7) << 1) + half]) << 8), SEEK_SET);
+        if (fseek(img_f, img_base + ((((long)(block >> 3) << 4) + IMG_SECT[((block & 7) << 1) + half]) << 8), SEEK_SET)) return 0;
         if (fread(buf + half * 256, 1, 256, img_f) != 256) return 0;
     }
     return 1;
@@ -305,6 +321,7 @@ static unsigned char img_read_block(unsigned int block, unsigned char* buf)
  * Returns 0 if it is not a ProDOS directory. */
 static unsigned char dir_open_image(unsigned int key)
 {
+    dir_error = 0;
     dir_img = 1;
     if (!img_read_block(key, copy_buf) || (copy_buf[4] >> 4) < 0x0E) return 0;
     dir_entry_len = copy_buf[4 + 0x1F];
@@ -316,6 +333,7 @@ static unsigned char dir_open_image(unsigned int key)
 
 static unsigned char dir_open(const char* path)
 {
+    dir_error = 0;
     dir_img = 0;
     dir_fd = open(path, O_RDONLY);
     if (dir_fd < 0) return 0;
@@ -339,18 +357,18 @@ static void dir_close(void)
  * real directory, ProDOS assembles the blocks, a plain read is enough. */
 static unsigned char dir_block_next(void)
 {
-    if (dir_img) {
-        unsigned int next = copy_buf[2] | ((unsigned int)copy_buf[3] << 8);
-        return next && img_read_block(next, copy_buf);
-    }
-    return read(dir_fd, copy_buf, 512) == 512;
+    unsigned int next = copy_buf[2] | ((unsigned int)copy_buf[3] << 8);
+    if (!next) return 0;
+    if (dir_img ? img_read_block(next, copy_buf) : read(dir_fd, copy_buf, 512) == 512) return 1;
+    dir_error = 1;
+    return 0;
 }
 
 /* The next entry into dir_entry, or 0 at the end. */
 static unsigned char dir_next(void)
 {
     const unsigned char* e;
-    unsigned char len;
+    unsigned char len, i, c;
     for (;;) {
         if (dir_index >= dir_per_block) {
             if (!dir_block_next()) return 0;
@@ -360,7 +378,14 @@ static unsigned char dir_next(void)
         ++dir_index;
         if (!(e[0] & 0xF0)) continue;   /* deleted entry */
         len = e[0] & 0x0F;
-        memcpy(dir_entry.name, e + 1, len);
+        for (i = 0; i < len; ++i) {
+            c = e[i + 1] | 0x20;
+            if ((c < 'a' || c > 'z') && (!i || !((c >= '0' && c <= '9') || c == '.'))) {
+                dir_error = 1; return 0;
+            }
+            dir_entry.name[i] = e[i + 1];
+        }
+        if (!len) { dir_error = 1; return 0; }
         dir_entry.name[len] = 0;
         dir_entry.type = e[0x10];
         dir_entry.key = e[0x11] | ((unsigned int)e[0x12] << 8);
@@ -1726,20 +1751,23 @@ void __fastcall__ binary2_entry(const struct A2fcApi* a)
               | ((unsigned long)copy_buf[0x16] << 16);   /* EOF on 3 bytes, $14-$16 */
         pad = (128 - (eof & 127)) & 127;
         more = copy_buf[0x7F] != 0;                       /* "more follows" at $7F */
+        if (copy_buf[0x17] > 64 || strlen(oth->path) + 17 >= PATH_LEN) {
+            fclose(in); b2_say(b2_bad); return;
+        }
         b2_name(copy_buf + 0x18, copy_buf[0x17], name);   /* name: length at $17, text at $18 */
         _filetype = copy_buf[4];
         _auxtype = copy_buf[5] | (copy_buf[6] << 8);
         sprintf(other_full, b2_path, oth->path, name);
-        out = fopen(other_full, "wb");
-        if (!out) { report_error("Create"); fclose(in); return; }
+        out = new_output(other_full);
+        if (!out) { b2_say("Create failed; existing files kept."); fclose(in); return; }
         while (eof) {
             n = eof > 512 ? 512 : (unsigned int)eof;
             k = fread(copy_buf, 1, n, in);
             if (!k || fwrite(copy_buf, 1, k, out) != k) break;
             eof -= k;
         }
-        fclose(out);
-        if (eof) { remove(other_full); report_error("Extract"); fclose(in); return; }
+        if (fclose(out)) eof = 1;
+        if (eof) { remove(other_full); b2_say("Extract failed: read/write error."); fclose(in); return; }
         ++done;
         if (pad) fseek(in, (long)pad, SEEK_CUR);
     }
@@ -1966,7 +1994,7 @@ static unsigned char ask_disk(const char* name)
 {
     const char* local;
     /* Keep aligned with PLUGINS_FLOPPY and XPLUGINS_FLOPPY in Makefile. */
-    static const char locals[] = "HELP\0TEXT\0HEX\0DELETE\0RUN\0FORMAT\0ATTR\0MENU\0DISKIMG\0IMGFS\0DOS33\0COMPARE\0TXTCONV\0DATE\0VERIFY\0TAGPAT\0VOLNAME\0VOLINFO\0WIPE\0";
+    static const char locals[] = "COPY\0HELP\0TEXT\0HEX\0DELETE\0RUN\0FORMAT\0ATTR\0MENU\0DISKIMG\0IMGFS\0DOS33\0COMPARE\0TXTCONV\0DATE\0VERIFY\0TAGPAT\0VOLNAME\0VOLINFO\0WIPE\0";
     for (local = locals; *local; local += strlen(local) + 1)
         if (!strcmp(local, name)) break;
     if (*local) {
@@ -2011,12 +2039,16 @@ static unsigned char load_overlay(const char* name, unsigned char any)
 {
     FILE* f;
     unsigned char ok = 0;
-    if (!strcmp(overlay_loaded, name)) return 1;
+    if (!strcmp(overlay_loaded, name))
+        return !(OVL->flags & OVERLAY_AUX) || confirm("Uses AUX memory: ALL /RAM files will be LOST. Continue?");
     overlay_loaded[0] = 0;
     f = open_overlay(name, 1);
     if (f) {
         if (fread(OVERLAY_WINDOW, 1, 8, f) == 8
             && (OVL->signature == a2fc_link_id || (any && OVL->signature == PLUGIN_MAGIC))) {
+            if ((OVL->flags & OVERLAY_AUX) && !confirm("Uses AUX memory: ALL /RAM files will be LOST. Continue?")) {
+                fclose(f); return 0;
+            }
             if (OVL->flags & OVERLAY_BIG) keep_tags(1);
             fread(OVERLAY_WINDOW + 8, 1, (OVL->flags & OVERLAY_BIG ? OVERLAY_LARGE : OVERLAY_SMALL) - 8, f);
             strcpy(overlay_loaded, name);
@@ -2345,19 +2377,19 @@ static void view_image(void)
 #pragma rodata-name (push, "EDITRO")
 static const char ed_savekeys[] = "S Save,X Save and exit,Q Quit without saving,ESC Continue editing";
 static const char ed_status[]  = " %-30.30s  Line %u  Col %u  %u/%u bytes %s";
-static const char ed_volfull[] = "Volume full.";
 static const char ed_openf[]   = "Open failed.";
 static const char ed_buffull[] = "Buffer full.";
 static const char ed_nodir[]   = "Open a directory first.";
 static const char ed_exists[]  = "File exists: select it to edit.";
-static const char ed_toobig[]  = "Too big for the editor (6 KB).";
+static const char ed_toobig[]  = "Too big for the editor (5 KB).";
 
 /* The text lives in the HGR MAIN page, above the overlay's code
- * ($2800-$3FEF: 6 KB), CR line endings, bit 7 stripped on loading.
+ * ($2C00-$3FEF: 5 KB), CR line endings, bit 7 stripped on loading.
  * The cursor is an offset into the buffer; the screen shows 22 lines from
  * `etop`, the start of a line, with no wrapping of long lines. */
 #define EDIT_ROWS 22
-static unsigned int elen, ecur, etop, ewant, eblocks;   /* eblocks: those of the file before editing */
+static unsigned char efresh;
+static unsigned int elen, ecur, etop, ewant;
 static unsigned char edirty, etype;
 static unsigned int eaux;
 
@@ -2455,19 +2487,58 @@ static void edit_delete(void)
     edirty = 1;
 }
 
-/* fopen "wb" truncates the file before writing (cc65's SET_EOF): we make
- * sure of the room first, the old contents free their blocks. */
+/* Stage and read back the complete save before renaming the original.
+ * The text pagination buffer is idle while editing; it holds two paths. */
+static const char ed_safety_0[] = "A2FC.ED.BAK must be recovered first.";
+static const char ed_safety_1[] = "Save failed; original kept.";
+static const char ed_safety_2[] = "Save refused; original kept.";
+static const char ed_safety_3[] = "Save failed: recover A2FC.EDIT / A2FC.ED.BAK.";
+static const char ed_safety_4[] = "Saved; A2FC.ED.BAK retained.";
+#define EDIT_TMP ((char*)text_starts)
+#define EDIT_BAK (EDIT_TMP + PATH_LEN)
 static unsigned char edit_save(void)
 {
     FILE* f;
-    if ((elen + 511) / 512 + 1 > panels[active].free_blocks + eblocks) { message(ed_volfull); return 0; }
-    _filetype = etype;
-    _auxtype = eaux;
-    f = fopen(full, "wb");
+    unsigned int n, pos;
+    unsigned char ok, old;
+    strcpy(EDIT_TMP, full); *strrchr(EDIT_TMP, '/') = 0;
+    strcpy(EDIT_BAK, EDIT_TMP);
+    if (!push_name(EDIT_TMP, "A2FC.EDIT") || !push_name(EDIT_BAK, "A2FC.ED.BAK")) {
+        too_long(); return 0;
+    }
+    if (exists(EDIT_BAK) || _oserror != 0x46) {
+        message(ed_safety_0); return 0;
+    }
+    _filetype = etype; _auxtype = eaux;
+    f = new_output(EDIT_TMP);
     if (!f) { report_error("Save"); return 0; }
-    if (fwrite(EDIT_BUF, 1, elen, f) != elen) { fclose(f); report_error("Save"); return 0; }
-    if (fclose(f)) { report_error("Save"); return 0; }
-    edirty = 0;
+    ok = fwrite(EDIT_BUF, 1, elen, f) == elen;
+    if (fclose(f)) ok = 0;
+    if (ok) {
+        f = fopen(EDIT_TMP, "rb");
+        if (!f) ok = 0;
+        else {
+            pos = 0;
+            while ((n = fread(copy_buf, 1, 512, f)) != 0) {
+                if (n > elen - pos || memcmp(copy_buf, EDIT_BUF + pos, n)) { ok = 0; break; }
+                pos += n;
+            }
+            if (ferror(f) || pos != elen) ok = 0;
+            if (fclose(f)) ok = 0;
+        }
+    }
+    if (!ok) { remove(EDIT_TMP); message(ed_safety_1); return 0; }
+    old = exists(full);
+    if ((old && (efresh || (gfi[3] & 0xC2) != 0xC2)) || (!old && _oserror != 0x46) ||
+        (old && rename(full, EDIT_BAK))) {
+        remove(EDIT_TMP); message(ed_safety_2); return 0;
+    }
+    if (rename(EDIT_TMP, full)) {
+        if (old) rename(EDIT_BAK, full);
+        message(ed_safety_3); return 0;
+    }
+    if (old && remove(EDIT_BAK)) message(ed_safety_4);
+    efresh = edirty = 0;
     ++a2fc_ops;
     return 1;
 }
@@ -2480,6 +2551,7 @@ static unsigned char edit_file(unsigned char fresh, unsigned char type, unsigned
     unsigned int i, ls;
     unsigned char row, written = 0;
     char key;
+    efresh = fresh;
     elen = ecur = etop = ewant = 0;
     edirty = 0;
     etype = type;
@@ -2488,7 +2560,10 @@ static unsigned char edit_file(unsigned char fresh, unsigned char type, unsigned
         f = fopen(full, "rb");
         if (!f) { strcpy(note, ed_openf); return 0xFF; }
         elen = fread(EDIT_BUF, 1, EDIT_MAX, f);   /* the size is checked by the caller */
-        fclose(f);
+        if (ferror(f) || elen != selected.size) {
+            fclose(f); strcpy(note, ed_openf); return 0xFF;
+        }
+        if (fclose(f)) { strcpy(note, ed_openf); return 0xFF; }
         for (i = 0; i < elen; ++i) { EDIT_BUF[i] &= 0x7F; if (EDIT_BUF[i] == '\n') EDIT_BUF[i] = '\r'; }
     }
     a2fc_view = 5;
@@ -2566,7 +2641,6 @@ void __fastcall__ edit_entry(const struct A2fcApi* a)
     } else if (!build_full(full, pan, e)) { extern const char msg_toolong[]; strcpy(note, msg_toolong); return; }
     else if (e->size > (unsigned long)EDIT_MAX) { strcpy(note, ed_toobig); return; }
     strcpy(reselect, fresh ? input : e->name);
-    eblocks = fresh ? 0 : e->blocks;
     /* The tags are sorted indexes: a new file shifts them, so they are
      * forgotten in that case. */
     if (edit_file(fresh, fresh ? 0x04 : e->type, fresh ? 0 : e->aux) == 1 && fresh) memset(picked, 0, sizeof picked);
@@ -2633,7 +2707,6 @@ void __fastcall__ music_entry(const struct A2fcApi* a)
     } while (n == MUSIC_STAGE);
     fclose(f);
     if ((last & 0xF0) != 0xE0) valid = 0;   /* without END the player would read AUX past it */
-    if (!valid) { message(mu_notmb1); return; }
     /* The stream lives on /RAM blocks (AUX $1000+): it is rebuilt from
      * scratch, as on return from a DHGR image. ram_format uses page $2000
      * as a buffer, hence the entry tables; we keep the file name (e points
@@ -2647,6 +2720,7 @@ void __fastcall__ music_entry(const struct A2fcApi* a)
         draw_all();
         ram_note = RAM_NOTE;
     } else ram_note = (const char*)"";
+    if (!valid) { message(mu_notmb1); return; }
     music_select(0);
     music_set_loop(0);
     music_play();
@@ -2746,10 +2820,10 @@ void __fastcall__ help_entry(const struct A2fcApi* a)
  * into a new image, copy a floppy to another one -- or onto itself with a
  * single drive, swapping the floppy at each pass. The blocks go through
  * READ_BLOCK and WRITE_BLOCK, whether the driver is the Disk II's, a
- * SmartPort's or /RAM's: the target floppy must already be formatted (F
+ * SmartPort's (/RAM is excluded): the target floppy must already be formatted (F
  * does it), nothing here writes a track.
  *
- * The staging area of one pass: four blocks in the main bank ($3400-$3BFF,
+ * The staging area of one pass: three blocks in the main bank ($3600-$3BFF,
  * above the overlay's code), and for the single-drive copy eighty more
  * blocks in the auxiliary bank, $2000-$BFFF, where /RAM lives -- which is
  * therefore rebuilt from scratch afterwards, as after a DHGR image. A
@@ -2773,7 +2847,7 @@ static const char S_WHERE[] = "slot %u drive %u";
 static const char S_NOVOL[] = "(no ProDOS volume)";
 static const char S_INUSE[] = "  IN USE";
 static const char S_EMPTY[] = "";
-static const char S_HOLDS[] = "Program disk: choose another.";
+static const char S_HOLDS[] = "Disk in use: choose another.";
 static const char S_LOST[] = " EVERYTHING on %s (%s) WILL BE LOST. ";
 static const char S_ERASE[] = "Type ERASE then RETURN to go on";
 static const char S_WORD[] = "ERASE";
@@ -2785,7 +2859,6 @@ static const char S_NOTIMG[] = "The selection is not a disk image (.PO, .DSK, .2
 static const char S_SMALL[] = "That disk is smaller than the image.";
 static const char S_NODIR[] = "Open a ProDOS directory first: the image goes there.";
 static const char S_NOSIZE[] = "Unknown size: neither a ProDOS volume nor a Disk II.";
-static const char S_NOROOM[] = "Not enough room on this volume for the image.";
 static const char S_NAME[] = "Image name, without suffix";
 static const char S_LONG[] = "Name too long for its suffix.";
 static const char S_ORDER[] = "P ProDOS order (.PO) or D DOS 3.3 order (.DSK)?";
@@ -2817,8 +2890,8 @@ static const char S_E_CODE[] = "ProDOS error $%02X";
 static const char S_RAM[] = "  /RAM was rebuilt empty.";
 
 #define DI_BLOCK ((unsigned char*)0x3C00)   /* the block for MLI calls */
-#define DI_MAIN ((unsigned char*)0x3400)    /* four staging blocks */
-#define DI_MAIN_BLOCKS 4
+#define DI_MAIN ((unsigned char*)0x3600)    /* three staging blocks */
+#define DI_MAIN_BLOCKS 3
 #define DI_AUX 0x2000                       /* eighty more in AUX */
 #define DI_AUX_BLOCKS 80
 #define DI ((struct DiskImg*)0x3E00)
@@ -2975,7 +3048,8 @@ static void di_scan(void)
              * Disk II: a floppy is 280 blocks, whatever volume was
              * written on it */
             if (!d->blocks) volume_blocks(d->name, &d->blocks, &dummy);
-            d->inuse = !strncmp(cfg_path, d->name, len + 1) && cfg_path[len + 1] == '/';
+            d->inuse = (!strncmp(cfg_path, d->name, len + 1) && cfg_path[len + 1] == '/') ||
+                (!strncmp(full, d->name, len + 1) && full[len + 1] == '/');
         }
         ++DI->ndev;
     }
@@ -3011,7 +3085,9 @@ static struct Dev* di_pick(const char* what, unsigned char writing)
         if (key == KEY_ESC) return NULL;
         if (key < '1' || key >= '1' + DI->ndev) continue;
         d = &DI->dev[key - '1'];
-        if (writing && d->inuse) { message(S_HOLDS); continue; }
+        if ((writing && d->inuse) || ((unsigned int*)0xBF10)[d->unit >> 4] == 0xFF00) {
+            message(S_HOLDS); continue;
+        }
         return d;
     }
 }
@@ -3040,14 +3116,18 @@ static unsigned char di_open_image(struct Side* s, const struct Entry* e)
     if ((n > 4 && !strcmp(end - 4, ".DSK")) || (n > 3 && !strcmp(end - 3, ".DO"))) s->kind = SIDE_DSK;
     s->f = fopen(full, "rb");
     if (!s->f) return 0;
+    if (fseek(s->f, 0, SEEK_END) || ftell(s->f) != size || fseek(s->f, 0, SEEK_SET)) return 0;
     if (n > 4 && !strcmp(end - 4, ".2MG")) {
-        if (fread(DI_BLOCK, 1, 64, s->f) != 64 || memcmp(DI_BLOCK, "2IMG", 4) || DI_BLOCK[0x0C] > 1) return 0;
+        if (fread(DI_BLOCK, 1, 64, s->f) != 64 || memcmp(DI_BLOCK, "2IMG", 4) || DI_BLOCK[0x0C] > 1 ||
+            DI_BLOCK[0x0D] || DI_BLOCK[0x0E] || DI_BLOCK[0x0F]) return 0;
         s->kind = DI_BLOCK[0x0C] ? SIDE_PO : SIDE_DSK;
-        s->base = *(unsigned long*)(DI_BLOCK + 0x18);
-        size = *(unsigned long*)(DI_BLOCK + 0x1C);
+        s->base = *(uint32_t*)(DI_BLOCK + 0x18);
+        size = *(uint32_t*)(DI_BLOCK + 0x1C);
+        if (s->base < 64 || s->base > e->size || size > e->size - s->base) return 0;
     }
+    if (((unsigned char*)&size)[3]) return 0; /* ProDOS EOF is 24 bits */
     DI->total = (unsigned int)(size >> 9);
-    return DI->total != 0 && (size & 511) == 0;
+    return DI->total != 0 && (size & 511) == 0 && (s->kind != SIDE_DSK || !(DI->total & 7));
 }
 
 static const char* di_error(unsigned char code)
@@ -3077,7 +3157,7 @@ void __fastcall__ diskimg_entry(const struct A2fcApi* a)
     (void)a;
     music_stop();                      /* the auxiliary bank is about to serve as scratch space */
     a2fc_playing = 0;
-    /* The block buffers live in the graphics page ($2800-$3FFF): a picture
+    /* The block buffers live in the graphics page ($3600-$3DFF): a picture
      * viewed earlier may have left HIRES armed, with 80STORE then routing
      * $2000-$3FFF to the AUX bank -- READ_BLOCK would read the wrong place.
      * We switch HIRES off (text itself keeps 80STORE for its even columns)
@@ -3113,7 +3193,7 @@ void __fastcall__ diskimg_entry(const struct A2fcApi* a)
         if (!(to = di_pick(S_FROM, 0))) goto out;
         DI->total = to->blocks;
         if (!DI->total) { strcpy(note, S_NOSIZE); goto out; }
-        if (DI->total + (DI->total >> 8) + 2 > pan->free_blocks) { strcpy(note, S_NOROOM); goto out; }
+        if (!strncmp(pan->path, to->name, strlen(to->name))) { strcpy(note, S_HOLDS); goto out; }
         if (!prompt(S_NAME, NULL, 0)) goto out;
         if (strlen(input) > 11 || strlen(pan->path) + 17 >= PATH_LEN) { strcpy(note, S_LONG); goto out; }
         message(S_ORDER);
@@ -3126,7 +3206,7 @@ void __fastcall__ diskimg_entry(const struct A2fcApi* a)
         _auxtype = 0;
         dst->kind = key == 'D' ? SIDE_DSK : SIDE_PO;
         dst->base = 0;
-        dst->f = fopen(full, "wb");
+        dst->f = new_output(full);
         if (!dst->f) { strcpy(note, S_CREATE); goto out; }
         src->kind = SIDE_DEVICE;
         src->unit = to->unit;
@@ -3212,7 +3292,7 @@ void __fastcall__ menu_entry(const struct A2fcApi* a)
         if (!dir_open(other_full)) continue;
         while (n < MENU_MAX && dir_next()) {
             len = strlen(dir_entry.name);
-            if (dir_entry.type != 0x06 || len < 5 || strcmp(dir_entry.name + len - 4, mn_suffix) || !strcmp(dir_entry.name, mn_self)) continue;
+            if (dir_entry.type != 0x06 || len < 5 || strcmp(dir_entry.name + len - 4, mn_suffix) || !strcmp(dir_entry.name, mn_self) || !strcmp(dir_entry.name, "COPY.PLG")) continue;
             dir_entry.name[len - 4] = 0;
             for (i = 0; i < n; ++i) if (!strcmp(m[i].name, dir_entry.name)) break;
             if (i < n) continue;
@@ -3317,7 +3397,7 @@ static unsigned char list_dir(const char* path, unsigned char base, unsigned cha
     }
     dir_close();
     *count = n;
-    return 1;
+    return !dir_error;
 }
 
 /* Appends "/name" to a path; returns 0 beyond the 64 ProDOS characters. */
@@ -3369,63 +3449,125 @@ static void drop_entry(struct Panel* pan, unsigned char i)
     if (--pan->count && pan->cursor >= pan->count) pan->cursor = pan->count - 1;
 }
 
-/* The file `other_full` already exists: the rule of the copy in progress,
- * or the question. Returns 1 to overwrite, 0 to skip. */
+/* Copy state uses the idle text pagination buffer, not the recursive stack.
+ * A small overlay leaves both panel tables and the directory pool intact. */
+struct CopyState {
+    char target[PATH_LEN], backup[PATH_LEN];
+    const char* name;
+    unsigned long size;
+    unsigned char type, had_old, owned, ok;
+    unsigned int aux;
+};
+#define CP ((struct CopyState*)text_starts)
+
+#pragma code-name(push, "COPY")
+#pragma rodata-name(push, "COPYRO")
 static unsigned char may_overwrite(const char* name)
 {
     char key;
     if (over_policy == OVERWRITE_ALL) return 1;
     if (over_policy == SKIP_ALL) return 0;
-    clear_row(22);
-    gotoxy(0, 22);
+    clear_row(22); gotoxy(0, 22);
     cprintf("%s exists: Overwrite, Skip, All, None? ", name);
     for (;;) {
-        key = cgetc();
-        if (key == 'o' || key == 'O') return 1;
-        if (key == 's' || key == 'S') return 0;
-        if (key == 'a' || key == 'A') { over_policy = OVERWRITE_ALL; return 1; }
-        if (key == 'n' || key == 'N' || key == KEY_ESC) { over_policy = SKIP_ALL; return 0; }
+        key = cgetc() | 0x20;
+        if (key == 'o') return 1;
+        if (key == 's') return 0;
+        if (key == 'a') { over_policy = OVERWRITE_ALL; return 1; }
+        if (key == 'n' || key == (KEY_ESC | 0x20)) { over_policy = SKIP_ALL; return 0; }
     }
 }
 
-/* Copies the file `full` to `other_full`, same type and auxtype, with the
- * progress bar. Returns 1 if the copy is complete, 2 if it was skipped,
- * 0 on error. */
+/* Back up the old entry before reserving the output. Never truncate or
+ * clean up a name unless exclusive CREATE granted ownership. */
+static unsigned char copy_stage(void)
+{
+    FILE *in, *out;
+    unsigned int n;
+    unsigned long copied = 0;
+    CP->had_old = CP->owned = CP->ok = 0;
+    if (exists(CP->target)) {
+        if (gfi[4] == 15 || !may_overwrite(CP->name)) {
+            ++progress_skipped; ++progress_done; return 2;
+        }
+        if ((gfi[3] & 0xC2) != 0xC2) return 0;
+        strcpy(CP->backup, CP->target);
+        *strrchr(CP->backup, '/') = 0;
+        if (!push_name(CP->backup, "A2FC.BAK") || rename(CP->target, CP->backup)) return 0;
+        CP->had_old = 1;
+    } else if (_oserror != 0x46) return 0;
+    in = fopen(full, "rb");
+    if (!in) return 0;
+    if (fseek(in, 0, SEEK_END) || (long)(CP->size = ftell(in)) < 0 || fseek(in, 0, SEEK_SET)) {
+        fclose(in); return 0;
+    }
+    _filetype = CP->type; _auxtype = CP->aux;
+    out = new_output(CP->target);
+    if (!out) { fclose(in); return 0; }
+    CP->owned = CP->ok = 1;
+    while ((n = fread(copy_buf, 1, 512, in)) != 0) {
+        if (fwrite(copy_buf, 1, n, out) != n || abort_key()) { CP->ok = 0; break; }
+        copied += n;
+        progress_bar(CP->name, copied, CP->size);
+    }
+    if (ferror(in) || copied != CP->size) CP->ok = 0;
+    if (fclose(in)) CP->ok = 0;
+    if (fclose(out)) CP->ok = 0;
+    return 0;
+}
+#pragma rodata-name(pop)
+#pragma code-name(pop)
+
+#pragma code-name(push, "COPY")
+#pragma rodata-name(push, "COPYRO")
+/* Read back both complete streams before a move may delete its source.
+ * Half of copy_buf belongs to each stream: no extra disk buffer or heap. */
+static unsigned char copy_check(void)
+{
+    FILE *in, *out;
+    unsigned int n;
+    unsigned long checked = 0;
+    if (CP->ok) {
+        in = fopen(full, "rb"); out = fopen(CP->target, "rb");
+        if (!in || !out) CP->ok = 0;
+        while (CP->ok) {
+            n = fread(copy_buf, 1, 256, in);
+            if (fread(copy_buf + 256, 1, 256, out) != n ||
+                memcmp(copy_buf, copy_buf + 256, n) || abort_key()) { CP->ok = 0; break; }
+            checked += n;
+            if (n < 256) break;
+        }
+        if (in) { if (ferror(in)) CP->ok = 0; if (fclose(in)) CP->ok = 0; }
+        if (out) { if (ferror(out)) CP->ok = 0; if (fclose(out)) CP->ok = 0; }
+        if (checked != CP->size) CP->ok = 0;
+    }
+    if (!CP->ok) {
+        if (CP->owned) remove(CP->target);
+        if (CP->had_old && rename(CP->backup, CP->target))
+            message("Copy failed. Original retained as A2FC.BAK.");
+        else if (!progress_abort) message("Copy failed; source retained.");
+        return 0;
+    }
+    if (CP->had_old && remove(CP->backup)) {
+        message("Copy verified; A2FC.BAK retained. Source kept."); return 0;
+    }
+    ++a2fc_ops; ++progress_done;
+    return 1;
+}
+#pragma rodata-name(pop)
+#pragma code-name(pop)
+
 static unsigned char copy_file(const char* name, unsigned char type, unsigned int aux)
 {
-    FILE* in;
-    FILE* out;
-    unsigned int n;
-    unsigned long size, copied = 0;
-    unsigned char ok = 1;
-    in = fopen(full, "rb");
-    if (!in) { report_error("Open"); return 0; }
-    if (exists(other_full)) {
-        if (gfi[4] == 0x0F) { fclose(in); message("Skipped: a directory."); ++progress_skipped; ++progress_done; return 2; }
-        if (!may_overwrite(name)) { fclose(in); ++progress_skipped; ++progress_done; return 2; }
-        if (remove(other_full)) { fclose(in); report_error("Overwrite"); return 0; }
+    unsigned char r = 0;
+    strcpy(CP->target, other_full);
+    CP->name = name; CP->type = type; CP->aux = aux;
+    if (overlay("COPY")) {
+        r = copy_stage();
+        if (r != 2) r = copy_check();
     }
-    fseek(in, 0, SEEK_END);
-    size = ftell(in);
-    rewind(in);
-    _filetype = type;
-    _auxtype = aux;
-    out = fopen(other_full, "wb");
-    if (!out) { fclose(in); report_error("Create"); return 0; }
-    clear_row(22);
-    progress_bar(name, 0, size);
-    while ((n = fread(copy_buf, 1, sizeof copy_buf, in)) > 0) {
-        if (fwrite(copy_buf, 1, n, out) != n || abort_key()) { ok = 0; break; }
-        copied += n;
-        progress_bar(name, copied, size);
-    }
-    if (ferror(in)) ok = 0;
-    fclose(in);
-    if (fclose(out)) ok = 0;
-    if (!ok) { remove(other_full); if (!progress_abort) report_error("Copy"); return 0; }
-    ++a2fc_ops;
-    ++progress_done;
-    return 1;
+    strcpy(other_full, CP->target);
+    return r;
 }
 
 /* The three tree walks that follow are recursive: their local variables
@@ -3609,11 +3751,11 @@ static void extract_targets(void)
         sprintf(other_full, "%s/%s", dst->path, e->name);
         _filetype = e->type;
         _auxtype = e->aux;
-        out = fopen(other_full, "wb");
+        out = new_output(other_full);
         if (!out) { report_error("Create"); break; }
         progress_bar(e->name, 0, e->size);
         r = img_read_file(e->mdate, e->size, out, idx);
-        fclose(out);
+        if (fclose(out)) r = 0;
         if (r != 1) { remove(other_full); if (r == 0) { report_error("Extract"); break; } ++big; }
         else { ++a2fc_ops; ++done; }
         ++progress_done;
@@ -3681,7 +3823,7 @@ static void dos_extract(void)
         sprintf(other_full, "%s/%s", dst->path, e->name);
         _filetype = e->type;
         _auxtype = e->type == 0xFC ? 0x0801 : 0;
-        out = fopen(other_full, "wb");
+        out = new_output(other_full);
         if (!out) { report_error("Create"); break; }
         r = 1;
         while (tslt && tslt < 35 && r) {
@@ -3699,7 +3841,7 @@ static void dos_extract(void)
                 skip = 0;
             }
         }
-        fclose(out);
+        if (fclose(out)) r = 0;
         if (!r) { remove(other_full); report_error("Extract"); break; }
         ++a2fc_ops;
         ++done;
@@ -3789,13 +3931,11 @@ static const char us_noram[]    = "Extract to a disk, not /RAM (it shares aux me
 static const char us_corrupt[]  = "Corrupt archive.";
 static const char us_unsupp[]   = "Unsupported compression (only LZW/1, LZW/2, stored).";
 static const char us_done[]     = "%u file(s) extracted.";
-static const char us_doneram[]  = "%u file(s) extracted. /RAM was rebuilt empty.";
 static const char us_path[]     = "%s/%s";
 static const char us_po[]       = ".PO";
 static const char us_create[]   = "Create";
 static const char us_extract[]  = "Extract";
 static const char us_rb[]       = "rb";
-static const char us_wb[]       = "wb";
 static const unsigned char us_magic_master[] = { 0x4E, 0xF5, 0x46, 0xE9, 0x6C, 0xE5 };
 static const unsigned char us_magic_record[] = { 0x4E, 0xF5, 0x46, 0xD8 };
 
@@ -3878,8 +4018,8 @@ static unsigned char us_extract_thread(void)
     US->total = US->rem_out;
     US->done = 0;
     sprintf(other_full, us_path, panels[!active].path, US->name);
-    US->out = fopen(other_full, us_wb);
-    if (!US->out) { report_error(us_create); return 0; }
+    US->out = new_output(other_full);
+    if (!US->out) { strcpy(note, "Create failed; existing files kept."); return 0; }
     progress_bar(US->name, 0, US->total);
     US->rem_in = US->ceof;
     if (US->fmt == 0) {                    /* stored as is */
@@ -3907,8 +4047,8 @@ static unsigned char us_extract_thread(void)
             }
         }
     }
-    fclose(US->out);
-    if (!r) { remove(other_full); report_error(us_extract); return 0; }
+    if (fclose(US->out)) r = 0;
+    if (!r) { remove(other_full); strcpy(note, "Extract failed: read/write error."); return 0; }
     /* what remains of the thread (ShrinkIt's padding byte, a truncated thread) */
     if (US->rem_in) fseek(US->in, (long)US->rem_in, SEEK_CUR);
     ++US->n_done;
@@ -3926,7 +4066,10 @@ void __fastcall__ unshrink_entry(const struct A2fcApi* a)
     /* The auxiliary bank carries the LZW dictionary AND the /RAM disk:
      * extracting to /RAM would destroy it (and ram_format rebuilds it empty
      * afterwards). We refuse; any other volume will do. */
-    if (!strcmp(panels[!active].path, "/RAM")) { strcpy(note, us_noram); return; }
+    if (!strncmp(panels[!active].path, "/RAM", 4) || !strncmp(full, "/RAM", 4)) {
+        strcpy(note, us_noram); return;
+    }
+    if (strlen(panels[!active].path) + 17 >= PATH_LEN) { too_long(); return; }
     music_stop();                          /* the auxiliary bank is about to serve as the dictionary */
     a2fc_playing = 0;
     /* After a picture, HIRES stays armed. With 80STORE, PAGE2 then dictates
@@ -3941,12 +4084,12 @@ void __fastcall__ unshrink_entry(const struct A2fcApi* a)
     aux_copy(0x1F00, 0x1F00, 1);
     US->n_done = 0;
     US->in = fopen(full, us_rb);
-    if (!US->in) { report_error(us_extract); return; }
+    if (!US->in) { report_error(us_extract); goto out; }
     if (fread(US->hdr, 1, 48, US->in) != 48) goto corrupt;
     if (US->hdr[0] == 0x0A && US->hdr[1] == 0x47 && US->hdr[2] == 0x4C) {   /* Binary II: 128 bytes to skip */
         if (fread(US->hdr + 48, 1, 80, US->in) != 80 || fread(US->hdr, 1, 48, US->in) != 48) goto corrupt;
     }
-    if (!us_eq(US->hdr, us_magic_master, 6)) { strcpy(note, us_notarch); fclose(US->in); return; }
+    if (!us_eq(US->hdr, us_magic_master, 6)) { strcpy(note, us_notarch); fclose(US->in); goto out; }
     US->records = U16(US->hdr, 8);
     progress_total = US->records;
     for (i = 0; i < US->records; ++i) {
@@ -3997,12 +4140,13 @@ void __fastcall__ unshrink_entry(const struct A2fcApi* a)
         }
     }
     fclose(US->in);
-    sprintf(note, ram_format() ? us_doneram : us_done, US->n_done);
+    sprintf(note, us_done, US->n_done);
     goto out;
 corrupt:
     fclose(US->in);
     strcpy(note, us_corrupt);
 out:
+    if (ram_format()) strcat(note, " /RAM rebuilt empty.");
     strcpy(reselect, selected.name);
 }
 
