@@ -43,9 +43,9 @@
  *   - a directory into its own subtree: the moved branch would name itself
  *     and be lost to the root, exactly what copy_one refuses in the core;
  *   - a name already used in the target directory;
- *   - a target directory with no free entry: growing a directory means
- *     allocating a block and rewriting its own entry's size, a different
- *     and riskier job. It says so instead;
+ *   - a FULL volume directory: a subdirectory with no free entry is grown
+ *     by a block, but the volume directory's four are fixed and it has no
+ *     entry of its own to rewrite;
  *   - anything in the program's own A2FILE directory: moving A2FILE.CODE or
  *     a .PLG out from under a running A2FC breaks it.
  *
@@ -81,6 +81,10 @@ const struct Header __plugin_header = {
 #define H_PARENT    0x23            /* in a subdirectory header: the block of its entry */
 #define H_PARENTNUM 0x25            /* ... the entry's number there, counting from one */
 #define H_PARENTLEN 0x26            /* ... and the entry length */
+#define H_BITMAP    0x23            /* in the VOLUME header: the first bitmap block */
+#define H_TOTAL     0x25            /* ... and how many blocks the volume has */
+#define E_BLOCKS    0x13            /* in an entry: blocks used */
+#define E_EOF       0x15            /* ... and the length in bytes, three of them */
 
 /* BSS: nothing zeroes it; everything below is written before it is read. */
 static unsigned char unit;              /* the ProDOS unit of the volume */
@@ -106,7 +110,9 @@ static const char m_self[]  = "A directory cannot move inside itself.";
 static const char m_walk[]  = "The directories cannot be walked from the volume root.";
 static const char m_taken[] = "The other panel already has a %s.";
 static const char m_gone[]  = "%s is no longer in this directory.";
-static const char m_full[]  = "The target directory has no free entry left.";
+static const char m_full[]  = "The volume directory is full and cannot grow.";
+static const char m_grew[]  = "Move %s into %s? Its directory must grow a block.";
+static const char m_nogrow[] = "The target directory could not be made longer.";
 static const char m_io[]    = "Block %u failed: the move is INCOMPLETE, run VOLINFO.";
 static const char m_ok[]    = "%s moved: %u block%s untouched, nothing copied.";
 static const char m_ask[]   = "Move %s into %s without copying it?";
@@ -171,6 +177,81 @@ static unsigned char free_slot(unsigned int key, unsigned int* blk, unsigned cha
         b = rd16(buf + 2);
     }
     return 0;
+}
+
+/* The first free block of the volume, marked used. The bitmap is one bit a
+ * block, SET meaning free, 4,096 blocks to a bitmap block; blocks 0 to 5 are
+ * already spoken for, so a plain first-fit scan never offers them. Taken
+ * before anything points at it: a crash then leaks a block, which VOLINFO
+ * reports and FIXIT will mend, where the other order would leave a directory
+ * pointing at a block the volume thinks is free. */
+static unsigned int alloc_block(void)
+{
+    unsigned int total, bitmap, base, i;
+
+    if (!rd(2)) return 0;
+    bitmap = rd16(buf + 4 + H_BITMAP);
+    total = rd16(buf + 4 + H_TOTAL);
+    for (base = 0; base < total; base += 4096) {
+        if (!rd(bitmap + base / 4096)) return 0;
+        for (i = 0; i < 4096 && base + i < total; ++i)
+            if (buf[i >> 3] & (0x80 >> (i & 7))) {
+                buf[i >> 3] &= ~(0x80 >> (i & 7));
+                if (!wr(bitmap + base / 4096)) return 0;
+                return base + i;
+            }
+    }
+    return 0;
+}
+
+/* One more block on the end of a directory, and its own entry told that it
+ * is a block longer. The volume directory cannot grow: its four blocks are
+ * fixed and it has no entry of its own to rewrite -- the caller checks that
+ * before asking.
+ *
+ * The block is allocated first, then filled, then linked, then accounted
+ * for. Interrupted anywhere in there the volume stays readable: at worst a
+ * block is lost, never a directory cut in two. */
+static unsigned char grow_dir(unsigned int key)
+{
+    unsigned int last, next, nb, pblk;
+    unsigned char* p;
+    unsigned long eof;
+    unsigned char pslot;
+
+    if (!rd(key)) return 0;
+    pblk = rd16(buf + 4 + H_PARENT);
+    pslot = buf[4 + H_PARENTNUM];
+    if (!pblk || !pslot) return 0;
+    --pslot;                                    /* it is counted from one */
+
+    last = key;                                 /* the end of the chain */
+    for (;;) {
+        next = rd16(buf + 2);
+        if (!next) break;
+        last = next;
+        if (!rd(last)) return 0;
+    }
+
+    nb = alloc_block();
+    if (!nb) return 0;
+
+    a.memset(buf, 0, 512);                      /* every entry free, pointing back */
+    wr16(buf, last);
+    if (!wr(nb)) return 0;
+
+    if (!rd(last)) return 0;                    /* and the chain points forward */
+    wr16(buf + 2, nb);
+    if (!wr(last)) return 0;
+
+    if (!rd(pblk)) return 0;                    /* one more block, 512 more bytes */
+    p = buf + 4 + (unsigned int)pslot * ENTRY_LEN;
+    wr16(p + E_BLOCKS, rd16(p + E_BLOCKS) + 1);
+    eof = rd24(p + E_EOF) + 512;
+    p[E_EOF] = (unsigned char)eof;
+    p[E_EOF + 1] = (unsigned char)(eof >> 8);
+    p[E_EOF + 2] = (unsigned char)(eof >> 16);
+    return wr(pblk);
 }
 
 /* The key block of `path`, walked from the volume directory: the first
@@ -278,7 +359,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
 {
     const struct Entry* e;
     unsigned int sblk, dblk, subkey, blocks, bad = 0;
-    unsigned char sslot, dslot, isdir;
+    unsigned char sslot, dslot, isdir, room;
 
     init(api);
     e = a.selected;
@@ -306,10 +387,19 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     isdir = (ent[0] >> 4) == 13;
     subkey = rd16(ent + 0x11);
     blocks = rd16(ent + 0x13);
-    if (!free_slot(dstkey, &dblk, &dslot)) { note(m_full); return; }
+    /* A target with no free entry is grown by a block -- but only after the
+     * user has said yes, and never the volume directory, whose four blocks
+     * are fixed and which has no entry of its own to rewrite. */
+    room = free_slot(dstkey, &dblk, &dslot);
+    if (!room && dstkey == 2) { note(m_full); return; }
 
-    a.sprintf((char*)scratch, m_ask, e->name, other->path);
+    a.sprintf((char*)scratch, room ? m_ask : m_grew, e->name, other->path);
     if (!a.confirm((char*)scratch)) { note(""); return; }
+
+    if (!room && (!grow_dir(dstkey) || !free_slot(dstkey, &dblk, &dslot))) {
+        note(m_nogrow);
+        return;
+    }
 
     /* 1. The entry into the target directory, its header pointer put right.
      *    This one first: interrupted after it, the file is in two places,

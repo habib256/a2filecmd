@@ -33,10 +33,6 @@ BOOT/les disquettes. Les nouveaux plugins vont sur EXTRA et XL, séparément en
   puis efface, mais seulement un FICHIER : un répertoire et sa descendance
   demandent la marche récursive que `V` fait déjà dans le cœur. Soit `MOVE`
   la refait, soit le cœur lui passe la main.
-- 🟡 **`MOVE` : agrandir un répertoire plein** — la cible sans entrée libre
-  est refusée. L’agrandir demande d’allouer un bloc dans la table binaire du
-  volume et de réécrire la taille du répertoire dans sa propre entrée : un
-  travail différent, et plus risqué, que la réécriture d’entrée.
 - 🟠 💾 **`NIBCOPY`** — copie brute piste par piste entre deux lecteurs 5¼
   Disk II, avec mode à un lecteur, synchronisation, vérification et rapport
   d’erreurs. Le cœur doit rester en RAM après le retrait du disque BOOT pour
