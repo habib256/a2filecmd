@@ -590,7 +590,7 @@ static void draw_info(void)
     if (!pan->count) return;
     e = &pan->e[pan->cursor];
     gotoxy(0, 21);
-    if (is_up(e)) cputs("Parent directory");
+    if (is_up(e)) { extern const char msg_parent[]; cputs(msg_parent); }
     else if (!pan->path[0]) cprintf("Volume %s  slot %u drive %u  %u blocks, %u free", e->name, e->mdate & 7, (e->mdate >> 3) + 1, e->blocks, e->aux);
     else if (is_dir(e)) cprintf("%s  directory  %u blocks", e->name, e->blocks);
     else if (pan->fs)           /* in an image: mdate holds the key block, not a date */
@@ -769,8 +769,13 @@ static unsigned char read_dos33_panel(struct Panel* pan)
             d = copy_buf + 0x0B + i * 0x23;
             if (!d[0]) { ct = 0; break; }        /* never used: end of the catalog */
             if (d[0] == 0xFF) continue;          /* deleted */
+            /* `len > 1`, not `len`: the trim always leaves one character,
+             * so the loop below writes name[0] and its terminator. A name
+             * of thirty blanks used to leave len at 0, and the fallback
+             * two lines down then overwrote the ONLY terminator with 'X',
+             * handing add_entry whatever followed on the stack. */
             len = 30;
-            while (len && (d[2 + len] & 0x7F) == ' ') --len;
+            while (len > 1 && (d[2 + len] & 0x7F) == ' ') --len;
             for (k = 0; k < len && k < 15; ++k) {
                 c = d[3 + k] & 0x7F;
                 if (c >= 'a' && c <= 'z') c -= 32;
@@ -1101,6 +1106,8 @@ const char msg_nomb[] = "No Mockingboard in slots 1-7.";
 const char msg_vdrive[] = "VDrive: serial card in slot %u, volumes in slot %u, drives 1 and 2.";
 const char msg_notimg[] = "Not a ProDOS disk image (or DOS 3.3).";
 const char msg_roimg[] = "Read-only disk image; C extracts to the other panel.";
+const char msg_noentry[] = "This overlay has no entry point.";
+const char msg_parent[] = "Parent directory";
 const char msg_samedir[] = "Both panels show the same directory.";
 const char msg_otherro[] = "The other panel is a read-only disk image.";
 const char msg_intoself[] = "Cannot copy a directory into itself.";
@@ -1163,19 +1170,28 @@ static void report_error(const char* what)
 static unsigned char page_size(const unsigned long* size)
 {
     const unsigned int* w = (const unsigned int*)size;
-    return !w[1] && (w[0] == 8192 || w[0] == 8184 || w[0] == 16384);
+    /* 8,184 and 16,376 as well as 8,192 and 16,384: a saver that stops at
+     * the last byte the screen actually shows drops the eight bytes of the
+     * final screen hole. 816/Paint writes its uncompressed double hi-res
+     * that way, and A2FC used to answer "not an image" to it. */
+    return !w[1] && (w[0] == 8192 || w[0] == 8184 || w[0] == 16384 || w[0] == 16376);
 }
 
 static unsigned char looks_like_image(const struct Entry* e)
 {
     unsigned char n = strlen(e->name);
     if (is_dir(e)) return 0;
-    if (e->type == 0x08) return 1;
     /* Extasie/Chat Mauve images use the ProDOS graphics file type $F2. */
 #ifdef A2FC_6502
     if (e->type == 0xF2) return 1;
 #endif
-    if (e->type != 0x06) return 0;
+    /* A FOT ($08) only counts as an image when it holds a RAW page. It used
+     * to be claimed on its type alone, and load_image, which knows nothing
+     * but raw pages and the RLE streams, then refused it: a packed FOT
+     * (auxtype $4000, $4001, $8066) was a dead end -- announced as an image,
+     * answered "not an image", and denied even the hex viewer that every
+     * other unknown type falls back to. PACKFOT decodes those. */
+    if (e->type != 0x06 && e->type != 0x08) return 0;
     return page_size(&e->size) || (n > 4 && !strcmp(e->name + n - 4, ".RLE"));
 }
 #pragma rodata-name (pop)
@@ -1214,7 +1230,12 @@ static void view_seek(long offset)
 #pragma rodata-name (push, "TEXTRO")
 static const char tx_status[] = "%-38.38s page %u%s";
 static const char tx_end[] = " (end)";
-static const char tx_keys[] = "SPC Next,B Prev,R First,ESC Back";
+/* No " Back" after ESC, unlike the other bars: keys_bar lays this one down
+ * from column 52, and the label made it 32 columns wide, ending at 83. The
+ * four columns past 79 wrapped -- conio carried them round to the top left
+ * of the screen, where "Back" sat over the first line of every text file.
+ * At 28 columns it ends at 79, exactly like BASLIST's and AWP's. */
+static const char tx_keys[] = "SPC Next,B Prev,R First,ESC";
 
 static void view_text(const char* path)
 {
@@ -2059,7 +2080,7 @@ static void overlay_run(const char* name, unsigned char arg)
     reselect[0] = 0;
     note[0] = 0;
     if (OVL->entry) OVL->entry(&api);
-    else strcpy(note, "This overlay has no entry point.");
+    else { extern const char msg_noentry[]; strcpy(note, msg_noentry); }
     if (big) {
         overlay_loaded[0] = 0;   /* its upper half is already covered by the tables */
         switch_to_text();
@@ -2179,7 +2200,7 @@ static unsigned char load_image(const struct Entry* e)
     if (fread(copy_buf, 1, 8, f) == 8) {
         if (!memcmp(copy_buf, "DHRR\1\0\0\x40", 8)) kind = IMG_DHRR;
         else if (!memcmp(copy_buf, "HGRR\1\0\0\x20", 8)) kind = IMG_HGRR;
-        else if (size == 16384) kind = IMG_DHGR;
+        else if (size > 8192) kind = IMG_DHGR;   /* 16,384 or 16,376 */
         else if (size) kind = IMG_HGR;
     }
     if (kind == IMG_DHRR) { aux_dirty = 1; ok = decode_rle(f, 16384); }
@@ -2196,7 +2217,9 @@ static unsigned char load_image(const struct Entry* e)
         aux_dirty = 1;
         rewind(f);
         ok = fread(HGR_MAIN, 1, 8192, f) == 8192;
-        if (ok) { aux_hgr_to_aux(); ok = fread(HGR_MAIN, 1, 8192, f) == 8192; }
+        /* The main plane may be eight bytes short, like the single page:
+         * what is missing is the screen hole nobody displays. */
+        if (ok) { aux_hgr_to_aux(); ok = fread(HGR_MAIN, 1, 8192, f) >= 8184; }
     }
     fclose(f);
     return ok ? kind : IMG_NONE;
@@ -3246,7 +3269,12 @@ void __fastcall__ menu_entry(const struct A2fcApi* a)
         keys_bar(0, mn_keys);
         key = cgetc();
         if (key == KEY_ESC) return;
-        if (key == KEY_RETURN && n) { strcpy(input, m[cur].name); return; }
+        /* An empty list (an A2FILE/ holding MENU.PLG alone, no catalog):
+         * only Escape acts. Past this, n >= 1 -- which the page keys and
+         * the letter search below rely on, one taking n - 1 and the other
+         * a modulo by n. */
+        if (!n) continue;
+        if (key == KEY_RETURN) { strcpy(input, m[cur].name); return; }
         if (key == KEY_UP && cur) --cur;
         else if (key == KEY_DOWN && cur + 1 < n) ++cur;
         else if (key == KEY_LEFT) cur = cur >= MENU_ROWS ? cur - MENU_ROWS : 0;   /* a page at a time */
@@ -4526,7 +4554,8 @@ static struct A2fcApi api = {
     message, confirm, prompt, progress_bar, keys_bar, bar_begin, draw_all, read_panel, report_error, wait_key,
     build_full, dir_open, dir_next, dir_close, mli_call,
     fopen, fread, fwrite, fclose, fseek, remove, cprintf, sprintf, cputs, cputc, gotoxy, revers, cclearxy, clrscr, cgetc,
-    memcpy, memset, strcpy, strcmp, strlen, &_filetype, &_auxtype, reselect, note, &selected, cfg_path };
+    memcpy, memset, strcpy, strcmp, strlen, &_filetype, &_auxtype, reselect, note, &selected, cfg_path,
+    ram_format };
 
 int main(void)
 {
@@ -4590,7 +4619,11 @@ int main(void)
          * tagging, C/V (extract) and the formatter act; the commands that
          * would write or that need a real path are refused with a clear
          * message. */
-        if (pan->fs && strchr("RKALDXEWTHIM", key & 0xDF)) {
+        /* `| 0x20` and not `& 0xDF`: strchr answers the terminator for a
+         * zero key, and click() returns zero for a click it has already
+         * acted on -- which used to be refused as a write to a read-only
+         * image. Lower case leaves 0 mapped to ' ', outside the list. */
+        if (pan->fs && strchr("rkaldxewthim", key | 0x20)) {
             { extern const char msg_roimg[]; message(msg_roimg); };
             continue;
         }
@@ -4623,6 +4656,11 @@ int main(void)
             show_active();
             break;
         case '=':
+            /* Back to plain ProDOS: a panel left inside a disk image kept
+             * fs and an img_len that indexed the OLD path, and read_panel
+             * then split the new one past its terminator. A path that is
+             * itself inside an image simply fails to open, and says so. */
+            panels[!active].fs = FS_PRODOS;
             strcpy(panels[!active].path, pan->path);
             open_path(&panels[!active]);
             draw_panel(!active);

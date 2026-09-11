@@ -57,4 +57,19 @@ static unsigned char source_read(struct Source* s,unsigned int b,unsigned char* 
     }
     return 1;
 }
+#ifdef IMAGEIO_WRITE
+/* The mirror of source_read: one normalized 512-byte block back to the
+ * device or to the container, the DOS 3.3 order undone the same way. */
+static unsigned char source_write(struct Source* s,unsigned int b,const unsigned char* in) {
+    unsigned char half;unsigned long off;
+    if(b>=s->blocks)return 0;
+    if(s->unit)return !writeblk(s->unit,b,in);
+    if(s->kind!=1)return !a.fseek(s->file,s->base+(unsigned long)b*512,SEEK_SET) && a.fwrite(in,1,512,s->file)==512;
+    for(half=0;half<2;++half) {
+        off=((unsigned long)(b>>3)<<12)+((unsigned int)sectors[(b&7)*2+half]<<8);
+        if(a.fseek(s->file,off,SEEK_SET) || a.fwrite(in+256*half,1,256,s->file)!=256)return 0;
+    }
+    return 1;
+}
+#endif
 static void source_close(struct Source* s) {if(s->file)a.fclose(s->file);s->file=0;}

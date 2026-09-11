@@ -33,7 +33,7 @@
 
 #include <stdio.h>
 
-#define A2FC_API_VERSION 2
+#define A2FC_API_VERSION 3
 #define PLUGIN_MAGIC 0xA2FC        /* the signature of a third-party overlay */
 #define OVERLAY_BIG 0x01           /* also takes $2000-$3FFF */
 #define OVERLAY_WINDOW ((unsigned char*)0x1B00)
@@ -165,6 +165,13 @@ struct A2fcApi {
      * "/VOL/A2FILE/A2FILE.CFG" -- its directory is where the overlays live,
      * and where an overlay keeps its own files (GOTO.CFG...). */
     const char* cfg_path;
+    /* since version 3: rebuilds the ProDOS /RAM volume from scratch through
+     * its own driver, and answers 1 if it did. An overlay that writes to the
+     * AUXILIARY bank -- a double hi-res page, an LZW dictionary -- destroys
+     * the blocks /RAM keeps there: the volume is then inconsistent and the
+     * next write to it returns anything at all. Call this afterwards and say
+     * so, the way the core does on return from a DHGR picture. */
+    unsigned char (*ram_format)(void);
 };
 
 #endif /* A2FC_PLUGIN_H */

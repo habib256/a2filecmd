@@ -21,7 +21,12 @@
  *   Integer BASIC   type $FA
  *   RLE pictures    "HGRR" / "DHRR" at 0 (the .RLE flow of the demo)
  *   DHGR / HGR      16,384 bytes; 8,192 bytes, or 8,184..8,192 as a BIN at $2000
- *   FOT             type $08
+ *   FOT             type $08: raw, or packed ($4000, $4001) or LZ4FH
+ *                   ($8066) by its auxtype
+ *   816/Paint       type $06 with auxtype $E001 or $E002: a packed hi-res
+ *                   or double hi-res page
+ *   Extasie         type $F2, opening on its own length: a packed double
+ *                   hi-res page for the Le Chat Mauve card
  *   Mockingboard    "MB1" at 0
  *   6502 code       type $FF, or a BIN with an auxtype and a JMP, JSR or
  *                   LDA# ($4C $20 $A9) among the first eight bytes
@@ -192,7 +197,30 @@ static const char* identify(void)
         if (SZ[0] == 8192 || (SZ[0] >= 8184 && SZ[0] < 8192 && t == 6 && e->aux == 0x2000))
             return "HGR picture, 8K";
     }
-    if (t == 0x08) return "Hi-res picture (FOT)";
+    /* A FOT is raw or packed, and the auxtype is what says so: $4000 a
+     * packed hi-res page, $4001 a packed double hi-res one (PACKFOT reads
+     * both), $8066 the LZ4FH compression. Anything else is the load address
+     * of a raw page. Saying only "FOT" sent the reader to a viewer that
+     * would refuse three quarters of them. */
+    if (t == 0x08) {
+        if (e->aux == 0x4000) return "Packed hi-res picture (FOT)";
+        if (e->aux == 0x4001) return "Packed double hi-res picture (FOT)";
+        if (e->aux == 0x8066) return "LZ4FH compressed hi-res picture (FOT)";
+        return "Hi-res picture (FOT), raw";
+    }
+    /* Extasie writes its pictures under a type of their own, $F2, and opens
+     * them with their own length: a double hi-res page, compressed, for the
+     * Le Chat Mauve card (EXTASIE reads them). */
+    if (t == 0xF2)
+        return SZ[0] == (unsigned long)(b[0] | (b[1] << 8))
+            ? "Extasie picture (Chat Mauve), packed" : "Extasie picture (Chat Mauve)";
+    /* 816/Paint saves packed by default, as a $06 with an auxtype of its
+     * own: $E001 a hi-res page, $E002 a double hi-res one (PAINT816 reads
+     * both). Their size is whatever the packing came to, so nothing above
+     * claims them and the reader would have called them binary. */
+    if (t == 6 && (e->aux == 0xE001 || e->aux == 0xE002))
+        return e->aux == 0xE001 ? "816/Paint packed hi-res picture"
+                                : "816/Paint packed double hi-res picture";
     if (magic("MB1")) return "Mockingboard music (MB1)";
     if (t == 0xFF) return "ProDOS system program, 6502 code";
     if (t == 6 && e->aux)
