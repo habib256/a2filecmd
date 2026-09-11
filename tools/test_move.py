@@ -13,20 +13,35 @@ from test_six_plugins import PREFIX, ROOT
 from prodos_read import Image
 
 HARNESS = PREFIX + r'''
+#include <errno.h>
 #include "src/plugins/move.c"
 
 static FILE* disk;
 static char volname[16];
 static unsigned char vollen;
 static unsigned char answer = 1;                 /* what confirm() replies */
+static unsigned char io_fault;
+static unsigned char probed;
 
 struct Blk { unsigned char n, unit; unsigned char* buffer; unsigned int block; };
 struct Onl { unsigned char n, unit; unsigned char* buffer; };
+struct New { unsigned char n; unsigned char* path; };
 
 static unsigned char mock_mli(unsigned char cmd, void* p)
 {
     struct Blk* b = p;
     struct Onl* o = p;
+    if (cmd == 0xC0) {                          /* exclusive CREATE */
+        struct New* c = p;
+        char path[81];
+        FILE* f;
+        if (io_fault == 2) return 0x27;
+        memcpy(path, c->path + 1, c->path[0]);
+        path[c->path[0]] = 0;
+        f = fopen(path, "wx");
+        if (!f) return errno == EEXIST ? 0x47 : 0x27;
+        return fclose(f) ? 0x27 : 0;
+    }
     if (cmd == 0x80 || cmd == 0x81) {
         if (fseek(disk, (long)b->block * 512, SEEK_SET)) return 0x27;
         if (cmd == 0x80) return fread(b->buffer, 1, 512, disk) == 512 ? 0 : 0x27;
@@ -44,6 +59,16 @@ static unsigned char mock_mli(unsigned char cmd, void* p)
 }
 
 static unsigned char mock_confirm(const char* q) { (void)q; return answer; }
+static FILE* mock_fopen(const char* path, const char* mode)
+{
+    /* Fail only the initial destination existence probe, as a transient
+     * read error would. The old implementation then overwrites the file. */
+    if (io_fault == 1 && !probed && !strcmp(mode, "rb")) {
+        probed = 1;
+        return NULL;
+    }
+    return fopen(path, mode);
+}
 static void mock_bar(const char* n, unsigned long d, unsigned long t)
 { (void)n; (void)d; (void)t; }
 
@@ -67,7 +92,7 @@ static unsigned int host_aux;
 static struct Panel host_panels[2];
 static unsigned char host_active;
 static struct Entry host_sel;
-static char host_full[81], host_note[80], host_reselect[17];
+static char host_full[81], host_target[81], host_note[80], host_reselect[17];
 static unsigned char host_buf[512];
 
 int main(int argc, char** argv)
@@ -86,17 +111,19 @@ int main(int argc, char** argv)
     if (argc > 7) host_sel.type = atoi(argv[7]);
     if (argc > 8) host_sel.size = atol(argv[8]);
     if (argc > 9) corrupt_at = atol(argv[9]);
+    if (argc > 10) io_fault = atoi(argv[10]);
     host_note[0] = 0;
     host_active = 0;
 
     api.panels = host_panels; api.active = &host_active;
     api.selected = &host_sel; api.full = host_full;
+    api.other_full = host_target;
     api.note = host_note; api.reselect = host_reselect;
     api.copy_buf = host_buf;
     api.cfg_path = "/NOWHERE/A2FILE/A2FILE.CFG";
     api.mli = mock_mli; api.confirm = mock_confirm;
     api.progress_bar = mock_bar;
-    api.fopen = fopen; api.fread = fread; api.fwrite = mock_fwrite;
+    api.fopen = mock_fopen; api.fread = fread; api.fwrite = mock_fwrite;
     api.fclose = fclose; api.remove = remove;
     api.filetype = &host_type; api.auxtype = &host_aux;
     api.memcpy = memcpy; api.memset = memset;
@@ -268,6 +295,33 @@ class Move(unittest.TestCase):
         self.assertEqual(note, '')
         self.assertEqual(img.read_bytes(), before, 'saying no still touched the volume')
 
+    def test_growth_refuses_a_broken_parent_reference_before_writing(self):
+        for damage in ('wrong_directory', 'file', 'slot14', 'slot255',
+                       'entry_length', 'unreadable_parent'):
+            with self.subTest(damage=damage):
+                img = self.full_volume()
+                data = bytearray(img.read_bytes())
+                volume = Image(data)
+                dstkey = child_key(volume, 2, 'DST')
+                srckey = child_key(volume, 2, 'SRC')
+                hdr = dstkey * 512 + 4
+                if damage in ('wrong_directory', 'file'):
+                    block, slot, _ = (find(volume, 2, 'SRC') if damage == 'wrong_directory'
+                                      else find(volume, srckey, 'HELLO'))
+                    data[hdr + 0x23:hdr + 0x25] = block.to_bytes(2, 'little')
+                    data[hdr + 0x25] = slot + 1
+                elif damage.startswith('slot'):
+                    data[hdr + 0x25] = int(damage[4:])
+                elif damage == 'entry_length':
+                    data[hdr + 0x26] = 40
+                else:
+                    data[hdr + 0x23:hdr + 0x25] = (280).to_bytes(2, 'little')
+                img.write_bytes(data)
+                note = self.run_move(img, '/MOVE/SRC', '/MOVE/DST', 'HELLO')
+                self.assertIn('could not be made longer', note)
+                self.assertEqual(img.read_bytes(), data,
+                                 'invalid parent reference still changed the volume')
+
     def test_a_full_volume_directory_is_refused(self):
         """Its four blocks are fixed and it has no entry of its own to
         rewrite, so it is the one directory that cannot be made longer."""
@@ -306,14 +360,15 @@ class Move(unittest.TestCase):
             [str(self.exe), str(img), 'MOVE', src, dst, name, str(confirm)],
             text=True).strip()
 
-    def run_copy(self, src, dst, name, confirm=1, ftype=4, size=None, corrupt=-1):
+    def run_copy(self, src, dst, name, confirm=1, ftype=4, size=None, corrupt=-1,
+                 io_fault=0):
         """The fallback: host directories, so unit_of finds no volume and MOVE
         has to copy. The image argument is unused but still opened."""
         if size is None:
             size = (Path(src) / name).stat().st_size if (Path(src) / name).exists() else 0
         return subprocess.check_output(
             [str(self.exe), str(self.p / 'vol.po'), 'MOVE', src, dst, name,
-             str(confirm), str(ftype), str(size), str(corrupt)], text=True).strip()
+             str(confirm), str(ftype), str(size), str(corrupt), str(io_fault)], text=True).strip()
 
     def test_a_file_changes_directory_without_moving_a_block(self):
         img = self.volume()
@@ -393,6 +448,38 @@ class Move(unittest.TestCase):
         note = self.run_move(img, '/MOVE/SRC', '/MOVE/SRC', 'HELLO')
         self.assertIn('same directory', note)
         self.assertEqual(img.read_bytes(), before)
+
+    def test_a_path_component_must_still_be_a_directory(self):
+        for directory in ('SRC', 'DST'):
+            for storage in (1, 2, 3, 5):
+                with self.subTest(directory=directory, storage=storage):
+                    img = self.volume()
+                    data = bytearray(img.read_bytes())
+                    block, slot, _ = find(Image(data), 2, directory)
+                    offset = block * 512 + 4 + slot * 39
+                    # The panel still holds the old directory path. Its
+                    # entry on disk has become a file (or is corrupted).
+                    data[offset] = (storage << 4) | (data[offset] & 15)
+                    data[offset + 16] = 6
+                    img.write_bytes(data)
+                    note = self.run_move(img, '/MOVE/SRC', '/MOVE/DST', 'HELLO')
+                    self.assertIn('cannot be walked', note)
+                    self.assertEqual(img.read_bytes(), data,
+                                     'walked a file as a directory and rewrote its data')
+
+    def test_locked_source_entries_are_not_moved(self):
+        for name in ('HELLO', 'SUB'):
+            with self.subTest(name=name):
+                img = self.volume()
+                data = bytearray(img.read_bytes())
+                volume = Image(data)
+                srckey = child_key(volume, 2, 'SRC')
+                block, slot, _ = find(volume, srckey, name)
+                data[block * 512 + 4 + slot * 39 + 30] = 0x01  # core's locked access value
+                img.write_bytes(data)
+                note = self.run_move(img, '/MOVE/SRC', '/MOVE/DST', name)
+                self.assertIn('locked', note)
+                self.assertEqual(img.read_bytes(), data, 'MOVE bypassed the source lock')
 
     def test_a_directory_cannot_move_inside_itself(self):
         img = self.volume()
@@ -486,6 +573,23 @@ class CopyAcrossVolumes(unittest.TestCase):
         self.assertEqual(Path('/tmp/mv/s/HELLO').read_bytes(), payload)
         self.assertFalse(Path('/tmp/mv/d/HELLO').exists())    # and no half copy left
 
+    def test_a_stale_panel_size_never_truncates_the_original(self):
+        for cached_size in (0, 512, 1079, 1081):
+            with self.subTest(cached_size=cached_size):
+                payload = self.fixture(b'x' * 1080)
+                note = self.run_copy('/tmp/mv/s', '/tmp/mv/d', 'HELLO',
+                                     size=cached_size)
+                self.assertIn('NOT removed', note)
+                self.assertEqual(Path('/tmp/mv/s/HELLO').read_bytes(), payload)
+                self.assertFalse(Path('/tmp/mv/d/HELLO').exists())
+
+    def test_an_empty_file_can_be_moved(self):
+        self.fixture(b'')
+        note = self.run_copy('/tmp/mv/s', '/tmp/mv/d', 'HELLO')
+        self.assertIn('copied to the other volume and removed', note)
+        self.assertEqual(Path('/tmp/mv/d/HELLO').read_bytes(), b'')
+        self.assertFalse(Path('/tmp/mv/s/HELLO').exists())
+
     def test_a_name_already_there_is_refused(self):
         self.fixture()
         (Path('/tmp/mv/d') / 'HELLO').write_bytes(b'mine')
@@ -493,6 +597,22 @@ class CopyAcrossVolumes(unittest.TestCase):
         self.assertIn('already in the other panel', note)
         self.assertEqual(Path('/tmp/mv/d/HELLO').read_bytes(), b'mine')
         self.assertTrue(Path('/tmp/mv/s/HELLO').exists())
+
+    def test_a_failed_destination_probe_does_not_authorize_overwriting(self):
+        payload = self.fixture()
+        destination = Path('/tmp/mv/d/HELLO')
+        destination.write_bytes(b'irreplaceable destination')
+        note = self.run_copy('/tmp/mv/s', '/tmp/mv/d', 'HELLO', io_fault=1)
+        self.assertIn('already in the other panel', note)
+        self.assertEqual(destination.read_bytes(), b'irreplaceable destination')
+        self.assertEqual(Path('/tmp/mv/s/HELLO').read_bytes(), payload)
+
+    def test_failed_exclusive_creation_keeps_the_source(self):
+        payload = self.fixture()
+        note = self.run_copy('/tmp/mv/s', '/tmp/mv/d', 'HELLO', io_fault=2)
+        self.assertIn('NOT removed', note)
+        self.assertEqual(Path('/tmp/mv/s/HELLO').read_bytes(), payload)
+        self.assertFalse(Path('/tmp/mv/d/HELLO').exists())
 
     def test_a_directory_across_volumes_says_to_use_V(self):
         self.fixture()

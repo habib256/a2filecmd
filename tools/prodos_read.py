@@ -54,8 +54,14 @@ class Image:
             for n in range((eof + BLOCK - 1) // BLOCK):
                 index = self.block(key)
                 if storage == 3:             # l'index maitre, puis l'arbrisseau
-                    index = self.block(index[n >> 8] | (index[256 + (n >> 8)] << 8))
-                out += self.block(index[n & 255] | (index[256 + (n & 255)] << 8))
+                    sapling = index[n >> 8] | (index[256 + (n >> 8)] << 8)
+                    if not sapling:
+                        out += bytes(BLOCK)
+                        continue
+                    index = self.block(sapling)
+                data = index[n & 255] | (index[256 + (n & 255)] << 8)
+                # A zero pointer represents a sparse hole, not the boot block.
+                out += self.block(data) if data else bytes(BLOCK)
             return bytes(out[:eof])
         raise ValueError(f'storage type {storage} non gere')
 

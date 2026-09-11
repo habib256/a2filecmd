@@ -50,11 +50,15 @@ const struct PluginHeader __plugin_header = {
 #pragma rodata-name (pop)
 
 /* The two blocks, in the page the core rebuilds on return. */
+#ifndef BM
 #define BM   ((unsigned char*)0x3000)      /* one bitmap block */
 #define ZERO ((unsigned char*)0x3200)      /* 512 zeros, written over and over */
+#endif
 
+#ifndef KBD
 #define KBD     (*(volatile unsigned char*)0xC000)
 #define KBDSTRB (*(volatile unsigned char*)0xC010)
+#endif
 
 /* MLI parameter blocks, packed by cc65: READ_BLOCK $80 / WRITE_BLOCK $81
  * {3, unit, buffer, block}, ON_LINE $C5 {2, unit, buffer}. */
@@ -228,6 +232,12 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     if (key >= 'a') key -= 32;
     whole = key == 'W';
     if (key == 'F') {
+        /* Do not interpret boot/header bytes as allocation bits, or begin
+         * erasing before discovering a later bitmap page lies off-volume.
+         * (total-1)>>12 is pages-1 without a 16-bit rounding overflow. */
+        if (bitmap < 3 || bitmap >= total || ((total - 1) >> 12) >= total - bitmap) {
+            api->strcpy(api->note, "Invalid volume bitmap."); return;
+        }
         api->sprintf(buf, M_ASKF, VOL);
         if (!api->confirm(buf)) { api->strcpy(api->note, M_CANCEL); return; }
     } else if (whole) {

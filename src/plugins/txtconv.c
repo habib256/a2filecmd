@@ -40,6 +40,12 @@ static unsigned int olen;
 static unsigned long nin, nout;
 static unsigned char mode, prev, col, pend, lead, fail;
 static struct { unsigned char count; unsigned char* old; unsigned char* new_; } rp;
+static struct {
+    unsigned char count; unsigned char* path; unsigned char access, type;
+    unsigned int aux; unsigned char storage; unsigned int date, time;
+} cp;
+/* GET_FILE_INFO writes fifteen result bytes after the Pascal-path pointer. */
+static struct { unsigned char count; unsigned char* path; unsigned char result[15]; } ip;
 
 /* Latin-1 $C0-$DF to ASCII; $E0-$FF the same, lower-cased. */
 static const char latin[] = "AAAAAAACEEEEIIIIDNOOOOO?OUUUUY?y";
@@ -52,6 +58,8 @@ static const char m_over[]    = "Overwrite it in the other panel?";
 static const char m_rename[]  = "Rename: ProDOS $%02X, result left as TXTCONV.TMP";
 static const char m_done[]    = "Converted %lu bytes -> %lu bytes";
 static const char m_fail[]    = "%s failed.";
+static const char m_temp[]    = "TXTCONV.TMP already exists: rename or remove it first.";
+static const char m_exists[]  = "Destination already exists.";
 static const char f_tmp[]     = "%s/TXTCONV.TMP";
 static const char f_other[]   = "%s/%s";
 
@@ -85,6 +93,9 @@ static void convert(unsigned char c)
         else { put(c); col = (k == 13 || k == 10) ? 0 : col + 1; }
         break;
     case 'A':
+        /* A broken sequence must not swallow the next ASCII character or
+         * a new lead byte. Finish it, then process this byte normally. */
+        if (pend && (c & 0xC0) != 0x80) { put('?'); pend = 0; }
         if (pend) {                                 /* inside a multi-byte sequence */
             --pend;
             if (lead == 0xC3) {
@@ -123,7 +134,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     FILE* in;
     const char* what;
     unsigned int n, i;
-    unsigned char inplace, k;
+    unsigned char inplace, k, replace = 0;
 
     api->memcpy(&T, api, sizeof T);
     pan = T.panels;
@@ -145,16 +156,38 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     else {
         if (!oth->path[0] || oth->fs || !T.strcmp(oth->path, pan->path)) { T.strcpy(T.note, m_other); return; }
         T.sprintf(target, f_other, oth->path, e->name);
-        in = T.fopen(target, "rb");
-        if (in) { T.fclose(in); if (!T.confirm(m_over)) return; }
+        pascal(T.copy_buf, target);
+        ip.count = 10; ip.path = T.copy_buf;
+        k = T.mli(0xC4, &ip);
+        if (!k) {
+            if (!T.confirm(m_over)) return;
+            replace = 1;
+        } else if (k != 0x46) {
+            T.strcpy(T.note, "Destination check failed."); return;
+        }
     }
     what = "Open";
     in = T.fopen(T.full, "rb");
     if (!in) goto err;
     *T.filetype = e->type;
     *T.auxtype = e->aux;
-    T.remove(target);                               /* a leftover, or the file being overwritten */
     what = "Create";
+    if (inplace || !replace) {
+        /* A leftover may be the only recoverable result of an earlier
+         * failed rename, or even the selected source. Never overwrite it. */
+        pascal(T.copy_buf, target);
+        cp.count = 7; cp.path = T.copy_buf; cp.access = 0xC3;
+        cp.type = e->type; cp.aux = e->aux; cp.storage = 1;
+        cp.date = cp.time = 0;
+        k = T.mli(0xC0, &cp);
+        if (k) {
+            T.fclose(in);
+            if (k == 0x47) {
+                T.strcpy(T.note, inplace ? m_temp : m_exists); return;
+            }
+            goto err;
+        }
+    } else T.remove(target);                       /* confirmed replacement */
     out = T.fopen(target, "wb");
     if (!out) { T.fclose(in); goto errrm; }
     what = "Write";
@@ -168,7 +201,12 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         for (p = T.copy_buf, i = n; i; --i) convert(*p++);
         if (n < 256) break;
     }
+    if (mode == 'A' && pend) put('?');             /* incomplete sequence at EOF */
     flush();
+    /* fread returns short on errors as well as EOF. Without ferror in the
+     * service API, require the panel's full byte count before replacing
+     * the source; a stale size also leaves the original intact. */
+    if (nin != e->size) { fail = 1; what = "Read"; }
     T.fclose(in);
     if (T.fclose(out)) fail = 1;
     if (fail) goto errrm;

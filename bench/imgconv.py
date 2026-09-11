@@ -34,7 +34,7 @@ PORT = 6815
 
 # Ce qui met fin a une execution de la surcouche, sur la ligne 22 (note).
 DONE = (' -> ', 'failed', 'already in that format', 'Other panel',
-        'whole tracks', 'Aborted', 'Select a .PO')
+        'whole tracks', 'Aborted', 'Select a .PO', 'Not a ProDOS-order 2IMG')
 
 
 def to_dsk(po):
@@ -66,6 +66,8 @@ def stage_floppy(tmp):
     stage = tmp / 'flop'
     (stage / 'OUT').mkdir(parents=True)
     (stage / 'BACK').mkdir(parents=True)
+    for name in ('BADSTART.DSK', 'TRUNC.DSK'):
+        (stage / 'OUT' / name).write_bytes(b'preserve existing destination')
     po = tmp / 'WORKPO.po'
     subprocess.run([sys.executable, str(ROOT / 'tools/mkvolume.py'), str(stage), str(po),
                     '--volume', 'WORKPO', '--blocks', '280'], check=True, capture_output=True)
@@ -88,11 +90,19 @@ def main():
         tmp = Path(tmp)
         src64 = make_image(tmp, 'tiny', 'TINY', 64)
         src16 = make_image(tmp, 'small', 'SMALL', 16)
+        badformat = bytearray(to_2mg(src16)); badformat[13] = 1
+        badcount = bytearray(to_2mg(src16)); badcount[22] = 1
+        badstart = bytearray(to_2mg(src16)); badstart[24:28] = bytes(4)
         hd_files = {
             'IMG/TINY.PO': src64,
             'IMG/VERYLONGNAME.PO': src16,
             'IMG/ODD.PO': src64[:12 * 512],          # 12 blocs : pas des pistes entieres
             'IMG/NOTE.TXT': b'not a disk image at all\r',
+            'IMG/BADFMT.2MG': bytes(badformat),
+            'IMG/BADCOUNT.2MG': bytes(badcount),
+            'IMG/VALID.2MG': to_2mg(src16),
+            'IMG/BADSTART.2MG': bytes(badstart),
+            'IMG/TRUNC.2MG': to_2mg(src16)[:-1],
         }
         po = stage_floppy(tmp)
         with boot_hd(tmp, hd_files, port=PORT, plugins=['imgconv'], floppy2=po) as (p, s):
@@ -162,11 +172,27 @@ def main():
             s.ok('refuse un .DSK qui ne ferait pas des pistes entieres',
                  'whole tracks' in line, line)
 
+            line = convert('BADFMT.2MG', 0, b'D', 30)
+            s.ok('refuses the full unsupported 32-bit format',
+                 'Not a ProDOS-order 2IMG' in line, line)
+            line = convert('VALID.2MG', 0, b'D')
+            s.ok('valid 2MG input reuses the header page for DSK output',
+                 line == 'VALID.2MG -> VALID.DSK, 16 blocks', line)
+            line = convert('BADCOUNT.2MG', 0, b'D', 30)
+            s.ok('refuses a block count that would wrap to 16 bits',
+                 'Not a ProDOS-order 2IMG' in line, line)
+
             # 5. .PO -> .2MG, puis .PO -> .DSK, dans /WORKPO/OUT.
             line = convert('TINY.PO', 0, b'2')
             s.ok('TINY.PO -> TINY.2MG, 64 blocks', line == 'TINY.PO -> TINY.2MG, 64 blocks', line)
+            line = convert('BADSTART.2MG', 0, b'D', 30)
+            s.ok('refuses data inside the 2MG header before overwrite',
+                 'Not a ProDOS-order 2IMG' in line, line)
             line = convert('TINY.PO', 0, b'D')
             s.ok('TINY.PO -> TINY.DSK, 64 blocks', line == 'TINY.PO -> TINY.DSK, 64 blocks', line)
+            line = convert('TRUNC.2MG', 0, b'D', 30)
+            s.ok('refuses truncated 2MG data before overwrite',
+                 'Not a ProDOS-order 2IMG' in line, line)
 
             # 6. Le nom coupe a 15 caracteres : VERYLONGNAME.PO -> VERYLONGNAM.DSK.
             line = convert('VERYLONGNAME.PO', 0, b'D')
@@ -188,6 +214,9 @@ def main():
         # La disquette, ecrite dans son fichier a l'arret de POM2.
         out = catalog(po, 'OUT')
         back = catalog(po, 'BACK')
+        for name in ('BADSTART.DSK', 'TRUNC.DSK'):
+            s.ok(name + ': existing destination survives malformed input',
+                 out.get(name, (0, 0, b''))[2] == b'preserve existing destination')
         s.ok('OUT/TINY.2MG : exactement la sortie de tools/po22mg.py',
              out.get('TINY.2MG', (0, 0, b''))[2] == to_2mg(src64),
              (len(out.get('TINY.2MG', (0, 0, b''))[2]), out.get('TINY.2MG', (0, 0, b''))[2][:32]))
@@ -205,8 +234,10 @@ def main():
         s.ok('BACK/TINY.PO : type $06, auxtype $0000',
              back.get('TINY.PO', (0, 0, b''))[:2] == (0x06, 0), back.get('TINY.PO', (None, None))[:2])
         s.ok('rien d\'autre laisse sur la disquette',
-             sorted(out) == ['TINY.2MG', 'TINY.DSK', 'VERYLONGNAM.DSK'] and sorted(back) == ['TINY.PO'],
+             sorted(out) == ['BADSTART.DSK', 'TINY.2MG', 'TINY.DSK', 'TRUNC.DSK', 'VALID.DSK', 'VERYLONGNAM.DSK'] and sorted(back) == ['TINY.PO'],
              (sorted(out), sorted(back)))
+        s.ok('valid 2MG-to-DSK conversion preserves every sector',
+             out.get('VALID.DSK', (0, 0, b''))[2] == to_dsk(src16))
     return ok_all(s, 'imgconv')
 
 

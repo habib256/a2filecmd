@@ -5,6 +5,113 @@ downloads and installation.
 
 ## Unreleased
 
+- Fixed: IMGCONV trusted 2MG data offsets and block counts without checking
+  that the data lay outside the header and within the source file. Invalid
+  offsets could convert header bytes, and truncated input could destroy an
+  existing destination before failing. Range checks now run before destination
+  access, using subtraction to avoid overflow. Tests cover invalid ranges,
+  valid padding and trailing metadata, and preservation of existing outputs.
+
+- Fixed: the host ProDOS image reader returned boot bytes for sparse data
+  blocks and misread missing tree indexes, sometimes shortening file contents.
+  It now returns zero-filled holes while preserving file offsets and EOF.
+  Regression tests cover sapling and tree holes, missing indexes, and partial
+  final blocks.
+
+- Fixed: mkvolume.py allowed distinct host names to produce duplicate ProDOS
+  directory entries after case normalization and type-suffix removal (for
+  example, SMALL.TXT and SMALL.BIN both became SMALL). It now refuses these
+  collisions within each directory and identifies both source names. Existing
+  output images remain untouched on refusal; identical names in different
+  directories remain valid. Tests cover suffixes, explicit type metadata,
+  nested directories and file/directory collisions.
+
+- Fixed: WIPE F trusted invalid bitmap locations, allowing boot/header bytes
+  to be treated as allocation bits or erasing blocks before discovering that
+  later bitmap pages were outside the volume. It now validates the bitmap's
+  start and complete extent before confirmation or writes. Host tests verify
+  malformed pointers cause no changes and a valid bitmap erases only its
+  free block. This validates location, not the correctness of allocation bits.
+
+- Fixed: same-volume MOVE bypassed file locks because raw directory writes
+  never reached ProDOS's deletion access check. It now checks the on-disk
+  source entry's destroy-enable bit before any write, for files and
+  directories. Host tests assert locked entries leave the disk unchanged;
+  POM2 locks a file through L, verifies refusal, then unlocks and moves it.
+
+- Fixed: TXTCONV could bypass overwrite confirmation when a destination
+  existed but could not be opened for reading. It now checks ProDOS metadata,
+  refuses lookup errors, and exclusively creates destinations reported absent.
+  Existing destinations still require explicit overwrite confirmation. Host
+  tests inject failed reads and metadata errors and verify both files survive.
+
+- Fixed: TXTCONV's accent conversion consumed ASCII characters or new UTF-8
+  lead bytes after a broken sequence and silently dropped incomplete final
+  sequences. These now emit `?`, with the following byte processed normally.
+  Host tests cover two-, three- and four-byte sequences and 256-byte chunk
+  boundaries; the POM2 bench verifies the converted file byte for byte.
+
+- Fixed: same-volume MOVE followed any named entry as a directory, including
+  regular files and resource-fork files. A stale panel path or damaged entry
+  could make it rewrite file data as directory records. Every path component
+  must now have directory storage type before traversal proceeds. Host tests
+  cover invalid source and destination components and assert no disk writes.
+  Lookup names reuse buffers that are idle until the move starts so both
+  CPU overlays retain their memory limits.
+
+- Fixed: IMGCONV validated only the low byte of the 32-bit 2MG format and
+  silently truncated the 32-bit block count to 16 bits. It now refuses
+  unsupported formats and oversized counts before seeking or creating output.
+  Header parsing reuses the idle track buffer so the additional checks fit
+  both CPU overlays. Host tests cover every discarded byte; the POM2 bench
+  checks refusals and a valid 2MG-to-DSK conversion byte for byte.
+
+- Fixed: IMGCONV ignored failed seeks to DSK sectors and to the data in a
+  2MG input. It could convert bytes from the wrong position and report
+  success. Failed seeks now report a read failure; an incomplete output is
+  removed, and a failed initial 2MG seek leaves the destination untouched.
+  Host tests inject failures into either DSK sector seek across two tracks
+  and verify the normal sector ordering, plus refusal before destination
+  access when the initial 2MG seek fails.
+
+- Fixed: SYNC could accept a matching prefix as a verified copy, install a
+  truncated file when the cached source size was stale, and remove the old
+  destination backup. Verification now requires EOF in both streams before
+  either destination rename. Host regressions cover stale sizes, unexpected
+  output bytes and successful replacement with an empty file.
+
+- Fixed: an in-place TXTCONV conversion could replace the original with
+  a truncated or empty result after a source read error. The converter now
+  requires the byte count recorded by the panel before replacing the source;
+  an incomplete read or changed size reports "Read failed" and discards the
+  temporary result. Host tests inject zero-byte and partial reads and cover
+  empty files and exact 256-byte boundaries.
+  In-place conversion also refuses an existing `TXTCONV.TMP` using exclusive
+  ProDOS CREATE, preserving a previous recovery result and preventing a
+  source with that name from being used as its own temporary file.
+
+- Fixed: cross-volume MOVE treated a failed destination read-open as proof
+  that the name was unused, allowing an existing file to be overwritten.
+  It now uses exclusive ProDOS CREATE after confirmation and touches no
+  destination on a creation error. Host fault tests cover the failed probe
+  and failed creation; the POM2 bench also moves a file into /RAM and reads
+  its contents back. Existing buffers are reused and unused Pascal-path
+  storage is omitted from service overlays that do not need it.
+
+- Fixed two MOVE directory-growth bugs. A damaged parent reference is now
+  rejected before any write, preventing unrelated entry corruption,
+  out-of-bounds buffer writes and partial growth on an unreadable parent.
+  On a full volume larger than 61,440 blocks, allocation now stops before
+  its 16-bit counter wraps to zero. Regression tests cover damaged parent
+  references and bitmap boundaries; the allocator also runs under sim65
+  when cc65 and sim65 are available to catch target-only integer overflow.
+
+- Fixed: cross-volume MOVE could delete a longer source after copying and
+  verifying only the size cached by the panel. Verification now checks that
+  both files end at that size before removing the source. A size mismatch
+  keeps the original and removes the incomplete copy; regression tests cover
+  stale sizes, including zero, and a successful move of an empty file.
+
 - Fixed: the second tool floppy was not in the release. `tools/check_images.py`
   still demanded that every service overlay be on EXTRA, so it failed on the
   ten that had moved to EXTRA2 -- and it runs in CI. The CI's own file globs

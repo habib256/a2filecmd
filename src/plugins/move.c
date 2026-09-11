@@ -91,12 +91,19 @@ static unsigned char unit;              /* the ProDOS unit of the volume */
 static unsigned int srckey, dstkey;     /* the two directories, by key block */
 static unsigned char ent[ENTRY_LEN];    /* the entry being carried across */
 static unsigned char scratch[512];      /* the readback */
-static char seek[NAME_LEN];             /* the name being looked for */
-static char found[NAME_LEN];            /* a name read out of a directory */
-static char target[PATH_LEN];           /* where a cross-volume copy goes */
+/* Lookups finish before ent carries the moved entry or scratch is used for
+ * write verification. Reuse those buffers for the two lookup names. */
+#define seek ((char*)ent)
+#define found ((char*)scratch)
+/* The resident provides a destination path buffer outside this overlay. */
+#define target a.other_full
+static struct {
+    unsigned char n; unsigned char* path; unsigned char access, type;
+    unsigned int aux; unsigned char storage; unsigned int date, time;
+} create;
 
 static const char m_dirs[]  = "Open a real ProDOS directory in each panel.";
-static const char m_same[]  = "Both panels show the same directory.";
+static const char m_same[]  = "Both panels: same directory.";
 static const char m_tree[]  = "A tree across volumes: V copies it, this cannot.";
 static const char m_here[]  = "%s is already in the other panel.";
 static const char m_cask[]  = "Another volume: copy %s there and remove it here?";
@@ -104,8 +111,9 @@ static const char m_cbad[]  = "Copy failed: %s was NOT removed.";
 static const char m_vbad[]  = "The copy reads back different: %s was NOT removed.";
 static const char m_del[]   = "%s copied across, but it could not be removed here.";
 static const char m_cok[]   = "%s copied to the other volume and removed here.";
-static const char m_prog[]  = "That is the program's own A2FILE directory: refused.";
-static const char m_pick[]  = "Put the cursor on what should move.";
+static const char m_prog[]  = "Cannot move the program's A2FILE files.";
+static const char m_pick[]  = "Select an entry to move.";
+static const char m_locked[] = "Source is locked.";
 static const char m_self[]  = "A directory cannot move inside itself.";
 static const char m_walk[]  = "The directories cannot be walked from the volume root.";
 static const char m_taken[] = "The other panel already has a %s.";
@@ -200,6 +208,9 @@ static unsigned int alloc_block(void)
                 if (!wr(bitmap + base / 4096)) return 0;
                 return base + i;
             }
+        /* Stop before the final increment: on cc65, $F000 + $1000 wraps
+         * to zero and a full volume larger than 61,440 blocks loops forever. */
+        if (total - base <= 4096) break;
     }
     return 0;
 }
@@ -222,8 +233,16 @@ static unsigned char grow_dir(unsigned int key)
     if (!rd(key)) return 0;
     pblk = rd16(buf + 4 + H_PARENT);
     pslot = buf[4 + H_PARENTNUM];
-    if (!pblk || !pslot) return 0;
+    if (!pblk || !pslot || pslot > PER_BLOCK ||
+        buf[4 + H_PARENTLEN] != ENTRY_LEN) return 0;
     --pslot;                                    /* it is counted from one */
+
+    /* Validate the backlink before allocating or linking anything. A bad
+     * parent slot must not rewrite another file, or escape the block buffer. */
+    if (!rd(pblk)) return 0;
+    p = buf + 4 + (unsigned int)pslot * ENTRY_LEN;
+    if ((p[0] >> 4) != 13 || rd16(p + 0x11) != key) return 0;
+    if (!rd(key)) return 0;
 
     last = key;                                 /* the end of the chain */
     for (;;) {
@@ -261,6 +280,7 @@ static unsigned int key_of(const char* path)
 {
     unsigned int b = 2, blk;
     unsigned char i, n, slot;
+    unsigned char* entry;
     if (path[0] != '/') return 0;
     for (i = 1; path[i] && path[i] != '/'; ++i) ;
     while (path[i]) {
@@ -270,7 +290,11 @@ static unsigned int key_of(const char* path)
         seek[n] = 0;
         if (!n) break;                          /* a trailing slash */
         if (!locate(b, &blk, &slot)) return 0;
-        b = rd16(buf + 4 + (unsigned int)slot * ENTRY_LEN + 0x11);   /* its key block */
+        entry = buf + 4 + (unsigned int)slot * ENTRY_LEN;
+        /* A cached panel path does not guarantee this entry is still a
+         * directory. Never walk a file's data/index blocks as directory records. */
+        if ((entry[0] >> 4) != 13) return 0;
+        b = rd16(entry + 0x11);                  /* the directory's key block */
         if (!b) return 0;
     }
     return b;
@@ -313,16 +337,27 @@ static void copy_across(const struct Entry* e)
     FILE *in, *out;
     unsigned long left, done = 0;
     unsigned int n, i;
-    unsigned char bad = 0;
+    unsigned char bad = 0, err;
 
     if (e->type == 0x0F) { note(m_tree); return; }
     if (!join(target, other->path, e->name)) { note(m_walk); return; }
-    in = a.fopen(target, "rb");
-    if (in) { a.fclose(in); a.sprintf(a.note, m_here, e->name); return; }
 
     a.sprintf((char*)scratch, m_cask, e->name);
     if (!a.confirm((char*)scratch)) { note(""); return; }
 
+    /* CREATE must grant us a new entry before fopen("wb") or failure
+     * cleanup can touch this path. Use the readback buffer for its Pascal
+     * path; it is free until copying starts. */
+    scratch[0] = a.strlen(target);
+    a.strcpy((char*)scratch + 1, target);
+    create.n = 7; create.path = scratch; create.access = 0xC3;
+    create.type = e->type; create.aux = e->aux; create.storage = 1;
+    create.date = create.time = 0;
+    err = a.mli(0xC0, &create);
+    if (err) {
+        a.sprintf(a.note, err == 0x47 ? m_here : m_cbad, e->name);
+        return;
+    }
     *a.filetype = e->type;
     *a.auxtype = e->aux;
     in = a.fopen(a.full, "rb");
@@ -346,6 +381,10 @@ static void copy_across(const struct Entry* e)
         if (a.fread(buf, 1, n, in) != n || a.fread(scratch, 1, n, out) != n) bad = 1;
         else for (i = 0; i < n; ++i) if (buf[i] != scratch[i]) { bad = 1; break; }
     }
+    /* The panel's size can be stale. Matching that prefix is not enough:
+     * deleting a longer source would silently discard its remaining bytes.
+     * Both streams must end at the size we copied, including empty files. */
+    if (!bad && (a.fread(buf, 1, 1, in) || a.fread(scratch, 1, 1, out))) bad = 1;
     if (in) a.fclose(in);
     if (out) a.fclose(out);
     if (bad) { a.remove(target); a.sprintf(a.note, m_vbad, e->name); return; }
@@ -384,6 +423,9 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     if (locate(dstkey, &dblk, &dslot)) { a.sprintf(a.note, m_taken, e->name); return; }
     if (!locate(srckey, &sblk, &sslot)) { a.sprintf(a.note, m_gone, e->name); return; }
     a.memcpy(ent, buf + 4 + (unsigned int)sslot * ENTRY_LEN, ENTRY_LEN);
+    /* Raw directory writes bypass ProDOS DESTROY's access check. Use the
+     * freshly read entry, not a possibly stale panel access flag. */
+    if (!(ent[30] & 0x80)) { note(m_locked); return; }
     isdir = (ent[0] >> 4) == 13;
     subkey = rd16(ent + 0x11);
     blocks = rd16(ent + 0x13);

@@ -23,6 +23,7 @@
  * Being big, the core re-reads and redraws both panels on return (clrscr
  * included): the last word goes through api->note, never message(). */
 #include "../a2fc_plugin.h"
+#include <stdint.h>
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api);
 
@@ -43,7 +44,9 @@ const struct PluginHeader __plugin_header = {
 /* The scratch page: one DOS 3.3 track, 16 sectors of 256 bytes. Free only
  * because this file stops before $3000 (the Makefile checks the window,
  * not this; keep the file under 5,376 bytes). */
+#ifndef TRACK
 #define TRACK ((unsigned char*)0x3000)
+#endif
 #define KBD   ((unsigned char*)0xC000)
 #define STROBE ((unsigned char*)0xC010)
 
@@ -66,14 +69,14 @@ static const char s_do[]  = ".DO";
 static const char s_hdv[] = ".HDV";
 static const char* const SUF[3] = { s_po, s_dsk, s_2mg };
 
-static const char m_pick[]   = "Select a .PO, .HDV, .DSK, .DO or .2MG image.";
-static const char m_keys[]   = "Convert to P) .PO, D) .DSK, 2) .2MG, ESC to cancel";
-static const char m_same[]   = "The image is already in that format.";
-static const char m_other[]  = "Other panel: same directory, an image, or not ProDOS.";
+static const char m_pick[]   = "Select a .PO/.HDV/.DSK/.DO/.2MG image.";
+static const char m_keys[]   = "Convert to P) .PO, D) .DSK, 2) .2MG, ESC cancels";
+static const char m_same[]   = "Image already in that format.";
+static const char m_other[]  = "Other panel: same directory or not ProDOS.";
 static const char m_blocks[] = "Not a whole number of 512-byte blocks.";
-static const char m_track[]  = "A .DSK needs whole tracks: a multiple of 8 blocks.";
+static const char m_track[]  = "DSK needs whole tracks (8-block multiples).";
 static const char m_2mg[]    = "Not a ProDOS-order 2IMG file.";
-static const char m_over[]   = "Overwrite it in the other panel?";
+static const char m_over[]   = "Overwrite destination?";
 static const char m_stop[]   = "Aborted, %s removed.";
 static const char m_done[]   = "%s -> %s, %u blocks";
 static const char m_fail[]   = "%s failed.";
@@ -116,10 +119,10 @@ static unsigned char read_block(void)
     if (skind != K_DSK)
         return T.fread(buf, 1, 512, in) == 512;
     i = (unsigned char)(n & 7) << 1;
-    off = sbase + ((long)(n >> 3) << 12);
-    T.fseek(in, off + ((long)SECT[i] << 8), SEEK_SET);
+    off = (long)(n >> 3) << 12;          /* raw DSK data always starts at zero */
+    if (T.fseek(in, off + ((long)SECT[i] << 8), SEEK_SET)) return 0;
     if (T.fread(buf, 1, 256, in) != 256) return 0;
-    T.fseek(in, off + ((long)SECT[i + 1] << 8), SEEK_SET);
+    if (T.fseek(in, off + ((long)SECT[i + 1] << 8), SEEK_SET)) return 0;
     return T.fread(buf + 256, 1, 256, in) == 256;
 }
 
@@ -178,8 +181,8 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     target = T.other_full;
 
     if (!e->name[0] || e->type == 0x0F || !pan->path[0] || pan->fs || !classify(e->name)) {
-        T.strcpy(T.note, m_pick);
-        return;
+        what = m_pick;
+        goto note;
     }
 
     /* The target container, one key. */
@@ -192,10 +195,10 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         if (k == 'D') { dkind = K_DSK; break; }
         if (k == '2') { dkind = K_2MG; break; }
     }
-    if (dkind == skind) { T.strcpy(T.note, m_same); return; }
+    if (dkind == skind) { what = m_same; goto note; }
     if (!oth->path[0] || oth->fs || !T.strcmp(oth->path, pan->path)) {
-        T.strcpy(T.note, m_other);
-        return;
+        what = m_other;
+        goto note;
     }
 
     /* The source, and how many blocks it holds. */
@@ -203,24 +206,32 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     in = T.fopen(T.full, "rb");
     if (!in) goto err;
     if (skind == K_2MG) {
-        if (T.fread(buf, 1, 64, in) != 64 || buf[0] != '2' || buf[1] != 'I'
-            || buf[2] != 'M' || buf[3] != 'G' || buf[0x0C] != 1) {
+        /* The track page is idle while reading the header. Its fixed
+         * address also keeps these field checks small on the 6502. */
+        if (T.fread(TRACK, 1, 64, in) != 64 || TRACK[0] != '2' || TRACK[1] != 'I'
+            || TRACK[2] != 'M' || TRACK[3] != 'G' || TRACK[0x0C] != 1
+            /* Both fields are 32-bit. Only format 1 and a block count
+             * representable by our 16-bit loop are supported. */
+            || (TRACK[0x0D] | TRACK[0x0E] | TRACK[0x0F] | TRACK[0x16] | TRACK[0x17]))
+            goto bad2mg;
+        blocks = TRACK[0x14] | ((unsigned int)TRACK[0x15] << 8);
+        sbase = *(uint32_t*)(TRACK + 0x18);
+        /* Subtract only after bounding the offset, so a malicious range
+         * cannot wrap. Refuse before opening or removing the destination. */
+        if (sbase < 64 || sbase > e->size
+            || (unsigned long)blocks > ((e->size - sbase) >> 9)) goto bad2mg;
+        if (T.fseek(in, sbase, SEEK_SET)) {
             T.fclose(in);
-            T.strcpy(T.note, m_2mg);
-            return;
+            what = "Read";
+            goto err;
         }
-        blocks = buf[0x14] | ((unsigned int)buf[0x15] << 8);
-        sbase = *(unsigned long*)(buf + 0x18);
-        T.fseek(in, sbase, SEEK_SET);
     } else {
-        if (e->size & 511) { T.fclose(in); T.strcpy(T.note, m_blocks); return; }
+        if (e->size & 511) { what = m_blocks; goto badsource; }
         blocks = (unsigned int)(e->size >> 9);
-        sbase = 0;
     }
     if (!blocks || ((blocks & 7) && (dkind == K_DSK || skind == K_DSK))) {
-        T.fclose(in);
-        T.strcpy(T.note, blocks ? m_track : m_blocks);
-        return;
+        what = blocks ? m_track : m_blocks;
+        goto badsource;
     }
 
     /* The name of the result: the base, cut so that name + suffix stays
@@ -278,4 +289,11 @@ errrm2:
     T.remove(target);
 err:
     T.sprintf(T.note, m_fail, what);    /* report_error would not survive the redraw */
+    return;
+bad2mg:
+    what = m_2mg;
+badsource:
+    T.fclose(in);
+note:
+    T.strcpy(T.note, what);
 }

@@ -174,8 +174,13 @@ class Volume:
         items = sorted(path.iterdir(), key=lambda p: p.name.upper())
         if len(items) > len(slots):
             raise SystemExit(f'{path} : {len(items)} entrees pour {len(slots)} places')
+        names = {}
         for (blk_no, k), item in zip(slots, items):
             name, ftype, aux = prodos_name(item.name)
+            if name in names:
+                raise SystemExit(f'{path}: {names[name]!r} and {item.name!r} '
+                                 f'both map to ProDOS name {name!r}')
+            names[name] = item.name
             if item.is_dir():
                 sub_count = len(list(item.iterdir()))
                 sub_blocks = [self.alloc() for _ in range(self.dir_blocks_needed(sub_count))]

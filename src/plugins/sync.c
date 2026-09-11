@@ -56,6 +56,9 @@ static unsigned char copy_file(unsigned char exists) {
         else for(i=0;i<n;++i)if(buf[i]!=check[i]){error=1;break;}
         left-=n;
     }
+    /* A matching prefix is not a verified file. A stale directory size or
+     * extra output bytes must not replace the destination and its backup. */
+    if(!error && (a.fread(buf,1,1,in) || a.fread(check,1,1,out)))error=1;
     a.fclose(in);a.fclose(out);if(error)goto fail;
     if(exists && rename_file(target,bak))goto fail;
     if(rename_file(tmp,target)) {

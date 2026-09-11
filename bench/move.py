@@ -45,6 +45,14 @@ def main():
             s.key(TAB); p.stable()
 
             s.select('HELLO'); p.stable()
+            s.key(b'L'); p.stable()
+            menu_run(s, p, 'MOVE')
+            s.wait(lambda: s.has('Source is locked'), 'locked source refusal', 30); p.stable()
+            s.ok('MOVE refuses a source locked through the file manager',
+                 s.has('Source is locked'))
+            s.ok('locked source remains in its original directory',
+                 any(r[:38].startswith('HELLO ') for r in s.rows()[2:20]))
+            s.key(b'L'); p.stable()  # unlock, then the normal move must succeed
             menu_run(s, p, 'MOVE')
             s.wait(lambda: s.has('must grow a block'), 'la demande', 30); p.stable()
             s.ok('dit que le repertoire doit grandir avant de le faire',
@@ -82,6 +90,27 @@ def main():
                 s.ok('volume sain apres agrandissement -- %s 0' % label,
                      number(label) == 0, text)
             s.key(ESC); s.wait(lambda: s.has('! More'), 'retour aux panneaux'); p.stable()
+
+            # Cross-volume CREATE must work through the actual ProDOS MLI,
+            # and the resident destination buffer must survive confirmation.
+            s.select('/WORKHD'); s.key(RET); p.stable()
+            s.select('SRC'); s.key(RET); p.stable()
+            s.select('KEEP'); p.stable()
+            s.key(TAB); s.key(b'/'); p.stable()
+            s.select('/RAM', 40); s.key(RET); p.stable()
+            s.key(TAB); p.stable()
+            menu_run(s, p, 'MOVE')
+            s.wait(lambda: s.has('Another volume:'), 'cross-volume confirmation', 30)
+            s.key(b'Y')
+            s.wait(lambda: s.has('copied to the other volume and removed'),
+                   'cross-volume move', 60); p.stable()
+            s.ok('cross-volume MOVE removes the source after verification',
+                 not any(r[:38].startswith('KEEP ') for r in s.rows()[2:20]))
+            s.key(TAB); p.stable(); s.select('KEEP', 40)
+            s.key(b'T'); p.stable()
+            s.ok('cross-volume destination contains the complete file',
+                 s.has('keep' * 8), '\n'.join(s.rows()))
+            s.key(ESC); p.stable()
     return ok_all(s, 'move')
 
 
