@@ -5,6 +5,21 @@ downloads and installation.
 
 ## Unreleased
 
+- MOVE no longer stops at a full target directory. It allocates a block from
+  the volume bitmap, links it onto the end of the directory's chain and tells
+  the directory's own entry that it is a block longer -- after asking, and
+  saying what it is about to do: "Its directory must grow a block." The block
+  is taken before anything points at it, so an interruption leaks a block,
+  which VOLINFO reports, rather than leaving a directory pointing at one the
+  volume thinks is free.
+
+  The volume directory is still refused: its four blocks are fixed and it has
+  no entry of its own to rewrite. Covered on the host against a volume built
+  by mkvolume.py, and in the emulator with VOLINFO as the judge -- it reads
+  the whole volume back and counts blocks used but marked free, shared
+  references, invalid pointers, wrong counts and lost blocks. MOVE had no
+  emulator bench at all until now; it has one.
+
 - Added the INTBASIC service overlay: an Integer BASIC listing, ProDOS type
   `$FA`. BASLIST served the `$FC` and nothing served the `$FA`, which fell to
   the hex viewer or to the text reader, both of which show its tokens as the

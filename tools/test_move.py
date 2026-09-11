@@ -141,6 +141,23 @@ def find(img, key, name):
     return None, None, None
 
 
+def bitmap_free(img, n):
+    """Is block n free? One bit a block, set meaning free."""
+    hdr = img.block(2)[4:4 + 39]
+    bitmap = int.from_bytes(hdr[0x23:0x25], 'little')
+    blk = img.block(bitmap + n // 4096)
+    return bool((blk[(n % 4096) // 8] >> (7 - (n & 7))) & 1)
+
+
+def chain(img, key):
+    """The blocks of a directory, in order."""
+    out, b = [], key
+    while b:
+        out.append(b)
+        b = int.from_bytes(img.block(b)[2:4], 'little')
+    return out
+
+
 def header_count(img, key):
     return int.from_bytes(img.block(key)[4 + 0x21:4 + 0x23], 'little')
 
@@ -190,6 +207,76 @@ class Move(unittest.TestCase):
                         str(img), '--volume', 'MOVE', '--blocks', '280'],
                        check=True, capture_output=True)
         return img
+
+    def full_volume(self, files=12, root_extra=0):
+        """DST filled to the last slot of its only block: twelve entries, the
+        header taking slot 0. Anything more has to grow it."""
+        stage = self.p / 'full'
+        subprocess.run(['rm', '-rf', str(stage)], check=True)
+        (stage / 'SRC' / 'SUB').mkdir(parents=True)
+        (stage / 'DST').mkdir(parents=True)
+        (stage / 'SRC' / 'SUB' / 'INSIDE#040000').write_bytes(b'inside' * 100)
+        (stage / 'SRC' / 'HELLO#040000').write_bytes(b'hello' * 20)
+        for i in range(files):
+            (stage / 'DST' / ('F%02d#040000' % i)).write_bytes(b'x' * 16)
+        for i in range(root_extra):
+            (stage / ('R%02d#040000' % i)).write_bytes(b'r' * 16)
+        img = self.p / 'full.po'
+        subprocess.run(['python3', str(ROOT / 'tools' / 'mkvolume.py'), str(stage),
+                        str(img), '--volume', 'MOVE', '--blocks', '280'],
+                       check=True, capture_output=True)
+        return img
+
+    def test_a_full_target_directory_grows_by_one_block(self):
+        """The refusal this replaces: MOVE used to stop at a target with no
+        free entry. It now allocates a block, links it on and tells the
+        directory's own entry that it is longer."""
+        img = self.full_volume()
+        before = Image(img.read_bytes())
+        dstkey = child_key(before, 2, 'DST')
+        srckey = child_key(before, 2, 'SRC')
+        self.assertEqual(chain(before, dstkey), [dstkey], 'the fixture is not one block')
+        self.assertIsNone(find(before, dstkey, 'HELLO')[1])
+        _, _, dst_entry = find(before, 2, 'DST')
+        blocks_before = int.from_bytes(dst_entry[0x13:0x15], 'little')
+        eof_before = int.from_bytes(dst_entry[0x15:0x18], 'little')
+
+        note = self.run_move(img, '/MOVE/SRC', '/MOVE/DST', 'HELLO')
+        self.assertIn('moved', note)
+
+        after = Image(img.read_bytes())
+        blocks = chain(after, dstkey)
+        self.assertEqual(len(blocks), 2, 'the directory did not grow')
+        new = blocks[1]
+        self.assertFalse(bitmap_free(after, new), 'the new block is still marked free')
+        self.assertEqual(int.from_bytes(after.block(new)[0:2], 'little'), dstkey,
+                         'the new block does not point back')
+        blk, slot, moved = find(after, dstkey, 'HELLO')
+        self.assertEqual(blk, new)
+        self.assertEqual(int.from_bytes(moved[0x25:0x27], 'little'), dstkey)
+        self.assertEqual(header_count(after, dstkey), 13)
+        self.assertEqual(header_count(after, srckey), 1)
+        _, _, dst_after = find(after, 2, 'DST')
+        self.assertEqual(int.from_bytes(dst_after[0x13:0x15], 'little'), blocks_before + 1)
+        self.assertEqual(int.from_bytes(dst_after[0x15:0x18], 'little'), eof_before + 512)
+        self.assertEqual(after.read(moved), b'hello' * 20)
+
+    def test_growing_asks_first_and_declining_changes_nothing(self):
+        img = self.full_volume()
+        before = img.read_bytes()
+        note = self.run_move(img, '/MOVE/SRC', '/MOVE/DST', 'HELLO', confirm=0)
+        self.assertEqual(note, '')
+        self.assertEqual(img.read_bytes(), before, 'saying no still touched the volume')
+
+    def test_a_full_volume_directory_is_refused(self):
+        """Its four blocks are fixed and it has no entry of its own to
+        rewrite, so it is the one directory that cannot be made longer."""
+        img = self.full_volume(files=1, root_extra=49)     # SRC + DST + 49 = 51
+        before = img.read_bytes()
+        self.assertEqual(len(entries(Image(before), 2)), 51, 'the root is not full')
+        note = self.run_move(img, '/MOVE/SRC', '/MOVE', 'HELLO')
+        self.assertIn('cannot grow', note)
+        self.assertEqual(img.read_bytes(), before, 'a refused move touched the volume')
 
     def test_a_second_directory_block_is_used_and_pointed_at(self):
         """parent_pointer is the BLOCK holding the entry, not the directory's
