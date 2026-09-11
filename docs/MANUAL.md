@@ -17,7 +17,7 @@ starting and identifies the edition on its title screen.
 | Edition | What to use |
 |---|---|
 | **BOOT + EXTRA + EXTRA2** | Three 140 KB floppies for the same CPU and release. Boot BOOT; EXTRA supplies the everyday extra tools and BASIC.SYSTEM, EXTRA2 the disk and block surgery. |
-| **XL** | One bootable 32 MB `.2mg` with all 44 overlays, BASIC.SYSTEM and demonstration files. No EXTRA disk is needed. |
+| **XL** | One bootable 32 MB `.2mg` with all 51 overlays, BASIC.SYSTEM and demonstration files. No companion disk is needed. |
 
 The download names include the CPU, role and version:
 
