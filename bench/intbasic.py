@@ -88,7 +88,33 @@ def main():
             s.key(ESC)
             s.wait(lambda: s.has('/WORKHD/WORK'), 'le retour aux panneaux', 20); p.stable()
 
-            # 4. Escape rend la main aux panneaux, curseur en place.
+            # 4. T sur un $FA lance la surcouche, comme T sur un $FC lance
+            #    BASLIST : c'est le chemin ordinaire, pas seulement le menu.
+            s.select('BREAKOUT', 0); p.stable()
+            s.key(b't')
+            s.wait(lambda: s.has('BREAKOUT GAME'), 'T sur un $FA', 30); p.stable()
+            s.ok('T liste un programme Integer BASIC',
+                 [r.rstrip() for r in s.rows()[:2]] == want[:2], s.rows()[0])
+            s.key(ESC)
+            s.wait(lambda: s.has('/WORKHD/WORK'), 'le retour', 20); p.stable()
+
+            # 5. T sur un fichier texte ordinaire va toujours au lecteur texte,
+            #    et H a l'hexadecimal : les deux cas ont ete reecrits pour
+            #    trouver la place du branchement ci-dessus.
+            s.select('PLAIN.TXT', 0); p.stable()
+            s.key(b't')
+            s.wait(lambda: s.has('not a program'), 'le lecteur texte', 20); p.stable()
+            s.ok('T sur un texte ouvre toujours le lecteur texte',
+                 s.has('not a program'), s.rows()[0])
+            s.key(ESC); s.wait(lambda: s.has('/WORKHD/WORK'), 'le retour', 20); p.stable()
+            s.key(b'h')
+            s.wait(lambda: s.has('6E 6F 74') or s.has('not a program'), 'l\'hexadecimal', 20)
+            p.stable()
+            s.ok('H sur un texte ouvre toujours l\'hexadecimal',
+                 s.has('6E 6F 74'), s.rows()[0])
+            s.key(ESC); s.wait(lambda: s.has('/WORKHD/WORK'), 'le retour', 20); p.stable()
+
+            # 6. Escape rend la main aux panneaux, curseur en place.
             s.select('BREAKOUT', 0); p.stable()
             menu_run(s, p, 'INTBASIC')
             s.wait(lambda: s.has('BREAKOUT GAME'), 'le listing', 30); p.stable()

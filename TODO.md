@@ -140,11 +140,9 @@ BOOT/les disquettes. Les nouveaux plugins vont sur EXTRA et XL, séparément en
   octets soit 88 pixels — vignette 88x52 à confirmer).
 - 🟢 **`ADB`, `ASP`, `AWRITER`, `CALC`** — lecteurs Apple II et AppleWorks
   supplémentaires. Le trou du `$FA` est comblé : `INTBASIC` liste l’Integer
-  BASIC depuis le menu `!`. Reste à le brancher sur `T`, comme `BASLIST` pour
-  le `$FC` et `AWP` pour le `$1A` — une vingtaine d’octets dans le résident,
-  qui finit à `$BEDF` pour une limite de `$BEE0` en 65C02 (l’édition 6502 a
-  de la place). Corpus : `GISTDATA/IMG/SAMPLE.MEDIA/WOZ.BREAKOUT` (1 859 o),
-  `APPLEVISION` (5 964 o).
+  BASIC, sur `T` comme depuis le menu `!`. Corpus :
+  `GISTDATA/IMG/SAMPLE.MEDIA/WOZ.BREAKOUT` (1 859 o), `APPLEVISION`
+  (5 964 o).
 - 🟢 **`DUET`, `SAMPLE`** — musique et échantillons audio additionnels.
 - 🟢 **`TERM`, `XMODEM`, `CPMFS`, `SPLIT`** — communication série et formats
   de disquettes supplémentaires.

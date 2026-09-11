@@ -13,7 +13,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from pom2 import Pom2, Session, ROOT, DISK, FULL
+from pom2 import Pom2, Session, ROOT, DISK, FULL, VERSION
 
 
 def scratch(dirpath, name='SCRATCH', blocks=1600):
@@ -46,7 +46,7 @@ def main():
             s.ok('la disquette publiee demarre sur les panneaux',
                  s.has('/A2FC' + ('65C02' if FULL else '6502')), s.rows()[0][:40])
             s.ok('la barre de statut porte le nom et la version',
-                 s.has('A2 FILE CMD 0.7.5'), s.rows()[20][:60].strip())
+                 s.has('A2 FILE CMD ' + VERSION), s.rows()[20][:60].strip())
             s.ok('le lanceur est le seul .SYSTEM du volume',
                  any(r.startswith('A2FILE.SYSTEM') for r in s.rows()))
             s.ok('le dossier A2FILE est la, et pas de DEMO : la disquette est nue',
