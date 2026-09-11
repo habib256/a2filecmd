@@ -108,6 +108,35 @@ class Roundtrip(unittest.TestCase):
         with self.assertRaises(subprocess.CalledProcessError):
             build(self.stage)                     # 200 Ko sur 280 blocs : deborde
 
+    def test_normalized_name_collisions_preserve_existing_output(self):
+        _, output = build(self.stage)
+        original = output.read_bytes()
+        cases = (('SMALL.BIN', 'SMALL.TXT', 'SMALL'),
+                 ('small#060123', 'SMALL.TXT', 'SMALL'),
+                 ('SUB/DEEP#060000', 'DEEP.TXT', 'DEEP'),
+                 ('SUB.TXT', 'SUB', 'SUB'))
+        for extra, existing, normalized in cases:
+            with self.subTest(extra=extra):
+                collision = self.stage / extra
+                collision.write_bytes(b'different payload')
+                try:
+                    with self.assertRaises(subprocess.CalledProcessError) as failure:
+                        build(self.stage)
+                    error = failure.exception.stderr.decode()
+                    self.assertIn(collision.name, error)
+                    self.assertIn(existing, error)
+                    self.assertIn(normalized, error)
+                    self.assertEqual(output.read_bytes(), original)
+                finally:
+                    collision.unlink()
+
+    def test_identical_names_in_different_directories_are_allowed(self):
+        (self.stage / 'SUB' / 'SMALL.BIN').write_bytes(b'other directory')
+        img, _ = build(self.stage)
+        entries = {name: (kind, size) for name, kind, size in img.walk()}
+        self.assertEqual(entries['/SMALL'], ('TXT', 6))
+        self.assertEqual(entries['/SUB/SMALL'], ('BIN', 15))
+
 
 if __name__ == '__main__':
     unittest.main()

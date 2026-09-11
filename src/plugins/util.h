@@ -29,8 +29,10 @@ static unsigned char join(char* out,const char* dir,const char* name) {
     if (!n || n+m+1>=PATH_LEN) return 0;
     a.memcpy(out,dir,n); out[n]='/'; a.strcpy(out+n+1,name); return 1;
 }
+#if defined(UTIL_INFO) || defined(UTIL_CREATE)
 static unsigned char pas[PATH_LEN+1];
 static void ppath(const char* p) { pas[0]=a.strlen(p); a.strcpy((char*)pas+1,p); }
+#endif
 #ifdef UTIL_INFO
 struct Info { unsigned char n; unsigned char* path; unsigned char access,type;
     unsigned int aux; unsigned char storage; unsigned int blocks,mdate,mtime,cdate,ctime; };

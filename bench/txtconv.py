@@ -32,9 +32,15 @@ HI = bytes(b | 0x80 for b in b'HELLO WORLD\rSECOND LINE\r')
 ACC = b'caf\xc3\xa9 \xc3\x80 \xc3\xa7a \xc3\x9f \xc3\xbf \xe2\x82\xac \xc2\xa0end\n'
 ACC_OUT = b'cafe A ca s y ? ?end\n'
 TABS = b'a\tb\n\tx\nabcdefgh\ty\n\t\tz\n'
+BROKEN = b'A' * 255 + b'\xc3Z / \xe2X / \xf0\x9f'
+BROKEN_OUT = b'A' * 255 + b'?Z / ?X / ?'
 
 HD_FILES = {'WORK/LF.TXT': LF, 'WORK/CRLF#040123': CRLF}
-PO_FILES = {'WORK/HI.TXT': HI, 'WORK/ACC.TXT': ACC, 'WORK/TABS.TXT': TABS}
+RECOVERY = b'previous conversion to recover\r'
+PO_FILES = {'WORK/HI.TXT': HI, 'WORK/ACC.TXT': ACC, 'WORK/TABS.TXT': TABS,
+            'WORK/BROKEN.TXT': BROKEN,
+            'WORK/COLLIDE/TXTCONV.TMP#040000': RECOVERY,
+            'WORK/COLLIDE/KEEP#040000': b'keep this source\r'}
 
 
 def to_cr(data):
@@ -59,6 +65,7 @@ def stage_floppy(tmp):
     stage = tmp / 'flop'
     (stage / 'WORK/OUT').mkdir(parents=True)          # vide : la cible
     for rel, data in PO_FILES.items():
+        (stage / rel).parent.mkdir(parents=True, exist_ok=True)
         (stage / rel).write_bytes(data)
     po = tmp / 'WORKPO.po'
     subprocess.run([sys.executable, str(ROOT / 'tools/mkvolume.py'), str(stage), str(po),
@@ -108,7 +115,8 @@ def main():
                     if not overwrite:
                         p.stable()
                         return s.rows()[22].strip()
-                s.wait(lambda: s.has('Converted') or s.has('failed'), 'la fin de la conversion', 90)
+                s.wait(lambda: s.has('Converted') or s.has('failed') or
+                       s.has('TXTCONV.TMP already exists'), 'la fin de la conversion', 90)
                 p.stable()
                 return s.rows()[22].strip()
 
@@ -158,6 +166,9 @@ def main():
             line = convert('TABS', 40, b'T', inplace=True)
             s.ok('tabulations sur place : "Converted %d bytes -> %d bytes"' % (len(TABS), len(tabs(TABS))),
                  line == 'Converted %d bytes -> %d bytes' % (len(TABS), len(tabs(TABS))), line)
+            line = convert('BROKEN', 40, b'A', inplace=True)
+            s.ok('broken UTF-8 converts with replacement markers',
+                 line == 'Converted %d bytes -> %d bytes' % (len(BROKEN), len(BROKEN_OUT)), line)
 
             # 6. Refus quand l'autre panneau est le meme dossier.
             open_panel(0, '/WORKPO', 'WORK')
@@ -166,6 +177,14 @@ def main():
             s.wait(lambda: s.has('C)R L)F D)CRLF'), 'la question', 20)
             s.key(b'C'); s.wait(lambda: s.has('In place?'), 'sur place', 20); s.key(b'N'); p.stable()
             s.ok("refuse l'autre panneau quand c'est le meme dossier", s.has('Other panel'), s.rows()[22].strip())
+
+            # A previous recovery result must survive both another in-place
+            # conversion and selection of TXTCONV.TMP itself as the source.
+            open_panel(40, '/WORKPO', 'WORK', 'COLLIDE')
+            for name in ('KEEP', 'TXTCONV.TMP'):
+                line = convert(name, 40, b'S', inplace=True)
+                s.ok('existing temporary file refuses conversion of ' + name,
+                     'TXTCONV.TMP already exists' in line, line)
 
         # La disquette, ecrite dans son fichier a l'arret de POM2 (SIGTERM -> flush).
         out = catalog(po, 'WORK/OUT')
@@ -184,6 +203,12 @@ def main():
         s.ok('WORK/TABS : tabulations au multiple de 8 suivant',
              work.get('TABS', (0, 0, b''))[2] == tabs(TABS), work.get('TABS', (None, None, b''))[2])
         s.ok('pas de TXTCONV.TMP laisse dans WORK', 'TXTCONV.TMP' not in work, sorted(work))
+        s.ok('broken UTF-8 preserves following ASCII and marks incomplete EOF',
+             work.get('BROKEN', (0, 0, b''))[2] == BROKEN_OUT)
+        s.ok('existing recovery result is unchanged',
+             catalog(po, 'WORK/COLLIDE').get('TXTCONV.TMP', (0, 0, b''))[2] == RECOVERY)
+        s.ok('source survives a temporary-file collision',
+             catalog(po, 'WORK/COLLIDE').get('KEEP', (0, 0, b''))[2] == b'keep this source\r')
     return ok_all(s, 'txtconv')
 
 

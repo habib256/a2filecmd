@@ -138,13 +138,13 @@ The following tools supplement the main keys and readers.
 | Tool | Operation |
 |---|---|
 | **COMPARE** | Compare the selected file byte by byte with the same name in the other panel. |
-| **TXTCONV** | C = CR, L = LF, D = CRLF, H = clear high bit, S = set it, T = expand tabs, A = transliterate UTF-8 accents. Write in place or to the other panel. |
+| **TXTCONV** | C = CR, L = LF, D = CRLF, H = clear high bit, S = set it, T = expand tabs, A = transliterate UTF-8 accents; incomplete sequences become `?` without consuming following text. Write in place or to the other panel. In-place conversion preserves the source on incomplete reads or changed size and refuses an existing TXTCONV.TMP. |
 | **DATE** | S sets date/time from `DDMMYYYYHHMM` (1940–2039); impossible dates are rejected. F stamps modification dates on tagged files or the selection. Creation dates stay unchanged; a hardware clock may replace the entered time. |
 | **VERIFY** | Read tagged files (skip directories), the selection, or every block of a volume. Report processed files and errors; ESC cancels. No writes. |
 | **TAGPAT** | Name patterns: `=` any string, `?` one character. Add comma-separated filters: `T04` TXT, `>2000` or `<2000` bytes, `D` modified today. T tags, U untags, X replaces tags. |
 | **VOLINFO** | Audit allocation and fragmentation. M = bitmap (`.` free, `#` used), F = selected file blocks, E = export to the other panel. N/P pages; ESC returns. No repairs. |
 | **VOLNAME** | Rename a ProDOS volume and update the affected panel/program paths. |
-| **WIPE** | F zeroes free blocks after confirmation. W zeroes the whole volume after `ERASE`; the running program's volume is refused. |
+| **WIPE** | F zeroes free blocks after confirmation, refusing bitmap locations that overlap boot/header blocks or extend outside the volume. W zeroes the whole volume after `ERASE`; the running program's volume is refused. |
 
 ### On EXTRA and XL
 
@@ -161,13 +161,14 @@ The following tools supplement the main keys and readers.
 | **IDENT** | Identify content, UTF-8 or Apple text; statistics cover the first 512 bytes. |
 | **MDVIEW** | Wrapped Markdown/text; no forward limit. Up: last 64 pages. R: restart. |
 | **RENAME** | Batch prefix, suffix, extension replacement/removal or numbering. For example E then BAK sets `.BAK`. Conflicts are skipped. |
-| **IMGCONV** | Convert PO/HDV, DSK/DO and 2MG into the other panel, preserving disk blocks. |
+| **IMGCONV** | Convert PO/HDV, DSK/DO and 2MG into the other panel, preserving disk blocks. Unsupported 2MG formats, block counts exceeding 16 bits, and data ranges inside the header or beyond the source size are refused before destination access. Read or seek failures abort conversion and remove incomplete output. |
 | **BOOTBLK** | Copy ProDOS boot blocks from the boot volume to another volume after confirmation. |
 | **UNDELETE** | Browse deleted ProDOS entries. N skips; R recovers a validated candidate to another online volume. Existing names are refused. |
 | **DISKCMP** | V compares online ProDOS volumes; I compares images; S compares two Disk II disks on one drive. Reports differing blocks and the first mismatch. |
 | **MKIMAGE** | Create an empty ProDOS PO or 2MG: 140 KB, 800 KB, 2/4/8 MB or 32,767 blocks. New images are data volumes, without a boot program. |
 | **RESCUE** | F recovers a file; V recovers a ProDOS volume. Uses up to 30 attempts per block, zero-fills unreadable chunks and writes a LOG. Destination must be another online volume. |
 | **SYNC** | Recursively copy missing or newer files to the other panel after confirming direction. Destination-only files remain; copies are read back before replacement. |
+| **MOVE** | Move the selected entry within a volume without copying its data blocks; locked sources are refused. Every path component must still be a directory. A full subdirectory grows if space is available; damaged parent references are refused before writing. Across volumes, copy and verify a file before deleting the source; existing destination names are refused, and a size mismatch preserves the source and removes the incomplete copy. Directories across volumes require V. Available on EXTRA2 and XL. |
 | **TREE** | Show file sizes and cumulative directory totals. Space advances a page; ESC exits. |
 
 ### Recovery and comparison limits
@@ -189,6 +190,8 @@ output stays after cancellation or a write failure.
 **SYNC** skips equal-date or newer destination files. A source with an unknown
 date does not replace an existing file. It uses `A2FC.SYNC` temporarily and
 `A2FC.BAK` for rollback, preserving pre-existing files with those names.
+Verification requires matching contents and exact length; a size mismatch
+preserves the source and existing destination and removes the temporary copy.
 If replacement fails, the original is restored where possible; keep any
 remaining `A2FC.BAK`. Overlapping directory trees are refused. SYNC and TREE
 support paths shorter than 64 bytes and up to 16 directory levels; read

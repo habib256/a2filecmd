@@ -61,7 +61,11 @@ static unsigned char mock(unsigned char cmd,void* p) {
     abort();
 }
 static size_t write_fail(const void* p,size_t s,size_t n,FILE* f) {
-    return mode==1?0:fwrite(p,s,n,f);
+    size_t written;
+    if(mode==1)return 0;
+    written=fwrite(p,s,n,f);
+    if(mode==5 && ftell(f)==1600)fputc('X',f);
+    return written;
 }
 int main(int argc,char** argv) {
     unsigned char scratch[512];char msg[80];
@@ -71,7 +75,7 @@ int main(int argc,char** argv) {
     strcpy(sdir,argv[1]);strcpy(ddir,argv[2]);join(source,sdir,"DATA");join(target,ddir,"DATA");
     if(!newer((30<<9)|33,0,(26<<9)|33,0) || newer((99<<9)|33,0,(0<<9)|33,0) ||
        !newer((26<<9)|33,0x0D00,(26<<9)|33,0x0C00))abort();
-    mode=atoi(argv[3]);cancelled=mode==3;size=1600;meta.type=6;meta.aux=0;meta.access=0xE3;
+    mode=atoi(argv[3]);cancelled=mode==3;size=strtoul(argv[4],0,10);meta.type=6;meta.aux=0;meta.access=0xE3;
     printf("%u\n",copy_file(1));return 0;
 }
 '''
@@ -159,13 +163,14 @@ class SixPlugins(unittest.TestCase):
                 self.assertEqual(im.free_blocks(),size-6-(size+4095)//4096)
                 bits=im.d[6*512:(6+(size+4095)//4096)*512]
                 self.assertTrue(all(not(bits[b>>3]&(0x80>>(b&7))) for b in range(size,len(bits)*8)))
-    def sync(self,mode,reserved=None):
+    def sync(self,mode,reserved=None,cached_size=1600,payload=None):
         with tempfile.TemporaryDirectory(prefix='s-',dir='/tmp') as t:
             root=Path(t);s=root/'S';d=root/'D';s.mkdir();d.mkdir()
-            original=b'original destination';replacement=bytes(range(200))*8
+            original=b'original destination';replacement=bytes(range(200))*8 if payload is None else payload
             (s/'DATA').write_bytes(replacement);(d/'DATA').write_bytes(original)
             if reserved:(d/reserved).write_bytes(b'preexisting')
-            ok=subprocess.check_output([str(self.exe['sync']),str(s),str(d),str(mode)]).strip()==b'1'
+            ok=subprocess.check_output([str(self.exe['sync']),str(s),str(d),str(mode),
+                                        str(cached_size)]).strip()==b'1'
             self.assertEqual((s/'DATA').read_bytes(),replacement)
             self.assertEqual((d/'DATA').read_bytes(),replacement if ok else original)
             if reserved:self.assertEqual((d/reserved).read_bytes(),b'preexisting')
@@ -175,11 +180,16 @@ class SixPlugins(unittest.TestCase):
                 else:self.assertFalse((d/'A2FC.BAK').exists())
             return ok
     def test_sync_verified_replace(self):self.assertTrue(self.sync(0))
+    def test_sync_empty_file_replace(self):self.assertTrue(self.sync(0,cached_size=0,payload=b''))
     def test_sync_write_failure_keeps_original(self):self.assertFalse(self.sync(1))
     def test_sync_install_failure_rolls_back(self):self.assertFalse(self.sync(2))
     def test_sync_cancel_keeps_original(self):self.assertFalse(self.sync(3))
     def test_sync_metadata_failure_retains_original_backup(self):self.assertTrue(self.sync(4))
     def test_sync_preexisting_temp_is_preserved(self):self.assertFalse(self.sync(0,'A2FC.SYNC'))
     def test_sync_preexisting_backup_is_preserved(self):self.assertFalse(self.sync(0,'A2FC.BAK'))
+    def test_sync_stale_size_preserves_both_files(self):
+        for size in (0,512,1599,1601):
+            with self.subTest(size=size):self.assertFalse(self.sync(0,cached_size=size))
+    def test_sync_extra_output_bytes_preserve_destination(self):self.assertFalse(self.sync(5))
 
 if __name__=='__main__':unittest.main()

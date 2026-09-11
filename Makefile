@@ -310,6 +310,7 @@ $(FULLPO): $(STAGE_DEPS) $(DATA)/BASIC.SYSTEM.SYS
 test:
 	python3 $(TOOLS)/test_check_layout.py
 	python3 $(TOOLS)/test_mkvolume.py
+	python3 $(TOOLS)/test_prodos_read.py
 	python3 $(TOOLS)/test_mkdemo.py
 	python3 $(TOOLS)/test_volinfo.py
 	python3 $(TOOLS)/test_diskimg_verify.py
@@ -317,6 +318,10 @@ test:
 	python3 $(TOOLS)/test_blkview.py
 	python3 $(TOOLS)/test_blkedit.py
 	python3 $(TOOLS)/test_move.py
+	python3 $(TOOLS)/test_move_alloc.py
+	python3 $(TOOLS)/test_txtconv.py
+	python3 $(TOOLS)/test_imgconv.py
+	python3 $(TOOLS)/test_wipe.py
 	python3 $(TOOLS)/test_dgrview.py
 	python3 $(TOOLS)/test_disasm.py
 	python3 $(TOOLS)/test_packfot.py
