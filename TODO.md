@@ -24,9 +24,19 @@ BOOT/les disquettes. Les nouveaux plugins vont sur EXTRA et XL, séparément en
   effacements incomplets. Signaler les blocs partagés ou hors volume sans les
   modifier; reconstruire aussi un répertoire racine perdu et isoler les blocs
   défectueux.
-- 🟠 💾 **`BLKEDIT`** — éditeur de blocs inspiré de Block Warden/Copy II Plus :
-  navigation, suivi de fichiers, hexa/ASCII, décodage répertoire/index,
-  écriture après `ERASE`, extraction et recherche d’octets.
+- 🟡 **`MOVE` : les fichiers marqués** — `MOVE` ne déplace que l’entrée sous
+  le curseur : une grande surcouche couvre les tables d’entrées à $2000, et
+  les marques sont des index DANS ces tables, donc plus traduisibles en noms.
+  Il faudrait soit une petite surcouche (1 280 octets, très juste pour la
+  marche des répertoires), soit que le cœur passe la liste des noms marqués.
+- 🟡 **`MOVE` : un arbre entre volumes** — entre deux volumes, `MOVE` copie
+  puis efface, mais seulement un FICHIER : un répertoire et sa descendance
+  demandent la marche récursive que `V` fait déjà dans le cœur. Soit `MOVE`
+  la refait, soit le cœur lui passe la main.
+- 🟡 **`MOVE` : agrandir un répertoire plein** — la cible sans entrée libre
+  est refusée. L’agrandir demande d’allouer un bloc dans la table binaire du
+  volume et de réécrire la taille du répertoire dans sa propre entrée : un
+  travail différent, et plus risqué, que la réécriture d’entrée.
 - 🟠 💾 **`NIBCOPY`** — copie brute piste par piste entre deux lecteurs 5¼
   Disk II, avec mode à un lecteur, synchronisation, vérification et rapport
   d’erreurs. Le cœur doit rester en RAM après le retrait du disque BOOT pour
@@ -47,8 +57,6 @@ BOOT/les disquettes. Les nouveaux plugins vont sur EXTRA et XL, séparément en
   confirmation et rapport des blocs défectueux.
 - 🟡 💾 **`TAGPAT`** — plages de dates et confirmation fichier par fichier lors
   d’une copie ou d’une suppression.
-- 🟡 💾 **Déplacement sans copie** — surcouche MOVE réécrivant les entrées et
-  corrigeant les pointeurs de parent.
 - 🟡 💾 **`DIRSORT`** — trier physiquement un dossier ProDOS en conservant les
   blocs et les liens, avec sauvegarde et vérification.
 - 🟡 💾 **`DRIVESPD`** — mesurer un tour de Disk II, afficher RPM et durée.
@@ -79,10 +87,30 @@ BOOT/les disquettes. Les nouveaux plugins vont sur EXTRA et XL, séparément en
 
 ## Formats et extensions de niche
 
-- 🟡 **`EXTASIE`** — visionneuse des images Chat Mauve/Féline : détecter les
-  images normales `IMA` (16 Ko), les images compactées `CMP` (souvent 8–12 Ko)
-  et les sections enregistrées séparément; décoder le mode COL 140/560×192.
-  Référence : [manuel Extasie](https://mirrors.apple2.org.za/ftp.apple.asimov.net/documentation/non_english/french/crealude_extasie_manuel_ocr.pdf).
+- 🟡 **`FOT` LZ4FH** — décoder le troisième codage des images ProDOS `$08`,
+  l’aux-type `$8066` (compression LZ4FH d’Andy McFadden, en-tête `66 E0`).
+  `PACKFOT` lit désormais `$4000` et `$4001`; celui-ci reste à faire, et son
+  décodeur ne tiendra pas dans la même fenêtre de 1 280 octets — prévoir une
+  surcouche séparée. Corpus :
+  `GISTDATA/IMG/SAMPLE.MEDIA/DIP.CHIPS` (3 785 o).
+- 🟡 **a2dgrx : bitmaps et fontes** — `DGRVIEW` lit les écrans lo-res et
+  double lo-res, et les pixmaps a2dgrx (un octet par pixel) dont il demande
+  la largeur. Restent les deux autres dispositions de
+  [a2dgrx](https://github.com/iolo/a2dgrx) : le bitmap (1 bit par pixel) et
+  la fonte (3 octets par glyphe, 4x6 dans une boîte 3x5, ASCII `$20`-`$7F`,
+  donc 288 octets — la seule des trois qu’une taille suffise à reconnaître).
+  Rappel : a2dgrx est une bibliothèque de dessin, pas un format de fichier —
+  aucun en-tête, aucune signature, aucune dimension, aucun type ProDOS.
+- 🟡 **Polices Apple II (`$07`)** — afficher le jeu de caractères d’un fichier
+  de police ProDOS type `$07` : trois octets d’en-tête (drapeau, dernier code
+  `$7E`/`$7F`, hauteur) puis des glyphes de taille fixe. Corpus :
+  `GISTDATA/IMG/SAMPLE.MEDIA/FONTS`, trente-cinq polices de 1 155 à 4 194
+  octets (`MOUSEPAINT`, `MINI`, `ATHENS`, `VENICE`, les `SYSTEM.*` et
+  `MONACO.*` de dix langues, les `MAGDALENA`/`MCMILLEN`/`MONTEREY`).
+- 🟢 **`PT3` / ProTracker** — jouer un module AY ProTracker 3 sur la
+  Mockingboard, à côté du lecteur `MB1` existant. Corpus :
+  `GISTDATA/IMG/SAMPLE.MEDIA/AUTUMN.PT3` (type `$00`, 4 461 o, en-tête ASCII
+  « ProTracker 3.3 compilation of »).
 - 🟡 **`PURPLESOFT` / `GRLOAD`** — visualiser les images sauvegardées par
   Purplesoft/Féline et détecter leur mode graphique; traiter Purplesoft comme
   une bibliothèque de routines (`PURPLESOFT`, `PURPLESOFT*`), pas comme un
@@ -101,12 +129,20 @@ BOOT/les disquettes. Les nouveaux plugins vont sur EXTRA et XL, séparément en
 - 🟢 **Échantillons et reverse engineering** — conserver pour chaque format
   une image `.dsk`/`.po`, le catalogue ProDOS ou DOS 3.3, les types/aux-types,
   les tailles, les signatures et une capture de rendu; ne pas supposer que le
-  format Amiga ou IIGS est compatible avec l’Apple II 8 bits.
+  format Amiga ou IIGS est compatible avec l’Apple II 8 bits. Corpus de
+  référence : `GISTDATA/IMG/SAMPLE.MEDIA` (`~/src/pom2/hdv/GISTDATA.hdv`), qui
+  réunit pages brutes, `FOT` empaquetés, polices, musiques et un `$D5` non
+  identifié.
 
 - 🟢 **`MACPAINT`, `BMP`, `GIF`, `GR`, `PRINTSHOP`, `SHAPES`, `SLIDESHOW`** —
-  visionneuses d’images supplémentaires.
+  visionneuses d’images supplémentaires. Corpus `PRINTSHOP` :
+  `GISTDATA/IMG/SAMPLE.MEDIA/BBROS.MINI` (BIN `$5800`, 576 o, lignes de onze
+  octets soit 88 pixels — vignette 88x52 à confirmer).
 - 🟢 **`INTLIST`, `ADB`, `ASP`, `AWRITER`, `CALC`** — lecteurs Apple II et
-  AppleWorks supplémentaires.
+  AppleWorks supplémentaires. `INTLIST` comble un vrai trou : un `$FA` tombe
+  sur l’hexadécimal (Return) ou sur le lecteur texte (`T`), qui affichent ses
+  jetons en clair, alors que `BASLIST` ne sert que le `$FC`. Corpus :
+  `GISTDATA/IMG/SAMPLE.MEDIA/WOZ.BREAKOUT` (1 859 o), `APPLEVISION` (5 964 o).
 - 🟢 **`DUET`, `SAMPLE`** — musique et échantillons audio additionnels.
 - 🟢 **`TERM`, `XMODEM`, `CPMFS`, `SPLIT`** — communication série et formats
   de disquettes supplémentaires.
@@ -120,11 +156,22 @@ BOOT/les disquettes. Les nouveaux plugins vont sur EXTRA et XL, séparément en
 
 ## Visionneuse Extasie / Chat Mauve
 
-- 🟡 **`EXTASIE`** — ajouter à IMAGE la détection du type ProDOS `$F2`, la
-  décompression du flux Extasie (compteur, répétitions, écriture colonne par
-  colonne AUX puis MAIN) et l’affichage du DHGR mixte 560/140 de la carte
-  Féline. Feuilleter les images `$F2` d’un dossier avec Gauche/Droite, signaler
-  les flux tronqués et préserver le retour aux panneaux.
+`EXTASIE` décode et affiche désormais les images `$F2` : deux plans de
+quarante colonnes de 192, auxiliaire d’abord, et le DHGR mixte 560/140 de la
+carte. Reste ce qui ne tient pas dans la fenêtre :
+
+- 🟡 **Feuilleter les images `$F2` avec Gauche/Droite** — mesuré : la
+  surcouche fait 1 164 octets sur 1 280, et parcourir le panneau
+  (`read_panel`, retrouver l’entrée, `build_full`, voisin suivant) en coûte
+  environ 720. Le cœur sait déjà feuilleter, dans `view_image`, mais il ne
+  charge que `IMAGE`; router un `$F2` vers `EXTASIE` demande de la place dans
+  le résident, qui finit à `$BEDF` pour une limite de `$BEE0`. Trois voies :
+  libérer une centaine d’octets dans `EXTASIE`, libérer de quoi router dans
+  le cœur, ou rendre au cœur la liste des voisins par l’API.
+- 🟡 **`$F2` dans `IMAGE`** — même obstacle : `IMAGE` occupe 1 167 octets sur
+  1 280, et le décodeur Extasie seul en demande un peu plus de 1 100. Tant
+  que le résident et `IMAGE` sont pleins, la visionneuse `$F2` reste une
+  surcouche à part, lancée depuis le menu `!`.
 - Références de format et de rendu : [manuel Extasie](https://mirrors.apple2.org.za/ftp.apple.asimov.net/documentation/non_english/french/crealude_extasie_manuel_ocr.pdf),
   [notes Chat Mauve/POM2](https://github.com/habib256/pom2/blob/main/docs/chatmauve_plan.md)
   et les disques de test `Extasie disk1.dsk` / `Extasie disk2.dsk` du corpus

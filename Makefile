@@ -115,7 +115,12 @@ CCDEFS =
 endif
 # These overlays reserve $3000-$3FFF for scratch (FIND: $3100-$3FFF): code AND BSS must
 # stop before their scratch area. ld65 enforces that boundary at link time.
-XPLUGINS_SCRATCH = find goto imgconv mdview wipe
+XPLUGINS_SCRATCH = find goto imgconv mdview wipe dgrview
+# These decode a picture into the graphics page, so they are big (the core
+# sets the tags aside and rereads the panels) but their CODE must still stop
+# before $2000: they are linked with the small window, which makes ld65
+# enforce that boundary instead of leaving it to luck.
+XPLUGINS_HGR = extasie packfot paint816
 XPLG = $(patsubst %,$(BUILD)/%.PLG,$(XPLUGINS))
 XPLG_FLOPPY = $(patsubst %,$(BUILD)/%.PLG,$(XPLUGINS_FLOPPY))
 SYSTEM = $(BUILD)/A2FILE.SYSTEM.SYS
@@ -124,10 +129,19 @@ PO     = $(DIST)/$(IMG)-$(A2FC_VERSION).po
 DSK    = $(DIST)/$(IMG)-$(A2FC_VERSION).dsk
 EXTRAS = $(DIST)/A2FILECMD-$(CPU)-EXTRA-$(A2FC_VERSION).po
 EXTRAS_DSK = $(EXTRAS:.po=.dsk)
+EXTRAS2 = $(DIST)/A2FILECMD-$(CPU)-EXTRA2-$(A2FC_VERSION).po
+EXTRAS2_DSK = $(EXTRAS2:.po=.dsk)
 PLUGINS_EXTRAS = $(filter-out $(PLUGINS_FLOPPY),$(PLUGINS))
-XPLUGINS_EXTRAS = $(filter-out $(XPLUGINS_FLOPPY),$(XPLUGINS))
+# The extra tools stopped fitting one 140 KB floppy, so there are two. EXTRA
+# carries BASIC.SYSTEM, the program's own overlays and the everyday file
+# tools; EXTRA2 the disk and block surgery, which is what a rescue session
+# reaches for and an ordinary one never does. A new overlay lands on EXTRA
+# unless it is named here -- EXTRA is the one with room left.
+XPLUGINS_EXTRA2 = $(filter blkview blkedit disasm sync move diskcmp undelete rescue tree mkimage,$(XPLUGINS))
+XPLUGINS_EXTRAS = $(filter-out $(XPLUGINS_FLOPPY) $(XPLUGINS_EXTRA2),$(XPLUGINS))
 CATALOG = $(BUILD)/EXTRAS.CAT
 XPLG_EXTRAS = $(patsubst %,$(BUILD)/%.PLG,$(XPLUGINS_EXTRAS))
+XPLG_EXTRA2 = $(patsubst %,$(BUILD)/%.PLG,$(XPLUGINS_EXTRA2))
 
 OBJS = $(BUILD)/crt0.o $(BUILD)/overlay.o $(BUILD)/unshrink.o $(VDRIVEOBJ) $(BUILD)/a2fc_mli.o $(BUILD)/chain.o \
        $(BUILD)/music.o $(BUILD)/memory_swap.o $(BUILD)/mli_safe.o $(MOUSEOBJ) $(BUILD)/format_diskii.o $(BUILD)/format_mli.o
@@ -183,8 +197,8 @@ $(BUILD)/%.PLG: $(SRC)/plugins/%.c $(wildcard $(SRC)/plugins/*.h) $(wildcard $(S
 	$(CC65BIN)ca65 -t $(TARGET) -o $(BUILD)/$*.o $(BUILD)/$*.s
 	@helper=; if [ -f $(SRC)/plugins/$*.s ]; then $(AS) -t $(TARGET) -o $(BUILD)/$*_svc.o $(SRC)/plugins/$*.s || exit; helper=$(BUILD)/$*_svc.o; fi; \
 	  if grep -qE 'PLUGIN_MAGIC, *OVERLAY_BIG' $<; then big=1; else big=0; fi; \
-	  $(CC65BIN)ld65 -C $(if $(filter find,$*),sdk/find.cfg,sdk/plugin.cfg) -D __OVLSIZE__=$$( if [ $$big = 1 ]; then echo $(if $(filter $*,$(XPLUGINS_SCRATCH)),$(if $(filter find,$*),0x1600,0x1500),$(if $(filter volinfo blkview,$*),0x249E,0x2500)); elif [ "$*" = verify ]; then echo 0x04C2; else echo 0x0500; fi ) -m $(BUILD)/$*.map -o $@ $(BUILD)/$*.o $$helper $(CC65LIB) && \
-	  limit=$$( [ $$big = 1 ] && echo 9472 || echo 1280 ) && \
+	  $(CC65BIN)ld65 -C $(if $(filter find,$*),sdk/find.cfg,sdk/plugin.cfg) -D __OVLSIZE__=$$( if [ $$big = 1 ]; then echo $(if $(filter $*,$(XPLUGINS_HGR)),0x0500,$(if $(filter $*,$(XPLUGINS_SCRATCH)),$(if $(filter find,$*),0x1600,0x1500),$(if $(filter volinfo blkview blkedit,$*),0x249E,0x2500))); elif [ "$*" = verify ]; then echo 0x04C2; else echo 0x0500; fi ) -m $(BUILD)/$*.map -o $@ $(BUILD)/$*.o $$helper $(CC65LIB) && \
+	  limit=$$( [ $$big = 1 ] && echo $(if $(filter $*,$(XPLUGINS_HGR)),1280,9472) || echo 1280 ) && \
 	  { test $$(wc -c < $@) -le $$limit || { echo "$@: $$(wc -c < $@) bytes, more than its $$limit-byte window"; rm -f $@; exit 1; }; } && \
 	  echo "$@: $$(wc -c < $@) bytes ($$( [ $$big = 1 ] && echo big || echo small ) overlay)"
 xplugins: $(XPLG)
@@ -205,7 +219,7 @@ disk:
 	$(MAKE) ARCH=6502 disk
 	$(MAKE) ARCH=enh disk
 else
-disk: $(PO) $(DSK) $(TWOMG) $(EXTRAS) $(EXTRAS_DSK)
+disk: $(PO) $(DSK) $(TWOMG) $(EXTRAS) $(EXTRAS_DSK) $(EXTRAS2) $(EXTRAS2_DSK)
 endif
 
 # The stage: the launcher, the program, the overlays named in $(1), the help,
@@ -251,6 +265,20 @@ $(EXTRAS): $(CODE) $(CATALOG) $(XPLG_EXTRAS) $(DATA)/BASIC.SYSTEM.SYS $(TOOLS)/m
 $(EXTRAS_DSK): $(EXTRAS) $(TOOLS)/po2dsk.py
 	python3 $(TOOLS)/po2dsk.py $< $@
 
+# EXTRA2: the second tool floppy. It carries the same catalog -- the menu
+# names every overlay whichever disk is in the drive -- and no BASIC.SYSTEM,
+# which is on EXTRA.
+EXTRA2_STAGE = $(BUILD)/extras2
+$(EXTRAS2): $(CATALOG) $(XPLG_EXTRA2) $(TOOLS)/mkvolume.py $(TOOLS)/po2dsk.py Makefile | $(DIST)
+	rm -rf $(EXTRA2_STAGE)
+	mkdir -p $(EXTRA2_STAGE)/A2FILE
+	cp $(CATALOG) $(EXTRA2_STAGE)/A2FILE/EXTRAS.CAT.BIN
+	for p in $(XPLUGINS_EXTRA2); do cp $(BUILD)/$$p.PLG "$(EXTRA2_STAGE)/A2FILE/$$(echo $$p | tr a-z A-Z).PLG#061B00"; done
+	python3 $(TOOLS)/mkvolume.py $(EXTRA2_STAGE) $@ --volume A2EXTRA2$(CPU) --blocks 280
+
+$(EXTRAS2_DSK): $(EXTRAS2) $(TOOLS)/po2dsk.py
+	python3 $(TOOLS)/po2dsk.py $< $@
+
 # XL: the complete edition for the selected CPU.
 $(TWOMG): $(STAGE_DEPS) $(XPLG) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/README.TXT \
        $(TOOLS)/mkdemo.py $(TOOLS)/po22mg.py \
@@ -287,7 +315,13 @@ test:
 	python3 $(TOOLS)/test_diskimg_verify.py
 	python3 $(TOOLS)/test_dirscan.py
 	python3 $(TOOLS)/test_blkview.py
+	python3 $(TOOLS)/test_blkedit.py
+	python3 $(TOOLS)/test_move.py
+	python3 $(TOOLS)/test_dgrview.py
 	python3 $(TOOLS)/test_disasm.py
+	python3 $(TOOLS)/test_packfot.py
+	python3 $(TOOLS)/test_paint816.py
+	python3 $(TOOLS)/test_extasie.py
 	python3 $(TOOLS)/test_find.py
 	python3 $(TOOLS)/test_six_plugins.py
 

@@ -16,17 +16,17 @@ starting and identifies the edition on its title screen.
 
 | Edition | What to use |
 |---|---|
-| **BOOT + EXTRA** | Two 140 KB floppies for the same CPU and release. Boot BOOT; EXTRA supplies the additional tools and BASIC.SYSTEM. |
+| **BOOT + EXTRA + EXTRA2** | Three 140 KB floppies for the same CPU and release. Boot BOOT; EXTRA supplies the everyday extra tools and BASIC.SYSTEM, EXTRA2 the disk and block surgery. |
 | **XL** | One bootable 32 MB `.2mg` with all 44 overlays, BASIC.SYSTEM and demonstration files. No EXTRA disk is needed. |
 
 The download names include the CPU, role and version:
 
 | CPU | Image names |
 |---|---|
-| 6502 | `A2FILECMD-6502-BOOT-0.7.6.dsk`, `A2FILECMD-6502-EXTRA-0.7.6.dsk`, `A2FILECMD-6502-XL-0.7.6.2mg` |
-| 65C02 | `A2FILECMD-65C02-BOOT-0.7.6.dsk`, `A2FILECMD-65C02-EXTRA-0.7.6.dsk`, `A2FILECMD-65C02-XL-0.7.6.2mg` |
+| 6502 | `A2FILECMD-6502-BOOT-0.7.6.dsk`, `A2FILECMD-6502-EXTRA-0.7.6.dsk`, `A2FILECMD-6502-EXTRA2-0.7.6.dsk`, `A2FILECMD-6502-XL-0.7.6.2mg` |
+| 65C02 | `A2FILECMD-65C02-BOOT-0.7.6.dsk`, `A2FILECMD-65C02-EXTRA-0.7.6.dsk`, `A2FILECMD-65C02-EXTRA2-0.7.6.dsk`, `A2FILECMD-65C02-XL-0.7.6.2mg` |
 
-BOOT and EXTRA are supplied as `.dsk` in DOS sector order; XL uses `.2mg`.
+BOOT, EXTRA and EXTRA2 are supplied as `.dsk` in DOS sector order; XL uses `.2mg`.
 Use the downloaded files directly: changing an extension does not convert an image.
 Each floppy image is 143,360 bytes. Check downloads against
 `SHA256SUMS-0.7.6.txt`; if all release files are together, run:
@@ -53,11 +53,16 @@ opens `DEMO/`; try its text, pictures, music and sample archives.
 
 ### The companion floppy and disk swaps
 
-EXTRA contains 25 tools absent from BOOT, plus the common menu and
-BASIC.SYSTEM. Use the **same CPU and version** on both disks.
+EXTRA and EXTRA2 together carry the tools absent from BOOT, plus the common
+menu and BASIC.SYSTEM. The extras stopped fitting one 140 KB floppy, so
+EXTRA keeps BASIC.SYSTEM, the program's own overlays and the everyday file
+tools, and EXTRA2 carries the disk and block surgery: BLKVIEW, BLKEDIT,
+DISASM, SYNC, MOVE, DISKCMP, UNDELETE, RESCUE, TREE and MKIMAGE. Use the
+**same CPU and version** on every disk.
 
-With two Disk II drives, keep BOOT in **slot 6, drive 1** and put EXTRA in
-**slot 6, drive 2**. The **!** menu lists tools from both disks.
+With two Disk II drives, keep BOOT in **slot 6, drive 1** and put EXTRA (or
+EXTRA2, for the tools it holds) in **slot 6, drive 2**. The **!** menu lists
+the tools of every disk.
 
 With one drive, choose the tool normally. If a disk is missing, the prompt
 names the required volume, slot, drive and file. Press **1** or **2** to
@@ -68,10 +73,10 @@ session; these plugin-loading prompts use slot 6.
 
 | CPU | Volume names shown in swap prompts |
 |---|---|
-| 6502 | BOOT `/A2FC6502`; EXTRA `/A2EXTRA6502`; XL `/A2XL6502` |
-| 65C02 | BOOT `/A2FC65C02`; EXTRA `/A2EXTRA65C02`; XL `/A2XL65C02` |
+| 6502 | BOOT `/A2FC6502`; EXTRA `/A2EXTRA6502`; EXTRA2 `/A2EXTRA26502`; XL `/A2XL6502` |
+| 65C02 | BOOT `/A2FC65C02`; EXTRA `/A2EXTRA65C02`; EXTRA2 `/A2EXTRA265C02`; XL `/A2XL65C02` |
 
-The menu retains all 43 commands when EXTRA is absent. Tools that need both
+The menu retains every command when EXTRA and EXTRA2 are absent. Tools that need both
 source and destination online still require another drive or volume.
 **DISKCMP S** and **W → Copy** have their own single-drive exchange modes.
 

@@ -5,6 +5,158 @@ downloads and installation.
 
 ## Unreleased
 
+- Added the PAINT816 service overlay: the pictures 816/Paint saves packed,
+  its own default -- ProDOS type `$06` with auxtype `$E001` for a hi-res page
+  and `$E002` for a double hi-res one. 816/Paint is what most Apple II double
+  hi-res art was drawn with, and a packed file is any size at all, so the
+  core's image viewer, which claims a `$06` on its SIZE, never saw one: they
+  fell through to the hex viewer.
+
+  Nothing documents the format. It was read off twelve chosen-plaintext pairs
+  -- raw pages written to a disk, packed by 816/Paint itself, the two
+  compared -- and it is: one `$FF` a plane, then records whose tag carries a
+  count in bits 6-2 (0 meaning the count is the next byte) and a pattern
+  length of 1, 2, 4 or 8 in bits 1-0, the pattern repeating cyclically to
+  make `count` BYTES; a tag with bit 7 clear is a literal run of `tag` bytes.
+  It decodes COLUMN BY COLUMN, the rightmost first. A double hi-res file
+  opens with the auxiliary plane's first eight bytes again, which the stream
+  also carries, and every file ends with the Pascal string `816PATT` and 64
+  bytes of fill patterns. All thirteen sample files -- twelve probes and a
+  real picture, TWOSTEVESTITLE, 6,130 bytes for a 16 KB screen -- come back
+  byte for byte, and the emulator bench reads the graphics page back to
+  check the geometry the shipped 6502 lays down.
+
+- Fixed: the Extasie `$F2` viewer decoded the wrong format. It read the
+  stream into ONE hi-res page, row by row, with a count of 0 meaning 256; an
+  Extasie picture is DOUBLE hi-res, 15,360 bytes read column by column -- the
+  leftmost first, the auxiliary plane's forty columns then the main one's --
+  and a count of 0 is 128. That is what makes all ten pictures on the
+  original disks decode to exactly 15,360 bytes; the old reading produced a
+  scrambled half-page. The picture now goes up in the Le Chat Mauve card's
+  MIXED mode, 560 dots in black and white beside 140 cells of sixteen
+  colours, which is what the format exists for -- Extasie's own title screen
+  says so. A truncated stream is reported rather than shown, and the two
+  planes are decoded as one stream, so a record crossing the boundary is not
+  cut in two.
+
+- IDENT names two more families it used to call binary: the 816/Paint packed
+  pictures (`$06` with auxtype `$E001`/`$E002`) and the Extasie `$F2`
+  pictures, which open with their own length.
+
+- There are now TWO tool floppies, EXTRA and EXTRA2. The extras stopped
+  fitting 140 KB -- 313 blocks for 280 -- so EXTRA keeps BASIC.SYSTEM, the
+  program's own overlays and the everyday file tools, and EXTRA2 carries the
+  disk and block surgery: BLKVIEW, BLKEDIT, DISASM, SYNC, MOVE, DISKCMP,
+  UNDELETE, RESCUE, TREE and MKIMAGE. A new overlay lands on EXTRA, which is
+  the one with room left. The XL edition is unchanged and needs neither.
+
+- Fixed: a raw page eight bytes short was refused. `page_size` knew 8,184 as
+  well as 8,192 for a single hi-res page but only 16,384 for a double one,
+  so a 16,376-byte double hi-res -- what 816/Paint writes uncompressed, the
+  last screen hole dropped -- answered "not an image". It now takes 16,376
+  too, and the second plane may come up eight bytes short like the first.
+  Checked against the file itself in the emulator: both banks byte for byte.
+
+- Fixed: the text reader wrote "Back" over the top left of every file. Its
+  key bar is laid down from column 52 and "SPC Next,B Prev,R First,ESC Back"
+  is 32 columns wide, so it ran to column 83; conio carried the four columns
+  past 79 round to the start of the screen. It now reads ",ESC" like the
+  BASLIST and AppleWorks bars, 28 columns, ending at 79. It was the only bar
+  of the twelve that overflowed.
+- DGRVIEW recognises what tools actually write: ProDOS auxtype $0400, the
+  address of the text page, which is what bmp2dhr puts on its lo-res output.
+  Testing the size for equality would have refused the very files it is for
+  -- .SLO is 962 bytes and .DLO 1,922, not 1,024 and 2,048. A file larger
+  than 1,024 is two halves of half its size, the auxiliary one first.
+- DGRVIEW also reads a header this project proposes, since no signature for
+  lo-res exists anywhere: `'D' 'G' 'R'` and a version byte, then the width
+  and height in pixels, then a flag saying whether the auxiliary half is
+  present. The picture follows as rows of forty bytes WITHOUT the screen
+  holes -- 1,928 bytes for 80 x 48, 968 for 40 x 48, and a file that says
+  what it is instead of being guessed at by its length.
+
+- Added the DGRVIEW service overlay: lo-res and DOUBLE lo-res pictures, the
+  mode whose memory is the text page rather than the graphics page, which
+  A2FC could not show at all. 1,024 bytes is a 40 x 48 screen, 2,048 a
+  80 x 48 one -- the auxiliary half of the page first, then the main half,
+  the order A2FC's raw DHGR files already use. Anything else is taken for an
+  a2dgrx pixmap (one byte a pixel, the colour in the low nibble, the high
+  nibble a mask that leaves the background alone when it is zero) and its
+  width is asked for. It has to be asked: a2dgrx
+  (https://github.com/iolo/a2dgrx) is a drawing library, not a file format --
+  its sprites carry no header, no signature, no dimensions and no ProDOS
+  type, and are `.byte` directives assembled into the program rather than
+  files on a disk. So DGRVIEW decides by size, and asks when size is not
+  enough.
+
+- Added the MOVE service overlay: a file or a whole directory changes
+  directory WITHOUT being copied, on the same volume, by rewriting its
+  directory entry -- a tree of four hundred blocks moves in the time it takes
+  to write three. ProDOS 8's RENAME cannot do this (asked to rename
+  /VOL/A/X to /VOL/B/X it answers $40, measured in the emulator, not
+  assumed), so the entry is carried by hand: its header pointer, a moved
+  subdirectory's own parent pointer, parent entry number and entry length,
+  and the live-entry count of both directories. The target entry is written
+  first and the source cleared after, so an interrupted move leaves the file
+  listed twice -- which VOLINFO reports and which loses nothing -- rather
+  than in no directory at all. Every block written is read back and compared.
+  Across two volumes no entry can point from one to the other, so there MOVE
+  falls back to what a move has always been: the file is copied, read back
+  and compared in full, and only then removed -- a move that loses the file
+  to a short copy is not a move. That fallback takes a file; a whole tree
+  across volumes is still what V walks and copies.
+  Refused: a directory into its own subtree, a name already taken, a target
+  with no free entry, and anything in the program's own A2FILE directory.
+  One entry per run, the one under the cursor: a big overlay's code covers
+  the entry tables, so the tags -- indexes into them -- can no longer be
+  turned into names.
+
+- Added the BLKEDIT service overlay: a block editor beside BLKVIEW's
+  read-only explorer. Hex cursor on either half of a block, hex digits
+  change a byte, T and Y follow the block number under the cursor (the
+  consecutive pair ProDOS writes everywhere, or an index block's split low
+  and high halves), and W writes the block back. Nothing reaches the disk
+  until a byte was changed AND the word ERASE was typed in full; the block
+  is then read back and compared byte for byte, so a drive that accepts the
+  write and keeps its old contents is reported as a failure. The volume A2FC
+  runs from is refused. Leaving a changed block asks first.
+  BLKVIEW is untouched and stays strictly read-only: it had nineteen bytes
+  left in its window, and the tool one reaches for to inspect a suspect disk
+  is better off unable to write to it.
+- `struct Source` gained `source_write`, the mirror of `source_read`: one
+  normalized block back to a device or into a .PO/.HDV/.DSK/.DO/.2MG
+  container, the DOS 3.3 sector order undone the same way it is applied.
+
+- Added the PACKFOT service overlay: packed ProDOS `$08` pictures, auxtype
+  `$4000` (hi-res) and `$4001` (double hi-res), are decoded from Apple's
+  PackBytes and shown full screen. The two planes of a double hi-res are one
+  stream, so a packet straddling them is carried across the bank move; the
+  auxiliary plane costs the `/RAM` volume, which is rebuilt and reported.
+  Verified in POM2 against a reference decoder, byte for byte, in both banks.
+- Fixed: a `$08` file that was not a raw page was announced as an image and
+  then refused with "not an image", with no fallback at all -- not even the
+  hex viewer every other unknown type gets. `looks_like_image` now claims a
+  `$08` only when it holds a raw page.
+- Fixed: EXTASIE could never read a single byte. `have` is a byte and a
+  256-byte read cast to one is zero, so the decoder saw an end of file at the
+  first byte and every picture answered "Extasie image truncated".
+- Fixed: EXTASIE was declared a small overlay on 65C02 builds while writing
+  the whole graphics page, which holds the two panels' entry tables. From the
+  `!` menu it wrecked both panels and left the screen stuck on hi-res.
+- Fixed: an empty overlay menu let the page keys walk to entry 255 and the
+  letter search divide by zero.
+- Fixed: a mouse click that A2FC had already acted on was refused as a write
+  to a read-only disk image.
+- Fixed: a DOS 3.3 catalog name of thirty blanks left the name unterminated,
+  handing the panel whatever followed it in memory.
+- Fixed: `=` carried a path across to the other panel without the file system
+  that goes with it, so a panel left inside a disk image read the new path
+  with a stale image length.
+- The plugin ABI is version 3: `api->ram_format` rebuilds the ProDOS `/RAM`
+  volume, which any overlay writing to the auxiliary bank destroys.
+- IDENT tells a raw FOT from a packed one (`$4000`, `$4001`) and from LZ4FH
+  (`$8066`) by its auxtype, instead of calling them all "Hi-res picture".
+
 - Added the EXTASIE service overlay: ProDOS `$F2` Extasie/Chat Mauve streams
   are decoded from their original count/repeat format and shown as HGR on
   every Apple II. On 6502 builds, selecting an `$F2` entry and pressing `I`

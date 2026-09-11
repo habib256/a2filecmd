@@ -69,4 +69,11 @@ static unsigned char unit_of(const char* path,unsigned char requested) {
 static unsigned char readblk(unsigned char unit,unsigned int b,unsigned char* out) {
     bio.n=3;bio.unit=unit;bio.buffer=out;bio.block=b;return a.mli(0x80,&bio);
 }
+#ifdef UTIL_WRITE
+/* WRITE_BLOCK. Behind its own guard: an overlay that only reads must not
+ * carry the call that writes. */
+static unsigned char writeblk(unsigned char unit,unsigned int b,const unsigned char* in) {
+    bio.n=3;bio.unit=unit;bio.buffer=(unsigned char*)in;bio.block=b;return a.mli(0x81,&bio);
+}
+#endif
 #endif
