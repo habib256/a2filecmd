@@ -31,6 +31,8 @@ static void revers(unsigned char v) { inverse=v; }
 static void cputsxy(unsigned char x,unsigned char y,const char* s) {
     gotoxy(x,y);while(*s) { styles[col]=inverse;line[col++]=*s++; } line[col]=0;
 }
+static void cputs(const char* s) { cputsxy(col,22,s); }
+static void cputc(char c) { char s[2]={c,0};cputs(s); }
 static void cprintf(const char* format,...) {
     char buf[128];va_list args;va_start(args,format);vsnprintf(buf,sizeof buf,format,args);va_end(args);
     cputsxy(col,22,buf);
@@ -42,7 +44,7 @@ static char cgetc(void) {
 }
 '''
         code+=section('static void message(', '#pragma code-name (pop)')
-        code+=section('static void question_begin(', 'static unsigned int hex_value(')
+        code+=section('static void question_begin(', 'unsigned int __fastcall__ hex_value(')
         code+=section('static const char mn_cat0', 'static const char mn_count')
         code+=r'''
 int main(void) {

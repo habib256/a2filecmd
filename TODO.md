@@ -21,12 +21,12 @@ libre en carte langage. Ces mesures doivent être recalculées à chaque lien.
 
 ## 1. Consolidation : mémoire et architecture
 
-- [ ] **Réserve mémoire** — fixer des budgets par zone à partir des deux cartes
+- [x] **Réserve mémoire** — fixer des budgets par zone à partir des deux cartes
   de lien, puis récupérer une réserve sans relâcher les plafonds.
   Premier relevé et objectifs dans [MEMORY-BUDGETS.md](docs/MEMORY-BUDGETS.md) ;
-  les réserves sont affichées à chaque lien. Après consolidation et extension
-  du lanceur Integer : MAIN libre 62/593 octets, LC 8/11 (65C02/6502).
-  Les objectifs restent à atteindre.
+  les réserves sont affichées à chaque lien. Après consolidation de l'affichage :
+  MAIN libre 290/835 octets, LC 172/169 (65C02/6502). Les premiers objectifs
+  sont atteints sans relever les plafonds ; les petites surcouches restent serrées.
 - [ ] **Services de fichiers sûrs** — centraliser progressivement les créations
   exclusives, remplacements récupérables et copies vérifiées ; conserver les
   tests de pannes et mesurer le coût de chaque extraction.

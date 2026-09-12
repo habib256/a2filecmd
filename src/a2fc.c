@@ -463,23 +463,7 @@ extern unsigned char tree_stack_ok(void);
 extern const char MAIN_KEYS[];   /* defined in the language card, further down (LC) */
 extern const char VIEW_KEYS[];   /* in the language card, defined further down */
 
-static void keys_bar(unsigned char x, const char* spec)
-{
-    const char* s = spec;
-    unsigned char klen, i;
-    gotoxy(x, 23);
-    while (*s) {
-        for (klen = 0; s[klen] && s[klen] != ' '; ++klen) {}
-        revers(1);
-        if (klen == 1) { cputc(' '); cputc(*s); cputc(' '); }
-        else for (i = 0; i < 3; ++i) cputc(i < klen ? s[i] : ' ');
-        revers(0);
-        s += klen;
-        if (*s == ' ') ++s;
-        while (*s && *s != ',') cputc(*s++);
-        if (*s == ',') { cputc(' '); ++s; }
-    }
-}
+void keys_bar(unsigned char x, const char* spec); /* display.s; same plugin ABI */
 
 /* Clears line 23 (79 columns, see keys_bar) before rewriting it. */
 static void bar_begin(void)
@@ -494,23 +478,7 @@ static void help_bar(void)
     keys_bar(0, MAIN_KEYS);
 }
 
-static const char* type_name(unsigned char type)
-{
-    static char hex[4];
-    switch (type) {
-    case 0x04: return "TXT";
-    case 0x06: return "BIN";
-    case 0x0F: return "DIR";
-    case 0x1A: return "AWP";
-    case 0xB3: return "S16";
-    case 0xFA: return "INT";
-    case 0xFC: return "BAS";
-    case 0xFD: return "VAR";
-    case 0xFF: return "SYS";
-    }
-    sprintf(hex, "$%02X", type);
-    return hex;
-}
+#include "display_types.h"
 
 static unsigned char is_up(const struct Entry* e)
 {
@@ -595,9 +563,8 @@ static void draw_panel(unsigned char p)
 {
     struct Panel* pan = &panels[p];
     unsigned char x = p ? 40 : 0, i;
-    extern const char a2fc_hdr_name[], a2fc_hdr_size[], a2fc_hdr_type[];
-    static const char* const headers[SORT_MODES] = {
-        a2fc_hdr_name, a2fc_hdr_size, a2fc_hdr_type };
+    extern const char a2fc_header[];
+    static const unsigned char sort_column[SORT_MODES] = { 4, 35, 21 };
     ++a2fc_draws;
     cclearxy(x, 0, 38);
     if (p == active) revers(1);
@@ -608,7 +575,10 @@ static void draw_panel(unsigned char p)
     gotoxy(x, 1);
     if (!pan->path[0]) cprintf("%-38s", "Volume          Slot   Free/Total");
     else if (pan->first || pan->more) cprintf("%-4u+ disk order    Type  Aux     Size", pan->first);
-    else cprintf("%-38s", headers[sort_mode]);
+    else {
+        cprintf("%-38s", a2fc_header);
+        cputcxy(x + sort_column[sort_mode], 1, '*');
+    }
     for (i = 0; i < ROWS; ++i) draw_entry(p, pan->top + i);
 }
 
@@ -649,14 +619,16 @@ static void draw_info(void)
     if (is_up(e)) { extern const char msg_parent[]; cputs(msg_parent); }
     else if (!pan->path[0]) cprintf("Volume %s  slot %u drive %u  %u blocks, %u free", e->name, e->mdate & 7, (e->mdate >> 3) + 1, e->blocks, e->aux);
     else if (is_dir(e)) cprintf("%s  directory  %u blocks", e->name, e->blocks);
-    else if (pan->fs)           /* in an image: mdate holds the key block, not a date */
-        cprintf("%s  type $%02X  aux $%04X  %u blocks  %lu bytes  (in image)",
-                e->name, e->type, e->aux, e->blocks, e->size);
-    else {                      /* 83 columns at worst (15-char name, 16 MB, lock): cut to 79 */
-        sprintf((char*)copy_buf, "%s  type $%02X  aux $%04X  %u blocks  %lu bytes  %02u/%02u/%02u%s",
-                e->name, e->type, e->aux, e->blocks, e->size,
-                e->mdate & 31, (e->mdate >> 5) & 15, (e->mdate >> 9) % 100,
-                is_locked(e) ? "  locked" : "");
+    else {
+        /* Directory reads have finished before drawing. One shared prefix
+         * (at most 66 chars), then annotation/date (84 total before clipping),
+         * in the existing 512-byte MAIN buffer; never borrow AUX. */
+        n = sprintf((char*)copy_buf, "%s  type $%02X  aux $%04X  %u blocks  %lu bytes",
+                    e->name, e->type, e->aux, e->blocks, e->size);
+        if (pan->fs) strcpy((char*)copy_buf + n, "  (in image)");
+        else sprintf((char*)copy_buf + n, "  %02u/%02u/%02u%s",
+                     e->mdate & 31, (e->mdate >> 5) & 15, (e->mdate >> 9) % 100,
+                     is_locked(e) ? "  locked" : "");
         copy_buf[79] = 0;
         cputs((char*)copy_buf);
     }
@@ -1120,13 +1092,16 @@ static unsigned char confirm(const char* text)
 {
     char key;
     question_begin();
-    cprintf("%s (Y/N) ", text);
+    cputs(text);
+    cputs(" (Y/N) ");
     revers(0);
-    for (;;) {
+    do {
         key = cgetc();
-        if (key == 'y' || key == 'Y') { clear_row(22); return 1; }
-        if (key == 'n' || key == 'N' || key == KEY_ESC) { clear_row(22); return 0; }
-    }
+        if (key == KEY_ESC) break;
+        key |= 0x20;
+    } while (key != 'y' && key != 'n');
+    clear_row(22);
+    return key == 'y';
 }
 
 /* An input into `input`: a ProDOS name (a letter, then letters, digits
@@ -1140,7 +1115,11 @@ static unsigned char prompt(const char* label, const char* initial, unsigned cha
     else input[0] = 0;
     for (;;) {
         question_begin();
-        cprintf("%s: %s%s_", label, hex ? "$" : "", input);
+        cputs(label);
+        cputs(": ");
+        if (hex) cputc('$');
+        cputs(input);
+        cputc('_');
         revers(0);
         key = cgetc();
         if (key == KEY_ESC) { clear_row(22); return 0; }
@@ -1156,12 +1135,7 @@ static unsigned char prompt(const char* label, const char* initial, unsigned cha
     }
 }
 
-static unsigned int hex_value(const char* s)
-{
-    unsigned int v = 0;
-    for (; *s; ++s) v = (v << 4) | (*s <= '9' ? *s - '0' : *s - 'A' + 10);
-    return v;
-}
+unsigned int __fastcall__ hex_value(const char* s); /* display.s, LC */
 
 #include "errors.h"
 
@@ -1176,13 +1150,8 @@ const char msg_samedir[] = "Both panels show the same directory.";
 const char msg_otherro[] = "The other panel is a read-only disk image.";
 const char msg_intoself[] = "Cannot copy a directory into itself.";
 const char VIEW_KEYS[] = "SPC Next,B Prev,ESC Back";
-/* The three column headers of the panels, in the language card rather
- * than in RODATA (main window full): ~100 bytes given back to the resident,
- * the margin needed for the UNSHRINK overlay and its 32-bit arithmetic.
- * draw_panel refers to them through an array of pointers (six bytes). */
-const char a2fc_hdr_name[] = "Name*            Type  Aux     Size";
-const char a2fc_hdr_size[] = "Name             Type  Aux     Size*";
-const char a2fc_hdr_type[] = "Name             Type* Aux     Size";
+/* Shared text; draw_panel adds the sort marker over a space. */
+const char a2fc_header[] = "Name             Type  Aux     Size";
 const char MAIN_KEYS[] = "TAB Panel,RET Open,SPC Tag,C Copy,V Move,R Ren,D Del,K Mkdir,! More,? Help";
 /* ---------------------------------------------------------------------- */
 /* Viewers -- in the language card                                        */

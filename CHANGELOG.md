@@ -5,6 +5,7 @@ downloads and installation.
 
 ## Unreleased
 
+- Consolidate resident display/input helpers with unchanged panel text and plugin ABI: free MAIN reaches 290/835 bytes and language-card space 172/169 bytes on 65C02/6502, meeting the first reserve targets without raising memory limits.
 - Return/X launches Integer BASIC programs through INTBASIC.SYSTEM v0.9, included with Applesoft's runtime on DEVTOOLS and XL; T keeps listing BASIC source.
 - Keep program/runtime paths separate during launch, check interpreter headers and actual load sizes, and reject loader close failures.
 - Relaunch A2FC from BASIC using its own system path even when the previous program's prefix remains set.

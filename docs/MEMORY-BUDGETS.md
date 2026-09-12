@@ -115,10 +115,62 @@ BOOT occupe les 280 blocs : l'échec de sauvegarde d'une nouvelle configuration
 y reste signalé avant de proposer de lancer quand même le programme. Les
 objectifs de réserve restent ouverts, particulièrement la carte langage.
 
-## Prochaine extraction
+## Deuxième lot : affichage et saisie
 
-Commencer par les services résidents de présentation et leurs constantes,
-puis mesurer séparément le gain MAIN et carte langage. Déplacer un service dans
+Le lot suivant part de `68c39f5`. Une table compacte remplace le `switch` des
+types de fichiers. Un seul en-tête sert aux trois tris ; l'étoile est ajoutée
+à sa colonne d'origine. La ligne d'information partage son préfixe entre
+fichiers ProDOS et fichiers dans une image. Les questions utilisent `cputs`
+et `cputc` pour leur texte fixe, avec les mêmes réponses admises.
+
+`src/display.s` remplace le parseur de barre de touches et la conversion
+hexadécimale : mêmes conventions cc65 sur 6502/65C02 et même interface pour
+les plugins. Le parseur recharge ses pointeurs après les appels conio ; ses
+quatre octets d'état restent résidents. Aucune nouvelle surcouche n'est chargée.
+
+| Réserve après ce lot | 65C02 | 6502 | Gain 65C02 / 6502 |
+| --- | ---: | ---: | ---: |
+| MAIN | 290 | 835 | +228 / +242 |
+| Carte langage | 172 | 169 | +164 / +158 |
+| LOWRAM | 281 | 306 | +1 / +1 |
+| Espace avant pile C | 318 | 1052 | +228 / +242 |
+| BSS FORMAT | 147 | 147 | inchangé |
+
+Les objectifs initiaux sont atteints sur les deux architectures. Les plafonds,
+la réserve de pile de 192 octets et les fenêtres des surcouches restent
+inchangés. Les réserves de ces dernières n'évoluent pas. BOOT gagne un bloc
+libre, et la disquette de banc enhanced passe de huit à neuf blocs libres.
+
+### Écritures et qualification
+
+Ces services ne font aucune opération de fichier ou de volume. Ils écrivent
+leurs variables en MAIN, les registres temporaires cc65 en page zéro et
+l'écran texte MAIN/AUX `$0400-$07FF`. La saisie écrit dans `input`, comme avant.
+La ligne d'information utilise `copy_buf` en MAIN, désormais aussi pour les
+fichiers dans une image : ses appelants ont terminé la lecture des répertoires
+avant l'affichage. Le préfixe fait au plus 66 caractères, le texte complet
+84 avant troncature à 79 ; le tampon en contient 512. Le disque `/RAM` n'est
+pas utilisé comme réserve de mémoire par ces services.
+
+`tools/test_display.py` exécute le C réel pour les 256 types, les trois tris
+sur les deux panneaux, les attributs maximaux, les limites de ligne/tampon,
+les saisies et les 256 touches de confirmation (seuls Y/y, N/n et Échap
+terminent la question). Le test de style des questions reste dans
+`tools/test_ui.py`. Sur sim65, le véritable assembleur est comparé à l'ancien
+parseur C, texte et vidéo inverse compris, avec passage de page et appel par
+le pointeur de fonction des plugins. Les 65 536 valeurs hexadécimales sont
+vérifiées sur chacun des deux processeurs.
+
+Validation locale : `make test`, les deux constructions natives et la relecture
+des sept supports passent. POM2 valide les 11 contrôles XL sur 6502. Le parcours
+`bench/memory.py` sur enhanced (visionneuses, édition abandonnée, copie
+récursive sur volumes jetables) mesure toujours 92 octets de pile utilisés
+sur 192. Cette mesure n'est pas une borne exhaustive pour tous les parcours.
+
+## Suite de la consolidation
+
+Poursuivre avec les contrats de buffers et les services de fichiers sûrs,
+en mesurant séparément le gain MAIN et carte langage. Déplacer un service dans
 une surcouche demande de vérifier tous ses appelants : charger cette surcouche
 peut écraser celle qui appelle le service. Une réserve dans MENU ou BATCH n'est
 donc pas automatiquement disponible pour un service partagé.
