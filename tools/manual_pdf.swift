@@ -124,7 +124,11 @@ while i < lines.count {
         }
         if rows.isEmpty { continue }
         let count = rows[0].count
-        let ratios: [CGFloat] = count == 2 ? [0.25,0.75] : (count == 3 ? [0.22,0.16,0.62] : Array(repeating: 1/CGFloat(count), count: count))
+        // The companion catalog needs room for lists of tools; volume names
+        // are short identifiers. Other three-column tables describe commands.
+        let companionCatalog = rows[0] == ["Category", "Plugins", "ProDOS volume"]
+        let ratios: [CGFloat] = companionCatalog ? [0.18,0.55,0.27] :
+            (count == 2 ? [0.25,0.75] : (count == 3 ? [0.22,0.16,0.62] : Array(repeating: 1/CGFloat(count), count: count)))
         func tableRow(_ cells: [String], header: Bool) {
             let texts = cells.enumerated().map { (j,s) in attributed(s, header ? 9 : 9.2, header ? "Arial-BoldMT" : "ArialMT") }
             let h = max(21, texts.enumerated().map { height($0.element, width*ratios[$0.offset]-14)+8 }.max() ?? 24)
