@@ -5,6 +5,10 @@ downloads and installation.
 
 ## Unreleased
 
+- Support all historical PT3 frequency tables and verify their 96 tones on both CPUs.
+- Keep AUX consent while browsing images; clear it when returning to the panels.
+- Recognize Escape and media arrows even when cc65 adds the Open-Apple/PB0 flag; regress TWOSTEVESTITLE playback and return.
+
 - Extend PT3 playback from 4,608 to 65,535 bytes with a main-RAM page cache, read-only source access and preserved `/RAM`; cover I/O failures, pause/navigation, natural completion and stack bounds on both CPUs.
 
 - Consolidate resident display/input helpers with unchanged panel text and plugin ABI: free MAIN reaches 290/835 bytes and language-card space 172/169 bytes on 65C02/6502, meeting the first reserve targets without raising memory limits.

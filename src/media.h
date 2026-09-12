@@ -1,5 +1,5 @@
 /* Foreground media coordination. MAIN only; directory/file probes are read-only.
- * Each AUX overlay still obtains consent in load_overlay before any AUX write. */
+ * AUX consent lasts only for the current overlay_run browsing session. */
 static const char* const media_names[] = {"MUSIC","PT3","EXTASIE","PACKFOT","PAINT816","DGRVIEW","FONTVIEW","LZ4FH","PRINTSHOP"};
 static unsigned char media_request;
 static unsigned int media_first[2];
@@ -65,6 +65,8 @@ static unsigned char media_prepare(unsigned char kind)
 #pragma code-name(push, "LC")
 static unsigned char media_key(unsigned char key)
 {
+    /* cc65 marks Open-Apple/PB0 with bit 7, including Escape. */
+    key &= 127;
     if(key==KEY_ESC)return 1;
     if((key==KEY_LEFT || key==KEY_RIGHT) && album[key==KEY_RIGHT][0]) {
         media_request=key;return 1;

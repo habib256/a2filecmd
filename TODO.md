@@ -101,8 +101,9 @@ Les travaux sur lecteurs physiques sont signalés par **💾**.
 
 - [x] **PT3 : grands modules** — jusqu'à 65 535 octets, cache en mémoire
   principale, source en lecture seule et préservation de `/RAM`.
-- [ ] **PT3 : compatibilité** — anciennes tables de fréquences autres que ST,
-  effets multiples par ligne et TurboSound.
+- [x] **PT3 : anciennes tables de fréquences** — les quatre tables, versions
+  anciennes et modernes, vérifiées sur les 96 notes et les deux CPU.
+- [ ] **PT3 : compatibilité** — effets multiples par ligne et TurboSound.
   Le lecteur, les crédits, le feuilletage et la vérification des volumes sont acquis.
 - [ ] **Contrat commun des visualiseurs** — uniformiser ouverture, navigation,
   erreurs, sortie et restauration de l'écran ; conserver le consentement AUX.

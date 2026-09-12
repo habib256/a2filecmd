@@ -221,3 +221,9 @@ Les réserves du résident restent inchangées : MAIN 290/835, carte langage
 le plancher de la pile C réservée de 192 octets pendant les appels cache/stdio.
 Il compare également toute la mémoire AUX hors écran texte et tous les octets
 du volume source avant/après lecture, sur images jetables.
+
+Après les anciennes tables PT3 et le consentement média par session :
+MAIN 244/787, LC 168/163, LOWRAM 280/305, espace avant pile C 272/1004 octets
+(65C02/6502). Les bornes de lien restent inchangées ; MAIN enhanced est
+12 octets sous la réserve de travail visée de 256. Le banc de feuilletage
+préserve le marqueur du plancher de pile sur les deux CPU.

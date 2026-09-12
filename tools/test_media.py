@@ -50,6 +50,11 @@ int main(int argc,char**argv){
   failure=1;if(media_prepare(1))return 5;
   failure=0;panels[0].first=0;read_panel(0);
   failure=2;if(media_prepare(1))return 12;
+ }else if(atoi(argv[1])==6){
+  album[0][0]=album[1][0]=0;media_request=0;
+  if(!media_key(0x9b)||media_request)return 14;
+  strcpy(album[1],"NEXT");
+  if(!media_key(KEY_RIGHT|128)||media_request!=KEY_RIGHT)return 15;
  }else{
   memset(h,0,sizeof h);strcpy(selected.name,"FILE.PT3");music_info(h);
   if(!strstr(output,"Title: FILE.PT3")||!strstr(output,"Not specified"))return 6;
@@ -83,6 +88,7 @@ class Media(unittest.TestCase):
   subprocess.run(['cc','-std=c99','-I',str(ROOT),str(p/'test.c'),'-o',str(cls.exe)],check=True,capture_output=True)
  @classmethod
  def tearDownClass(cls):cls.tmp.cleanup()
+ def test_media_keys_with_open_apple_flag(self):subprocess.run([str(self.exe),'6'],check=True)
  def test_neighbours_boundaries_and_marks(self):subprocess.run([str(self.exe),'1'],check=True)
  def test_window_crossing_and_read_failure(self):subprocess.run([str(self.exe),'2'],check=True)
  def test_parent_search_across_windows_and_errors(self):subprocess.run([str(self.exe),'4'],check=True)

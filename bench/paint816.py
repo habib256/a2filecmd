@@ -17,6 +17,7 @@ Les deux specimens sont des fichiers que 816/Paint a reellement ecrits
 (tools/test_paint816.py les porte en base64) et les pages attendues sont
 rebaties a partir de leur description, pas du decodeur."""
 import sys
+import os
 import tempfile
 import time
 from pathlib import Path
@@ -24,6 +25,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 from xplug import boot_hd, menu_run, ok_all, RET, ESC
+from pom2 import labels, FULL
+from prodos_read import Image
 from test_paint816 import (LADDER_PACKED, RUNS_PACKED, ladder_stream, runs_stream,
                            page_left_to_right, COLS, ROWS)
 
@@ -59,6 +62,12 @@ def main():
         'WORK/RUNS.P#06E002': RUNS_PACKED,          # double hi-res
         'WORK/PLAIN.BIN#062000': bytes(8192),       # ni l'un ni l'autre : refuse
     }
+    corpus = Image(Path(os.environ.get('A2FC_SAMPLE_DISK', str(Path.home() / 'src/pom2/hdv/GISTDATA.hdv'))).read_bytes())
+    directory = 2
+    for name in ('IMG', 'PAINT816', 'TWOSTEVESTITLE'):
+        entry = next(e for e in corpus.entries(directory) if e[1:1+(e[0]&15)].decode() == name)
+        directory = int.from_bytes(entry[17:19], 'little')
+    files['WORK/TWOSTEVESTITLE#06E002'] = corpus.read(entry)
     with tempfile.TemporaryDirectory(prefix='a2fc-paint816-') as tmp:
         with boot_hd(tmp, files, port=PORT, plugins=['paint816']) as (p, s):
             s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes')
@@ -105,6 +114,28 @@ def main():
             s.key(ESC)
             s.wait(lambda: s.has('/RAM rebuilt'), 'la note sur /RAM', 30); p.stable()
             s.ok('dit que /RAM a ete refait', s.rows()[22].strip() == '/RAM rebuilt.', s.rows()[22].strip())
+            # Real report: ordinary ESC and the cc65 Open-Apple/PB0 flag.
+            # Only the disposable emulator's keyboard return is instrumented;
+            # the shipped media coordinator and image plugin run unchanged.
+            for flagged in ((False, True) if FULL else (False,)):
+                p.stable()
+                panel_sp = p.rq('/status')['cpu']['sp']
+                s.select('TWOSTEVESTITLE'); s.key(RET); s.allow_aux()
+                settled(p); p.stable()
+                address = None
+                if flagged:
+                    start = labels()['_cgetc']
+                    code = bytes(p.peek(start, 80))
+                    offset = code.index(b'\x29\x7f')
+                    address = start + offset
+                    p.poke(address, b'\x09\x80')  # ORA #$80: Open-Apple flagged input
+                s.key(ESC)
+                time.sleep(.5)
+                if address is not None: p.poke(address, b'\x29\x7f')
+                s.wait(lambda: s.has('/RAM rebuilt.') and p.rq('/status')['cpu']['sp'] == panel_sp,
+                       'real picture returns to panel keyboard loop', 20)
+                s.ok('TWOSTEVESTITLE: ESC returns' + (' with Open-Apple/PB0' if flagged else ''),
+                     s.line(0).startswith('TWOSTEVESTITLE') and s.has('Type  Aux'))
     return ok_all(s, 'paint816')
 
 

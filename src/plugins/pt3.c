@@ -60,7 +60,6 @@ static unsigned char valid(void) {
  unsigned int p,q,k;
  if(n<202 || (memcmp(SONG,"ProTracker 3.",13) && memcmp(SONG,"Vortex Tracker",14)) ||
     SONG[99]>3 || !SONG[100] || !SONG[101] || SONG[102]>=SONG[101] || 202+SONG[101]>n) return 0;
- if(SONG[13]>='0' && SONG[13]<'4' && SONG[99]!=1)return 0;
  p=word(103);
  for(k=0;k<SONG[101];++k) {
   q=SONG[201+k];

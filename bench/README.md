@@ -257,3 +257,12 @@ executes the assembly guard over all 65,536 pointer values on both CPUs.
 Extasie, PACKFOT, 816/Paint, MGTK fonts, Print Shop and LZ4FH under ASan/UBSan.
 The input files are temporary and checked for modification; native rendering
 is covered separately by the media benches.
+
+`paint816.py` lit aussi TWOSTEVESTITLE depuis le corpus GISTDATA en lecture
+seule, puis le copie sur son disque jetable. Il vérifie Échap normal et, sur
+65C02, le bit Open-Apple/PB0 renvoyé par cc65 (8/8 contrôles ; 7/7 sur 6502).
+Le cas avec modificateur était refusé par le coordinateur avant la correction ;
+le signalement utilisateur sans modificateur n'a pas été reproduit.
+`media.py` vérifie également que les flèches ne redemandent pas l'accord AUX
+pour Extasie, 816/Paint HGR/DHGR, PACKFOT et DHGR brut, puis que réouvrir le
+lecteur exige un nouvel accord et que le refus conserve AUX : 44/44 sur chaque CPU.

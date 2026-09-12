@@ -18,11 +18,13 @@ def main():
   ('EXT',0xF2,0,lambda c:b'\0\0'+bytes([128,c])*120,lambda c:bytes([c])*8192),
   ('PACK',8,0x4000,lambda c:bytes([255,c])*32,lambda c:bytes([c])*8192),
   ('PAINT',6,0xE001,lambda c:pack(bytes([c])*7680),lambda c:bytes([c])*8192),
+  ('P8D',6,0xE002,lambda c:bytes(8)+pack(bytes([c])*7680)*2,lambda c:bytes([c])*8192),
+  ('DHGR',6,0x2000,lambda c:bytes([c])*16384,lambda c:bytes([c])*8192),
   ('LZ',8,0x8066,lambda c:bytes([0x66,0x1F,c,254]),lambda c:bytes([c])+bytes(8191)),
   ('FONT',7,0,lambda c:bytes([0,0,8,7])+bytes([c])*8,lambda c:font_page(bytes([0,0,8,7])+bytes([c])*8)),
   ('CLIP',6,0x4800,lambda c:bytes([c])*572,lambda c:clip_page(bytes([c])*572))]:
   for n,c in [(1,0x11),(2,0x22)]:files[f'WORK/{prefix}{n}#{typ:02X}{aux:04X}']=encode(c)
-  cases.append((prefix,aux in (0x4000,0xE001) or typ==0xF2,oracle))
+  cases.append((prefix,aux in (0x4000,0xE001,0xE002,0x2000) or typ==0xF2,oracle))
  for n,c in [(1,0x55),(2,0x66)]:files[f'WORK/LORES{n}#060400']=bytes([c])*1024
  with tempfile.TemporaryDirectory(prefix='media-nav-') as t:
   with boot_hd(Path(t),files,port=6901) as(p,s):
@@ -33,6 +35,7 @@ def main():
    for first,last,title in [('A.MB','C.MB','MB1 - '),('B.PT3','D.PT3','ProTracker 3 - ')]:
     s.select(first);s.key(RET);s.wait(lambda:s.has(title+first),'start '+first)
     if first.endswith('PT3'):
+     s.wait(lambda:s.has('ESC Back'),'PT3 credits fully drawn')
      s.ok('PT3 title and artist',s.has('Title: Test title') and s.has('Test artist'))
      s.ok('PT3 player credit',s.has('Player: Vince Weaver - A2FC adapter'))
     s.key(LEFT);p.stable();s.ok(first+' boundary stays',s.has(title+first))
@@ -48,14 +51,18 @@ def main():
     s.select(prefix+'1');s.key(RET)
     if consent:s.allow_aux()
     s.wait(lambda:visible(p.peek(0x2000,8192))==visible(oracle(0x11)),prefix+' first',60)
-    s.key(LEFT);p.stable();s.ok(prefix+' first boundary stays',visible(p.peek(0x2000,8192))==visible(oracle(0x11)))
+    if prefix!='PAINT':  # P8D precedes PAINT in the same viewer's album.
+     s.key(LEFT);p.stable();s.ok(prefix+' first boundary stays',visible(p.peek(0x2000,8192))==visible(oracle(0x11)))
     s.key(RIGHT)
-    if consent:s.allow_aux()
     s.wait(lambda:visible(p.peek(0x2000,8192))==visible(oracle(0x22)),prefix+' next',60);s.ok(prefix+' next',True)
     s.key(LEFT)
-    if consent:s.allow_aux()
     s.wait(lambda:visible(p.peek(0x2000,8192))==visible(oracle(0x11)),prefix+' previous',60)
     s.key(ESC);s.wait(lambda:s.has('Type  Aux'),prefix+' exit');p.stable();s.ok(prefix+' cursor restored',s.line().startswith(prefix+'1 '))
+    if consent:
+     before=p.peek(0x800,0xF800,'aux')
+     s.key(RET);s.wait(lambda:s.has('ALL /RAM files will be LOST'),prefix+' fresh consent')
+     s.key(b'N');p.stable()
+     s.ok(prefix+' reopening asks again; decline preserves AUX',p.peek(0x800,0xF800,'aux')==before)
    s.select('LORES1');s.key(RET);s.wait(lambda:p.peek(0x400,40)==b'\x55'*40,'lores first')
    s.key(RIGHT);s.wait(lambda:p.peek(0x400,40)==b'\x66'*40,'lores next');s.ok('DGRVIEW next',True)
    s.key(LEFT);s.wait(lambda:p.peek(0x400,40)==b'\x55'*40,'lores previous');s.ok('DGRVIEW previous',True)

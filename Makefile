@@ -324,6 +324,7 @@ test:
 	python3 $(TOOLS)/test_wipe.py
 	python3 $(TOOLS)/test_music.py
 	python3 $(TOOLS)/test_pt3.py
+	python3 $(TOOLS)/test_pt3_frequency.py
 	python3 $(TOOLS)/test_pt3_cache.py
 	python3 $(TOOLS)/test_pt3_conv.py
 	python3 $(TOOLS)/test_pt3_volume.py

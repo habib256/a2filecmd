@@ -30,8 +30,10 @@ A2FC changes:
   after hardware start. The core supplies a hardware-only card probe.
 - The unused loop-patch reference in upstream initialization stores the loop
   index in decoder state; A2FC plays once rather than looping automatically.
-- Older PT3 frequency tables (before 3.4) are accepted only for table 1 (ST),
-  the table used by AUTUMN.PT3. Other old tables are refused.
+- Frequency tables 0–3 include the pre-3.4 variants.
+  `tools/test_pt3_frequency.py` checks all 96 periods and emitted tones against
+  the archived full upstream C tables on both CPUs, with/without conversion.
+  Reference: [pt3_lib.c](https://github.com/deater/vmw-meter/blob/master/ay-3-8910/pt3/pt3_lib.c), retrieved 2026-09-12.
 - The 1.77 MHz → 1 MHz period conversion (×9/16) is ROUNDED and computed
   without overflow, by one routine (`conv916`) shared by the three tones and
   the envelope. Upstream's four inline copies truncated: harmless on a 12-bit

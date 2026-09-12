@@ -103,8 +103,11 @@ class PT3(unittest.TestCase):
         self.run_data(b,fault=8)
         self.run_data(b,fault=14)
         for fault in (11,12,13):self.run_data(b,True,fault=fault)
+    def test_old_frequency_tables_are_accepted(self):
+        for table in range(4):
+            b=bytearray(module());b[99]=table;self.run_data(bytes(b),True)
     def test_header_and_order_bounds(self):
-        for pos,value in ((0,0),(99,4),(99,0),(99,2),(99,3),(100,0),(101,0),(101,255),(102,1),(103,255),(104,255),(201,1),(201,255),(202,0),(107,0),(169,0)):
+        for pos,value in ((0,0),(99,4),(100,0),(101,0),(101,255),(102,1),(103,255),(104,255),(201,1),(201,255),(202,0),(107,0),(169,0)):
             b=bytearray(module());b[pos]=value;self.run_data(bytes(b))
 
 

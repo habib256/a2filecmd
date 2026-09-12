@@ -206,6 +206,7 @@ patch_table_17:
 
 
 done_set_freq_table:
+	jsr old_frequency_table
 
 
 	;======================
@@ -449,6 +450,80 @@ skip_adjust_done:
 
 	rts
 
+
+; Historical tables 0/2/3 for version <=3. Unknown version means 6,
+; matching the decoder version selection below. Only main-RAM tables change.
+old_frequency_table:
+ lda PT3_LOC+PT3_VERSION
+ cmp #'0'
+ bcc old_freq_done
+ cmp #'4'
+ bcs old_freq_done
+ lda table_base
+ sta GUARD
+ lda table_base+1
+ sta GUARD+1
+ lda PT3_LOC+PT3_HEADER_FREQUENCY
+ cmp #1
+ beq old_freq_done
+ cmp #3
+ bne old_freq_seed
+ ldy #43
+ lda (GUARD),y
+ clc
+ adc #1
+ sta (GUARD),y
+ rts
+old_freq_seed:
+ ; X selects a packed 12-low/12-high octave (PT or ASM).
+ ldx #0
+ cmp #0
+ beq old_freq_copy
+ ldx #24
+old_freq_copy:
+ ldy #0
+old_freq_loop:
+ lda old_freq_seeds,x
+ sta (GUARD),y
+ inx
+ iny
+ cpy #12
+ bne old_freq_loop
+ ldy #96
+old_freq_high:
+ lda old_freq_seeds,x
+ sta (GUARD),y
+ inx
+ iny
+ cpy #108
+ bne old_freq_high
+ jsr NoteTablePropogate
+ lda PT3_LOC+PT3_HEADER_FREQUENCY
+ beq old_freq_done
+ lda #<old_freq_adjust
+ sta note_table_adjust_smc+1
+ lda #>old_freq_adjust
+ sta note_table_adjust_smc+2
+ jsr NoteTableAdjust
+ ldy #86
+ lda (GUARD),y
+ clc
+ adc #1
+ sta (GUARD),y
+ iny
+ lda (GUARD),y
+ clc
+ adc #1
+ sta (GUARD),y
+old_freq_done:
+ rts
+old_freq_seeds:
+ .byte $21,$73,$CE,$33,$A0,$16,$93,$18,$A4,$36,$CE,$6D
+ .byte $0C,$0B,$0A,$0A,$09,$09,$08,$08,$07,$07,$06,$06
+ .byte $3E,$80,$CC,$22,$82,$EC,$5C,$D6,$58,$E0,$6E,$04
+ .byte $0D,$0C,$0B,$0B,$0A,$09,$09,$08,$08,$07,$07,$07
+old_freq_adjust:
+ .byte $f8,$80,$90,$c0,$04,$f0,$f8,$ec,$e0,$c0,$fc,$40
 
 ;base0_v3_high:
 ;.byte	$0C,$0B,$0A,$0A,$09,$09,$08,$08,$07,$07,$06,$06

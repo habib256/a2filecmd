@@ -1975,19 +1975,30 @@ static FILE* open_overlay(const char* name, unsigned char ask)
  * says so. A big overlay (OVERLAY_BIG) also takes the graphics page: the
  * tags are set aside before overwriting it, and overlay_run rereads the
  * panels on return. Returns 0 if nothing is loaded. */
+/* 0 outside media, 1 awaiting consent, 2 accepted for this browsing session.
+ * Only foreground viewers inherit this scope; every exit clears it. No AUX
+ * write or /RAM reconstruction happens in this gate itself. */
+static unsigned char media_aux_scope;
+static unsigned char confirm_aux(void)
+{
+    if (media_aux_scope == 2) return 1;
+    if (!confirm("Uses AUX memory: ALL /RAM files will be LOST. Continue?")) return 0;
+    if (media_aux_scope) media_aux_scope = 2;
+    return 1;
+}
 #define OVL ((struct Overlay*)OVERLAY_WINDOW)
 static unsigned char load_overlay(const char* name, unsigned char any)
 {
     FILE* f;
     unsigned char ok = 0;
     if (!strcmp(overlay_loaded, name))
-        return !(OVL->flags & OVERLAY_AUX) || confirm("Uses AUX memory: ALL /RAM files will be LOST. Continue?");
+        return !(OVL->flags & OVERLAY_AUX) || confirm_aux();
     overlay_loaded[0] = 0;
     f = open_overlay(name, 1);
     if (f) {
         if (fread(OVERLAY_WINDOW, 1, 8, f) == 8
             && (OVL->signature == a2fc_link_id || (any && (OVL->signature == PLUGIN_MAGIC || OVL->signature == MEDIA_PLUGIN_MAGIC)))) {
-            if ((OVL->flags & OVERLAY_AUX) && !confirm("Uses AUX memory: ALL /RAM files will be LOST. Continue?")) {
+            if ((OVL->flags & OVERLAY_AUX) && !confirm_aux()) {
                 fclose(f); return 0;
             }
             if ((OVL->flags & OVERLAY_BIG) && !batch_snapshot) keep_tags(1);
@@ -2038,8 +2049,9 @@ static void overlay_run(const char* name, unsigned char arg)
 {
     struct Panel* pan = &panels[active];
     unsigned char big, media=media_type(name), dir;
+    media_aux_scope = media ? 1 : 0;
 again:
-    if(media && !media_prepare(media)) {draw_all();return;}
+    if(media && !media_prepare(media)) {draw_all();goto media_done;}
     /* The entry under the cursor and its path, kept safe: a big overlay
      * covers the entry table as it loads. */
     if (arg != 'B' && !batch_snapshot) {
@@ -2047,7 +2059,7 @@ again:
     if (pan->count) { selected = pan->e[pan->cursor]; build_full(full, pan, &selected); }
     else selected.name[0] = 0;
     }
-    if (!load_overlay(name, 1)) return;
+    if (!load_overlay(name, 1)) goto media_done;
     /* A big overlay has already set the tags aside and covered the entry
      * table as it loaded (load_overlay): even without an entry point, the
      * panels must be reread, otherwise the screen keeps the upper half of
@@ -2073,13 +2085,15 @@ again:
     if(media && media_request) {
         dir=media_request==KEY_RIGHT;
         pan->first=media_first[dir];
-        if(!read_panel(active))return;
+        if(!read_panel(active))goto media_done;
         keep_tags(0);
         select_name(pan,album[dir]);
-        if(!pan->count || strcmp(pan->e[pan->cursor].name,album[dir]))return;
+        if(!pan->count || strcmp(pan->e[pan->cursor].name,album[dir]))goto media_done;
         name=media_names[media-1];
         goto again;
     }
+media_done:
+    media_aux_scope = 0;
 }
 
 #pragma code-name (push, "LC")

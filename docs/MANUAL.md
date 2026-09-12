@@ -329,13 +329,15 @@ They reject truncated data and report read or close errors.
 viewer: Extasie, PACKFOT, 816/Paint, DGRVIEW, FONTVIEW, LZ4FH and PRINTSHOP.
 The directory's displayed order is used, including across large-directory
 windows. At either end the arrow does nothing; Escape returns to the panels.
-A viewer that uses AUX still asks for consent before the next AUX write.
+A viewer that uses AUX asks once before the first AUX write in a browsing session.
+Left/Right keeps that consent; leaving the viewer clears it.
 
 **T** on an Integer BASIC file (`$FA`), including `WOZ.BREAKOUT` and
 `APPLEVISION`, opens INTBASIC.PLG to list its source. **Return/X** executes it
 through INTBASIC.SYSTEM after confirmation.
 
-Destructive AUX use always asks for consent before touching `/RAM`.
+Destructive AUX use requires prior consent. Opening a viewer again starts a new
+session and asks again; declining preserves `/RAM`.
 With floppies, specialized picture viewers are on **MEDIA**, and BOOT holds
 the internal `OPEN.PLG` dispatcher. Keep it with the matching program build.
 
@@ -376,8 +378,7 @@ The existing filtered corpus in `media/pt3/MUSIC/<ARTIST>/` and on
 `/GISTDATA/MUSIC/<ARTIST>/` contains 5,507 files in 449 artist folders;
 it has not been regenerated for the larger limit. Eight starter modules
 remain in `media/pt3/` and on the `A2FC-PT3.po` volume.
-Frequency tables 0–3 are supported for PT3 3.4 onward; older modules support
-table 1 (ST), as used by AUTUMN.PT3. Multiple deferred special effects within
+Frequency tables 0–3 are supported, including their older PT3 3.0–3.3 variants. Multiple deferred special effects within
 one channel/row are refused, and TurboSound dual-module playback is not
 supported. Invalid data, stream pointers, or read/seek/close errors stop
 loading or playback and return to the panels. Source URLs are listed in
