@@ -61,12 +61,14 @@ zero_song_structs_loop:
 	;=======================
 	; load default speed
 
+header_patch_8:
 	lda	PT3_LOC+PT3_SPEED					; 4
 	sta	pt3_speed_smc+1						; 4
 
 	;=======================
 	; load loop
 
+header_patch_9:
 	lda	PT3_LOC+PT3_LOOP					; 4
 	sta	LOOP						; 4
 
@@ -81,137 +83,12 @@ zero_song_structs_loop:
 	; but we are going to assume we are only going to be playing
 	; newer 3.4+ version files so only need the newer tables
 
-	ldx	PT3_LOC+PT3_HEADER_FREQUENCY				; 4
-	beq	use_freq_table_0
-	dex
-	beq	use_freq_table_1
-	dex
-	beq	use_freq_table_2
-	; fallthrough (freq table 3)
-
-use_freq_table_3:
-	;=================================================
-	;  Create Table #3, v4+, "PT3NoteTable_REAL_34_35"
-	;=================================================
-
-	ldy	#11			; !2
-freq_table_3_copy_loop:
-	; note, high lookup almost same as 2v4, just need to adjust one value
-
-	lda	base2_v4_high,Y		; !3
-patch_table_7:
-	sta	NoteTable_high,Y	; !3
-	lda	base3_low,Y		; !3
-patch_table_8:
-	sta	NoteTable_low,Y		; !3
-	dey				; !1
-	bpl	freq_table_3_copy_loop	; !2
-
-patch_table_9:
-	dec	NoteTable_high			; adjust to right value
-
-	jsr	NoteTablePropogate	; !3
-
-	lda	#<table3_v4_adjust
-	sta	note_table_adjust_smc+1
-	lda	#>table3_v4_adjust
-	sta	note_table_adjust_smc+2
-
-	jsr	NoteTableAdjust
-
-	jmp	done_set_freq_table
-
-
-
-use_freq_table_2:
-	;=================================================
-	;  Create Table #2, v4+, "PT3NoteTable_ASM_34_35"
-	;=================================================
-
-	ldy	#11
-freq_table_2_copy_loop:
-	lda	base2_v4_high,Y
-patch_table_10:
-	sta	NoteTable_high,Y
-	lda	base2_v4_low,Y
-patch_table_11:
-	sta	NoteTable_low,Y
-	dey
-	bpl	freq_table_2_copy_loop
-
-	jsr	NoteTablePropogate	; !3
-
-	lda	#<table2_v4_adjust
-	sta	note_table_adjust_smc+1
-	lda	#>table2_v4_adjust
-	sta	note_table_adjust_smc+2
-
-	jsr	NoteTableAdjust
-
-	jmp	done_set_freq_table
-
-use_freq_table_1:
-	;=================================================
-	;  Create Table #1, "PT3NoteTable_ST"
-	;=================================================
-
-	ldy	#11
-freq_table_1_copy_loop:
-	lda	base1_high,Y
-patch_table_12:
-	sta	NoteTable_high,Y
-	lda	base1_low,Y
-patch_table_13:
-	sta	NoteTable_low,Y
-	dey
-	bpl	freq_table_1_copy_loop
-
-	jsr	NoteTablePropogate	; !3
-
-	; last adjustments
-	lda	#$FD				; Tone[23]=$3FD
-patch_table_14:
-	sta	NoteTable_low+23
-patch_table_15:
-	dec	NoteTable_low+46		; Tone[46]-=1;
-
-
-	jmp	done_set_freq_table
-
-
-use_freq_table_0:
-	;=================================================
-	;  Create Table #0, "PT3NoteTable_PT_34_35"
-	;=================================================
-
-	ldy	#11
-freq_table_0_copy_loop:
-	lda	base0_v4_high,Y
-patch_table_16:
-	sta	NoteTable_high,Y
-	lda	base0_v4_low,Y
-patch_table_17:
-	sta	NoteTable_low,Y
-	dey
-	bpl	freq_table_0_copy_loop
-
-	jsr	NoteTablePropogate	; !3
-
-	lda	#<table0_v4_adjust
-	sta	note_table_adjust_smc+1
-	lda	#>table0_v4_adjust
-	sta	note_table_adjust_smc+2
-
-	jsr	NoteTableAdjust
-
-
-done_set_freq_table:
-	jsr old_frequency_table
-
+ jsr make_frequency_table
 
 	;======================
 	; calculate version
 	ldx	#6							; 2
+header_patch_10:
 	lda	PT3_LOC+PT3_VERSION					; 4
 	sec								; 2
 	sbc	#'0'							; 2
@@ -412,7 +289,7 @@ NoteTableAdjust:
 note_table_adjust_outer:
 
 note_table_adjust_smc:
-	lda	table0_v4_adjust,X
+	lda	freq_0+24,X
 	sta	PT3_TEMP
 
 	; reset smc
@@ -451,60 +328,71 @@ skip_adjust_done:
 	rts
 
 
-; Historical tables 0/2/3 for version <=3. Unknown version means 6,
-; matching the decoder version selection below. Only main-RAM tables change.
-old_frequency_table:
+; All seven historical tables: one seed octave plus rounding bitmasks.
+; The full archived 96-word tables remain the independent test oracle.
+make_frequency_table:
+header_patch_11:
+ ldx PT3_LOC+PT3_HEADER_FREQUENCY
+header_patch_12:
  lda PT3_LOC+PT3_VERSION
  cmp #'0'
- bcc old_freq_done
+ bcc freq_modern
  cmp #'4'
- bcs old_freq_done
+ bcc freq_pick
+freq_modern:
+ txa
+ ora #4
+ tax
+freq_pick:
+ lda freq_choices,x
+ sta freq_choice
+ tax
+ lda freq_ptr_low,x
+ sta SAMPLE_L
+ lda freq_ptr_high,x
+ sta SAMPLE_H
+ ldy #0
+ ldx #0
+freq_copy:
+ lda (SAMPLE_L),y
+patch_table_7:
+ sta NoteTable_low,x
+ iny
+ lda (SAMPLE_L),y
+patch_table_8:
+ sta NoteTable_high,x
+ iny
+ inx
+ cpx #12
+ bne freq_copy
+ clc
+ lda SAMPLE_L
+ adc #24
+ sta note_table_adjust_smc+1
+ lda SAMPLE_H
+ adc #0
+ sta note_table_adjust_smc+2
+ jsr NoteTablePropogate
+ jsr NoteTableAdjust
  lda table_base
  sta GUARD
  lda table_base+1
  sta GUARD+1
- lda PT3_LOC+PT3_HEADER_FREQUENCY
- cmp #1
- beq old_freq_done
- cmp #3
- bne old_freq_seed
- ldy #43
+ lda freq_choice
+ cmp #2
+ bne freq_asm
+ ldy #23
+ lda #$FD
+ sta (GUARD),y
+ ldy #46
  lda (GUARD),y
- clc
- adc #1
+ sec
+ sbc #1
  sta (GUARD),y
  rts
-old_freq_seed:
- ; X selects a packed 12-low/12-high octave (PT or ASM).
- ldx #0
- cmp #0
- beq old_freq_copy
- ldx #24
-old_freq_copy:
- ldy #0
-old_freq_loop:
- lda old_freq_seeds,x
- sta (GUARD),y
- inx
- iny
- cpy #12
- bne old_freq_loop
- ldy #96
-old_freq_high:
- lda old_freq_seeds,x
- sta (GUARD),y
- inx
- iny
- cpy #108
- bne old_freq_high
- jsr NoteTablePropogate
- lda PT3_LOC+PT3_HEADER_FREQUENCY
- beq old_freq_done
- lda #<old_freq_adjust
- sta note_table_adjust_smc+1
- lda #>old_freq_adjust
- sta note_table_adjust_smc+2
- jsr NoteTableAdjust
+freq_asm:
+ cmp #3
+ bne freq_done
  ldy #86
  lda (GUARD),y
  clc
@@ -515,60 +403,33 @@ old_freq_high:
  clc
  adc #1
  sta (GUARD),y
-old_freq_done:
+freq_done:
  rts
-old_freq_seeds:
- .byte $21,$73,$CE,$33,$A0,$16,$93,$18,$A4,$36,$CE,$6D
- .byte $0C,$0B,$0A,$0A,$09,$09,$08,$08,$07,$07,$06,$06
- .byte $3E,$80,$CC,$22,$82,$EC,$5C,$D6,$58,$E0,$6E,$04
- .byte $0D,$0C,$0B,$0B,$0A,$09,$09,$08,$08,$07,$07,$07
-old_freq_adjust:
- .byte $f8,$80,$90,$c0,$04,$f0,$f8,$ec,$e0,$c0,$fc,$40
-
-;base0_v3_high:
-;.byte	$0C,$0B,$0A,$0A,$09,$09,$08,$08,$07,$07,$06,$06
-;base0_v3_low:
-;.byte	$21,$73,$CE,$33,$A0,$16,$93,$18,$A4,$36,$CE,$6D
-
-; note: same as base0_v3_high
-base0_v4_high:
-.byte	$0C,$0B,$0A,$0A,$09,$09,$08,$08,$07,$07,$06,$06
-base0_v4_low:
-.byte	$22,$73,$CF,$33,$A1,$17,$94,$19,$A4,$37,$CF,$6D
-
-base1_high:
-.byte	$0E,$0E,$0D,$0C,$0B,$0B,$0A,$09,$09,$08,$08,$07
-base1_low:
-.byte	$F8,$10,$60,$80,$D8,$28,$88,$F0,$60,$E0,$58,$E0
-
-;base2_v3_high:
-;.byte	$0D,$0C,$0B,$0B,$0A,$09,$09,$08,$08,$07,$07,$07
-;base2_v3_low:
-;.byte	$3E,$80,$CC,$22,$82,$EC,$5C,$D6,$58,$E0,$6E,$04
-
-; note almost same as above
-base2_v4_high:
-.byte	$0D,$0C,$0B,$0A,$0A,$09,$09,$08,$08,$07,$07,$06
-base2_v4_low:
-.byte	$10,$55,$A4,$FC,$5F,$CA,$3D,$B8,$3B,$C5,$55,$EC
-
-; note almost same as above
-;base3_high:
-;.byte	$0C,$0C,$0B,$0A,$0A,$09,$09,$08,$08,$07,$07,$06
-base3_low:
-.byte	$DA,$22,$73,$CF,$33,$A1,$17,$94,$19,$A4,$37,$CF
-
-
-; Adjustment factors
-table0_v4_adjust:
-.byte	$40,$e6,$9c,$66,$40,$2c,$20,$30,$48,$6c,$1c,$5a
-
-table2_v4_adjust:
-.byte	$20,$a8,$40,$f8,$bc,$90,$78,$70,$74,$08,$2a,$50
-
-table3_v4_adjust:
-.byte	$B4,$40,$e6,$9c,$66,$40,$2c,$20,$30,$48,$6c,$1c
-
+freq_choice: .byte 0
+freq_choices: .byte 0,2,3,5,1,2,4,6
+freq_ptr_low: .byte <freq_0,<freq_1,<freq_2,<freq_3,<freq_4,<freq_5,<freq_6
+freq_ptr_high: .byte >freq_0,>freq_1,>freq_2,>freq_3,>freq_4,>freq_5,>freq_6
+freq_0:
+ .word $0C21,$0B73,$0ACE,$0A33,$09A0,$0916,$0893,$0818,$07A4,$0736,$06CE,$066D
+ .byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+freq_1:
+ .word $0C22,$0B73,$0ACF,$0A33,$09A1,$0917,$0894,$0819,$07A4,$0737,$06CF,$066D
+ .byte $40,$E6,$9C,$66,$40,$2C,$20,$30,$48,$6C,$1C,$5A
+freq_2:
+ .word $0EF8,$0E10,$0D60,$0C80,$0BD8,$0B28,$0A88,$09F0,$0960,$08E0,$0858,$07E0
+ .byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+freq_3:
+ .word $0D3E,$0C80,$0BCC,$0B22,$0A82,$09EC,$095C,$08D6,$0858,$07E0,$076E,$0704
+ .byte $F8,$80,$90,$C0,$04,$F0,$F8,$EC,$E0,$C0,$FC,$40
+freq_4:
+ .word $0D10,$0C55,$0BA4,$0AFC,$0A5F,$09CA,$093D,$08B8,$083B,$07C5,$0755,$06EC
+ .byte $20,$A8,$40,$F8,$BC,$90,$78,$70,$74,$08,$2A,$50
+freq_5:
+ .word $0CDA,$0C22,$0B73,$0ACF,$0A33,$09A1,$0917,$0894,$0819,$07A4,$0737,$06CF
+ .byte $B4,$40,$E6,$9C,$66,$40,$2C,$28,$30,$48,$6C,$1C
+freq_6:
+ .word $0CDA,$0C22,$0B73,$0ACF,$0A33,$09A1,$0917,$0894,$0819,$07A4,$0737,$06CF
+ .byte $B4,$40,$E6,$9C,$66,$40,$2C,$20,$30,$48,$6C,$1C
 
 ; Table #1 of Pro Tracker 3.3x - 3.5x
 ;PT3NoteTable_ST_high:

@@ -120,7 +120,7 @@ XPLUGINS_SCRATCH = music bootblk find goto mdview wipe dgrview
 # sets the tags aside and rereads the panels) but their CODE must still stop
 # before $2000: they are linked with the small window, which makes ld65
 # enforce that boundary instead of leaving it to luck.
-XPLUGINS_HGR = extasie packfot paint816 fontview printshop lz4fh
+XPLUGINS_HGR = purple extasie packfot paint816 fontview printshop lz4fh
 XPLG = $(patsubst %,$(BUILD)/%.PLG,$(XPLUGINS))
 XPLG_FLOPPY = $(patsubst %,$(BUILD)/%.PLG,$(XPLUGINS_FLOPPY))
 SYSTEM = $(BUILD)/A2FILE.SYSTEM.SYS
@@ -325,6 +325,7 @@ test:
 	python3 $(TOOLS)/test_music.py
 	python3 $(TOOLS)/test_pt3.py
 	python3 $(TOOLS)/test_pt3_frequency.py
+	python3 $(TOOLS)/test_pt3_dual.py
 	python3 $(TOOLS)/test_pt3_cache.py
 	python3 $(TOOLS)/test_pt3_conv.py
 	python3 $(TOOLS)/test_pt3_volume.py
@@ -332,6 +333,7 @@ test:
 	python3 $(TOOLS)/test_dgrview.py
 	python3 $(TOOLS)/test_disasm.py
 	python3 $(TOOLS)/test_packfot.py
+	python3 $(TOOLS)/test_purple.py
 	python3 $(TOOLS)/test_paint816.py
 	python3 $(TOOLS)/test_extasie.py
 	python3 $(TOOLS)/test_intbasic.py

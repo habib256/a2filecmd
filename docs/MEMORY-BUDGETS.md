@@ -199,31 +199,40 @@ pour 6502. Relever les versions réellement utilisées plutôt que déduire leur
 version des commentaires du Makefile. Ce relevé local ne constitue pas un test
 sur émulateur ou matériel.
 
-## PT3 : cache des grands modules
+## PT3 : grands modules et TurboSound
 
-Le lecteur accepte désormais 65 535 octets sans mémoire auxiliaire. Sa fenêtre
-BIG reste `$1B00–$3FFF` ; le lien impose la fin du code et du BSS avant `$3300`.
+Le lecteur accepte 65 535 octets, conteneur TurboSound compris, sans AUX.
+La fenêtre BIG reste `$1B00–$3FFF` et les bornes de lien sont conservées.
 
 | Zone PT3 | Adresses | Taille |
 | --- | --- | ---: |
-| Code, données, BSS | `$1B00–$32FF` | 6 144 |
-| En-tête fixe | `$3300–$34FF` | 512 |
-| Onze pages de cache | `$3500–$3FFF` | 2 816 |
+| Code, données, BSS | `$1B00–$36FF` | 7 168 |
+| Deux en-têtes | `$3700–$3AFF` | 1 024 |
+| Cache initial | `$3B00–$3DFF` | 768 |
+| Tables du second module | `$3E00–$3FBF` | 448 |
 
-Le BSS se termine à `$3091` inclus sur 65C02 et `$3077` sur 6502 : réserves
-respectives de 622 et 648 octets avant l'en-tête. Les tables sonores empruntent
-448 des 512 octets de `copy_buf` ; les lectures du fichier utilisent seulement
-l'en-tête ou le cache. Le fichier reste ouvert en lecture seule jusqu'à la sortie.
-Les réserves du résident restent inchangées : MAIN 290/835, carte langage
-172/169 octets (65C02/6502). Aucun contrôle de disposition n'est désactivé.
+Les premières tables empruntent 448 octets de `copy_buf`. Après initialisation,
+deux pages entières de code devenu mort sont réutilisées ; une assertion de
+lien vérifie leurs bornes. Les pages d'en-tête inutilisées peuvent aussi être
+récupérées : cinq à huit pages de cache. Les opérandes d'initialisation ne
+sont plus modifiés ensuite, ce que vérifie un test avec pages empoisonnées.
+Le BSS PT3 finit à `$3682` / `$36B6` (65C02/6502), laissant
+125 / 73 octets avant les en-têtes.
+Aucune donnée AUX, pile ou zone résidente n'est utilisée comme cache.
 
-`bench/pt3_large.py` vérifie sur les deux CPU qu'aucune écriture ne franchit
-le plancher de la pile C réservée de 192 octets pendant les appels cache/stdio.
-Il compare également toute la mémoire AUX hors écran texte et tous les octets
-du volume source avant/après lecture, sur images jetables.
+PURPLE reste sous `$2000` (fenêtre de 1 280 octets), ses lectures vont dans
+MAIN `$2000–$3FFF`, puis AUXMOVE copie la première page vers AUX pour les
+modes étendus. Le consentement précède le chargement ; toute sortie après
+AUXMOVE reconstruit `/RAM`, y compris en cas d'erreur de lecture/fermeture.
 
-Après les anciennes tables PT3 et le consentement média par session :
-MAIN 244/787, LC 168/163, LOWRAM 280/305, espace avant pile C 272/1004 octets
-(65C02/6502). Les bornes de lien restent inchangées ; MAIN enhanced est
-12 octets sous la réserve de travail visée de 256. Le banc de feuilletage
-préserve le marqueur du plancher de pile sur les deux CPU.
+Après intégration Purplesoft, les réserves résidentes sont : MAIN 145/682,
+LC 168/163, LOWRAM 278/303, espace avant pile C 173/899, OPEN 4/42 octets
+(65C02/6502). La pile C réservée reste de 192 octets. MAIN enhanced demeure
+sous la réserve de travail visée de 256 octets ; OPEN enhanced est presque
+plein. Les contrôles de disposition restent obligatoires.
+
+Les bancs PT3 vérifient le plancher de pile, la mémoire AUX hors écran texte
+et le volume source octet par octet sur des images jetables. Le lecteur
+Purplesoft vérifie ses deux plans, les sorties et le consentement par session
+sur les deux architectures. Ce sont des validations en émulation, pas des
+mesures sur matériel physique.

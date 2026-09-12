@@ -2,7 +2,7 @@
 """Build a disposable POM2 host with read-only AY register tracing.
 
 Does not edit POM2. Builds an isolated core library in /tmp and uses the usual headless
-bench driver, adding a periodic dump of the first AY and VIA IER and flushing the
+bench driver, adding a periodic dump of both AY chips and VIA IER and flushing the
 disposable hard disk on orderly shutdown for byte-exact persistence checks.
 """
 import subprocess
@@ -33,6 +33,9 @@ s='#include <cstdio>\n'+s.replace(needle,'''while (!stopped) {
                 std::printf("AYTRACE ");
                 for (int r=0;r<16;++r) std::printf("%02X",mb->getAyRegister(0,r));
                 std::printf(" %02X\\n",mb->peekViaRegister(0,14));
+                std::printf("AYTRACE2 ");
+                for (int r=0;r<16;++r) std::printf("%02X",mb->getAyRegister(1,r));
+                std::printf(" %02X\\n",mb->peekViaRegister(1,14));
                 std::fflush(stdout);
             }
         }''')

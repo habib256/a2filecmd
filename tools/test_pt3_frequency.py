@@ -50,11 +50,11 @@ class Frequency(unittest.TestCase):
     for converted in (False,True):
      with self.subTest(cpu=cpu,converted=converted):
       (tmp/'main.c').write_text(('#define CONVERTED\n' if converted else '')+reference+C)
-      source=(PLUGINS/'pt3.s').read_text().replace('PT3_LOC=$3300','PT3_LOC=$8000')
+      source=(PLUGINS/'pt3.s').read_text().replace('PT3_LOC=$3700','PT3_LOC=$8000').replace('.include "pt3lib/init.inc"', '.align 256\n.include "pt3lib/init.inc"')
       if not converted:source='PT3_DISABLE_FREQ_CONVERSION=1\nPT3_DISABLE_ENABLE_FREQ_CONVERSION=1\n'+source
       source+='\n.export _notes, _emitted\n_notes=note_a\n.segment "BSS"\n_emitted: .res 14\n'
       (tmp/'pt3.s').write_text(source)
-      r=subprocess.run(['cl65','-t',cpu,'-O','--asm-include-dir',str(PLUGINS),'-o',str(tmp/'test'),str(tmp/'main.c'),str(tmp/'pt3.s')],capture_output=True,text=True)
+      r=subprocess.run(['cl65','-C',str(PLUGINS.parents[1]/'sdk/pt3-sim.cfg'),'-t',cpu,'-O','--asm-include-dir',str(PLUGINS),'-o',str(tmp/'test'),str(tmp/'main.c'),str(tmp/'pt3.s')],capture_output=True,text=True)
       self.assertEqual(r.returncode,0,r.stderr)
       r=subprocess.run(['sim65',str(tmp/'test')],capture_output=True,text=True,timeout=120)
       self.assertEqual(r.returncode,0,r.stdout+r.stderr)

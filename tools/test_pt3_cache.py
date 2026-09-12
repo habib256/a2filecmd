@@ -101,10 +101,10 @@ class CacheDecoder(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='pt3-cache-') as tmp:
             p = Path(tmp)
             (p / 'test.c').write_text(records('small', module(2048)) + records('large', module()) + C)
-            (p / 'pt3.s').write_text((PLUGINS / 'pt3.s').read_text().replace('PT3_LOC=$3300', 'PT3_LOC=$8000') + PROBE)
+            (p / 'pt3.s').write_text((PLUGINS / 'pt3.s').read_text().replace('PT3_LOC=$3700', 'PT3_LOC=$8000').replace('.include "pt3lib/init.inc"', '.align 256\n.include "pt3lib/init.inc"') + PROBE)
             for cpu in ('sim6502', 'sim65c02'):
                 with self.subTest(cpu=cpu):
-                    subprocess.run(['cl65', '-t', cpu, '-O', '--asm-include-dir', str(PLUGINS), '-m', str(p / 'test.map'), '-o', str(p / 'test'), str(p / 'test.c'), str(p / 'pt3.s')], check=True)
+                    subprocess.run(['cl65', '-C', str(PLUGINS.parents[1]/'sdk/pt3-sim.cfg'), '-t', cpu, '-O', '--asm-include-dir', str(PLUGINS), '-m', str(p / 'test.map'), '-o', str(p / 'test'), str(p / 'test.c'), str(p / 'pt3.s')], check=True)
                     end = re.search(r'^BSS\s+[0-9A-F]+\s+([0-9A-F]+)', (p / 'test.map').read_text(), re.M)
                     self.assertLess(int(end[1], 16), 0x8000, 'fixture header must not overwrite simulator code/BSS')
                     result = subprocess.run(['sim65', str(p / 'test')], capture_output=True, text=True, timeout=30)

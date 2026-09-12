@@ -266,3 +266,20 @@ le signalement utilisateur sans modificateur n'a pas été reproduit.
 `media.py` vérifie également que les flèches ne redemandent pas l'accord AUX
 pour Extasie, 816/Paint HGR/DHGR, PACKFOT et DHGR brut, puis que réouvrir le
 lecteur exige un nouvel accord et que le refus conserve AUX : 44/44 sur chaque CPU.
+
+
+`pt3_dual.py` checks standard `02TS` pairs on both actual AY chips. It covers
+an unaligned second module, distinct old/new tables, unequal endings, pause,
+Escape, navigation, malformed footer, stack bounds and unchanged AUX/source.
+The cache-resident fixture keeps 50 Hz at 1 MHz. The sparse stress fixture
+reports its slower duration separately and verifies every decoded frame.
+Run with the temporary trace host built by `build_pt3_trace.py`.
+
+`purple.py` checks all ten saved GR modes, exact MAIN/AUX planes, refusal
+before AUX writes, Escape and pair-aware navigation with one consent per
+session. It reads original DOS samples from `A2FC_PURPLE_CORPUS` (default
+`~/src/pom2/disks_5.4/chatmauve`) when present, copying them to a disposable
+ProDOS image. Missing originals leave the generated fixtures active. Default
+RGB variant is EVE; `A2FC_RGB=feline` selects Feline. Original JIM1 and DDD
+screenshots are written to `/tmp`. Run both CPU builds using the usual
+`A2FC_BUILD`, `A2FC_PRESET` and `A2FC_PORT_OFFSET` settings.

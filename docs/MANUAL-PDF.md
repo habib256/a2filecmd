@@ -1,7 +1,7 @@
 # PDF manual
 
 `A2FILECMD-MANUAL-EN.pdf` is the printable English edition of `MANUAL.md`.
-The eight-page guide includes a current two-panel screenshot and clickable
+The fourteen-page guide includes a current two-panel screenshot and clickable
 contents on its first page, section bookmarks, page numbers and
 repeated table headings. The release workflow copies it into `dist/` as
 `A2FILECMD-MANUAL-EN-<version>.pdf`, adds

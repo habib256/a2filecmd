@@ -20,7 +20,7 @@ starting and identifies the edition on its title screen.
 | Edition | What to use |
 |---|---|
 | **6502 floppies** | BOOT plus whichever 140 KB category disks you need: FILES, MEDIA, DISKTOOLS, DEVTOOLS. These floppies also run on enhanced machines. |
-| **XL 6502 or 65C02** | One bootable 32 MB `.2mg` with all 59 overlays, BASIC.SYSTEM, INTBASIC.SYSTEM and demonstration files. No companion disk is needed. |
+| **XL 6502 or 65C02** | One bootable 32 MB `.2mg` with all 60 overlays, BASIC.SYSTEM, INTBASIC.SYSTEM and demonstration files. No companion disk is needed. |
 
 The download names include the CPU, category and version:
 
@@ -72,7 +72,7 @@ full command catalog. The distribution is declared in `config/packages.mk`.
 | Category | Plugins | ProDOS volume |
 |---|---|---|
 | **FILES** | EDIT, SEARCH, AWP, BINARY2, UNSHRINK, CRC, FIND, FIXTYPES, GOTO, IDENT, MDVIEW, RENAME, SYNC, MOVE, TREE | `/A2FILES6502` |
-| **MEDIA** | IMAGE, MUSIC, DGRVIEW, EXTASIE, PACKFOT, PAINT816, LZ4FH, PRINTSHOP, FONTVIEW, PT3 | `/A2MEDIA6502` |
+| **MEDIA** | IMAGE, MUSIC, DGRVIEW, EXTASIE, PACKFOT, PAINT816, PURPLE, LZ4FH, PRINTSHOP, FONTVIEW, PT3 | `/A2MEDIA6502` |
 | **DISKTOOLS** | BOOTBLK, BLKVIEW, BLKEDIT, DISKCMP, IMGCONV, MKIMAGE, RESCUE, UNDELETE | `/A2DISKS6502` |
 | **DEVTOOLS** | BASLIST, DISASM, INTBASIC listings, plus BASIC.SYSTEM and INTBASIC.SYSTEM runtimes | `/A2DEVTOOLS6502` |
 
@@ -305,6 +305,7 @@ identification read or close stops opening the file.
 | LZ4FH compressed HGR | Type `$08`, auxiliary `$8066` | LZ4FH |
 | Print Shop monochrome clip art | BIN, auxiliary `$4800`/`$5800`/`$6800`/`$7800`, 572 or 576 bytes | PRINTSHOP |
 | MGTK / Apple II Desktop font | Type `$07` | FONTVIEW |
+| Purplesoft GRLOAD pair | Matching `.FOTO1` and `.FOTO2`, 8 KB each | PURPLE |
 | Packed 816/Paint | Type `$06`, auxiliary `$E001` or `$E002` | PAINT816 |
 | Lo-res page | Type `$06` or `$08`, auxiliary `$0400`, 1–2,048 bytes | DGRVIEW |
 | DGR with header | `DGR` signature; the viewer validates the header and payload | DGRVIEW |
@@ -326,11 +327,20 @@ LZ4FH, PRINTSHOP and FONTVIEW use only main memory and preserve `/RAM`.
 They reject truncated data and report read or close errors.
 
 **Left/Right** browse the previous/next file handled by the same specialized
-viewer: Extasie, PACKFOT, 816/Paint, DGRVIEW, FONTVIEW, LZ4FH and PRINTSHOP.
+viewer: Extasie, PACKFOT, 816/Paint, Purplesoft, DGRVIEW, FONTVIEW, LZ4FH and PRINTSHOP.
 The directory's displayed order is used, including across large-directory
 windows. At either end the arrow does nothing; Escape returns to the panels.
 A viewer that uses AUX asks once before the first AUX write in a browsing session.
 Left/Right keeps that consent; leaving the viewer clears it.
+
+PURPLE opens either member of a Purplesoft GRLOAD/GRSAVE pair. Keep both
+files in the same directory, with the same basename: `.FOTO1` holds the
+auxiliary plane and the saved mode, `.FOTO2` holds the main plane. Arrows
+skip the companion file. The first opening asks for AUX consent; malformed
+or incomplete pairs are refused. Extended EVE modes (COL280A/B, CP280 and
+special HGR modes) require compatible EVE hardware/emulation for correct
+colours; ordinary RGB cards support the usual COL140/BW560 modes. This
+reader does not yet accept Pascal GLOAD single-file pictures.
 
 **T** on an Integer BASIC file (`$FA`), including `WOZ.BREAKOUT` and
 `APPLEVISION`, opens INTBASIC.PLG to list its source. **Return/X** executes it
@@ -361,7 +371,9 @@ across large-directory windows. An arrow without a neighbour does nothing.
 Changing tracks stops the old output and starts the new track unpaused.
 
 **Return** on a `.PT3` module opens the foreground ProTracker 3 player on
-MEDIA. It uses three voices on the first AY chip of the detected Mockingboard.
+MEDIA. Ordinary modules use three voices on the first AY chip. Standard
+TurboSound `02TS` containers use both AY chips for two independent modules
+and six voices; playback ends once both modules have finished.
 **P** pauses/resumes; **Escape** stops and returns to the panels. Playback
 also stops at the end of the song.
 A missing card is reported without starting playback. The screen shows the
@@ -379,8 +391,11 @@ The existing filtered corpus in `media/pt3/MUSIC/<ARTIST>/` and on
 it has not been regenerated for the larger limit. Eight starter modules
 remain in `media/pt3/` and on the `A2FC-PT3.po` volume.
 Frequency tables 0–3 are supported, including their older PT3 3.0–3.3 variants. Multiple deferred special effects within
-one channel/row are refused, and TurboSound dual-module playback is not
-supported. Invalid data, stream pointers, or read/seek/close errors stop
+one channel/row are refused. TurboSound accepts the standard two-PT3
+container with a 16-byte `02TS` footer; the 65,535-byte limit includes both
+modules and the footer. Other multi-chip container variants are unsupported.
+At 1 MHz, sparse dual modules can exceed the small cache and slow down even
+on a hard disk; this implementation does not guarantee 50 Hz for every file. Invalid data, stream pointers, or read/seek/close errors stop
 loading or playback and return to the panels. Source URLs are listed in
 `media/pt3/MUSIC/SOURCES.TXT` and at the end of
 [SAMPLE-MEDIA.md](SAMPLE-MEDIA.md).

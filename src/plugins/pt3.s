@@ -4,13 +4,21 @@
 .export _pt_init, _pt_frame, _pt_end, _pt_regs
 .importzp ptr1
 .import _pt_pages, _pt_page
-PT3_LOC=$3300                    ; resident header only
+PT3_LOC=$3700                    ; resident header only
 PT3_DATA_BASE=0                  ; decoder pointers are logical file offsets
 PT3_DISABLE_SWITCHABLE_FREQ_CONVERSION=1
 .include "pt3lib/zp.inc"
 GUARD=$6C
 .segment "BSS"
 _pt_end: .res 2
+.export _pt_base, _pt_chip, _pt_dual
+_pt_base: .res 2
+_pt_chip: .res 1
+_pt_dual: .res 1
+.export _pt_running
+_pt_running: .res 1
+.export _pt_frames
+_pt_frames: .res 4
 saved_sp: .res 1
 host_zp: .res 32
 song_zp: .res 32
@@ -32,6 +40,14 @@ _pt_init:
  lda #>pt3_init_song
  bne pt_enter
 _pt_frame:
+ ldx #0
+ lda _pt_chip
+ beq :+
+ ldx #2
+: inc _pt_frames,x
+ bne :+
+ inc _pt_frames+1,x
+:
  lda #<pt3_make_frame
  sta call_song+1
  lda #>pt3_make_frame
@@ -121,6 +137,15 @@ checked:
  cmp _pt_end
  bcs pt_abort
 @page:
+ clc
+ lda GUARD
+ adc _pt_base
+ sta GUARD
+ lda GUARD+1
+ adc _pt_base+1
+ bcc :+
+ jmp pt_abort
+: sta GUARD+1
  ldy GUARD+1
  lda _pt_pages,y
  bne @mapped
@@ -159,7 +184,16 @@ checked:
  lda guard_byte
  rts
 .include "pt3lib/core.inc"
+.include "pt3lib/context.inc"
+; Padding keeps two full pages reclaimable on both native links.
+; The link assertion below rejects any future layout that breaks this.
+.res 40, $EA
 .include "pt3lib/init.inc"
+pt_init_code_end:
+pt_init_cache_start=(pt3_init_song+$FF)&$FF00
+.assert pt_init_code_end-pt_init_cache_start >= 512, lderror, "PT3 init cache needs two dead code pages"
+.export _pt_cache_pages
+_pt_cache_pages: .byte $3B,$3C,$3D,>pt_init_cache_start,>(pt_init_cache_start+256),0,0,0
 
 ; VIA timer polling, no new IRQ vector; channel A/B/C on the first AY.
 .export _pt_hw_start, _pt_tick, _pt_output, _pt_silence, _pt_hw_stop
@@ -168,7 +202,7 @@ card: .res 1
 old_acr: .res 1
 .segment "CODE"
 pt_via:
- lda #0
+ lda _pt_chip
  sta ptr1
  lda card
  sta ptr1+1
@@ -176,6 +210,12 @@ pt_via:
 _pt_hw_start:
  ora #$C0
  sta card
+ lda #0
+ ldx #3
+@frames:
+ sta _pt_frames,x
+ dex
+ bpl @frames
  jsr pt_via
  ldy #$0B
  lda (ptr1),y
@@ -184,6 +224,8 @@ _pt_hw_start:
  sta (ptr1),y
  ldy #$0E
  lda #$7F
+ sta (ptr1),y
+ ldy #$8E
  sta (ptr1),y
  ldy #4
  lda #<20452
@@ -194,6 +236,8 @@ _pt_hw_start:
  rts
 _pt_tick:
  jsr pt_via
+ lda #0
+ sta ptr1
  ldy #$0D
  lda (ptr1),y
  and #$40
@@ -241,6 +285,22 @@ _pt_output:
  rts
 _pt_silence:
  jsr pt_via
+ lda #0
+ sta ptr1
+ jsr mute_ay
+ lda _pt_dual
+ beq @done
+ lda #$80
+ sta ptr1
+ jsr mute_ay
+@done:
+ lda #0
+ sta ptr1
+ rts
+.export _pt_mute
+_pt_mute:
+ jsr pt_via
+mute_ay:
  ldx #7
  lda #$3F
  jsr pt_write
@@ -267,18 +327,24 @@ _pt_hw_stop:
 
 ; The caller lends copy_buf (512 bytes) to the 448-byte tone/volume tables.
 ; Patch only explicit operand locations, never scan and replace code bytes.
-.export _pt_tables
+.export _pt_tables, _pt_play_tables
 .importzp ptr2
 .segment "BSS"
 table_base: .res 2
 .segment "CODE"
+_pt_play_tables:
+ ldy #21                        ; only the seven playback operands
+ bne tables_enter
 _pt_tables:
+ ldy #table_patches_end-table_patches
+tables_enter:
+ sty table_patch_limit+1
  sta table_base
  sta ptr2
  stx table_base+1
  stx ptr2+1
  ldx #0
-@patch:
+tables_patch_loop:
  lda table_patches,x
  sta ptr1
  lda table_patches+1,x
@@ -295,8 +361,9 @@ _pt_tables:
  inx
  inx
  inx
+table_patch_limit:
  cpx #table_patches_end-table_patches
- bne @patch
+ bne tables_patch_loop
  rts
 table_patches:
  .word patch_table_0+1
@@ -314,27 +381,9 @@ table_patches:
  .word patch_table_6+1
  .byte 96
  .word patch_table_7+1
- .byte 96
+ .byte 0
  .word patch_table_8+1
- .byte 0
- .word patch_table_9+1
  .byte 96
- .word patch_table_10+1
- .byte 96
- .word patch_table_11+1
- .byte 0
- .word patch_table_12+1
- .byte 96
- .word patch_table_13+1
- .byte 0
- .word patch_table_14+1
- .byte 23
- .word patch_table_15+1
- .byte 46
- .word patch_table_16+1
- .byte 96
- .word patch_table_17+1
- .byte 0
  .word patch_table_18+1
  .byte 192
  .word patch_table_19+1

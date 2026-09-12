@@ -3211,7 +3211,7 @@ static const char* const mn_categories[] = {
     mn_cat0, mn_cat1, mn_cat2, mn_cat3, mn_cat4, mn_cat5, mn_cat6, mn_cat7
 };
 static const char mn_group0[] = "|TEXT|HEX|EDIT|SEARCH|FIND|FIXTYPES|GOTO|MDVIEW|RENAME|SYNC|MOVE|TREE|DELETE|ATTR|TXTCONV|TAGPAT|COMPARE|AWP|";
-static const char mn_group1[] = "|IMAGE|DGRVIEW|EXTASIE|PACKFOT|PAINT816|LZ4FH|PRINTSHOP|FONTVIEW|";
+static const char mn_group1[] = "|IMAGE|DGRVIEW|EXTASIE|PACKFOT|PAINT816|PURPLE|LZ4FH|PRINTSHOP|FONTVIEW|";
 static const char mn_group2[] = "|MUSIC|PT3|";
 static const char mn_group3[] = "|FORMAT|DISKIMG|IMGFS|DOS33|BOOTBLK|BLKVIEW|BLKEDIT|DISKCMP|IMGCONV|MKIMAGE|RESCUE|UNDELETE|VOLNAME|VOLINFO|WIPE|VERIFY|";
 static const char mn_group4[] = "|BASLIST|DISASM|INTBASIC|RUN|CRC|IDENT|";
@@ -4417,7 +4417,7 @@ static const char ov_raw[] = "IMAGE", ov_ext[] = "EXTASIE", ov_pack[] = "PACKFOT
 static const char ov_paint[] = "PAINT816", ov_dgr[] = "DGRVIEW", ov_hex[] = "HEX";
 static const char ov_text[] = "TEXT", ov_awp[] = "AWP", ov_run[] = "RUN", ov_music[] = "MUSIC";
 static const char ov_font[] = "FONTVIEW";
-static const char ov_lz[] = "LZ4FH", ov_ps[] = "PRINTSHOP", ov_pt3[] = "PT3";
+static const char ov_lz[] = "LZ4FH", ov_ps[] = "PRINTSHOP", ov_pt3[] = "PT3", ov_purple[] = "PURPLE";
 static const char* const image_viewers[] = {ov_hex, ov_raw, ov_ext, ov_pack, ov_paint, ov_dgr};
 static const char open_dgr[] = "DGR";
 static const char open_error[] = "Cannot identify file: read/close error.";
@@ -4425,10 +4425,9 @@ static const char* file_viewer(const struct Entry* e, unsigned char pictures)
 {
     unsigned char kind = image_kind(e);
     FILE* f;
-    unsigned char n, failed;
+    unsigned char n = strlen(e->name), failed;
     /* Album scans can reject unrelated names without opening every file. */
     if (pictures >= 2) {
-        n = strlen(e->name);
         if (pictures == 2 ? !looks_like_music(e) :
             !(n > 4 && !strcmp(e->name+n-4, ".PT3"))) return ov_hex;
         pictures = 0;
@@ -4438,7 +4437,8 @@ static const char* file_viewer(const struct Entry* e, unsigned char pictures)
     if (e->type == 6 && (e->aux & 0xCFFF) == 0x4800 &&
         (e->size == 572 || e->size == 576)) return ov_ps;
     if (!pictures && e->type == 0xFA) return ov_run;
-    n = strlen(e->name);
+    if (n>6 && !memcmp(e->name+n-6,".FOTO",5) &&
+        (unsigned char)(e->name[n-1]-'1')<2) return ov_purple;
     if (!pictures && n>4 && !strcmp(e->name+n-4,".PT3")) return ov_pt3;
     /* Probe only in main-RAM copy_buf, never in a graphics/AUX bank.
      * Explicit packed metadata wins; the other formats can identify

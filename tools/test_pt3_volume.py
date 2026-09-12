@@ -128,13 +128,13 @@ class ChannelVolumes(unittest.TestCase):
             for cpu in ('sim6502', 'sim65c02'):
                 for converted in (False, True):
                     with self.subTest(cpu=cpu, converted=converted):
-                        source = (PLUGINS / 'pt3.s').read_text().replace('PT3_LOC=$3300', 'PT3_LOC=$8000')
+                        source = (PLUGINS / 'pt3.s').read_text().replace('PT3_LOC=$3700', 'PT3_LOC=$8000').replace('.include "pt3lib/init.inc"', '.align 256\n.include "pt3lib/init.inc"')
                         if not converted:
                             source = 'PT3_DISABLE_FREQ_CONVERSION=1\nPT3_DISABLE_ENABLE_FREQ_CONVERSION=1\n' + source
                         source = source.replace(' pla\n iny\n sta (ptr1),y\n', ' pla\n iny\n sta _emitted,x\n sta (ptr1),y\n')
                         source += '\n.export _notes, _emitted\n_notes=note_a\n.segment "BSS"\n_emitted: .res 14\n'
                         (t / 'pt3.s').write_text(source)
-                        build = subprocess.run(['cl65', '-t', cpu, '-O', '--asm-include-dir', str(PLUGINS),
+                        build = subprocess.run(['cl65', '-C', str(PLUGINS.parents[1]/'sdk/pt3-sim.cfg'), '-t', cpu, '-O', '--asm-include-dir', str(PLUGINS),
                                                 '-o', str(t / 'prog'), str(t / 'main.c'), str(t / 'pt3.s')],
                                                capture_output=True, text=True)
                         self.assertEqual(build.returncode, 0, build.stdout + build.stderr)

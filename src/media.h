@@ -1,6 +1,6 @@
 /* Foreground media coordination. MAIN only; directory/file probes are read-only.
  * AUX consent lasts only for the current overlay_run browsing session. */
-static const char* const media_names[] = {"MUSIC","PT3","EXTASIE","PACKFOT","PAINT816","DGRVIEW","FONTVIEW","LZ4FH","PRINTSHOP"};
+static const char* const media_names[] = {"MUSIC","PT3","EXTASIE","PACKFOT","PAINT816","DGRVIEW","FONTVIEW","LZ4FH","PRINTSHOP","PURPLE"};
 static unsigned char media_request;
 static unsigned int media_first[2];
 static const char* file_viewer(const struct Entry*, unsigned char);
@@ -8,7 +8,7 @@ static const char* file_viewer(const struct Entry*, unsigned char);
 static unsigned char media_type(const char* name)
 {
     unsigned char i;
-    for (i=0;i<9;++i) if (!strcmp(name,media_names[i])) return i+1;
+    for (i=0;i<10;++i) if (!strcmp(name,media_names[i])) return i+1;
     return 0;
 }
 
@@ -18,11 +18,16 @@ static unsigned char media_prepare(unsigned char kind)
     unsigned int first=pan->first;
     unsigned char cursor=pan->cursor, top=pan->top, dir, i, changed=0;
     const char* viewer;
+    const struct Entry* e;
     album[0][0]=album[1][0]=0;
     media_request=0;
     if (!kind || pan->fs || !pan->path[0]) return 1;
     if (!pan->count || !overlay("OPEN")) return 0;
     keep_tags(1);
+    if(kind==10) {
+        strcpy(selected.name,pan->e[cursor].name);
+        selected.name[strlen(selected.name)-1]='1';
+    }
     for(dir=0;dir<2;++dir) {
         i=cursor;
         for(;;) {
@@ -44,12 +49,14 @@ static unsigned char media_prepare(unsigned char kind)
                 }
                 --i;
             }
-            if (is_dir(&pan->e[i])) continue;
-            if (!build_full(full,pan,&pan->e[i])) break;
-            viewer=file_viewer(&pan->e[i],kind<3?kind+1:0);
+            e=&pan->e[i];
+            if (is_dir(e)) continue;
+            if (!build_full(full,pan,e)) break;
+            viewer=file_viewer(e,kind<3?kind+1:0);
             if (!viewer) break; /* An I/O error is not evidence of another type. */
             if (!strcmp(viewer,media_names[kind-1])) {
-                strcpy(album[dir],pan->e[i].name);media_first[dir]=pan->first;break;
+                if (kind==10 && (e->name[strlen(e->name)-1]=='2' || !strcmp(e->name,selected.name))) continue;
+                strcpy(album[dir],e->name);media_first[dir]=pan->first;break;
             }
         }
         if (changed) {

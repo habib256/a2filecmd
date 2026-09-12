@@ -293,9 +293,11 @@ load_sample:
 	; Set the initial sample pointer
 	;     a->sample_pointer=pt3->sample_patterns[a->sample];
 
+header_patch_0:
 	lda	PT3_LOC+PT3_SAMPLE_LOC_L,Y				; 4+
 	sta	SAMPLE_L						; 3
 
+header_patch_1:
 	lda	PT3_LOC+PT3_SAMPLE_LOC_L+1,Y				; 4+
 
 	; assume pt3 file is at page boundary
@@ -366,9 +368,11 @@ load_ornament:
 
 	; a->ornament_pointer=pt3->ornament_patterns[a->ornament];
 
+header_patch_2:
 	lda	PT3_LOC+PT3_ORNAMENT_LOC_L,Y				; 4+
 	sta	ORNAMENT_L						; 3
 
+header_patch_3:
 	lda	PT3_LOC+PT3_ORNAMENT_LOC_L+1,Y				; 4+
 
 	; we're assuming PT3 is loaded to a page boundary
@@ -1586,11 +1590,13 @@ pt3_set_pattern:
 	; Lookup current pattern in pattern table
 current_pattern_smc:
 	ldy	#$d1							; 2
+header_patch_4:
 	cpy PT3_LOC+$65
 	bcc :+
 	lda #$ff
 	jmp is_done
 :
+header_patch_5:
 	lda	PT3_LOC+PT3_PATTERN_TABLE,Y				; 4+
 
 	; if value is $FF we are at the end of the song
@@ -1623,12 +1629,14 @@ not_done:
 
 	clc
 	sta	PATTERN_L
+header_patch_6:
 	adc	PT3_LOC+PT3_PATTERN_LOC_L
 	php	; save carry as we might generate two
 	clc
 	adc	PATTERN_L
 	sta	PATTERN_L
 
+header_patch_7:
 	lda	PT3_LOC+PT3_PATTERN_LOC_H				; 4
 	adc	#>PT3_DATA_BASE		; assume page boundary		; 2
 	plp	; restore carry

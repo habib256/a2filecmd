@@ -88,7 +88,7 @@ is 0.7.5; its downloads retain their own version numbers.
 
 **All floppies use 6502 code**, including on enhanced machines. Choose the
 categories you need; every companion carries the menu and full catalog.
-XL includes all 59 overlays, BASIC.SYSTEM, INTBASIC.SYSTEM, `DEMO/` and `IMGHGR/`, so it needs
+XL includes all 60 overlays, BASIC.SYSTEM, INTBASIC.SYSTEM, `DEMO/` and `IMGHGR/`, so it needs
 no companion. Choose XL **6502** for an original IIe; XL **65C02** for an
 enhanced IIe or //c. All editions require 128 KB and 80 columns.
 Use matching releases. Do not mix the native plugins of XL 65C02 with the

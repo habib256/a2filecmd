@@ -103,15 +103,20 @@ Les travaux sur lecteurs physiques sont signalés par **💾**.
   principale, source en lecture seule et préservation de `/RAM`.
 - [x] **PT3 : anciennes tables de fréquences** — les quatre tables, versions
   anciennes et modernes, vérifiées sur les 96 notes et les deux CPU.
-- [ ] **PT3 : compatibilité** — effets multiples par ligne et TurboSound.
+- [x] **TurboSound** — conteneur standard `02TS`, deux décodeurs et deux AY,
+  pause/navigation/fin indépendantes ; AUX préservée.
+- [x] **Purplesoft** — paires GRLOAD `.FOTO1`/`.FOTO2`, mode EVE,
+  flèches sans doublon ni nouveau consentement AUX et retour Échap.
+- [ ] **PT3 : compatibilité** — effets multiples par ligne, autres variantes
+  multi-puces et cadence à 1 MHz sous forte pression du cache.
   Le lecteur, les crédits, le feuilletage et la vérification des volumes sont acquis.
 - [ ] **Contrat commun des visualiseurs** — uniformiser ouverture, navigation,
   erreurs, sortie et restauration de l'écran ; conserver le consentement AUX.
 - [ ] **a2dgrx** — bitmaps et fontes, au-delà des pixmaps déjà lus par DGRVIEW.
   Bibliothèque sans en-tête ni dimensions : définir les paramètres nécessaires
   à l'ouverture. La fonte décrite dans les références contient 288 octets.
-- [ ] **PURPLESOFT / GRLOAD** — identifier le mode des images Purplesoft/Féline ;
-  distinguer les bibliothèques de routines des données graphiques sauvegardées.
+- [ ] **Purplesoft Pascal GLOAD** — identifier et valider le format mono-fichier
+  de 16 Ko ; les paires DOS GRLOAD sont prises en charge.
 - [ ] **FANTAVISION Apple II** — analyser les fichiers, puis lire objets,
   images-clés, interpolation, écrans, sons et polices. Ne pas confondre les
   variantes Apple II 8 bits, IIGS et Amiga (`FANT`/IFF).

@@ -15,17 +15,20 @@ A2FC changes:
   `$60–$7F`. They never access auxiliary RAM. No IRQ vector is installed.
 - The 448-byte note/volume tables use the service table's 512-byte `copy_buf`,
   independently of source reads. Only explicitly listed operands are relocated.
-- Code/BSS stop below `$3300`; a fixed 512-byte header occupies `$3300–$34FF`
-  and eleven 256-byte FIFO cache pages occupy `$3500–$3FFF`. The read-only
-  source can contain up to 65,535 bytes. An initial scan establishes its actual
-  size without trusting panel metadata. The linker and runtime guards bound
-  these regions; no auxiliary memory is borrowed.
+- Code/BSS stop below `$3700`. Headers occupy `$3700–$3AFF`, the initial
+  three cache pages `$3B00–$3DFF`, and the second tables `$3E00–$3FBF`.
+  After both initializations, two linker-checked whole init-code pages and
+  unused header pages become cache: 5–8 pages depending on order-list lengths
+  and whether there are two modules. Only runtime operands are patched then;
+  tests poison the reclaimed code and ensure it stays untouched by patching.
+  No auxiliary memory is borrowed. An initial complete scan establishes the
+  actual source size, up to 65,535 bytes including a possible TurboSound footer.
 - Decoder pointers are logical file offsets. Each guarded read checks overflow
-  and EOF before consulting the page map. Cache misses restore host zero page
+  and subfile EOF before adding its physical file base and consulting the page map. Cache misses restore host zero page
   around resident seek/read calls, then restore decoder state. Failed reads
   never publish a cache mapping and abort playback. Source closure is checked
   on exit; slow media can cause playback delays.
-- Playback polls the Mockingboard VIA timer at 50 Hz, writes the first AY,
+- Playback polls the Mockingboard VIA timer at 50 Hz, writes one or both AY chips,
   supports pause, stops at the end of the order list, and silences on all exits
   after hardware start. The core supplies a hardware-only card probe.
 - The unused loop-patch reference in upstream initialization stores the loop
@@ -46,7 +49,20 @@ A2FC changes:
   exact 0.5767) still plays every module 2.5 % sharp, uniformly.
 - This compact decoder has one deferred special-effect slot per channel/row.
   Multiple deferred effects in one row are refused instead of silently losing
-  the earlier command. TurboSound dual-module playback is not implemented.
+  the earlier command.
+- Standard TurboSound: two PT3 subfiles followed by the 16-byte footer
+  `PT3!`, first LE16 size, `PT3!`, second LE16 size, `02TS`. Both headers,
+  exact disjoint lengths and each read are validated. The second subfile may
+  start mid-page. The two decoders have separate persistent state and tables;
+  one context swap per tick alternates processing order. An ended stream is
+  silenced and never decoded again; its partner continues to its own end.
+  Pause, Escape, track changes and errors silence both chips.
+  Other multi-chip container variants remain unsupported.
+- At 1 MHz, the compact dual fixture fits in cache and keeps 50 Hz; the sparse
+  stress fixture takes about 9–11 seconds instead of its nominal 5.8 seconds
+  on the tested IIe/IIc profiles, excluding the later panel redraw.
+  Main-RAM cache pressure can therefore slow dual playback even on a hard disk.
+  The implementation does not drop decoded frames to mask that limitation.
 
 Tests: `tools/test_pt3.py` validates the C loader; `tools/test_pt3_conv.py`
 the period conversion; `tools/test_pt3_cache.py` compares complete small and
@@ -80,3 +96,9 @@ A2FC preserves that mode, rather than adding software attenuation absent on
 the source AY. Register-level agreement does not establish identical analogue
 loudness across AY/YM variants, output circuits or speakers; this audit does
 not include new listening measurements on physical hardware.
+
+`tools/test_pt3_dual.py` compares two interleaved assembly decoders with
+independent runs on both CPUs, including differing table versions and effects.
+The actual C transport also tests either stream ending first, on odd/even ticks.
+`bench/pt3_dual.py` captures both actual AY buses, measures compact and sparse
+pairs separately, and checks transport, frame counts, stack, AUX and source bytes.
