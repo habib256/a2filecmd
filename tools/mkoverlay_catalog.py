@@ -2,7 +2,7 @@
 """Build the fixed-width menu catalog used while the companion is absent."""
 import argparse
 from pathlib import Path
-from disk_packages import assignments, VOLUMES, BASIC
+from disk_packages import assignments, VOLUMES, BASIC, RUNTIMES
 
 
 def main():
@@ -29,9 +29,11 @@ def main():
         if name in ('MENU', 'COPY', 'OPEN', 'NAV', 'BATCH'):
             key[11] = 1  # routing only, never a menu command
         records.append(bytes(key) + description.ljust(66, b'\0'))
-    # Twelve non-NUL name bytes also hide BASIC.SYSTEM from the overlay menu.
-    description = (VOLUMES[BASIC] + a.cpu + ': Applesoft runtime').encode('ascii')
-    records.append(b'BASIC.SYSTEM' + description.ljust(66, b'\0'))
+    # Runtime routing uses the first twelve name bytes, as ask_disk does.
+    # Non-NUL byte 11 hides these records from the overlay menu.
+    for runtime in RUNTIMES:
+        description = (VOLUMES[BASIC] + a.cpu + ': ' + runtime).encode('ascii')
+        records.append(runtime.encode('ascii')[:12] + description.ljust(66, b'\0'))
     a.output.write_bytes(b''.join(records))
     print('%s: %d overlay descriptions' % (a.output, len(records)))
 

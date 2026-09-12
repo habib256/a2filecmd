@@ -34,7 +34,7 @@ pictures. The tools are right there, beside your files.
 | **Unpack classic archives** | Extract ShrinkIt `.SHK` archives, including LZW/1 and LZW/2 compression, and Binary II `.BNY` archives with their ProDOS file attributes. |
 | **Read, edit and compare** | Text and hex viewers, a 5 KB text editor, readable Applesoft listings and an AppleWorks word-processing viewer. Compare two files byte by byte, search files for text, or mark differences between panels. |
 | **Enjoy pictures and sound** | Full-screen HGR and DHGR, raw or RLE-compressed. Use the arrow keys to browse pictures like an album. Play `.MB` and `.PT3` music in foreground overlays on a Mockingboard; Left/Right browse tunes of the same type. PT3 displays title, artist and player credits. |
-| **Make it yours** | Keyboard shortcuts throughout, optional AppleMouse II support and remembered panel settings. Launch SYS, BIN and Applesoft programs, or add your own tools with the plugin SDK. |
+| **Make it yours** | Keyboard shortcuts throughout, optional AppleMouse II support and remembered panel settings. Launch SYS, BIN, Applesoft and Integer BASIC programs, or add your own tools with the plugin SDK. |
 
 The **!** menu groups tools by category. Choose a category, then a tool;
 Escape goes back one level. Questions on the penultimate line appear in inverse
@@ -82,7 +82,7 @@ is 0.7.5; its downloads retain their own version numbers.
 | `A2FILECMD-6502-FILES-0.8.0.dsk` | Edit and read documents, find, rename, copy, synchronize and unpack files |
 | `A2FILECMD-6502-MEDIA-0.8.0.dsk` | Pictures and Mockingboard music |
 | `A2FILECMD-6502-DISKTOOLS-0.8.0.dsk` | Disk images, block tools, boot repair and recovery |
-| `A2FILECMD-6502-DEVTOOLS-0.8.0.dsk` | BASIC listings, disassembly and BASIC.SYSTEM |
+| `A2FILECMD-6502-DEVTOOLS-0.8.0.dsk` | BASIC listings, disassembly, BASIC.SYSTEM and INTBASIC.SYSTEM |
 | `A2FILECMD-6502-XL-0.8.0.2mg` | Complete bootable 32 MB image for 6502 |
 | `A2FILECMD-65C02-XL-0.8.0.2mg` | Complete bootable 32 MB image for 65C02, with optional mouse support |
 

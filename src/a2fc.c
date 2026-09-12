@@ -4380,96 +4380,7 @@ void __fastcall__ attr_entry(const struct A2fcApi* a)
 #pragma rodata-name (push, "RUNRO")
 #include "config.h"
 
-/* Loads the file `full` at `addr` and jumps to it, with no return, through
- * the thunk of chain.s: whatever its size, it overwrites A2FC harmlessly.
- * The music is stopped, the preferences written. */
-static void launch_file(unsigned int addr)
-{
-    if (!exists(full)) {
-        /* _oserror carries the real GET_FILE_INFO code (a2fc_mli.s sets it):
-         * $46 "file not found" -- typically BASIC.SYSTEM missing from the
-         * volume of a BAS (a /RAM, a disk without a system) -- or $2E/$2F if
-         * the disk has changed or is missing. report_error spells it out. */
-        chain_command("");   /* otherwise a SYS launched later would get the "-NAME" at $2006 */
-        report_error("Run");
-        return;
-    }
-    if (!save_config() && !confirm("Configuration warning. Run anyway?")) return;
-    clrscr();
-    chain_addr = addr;
-    chain_load(full);
-}
-
-/* X: a SYS is read at $2000, where ProDOS would have put it, a BIN at its
- * auxtype. A BAS does not launch by itself: it is BASIC.SYSTEM that gets
- * loaded, the program name deposited at $2006 by chain_command -- it turns
- * it into the "-NAME" command at startup, exactly like Bitsy Bye.
- * BASIC.SYSTEM is looked for at the root of the program's volume, its usual
- * place, otherwise on the boot volume (basic_path). */
-static const char run_pick[]  = "Select a program.";
-static const char msg_sysonly[] = "SYS, BIN or BAS only.";
-static const char run_range[] = "BIN must load in $0800-$BAFF.";
-static const char run_ask[]   = "Run %s? No return to A2FC.";
-static const char run_basic[] = "/BASIC.SYSTEM";
-
-/* BASIC.SYSTEM into `full`: at the root of the program's volume, its usual
- * place; otherwise at the root of the boot volume -- a BAS on /RAM, on a
- * data disk or on the hard disk still starts, with the BASIC.SYSTEM of the
- * A2FC floppy. */
-static void basic_path(void)
-{
-    char* s;
-    strcpy(full, panels[active].path);
-    s = strchr(full + 1, '/'); if (s) *s = 0;          /* "/VOL/DIR" -> "/VOL" */
-    strcat(full, run_basic);
-    if (exists(full)) return;
-    strcpy(full, cfg_path);
-    s = strchr(full + 1, '/'); if (s) *s = 0;          /* "/VOL/A2FILE/A2FILE.CFG" -> "/VOL" */
-    strcat(full, run_basic);
-    if (!exists(full) && companion_path(run_basic)) strcpy(full, other_full);
-    while (!exists(full)) {
-        if (!ask_disk(run_basic + 1)) { full[0] = 0; return; }
-        if (companion_path(run_basic)) strcpy(full, other_full);
-    }
-}
-
-static void run_selected(const struct Entry* e)
-{
-    unsigned int addr = e->type == 0xFF ? 0x2000 : e->aux;
-    unsigned char bas = e->type == 0xFC, whole = 0;
-    if (is_dir(e) || !panels[active].path[0]) { message(run_pick); return; }
-    if (bas) {
-        /* BASIC.SYSTEM (basic_path) receives the program by its full path
-         * "-/VOL/DIR/NAME" when it fits in the thunk of chain.s
-         * (46 characters): it resolves whatever the prefix is -- and
-         * BASIC.SYSTEM sets its own prefix to its own volume, which is why
-         * "-A2FILE.SYSTEM" (the return the help announces) works when it
-         * comes from the A2FC floppy. Too long, we fall back to the old
-         * behaviour (prefix = program's directory, "-NAME", no way back).
-         * BASIC.SYSTEM missing: launch_file will say "Run failed". */
-        basic_path();
-        if (!full[0]) return;
-        whole = build_full(other_full, &panels[active], e) && strlen(other_full) <= 46;
-        addr = 0x2000;
-    } else {
-        if (e->type != 0xFF && e->type != 0x06) { message(msg_sysonly); return; }
-        if (addr < 0x0800 || (unsigned long)addr + e->size > 0xBB00) { message(run_range); return; }
-        if (!build_full(full, &panels[active], e)) { too_long(); return; }
-    }
-    sprintf(question, run_ask, e->name);
-    if (!confirm(question)) return;
-    if (bas && whole) {                    /* prefix = root, "-/VOL/DIR/NAME" */
-        chain_command(other_full);
-        strcpy(full, panels[active].path);
-        { char* s = strchr(full + 1, '/'); if (s) *s = 0; }
-        chdir(full);
-        basic_path();
-    } else {
-        if (bas) chain_command(e->name);
-        chdir(panels[active].path);
-    }
-    launch_file(addr);
-}
+#include "launch.h"
 
 void __fastcall__ run_entry(const struct A2fcApi* a)
 {
@@ -4522,7 +4433,7 @@ static unsigned char looks_like_music(const struct Entry* e)
 static const char ov_raw[] = "IMAGE", ov_ext[] = "EXTASIE", ov_pack[] = "PACKFOT";
 static const char ov_paint[] = "PAINT816", ov_dgr[] = "DGRVIEW", ov_hex[] = "HEX";
 static const char ov_text[] = "TEXT", ov_awp[] = "AWP", ov_run[] = "RUN", ov_music[] = "MUSIC";
-static const char ov_int[] = "INTBASIC", ov_font[] = "FONTVIEW";
+static const char ov_font[] = "FONTVIEW";
 static const char ov_lz[] = "LZ4FH", ov_ps[] = "PRINTSHOP", ov_pt3[] = "PT3";
 static const char* const image_viewers[] = {ov_hex, ov_raw, ov_ext, ov_pack, ov_paint, ov_dgr};
 static const char open_dgr[] = "DGR";
@@ -4543,7 +4454,7 @@ static const char* file_viewer(const struct Entry* e, unsigned char pictures)
     if (e->type == 8 && e->aux == 0x8066) return ov_lz;
     if (e->type == 6 && (e->aux & 0xCFFF) == 0x4800 &&
         (e->size == 572 || e->size == 576)) return ov_ps;
-    if (!pictures && e->type == 0xFA) return ov_int;
+    if (!pictures && e->type == 0xFA) return ov_run;
     n = strlen(e->name);
     if (!pictures && n>4 && !strcmp(e->name+n-4,".PT3")) return ov_pt3;
     /* Probe only in main-RAM copy_buf, never in a graphics/AUX bank.

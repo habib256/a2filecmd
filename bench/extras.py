@@ -171,6 +171,11 @@ def main():
             s.select('WORK'); s.key(RET); s.select('HELLO'); s.key(RET)
             s.wait(lambda: s.has('Run HELLO?'), 'confirmation BASIC', 30)
             s.key(b'Y')
+            s.wait(lambda: s.has('Configuration warning.') or
+                   any('EXTRAS BASIC OK' in r for r in s.rows40()), 'lancement ou configuration pleine', 60)
+            if s.has('Configuration warning.'):
+                s.ok('BOOT plein signale la configuration non sauvegardee', True)
+                s.key(b'Y')
             s.wait(lambda: any('EXTRAS BASIC OK' in r for r in s.rows40()), 'BASIC du complement', 60)
             s.ok('BASIC.SYSTEM du lecteur 2 execute le programme du disque de travail', True)
             s.type('-/' + bootvol + '/A2FILE.SYSTEM'); s.key(RET)

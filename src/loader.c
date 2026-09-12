@@ -121,9 +121,10 @@ int main(void)
 
     /* The prefix first: A2FILE/A2FILE.CODE is read relatively. On a cold
      * boot ProDOS has set it, Bitsy Bye too (the directory of the .SYSTEM),
-     * but relaunching by "-A2FILE.SYSTEM" from BASIC.SYSTEM leaves it EMPTY:
-     * set_boot_prefix then rebuilds it from the full path that BASIC.SYSTEM
-     * leaves at $0280, or from the boot volume. Without it A2FC would open
+     * but BASIC.SYSTEM may leave it empty or pointing at the BASIC program.
+     * set_boot_prefix prefers the absolute path at $0280 when it names
+     * A2FILE.SYSTEM; otherwise it keeps a valid prefix or uses the boot volume.
+     * Without it A2FC would open
      * on the volume list, without A2FILE.CFG -- or would not load at all,
      * when installed elsewhere than at the root. */
     set_boot_prefix();

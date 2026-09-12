@@ -49,6 +49,16 @@ def main():
                             ay = ay_snapshot(p, 'stopped')
                             s.ok(name + ': exit silences AY and disables VIA IRQ',
                                  ay[7] & 63 == 63 and not any(ay[8:11]) and ay[16] & 127 == 0)
+                            s.select(name); s.key(RET)
+                            s.wait(lambda: s.has(title), name + ' replay', 30)
+                            p.rq('/speed', {'preset': 'max'})
+                            s.wait(lambda: s.has('Type  Aux'), name + ' natural end', 90)
+                            s.ok(name + ': natural end restores both panels without a key',
+                                 s.rows()[0].startswith('/WORKHD/WORK') and
+                                 bool(s.rows()[0][40:].strip()) and not s.has('Invalid PT3.'))
+                            ay = ay_snapshot(p, 'finished')
+                            s.ok(name + ': natural end silences hardware',
+                                 ay[7] & 63 == 63 and not any(ay[8:11]))
                         else:
                             s.wait(lambda: s.has('No Mockingboard.'), name + ' without card', 30)
                             s.ok(name + ': absent card refused, panels intact', s.has('Type  Aux'))

@@ -170,7 +170,7 @@ $(SYSTEM) $(FLOPPY_SYSTEM): $(BUILD)/crt0_loader.o $(BUILD)/loader_mli.o Makefil
 	  -o $@ $(BUILD)/crt0_loader.o $(BUILD)/loader_mli.o \
 	  $(BUILD)/$(if $(filter $(FLOPPY_SYSTEM),$@),launcher_floppy,launcher).o $(IOBUF)
 
-$(CODE): $(SRC)/errors.h $(SRC)/media.h $(SRC)/batch.h $(SRC)/config.h $(SRC)/format.c $(SRC)/a2fc.c $(SRC)/a2fc.cfg $(SRC)/a2fc_plugin.h $(SRC)/music.h $(SRC)/memory_swap.h $(OBJS) Makefile | $(BUILD)
+$(CODE): $(SRC)/launch.h $(SRC)/errors.h $(SRC)/media.h $(SRC)/batch.h $(SRC)/config.h $(SRC)/format.c $(SRC)/a2fc.c $(SRC)/a2fc.cfg $(SRC)/a2fc_plugin.h $(SRC)/music.h $(SRC)/memory_swap.h $(OBJS) Makefile | $(BUILD)
 	$(CL) $(CFLAGS) -D 'A2FC_VERSION="$(A2FC_VERSION)"' -C $(SRC)/a2fc.cfg \
 	  -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__STACKSIZE__=$(A2FC_STACK) -Wl -D,__BIN2SIZE__=$(BIN2SIZE) \
 	  -Wl -m,$(BUILD)/a2fc.map -Wl -Ln,$(BUILD)/a2fc.lbl \
@@ -249,7 +249,7 @@ ifeq ($(ARCH),6502)
 # Each category carries MENU and the full catalog for single-drive swaps.
 # Resolve native/service overlays from the same build; never copy old staging.
 define package_disk
-$(DIST)/A2FILECMD-$(CPU)-$(1)-$(A2FC_VERSION).po: $(CODE) $(CATALOG) $(XPLG) $(DATA)/BASIC.SYSTEM.SYS $(TOOLS)/mkvolume.py $(TOOLS)/mkpackage.py $(TOOLS)/disk_packages.py config/packages.mk Makefile | $(DIST)
+$(DIST)/A2FILECMD-$(CPU)-$(1)-$(A2FC_VERSION).po: $(CODE) $(CATALOG) $(XPLG) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS $(TOOLS)/mkvolume.py $(TOOLS)/mkpackage.py $(TOOLS)/disk_packages.py config/packages.mk Makefile | $(DIST)
 	python3 $(TOOLS)/mkpackage.py $(BUILD) $$@ --role $(1) --cpu $(CPU)
 $(DIST)/A2FILECMD-$(CPU)-$(1)-$(A2FC_VERSION).dsk: $(DIST)/A2FILECMD-$(CPU)-$(1)-$(A2FC_VERSION).po $(TOOLS)/po2dsk.py
 	python3 $(TOOLS)/po2dsk.py $$< $$@
@@ -258,11 +258,11 @@ $(foreach role,$(PACKAGE_ROLES),$(eval $(call package_disk,$(role))))
 endif
 
 # XL: the complete edition for the selected CPU.
-$(TWOMG): $(STAGE_DEPS) $(XPLG) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/README.TXT \
+$(TWOMG): $(STAGE_DEPS) $(XPLG) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS $(DATA)/README.TXT \
        $(TOOLS)/mkdemo.py $(TOOLS)/po22mg.py \
        $(TOOLS)/mkshk.py $(TOOLS)/mkbny.py $(TOOLS)/mkdos33.py $(wildcard $(DATA)/IMGHGR/*) | $(DIST)
 	$(call stage,$(PLUGINS),$(XPLUGINS))
-	cp $(DATA)/BASIC.SYSTEM.SYS $(STAGE)/
+	cp $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS $(STAGE)/
 	mkdir -p $(STAGE)/DEMO
 	cp $(DATA)/README.TXT $(STAGE)/DEMO/README.TXT
 	python3 $(TOOLS)/mkdemo.py $(STAGE)/DEMO
@@ -287,6 +287,9 @@ $(FULLPO): $(STAGE_DEPS) $(DATA)/BASIC.SYSTEM.SYS
 	@echo "==> $(FULLPO): the bench floppy, core overlays ($(ARCH))"
 
 test:
+	python3 $(TOOLS)/test_loader_prefix.py
+	python3 $(TOOLS)/test_chain.py
+	python3 $(TOOLS)/test_launch.py
 	python3 $(TOOLS)/test_errors.py
 	python3 $(TOOLS)/test_config.py
 	python3 $(TOOLS)/test_config_native.py

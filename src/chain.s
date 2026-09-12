@@ -17,16 +17,17 @@
 ; Bye included: at startup it looks at $2006 for a name preceded by its
 ; length, and if there is one executes it as the command "-NAME" -- which
 ; runs an Applesoft program. So the thunk stores the name at
-; chain_addr+6 just before jumping. Without a call, the first byte stays
+; $2006 just before jumping (interpreters load at $2000). Without a call, the first byte stays
 ; zero and nothing is written. 46 characters at most: a full path
 ; "/VOL/DIR/NAME" almost always fits (see run_selected).
 
-        .export _chain_load, _chain_addr, _chain_command
+        .export _chain_load, _chain_addr, _chain_size, _chain_command
         .import donelib
         .importzp ptr1
 
         .segment "BSS"
 _chain_addr: .res 2
+_chain_size: .res 2             ; checked file size, excluding the I/O buffer
 
         .segment "RODATA"
 stub_src:
@@ -42,20 +43,20 @@ stub:   jsr $BF00               ; OPEN
         .byte $CA
         .word read_p
         bcs fail
+        ldx #1
+:       lda rd_got,x
+        cmp rd_len,x
+        bne fail                ; no execution after a successful short read
+        dex
+        bpl :-
         jsr $BF00               ; CLOSE
         .byte $CC
         .word close_p
+        bcs fail
         ldy cmd                 ; a command to pass?
         beq run
-        clc                     ; yes: at chain_addr+6, length included
-        lda rd_addr
-        adc #6
-        sta put+1
-        lda rd_addr+1
-        adc #0
-        sta put+2
 :       lda cmd,y
-put:    sta $FFFF,y
+        sta $2006,y             ; validated interpreter header, length included
         dey
         bpl :-
 run:    bit $C082
@@ -73,8 +74,8 @@ read_p: .byte 4
 rd_ref: .byte 0
 rd_addr:
         .word $2000             ; chain_addr
-rd_len: .word $2000             ; $BF00 - chain_addr
-        .word 0
+rd_len: .word $2000             ; validated file length
+rd_got: .word 0
 close_p:
         .byte 1
 cl_ref: .byte 0
@@ -95,30 +96,32 @@ cmd_src = stub_src + (cmd - stub)
 
         .segment "CODE"
 _chain_load:
-        sta ptr1
-        stx ptr1+1
+        pha                     ; destructors may use cc65's ptr1 scratch
+        txa
+        pha
         ; The cc65 destructors first: doneirq gives back to ProDOS the
         ; interrupt entry taken at startup (music_irq). Without this each
         ; launch kept one, with a vector into overwritten memory: on the
         ; third F/ESC round trip, a crash into the monitor. ProDOS only
         ; has four of them.
         jsr donelib
+        pla
+        sta ptr1+1
+        pla
+        sta ptr1
         ldy #0                  ; copy the thunk to $0300
 :       lda stub_src,y
         sta $0300,y
         iny
         cpy #stub_len
         bne :-
-        lda _chain_addr         ; the address, and the length up to $BF00
+        lda _chain_addr
         sta rd_addr
-        sec
-        lda #$00
-        sbc _chain_addr
-        sta rd_len
         lda _chain_addr+1
         sta rd_addr+1
-        lda #$BF
-        sbc _chain_addr+1
+        lda _chain_size
+        sta rd_len
+        lda _chain_size+1
         sta rd_len+1
         ldy #0                  ; the path, prefixed with its length
 :       lda (ptr1),y

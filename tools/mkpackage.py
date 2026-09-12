@@ -6,7 +6,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from disk_packages import PACKAGES, VOLUMES, BASIC, ROOT
+from disk_packages import PACKAGES, VOLUMES, BASIC, RUNTIMES, ROOT
 
 
 def main():
@@ -26,7 +26,8 @@ def main():
             source = a.build / (name.lower() + '.PLG') if (ROOT / 'src/plugins' / (name.lower() + '.c')).exists() else native
             shutil.copyfile(source, directory / (name + '.PLG#061B00'))
         if a.role == BASIC:
-            shutil.copyfile(ROOT / 'data/BASIC.SYSTEM.SYS', stage / 'BASIC.SYSTEM.SYS')
+            for runtime in RUNTIMES:
+                shutil.copyfile(ROOT / ('data/' + runtime + '.SYS'), stage / (runtime + '.SYS'))
         subprocess.run([sys.executable, str(ROOT / 'tools/mkvolume.py'), str(stage),
                         str(a.output), '--volume', VOLUMES[a.role] + a.cpu,
                         '--blocks', '280'], check=True)

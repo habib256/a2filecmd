@@ -22,7 +22,7 @@
 1,15,M,Mark files differing from other
 41,15,A,Change type and auxtype
 1,16,L,Lock / unlock (L after name)
-41,16,X,Run SYS, BIN or BAS (Applesoft)
+41,16,X,Run SYS, BIN, BAS or INT
 1,17,E,Edit a text (on a dir: new file)
 41,17,I,View as image: HGR/DHGR, raw/RLE
 1,18,RET,Open image, music or document

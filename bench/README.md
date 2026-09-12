@@ -78,6 +78,14 @@ POM2. Il teste MB1/PT3 avec et sans carte, pause/sortie, registres AY/IRQ et
 conservation des octets AUX et du volume jetable. Le corpus PT3 est lu sans
 modification. L'ancien hôte `pom2_playtest` ne branche aucune carte sur //c.
 
+`bench/launch.py` exécute un programme Integer BASIC et un programme Applesoft,
+après annulation puis confirmation, en contrôlant leurs octets sur le volume
+jetable. Utiliser `A2FC_IMG=A2FILECMD-full` ou `A2FC_BUILD=build-6502` ; avec
+ce dernier, `--companion` teste BOOT + DEVTOOLS et les programmes sur disque dur.
+Les scénarios sur BOOT plein répondent explicitement à l'avertissement de
+configuration non sauvegardée. `bench/mb4c.py` couvre aussi la fin naturelle
+des deux lecteurs, sans touche, avec restauration des panneaux et silence AY.
+
 Il faut [POM2](https://github.com/habib256/pom2) construit sans interface
 graphique, avec son serveur de commande (`--ai-control`) et une option
 `--mouse` qui branche une AppleMouse II (HLE AppleWin) en slot 4 -- c'est

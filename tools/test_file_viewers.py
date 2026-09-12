@@ -104,7 +104,7 @@ class FileViewers(unittest.TestCase):
                 for size in (572, 576):
                     self.route('CLIP', 6, aux, size, 'PRINTSHOP', picture)
         for name in ('WOZ.BREAKOUT', 'APPLEVISION'):
-            self.route(name, 0xFA, 0, 1859, 'INTBASIC')
+            self.route(name, 0xFA, 0, 1859, 'RUN')
         self.route('AUTUMN.PT3', 0, 0, 4461, 'PT3')
         self.route('OTHER.BIN', 6, 0x2000, 576, 'HEX')
 

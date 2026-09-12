@@ -5,6 +5,10 @@ downloads and installation.
 
 ## Unreleased
 
+- Return/X launches Integer BASIC programs through INTBASIC.SYSTEM v0.9, included with Applesoft's runtime on DEVTOOLS and XL; T keeps listing BASIC source.
+- Keep program/runtime paths separate during launch, check interpreter headers and actual load sizes, and reject loader close failures.
+- Relaunch A2FC from BASIC using its own system path even when the previous program's prefix remains set.
+- Verify automatic return to both panels, silenced hardware and preserved AUX after MB1/PT3 finish, on both CPU builds.
 - Build checks now report free bytes in resident memory and core overlays to guide consolidation.
 - Compact resident ProDOS diagnostics and relocate launch-only text, freeing 22 bytes in MAIN and 71/70 bytes in the 65C02/6502 language card with unchanged error messages.
 - Add an opt-in Mockingboard 4c to the POM2 test host and cover automatic detection and MB1/PT3 playback on Apple //c; document the existing `$C400` probe support.

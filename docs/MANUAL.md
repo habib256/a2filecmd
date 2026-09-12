@@ -20,7 +20,7 @@ starting and identifies the edition on its title screen.
 | Edition | What to use |
 |---|---|
 | **6502 floppies** | BOOT plus whichever 140 KB category disks you need: FILES, MEDIA, DISKTOOLS, DEVTOOLS. These floppies also run on enhanced machines. |
-| **XL 6502 or 65C02** | One bootable 32 MB `.2mg` with all 59 overlays, BASIC.SYSTEM and demonstration files. No companion disk is needed. |
+| **XL 6502 or 65C02** | One bootable 32 MB `.2mg` with all 59 overlays, BASIC.SYSTEM, INTBASIC.SYSTEM and demonstration files. No companion disk is needed. |
 
 The download names include the CPU, category and version:
 
@@ -74,7 +74,7 @@ full command catalog. The distribution is declared in `config/packages.mk`.
 | **FILES** | EDIT, SEARCH, AWP, BINARY2, UNSHRINK, CRC, FIND, FIXTYPES, GOTO, IDENT, MDVIEW, RENAME, SYNC, MOVE, TREE | `/A2FILES6502` |
 | **MEDIA** | IMAGE, MUSIC, DGRVIEW, EXTASIE, PACKFOT, PAINT816, LZ4FH, PRINTSHOP, FONTVIEW, PT3 | `/A2MEDIA6502` |
 | **DISKTOOLS** | BOOTBLK, BLKVIEW, BLKEDIT, DISKCMP, IMGCONV, MKIMAGE, RESCUE, UNDELETE | `/A2DISKS6502` |
-| **DEVTOOLS** | BASLIST, DISASM, INTBASIC, plus BASIC.SYSTEM | `/A2DEVTOOLS6502` |
+| **DEVTOOLS** | BASLIST, DISASM, INTBASIC listings, plus BASIC.SYSTEM and INTBASIC.SYSTEM runtimes | `/A2DEVTOOLS6502` |
 
 BOOT keeps the essential file manager and disk operations. Use the **same
 release** for all floppies. XL is complete; never replace its 65C02 native
@@ -331,8 +331,9 @@ The directory's displayed order is used, including across large-directory
 windows. At either end the arrow does nothing; Escape returns to the panels.
 A viewer that uses AUX still asks for consent before the next AUX write.
 
-**Return** on an Integer BASIC file (`$FA`), including `WOZ.BREAKOUT` and
-`APPLEVISION`, now opens INTBASIC directly to list its source.
+**T** on an Integer BASIC file (`$FA`), including `WOZ.BREAKOUT` and
+`APPLEVISION`, opens INTBASIC.PLG to list its source. **Return/X** executes it
+through INTBASIC.SYSTEM after confirmation.
 
 Destructive AUX use always asks for consent before touching `/RAM`.
 With floppies, specialized picture viewers are on **MEDIA**, and BOOT holds
@@ -467,16 +468,26 @@ Set the destination in the other panel, select the archive, then use **!**:
 ShrinkIt extraction clears `/RAM` and refuses it as a destination. Keep
 archives and recovered files on another volume.
 
-### Running an Applesoft program
+### Running BASIC and machine-language programs
 
-**Return** or **X** runs BAS, SYS or BIN after confirmation. The launched
+**Return** runs BAS, INT or SYS after confirmation; **X** also runs BIN. The launched
 program replaces A2FC; it does not automatically return. A BIN loads at its
 auxiliary address, which must be between `$0800` and `$BAFF`.
 
-Applesoft requires `BASIC.SYSTEM`, supplied on DEVTOOLS and XL. A2FC searches
-the program's volume, its own volume and the companion. With one floppy
-drive, keep the BAS program on another online volume so it remains readable
-after BASIC.SYSTEM loads.
+Applesoft (`$FC`) requires `BASIC.SYSTEM`; Integer BASIC (`$FA`) requires
+`INTBASIC.SYSTEM` v0.9. Both are supplied on DEVTOOLS and XL; the runtime is
+chosen automatically. **T** lists either BASIC source without executing it.
+A2FC searches the program's volume, its own volume and the companion, and
+names DEVTOOLS when the runtime disk is absent. An unreadable or incompatible
+runtime is refused. With one floppy drive, keep the BASIC program on another
+online volume so it remains readable after the runtime loads.
+
+Launch checks use the file's actual size and keep the load below `$BB00`,
+where the loader's ProDOS I/O buffer starts. If BOOT is full and preferences
+cannot be saved, A2FC asks whether to run anyway; it does not silently discard
+that failure. Integer BASIC returns to the ProDOS selector at program end.
+Its upstream runtime supports a subset of DOS commands; see
+[INTBASIC.SYSTEM usage and provenance](../data/INTBASIC.md).
 
 From the Applesoft `]` prompt, reinsert BOOT if needed and enter:
 

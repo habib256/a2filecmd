@@ -52,7 +52,7 @@ def main():
                 if folder!=target:
                     if folder:s.key(ESC);p.stable()
                     s.select(target);s.key(RET);p.stable();folder=target
-                for key in ((RET,b'I') if target=='WORK' and oracle else (RET,)):
+                for key in ((RET,b'I') if target=='WORK' and oracle else ((RET,) if oracle else (b'T',))):
                     s.select(name)
                     before=bytes(p.peek(0x1000,0xB000,'aux'))
                     s.key(key)
@@ -63,7 +63,7 @@ def main():
                         s.ok(name+' preserves AUX',bytes(p.peek(0x1000,0xB000,'aux'))==before)
                     else:
                         s.wait(lambda:s.has(name) and s.has('page 1'),name+' listing',30)
-                        s.ok(name+' Return opens INTBASIC',True)
+                        s.ok(name+' T opens INTBASIC',True)
                     s.key(ESC);s.wait(lambda:s.has('Type  Aux'),'panels restored',30);p.stable()
     return ok_all(s,'sample_media')
 

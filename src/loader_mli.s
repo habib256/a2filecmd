@@ -1,16 +1,15 @@
 ; Set the ProDOS prefix for A2 File Cmd, from the launcher (src/loader.c).
 ;
 ; Everything starts from the prefix: A2FILE/A2FILE.CODE, the A2FILE/*.PLG
-; overlays, the help, A2FILE.CFG are all read relative to it. Three cases:
+; overlays, the help, A2FILE.CFG are all read relative to it. First prefer
+; a bounded absolute $0280 path ending in A2FILE.SYSTEM: BASIC may retain
+; the old program's prefix when launching a SYS by its full path. Otherwise:
 ;  - it is already set (cold boot: ProDOS sets "/VOL/"; Bitsy Bye: the
 ;    directory of the launched .SYSTEM; relaunch from a selector: whatever it
 ;    left): we leave it alone. This is what allows A2FILE.SYSTEM and its
 ;    A2FILE directory to be installed anywhere on a hard disk, not only at
 ;    the root of a volume named /A2FILECMD.
-;  - it is EMPTY: relaunch by "-A2FILE.SYSTEM" from BASIC.SYSTEM, which
-;    clears it when launching a SYS but leaves at $0280 the full path of
-;    the launched program ("/VOL/DIR/A2FILE.SYSTEM"): its directory is ours.
-;  - otherwise (relative path at $0280, or nothing): ON_LINE on the last
+;  - if empty (relative/unrelated path at $0280, or nothing): ON_LINE on the last
 ;    device used ($BF30, the one A2FILE.CODE has just been read from) gives
 ;    the volume name, which we set as "/NAME".
 ;
@@ -35,23 +34,37 @@ _set_boot_prefix:
         jsr     MLI
         .byte   GET_PREFIX
         .word   pfx_parm
-        bcs     sbp_online
-        lda     pfx_buf
-        bne     sbp_fail        ; already set: keep it
-        ldy     SYSPATH         ; empty: the launched program's directory
-        beq     sbp_online
+        bcs     sbp_fail        ; a failed query is not an empty prefix
+        ; BASIC may retain the program's prefix even for an absolute SYS
+        ; launch. Only trust $0280 if it names THIS launcher, not stale data.
+        ldy     SYSPATH
+        cpy     #64
+        bcs     sbp_keep
+        cpy     #14
+        bcc     sbp_keep
         lda     SYSPATH+1
         cmp     #'/'
-        bne     sbp_online      ; relative path: without a prefix, unsolvable
-sbp_last:
-        lda     SYSPATH,y       ; the last slash, scanning from the end
-        cmp     #'/'
-        beq     sbp_dir
+        bne     sbp_keep
+        ldx     #12
+sbp_name:
+        lda     SYSPATH,y
+        ora     #$20
+        cmp     own_name,x
+        bne     sbp_keep
         dey
-        bne     sbp_last
+        dex
+        bpl     sbp_name
+        lda     SYSPATH,y
+        cmp     #'/'
+        bne     sbp_keep
+        jmp     sbp_dir
+sbp_keep:
+        lda     pfx_buf
+        bne     sbp_fail
+        jmp     sbp_online
 sbp_dir:
         cpy     #2
-        bcc     sbp_online      ; "/NAME" alone: not a directory
+        bcc     sbp_keep        ; "/NAME" alone: not a directory
         sty     pfx_buf         ; the directory, its trailing slash included
 sbp_cpy:
         lda     SYSPATH,y
@@ -95,6 +108,9 @@ sbp_set:
         .word   pfx_parm
 sbp_fail:
         rts
+
+        .rodata
+own_name: .byte "a2file.system"
 
         .data
 

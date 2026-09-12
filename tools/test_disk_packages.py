@@ -83,6 +83,8 @@ int main(int argc, char** argv) {
     def test_basic_runtime_and_hidden_copy_route(self):
         data = self.record('BASIC.SYSTEM', 'A2DEVTOOLS6502: BASIC')
         self.assertEqual(self.prompt(data, 'BASIC.SYSTEM'), 'A2DEVTOOLS6502')
+        data = self.record('INTBASIC.SYSTEM'[:12], 'A2DEVTOOLS6502: Integer BASIC')
+        self.assertEqual(self.prompt(data, 'INTBASIC.SYSTEM'), 'A2DEVTOOLS6502')
         data = bytearray(self.record('COPY', 'A2FC6502: Internal'))
         data[11] = 1
         self.assertEqual(self.prompt(data, 'COPY'), 'A2FC6502')

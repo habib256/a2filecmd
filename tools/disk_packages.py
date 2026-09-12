@@ -9,6 +9,7 @@ ROLES = VALUES['PACKAGE_ROLES'].split()
 PACKAGES = {role: VALUES['PACKAGE_' + role].split() for role in ROLES}
 VOLUMES = {role: VALUES['PACKAGE_VOLUME_' + role] for role in ROLES}
 BASIC = VALUES['PACKAGE_BASIC']
+RUNTIMES = VALUES['PACKAGE_RUNTIMES'].split()
 
 
 def assignments(native, plugins):

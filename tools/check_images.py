@@ -9,7 +9,7 @@ from prodos_read import Image
 ROOT = Path(__file__).resolve().parents[1]
 MAKEFILE = (ROOT / 'Makefile').read_text()
 VERSION = re.search(r'^A2FC_VERSION\s*=\s*(\S+)', MAKEFILE, re.M)[1]
-from disk_packages import ROLES, VOLUMES, BASIC, assignments
+from disk_packages import ROLES, VOLUMES, BASIC, RUNTIMES, assignments
 
 
 def entries(image, block):
@@ -65,7 +65,11 @@ def check_cpu(cpu):
             title = cpu + (' FLOPPY EDITION' if role == 'BOOT' else ' COMPLETE EDITION')
             assert title.encode('ascii') in program, (path, 'wrong launch screen')
             assert image.read(directory['A2FILE.CODE']) == (build / 'A2FILE.CODE.BIN').read_bytes(), path
-        assert ('BASIC.SYSTEM' in root) == (role in (BASIC, 'XL')), path
+        for runtime in RUNTIMES:
+            assert (runtime in root) == (role in (BASIC, 'XL')), (path, runtime)
+            if runtime in root:
+                assert root[runtime][16] == 0xFF, (path, runtime)
+                assert image.read(root[runtime]) == (ROOT / ('data/' + runtime + '.SYS')).read_bytes(), (path, runtime)
         if role in ('BOOT', 'XL'):
             assert image.read(root['PRODOS']) == (ROOT / 'data/PRODOS.SYS').read_bytes(), path
         if role in (BASIC, 'XL'):

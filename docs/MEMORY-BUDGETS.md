@@ -93,6 +93,28 @@ valide l'amorçage BOOT sur 6502, les 11 contrôles XL sur 65C02 et mesure
 92 octets de pile utilisés sur les 192 réservés dans `bench/memory.py`.
 Ces scénarios ne prouvent pas une borne exhaustive pour tous les parcours.
 
+### Après l'extension du lanceur à Integer BASIC
+
+Le chantier demandé ensuite ajoute `src/launch.h`, toujours dans RUN, et
+`INTBASIC.SYSTEM` sur DEVTOOLS/XL. Les chemins de lancement vivent à
+`$3400-$347F`, séparés du tampon de configuration `$3000-$33FF` ; des contrôles
+de taille à la compilation empêchent leur recouvrement. Aucun plafond n'est
+relevé. Deux messages partagés et deux libellés d'erreur sont placés en LC
+pour garder RUN dans sept blocs sur la disquette BOOT 6502.
+
+| Réserve du lien après extension | 65C02 | 6502 |
+| --- | ---: | ---: |
+| MAIN | 62 | 593 |
+| Carte langage | 8 | 11 |
+| LOWRAM | 280 | 305 |
+| Espace avant pile C | 90 | 810 |
+| RUN | 1781 | 1795 |
+| OPEN | 83 | 119 |
+
+BOOT occupe les 280 blocs : l'échec de sauvegarde d'une nouvelle configuration
+y reste signalé avant de proposer de lancer quand même le programme. Les
+objectifs de réserve restent ouverts, particulièrement la carte langage.
+
 ## Prochaine extraction
 
 Commencer par les services résidents de présentation et leurs constantes,
