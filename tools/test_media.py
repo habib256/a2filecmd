@@ -31,8 +31,10 @@ static unsigned char read_panel(unsigned char p){
 }
 static unsigned char build_full(char*out,const struct Panel*p,const struct Entry*e){strcpy(out,e->name);return 1;}
 #include "src/media.h"
-static const char* file_viewer(const struct Entry*e,unsigned char pic){
- const char*p=strrchr(e->name,'.');return p && !strcmp(p,".MB")?media_names[0]:media_names[1];
+static unsigned char file_viewer(const struct Entry*e,unsigned char pic){
+ if(failure==4 && !strcmp(e->name,"BAD.MB"))return V_ERROR;
+ if(strstr(e->name,".FOTO"))return V_PURPLE;
+ const char*p=strrchr(e->name,'.');return p && !strcmp(p,".MB")?V_MUSIC:V_PT3;
 }
 int main(int argc,char**argv){
  unsigned int i;unsigned char h[99];
@@ -50,6 +52,16 @@ int main(int argc,char**argv){
   failure=1;if(media_prepare(1))return 5;
   failure=0;panels[0].first=0;read_panel(0);
   failure=2;if(media_prepare(1))return 12;
+ }else if(atoi(argv[1])==7){
+  total=4;strcpy(all[0].name,"A.MB");strcpy(all[1].name,"BAD.MB");strcpy(all[2].name,"C.MB");
+  read_panel(0);panels[0].cursor=0;failure=4;
+  if(!media_prepare(V_MUSIC)||album[1][0]||panels[0].cursor)return 16;
+ }else if(atoi(argv[1])==8){
+  total=6;for(i=0;i<6;++i)sprintf(all[i].name,"%c.FOTO%u",'A'+i/2,i%2+1);
+  read_panel(0);panels[0].cursor=3;
+  if(!media_prepare(V_PURPLE)||strcmp(album[0],"A.FOTO1")||strcmp(album[1],"C.FOTO1"))return 17;
+  for(i=1;i<=MEDIA_COUNT;++i)if(media_type(media_names[i])!=i)return 18;
+  if(media_type("HEX")||media_type("UNKNOWN"))return 19;
  }else if(atoi(argv[1])==6){
   album[0][0]=album[1][0]=0;media_request=0;
   if(!media_key(0x9b)||media_request)return 14;
@@ -88,6 +100,8 @@ class Media(unittest.TestCase):
   subprocess.run(['cc','-std=c99','-I',str(ROOT),str(p/'test.c'),'-o',str(cls.exe)],check=True,capture_output=True)
  @classmethod
  def tearDownClass(cls):cls.tmp.cleanup()
+ def test_probe_error_does_not_skip_to_a_later_file(self):subprocess.run([str(self.exe),'7'],check=True)
+ def test_purple_pairs_and_media_identity(self):subprocess.run([str(self.exe),'8'],check=True)
  def test_media_keys_with_open_apple_flag(self):subprocess.run([str(self.exe),'6'],check=True)
  def test_neighbours_boundaries_and_marks(self):subprocess.run([str(self.exe),'1'],check=True)
  def test_window_crossing_and_read_failure(self):subprocess.run([str(self.exe),'2'],check=True)

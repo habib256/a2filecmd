@@ -236,3 +236,36 @@ et le volume source octet par octet sur des images jetables. Le lecteur
 Purplesoft vérifie ses deux plans, les sorties et le consentement par session
 sur les deux architectures. Ce sont des validations en émulation, pas des
 mesures sur matériel physique.
+
+
+## Consolidation du routage média
+
+Les identifiants de `src/viewer_ids.h` indexent une seule table résidente de
+noms. OPEN renvoie un octet plutôt qu'un pointeur vers ses propres chaînes ;
+le feuilletage compare cet identifiant. Zéro reste une erreur de sonde et ne
+sélectionne jamais un lecteur de repli. Les suffixes musicaux ne sont évalués
+qu'une fois par candidat. La priorité des types explicites est conservée.
+
+Le contrôle de taille HGR/DHGR regroupe les tailles exactes et leurs variantes
+sans les huit derniers octets invisibles. Un test du vrai C couvre les 65 536
+valeurs du mot bas, avec mot haut nul et non nul (393 216 vérifications pour
+les deux configurations). Il conserve exactement 8 184, 8 192, 16 376 et
+16 384 octets et refuse les tailles plus grandes ayant le même mot bas.
+
+| Réserve | 65C02 avant → après | 6502 avant → après |
+| --- | ---: | ---: |
+| MAIN | 145 → 259 | 682 → 779 |
+| OPEN | 4 → 185 | 42 → 215 |
+| LC | 168 → 168 | 163 → 163 |
+| LOWRAM | 278 → 277 | 303 → 302 |
+| Espace avant pile C | 173 → 287 | 899 → 996 |
+
+La réserve de travail MAIN de 256 octets est de nouveau atteinte sur 65C02.
+Aucune limite de lien, taille de pile, API de plugin ou autorisation AUX n'est
+modifiée. Les sondes n'écrivent que le buffer principal de lecture ; les
+lecteurs conservent leur contrôle de consentement avant toute utilisation AUX.
+
+Validation : 428 tests automatisés, compilations et limites des deux CPU ;
+109 contrôles POM2 par architecture (`open_images.py`, `media.py`, `purple.py`),
+avec écrans relus octet par octet, flèches, Échap, refus AUX et conservation du
+volume source. Les essais utilisent uniquement des images jetables.

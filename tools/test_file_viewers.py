@@ -7,11 +7,11 @@ from test_six_plugins import ROOT, PREFIX
 
 SOURCE = (ROOT / 'src/a2fc.c').read_text()
 IMAGE = SOURCE[SOURCE.index('static unsigned char page_size('):SOURCE.index('/* Buffered reading:')]
-MUSIC = SOURCE[SOURCE.index('static unsigned char looks_like_music('):SOURCE.index('static const char ov_raw[]')]
-ROUTING = SOURCE[SOURCE.index('static const char ov_raw[]'):SOURCE.index('static void open_selected(void)')]
+ROUTING = SOURCE[SOURCE.index('static const unsigned char image_viewers[]'):SOURCE.index('static void open_selected(void)')]
 HARNESS = PREFIX + r'''
 #include <stdint.h>
 #include "src/a2fc_plugin.h"
+#include "src/viewer_ids.h"
 static char input[64], full[512], chosen[80];
 static unsigned char copy_buf[512];
 static struct Entry selected;
@@ -28,7 +28,7 @@ static int probe_close(FILE* f) {
     int result = fclose(f);
     return fail_open == 4 ? EOF : result;
 }
-''' + IMAGE + MUSIC + r'''
+''' + IMAGE + r'''
 #define fopen probe_open
 #define ferror probe_error
 #define fclose probe_close
@@ -44,6 +44,15 @@ static void overlay_run(const char* name, unsigned char arg) {
     } else strcpy(chosen, name);
 }
 int main(int argc, char** argv) {
+    if(argc==1) {
+        unsigned long size, high;
+        for(high=0;high<3;++high)for(size=0;size<65536;++size) {
+            unsigned long value=size+(high==1?65536UL:high==2?0x80000000UL:0);
+            unsigned char expected=!high && (size==8184 || size==8192 || size==16376 || size==16384);
+            if(page_size(&value)!=expected)return 1;
+        }
+        return 0;
+    }
     strncpy(selected.name, argv[1], NAME_LEN - 1);
     selected.type = strtoul(argv[2], 0, 0); selected.aux = strtoul(argv[3], 0, 0);
     selected.size = strtoul(argv[4], 0, 0); fail_open = atoi(argv[6]);
@@ -87,6 +96,9 @@ class FileViewers(unittest.TestCase):
                 self.assertEqual(chosen, expected)
                 self.assertEqual(kind == 1, raw, 'the raw album must skip specialized formats')
 
+    def test_all_page_sizes_and_high_words(self):
+        for exe in self.exes:subprocess.run([str(exe)],check=True)
+
     def test_specialized_images_use_their_decoder_for_return_and_i(self):
         for typ, aux, size, viewer in [(0xF2, 0, 4012, 'EXTASIE'),
                 (0x08, 0x4000, 64, 'PACKFOT'), (0x08, 0x4001, 128, 'PACKFOT'),
@@ -107,6 +119,23 @@ class FileViewers(unittest.TestCase):
             self.route(name, 0xFA, 0, 1859, 'RUN')
         self.route('AUTUMN.PT3', 0, 0, 4461, 'PT3')
         self.route('OTHER.BIN', 6, 0x2000, 576, 'HEX')
+
+    def test_purple_pair_suffixes_and_name_boundaries(self):
+        for picture in (0,1):
+            for suffix in ('FOTO1','FOTO2'):
+                self.route('A.'+suffix,6,0x2000,8192,'PURPLE',picture,raw=True)
+                self.route('LONGNAMEX.'+suffix,6,0,1,'PURPLE',picture)
+            for name in ('FOTO1','.FOTO1','A.FOTO','A.FOTO0','A.FOTO3','A.FOTO12'):
+                self.route(name,6,0,4096,'IMAGE' if picture else 'HEX',picture)
+
+    def test_audio_scan_filter_and_format_precedence(self):
+        self.route('TUNE.MB',6,0,100,'MUSIC',picture=2)
+        self.route('TUNE.PT3',0,0,100,'PT3',picture=3)
+        for picture,name in ((2,'TUNE.PT3'),(3,'TUNE.MB')):
+            self.route(name,6,0,100,'HEX',picture,fail=2)
+        self.route('TUNE.MB',6,0,100,'DGRVIEW',picture=2,data=b'DGR')
+        self.route('TUNE.MB',6,0,100,'ERROR',picture=2,fail=4)
+        self.route('TUNE.PT3',7,0,100,'FONTVIEW',picture=3)
 
     def test_packed_metadata_wins_over_raw_page_size(self):
         for typ, aux, viewer in ((0xF2, 0, 'EXTASIE'), (8, 0x4000, 'PACKFOT'),

@@ -1172,7 +1172,10 @@ static unsigned char page_size(const unsigned long* size)
      * the last byte the screen actually shows drops the eight bytes of the
      * final screen hole. 816/Paint writes its uncompressed double hi-res
      * that way, and A2FC used to answer "not an image" to it. */
-    return !w[1] && (w[0] == 8192 || w[0] == 8184 || w[0] == 16384 || w[0] == 16376);
+    /* Fold each page size and its eight-byte-short variant together.
+     * Masking bit 3 after adding 8 maps precisely to $2000 or $4000. */
+    unsigned int rounded = (w[0] + 8) & 0xFFF7;
+    return !w[1] && (rounded == 8192 || rounded == 16384);
 }
 
 /* One classification for Return, I and the raw-image album. Explicit
@@ -1180,14 +1183,15 @@ static unsigned char page_size(const unsigned long* size)
  * 0 unknown, 1 raw/RLE, 2 Extasie, 3 packed FOT, 4 816/Paint, 5 lo-res. */
 static unsigned char image_kind(const struct Entry* e)
 {
-    unsigned char n = strlen(e->name);
-    if (is_dir(e)) return 0;
-    if (e->type == 0xF2) return 2;
-    if (e->type != 0x06 && e->type != 0x08) return 0;
-    if (e->type == 0x08 && ((e->aux & 0xFFFE) == 0x4000 || e->aux == 0x8066)) return 3;
-    if (e->type == 0x06 && (e->aux == 0xE001 || e->aux == 0xE002)) return 4;
+    unsigned char n, type = e->type;
+    if (type == 0xF2) return 2;
+    if (type != 0x06 && type != 0x08) return 0;
+    if (type == 0x08 && ((e->aux & 0xFFFE) == 0x4000 || e->aux == 0x8066)) return 3;
+    if (type == 0x06 && (e->aux == 0xE001 || e->aux == 0xE002)) return 4;
     if (e->aux == 0x0400 && e->size && e->size <= 2048) return 5;
-    return page_size(&e->size) || (n > 4 && !strcmp(e->name + n - 4, ".RLE"));
+    if (page_size(&e->size)) return 1;
+    n = strlen(e->name);
+    return n > 4 && !strcmp(e->name + n - 4, ".RLE");
 }
 #pragma rodata-name (pop)
 #pragma code-name (pop)
@@ -2089,7 +2093,7 @@ again:
         keep_tags(0);
         select_name(pan,album[dir]);
         if(!pan->count || strcmp(pan->e[pan->cursor].name,album[dir]))goto media_done;
-        name=media_names[media-1];
+        name=media_names[media];
         goto again;
     }
 media_done:
@@ -4408,38 +4412,29 @@ static unsigned char open_image(struct Panel* pan, const struct Entry* e)
  * it from inside OPEN would overwrite code still on the return stack. */
 #pragma code-name(push, "OPEN")
 #pragma rodata-name(push, "OPENRO")
-static unsigned char looks_like_music(const struct Entry* e)
-{
-    unsigned char n = strlen(e->name);
-    return !is_dir(e) && e->type == 0x06 && n > 3 && !strcmp(e->name + n - 3, ".MB");
-}
-static const char ov_raw[] = "IMAGE", ov_ext[] = "EXTASIE", ov_pack[] = "PACKFOT";
-static const char ov_paint[] = "PAINT816", ov_dgr[] = "DGRVIEW", ov_hex[] = "HEX";
-static const char ov_text[] = "TEXT", ov_awp[] = "AWP", ov_run[] = "RUN", ov_music[] = "MUSIC";
-static const char ov_font[] = "FONTVIEW";
-static const char ov_lz[] = "LZ4FH", ov_ps[] = "PRINTSHOP", ov_pt3[] = "PT3", ov_purple[] = "PURPLE";
-static const char* const image_viewers[] = {ov_hex, ov_raw, ov_ext, ov_pack, ov_paint, ov_dgr};
+static const unsigned char image_viewers[] = {V_HEX, V_RAW, V_EXT, V_PACK, V_PAINT, V_DGR};
 static const char open_dgr[] = "DGR";
 static const char open_error[] = "Cannot identify file: read/close error.";
-static const char* file_viewer(const struct Entry* e, unsigned char pictures)
+static unsigned char file_viewer(const struct Entry* e, unsigned char pictures)
 {
     unsigned char kind = image_kind(e);
     FILE* f;
-    unsigned char n = strlen(e->name), failed;
+    unsigned char n = strlen(e->name), failed, music = 0;
+    if(e->type==6 && n>3 && !strcmp(e->name+n-3,".MB")) music=V_MUSIC;
+    if(n>4 && !strcmp(e->name+n-4,".PT3")) music=V_PT3;
     /* Album scans can reject unrelated names without opening every file. */
     if (pictures >= 2) {
-        if (pictures == 2 ? !looks_like_music(e) :
-            !(n > 4 && !strcmp(e->name+n-4, ".PT3"))) return ov_hex;
+        if (music != pictures-1) return V_HEX;
         pictures = 0;
     }
-    if (e->type == 7) return ov_font;
-    if (e->type == 8 && e->aux == 0x8066) return ov_lz;
+    if (e->type == 7) return V_FONT;
+    if (e->type == 8 && e->aux == 0x8066) return V_LZ;
     if (e->type == 6 && (e->aux & 0xCFFF) == 0x4800 &&
-        (e->size == 572 || e->size == 576)) return ov_ps;
-    if (!pictures && e->type == 0xFA) return ov_run;
+        (e->size == 572 || e->size == 576)) return V_PS;
+    if (!pictures && e->type == 0xFA) return V_RUN;
     if (n>6 && !memcmp(e->name+n-6,".FOTO",5) &&
-        (unsigned char)(e->name[n-1]-'1')<2) return ov_purple;
-    if (!pictures && n>4 && !strcmp(e->name+n-4,".PT3")) return ov_pt3;
+        (unsigned char)(e->name[n-1]-'1')<2) return V_PURPLE;
+    if (!pictures && music==V_PT3) return V_PT3;
     /* Probe only in main-RAM copy_buf, never in a graphics/AUX bank.
      * Explicit packed metadata wins; the other formats can identify
      * themselves even without a filename suffix or a ProDOS image type.
@@ -4460,20 +4455,20 @@ static const char* file_viewer(const struct Entry* e, unsigned char pictures)
                  e->size && e->size <= 2048) kind = 5;
     }
     if (kind) return image_viewers[kind];
-    if (pictures) return ov_raw; /* I may explicitly try an untyped raw file. */
-    if (looks_like_music(e)) return ov_music;
-    if (e->type == 0x04) return ov_text;
-    if (e->type == 0x1A) return ov_awp;
-    if (e->type == 0xFF || e->type == 0xFC) return ov_run;
-    return ov_hex;
+    if (pictures) return V_RAW; /* I may explicitly try an untyped raw file. */
+    if (music==V_MUSIC) return V_MUSIC;
+    if (e->type == 0x04) return V_TEXT;
+    if (e->type == 0x1A) return V_AWP;
+    if (e->type == 0xFF || e->type == 0xFC) return V_RUN;
+    return V_HEX;
 }
 void __fastcall__ open_entry(const struct A2fcApi* a)
 {
-    const char* viewer;
+    unsigned char viewer;
     input[0] = 0;
     if (selected.name[0] && !is_dir(&selected) && full[0]) {
         viewer = file_viewer(&selected, a->arg);
-        if (viewer) strcpy(input, viewer);
+        if (viewer) strcpy(input, media_names[viewer]);
         else message(open_error);
     }
 }

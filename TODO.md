@@ -27,6 +27,10 @@ libre en carte langage. Ces mesures doivent être recalculées à chaque lien.
   les réserves sont affichées à chaque lien. Après consolidation de l'affichage :
   MAIN libre 290/835 octets, LC 172/169 (65C02/6502). Les premiers objectifs
   sont atteints sans relever les plafonds ; les petites surcouches restent serrées.
+- [x] **Routage média compact** — table de noms commune et identifiants internes ;
+  MAIN libre 259/779, OPEN 185/215 octets (65C02/6502), sans relever les limites.
+  Le contrôle des tailles, les erreurs de sonde, les paires Purplesoft et le
+  consentement par session sont vérifiés sur les deux architectures.
 - [ ] **Services de fichiers sûrs** — centraliser progressivement les créations
   exclusives, remplacements récupérables et copies vérifiées ; conserver les
   tests de pannes et mesurer le coût de chaque extraction.

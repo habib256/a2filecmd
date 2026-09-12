@@ -5,6 +5,8 @@ downloads and installation.
 
 ## Unreleased
 
+- Consolidate media routing around one resident viewer-name table and byte IDs; preserve probe errors, decoder precedence, AUX consent and navigation. Free OPEN space rises from 4/42 to 185/215 bytes, and MAIN from 145/682 to 259/779 bytes (65C02/6502), with unchanged memory ceilings.
+
 - Play standard TurboSound `02TS` pairs on both Mockingboard AY chips, with independent frequency/volume tables and endings, shared transport and preserved AUX. Cache-resident pairs keep 50 Hz at 1 MHz; sparse pairs can slow down on cache misses.
 - Add PURPLE to MEDIA and XL (60 overlays): open original Purplesoft `.FOTO1`/`.FOTO2` pairs, restore their EVE graphics mode, browse distinct pictures with one AUX consent, and return with Escape. Validate exact planes and failed reads/closes; rebuild `/RAM` on any exit after AUX writes.
 
