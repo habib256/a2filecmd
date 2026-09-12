@@ -198,3 +198,26 @@ Outils observés : `cc65 V2.18 - N/A` pour enhanced et `cc65 V2.19 - Git e11fb5c
 pour 6502. Relever les versions réellement utilisées plutôt que déduire leur
 version des commentaires du Makefile. Ce relevé local ne constitue pas un test
 sur émulateur ou matériel.
+
+## PT3 : cache des grands modules
+
+Le lecteur accepte désormais 65 535 octets sans mémoire auxiliaire. Sa fenêtre
+BIG reste `$1B00–$3FFF` ; le lien impose la fin du code et du BSS avant `$3300`.
+
+| Zone PT3 | Adresses | Taille |
+| --- | --- | ---: |
+| Code, données, BSS | `$1B00–$32FF` | 6 144 |
+| En-tête fixe | `$3300–$34FF` | 512 |
+| Onze pages de cache | `$3500–$3FFF` | 2 816 |
+
+Le BSS se termine à `$3091` inclus sur 65C02 et `$3077` sur 6502 : réserves
+respectives de 622 et 648 octets avant l'en-tête. Les tables sonores empruntent
+448 des 512 octets de `copy_buf` ; les lectures du fichier utilisent seulement
+l'en-tête ou le cache. Le fichier reste ouvert en lecture seule jusqu'à la sortie.
+Les réserves du résident restent inchangées : MAIN 290/835, carte langage
+172/169 octets (65C02/6502). Aucun contrôle de disposition n'est désactivé.
+
+`bench/pt3_large.py` vérifie sur les deux CPU qu'aucune écriture ne franchit
+le plancher de la pile C réservée de 192 octets pendant les appels cache/stdio.
+Il compare également toute la mémoire AUX hors écran texte et tous les octets
+du volume source avant/après lecture, sur images jetables.

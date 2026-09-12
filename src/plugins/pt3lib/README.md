@@ -14,9 +14,17 @@ A2FC changes:
 - Decoder calls save and restore CPU interrupt/decimal state and zero page
   `$60–$7F`. They never access auxiliary RAM. No IRQ vector is installed.
 - The 448-byte note/volume tables use the service table's 512-byte `copy_buf`,
-  after file I/O is complete. Only explicitly listed operands are relocated.
-- Code/BSS stop below `$2E00`; the module occupies `$2E00–$3FFF` (4,608 bytes).
-  Both regions are protected by the linker and runtime size/bounds checks.
+  independently of source reads. Only explicitly listed operands are relocated.
+- Code/BSS stop below `$3300`; a fixed 512-byte header occupies `$3300–$34FF`
+  and eleven 256-byte FIFO cache pages occupy `$3500–$3FFF`. The read-only
+  source can contain up to 65,535 bytes. An initial scan establishes its actual
+  size without trusting panel metadata. The linker and runtime guards bound
+  these regions; no auxiliary memory is borrowed.
+- Decoder pointers are logical file offsets. Each guarded read checks overflow
+  and EOF before consulting the page map. Cache misses restore host zero page
+  around resident seek/read calls, then restore decoder state. Failed reads
+  never publish a cache mapping and abort playback. Source closure is checked
+  on exit; slow media can cause playback delays.
 - Playback polls the Mockingboard VIA timer at 50 Hz, writes the first AY,
   supports pause, stops at the end of the order list, and silences on all exits
   after hardware start. The core supplies a hardware-only card probe.
@@ -39,7 +47,11 @@ A2FC changes:
   the earlier command. TurboSound dual-module playback is not implemented.
 
 Tests: `tools/test_pt3.py` validates the C loader; `tools/test_pt3_conv.py`
-the period conversion; `bench/pt3.py` checks actual 6502/65C02 decoder output,
+the period conversion; `tools/test_pt3_cache.py` compares complete small and
+65,535-byte song output under sim65, forcing eviction and I/O failures while
+checking zero-page restoration and offset overflow. `bench/pt3_large.py` checks
+large-module transport, natural completion, stack bounds and unchanged source
+volume/AUX at 1x speed on both CPUs. `bench/pt3.py` checks actual 6502/65C02 decoder output,
 AY registers, pause/stop, malformed modules and AUX preservation using a
 disposable POM2 trace host (`bench/build_pt3_trace.py`).
 

@@ -33,7 +33,7 @@ pictures. The tools are right there, beside your files.
 | **Explore disks and images** | Browse ProDOS and DOS 3.3 disk images as read-only folders, then extract files to the other panel. Read physical DOS 3.3 disks, create and write floppy images, copy floppies and format ProDOS disks. |
 | **Unpack classic archives** | Extract ShrinkIt `.SHK` archives, including LZW/1 and LZW/2 compression, and Binary II `.BNY` archives with their ProDOS file attributes. |
 | **Read, edit and compare** | Text and hex viewers, a 5 KB text editor, readable Applesoft listings and an AppleWorks word-processing viewer. Compare two files byte by byte, search files for text, or mark differences between panels. |
-| **Enjoy pictures and sound** | Full-screen HGR and DHGR, raw or RLE-compressed. Use the arrow keys to browse pictures like an album. Play `.MB` and `.PT3` music in foreground overlays on a Mockingboard; Left/Right browse tunes of the same type. PT3 displays title, artist and player credits. |
+| **Enjoy pictures and sound** | Full-screen HGR and DHGR, raw or RLE-compressed. Use the arrow keys to browse pictures like an album. Play `.MB` and `.PT3` music in foreground overlays on a Mockingboard; Left/Right browse tunes of the same type. PT3 accepts modules up to 65,535 bytes, preserves `/RAM`, and displays title, artist and player credits. |
 | **Make it yours** | Keyboard shortcuts throughout, optional AppleMouse II support and remembered panel settings. Launch SYS, BIN, Applesoft and Integer BASIC programs, or add your own tools with the plugin SDK. |
 
 The **!** menu groups tools by category. Choose a category, then a tool;

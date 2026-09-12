@@ -24,7 +24,8 @@ void __fastcall__ pt_tables(unsigned char*);
 void __fastcall__ pt_hw_start(unsigned char);
 unsigned char pt_init(void), pt_frame(void);
 void pt_output(void);
-unsigned char tables[512], original[320];
+unsigned char tables[512], original[320], pt_pages[256];
+unsigned char __fastcall__ pt_page(unsigned char page) {(void)page; return 0;}
 #define song ((unsigned char*)0x8000)
 static void word(unsigned p, unsigned v) { song[p]=v; song[p+1]=v>>8; }
 static unsigned char vols[3];
@@ -52,7 +53,8 @@ static void fixture(unsigned char version, unsigned char volume,
         song[p++]=0x60; /* new note retains volume, resets amplitude sliding */
     }
     memcpy(original,song,320);
-    pt_end=0x8140;
+    pt_end=320;
+    memset(pt_pages,0,sizeof pt_pages);pt_pages[0]=0x80;pt_pages[1]=0x81;
     memset(tables,0xa5,sizeof tables); /* shared copy_buf is not zeroed */
     pt_tables(tables);
 }
@@ -126,7 +128,7 @@ class ChannelVolumes(unittest.TestCase):
             for cpu in ('sim6502', 'sim65c02'):
                 for converted in (False, True):
                     with self.subTest(cpu=cpu, converted=converted):
-                        source = (PLUGINS / 'pt3.s').read_text().replace('PT3_LOC=$2E00', 'PT3_LOC=$8000')
+                        source = (PLUGINS / 'pt3.s').read_text().replace('PT3_LOC=$3300', 'PT3_LOC=$8000')
                         if not converted:
                             source = 'PT3_DISABLE_FREQ_CONVERSION=1\nPT3_DISABLE_ENABLE_FREQ_CONVERSION=1\n' + source
                         source = source.replace(' pla\n iny\n sta (ptr1),y\n', ' pla\n iny\n sta _emitted,x\n sta (ptr1),y\n')

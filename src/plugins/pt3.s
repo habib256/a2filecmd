@@ -3,7 +3,9 @@
 ; malformed command loops. Decoder ZP and IRQ state never escape a call.
 .export _pt_init, _pt_frame, _pt_end, _pt_regs
 .importzp ptr1
-PT3_LOC=$2E00
+.import _pt_pages, _pt_page
+PT3_LOC=$3300                    ; resident header only
+PT3_DATA_BASE=0                  ; decoder pointers are logical file offsets
 PT3_DISABLE_SWITCHABLE_FREQ_CONVERSION=1
 .include "pt3lib/zp.inc"
 GUARD=$6C
@@ -110,15 +112,42 @@ checked:
  sta GUARD
  lda $01,x
  adc #0
+ bcs pt_abort                    ; never wrap a file offset to the header
  sta GUARD+1
- cmp #>PT3_LOC
- bcc pt_abort
  cmp _pt_end+1
- bcc @read
+ bcc @page
  bne pt_abort
  lda GUARD
  cmp _pt_end
  bcs pt_abort
+@page:
+ ldy GUARD+1
+ lda _pt_pages,y
+ bne @mapped
+ ; A cache miss can call resident stdio/MLI. Give it the host ZP and
+ ; restore the decoder ZP afterwards, even when it reports an I/O error.
+ ldx #31
+@host:
+ lda $60,x
+ sta song_zp,x
+ lda host_zp,x
+ sta $60,x
+ dex
+ bpl @host
+ tya
+ jsr _pt_page
+ sta guard_byte
+ ldx #31
+@song:
+ lda song_zp,x
+ sta $60,x
+ dex
+ bpl @song
+ lda guard_byte
+ bne @mapped
+ jmp pt_abort
+@mapped:
+ sta GUARD+1
 @read:
  ldy #0
  lda (GUARD),y

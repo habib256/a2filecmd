@@ -299,7 +299,7 @@ load_sample:
 	lda	PT3_LOC+PT3_SAMPLE_LOC_L+1,Y				; 4+
 
 	; assume pt3 file is at page boundary
-	adc	#>PT3_LOC						; 2
+	adc	#>PT3_DATA_BASE						; 2
 	sta	SAMPLE_H						; 3
 
 	; Set the loop value
@@ -373,7 +373,7 @@ load_ornament:
 
 	; we're assuming PT3 is loaded to a page boundary
 
-	adc	#>PT3_LOC						; 2
+	adc	#>PT3_DATA_BASE						; 2
 	sta	ORNAMENT_H						; 3
 
 	lda	#0							; 2
@@ -1618,7 +1618,7 @@ not_done:
 ;	lda	PT3_LOC+PT3_PATTERN_LOC_L				; 4
 ;	sta	PATTERN_L						; 3
 ;	lda	PT3_LOC+PT3_PATTERN_LOC_H				; 4
-;	adc	#>PT3_LOC		; assume page boundary		; 2
+;	adc	#>PT3_DATA_BASE		; assume page boundary		; 2
 ;	sta	PATTERN_H						; 3
 
 	clc
@@ -1630,7 +1630,7 @@ not_done:
 	sta	PATTERN_L
 
 	lda	PT3_LOC+PT3_PATTERN_LOC_H				; 4
-	adc	#>PT3_LOC		; assume page boundary		; 2
+	adc	#>PT3_DATA_BASE		; assume page boundary		; 2
 	plp	; restore carry
 	adc	#0
 	sta	PATTERN_H						; 3
@@ -1653,7 +1653,7 @@ not_done:
 	iny								; 2
 
 	jsr checked_pattern
-	adc	#>PT3_LOC		; assume page boundary		; 2
+	adc	#>PT3_DATA_BASE		; assume page boundary		; 2
 	sta	note_a+NOTE_ADDR_H					; 4
 	iny								; 2
 
@@ -1664,7 +1664,7 @@ not_done:
 	iny								; 2
 
 	jsr checked_pattern
-	adc	#>PT3_LOC		; assume page boundary		; 2
+	adc	#>PT3_DATA_BASE		; assume page boundary		; 2
 	sta	note_b+NOTE_ADDR_H					; 4
 	iny								; 2
 
@@ -1675,7 +1675,7 @@ not_done:
 	iny								; 2
 
 	jsr checked_pattern
-	adc	#>PT3_LOC		; assume page boundary		; 2
+	adc	#>PT3_DATA_BASE		; assume page boundary		; 2
 	sta	note_c+NOTE_ADDR_H					; 4
 
 	; clear out the noise channel

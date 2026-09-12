@@ -215,6 +215,21 @@ pointeurs malformés et la préservation d'AUX ; le passage enhanced vérifie
 également le refus sans carte sur //c. Les deux emplacements historiques
 `/SAMPLE.MEDIA` et `/IMG/SAMPLE.MEDIA` du corpus sont acceptés.
 
+`pt3_large.py` génère ses propres modules avec `tools/pt3_fixture.py` : mêmes
+notes dans 2 Ko et 65 535 octets, pointeurs traversant des pages, `$FFFF`
+invalide et fichier de 65 536 octets refusé. Il vérifie à vitesse 1x la pause,
+le feuilletage, la fin naturelle, Échap, le silence, la limite basse de pile C,
+les octets AUX hors écran texte et le volume source entier, sur images jetables.
+
+```sh
+POM2=/tmp/a2fc-pt3-trace A2FC_BUILD=build A2FC_PRESET=iie python3 bench/pt3_large.py
+POM2=/tmp/a2fc-pt3-trace A2FC_BUILD=build-6502 A2FC_PRESET=iie_unenh python3 bench/pt3_large.py
+```
+
+Qualification sur disque dur POM2 : 13/13 contrôles sur chaque CPU, durée du
+morceau de 65 535 octets de 8,30 s (65C02) et 8,47 s (6502). Ces mesures ne
+qualifient pas le débit d'une disquette physique.
+
 `roi.py` checks preferences across restart and marked MOVE (same/cross volume,
 collision, cancellation, manifest collision, preserved bytes, AUX and stack).
 `music.py` checks foreground MB1 audio, pause, Escape, natural end and malformed

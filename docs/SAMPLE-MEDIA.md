@@ -32,7 +32,7 @@ Les limites de taille et de commandes du lecteur sont détaillées dans le
 manuel et dans [`pt3lib/README.md`](../src/plugins/pt3lib/README.md).
 Le volume ProDOS `media/pt3/A2FC-PT3.po` garde les huit fichiers de départ
 sous des noms de 15 caractères, type `$00`. Entrée sur un `.PT3` ouvre le
-lecteur s'il tient dans 4 608 octets et passe les contrôles d'en-tête.
+lecteur s'il tient dans 65 535 octets et passe les contrôles d'en-tête.
 
 ## Validation du 12 septembre 2026
 
@@ -51,7 +51,7 @@ lecteur s'il tient dans 4 608 octets et passe les contrôles d'en-tête.
 Le corpus ProTracker 3 / Vortex Tracker, trois voix AY, a été téléchargé
 depuis ZX-Art (9 644 fiches PT3) et des archives auteurs zxtunes, puis
 filtré avec le même contrôle que le chargeur A2FC (`valid()` dans
-`src/plugins/pt3.c`) : taille ≤ 4 608 octets, signature `ProTracker 3.`
+`src/plugins/pt3.c`) : taille ≤ 4 608 octets (ancien plafond, corpus non régénéré), signature `ProTracker 3.`
 ou `Vortex Tracker`, tables 0–3 (table 1 seule pour les modules antérieurs
 à 3.4), pointeurs d'ordre et d'échantillons présents, pas d'effets
 différés multiples sur une même note. **5 507** modules distincts restent,

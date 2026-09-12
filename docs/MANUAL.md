@@ -368,16 +368,19 @@ adapter**. Empty titles use the filename; empty credits show **Not specified**.
 Fixed-width header fields are bounded and control characters are removed
 from the display; the module is not modified.
 
-PT3 keeps the module in main RAM and preserves `/RAM`. The current module
-limit is **4,608 bytes**; `AUTUMN.PT3` (4,461 bytes) fits, as do the filtered
-ZX Spectrum modules in `media/pt3/MUSIC/<ARTIST>/` and on
-`/GISTDATA/MUSIC/<ARTIST>/` (5,507 files, 449 artist folders). Eight starter
-modules remain in `media/pt3/` and on the `A2FC-PT3.po` volume.
+PT3 accepts modules up to **65,535 bytes** using a main-RAM page cache and
+preserves `/RAM`. The source stays open read-only throughout playback: keep
+its disk mounted. Slow storage can delay playback when an uncached page is
+needed. **Esc** also cancels the initial file scan.
+The existing filtered corpus in `media/pt3/MUSIC/<ARTIST>/` and on
+`/GISTDATA/MUSIC/<ARTIST>/` contains 5,507 files in 449 artist folders;
+it has not been regenerated for the larger limit. Eight starter modules
+remain in `media/pt3/` and on the `A2FC-PT3.po` volume.
 Frequency tables 0–3 are supported for PT3 3.4 onward; older modules support
 table 1 (ST), as used by AUTUMN.PT3. Multiple deferred special effects within
 one channel/row are refused, and TurboSound dual-module playback is not
-supported. Invalid data or a read/close error stops loading; invalid stream
-pointers stop playback. Source URLs are listed in
+supported. Invalid data, stream pointers, or read/seek/close errors stop
+loading or playback and return to the panels. Source URLs are listed in
 `media/pt3/MUSIC/SOURCES.TXT` and at the end of
 [SAMPLE-MEDIA.md](SAMPLE-MEDIA.md).
 
