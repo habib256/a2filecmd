@@ -98,10 +98,12 @@ Read `struct A2fcApi` in `src/a2fc_plugin.h`; the useful parts:
   `"/VOL/A2FILE/A2FILE.CFG"`: cut at the last `/` for the program directory,
   where an overlay keeps its own file (`GOTO.CFG`...) and where the program
   booted from.
-- **Screen.** `api->message(s)` on line 22 (79 characters); `api->confirm(s)`
+- **Screen.** `api->message(s)` on line 22 (79 characters); prefix `s` with `"\1"`
+  for a question in inverse video (the marker is not displayed and normal
+  video is restored after printing). `api->confirm(s)` asks in inverse video
   (Y/N); `api->prompt(label, initial, hex)` reads into `api->input`: a ProDOS
   name (letters, digits, `.`, upper-cased) or, with `hex != 0`, exactly `hex`
-  hex digits; returns 0 on Escape. It refuses `=`, `?`, spaces: for a
+  hex digits, also in inverse video; returns 0 on Escape. It refuses `=`, `?`, spaces: for a
   free pattern, read keys yourself with `api->cgetc()` and echo with
   `api->cprintf`. `api->progress_bar(name, done, total)`, `api->keys_bar(x,
   "KEY Label,KEY Label")`, `api->bar_begin()`, `api->wait_key()`, and the

@@ -60,7 +60,7 @@ const struct PluginHeader __plugin_header = {
 struct Rn { unsigned char n; unsigned char* old; unsigned char* new; };
 
 static const char m_dir[]   = "Open a directory.";
-static const char m_ask[]   = "P)refix S)uffix E)xt X)strip N)um ESC";
+static const char m_ask[]   = "\1P)refix S)uffix E)xt X)strip N)um ESC";
 static const char m_lab[]   = "Text";
 static const char m_slash[] = "/";
 static const char m_dot[]   = ".";

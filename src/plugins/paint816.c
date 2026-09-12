@@ -1,6 +1,6 @@
 /* paint816.c -- the packed pictures 816/Paint writes, its own default save
  * format. ProDOS type $06 with auxtype $E001 (a hi-res page) or $E002 (a
- * double hi-res one). From the ! menu, on the selected entry.
+ * double hi-res one). Return, I or the ! menu, on the selected entry.
  *
  * These are the files a2fc's own viewer cannot claim: a $06 is taken for a
  * picture on its SIZE, and a packed one is any size at all -- the reference
@@ -53,7 +53,7 @@ struct Header { unsigned int signature; unsigned char flags;
     void __fastcall__ (*entry)(const struct A2fcApi*); unsigned char r[3];
     char desc[34]; };
 #pragma rodata-name (push, "OVLHDR")
-const struct Header __plugin_header = { PLUGIN_MAGIC, OVERLAY_BIG | OVERLAY_AUX, plugin_entry,
+const struct Header __plugin_header = { MEDIA_PLUGIN_MAGIC, OVERLAY_BIG | OVERLAY_AUX, plugin_entry,
     {0,0,0}, "816/Paint packed picture" };
 #pragma rodata-name (pop)
 
@@ -189,7 +189,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* a)
     if (!ok) { a->strcpy(a->note, m_bad); return; }
 
     p8_show(two);
-    while (a->cgetc() != KEY_ESC) {}
+    a->media_wait();
 
     a->strcpy(a->reselect, e->name);
     /* The picture was its own answer; the only thing left to say is what a

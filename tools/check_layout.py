@@ -9,7 +9,7 @@ Trois choses que ld65 ne verifie pas, et qui ont chacune coute une soiree :
      et part dans le decor.
 
   3. Les surcouches (des fichiers a part que A2FC lit en $1B00 a la
-     demande : IMAGE, TEXT, HEX, DELETE, HELP, MUSIC, RUN, ATTR, et les
+     demande : IMAGE, TEXT, HEX, DELETE, HELP, RUN, ATTR, et les
      grandes EDIT et MENU qui prennent aussi la page graphique) doivent
      tenir entre la fin de la RAM basse et leur plafond -- la page graphique,
      ou ce qu'une grande surcouche y garde pour elle --, et chaque fichier
@@ -36,8 +36,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # page graphique pour les petites ; pour les grandes (EDIT, MENU), le debut
 # de ce qu'elles y gardent pour elles (le texte de l'editeur, la liste du
 # menu).
-OVERLAYS = {'COPY': 0x2000, 'FORMAT': 0x3C00, 'IMAGE': 0x2000, 'TEXT': 0x2000, 'HEX': 0x2000, 'DELETE': 0x2000, 'HELP': 0x2000,
-            'MUSIC': 0x2000, 'RUN': 0x2000, 'ATTR': 0x2000, 'EDIT': 0x2C00, 'MENU': 0x3000,
+OVERLAYS = {'BATCH': 0x3000, 'NAV': 0x2000, 'OPEN': 0x2000, 'COPY': 0x2000, 'FORMAT': 0x3C00, 'IMAGE': 0x2000, 'TEXT': 0x2000, 'HEX': 0x2000, 'DELETE': 0x2000, 'HELP': 0x2000,
+            'RUN': 0x3000, 'ATTR': 0x2000, 'EDIT': 0x2C00, 'MENU': 0x3000,
             'DISKIMG': 0x3600, 'IMGFS': 0x2000, 'DOS33': 0x2000, 'UNSHRINK': 0x3000, 'BASLIST': 0x2800, 'COMPARE': 0x2000, 'SEARCH': 0x2000, 'BINARY2': 0x2000, 'AWP': 0x2000}
 
 

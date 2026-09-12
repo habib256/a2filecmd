@@ -14,6 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 from pom2 import Pom2, Session, ROOT, DISK
+from archive_support import archive_floppy
 from run import scratch_volume, RET, TAB, ESC, volume
 import mkbny
 
@@ -29,8 +30,7 @@ def main():
 
     with tempfile.TemporaryDirectory(prefix='a2fc-bny-') as tmp:
         tmp = Path(tmp)
-        floppy = tmp / 'A2FILECMD.po'
-        shutil.copyfile(DISK, floppy)
+        floppy = archive_floppy(tmp, 'BINARY2')
         hdv = scratch_volume(tmp)
         stage = tmp / 'scratch'
         (stage / 'OUT').exists() or (stage / 'OUT').mkdir()
@@ -59,6 +59,8 @@ def main():
             open_panel(0)                    # l'archive : /SCRATCH (panneau gauche)
             s.select('ARC.BNY', 0); p.stable()
             s.key(b'!'); s.wait(lambda: s.has('the overlays'), 'menu', 30); p.stable()
+            from xplug import menu_category
+            menu_category(s, p, 'BINARY2')
             s.key(b'B'); p.stable(); s.key(b'B'); p.stable()   # BASLIST puis BINARY2
             s.key(RET)
             s.wait(lambda: s.has('extracted') or s.has('failed') or s.has('Binary'), 'extraction', 30)

@@ -1,14 +1,17 @@
 # The A2 File Cmd manual
 
-**Version 0.7.6** — A two-panel ProDOS file manager for an Apple II with
+**Version 0.8.0** — A two-panel ProDOS file manager for an Apple II with
 128 KB and 80-column support. Free software by Arnaud Verhille, under GPL v3.
 
 ![The two panels in A2 File Cmd 0.7.6](screenshots/01-panels-0.7.6.png)
 
 ## Start here
 
-Choose **6502** for an original, unenhanced IIe. Choose **65C02** for an
-enhanced IIe or //c; this edition also supports an optional AppleMouse II.
+All floppies use **6502** code and run on an original or enhanced IIe. For
+XL, choose **6502** for an original IIe, or **65C02** for an enhanced IIe or
+//c with optional AppleMouse II support.
+Real-hardware validation on Apple //c, enhanced IIe and unenhanced IIe was
+confirmed successful by the maintainer on September 12, 2026.
 The IIgs has not been tested. The launcher checks the CPU and memory before
 starting and identifies the edition on its title screen.
 
@@ -16,23 +19,28 @@ starting and identifies the edition on its title screen.
 
 | Edition | What to use |
 |---|---|
-| **BOOT + EXTRA + EXTRA2** | Three 140 KB floppies for the same CPU and release. Boot BOOT; EXTRA supplies the everyday extra tools and BASIC.SYSTEM, EXTRA2 the disk and block surgery. |
-| **XL** | One bootable 32 MB `.2mg` with all 51 overlays, BASIC.SYSTEM and demonstration files. No companion disk is needed. |
+| **6502 floppies** | BOOT plus whichever 140 KB category disks you need: FILES, MEDIA, DISKTOOLS, DEVTOOLS. These floppies also run on enhanced machines. |
+| **XL 6502 or 65C02** | One bootable 32 MB `.2mg` with all 59 overlays, BASIC.SYSTEM and demonstration files. No companion disk is needed. |
 
-The download names include the CPU, role and version:
+The download names include the CPU, category and version:
 
-| CPU | Image names |
+| Role | Image name |
 |---|---|
-| 6502 | `A2FILECMD-6502-BOOT-0.7.6.dsk`, `A2FILECMD-6502-EXTRA-0.7.6.dsk`, `A2FILECMD-6502-EXTRA2-0.7.6.dsk`, `A2FILECMD-6502-XL-0.7.6.2mg` |
-| 65C02 | `A2FILECMD-65C02-BOOT-0.7.6.dsk`, `A2FILECMD-65C02-EXTRA-0.7.6.dsk`, `A2FILECMD-65C02-EXTRA2-0.7.6.dsk`, `A2FILECMD-65C02-XL-0.7.6.2mg` |
+| Boot | `A2FILECMD-6502-BOOT-0.8.0.dsk` |
+| Files | `A2FILECMD-6502-FILES-0.8.0.dsk` |
+| Media | `A2FILECMD-6502-MEDIA-0.8.0.dsk` |
+| Disk tools | `A2FILECMD-6502-DISKTOOLS-0.8.0.dsk` |
+| Development tools | `A2FILECMD-6502-DEVTOOLS-0.8.0.dsk` |
+| Complete, 6502 | `A2FILECMD-6502-XL-0.8.0.2mg` |
+| Complete, 65C02 | `A2FILECMD-65C02-XL-0.8.0.2mg` |
 
-BOOT, EXTRA and EXTRA2 are supplied as `.dsk` in DOS sector order; XL uses `.2mg`.
+All floppies are 6502 and supplied as `.dsk` in DOS sector order; XL uses `.2mg`.
 Use the downloaded files directly: changing an extension does not convert an image.
 Each floppy image is 143,360 bytes. Check downloads against
-`SHA256SUMS-0.7.6.txt`; if all release files are together, run:
+`SHA256SUMS-0.8.0.txt`; if all release files are together, run:
 
 ```sh
-sha256sum -c SHA256SUMS-0.7.6.txt
+sha256sum -c SHA256SUMS-0.8.0.txt
 ```
 
 Boot the image, or launch `A2FILE.SYSTEM` from a ProDOS selector. To install
@@ -48,21 +56,33 @@ identifies the sort order. Below the panels are free space, selection details,
 messages and the key bar. **?** opens the help screen.
 
 The program remembers panel directories, sorting and the active side in
-`A2FILE/A2FILE.CFG` when you quit. On the first XL start, the right panel
+`A2FILE/A2FILE.CFG` when you quit. Saving reserves an exclusive temporary file, verifies every
+byte after closing it, retains the old file as a backup during replacement,
+and verifies the installed file before removing that backup. A warning lets
+you cancel quitting if saving fails. Existing `A2FILE.TMP` or `A2FILE.BAK`
+files are preserved for recovery. This is not power-fail atomicity.
+On the first XL start, the right panel
 opens `DEMO/`; try its text, pictures, music and sample archives.
 
 ### The companion floppy and disk swaps
 
-EXTRA and EXTRA2 together carry the tools absent from BOOT, plus the common
-menu and BASIC.SYSTEM. The extras stopped fitting one 140 KB floppy, so
-EXTRA keeps BASIC.SYSTEM, the program's own overlays and the everyday file
-tools, and EXTRA2 carries the disk and block surgery: BLKVIEW, BLKEDIT,
-DISASM, SYNC, MOVE, DISKCMP, UNDELETE, RESCUE, TREE and MKIMAGE. Use the
-**same CPU and version** on every disk.
+The companions group tools by function. Every disk also carries MENU and the
+full command catalog. The distribution is declared in `config/packages.mk`.
 
-With two Disk II drives, keep BOOT in **slot 6, drive 1** and put EXTRA (or
-EXTRA2, for the tools it holds) in **slot 6, drive 2**. The **!** menu lists
-the tools of every disk.
+| Category | Plugins | ProDOS volume |
+|---|---|---|
+| **FILES** | EDIT, SEARCH, AWP, BINARY2, UNSHRINK, CRC, FIND, FIXTYPES, GOTO, IDENT, MDVIEW, RENAME, SYNC, MOVE, TREE | `/A2FILES6502` |
+| **MEDIA** | IMAGE, MUSIC, DGRVIEW, EXTASIE, PACKFOT, PAINT816, LZ4FH, PRINTSHOP, FONTVIEW, PT3 | `/A2MEDIA6502` |
+| **DISKTOOLS** | BOOTBLK, BLKVIEW, BLKEDIT, DISKCMP, IMGCONV, MKIMAGE, RESCUE, UNDELETE | `/A2DISKS6502` |
+| **DEVTOOLS** | BASLIST, DISASM, INTBASIC, plus BASIC.SYSTEM | `/A2DEVTOOLS6502` |
+
+BOOT keeps the essential file manager and disk operations. Use the **same
+release** for all floppies. XL is complete; never replace its 65C02 native
+plugins with the 6502 companions.
+
+With two Disk II drives, keep BOOT in **slot 6, drive 1** and put the required
+category in **slot 6, drive 2**. The **!** menu lists every command; an absent
+tool's description starts with the volume containing it.
 
 With one drive, choose the tool normally. If a disk is missing, the prompt
 names the required volume, slot, drive and file. Press **1** or **2** to
@@ -71,26 +91,27 @@ file was on the removed disk, a second prompt asks for that disk. **Escape**
 cancels and returns to the panels. The chosen drive is remembered for the
 session; these plugin-loading prompts use slot 6.
 
-| CPU | Volume names shown in swap prompts |
-|---|---|
-| 6502 | BOOT `/A2FC6502`; EXTRA `/A2EXTRA6502`; EXTRA2 `/A2EXTRA26502`; XL `/A2XL6502` |
-| 65C02 | BOOT `/A2FC65C02`; EXTRA `/A2EXTRA65C02`; EXTRA2 `/A2EXTRA265C02`; XL `/A2XL65C02` |
-
-The menu retains every command when EXTRA and EXTRA2 are absent. Tools that need both
+BOOT is `/A2FC6502`; the complete disks are `/A2XL6502` and `/A2XL65C02`.
+The menu retains every command when companions are absent. Tools that need both
 source and destination online still require another drive or volume.
 **DISKCMP S** and **W → Copy** have their own single-drive exchange modes.
 
 ### Protect files in /RAM
 
-**Copy anything important out of `/RAM` before displaying DHGR, loading
-music, extracting ShrinkIt, using disk-image operations or physically
+**Copy anything important out of `/RAM` before displaying DHGR,
+extracting ShrinkIt, using disk-image operations or physically
 formatting a Disk II floppy.** These operations use auxiliary memory and
 can rebuild `/RAM` empty. A warning explicitly says that ALL `/RAM` files
 will be lost and asks for consent **before** AUX is used. Declining preserves
 its contents. The viewer may ask even for a plain HGR file because the same
 viewer can browse subsequent DHGR pictures; plain HGR itself does not need
 the reconstruction. The message line reports a reconstruction afterwards.
-Avoid writing to `/RAM` while music is playing.
+The foreground MB1 and PT3 players preserve `/RAM`.
+
+Returning to a parent with **Escape** or **Return on ..** selects the child
+you just left, including when it lies beyond the first directory window.
+The child is located by its current name, so an obsolete index cannot select
+an unrelated entry. If it has disappeared, the parent opens at its beginning.
 
 ## Keys
 
@@ -110,7 +131,7 @@ Avoid writing to `/RAM` while music is playing.
 | **A / L** | Change hexadecimal type/auxtype / lock or unlock. Locked files refuse deletion and renaming. |
 | **T / H / I** | Read text / hexadecimal / picture. T also lists BAS and AWP files. |
 | **E** | Edit text; on a directory or `..`, create a text file. |
-| **P / X** | Pause/resume music / run a program after confirmation, replacing A2FC. |
+| **X** | Run a program after confirmation, replacing A2FC. |
 | **W / F / !** | Disk-image operations / format / plugin menu. |
 | **? / 1 … 0 / Q** | Help / key-bar buttons / quit to ProDOS after confirmation. |
 
@@ -122,6 +143,12 @@ before a move can delete its source. Overwrites protect the old destination
 as `A2FC.BAK`; failures attempt to restore it. A leftover backup must be
 examined before another replacement. Archive and image extraction refuse
 existing output files instead of silently overwriting them.
+
+Very deep trees can exceed the recursive working space. A2FC checks the
+remaining stack before directory I/O and refuses an unsafe traversal with
+`Directory unreadable or too large/deep.` Copy/move counts the tree before
+transferring it; directory deletion also scans it before the first removal.
+Copy or delete smaller subdirectories separately if needed.
 
 Long operations display progress, including each item during recursive deletes.
 **ESC** interrupts; completed work remains,
@@ -137,8 +164,16 @@ editor and prompts use the keyboard.
 
 ## More tools in the ! menu
 
-Select the item first, press **!**, then choose a tool. **Up/Down** moves a
-line, **Left/Right** changes page, and a letter jumps to a matching initial.
+Select the item first, press **!**, choose a category and press **Return**,
+then choose its tool and press **Return**. Categories are Files, Images, Music,
+Disks, Programming, System, Archives and Other (third-party tools).
+**Escape** returns to the category list, then to the panels. Tools are sorted
+by name within each category. **Up/Down** moves a
+line, **Left/Right** moves six lines (stopping at the list ends), and a
+letter jumps to a matching initial.
+Questions on the penultimate line appear in inverse video while awaiting a
+response, including typed names, confirmations, conversion choices and disk
+swaps. Ordinary information and results remain in normal video.
 The following tools supplement the main keys and readers.
 
 ### On BOOT and XL
@@ -150,33 +185,36 @@ The following tools supplement the main keys and readers.
 | **DATE** | S sets date/time from `DDMMYYYYHHMM` (1940–2039); impossible dates are rejected. F stamps modification dates on tagged files or the selection. Creation dates stay unchanged; a hardware clock may replace the entered time. |
 | **VERIFY** | Read tagged files (skip directories), the selection, or every block of a volume. Report processed files and errors; ESC cancels. No writes. |
 | **TAGPAT** | Name patterns: `=` any string, `?` one character. Add comma-separated filters: `T04` TXT, `>2000` or `<2000` bytes, `D` modified today. T tags, U untags, X replaces tags. |
-| **VOLINFO** | Audit allocation and fragmentation. M = bitmap (`.` free, `#` used), F = selected file blocks, E = export to the other panel. N/P pages; ESC returns. No repairs. |
 | **VOLNAME** | Rename a ProDOS volume and update the affected panel/program paths. |
 | **WIPE** | F checks live directory/file references against the bitmap before zeroing free blocks. Unreadable, inconsistent or unsupported allocation is refused. W zeroes the whole volume after `ERASE`; the running program's volume is refused. |
 
-### On EXTRA and XL
+### On category disks and XL
+
+VOLINFO is on DISKTOOLS; the menu requests that disk when necessary.
+Menu categories describe tasks and do not require changing disks just to browse.
 
 | Tool | Operation |
 |---|---|
+| **VOLINFO** | Audit allocation and fragmentation. M = bitmap (`.` free, `#` used), F = selected file blocks, E = export to the other panel. N/P pages; ESC returns. No repairs. |
 | **SEARCH** | Find text in the active directory and tag matching files, ignoring case. ESC cancels a long scan and keeps tags already found. |
 | **FIXTYPES** | Set type/auxtype from suffixes on tagged files or the selection; optionally remove suffixes. Image suffixes and `.SYSTEM` stay. |
 | **GOTO** | P opens a typed `/VOLUME/DIRECTORY` path (63 characters max; Delete/Left edits, ESC cancels). Nine favourites: A adds, D then a digit removes, M then two digits reorders, 1–9 jumps. Saved in `A2FILE/GOTO.CFG`. |
 | **FIND** | Search the volume by name pattern; start with `"` to search contents, ignoring case. TAB sets type (T, two hex digits) and modification dates (D, inclusive YYYYMMDD, 1940–2039); A clears filters. Undated files are excluded by date filters. N shows the next 20 results; Return jumps there. V on a text result shows occurrence offsets (hex) and excerpts; N/Space continues, ESC returns. |
 | **BLKVIEW** | Read device or image blocks: H hex/ASCII, D directory, I index, N/P block, Space page, G four-digit hex block, F find four bytes (8 hex digits), A find next, X extract blocks, ESC back. Source stays unchanged. |
-| **EXTASIE** | View Extasie/Chat Mauve ProDOS `$F2` images. The original count/repeat stream is decoded into the HGR page; ESC returns to the panels. On 6502, `I` opens an `$F2` entry directly; on 65C02, use `!` and select EXTASIE. |
+| **EXTASIE** | View Extasie/Chat Mauve ProDOS `$F2` images. The original count/repeat stream is decoded into the HGR page; ESC returns to the panels. `Return` and `I` select EXTASIE automatically on both processors. |
 | **DISASM** | Read BIN/SYS as assembly: N/Space next, P previous (last 64 pages), C 6502/65C02, G seven-digit file offset, L four-digit CPU load address, R start, E export, ESC back. BIN uses its auxtype; SYS starts at $2000. |
 | **CRC** | Calculate CRC-32 for the selection or tagged files. Results appear in pages of 20; a key continues, ESC at a page boundary stops the batch. |
 | **IDENT** | Identify content, UTF-8 or Apple text; statistics cover the first 512 bytes. |
 | **MDVIEW** | Wrapped Markdown/text; no forward limit. Up: last 64 pages. R: restart. |
 | **RENAME** | Batch prefix, suffix, extension replacement/removal or numbering. For example E then BAK sets `.BAK`. Conflicts are skipped. |
 | **IMGCONV** | Convert PO/HDV, DSK/DO and 2MG into the other panel, preserving disk blocks. Unsupported 2MG formats, block counts exceeding 16 bits, and data ranges inside the header or beyond the source size are refused before destination access. Read or seek failures abort conversion and remove incomplete output. |
-| **BOOTBLK** | Copy ProDOS boot blocks from the boot volume to another volume after confirmation. |
+| **BOOTBLK** | Copy ProDOS boot blocks from the boot volume to another volume after confirmation. Saves both originals in main memory, verifies writes and restores both blocks on error. An incomplete restoration is reported explicitly; the backup does not survive a power cut. |
 | **UNDELETE** | Browse deleted ProDOS entries. N skips; R recovers a validated candidate to another online volume. Existing names are refused. |
 | **DISKCMP** | V compares online ProDOS volumes; I compares images; S compares two Disk II disks on one drive. Reports differing blocks and the first mismatch. |
 | **MKIMAGE** | Create an empty ProDOS PO or 2MG: 140 KB, 800 KB, 2/4/8 MB or 32,767 blocks. New images are data volumes, without a boot program. |
 | **RESCUE** | F recovers a file; V recovers a ProDOS volume. Uses up to 30 attempts per block, zero-fills unreadable chunks and writes a LOG. Destination must be another online volume. |
 | **SYNC** | Recursively copy missing or newer files to the other panel after confirming direction. Destination-only files remain; copies are read back before replacement. |
-| **MOVE** | Move the selected entry within a volume without copying its data blocks; locked sources are refused. Every path component must still be a directory. A full subdirectory grows if space is available; damaged parent references are refused before writing. Across volumes, copy and verify a file before deleting the source; existing destination names are refused, and a size mismatch preserves the source and removes the incomplete copy. Directories across volumes require V. Available on EXTRA2 and XL. |
+| **MOVE** | Move marked files, or the selected entry without marks. Within a volume, move without copying its data blocks; locked sources are refused. Every path component must still be a directory. A full subdirectory grows if space is available; damaged parent references are refused before writing. Across volumes, copy and verify a file before deleting the source; existing destination names are refused, and a size mismatch preserves the source and removes the incomplete copy. Directories across volumes require V. Available on FILES and XL. |
 | **TREE** | Show file sizes and cumulative directory totals. Space advances a page; ESC exits. |
 
 ### Recovery and comparison limits
@@ -254,18 +292,99 @@ not supported.
 
 ### Pictures
 
-**Return** recognizes pictures by content; **I** explicitly tries the picture
-reader. Supported formats are raw HGR (8,192 or 8,184 bytes), raw DHGR
-(16,384 bytes, auxiliary plane first), and HGRR/DHRR version 1 RLE files.
-**Left/Right** shows the previous/next picture; any other key returns.
-Remember that DHGR clears `/RAM`.
+**Return** and **I** use the same picture-format selection on 6502 and 65C02.
+The viewer is loaded automatically. Explicit packed ProDOS types take
+precedence; otherwise the first eight bytes identify DGR and HGRR/DHRR
+without requiring a filename suffix or a ProDOS image type. A failed
+identification read or close stops opening the file.
+
+| Format | Identification | Viewer |
+|---|---|---|
+| Extasie / Chat Mauve | ProDOS type `$F2` | EXTASIE |
+| Packed FOT / PackBytes | Type `$08`, auxiliary `$4000` or `$4001` | PACKFOT |
+| LZ4FH compressed HGR | Type `$08`, auxiliary `$8066` | LZ4FH |
+| Print Shop monochrome clip art | BIN, auxiliary `$4800`/`$5800`/`$6800`/`$7800`, 572 or 576 bytes | PRINTSHOP |
+| MGTK / Apple II Desktop font | Type `$07` | FONTVIEW |
+| Packed 816/Paint | Type `$06`, auxiliary `$E001` or `$E002` | PAINT816 |
+| Lo-res page | Type `$06` or `$08`, auxiliary `$0400`, 1–2,048 bytes | DGRVIEW |
+| DGR with header | `DGR` signature; the viewer validates the header and payload | DGRVIEW |
+| HGRR / DHRR RLE | Version 1 header, or type `$06`/`$08` with `.RLE` suffix | IMAGE |
+| Raw HGR / DHGR | Type `$06` or `$08`, raw page size | IMAGE |
+
+Raw HGR accepts 8,192 or 8,184 bytes; raw DHGR accepts 16,384 or 16,376,
+auxiliary plane first. **Left/Right** browses the raw/RLE album and skips
+formats handled by other viewers. **Escape** returns from every picture
+viewer. For an unmarked lo-res screen or sprite (BIN/FOT, 1–2,048 bytes),
+press **I**: DGRVIEW opens and asks for the width when needed. **Return**
+keeps ordinary small binaries in hex because a sprite has no signature. **H** explicitly opens hex,
+including for a picture. Unsupported binary formats retain the hex fallback.
+
+FONTVIEW displays the glyphs in code order, sixteen per row. It accepts
+MGTK fonts with one or two seven-bit columns, up to 128 glyphs and 22 rows
+per glyph. PRINTSHOP displays 88 × 52 clip art at its 2 × 3 display scale.
+LZ4FH, PRINTSHOP and FONTVIEW use only main memory and preserve `/RAM`.
+They reject truncated data and report read or close errors.
+
+**Left/Right** browse the previous/next file handled by the same specialized
+viewer: Extasie, PACKFOT, 816/Paint, DGRVIEW, FONTVIEW, LZ4FH and PRINTSHOP.
+The directory's displayed order is used, including across large-directory
+windows. At either end the arrow does nothing; Escape returns to the panels.
+A viewer that uses AUX still asks for consent before the next AUX write.
+
+**Return** on an Integer BASIC file (`$FA`), including `WOZ.BREAKOUT` and
+`APPLEVISION`, now opens INTBASIC directly to list its source.
+
+Destructive AUX use always asks for consent before touching `/RAM`.
+With floppies, specialized picture viewers are on **MEDIA**, and BOOT holds
+the internal `OPEN.PLG` dispatcher. Keep it with the matching program build.
 
 ### The Mockingboard music
 
-Return on an MB1 `.MB` stream starts playback (maximum 2,304 bytes).
-**P** pauses/resumes; another music file replaces it. Playback ends at the
-stream's end, on quit or when another program runs. Disk II reads may pause
-it briefly. Loading music clears `/RAM`; an absent Mockingboard is reported.
+Return on an MB1 `.MB` stream opens the foreground MUSIC overlay on MEDIA
+(maximum 4,096 bytes, six voices). **P** pauses/resumes; **Escape** returns
+to the panels. Playback also returns at the stream's end. The complete file
+is read, closed and validated before playback. The player uses main RAM and
+preserves `/RAM`; an absent Mockingboard is reported.
+
+In both music players, **Left/Right** select the previous/next tune of the
+same type in the same directory (MB1 stays with MB1, PT3 with PT3), including
+across large-directory windows. An arrow without a neighbour does nothing.
+Changing tracks stops the old output and starts the new track unpaused.
+
+**Return** on a `.PT3` module opens the foreground ProTracker 3 player on
+MEDIA. It uses three voices on the first AY chip of the detected Mockingboard.
+**P** pauses/resumes; **Escape** stops and returns to the panels. Playback
+also stops at the end of the song.
+A missing card is reported without starting playback. The screen shows the
+module's title and artist/credit field, then **Player: Vince Weaver - A2FC
+adapter**. Empty titles use the filename; empty credits show **Not specified**.
+Fixed-width header fields are bounded and control characters are removed
+from the display; the module is not modified.
+
+PT3 keeps the module in main RAM and preserves `/RAM`. The current module
+limit is **4,608 bytes**; `AUTUMN.PT3` (4,461 bytes) fits, as do the filtered
+ZX Spectrum modules in `media/pt3/MUSIC/<ARTIST>/` and on
+`/GISTDATA/MUSIC/<ARTIST>/` (5,507 files, 449 artist folders). Eight starter
+modules remain in `media/pt3/` and on the `A2FC-PT3.po` volume.
+Frequency tables 0–3 are supported for PT3 3.4 onward; older modules support
+table 1 (ST), as used by AUTUMN.PT3. Multiple deferred special effects within
+one channel/row are refused, and TurboSound dual-module playback is not
+supported. Invalid data or a read/close error stops loading; invalid stream
+pointers stop playback. Source URLs are listed in
+`media/pt3/MUSIC/SOURCES.TXT` and at the end of
+[SAMPLE-MEDIA.md](SAMPLE-MEDIA.md).
+
+### Moving marked files with MOVE
+
+When files are marked, **! → Files → MOVE** moves the marked files after one
+confirmation. It reserves and verifies `A2MOVE.LST` in the destination before
+moving any source. An existing list is preserved and blocks the operation.
+Each cross-volume copy is verified completely before its source is removed.
+The batch stops on the first error or Escape; completed moves remain complete,
+and pending visible source files are marked again by name. Destination marks
+are cleared. Marked directories are refused; the existing single-entry MOVE
+remains available without marks. A retained list is reported for manual review.
+No auxiliary memory is used.
 
 ## The text editor
 
@@ -325,7 +444,7 @@ cannot be formatted. Escape or a different confirmation word cancels.
 
 Disk II formatting clears `/RAM`; move its files elsewhere first. It is
 refused if A2FC itself runs from `/RAM`. Formatting another block device
-does not require that extra RAM reset. Music stops when FORMAT opens.
+does not require that extra RAM reset.
 The result reports success or an error; Escape returns directly to the panels.
 
 ## Archives and programs
@@ -348,7 +467,7 @@ archives and recovered files on another volume.
 program replaces A2FC; it does not automatically return. A BIN loads at its
 auxiliary address, which must be between `$0800` and `$BAFF`.
 
-Applesoft requires `BASIC.SYSTEM`, supplied on EXTRA and XL. A2FC searches
+Applesoft requires `BASIC.SYSTEM`, supplied on DEVTOOLS and XL. A2FC searches
 the program's volume, its own volume and the companion. With one floppy
 drive, keep the BAS program on another online volume so it remains readable
 after BASIC.SYSTEM loads.
@@ -381,7 +500,7 @@ Super Serial Card and //c operation remains unverified.
 | Symptom or limit | What to do |
 |---|---|
 | CPU or memory refusal at startup | Use the matching CPU build, with 128 KB and 80-column support. |
-| Missing or stale plugin | Insert matching BOOT/EXTRA from the same release. Keep A2FILE.CODE and its native plugins together. |
+| Missing or stale plugin | Insert matching BOOT/category disks from the same release. Keep A2FILE.CODE and its native plugins together. |
 | GOTO.TMP or GOTO.BAK remains | If GOTO.CFG is missing, rename GOTO.BAK to GOTO.CFG. Inspect remaining TMP/BAK files before deleting them. |
 | Disk changed but old contents remain | Press Ctrl-R to reread both panels. |
 | Run failed: file not found | Check the selected program, its path and BASIC.SYSTEM for BAS files. |
@@ -482,6 +601,21 @@ For readers who want to compare the implementation with its references:
 - [A2Command archive mirror](https://mirrors.apple2.org.za/ftp.apple.asimov.net/utility/)
 - [Norton Commander archive](https://winworldpc.com/product/norton-commander/3x)
 - [POM2 emulator](https://github.com/habib256/pom2)
+- [ZX-Art AY / PT3 catalogue](https://zxart.ee/)
+- [ZX-Art PT3 API](https://zxart.ee/api/types:zxMusic/export:zxMusic/language:eng/start:0/limit:1/filter:zxMusicFormat=PT3;)
+- [ABSTRACT (Ra, 1999) PT3](https://zxart.ee/tune/77827)
+- [dh2020rt (EA, 2020) PT3](https://zxart.ee/tune/325794)
+- [Music (VAD, 2002) PT3](https://zxart.ee/tune/82459)
+- [Old Skool For Demodulation (EA, 2020) PT3](https://zxart.ee/tune/357249)
+- [realtime blast (EA, 2026) PT3](https://zxart.ee/tune/588679)
+- [Yazzie: final theme (nq, 2019) PT3](https://zxart.ee/eng/authors/n/nq/yazzie-final-theme/)
+- [ana_ng.pt3 in dos33fsprogs](https://github.com/deater/dos33fsprogs/blob/master/graphics/dgr/animations/tmbg/music/ana_ng.pt3)
+- [mA2E_3.pt3 in dos33fsprogs](https://github.com/deater/dos33fsprogs/blob/master/graphics/gr/animations/grongy_roads/music/mA2E_3.pt3)
+- [Vortex Tracker II](https://bulba.untergrund.net/vortex_e.htm)
+- [zxtunes.com author list](https://zxtunes.com/authors_list.php?letter=A&lm=200&ln=eng)
+- [zxtunes.com Macros archive](https://zxtunes.com/en/authors/macros)
+- [zxtunes.com Korund archive](https://zxtunes.com/en/authors/korund)
+- [Vince Weaver pt3_lib](https://github.com/deater/dos33fsprogs/tree/master/music/pt3_lib)
 
 These URLs were checked when this edition was prepared. A historical archive
 may move or disappear; the repository copies the relevant attribution and

@@ -29,13 +29,13 @@ class SplitLoadLayout(unittest.TestCase):
         self.loader = dict(LC_STAGE=0x1000, LC_BYTES=0xC00, CODE_ADDR=0x4000,
                            STAGE_BYTES=0xC00)
         self.length = 0xC00 + 0xBCC5 - 0x4000
-        self.overlays = dict(FORMAT=0x1800, IMAGE=0x1F60 - 0x1B00, HELP=0x1EE0 - 0x1B00, TEXT=0x280,
-                             HEX=0x2F0, DELETE=0x300, MUSIC=0x200, RUN=0x200, ATTR=0x300,
-                             COPY=0x300, EDIT=0xC00, MENU=0x600, DISKIMG=0x900, IMGFS=0x300, DOS33=0x400, UNSHRINK=0x600, BASLIST=0x340, COMPARE=0x200, SEARCH=0x200, BINARY2=0x300, AWP=0x300)
-        for name in ('COPY', 'FORMAT', 'MUSIC', 'RUN', 'ATTR', 'EDIT', 'MENU', 'DISKIMG', 'IMGFS', 'DOS33', 'UNSHRINK', 'BASLIST', 'COMPARE', 'SEARCH', 'BINARY2', 'AWP'):
+        self.overlays = dict(NAV=0x400, BATCH=0x900, FORMAT=0x1800, IMAGE=0x1F60 - 0x1B00, HELP=0x1EE0 - 0x1B00, TEXT=0x280,
+                             HEX=0x2F0, DELETE=0x300, RUN=0x200, ATTR=0x300,
+                             OPEN=0x200, COPY=0x300, EDIT=0xC00, MENU=0x600, DISKIMG=0x900, IMGFS=0x300, DOS33=0x400, UNSHRINK=0x600, BASLIST=0x340, COMPARE=0x200, SEARCH=0x200, BINARY2=0x300, AWP=0x300)
+        for name in ('NAV', 'BATCH', 'OPEN', 'COPY', 'FORMAT', 'RUN', 'ATTR', 'EDIT', 'MENU', 'DISKIMG', 'IMGFS', 'DOS33', 'UNSHRINK', 'BASLIST', 'COMPARE', 'SEARCH', 'BINARY2', 'AWP'):
             self.s['__%s_START__' % name] = 0x1B00
             self.s['__%s_LAST__' % name] = 0x1B00 + self.overlays[name]
-        for name in ('COPY', 'FORMAT', 'IMAGE', 'TEXT', 'HEX', 'DELETE', 'HELP', 'MUSIC', 'RUN', 'ATTR', 'EDIT', 'MENU', 'DISKIMG', 'IMGFS', 'DOS33', 'UNSHRINK', 'BASLIST', 'COMPARE', 'SEARCH', 'BINARY2', 'AWP'):
+        for name in ('NAV', 'BATCH', 'OPEN', 'COPY', 'FORMAT', 'IMAGE', 'TEXT', 'HEX', 'DELETE', 'HELP', 'RUN', 'ATTR', 'EDIT', 'MENU', 'DISKIMG', 'IMGFS', 'DOS33', 'UNSHRINK', 'BASLIST', 'COMPARE', 'SEARCH', 'BINARY2', 'AWP'):
             # the RO segment ends where the file ends
             self.s['__%sRO_LAST__' % name] = self.s['__%s_START__' % name] + self.overlays[name]
             self.s['__%s_LAST__' % name] = self.s['__%s_START__' % name]

@@ -55,9 +55,12 @@ def main():
                s.rows()[22].strip()[:60])
             s.key(ESC); s.wait(lambda: s.value('view', 1) == 0, 'retour'); p.stable()
             s.key(b'!'); s.wait(lambda: s.has('the overlays') or s.has('missing'), 'menu', 30); p.stable()
+            from xplug import menu_category
+            menu_category(s, p, 'AWP')
             ok('le menu ! liste les surcouches', s.has('the overlays') and s.has('AppleWorks'),
                s.rows()[22].strip()[:60])
             s.key(ESC); p.stable()
+            s.key(ESC); p.stable()  # leave categories
             # F : le formateur natif, puis ESC revient au meme dossier
             s.key(b'F')
             s.wait(lambda: s.has('ERASES EVERYTHING') or s.has('failed'), 'formateur', 60); p.stable()

@@ -9,7 +9,7 @@
  * Two kinds of overlays:
  *
  *  - the program's own, linked with it (a2fc.c, segments IMAGE, TEXT,
- *    HEX, DELETE, HELP, EDIT, MUSIC, RUN, ATTR, MENU, DISKIMG...): they
+ *    HEX, DELETE, HELP, EDIT, RUN, ATTR, MENU, DISKIMG...): they
  *    call its functions at their addresses in that particular link, and
  *    their signature is the address of main in that link; A2FILE.CODE and
  *    its .PLG files go together as a set;
@@ -33,8 +33,10 @@
 
 #include <stdio.h>
 
-#define A2FC_API_VERSION 3
+#define A2FC_API_VERSION 4
+#define MEDIA_PLUGIN_MAGIC 0xA2FD /* requires v4 media services; older cores refuse it */
 #define PLUGIN_MAGIC 0xA2FC        /* the signature of a third-party overlay */
+#define OVERLAY_AUDIO 0x04         /* foreground audio: core supplies card slot in arg */
 #define OVERLAY_AUX 0x02           /* requires consent: destroys the auxiliary RAM disk */
 #define OVERLAY_BIG 0x01           /* also takes $2000-$3FFF */
 #define OVERLAY_WINDOW ((unsigned char*)0x1B00)
@@ -173,6 +175,13 @@ struct A2fcApi {
      * next write to it returns anything at all. Call this afterwards and say
      * so, the way the core does on return from a DHGR picture. */
     unsigned char (*ram_format)(void);
+    /* v4: foreground media. media_key returns 1 on Escape or an available
+     * Left/Right neighbour; the caller must silence/clean up before return.
+     * media_wait blocks using that policy. music_info displays a validated
+     * PT3 header (at least 98 readable bytes), without modifying it. */
+    unsigned char (*media_key)(unsigned char);
+    char (*media_wait)(void);
+    void (*music_info)(const unsigned char*);
 };
 
 #endif /* A2FC_PLUGIN_H */

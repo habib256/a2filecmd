@@ -19,7 +19,7 @@ static unsigned char mount_source(struct Source* s) {
             for(j=1;j<=n && s->path[j]==onlinebuf[j];++j);
             if(n && j>n && !s->path[j])return 1;
         }
-        a.sprintf(a.other_full,"Insert %s S6,D%u. 1/2 drive RET ESC",s->path,(s->unit>>7)+1);
+        a.sprintf(a.other_full,"\1Insert %s S6,D%u. 1/2 drive RET ESC",s->path,(s->unit>>7)+1);
         a.message(a.other_full);k=a.cgetc();if(k==KEY_ESC)return 0;
         if(k=='1'||k=='2')src.unit=dst.unit=k=='1'?0x60:0xE0;
     }
@@ -28,7 +28,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
     unsigned char k,ok,request,single,j,count;unsigned int b,i,diff,first;
     init(api);src.file=dst.file=0;
     if(pan->fs || other->fs){note("Use real ProDOS panels.");return;}
-    a.message("DISKCMP: V Volumes  I Images  S Single drive  ESC Cancel");
+    a.message("\1DISKCMP: V Volumes  I Images  S Single drive  ESC Cancel");
     do{k=a.cgetc();if(k==KEY_ESC)return;}while(k!='v'&&k!='V'&&k!='i'&&k!='I'&&k!='s'&&k!='S');single=k=='s'||k=='S';
     if(k=='i'||k=='I') {
         if(!pan->path[0] || !other->path[0] || !a.full[0])goto invalid;

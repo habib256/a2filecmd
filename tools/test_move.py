@@ -14,7 +14,10 @@ from prodos_read import Image
 
 HARNESS = PREFIX + r'''
 #include <errno.h>
+static int mock_ferror(FILE*);
+#define ferror mock_ferror
 #include "src/plugins/move.c"
+#undef ferror
 
 static FILE* disk;
 static char volname[16];
@@ -22,6 +25,24 @@ static unsigned char vollen;
 static unsigned char answer = 1;                 /* what confirm() replies */
 static unsigned char io_fault;
 static unsigned char probed;
+static unsigned int open_number, close_number;
+static FILE *verify_source, *verify_target, *read_error;
+static int mock_ferror(FILE* f) { return f == read_error || ferror(f); }
+static size_t mock_fread(void* p, size_t z, size_t n, FILE* f) {
+    if (n == 1 && ((io_fault == 3 && f == verify_source) ||
+                   (io_fault == 4 && f == verify_target))) {
+        read_error = f; errno = EIO; return 0;
+    }
+    if (io_fault == 11 && n > 1) return fread(p, z, n / 2, f);
+    return fread(p, z, n, f);
+}
+static int mock_fclose(FILE* f) {
+    int result = fclose(f);
+    ++close_number;
+    if (io_fault >= 5 && io_fault <= 8 && close_number == io_fault - 4)
+        return EOF;
+    return result;
+}
 static unsigned int write_number, fail_write;
 static unsigned char fail_after;
 
@@ -71,10 +92,16 @@ static FILE* mock_fopen(const char* path, const char* mode)
         probed = 1;
         return NULL;
     }
-    return fopen(path, mode);
+    {
+        FILE* f = fopen(path, mode);
+        ++open_number;
+        if (open_number == 3) verify_source = f;
+        if (open_number == 4) verify_target = f;
+        return f;
+    }
 }
 static void mock_bar(const char* n, unsigned long d, unsigned long t)
-{ (void)n; (void)d; (void)t; }
+{ (void)n; (void)d; (void)t; if (io_fault == 9) cancelled = 1; }
 
 /* A copy that comes up short or wrong: the verify pass must catch it and
  * the original must survive. */
@@ -82,6 +109,7 @@ static long corrupt_at = -1;
 static size_t mock_fwrite(const void* p, size_t sz, size_t n, FILE* f)
 {
     static unsigned char tmp[512];
+    if (io_fault == 10) return fwrite(p, sz, n / 2, f);
     if (corrupt_at >= 0 && ftell(f) >= corrupt_at) {
         memcpy(tmp, p, n);
         tmp[0] ^= 0xFF;
@@ -129,8 +157,8 @@ int main(int argc, char** argv)
     api.cfg_path = "/NOWHERE/A2FILE/A2FILE.CFG";
     api.mli = mock_mli; api.confirm = mock_confirm;
     api.progress_bar = mock_bar;
-    api.fopen = mock_fopen; api.fread = fread; api.fwrite = mock_fwrite;
-    api.fclose = fclose; api.remove = remove;
+    api.fopen = mock_fopen; api.fread = mock_fread; api.fwrite = mock_fwrite;
+    api.fclose = mock_fclose; api.remove = remove;
     api.filetype = &host_type; api.auxtype = &host_aux;
     api.memcpy = memcpy; api.memset = memset;
     api.strcpy = strcpy; api.strcmp = strcmp; api.strlen = strlen;
@@ -614,6 +642,37 @@ class CopyAcrossVolumes(unittest.TestCase):
                 note = self.run_copy('/tmp/mv/s', '/tmp/mv/d', 'HELLO',
                                      size=cached_size)
                 self.assertIn('NOT removed', note)
+                self.assertEqual(Path('/tmp/mv/s/HELLO').read_bytes(), payload)
+                self.assertFalse(Path('/tmp/mv/d/HELLO').exists())
+
+    def test_final_read_error_with_stale_size_keeps_the_entire_source(self):
+        for cached_size in (0, 4, 512, 1080):
+            with self.subTest(cached_size=cached_size):
+                payload = self.fixture(b'x' * 1080)
+                self.run_copy('/tmp/mv/s', '/tmp/mv/d', 'HELLO',
+                              size=cached_size, io_fault=3)
+                self.assertEqual(Path('/tmp/mv/s/HELLO').read_bytes(), payload)
+                self.assertFalse(Path('/tmp/mv/d/HELLO').exists())
+
+    def test_target_final_read_error_keeps_source_even_after_matching_bytes(self):
+        payload = self.fixture()
+        self.run_copy('/tmp/mv/s', '/tmp/mv/d', 'HELLO', io_fault=4)
+        self.assertEqual(Path('/tmp/mv/s/HELLO').read_bytes(), payload)
+        self.assertFalse(Path('/tmp/mv/d/HELLO').exists())
+
+    def test_each_failed_close_blocks_source_removal(self):
+        for fault in range(5, 9):
+            with self.subTest(close=fault - 4):
+                payload = self.fixture()
+                self.run_copy('/tmp/mv/s', '/tmp/mv/d', 'HELLO', io_fault=fault)
+                self.assertEqual(Path('/tmp/mv/s/HELLO').read_bytes(), payload)
+                self.assertFalse(Path('/tmp/mv/d/HELLO').exists())
+
+    def test_cancel_disk_full_and_short_read_preserve_source(self):
+        for fault in (9, 10, 11):
+            with self.subTest(fault=fault):
+                payload = self.fixture()
+                self.run_copy('/tmp/mv/s', '/tmp/mv/d', 'HELLO', io_fault=fault)
                 self.assertEqual(Path('/tmp/mv/s/HELLO').read_bytes(), payload)
                 self.assertFalse(Path('/tmp/mv/d/HELLO').exists())
 

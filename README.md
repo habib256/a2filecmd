@@ -33,12 +33,16 @@ pictures. The tools are right there, beside your files.
 | **Explore disks and images** | Browse ProDOS and DOS 3.3 disk images as read-only folders, then extract files to the other panel. Read physical DOS 3.3 disks, create and write floppy images, copy floppies and format ProDOS disks. |
 | **Unpack classic archives** | Extract ShrinkIt `.SHK` archives, including LZW/1 and LZW/2 compression, and Binary II `.BNY` archives with their ProDOS file attributes. |
 | **Read, edit and compare** | Text and hex viewers, a 5 KB text editor, readable Applesoft listings and an AppleWorks word-processing viewer. Compare two files byte by byte, search files for text, or mark differences between panels. |
-| **Enjoy pictures and sound** | Full-screen HGR and DHGR, raw or RLE-compressed. Use the arrow keys to browse pictures like an album. Play `.MB` music on a Mockingboard while managing files. |
+| **Enjoy pictures and sound** | Full-screen HGR and DHGR, raw or RLE-compressed. Use the arrow keys to browse pictures like an album. Play `.MB` and `.PT3` music in foreground overlays on a Mockingboard; Left/Right browse tunes of the same type. PT3 displays title, artist and player credits. |
 | **Make it yours** | Keyboard shortcuts throughout, optional AppleMouse II support and remembered panel settings. Launch SYS, BIN and Applesoft programs, or add your own tools with the plugin SDK. |
 
-The **!** menu also offers text and disk-image conversion, CRC-32, file
+The **!** menu groups tools by category. Choose a category, then a tool;
+Escape goes back one level. Questions on the penultimate line appear in inverse
+video while waiting for your answer.
+
+The menu also offers text and disk-image conversion, CRC-32, file
 identification, Markdown reading, volume-wide search, favourite directories,
-batch renaming and type repair. EXTRA2 and XL also provide UNDELETE recovery,
+batch renaming and type repair. DISKTOOLS and XL also provide UNDELETE recovery,
 DISKCMP comparison, MKIMAGE creation, RESCUE extraction, SYNC updates and TREE totals. BLKVIEW searches and extracts blocks while preserving the source; DISKIMG reads back disk writes.
 DISASM reads BIN/SYS files as 6502 or 65C02 assembly and exports text listings.
 FIND combines name/content searches with type and modification-date filters (TAB),
@@ -69,42 +73,44 @@ readers and more disk tools. See the [changelog](CHANGELOG.md).*
 **Start with the [latest release](https://github.com/habib256/a2filecmd/releases/latest).**
 No build required. Choose the image that fits your setup:
 
-The table describes the current 0.7.6 source build. The latest published release
+The table describes the current 0.8.0 source build. The latest published release
 is 0.7.5; its downloads retain their own version numbers.
 
-| Image family (0.7.6) | CPU | Contents |
-|---|---|---|
-| `A2FILECMD-6502-BOOT-0.7.6.dsk` | 6502 | Bootable 140 KB floppy: file manager, disk tools and formatter |
-| `A2FILECMD-6502-EXTRA-0.7.6.dsk` | 6502 | 140 KB companion: 22 everyday tools, menu and BASIC.SYSTEM |
-| `A2FILECMD-6502-EXTRA2-0.7.6.dsk` | 6502 | 140 KB companion: 10 disk and block tools |
-| `A2FILECMD-6502-XL-0.7.6.2mg` | 6502 | Bootable 32 MB disk: all 51 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
-| `A2FILECMD-65C02-BOOT-0.7.6.dsk` | 65C02 | Bootable 140 KB floppy: file manager, disk tools and formatter |
-| `A2FILECMD-65C02-EXTRA-0.7.6.dsk` | 65C02 | 140 KB companion: 22 everyday tools, menu and BASIC.SYSTEM |
-| `A2FILECMD-65C02-EXTRA2-0.7.6.dsk` | 65C02 | 140 KB companion: 10 disk and block tools |
-| `A2FILECMD-65C02-XL-0.7.6.2mg` | 65C02 | Bootable 32 MB disk: all 51 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/` |
+| Image (0.8.0) | Contents |
+|---|---|
+| `A2FILECMD-6502-BOOT-0.8.0.dsk` | Bootable 140 KB floppy: file manager, essential disk tools and formatter |
+| `A2FILECMD-6502-FILES-0.8.0.dsk` | Edit and read documents, find, rename, copy, synchronize and unpack files |
+| `A2FILECMD-6502-MEDIA-0.8.0.dsk` | Pictures and Mockingboard music |
+| `A2FILECMD-6502-DISKTOOLS-0.8.0.dsk` | Disk images, block tools, boot repair and recovery |
+| `A2FILECMD-6502-DEVTOOLS-0.8.0.dsk` | BASIC listings, disassembly and BASIC.SYSTEM |
+| `A2FILECMD-6502-XL-0.8.0.2mg` | Complete bootable 32 MB image for 6502 |
+| `A2FILECMD-65C02-XL-0.8.0.2mg` | Complete bootable 32 MB image for 65C02, with optional mouse support |
 
-The names sort by CPU, then BOOT, EXTRA, EXTRA2, XL. Choose **6502** for an Apple II
-with 128 KB and 80 columns, including the original IIe; choose **65C02** for
-an enhanced IIe, //c or IIgs, with MouseText and optional mouse support.
-Use the companion disks for the **same CPU and release** as BOOT. EXTRA
-carries the everyday tools and BASIC.SYSTEM, EXTRA2 the disk and block
-surgery; both keep free space for future plugins. Floppies are distributed as
-`.dsk`; complete XL disks use `.2mg`.
+**All floppies use 6502 code**, including on enhanced machines. Choose the
+categories you need; every companion carries the menu and full catalog.
+XL includes all 59 overlays, BASIC.SYSTEM, `DEMO/` and `IMGHGR/`, so it needs
+no companion. Choose XL **6502** for an original IIe; XL **65C02** for an
+enhanced IIe or //c. All editions require 128 KB and 80 columns.
+Use matching releases. Do not mix the native plugins of XL 65C02 with the
+6502 floppies. Floppies are distributed as `.dsk`; XL uses `.2mg`.
 
-1. Boot BOOT or XL. ProDOS 8 is included. With floppies, put EXTRA (or
-   EXTRA2, for the tools it holds) in slot 6, drive 2. With one drive, A2FC names the required disk and drive; press
-   **1** to choose drive 1, insert the disk, then press **Return**.
-   `make disk` builds all eight volumes; `ARCH=6502` or `ARCH=enh` selects a CPU.
+1. Boot BOOT or XL. ProDOS 8 is included. With floppies, put the required
+   category in slot 6, drive 2. With one drive, A2FC names the required disk
+   and drive; press **1**, insert that disk, then press **Return**.
+   `make disk` builds all seven volumes; `ARCH=6502` builds the floppies and
+   XL 6502, while `ARCH=enh` builds XL 65C02 only.
 
 2. Press **`TAB`** to switch panels, **`RETURN`** to open and **`ESC`** to go up. Press **`?`** for the full key map.
-3. On the `.2mg`, explore the `DEMO/` folder already open in the right panel. On BOOT, the right panel shows the available volumes; `E`, `I` and the `!` menu load missing tools from the matching EXTRA or EXTRA2 disk.
+3. On the `.2mg`, explore the `DEMO/` folder already open in the right panel. On BOOT, the right panel shows the available volumes; `E`, `I` and the `!` menu load missing tools from the matching category disk.
 
 A **Mockingboard** enables music playback; an **AppleMouse II** enables point
 and click navigation. Both are optional and can be in any supported slot.
 
-**Tested on:** a real Enhanced Apple IIe; the [Virtual II](https://www.virtualii.com/) emulator;
-and, under [POM2](https://github.com/habib256/pom2), an Apple //c and an unenhanced 1983 IIe
-running the 6502 build. The Apple IIgs has not been tried yet.
+**Tested on real hardware:** Apple //c, enhanced Apple IIe and unenhanced
+Apple IIe, with successful operation confirmed by the maintainer on September 12,
+2026. Also tested in [Virtual II](https://www.virtualii.com/) and
+[POM2](https://github.com/habib256/pom2), including the //c and unenhanced
+1983 IIe with the 6502 build. The Apple IIgs has not been tried yet.
 
 ### Take a quick tour
 
@@ -171,7 +177,7 @@ A [printable PDF](docs/A2FILECMD-MANUAL-EN.pdf) is also included in each release
 
 - Large directories are read in windows of 139 disk entries plus the parent entry, in disk order without sorting.
 - ProDOS paths are limited to 64 characters.
-- The text editor holds 5,104 bytes; a `.MB` tune must fit in 2,304 bytes.
+- The text editor holds 5,104 bytes; a `.MB` tune must fit in 4,096 bytes.
 - Images opened as folders are read-only. Extract files before viewing or editing them; ProDOS image extraction supports files up to 128 KB, and subdirectories must be entered individually.
 - Launching another program replaces A2FileCmd. The FORMAT overlay returns directly to the panels; from Applesoft, you can relaunch A2FileCmd as described in the manual.
 
@@ -184,7 +190,7 @@ and **Python 3**. The disk-image tools and demo generators are included.
 
 ```sh
 make          # build the ProDOS program and its overlays
-make disk     # BOOT + EXTRA + EXTRA2 (.po/.dsk) and XL (.2mg), for 6502 and 65C02
+make disk     # five 6502 floppies (.po/.dsk), plus XL 6502 and 65C02 (.2mg)
 make test     # run checks that do not need an Apple II
 ```
 

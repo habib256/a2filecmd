@@ -8,8 +8,14 @@ from test_six_plugins import PREFIX, ROOT
 
 HARNESS = PREFIX + r'''
 #include <errno.h>
+static int read_status(FILE*);
+#define ferror read_status
 #include "src/plugins/txtconv.c"
+#undef ferror
+static FILE* failed_read;
+static int read_status(FILE* f) { return f == failed_read || ferror(f); }
 static unsigned char fault;
+static unsigned int opens, closes;
 static char operation;
 static unsigned char inplace_answer, overwrite_answer, questions;
 static unsigned long fail_at;
@@ -17,18 +23,28 @@ static char key(void) { return operation; }
 static unsigned char yes(const char* s) { (void)s; return questions++ ? overwrite_answer : inplace_answer; }
 static FILE* open_file(const char* path, const char* mode) {
     if (fault == 4 && strstr(path, "/D/") && !strcmp(mode, "rb")) return NULL;
+    ++opens;
+    if (fault == 14 && opens == 4) return NULL;
     return fopen(path, mode);
 }
 static size_t write_file(const void* p,size_t sz,size_t n,FILE* f) {
+    unsigned char damaged[256];
     if(fault==6)return 0;
+    if(fault==10) { memcpy(damaged,p,n);damaged[0]^=1;return fwrite(damaged,sz,n,f); }
     return fwrite(p,sz,n,f);
 }
-static int close_file(FILE* f) {int r=fclose(f);return fault==7?-1:r;}
+static int close_file(FILE* f) {
+    int r;++closes;
+    if(fault==11 && closes==2)fputc('X',f);
+    r=fclose(f);
+    return fault==7 || (fault==16 && closes==4) || (fault==17 && closes==3) ? -1 : r;
+}
 static void message(const char* s) { (void)s; }
 static void progress(const char* s, unsigned long d, unsigned long t)
-{ (void)s; (void)d; (void)t; }
+{ (void)s; (void)d; (void)t; if (fault == 12 || (fault == 13 && checking)) fail = 1; }
 static size_t read_file(void* p, size_t size, size_t count, FILE* f) {
-    if (fault == 1 && (unsigned long)ftell(f) >= fail_at) return 0;
+    if (fault == 15 && checking && f == out) { failed_read = f; return 0; }
+    if (fault == 1 && (unsigned long)ftell(f) >= fail_at) { failed_read = f; return 0; }
     if (fault == 2 && (unsigned long)ftell(f) >= fail_at) count /= 2;
     return fread(p, size, count, f);
 }
@@ -219,6 +235,34 @@ class Txtconv(unittest.TestCase):
                 self.assertIn('Converted', note)
                 self.assertEqual(data, b'A' * size)
                 self.assertFalse((self.root / 'TXTCONV.TMP').exists())
+
+    def test_readback_corruption_failure_and_cancellation_preserve_originals(self):
+        for inplace in (False, True):
+            for fault in range(10, 18):
+                with self.subTest(inplace=inplace, fault=fault):
+                    dest = self.root / 'D' / 'TEXT'
+                    dest.parent.mkdir(exist_ok=True); dest.write_bytes(b'old destination')
+                    payload = b'\xC1' * 800
+                    note, data = self.convert(payload, fault=fault, inplace=inplace, overwrite=True)
+                    self.assertEqual(data, payload)
+                    self.assertEqual(dest.read_bytes(), b'old destination')
+                    self.assertNotIn('Converted', note)
+                    self.assertFalse((self.root/'TXTCONV.TMP').exists())
+                    self.assertFalse((dest.parent/'TXTCONV.TMP').exists())
+
+    def test_stale_size_matching_failed_read_never_replaces_original(self):
+        for inplace in (False, True):
+            for size in (0, 256, 512):
+                with self.subTest(inplace=inplace, size=size):
+                    dest = self.root / 'D' / 'TEXT'
+                    dest.parent.mkdir(exist_ok=True)
+                    dest.write_bytes(b'old destination')
+                    payload = b'\xC1' * 800
+                    note, data = self.convert(payload, fault=1, fail_at=size,
+                                              cached_size=size, inplace=inplace, overwrite=True)
+                    self.assertEqual(data, payload)
+                    self.assertEqual(dest.read_bytes(), b'old destination')
+                    self.assertNotIn('Converted', note)
 
     def test_read_failure_keeps_the_original(self):
         payload = b'\xC1' * 800

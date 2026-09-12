@@ -1,41 +1,111 @@
 # A2 File Cmd — feuille de route
 
-Ce fichier ne contient que le travail restant. Les fonctions livrées sont
-documentées dans le [CHANGELOG](CHANGELOG.md). Les priorités sont `🟠 haute`,
-`🟡 moyenne` et `🟢 basse`; `💾` indique une fonction à intégrer aussi dans
-BOOT/les disquettes.
+Ce fichier suit le travail restant et les chantiers en cours. Les fonctions
+implémentées sont décrites dans le [CHANGELOG](CHANGELOG.md), qui distingue
+les changements non publiés des versions livrées. Priorités : `🟠 haute`,
+`🟡 moyenne`, `🟢 basse`. `💾` signale un besoin propre aux disquettes ou aux
+lecteurs physiques.
 
-Une nouvelle surcouche va sur **EXTRA** et **XL**, en 6502 et en 65C02.
-EXTRA2 est réservée à la chirurgie disque et blocs (BLKVIEW, BLKEDIT, DISASM,
-SYNC, MOVE, DISKCMP, UNDELETE, RESCUE, TREE, MKIMAGE); c'est EXTRA qui a de la
-place. Voir `XPLUGINS_EXTRA2` dans le Makefile.
+La préservation des données prime sur toute fonctionnalité : appliquer
+[AGENTS.md](AGENTS.md) et consulter le [rapport de sécurité](docs/DATA-SAFETY.md).
+La reconstruction de `/RAM` reste permise, avec avertissement et confirmation
+avant toute destruction de son contenu.
 
-## Contraintes actuelles
+## Contraintes à vérifier à chaque modification native
 
-Mesuré le 2026-09-11, au commit `9d0a0ee`. Ces chiffres bougent à chaque
-livraison : les relire avant d'y croire.
+- **Résident et carte langage** : marges très faibles. Relever les résultats
+  du lien courant pour les deux processeurs ; ne pas réutiliser les anciennes
+  mesures du TODO. `tools/check_layout.py` contrôle notamment le plafond
+  `$BEE0` du fichier résident, la pile et la disposition mémoire.
+- **Surcouches** : une petite fenêtre contient 1 280 octets. Les grandes
+  surcouches ont des limites propres à leurs tampons ; code et BSS doivent
+  rester dans les bornes imposées par le lieur.
+- **Disquettes** : 280 blocs par support. Mesurer chaque catégorie après
+  fabrication et contrôler la présence de tous les plugins attendus.
+  [config/packages.mk](config/packages.mk) définit les catégories ; chaque
+  nouveau plugin doit y être classé explicitement.
 
-- **Résident** : le lien 65C02 est le serré. `A2FILE.CODE` finit à `$BE92`
-  pour un plafond de `$BEE0` — **78 octets de libre**. L'édition 6502 finit à
-  `$BCDB` et a des centaines d'octets. `tools/check_layout.py` refuse un
-  dépassement.
-- **Réserve carte langage** ($D400-$DFFF, 3 072 octets) : **1 octet de
-  libre**. Elle ne peut plus servir de soupape ; y déplacer une chaîne
-  demande d'abord d'en sortir une autre.
-- **Fenêtre de 1 280 octets** pour une petite surcouche, et pour une grande
-  surcouche graphique dont le code doit s'arrêter avant `$2000`. Les plus
-  près de la limite : BINARY2 1 272, IMGFS 1 270, ATTR 1 254, DELETE 1 250,
-  HEX 1 231 côté surcouches du programme ; PAINT816 1 235, DATE 1 234,
-  PACKFOT 1 222 côté surcouches à table de services.
-- **Disquettes** : EXTRA 185 blocs sur 280, EXTRA2 165 ou 166 selon
-  l'édition.
-- **Essais matériels manquants** : IIgs, vraie Super Serial Card, //c réel,
-  lecteurs Disk II physiques.
+## Évaluation d'architecture et consolidation — 12 septembre 2026
 
-## Prochain lot : meilleur retour sur effort
+Évaluation d'étape fondée sur le code et les résultats examinés, sans constituer
+un nouvel audit exhaustif : A2FC est un logiciel sérieux dont la richesse
+fonctionnelle dépasse désormais la marge de maintenance du résident.
 
-- 🟠 **`FIXIT`** — grande surcouche de réparation ProDOS après confirmation
-  `ERASE` : allocation, compteurs, pointeurs de répertoire, types, dates et
+Points forts à préserver : architecture en surcouches adaptée à la machine,
+lecteurs au premier plan, ergonomie commune (Entrée, flèches, Échap), garanties
+de conservation des données et tests du vrai code avec erreurs injectées,
+comparaison des octets et exécution sur les deux processeurs.
+
+Risques principaux : saturation mémoire, dépendances implicites entre services,
+buffers et banques, profondeur limitée des parcours récursifs et couverture
+encore inégale des interactions. La dernière qualification du
+[bug hunt](docs/BUG-HUNT-0.7.6.md) relevait cinq octets avant le plafond MAIN
+enhanced et aucune marge en carte langage : ce sont des mesures historiques,
+à recalculer après chaque modification native. Un lecteur qui produit du son
+n'est pas, à lui seul, la preuve que l'équilibre de ses canaux est correct.
+La livraison et ses métadonnées font également partie du logiciel à valider.
+
+Orientation recommandée : **0.8.0** pour le périmètre fonctionnel acquis depuis
+0.7.5, puis consolidation avant de nouvelles fonctions natives. Cette
+recommandation ne change ni le numéro construit ni l'état de publication.
+Procéder par extractions progressives guidées par les risques et les mesures,
+sans réécriture générale.
+
+- 🟠 **Réserve mémoire** — définir un budget explicite par zone et récupérer
+  une réserve mesurable avant d'ajouter des fonctions natives. Fixer les
+  objectifs à partir des cartes de lien des deux architectures, sans relâcher
+  les plafonds, pour pouvoir corriger sans déplacer systématiquement le code.
+- 🟠 **Services de fichiers sûrs** — centraliser progressivement les créations
+  exclusives, remplacements récupérables et copies vérifiées derrière des
+  contrats communs. Éviter les variantes de garanties entre surcouches ;
+  conserver les tests de pannes et mesurer le coût mémoire des extractions.
+- 🟠 **Qualification d'une révision figée** — associer version, révision,
+  empreintes des artefacts, versions des outils et résultats de validation.
+  Distinguer explicitement les essais locaux, CI, émulateur et matériel pour
+  identifier exactement le contenu prêt à publier.
+- 🟡 **Contrats des services et plugins** — documenter les buffers prêtés,
+  leur durée de validité, les banques modifiées, les états à restaurer et les
+  erreurs possibles. Rendre explicites les dépendances entre résident et
+  surcouches, y compris l'utilisation d'AUX et le consentement préalable.
+- 🟡 **Parcours itératifs** — remplacer progressivement la récursivité par un
+  parcours à état borné et consommation mémoire prévisible. Préserver les
+  refus sûrs et la vérification complète avant suppression ; tester les arbres
+  profonds et les échecs à chaque étape sur des supports jetables.
+- 🟡 **Tests de séquences** — couvrir image → musique → copie, annulation →
+  nouvelle opération et changement de disque → reprise. Vérifier les états
+  restaurés, les ressources libérées et les octets conservés, au-delà du seul
+  succès de chaque fonction isolée.
+- 🟢 **Contrat commun des visualiseurs** — uniformiser ouverture, navigation,
+  sortie, erreurs et restauration de l'écran pour les formats existants avant
+  d'en ajouter d'autres. Conserver les confirmations requises avant toute
+  utilisation destructive de la mémoire auxiliaire.
+
+## Priorité : sécurité des données
+
+- 🟠 **Décodeurs robustes** — étendre la campagne de mutations de
+  `tools/fuzz_images.py`, qui couvre DGRVIEW, EXTASIE, PACKFOT,
+  PAINT816, FONTVIEW, PRINTSHOP et LZ4FH, aux autres décodeurs ainsi qu'à UNSHRINK, BINARY2,
+  IMGFS et DOS33. Élargir les corpus et intégrer la campagne à la CI.
+  Vérifier les bornes mémoire, la conservation des fichiers existants et
+  le signalement des sorties partielles et des erreurs d'E/S. Les tests
+  existants ne constituent pas une preuve exhaustive de robustesse.
+- 🟡 **Reprise après coupure** — étudier une sauvegarde persistante ou un
+  journal pour les écritures brutes, notamment MOVE et BOOTBLK. Distinguer
+  la restauration sur erreur signalée, déjà implémentée, de la reprise après
+  perte d'alimentation ; tester les interruptions à chaque étape.
+- 🟡 **Conversions : relecture du résultat** — compléter les conversions
+  qui contrôlent les écritures et fermetures sans encore comparer
+  intégralement le résultat relu sur le support.
+- ✅ **Configuration de session** — sauvegarde exclusive dans un temporaire,
+  relecture de contrôle et conservation d'une sauvegarde récupérable de
+  `A2FILE.CFG`, avec tests de pannes et de collisions.
+
+## Disques, réparation et transferts
+
+- 🟠 **`FIXIT`** — préparer un diagnostic et un plan de réparation ProDOS
+  vérifiables avant toute écriture. Conserver les blocs d'origine, demander
+  confirmation pour les corrections retenues et vérifier chaque écriture :
+  allocation, compteurs, pointeurs de répertoire, types, dates et
   effacements incomplets. Signaler les blocs partagés ou hors volume sans les
   modifier; reconstruire aussi un répertoire racine perdu et isoler les blocs
   défectueux. `VOLINFO` signale déjà, sans rien écrire, les blocs occupés
@@ -54,11 +124,9 @@ livraison : les relire avant d'y croire.
   complète, avec validation piste par piste.
 - 🟠 💾 **`ADTPRO`** — client du serveur ADTPro réel : dossiers, envoi/réception
   d'images, CRC, reprise sur NAK et mode nibble après NIBCOPY.
-- 🟡 **`MOVE` : les fichiers marqués** — `MOVE` ne déplace que l'entrée sous
-  le curseur : une grande surcouche couvre les tables d'entrées à `$2000`, et
-  les marques sont des index DANS ces tables, donc plus traduisibles en noms.
-  Il faudrait soit une petite surcouche (1 280 octets, très juste pour la
-  marche des répertoires), soit que le cœur passe la liste des noms marqués.
+- ✅ **`MOVE` : les fichiers marqués** — manifeste exclusif et vérifié
+  `A2MOVE.LST`, orchestration par BATCH, arrêt sur erreur/annulation et
+  restauration des marques restantes par nom. Voir `bench/roi.py`.
 - 🟡 **`MOVE` : un arbre entre volumes** — entre deux volumes, `MOVE` copie
   puis efface, mais seulement un FICHIER : un répertoire et sa descendance
   demandent la marche récursive que `V` fait déjà dans le cœur. Soit `MOVE`
@@ -75,36 +143,22 @@ livraison : les relire avant d'y croire.
 - 🟡 💾 **`DIRSORT`** — trier physiquement un dossier ProDOS en conservant les
   blocs et les liens, avec sauvegarde et vérification.
 - 🟡 💾 **`DRIVESPD`** — mesurer un tour de Disk II, afficher RPM et durée.
-- 🟡 **`DISKIMG`** — compléter copie brute, vérification et reprise des erreurs.
-- 🟡 **Décodeurs robustes** — préciser les sorties partielles de UNSHRINK,
-  BINARY2, IMGFS et DOS33 sur données corrompues.
+- 🟡 **`DISKIMG` : reprise des erreurs** — définir une politique de nouvelles
+  tentatives et de reprise après interruption. La copie de disques et la
+  relecture de contrôle existent déjà ; préserver la validation des sources
+  et le refus de cibler le volume qui contient l'image.
 - 🟢 Défragmentation, après `FIXIT` et `VERIFY`.
 - 🟢 Étendre les parcours aux très grands répertoires.
 
 ## Formats et extensions de niche
 
-- 🟡 **Images Extasie : feuilleter et entrer dans `IMAGE`** — `EXTASIE` décode
-  et affiche les `$F2` (deux plans de quarante colonnes de 192, auxiliaire
-  d'abord, DHGR mixte 560/140 de la carte), mais depuis le menu `!` seulement
-  et une image à la fois. Ce qui manque et ce qu'il coûte :
-  - feuilleter avec Gauche/Droite : la surcouche fait 1 150 octets sur 1 280
-    en 65C02 et 1 174 en 6502, et parcourir le panneau (`read_panel`,
-    retrouver l'entrée, `build_full`, voisin suivant) coûte environ 720
-    octets mesurés — il n'y a pas la place ;
-  - le mettre dans `IMAGE` : `IMAGE` occupe 1 167 octets sur 1 280, et le
-    décodeur Extasie avec son affichage en demande plusieurs centaines ;
-  - le plus court chemin aujourd'hui : router le `$F2` comme `T` route déjà
-    le `$FC`, le `$1A` et le `$FA` — une vingtaine d'octets dans le résident,
-    qui en a 78 de libre. Cela donne UNE image, pas le feuilletage, et `T`
-    est la touche des lecteurs de texte : à décider.
+- ✅ **Images Extasie : feuilletage** — Gauche/Droite passe d'une image
+  du même type à l'autre, y compris entre fenêtres de catalogue. L'ouverture
+  directe par Entrée et I et la confirmation avant utilisation destructive
+  d'AUX sont conservées ; les parcours sont validés sur les deux processeurs.
   - Références : [manuel Extasie](https://mirrors.apple2.org.za/ftp.apple.asimov.net/documentation/non_english/french/crealude_extasie_manuel_ocr.pdf),
     [notes Chat Mauve/POM2](https://github.com/habib256/pom2/blob/main/docs/chatmauve_plan.md),
     disques `Extasie disk1.dsk` / `Extasie disk2.dsk` du corpus POM2.
-- 🟡 **`FOT` LZ4FH** — décoder le troisième codage des images ProDOS `$08`,
-  l'aux-type `$8066` (compression LZ4FH d'Andy McFadden, en-tête `66 E0`).
-  `PACKFOT` lit `$4000` et `$4001` et occupe déjà 1 222 octets sur 1 280 :
-  celui-ci demande une surcouche séparée. Corpus :
-  `GISTDATA/IMG/SAMPLE.MEDIA/DIP.CHIPS` (3 785 o).
 - 🟡 **a2dgrx : bitmaps et fontes** — `DGRVIEW` lit les écrans lo-res et
   double lo-res, et les pixmaps a2dgrx (un octet par pixel) dont il demande
   la largeur. Restent les deux autres dispositions de
@@ -113,12 +167,6 @@ livraison : les relire avant d'y croire.
   donc 288 octets — la seule des trois qu'une taille suffise à reconnaître).
   Rappel : a2dgrx est une bibliothèque de dessin, pas un format de fichier —
   aucun en-tête, aucune signature, aucune dimension, aucun type ProDOS.
-- 🟡 **Polices Apple II (`$07`)** — afficher le jeu de caractères d'un fichier
-  de police ProDOS type `$07` : trois octets d'en-tête (drapeau, dernier code
-  `$7E`/`$7F`, hauteur) puis des glyphes de taille fixe. Corpus :
-  `GISTDATA/IMG/SAMPLE.MEDIA/FONTS`, trente-cinq polices de 1 155 à 4 194
-  octets (`MOUSEPAINT`, `MINI`, `ATHENS`, `VENICE`, les `SYSTEM.*` et
-  `MONACO.*` de dix langues, les `MAGDALENA`/`MCMILLEN`/`MONTEREY`).
 - 🟡 **`PURPLESOFT` / `GRLOAD`** — visualiser les images sauvegardées par
   Purplesoft/Féline et détecter leur mode graphique; traiter Purplesoft comme
   une bibliothèque de routines (`PURPLESOFT`, `PURPLESOFT*`), pas comme un
@@ -130,20 +178,17 @@ livraison : les relire avant d'y croire.
   surtout Amiga; séparer aussi la variante IIGS. Références : [manuel
   Fantavision](https://mirrors.apple2.org.za/ftp.apple.asimov.net/documentation/applications/misc/Fantavision-Manual.pdf),
   [images de référence](https://mirrors.apple2.org.za/ftp.apple.asimov.net/images/productivity/graphics/fantavision).
-- 🟢 **`PT3` / ProTracker** — jouer un module AY ProTracker 3 sur la
-  Mockingboard, à côté du lecteur `MB1` existant. Corpus :
-  `GISTDATA/IMG/SAMPLE.MEDIA/AUTUMN.PT3` (type `$00`, 4 461 o, en-tête ASCII
-  « ProTracker 3.3 compilation of »).
+- 🟢 **PT3 : étendre la compatibilité** — modules de plus de 4 608 octets,
+  anciennes tables de fréquences autres que ST, effets spéciaux multiples
+  par ligne et TurboSound. Le lecteur au premier plan existe désormais.
 - 🟢 **`ANIMATE` / `MOVIE MAKER`** — étudier les formats d'animations qui
   séparent personnages, fonds, scènes et séquences; ajouter des détecteurs et
   une lecture image par image après obtention d'échantillons. Référence :
   [manuel Animate Apple II](https://www.cvxmelody.net/Animate%20manual%20for%20Apple%20II%20%281986%20Broderbund%29.pdf).
-- 🟢 **`MACPAINT`, `BMP`, `GIF`, `PRINTSHOP`, `SHAPES`, `SLIDESHOW`** —
-  visionneuses d'images supplémentaires. Corpus `PRINTSHOP` :
-  `GISTDATA/IMG/SAMPLE.MEDIA/BBROS.MINI` (BIN `$5800`, 576 o, lignes de onze
-  octets soit 88 pixels — vignette 88x52 à confirmer).
+- 🟢 **`MACPAINT`, `BMP`, `GIF`, `SHAPES`, `SLIDESHOW`** —
+  visionneuses d'images supplémentaires.
 - 🟢 **`ADB`, `ASP`, `AWRITER`, `CALC`** — lecteurs Apple II et AppleWorks
-  supplémentaires. Corpus : `GISTDATA/IMG/SAMPLE.MEDIA/APPLEVISION`
+  supplémentaires. Corpus : `GISTDATA/SAMPLE.MEDIA/APPLEVISION`
   (5 964 o), déjà lisible par `INTBASIC`.
 - 🟢 **`DUET`, `SAMPLE`** — musique et échantillons audio additionnels.
 - 🟢 **`TERM`, `XMODEM`, `CPMFS`, `SPLIT`** — communication série et formats
@@ -153,7 +198,7 @@ livraison : les relire avant d'y croire.
   une image `.dsk`/`.po`, le catalogue ProDOS ou DOS 3.3, les types/aux-types,
   les tailles, les signatures et une capture de rendu; ne pas supposer que le
   format Amiga ou IIGS est compatible avec l'Apple II 8 bits. Corpus de
-  référence : `GISTDATA/IMG/SAMPLE.MEDIA` (`~/src/pom2/hdv/GISTDATA.hdv`), qui
+  référence : `GISTDATA/SAMPLE.MEDIA` (`~/src/pom2/hdv/GISTDATA.hdv`), qui
   réunit pages brutes, `FOT` empaquetés, polices, musiques et un `$D5` non
   identifié.
 
@@ -168,27 +213,41 @@ livraison : les relire avant d'y croire.
 - 🟢 Écrire vers une image disque ouverte comme dossier.
 - 🟢 **`PRINT`**, **`SETUP`**, **`SYSINFO`** — impression, configuration et
   diagnostic matériel.
-- 🟢 Évaluer le support IIgs et VDrive sur Uthernet II.
+- 🟢 Évaluer VDrive sur Uthernet II.
 - 🟢 **`TFTP` / `NTP`** — réseau et synchronisation de l'heure.
-- 🟢 Table de reconnaissance type/aux-type/suffixe/en-tête.
+- 🟢 Généraliser la reconnaissance type/aux-type/suffixe/en-tête aux
+  formats autres que les images, à partir de l'aiguillage existant.
 
 ## Chantiers internes
 
 - 🟢 Découper `src/a2fc.c` en modules sans augmenter le résident.
-- 🟢 Déplacer le pilote Mockingboard dans une surcouche si l'espace le permet.
+- ✅ Pilote MB1 dans MUSIC.PLG : lecteur au premier plan, pause/reprise,
+  retour par Échap ou fin du morceau, 4 Ko en MAIN, sans toucher AUX.
 - 🟢 Traduire les outils et bancs Python en anglais; le TODO reste français.
 
 ## Vérification et intégration
 
 - 🟡 Porter `bench/run.py` sur les images XL publiées, en 6502 et 65C02.
 - 🟡 Compléter le banc //c avec `run.py`, `memory.py`, souris et disquette.
-- 🟡 Tester VDrive sur une vraie Super Serial Card et un //c.
-- 🟡 Vérifier automatiquement les URL de crédits du manuel et ses dix pages.
+- 🟡 💾 Étendre la validation matérielle au IIgs ; documenter les lecteurs
+  Disk II et tester VDrive avec une vraie Super Serial Card et sur un //c.
+  Le fonctionnement sur //c, IIe enhanced et IIe unenhanced est confirmé
+  sur matériel réel le 12 septembre 2026.
+- 🟡 Vérifier automatiquement les liens de crédits et la génération du manuel PDF.
 
 ## Règle de livraison
 
-Pour chaque entrée terminée : ajouter un test hôte ET un banc émulateur
-reproductible, mettre à jour le manuel et le changelog, reconstruire les
-**huit** images publiées (BOOT, EXTRA, EXTRA2, XL, en 6502 et en 65C02),
-lancer `make test`, committer sur une branche, fusionner dans `main`, pousser
-et attendre la CI.
+Pour chaque entrée terminée, retirer le travail accompli de cette liste et
+mettre à jour le manuel et le changelog. Pour les modifications natives,
+ajouter les régressions pertinentes, valider les deux architectures et
+exécuter les bancs émulateur concernés sur des volumes jetables. Toute
+correction d'un risque de perte de données doit contrôler les octets
+préservés, y compris lors des pannes injectées.
+
+Exécuter `make test`, reconstruire les **sept supports** de la distribution
+retenue (BOOT, FILES, MEDIA, DISKTOOLS et DEVTOOLS en 6502 ; XL en 6502 et
+65C02), puis les contrôler avec `tools/check_images.py`. Vérifier les
+demandes de catégorie et les échanges sur un lecteur avec `bench/extras.py`.
+Lors de la livraison Git : committer sur une branche, fusionner dans `main`,
+pousser et vérifier le résultat de la CI, y compris les bancs POM2 lorsque
+l'exécuteur est configuré.

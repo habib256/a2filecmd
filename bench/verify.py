@@ -39,6 +39,8 @@ def menu_pick(s, p, name, tries=40):
     s.key(b'!')
     s.wait(lambda: s.has('the overlays'), 'le menu des surcouches', 30)
     p.stable()
+    from xplug import menu_category
+    menu_category(s, p, name)
     for _ in range(tries):
         r = s.cursor_row(2)
         if r is not None and s.rows()[r][2:14].strip() == name:

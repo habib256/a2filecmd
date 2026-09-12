@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""La disquette publiee charge les outils de son complement en lecteur 2."""
+"""Published 6502 category disks: loading, named prompts and one-drive swaps."""
 import subprocess
 import shutil
 import sys
@@ -9,10 +9,12 @@ from pathlib import Path
 
 from pom2 import VERSION, Pom2, Session, ROOT, BUILD, FULL
 from smoke import scratch
-from xplug import menu_run, ok_all, RET, ESC
+from xplug import menu_inventory, menu_run, ok_all, RET, ESC
 from volname import rename_to
 sys.path.insert(0, str(ROOT / 'tools'))
 from prodos_read import Image
+from disk_packages import PACKAGES, VOLUMES
+from check_images import check_cpu
 import mkdemo
 
 
@@ -26,16 +28,20 @@ def catalog(image):
 
 
 def main():
-    cpu = '65C02' if FULL else '6502'
-    bootvol, extravol = 'A2FC' + cpu, 'A2EXTRA' + cpu
+    cpu = '6502'
+    assert not FULL, 'Published floppies use the 6502 build'
+    check_cpu(cpu)
+    bootvol, extravol = 'A2FC' + cpu, VOLUMES['FILES'] + cpu
     boot = ROOT / ('dist/A2FILECMD-%s-BOOT-%s.po' % (cpu, VERSION))
-    extra = ROOT / ('dist/A2FILECMD-%s-EXTRA-%s.po' % (cpu, VERSION))
+    extra = ROOT / ('dist/A2FILECMD-%s-FILES-%s.po' % (cpu, VERSION))
     bi, br, bc = catalog(boot)
     xi, xr, xc = catalog(extra)
     assert len(extra.read_bytes()) == 143360
-    assert 'PRODOS' not in xr and 'BASIC.SYSTEM' in xr
+    assert 'PRODOS' not in xr and 'BASIC.SYSTEM' not in xr
     assert set(bc).intersection(xc) == {'MENU.PLG', 'EXTRAS.CAT'}, 'seuls le menu et le catalogue accompagnent les deux disques'
-    assert len([n for n in set(bc) | set(xc) if n.endswith('.PLG')]) == 43
+    assert {n for n in xc if n.endswith('.PLG')} == {n + '.PLG' for n in PACKAGES['FILES']} | {'MENU.PLG'}
+    raw_catalog = (BUILD / 'EXTRAS.CAT').read_bytes()
+    menu_count = sum(raw_catalog[i + 11] == 0 for i in range(0, len(raw_catalog), 78))
     for name, entry in xc.items():
         if not name.endswith('.PLG'): continue
         assert entry[16] == 6 and int.from_bytes(entry[31:33], 'little') == 0x1B00
@@ -44,7 +50,7 @@ def main():
         if not path.exists():
             path = BUILD / ('A2FILE.CODE.BIN.' + stem)
         assert xi.read(entry) == path.read_bytes(), name
-    print('PASS les images publiees reunissent 43 surcouches, avec menu commun, aux bons octets et attributs', flush=True)
+    print('PASS FILES contient exactement ses outils, avec menu commun et bons attributs', flush=True)
 
     with tempfile.TemporaryDirectory(prefix='a2fc-extras-') as tmp:
         tmp = Path(tmp)
@@ -70,8 +76,16 @@ def main():
             s.wait(lambda: expected in s.rows()[22], 'CRC du complement', 30)
             s.ok('le menu charge une surcouche a table de services du lecteur 2', s.rows()[22].strip() == expected)
             s.key(b'!'); s.wait(lambda: s.has('the overlays'), 'menu fusionne', 30); p.stable()
-            s.ok('le menu contient les 42 commandes des deux disquettes', '/42' in s.rows()[0], s.rows()[0])
+            s.ok('le menu contient les commandes de toutes les categories', len(menu_inventory(s, p)) == menu_count, menu_count)
             s.key(ESC)
+            # Every absent category must be named correctly, even with FILES online.
+            for role, command in [('MEDIA', 'IMAGE'), ('DISKTOOLS', 'BLKVIEW'), ('DEVTOOLS', 'BASLIST')]:
+                menu_run(s, p, command, allow_aux=False)
+                prompt = 'Insert ' + VOLUMES[role] + cpu + ' S6,D2'
+                s.wait(lambda: s.has(prompt), 'demande de ' + role, 30)
+                s.ok('le disque absent est identifie : ' + role, s.has(prompt))
+                s.key(ESC)
+                s.wait(lambda: s.has('missing or stale'), 'annuler ' + role, 30)
             s.key(b'/'); s.select('/' + extravol); p.stable()
             rename_to(s, p, extravol, 'TOOLS')
             s.ok('le complement peut etre renomme', s.has('Volume renamed to /TOOLS'))
@@ -89,9 +103,9 @@ def main():
             s.ok('les outils de la disquette principale restent utilisables', s.has('scratch volume'))
             s.key(ESC)
             s.key(b'!'); s.wait(lambda: s.has('the overlays'), 'menu sans complement', 30); p.stable()
-            s.ok('sans complement le catalogue garde les 42 commandes', '/42' in s.rows()[0], s.rows()[0])
+            s.ok('sans complement le catalogue garde toutes les commandes', len(menu_inventory(s, p)) == menu_count, menu_count)
             s.key(ESC)
-    first = ok_all(s, 'extras, deux lecteurs')
+    first = ok_all(s, 'categories, deux lecteurs')
     with tempfile.TemporaryDirectory(prefix='a2fc-extras-one-') as tmp:
         tmp = Path(tmp)
         floppy = tmp / 'BOOT.po'; shutil.copyfile(boot, floppy)
@@ -140,11 +154,11 @@ def main():
             s.wait(lambda: s.has('Insert ' + bootvol + ' S6,D1'), 'annuler la lecture du fichier', 30)
             s.key(ESC); p.stable()
             s.ok('ESC apres une grande surcouche restaure les panneaux', s.has('Type  Aux') or s.has('Volume          Slot'))
-    second = ok_all(s, 'extras, un lecteur')
+    second = ok_all(s, 'categories, un lecteur')
     with tempfile.TemporaryDirectory(prefix='a2fc-extras-basic-') as tmp:
         tmp = Path(tmp)
         floppy = tmp / 'BOOT.po'; shutil.copyfile(boot, floppy)
-        companion = tmp / 'EXTRAS.po'; shutil.copyfile(extra, companion)
+        companion = tmp / 'EXTRAS.po'; shutil.copyfile(ROOT / ('dist/A2FILECMD-6502-DEVTOOLS-%s.po' % VERSION), companion)
         hd = scratch(tmp)
         program = mkdemo.applesoft([(10, bytes([mkdemo.HOME])),
             (20, bytes([mkdemo.PRINT]) + b'"EXTRAS BASIC OK"'), (30, bytes([mkdemo.END]))])
@@ -162,7 +176,7 @@ def main():
             s.type('-/' + bootvol + '/A2FILE.SYSTEM'); s.key(RET)
             s.wait(lambda: s.has('Type  Aux'), 'retour de BASIC', 90)
             s.ok('le chemin absolu relance A2FC sur sa disquette', s.has('Type  Aux'))
-    return first or second or ok_all(s, 'extras, BASIC')
+    return first or second or ok_all(s, 'categories, BASIC')
 
 
 if __name__ == '__main__':

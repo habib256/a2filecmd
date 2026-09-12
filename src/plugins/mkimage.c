@@ -31,9 +31,9 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
     unsigned char k; unsigned long length;
     init(api);
     if(pan->fs || !pan->path[0]) {note("Open a ProDOS destination directory.");return;}
-    a.message("MKIMAGE: P .PO  2 .2MG  ESC Cancel");
+    a.message("\1MKIMAGE: P .PO  2 .2MG  ESC Cancel");
     do{k=a.cgetc();if(k==KEY_ESC)return;}while(k!='P'&&k!='p'&&k!='2');two=k=='2';
-    a.message("Size: 1 140K  2 800K  3 2M  4 4M  5 8M  6 16M  ESC");
+    a.message("\1Size: 1 140K  2 800K  3 2M  4 4M  5 8M  6 16M  ESC");
     do{k=a.cgetc();if(k==KEY_ESC)return;}while(k<'1'||k>'6');blocks=sizes[k-'1'];
     if(!a.prompt("Image base name (up to 11 characters)","NEW",0))return;
     if(a.strlen(a.input)>11) {note("Name too long.");return;}

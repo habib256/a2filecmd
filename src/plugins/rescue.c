@@ -38,7 +38,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
     unsigned char k,ok,dunit;unsigned int n,block;unsigned long left;
     init(api);in=out=logfile=0;bad=retried=0;offset=0;part=0;
     if(pan->fs || other->fs || !other->path[0]){note("Use a real ProDOS destination in the other panel.");return;}
-    a.message("RESCUE: F Selected file  V Active volume  ESC Cancel");
+    a.message("\1RESCUE: F Selected file  V Active volume  ESC Cancel");
     do{k=a.cgetc();if(k==KEY_ESC)return;}while(k!='f'&&k!='F'&&k!='v'&&k!='V');disk=k=='v'||k=='V';
     a.strcpy(source,disk?(pan->path[0]?pan->path:a.selected->name):a.full);
     if(source[0]!='/' || (!disk && (!pan->path[0] || a.selected->type==15))){note("Select a source file or volume.");return;}
@@ -75,7 +75,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
     if(in){a.fclose(in);in=0;}
     a.sprintf(a.other_full,"COMPLETE %lu bytes, %u zero-filled chunks, %u retried.\r",size,bad,retried);
     if(!logline(a.other_full))goto fail;
-    a.sprintf(a.note,"RESCUE: %lu bytes, %u missing chunks; see %s.LOG.",size,bad,base);return;
+    a.sprintf(a.note,"\1RESCUE: %lu bytes, %u missing chunks; see %s.LOG.",size,bad,base);return;
 fail:
     if(in){a.fclose(in);in=0;}if(out){a.fclose(out);out=0;}
     logline("INCOMPLETE: cancelled/read-open/write error. Keep partial output.\r");

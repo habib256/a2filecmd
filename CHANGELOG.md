@@ -5,6 +5,96 @@ downloads and installation.
 
 ## Unreleased
 
+## [0.8.0] - 2026-09-12
+
+- Prepare the 0.8.0 candidate and update the English manual and distribution
+  names. Image validation checks the launcher's embedded release version and
+  compares the shipped ProDOS and BASIC.SYSTEM bytes with their source files.
+- PT3 channel-volume audit exercises the complete decoder and VIA output on
+  both CPUs, with and without clock conversion; channel levels are preserved.
+
+- Release CI rejects tags that disagree with the configured build version.
+  Release notes derive the overlay count from the package inventory and keep
+  current artifact names on branch builds even when Unreleased is empty.
+
+- Deep recursive operations check actual C-stack headroom before directory I/O.
+  Directory deletion preflights its tree before removing files; oversized trees
+  are refused instead of corrupting resident memory.
+
+- Directory read/close errors now invalidate incomplete panels and stop
+  recursive operations. ProDOS image chains validate their backward links.
+- DOS 3.3 rejects invalid track/sector coordinates, failed seeks and incomplete
+  catalogs; cyclic deleted catalog chains terminate with an error.
+- Media navigation refuses to restore a cursor outside a reread directory.
+- Release CI refuses cancelled emulator jobs. The complete-session bench now
+  tests foreground MB1 without AUX loss; its 140K fixture and dedicated archive
+  fixtures fit again. Image mutation coverage includes MGTK, Print Shop and LZ4FH.
+
+- Left/Right now browse tunes of the same type and files handled by the same
+  specialized picture viewer, including across large-directory windows.
+  At either end the current media stays open. Existing AUX consent remains.
+- PT3 displays bounded, sanitized title/artist fields and credits Vince Weaver
+  with the A2FC adapter; the 4,608-byte module limit is unchanged.
+- Escape and Return on .. find the child directory in the parent's full listing,
+  restoring its selection even beyond the first 139-entry window.
+
+- MUSIC now contains the complete foreground MB1 player. P pauses/resumes,
+  Escape returns, and natural end restores the panels. The 4 KB stream stays
+  in main RAM; playback preserves /RAM and no player IRQ remains resident.
+- Preferences use exclusive temporary creation, complete readback and a
+  retained backup through replacement; errors preserve recovery files.
+- Directory navigation moves into internal NAV; internal BATCH orchestrates
+  MOVE on marked files with an exclusive verified destination manifest,
+  stopping on errors and restoring pending source marks by name.
+
+- The ! menu now opens task categories, then alphabetically sorted tools;
+  Escape returns one level and Left/Right still move six rows. Its MAIN-only
+  catalog holds 64 entries instead of 52, keeping all current tools visible.
+- Questions on line 22 use inverse video, including confirmations, input and
+  conversion/disk choices. Plain information remains normal.
+- VOLINFO moves to DISKTOOLS to keep the 140 KB BOOT floppy within capacity.
+
+- Added foreground PT3 playback on the Mockingboard: Return on `.PT3`, P to
+  pause/resume, Escape to stop, and automatic stop at song end. The module
+  and decoder use main RAM only (4,608-byte module limit). Card detection
+  is separated from MB1's AUX reader installation. Runtime pointer guards,
+  bounded command processing and checked input closure protect malformed
+  modules. See the manual for tracker-feature limits.
+
+- Return now opens Integer BASIC (`$FA`) files with INTBASIC. Return and I
+  select three new MEDIA viewers: LZ4FH for FOT `$8066` (DIP.CHIPS), PRINTSHOP
+  for monochrome 88x52 clip art (BBROS.MINI), and FONTVIEW for MGTK `$07`
+  fonts. All three keep graphics in main RAM and preserve auxiliary RAM.
+  Input bounds, stream errors and closure are checked before showing the image.
+  Added host regressions and a native corpus bench for the 52 sample fonts.
+
+- Successful real-hardware validation on Apple //c, enhanced Apple IIe and
+  unenhanced Apple IIe confirmed by the maintainer on September 12, 2026.
+  Updated the compatibility documentation and stabilization record.
+
+- In the overlay menu, Left/Right now moves six lines, stopping at the
+  first or last entry. The footer shows the six-line step.
+
+- Return and I now select the correct picture viewer on both CPUs: Extasie
+  ($F2), packed FOT ($08/$4000–4001), packed 816/Paint ($06/$E001–E002),
+  and lo-res pages ($0400). Packed metadata takes priority over raw-page
+  sizes; the raw/RLE album skips specialized formats. AUX-loss consent and
+  explicit H for hex remain. DGR and HGRR/DHRR headers are also recognized
+  without type or name hints; I opens unmarked small BIN/FOT screens and
+  sprites in DGRVIEW. Probe read/close errors stop dispatch. OPEN.PLG is a
+  small internal BOOT dependency.
+
+- Floppies now use 6502 only: BOOT plus FILES, MEDIA, DISKTOOLS and DEVTOOLS,
+  replacing EXTRA/EXTRA2. XL remains available for both 6502 and 65C02.
+  A shared package manifest checks complete coverage, and every companion
+  carries MENU and the catalog with the correct named disk prompts.
+
+- BOOTBLK now reads both source and original boot blocks before any write,
+  verifies each write and restores both originals after an installation error.
+  Failed restoration is reported explicitly. Its main-memory backup leaves
+  `/RAM` untouched but cannot recover a power cut. Fault-injection tests cover
+  errors before and after physical writes, corruption and restoration failures.
+
 - Data safety is now an explicit repository requirement in AGENTS.md, with a
   documented audit and recovery limits. Copies and editor saves preserve old
   files and verify results; extraction exclusively creates new files. TXTCONV

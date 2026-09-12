@@ -22,6 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 from pom2 import Pom2, Session, ROOT, DISK
+from archive_support import archive_floppy
 from run import scratch_volume, RET, TAB, volume
 import mkshk
 from prodos_read import Image
@@ -41,8 +42,7 @@ def main():
 
     with tempfile.TemporaryDirectory(prefix='a2fc-shk-') as tmp:
         tmp = Path(tmp)
-        floppy = tmp / 'A2FILECMD.po'
-        shutil.copyfile(DISK, floppy)
+        floppy = archive_floppy(tmp, 'UNSHRINK')
         hdv = scratch_volume(tmp)
         stage = tmp / 'scratch'
         output = tmp / 'output'
@@ -91,6 +91,8 @@ def main():
                 s.select(out + '.SHK', 0); p.stable()
                 source_rows = [r[:38] for r in s.rows()[2:20]]
                 s.key(b'!'); s.wait(lambda: s.has('the overlays'), 'menu', 30); p.stable()
+                from xplug import menu_category
+                menu_category(s, p, 'UNSHRINK')
                 s.key(b'U'); p.stable(); s.key(RET, pause=0); s.allow_aux()
                 progress = []
                 deadline = time.time() + 60

@@ -12,9 +12,9 @@
 ; menu displays. This file is the first object of the link after crt0 so
 ; that the header sits right at the head of each segment.
 
-        .import _main
+        .import _main, _open_entry
         .import _image_entry, _help_entry, _text_entry, _hex_entry, _delete_entry
-        .import _edit_entry, _music_entry, _run_entry, _attr_entry, _menu_entry
+        .import _edit_entry, _run_entry, _attr_entry, _menu_entry
         .import _diskimg_entry
         .import _imgfs_entry
         .import _dos33_entry
@@ -42,6 +42,13 @@ _a2fc_link_id:
         .asciiz desc
 .endmacro
 
+        .import _batch_entry
+        .segment "BATCH"
+        header BIG, _batch_entry, "Internal marked-file move list"
+        .segment "NAV"
+        header 0, 0, "Internal directory navigation"
+        .segment "OPEN"
+        header 0, _open_entry, "Internal file viewer selection"
         .segment "COPY"
         header 0, 0, "Internal file copy"
         .segment "IMAGE"
@@ -66,10 +73,8 @@ _a2fc_link_id:
         header  0, _delete_entry, "Delete the tagged files, or the selection, after confirmation (D)"
         .segment "EDIT"
         header  BIG, _edit_entry, "Edit the selection as text, up to 5 KB, or write a new file (E)"
-        .segment "MUSIC"
-        header  AUX, _music_entry, "Play the selected .MB tune on a Mockingboard, P pauses it"
         .segment "RUN"
-        header  0, _run_entry, "Run the selected SYS, BIN or Applesoft program, and leave A2FC"
+        header  BIG, _run_entry, "Run the selected SYS, BIN or Applesoft program, and leave A2FC"
         .segment "ATTR"
         header  0, _attr_entry, "Change the ProDOS type and auxtype of the selection (A)"
         .segment "DISKIMG"
@@ -86,3 +91,20 @@ _a2fc_link_id:
         .import _format_entry
         .segment "FORMAT"
         header BIG, _format_entry, "Format a ProDOS disk, with explicit erase confirmation (F)"
+
+; Called before directory I/O in recursive traversals. Compare the actual C
+; stack pointer with its floor plus 80 bytes of I/O/call headroom. Never
+; descend far enough to overwrite live resident code, even for a narrow tree.
+        .export _tree_stack_ok
+        .importzp sp
+        .import __HIMEM__, __STACKSIZE__
+        .segment "LC"
+_tree_stack_ok:
+        lda sp
+        cmp #<(__HIMEM__ - __STACKSIZE__ + 80)
+        lda sp+1
+        sbc #>(__HIMEM__ - __STACKSIZE__ + 80)
+        lda #0
+        rol a
+        ldx #0
+        rts

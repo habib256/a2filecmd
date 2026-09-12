@@ -74,6 +74,7 @@ static void too_long(void);
 static unsigned char target_check(void);
 static void progress_bar(const char* name, unsigned long copied, unsigned long size);
 static void refresh_both(void);
+static unsigned char abort_key(void);
 static void dir_fail(void);
 
 #ifndef A2FC_VERSION
@@ -105,6 +106,7 @@ extern char _LOWBSS_SIZE__[];
 #pragma bss-name (push, "LOWBSS")
 static struct Panel panels[2];
 static unsigned char active, sort_mode, over_policy;
+static unsigned char batch_snapshot;
 static unsigned int progress_done, progress_total, progress_skipped;
 static unsigned char progress_abort;   /* ESC during an operation: we stop at the current file */
 static unsigned char bar_last;         /* the bar as it is drawn: we only redraw it if it changes */
@@ -113,7 +115,6 @@ static const char* bar_name;
 unsigned int a2fc_draws, a2fc_ops, a2fc_errors;
 unsigned char a2fc_view;       /* 0 panels, 1 image, 2 text, 3 hex, 4 help, 5 editor */
 unsigned char a2fc_slot;       /* the Mockingboard, 0 without; 0xFF not searched for yet */
-unsigned char a2fc_playing;    /* 0 silent, 1 playing, 2 paused */
 unsigned char a2fc_mouse;      /* the slot of the mouse, 0 without */
 #ifndef A2FC_NOMOUSE
 static unsigned char pointer;  /* the mouse has moved once: the pointer is shown */
@@ -135,6 +136,13 @@ static char reselect[NAME_LEN];    /* on return from a big overlay: the name to 
 static struct Entry selected;      /* the entry under the cursor, copied before a big overlay overwrites the table */
 static char note[80];              /* ... and the message to write on line 22 */
 static long text_starts[80];   /* known page starts */
+/* MOVE manifest state survives all overlays in the idle text-viewer buffer. */
+struct MoveBatch {
+    char list[PATH_LEN], source[PATH_LEN], target[PATH_LEN], reason[80];
+    unsigned char count, index, owned, ready;
+};
+#define MB ((struct MoveBatch*)text_starts)
+typedef char batch_state_fits[sizeof text_starts - sizeof(struct MoveBatch)];
 /* The recursive walks (copying and deleting a directory) stack the
  * entries of each level: a level occupies pool[base..base+n[, the next
  * level starts at base+n. A tree in which one path accumulates more than
@@ -219,6 +227,7 @@ static void volume_space(struct Panel* pan)
  * never in use at the same time. */
 static int dir_fd = -1;
 static unsigned char dir_index, dir_per_block, dir_entry_len, dir_error;
+static unsigned int dir_block_key;
 static struct DirEntry dir_entry;
 
 /* ---------------------------------------------------------------------- */
@@ -277,8 +286,9 @@ static unsigned char img_open(const char* path)
 static unsigned char dos_read_sector(unsigned char track, unsigned char sector)
 {
     unsigned char code, parms[6];
+    if (track >= 35 || sector >= 16) return 0;
     if (!dos_unit) {
-        fseek(img_f, img_base + (((long)track * 16 + sector) << 8), SEEK_SET);
+        if (fseek(img_f, img_base + (((long)track * 16 + sector) << 8), SEEK_SET)) return 0;
         return fread(copy_buf, 1, 256, img_f) == 256;
     }
     code = DOS_TS[sector];
@@ -323,6 +333,7 @@ static unsigned char dir_open_image(unsigned int key)
 {
     dir_error = 0;
     dir_img = 1;
+    dir_block_key = key;
     if (!img_read_block(key, copy_buf) || (copy_buf[4] >> 4) < 0x0E) return 0;
     dir_entry_len = copy_buf[4 + 0x1F];
     dir_per_block = copy_buf[4 + 0x20];
@@ -347,8 +358,8 @@ static unsigned char dir_open(const char* path)
 
 static void dir_close(void)
 {
-    if (dir_img) { if (img_f) fclose(img_f); img_f = 0; dir_img = 0; return; }
-    if (dir_fd >= 0) close(dir_fd);
+    if (dir_img) { if (img_f && fclose(img_f)) dir_error = 1; img_f = 0; dir_img = 0; return; }
+    if (dir_fd >= 0 && close(dir_fd)) dir_error = 1;
     dir_fd = -1;
 }
 
@@ -359,7 +370,13 @@ static unsigned char dir_block_next(void)
 {
     unsigned int next = copy_buf[2] | ((unsigned int)copy_buf[3] << 8);
     if (!next) return 0;
-    if (dir_img ? img_read_block(next, copy_buf) : read(dir_fd, copy_buf, 512) == 512) return 1;
+    if (dir_img) {
+        if (img_read_block(next, copy_buf) &&
+            (copy_buf[0] | ((unsigned int)copy_buf[1] << 8)) == dir_block_key) {
+            dir_block_key = next;
+            return 1;
+        }
+    } else if (read(dir_fd, copy_buf, 512) == 512) return 1;
     dir_error = 1;
     return 0;
 }
@@ -407,21 +424,35 @@ static void clear_row(unsigned char row)
     cclearxy(0, row, 80);
 }
 
+#pragma code-name (push, "LC")
 static void message(const char* text)
 {
+    revers(0);
     clear_row(22);
+    if (*text == 1) { revers(1); ++text; } /* explicit question marker, also available to plugins */
     cputsxy(0, 22, text);
+    revers(0);
 }
+#pragma code-name (pop)
 
+#pragma code-name(push, "LC")
 static void too_long(void)
 {
     extern const char msg_toolong[]; message(msg_toolong);
 }
+#pragma code-name(pop)
 
+#ifndef A2FC_6502
+#pragma code-name(push, "LC")
+#endif
 static void dir_fail(void)
 {
     extern const char msg_dirfail[]; message(msg_dirfail);
 }
+#ifndef A2FC_6502
+#pragma code-name(pop)
+#endif
+extern unsigned char tree_stack_ok(void);
 
 /* The key bar, Norton Commander style: each key in an inverse block of
  * three columns, its label in plain text right after, one space between
@@ -779,6 +810,7 @@ static unsigned char read_dos33_panel(struct Panel* pan)
 {
     struct Entry* e;
     unsigned char ct, cs, i, k, len;
+    unsigned int remaining = 560;
     const unsigned char* d;
     char name[NAME_LEN];
     char c;
@@ -787,8 +819,8 @@ static unsigned char read_dos33_panel(struct Panel* pan)
     pan->count = 0;
     pan->more = 0;
     memset(pan->tags, 0, sizeof pan->tags);
-    while (ct && ct < 35 && pan->count < MAX_ENTRIES) {
-        if (!dos_read_sector(ct, cs)) break;
+    while (ct && pan->count < MAX_ENTRIES) {
+        if (!remaining-- || !dos_read_sector(ct, cs)) return 0;
         ct = copy_buf[1]; cs = copy_buf[2];
         for (i = 0; i < 7 && pan->count < MAX_ENTRIES; ++i) {
             d = copy_buf + 0x0B + i * 0x23;
@@ -854,7 +886,7 @@ static unsigned char read_image_panel(struct Panel* pan)
     }
     if (pan->fs == FS_DOS33) {       /* flat catalog, read by the overlay */
         i = read_dos33_panel(pan);
-        if (img_f) { fclose(img_f); img_f = 0; }
+        if (img_f) { if (fclose(img_f)) i = 0; img_f = 0; }
         if (!i) goto fail;
         return 1;
     }
@@ -866,7 +898,8 @@ static unsigned char read_image_panel(struct Panel* pan)
     if (!dir_open_image(pan->dir_key)) {
         if (img_dsk && pan->dir_key == 2 && read_dos33_panel(pan)) {
             pan->fs = FS_DOS33;
-            fclose(img_f); img_f = 0; dir_img = 0;
+            dir_close();
+            if (dir_error) goto fail;
             return 1;
         }
         dir_close();
@@ -885,6 +918,7 @@ static unsigned char read_image_panel(struct Panel* pan)
         e->mdate = dir_entry.key;   /* the key block, to navigate and extract */
     }
     dir_close();
+    if (dir_error) goto fail;
     if (pan->count > 2) sort_entries(pan);
     return 1;
 fail:
@@ -930,6 +964,7 @@ static unsigned char read_panel(unsigned char p)
                 e->mdate = dir_entry.mdate;
             }
             dir_close();
+            if (dir_error) {pan->count=pan->more=0;ok=0;goto placed;}
             if (pan->first && !pan->count) { pan->first = 0; return read_panel(p); }
             if (!pan->first && !pan->more && pan->count > 2) sort_entries(pan);
         }
@@ -988,6 +1023,22 @@ static void open_path(struct Panel* pan)
     if (!read_panel(pan - panels)) message("Cannot read this directory.");
 }
 
+#pragma code-name (push, "NAV")
+#pragma rodata-name (push, "NAVRO")
+/* Locate the child by name in the parent's current directory contents.
+ * Directory reads only; no saved index can select an unrelated entry. */
+static void nav_select(struct Panel* pan, const char* name)
+{
+    for (;;) {
+        select_name(pan, name);
+        if (pan->count && !strcmp(pan->e[pan->cursor].name, name)) return;
+        if (!pan->more || pan->fs || pan->first > 65535U-WINDOW) break;
+        pan->first += WINDOW;
+        if (!read_panel(pan-panels)) return;
+    }
+    open_path(pan); /* the child disappeared: a clean first window */
+}
+
 static void go_up(struct Panel* pan)
 {
     char last[NAME_LEN];
@@ -998,7 +1049,7 @@ static void go_up(struct Panel* pan)
             pan->path[0] = 0;
             pan->dir_key = 2;
             open_path(pan);
-            select_name(pan, "DOS 3.3");
+            nav_select(pan, "DOS 3.3");
             return;
         }
         if (pan->dir_key == 2) {
@@ -1011,14 +1062,14 @@ static void go_up(struct Panel* pan)
             else pan->path[0] = 0;
             pan->fs = FS_PRODOS;
             open_path(pan);
-            select_name(pan, input);
+            nav_select(pan, input);
         } else {
             /* go up one level in the image: ".." holds the parent's block */
             slash = strrchr(pan->path + pan->img_len, '/');
             pan->dir_key = pan->count ? pan->e[0].mdate : 2;
-            if (slash) *slash = 0;
+            if (slash) { strcpy(last, slash+1); *slash = 0; }
             pan->cursor = pan->top = 0;
-            read_panel(pan - panels);
+            if (read_panel(pan - panels) && slash) nav_select(pan, last);
         }
         return;
     }
@@ -1028,7 +1079,7 @@ static void go_up(struct Panel* pan)
     if (slash == pan->path) pan->path[0] = 0;   /* "/VOL" -> volumes */
     else *slash = 0;
     open_path(pan);
-    select_name(pan, last);
+    nav_select(pan, last);
 }
 
 static void enter_dir(struct Panel* pan, const struct Entry* e)
@@ -1049,18 +1100,28 @@ static void enter_dir(struct Panel* pan, const struct Entry* e)
     open_path(pan);
 }
 
+#pragma rodata-name (pop)
+#pragma code-name (pop)
+
 /* ---------------------------------------------------------------------- */
 /* Input -- in the language card                                          */
 /* ---------------------------------------------------------------------- */
 #pragma code-name (push, "LC")
 #pragma rodata-name (push, "LC")
 
+static void question_begin(void)
+{
+    clear_row(22);
+    gotoxy(0, 22);
+    revers(1);
+}
+
 static unsigned char confirm(const char* text)
 {
     char key;
-    clear_row(22);
-    gotoxy(0, 22);
+    question_begin();
     cprintf("%s (Y/N) ", text);
+    revers(0);
     for (;;) {
         key = cgetc();
         if (key == 'y' || key == 'Y') { clear_row(22); return 1; }
@@ -1078,9 +1139,9 @@ static unsigned char prompt(const char* label, const char* initial, unsigned cha
     if (initial) { strcpy(input, initial); len = strlen(input); }
     else input[0] = 0;
     for (;;) {
-        clear_row(22);
-        gotoxy(0, 22);
+        question_begin();
         cprintf("%s: %s%s_", label, hex ? "$" : "", input);
+        revers(0);
         key = cgetc();
         if (key == KEY_ESC) { clear_row(22); return 0; }
         if (key == KEY_RETURN) { clear_row(22); return hex ? len == max : len != 0; }
@@ -1124,9 +1185,11 @@ static const char pdE48[] = "the disk is full";
 static const char pdE49[] = "the directory is full";
 static const char pdE4E[] = "the file is locked";
 static const char pdE52[] = "not a ProDOS disk";
-const char msg_dirfail[] = "Directory unreadable or too many files.";
+const char msg_dirfail[] = "Directory unreadable or too large/deep.";
 const char msg_toolong[] = "Path too long for ProDOS.";
+#pragma rodata-name (push, "RODATA")
 const char msg_sysonly[] = "SYS, BIN or BAS only.";
+#pragma rodata-name (pop)
 const char msg_nomb[] = "No Mockingboard in slots 1-7.";
 const char msg_vdrive[] = "VDrive: serial card in slot %u, volumes in slot %u, drives 1 and 2.";
 const char msg_notimg[] = "Not a ProDOS disk image (or DOS 3.3).";
@@ -1194,7 +1257,7 @@ static void report_error(const char* what)
  * used to cost some thirty bytes. */
 static unsigned char page_size(const unsigned long* size)
 {
-    const unsigned int* w = (const unsigned int*)size;
+    const uint16_t* w = (const uint16_t*)size;
     /* 8,184 and 16,376 as well as 8,192 and 16,384: a saver that stops at
      * the last byte the screen actually shows drops the eight bytes of the
      * final screen hole. 816/Paint writes its uncompressed double hi-res
@@ -1202,21 +1265,18 @@ static unsigned char page_size(const unsigned long* size)
     return !w[1] && (w[0] == 8192 || w[0] == 8184 || w[0] == 16384 || w[0] == 16376);
 }
 
-static unsigned char looks_like_image(const struct Entry* e)
+/* One classification for Return, I and the raw-image album. Explicit
+ * packed formats take precedence over coincidental raw-page file sizes.
+ * 0 unknown, 1 raw/RLE, 2 Extasie, 3 packed FOT, 4 816/Paint, 5 lo-res. */
+static unsigned char image_kind(const struct Entry* e)
 {
     unsigned char n = strlen(e->name);
     if (is_dir(e)) return 0;
-    /* Extasie/Chat Mauve images use the ProDOS graphics file type $F2. */
-#ifdef A2FC_6502
-    if (e->type == 0xF2) return 1;
-#endif
-    /* A FOT ($08) only counts as an image when it holds a RAW page. It used
-     * to be claimed on its type alone, and load_image, which knows nothing
-     * but raw pages and the RLE streams, then refused it: a packed FOT
-     * (auxtype $4000, $4001, $8066) was a dead end -- announced as an image,
-     * answered "not an image", and denied even the hex viewer that every
-     * other unknown type falls back to. PACKFOT decodes those. */
+    if (e->type == 0xF2) return 2;
     if (e->type != 0x06 && e->type != 0x08) return 0;
+    if (e->type == 0x08 && ((e->aux & 0xFFFE) == 0x4000 || e->aux == 0x8066)) return 3;
+    if (e->type == 0x06 && (e->aux == 0xE001 || e->aux == 0xE002)) return 4;
+    if (e->aux == 0x0400 && e->size && e->size <= 2048) return 5;
     return page_size(&e->size) || (n > 4 && !strcmp(e->name + n - 4, ".RLE"));
 }
 #pragma rodata-name (pop)
@@ -1861,42 +1921,6 @@ void __fastcall__ hex_entry(const struct A2fcApi* a)
 /* Preferences: A2FILE/A2FILE.CFG -- in the language card                 */
 /* ---------------------------------------------------------------------- */
 
-/* Three CR-terminated lines: left panel, right panel, "S<sort>A<active>". */
-static const char cfg_format[] = "%s\r%s\rS%uA%u\r";
-static void save_config(void)
-{
-    FILE* f;
-    unsigned char n;
-    _filetype = 0x04;
-    _auxtype = 0;
-    f = fopen(cfg_path, "wb");
-    if (!f) return;
-    n = sprintf((char*)copy_buf, cfg_format, panels[0].path, panels[1].path, sort_mode, active);
-    fwrite(copy_buf, 1, n, f);
-    fclose(f);
-}
-
-static void load_config(void)
-{
-    FILE* f = fopen(cfg_path, "rb");
-    unsigned char n, p = 0, i, len = 0;
-    char line[PATH_LEN];
-    if (!f) return;
-    n = fread(copy_buf, 1, 200, f);
-    fclose(f);
-    for (i = 0; i < n && p < 3; ++i) {
-        if (copy_buf[i] != '\r') { if (len < PATH_LEN - 1) line[len++] = copy_buf[i]; continue; }
-        line[len] = 0;
-        if (p < 2 && line[0] == '/') strcpy(panels[p].path, line);
-        if (p == 2 && len >= 4 && line[0] == 'S' && line[2] == 'A' && (unsigned char)(line[1] - '0') < SORT_MODES) {
-            sort_mode = line[1] - '0';
-            active = (line[3] - '0') & 1;
-        }
-        ++p;
-        len = 0;
-    }
-}
-
 #pragma rodata-name (pop)
 #pragma code-name (pop)
 
@@ -1956,12 +1980,6 @@ static void a2file_file(const char* name)
     else other_full[0] = 0;
 }
 
-#ifdef A2FC_6502
-#define COMPANION_VOLUME "A2EXTRA6502"
-#else
-#define COMPANION_VOLUME "A2EXTRA65C02"
-#endif
-
 /* Start with slot 6, drive 2; the swap prompt can select drive 1. Resolve
  * the volume each time: swapping or renaming must not leave a cached path. */
 static unsigned char companion_unit = 0xE0;
@@ -1981,9 +1999,10 @@ static unsigned char companion_path(const char* suffix)
 static unsigned char disk_question(const char* name)
 {
     char key;
-    clear_row(22); gotoxy(0, 22);
+    question_begin();
     cprintf("Insert %s S6,D%u: %s D1/2 RET ESC",
             question, (companion_unit >> 7) + 1, name);
+    revers(0);
     key = cgetc();
     if (key == KEY_ESC) return 0;
     if (key == '1' || key == '2') companion_unit = key == '1' ? 0x60 : 0xE0;
@@ -1992,15 +2011,27 @@ static unsigned char disk_question(const char* name)
 
 static unsigned char ask_disk(const char* name)
 {
-    const char* local;
-    /* Keep aligned with PLUGINS_FLOPPY and XPLUGINS_FLOPPY in Makefile. */
-    static const char locals[] = "COPY\0HELP\0TEXT\0HEX\0DELETE\0RUN\0FORMAT\0ATTR\0MENU\0DISKIMG\0IMGFS\0DOS33\0COMPARE\0TXTCONV\0DATE\0VERIFY\0TAGPAT\0VOLNAME\0VOLINFO\0WIPE\0";
-    for (local = locals; *local; local += strlen(local) + 1)
-        if (!strcmp(local, name)) break;
-    if (*local) {
-        strcpy(question, cfg_path + 1);
-        *strchr(question, '/') = 0;
-    } else strcpy(question, COMPANION_VOLUME);
+    FILE* f;
+    char* colon;
+    /* The same catalog travels on every category disk. Its description
+     * starts with the exact volume name, so routing cannot drift from the
+     * distribution manifest and works during a single-drive swap. */
+    strcpy(question, "tool disk");
+    a2file_file("EXTRAS.CAT");
+    f = fopen(other_full, "rb");
+    if (!f && companion_path("/A2FILE/EXTRAS.CAT")) f = fopen(other_full, "rb");
+    if (f) {
+        while (fread(copy_buf, 1, 78, f) == 78) {
+            copy_buf[77] = 0;
+            if (strncmp((char*)copy_buf, name, 12)) continue;
+            colon = strchr((char*)copy_buf + 12, ':');
+            if (colon && colon > (char*)copy_buf + 12 && colon <= (char*)copy_buf + 27) {
+                *colon = 0; strcpy(question, (char*)copy_buf + 12);
+            }
+            break;
+        }
+        fclose(f);
+    }
     return disk_question(name);
 }
 
@@ -2045,11 +2076,11 @@ static unsigned char load_overlay(const char* name, unsigned char any)
     f = open_overlay(name, 1);
     if (f) {
         if (fread(OVERLAY_WINDOW, 1, 8, f) == 8
-            && (OVL->signature == a2fc_link_id || (any && OVL->signature == PLUGIN_MAGIC))) {
+            && (OVL->signature == a2fc_link_id || (any && (OVL->signature == PLUGIN_MAGIC || OVL->signature == MEDIA_PLUGIN_MAGIC)))) {
             if ((OVL->flags & OVERLAY_AUX) && !confirm("Uses AUX memory: ALL /RAM files will be LOST. Continue?")) {
                 fclose(f); return 0;
             }
-            if (OVL->flags & OVERLAY_BIG) keep_tags(1);
+            if ((OVL->flags & OVERLAY_BIG) && !batch_snapshot) keep_tags(1);
             fread(OVERLAY_WINDOW + 8, 1, (OVL->flags & OVERLAY_BIG ? OVERLAY_LARGE : OVERLAY_SMALL) - 8, f);
             strcpy(overlay_loaded, name);
             ok = 1;
@@ -2091,15 +2122,21 @@ static unsigned char load_overlay(const char* name, unsigned char any)
  * row 22. */
 static struct A2fcApi api;
 static void select_name(struct Panel* pan, const char* name);
+static unsigned char __fastcall__ prepare_audio(unsigned char arg);
+#include "media.h"
 static void overlay_run(const char* name, unsigned char arg)
 {
     struct Panel* pan = &panels[active];
-    unsigned char big;
+    unsigned char big, media=media_type(name), dir;
+again:
+    if(media && !media_prepare(media)) {draw_all();return;}
     /* The entry under the cursor and its path, kept safe: a big overlay
      * covers the entry table as it loads. */
+    if (arg != 'B' && !batch_snapshot) {
     full[0] = 0;
     if (pan->count) { selected = pan->e[pan->cursor]; build_full(full, pan, &selected); }
     else selected.name[0] = 0;
+    }
     if (!load_overlay(name, 1)) return;
     /* A big overlay has already set the tags aside and covered the entry
      * table as it loaded (load_overlay): even without an entry point, the
@@ -2108,7 +2145,7 @@ static void overlay_run(const char* name, unsigned char arg)
      * come from a malformed third-party overlay (PLUGIN_MAGIC without an
      * entry). */
     big = OVL->flags & OVERLAY_BIG;
-    api.arg = arg;
+    api.arg = prepare_audio(arg);
     reselect[0] = 0;
     note[0] = 0;
     if (OVL->entry) OVL->entry(&api);
@@ -2123,7 +2160,61 @@ static void overlay_run(const char* name, unsigned char arg)
         draw_all();
         if (note[0]) message(note);
     } else if (!OVL->entry) message(note);
+    if(media && media_request) {
+        dir=media_request==KEY_RIGHT;
+        pan->first=media_first[dir];
+        if(!read_panel(active))return;
+        keep_tags(0);
+        select_name(pan,album[dir]);
+        if(!pan->count || strcmp(pan->e[pan->cursor].name,album[dir]))return;
+        name=media_names[media-1];
+        goto again;
+    }
 }
+
+#pragma code-name (push, "LC")
+#pragma rodata-name (push, "LC")
+static const char batch_cancel[] = "Cancelled; remaining sources kept.";
+/* BATCH keeps its snapshot above its own code. MOVE may use the whole
+ * graphics page; the next phase takes a fresh snapshot after panel refresh. */
+static void batch_stage(unsigned char arg)
+{
+    struct Panel* pan = &panels[active];
+    MB->ready = 255;
+    keep_tags(1);
+    batch_snapshot = 1;
+    full[0] = 0;
+    memmove((void*)0x3000, pan->e, pan->count * sizeof(struct Entry));
+    overlay_run("BATCH", arg);
+    batch_snapshot = 0;
+    if (MB->ready == 255) {
+        MB->ready = 0;
+        overlay_loaded[0] = 0;
+        read_panel(0); read_panel(1); keep_tags(0); draw_all();
+        strcpy(note, "Batch unavailable; any A2MOVE.LST kept.");
+        message(note);
+    }
+}
+
+static void move_marked(void)
+{
+    memset(MB, 0, sizeof *MB);
+    batch_stage('W');
+    if (!MB->owned || !MB->ready) return;
+    progress_abort = 0;
+    while (MB->index < MB->count) {
+        batch_stage('R');
+        if (!MB->ready) { strcpy(MB->reason, note); break; }
+        overlay_run("MOVE", 'B');
+        if (!reselect[0]) { strcpy(MB->reason, note); break; }
+        ++MB->index;
+        if (abort_key()) { strcpy(MB->reason, batch_cancel); break; }
+    }
+    batch_stage('F');
+}
+
+#pragma rodata-name (pop)
+#pragma code-name (pop)
 
 /* ---------------------------------------------------------------------- */
 /* The IMAGE overlay: the loader and the decoder, in A2FILE/IMAGE.PLG     */
@@ -2132,7 +2223,7 @@ static void overlay_run(const char* name, unsigned char arg)
 /* Everything from here to the pop is linked separately, into the $1B00
  * window: ordinary RAM, at the same price as $4000, but which costs the
  * resident program nothing. The core knows how to recognise an image
- * (looks_like_image) and load the overlay; it no longer knows how to decode.
+ * (image_kind) and load the overlay; it no longer knows how to decode.
  * The text and hex viewers (TEXT, HEX), deletion (DELETE) and help (HELP)
  * are other overlays, each marked the same way. */
 #pragma code-name (push, "IMAGE")
@@ -2289,7 +2380,6 @@ static void view_image(void)
     struct Panel* pan = &panels[active];
     unsigned char index = pan->cursor, next, p, dir;
     char key;
-    if (!overlay("IMAGE")) return;
     aux_dirty = 0;
     /* The image covers the entry tables: the tags are set aside, the panels
      * reread on return, and the active panel before each next image so as
@@ -2312,7 +2402,7 @@ static void view_image(void)
             for (;;) {
                 if (!dir) { if (!next) break; --next; }
                 else { if (next + 1 >= pan->count) break; ++next; }
-                if (looks_like_image(&pan->e[next])) { strcpy(album[dir], pan->e[next].name); break; }
+                if (image_kind(&pan->e[next]) == 1) { strcpy(album[dir], pan->e[next].name); break; }
             }
         }
         /* NOTHING may write to $2000-$3FFF while the graphics page is on
@@ -2654,90 +2744,13 @@ void __fastcall__ edit_entry(const struct A2fcApi* a)
 
 #pragma code-name (push, "LC")
 #pragma rodata-name (push, "LC")
-static unsigned char looks_like_music(const struct Entry* e)
+static unsigned char __fastcall__ prepare_audio(unsigned char arg)
 {
-    unsigned char n = strlen(e->name);
-    return !is_dir(e) && e->type == 0x06 && n > 3 && !strcmp(e->name + n - 3, ".MB");
+    if (!(OVL->flags & OVERLAY_AUDIO)) return arg;
+    return music_detect_card();
 }
 #pragma rodata-name (pop)
 #pragma code-name (pop)
-
-/* Return on a .MB: the MB1 stream is loaded into AUX by the game's player
- * (six voices, interrupt driven) and plays once while one keeps browsing
- * -- disk reads do not stop it, A2FC never touches it; P pauses it,
- * another .MB replaces it, Q and X cut it off. The card is looked for on
- * the first request.
- *
- * The stream lives in AUX $1000-$18FF, and that memory belongs to the
- * ProDOS /RAM: measured in the emulator, its driver stores blocks 9, 26,
- * 43... there (one in seventeen), its block map is at $0C00 and its
- * directory at $0E00. Nowhere in AUX are there 2,304 bytes out of its
- * reach. Once the stream is loaded the volume is therefore corrupt -- as
- * after a DHGR image -- and it is rebuilt from scratch the same way, and
- * says so. Rebuilt, it never rereads the free blocks: the music plays
- * safely, as long as nothing is written to /RAM while it plays (which
- * would damage the tune, not the volume). */
-/* The MUSIC overlay, in A2FILE/MUSIC.PLG: loading the stream; the player
- * (music.s) stays resident, the overlay can go away as soon as the tune
- * plays. */
-#pragma code-name (push, "MUSIC")
-#pragma rodata-name (push, "MUSICRO")
-static const char mu_toobig[]  = "MB over 2304 bytes.";
-static const char mu_notmb1[]  = "Not an MB1 file.";
-static const char mu_playing[] = "Playing %s, slot %u. P pauses.%s";
-void __fastcall__ music_entry(const struct A2fcApi* a)
-{
-    const struct Entry* e = &panels[active].e[panels[active].cursor];
-    FILE* f;
-    unsigned int n, total = 0;
-    unsigned char valid = 1, last = 0;
-    (void)a;
-    if (a2fc_slot == 0xFF) a2fc_slot = music_detect();
-    if (!a2fc_slot) { extern const char msg_nomb[]; message(msg_nomb); return; }
-    if (e->size > MUSIC_ZONE) { message(mu_toobig); return; }
-    f = fopen(full, "rb");
-    if (!f) { report_error("Open"); return; }
-    music_stop();
-    a2fc_playing = 0;
-    do {
-        n = fread(music_buf, 1, MUSIC_STAGE, f);
-        if (!total && (n <= 8 || memcmp(music_buf, "MB1", 3))) { valid = 0; break; }
-        if (n) { music_store(total, n); last = music_buf[n - 1]; }
-        total += n;
-    } while (n == MUSIC_STAGE);
-    fclose(f);
-    if ((last & 0xF0) != 0xE0) valid = 0;   /* without END the player would read AUX past it */
-    /* The stream lives on /RAM blocks (AUX $1000+): it is rebuilt from
-     * scratch, as on return from a DHGR image. ram_format uses page $2000
-     * as a buffer, hence the entry tables; we keep the file name (e points
-     * into the table) then reread and redraw the panels. */
-    strcpy(input, e->name);
-    if (ram_format()) {
-        keep_tags(1);
-        read_panel(0);
-        read_panel(1);
-        keep_tags(0);
-        draw_all();
-        ram_note = RAM_NOTE;
-    } else ram_note = (const char*)"";
-    if (!valid) { message(mu_notmb1); return; }
-    music_select(0);
-    music_set_loop(0);
-    music_play();
-    a2fc_playing = 1;
-    clear_row(22);
-    gotoxy(0, 22);
-    cprintf(mu_playing, input, a2fc_slot, ram_note);
-}
-#pragma rodata-name (pop)
-#pragma code-name (pop)
-
-static void toggle_music(void)
-{
-    if (!music_active) { a2fc_playing = 0; message("No music playing: open a .MB file."); }
-    else if (a2fc_playing == 1) { music_pause(); a2fc_playing = 2; message("Music paused. P resumes."); }
-    else { music_resume(); a2fc_playing = 1; message("Music resumed."); }
-}
 
 /* ---------------------------------------------------------------------- */
 /* Help                                                                   */
@@ -2861,7 +2874,7 @@ static const char S_NODIR[] = "Open a ProDOS directory first: the image goes the
 static const char S_NOSIZE[] = "Unknown size: neither a ProDOS volume nor a Disk II.";
 static const char S_NAME[] = "Image name, without suffix";
 static const char S_LONG[] = "Name too long for its suffix.";
-static const char S_ORDER[] = "P ProDOS order (.PO) or D DOS 3.3 order (.DSK)?";
+static const char S_ORDER[] = "\1P ProDOS order (.PO) or D DOS 3.3 order (.DSK)?";
 static const char S_DOT[] = "%s.%s";
 static const char S_SLASH[] = "%s/%s";
 static const char S_DSK[] = "DSK";
@@ -2959,9 +2972,9 @@ static void di_stage(unsigned char i, unsigned char put)
 
 static unsigned char di_ask(const char* which)
 {
-    clear_row(22);
-    gotoxy(0, 22);
+    question_begin();
     cprintf(S_INSERT, which, DI->source_name, di_where(DI->src.unit));
+    revers(0);
     return cgetc() != KEY_ESC;
 }
 
@@ -3155,8 +3168,6 @@ void __fastcall__ diskimg_entry(const struct A2fcApi* a)
     unsigned char r = 0, image = pan->count && pan->path[0] && !is_dir(e);
     char key;
     (void)a;
-    music_stop();                      /* the auxiliary bank is about to serve as scratch space */
-    a2fc_playing = 0;
     /* The block buffers live in the graphics page ($3600-$3DFF): a picture
      * viewed earlier may have left HIRES armed, with 80STORE then routing
      * $2000-$3FFF to the AUX bank -- READ_BLOCK would read the wrong place.
@@ -3263,23 +3274,63 @@ static const char mn_stale[] = "(from another build of A2 File Cmd)";
 static const char mn_noentry[] = "(no entry point)";
 static const char mn_title[] = "  A2FILE/*.PLG  -  the overlays, run on the selected entry";
 static const char mn_empty[] = "No overlay here.";
-static const char mn_keys[] = "U/D Choose,L/R Page,RET Run,ESC Back";
+static const char mn_keys[] = "U/D Choose,L/R 6 rows,RET Open,ESC Back";
+static const char mn_cat0[] = "Files";
+static const char mn_cat1[] = "Images";
+static const char mn_cat2[] = "Music";
+static const char mn_cat3[] = "Disks";
+static const char mn_cat4[] = "Programming";
+static const char mn_cat5[] = "System";
+static const char mn_cat6[] = "Archives";
+static const char mn_cat7[] = "Other";
+static const char* const mn_categories[] = {
+    mn_cat0, mn_cat1, mn_cat2, mn_cat3, mn_cat4, mn_cat5, mn_cat6, mn_cat7
+};
+static const char mn_group0[] = "|TEXT|HEX|EDIT|SEARCH|FIND|FIXTYPES|GOTO|MDVIEW|RENAME|SYNC|MOVE|TREE|DELETE|ATTR|TXTCONV|TAGPAT|COMPARE|AWP|";
+static const char mn_group1[] = "|IMAGE|DGRVIEW|EXTASIE|PACKFOT|PAINT816|LZ4FH|PRINTSHOP|FONTVIEW|";
+static const char mn_group2[] = "|MUSIC|PT3|";
+static const char mn_group3[] = "|FORMAT|DISKIMG|IMGFS|DOS33|BOOTBLK|BLKVIEW|BLKEDIT|DISKCMP|IMGCONV|MKIMAGE|RESCUE|UNDELETE|VOLNAME|VOLINFO|WIPE|VERIFY|";
+static const char mn_group4[] = "|BASLIST|DISASM|INTBASIC|RUN|CRC|IDENT|";
+static const char mn_group5[] = "|HELP|DATE|";
+static const char mn_group6[] = "|BINARY2|UNSHRINK|";
+static const char* const mn_groups[] = {
+    mn_group0, mn_group1, mn_group2, mn_group3, mn_group4, mn_group5, mn_group6
+};
+#define MENU_CATEGORIES 8
+static unsigned char menu_category(const char* name)
+{
+    unsigned char i, len = strlen(name);
+    const char* p;
+    for (i = 0; i < MENU_CATEGORIES - 1; ++i) {
+        p = mn_groups[i];
+        while (*p) {
+            ++p;
+            if (!strncmp(p, name, len) && p[len] == '|') return i;
+            while (*p && *p != '|') ++p;
+        }
+    }
+    return MENU_CATEGORIES - 1;
+}
+
 static const char mn_count[] = "%2u/%-2u";
 static const char mn_titlefmt[] = "%-79.79s";
 static const char mn_nodir[]   = "The program directory is unknown.";
 
 /* The row uses the whole 80 columns: two of margin, twelve for the name
  * (a .PLG name is eleven characters at most), the rest for the description. */
-static const char mn_row[]     = "  %-12s%-65s";
-struct MenuItem { char name[12]; char desc[66]; };
+static const char mn_row[]     = "  %-12s%-65.51s";
+struct MenuItem { char name[12]; char desc[52]; };
 #define MENU_ITEMS ((struct MenuItem*)0x3000)
-#define MENU_MAX 52                 /* 52 x 78 bytes: $3000-$3FF8 */
+#define MENU_MAX 64                 /* 64 x 64 bytes: $3000-$3FFF */
 #define MENU_ROWS 18                /* rows 2..19 per page, like a panel */
+#define MENU_STEP 6                 /* horizontal arrows: six entries */
 void __fastcall__ menu_entry(const struct A2fcApi* a)
 {
     struct MenuItem* m = MENU_ITEMS;
     const struct Overlay* hdr = (const struct Overlay*)copy_buf;
-    unsigned char n = 0, i, cur = 0, len, pass;
+    unsigned char n = 0, i, j, cur = 0, len, pass, category = MENU_CATEGORIES;
+    unsigned char count, chosen = 0;
+    unsigned char* order = (unsigned char*)copy_buf;
     FILE* f;
     char key;
     (void)a;
@@ -3292,7 +3343,7 @@ void __fastcall__ menu_entry(const struct A2fcApi* a)
         if (!dir_open(other_full)) continue;
         while (n < MENU_MAX && dir_next()) {
             len = strlen(dir_entry.name);
-            if (dir_entry.type != 0x06 || len < 5 || strcmp(dir_entry.name + len - 4, mn_suffix) || !strcmp(dir_entry.name, mn_self) || !strcmp(dir_entry.name, "COPY.PLG")) continue;
+            if (dir_entry.type != 0x06 || len < 5 || strcmp(dir_entry.name + len - 4, mn_suffix) || !strcmp(dir_entry.name, mn_self) || !strcmp(dir_entry.name, "COPY.PLG") || !strcmp(dir_entry.name, "OPEN.PLG") || !strcmp(dir_entry.name, "NAV.PLG") || !strcmp(dir_entry.name, "BATCH.PLG")) continue;
             dir_entry.name[len - 4] = 0;
             for (i = 0; i < n; ++i) if (!strcmp(m[i].name, dir_entry.name)) break;
             if (i < n) continue;
@@ -3307,7 +3358,7 @@ void __fastcall__ menu_entry(const struct A2fcApi* a)
         if (!f) continue;
         len = fread(copy_buf, 1, 80, f);
         fclose(f);
-        copy_buf[8 + 65] = 0;
+        copy_buf[8 + 51] = 0;
         if (len < 9 || (hdr->signature != a2fc_link_id && hdr->signature != PLUGIN_MAGIC)) strcpy(m[i].desc, mn_stale);
         else if (!hdr->entry) strcpy(m[i].desc, mn_noentry);
         else strcpy(m[i].desc, hdr->desc);
@@ -3318,50 +3369,68 @@ void __fastcall__ menu_entry(const struct A2fcApi* a)
     f = fopen(other_full, "rb");
     if (!f && companion_path(mn_catalog_path)) f = fopen(other_full, "rb");
     if (f) {
-        while (n < MENU_MAX && fread(copy_buf, 1, sizeof(struct MenuItem), f) == sizeof(struct MenuItem)) {
-            copy_buf[11] = 0; copy_buf[77] = 0;
+        while (n < MENU_MAX && fread(copy_buf, 1, 78, f) == 78) {
+            if (copy_buf[11]) continue; /* routing-only catalog record */
+            copy_buf[77] = 0;
             for (i = 0; i < n; ++i) if (!strcmp(m[i].name, (char*)copy_buf)) break;
-            if (i == n) { memcpy(&m[n], copy_buf, sizeof(struct MenuItem)); ++n; }
+            if (i == n) { memcpy(&m[n], copy_buf, sizeof(struct MenuItem)); m[n].desc[51] = 0; ++n; }
         }
         fclose(f);
     }
-    clrscr();
-    revers(1);
-    gotoxy(0, 0);
-    cprintf(mn_titlefmt, mn_title);
-    revers(0);
-    if (!n) cputsxy(2, 2, mn_empty);
     for (;;) {
-        /* A page of MENU_ROWS around the cursor; the rest scrolls. */
-        unsigned char top = cur - cur % MENU_ROWS;
-        for (i = 0; i < MENU_ROWS; ++i) {
-            gotoxy(0, 2 + i);
-            if (top + i < n) {
-                if (top + i == cur) revers(1);
-                cprintf(mn_row, m[top + i].name, m[top + i].desc);
-                revers(0);
-            } else cclearxy(0, 2 + i, 79);
+        /* Rebuild a sorted index in copy_buf, no extra BSS or AUX memory. */
+        count = 0;
+        if (category == MENU_CATEGORIES) count = MENU_CATEGORIES;
+        else for (i = 0; i < n; ++i) if (menu_category(m[i].name) == category) {
+            j = count;
+            while (j && strcmp(m[order[j - 1]].name, m[i].name) > 0) {
+                order[j] = order[j - 1]; --j;
+            }
+            order[j] = i; ++count;
         }
-        gotoxy(70, 0); revers(1);
-        cprintf(mn_count, cur + 1, n);
+        clrscr();
+        revers(1);
+        cprintf(mn_titlefmt, mn_title);
         revers(0);
-        bar_begin();
-        keys_bar(0, mn_keys);
-        key = cgetc();
-        if (key == KEY_ESC) return;
-        /* An empty list (an A2FILE/ holding MENU.PLG alone, no catalog):
-         * only Escape acts. Past this, n >= 1 -- which the page keys and
-         * the letter search below rely on, one taking n - 1 and the other
-         * a modulo by n. */
-        if (!n) continue;
-        if (key == KEY_RETURN) { strcpy(input, m[cur].name); return; }
-        if (key == KEY_UP && cur) --cur;
-        else if (key == KEY_DOWN && cur + 1 < n) ++cur;
-        else if (key == KEY_LEFT) cur = cur >= MENU_ROWS ? cur - MENU_ROWS : 0;   /* a page at a time */
-        else if (key == KEY_RIGHT) cur = cur + MENU_ROWS < n ? cur + MENU_ROWS : n - 1;
-        else {
-            if (key >= 'a' && key <= 'z') key -= 32;
-            for (i = 1; i <= n; ++i) if (m[(cur + i) % n].name[0] == key) { cur = (cur + i) % n; break; }
+        if (category != MENU_CATEGORIES) cputsxy(2, 1, mn_categories[category]);
+        for (;;) {
+            unsigned char top = cur - cur % MENU_ROWS;
+            for (i = 0; i < MENU_ROWS; ++i) {
+                gotoxy(0, 2 + i);
+                revers(top + i == cur && count);
+                if (top + i < count) {
+                    if (category == MENU_CATEGORIES) cprintf(mn_titlefmt, mn_categories[top + i]);
+                    else cprintf(mn_row, m[order[top + i]].name, m[order[top + i]].desc);
+                } else cclearxy(0, 2 + i, 79);
+                revers(0);
+            }
+            if (!count) cputsxy(2, 2, mn_empty);
+            gotoxy(70, 0); revers(1);
+            cprintf(mn_count, count ? cur + 1 : 0, count);
+            revers(0);
+            bar_begin();
+            keys_bar(0, mn_keys);
+            key = cgetc();
+            if (key == KEY_ESC) {
+                if (category == MENU_CATEGORIES) { input[0] = 0; return; }
+                category = MENU_CATEGORIES; cur = chosen; break;
+            }
+            if (!count) continue;
+            if (key == KEY_RETURN) {
+                if (category != MENU_CATEGORIES) { strcpy(input, m[order[cur]].name); return; }
+                category = chosen = cur; cur = 0; break;
+            }
+            if (key == KEY_UP && cur) --cur;
+            else if (key == KEY_DOWN && cur + 1 < count) ++cur;
+            else if (key == KEY_LEFT) cur = cur >= MENU_STEP ? cur - MENU_STEP : 0;
+            else if (key == KEY_RIGHT) cur = cur + MENU_STEP < count ? cur + MENU_STEP : count - 1;
+            else {
+                if (key >= 'a' && key <= 'z') key -= 32;
+                for (i = 1; i <= count; ++i) {
+                    j = (cur + i) % count;
+                    if ((category == MENU_CATEGORIES ? mn_categories[j][0] : m[order[j]].name[0]) == key) { cur = j; break; }
+                }
+            }
         }
     }
 }
@@ -3387,7 +3456,7 @@ static void refresh_both(void)
 static unsigned char list_dir(const char* path, unsigned char base, unsigned char* count)
 {
     unsigned char n = 0;
-    if (!dir_open(path)) return 0;
+    if (!tree_stack_ok() || !dir_open(path)) return 0;
     while (dir_next()) {
         if (base + n >= POOL_SIZE) { dir_close(); return 0; }
         strcpy(pool[base + n].name, dir_entry.name);
@@ -3467,8 +3536,9 @@ static unsigned char may_overwrite(const char* name)
     char key;
     if (over_policy == OVERWRITE_ALL) return 1;
     if (over_policy == SKIP_ALL) return 0;
-    clear_row(22); gotoxy(0, 22);
+    question_begin();
     cprintf("%s exists: Overwrite, Skip, All, None? ", name);
+    revers(0);
     for (;;) {
         key = cgetc() | 0x20;
         if (key == 'o') return 1;
@@ -3623,6 +3693,7 @@ static unsigned char copy_tree(unsigned char base)
 static unsigned char delete_tree(unsigned char base)
 {
     unsigned char n, i, len = strlen(full), ok = 1;
+    if (!base && count_tree(0) == 0xFFFF) { dir_fail(); return 0; }
     if (!list_dir(full, base, &n)) { dir_fail(); return 0; }
     progress_total += n;
     for (i = 0; i < n && ok; ++i) {
@@ -3687,6 +3758,12 @@ static unsigned char target_check(void)
     if (!strcmp(dst->path, panels[active].path)) { { extern const char msg_samedir[]; message(msg_samedir); }; return 0; }
     return 1;
 }
+
+#pragma code-name (push, "BATCH")
+#pragma rodata-name (push, "BATCHRO")
+#include "batch.h"
+#pragma rodata-name (pop)
+#pragma code-name (pop)
 
 /* ---------------------------------------------------------------------- */
 /* The IMGFS overlay: extracting files from an image (C)                   */
@@ -4070,8 +4147,6 @@ void __fastcall__ unshrink_entry(const struct A2fcApi* a)
         strcpy(note, us_noram); return;
     }
     if (strlen(panels[!active].path) + 17 >= PATH_LEN) { too_long(); return; }
-    music_stop();                          /* the auxiliary bank is about to serve as the dictionary */
-    a2fc_playing = 0;
     /* After a picture, HIRES stays armed. With 80STORE, PAGE2 then dictates
      * the bank for $2000-$3FFF even under RAMRD/RAMWRT AUX: the LZW
      * dictionary would overwrite the C driver and the panel tables in MAIN.
@@ -4215,7 +4290,13 @@ static void copy_or_move(unsigned char move)
 /* The DELETE overlay, second half: the D command. */
 #pragma code-name (push, "DELETE")
 #pragma rodata-name (push, "DELETERO")
+#ifdef A2FC_6502
+#pragma rodata-name(push, "RODATA")
+#endif
 static const char dl_nothing[] = "Nothing to delete here.";
+#ifdef A2FC_6502
+#pragma rodata-name(pop)
+#endif
 static const char dl_ask1[]    = "Delete %s%s?";
 static const char dl_inside[]  = " and everything inside";
 static const char dl_askn[]    = "Delete %u tagged files?";
@@ -4356,6 +4437,8 @@ void __fastcall__ attr_entry(const struct A2fcApi* a)
  * BAS. */
 #pragma code-name (push, "RUN")
 #pragma rodata-name (push, "RUNRO")
+#include "config.h"
+
 /* Loads the file `full` at `addr` and jumps to it, with no return, through
  * the thunk of chain.s: whatever its size, it overwrites A2FC harmlessly.
  * The music is stopped, the preferences written. */
@@ -4370,8 +4453,7 @@ static void launch_file(unsigned int addr)
         report_error("Run");
         return;
     }
-    music_stop();
-    save_config();
+    if (!save_config() && !confirm("Configuration warning. Run anyway?")) return;
     clrscr();
     chain_addr = addr;
     chain_load(full);
@@ -4451,7 +4533,8 @@ void __fastcall__ run_entry(const struct A2fcApi* a)
 {
     struct Panel* pan = &panels[active];
     (void)a;
-    if (pan->count) run_selected(&pan->e[pan->cursor]);
+    if (a->arg == 'S') { api.arg = save_config(); return; }
+    if (pan->count) run_selected(a->selected);
 }
 #pragma rodata-name (pop)
 #pragma code-name (pop)
@@ -4485,6 +4568,88 @@ static unsigned char open_image(struct Panel* pan, const struct Entry* e)
     return 1;
 }
 
+/* Classification must return before loading the chosen overlay: loading
+ * it from inside OPEN would overwrite code still on the return stack. */
+#pragma code-name(push, "OPEN")
+#pragma rodata-name(push, "OPENRO")
+static unsigned char looks_like_music(const struct Entry* e)
+{
+    unsigned char n = strlen(e->name);
+    return !is_dir(e) && e->type == 0x06 && n > 3 && !strcmp(e->name + n - 3, ".MB");
+}
+static const char ov_raw[] = "IMAGE", ov_ext[] = "EXTASIE", ov_pack[] = "PACKFOT";
+static const char ov_paint[] = "PAINT816", ov_dgr[] = "DGRVIEW", ov_hex[] = "HEX";
+static const char ov_text[] = "TEXT", ov_awp[] = "AWP", ov_run[] = "RUN", ov_music[] = "MUSIC";
+static const char ov_int[] = "INTBASIC", ov_font[] = "FONTVIEW";
+static const char ov_lz[] = "LZ4FH", ov_ps[] = "PRINTSHOP", ov_pt3[] = "PT3";
+static const char* const image_viewers[] = {ov_hex, ov_raw, ov_ext, ov_pack, ov_paint, ov_dgr};
+static const char open_dgr[] = "DGR";
+static const char open_error[] = "Cannot identify file: read/close error.";
+static const char* file_viewer(const struct Entry* e, unsigned char pictures)
+{
+    unsigned char kind = image_kind(e);
+    FILE* f;
+    unsigned char n, failed;
+    /* Album scans can reject unrelated names without opening every file. */
+    if (pictures >= 2) {
+        n = strlen(e->name);
+        if (pictures == 2 ? !looks_like_music(e) :
+            !(n > 4 && !strcmp(e->name+n-4, ".PT3"))) return ov_hex;
+        pictures = 0;
+    }
+    if (e->type == 7) return ov_font;
+    if (e->type == 8 && e->aux == 0x8066) return ov_lz;
+    if (e->type == 6 && (e->aux & 0xCFFF) == 0x4800 &&
+        (e->size == 572 || e->size == 576)) return ov_ps;
+    if (!pictures && e->type == 0xFA) return ov_int;
+    n = strlen(e->name);
+    if (!pictures && n>4 && !strcmp(e->name+n-4,".PT3")) return ov_pt3;
+    /* Probe only in main-RAM copy_buf, never in a graphics/AUX bank.
+     * Explicit packed metadata wins; the other formats can identify
+     * themselves even without a filename suffix or a ProDOS image type.
+     * A partial DGR signature still belongs to DGRVIEW's validation. */
+    if (kind < 2) {
+        f = fopen(full, "rb");
+        if (!f) return 0;
+        n = fread(copy_buf, 1, 8, f);
+        failed = ferror(f) != 0;
+        if (fclose(f)) failed = 1;
+        if (failed) return 0;
+        if (n >= 3 && !memcmp(copy_buf, open_dgr, 3)) kind = 5;
+        else if (n == 8 && (!memcmp(copy_buf, "HGRR\1\0\0\x20", 8) ||
+                           !memcmp(copy_buf, "DHRR\1\0\0\x40", 8))) kind = 1;
+        /* I supplies the missing intent for an unmarked lo-res screen or
+         * pixmap. Return must not mistake every small BIN for a sprite. */
+        else if (!kind && pictures && (e->type == 0x06 || e->type == 0x08) &&
+                 e->size && e->size <= 2048) kind = 5;
+    }
+    if (kind) return image_viewers[kind];
+    if (pictures) return ov_raw; /* I may explicitly try an untyped raw file. */
+    if (looks_like_music(e)) return ov_music;
+    if (e->type == 0x04) return ov_text;
+    if (e->type == 0x1A) return ov_awp;
+    if (e->type == 0xFF || e->type == 0xFC) return ov_run;
+    return ov_hex;
+}
+void __fastcall__ open_entry(const struct A2fcApi* a)
+{
+    const char* viewer;
+    input[0] = 0;
+    if (selected.name[0] && !is_dir(&selected) && full[0]) {
+        viewer = file_viewer(&selected, a->arg);
+        if (viewer) strcpy(input, viewer);
+        else message(open_error);
+    }
+}
+#pragma rodata-name(pop)
+#pragma code-name(pop)
+static void open_viewer(unsigned char pictures)
+{
+    input[0] = 0;
+    overlay_run("OPEN", pictures);
+    if (input[0]) overlay_run(input, 0);
+}
+
 static void open_selected(void)
 {
     struct Panel* pan = &panels[active];
@@ -4501,15 +4666,10 @@ static void open_selected(void)
         show_active();
         return;
     }
-    if (is_dir(e)) { enter_dir(pan, e); show_active(); return; }
+    if (is_dir(e)) { if (overlay("NAV")) enter_dir(pan, e); show_active(); return; }
     if (open_image(pan, e)) return;
     if (!build_full(full, pan, e)) { too_long(); return; }
-    if (looks_like_image(e)) view_image();
-    else if (looks_like_music(e)) overlay_run("MUSIC", 0);
-    else if (e->type == 0x04) { if (overlay("TEXT")) view_text(full); }
-    else if (e->type == 0x1A) overlay_run("AWP", 0);
-    else if (e->type == 0xFF || e->type == 0xFC) overlay_run("RUN", 'X');
-    else if (overlay("HEX")) view_hex(full, e->size);
+    open_viewer(0);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -4542,7 +4702,7 @@ static void retag(unsigned char mode)
  * alongside sort, to leave resident space for the companion-disk loader. */
 #pragma code-name (push, "TEXT")
 #pragma rodata-name (push, "TEXTRO")
-static const char tx_jump[] = "Jump to name starting with: ";
+static const char tx_jump[] = "\1Jump to name starting with: ";
 static const char tx_noname[] = "No such name in this panel.";
 static void find_letter(void)
 {
@@ -4699,7 +4859,7 @@ static struct A2fcApi api = {
     build_full, dir_open, dir_next, dir_close, mli_call,
     fopen, fread, fwrite, fclose, fseek, remove, cprintf, sprintf, cputs, cputc, gotoxy, revers, cclearxy, clrscr, cgetc,
     memcpy, memset, strcpy, strcmp, strlen, &_filetype, &_auxtype, reselect, note, &selected, cfg_path,
-    ram_format };
+    ram_format, media_key, media_wait, music_info };
 
 int main(void)
 {
@@ -4725,8 +4885,10 @@ int main(void)
     if (panels[1].path[0] && strlen(panels[1].path) + 5 < PATH_LEN)
         strcat(panels[1].path, "/DEMO");
     strcpy(cfg_path, panels[0].path);
-    if (strlen(cfg_path) + 20 < PATH_LEN) strcat(cfg_path, "/A2FILE/A2FILE.CFG");
-    load_config();
+    if (strlen(cfg_path) + 18 < PATH_LEN) strcat(cfg_path, "/A2FILE/A2FILE.CFG");
+    else cfg_path[0] = 0;
+    if (overlay("RUN")) load_config();
+    overlay_loaded[0] = 0;
 #ifdef A2FC_TRACE
     *(unsigned char*)0x03A0 = 3;
 #endif
@@ -4793,7 +4955,7 @@ int main(void)
         case KEY_TAB: swap_panels(); break;
         case KEY_RETURN: open_selected(); break;
         case KEY_ESC:
-            if (pan->path[0]) { go_up(pan); show_active(); }
+            if (pan->path[0]) { if (overlay("NAV")) go_up(pan); show_active(); }
             break;
         case '/':
             pan->path[0] = 0;
@@ -4842,23 +5004,22 @@ int main(void)
         case 'f': case 'F': overlay_run("FORMAT", 'F'); break;
         case 'e': case 'E': overlay_run("EDIT", 'E'); break;
         case 'w': case 'W': overlay_run("DISKIMG", 'W'); break;
-        case 'p': case 'P': toggle_music(); break;
-        case '!': overlay_run("MENU", 0); if (input[0]) overlay_run(input, 0); break;
+        case '!':
+            overlay_run("MENU", 0);
+            if (!strcmp(input, "MOVE") && tag_count(&panels[active])) move_marked();
+            else if (input[0]) overlay_run(input, 0);
+            break;
         case 'i': case 'I':
             if (pan->count && !is_dir(&pan->e[pan->cursor]) && pan->path[0]) {
-#ifdef A2FC_6502
-                if (pan->e[pan->cursor].type == 0xF2) overlay_run("EXTASIE", 'i');
-                else view_image();
-#else
-                view_image();
-#endif
+                open_viewer(1);
             }
             break;
         case '?': if (overlay("HELP")) view_help(); break;
         case 'q': case 'Q':
             if (confirm("Quit to ProDOS?")) {
-                music_stop();
-                save_config();
+                api.arg = 0;
+                overlay_run("RUN", 'S');
+                if (!api.arg && !confirm("Configuration warning. Quit anyway?")) break;
                 /* The ProDOS prefix follows the active panel: Bitsy Bye
                  * resumes in the directory we were in. */
                 if (pan->path[0]) chdir(pan->path);

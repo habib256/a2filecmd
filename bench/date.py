@@ -100,7 +100,7 @@ def main():
             # 3. Une date impossible est refusee, $BF90 intact.
             menu_run(s, p, 'DATE'); s.key(b'S'); p.stable()
             s.type('311320261430')
-            s.wait(lambda: s.has('Not a date'), 'le refus', 20); p.stable()
+            s.wait(lambda: s.has('Bad date'), 'le refus', 20); p.stable()
             s.ok('31/13 est refuse, la date systeme reste', p.peek(0xBF90, 4) == want, s.rows()[22].rstrip())
 
             # Gregorian month lengths, leap years and unchanged state on errors.
@@ -111,7 +111,7 @@ def main():
                 (1,1,2040,14,30),(1,1,2026,24,0),(1,1,2026,23,60)):
                 menu_run(s,p,'DATE');s.key(b'S');p.stable()
                 value=f'{day:02}{month:02}{year:04}{hour:02}{minute:02}'
-                s.type(value);s.wait(lambda:s.has('Not a date'),'invalid calendar date',20)
+                s.type(value);s.wait(lambda:s.has('Bad date'),'invalid calendar date',20)
                 s.ok('invalid '+value+' preserves date and time',p.peek(0xBF90,4)==want)
             for day,month,year in ((29,2,1940),(29,2,1996),(29,2,2000),(29,2,2024),(30,4,2026),(31,12,2039)):
                 menu_run(s,p,'DATE');s.key(b'S');p.stable()
@@ -139,8 +139,8 @@ def main():
             # 5. La liste des volumes est refusee.
             s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'la liste des volumes'); p.stable()
             menu_run(s, p, 'DATE'); s.key(b'F')
-            s.wait(lambda: s.has('Open a directory'), 'le refus des volumes', 20); p.stable()
-            s.ok('F dans la liste des volumes est refuse', s.has('Open a directory'), s.rows()[22].rstrip())
+            s.wait(lambda: s.has('Open a dir.'), 'le refus des volumes', 20); p.stable()
+            s.ok('F dans la liste des volumes est refuse', s.has('Open a dir.'), s.rows()[22].rstrip())
 
         # 6. La disquette relue sur l'hote (POM2 l'a recopiee a l'arret) :
         # creation et modification, date et heure.

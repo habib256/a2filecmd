@@ -25,7 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-from pom2 import BUILD, Pom2, Session, ROOT, DISK, IMG
+from pom2 import BUILD, Pom2, Session, ROOT, DISK, IMG, VERSION
 HAS_MOUSE = 'build-6502' not in str(BUILD)   # pas de souris dans la version 6502
 import mkdemo
 import mkdos33
@@ -120,7 +120,9 @@ def main():
         tmp = Path(tmp)
         floppy = tmp / 'A2FILECMD.po'
         shutil.copyfile(DISK, floppy)
-        with Pom2(scratch_volume(tmp), floppy=floppy, port=args.port, mouse=True) as p:
+        media_floppy = tmp / 'MEDIA.po'
+        shutil.copyfile(ROOT / f'dist/A2FILECMD-6502-MEDIA-{VERSION}.po', media_floppy)
+        with Pom2(scratch_volume(tmp), floppy=floppy, floppy2=media_floppy, port=args.port, mouse=True) as p:
             s = Session(p)
 
             def shot(name):
@@ -206,19 +208,17 @@ def main():
             s.key(b' '); s.wait(lambda: s.value('view', 1) == 0, 'retour'); p.stable()
 
             # ── 5. la musique ─────────────────────────────────────────────
-            # Attendre le message plutot qu'un sleep fixe : la surcouche MUSIC
-            # se charge du disque, et selon la vitesse de l'emulateur le
-            # message arrive juste avant ou juste apres un demi-quart de seconde.
-            s.select('WELCOME.MB', 40); s.key(RET); s.allow_aux()
-            s.wait(lambda: s.has('Playing WELCOME.MB'), 'la fanfare demarre', 10)
-            s.ok('la fanfare joue sur la Mockingboard', s.has('Playing WELCOME.MB'),
-                 s.rows()[22].strip())
-            # Le banc fait tourner la machine bien plus vite que le temps reel :
-            # les trois secondes de musique passent en un clin d'oeil. On
-            # verifie donc qu'elle s'arrete d'elle-meme, ce qui prouve aussi
-            # que le paquet END termine bien le flux fabrique par mkdemo.py.
-            s.wait(lambda: p.peek(s.sym['_music_active'], 1)[0] == 0, 'fin du flux', 20)
-            s.ok('le flux MB1 se termine seul, sur son paquet END', True)
+            # MUSIC is now a foreground overlay, entirely in main RAM.
+            s.select('WELCOME.MB', 40)
+            aux_before=p.peek(0x1000,0xB000,'aux')
+            p.rq('/speed',{'preset':'1x'});s.key(RET)
+            s.wait(lambda:s.has('MB1 - WELCOME.MB'),'foreground MB1',30)
+            s.ok('la fanfare ouvre le lecteur Mockingboard au premier plan',True)
+            s.wait(lambda:s.has('Type  Aux     Size'),'fin du flux MB1',30)
+            p.stable()
+            s.ok('le flux MB1 revient aux panneaux sur END',s.line(40).startswith('WELCOME.MB'))
+            s.ok('la musique conserve AUX sans confirmation destructive',p.peek(0x1000,0xB000,'aux')==aux_before)
+            p.rq('/speed',{'preset':'max'})
 
             # ── 5b. les images disque ──────────────────────────────────────
             # R lit la disquette d'amorce (slot 6 lecteur 1) dans une image

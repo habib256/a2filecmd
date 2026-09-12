@@ -70,7 +70,7 @@ struct Header {
 };
 #pragma rodata-name (push, "OVLHDR")
 const struct Header __plugin_header = {
-    PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry, {0,0,0},
+    MEDIA_PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry, {0,0,0},
     "Lo-res and double lo-res pictures, a2dgrx sprites"
 };
 #pragma rodata-name (pop)
@@ -101,8 +101,8 @@ static const char m_pick[] = "Select a lo-res picture or an a2dgrx pixmap.";
 static const char m_open[] = "Cannot open it.";
 static const char m_big[]  = "Over 2048 bytes: not a lo-res screen or a sprite.";
 static const char m_ask[]  = "Pixmap width in pixels (2 hex digits, 01-50)";
-static const char m_hdr[]  = "That DGR header asks for more than the screen holds.";
-static const char m_wide[] = "That width does not divide the file, or exceeds 80.";
+static const char m_hdr[]  = "Invalid or truncated DGR picture.";
+static const char m_wide[] = "Invalid sprite width or height.";
 static const char m_scr[]  = "Lo-res screen, %u x %u.";
 static const char m_spr[]  = "a2dgrx pixmap, %u x %u.";
 
@@ -208,9 +208,8 @@ static unsigned char pixmap(void)
     if (!A->prompt(m_ask, 0, 2)) return 0;
     w = (unsigned char)((A->input[0] <= '9' ? A->input[0] - '0' : A->input[0] - 'A' + 10) * 16
                         + (A->input[1] <= '9' ? A->input[1] - '0' : A->input[1] - 'A' + 10));
-    if (!w || w > WIDE || len % w) { A->strcpy(A->note, m_wide); return 0; }
+    if (!w || w > WIDE || len % w || len / w > TALL) { A->strcpy(A->note, m_wide); return 0; }
     h = (unsigned char)(len / w);
-    if (h > TALL) { A->strcpy(A->note, m_wide); return 0; }
     wide = 1;
     clear();
     x0 = (WIDE - w) >> 1;
@@ -237,11 +236,19 @@ void __fastcall__ plugin_entry(const struct A2fcApi* a)
     a->fclose(in);
     if (!len || len > 2048) { a->strcpy(a->note, m_big); return; }
 
-    if (len > 8 && STAGE[0] == 'D' && STAGE[1] == 'G' && STAGE[2] == 'R' && STAGE[3] == 1) {
-        unsigned char w = STAGE[4], h = STAGE[5], lines;
-        if (w > WIDE || h > TALL || !h) { a->strcpy(a->note, m_hdr); return; }
+    if (len >= 3 && STAGE[0] == 'D' && STAGE[1] == 'G' && STAGE[2] == 'R') {
+        unsigned char w, h, lines;
+        /* Validate before reading the header or changing either screen bank.
+         * Bytes beyond len may still hold another file's data. */
+        if (len < 8 || STAGE[3] != 1 || STAGE[6] > 1 || STAGE[7]) {
+            a->strcpy(a->note, m_hdr); return;
+        }
+        w = STAGE[4]; h = STAGE[5]; wide = STAGE[6];
         lines = h >> 1;
-        wide = (STAGE[6] & 1) != 0;
+        if (w != (wide ? 80 : 40) || !h || h > TALL || (h & 1) ||
+            len != 8 + (unsigned int)lines * 40 * (wide + 1)) {
+            a->strcpy(a->note, m_hdr); return;
+        }
         clear();
         if (wide) {
             unsigned int n = rows_of(STAGE + 8, 1, lines);   /* the auxiliary half */
@@ -264,6 +271,6 @@ void __fastcall__ plugin_entry(const struct A2fcApi* a)
     }
 
     show();
-    while (a->cgetc() != KEY_ESC) {}
+    a->media_wait();
     a->strcpy(a->reselect, e->name);
 }

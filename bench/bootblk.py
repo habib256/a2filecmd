@@ -79,6 +79,7 @@ def main():
             #    (l'unite vient de Entry.mdate) : refuse.
             s.select('/WORKHD')
             menu_run(s, p, 'BOOTBLK')
+            s.wait(lambda: s.has(BOOTVOL), 'refus du volume source')
             p.stable()
             s.ok('refuse le volume d amorcage, choisi dans la liste des volumes',
                  s.has(BOOTVOL) and not s.has('(Y/N)'), s.rows()[22].strip())
@@ -88,6 +89,7 @@ def main():
             s.select('/WORKHD'); s.key(RET)
             s.wait(lambda: s.rows()[0][:8] == '/WORKHD ', 'la racine de /WORKHD'); p.stable()
             menu_run(s, p, 'BOOTBLK')
+            s.wait(lambda: s.has(BOOTVOL), 'refus du volume source')
             p.stable()
             s.ok('refuse aussi depuis un panneau ouvert dans le volume d amorcage',
                  s.has(BOOTVOL) and not s.has('(Y/N)'), s.rows()[22].strip())

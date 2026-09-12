@@ -44,8 +44,33 @@ int main(int argc,char** argv) {
 }
 '''
 SYNC=PREFIX+r'''
+static int sync_ferror(FILE*);
+#define ferror sync_ferror
 #include "src/plugins/sync.c"
-static unsigned int mode;
+#undef ferror
+static unsigned int mode, opens, closes;
+static FILE *verify_source, *verify_target, *read_error;
+static int sync_ferror(FILE* f) { return f == read_error || ferror(f); }
+static FILE* sync_open(const char* p, const char* m) {
+    FILE* f = fopen(p,m);
+    ++opens;
+    if(opens==3)verify_source=f;if(opens==4)verify_target=f;
+    return f;
+}
+static size_t sync_read(void* p,size_t z,size_t n,FILE* f) {
+    if(n==1 && ((mode==6 && f==verify_source) || (mode==7 && f==verify_target))) {
+        read_error=f;return 0;
+    }
+    return fread(p,z,n,f);
+}
+static int sync_close(FILE* f) {
+    int r=fclose(f);++closes;
+    return mode>=8 && mode<=11 && closes==mode-7 ? EOF : r;
+}
+static int sync_remove(const char* p) {
+    if(mode==13 && strstr(p,"A2FC.BAK"))return -1;
+    return remove(p);
+}
 static char oldpath[80],newpath[80];
 static unsigned char mock(unsigned char cmd,void* p) {
     FILE* f;unsigned char* pp;
@@ -55,7 +80,9 @@ static unsigned char mock(unsigned char cmd,void* p) {
         f=fopen(oldpath,"rb");if(!f)return 0x46;fclose(f);return 0;}
     if(cmd==0xC2){pp=((struct Rename*)p)->old;memcpy(oldpath,pp+1,pp[0]);oldpath[pp[0]]=0;
         pp=((struct Rename*)p)->newpath;memcpy(newpath,pp+1,pp[0]);newpath[pp[0]]=0;
-        if(mode==2 && strstr(oldpath,"A2FC.SYNC"))return 0x27;
+        if((mode==2 || mode==12) && strstr(oldpath,"A2FC.SYNC"))return 0x27;
+        if(mode==12 && strstr(oldpath,"A2FC.BAK"))return 0x27;
+        if(mode==14 && strstr(newpath,"A2FC.BAK"))return 0x27;
         return rename(oldpath,newpath)?0x27:0;}
     if(cmd==0xC3)return mode==4?0x27:0;
     abort();
@@ -70,7 +97,7 @@ static size_t write_fail(const void* p,size_t s,size_t n,FILE* f) {
 int main(int argc,char** argv) {
     unsigned char scratch[512];char msg[80];
     a.strlen=strlen;a.strcpy=strcpy;a.memcpy=memcpy;a.memset=memset;a.mli=mock;
-    a.fopen=fopen;a.fclose=fclose;a.fread=fread;a.fwrite=write_fail;a.remove=remove;
+    a.fopen=sync_open;a.fclose=sync_close;a.fread=sync_read;a.fwrite=write_fail;a.remove=sync_remove;
     a.note=msg;buf=scratch;
     strcpy(sdir,argv[1]);strcpy(ddir,argv[2]);join(source,sdir,"DATA");join(target,ddir,"DATA");
     if(!newer((30<<9)|33,0,(26<<9)|33,0) || newer((99<<9)|33,0,(0<<9)|33,0) ||
@@ -172,11 +199,12 @@ class SixPlugins(unittest.TestCase):
             ok=subprocess.check_output([str(self.exe['sync']),str(s),str(d),str(mode),
                                         str(cached_size)]).strip()==b'1'
             self.assertEqual((s/'DATA').read_bytes(),replacement)
-            self.assertEqual((d/'DATA').read_bytes(),replacement if ok else original)
+            if mode==12:self.assertFalse((d/'DATA').exists())
+            else:self.assertEqual((d/'DATA').read_bytes(),replacement if ok else original)
             if reserved:self.assertEqual((d/reserved).read_bytes(),b'preexisting')
             else:
                 self.assertFalse((d/'A2FC.SYNC').exists())
-                if mode==4:self.assertEqual((d/'A2FC.BAK').read_bytes(),original)
+                if mode in (4,12,13):self.assertEqual((d/'A2FC.BAK').read_bytes(),original)
                 else:self.assertFalse((d/'A2FC.BAK').exists())
             return ok
     def test_sync_verified_replace(self):self.assertTrue(self.sync(0))
@@ -191,5 +219,16 @@ class SixPlugins(unittest.TestCase):
         for size in (0,512,1599,1601):
             with self.subTest(size=size):self.assertFalse(self.sync(0,cached_size=size))
     def test_sync_extra_output_bytes_preserve_destination(self):self.assertFalse(self.sync(5))
+
+    def test_sync_source_final_error_with_stale_size_preserves_both_files(self):
+        for size in (0,512,1599,1600):
+            with self.subTest(size=size):self.assertFalse(self.sync(6,cached_size=size))
+    def test_sync_target_final_error_preserves_both_files(self):self.assertFalse(self.sync(7))
+    def test_sync_every_close_failure_preserves_both_files(self):
+        for mode in range(8,12):
+            with self.subTest(close=mode-7):self.assertFalse(self.sync(mode))
+    def test_sync_install_and_rollback_failure_preserves_backup(self):self.assertFalse(self.sync(12))
+    def test_sync_backup_cleanup_failure_preserves_backup(self):self.assertTrue(self.sync(13))
+    def test_sync_backup_rename_failure_preserves_original(self):self.assertFalse(self.sync(14))
 
 if __name__=='__main__':unittest.main()

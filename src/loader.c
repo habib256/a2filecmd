@@ -89,7 +89,7 @@ int main(void)
         cputsxy(44, 8, "Text viewer, hex dump, attributes.");
         cputsxy(4, 9,  "Copy, write and read floppy images.");
         cputsxy(44, 9, "DOS 3.3 disks, images as folders.");
-        cputsxy(4, 13, "More tools: insert the EXTRA floppy for this CPU when requested.");
+        cputsxy(4, 13, "More tools: insert the named category disk for this CPU.");
 #else
         cputsxy(44, 8, "Text viewer, hex dump, text editor.");
         cputsxy(4, 9,  "HGR and DHGR pictures, full screen.");

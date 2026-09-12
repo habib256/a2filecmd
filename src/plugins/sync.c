@@ -14,7 +14,9 @@ struct Rename {unsigned char n;unsigned char *old,*newpath;};
 static struct Frame frames[16];
 static struct Info meta;
 static struct Rename rn;
-static unsigned char newpas[PATH_LEN+1], check[512];
+/* Readback chunks need only half a block; leave room for error handling
+ * without extending the overlay into memory owned by the resident. */
+static unsigned char newpas[PATH_LEN+1], check[256];
 static char source[PATH_LEN],target[PATH_LEN],tmp[PATH_LEN],bak[PATH_LEN],name[16];
 static char sdir[PATH_LEN],ddir[PATH_LEN];
 static unsigned int copied,skipped,errors;
@@ -42,16 +44,17 @@ static unsigned char copy_file(unsigned char exists) {
     if(!in || !out){if(in)a.fclose(in);if(out)a.fclose(out);goto fail;}
     left=size;error=0;
     while(left && !error) {
-        n=left>512?512:(unsigned int)left;
+        n=left>sizeof check?sizeof check:(unsigned int)left;
         if(stop() || a.fread(buf,1,n,in)!=n || a.fwrite(buf,1,n,out)!=n)error=1;
         left-=n;
     }
+    if(ferror(in) || ferror(out))error=1;
     if(a.fclose(in))error=1;if(a.fclose(out))error=1;if(error)goto fail;
     in=a.fopen(source,"rb");out=a.fopen(tmp,"rb");
     if(!in || !out){if(in)a.fclose(in);if(out)a.fclose(out);goto fail;}
     left=size;
     while(left && !error) {
-        n=left>512?512:(unsigned int)left;
+        n=left>sizeof check?sizeof check:(unsigned int)left;
         if(stop() || a.fread(buf,1,n,in)!=n || a.fread(check,1,n,out)!=n)error=1;
         else for(i=0;i<n;++i)if(buf[i]!=check[i]){error=1;break;}
         left-=n;
@@ -59,7 +62,8 @@ static unsigned char copy_file(unsigned char exists) {
     /* A matching prefix is not a verified file. A stale directory size or
      * extra output bytes must not replace the destination and its backup. */
     if(!error && (a.fread(buf,1,1,in) || a.fread(check,1,1,out)))error=1;
-    a.fclose(in);a.fclose(out);if(error)goto fail;
+    if(ferror(in) || ferror(out))error=1;
+    if(a.fclose(in))error=1;if(a.fclose(out))error=1;if(error)goto fail;
     if(exists && rename_file(target,bak))goto fail;
     if(rename_file(tmp,target)) {
         if(exists && rename_file(bak,target))note("SYNC: install failed; original preserved as A2FC.BAK.");

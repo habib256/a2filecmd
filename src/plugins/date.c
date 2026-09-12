@@ -86,13 +86,13 @@ struct Gfi {
     unsigned char storage; unsigned int blocks, mdate, mtime, cdate, ctime;
 };
 
-static const char m_only[]  = "Open a directory.";
-static const char m_bad[]   = "Not a date.";
+static const char m_only[]  = "Open a dir.";
+static const char m_bad[]   = "Bad date";
 static const char m_none[]  = "No date";
 static const char m_null[]  = "";
-static const char m_ask[]   = "DDMMYYYYHHMM: ";
-static const char m_clock[] = "  clock:";
-static const char m_keys[]  = " S Set F Stamp";
+static const char m_ask[]   = "\1DDMMYYYYHHMM: ";
+static const char m_clock[] = " clock:";
+static const char m_keys[]  = " S Set F Date";
 static const char m_files[] = " files dated";
 /* The six pairs of digits read, and what is echoed before each of them. */
 static const char sepr[6] = { 0, '/', '/', 0, ' ', ':' };
@@ -193,6 +193,7 @@ static void show(void)
 static void digits(void)
 {
     asm("lda #<%v\n ldx #>%v\n jsr %v", m_ask, m_ask, s_msg);   /* the cursor stays after it */
+    asm("lda #$3F\n sta $32"); /* Apple II INVFLG, as conio revers(1) */
     asm("lda #0\n sta %v", g);
     asm("dg1: ldy %v\n lda %v,y\n beq dg2", g, sepr);
     asm("jsr %v", s_put);
@@ -206,8 +207,8 @@ static void digits(void)
     asm("dec %v\n bne dg3", j);
     asm("ldy %v\n lda %v\n sta %v,y", g, acc, fld);
     asm("inc %v\n lda %v\n cmp #6\n bcc dg1", g, g);
-    asm("lda #1\n rts");
-    asm("dg8: lda #0");
+    asm("lda #1\n bne dg9");
+    asm("dg8: lda #0\n dg9: ldx #$FF\n stx $32"); /* normal on both exits */
 }
 
 /* PATH, written by build_full from its second byte, made a Pascal string. */

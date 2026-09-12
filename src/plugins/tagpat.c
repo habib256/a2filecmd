@@ -82,9 +82,9 @@ static unsigned char* t;                /* its tag byte, and the bit within */
 static unsigned char mode, n, matched;
 
 static const char s_vol[]    = "Open a directory.";
-static const char s_prompt[] = "Pattern (= ?),Tnn,>n,<n,D: ";
+static const char s_prompt[] = "\1Pattern (= ?),Tnn,>n,<n,D: ";
 static const char s_bad[]    = "Bad filter";
-static const char s_keys[]   = "T Tag  U Untag  X Only  ESC";
+static const char s_keys[]   = "\1T Tag  U Untag  X Only  ESC";
 static const char s_fmt[]    = "%u %stagged (%u matched)";
 static const char s_un[]     = "un";                /* s_un + 2: the empty string */
 
@@ -155,6 +155,7 @@ static void read_pattern(void)
     asm("lda #<%v", s_prompt);
     asm("ldx #>%v", s_prompt);
     asm("jsr %v", say);
+    asm("lda #1\n ldy #68\n jsr %v", call_api); /* inverse typed pattern */
     asm("lda #<%v", pat);
     asm("ldx #>%v", pat);
     asm("ldy #62");                 /* cputs */
@@ -162,6 +163,7 @@ static void read_pattern(void)
     asm("lda #'_'");
     asm("ldy #64");                 /* cputc */
     asm("jsr %v", call_api);
+    asm("lda #0\n ldy #68\n jsr %v", call_api);
     asm("jsr %v", getkey);
     asm("cmp #27");
     asm("beq r_esc");

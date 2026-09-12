@@ -9,16 +9,11 @@
  * name stays within 15 characters) with the new suffix, as a $06 BIN of
  * auxtype $0000.
  *
- * A big overlay for two reasons: the thirty-odd calls through the service
- * table cost cc65 some 30 bytes each, and above all the file must stay
- * under 5,376 bytes so that the code stops before $3000 and leaves the
- * whole 4 KB page there free. That page holds one DOS 3.3 track (16
- * sectors of 256 bytes = 8 ProDOS blocks): a .DSK is produced a track at a
- * time and written sequentially, which spares the output file any fseek --
- * the halves of a block land on two sectors that are not adjacent, so a
- * block-by-block writer would have to seek backwards in a file it is
- * creating. Reading is sequential too, except from a .DSK, where each half
- * block is fetched by its sector.
+ * Output is sequential in every format. To produce DOS sector order we
+ * seek each sector in the ProDOS-order source, instead of reserving a 4 KB
+ * track in main RAM. The resident's 512-byte copy buffer holds each sector
+ * and the temporary 2IMG header. This leaves the overlay window available
+ * for validation without touching auxiliary RAM or the ProDOS RAM disk.
  *
  * Being big, the core re-reads and redraws both panels on return (clrscr
  * included): the last word goes through api->note, never message(). */
@@ -41,11 +36,10 @@ const struct PluginHeader __plugin_header = {
 
 #pragma static-locals (on)
 
-/* The scratch page: one DOS 3.3 track, 16 sectors of 256 bytes. Free only
- * because this file stops before $3000 (the Makefile checks the window,
- * not this; keep the file under 5,376 bytes). */
+/* Header construction/inspection borrows the resident copy buffer; no
+ * fixed-address track buffer overlaps this overlay's code or BSS. */
 #ifndef TRACK
-#define TRACK ((unsigned char*)0x3000)
+#define TRACK buf
 #endif
 #ifndef KBD
 #define KBD   ((unsigned char*)0xC000)
@@ -72,7 +66,7 @@ static const char s_hdv[] = ".HDV";
 static const char* const SUF[3] = { s_po, s_dsk, s_2mg };
 
 static const char m_pick[]   = "Select a .PO/.HDV/.DSK/.DO/.2MG image.";
-static const char m_keys[]   = "Convert to P) .PO, D) .DSK, 2) .2MG, ESC cancels";
+static const char m_keys[]   = "\1Convert to P) .PO, D) .DSK, 2) .2MG, ESC cancels";
 static const char m_same[]   = "Image already in that format.";
 static const char m_other[]  = "Other panel: same directory or not ProDOS.";
 static const char m_blocks[] = "Partial 512-byte block.";
@@ -136,24 +130,31 @@ static unsigned char read_block(void)
     return RF(fread)(buf + 256, 1, 256, in) == 256;
 }
 
-/* Writes what read_block brought: straight out, or into the track page,
- * flushed whole every eighth block. */
+/* Write sequential destination bytes. PO/2MG consume the block already
+ * read; DSK fetches its two physical sectors from the source first. DSK to
+ * DSK is refused before opening the destination, so this source is always
+ * PO or 2MG and its data offset is known. Every seek/read/write is checked. */
 static unsigned char write_block(void)
 {
-    unsigned char i;
+    unsigned char half, sector, i;
+    long off;
     if (dkind != K_DSK)
         return RF(fwrite)(buf, 1, 512, out) == 512;
-    i = (unsigned char)(n & 7) << 1;
-    RF(memcpy)(TRACK + ((unsigned int)SECT[i] << 8), buf, 256);
-    RF(memcpy)(TRACK + ((unsigned int)SECT[i + 1] << 8), buf + 256, 256);
-    if ((n & 7) != 7) return 1;
-    return RF(fwrite)(TRACK, 1, 4096, out) == 4096;
+    off = sbase + ((long)(n >> 3) << 12);
+    sector = (unsigned char)(n & 7) << 1;
+    for (half = 0; half < 2; ++half) {
+        for (i = 0; SECT[i] != sector + half; ++i) {}
+        if (RF(fseek)(in, off + ((long)i << 8), SEEK_SET) ||
+            RF(fread)(buf, 1, 256, in) != 256 ||
+            RF(fwrite)(buf, 1, 256, out) != 256) return 0;
+    }
+    return 1;
 }
 
 /* The 64-byte 2IMG header of tools/po22mg.py, byte for byte: creator
  * "A2FC", header 64, version 1, format 1 (ProDOS order), no flag, the
  * block count, the data at 64 and its length, nothing else. */
-static unsigned char write_2mg_header(void)
+static void make_2mg_header(void)
 {
     unsigned long len = (unsigned long)blocks << 9;
     T.memset(TRACK, 0, 64);
@@ -169,7 +170,48 @@ static unsigned char write_2mg_header(void)
     TRACK[0x1D] = (unsigned char)(len >> 8);
     TRACK[0x1E] = (unsigned char)(len >> 16);
     TRACK[0x1F] = (unsigned char)(len >> 24);
-    return RF(fwrite)(TRACK, 1, 64, out) == 64;
+}
+
+/* Compare complete logical blocks after closing the output, including its
+ * generated header and exact EOF. The original destination is still named
+ * normally here. Only a successful verification may install its replacement. */
+static unsigned char check[512];
+static unsigned char verify_output(const char* path)
+{
+    unsigned char bad = 0, half, sector;
+    unsigned int i;
+    long off;
+    in = RF(fopen)(T.full, "rb");
+    out = RF(fopen)(path, "rb");
+    if (!in || !out) bad = 1;
+    if (!bad && RF(fseek)(in, sbase, SEEK_SET)) bad = 1;
+    if (!bad && dkind == K_2MG) {
+        make_2mg_header();
+        if (RF(fread)(check, 1, 64, out) != 64) bad = 1;
+        else for (i = 0; i < 64; ++i) if (check[i] != TRACK[i]) bad = 1;
+    }
+    for (n = 0; n < blocks && !bad; ++n) {
+        if (*KBD == (KEY_ESC | 0x80)) { *STROBE = 0; bad = 1; break; }
+        if (!read_block()) { bad = 1; break; }
+        if (dkind == K_DSK) {
+            sector = (unsigned char)(n & 7) << 1;
+            off = (long)(n >> 3) << 12;
+            for (half = 0; half < 2; ++half) {
+                if (RF(fseek)(out, off + ((long)SECT[sector + half] << 8), SEEK_SET) ||
+                    RF(fread)(check + (unsigned int)half * 256, 1, 256, out) != 256) {
+                    bad = 1; break;
+                }
+            }
+        } else if (RF(fread)(check, 1, 512, out) != 512) bad = 1;
+        if (!bad) for (i = 0; i < 512; ++i) if (check[i] != buf[i]) { bad = 1; break; }
+    }
+    /* 2MG source trailers are permitted; raw source tails are not. The
+     * final logical block also ends at the final physical DSK sector. */
+    if (!bad && ((skind != K_2MG && RF(fread)(buf, 1, 1, in)) ||
+                 RF(fread)(check, 1, 1, out))) bad = 1;
+    if (in) { if (ferror(in)) bad = 1; if (RF(fclose)(in)) bad = 1; }
+    if (out) { if (ferror(out)) bad = 1; if (RF(fclose)(out)) bad = 1; }
+    return !bad;
 }
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api)
@@ -213,6 +255,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
 
     /* The source, and how many blocks it holds. */
     what = "Open";
+    sbase = 0;
     in = RF(fopen)(T.full, "rb");
     if (!in) goto err;
     if (skind == K_2MG) {
@@ -274,7 +317,10 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     if (!out) { RF(fclose)(in); goto errrm2; }
 
     what = "Write";
-    if (dkind == K_2MG && !write_2mg_header()) goto errrm;
+    if (dkind == K_2MG) {
+        make_2mg_header();
+        if (RF(fwrite)(TRACK, 1, 64, out) != 64) goto errrm;
+    }
     what = "Read";
     for (n = 0; n < blocks; ++n) {
         if (!(n & 7)) {
@@ -288,12 +334,17 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
                 return;
             }
         }
-        if (!read_block()) goto errrm;
+        if (dkind != K_DSK && !read_block()) goto errrm;
         if (!write_block()) { what = "Write"; goto errrm; }
     }
-    RF(fclose)(in);
-    what = "Write";
-    if (RF(fclose)(out)) goto errrm2;
+    k = ferror(in) || ferror(out);
+    if (RF(fclose)(in)) k = 1;
+    what = "Close";
+    if (RF(fclose)(out)) k = 1;
+    if (k) goto errrm2;
+
+    what = "Verify";
+    if (!verify_output(target)) goto errrm2;
 
     if (replacing) {
         k = replace_commit(target, final_path);

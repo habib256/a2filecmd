@@ -7,6 +7,12 @@ chemins d’écriture, de remplacement, d’effacement et d’utilisation de la
 mémoire auxiliaire. Elle ne constitue pas une garantie contre toute panne
 matérielle ni une preuve exhaustive de l’absence de défauts.
 
+Le 12 septembre 2026, le mainteneur confirme une validation réussie sur
+matériel réel : Apple //c, IIe enhanced et IIe unenhanced. Ce retour de
+fonctionnement complète les tests automatisés ; il ne constitue pas un
+compte rendu d'injection de pannes sur les lecteurs physiques. Voir le
+[suivi de stabilisation](STABILIZATION.md#validation-sur-matériel-réel).
+
 ## Risques corrigés
 
 | Opération | Risque constaté | Protection et régression |
@@ -20,8 +26,9 @@ matérielle ni une preuve exhaustive de l’absence de défauts.
 | MOVE, déplacement rapide sur un volume | Erreur entre les écritures brutes laissant deux entrées partageant les mêmes blocs ; backlink de sous-répertoire non validé | Validation du backlink et du stockage ; relecture des écritures ; sur erreur signalée, restauration de l’entrée source, du backlink et des compteurs avant suppression de la copie d’entrée. Avertissement interdisant de supprimer les entrées si la restauration échoue. Tests avant **et après** écriture effective à chaque étape dans `test_move.py`, puis `bench/move.py`. |
 | WIPE F | Bitmap déclarant libre un bloc encore utilisé : le mode « espace libre » effaçait des données vivantes | Précontrôle de tous les blocs référencés par les répertoires et les fichiers seedling/sapling/tree, bornes et bits d’allocation. Aucune écriture si lecture impossible, structure non prise en charge, cycle détecté ou annulation. `test_wipe.py`. |
 | DISKIMG | Image source tronquée ou 2MG malformée acceptée avant écriture destructrice ; possibilité de cibler le volume contenant l’image | Validation de la taille réelle, du format, de la plage de données et des pistes DSK. Volume source protégé comme cible ; refus de lire un disque dans une image située sur ce même volume ; disque RAM exclu des transferts bruts utilisant AUX. `test_diskimg_input.py`, `test_diskimg_verify.py`. |
-| Images, musique, ShrinkIt, copies de disque et formatage physique | Utilisation d’AUX détruisant le disque RAM avec un avis seulement après coup | Drapeau `OVERLAY_AUX` et confirmation explicite avant utilisation, également pour une surcouche déjà chargée ; confirmation dédiée avant le formatage physique. La reconstruction reste permise pour libérer de la mémoire. `bench/data_safety.py` compare les octets AUX avant/après refus. |
+| Images, ShrinkIt, copies de disque et formatage physique | Utilisation d’AUX détruisant le disque RAM avec un avis seulement après coup | Drapeau `OVERLAY_AUX` et confirmation explicite avant utilisation, également pour une surcouche déjà chargée ; confirmation dédiée avant le formatage physique. La reconstruction reste permise pour libérer de la mémoire. `bench/data_safety.py` compare les octets AUX avant/après refus. |
 | BLKEDIT | Tampon déclaré propre après échec de relecture de contrôle | Le tampon reste modifié pour permettre une nouvelle tentative ou un abandon explicite. |
+| BOOTBLK | Premier bloc écrasé avant lecture du second ; aucune vérification ni restauration | Lecture préalable des deux blocs source et des deux blocs d’origine. Chaque écriture est relue et comparée. Sur erreur, restauration et vérification des deux originaux ; avertissement distinct si elle échoue. `test_bootblk.py` injecte les erreurs avant et après écriture effective, ainsi que les corruptions silencieuses et les échecs de restauration. |
 
 ## Autres chemins d’écriture examinés
 
@@ -55,18 +62,29 @@ La restauration ajoutée traite les erreurs renvoyées pendant l’exécution ;
 elle n’est pas un journal persistant de reprise après coupure.
 
 FORMAT, WIPE W et les écritures brutes ne sont pas annulables après leur début.
-Une défaillance physique persistante peut empêcher une restauration ; BOOTBLK
-ne possède pas de restauration automatique de ses deux anciens blocs. Une
+Une défaillance physique persistante peut empêcher une restauration. BOOTBLK
+conserve ses deux anciens blocs en mémoire principale pendant l’opération,
+sans toucher AUX ni `/RAM` ; cette sauvegarde ne survit pas à une coupure.
+Si la restauration échoue, le volume peut ne plus démarrer : effectuer une
+récupération avant de réessayer. Une
 relecture valide le contenu rendu par le pilote, pas sa persistance après une
 perte d’alimentation. Les conversions vérifient leurs écritures et fermetures,
 mais ne disposent pas toutes d’une seconde comparaison intégrale sur le support.
 
 WIPE F refuse les stockages étendus et les profondeurs dépassant sa pile de
 parcours ; il privilégie le refus à l’effacement avec un diagnostic incomplet.
-La configuration de session `A2FILE.CFG` reste une écriture directe : une erreur
-peut perdre des préférences de panneaux, sans autoriser l’écrasement d’un fichier
-choisi dans les panneaux. La résistance complète des décodeurs à tout fichier
+La configuration `A2FILE.CFG` est écrite dans un temporaire réservé exclusivement,
+fermée puis relue intégralement. L'original reste dans `A2FILE.BAK` pendant
+l'installation et n'est supprimé qu'après vérification du fichier installé.
+Les temporaires et sauvegardes préexistants sont conservés ; une erreur de
+restauration laisse les fichiers récupérables et bloque une nouvelle sauvegarde.
+Une sauvegarde seule peut être chargée si CFG manque. Cela ne garantit pas une
+transaction atomique lors d'une coupure physique.
+La résistance complète des décodeurs à tout fichier
 malformé demanderait une campagne de fuzzing distincte.
+
+Les lecteurs MB1 et PT3 sont désormais des surcouches au premier plan :
+ils conservent leurs données en mémoire principale et préservent `/RAM`.
 
 ## Validation et contraintes mémoire
 
@@ -89,3 +107,48 @@ L’éditeur réserve davantage de code de protection et accepte **5 104 octets*
 DISKIMG utilise trois blocs de préparation en mémoire principale au lieu de
 quatre pour loger ses contrôles supplémentaires. Aucun plafond de mémoire
 ni contrôle du lieur n’a été désactivé.
+
+### Validation complémentaire : BOOTBLK et catégories
+
+BOOTBLK passe 11/11 contrôles natifs sur chaque processeur, avec inspection
+sur l’hôte des blocs modifiés et conservés. Ses six tests hôtes injectent
+également les pannes de prélecture, d’installation, de vérification et de
+restauration. Les tests de catalogue couvrent les noms de volumes malformés
+pour empêcher un dépassement du tampon de question.
+
+La distribution suivante remplace les huit images mentionnées dans la revue
+initiale par **sept supports** : BOOT, FILES, MEDIA, DISKTOOLS et DEVTOOLS en
+6502, plus XL en 6502 et 65C02. `config/packages.mk` impose une catégorie
+unique à chaque outil absent de BOOT ; le contrôle des images vérifie leurs
+contenus exacts. Tous les essais de changements de disque utilisent des copies
+jetables.
+
+Validation finale de cette distribution : **300 tests hôtes réussis**, sept
+images contrôlées, **22/22 contrôles natifs de catégories et d’échanges de
+disquettes**, puis **14/14 contrôles de préservation des données sur chacun
+des deux processeurs** avec le nouveau chargeur.
+
+### Aiguillage des visualiseurs
+
+Entrée et I partagent désormais la même classification sur les deux CPUs.
+Les métadonnées des formats compressés priment sur une taille ressemblant à
+une page brute ; l’album HGR/RLE saute les formats des autres décodeurs.
+`OPEN.PLG` calcule le choix puis rend la main au résident avant le chargement
+suivant, afin de ne pas remplacer une surcouche en cours d’exécution. Un échec
+de chargement ne réutilise pas la commande précédente.
+
+Les 306 tests hôtes passent. `bench/open_images.py` passe 15/15 contrôles sur
+chaque processeur : octets décodés, Entrée et I, refus de perte de `/RAM`, H
+explicite et album brut. Les sept images sont reconstruites avec OPEN dans
+BOOT et les deux XL, sans changer les limites mémoire.
+La session complète passe également ses 72 contrôles, dont l’ouverture à la
+souris, les autres lecteurs, les opérations sur fichiers et le retour depuis
+Applesoft.
+
+### Bug hunt préalable à la 0.7.6
+
+Le [rapport dédié](BUG-HUNT-0.7.6.md) consigne les défauts reproduits et leurs
+régressions, dont les arbres profonds qui dépassaient la pile. Les parcours
+récursifs contrôlent désormais l'espace de pile avant lecture de répertoire ;
+la suppression précontrôle l'arbre avant son premier effacement. Les erreurs de
+lecture/fermeture de répertoire et les chaînes d'images incohérentes sont refusées.

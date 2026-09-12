@@ -4,6 +4,11 @@
 Commander » ; le texte a été repris au nouveau nom, les captures et le lien
 de téléchargement sont ceux de la Release.*
 
+*Mise à jour du 12 septembre 2026 : validation réussie sur matériel réel
+Apple //c, IIe enhanced et IIe unenhanced, confirmée par le mainteneur.
+Les mentions d'essais uniquement sous émulateur ci-dessous décrivent
+l'état au moment de ce brouillon historique.*
+
 ## Post pour le groupe Facebook « Apple II Enthusiasts »
 
 **A2 File Cmd 0.5 – a two-panel file manager for the Apple IIe (ProDOS 8, free software)**

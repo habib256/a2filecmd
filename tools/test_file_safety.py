@@ -64,6 +64,8 @@ static void message(const char* s) {snprintf(message_text,sizeof message_text,"%
 static void report_error(const char* s) {message(s);}
 static void too_long(void) {message("Path too long");}
 static void clear_row(int r) {}
+static void question_begin(void) {}
+static void revers(int r) {}
 static void gotoxy(int x,int y) {}
 #define cprintf(...) ((void)0)
 static char cgetc(void) {return 'o';}

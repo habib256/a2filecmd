@@ -62,11 +62,37 @@ def boot_hd(tmp, files=None, port=6800, blocks=4000, name='WORKHD', floppy=None,
         yield p, s
 
 
+def menu_inventory(s, p):
+    """Read every category of an already open menu, leaving its root open."""
+    names = []
+    for category in range(8):
+        s.key(RET); p.stable()
+        if not s.has('No overlay here.'):
+            names.extend(r[2:14].strip() for r in s.rows()[2:20] if r[2:14].strip())
+        s.key(ESC); p.stable()
+        if category < 7: s.key(b'\x0a')
+    return names
+
+
+def menu_category(s, p, name):
+    """Enter the category containing name, without running an overlay."""
+    # Read the menu's grouping manifest; the independent UI bench checks its contents.
+    import re
+    source = (ROOT / 'src/a2fc.c').read_text()
+    groups = re.findall(r'mn_group\d+\[\] = "([^"\n]+)"', source)
+    category = next((i for i, group in enumerate(groups) if '|' + name + '|' in group), len(groups))
+    for _ in range(category):
+        s.key(b'\x0a')
+    s.key(RET)
+    p.stable()
+
+
 def menu_run(s, p, name, tries=40, allow_aux=True):
     """Ouvre le menu des surcouches et lance `name` (en majuscules)."""
     s.key(b'!')
     s.wait(lambda: s.has('the overlays'), 'le menu des surcouches', 30)
     p.stable()
+    menu_category(s, p, name)
     for _ in range(tries):
         r = s.cursor_row(2)
         if r is not None and s.rows()[r][2:14].strip() == name:

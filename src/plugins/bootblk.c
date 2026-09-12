@@ -1,40 +1,14 @@
-/* bootblk.c -- rewrite the ProDOS boot blocks of a volume. A small
- * service-table overlay.
+/* BOOTBLK replaces blocks 0 and 1 only after reading both source blocks
+ * and both originals. Each write is read back; any failed installation
+ * restores and verifies BOTH originals, including a write that returned an
+ * error after actually reaching the disk. Power loss is not recoverable by
+ * this in-memory backup. No auxiliary memory is used.
  *
- * From the ! menu. The target volume is the selected entry when the active
- * panel is the volume list (its unit is in Entry.mdate, the DSSS byte
- * shifted right by four), otherwise the volume of the active panel's path
- * (its first component, whose unit is looked up by ON_LINE). An image or a
- * DOS 3.3 disk is refused (pan->fs != 0), and so is a DOS 3.3 drive in the
- * volume list, whose name has no leading slash.
- *
- * No boot code is embedded here: it is copied from the volume the program
- * booted from -- the first component of api->cfg_path
- * ("/VOL/A2FILE/A2FILE.CFG"), whose unit is looked up by ON_LINE too.
- * Blocks 0 and 1 go one at a time through api->copy_buf: READ_BLOCK ($80)
- * on the source, WRITE_BLOCK ($81) on the target, block 0 then block 1.
- * Rewriting the boot volume from itself is refused -- the units are
- * compared, so an alias of the same drive is caught as well -- and the
- * whole thing is confirmed first.
- *
- * ON_LINE ($C5) on unit 0 fills 256 bytes of api->copy_buf, sixteen bytes
- * per unit: the DSSS byte with the name length in its low nibble, then the
- * name. Both lookups are done from that one call, before copy_buf is
- * reused for the blocks.
- *
- * Written for size (1,280 bytes for everything, code, strings and
- * variables): a call through the service table costs cc65 some 35 bytes
- * each time, so the four services used are reached through the stubs of
- * volname.c -- a fastcall function whose body puts the slot's offset in Y
- * and jumps to one trampoline, which drops the argument the prologue
- * pushed, fetches the pointer from the table and jumps there with A/X and
- * the C stack as the service expects them. The stubs are compiled without
- * the optimiser, which would otherwise drop the ldy as dead before a jmp;
- * the last parameter of each is declared 16 bits so that the prologue
- * always pushes two bytes. The three loops (append a string, cut a volume
- * name out of a path, find a unit in the ON_LINE list) are plain 6502 for
- * the same reason: the C came out at three times the size. No 65C02
- * opcode: the same source builds the 6502 edition. */
+ * BIG owns the main graphics page: originals at $3000-$33FF, replacement
+ * at $3400-$37FF. Code and BSS are linked below $3000. copy_buf is reserved
+ * for verification. Messages survive the core's panel reload via api->note.
+ * The native service/volume-name stubs below keep the original 6502 ABI.
+ */
 #include <stddef.h>
 #include "../a2fc_plugin.h"
 
@@ -47,7 +21,7 @@ struct PluginHeader {
 };
 #pragma rodata-name (push, "OVLHDR")
 const struct PluginHeader __plugin_header = {
-    PLUGIN_MAGIC, 0, plugin_entry, 0, 0, 0,
+    PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry, 0, 0, 0,
     "Rewrite the ProDOS boot blocks of a volume"
 };
 #pragma rodata-name (pop)
@@ -61,7 +35,13 @@ static const char m_ro[]   = "Not a ProDOS volume.";
 static const char m_sel[]  = "Select a volume.";
 static const char m_same[] = "That is the volume booted from.";
 static const char m_nf[]   = "Volume not on line.";
-static const char m_what[] = "Boot blocks";       /* "Boot blocks failed (...)" */
+static const char m_read[] = "Boot blocks unreadable: nothing written.";
+static const char m_restored[] = "Boot write failed; both original blocks restored and verified.";
+static const char m_failed[] = "BOOT RESTORE FAILED: target may not boot. Recover before retrying.";
+#ifndef ORIGINAL
+#define ORIGINAL ((unsigned char*)0x3000)
+#define REPLACEMENT ((unsigned char*)0x3400)
+#endif
 static const char a_1[]    = "Rewrite the boot blocks of ";
 static const char a_2[]    = " from ";
 static const char a_3[]    = "?";
@@ -79,11 +59,14 @@ static char SRC[NAME_LEN];                  /* "/BOOT", the volume booted from *
 static char LINE[72];                       /* the question, then the last word */
 static unsigned char blen;                  /* what LINE holds */
 static unsigned char inpath;                /* the panel is inside a volume */
-static unsigned char tunit, sunit, e, b;
+static unsigned char tunit, sunit, b, failed;
 static struct Blk blk = { 3, 0, 0, 0 };     /* DATA: set once, loaded with the file */
 static struct Onl onl = { 2, 0, 0 };
 
+static void msg(const char* s) { A->strcpy(A->note, s); }
+
 /* The stubs into the service table (see above). */
+#ifndef PLUGIN_HOST
 #pragma optimize (push, off)
 static void tramp(void)
 {
@@ -104,9 +87,7 @@ static void tramp(void)
     asm("jmp jmpvec");
 }
 #define STUB(field) { asm("ldy #%b", offsetof(struct A2fcApi, field)); asm("jmp %v", tramp); }
-static void __fastcall__ msg(const char* s) STUB(message)
 static unsigned char __fastcall__ ask(const char* s) STUB(confirm)
-static void __fastcall__ report_error(const char* what) STUB(report_error)
 static unsigned char __fastcall__ mli(unsigned char cmd, void* block) STUB(mli)
 
 /* LINE, at blen, gets `s`; blen follows. */
@@ -194,6 +175,46 @@ static unsigned char __fastcall__ find_unit(const char* name)
 }
 #pragma optimize (pop)
 
+#else
+#define ask(s) A->confirm(s)
+#define mli(c, p) A->mli(c, p)
+static void cat(const char* s) {
+    while (*s) LINE[blen++] = *s++;
+    LINE[blen] = 0;
+}
+static void vol_of(const char* p) {
+    unsigned char i = 0;
+    while (p[i] && i < NAME_LEN - 1 && (!i || p[i] != '/')) {
+        DST[i] = p[i]; ++i;
+    }
+    DST[i] = 0;
+}
+static unsigned char find_unit(const char* name) {
+    unsigned int i;
+    unsigned char n;
+    for (i = 0; i < 256 && BUF[i]; i += 16) {
+        n = BUF[i] & 15;
+        if (n && strlen(name) == n + 1 && !memcmp(BUF + i + 1, name + 1, n))
+            return BUF[i] & 0xF0;
+    }
+    return 0;
+}
+#endif
+
+/* Keep the saved bytes out of the readback buffer. A failed WRITE may have
+ * modified the medium, so callers must restore even that very block. */
+static unsigned char write_checked(unsigned char* bytes)
+{
+    unsigned int i;
+    blk.unit = tunit;
+    blk.buf = bytes;
+    if (mli(0x81, &blk)) return 0;
+    blk.buf = BUF;
+    if (mli(0x80, &blk)) return 0;
+    for (i = 0; i < 512; ++i) if (BUF[i] != bytes[i]) return 0;
+    return 1;
+}
+
 void __fastcall__ plugin_entry(const struct A2fcApi* api)
 {
     A = api;
@@ -218,7 +239,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     /* One ON_LINE for both units, before BUF becomes the block buffer. */
     onl.unit = 0;
     onl.buf = BUF;
-    if (mli(0xC5, &onl)) { report_error(m_what); return; }
+    if (mli(0xC5, &onl)) { msg(m_read); return; }
     sunit = find_unit(SRC);
     tunit = inpath ? find_unit(TGT) : (unsigned char)(sel->mdate << 4);
     if (!sunit || !tunit) { msg(m_nf); return; }
@@ -228,16 +249,28 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     cat(a_1); cat(TGT); cat(a_2); cat(SRC); cat(a_3);
     if (!ask(LINE)) return;
 
-    /* Block 0, then block 1: read from the source, written to the target. */
-    blk.buf = BUF;
+    /* Preflight: no target write until all four reads succeeded. */
     for (b = 0; b < 2; ++b) {
         blk.block = b;
         blk.unit = sunit;
-        if ((e = mli(0x80, &blk)) != 0) break;
+        blk.buf = REPLACEMENT + (unsigned int)b * 512;
+        if (mli(0x80, &blk)) { msg(m_read); return; }
         blk.unit = tunit;
-        if ((e = mli(0x81, &blk)) != 0) break;
+        blk.buf = ORIGINAL + (unsigned int)b * 512;
+        if (mli(0x80, &blk)) { msg(m_read); return; }
     }
-    if (e) { report_error(m_what); return; }
+    for (b = 0; b < 2; ++b) {
+        blk.block = b;
+        if (!write_checked(REPLACEMENT + (unsigned int)b * 512)) {
+            failed = 0;
+            for (b = 0; b < 2; ++b) {
+                blk.block = b;
+                if (!write_checked(ORIGINAL + (unsigned int)b * 512)) failed = 1;
+            }
+            msg(failed ? m_failed : m_restored);
+            return;
+        }
+    }
 
     blen = 0;
     cat(d_1); cat(TGT); cat(d_2); cat(SRC);

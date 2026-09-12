@@ -76,8 +76,10 @@ const struct PluginHeader __plugin_header = {
 
 #define MAXFAV  9
 #define SLOT    (PATH_LEN + 1)          /* 65: a whole ProDOS path and its zero */
+#ifndef LIST
 #define LIST    ((char*)0x3000)         /* 9 x 65 = 585: $3000-$3248 */
 #define TEXT    ((char*)0x3400)         /* GOTO.CFG as read, then as written */
+#endif
 #define MAXTEXT 2000                    /* of the 3 KB there: nine lines need 594 */
 #define NONE    0xFF                    /* save(): no slot left out */
 #define TAIL(s) (sizeof (s) - 1)        /* where the path goes after a heading */
@@ -92,7 +94,7 @@ static const char m_dir[]   = "Not a ProDOS directory: nothing to add.";
 static const char m_room[]  = "The list is full: nine favourites.";
 static const char m_dup[]   = "Already in the list.";
 static const char m_gone[]  = "Gone: ";
-static const char m_which[] = "Delete which one? 1-9";
+static const char m_which[] = "\1Delete which one? 1-9";
 static const char m_err[]   = "GOTO.CFG cannot be written.";
 static const char m_jump[]  = "Jumped to ";
 static const char m_add[]   = "Added ";
@@ -111,6 +113,7 @@ static struct { unsigned char n; char* from; char* to; } ren;
 static char cfg[PATH_LEN];              /* "/VOL/A2FILE/GOTO.CFG" */
 
 /* The stubs into the service table (see above). */
+#ifndef PLUGIN_HOST
 #pragma optimize (push, off)
 static void tramp(void)
 {
@@ -148,6 +151,24 @@ static unsigned int __fastcall__ frd(void* p, unsigned int sz, unsigned int n, F
 static unsigned int __fastcall__ fwr(const void* p, unsigned int sz, unsigned int n, FILE* f) STUB(fwrite)
 static int __fastcall__ fcls(FILE* f) STUB(fclose)
 #pragma optimize (pop)
+#else
+#define mli(cmd,params) A->mli(cmd,params)
+#define msg A->message
+#define cls(unused) A->clrscr()
+#define at A->gotoxy
+#define put A->cputs
+#define kbar A->keys_bar
+#define getkey(unused) A->cgetc()
+#define dopen A->dir_open
+#define dclose(unused) A->dir_close()
+#define scpy A->strcpy
+#define scmp A->strcmp
+#define slen A->strlen
+#define fopn A->fopen
+#define frd A->fread
+#define fwr A->fwrite
+#define fcls A->fclose
+#endif
 
 /* Slot `i` of the list, without a multiplication. */
 static char* __fastcall__ slot(unsigned char i)
@@ -181,6 +202,7 @@ static unsigned char valid_path(const char* p)
 /* Parse the entire bounded file before offering actions. Never turn an
  * overlong path, embedded NUL or extra favourite into a partial list that
  * a later save could silently write over the original. Missing is empty. */
+static unsigned char fileop(unsigned char cmd,const char* path);
 static unsigned char load(void)
 {
     unsigned int n;
@@ -190,9 +212,11 @@ static unsigned char load(void)
     char* d;
     count = 0;
     fh = fopn(cfg, f_rb);
-    if (!fh) return 1;
+    if (!fh) return fileop(0xC4,cfg)==0x46;
     n = frd(p, 1, MAXTEXT + 1, fh);
-    fcls(fh);
+    j = ferror(fh)!=0;
+    if (fcls(fh)) j=1;
+    if (j) return 0;
     if (n > MAXTEXT) return 0;
     end = p + n;
     while (p < end) {
@@ -232,6 +256,26 @@ static void discard_temp(void)
     scpy(N,fileop(0xC1,temp) ? (const char*)"Save failed; GOTO.TMP kept." : m_err);
 }
 
+/* The serialized text stays in TEXT while the closed temporary is read
+ * into the resident copy buffer. Every byte, EOF and close must agree. */
+static unsigned char verify_saved(unsigned int size)
+{
+    unsigned int pos=0,n,i;
+    unsigned char bad=0;
+    fh=fopn(temp,f_rb);
+    if(!fh)return 0;
+    while(pos<size && !bad) {
+        n=size-pos;if(n>512)n=512;
+        if(frd(A->copy_buf,1,n,fh)!=n)bad=1;
+        else for(i=0;i<n;++i)if(A->copy_buf[i]!=(unsigned char)TEXT[pos+i]) {bad=1;break;}
+        pos+=n;
+    }
+    if(!bad && frd(A->copy_buf,1,1,fh))bad=1;
+    if(ferror(fh))bad=1;
+    if(fcls(fh))bad=1;
+    return !bad;
+}
+
 /* Serialize to an exclusively created GOTO.TMP. Only after successful write
  * and close do we rename CFG to BAK, then TMP to CFG. A failed install rolls
  * BAK back; if rollback fails both recovery files are retained. No existing
@@ -259,7 +303,9 @@ static void save(unsigned char dead)
     fh=fopn(temp,f_wb);
     if(!fh) { discard_temp();return; }
     i=fwr(TEXT,1,p-TEXT,fh)!=(unsigned int)(p-TEXT);
+    if(ferror(fh))i=1;
     if(fcls(fh) || i) { discard_temp();return; }
+    if(!verify_saved(p-TEXT)) { discard_temp();return; }
     /* The old list remains intact until the new file has closed cleanly. */
     i=rename_file(cfg,backup);
     if(i && i!=0x46) { discard_temp();return; }
@@ -295,7 +341,7 @@ static unsigned char path_input(void)
     unsigned char len=0,k;
     for(;;) {
         TEXT[len]=0;
-        scpy(N,"Path: ");scpy(N+6,TEXT);N[6+len]='_';N[7+len]=0;
+        scpy(N,"\1Path: ");scpy(N+7,TEXT);N[7+len]='_';N[8+len]=0;
         msg(N);k=getkey(0);
         if(k==KEY_ESC) { N[0]=0;return 0; }
         if(k==KEY_RETURN) {
@@ -326,9 +372,9 @@ static void jump(const char* p)
 static void move_favourite(void)
 {
     unsigned char from,to,i;
-    msg("Move which favourite? 1-9, ESC cancels");
+    msg("\1Move which favourite? 1-9, ESC cancels");
     from=getkey(0)-'1';if(from>=count)return;
-    msg("New position? 1-9, ESC cancels");
+    msg("\1New position? 1-9, ESC cancels");
     to=getkey(0)-'1';if(to>=count)return;
     if(from==to) { scpy(N,"Already at that position.");return; }
     scpy(TEXT,slot(from));i=from;
@@ -356,7 +402,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     scpy(temp,cfg);scpy(temp+i+1,"GOTO.TMP");
     scpy(backup,cfg);scpy(backup+i+1,"GOTO.BAK");
 
-    if (!load()) { scpy(N,"Invalid GOTO.CFG: check size, paths and nine-entry limit."); return; }
+    if (!load()) { scpy(N,"Invalid GOTO.CFG: read error, size or paths. No changes."); return; }
     draw();
     /* One key. Bit 5 is set on every digit, so `| 0x20` lower-cases the
      * letters and leaves 1-9 alone; and since count <= 9, i < count can

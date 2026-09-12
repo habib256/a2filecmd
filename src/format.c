@@ -108,7 +108,6 @@ static unsigned char ndev;
 static unsigned char boot_unit;
 static char volname[16];
 static struct Dev* target;
-extern unsigned char a2fc_playing;
 static const struct A2fcApi* A;
 static unsigned char ram_cleared;
 
@@ -478,8 +477,6 @@ void __fastcall__ format_entry(const struct A2fcApi* api)
     unsigned char r;
     A = api;
     boot_unit = ram_cleared = 0;
-    music_stop();
-    a2fc_playing = 0;
     for (;;) {
         scan_devices();
         list_devices();

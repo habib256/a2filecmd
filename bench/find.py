@@ -59,6 +59,8 @@ def main():
 
             def menu(letter):
                 s.key(b'!'); s.wait(lambda: s.has('the overlays'), 'menu', 30); p.stable()
+                from xplug import menu_category
+                menu_category(s, p, 'COMPARE' if letter == b'C' else 'SEARCH')
                 s.key(letter); p.stable(); s.key(RET)
 
             # ── COMPARE ──────────────────────────────────────────────────

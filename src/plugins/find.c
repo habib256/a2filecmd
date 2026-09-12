@@ -437,7 +437,7 @@ static unsigned char read_pattern(void)
     plen = 0;
     for (;;) {
         pat[plen] = 0;
-        f_sprintf(path, "Find (= ? \"text), TAB filters: %s_", pat);
+        f_sprintf(path, "\1Find (= ? \"text), TAB filters: %s_", pat);
         msg(path);
         k = f_cgetc();
         if (k == KEY_ESC) { msg(""); return 0; }

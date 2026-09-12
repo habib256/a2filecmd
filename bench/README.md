@@ -6,7 +6,7 @@ livre pour cela : les adresses des variables observees viennent de la table de
 symboles du lien (`build/a2fc.lbl`), et l'ecran est lu la ou l'Apple II le
 range, en `$400-$7FF`.
 
-Les bancs disquette utilisent l’image interne `dist/A2FILECMD-6502-BOOT-0.7.6.po`.
+Les bancs disquette utilisent l’image interne `dist/A2FILECMD-6502-BOOT-0.8.0.po`.
 La conversion DSK publiée conserve les mêmes blocs ProDOS ; les `.po` ne sont
 pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 
@@ -25,6 +25,7 @@ pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 | `disksingle.py` | comparaison exacte de 280 blocs sur un seul lecteur, changement D2 vers D1, noms des disques à chaque échange et images sources intactes |
 | `six.py` | UNDELETE, DISKCMP, MKIMAGE, RESCUE, SYNC et TREE : volumes jetables, effacement ProDOS réel, contenu relu sur l’hôte et pile surveillée |
 | `volinfo.py` | diagnostic ProDOS en lecture seule, disquette saine/corrompue et volume de 32 Mo, carte paginée et retour avec pile préservée, sur les deux processeurs |
+| `menu.py` | Catégories complètes, ordre alphabétique, flèches ±6, Échap, conservation AUX, questions et saisies en inverse |
 | `blocktools.py` | VERIFY par lots avec fichier illisible, rapport VOLINFO relu sur la disquette éjectée, refus d’écrasement, BLKVIEW, recherche traversant les blocs, extraction exacte et bornes de navigation |
 | `disasm.py` | désassemblage BIN/SYS, choix 6502/65C02, pagination, offsets fichier sur sept chiffres et adresses CPU 16 bits, export TXT relu octet par octet, refus d’écrasement, annulation et pile ; `A2FC_CAPTURE=/tmp/disasm.ppm` conserve une capture POM2 |
 | `ident.py` | formats de fichiers, textes Apple à bit haut, UTF-8 sur 2/3/4 octets, BOM, fins de ligne et séquences invalides ou coupées à 512 octets |
@@ -38,21 +39,25 @@ pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 
 ## Les deux editions
 
-`dist/A2FILECMD-6502-BOOT-0.7.6.po` est l'**edition disquette**, construite en 6502
+`dist/A2FILECMD-6502-BOOT-0.8.0.po` est l'**edition disquette**, construite en 6502
 (`build-6502/`) avec le gestionnaire et les outils disque seulement : c'est
 elle que les bancs amorcent par defaut, et sa table de symboles est prise
 dans `build-6502/` sans rien dire. `run.py` y saute la section souris, et les
 bancs de l'editeur, des images, des archives et des lecteurs (`shk.py`,
 `bny.py`, `awp.py`, `find.py`, la session complete de `run.py`) ont besoin de
 `make benchfloppy ARCH=enh` : `A2FC_IMG=A2FILECMD-full python3 bench/run.py`
-prend `build/A2FILECMD-full.po`, la disquette 65C02 avec toutes les
-surcouches et BASIC.SYSTEM, jamais publiee, et les symboles de `build/`.
-`hd.py` amorce `dist/A2FILECMD-65C02-XL-0.7.6.2mg` ;
+prend `build/A2FILECMD-full.po`, la disquette 65C02 des scénarios de session
+avec BASIC.SYSTEM, jamais publiée, et les symboles de `build/`. Le lecteur
+MUSIC est chargé depuis une copie de MEDIA en lecteur 2. Les bancs AWP,
+Binary II et ShrinkIt utilisent `archive_support.py` pour substituer leur
+lecteur à FORMAT/DISKIMG dans une copie jetable de cette disquette : tous
+les outils ne tiennent plus ensemble sur 140 Ko.
+`hd.py` amorce `dist/A2FILECMD-65C02-XL-0.8.0.2mg` ;
 `A2FC_CPU=6502 A2FC_PRESET=iie_unenh python3 bench/hd.py` teste la XL 6502.
-`extras.py` vérifie BOOT + EXTRA avec deux lecteurs, les échanges avec un
+`extras.py` vérifie BOOT + FILES et les demandes des autres catégories avec deux lecteurs, les échanges avec un
 seul lecteur et BASIC.SYSTEM. Par défaut il prend le 6502 ;
-`A2FC_IMG=A2FILECMD-65C02-BOOT python3 bench/extras.py` prend le 65C02.
-La même variable choisit la disquette dans `smoke.py`. Les deux EXTRA sont
+`python3 bench/extras.py` vérifie les mêmes disquettes 6502 sur IIe enhanced.
+La même variable choisit la disquette dans `smoke.py`. Les quatre catégories sont
 indépendantes. `python3 tools/check_images.py` relit les six volumes,
 compare les surcouches aux builds respectifs et vérifie les copies `.dsk`.
 
@@ -83,7 +88,7 @@ donne un Apple //c (ROM 32 Ko) : son lecteur integre est le Disk II du slot
 6, donc `--boot 6` amorce la disquette comme sur le //e, et le disque dur est
 une unite SmartPort sur le port arriere, servie par le firmware du //c en
 slot 5 (pas de carte, pas de Mockingboard). Les deux presets amorcent
-`dist/A2FILECMD-6502-BOOT-0.7.6.po` jusqu'aux panneaux. `Pom2(..., floppy2=...)` met une
+`dist/A2FILECMD-6502-BOOT-0.8.0.po` jusqu'aux panneaux. `Pom2(..., floppy2=...)` met une
 seconde disquette dans le lecteur 2 du meme Disk II des l'amorcage
 (`pom2_playtest --disk2`) : un vrai DOS 3.3 dans un lecteur, sans passer par
 `/disk` -- ce que le banc des disques physiques attendait.
@@ -147,7 +152,7 @@ complète 65C02 et les 23 tests hors émulateur passent également.
 protection du volume du programme, annulations sans écriture, disquette
 protégée, formatage Disk II et RAM, SmartPort de 65535 blocs, bitmap,
 restauration du résident et retour direct. Exécuter une fois avec
-`A2FC_PRESET=iie_unenh`, puis avec `A2FC_IMG=A2FILECMD-65C02-BOOT`.
+`A2FC_PRESET=iie_unenh`, puis avec `A2FC_IMG=A2FILECMD-full`.
 
 `gotobad.py` vérifie le refus des configurations GOTO hors limites, aux chemins
 mal formés ou avec NUL,
@@ -162,3 +167,55 @@ Il vérifie aussi le déplacement des favoris (M), sa persistance et les annulat
 
 Les sauvegardes GOTO sont testées avec écriture incomplète, échecs de renommage,
 restauration du fichier original et collisions avec les fichiers de récupération.
+
+`open_images.py` ouvre Extasie, PACKFOT, 816/Paint et lo-res avec Entrée puis
+I, reconnaît DGR et RLE sans indication de nom/type et ouvre un sprite
+sans en-tête avec I. Il contrôle les pixels décodés, le refus de perte de
+`/RAM`, le recours
+explicite à H et le parcours de l’album brut. Exécuter avec
+`A2FC_PRESET=iie_unenh`, puis `A2FC_IMG=A2FILECMD-full`.
+
+`sample_media.py` lit `~/src/pom2/hdv/GISTDATA.hdv` en lecture seule (ou
+`A2FC_SAMPLE_DISK`), puis copie DIP.CHIPS, BBROS.MINI, les deux programmes
+Integer BASIC et les 52 polices dans un volume jetable. Il compare les pages
+HGR complètes à des rendus de référence indépendants et contrôle la mémoire
+AUX avant/après. Exécuter avec les deux couples `A2FC_BUILD`/`A2FC_PRESET`.
+Les régressions synthétiques portables sont dans `tools/test_sample_media.py`.
+
+Pour PT3, `python3 bench/build_pt3_trace.py` construit un hôte temporaire
+`/tmp/a2fc-pt3-trace` à partir du pilote POM2 habituel, sans modifier le projet
+POM2. Il trace les registres AY en lecture seule. Exécuter ensuite
+`POM2=/tmp/a2fc-pt3-trace A2FC_BUILD=build-6502 A2FC_PRESET=iie_unenh python3 bench/pt3.py`,
+puis avec `A2FC_BUILD=build A2FC_PRESET=iie`. Le banc vérifie le morceau complet,
+les registres de la carte, la pause/reprise, le silence à la sortie, les
+pointeurs malformés et la préservation d'AUX ; le passage enhanced vérifie
+également le refus sans carte sur //c. Les deux emplacements historiques
+`/SAMPLE.MEDIA` et `/IMG/SAMPLE.MEDIA` du corpus sont acceptés.
+
+`roi.py` checks preferences across restart and marked MOVE (same/cross volume,
+collision, cancellation, manifest collision, preserved bytes, AUX and stack).
+`music.py` checks foreground MB1 audio, pause, Escape, natural end and malformed
+files on disposable images. Like `pt3.py` and `roi.py`, it needs the disposable AY trace host.
+`python3 bench/build_pt3_trace.py` builds a matching POM2 core in `/tmp`,
+without modifying the POM2 checkout, and enables and flushes HDV writeback only
+for the disposable bench host. Run with `POM2=/tmp/a2fc-pt3-trace`.
+`batch_missing.py` verifies table and mark restoration after a malformed
+BATCH entry point, including a source in the right panel.
+
+`media.py` checks same-format Left/Right navigation, boundaries, marks, PT3
+credits and seven specialized image viewers. `large_nav.py` checks more than
+300 mixed entries, nested parent returns, both panels and music across windows.
+Both use disposable volumes and `POM2=/tmp/a2fc-pt3-trace`.
+
+`catalog_safety.py` rejects cyclic ProDOS/DOS catalogs and invalid DOS sectors,
+then compares every byte of its disposable HDV and AUX. `tree_safety.py`
+reproduces the 20-level recursion case: copy and delete must refuse with the
+stack canary and the whole disk intact; a three-level copy must still preserve
+all source and destination bytes. Run both with each `A2FC_BUILD`/`A2FC_PRESET`
+pair and the disposable writeback host described above. `tools/test_tree_stack.py`
+executes the assembly guard over all 65,536 pointer values on both CPUs.
+
+`python3 tools/fuzz_images.py --cases 1000 --out /tmp/a2fc-fuzz` covers DGR,
+Extasie, PACKFOT, 816/Paint, MGTK fonts, Print Shop and LZ4FH under ASan/UBSan.
+The input files are temporary and checked for modification; native rendering
+is covered separately by the media benches.

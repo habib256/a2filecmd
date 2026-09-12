@@ -343,7 +343,7 @@ static void copy_across(const struct Entry* e)
     if (!join(target, other->path, e->name)) { note(m_walk); return; }
 
     a.sprintf((char*)scratch, m_cask, e->name);
-    if (!RF(confirm)((char*)scratch)) { note(""); return; }
+    if (a.arg != 'B' && !RF(confirm)((char*)scratch)) { note(""); return; }
 
     /* CREATE must grant us a new entry before fopen("wb") or failure
      * cleanup can touch this path. Use the readback buffer for its Pascal
@@ -365,11 +365,11 @@ static void copy_across(const struct Entry* e)
     if (!in || !out) bad = 1;
     for (left = e->size; left && !bad; left -= n) {
         n = left > 512 ? 512 : (unsigned int)left;
-        if (RF(fread)(buf, 1, n, in) != n || RF(fwrite)(buf, 1, n, out) != n) bad = 1;
+        if (stop() || RF(fread)(buf, 1, n, in) != n || RF(fwrite)(buf, 1, n, out) != n) bad = 1;
         else { done += n; a.progress_bar(e->name, done, e->size); }
     }
-    if (in) RF(fclose)(in);
-    if (out && RF(fclose)(out)) bad = 1;
+    if (in) { if (ferror(in)) bad = 1; if (RF(fclose)(in)) bad = 1; }
+    if (out) { if (ferror(out)) bad = 1; if (RF(fclose)(out)) bad = 1; }
     if (bad) { RF(remove)(target); a.sprintf(a.note, m_cbad, e->name); return; }
 
     /* Read both back and compare before the original is touched. */
@@ -378,15 +378,17 @@ static void copy_across(const struct Entry* e)
     if (!in || !out) bad = 1;
     for (left = e->size; left && !bad; left -= n) {
         n = left > 512 ? 512 : (unsigned int)left;
-        if (RF(fread)(buf, 1, n, in) != n || RF(fread)(scratch, 1, n, out) != n) bad = 1;
+        if (stop() || RF(fread)(buf, 1, n, in) != n || RF(fread)(scratch, 1, n, out) != n) bad = 1;
         else for (i = 0; i < n; ++i) if (buf[i] != scratch[i]) { bad = 1; break; }
     }
     /* The panel's size can be stale. Matching that prefix is not enough:
      * deleting a longer source would silently discard its remaining bytes.
      * Both streams must end at the size we copied, including empty files. */
     if (!bad && (RF(fread)(buf, 1, 1, in) || RF(fread)(scratch, 1, 1, out))) bad = 1;
-    if (in) RF(fclose)(in);
-    if (out) RF(fclose)(out);
+    /* A zero-byte probe is EOF only if neither stream has an I/O error.
+     * Keep the source until both verification handles have closed too. */
+    if (in) { if (ferror(in)) bad = 1; if (RF(fclose)(in)) bad = 1; }
+    if (out) { if (ferror(out)) bad = 1; if (RF(fclose)(out)) bad = 1; }
     if (bad) { RF(remove)(target); a.sprintf(a.note, m_vbad, e->name); return; }
 
     if (RF(remove)(a.full)) { a.sprintf(a.note, m_del, e->name); return; }
@@ -441,7 +443,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     if (!room && dstkey == 2) { note(m_full); return; }
 
     a.sprintf((char*)scratch, room ? m_ask : m_grew, e->name, other->path);
-    if (!RF(confirm)((char*)scratch)) { note(""); return; }
+    if (a.arg != 'B' && !RF(confirm)((char*)scratch)) { note(""); return; }
 
     if (!room && (!grow_dir(dstkey) || !free_slot(dstkey, &dblk, &dslot))) {
         note(m_nogrow);

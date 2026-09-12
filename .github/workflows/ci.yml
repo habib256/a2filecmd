@@ -7,7 +7,7 @@ on:
   pull_request:
   workflow_dispatch:
 
-# Each CPU ships BOOT, EXTRA and EXTRA2 floppies plus a complete XL 2mg.
+# Universal 6502 floppies, plus complete XL images for 6502 and 65C02.
 # cc65 master provides the 6502 console; cc65 2.19 builds apple2enh.
 env:
   CC65_HEAD_COMMIT: e11fb5c
@@ -18,6 +18,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verifier la version du tag avant construction
+        if: startsWith(github.ref, 'refs/tags/')
+        run: python3 tools/release_notes.py --check-tag "$GITHUB_REF_NAME"
 
       - name: Installer cc65 2.19
         run: |
@@ -53,17 +57,17 @@ jobs:
       # Le lien echoue si le code passe sous le plancher de la pile C ou si
       # la coupe du fichier ne correspond plus au lanceur : check_layout.py
       # tourne dans la recette, pas apres coup.
-      - name: BOOT, EXTRA, EXTRA2 et XL pour chaque processeur
+      - name: Disquettes 6502 par categorie et XL pour les deux processeurs
         run: make disk && make xplugins ARCH=6502
 
-      - name: Relire les huit volumes et verifier leurs surcouches
+      - name: Relire les sept volumes et verifier leurs surcouches
         run: python3 tools/check_images.py
 
       - name: Empreintes et notes de version
         run: |
           VERSION=$(sed -n 's/^A2FC_VERSION *= *//p' Makefile)
           cp docs/A2FILECMD-MANUAL-EN.pdf "dist/A2FILECMD-MANUAL-EN-$VERSION.pdf"
-          cd dist && sha256sum A2FILECMD-*-BOOT-*.dsk A2FILECMD-*-EXTRA-*.dsk A2FILECMD-*-EXTRA2-*.dsk A2FILECMD-*-XL-*.2mg "A2FILECMD-MANUAL-EN-$VERSION.pdf" | tee "SHA256SUMS-$VERSION.txt"
+          cd dist && sha256sum A2FILECMD-6502-BOOT-*.dsk A2FILECMD-6502-FILES-*.dsk A2FILECMD-6502-MEDIA-*.dsk A2FILECMD-6502-DISKTOOLS-*.dsk A2FILECMD-6502-DEVTOOLS-*.dsk A2FILECMD-*-XL-*.2mg "A2FILECMD-MANUAL-EN-$VERSION.pdf" | tee "SHA256SUMS-$VERSION.txt"
           cd .. && python3 tools/release_notes.py "${GITHUB_REF_NAME}" > dist/RELEASE_NOTES.md
 
       - name: Les cartes memoire, pour le journal de construction
@@ -85,8 +89,15 @@ jobs:
         with:
           name: a2filecmd-disk
           path: |
-            dist/
-            !dist/*.po
+            dist/A2FILECMD-6502-BOOT-*.dsk
+            dist/A2FILECMD-6502-FILES-*.dsk
+            dist/A2FILECMD-6502-MEDIA-*.dsk
+            dist/A2FILECMD-6502-DISKTOOLS-*.dsk
+            dist/A2FILECMD-6502-DEVTOOLS-*.dsk
+            dist/A2FILECMD-*-XL-*.2mg
+            dist/A2FILECMD-MANUAL-EN-*.pdf
+            dist/SHA256SUMS-*.txt
+            dist/RELEASE_NOTES.md
 
       - uses: actions/upload-artifact@v4
         with:
@@ -108,35 +119,51 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: make disk && make benchfloppy ARCH=enh
-      - name: Les deux disquettes BOOT publiees demarrent
+      - name: La disquette BOOT 6502 demarre sur les deux machines
         run: |
           A2FC_PRESET=iie_unenh python3 bench/smoke.py
-          A2FC_IMG=A2FILECMD-65C02-BOOT python3 bench/smoke.py
+          python3 bench/smoke.py
       - name: Complement, deux lecteurs et echanges sur un lecteur
         run: |
           A2FC_PRESET=iie_unenh python3 bench/extras.py
-          A2FC_IMG=A2FILECMD-65C02-BOOT python3 bench/extras.py
+          python3 bench/extras.py
       - name: Six nouveaux plugins sur les deux CPU
         run: |
           A2FC_PRESET=iie_unenh python3 bench/six.py
-          A2FC_IMG=A2FILECMD-65C02-BOOT python3 bench/six.py
+          A2FC_IMG=A2FILECMD-full python3 bench/six.py
           A2FC_PRESET=iie_unenh python3 bench/disksingle.py
       - name: VOLINFO, diagnostic en lecture seule sur les deux CPU
         run: |
           A2FC_PRESET=iie_unenh python3 bench/tree.py
-          A2FC_IMG=A2FILECMD-65C02-BOOT python3 bench/tree.py
+          A2FC_IMG=A2FILECMD-full python3 bench/tree.py
           A2FC_PRESET=iie_unenh python3 bench/blocktools.py
-          A2FC_IMG=A2FILECMD-65C02-BOOT python3 bench/blocktools.py
+          A2FC_IMG=A2FILECMD-full python3 bench/blocktools.py
           A2FC_PRESET=iie_unenh python3 bench/volinfo.py
-          A2FC_IMG=A2FILECMD-65C02-BOOT python3 bench/volinfo.py
+          A2FC_IMG=A2FILECMD-full python3 bench/volinfo.py
       - name: FORMAT, protections et retour resident sur les deux CPU
         run: |
           A2FC_PRESET=iie_unenh python3 bench/format.py
-          A2FC_IMG=A2FILECMD-65C02-BOOT python3 bench/format.py
+          A2FC_IMG=A2FILECMD-full python3 bench/format.py
+      - name: Image viewers selected by Return and I on both CPUs
+        run: |
+          A2FC_PRESET=iie_unenh python3 bench/open_images.py
+          A2FC_IMG=A2FILECMD-full python3 bench/open_images.py
+      - name: BOOTBLK, verified boot blocks on both CPUs
+        run: |
+          A2FC_PRESET=iie_unenh python3 bench/bootblk.py
+          A2FC_IMG=A2FILECMD-full python3 bench/bootblk.py
       - name: Data preservation and RAM consent
         run: |
           A2FC_IMG=A2FILECMD-6502-BOOT A2FC_PRESET=iie_unenh python3 bench/data_safety.py
-          A2FC_IMG=A2FILECMD-65C02-BOOT python3 bench/data_safety.py
+          A2FC_IMG=A2FILECMD-full python3 bench/data_safety.py
+      - name: Catalogues malformes et grands repertoires, deux CPU
+        run: |
+          A2FC_BUILD=build-6502 A2FC_PRESET=iie_unenh python3 bench/tree_safety.py
+          A2FC_BUILD=build-6502 A2FC_PRESET=iie_unenh python3 bench/catalog_safety.py
+          A2FC_BUILD=build-6502 A2FC_PRESET=iie_unenh python3 bench/large_nav.py
+          A2FC_BUILD=build A2FC_PRESET=iie python3 bench/tree_safety.py
+          A2FC_BUILD=build A2FC_PRESET=iie python3 bench/catalog_safety.py
+          A2FC_BUILD=build A2FC_PRESET=iie python3 bench/large_nav.py
       - name: Session complete, 65C02 (disquette de banc, toutes les surcouches)
         run: A2FC_IMG=A2FILECMD-full python3 bench/run.py --out bench-out
       - name: Les deux disques XL publies
@@ -160,7 +187,7 @@ jobs:
   release:
     name: publication
     needs: [build, bench]
-    if: startsWith(github.ref, 'refs/tags/v') && always() && needs.build.result == 'success' && needs.bench.result != 'failure'
+    if: startsWith(github.ref, 'refs/tags/v') && always() && needs.build.result == 'success' && (needs.bench.result == 'success' || needs.bench.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -181,9 +208,11 @@ jobs:
           name: "A2 File Cmd ${{ env.VERSION }} — Two panels. One Apple II."
           body_path: dist/RELEASE_NOTES.md
           files: |
-            dist/A2FILECMD-*-BOOT-*.dsk
-            dist/A2FILECMD-*-EXTRA-*.dsk
-            dist/A2FILECMD-*-EXTRA2-*.dsk
+            dist/A2FILECMD-6502-BOOT-*.dsk
+            dist/A2FILECMD-6502-FILES-*.dsk
+            dist/A2FILECMD-6502-MEDIA-*.dsk
+            dist/A2FILECMD-6502-DISKTOOLS-*.dsk
+            dist/A2FILECMD-6502-DEVTOOLS-*.dsk
             dist/A2FILECMD-*-XL-*.2mg
             dist/A2FILECMD-MANUAL-EN-*.pdf
             dist/SHA256SUMS-*.txt

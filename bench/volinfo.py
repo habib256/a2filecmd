@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Published BOOT: VOLINFO on healthy/corrupt floppies and a 32 MB volume."""
+"""Published BOOT + DISKTOOLS: VOLINFO on healthy/corrupt floppies and a 32 MB volume."""
 import os
 import re
 import shutil
@@ -32,6 +32,9 @@ def main():
     with tempfile.TemporaryDirectory(prefix='a2fc-volinfo-') as tmp:
         tmp = Path(tmp)
         boot = tmp/'BOOT.po'; shutil.copyfile(DISK, boot)
+        tools_disk = tmp/'DISKTOOLS.po'
+        shutil.copyfile(DISK.with_name(DISK.name.replace("-BOOT-", "-DISKTOOLS-")), tools_disk)
+        tools_before = tools_disk.read_bytes()
         target = disk(tmp, 'AUDIT', 280)
         hd = disk(tmp, 'WORKHD', 65535)
         before = target.read_bytes(); boot_before = boot.read_bytes(); hd_before = hd.read_bytes()
@@ -58,8 +61,15 @@ def main():
                 s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes'); p.stable()
                 s.select('/'+name)
 
+            def tool(name):
+                menu_run(s, p, name)
+                if s.has('Insert '):
+                    s.key(b'1')
+                    p.insert(0, str(tools_disk if name == 'VOLINFO' else boot))
+                    s.key(RET)
+
             def run():
-                menu_run(s, p, 'VOLINFO')
+                tool('VOLINFO')
                 s.wait(lambda: s.has('M Bitmap'), 'fin du diagnostic', 180); p.stable()
 
             def number(label):
@@ -99,12 +109,13 @@ def main():
             s.ok('bloc partage detecte', number('Shared references:') == 1)
             s.ok('deux blocs perdus detectes', number('Lost blocks:') == 2)
             back()
-            menu_run(s, p, 'HELP'); s.wait(lambda: s.has('A2 FILE CMD'), 'aide apres VOLINFO')
+            tool('HELP'); s.wait(lambda: s.has('A2 FILE CMD'), 'aide apres VOLINFO')
             s.ok('une autre surcouche fonctionne apres le diagnostic', s.has('A2 FILE CMD'))
             s.key(ESC); p.stable(); p.eject(1)
         assert target.read_bytes() == before
         assert corrupt.read_bytes() == d
         assert boot.read_bytes() == boot_before
+        assert tools_disk.read_bytes() == tools_before
         assert hd.read_bytes() == hd_before
         s.ok('aucune image modifiee', True)
         return ok_all(s, 'volinfo')

@@ -25,7 +25,7 @@
 41,16,X,Run SYS, BIN or BAS (Applesoft)
 1,17,E,Edit a text (on a dir: new file)
 41,17,I,View as image: HGR/DHGR, raw/RLE
-1,18,P,Pause / resume the music
+1,18,RET,Open image, music or document
 41,18,F,Format a disk (asks twice)
 1,19,W,Disk images: write, read, copy
 41,19,!,Overlay menu (^R rereads panels)

@@ -5,9 +5,8 @@
  * The core knows raw pages and its own RLE streams; a $08 used to be
  * claimed as an image on its type alone and then refused with "not an
  * image", which left these files with no viewer at all -- not even the hex
- * one every other unknown type falls back to. looks_like_image now claims a
- * $08 only when it holds a raw page, and this overlay reads the packed
- * ones.
+ * one every other unknown type falls back to. Return and I now route the
+ * supported packed auxiliary types here, before testing raw-page sizes.
  *
  * The packing is Apple's PackBytes, the one the IIgs uses for its own
  * pictures. One tag byte opens each packet: the low six bits carry a count
@@ -52,7 +51,7 @@ struct Header { unsigned int signature; unsigned char flags;
     void __fastcall__ (*entry)(const struct A2fcApi*); unsigned char r[3];
     char desc[34]; };
 #pragma rodata-name (push, "OVLHDR")
-const struct Header __plugin_header = { PLUGIN_MAGIC, OVERLAY_BIG | OVERLAY_AUX, plugin_entry,
+const struct Header __plugin_header = { MEDIA_PLUGIN_MAGIC, OVERLAY_BIG | OVERLAY_AUX, plugin_entry,
     {0,0,0}, "Packed $08 pictures ($4000/$4001)" };
 #pragma rodata-name (pop)
 
@@ -174,7 +173,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* a)
     a->fclose(in);
 
     pf_show(two);
-    while (a->cgetc() != KEY_ESC) {}
+    a->media_wait();
 
     /* The auxiliary plane is memory the ProDOS /RAM volume uses: once
      * written to, the volume is inconsistent and the next write to it would

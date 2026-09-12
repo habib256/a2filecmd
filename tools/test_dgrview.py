@@ -36,13 +36,20 @@ int main(int argc, char** argv)
     if (argv[3][0] == '-') prompt_ok = 0; else strcpy(host_input, argv[3]);
     if (argc > 4) host_sel.aux = (unsigned int)strtoul(argv[4], 0, 10);
     host_note[0] = 0;
+    memset(host_stage, 0xA5, sizeof(host_stage)); /* stale previous file */
+    if (argc > 5 && atoi(argv[5])) {
+        for (i = 0; i < 1024; ++i) {
+            host_aux[i] = (unsigned char)(i * 3 + 1);
+            host_main[i] = (unsigned char)(i * 5 + 2);
+        }
+    }
 
     api.selected = &host_sel;
     api.full = argv[1];
     api.note = host_note; api.reselect = host_reselect; api.input = host_input;
     api.fopen = fopen; api.fread = fread; api.fclose = fclose;
     api.strcpy = strcpy; api.sprintf = sprintf;
-    api.prompt = mock_prompt; api.cgetc = mock_cgetc;
+    api.version=4;api.media_wait=mock_cgetc;api.prompt = mock_prompt; api.cgetc = mock_cgetc;
 
     plugin_entry(&api);
     printf("%u|%u|%s\n", host_shown, wide, host_note);
@@ -73,11 +80,13 @@ class DgrView(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def view(self, data, ftype=6, width='--', aux=0):
+    def view(self, data, ftype=6, width='--', aux=0, seeded=False):
         f = self.p / 'pic'
         f.write_bytes(data)
-        r = subprocess.run([str(self.exe), str(f), str(ftype), width, str(aux)],
-                           capture_output=True)
+        r = subprocess.run([str(self.exe), str(f), str(ftype), width, str(aux), str(int(seeded))],
+                           capture_output=True, check=True)
+        self.assertEqual(f.read_bytes(), data)
+        self.assertEqual(len(r.stderr), 2048)
         shown, wide, note = r.stdout.decode().strip().split('|', 2)
         return int(shown), int(wide), note, r.stderr[:1024], r.stderr[1024:2048]
 
@@ -175,7 +184,7 @@ class DgrView(unittest.TestCase):
     def test_a_width_that_does_not_divide_is_refused(self):
         shown, _, note, _, _ = self.view(bytes([0xF1] * 100), width='07')
         self.assertEqual(shown, 0)
-        self.assertIn('does not divide', note)
+        self.assertIn('Invalid sprite', note)
 
     def test_a_width_over_eighty_is_refused(self):
         shown, _, note, _, _ = self.view(bytes([0xF1] * 81), width='51')
@@ -184,7 +193,7 @@ class DgrView(unittest.TestCase):
     def test_a_pixmap_taller_than_the_screen_is_refused(self):
         shown, _, note, _, _ = self.view(bytes([0xF1] * (2 * 49)), width='02')
         self.assertEqual(shown, 0)
-        self.assertIn('does not divide', note)
+        self.assertIn('Invalid sprite', note)
 
     def test_declining_the_width_shows_nothing(self):
         shown, _, _, aux, main = self.view(bytes([0xF1] * 12), width='-')
@@ -243,7 +252,56 @@ class DgrView(unittest.TestCase):
         hdr = bytes([ord('D'), ord('G'), ord('R'), 1, 200, 48, 1, 0])
         shown, _, note, _, _ = self.view(hdr + bytes(1920))
         self.assertEqual(shown, 0)
-        self.assertIn('more than the screen', note)
+        self.assertIn('Invalid or truncated', note)
+
+    def assert_seeded_banks(self, aux, main):
+        self.assertEqual(aux, bytes((i * 3 + 1) & 255 for i in range(1024)))
+        self.assertEqual(main, bytes((i * 5 + 2) & 255 for i in range(1024)))
+
+    def test_sprite_height_boundary(self):
+        shown, _, note, aux, main = self.view(bytes([0xF1]) * 48, width='01')
+        self.assertEqual(shown, 1)
+        self.assertIn('1 x 48', note)
+        for y in range(48):
+            self.assertEqual(self.pixel(aux, main, 39, y), 1)
+        shown, _, note, aux, main = self.view(bytes([0xF1]) * 49,
+                                             width='01', seeded=True)
+        self.assertEqual(shown, 0)
+        self.assert_seeded_banks(aux, main)
+
+    def test_extra_payload_is_refused(self):
+        data = b'DGR\x01\x28\x30\0\0' + bytes(961)
+        shown, _, note, aux, main = self.view(data, seeded=True)
+        self.assertEqual(shown, 0)
+        self.assertIn('Invalid or truncated', note)
+        self.assert_seeded_banks(aux, main)
+
+    def test_truncated_header_and_payload_never_touch_screen_banks(self):
+        data = b'DGR\x01\x50\x30\x01\0' + bytes([0x55]) * 1920
+        for cut in (*range(3, 10), 255, 968, 1024, 1927):
+            with self.subTest(cut=cut):
+                shown, _, note, aux, main = self.view(data[:cut], width='01', seeded=True)
+                self.assertEqual(shown, 0)
+                self.assertIn('Invalid or truncated', note)
+                self.assert_seeded_banks(aux, main)
+
+    def test_invalid_header_fields_are_not_interpreted_as_sprites(self):
+        data = bytearray(b'DGR\x01\x50\x30\x01\0' + bytes(1920))
+        for at, value in ((3, 2), (4, 0), (4, 40), (5, 0), (5, 47), (6, 2), (7, 1)):
+            with self.subTest(at=at, value=value):
+                mutated = data.copy(); mutated[at] = value
+                shown, _, note, aux, main = self.view(mutated, width='01', seeded=True)
+                self.assertEqual(shown, 0)
+                self.assert_seeded_banks(aux, main)
+
+    def test_sprite_height_is_checked_before_narrowing_to_a_byte(self):
+        for size, width in ((255, '01'), (256, '01'), (257, '01'), (304, '01'),
+                            (305, '01'), (1536, '03')):
+            with self.subTest(size=size):
+                shown, _, note, aux, main = self.view(bytes([0xF1]) * size, width=width, seeded=True)
+                self.assertEqual(shown, 0)
+                self.assertIn('Invalid sprite', note)
+                self.assert_seeded_banks(aux, main)
 
     def test_a_small_file_without_the_auxtype_is_still_a_pixmap(self):
         """The auxtype is what distinguishes a short screen from a sprite."""

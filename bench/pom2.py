@@ -32,7 +32,7 @@ POM2 = os.environ.get('POM2', str(Path.home() / 'src/pom2adventure/SCOSWAMP.MORE
 # disquette, construite en 6502 (build-6502/), et c'est elle que les bancs
 # amorcent par defaut -- elle tourne aussi sur le IIe enhanced de POM2.
 # A2FC_IMG=A2FILECMD-full prend build/A2FILECMD-full.po (make benchfloppy) :
-# la disquette 65C02 avec toutes les surcouches, jamais publiee, pour les
+# la disquette 65C02 de session, jamais publiee, pour les
 # bancs de l'editeur, des images, des archives et des lecteurs ; sa table de
 # symboles est build/. A2FC_BUILD force le dossier de construction.
 VERSION = re.search(r'^A2FC_VERSION\s*=\s*(\S+)', (ROOT / 'Makefile').read_text(), re.M)[1]

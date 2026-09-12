@@ -29,6 +29,9 @@ once survive later versions of the program.
      the ProDOS RAM disk: the core requires explicit consent before entry,
      including a cached overlay. `OVERLAY_BIG` alone does not authorize AUX
      destruction. Rebuild the RAM disk on every exit after damaging its memory;
+   - add `OVERLAY_AUDIO` for foreground sound: the core passes the detected Mockingboard slot in `api->arg` (0 if absent).
+     This hardware-only probe preserves AUX. The overlay must silence its
+     output and disable its timer interrupt before returning;
    - the **address of the entry point**;
    - three reserved bytes, then a one-line **description**, shown in the menu
      (65 characters at most: the menu row uses all 80 columns).
@@ -76,3 +79,16 @@ All plugins must follow [the data-safety rules](../AGENTS.md): exclusive
 creation, preservation of originals during replacement, checked I/O and
 cleanup limited to files owned by the current operation. Declaring flags is
 not a sandbox: a third-party plugin is native code and must be audited.
+
+### API 4: foreground media
+
+`media_key(key)` accepts Escape or an available Left/Right neighbour; a true
+result asks the overlay to finish normally, silence its hardware and clean up.
+`media_wait()` waits for such a key. `music_info(header)` displays the bounded
+PT3 title/credit fields of an already validated header (98 readable bytes).
+
+Overlays requiring these services use `MEDIA_PLUGIN_MAGIC` (`$A2FD`), so older
+cores refuse them instead of calling absent API fields. Ordinary `$A2FC`
+overlays remain supported and earlier API fields retain their offsets.
+The core coordinates the built-in music and specialized image viewers by
+name; it probes files read-only and preserves AUX consent before each load.
