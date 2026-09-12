@@ -118,12 +118,15 @@ void switch_to_mixed(void) {
 /*
  * 80-column text
  */
-void switch_to_text(void) {
-    /* Nothing to repaint: $400-$7FF has not moved. Put back the routing the
-     * 80-column firmware expects for its next writes, turn the 80-column
-     * display back on, and make the text visible last. */
+void prepare_text(void) {
+    /* Only conio's text-page routing: media can prepare the next filename
+     * before the returning overlay or switch_to_text reveals that page. */
     STORE80ON = 1;
     COL80ON = 1;
+}
+
+void switch_to_text(void) {
+    prepare_text();
     DHIRESOFF = 1;
     MIXCLR = 1;
     TXTSET = 1;

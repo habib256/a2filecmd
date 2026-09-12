@@ -12,6 +12,7 @@
  * to save or restore. See memory_swap.c. */
 void switch_to_hgr(void);         /* HGR page 1, full screen */
 void switch_to_text(void);        /* 80-column text */
+void prepare_text(void);          /* route conio writes without revealing text */
 void switch_to_mixed(void);       /* HGR + 4 lines of 80-column text */
 
 /* Utility function */

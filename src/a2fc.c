@@ -130,7 +130,6 @@ static unsigned char gfi[18];
 static unsigned char gfi_path[PATH_LEN + 1];
 static unsigned char picked[MAX_ENTRIES];
 static char album[2][NAME_LEN];    /* image viewer: the left and right neighbours */
-static unsigned int seen[2];       /* and the fingerprint of both panels on entry */
 static char overlay_loaded[12];     /* the overlay in place in the $1B00 window, "" if none */
 static char reselect[NAME_LEN];    /* on return from a big overlay: the name to reselect */
 static struct Entry selected;      /* the entry under the cursor, copied before a big overlay overwrites the table */
@@ -2042,8 +2041,8 @@ static unsigned char load_overlay(const char* name, unsigned char any)
 /* Runs the overlay `name` through its entry point, with `arg` (the key
  * that invokes it, 0 from the menu) in the service table. A big overlay
  * hands control back on a graphics page of its own: the screen returns to
- * text, both panels are reread, the tags restored, the name it left in
- * `reselect` found again, everything redrawn, and its `note` written on
+ * text with the requested media target already announced. Both panels are
+ * reread, tags restored and `reselect` found before drawing, with its `note` on
  * row 22. */
 static struct A2fcApi api;
 static void select_name(struct Panel* pan, const char* name);
@@ -2076,23 +2075,25 @@ again:
     note[0] = 0;
     if (OVL->entry) OVL->entry(&api);
     else { extern const char msg_noentry[]; strcpy(note, msg_noentry); }
-    if (big) {
+    if(media && media_request) {
+        dir=media_request==KEY_RIGHT;
+        pan->first=media_first[dir];
+        strcpy(reselect,album[dir]);
+    }
+    if (big || (media && media_request)) {
         overlay_loaded[0] = 0;   /* its upper half is already covered by the tables */
+        /* The incoming name is already in text RAM. Reveal it before
+         * directory reads overwrite the graphics/entry-table memory. */
         switch_to_text();
-        read_panel(0);
-        read_panel(1);
+        big=read_panel(0);
+        if(!read_panel(1))big=0;
         keep_tags(0);
         if (reselect[0]) select_name(&panels[active], reselect);
+        if(media && media_request && (!big || !pan->count || strcmp(pan->e[pan->cursor].name,reselect)))media_request=0;
         draw_all();
         if (note[0]) message(note);
     } else if (!OVL->entry) message(note);
     if(media && media_request) {
-        dir=media_request==KEY_RIGHT;
-        pan->first=media_first[dir];
-        if(!read_panel(active))goto media_done;
-        keep_tags(0);
-        select_name(pan,album[dir]);
-        if(!pan->count || strcmp(pan->e[pan->cursor].name,album[dir]))goto media_done;
         name=media_names[media];
         goto again;
     }
@@ -2298,11 +2299,9 @@ static void loading(const char* name)
  * leafed through like an album, and the cursor follows. Any other key
  * returns, and the message line says which format was recognised.
  *
- * The text screen is never cleared: the panels stay in $400-$7FF for the
- * whole browsing session, and only what changes is rewritten -- the two
- * cursor lines, the info line, the message line. On return, a panel is
- * redrawn only if rereading it shows something other than on entry (/RAM
- * rebuilt from scratch, floppy changed). */
+ * An arrow prepares the incoming name in text RAM before revealing it.
+ * Both panels are restored directly on the target after their tables can
+ * safely overwrite the old graphics page. */
 static void view_image(void)
 {
     struct Panel* pan = &panels[active];
@@ -2313,7 +2312,6 @@ static void view_image(void)
      * reread on return, and the active panel before each next image so as
      * to find the neighbour there. */
     keep_tags(1);
-    for (p = 0; p < 2; ++p) seen[p] = panel_hash(&panels[p]);
     a2fc_view = 1;
     loading(pan->e[index].name);
     for (;;) {
@@ -2344,19 +2342,20 @@ static void view_image(void)
         if (img_kind == IMG_HGR || img_kind == IMG_HGRR) show_hgr();
         else switch_to_hgr();
         /* An arrow with no neighbour on its side does nothing: the image stays. */
-        do key = cgetc(); while ((key == KEY_LEFT || key == KEY_RIGHT) && !album[key == KEY_RIGHT][0]);
+        do key = cgetc() & 127; while ((key == KEY_LEFT || key == KEY_RIGHT) && !album[key == KEY_RIGHT][0]);
         if (key != KEY_LEFT && key != KEY_RIGHT) break;
         dir = key == KEY_RIGHT;
         /* Back to text before read_panel rewrites the entry table, hence the
          * graphics page; the neighbour's name is shown while it is looked
          * for, and the cursor joins it as soon as it is there. */
+        media_loading(dir);
         switch_to_text();
-        loading(album[dir]);
-        read_panel(active);
+        if(!read_panel(active) || !read_panel(active^1))break;
         keep_tags(0);
         for (next = 0; next < pan->count && strcmp(pan->e[next].name, album[dir]); ++next) {}
         if (next >= pan->count) break;   /* the directory changed under our feet */
-        land(next);
+        set_cursor(pan,next);
+        draw_all();
         index = next;
     }
     switch_to_text();
@@ -2372,15 +2371,11 @@ static void view_image(void)
      * was an HGR. A plain HGR image only writes to the main bank and
      * triggers nothing. */
     ram_note = aux_dirty && ram_format() ? RAM_NOTE : (const char*)"";
-    /* The tables are reread; the screen, though, has not moved, and a panel
-     * that shows the same thing as on entry is not redrawn. read_panel
-     * brings the cursor back inside the panel if it has shrunk (directory
-     * changed under our feet, /RAM rebuilt under whoever was in it). */
+    /* Repaint even after a failed transition left only the loading text.
+     * read_panel clamps the cursor if the directory has shrunk. */
     for (p = 0; p < 2; ++p) read_panel(p);
     keep_tags(0);
-    for (p = 0; p < 2; ++p) if (panel_hash(&panels[p]) != seen[p]) draw_panel(p);
-    draw_status();
-    draw_info();
+    draw_all();
     if (!full[0]) { too_long(); return; }
     clear_row(22);
     gotoxy(0, 22);

@@ -5,6 +5,8 @@ downloads and installation.
 
 ## Unreleased
 
+- Prepare the next media filename before image/music cleanup can reveal text, then restore the panels directly on that target. Left/Right no longer redraws the previous selection while the next file loads. Refuse a vanished target or failed directory reread; retain AUX consent and marks.
+
 - Prioritize reused PT3 samples and ornaments in the main-RAM cache. The sparse TurboSound benchmark drops from 156 to 105 disk misses and from 9.15 to 8.20 seconds on the enhanced IIe at 1 MHz; compact pairs retain 50 Hz. Preserve source/AUX, exact-read failure handling and both CPU memory limits.
 
 - Consolidate media routing around one resident viewer-name table and byte IDs; preserve probe errors, decoder precedence, AUX consent and navigation. Free OPEN space rises from 4/42 to 185/215 bytes, and MAIN from 145/682 to 259/779 bytes (65C02/6502), with unchanged memory ceilings.

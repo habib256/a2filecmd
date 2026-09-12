@@ -287,3 +287,18 @@ ProDOS image. Missing originals leave the generated fixtures active. Default
 RGB variant is EVE; `A2FC_RGB=feline` selects Feline. Original JIM1 and DDD
 screenshots are written to `/tmp`. Run both CPU builds using the usual
 `A2FC_BUILD`, `A2FC_PRESET` and `A2FC_PORT_OFFSET` settings.
+
+`media.py` and `purple.py` temporarily trap the disposable guest at
+`switch_to_text` and restore its three instruction bytes in `finally`.
+This avoids racing HTTP sampling: `Loading <target>` must already name the
+incoming file before text reveal. This
+covers MB1/PT3, Extasie, PACKFOT/raw DHGR, 816/Paint HGR/DHGR, LZ4FH, fonts,
+Print Shop, lo-res and Purplesoft. `tools/test_media_transition.py` executes
+the resident `overlay_run` C and poisons the live overlay's entry table;
+it checks the pending target before text reveal and selection before redraw,
+both directory-window directions,
+missing targets, failed rereads, Escape and unavailable arrows.
+`tools/test_raw_transition.py` executes the separate HGR/DHGR loop with
+poisoned entry tables, vanished targets and read failures, including an
+Open-Apple-modified arrow. Neither loop may launch a different file after
+a failed lookup.

@@ -5,6 +5,7 @@ from pathlib import Path
 from xplug import boot_hd,RET,ESC,ok_all
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tools'))
 from test_purple import planes
+from media import transition
 
 def dos_binary(path):
  d=path.read_bytes()
@@ -54,10 +55,10 @@ def main():
     s.ok(name+' Escape returns to panels',s.line().startswith(name+'.FOTO2 '))
    s.select('G5.FOTO2');s.key(RET);s.allow_aux()
    s.wait(lambda:p.peek(0x2000,8192,'aux')==cases['G5'][0],'G5 ready')
-   s.key(bytes([8]));s.wait(lambda:p.peek(0x2000,8192)==cases['G4'][1],'FOTO2 previous distinct image',60)
+   transition(p,s,bytes([8]),'G4.FOTO1');s.wait(lambda:p.peek(0x2000,8192)==cases['G4'][1],'FOTO2 previous distinct image',60)
    s.ok('Left from FOTO2 skips its own FOTO1',True)
    s.key(bytes([21]));s.wait(lambda:p.peek(0x2000,8192)==cases['G5'][1],'G5 again',60)
-   s.key(bytes([21]));s.wait(lambda:p.peek(0x2000,8192,'aux')==cases['G6'][0],'next without consent or duplicate FOTO2',60)
+   transition(p,s,bytes([21]),'G6.FOTO1');s.wait(lambda:p.peek(0x2000,8192,'aux')==cases['G6'][0],'next without consent or duplicate FOTO2',60)
    s.ok('Right skips partner and keeps AUX consent',True)
    s.key(bytes([8]));s.wait(lambda:p.peek(0x2000,8192,'aux')==cases['G5'][0],'previous without consent',60)
    s.key(ESC);s.wait(lambda:s.has('Type  Aux'),'final panels');p.stable()

@@ -17,6 +17,7 @@ static unsigned char tags[18];
 static void cputs(const char*s){strcat(output,s);}
 static void cputc(char c){size_t n=strlen(output);output[n]=c;output[n+1]=0;}
 static void clrscr(void){output[0]=0;}
+static void prepare_text(void){}
 static char cgetc(void){return 27;}
 static unsigned char overlay(const char*n){return 1;}
 static unsigned char is_dir(const struct Entry*e){return e->type==15;}

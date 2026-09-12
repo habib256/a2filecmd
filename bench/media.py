@@ -9,6 +9,16 @@ from test_paint816 import pack
 from test_sample_media import font_page,clip_page
 
 RIGHT=bytes([21]);LEFT=bytes([8])
+def transition(p,s,key,target):
+ """Trap the disposable guest before text reveal; do not race HTTP polling."""
+ addr=s.sym['_switch_to_text'];saved=p.peek(addr,3)
+ p.poke(addr,bytes([0x4C,addr&255,addr>>8]))
+ try:
+  s.key(key,pause=0)
+  s.wait(lambda:p.rq('/status')['cpu']['pc']==addr,'text-reveal boundary '+target,30)
+  s.ok('transition names '+target,s.has('Loading '+target))
+ finally:p.poke(addr,saved)
+
 def main():
  pt=bytearray(autumn());pt[30:62]=b'Test title'.ljust(32);pt[66:98]=b'Test artist'.ljust(32)
  mb=b'MB1\0\0\0\x08\0'+bytes([0xA0,12,0x80,24])+bytes([127])*30+bytes([0xE0])
@@ -39,7 +49,7 @@ def main():
      s.ok('PT3 title and artist',s.has('Title: Test title') and s.has('Test artist'))
      s.ok('PT3 player credit',s.has('Player: Vince Weaver - A2FC adapter'))
     s.key(LEFT);p.stable();s.ok(first+' boundary stays',s.has(title+first))
-    s.key(b'P');s.key(RIGHT);s.wait(lambda:s.has(title+last),'next same format')
+    s.key(b'P');transition(p,s,RIGHT,last);p.rq('/speed',{'preset':'1x'});s.wait(lambda:s.has(title+last),'next same format')
     s.ok(first+' skips other formats',True)
     s.key(RIGHT);p.stable();s.ok(last+' boundary stays',s.has(title+last))
     s.key(LEFT);s.wait(lambda:s.has(title+first),'previous same format');s.ok(first+' previous',True)
@@ -53,7 +63,7 @@ def main():
     s.wait(lambda:visible(p.peek(0x2000,8192))==visible(oracle(0x11)),prefix+' first',60)
     if prefix!='PAINT':  # P8D precedes PAINT in the same viewer's album.
      s.key(LEFT);p.stable();s.ok(prefix+' first boundary stays',visible(p.peek(0x2000,8192))==visible(oracle(0x11)))
-    s.key(RIGHT)
+    transition(p,s,RIGHT,prefix+'2')
     s.wait(lambda:visible(p.peek(0x2000,8192))==visible(oracle(0x22)),prefix+' next',60);s.ok(prefix+' next',True)
     s.key(LEFT)
     s.wait(lambda:visible(p.peek(0x2000,8192))==visible(oracle(0x11)),prefix+' previous',60)
@@ -64,7 +74,7 @@ def main():
      s.key(b'N');p.stable()
      s.ok(prefix+' reopening asks again; decline preserves AUX',p.peek(0x800,0xF800,'aux')==before)
    s.select('LORES1');s.key(RET);s.wait(lambda:p.peek(0x400,40)==b'\x55'*40,'lores first')
-   s.key(RIGHT);s.wait(lambda:p.peek(0x400,40)==b'\x66'*40,'lores next');s.ok('DGRVIEW next',True)
+   transition(p,s,RIGHT,'LORES2');s.wait(lambda:p.peek(0x400,40)==b'\x66'*40,'lores next');s.ok('DGRVIEW next',True)
    s.key(LEFT);s.wait(lambda:p.peek(0x400,40)==b'\x55'*40,'lores previous');s.ok('DGRVIEW previous',True)
    s.key(ESC);s.wait(lambda:s.has('Type  Aux'),'final panels');p.stable()
    s.ok('media stack floor preserved',p.peek(floor,8)==b'\xA5'*8)

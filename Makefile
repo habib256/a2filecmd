@@ -297,6 +297,8 @@ test:
 	python3 $(TOOLS)/test_batch.py
 	python3 $(TOOLS)/test_ui.py
 	python3 $(TOOLS)/test_media.py
+	python3 $(TOOLS)/test_media_transition.py
+	python3 $(TOOLS)/test_raw_transition.py
 	python3 $(TOOLS)/test_goto_safety.py
 	python3 $(TOOLS)/test_file_safety.py
 	python3 $(TOOLS)/test_core_dirscan.py

@@ -243,6 +243,16 @@ mesures sur matériel physique.
 
 ## Consolidation du routage média
 
+La correction des transitions ajoute un écran `Loading <cible>` préparé dans
+MAIN/AUX `$0400–$07FF` dès la flèche, avant le nettoyage du lecteur. La relecture
+des tables de panneaux attend son retour : elles partagent sa mémoire. Aucun
+fichier ni octet AUX à partir de `$0800` n'est écrit par cette coordination.
+Le parcours HGR/DHGR brut utilise la même annonce et redessine les panneaux
+après relecture ; il n'a plus besoin des anciennes empreintes d'écran.
+Les réserves après cette correction sont MAIN 365/885, LC 117/110,
+LOWRAM 281/306 et espace avant pile C 393/1102 octets (65C02/6502),
+avec une pile C réservée de 192 octets et les mêmes plafonds.
+
 Les identifiants de `src/viewer_ids.h` indexent une seule table résidente de
 noms. OPEN renvoie un octet plutôt qu'un pointeur vers ses propres chaînes ;
 le feuilletage compare cet identifiant. Zéro reste une erreur de sonde et ne

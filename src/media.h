@@ -71,13 +71,21 @@ static unsigned char media_prepare(unsigned char kind)
 }
 
 #pragma code-name(push, "LC")
+static void media_loading(unsigned char dir)
+{
+    /* Entry tables are still covered by the running viewer. Only text RAM
+     * may be prepared before its cleanup can reveal the loading screen. */
+    prepare_text();clrscr();cputs("Loading ");cputs(album[dir]);
+}
 static unsigned char media_key(unsigned char key)
 {
     /* cc65 marks Open-Apple/PB0 with bit 7, including Escape. */
     key &= 127;
     if(key==KEY_ESC)return 1;
     if((key==KEY_LEFT || key==KEY_RIGHT) && album[key==KEY_RIGHT][0]) {
-        media_request=key;return 1;
+        media_request=key;
+        media_loading(key==KEY_RIGHT);
+        return 1;
     }
     return 0;
 }
