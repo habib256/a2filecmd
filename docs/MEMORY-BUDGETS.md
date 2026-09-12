@@ -99,7 +99,7 @@ Le chantier demandé ensuite ajoute `src/launch.h`, toujours dans RUN, et
 `INTBASIC.SYSTEM` sur DEVTOOLS/XL. Les chemins de lancement vivent à
 `$3400-$347F`, séparés du tampon de configuration `$3000-$33FF` ; des contrôles
 de taille à la compilation empêchent leur recouvrement. Aucun plafond n'est
-relevé. Deux messages partagés et deux libellés d'erreur sont placés en LC
+relevé. Deux messages de sélection et deux libellés d'erreur sont placés en LC
 pour garder RUN dans sept blocs sur la disquette BOOT 6502.
 
 | Réserve du lien après extension | 65C02 | 6502 |

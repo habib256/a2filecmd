@@ -178,6 +178,8 @@ def main():
                 s.key(b'Y')
             s.wait(lambda: any('EXTRAS BASIC OK' in r for r in s.rows40()), 'BASIC du complement', 60)
             s.ok('BASIC.SYSTEM du lecteur 2 execute le programme du disque de travail', True)
+            s.wait(lambda: any(r.lstrip().startswith(']') for r in s.rows40()), 'invite Applesoft', 30)
+            p.stable()
             s.type('-/' + bootvol + '/A2FILE.SYSTEM'); s.key(RET)
             s.wait(lambda: s.has('Type  Aux'), 'retour de BASIC', 90)
             s.ok('le chemin absolu relance A2FC sur sa disquette', s.has('Type  Aux'))

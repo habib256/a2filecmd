@@ -18,7 +18,7 @@ FILES = """
 | `A2FILECMD-6502-FILES-{version}.dsk` | Documents, search, archives, file operations |
 | `A2FILECMD-6502-MEDIA-{version}.dsk` | Pictures and music |
 | `A2FILECMD-6502-DISKTOOLS-{version}.dsk` | Disk images, blocks, boot repair and recovery |
-| `A2FILECMD-6502-DEVTOOLS-{version}.dsk` | BASIC listings, disassembly and BASIC.SYSTEM |
+| `A2FILECMD-6502-DEVTOOLS-{version}.dsk` | BASIC listings, disassembly, BASIC.SYSTEM and INTBASIC.SYSTEM |
 | `A2FILECMD-6502-XL-{version}.2mg` | Complete bootable 32 MB image, 6502 |
 | `A2FILECMD-65C02-XL-{version}.2mg` | Complete bootable 32 MB image, 65C02 with optional mouse |
 
@@ -26,14 +26,15 @@ The concise English user guide is included as `A2FILECMD-MANUAL-EN-{version}.pdf
 
 All floppies use 6502 code and also run on enhanced machines. Choose the
 categories you need, from the same release as BOOT. Each carries MENU and
-the full command catalog. XL includes all {overlays} overlays, BASIC.SYSTEM, DEMO
+the full command catalog. XL includes all {overlays} overlays, BASIC.SYSTEM, INTBASIC.SYSTEM, DEMO
 and IMGHGR; it needs no companion. Choose XL 6502 for an original IIe, or
 XL 65C02 for an enhanced IIe or //c. All editions need 128 KB and 80 columns.
 Do not mix native plugins from XL 65C02 with the 6502 companions.
 
 Boot an image and press **?** for the key map; `sha256sum -c SHA256SUMS-{version}.txt`
 checks the download. The bootable images carry ProDOS 8 2.4.3; the `.2mg` and DEVTOOLS carry
-BASIC.SYSTEM (John Brooks' free distribution; they are Apple's). Sources,
+BASIC.SYSTEM (John Brooks' free distribution; they are Apple's), plus
+INTBASIC.SYSTEM v0.9 by Joshua Bell (<https://github.com/a2stuff/intbasic>). Sources,
 manual and benches:
 <https://github.com/habib256/a2filecmd>.
 """

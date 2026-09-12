@@ -86,6 +86,11 @@ Les scénarios sur BOOT plein répondent explicitement à l'avertissement de
 configuration non sauvegardée. `bench/mb4c.py` couvre aussi la fin naturelle
 des deux lecteurs, sans touche, avec restauration des panneaux et silence AY.
 
+Limite de validation : la dernière étape de `extras.py` (relancement manuel
+d'A2FC après le programme Applesoft avec `HOME`) peut finir en `SYNTAX ERROR`
+dans POM2 //e non amélioré. Le lancement depuis DEVTOOLS passe, mais le banc
+complet reste en échec ; voir le suivi LAUNCHER dans `TODO.md`.
+
 Il faut [POM2](https://github.com/habib256/pom2) construit sans interface
 graphique, avec son serveur de commande (`--ai-control`) et une option
 `--mouse` qui branche une AppleMouse II (HLE AppleWin) en slot 4 -- c'est

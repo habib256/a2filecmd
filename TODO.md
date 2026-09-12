@@ -47,6 +47,12 @@ libre en carte langage. Ces mesures doivent être recalculées à chaque lien.
 - [ ] **Très grands répertoires** — étendre les scénarios et traiter les limites
   restantes ; le retour au dossier quitté et la navigation entre fenêtres sont acquis.
 - [ ] **LAUNCHER** — favoris de programmes et retour automatique à A2FC.
+  À isoler dans POM2 //e non amélioré : le scénario `bench/extras.py` lance
+  bien Applesoft depuis DEVTOOLS, mais après `HOME` le relancement manuel
+  `-/A2FC6502/A2FILE.SYSTEM` produit parfois `SYNTAX ERROR`. Le scénario
+  sans `HOME` a passé ; ni l'attente de l'invite, ni `CALL 976`, ni un essai
+  de passage en 40 colonnes n'ont fiabilisé le cas d'origine. Le changement
+  de mode vidéo a été retiré. Le banc complet n'est donc pas validé.
 - [ ] **Reconnaissance des fichiers** — généraliser l'aiguillage par type,
   aux-type, suffixe et en-tête aux formats autres que les images.
 - [ ] **DATE** — dates de création et de volume ; étudier une horloge de session.
