@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from check_layout import check_layout
+from check_layout import check_layout, memory_reserves, OVERLAYS
 
 
 class SplitLoadLayout(unittest.TestCase):
@@ -49,6 +49,33 @@ class SplitLoadLayout(unittest.TestCase):
 
     def test_valid(self):
         self.assertEqual(self.check(), [])
+
+    def test_reserves_distinguish_load_image_and_live_code(self):
+        reserves = memory_reserves(self.s)
+        self.assertEqual(reserves['MAIN'], 0xBEE0 - 0xBCC5)
+        self.assertEqual(reserves['STACK GAP'], 0xBE00 - 0xBBCB)
+        self.assertEqual(reserves['LOWRAM'], 0x1B00 - (0x1058 + 0x953))
+        self.assertEqual(reserves['LC'], 0)
+        self.assertEqual(reserves['FORMAT BSS'], 0x80)
+
+    def test_reserves_include_rodata_and_architecture_overlay_ceiling(self):
+        self.assertEqual(memory_reserves(self.s)['IMAGE'], 0x2000 - 0x1F60)
+        old = OVERLAYS['BINARY2']
+        try:
+            OVERLAYS['BINARY2'] = 0x2800
+            self.assertEqual(memory_reserves(self.s)['BINARY2'], 0xA00)
+        finally:
+            OVERLAYS['BINARY2'] = old
+
+    def test_reserves_do_not_hide_overflow_or_high_library_bss(self):
+        self.s['__MAIN_LAST__'] = 0xBEE1
+        self.s['__LC_LAST__'] = 0xE001
+        self.s['__BSS_RUN__'] = 0x1AF0
+        self.s['__BSS_SIZE__'] = 0x20
+        reserves = memory_reserves(self.s)
+        self.assertEqual(reserves['MAIN'], -1)
+        self.assertEqual(reserves['LC'], -1)
+        self.assertEqual(reserves['LOWRAM'], -0x10)
 
     def test_loader_disagreement(self):
         for key in self.loader:

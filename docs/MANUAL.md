@@ -346,6 +346,12 @@ to the panels. Playback also returns at the stream's end. The complete file
 is read, closed and validated before playback. The player uses main RAM and
 preserves `/RAM`; an absent Mockingboard is reported.
 
+On Apple //c, a Mockingboard 4c uses the internal connector and answers at
+`$C400–$C4FF`. The same automatic probe supports it; both MB1 and PT3 use
+the detected address page. In POM2, enable the card in the //c configuration
+and use a build containing its Mockingboard 4c support. A plain //c without
+the card reports its absence.
+
 In both music players, **Left/Right** select the previous/next tune of the
 same type in the same directory (MB1 stays with MB1, PT3 with PT3), including
 across large-directory windows. An arrow without a neighbour does nothing.

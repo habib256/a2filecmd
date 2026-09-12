@@ -103,7 +103,8 @@ Use matching releases. Do not mix the native plugins of XL 65C02 with the
 2. Press **`TAB`** to switch panels, **`RETURN`** to open and **`ESC`** to go up. Press **`?`** for the full key map.
 3. On the `.2mg`, explore the `DEMO/` folder already open in the right panel. On BOOT, the right panel shows the available volumes; `E`, `I` and the `!` menu load missing tools from the matching category disk.
 
-A **Mockingboard** enables music playback; an **AppleMouse II** enables point
+A **Mockingboard** enables music playback (including the **Mockingboard 4c**
+on Apple //c at `$C400–$C4FF`); an **AppleMouse II** enables point
 and click navigation. Both are optional and can be in any supported slot.
 
 **Tested on real hardware:** Apple //c, enhanced Apple IIe and unenhanced

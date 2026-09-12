@@ -1,7 +1,7 @@
 # A2 File Cmd — feuille de route après la 0.8.0
 
 La [0.8.0 est publiée](https://github.com/habib256/a2filecmd/releases/tag/v0.8.0).
-Ce fichier organise le travail **restant** ; aucun nouvel axe n'est encore choisi.
+Ce fichier organise le travail **restant** ; l'axe 1, consolidation, est engagé.
 Les fonctions livrées sont résumées dans le [CHANGELOG](CHANGELOG.md).
 
 ## Choisir la prochaine étape
@@ -15,7 +15,7 @@ Les fonctions livrées sont résumées dans le [CHANGELOG](CHANGELOG.md).
 | **5. Transferts et réseau** | Échanger avec d'autres machines | Définir le premier parcours ADTPro |
 | **6. Qualification** | Renforcer les preuves de fiabilité | Étendre les mutations et les tests de séquences |
 
-**Recommandation : commencer par l'axe 1**, puis choisir une évolution visible.
+**Axe retenu : commencer par l'axe 1**, puis choisir une évolution visible.
 La qualification 0.8.0 laisse 5 octets avant le plafond MAIN enhanced et aucun
 libre en carte langage. Ces mesures doivent être recalculées à chaque lien.
 
@@ -23,6 +23,9 @@ libre en carte langage. Ces mesures doivent être recalculées à chaque lien.
 
 - [ ] **Réserve mémoire** — fixer des budgets par zone à partir des deux cartes
   de lien, puis récupérer une réserve sans relâcher les plafonds.
+  Premier relevé et objectifs dans [MEMORY-BUDGETS.md](docs/MEMORY-BUDGETS.md) ;
+  les réserves sont affichées à chaque lien. Premier gain : +22 octets MAIN
+  et +71/+70 en carte langage ; les objectifs restent à atteindre.
 - [ ] **Services de fichiers sûrs** — centraliser progressivement les créations
   exclusives, remplacements récupérables et copies vérifiées ; conserver les
   tests de pannes et mesurer le coût de chaque extraction.

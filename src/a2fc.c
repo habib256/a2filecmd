@@ -1163,34 +1163,10 @@ static unsigned int hex_value(const char* s)
     return v;
 }
 
-/* The ProDOS error code ($BF00 leaves it in _oserror, which cc65 keeps up
- * to date even after a failed fopen/fread) in plain words: "errno 3, ProDOS
- * $2B" tells the user nothing, "the disk is write-protected" does. The rare
- * codes keep their hex and the cc65 errno, for diagnosis. A named table
- * (not a switch of return "...") so that its strings follow the language
- * card: the main window is full to the last bit. */
-/* Strings in NAMED arrays (const char[]), not in "..." literals: cc65
- * groups the literals in RODATA (main window, full), but places a named
- * array in the current rodata segment -- here LC, the language card, where
- * there is still room. */
-static const char pdE27[] = "disk I/O error";
-static const char pdE2B[] = "the disk is write-protected";
-static const char pdE2F[] = "no disk in the drive";
-static const char pdE40[] = "invalid file name";
-static const char pdE44[] = "directory not found";
-static const char pdE45[] = "volume not found";
-static const char pdE46[] = "file not found";
-static const char pdE47[] = "name already in use";
-static const char pdE48[] = "the disk is full";
-static const char pdE49[] = "the directory is full";
-static const char pdE4E[] = "the file is locked";
-static const char pdE52[] = "not a ProDOS disk";
+#include "errors.h"
+
 const char msg_dirfail[] = "Directory unreadable or too large/deep.";
 const char msg_toolong[] = "Path too long for ProDOS.";
-#pragma rodata-name (push, "RODATA")
-const char msg_sysonly[] = "SYS, BIN or BAS only.";
-#pragma rodata-name (pop)
-const char msg_nomb[] = "No Mockingboard in slots 1-7.";
 const char msg_vdrive[] = "VDrive: serial card in slot %u, volumes in slot %u, drives 1 and 2.";
 const char msg_notimg[] = "Not a ProDOS disk image (or DOS 3.3).";
 const char msg_roimg[] = "Read-only disk image; C extracts to the other panel.";
@@ -1208,41 +1184,6 @@ const char a2fc_hdr_name[] = "Name*            Type  Aux     Size";
 const char a2fc_hdr_size[] = "Name             Type  Aux     Size*";
 const char a2fc_hdr_type[] = "Name             Type* Aux     Size";
 const char MAIN_KEYS[] = "TAB Panel,RET Open,SPC Tag,C Copy,V Move,R Ren,D Del,K Mkdir,! More,? Help";
-static const char re_fmt1[] = "%s failed: %s.";
-static const char re_fmt2[] = "%s failed (ProDOS $%02X, errno %d).";
-static const char* prodos_error(unsigned char e)
-{
-    switch (e) {
-    case 0x27: return pdE27;
-    case 0x2B: return pdE2B;
-    case 0x2F: return pdE2F;
-    case 0x40: return pdE40;
-    case 0x44: return pdE44;
-    case 0x45: return pdE45;
-    case 0x46: return pdE46;
-    case 0x47: return pdE47;
-    case 0x48: return pdE48;
-    case 0x49: return pdE49;
-    case 0x4E: return pdE4E;
-    case 0x52: return pdE52;
-    default:   return 0;
-    }
-}
-
-/* prodos_error called twice rather than through a local `why`: LOWBSS is full
- * to the last bit and -Cl would put the local there; the second call is only
- * code, in the language card where room remains. */
-static void report_error(const char* what)
-{
-    ++a2fc_errors;
-    clear_row(22);
-    gotoxy(0, 22);
-    if (prodos_error(_oserror))
-        cprintf(re_fmt1, what, prodos_error(_oserror));
-    else
-        cprintf(re_fmt2, what, _oserror, errno);
-}
-
 /* ---------------------------------------------------------------------- */
 /* Viewers -- in the language card                                        */
 /* ---------------------------------------------------------------------- */
@@ -4466,6 +4407,7 @@ static void launch_file(unsigned int addr)
  * BASIC.SYSTEM is looked for at the root of the program's volume, its usual
  * place, otherwise on the boot volume (basic_path). */
 static const char run_pick[]  = "Select a program.";
+static const char msg_sysonly[] = "SYS, BIN or BAS only.";
 static const char run_range[] = "BIN must load in $0800-$BAFF.";
 static const char run_ask[]   = "Run %s? No return to A2FC.";
 static const char run_basic[] = "/BASIC.SYSTEM";
@@ -4510,7 +4452,7 @@ static void run_selected(const struct Entry* e)
         whole = build_full(other_full, &panels[active], e) && strlen(other_full) <= 46;
         addr = 0x2000;
     } else {
-        if (e->type != 0xFF && e->type != 0x06) { extern const char msg_sysonly[]; message(msg_sysonly); return; }
+        if (e->type != 0xFF && e->type != 0x06) { message(msg_sysonly); return; }
         if (addr < 0x0800 || (unsigned long)addr + e->size > 0xBB00) { message(run_range); return; }
         if (!build_full(full, &panels[active], e)) { too_long(); return; }
     }

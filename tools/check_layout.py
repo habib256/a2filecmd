@@ -41,6 +41,28 @@ OVERLAYS = {'BATCH': 0x3000, 'NAV': 0x2000, 'OPEN': 0x2000, 'COPY': 0x2000, 'FOR
             'DISKIMG': 0x3600, 'IMGFS': 0x2000, 'DOS33': 0x2000, 'UNSHRINK': 0x3000, 'BASLIST': 0x2800, 'COMPARE': 0x2000, 'SEARCH': 0x2000, 'BINARY2': 0x2000, 'AWP': 0x2000}
 
 
+def memory_reserves(s):
+    """Link-time free bytes; overlapping zones must never be added together.
+
+    STACK GAP is space before the reserved C stack, not measured stack usage.
+    MAIN includes disposable ONCE bytes, while STACK GAP excludes them.
+    External SDK plugins have their own linker-enforced code/BSS boundaries.
+    """
+    low_end = max(s['__BSS_RUN__'] + s['__BSS_SIZE__'],
+                  s['__LOWBSS_RUN__'] + s['__LOWBSS_SIZE__'])
+    reserves = {
+        'MAIN': 0xBEE0 - s['__MAIN_LAST__'],
+        'LC': min(0xE000, s['__LC_START__'] + s['__LCIMAGE_SIZE__']) - s['__LC_LAST__'],
+        'LOWRAM': s['__LOWRAM_START__'] + s['__LOWRAM_SIZE__'] - low_end,
+        'STACK GAP': s['__HIMEM__'] - s['__STACKSIZE__'] - s['__ONCE_RUN__'],
+        'FORMAT BSS': 0x3E00 - (s['__FORMATBSS_RUN__'] + s['__FORMATBSS_SIZE__']),
+    }
+    for name, ceiling in OVERLAYS.items():
+        last = s.get('__%sRO_LAST__' % name) or s['__%s_LAST__' % name]
+        reserves[name] = ceiling - last
+    return reserves
+
+
 def check_layout(s, loader, length, overlays=None):
     """`overlays` : {nom: longueur du fichier}, None pour ne pas les verifier."""
     errors = []
@@ -134,6 +156,8 @@ def main():
           f"cold end ${s['__ONCE_RUN__']:04X} under a {s['__STACKSIZE__']}-byte C stack, "
           + ', '.join(f"{n} overlay {overlays[n]} bytes at ${s['__%s_START__' % n]:04X}"
                       for n in OVERLAYS) + ', valid')
+    print('reserves (bytes, not additive): ' + ', '.join(
+        f'{name}={free}' for name, free in memory_reserves(s).items()))
     return 0
 
 

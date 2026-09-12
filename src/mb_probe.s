@@ -1,4 +1,7 @@
 ; Hardware-only Mockingboard probe, no AUX, IRQ vector or resident player.
+; Includes the //c Mockingboard 4c: its connector answers at $C400-$C4FF.
+; Return the VIA address page (4), not an emulator's virtual storage slot.
+; Probe T1 before any VIA write; plain //c ROM must remain a no-card result.
 .export _music_detect_card
 .importzp ptr1, ptr2
 .segment "CODE"

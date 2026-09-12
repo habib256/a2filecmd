@@ -5,6 +5,10 @@ downloads and installation.
 
 ## Unreleased
 
+- Build checks now report free bytes in resident memory and core overlays to guide consolidation.
+- Compact resident ProDOS diagnostics and relocate launch-only text, freeing 22 bytes in MAIN and 71/70 bytes in the 65C02/6502 language card with unchanged error messages.
+- Add an opt-in Mockingboard 4c to the POM2 test host and cover automatic detection and MB1/PT3 playback on Apple //c; document the existing `$C400` probe support.
+
 ## [0.8.0] - 2026-09-12
 
 ### Navigation and interface

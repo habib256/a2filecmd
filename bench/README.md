@@ -68,6 +68,16 @@ y sont des opcodes indefinis. La version 65C02 y affiche son refus.
 
 ## Les faire tourner
 
+Pour la Mockingboard 4c sur //c, construire l'hôte isolé avec
+`python3 bench/build_pt3_trace.py`, puis lancer
+`POM2=/tmp/a2fc-pt3-trace A2FC_IMG=A2FILECMD-full python3 bench/mb4c.py` et
+`POM2=/tmp/a2fc-pt3-trace A2FC_BUILD=build-6502 python3 bench/mb4c.py`.
+Le banc active la carte via `A2FC_MB4C` seulement dans ses processus enfants,
+la place sur le slot virtuel 3 et vérifie la fenêtre `$C400` du nouveau cœur
+POM2. Il teste MB1/PT3 avec et sans carte, pause/sortie, registres AY/IRQ et
+conservation des octets AUX et du volume jetable. Le corpus PT3 est lu sans
+modification. L'ancien hôte `pom2_playtest` ne branche aucune carte sur //c.
+
 Il faut [POM2](https://github.com/habib256/pom2) construit sans interface
 graphique, avec son serveur de commande (`--ai-control`) et une option
 `--mouse` qui branche une AppleMouse II (HLE AppleWin) en slot 4 -- c'est
