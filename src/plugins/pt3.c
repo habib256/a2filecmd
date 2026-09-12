@@ -43,7 +43,9 @@ void pt_hw_stop(void);
 static const struct A2fcApi* A;
 #include "hgr_io.h"
 unsigned char pt_pages[256];
-static unsigned char pages[CACHE_COUNT], next_page, io_bad;
+extern unsigned char pt_slots[CACHE_COUNT], pt_next;
+unsigned char pt_victim(void);
+static unsigned char io_bad;
 static FILE* source;
 static unsigned int n, file_length, second_base;
 #define cache_limit pt_running
@@ -67,13 +69,11 @@ unsigned char __fastcall__ pt_page(unsigned char page) {
  unsigned char slot;
  offset=(unsigned int)page<<8;
  if(offset>=file_length)return 0;
- slot=next_page;
- if(pt_pages[pages[slot]]==pt_cache_pages[slot])pt_pages[pages[slot]]=0;
+ slot=pt_victim();
  count=file_length-offset;if(count>256)count=256;
  if(!read_at(CACHE(slot),offset,count))return 0;
- pages[slot]=page;
+ pt_slots[slot]=page;
  pt_pages[page]=pt_cache_pages[slot];
- if(++next_page==cache_limit)next_page=0;
  return pt_pages[page];
 }
 static unsigned int word(unsigned int p) {return header[p]|((unsigned int)header[p+1]<<8);}
@@ -134,7 +134,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* a) {
  }
  memset(pt_pages,0,sizeof pt_pages);
  pt_pages[0]=HEADER_PAGE;pt_pages[1]=HEADER_PAGE+1;
- cache_limit=3;next_page=0;
+ cache_limit=3;pt_next=0;
  pt_end=second_base;
  pt_tables(A->copy_buf);
  r=pt_init();if(r)goto done;
@@ -143,7 +143,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* a) {
   r=pt_init();if(r)goto done;
   select_song();
  }
- cache_limit=5;next_page=3;
+ cache_limit=5;pt_next=3;
  if(SONG[101]<55) {pt_pages[1]=0;pt_cache_pages[cache_limit++]=0x38;}
  if(!pt_dual)pt_cache_pages[cache_limit++]=0x39;
  if(!pt_dual || SECOND[101]<55)pt_cache_pages[cache_limit++]=0x3A;

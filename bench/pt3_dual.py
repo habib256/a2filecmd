@@ -54,6 +54,8 @@ def main():
    guest=(p.rq('/status')['cpu']['cycles']-cycles)/1022727;elapsed=time.monotonic()-started
    s.wait(lambda:s.has('Type  Aux'),'both songs end',30)
    s.ok('natural end after both songs, no decoder/I/O error',not s.has('Invalid PT3.') and not s.has('error.'))
+   miss_counter=int(re.search(r'al ([0-9A-Fa-f]{6}) \._pt_misses',(BUILD/'pt3.lbl').read_text())[1],16)
+   print('CACHE MISSES',int.from_bytes(p.peek(miss_counter,2),'little'),flush=True)
    s.ok('sparse pair decodes all 97/289 frames',p.peek(counter,4)==bytes.fromhex('61002101'),'%.2f guest s / %.2f wall s (cache pressure)'%(guest,elapsed))
    s.ok('both chips silent on natural end',all(quiet(x) for x in snapshot(p)))
    s.select('D.FAST.PT3');s.key(RET);s.wait(lambda:s.has('ProTracker 3 - D.FAST.PT3') and s.has('ESC Back'),'compact pair')

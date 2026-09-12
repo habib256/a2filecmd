@@ -19,11 +19,14 @@ _pt_dual: .res 1
 _pt_running: .res 1
 .export _pt_frames
 _pt_frames: .res 4
+.export _pt_misses
+_pt_misses: .res 2
 saved_sp: .res 1
 host_zp: .res 32
 song_zp: .res 32
 _pt_regs: .res 14
 guard_y: .res 1
+guard_kind: .res 1
 guard_byte: .res 1
 guard_budget: .res 1
 result: .res 1
@@ -119,6 +122,7 @@ checked_pattern:
  pha
  ldx #PATTERN_L
 checked:
+ stx guard_kind
  sty guard_y
  dec guard_budget
  beq pt_abort
@@ -149,6 +153,10 @@ checked:
  ldy GUARD+1
  lda _pt_pages,y
  bne @mapped
+ inc _pt_misses
+ bne :+
+ inc _pt_misses+1
+:
  ; A cache miss can call resident stdio/MLI. Give it the host ZP and
  ; restore the decoder ZP afterwards, even when it reports an I/O error.
  ldx #31
@@ -172,6 +180,14 @@ checked:
  bne @mapped
  jmp pt_abort
 @mapped:
+ ldx guard_kind
+ cpx #PATTERN_L
+ beq :+
+ ora #$40
+:
+ ldy GUARD+1
+ sta _pt_pages,y
+ and #$BF
  sta GUARD+1
 @read:
  ldy #0
@@ -187,7 +203,7 @@ checked:
 .include "pt3lib/context.inc"
 ; Padding keeps two full pages reclaimable on both native links.
 ; The link assertion below rejects any future layout that breaks this.
-.res 40, $EA
+.res 62, $EA
 .include "pt3lib/init.inc"
 pt_init_code_end:
 pt_init_cache_start=(pt3_init_song+$FF)&$FF00
@@ -211,7 +227,7 @@ _pt_hw_start:
  ora #$C0
  sta card
  lda #0
- ldx #3
+ ldx #5
 @frames:
  sta _pt_frames,x
  dex
@@ -397,3 +413,5 @@ table_patches:
  .word patch_table_23+1
  .byte 0
 table_patches_end:
+
+.include "pt3lib/cache.inc"

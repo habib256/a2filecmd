@@ -13,6 +13,7 @@ C = r'''
 #include <string.h>
 extern unsigned pt_end;
 extern unsigned char pt_regs[];
+extern unsigned char probe_pattern;
 unsigned char pt_pages[256];
 unsigned char pt_init(void),pt_frame(void);
 void __fastcall__ pt_tables(unsigned char*);
@@ -20,24 +21,27 @@ unsigned char __fastcall__ test_guard(unsigned);
 static unsigned char tables[512], frames[1024][14], saved_zp[32];
 static unsigned char large,slot,fault,cache_bad;
 static unsigned misses;
-static unsigned char ids[5],used;
+extern unsigned char pt_slots[],pt_cache_pages[],pt_next,pt_running;
+unsigned char pt_victim(void);
 static void check_zp(void){if(memcmp((void*)0x60,saved_zp,32))cache_bad=1;}
 unsigned char __fastcall__ pt_page(unsigned char page){
- unsigned i;unsigned char*dest=(unsigned char*)(0x9000+256*slot);
+ unsigned i;unsigned char*dest;
  ++misses;check_zp();memset((void*)0x60,0x55,32);
  if(fault)return 0;
- if(used==5)pt_pages[ids[slot]]=0;else ++used;
- ids[slot]=page;
+ slot=pt_victim();dest=(unsigned char*)(0x9000+256*slot);
  for(i=0;i<(large?sizeof(large_ids):sizeof(small_ids));++i)
   if(page==(large?large_ids[i]:small_ids[i]))break;
  if(i==(large?sizeof(large_ids):sizeof(small_ids)))return 0;
  memcpy(dest,large?large_data[i]:small_data[i],256);
+ pt_slots[slot]=page;
  pt_pages[page]=0x90+slot;
- if(++slot==5)slot=0;
  return pt_pages[page];
 }
 static void fixture(unsigned char kind){
- large=kind;used=slot=fault=cache_bad=0;misses=0;
+ unsigned char i;
+ large=kind;pt_next=slot=fault=cache_bad=0;misses=0;
+ pt_running=5;
+ for(i=0;i<5;++i){pt_cache_pages[i]=0x90+i;pt_slots[i]=0;}
  memset(pt_pages,0,sizeof pt_pages);
  memcpy((void*)0x8000,large?large_data[0]:small_data[0],256);
  memcpy((void*)0x8100,large?large_data[1]:small_data[1],256);
@@ -61,14 +65,23 @@ int main(void){
  /* Explicit 16-bit wrap and end-exclusive guard, through pt_enter. */
  fixture(1);if(test_guard(65535u)!=1||test_guard(65534u)!=1)return 11;
  if(test_guard(65533u))return 12;check_zp();if(cache_bad)return 13;
+ /* Streaming reads stay cold; instruments promote a shared page, and
+  * later pattern reads must preserve that reference bit. */
+ fixture(0);probe_pattern=1;
+ if(test_guard(511)||!pt_pages[2]||(pt_pages[2]&64))return 14;
+ probe_pattern=0;if(test_guard(511)||!(pt_pages[2]&64))return 15;
+ probe_pattern=1;if(test_guard(511)||!(pt_pages[2]&64))return 16;
+ check_zp();if(cache_bad)return 17;
  printf("ok: %u identical frames, page eviction, $FFFE, failed misses and restored zero page\n",count);
  return 0;
 }
 '''
 PROBE = r'''
 .export _test_guard
+.export _probe_pattern
 .segment "BSS"
 probe_addr: .res 2
+_probe_pattern: .res 1
 .segment "CODE"
 _test_guard:
  sta probe_addr
@@ -82,9 +95,15 @@ probe_body:
  sta DONE_SONG
  lda probe_addr
  sta SAMPLE_L
+ sta PATTERN_L
  lda probe_addr+1
  sta SAMPLE_H
+ sta PATTERN_H
  ldy #1
+ lda _probe_pattern
+ beq :+
+ jmp checked_pattern
+:
  jmp checked_sample
 '''
 

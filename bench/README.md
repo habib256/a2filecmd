@@ -273,6 +273,10 @@ an unaligned second module, distinct old/new tables, unequal endings, pause,
 Escape, navigation, malformed footer, stack bounds and unchanged AUX/source.
 The cache-resident fixture keeps 50 Hz at 1 MHz. The sparse stress fixture
 reports its slower duration separately and verifies every decoded frame.
+It also reports runtime disk misses through the decoder's 16-bit counter,
+reset after initialization. On enhanced IIe at 1 MHz, instrument-priority
+replacement reduces this fixture from 156 to 105 misses and 9.15 to 8.20 s;
+the compact pair takes 5.78 s. Timings exclude the later panel reread.
 Run with the temporary trace host built by `build_pt3_trace.py`.
 
 `purple.py` checks all ten saved GR modes, exact MAIN/AUX planes, refusal

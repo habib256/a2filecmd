@@ -23,6 +23,11 @@ A2FC changes:
   tests poison the reclaimed code and ensure it stays untouched by patching.
   No auxiliary memory is borrowed. An initial complete scan establishes the
   actual source size, up to 65,535 bytes including a possible TurboSound footer.
+- Replacement uses a bounded second-chance scan. Sample and ornament reads
+  mark a page as recently used; streaming pattern reads preserve an existing
+  mark but do not promote cold pages. The physical mapping stores the mark
+  in bit 6, cleared before address use. Only the selected slot's own mapping
+  is invalidated before I/O; stale tags cannot invalidate headers or peers.
 - Decoder pointers are logical file offsets. Each guarded read checks overflow
   and subfile EOF before adding its physical file base and consulting the page map. Cache misses restore host zero page
   around resident seek/read calls, then restore decoder state. Failed reads
@@ -59,13 +64,19 @@ A2FC changes:
   Pause, Escape, track changes and errors silence both chips.
   Other multi-chip container variants remain unsupported.
 - At 1 MHz, the compact dual fixture fits in cache and keeps 50 Hz; the sparse
-  stress fixture takes about 9–11 seconds instead of its nominal 5.8 seconds
+  stress fixture takes about 8–10 seconds instead of its nominal 5.8 seconds
   on the tested IIe/IIc profiles, excluding the later panel redraw.
+  Instrument-priority replacement reduces runtime misses from 156 to 105:
+  enhanced IIe measures 8.20 s (previously 9.15 s), IIe 6502 8.23 s,
+  and IIc/Mockingboard 4c 9.95 s. Compact pairs take 5.75–5.78 s.
   Main-RAM cache pressure can therefore slow dual playback even on a hard disk.
   The implementation does not drop decoded frames to mask that limitation.
 
 Tests: `tools/test_pt3.py` validates the C loader; `tools/test_pt3_conv.py`
-the period conversion; `tools/test_pt3_cache.py` compares complete small and
+the period conversion; `tools/test_pt3_clock.py` exhausts cache sizes 1–8,
+reference masks and scan positions on both CPUs, including stale tags.
+`tools/test_pt3_cache.py` runs the real guard and replacement policy, checks
+instrument promotion and shared pattern pages, and compares complete small and
 65,535-byte song output under sim65, forcing eviction and I/O failures while
 checking zero-page restoration and offset overflow. `bench/pt3_large.py` checks
 large-module transport, natural completion, stack bounds and unchanged source

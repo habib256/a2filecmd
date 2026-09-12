@@ -5,6 +5,8 @@ downloads and installation.
 
 ## Unreleased
 
+- Prioritize reused PT3 samples and ornaments in the main-RAM cache. The sparse TurboSound benchmark drops from 156 to 105 disk misses and from 9.15 to 8.20 seconds on the enhanced IIe at 1 MHz; compact pairs retain 50 Hz. Preserve source/AUX, exact-read failure handling and both CPU memory limits.
+
 - Consolidate media routing around one resident viewer-name table and byte IDs; preserve probe errors, decoder precedence, AUX consent and navigation. Free OPEN space rises from 4/42 to 185/215 bytes, and MAIN from 145/682 to 259/779 bytes (65C02/6502), with unchanged memory ceilings.
 
 - Play standard TurboSound `02TS` pairs on both Mockingboard AY chips, with independent frequency/volume tables and endings, shared transport and preserved AUX. Cache-resident pairs keep 50 Hz at 1 MHz; sparse pairs can slow down on cache misses.

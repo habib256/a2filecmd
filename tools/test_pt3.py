@@ -31,6 +31,15 @@ unsigned char host_song[512],host_cache[8][256],host_second[512],host_tables2[44
 #undef ferror
 unsigned int pt_end,pt_base;
 unsigned char pt_chip,pt_dual,pt_running,pt_regs[14],pt_cache_pages[8]={0x3B,0x3C,0x3D,0x3E,0x3F,0,0,0};
+unsigned char pt_slots[8],pt_next;
+/* Loader-only stub. The real assembly replacement policy has its own sim65
+ * tests; here exercise exact I/O and invalidation before a failed read. */
+unsigned char pt_victim(void){
+ unsigned char slot=pt_next;
+ if((pt_pages[pt_slots[slot]]&0xBF)==pt_cache_pages[slot])pt_pages[pt_slots[slot]]=0;
+ if(++pt_next==pt_running)pt_next=0;
+ return slot;
+}
 void pt_swap(void){}
 void __fastcall__ pt_play_tables(unsigned char*p){(void)p;}
 void __fastcall__ pt_tables(unsigned char* p){memset(p,0xA5,448);}
@@ -76,6 +85,15 @@ int main(int argc,char**argv){
  api.fopen=opn;api.fread=rd;api.fclose=cls;api.fseek=seekf;api.strcpy=strcpy;api.cgetc=key;
  api.clrscr=cls_screen;api.cputs=puts_screen;
  plugin_entry(&api);
+ /* An occupied, recently used slot must lose its old mapping before a
+  * failed seek/partial read/read-error, without publishing the new page. */
+ if(fault>=5 && fault<=7){
+  source=opn(argv[1],"rb");if(!source)abort();
+  pt_running=1;pt_next=0;pt_slots[0]=3;pt_cache_pages[0]=0x3B;
+  pt_pages[3]=0x7B;pt_pages[4]=0;
+  if(pt_page(4)||pt_pages[3]||pt_pages[4])abort();
+  fcls(source);
+ }
  if(closed!=opened)abort();
  if(fault>=16 && memcmp(calls,lengths[fault-16],2))abort();
  if(started){for(i=0;i<448;++i)if(buf[i]!=0xA5)abort();if(strcmp(sel,"TEST.PT3"))abort();}

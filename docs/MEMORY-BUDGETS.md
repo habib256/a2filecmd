@@ -216,8 +216,11 @@ deux pages entières de code devenu mort sont réutilisées ; une assertion de
 lien vérifie leurs bornes. Les pages d'en-tête inutilisées peuvent aussi être
 récupérées : cinq à huit pages de cache. Les opérandes d'initialisation ne
 sont plus modifiés ensuite, ce que vérifie un test avec pages empoisonnées.
-Le BSS PT3 finit à `$3682` / `$36B6` (65C02/6502), laissant
-125 / 73 octets avant les en-têtes.
+Le cache donne une seconde chance aux pages de samples et d'ornements ;
+les lectures de patterns ne promeuvent pas les pages froides. Le bit 6 de la
+table des pages porte cette référence et est masqué avant tout accès mémoire.
+Le BSS PT3 finit à `$36AB` / `$36ED` (65C02/6502), laissant
+84 / 18 octets avant les en-têtes.
 Aucune donnée AUX, pile ou zone résidente n'est utilisée comme cache.
 
 PURPLE reste sous `$2000` (fenêtre de 1 280 octets), ses lectures vont dans

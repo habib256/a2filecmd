@@ -109,6 +109,9 @@ Les travaux sur lecteurs physiques sont signalés par **💾**.
   anciennes et modernes, vérifiées sur les 96 notes et les deux CPU.
 - [x] **TurboSound** — conteneur standard `02TS`, deux décodeurs et deux AY,
   pause/navigation/fin indépendantes ; AUX préservée.
+- [x] **Cache PT3** — priorité aux samples et ornements réutilisés :
+  156 → 105 défauts de cache, 9,15 → 8,20 s sur le banc TurboSound IIe enhanced
+  à 1 MHz. La cadence sous forte pression reste une limite, sans emprunt AUX.
 - [x] **Purplesoft** — paires GRLOAD `.FOTO1`/`.FOTO2`, mode EVE,
   flèches sans doublon ni nouveau consentement AUX et retour Échap.
 - [ ] **PT3 : compatibilité** — effets multiples par ligne, autres variantes
