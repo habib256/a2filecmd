@@ -39,6 +39,9 @@ static unsigned char mli(unsigned char cmd,void* params) {
     }
     if(cmd==0xC2) {
         p=replace_rn.newpath;memcpy(newpath,p+1,p[0]);newpath[p[0]]=0;
+        if(fault==28 && strstr(old,"IMGCONV.TMP")) {
+            f=fopen(newpath,"wx");if(!f)abort();fputs("new arrival",f);fclose(f);return 0x47;
+        }
         if((fault==6 || fault==7) && strstr(old,"IMGCONV.TMP"))return 0x27;
         if(fault==7 && strstr(old,"A2FC.BAK"))return 0x27;
         f=fopen(newpath,"rb");if(f){fclose(f);return 0x47;}
@@ -63,7 +66,7 @@ static size_t read_file(void* p,size_t s,size_t n,FILE* f) {
 }
 static size_t write_file(const void* p,size_t s,size_t n,FILE* f) {
     unsigned char damaged[512];
-    if(fault==4)return 0;
+    if(fault==4 || fault==24)return 0;
     if(fault==13 || (fault==14 && ftell(f)>=64)) {
         memcpy(damaged,p,n);damaged[0]^=1;return fwrite(damaged,s,n,f);
     }
@@ -73,7 +76,7 @@ static int close_file(FILE* f) {
     int w=opened && f==writing,r;
     if(fault==20 && w)fputc('X',f);
     r=fclose(f);++closes;if(w)opened=0;
-    return ((fault==5 && w) || (fault==9 && !w) ||
+    return (((fault==5 || fault==25) && w) || (fault==9 && !w) ||
             (fault==18 && closes==3) || (fault==19 && closes==4))?-1:r;
 }
 static char choice='2';
@@ -86,6 +89,11 @@ static int seek_file(FILE* f,long off,int origin) {
     return fseek(f,off,origin);
 }
 static unsigned char yes(const char* p){return 1;}
+static int remove_file(const char* p) {
+    if(fault>=24 && fault<=26)return -1;
+    if(fault==27 && strstr(p,"A2FC.BAK"))return -1;
+    return remove(p);
+}
 static void message(const char* p){}
 static void progress(const char* p,unsigned long n,unsigned long t){}
 int main(int argc,char**argv) {
@@ -96,12 +104,12 @@ int main(int argc,char**argv) {
     strcpy(e.name,argc>5?argv[5]:"INPUT.PO");sprintf(source,"%s/%s",argv[1],e.name);
     e.size=argc>6?strtoul(argv[6],0,10):8192;e.type=6;
     if(argc>4)choice=argv[4][0];sbase=0x12345678UL; /* stale overlay BSS */
-    fault=atoi(argv[3]);if(fault==8)keyboard=0x9B;
+    fault=atoi(argv[3]);if(fault==8 || fault==26)keyboard=0x9B;
     api.panels=panels;api.active=&active;api.selected=&e;api.full=source;api.other_full=dest;
     api.copy_buf=copy;api.note=note;api.reselect=reselect;api.filetype=&type;api.auxtype=&aux;
     api.memcpy=memcpy;api.memset=memset;api.strcpy=strcpy;api.strcmp=strcmp;api.strlen=strlen;api.sprintf=sprintf;
     api.fopen=open_file;api.fclose=close_file;api.fread=read_file;api.fwrite=write_file;api.fseek=seek_file;
-    api.mli=mli;api.remove=remove;api.cgetc=choose;api.confirm=yes;api.message=message;api.progress_bar=progress;
+    api.mli=mli;api.remove=remove_file;api.cgetc=choose;api.confirm=yes;api.message=message;api.progress_bar=progress;
     plugin_entry(&api);puts(note);return 0;
 }
 '''
@@ -184,8 +192,48 @@ class ImgconvSafety(unittest.TestCase):
         self.convert(6);self.assertEqual(self.dst.read_bytes(),b'old image')
         self.assertEqual((self.d/'IMGCONV.TMP').read_bytes()[64:],self.data)
     def test_failed_restore_preserves_old_image_in_backup(self):
-        self.convert(7);self.assertEqual((self.d/'A2FC.BAK').read_bytes(),b'old image')
+        self.assertIn('Restore failed',self.convert(7))
+        self.assertFalse(self.dst.exists())
+        self.assertEqual((self.d/'A2FC.BAK').read_bytes(),b'old image')
         self.assertEqual((self.d/'IMGCONV.TMP').read_bytes()[64:],self.data)
+
+    def test_combined_failure_and_cleanup_failure_preserves_output(self):
+        tmp = self.d / 'IMGCONV.TMP'
+        for fault in (24, 25, 26):
+            with self.subTest(fault=fault):
+                note = self.convert(fault)
+                self.assertIn('Cleanup failed', note)
+                self.assertNotIn('removed', note)
+                self.assertEqual(self.dst.read_bytes(), b'old image')
+                saved = tmp.read_bytes()
+                if fault == 24:
+                    self.assertEqual(saved, b'')
+                else:
+                    self.assertEqual(saved[:4], b'2IMG')
+                    self.assertEqual(saved[64:], self.data if fault == 25 else b'')
+                self.assertNotIn(' -> ', self.convert())
+                self.assertEqual(tmp.read_bytes(), saved)
+                self.assertEqual(self.dst.read_bytes(), b'old image')
+                tmp.unlink()
+
+    def test_cancel_cleanup_failure_at_new_destination(self):
+        self.dst.unlink()
+        note = self.convert(26)
+        self.assertIn('Cleanup failed', note)
+        self.assertNotIn('removed', note)
+        self.assertEqual(self.dst.read_bytes()[:4], b'2IMG')
+        self.assertEqual(len(self.dst.read_bytes()), 64)
+
+    def test_install_collision_preserves_arrival_and_both_recovery_files(self):
+        self.assertIn('Restore failed', self.convert(28))
+        self.assertEqual(self.dst.read_bytes(), b'new arrival')
+        self.assertEqual((self.d / 'A2FC.BAK').read_bytes(), b'old image')
+        self.assertEqual((self.d / 'IMGCONV.TMP').read_bytes()[64:], self.data)
+
+    def test_backup_cleanup_failure_keeps_verified_image_and_original(self):
+        self.assertIn('Converted; A2FC.BAK retained', self.convert(27))
+        self.assertEqual(self.dst.read_bytes()[64:], self.data)
+        self.assertEqual((self.d / 'A2FC.BAK').read_bytes(), b'old image')
     def test_temporary_collision_is_untouched(self):
         tmp=self.d/'IMGCONV.TMP';tmp.write_bytes(b'previous recovery')
         self.convert();self.assertEqual(tmp.read_bytes(),b'previous recovery')

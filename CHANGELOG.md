@@ -5,7 +5,31 @@ downloads and installation.
 
 ## Unreleased
 
+- Publish editor saves through the shared installation/rollback transaction. Keep verified temporary files after any installation failure and explicitly report failed restoration. Test late target/backup collisions, failed renames, retained backups and retries, checking original bytes throughout writing and verification.
+
+- Report failed editor temporary cleanup after reservation, I/O or publication refusal. Never reopen after a failed reservation close; preserve the original, recovery file and unsaved edit buffer, including on retries. Add byte-preservation regressions for combined failures and late creation collisions.
+
+- Place private editor, menu and archive messages in their owning overlays. Recover 127 resident bytes on both CPUs, restoring MAIN headroom to 276/786 bytes without changing file operations, BSS, stack size or memory ceilings.
+
 - Rewrite the standalone Apple II+ DOS 3.3 edition (A2FC Mini 0.6.0) in pure 6502 assembly and retire its C sources. Same screens, keys, messages and copy semantics; the binary drops from 12,065 to 7,750 bytes and the program ends at `$7BB8`, 1,096 bytes clear of DOS, with a layout check on every link. Measured on POM2's NMOS core with Disk II timing: a 16-sector catalog read falls from 4,898,568 to 1,703,592 cycles, and copying the 48-sector `A2FC.MINI` from 280 to 64 seconds at 1 MHz. Parsing a catalog sector now fits inside DOS 3.3's 2:1 interleave window instead of waiting out a revolution per sector, and the copy engine moves a batch of sixteen sectors per change of drive instead of alternating drives for every sector. The checks are unchanged: VTOC reserved before any data, every write read back, both disks compared afresh, one catalog entry published last, and copy_fault latched on an uncertain write. `make test-mini` runs the shipped 6502 modules under sim65 with the disk images held by the test process, so a chosen read or write can still be made to fail, tear in half or silently corrupt a byte; 33 host tests, and both POM2 benches pass unchanged. See [the guide](docs/MINI-DOS33.md).
+
+- Write COPY results to an exclusively created A2FC.COPY and read them back before moving the old destination aside. Publish through the shared installation/rollback transaction; preserve verified temporary files on installation failure and refuse recovery-name collisions. Test old destination bytes throughout transfer and verification, plus late collisions, rollback faults and path limits on both CPU builds.
+
+- Keep COPY reservation ownership through failed closes, report failed cleanup even after cancellation, and skip rollback when output deletion failed. Move finalization into resident code to increase COPY headroom from 33/25 to 116/111 bytes on 65C02/6502, with unchanged BSS. Verify preserved source, output and backup bytes under combined failures.
+
+- Share resident exclusive reservation with BATCH, distinguishing failed creation from an owned file whose reservation close failed. Preserve manifest ownership on cleanup failure and forbid reopening after a failed close. Add native reservation-state tests and COPY/BATCH byte-preservation regressions, including retry collisions.
+
+- Move GOTO preference saves onto the shared installation transaction. Check configuration metadata, storage and protections before creating output, and retain the verified temporary after failed installation. Add byte-preservation tests for late name collisions, combined cleanup failures and retries.
+
+- Share the temporary-file installation and rollback sequence across SYNC, TXTCONV and IMGCONV. SYNC retains its verified temporary after failed installation and stops before the next file when recovery is needed, preserving the diagnostic. Compact API calls save 730/728 bytes in SYNC on 65C02/6502; add native transaction tests and full SYNC traversal failure tests.
+
+- Report failed output cleanup in TXTCONV and IMGCONV, including cancellation; do not claim an image was removed when deletion failed. Distinguish failed backup restoration from other installation failures. Preserve recovery files and late-arriving destination files, with combined-failure and retry regressions.
+
+- Share exclusive ProDOS CREATE between TXTCONV and the utility plugins, including SYNC. Preserve all MLI errors and creation ownership; exercise dirty-state file/directory sequences on both CPUs and source/recovery-file preservation on failed creation. No plugin ABI or AUX-memory change.
+
+- Extract the core exclusive-output and verified-copy services into internal modules with explicit buffer/overlay contracts and a compile-time copy-state capacity check. Preserve identical binaries on both CPUs; add cancellation/retry and failed-overlay-after-success sequences to the native C host tests. Shared plugin replacement and COPY memory headroom remain open.
+
+- Add NIBCOPY to DISKTOOLS and XL: resident Disk II transport for one- or two-drive copies of 35 standard 16-sector tracks. Preserve encoded fields/order, rebuild sync gaps, compare two source reads and verify target fields. Require AUX-loss consent, a physically write-protected source and explicit target destruction confirmation at each single-drive exchange. Stop with a partial-track count on failure; protected/nonstandard disk formats and power-failure recovery are not supported.
 
 - Prepare the next media filename before image/music cleanup can reveal text, then restore the panels directly on that target. Left/Right no longer redraws the previous selection while the next file loads. Refuse a vanished target or failed directory reread; retain AUX consent and marks.
 

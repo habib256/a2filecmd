@@ -20,7 +20,7 @@ starting and identifies the edition on its title screen.
 | Edition | What to use |
 |---|---|
 | **6502 floppies** | BOOT plus whichever 140 KB category disks you need: FILES, MEDIA, DISKTOOLS, DEVTOOLS. These floppies also run on enhanced machines. |
-| **XL 6502 or 65C02** | One bootable 32 MB `.2mg` with all 60 overlays, BASIC.SYSTEM, INTBASIC.SYSTEM and demonstration files. No companion disk is needed. |
+| **XL 6502 or 65C02** | One bootable 32 MB `.2mg` with all 61 overlays, BASIC.SYSTEM, INTBASIC.SYSTEM and demonstration files. No companion disk is needed. |
 
 The download names include the CPU, category and version:
 
@@ -73,7 +73,7 @@ full command catalog. The distribution is declared in `config/packages.mk`.
 |---|---|---|
 | **FILES** | EDIT, SEARCH, AWP, BINARY2, UNSHRINK, CRC, FIND, FIXTYPES, GOTO, IDENT, MDVIEW, RENAME, SYNC, MOVE, TREE | `/A2FILES6502` |
 | **MEDIA** | IMAGE, MUSIC, DGRVIEW, EXTASIE, PACKFOT, PAINT816, PURPLE, LZ4FH, PRINTSHOP, FONTVIEW, PT3 | `/A2MEDIA6502` |
-| **DISKTOOLS** | BOOTBLK, BLKVIEW, BLKEDIT, DISKCMP, IMGCONV, MKIMAGE, RESCUE, UNDELETE | `/A2DISKS6502` |
+| **DISKTOOLS** | BOOTBLK, BLKVIEW, BLKEDIT, DISKCMP, NIBCOPY, IMGCONV, MKIMAGE, RESCUE, UNDELETE | `/A2DISKS6502` |
 | **DEVTOOLS** | BASLIST, DISASM, INTBASIC listings, plus BASIC.SYSTEM and INTBASIC.SYSTEM runtimes | `/A2DEVTOOLS6502` |
 
 BOOT keeps the essential file manager and disk operations. Use the **same
@@ -207,9 +207,10 @@ Menu categories describe tasks and do not require changing disks just to browse.
 | **IDENT** | Identify content, UTF-8 or Apple text; statistics cover the first 512 bytes. |
 | **MDVIEW** | Wrapped Markdown/text; no forward limit. Up: last 64 pages. R: restart. |
 | **RENAME** | Batch prefix, suffix, extension replacement/removal or numbering. For example E then BAK sets `.BAK`. Conflicts are skipped. |
-| **IMGCONV** | Convert PO/HDV, DSK/DO and 2MG into the other panel, preserving disk blocks. Unsupported 2MG formats, block counts exceeding 16 bits, and data ranges inside the header or beyond the source size are refused before destination access. Read or seek failures abort conversion and remove incomplete output. |
+| **IMGCONV** | Convert PO/HDV, DSK/DO and 2MG into the other panel, preserving disk blocks. Unsupported 2MG formats, block counts exceeding 16 bits, and data ranges inside the header or beyond the source size are refused before destination access. Read or seek failures abort conversion and attempt to remove incomplete output; failed cleanup is reported. |
 | **BOOTBLK** | Copy ProDOS boot blocks from the boot volume to another volume after confirmation. Saves both originals in main memory, verifies writes and restores both blocks on error. An incomplete restoration is reported explicitly; the backup does not survive a power cut. |
 | **UNDELETE** | Browse deleted ProDOS entries. N skips; R recovers a validated candidate to another online volume. Existing names are refused. |
+| **NIBCOPY** | Physical Disk II copy, one or two drives. Copies 35 standard 16-sector tracks, retaining encoded fields and sector order, regenerating sync gaps, and verifying each track. Requires a write-protected source and prior AUX/target confirmations. |
 | **DISKCMP** | V compares online ProDOS volumes; I compares images; S compares two Disk II disks on one drive. Reports differing blocks and the first mismatch. |
 | **MKIMAGE** | Create an empty ProDOS PO or 2MG: 140 KB, 800 KB, 2/4/8 MB or 32,767 blocks. New images are data volumes, without a boot program. |
 | **RESCUE** | F recovers a file; V recovers a ProDOS volume. Uses up to 30 attempts per block, zero-fills unreadable chunks and writes a LOG. Destination must be another online volume. |
@@ -218,6 +219,32 @@ Menu categories describe tasks and do not require changing disks just to browse.
 | **TREE** | Show file sizes and cumulative directory totals. Space advances a page; ESC exits. |
 
 ### Recovery and comparison limits
+
+COPY writes `A2FC.COPY` in the destination directory and verifies its closed
+contents before replacing the previous destination. Failed cleanup can leave
+an incomplete temporary; failed installation keeps the verified temporary.
+If rollback fails, the previous destination remains in `A2FC.BAK`. Inspect
+these recovery files before renaming or deleting them. Existing recovery
+files are never overwritten, and `A2FC.COPY` cannot be used as the final copy
+name. No source deletion is authorized after failure, including failed cleanup
+after cancellation. A power cut can still interrupt physical directory writes.
+
+SYNC stops before processing the next file when installation or recovery
+cannot finish. Its diagnostic remains visible. Check `A2FC.SYNC` (the new
+result) and `A2FC.BAK` (the previous destination, if moved aside) in the
+corresponding destination directory. A failed install retains the verified
+temporary even if the original was restored. A failed cleanup after copying
+can leave an incomplete temporary. Inspect recovery files before removing or
+renaming them; retrying does not overwrite them. Source files remain intact.
+
+TXTCONV and IMGCONV report failed cleanup explicitly: the output may remain
+incomplete, and retrying does not overwrite an existing temporary file.
+Check `TXTCONV.TMP` or `IMGCONV.TMP` in the destination directory (the source
+directory for in-place text conversion), or the output name when creating a
+new file. If restoration fails, the original remains in `A2FC.BAK` and the
+converted result remains in the temporary file. Inspect these files before
+renaming or removing them. A retained backup after successful conversion is
+reported separately. These recovery steps do not provide power-loss atomicity.
 
 **UNDELETE never changes the source directory, indexes or bitmap.** It checks
 retained pointers, block counts, free blocks and index halves swapped by
@@ -537,7 +564,7 @@ Super Serial Card and //c operation remains unverified.
 |---|---|
 | CPU or memory refusal at startup | Use the matching CPU build, with 128 KB and 80-column support. |
 | Missing or stale plugin | Insert matching BOOT/category disks from the same release. Keep A2FILE.CODE and its native plugins together. |
-| GOTO.TMP or GOTO.BAK remains | If GOTO.CFG is missing, rename GOTO.BAK to GOTO.CFG. Inspect remaining TMP/BAK files before deleting them. |
+| GOTO.TMP or GOTO.BAK remains | A failed install keeps the verified GOTO.TMP; failed cleanup before verification can leave an incomplete temporary. If GOTO.CFG is missing and GOTO.BAK is present, inspect and restore the backup. Inspect all recovery files before renaming or deleting them; retrying does not overwrite them. |
 | Disk changed but old contents remain | Press Ctrl-R to reread both panels. |
 | Run failed: file not found | Check the selected program, its path and BASIC.SYSTEM for BAS files. |
 | Image cannot be opened | Check its actual format; renaming PO to DSK does not convert it. Some file/image features are unsupported. |
@@ -666,3 +693,39 @@ the complete copyright and redistribution terms.
 
 See [Data safety](DATA-SAFETY.md) for recovery-file names, failure coverage
 and the limits of recovery after interrupted physical writes.
+
+### NIBCOPY: physical 5¼-inch copies
+
+Open `!` → Disks → NIBCOPY from DISKTOOLS or XL. Select the Disk II slot,
+source drive and target drive. Selecting the same drive enables exchanges.
+Use normal 1 MHz speed and disable accelerators for this timing-sensitive transport.
+Cover the source disk's write notch **before** starting and keep it covered:
+NIBCOPY refuses an unprotected source, and refuses to write a protected target.
+This also prevents writing the source accidentally during a single-drive exchange.
+
+The loader first warns that **all `/RAM` files will be lost** and requests
+permission before NIBCOPY uses auxiliary memory. Save those files elsewhere
+before accepting. NIBCOPY keeps its code and buffers in RAM; BOOT and DISKTOOLS
+can be removed while copying. Remove those disks before inserting the source
+and target. Confirm destruction of **all target files, including locked files**
+on the displayed slot/drive before the first write. In single-drive mode the
+same confirmation is required after every target exchange. Return accepts a
+source insertion; it does not confirm target destruction. On exit A2FC may ask
+for its program or panel disks again.
+
+Each source track is read twice. Both complete sets of 16 address/data fields,
+their checksums and circular sector order must agree before writing. The target
+is then reread and all encoded fields compared. Escape stops between tracks
+or cancels an insertion/confirmation. The final report gives the number of
+verified tracks out of 35; any read, format or verification error stops the copy.
+An incomplete target must not be treated as a valid backup.
+
+This initial transport supports standard 16-sector Disk II framing only. It
+preserves encoded payloads and sector order but regenerates synchronization
+gaps; it is **not** a flux copier or a preservation tool for copy protections,
+13-sector, half-track, weak-bit or other nonstandard formats. Unsupported or
+unstable source tracks are refused before writing that track. It does not
+preflight all 35 tracks before the first write. A write failure or power cut
+can leave a partly overwritten target; no rollback or power-failure atomicity
+is promised. Hardware qualification on real drives and accelerated machines
+remains necessary; native automated tests cover both IIe CPU variants in POM2.

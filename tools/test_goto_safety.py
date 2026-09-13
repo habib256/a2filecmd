@@ -31,13 +31,13 @@ static size_t read_file(void* p,size_t z,size_t n,FILE* f) {
 }
 static size_t write_file(const void* p,size_t z,size_t n,FILE* f) {
     char damaged[2001];
-    if(fault==10)return fwrite(p,z,n/2,f);
+    if(fault==10 || fault==20)return fwrite(p,z,n/2,f);
     if(fault==11){memcpy(damaged,p,n);damaged[0]^=1;return fwrite(damaged,z,n,f);}
     return fwrite(p,z,n,f);
 }
 static int close_file(FILE* f) {
     int r=fclose(f);++closes;
-    return ((fault==4 && closes==1) || (fault==12 && closes==2) ||
+    return ((fault==4 && closes==1) || ((fault==12 || fault==21) && closes==2) ||
             (fault==16 && closes==3)) ? EOF : r;
 }
 static void decode(char* out,const char* p){memcpy(out,p+1,(unsigned char)p[0]);out[(unsigned char)p[0]]=0;}
@@ -48,16 +48,28 @@ static unsigned char file_call(unsigned char cmd,void* unused) {
         decode(from,ren.from);decode(to,ren.to);
         if((fault==17 || fault==18) && strstr(from,"GOTO.TMP"))return 0x27;
         if(fault==18 && strstr(from,"GOTO.BAK"))return 0x27;
+        if(fault==27 && strstr(from,"GOTO.CFG"))return 0x27;
+        if((fault==28 && strstr(from,"GOTO.TMP")) ||
+           (fault==29 && strstr(to,"GOTO.BAK"))) {
+            f=fopen(to,"wx");if(!f)abort();fputs("late arrival",f);fclose(f);
+        }
         if(!stat(to,&st))return 0x47;
         return rename(from,to)?(errno==ENOENT?0x46:0x27):0;
     }
     decode(from,info.path);
     if(cmd==0xC4) {
-        if(fault==2 || (fault==22 && strstr(from,"GOTO.BAK")))return 0x27;
+        if(fault==2 || (fault==22 && strstr(from,"GOTO.BAK")) ||
+           (fault==23 && strstr(from,"GOTO.CFG")))return 0x27;
+        memset(info.fields,0,15);info.fields[0]=fault==24?0x81:0xE3;
+        info.fields[4]=fault==25?0:fault==26?13:1;
         return stat(from,&st)?(errno==ENOENT?0x46:0x27):0;
     }
     if(cmd==0xC0){f=fopen(from,"wx");if(!f)return errno==EEXIST?0x47:0x27;return fclose(f)?0x27:0;}
-    if(cmd==0xC1){if(fault==19 && strstr(from,"GOTO.BAK"))return 0x27;return remove(from)?0x27:0;}
+    if(cmd==0xC1){
+        if((fault==19 && strstr(from,"GOTO.BAK")) ||
+           ((fault==20 || fault==21) && strstr(from,"GOTO.TMP")))return 0x27;
+        return remove(from)?0x27:0;
+    }
     abort();
 }
 int main(int argc,char** argv) {
@@ -98,15 +110,25 @@ class GotoSafety(unittest.TestCase):
             if reserved: (p/reserved).write_bytes(b'previous recovery')
             result=subprocess.check_output([self.exe,p,str(fault)],text=True).strip()
             success=fault in (0,19) and reserved is None
-            if fault==18:
-                self.assertFalse(cfg.exists());self.assertEqual(bak.read_bytes(),old)
+            if fault in (18,28):
+                if fault==18:self.assertFalse(cfg.exists())
+                else:self.assertEqual(cfg.read_bytes(),b'late arrival')
+                self.assertEqual(bak.read_bytes(),old)
                 self.assertEqual(tmp.read_bytes(),new)
             else:
                 self.assertEqual(cfg.read_bytes(),new if success else old)
                 if reserved: self.assertEqual((p/reserved).read_bytes(),b'previous recovery')
-                if reserved!='GOTO.TMP': self.assertFalse(tmp.exists())
+                if fault in (17,21,27,29):self.assertEqual(tmp.read_bytes(),new)
+                elif fault==20:self.assertEqual(tmp.read_bytes(),new[:len(new)//2])
+                elif reserved!='GOTO.TMP': self.assertFalse(tmp.exists())
                 if fault==19: self.assertEqual(bak.read_bytes(),old)
+                elif fault==29:self.assertEqual(bak.read_bytes(),b'late arrival')
                 elif reserved!='GOTO.BAK': self.assertFalse(bak.exists())
+            if fault in (17,18,20,21,27,28,29):
+                self.assertIn('GOTO.TMP kept',result)
+                before={f.name:f.read_bytes() for f in p.iterdir()}
+                subprocess.check_output([self.exe,p,'0'],text=True)
+                self.assertEqual({f.name:f.read_bytes() for f in p.iterdir()},before)
             return result
 
     def test_complete_verified_save(self): self.run_case()
@@ -123,6 +145,18 @@ class GotoSafety(unittest.TestCase):
     def test_recovery_name_collisions_are_preserved(self):
         for reserved in ('GOTO.TMP','GOTO.BAK'):
             with self.subTest(reserved=reserved): self.run_case(reserved=reserved)
+
+    def test_destination_metadata_and_protections_refuse_before_create(self):
+        for fault in (23,24,25,26):
+            with self.subTest(fault=fault):self.run_case(fault)
+
+    def test_combined_failure_and_cleanup_failure_preserves_bytes_on_retry(self):
+        for fault in (20,21):
+            with self.subTest(fault=fault):self.run_case(fault)
+
+    def test_rename_failures_and_late_collisions_preserve_recovery_files(self):
+        for fault in (27,28,29):
+            with self.subTest(fault=fault):self.run_case(fault)
 
 
 if __name__ == '__main__':

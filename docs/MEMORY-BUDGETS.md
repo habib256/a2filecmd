@@ -1,5 +1,102 @@
 # Consolidation : budgets mémoire
 
+Transaction commune EDIT, 13 septembre 2026 : coût EDIT 110/116 octets
+(65C02/6502), réserves 138/118. MAIN 281/791, LC 117/110, LOWRAM 282/307,
+écart avant pile 309/1 008 et COPY 79/76 inchangés. La transaction est
+compilée dans EDIT ; ses sept octets d'arguments restent empilés pendant
+les renommages, sans récursion ni chargement imbriqué. Aucun BSS ajouté,
+plafonds et pile de 192 octets inchangés. Les deux liens, 48 tests ciblés
+et les sept images ProDOS sont validés.
+
+Nettoyage contrôlé EDIT, 13 septembre 2026 : EDIT coûte 62/64 octets
+(65C02/6502) et conserve 248/234 octets libres. Le remplacement du diagnostic
+littéral « Save » libère cinq octets MAIN : réserves 281/791, écart avant
+pile 309/1 008. LC 117/110, LOWRAM 282/307 et COPY 79/76 inchangés.
+Le helper EDIT garde deux octets d'argument pendant suppression/diagnostic,
+sans récursion ni nouveau local statique. Les deux liens conservent tous
+les plafonds et la pile de 192 octets ; 42 tests ciblés et sept images
+ProDOS contrôlés.
+
+Localisation des textes de surcouches, 13 septembre 2026 : neuf tableaux
+nommés dans EDITRO, MENURO, BINARY2RO et UNSHRINKRO remplacent des littéraux
+que cc65 plaçait dans RODATA résident. Gain MAIN de 127 octets sur chaque
+CPU : réserves 276/786 octets (65C02/6502), objectif de 256 retrouvé.
+Écart avant pile 304/1 003 ; LC 117/110 et LOWRAM 282/307 inchangés.
+Réserves des surcouches concernées : EDIT 310/298, MENU 2 190/2 133,
+BINARY2 1 932/1 956 et UNSHRINK 86/101. COPY reste à 79/76.
+Les textes sont consommés pendant leur surcouche ou copiés dans `note`
+avant son déchargement ; aucun pointeur ne lui survit. Aucun appel ni
+local supplémentaire, aucune écriture AUX et aucun changement du protocole
+de fichiers. Les contrôles des deux liens gardent tous les plafonds et
+la pile de 192 octets. Validation : 24 tests C de copie/édition, 15 tests
+du contrôle de disposition et reconstruction/contrôle des sept images ProDOS.
+
+Publication COPY par temporaire, 13 septembre 2026 : réserves COPY 79/76
+octets, MAIN 149/659, LC 117/110, LOWRAM 282/307, écart avant pile 177/876
+(65C02/6502). MAIN coûte 107 octets sur chaque CPU et le BSS un octet ;
+le chemin temporaire supplémentaire tient dans `CopyState` (204 octets sur
+les 320 de `text_starts`). La variante de transaction liée à CP évite ses
+sept octets d'arguments empilés ; la profondeur des appels reste bornée,
+sans récursion ni chargement imbriqué. Les deux liens passent sans relever
+les plafonds ni réduire la pile de 192 octets. La réserve MAIN 65C02 est
+cependant sous l'objectif de 256 : marge à regagner avant d'enrichir encore.
+
+Finalisation COPY résidente, 13 septembre 2026 : COPY passe de 1 247/1 255
+à 1 164/1 169 octets (65C02/6502), soit 116/111 octets libres dans sa fenêtre
+de 1 280. Le résident absorbe nettoyage, restauration et compteurs : MAIN
+conserve 256/766 octets (coût net 79/84), écart avant pile 284/983. LC et BSS
+sont inchangés ; LOWRAM conserve 283/308 octets. La finalisation remplace
+la vérification dans la chaîne d'appels, sans ajouter de niveau récursif ;
+la réservation directe retire le détour par `new_output`. Pile de 192 octets
+et plafonds de toutes les surcouches conservés sur les deux liens.
+
+Réservation résidente/BATCH commune, 13 septembre 2026 : CODE résident
++30/+35 octets (65C02/6502), BATCH -20/-20 et LOWBSS -2/-2. Il s'agit d'un
+contrat de résultat supplémentaire ; le résident ne gagne pas de code dans
+cet incrément. Réserves après lien : MAIN 335/850, LC 117/110, LOWRAM 283/308,
+écart avant pile 363/1 067, BATCH 2 817/2 834. COPY conserve 33/25 octets de
+marge et demande toujours un chantier séparé. La nouvelle fonction résidente
+garde deux octets d'argument pendant `open`/`close`, sans récursivité ni
+chargement de surcouche. Les plafonds et la pile de 192 octets sont inchangés.
+
+Migration GOTO vers l'installation commune, 13 septembre 2026 : fichier
+4 969/4 953 octets (+157/+164), BSS 262/263 octets (+1), fin
+`$2F6E`/`$2F5F` (65C02/6502). Réserve 145/160 octets sous `$3000`, sans
+empiéter sur LIST (`$3000`) ou TEXT (`$3400`). La transaction commune garde
+sept octets d'arguments pendant le renommage, sans récursivité ni chargement
+imbriqué. Les deux liens respectent les limites d'origine et la pile de
+192 octets ; les autres plugins restent identiques octet pour octet.
+
+Installation commune SYNC/conversions, 13 septembre 2026 : les appels API
+compacts de SYNC compensent l'ajout des diagnostics et de l'arrêt de
+récupération. Le premier essai dépassait la fenêtre de 45 octets sur 65C02 ;
+aucun plafond n'a été relevé. Bilan final (65C02/6502) : SYNC 6 732/6 755
+octets, soit -730/-728 ; BSS 1 746/1 747 (+1 pour l'indicateur), fin
+`$3C1D`/`$3C35`, réserve 994/970 octets sous `$4000`. TXTCONV ajoute 66/79
+octets (6 017/6 036), IMGCONV 57/71 (6 814/6 916), leurs BSS inchangés.
+La fonction d'installation garde sept octets d'arguments sur la pile pendant
+le transport de renommage ; elle est non récursive. Les contrôles natifs des
+deux éditions conservent la pile de 192 octets et toutes les limites de lien.
+Les autres plugins sont identiques octet pour octet.
+
+Nettoyage et restauration des conversions, 13 septembre 2026 : TXTCONV ajoute
+243/237 octets et IMGCONV 190/184 octets (65C02/6502), messages compris.
+Leurs fichiers occupent désormais 5 951/5 957 et 6 757/6 845 octets.
+Le BSS reste inchangé : 592/593 et 730/731 octets ; fins respectives
+`$348E`/`$3495` et `$383E`/`$3897`, sous `$4000`. Le nettoyage ajoute un
+argument de deux octets sur la pile pendant l'appel, sans récursivité ;
+la chaîne de restauration reste de même profondeur. Les autres plugins
+sont identiques octet pour octet. Les plafonds et la pile de 192 octets
+restent en vigueur sur les deux constructions.
+
+Extraction CREATE des plugins, 13 septembre 2026 : TXTCONV passe de
+5 673 à 5 708 octets sur 65C02 et de 5 687 à 5 720 sur 6502. BSS inchangé
+(592/593 octets), fin BSS `$339B`/`$33A8`, soit 3 172/3 159 octets libres
+avant `$4000`. Le nouvel appel garde six octets d'arguments sur la pile C
+pendant CREATE ; il n'est pas récursif et ne charge aucune surcouche.
+Les autres plugins restent identiques octet pour octet, comme le résident
+et ses budgets. Aucun plafond ni réserve de pile n'est modifié.
+
 Premier relevé du 12 septembre 2026, code natif de `af84617`, après reconstruction
 forcée des deux architectures. `tools/check_layout.py` affiche maintenant les
 réserves à chaque lien réussi, en complément des contrôles bloquants existants.
@@ -282,3 +379,28 @@ Validation : 428 tests automatisés, compilations et limites des deux CPU ;
 109 contrôles POM2 par architecture (`open_images.py`, `media.py`, `purple.py`),
 avec écrans relus octet par octet, flèches, Échap, refus AUX et conservation du
 volume source. Les essais utilisent uniquement des images jetables.
+
+## Extraction des services de fichiers, 13 septembre 2026
+
+Mesure sur l'arbre de travail courant, qui comprend les modifications en cours
+de NIBCOPY et du routage. `file_output.h` et `file_copy.h` conservent leur
+position dans l'unité de compilation ; aucun nouveau chargement ni appel
+n'est ajouté. Tous les `.BIN` et `.PLG` existants sont identiques octet pour
+octet avant/après sur les deux CPU (SHA-256), ainsi que les symboles `.lbl`.
+Le contrôle de capacité de `CopyState` ne produit pas de code.
+
+| Réserve, octets | 65C02 avant/après | 6502 avant/après |
+| --- | ---: | ---: |
+| MAIN | 365 / 365 | 885 / 885 |
+| Carte langage | 117 / 117 | 110 / 110 |
+| LOWRAM, BSS compris | 281 / 281 | 306 / 306 |
+| Espace avant pile C | 393 / 393 | 1102 / 1102 |
+| COPY | 33 / 33 | 25 / 25 |
+| FORMAT BSS | 147 / 147 | 147 / 147 |
+
+Les contrôles de disposition passent pour les deux architectures, avec la
+pile C de 192 octets et tous les plafonds inchangés. Aucune modification du
+graphe d'appels ni des binaires : consommation dynamique de pile inchangée,
+sans nouvelle mesure sur émulateur. COPY reste sous l'objectif de 64 octets,
+et la carte langage sous celui de 128 ; l'extraction ne revendique aucun gain
+mémoire. Les autres surcouches gardent exactement leurs réserves.

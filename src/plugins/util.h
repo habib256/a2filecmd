@@ -49,14 +49,9 @@ static unsigned char getinfo(const char* path) {
 }
 #endif
 #ifdef UTIL_CREATE
-struct Create { unsigned char n; unsigned char* path; unsigned char access,type;
-    unsigned int aux; unsigned char storage; unsigned int date,time; };
-static struct Create create;
-static unsigned char newfile(const char* path,unsigned char type,unsigned int aux,unsigned char storage) {
-    ppath(path); create.n=7; create.path=pas; create.access=0xC3; create.type=type;
-    create.aux=aux; create.storage=storage; create.date=create.time=0;
-    return RF(mli)(0xC0,&create);
-}
+#define FC_PATH pas
+#define FC_PREPARE(path) ppath(path)
+#include "file_create.h"
 #endif
 #ifdef UTIL_VOLUME
 struct Block { unsigned char n,unit; unsigned char* buffer; unsigned int block; };

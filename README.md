@@ -44,6 +44,8 @@ The menu also offers text and disk-image conversion, CRC-32, file
 identification, Markdown reading, volume-wide search, favourite directories,
 batch renaming and type repair. DISKTOOLS and XL also provide UNDELETE recovery,
 DISKCMP comparison, MKIMAGE creation, RESCUE extraction, SYNC updates and TREE totals. BLKVIEW searches and extracts blocks while preserving the source; DISKIMG reads back disk writes.
+NIBCOPY copies standard 16-sector Disk II tracks with one or two drives and
+verified readback ([details](docs/NIBCOPY.md)).
 DISASM reads BIN/SYS files as 6502 or 65C02 assembly and exports text listings.
 FIND combines name/content searches with type and modification-date filters (TAB),
 then continues through successive pages of 20 matches. V on a text result
@@ -88,7 +90,7 @@ is 0.7.5; its downloads retain their own version numbers.
 
 **All floppies use 6502 code**, including on enhanced machines. Choose the
 categories you need; every companion carries the menu and full catalog.
-XL includes all 60 overlays, BASIC.SYSTEM, INTBASIC.SYSTEM, `DEMO/` and `IMGHGR/`, so it needs
+XL includes all 61 overlays, BASIC.SYSTEM, INTBASIC.SYSTEM, `DEMO/` and `IMGHGR/`, so it needs
 no companion. Choose XL **6502** for an original IIe; XL **65C02** for an
 enhanced IIe or //c. All editions require 128 KB and 80 columns.
 Use matching releases. Do not mix the native plugins of XL 65C02 with the

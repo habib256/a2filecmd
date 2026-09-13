@@ -7,6 +7,7 @@ from pathlib import Path
 from test_six_plugins import PREFIX, ROOT
 
 HARNESS = PREFIX + r'''
+#include <assert.h>
 #include <errno.h>
 static int read_status(FILE*);
 #define ferror read_status
@@ -29,7 +30,7 @@ static FILE* open_file(const char* path, const char* mode) {
 }
 static size_t write_file(const void* p,size_t sz,size_t n,FILE* f) {
     unsigned char damaged[256];
-    if(fault==6)return 0;
+    if(fault==6 || fault==21)return 0;
     if(fault==10) { memcpy(damaged,p,n);damaged[0]^=1;return fwrite(damaged,sz,n,f); }
     return fwrite(p,sz,n,f);
 }
@@ -37,11 +38,16 @@ static int close_file(FILE* f) {
     int r;++closes;
     if(fault==11 && closes==2)fputc('X',f);
     r=fclose(f);
-    return fault==7 || (fault==16 && closes==4) || (fault==17 && closes==3) ? -1 : r;
+    return fault==7 || (fault==20 && closes==2) || (fault==16 && closes==4) || (fault==17 && closes==3) ? -1 : r;
+}
+static int remove_file(const char* p) {
+    if (fault>=20 && fault<=22) return -1;
+    if (fault==23 && strstr(p,"A2FC.BAK")) return -1;
+    return remove(p);
 }
 static void message(const char* s) { (void)s; }
 static void progress(const char* s, unsigned long d, unsigned long t)
-{ (void)s; (void)d; (void)t; if (fault == 12 || (fault == 13 && checking)) fail = 1; }
+{ (void)s; (void)d; (void)t; if (fault == 12 || fault == 22 || (fault == 13 && checking)) fail = 1; }
 static size_t read_file(void* p, size_t size, size_t count, FILE* f) {
     if (fault == 15 && checking && f == out) { failed_read = f; return 0; }
     if (fault == 1 && (unsigned long)ftell(f) >= fail_at) { failed_read = f; return 0; }
@@ -61,10 +67,12 @@ static unsigned char mli(unsigned char cmd, void* p) {
         fclose(f); memset(i->result,0,15); i->result[0]=0xC3; i->result[4]=1; return 0;
     }
     if (cmd == 0xC0) {
-        struct CreatePath { unsigned char n; unsigned char* path; };
-        struct CreatePath* c = p;
+        struct Create* c = p;
         FILE* f;
+        assert(c->n == 7 && c->access == 0xC3 && c->type == 4);
+        assert(c->aux == 0 && c->storage == 1 && !c->date && !c->time);
         memcpy(from, c->path + 1, c->path[0]); from[c->path[0]] = 0;
+        if (fault == 18 || fault == 19) return fault == 18 ? 0x48 : 0x27;
         if (fault == 5) {
             f = fopen(from, "wb"); fputs("arrived after lookup", f); fclose(f);
         }
@@ -79,6 +87,9 @@ static unsigned char mli(unsigned char cmd, void* p) {
         FILE* f;
         memcpy(from,r->old+1,r->old[0]);from[r->old[0]]=0;
         memcpy(to,r->newpath+1,r->newpath[0]);to[r->newpath[0]]=0;
+        if(fault==24 && strstr(from,"TXTCONV.TMP")) {
+            f=fopen(to,"wx");assert(f);fputs("new arrival",f);fclose(f);return 0x47;
+        }
         if(fault==8 && strstr(from,"TXTCONV.TMP"))return 0x27;
         if(fault==9 && (strstr(from,"TXTCONV.TMP") || strstr(from,"A2FC.BAK")))return 0x27;
         f=fopen(to,"rb");if(f){fclose(f);return 0x47;}
@@ -107,8 +118,9 @@ int main(int argc, char** argv) {
     api.memcpy = memcpy; api.strcpy = strcpy; api.strcmp = strcmp;
     api.strlen = strlen; api.sprintf = sprintf;
     api.fopen = open_file; api.fread = read_file; api.fwrite = write_file;
-    api.fclose = close_file; api.remove = remove; api.mli = mli;
+    api.fclose = close_file; api.remove = remove_file; api.mli = mli;
     api.cgetc = key; api.confirm = yes; api.message = message; api.progress_bar = progress;
+    memset(&create, 0xA5, sizeof create); /* overlays do not clear BSS */
     plugin_entry(&api);
     puts(note);
     return 0;
@@ -196,6 +208,22 @@ class Txtconv(unittest.TestCase):
         self.assertEqual(data, b'\xC1' * 400)
         self.assertEqual(temporary.read_bytes(), b'previous conversion to recover')
 
+    def test_create_errors_never_grant_cleanup_ownership(self):
+        temporary = self.root / 'TXTCONV.TMP'
+        self.addCleanup(temporary.unlink, missing_ok=True)
+        for fault in (18, 19):  # disk full and I/O error, not name collisions
+            with self.subTest(fault=fault):
+                temporary.write_bytes(b'previous result to recover')
+                note, data = self.convert(b'\xC1' * 400, fault=fault)
+                self.assertIn('Create failed', note)
+                self.assertEqual(data, b'\xC1' * 400)
+                self.assertEqual(temporary.read_bytes(), b'previous result to recover')
+                temporary.unlink()
+                note, data = self.convert(b'\xC1' * 400, fault=fault)
+                self.assertIn('Create failed', note)
+                self.assertEqual(data, b'\xC1' * 400)
+                self.assertFalse(temporary.exists())
+
     def test_the_source_cannot_be_its_own_temporary_file(self):
         self.addCleanup((self.root / 'TXTCONV.TMP').unlink, missing_ok=True)
         note, data = self.convert(b'\xC1' * 400, name='TXTCONV.TMP')
@@ -218,6 +246,55 @@ class Txtconv(unittest.TestCase):
         self.assertIn('Install failed',note)
         self.assertEqual(data,b'\xC1'*400)
         self.assertEqual(tmp.read_bytes(),b'A'*400)
+
+    def test_failed_restore_reports_and_keeps_both_recovery_files(self):
+        tmp = self.root / 'TXTCONV.TMP'
+        bak = self.root / 'A2FC.BAK'
+        self.addCleanup(tmp.unlink, missing_ok=True)
+        self.addCleanup(bak.unlink, missing_ok=True)
+        source = self.root / 'TEXT'
+        source.write_bytes(b'\xC1' * 400)
+        note = subprocess.check_output(
+            [str(self.exe), str(self.root), 'TEXT', '400', '9', '0', 'H', '1', '0'],
+            text=True)
+        self.assertIn('Restore failed', note)
+        self.assertFalse(source.exists())
+        self.assertEqual(bak.read_bytes(), b'\xC1' * 400)
+        self.assertEqual(tmp.read_bytes(), b'A' * 400)
+
+    def test_combined_failure_and_cleanup_failure_retains_output(self):
+        tmp = self.root / 'TXTCONV.TMP'
+        self.addCleanup(tmp.unlink, missing_ok=True)
+        for fault, expected in ((20, b'A' * 400), (21, b''), (22, b'')):
+            with self.subTest(fault=fault):
+                note, data = self.convert(b'\xC1' * 400, fault=fault)
+                self.assertIn('Cleanup failed', note)
+                self.assertEqual(data, b'\xC1' * 400)
+                self.assertEqual(tmp.read_bytes(), expected)
+                note, data = self.convert(b'\xC1' * 400)
+                self.assertIn('already exists', note)
+                self.assertEqual(tmp.read_bytes(), expected)
+                self.assertEqual(data, b'\xC1' * 400)
+                tmp.unlink()
+
+    def test_install_collision_blocks_restore_without_overwriting_arrival(self):
+        tmp = self.root / 'TXTCONV.TMP'
+        bak = self.root / 'A2FC.BAK'
+        self.addCleanup(tmp.unlink, missing_ok=True)
+        self.addCleanup(bak.unlink, missing_ok=True)
+        note, data = self.convert(b'\xC1' * 400, fault=24)
+        self.assertIn('Restore failed', note)
+        self.assertEqual(data, b'new arrival')
+        self.assertEqual(bak.read_bytes(), b'\xC1' * 400)
+        self.assertEqual(tmp.read_bytes(), b'A' * 400)
+
+    def test_backup_cleanup_failure_is_success_with_original_retained(self):
+        bak = self.root / 'A2FC.BAK'
+        self.addCleanup(bak.unlink, missing_ok=True)
+        note, data = self.convert(b'\xC1' * 400, fault=23)
+        self.assertIn('Converted; A2FC.BAK retained', note)
+        self.assertEqual(data, b'A' * 400)
+        self.assertEqual(bak.read_bytes(), b'\xC1' * 400)
 
     def test_existing_backup_is_preserved(self):
         bak=self.root/'A2FC.BAK';bak.write_bytes(b'recover original')

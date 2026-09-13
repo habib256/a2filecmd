@@ -38,13 +38,30 @@ static unsigned int progress_skipped, progress_done, progress_abort, over_policy
 static int fault, fired, rename_calls, output_open;
 static FILE* output;
 static FILE* input;
+static unsigned char old_bytes[4096];
+static char old_path[64];
+static size_t old_size;
+static int old_exists, copy_mode, copy_closes;
+static void snapshot_destination(const char* p) {
+    FILE* f;strcpy(old_path,p);copy_mode=1;copy_closes=0;
+    f=fopen(p,"rb");old_exists=f!=NULL;old_size=0;
+    if(f){old_size=fread(old_bytes,1,sizeof old_bytes,f);fclose(f);}
+}
+static void check_old_destination(void) {
+    FILE* f;unsigned char b[4096];size_t n;
+    if(!copy_mode)return;
+    f=fopen(old_path,"rb");
+    if(!old_exists){if(f)abort();return;}
+    if(!f)abort();n=fread(b,1,sizeof b,f);fclose(f);
+    if(n!=old_size || memcmp(b,old_bytes,n))abort();
+}
 static char checked_path[64];
 static unsigned char file_info(const char* path) {
     struct stat st;
     strcpy(checked_path,path);
-    if(fault==7) {_oserror=0x27;return 0;}
+    if(fault==7 || (fault==30 && !strcmp(path,full))) {_oserror=0x27;return 0;}
     if(stat(path,&st)) {_oserror=errno==ENOENT?0x46:0x27;return 0;}
-    gfi[3]=(fault==15)?1:0xC3;gfi[4]=S_ISDIR(st.st_mode)?15:6;_oserror=0;return 1;
+    gfi[3]=(fault==15 || fault==31)?1:0xC3;gfi[4]=S_ISDIR(st.st_mode)?15:6;_oserror=0;return 1;
 }
 static unsigned char exists(const char* p) {return file_info(p);}
 static unsigned char mli_call(unsigned char cmd,void* params) {
@@ -56,10 +73,16 @@ static unsigned char mli_call(unsigned char cmd,void* params) {
 static int reserve_file(const char* path,int flags) {
     FILE* f;
     if((flags & (O_CREAT|O_EXCL))!=(O_CREAT|O_EXCL))abort();
+    if(fault==20){errno=EIO;return -1;}
     if(fault==11 && !fired++) {f=fopen(path,"wb");fputs("new arrival",f);fclose(f);}
     return open(path,flags,0600);
 }
 #define open reserve_file
+static int close_reservation(int fd) {
+    int r=close(fd);
+    return fault==18 || fault==19 ? -1 : r;
+}
+#define close close_reservation
 static void message(const char* s) {snprintf(message_text,sizeof message_text,"%s",s);}
 static void report_error(const char* s) {message(s);}
 static void too_long(void) {message("Path too long");}
@@ -70,14 +93,15 @@ static void gotoxy(int x,int y) {}
 #define cprintf(...) ((void)0)
 static char cgetc(void) {return 'o';}
 static void progress_bar(const char* s,unsigned long d,unsigned long t) {}
-static unsigned char abort_key(void) {if(fault==16)progress_abort=1;return progress_abort;}
+static unsigned char abort_key(void) {if(fault==16 || fault==23)progress_abort=1;return progress_abort;}
 static unsigned char overlay(const char* s) {strcpy(other_full,"/overlay/clobbered");return fault!=17;}
 static unsigned char push_name(char* p,const char* n) {
     if(strlen(p)+strlen(n)+1>=PATH_LEN)return 0;strcat(p,"/");strcat(p,n);return 1;
 }
 static FILE* open_file(const char* p,const char* mode) {
     FILE* f;
-    if(fault==12 && !strcmp(mode,"wb"))return NULL;
+    if((fault==18 || fault==19) && !strcmp(mode,"wb"))abort();
+    if((fault==12 || fault==25) && !strcmp(mode,"wb"))return NULL;
     f=fopen(p,mode);
     if(!strcmp(mode,"wb")){output=f;output_open=1;}
     else if(!strcmp(p,full)) input=f;
@@ -85,29 +109,48 @@ static FILE* open_file(const char* p,const char* mode) {
     return f;
 }
 static size_t read_file(void* p,size_t s,size_t n,FILE* f) {
+    if(fault==28 && ftell(f)>=512){fired=1;return 0;}
     if(fault==1 && f==input && ftell(f)>=256){fired=1;return 0;}
     return fread(p,s,n,f);
 }
-static int error_file(FILE* f) {return (fault==1 && fired && f==input)||ferror(f);}
+static int error_file(FILE* f) {return (fault==28 && fired)||(fault==1 && fired && f==input)||ferror(f);}
 static size_t write_file(const void* p,size_t s,size_t n,FILE* f) {
     unsigned char damaged[6144];
-    if(fault==2 || fault==9)return 0;
+    check_old_destination();
+    if(fault==2 || fault==21)return 0;
     if(fault==4 && n){memcpy(damaged,p,n);damaged[n-1]^=1;return fwrite(damaged,s,n,f);}
     return fwrite(p,s,n,f);
 }
 static int close_file(FILE* f) {
     int is_output=output_open && f==output;
+    check_old_destination();++copy_closes;
     int r=fclose(f);if(is_output)output_open=0;
-    return fault==3 && is_output?-1:r;
+    return ((fault==3 || fault==22) && is_output) || (fault==29 && !is_output)?-1:r;
 }
 static int seek_file(FILE* f,long p,int origin) {return fault==5?-1:fseek(f,p,origin);}
 static int rename_file(const char* from,const char* to) {
     struct stat st;++rename_calls;
-    if((fault==8 && strstr(from,"A2FC.EDIT")) || (fault==9 && strstr(from,"A2FC.BAK")))return -1;
+    if(copy_mode && !strcmp(from,old_path) && copy_closes!=(copy_mode==2?2:4))abort();
+    if((fault==19 || (fault>=21 && fault<=25)) && strstr(from,"A2FC.BAK"))abort();
+    if((fault==8 && strstr(from,"A2FC.EDIT")) || (fault==9 && (strstr(from,"A2FC.BAK") || strstr(from,"A2FC.COPY"))))return -1;
+    if(fault==26 && strstr(from,"A2FC.COPY")) {
+        FILE* f=fopen(to,"wx");if(!f)abort();fputs("late arrival",f);fclose(f);
+    }
+    if(fault==27 && strstr(from,"A2FC.COPY"))return -1;
+    if(fault==32 && strstr(to,"A2FC.ED.BAK"))return -1;
+    if(fault==33 && (strstr(from,"A2FC.EDIT") || strstr(from,"A2FC.ED.BAK")))return -1;
+    if(fault==34 && strstr(from,"A2FC.EDIT")) {
+        FILE* f=fopen(to,"wx");if(!f)abort();fputs("late arrival",f);fclose(f);
+    }
+    if(fault==35 && strstr(to,"A2FC.ED.BAK")) {
+        FILE* f=fopen(to,"wx");if(!f)abort();fputs("late backup",f);fclose(f);
+    }
+    if(fault==36 && strstr(to,"A2FC.ED.BAK"))return -1;
     if(!stat(to,&st))return -1;
     return rename(from,to);
 }
 static int remove_file(const char* p) {
+    if(fault==19 || (fault>=21 && fault<=25) || (fault>=28 && fault<=32))return -1;
     if(fault==10 && (strstr(p,"A2FC.BAK")||strstr(p,"A2FC.ED.BAK")))return -1;
     return remove(p);
 }
@@ -119,7 +162,7 @@ static int remove_file(const char* p) {
 #define fseek seek_file
 #define rename rename_file
 #define remove remove_file
-''' + section('static FILE* new_output(const char* path)\n{', '/* Rewrites access, type and auxtype') + section('struct CopyState {', '/* The three tree walks') + section('static const char ed_safety_0', '/* E: edits the file') + r'''
+''' + (ROOT / 'src/file_output.h').read_text() + (ROOT / 'src/file_copy.h').read_text() + section('static const char ed_safety_0', '/* E: edits the file') + r'''
 #undef fopen
 #undef fread
 #undef fclose
@@ -129,8 +172,24 @@ int main(int argc,char**argv) {
     if(argv[1][0]=='e') {
         FILE* f=fopen(full,"rb");elen=fread(EDIT_BUF,1,sizeof edit_buf,f);fclose(f);
         memset(EDIT_BUF,'N',elen);edirty=1;etype=6;eaux=0;
+        if(!strcmp(argv[1],"editfresh")){unlink(full);efresh=1;}
+        snapshot_destination(full);copy_mode=2;
         r=edit_save();
-    } else r=copy_file("DATA",6,0);
+        if(!r) {
+            unsigned int i;
+            if(!edirty)abort();
+            for(i=0;i<elen;++i)if(EDIT_BUF[i]!='N')abort();
+        }
+    } else { snapshot_destination(other_full);r=copy_file("DATA",6,0); }
+    if(argv[1][0]=='s') {
+        /* The operation boundary resets cancellation, but deliberately
+         * leaves CopyState and the shared buffers dirty for the next copy. */
+        printf("first=%u\n", r);
+        fault=atoi(argv[6]); fired=0; progress_abort=0;
+        strcpy(other_full,argv[5]);
+        snapshot_destination(other_full);
+        r=copy_file("DATA",6,0);
+    }
     printf("%u %u %s\n",r,edirty,message_text);
     return 0;
 }
@@ -143,7 +202,7 @@ class FileSafety(unittest.TestCase):
         cls.root = Path(cls.tmp.name)
         (cls.root/'test.c').write_text(HARNESS)
         cls.exe = cls.root/'test'
-        subprocess.run(['cc', '-std=c99', '-Wno-unknown-pragmas', str(cls.root/'test.c'), '-o', str(cls.exe)], check=True, capture_output=True)
+        subprocess.run(['cc', '-std=c99', '-Wno-unknown-pragmas', '-I', str(ROOT/'src'), str(cls.root/'test.c'), '-o', str(cls.exe)], check=True, capture_output=True)
 
     @classmethod
     def tearDownClass(cls): cls.tmp.cleanup()
@@ -201,7 +260,128 @@ class FileSafety(unittest.TestCase):
     def test_new_arrival_is_not_truncated_or_removed(self):
         self.dst.unlink()
         self.assertEqual(self.run_op(fault=11)[0],0)
-        self.assertEqual(self.dst.read_bytes(),b'new arrival')
+        self.assertFalse(self.dst.exists())
+        self.assertEqual((self.p/'A2FC.COPY').read_bytes(),b'new arrival')
+
+    def test_reservation_close_failure_never_reopens_for_writing(self):
+        self.assertEqual(self.run_op(fault=18)[0],0)
+        self.assertEqual(self.src.read_bytes(),self.original)
+        self.assertEqual(self.dst.read_bytes(),self.previous)
+        self.assertFalse((self.p/'A2FC.BAK').exists())
+
+    def test_reservation_close_and_cleanup_failure_preserve_original(self):
+        result,note=self.run_op(fault=19)
+        self.assertEqual(result,0)
+        self.assertIn('Cleanup failed',note)
+        self.assertEqual(self.src.read_bytes(),self.original)
+        self.assertEqual(self.dst.read_bytes(),self.previous)
+        self.assertEqual((self.p/'A2FC.COPY').read_bytes(),b'')
+        self.assertFalse((self.p/'A2FC.BAK').exists())
+        self.assertEqual(self.run_op()[0],0)
+        self.assertEqual(self.dst.read_bytes(),self.previous)
+        self.assertEqual((self.p/'A2FC.COPY').read_bytes(),b'')
+        self.assertEqual(self.src.read_bytes(),self.original)
+
+    def test_failed_exclusive_create_restores_previous_destination(self):
+        self.assertEqual(self.run_op(fault=20)[0],0)
+        self.assertEqual(self.src.read_bytes(),self.original)
+        self.assertEqual(self.dst.read_bytes(),self.previous)
+        self.assertFalse((self.p/'A2FC.BAK').exists())
+
+    def test_failed_cleanup_never_restores_over_remaining_output(self):
+        for existing in (False,True):
+            for fault,expected in ((21,b''),(22,self.original),
+                                   (23,self.original[:512]),(25,b'')):
+                with self.subTest(existing=existing,fault=fault):
+                    bak=self.p/'A2FC.BAK'
+                    bak.unlink(missing_ok=True)
+                    tmp=self.p/'A2FC.COPY';tmp.unlink(missing_ok=True)
+                    if existing:self.dst.write_bytes(self.previous)
+                    else:self.dst.unlink(missing_ok=True)
+                    result,note=self.run_op(fault=fault)
+                    self.assertEqual(result,0)
+                    self.assertIn('Cleanup failed',note)
+                    self.assertEqual(self.src.read_bytes(),self.original)
+                    self.assertEqual(tmp.read_bytes(),expected)
+                    if existing:self.assertEqual(self.dst.read_bytes(),self.previous)
+                    else:self.assertFalse(self.dst.exists())
+                    self.assertFalse(bak.exists())
+
+    def test_install_failure_restores_original_and_keeps_verified_temporary(self):
+        self.assertEqual(self.run_op(fault=27)[0],0)
+        self.assertEqual(self.dst.read_bytes(),self.previous)
+        self.assertEqual((self.p/'A2FC.COPY').read_bytes(),self.original)
+        self.assertEqual(self.src.read_bytes(),self.original)
+        self.assertFalse((self.p/'A2FC.BAK').exists())
+
+    def test_late_install_collision_preserves_all_three_files(self):
+        self.assertEqual(self.run_op(fault=26)[0],0)
+        self.assertEqual(self.dst.read_bytes(),b'late arrival')
+        self.assertEqual((self.p/'A2FC.BAK').read_bytes(),self.previous)
+        self.assertEqual((self.p/'A2FC.COPY').read_bytes(),self.original)
+        self.assertEqual(self.src.read_bytes(),self.original)
+
+    def test_existing_temporary_is_never_overwritten(self):
+        tmp=self.p/'A2FC.COPY';tmp.write_bytes(b'recovery bytes')
+        self.assertEqual(self.run_op()[0],0)
+        self.assertEqual(tmp.read_bytes(),b'recovery bytes')
+        self.assertEqual(self.dst.read_bytes(),self.previous)
+        self.assertEqual(self.src.read_bytes(),self.original)
+
+    def test_temporary_aliasing_source_is_never_removed(self):
+        reserved=self.p/'A2FC.COPY';self.src.rename(reserved);self.src=reserved
+        self.assertEqual(self.run_op()[0],0)
+        self.assertEqual(self.src.read_bytes(),self.original)
+        self.assertEqual(self.dst.read_bytes(),self.previous)
+
+    def test_target_equal_to_temporary_is_refused(self):
+        self.dst=self.p/'A2FC.COPY';self.dst.write_bytes(self.previous)
+        self.assertEqual(self.run_op()[0],0)
+        self.assertEqual(self.dst.read_bytes(),self.previous)
+        self.assertEqual(self.src.read_bytes(),self.original)
+
+    def test_temporary_path_overflow_refuses_before_writing(self):
+        directory=self.p/('D'*(61-len(str(self.p))-1));directory.mkdir()
+        self.dst=directory/'X';self.assertEqual(len(str(self.dst)),63)
+        self.dst.write_bytes(self.previous)
+        self.assertEqual(self.run_op()[0],0)
+        self.assertEqual(self.dst.read_bytes(),self.previous)
+        self.assertEqual(self.src.read_bytes(),self.original)
+        self.assertEqual([p.name for p in directory.iterdir()],['X'])
+
+    def test_empty_and_exact_block_copies_publish_after_verification(self):
+        for size in (0,256,512,1024):
+            with self.subTest(size=size):
+                data=bytes(range(256))*(size//256);self.src.write_bytes(data)
+                self.assertEqual(self.run_op()[0],1)
+                self.assertEqual(self.dst.read_bytes(),data)
+                self.assertEqual(self.src.read_bytes(),data)
+                self.assertFalse((self.p/'A2FC.COPY').exists())
+                self.assertFalse((self.p/'A2FC.BAK').exists())
+
+    def test_cancel_then_copy_reinitializes_borrowed_state(self):
+        next_dst = self.p/'NEXT'
+        next_dst.write_bytes(b'next original')
+        out = subprocess.check_output([self.exe, 'sequence', self.src, self.dst,
+                                       '16', next_dst, '0'], text=True).splitlines()
+        self.assertEqual(out[0], 'first=0')
+        self.assertEqual(out[1].split()[0], '1')
+        self.assertEqual(self.src.read_bytes(), self.original)
+        self.assertEqual(self.dst.read_bytes(), self.previous)
+        self.assertEqual(next_dst.read_bytes(), self.original)
+        self.assertFalse((self.p/'A2FC.BAK').exists())
+
+    def test_failed_overlay_after_success_cannot_reuse_verified_state(self):
+        next_dst = self.p/'NEXT'
+        next_dst.write_bytes(b'next original')
+        out = subprocess.check_output([self.exe, 'sequence', self.src, self.dst,
+                                       '0', next_dst, '17'], text=True).splitlines()
+        self.assertEqual(out[0], 'first=1')
+        self.assertEqual(out[1].split()[0], '0')
+        self.assertEqual(self.src.read_bytes(), self.original)
+        self.assertEqual(self.dst.read_bytes(), self.original)
+        self.assertEqual(next_dst.read_bytes(), b'next original')
+        self.assertFalse((self.p/'A2FC.BAK').exists())
 
     def test_editor_save_verifies_and_installs(self):
         self.assertEqual(self.run_op('edit')[0],1)
@@ -215,10 +395,99 @@ class FileSafety(unittest.TestCase):
                 self.assertEqual(out.split()[1],'1')
                 self.assertEqual(self.src.read_bytes(),self.original)
 
+    def test_editor_cleanup_failures_report_recovery_and_keep_original(self):
+        for fault in (19,21,22,25,28,29,30,31,32):
+            with self.subTest(fault=fault):
+                result,out=self.run_op('edit',fault)
+                self.assertEqual(result,0)
+                self.assertIn('recover A2FC.EDIT / A2FC.ED.BAK',out)
+                self.assertEqual(self.src.read_bytes(),self.original)
+                temp=self.p/'A2FC.EDIT'
+                expected=b'' if fault in (19,21,25) else b'N'*len(self.original)
+                self.assertEqual(temp.read_bytes(),expected)
+                self.assertFalse((self.p/'A2FC.ED.BAK').exists())
+                # A subsequent save must not truncate or remove recovery data.
+                self.assertEqual(self.run_op('edit')[0],0)
+                self.assertEqual(temp.read_bytes(),expected)
+                self.assertEqual(self.src.read_bytes(),self.original)
+                temp.unlink()
+
+    def test_editor_reservation_failures_and_late_collision(self):
+        for fault in (18,20,11):
+            with self.subTest(fault=fault):
+                self.assertEqual(self.run_op('edit',fault)[0],0)
+                self.assertEqual(self.src.read_bytes(),self.original)
+                temp=self.p/'A2FC.EDIT'
+                if fault==11:
+                    self.assertEqual(temp.read_bytes(),b'new arrival')
+                    temp.unlink()
+                else:
+                    self.assertFalse(temp.exists())
+                self.assertFalse((self.p/'A2FC.ED.BAK').exists())
+
     def test_editor_install_failure_restores_original_and_keeps_temporary(self):
         self.assertEqual(self.run_op('edit',8)[0],0)
         self.assertEqual(self.src.read_bytes(),self.original)
         self.assertEqual((self.p/'A2FC.EDIT').read_bytes(),b'N'*len(self.original))
+
+    def test_editor_failed_restore_keeps_verified_temp_and_original_backup(self):
+        result,out=self.run_op('edit',33)
+        self.assertEqual(result,0)
+        self.assertIn('Restore failed',out)
+        self.assertFalse(self.src.exists())
+        self.assertEqual((self.p/'A2FC.ED.BAK').read_bytes(),self.original)
+        self.assertEqual((self.p/'A2FC.EDIT').read_bytes(),b'N'*len(self.original))
+
+    def test_editor_late_target_collision_preserves_all_versions(self):
+        result,out=self.run_op('edit',34)
+        self.assertEqual(result,0)
+        self.assertIn('Restore failed',out)
+        self.assertEqual(self.src.read_bytes(),b'late arrival')
+        self.assertEqual((self.p/'A2FC.ED.BAK').read_bytes(),self.original)
+        temp=self.p/'A2FC.EDIT'
+        self.assertEqual(temp.read_bytes(),b'N'*len(self.original))
+        self.assertEqual(self.run_op('edit')[0],0)
+        self.assertEqual(self.src.read_bytes(),b'late arrival')
+        self.assertEqual(temp.read_bytes(),b'N'*len(self.original))
+        self.assertEqual((self.p/'A2FC.ED.BAK').read_bytes(),self.original)
+
+    def test_editor_backup_rename_failure_retains_verified_temp(self):
+        for fault in (35,36):
+            with self.subTest(fault=fault):
+                result,out=self.run_op('edit',fault)
+                self.assertEqual(result,0)
+                self.assertIn('recover A2FC.EDIT',out)
+                self.assertEqual(self.src.read_bytes(),self.original)
+                temp=self.p/'A2FC.EDIT'
+                self.assertEqual(temp.read_bytes(),b'N'*len(self.original))
+                backup=self.p/'A2FC.ED.BAK'
+                if fault==35:self.assertEqual(backup.read_bytes(),b'late backup')
+                else:self.assertFalse(backup.exists())
+                self.assertEqual(self.run_op('edit')[0],0)
+                self.assertEqual(temp.read_bytes(),b'N'*len(self.original))
+                self.assertEqual(self.src.read_bytes(),self.original)
+                temp.unlink()
+                if backup.exists():backup.unlink()
+
+    def test_editor_installed_backup_cleanup_failure_reports_saved(self):
+        result,out=self.run_op('edit',10)
+        self.assertEqual(result,1)
+        self.assertEqual(out.split()[1],'0')
+        self.assertIn('Saved; A2FC.ED.BAK retained',out)
+        self.assertEqual(self.src.read_bytes(),b'N'*len(self.original))
+        self.assertEqual((self.p/'A2FC.ED.BAK').read_bytes(),self.original)
+        self.assertFalse((self.p/'A2FC.EDIT').exists())
+
+    def test_editor_fresh_install_and_late_collision(self):
+        self.assertEqual(self.run_op('editfresh')[0],1)
+        self.assertEqual(self.src.read_bytes(),b'N'*len(self.original))
+        result,out=self.run_op('editfresh',34)
+        self.assertEqual(result,0)
+        self.assertNotIn('Restore failed',out)
+        self.assertIn('recover A2FC.EDIT',out)
+        self.assertEqual(self.src.read_bytes(),b'late arrival')
+        self.assertEqual((self.p/'A2FC.EDIT').read_bytes(),b'N'*len(self.original))
+        self.assertFalse((self.p/'A2FC.ED.BAK').exists())
 
     def test_editor_preserves_existing_temporary_and_backup(self):
         for name in ('A2FC.EDIT','A2FC.ED.BAK'):

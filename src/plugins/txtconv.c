@@ -43,10 +43,6 @@ static unsigned char mode, prev, col, pend, lead, fail;
 static unsigned char checking, check[256];
 #include "replace.h"
 static char final_path[PATH_LEN];
-static struct {
-    unsigned char count; unsigned char* path; unsigned char access, type;
-    unsigned int aux; unsigned char storage; unsigned int date, time;
-} cp;
 /* GET_FILE_INFO writes fifteen result bytes after the Pascal-path pointer. */
 static struct { unsigned char count; unsigned char* path; unsigned char result[15]; } ip;
 
@@ -130,6 +126,10 @@ static void pascal(unsigned char* p, const char* s)
     T.memcpy(p + 1, s, n);
 }
 
+#define FC_PATH T.copy_buf
+#define FC_PREPARE(path) pascal(T.copy_buf, path)
+#include "file_create.h"
+
 void __fastcall__ plugin_entry(const struct A2fcApi* api)
 {
     const struct Panel* pan;
@@ -191,11 +191,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     {
         /* A leftover may be the only recoverable result of an earlier
          * failed rename, or even the selected source. Never overwrite it. */
-        pascal(T.copy_buf, target);
-        cp.count = 7; cp.path = T.copy_buf; cp.access = 0xC3;
-        cp.type = e->type; cp.aux = e->aux; cp.storage = 1;
-        cp.date = cp.time = 0;
-        k = T.mli(0xC0, &cp);
+        k = newfile(target, e->type, e->aux, 1);
         if (k) {
             T.fclose(in);
             if (k == 0x47) {
@@ -251,14 +247,15 @@ convert_pass:
     }
     if (inplace || replace) {
         k = replace_commit(target, final_path);
+        if (k == REPLACE_RESTORE_FAILED) { T.strcpy(T.note, "Restore failed: original in A2FC.BAK; TXTCONV.TMP kept."); return; }
         if (!k) { T.strcpy(T.note, "Install failed: recover TXTCONV.TMP / A2FC.BAK."); return; }
-        if (k == 2) { T.strcpy(T.note, "Converted; A2FC.BAK retained."); return; }
+        if (k == REPLACE_BACKUP) { T.strcpy(T.note, "Converted; A2FC.BAK retained."); return; }
     }
     T.strcpy(T.reselect, e->name);
     T.sprintf(T.note, m_done, nin, nout);        /* the core re-reads and redraws, then writes it */
     return;
 errrm:
-    T.remove(target);
+    if (!replace_discard(target)) return;
 err:
     T.sprintf(T.note, m_fail, what);                /* report_error's line would not survive the redraw */
 }

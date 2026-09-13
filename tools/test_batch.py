@@ -43,14 +43,20 @@ static unsigned char confirm(const char*s){assert(strlen(s)<80);return !eq("canc
 static unsigned char push_name(char*p,const char*n){if(strlen(p)+strlen(n)+1>=64)return 0;strcat(p,"/");strcat(p,n);return 1;}
 static unsigned char build_full(char*p,const struct Panel*pan,const struct Entry*e){strcpy(p,pan->path);return push_name(p,e->name);}
 static unsigned char file_info(const char*p){struct stat st;if(eq("stat")||stat(p,&st))return 0;gfi[7]=1;gfi[3]=eq("locked")?1:0xC3;gfi[4]=4;gfi[5]=gfi[6]=0;return 1;}
-static FILE* bfopen(const char*p,const char*m){phase=!strcmp(m,"wb")?0:++reads;return fopen(p,m);}
+static FILE* bfopen(const char*p,const char*m){
+ if(!strcmp(m,"wb")&&(eq("reserve_close")||eq("reserve_close_remove")))abort();
+ phase=!strcmp(m,"wb")?0:++reads;
+ if(!strcmp(m,"wb")&&(eq("open_output")||eq("open_output_remove")))return NULL;
+ return fopen(p,m);
+}
 static size_t bfread(void*p,size_t z,size_t n,FILE*f){if((phase==1&&eq("verify_read"))||(phase>1&&eq("read_record")))return 0;return fread(p,z,n,f);}
 static int bferror(FILE*f){return (phase==1&&eq("verify_read"))||(phase>1&&eq("read_record"))||ferror(f);}
 static int bfclose(FILE*f){int r=fclose(f);if((phase==0&&eq("write_close"))||(phase==1&&eq("verify_close"))||(phase>1&&eq("read_close")))return EOF;return r;}
 static size_t bfwrite(const void*p,size_t z,size_t n,FILE*f){return fwrite(p,z,eq("write")?n/2:n,f);}
 static int bfseek(FILE*f,long p,int whence){if(eq("seek"))return -1;return fseek(f,p,whence);}
 static int bopen(const char*p,int flags){assert((flags&(O_CREAT|O_EXCL))==(O_CREAT|O_EXCL));if(eq("create"))return -1;return open(p,flags,0600);}
-static int bremove(const char*p){if(eq("remove"))return -1;return remove(p);}
+static int bclose(int fd){int r=close(fd);return eq("reserve_close")||eq("reserve_close_remove")?-1:r;}
+static int bremove(const char*p){if(eq("remove")||eq("reserve_close_remove")||eq("open_output_remove"))return -1;return remove(p);}
 #define fopen bfopen
 #define fread bfread
 #define fwrite bfwrite
@@ -58,7 +64,9 @@ static int bremove(const char*p){if(eq("remove"))return -1;return remove(p);}
 #define ferror bferror
 #define fseek bfseek
 #define open bopen
+#define close bclose
 #define remove bremove
+#include "src/file_output.h"
 #include "src/batch.h"
 #undef fopen
 #undef fread
@@ -67,6 +75,7 @@ static int bremove(const char*p){if(eq("remove"))return -1;return remove(p);}
 #undef ferror
 #undef fseek
 #undef open
+#undef close
 #undef remove
 int main(int argc,char**argv){
  struct A2fcApi api;unsigned int i,n;char dst[81];FILE*f;
@@ -104,11 +113,16 @@ class Batch(unittest.TestCase):
   subprocess.run(['cc','-std=c99','-I',str(ROOT),str(c),'-o',str(cls.exe)],check=True)
  @classmethod
  def tearDownClass(cls):cls.tmp.cleanup()
- def run_case(self,fault='',collision=False,active=0):
+ def run_case(self,fault='',collision=False,active=0,retry=False):
   d=Path(tempfile.mkdtemp(prefix='q-',dir=self.root));src=d/'s';dst=d/'d';src.mkdir();dst.mkdir()
   for n in 'ABC':(src/n).write_bytes((n*4).encode())
   if collision:(dst/'A2MOVE.LST').write_bytes(b'personal bytes')
   out=subprocess.check_output([self.exe,src,dst,fault,str(active)],text=True)
+  if retry:
+   saved={p.name:p.read_bytes() for p in dst.iterdir()}
+   again=subprocess.check_output([self.exe,src,dst,'',str(active)],text=True)
+   self.assertTrue(again.startswith('0|0|'),again)
+   self.assertEqual({p.name:p.read_bytes() for p in dst.iterdir()},saved)
   return out,{p.name:p.read_bytes() for p in src.iterdir()},{p.name:p.read_bytes() for p in dst.iterdir()}
  def test_only_marked_names_both_panels(self):
   for active in (0,1):
@@ -120,7 +134,7 @@ class Batch(unittest.TestCase):
    self.assertEqual(src,{n:(n*4).encode() for n in 'ABC'})
    self.assertEqual(dst,{'A2MOVE.LST':b'personal bytes'} if c else {})
  def test_failures_before_first_move(self):
-  for f in ('create','write','write_close','verify_read','verify_close','read_record','read_close','seek','stat','locked','corrupt','truncate'):
+  for f in ('create','reserve_close','open_output','write','write_close','verify_read','verify_close','read_record','read_close','seek','stat','locked','corrupt','truncate'):
    with self.subTest(f=f):
     out,src,dst=self.run_case(f);self.assertTrue(out.startswith('0|'),out)
     self.assertEqual(src,{n:(n*4).encode() for n in 'ABC'})
@@ -131,4 +145,19 @@ class Batch(unittest.TestCase):
  def test_cleanup_failure_keeps_owned_manifest(self):
   out,src,dst=self.run_case('remove');self.assertTrue(out.startswith('2|1|'),out)
   self.assertIn('A2MOVE.LST',dst);self.assertEqual(src,{'B':b'BBBB'})
+
+ def test_reservation_failures_keep_ownership_until_cleanup_succeeds(self):
+  for f in ('reserve_close_remove','open_output_remove'):
+   with self.subTest(f=f):
+    out,src,dst=self.run_case(f,retry=True)
+    self.assertTrue(out.startswith('0|1|'),out)
+    self.assertIn('A2MOVE.LST kept',out)
+    self.assertEqual(src,{n:(n*4).encode() for n in 'ABC'})
+    self.assertEqual(dst,{'A2MOVE.LST':b''})
+
+ def test_collision_never_grants_ownership_even_when_cleanup_would_fail(self):
+  out,src,dst=self.run_case('reserve_close_remove',collision=True)
+  self.assertTrue(out.startswith('0|0|'),out)
+  self.assertEqual(src,{n:(n*4).encode() for n in 'ABC'})
+  self.assertEqual(dst,{'A2MOVE.LST':b'personal bytes'})
 if __name__=='__main__':unittest.main()

@@ -251,6 +251,8 @@ static unsigned char rename_file(const char* from,const char* to)
     ren.n=2;ren.from=A->full;ren.to=A->other_full;
     return mli(0xC2,&ren);
 }
+#define FI_RENAME rename_file
+#include "file_install.h"
 static void discard_temp(void)
 {
     scpy(N,fileop(0xC1,temp) ? (const char*)"Save failed; GOTO.TMP kept." : m_err);
@@ -283,7 +285,7 @@ static unsigned char verify_saved(unsigned int size)
  * atomic filesystem transaction across a power failure. */
 static void save(unsigned char dead)
 {
-    unsigned char i;
+    unsigned char i, exists;
     char* p = TEXT;
     char* q;
     for (i = 0; i < count; ++i) {
@@ -295,6 +297,12 @@ static void save(unsigned char dead)
     /* Never truncate either recovery file. Existing ones require review. */
     i=fileop(0xC4,backup);
     if(i!=0x46) { scpy(N,i ? m_err : (const char*)"GOTO.BAK exists; check saved files.");return; }
+    i=fileop(0xC4,cfg);
+    exists=!i;
+    if((i && i!=0x46) || (exists &&
+       ((info.fields[0]&0xC2)!=0xC2 || info.fields[4]<1 || info.fields[4]>3))) {
+        scpy(N,m_err);return;
+    }
     for(i=0;i<15;++i)info.fields[i]=0;
     info.fields[0]=0xE3;info.fields[1]=0x04;info.fields[4]=1;
     i=fileop(0xC0,temp);
@@ -307,15 +315,13 @@ static void save(unsigned char dead)
     if(fcls(fh) || i) { discard_temp();return; }
     if(!verify_saved(p-TEXT)) { discard_temp();return; }
     /* The old list remains intact until the new file has closed cleanly. */
-    i=rename_file(cfg,backup);
-    if(i && i!=0x46) { discard_temp();return; }
-    if(rename_file(temp,cfg)) {
-        if(!i && rename_file(backup,cfg)) {
-            scpy(N,"Save failed; restore GOTO.BAK. GOTO.TMP kept.");return;
-        }
-        discard_temp();return;
+    i=file_install(temp,cfg,backup,exists);
+    if(i!=FILE_INSTALLED) {
+        scpy(N,i==FILE_RESTORE_FAILED ?
+            (const char*)"Save failed; restore GOTO.BAK. GOTO.TMP kept." :
+            (const char*)"Install failed; GOTO.TMP kept.");return;
     }
-    if(!i && fileop(0xC1,backup))scpy(N,"Saved; GOTO.BAK kept.");
+    if(exists && fileop(0xC1,backup))scpy(N,"Saved; GOTO.BAK kept.");
 }
 
 /* The whole screen: the title, one numbered row per favourite, the keys. */

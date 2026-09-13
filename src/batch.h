@@ -60,7 +60,6 @@ static void batch_write(void)
     struct Panel* pan = &panels[active];
     struct Entry* e;
     FILE* f;
-    int fd;
     unsigned char i, bad = 0, crc[2];
     unsigned int sum;
     memset(MB, 0, sizeof *MB);
@@ -81,10 +80,10 @@ static void batch_write(void)
     note[79] = 0;
     if (!confirm(note)) { note[0] = 0; return; }
     _filetype = 0x06; _auxtype = 0;
-    fd = open(MB->list, O_WRONLY | O_CREAT | O_EXCL);
-    if (fd < 0) { strcpy(note, bt_s2); return; }
+    i = reserve_output(MB->list);
+    if (!i) { strcpy(note, bt_s2); return; }
     MB->owned = 1;
-    if (close(fd)) { strcpy(note, batch_bad); batch_discard(); return; }
+    if (i != OUTPUT_RESERVED) { strcpy(note, batch_bad); batch_discard(); return; }
     f = fopen(MB->list, bt_s3);
     if (!f) { strcpy(note, batch_bad); batch_discard(); return; }
     for (i = 0; i < pan->count && !bad; ++i) if (tagged(pan, i)) {

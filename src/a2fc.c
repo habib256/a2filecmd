@@ -168,18 +168,7 @@ static unsigned char file_info(const char* path)
     return mli_gfi(gfi) == 0;
 }
 
-/* Reserve a new directory entry before any truncating open. A failed
- * lookup never grants permission to overwrite an existing file. */
-static FILE* new_output(const char* path)
-{
-    FILE* f;
-    int fd = open(path, O_WRONLY | O_CREAT | O_EXCL);
-    if (fd < 0) return NULL;
-    if (close(fd)) { remove(path); return NULL; }
-    f = fopen(path, "wb");
-    if (!f) remove(path);            /* only the entry just created */
-    return f;
-}
+#include "file_output.h"
 
 /* Rewrites access, type and auxtype from gfi[]: SET_FILE_INFO shares the
  * layout of GET_FILE_INFO for its first seven parameters. */
@@ -1663,6 +1652,8 @@ void __fastcall__ search_entry(const struct A2fcApi* a)
 #pragma rodata-name (push, "BINARY2RO")
 #pragma static-locals (push, off)
 
+/* Named arrays stay with their overlay; cc65 puts bare literals in MAIN. */
+static const char b2_create_failed[] = "Create failed; existing files kept.";
 static const char b2_pick[]  = "Select a Binary II archive.";
 static const char b2_notdir[] = "Other panel must be a ProDOS folder.";
 static const char b2_bad[]   = "Not a Binary II archive.";
@@ -1732,7 +1723,7 @@ void __fastcall__ binary2_entry(const struct A2fcApi* a)
         _auxtype = copy_buf[5] | (copy_buf[6] << 8);
         sprintf(other_full, b2_path, oth->path, name);
         out = new_output(other_full);
-        if (!out) { b2_say("Create failed; existing files kept."); fclose(in); return; }
+        if (!out) { b2_say(b2_create_failed); fclose(in); return; }
         while (eof) {
             n = eof > 512 ? 512 : (unsigned int)eof;
             k = fread(copy_buf, 1, n, in);
@@ -2388,6 +2379,9 @@ static void view_image(void)
 /* ---------------------------------------------------------------------- */
 #pragma code-name (push, "EDIT")
 #pragma rodata-name (push, "EDITRO")
+static const char ed_menukeys[] = "ESC Menu";
+static const char ed_newtitle[] = "New text file";
+static const char ed_discardkeys[] = "Y Discard the changes,N Keep editing";
 static const char ed_savekeys[] = "S Save,X Save and exit,Q Quit without saving,ESC Continue editing";
 static const char ed_status[]  = " %-30.30s  Line %u  Col %u  %u/%u bytes %s";
 static const char ed_openf[]   = "Open failed.";
@@ -2451,7 +2445,7 @@ static void edit_status(void)
     revers(1);
     cprintf(ed_status, full, line + 1, ecur - ls + 1, elen, EDIT_MAX, edirty ? "*" : " ");
     revers(0);
-    keys_bar(69, "ESC Menu");
+    keys_bar(69, ed_menukeys);
 }
 
 /* Places the cursor on screen; scrolls if the line is not visible. */
@@ -2507,8 +2501,19 @@ static const char ed_safety_1[] = "Save failed; original kept.";
 static const char ed_safety_2[] = "Save refused; original kept.";
 static const char ed_safety_3[] = "Save failed: recover A2FC.EDIT / A2FC.ED.BAK.";
 static const char ed_safety_4[] = "Saved; A2FC.ED.BAK retained.";
+static const char ed_restore_failed[] = "Restore failed; recover A2FC.ED.BAK.";
+/* Compile the common transaction inside EDIT: no overlay load on this path. */
+#define file_install edit_install
+#define FI_RENAME rename
+#include "plugins/file_install.h"
+#undef file_install
 #define EDIT_TMP ((char*)text_starts)
 #define EDIT_BAK (EDIT_TMP + PATH_LEN)
+/* Only called after this save exclusively created EDIT_TMP. */
+static void edit_discard(const char* reason)
+{
+    message(remove(EDIT_TMP) ? ed_safety_3 : reason);
+}
 static unsigned char edit_save(void)
 {
     FILE* f;
@@ -2523,8 +2528,10 @@ static unsigned char edit_save(void)
         message(ed_safety_0); return 0;
     }
     _filetype = etype; _auxtype = eaux;
-    f = new_output(EDIT_TMP);
-    if (!f) { report_error("Save"); return 0; }
+    ok = reserve_output(EDIT_TMP);
+    if (!ok) { message(ed_safety_2); return 0; }
+    f = ok == OUTPUT_RESERVED ? fopen(EDIT_TMP, "wb") : NULL;
+    if (!f) { edit_discard(ed_safety_1); return 0; }
     ok = fwrite(EDIT_BUF, 1, elen, f) == elen;
     if (fclose(f)) ok = 0;
     if (ok) {
@@ -2540,15 +2547,15 @@ static unsigned char edit_save(void)
             if (fclose(f)) ok = 0;
         }
     }
-    if (!ok) { remove(EDIT_TMP); message(ed_safety_1); return 0; }
+    if (!ok) { edit_discard(ed_safety_1); return 0; }
     old = exists(full);
-    if ((old && (efresh || (gfi[3] & 0xC2) != 0xC2)) || (!old && _oserror != 0x46) ||
-        (old && rename(full, EDIT_BAK))) {
-        remove(EDIT_TMP); message(ed_safety_2); return 0;
+    if ((old && (efresh || (gfi[3] & 0xC2) != 0xC2)) || (!old && _oserror != 0x46)) {
+        edit_discard(ed_safety_2); return 0;
     }
-    if (rename(EDIT_TMP, full)) {
-        if (old) rename(EDIT_BAK, full);
-        message(ed_safety_3); return 0;
+    ok = edit_install(EDIT_TMP, full, EDIT_BAK, old);
+    if (ok != FILE_INSTALLED) {
+        message(ok == FILE_RESTORE_FAILED ? ed_restore_failed : ed_safety_3);
+        return 0;
     }
     if (old && remove(EDIT_BAK)) message(ed_safety_4);
     efresh = edirty = 0;
@@ -2614,7 +2621,7 @@ static unsigned char edit_file(unsigned char fresh, unsigned char type, unsigned
             key = cgetc();
             if (key == 's' || key == 'S') written |= edit_save();
             else if (key == 'x' || key == 'X') { if (edit_save()) { written = 1; goto leave; } }
-            else if (key == 'q' || key == 'Q') { if (!edirty) goto leave; bar_begin(); keys_bar(0, "Y Discard the changes,N Keep editing"); key = cgetc(); if (key == 'y' || key == 'Y') goto leave; }
+            else if (key == 'q' || key == 'Q') { if (!edirty) goto leave; bar_begin(); keys_bar(0, ed_discardkeys); key = cgetc(); if (key == 'y' || key == 'Y') goto leave; }
             break;
         default:
             if (key >= 32 && key < 127) { if (edit_insert(key)) row = 1; else message(ed_buffull); ewant = ecur - ls; }
@@ -2646,7 +2653,7 @@ void __fastcall__ edit_entry(const struct A2fcApi* a)
     (void)a;
     if (!pan->count || !pan->path[0]) { strcpy(note, ed_nodir); return; }
     if (is_dir(e)) {
-        if (!prompt("New text file", NULL, 0)) return;
+        if (!prompt(ed_newtitle, NULL, 0)) return;
         if (strlen(pan->path) + 1 + strlen(input) >= PATH_LEN) { extern const char msg_toolong[]; strcpy(note, msg_toolong); return; }
         sprintf(full, "%s/%s", pan->path, input);
         if (exists(full)) { strcpy(note, ed_exists); return; }
@@ -3191,6 +3198,10 @@ static const char mn_catalog[] = "EXTRAS.CAT";
 static const char mn_catalog_path[] = "/A2FILE/EXTRAS.CAT";
 static const char mn_dir[] = "/A2FILE";
 static const char mn_suffix[] = ".PLG";
+static const char mn_copy[] = "COPY.PLG";
+static const char mn_open[] = "OPEN.PLG";
+static const char mn_nav[] = "NAV.PLG";
+static const char mn_batch[] = "BATCH.PLG";
 static const char mn_self[] = "MENU.PLG";
 static const char mn_bad[] = "(unreadable)";
 static const char mn_stale[] = "(from another build of A2 File Cmd)";
@@ -3212,7 +3223,7 @@ static const char* const mn_categories[] = {
 static const char mn_group0[] = "|TEXT|HEX|EDIT|SEARCH|FIND|FIXTYPES|GOTO|MDVIEW|RENAME|SYNC|MOVE|TREE|DELETE|ATTR|TXTCONV|TAGPAT|COMPARE|AWP|";
 static const char mn_group1[] = "|IMAGE|DGRVIEW|EXTASIE|PACKFOT|PAINT816|PURPLE|LZ4FH|PRINTSHOP|FONTVIEW|";
 static const char mn_group2[] = "|MUSIC|PT3|";
-static const char mn_group3[] = "|FORMAT|DISKIMG|IMGFS|DOS33|BOOTBLK|BLKVIEW|BLKEDIT|DISKCMP|IMGCONV|MKIMAGE|RESCUE|UNDELETE|VOLNAME|VOLINFO|WIPE|VERIFY|";
+static const char mn_group3[] = "|FORMAT|DISKIMG|IMGFS|DOS33|BOOTBLK|BLKVIEW|BLKEDIT|DISKCMP|NIBCOPY|IMGCONV|MKIMAGE|RESCUE|UNDELETE|VOLNAME|VOLINFO|WIPE|VERIFY|";
 static const char mn_group4[] = "|BASLIST|DISASM|INTBASIC|RUN|CRC|IDENT|";
 static const char mn_group5[] = "|HELP|DATE|";
 static const char mn_group6[] = "|BINARY2|UNSHRINK|";
@@ -3266,7 +3277,7 @@ void __fastcall__ menu_entry(const struct A2fcApi* a)
         if (!dir_open(other_full)) continue;
         while (n < MENU_MAX && dir_next()) {
             len = strlen(dir_entry.name);
-            if (dir_entry.type != 0x06 || len < 5 || strcmp(dir_entry.name + len - 4, mn_suffix) || !strcmp(dir_entry.name, mn_self) || !strcmp(dir_entry.name, "COPY.PLG") || !strcmp(dir_entry.name, "OPEN.PLG") || !strcmp(dir_entry.name, "NAV.PLG") || !strcmp(dir_entry.name, "BATCH.PLG")) continue;
+            if (dir_entry.type != 0x06 || len < 5 || strcmp(dir_entry.name + len - 4, mn_suffix) || !strcmp(dir_entry.name, mn_self) || !strcmp(dir_entry.name, mn_copy) || !strcmp(dir_entry.name, mn_open) || !strcmp(dir_entry.name, mn_nav) || !strcmp(dir_entry.name, mn_batch)) continue;
             dir_entry.name[len - 4] = 0;
             for (i = 0; i < n; ++i) if (!strcmp(m[i].name, dir_entry.name)) break;
             if (i < n) continue;
@@ -3441,127 +3452,7 @@ static void drop_entry(struct Panel* pan, unsigned char i)
     if (--pan->count && pan->cursor >= pan->count) pan->cursor = pan->count - 1;
 }
 
-/* Copy state uses the idle text pagination buffer, not the recursive stack.
- * A small overlay leaves both panel tables and the directory pool intact. */
-struct CopyState {
-    char target[PATH_LEN], backup[PATH_LEN];
-    const char* name;
-    unsigned long size;
-    unsigned char type, had_old, owned, ok;
-    unsigned int aux;
-};
-#define CP ((struct CopyState*)text_starts)
-
-#pragma code-name(push, "COPY")
-#pragma rodata-name(push, "COPYRO")
-static unsigned char may_overwrite(const char* name)
-{
-    char key;
-    if (over_policy == OVERWRITE_ALL) return 1;
-    if (over_policy == SKIP_ALL) return 0;
-    question_begin();
-    cprintf("%s exists: Overwrite, Skip, All, None? ", name);
-    revers(0);
-    for (;;) {
-        key = cgetc() | 0x20;
-        if (key == 'o') return 1;
-        if (key == 's') return 0;
-        if (key == 'a') { over_policy = OVERWRITE_ALL; return 1; }
-        if (key == 'n' || key == (KEY_ESC | 0x20)) { over_policy = SKIP_ALL; return 0; }
-    }
-}
-
-/* Back up the old entry before reserving the output. Never truncate or
- * clean up a name unless exclusive CREATE granted ownership. */
-static unsigned char copy_stage(void)
-{
-    FILE *in, *out;
-    unsigned int n;
-    unsigned long copied = 0;
-    CP->had_old = CP->owned = CP->ok = 0;
-    if (exists(CP->target)) {
-        if (gfi[4] == 15 || !may_overwrite(CP->name)) {
-            ++progress_skipped; ++progress_done; return 2;
-        }
-        if ((gfi[3] & 0xC2) != 0xC2) return 0;
-        strcpy(CP->backup, CP->target);
-        *strrchr(CP->backup, '/') = 0;
-        if (!push_name(CP->backup, "A2FC.BAK") || rename(CP->target, CP->backup)) return 0;
-        CP->had_old = 1;
-    } else if (_oserror != 0x46) return 0;
-    in = fopen(full, "rb");
-    if (!in) return 0;
-    if (fseek(in, 0, SEEK_END) || (long)(CP->size = ftell(in)) < 0 || fseek(in, 0, SEEK_SET)) {
-        fclose(in); return 0;
-    }
-    _filetype = CP->type; _auxtype = CP->aux;
-    out = new_output(CP->target);
-    if (!out) { fclose(in); return 0; }
-    CP->owned = CP->ok = 1;
-    while ((n = fread(copy_buf, 1, 512, in)) != 0) {
-        if (fwrite(copy_buf, 1, n, out) != n || abort_key()) { CP->ok = 0; break; }
-        copied += n;
-        progress_bar(CP->name, copied, CP->size);
-    }
-    if (ferror(in) || copied != CP->size) CP->ok = 0;
-    if (fclose(in)) CP->ok = 0;
-    if (fclose(out)) CP->ok = 0;
-    return 0;
-}
-#pragma rodata-name(pop)
-#pragma code-name(pop)
-
-#pragma code-name(push, "COPY")
-#pragma rodata-name(push, "COPYRO")
-/* Read back both complete streams before a move may delete its source.
- * Half of copy_buf belongs to each stream: no extra disk buffer or heap. */
-static unsigned char copy_check(void)
-{
-    FILE *in, *out;
-    unsigned int n;
-    unsigned long checked = 0;
-    if (CP->ok) {
-        in = fopen(full, "rb"); out = fopen(CP->target, "rb");
-        if (!in || !out) CP->ok = 0;
-        while (CP->ok) {
-            n = fread(copy_buf, 1, 256, in);
-            if (fread(copy_buf + 256, 1, 256, out) != n ||
-                memcmp(copy_buf, copy_buf + 256, n) || abort_key()) { CP->ok = 0; break; }
-            checked += n;
-            if (n < 256) break;
-        }
-        if (in) { if (ferror(in)) CP->ok = 0; if (fclose(in)) CP->ok = 0; }
-        if (out) { if (ferror(out)) CP->ok = 0; if (fclose(out)) CP->ok = 0; }
-        if (checked != CP->size) CP->ok = 0;
-    }
-    if (!CP->ok) {
-        if (CP->owned) remove(CP->target);
-        if (CP->had_old && rename(CP->backup, CP->target))
-            message("Copy failed. Original retained as A2FC.BAK.");
-        else if (!progress_abort) message("Copy failed; source retained.");
-        return 0;
-    }
-    if (CP->had_old && remove(CP->backup)) {
-        message("Copy verified; A2FC.BAK retained. Source kept."); return 0;
-    }
-    ++a2fc_ops; ++progress_done;
-    return 1;
-}
-#pragma rodata-name(pop)
-#pragma code-name(pop)
-
-static unsigned char copy_file(const char* name, unsigned char type, unsigned int aux)
-{
-    unsigned char r = 0;
-    strcpy(CP->target, other_full);
-    CP->name = name; CP->type = type; CP->aux = aux;
-    if (overlay("COPY")) {
-        r = copy_stage();
-        if (r != 2) r = copy_check();
-    }
-    strcpy(other_full, CP->target);
-    return r;
-}
+#include "file_copy.h"
 
 /* The three tree walks that follow are recursive: their local variables
  * must live on the stack, not in statics as -Cl wants for the rest of the
@@ -3885,6 +3776,8 @@ void __fastcall__ dos33_entry(const struct A2fcApi* a)
  * the C stack (192 bytes); true locals go on the C stack
  * (static-locals off). */
 
+static const char us_create_failed[] = "Create failed; existing files kept.";
+
 /* The assembly core, src/unshrink.s. Its AUX addresses, repeated here. */
 void __fastcall__ us_init(unsigned int fmt_esc);
 unsigned int __fastcall__ us_chunk(unsigned int in_addr);
@@ -4019,7 +3912,7 @@ static unsigned char us_extract_thread(void)
     US->done = 0;
     sprintf(other_full, us_path, panels[!active].path, US->name);
     US->out = new_output(other_full);
-    if (!US->out) { strcpy(note, "Create failed; existing files kept."); return 0; }
+    if (!US->out) { strcpy(note, us_create_failed); return 0; }
     progress_bar(US->name, 0, US->total);
     US->rem_in = US->ceof;
     if (US->fmt == 0) {                    /* stored as is */

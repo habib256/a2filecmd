@@ -7,3 +7,6 @@ __pycache__/
 pom2.log
 build-6502/
 build-mini/
+
+# Finder metadata
+.DS_Store

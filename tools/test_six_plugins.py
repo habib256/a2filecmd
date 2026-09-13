@@ -49,10 +49,24 @@ static int sync_ferror(FILE*);
 #include "src/plugins/sync.c"
 #undef ferror
 static unsigned int mode, opens, closes;
+static unsigned char tree;
+static FILE* catalog;
 static FILE *verify_source, *verify_target, *read_error;
 static int sync_ferror(FILE* f) { return f == read_error || ferror(f); }
 static FILE* sync_open(const char* p, const char* m) {
-    FILE* f = fopen(p,m);
+    FILE* f;
+    if(tree && !strcmp(p,sdir)) {
+        unsigned char data[512]={0},*e;unsigned int i;
+        data[4]=0xE1;data[35]=39;data[36]=13;
+        for(i=0;i<2;++i) {
+            e=data+43+39*i;e[0]=0x24+i;memcpy(e+1,i?"DATA2":"DATA",4+i);
+            e[16]=6;e[19]=5;e[21]=0x40;e[22]=6;e[30]=0xE3;
+            e[33]=33;e[34]=52;
+        }
+        catalog=tmpfile();if(!catalog)abort();
+        fwrite(data,1,512,catalog);rewind(catalog);return catalog;
+    }
+    f = fopen(p,m);
     ++opens;
     if(opens==3)verify_source=f;if(opens==4)verify_target=f;
     return f;
@@ -64,11 +78,14 @@ static size_t sync_read(void* p,size_t z,size_t n,FILE* f) {
     return fread(p,z,n,f);
 }
 static int sync_close(FILE* f) {
-    int r=fclose(f);++closes;
-    return mode>=8 && mode<=11 && closes==mode-7 ? EOF : r;
+    int r=fclose(f);
+    if(f==catalog){catalog=NULL;return r;}
+    ++closes;
+    return ((mode>=8 && mode<=11 && closes==mode-7) || (mode==16 && closes==2)) ? EOF : r;
 }
 static int sync_remove(const char* p) {
     if(mode==13 && strstr(p,"A2FC.BAK"))return -1;
+    if(mode>=15 && mode<=17 && strstr(p,"A2FC.SYNC"))return -1;
     return remove(p);
 }
 static char oldpath[80],newpath[80];
@@ -77,33 +94,57 @@ static unsigned char mock(unsigned char cmd,void* p) {
     if(cmd==0xC0){pp=((struct Create*)p)->path;memcpy(oldpath,pp+1,pp[0]);oldpath[pp[0]]=0;
         f=fopen(oldpath,"wx");if(!f)return 0x47;fclose(f);return 0;}
     if(cmd==0xC4){pp=((struct Info*)p)->path;memcpy(oldpath,pp+1,pp[0]);oldpath[pp[0]]=0;
+        if(tree) {
+            struct Info* ip=p;
+            ip->access=0xE3;ip->storage=2;ip->mdate=ip->mtime=0;
+            if(!strcmp(oldpath,sdir)){ip->storage=13;ip->blocks=1;return 0;}
+        }
         f=fopen(oldpath,"rb");if(!f)return 0x46;fclose(f);return 0;}
     if(cmd==0xC2){pp=((struct Rename*)p)->old;memcpy(oldpath,pp+1,pp[0]);oldpath[pp[0]]=0;
         pp=((struct Rename*)p)->newpath;memcpy(newpath,pp+1,pp[0]);newpath[pp[0]]=0;
         if((mode==2 || mode==12) && strstr(oldpath,"A2FC.SYNC"))return 0x27;
         if(mode==12 && strstr(oldpath,"A2FC.BAK"))return 0x27;
         if(mode==14 && strstr(newpath,"A2FC.BAK"))return 0x27;
+        if(mode==18 && strstr(oldpath,"A2FC.SYNC")) {
+            f=fopen(newpath,"wx");if(!f)abort();fputs("late arrival",f);fclose(f);
+        }
+        /* ProDOS RENAME never replaces an existing destination. */
+        f=fopen(newpath,"rb");if(f){fclose(f);return 0x47;}
         return rename(oldpath,newpath)?0x27:0;}
     if(cmd==0xC3)return mode==4?0x27:0;
     abort();
 }
 static size_t write_fail(const void* p,size_t s,size_t n,FILE* f) {
     size_t written;
-    if(mode==1)return 0;
+    if(mode==1 || mode==15)return 0;
     written=fwrite(p,s,n,f);
     if(mode==5 && ftell(f)==1600)fputc('X',f);
     return written;
 }
+static void clear_screen(void) {}
+static int print_screen(const char* s,...) {return 0;}
+static unsigned char confirm_sync(const char* s) {return 1;}
+static void show_source(const char* s) {if(mode==17)cancelled=1;}
 int main(int argc,char** argv) {
-    unsigned char scratch[512];char msg[80];
+    unsigned char scratch[512], result;char msg[80]={0};
+    static struct Panel panels[2];static unsigned char active;
+    struct A2fcApi api;
     a.strlen=strlen;a.strcpy=strcpy;a.memcpy=memcpy;a.memset=memset;a.mli=mock;
     a.fopen=sync_open;a.fclose=sync_close;a.fread=sync_read;a.fwrite=write_fail;a.remove=sync_remove;
     a.note=msg;buf=scratch;
     strcpy(sdir,argv[1]);strcpy(ddir,argv[2]);join(source,sdir,"DATA");join(target,ddir,"DATA");
     if(!newer((30<<9)|33,0,(26<<9)|33,0) || newer((99<<9)|33,0,(0<<9)|33,0) ||
        !newer((26<<9)|33,0x0D00,(26<<9)|33,0x0C00))abort();
-    mode=atoi(argv[3]);cancelled=mode==3;size=strtoul(argv[4],0,10);meta.type=6;meta.aux=0;meta.access=0xE3;
-    printf("%u\n",copy_file(1));return 0;
+    mode=atoi(argv[3]);cancelled=mode==3 || mode==17;size=strtoul(argv[4],0,10);meta.type=6;meta.aux=0;meta.access=0xE3;
+    if(argc>5) {
+        tree=1;strcpy(panels[0].path,sdir);strcpy(panels[1].path,ddir);
+        a.panels=panels;a.active=&active;a.copy_buf=scratch;
+        a.strcmp=strcmp;a.sprintf=sprintf;a.fseek=fseek;a.clrscr=clear_screen;
+        a.cprintf=print_screen;a.confirm=confirm_sync;a.message=show_source;
+        api=a;recovery=1; /* a fresh invocation must clear stale recovery state */
+        plugin_entry(&api);result=copied;
+    } else result=copy_file(1);
+    printf("%u\n%u\n%s\n",result,recovery,msg);return 0;
 }
 '''
 
@@ -196,16 +237,23 @@ class SixPlugins(unittest.TestCase):
             original=b'original destination';replacement=bytes(range(200))*8 if payload is None else payload
             (s/'DATA').write_bytes(replacement);(d/'DATA').write_bytes(original)
             if reserved:(d/reserved).write_bytes(b'preexisting')
-            ok=subprocess.check_output([str(self.exe['sync']),str(s),str(d),str(mode),
-                                        str(cached_size)]).strip()==b'1'
+            output=subprocess.check_output([str(self.exe['sync']),str(s),str(d),str(mode),
+                                        str(cached_size)]).splitlines()
+            ok=output[0]==b'1'
+            self.assertEqual(output[1], b'1' if mode in (2,4,12,13,14,15,16,17,18) and not reserved else b'0')
             self.assertEqual((s/'DATA').read_bytes(),replacement)
             if mode==12:self.assertFalse((d/'DATA').exists())
+            elif mode==18:self.assertEqual((d/'DATA').read_bytes(),b'late arrival')
             else:self.assertEqual((d/'DATA').read_bytes(),replacement if ok else original)
             if reserved:self.assertEqual((d/reserved).read_bytes(),b'preexisting')
             else:
-                self.assertFalse((d/'A2FC.SYNC').exists())
-                if mode in (4,12,13):self.assertEqual((d/'A2FC.BAK').read_bytes(),original)
+                if mode in (2,12,14,16,18):self.assertEqual((d/'A2FC.SYNC').read_bytes(),replacement)
+                elif mode in (15,17):self.assertEqual((d/'A2FC.SYNC').read_bytes(),b'')
+                else:self.assertFalse((d/'A2FC.SYNC').exists())
+                if mode in (4,12,13,18):self.assertEqual((d/'A2FC.BAK').read_bytes(),original)
                 else:self.assertFalse((d/'A2FC.BAK').exists())
+            if mode in (15,16,17):self.assertIn(b'cleanup failed',output[2])
+            if mode in (12,18):self.assertIn(b'restore failed',output[2])
             return ok
     def test_sync_verified_replace(self):self.assertTrue(self.sync(0))
     def test_sync_empty_file_replace(self):self.assertTrue(self.sync(0,cached_size=0,payload=b''))
@@ -230,5 +278,31 @@ class SixPlugins(unittest.TestCase):
     def test_sync_install_and_rollback_failure_preserves_backup(self):self.assertFalse(self.sync(12))
     def test_sync_backup_cleanup_failure_preserves_backup(self):self.assertTrue(self.sync(13))
     def test_sync_backup_rename_failure_preserves_original(self):self.assertFalse(self.sync(14))
+
+    def test_sync_combined_failure_and_cleanup_failure_keeps_output(self):
+        for mode in (15,16,17):
+            with self.subTest(mode=mode):self.assertFalse(self.sync(mode))
+
+    def test_sync_late_collision_preserves_arrival_and_recovery_files(self):
+        self.assertFalse(self.sync(18))
+
+    def test_sync_tree_stops_before_next_file_and_keeps_recovery_note(self):
+        for mode in (0,2,4,12,13,14,15,16,17,18):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory(prefix='sync-tree-',dir='/tmp') as t:
+                s=Path(t)/'S';d=Path(t)/'D';s.mkdir();d.mkdir()
+                replacement=bytes(range(200))*8
+                for name in ('DATA','DATA2'):
+                    (s/name).write_bytes(replacement);(d/name).write_bytes(b'original')
+                output=subprocess.check_output([str(self.exe['sync']),str(s),str(d),str(mode),'1600','tree'],timeout=10).splitlines()
+                for name in ('DATA','DATA2'):self.assertEqual((s/name).read_bytes(),replacement)
+                self.assertEqual((d/'DATA2').read_bytes(),b'original' if mode else replacement)
+                self.assertEqual(output[1],b'1' if mode else b'0')
+                if mode:self.assertIn(b'SYNC stopped:',output[2])
+                else:self.assertIn(b'2 copied',output[2])
+                if mode in (12,18):self.assertIn(b'restore failed',output[2])
+                if mode in (15,16,17):self.assertIn(b'cleanup failed',output[2])
+                if mode in (2,12,14,16,18):self.assertEqual((d/'A2FC.SYNC').read_bytes(),replacement)
+                if mode in (15,17):self.assertEqual((d/'A2FC.SYNC').read_bytes(),b'')
+                if mode in (4,12,13,18):self.assertEqual((d/'A2FC.BAK').read_bytes(),b'original')
 
 if __name__=='__main__':unittest.main()

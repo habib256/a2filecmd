@@ -152,6 +152,8 @@ jobs:
         run: |
           A2FC_PRESET=iie_unenh python3 bench/bootblk.py
           A2FC_IMG=A2FILECMD-full python3 bench/bootblk.py
+      - name: NIBCOPY, consent, BOOT removal and single-drive cancellation
+        run: A2FC_PRESET=iie_unenh python3 bench/nibcopy_ui.py
       - name: Data preservation and RAM consent
         run: |
           A2FC_IMG=A2FILECMD-6502-BOOT A2FC_PRESET=iie_unenh python3 bench/data_safety.py

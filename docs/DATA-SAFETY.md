@@ -152,3 +152,39 @@ régressions, dont les arbres profonds qui dépassaient la pile. Les parcours
 récursifs contrôlent désormais l'espace de pile avant lecture de répertoire ;
 la suppression précontrôle l'arbre avant son premier effacement. Les erreurs de
 lecture/fermeture de répertoire et les chaînes d'images incohérentes sont refusées.
+
+### NIBCOPY
+
+NIBCOPY écrit physiquement la disquette cible, pistes 0–34, après confirmation
+identifiant slot et lecteur et annonçant la perte de tous les fichiers, même
+verrouillés. La source doit rester matériellement protégée ; le contrôle de
+protection est répété avant chaque écriture. En mode un lecteur, chaque échange
+cible demande confirmation. Aucun appel MLI ou chargement de plugin ne survient
+pendant la copie : BOOT peut être retiré.
+
+Après consentement `OVERLAY_AUX`, AUX `$4000–$BFFF` contient les captures source
+et contrôle, l'image d'écriture et la sauvegarde du résident. Le transport
+emprunte MAIN `$6500–$84FF` sans appeler C/MLI, interruptions masquées ; il
+restaure les 8 Ko et l'état des interruptions sur toutes les sorties. `/RAM`
+est reconstruit après tout emprunt AUX, même en cas d'échec. Le code/BSS du
+plugin reste dans la fenêtre `$1B00–$3FFF`, contrôlée par le lieur.
+
+`tools/test_nibcopy.py` exécute le vrai C avec pannes de lecture, écriture,
+relecture, corruption silencieuse, champs malformés, protections et annulation,
+en comparant les octets source et cible conservés. `bench/nibcopy.py` utilise
+le C compilé et le transport assembleur dans POM2 sur des images jetables,
+avec AUXMOVE ROM, pistes WOZ au niveau des bits à 300 tr/min, vérification
+des champs et des secteurs, sentinelles du
+résident, de la pile et des bornes AUX sur les deux processeurs. La marge de
+56 octets en fin d'image laisse terminer le dernier épilogue avant arrêt Q7.
+La reconstruction `/RAM` peut écraser MAIN `$2000–$21FF` : le C retourne
+avant cet appel, effectué par une continuation sous `$2000` revenant directement
+au résident. Si la reconstruction ne réussit pas, elle signale `/RAM not rebuilt`
+avec le nombre de pistes vérifiées. Le banc vérifie aussi ce retour destructif. Voir
+[NIBCOPY.md](NIBCOPY.md) pour les bornes, timings et commandes de validation.
+
+Les espaces de synchronisation sont reconstruits ; les formats non standard
+sont refusés. Une panne sur une piste tardive laisse les précédentes copiées,
+et une erreur d'écriture peut laisser la piste courante détruite. Aucune
+restauration ni atomicité en cas de coupure n'est promise. Ces essais ne valent
+pas qualification des lecteurs physiques ni des accélérateurs.

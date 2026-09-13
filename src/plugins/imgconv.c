@@ -329,7 +329,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
                 *STROBE = 0;
                 RF(fclose)(in);
                 RF(fclose)(out);
-                RF(remove)(target);
+                if (!replace_discard(target)) return;
                 T.sprintf(T.note, m_stop, nname);
                 return;
             }
@@ -348,8 +348,9 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
 
     if (replacing) {
         k = replace_commit(target, final_path);
+        if (k == REPLACE_RESTORE_FAILED) { RF(strcpy)(T.note, "Restore failed: original in A2FC.BAK; IMGCONV.TMP kept."); return; }
         if (!k) { RF(strcpy)(T.note, "Recover IMGCONV.TMP / A2FC.BAK."); return; }
-        if (k == 2) { RF(strcpy)(T.note, "Converted; A2FC.BAK retained."); return; }
+        if (k == REPLACE_BACKUP) { RF(strcpy)(T.note, "Converted; A2FC.BAK retained."); return; }
     }
     RF(strcpy)(T.reselect, e->name);
     T.sprintf(T.note, m_done, e->name, nname, blocks);
@@ -359,7 +360,7 @@ errrm:
     RF(fclose)(in);
     RF(fclose)(out);
 errrm2:
-    RF(remove)(target);
+    if (!replace_discard(target)) return;
 err:
     T.sprintf(T.note, m_fail, what);    /* report_error would not survive the redraw */
     return;
