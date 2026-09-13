@@ -18,13 +18,14 @@
 
         .include "mini.inc"
 
-        .export catalog, preview
+        .export catalog, preview, load_file, load_count, blank_scratch
         .export valid_cs, seen_bit, bit_masks, ent_ptr, ent_index
 
         .import read_sector
         .import buffer, count, volume, track, sector, active, sector_seen
         .import ent_track, ent_sector, ent_type, ent_seclo, ent_sechi
         .import ent_name, prv_index
+        .import scratch, cat_buf
 
         .segment "BSS"
 cat_nt:         .res 1          ; link to the next catalog sector
@@ -32,6 +33,15 @@ cat_ns:         .res 1
 cat_off:        .res 1          ; entry offset inside the sector
 cat_i:          .res 1          ; entries left in this sector
 cat_idx:        .res 1          ; where the entry lands, panel included
+ldf_t:          .res 1          ; load_file: the T/S list being followed
+ldf_s:          .res 1
+ldf_nt:         .res 1
+ldf_ns:         .res 1
+ldf_j:          .res 1          ; pair within the list
+ldf_got:        .res 1          ; data sectors placed so far
+load_count      = ldf_got
+ldf_ended:      .res 1
+ldf_list        = cat_buf       ; T/S list; copy is idle while a file loads
 
         .segment "RODATA"
 bit_masks:
@@ -249,6 +259,150 @@ preview:
         rts
 @bad:
         lda     #CAT_BAD
+        rts
+
+; ---------------------------------------------------------------------
+; load_file -- prv_index selects the file; its data sectors are read into
+; the working area, in file order, at most SCRATCH_SIZE/256 of them.
+;
+; The area is blanked first, so a file shorter than a hi-res page shows
+; black rather than whatever the last copy or edit left there. Reading
+; stops at the area's end without complaining: a picture is the first
+; 8 KB of the file, and saying so is the viewer's business.
+;
+; A = 0 loaded, 1 read error, 2 nothing usable. A read error is never
+; treated as the end of the file.
+; ---------------------------------------------------------------------
+load_file:
+        lda     prv_index
+        cmp     count
+        jcs     @bad
+        jsr     ent_index
+        tay
+        lda     ent_track,y
+        sta     ldf_t
+        lda     ent_sector,y
+        sta     ldf_s
+        lda     #0
+        sta     ldf_got
+        sta     ldf_ended
+        jsr     blank_scratch
+@list:
+        lda     ldf_t
+        ldx     ldf_s
+        jsr     valid_cs
+        jcc     @bad
+        lda     ldf_t
+        sta     track
+        lda     ldf_s
+        sta     sector
+        jsr     read_sector
+        jne     @read
+        ldx     #0              ; keep the list; data reads reuse buffer
+@keep:
+        lda     buffer,x
+        sta     ldf_list,x
+        inx
+        bne     @keep
+        lda     ldf_list+1
+        sta     ldf_nt
+        lda     ldf_list+2
+        sta     ldf_ns
+        lda     ldf_nt
+        bne     @pairs
+        lda     ldf_ns          ; no track but a sector: malformed
+        bne     @bad
+@pairs:
+        lda     #0
+        sta     ldf_j
+@pair:
+        lda     ldf_got         ; the area is full: show what we have
+        cmp     #SCRATCH_SIZE/256
+        bcs     @done
+        lda     ldf_j
+        asl     a
+        tax
+        lda     ldf_list+12,x
+        sta     ldf_t
+        lda     ldf_list+13,x
+        sta     ldf_s
+        ora     ldf_t
+        bne     @live
+        lda     #1              ; a hole ends the file
+        sta     ldf_ended
+        jmp     @nextpair
+@live:
+        lda     ldf_ended
+        bne     @bad            ; data after the hole
+        lda     ldf_t
+        ldx     ldf_s
+        jsr     valid_cs
+        bcc     @bad
+        lda     ldf_t
+        sta     track
+        lda     ldf_s
+        sta     sector
+        jsr     read_sector
+        bne     @read
+        jsr     place_sector
+        inc     ldf_got
+@nextpair:
+        inc     ldf_j
+        lda     ldf_j
+        cmp     #TS_PER_LIST
+        bcc     @pair
+        lda     ldf_nt
+        beq     @done
+        lda     ldf_ended       ; a hole, and still another list
+        bne     @bad
+        lda     ldf_nt
+        sta     ldf_t
+        lda     ldf_ns
+        sta     ldf_s
+        jmp     @list
+@done:
+        lda     #CAT_OK         ; zero sectors is an empty file, still loaded
+        rts
+@read:
+        lda     #CAT_READ
+        rts
+@bad:
+        lda     #CAT_BAD
+        rts
+
+; place_sector -- buffer into the working area at slot ldf_got. A slot
+; offset only lands in the high byte, so no alignment is needed.
+place_sector:
+        lda     #<scratch
+        sta     ptr
+        lda     ldf_got
+        clc
+        adc     #>scratch
+        sta     ptr+1
+        ldy     #0
+@byte:
+        lda     buffer,y
+        sta     (ptr),y
+        iny
+        bne     @byte
+        rts
+
+; blank_scratch -- the whole working area to zero: black on a hi-res page
+blank_scratch:
+        lda     #<scratch
+        sta     ptr
+        lda     #>scratch
+        sta     ptr+1
+        ldx     #>SCRATCH_SIZE
+        lda     #0
+        ldy     #0
+@page:
+        sta     (ptr),y
+        iny
+        bne     @page
+        inc     ptr+1
+        dex
+        bne     @page
         rts
 
 ; ---------------------------------------------------------------------

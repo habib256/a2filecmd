@@ -152,6 +152,10 @@ jobs:
         run: |
           A2FC_PRESET=iie_unenh python3 bench/bootblk.py
           A2FC_IMG=A2FILECMD-full python3 bench/bootblk.py
+      - name: DOSWRITE, physical DOS copies and volume-list round trips
+        run: |
+          A2FC_PRESET=iie_unenh python3 bench/doswrite.py
+          A2FC_IMG=A2FILECMD-full python3 bench/doswrite.py
       - name: NIBCOPY, consent, BOOT removal and single-drive cancellation
         run: A2FC_PRESET=iie_unenh python3 bench/nibcopy_ui.py
       - name: Data preservation and RAM consent

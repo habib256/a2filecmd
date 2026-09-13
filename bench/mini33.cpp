@@ -41,9 +41,12 @@ int main(int argc,char**argv) {
     run(cpu,120000000);
     expect(m,"A2FC MINI DOS 3.3"); expect(m,"3 FILES");
     auto bootScreen=screen(m); run(cpu,3000000); assert(screen(m)==bootScreen);
-    // Lower half of the reserved 1 KB C stack must stay unused.
-    for(int i=0;i<512;++i) m.writeRamUnchecked(0x7c00+i,0xa5);
+    // HELLO lives under $1000; the program occupies $1000 and $4000+.
+    for(int i=0;i<0x800;++i) m.writeRamUnchecked(0x0800+i,0xa5);
     auto keys=[&](const char* s) { m.pasteRawKeys(s,strlen(s)); run(cpu,12000000); };
+    keys(" "); expect(m,"1 MARKED");
+    keys("\x0e");
+    assert(screen(m).find("MARKED")==std::string::npos);
     ScreenWrites changes; m.setWatchSink(&changes);
     for(int y=0;y<24;++y) for(int x=0;x<40;++x)
         m.setWriteWatch(0x400+(y&7)*128+(y>>3)*40+x,true);
@@ -110,7 +113,7 @@ int main(int argc,char**argv) {
     keys("="); keys("\t"); expect(m,"20 FILES");
     assert(screen(m).substr(21*41,9)=="GREETINGS");
     keys("/"); expect(m,"3 FILES"); expect(m,"GREETINGS");
-    for(int i=0;i<512;++i) assert(m.data()[0x7c00+i]==0xa5);
+    for(int i=0;i<0x800;++i) assert(m.data()[0x0800+i]==0xa5);
     puts(screen(m).c_str());
     auto beforeQuit=screen(m);
     keys("7"); expect(m,"QUIT TO DOS 3.3?"); keys("Z"); expect(m,"CANCEL");

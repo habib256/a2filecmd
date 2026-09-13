@@ -16,7 +16,8 @@ def build(master, binary):
         raise ValueError('not a standard 35-track DOS 3.3 master')
     if bytes(c|128 for c in b'HELLO'.ljust(30)) not in master[:3*4096]:
         raise ValueError('boot tracks must use HELLO as startup program')
-    if not binary or len(binary) > 0x5c00:
+    # $1000 through the working-area gap to HIMEM at $9600.
+    if not binary or len(binary) > 0x8600:
         raise ValueError('binary exceeds reserved code region')
     image = bytearray(SIZE)
     image[:3*4096] = master[:3*4096]
@@ -24,7 +25,7 @@ def build(master, binary):
     body = bytes([0xba,0xe7,ord('('),ord('4'),ord(')'),ord(';'),ord('"')])+b'BRUN A2FC.MINI'+b'"\0'
     program = struct.pack('<HH',0x801+4+len(body),10)+body+b'\0\0'
     files = [('HELLO',2,struct.pack('<H',len(program))+program),
-             ('A2FC.MINI',4,struct.pack('<HH',0x2000,len(binary))+binary),
+             ('A2FC.MINI',4,struct.pack('<HH',0x1000,len(binary))+binary),
              ('README',0,b'A2FC MINI DOS 3.3\rAPPLE II+ 48 KB - DOS 3.3 COPY\rTAB: PANEL - I/K: SELECT\rRETURN: PREVIEW - /: DRIVE\rC: COPY TO THE OTHER PANEL\rCTRL-R: REREAD - Q: DOS\rT/H: TEXT/HEX - ?: HELP\rY: CONFIRM - N/ESC: CANCEL\r\0')]
     free = [(t,s) for t in range(3,35) if t != 17 for s in range(16)]
     used = {(t,s) for t in (0,1,2,17) for s in range(16)}

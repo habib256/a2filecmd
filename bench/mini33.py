@@ -14,7 +14,7 @@ sys.path.insert(0,str(ROOT/'tools'))
 from mkdos33 import build
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--pom2-root',type=Path,required=True)
-p.add_argument('--disk',type=Path,default=ROOT/'dist/A2FC-MINI-DOS33-0.6.0.dsk')
+p.add_argument('--disk',type=Path,default=ROOT/'dist/A2FC-MINI-DOS33-0.7.0.dsk')
 a=p.parse_args()
 with tempfile.TemporaryDirectory(prefix='a2fc-mini-') as tmp:
     d=Path(tmp)

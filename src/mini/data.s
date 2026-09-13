@@ -25,6 +25,7 @@
         .export _pan_error, _pan_top
         .export screen_image, _screen_image
         .export prv_index, _prv_index
+        .export tags, _tags
 
         .segment "BSS"
 
@@ -87,6 +88,15 @@ _pan_count      = pan_count
 _pan_selected   = pan_selected
 _pan_error      = pan_error
 _pan_top        = pan_top
+
+; ---- marks, one bit per entry, per panel.
+;
+; A mark belongs to the catalog snapshot it was made on, so every reread
+; clears them. Keeping them across a reread would mean a mark could end
+; up on a different file than the one the user pointed at, and marks
+; decide what DELETE and COPY act on.
+tags:           .res 2*TAG_BYTES
+_tags           = tags
 
 ; ---- the composed screen, written to $400 one changed cell at a time
 screen_image:   .res SCREEN_CELLS

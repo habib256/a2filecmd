@@ -10,14 +10,27 @@
 ; Must not be named after the C file beside it: cc65 writes its own
 ; intermediate assembly as <name>.s and would overwrite this.
 
-        .export read_sector, write_sector, rwts_error
+        .export read_sector, write_sector, rwts_error, scratch
         .export _mini_catalog, _mini_preview
         .export _mini_prepare, _mini_execute, _mini_cancel
+        .export _mini_load, _mini_create_prepare, _mini_create_execute
+        .export _mini_delete_prepare, _mini_delete_execute
 
         .import _sim_read, _sim_write, _sim_rwts_error
-        .import catalog, preview, copy_prepare, copy_execute, copy_cancel
+        .import catalog, preview, load_file
+        .import copy_prepare, copy_execute, copy_cancel
+        .import create_prepare, create_execute
+        .import delete_prepare, delete_execute
 
 rwts_error      = _sim_rwts_error
+
+; Eight real kilobytes for the working area. On the Apple II+ this is
+; hi-res page one at $2000; here that address is inside the harness, so
+; the test owns the memory instead. The copy engine only ever addresses
+; it through this symbol.
+        .segment "BSS"
+scratch:
+        .res    $2000
 
         .segment "CODE"
 
@@ -42,3 +55,18 @@ _mini_execute:
 
 _mini_cancel:
         jmp     copy_cancel
+
+_mini_load:
+        jmp     load_file
+
+_mini_create_prepare:
+        jmp     create_prepare
+
+_mini_create_execute:
+        jmp     create_execute
+
+_mini_delete_prepare:
+        jmp     delete_prepare
+
+_mini_delete_execute:
+        jmp     delete_execute

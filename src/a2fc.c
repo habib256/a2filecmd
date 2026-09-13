@@ -976,11 +976,14 @@ static unsigned char build_full(char* out, const struct Panel* pan, const struct
     return 1;
 }
 
+#pragma rodata-name(push, "LC")
+static const char read_path_error[] = "Cannot read this directory.";
+#pragma rodata-name(pop)
 static void open_path(struct Panel* pan)
 {
     pan->cursor = pan->top = 0;
     pan->first = 0;
-    if (!read_panel(pan - panels)) message("Cannot read this directory.");
+    if (!read_panel(pan - panels)) message(read_path_error);
 }
 
 #pragma code-name (push, "NAV")
@@ -1654,6 +1657,8 @@ void __fastcall__ search_entry(const struct A2fcApi* a)
 
 /* Named arrays stay with their overlay; cc65 puts bare literals in MAIN. */
 static const char b2_create_failed[] = "Create failed; existing files kept.";
+static const char b2_io_failed[] = "Extract failed: read/write/close error.";
+static const char b2_cleanup_failed[] = "Cleanup failed: %s retained.";
 static const char b2_pick[]  = "Select a Binary II archive.";
 static const char b2_notdir[] = "Other panel must be a ProDOS folder.";
 static const char b2_bad[]   = "Not a Binary II archive.";
@@ -1692,10 +1697,11 @@ void __fastcall__ binary2_entry(const struct A2fcApi* a)
 {
     struct Panel* oth = &panels[!active];
     FILE* in;
-    FILE* out;
-    unsigned long eof, pad;
-    unsigned int n, k;
-    unsigned char more = 1, done = 0;
+    FILE* out = NULL;
+    unsigned long eof;
+    unsigned int n, done = 0;
+    unsigned char more = 1, owned = 0, pad;
+    const char* error = b2_io_failed;
     char name[17];
     (void)a;
     if (!selected.name[0] || is_dir(&selected) || !full[0]) { b2_say(b2_pick); return; }
@@ -1703,44 +1709,54 @@ void __fastcall__ binary2_entry(const struct A2fcApi* a)
     in = fopen(full, "rb");
     if (!in) { report_error("Open"); return; }
     while (more) {
-        if (fread(copy_buf, 1, 128, in) != 128) break;
-        if (copy_buf[0] != 0x0A || copy_buf[1] != 0x47 || copy_buf[2] != 0x4C) {
-            if (!done) { b2_say(b2_bad); fclose(in); return; }
-            break;
+        /* A header is mandatory while the preceding record says more follows. */
+        if (fread(copy_buf, 1, 128, in) != 128 || ferror(in)) goto failed;
+        if (copy_buf[0] != 0x0A || copy_buf[1] != 0x47 || copy_buf[2] != 0x4C ||
+            copy_buf[0x17] > 64 || strlen(oth->path) + 17 >= PATH_LEN) {
+            error = b2_bad; goto failed;
         }
-        /* EOF on 3 bytes ($14-$16), the name at $17/$18, "more follows" at $7F.
-         * All of the header is read BEFORE the copy loop, which overwrites
-         * copy_buf. The padding to a multiple of 128 is computed here. */
         eof = (unsigned long)copy_buf[0x14] | ((unsigned long)copy_buf[0x15] << 8)
-              | ((unsigned long)copy_buf[0x16] << 16);   /* EOF on 3 bytes, $14-$16 */
+              | ((unsigned long)copy_buf[0x16] << 16);
         pad = (128 - (eof & 127)) & 127;
-        more = copy_buf[0x7F] != 0;                       /* "more follows" at $7F */
-        if (copy_buf[0x17] > 64 || strlen(oth->path) + 17 >= PATH_LEN) {
-            fclose(in); b2_say(b2_bad); return;
-        }
-        b2_name(copy_buf + 0x18, copy_buf[0x17], name);   /* name: length at $17, text at $18 */
+        more = copy_buf[0x7F] != 0;
+        b2_name(copy_buf + 0x18, copy_buf[0x17], name);
         _filetype = copy_buf[4];
         _auxtype = copy_buf[5] | (copy_buf[6] << 8);
         sprintf(other_full, b2_path, oth->path, name);
-        out = new_output(other_full);
-        if (!out) { b2_say(b2_create_failed); fclose(in); return; }
+        owned = reserve_output(other_full);
+        if (!owned) { error = b2_create_failed; goto failed; }
+        if (owned != OUTPUT_RESERVED) goto failed;
+        out = fopen(other_full, "wb");
+        if (!out) goto failed;
         while (eof) {
             n = eof > 512 ? 512 : (unsigned int)eof;
-            k = fread(copy_buf, 1, n, in);
-            if (!k || fwrite(copy_buf, 1, k, out) != k) break;
-            eof -= k;
+            if (fread(copy_buf, 1, n, in) != n || ferror(in) ||
+                fwrite(copy_buf, 1, n, out) != n) goto failed;
+            eof -= n;
         }
-        if (fclose(out)) eof = 1;
-        if (eof) { remove(other_full); b2_say("Extract failed: read/write error."); fclose(in); return; }
+        /* Seeking beyond EOF can succeed: read the padding to detect truncation. */
+        if (pad && (fread(copy_buf, 1, pad, in) != pad || ferror(in))) goto failed;
+        n = fclose(out); out = NULL;
+        if (n) goto failed;
+        owned = 0;
         ++done;
-        if (pad) fseek(in, (long)pad, SEEK_CUR);
     }
-    fclose(in);
+    if (fclose(in)) { b2_say(b2_io_failed); return; }
 #ifndef A2FC_BIG_BINARY2
-    refresh_both();                    /* the other panel shows what just arrived (big: overlay_run does it) */
+    refresh_both();
 #endif
     sprintf(question, b2_done, done);
     b2_say(question);
+    return;
+failed:
+    /* Every path here reports failure; failed closes cannot become success.
+     * Only this record's exclusive reservation grants cleanup ownership. */
+    if (out) fclose(out);
+    fclose(in);
+    if (owned && remove(other_full)) {
+        sprintf(question, b2_cleanup_failed, name);
+        b2_say(question);
+    } else b2_say(error);
 }
 #pragma static-locals (pop)
 #pragma rodata-name (pop)
@@ -2497,6 +2513,8 @@ static void edit_delete(void)
 /* Stage and read back the complete save before renaming the original.
  * The text pagination buffer is idle while editing; it holds two paths. */
 static const char ed_safety_0[] = "A2FC.ED.BAK must be recovered first.";
+static const char ed_tempname[] = "A2FC.EDIT";
+static const char ed_backupname[] = "A2FC.ED.BAK";
 static const char ed_safety_1[] = "Save failed; original kept.";
 static const char ed_safety_2[] = "Save refused; original kept.";
 static const char ed_safety_3[] = "Save failed: recover A2FC.EDIT / A2FC.ED.BAK.";
@@ -2521,7 +2539,7 @@ static unsigned char edit_save(void)
     unsigned char ok, old;
     strcpy(EDIT_TMP, full); *strrchr(EDIT_TMP, '/') = 0;
     strcpy(EDIT_BAK, EDIT_TMP);
-    if (!push_name(EDIT_TMP, "A2FC.EDIT") || !push_name(EDIT_BAK, "A2FC.ED.BAK")) {
+    if (!push_name(EDIT_TMP, ed_tempname) || !push_name(EDIT_BAK, ed_backupname)) {
         too_long(); return 0;
     }
     if (exists(EDIT_BAK) || _oserror != 0x46) {
@@ -2778,6 +2796,7 @@ void __fastcall__ help_entry(const struct A2fcApi* a)
 /* The texts, as named arrays: cc65 2.18 puts string literals in RODATA
  * whatever the rodata-name pragma, and those of an overlay would weigh on
  * the main window. */
+static const char S_TITLEFMT[] = "%-79.79s";
 static const char S_TITLE[] = "  A2 FILE CMD  -  DISK IMAGES";
 static const char S_INTRO[] = "PO/DSK/DO/2MG. Target must be formatted. Disk writes are read back.";
 static const char S_W[] = "W  Write %s to a disk";
@@ -3003,7 +3022,7 @@ static void di_title(const char* sub)
     clrscr();
     revers(1);
     gotoxy(0, 0);
-    cprintf("%-79.79s", S_TITLE);
+    cprintf(S_TITLEFMT, S_TITLE);
     revers(0);
     cputsxy(0, 2, sub);
 }
@@ -3223,7 +3242,7 @@ static const char* const mn_categories[] = {
 static const char mn_group0[] = "|TEXT|HEX|EDIT|SEARCH|FIND|FIXTYPES|GOTO|MDVIEW|RENAME|SYNC|MOVE|TREE|DELETE|ATTR|TXTCONV|TAGPAT|COMPARE|AWP|";
 static const char mn_group1[] = "|IMAGE|DGRVIEW|EXTASIE|PACKFOT|PAINT816|PURPLE|LZ4FH|PRINTSHOP|FONTVIEW|";
 static const char mn_group2[] = "|MUSIC|PT3|";
-static const char mn_group3[] = "|FORMAT|DISKIMG|IMGFS|DOS33|BOOTBLK|BLKVIEW|BLKEDIT|DISKCMP|NIBCOPY|IMGCONV|MKIMAGE|RESCUE|UNDELETE|VOLNAME|VOLINFO|WIPE|VERIFY|";
+static const char mn_group3[] = "|FORMAT|DISKIMG|IMGFS|DOS33|DOSWRITE|BOOTBLK|BLKVIEW|BLKEDIT|DISKCMP|NIBCOPY|IMGCONV|MKIMAGE|RESCUE|UNDELETE|VOLNAME|VOLINFO|WIPE|VERIFY|";
 static const char mn_group4[] = "|BASLIST|DISASM|INTBASIC|RUN|CRC|IDENT|";
 static const char mn_group5[] = "|HELP|DATE|";
 static const char mn_group6[] = "|BINARY2|UNSHRINK|";
@@ -4045,6 +4064,9 @@ out:
 #pragma rodata-name (pop)
 #pragma code-name (pop)
 
+#pragma rodata-name(push, "LC")
+static const char doswrite_plugin[] = "DOSWRITE";
+#pragma rodata-name(pop)
 static void copy_or_move(unsigned char move)
 {
     struct Panel* pan = &panels[active];
@@ -4052,6 +4074,9 @@ static void copy_or_move(unsigned char move)
     unsigned int sub;
     if (pan->fs == FS_DOS33) { overlay_run("DOS33", 'C'); return; }   /* DOS 3.3 extraction */
     if (pan->fs) { overlay_run("IMGFS", 0); return; }   /* extraction from a ProDOS image */
+    if (panels[!active].fs == FS_DOS33) {
+        overlay_run(doswrite_plugin, move); return;
+    }
     if (!target_check()) return;
     n = pick_targets();
     if (!n) return;
@@ -4677,6 +4702,8 @@ int main(void)
             if (pan->path[0]) { if (overlay("NAV")) go_up(pan); show_active(); }
             break;
         case '/':
+            /* Leave image/DOS mode before the empty path requests ON_LINE. */
+            pan->fs = FS_PRODOS;
             pan->path[0] = 0;
             open_path(pan);
             show_active();

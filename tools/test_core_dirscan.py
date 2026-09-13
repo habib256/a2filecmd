@@ -40,19 +40,42 @@ int main(int argc,char**argv) {
 '''
 
 PANEL = r'''
+#define FS_PRODOS 0
 #define WINDOW 139
 #define MAX_ENTRIES 140
 #define ROWS 18
 struct Entry {char name[17];unsigned char type,access;unsigned int aux,blocks,mdate;unsigned long size;};
 struct Panel {char path[81];unsigned char fs,count,more,cursor,top,tags[18];unsigned int first;struct Entry*e;};
 static struct Panel panels[2];static struct Entry entries[140];
-static unsigned char read_image_panel(struct Panel*p){return 0;}
-static void read_volumes(struct Panel*p){p->count=0;}
+static unsigned int image_reads,volume_reads;
+static unsigned char read_image_panel(struct Panel*p){++image_reads;return 0;}
+static void read_volumes(struct Panel*p){++volume_reads;p->count=0;}
 static void volume_space(struct Panel*p){}
 static void sort_entries(struct Panel*p){}
 static struct Entry* add_entry(struct Panel*p,const char*n,unsigned char t){struct Entry*e=&p->e[p->count++];strcpy(e->name,n);e->type=t;return e;}
 ''' + section('static unsigned char read_panel(unsigned char p)\n{','static void set_cursor(')
+PANEL += r"""
+static void message(const char* s) {}
+static void show_active(void) {}
+""" + section('static const char read_path_error[]', '#pragma code-name (push, "NAV")') + r"""
+static void volume_key(void) {
+    struct Panel* pan=&panels[0];
+    switch('/') {
+""" + section("        case '/':", "        case '=':") + r"""
+    }
+}
+"""
 HARNESS=HARNESS.replace('int main(int argc,char**argv) {',PANEL+'''int main(int argc,char**argv) {
+    if(argc>2 && !strcmp(argv[2],"volumes")) {
+        unsigned char mode;
+        panels[0].e=entries;
+        for(mode=1;mode<=2;++mode) {
+            panels[0].fs=mode;strcpy(panels[0].path,"/DOS 3.3");
+            volume_key();
+            if(panels[0].fs || panels[0].path[0])return 3;
+        }
+        printf("%u %u\\n",image_reads,volume_reads);return 0;
+    }
     if(argc>2 && !strcmp(argv[2],"cycle")) {
         valid_chain=argc>3;dir_img=1;dir_block_key=2;dir_index=13;dir_per_block=13;dir_entry_len=39;
         copy_buf[2]=3;
@@ -81,6 +104,10 @@ class CoreDirscan(unittest.TestCase):
         result=subprocess.check_output([self.exe,f]+(['panel'] if panel else [])+(['close-error'] if close_error else []),text=True)
         self.assertEqual(f.read_bytes(),d)
         return list(map(int,result.split()))
+    def test_volume_key_leaves_dos_and_image_modes_before_rereading(self):
+        result=subprocess.check_output([self.exe,'unused','volumes'],text=True)
+        self.assertEqual(result.split(),['0','2'])
+
     def test_malformed_names_cannot_redirect_file_operations(self):
         for name in (b'',b'..',b'A/B',b'A:B',b'A\x00B',b'1BAD'):
             with self.subTest(name=name):self.assertEqual(self.scan(512,0,name),[0,0,1])

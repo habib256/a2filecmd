@@ -17,9 +17,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SIZE = 143360
 
-MODULES = ('data.s', 'catalog.s', 'copy.s')
+MODULES = ('data.s', 'catalog.s', 'copy.s', 'delete.s')
 
 CATALOG, PREVIEW, PREPARE, EXECUTE, CANCEL, PEEK, POKE, QUIT = 1, 2, 3, 4, 5, 6, 7, 0
+LOAD, CREATE_PREPARE, CREATE_EXECUTE, DELETE_PREPARE, DELETE_EXECUTE = 8, 9, 10, 11, 12
 
 
 class SimError(RuntimeError):
@@ -46,7 +47,7 @@ def build(target):
     shutil.copy(ROOT / 'src/mini/mini.inc', target)
     for source in sources:
         shutil.copy(source, target)
-    subprocess.run([cl65, '-t', 'sim6502', '--cpu', '6502', '-O',
+    subprocess.run([cl65, '-t', 'sim6502', '--cpu', '6502', '-O', '-DSIM65',
                     '-o', program.name, '-Ln', labels.name,
                     *[s.name for s in sources]],
                    check=True, capture_output=True, cwd=target)
@@ -160,6 +161,28 @@ class Mini:
 
     def cancel(self):
         self._command(CANCEL)
+        return self._recv(1)[0]
+
+    def load_file(self, index):
+        self.poke('prv_index', bytes([index]))
+        self._command(LOAD)
+        return self._recv(1)[0]
+
+    def create_prepare(self):
+        self._command(CREATE_PREPARE)
+        return self._recv(1)[0]
+
+    def create_execute(self):
+        self._command(CREATE_EXECUTE)
+        return self._recv(1)[0]
+
+    def delete_prepare(self, index):
+        self.poke('del_index', bytes([index]))
+        self._command(DELETE_PREPARE)
+        return self._recv(1)[0]
+
+    def delete_execute(self):
+        self._command(DELETE_EXECUTE)
         return self._recv(1)[0]
 
     # ---- memory ---------------------------------------------------

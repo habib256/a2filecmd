@@ -5,6 +5,13 @@ downloads and installation.
 
 ## Unreleased
 
+- A2FC Mini 0.7.0, still pure 6502: relocate the resident program to `$4000` so hi-res page one is an 8 KB working area; BRUN at `$1000` holds the editor and delete. Add tag selection (Space, Ctrl-T/N, `*`), a hi-res viewer (G, or Return on a 32–34 sector binary), exclusive TXT creation and a basic editor (N / E, save as a new name only), and delete (D) that marks the catalog entry first then frees sectors; locked files are refused. Create and copy share the verified write engine (VTOC first, readback, one catalog entry last, `copy_fault` on an uncertain write). Host tests cover load, create collisions/faults and delete order; POM2 benches cover tags, HGR, create and delete on disposable images.
+
+- Copy selected ProDOS TXT/BIN/BAS/INT files to real slot-6 DOS 3.3 disks with C and DOSWRITE (FILES/XL). Audit allocations before writing, preserve neighbouring half-blocks, verify written data and source closes, publish the catalog entry last, and keep the source. Refuse existing names and protected disks; report retained allocation after failures.
+- Reset image/DOS mode when returning to the volume list, so physical DOS 3.3 catalogs are not displayed as ProDOS volumes and can be reopened repeatedly.
+
+- Reject truncated Binary II headers, data and padding, and report archive close failures. Track exclusive output ownership through reservation failures, report failed cleanup with the retained filename, and preserve earlier extracts and colliding files. Add native C fault-injection and retry tests.
+
 - Publish editor saves through the shared installation/rollback transaction. Keep verified temporary files after any installation failure and explicitly report failed restoration. Test late target/backup collisions, failed renames, retained backups and retries, checking original bytes throughout writing and verification.
 
 - Report failed editor temporary cleanup after reservation, I/O or publication refusal. Never reopen after a failed reservation close; preserve the original, recovery file and unsaved edit buffer, including on retries. Add byte-preservation regressions for combined failures and late creation collisions.

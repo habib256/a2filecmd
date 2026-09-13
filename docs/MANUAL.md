@@ -20,7 +20,7 @@ starting and identifies the edition on its title screen.
 | Edition | What to use |
 |---|---|
 | **6502 floppies** | BOOT plus whichever 140 KB category disks you need: FILES, MEDIA, DISKTOOLS, DEVTOOLS. These floppies also run on enhanced machines. |
-| **XL 6502 or 65C02** | One bootable 32 MB `.2mg` with all 61 overlays, BASIC.SYSTEM, INTBASIC.SYSTEM and demonstration files. No companion disk is needed. |
+| **XL 6502 or 65C02** | One bootable 32 MB `.2mg` with all 62 overlays, BASIC.SYSTEM, INTBASIC.SYSTEM and demonstration files. No companion disk is needed. |
 
 The download names include the CPU, category and version:
 
@@ -71,7 +71,7 @@ full command catalog. The distribution is declared in `config/packages.mk`.
 
 | Category | Plugins | ProDOS volume |
 |---|---|---|
-| **FILES** | EDIT, SEARCH, AWP, BINARY2, UNSHRINK, CRC, FIND, FIXTYPES, GOTO, IDENT, MDVIEW, RENAME, SYNC, MOVE, TREE | `/A2FILES6502` |
+| **FILES** | DOSWRITE, EDIT, SEARCH, AWP, BINARY2, UNSHRINK, CRC, FIND, FIXTYPES, GOTO, IDENT, MDVIEW, RENAME, SYNC, MOVE, TREE | `/A2FILES6502` |
 | **MEDIA** | IMAGE, MUSIC, DGRVIEW, EXTASIE, PACKFOT, PAINT816, PURPLE, LZ4FH, PRINTSHOP, FONTVIEW, PT3 | `/A2MEDIA6502` |
 | **DISKTOOLS** | BOOTBLK, BLKVIEW, BLKEDIT, DISKCMP, NIBCOPY, IMGCONV, MKIMAGE, RESCUE, UNDELETE | `/A2DISKS6502` |
 | **DEVTOOLS** | BASLIST, DISASM, INTBASIC listings, plus BASIC.SYSTEM and INTBASIC.SYSTEM runtimes | `/A2DEVTOOLS6502` |
@@ -485,8 +485,31 @@ extraction and writing into an image are not supported.
 
 A real DOS 3.3 disk appears in **/** as `DOS 3.3`, with its slot and drive.
 Return opens its catalog; C extracts files to ProDOS. Applesoft, Integer
-and binary DOS headers are removed during extraction. DOS 3.3 access is
-read-only.
+and binary DOS headers are removed during extraction. Returning to **/**
+leaves DOS mode, so the same physical disk can be opened again.
+
+To **write to a real DOS 3.3 disk from A2FC ProDOS**, open that disk in one
+panel and select a ProDOS file in the other. Press **C**, then confirm the
+filename and **S6,D1** or **S6,D2**. **DOSWRITE** is on FILES and XL; it can
+also be launched from **! → Disks**. It copies the file under the cursor,
+even if other files are tagged. The ProDOS source must be on another device.
+
+Supported sources are **TXT, BIN, BAS and INT**, up to 65,535 bytes. BIN gets
+its DOS load-address/length prefix from the ProDOS auxiliary type; BAS/INT get
+their length prefix. TXT bytes are preserved. The destination name is the
+selected ProDOS name. Existing names, locked or unlocked, are refused.
+**V** does not delete the source; use C. Writing to file images, replacing,
+renaming and deleting DOS files are not supported by this command.
+
+The target must be a standard 35-track, 16-sector DOS 3.3 disk in a Disk II
+on slot 6. The command checks physical write protection, the VTOC, catalog,
+all live sector lists and allocation conflicts before writing. It reserves
+sectors first, verifies each written block and compares the source again
+before publishing the catalog entry. No auxiliary RAM disk storage is used.
+After an interrupted or failed write, the source remains intact, but some
+space may stay reserved. Check the DOS disk before further work. Physical
+VTOC/catalog writes are not atomic: a power cut or damaged sector can still
+corrupt shared metadata.
 
 ### Formatting a disk
 

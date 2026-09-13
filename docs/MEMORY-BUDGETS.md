@@ -1,5 +1,26 @@
 # Consolidation : budgets mémoire
 
+DOSWRITE et retour aux volumes, 13 septembre 2026 : surcouche 6 773/6 838
+octets (65C02/6502), BSS 2 433/2 434, fin `$3EF5`/`$3F37`, soit 266/200
+octets libres sous `$4000`. Locaux statiques, aucune récursion ni AUX ;
+appels API par trampoline sans chargement imbriqué. La pile reste à 192 octets.
+Le routage C et la remise à zéro du mode DOS coûtent du résident ; des
+textes privés déplacés dans leurs surcouches et deux noms/diagnostics placés
+en LC maintiennent MAIN à 272/782 octets libres. LC 80/73, LOWRAM 282/307,
+écart avant pile 300/999 ; COPY 69/66, EDIT 116/96, DISKIMG 319/274,
+MENU 2 181/2 124. Aucun plafond relevé, deux architectures compilées.
+Validation : 102 tests ciblés, 15 contrôles POM2 par CPU et sept images
+ProDOS contrôlées.
+
+Extraction Binary II contrôlée, 13 septembre 2026 : coût BINARY2 238/247
+octets (65C02/6502), réserves 1 694/1 709. MAIN 281/791, LC 117/110,
+LOWRAM 282/307 et écart avant pile 309/1 008 inchangés. Les locaux restent
+sur la pile : suppression du compteur de lecture et réduction du remplissage
+à un octet compensent le pointeur de diagnostic, la propriété et le compteur
+d'extraits élargi. Aucun BSS supplémentaire, récursion ou chargement imbriqué.
+Pile de 192 octets et plafonds conservés aux deux liens. Validation :
+56 tests ciblés et reconstruction/contrôle des sept images ProDOS.
+
 Transaction commune EDIT, 13 septembre 2026 : coût EDIT 110/116 octets
 (65C02/6502), réserves 138/118. MAIN 281/791, LC 117/110, LOWRAM 282/307,
 écart avant pile 309/1 008 et COPY 79/76 inchangés. La transaction est

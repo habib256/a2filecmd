@@ -11,7 +11,7 @@ sys.path.insert(0,str(ROOT/'tools'))
 from mini33_fixture import make_disk,read_files
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--pom2-root',type=Path,required=True)
-p.add_argument('--disk',type=Path,default=ROOT/'dist/A2FC-MINI-DOS33-0.6.0.dsk')
+p.add_argument('--disk',type=Path,default=ROOT/'dist/A2FC-MINI-DOS33-0.7.0.dsk')
 a=p.parse_args()
 original=a.disk.read_bytes()
 with tempfile.TemporaryDirectory(prefix='mini33-write-') as tmp:

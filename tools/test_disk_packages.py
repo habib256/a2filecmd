@@ -16,6 +16,7 @@ class Distribution(unittest.TestCase):
         locations = assignments(native, plugins)
         self.assertEqual(set(locations), set(native) | {n.upper() for n in plugins})
         self.assertEqual(locations['COPY'], 'BOOT')
+        self.assertEqual(locations['DOSWRITE'], 'FILES')
         self.assertEqual(locations['BOOTBLK'], 'DISKTOOLS')
         self.assertEqual(locations['NIBCOPY'], 'DISKTOOLS')
         with patch.dict(PACKAGES, FILES=PACKAGES['FILES'] + ['BOOTBLK']):

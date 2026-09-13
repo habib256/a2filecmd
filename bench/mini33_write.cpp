@@ -33,7 +33,7 @@ int main(int argc,char**argv) {
     M6502 cpu(&m); m.setCpu(&cpu); cpu.setCpuMode(M6502::CpuMode::NMOS);
     m.clearRam(); m.resetSoftSwitches(); m.slotBus().reset(); cpu.hardReset(); cpu.setProgramCounter(0xc600);
     run(cpu,120000000); expect(m,"3 FILES");
-    for(int i=0;i<512;++i) m.writeRamUnchecked(0x7c00+i,0xa5);
+    for(int i=0;i<0x800;++i) m.writeRamUnchecked(0x0800+i,0xa5);
     auto keys=[&](const char* s) { m.pasteRawKeys(s,strlen(s)); run(cpu,12000000); };
     auto wait=[&](const char* s) {
         for(int n=0;n<600 && screen(m).find(s)==std::string::npos;++n) run(cpu,1000000);
@@ -55,7 +55,7 @@ int main(int argc,char**argv) {
     assert(screen(m).substr(21*41,9)=="A2FC.MINI");
     keys("C"); wait("CANCEL"); keys("Y"); wait("COPY VERIFIED");
     assert(d->getWriteFlushCount()>0); assert(d->flushPendingWrites());
-    for(int i=0;i<512;++i) assert(m.data()[0x7c00+i]==0xa5);
+    for(int i=0;i<0x800;++i) assert(m.data()[0x0800+i]==0xa5);
     keys(" ");
     auto writes=d->getWriteFlushCount();
     assert(screen(m).substr(21*41,9)=="A2FC.MINI");
@@ -68,7 +68,7 @@ int main(int argc,char**argv) {
     std::ifstream in(argv[4],std::ios::binary);
     std::string binary((std::istreambuf_iterator<char>(in)),{});
     assert(!binary.empty());
-    assert(memcmp(m.data()+0x2000,binary.data(),binary.size())==0);
+    assert(memcmp(m.data()+0x1000,binary.data(),binary.size())==0);
     keys("NEW\r10 PRINT \"SAFE\"\rSAVE CHECK.DOS,D2\r"); run(cpu,60000000);
     assert(screen(m).find("I/O ERROR")==std::string::npos);
     keys("CATALOG,D2\r"); expect(m,"CHECK.DOS");

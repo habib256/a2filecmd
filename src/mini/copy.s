@@ -24,12 +24,15 @@
         .include "mini.inc"
 
         .export copy_prepare, copy_execute, copy_cancel
+        .export create_prepare, create_execute
         .export copy_from, copy_to, copy_src_volume, copy_dst_volume
-        .export copy_fault, cp_index, cp_dest
+        .export copy_fault, cp_index, cp_dest, ram_source, data_count
         .export cs_track, cs_sector, cs_type, cs_name, cs_seclo, cs_sechi
+        .export vtoc, catalog_before, verify, cat_buf
         .export _copy_prepare, _copy_execute, _copy_cancel
+        .export _create_prepare, _create_execute
         .export _copy_from, _copy_to, _copy_src_volume, _copy_dst_volume
-        .export _copy_fault, _cp_index, _cp_dest
+        .export _copy_fault, _cp_index, _cp_dest, _ram_source, _data_count
         .export _cs_track, _cs_sector, _cs_type, _cs_name
         .export _cs_seclo, _cs_sechi
 
@@ -38,6 +41,7 @@
         .import ent_track, ent_sector, ent_seclo, ent_sechi, ent_type
         .import ent_index, ent_ptr
         .import seen_bit, bit_masks
+        .import scratch
 
         .segment "BSS"
 
@@ -62,6 +66,7 @@ copy_dst_volume: .res 1
 copy_fault:     .res 1          ; latched: no further writes this run
 cp_index:       .res 1          ; copy_prepare arguments
 cp_dest:        .res 1
+ram_source:     .res 1          ; 1: the working area is the source
 _copy_from      = copy_from
 _copy_to        = copy_to
 _copy_src_volume = copy_src_volume
@@ -69,6 +74,7 @@ _copy_dst_volume = copy_dst_volume
 _copy_fault     = copy_fault
 _cp_index       = cp_index
 _cp_dest        = cp_dest
+_ram_source     = ram_source
 
 ; ---- whole sectors kept for comparison
 vtoc:           .res 256        ; the target VTOC as reserved
@@ -82,6 +88,7 @@ src_entry:      .res CAT_ENTRY_LEN
 source_map_t:   .res MAX_DATA
 source_map_s:   .res MAX_DATA
 data_count:     .res 2
+_data_count     = data_count
 
 ; ---- the target reservation
 target_bits:    .res 70
@@ -139,10 +146,9 @@ bat_index:      .res 2          ; first source_map index of the batch
 lst_no:         .res 1          ; T/S list being built
 lst_pair:       .res 1
 
-; ---- the batch itself. Its own memory: borrowing the panel name tables
-; would have been free, but reload() reselects a file by the name still
-; held there, so they have to survive a copy.
-batch_buf:      .res BATCH_SECTORS*256
+; The batch lives in the shared working area, hi-res page one. Nothing
+; else may touch it while a copy runs, and a copy must not expect it to
+; hold anything on entry. See mini.inc for who else owns it and when.
 
         .segment "CODE"
 
@@ -266,13 +272,13 @@ memcmp256:
         lda     #1
         rts
 
-; batch_ptr -- A = slot, ptr2 = batch_buf + slot*256. A slot offset only
+; batch_ptr -- A = slot, ptr2 = scratch + slot*256. A slot offset only
 ; ever lands in the high byte, so no alignment is needed.
 batch_ptr:
         clc
-        adc     #>batch_buf
+        adc     #>scratch
         sta     ptr2+1
-        lda     #<batch_buf
+        lda     #<scratch
         sta     ptr2
         rts
 
@@ -857,6 +863,8 @@ audit:
 ; source_guard -- prove the source disk is still the one we audited.
 ; =====================================================================
 source_guard:
+        lda     ram_source
+        bne     @ok
         lda     copy_from
         sta     drive
         lda     #CATALOG_TRACK
@@ -881,6 +889,7 @@ source_guard:
         iny
         cpy     #CAT_ENTRY_LEN
         bcc     @entry
+@ok:
         lda     #COPY_OK
         rts
 @changed:
@@ -898,6 +907,107 @@ copy_cancel:
 _copy_cancel:
         lda     #0
         sta     ready
+        sta     ram_source
+        rts
+
+; =====================================================================
+; copy_prepare -- cp_index selects the file in the active panel, cp_dest
+; is the drive it goes to. Reads only: nothing is written here, so the
+; user can still say no.
+; =====================================================================
+; =====================================================================
+; create_prepare -- exclusive new file from the working area.
+;
+; The caller has already put the bytes in scratch, and set cs_name,
+; cs_type and data_count. data_count is the number of 256-byte sectors
+; that will be published; it must fit in the working area, because that
+; area is both the source and the write batch. An empty file still gets
+; one sector, so it is a file and not a catalog ghost.
+;
+; Same drive is allowed: the source is RAM. The name must not exist.
+; =====================================================================
+create_prepare:
+_create_prepare:
+        lda     #0
+        sta     ready
+        sta     copy_from
+        lda     #1
+        sta     ram_source
+        lda     copy_fault
+        beq     @allowed
+        lda     #COPY_UNCERTAIN
+        rts
+@allowed:
+        lda     drive
+        beq     @invalid
+        cmp     #3
+        bcs     @invalid
+        sta     copy_to
+        lda     data_count+1
+        bne     @invalid        ; more than 255 sectors cannot be in RAM
+        lda     data_count
+        beq     @empty
+        cmp     #BATCH_SECTORS+1
+        bcs     @invalid
+        jmp     @sized
+@empty:
+        lda     #1              ; a file with no T/S data still needs one
+        sta     data_count
+@sized:
+        jsr     build_src_entry
+        lda     copy_to
+        sta     drive
+        lda     #0
+        sta     aud_source
+        sta     aud_recheck
+        jsr     audit
+        beq     @reserve
+        rts
+@reserve:
+        jsr     count_lists
+        lda     data_count
+        clc
+        adc     list_count
+        sta     allocated_count
+        lda     data_count+1
+        adc     #0
+        sta     allocated_count+1
+        jsr     reserve
+        bne     @nospace
+        lda     #1
+        sta     ready
+        lda     #COPY_OK
+        rts
+@nospace:
+        lda     #COPY_FULL
+        rts
+@invalid:
+        lda     #COPY_INVALID
+        rts
+
+; create_execute -- the RAM-source twin of copy_execute
+create_execute:
+_create_execute:
+        jmp     copy_execute
+
+; build_src_entry -- name and type only; T/S and size are filled at publish
+build_src_entry:
+        lda     #0
+        sta     src_entry
+        sta     src_entry+1
+        lda     cs_type
+        sta     src_entry+2
+        ldx     #0
+@name:
+        lda     cs_name,x
+        ora     #$80
+        sta     src_entry+3,x
+        inx
+        cpx     #NAME_LEN
+        bcc     @name
+        lda     #0
+        sta     src_entry+33
+        sta     src_entry+34
         rts
 
 ; =====================================================================
@@ -909,6 +1019,7 @@ copy_prepare:
 _copy_prepare:
         lda     #0
         sta     ready
+        sta     ram_source
         lda     copy_fault
         beq     @allowed
         lda     #COPY_UNCERTAIN
@@ -1172,6 +1283,8 @@ _copy_execute:
 @planned:
         lda     #0
         sta     ready           ; one confirmation, one copy
+        lda     ram_source
+        bne     @recheck
         jsr     source_guard
         beq     @recheck
         rts
@@ -1364,8 +1477,11 @@ _copy_execute:
 
 ; ---- nothing is visible until here ----
 @publish:
+        lda     ram_source
+        bne     @pubtarget
         jsr     source_guard
         jne     @uncertain
+@pubtarget:
         lda     copy_to
         sta     drive
         lda     #CATALOG_TRACK
@@ -1477,8 +1593,11 @@ batch_source_index:
         sta     num+1
         rts
 
-; batch_read -- the source drive, once, into batch_buf
+; batch_read -- the source drive, once, into the working area.
+; A RAM source already lives there; reading it again would overwrite it.
 batch_read:
+        lda     ram_source
+        bne     @ram
         lda     copy_from
         sta     drive
         lda     #0
@@ -1501,6 +1620,7 @@ batch_read:
         jsr     memcpy256
         inc     bat_k
         jmp     @loop
+@ram:
 @done:
         lda     #COPY_OK
         rts
@@ -1540,8 +1660,11 @@ batch_write:
         rts
 
 ; batch_resource -- read the source again, from the disk, and hold it to
-; the bytes we wrote
+; the bytes we wrote. A RAM source has no disk to re-read; the target
+; re-read is what proves the write.
 batch_resource:
+        lda     ram_source
+        bne     @done
         lda     copy_from
         sta     drive
         lda     #0

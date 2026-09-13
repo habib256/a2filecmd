@@ -30,7 +30,7 @@ pictures. The tools are right there, beside your files.
 | | |
 |---|---|
 | **Manage your files** | Copy, move, rename and delete files or whole directory trees. Tag batches, sort by name, size or type, change ProDOS attributes and lock files. Progress bars and overwrite prompts keep transfers clear. |
-| **Explore disks and images** | Browse ProDOS and DOS 3.3 disk images as read-only folders, then extract files to the other panel. Read physical DOS 3.3 disks, create and write floppy images, copy floppies and format ProDOS disks. |
+| **Explore disks and images** | Browse ProDOS and DOS 3.3 disk images as read-only folders, then extract files to the other panel. Read physical DOS 3.3 disks and copy selected ProDOS files onto them, create and write floppy images, copy floppies and format ProDOS disks. |
 | **Unpack classic archives** | Extract ShrinkIt `.SHK` archives, including LZW/1 and LZW/2 compression, and Binary II `.BNY` archives with their ProDOS file attributes. |
 | **Read, edit and compare** | Text and hex viewers, a 5 KB text editor, readable Applesoft listings and an AppleWorks word-processing viewer. Compare two files byte by byte, search files for text, or mark differences between panels. |
 | **Enjoy pictures and sound** | Full-screen HGR and DHGR, raw or RLE-compressed. Use the arrow keys to browse pictures like an album. Play `.MB` and `.PT3` music in foreground overlays on a Mockingboard; Left/Right browse tunes of the same type. PT3 accepts modules up to 65,535 bytes, preserves `/RAM`, and displays title, artist and player credits. |
@@ -44,6 +44,12 @@ The menu also offers text and disk-image conversion, CRC-32, file
 identification, Markdown reading, volume-wide search, favourite directories,
 batch renaming and type repair. DISKTOOLS and XL also provide UNDELETE recovery,
 DISKCMP comparison, MKIMAGE creation, RESCUE extraction, SYNC updates and TREE totals. BLKVIEW searches and extracts blocks while preserving the source; DISKIMG reads back disk writes.
+**Write to DOS 3.3 from ProDOS:** open a real DOS disk in one panel, select
+a ProDOS TXT/BIN/BAS/INT file in the other and press **C**. DOSWRITE (FILES/XL)
+creates a new file on a slot-6 Disk II, with verified writes and the source
+kept. One selected file per operation, up to 65,535 bytes; existing names
+are refused. [Usage and limits](docs/MANUAL.md).
+
 NIBCOPY copies standard 16-sector Disk II tracks with one or two drives and
 verified readback ([details](docs/NIBCOPY.md)).
 DISASM reads BIN/SYS files as 6502 or 65C02 assembly and exports text listings.
@@ -90,7 +96,7 @@ is 0.7.5; its downloads retain their own version numbers.
 
 **All floppies use 6502 code**, including on enhanced machines. Choose the
 categories you need; every companion carries the menu and full catalog.
-XL includes all 61 overlays, BASIC.SYSTEM, INTBASIC.SYSTEM, `DEMO/` and `IMGHGR/`, so it needs
+XL includes all 62 overlays, BASIC.SYSTEM, INTBASIC.SYSTEM, `DEMO/` and `IMGHGR/`, so it needs
 no companion. Choose XL **6502** for an original IIe; XL **65C02** for an
 enhanced IIe or //c. All editions require 128 KB and 80 columns.
 Use matching releases. Do not mix the native plugins of XL 65C02 with the
@@ -252,11 +258,11 @@ for protections, failure tests, recovery files and remaining limitations.
 ## Apple II+: A2FC Mini DOS 3.3
 
 A standalone edition for 48 KB machines with two panels in 40 columns:
-independent DOS 3.3 catalogs, verified copying between drives, text/hex previews,
-ProDOS-style controls, inverse video, and bottom shortcuts. Only changed screen
+independent DOS 3.3 catalogs, verified copying between drives, a hi-res
+viewer, a basic text editor, exclusive TXT creation, tagged selection and
+delete that marks the catalog before freeing sectors. Only changed screen
 characters are rewritten. The interface and bundled documentation are in English.
-Written entirely in 6502 assembly, in 7,750 bytes, which is what lets it keep up
-with DOS 3.3's track interleave: a catalog read takes a third of the time it
+Written entirely in 6502 assembly. A catalog read takes a third of the time it
 used to, and a 48-sector copy a quarter.
 Build with `make mini`. See the [Mini DOS 3.3 guide](docs/MINI-DOS33.md)
 for the disk image, the controls and the measurements.

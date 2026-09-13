@@ -16,11 +16,20 @@
         .import present, at, put, inline_text, clear, zone
         .import number, hexbyte, filetype, keys_bar, keys_bar_inline
         .import key
-        .import catalog, preview, ent_ptr, ent_index
+        .import catalog, preview, load_file, load_count, blank_scratch
+        .import ent_ptr, ent_index
+        .import bit_masks, tags
+        .import key_raw
+        .import scratch
         .import copy_prepare, copy_execute, copy_cancel
+        .import create_prepare, create_execute
+        .import ram_source, data_count
+        .import delete_prepare, delete_execute, delete_cancel
+        .import del_index, del_fault
+        .import ask_name, edit_text, edit_len, name_buf
         .import copy_from, copy_to, copy_src_volume, copy_dst_volume
         .import cp_index, cp_dest
-        .import cs_name, cs_seclo, cs_sechi
+        .import cs_name, cs_type, cs_seclo, cs_sechi
         .import active, count, volume, drive, slot, selected, error
         .import buffer, prv_index
         .import ent_track, ent_sector, ent_type, ent_seclo, ent_sechi
@@ -33,7 +42,14 @@ dp_side:        .res 1          ; draw_panel locals
 dp_x:           .res 1
 dp_i:           .res 1
 dp_row:         .res 1
-dp_idx:         .res 1
+dp_idx:         .res 1          ; index into the shared entry arrays
+dp_rel:         .res 1          ; index within the panel, which marks use
+tg_index:       .res 1          ; tag_bit arguments
+tg_side:        .res 1
+tg_n:           .res 1          ; tag_count workings
+tg_bits:        .res 1
+tg_left:        .res 1
+hg_status:      .res 1          ; hi-res viewer
 vw_mode:        .res 1          ; view locals
 vw_i:           .res 1
 vw_prev:        .res 1
@@ -76,6 +92,152 @@ print_name:
         iny
         cpy     #NAME_LEN
         bcc     @char
+        rts
+
+; ---------------------------------------------------------------------
+; Marks.
+;
+; One bit per entry per panel. A mark refers to a position in a catalog
+; snapshot, so tags_clear runs on every reread: otherwise a mark could
+; survive onto a different file than the one it was put on, and marks are
+; what the destructive commands act on.
+; ---------------------------------------------------------------------
+
+; tag_bit -- A = index within the panel, X = side. bidx/bmsk select its
+; bit in tags.
+tag_bit:
+        sta     tg_index
+        stx     tg_side
+        lsr     a
+        lsr     a
+        lsr     a
+        sta     bidx
+        lda     tg_side
+        beq     @left
+        lda     bidx
+        clc
+        adc     #TAG_BYTES
+        sta     bidx
+@left:
+        lda     tg_index
+        and     #7
+        tax
+        lda     bit_masks,x
+        sta     bmsk
+        rts
+
+; tag_test -- A = index, X = side. Z clear when the entry is marked.
+tag_test:
+        jsr     tag_bit
+        ldx     bidx
+        lda     tags,x
+        and     bmsk
+        rts
+
+; tag_toggle -- the selected entry of the active panel
+tag_toggle:
+        lda     count
+        bne     @go
+        rts
+@go:
+        lda     selected
+        ldx     active
+        jsr     tag_bit
+        ldx     bidx
+        lda     tags,x
+        eor     bmsk
+        sta     tags,x
+        rts
+
+; tag_all / tag_none -- every entry of the active panel, or none
+tag_all:
+        lda     #0
+        sta     tg_index
+@each:
+        lda     tg_index
+        cmp     count
+        bcs     @done
+        ldx     active
+        jsr     tag_bit
+        ldx     bidx
+        lda     tags,x
+        ora     bmsk
+        sta     tags,x
+        inc     tg_index
+        jmp     @each
+@done:
+        rts
+
+tag_none:
+        ldx     active
+        jmp     tags_clear
+
+tag_invert:
+        lda     #0
+        sta     tg_index
+@each:
+        lda     tg_index
+        cmp     count
+        bcs     @done
+        ldx     active
+        jsr     tag_bit
+        ldx     bidx
+        lda     tags,x
+        eor     bmsk
+        sta     tags,x
+        inc     tg_index
+        jmp     @each
+@done:
+        rts
+
+; tags_clear -- X = side. Called wherever a panel is read again.
+tags_clear:
+        cpx     #0
+        beq     @left
+        ldx     #TAG_BYTES
+        jmp     @wipe
+@left:
+        ldx     #0
+@wipe:
+        lda     #0
+        ldy     #TAG_BYTES
+@byte:
+        sta     tags,x
+        inx
+        dey
+        bne     @byte
+        rts
+
+; tag_count -- X = side, returns how many marks it holds
+tag_count:
+        lda     #0
+        sta     tg_n
+        cpx     #0
+        beq     @left
+        ldx     #TAG_BYTES
+        jmp     @scan
+@left:
+        ldx     #0
+@scan:
+        ldy     #TAG_BYTES
+@byte:
+        lda     tags,x
+        beq     @next
+        sta     tg_bits
+        lda     #8
+        sta     tg_left
+@bit:
+        lsr     tg_bits
+        bcc     @nobit
+        inc     tg_n
+@nobit:
+        dec     tg_left
+        bne     @bit
+@next:
+        inx
+        dey
+        bne     @byte
+        lda     tg_n
         rts
 
 ; ---------------------------------------------------------------------
@@ -214,6 +376,8 @@ draw_panel:
         tay
         ldx     dp_x
         jsr     at
+        lda     dp_idx
+        sta     dp_rel          ; panel-relative, which is what marks use
         lda     dp_side         ; the entry's index in the shared arrays
         beq     @left
         lda     dp_idx
@@ -264,7 +428,15 @@ draw_panel:
         tax
         ldy     dp_row
         jsr     at
+        lda     dp_rel
+        ldx     dp_side
+        jsr     tag_test
+        beq     @unmarked
+        lda     #'*'
+        jmp     @mark
+@unmarked:
         lda     #' '
+@mark:
         jsr     put
         ldy     dp_idx
         lda     ent_type,y
@@ -346,6 +518,15 @@ draw:
         lda     count
         jsr     print_byte
         PRINT   " FILES"
+        ldx     active
+        jsr     tag_count
+        beq     @nomarks
+        sta     tg_n
+        PRINT   "  "
+        lda     tg_n
+        jsr     print_byte
+        PRINT   " MARKED"
+@nomarks:
         lda     #0
         sta     inverse
         ldy     #21
@@ -463,15 +644,19 @@ help:
         ldy     #12
         ldx     #0
         jsr     at
-        PRINT   "T: TEXT   H: HEX   C: COPY"
+        PRINT   "T: TEXT  H: HEX  G: HI-RES  C: COPY"
         ldy     #14
         ldx     #0
         jsr     at
-        PRINT   "1-7: BOTTOM SHORTCUTS IN ORDER"
+        PRINT   "SPACE: TAG  CTRL-T/N: ALL/NONE  *: INVERT"
         ldy     #16
         ldx     #0
         jsr     at
-        PRINT   "COPY: Y CONFIRMS, N/ESC CANCELS"
+        PRINT   "N: NEW TXT  E: EDIT  D: DELETE"
+        ldy     #18
+        ldx     #0
+        jsr     at
+        PRINT   "Y CONFIRMS A WRITE. LOCKED FILES: NO DELETE."
         KEYBAR  23, "ESC Back"
         jsr     key
         rts
@@ -650,7 +835,7 @@ copy_file:
         sta     cp_dest
         jsr     copy_prepare
         sta     cf_status
-        jne     @report
+        jne     cf_show
         jsr     clear
         ldy     #0
         ldx     #0
@@ -721,7 +906,7 @@ copy_file:
         jsr     present
         jsr     copy_execute
         sta     cf_status
-@report:
+cf_show:
         jsr     clear
         ldy     #2
         ldx     #0
@@ -814,6 +999,8 @@ reload:
         sta     volume
         jsr     catalog
         sta     error
+        ldx     active
+        jsr     tags_clear
         lda     rl_have
         beq     @clamp
         lda     #0
@@ -873,6 +1060,8 @@ main:
         sta     LOWSCR
         jsr     catalog
         sta     error
+        ldx     #0
+        jsr     tags_clear
         jsr     remember
         lda     pan_drive       ; both panels start on the boot disk, so
         sta     pan_drive+1     ; the second one costs no second read
@@ -992,6 +1181,8 @@ main:
         sta     volume
         jsr     catalog
         sta     error
+        ldx     active
+        jsr     tags_clear
         jsr     remember
 @notdrive:
         lda     ck
@@ -1019,6 +1210,11 @@ main:
         lda     ck
         cmp     #13
         bne     @explicit
+        jsr     looks_hgr
+        bcc     @bytype
+        jsr     show_hgr
+        jmp     @notview
+@bytype:
         lda     selected        ; RETURN picks by type: text reads as text
         jsr     ent_index
         tay
@@ -1052,6 +1248,58 @@ main:
         bne     @nothelp
         jsr     help
 @nothelp:
+        lda     ck
+        cmp     #' '
+        bne     @nottag
+        jsr     tag_toggle
+@nottag:
+        lda     ck
+        cmp     #20             ; Ctrl-T
+        bne     @notall
+        jsr     tag_all
+@notall:
+        lda     ck
+        cmp     #14             ; Ctrl-N
+        bne     @notnone
+        jsr     tag_none
+@notnone:
+        lda     ck
+        cmp     #'*'
+        bne     @notinv
+        jsr     tag_invert
+@notinv:
+        lda     ck
+        cmp     #'G'
+        bne     @nothgr
+        lda     count
+        beq     @nothgr
+        lda     error
+        bne     @nothgr
+        jsr     show_hgr
+@nothgr:
+        lda     ck
+        cmp     #'N'
+        bne     @notnew
+        jsr     new_text
+@notnew:
+        lda     ck
+        cmp     #'E'
+        bne     @notedit
+        lda     count
+        beq     @notedit
+        lda     error
+        bne     @notedit
+        jsr     edit_file
+@notedit:
+        lda     ck
+        cmp     #'D'
+        bne     @notdel
+        lda     count
+        beq     @notdel
+        lda     error
+        bne     @notdel
+        jsr     delete_file
+@notdel:
         jmp     @loop
 @leave:
         jsr     clear
@@ -1082,9 +1330,37 @@ mirror_panel:
         sta     pan_error,y
         lda     pan_top,x
         sta     pan_top,y
+        jsr     copy_tags
         lda     active
         bne     copy_entries_to_left
         jmp     copy_entries_to_right
+
+; copy_tags -- X = source side, Y = dest side
+copy_tags:
+        lda     #0
+        cpx     #0
+        beq     @fromleft
+        lda     #TAG_BYTES
+@fromleft:
+        sta     t2
+        lda     #0
+        cpy     #0
+        beq     @toleft
+        lda     #TAG_BYTES
+@toleft:
+        sta     t3
+        ldx     #0
+@byte:
+        ldy     t2
+        lda     tags,y
+        ldy     t3
+        sta     tags,y
+        inc     t2
+        inc     t3
+        inx
+        cpx     #TAG_BYTES
+        bcc     @byte
+        rts
 
 copy_entries_to_right:
         ldx     #0
@@ -1149,4 +1425,436 @@ copy_names:
         iny
         bne     @tail
 @done:
+        rts
+
+; ---------------------------------------------------------------------
+; looks_hgr -- carry set when the selected file is a binary of 32 to 34
+; sectors, the usual size of a hi-res page with or without a BSAVE header.
+; ---------------------------------------------------------------------
+looks_hgr:
+        lda     selected
+        jsr     ent_index
+        tay
+        lda     ent_type,y
+        and     #$7F
+        cmp     #TYPE_BINARY
+        bne     @no
+        lda     ent_sechi,y
+        bne     @no
+        lda     ent_seclo,y
+        cmp     #32
+        bcc     @no
+        cmp     #35
+        bcs     @no
+        sec
+        rts
+@no:
+        clc
+        rts
+
+; ---------------------------------------------------------------------
+; show_hgr -- load the selected file into the working area and put the
+; machine in hi-res. The program lives above $4000, so the picture does
+; not sit on top of the code that shows it. Any key returns to text.
+; ---------------------------------------------------------------------
+show_hgr:
+        lda     selected
+        sta     prv_index
+        jsr     load_file
+        sta     hg_status
+        bne     @fail
+        lda     load_count
+        beq     @fail
+        jsr     skip_bsave
+        lda     TXTCLR
+        lda     MIXCLR
+        lda     LOWSCR
+        lda     HIRES
+        jsr     key_raw
+        lda     TXTSET
+        lda     LORES
+        lda     LOWSCR
+        rts
+@fail:
+        jsr     clear
+        ldy     #3
+        ldx     #0
+        jsr     at
+        lda     hg_status
+        cmp     #1
+        bne     @bad
+        PRINT   "READ ERROR"
+        jmp     @any
+@bad:
+        PRINT   "NOT A PICTURE / INVALID T-S LIST"
+@any:
+        jmp     any_back
+
+; skip_bsave -- if the first four bytes are a DOS binary header pointing
+; at a hi-res page, slide the picture down so it starts at scratch.
+skip_bsave:
+        lda     scratch+1
+        cmp     #$20
+        beq     @addr
+        cmp     #$40
+        bne     @done
+@addr:
+        lda     scratch
+        bne     @done
+        lda     scratch+3
+        cmp     #$1F
+        beq     @len
+        cmp     #$20
+        bne     @done
+@len:
+        lda     #<scratch
+        sta     ptr
+        lda     #>scratch
+        sta     ptr+1
+        lda     #<(scratch+4)
+        sta     ptr2
+        lda     #>(scratch+4)
+        sta     ptr2+1
+        lda     #<(SCRATCH_SIZE-4)
+        sta     num
+        lda     #>(SCRATCH_SIZE-4)
+        sta     num+1
+        ldy     #0
+@copy:
+        lda     (ptr2),y
+        sta     (ptr),y
+        inc     ptr
+        bne     @a
+        inc     ptr+1
+@a:
+        inc     ptr2
+        bne     @b
+        inc     ptr2+1
+@b:
+        lda     num
+        bne     @c
+        dec     num+1
+@c:
+        dec     num
+        lda     num
+        ora     num+1
+        bne     @copy
+@done:
+        rts
+
+; ---------------------------------------------------------------------
+; new_text / edit_file -- exclusive create from the editor buffer.
+; ---------------------------------------------------------------------
+new_text:
+        jsr     ask_name
+        bcc     @out
+        jsr     blank_scratch
+        lda     #0
+        sta     edit_len
+        sta     edit_len+1
+        jsr     edit_text
+        bcc     @out
+        jsr     name_to_cs
+        jmp     save_new
+@out:
+        rts
+
+edit_file:
+        lda     selected
+        jsr     ent_index
+        tay
+        lda     ent_type,y
+        and     #$7F
+        cmp     #TYPE_TEXT
+        beq     @text
+        jsr     clear
+        ldy     #3
+        ldx     #0
+        jsr     at
+        PRINT   "EDIT IS FOR TEXT FILES"
+        jmp     any_back
+@text:
+        lda     selected
+        sta     prv_index
+        jsr     load_file
+        sta     hg_status
+        bne     @fail
+        jsr     measure_text
+        jsr     edit_text
+        bcc     @out
+        jsr     ask_name
+        bcc     @out
+        jsr     name_to_cs
+        jmp     save_new
+@fail:
+        jsr     clear
+        ldy     #3
+        ldx     #0
+        jsr     at
+        PRINT   "READ ERROR - NOT LOADED"
+        jmp     any_back
+@out:
+        rts
+
+name_to_cs:
+        ldy     #0
+@copy:
+        lda     name_buf,y
+        sta     cs_name,y
+        iny
+        cpy     #NAME_LEN
+        bcc     @copy
+        lda     #TYPE_TEXT
+        sta     cs_type
+        rts
+
+; measure_text -- ed_len = one past the last non-zero byte
+measure_text:
+        lda     load_count
+        sta     edit_len+1
+        lda     #0
+        sta     edit_len
+        lda     edit_len+1
+        beq     @done
+@scan:
+        lda     edit_len
+        bne     @dec
+        dec     edit_len+1
+        lda     edit_len+1
+        bmi     @empty
+@dec:
+        dec     edit_len
+        lda     #<scratch
+        clc
+        adc     edit_len
+        sta     ptr
+        lda     #>scratch
+        adc     edit_len+1
+        sta     ptr+1
+        ldy     #0
+        lda     (ptr),y
+        beq     @scan
+        inc     edit_len
+        bne     @done
+        inc     edit_len+1
+        jmp     @done
+@empty:
+        lda     #0
+        sta     edit_len
+        sta     edit_len+1
+@done:
+        rts
+
+save_new:
+        jsr     sectors_from_len
+        jsr     clear
+        ldy     #2
+        ldx     #0
+        jsr     at
+        PRINT   "CHECKING DISK..."
+        jsr     present
+        jsr     create_prepare
+        sta     cf_status
+        jne     copy_report
+        jsr     clear
+        ldy     #0
+        ldx     #0
+        lda     #40
+        jsr     zone
+        PRINT   "CREATE TEXT FILE"
+        lda     #0
+        sta     inverse
+        ldy     #2
+        ldx     #0
+        jsr     at
+        ldy     #0
+@nm:
+        sty     t1
+        lda     cs_name,y
+        jsr     put
+        ldy     t1
+        iny
+        cpy     #NAME_LEN
+        bcc     @nm
+        ldy     #4
+        ldx     #0
+        jsr     at
+        lda     data_count
+        jsr     print_byte
+        PRINT   " SECTORS - NEW FILE ONLY"
+        jsr     confirm
+        bcs     @go
+        jsr     copy_cancel
+        rts
+@go:
+        jsr     clear
+        ldy     #2
+        ldx     #0
+        jsr     at
+        PRINT   "WRITING AND VERIFYING..."
+        jsr     present
+        jsr     create_execute
+        sta     cf_status
+        jmp     copy_report
+
+sectors_from_len:
+        lda     edit_len
+        sta     data_count
+        lda     edit_len+1
+        sta     data_count+1
+        lda     data_count
+        ora     data_count+1
+        bne     @round
+        lda     #1
+        sta     data_count
+        lda     #0
+        sta     data_count+1
+        rts
+@round:
+        lda     data_count
+        beq     @even
+        inc     data_count+1
+        lda     #0
+        sta     data_count
+@even:
+        lda     data_count+1
+        sta     data_count
+        lda     #0
+        sta     data_count+1
+        rts
+
+; copy_report -- same messages as a disk-to-disk copy, then reread
+copy_report:
+        jmp     cf_show
+
+; ---------------------------------------------------------------------
+; delete_file -- tagged files, or the cursor when nothing is tagged.
+; One confirmation, then each file: mark the catalog, then free sectors.
+; ---------------------------------------------------------------------
+delete_file:
+        ldx     active
+        jsr     tag_count
+        sta     tg_n
+        jsr     clear
+        ldy     #0
+        ldx     #0
+        lda     #40
+        jsr     zone
+        lda     tg_n
+        bne     @many
+        PRINT   "DELETE THIS FILE"
+        lda     #0
+        sta     inverse
+        ldy     #2
+        ldx     #0
+        jsr     at
+        lda     selected
+        jsr     ent_index
+        jsr     print_name
+        jmp     @ask
+@many:
+        PRINT   "DELETE MARKED FILES"
+        lda     #0
+        sta     inverse
+        ldy     #2
+        ldx     #0
+        jsr     at
+        lda     tg_n
+        jsr     print_byte
+        PRINT   " FILES - LOCKED FILES ARE SKIPPED"
+@ask:
+        ldy     #5
+        ldx     #0
+        jsr     at
+        PRINT   "THIS CANNOT BE UNDONE FROM HERE"
+        jsr     confirm
+        bcc     @out
+        lda     tg_n
+        bne     @tagged
+        lda     selected
+        sta     del_index
+        jsr     one_delete
+        jmp     @finish
+@tagged:
+        lda     #0
+        sta     tg_index
+@each:
+        lda     tg_index
+        cmp     count
+        bcs     @finish
+        lda     tg_index
+        ldx     active
+        jsr     tag_test
+        beq     @next
+        lda     tg_index
+        sta     del_index
+        jsr     one_delete
+        cmp     #DEL_UNCERTAIN
+        beq     @finish
+@next:
+        inc     tg_index
+        jmp     @each
+@finish:
+        jsr     any_back
+        jmp     reload
+@out:
+        rts
+
+one_delete:
+        jsr     delete_prepare
+        sta     hg_status
+        bne     @rep
+        jsr     delete_execute
+        sta     hg_status
+@rep:
+        jsr     clear
+        ldy     #2
+        ldx     #0
+        jsr     at
+        lda     hg_status
+        bne     @notok
+        PRINT   "DELETED"
+        lda     #DEL_OK
+        rts
+@notok:
+        cmp     #DEL_LOCKED
+        bne     @notlock
+        PRINT   "LOCKED - NOT DELETED"
+        lda     #DEL_LOCKED
+        rts
+@notlock:
+        cmp     #DEL_CHANGED
+        bne     @notchg
+        PRINT   "DISK CHANGED - DELETE REFUSED"
+        lda     #DEL_CHANGED
+        rts
+@notchg:
+        cmp     #DEL_READ
+        bne     @notread
+        PRINT   "READ ERROR - DELETE REFUSED"
+        lda     #DEL_READ
+        rts
+@notread:
+        cmp     #DEL_UNCERTAIN
+        bne     @bad
+        PRINT   "UNCERTAIN WRITE - STOP"
+        ldy     #4
+        ldx     #0
+        jsr     at
+        PRINT   "TARGET DISK MUST BE CHECKED"
+        lda     #1
+        sta     del_fault
+        lda     #DEL_UNCERTAIN
+        rts
+@bad:
+        PRINT   "UNSUPPORTED / INVALID DOS STRUCTURE"
+        lda     hg_status
+        rts
+
+any_back:
+        ldy     #23
+        ldx     #0
+        jsr     at
+        PRINT   "ANY KEY: BACK"
+        jsr     key
         rts

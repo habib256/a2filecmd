@@ -70,6 +70,13 @@ class CatalogTest(unittest.TestCase):
         self.assertTrue(bytes(self.mini.peek('buffer', 9)) == b'A2FC MINI')
         self.assertEqual(self.mini.image(1), self.image)
 
+    def test_load_file_keeps_the_ts_list(self):
+        self.assertEqual(self.mini.catalog(), CAT_OK)
+        self.assertEqual(self.mini.load_file(2), CAT_OK)
+        text = bytes(self.mini.peek('scratch', 40))
+        self.assertTrue(text.startswith(b'A2FC MINI'), text)
+        self.assertEqual(self.mini.image(1), self.image)
+
     def test_entry_fields_match_the_catalog(self):
         self.assertEqual(self.mini.catalog(), CAT_OK)
         cat = self.image[17 * 4096 + 15 * 256:]
@@ -247,7 +254,7 @@ class ImageTest(unittest.TestCase):
             self.assertEqual((d / 'master').read_bytes(), self.master)
 
     def test_bad_master_and_large_binary(self):
-        for master, binary in ((b'', b'x'), (self.master, b'x' * 0x5c01)):
+        for master, binary in ((b'', b'x'), (self.master, b'x' * 0x8601)):
             with self.assertRaises(ValueError):
                 mkmini33.build(master, binary)
 
@@ -264,7 +271,7 @@ class LayoutTest(unittest.TestCase):
         self.assertIn('bytes free below DOS', report.stdout)
         binary = (ROOT / 'build-mini/A2FC.MINI').read_bytes()
         self.assertGreater(len(binary), 1024)
-        self.assertLessEqual(len(binary), 0x5c00, 'mkmini33 refuses more')
+        self.assertLessEqual(len(binary), 0x8600, 'mkmini33 refuses more')
 
 
 if __name__ == '__main__':

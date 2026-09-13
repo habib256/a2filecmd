@@ -16,6 +16,7 @@ typedef char copy_state_fits[sizeof text_starts - sizeof(struct CopyState) + 1];
 
 #pragma code-name(push, "COPY")
 #pragma rodata-name(push, "COPYRO")
+static const char copy_tempname[] = "A2FC.COPY";
 static unsigned char may_overwrite(const char* name)
 {
     char key;
@@ -50,7 +51,7 @@ static unsigned char copy_stage(void)
     } else if (_oserror != 0x46) return 0;
     strcpy(CP->temp, CP->target);
     *strrchr(CP->temp, '/') = 0;
-    if (!push_name(CP->temp, "A2FC.COPY") || !strcmp(CP->temp, CP->target)) return 0;
+    if (!push_name(CP->temp, copy_tempname) || !strcmp(CP->temp, CP->target)) return 0;
     strcpy(CP->backup, CP->temp);
     strcpy(strrchr(CP->backup, '.') + 1, "BAK");
     in = fopen(full, "rb");

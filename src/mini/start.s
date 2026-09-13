@@ -1,4 +1,4 @@
-; start.s -- entry and exit for a BRUN binary at $2000.
+; start.s -- entry and exit for a BRUN binary at $4000.
 ;
 ; DOS gives us the machine with Applesoft's state live underneath: HELLO
 ; called us and must be able to carry on. So page zero $80-$9F and the

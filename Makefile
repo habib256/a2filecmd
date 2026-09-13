@@ -301,6 +301,8 @@ test: test-mini
 	python3 $(TOOLS)/test_raw_transition.py
 	python3 $(TOOLS)/test_goto_safety.py
 	python3 $(TOOLS)/test_file_safety.py
+	python3 $(TOOLS)/test_binary2_safety.py
+	python3 $(TOOLS)/test_doswrite.py
 	python3 $(TOOLS)/test_file_create.py
 	python3 $(TOOLS)/test_file_output.py
 	python3 $(TOOLS)/test_file_install.py
@@ -367,9 +369,9 @@ MINI_BUILD = build-mini
 MINI_AS ?= ca65
 MINI_LD ?= ld65
 MINI_MASTER ?=
-MINI_DISK ?= $(DIST)/A2FC-MINI-DOS33-0.6.0.dsk
+MINI_DISK ?= $(DIST)/A2FC-MINI-DOS33-0.7.0.dsk
 # start.s must come first: its STARTUP segment lands on the load address.
-MINI_MODULES = start rwts screen catalog copy keyboard ui data
+MINI_MODULES = lowstart start rwts screen catalog copy keyboard ui data scratch delete edit
 MINI_OBJS = $(addprefix $(MINI_BUILD)/,$(addsuffix .o,$(MINI_MODULES)))
 .PHONY: mini mini-disk test-mini
 mini: $(MINI_BUILD)/A2FC.MINI

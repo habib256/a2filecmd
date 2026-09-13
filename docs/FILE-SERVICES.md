@@ -301,6 +301,70 @@ Les messages et barres de progression écrivent l'écran texte principal/AUX,
 sans emprunter le stockage du disque RAM. Le chargement de COPY remplace la
 fenêtre `$1B00-$1FFF` : l'appelant qui doit reprendre ne peut pas y résider.
 
+## Extraction Binary II : propriété et lecture complète
+
+BINARY2 lit `full` et crée exclusivement les fichiers normalisés dans le
+répertoire du panneau opposé. Aucune source n'est supprimée, aucun accès au
+stockage AUX du disque RAM. `reserve_output` conserve la propriété même si
+sa fermeture échoue ; seul `OUTPUT_RESERVED` permet la réouverture `wb`.
+La propriété est remise à zéro après fermeture réussie du fichier extrait.
+Un enregistrement suivant incomplet ne permet donc pas de supprimer le
+fichier précédent. Une collision de noms normalisés refuse le nouvel extrait.
+
+En-tête attendu, contenu et remplissage de 128 octets sont lus exactement,
+avec contrôle des erreurs. Le remplissage est lu plutôt que sauté par seek,
+qui pouvait réussir au-delà de la fin. Un en-tête suivant annoncé mais absent
+ou invalide est une erreur, jamais une fin normale. La fermeture de l'archive
+est contrôlée avant l'annonce de succès ; si elle échoue, les extraits déjà
+fermés sont conservés et l'erreur est signalée. La suppression d'un extrait
+incomplet est limitée à l'entrée possédée ; son échec nomme le fichier retenu.
+Une nouvelle tentative ne peut pas le tronquer.
+
+Neuf tests exécutent le vrai C sur fichiers jetables : tailles limites,
+troncatures, lectures/écritures/fermetures échouées, réservation, collisions,
+nettoyage échoué puis retry et conservation des enregistrements précédents.
+Le test est intégré à `make test`. Les deux liens et les sept images ProDOS
+sont contrôlés. L'extraction ne relit pas encore les octets écrits et ne
+valide pas tous les attributs Binary II ; ceci ne constitue pas une garantie
+contre une corruption physique silencieuse ou une coupure d'alimentation.
+
+## DOSWRITE : création exclusive sur un vrai disque DOS 3.3
+
+Surcouche indépendante, chargée par C vers un panneau FS_DOS33 ou par !.
+Une seule sélection ProDOS TXT/BIN/BAS/INT, taille relue au lieu de celle
+du panneau, maximum 65 535 octets. Disque cible physique S6,D1/D2 sur un
+autre périphérique ; images, déplacements et remplacements refusés.
+
+Écritures : VTOC, secteurs libres de données/listes, puis un secteur de
+catalogue. Chaque écriture MLI de 512 octets préserve le secteur DOS voisin
+et vérifie les 512 octets. L'audit parcourt tous les fichiers, y compris
+verrouillés, refuse cycles, secteurs partagés ou marqués libres, comptes
+incohérents, collisions et catalogues pleins. Les pistes 0–2 et 17 ne sont
+jamais allouées. Confirmation nominative, puis nouvelle vérification du
+bitmap et audit avant réservation. La source est refermée après transfert,
+puis relue et comparée intégralement, EOF et fermeture contrôlés, avant
+publication. Le catalogue et le VTOC sont comparés de nouveau avant publication.
+
+Aucun nettoyage automatique après une écriture incertaine : la réservation
+peut rester occupée, sans publication d'un fichier incomplet. Aucune source
+n'est supprimée. La protection matérielle est testée avant chaque écriture.
+Il n'y a ni récursion, ni chargement imbriqué, ni accès AUX. Les locaux
+statiques et tampons appartiennent à la surcouche ; le bloc d'E/S est prêté
+par l'API résidente. Une coupure ou une écriture physique déchirée du VTOC ou
+du catalogue peut endommager des métadonnées partagées : aucune atomicité
+physique n'est promise.
+
+Tests : moteur C complet sur fichiers jetables avec pannes à chaque lecture
+et écriture, écritures partielles/silencieusement corrompues, fermeture,
+annulation, protection, collision, tailles limites et retry. Exécution
+6502/65C02 sous sim65 avec transport de blocs côté hôte. Le banc POM2
+`bench/doswrite.py` utilise le vrai pilote Disk II ProDOS et vérifie copie
+BAS/BIN/TXT, consentement refusé, protection physique, fichiers existants,
+volume source, AUX et trois allers-retours catalogue/volumes. Résultat local :
+15/15 contrôles POM2 par CPU, 102 tests ciblés et sept images ProDOS contrôlées.
+Il s'agit d'une validation du pilote Disk II sous émulation, pas d'un essai
+sur un Apple II physique.
+
 ## Limites ouvertes et preuves
 
 COPY utilise maintenant la transaction des temporaires vérifiés. Les

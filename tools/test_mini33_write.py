@@ -304,6 +304,81 @@ class WriteTest(unittest.TestCase):
         self.assertEqual(self.mini.execute(), CHANGED)
         self.assertEqual(len(self.mini.write_log), 0)
 
+    # ---- exclusive create from RAM --------------------------------
+    def create(self, name='NEW.TXT', data=b'HELLO FROM RAM', kind=0):
+        self.mini.poke('cs_name', name.encode('ascii').ljust(30))
+        self.mini.poke('cs_type', bytes([kind]))
+        sectors = max(1, (len(data) + 255) // 256)
+        payload = data.ljust(sectors * 256, b'\x00')
+        self.mini.poke('data_count', bytes([sectors, 0]))
+        self.mini.poke('scratch', payload)
+        self.mini.poke('drive', bytes([2]))
+        return self.mini.create_prepare()
+
+    def test_create_exclusive_and_collision(self):
+        self.assertEqual(self.create(), OK)
+        self.assertEqual(len(self.mini.write_log), 0)
+        self.assertEqual(self.mini.create_execute(), OK)
+        files = read_files(self.image(2))
+        self.assertEqual(files['NEW.TXT']['data'].rstrip(b'\x00'), b'HELLO FROM RAM')
+        self.assertEqual(files['NEW.TXT']['type'], 0)
+        self.preserved()
+        writes = len(self.mini.write_log)
+        self.mini.poke('drive', bytes([2]))
+        self.assertEqual(self.create(), EXISTS)
+        self.assertEqual(len(self.mini.write_log), writes)
+
+    def test_create_write_failure_does_not_publish(self):
+        self.assertEqual(self.create(), OK)
+        self.mini.fail_write = 0
+        self.assertEqual(self.mini.create_execute(), UNCERTAIN)
+        self.assertEqual(self.mini.byte('copy_fault'), 1)
+        files = read_files(self.image(2))
+        self.assertNotIn('NEW.TXT', files)
+        self.preserved()
+
+    # ---- delete: catalog first, then free -------------------------
+    DEL_OK, DEL_READ, DEL_INVALID, DEL_LOCKED, DEL_CHANGED, DEL_UNCERTAIN = range(6)
+
+    def test_delete_marks_catalog_then_frees(self):
+        self.load(src=make_disk([('GONE.TXT', 0, b'DELETE ME'),
+                                 ('KEEP.SRC', 0, b'SOURCE SAFE')]))
+        before = read_files(self.src)
+        self.assertEqual(self.mini.delete_prepare(0), self.DEL_OK)
+        self.assertEqual(len(self.mini.write_log), 0)
+        self.assertEqual(self.mini.delete_execute(), self.DEL_OK)
+        files = read_files(self.image(1))
+        self.assertNotIn('GONE.TXT', files)
+        self.assertEqual(files['KEEP.SRC']['data'], before['KEEP.SRC']['data'])
+        first = self.mini.write_log[0]
+        self.assertEqual(first[1], 17)
+        self.assertNotEqual(first[2], 0, 'the catalog is marked before the VTOC')
+        self.assertEqual(self.mini.write_log[-1], (1, 17, 0),
+                         'the VTOC is freed last')
+        # DOS UNDELETE mark: track $FF, original track in the first name byte
+        a = offset(17, 15) + 11
+        self.assertEqual(self.image(1)[a], 255)
+
+    def test_delete_refuses_locked(self):
+        self.load(src=make_disk([('LOCK.ME', 0x80, b'SAFE')]))
+        self.assertEqual(self.mini.delete_prepare(0), self.DEL_LOCKED)
+        self.assertEqual(len(self.mini.write_log), 0)
+        self.assertEqual(self.image(1), self.src)
+
+    def test_delete_write_failure_latches(self):
+        self.load(src=make_disk([('GONE.TXT', 0, b'DELETE ME'),
+                                 ('KEEP.SRC', 0, b'SOURCE SAFE')]))
+        self.assertEqual(self.mini.delete_prepare(0), self.DEL_OK)
+        self.mini.fail_write = 0
+        self.assertEqual(self.mini.delete_execute(), self.DEL_UNCERTAIN)
+        self.assertEqual(self.mini.byte('del_fault'), 1)
+        self.assertEqual(self.mini.delete_prepare(0), self.DEL_UNCERTAIN)
+        # KEEP.SRC data sectors are untouched
+        keep = read_files(self.src)['KEEP.SRC']
+        for t, s in keep['blocks'] + keep['lists']:
+            a = offset(t, s)
+            self.assertEqual(self.image(1)[a:a + 256], self.src[a:a + 256])
+
 
 if __name__ == '__main__':
     unittest.main()

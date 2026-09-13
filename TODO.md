@@ -24,14 +24,15 @@ Mini (**0**) est livré et indépendant de 1–10. Sur ProDOS :
 **7 en continu**. Puis **5**. Ensuite **un seul** parmi 8, 9 ou 10 — pas les
 trois. Ne pas ouvrir SHRINK, l’écriture dans une image montée, un journal de
 coupure, Pascal/CP/M ni un nouveau média tant que 1–4 ne sont pas clos.
-Ne pas ajouter à Mini suppression, renommage, copie un lecteur ou formatage
-dans la même réécriture.
+Mini 0.7.0 ajoute tags, HGR, création TXT exclusive, éditeur et DEL
+(catalogue d'abord). Pas de renommage, remplacement sur place, copie à
+un seul lecteur ni formatage.
 
 Les travaux sur lecteurs physiques sont signalés par **💾**.
 
 | # | Chantier | Résultat recherché | État |
 | --- | --- | --- | --- |
-| **0** | Mini 6502 pur | Copie 4,4× plus rapide, catalogue 2,9×, 4 315 octets de code en moins | **Fait ; C retiré** |
+| **0** | Mini 6502 pur | Copie 4,4× plus rapide ; 0.7.0 : HGR, éditeur, TXT, DEL, tags | **Fait ; C retiré** |
 | **1** | Services de fichiers sûrs | Un contrat unique : création exclusive, remplacement récupérable, copie vérifiée | À faire |
 | **2** | Parcours d’arbres itératifs | État borné à la place de la récursivité ; refus sûrs conservés | À faire |
 | **3** | Trous de préservation 0.8.0 | Conversions relues, pannes combinées, nettoyages/restaurations consignés | À faire |
@@ -68,12 +69,14 @@ secteur**, alors qu’un changement de lecteur coûte une course de tête et
 un démarrage moteur. Les lots de 16 secteurs conservent les six
 opérations disque par secteur et l’ordre de sûreté ; seul le rythme change.
 
-Sémantique inchangée et vérifiée : création exclusive, source intacte,
-nom existant refusé, VTOC réservée avant toute donnée, relecture de
-chaque écriture, comparaison intégrale des deux disques avant
-publication, entrée de catalogue publiée en dernier, `copy_fault`
-verrouillé sur une écriture incertaine. Toujours pas de suppression,
-renommage, remplacement, formatage ni copie à un seul lecteur.
+Sémantique de copie inchangée et vérifiée : création exclusive, source
+intacte, nom existant refusé, VTOC réservée avant toute donnée,
+relecture de chaque écriture, comparaison intégrale des deux disques
+avant publication, entrée de catalogue publiée en dernier, `copy_fault`
+verrouillé sur une écriture incertaine. 0.7.0 ajoute les tags, le viewer
+HGR, un éditeur qui ne sauve que sous un nom nouveau, et DEL qui marque
+l'entrée de catalogue avant de libérer les secteurs. Toujours pas de
+renommage, remplacement sur place, formatage ni copie à un seul lecteur.
 
 Les tests hôtes exécutent désormais le **vrai 6502** sous sim65, les deux
 images restant côté test pour pouvoir faire échouer, tronquer ou
@@ -199,6 +202,25 @@ d'une première sauvegarde et des nouvelles tentatives, avec contrôle des
 octets et des fermetures avant renommage. 48 tests ciblés, deux liens et
 sept images ProDOS passent ; EDIT garde 138/118 octets libres, MAIN reste
 à 281/791. Les nettoyages des autres appelants de `new_output` restent ouverts.
+
+Douzième incrément : BINARY2 réserve directement ses sorties et contrôle
+leur nettoyage. Une troncature d'en-tête, contenu ou remplissage, ou une
+fermeture échouée, n'annonce plus un succès. Les extraits précédents et les
+collisions restent intacts ; un nettoyage échoué nomme le fichier conservé.
+Neuf régressions C intégrées à `make test`, 56 tests ciblés et sept images
+ProDOS validés. BINARY2 garde 1 694/1 709 octets libres ; résident inchangé.
+Les nettoyages UNSHRINK, DISKIMG, IMGFS et DOS33 restent ouverts, ainsi que
+la relecture des sorties et la validation complète des attributs Binary II.
+
+Incrément demandé : écriture sur vrai DOS 3.3 depuis ProDOS par C / DOSWRITE
+(FILES/XL), pour la sélection TXT/BIN/BAS/INT jusqu'à 65 535 octets. Audit
+complet des allocations, création sans remplacement, contrôle de protection,
+confirmation, VTOC réservé, relecture et publication finale du catalogue.
+Source conservée ; pas de MOVE ni d'écriture d'image. Les échecs peuvent
+laisser de l'espace réservé, signalé. Le retour à la liste des volumes
+réinitialise aussi le mode DOS/image pour permettre les réouvertures.
+Tests C de pannes, sim65 deux CPU et banc POM2 Disk II dans `doswrite`.
+La copie par lots et les autres mutations DOS restent à faire.
 
 ## 2. Parcours d’arbres itératifs
 

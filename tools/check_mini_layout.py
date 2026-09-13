@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 """Refuse a Mini build that would reach into DOS, and report what is left.
 
-A 48 KB Apple II+ running DOS 3.3 leaves $2000-$7FFF for the program.
-Above that sit DOS's file buffers and RWTS: overrunning them would not
-fail at link time, it would corrupt whatever DOS is holding, including a
-sector on its way to a disk. So the limit is checked here, on every link,
-and the remaining room is printed rather than left to be guessed at.
+BRUN loads at $1000 so the editor and delete can sit below the hi-res page.
+The resident program starts at $4000 and may run up to $95FF: $9600 is
+Applesoft's HIMEM under this DOS, where the file buffers begin. Reaching
+past it would not fail at link time, it would corrupt whatever DOS holds
+there, including a sector on its way to a disk. So the limit is checked
+on every link and the remaining room is printed rather than guessed at.
 """
 import re
 import sys
 from pathlib import Path
 
-# $8000 upward belongs to DOS 3.3 on a 48 KB machine.
-DOS_FLOOR = 0x8000
-LOAD = 0x2000
+DOS_FLOOR = 0x9600
+BRUN = 0x1000
+RESIDENT = 0x4000
+LOW_CEILING = 0x2000
 
 
 def segments(text):
@@ -33,16 +35,26 @@ def main():
     if len(sys.argv) != 2:
         raise SystemExit('usage: check_mini_layout.py build-mini/mini.map')
     segs = segments(Path(sys.argv[1]).read_text())
-    for name in ('STARTUP', 'CODE', 'RODATA', 'DATA', 'BSS'):
+    for name in ('LOWSTART', 'LOWCODE', 'STARTUP', 'CODE', 'RODATA', 'DATA', 'BSS'):
         if name not in segs:
             raise SystemExit(f'{name} missing from the map')
-    if segs['STARTUP'][0] != LOAD:
-        raise SystemExit(f'STARTUP must start at ${LOAD:04X}: BRUN enters there')
-    end = max(start + size for start, _, size in segs.values())
-    code = sum(segs[n][2] for n in ('STARTUP', 'CODE', 'RODATA', 'DATA'))
+    if segs['LOWSTART'][0] != BRUN:
+        raise SystemExit(f'LOWSTART must start at ${BRUN:04X}: BRUN enters there')
+    if segs['STARTUP'][0] != RESIDENT:
+        raise SystemExit(f'STARTUP must start at ${RESIDENT:04X}')
+    low_end = segs['LOWSTART'][0] + segs['LOWSTART'][2]
+    low_end = max(low_end, segs['LOWCODE'][0] + segs['LOWCODE'][2])
+    if low_end > LOW_CEILING:
+        raise SystemExit(f'LOW code reaches ${low_end:04X}, into the working area')
+    end = max(start + size for start, _, size in segs.values() if start >= RESIDENT)
+    code = sum(segs[n][2] for n in ('LOWSTART', 'LOWCODE', 'STARTUP', 'CODE',
+                                    'RODATA', 'DATA'))
     free = DOS_FLOOR - end
+    low_free = LOW_CEILING - low_end
     print(f'mini: code+data {code} bytes, BSS {segs["BSS"][2]} bytes, '
-          f'ends at ${end:04X}, {free} bytes free below DOS at ${DOS_FLOOR:04X}')
+          f'resident ends at ${end:04X}, {free} bytes free below DOS at '
+          f'${DOS_FLOOR:04X}; LOW ends at ${low_end:04X}, {low_free} bytes '
+          f'free below the working area')
     if free < 0:
         raise SystemExit('mini: the program would overwrite DOS 3.3')
 

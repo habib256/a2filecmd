@@ -37,6 +37,7 @@ pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 | `memory.py` | le creux maximal de la pile C, mesure en faisant travailler le programme |
 | `mini33.py` | the Apple II+ 48 KB DOS 3.3 edition on an NMOS core: panels, pagination, long names, preview, malformed and missing disks, quit and relaunch, and changed-character-only screen writes through watchpoints |
 | `mini33_write.py` | the same edition's real DOS writes on disposable images: cancel, hardware write protection, a verified copy, a refused collision, then DOS BLOAD and SAVE over the result |
+| `mini33_ops.py` | tags, hi-res viewer, exclusive TXT create and catalog-first delete, on disposable images |
 | `mini33_time.py` | what the disk paths cost in cycles, since a missed sector is a whole 200 000-cycle revolution: catalog reads and a 48-sector copy. Read-only on the catalog paths |
 | `pom2.py` | le pilote d'emulateur commun |
 
@@ -305,3 +306,10 @@ missing targets, failed rereads, Escape and unavailable arrows.
 poisoned entry tables, vanished targets and read failures, including an
 Open-Apple-modified arrow. Neither loop may launch a different file after
 a failed lookup.
+
+`doswrite.py` valide C de ProDOS vers un vrai Disk II DOS 3.3 dans POM2,
+sur copies jetables des images XL : trois allers-retours volumes/catalogue,
+refus de confirmation, copies BAS/BIN/TXT, collision, protection physique,
+conservation des autres fichiers, du volume source et d'AUX. Exécuter
+`A2FC_PRESET=iie_unenh python3 bench/doswrite.py` puis
+`A2FC_IMG=A2FILECMD-full python3 bench/doswrite.py` après `make disk`.

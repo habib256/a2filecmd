@@ -7,7 +7,7 @@
 
         .include "mini.inc"
 
-        .export key
+        .export key, key_raw
 
         .import present
 
@@ -15,6 +15,11 @@
 
 key:
         jsr     present
+        ; fall through
+
+; key_raw -- waits without presenting, for when the text page is not the
+; thing being looked at: a hi-res picture is on screen instead.
+key_raw:
 @wait:
         lda     KBD
         bpl     @wait
