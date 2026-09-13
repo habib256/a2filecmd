@@ -1,395 +1,119 @@
-/* fixtypes.c -- set the ProDOS type and auxtype of the tagged files (or the
- * one under the cursor) from the .SUFFIX of their name, then, if asked,
- * drop that suffix from the name. A small service-table overlay.
- *
- * From the ! menu, on a ProDOS directory (the volume list, an image or a
- * DOS 3.3 disk are refused). Small, so the entry tables at $2000 stay
- * where they are: the targets are simply the tagged entries of
- * api->panels[*api->active], or the one under the cursor when nothing is
- * tagged. Each one whose suffix is in the table gets GET_FILE_INFO ($C4)
- * then SET_FILE_INFO ($C3) with the table's type and auxtype;
- * directories, unknown suffixes and ProDOS refusals are counted as
- * skipped. Then "Drop suffix?": if yes, a second pass over the
- * same entries RENAMEs ($C2) each one to its name without the suffix,
- * unless the suffix must stay (ProDOS boots .SYSTEM files by that name,
- * A2FC opens disk images .PO .DSK .DO .2MG .HDV by theirs) or nothing
- * would be left of the name. A name already taken needs no test of ours:
- * ProDOS answers $47 and the file keeps the name it had.
- *
- * Written for size (1,280 bytes), like volname.c, and every trick was
- * needed:
- *
- *  - the services are reached through one plain-6502 trampoline; the
- *    stubs before it put the slot in a byte of their own rather than in
- *    Y, which lets them keep the optimiser (with it, the ldy of
- *    volname.c dies before the jmp; without it, each stub drags a dead
- *    epilogue). The four services called with one argument share a
- *    single stub, the caller setting the slot;
- *  - the walk of the entries, the suffix match, the length byte of the
- *    path and the cut of the name are inline 6502, the last two in one
- *    block so that the pointer set up for the first serves the second;
- *  - the two Pascal paths live in api->copy_buf, the last line is built
- *    in api->note -- the only buffer that survives the redraw -- and the
- *    BSS holds nothing but a few bytes of state;
- *  - the rules are read backwards: each record is its suffix reversed and
- *    ending with the dot (the terminator, so no length byte), then the
- *    type, the auxtype high byte and its low byte. Matching from the end
- *    of the name that way, .SYS and .SYSTEM cannot be confused, and the
- *    whole table stays under 256 bytes, so one X register walks it. The
- *    first NKEEP records are the suffixes that stay in the name. */
-#include <stddef.h>
+/* Attribute repair from explicit suffixes and validated Duet content.
+ * API v5 supplies an immutable entry snapshot at $3000. Code and BSS are
+ * linked below it. Only confirmed metadata/rename operations write a disk;
+ * content is read-only, no AUX, and every metadata lookup must succeed. */
 #include "../a2fc_plugin.h"
-
-void __fastcall__ plugin_entry(const struct A2fcApi* api);
-
-struct PluginHeader {
-    unsigned int signature; unsigned char flags;
-    void __fastcall__ (*entry)(const struct A2fcApi*);
-    unsigned char r0, r1, r2; char desc[25];
+#include <string.h>
+void __fastcall__ plugin_entry(const struct A2fcApi*);
+struct Header { unsigned int magic; unsigned char flags;
+ void __fastcall__ (*entry)(const struct A2fcApi*); unsigned char r[3]; char desc[48]; };
+#pragma rodata-name(push,"OVLHDR")
+const struct Header __plugin_header={PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry,{0,0,0},
+ "Review and repair file types; marked or selected"};
+#pragma rodata-name(pop)
+struct Rule { char suffix[8]; unsigned char type; unsigned int aux; unsigned char keep; };
+static const struct Rule rules[]={
+ {".SYSTEM",255,0x2000,1},{".PO",6,0,1},{".DSK",6,0,1},{".DO",6,0,1},
+ {".2MG",6,0,1},{".HDV",6,0,1},{".ED",0xD5,0xD0E7,1},{".PT3",6,0,1},
+ {".SHK",0xE0,0x8002,0},{".SDK",0xE0,0x8002,0},{".BXY",0xE0,0x8000,0},
+ {".BNY",0xE0,0x8000,0},{".AWP",0x1A,0,0},{".ADB",0x19,0,0},{".ASP",0x1B,0,0},
+ {".BAS",0xFC,0x0801,0},{".SYS",255,0x2000,0},{".TXT",4,0,0},{".MD",4,0,1},
+ {".CSV",4,0,0},{".BIN",6,0,0},{".MB",6,0,1},{".PIC",6,0x2000,0},
+ {".HGR",6,0x2000,0},{".DHR",6,0x2000,0}
 };
-#pragma rodata-name (push, "OVLHDR")
-const struct PluginHeader __plugin_header = {
-    PLUGIN_MAGIC, 0, plugin_entry, 0, 0, 0,
-    "ProDOS types by suffix"
-};
-#pragma rodata-name (pop)
-
-#define NKEEP  6                /* the first six suffixes stay in the name */
-static const unsigned char rules[] = {
-    'M','E','T','S','Y','S','.', 0xFF,0x20,0x00,
-    'O','P','.',                 0x06,0x00,0x00,
-    'K','S','D','.',             0x06,0x00,0x00,
-    'O','D','.',                 0x06,0x00,0x00,
-    'G','M','2','.',             0x06,0x00,0x00,
-    'V','D','H','.',             0x06,0x00,0x00,
-    'K','H','S','.',             0xE0,0x80,0x02,
-    'K','D','S','.',             0xE0,0x80,0x02,
-    'Y','X','B','.',             0xE0,0x80,0x00,
-    'Y','N','B','.',             0xE0,0x80,0x00,
-    'P','W','A','.',             0x1A,0x00,0x00,
-    'B','D','A','.',             0x19,0x00,0x00,
-    'P','S','A','.',             0x1B,0x00,0x00,
-    'S','A','B','.',             0xFC,0x08,0x01,
-    'S','Y','S','.',             0xFF,0x20,0x00,
-    'T','X','T','.',             0x04,0x00,0x00,
-    'D','M','.',                 0x04,0x00,0x00,
-    'V','S','C','.',             0x04,0x00,0x00,
-    'N','I','B','.',             0x06,0x00,0x00,
-    'B','M','.',                 0x06,0x00,0x00,
-    'C','I','P','.',             0x06,0x20,0x00,
-    'R','G','H','.',             0x06,0x20,0x00,
-    'R','H','D','.',             0x06,0x20,0x00,
-    0
-};
-
-static const char m_dir[]  = "Open a directory.";
-static const char m_ask[]  = "Drop suffix?";
-static const char m_done[] = "%u files typed, %u renamed, %u skipped";
-
-/* MLI parameter blocks (cc65 packs them). GET_FILE_INFO $C4 takes 10
- * parameters, SET_FILE_INFO $C3 the first 7 of the same block;
- * RENAME $C2 {2, old, new}. */
-struct Gfi {
-    unsigned char n; unsigned char* path;
-    unsigned char access, type, auxl, auxh;
-    unsigned char storage; unsigned int blocks, mdate, mtime, cdate, ctime;
-};
-struct Rn { unsigned char n; unsigned char* old; unsigned char* new; };
-
-/* Nothing here is read before being written at entry. */
+struct Info { unsigned char n; unsigned char* path; unsigned char access,type;
+ unsigned int aux; unsigned char storage; unsigned int blocks,mdate,mtime,cdate,ctime; };
+struct Rename { unsigned char n; unsigned char* old; unsigned char* dest; };
 static const struct A2fcApi* A;
-static struct Panel* P;
-static struct Entry* E;                 /* the entry being treated */
-static unsigned char* TP;               /* its tag byte, and the bit in mask */
-static unsigned char slot;              /* the service's offset in the table */
-static unsigned char mask, i, n, cur, any, pass, ok;
-static unsigned char typed, renamed, skipped;
-static unsigned char last, cut, r, R;   /* rule_of: the last letter of the name,
-                                         * the suffix with its dot, the rule and
-                                         * where its type byte sits in rules[] */
-static struct Gfi gfi;
-static struct Rn rn = { 2, 0, 0 };      /* DATA: the count is loaded with the file,
-                                         * the two paths are cut out of copy_buf */
-
-/* The trampoline: the slot names the service, the argument the stub's
- * prologue pushed is dropped, and A/X and the C stack are as the service
- * expects them. */
-#pragma optimize (push, off)
-static void tramp(void)
-{
-    asm("lda %v", A);
-    asm("sta ptr1");
-    asm("lda %v+1", A);
-    asm("sta ptr1+1");
-    asm("ldy %v", slot);
-    asm("lda (ptr1),y");
-    asm("sta ptr2");
-    asm("iny");
-    asm("lda (ptr1),y");
-    asm("sta ptr2+1");
-    asm("jsr popax");
-    asm("jmp (ptr2)");
+static struct Info info, before;
+static struct Rename rn;
+static char path[PATH_LEN], question[80];
+static unsigned char pas[PATH_LEN+1], dest[PATH_LEN+1];
+static unsigned char type, keep, cut, entry_index, tagged_any;
+static unsigned int aux, typed, renamed, skipped, failed;
+static const struct Entry* e;
+static const struct Panel* pan;
+#define DP_READ A->fread
+#include "../duet_probe.h"
+static unsigned char getinfo(void) {
+ info.n=10;info.path=pas;return A->mli(0xC4,&info);
 }
-#pragma optimize (pop)
-
-/* The stubs. The last parameter is 16 bits wide so that the prologue
- * always pushes two bytes, which the trampoline drops. svc1 serves every
- * service taking one argument: message, confirm, draw_all, read_panel --
- * the caller sets slot, and two calls in a row set it once. */
-#define SLOT(field) slot = offsetof(struct A2fcApi, field)
-static unsigned char __fastcall__ svc1(const void* a) { asm("jmp %v", tramp); }
-static unsigned char __fastcall__ build_full(char* out, const struct Panel* pan, const struct Entry* e)
-    { asm("lda #%b", offsetof(struct A2fcApi, build_full)); asm("sta %v", slot); asm("jmp %v", tramp); }
-static unsigned char __fastcall__ mli(unsigned char cmd, void* block)
-    { asm("lda #%b", offsetof(struct A2fcApi, mli)); asm("sta %v", slot); asm("jmp %v", tramp); }
-
-#pragma optimize (push, off)
-/* The active panel is usable, and n, cur and any say what to walk: the
- * count, the cursor, and whether any tag bit is set. 0 = refused. */
-static unsigned char prep(void)
-{
-    asm("lda %v", P);
-    asm("sta ptr1");
-    asm("lda %v+1", P);
-    asm("sta ptr1+1");
-    asm("ldy #0");                  /* no path: the volume list */
-    asm("lda (ptr1),y");
-    asm("beq pr9");
-    asm("ldy #$5E");                /* fs: an image or a DOS 3.3 disk */
-    asm("lda (ptr1),y");
-    asm("bne pr9");
-    asm("ldy #$40");                /* count */
-    asm("lda (ptr1),y");
-    asm("sta %v", n);
-    asm("beq pr9");
-    asm("ldy #$41");                /* cursor */
-    asm("lda (ptr1),y");
-    asm("sta %v", cur);
-    asm("ldy #$5D");                /* the tag bytes, $4C to $5D */
-    asm("lda #0");
-    asm("pr1: ora (ptr1),y");
-    asm("dey");
-    asm("cpy #$4B");
-    asm("bne pr1");
-    asm("sta %v", any);
-    asm("lda #1");
-    asm("bne pr8");
-    asm("pr9: lda #0");
-    asm("pr8: ldx #0");
+static unsigned char same(void) {
+ return info.access==before.access && info.type==before.type && info.aux==before.aux &&
+  info.storage==before.storage && info.blocks==before.blocks &&
+  info.mdate==before.mdate && info.mtime==before.mtime &&
+  info.cdate==before.cdate && info.ctime==before.ctime;
 }
-
-/* The rule whose ".SUFFIX" ends E's name (1 = found), read backwards from
- * the last letter: R is then where its type byte sits in rules[], r its
- * number, cut the length of the suffix with its dot. */
-static unsigned char rule_of(void)
-{
-    asm("lda %v", E);
-    asm("sta ptr1");
-    asm("lda %v+1", E);
-    asm("sta ptr1+1");
-    asm("ldy #$11");                /* a directory has no suffix */
-    asm("lda (ptr1),y");
-    asm("cmp #$0F");
-    asm("beq rl9");
-    asm("ldy #$FF");
-    asm("rl0: iny");
-    asm("lda (ptr1),y");
-    asm("bne rl0");
-    asm("dey");                     /* the last letter of the name */
-    asm("bmi rl9");
-    asm("sty %v", last);
-    asm("ldx #0");
-    asm("stx %v", r);
-    asm("rl4: stx %v", R);          /* the record starts here */
-    asm("ldy %v", last);
-    asm("rl5: lda %v,x", rules);
-    asm("cmp (ptr1),y");
-    asm("bne rl7");
-    asm("inx");
-    asm("cmp #$2E");                /* the dot closes the record: matched */
-    asm("beq rl6");
-    asm("dey");
-    asm("bpl rl5");
-    asm("bmi rl7");                 /* the name is shorter than the suffix */
-    asm("rl6: tya");                /* the dot must not open the name */
-    asm("beq rl7b");
-    asm("txa");
-    asm("sec");
-    asm("sbc %v", R);
-    asm("sta %v", cut);
-    asm("stx %v", R);               /* R on the record's type byte */
-    asm("lda #1");
-    asm("bne rl8");
-    asm("rl7: lda %v,x", rules);    /* past what is left of the suffix */
-    asm("inx");
-    asm("cmp #$2E");
-    asm("bne rl7");
-    asm("rl7b: inx");               /* and past the type and the auxtype */
-    asm("inx");
-    asm("inx");
-    asm("inc %v", r);
-    asm("lda %v,x", rules);
-    asm("bne rl4");
-    asm("rl9: lda #0");
-    asm("rl8: ldx #0");
+/* 0 no proposal, 1 proposal, 2 read/close failure or invalid explicit Duet. */
+static unsigned char propose(void) {
+ unsigned char r,n,len,duet=0;
+ FILE* f;
+ type=info.type;aux=info.aux;keep=1;cut=0;
+ n=A->strlen(e->name);
+ for(r=0;r<sizeof rules/sizeof rules[0];++r) {
+  len=A->strlen(rules[r].suffix);
+  if(n>len && !A->strcmp(e->name+n-len,rules[r].suffix)) {
+   type=rules[r].type;aux=rules[r].aux;keep=rules[r].keep;cut=len;
+   /* A generic BIN suffix must not erase a DOS load address. */
+   if(type==6 && !aux)aux=info.aux;
+   if(type==0xD5)duet=1;
+   break;
+  }
+ }
+ if(duet || (info.type==6 && e->name[0]=='M' && e->name[1]=='.') ||
+    (info.type==0xD5 && info.aux==0xD0E7)) {
+  f=A->fopen(path,"rb");if(!f)return 2;
+  r=duet_probe(f,A->copy_buf);
+  if(ferror(f))r=2;
+  if(A->fclose(f))r=2;
+  if(r!=1)return 2;
+  type=0xD5;aux=0xD0E7;keep=1;return 1;
+ }
+ return cut!=0;
 }
-#pragma optimize (pop)
-
-/* One target entry, in the pass that pass names. */
-static void one(void)
-{
-    if (!rule_of() || !build_full((char*)rn.old + 1, P, E)) goto bad;
-    /* The Pascal length byte of the path, then -- second pass -- the same
-     * path without its suffix in rn.new, ok saying it was built. */
-    asm("ldy #0");
-    asm("sty %v", ok);
-    asm("lda %v+1", rn);
-    asm("sta ptr1");
-    asm("lda %v+2", rn);
-    asm("sta ptr1+1");
-    asm("op1: iny");
-    asm("lda (ptr1),y");
-    asm("bne op1");
-    asm("dey");
-    asm("tya");
-    asm("ldy #0");
-    asm("sta (ptr1),y");
-    asm("lda %v", pass);
-    asm("beq op9");
-    asm("lda %v", r);
-    asm("cmp #%b", NKEEP);
-    asm("bcc op9");                 /* this suffix stays in the name */
-    asm("lda %v+3", rn);
-    asm("sta ptr2");
-    asm("lda %v+4", rn);
-    asm("sta ptr2+1");
-    asm("lda (ptr1),y");
-    asm("sec");
-    asm("sbc %v", cut);
-    asm("bcc op9");
-    asm("beq op9");                 /* nothing would be left of the name */
-    asm("sta (ptr2),y");
-    asm("tay");
-    asm("op2: lda (ptr1),y");
-    asm("sta (ptr2),y");
-    asm("dey");
-    asm("bne op2");
-    asm("inc %v", ok);
-    asm("op9:");
-    if (pass) {
-        if (!ok || mli(0xC2, &rn)) return;
-        ++renamed;
-        return;
-    }
-    gfi.n = 10;                     /* GET_FILE_INFO, then the same block back */
-    if (mli(0xC4, &gfi)) goto bad;
-    asm("lda #7");
-    asm("sta %v", gfi);
-    asm("ldx %v", R);
-    asm("lda %v,x", rules);
-    asm("sta %v+4", gfi);           /* type */
-    asm("lda %v+1,x", rules);
-    asm("sta %v+6", gfi);           /* aux high */
-    asm("lda %v+2,x", rules);
-    asm("sta %v+5", gfi);           /* aux low */
-    if (mli(0xC3, &gfi)) goto bad;
-    ++typed;
-    return;
-bad:
-    if (!pass) ++skipped;
+static void one(void) {
+ unsigned char r;
+ if(e->type==15 || !A->build_full(path,pan,e)) {++skipped;return;}
+ pas[0]=A->strlen(path);A->strcpy((char*)pas+1,path);
+ if(getinfo()) {++failed;return;}
+ if(info.storage<1 || info.storage>3 || !(info.access&2)) {++skipped;return;}
+ before=info;
+ r=propose();
+ if(r!=1) {if(r==2)++failed;else ++skipped;return;}
+ if(type==info.type && aux==info.aux) {++skipped;return;}
+ A->sprintf(question,"%s: $%02X/$%04X -> $%02X/$%04X?",e->name,info.type,info.aux,type,aux);
+ if(!A->confirm(question)) {++skipped;return;}
+ /* No stale panel metadata, or changed disk after the question, may be used
+  * for SET_FILE_INFO. This also preserves access bits and all timestamps. */
+ if(getinfo() || !same()) {++failed;return;}
+ info.n=7;info.type=type;info.aux=aux;
+ if(A->mli(0xC3,&info)) {++failed;return;}
+ if(getinfo() || info.type!=type || info.aux!=aux || info.access!=before.access) {++failed;return;}
+ ++typed;
+ if(keep || !cut || !(info.access&0x40))return;
+ A->sprintf(question,"%s: drop suffix?",e->name);
+ if(!A->confirm(question))return;
+ before=info;
+ if(getinfo() || !same()) {++failed;return;}
+ dest[0]=pas[0]-cut;A->memcpy(dest+1,pas+1,dest[0]);
+ /* GET_FILE_INFO must positively report absence; any other error refuses. */
+ info.path=dest;info.n=10;
+ if(A->mli(0xC4,&info)!=0x46) {++failed;return;}
+ rn.n=2;rn.old=pas;rn.dest=dest;
+ if(A->mli(0xC2,&rn)) {++failed;return;}
+ ++renamed;
 }
-
-/* The entries of the panel: the tagged ones, or the one under the cursor
- * when nothing is tagged. E walks the table by 29 bytes, TP and mask the
- * tag bits. */
-#pragma optimize (push, off)
-static void walk(void)
-{
-    asm("lda %v", P);
-    asm("sta ptr1");
-    asm("lda %v+1", P);
-    asm("sta ptr1+1");
-    asm("ldy #$4A");                /* pan->e */
-    asm("lda (ptr1),y");
-    asm("sta %v", E);
-    asm("iny");
-    asm("lda (ptr1),y");
-    asm("sta %v+1", E);
-    asm("lda ptr1");                /* pan->tags */
-    asm("clc");
-    asm("adc #$4C");
-    asm("sta %v", TP);
-    asm("lda ptr1+1");
-    asm("adc #0");
-    asm("sta %v+1", TP);
-    asm("lda #1");
-    asm("sta %v", mask);
-    asm("lda #0");
-    asm("sta %v", i);
-    asm("wk1: lda %v", i);
-    asm("cmp %v", n);
-    asm("bcs wk9");
-    asm("lda %v", any);
-    asm("beq wk2");
-    asm("lda %v", TP);
-    asm("sta ptr1");
-    asm("lda %v+1", TP);
-    asm("sta ptr1+1");
-    asm("ldy #0");
-    asm("lda (ptr1),y");
-    asm("and %v", mask);
-    asm("bne wk3");
-    asm("beq wk4");
-    asm("wk2: lda %v", i);
-    asm("cmp %v", cur);
-    asm("bne wk4");
-    asm("wk3: jsr %v", one);
-    asm("wk4: asl %v", mask);
-    asm("bne wk5");
-    asm("lda #1");
-    asm("sta %v", mask);
-    asm("inc %v", TP);
-    asm("bne wk5");
-    asm("inc %v+1", TP);
-    asm("wk5: lda %v", E);
-    asm("clc");
-    asm("adc #29");
-    asm("sta %v", E);
-    asm("bcc wk6");
-    asm("inc %v+1", E);
-    asm("wk6: inc %v", i);
-    asm("bne wk1");
-    asm("wk9:");
-}
-#pragma optimize (pop)
-
-void __fastcall__ plugin_entry(const struct A2fcApi* api)
-{
-    A = api;
-    P = api->panels;
-    if (*api->active) ++P;
-    rn.old = api->copy_buf;         /* two Pascal paths of 65 bytes */
-    gfi.path = rn.old;              /* GET_FILE_INFO only ever reads that one */
-    asm("lda %v+1", rn);
-    asm("clc");
-    asm("adc #65");
-    asm("sta %v+3", rn);
-    asm("lda %v+2", rn);
-    asm("adc #0");
-    asm("sta %v+4", rn);
-    SLOT(message);
-    if (!prep()) { svc1(m_dir); return; }
-    typed = renamed = skipped = pass = 0;
-    walk();
-    SLOT(confirm);
-    if (typed && svc1(m_ask)) { pass = 1; walk(); }
-    SLOT(read_panel);
-    svc1(0);
-    svc1((const void*)1);
-    SLOT(draw_all);
-    svc1(0);
-    /* api->note survives the redraw; copy_buf does not. */
-    api->sprintf(api->note, m_done, typed, renamed, skipped);
-    SLOT(message);
-    svc1(api->note);
+void __fastcall__ plugin_entry(const struct A2fcApi* api) {
+ A=api;
+ if(A->version<5) {A->strcpy(A->note,"FIXTYPES needs A2FC API v5.");return;}
+ pan=A->panels+*A->active;
+ if(!pan->path[0] || pan->fs || pan->count>MAX_ENTRIES) {A->strcpy(A->note,"Open a ProDOS directory.");return;}
+ typed=renamed=skipped=failed=tagged_any=0;
+ for(entry_index=0;entry_index<sizeof pan->tags;++entry_index)tagged_any|=pan->tags[entry_index];
+ for(entry_index=0;entry_index<pan->count;++entry_index) {
+  if(tagged_any ? !(pan->tags[entry_index>>3]&(1U<<(entry_index&7))) : entry_index!=pan->cursor)continue;
+  e=&ENTRY_SNAPSHOT[entry_index];one();
+ }
+ A->sprintf(A->note,"%u typed, %u renamed, %u skipped, %u failed",typed,renamed,skipped,failed);
+ A->strcpy(A->reselect,A->selected->name);
 }

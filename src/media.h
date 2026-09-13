@@ -2,6 +2,7 @@
  * AUX consent lasts only for the current overlay_run browsing session. */
 #include "viewer_ids.h"
 static unsigned char media_request;
+static unsigned char media_kind;      /* the media overlay running, or 0 */
 static unsigned int media_first[2];
 static unsigned char file_viewer(const struct Entry*, unsigned char);
 
@@ -53,7 +54,7 @@ static unsigned char media_prepare(unsigned char kind)
             e=&pan->e[i];
             if (is_dir(e)) continue;
             if (!build_full(full,pan,e)) break;
-            viewer=file_viewer(e,kind<3?kind+1:0);
+            viewer=file_viewer(e,kind<4?kind+1:0);
             if (!viewer) break; /* An I/O error is not evidence of another type. */
             if (viewer==kind) {
                 if (kind==V_PURPLE && (e->name[strlen(e->name)-1]=='2' || !strcmp(e->name,selected.name))) continue;
@@ -74,7 +75,10 @@ static unsigned char media_prepare(unsigned char kind)
 static void media_loading(unsigned char dir)
 {
     /* Entry tables are still covered by the running viewer. Only text RAM
-     * may be prepared before its cleanup can reveal the loading screen. */
+     * may be prepared before its cleanup can reveal the loading screen.
+     * A lo-res picture lives in that very RAM: it stays on the air until
+     * its neighbour is drawn over it (overlay_run keeps graphics on). */
+    if(media_kind==V_DGR)return;
     prepare_text();clrscr();cputs("Loading ");cputs(album[dir]);
 }
 static unsigned char media_key(unsigned char key)

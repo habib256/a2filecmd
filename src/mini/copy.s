@@ -25,12 +25,13 @@
         .export _copy_fault, _cp_index, _cp_dest, _ram_source, _data_count
         .export _cs_track, _cs_sector, _cs_type, _cs_name
         .export _cs_seclo, _cs_sechi
-        .export valid_data
+        .export valid_data, read_at, vtoc_bit, memcpy256, memcmp256
+        .export slot_offset
 
         .import read_sector, write_sector, rwts_error
         .import buffer, drive, track, sector, count, sector_seen
         .import ent_track, ent_sector, ent_seclo, ent_sechi, ent_type
-        .import ent_index, ent_ptr
+        .import ent_slot, ent_index, ent_ptr, sanitise
         .import seen_bit, bit_masks
         .import scratch
         .import copy_progress
@@ -43,6 +44,7 @@ cs_sector:      .res 1
 cs_type:        .res 1
 cs_seclo:       .res 1
 cs_sechi:       .res 1
+cs_slot:        .res 1          ; catalog sector << 3 | slot, from ent_slot
 cs_name:        .res NAME_LEN
 _cs_track       = cs_track
 _cs_sector      = cs_sector
@@ -113,6 +115,7 @@ aud_i:          .res 1
 aud_off:        .res 1
 aud_files:      .res 1
 aud_slot:       .res 1
+aud_n:          .res 1          ; catalog sectors visited: 15 at most
 aud_first_t:    .res 1
 aud_first_s:    .res 1
 aud_size:       .res 2
@@ -178,21 +181,57 @@ free_sector:
         rts
 
 ; valid_data -- A = track, X = sector. Carry set when it may hold file
-; data: tracks 3 to 34, never the catalog track.
+; data: tracks 1 to 34, never track 0 (the boot sector) or the catalog
+; track. Tracks 1 and 2 hold DOS on a normal disk, where the VTOC marks
+; all 32 of their sectors allocated; a "no DOS" disk frees them and DOS
+; itself then files data there. So they are accepted only while the VTOC
+; in RAM (the disk being walked) shows at least one free sector on them:
+; a chain pointing into a live DOS image is still refused. A preserved.
 valid_data:
         cpx     #16
         bcs     @no
         cmp     #35
         bcs     @no
-        cmp     #3
-        bcc     @no
         cmp     #CATALOG_TRACK
         beq     @no
+        cmp     #3
+        bcs     @yes
+        cmp     #1
+        bcc     @no
+        pha                             ; A and X both go back to the caller
+        lda     vtoc+VTOC_BITMAP+4      ; track 1, sectors F-8 and 7-0
+        ora     vtoc+VTOC_BITMAP+5
+        ora     vtoc+VTOC_BITMAP+8      ; track 2
+        ora     vtoc+VTOC_BITMAP+9
+        beq     @dos                    ; nothing free there: DOS lives there
+        pla
+@yes:
         sec
         rts
+@dos:
+        pla
 @no:
         clc
         rts
+
+.ifdef SIM65
+        .segment "CODE"
+.else
+        .segment "LOWCODE"      ; prepare-time only: room below the area
+.endif
+; slot_offset -- A = slot 0-6 in a catalog sector, returns its offset
+slot_offset:
+        tax
+        lda     #CAT_FIRST
+@loop:
+        dex
+        bmi     @done
+        clc
+        adc     #CAT_ENTRY_LEN
+        jmp     @loop
+@done:
+        rts
+        .segment "CODE"
 
 ; claim -- A = track, X = sector. Takes ownership of one live sector in
 ; sector_seen. A = COPY_OK, or COPY_INVALID when the sector is outside
@@ -362,17 +401,14 @@ next_target:
         jmp     @loop
 
 ; name_matches -- X = offset of a 30-byte name in cat_buf. Carry set when
-; it is the file we were asked to copy. The panel's copy is compared with
-; the high bit put back, so a name the panel had to sanitise cannot match
-; and the copy is refused instead of taking the wrong file.
+; it is the name about to be published: the raw bytes of src_entry, which
+; a disk copy took from the source catalog and a create built from the
+; typed name, so catalog-art names collide exactly as DOS would see them.
 name_matches:
         ldy     #0
 @char:
         lda     cat_buf,x
-        sta     s0
-        lda     cs_name,y
-        ora     #$80
-        cmp     s0
+        cmp     src_entry+3,y
         bne     @no
         inx
         iny
@@ -567,8 +603,9 @@ map_source:
         jsr     memcpy256
         lda     vtoc+6
         sta     copy_src_volume
+        jsr     locate_source
+        bne     @out
         jsr     wipe_seen
-        jsr     build_src_entry
         lda     cs_track
         sta     wlk_t
         lda     cs_sector
@@ -582,6 +619,85 @@ map_source:
         jmp     walk
 @out:
         rts
+
+.ifdef SIM65
+        .segment "CODE"
+.else
+        .segment "LOWCODE"      ; prepare-time only: room below the area
+.endif
+; locate_source -- read the catalog sector cs_slot names and hold the
+; disk to the panel: the slot must still carry the T/S pointer, type,
+; sector count and (sanitised) name the panel showed, or the disk is not
+; the one the user pointed at (COPY_CHANGED). The raw 35-byte entry
+; becomes src_entry, so the copy keeps the name byte for byte, catalog
+; art included, and copy_execute can check the slot again after Y.
+locate_source:
+        lda     cs_slot
+        lsr     a
+        lsr     a
+        lsr     a
+        beq     @invalid
+        sta     src_cat_sector
+        lda     #CATALOG_TRACK
+        sta     src_cat_track
+        lda     cs_slot
+        and     #7
+        cmp     #CAT_ENTRIES
+        bcs     @invalid
+        jsr     slot_offset
+        sta     src_cat_offset
+        lda     src_cat_track
+        ldx     src_cat_sector
+        jsr     read_at
+        bne     @out
+        ldx     src_cat_offset
+        lda     buffer,x
+        cmp     cs_track
+        bne     @changed
+        lda     buffer+1,x
+        cmp     cs_sector
+        bne     @changed
+        lda     buffer+2,x
+        cmp     cs_type
+        bne     @changed
+        lda     buffer+33,x
+        cmp     cs_seclo
+        bne     @changed
+        lda     buffer+34,x
+        cmp     cs_sechi
+        bne     @changed
+        inx
+        inx
+        inx
+        ldy     #0
+@char:
+        lda     buffer,x
+        jsr     sanitise
+        cmp     cs_name,y
+        bne     @changed
+        inx
+        iny
+        cpy     #NAME_LEN
+        bcc     @char
+        ldx     src_cat_offset
+        ldy     #0
+@take:
+        lda     buffer,x
+        sta     src_entry,y
+        inx
+        iny
+        cpy     #CAT_ENTRY_LEN
+        bcc     @take
+        lda     #COPY_OK
+@out:
+        rts
+@invalid:
+        lda     #COPY_INVALID
+        rts
+@changed:
+        lda     #COPY_CHANGED
+        rts
+        .segment "CODE"
 
 wipe_seen:
         lda     #0
@@ -599,6 +715,7 @@ scan_catalog:
         lda     #0
         sta     aud_files
         sta     aud_slot
+        sta     aud_n
         sta     out_track
         lda     #CATALOG_TRACK
         ldx     #0
@@ -623,6 +740,10 @@ scan_catalog:
         lda     vtoc+2
         sta     aud_s
 @chain:
+        inc     aud_n           ; the catalog track has 15 sectors: a
+        lda     aud_n           ; longer chain is a loop, and the panel
+        cmp     #16             ; read that refused it may be stale
+        jcs     @invalid
         lda     aud_t
         cmp     #CATALOG_TRACK
         jne     @invalid
@@ -860,6 +981,8 @@ _copy_prepare:
         sta     cs_seclo
         lda     ent_sechi,y
         sta     cs_sechi
+        lda     ent_slot,y
+        sta     cs_slot
         lda     cp_index
         jsr     ent_index
         jsr     ent_ptr
@@ -902,6 +1025,11 @@ _copy_prepare:
         lda     #COPY_INVALID
         rts
 
+.ifdef SIM65
+        .segment "CODE"
+.else
+        .segment "LOWCODE"      ; prepare-time only: room below the area
+.endif
 ; count_lists -- ceil(data_count / 122), never fewer than one, so an
 ; empty file still gets the T/S list that makes it a file.
 count_lists:
@@ -934,6 +1062,7 @@ count_lists:
         inc     list_count
 @have:
         rts
+        .segment "CODE"
 
 ; reserve -- choose allocated_count free sectors in disk order. The last
 ; list_count of them become the T/S lists. Nothing is written: the VTOC
@@ -948,9 +1077,9 @@ reserve:
         lda     #0
         sta     num             ; sectors chosen so far
         sta     num+1
-        lda     #3              ; tracks 0 to 2 belong to DOS
-        sta     s4
-@track:
+        lda     #1              ; track 0 is the boot track; 1 and 2 are
+        sta     s4              ; free only on a disk without DOS, where
+@track:                         ; DOS itself files data on them
         lda     num
         cmp     allocated_count
         bne     @room
@@ -1050,9 +1179,36 @@ _copy_execute:
         lda     allocated_count+1
         adc     #0
         sta     copy_total+1
+        lda     ram_source      ; a disk source: its catalog slot must
+        bne     @srcok          ; still be the entry that was mapped, or
+        lda     copy_from       ; a source swapped at the prompt would be
+        sta     drive           ; read sector by sector as if it were it
+        lda     src_cat_track
+        ldx     src_cat_sector
+        jsr     read_at
+        jne     @unread
+        ldx     src_cat_offset
+        ldy     #0
+@srccmp:
+        lda     buffer,x
+        cmp     src_entry,y
+        jne     @changed
+        inx
+        iny
+        cpy     #CAT_ENTRY_LEN
+        bcc     @srccmp
+@srcok:
+        lda     copy_to         ; the VTOC is about to be replaced from
+        sta     drive           ; the reservation image: it must still be
+        lda     #CATALOG_TRACK  ; the one that image was planned on, or
+        ldx     #0              ; a disk swapped at the prompt would get
+        jsr     read_at         ; another disk's allocation map
+        jne     @unread
+        SETPTR  ptr, buffer
+        SETPTR  ptr2, vtoc
+        jsr     memcmp256
+        jne     @changed
         jsr     copy_progress
-        lda     copy_to
-        sta     drive
 
 ; Take the reserved sectors out of the VTOC image. Still in RAM.
 @clearbits:
@@ -1087,6 +1243,9 @@ _copy_execute:
         jmp     @onebit
 @changed:
         lda     #COPY_CHANGED
+        rts
+@unread:
+        lda     #COPY_READ      ; nothing written yet: a plain refusal
         rts
 
 ; The reservation reaches the disk before any data. Interrupted here the

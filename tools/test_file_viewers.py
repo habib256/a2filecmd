@@ -131,7 +131,9 @@ class FileViewers(unittest.TestCase):
     def test_audio_scan_filter_and_format_precedence(self):
         self.route('TUNE.MB',6,0,100,'MUSIC',picture=2)
         self.route('TUNE.PT3',0,0,100,'PT3',picture=3)
-        for picture,name in ((2,'TUNE.PT3'),(3,'TUNE.MB')):
+        self.route('TUNE.ED',6,0x2000,100,'DUET',picture=4)
+        self.route('JESU.JOY',0xD5,0xD0E7,1179,'DUET',picture=4)
+        for picture,name in ((2,'TUNE.PT3'),(3,'TUNE.MB'),(2,'TUNE.ED'),(4,'TUNE.MB'),(4,'TUNE.PT3')):
             self.route(name,6,0,100,'HEX',picture,fail=2)
         self.route('TUNE.MB',6,0,100,'DGRVIEW',picture=2,data=b'DGR')
         self.route('TUNE.MB',6,0,100,'ERROR',picture=2,fail=4)
@@ -158,6 +160,24 @@ class FileViewers(unittest.TestCase):
         for name, typ, expected in [('TEXT', 4, 'TEXT'), ('DOC', 0x1A, 'AWP'),
                     ('TUNE.MB', 6, 'MUSIC'), ('PROGRAM', 0xFF, 'RUN'), ('BASIC', 0xFC, 'RUN')]:
             self.route(name, typ, 0, 100, expected)
+
+    def test_electric_duet_by_desktop_type_or_suffix(self):
+        for name, typ, aux in [('JESU.JOY', 0xD5, 0xD0E7), ('CANON.ED', 0xD5, 0xD0E7),
+                               ('CANON.ED', 6, 0x2000), ('SONG.ED', 0, 0), ('M.ED', 4, 0)]:
+            self.route(name, typ, aux, 1179, 'DUET')
+        for name, typ, aux, expected in [('JESU.JOY', 0xD5, 0xD0E8, 'HEX'), ('JESU.JOY', 0xD6, 0xD0E7, 'HEX'),
+                                         ('SONG.EDX', 6, 0x2000, 'HEX'), ('ED', 6, 0x2000, 'HEX'), ('SONG.ED', 4, 0, 'DUET')]:
+            self.route(name, typ, aux, 1179, expected)
+        self.route('CANON.ED', 6, 0x2000, 8192, 'IMAGE', 1, raw=True)
+
+    def test_legacy_dos_duet_candidates_and_io_errors(self):
+        song = bytes([12,100,152,12,90,140,8,80,130,0,0,0])
+        for picture in (0,4):
+            self.route('M.FUR.ELISE',6,0,len(song),'DUET',picture,data=song)
+            self.route('M.FUR.ELISE',6,0x2000,len(song),'DUET',picture,data=song)
+            self.route('M.SLOW',6,0,len(song),'DUET',picture,data=bytes([255])+song[1:3]+bytes([200])+song[4:])
+            self.route('M.NOT.MUSIC',6,0,8,'HEX',picture,data=bytes(8))
+            for fail in (2,3,4):self.route('M.FUR.ELISE',6,0,len(song),'ERROR',picture,fail,data=song)
 
     def test_headers_identify_pictures_without_filename_or_type_hints(self):
         for picture in (0, 1):

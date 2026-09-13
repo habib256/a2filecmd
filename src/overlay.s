@@ -17,7 +17,7 @@
         .import _edit_entry, _run_entry, _attr_entry, _menu_entry
         .import _diskimg_entry
         .import _imgfs_entry
-        .import _dos33_entry
+        .import _dosget_entry
         .import _unshrink_entry
         .import _baslist_entry
         .import _compare_entry, _search_entry
@@ -81,8 +81,8 @@ _a2fc_link_id:
         header  BIG|AUX, _diskimg_entry, "Disk images: write one to a floppy, read a floppy, copy a floppy"
         .segment "IMGFS"
         header  0, _imgfs_entry, "Extract the tagged files of a disk image into the other panel (C)"
-        .segment "DOS33"
-        header  0, _dos33_entry, "A DOS 3.3 disk or image: extract its tagged files (C)"
+        .segment "DOSGET"
+        header  BIG, _dosget_entry, "A DOS 3.3 disk or image: extract its tagged files (C)"
         .segment "UNSHRINK"
         header  BIG|AUX, _unshrink_entry, "Extract a ShrinkIt (.SHK) archive into the other panel"
         .segment "MENU"

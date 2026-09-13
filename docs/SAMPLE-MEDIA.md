@@ -23,6 +23,10 @@ Ses rendus hôtes servent de référence ; `bench/sample_media.py` contrôle aus
 les vrais rendus assembleur dans POM2, pour chaque fichier du corpus.
 La validation matérielle signalée avant ces ajouts ne les couvre pas encore.
 
+`JESU.JOY` (type `$D5`, auxtype `$D0E7`, la convention d'Apple II DeskTop) est
+lu par DUET : sur la Mockingboard si elle est présente, sinon au haut-parleur
+par le lecteur amélioré d'Alex Patalenski. Voir le manuel, « Electric Duet ».
+
 PT3 est disponible pour `AUTUMN.PT3` (restauré dans `/SAMPLE.MEDIA`) et pour
 le corpus ZX Spectrum dans [`media/pt3/MUSIC/`](../media/pt3/MUSIC/) : trois
 voix Mockingboard, lecture au premier plan, pause/reprise et arrêt à la fin

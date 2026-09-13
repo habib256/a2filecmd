@@ -74,8 +74,13 @@ def main():
      s.key(b'N');p.stable()
      s.ok(prefix+' reopening asks again; decline preserves AUX',p.peek(0x800,0xF800,'aux')==before)
    s.select('LORES1');s.key(RET);s.wait(lambda:p.peek(0x400,40)==b'\x55'*40,'lores first')
-   transition(p,s,RIGHT,'LORES2');s.wait(lambda:p.peek(0x400,40)==b'\x66'*40,'lores next');s.ok('DGRVIEW next',True)
-   s.key(LEFT);s.wait(lambda:p.peek(0x400,40)==b'\x55'*40,'lores previous');s.ok('DGRVIEW previous',True)
+   # A lo-res picture lives in the text page: its neighbour is drawn over it
+   # without any text switch in between (the trap would hang the guest).
+   addr=s.sym['_switch_to_text'];saved=p.peek(addr,3);p.poke(addr,bytes([0x4C,addr&255,addr>>8]))
+   try:
+    s.key(RIGHT,pause=0);s.wait(lambda:p.peek(0x400,40)==b'\x66'*40,'lores next',60);s.ok('DGRVIEW next keeps graphics on',True)
+    s.key(LEFT,pause=0);s.wait(lambda:p.peek(0x400,40)==b'\x55'*40,'lores previous',60);s.ok('DGRVIEW previous keeps graphics on',True)
+   finally:p.poke(addr,saved)
    s.key(ESC);s.wait(lambda:s.has('Type  Aux'),'final panels');p.stable()
    s.ok('media stack floor preserved',p.peek(floor,8)==b'\xA5'*8)
   s.ok('all media source bytes preserved',Path(p.hdv).read_bytes()==original)

@@ -3,11 +3,14 @@
 Never changes the master; refuses existing output. No personal file imports.
 """
 import argparse
+import re
 import struct
 from pathlib import Path
 
 SIZE = 35 * 16 * 256
-MINI_VERSION = '0.7.0'
+# The Mini carries the release number of the ProDOS edition: one Makefile line.
+MINI_VERSION = re.search(r'^A2FC_VERSION\s*=\s*(\S+)',
+                         (Path(__file__).resolve().parents[1] / 'Makefile').read_text(), re.M)[1]
 HTAB, HOME, VTAB, PRINT, CHRS = 0x96, 0x97, 0xA2, 0xBA, 0xE7
 TIGER_PATH = Path(__file__).resolve().parents[1] / 'data' / 'IMGHGR' / 'TIGER#062000'
 

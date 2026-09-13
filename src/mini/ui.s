@@ -10,15 +10,18 @@
 ; put() would be lost there.
 
         .include "mini.inc"
+        .include "version.inc"  ; VERSION_STR, generated from A2FC_VERSION
 
         .export main, copy_progress
         .export activate, confirm, reload, keep_note, result_done
-        .export print_name, print_byte, tag_count, tag_test
+        .export say_protected
+        .export print_name, print_name15, print_byte, tag_count, tag_test
 
         .import present, restore_holes, at, put, inline_text, clear, zone
         .import number, hexbyte, filetype, keys_bar, keys_bar_inline
         .import key
-        .import catalog, preview, load_file, load_count, blank_scratch
+        .import catalog, preview, load_file, load_count, load_more
+        .import blank_scratch
         .import measure_text
         .import ent_ptr, ent_index
         .import bit_masks, tags
@@ -1005,7 +1008,7 @@ cf_show:
 @notsame:
         cmp     #COPY_PROTECTED
         bne     @notprot
-        PRINT   "DISK IS WRITE PROTECTED"
+        jsr     say_protected
         jmp     result_done
 @notprot:
         cmp     #COPY_CHANGED
@@ -1020,6 +1023,12 @@ cf_show:
 @unsupported:
         PRINT   "UNSUPPORTED / INVALID DOS STRUCTURE"
         jmp     result_done
+
+; say_protected -- the one copy of the message for copy, delete, lock
+; and rename. RWTS refused before writing: the disk is unchanged.
+say_protected:
+        PRINT   "DISK IS WRITE PROTECTED"
+        rts
 
 ; copy_progress -- [********----] on the footer, 32 stars or dashes
 ; in normal video, as copy_done / copy_total. The panels stay put.
@@ -1185,7 +1194,7 @@ splash:
         ldy     #2
         ldx     #17
         jsr     at
-        PRINT   "V0.7.0"
+        PRINT   VERSION_STR
         ldy     #21
         ldx     #10
         jsr     at
@@ -1754,18 +1763,20 @@ edit_file:
         jsr     ent_index
         tay
         lda     ent_sechi,y
-        bne     @big
+        jne     @big
         lda     ent_seclo,y
         cmp     #34             ; 32 data sectors plus one T/S list
-        bcs     @big
+        jcs     @big
         lda     selected
         sta     prv_index
         jsr     load_file
         sta     hg_status
         bne     @fail
+        lda     load_more       ; the catalog count lied: a 33rd data
+        jne     @big            ; sector exists, never save it truncated
         jsr     measure_text
         jsr     edit_text
-        bcc     @out
+        jcc     @out
         lda     #0
         sta     ask_kind
         jsr     ask_name
@@ -1777,7 +1788,13 @@ edit_file:
         ldx     #0
         lda     #40
         jsr     zone
+        lda     hg_status
+        cmp     #CAT_READ
+        bne     @notread
         PRINT   "READ ERROR - NOT LOADED"
+        jmp     keep_note
+@notread:
+        PRINT   "INVALID T-S LIST - NOT LOADED"
         jmp     keep_note
 @big:
         ldy     #20
@@ -1952,12 +1969,19 @@ delete_file:
 @out:
         rts
 
+; print_name15 -- A = array index: the first 15 name characters, for the
+; DELETE / LOCK / UNLOCK prompts. put builds its own screen pointer in
+; ptr, so the name is read through ptr2 or only its first letter shows.
 print_name15:
         jsr     ent_ptr
+        lda     ptr
+        sta     ptr2
+        lda     ptr+1
+        sta     ptr2+1
         ldy     #0
 @ch:
         sty     t1
-        lda     (ptr),y
+        lda     (ptr2),y
         jsr     put
         ldy     t1
         iny
@@ -1997,6 +2021,10 @@ del_show:
         PRINT   "READ ERROR - DELETE REFUSED"
         rts
 @notread:
+        cmp     #DEL_PROTECTED
+        bne     @notprot
+        jmp     say_protected
+@notprot:
         cmp     #DEL_UNCERTAIN
         bne     @bad
         PRINT   "UNCERTAIN WRITE - STOP"

@@ -66,6 +66,17 @@ class Demo(unittest.TestCase):
         self.assertEqual(mb[-1] & 0xF0, 0xE0)
         self.assertLess(len(mb), 2304, 'MUSIC_ZONE : 2304 octets au plus')
 
+    def test_duet_is_a_terminated_two_voice_stream(self):
+        ed = mkdemo.duet()
+        self.assertEqual(len(ed) % 3, 0)
+        self.assertEqual(ed[:3], b'\x01\x02\x03', 'the duty shifts first')
+        self.assertEqual(ed[-3:], bytes(3), 'the terminator record last')
+        records = [ed[i:i + 3] for i in range(3, len(ed) - 3, 3)]
+        self.assertTrue(all(2 <= r[0] <= 254 for r in records))
+        self.assertTrue(any(r[1] and r[2] for r in records), 'both voices sound together')
+        self.assertEqual(mkdemo.ed_pitch(69), 34)
+        self.assertLess(len(ed), 7168, 'DUET stages the song at $2400')
+
     def test_applesoft_program_is_well_formed(self):
         prog = mkdemo.applesoft([(10, bytes([mkdemo.HOME])), (20, bytes([mkdemo.END]))])
         self.assertEqual(prog[-2:], b'\x00\x00')

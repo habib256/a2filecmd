@@ -15,7 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mini_host
 import mkmini33
-from mini33_fixture import read_files, offset
+from mini33_fixture import make_disk, read_files, offset
 
 ROOT = Path(__file__).resolve().parents[1]
 CAT_OK, CAT_READ, CAT_BAD = 0, 1, 2
@@ -89,6 +89,25 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual(self.mini.load_file(2), CAT_BAD)
         self.assertEqual(self.mini.image(1), bytes(img))
 
+    def test_load_file_flags_a_file_larger_than_the_area(self):
+        # The viewer shows the first 8 KB; the editor must know that a
+        # 33rd data sector exists so it does not save a truncated copy.
+        disk = make_disk([('BIG', 0, bytes(range(256)) * 33),
+                          ('FIT', 0, b'\x01' * 8192),
+                          ('SMALL', 0, b'HELLO')])
+        self.mini.load(1, disk)
+        self.assertEqual(self.mini.catalog(), CAT_OK)
+        self.assertEqual(self.mini.load_file(0), CAT_OK)
+        self.assertEqual(self.mini.byte('load_count'), 32)
+        self.assertEqual(self.mini.byte('load_more'), 1)
+        self.assertEqual(self.mini.load_file(1), CAT_OK)
+        self.assertEqual(self.mini.byte('load_count'), 32)
+        self.assertEqual(self.mini.byte('load_more'), 0)
+        self.assertEqual(self.mini.load_file(2), CAT_OK)
+        self.assertEqual(self.mini.byte('load_count'), 1)
+        self.assertEqual(self.mini.byte('load_more'), 0)
+        self.assertEqual(self.mini.image(1), disk)
+
     def test_measure_text_caps_at_scratch_minus_one(self):
         self.assertEqual(self.mini.catalog(), CAT_OK)
         self.assertEqual(self.mini.load_file(2), CAT_OK)
@@ -111,6 +130,7 @@ class CatalogTest(unittest.TestCase):
             self.assertEqual(self.mini.byte('ent_track', i), entry[0])
             self.assertEqual(self.mini.byte('ent_sector', i), entry[1])
             self.assertEqual(self.mini.byte('ent_type', i), entry[2])
+            self.assertEqual(self.mini.byte('ent_slot', i), (15 << 3) | i)
             self.assertEqual(self.mini.byte('ent_seclo', i) |
                              (self.mini.byte('ent_sechi', i) << 8),
                              struct.unpack_from('<H', entry, 33)[0])
@@ -240,9 +260,9 @@ class ImageTest(unittest.TestCase):
     def test_hello_announces_the_load(self):
         self.assertIn(b'A2FILECMD', self.image)
         self.assertIn(b'MINI DOS 3.3', self.image)
-        self.assertIn(b'V0.7.0', self.image)
+        self.assertIn(b'V' + mkmini33.MINI_VERSION.encode('ascii'), self.image)
         self.assertNotIn(b'A2FILECMD MINI DOS 3.3', self.image)
-        self.assertNotIn(b'A2FILECMD V0.7.0', self.image)
+        self.assertNotIn(b'A2FILECMD V' + mkmini33.MINI_VERSION.encode('ascii'), self.image)
         self.assertIn(b'GPL3 VERHILLE ARNAUD', self.image)
         self.assertIn(b'LOADING .... PLEASE WAIT ....', self.image)
         self.assertIn(b'BRUN A2FC.MINI', self.image)

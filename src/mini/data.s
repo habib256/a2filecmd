@@ -17,8 +17,9 @@
         .export _active, _count, _volume, _drive, _slot, _track, _sector
         .export _selected, _error, _buffer, _sector_seen
         .export ent_track, ent_sector, ent_type, ent_seclo, ent_sechi, ent_name
+        .export ent_slot
         .export _ent_track, _ent_sector, _ent_type, _ent_seclo, _ent_sechi
-        .export _ent_name
+        .export _ent_name, _ent_slot
         .export pan_drive, pan_volume, pan_count, pan_selected, pan_error
         .export pan_top
         .export _pan_drive, _pan_volume, _pan_count, _pan_selected
@@ -73,12 +74,16 @@ ent_sector:     .res 2*SIDE_STRIDE
 ent_type:       .res 2*SIDE_STRIDE
 ent_seclo:      .res 2*SIDE_STRIDE
 ent_sechi:      .res 2*SIDE_STRIDE
+ent_slot:       .res 2*SIDE_STRIDE  ; catalog sector << 3 | slot 0-6: where
+                                    ; the entry was read, so a write finds
+                                    ; the same slot again, not a same name
 ent_name:       .res 2*SIDE_STRIDE*NAME_STRIDE
 _ent_track      = ent_track
 _ent_sector     = ent_sector
 _ent_type       = ent_type
 _ent_seclo      = ent_seclo
 _ent_sechi      = ent_sechi
+_ent_slot       = ent_slot
 _ent_name       = ent_name
 
 ; ---- per-panel metadata --------------------------------------------

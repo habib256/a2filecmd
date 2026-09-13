@@ -33,7 +33,7 @@ pictures. The tools are right there, beside your files.
 | **Explore disks and images** | Browse ProDOS and DOS 3.3 disk images as read-only folders, then extract files to the other panel. Read physical DOS 3.3 disks and copy selected ProDOS files onto them, create and write floppy images, copy floppies and format ProDOS disks. |
 | **Unpack classic archives** | Extract ShrinkIt `.SHK` archives, including LZW/1 and LZW/2 compression, and Binary II `.BNY` archives with their ProDOS file attributes. |
 | **Read, edit and compare** | Text and hex viewers, a 5 KB text editor, readable Applesoft listings and an AppleWorks word-processing viewer. Compare two files byte by byte, search files for text, or mark differences between panels. |
-| **Enjoy pictures and sound** | Full-screen HGR and DHGR, raw or RLE-compressed. Use the arrow keys to browse pictures like an album. Play `.MB` and `.PT3` music in foreground overlays on a Mockingboard; Left/Right browse tunes of the same type. PT3 accepts modules up to 65,535 bytes, preserves `/RAM`, and displays title, artist and player credits. |
+| **Enjoy pictures and sound** | Full-screen HGR and DHGR, raw or RLE-compressed. Use the arrow keys to browse pictures like an album. Play `.MB` and `.PT3` music in foreground overlays on a Mockingboard, and Electric Duet songs on the Mockingboard or, without one, on the speaker; Left/Right browse tunes of the same type. PT3 accepts modules up to 65,535 bytes, preserves `/RAM`, and displays title, artist and player credits. |
 | **Make it yours** | Keyboard shortcuts throughout, optional AppleMouse II support and remembered panel settings. Launch SYS, BIN, Applesoft and Integer BASIC programs, or add your own tools with the plugin SDK. |
 
 The **!** menu groups tools by category. Choose a category, then a tool;
@@ -82,18 +82,19 @@ readers and more disk tools. See the [changelog](CHANGELOG.md).*
 **Start with the [latest release](https://github.com/habib256/a2filecmd/releases/latest).**
 No build required. Choose the image that fits your setup:
 
-The table describes the current 0.8.0 source build. The latest published release
-is 0.7.5; its downloads retain their own version numbers.
+The table describes the current 0.8.5 source build. The latest published release
+is 0.8.0; its downloads retain their own version numbers.
 
-| Image (0.8.0) | Contents |
+| Image (0.8.5) | Contents |
 |---|---|
-| `A2FILECMD-6502-BOOT-0.8.0.dsk` | Bootable 140 KB floppy: file manager, essential disk tools and formatter |
-| `A2FILECMD-6502-FILES-0.8.0.dsk` | Edit and read documents, find, rename, copy, synchronize and unpack files |
-| `A2FILECMD-6502-MEDIA-0.8.0.dsk` | Pictures and Mockingboard music |
-| `A2FILECMD-6502-DISKTOOLS-0.8.0.dsk` | Disk images, block tools, boot repair and recovery |
-| `A2FILECMD-6502-DEVTOOLS-0.8.0.dsk` | BASIC listings, disassembly, BASIC.SYSTEM and INTBASIC.SYSTEM |
-| `A2FILECMD-6502-XL-0.8.0.2mg` | Complete bootable 32 MB image for 6502 |
-| `A2FILECMD-65C02-XL-0.8.0.2mg` | Complete bootable 32 MB image for 65C02, with optional mouse support |
+| `A2FILECMD-6502-BOOT-0.8.5.dsk` | Bootable 140 KB floppy: file manager, essential disk tools and formatter |
+| `A2FILECMD-6502-FILES-0.8.5.dsk` | Edit and read documents, find, rename, copy, synchronize and unpack files |
+| `A2FILECMD-6502-MEDIA-0.8.5.dsk` | Pictures, Mockingboard and Electric Duet music |
+| `A2FILECMD-6502-DISKTOOLS-0.8.5.dsk` | Disk images, block tools, boot repair and recovery |
+| `A2FILECMD-6502-DEVTOOLS-0.8.5.dsk` | BASIC listings, disassembly, BASIC.SYSTEM and INTBASIC.SYSTEM |
+| `A2FILECMD-6502-XL-0.8.5.2mg` | Complete bootable 32 MB image for 6502 |
+| `A2FILECMD-65C02-XL-0.8.5.2mg` | Complete bootable 32 MB image for 65C02, with optional mouse support |
+| `A2FC-MINI-DOS33-0.8.5.dsk` | A2FC Mini: the standalone DOS 3.3 edition for a 48 KB Apple II+ |
 
 **All floppies use 6502 code**, including on enhanced machines. Choose the
 categories you need; every companion carries the menu and full catalog.
@@ -131,11 +132,13 @@ The hard-disk image includes examples generated especially for A2FileCmd:
 - Open `TINY.PO`, `TINY.2MG` or `DOS33.DSK` as a folder; **`C`** extracts a selected file to the other panel.
 - Select `SAMPLE.SHK` or `SAMPLE.BNY`, press **`!`** and choose its extractor.
 - With a Mockingboard, open `WELCOME.MB` for a fanfare; **`P`** pauses or resumes it.
+- Open `CANON.ED`, an Electric Duet canon, on the Mockingboard or on the speaker; **`1`**/**`2`** switch outputs. Legacy DOS songs named `M.*` also open with Return. For old BIN/$0000 copies, mark the songs and run **! → Files → FIXTYPES** to review `$D5/$D0E7` repairs; names and content stay intact.
 
 > **Using `/RAM`?** DHGR pictures and single-drive floppy copying use auxiliary
 > memory and can rebuild `/RAM` empty. A2FC asks for explicit consent before
-> destructive AUX use. Save its files elsewhere first. MB1/PT3 playback uses
-> main memory, preserves `/RAM`, and returns to both panels when the music ends.
+> destructive AUX use. Save its files elsewhere first. MB1/PT3/Electric Duet
+> playback uses main memory, preserves `/RAM`, and returns to both panels when
+> the music ends.
 
 ### Install on an existing hard disk
 
@@ -264,6 +267,7 @@ viewer, a basic text editor, exclusive TXT creation, tagged selection and
 delete that marks the catalog before freeing sectors. Only changed screen
 characters are rewritten. The interface and bundled documentation are in English.
 Written entirely in 6502 assembly. A catalog read takes a third of the time it
-used to, and a 48-sector copy a quarter.
+used to, and a 48-sector copy a quarter. Since 0.8.5 the Mini carries the same
+release number as the ProDOS edition.
 Build with `make mini`. See the [Mini DOS 3.3 guide](docs/MINI-DOS33.md)
 for the disk image, the controls and the measurements.

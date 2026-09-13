@@ -45,6 +45,7 @@ DEL_CHANGED     = 4
 DEL_UNCERTAIN   = 5
 DEL_NOT_READY   = 6
 REN_EXISTS      = 7             ; rename: the new name is already live
+DEL_PROTECTED   = 8             ; RWTS refused before the first write
 
 ; DOS 3.3 file type bits, lock aside.
 TYPE_TEXT       = $00

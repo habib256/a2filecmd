@@ -6,9 +6,12 @@ def offset(t,s):
     assert 0<=t<35 and 0<=s<16
     return (t*16+s)*256
 
-def make_disk(files):
+def make_disk(files, dosless=False):
+    """A DOS 3.3 image. dosless=True frees tracks 1-2, as a disk
+    formatted without DOS has them, and files are placed there first."""
     disk=bytearray(SIZE)
-    free=[(t,s) for t in range(3,35) if t!=17 for s in range(16)]
+    first=1 if dosless else 3
+    free=[(t,s) for t in range(first,35) if t!=17 for s in range(16)]
     assert len(files)<=105
     def alloc(): return free.pop(0)
     def put(ts,data):

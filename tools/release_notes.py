@@ -21,6 +21,7 @@ FILES = """
 | `A2FILECMD-6502-DEVTOOLS-{version}.dsk` | BASIC listings, disassembly, BASIC.SYSTEM and INTBASIC.SYSTEM |
 | `A2FILECMD-6502-XL-{version}.2mg` | Complete bootable 32 MB image, 6502 |
 | `A2FILECMD-65C02-XL-{version}.2mg` | Complete bootable 32 MB image, 65C02 with optional mouse |
+| `A2FC-MINI-DOS33-{version}.dsk` | A2FC Mini: standalone DOS 3.3 edition for a 48 KB Apple II+, two drives |
 
 The concise English user guide is included as `A2FILECMD-MANUAL-EN-{version}.pdf`, with a screenshot of both panels, clickable contents and bookmarks.
 
@@ -30,6 +31,8 @@ the full command catalog. XL includes all {overlays} overlays, BASIC.SYSTEM, INT
 and IMGHGR; it needs no companion. Choose XL 6502 for an original IIe, or
 XL 65C02 for an enhanced IIe or //c. All editions need 128 KB and 80 columns.
 Do not mix native plugins from XL 65C02 with the 6502 companions.
+A2FC Mini is a separate program for the Apple II+ (48 KB, DOS 3.3, 40 columns):
+boot its `.dsk` on its own; see `docs/MINI-DOS33.md`.
 
 Boot an image and press **?** for the key map; `sha256sum -c SHA256SUMS-{version}.txt`
 checks the download. The bootable images carry ProDOS 8 2.4.3; the `.2mg` and DEVTOOLS carry

@@ -76,6 +76,9 @@ class Mini:
         self.corrupt_write = -1
         self.protected_drive = 0
         self.write_log = []
+        # A routine that follows a looping chain never returns; the cap
+        # turns that hang into a test failure.
+        self.max_reads = 4000
         sim65 = shutil.which('sim65')
         if not sim65:
             raise SimError('sim65 not found')
@@ -105,6 +108,8 @@ class Mini:
                 return
             n = self.reads
             self.reads += 1
+            if n >= self.max_reads:
+                raise SimError(f'{n} sector reads: the 6502 code is looping')
             if n == self.fail_read:
                 self._send(bytes([1, 0x80]))
                 return

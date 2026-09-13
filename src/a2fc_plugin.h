@@ -33,7 +33,7 @@
 
 #include <stdio.h>
 
-#define A2FC_API_VERSION 4
+#define A2FC_API_VERSION 5
 #define MEDIA_PLUGIN_MAGIC 0xA2FD /* requires v4 media services; older cores refuse it */
 #define PLUGIN_MAGIC 0xA2FC        /* the signature of a third-party overlay */
 #define OVERLAY_AUDIO 0x04         /* foreground audio: core supplies card slot in arg */
@@ -68,6 +68,16 @@ struct Entry {
                                  * number SHIFTED RIGHT BY FOUR (READ_BLOCK wants mdate << 4);
                                  * in an image or a DOS 3.3: the key block */
 };
+
+#ifdef __CC65__
+typedef char entry_snapshot_fits[0x1000 - MAX_ENTRIES * sizeof(struct Entry) + 1];
+#endif
+
+/* API v5: large overlays receive this snapshot before loading. It survives only
+ * when their code/BSS and scratch are linked strictly below $3000. */
+#ifndef ENTRY_SNAPSHOT
+#define ENTRY_SNAPSHOT ((struct Entry*)0x3000)
+#endif
 
 struct Panel {                  /* offsets read by panel_hash (a2fc_mli.s): */
     char path[PATH_LEN];        /* 0; "": the list of online volumes */

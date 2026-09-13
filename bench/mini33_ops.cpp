@@ -37,6 +37,9 @@ int main(int argc,char** argv) {
         for(int n=0;n<800 && screen(m).find(s)==std::string::npos;++n) run(cpu,1000000);
         expect(m,s);
     };
+    // A result on the footer is followed by a reread of both panels; give
+    // it time before looking at the panels again.
+    auto settle=[&]() { run(cpu,40000000); };
     // Picture on the other drive: G loads it into $2000 and any key returns.
     keys("\t/"); expect(m,"PIC");
     keys("G");
@@ -45,25 +48,27 @@ int main(int argc,char** argv) {
     assert(m.data()[0x2001]==0x2A);
     keys(" "); expect(m,"PIC");
     keys("\t");
-    // New exclusive text file on the boot disk.
-    keys("N"); wait("NEW TEXT FILE");
-    keys("NOTE"); wait("NAME: NOTE");
+    // New exclusive text file on the boot disk (0.7 footer prompts).
+    keys("N"); wait("NEW: ");
+    keys("NOTE"); wait("NEW: NOTE");
     keys("\rHELLO\x13"); wait("CREATE TEXT FILE");
-    keys("Y"); wait("COPIED");
+    keys("Y"); wait("COPIED"); settle();
     expect(m,"NOTE");
-    keys("L"); wait("LOCK THIS FILE"); keys("Y"); wait("LOCKED");
-    keys("D"); wait("DELETE THIS FILE"); keys("Y"); wait("LOCKED - NOT DELETED");
-    keys("L"); wait("UNLOCK THIS FILE"); keys("Y"); wait("UNLOCKED");
-    keys("R"); wait("RENAME FILE"); keys("MEMO"); wait("NAME: MEMO");
-    keys("\r"); wait("RENAMED");
+    keys("]"); expect(m,"NOTE");
+    keys("L"); wait("LOCK NOTE"); keys("Y"); wait("LOCKED"); settle();
+    keys("D"); wait("DELETE NOTE"); keys("Y"); wait("LOCKED - NOT DELETED"); settle();
+    keys("L"); wait("UNLOCK NOTE"); keys("Y"); wait("UNLOCKED"); settle();
+    keys("R"); wait("RENAME: "); keys("MEMO"); wait("RENAME: MEMO");
+    keys("\r"); wait("RENAMED"); settle();
     expect(m,"MEMO");
     keys("]"); expect(m,"MEMO");
-    keys("D"); wait("DELETE THIS FILE");
-    keys("Y"); wait("DELETED");
+    keys("D"); wait("DELETE MEMO");
+    keys("Y"); wait("DELETED"); settle();
     assert(screen(m).find("NOTE")==std::string::npos);
+    assert(screen(m).find("MEMO")==std::string::npos);
     // Tagged batch: HELLO and README onto the other disk. A2FC.MINI stays.
     keys("[ "); keys("KK ");
-    keys("C"); wait("COPY 2"); keys("Y"); wait("COPIED");
+    keys("C"); wait("COPY 2"); keys("Y"); wait("COPIED"); settle();
     keys("\t"); expect(m,"4 FILES");
     expect(m,"HELLO"); expect(m,"README"); expect(m,"PIC");
     assert(d->flushPendingWrites());

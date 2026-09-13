@@ -489,6 +489,53 @@ images ProDOS contrôlés.
 
 ## Limites ouvertes et preuves
 
+### UNSHRINK : propriété des extraits et fin de lecture
+
+UNSHRINK réserve chaque nom par `reserve_output`. Seul `OUTPUT_RESERVED`
+permet l'ouverture en écriture ; une fermeture de réservation échouée donne
+uniquement le droit de nettoyer cette entrée. Échec de suppression : le
+diagnostic nomme l'extrait conservé, reste prioritaire même si la fermeture
+de l'archive échoue aussi, et une nouvelle tentative ne peut pas le tronquer.
+Les extraits précédents et l'archive source restent conservés.
+
+Les lectures sont exactes et contrôlent `ferror`, même après un compte complet.
+Les sauts sont remplacés par des lectures : un thread ignoré ou un remplissage
+tronqué arrête le parcours. Le nom est sauvegardé avant de réutiliser le tampon
+pour ce saut. Les tailles stockées et les en-têtes LZW ne peuvent plus faire
+sous-déborder le compteur d'entrée ; la fenêtre distingue les vrais octets lus
+du remplissage, et refuse une consommation nulle ou hors fenêtre renvoyée par
+le décodeur. Un en-tête d'attributs trop court est refusé avant utilisation.
+Échap arrête entre blocs ; les erreurs de flux de destination et les fermetures
+sont contrôlées avant succès. Une compression ignorée conserve son diagnostic.
+
+Écritures : seulement les nouveaux fichiers du dossier cible, leur nettoyage,
+le tampon principal partagé et l'état `$3000` (borné à 512 octets), ainsi que
+les zones AUX déjà utilisées par le décodeur. Le drapeau `BIG|AUX` conserve
+le consentement résident avant l'entrée dans la surcouche ; `/RAM` reste
+refusé pour la source et la destination, puis reconstruit après utilisation.
+Aucun BSS ajouté, aucun plafond relevé, aucune nouvelle transaction de renommage.
+
+`tools/test_unshrink_safety.py` exécute le pilote C réel avec ASan/UBSan sur
+fichiers jetables : stockage, enveloppe Binary II, réservations, collisions,
+lectures/écritures/fermetures, annulation, nettoyages échoués et retries,
+troncatures, tailles incohérentes, longs noms, threads ignorés et fenêtres LZW.
+Le transport AUX et le décodeur sont substitués dans ce test ; `bench/shk.py`
+exécute le décodeur natif et compare les extraits persistés, avec garde de pile.
+
+Validation locale du 13 septembre 2026 : 18 tests C réussis ; quatre méthodes
+de régression essayées sur l'ancien pilote détectent les défauts. `make test`
+passe ; les deux liens, leurs contrôles mémoire et les sept images ProDOS
+passent également. POM2 : 30/30 contrôles sur 65C02 et 30/30 sur 6502 NMOS,
+avec fichiers stockés, LZW/1, LZW/2, retours HGR/DHGR, octets persistés et
+garde de pile. Aucun essai sur matériel physique ni résultat CI revendiqué.
+
+Limites : pas encore de contrôle complet des CRC et métadonnées NuFX, de
+validation complète des flux LZW malformés ni de relecture des sorties par
+UNSHRINK lui-même. La vérification des octets par le banc ne remplace pas cette
+relecture en production. Aucune atomicité sur coupure n'est promise.
+
+### Services restants
+
 COPY utilise maintenant la transaction des temporaires vérifiés. Les
 nettoyages internes de `new_output` pour ses autres appelants restent ouverts.
 Le code dépend du
@@ -524,3 +571,25 @@ fermeture, corruption silencieuse, collision, restauration et nettoyage.
 Deux séquences supplémentaires couvrent annulation puis copie, et succès
 puis refus de chargement, en conservant les tampons sales entre opérations.
 Les mesures natives sont dans [MEMORY-BUDGETS.md](MEMORY-BUDGETS.md).
+
+## DOSGET and FIXTYPES (September 2026)
+
+DOSGET writes only exclusively reserved ProDOS outputs; it reads the DOS
+source without modifying it. BIN load address and BIN/BAS/INT EOF come from
+the first sector header, not the rounded catalog size. Repeated/out-of-range
+sectors and malformed end links are refused. Reads, writes, stream errors,
+reservation/output/source closes and cleanup failures are checked. Completed
+outputs remain if the source close fails; a failed cleanup names the retained
+partial output. This is extraction, not move: the source is never deleted.
+No full output readback or power-loss atomicity is promised.
+
+FIXTYPES reads content and writes only confirmed SET_FILE_INFO/RENAME calls.
+GET_FILE_INFO must succeed, the file must be writable, and metadata is checked
+again after confirmation. A rename requires a positive $46 (not found) for
+the destination; any other lookup error refuses it. DUET repair preserves
+names and bytes; generic BIN suffixes preserve an existing load address.
+Each format proposal is confirmed separately. A failed metadata verification
+is reported; ProDOS cannot make a physical metadata write power-fail atomic.
+Neither operation writes AUX. Both consume the API v5 active-entry snapshot
+at $3000; DOSGET code ends below $2800, its visited-sector bitmap is at $2800,
+and its T/S list copy is at $2F00. FIXTYPES code and BSS end below $3000.

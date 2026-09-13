@@ -5,9 +5,9 @@ from xplug import boot_hd, menu_run, ok_all, RET, ESC
 
 EXPECTED = {
  'Files': 'ATTR AWP COMPARE DELETE EDIT FIND FIXTYPES GOTO HEX MDVIEW MOVE RENAME SEARCH SYNC TAGPAT TEXT TREE TXTCONV',
- 'Images': 'DGRVIEW EXTASIE FONTVIEW IMAGE LZ4FH PACKFOT PAINT816 PRINTSHOP',
- 'Music': 'MUSIC PT3',
- 'Disks': 'BLKEDIT BLKVIEW BOOTBLK DISKCMP DISKIMG DOS33 FORMAT IMGCONV IMGFS MKIMAGE RESCUE UNDELETE VERIFY VOLINFO VOLNAME WIPE',
+ 'Images': 'DGRVIEW EXTASIE FONTVIEW IMAGE LZ4FH PACKFOT PAINT816 PRINTSHOP PURPLE',
+ 'Music': 'DUET MUSIC PT3',
+ 'Disks': 'BLKEDIT BLKVIEW BOOTBLK DISKCMP DISKIMG DOS33 DOSWRITE FORMAT IMGCONV IMGFS MKIMAGE NIBCOPY RESCUE UNDELETE VERIFY VOLINFO VOLNAME WIPE',
  'Programming': 'BASLIST CRC DISASM IDENT INTBASIC RUN',
  'System': 'DATE HELP',
  'Archives': 'BINARY2 UNSHRINK',
@@ -32,8 +32,10 @@ def main():
             aux=p.peek(0x1000,0xb000,'aux')
             s.key(b'!');s.wait(lambda:s.has('the overlays'),'categories');p.stable()
             for number,(name,names) in enumerate(EXPECTED.items()):
-                s.ok('category '+name,s.rows()[2+number].strip().upper()==name.upper(),s.rows()[2+number])
+                row=s.rows()[2+number]
+                s.ok('category '+name,row[2:14].strip()==name and row[14:17].strip()==str(len(names.split())) and row[20:].strip()!='',row)
                 s.key(RET);p.stable()
+                s.ok(name+' names itself above its list',s.rows()[1][:20]==row[:20],s.rows()[1])
                 actual=[r[2:14].strip() for r in s.rows()[2:20] if r[2:14].strip()]
                 s.ok(name+' complete and sorted',actual==names.split() if names else s.has('No overlay here.'),actual)
                 if len(names.split())>6:

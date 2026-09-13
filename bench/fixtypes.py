@@ -17,13 +17,14 @@ voisin DUP : il est type mais garde son nom. BOOT.SYSTEM et DISK.PO gardent
 leur suffixe (ProDOS amorce les .SYSTEM, A2FC ouvre les images par leur
 suffixe). UNKNOWN.XYZ n'est pas touche.
 
-Deux passages : WORK depuis le panneau DROIT, huit fichiers marques, Y a la
-question (la surcouche emprunte alors la table du panneau gauche pour relire
-le repertoire actif) ; WORK2 depuis le panneau gauche, rien de marque, le
-curseur sur ONE.BAS, N a la question."""
+Deux passages : WORK depuis le panneau DROIT, huit fichiers marques, Y aux
+propositions de type et de nom ; WORK2 depuis le panneau gauche, rien de
+marque, le curseur sur ONE.BAS, N refuse toute modification. La grande
+surcouche parcourt le snapshot API v5 a $3000, sans relire les panneaux."""
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -83,10 +84,15 @@ def open_dir(s, p, x, volume, subdir):
 
 def run_fixtypes(s, p, answer):
     menu_run(s, p, 'FIXTYPES')
-    s.wait(lambda: s.has('Drop suffix'), 'la question du suffixe', 20)
-    s.key(answer)
-    s.wait(lambda: s.has('files typed'), 'la fin de FIXTYPES', 60); p.stable()
-    return s.rows()[22].strip()
+    deadline=time.monotonic()+90
+    while time.monotonic()<deadline:
+        if s.has(' skipped, ') and s.has(' failed'):
+            p.stable();return s.rows()[22].strip()
+        if s.has('->') or s.has('drop suffix?'):
+            s.key(answer);p.stable()
+        else:time.sleep(.1)
+    raise AssertionError('FIXTYPES did not finish: '+str(s.rows()))
+
 
 
 def main():
@@ -98,8 +104,8 @@ def main():
             # Refuse dans la liste des volumes (le message vient par api->note).
             s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes'); p.stable()
             menu_run(s, p, 'FIXTYPES')
-            s.wait(lambda: s.has('Open a directory'), 'le refus', 20)
-            s.ok('refuse dans la liste des volumes', s.has('Open a directory'), s.rows()[22].strip())
+            s.wait(lambda: s.has('Open a ProDOS directory'), 'le refus', 20)
+            s.ok('refuse dans la liste des volumes', s.has('Open a ProDOS directory'), s.rows()[22].strip())
 
             # Passage 1 : le panneau DROIT sur /WORKPO/WORK, huit fichiers marques, Y.
             s.key(TAB); p.stable()
@@ -109,7 +115,7 @@ def main():
             s.ok('%d fichiers marques dans le panneau droit' % len(TAGGED),
                  s.has('%d tagged' % len(TAGGED)), s.rows()[21][60:].strip())
             line = run_fixtypes(s, p, b'Y')
-            s.ok('7 types, 4 renommes, 1 passe', line.startswith('7 files typed, 4 renamed, 1 skipped'), line)
+            s.ok('6 types, 4 renommes, 2 passes, collision signalee', line.startswith('6 typed, 4 renamed, 2 skipped, 1 failed'), line)
             s.ok('le panneau est relu : ARCHIVE sans suffixe, en $E0/$8002',
                  any(r[40:].startswith('ARCHIVE ') and '$8002' in r[40:] for r in s.rows()[2:20]),
                  [r[40:78] for r in s.rows()[2:20] if r[40:].startswith('ARCHIVE')])
@@ -120,10 +126,10 @@ def main():
             open_dir(s, p, 0, '/WORKPO', 'WORK2')
             s.select('ONE.BAS', 0); p.stable()
             line = run_fixtypes(s, p, b'N')
-            s.ok('sans marque, le fichier sous le curseur seul : 1 type, 0 renomme',
-                 line.startswith('1 files typed, 0 renamed, 0 skipped'), line)
-            s.ok('ONE.BAS garde son nom (N) et passe BAS a l\'ecran',
-                 s.line(0).startswith('ONE.BAS ') and 'BAS' in s.line(0) and '$0801' in s.line(0), s.line(0).rstrip())
+            s.ok('N refuse toute modification du fichier sous le curseur',
+                 line.startswith('0 typed, 0 renamed, 1 skipped, 0 failed'), line)
+            s.ok('ONE.BAS garde son nom et son type BIN apres N',
+                 s.line(0).startswith('ONE.BAS ') and 'BIN' in s.line(0) and '$0000' in s.line(0), s.line(0).rstrip())
             try:
                 p.eject(1)                   # la disquette recopiee dans WORKPO.po
             except Exception:
@@ -152,8 +158,8 @@ def main():
         s.ok('rien d\'autre n\'a bouge dans WORK : %d fichiers avant, %d apres' % (len(before), len(after)),
              len(before) == len(after), sorted(after))
         work2 = catalog(po, 'WORK2')
-        s.ok('WORK2 : ONE.BAS type $FC/$0801 sous son nom, README intact',
-             work2.get('ONE.BAS', (0, 0))[:2] == (0xFC, 0x0801) and work2.get('README', (0, 0))[:2] == (0x04, 0)
+        s.ok('WORK2 : annulation conserve ONE.BAS $06/$0000 et README',
+             work2.get('ONE.BAS', (0, 0))[:2] == (6, 0) and work2.get('README', (0, 0))[:2] == (0x04, 0)
              and len(work2) == 2, {k: v[:2] for k, v in work2.items()})
     return ok_all(s, 'fixtypes')
 

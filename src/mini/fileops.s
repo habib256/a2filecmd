@@ -6,8 +6,8 @@
         .export lock_file, rename_file
 
         .import at, put, inline_text, zone
-        .import activate, confirm, keep_note, result_done
-        .import print_name, print_byte, tag_count, tag_test
+        .import activate, confirm, keep_note, result_done, say_protected
+        .import print_name, print_name15, print_byte, tag_count, tag_test
         .import lock_prepare, lock_execute, rename_prepare, rename_execute
         .import del_index, del_fault, lock_op, ren_name
         .import ask_name, name_buf, ask_kind
@@ -39,19 +39,6 @@ foot_bar:
 
 foot_done:
         jmp     result_done
-
-short15:
-        jsr     ent_ptr
-        ldy     #0
-@ch:
-        sty     t1
-        lda     (ptr),y
-        jsr     put
-        ldy     t1
-        iny
-        cpy     #15
-        bcc     @ch
-        rts
 
 ; ---------------------------------------------------------------------
 lock_file:
@@ -88,7 +75,7 @@ lock_file:
 @nm:
         lda     selected
         jsr     ent_index
-        jsr     short15
+        jsr     print_name15
         PRINT   "?"
         jmp     @go
 @many:
@@ -216,6 +203,10 @@ lock_show:
         PRINT   "READ ERROR - LOCK REFUSED"
         rts
 @notread:
+        cmp     #DEL_PROTECTED
+        bne     @notprot
+        jmp     say_protected
+@notprot:
         cmp     #DEL_UNCERTAIN
         bne     @bad
         PRINT   "UNCERTAIN WRITE - STOP"
@@ -284,6 +275,11 @@ rename_file:
         PRINT   "READ ERROR - RENAME REFUSED"
         jmp     foot_done
 @notrd:
+        cmp     #DEL_PROTECTED
+        bne     @notprot
+        jsr     say_protected
+        jmp     foot_done
+@notprot:
         cmp     #DEL_UNCERTAIN
         bne     @bad
         PRINT   "UNCERTAIN WRITE - STOP"

@@ -175,13 +175,14 @@ class WriteTest(unittest.TestCase):
         # still have to be refused.
 
     def test_stale_panel_size_and_pointer(self):
-        # The walk uses the panel's size and T/S pointer. A stale
-        # snapshot is refused; the rest of the disk is not audited.
+        # The panel's size and T/S pointer must be what the catalog slot
+        # holds now; a stale snapshot is a changed disk. The rest of the
+        # disk is not audited.
         self.mini.poke('ent_seclo', bytes([1]))
         self.mini.poke('ent_sechi', bytes([0]))
         self.mini.poke('ent_track', bytes([34]))
         self.mini.poke('ent_sector', bytes([15]))
-        self.assertEqual(self.prepare(), INVALID)
+        self.assertEqual(self.prepare(), CHANGED)
         self.assertEqual(len(self.mini.write_log), 0)
 
     def test_multiple_ts_lists_and_empty(self):
@@ -237,16 +238,69 @@ class WriteTest(unittest.TestCase):
         self.preserved()
 
     def test_metadata_changed_during_confirmation(self):
-        # Disks are not re-audited after the prompt. A flipped volume
-        # byte or catalog header no longer refuses the copy.
-        for side, at in ((1, offset(17, 0) + 6), (1, offset(17, 15) + 11 + 2),
-                         (2, offset(17, 0) + 6), (2, offset(17, 15) + 10)):
+        # After the prompt, the source catalog slot and the destination
+        # VTOC (the sector about to be overwritten from the reservation
+        # image) are read again. The source VTOC and the destination
+        # catalog are not re-audited.
+        for side, at, expect in ((1, offset(17, 0) + 6, OK),
+                                 (1, offset(17, 15) + 11 + 2, CHANGED),
+                                 (2, offset(17, 0) + 6, CHANGED),
+                                 (2, offset(17, 15) + 10, OK)):
             with self.subTest(side=side, at=at):
                 self.load()
                 self.assertEqual(self.prepare(), OK)
                 self.mini.disks[side - 1][at] ^= 1
-                self.assertEqual(self.mini.execute(), OK)
-                self.assertGreater(len(self.mini.write_log), 0)
+                self.assertEqual(self.mini.execute(), expect)
+                if expect == OK:
+                    self.assertGreater(len(self.mini.write_log), 0)
+                else:
+                    self.assertEqual(self.mini.write_log, [])
+                    self.assertEqual(self.mini.byte('copy_fault'), 0)
+
+    def test_swapped_destination_after_the_prompt(self):
+        # The user swaps the target disk while COPY ...? is on screen.
+        # The stale VTOC image must not land on the new disk.
+        other = make_disk([('OTHER.DISK', 0, bytes(700))])
+        self.assertNotEqual(other[offset(17, 0):offset(17, 1)],
+                            self.dst[offset(17, 0):offset(17, 1)])
+        self.assertEqual(self.prepare(), OK)
+        self.mini.load(2, other)
+        self.assertEqual(self.mini.execute(), CHANGED)
+        self.assertEqual(self.mini.write_log, [])
+        self.assertEqual(self.image(2), other)
+        self.assertEqual(self.mini.byte('copy_fault'), 0)
+        self.assertEqual(self.mini.execute(), NOT_READY, 'one prompt, one plan')
+        # a fresh prepare on the new disk works
+        self.mini.poke('drive', bytes([1]))
+        self.assertEqual(self.prepare(), OK)
+        self.assertEqual(self.mini.execute(), OK)
+        self.assertIn('COPY.ME', read_files(self.image(2)))
+        self.assertIn('OTHER.DISK', read_files(self.image(2)))
+
+    def test_swapped_destination_before_create(self):
+        other = make_disk([('OTHER.DISK', 0, bytes(700))])
+        self.assertEqual(self.create(), OK)
+        self.mini.load(2, other)
+        self.assertEqual(self.mini.create_execute(), CHANGED)
+        self.assertEqual(self.mini.write_log, [])
+        self.assertEqual(self.image(2), other)
+
+    def test_execute_vtoc_read_failure_is_a_plain_refusal(self):
+        self.assertEqual(self.prepare(), OK)
+        self.mini.fail_read = self.mini.reads    # the next read: the VTOC
+        self.assertEqual(self.mini.execute(), READ)
+        self.assertEqual(self.mini.write_log, [])
+        self.assertEqual(self.mini.byte('copy_fault'), 0)
+        self.preserved()
+
+    def test_looping_destination_catalog_does_not_hang(self):
+        # A corrupt link after the panel read: 15 -> 14 -> 13 -> 14 ...
+        img = bytearray(self.dst)
+        img[offset(17, 13) + 1:offset(17, 13) + 3] = bytes([17, 14])
+        self.mini.load(2, bytes(img))
+        self.assertEqual(self.prepare(), INVALID)
+        self.assertEqual(self.mini.write_log, [])
+        self.assertEqual(self.image(2), bytes(img))
 
     def test_write_protection(self):
         self.assertEqual(self.prepare(), OK)
@@ -339,20 +393,106 @@ class WriteTest(unittest.TestCase):
 
     def test_source_file_must_still_be_there(self):
         self.assertEqual(self.prepare(), OK)
-        # The catalog entry can vanish after prepare; the mapped sectors
-        # are still read. The copy is not refused.
+        # The catalog entry vanished after prepare: the mapped sectors
+        # are not read as if they were still that file.
         a = offset(17, 15) + 11
         self.mini.disks[0][a] = 255
+        self.assertEqual(self.mini.execute(), CHANGED)
+        self.assertEqual(self.mini.write_log, [])
+        self.assertEqual(self.mini.byte('copy_fault'), 0)
+        self.assertEqual(self.image(2), self.dst)
+
+    def test_swapped_source_after_the_prompt(self):
+        # Another disk in the source drive when Y is pressed: its catalog
+        # slot does not hold the entry that was mapped.
+        other = make_disk([('OTHER.SRC', 0x84, bytes(700)),
+                           ('KEEP.SRC', 0, b'SOURCE SAFE')])
+        self.assertEqual(self.prepare(), OK)
+        self.mini.load(1, other)
+        self.assertEqual(self.mini.execute(), CHANGED)
+        self.assertEqual(self.mini.write_log, [])
+        self.assertEqual(self.image(1), other)
+        self.assertEqual(self.image(2), self.dst)
+
+    def test_dosless_disks_use_tracks_1_and_2(self):
+        # A disk formatted without DOS frees tracks 1-2 and DOS files
+        # data there. Such a file is copied, such a destination is used,
+        # and such a file is deleted; an ordinary disk (tracks 1-2 fully
+        # allocated) still refuses a chain into them.
+        src = make_disk([('ON.TRACK1', 0x04, bytes(range(256)) * 5)], dosless=True)
+        dst = make_disk([('KEEP.DST', 0x80, b'DESTINATION SAFE')], dosless=True)
+        self.assertLess(max(t for t, _ in read_files(src)['ON.TRACK1']['blocks']), 3)
+        self.load(src=src, dst=dst)
+        self.assertEqual(self.prepare(), OK)
         self.assertEqual(self.mini.execute(), OK)
-        before = read_files(self.src)
-        result = read_files(self.image(2))
-        self.assertEqual(result['COPY.ME']['data'], before['COPY.ME']['data'])
-        for f in read_files(self.dst).values():
-            for t, s in f['blocks'] + f['lists']:
-                a = offset(t, s)
-                self.assertEqual(self.image(2)[a:a + 256], self.dst[a:a + 256])
-        for drive, _, _ in self.mini.write_log:
-            self.assertEqual(drive, 2, 'nothing may be written to the source')
+        self.preserved()
+        result = read_files(self.image(2))['ON.TRACK1']
+        self.assertEqual(result['data'], read_files(src)['ON.TRACK1']['data'])
+        self.assertLess(min(t for t, _ in result['blocks'] + result['lists']), 3,
+                        'the free sectors of tracks 1-2 are used, as DOS would')
+        self.mini.poke('drive', bytes([1]))     # as the UI's reread does
+        self.assertEqual(self.mini.delete_prepare(0), self.DEL_OK)
+        self.assertEqual(self.mini.delete_execute(), self.DEL_OK)
+        files = read_files(self.image(1))
+        self.assertNotIn('ON.TRACK1', files)
+        v = offset(17, 0)
+        for t in (1, 2):
+            self.assertEqual(self.image(1)[v + 0x38 + t * 4:v + 0x3a + t * 4], b'\xff\xff',
+                             'every sector of the freed tracks is free again')
+        self.assertEqual(self.image(1)[v + 0x38:v + 0x3a], b'\0\0', 'track 0 stays allocated')
+        # an ordinary disk: a T/S list on track 1 is a chain into DOS
+        self.load(src=make_disk([('GONE.TXT', 0, b'DELETE ME'),
+                                 ('KEEP.SRC', 0, b'SOURCE SAFE')]))
+        img = bytearray(self.src)
+        img[offset(17, 15) + 11] = 1
+        img[offset(17, 15) + 12] = 0
+        self.mini.load(1, bytes(img))
+        self.assertEqual(self.mini.catalog(), 0)
+        self.assertEqual(self.prepare(), INVALID)
+        self.assertEqual(self.mini.delete_prepare(0), self.DEL_INVALID)
+        self.assertEqual(self.mini.write_log, [])
+
+    def test_catalog_art_name_is_kept_byte_for_byte(self):
+        # Inverse, control and low-ASCII bytes in a DOS name: the panel
+        # shows them as '!' or '?', the copy keeps the raw bytes, and
+        # delete, lock and rename act on that very slot.
+        self.load(src=make_disk([('ART', 0, b'ART DATA'),
+                                 ('KEEP.SRC', 0, b'SOURCE SAFE')]))
+        raw = bytes([0xC1, 0xD2, 0xD4, 0x21, 0x01, 0x81]) + b'\xa0' * 24
+        img = bytearray(self.src)
+        a = offset(17, 15) + 11
+        img[a + 3:a + 33] = raw
+        self.src = bytes(img)
+        self.mini.load(1, self.src)
+        self.assertEqual(self.mini.catalog(), 0)
+        self.assertEqual(bytes(self.mini.peek('ent_name', 6)), b'ART!??')
+        self.assertEqual(self.prepare(), OK)
+        self.assertEqual(self.mini.execute(), OK)
+        self.preserved()
+        copies = [f for f in read_files(self.image(2)).values() if f['entry'][3:33] == raw]
+        self.assertEqual(len(copies), 1, 'the name travels byte for byte')
+        self.assertEqual(copies[0]['data'].rstrip(b'\x00'), b'ART DATA')
+        writes = len(self.mini.write_log)
+        self.mini.poke('drive', bytes([1]))
+        self.assertEqual(self.prepare(), EXISTS, 'the raw name collides with itself')
+        self.assertEqual(len(self.mini.write_log), writes)
+        self.mini.poke('drive', bytes([1]))     # as the UI's reread does
+        self.assertEqual(self.mini.lock_prepare(0, 2), self.DEL_OK)
+        self.assertEqual(self.mini.lock_execute(), self.DEL_OK)
+        self.assertEqual(self.mini.catalog(), 0)
+        self.assertEqual(self.mini.lock_prepare(0, 1), self.DEL_OK)
+        self.assertEqual(self.mini.lock_execute(), self.DEL_OK)
+        self.assertEqual(self.mini.catalog(), 0)
+        self.assertEqual(self.mini.rename_prepare(0, 'PLAIN'), self.DEL_OK)
+        self.assertEqual(self.mini.rename_execute(), self.DEL_OK)
+        self.assertEqual(self.mini.catalog(), 0)
+        files = read_files(self.image(1))
+        self.assertEqual(files['PLAIN']['data'].rstrip(b'\x00'), b'ART DATA')
+        self.assertEqual(self.mini.delete_prepare(0), self.DEL_OK)
+        self.assertEqual(self.mini.delete_execute(), self.DEL_OK)
+        files = read_files(self.image(1))
+        self.assertEqual(set(files), {'KEEP.SRC'})
+        self.assertEqual(files['KEEP.SRC']['data'].rstrip(b'\x00'), b'SOURCE SAFE')
 
     # ---- exclusive create from RAM --------------------------------
     def create(self, name='NEW.TXT', data=b'HELLO FROM RAM', kind=0):
@@ -389,6 +529,102 @@ class WriteTest(unittest.TestCase):
 
     # ---- delete: catalog first, then free -------------------------
     DEL_OK, DEL_READ, DEL_INVALID, DEL_LOCKED, DEL_CHANGED, DEL_UNCERTAIN = range(6)
+    DEL_PROTECTED = 8
+
+    def two_files(self):
+        self.load(src=make_disk([('GONE.TXT', 0, b'DELETE ME'),
+                                 ('KEEP.SRC', 0, b'SOURCE SAFE')]))
+        return offset(17, 15) + 11, offset(17, 15) + 11 + 35
+
+    def test_delete_refuses_an_entry_whose_identity_changed(self):
+        # The panel was read from one disk; a sibling disk with the same
+        # names but other T/S lists is in the drive when D is pressed.
+        # Deleting by name would free KEEP.SRC's sectors.
+        a, b = self.two_files()
+        img = bytearray(self.src)
+        img[a:a + 2], img[b:b + 2] = self.src[b:b + 2], self.src[a:a + 2]
+        img[a + 33:a + 35], img[b + 33:b + 35] = self.src[b + 33:b + 35], self.src[a + 33:a + 35]
+        self.mini.load(1, bytes(img))
+        self.assertEqual(self.mini.delete_prepare(0), self.DEL_CHANGED)
+        self.assertEqual(self.mini.lock_prepare(0, 0), self.DEL_CHANGED)
+        self.assertEqual(self.mini.rename_prepare(0, 'NEW.TXT'), self.DEL_CHANGED)
+        self.assertEqual(self.mini.write_log, [])
+        self.assertEqual(self.image(1), bytes(img))
+        # the same name gone from the disk: also a changed disk
+        img = bytearray(self.src)
+        img[a + 3:a + 33] = bytes(c | 128 for c in b'ELSEWHERE'.ljust(30))
+        self.mini.load(1, bytes(img))
+        self.assertEqual(self.mini.delete_prepare(0), self.DEL_CHANGED)
+        self.assertEqual(self.mini.lock_prepare(0, 0), self.DEL_CHANGED)
+        self.assertEqual(self.mini.rename_prepare(0, 'NEW.TXT'), self.DEL_CHANGED)
+        # a changed type or size is refused before the walk
+        for at in (a + 2, a + 33):
+            img = bytearray(self.src)
+            img[at] ^= 0x40
+            self.mini.load(1, bytes(img))
+            self.assertEqual(self.mini.delete_prepare(0), self.DEL_CHANGED)
+        self.assertEqual(self.mini.write_log, [])
+
+    def test_delete_of_a_sanitised_name_never_takes_another_file(self):
+        # FOO<ctrl-M> and FOO? both show as FOO? on the panel. Deleting
+        # the second entry removes that entry, never the first, whose raw
+        # name happens to equal the panel's sanitised text.
+        self.load(src=make_disk([('FOO?', 0, b'QUESTION FILE'),
+                                 ('FOOX', 0, b'CONTROL FILE')]))
+        img = bytearray(self.src)
+        img[offset(17, 15) + 11 + 35 + 3 + 3] = 0x8D
+        self.mini.load(1, bytes(img))
+        self.assertEqual(self.mini.catalog(), 0)
+        self.assertEqual(bytes(self.mini.peek('ent_name', 4, offset=32)), b'FOO?')
+        self.assertEqual(self.mini.delete_prepare(1), self.DEL_OK)
+        self.assertEqual(self.mini.delete_execute(), self.DEL_OK)
+        files = read_files(self.image(1))
+        self.assertEqual(set(files), {'FOO?'})
+        self.assertEqual(files['FOO?']['data'].rstrip(b'\x00'), b'QUESTION FILE')
+        a = offset(17, 15) + 11 + 35
+        self.assertEqual(self.image(1)[a], 255, 'the second slot is the deleted one')
+
+    def test_looping_catalog_does_not_hang_delete_lock_rename(self):
+        # Delete and lock touch only the slot's own sector; rename has to
+        # scan every name and refuses a chain that never ends.
+        a, b = self.two_files()
+        img = bytearray(self.src)
+        img[offset(17, 13) + 1:offset(17, 13) + 3] = bytes([17, 14])
+        self.mini.load(1, bytes(img))
+        self.assertEqual(self.mini.delete_prepare(0), self.DEL_OK)
+        self.assertEqual(self.mini.lock_prepare(0, 0), self.DEL_OK)
+        self.assertEqual(self.mini.rename_prepare(0, 'NEW.TXT'), self.DEL_INVALID)
+        self.assertEqual(self.mini.write_log, [])
+        self.assertEqual(self.image(1), bytes(img))
+
+    def test_write_protection_refuses_delete_lock_rename_cleanly(self):
+        # RWTS refuses before touching the disk: nothing is uncertain,
+        # nothing latches, and the next write in this run is allowed.
+        a, b = self.two_files()
+        self.mini.protected_drive = 1
+        self.assertEqual(self.mini.delete_prepare(0), self.DEL_OK)
+        self.assertEqual(self.mini.delete_execute(), self.DEL_PROTECTED)
+        self.assertEqual(self.mini.lock_prepare(0, 0), self.DEL_OK)
+        self.assertEqual(self.mini.lock_execute(), self.DEL_PROTECTED)
+        self.assertEqual(self.mini.rename_prepare(0, 'NEW.TXT'), self.DEL_OK)
+        self.assertEqual(self.mini.rename_execute(), self.DEL_PROTECTED)
+        self.assertEqual(self.mini.byte('del_fault'), 0)
+        self.assertEqual(self.image(1), self.src)
+        self.mini.protected_drive = 0
+        self.assertEqual(self.mini.delete_prepare(0), self.DEL_OK)
+        self.assertEqual(self.mini.delete_execute(), self.DEL_OK)
+        self.assertNotIn('GONE.TXT', read_files(self.image(1)))
+
+    def test_write_protection_after_the_catalog_mark_is_uncertain(self):
+        a, b = self.two_files()
+        self.assertEqual(self.mini.delete_prepare(0), self.DEL_OK)
+        self.mini.protect_write = 1
+        self.assertEqual(self.mini.delete_execute(), self.DEL_UNCERTAIN)
+        self.assertEqual(self.mini.byte('del_fault'), 1)
+        self.assertEqual(self.image(1)[a], 255, 'the catalog mark is on the disk')
+        self.assertEqual(self.image(1)[offset(17, 0):offset(17, 0) + 256],
+                         self.src[offset(17, 0):offset(17, 0) + 256],
+                         'the VTOC was refused')
 
     def test_delete_marks_catalog_then_frees(self):
         self.load(src=make_disk([('GONE.TXT', 0, b'DELETE ME'),
@@ -405,9 +641,14 @@ class WriteTest(unittest.TestCase):
         self.assertNotEqual(first[2], 0, 'the catalog is marked before the VTOC')
         self.assertEqual(self.mini.write_log[-1], (1, 17, 0),
                          'the VTOC is freed last')
-        # DOS UNDELETE mark: track $FF, original track in the first name byte
+        # DOS UNDELETE mark: track $FF, the original T/S list track in the
+        # last name byte (entry+$20), the rest of the name untouched
         a = offset(17, 15) + 11
+        gone = read_files(self.src)['GONE.TXT']
         self.assertEqual(self.image(1)[a], 255)
+        self.assertEqual(self.image(1)[a + 32], gone['lists'][0][0])
+        self.assertEqual(self.image(1)[a + 1:a + 32], self.src[a + 1:a + 32])
+        self.assertEqual(self.image(1)[a + 33:a + 35], self.src[a + 33:a + 35])
 
     def test_delete_refuses_locked(self):
         self.load(src=make_disk([('LOCK.ME', 0x80, b'SAFE')]))
@@ -445,6 +686,7 @@ class WriteTest(unittest.TestCase):
         img = bytearray(self.image(1))
         img[offset(17, 15) + 11 + 33] = 99
         self.mini.load(1, bytes(img))
+        self.assertEqual(self.mini.catalog(), 0)    # the panel shows 99 too
         self.assertEqual(self.mini.delete_prepare(0), self.DEL_INVALID)
         self.assertEqual(len(self.mini.write_log), 0)
         self.assertEqual(self.image(1), bytes(img))
@@ -475,6 +717,9 @@ class WriteTest(unittest.TestCase):
         self.assertEqual(files['LOCK.ME']['data'], before['LOCK.ME']['data'])
         self.assertEqual(files['KEEP.SRC']['data'], before['KEEP.SRC']['data'])
         self.assertEqual(self.mini.write_log, [(1, 17, 15)])
+        # the panel still says unlocked: the disk is held to the panel
+        self.assertEqual(self.mini.lock_prepare(0, 0), self.DEL_CHANGED)
+        self.assertEqual(self.mini.catalog(), 0)    # as the UI rereads
         self.assertEqual(self.mini.lock_prepare(0, 0), self.DEL_OK)
         self.assertEqual(self.mini.lock_execute(), self.DEL_OK)
         self.assertEqual(self.mini.catalog(), 0)

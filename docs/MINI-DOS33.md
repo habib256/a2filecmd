@@ -1,4 +1,4 @@
-# A2FC Mini DOS 3.3 — 0.7.0
+# A2FC Mini DOS 3.3 — 0.8.5
 
 A standalone edition for **Apple II+ 48 KB, NMOS 6502**, with two panels in
 40 columns and DOS 3.3 copying between two Disk II drives. No ProDOS,
@@ -8,8 +8,8 @@ Written entirely in 6502 assembly; see [Speed](#speed) for what that buys.
 
 ![Two panels with inverse video and bottom shortcuts](mini-dos33.png)
 
-The disk image `dist/A2FC-MINI-DOS33-0.7.0.dsk` boots through the Applesoft
-`HELLO` program, which centres `A2FILECMD`, `MINI DOS 3.3` and `V0.7.0` at
+The disk image `dist/A2FC-MINI-DOS33-0.8.5.dsk` boots through the Applesoft
+`HELLO` program, which centres `A2FILECMD`, `MINI DOS 3.3` and `V0.8.5` at
 the top of the 40-column screen, then `GPL3 VERHILLE ARNAUD` and
 `LOADING .... PLEASE WAIT ....` at the bottom, before
 `BRUN A2FC.MINI`. The same
@@ -95,10 +95,11 @@ After rereading or copying, selections are restored by name when still present.
    so the rest of the batch can still land. An uncertain write stops the
    batch. The panels reread themselves when the result is ready.
 
-Copying preserves the name, type, lock flag, and every byte of the file's data
-sectors, including DOS headers and the final sector. **An existing name is
-refused at prepare time**, even when the existing file is unlocked. The source
-is never written or deleted by a copy.
+Copying preserves the name byte for byte (inverse, flashing or control
+characters that the panel shows as `?` included), the type, the lock flag,
+and every byte of the file's data sectors, including DOS headers and the
+final sector. **An existing name is refused at prepare time**, even when the
+existing file is unlocked. The source is never written or deleted by a copy.
 
 New text files (N) and editor saves (E) use the same exclusive-create engine
 with the working area as the source: one new name, never an overwrite.
@@ -119,10 +120,24 @@ Delete (D) acts on the tagged files, or on the cursor when nothing is tagged.
 Locked files are skipped so the rest of a batch can still go. A read error,
 an invalid chain (including T/S or data on DOS tracks 1–2 or the catalog
 track), or a changed disk stops the batch. The catalog entry is marked deleted first (DOS
-`$FF`, original track kept for UNDELETE), then the sectors are freed in the
-VTOC. A crash after the catalog write can leak sectors; the other order
-would hand those sectors to the next create while the name still claimed
-them. An uncertain write latches `del_fault` so this run cannot write again.
+`$FF`, with the T/S list track kept in the last name byte, entry `$20`, as
+DOS's own DELETE and the UNDELETE utilities expect), then the sectors are
+freed in the VTOC. A crash after the catalog write can leak sectors; the
+other order would hand those sectors to the next create while the name
+still claimed them. An uncertain write latches `del_fault` so this run
+cannot write again.
+
+Delete, lock, rename and copy go back to the **catalog slot** the panel
+read the entry from, then hold the disk to the panel: the slot must still
+carry the T/S pointer, type, sector count and the name as it was shown, or
+the operation is refused as **DISK CHANGED** before any write. A name alone
+is not an identity: the panel shows unprintable characters as `?`, and a
+sibling disk can reuse a name for another file. A write-protected disk is
+refused as itself, before the first write, and does not latch `del_fault`;
+protection discovered after the catalog mark is treated as an uncertain
+write. A catalog chain longer than the 15 sectors of track 17 is a loop:
+rename's collision scan and copy's destination scan refuse it rather than
+follow it.
 
 Two drives on the controller used to boot DOS are required. Selecting the same
 drive in both panels is refused. Single-drive copying by swapping disks is not
@@ -130,10 +145,12 @@ implemented. Do not change disks between confirmation and completion.
 After confirmation, the keyboard cannot interrupt the operation.
 
 Prepare walks **only the selected source file** and the destination catalog
-names. It does not audit the rest of either disk, pre-read every source
-sector, or re-check the disks after you press Y. A disk swapped after the
-prompt, a stale panel size that still walks, or a name that appears in
-another catalog sector after prepare **will not be caught**.
+names. It does not audit the rest of either disk or pre-read every source
+sector. After you press Y, the source catalog slot and the destination VTOC
+are read again and compared with what the plan was made on; a disk swapped
+at the prompt on either drive is refused as **DISK CHANGED** before the
+first write. A source swapped for a byte-identical twin, or a name that
+appears in another catalog sector after prepare, **will not be caught**.
 
 Required free sectors are reserved in the destination VTOC before any data.
 Each written sector is read back. The catalog entry is published last, and
@@ -142,7 +159,11 @@ protection. No existing file or backup is opened or replaced.
 
 Standard 35-track, 16-sector DOS 3.3 disks are supported, with multiple T/S lists
 per file up to available disk capacity. Sparse, noncanonical, inconsistent chains
-or file data on system tracks are refused. An oversized, full, or partly unreadable
+or file data on track 0 or the catalog track are refused. Tracks 1 and 2 hold
+DOS on an ordinary disk, whose VTOC keeps all 32 of their sectors allocated,
+and a chain pointing into them is refused there; on a disk formatted without
+DOS, whose VTOC frees some of them, files may live on those tracks and copies
+are written there, exactly as DOS itself files data. An oversized, full, or partly unreadable
 catalog prevents copying. A free entry must exist in the current catalog chain;
 the engine does not extend shortened catalogs. The bundled disk supplies all
 105 standard entries. 13-sector, 40-track, and nonstandard protected formats
@@ -225,8 +246,9 @@ cc65's C compiler and runtime: the assembly modules are linked by
   following holes). They are saved at entry and restored before every RWTS
   call, so drawing the panels cannot send the next seek to the wrong track.
 - `$0800–$0FFF`: the Applesoft launcher, left untouched.
-- `$1000–$1FFF`: editor and delete. They never run at the same time as a
-  copy or a picture.
+- `$1000–$1FFF`: editor, delete, lock and rename, and the copy engine's
+  prepare-time routines (locating the source entry, counting T/S lists).
+  Nothing in the batch path lives here.
 - `$2000–$3FFF`: hi-res page one, the one 8 KB working area. Exactly one
   owner at a time: a copy batch, a picture, or the editor buffer.
 - `$4000–$95FF`: resident program and BSS. `$9600` is Applesoft's HIMEM
@@ -241,15 +263,20 @@ cc65's C compiler and runtime: the assembly modules are linked by
 `make test-mini` runs the shipped 6502 modules under `sim65`, with the two
 disk images held by the test process so that a chosen read or write can be
 made to fail, tear in half, or silently corrupt a byte. It covers reads at
-every stage; refused, partial and corrupt writes; write protection;
-cancellation; collisions, including one hiding in another catalog sector;
-full disks and catalogs; stale panel sizes and pointers; malformed chains;
-metadata changed between the prompt and the writing; fragmented
-destinations; empty files; files needing up to five T/S lists; loading a
-file without losing its T/S list; exclusive create and its collisions;
-and delete that marks the catalog before the VTOC. What is asserted is
-the bytes: the source unchanged on a copy, every pre-existing target byte
-intact, and a consistent allocation graph afterwards.
+every stage; refused, partial and corrupt writes; write protection, before
+and after the first write; cancellation; collisions, including one hiding
+in another catalog sector; full disks and catalogs; stale panel sizes and
+pointers; malformed and looping chains; metadata changed between the
+prompt and the writing, including a source or destination disk swapped at
+the prompt; disks formatted without DOS, with files on tracks 1–2; names
+with inverse or control characters; fragmented destinations; empty files; files needing up to five T/S
+lists; loading a file without losing its T/S list, and knowing when it did
+not fit; exclusive create and its collisions; delete that marks the
+catalog before the VTOC with the DOS UNDELETE mark; and delete, lock and
+rename refusing an entry whose identity no longer matches the panel. What
+is asserted is the bytes: the source unchanged on a copy, every
+pre-existing target byte intact, and a consistent allocation graph
+afterwards.
 
 With POM2 built and its Apple II+ / Disk II ROMs available:
 

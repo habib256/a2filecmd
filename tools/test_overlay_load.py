@@ -41,6 +41,7 @@ static size_t read_code(void* p,size_t size,size_t n,FILE* f) {
 }
 static int close_code(FILE* f){++closes;fclose(f);return mode==4?-1:0;}
 static int confirm_aux(void){return 1;}
+static void snapshot_entries(void){}
 static void keep_tags(int save){saved+=save?1:-1;}
 static int read_panel(int p){++restored;memset(window+1280,0xEE,100);return 1;}
 static void draw_all(void){++draws;}
@@ -97,6 +98,30 @@ int main(void){
    p=Path(d);(p/'test.c').write_text(harness)
    subprocess.run(['cc','-std=c99',str(p/'test.c'),'-o',str(p/'test')],check=True,capture_output=True)
    self.assertEqual(subprocess.run([str(p/'test')]).returncode,0)
+
+ def test_snapshot_preserves_overlapping_entry_tables(self):
+  snapshot=source[source.index('static void snapshot_entries(void)'):source.index('static unsigned char load_overlay(')]
+  c=r'''
+#include <string.h>
+#include <stdlib.h>
+struct Entry {unsigned char bytes[29];};
+struct Panel {struct Entry* e;unsigned char count;};
+static unsigned char ram[8192],active;
+static struct Panel panels[2];
+#define ENTRY_SNAPSHOT ((struct Entry*)(ram+4096))
+'''+snapshot+r'''
+int main(void){unsigned side,n,k;unsigned char original[4060];
+ for(side=0;side<2;++side)for(n=0;n<=140;++n){
+  for(k=0;k<sizeof ram;++k)ram[k]=k*13+k/29;
+  active=side;panels[side].e=(struct Entry*)(ram+side*4060);panels[side].count=n;
+  memcpy(original,panels[side].e,n*29);snapshot_entries();
+  if(memcmp(original,ENTRY_SNAPSHOT,n*29))return 1;
+ }return 0;}
+'''
+  with tempfile.TemporaryDirectory(prefix='entry-snapshot-') as d:
+   p=Path(d);(p/'test.c').write_text(c)
+   subprocess.run(['cc','-std=c99','-fsanitize=address,undefined',str(p/'test.c'),'-o',str(p/'test')],check=True,capture_output=True)
+   subprocess.run([str(p/'test')],check=True)
 
  def test_stream_failures_never_cache_code_and_restore_panels(self):
   with tempfile.TemporaryDirectory(prefix='overlay-load-') as d:

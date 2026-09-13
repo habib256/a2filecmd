@@ -46,6 +46,7 @@
  * the cursor on the file. Only api->selected (a copy) and the panel's
  * path and fs are read: the entry table under $2000 is covered. */
 #include "../a2fc_plugin.h"
+#include <string.h>
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api);
 
@@ -67,6 +68,15 @@ static const struct Entry* e;
 static unsigned char* b;            /* api->copy_buf: the first 512 bytes, then the message */
 static unsigned int n;              /* how many were read */
 static FILE* f;
+static unsigned char io_failed;
+#define DP_READ A->fread
+#include "../duet_probe.h"
+static unsigned char suffix(const char* name, const char* end)
+{
+    unsigned int n = strlen(name), k = strlen(end);
+    return n > k && !strcmp(name+n-k, end);
+}
+
 /* The size as two words, copied once: no long compare (cc65 would link its
  * runtime), and no cast of &e->size, which cc65 2.19 compiles as a read at
  * offset 0 of the entry -- the name -- rather than at the member. */
@@ -93,8 +103,7 @@ static unsigned char magic(const char* m)
  * volume directory header stands at their byte 4 (storage type $F). */
 static unsigned char prodos_at(long pos)
 {
-    A->fseek(f, pos, SEEK_SET);                   /* SEEK_SET is 2 in cc65, not 0 */
-    A->fread(b, 1, 512, f);
+    if (A->fseek(f, pos, SEEK_SET) || A->fread(b, 1, 512, f) != 512 || ferror(f)) { io_failed = 1; return 0; }
     return b[4] >> 4 == 0xF;
 }
 
@@ -175,9 +184,31 @@ static const char* identify(void)
 {
     unsigned char t = e->type, i;
     if (!n) return "Empty file";
+    if (t == 7) return "MGTK / DeskTop font";
+    if (suffix(e->name,".FOTO1") || suffix(e->name,".FOTO2")) return "Purplesoft picture pair";
+    if (t == 8 && e->aux == 0x8066) return "LZ4FH compressed hi-res picture (FOT)";
+    if (t == 6 && (e->aux & 0xCFFF) == 0x4800 && (sz.l == 572 || sz.l == 576))
+        return "Print Shop monochrome clip art";
+    if ((t==6 || t==8) && e->aux==0x400 && sz.l<=2048) return "Lo-res / double lo-res picture";
+    if (n>=3 && !memcmp(b,"DGR",3)) return "DGR pixmap / lo-res picture";
+    if (suffix(e->name,".PT3") || (n>=14 && (!memcmp(b,"ProTracker 3.",13) || !memcmp(b,"Vortex Tracker",14))))
+        return "ProTracker 3 music (PT3)";
+    if ((t==0xD5 && e->aux==0xD0E7) || suffix(e->name,".ED") || (t==6 && e->name[0]=='M' && e->name[1]=='.')) {
+        unsigned char result;
+        if (A->fseek(f,0,SEEK_SET)) { io_failed=1; return ""; }
+        result=duet_probe(f,b);
+        if (result==2) io_failed=1;
+        return result==1 ? "Electric Duet compatible song" : "Invalid/unrecognized Electric Duet candidate";
+    }
+    if (suffix(e->name,".MD")) return "Markdown text";
     if (magic("NuFile") || magic("NuFX")) return "ShrinkIt archive (NuFX)";
     if (magic("\x0A\x47\x4C") && b[18] == 2) return "Binary II archive";
     if (magic("2IMG")) return "2IMG disk image";
+    if (suffix(e->name,".NIB") && sz.l == 232960L) return "Disk II nibble image (NIB)";
+    if ((suffix(e->name,".PO") || suffix(e->name,".HDV")) && sz.l != 143360L) {
+        if (sz.l >= 1536 && prodos_at(1024)) return "ProDOS block image";
+        return "Unrecognized block image candidate";
+    }
     if (SZ[1] == 2 && SZ[0] == 0x3000) {          /* 143,360 bytes: a 5.25 image */
         if (prodos_at(1024)) return s_image;
         prodos_at(69632L);                        /* the VTOC, DOS order: track 17 sector 0 */
@@ -192,11 +223,6 @@ static const char* identify(void)
     if (t == 0xFA) return "Integer BASIC program";
     if (magic("HGRR")) return "HGR picture, RLE";
     if (magic("DHRR")) return "DHGR picture, RLE";
-    if (!SZ[1]) {
-        if (SZ[0] == 16384) return "DHGR picture, 16K (two planes)";
-        if (SZ[0] == 8192 || (SZ[0] >= 8184 && SZ[0] < 8192 && t == 6 && e->aux == 0x2000))
-            return "HGR picture, 8K";
-    }
     /* A FOT is raw or packed, and the auxtype is what says so: $4000 a
      * packed hi-res page, $4001 a packed double hi-res one (PACKFOT reads
      * both), $8066 the LZ4FH compression. Anything else is the load address
@@ -206,7 +232,6 @@ static const char* identify(void)
         if (e->aux == 0x4000) return "Packed hi-res picture (FOT)";
         if (e->aux == 0x4001) return "Packed double hi-res picture (FOT)";
         if (e->aux == 0x8066) return "LZ4FH compressed hi-res picture (FOT)";
-        return "Hi-res picture (FOT), raw";
     }
     /* Extasie writes its pictures under a type of their own, $F2, and opens
      * them with their own length: a double hi-res page, compressed, for the
@@ -221,6 +246,12 @@ static const char* identify(void)
     if (t == 6 && (e->aux == 0xE001 || e->aux == 0xE002))
         return e->aux == 0xE001 ? "816/Paint packed hi-res picture"
                                 : "816/Paint packed double hi-res picture";
+    if (!SZ[1]) {
+        if (SZ[0] == 16384) return "DHGR picture, 16K (two planes)";
+        if (SZ[0] == 8192 || (SZ[0] >= 8184 && SZ[0] < 8192 && t == 6 && e->aux == 0x2000))
+            return "HGR picture, 8K";
+    }
+    if (t == 8) return "Hi-res picture (FOT), raw";
     if (magic("MB1")) return "Mockingboard music (MB1)";
     if (t == 0xFF) return "ProDOS system program, 6502 code";
     if (t == 6 && e->aux)
@@ -247,10 +278,14 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     A->strcpy(A->reselect, e->name);              /* the cursor stays on it after the redraw */
     f = A->fopen(A->full, "rb");
     if (!f) { A->strcpy(A->note, "Cannot open it."); return; }
+    io_failed = 0;
     n = A->fread(b, 1, 512, f);
+    if (ferror(f)) io_failed = 1;
     if (n < 512) A->memset(b + n, 0, 512 - n);    /* no magic read out of the last call's bytes */
     what = identify();
-    A->fclose(f);
+    if (ferror(f)) io_failed = 1;
+    if (A->fclose(f)) io_failed = 1;
+    if (io_failed) { A->strcpy(A->note,"Cannot identify: read/seek/close error."); return; }
     A->sprintf((char*)b, m_line, e->name, e->size, what);
     b[79] = 0;                                    /* one line of note: nothing spills */
     A->strcpy(A->note, (char*)b);                 /* written by the core after its redraw */

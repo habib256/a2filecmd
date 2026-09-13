@@ -234,6 +234,17 @@ n'effacent jamais leur source. Tests C PO/DSK, pannes combinées et retry,
 résident inchangé. Restent UNSHRINK, IMGFS, DOS33 et la relecture complète
 des images créées.
 
+Suite du chantier 1 : UNSHRINK réserve directement ses sorties et signale
+leur nettoyage échoué, avec conservation des octets lors d'une nouvelle
+tentative. Les sauts deviennent des lectures exactes ; troncatures, erreurs
+de flux et fermetures échouées ne donnent plus un succès. Annulation entre
+blocs, noms longs préservés avant lecture du remplissage, bornes des tailles
+et compte rendu des compressions ignorées. Tests C avec pannes combinées,
+ASan/UBSan, octets conservés et garde de pile dans le banc natif. Restent
+IMGFS/DOS33, les CRC et métadonnées NuFX complets, la validation complète du
+décodeur LZW sur flux malformés et la relecture des extraits ; aucune case
+globale close.
+
 ## 2. Parcours d’arbres itératifs
 
 `count_tree`, `copy_tree` et `delete_tree` restent récursifs. Le refus quand

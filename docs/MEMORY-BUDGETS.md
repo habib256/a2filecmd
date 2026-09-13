@@ -1,5 +1,16 @@
 # Consolidation : budgets mémoire
 
+UNSHRINK, 13 septembre 2026 : réservation possédée, nettoyage contrôlé,
+lectures exactes des threads ignorés, erreurs de flux/fermeture et annulation.
+Les opérations de comparaison et lecture des entiers réutilisent les fonctions
+`memcmp`/`memcpy` déjà résidentes pour tenir dans la fenêtre inchangée.
+UNSHRINK occupe 5 367/5 347 octets (65C02/6502), soit 9/29 octets libres
+sous `$3000`. Aucun BSS ajouté ; l'état à `$3000` est borné à 512 octets
+par une assertion de compilation. MAIN garde 60/546 octets, LC 31/24,
+LOWRAM 277/302, écart avant pile 88/763 ; pile C toujours de 192 octets.
+Le résident 6502 prend 12 octets supplémentaires, le 65C02 est inchangé.
+Tous les contrôles de disposition restent actifs.
+
 Audit des chaînes DOS, 13 septembre 2026 : ajout du numéro logique attendu
 pour les listes T/S, soit deux octets de BSS par moteur. DOSWRITE : fichiers
 7 142/7 219, BSS 1 994/1 995, réserves 336/258 octets (65C02/6502).
@@ -486,3 +497,31 @@ graphe d'appels ni des binaires : consommation dynamique de pile inchangée,
 sans nouvelle mesure sur émulateur. COPY reste sous l'objectif de 64 octets,
 et la carte langage sous celui de 128 ; l'extraction ne revendique aucun gain
 mémoire. Les autres surcouches gardent exactement leurs réserves.
+
+### DOSGET, IDENT et FIXTYPES — 13 septembre 2026
+
+DOSGET remplace la petite surcouche DOS33 par une grande surcouche explicitement
+signalée BIG. Son plafond de code est `$2800` ; le bitmap de 70 octets est à
+`$2800`, la copie T/S de 244 octets à `$2F00`. Le snapshot des 140 entrées
+actives occupe `$3000-$3FDB`. FIXTYPES utilise le même snapshot, avec code et
+BSS obligatoirement sous `$3000` (fin BSS `$2B5A` / `$2B21`). Le chargeur fait
+un memmove avant de charger une grande surcouche ; BATCH réutilise ce service.
+Aucun de ces nouveaux espaces n'utilise AUX. L'API passe à v5 sans déplacer
+les services ; FIXTYPES refuse une ancienne API avant toute modification.
+
+| Réserve en octets | 65C02 | 6502 |
+| --- | ---: | ---: |
+| MAIN | 23 | 518 |
+| Carte langage | 14 | 6 |
+| LOWRAM avec BSS | 245 | 270 |
+| Espace avant pile C | 51 | 735 |
+| OPEN | 11 | 43 |
+| DOSGET avant `$2800` | 1547 | 1528 |
+| FIXTYPES BSS avant `$3000` | 1189 | 1246 |
+
+La pile reste à 192 octets et les contrôles de disposition sont actifs sur
+les deux architectures. DOSGET ne tient plus dans le budget disque de BOOT :
+il est distribué sur FILES/XL, sans agrandir les disquettes de 280 blocs.
+Le banc formats passe 13 contrôles par CPU, dont le garde de pile, AUX intact
+et la comparaison intégrale des fichiers sur une disquette jetable relue
+après flush. FIXTYPES passe également 17 contrôles par CPU.

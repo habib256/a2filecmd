@@ -18,14 +18,15 @@
 
         .include "mini.inc"
 
-        .export catalog, preview, load_file, load_count, blank_scratch
+        .export catalog, preview, load_file, load_count, load_more
+        .export blank_scratch
         .export measure_text, _measure_text
-        .export valid_cs, seen_bit, bit_masks, ent_ptr, ent_index
+        .export valid_cs, seen_bit, bit_masks, ent_ptr, ent_index, sanitise
 
         .import read_sector
         .import buffer, count, volume, track, sector, active, sector_seen
         .import ent_track, ent_sector, ent_type, ent_seclo, ent_sechi
-        .import ent_name, prv_index
+        .import ent_slot, ent_name, prv_index
         .import scratch, cat_buf, edit_len
 
         .segment "BSS"
@@ -42,6 +43,8 @@ ldf_j:          .res 1          ; pair within the list
 ldf_got:        .res 1          ; data sectors placed so far
 load_count      = ldf_got
 ldf_ended:      .res 1
+ldf_more:       .res 1          ; 1: a data sector was left behind, full area
+load_more       = ldf_more
 ldf_off:        .res 2          ; data sectors already seen, as in copy walk
 ldf_list        = cat_buf       ; T/S list; copy is idle while a file loads
 
@@ -199,6 +202,16 @@ store_entry:
         sta     ent_seclo,y
         lda     buffer+34,x
         sta     ent_sechi,y
+        lda     #CAT_ENTRIES    ; where it lives: sector in bits 7-3,
+        sec                     ; slot 0-6 in bits 2-0. sector still holds
+        sbc     cat_i           ; the catalog sector being parsed
+        sta     t1
+        lda     sector
+        asl     a
+        asl     a
+        asl     a
+        ora     t1
+        sta     ent_slot,y
         lda     cat_idx
         jsr     ent_ptr
         lda     cat_off
@@ -208,20 +221,27 @@ store_entry:
         ldy     #0
 @char:
         lda     buffer,x
-        and     #$7F
-        cmp     #32
-        bcc     @unprintable
-        cmp     #127
-        bcs     @unprintable
-        bcc     @keep
-@unprintable:
-        lda     #'?'
-@keep:
+        jsr     sanitise
         sta     (ptr),y
         inx
         iny
         cpy     #NAME_LEN
         bcc     @char
+        rts
+
+; sanitise -- A = raw name byte from the catalog, returns the character
+; the panel shows: high bit off, anything unprintable as '?'. Delete and
+; copy apply the same rule when they hold a slot to the panel, so a
+; catalog-art name is matched by what was shown, byte for byte.
+sanitise:
+        and     #$7F
+        cmp     #32
+        bcc     @unprintable
+        cmp     #127
+        bcc     @keep
+@unprintable:
+        lda     #'?'
+@keep:
         rts
 
 ; ---------------------------------------------------------------------
@@ -288,6 +308,7 @@ load_file:
         lda     #0
         sta     ldf_got
         sta     ldf_ended
+        sta     ldf_more
         sta     ldf_off
         sta     ldf_off+1
         jsr     blank_scratch
@@ -326,9 +347,18 @@ load_file:
         lda     #0
         sta     ldf_j
 @pair:
-        lda     ldf_got         ; the area is full: show what we have
-        cmp     #SCRATCH_SIZE/256
-        bcs     @done
+        lda     ldf_got         ; the area is full: show what we have,
+        cmp     #SCRATCH_SIZE/256 ; but say whether the file went on, so
+        bcc     @room           ; the editor never saves a truncated copy
+        lda     ldf_j
+        asl     a
+        tax
+        lda     ldf_list+12,x
+        ora     ldf_list+13,x
+        beq     @done
+        inc     ldf_more
+        jmp     @done
+@room:
         lda     ldf_j
         asl     a
         tax

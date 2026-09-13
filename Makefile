@@ -14,7 +14,7 @@
 # every time by tools/check_layout.py, which catches the two overflows that
 # ld65 lets through silently. See docs/MANUAL.md.
 
-A2FC_VERSION = 0.8.0
+A2FC_VERSION = 0.8.5
 VOLUME       = A2FC$(CPU)
 
 # The .2mg hard disk: another volume name, to coexist with the floppy.
@@ -88,13 +88,13 @@ CODE   = $(BUILD)/A2FILE.CODE.BIN
 # launcher, the attributes, the editor, the menu, the disk images. Each has
 # two segments in its file: NAME (code) then NAMERO (strings). See
 # src/a2fc_plugin.h for the header and the service table.
-PLUGINS = BATCH NAV OPEN COPY FORMAT IMAGE TEXT HEX DELETE HELP EDIT RUN ATTR MENU DISKIMG IMGFS DOS33 UNSHRINK BASLIST COMPARE SEARCH BINARY2 AWP
+PLUGINS = BATCH NAV OPEN COPY FORMAT IMAGE TEXT HEX DELETE HELP EDIT RUN ATTR MENU DISKIMG IMGFS DOSGET UNSHRINK BASLIST COMPARE SEARCH BINARY2 AWP
 # The floppy edition: the commands, the two viewers that cost four blocks,
 # and the disk tools. The editor, the pictures, the music, the archives and
 # the document readers stay on the hard disk (45 blocks, with BASIC.SYSTEM's
 # 21, given back to the disk tools to come -- see TODO.md, "Les deux editions").
 # COMPARE also carries the S (sort) and M (mark differences) commands.
-PLUGINS_FLOPPY = BATCH NAV OPEN COPY FORMAT HELP TEXT HEX DELETE RUN ATTR MENU DISKIMG IMGFS DOS33 COMPARE
+PLUGINS_FLOPPY = BATCH NAV OPEN COPY FORMAT HELP TEXT HEX DELETE RUN ATTR MENU DISKIMG IMGFS COMPARE
 # The service-table overlays: src/plugins/NAME.c, each compiled and linked
 # on its own like a third party's (sdk/plugin.cfg, no crt0, nothing of
 # A2FILE.CODE), because the resident is full -- they reach the program only
@@ -115,12 +115,14 @@ CCDEFS =
 endif
 # These overlays reserve $3000-$3FFF for scratch (FIND: $3100-$3FFF): code AND BSS must
 # stop before their scratch area. ld65 enforces that boundary at link time.
-XPLUGINS_SCRATCH = music bootblk find goto mdview wipe dgrview
+XPLUGINS_SCRATCH = music bootblk find goto mdview wipe dgrview fixtypes
 # These decode a picture into the graphics page, so they are big (the core
 # sets the tags aside and rereads the panels) but their CODE must still stop
 # before $2000: they are linked with the small window, which makes ld65
 # enforce that boundary instead of leaving it to luck.
 XPLUGINS_HGR = purple extasie packfot paint816 fontview printshop lz4fh
+# DUET stages its song at $2400 (7 KB, the largest known Electric Duet
+# files are 5.5 KB): code and BSS are linked into $1B00-$23FF.
 XPLG = $(patsubst %,$(BUILD)/%.PLG,$(XPLUGINS))
 XPLG_FLOPPY = $(patsubst %,$(BUILD)/%.PLG,$(XPLUGINS_FLOPPY))
 SYSTEM = $(BUILD)/A2FILE.SYSTEM.SYS
@@ -170,7 +172,7 @@ $(SYSTEM) $(FLOPPY_SYSTEM): $(BUILD)/crt0_loader.o $(BUILD)/loader_mli.o Makefil
 	  -o $@ $(BUILD)/crt0_loader.o $(BUILD)/loader_mli.o \
 	  $(BUILD)/$(if $(filter $(FLOPPY_SYSTEM),$@),launcher_floppy,launcher).o $(IOBUF)
 
-$(CODE): $(SRC)/plugins/file_install.h $(SRC)/file_output.h $(SRC)/file_copy.h $(SRC)/display_types.h $(SRC)/launch.h $(SRC)/errors.h $(SRC)/media.h $(SRC)/viewer_ids.h $(SRC)/batch.h $(SRC)/config.h $(SRC)/format.c $(SRC)/a2fc.c $(SRC)/a2fc.cfg $(SRC)/a2fc_plugin.h $(SRC)/music.h $(SRC)/memory_swap.h $(BUILD)/display.o $(OBJS) Makefile | $(BUILD)
+$(CODE): $(SRC)/plugins/file_install.h $(SRC)/file_output.h $(SRC)/file_copy.h $(SRC)/display_types.h $(SRC)/launch.h $(SRC)/errors.h $(SRC)/media.h $(SRC)/viewer_ids.h $(SRC)/duet_probe.h $(SRC)/batch.h $(SRC)/config.h $(SRC)/format.c $(SRC)/a2fc.c $(SRC)/a2fc.cfg $(SRC)/a2fc_plugin.h $(SRC)/music.h $(SRC)/memory_swap.h $(BUILD)/display.o $(OBJS) Makefile | $(BUILD)
 	$(CL) $(CFLAGS) -D 'A2FC_VERSION="$(A2FC_VERSION)"' -C $(SRC)/a2fc.cfg \
 	  -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__STACKSIZE__=$(A2FC_STACK) -Wl -D,__BIN2SIZE__=$(BIN2SIZE) \
 	  -Wl -m,$(BUILD)/a2fc.map -Wl -Ln,$(BUILD)/a2fc.lbl \
@@ -187,8 +189,8 @@ $(BUILD)/%.PLG: $(SRC)/plugins/%.c $(wildcard $(SRC)/plugins/*.h) $(wildcard $(S
 	$(CC65BIN)ca65 -t $(TARGET) -o $(BUILD)/$*.o $(BUILD)/$*.s
 	@helper=; if [ -f $(SRC)/plugins/$*.s ]; then $(AS) -t $(TARGET) -o $(BUILD)/$*_svc.o $(SRC)/plugins/$*.s || exit; helper=$(BUILD)/$*_svc.o; fi; \
 	  if grep -qE 'PLUGIN_MAGIC, *OVERLAY_BIG' $<; then big=1; else big=0; fi; \
-	  $(CC65BIN)ld65 -C $(if $(filter find,$*),sdk/find.cfg,$(if $(filter pt3,$*),sdk/pt3.cfg,$(if $(filter nibcopy,$*),sdk/nibcopy.cfg,sdk/plugin.cfg))) -D __OVLSIZE__=$$( if [ $$big = 1 ]; then echo $(if $(filter $*,$(XPLUGINS_HGR)),0x0500,$(if $(filter $*,$(XPLUGINS_SCRATCH)),$(if $(filter find,$*),0x1600,0x1500),$(if $(filter volinfo blkview blkedit,$*),0x249E,0x2500))); elif [ "$*" = verify ]; then echo 0x04C2; else echo 0x0500; fi ) -m $(BUILD)/$*.map -Ln $(BUILD)/$*.lbl -o $@ $(BUILD)/$*.o $$helper $(CC65LIB) && \
-	  limit=$$( [ $$big = 1 ] && echo $(if $(filter $*,$(XPLUGINS_HGR)),1280,9472) || echo 1280 ) && \
+	  $(CC65BIN)ld65 -C $(if $(filter find,$*),sdk/find.cfg,$(if $(filter pt3,$*),sdk/pt3.cfg,$(if $(filter nibcopy,$*),sdk/nibcopy.cfg,sdk/plugin.cfg))) -D __OVLSIZE__=$$( if [ $$big = 1 ]; then echo $(if $(filter $*,$(XPLUGINS_HGR)),0x0500,$(if $(filter $*,$(XPLUGINS_SCRATCH)),$(if $(filter find,$*),0x1600,0x1500),$(if $(filter volinfo blkview blkedit,$*),0x249E,$(if $(filter duet,$*),0x0900,0x2500)))); elif [ "$*" = verify ]; then echo 0x04C2; else echo 0x0500; fi ) -m $(BUILD)/$*.map -Ln $(BUILD)/$*.lbl -o $@ $(BUILD)/$*.o $$helper $(CC65LIB) && \
+	  limit=$$( [ $$big = 1 ] && echo $(if $(filter $*,$(XPLUGINS_HGR)),1280,$(if $(filter duet,$*),2304,9472)) || echo 1280 ) && \
 	  { test $$(wc -c < $@) -le $$limit || { echo "$@: $$(wc -c < $@) bytes, more than its $$limit-byte window"; rm -f $@; exit 1; }; } && \
 	  echo "$@: $$(wc -c < $@) bytes ($$( [ $$big = 1 ] && echo big || echo small ) overlay)"
 xplugins: $(XPLG)
@@ -305,6 +307,9 @@ test: test-mini
 	python3 $(TOOLS)/test_goto_safety.py
 	python3 $(TOOLS)/test_file_safety.py
 	python3 $(TOOLS)/test_binary2_safety.py
+	python3 $(TOOLS)/test_unshrink_safety.py
+	python3 $(TOOLS)/test_dos_extract.py
+	python3 $(TOOLS)/test_format_repair.py
 	python3 $(TOOLS)/test_doswrite.py
 	python3 $(TOOLS)/test_dosimage.py
 	python3 $(TOOLS)/test_file_create.py
@@ -336,6 +341,7 @@ test: test-mini
 	python3 $(TOOLS)/test_imgconv.py
 	python3 $(TOOLS)/test_wipe.py
 	python3 $(TOOLS)/test_music.py
+	python3 $(TOOLS)/test_duet.py
 	python3 $(TOOLS)/test_pt3.py
 	python3 $(TOOLS)/test_pt3_frequency.py
 	python3 $(TOOLS)/test_pt3_dual.py
@@ -374,7 +380,7 @@ MINI_BUILD = build-mini
 MINI_AS ?= ca65
 MINI_LD ?= ld65
 MINI_MASTER ?=
-MINI_DISK ?= $(DIST)/A2FC-MINI-DOS33-0.7.0.dsk
+MINI_DISK ?= $(DIST)/A2FC-MINI-DOS33-$(A2FC_VERSION).dsk
 # start.s must come first: its STARTUP segment lands on the load address.
 MINI_MODULES = lowstart start rwts screen catalog copy keyboard ui data scratch delete edit fileops
 MINI_OBJS = $(addprefix $(MINI_BUILD)/,$(addsuffix .o,$(MINI_MODULES)))
@@ -382,8 +388,14 @@ MINI_OBJS = $(addprefix $(MINI_BUILD)/,$(addsuffix .o,$(MINI_MODULES)))
 mini: $(MINI_BUILD)/A2FC.MINI
 $(MINI_BUILD):
 	mkdir -p $@
-$(MINI_BUILD)/%.o: $(SRC)/mini/%.s $(SRC)/mini/mini.inc | $(MINI_BUILD)
-	$(MINI_AS) --cpu 6502 -I $(SRC)/mini -o $@ $<
+# The Mini splash prints the release number from one place: version.inc is
+# rewritten only when A2FC_VERSION changes, so an unchanged build stays
+# byte-identical and does not reassemble every module.
+$(MINI_BUILD)/version.inc: Makefile | $(MINI_BUILD)
+	@printf '        .define VERSION_STR "V$(A2FC_VERSION)"\n' > $@.tmp; \
+	  cmp -s $@.tmp $@ && rm -f $@.tmp || mv $@.tmp $@
+$(MINI_BUILD)/%.o: $(SRC)/mini/%.s $(SRC)/mini/mini.inc $(MINI_BUILD)/version.inc | $(MINI_BUILD)
+	$(MINI_AS) --cpu 6502 -I $(SRC)/mini -I $(MINI_BUILD) -o $@ $<
 $(MINI_BUILD)/A2FC.MINI: $(MINI_OBJS) $(SRC)/mini/mini-asm.cfg
 	$(MINI_LD) -C $(SRC)/mini/mini-asm.cfg -m $(MINI_BUILD)/mini.map \
 		-Ln $(MINI_BUILD)/mini.lbl -o $@ $(MINI_OBJS)

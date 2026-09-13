@@ -41,6 +41,7 @@ line of the source. The link refuses a file over its window:
 | --- | --- | --- | --- |
 | small (`flags = 0`) | `$1B00-$1FFF` | 1,280 bytes | `api->copy_buf` (512), `api->input` (17), `api->other_full` (81, if you do not need the other panel's path) |
 | big (`OVERLAY_BIG`) | `$1B00-$3FFF` | 9,472 bytes | the same, plus `$3000-$3FFF` (4 KB) **only if the ld65 map shows BSS ending under `$3000`** — the file size alone does not prove it, since BSS is not in the file |
+| DUET (its own case in the Makefile) | `$1B00-$23FF` | 2,304 bytes | `$2400-$3FFF` (7 KB) for the song |
 
 The Makefile writes `build/name.map` (or `build-6502/name.map`) and checks
 code **and BSS** against the window. Add an overlay using `$3000` scratch
@@ -157,17 +158,28 @@ Read `struct A2fcApi` in `src/a2fc_plugin.h`; the useful parts:
   panels' names and tags are gone, and it must NEVER call `api->read_panel`
   or `api->draw_all`: those refill the tables straight over its own code and
   scratch. The core rereads, restores the tags and redraws by itself when a
-  big overlay returns, and its last words must go through `api->note`. An
-  overlay that walks the tagged entries therefore has to be **small**
-  (FIXTYPES, TAGPAT, RENAME, DATE); a big one reads the directory again
-  through `dir_open`/`dir_next` (which uses the core's own buffer, not
-  yours) and knows only `api->selected`.
+  big overlay returns, and its last words must go through `api->note`. API v5 snapshots the active entries at `$3000` before loading a big overlay.
+  FIXTYPES uses this immutable snapshot, with code/BSS linked below `$3000`;
+  the 140 entries occupy 4,060 bytes. Other big overlays may overwrite it
+  with their own scratch and instead enumerate via `dir_open`/`dir_next`.
+  TAGPAT, RENAME and DATE remain small. Panel tags live outside this window.
 - **A small overlay changes nothing on screen by itself**: after it returns
   the core redraws only the message line, so call `api->read_panel(0)`,
   `api->read_panel(1)` and `api->draw_all()` yourself when you touched the
   disk.
 - **Renaming the boot volume** invalidates `api->cfg_path` (the core loads
   overlays by that absolute path); VOLNAME rewrites it in place.
+- **cc65 2.19 miscompiles `BUF[i]` with a 16-bit `i` when `BUF` is a
+  page-aligned constant address** (`(unsigned char*)0x2400`): it adds the high
+  bytes into `ptr1+1` and indexes with the low byte, but never writes `ptr1`
+  itself, so the read lands wherever the previous library call left it. The
+  host tests cannot see it. Walk such a buffer with a pointer (found by DUET,
+  whose validator accepted a truncated song).
+- **A cycle-counted loop must not cross a page** (a taken branch then costs
+  one more cycle): put it in the `LOOP` segment of `sdk/plugin.cfg`, which
+  ld65 aligns on 128 bytes, `.align 128` before it, and `.assert` that its
+  first and last bytes share a page. Branches cannot leave a segment: exit
+  through a `jmp` placed inside it (DUET).
 
 ## Bench
 

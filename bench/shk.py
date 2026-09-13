@@ -16,7 +16,7 @@ Regression : voir une image HGR/DHGR avant de decompresser, puis verifier
 les deux panneaux AVANT toute navigation (qui pourrait masquer une table
 corrompue), la progression et chaque octet des fichiers extraits sur disque."""
 
-import re, shutil, sys, tempfile, time
+import os, re, shutil, sys, tempfile, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -56,9 +56,12 @@ def main():
 
         target = volume(output, tmp / 'OUTPUT.po', 'OUTPUT', 280)
 
-        with Pom2(hdv, floppy=floppy, floppy2=target, port=6692, mouse=True) as p:
+        with Pom2(hdv, floppy=floppy, floppy2=target,
+                  port=6692 + int(os.environ.get('A2FC_PORT_OFFSET', '0')), mouse=True) as p:
             s = Session(p)
             s.boot()
+            floor = s.sym['__HIMEM__'] - s.sym['__STACKSIZE__']
+            p.poke(floor, b'\xA5' * 8)
 
             def open_panel(x, *names, vol='SCRATCH'):
                 """Amene le panneau qui commence en x sur /vol/<names...>."""
@@ -113,6 +116,7 @@ def main():
                        and 0 < int(m[1]) < int(m[2]) for line in progress))
                 ok('UNSHRINK %s : deux fichiers extraits' % label,
                    s.has('2 file(s) extracted'), s.rows()[22].strip()[:45])
+                ok(label + ' : garde de pile conservee', p.peek(floor, 8) == b'\xA5' * 8)
                 ok(label + ' : panneau source intact avant toute navigation',
                    [r[:38] for r in s.rows()[2:20]] == source_rows)
                 ok(label + ' : panneau cible relu avant toute navigation',

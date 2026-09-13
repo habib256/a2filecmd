@@ -23,7 +23,7 @@ static void expect(Memory& m,const char* needle) {
     }
 }
 int main(int argc,char**argv) {
-    assert(argc==5);
+    assert(argc==6);
     Memory m; m.setIIEMode(false);
     assert(m.loadAppleIIRom((std::string(argv[1])+"/roms/apple2p.rom").c_str()));
     auto card=std::make_unique<DiskIICard>(); auto *d=card.get();
@@ -39,6 +39,9 @@ int main(int argc,char**argv) {
         for(int n=0;n<600 && screen(m).find(s)==std::string::npos;++n) run(cpu,1000000);
         expect(m,s);
     };
+    // A footer result is followed by a reread of both panels before the
+    // panels are drawn again; give it time before reading the screen.
+    auto settle=[&]() { run(cpu,40000000); };
     keys("\t/"); expect(m,"KEEP.DST"); keys("\tK");
     keys("3"); wait("CANCEL");
     keys("3"); wait("CANCEL"); // numeric bar keys do not confirm writes
@@ -49,16 +52,25 @@ int main(int argc,char**argv) {
     d->setDriveHostWriteProtected(1,true);
     keys("C"); wait("CANCEL"); keys("O"); expect(m,"CANCEL");
     assert(d->getWriteFlushCount()==0);
-    keys("Y"); wait("DISK IS WRITE PROTECTED");
+    keys("Y"); wait("DISK IS WRITE PROTECTED"); settle();
     assert(d->getWriteFlushCount()==0);
     d->setDriveHostWriteProtected(1,false);
     assert(screen(m).substr(21*41,9)=="A2FC.MINI");
-    keys("C"); wait("CANCEL"); keys("Y"); wait("COPIED");
+    // The target is swapped while COPY A2FC.MINI? waits for Y: the VTOC
+    // reserved on the first disk must not be written over the second.
+    keys("C"); wait("CANCEL");
+    assert(d->insertDisk(1,argv[5]));
+    keys("Y"); wait("DISK CHANGED"); settle();
+    assert(d->getWriteFlushCount()==0);
+    assert(d->insertDisk(1,argv[3]));
+    keys("\x12"); settle(); expect(m,"KEEP.DST");   // Ctrl-R: reread both
+    assert(screen(m).substr(21*41,9)=="A2FC.MINI");
+    keys("C"); wait("CANCEL"); keys("Y"); wait("COPIED"); settle();
     assert(d->getWriteFlushCount()>0); assert(d->flushPendingWrites());
     for(int i=0;i<0x800;++i) assert(m.data()[0x0800+i]==0xa5);
     auto writes=d->getWriteFlushCount();
     assert(screen(m).substr(21*41,9)=="A2FC.MINI");
-    keys("C"); wait("NAME EXISTS");
+    keys("C"); wait("NAME EXISTS"); settle();
     assert(d->getWriteFlushCount()==writes);
     keys("Q"); keys("Y"); expect(m,"\n]");
     keys("CATALOG,D2\r"); wait("A2FC.MINI");
@@ -72,5 +84,5 @@ int main(int argc,char**argv) {
     assert(screen(m).find("I/O ERROR")==std::string::npos);
     keys("CATALOG,D2\r"); expect(m,"CHECK.DOS");
     assert(d->flushPendingWrites());
-    puts("PASS: II+ NMOS cancel, protection, verified binary copy, collision, DOS BLOAD/SAVE, stack guard");
+    puts("PASS: II+ NMOS cancel, protection, swapped target refused, verified binary copy, collision, DOS BLOAD/SAVE, stack guard");
 }

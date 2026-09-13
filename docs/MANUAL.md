@@ -1,6 +1,6 @@
 # The A2 File Cmd manual
 
-**Version 0.8.0** — A two-panel ProDOS file manager for an Apple II with
+**Version 0.8.5** — A two-panel ProDOS file manager for an Apple II with
 128 KB and 80-column support. Free software by Arnaud Verhille, under GPL v3.
 
 ![The two panels in A2 File Cmd 0.7.6](screenshots/01-panels-0.7.6.png)
@@ -20,27 +20,28 @@ starting and identifies the edition on its title screen.
 | Edition | What to use |
 |---|---|
 | **6502 floppies** | BOOT plus whichever 140 KB category disks you need: FILES, MEDIA, DISKTOOLS, DEVTOOLS. These floppies also run on enhanced machines. |
-| **XL 6502 or 65C02** | One bootable 32 MB `.2mg` with all 64 overlays, BASIC.SYSTEM, INTBASIC.SYSTEM and demonstration files. No companion disk is needed. |
+| **XL 6502 or 65C02** | One bootable 32 MB `.2mg` with all 65 overlays, BASIC.SYSTEM, INTBASIC.SYSTEM and demonstration files. No companion disk is needed. |
 
 The download names include the CPU, category and version:
 
 | Role | Image name |
 |---|---|
-| Boot | `A2FILECMD-6502-BOOT-0.8.0.dsk` |
-| Files | `A2FILECMD-6502-FILES-0.8.0.dsk` |
-| Media | `A2FILECMD-6502-MEDIA-0.8.0.dsk` |
-| Disk tools | `A2FILECMD-6502-DISKTOOLS-0.8.0.dsk` |
-| Development tools | `A2FILECMD-6502-DEVTOOLS-0.8.0.dsk` |
-| Complete, 6502 | `A2FILECMD-6502-XL-0.8.0.2mg` |
-| Complete, 65C02 | `A2FILECMD-65C02-XL-0.8.0.2mg` |
+| Boot | `A2FILECMD-6502-BOOT-0.8.5.dsk` |
+| Files | `A2FILECMD-6502-FILES-0.8.5.dsk` |
+| Media | `A2FILECMD-6502-MEDIA-0.8.5.dsk` |
+| Disk tools | `A2FILECMD-6502-DISKTOOLS-0.8.5.dsk` |
+| Development tools | `A2FILECMD-6502-DEVTOOLS-0.8.5.dsk` |
+| Complete, 6502 | `A2FILECMD-6502-XL-0.8.5.2mg` |
+| Complete, 65C02 | `A2FILECMD-65C02-XL-0.8.5.2mg` |
+| Mini, Apple II+ DOS 3.3 | `A2FC-MINI-DOS33-0.8.5.dsk` |
 
 All floppies are 6502 and supplied as `.dsk` in DOS sector order; XL uses `.2mg`.
 Use the downloaded files directly: changing an extension does not convert an image.
 Each floppy image is 143,360 bytes. Check downloads against
-`SHA256SUMS-0.8.0.txt`; if all release files are together, run:
+`SHA256SUMS-0.8.5.txt`; if all release files are together, run:
 
 ```sh
-sha256sum -c SHA256SUMS-0.8.0.txt
+sha256sum -c SHA256SUMS-0.8.5.txt
 ```
 
 Boot the image, or launch `A2FILE.SYSTEM` from a ProDOS selector. To install
@@ -71,8 +72,8 @@ full command catalog. The distribution is declared in `config/packages.mk`.
 
 | Category | Plugins | ProDOS volume |
 |---|---|---|
-| **FILES** | DOSWRITE, DOSIMAGE, DOSPUT, EDIT, SEARCH, AWP, BINARY2, UNSHRINK, CRC, FIND, FIXTYPES, GOTO, IDENT, MDVIEW, RENAME, SYNC, MOVE, TREE | `/A2FILES6502` |
-| **MEDIA** | IMAGE, MUSIC, DGRVIEW, EXTASIE, PACKFOT, PAINT816, PURPLE, LZ4FH, PRINTSHOP, FONTVIEW, PT3 | `/A2MEDIA6502` |
+| **FILES** | DOSGET, DOSWRITE, DOSIMAGE, DOSPUT, EDIT, SEARCH, AWP, BINARY2, UNSHRINK, CRC, FIND, FIXTYPES, GOTO, IDENT, MDVIEW, RENAME, SYNC, MOVE, TREE | `/A2FILES6502` |
+| **MEDIA** | IMAGE, MUSIC, DGRVIEW, EXTASIE, PACKFOT, PAINT816, PURPLE, LZ4FH, PRINTSHOP, FONTVIEW, PT3, DUET | `/A2MEDIA6502` |
 | **DISKTOOLS** | BOOTBLK, BLKVIEW, BLKEDIT, DISKCMP, NIBCOPY, IMGCONV, MKIMAGE, RESCUE, UNDELETE | `/A2DISKS6502` |
 | **DEVTOOLS** | BASLIST, DISASM, INTBASIC listings, plus BASIC.SYSTEM and INTBASIC.SYSTEM runtimes | `/A2DEVTOOLS6502` |
 
@@ -106,7 +107,7 @@ will be lost and asks for consent **before** AUX is used. Declining preserves
 its contents. The viewer may ask even for a plain HGR file because the same
 viewer can browse subsequent DHGR pictures; plain HGR itself does not need
 the reconstruction. The message line reports a reconstruction afterwards.
-The foreground MB1 and PT3 players preserve `/RAM`.
+The foreground MB1, PT3 and Electric Duet players preserve `/RAM`.
 
 Returning to a parent with **Escape** or **Return on ..** selects the child
 you just left, including when it lies beyond the first directory window.
@@ -197,14 +198,14 @@ Menu categories describe tasks and do not require changing disks just to browse.
 |---|---|
 | **VOLINFO** | Audit allocation and fragmentation. M = bitmap (`.` free, `#` used), F = selected file blocks, E = export to the other panel. N/P pages; ESC returns. No repairs. |
 | **SEARCH** | Find text in the active directory and tag matching files, ignoring case. ESC cancels a long scan and keeps tags already found. |
-| **FIXTYPES** | Set type/auxtype from suffixes on tagged files or the selection; optionally remove suffixes. Image suffixes and `.SYSTEM` stay. |
+| **FIXTYPES** | Review and confirm type/auxtype repairs on tagged files or the selection. Recognizes validated DUET content with a name/type hint and explicit suffixes; optional suffix removal. DUET names, image suffixes and `.SYSTEM` stay. |
 | **GOTO** | P opens a typed `/VOLUME/DIRECTORY` path (63 characters max; Delete/Left edits, ESC cancels). Nine favourites: A adds, D then a digit removes, M then two digits reorders, 1–9 jumps. Saved in `A2FILE/GOTO.CFG`. |
 | **FIND** | Search the volume by name pattern; start with `"` to search contents, ignoring case. TAB sets type (T, two hex digits) and modification dates (D, inclusive YYYYMMDD, 1940–2039); A clears filters. Undated files are excluded by date filters. N shows the next 20 results; Return jumps there. V on a text result shows occurrence offsets (hex) and excerpts; N/Space continues, ESC returns. |
 | **BLKVIEW** | Read device or image blocks: H hex/ASCII, D directory, I index, N/P block, Space page, G four-digit hex block, F find four bytes (8 hex digits), A find next, X extract blocks, ESC back. Source stays unchanged. |
 | **EXTASIE** | View Extasie/Chat Mauve ProDOS `$F2` images. The original count/repeat stream is decoded into the HGR page; ESC returns to the panels. `Return` and `I` select EXTASIE automatically on both processors. |
 | **DISASM** | Read BIN/SYS as assembly: N/Space next, P previous (last 64 pages), C 6502/65C02, G seven-digit file offset, L four-digit CPU load address, R start, E export, ESC back. BIN uses its auxtype; SYS starts at $2000. |
 | **CRC** | Calculate CRC-32 for the selection or tagged files. Results appear in pages of 20; a key continues, ESC at a page boundary stops the batch. |
-| **IDENT** | Identify content, UTF-8 or Apple text; statistics cover the first 512 bytes. |
+| **IDENT** | Identify supported music, picture, font, archive, program and disk families from headers, attributes or names; DUET candidates are read completely. Text statistics cover the first 512 bytes. |
 | **MDVIEW** | Wrapped Markdown/text; no forward limit. Up: last 64 pages. R: restart. |
 | **RENAME** | Batch prefix, suffix, extension replacement/removal or numbering. For example E then BAK sets `.BAK`. Conflicts are skipped. |
 | **IMGCONV** | Convert PO/HDV, DSK/DO and 2MG into the other panel, preserving disk blocks. Unsupported 2MG formats, block counts exceeding 16 bits, and data ranges inside the header or beyond the source size are refused before destination access. Read or seek failures abort conversion and attempt to remove incomplete output; failed cleanup is reported. |
@@ -357,6 +358,10 @@ They reject truncated data and report read or close errors.
 viewer: Extasie, PACKFOT, 816/Paint, Purplesoft, DGRVIEW, FONTVIEW, LZ4FH and PRINTSHOP.
 The directory's displayed order is used, including across large-directory
 windows. At either end the arrow does nothing; Escape returns to the panels.
+While the neighbour loads, the screen keeps what it shows: a hi-res viewer
+leaves a loading line, and a lo-res picture stays on the air in graphics
+mode until the next one is drawn over it; the panels reappear only when the
+browsing ends.
 A viewer that uses AUX asks once before the first AUX write in a browsing session.
 Left/Right keeps that consent; leaving the viewer clears it.
 
@@ -392,9 +397,9 @@ the detected address page. In POM2, enable the card in the //c configuration
 and use a build containing its Mockingboard 4c support. A plain //c without
 the card reports its absence.
 
-In both music players, **Left/Right** select the previous/next tune of the
-same type in the same directory (MB1 stays with MB1, PT3 with PT3), including
-across large-directory windows. An arrow without a neighbour does nothing.
+In all three music players, **Left/Right** select the previous/next tune of the
+same type in the same directory (MB1 stays with MB1, PT3 with PT3, Electric
+Duet with Electric Duet), including across large-directory windows. An arrow without a neighbour does nothing.
 Changing tracks stops the old output and starts the new track unpaused.
 
 **Return** on a `.PT3` module opens the foreground ProTracker 3 player on
@@ -426,6 +431,33 @@ on a hard disk; this implementation does not guarantee 50 Hz for every file. Inv
 loading or playback and return to the panels. Source URLs are listed in
 `media/pt3/MUSIC/SOURCES.TXT` and at the end of
 [SAMPLE-MEDIA.md](SAMPLE-MEDIA.md).
+
+### Electric Duet
+
+**Return** on an Electric Duet song opens the foreground DUET overlay on
+MEDIA. A song is recognized by the Apple II DeskTop convention, file type
+`$D5` (MUS) with auxtype `$D0E7`, by a name ending in `.ED` whatever its
+type, or by a BIN name starting with `M.` and a compatible record prefix; the `!` menu runs DUET on any file, which is then validated: complete
+three-byte records, a terminator before the end of the file, at least one
+note, and at most 7,168 bytes (the largest known songs are 5.5 KB). The whole
+file is read, closed and checked before playback, in main RAM; `/RAM` is
+preserved.
+
+With a Mockingboard (or a Mockingboard 4c on a //c), the song plays on the
+card, one AY tone per voice; without one, it plays on the speaker through
+Alex Patalenski's improved Electric Duet player, the one Apple II DeskTop
+uses, which has none of the carrier whistle of the original routine. **1**
+and **2** switch between the speaker and the card at any time; both outputs
+follow the same pitch and tempo (the card is timed by its VIA on the speaker
+player's own unit). **D** cycles the speaker pulse width: 1/8 of the period
+by default, then 1/4 and Patalenski's original 1/16; wider pulses give more
+bass on the small speaker, narrower ones let the two voices collide less.
+**P** pauses/resumes, **Escape** returns to the panels,
+and playback returns by itself at the end of the song. On the speaker the
+keyboard is read once per record, so a key acts at the next note. Voice
+records (the original player's duty-cycle settings) are skipped on both
+outputs. The demo disk carries `CANON.ED`, Frère Jacques as a two-voice canon
+generated by `tools/mkdemo.py`.
 
 ### Moving marked files with MOVE
 
@@ -552,7 +584,15 @@ Set the destination in the other panel, select the archive, then use **!**:
 | **BINARY2** | Binary II `.BNY`/`.BQY`: extracts members with their names and attributes. Directory entries are skipped. Compressed members may need a second extraction with UNSHRINK. |
 
 ShrinkIt extraction clears `/RAM` and refuses it as a destination. Keep
-archives and recovered files on another volume.
+archives and recovered files on another volume. A warning requires confirmation
+before AUX is touched. **Escape** cancels extraction between blocks.
+Existing files are never replaced. On error or cancellation, only the current
+new file is cleaned up; if cleanup fails, the message names the retained file.
+A retry refuses that file without truncating it. Completed earlier members
+remain available. Truncated skipped threads, stream errors and failed closes
+are reported instead of a successful extraction. Unsupported compression
+remains visible in the final message even if other members were extracted.
+Full CRC validation and readback of the written files remain unimplemented.
 
 ### Running BASIC and machine-language programs
 
@@ -657,6 +697,24 @@ URL: [Norton Commander archive](https://winworldpc.com/product/norton-commander/
 the public member-header format. No archive executable code is bundled.
 URLs: [NuFX notes](https://ciderpress2.com/formatdoc/NuFX-notes.html) · [NuLib format library](https://nulib.com/library/)
 
+**Paul Lutus — Electric Duet**
+The Electric Duet song format (three-byte records, two voices) played by
+`DUET`. Its original player routine is under the GPL; the format is documented
+by its author.
+URL: [Electric Duet](https://arachnoid.com/electric_duet/index.html) · [player under the GPL](https://a2central.com/2014/01/paul-lutus-gpls-player-routine-from-electric-duet/)
+
+**Alex Patalenski — improved Electric Duet player**
+`src/plugins/duet.s` transcribes his 1989 speaker player, published by Emil
+Dotchevski, instruction for instruction: its 73-cycle loop is kept in an
+aligned segment so the timing stays his. Apple II DeskTop uses the same player.
+URL: [the listing and byte code](https://www.reddit.com/r/apple2/comments/pue775/improved_electric_duet_player_by_alex_patalenski/) · [Apple II DeskTop](https://github.com/a2stuff/a2d)
+
+**Cybernesto — electric-mock (GPL v3)**
+The Mockingboard rendition of Electric Duet songs in `src/plugins/duet.c`
+follows his player: one AY tone per voice. A2FileCmd times it with the VIA
+instead of delay loops, and scales the periods to the speaker player.
+URL: [electric-mock repository](https://github.com/cybernesto/electric-mock)
+
 **POM2 — Arnaud Verhille**
 Separate emulator project used for repeatable Apple IIe, //c and disk-device
 verification.
@@ -679,6 +737,9 @@ The repository keeps attribution next to the affected implementation:
   and separate the original formatter work from A2FileCmd integration.
 - `src/unshrink.s` describes the documented archive algorithms; its decoder
   is an independent implementation written for the overlay memory limits.
+- `src/plugins/duet.s` names the Electric Duet players it transcribes and
+  what was changed (zero page, alignment, exits); `src/plugins/duet.c` names
+  the Mockingboard rendition it follows.
 
 The project does not copy Norton Commander, A2Command, ProDOS or ADTPro
 executables. Their interfaces, manuals and protocols are references or
@@ -698,6 +759,10 @@ For readers who want to compare the implementation with its references:
 - [ADTPro documentation](https://adtpro.com/docs.htm)
 - [ADTPro source](https://github.com/ADTPro/adtpro)
 - [ProDOS 8 technical reference](https://prodos8.com/docs/)
+- [Electric Duet, Paul Lutus](https://arachnoid.com/electric_duet/index.html)
+- [Alex Patalenski's Electric Duet player](https://www.reddit.com/r/apple2/comments/pue775/improved_electric_duet_player_by_alex_patalenski/)
+- [electric-mock, Cybernesto](https://github.com/cybernesto/electric-mock)
+- [Apple II DeskTop file types](https://github.com/a2stuff/a2d/blob/main/notes/filetypes.md)
 - [CiderPress II format notes](https://ciderpress2.com/formatdoc/)
 - [NuLib library and Binary II references](https://nulib.com/library/)
 - [Apple II FAQ archive](https://mirrors.apple2.org.za/ftp.apple.asimov.net/documentation/)
@@ -769,3 +834,29 @@ preflight all 35 tracks before the first write. A write failure or power cut
 can leave a partly overwritten target; no rollback or power-failure atomicity
 is promised. Hardware qualification on real drives and accelerated machines
 remains necessary; native automated tests cover both IIe CPU variants in POM2.
+
+### DOS extraction and old Electric Duet files
+
+C extracts DOS BIN/BAS/INT to the exact length declared by the DOS header.
+BIN retains its original load address as the ProDOS auxtype; BAS uses $0801.
+Sector padding and the DOS header are excluded. TXT retains its sector data.
+The DOSGET overlay lives on FILES/XL; BOOT asks for FILES when required.
+An existing destination is refused. An I/O failure stops extraction; a failed
+cleanup names the newly created file that remains. Completed files survive a
+later source-close error, which is reported. Escape cancels between sectors.
+
+Return also tries DUET for BIN names beginning `M.` with a compatible record
+prefix; the player validates the loaded records before producing sound.
+This does not change attributes. For old BIN/$0000 extractions, mark the songs
+with Space, select **! → Files → FIXTYPES**, then confirm each proposal to
+`$D5/$D0E7`. FIXTYPES reads the full candidate, requires a complete terminator
+and at least four audible notes, validates control records, and accepts up to
+255 legacy padding bytes. It preserves the original name and all content,
+including padding. N cancels that file before any metadata write.
+
+IDENT now covers DUET, PT3, MGTK fonts, Purplesoft pairs, DGR/lo-res, Print Shop
+and the specialized packed picture formats as well as its existing families.
+These are format hints or structural matches, not proof for every possible
+file: several raw formats have no unique signature. Ambiguous or damaged
+DUET candidates are reported as unrecognized; no attributes are changed by
+IDENT. Read, seek and close errors are reported as errors.

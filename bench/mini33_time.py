@@ -13,10 +13,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
 from mini33_fixture import make_disk
+from mkmini33 import MINI_VERSION
 
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--pom2-root', type=Path, required=True)
-p.add_argument('--disk', type=Path, default=ROOT / 'dist/A2FC-MINI-DOS33-0.7.0.dsk')
+p.add_argument('--disk', type=Path, default=ROOT/f'dist/A2FC-MINI-DOS33-{MINI_VERSION}.dsk')
 a = p.parse_args()
 
 original = a.disk.read_bytes()

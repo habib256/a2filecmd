@@ -22,9 +22,10 @@
         .import read_sector, write_sector, rwts_error
         .import buffer, drive, track, sector, count, sector_seen
         .import ent_track, ent_sector, ent_type, ent_seclo, ent_sechi
-        .import ent_index, ent_ptr
+        .import ent_slot, ent_index, ent_ptr, sanitise
         .import seen_bit, bit_masks
-        .import valid_data
+        .import valid_data, read_at, vtoc_bit, memcpy256, memcmp256
+        .import slot_offset
         .import vtoc, catalog_before, verify, cat_buf
 
         .segment "BSS"
@@ -51,6 +52,13 @@ del_cat_t:      .res 1
 del_cat_s:      .res 1
 del_cat_off:    .res 1
 del_volume:     .res 1
+pan_track:      .res 1          ; the panel's idea of the entry: the disk
+pan_sector:     .res 1          ; is held to it, name alone is not an
+pan_type:       .res 1          ; identity (contiguous, same order as
+pan_seclo:      .res 1          ; del_track..del_sechi)
+pan_sechi:      .res 1
+pan_slot:       .res 1          ; catalog sector << 3 | slot the entry came from
+aud_n:          .res 1          ; catalog sectors visited: 15 at most
 
 ts_list         = cat_buf
 
@@ -69,7 +77,6 @@ aud_nt:         .res 1
 aud_ns:         .res 1
 aud_i:          .res 1
 aud_off:        .res 1
-aud_found:      .res 1
 
 .ifdef SIM65
         .segment "CODE"
@@ -78,40 +85,12 @@ aud_found:      .res 1
 .endif
 
 ; ---------------------------------------------------------------------
-memcpy256:
-        ldy     #0
-@loop:
-        lda     (ptr),y
-        sta     (ptr2),y
-        iny
-        bne     @loop
-        rts
+; memcpy256, memcmp256, read_at and vtoc_bit come from copy.s: the DEL_
+; and COPY_ codes for OK and READ are the same numbers.
 
-memcmp256:
-        ldy     #0
-@loop:
-        lda     (ptr),y
-        cmp     (ptr2),y
-        bne     @diff
-        iny
-        bne     @loop
-        lda     #0
-        rts
-@diff:
-        lda     #1
-        rts
-
-read_at:
-        sta     track
-        stx     sector
-        jsr     read_sector
-        beq     @ok
-        lda     #DEL_READ
-        rts
-@ok:
-        lda     #DEL_OK
-        rts
-
+; put_verified -- A = track, X = sector. Write protection is reported as
+; itself: RWTS refuses before touching the disk, so the caller knows
+; whether anything was written before it. Anything else is uncertain.
 put_verified:
         sta     s0
         stx     s1
@@ -127,8 +106,8 @@ put_verified:
         lda     rwts_error
         cmp     #RWTS_PROTECTED
         bne     @uncertain
-        lda     #DEL_UNCERTAIN  ; protection mid-delete is still uncertain
-        rts                     ; the catalog may already have been marked
+        lda     #DEL_PROTECTED
+        rts
 @wrote:
         lda     s0
         ldx     s1
@@ -142,23 +121,6 @@ put_verified:
         rts
 @uncertain:
         lda     #DEL_UNCERTAIN
-        rts
-
-vtoc_bit:
-        asl     a
-        asl     a
-        clc
-        adc     #VTOC_BITMAP
-        sta     bidx
-        cpx     #8
-        bcs     @high
-        inc     bidx
-@high:
-        txa
-        and     #7
-        tax
-        lda     bit_masks,x
-        sta     bmsk
         rts
 
 free_in_vtoc:
@@ -214,34 +176,13 @@ _delete_prepare:
         beq     @invalid
         cmp     #3
         bcs     @invalid
-        lda     del_index
-        jsr     ent_index
-        tay
-        lda     ent_type,y
-        sta     del_type
+        jsr     snapshot_panel
+        lda     pan_type
         and     #$80
         beq     @unlocked
         lda     #DEL_LOCKED
         rts
 @unlocked:
-        lda     ent_track,y
-        sta     del_track
-        lda     ent_sector,y
-        sta     del_sector
-        lda     ent_seclo,y
-        sta     del_seclo
-        lda     ent_sechi,y
-        sta     del_sechi
-        lda     del_index
-        jsr     ent_index
-        jsr     ent_ptr
-        ldy     #0
-@name:
-        lda     (ptr),y
-        sta     del_name,y
-        iny
-        cpy     #NAME_LEN
-        bcc     @name
         jsr     find_and_walk
         bne     @out
         lda     #1
@@ -255,7 +196,7 @@ _delete_prepare:
 
 ; find_and_walk -- hold the disk to the panel's idea of the file
 find_and_walk:
-        jsr     find_by_name
+        jsr     find_entry
         bne     @out
         lda     del_type
         and     #$80
@@ -273,11 +214,14 @@ find_and_walk:
 @out:
         rts
 
-; find_by_name -- locate del_name once. Locked files are allowed: lock
+; find_entry -- read the VTOC and the catalog sector the panel took the
+; entry from, and hold the disk to the panel: the slot must still carry
+; the T/S pointer, type, sector count and (sanitised) name it showed, or
+; the disk is not the one the user was looking at (DEL_CHANGED). A name
+; alone is not an identity: the panel shows unprintable characters as
+; '?', and a sibling disk can reuse a name. Locked files are allowed: lock
 ; and rename need the slot. The T/S chain is not followed.
-find_by_name:
-        lda     #0
-        sta     aud_found
+find_entry:
         lda     #CATALOG_TRACK
         ldx     #0
         jsr     read_at
@@ -296,52 +240,32 @@ find_by_name:
         jne     @invalid
         lda     vtoc+6
         sta     del_volume
-        lda     vtoc+1
-        sta     aud_t
-        lda     vtoc+2
-        sta     aud_s
-@chain:
-        lda     aud_t
-        cmp     #CATALOG_TRACK
-        jne     @invalid
-        lda     aud_s
+        lda     pan_slot
+        lsr     a
+        lsr     a
+        lsr     a
         jeq     @invalid
-        cmp     #16
+        sta     del_cat_s
+        lda     #CATALOG_TRACK
+        sta     del_cat_t
+        lda     pan_slot
+        and     #7
+        cmp     #CAT_ENTRIES
         jcs     @invalid
-        lda     aud_t
-        ldx     aud_s
+        jsr     slot_offset
+        sta     del_cat_off
+        lda     del_cat_t
+        ldx     del_cat_s
         jsr     read_at
         jne     @out
-        lda     buffer+1
-        sta     aud_nt
-        lda     buffer+2
-        sta     aud_ns
-        lda     #CAT_FIRST
-        sta     aud_off
-        lda     #CAT_ENTRIES
-        sta     aud_i
-@entry:
-        ldx     aud_off
-        lda     buffer,x
-        beq     @next
-        cmp     #$FF
-        beq     @next
-        jsr     name_here
-        bcc     @next
-        lda     aud_found
-        jne     @invalid        ; the same name twice
-        inc     aud_found
-        lda     aud_t
-        sta     del_cat_t
-        lda     aud_s
-        sta     del_cat_s
-        lda     aud_off
-        sta     del_cat_off
         SETPTR  ptr, buffer
         SETPTR  ptr2, catalog_before
         jsr     memcpy256
-        ldx     aud_off
+        ldx     del_cat_off
         lda     buffer,x
+        beq     @changed        ; the slot was emptied
+        cmp     #$FF
+        beq     @changed
         sta     del_track
         lda     buffer+1,x
         sta     del_sector
@@ -351,45 +275,42 @@ find_by_name:
         sta     del_seclo
         lda     buffer+34,x
         sta     del_sechi
-@next:
-        lda     aud_off
-        clc
-        adc     #CAT_ENTRY_LEN
-        sta     aud_off
-        dec     aud_i
-        bne     @entry
-        lda     aud_nt
-        sta     aud_t
-        lda     aud_ns
-        sta     aud_s
-        lda     aud_t
-        jne     @chain
-        lda     aud_found
-        beq     @invalid
+        jsr     same_as_panel
+        bcc     @changed
+        ldx     del_cat_off
+        inx
+        inx
+        inx
+        ldy     #0
+@char:
+        lda     buffer,x
+        jsr     sanitise
+        cmp     del_name,y
+        bne     @changed
+        inx
+        iny
+        cpy     #NAME_LEN
+        bcc     @char
         lda     #DEL_OK
 @out:
         rts
 @invalid:
         lda     #DEL_INVALID
         rts
+@changed:
+        lda     #DEL_CHANGED
+        rts
 
-name_here:
-        ldx     aud_off
-        inx
-        inx
-        inx                     ; first name byte
-        ldy     #0
-@char:
-        lda     buffer,x
-        sta     s0
-        lda     del_name,y
-        ora     #$80
-        cmp     s0
+; same_as_panel -- carry set when the entry just copied into del_track..
+; del_sechi is the one the panel showed
+same_as_panel:
+        ldx     #4
+@byte:
+        lda     del_track,x
+        cmp     pan_track,x
         bne     @no
-        inx
-        iny
-        cpy     #NAME_LEN
-        bcc     @char
+        dex
+        bpl     @byte
         sec
         rts
 @no:
@@ -555,14 +476,18 @@ _delete_execute:
         jsr     memcmp256
         bne     @changed
         ldx     del_cat_off
-        lda     buffer,x        ; DOS UNDELETE: original track into the name
-        sta     buffer+3,x
-        lda     #$FF
+        lda     buffer,x        ; DOS UNDELETE convention: the T/S list
+        sta     buffer+32,x     ; track goes into the LAST name byte
+        lda     #$FF            ; (entry+$20), then the track byte is $FF
         sta     buffer,x
         lda     del_cat_t
         ldx     del_cat_s
         jsr     put_verified
-        bne     @aftercat
+        beq     @marked
+        cmp     #DEL_PROTECTED  ; refused before the first write: nothing
+        bne     @aftercat       ; on the disk moved, nothing to latch
+        rts
+@marked:
         jsr     free_chain
         bne     @aftercat
         SETPTR  ptr, vtoc
@@ -669,8 +594,8 @@ _lock_prepare:
         sta     lock_ready
         jsr     meta_gate
         bne     @out
-        jsr     copy_del_name
-        jsr     find_by_name
+        jsr     snapshot_panel
+        jsr     find_entry
         bne     @out
         lda     lock_op
         beq     @ready
@@ -731,6 +656,8 @@ _lock_execute:
         ldx     del_cat_s
         jsr     put_verified
         beq     @ok
+        cmp     #DEL_PROTECTED  ; the only write, refused: nothing to latch
+        beq     @ok
         jsr     latch_fault
 @ok:
 @out:
@@ -747,16 +674,16 @@ _rename_prepare:
         sta     ren_ready
         jsr     meta_gate
         bne     @out
-        jsr     copy_del_name
+        jsr     snapshot_panel
         jsr     names_same
         bcs     @same
-        jsr     find_by_name
+        jsr     find_entry
         bne     @out
         lda     del_type
         and     #$80
         bne     @locked
         jsr     ren_collision
-        bcs     @exists
+        bcs     @out            ; A says why: REN_EXISTS, INVALID or READ
         lda     #1
         sta     ren_ready
         lda     #DEL_OK
@@ -767,9 +694,6 @@ _rename_prepare:
         rts
 @locked:
         lda     #DEL_LOCKED
-        rts
-@exists:
-        lda     #REN_EXISTS
         rts
 
 rename_execute:
@@ -789,7 +713,7 @@ _rename_execute:
         jsr     recat_same
         bne     @out
         jsr     ren_collision
-        bcs     @exists
+        bcs     @out            ; A says why: REN_EXISTS, INVALID or READ
         SETPTR  ptr, catalog_before
         SETPTR  ptr2, buffer
         jsr     memcpy256
@@ -810,12 +734,11 @@ _rename_execute:
         ldx     del_cat_s
         jsr     put_verified
         beq     @ok
+        cmp     #DEL_PROTECTED  ; the only write, refused: nothing to latch
+        beq     @ok
         jsr     latch_fault
 @ok:
 @out:
-        rts
-@exists:
-        lda     #REN_EXISTS
         rts
 
 meta_gate:
@@ -837,7 +760,24 @@ meta_gate:
         lda     #DEL_INVALID
         rts
 
-copy_del_name:
+; snapshot_panel -- what the panel shows for del_index: T/S pointer,
+; type, sector count, slot and name. find_entry holds the disk to these.
+snapshot_panel:
+        lda     del_index
+        jsr     ent_index
+        tay
+        lda     ent_track,y
+        sta     pan_track
+        lda     ent_sector,y
+        sta     pan_sector
+        lda     ent_type,y
+        sta     pan_type
+        lda     ent_seclo,y
+        sta     pan_seclo
+        lda     ent_sechi,y
+        sta     pan_sechi
+        lda     ent_slot,y
+        sta     pan_slot
         lda     del_index
         jsr     ent_index
         jsr     ent_ptr
@@ -900,15 +840,23 @@ latch_fault:
         lda     s0
         rts
 
-; ren_collision -- carry set when ren_name is already a live file that
-; is not the slot we are renaming. Destroys buffer; catalog_before
-; still holds our sector.
+; ren_collision -- carry set when the rename must be refused, with A
+; saying why: REN_EXISTS when ren_name is already a live file that is not
+; the slot we are renaming, DEL_INVALID for a malformed or looping chain,
+; DEL_READ when a catalog sector could not be read. Destroys buffer;
+; catalog_before still holds our sector.
 ren_collision:
+        lda     #0
+        sta     aud_n
         lda     vtoc+1
         sta     aud_t
         lda     vtoc+2
         sta     aud_s
 @chain:
+        inc     aud_n           ; a chain longer than the track is a loop
+        lda     aud_n
+        cmp     #16
+        bcs     @inv
         lda     aud_t
         cmp     #CATALOG_TRACK
         bne     @inv
@@ -954,12 +902,12 @@ ren_collision:
         clc
         rts
 @yes:
+        lda     #REN_EXISTS
         sec
         rts
 @inv:
-        sec
-        rts
-@rd:
+        lda     #DEL_INVALID
+@rd:                            ; A is already DEL_READ from read_at
         sec
         rts
 
