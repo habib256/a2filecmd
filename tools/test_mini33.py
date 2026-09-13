@@ -15,6 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mini_host
 import mkmini33
+from mini33_fixture import read_files, offset
 
 ROOT = Path(__file__).resolve().parents[1]
 CAT_OK, CAT_READ, CAT_BAD = 0, 1, 2
@@ -61,11 +62,12 @@ class CatalogTest(unittest.TestCase):
 
     def test_catalog_and_preview(self):
         self.assertEqual(self.mini.catalog(), CAT_OK)
-        self.assertEqual(self.count(), 3)
+        self.assertEqual(self.count(), 4)
         self.assertEqual(self.mini.byte('volume'), 254)
         self.assertEqual(self.name(0), b'HELLO'.ljust(30))
         self.assertEqual(self.name(1), b'A2FC.MINI'.ljust(30))
         self.assertEqual(self.name(2), b'README'.ljust(30))
+        self.assertEqual(self.name(3), b'TIGER'.ljust(30))
         self.assertEqual(self.mini.preview(2), CAT_OK)
         self.assertTrue(bytes(self.mini.peek('buffer', 9)) == b'A2FC MINI')
         self.assertEqual(self.mini.image(1), self.image)
@@ -77,10 +79,34 @@ class CatalogTest(unittest.TestCase):
         self.assertTrue(text.startswith(b'A2FC MINI'), text)
         self.assertEqual(self.mini.image(1), self.image)
 
+    def test_load_file_refuses_wrong_ts_offset(self):
+        files = read_files(self.image)
+        ts = offset(*files['README']['lists'][0])
+        img = bytearray(self.image)
+        img[ts + 5] = 122
+        self.mini.load(1, bytes(img))
+        self.assertEqual(self.mini.catalog(), CAT_OK)
+        self.assertEqual(self.mini.load_file(2), CAT_BAD)
+        self.assertEqual(self.mini.image(1), bytes(img))
+
+    def test_measure_text_caps_at_scratch_minus_one(self):
+        self.assertEqual(self.mini.catalog(), CAT_OK)
+        self.assertEqual(self.mini.load_file(2), CAT_OK)
+        self.mini.poke('load_count', bytes([32]))
+        self.mini.poke('scratch', bytes([0x41]), offset=8191)
+        self.mini.measure_text()
+        self.assertEqual(self.mini.word('edit_len'), 8191)
+
+    def test_tiger_is_a_locked_hgr_binary(self):
+        self.assertEqual(self.mini.catalog(), CAT_OK)
+        self.assertEqual(self.mini.byte('ent_type', 3) & 0x7F, 4)
+        self.assertEqual(self.mini.byte('ent_type', 3) & 0x80, 0x80)
+        self.assertEqual(self.mini.byte('ent_seclo', 3), 33)
+
     def test_entry_fields_match_the_catalog(self):
         self.assertEqual(self.mini.catalog(), CAT_OK)
         cat = self.image[17 * 4096 + 15 * 256:]
-        for i in range(3):
+        for i in range(4):
             entry = cat[11 + i * 35:46 + i * 35]
             self.assertEqual(self.mini.byte('ent_track', i), entry[0])
             self.assertEqual(self.mini.byte('ent_sector', i), entry[1])
@@ -152,7 +178,7 @@ class CatalogTest(unittest.TestCase):
                 self.mini.fail_read = fail
                 self.assertEqual(self.mini.preview(0), CAT_READ)
         self.mini.fail_read = -1
-        self.assertEqual(self.mini.preview(3), CAT_BAD, 'past the last entry')
+        self.assertEqual(self.mini.preview(4), CAT_BAD, 'past the last entry')
 
     def test_preview_refuses_a_sparse_file(self):
         self.assertEqual(self.mini.catalog(), CAT_OK)
@@ -212,17 +238,24 @@ class ImageTest(unittest.TestCase):
         self.image = mkmini33.build(self.master, b'\x60' * 2048)
 
     def test_hello_announces_the_load(self):
-        self.assertIn(b'A2FILECMD MINI DOS 3.3', self.image)
-        self.assertIn(b'A2FILECMD V0.7.0', self.image)
+        self.assertIn(b'A2FILECMD', self.image)
+        self.assertIn(b'MINI DOS 3.3', self.image)
+        self.assertIn(b'V0.7.0', self.image)
+        self.assertNotIn(b'A2FILECMD MINI DOS 3.3', self.image)
+        self.assertNotIn(b'A2FILECMD V0.7.0', self.image)
         self.assertIn(b'GPL3 VERHILLE ARNAUD', self.image)
         self.assertIn(b'LOADING .... PLEASE WAIT ....', self.image)
         self.assertIn(b'BRUN A2FC.MINI', self.image)
+        tiger = ROOT / 'data' / 'IMGHGR' / 'TIGER#062000'
+        data = tiger.read_bytes()
+        self.assertEqual(len(data), 8192)
+        self.assertEqual(read_files(self.image)['TIGER']['data'], data)
 
     def test_image_structure_and_allocations(self):
         self.assertEqual(self.image[:3 * 4096], self.master[:3 * 4096])
         cat = self.image[17 * 4096 + 15 * 256:18 * 4096]
         allocated = set()
-        for i in range(3):
+        for i in range(4):
             entry = cat[11 + i * 35:46 + i * 35]
             ts = tuple(entry[:2])
             total = 0

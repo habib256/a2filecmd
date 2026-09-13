@@ -21,6 +21,8 @@ MODULES = ('data.s', 'catalog.s', 'copy.s', 'delete.s')
 
 CATALOG, PREVIEW, PREPARE, EXECUTE, CANCEL, PEEK, POKE, QUIT = 1, 2, 3, 4, 5, 6, 7, 0
 LOAD, CREATE_PREPARE, CREATE_EXECUTE, DELETE_PREPARE, DELETE_EXECUTE = 8, 9, 10, 11, 12
+MEASURE = 13
+LOCK_PREPARE, LOCK_EXECUTE, RENAME_PREPARE, RENAME_EXECUTE = 14, 15, 16, 17
 
 
 class SimError(RuntimeError):
@@ -69,6 +71,7 @@ class Mini:
         self.writes = 0
         self.fail_read = -1
         self.fail_write = -1
+        self.protect_write = -1
         self.partial_write = -1
         self.corrupt_write = -1
         self.protected_drive = 0
@@ -110,7 +113,7 @@ class Mini:
         n = self.writes
         self.writes += 1
         self.write_log.append((drive, track, sector))
-        if self.protected_drive == drive:
+        if self.protected_drive == drive or n == self.protect_write:
             self._send(bytes([1, 0x10]))
             return
         if not placed or n == self.fail_write:
@@ -185,6 +188,31 @@ class Mini:
         self._command(DELETE_EXECUTE)
         return self._recv(1)[0]
 
+    def measure_text(self):
+        self._command(MEASURE)
+        return self._recv(1)[0]
+
+    def lock_prepare(self, index, op=0):
+        self.poke('del_index', bytes([index]))
+        self.poke('lock_op', bytes([op]))
+        self._command(LOCK_PREPARE)
+        return self._recv(1)[0]
+
+    def lock_execute(self):
+        self._command(LOCK_EXECUTE)
+        return self._recv(1)[0]
+
+    def rename_prepare(self, index, name):
+        padded = name.encode('ascii').ljust(30)
+        self.poke('del_index', bytes([index]))
+        self.poke('ren_name', padded)
+        self._command(RENAME_PREPARE)
+        return self._recv(1)[0]
+
+    def rename_execute(self):
+        self._command(RENAME_EXECUTE)
+        return self._recv(1)[0]
+
     # ---- memory ---------------------------------------------------
     def address(self, name):
         if name in self.symbols:
@@ -223,6 +251,7 @@ class Mini:
         self.writes = 0
         self.fail_read = -1
         self.fail_write = -1
+        self.protect_write = -1
         self.partial_write = -1
         self.corrupt_write = -1
         self.protected_drive = 0

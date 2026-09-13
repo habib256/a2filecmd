@@ -19,13 +19,14 @@
         .include "mini.inc"
 
         .export catalog, preview, load_file, load_count, blank_scratch
+        .export measure_text, _measure_text
         .export valid_cs, seen_bit, bit_masks, ent_ptr, ent_index
 
         .import read_sector
         .import buffer, count, volume, track, sector, active, sector_seen
         .import ent_track, ent_sector, ent_type, ent_seclo, ent_sechi
         .import ent_name, prv_index
-        .import scratch, cat_buf
+        .import scratch, cat_buf, edit_len
 
         .segment "BSS"
 cat_nt:         .res 1          ; link to the next catalog sector
@@ -41,6 +42,7 @@ ldf_j:          .res 1          ; pair within the list
 ldf_got:        .res 1          ; data sectors placed so far
 load_count      = ldf_got
 ldf_ended:      .res 1
+ldf_off:        .res 2          ; data sectors already seen, as in copy walk
 ldf_list        = cat_buf       ; T/S list; copy is idle while a file loads
 
         .segment "RODATA"
@@ -286,6 +288,8 @@ load_file:
         lda     #0
         sta     ldf_got
         sta     ldf_ended
+        sta     ldf_off
+        sta     ldf_off+1
         jsr     blank_scratch
 @list:
         lda     ldf_t
@@ -308,10 +312,16 @@ load_file:
         sta     ldf_nt
         lda     ldf_list+2
         sta     ldf_ns
+        lda     ldf_list+5
+        cmp     ldf_off
+        jne     @bad
+        lda     ldf_list+6
+        cmp     ldf_off+1
+        jne     @bad
         lda     ldf_nt
         bne     @pairs
         lda     ldf_ns          ; no track but a sector: malformed
-        bne     @bad
+        jne     @bad
 @pairs:
         lda     #0
         sta     ldf_j
@@ -346,6 +356,9 @@ load_file:
         bne     @read
         jsr     place_sector
         inc     ldf_got
+        inc     ldf_off
+        bne     @nextpair
+        inc     ldf_off+1
 @nextpair:
         inc     ldf_j
         lda     ldf_j
@@ -477,4 +490,60 @@ seen_bit:
         tax
         lda     bit_masks,x
         sta     bmsk
+        rts
+
+; ---------------------------------------------------------------------
+; measure_text -- edit_len = one past the last non-zero byte in the
+; working area, never past SCRATCH_SIZE-1. A full 8 KB of non-zero
+; data would otherwise leave edit_len = $2000, and poke_nul would
+; write the first byte of the resident program at $4000.
+; ---------------------------------------------------------------------
+measure_text:
+_measure_text:
+        lda     load_count
+        sta     edit_len+1
+        lda     #0
+        sta     edit_len
+        lda     edit_len+1
+        beq     @done
+@scan:
+        lda     edit_len
+        bne     @dec
+        dec     edit_len+1
+        lda     edit_len+1
+        bmi     @empty
+@dec:
+        dec     edit_len
+        lda     #<scratch
+        clc
+        adc     edit_len
+        sta     ptr
+        lda     #>scratch
+        adc     edit_len+1
+        sta     ptr+1
+        ldy     #0
+        lda     (ptr),y
+        beq     @scan
+        inc     edit_len
+        bne     @cap
+        inc     edit_len+1
+@cap:
+        lda     #>(SCRATCH_SIZE-1)
+        cmp     edit_len+1
+        bcc     @fix
+        bne     @done
+        lda     #<(SCRATCH_SIZE-1)
+        cmp     edit_len
+        bcs     @done
+@fix:
+        lda     #<(SCRATCH_SIZE-1)
+        sta     edit_len
+        lda     #>(SCRATCH_SIZE-1)
+        sta     edit_len+1
+        rts
+@empty:
+        lda     #0
+        sta     edit_len
+        sta     edit_len+1
+@done:
         rts

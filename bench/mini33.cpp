@@ -39,7 +39,7 @@ int main(int argc,char**argv) {
     M6502 cpu(&m); m.setCpu(&cpu); cpu.setCpuMode(M6502::CpuMode::NMOS);
     m.clearRam(); m.resetSoftSwitches(); m.slotBus().reset(); cpu.hardReset(); cpu.setProgramCounter(0xc600);
     run(cpu,120000000);
-    expect(m,"A2FC MINI DOS 3.3"); expect(m,"3 FILES");
+    expect(m,"A2FC MINI DOS 3.3"); expect(m,"4 FILES"); expect(m,"TIGER");
     auto bootScreen=screen(m); run(cpu,3000000); assert(screen(m)==bootScreen);
     // HELLO lives under $1000; the program occupies $1000 and $4000+.
     for(int i=0;i<0x800;++i) m.writeRamUnchecked(0x0800+i,0xa5);
@@ -60,12 +60,12 @@ int main(int argc,char**argv) {
             assert(changes.hits[a]==expected);
         }
     };
-    // Only the active header is inverse; key blocks are inverse, labels plain.
+    // Only the active header is inverse; the shortcut row is inverse too.
     assert(m.data()[0x400]<0x40); assert(m.data()[0x414]>=0x80);
-    const int bar=0x400+(22&7)*128+(22>>3)*40;
-    assert(m.data()[bar]<0x40); assert(m.data()[bar+3]>=0x80);
+    const int bar=0x400+(23&7)*128+(23>>3)*40;
+    assert(m.data()[bar]<0x40); assert(m.data()[bar+3]<0x40);
     changedOnly("Z"); changedOnly("\x1b"); // root ESC does not quit
-    changedOnly("K"); changedOnly("\x0a"); changedOnly("K");
+    changedOnly("K"); changedOnly("\x0a"); // HELLO -> A2FC.MINI -> README
     auto chosen=screen(m);
     keys("6"); expect(m,"A2FC MINI - COMMANDS");
     keys("\x1b"); assert(screen(m)==chosen);
@@ -112,7 +112,7 @@ int main(int argc,char**argv) {
     keys("\x12"); expect(m,"GREETINGS"); assert(pane(0)==left);
     keys("="); keys("\t"); expect(m,"20 FILES");
     assert(screen(m).substr(21*41,9)=="GREETINGS");
-    keys("/"); expect(m,"3 FILES"); expect(m,"GREETINGS");
+    keys("/"); expect(m,"4 FILES"); expect(m,"GREETINGS");
     for(int i=0;i<0x800;++i) assert(m.data()[0x0800+i]==0xa5);
     puts(screen(m).c_str());
     auto beforeQuit=screen(m);
@@ -120,7 +120,7 @@ int main(int argc,char**argv) {
     keys("N"); assert(screen(m)==beforeQuit);
     keys("Q"); keys("Y"); expect(m,"\n]");
     keys("CATALOG\r"); expect(m,"DISK VOLUME"); expect(m,"A2FC.MINI");
-    keys("BRUN A2FC.MINI\r"); run(cpu,40000000); expect(m,"3 FILES");
+    keys("BRUN A2FC.MINI\r"); run(cpu,40000000); expect(m,"4 FILES");
     m.clearWriteWatches(); m.setWatchSink(nullptr);
     assert(raw->getWriteFlushCount()==0); assert(!raw->hasUnsavedChanges());
     puts("PASS: II+ NMOS boot, ProDOS ergonomics, inverse key blocks, numeric shortcuts, help, changed-character-only writes, two panes, pagination, long names, preview, drive isolation, malformed/missing disk, recovery, quit/relaunch; zero disk writes");

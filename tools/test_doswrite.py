@@ -30,7 +30,7 @@ static unsigned char target_unit=0xE0;
 static unsigned char dos_order[16]={0,14,13,12,11,10,9,8,7,6,5,4,3,2,1,15};
 static int injected_error(FILE* f){return (mode==9 && opens==2) || ferror(f);}
 void dw_mainbank(void){}
-unsigned char dw_protected(unsigned char u){return mode==1;}
+unsigned char dw_protected(unsigned char u){return mode==1?0x80:mode==21?1:0;}
 static unsigned char mli(unsigned char cmd,void* p) {
  struct Block* b=p;unsigned int h;unsigned char* q;
  if(cmd==0xC5){struct Online* o=p;if(mode==15)return 0x27;memset(o->buffer,0,256);o->buffer[0]=0x71; o->buffer[1]='V';return 0;}
@@ -103,6 +103,38 @@ class DosWrite(unittest.TestCase):
      files=read_files(self.disk.read_bytes());self.assert_keep()
      expected=(prefix+size.to_bytes(2,'little') if kind!=4 else b'')+self.payload
      self.assertEqual(files['NEW']['data'],expected+bytes((-len(expected))%256))
+ def test_native_slot_sensor(self):
+  code=r'''#include <stdio.h>
+unsigned char __fastcall__ dw_protected(unsigned char);
+int main(void) {
+ unsigned char slot,drive,wp,bad;unsigned char* rom;unsigned char* io;
+ unsigned char sig[8]={0xA2,0x20,0xA0,0,0xA2,3,0x86,0x3C};
+ unsigned char offsets[5]={0,1,3,5,255};unsigned int i;
+ for(slot=1;slot<8;++slot) {
+  rom=(unsigned char*)(0xC000U+slot*256U);io=(unsigned char*)(0xC080U+slot*16U);
+  for(i=0;i<8;++i)rom[i]=sig[i];rom[255]=0;
+  for(drive=0;drive<2;++drive)for(wp=0;wp<2;++wp) {
+   io[14]=wp?0x80:0;
+   if(dw_protected(slot*16+(drive?0x80:0))!=io[14])return 1;
+  }
+  for(bad=0;bad<5;++bad) {
+   i=offsets[bad];rom[i]^=1;
+   if(dw_protected(slot*16)!=1)return 2;
+   rom[i]^=1;
+  }
+  /* Generic ProDOS block ROM signature must never reach Disk II I/O. */
+  rom[0]=0x4C;rom[255]=0xEB;
+  if(dw_protected(slot*16)!=1)return 3;
+ }
+ puts("slots OK");return 0;
+}
+'''
+  p=Path(self.tmp.name);(p/'sensor.c').write_text(code)
+  (p/'sensor_io.s').write_text((ROOT/'src/plugins/doswrite.s').read_text())
+  for cpu in ('sim6502','sim65c02'):
+   exe=p/('sensor-'+cpu)
+   subprocess.run(['cl65','-t',cpu,'-O',str(p/'sensor.c'),str(p/'sensor_io.s'),'-o',str(exe)],check=True,capture_output=True)
+   self.assertIn('slots OK',subprocess.check_output(['sim65',str(exe)],text=True))
  def test_all_slots_and_drives(self):
   for slot in range(1,8):
    for drive in (0,0x80):
@@ -137,9 +169,13 @@ class DosWrite(unittest.TestCase):
    exe=p/cpu
    result=subprocess.run(['cl65','-t',cpu,'-O','-I',str(ROOT),str(p/'sim.c'),'-o',str(exe)],capture_output=True,text=True)
    self.assertEqual(result.returncode,0,result.stderr)
-   for size in (0,31232,65535):
-    with self.subTest(cpu=cpu,size=size):
-     disk=bytearray(self.original);self.payload=b'B'*size;self.src.write_bytes(self.payload)
+   for size,bad in ((0,None),(31232,None),(65535,None),(1,-1),
+                    (1,48*256+5),(1,49*256+5),(1,offset(17,1)+1)):
+    with self.subTest(cpu=cpu,size=size,bad=bad):
+     disk=bytearray(self.original if bad is None else make_disk([('KEEP',0x80,b'K'*32000)]))
+     malformed=bad is not None and bad>=0
+     if malformed:disk[bad]=17 if bad==offset(17,1)+1 else 0 if bad==49*256+5 else 1
+     before=bytes(disk);self.payload=b'B'*size;self.src.write_bytes(self.payload)
      proc=subprocess.Popen(['sim65',str(exe),str(self.disk),str(self.src),'0','1','6'],stdin=subprocess.PIPE,stdout=subprocess.PIPE)
      try:
       while True:
@@ -155,15 +191,21 @@ class DosWrite(unittest.TestCase):
        else:proc.stdin.write(b'\x00'+b''.join(disk[at:at+256] for at in halves))
        proc.stdin.flush()
       out=proc.stdout.readline().decode();proc.wait(timeout=15)
-      self.assertEqual(proc.returncode,0);self.assertIn('Copied to DOS',out)
+      self.assertEqual(proc.returncode,0)
+      if malformed:
+       self.assertNotIn('Copied to DOS',out);self.assertEqual(int(out.split()[0]),0)
+       self.assertEqual(disk,before)
+      else:self.assertIn('Copied to DOS',out)
      finally:
       if proc.poll() is None:proc.kill();proc.wait()
       proc.stdin.close();proc.stdout.close()
-     self.disk.write_bytes(disk);self.assert_keep()
+     if malformed:continue
+     self.disk.write_bytes(disk)
+     self.assertEqual(read_files(disk)['KEEP'],read_files(before)['KEEP'])
      expected=b'\x00\x20'+size.to_bytes(2,'little')+self.payload
      self.assertEqual(read_files(disk)['NEW']['data'],expected+bytes((-len(expected))%256))
  def test_preflight_refusals_write_nothing(self):
-  for mode in (1,2,6,12,15,17,19,20):
+  for mode in (1,2,6,12,15,17,19,20,21):
    self.disk.write_bytes(self.original);self.assertEqual(self.run_op(mode)[0],0)
    self.assertEqual(self.disk.read_bytes(),self.original)
  def test_bad_metadata_and_collisions(self):
@@ -181,6 +223,18 @@ class DosWrite(unittest.TestCase):
    with self.subTest(mode=mode):
     self.disk.write_bytes(self.original);_,out=self.run_op(mode);self.assertIn('stopped',out)
     self.assert_keep();self.assertNotIn('NEW',read_files(self.disk.read_bytes()))
+ def test_malformed_catalog_end_and_ts_offsets_write_nothing(self):
+  before=make_disk([('KEEP',0x80,b'K'*32000)])
+  for at,value in ((48*256+5,1),(49*256+5,0),(offset(17,1)+1,17)):
+   with self.subTest(at=at):
+    bad=bytearray(before);bad[at]=value;self.disk.write_bytes(bad)
+    writes,out=self.run_op()
+    self.assertEqual(writes,0)
+    self.assertNotIn('Copied to DOS',out)
+    self.assertEqual(self.disk.read_bytes(),bad)
+  self.disk.write_bytes(before);_,out=self.run_op()
+  self.assertIn('Copied to DOS',out)
+  self.assertEqual(read_files(self.disk.read_bytes())['KEEP'],read_files(before)['KEEP'])
  def test_each_failed_write_stops_without_retry(self):
   count,_=self.run_op()
   for at in range(1,count+1):

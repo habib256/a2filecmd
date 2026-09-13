@@ -21,6 +21,10 @@ _dw_protected:
  lda #0
  sta ptr1
  ; Standard Disk II boot ROM signature; refuse an unknown controller.
+ ldy #0
+ lda (ptr1),y
+ cmp #$A2
+ bne protected
  ldy #1
  lda (ptr1),y
  cmp #$20
@@ -31,6 +35,11 @@ _dw_protected:
  ldy #5
  lda (ptr1),y
  cmp #$03
+ bne protected
+ ; Block/SmartPort ROMs share the ProDOS signature above. Disk II has
+ ; no ROM block driver: ProDOS supplies it from the language card.
+ ldy #$FF
+ lda (ptr1),y
  bne protected
  pla
  pha

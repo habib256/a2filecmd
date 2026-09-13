@@ -44,11 +44,12 @@ The menu also offers text and disk-image conversion, CRC-32, file
 identification, Markdown reading, volume-wide search, favourite directories,
 batch renaming and type repair. DISKTOOLS and XL also provide UNDELETE recovery,
 DISKCMP comparison, MKIMAGE creation, RESCUE extraction, SYNC updates and TREE totals. BLKVIEW searches and extracts blocks while preserving the source; DISKIMG reads back disk writes.
-**Write to DOS 3.3 from ProDOS:** open a real DOS disk in one panel, select
-a ProDOS TXT/BIN/BAS/INT file in the other and press **C**. DOSWRITE (FILES/XL)
-creates a new file on a slot-6 Disk II, with verified writes and the source
-kept. One selected file per operation, up to 65,535 bytes; existing names
-are refused. [Usage and limits](docs/MANUAL.md).
+**Write to DOS 3.3 from ProDOS:** open a DOS disk or a DOS image in one panel,
+select a ProDOS TXT/BIN/BAS/INT file in the other and press **C**. DOSWRITE
+(FILES/XL) uses the selected Disk II slot, including slot 5. Images (`.DSK`,
+`.DO`, DOS-order `.2MG`) are copied to a verified temporary before replacement.
+One selected file per operation, up to 65,535 bytes; existing DOS names are
+refused and the source is kept. [Usage and limits](docs/MANUAL.md).
 
 NIBCOPY copies standard 16-sector Disk II tracks with one or two drives and
 verified readback ([details](docs/NIBCOPY.md)).
@@ -96,7 +97,7 @@ is 0.7.5; its downloads retain their own version numbers.
 
 **All floppies use 6502 code**, including on enhanced machines. Choose the
 categories you need; every companion carries the menu and full catalog.
-XL includes all 62 overlays, BASIC.SYSTEM, INTBASIC.SYSTEM, `DEMO/` and `IMGHGR/`, so it needs
+XL includes all 64 overlays, BASIC.SYSTEM, INTBASIC.SYSTEM, `DEMO/` and `IMGHGR/`, so it needs
 no companion. Choose XL **6502** for an original IIe; XL **65C02** for an
 enhanced IIe or //c. All editions require 128 KB and 80 columns.
 Use matching releases. Do not mix the native plugins of XL 65C02 with the

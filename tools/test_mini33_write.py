@@ -4,8 +4,7 @@
 Runs the shipped copy.s under sim65 on disposable fixtures only. What is
 checked is not the return code but the bytes: the source must come out
 untouched, every pre-existing byte of the target must survive, and no
-catalog entry may appear unless the whole file is on the disk and has
-been compared.
+catalog entry may appear unless every written sector was read back.
 """
 import struct
 import sys
@@ -137,9 +136,22 @@ class WriteTest(unittest.TestCase):
         self.mini.cancel()
         self.assertEqual(self.mini.execute(), NOT_READY)
         self.assertEqual(self.image(2), self.dst)
-        self.mini.poke('drive', bytes([1]))
+        self.assertEqual(self.mini.byte('drive'), 1)
         self.assertEqual(self.mini.prepare(0, 1), SAME)
         self.assertEqual(len(self.mini.write_log), 0)
+
+    def test_cancel_keeps_later_io_on_source(self):
+        self.assertEqual(self.prepare(), OK)
+        self.assertEqual(self.mini.byte('drive'), 2)
+        self.mini.cancel()
+        self.assertEqual(self.mini.byte('drive'), 1)
+        self.assertEqual(self.mini.catalog(), OK)
+        name = bytes(self.mini.peek('ent_name', 30))
+        self.assertEqual(name, b'COPY.ME'.ljust(30))
+        self.assertEqual(self.mini.delete_prepare(1), 0)
+        self.assertEqual(len(self.mini.write_log), 0)
+        self.assertEqual(self.image(1), self.src)
+        self.assertEqual(self.image(2), self.dst)
 
     def test_name_collision_even_locked(self):
         self.load(dst=make_disk([('COPY.ME', 0x84, b'NEVER OVERWRITE')]))
@@ -158,6 +170,9 @@ class WriteTest(unittest.TestCase):
         self.load(dst=make_disk([(f'F{i}', 0, b'') for i in range(105)]))
         self.assertEqual(self.prepare(), FULL)
         self.assertEqual(len(self.mini.write_log), 0)
+        # bcs, not beq: a count above 105 is also full. 105 live names
+        # already fill the panel; a free slot on a longer chain would
+        # still have to be refused.
 
     def test_stale_panel_size_and_pointer(self):
         # The walk uses the panel's size and T/S pointer. A stale
@@ -240,6 +255,15 @@ class WriteTest(unittest.TestCase):
         self.assertEqual(self.image(2), self.dst)
         self.assertEqual(self.mini.byte('copy_fault'), 0,
                          'a refused disk is not an uncertain one')
+
+    def test_protect_after_vtoc_latches(self):
+        self.assertEqual(self.prepare(), OK)
+        self.mini.protect_write = 1
+        self.assertEqual(self.mini.execute(), PROTECTED)
+        self.assertEqual(self.mini.byte('copy_fault'), 1)
+        self.assertNotIn('COPY.ME', read_files(self.image(2)))
+        self.assertEqual(self.mini.prepare(0, 2), UNCERTAIN)
+        self.preserved()
 
     def test_every_read_failure(self):
         self.assertEqual(self.prepare(), OK)
@@ -391,6 +415,40 @@ class WriteTest(unittest.TestCase):
         self.assertEqual(len(self.mini.write_log), 0)
         self.assertEqual(self.image(1), self.src)
 
+    def test_delete_refuses_dos_system_track(self):
+        self.load(src=make_disk([('GONE.TXT', 0, b'DELETE ME'),
+                                 ('KEEP.SRC', 0, b'SOURCE SAFE')]))
+        img = bytearray(self.image(1))
+        img[offset(17, 15) + 11] = 1
+        img[offset(17, 15) + 12] = 0
+        self.mini.load(1, bytes(img))
+        self.assertEqual(self.mini.catalog(), 0)
+        self.assertEqual(self.mini.delete_prepare(0), self.DEL_INVALID)
+        self.assertEqual(len(self.mini.write_log), 0)
+        self.assertEqual(self.image(1), bytes(img))
+
+    def test_delete_refuses_wrong_ts_offset(self):
+        self.load(src=make_disk([('GONE.TXT', 0, b'DELETE ME'),
+                                 ('KEEP.SRC', 0, b'SOURCE SAFE')]))
+        gone = read_files(self.src)['GONE.TXT']
+        ts = offset(*gone['lists'][0])
+        img = bytearray(self.image(1))
+        img[ts + 5] = 122
+        self.mini.load(1, bytes(img))
+        self.assertEqual(self.mini.delete_prepare(0), self.DEL_INVALID)
+        self.assertEqual(len(self.mini.write_log), 0)
+        self.assertEqual(self.image(1), bytes(img))
+
+    def test_delete_refuses_wrong_sector_count(self):
+        self.load(src=make_disk([('GONE.TXT', 0, b'DELETE ME'),
+                                 ('KEEP.SRC', 0, b'SOURCE SAFE')]))
+        img = bytearray(self.image(1))
+        img[offset(17, 15) + 11 + 33] = 99
+        self.mini.load(1, bytes(img))
+        self.assertEqual(self.mini.delete_prepare(0), self.DEL_INVALID)
+        self.assertEqual(len(self.mini.write_log), 0)
+        self.assertEqual(self.image(1), bytes(img))
+
     def test_delete_write_failure_latches(self):
         self.load(src=make_disk([('GONE.TXT', 0, b'DELETE ME'),
                                  ('KEEP.SRC', 0, b'SOURCE SAFE')]))
@@ -400,6 +458,96 @@ class WriteTest(unittest.TestCase):
         self.assertEqual(self.mini.byte('del_fault'), 1)
         self.assertEqual(self.mini.delete_prepare(0), self.DEL_UNCERTAIN)
         # KEEP.SRC data sectors are untouched
+        keep = read_files(self.src)['KEEP.SRC']
+        for t, s in keep['blocks'] + keep['lists']:
+            a = offset(t, s)
+            self.assertEqual(self.image(1)[a:a + 256], self.src[a:a + 256])
+
+    def test_lock_toggles_and_preserves_bytes(self):
+        self.load(src=make_disk([('LOCK.ME', 0, b'SAFE DATA'),
+                                 ('KEEP.SRC', 0, b'SOURCE SAFE')]))
+        before = read_files(self.src)
+        self.assertEqual(self.mini.lock_prepare(0, 0), self.DEL_OK)
+        self.assertEqual(len(self.mini.write_log), 0)
+        self.assertEqual(self.mini.lock_execute(), self.DEL_OK)
+        files = read_files(self.image(1))
+        self.assertEqual(files['LOCK.ME']['type'] & 0x80, 0x80)
+        self.assertEqual(files['LOCK.ME']['data'], before['LOCK.ME']['data'])
+        self.assertEqual(files['KEEP.SRC']['data'], before['KEEP.SRC']['data'])
+        self.assertEqual(self.mini.write_log, [(1, 17, 15)])
+        self.assertEqual(self.mini.lock_prepare(0, 0), self.DEL_OK)
+        self.assertEqual(self.mini.lock_execute(), self.DEL_OK)
+        self.assertEqual(self.mini.catalog(), 0)
+        files = read_files(self.image(1))
+        self.assertEqual(files['LOCK.ME']['type'] & 0x80, 0)
+
+    def test_unlock_then_delete(self):
+        self.load(src=make_disk([('LOCK.ME', 0x80, b'SAFE'),
+                                 ('KEEP.SRC', 0, b'SOURCE SAFE')]))
+        self.assertEqual(self.mini.delete_prepare(0), self.DEL_LOCKED)
+        self.assertEqual(len(self.mini.write_log), 0)
+        self.assertEqual(self.mini.lock_prepare(0, 1), self.DEL_OK)
+        self.assertEqual(self.mini.lock_execute(), self.DEL_OK)
+        self.assertEqual(self.mini.catalog(), 0)
+        self.assertEqual(self.mini.delete_prepare(0), self.DEL_OK)
+        self.assertEqual(self.mini.delete_execute(), self.DEL_OK)
+        self.assertNotIn('LOCK.ME', read_files(self.image(1)))
+        self.assertIn('KEEP.SRC', read_files(self.image(1)))
+
+    def test_unlock_already_clear_does_not_write(self):
+        self.load(src=make_disk([('OPEN.ME', 0, b'SAFE')]))
+        self.assertEqual(self.mini.lock_prepare(0, 1), self.DEL_LOCKED)
+        self.assertEqual(len(self.mini.write_log), 0)
+        self.assertEqual(self.image(1), self.src)
+
+    def test_lock_write_failure_latches(self):
+        self.load(src=make_disk([('LOCK.ME', 0, b'SAFE'),
+                                 ('KEEP.SRC', 0, b'SOURCE SAFE')]))
+        self.assertEqual(self.mini.lock_prepare(0, 2), self.DEL_OK)
+        self.mini.fail_write = 0
+        self.assertEqual(self.mini.lock_execute(), self.DEL_UNCERTAIN)
+        self.assertEqual(self.mini.byte('del_fault'), 1)
+        self.assertEqual(self.mini.lock_prepare(0, 2), self.DEL_UNCERTAIN)
+        keep = read_files(self.src)['KEEP.SRC']
+        for t, s in keep['blocks'] + keep['lists']:
+            a = offset(t, s)
+            self.assertEqual(self.image(1)[a:a + 256], self.src[a:a + 256])
+
+    def test_rename_keeps_bytes_and_refuses_collision(self):
+        self.load(src=make_disk([('OLD.TXT', 0, b'RENAME ME'),
+                                 ('KEEP.SRC', 0, b'SOURCE SAFE')]))
+        before = read_files(self.src)
+        self.assertEqual(self.mini.rename_prepare(0, 'NEW.TXT'), self.DEL_OK)
+        self.assertEqual(len(self.mini.write_log), 0)
+        self.assertEqual(self.mini.rename_execute(), self.DEL_OK)
+        files = read_files(self.image(1))
+        self.assertNotIn('OLD.TXT', files)
+        self.assertEqual(files['NEW.TXT']['data'], before['OLD.TXT']['data'])
+        self.assertEqual(files['KEEP.SRC']['data'], before['KEEP.SRC']['data'])
+        self.assertEqual(self.mini.write_log, [(1, 17, 15)])
+        self.assertEqual(self.mini.catalog(), 0)
+        self.assertEqual(self.mini.rename_prepare(0, 'KEEP.SRC'), 7)
+        self.assertEqual(len(self.mini.write_log), 1)
+        self.assertIn('NEW.TXT', read_files(self.image(1)))
+        self.assertIn('KEEP.SRC', read_files(self.image(1)))
+
+    def test_rename_refuses_locked(self):
+        self.load(src=make_disk([('LOCK.ME', 0x80, b'SAFE')]))
+        self.assertEqual(self.mini.rename_prepare(0, 'NEW.TXT'), self.DEL_LOCKED)
+        self.assertEqual(len(self.mini.write_log), 0)
+        self.assertEqual(self.image(1), self.src)
+
+    def test_rename_write_failure_latches(self):
+        self.load(src=make_disk([('OLD.TXT', 0, b'SAFE'),
+                                 ('KEEP.SRC', 0, b'SOURCE SAFE')]))
+        self.assertEqual(self.mini.rename_prepare(0, 'NEW.TXT'), self.DEL_OK)
+        self.mini.fail_write = 0
+        self.assertEqual(self.mini.rename_execute(), self.DEL_UNCERTAIN)
+        self.assertEqual(self.mini.byte('del_fault'), 1)
+        self.assertEqual(self.mini.rename_prepare(0, 'NEW.TXT'), self.DEL_UNCERTAIN)
+        files = read_files(self.image(1))
+        self.assertIn('OLD.TXT', files)
+        self.assertNotIn('NEW.TXT', files)
         keep = read_files(self.src)['KEEP.SRC']
         for t, s in keep['blocks'] + keep['lists']:
             a = offset(t, s)

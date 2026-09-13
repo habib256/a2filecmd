@@ -32,7 +32,7 @@ int main(int argc,char**argv) {
     d->setWriteBackEnabled(true); m.slotBus().plug(6,std::move(card));
     M6502 cpu(&m); m.setCpu(&cpu); cpu.setCpuMode(M6502::CpuMode::NMOS);
     m.clearRam(); m.resetSoftSwitches(); m.slotBus().reset(); cpu.hardReset(); cpu.setProgramCounter(0xc600);
-    run(cpu,120000000); expect(m,"3 FILES");
+    run(cpu,120000000); expect(m,"4 FILES");
     for(int i=0;i<0x800;++i) m.writeRamUnchecked(0x0800+i,0xa5);
     auto keys=[&](const char* s) { m.pasteRawKeys(s,strlen(s)); run(cpu,12000000); };
     auto wait=[&](const char* s) {
@@ -44,23 +44,22 @@ int main(int argc,char**argv) {
     keys("3"); wait("CANCEL"); // numeric bar keys do not confirm writes
     expect(m,"COPY "); expect(m,"KEEP.DST"); // stays on the two panels
     assert(d->getWriteFlushCount()==0);
-    keys("\x1b"); expect(m,"3 FILES"); assert(d->getWriteFlushCount()==0);
+    keys("\x1b"); expect(m,"4 FILES"); assert(d->getWriteFlushCount()==0);
     // Hardware write protection: even VTOC reservation must be refused.
     d->setDriveHostWriteProtected(1,true);
     keys("C"); wait("CANCEL"); keys("O"); expect(m,"CANCEL");
     assert(d->getWriteFlushCount()==0);
     keys("Y"); wait("DISK IS WRITE PROTECTED");
     assert(d->getWriteFlushCount()==0);
-    keys(" "); d->setDriveHostWriteProtected(1,false);
+    d->setDriveHostWriteProtected(1,false);
     assert(screen(m).substr(21*41,9)=="A2FC.MINI");
     keys("C"); wait("CANCEL"); keys("Y"); wait("COPIED");
     assert(d->getWriteFlushCount()>0); assert(d->flushPendingWrites());
     for(int i=0;i<0x800;++i) assert(m.data()[0x0800+i]==0xa5);
-    keys(" ");
     auto writes=d->getWriteFlushCount();
     assert(screen(m).substr(21*41,9)=="A2FC.MINI");
     keys("C"); wait("NAME EXISTS");
-    assert(d->getWriteFlushCount()==writes); keys(" ");
+    assert(d->getWriteFlushCount()==writes);
     keys("Q"); keys("Y"); expect(m,"\n]");
     keys("CATALOG,D2\r"); wait("A2FC.MINI");
     // DOS itself loads the new binary and then allocates another file.

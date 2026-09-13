@@ -20,7 +20,7 @@ starting and identifies the edition on its title screen.
 | Edition | What to use |
 |---|---|
 | **6502 floppies** | BOOT plus whichever 140 KB category disks you need: FILES, MEDIA, DISKTOOLS, DEVTOOLS. These floppies also run on enhanced machines. |
-| **XL 6502 or 65C02** | One bootable 32 MB `.2mg` with all 62 overlays, BASIC.SYSTEM, INTBASIC.SYSTEM and demonstration files. No companion disk is needed. |
+| **XL 6502 or 65C02** | One bootable 32 MB `.2mg` with all 64 overlays, BASIC.SYSTEM, INTBASIC.SYSTEM and demonstration files. No companion disk is needed. |
 
 The download names include the CPU, category and version:
 
@@ -71,7 +71,7 @@ full command catalog. The distribution is declared in `config/packages.mk`.
 
 | Category | Plugins | ProDOS volume |
 |---|---|---|
-| **FILES** | DOSWRITE, EDIT, SEARCH, AWP, BINARY2, UNSHRINK, CRC, FIND, FIXTYPES, GOTO, IDENT, MDVIEW, RENAME, SYNC, MOVE, TREE | `/A2FILES6502` |
+| **FILES** | DOSWRITE, DOSIMAGE, DOSPUT, EDIT, SEARCH, AWP, BINARY2, UNSHRINK, CRC, FIND, FIXTYPES, GOTO, IDENT, MDVIEW, RENAME, SYNC, MOVE, TREE | `/A2FILES6502` |
 | **MEDIA** | IMAGE, MUSIC, DGRVIEW, EXTASIE, PACKFOT, PAINT816, PURPLE, LZ4FH, PRINTSHOP, FONTVIEW, PT3 | `/A2MEDIA6502` |
 | **DISKTOOLS** | BOOTBLK, BLKVIEW, BLKEDIT, DISKCMP, NIBCOPY, IMGCONV, MKIMAGE, RESCUE, UNDELETE | `/A2DISKS6502` |
 | **DEVTOOLS** | BASLIST, DISASM, INTBASIC listings, plus BASIC.SYSTEM and INTBASIC.SYSTEM runtimes | `/A2DEVTOOLS6502` |
@@ -481,7 +481,7 @@ directory in the other panel, preserving type and auxiliary type.
 
 ProDOS image extraction supports files up to 128 KB (seedling/sapling).
 Enter subdirectories and extract their files individually; recursive
-extraction and writing into an image are not supported.
+extraction and writing into a ProDOS filesystem image are not supported.
 
 A real DOS 3.3 disk appears in **/** as `DOS 3.3`, with its slot and drive.
 Return opens its catalog; C extracts files to ProDOS. Applesoft, Integer
@@ -490,7 +490,7 @@ leaves DOS mode, so the same physical disk can be opened again.
 
 To **write to a real DOS 3.3 disk from A2FC ProDOS**, open that disk in one
 panel and select a ProDOS file in the other. Press **C**, then confirm the
-filename and **S6,D1** or **S6,D2**. **DOSWRITE** is on FILES and XL; it can
+filename, slot and drive displayed by the confirmation. **DOSWRITE** is on FILES and XL; it can
 also be launched from **! → Disks**. It copies the file under the cursor,
 even if other files are tagged. The ProDOS source must be on another device.
 
@@ -498,11 +498,11 @@ Supported sources are **TXT, BIN, BAS and INT**, up to 65,535 bytes. BIN gets
 its DOS load-address/length prefix from the ProDOS auxiliary type; BAS/INT get
 their length prefix. TXT bytes are preserved. The destination name is the
 selected ProDOS name. Existing names, locked or unlocked, are refused.
-**V** does not delete the source; use C. Writing to file images, replacing,
-renaming and deleting DOS files are not supported by this command.
+**V** does not delete the source; use C. Replacing, renaming and deleting
+existing DOS files are not supported by this command.
 
 The target must be a standard 35-track, 16-sector DOS 3.3 disk in a Disk II
-on slot 6. The command checks physical write protection, the VTOC, catalog,
+in any slot 1–7, with the standard Disk II ROM signature. The command checks physical write protection, the VTOC, catalog,
 all live sector lists and allocation conflicts before writing. It reserves
 sectors first, verifies each written block and compares the source again
 before publishing the catalog entry. No auxiliary RAM disk storage is used.
@@ -510,6 +510,23 @@ After an interrupted or failed write, the source remains intact, but some
 space may stay reserved. Check the DOS disk before further work. Physical
 VTOC/catalog writes are not atomic: a power cut or damaged sector can still
 corrupt shared metadata.
+
+To **write into a DOS 3.3 image**, open its catalog with Return in one panel,
+select the ProDOS source in the other, and press **C**. Confirm the source
+name and complete target image path. Supported containers are **.DSK**, **.DO**
+and DOS-order **.2MG**, holding a standard 35-track, 16-sector disk. A locked
+2MG container or protected ProDOS image file is refused.
+
+The FILES/XL helpers create **A2FC.DOS** beside the image, copy and compare
+every byte, then perform the same DOS allocation audit and verified copy on
+that temporary. The closed result is reread before installation, and the original image is
+checked again for changes using its full length and CRC-32. The original
+is renamed to **A2FC.BAK** before the result takes its place; an installation
+failure attempts to restore it. Existing temporary/backup names are never
+overwritten. If recovery files are reported, keep them until checked. The
+containing ProDOS volume needs enough free space for a complete second image.
+No source file is deleted and no AUX RAM disk storage is used. This replacement
+preserves recovery files on reported errors, but is not atomic across a power cut.
 
 ### Formatting a disk
 

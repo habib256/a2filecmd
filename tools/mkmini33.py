@@ -8,7 +8,8 @@ from pathlib import Path
 
 SIZE = 35 * 16 * 256
 MINI_VERSION = '0.7.0'
-HOME, PRINT, CHRS = 0x97, 0xBA, 0xE7
+HTAB, HOME, VTAB, PRINT, CHRS = 0x96, 0x97, 0xA2, 0xBA, 0xE7
+TIGER_PATH = Path(__file__).resolve().parents[1] / 'data' / 'IMGHGR' / 'TIGER#062000'
 
 
 def applesoft(lines):
@@ -21,14 +22,15 @@ def applesoft(lines):
 
 
 def hello_program():
-    title = f'A2FILECMD V{MINI_VERSION}'.encode('ascii')
+    version = f'V{MINI_VERSION}'.encode('ascii')
     return applesoft([
         (10, bytes([HOME])),
-        (20, bytes([PRINT]) + b'"A2FILECMD MINI DOS 3.3"'),
-        (30, bytes([PRINT]) + b'"' + title + b'"'),
-        (40, bytes([PRINT]) + b'"GPL3 VERHILLE ARNAUD"'),
-        (50, bytes([PRINT]) + b'"LOADING .... PLEASE WAIT ...."'),
-        (60, bytes([PRINT, CHRS]) + b'(4);"BRUN A2FC.MINI"'),
+        (20, bytes([HTAB]) + b'16:' + bytes([PRINT]) + b'"A2FILECMD"'),
+        (30, bytes([HTAB]) + b'15:' + bytes([PRINT]) + b'"MINI DOS 3.3"'),
+        (40, bytes([HTAB]) + b'18:' + bytes([PRINT]) + b'"' + version + b'"'),
+        (50, bytes([VTAB]) + b'22:' + bytes([HTAB]) + b'11:' + bytes([PRINT]) + b'"GPL3 VERHILLE ARNAUD"'),
+        (60, bytes([VTAB]) + b'23:' + bytes([HTAB]) + b'6:' + bytes([PRINT]) + b'"LOADING .... PLEASE WAIT ...."'),
+        (70, bytes([PRINT, CHRS]) + b'(4);"BRUN A2FC.MINI"'),
     ])
 
 
@@ -45,10 +47,14 @@ def build(master, binary):
         raise ValueError('binary exceeds reserved code region')
     image = bytearray(SIZE)
     image[:3*4096] = master[:3*4096]
+    tiger = TIGER_PATH.read_bytes()
+    if len(tiger) != 8192:
+        raise ValueError('TIGER must be a raw 8192-byte HGR page')
     program = hello_program()
     files = [('HELLO',2,struct.pack('<H',len(program))+program),
              ('A2FC.MINI',4,struct.pack('<HH',0x1000,len(binary))+binary),
-             ('README',0,b'A2FC MINI DOS 3.3\rAPPLE II+ 48 KB - DOS 3.3 COPY\rTAB: PANEL - I/K: SELECT\rRETURN: PREVIEW - /: DRIVE\rC: COPY TO THE OTHER PANEL\rCTRL-R: REREAD - Q: DOS\rT/H: TEXT/HEX - ?: HELP\rY: CONFIRM - N/ESC: CANCEL\r\0')]
+             ('README',0,b'A2FC MINI DOS 3.3\rAPPLE II+ 48 KB - DOS 3.3 COPY\rTAB: PANEL - I/K: SELECT\rRETURN: PREVIEW - /: DRIVE\rC: COPY TO THE OTHER PANEL\rCTRL-R: REREAD - Q: DOS\rT/H: TEXT/HEX - ?: HELP\rG: TIGER HI-RES\rL: LOCK/UNLOCK - R: RENAME\rD: DELETE - SPACE: TAG\rY: CONFIRM - N/ESC: CANCEL\r\0'),
+             ('TIGER',4,tiger)]
     free = [(t,s) for t in range(3,35) if t != 17 for s in range(16)]
     used = {(t,s) for t in (0,1,2,17) for s in range(16)}
     def alloc():

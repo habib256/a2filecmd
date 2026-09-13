@@ -23,6 +23,8 @@ static unsigned char active,buf[512];
 static char full[81],other_full[81],input[17],note[100],reselect[64];
 static int mode,at,reads,writes,closes,seeks,renames,phase;
 static FILE* error_file;
+static FILE* original_read;
+static int damaged;
 int image_error(FILE* f){return f==error_file || ferror(f);}
 struct Info {unsigned char n;unsigned char* path;unsigned char access,type;unsigned int aux;unsigned char storage;unsigned int blocks,md,mt,cd,ct;};
 struct Rename {unsigned char n;unsigned char *old,*newpath;};
@@ -44,15 +46,24 @@ static unsigned char mli(unsigned char cmd,void* p){
  return 0;
 }
 static FILE* op(const char* p,const char* m){
+ if(mode==13 && phase==3 && !strcmp(p,panels[1].path))return NULL;
  if(strchr(m,'w') && !ends(p,"A2FC.DOS"))abort();
- return fopen(p,m);
+ {FILE* f=fopen(p,m);if(phase==2 && !strcmp(p,panels[1].path))original_read=f;return f;}
 }
-static size_t rd(void* p,size_t s,size_t n,FILE* f){++reads;if(mode==1 && reads==at){error_file=f;return 0;}return fread(p,s,n,f);}
-static size_t wr(const void* p,size_t s,size_t n,FILE* f){++writes;if(mode==2 && writes==at){error_file=f;fwrite(p,s,n/2,f);return n/2;}return fwrite(p,s,n,f);}
+static size_t rd(void* p,size_t s,size_t n,FILE* f){++reads;if((mode==1 && reads==at) || (mode==16 && phase==2 && f==original_read && ftell(f)>=at)){error_file=f;return 0;}return fread(p,s,n,f);}
+static size_t wr(const void* p,size_t s,size_t n,FILE* f){++writes;if(mode==2 && writes==at){error_file=f;fwrite(p,s,n/2,f);return n/2;}{
+ size_t got=fwrite(p,s,n,f);
+ if(mode==14 && phase==2 && !damaged){long mark=ftell(f);int value;damaged=1;
+  fseek(f,at,SEEK_SET);value=fgetc(f);fseek(f,at,SEEK_SET);fputc(value^1,f);fseek(f,mark,SEEK_SET);}
+ return got;
+}}
 static int cl(FILE* f){int r=fclose(f);++closes;return mode==3 && closes==at?-1:r;}
 static int sk(FILE* f,long at_,int w){++seeks;if(mode==4 && seeks==at)return -1;return fseek(f,at_,w);}
 static int rm(const char* p){if(mode==5)return -1;return remove(p);}
-static unsigned char cf(const char* p){return mode!=11;}
+static unsigned char cf(const char* p){
+ if(mode==15){FILE* changed=fopen(panels[1].path,"r+b");fseek(changed,at,SEEK_SET);fputc(0x80,changed);fclose(changed);}
+ return mode!=11;
+}
 static void progress(const char* p,unsigned long n,unsigned long t){}
 int main(int argc,char**argv){
  mode=atoi(argv[1]);at=atoi(argv[2]);strcpy(full,argv[3]);strcpy(panels[1].path,argv[4]);
@@ -66,6 +77,7 @@ int main(int argc,char**argv){
  if(input[0]=='I'){
   /* The loader borrows other_full and rereads panels between phases. */
   strcpy(other_full,"/LOADER/DOSPUT.PLG");phase=2;api.arg='I';put(&api);
+  if(mode==12){FILE* changed=fopen(panels[1].path,"r+b");fputc(0x99,changed);fclose(changed);}
   strcpy(other_full,"/LOADER/DOSIMAGE.PLG");phase=3;api.arg=input[0]=='F'?'F':'X';prep(&api);
  }
  printf("%d %d %d %d %d %s\n",reads,writes,closes,seeks,renames,note);return 0;
@@ -133,11 +145,86 @@ class DosImage(unittest.TestCase):
   _,out=self.run_op(5);self.assertIn('old image retained',out)
   self.assertEqual((self.p/'A2FC.BAK').read_bytes(),self.original)
   self.assertIn('NEW',read_files(self.disk.read_bytes()))
+ def container(self):
+  header=bytearray(64);header[:4]=b'2IMG';header[8:12]=b'\x40\x00\x01\x00'
+  header[20:24]=(280).to_bytes(4,'little');header[24:28]=(64).to_bytes(4,'little');header[28:32]=(143360).to_bytes(4,'little')
+  return bytes(header)+self.original
+ def test_unrelated_bytes_corrupted_by_a_successful_write(self):
+  for base in (0,64):
+   self.disk=self.p/('D.2MG' if base else 'D.DSK');before=self.container() if base else self.original
+   for at in (0,base+49*256,base+143359):
+    with self.subTest(base=base,at=at):
+     self.disk.write_bytes(before);_,out=self.run_op(14,at)
+     self.assertNotIn('Copied to DOS 3.3 image',out)
+     self.assertEqual(self.disk.read_bytes(),before)
+ def test_container_changed_during_confirmation(self):
+  self.disk=self.p/'D.2MG';before=self.container()
+  for at in (0,19,24):
+   with self.subTest(at=at):
+    self.disk.write_bytes(before);_,out=self.run_op(15,at)
+    expected=bytearray(before);expected[at]=0x80
+    self.assertNotIn('Copied to DOS 3.3 image',out)
+    self.assertEqual(self.disk.read_bytes(),expected)
+ def test_preservation_scan_read_errors_and_container_trailer(self):
+  self.disk=self.p/'D.2MG';before=self.container()+b'container comment'
+  for mode,at in ((16,0),(16,256),(16,143360),(14,len(before)-1)):
+   with self.subTest(mode=mode,at=at):
+    self.disk.write_bytes(before);_,out=self.run_op(mode,at)
+    self.assertNotIn('Copied to DOS 3.3 image',out)
+    self.assertEqual(self.disk.read_bytes(),before)
+    self.assertFalse((self.p/'A2FC.DOS').exists())
+ def test_crc_on_both_native_cpus(self):
+  import zlib
+  expected=zlib.crc32(bytes(range(256))*3)^0xFFFFFFFF
+  code=r'''#define PLUGIN_HOST
+#include "src/plugins/dosimage.c"
+static unsigned char sample[256];
+int main(void) {
+ unsigned int i;unsigned char j;
+ buf=(unsigned char*)"123456789";image_crc=0xFFFFFFFFUL;image_hash(9);
+ if(image_crc!=0x340BC6D9UL)return 1;
+ buf=sample;for(i=0;i<256;++i)sample[i]=i;
+ image_crc=0xFFFFFFFFUL;for(j=0;j<3;++j)image_hash(256);
+ return image_crc!=EXPECTED;
+}
+'''.replace('EXPECTED',str(expected)+'UL')
+  p=Path(self.build.name);(p/'crc.c').write_text(code)
+  for cpu in ('sim6502','sim65c02'):
+   exe=p/('crc-'+cpu)
+   subprocess.run(['cl65','-t',cpu,'-O','-I',str(ROOT),str(p/'crc.c'),'-o',str(exe)],check=True,capture_output=True)
+   subprocess.run(['sim65',str(exe)],check=True)
+ def test_full_dos_image_and_invalid_or_locked_2mg(self):
+  disk=bytearray(self.original);vtoc=17*4096;disk[vtoc+0x38:vtoc+256]=bytes(256-0x38)
+  self.disk.write_bytes(disk);_,out=self.run_op();self.assertIn('DOS image full',out)
+  self.assertEqual(self.disk.read_bytes(),disk)
+  header=bytearray(64);header[:4]=b'2IMG';header[8:12]=b'\x40\x00\x01\x00'
+  header[20:24]=(280).to_bytes(4,'little');header[24:28]=(64).to_bytes(4,'little');header[28:32]=(143360).to_bytes(4,'little')
+  self.disk=self.p/'D.2MG'
+  for offset,value in ((19,0x80),(12,1),(12,2),(8,63),(24,32),(27,1),(28,1)):
+   bad=bytearray(header);bad[offset]=value;before=bad+self.original
+   self.disk.write_bytes(before);_,out=self.run_op();self.assertNotIn('Copied to DOS',out)
+   self.assertEqual(self.disk.read_bytes(),before);self.assertFalse((self.p/'A2FC.DOS').exists())
+ def test_original_changed_or_unreadable_before_install(self):
+  for mode in (12,13):
+   self.disk.write_bytes(self.original);(self.p/'A2FC.DOS').unlink(missing_ok=True)
+   _,out=self.run_op(mode);self.assertIn('A2FC.DOS retained',out)
+   expected=(b'\x99'+self.original[1:]) if mode==12 else self.original
+   self.assertEqual(self.disk.read_bytes(),expected)
+   self.assertIn('NEW',read_files((self.p/'A2FC.DOS').read_bytes()))
  def test_shipped_demo_is_writable(self):
   from mkdos33 import build
   self.disk.write_bytes(build([('KEEP',0x80,b'original')]))
   _,out=self.run_op();self.assertIn('Copied to DOS 3.3 image',out)
   self.assertIn('NEW',read_files(self.disk.read_bytes()))
+ def test_malformed_catalog_end_and_ts_offsets_preserve_image(self):
+  before=make_disk([('KEEP',0x80,b'K'*32000)])
+  for at,value in ((48*256+5,1),(49*256+5,0),((17*16+1)*256+1,17)):
+   with self.subTest(at=at):
+    bad=bytearray(before);bad[at]=value;self.disk.write_bytes(bad)
+    _,out=self.run_op()
+    self.assertNotIn('Copied to DOS',out)
+    self.assertEqual(self.disk.read_bytes(),bad)
+    self.assertFalse((self.p/'A2FC.DOS').exists())
  def test_collision_and_malformed_image(self):
   for disk in (make_disk([('NEW',0,b'old')]),self.original[:-1],self.original+b'extra'):
    self.disk.write_bytes(disk);self.run_op();self.assertEqual(self.disk.read_bytes(),disk)

@@ -1,5 +1,56 @@
 # Consolidation : budgets mémoire
 
+Audit des chaînes DOS, 13 septembre 2026 : ajout du numéro logique attendu
+pour les listes T/S, soit deux octets de BSS par moteur. DOSWRITE : fichiers
+7 142/7 219, BSS 1 994/1 995, réserves 336/258 octets (65C02/6502).
+DOSPUT : fichiers 7 175/7 265, BSS 1 754/1 755, réserves 543/452 octets.
+Pas de nouveau tampon, d'AUX ni de récursion ; pile et plafonds inchangés.
+Le vrai moteur compilé pour les deux CPU refuse les chaînes malformées sous
+sim65 sans écrire de bloc et accepte un fichier existant sur plusieurs listes.
+
+Erreurs de flux en écriture, 13 septembre 2026 : COPY et EDIT vérifient
+`ferror` avant de fermer le temporaire, même après un compte d'octets complet.
+Réserves COPY 54/51 et EDIT 97/75 octets (65C02/6502). Aucun BSS ajouté ;
+réserves résidentes et pile de 192 octets inchangées par cette correction.
+
+Chargeur de surcouches, 13 septembre 2026 : lecture et fermeture contrôlées,
+refus des corps vides ou trop grands, restauration des panneaux après échec
+d'un grand chargement. Le menu vide son résultat avant chargement pour éviter
+la réexécution d'une ancienne commande. Réserves finales 65C02/6502 : MAIN
+128/627, LC 38/31, LOWRAM 281/306, écart avant pile 156/844. La pile reste à
+192 octets et aucun plafond n'est changé. Le contrôle de fin utilise `fread`
+déjà résident. POM2 : 6/6 contrôles sur chaque CPU, dont le motif sous la pile,
+la mémoire auxiliaire et l'intégralité du volume jetable après sauvegarde.
+
+Écriture DOS physique et images, 13 septembre 2026 : DOSWRITE utilise le
+slot Disk II sélectionné, avec signature ROM et protection matérielle.
+DOSIMAGE prépare/installe le temporaire ; DOSPUT partage le moteur DOS.
+Appels successifs, sans chargement imbriqué ni AUX, avec fichiers fermés
+entre phases. L'allocation est un bitmap de 70 octets au lieu de 260 mots.
+La préparation conserve offset, résultat, CRC-32 et longueur dans 12 octets
+du tampon `input` résident ; le chemin est reconstruit après chaque chargement.
+
+| Surcouche | Fichier 65C02/6502 | BSS 65C02/6502 | Libre sous `$4000` |
+| --- | ---: | ---: | ---: |
+| DOSWRITE | 7 114 / 7 192 | 1 992 / 1 993 | 366 / 287 |
+| DOSPUT | 7 147 / 7 238 | 1 752 / 1 753 | 573 / 481 |
+| DOSIMAGE | 6 954 / 7 087 | 653 / 654 | 1 865 / 1 731 |
+
+Réserves résidentes : MAIN 266/769, LC 38/31, LOWRAM 282/307, écart avant
+pile 294/986 ; pile inchangée à 192 octets. Les textes privés IMAGE et
+UNSHRINK sont dans leurs surcouches ; le message RAM reste en LC permanente.
+IMAGE garde 66/69 octets, UNSHRINK 52/67, MENU 2 111/2 054. Aucun plafond ni
+contrôle de disposition n'est désactivé. LC reste sous la réserve de travail
+visée et ne doit pas accueillir une nouvelle fonctionnalité sans libération.
+Le banc DOS protège aussi la zone sous la pile par un motif contrôlé après
+copie. Le CRC-32 de l'image d'origine utilise une table de 1 Ko pour éviter
+huit décalages C 32 bits par octet sur 6502.
+Le contrôle final compare aussi les octets hors secteurs modifiés à l'original.
+Les diagnostics transitoires du moteur interne sont portés par son résultat,
+puis affichés par DOSIMAGE. Celui-ci conserve les 64 octets de l'en-tête 2MG
+validé pour détecter une modification pendant la confirmation.
+
+
 Finalisation DISKIMG, 13 septembre 2026 : la réservation exclusive directe
 et la finalisation commune aux modes R/W/O rendent 50/39 octets à DISKIMG
 (65C02/6502), réserves 369/313. `DiskImg` occupe 200 octets à `$3E00`, avec

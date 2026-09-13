@@ -113,10 +113,11 @@ static size_t read_file(void* p,size_t s,size_t n,FILE* f) {
     if(fault==1 && f==input && ftell(f)>=256){fired=1;return 0;}
     return fread(p,s,n,f);
 }
-static int error_file(FILE* f) {return (fault==28 && fired)||(fault==1 && fired && f==input)||ferror(f);}
+static int error_file(FILE* f) {return ((fault==37 || fault==38) && fired && output_open && f==output)||(fault==28 && fired)||(fault==1 && fired && f==input)||ferror(f);}
 static size_t write_file(const void* p,size_t s,size_t n,FILE* f) {
     unsigned char damaged[6144];
     check_old_destination();
+    if(fault==37 || fault==38)fired=1; /* Full count with the stream error flag set. */
     if(fault==2 || fault==21)return 0;
     if(fault==4 && n){memcpy(damaged,p,n);damaged[n-1]^=1;return fwrite(damaged,s,n,f);}
     return fwrite(p,s,n,f);
@@ -150,7 +151,7 @@ static int rename_file(const char* from,const char* to) {
     return rename(from,to);
 }
 static int remove_file(const char* p) {
-    if(fault==19 || (fault>=21 && fault<=25) || (fault>=28 && fault<=32))return -1;
+    if(fault==19 || fault==38 || (fault>=21 && fault<=25) || (fault>=28 && fault<=32))return -1;
     if(fault==10 && (strstr(p,"A2FC.BAK")||strstr(p,"A2FC.ED.BAK")))return -1;
     return remove(p);
 }
@@ -227,6 +228,32 @@ class FileSafety(unittest.TestCase):
         self.assertEqual(self.src.read_bytes(), self.original)
         self.assertEqual(self.dst.read_bytes(), self.original)
         self.assertFalse((self.p/'A2FC.BAK').exists())
+
+    def test_full_write_count_with_stream_error_preserves_originals(self):
+        for mode in ('copy','edit'):
+            with self.subTest(mode=mode):
+                result,out=self.run_op(mode,37)
+                self.assertEqual(result,0)
+                self.assertEqual(self.src.read_bytes(),self.original)
+                self.assertEqual(self.dst.read_bytes(),self.previous)
+                if mode=='edit':self.assertEqual(out.split()[1],'1')
+                for name in ('A2FC.COPY','A2FC.BAK','A2FC.EDIT','A2FC.ED.BAK'):
+                    self.assertFalse((self.p/name).exists())
+
+    def test_write_error_and_cleanup_failure_keep_recovery_bytes(self):
+        for mode,temp,expected in (('copy','A2FC.COPY',self.original),
+                                   ('edit','A2FC.EDIT',b'N'*len(self.original))):
+            with self.subTest(mode=mode):
+                result,out=self.run_op(mode,38)
+                self.assertEqual(result,0)
+                self.assertEqual(self.src.read_bytes(),self.original)
+                self.assertEqual(self.dst.read_bytes(),self.previous)
+                self.assertEqual((self.p/temp).read_bytes(),expected)
+                self.assertIn('Cleanup failed' if mode=='copy' else 'recover A2FC.EDIT',out)
+                self.assertEqual(self.run_op(mode)[0],0)
+                self.assertEqual((self.p/temp).read_bytes(),expected)
+                self.assertEqual(self.src.read_bytes(),self.original)
+                self.assertEqual(self.dst.read_bytes(),self.previous)
 
     def test_copy_failures_restore_old_destination(self):
         for fault in (1,2,3,4,5,7,12,13,15,16):

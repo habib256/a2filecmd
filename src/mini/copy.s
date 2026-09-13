@@ -25,6 +25,7 @@
         .export _copy_fault, _cp_index, _cp_dest, _ram_source, _data_count
         .export _cs_track, _cs_sector, _cs_type, _cs_name
         .export _cs_seclo, _cs_sechi
+        .export valid_data
 
         .import read_sector, write_sector, rwts_error
         .import buffer, drive, track, sector, count, sector_seen
@@ -69,7 +70,6 @@ _ram_source     = ram_source
 
 ; ---- whole sectors kept for comparison
 vtoc:           .res 256        ; the target VTOC as reserved
-source_vtoc:    .res 256        ; the source VTOC as first seen
 catalog_before: .res 256        ; the catalog sector holding the free slot
 verify:         .res 256        ; what a write was supposed to leave
 cat_buf:        .res 256        ; the catalog sector being walked
@@ -111,7 +111,6 @@ aud_nt:         .res 1
 aud_ns:         .res 1
 aud_i:          .res 1
 aud_off:        .res 1
-aud_found:      .res 1
 aud_files:      .res 1
 aud_slot:       .res 1
 aud_first_t:    .res 1
@@ -598,7 +597,6 @@ wipe_seen:
 ; are not followed.
 scan_catalog:
         lda     #0
-        sta     aud_found
         sta     aud_files
         sta     aud_slot
         sta     out_track
@@ -695,7 +693,7 @@ scan_catalog:
         beq     @full
         lda     aud_files
         cmp     #MINI_MAX
-        beq     @full
+        bcs     @full           ; 105 or a malformed count above it
         lda     #COPY_OK
 @out:
         rts
@@ -712,9 +710,14 @@ scan_catalog:
 ; =====================================================================
 copy_cancel:
 _copy_cancel:
+        lda     copy_from       ; prepare left drive on the destination
+        beq     @clr
+        sta     drive
+@clr:
         lda     #0
         sta     ready
         sta     ram_source
+        sta     copy_from
         rts
 
 ; =====================================================================
@@ -777,13 +780,11 @@ _create_prepare:
         adc     #0
         sta     allocated_count+1
         jsr     reserve
-        bne     @nospace
+        bne     @done
         lda     #1
         sta     ready
         lda     #COPY_OK
-        rts
-@nospace:
-        lda     #COPY_FULL
+@done:
         rts
 @invalid:
         lda     #COPY_INVALID
@@ -891,13 +892,11 @@ _copy_prepare:
         adc     #0
         sta     allocated_count+1
         jsr     reserve
-        bne     @nospace
+        bne     @done
         lda     #1
         sta     ready
         lda     #COPY_OK
-        rts
-@nospace:
-        lda     #COPY_FULL
+@done:
         rts
 @invalid:
         lda     #COPY_INVALID
@@ -1022,7 +1021,7 @@ reserve:
         lda     #COPY_OK
         rts
 @short:
-        lda     #COPY_INVALID
+        lda     #COPY_FULL
         rts
 
 ; =====================================================================
@@ -1140,7 +1139,7 @@ _copy_execute:
         jmp     @batch
 @writefail:
         cmp     #COPY_PROTECTED
-        beq     @protected
+        jeq     @prot_after
         jmp     @uncertain
 
 ; ---- the T/S lists, once every data sector is down and checked ----
@@ -1227,7 +1226,7 @@ _copy_execute:
         jmp     @nextlist
 @listfail:
         cmp     #COPY_PROTECTED
-        jeq     @protected
+        jeq     @prot_after
         jmp     @uncertain
 @nextlist:
         inc     lst_no
@@ -1274,8 +1273,13 @@ _copy_execute:
         rts
 @pubfail:
         cmp     #COPY_PROTECTED
-        jeq     @protected
+        jeq     @prot_after
         jmp     @uncertain
+@prot_after:
+        lda     #1
+        sta     copy_fault
+        lda     #COPY_PROTECTED
+        rts
 @uncertain:
         lda     #1
         sta     copy_fault

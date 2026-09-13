@@ -32,6 +32,7 @@ with tempfile.TemporaryDirectory(prefix='mini33-ops-') as tmp:
     after_boot = read_files(boot.read_bytes())
     after_other = read_files(other.read_bytes())
     assert 'NOTE' not in after_boot
+    assert 'MEMO' not in after_boot
     assert after_other['PIC']['data'] == picture
     assert after_other['KEEP.DST']['data'].rstrip(b'\x00') == b'SAFE'
     boot_files = read_files(original)

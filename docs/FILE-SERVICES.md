@@ -9,6 +9,41 @@ de renommage. BATCH, COPY, EDIT et les utilisateurs résidents de `new_output`
 partagent la réservation exclusive. Les autres politiques de création et
 de nettoyage restent à rapprocher.
 
+## Erreur du flux de destination après une écriture complète
+
+COPY et EDIT contrôlent `ferror` sur le flux de destination avant fermeture,
+même si `fwrite` a annoncé tous les octets demandés. Une relecture correcte
+ne transforme pas cette erreur en succès : aucun original n'est renommé,
+la copie n'autorise pas la suppression d'une source déplacée et l'éditeur
+conserve son tampon modifié. Seul le temporaire possédé est nettoyé ; un
+échec de nettoyage est signalé et ses octets restent disponibles.
+`tools/test_file_safety.py` injecte ce cas dans les deux opérations, avec
+fermeture réussie, puis avec nettoyage refusé et nouvelle tentative.
+Validation du 13 septembre 2026 : 33 tests de sécurité des fichiers réussis,
+14/14 contrôles `bench/data_safety.py` sur chacun des CPU 65C02 et 6502
+(copies, déplacement, sauvegardes persistées et confirmations RAM), deux
+compilations natives et sept images de distribution validées. Le banc attend
+le libellé courant `Overwrite/Skip/All/None?` de la confirmation.
+
+## Chargement du code avant une opération
+
+`load_overlay` ne lance ni ne met en cache une surcouche après une erreur
+de lecture de l'en-tête ou du corps, une erreur de fermeture, un corps vide
+ou un fichier dépassant sa fenêtre. Un grand chargement peut écraser les
+tables des panneaux en RAM principale ; après échec, les panneaux sont
+relus et les marques restaurées. Le chargeur lit le disque sans l'écrire ;
+la confirmation AUX précède toujours le code qui pourrait utiliser cette banque.
+Le résultat du menu est effacé avant son chargement : un échec ne peut pas
+réutiliser une ancienne commande de déplacement ou de plugin.
+
+`tools/test_overlay_load.py` exécute le vrai code résident avec erreurs de
+flux, limites exactes des fenêtres, dépassements, cache et résultat de menu
+périmé. `bench/overlay_load.py` refuse deux fois un MENU trop grand, puis
+charge HELP normalement : 6/6 contrôles sur 6502 et 65C02, avec panneaux,
+pile, AUX et volume jetable conservés. Ces contrôles ne sont pas une somme
+d'intégrité du code : un fichier altéré qui reste structurellement valide
+ne peut pas être identifié par ce seul en-tête.
+
 ## Réservation des plugins : `newfile(path, type, aux, storage)`
 
 `plugins/file_create.h` porte le CREATE ProDOS commun à `util.h` (dont
@@ -332,8 +367,10 @@ contre une corruption physique silencieuse ou une coupure d'alimentation.
 
 Surcouche indépendante, chargée par C vers un panneau FS_DOS33 ou par !.
 Une seule sélection ProDOS TXT/BIN/BAS/INT, taille relue au lieu de celle
-du panneau, maximum 65 535 octets. Disque cible physique S6,D1/D2 sur un
-autre périphérique ; images, déplacements et remplacements refusés.
+du panneau, maximum 65 535 octets. Disque cible physique S1–S7,D1/D2 sur un
+autre périphérique ; déplacements et remplacements de fichiers DOS refusés.
+La signature ROM et les commutateurs de protection utilisent le slot choisi,
+pas le slot 6 imposé auparavant.
 
 Écritures : VTOC, secteurs libres de données/listes, puis un secteur de
 catalogue. Chaque écriture MLI de 512 octets préserve le secteur DOS voisin
@@ -361,9 +398,66 @@ annulation, protection, collision, tailles limites et retry. Exécution
 `bench/doswrite.py` utilise le vrai pilote Disk II ProDOS et vérifie copie
 BAS/BIN/TXT, consentement refusé, protection physique, fichiers existants,
 volume source, AUX et trois allers-retours catalogue/volumes. Résultat local :
-15/15 contrôles POM2 par CPU, 102 tests ciblés et sept images ProDOS contrôlées.
+17/17 contrôles POM2 par CPU, dont TIGER BIN de 8 192 octets en slot 5,
+plus les tests C/sim65 et les sept images ProDOS contrôlées.
 Il s'agit d'une validation du pilote Disk II sous émulation, pas d'un essai
 sur un Apple II physique.
+
+## DOSIMAGE / DOSPUT : écriture dans une image DOS
+
+L'audit DOS commun exige une fin de catalogue `(piste 0, secteur 0)` et
+des décalages T/S successifs de 0, 122, 244… secteurs logiques. Une fin de
+chaîne indiquant encore la piste 17 ou un décalage T/S erroné interdit la
+première écriture DOS. Sur une image, le clone possédé est nettoyé et l'image
+originale reste inchangée. Validation du 13 septembre 2026 : 28 tests DOS,
+dont les refus sans écriture et un fichier valide de 32 Ko sous sim65 sur
+les deux CPU ; deux compilations natives et sept distributions contrôlées.
+
+C prépare une transaction en trois appels successifs, sans surcouche imbriquée :
+DOSIMAGE réserve et vérifie le clone, DOSPUT exécute le moteur DOS commun sur
+ce clone, DOSIMAGE l'installe. Chaque phase ferme tous ses fichiers avant de
+rendre la main. `input[0]` porte le résultat, `[1..3]` l'offset DOS et `[4]`
+un diagnostic ; `[5..8]` et `[9..11]` gardent le CRC-32 et la longueur
+de l'image d'origine, relue intégralement avant installation. Une variation
+ou erreur de lecture/fermeture refuse le remplacement et conserve le
+temporaire vérifié. Le chemin temporaire est reconstruit après chaque chargement,
+car le chargeur utilise `other_full`. Aucun tampon de panneau écrasé ne sert
+à conserver l'état entre phases. Les deux helpers sont masqués dans le menu.
+
+Écritures : création exclusive et données de `A2FC.DOS` dans le dossier de
+l'image, puis renommages image → `A2FC.BAK`, `A2FC.DOS` → image. Les formats
+acceptés sont DSK/DO et 2MG DOS-order avec géométrie 35×16×256. Contrôle des
+attributs ProDOS, du verrou 2MG, du format/offset/taille et des collisions
+source/temporaire/sauvegarde. Toute l'image fermée est comparée avant les
+mutations DOS ; après celles-ci, données, listes T/S, VTOC et catalogue sont
+relus après fermeture, avec la source entièrement relue et refermée.
+Une comparaison intégrale supplémentaire exige que tous les octets hors
+secteurs DOS volontairement modifiés correspondent encore à l'original,
+y compris les fichiers existants, l'en-tête et les données annexes 2MG.
+L'en-tête validé avant confirmation doit aussi correspondre à celui du clone :
+un changement de protection ou d'offset pendant la confirmation refuse la copie.
+
+Seul le temporaire créé par cette opération est nettoyé après une erreur de
+préparation ou d'écriture. L'original reste récupérable jusqu'à l'installation.
+Les erreurs de renommage/restauration conservent les fichiers de récupération,
+et l'échec de suppression de la sauvegarde est signalé. Coupures pendant les
+renommages ou écritures ProDOS : aucune atomicité promise. Pas d'AUX, pas de
+suppression de source, pas de remplacement d'un nom déjà présent dans DOS.
+
+`tools/test_dosimage.py` exécute les deux phases C et le moteur livré : octets
+conservés, écritures courtes, erreurs de lecture/seek/fermeture, disque plein,
+collisions, annulation, protections et échecs de renommage/restauration/nettoyage.
+`bench/dosimage.py` ouvre DSK et 2MG, copie BAS/BIN/TXT via C puis contrôle les
+octets sauvegardés avec un lecteur indépendant. `bench/build_dos_host.py`
+construit un hôte jetable avec persistance HDV ; option `--slot 5` pour reproduire
+Disk II S5 et ProDOS S6. Tous les médias de ces bancs sont jetables.
+
+Validation locale finale (13 septembre 2026) : 28 tests C/sim65, 44 autres
+régressions ciblées et sept images de distribution validées. Sur chacun des
+CPU 6502 et 65C02, POM2 passe 17/17 contrôles physiques en slot 5 et 17/17
+en slot 6, 19/19 pour DSK et 20/20 pour 2MG. Le capteur assembleur et le
+CRC-32 sont également exécutés sous sim65 pour les deux processeurs.
+Aucun essai sur du matériel Apple II physique n'est revendiqué.
 
 ## DISKIMG : réservation et fermeture des images créées
 

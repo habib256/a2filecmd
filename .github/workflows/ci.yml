@@ -154,8 +154,16 @@ jobs:
           A2FC_IMG=A2FILECMD-full python3 bench/bootblk.py
       - name: DOSWRITE, physical DOS copies and volume-list round trips
         run: |
+          python3 bench/build_dos_host.py
           A2FC_PRESET=iie_unenh python3 bench/doswrite.py
           A2FC_IMG=A2FILECMD-full python3 bench/doswrite.py
+      - name: DOS images and Disk II slot 5, both CPUs
+        run: |
+          A2FC_PRESET=iie_unenh python3 bench/dosimage.py
+          A2FC_IMG=A2FILECMD-full python3 bench/dosimage.py
+          python3 bench/build_dos_host.py --slot 5
+          POM2=/tmp/a2fc-slot5 A2FC_DOS_SLOT=5 A2FC_PRESET=iie_unenh python3 bench/doswrite.py
+          POM2=/tmp/a2fc-slot5 A2FC_DOS_SLOT=5 A2FC_IMG=A2FILECMD-full python3 bench/doswrite.py
       - name: NIBCOPY, consent, BOOT removal and single-drive cancellation
         run: A2FC_PRESET=iie_unenh python3 bench/nibcopy_ui.py
       - name: Data preservation and RAM consent

@@ -13,7 +13,7 @@
 
         .export start
 
-        .import main
+        .import main, save_holes
         .import slot, drive
         .import __BSS_RUN__, __BSS_SIZE__
 
@@ -74,6 +74,7 @@ start:
         ldy     #IOB_DRIVE
         lda     (iob),y
         sta     drive
+        jsr     save_holes
 
         jsr     main
 

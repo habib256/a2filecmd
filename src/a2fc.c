@@ -2010,23 +2010,29 @@ static unsigned char confirm_aux(void)
 static unsigned char load_overlay(const char* name, unsigned char any)
 {
     FILE* f;
-    unsigned char ok = 0;
+    unsigned char ok = 0, big = 0;
     if (!strcmp(overlay_loaded, name))
         return !(OVL->flags & OVERLAY_AUX) || confirm_aux();
     overlay_loaded[0] = 0;
     f = open_overlay(name, 1);
     if (f) {
-        if (fread(OVERLAY_WINDOW, 1, 8, f) == 8
+        if (fread(OVERLAY_WINDOW, 1, 8, f) == 8 && !ferror(f)
             && (OVL->signature == a2fc_link_id || (any && (OVL->signature == PLUGIN_MAGIC || OVL->signature == MEDIA_PLUGIN_MAGIC)))) {
             if ((OVL->flags & OVERLAY_AUX) && !confirm_aux()) {
                 fclose(f); return 0;
             }
-            if ((OVL->flags & OVERLAY_BIG) && !batch_snapshot) keep_tags(1);
-            fread(OVERLAY_WINDOW + 8, 1, (OVL->flags & OVERLAY_BIG ? OVERLAY_LARGE : OVERLAY_SMALL) - 8, f);
-            strcpy(overlay_loaded, name);
-            ok = 1;
+            big = OVL->flags & OVERLAY_BIG;
+            if (big && !batch_snapshot) keep_tags(1);
+            /* A short payload may be normal; an I/O error or bytes beyond
+             * its window must never become executable, cached code. */
+            if (fread(OVERLAY_WINDOW + 8, 1, (big ? OVERLAY_LARGE : OVERLAY_SMALL) - 8, f)
+                && !ferror(f) && !fread(copy_buf, 1, 1, f) && !ferror(f)) ok = 1;
         }
-        fclose(f);
+        if (fclose(f)) ok = 0;
+        if (ok) strcpy(overlay_loaded, name);
+        else if (big) {
+            read_panel(0); read_panel(1); keep_tags(0); draw_all();
+        }
     }
     /* A one-drive swap loaded the code, but its input may be on the disk
      * just removed. Restore that volume before the overlay opens its file. */
@@ -2560,7 +2566,7 @@ static unsigned char edit_save(void)
     if (!ok) { message(ed_safety_2); return 0; }
     f = ok == OUTPUT_RESERVED ? fopen(EDIT_TMP, "wb") : NULL;
     if (!f) { edit_discard(ed_safety_1); return 0; }
-    ok = fwrite(EDIT_BUF, 1, elen, f) == elen;
+    ok = fwrite(EDIT_BUF, 1, elen, f) == elen && !ferror(f);
     if (fclose(f)) ok = 0;
     if (ok) {
         f = fopen(EDIT_TMP, "rb");
@@ -4793,6 +4799,7 @@ int main(void)
         case 'e': case 'E': overlay_run("EDIT", 'E'); break;
         case 'w': case 'W': overlay_run("DISKIMG", 'W'); break;
         case '!':
+            input[0] = 0;   /* A failed menu load must not replay an old command. */
             overlay_run("MENU", 0);
             if (!strcmp(input, "MOVE") && tag_count(&panels[active])) move_marked();
             else if (input[0]) overlay_run(input, 0);

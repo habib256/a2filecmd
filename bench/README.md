@@ -313,3 +313,37 @@ refus de confirmation, copies BAS/BIN/TXT, collision, protection physique,
 conservation des autres fichiers, du volume source et d'AUX. Exécuter
 `A2FC_PRESET=iie_unenh python3 bench/doswrite.py` puis
 `A2FC_IMG=A2FILECMD-full python3 bench/doswrite.py` après `make disk`.
+
+
+### ProDOS vers DOS 3.3 : disquettes et images
+
+`python3 bench/build_dos_host.py` construit `/tmp/a2fc-dos-host` sans modifier
+POM2. Cet hôte active la persistance HDV : utiliser uniquement les médias
+jetables fabriqués par les bancs. `bench/dosimage.py` l'utilise pour contrôler
+les octets des images DSK et 2MG après copie BAS/BIN/TXT et sauvegarde hôte.
+
+```sh
+python3 bench/build_dos_host.py
+A2FC_IMG=A2FILECMD-full python3 bench/dosimage.py
+A2FC_PRESET=iie_unenh python3 bench/dosimage.py
+python3 bench/build_dos_host.py --slot 5
+POM2=/tmp/a2fc-slot5 A2FC_DOS_SLOT=5 A2FC_IMG=A2FILECMD-full python3 bench/doswrite.py
+POM2=/tmp/a2fc-slot5 A2FC_DOS_SLOT=5 A2FC_PRESET=iie_unenh python3 bench/doswrite.py
+```
+
+Le second hôte place le Disk II en slot 5 et le disque ProDOS en slot 6,
+comme la configuration du cas TIGER BIN `$2000`, 8 192 octets. Les bancs
+vérifient les fichiers existants, la source, AUX, les protections, les refus
+de collision et la zone sous la pile C de 192 octets. Les tests sim65 exécutent
+aussi le capteur assembleur pour les slots 1–7 et les deux lecteurs.
+
+`overlay_load.py` utilise le même hôte jetable pour refuser un MENU trop
+grand, reconstruire les panneaux, puis charger HELP normalement. Il compare
+le volume entier, AUX et la garde de pile de 192 octets. Le banc C
+`tools/test_overlay_load.py` injecte en plus les erreurs de lecture/fermeture
+et vérifie qu'un échec du menu ne relance pas une ancienne commande.
+
+```sh
+A2FC_IMG=A2FILECMD-full python3 bench/overlay_load.py
+A2FC_PRESET=iie_unenh A2FC_PORT_OFFSET=1 python3 bench/overlay_load.py
+```

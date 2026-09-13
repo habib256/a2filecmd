@@ -15,12 +15,16 @@
         .export _mini_prepare, _mini_execute, _mini_cancel
         .export _mini_load, _mini_create_prepare, _mini_create_execute
         .export _mini_delete_prepare, _mini_delete_execute
+        .export _mini_measure_text
+        .export _mini_lock_prepare, _mini_lock_execute
+        .export _mini_rename_prepare, _mini_rename_execute
 
         .import _sim_read, _sim_write, _sim_rwts_error
-        .import catalog, preview, load_file
+        .import catalog, preview, load_file, measure_text
         .import copy_prepare, copy_execute, copy_cancel
         .import create_prepare, create_execute
         .import delete_prepare, delete_execute
+        .import lock_prepare, lock_execute, rename_prepare, rename_execute
         .export copy_progress
 
 rwts_error      = _sim_rwts_error
@@ -75,3 +79,18 @@ _mini_delete_prepare:
 
 _mini_delete_execute:
         jmp     delete_execute
+
+_mini_measure_text:
+        jmp     measure_text
+
+_mini_lock_prepare:
+        jmp     lock_prepare
+
+_mini_lock_execute:
+        jmp     lock_execute
+
+_mini_rename_prepare:
+        jmp     rename_prepare
+
+_mini_rename_execute:
+        jmp     rename_execute

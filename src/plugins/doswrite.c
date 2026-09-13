@@ -10,6 +10,10 @@
 
 #include "util.h"
 #include <string.h>
+#ifdef DOS_IMAGE
+/* Internal phase: DOSIMAGE reports the final result from input[0]/input[4]. */
+#define note(s) ((void)0)
+#endif
 void __fastcall__ plugin_entry(const struct A2fcApi*);
 unsigned char __fastcall__ dw_protected(unsigned char unit);
 void dw_mainbank(void);
@@ -84,9 +88,10 @@ static unsigned char claim(unsigned int s) {
  seen[s>>3]|=mask(s);return 1;
 }
 /* Complete catalog and T/S walk, including locked files. Cross-links, loops,
- * live sectors marked free and inconsistent counts forbid all writes. */
+ * bad links/offsets, live sectors marked free and inconsistent counts forbid
+ * all writes. T/S lists describe successive groups of 122 logical sectors. */
 static unsigned char audit(void) {
- unsigned char c,next,j,k,t,s;unsigned int cats=0,cur,count,want;
+ unsigned char c,next,j,k,t,s;unsigned int cats=0,cur,count,want,logical;
  catsector=0;a.memset(seen,0,sizeof seen);
  if(!read_sector(272,vtoc) || vtoc[3]<1 || vtoc[3]>3 || vtoc[1]!=17 ||
     !vtoc[2] || vtoc[2]>15 || vtoc[0x27]!=122 || vtoc[0x34]!=35 ||
@@ -97,16 +102,17 @@ static unsigned char audit(void) {
  while(c) {
   if(c>15 || (cats&(1U<<c)) || !read_sector(272+c,cat))return 0;
   cats|=1U<<c;
-  if(cat[1] && cat[1]!=17)return 0;
-  next=cat[2];if(!cat[1] && next)return 0;
+  next=cat[2];if(cat[1]!=(next?17:0))return 0;
   for(j=0;j<7;++j) {
    unsigned char* e=cat+11+j*35;
    if(!e[0] || e[0]==255) {if(!catsector){catsector=c;slot=j;}continue;}
    if(!memcmp(e+3,name,30))return 0;
-   t=e[0];s=e[1];want=rd16(e+33);count=0;
+   t=e[0];s=e[1];want=rd16(e+33);count=logical=0;
    while(t) {
     cur=(unsigned int)t*16+s;
     if(s>=16 || !claim(cur) || !read_sector(cur,ts))return 0;
+    if(rd16(ts+5)!=logical)return 0;
+    logical+=122;
     ++count;t=ts[1];s=ts[2];if(!t && s)return 0;
     for(k=0;k<122;++k) {
      unsigned char dt=ts[12+2*k],ds=ts[13+2*k];
@@ -186,6 +192,29 @@ static unsigned char verify_source(void) {
 bad:
  ok=RF(fclose)(source);source=NULL;(void)ok;return 0;
 }
+#ifdef DOS_IMAGE
+/* New sectors and metadata were verified above. Everything else, including
+ * the container and existing files, must still match the original exactly. */
+static unsigned char verify_preserved(void) {
+ unsigned long pos=0,relative;unsigned int n,m,i,s;unsigned char ok=0;
+ if(RF(fseek)(image,0,SEEK_SET))return 0;
+ source=RF(fopen)(other->path,"rb");if(!source)return 0;
+ do {
+  n=RF(fread)(buf,1,256,source);m=RF(fread)(verify,1,256,image);
+  if(n!=m || ferror(source) || ferror(image) || stop())goto done;
+  for(i=0;i<n;++i)if(buf[i]!=verify[i]) {
+   relative=pos+i-image_base;
+   if(relative>=143360UL)goto done;
+   s=relative>>8;
+   if(s!=272 && s!=272+catsector && !(allocation[s>>3]&mask(s)))goto done;
+  }
+  pos+=n;
+ }while(n==256 && pos<=0xFFFFFFUL);
+ ok=pos==rd24((unsigned char*)a.input+9);
+done:
+ if(RF(fclose)(source))ok=0;source=NULL;return ok;
+}
+#endif
 void __fastcall__ plugin_entry(const struct A2fcApi* api) {
  unsigned int i,n;unsigned char* e;
  init(api);source=NULL;
@@ -205,7 +234,8 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
   note("Cannot identify separate source and DOS drives.");return;
  }
  dw_mainbank();
- if(dw_protected(unit)){note("DOS 3.3 disk is write-protected.");return;}
+ n=dw_protected(unit);
+ if(n){note(n==1?"Target is not a standard Disk II.":"DOS 3.3 disk is write-protected.");return;}
 #else
  if(!other->img_len || a.arg!='I'){note("Use C to prepare a DOS image copy.");return;}
 #endif
@@ -266,7 +296,8 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
   n=RF(fclose)(image);image=NULL;if(n)goto failed;
   image=RF(fopen)(image_temp,"rb");if(!image)goto failed;
   if(!read_sector(272,ts) || memcmp(ts,vtoc,256) ||
-     !read_sector(272+catsector,ts) || memcmp(ts,cat,256) || !lists_io(0) || !verify_source())goto failed;
+     !read_sector(272+catsector,ts) || memcmp(ts,cat,256) || !lists_io(0) ||
+     !verify_source() || !verify_preserved())goto failed;
   n=RF(fclose)(image);image=NULL;if(n)goto failed;
   a.input[0]='F';
  }

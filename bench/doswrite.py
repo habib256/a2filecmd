@@ -24,8 +24,10 @@ def main():
   before=make_disk([('KEEP',0x80,b'old text\r'*50)])
   target.write_bytes(before)
   dos_slot=os.environ.get('A2FC_DOS_SLOT','6')
-  with Pom2(hd,floppy2=target,port=6896) as p:
+  with Pom2(hd,floppy2=target,port=6896,exe=os.environ.get('POM2','/tmp/a2fc-dos-host')) as p:
    s=Session(p);s.boot()
+   guard_start=s.sym['__ONCE_RUN__'];guard_end=s.sym['__HIMEM__']-s.sym['__STACKSIZE__']
+   guard=bytes([0xEE])*(guard_end-guard_start);p.poke(guard_start,guard)
    s.select('DEMO');s.key(b'\r');p.stable();s.select('HELLO')
    s.key(b'\t');s.key(b'/');p.stable()
    for _ in range(15):
@@ -67,6 +69,7 @@ def main():
    p.eject(1)
    s.ok('Write-protected disk preserved',target.read_bytes()==saved)
    target.chmod(0o644)
+   s.ok('192-byte C stack guard preserved',p.peek(guard_start,len(guard))==guard)
   result=read_files(target.read_bytes())
   s.ok('Existing DOS file preserved',result['KEEP']==read_files(before)['KEEP'])
   expected=len(payload).to_bytes(2,'little')+payload
@@ -80,6 +83,6 @@ def main():
   tiger=next(e for e in im.entries(int.from_bytes(pictures[17:19],'little')) if e[1:6]==b'TIGER')
   payload=im.read(tiger);expected=tiger[31:33]+len(payload).to_bytes(2,'little')+payload
   s.ok('Screenshot case: TIGER BIN $2000, 8192 bytes exact',len(payload)==8192 and result['TIGER']['data']==expected+bytes((-len(expected))%256))
-  s.ok('Source volume preserved' ,hd.read_bytes()==original)
+  s.ok('Source volume preserved',hd.read_bytes()==original)
   return ok_all(s,'DOSWRITE C to physical DOS disk')
 if __name__=='__main__':sys.exit(main())

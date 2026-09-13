@@ -13,11 +13,13 @@
 
         .export present, present_top, at, put, inline_text, clear, zone
         .export number, hexbyte, filetype, keys_bar, keys_bar_inline
+        .export save_holes, restore_holes
 
-        .import screen_image
+        .import screen_image, slot
 
         .segment "BSS"
 digits:         .res 5          ; a 16-bit value never needs more
+hole_save:      .res 7          ; $0478+s*16 through $0778+s*16; $07F8+s*16 is past $7FF
 
         .segment "RODATA"
 
@@ -101,6 +103,63 @@ present_top:
         inx
         cpx     #4
         bcc     @row
+        rts
+
+; DOS 3.3 keeps the current track at $0478+slot*16, then the same
+; offset every $80 bytes through $0778+slot*16. Seven holes, not eight:
+; $07F8+slot*16 sits past the text page. Those cells sit inside the
+; 40-column window (slot 6: row 17 column 8). present() draws them;
+; RWTS must see the saved values or the next seek is a wrong track.
+hole_ptr:
+        lda     slot
+        asl     a
+        asl     a
+        asl     a
+        asl     a
+        clc
+        adc     #$78
+        sta     ptr
+        lda     #$04
+        adc     #0
+        sta     ptr+1
+        rts
+
+save_holes:
+        jsr     hole_ptr
+        ldx     #0
+@one:
+        ldy     #0
+        lda     (ptr),y
+        sta     hole_save,x
+        lda     ptr
+        clc
+        adc     #$80
+        sta     ptr
+        bcc     @noc
+        inc     ptr+1
+@noc:
+        inx
+        cpx     #7
+        bcc     @one
+        rts
+
+restore_holes:
+        jsr     hole_ptr
+        ldx     #0
+@one:
+        lda     hole_save,x
+        ldy     #0
+        sta     (ptr),y
+        lda     ptr
+        clc
+        adc     #$80
+        sta     ptr
+        bcc     @noc
+        inc     ptr+1
+@noc:
+        inx
+        cpx     #7
+        bcc     @one
         rts
 
 ; ---------------------------------------------------------------------

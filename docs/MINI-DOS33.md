@@ -9,10 +9,11 @@ Written entirely in 6502 assembly; see [Speed](#speed) for what that buys.
 ![Two panels with inverse video and bottom shortcuts](mini-dos33.png)
 
 The disk image `dist/A2FC-MINI-DOS33-0.7.0.dsk` boots through the Applesoft
-`HELLO` program, which prints `A2FILECMD MINI DOS 3.3`, `A2FILECMD V0.7.0`,
-`GPL3 VERHILLE ARNAUD` and `LOADING .... PLEASE WAIT ....` before
+`HELLO` program, which centres `A2FILECMD`, `MINI DOS 3.3` and `V0.7.0` at
+the top of the 40-column screen, then `GPL3 VERHILLE ARNAUD` and
+`LOADING .... PLEASE WAIT ....` at the bottom, before
 `BRUN A2FC.MINI`. The same
-three lines stay on screen while the first catalog is read. From DOS 3.3,
+layout stays on screen while the first catalog is read. From DOS 3.3,
 use `BRUN A2FC.MINI`.
 Both panels initially show the boot disk. Each remembers its drive, selection,
 and scroll position independently.
@@ -31,6 +32,8 @@ and scroll position independently.
 | N | New text file: name, then the editor |
 | E | Edit a text file in RAM, then save under a new exclusive name |
 | D | Delete tagged files, or the cursor if nothing is tagged |
+| L | Lock or unlock: the cursor toggles; tagged files unlock if any is locked, or lock if all are unlocked |
+| R | Rename the cursor file (exclusive new name; locked files refused) |
 | Escape in preview, help or editor | Return to the panels |
 | C, or 3 | Copy tagged files, or the cursor if nothing is tagged |
 | /, or 4 | Switch the active panel's drive and reread it |
@@ -49,10 +52,14 @@ count, followed by the full selected filename and allocated sector count.
 Each panel displays **18 rows**, scrolling one row at the edge and paging by
 18 entries with the horizontal arrows. Each catalog can hold up to 105 files.
 
-The ProDOS command bar occupies two bottom rows to fit 40 columns:
-**inverse key blocks with normal labels**. Numbers 1 through 7 activate these
-commands in display order. They do not apply to confirmation prompts.
-`?` lists all controls; the bar includes only commands implemented in Mini.
+One **inverse** command bar sits on the last row:
+**TAB C D L R N E / ? Q** (panel, copy, delete, lock, rename, new, edit,
+drive, help, quit). Questions use the same inverse video on the line above.
+Copy, delete, lock, rename and create return to the two panels as soon as
+the write finishes; the result stays on the footer. There is no extra key
+to dismiss it.
+Numbers 1–7 still mean Tab, Open, Copy, Drive, Reread, Help and Quit.
+`?` lists every control.
 
 Since v0.4, horizontal arrows page through files and Tab switches panels.
 `/` replaces the old D for drive selection, and Ctrl-R replaces R for
@@ -78,12 +85,15 @@ After rereading or copying, selections are restored by name when still present.
    unmarked to copy only the cursor. Press C. The two panels stay on
    screen.
 3. The footer asks `COPY name?` or `COPY N MARKED?`. Press **Y to
-   confirm**, or **N / Escape to cancel without writing**. Other keys,
-   including numeric shortcuts, are ignored.
-4. Each file is created exclusively. A 32-cell bar fills while that
-   file's sectors are written and read back. An existing name is skipped
+   confirm**, or **N / Escape to cancel without writing**. Cancel puts
+   the source drive back so the next D, E, T or `/` does not read or
+   write the destination. Other keys, including numeric shortcuts, are
+   ignored.
+4. Each file is created exclusively. A normal-video `[********----]`
+   bar (32 stars or dashes) fills while that file's sectors are written
+   and read back. An existing name is skipped
    so the rest of the batch can still land. An uncertain write stops the
-   batch. Wait for `COPIED`, then press a key to reread the panels.
+   batch. The panels reread themselves when the result is ready.
 
 Copying preserves the name, type, lock flag, and every byte of the file's data
 sectors, including DOS headers and the final sector. **An existing name is
@@ -92,11 +102,23 @@ is never written or deleted by a copy.
 
 New text files (N) and editor saves (E) use the same exclusive-create engine
 with the working area as the source: one new name, never an overwrite.
-E loads a text file, edits it in RAM, then asks for a **new** name. There is
-no in-place replace.
+E loads a text file of at most 32 data sectors (8 KB), edits it in RAM, then
+asks for a **new** name. A larger file is refused rather than saved truncated.
+A full 8 KB of non-zero bytes is measured as 8191 so the trailing NUL stays
+inside the working area. There is no in-place replace.
+
+L locks or unlocks. With no tags it toggles the cursor file. With tags, if
+any marked file is locked the batch **unlocks** (so D can follow); if every
+marked file is unlocked the batch locks. Already-set files are skipped.
+Only the catalog type byte is written; file data is not touched.
+
+R renames the cursor file only. The new name must not exist. A locked file
+must be unlocked first. Only the catalog name bytes are written.
 
 Delete (D) acts on the tagged files, or on the cursor when nothing is tagged.
-Locked files are refused. The catalog entry is marked deleted first (DOS
+Locked files are skipped so the rest of a batch can still go. A read error,
+an invalid chain (including T/S or data on DOS tracks 1–2 or the catalog
+track), or a changed disk stops the batch. The catalog entry is marked deleted first (DOS
 `$FF`, original track kept for UNDELETE), then the sectors are freed in the
 VTOC. A crash after the catalog write can leak sectors; the other order
 would hand those sectors to the next create while the name still claimed
@@ -183,7 +205,8 @@ make mini-disk MINI_MASTER="/path/to/dos33_master.dsk"
 
 The master must be a standard 140 KB DOS-order DOS 3.3 image that starts `HELLO`.
 Only its three system tracks are read. The builder creates HELLO, A2FC.MINI,
-and README on a new image without changing the master. It refuses an existing
+README and the raw 8 KB HGR picture TIGER on a new image without changing
+the master. Return or G on TIGER opens hi-res. It refuses an existing
 output; use `MINI_DISK=dist/A2FC-MINI-test.dsk` for another build. A failed build
 may leave a newly created partial output, which must not be used.
 
@@ -198,6 +221,9 @@ cc65's C compiler and runtime: the assembly modules are linked by
   restored before the closing RTS, because Applesoft keeps its pointers there
   and `HELLO` has to survive the BRUN.
 - `$0400–$07FF`: 40-column screen; only changed visible characters are written.
+  Disk II's current-track bytes live in that page (`$0478+slot×16` and the
+  following holes). They are saved at entry and restored before every RWTS
+  call, so drawing the panels cannot send the next seek to the wrong track.
 - `$0800–$0FFF`: the Applesoft launcher, left untouched.
 - `$1000–$1FFF`: editor and delete. They never run at the same time as a
   copy or a picture.

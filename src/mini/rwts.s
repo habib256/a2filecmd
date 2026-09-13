@@ -15,6 +15,7 @@
         .export read_sector, write_sector, rwts_error, _rwts_error
 
         .import buffer, drive, track, sector
+        .import save_holes, restore_holes
 
         .segment "BSS"
 rwts_error:     .res 1
@@ -62,9 +63,13 @@ rwts:
         iny
         lda     command
         sta     (iob),y
+        jsr     restore_holes   ; clobbers ptr; IOB is already filled
         lda     iob+1
         ldy     iob
         jsr     RWTS_ENTRY
+        php
+        jsr     save_holes      ; clobbers ptr; flags kept in PHP
+        plp
         bcc     @ok
         jsr     RWTS_LOCATE_IOB ; carry set: read DOS's reason for it
         sty     iob

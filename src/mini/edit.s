@@ -5,21 +5,22 @@
 
         .include "mini.inc"
 
-        .export ask_name, edit_text, edit_len, name_buf
-        .export _ask_name, _edit_text, _edit_len, _name_buf
+        .export ask_name, edit_text, name_buf, ask_kind
+        .export _ask_name, _edit_text, _name_buf, _ask_kind
 
         .import present, at, put, inline_text, clear, zone
         .import keys_bar_inline
         .import key
         .import scratch
+        .import edit_len
 
         .segment "BSS"
 name_buf:       .res NAME_LEN
 _name_buf       = name_buf
+ask_kind:       .res 1          ; 0 new text, 1 rename
+_ask_kind       = ask_kind
 nm_len:         .res 1
-ed_len:         .res 2
-edit_len        = ed_len
-_edit_len       = ed_len
+ed_len          = edit_len
 ed_cur:         .res 2
 ed_done:        .res 1
 ed_k:           .res 1
@@ -45,22 +46,23 @@ _ask_name:
         lda     #0
         sta     nm_len
 @draw:
-        jsr     clear
-        ldy     #0
+        ldy     #20
         ldx     #0
         lda     #40
         jsr     zone
-        PRINT   "NEW TEXT FILE"
-        lda     #0
-        sta     inverse
-        ldy     #3
-        ldx     #0
-        jsr     at
-        PRINT   "NAME: "
+        lda     ask_kind
+        bne     @ren
+        PRINT   "NEW: "
+        jmp     @field
+@ren:
+        PRINT   "RENAME: "
+@field:
         ldx     #0
 @ch:
+        stx     t1              ; put clobbers X (it becomes the row)
         lda     name_buf,x
         jsr     put
+        ldx     t1
         inx
         cpx     #NAME_LEN
         bcc     @ch

@@ -26,6 +26,7 @@
         .export screen_image, _screen_image
         .export prv_index, _prv_index
         .export tags, _tags
+        .export edit_len, _edit_len
 
         .segment "BSS"
 
@@ -51,6 +52,11 @@ _error          = error
 
 prv_index:      .res 1          ; preview() argument
 _prv_index      = prv_index
+
+; One past the last non-zero text byte; never $2000, or poke_nul
+; would write the first byte of the resident program.
+edit_len:       .res 2
+_edit_len       = edit_len
 
 ; ---- the one sector buffer RWTS fills ------------------------------
 buffer:         .res 256

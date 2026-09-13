@@ -69,20 +69,20 @@ int main(int argc, char** argv) {
     cpu.hardReset();
     cpu.setProgramCounter(0xc600);
     run(cpu, 120000000);
-    expect(m, "3 FILES");
+    expect(m, "4 FILES");
 
     // The catalog path on its own. The file count of the active panel
-    // tells the two disks apart: 3 files on boot, 1 on the target. The
+    // tells the two disks apart: 4 files on boot, 1 on the target. The
     // first switch pays the motor spin-up, the later ones do not.
     long to_target = timed(m, cpu, "/", "1 FILES");
     long warm[6];
     for (int i = 0; i < 3; ++i) {
-        warm[i * 2] = timed(m, cpu, "/", "3 FILES");
+        warm[i * 2] = timed(m, cpu, "/", "4 FILES");
         warm[i * 2 + 1] = timed(m, cpu, "/", "1 FILES");
     }
     m.pasteRawKeys("/", 1);
     run(cpu, 12000000);
-    expect(m, "3 FILES");
+    expect(m, "4 FILES");
 
     // Then the copy of A2FC.MINI, the largest file on the boot disk.
     m.pasteRawKeys("\t/\tK", 4);

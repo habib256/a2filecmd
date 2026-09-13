@@ -29,6 +29,11 @@ unsigned char mini_create_prepare(void);
 unsigned char mini_create_execute(void);
 unsigned char mini_delete_prepare(void);
 unsigned char mini_delete_execute(void);
+void mini_measure_text(void);
+unsigned char mini_lock_prepare(void);
+unsigned char mini_lock_execute(void);
+unsigned char mini_rename_prepare(void);
+unsigned char mini_rename_execute(void);
 
 static unsigned char msg[5];
 static unsigned char scratch[256];
@@ -132,6 +137,22 @@ int main(void)
             break;
         case 12:
             reply(mini_delete_execute());
+            break;
+        case 13:
+            mini_measure_text();
+            reply(0);
+            break;
+        case 14:
+            reply(mini_lock_prepare());
+            break;
+        case 15:
+            reply(mini_lock_execute());
+            break;
+        case 16:
+            reply(mini_rename_prepare());
+            break;
+        case 17:
+            reply(mini_rename_execute());
             break;
         case 6:                 /* peek: address low, high, length */
             get(msg, 3);

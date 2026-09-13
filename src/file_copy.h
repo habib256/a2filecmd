@@ -70,7 +70,7 @@ static unsigned char copy_stage(void)
         copied += n;
         progress_bar(CP->name, copied, CP->size);
     }
-    if (ferror(in) || copied != CP->size) CP->ok = 0;
+    if (ferror(in) || ferror(out) || copied != CP->size) CP->ok = 0;
     if (fclose(in)) CP->ok = 0;
     if (fclose(out)) CP->ok = 0;
     return 0;

@@ -12,11 +12,14 @@
         .include "mini.inc"
 
         .export main, copy_progress
+        .export activate, confirm, reload, keep_note, result_done
+        .export print_name, print_byte, tag_count, tag_test
 
-        .import present, present_top, at, put, inline_text, clear, zone
+        .import present, restore_holes, at, put, inline_text, clear, zone
         .import number, hexbyte, filetype, keys_bar, keys_bar_inline
         .import key
         .import catalog, preview, load_file, load_count, blank_scratch
+        .import measure_text
         .import ent_ptr, ent_index
         .import bit_masks, tags
         .import key_raw
@@ -26,7 +29,9 @@
         .import data_count, copy_done, copy_total
         .import delete_prepare, delete_execute, delete_cancel
         .import del_index, del_fault
-        .import ask_name, edit_text, edit_len, name_buf
+        .import lock_file, rename_file
+        .import ask_name, edit_text, name_buf, ask_kind
+        .import edit_len
         .import cp_index, cp_dest
         .import cs_name, cs_type, cs_seclo, cs_sechi
         .import active, count, volume, drive, slot, selected, error
@@ -35,6 +40,7 @@
         .import ent_name
         .import pan_drive, pan_volume, pan_count, pan_selected, pan_error
         .import pan_top
+        .import screen_image
 
         .segment "BSS"
 dp_side:        .res 1          ; draw_panel locals
@@ -63,6 +69,8 @@ cf_ok:          .res 1          ; how many of a batch landed
 pg_acc:         .res 2          ; copy_progress: done * 32
 pg_fill:        .res 1
 pg_i:           .res 1
+have_note:      .res 1          ; last operation result, drawn on row 22
+note_line:      .res 40
 
         .segment "RODATA"
 ; '1' to '7' stand in for the seven buttons on the bottom bars.
@@ -555,11 +563,26 @@ draw:
         PRINT   " S"
 @noinfo:
         lda     error
-        beq     @bars
+        beq     @notechk
         PRINT   "CATALOG ERROR - CTRL-R TO REREAD"
-@bars:
-        KEYBAR  22, "TAB Panel,RET Open,C Copy"
-        KEYBAR  23, "/ Drive,^R Reread,? Help,Q DOS"
+@notechk:
+        lda     have_note
+        beq     @keys
+        ldx     #0
+@note:
+        lda     note_line,x
+        sta     screen_image+22*40,x
+        inx
+        cpx     #40
+        bne     @note
+@keys:
+        ldy     #23
+        ldx     #0
+        lda     #40
+        jsr     zone
+        PRINT   " TAB  C  D  L  R  N  E  /  ?  Q"
+        lda     #0
+        sta     inverse
         rts
 
 ; ---------------------------------------------------------------------
@@ -660,7 +683,11 @@ help:
         ldy     #18
         ldx     #0
         jsr     at
-        PRINT   "Y CONFIRMS A WRITE. LOCKED FILES: NO DELETE."
+        PRINT   "L: LOCK/UNLOCK  R: RENAME"
+        ldy     #20
+        ldx     #0
+        jsr     at
+        PRINT   "Y CONFIRMS A WRITE. UNLOCK TO DELETE."
         KEYBAR  23, "ESC Back"
         jsr     key
         rts
@@ -676,26 +703,21 @@ view:
         jsr     preview         ; read once; T and H only redraw it
         sta     error
         beq     @render
-        jsr     clear
-        ldy     #3
+        ldy     #20
         ldx     #0
-        jsr     at
+        lda     #40
+        jsr     zone
         lda     error
         cmp     #1
         bne     @nopreview
         PRINT   "READ ERROR"
-        jmp     @anykey
+        jmp     @noted
 @nopreview:
         PRINT   "NO PREVIEW / INVALID T-S LIST"
-@anykey:
-        ldy     #23
-        ldx     #0
-        jsr     at
-        PRINT   "ANY KEY: BACK"
-        jsr     key
+@noted:
         lda     #0
         sta     error
-        rts
+        jmp     keep_note
 @render:
         jsr     clear
         ldy     #0
@@ -855,6 +877,7 @@ copy_file:
         jsr     copy_ask_one
         bcs     @one
         jsr     copy_cancel
+        jsr     activate
         rts
 @one:
         jsr     copy_execute
@@ -958,53 +981,48 @@ cf_show:
         lda     cf_status
         bne     @notok
         PRINT   "COPIED"
-        jmp     @anykey
+        jmp     result_done
 @notok:
         cmp     #COPY_READ
         bne     @notread
         PRINT   "READ ERROR - COPY REFUSED"
-        jmp     @anykey
+        jmp     result_done
 @notread:
         cmp     #COPY_EXISTS
         bne     @notexists
         PRINT   "NAME EXISTS - NO OVERWRITE"
-        jmp     @anykey
+        jmp     result_done
 @notexists:
         cmp     #COPY_FULL
         bne     @notfull
         PRINT   "DISK OR CATALOG FULL"
-        jmp     @anykey
+        jmp     result_done
 @notfull:
         cmp     #COPY_SAME
         bne     @notsame
         PRINT   "SELECT TWO DIFFERENT DRIVES"
-        jmp     @anykey
+        jmp     result_done
 @notsame:
         cmp     #COPY_PROTECTED
         bne     @notprot
         PRINT   "DISK IS WRITE PROTECTED"
-        jmp     @anykey
+        jmp     result_done
 @notprot:
         cmp     #COPY_CHANGED
         bne     @notchanged
         PRINT   "DISK CHANGED - COPY REFUSED"
-        jmp     @anykey
+        jmp     result_done
 @notchanged:
         cmp     #COPY_UNCERTAIN
         bne     @unsupported
         PRINT   "UNCERTAIN WRITE - STOP"
-        jmp     @anykey
+        jmp     result_done
 @unsupported:
         PRINT   "UNSUPPORTED / INVALID DOS STRUCTURE"
-@anykey:
-        lda     #0
-        sta     inverse
-        KEYBAR  23, "ANY KEY Back"
-        jsr     key
-        jmp     reload
+        jmp     result_done
 
-; copy_progress -- 32 inverse cells on the footer, filled as copy_done
-; / copy_total. The panels above are left alone.
+; copy_progress -- [********----] on the footer, 32 stars or dashes
+; in normal video, as copy_done / copy_total. The panels stay put.
 copy_progress:
         ldy     #22
         ldx     #0
@@ -1044,28 +1062,26 @@ copy_progress:
         cmp     #32
         bcc     @div
 @have:
+        lda     #'['
+        jsr     put
         lda     #0
         sta     pg_i
 @cell:
         lda     pg_i
         cmp     pg_fill
         bcc     @fill
-        lda     #0
-        sta     inverse
         lda     #'-'
         jmp     @put
 @fill:
-        lda     #1
-        sta     inverse
-        lda     #' '
+        lda     #'*'
 @put:
         jsr     put
         inc     pg_i
         lda     pg_i
         cmp     #32
         bcc     @cell
-        lda     #0
-        sta     inverse
+        lda     #']'
+        jsr     put
 @present:
         jmp     present
 
@@ -1152,28 +1168,34 @@ reload:
         sta     active
         jmp     activate
 
-; splash -- the same four lines HELLO prints. Only the banner rows
-; go to the text page: a full present() would land on Disk II's slot
-; scratch in $400 and the first catalog would seek the wrong track.
+; splash -- the same centered layout HELLO prints: title at the top,
+; credits and the wait line at the bottom. A2FILECMD is written once.
+; present() would overwrite Disk II's slot scratch in $400; restore
+; those seven holes so the first catalog still seeks the right track.
 splash:
         jsr     clear
         ldy     #0
-        ldx     #0
+        ldx     #15
         jsr     at
-        PRINT   "A2FILECMD MINI DOS 3.3"
+        PRINT   "A2FILECMD"
         ldy     #1
-        ldx     #0
+        ldx     #14
         jsr     at
-        PRINT   "A2FILECMD V0.7.0"
+        PRINT   "MINI DOS 3.3"
         ldy     #2
-        ldx     #0
+        ldx     #17
+        jsr     at
+        PRINT   "V0.7.0"
+        ldy     #21
+        ldx     #10
         jsr     at
         PRINT   "GPL3 VERHILLE ARNAUD"
-        ldy     #3
-        ldx     #0
+        ldy     #22
+        ldx     #5
         jsr     at
         PRINT   "LOADING .... PLEASE WAIT ...."
-        jmp     present_top
+        jsr     present
+        jmp     restore_holes
 
 ; ---------------------------------------------------------------------
 ; main
@@ -1429,6 +1451,24 @@ main:
         bne     @notdel
         jsr     delete_file
 @notdel:
+        lda     ck
+        cmp     #'L'
+        bne     @notlock
+        lda     count
+        beq     @notlock
+        lda     error
+        bne     @notlock
+        jsr     lock_file
+@notlock:
+        lda     ck
+        cmp     #'R'
+        bne     @notren
+        lda     count
+        beq     @notren
+        lda     error
+        bne     @notren
+        jsr     rename_file
+@notren:
         jmp     @loop
 @leave:
         jsr     clear
@@ -1436,7 +1476,8 @@ main:
         ldx     #0
         jsr     at
         PRINT   "A2FC MINI - BACK TO DOS 3.3"
-        jmp     present
+        jsr     present
+        jmp     restore_holes
 
 ; ---------------------------------------------------------------------
 ; mirror_panel -- '=' shows the active panel's disk on the other side,
@@ -1595,7 +1636,9 @@ show_hgr:
         lda     load_count
         beq     @fail
         jsr     skip_bsave
-        lda     TXTCLR
+        sta     CLR80STORE      ; IIe: $2000 is main, 40 columns
+        sta     CLR80VID
+        lda     TXTCLR          ; any access trips these switches
         lda     MIXCLR
         lda     LOWSCR
         lda     HIRES
@@ -1607,19 +1650,18 @@ show_hgr:
         lda     LOWSCR
         rts
 @fail:
-        jsr     clear
-        ldy     #3
+        ldy     #20
         ldx     #0
-        jsr     at
+        lda     #40
+        jsr     zone
         lda     hg_status
         cmp     #1
         bne     @bad
         PRINT   "READ ERROR"
-        jmp     @any
+        jmp     keep_note
 @bad:
         PRINT   "NOT A PICTURE / INVALID T-S LIST"
-@any:
-        jmp     any_back
+        jmp     keep_note
 
 ; skip_bsave -- if the first four bytes are a DOS binary header pointing
 ; at a hi-res page, slide the picture down so it starts at scratch.
@@ -1677,6 +1719,8 @@ skip_bsave:
 ; new_text / edit_file -- exclusive create from the editor buffer.
 ; ---------------------------------------------------------------------
 new_text:
+        lda     #0
+        sta     ask_kind
         jsr     ask_name
         bcc     @out
         jsr     blank_scratch
@@ -1691,6 +1735,7 @@ new_text:
         rts
 
 edit_file:
+        jsr     activate
         lda     selected
         jsr     ent_index
         tay
@@ -1698,13 +1743,21 @@ edit_file:
         and     #$7F
         cmp     #TYPE_TEXT
         beq     @text
-        jsr     clear
-        ldy     #3
+        ldy     #20
         ldx     #0
-        jsr     at
+        lda     #40
+        jsr     zone
         PRINT   "EDIT IS FOR TEXT FILES"
-        jmp     any_back
+        jmp     keep_note
 @text:
+        lda     selected
+        jsr     ent_index
+        tay
+        lda     ent_sechi,y
+        bne     @big
+        lda     ent_seclo,y
+        cmp     #34             ; 32 data sectors plus one T/S list
+        bcs     @big
         lda     selected
         sta     prv_index
         jsr     load_file
@@ -1713,17 +1766,26 @@ edit_file:
         jsr     measure_text
         jsr     edit_text
         bcc     @out
+        lda     #0
+        sta     ask_kind
         jsr     ask_name
         bcc     @out
         jsr     name_to_cs
         jmp     save_new
 @fail:
-        jsr     clear
-        ldy     #3
+        ldy     #20
         ldx     #0
-        jsr     at
+        lda     #40
+        jsr     zone
         PRINT   "READ ERROR - NOT LOADED"
-        jmp     any_back
+        jmp     keep_note
+@big:
+        ldy     #20
+        ldx     #0
+        lda     #40
+        jsr     zone
+        PRINT   "FILE TOO LARGE TO EDIT"
+        jmp     keep_note
 @out:
         rts
 
@@ -1737,43 +1799,6 @@ name_to_cs:
         bcc     @copy
         lda     #TYPE_TEXT
         sta     cs_type
-        rts
-
-; measure_text -- ed_len = one past the last non-zero byte
-measure_text:
-        lda     load_count
-        sta     edit_len+1
-        lda     #0
-        sta     edit_len
-        lda     edit_len+1
-        beq     @done
-@scan:
-        lda     edit_len
-        bne     @dec
-        dec     edit_len+1
-        lda     edit_len+1
-        bmi     @empty
-@dec:
-        dec     edit_len
-        lda     #<scratch
-        clc
-        adc     edit_len
-        sta     ptr
-        lda     #>scratch
-        adc     edit_len+1
-        sta     ptr+1
-        ldy     #0
-        lda     (ptr),y
-        beq     @scan
-        inc     edit_len
-        bne     @done
-        inc     edit_len+1
-        jmp     @done
-@empty:
-        lda     #0
-        sta     edit_len
-        sta     edit_len+1
-@done:
         rts
 
 save_new:
@@ -1860,59 +1885,51 @@ copy_report:
 
 ; ---------------------------------------------------------------------
 ; delete_file -- tagged files, or the cursor when nothing is tagged.
-; One confirmation, then each file: mark the catalog, then free sectors.
+; Stays on the two panels. Footer prompt, then each file.
 ; ---------------------------------------------------------------------
 delete_file:
+        jsr     activate
         ldx     active
         jsr     tag_count
         sta     tg_n
-        jsr     clear
-        ldy     #0
+        ldy     #20
         ldx     #0
         lda     #40
         jsr     zone
         lda     tg_n
         bne     @many
-        PRINT   "DELETE THIS FILE"
-        lda     #0
-        sta     inverse
-        ldy     #2
-        ldx     #0
-        jsr     at
+        PRINT   "DELETE "
         lda     selected
         jsr     ent_index
-        jsr     print_name
+        jsr     print_name15
+        PRINT   "?"
         jmp     @ask
 @many:
-        PRINT   "DELETE MARKED FILES"
-        lda     #0
-        sta     inverse
-        ldy     #2
-        ldx     #0
-        jsr     at
+        PRINT   "DELETE "
         lda     tg_n
         jsr     print_byte
-        PRINT   " FILES - LOCKED FILES ARE SKIPPED"
+        PRINT   " MARKED?"
 @ask:
-        ldy     #5
-        ldx     #0
-        jsr     at
-        PRINT   "THIS CANNOT BE UNDONE FROM HERE"
+        lda     #0
+        sta     inverse
         jsr     confirm
         bcc     @out
+        lda     #DEL_OK
+        sta     hg_status
         lda     tg_n
         bne     @tagged
         lda     selected
         sta     del_index
         jsr     one_delete
-        jmp     @finish
+        sta     hg_status
+        jmp     @show
 @tagged:
         lda     #0
         sta     tg_index
 @each:
         lda     tg_index
         cmp     count
-        bcs     @finish
+        bcs     @show
         lda     tg_index
         ldx     active
         jsr     tag_test
@@ -1920,72 +1937,92 @@ delete_file:
         lda     tg_index
         sta     del_index
         jsr     one_delete
-        cmp     #DEL_UNCERTAIN
-        beq     @finish
+        sta     hg_status
+        cmp     #DEL_OK
+        beq     @next
+        cmp     #DEL_LOCKED
+        beq     @next
+        jmp     @show
 @next:
         inc     tg_index
         jmp     @each
-@finish:
-        jsr     any_back
-        jmp     reload
+@show:
+        jsr     del_show
+        jmp     result_done
 @out:
+        rts
+
+print_name15:
+        jsr     ent_ptr
+        ldy     #0
+@ch:
+        sty     t1
+        lda     (ptr),y
+        jsr     put
+        ldy     t1
+        iny
+        cpy     #15
+        bcc     @ch
         rts
 
 one_delete:
         jsr     delete_prepare
-        sta     hg_status
-        bne     @rep
+        bne     @out
         jsr     delete_execute
-        sta     hg_status
-@rep:
-        jsr     clear
-        ldy     #2
+@out:
+        rts
+
+del_show:
+        ldy     #20
         ldx     #0
-        jsr     at
+        lda     #40
+        jsr     zone
         lda     hg_status
         bne     @notok
         PRINT   "DELETED"
-        lda     #DEL_OK
         rts
 @notok:
         cmp     #DEL_LOCKED
         bne     @notlock
         PRINT   "LOCKED - NOT DELETED"
-        lda     #DEL_LOCKED
         rts
 @notlock:
         cmp     #DEL_CHANGED
         bne     @notchg
         PRINT   "DISK CHANGED - DELETE REFUSED"
-        lda     #DEL_CHANGED
         rts
 @notchg:
         cmp     #DEL_READ
         bne     @notread
         PRINT   "READ ERROR - DELETE REFUSED"
-        lda     #DEL_READ
         rts
 @notread:
         cmp     #DEL_UNCERTAIN
         bne     @bad
         PRINT   "UNCERTAIN WRITE - STOP"
-        ldy     #4
-        ldx     #0
-        jsr     at
-        PRINT   "TARGET DISK MUST BE CHECKED"
         lda     #1
         sta     del_fault
-        lda     #DEL_UNCERTAIN
         rts
 @bad:
         PRINT   "UNSUPPORTED / INVALID DOS STRUCTURE"
-        lda     hg_status
         rts
 
-any_back:
-        ldy     #23
+; keep_note -- remember row 20 as the status line. The next draw shows
+; the two panels with that result on row 22; no extra key.
+keep_note:
         ldx     #0
-        jsr     at
-        PRINT   "ANY KEY: BACK"
-        jsr     key
+@copy:
+        lda     screen_image+20*40,x
+        sta     note_line,x
+        inx
+        cpx     #40
+        bne     @copy
+        lda     #1
+        sta     have_note
         rts
+
+; result_done -- show the result, reread both panels, return to them.
+result_done:
+        jsr     keep_note
+        jsr     present
+        jmp     reload

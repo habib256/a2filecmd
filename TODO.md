@@ -216,10 +216,14 @@ Incrément demandé : écriture sur vrai DOS 3.3 depuis ProDOS par C / DOSWRITE
 (FILES/XL), pour la sélection TXT/BIN/BAS/INT jusqu'à 65 535 octets. Audit
 complet des allocations, création sans remplacement, contrôle de protection,
 confirmation, VTOC réservé, relecture et publication finale du catalogue.
-Source conservée ; pas de MOVE ni d'écriture d'image. Les échecs peuvent
+Source conservée ; pas de MOVE. Écriture dans les images ajoutée à la
+demande explicite suivante, via copie temporaire vérifiée et remplacement
+récupérable (DOSIMAGE/DOSPUT, FILES/XL). Les échecs peuvent
 laisser de l'espace réservé, signalé. Le retour à la liste des volumes
 réinitialise aussi le mode DOS/image pour permettre les réouvertures.
-Tests C de pannes, sim65 deux CPU et banc POM2 Disk II dans `doswrite`.
+Le slot réel du Disk II est désormais utilisé, notamment S5 avec le volume
+ProDOS en S6. Tests C de pannes, sim65 deux CPU, banc POM2 Disk II dans
+`doswrite` et images DSK/2MG dans `dosimage`. Aucun accès AUX.
 La copie par lots et les autres mutations DOS restent à faire.
 
 Suite du chantier 1 : DISKIMG conserve la propriété de sa réservation,
