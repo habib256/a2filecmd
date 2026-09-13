@@ -35,6 +35,9 @@ pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 | `mdview.py` | Markdown, repliement, CRLF/bit haut, document de 67 pages, historique circulaire de 64 pages, ligne de 22 Ko sans saut (280 lignes écran), UTF-8 majoritaire/BOM/caractère coupé à 2 Ko, blocs de code, retour et reprise par R |
 | `tree.py` | parcours de la racine XL jusqu’au résultat complet, totaux exacts comparés à l’image et pile préservée |
 | `memory.py` | le creux maximal de la pile C, mesure en faisant travailler le programme |
+| `mini33.py` | the Apple II+ 48 KB DOS 3.3 edition on an NMOS core: panels, pagination, long names, preview, malformed and missing disks, quit and relaunch, and changed-character-only screen writes through watchpoints |
+| `mini33_write.py` | the same edition's real DOS writes on disposable images: cancel, hardware write protection, a verified copy, a refused collision, then DOS BLOAD and SAVE over the result |
+| `mini33_time.py` | what the disk paths cost in cycles, since a missed sector is a whole 200 000-cycle revolution: catalog reads and a 48-sector copy. Read-only on the catalog paths |
 | `pom2.py` | le pilote d'emulateur commun |
 
 ## Les deux editions

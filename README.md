@@ -246,3 +246,15 @@ Its companion emulator, [POM2](https://github.com/habib256/pom2), is by the same
 Preserving user data is a central requirement. Every AI or contributor must
 follow [AGENTS.md](AGENTS.md). See the [data-safety audit](docs/DATA-SAFETY.md)
 for protections, failure tests, recovery files and remaining limitations.
+
+## Apple II+: A2FC Mini DOS 3.3
+
+A standalone edition for 48 KB machines with two panels in 40 columns:
+independent DOS 3.3 catalogs, verified copying between drives, text/hex previews,
+ProDOS-style controls, inverse video, and bottom shortcuts. Only changed screen
+characters are rewritten. The interface and bundled documentation are in English.
+Written entirely in 6502 assembly, in 7,750 bytes, which is what lets it keep up
+with DOS 3.3's track interleave: a catalog read takes a third of the time it
+used to, and a 48-sector copy a quarter.
+Build with `make mini`. See the [Mini DOS 3.3 guide](docs/MINI-DOS33.md)
+for the disk image, the controls and the measurements.

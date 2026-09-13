@@ -1,0 +1,1605 @@
+; copy.s -- DOS 3.3 exclusive new-file copy. No replacement, deletion,
+; rename or formatting. Every write goes to copy_to; every buffer is in
+; main RAM.
+;
+; The order is the whole safety argument and it is unchanged from the C
+; edition: audit both disks, let the user confirm, reserve in the VTOC,
+; write data and T/S lists with a readback each, compare every byte of
+; both disks afresh, and only then publish one catalog entry. On an
+; uncertain write, never free a sector that may already be published and
+; never retry metadata blindly: keep the reservations and latch
+; copy_fault so this run cannot write again. A physical sector write is
+; NOT atomic, least of all the shared VTOC and catalog sectors.
+;
+; What changed from C is the access pattern, not the checks. Measured on
+; POM2, the C edition took 258 million cycles to copy 48 sectors, because
+; it alternated drives for every single sector: read source, write
+; target, read target back, and round again. Each change of drive costs a
+; seek, and the sector then costs a whole revolution. Here a batch of
+; BATCH_SECTORS is read from the source, then written and verified on the
+; target, then both disks are re-read for the final comparison -- the
+; same six disk operations per sector, four changes of drive per batch
+; instead of four per sector.
+
+        .include "mini.inc"
+
+        .export copy_prepare, copy_execute, copy_cancel
+        .export copy_from, copy_to, copy_src_volume, copy_dst_volume
+        .export copy_fault, cp_index, cp_dest
+        .export cs_track, cs_sector, cs_type, cs_name, cs_seclo, cs_sechi
+        .export _copy_prepare, _copy_execute, _copy_cancel
+        .export _copy_from, _copy_to, _copy_src_volume, _copy_dst_volume
+        .export _copy_fault, _cp_index, _cp_dest
+        .export _cs_track, _cs_sector, _cs_type, _cs_name
+        .export _cs_seclo, _cs_sechi
+
+        .import read_sector, write_sector, rwts_error
+        .import buffer, drive, track, sector, count, sector_seen
+        .import ent_track, ent_sector, ent_seclo, ent_sechi, ent_type
+        .import ent_index, ent_ptr
+        .import seen_bit, bit_masks
+
+        .segment "BSS"
+
+; ---- the file being copied, taken from the panel before any disk work
+cs_track:       .res 1
+cs_sector:      .res 1
+cs_type:        .res 1
+cs_seclo:       .res 1
+cs_sechi:       .res 1
+cs_name:        .res NAME_LEN
+_cs_track       = cs_track
+_cs_sector      = cs_sector
+_cs_type        = cs_type
+_cs_seclo       = cs_seclo
+_cs_sechi       = cs_sechi
+_cs_name        = cs_name
+
+copy_from:      .res 1
+copy_to:        .res 1
+copy_src_volume: .res 1
+copy_dst_volume: .res 1
+copy_fault:     .res 1          ; latched: no further writes this run
+cp_index:       .res 1          ; copy_prepare arguments
+cp_dest:        .res 1
+_copy_from      = copy_from
+_copy_to        = copy_to
+_copy_src_volume = copy_src_volume
+_copy_dst_volume = copy_dst_volume
+_copy_fault     = copy_fault
+_cp_index       = cp_index
+_cp_dest        = cp_dest
+
+; ---- whole sectors kept for comparison
+vtoc:           .res 256        ; the target VTOC as reserved
+source_vtoc:    .res 256        ; the source VTOC as first seen
+catalog_before: .res 256        ; the catalog sector holding the free slot
+verify:         .res 256        ; what a write was supposed to leave
+cat_buf:        .res 256        ; the catalog sector being walked
+src_entry:      .res CAT_ENTRY_LEN
+
+; ---- the source file's sectors, in file order
+source_map_t:   .res MAX_DATA
+source_map_s:   .res MAX_DATA
+data_count:     .res 2
+
+; ---- the target reservation
+target_bits:    .res 70
+target_index:   .res 2
+tgt_t:          .res 1
+tgt_s:          .res 1
+tl_t:           .res MAX_LISTS
+tl_s:           .res MAX_LISTS
+list_count:     .res 1
+allocated_count: .res 2
+ready:          .res 1
+
+; ---- where the new entry goes
+out_track:      .res 1
+out_sector:     .res 1
+out_offset:     .res 1
+src_cat_track:  .res 1
+src_cat_sector: .res 1
+src_cat_offset: .res 1
+
+; ---- audit locals
+aud_source:     .res 1
+aud_recheck:    .res 1
+aud_t:          .res 1
+aud_s:          .res 1
+aud_nt:         .res 1
+aud_ns:         .res 1
+aud_i:          .res 1
+aud_off:        .res 1
+aud_found:      .res 1
+aud_files:      .res 1
+aud_slot:       .res 1
+aud_first_t:    .res 1
+aud_first_s:    .res 1
+aud_size:       .res 2
+
+; ---- walk locals
+wlk_t:          .res 1
+wlk_s:          .res 1
+wlk_nt:         .res 1
+wlk_ns:         .res 1
+wlk_ended:      .res 1
+wlk_collect:    .res 1
+wlk_expect:     .res 2
+wlk_offset:     .res 2
+wlk_total:      .res 2
+wlk_j:          .res 1
+
+; ---- batch state
+bat_n:          .res 1          ; sectors in this batch
+bat_k:          .res 1
+bat_t:          .res BATCH_SECTORS
+bat_s:          .res BATCH_SECTORS
+bat_index:      .res 2          ; first source_map index of the batch
+lst_no:         .res 1          ; T/S list being built
+lst_pair:       .res 1
+
+; ---- the batch itself. Its own memory: borrowing the panel name tables
+; would have been free, but reload() reselects a file by the name still
+; held there, so they have to survive a copy.
+batch_buf:      .res BATCH_SECTORS*256
+
+        .segment "CODE"
+
+; =====================================================================
+; Small helpers
+; =====================================================================
+
+; vtoc_bit -- A = track, X = sector. Points bidx/bmsk at the sector's
+; allocation bit in the VTOC. DOS stores each track as a big-endian pair,
+; so sectors 0-7 live in the second byte.
+vtoc_bit:
+        asl     a
+        asl     a
+        clc
+        adc     #VTOC_BITMAP
+        sta     bidx
+        cpx     #8
+        bcs     @high
+        inc     bidx
+@high:
+        txa
+        and     #7
+        tax
+        lda     bit_masks,x
+        sta     bmsk
+        rts
+
+; free_sector -- A = track, X = sector. Z clear when the VTOC calls it
+; free. A live file sector must never be free; a target sector must be.
+free_sector:
+        jsr     vtoc_bit
+        ldx     bidx
+        lda     vtoc,x
+        and     bmsk
+        rts
+
+; valid_data -- A = track, X = sector. Carry set when it may hold file
+; data: tracks 3 to 34, never the catalog track.
+valid_data:
+        cpx     #16
+        bcs     @no
+        cmp     #35
+        bcs     @no
+        cmp     #3
+        bcc     @no
+        cmp     #CATALOG_TRACK
+        beq     @no
+        sec
+        rts
+@no:
+        clc
+        rts
+
+; claim -- A = track, X = sector. Takes ownership of one live sector in
+; sector_seen. A = COPY_OK, or COPY_INVALID when the sector is outside
+; the disk, already owned by another file, or marked free while in use.
+claim:
+        sta     s0
+        stx     s1
+        cmp     #35
+        bcs     @invalid
+        cpx     #16
+        bcs     @invalid
+        jsr     seen_bit
+        lda     bidx
+        sta     s2
+        lda     bmsk
+        sta     s3
+        ldx     s2
+        lda     sector_seen,x
+        and     s3
+        bne     @invalid        ; two files cannot share a sector
+        lda     s0
+        ldx     s1
+        jsr     free_sector
+        bne     @invalid
+        ldx     s2
+        lda     sector_seen,x
+        ora     s3
+        sta     sector_seen,x
+        lda     #COPY_OK
+        rts
+@invalid:
+        lda     #COPY_INVALID
+        rts
+
+; read_at -- A = track, X = sector, into buffer on the current drive.
+read_at:
+        sta     track
+        stx     sector
+        jsr     read_sector
+        beq     @ok
+        lda     #COPY_READ
+        rts
+@ok:
+        lda     #COPY_OK
+        rts
+
+; memcpy256 -- ptr to ptr2
+memcpy256:
+        ldy     #0
+@loop:
+        lda     (ptr),y
+        sta     (ptr2),y
+        iny
+        bne     @loop
+        rts
+
+; memcmp256 -- ptr against ptr2, Z set when identical
+memcmp256:
+        ldy     #0
+@loop:
+        lda     (ptr),y
+        cmp     (ptr2),y
+        bne     @differs
+        iny
+        bne     @loop
+        lda     #0
+        rts
+@differs:
+        lda     #1
+        rts
+
+; batch_ptr -- A = slot, ptr2 = batch_buf + slot*256. A slot offset only
+; ever lands in the high byte, so no alignment is needed.
+batch_ptr:
+        clc
+        adc     #>batch_buf
+        sta     ptr2+1
+        lda     #<batch_buf
+        sta     ptr2
+        rts
+
+; map_ptr -- ptr/ptr2 onto source_map_t/source_map_s at a 16-bit index
+; held in num. The map runs to 491 entries, past what an index register
+; can reach.
+map_ptr:
+        lda     #<source_map_t
+        clc
+        adc     num
+        sta     ptr
+        lda     #>source_map_t
+        adc     num+1
+        sta     ptr+1
+        lda     #<source_map_s
+        clc
+        adc     num
+        sta     ptr2
+        lda     #>source_map_s
+        adc     num+1
+        sta     ptr2+1
+        rts
+
+; bump_target / bump_num / bump_total -- 16-bit increments
+bump_target:
+        inc     target_index
+        bne     @done
+        inc     target_index+1
+@done:
+        rts
+
+bump_num:
+        inc     num
+        bne     @done
+        inc     num+1
+@done:
+        rts
+
+bump_total:
+        inc     wlk_total
+        bne     @done
+        inc     wlk_total+1
+@done:
+        rts
+
+; next_target -- hands out the reserved sectors in disk order. A = 0 with
+; tgt_t/tgt_s set, or COPY_INVALID once they run out.
+next_target:
+@loop:
+        lda     target_index+1
+        cmp     #>560
+        bcc     @take
+        bne     @empty
+        lda     target_index
+        cmp     #<560
+        bcc     @take
+@empty:
+        lda     #COPY_INVALID
+        rts
+@take:
+        lda     target_index+1
+        sta     t1
+        lda     target_index
+        sta     t0
+        lsr     t1
+        ror     t0
+        lsr     t1
+        ror     t0
+        lsr     t1
+        ror     t0              ; t0 = index >> 3
+        ldx     t0
+        lda     target_index
+        and     #7
+        tay
+        lda     target_bits,x
+        and     bit_masks,y
+        beq     @step
+        lda     t0
+        lsr     a
+        sta     tgt_t           ; index >> 4
+        lda     target_index
+        and     #15
+        sta     tgt_s
+        jsr     bump_target
+        lda     #COPY_OK
+        rts
+@step:
+        jsr     bump_target
+        jmp     @loop
+
+; name_matches -- X = offset of a 30-byte name in cat_buf. Carry set when
+; it is the file we were asked to copy. The panel's copy is compared with
+; the high bit put back, so a name the panel had to sanitise cannot match
+; and the copy is refused instead of taking the wrong file.
+name_matches:
+        ldy     #0
+@char:
+        lda     cat_buf,x
+        sta     s0
+        lda     cs_name,y
+        ora     #$80
+        cmp     s0
+        bne     @no
+        inx
+        iny
+        cpy     #NAME_LEN
+        bcc     @char
+        sec
+        rts
+@no:
+        clc
+        rts
+
+; put_verified -- A = track, X = sector. Writes buffer to the target and
+; reads it back. Write protection is reported as itself; anything else is
+; uncertain, because a sector may be half written.
+put_verified:
+        sta     s0
+        stx     s1
+        SETPTR  ptr, buffer
+        SETPTR  ptr2, verify
+        jsr     memcpy256
+        lda     s0
+        sta     track
+        lda     s1
+        sta     sector
+        lda     copy_to
+        sta     drive
+        jsr     write_sector
+        beq     @wrote
+        lda     rwts_error
+        cmp     #RWTS_PROTECTED
+        bne     @uncertain
+        lda     #COPY_PROTECTED
+        rts
+@wrote:
+        lda     s0
+        ldx     s1
+        jsr     read_at
+        bne     @uncertain
+        SETPTR  ptr, buffer
+        SETPTR  ptr2, verify
+        jsr     memcmp256
+        bne     @uncertain
+        lda     #COPY_OK
+        rts
+@uncertain:
+        lda     #COPY_UNCERTAIN
+        rts
+
+; =====================================================================
+; walk -- follow one file's T/S chain, claiming every sector it owns.
+; wlk_t/wlk_s start it, wlk_expect is the catalog's sector count, and
+; wlk_collect asks for the data sectors to be recorded in source_map.
+;
+; Sparse and non-canonical chains are refused rather than guessed at: a
+; wrong guess here would let the copy reserve a sector another file uses.
+; =====================================================================
+walk:
+        lda     #0
+        sta     wlk_ended
+        sta     wlk_offset
+        sta     wlk_offset+1
+        sta     wlk_total
+        sta     wlk_total+1
+@list:
+        lda     wlk_t
+        ldx     wlk_s
+        jsr     valid_data
+        jcc     @invalid
+        lda     wlk_t
+        ldx     wlk_s
+        jsr     claim
+        jne     @return
+        lda     wlk_t
+        ldx     wlk_s
+        jsr     read_at
+        jne     @return
+        lda     buffer+5        ; this list must describe the sectors
+        cmp     wlk_offset      ; already seen, and no others
+        jne     @invalid
+        lda     buffer+6
+        cmp     wlk_offset+1
+        jne     @invalid
+        lda     buffer+1
+        sta     wlk_nt
+        lda     buffer+2
+        sta     wlk_ns
+        lda     wlk_nt
+        bne     @counted
+        lda     wlk_ns          ; no track but a sector: malformed
+        jne     @invalid
+@counted:
+        jsr     bump_total
+        lda     #0
+        sta     wlk_j
+@pair:
+        lda     wlk_j
+        asl     a
+        tax
+        lda     buffer+12,x
+        sta     wlk_t
+        lda     buffer+13,x
+        sta     wlk_s
+        ora     wlk_t
+        bne     @live
+        lda     #1              ; a hole ends the file
+        sta     wlk_ended
+        jmp     @nextpair
+@live:
+        lda     wlk_ended
+        jne     @invalid
+        lda     wlk_t
+        ldx     wlk_s
+        jsr     valid_data
+        jcc     @invalid
+        lda     wlk_t
+        ldx     wlk_s
+        jsr     claim
+        jne     @return
+        lda     wlk_collect
+        beq     @nocollect
+        lda     wlk_offset+1    ; more than MAX_DATA will not fit
+        cmp     #>MAX_DATA
+        bcc     @room
+        bne     @invalid
+        lda     wlk_offset
+        cmp     #<MAX_DATA
+        bcs     @invalid
+@room:
+        lda     wlk_offset
+        sta     num
+        lda     wlk_offset+1
+        sta     num+1
+        jsr     map_ptr
+        ldy     #0
+        lda     wlk_t
+        sta     (ptr),y
+        lda     wlk_s
+        sta     (ptr2),y
+@nocollect:
+        inc     wlk_offset
+        bne     @nooff
+        inc     wlk_offset+1
+@nooff:
+        jsr     bump_total
+@nextpair:
+        inc     wlk_j
+        lda     wlk_j
+        cmp     #TS_PER_LIST
+        jcc     @pair
+        lda     wlk_nt
+        beq     @chained
+        lda     wlk_ended       ; a hole, and still another list
+        bne     @invalid
+@chained:
+        lda     wlk_nt
+        sta     wlk_t
+        lda     wlk_ns
+        sta     wlk_s
+        lda     wlk_t
+        beq     @ended
+        jmp     @list
+@ended:
+        lda     wlk_total       ; the catalog's count must be the truth
+        cmp     wlk_expect
+        bne     @invalid
+        lda     wlk_total+1
+        cmp     wlk_expect+1
+        bne     @invalid
+        lda     wlk_collect
+        beq     @ok
+        lda     wlk_offset
+        sta     data_count
+        lda     wlk_offset+1
+        sta     data_count+1
+@ok:
+        lda     #COPY_OK
+        rts
+@invalid:
+        lda     #COPY_INVALID
+@return:
+        rts
+
+; =====================================================================
+; audit -- read one disk's whole allocation graph.
+;
+; Not just the file being copied: every file on the disk is walked, so
+; claim() can prove that no sector the copy reserves is already spoken
+; for, and so a name collision is found wherever it hides in the chain.
+;
+; aud_source selects the source disk; aud_recheck demands the same answer
+; prepare got. The catalog sector is kept in cat_buf, which is why
+; walking a file no longer costs a seek back to track 17 and a re-read
+; for every entry, as the C edition did.
+; =====================================================================
+audit:
+        lda     #0
+        sta     aud_found
+        sta     aud_files
+        sta     aud_slot
+        lda     #CATALOG_TRACK
+        ldx     #0
+        jsr     read_at
+        jne     @return
+        lda     aud_recheck
+        beq     @store
+        SETPTR  ptr, buffer
+        SETPTR  ptr2, vtoc
+        jsr     memcmp256
+        beq     @store
+        lda     #COPY_CHANGED   ; the disk was swapped after the prompt
+        rts
+@store:
+        SETPTR  ptr, buffer
+        SETPTR  ptr2, vtoc
+        jsr     memcpy256
+        lda     vtoc+3
+        cmp     #3
+        jne     @invalid
+        lda     vtoc+$27
+        cmp     #TS_PER_LIST
+        jne     @invalid
+        lda     vtoc+$34
+        cmp     #35
+        jne     @invalid
+        lda     vtoc+$35
+        cmp     #16
+        jne     @invalid
+        lda     vtoc+$36
+        jne     @invalid
+        lda     vtoc+$37
+        cmp     #1
+        jne     @invalid
+        lda     #0
+        ldx     #69
+@wipe:
+        sta     sector_seen,x
+        dex
+        bpl     @wipe
+        lda     #CATALOG_TRACK
+        ldx     #0
+        jsr     claim
+        jne     @invalid
+        lda     vtoc+1
+        sta     aud_t
+        lda     vtoc+2
+        sta     aud_s
+        lda     aud_t
+        jeq     @invalid
+        lda     aud_source
+        beq     @target
+        SETPTR  ptr, vtoc
+        SETPTR  ptr2, source_vtoc
+        jsr     memcpy256
+        lda     vtoc+6
+        sta     copy_src_volume
+        jmp     @chain
+@target:
+        lda     aud_recheck
+        bne     @chain
+        lda     vtoc+6
+        sta     copy_dst_volume
+        lda     #0
+        sta     out_track
+@chain:
+        lda     aud_t           ; the catalog lives on track 17 only
+        cmp     #CATALOG_TRACK
+        jne     @invalid
+        lda     aud_s
+        jeq     @invalid
+        cmp     #16
+        jcs     @invalid
+        lda     aud_t
+        ldx     aud_s
+        jsr     claim
+        jne     @invalid
+        lda     aud_t
+        ldx     aud_s
+        jsr     read_at
+        jne     @return
+        SETPTR  ptr, buffer
+        SETPTR  ptr2, cat_buf
+        jsr     memcpy256
+        lda     cat_buf+1
+        sta     aud_nt
+        lda     cat_buf+2
+        sta     aud_ns
+        lda     aud_nt
+        bne     @entries
+        lda     aud_ns
+        jne     @invalid
+@entries:
+        lda     #CAT_FIRST
+        sta     aud_off
+        lda     #CAT_ENTRIES
+        sta     aud_i
+@entry:
+        ldx     aud_off
+        lda     cat_buf,x
+        sta     aud_first_t
+        lda     cat_buf+1,x
+        sta     aud_first_s
+        lda     aud_first_t
+        beq     @freeslot
+        cmp     #$FF
+        bne     @livefile
+@freeslot:
+        lda     aud_source
+        jne     @nextentry
+        lda     aud_slot
+        jne     @nextentry
+        lda     aud_recheck
+        beq     @claimslot
+        lda     aud_t           ; the same slot, or the disk has changed
+        cmp     out_track
+        bne     @changed
+        lda     aud_s
+        cmp     out_sector
+        bne     @changed
+        lda     aud_off
+        cmp     out_offset
+        bne     @changed
+        SETPTR  ptr, cat_buf
+        SETPTR  ptr2, catalog_before
+        jsr     memcmp256
+        bne     @changed
+        jmp     @gotslot
+@claimslot:
+        lda     aud_t
+        sta     out_track
+        lda     aud_s
+        sta     out_sector
+        lda     aud_off
+        sta     out_offset
+        SETPTR  ptr, cat_buf
+        SETPTR  ptr2, catalog_before
+        jsr     memcpy256
+@gotslot:
+        lda     #1
+        sta     aud_slot
+        jmp     @nextentry
+@changed:
+        lda     #COPY_CHANGED
+        rts
+
+@livefile:
+        inc     aud_files
+        lda     aud_files
+        cmp     #MINI_MAX+1
+        jcs     @invalid
+        ldx     aud_off
+        lda     cat_buf+2,x
+        and     #$7F            ; a type is one bit, or none at all
+        beq     @typeok
+        sta     s0
+        sec
+        sbc     #1
+        and     s0
+        jne     @invalid
+@typeok:
+        lda     aud_off         ; DOS names are printable high ASCII
+        clc
+        adc     #3
+        tax
+        ldy     #NAME_LEN
+@namechar:
+        lda     cat_buf,x
+        cmp     #$A0
+        jcc     @invalid
+        cmp     #$FF
+        jeq     @invalid
+        inx
+        dey
+        bne     @namechar
+        ldx     aud_off
+        lda     cat_buf+33,x
+        sta     aud_size
+        lda     cat_buf+34,x
+        sta     aud_size+1
+        lda     aud_off
+        clc
+        adc     #3
+        tax
+        jsr     name_matches
+        bcc     @notours
+        lda     aud_source
+        bne     @ours
+        lda     #COPY_EXISTS    ; never overwrite, locked or not
+        rts
+@ours:
+        lda     aud_found
+        beq     @first
+        lda     #COPY_INVALID   ; the same name twice is not a disk we know
+        rts
+@first:
+        inc     aud_found
+        lda     aud_t
+        sta     src_cat_track
+        lda     aud_s
+        sta     src_cat_sector
+        lda     aud_off
+        sta     src_cat_offset
+        ldx     aud_off
+        ldy     #0
+@saveentry:
+        lda     cat_buf,x
+        sta     src_entry,y
+        inx
+        iny
+        cpy     #CAT_ENTRY_LEN
+        bcc     @saveentry
+        lda     aud_first_t
+        sta     cs_track
+        lda     aud_first_s
+        sta     cs_sector
+        ldx     aud_off
+        lda     cat_buf+2,x
+        sta     cs_type
+        lda     aud_size
+        sta     cs_seclo
+        lda     aud_size+1
+        sta     cs_sechi
+        lda     aud_source      ; only our own file is mapped out
+        sta     wlk_collect
+        jmp     @dowalk
+@notours:
+        lda     #0
+        sta     wlk_collect
+@dowalk:
+        lda     aud_first_t
+        sta     wlk_t
+        lda     aud_first_s
+        sta     wlk_s
+        lda     aud_size
+        sta     wlk_expect
+        lda     aud_size+1
+        sta     wlk_expect+1
+        jsr     walk
+        bne     @return
+@nextentry:
+        lda     aud_off
+        clc
+        adc     #CAT_ENTRY_LEN
+        sta     aud_off
+        dec     aud_i
+        beq     @sectordone
+        jmp     @entry
+@sectordone:
+        lda     aud_nt
+        sta     aud_t
+        lda     aud_ns
+        sta     aud_s
+        lda     aud_t
+        beq     @finish
+        jmp     @chain
+@finish:
+        lda     aud_source
+        beq     @targetdone
+        lda     aud_found
+        bne     @good
+        lda     #COPY_CHANGED   ; our file is no longer there
+        rts
+@targetdone:
+        lda     aud_slot
+        beq     @full
+        lda     aud_files
+        cmp     #MINI_MAX
+        beq     @full
+@good:
+        lda     #COPY_OK
+        rts
+@full:
+        lda     #COPY_FULL
+        rts
+@invalid:
+        lda     #COPY_INVALID
+@return:
+        rts
+
+; =====================================================================
+; source_guard -- prove the source disk is still the one we audited.
+; =====================================================================
+source_guard:
+        lda     copy_from
+        sta     drive
+        lda     #CATALOG_TRACK
+        ldx     #0
+        jsr     read_at
+        bne     @read
+        SETPTR  ptr, buffer
+        SETPTR  ptr2, source_vtoc
+        jsr     memcmp256
+        bne     @changed
+        lda     src_cat_track
+        ldx     src_cat_sector
+        jsr     read_at
+        bne     @read
+        ldx     src_cat_offset
+        ldy     #0
+@entry:
+        lda     buffer,x
+        cmp     src_entry,y
+        bne     @changed
+        inx
+        iny
+        cpy     #CAT_ENTRY_LEN
+        bcc     @entry
+        lda     #COPY_OK
+        rts
+@changed:
+        lda     #COPY_CHANGED
+        rts
+@read:
+        lda     #COPY_READ
+        rts
+
+; =====================================================================
+; copy_cancel -- a plan is only good for the confirmation it was shown
+; with.
+; =====================================================================
+copy_cancel:
+_copy_cancel:
+        lda     #0
+        sta     ready
+        rts
+
+; =====================================================================
+; copy_prepare -- cp_index selects the file in the active panel, cp_dest
+; is the drive it goes to. Reads only: nothing is written here, so the
+; user can still say no.
+; =====================================================================
+copy_prepare:
+_copy_prepare:
+        lda     #0
+        sta     ready
+        lda     copy_fault
+        beq     @allowed
+        lda     #COPY_UNCERTAIN
+        rts
+@allowed:
+        lda     cp_index
+        cmp     count
+        jcs     @invalid
+        lda     drive
+        jeq     @invalid
+        cmp     #3
+        jcs     @invalid
+        lda     cp_dest
+        jeq     @invalid
+        cmp     #3
+        jcs     @invalid
+        lda     drive
+        cmp     cp_dest
+        bne     @twodrives
+        lda     #COPY_SAME
+        rts
+@twodrives:
+        lda     cp_index        ; take the panel's idea of the file, then
+        jsr     ent_index       ; hold the disk to it in audit
+        tay
+        lda     ent_track,y
+        sta     cs_track
+        lda     ent_sector,y
+        sta     cs_sector
+        lda     ent_type,y
+        sta     cs_type
+        lda     ent_seclo,y
+        sta     cs_seclo
+        lda     ent_sechi,y
+        sta     cs_sechi
+        lda     cp_index
+        jsr     ent_index
+        jsr     ent_ptr
+        ldy     #0
+@name:
+        lda     (ptr),y
+        sta     cs_name,y
+        iny
+        cpy     #NAME_LEN
+        bcc     @name
+        lda     drive
+        sta     copy_from
+        lda     cp_dest
+        sta     copy_to
+
+        lda     #1
+        sta     aud_source
+        lda     #0
+        sta     aud_recheck
+        jsr     audit
+        beq     @sourceok
+        rts
+@sourceok:
+        jsr     preread         ; every source sector, before any write
+        beq     @targetaudit
+        rts
+@targetaudit:
+        lda     copy_to
+        sta     drive
+        lda     #0
+        sta     aud_source
+        sta     aud_recheck
+        jsr     audit
+        beq     @reserve
+        rts
+@reserve:
+        jsr     count_lists
+        lda     data_count
+        clc
+        adc     list_count
+        sta     allocated_count
+        lda     data_count+1
+        adc     #0
+        sta     allocated_count+1
+        jsr     reserve
+        bne     @nospace
+        lda     #1
+        sta     ready
+        lda     #COPY_OK
+        rts
+@nospace:
+        lda     #COPY_FULL
+        rts
+@invalid:
+        lda     #COPY_INVALID
+        rts
+
+; count_lists -- ceil(data_count / 122), never fewer than one, so an
+; empty file still gets the T/S list that makes it a file.
+count_lists:
+        lda     data_count
+        sta     num
+        lda     data_count+1
+        sta     num+1
+        lda     #0
+        sta     list_count
+@loop:
+        lda     num
+        ora     num+1
+        beq     @done
+        inc     list_count
+        lda     num
+        sec
+        sbc     #TS_PER_LIST
+        sta     num
+        lda     num+1
+        sbc     #0
+        sta     num+1
+        bcs     @loop
+        lda     #0              ; the subtraction went below zero
+        sta     num
+        sta     num+1
+        jmp     @loop
+@done:
+        lda     list_count
+        bne     @have
+        inc     list_count
+@have:
+        rts
+
+; preread -- read every source data sector before a single byte is
+; written, so an unreadable source cannot leave the target part used.
+preread:
+        lda     copy_from
+        sta     drive
+        lda     #0
+        sta     num
+        sta     num+1
+@loop:
+        lda     num
+        cmp     data_count
+        bne     @more
+        lda     num+1
+        cmp     data_count+1
+        beq     @done
+@more:
+        jsr     map_ptr
+        ldy     #0
+        lda     (ptr2),y
+        tax
+        lda     (ptr),y
+        jsr     read_at
+        beq     @next
+        lda     #COPY_READ
+        rts
+@next:
+        jsr     bump_num
+        jmp     @loop
+@done:
+        lda     #COPY_OK
+        rts
+
+; reserve -- choose allocated_count free sectors in disk order. The last
+; list_count of them become the T/S lists. Nothing is written: the VTOC
+; on the disk keeps its own bits until the user confirms.
+reserve:
+        lda     #0
+        ldx     #69
+@wipe:
+        sta     target_bits,x
+        dex
+        bpl     @wipe
+        lda     #0
+        sta     num             ; sectors chosen so far
+        sta     num+1
+        lda     #3              ; tracks 0 to 2 belong to DOS
+        sta     s4
+@track:
+        lda     num
+        cmp     allocated_count
+        bne     @room
+        lda     num+1
+        cmp     allocated_count+1
+        beq     @done
+@room:
+        lda     s4
+        cmp     #35
+        bcs     @done
+        cmp     #CATALOG_TRACK
+        beq     @nexttrack
+        lda     #0
+        sta     w2
+@sector:
+        lda     num
+        cmp     allocated_count
+        bne     @space
+        lda     num+1
+        cmp     allocated_count+1
+        beq     @done
+@space:
+        lda     w2
+        cmp     #16
+        bcs     @nexttrack
+        lda     s4
+        ldx     w2
+        jsr     free_sector
+        beq     @nextsector
+        lda     s4              ; mark it in our own reservation
+        ldx     w2
+        jsr     seen_bit
+        ldx     bidx
+        lda     target_bits,x
+        ora     bmsk
+        sta     target_bits,x
+        lda     num+1           ; the tail of the reservation is the lists
+        cmp     data_count+1
+        bcc     @isdata
+        bne     @islist
+        lda     num
+        cmp     data_count
+        bcc     @isdata
+@islist:
+        lda     num
+        sec
+        sbc     data_count
+        tax
+        lda     s4
+        sta     tl_t,x
+        lda     w2
+        sta     tl_s,x
+@isdata:
+        jsr     bump_num
+@nextsector:
+        inc     w2
+        jmp     @sector
+@nexttrack:
+        inc     s4
+        jmp     @track
+@done:
+        lda     num             ; enough of them?
+        cmp     allocated_count
+        bne     @short
+        lda     num+1
+        cmp     allocated_count+1
+        bne     @short
+        lda     #COPY_OK
+        rts
+@short:
+        lda     #COPY_INVALID
+        rts
+
+; =====================================================================
+; copy_execute -- the only routine here that writes.
+; =====================================================================
+copy_execute:
+_copy_execute:
+        lda     copy_fault
+        beq     @allowed
+        lda     #COPY_UNCERTAIN
+        rts
+@allowed:
+        lda     ready
+        bne     @planned
+        lda     #COPY_NOT_READY
+        rts
+@planned:
+        lda     #0
+        sta     ready           ; one confirmation, one copy
+        jsr     source_guard
+        beq     @recheck
+        rts
+@recheck:
+        lda     copy_to
+        sta     drive
+        lda     #0
+        sta     aud_source
+        lda     #1
+        sta     aud_recheck
+        jsr     audit
+        beq     @clearbits
+        rts
+
+; Take the reserved sectors out of the VTOC image. Still in RAM.
+@clearbits:
+        lda     #0
+        sta     target_index
+        sta     target_index+1
+        sta     num
+        sta     num+1
+@onebit:
+        lda     num
+        cmp     allocated_count
+        bne     @clearone
+        lda     num+1
+        cmp     allocated_count+1
+        beq     @writevtoc
+@clearone:
+        jsr     next_target
+        bne     @changed
+        lda     tgt_t
+        ldx     tgt_s
+        jsr     free_sector
+        beq     @changed        ; somebody took it while we were asking
+        lda     tgt_t
+        ldx     tgt_s
+        jsr     vtoc_bit
+        ldx     bidx
+        lda     bmsk
+        eor     #$FF
+        and     vtoc,x
+        sta     vtoc,x
+        jsr     bump_num
+        jmp     @onebit
+@changed:
+        lda     #COPY_CHANGED
+        rts
+
+; The reservation reaches the disk before any data. Interrupted here the
+; sectors are merely lost, which VOLINFO reports; the other order would
+; leave a file pointing at sectors DOS believes are free.
+@writevtoc:
+        SETPTR  ptr, vtoc
+        SETPTR  ptr2, buffer
+        jsr     memcpy256
+        lda     #CATALOG_TRACK
+        ldx     #0
+        jsr     put_verified
+        beq     @data
+        cmp     #COPY_PROTECTED
+        beq     @protected
+        jmp     @uncertain
+@protected:
+        rts
+
+; ---- the data, one batch per change of drive ----
+@data:
+        lda     #0
+        sta     target_index
+        sta     target_index+1
+        sta     bat_index
+        sta     bat_index+1
+@batch:
+        lda     bat_index
+        cmp     data_count
+        bne     @batchwork
+        lda     bat_index+1
+        cmp     data_count+1
+        beq     @lists
+@batchwork:
+        jsr     batch_plan
+        jne     @uncertain
+        jsr     batch_read
+        jne     @uncertain
+        jsr     batch_write
+        bne     @writefail
+        jsr     batch_resource
+        jne     @uncertain
+        jsr     batch_retarget
+        jne     @uncertain
+        lda     bat_index
+        clc
+        adc     bat_n
+        sta     bat_index
+        bcc     @batch
+        inc     bat_index+1
+        jmp     @batch
+@writefail:
+        cmp     #COPY_PROTECTED
+        beq     @protected
+        jmp     @uncertain
+
+; ---- the T/S lists, once every data sector is down and checked ----
+@lists:
+        lda     #0
+        sta     target_index
+        sta     target_index+1
+        sta     lst_no
+@onelist:
+        lda     lst_no
+        cmp     list_count
+        jcs     @publish
+        lda     #0
+        tax
+@blank:
+        sta     buffer,x
+        inx
+        bne     @blank
+        lda     lst_no          ; link to the next list, if there is one
+        clc
+        adc     #1
+        cmp     list_count
+        bcs     @nolink
+        tax
+        lda     tl_t,x
+        sta     buffer+1
+        lda     tl_s,x
+        sta     buffer+2
+@nolink:
+        lda     #0              ; offset = lst_no * 122
+        sta     num
+        sta     num+1
+        ldx     lst_no
+        beq     @haveoffset
+@mul:
+        lda     num
+        clc
+        adc     #TS_PER_LIST
+        sta     num
+        lda     num+1
+        adc     #0
+        sta     num+1
+        dex
+        bne     @mul
+@haveoffset:
+        lda     num
+        sta     buffer+5
+        lda     num+1
+        sta     buffer+6
+        lda     #0
+        sta     lst_pair
+@pairloop:
+        lda     lst_pair
+        cmp     #TS_PER_LIST
+        bcs     @writelist
+        lda     num
+        cmp     data_count
+        bne     @pairroom
+        lda     num+1
+        cmp     data_count+1
+        beq     @writelist
+@pairroom:
+        jsr     next_target
+        jne     @uncertain
+        lda     lst_pair
+        asl     a
+        tax
+        lda     tgt_t
+        sta     buffer+12,x
+        lda     tgt_s
+        sta     buffer+13,x
+        jsr     bump_num
+        inc     lst_pair
+        jmp     @pairloop
+@writelist:
+        ldx     lst_no
+        lda     tl_s,x
+        sta     s3
+        lda     tl_t,x
+        ldx     s3
+        jsr     put_verified
+        beq     @nextlist
+        cmp     #COPY_PROTECTED
+        jeq     @protected
+        jmp     @uncertain
+@nextlist:
+        inc     lst_no
+        jmp     @onelist
+
+; ---- nothing is visible until here ----
+@publish:
+        jsr     source_guard
+        jne     @uncertain
+        lda     copy_to
+        sta     drive
+        lda     #CATALOG_TRACK
+        ldx     #0
+        jsr     read_at
+        bne     @uncertain
+        SETPTR  ptr, buffer
+        SETPTR  ptr2, vtoc
+        jsr     memcmp256
+        bne     @uncertain
+        lda     out_track
+        ldx     out_sector
+        jsr     read_at
+        bne     @uncertain
+        SETPTR  ptr, buffer
+        SETPTR  ptr2, catalog_before
+        jsr     memcmp256
+        bne     @uncertain
+        ldx     out_offset
+        ldy     #0
+@entry:
+        lda     src_entry,y
+        sta     buffer,x
+        inx
+        iny
+        cpy     #CAT_ENTRY_LEN
+        bcc     @entry
+        ldx     out_offset
+        lda     tl_t
+        sta     buffer,x
+        lda     tl_s
+        sta     buffer+1,x
+        lda     allocated_count
+        sta     buffer+33,x
+        lda     allocated_count+1
+        sta     buffer+34,x
+        lda     out_track
+        ldx     out_sector
+        jsr     put_verified
+        beq     @done
+        cmp     #COPY_PROTECTED
+        jeq     @protected
+        jmp     @uncertain
+@done:
+        lda     #COPY_OK
+        rts
+@uncertain:
+        lda     #1
+        sta     copy_fault
+        lda     #COPY_UNCERTAIN
+        rts
+
+; =====================================================================
+; One batch: plan it, read it from the source, write and verify it on the
+; target, then re-read both disks afresh against what is held in RAM.
+; Holding each disk to the batch proves the two agree, which is what the
+; C edition proved by comparing them with each other.
+; =====================================================================
+
+; batch_plan -- how many sectors, and which target sectors they go to
+batch_plan:
+        lda     data_count      ; left = data_count - bat_index
+        sec
+        sbc     bat_index
+        sta     s0
+        lda     data_count+1
+        sbc     bat_index+1
+        bne     @full           ; more than 255 still to go
+        lda     s0
+        cmp     #BATCH_SECTORS
+        bcc     @part
+@full:
+        lda     #BATCH_SECTORS
+        jmp     @have
+@part:
+        lda     s0
+@have:
+        sta     bat_n
+        lda     #0
+        sta     bat_k
+@target:
+        lda     bat_k
+        cmp     bat_n
+        bcs     @done
+        jsr     next_target
+        bne     @fail
+        ldx     bat_k
+        lda     tgt_t
+        sta     bat_t,x
+        lda     tgt_s
+        sta     bat_s,x
+        inc     bat_k
+        jmp     @target
+@done:
+        lda     #COPY_OK
+        rts
+@fail:
+        lda     #COPY_UNCERTAIN
+        rts
+
+; batch_source_index -- num = bat_index + bat_k
+batch_source_index:
+        lda     bat_index
+        clc
+        adc     bat_k
+        sta     num
+        lda     bat_index+1
+        adc     #0
+        sta     num+1
+        rts
+
+; batch_read -- the source drive, once, into batch_buf
+batch_read:
+        lda     copy_from
+        sta     drive
+        lda     #0
+        sta     bat_k
+@loop:
+        lda     bat_k
+        cmp     bat_n
+        bcs     @done
+        jsr     batch_source_index
+        jsr     map_ptr
+        ldy     #0
+        lda     (ptr2),y
+        tax
+        lda     (ptr),y
+        jsr     read_at
+        bne     @fail
+        SETPTR  ptr, buffer
+        lda     bat_k
+        jsr     batch_ptr
+        jsr     memcpy256
+        inc     bat_k
+        jmp     @loop
+@done:
+        lda     #COPY_OK
+        rts
+@fail:
+        lda     #COPY_UNCERTAIN ; past the first write, a read failure is
+        rts                     ; uncertain, not a plain read error
+
+; batch_write -- the target drive, once: write each sector and read it
+; back, exactly as the C edition's put_verified did
+batch_write:
+        lda     #0
+        sta     bat_k
+@loop:
+        lda     bat_k
+        cmp     bat_n
+        bcs     @done
+        lda     bat_k
+        jsr     batch_ptr
+        lda     ptr2
+        sta     ptr
+        lda     ptr2+1
+        sta     ptr+1
+        SETPTR  ptr2, buffer
+        jsr     memcpy256
+        ldx     bat_k
+        lda     bat_s,x
+        sta     s3
+        lda     bat_t,x
+        ldx     s3
+        jsr     put_verified
+        bne     @fail
+        inc     bat_k
+        jmp     @loop
+@done:
+        lda     #COPY_OK
+@fail:
+        rts
+
+; batch_resource -- read the source again, from the disk, and hold it to
+; the bytes we wrote
+batch_resource:
+        lda     copy_from
+        sta     drive
+        lda     #0
+        sta     bat_k
+@loop:
+        lda     bat_k
+        cmp     bat_n
+        bcs     @done
+        jsr     batch_source_index
+        jsr     map_ptr
+        ldy     #0
+        lda     (ptr2),y
+        tax
+        lda     (ptr),y
+        jsr     read_at
+        bne     @fail
+        jsr     batch_compare
+        bne     @fail
+        inc     bat_k
+        jmp     @loop
+@done:
+        lda     #COPY_OK
+        rts
+@fail:
+        lda     #COPY_UNCERTAIN
+        rts
+
+; batch_retarget -- and read the target again, likewise
+batch_retarget:
+        lda     copy_to
+        sta     drive
+        lda     #0
+        sta     bat_k
+@loop:
+        lda     bat_k
+        cmp     bat_n
+        bcs     @done
+        ldx     bat_k
+        lda     bat_s,x
+        sta     s3
+        lda     bat_t,x
+        ldx     s3
+        jsr     read_at
+        bne     @fail
+        jsr     batch_compare
+        bne     @fail
+        inc     bat_k
+        jmp     @loop
+@done:
+        lda     #COPY_OK
+        rts
+@fail:
+        lda     #COPY_UNCERTAIN
+        rts
+
+; batch_compare -- buffer against this batch slot
+batch_compare:
+        SETPTR  ptr, buffer
+        lda     bat_k
+        jsr     batch_ptr
+        jmp     memcmp256

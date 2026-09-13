@@ -286,7 +286,7 @@ $(FULLPO): $(STAGE_DEPS) $(DATA)/BASIC.SYSTEM.SYS
 	  --boot $(DATA)/prodos_boot.tmpl --blocks 280
 	@echo "==> $(FULLPO): the bench floppy, core overlays ($(ARCH))"
 
-test:
+test: test-mini
 	python3 $(TOOLS)/test_loader_prefix.py
 	python3 $(TOOLS)/test_chain.py
 	python3 $(TOOLS)/test_launch.py
@@ -356,3 +356,30 @@ $(BUILD)/HELLO.PLG: sdk/hello.c sdk/plugin.cfg sdk/build.sh $(SRC)/a2fc_plugin.h
 
 clean:
 	rm -rf $(BUILD) $(DIST)
+
+# Standalone Apple II+ / 48K / DOS 3.3 edition, pure 6502 assembly.
+# No ProDOS, no cc65 runtime, no software stack: see src/mini/mini-asm.cfg.
+MINI_BUILD = build-mini
+MINI_AS ?= ca65
+MINI_LD ?= ld65
+MINI_MASTER ?=
+MINI_DISK ?= $(DIST)/A2FC-MINI-DOS33-0.6.0.dsk
+# start.s must come first: its STARTUP segment lands on the load address.
+MINI_MODULES = start rwts screen catalog copy keyboard ui data
+MINI_OBJS = $(addprefix $(MINI_BUILD)/,$(addsuffix .o,$(MINI_MODULES)))
+.PHONY: mini mini-disk test-mini
+mini: $(MINI_BUILD)/A2FC.MINI
+$(MINI_BUILD):
+	mkdir -p $@
+$(MINI_BUILD)/%.o: $(SRC)/mini/%.s $(SRC)/mini/mini.inc | $(MINI_BUILD)
+	$(MINI_AS) --cpu 6502 -I $(SRC)/mini -o $@ $<
+$(MINI_BUILD)/A2FC.MINI: $(MINI_OBJS) $(SRC)/mini/mini-asm.cfg
+	$(MINI_LD) -C $(SRC)/mini/mini-asm.cfg -m $(MINI_BUILD)/mini.map \
+		-Ln $(MINI_BUILD)/mini.lbl -o $@ $(MINI_OBJS)
+	python3 $(TOOLS)/check_mini_layout.py $(MINI_BUILD)/mini.map
+mini-disk: mini | $(DIST)
+	@test -n "$(MINI_MASTER)" || { echo 'Set MINI_MASTER to a DOS 3.3 master .dsk (HELLO startup)'; exit 1; }
+	python3 $(TOOLS)/mkmini33.py --master "$(MINI_MASTER)" --binary $(MINI_BUILD)/A2FC.MINI --output "$(MINI_DISK)"
+test-mini: mini
+	python3 $(TOOLS)/test_mini33.py
+	python3 $(TOOLS)/test_mini33_write.py

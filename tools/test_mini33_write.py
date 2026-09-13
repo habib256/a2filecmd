@@ -1,0 +1,309 @@
+#!/usr/bin/env python3
+"""The real 6502 copy engine, with every read and write made to fail.
+
+Runs the shipped copy.s under sim65 on disposable fixtures only. What is
+checked is not the return code but the bytes: the source must come out
+untouched, every pre-existing byte of the target must survive, and no
+catalog entry may appear unless the whole file is on the disk and has
+been compared.
+"""
+import struct
+import sys
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import mini_host
+from mini33_fixture import make_disk, read_files, offset, SIZE
+
+(OK, READ, INVALID, EXISTS, FULL, SAME, PROTECTED, CHANGED, UNCERTAIN,
+ NOT_READY) = range(10)
+
+
+class WriteTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.harness = mini_host.Harness()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.harness.cleanup()
+
+    def setUp(self):
+        self.mini = None
+        self.load()
+
+    def tearDown(self):
+        if self.mini is not None:
+            self.mini.close()
+
+    def load(self, src=None, dst=None):
+        if self.mini is not None:
+            self.mini.close()
+        self.mini = self.harness.start()
+        self.src = src if src is not None else make_disk(
+            [('COPY.ME', 0x84, bytes(range(256)) * 3 + b'END'),
+             ('KEEP.SRC', 0, b'SOURCE SAFE')])
+        self.dst = dst if dst is not None else make_disk(
+            [('KEEP.DST', 0x80, b'DESTINATION SAFE')])
+        self.mini.load(1, self.src)
+        self.mini.load(2, self.dst)
+        self.mini.poke('drive', bytes([1]))
+        self.mini.poke('active', bytes([0]))
+        self.assertEqual(self.mini.catalog(), 0)
+        self.mini.reset_faults()
+
+    def prepare(self):
+        return self.mini.prepare(0, 2)
+
+    def image(self, drive):
+        return self.mini.image(drive)
+
+    def copied(self):
+        before = read_files(self.src)
+        result = read_files(self.image(2))
+        self.assertEqual(result['COPY.ME']['data'], before['COPY.ME']['data'])
+        self.assertEqual(result['COPY.ME']['type'], before['COPY.ME']['type'])
+        self.preserved()
+
+    def preserved(self):
+        self.assertEqual(self.image(1), self.src, 'the source is read-only')
+        # Every byte of pre-existing data and T/S sectors, and every
+        # catalog record, including its lock bit and sector count.
+        for f in read_files(self.dst).values():
+            for t, s in f['blocks'] + f['lists']:
+                a = offset(t, s)
+                self.assertEqual(self.image(2)[a:a + 256], self.dst[a:a + 256])
+        for s in range(1, 16):
+            for i in range(7):
+                a = offset(17, s) + 11 + i * 35
+                if self.dst[a] not in (0, 255):
+                    self.assertEqual(self.image(2)[a:a + 35], self.dst[a:a + 35])
+        for drive, _, _ in self.mini.write_log:
+            self.assertEqual(drive, 2, 'nothing may be written to the source')
+
+    # ---- the ordinary path ----------------------------------------
+    def test_success_and_replay(self):
+        self.assertEqual(self.prepare(), OK)
+        self.assertEqual(len(self.mini.write_log), 0, 'checking writes nothing')
+        self.assertEqual(self.mini.execute(), OK)
+        self.copied()
+        self.assertEqual(self.mini.execute(), NOT_READY,
+                         'one confirmation, one copy')
+
+    def test_vtoc_is_reserved_before_any_data(self):
+        self.assertEqual(self.prepare(), OK)
+        self.assertEqual(self.mini.execute(), OK)
+        first = self.mini.write_log[0]
+        self.assertEqual(first, (2, 17, 0), 'the reservation goes down first')
+        published = [w for w in self.mini.write_log if w[1] == 17 and w[2] != 0]
+        self.assertEqual(len(published), 1)
+        self.assertEqual(self.mini.write_log[-1], published[0],
+                         'the catalog entry is the last write')
+
+    def test_batches_do_not_alternate_drives(self):
+        # The point of the batching: a change of drive costs a seek and a
+        # motor, so they are counted here to keep the pattern from
+        # regressing to one per sector.
+        self.load(src=make_disk([('COPY.ME', 0, bytes(range(256)) * 40)]),
+                  dst=make_disk([]))
+        self.assertEqual(self.prepare(), OK)
+        self.assertEqual(self.mini.execute(), OK)
+        self.copied()
+        switches = 0
+        current = None
+        for drive, _, _ in self.mini.write_log:
+            if drive != current:
+                switches += 1
+                current = drive
+        self.assertLessEqual(switches, 4, 'writes should stay on one drive')
+
+    def test_cancellation_and_same_drive(self):
+        self.assertEqual(self.prepare(), OK)
+        self.mini.cancel()
+        self.assertEqual(self.mini.execute(), NOT_READY)
+        self.assertEqual(self.image(2), self.dst)
+        self.mini.poke('drive', bytes([1]))
+        self.assertEqual(self.mini.prepare(0, 1), SAME)
+        self.assertEqual(len(self.mini.write_log), 0)
+
+    def test_name_collision_even_locked(self):
+        self.load(dst=make_disk([('COPY.ME', 0x84, b'NEVER OVERWRITE')]))
+        self.assertEqual(self.prepare(), EXISTS)
+        self.assertEqual(len(self.mini.write_log), 0)
+        self.assertEqual(self.image(2), self.dst)
+
+    def test_full_disk_and_catalog(self):
+        d = bytearray(self.dst)
+        a = offset(17, 0) + 0x38
+        d[a:a + 140] = bytes(140)
+        self.load(dst=bytes(d))
+        self.assertEqual(self.prepare(), FULL)
+        self.assertEqual(len(self.mini.write_log), 0)
+
+        self.load(dst=make_disk([(f'F{i}', 0, b'') for i in range(105)]))
+        self.assertEqual(self.prepare(), FULL)
+        self.assertEqual(len(self.mini.write_log), 0)
+
+    def test_stale_panel_size_and_pointer(self):
+        # A panel is a snapshot; the audit holds the disk to the truth.
+        self.mini.poke('ent_seclo', bytes([1]))
+        self.mini.poke('ent_sechi', bytes([0]))
+        self.mini.poke('ent_track', bytes([34]))
+        self.mini.poke('ent_sector', bytes([15]))
+        self.assertEqual(self.prepare(), OK)
+        self.assertEqual(self.mini.execute(), OK)
+        self.copied()
+
+    def test_multiple_ts_lists_and_empty(self):
+        for n in (0, 122, 123, 245, 491):
+            with self.subTest(sectors=n):
+                self.load(src=make_disk([('COPY.ME', 0, bytes(range(256)) * n)]),
+                          dst=make_disk([]))
+                self.assertEqual(self.prepare(), OK, n)
+                self.assertEqual(self.mini.execute(), OK, n)
+                self.copied()
+
+    def test_bad_graphs_refused_without_writes(self):
+        for side in (1, 2):
+            base = self.src if side == 1 else self.dst
+            f = next(iter(read_files(base).values()))
+            ts = offset(*f['lists'][0])
+            dt, ds = f['blocks'][0]
+            variants = []
+            d = bytearray(base)            # a list that points at itself
+            d[ts + 1:ts + 3] = bytes(f['lists'][0])
+            variants.append(d)
+            d = bytearray(base)            # a data sector off the disk
+            d[ts + 12] = 35
+            variants.append(d)
+            d = bytearray(base)            # the same sector twice
+            d[ts + 14:ts + 16] = d[ts + 12:ts + 14]
+            variants.append(d)
+            d = bytearray(base)            # a live sector marked free
+            d[offset(17, 0) + 0x38 + dt * 4 + (ds < 8)] |= 1 << (ds & 7)
+            variants.append(d)
+            d = bytearray(base)            # a wrong offset in the list
+            d[ts + 5] = 122
+            variants.append(d)
+            d = bytearray(base)            # a wrong sector count
+            d[offset(17, 15) + 11 + 33] = 99
+            variants.append(d)
+            for n, d in enumerate(variants):
+                with self.subTest(side=side, variant=n):
+                    self.load(src=bytes(d) if side == 1 else None,
+                              dst=bytes(d) if side == 2 else None)
+                    self.assertNotEqual(self.prepare(), OK)
+                    self.assertEqual(len(self.mini.write_log), 0)
+
+    def test_late_collision_other_catalog_sector(self):
+        self.assertEqual(self.prepare(), OK)
+        # Same VTOC, but the name now sits in a different catalog sector
+        # than the slot that was reserved.
+        a = offset(17, 14) + 11
+        entry = self.src[offset(17, 15) + 11:offset(17, 15) + 46]
+        self.mini.disks[1][a:a + 35] = entry
+        self.assertEqual(self.mini.execute(), EXISTS)
+        self.assertEqual(len(self.mini.write_log), 0)
+
+    def test_metadata_changed_during_confirmation(self):
+        for side, at in ((1, offset(17, 0) + 6), (1, offset(17, 15) + 11 + 2),
+                         (2, offset(17, 0) + 6), (2, offset(17, 15) + 10)):
+            with self.subTest(side=side, at=at):
+                self.load()
+                self.assertEqual(self.prepare(), OK)
+                self.mini.disks[side - 1][at] ^= 1
+                self.assertEqual(self.mini.execute(), CHANGED)
+                self.assertEqual(len(self.mini.write_log), 0)
+
+    def test_write_protection(self):
+        self.assertEqual(self.prepare(), OK)
+        self.mini.protected_drive = 2
+        self.assertEqual(self.mini.execute(), PROTECTED)
+        self.assertEqual(self.image(2), self.dst)
+        self.assertEqual(self.mini.byte('copy_fault'), 0,
+                         'a refused disk is not an uncertain one')
+
+    def test_every_read_failure(self):
+        self.assertEqual(self.prepare(), OK)
+        plan_reads = self.mini.reads
+        self.assertEqual(self.mini.execute(), OK)
+        all_reads = self.mini.reads
+        for n in range(all_reads):
+            with self.subTest(read=n):
+                self.load()
+                self.mini.fail_read = n
+                r = self.prepare()
+                if r == OK:
+                    r = self.mini.execute()
+                self.assertNotEqual(r, OK)
+                self.preserved()
+                if n < plan_reads:
+                    self.assertEqual(self.image(2), self.dst,
+                                     'no write before the plan is complete')
+                if self.mini.byte('copy_fault'):
+                    writes = len(self.mini.write_log)
+                    self.mini.poke('drive', bytes([1]))
+                    self.assertEqual(self.prepare(), UNCERTAIN)
+                    self.assertEqual(len(self.mini.write_log), writes,
+                                     'a latched fault writes no more')
+
+    def test_every_write_failure_torn_write_and_corruption(self):
+        self.assertEqual(self.prepare(), OK)
+        self.assertEqual(self.mini.execute(), OK)
+        writes = len(self.mini.write_log)
+        source = read_files(self.src)['COPY.ME']['data']
+        for mode in ('fail_write', 'partial_write', 'corrupt_write'):
+            for n in range(writes):
+                with self.subTest(mode=mode, write=n):
+                    self.load()
+                    self.assertEqual(self.prepare(), OK)
+                    setattr(self.mini, mode, n)
+                    self.assertEqual(self.mini.execute(), UNCERTAIN)
+                    self.assertEqual(self.mini.byte('copy_fault'), 1)
+                    self.preserved()
+                    # read_files itself refuses a broken allocation graph:
+                    # shared sectors, a wrong count, a bitmap that
+                    # disagrees. The entry may only appear if the failure
+                    # was the very last write, the one publishing it, and
+                    # then the file it names must still be the right bytes.
+                    files = read_files(self.image(2))
+                    if 'COPY.ME' in files:
+                        self.assertEqual(n, writes - 1,
+                                         'published before the copy was whole')
+                        self.assertEqual(files['COPY.ME']['data'], source)
+                    self.assertLessEqual(len(self.mini.write_log), writes)
+
+    def test_fragmented_destination(self):
+        d = bytearray(make_disk([(f'F{i}', 0, b'KEEP' + bytes([i]))
+                                 for i in range(30)]))
+        files = read_files(d)
+        for i in range(0, 30, 2):
+            for t, sec in files[f'F{i}']['blocks'] + files[f'F{i}']['lists']:
+                d[offset(17, 0) + 0x38 + t * 4 + (sec < 8)] |= 1 << (sec & 7)
+            d[offset(17, 15 - i // 7) + 11 + (i % 7) * 35] = 255
+        self.load(src=make_disk([('COPY.ME', 0, bytes(range(256)) * 123)]),
+                  dst=bytes(d))
+        self.assertEqual(self.prepare(), OK)
+        self.assertEqual(self.mini.execute(), OK)
+        self.copied()
+
+    def test_deleted_slot_reused(self):
+        d = bytearray(self.dst)
+        d[offset(17, 15) + 11] = 255
+        self.load(dst=bytes(d))
+        self.assertEqual(self.prepare(), OK)
+        self.assertEqual(self.mini.execute(), OK)
+        self.copied()
+
+    def test_source_file_must_still_be_there(self):
+        self.assertEqual(self.prepare(), OK)
+        # Remove the entry from the source between plan and execution.
+        a = offset(17, 15) + 11
+        self.mini.disks[0][a] = 255
+        self.assertEqual(self.mini.execute(), CHANGED)
+        self.assertEqual(len(self.mini.write_log), 0)
+
+
+if __name__ == '__main__':
+    unittest.main()

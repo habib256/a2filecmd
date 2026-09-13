@@ -6,3 +6,4 @@ dist/
 __pycache__/
 pom2.log
 build-6502/
+build-mini/
