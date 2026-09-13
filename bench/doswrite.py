@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """C from ProDOS to a real Disk II DOS 3.3 disk, using disposable media only."""
+import os
 import shutil
 import sys
 import tempfile
@@ -22,6 +23,7 @@ def main():
   hello=next(e for e in entries if e[1:6]==b'HELLO');payload=im.read(hello)
   before=make_disk([('KEEP',0x80,b'old text\r'*50)])
   target.write_bytes(before)
+  dos_slot=os.environ.get('A2FC_DOS_SLOT','6')
   with Pom2(hd,floppy2=target,port=6896) as p:
    s=Session(p);s.boot()
    s.select('DEMO');s.key(b'\r');p.stable();s.select('HELLO')
@@ -41,19 +43,23 @@ def main():
     s.key(b'\r');s.wait(lambda:s.has('KEEP') and '/DOS 3.3' in s.rows()[0],'reopen DOS catalog');p.stable()
     s.ok('DOS disk reopens after volume refresh',s.has('KEEP'))
    s.key(b'\t');s.key(b'C')
-   s.wait(lambda:s.has('Copy HELLO to DOS 3.3 S6,D2?'),'DOS copy confirmation',60)
+   s.wait(lambda:s.has('Copy HELLO to DOS 3.3 S'+dos_slot+',D2?'),'DOS copy confirmation',60)
    s.ok('No write before confirmation',target.read_bytes()==before)
    s.key(b'N');p.stable()
    s.ok('Refusal preserves DOS disk',target.read_bytes()==before)
-   s.key(b'C');s.wait(lambda:s.has('Copy HELLO to DOS 3.3 S6,D2?'),'second confirmation',60)
+   s.key(b'C');s.wait(lambda:s.has('Copy HELLO to DOS 3.3 S'+dos_slot+',D2?'),'second confirmation',60)
    aux=p.peek(0x1000,0xB000,'aux')
    s.key(b'Y');s.wait(lambda:s.has('Copied to DOS 3.3; source kept.'),'verified physical copy',120)
    s.ok('AUX RAM disk storage preserved',aux==p.peek(0x1000,0xB000,'aux'))
    s.key(b'C');s.wait(lambda:s.has('Copy refused:'),'collision refused',60)
    for name in ('HGR.RLE','README'):
     s.select(name);s.key(b'C')
-    s.wait(lambda:s.has('Copy '+name+' to DOS 3.3 S6,D2?'),'copy '+name,60)
+    s.wait(lambda:s.has('Copy '+name+' to DOS 3.3 S'+dos_slot+',D2?'),'copy '+name,60)
     s.key(b'Y');s.wait(lambda:s.has('Copied to DOS 3.3; source kept.'),'verified '+name,120)
+   s.select('..');s.key(b'\r');p.stable();s.select('IMGHGR');s.key(b'\r');p.stable();s.select('TIGER')
+   s.key(b'C');s.wait(lambda:s.has('Copy TIGER to DOS 3.3 S'+dos_slot+',D2?'),'TIGER confirmation',60)
+   s.key(b'Y');s.wait(lambda:s.has('Copied to DOS 3.3; source kept.'),'verified TIGER copy',120)
+   s.select('..');s.key(b'\r');p.stable();s.select('DEMO');s.key(b'\r');p.stable()
    p.eject(1)
    saved=target.read_bytes();target.chmod(0o444);p.insert(1,str(target))
    s.select('SAMPLE');s.key(b'C')
@@ -70,6 +76,10 @@ def main():
    expected=im.read(e)
    if kind==4:expected=e[31:33]+len(expected).to_bytes(2,'little')+expected
    s.ok(name+' has exact DOS type, prefix and payload',result[name]['type']==kind and result[name]['data']==expected+bytes((-len(expected))%256))
-  s.ok('Source volume preserved',hd.read_bytes()==original)
+  pictures=next(e for e in im.entries(2) if e[1:7]==b'IMGHGR')
+  tiger=next(e for e in im.entries(int.from_bytes(pictures[17:19],'little')) if e[1:6]==b'TIGER')
+  payload=im.read(tiger);expected=tiger[31:33]+len(payload).to_bytes(2,'little')+payload
+  s.ok('Screenshot case: TIGER BIN $2000, 8192 bytes exact',len(payload)==8192 and result['TIGER']['data']==expected+bytes((-len(expected))%256))
+  s.ok('Source volume preserved' ,hd.read_bytes()==original)
   return ok_all(s,'DOSWRITE C to physical DOS disk')
 if __name__=='__main__':sys.exit(main())

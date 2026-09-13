@@ -1,5 +1,15 @@
 # Consolidation : budgets mémoire
 
+Finalisation DISKIMG, 13 septembre 2026 : la réservation exclusive directe
+et la finalisation commune aux modes R/W/O rendent 50/39 octets à DISKIMG
+(65C02/6502), réserves 369/313. `DiskImg` occupe 200 octets à `$3E00`, avec
+assertion sur les 512 disponibles ; son nouveau champ de propriété n'ajoute
+pas de BSS résident. MAIN 272/782, LC 80/73, LOWRAM 282/307 et écart avant
+pile 300/999 inchangés. Le helper de finalisation garde un octet de résultat
+pendant les fermetures/nettoyages ; pas de récursion ni de chargement imbriqué.
+Les deux liens gardent leurs plafonds et la pile de 192 octets. Validation :
+32 tests ciblés et sept images ProDOS contrôlés.
+
 DOSWRITE et retour aux volumes, 13 septembre 2026 : surcouche 6 773/6 838
 octets (65C02/6502), BSS 2 433/2 434, fin `$3EF5`/`$3F37`, soit 266/200
 octets libres sous `$4000`. Locaux statiques, aucune récursion ni AUX ;

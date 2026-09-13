@@ -36,8 +36,8 @@ pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 | `tree.py` | parcours de la racine XL jusqu’au résultat complet, totaux exacts comparés à l’image et pile préservée |
 | `memory.py` | le creux maximal de la pile C, mesure en faisant travailler le programme |
 | `mini33.py` | the Apple II+ 48 KB DOS 3.3 edition on an NMOS core: panels, pagination, long names, preview, malformed and missing disks, quit and relaunch, and changed-character-only screen writes through watchpoints |
-| `mini33_write.py` | the same edition's real DOS writes on disposable images: cancel, hardware write protection, a verified copy, a refused collision, then DOS BLOAD and SAVE over the result |
-| `mini33_ops.py` | tags, hi-res viewer, exclusive TXT create and catalog-first delete, on disposable images |
+| `mini33_write.py` | the same edition's real DOS writes on disposable images: cancel, hardware write protection, a copy that stays on the panels, a refused collision, then DOS BLOAD and SAVE over the result |
+| `mini33_ops.py` | tags, hi-res viewer, exclusive TXT create, catalog-first delete, and a tagged two-file copy, on disposable images |
 | `mini33_time.py` | what the disk paths cost in cycles, since a missed sector is a whole 200 000-cycle revolution: catalog reads and a 48-sector copy. Read-only on the catalog paths |
 | `pom2.py` | le pilote d'emulateur commun |
 

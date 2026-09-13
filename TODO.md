@@ -222,6 +222,14 @@ réinitialise aussi le mode DOS/image pour permettre les réouvertures.
 Tests C de pannes, sim65 deux CPU et banc POM2 Disk II dans `doswrite`.
 La copie par lots et les autres mutations DOS restent à faire.
 
+Suite du chantier 1 : DISKIMG conserve la propriété de sa réservation,
+contrôle les fermetures et nettoie uniquement l'image créée par R. Un
+nettoyage échoué nomme le fichier conservé, même après annulation ; W/O
+n'effacent jamais leur source. Tests C PO/DSK, pannes combinées et retry,
+32 tests ciblés et sept images contrôlés. DISKIMG gagne 50/39 octets,
+résident inchangé. Restent UNSHRINK, IMGFS, DOS33 et la relecture complète
+des images créées.
+
 ## 2. Parcours d’arbres itératifs
 
 `count_tree`, `copy_tree` et `delete_tree` restent récursifs. Le refus quand

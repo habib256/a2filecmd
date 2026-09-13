@@ -16,7 +16,8 @@ class Disk:
         self.d = bytearray(SIZE)
         # sectors allocated by the writer; start free-map tracking after DOS area
         self.free = []  # list of (track, sector) available for files
-        for t in range(3, 17):            # tracks 3..16 for files (image kept small for tests)
+        for t in range(3, TPD):
+            if t == 17: continue  # VTOC and catalog track are reserved
             for s in range(SPT):
                 self.free.append((t, s))
     def put(self, track, sector, data):
@@ -80,6 +81,10 @@ def build(files):
         dk.put(17, cs, c)
         if ei >= len(entries):
             break
+    # A writable DOS disk needs the real free-sector bitmap, not all zeroes
+    # (which describes a completely full disk). Never free a live allocation.
+    for t, s in dk.free:
+        dk.d[off(17, 0) + 0x38 + t * 4 + (1 if s < 8 else 0)] |= 1 << (s & 7)
     return bytes(dk.d)
 
 def main():

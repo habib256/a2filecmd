@@ -21,6 +21,7 @@
         .import copy_prepare, copy_execute, copy_cancel
         .import create_prepare, create_execute
         .import delete_prepare, delete_execute
+        .export copy_progress
 
 rwts_error      = _sim_rwts_error
 
@@ -39,6 +40,10 @@ read_sector:
 
 write_sector:
         jmp     _sim_write
+
+; The Apple II build draws the footer bar. The harness has no screen.
+copy_progress:
+        rts
 
 ; cc65 returns an unsigned char in A, which is what these already do.
 _mini_catalog:

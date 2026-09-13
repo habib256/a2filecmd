@@ -180,6 +180,8 @@ $(CODE): $(SRC)/plugins/file_install.h $(SRC)/file_output.h $(SRC)/file_copy.h $
 	@python3 $(TOOLS)/check_layout.py --lbl $(BUILD)/a2fc.lbl --bin $@ $(LAYOUT_BIG)
 
 # -- The service-table overlays ---------------------------------------------
+$(BUILD)/dosput.PLG: $(SRC)/plugins/doswrite.c
+
 $(BUILD)/%.PLG: $(SRC)/plugins/%.c $(wildcard $(SRC)/plugins/*.h) $(wildcard $(SRC)/plugins/*.s) $(wildcard $(SRC)/plugins/pt3lib/*) $(SRC)/a2fc_plugin.h sdk/plugin.cfg sdk/find.cfg sdk/pt3.cfg sdk/nibcopy.cfg Makefile | $(BUILD)
 	$(CC65BIN)cc65 -t $(TARGET) $(CCDEFS) -O -Oirs -Cl --codesize $(CODESIZE) -o $(BUILD)/$*.s $<
 	$(CC65BIN)ca65 -t $(TARGET) -o $(BUILD)/$*.o $(BUILD)/$*.s
@@ -303,6 +305,7 @@ test: test-mini
 	python3 $(TOOLS)/test_file_safety.py
 	python3 $(TOOLS)/test_binary2_safety.py
 	python3 $(TOOLS)/test_doswrite.py
+	python3 $(TOOLS)/test_dosimage.py
 	python3 $(TOOLS)/test_file_create.py
 	python3 $(TOOLS)/test_file_output.py
 	python3 $(TOOLS)/test_file_install.py
@@ -317,6 +320,7 @@ test: test-mini
 	python3 $(TOOLS)/test_volinfo.py
 	python3 $(TOOLS)/test_diskimg_verify.py
 	python3 $(TOOLS)/test_diskimg_input.py
+	python3 $(TOOLS)/test_diskimg_output.py
 	python3 $(TOOLS)/test_dirscan.py
 	python3 $(TOOLS)/test_blkview.py
 	python3 $(TOOLS)/test_blkedit.py

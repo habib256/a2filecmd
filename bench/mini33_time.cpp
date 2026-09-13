@@ -89,13 +89,14 @@ int main(int argc, char** argv) {
     run(cpu, 24000000);
     expect(m, "A2FC.MINI");
     long prepare = timed(m, cpu, "C", "CANCEL");
-    expect(m, "SOURCE S6 D1");
-    long execute = timed(m, cpu, "Y", "COPY VERIFIED");
+    expect(m, "COPY ");
+    expect(m, "KEEP.DST");
+    long execute = timed(m, cpu, "Y", "COPIED");
 
     printf("catalog, first switch to drive 2: %ld cycles\n", to_target);
     printf("catalog, warm switches:           %ld %ld %ld %ld %ld %ld cycles\n",
            warm[0], warm[1], warm[2], warm[3], warm[4], warm[5]);
-    printf("copy A2FC.MINI, checking phase:   %ld cycles\n", prepare);
+    printf("copy A2FC.MINI, prepare:          %ld cycles\n", prepare);
     printf("copy A2FC.MINI, writing phase:    %ld cycles\n", execute);
     printf("copy A2FC.MINI, total:            %ld cycles = %.1f s at 1 MHz\n",
            prepare + execute, (prepare + execute) / 1.0e6);

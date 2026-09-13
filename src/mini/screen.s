@@ -11,7 +11,7 @@
 
         .include "mini.inc"
 
-        .export present, at, put, inline_text, clear, zone
+        .export present, present_top, at, put, inline_text, clear, zone
         .export number, hexbyte, filetype, keys_bar, keys_bar_inline
 
         .import screen_image
@@ -75,6 +75,31 @@ present:
         bpl     @cell
         inx
         cpx     #24
+        bcc     @row
+        rts
+
+; Only the four banner rows. The Disk II current-track bytes sit in $400
+; where a full present() would overwrite them; the first catalog still
+; needs those values.
+present_top:
+        ldx     #0
+@row:
+        lda     scr_lo,x
+        sta     ptr
+        lda     scr_hi,x
+        sta     ptr+1
+        lda     img_lo,x
+        sta     ptr2
+        lda     img_hi,x
+        sta     ptr2+1
+        ldy     #39
+@cell:
+        lda     (ptr2),y
+        sta     (ptr),y
+        dey
+        bpl     @cell
+        inx
+        cpx     #4
         bcc     @row
         rts
 

@@ -1853,12 +1853,22 @@ void __fastcall__ hex_entry(const struct A2fcApi* a)
  * MAIN, the file order of A2FC and of the game), an HGRR v1 stream (RLE,
  * 8,192 decompressed) or a DHRR v1 stream (RLE, 16,384). */
 enum { IMG_NONE, IMG_HGR, IMG_DHGR, IMG_HGRR, IMG_DHRR };
-static const char* const IMG_NAMES[] = { "not an image", "HGR raw", "DHGR raw", "HGR RLE", "DHGR RLE" };
+/* IMAGE alone displays these names; keep the strings in its overlay. */
+#pragma rodata-name(push, "IMAGERO")
+static const char img_none[] = "not an image";
+static const char img_hgr[] = "HGR raw";
+static const char img_dhgr[] = "DHGR raw";
+static const char img_hgr_rle[] = "HGR RLE";
+static const char img_dhgr_rle[] = "DHGR RLE";
+#pragma rodata-name(pop)
+static const char* const IMG_NAMES[] = { img_none, img_hgr, img_dhgr, img_hgr_rle, img_dhgr_rle };
 static const unsigned long IMG_BYTES[] = { 0, 8192, 16384, 8192, 16384 };
 static unsigned char img_kind;
 static unsigned char aux_dirty;    /* an image wrote to AUX: /RAM must be rebuilt */
 static const char* ram_note;
+#pragma rodata-name(push, "LC")
 static const char RAM_NOTE[] = "  /RAM was rebuilt empty.";
+#pragma rodata-name(pop)
 
 #define HGR_MAIN ((unsigned char*)0x2000)
 #define OVERLAY ((unsigned char*)0x1B00)   /* the overlay window, see a2fc.cfg */
@@ -2828,8 +2838,7 @@ static const char S_DOT[] = "%s.%s";
 static const char S_SLASH[] = "%s/%s";
 static const char S_DSK[] = "DSK";
 static const char S_PO[] = "PO";
-static const char S_EXISTS[] = "A file of that name exists.";
-static const char S_CREATE[] = "Cannot create the image file.";
+static const char S_CLEANUP[] = "Cleanup failed: %s retained.";
 static const char S_DONE[] = "%u blocks %s %s.%s";
 static const char S_VERIFIED[] = " Verified.";
 static const char S_WRITTEN[] = "written to";
@@ -2864,13 +2873,15 @@ struct Dev { unsigned char unit, inuse; unsigned int blocks; char name[NAME_LEN]
 struct DiskImg {
     struct Side src, dst;
     struct Dev dev[8];
-    unsigned char ndev, aux_used;
+    unsigned char ndev, aux_used, output_owned;
     unsigned int total;
     unsigned char parms[6];
     unsigned char checking;
     unsigned int checkblock;
     const char* source_name;
 };
+
+typedef char diskimg_state_fits[0x200 - sizeof(struct DiskImg) + 1];
 
 /* ProDOS block b of a track occupies two physical sectors (low half then
  * high half): these, in pairs, as in po2dsk.py. */
@@ -3105,6 +3116,28 @@ static const char* di_error(unsigned char code)
     return input;
 }
 
+/* Exclusive image reservation and finalization. Only R owns an output;
+ * W/O must never clean up the source image or a physical disk. */
+static unsigned char di_new_image(void)
+{
+    DI->output_owned = reserve_output(full);
+    if (DI->output_owned != OUTPUT_RESERVED) return 0;
+    DI->dst.f = fopen(full, "wb");
+    return DI->dst.f != NULL;
+}
+static void di_finish(unsigned char r)
+{
+    if (DI->src.f && fclose(DI->src.f) && !r) r = 0x27;
+    if (DI->dst.f && fclose(DI->dst.f) && !r) r = 0x27;
+    DI->src.f = DI->dst.f = NULL;
+    if (r) {
+        if (DI->output_owned && remove(full)) sprintf(note, S_CLEANUP, reselect);
+        else if (DI->checking) sprintf(note, S_CHECKFAIL, DI->checkblock, r == 0xFE ? S_DIFFER : di_error(r));
+        else sprintf(note, S_FAILED, di_error(r));
+        reselect[0] = 0;
+    }
+}
+
 void __fastcall__ diskimg_entry(const struct A2fcApi* a)
 {
     struct Panel* pan = &panels[active];
@@ -3126,7 +3159,7 @@ void __fastcall__ diskimg_entry(const struct A2fcApi* a)
     *(unsigned char*)0xC056 = 0;       /* LORES: $2000-$3FFF out of the 80STORE routing */
     *(unsigned char*)0xC002 = 0;       /* RAMRD main bank */
     *(unsigned char*)0xC004 = 0;       /* RAMWRT main bank */
-    DI->aux_used = 0;
+    DI->aux_used = DI->output_owned = 0;
     DI->checking = 0;
     src->f = dst->f = NULL;
     di_title(S_INTRO);
@@ -3161,17 +3194,14 @@ void __fastcall__ diskimg_entry(const struct A2fcApi* a)
         if (key == 0x1B) goto out;
         sprintf(reselect, S_DOT, input, key == 'D' ? S_DSK : S_PO);
         sprintf(full, S_SLASH, pan->path, reselect);
-        if (exists(full)) { strcpy(note, S_EXISTS); goto out; }
         _filetype = 0x06;
         _auxtype = 0;
         dst->kind = key == 'D' ? SIDE_DSK : SIDE_PO;
         dst->base = 0;
-        dst->f = new_output(full);
-        if (!dst->f) { strcpy(note, S_CREATE); goto out; }
+        if (!di_new_image()) { r = 0x27; goto out; }
         src->kind = SIDE_DEVICE;
         src->unit = to->unit;
         r = di_copy(0);
-        if (r) { fclose(dst->f); dst->f = NULL; remove(full); }
     } else {
         verb = S_COPIED;
         if (!(from = di_pick(S_CFROM, 0))) goto out;
@@ -3188,13 +3218,7 @@ void __fastcall__ diskimg_entry(const struct A2fcApi* a)
     }
     if (!r) sprintf(note, S_DONE, DI->total, verb, di_where(to->unit), dst->kind == SIDE_DEVICE ? S_VERIFIED : S_EMPTY);
 out:
-    if (src->f) fclose(src->f);
-    if (dst->f && fclose(dst->f) && !r) r = 0x27;
-    if (r) {
-        if (DI->checking) sprintf(note, S_CHECKFAIL, DI->checkblock, r == 0xFE ? S_DIFFER : di_error(r));
-        else sprintf(note, S_FAILED, di_error(r));
-        reselect[0] = 0;
-    }
+    di_finish(r);
     if (DI->aux_used && ram_format()) strcat(note, S_RAM);
 }
 #pragma rodata-name (pop)
@@ -3221,6 +3245,8 @@ static const char mn_copy[] = "COPY.PLG";
 static const char mn_open[] = "OPEN.PLG";
 static const char mn_nav[] = "NAV.PLG";
 static const char mn_batch[] = "BATCH.PLG";
+static const char mn_dosimage[] = "DOSIMAGE.PLG";
+static const char mn_dosput[] = "DOSPUT.PLG";
 static const char mn_self[] = "MENU.PLG";
 static const char mn_bad[] = "(unreadable)";
 static const char mn_stale[] = "(from another build of A2 File Cmd)";
@@ -3296,7 +3322,7 @@ void __fastcall__ menu_entry(const struct A2fcApi* a)
         if (!dir_open(other_full)) continue;
         while (n < MENU_MAX && dir_next()) {
             len = strlen(dir_entry.name);
-            if (dir_entry.type != 0x06 || len < 5 || strcmp(dir_entry.name + len - 4, mn_suffix) || !strcmp(dir_entry.name, mn_self) || !strcmp(dir_entry.name, mn_copy) || !strcmp(dir_entry.name, mn_open) || !strcmp(dir_entry.name, mn_nav) || !strcmp(dir_entry.name, mn_batch)) continue;
+            if (dir_entry.type != 0x06 || len < 5 || strcmp(dir_entry.name + len - 4, mn_suffix) || !strcmp(dir_entry.name, mn_self) || !strcmp(dir_entry.name, mn_copy) || !strcmp(dir_entry.name, mn_open) || !strcmp(dir_entry.name, mn_nav) || !strcmp(dir_entry.name, mn_batch) || !strcmp(dir_entry.name, mn_dosimage) || !strcmp(dir_entry.name, mn_dosput)) continue;
             dir_entry.name[len - 4] = 0;
             for (i = 0; i < n; ++i) if (!strcmp(m[i].name, dir_entry.name)) break;
             if (i < n) continue;
@@ -3795,6 +3821,7 @@ void __fastcall__ dos33_entry(const struct A2fcApi* a)
  * the C stack (192 bytes); true locals go on the C stack
  * (static-locals off). */
 
+static const char us_extract_failed[] = "Extract failed: read/write error.";
 static const char us_create_failed[] = "Create failed; existing files kept.";
 
 /* The assembly core, src/unshrink.s. Its AUX addresses, repeated here. */
@@ -3960,7 +3987,7 @@ static unsigned char us_extract_thread(void)
         }
     }
     if (fclose(US->out)) r = 0;
-    if (!r) { remove(other_full); strcpy(note, "Extract failed: read/write error."); return 0; }
+    if (!r) { remove(other_full); strcpy(note, us_extract_failed); return 0; }
     /* what remains of the thread (ShrinkIt's padding byte, a truncated thread) */
     if (US->rem_in) fseek(US->in, (long)US->rem_in, SEEK_CUR);
     ++US->n_done;
@@ -4066,7 +4093,22 @@ out:
 
 #pragma rodata-name(push, "LC")
 static const char doswrite_plugin[] = "DOSWRITE";
+static const char dosimage_plugin[] = "DOSIMAGE";
+static const char dosput_plugin[] = "DOSPUT";
 #pragma rodata-name(pop)
+/* input carries only the phase and data offset across overlay loads. Each
+ * phase closes every file; DOSIMAGE rebuilds its sibling path after loading. */
+static void copy_dos(unsigned char move)
+{
+    if (!move && panels[!active].img_len) {
+        input[0] = 0;
+        overlay_run(dosimage_plugin, 'P');
+        if (input[0] != 'I') return;
+        /* I also means cleanup if the engine cannot be loaded. */
+        overlay_run(dosput_plugin, 'I');
+        overlay_run(dosimage_plugin, input[0] == 'F' ? 'F' : 'X');
+    } else overlay_run(doswrite_plugin, move);
+}
 static void copy_or_move(unsigned char move)
 {
     struct Panel* pan = &panels[active];
@@ -4075,7 +4117,7 @@ static void copy_or_move(unsigned char move)
     if (pan->fs == FS_DOS33) { overlay_run("DOS33", 'C'); return; }   /* DOS 3.3 extraction */
     if (pan->fs) { overlay_run("IMGFS", 0); return; }   /* extraction from a ProDOS image */
     if (panels[!active].fs == FS_DOS33) {
-        overlay_run(doswrite_plugin, move); return;
+        copy_dos(move); return;
     }
     if (!target_check()) return;
     n = pick_targets();

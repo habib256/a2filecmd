@@ -365,6 +365,34 @@ volume source, AUX et trois allers-retours catalogue/volumes. Résultat local :
 Il s'agit d'une validation du pilote Disk II sous émulation, pas d'un essai
 sur un Apple II physique.
 
+## DISKIMG : réservation et fermeture des images créées
+
+Le mode R appelle `reserve_output` directement : zéro ne donne aucun droit
+de suppression, `OUTPUT_CLOSE_FAILED` autorise uniquement le nettoyage et
+seul `OUTPUT_RESERVED` permet l'ouverture en `wb`. Le contrôle d'existence
+préalable est remplacé par cette création exclusive. La propriété est dans
+`DiskImg.output_owned`, remise à zéro à chaque entrée dans DISKIMG.
+
+`di_finish` ferme les deux flux éventuels avant le diagnostic final et remet
+leurs pointeurs à NULL. Toute fermeture échouée interdit l'annonce de succès.
+Sur erreur ou annulation, il ne supprime que l'image créée par R ; W et O
+ne reçoivent aucune propriété sur un fichier. Si la suppression échoue, le
+message nomme l'image conservée et prime sur l'erreur initiale. Une nouvelle
+tentative refuse cette entrée sans la tronquer. Une erreur de fermeture du
+flux source W est désormais signalée ; ce fichier reste intact.
+
+Le champ supplémentaire tient dans l'état à `$3E00` (200/512 octets), avec
+assertion de capacité. Aucun nouveau tampon ni accès AUX : les chemins,
+banques de staging, consentement préalable et reconstruction du disque RAM
+restent ceux de DISKIMG. Cette correction ne fournit pas encore la relecture
+complète des images créées. Les écritures sur périphérique conservent leur
+vérification existante ; aucune atomicité physique n'est ajoutée.
+
+Validation : cinq tests C de réservation/transfert/finalisation, avec PO/DSK,
+fermetures, écriture courte, seek, annulation, nettoyage échoué, collision et
+retry contrôlés sur les octets ; 32 tests ciblés au total, deux liens et sept
+images ProDOS contrôlés.
+
 ## Limites ouvertes et preuves
 
 COPY utilise maintenant la transaction des temporaires vérifiés. Les

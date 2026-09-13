@@ -26,6 +26,7 @@ static struct Entry selected;
 static unsigned char scratch[512],active;
 static char path[64],note_text[100],reselect[64];
 static int mode,reads,writes,opens,closes,fail_at;
+static unsigned char target_unit=0xE0;
 static unsigned char dos_order[16]={0,14,13,12,11,10,9,8,7,6,5,4,3,2,1,15};
 static int injected_error(FILE* f){return (mode==9 && opens==2) || ferror(f);}
 void dw_mainbank(void){}
@@ -34,7 +35,7 @@ static unsigned char mli(unsigned char cmd,void* p) {
  struct Block* b=p;unsigned int h;unsigned char* q;
  if(cmd==0xC5){struct Online* o=p;if(mode==15)return 0x27;memset(o->buffer,0,256);o->buffer[0]=0x71; o->buffer[1]='V';return 0;}
  if(cmd==0xC4){struct Info* i=p;i->storage=1;i->access=0xC3;i->aux=0x2000;i->type=selected.type;return mode==12?0x27:0;}
- if(b->unit!=0xE0 || b->block>=280 || (cmd!=0x80 && cmd!=0x81))abort();
+ if(b->unit!=target_unit || b->block>=280 || (cmd!=0x80 && cmd!=0x81))abort();
  if(cmd==0x80){++reads;if(mode==2 && reads==fail_at)return 0x27;}
  else {++writes;if(mode==3 && writes==fail_at)return 0x27;}
  for(h=0;h<2;++h){
@@ -62,7 +63,7 @@ int main(int argc,char**argv){
  struct A2fcApi api;memset(&api,0,sizeof api);
  disk=fopen(argv[1],"r+b");strcpy(path,argv[2]);mode=atoi(argv[3]);fail_at=atoi(argv[4]);
  strcpy(selected.name,"NEW");selected.type=atoi(argv[5]);
- strcpy(panels[0].path,"/V");panels[1].fs=FS_DOS33;panels[1].dir_key=0xE0;
+ strcpy(panels[0].path,"/V");panels[1].fs=FS_DOS33;panels[1].dir_key=target_unit=(argc>6?atoi(argv[6]):0xE0);
  api.panels=panels;api.active=&active;api.selected=&selected;api.full="/V/NEW";api.copy_buf=scratch;
  api.note=note_text;api.reselect=reselect;api.memcpy=memcpy;api.memset=memset;api.strcpy=strcpy;
  api.strlen=strlen;api.sprintf=sprintf;api.mli=mli;api.fopen=source_open;api.fread=source_read;api.fclose=source_close;
@@ -102,13 +103,24 @@ class DosWrite(unittest.TestCase):
      files=read_files(self.disk.read_bytes());self.assert_keep()
      expected=(prefix+size.to_bytes(2,'little') if kind!=4 else b'')+self.payload
      self.assertEqual(files['NEW']['data'],expected+bytes((-len(expected))%256))
+ def test_all_slots_and_drives(self):
+  for slot in range(1,8):
+   for drive in (0,0x80):
+    unit=slot*16+drive
+    self.disk.write_bytes(self.original)
+    out=subprocess.check_output([self.exe,self.disk,self.src,'0','1','6',str(unit)],text=True)
+    if unit==0x70:
+     self.assertEqual(self.disk.read_bytes(),self.original)
+     self.assertIn('Cannot identify',out)
+    else:
+     self.assertIn('Copied to DOS',out);self.assert_keep()
  def test_native_16bit_engines(self):
   # sim65 has no lseek: keep the 140 KB disk in Python, replacing only block
   # transport. The same plugin_entry and source stdio run on both real CPUs.
   p=Path(self.tmp.name)
-  start=C.index(' if(b->unit!=0xE0')
+  start=C.index(' if(b->unit!=target_unit')
   end=C.index('static FILE* source_open',start)
-  code=C[:start]+r''' if(b->unit!=0xE0 || b->block>=280)abort();
+  code=C[:start]+r''' if(b->unit!=target_unit || b->block>=280){fprintf(stderr,"BAD block %u unit %u\n",b->block,b->unit);abort();}
  if(cmd==0x80)++reads;else ++writes;
  putchar(cmd);putchar(b->block&255);putchar(b->block>>8);
  if(cmd==0x81)fwrite(b->buffer,1,512,stdout);

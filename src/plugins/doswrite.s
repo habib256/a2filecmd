@@ -1,5 +1,6 @@
 ; Disk II write-protection sensing only. No write mode, AUX or RAM disk use.
 .export _dw_protected, _dw_mainbank
+.importzp ptr1
 .segment "CODE"
 _dw_mainbank:
  bit $C056
@@ -9,38 +10,54 @@ _dw_mainbank:
 _dw_protected:
  php
  sei
- tax
- lda $C600
+ pha
+ and #$70
+ lsr
+ lsr
+ lsr
+ lsr
+ ora #$C0
+ sta ptr1+1
+ lda #0
+ sta ptr1
  ; Standard Disk II boot ROM signature; refuse an unknown controller.
- lda $C601
+ ldy #1
+ lda (ptr1),y
  cmp #$20
  bne protected
- lda $C603
+ ldy #3
+ lda (ptr1),y
  bne protected
- lda $C605
+ ldy #5
+ lda (ptr1),y
  cmp #$03
  bne protected
- txa
+ pla
+ pha
+ and #$70
+ tax
+ pla
  bmi drive2
- bit $C0EA
+ lda $C08A,x
  jmp sense
 drive2:
- bit $C0EB
+ lda $C08B,x
 sense:
- bit $C0E0
- bit $C0E2
- bit $C0E4
- bit $C0E6
- bit $C0ED
- lda $C0EE
+ lda $C080,x
+ lda $C082,x
+ lda $C084,x
+ lda $C086,x
+ lda $C08D,x
+ lda $C08E,x
  and #$80
  pha
- bit $C0EC
+ lda $C08C,x
  pla
  ldx #0
  plp
  rts
 protected:
+ pla
  lda #1
  ldx #0
  plp

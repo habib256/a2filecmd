@@ -211,6 +211,13 @@ class ImageTest(unittest.TestCase):
         self.master = bytes(master)
         self.image = mkmini33.build(self.master, b'\x60' * 2048)
 
+    def test_hello_announces_the_load(self):
+        self.assertIn(b'A2FILECMD MINI DOS 3.3', self.image)
+        self.assertIn(b'A2FILECMD V0.7.0', self.image)
+        self.assertIn(b'GPL3 VERHILLE ARNAUD', self.image)
+        self.assertIn(b'LOADING .... PLEASE WAIT ....', self.image)
+        self.assertIn(b'BRUN A2FC.MINI', self.image)
+
     def test_image_structure_and_allocations(self):
         self.assertEqual(self.image[:3 * 4096], self.master[:3 * 4096])
         cat = self.image[17 * 4096 + 15 * 256:18 * 4096]

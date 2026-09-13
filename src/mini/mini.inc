@@ -88,7 +88,10 @@ ZP_COUNT        = 32
 ; Apple II+ hardware and DOS 3.3 entry points
 ; ---------------------------------------------------------------------
 KBD             = $C000         ; key, bit 7 set when one is waiting
+CLR80STORE      = $C000         ; IIe write: 80STORE off so $400 is main
 KBDSTROBE       = $C010
+CLR80VID        = $C00C         ; IIe write: 40 columns; ignored on a II+
+ALTCHAROFF      = $C00E
 TXTCLR          = $C050
 TXTSET          = $C051
 MIXCLR          = $C052

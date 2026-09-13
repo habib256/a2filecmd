@@ -2,8 +2,8 @@
 ;
 ; Ported field for field from the C edition so the screens are the same
 ; ones: same headers, same 19-column panes either side of a colon, same
-; inverse key blocks, same messages, same answers accepted. The POM2
-; benches assert on that text, and they are not being relaxed.
+; inverse key blocks. Copy stays on those panels: footer prompt, then a
+; progress bar, then COPIED. The POM2 benches assert on that text.
 ;
 ; Every local lives in BSS, never in a zero page temp: the screen
 ; routines below use t0 to t7 freely, and a value that had to survive a
@@ -11,9 +11,9 @@
 
         .include "mini.inc"
 
-        .export main
+        .export main, copy_progress
 
-        .import present, at, put, inline_text, clear, zone
+        .import present, present_top, at, put, inline_text, clear, zone
         .import number, hexbyte, filetype, keys_bar, keys_bar_inline
         .import key
         .import catalog, preview, load_file, load_count, blank_scratch
@@ -23,11 +23,10 @@
         .import scratch
         .import copy_prepare, copy_execute, copy_cancel
         .import create_prepare, create_execute
-        .import ram_source, data_count
+        .import data_count, copy_done, copy_total
         .import delete_prepare, delete_execute, delete_cancel
         .import del_index, del_fault
         .import ask_name, edit_text, edit_len, name_buf
-        .import copy_from, copy_to, copy_src_volume, copy_dst_volume
         .import cp_index, cp_dest
         .import cs_name, cs_type, cs_seclo, cs_sechi
         .import active, count, volume, drive, slot, selected, error
@@ -59,6 +58,11 @@ rl_name:        .res NAME_LEN
 rl_i:           .res 1
 ck:             .res 1          ; the key being acted on
 cf_status:      .res 1          ; copy_file status
+cf_marked:      .res 1          ; tagged files to copy, 0 = cursor only
+cf_ok:          .res 1          ; how many of a batch landed
+pg_acc:         .res 2          ; copy_progress: done * 32
+pg_fill:        .res 1
+pg_i:           .res 1
 
         .segment "RODATA"
 ; '1' to '7' stand in for the seven buttons on the bottom bars.
@@ -644,7 +648,7 @@ help:
         ldy     #12
         ldx     #0
         jsr     at
-        PRINT   "T: TEXT  H: HEX  G: HI-RES  C: COPY"
+        PRINT   "T/H/G: VIEW   C: COPY MARKED OR CURSOR"
         ldy     #14
         ldx     #0
         jsr     at
@@ -817,15 +821,16 @@ view:
         rts
 
 ; ---------------------------------------------------------------------
-; copy_file -- checks, then one confirmation, then the writing
+; copy_file -- tagged files of the active panel, or the cursor when
+; nothing is marked. Stays on the two panels. One Y, then each file:
+; exclusive create, readback, catalog last. An existing name is skipped
+; so the rest of the batch can still land. An uncertain write stops it.
 ; ---------------------------------------------------------------------
 copy_file:
-        jsr     clear
-        ldy     #2
-        ldx     #0
-        jsr     at
-        PRINT   "CHECKING BOTH DISKS..."
-        jsr     present
+        jsr     activate
+        ldx     active
+        lda     pan_drive,x
+        sta     drive
         lda     selected
         sta     cp_index
         lda     active
@@ -833,20 +838,93 @@ copy_file:
         tax
         lda     pan_drive,x
         sta     cp_dest
+        lda     drive
+        cmp     cp_dest
+        bne     @drives
+        lda     #COPY_SAME
+        sta     cf_status
+        jmp     cf_show
+@drives:
+        ldx     active
+        jsr     tag_count
+        sta     cf_marked
+        bne     @batch
         jsr     copy_prepare
         sta     cf_status
         jne     cf_show
-        jsr     clear
-        ldy     #0
+        jsr     copy_ask_one
+        bcs     @one
+        jsr     copy_cancel
+        rts
+@one:
+        jsr     copy_execute
+        sta     cf_status
+        jmp     cf_show
+@batch:
+        jsr     copy_ask_many
+        bcc     @out
+        lda     #0
+        sta     cf_ok
+        sta     tg_index
+@each:
+        lda     tg_index
+        cmp     count
+        bcs     @done
+        lda     tg_index
+        ldx     active
+        jsr     tag_test
+        beq     @next
+        lda     tg_index
+        sta     cp_index
+        jsr     one_copy
+        beq     @landed
+        cmp     #COPY_EXISTS
+        beq     @next
+        sta     cf_status
+        jmp     cf_show
+@landed:
+        inc     cf_ok
+@next:
+        inc     tg_index
+        jmp     @each
+@done:
+        lda     #COPY_EXISTS
+        ldx     cf_ok
+        beq     @none
+        lda     #COPY_OK
+@none:
+        sta     cf_status
+        jmp     cf_show
+@out:
+        rts
+
+copy_ask_one:
+        jsr     copy_banner
+        PRINT   "?"
+        jmp     copy_ask_bar
+
+copy_ask_many:
+        ldy     #20
         ldx     #0
         lda     #40
         jsr     zone
-        PRINT   "COPY TO THE OTHER PANEL"
+        PRINT   "COPY "
+        lda     cf_marked
+        jsr     print_byte
+        PRINT   " MARKED?"
+copy_ask_bar:
         lda     #0
         sta     inverse
-        ldy     #2
+        KEYBAR  22, ""
+        jmp     confirm
+
+; copy_banner -- inverse "COPY " and the first 15 name characters
+copy_banner:
+        ldy     #20
         ldx     #0
-        jsr     at
+        lda     #40
+        jsr     zone
+        PRINT   "COPY "
         ldy     #0
 @name:
         sty     t1
@@ -854,66 +932,32 @@ copy_file:
         jsr     put
         ldy     t1
         iny
-        cpy     #NAME_LEN
+        cpy     #15
         bcc     @name
-        ldy     #4
-        ldx     #0
-        jsr     at
-        PRINT   "SOURCE S"
-        lda     slot
-        jsr     print_byte
-        PRINT   " D"
-        lda     copy_from
-        jsr     print_byte
-        PRINT   " V"
-        lda     copy_src_volume
-        jsr     print_byte
-        ldy     #5
-        ldx     #0
-        jsr     at
-        PRINT   "TARGET S"
-        lda     slot
-        jsr     print_byte
-        PRINT   " D"
-        lda     copy_to
-        jsr     print_byte
-        PRINT   " V"
-        lda     copy_dst_volume
-        jsr     print_byte
-        ldy     #7
-        ldx     #0
-        jsr     at
-        lda     cs_seclo
-        sta     num
-        lda     cs_sechi
-        sta     num+1
-        jsr     number
-        PRINT   " SECTORS - NEW FILE"
-        ldy     #9
-        ldx     #0
-        jsr     at
-        PRINT   "DO NOT CHANGE DISKS"
-        jsr     confirm
-        bcs     @go
-        jsr     copy_cancel     ; the plan dies with the refusal
-        jmp     activate
-@go:
-        jsr     clear
-        ldy     #2
-        ldx     #0
-        jsr     at
-        PRINT   "COPYING AND VERIFYING..."
-        jsr     present
+        rts
+
+; one_copy -- prepare and write cp_index to cp_dest. Drive is restored
+; to the source panel: execute leaves it on the target.
+one_copy:
+        jsr     activate
+        ldx     active
+        lda     pan_drive,x
+        sta     drive
+        jsr     copy_prepare
+        bne     @ret
+        jsr     copy_banner
         jsr     copy_execute
-        sta     cf_status
+@ret:
+        rts
+
 cf_show:
-        jsr     clear
-        ldy     #2
+        ldy     #20
         ldx     #0
-        jsr     at
+        lda     #40
+        jsr     zone
         lda     cf_status
         bne     @notok
-        PRINT   "COPY VERIFIED"
+        PRINT   "COPIED"
         jmp     @anykey
 @notok:
         cmp     #COPY_READ
@@ -949,24 +993,81 @@ cf_show:
         cmp     #COPY_UNCERTAIN
         bne     @unsupported
         PRINT   "UNCERTAIN WRITE - STOP"
-        ldy     #4
-        ldx     #0
-        jsr     at
-        PRINT   "TARGET DISK MUST BE CHECKED"
-        ldy     #6
-        ldx     #0
-        jsr     at
-        PRINT   "DO NOT WRITE TO THIS DISK"
         jmp     @anykey
 @unsupported:
         PRINT   "UNSUPPORTED / INVALID DOS STRUCTURE"
 @anykey:
-        ldy     #23
-        ldx     #0
-        jsr     at
-        PRINT   "ANY KEY: BACK"
+        lda     #0
+        sta     inverse
+        KEYBAR  23, "ANY KEY Back"
         jsr     key
         jmp     reload
+
+; copy_progress -- 32 inverse cells on the footer, filled as copy_done
+; / copy_total. The panels above are left alone.
+copy_progress:
+        ldy     #22
+        ldx     #0
+        jsr     at
+        lda     #0
+        sta     inverse
+        lda     copy_total
+        ora     copy_total+1
+        beq     @present
+        lda     copy_done
+        sta     pg_acc
+        lda     copy_done+1
+        sta     pg_acc+1
+        ldx     #5
+@times:
+        asl     pg_acc
+        rol     pg_acc+1
+        dex
+        bne     @times
+        lda     #0
+        sta     pg_fill
+@div:
+        lda     pg_acc
+        cmp     copy_total
+        lda     pg_acc+1
+        sbc     copy_total+1
+        bcc     @have
+        lda     pg_acc
+        sec
+        sbc     copy_total
+        sta     pg_acc
+        lda     pg_acc+1
+        sbc     copy_total+1
+        sta     pg_acc+1
+        inc     pg_fill
+        lda     pg_fill
+        cmp     #32
+        bcc     @div
+@have:
+        lda     #0
+        sta     pg_i
+@cell:
+        lda     pg_i
+        cmp     pg_fill
+        bcc     @fill
+        lda     #0
+        sta     inverse
+        lda     #'-'
+        jmp     @put
+@fill:
+        lda     #1
+        sta     inverse
+        lda     #' '
+@put:
+        jsr     put
+        inc     pg_i
+        lda     pg_i
+        cmp     #32
+        bcc     @cell
+        lda     #0
+        sta     inverse
+@present:
+        jmp     present
 
 ; ---------------------------------------------------------------------
 ; reload -- read both panels again, keeping each selection by name
@@ -1051,13 +1152,41 @@ reload:
         sta     active
         jmp     activate
 
+; splash -- the same four lines HELLO prints. Only the banner rows
+; go to the text page: a full present() would land on Disk II's slot
+; scratch in $400 and the first catalog would seek the wrong track.
+splash:
+        jsr     clear
+        ldy     #0
+        ldx     #0
+        jsr     at
+        PRINT   "A2FILECMD MINI DOS 3.3"
+        ldy     #1
+        ldx     #0
+        jsr     at
+        PRINT   "A2FILECMD V0.7.0"
+        ldy     #2
+        ldx     #0
+        jsr     at
+        PRINT   "GPL3 VERHILLE ARNAUD"
+        ldy     #3
+        ldx     #0
+        jsr     at
+        PRINT   "LOADING .... PLEASE WAIT ...."
+        jmp     present_top
+
 ; ---------------------------------------------------------------------
 ; main
 ; ---------------------------------------------------------------------
 main:
-        lda     #0
-        sta     TXTSET          ; text, page one, as the C edition did
+        sta     CLR80STORE      ; IIe: writes must hit main $400, not AUX
+        sta     CLR80VID        ; IIe: 40 columns; a leftover 80-column
+        sta     ALTCHAROFF      ; card shows a blank or doubled screen
+        sta     TXTSET          ; text, page one, lo-res: leftover HGR
+        sta     MIXCLR          ; is also a black screen that looks dead
         sta     LOWSCR
+        sta     LORES
+        jsr     splash
         jsr     catalog
         sta     error
         ldx     #0
@@ -1471,6 +1600,8 @@ show_hgr:
         lda     LOWSCR
         lda     HIRES
         jsr     key_raw
+        sta     CLR80STORE
+        sta     CLR80VID
         lda     TXTSET
         lda     LORES
         lda     LOWSCR

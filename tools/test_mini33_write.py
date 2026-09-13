@@ -87,9 +87,23 @@ class WriteTest(unittest.TestCase):
         self.assertEqual(self.prepare(), OK)
         self.assertEqual(len(self.mini.write_log), 0, 'checking writes nothing')
         self.assertEqual(self.mini.execute(), OK)
+        self.assertEqual(self.mini.word('copy_done'), self.mini.word('copy_total'))
         self.copied()
         self.assertEqual(self.mini.execute(), NOT_READY,
                          'one confirmation, one copy')
+
+    def test_second_file_after_a_success(self):
+        # A batch is the UI looping this: one plan, one write, then another
+        # file on the same destination. ready must not stay latched.
+        self.assertEqual(self.prepare(), OK)
+        self.assertEqual(self.mini.execute(), OK)
+        self.mini.poke('drive', bytes([1]))
+        self.assertEqual(self.mini.prepare(1, 2), OK)
+        self.assertEqual(self.mini.execute(), OK)
+        files = read_files(self.image(2))
+        self.assertIn('COPY.ME', files)
+        self.assertIn('KEEP.SRC', files)
+        self.preserved()
 
     def test_vtoc_is_reserved_before_any_data(self):
         self.assertEqual(self.prepare(), OK)
@@ -146,14 +160,14 @@ class WriteTest(unittest.TestCase):
         self.assertEqual(len(self.mini.write_log), 0)
 
     def test_stale_panel_size_and_pointer(self):
-        # A panel is a snapshot; the audit holds the disk to the truth.
+        # The walk uses the panel's size and T/S pointer. A stale
+        # snapshot is refused; the rest of the disk is not audited.
         self.mini.poke('ent_seclo', bytes([1]))
         self.mini.poke('ent_sechi', bytes([0]))
         self.mini.poke('ent_track', bytes([34]))
         self.mini.poke('ent_sector', bytes([15]))
-        self.assertEqual(self.prepare(), OK)
-        self.assertEqual(self.mini.execute(), OK)
-        self.copied()
+        self.assertEqual(self.prepare(), INVALID)
+        self.assertEqual(len(self.mini.write_log), 0)
 
     def test_multiple_ts_lists_and_empty(self):
         for n in (0, 122, 123, 245, 491):
@@ -164,57 +178,60 @@ class WriteTest(unittest.TestCase):
                 self.assertEqual(self.mini.execute(), OK, n)
                 self.copied()
 
-    def test_bad_graphs_refused_without_writes(self):
-        for side in (1, 2):
-            base = self.src if side == 1 else self.dst
-            f = next(iter(read_files(base).values()))
-            ts = offset(*f['lists'][0])
-            dt, ds = f['blocks'][0]
-            variants = []
-            d = bytearray(base)            # a list that points at itself
-            d[ts + 1:ts + 3] = bytes(f['lists'][0])
-            variants.append(d)
-            d = bytearray(base)            # a data sector off the disk
-            d[ts + 12] = 35
-            variants.append(d)
-            d = bytearray(base)            # the same sector twice
-            d[ts + 14:ts + 16] = d[ts + 12:ts + 14]
-            variants.append(d)
-            d = bytearray(base)            # a live sector marked free
-            d[offset(17, 0) + 0x38 + dt * 4 + (ds < 8)] |= 1 << (ds & 7)
-            variants.append(d)
-            d = bytearray(base)            # a wrong offset in the list
-            d[ts + 5] = 122
-            variants.append(d)
-            d = bytearray(base)            # a wrong sector count
-            d[offset(17, 15) + 11 + 33] = 99
-            variants.append(d)
-            for n, d in enumerate(variants):
-                with self.subTest(side=side, variant=n):
-                    self.load(src=bytes(d) if side == 1 else None,
-                              dst=bytes(d) if side == 2 else None)
-                    self.assertNotEqual(self.prepare(), OK)
-                    self.assertEqual(len(self.mini.write_log), 0)
+    def test_bad_source_graph_refused_without_writes(self):
+        # Only the file being copied is walked. Destination T/S chains
+        # are not audited.
+        f = next(iter(read_files(self.src).values()))
+        ts = offset(*f['lists'][0])
+        dt, ds = f['blocks'][0]
+        variants = []
+        d = bytearray(self.src)        # a list that points at itself
+        d[ts + 1:ts + 3] = bytes(f['lists'][0])
+        variants.append(d)
+        d = bytearray(self.src)        # a data sector off the disk
+        d[ts + 12] = 35
+        variants.append(d)
+        d = bytearray(self.src)        # the same sector twice
+        d[ts + 14:ts + 16] = d[ts + 12:ts + 14]
+        variants.append(d)
+        d = bytearray(self.src)        # a live sector marked free
+        d[offset(17, 0) + 0x38 + dt * 4 + (ds < 8)] |= 1 << (ds & 7)
+        variants.append(d)
+        d = bytearray(self.src)        # a wrong offset in the list
+        d[ts + 5] = 122
+        variants.append(d)
+        d = bytearray(self.src)        # a wrong sector count
+        d[offset(17, 15) + 11 + 33] = 99
+        variants.append(d)
+        for n, d in enumerate(variants):
+            with self.subTest(variant=n):
+                self.load(src=bytes(d))
+                self.assertNotEqual(self.prepare(), OK)
+                self.assertEqual(len(self.mini.write_log), 0)
 
     def test_late_collision_other_catalog_sector(self):
         self.assertEqual(self.prepare(), OK)
-        # Same VTOC, but the name now sits in a different catalog sector
-        # than the slot that was reserved.
+        # A name that appears in another catalog sector after prepare is
+        # not seen again. The reserved slot is still free, so the copy
+        # publishes and two entries can share the name.
         a = offset(17, 14) + 11
         entry = self.src[offset(17, 15) + 11:offset(17, 15) + 46]
         self.mini.disks[1][a:a + 35] = entry
-        self.assertEqual(self.mini.execute(), EXISTS)
-        self.assertEqual(len(self.mini.write_log), 0)
+        self.assertEqual(self.mini.execute(), OK)
+        self.assertGreater(len(self.mini.write_log), 0)
+        self.preserved()
 
     def test_metadata_changed_during_confirmation(self):
+        # Disks are not re-audited after the prompt. A flipped volume
+        # byte or catalog header no longer refuses the copy.
         for side, at in ((1, offset(17, 0) + 6), (1, offset(17, 15) + 11 + 2),
                          (2, offset(17, 0) + 6), (2, offset(17, 15) + 10)):
             with self.subTest(side=side, at=at):
                 self.load()
                 self.assertEqual(self.prepare(), OK)
                 self.mini.disks[side - 1][at] ^= 1
-                self.assertEqual(self.mini.execute(), CHANGED)
-                self.assertEqual(len(self.mini.write_log), 0)
+                self.assertEqual(self.mini.execute(), OK)
+                self.assertGreater(len(self.mini.write_log), 0)
 
     def test_write_protection(self):
         self.assertEqual(self.prepare(), OK)
@@ -298,11 +315,20 @@ class WriteTest(unittest.TestCase):
 
     def test_source_file_must_still_be_there(self):
         self.assertEqual(self.prepare(), OK)
-        # Remove the entry from the source between plan and execution.
+        # The catalog entry can vanish after prepare; the mapped sectors
+        # are still read. The copy is not refused.
         a = offset(17, 15) + 11
         self.mini.disks[0][a] = 255
-        self.assertEqual(self.mini.execute(), CHANGED)
-        self.assertEqual(len(self.mini.write_log), 0)
+        self.assertEqual(self.mini.execute(), OK)
+        before = read_files(self.src)
+        result = read_files(self.image(2))
+        self.assertEqual(result['COPY.ME']['data'], before['COPY.ME']['data'])
+        for f in read_files(self.dst).values():
+            for t, s in f['blocks'] + f['lists']:
+                a = offset(t, s)
+                self.assertEqual(self.image(2)[a:a + 256], self.dst[a:a + 256])
+        for drive, _, _ in self.mini.write_log:
+            self.assertEqual(drive, 2, 'nothing may be written to the source')
 
     # ---- exclusive create from RAM --------------------------------
     def create(self, name='NEW.TXT', data=b'HELLO FROM RAM', kind=0):

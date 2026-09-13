@@ -9,7 +9,11 @@ Written entirely in 6502 assembly; see [Speed](#speed) for what that buys.
 ![Two panels with inverse video and bottom shortcuts](mini-dos33.png)
 
 The disk image `dist/A2FC-MINI-DOS33-0.7.0.dsk` boots through the Applesoft
-`HELLO` program. From DOS 3.3, use `BRUN A2FC.MINI`.
+`HELLO` program, which prints `A2FILECMD MINI DOS 3.3`, `A2FILECMD V0.7.0`,
+`GPL3 VERHILLE ARNAUD` and `LOADING .... PLEASE WAIT ....` before
+`BRUN A2FC.MINI`. The same
+three lines stay on screen while the first catalog is read. From DOS 3.3,
+use `BRUN A2FC.MINI`.
 Both panels initially show the boot disk. Each remembers its drive, selection,
 and scroll position independently.
 
@@ -26,9 +30,9 @@ and scroll position independently.
 | Ctrl-T / Ctrl-N / * | Tag all / none / invert on the active panel |
 | N | New text file: name, then the editor |
 | E | Edit a text file in RAM, then save under a new exclusive name |
-| D | Delete the selected file, or every tagged file |
+| D | Delete tagged files, or the cursor if nothing is tagged |
 | Escape in preview, help or editor | Return to the panels |
-| C, or 3 | Copy to the other panel's drive |
+| C, or 3 | Copy tagged files, or the cursor if nothing is tagged |
 | /, or 4 | Switch the active panel's drive and reread it |
 | Ctrl-R, or 5 | Reread both panels, preserving selection by name |
 | ?, or 6 | Show keyboard help |
@@ -70,17 +74,21 @@ After rereading or copying, selections are restored by name when still present.
 ## Copying and disk writes
 
 1. Use Tab and / to assign **two different drives** to the panels.
-2. Select the source file and press C.
-3. Mini checks both disks and shows the full filename, drives, and volume
-   numbers read from the disks.
-4. Press **Y to confirm**, or **N / Escape to cancel without writing**.
-   Other keys, including numeric shortcuts, are ignored.
-5. Wait for `COPY VERIFIED`, then press a key to reread the panels.
+2. Tag the files to copy (Space, Ctrl-T / Ctrl-N, `*`), or leave them
+   unmarked to copy only the cursor. Press C. The two panels stay on
+   screen.
+3. The footer asks `COPY name?` or `COPY N MARKED?`. Press **Y to
+   confirm**, or **N / Escape to cancel without writing**. Other keys,
+   including numeric shortcuts, are ignored.
+4. Each file is created exclusively. A 32-cell bar fills while that
+   file's sectors are written and read back. An existing name is skipped
+   so the rest of the batch can still land. An uncertain write stops the
+   batch. Wait for `COPIED`, then press a key to reread the panels.
 
 Copying preserves the name, type, lock flag, and every byte of the file's data
 sectors, including DOS headers and the final sector. **An existing name is
-refused**, even when the existing file is unlocked. The source is never written
-or deleted by a copy.
+refused at prepare time**, even when the existing file is unlocked. The source
+is never written or deleted by a copy.
 
 New text files (N) and editor saves (E) use the same exclusive-create engine
 with the working area as the source: one new name, never an overwrite.
@@ -96,18 +104,19 @@ them. An uncertain write latches `del_fault` so this run cannot write again.
 
 Two drives on the controller used to boot DOS are required. Selecting the same
 drive in both panels is refused. Single-drive copying by swapping disks is not
-implemented. Do not change disks between checking, confirmation, and completion.
+implemented. Do not change disks between confirmation and completion.
 After confirmation, the keyboard cannot interrupt the operation.
 
-The engine checks both VTOCs, complete catalogs and T/S chains, shared sectors,
-bounds, and allocation consistency. It rereads the source before any write;
-cached panel sizes are not authoritative. After confirmation it rechecks the
-disks, including name collisions in other catalog sectors.
+Prepare walks **only the selected source file** and the destination catalog
+names. It does not audit the rest of either disk, pre-read every source
+sector, or re-check the disks after you press Y. A disk swapped after the
+prompt, a stale panel size that still walks, or a name that appears in
+another catalog sector after prepare **will not be caught**.
 
-Required free sectors are reserved in the destination VTOC. Data and new T/S
-lists are written and read back sector by sector. Every source/destination data
-byte is compared again before publishing the catalog entry. RWTS respects
-physical write protection. No existing file or backup is opened or replaced.
+Required free sectors are reserved in the destination VTOC before any data.
+Each written sector is read back. The catalog entry is published last, and
+only if that reserved slot is still empty. RWTS respects physical write
+protection. No existing file or backup is opened or replaced.
 
 Standard 35-track, 16-sector DOS 3.3 disks are supported, with multiple T/S lists
 per file up to available disk capacity. Sparse, noncanonical, inconsistent chains
@@ -144,12 +153,12 @@ The edition is written in 6502 assembly, and the reason is measurable.
 Two things used to cost whole disk revolutions, and `bench/mini33_time.py`
 records both on POM2's NMOS core with Disk II timing:
 
-| Operation | Before | Now |
+| Operation | Before (C, 48 sectors) | Now (asm, 85 sectors) |
 |---|---:|---:|
-| Read a 16-sector catalog (`/`, motor already turning) | 4 898 568 cycles | 1 703 592 cycles |
-| Copy `A2FC.MINI`, 48 sectors — checking | 21 577 238 | 16 579 936 |
-| Copy `A2FC.MINI`, 48 sectors — writing | 258 512 282 | 47 713 385 |
-| **Copy, total** | **280 s at 1 MHz** | **64 s** |
+| Read a 16-sector catalog (`/`, motor already turning) | 4 898 568 cycles | 1 703 567 cycles |
+| Copy `A2FC.MINI` — prepare (source file + dest names) | 21 577 238 | 5 899 687 |
+| Copy `A2FC.MINI` — write and read back | 258 512 282 | 56 775 543 |
+| **Copy, total at 1 MHz** | **280 s** | **62.7 s** |
 
 DOS 3.3 lays out a track with a 2:1 soft interleave, which leaves a
 program roughly 25 000 cycles to digest one sector before the next
@@ -157,13 +166,10 @@ arrives under the head. Miss that window and RWTS waits a whole
 revolution, about 200 000 cycles. Parsing a catalog sector now takes a
 few thousand cycles, so the chain is read at the speed of the disk.
 
-The copy engine reads a batch of thirty-two sectors (the whole working
-area) from the source, then writes and verifies that batch on the target,
-then re-reads both disks for the final comparison. It performs the same
-six disk operations per sector as before and in the same order of safety;
-what changed is that the drives alternate four times per batch instead of
-four times per sector, and a change of drive costs a seek and a motor
-spin-up.
+The copy engine reads a batch of sectors from the source, then writes and
+reads each of them back on the target. The two disks are not compared
+again. A change of drive costs a seek and a motor spin-up, so writes stay
+on the destination until the next batch of source reads.
 
 ## Building
 

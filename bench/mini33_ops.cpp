@@ -48,13 +48,18 @@ int main(int argc,char** argv) {
     // New exclusive text file on the boot disk.
     keys("N"); wait("NEW TEXT FILE");
     keys("NOTE\rHELLO\x13"); wait("CREATE TEXT FILE");
-    keys("Y"); wait("COPY VERIFIED");
+    keys("Y"); wait("COPIED");
     keys(" "); expect(m,"NOTE");
     keys("]"); expect(m,"NOTE");
     keys("D"); wait("DELETE THIS FILE");
     keys("Y"); wait("DELETED");
     keys(" ");
     assert(screen(m).find("NOTE")==std::string::npos);
+    // Tagged batch: HELLO and README onto the other disk. A2FC.MINI stays.
+    keys("[ "); keys("KK ");
+    keys("C"); wait("COPY 2"); keys("Y"); wait("COPIED");
+    keys(" "); keys("\t"); expect(m,"4 FILES");
+    expect(m,"HELLO"); expect(m,"README"); expect(m,"PIC");
     assert(d->flushPendingWrites());
-    puts("PASS: tags/HGR/create/delete on disposable disks");
+    puts("PASS: tags/HGR/create/delete/batch copy on disposable disks");
 }

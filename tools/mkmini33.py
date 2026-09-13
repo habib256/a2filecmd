@@ -7,6 +7,30 @@ import struct
 from pathlib import Path
 
 SIZE = 35 * 16 * 256
+MINI_VERSION = '0.7.0'
+HOME, PRINT, CHRS = 0x97, 0xBA, 0xE7
+
+
+def applesoft(lines):
+    out, addr = bytearray(), 0x0801
+    for num, toks in lines:
+        body = num.to_bytes(2, 'little') + toks + b'\x00'
+        addr += 2 + len(body)
+        out += addr.to_bytes(2, 'little') + body
+    return bytes(out) + b'\x00\x00'
+
+
+def hello_program():
+    title = f'A2FILECMD V{MINI_VERSION}'.encode('ascii')
+    return applesoft([
+        (10, bytes([HOME])),
+        (20, bytes([PRINT]) + b'"A2FILECMD MINI DOS 3.3"'),
+        (30, bytes([PRINT]) + b'"' + title + b'"'),
+        (40, bytes([PRINT]) + b'"GPL3 VERHILLE ARNAUD"'),
+        (50, bytes([PRINT]) + b'"LOADING .... PLEASE WAIT ...."'),
+        (60, bytes([PRINT, CHRS]) + b'(4);"BRUN A2FC.MINI"'),
+    ])
+
 
 def build(master, binary):
     if len(master) != SIZE or master[0] != 1:
@@ -21,9 +45,7 @@ def build(master, binary):
         raise ValueError('binary exceeds reserved code region')
     image = bytearray(SIZE)
     image[:3*4096] = master[:3*4096]
-    # 10 PRINT CHR$(4);"BRUN A2FC.MINI" -- normal Applesoft startup.
-    body = bytes([0xba,0xe7,ord('('),ord('4'),ord(')'),ord(';'),ord('"')])+b'BRUN A2FC.MINI'+b'"\0'
-    program = struct.pack('<HH',0x801+4+len(body),10)+body+b'\0\0'
+    program = hello_program()
     files = [('HELLO',2,struct.pack('<H',len(program))+program),
              ('A2FC.MINI',4,struct.pack('<HH',0x1000,len(binary))+binary),
              ('README',0,b'A2FC MINI DOS 3.3\rAPPLE II+ 48 KB - DOS 3.3 COPY\rTAB: PANEL - I/K: SELECT\rRETURN: PREVIEW - /: DRIVE\rC: COPY TO THE OTHER PANEL\rCTRL-R: REREAD - Q: DOS\rT/H: TEXT/HEX - ?: HELP\rY: CONFIRM - N/ESC: CANCEL\r\0')]

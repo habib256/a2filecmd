@@ -42,7 +42,7 @@ int main(int argc,char**argv) {
     keys("\t/"); expect(m,"KEEP.DST"); keys("\tK");
     keys("3"); wait("CANCEL");
     keys("3"); wait("CANCEL"); // numeric bar keys do not confirm writes
-    expect(m,"SOURCE S6 D1 V254"); expect(m,"TARGET S6 D2 V254");
+    expect(m,"COPY "); expect(m,"KEEP.DST"); // stays on the two panels
     assert(d->getWriteFlushCount()==0);
     keys("\x1b"); expect(m,"3 FILES"); assert(d->getWriteFlushCount()==0);
     // Hardware write protection: even VTOC reservation must be refused.
@@ -53,7 +53,7 @@ int main(int argc,char**argv) {
     assert(d->getWriteFlushCount()==0);
     keys(" "); d->setDriveHostWriteProtected(1,false);
     assert(screen(m).substr(21*41,9)=="A2FC.MINI");
-    keys("C"); wait("CANCEL"); keys("Y"); wait("COPY VERIFIED");
+    keys("C"); wait("CANCEL"); keys("Y"); wait("COPIED");
     assert(d->getWriteFlushCount()>0); assert(d->flushPendingWrites());
     for(int i=0;i<0x800;++i) assert(m.data()[0x0800+i]==0xa5);
     keys(" ");
