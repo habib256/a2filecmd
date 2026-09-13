@@ -11,7 +11,7 @@ Le 12 septembre 2026, le mainteneur confirme une validation réussie sur
 matériel réel : Apple //c, IIe enhanced et IIe unenhanced. Ce retour de
 fonctionnement complète les tests automatisés ; il ne constitue pas un
 compte rendu d'injection de pannes sur les lecteurs physiques. Voir le
-[suivi de stabilisation](STABILIZATION.md#validation-sur-matériel-réel).
+[suivi de stabilisation](history/STABILIZATION.md#validation-sur-matériel-réel).
 
 ## Risques corrigés
 
@@ -147,7 +147,7 @@ Applesoft.
 
 ### Bug hunt préalable à la 0.7.6
 
-Le [rapport dédié](BUG-HUNT-0.7.6.md) consigne les défauts reproduits et leurs
+Le [rapport dédié](history/BUG-HUNT-0.7.6.md) consigne les défauts reproduits et leurs
 régressions, dont les arbres profonds qui dépassaient la pile. Les parcours
 récursifs contrôlent désormais l'espace de pile avant lecture de répertoire ;
 la suppression précontrôle l'arbre avant son premier effacement. Les erreurs de

@@ -221,7 +221,7 @@ and work with the selected file.
 | [`tools/`](tools/) | Disk-image tools, format readers and demo generators |
 | [`bench/`](bench/) | Emulator sessions and verification |
 | [`data/`](data/) | Help, boot blocks, ProDOS and BASIC.SYSTEM |
-| [`docs/`](docs/) | Manual, release notes and screenshots |
+| [`docs/`](docs/) | Manual, data-safety and memory notes, Mini guide, dated reports in `history/` ([index](docs/README.md)) |
 
 Found a bug or have an idea? [Open an issue](https://github.com/habib256/a2filecmd/issues).
 For a bug, include the release, machine or emulator, disk format and steps to reproduce it.

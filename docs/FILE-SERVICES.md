@@ -593,3 +593,142 @@ is reported; ProDOS cannot make a physical metadata write power-fail atomic.
 Neither operation writes AUX. Both consume the API v5 active-entry snapshot
 at $3000; DOSGET code ends below $2800, its visited-sector bitmap is at $2800,
 and its T/S list copy is at $2F00. FIXTYPES code and BSS end below $3000.
+
+## Journal du chantier 1 (0.8.0 → 0.8.5)
+
+Déplacé de `TODO.md` à la publication de la 0.8.5 : les incréments dans
+l’ordre où ils ont été livrés, avec les coûts mesurés à chaque lien. Les
+contrats en vigueur sont décrits plus haut ; ce journal explique pourquoi
+ils ont cette forme.
+
+Premier incrément du 13 septembre : réservation exclusive et moteur COPY
+extraits dans `src/file_output.h` et `src/file_copy.h`, contrats de buffers
+et de chargement dans [FILE-SERVICES.md](FILE-SERVICES.md). Binaires
+identiques sur les deux CPU ; contrôle de capacité de `CopyState` et deux
+séquences de pannes ajoutés au banc C. Le contrat unique, les migrations des
+plugins et le gain de marge COPY restent à faire : aucune case globale close.
+
+Deuxième incrément ProDOS : CREATE commun à TXTCONV et aux utilisateurs de
+`util.h` (dont SYNC), dans `src/plugins/file_create.h`. Tous les codes MLI
+restent des refus sauf zéro ; tests natifs sur deux CPU avec BSS sale et
+séquences fichier/répertoire, plus conservation des octets sur erreur de
+création. TXTCONV coûte +35/+33 octets (65C02/6502), BSS inchangé ; les autres
+plugins sont identiques. GOTO, IMGCONV et les remplacements restent à unifier.
+
+Troisième incrément ProDOS : résultat de restauration explicite dans
+`replace.h` et nettoyage contrôlé partagé par TXTCONV/IMGCONV. Une annulation
+IMGCONV n'annonce plus la suppression si elle échoue. Les tests comparent
+les octets après pannes combinées, nouvelle tentative et collision tardive
+empêchant la restauration. Le contrat est décrit dans FILE-SERVICES ; les
+autres moteurs et leurs nettoyages restent à migrer (chantiers 1 et 3 ouverts).
+
+Quatrième incrément : transaction de renommage commune à SYNC, TXTCONV et
+IMGCONV dans `file_install.h`. SYNC garde son résultat vérifié après échec
+d'installation et s'arrête sur récupération nécessaire, avec diagnostic
+persistant. Tests du parcours complet et du fichier suivant ; séquences
+natives sur les deux CPU. Les appels API compacts libèrent 730/728 octets
+dans SYNC, sans relever son plafond. COPY, GOTO, BATCH et l'unification de
+leurs politiques de nettoyage restent ouverts.
+
+Cinquième incrément : GOTO rejoint `file_install`, après contrôle explicite
+des métadonnées/protections de `GOTO.CFG`, avant toute création. Le temporaire
+vérifié reste récupérable après échec d'installation. Les tests contrôlent
+les octets après collisions tardives, pannes combinées et nouvelle tentative.
+Coût 157/164 octets et un octet BSS, avec 145/160 octets encore libres avant
+les favoris à `$3000` (65C02/6502). COPY et BATCH restent à traiter ; la
+création particulière `$E3` de GOTO n'est pas encore mutualisée.
+
+Sixième incrément : BATCH utilise la réservation exclusive résidente commune
+à `new_output` et donc COPY. Le résultat distingue absence de propriété,
+réservation utilisable et création suivie d'une fermeture échouée. BATCH garde
+la propriété du manifeste si son nettoyage échoue ; aucune source n'est
+déplacée. Tests des octets, collisions et nouvelles tentatives, plus exécution
+du service sur deux CPU. BATCH gagne 20 octets, LOWBSS 2 ; coût résident
+30/35 octets. La publication récupérable de COPY et les politiques de
+nettoyage restantes ne sont pas encore unifiées ; aucune case globale close.
+
+Septième incrément : finalisation COPY résidente, sans chargement imbriqué ;
+COPY conserve la propriété issue de `reserve_output`, y compris sur fermeture
+échouée. Un nettoyage échoué est signalé même après annulation et bloque la
+restauration par-dessus le résultat. Source et sauvegarde restent conservées.
+La marge COPY passe de 33/25 à 116/111 octets ; MAIN conserve 256/766 octets,
+BSS inchangé. Tests des octets avec et sans ancienne destination. La
+publication par temporaire vérifié reste à unifier : COPY écrit encore sous
+le nom final après sauvegarde préalable.
+
+Huitième incrément : COPY publie désormais `A2FC.COPY` avec la transaction
+commune après fermeture et relecture complète. L'ancienne destination reste
+intacte jusqu'à ces contrôles ; installation ou restauration échouées gardent
+les fichiers de récupération. Tests des octets pendant le transfert et des
+collisions tardives. La variante liée à CP évite sept octets d'arguments sur
+la pile. COPY conserve 79/76 octets libres ; MAIN tombe à 149/659 : regagner
+la marge 65C02 devient prioritaire avant le prochain enrichissement. Les
+autres nettoyages de `new_output` et les créations particulières des plugins
+restent ouverts ; le contrat global n'est pas encore clos.
+
+Neuvième incrément : les textes privés d'EDIT, MENU, BINARY2 et UNSHRINK
+résident dans leurs surcouches, avec une durée de validité bornée à l'appel
+ou une copie dans `note`. Gain MAIN de 127 octets par CPU ; réserves
+276/786, objectif 65C02 de 256 retrouvé. Pile, BSS, plafonds et opérations
+sur fichiers inchangés. Les surcouches modifiées gardent au moins 86 octets
+libres ; 39 tests ciblés et les sept images ProDOS contrôlés. Les nettoyages
+restants du chantier 1 et les marges DELETE/IMGFS/ATTR restent ouverts.
+
+Dixième incrément : EDIT conserve la propriété de sa réservation et contrôle
+les suppressions de `A2FC.EDIT` après échec. Une fermeture de réservation
+échouée interdit la réouverture ; nettoyage échoué et nouvelle tentative
+conservent les fichiers et le tampon modifié, avec diagnostic de récupération.
+42 tests ciblés, deux liens et sept images ProDOS contrôlés. EDIT garde
+248/234 octets libres, MAIN 281/791. Les autres appelants de `new_output`
+et la mutualisation du renommage EDIT restent ouverts.
+
+Onzième incrément : EDIT publie via `file_install.h`, compilé dans sa
+surcouche. Le temporaire vérifié reste conservé après tout échec de
+transaction ; restauration échouée et sauvegarde retenue ont leurs diagnostics.
+Tests des collisions tardives, du premier renommage, de la restauration,
+d'une première sauvegarde et des nouvelles tentatives, avec contrôle des
+octets et des fermetures avant renommage. 48 tests ciblés, deux liens et
+sept images ProDOS passent ; EDIT garde 138/118 octets libres, MAIN reste
+à 281/791. Les nettoyages des autres appelants de `new_output` restent ouverts.
+
+Douzième incrément : BINARY2 réserve directement ses sorties et contrôle
+leur nettoyage. Une troncature d'en-tête, contenu ou remplissage, ou une
+fermeture échouée, n'annonce plus un succès. Les extraits précédents et les
+collisions restent intacts ; un nettoyage échoué nomme le fichier conservé.
+Neuf régressions C intégrées à `make test`, 56 tests ciblés et sept images
+ProDOS validés. BINARY2 garde 1 694/1 709 octets libres ; résident inchangé.
+Les nettoyages UNSHRINK, DISKIMG, IMGFS et DOS33 restent ouverts, ainsi que
+la relecture des sorties et la validation complète des attributs Binary II.
+
+Incrément demandé : écriture sur vrai DOS 3.3 depuis ProDOS par C / DOSWRITE
+(FILES/XL), pour la sélection TXT/BIN/BAS/INT jusqu'à 65 535 octets. Audit
+complet des allocations, création sans remplacement, contrôle de protection,
+confirmation, VTOC réservé, relecture et publication finale du catalogue.
+Source conservée ; pas de MOVE. Écriture dans les images ajoutée à la
+demande explicite suivante, via copie temporaire vérifiée et remplacement
+récupérable (DOSIMAGE/DOSPUT, FILES/XL). Les échecs peuvent
+laisser de l'espace réservé, signalé. Le retour à la liste des volumes
+réinitialise aussi le mode DOS/image pour permettre les réouvertures.
+Le slot réel du Disk II est désormais utilisé, notamment S5 avec le volume
+ProDOS en S6. Tests C de pannes, sim65 deux CPU, banc POM2 Disk II dans
+`doswrite` et images DSK/2MG dans `dosimage`. Aucun accès AUX.
+La copie par lots et les autres mutations DOS restent à faire.
+
+Suite du chantier 1 : DISKIMG conserve la propriété de sa réservation,
+contrôle les fermetures et nettoie uniquement l'image créée par R. Un
+nettoyage échoué nomme le fichier conservé, même après annulation ; W/O
+n'effacent jamais leur source. Tests C PO/DSK, pannes combinées et retry,
+32 tests ciblés et sept images contrôlés. DISKIMG gagne 50/39 octets,
+résident inchangé. Restent UNSHRINK, IMGFS, DOS33 et la relecture complète
+des images créées.
+
+Suite du chantier 1 : UNSHRINK réserve directement ses sorties et signale
+leur nettoyage échoué, avec conservation des octets lors d'une nouvelle
+tentative. Les sauts deviennent des lectures exactes ; troncatures, erreurs
+de flux et fermetures échouées ne donnent plus un succès. Annulation entre
+blocs, noms longs préservés avant lecture du remplissage, bornes des tailles
+et compte rendu des compressions ignorées. Tests C avec pannes combinées,
+ASan/UBSan, octets conservés et garde de pile dans le banc natif. Restent
+IMGFS/DOS33, les CRC et métadonnées NuFX complets, la validation complète du
+décodeur LZW sur flux malformés et la relecture des extraits ; aucune case
+globale close.

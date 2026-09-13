@@ -2,7 +2,7 @@
 
 Cette passe porte sur le candidat local 0.8.0 et conserve les modifications
 de travail existantes. Elle prolonge le [bug hunt précédent](BUG-HUNT-0.7.6.md)
-et la vérification des [volumes PT3](../src/plugins/pt3lib/README.md).
+et la vérification des [volumes PT3](../../src/plugins/pt3lib/README.md).
 Aucun commit, tag ou publication ne découle de cette qualification locale.
 
 ## Changements et périmètre

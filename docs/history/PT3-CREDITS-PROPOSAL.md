@@ -15,7 +15,7 @@ Ce crédit libre peut contenir plusieurs auteurs, un arrangeur ou une date ;
 aucune identité n'est déduite du nom du fichier ou de son répertoire.
 
 Le crédit fixe du moteur est fondé sur les sources conservées dans
-[src/plugins/pt3lib/README.md](../src/plugins/pt3lib/README.md) :
+[src/plugins/pt3lib/README.md](../../src/plugins/pt3lib/README.md) :
 Vince Weaver, pt3_lib 0.5, option de licence 0BSD. « Adaptation A2FC » désigne
 les bornes mémoire, la validation, l'interface et l'adaptation matérielle.
 Les autres crédits d'optimisation restent dans les sources.

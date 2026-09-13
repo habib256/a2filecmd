@@ -1,18 +1,24 @@
-# A2 File Cmd — feuille de route après la 0.8.0
+# A2 File Cmd — feuille de route après la 0.8.5
 
-La [0.8.0 est publiée](https://github.com/habib256/a2filecmd/releases/tag/v0.8.0).
-Les fonctions livrées sont dans le [CHANGELOG](CHANGELOG.md). Deux produits
-distincts : **Mini** (II+ 48 Ko, DOS 3.3, 40 colonnes) et **A2FC ProDOS**
-(IIe 128 Ko). `make mini` ne partage pas `src/a2fc.c`.
+La [0.8.5 est publiée](https://github.com/habib256/a2filecmd/releases/tag/v0.8.5) ;
+sa qualification est consignée dans
+[history/RELEASE-0.8.5.md](docs/history/RELEASE-0.8.5.md). Les fonctions
+livrées sont dans le [CHANGELOG](CHANGELOG.md). Deux produits distincts,
+**un seul numéro de version** (`A2FC_VERSION` dans le Makefile) : **Mini**
+(II+ 48 Ko, DOS 3.3, 40 colonnes) et **A2FC ProDOS** (IIe 128 Ko).
+`make mini` ne partage pas `src/a2fc.c`. L’index des documents est dans
+[docs/README.md](docs/README.md).
 
-**Prochaine étape ouverte : Mini en 6502 pur** (chantier 0). Ce n’est pas
-un raccourci pour les services ProDOS. Sur ProDOS, le goulot reste
-d’écrire sans régresser, dans 128 Ko, pile C de 192 octets.
+**Première étape ouverte : regagner de la marge résidente 65C02.** Au lien
+de la 0.8.5, MAIN garde **23 octets** sur 65C02 (518 sur 6502), l’écart
+avant la pile 51/735, la carte langage 14/6, OPEN 11/43, DELETE 4/3,
+IMGFS 5/13, UNSHRINK 9/29. L’objectif du chantier 6 (256 octets MAIN sur
+65C02) n’est plus tenu : aucun enrichissement du résident avant de l’avoir
+retrouvé, sans relever les plafonds
+([MEMORY-BUDGETS.md](docs/MEMORY-BUDGETS.md)).
 
-Les réserves ProDOS se recalculent à chaque lien. Point de départ après le
-routage média : MAIN libre 259/779, OPEN 185/215, LC 168/163 octets
-(65C02/6502). Les petites surcouches restent serrées (voir
-[MEMORY-BUDGETS.md](docs/MEMORY-BUDGETS.md)) ; ne pas relever les plafonds.
+Sur ProDOS, le goulot reste d’écrire sans régresser, dans 128 Ko, pile C de
+192 octets. Les réserves se recalculent à chaque lien.
 
 ## Contrat
 
@@ -20,25 +26,25 @@ Préserver les données prime. Un gestionnaire Apple II se juge sur les
 écritures, pas sur un format d’image de plus.
 
 Mini (**0**) est livré et indépendant de 1–10. Sur ProDOS :
-**1 → 6** (mesure mémoire à chaque extraction) **→ 2 → 3 → 4**, avec
-**7 en continu**. Puis **5**. Ensuite **un seul** parmi 8, 9 ou 10 — pas les
+**6 d’abord** (retrouver 256 octets MAIN sur 65C02), puis **1 → 2 → 3 → 4**
+avec mesure mémoire à chaque extraction et **7 en continu**. Puis **5**. Ensuite **un seul** parmi 8, 9 ou 10 — pas les
 trois. Ne pas ouvrir SHRINK, l’écriture dans une image montée, un journal de
 coupure, Pascal/CP/M ni un nouveau média tant que 1–4 ne sont pas clos.
-Mini 0.7.0 ajoute tags, HGR, création TXT exclusive, éditeur et DEL
-(catalogue d'abord). Pas de renommage, remplacement sur place, copie à
-un seul lecteur ni formatage.
+Mini 0.8.5 a tags, HGR, création TXT exclusive, éditeur, DEL (catalogue
+d’abord), LOCK et RENAME. Pas de remplacement sur place, de copie à un seul
+lecteur ni de formatage.
 
 Les travaux sur lecteurs physiques sont signalés par **💾**.
 
 | # | Chantier | Résultat recherché | État |
 | --- | --- | --- | --- |
-| **0** | Mini 6502 pur | Copie 4,4× plus rapide ; 0.7.0 : HGR, éditeur, TXT, DEL, tags | **Fait ; C retiré** |
-| **1** | Services de fichiers sûrs | Un contrat unique : création exclusive, remplacement récupérable, copie vérifiée | À faire |
+| **0** | Mini 6502 pur | Copie 4,4× plus rapide ; HGR, éditeur, TXT, DEL, tags, LOCK, RENAME | **Livré en 0.8.5** ; qualification II+ physique ouverte |
+| **1** | Services de fichiers sûrs | Un contrat unique : création exclusive, remplacement récupérable, copie vérifiée | En cours : douze incréments ; IMGFS/DOS33/DOSGET, NuFX et relectures ouverts |
 | **2** | Parcours d’arbres itératifs | État borné à la place de la récursivité ; refus sûrs conservés | À faire |
-| **3** | Trous de préservation 0.8.0 | Conversions relues, pannes combinées, nettoyages/restaurations consignés | À faire |
+| **3** | Trous de préservation 0.8.x | Conversions relues, pannes combinées, nettoyages/restaurations consignés | À faire |
 | **4** | MOVE d’arbre entre volumes | Dossiers et marquage ; aucune source touchée après une copie partielle | À faire, après 1 et 2 |
 | **5** | FIXIT lecture seule | Diagnostic et plan choisis par l’utilisateur ; zéro écriture | Après 4 |
-| **6** | Contrats plugins et petites surcouches | Buffers, AUX, restauration ; respiration mesurée sans relever les plafonds | Avec 1 |
+| **6** | Contrats plugins et petites surcouches | Buffers, AUX, restauration ; respiration mesurée sans relever les plafonds | **Prioritaire** : MAIN 65C02 à 23 octets |
 | **7** | Preuves de séquences | États d’overlays, mutations archives/FS, XL deux CPU, premier boot IIgs | Continu |
 | **8** | 💾 NIBCOPY réel, puis un gain | Qualification Disk II physique ; un seul format ou reprise ensuite | Après 5, au choix |
 | **9** | 💾 ADTPro blocs | Dossiers, envoi/réception, CRC, NAK ; pas de nibble en premier | Après 5, au choix |
@@ -47,8 +53,11 @@ Les travaux sur lecteurs physiques sont signalés par **💾**.
 ## 0. Mini DOS 3.3 en 6502 pur
 
 Édition autonome II+ 48 Ko : [MINI-DOS33.md](docs/MINI-DOS33.md).
-**Réécriture faite ; les sources C sont retirées.** Huit modules
-assembleur, sans compilateur ni bibliothèque cc65, sans pile logicielle.
+**Livrée en 0.8.5, numérotée avec l’édition ProDOS ; les sources C sont
+retirées.** Treize modules assembleur, sans compilateur ni bibliothèque
+cc65, sans pile logicielle. La disquette `A2FC-MINI-DOS33-<version>.dsk`
+se construit localement (`make mini-disk MINI_MASTER=…`, un DOS 3.3 amorçable
+n’est pas dans le dépôt) et se joint à la release à la main.
 
 Le goulot n’était pas le calcul mais l’attente du disque, et il est
 mesuré (`bench/mini33_time.py`, cœur NMOS POM2, timings Disk II) :
@@ -73,15 +82,18 @@ Sémantique de copie inchangée et vérifiée : création exclusive, source
 intacte, nom existant refusé, VTOC réservée avant toute donnée,
 relecture de chaque écriture, comparaison intégrale des deux disques
 avant publication, entrée de catalogue publiée en dernier, `copy_fault`
-verrouillé sur une écriture incertaine. 0.7.0 ajoute les tags, le viewer
-HGR, un éditeur qui ne sauve que sous un nom nouveau, et DEL qui marque
-l'entrée de catalogue avant de libérer les secteurs. Toujours pas de
-renommage, remplacement sur place, formatage ni copie à un seul lecteur.
+verrouillé sur une écriture incertaine. Tags, viewer HGR, éditeur qui ne
+sauve que sous un nom nouveau, DEL qui marque l’entrée de catalogue avant de
+libérer les secteurs, LOCK/UNLOCK et RENAME en écritures de catalogue
+vérifiées ; chaque écriture retourne à la case de catalogue lue par le
+panneau et refuse un disque échangé (`DISK CHANGED`). Toujours pas de
+remplacement sur place, de formatage ni de copie à un seul lecteur.
 
 Les tests hôtes exécutent désormais le **vrai 6502** sous sim65, les deux
 images restant côté test pour pouvoir faire échouer, tronquer ou
-corrompre une lecture ou une écriture choisie : 33 tests, plus les deux
-bancs POM2 inchangés.
+corrompre une lecture ou une écriture choisie : 66 tests sim65 (dont onze
+régressions de la chasse aux bugs 0.8.5), plus trois bancs POM2 sur images
+jetables.
 
 - [x] **Interface, catalogue, copie, runtime** — huit modules asm ;
   `tools/check_mini_layout.py` refuse à chaque lien un binaire qui
@@ -113,137 +125,12 @@ coût de chaque extraction (MAIN, carte langage, BSS, fenêtre de surcouche).
   augmenter sa taille, au fil de ce chantier et du 6 ; pas de réécriture
   globale. Charger une surcouche de service ne doit pas écraser l’appelant.
 
-Premier incrément du 13 septembre : réservation exclusive et moteur COPY
-extraits dans `src/file_output.h` et `src/file_copy.h`, contrats de buffers
-et de chargement dans [FILE-SERVICES.md](docs/FILE-SERVICES.md). Binaires
-identiques sur les deux CPU ; contrôle de capacité de `CopyState` et deux
-séquences de pannes ajoutés au banc C. Le contrat unique, les migrations des
-plugins et le gain de marge COPY restent à faire : aucune case globale close.
-
-Deuxième incrément ProDOS : CREATE commun à TXTCONV et aux utilisateurs de
-`util.h` (dont SYNC), dans `src/plugins/file_create.h`. Tous les codes MLI
-restent des refus sauf zéro ; tests natifs sur deux CPU avec BSS sale et
-séquences fichier/répertoire, plus conservation des octets sur erreur de
-création. TXTCONV coûte +35/+33 octets (65C02/6502), BSS inchangé ; les autres
-plugins sont identiques. GOTO, IMGCONV et les remplacements restent à unifier.
-
-Troisième incrément ProDOS : résultat de restauration explicite dans
-`replace.h` et nettoyage contrôlé partagé par TXTCONV/IMGCONV. Une annulation
-IMGCONV n'annonce plus la suppression si elle échoue. Les tests comparent
-les octets après pannes combinées, nouvelle tentative et collision tardive
-empêchant la restauration. Le contrat est décrit dans FILE-SERVICES ; les
-autres moteurs et leurs nettoyages restent à migrer (chantiers 1 et 3 ouverts).
-
-Quatrième incrément : transaction de renommage commune à SYNC, TXTCONV et
-IMGCONV dans `file_install.h`. SYNC garde son résultat vérifié après échec
-d'installation et s'arrête sur récupération nécessaire, avec diagnostic
-persistant. Tests du parcours complet et du fichier suivant ; séquences
-natives sur les deux CPU. Les appels API compacts libèrent 730/728 octets
-dans SYNC, sans relever son plafond. COPY, GOTO, BATCH et l'unification de
-leurs politiques de nettoyage restent ouverts.
-
-Cinquième incrément : GOTO rejoint `file_install`, après contrôle explicite
-des métadonnées/protections de `GOTO.CFG`, avant toute création. Le temporaire
-vérifié reste récupérable après échec d'installation. Les tests contrôlent
-les octets après collisions tardives, pannes combinées et nouvelle tentative.
-Coût 157/164 octets et un octet BSS, avec 145/160 octets encore libres avant
-les favoris à `$3000` (65C02/6502). COPY et BATCH restent à traiter ; la
-création particulière `$E3` de GOTO n'est pas encore mutualisée.
-
-Sixième incrément : BATCH utilise la réservation exclusive résidente commune
-à `new_output` et donc COPY. Le résultat distingue absence de propriété,
-réservation utilisable et création suivie d'une fermeture échouée. BATCH garde
-la propriété du manifeste si son nettoyage échoue ; aucune source n'est
-déplacée. Tests des octets, collisions et nouvelles tentatives, plus exécution
-du service sur deux CPU. BATCH gagne 20 octets, LOWBSS 2 ; coût résident
-30/35 octets. La publication récupérable de COPY et les politiques de
-nettoyage restantes ne sont pas encore unifiées ; aucune case globale close.
-
-Septième incrément : finalisation COPY résidente, sans chargement imbriqué ;
-COPY conserve la propriété issue de `reserve_output`, y compris sur fermeture
-échouée. Un nettoyage échoué est signalé même après annulation et bloque la
-restauration par-dessus le résultat. Source et sauvegarde restent conservées.
-La marge COPY passe de 33/25 à 116/111 octets ; MAIN conserve 256/766 octets,
-BSS inchangé. Tests des octets avec et sans ancienne destination. La
-publication par temporaire vérifié reste à unifier : COPY écrit encore sous
-le nom final après sauvegarde préalable.
-
-Huitième incrément : COPY publie désormais `A2FC.COPY` avec la transaction
-commune après fermeture et relecture complète. L'ancienne destination reste
-intacte jusqu'à ces contrôles ; installation ou restauration échouées gardent
-les fichiers de récupération. Tests des octets pendant le transfert et des
-collisions tardives. La variante liée à CP évite sept octets d'arguments sur
-la pile. COPY conserve 79/76 octets libres ; MAIN tombe à 149/659 : regagner
-la marge 65C02 devient prioritaire avant le prochain enrichissement. Les
-autres nettoyages de `new_output` et les créations particulières des plugins
-restent ouverts ; le contrat global n'est pas encore clos.
-
-Neuvième incrément : les textes privés d'EDIT, MENU, BINARY2 et UNSHRINK
-résident dans leurs surcouches, avec une durée de validité bornée à l'appel
-ou une copie dans `note`. Gain MAIN de 127 octets par CPU ; réserves
-276/786, objectif 65C02 de 256 retrouvé. Pile, BSS, plafonds et opérations
-sur fichiers inchangés. Les surcouches modifiées gardent au moins 86 octets
-libres ; 39 tests ciblés et les sept images ProDOS contrôlés. Les nettoyages
-restants du chantier 1 et les marges DELETE/IMGFS/ATTR restent ouverts.
-
-Dixième incrément : EDIT conserve la propriété de sa réservation et contrôle
-les suppressions de `A2FC.EDIT` après échec. Une fermeture de réservation
-échouée interdit la réouverture ; nettoyage échoué et nouvelle tentative
-conservent les fichiers et le tampon modifié, avec diagnostic de récupération.
-42 tests ciblés, deux liens et sept images ProDOS contrôlés. EDIT garde
-248/234 octets libres, MAIN 281/791. Les autres appelants de `new_output`
-et la mutualisation du renommage EDIT restent ouverts.
-
-Onzième incrément : EDIT publie via `file_install.h`, compilé dans sa
-surcouche. Le temporaire vérifié reste conservé après tout échec de
-transaction ; restauration échouée et sauvegarde retenue ont leurs diagnostics.
-Tests des collisions tardives, du premier renommage, de la restauration,
-d'une première sauvegarde et des nouvelles tentatives, avec contrôle des
-octets et des fermetures avant renommage. 48 tests ciblés, deux liens et
-sept images ProDOS passent ; EDIT garde 138/118 octets libres, MAIN reste
-à 281/791. Les nettoyages des autres appelants de `new_output` restent ouverts.
-
-Douzième incrément : BINARY2 réserve directement ses sorties et contrôle
-leur nettoyage. Une troncature d'en-tête, contenu ou remplissage, ou une
-fermeture échouée, n'annonce plus un succès. Les extraits précédents et les
-collisions restent intacts ; un nettoyage échoué nomme le fichier conservé.
-Neuf régressions C intégrées à `make test`, 56 tests ciblés et sept images
-ProDOS validés. BINARY2 garde 1 694/1 709 octets libres ; résident inchangé.
-Les nettoyages UNSHRINK, DISKIMG, IMGFS et DOS33 restent ouverts, ainsi que
-la relecture des sorties et la validation complète des attributs Binary II.
-
-Incrément demandé : écriture sur vrai DOS 3.3 depuis ProDOS par C / DOSWRITE
-(FILES/XL), pour la sélection TXT/BIN/BAS/INT jusqu'à 65 535 octets. Audit
-complet des allocations, création sans remplacement, contrôle de protection,
-confirmation, VTOC réservé, relecture et publication finale du catalogue.
-Source conservée ; pas de MOVE. Écriture dans les images ajoutée à la
-demande explicite suivante, via copie temporaire vérifiée et remplacement
-récupérable (DOSIMAGE/DOSPUT, FILES/XL). Les échecs peuvent
-laisser de l'espace réservé, signalé. Le retour à la liste des volumes
-réinitialise aussi le mode DOS/image pour permettre les réouvertures.
-Le slot réel du Disk II est désormais utilisé, notamment S5 avec le volume
-ProDOS en S6. Tests C de pannes, sim65 deux CPU, banc POM2 Disk II dans
-`doswrite` et images DSK/2MG dans `dosimage`. Aucun accès AUX.
-La copie par lots et les autres mutations DOS restent à faire.
-
-Suite du chantier 1 : DISKIMG conserve la propriété de sa réservation,
-contrôle les fermetures et nettoie uniquement l'image créée par R. Un
-nettoyage échoué nomme le fichier conservé, même après annulation ; W/O
-n'effacent jamais leur source. Tests C PO/DSK, pannes combinées et retry,
-32 tests ciblés et sept images contrôlés. DISKIMG gagne 50/39 octets,
-résident inchangé. Restent UNSHRINK, IMGFS, DOS33 et la relecture complète
-des images créées.
-
-Suite du chantier 1 : UNSHRINK réserve directement ses sorties et signale
-leur nettoyage échoué, avec conservation des octets lors d'une nouvelle
-tentative. Les sauts deviennent des lectures exactes ; troncatures, erreurs
-de flux et fermetures échouées ne donnent plus un succès. Annulation entre
-blocs, noms longs préservés avant lecture du remplissage, bornes des tailles
-et compte rendu des compressions ignorées. Tests C avec pannes combinées,
-ASan/UBSan, octets conservés et garde de pile dans le banc natif. Restent
-IMGFS/DOS33, les CRC et métadonnées NuFX complets, la validation complète du
-décodeur LZW sur flux malformés et la relecture des extraits ; aucune case
-globale close.
+Le journal des douze incréments livrés jusqu’à la 0.8.5 (réservation
+exclusive, `file_create.h`, `file_install.h`, COPY, GOTO, BATCH, EDIT,
+BINARY2, DOSWRITE/DOSIMAGE, DISKIMG, UNSHRINK) est dans
+[FILE-SERVICES.md](docs/FILE-SERVICES.md#journal-du-chantier-1-080--085).
+Aucune case globale n’est close : les nettoyages IMGFS/DOS33/DOSGET, les CRC
+et métadonnées NuFX complets et la relecture des extraits restent à faire.
 
 ## 2. Parcours d’arbres itératifs
 
@@ -260,9 +147,10 @@ enrichi, pas de SYNC plus profond.
 
 ## 3. Trous de préservation déjà identifiés
 
-Dette de la 0.8.0, pas une fonctionnalité. Tant que ce n’est pas clos, toute
+Dette des 0.8.x, pas une fonctionnalité. Tant que ce n’est pas clos, toute
 nouvelle écriture dilue la preuve. Voir aussi
-[STABILIZATION.md](docs/STABILIZATION.md) et [DATA-SAFETY.md](docs/DATA-SAFETY.md).
+[DATA-SAFETY.md](docs/DATA-SAFETY.md) et, pour l’historique,
+[history/STABILIZATION.md](docs/history/STABILIZATION.md).
 
 - [ ] **Conversions** — comparaison intégrale du résultat relu pour les
   conversions qui ne vérifient encore que les écritures et fermetures.
@@ -383,11 +271,19 @@ session : pas avant 1–4.
 
 Retiré des tâches ouvertes, ou coché plus haut :
 
+- 0.8.5 : Mini numérotée avec l’édition ProDOS et chasse aux bugs de son
+  système de fichiers ; lecteur DUET (haut-parleur et Mockingboard) ;
+  DOSGET dans FILES/XL avec métadonnées DOS exactes ; IDENT/FIXTYPES
+  (familles DUET/PT3, polices, images ; chaque attribut confirmé) ; UNSHRINK,
+  DISKIMG, BINARY2 et EDIT propriétaires de leurs réservations ; écriture
+  DOS 3.3 physique et en image ; feuilletage lo-res sans coupure ; page des
+  catégories du menu `!`. Qualification :
+  [history/RELEASE-0.8.5.md](docs/history/RELEASE-0.8.5.md).
 - 0.8.0 : sauvegarde sûre des préférences, MOVE des fichiers marqués, menu
   par catégories, questions inversées, ouverture automatique des images,
   feuilletage Extasie et autres médias, retour au dossier quitté, lecteurs
   MB1 et PT3 au premier plan. Qualification et CI de cette révision :
-  [changelog](CHANGELOG.md), [BUG-HUNT-0.8.0.md](docs/BUG-HUNT-0.8.0.md).
+  [changelog](CHANGELOG.md), [history/BUG-HUNT-0.8.0.md](docs/history/BUG-HUNT-0.8.0.md).
 - Après 0.8.0 : réserve mémoire et affichage compact ; routage média ;
   NIBCOPY 5¼ standard ; PT3 jusqu’à 65 535 octets, tables historiques,
   TurboSound, cache prioritaire ; Purplesoft `.FOTO1`/`.FOTO2`.

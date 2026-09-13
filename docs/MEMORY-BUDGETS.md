@@ -1,5 +1,29 @@
 # Consolidation : budgets mémoire
 
+## État à la 0.8.5 (13 septembre 2026)
+
+Réserves au lien, en octets, 65C02/6502 ; ce ne sont pas des sommes :
+
+| Zone | 65C02 | 6502 | Objectif |
+| --- | ---: | ---: | --- |
+| MAIN (résident, plafond `$BEE0`) | **23** | 518 | 256 sur 65C02 |
+| Carte langage | 14 | 6 | ne pas descendre |
+| LOWRAM | 245 | 270 | — |
+| Écart avant la pile C de 192 octets | 51 | 735 | — |
+| OPEN | 11 | 43 | ne pas retomber à quelques octets au prochain média |
+| DELETE | 4 | 3 | respiration avant enrichissement |
+| IMGFS | 5 | 13 | idem |
+| UNSHRINK | 9 | 29 | idem |
+| ATTR | 26 | 26 | idem |
+| COPY | 54 | 51 | — |
+| Mini (sous DOS à `$9600`) | 270 | — | — |
+
+La marge MAIN 65C02 est repassée sous l’objectif de 256 octets retrouvé au
+neuvième incrément du chantier 1 (276/786) : DUET, DOSGET, IDENT/FIXTYPES
+et la sonde DUET du routage ont consommé la réserve. C’est la première tâche
+de la [feuille de route](../TODO.md). Le reste de ce document est le journal
+chronologique de la consolidation, le plus récent en premier.
+
 UNSHRINK, 13 septembre 2026 : réservation possédée, nettoyage contrôlé,
 lectures exactes des threads ignorés, erreurs de flux/fermeture et annulation.
 Les opérations de comparaison et lecture des entiers réutilisent les fonctions
