@@ -12,9 +12,10 @@ libres dans MAIN 65C02. Les travaux sur lecteurs physiques portent **💾**.
 
 ## Priorité
 
-**2 → 4**, avec un budget mesuré à chaque lien. **6** seulement si une
-petite surcouche doit changer. **1** et **3** en rendement décroissant,
-**7** en continu. Puis **5**. Ensuite **un seul** parmi 8, 9 ou 10.
+La partie Commander (2, 4, 6, 10) est close le 14 septembre 2026.
+Reste, par rendement : **3** (dette de preuve), **7** en continu, **1** à
+rendement décroissant, puis **5**. Ensuite **un seul** parmi 8 et 9.
+Budget mesuré à chaque lien ; MAIN 65C02 à 299 octets.
 
 Mini (**0**) est livrée et indépendante. Ne pas ouvrir SHRINK, l’écriture
 dans une image montée, un journal de coupure, Pascal/CP/M ni un nouveau
@@ -120,8 +121,10 @@ Vérifier états, ressources et octets, pas seulement le code de retour.
 
 - [ ] **Séquences** — image → musique → copie ; annulation → reprise ;
   changement de disque.
-- [ ] **`bench/goto.py`** — écarter GOTO.TMP entre deux échecs de
-  renommage ; relire les autres bancs de `bench/plugins.py`.
+- [x] **`bench/goto.py`** — écarte GOTO.TMP entre deux échecs de
+  renommage (53/53, 14 septembre 2026).
+- [ ] **Relire les autres bancs de `bench/plugins.py`** contre les messages
+  actuels : ils passent, mais n’ont pas été relus depuis la 0.8.5.
 - [ ] **Mutations** — `tools/fuzz_images.py` : UNSHRINK, BINARY2, IMGFS,
   DOS33 ; intégrer à la CI.
 - [ ] **Images XL** — `bench/run.py` sur 6502 et 65C02.
