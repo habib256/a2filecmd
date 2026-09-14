@@ -34,7 +34,7 @@ média tant que 1–4 ne sont pas clos.
 | **7** | Preuves de séquences | Continu |
 | **8** | 💾 NIBCOPY réel, puis un gain | Après 5, au choix |
 | **9** | 💾 ADTPro blocs | Après 5, au choix |
-| **10** | LAUNCHER | Après 5, au choix |
+| **10** | LAUNCHER | Retour épelé et validé ; favoris ouverts |
 
 ## 0. Mini DOS 3.3
 
@@ -122,8 +122,8 @@ Vérifier états, ressources et octets, pas seulement le code de retour.
 - [ ] **Banc //c** — session, pile, disquette, souris.
 - [ ] **💾 IIgs** — premier boot (SmartPort, `$C000`) ; documenter Disk II.
 
-Le banc de session isole encore le retour depuis BASIC.SYSTEM
-(`-A2FILE.SYSTEM`, chantier 10) : le reste de la session rend son verdict.
+Le banc de session tape la commande de retour que RUN épelle et exige
+A2FC de retour sur ses panneaux (14 septembre 2026) : verdict entier.
 
 ## 8. 💾 NIBCOPY
 
@@ -143,12 +143,24 @@ Dépend de 1–3. Le nibble après le 8.
 
 ## 10. LAUNCHER
 
-Pas avant 1–4. GOTO a les dossiers ; il manque les programmes et un
-retour fiable.
+GOTO a les dossiers ; il manque les programmes.
 
-- [ ] **Favoris de programmes et retour à A2FC** — après `HOME`,
-  `-/A2FC6502/A2FILE.SYSTEM` peut donner `SYNTAX ERROR` sur //e non
-  amélioré (`bench/extras.py`). Sans `HOME`, le scénario passe.
+- [x] **Retour fiable à A2FC** (14 septembre 2026) — le défaut de la
+  session était une consigne fausse, pas le lanceur : depuis la 0.8.0 RUN
+  pose le préfixe sur le dossier du programme (ses fichiers de données),
+  donc le `-A2FILE.SYSTEM` nu promis par le HELLO de démonstration donnait
+  `PATH NOT FOUND`. La confirmation de RUN épelle la commande absolue
+  (`Back: -/VOL/A2FILE.SYSTEM`), le HELLO renvoie vers `BYE` et le
+  sélecteur ProDOS 2.4.3, le banc de session tape la commande lue à
+  l’écran : 3/3 retours en 2,9 s, scénario réintégré. Un retour
+  *automatique* n’existe pas avec BASIC.SYSTEM (fin de programme = invite
+  `]`) ; INTBASIC.SYSTEM revient déjà au sélecteur.
+- [ ] **`SYNTAX ERROR` après `HOME` sur //e non amélioré** — signalé sur
+  `bench/extras.py` ; non reproduit le 14 septembre 2026 (3/3, retour par
+  le chemin absolu après `HOME`). À surveiller sur les prochains passages ;
+  refermer après trois passages propres.
+- [ ] **Favoris de programmes** — une liste de programmes à lancer, comme
+  GOTO pour les dossiers ; ne pas écraser la configuration ni le préfixe.
 
 ## Plus tard
 

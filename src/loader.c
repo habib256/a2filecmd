@@ -58,8 +58,9 @@ int main(void)
      * clock is present (bit 0 of MACHID, $BF98; ProDOS then keeps
      * $BF90-$BF93 up to date), then the loading. */
     {
-        static const char* const months[] = { "January", "February", "March", "April", "May", "June",
-            "July", "August", "September", "October", "November", "December" };
+        /* Three letters a month, one string: the floppy launcher must stay
+         * within 12 blocks (6,144 bytes) so BOOT keeps its 280. */
+        static const char months[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
         unsigned char machid = *(unsigned char*)0xBF98;
         unsigned int date = *(unsigned int*)0xBF90;
         unsigned char minute = *(unsigned char*)0xBF92, hour = *(unsigned char*)0xBF93;
@@ -83,13 +84,15 @@ int main(void)
 #endif
         revers(0);
         centre(3, "Two panels. One Apple II.");
-        centre(6, "A two-pane ProDOS file manager running natively on Apple IIe.");
+#ifndef A2FC_FLOPPY
+        centre(6, "A two-pane ProDOS file manager running natively on Apple IIe.");   /* the floppy launcher has no room for it */
+#endif
         cputsxy(4, 8,  "Copy, move, rename, delete, tag, sort.");
 #ifdef A2FC_FLOPPY
         cputsxy(44, 8, "Text viewer, hex dump, attributes.");
         cputsxy(4, 9,  "Copy, write and read floppy images.");
         cputsxy(44, 9, "DOS 3.3 disks, images as folders.");
-        cputsxy(4, 13, "More tools: insert the named category disk for this CPU.");
+        cputsxy(4, 13, "More tools: insert a category disk for this CPU.");
 #else
         cputsxy(44, 8, "Text viewer, hex dump, text editor.");
         cputsxy(4, 9,  "HGR and DHGR pictures, full screen.");
@@ -110,13 +113,13 @@ int main(void)
         /* ProDOS: 7-bit year (0-39 = 2000-2039), month 1-12, day 1-31,
          * hour 0-23 -- already in 24-hour form. An out-of-range date means none. */
         if ((machid & 1) && month >= 1 && month <= 12 && day >= 1 && day <= 31 && hour < 24 && minute < 60)
-            cprintf("%u %s %u, %02u:%02u", day, months[month - 1],
+            cprintf("%u %.3s %u, %02u:%02u", day, months + (month - 1) * 3,
                     year < 40 ? 2000 + year : 1900 + year, hour, minute);
         else
-            cputs("No clock: new files will carry no date.");
+            cputs("No clock: new files carry no date.");
         chlinexy(0, 20, 80);
         gotoxy(4, 22);
-        cputs("PLEASE WAIT, loading A2FILE.CODE ...");
+        cputs("Loading A2FILE.CODE ...");
     }
 
     /* The prefix first: A2FILE/A2FILE.CODE is read relatively. On a cold

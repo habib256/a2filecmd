@@ -566,8 +566,13 @@ def main():
             s.key(ESC); s.wait(lambda: s.value('view', 1) == 0, 'retour liste'); p.stable()
             s.select('HELLO'); s.key(RET)
             s.wait(lambda: s.has('Run HELLO?'), 'confirmation')
-            s.ok('un BAS demande confirmation avant de partir', s.has('No return'),
+            # La confirmation epelle la commande de retour : le prefixe de
+            # BASIC.SYSTEM restera sur le dossier du programme lance, donc le
+            # -A2FILE.SYSTEM nu n'y resoudrait pas.
+            back = re.search(r'Back: (-\S+/A2FILE\.SYSTEM)', s.rows()[22])
+            s.ok('un BAS demande confirmation et epelle le retour', back is not None and '/A2FILECMD/' in back.group(1),
                  s.rows()[22].strip())
+            back = back.group(1) if back else '-/A2FILECMD/A2FILE.SYSTEM'
             s.key(b'Y')
             s.wait(lambda: any('A2 FILE CMD RUNS APPLESOFT' in r for r in s.rows40()),
                    'Applesoft', 60)
@@ -575,30 +580,20 @@ def main():
             s.wait(lambda: any(r.startswith(']') for r in s.rows40()), 'invite Applesoft', 30)
             s.ok('Applesoft rend la main', any(r.startswith(']') for r in s.rows40()))
             # HELLO est sur /SCRATCH, qui n'a pas de BASIC.SYSTEM : RUN a pris
-            # celui de la disquette amorcee et lance "-/SCRATCH/DEMO/HELLO".
-            # BASIC.SYSTEM pose le prefixe sur son propre volume, /A2FILECMD :
-            # le retour annonce par le programme, -A2FILE.SYSTEM, s'y resout.
-            # Le lanceur repose le prefixe sur le volume amorce (BASIC.SYSTEM
-            # l'a vide en partant), donc A2FC revient sur ses panneaux (ceux
-            # d'A2FILE.CFG), pas sur la liste des volumes -- on l'exige ici.
-            # Scenario isole : le retour depuis BASIC.SYSTEM par -A2FILE.SYSTEM
-            # reste ouvert (TODO, chantier 10, LAUNCHER) ; il ne doit pas
-            # priver le reste de la session de son verdict.
-            known_open = ''
-            try:
-                s.type('-A2FILE.SYSTEM'); s.key(RET)
-                s.wait(lambda: s.has('Type  Aux     Size'), 'retour a A2FC', 90); p.stable()
-                s.ok('-A2FILE.SYSTEM relance A2 File Cmd depuis Applesoft',
-                     s.rows()[0].startswith('/SCRATCH') and '/SCRATCH/DEMO' in s.rows()[0], s.rows()[0][:60])
-            except (Timeout, AssertionError) as exc:
-                known_open = str(exc)
-                print('OPEN (chantier 10, LAUNCHER) -A2FILE.SYSTEM relance A2 File Cmd depuis Applesoft: ' + known_open, flush=True)
+            # celui de la disquette amorcee. Le lanceur repose le prefixe sur
+            # le volume amorce (BASIC.SYSTEM l'a vide en partant), donc A2FC
+            # revient sur ses panneaux (ceux d'A2FILE.CFG), pas sur la liste
+            # des volumes -- on l'exige ici.
+            s.type(back); s.key(RET)
+            s.wait(lambda: s.has('Type  Aux     Size'), 'retour a A2FC', 90); p.stable()
+            s.ok(back + ' relance A2 File Cmd depuis Applesoft',
+                 s.rows()[0].startswith('/SCRATCH') and '/SCRATCH/DEMO' in s.rows()[0], s.rows()[0][:60])
 
             passed = sum(1 for c in s.checks if c['ok'])
-            print(f'\n{passed} controles, tous passes' + (' ; 1 scenario connu ouvert' if known_open else ''), flush=True)
+            print(f'\n{passed} controles, tous passes', flush=True)
             if args.out:
                 (args.out / 'bench.json').write_text(
-                    json.dumps({'checks': s.checks, 'passed': passed, 'open': known_open}, indent=2) + '\n')
+                    json.dumps({'checks': s.checks, 'passed': passed}, indent=2) + '\n')
     return 0
 
 

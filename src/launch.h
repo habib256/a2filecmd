@@ -20,6 +20,11 @@ static const char run_types[] = "SYS, BIN, BAS or INT only.";
 #pragma rodata-name(pop)
 static const char run_bad[] = "Invalid program/runtime.";
 static const char run_ask[] = "Run %s? No return to A2FC.";
+/* The way back, spelt out: BASIC.SYSTEM keeps the prefix on the program's
+ * directory (its data files live there), so the bare -A2FILE.SYSTEM only
+ * resolves from A2FC's own directory. Up to 40 characters of that directory
+ * keep the question within 79 columns. */
+static const char run_back[] = "Run %s? Back: -%s/A2FILE.SYSTEM";
 static const char run_basic[] = "/BASIC.SYSTEM";
 static const char run_integer[] = "/INTBASIC.SYSTEM";
 #pragma rodata-name(push, "LC")
@@ -101,7 +106,7 @@ static unsigned char launch_check(unsigned int addr, unsigned char interpreter)
 static void run_selected(const struct Entry* e)
 {
     unsigned int addr;
-    unsigned char bas;
+    unsigned char bas, addr_len;
     if (is_dir(e) || !panels[active].path[0] || panels[active].fs) { message(run_pick); return; }
     bas = e->type == 0xFA || e->type == 0xFC;
     if (!bas && e->type != 0xFF && e->type != 0x06) { message(run_types); return; }
@@ -117,7 +122,12 @@ static void run_selected(const struct Entry* e)
         addr = e->type == 0xFF ? 0x2000 : e->aux;
     }
     if (!launch_check(addr, bas)) return;
-    sprintf(question, run_ask, e->name);
+    addr_len = strlen(cfg_path);           /* "/VOL/.../A2FILE/A2FILE.CFG": 18 past the directory */
+    if (addr_len > 18 && addr_len - 18 <= 40) {
+        memcpy(other_full, cfg_path, addr_len - 18);
+        other_full[addr_len - 18] = 0;
+        sprintf(question, run_back, e->name, other_full);
+    } else sprintf(question, run_ask, e->name);
     if (!confirm(question)) return;
     if (!save_config() && !confirm(run_cfgwarn)) return;
     if (chdir(panels[active].path)) { report_error(run_prefix); return; }

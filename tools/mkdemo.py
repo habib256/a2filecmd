@@ -250,7 +250,7 @@ def make(out, full=True):
         (10, bytes([HOME])),
         (20, bytes([PRINT]) + b'"A2 FILE CMD RUNS APPLESOFT."'),
         (30, bytes([PRINT])),
-        (40, bytes([PRINT]) + b'"TYPE  -A2FILE.SYSTEM  TO COME BACK."'),
+        (40, bytes([PRINT]) + b'"BYE, THEN PICK A2FILE.SYSTEM TO RETURN."'),
         (50, bytes([END])),
     ])
     (out / 'HELLO#FC0801').write_bytes(hello)

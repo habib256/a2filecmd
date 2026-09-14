@@ -615,16 +615,13 @@ that failure. Integer BASIC returns to the ProDOS selector at program end.
 Its upstream runtime supports a subset of DOS commands; see
 [INTBASIC.SYSTEM usage and provenance](../data/INTBASIC.md).
 
-From the Applesoft `]` prompt, reinsert BOOT if needed and enter:
-
-```text
--/A2FC6502/A2FILE.SYSTEM
-```
-
-Use `/A2FC65C02/` for the enhanced BOOT, `/A2XL6502/` or `/A2XL65C02/` for
-XL, or the actual installation path. `-A2FILE.SYSTEM` also works when the
-current prefix is its directory. BAS paths over 46 characters use a fallback
-launch method; use a shorter path if launch fails.
+The confirmation before a launch spells out the way back, for example
+`Run HELLO? Back: -/A2FC6502/A2FILE.SYSTEM`: from the Applesoft `]` prompt,
+reinsert BOOT if needed and enter that command. BASIC.SYSTEM keeps its
+prefix on the launched program's directory, so the bare `-A2FILE.SYSTEM`
+only works when that directory is A2FC's own. `BYE` also leaves to the
+ProDOS selector, where `A2FILE.SYSTEM` can be picked. BAS paths over 46
+characters use a fallback launch method; use a shorter path if launch fails.
 
 ## VDrive: two volumes over the serial line
 
