@@ -27,8 +27,10 @@ ou fermeture n’est ni une EOF ni un chemin libre.
 - [ ] **Pannes combinées** — couvertes par les harnais hôtes de COPY, EDIT,
   CFG, GOTO, SYNC, TXTCONV, IMGCONV, BATCH, DOSGET, BINARY2, UNSHRINK,
   IMGFS et DISKIMG (fermeture + collision + annulation, taille périmée,
-  renommage, restauration et nettoyage en échec). Restent DOSWRITE sur
-  disque réel et les séquences entre outils (chantier 7).
+  renommage, restauration et nettoyage en échec). Les séquences entre
+  outils ont leur banc depuis le 14 septembre 2026 (`bench/sequences.py`,
+  deux CPU, en CI). Reste 💾 DOSWRITE sur disque réel : le harnais hôte et
+  le banc Disk II de POM2 couvrent chaque écriture, pas le fer.
 - [x] **Autres chemins** — revue du 14 septembre 2026 des décisions
   « fichier absent » du résident : la création exclusive garde chaque
   chemin (éditeur, copie, mkdir) même quand `GET_FILE_INFO` échoue ; le seul
@@ -43,8 +45,9 @@ ni un format neuf tant que la dernière case n’est pas close.
 
 États, ressources et octets, pas le seul code de retour.
 
-- [ ] **Séquences** — image → musique → copie ; annulation → reprise ;
-  changement de disque.
+- [x] **Séquences** — image → musique → copie ; annulation → reprise ;
+  changement de disque : `bench/sequences.py`, 21 contrôles, octets relus
+  après la sortie, deux CPU.
 - [ ] **`bench/plugins.py`** — relire les messages depuis la 0.8.5
   (ils passent, ce n’est pas une relecture).
 - [x] **`bench/shk.py` sur disquette 6502** — le 14 septembre 2026, les

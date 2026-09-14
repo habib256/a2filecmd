@@ -118,7 +118,7 @@ jobs:
     runs-on: ${{ vars.POM2_RUNNER }}
     steps:
       - uses: actions/checkout@v4
-      - run: make disk && make benchfloppy ARCH=enh
+      - run: make disk && make benchfloppy ARCH=enh && make benchfloppy ARCH=6502
       - name: La disquette BOOT 6502 demarre sur les deux machines
         run: |
           A2FC_PRESET=iie_unenh python3 bench/smoke.py
@@ -182,6 +182,10 @@ jobs:
           A2FC_BUILD=build A2FC_PRESET=iie python3 bench/large_nav.py
       - name: Session complete, 65C02 (disquette de banc, toutes les surcouches)
         run: A2FC_IMG=A2FILECMD-full python3 bench/run.py --out bench-out
+      - name: Sequences entre outils (image, musique, copie ; annulation, reprise ; changement de disque), deux CPU
+        run: |
+          A2FC_BUILD=build-6502 A2FC_PRESET=iie_unenh A2FC_IMG=A2FILECMD-full python3 bench/sequences.py
+          A2FC_IMG=A2FILECMD-full python3 bench/sequences.py
       - name: Les deux disques XL publies
         run: |
           A2FC_CPU=6502 A2FC_PRESET=iie_unenh python3 bench/hd.py
