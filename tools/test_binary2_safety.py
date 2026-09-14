@@ -40,8 +40,9 @@ static FILE* open_file(const char* p,const char* mode) {
     FILE* f;
     if(!strcmp(mode,"wb") && fault==2)abort();
     if(!strcmp(mode,"wb") && fault==3)return NULL;
+    if(!strcmp(mode,"rb") && strcmp(p,full)) { if(fault==12)return NULL; }   /* the output, read back */
     f=fopen(p,mode);
-    if(!strcmp(mode,"rb"))archive=f;
+    if(!strcmp(p,full))archive=f;
     else {output=f;output_open=f!=NULL;}
     return f;
 }
@@ -55,6 +56,7 @@ static size_t read_file(void* p,size_t s,size_t n,FILE* f) {
 static int error_file(FILE* f) { return failed_read || ferror(f); }
 static size_t write_file(const void* p,size_t s,size_t n,FILE* f) {
     if(fault==5)return fwrite(p,s,n/2,f);
+    if(fault==13){unsigned char c[512];memcpy(c,p,n);c[3]^=1;return fwrite(c,s,n,f);}   /* a wrong byte on the medium */
     return fwrite(p,s,n,f);
 }
 static int close_file(FILE* f) {
@@ -178,6 +180,15 @@ class Binary2Safety(unittest.TestCase):
             self.assertEqual((self.dst/'DATA').read_bytes(), self.payload)
             self.assertIn('removes=0', out)
             (self.dst/'DATA').unlink()
+
+    def test_readback_refuses_a_wrong_byte_or_an_unreadable_output(self):
+        for fault in (12, 13):
+            with self.subTest(fault=fault):
+                out = self.run_extract(fault)
+                self.assertIn('failed', out)
+                self.assertFalse((self.dst/'DATA').exists())
+                self.assertIn('removes=1', out)
+        self.assertIn('reads back different', self.run_extract(13))
 
     def test_archive_close_failure_is_reported_without_deleting_complete_output(self):
         out = self.run_extract(7)

@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-from pom2 import Pom2, Session, ROOT, DISK
+from pom2 import Pom2, Session, ROOT, DISK, VERSION
 from archive_support import archive_floppy
 from run import scratch_volume, RET, TAB, ESC, volume
 import mkbny
@@ -38,8 +38,13 @@ def main():
             {'name': 'ONE', 'data': ONE, 'filetype': 0x04, 'auxtype': 0},
             {'name': 'TWO', 'data': TWO, 'filetype': 0x06, 'auxtype': 0x1234}])
         hdv = volume(stage, tmp / 'SCRATCH.hdv', 'SCRATCH', 1600)
+        # On the floppy edition BINARY2 lives on the FILES companion: drive 2.
+        companion = None
+        if DISK.name != 'A2FILECMD-full.po':
+            companion = tmp / 'FILES.po'
+            shutil.copyfile(ROOT / f'dist/A2FILECMD-6502-FILES-{VERSION}.po', companion)
 
-        with Pom2(hdv, floppy=floppy, port=6714, mouse=True) as p:
+        with Pom2(hdv, floppy=floppy, floppy2=companion, port=6714, mouse=True) as p:
             s = Session(p)
             s.boot()
 

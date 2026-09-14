@@ -22,9 +22,10 @@ struct Panel {char path[512];unsigned char fs,count,cursor,img_len;unsigned int 
 static struct Panel panels[2];
 static struct Entry entries[2];
 #define ENTRY_SNAPSHOT entries
-static unsigned char scratch[244],seen[70],copy_buf[512],active,dos_unit,_filetype;
+static unsigned char scratch[244],seen[70],cmp[256],copy_buf[512],active,dos_unit,_filetype;
 #define DOS_TSBUF scratch
 #define DOS_SEEN seen
+#define DOS_CMP cmp
 static unsigned int _auxtype,a2fc_ops;
 static FILE *img_f,*output;
 static unsigned char sectors[560][256];
@@ -45,8 +46,12 @@ static int dos_read_sector(unsigned t,unsigned s){
 }
 static int reserve(const char* p,int flags){if(fault==1)return -1;return open(p,flags,0600);}
 static int close_reserved(int fd){int r=close(fd);return fault==2?-1:r;}
-static FILE* open_file(const char* p,const char* mode){if(fault==3)return NULL;output=fopen(p,mode);return output;}
-static size_t write_file(const void* p,size_t s,size_t n,FILE* f){++writes;if(fault==5)n/=2;if(fault==6)io_error=1;return fwrite(p,s,n,f);}
+static int opens;
+static FILE* open_file(const char* p,const char* mode){++opens;if(fault==3)return NULL;if(fault==15&&!strcmp(mode,"rb"))return NULL;output=fopen(p,mode);return output;}
+static size_t write_file(const void* p,size_t s,size_t n,FILE* f){++writes;if(fault==5)n/=2;if(fault==6)io_error=1;
+ if(fault==14&&writes==2){unsigned char c[256];memcpy(c,p,n);c[7]^=1;return fwrite(c,s,n,f);}   /* a byte lands wrong: only the readback can see it */
+ return fwrite(p,s,n,f);}
+static size_t read_file(void* p,size_t s,size_t n,FILE* f){if(fault==16&&n>1)return 0;return fread(p,s,n,f);}
 static int error_file(FILE* f){return io_error||ferror(f);}
 static int close_file(FILE* f){int src=f==img_f,r=fclose(f);return (src?fault==9:fault==7)?-1:r;}
 static int remove_file(const char* p){++removes;return fault==8?-1:remove(p);}
@@ -54,6 +59,7 @@ static int remove_file(const char* p){++removes;return fault==8?-1:remove(p);}
 #define close close_reserved
 #define fopen open_file
 #define fwrite write_file
+#define fread read_file
 #define ferror error_file
 #define fclose close_file
 #define remove remove_file
@@ -109,6 +115,10 @@ class DosExtract(unittest.TestCase):
   out,data=self.run_case(fault=8);self.assertIn('Cleanup failed',out)
   self.assertEqual(data,bytes((i*17+3)&255 for i in range(508)))
   out,again=self.run_case(existing=data);self.assertEqual(again,data)
+ def test_readback_catches_a_wrong_byte_a_failed_reopen_and_a_short_read(self):
+  for fault in (14,15,16):
+   with self.subTest(fault=fault):
+    out,data=self.run_case(fault=fault);self.assertTrue(out.startswith('0 '),out);self.assertIsNone(data)
  def test_source_close_error_keeps_completed_output_but_reports_failure(self):
   out,data=self.run_case(fault=9);self.assertIn('Extract failed',out);self.assertEqual(len(data),600)
  def test_cycle_is_rejected_before_reusing_sectors(self):

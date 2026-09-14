@@ -98,7 +98,9 @@ complet reste en échec ; voir le suivi LAUNCHER dans `TODO.md`.
 Il faut [POM2](https://github.com/habib256/pom2) construit sans interface
 graphique, avec son serveur de commande (`--ai-control`) et une option
 `--mouse` qui branche une AppleMouse II (HLE AppleWin) en slot 4 -- c'est
-`pom2_playtest`, l'hote minimal du depot voisin, qui les a :
+`pom2_playtest`, l'hote minimal dont la source est dans ce depot
+(`bench/pom2_playtest/`), construit par `make pom2host` dans `build/` contre
+la bibliotheque de l'emulateur (`POM2_ROOT`, par defaut `~/src/pom2`) :
 
 ```sh
 make disk
@@ -106,8 +108,8 @@ POM2=/chemin/vers/pom2_headless python3 bench/run.py --out /tmp/bench
 POM2=/chemin/vers/pom2_headless python3 bench/memory.py
 ```
 
-Sans la variable `POM2`, les bancs cherchent l'executable a l'emplacement par
-defaut de l'auteur et s'arretent proprement s'il n'y est pas.
+Sans la variable `POM2`, les bancs cherchent `build/pom2_playtest` et
+s'arretent proprement s'il n'y est pas : `make pom2host` d'abord.
 
 L'hote doit **activer l'ecriture differee du disque dur et la vider a
 l'arret** (`setWriteBackEnabled(true)` sur la carte HDV et l'unite SmartPort

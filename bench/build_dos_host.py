@@ -12,7 +12,7 @@ from pathlib import Path
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--slot',type=int,choices=(5,6),default=6)
 p.add_argument('--pom2',type=Path,default=Path.home()/'src/pom2')
-p.add_argument('--source',type=Path,default=Path.home()/'src/pom2adventure/SCOSWAMP.MORE/TOOLS/pom2_playtest.cpp')
+p.add_argument('--source',type=Path,default=Path(__file__).resolve().parent/'pom2_playtest/pom2_playtest.cpp')
 a=p.parse_args();s=a.source.read_text()
 def change(old,new):
  global s

@@ -5,6 +5,8 @@ downloads and installation.
 
 ## Unreleased
 
+- DOSGET and BINARY2 read their output back: once the file is closed, the DOS sectors (a second walk of the T/S lists) or the archive record are read again and compared byte for byte with the file, which must end where the data ends; a wrong byte, an unreadable output or a short read fails the extraction and removes the owned file. Host tests inject each. IMGFS and UNSHRINK still lack this second pass: their overlays have no room left.
+
 ## [0.8.6] - 2026-09-14
 
 ### Files

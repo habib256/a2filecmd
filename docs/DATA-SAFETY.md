@@ -68,8 +68,13 @@ sans toucher AUX ni `/RAM` ; cette sauvegarde ne survit pas à une coupure.
 Si la restauration échoue, le volume peut ne plus démarrer : effectuer une
 récupération avant de réessayer. Une
 relecture valide le contenu rendu par le pilote, pas sa persistance après une
-perte d’alimentation. Les conversions vérifient leurs écritures et fermetures,
-mais ne disposent pas toutes d’une seconde comparaison intégrale sur le support.
+perte d’alimentation. Chaque conversion ou extraction vérifie ses écritures et
+fermetures ; TXTCONV, IMGCONV, COPY, SYNC, l’éditeur, la configuration, et
+depuis le 14 septembre 2026 DOSGET et BINARY2, relisent en plus le résultat
+fermé en entier et le comparent à ce qui devait être produit. IMGFS (extraction
+d’une image ouverte comme dossier) et UNSHRINK n’ont pas cette seconde
+comparaison : leurs surcouches n’ont plus de place (5 et 9 octets), et
+l’ajouter demande d’abord d’y faire de la marge.
 
 WIPE F refuse les stockages étendus et les profondeurs dépassant sa pile de
 parcours ; il privilégie le refus à l’effacement avec un diagnostic incomplet.

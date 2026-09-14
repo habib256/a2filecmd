@@ -581,7 +581,9 @@ sectors and malformed end links are refused. Reads, writes, stream errors,
 reservation/output/source closes and cleanup failures are checked. Completed
 outputs remain if the source close fails; a failed cleanup names the retained
 partial output. This is extraction, not move: the source is never deleted.
-No full output readback or power-loss atomicity is promised.
+Since 14 September 2026 the closed output is read back and compared, byte
+for byte, with the DOS sectors read a second time, and must end where the
+data ends. No power-loss atomicity is promised.
 
 FIXTYPES reads content and writes only confirmed SET_FILE_INFO/RENAME calls.
 GET_FILE_INFO must succeed, the file must be writable, and metadata is checked

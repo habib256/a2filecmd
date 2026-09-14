@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 root=Path.home()/'src'
 pom=root/'pom2'
-source=root/'pom2adventure/SCOSWAMP.MORE/TOOLS/pom2_playtest.cpp'
+source=Path(__file__).resolve().parent/'pom2_playtest/pom2_playtest.cpp'
 needle='while (!stopped) std::this_thread::sleep_for(std::chrono::milliseconds(100));'
 s=source.read_text()
 # Opt-in MB4c on the //c internal connector. POM2 maps it to $C400 even

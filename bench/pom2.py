@@ -27,7 +27,9 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-POM2 = os.environ.get('POM2', str(Path.home() / 'src/pom2adventure/SCOSWAMP.MORE/TOOLS/build/pom2_playtest'))
+# The headless test host is built from bench/pom2_playtest/ (make pom2host)
+# into build/; it needs only the POM2 emulator library.
+POM2 = os.environ.get('POM2', str(Path(__file__).resolve().parents[1] / 'build/pom2_playtest'))
 # Les deux processeurs (Makefile, TODO.md) : dist/A2FILECMD-6502-BOOT.po est l'edition
 # disquette, construite en 6502 (build-6502/), et c'est elle que les bancs
 # amorcent par defaut -- elle tourne aussi sur le IIe enhanced de POM2.

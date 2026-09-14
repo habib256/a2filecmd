@@ -1702,6 +1702,7 @@ void __fastcall__ search_entry(const struct A2fcApi* a)
 /* Named arrays stay with their overlay; cc65 puts bare literals in MAIN. */
 static const char b2_create_failed[] = "Create failed; existing files kept.";
 static const char b2_io_failed[] = "Extract failed: read/write/close error.";
+static const char b2_verify[] = "Extract failed: the file reads back different.";
 static const char b2_cleanup_failed[] = "Cleanup failed: %s retained.";
 static const char b2_pick[]  = "Select a Binary II archive.";
 static const char b2_notdir[] = "Other panel must be a ProDOS folder.";
@@ -1742,7 +1743,7 @@ void __fastcall__ binary2_entry(const struct A2fcApi* a)
     struct Panel* oth = &panels[!active];
     FILE* in;
     FILE* out = NULL;
-    unsigned long eof;
+    unsigned long eof, size, start;
     unsigned int n, done = 0;
     unsigned char more = 1, owned = 0, pad;
     const char* error = b2_io_failed;
@@ -1772,16 +1773,31 @@ void __fastcall__ binary2_entry(const struct A2fcApi* a)
         if (owned != OUTPUT_RESERVED) goto failed;
         out = fopen(other_full, "wb");
         if (!out) goto failed;
+        size = eof;
+        start = ftell(in);
         while (eof) {
             n = eof > 512 ? 512 : (unsigned int)eof;
             if (fread(copy_buf, 1, n, in) != n || ferror(in) ||
                 fwrite(copy_buf, 1, n, out) != n) goto failed;
             eof -= n;
         }
-        /* Seeking beyond EOF can succeed: read the padding to detect truncation. */
-        if (pad && (fread(copy_buf, 1, pad, in) != pad || ferror(in))) goto failed;
         n = fclose(out); out = NULL;
         if (n) goto failed;
+        /* The closed file is read back and compared, byte for byte, with the
+         * archive read a second time; it must end where the record ends. */
+        if (fseek(in, start, SEEK_SET) || !(out = fopen(other_full, "rb"))) goto failed;
+        for (eof = size; eof; eof -= n) {
+            n = eof > 256 ? 256 : (unsigned int)eof;
+            if (fread(copy_buf, 1, n, in) != n || ferror(in) ||
+                fread(copy_buf + 256, 1, n, out) != n || memcmp(copy_buf, copy_buf + 256, n)) {
+                error = b2_verify; goto failed;
+            }
+        }
+        if (fread(copy_buf, 1, 1, out)) { error = b2_verify; goto failed; }
+        n = fclose(out); out = NULL;
+        if (n) goto failed;
+        /* Seeking beyond EOF can succeed: read the padding to detect truncation. */
+        if (pad && (fread(copy_buf, 1, pad, in) != pad || ferror(in))) goto failed;
         owned = 0;
         ++done;
     }
@@ -3706,7 +3722,10 @@ static unsigned char move_tree_across(void)
     /* The copy engine went through the storage the batch state borrows:
      * BATCH rebuilds the paths from the panels (its counters survived). */
     batch_stage('X');
-    if (!build_full(full, pan, &selected) || exists(full)) { strcpy(note, msg_treekept); return 0; }
+    /* Moved means the source is gone, and "gone" is the positive $46 of
+     * GET_FILE_INFO: any other answer, an I/O error included, keeps the
+     * batch from counting it. */
+    if (!build_full(full, pan, &selected) || exists(full) || _oserror != 0x46) { strcpy(note, msg_treekept); return 0; }
     strcpy(reselect, selected.name);
     return 1;
 }
@@ -3839,6 +3858,7 @@ static const char d3_target[]  = "Open a ProDOS folder in the other panel.";
 static const char d3_reopen[]  = "Cannot reopen the image.";
 static const char d3_done[]    = "%u file%s extracted.";
 static const char d3_wb[] = "wb";
+static const char d3_rb[] = "rb";
 static const char d3_error[] = "Extract failed; %u complete.";
 static const char d3_cleanup[] = "Cleanup failed: %s retained.";
 #pragma static-locals (push, on)
@@ -3849,7 +3869,10 @@ static const char d3_cleanup[] = "Cleanup failed: %s retained.";
 #ifndef DOS_TSBUF
 #define DOS_TSBUF ((unsigned char*)0x2F00)
 #define DOS_SEEN ((unsigned char*)0x2800)
+#define DOS_CMP ((unsigned char*)0x2A00)     /* one sector of the output, read back */
 #endif
+static FILE* d3_out;
+static unsigned char d3_owned;
 static unsigned char d3_read(unsigned char track, unsigned char sector)
 {
     unsigned int k = (unsigned int)track * 16 + sector;
@@ -3858,13 +3881,60 @@ static unsigned char d3_read(unsigned char track, unsigned char sector)
     DOS_SEEN[k >> 3] |= mask;
     return dos_read_sector(track, sector);
 }
+/* One pass over the entry's T/S lists. Pass 0 creates the output and
+ * writes it; pass 1 opens the closed file again and compares every byte
+ * with the DOS sectors read a second time, and the file must end where
+ * the data ends. Both passes walk the same chain with the same checks;
+ * the caller closes d3_out either way. Returns 1 on success. */
+static unsigned char d3_pass(const struct Entry* e, unsigned char verify)
+{
+    unsigned char* tsbuf = DOS_TSBUF;
+    unsigned char tslt = e->mdate >> 8, tsls = e->mdate;
+    unsigned char j, skip = 0, first = 1, lists = 0, type = e->type, r = 1;
+    unsigned int left = 0, count;
+    memset(DOS_SEEN, 0, 70);
+    while (tslt && r) {
+        if (++lists > 5 || !d3_read(tslt, tsls)) return 0;
+        tslt = copy_buf[1]; tsls = copy_buf[2];
+        if ((!tslt && tsls) || tslt >= 35 || tsls >= 16) return 0;
+        memcpy(tsbuf, copy_buf + 0x0C, 244);
+        for (j = 0; j < 122; ++j) {
+            if (kbhit() && cgetc() == KEY_ESC) return 0;
+            if (!tsbuf[j * 2]) { if (tslt || tsbuf[j * 2 + 1]) r = 0; tslt = 0; break; }
+            if (!d3_read(tsbuf[j * 2], tsbuf[j * 2 + 1])) return 0;
+            if (first) {
+                first = 0;
+                skip = (type >= 0xFA) ? 2 : type == 6 ? 4 : 0;
+                if (skip) left = copy_buf[skip-2] | ((unsigned int)copy_buf[skip-1] << 8);
+                if (verify) {
+                    if (!(d3_out = fopen(other_full, d3_rb))) return 0;
+                } else {
+                    _filetype = e->type;
+                    _auxtype = type == 0xFC ? 0x0801 : 0;
+                    if (skip == 4) _auxtype = copy_buf[0] | ((unsigned int)copy_buf[1] << 8);
+                    d3_owned = reserve_output(other_full);
+                    if (d3_owned != OUTPUT_RESERVED || !(d3_out = fopen(other_full, d3_wb))) return 0;
+                }
+            }
+            count = 256 - skip;
+            if (type != 4 && count > left) count = left;
+            if (verify) {
+                if (fread(DOS_CMP, 1, count, d3_out) != count || memcmp(DOS_CMP, copy_buf + skip, count)) return 0;
+            } else if (fwrite(copy_buf + skip, 1, count, d3_out) != count || ferror(d3_out)) return 0;
+            skip = 0;
+            if (type != 4) { left -= count; if (!left) { tslt = 0; break; } }
+        }
+    }
+    if (first || left) return 0;
+    if (verify && fread(DOS_CMP, 1, 1, d3_out)) return 0;
+    return r;
+}
+
 static void dos_extract(void)
 {
     struct Panel* pan = &panels[active];
     struct Panel* dst = &panels[!active];
-    unsigned char* tsbuf = DOS_TSBUF;
-    unsigned char n, i, done = 0, r = 1, owned = 0;
-    FILE* out;
+    unsigned char n, i, done = 0, r = 1;
     if (dst->fs || !dst->path[0]) { message(d3_target); return; }
     n = pan->count;
     if (!n) return;
@@ -3878,43 +3948,19 @@ static void dos_extract(void)
     } else dos_unit = (unsigned char)pan->dir_key;
     for (i = 0; i < n; ++i) {
         const struct Entry* e = &ENTRY_SNAPSHOT[i];
-        unsigned char tslt = e->mdate >> 8, tsls = e->mdate;
-        unsigned char j, skip = 0, first = 1, lists = 0, type = e->type;
-        unsigned int left = 0, count;
-        out = NULL; owned = 0;
         if (is_up(e) || (tag_count(pan) ? !tagged(pan,i) : i != pan->cursor)) continue;
         if (!build_full(other_full, dst, e)) { r = 0; break; }
-        memset(DOS_SEEN, 0, 70);
-        while (tslt && r) {
-            if (++lists > 5 || !d3_read(tslt, tsls)) { r = 0; break; }
-            tslt = copy_buf[1]; tsls = copy_buf[2];
-            if ((!tslt && tsls) || tslt >= 35 || tsls >= 16) { r = 0; break; }
-            memcpy(tsbuf, copy_buf + 0x0C, 244);
-            for (j = 0; j < 122; ++j) {
-                if (kbhit() && cgetc() == KEY_ESC) { r = 0; break; }
-                if (!tsbuf[j * 2]) { if (tslt || tsbuf[j * 2 + 1]) r = 0; tslt = 0; break; }
-                if (!d3_read(tsbuf[j * 2], tsbuf[j * 2 + 1])) { r = 0; break; }
-                if (first) {
-                    first = 0;
-                    skip = (type >= 0xFA) ? 2 : type == 6 ? 4 : 0;
-                    _filetype = e->type;
-                    _auxtype = type == 0xFC ? 0x0801 : 0;
-                    if (skip == 4) _auxtype = copy_buf[0] | ((unsigned int)copy_buf[1] << 8);
-                    if (skip) left = copy_buf[skip-2] | ((unsigned int)copy_buf[skip-1] << 8);
-                    owned = reserve_output(other_full);
-                    if (owned != OUTPUT_RESERVED || !(out = fopen(other_full, d3_wb))) { r = 0; break; }
-                }
-                count = 256 - skip;
-                if (type != 4 && count > left) count = left;
-                if (fwrite(copy_buf + skip, 1, count, out) != count || ferror(out)) { r = 0; break; }
-                skip = 0;
-                if (type != 4) { left -= count; if (!left) { tslt = 0; break; } }
-            }
+        d3_out = NULL; d3_owned = 0;
+        r = d3_pass(e, 0);
+        if (d3_out && fclose(d3_out)) r = 0;
+        d3_out = NULL;
+        if (r) {
+            r = d3_pass(e, 1);
+            if (d3_out && fclose(d3_out)) r = 0;
+            d3_out = NULL;
         }
-        if (first || left) r = 0;
-        if (out && fclose(out)) r = 0;
         if (!r) {
-            if (owned && remove(other_full)) sprintf(note, d3_cleanup, e->name);
+            if (d3_owned && remove(other_full)) sprintf(note, d3_cleanup, e->name);
             break;
         }
         ++a2fc_ops; ++done;

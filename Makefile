@@ -139,7 +139,7 @@ OBJS = $(BUILD)/crt0.o $(BUILD)/overlay.o $(BUILD)/unshrink.o $(VDRIVEOBJ) $(BUI
 
 .DELETE_ON_ERROR:
 
-.PHONY: all disk benchfloppy xplugins test bench example clean
+.PHONY: all disk benchfloppy xplugins test bench example clean pom2host
 all: $(SYSTEM) $(CODE)
 
 $(BUILD) $(DIST):
@@ -361,6 +361,12 @@ test: test-mini
 	python3 $(TOOLS)/test_intbasic.py
 	python3 $(TOOLS)/test_find.py
 	python3 $(TOOLS)/test_six_plugins.py
+
+# The headless POM2 test host the benches drive, built from its source kept
+# here (bench/pom2_playtest/) against the POM2 emulator library (POM2_ROOT,
+# default ~/src/pom2). No other repository is involved.
+pom2host:
+	sh bench/pom2_playtest/build.sh
 
 bench: disk
 	$(MAKE) ARCH=enh benchfloppy
