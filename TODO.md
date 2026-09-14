@@ -47,6 +47,9 @@ ni un format neuf tant que ces trois cases ne sont pas closes.
   changement de disque.
 - [ ] **`bench/plugins.py`** — relire les messages depuis la 0.8.5
   (ils passent, ce n’est pas une relecture).
+- [ ] **`bench/shk.py` sur disquette 6502** — UNSHRINK est sur FILES ; le
+  banc met son disque cible en lecteur 2 et attend « Insert A2FILES6502 »
+  au lieu de l’avis AUX (`bny.py` a reçu FILES en lecteur 2 le 14/09).
 - [ ] **Mutations** — `tools/fuzz_images.py` : UNSHRINK, BINARY2, IMGFS,
   DOS33 ; CI.
 - [ ] **Images XL** — `bench/run.py` 6502 et 65C02.
