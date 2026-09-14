@@ -1,7 +1,7 @@
 # A2 File Cmd — feuille de route
 
-La [0.8.5](https://github.com/habib256/a2filecmd/releases/tag/v0.8.5) est
-publiée ([qualification](docs/history/RELEASE-0.8.5.md),
+La [0.8.6](https://github.com/habib256/a2filecmd/releases/tag/v0.8.6) est
+publiée ([qualification](docs/history/RELEASE-0.8.6.md),
 [CHANGELOG](CHANGELOG.md), [index](docs/README.md)). Deux produits, un
 numéro : **Mini** (II+ 48 Ko, DOS 3.3) et **A2FC ProDOS** (IIe 128 Ko).
 `make mini` ne partage pas `src/a2fc.c`.
