@@ -18,8 +18,10 @@
         .export _mini_measure_text
         .export _mini_lock_prepare, _mini_lock_execute
         .export _mini_rename_prepare, _mini_rename_execute
+        .export _mini_copy_side
 
         .import _sim_read, _sim_write, _sim_rwts_error
+        .import copy_side, side_from, side_to
         .import catalog, preview, load_file, measure_text
         .import copy_prepare, copy_execute, copy_cancel
         .import create_prepare, create_execute
@@ -94,3 +96,8 @@ _mini_rename_prepare:
 
 _mini_rename_execute:
         jmp     rename_execute
+
+_mini_copy_side:
+        ldx     side_from
+        ldy     side_to
+        jmp     copy_side

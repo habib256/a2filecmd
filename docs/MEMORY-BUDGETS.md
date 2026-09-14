@@ -18,7 +18,7 @@ Réserves au lien, en octets, 65C02/6502 ; ce ne sont pas des sommes :
 | UNSHRINK (code jusqu’à `$3BFF`) | 2 727 | 2 739 | — |
 | ATTR | 26 | 26 | idem |
 | COPY | 54 | 51 | — |
-| Mini (sous DOS à `$9600`) | 270 | — | — |
+| Mini (sous DOS à `$9600`) | **9** | — | 270 : `copy_side` et la relecture groupée |
 
 Au lien de la 0.8.5, MAIN 65C02 ne gardait que 23 octets (518 sur 6502) :
 DUET, DOSGET, IDENT/FIXTYPES et la sonde DUET du routage avaient consommé

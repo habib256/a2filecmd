@@ -94,9 +94,15 @@ lien. OPEN ne retombe pas à quelques octets.
 copie à un seul lecteur ni de formatage.
 
 - [ ] **💾 II+ physique** — les bancs POM2 ne remplacent pas le fer.
-- [ ] Changements de lecteur (~20/copie) : ne pas emprunter les tables
-  de noms sans `reload()`.
-- [ ] Relecture groupée (~7 s) : trancher et documenter, ou laisser.
+- [x] **Changements de lecteur** — `copy_side` copie aussi `ent_slot`,
+  donc `=` et le second panneau au boot sont une identité complète.
+  Le moteur de copie n’emprunte pas les tables de noms : un lot marqué
+  en a besoin jusqu’au dernier fichier. Tests hôtes : copie avec slot,
+  noms sans slot refusés, `ent_name` intact après `execute`.
+- [x] **Relecture groupée** — après une écriture, seul le disque écrit
+  est relu ; deux panneaux sur ce disque partagent un catalogue
+  (`copy_side`) au lieu de le payer deux fois. Ctrl-R relit encore
+  les deux. La relecture par secteur à la copie est conservée.
 
 ## Plus tard
 

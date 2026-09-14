@@ -114,6 +114,18 @@ class WriteTest(unittest.TestCase):
         self.assertEqual(self.mini.write_log[-1], published[0],
                          'the catalog entry is the last write')
 
+    def test_execute_does_not_borrow_name_tables(self):
+        # A tagged batch still walks the source snapshot. The 32-sector
+        # working area is the extra RAM; ent_name stays the panel's until
+        # the UI reloads after the last file.
+        names = bytes(self.mini.peek('ent_name', 30))
+        slots = bytes(self.mini.peek('ent_slot', 4))
+        self.assertEqual(self.prepare(), OK)
+        self.assertEqual(self.mini.execute(), OK)
+        self.copied()
+        self.assertEqual(bytes(self.mini.peek('ent_name', 30)), names)
+        self.assertEqual(bytes(self.mini.peek('ent_slot', 4)), slots)
+
     def test_batches_do_not_alternate_drives(self):
         # The point of the batching: a change of drive costs a seek and a
         # motor, so they are counted here to keep the pattern from

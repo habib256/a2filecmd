@@ -23,6 +23,7 @@ CATALOG, PREVIEW, PREPARE, EXECUTE, CANCEL, PEEK, POKE, QUIT = 1, 2, 3, 4, 5, 6,
 LOAD, CREATE_PREPARE, CREATE_EXECUTE, DELETE_PREPARE, DELETE_EXECUTE = 8, 9, 10, 11, 12
 MEASURE = 13
 LOCK_PREPARE, LOCK_EXECUTE, RENAME_PREPARE, RENAME_EXECUTE = 14, 15, 16, 17
+COPY_SIDE = 18
 
 
 class SimError(RuntimeError):
@@ -216,6 +217,12 @@ class Mini:
 
     def rename_execute(self):
         self._command(RENAME_EXECUTE)
+        return self._recv(1)[0]
+
+    def copy_side(self, src, dst):
+        self.poke('side_from', bytes([src]))
+        self.poke('side_to', bytes([dst]))
+        self._command(COPY_SIDE)
         return self._recv(1)[0]
 
     # ---- memory ---------------------------------------------------

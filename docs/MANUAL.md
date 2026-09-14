@@ -715,8 +715,10 @@ of up to 105 files; `?` lists every control.
 
 Questions appear in inverse video on the footer: **Y confirms, N or Escape
 cancels**, every other key is ignored. Copy, delete, lock, rename and create
-return to the panels on their own; the result stays on the footer. Escape at
-the browser does nothing: DOS 3.3 has no parent directory.
+return to the panels on their own; the result stays on the footer. Only
+panels showing the written disk are reread; two views of that disk share
+one catalog. Ctrl-R still rereads both. Escape at the browser does
+nothing: DOS 3.3 has no parent directory.
 
 ### Copying, and every other disk write
 

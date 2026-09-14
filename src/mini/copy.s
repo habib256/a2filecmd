@@ -144,6 +144,8 @@ lst_pair:       .res 1
 ; The batch lives in the shared working area, hi-res page one. Nothing
 ; else may touch it while a copy runs, and a copy must not expect it to
 ; hold anything on entry. See mini.inc for who else owns it and when.
+; The panel name tables are not extra scratch: a tagged batch still
+; walks them until the last file, and only the UI reloads after that.
 
         .segment "CODE"
 

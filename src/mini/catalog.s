@@ -22,6 +22,8 @@
         .export blank_scratch
         .export measure_text, _measure_text
         .export valid_cs, seen_bit, bit_masks, ent_ptr, ent_index, sanitise
+        .export copy_side, side_from, side_to
+        .export _copy_side, _side_from, _side_to
 
         .import read_sector
         .import buffer, count, volume, track, sector, active, sector_seen
@@ -47,10 +49,17 @@ ldf_more:       .res 1          ; 1: a data sector was left behind, full area
 load_more       = ldf_more
 ldf_off:        .res 2          ; data sectors already seen, as in copy walk
 ldf_list        = cat_buf       ; T/S list; copy is idle while a file loads
+side_from:      .res 1          ; copy_side arguments for the host tests
+side_to:        .res 1
+_side_from      = side_from
+_side_to        = side_to
 
         .segment "RODATA"
 bit_masks:
         .byte   1, 2, 4, 8, 16, 32, 64, 128
+copy_fields:
+        .word   ent_track, ent_sector, ent_type
+        .word   ent_seclo, ent_sechi, ent_slot
 
         .segment "CODE"
 
@@ -458,6 +467,126 @@ ent_index:
         clc
         adc     #SIDE_STRIDE
 @done:
+        rts
+
+; ---------------------------------------------------------------------
+; copy_side -- X = source panel, Y = destination. Copies every catalog
+; array, including ent_slot. A name list without the slot is not an
+; identity: writes would refuse it rather than aim at catalog sector 0.
+; '=' and the boot copy of the right panel use this so they need no
+; second catalog read. The copy engine never borrows these arrays: a
+; tagged batch still needs the source snapshot until the last file.
+; Lives in the resident: '=' and reload both call it. The host tests
+; assemble the same source.
+; ---------------------------------------------------------------------
+        .segment "CODE"
+copy_side:
+_copy_side:
+        tya
+        sta     t1
+        cpx     t1
+        bne     @work
+        rts
+@work:
+        lda     #0
+        cpx     #0
+        beq     @from
+        lda     #SIDE_STRIDE
+@from:
+        sta     t0
+        lda     #0
+        ldy     t1
+        beq     @to
+        lda     #SIDE_STRIDE
+@to:
+        sta     t1
+        lda     #0
+        sta     t2
+@field:
+        lda     t2
+        asl     a
+        tay
+        lda     copy_fields,y
+        clc
+        adc     t0
+        sta     ptr
+        lda     copy_fields+1,y
+        adc     #0
+        sta     ptr+1
+        lda     copy_fields,y
+        clc
+        adc     t1
+        sta     ptr2
+        lda     copy_fields+1,y
+        adc     #0
+        sta     ptr2+1
+        ldy     #0
+@byte:
+        lda     (ptr),y
+        sta     (ptr2),y
+        iny
+        cpy     #SIDE_STRIDE
+        bne     @byte
+        inc     t2
+        lda     t2
+        cmp     #6
+        bcc     @field
+        lda     t0
+        jsr     @namebase
+        lda     ptr
+        sta     ptr2
+        lda     ptr+1
+        sta     ptr2+1
+        lda     t1
+        jsr     @namebase
+        lda     ptr
+        ldx     ptr2
+        stx     ptr
+        sta     ptr2
+        lda     ptr+1
+        ldx     ptr2+1
+        stx     ptr+1
+        sta     ptr2+1
+        lda     #>(SIDE_STRIDE * NAME_STRIDE)
+        sta     t2
+        ldy     #0
+@page:
+        lda     (ptr),y
+        sta     (ptr2),y
+        iny
+        bne     @page
+        inc     ptr+1
+        inc     ptr2+1
+        dec     t2
+        bne     @page
+        ldy     #0
+@tail:
+        cpy     #<(SIDE_STRIDE * NAME_STRIDE)
+        bcs     @rts
+        lda     (ptr),y
+        sta     (ptr2),y
+        iny
+        bne     @tail
+@rts:
+        rts
+
+@namebase:
+        sta     num
+        lda     #0
+        sta     num+1
+        ldx     #5
+@asl:
+        asl     num
+        rol     num+1
+        dex
+        bne     @asl
+        lda     #<ent_name
+        clc
+        adc     num
+        sta     ptr
+        lda     #>ent_name
+        adc     num+1
+        sta     ptr+1
         rts
 
 ; ---------------------------------------------------------------------

@@ -34,6 +34,7 @@ unsigned char mini_lock_prepare(void);
 unsigned char mini_lock_execute(void);
 unsigned char mini_rename_prepare(void);
 unsigned char mini_rename_execute(void);
+void mini_copy_side(void);
 
 static unsigned char msg[5];
 static unsigned char scratch[256];
@@ -153,6 +154,10 @@ int main(void)
             break;
         case 17:
             reply(mini_rename_execute());
+            break;
+        case 18:
+            mini_copy_side();
+            reply(0);
             break;
         case 6:                 /* peek: address low, high, length */
             get(msg, 3);

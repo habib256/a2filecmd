@@ -244,6 +244,49 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual(self.name(105), b'HELLO'.ljust(30))
         self.assertEqual(self.name(0), bytes(30), 'panel 0 untouched')
 
+    def test_copy_side_keeps_the_catalog_slot(self):
+        # '=' and the boot copy of the right panel must include ent_slot.
+        # A name list without it is not an identity: writes refuse rather
+        # than aim at catalog sector 0 (the VTOC).
+        self.assertEqual(self.mini.catalog(), CAT_OK)
+        self.assertEqual(self.mini.lock_prepare(2, 1), 0)
+        self.assertEqual(self.mini.lock_execute(), 0)
+        self.assertEqual(self.mini.catalog(), CAT_OK)
+        slot0 = self.mini.byte('ent_slot', 0)
+        name0 = self.name(0)
+        self.assertNotEqual(slot0, 0)
+        self.assertEqual(self.mini.byte('ent_type', 2) & 0x80, 0)
+        self.mini.copy_side(0, 1)
+        self.assertEqual(self.mini.byte('ent_slot', 105), slot0)
+        self.assertEqual(self.name(105), name0)
+        self.assertEqual(self.name(0), name0, 'source panel untouched')
+        self.mini.poke('active', bytes([1]))
+        writes = self.mini.writes
+        self.assertEqual(self.mini.delete_prepare(2), 0)
+        self.assertEqual(self.mini.writes, writes)
+        self.assertEqual(self.mini.image(1)[0:17 * 4096],
+                         self.image[0:17 * 4096], 'data tracks unchanged')
+
+    def test_names_without_slots_are_not_an_identity(self):
+        self.assertEqual(self.mini.catalog(), CAT_OK)
+        self.assertEqual(self.mini.lock_prepare(2, 1), 0)
+        self.assertEqual(self.mini.lock_execute(), 0)
+        self.assertEqual(self.mini.catalog(), CAT_OK)
+        self.mini.copy_side(0, 1)
+        self.mini.poke('ent_slot', bytes([0]), offset=105 + 2)
+        self.mini.poke('active', bytes([1]))
+        writes = self.mini.writes
+        self.assertEqual(self.mini.delete_prepare(2), 2)
+        self.assertEqual(self.mini.writes, writes)
+
+    def test_copy_side_same_panel_is_a_noop(self):
+        self.assertEqual(self.mini.catalog(), CAT_OK)
+        before = bytes(self.mini.peek('ent_slot', 4))
+        name0 = self.name(0)
+        self.mini.copy_side(0, 0)
+        self.assertEqual(bytes(self.mini.peek('ent_slot', 4)), before)
+        self.assertEqual(self.name(0), name0)
+
 
 class ImageTest(unittest.TestCase):
     """The disk builder, which never touches a master or an output."""

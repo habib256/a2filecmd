@@ -23,7 +23,7 @@
         .import catalog, preview, load_file, load_count, load_more
         .import blank_scratch
         .import measure_text
-        .import ent_ptr, ent_index
+        .import ent_ptr, ent_index, copy_side
         .import bit_masks, tags
         .import key_raw
         .import scratch
@@ -39,8 +39,7 @@
         .import cs_name, cs_type, cs_seclo, cs_sechi
         .import active, count, volume, drive, slot, selected, error
         .import buffer, prv_index
-        .import ent_track, ent_sector, ent_type, ent_seclo, ent_sechi
-        .import ent_name
+        .import ent_type, ent_seclo, ent_sechi
         .import pan_drive, pan_volume, pan_count, pan_selected, pan_error
         .import pan_top
         .import screen_image
@@ -65,6 +64,8 @@ rl_home:        .res 1          ; reload locals
 rl_have:        .res 1
 rl_name:        .res NAME_LEN
 rl_i:           .res 1
+rl_mask:        .res 1          ; 0 = every panel (Ctrl-R)
+rl_drive:       .res 1          ; written drive when rl_mask is set
 ck:             .res 1          ; the key being acted on
 cf_status:      .res 1          ; copy_file status
 cf_marked:      .res 1          ; tagged files to copy, 0 = cursor only
@@ -1095,40 +1096,137 @@ copy_progress:
         jmp     present
 
 ; ---------------------------------------------------------------------
-; reload -- read both panels again, keeping each selection by name
+; reload -- read both panels again, keeping each selection by name.
+; Two panels on the same drive share one catalog: copy_side fills the
+; other, including ent_slot, so '=' and this path never write from a
+; half-copied snapshot.
 ; ---------------------------------------------------------------------
 reload:
+        lda     #0
+        sta     rl_mask
+        jmp     reload_go
+
+; reload_written -- after a disk write, reread only panels whose drive
+; is the one just written (`drive`). The other snapshot stays; its marks
+; were already cleared. Same drive on both sides still costs one catalog.
+reload_written:
+        lda     drive
+        sta     rl_drive
+        lda     #1
+        sta     rl_mask
+reload_go:
         lda     active
         sta     rl_home
+        lda     rl_mask
+        bne     @filt
+        lda     pan_drive
+        cmp     pan_drive+1
+        jeq     reload_grouped
+        jmp     reload_sides
+@filt:
+        lda     pan_drive
+        cmp     rl_drive
+        jne     reload_sides
+        lda     pan_drive+1
+        cmp     rl_drive
+        jeq     reload_grouped
+reload_sides:
         lda     #0
         sta     active
 @side:
+        ldx     active
+        lda     rl_mask
+        beq     @do
+        lda     pan_drive,x
+        cmp     rl_drive
+        bne     @next
+@do:
         jsr     activate
-        lda     #0
-        sta     rl_have
-        lda     count
-        beq     @read
-        lda     #1
-        sta     rl_have
-        lda     selected
-        jsr     ent_index
-        jsr     ent_ptr
-        ldy     #0
-@keep:
-        lda     (ptr),y
-        sta     rl_name,y
-        iny
-        cpy     #NAME_LEN
-        bcc     @keep
-@read:
+        jsr     reload_keep
         lda     #0
         sta     volume
         jsr     catalog
         sta     error
         ldx     active
         jsr     tags_clear
+        jsr     reload_restore
+        jsr     remember
+@next:
+        inc     active
+        lda     active
+        cmp     #2
+        jcc     @side
+reload_home:
+        lda     rl_home
+        sta     active
+        jmp     activate
+
+reload_grouped:
+        lda     #0
+        sta     active
+        jsr     activate
+        jsr     reload_keep
+        lda     pan_drive
+        sta     drive
+        lda     #0
+        sta     volume
+        jsr     catalog
+        sta     error
+        ldx     #0
+        jsr     tags_clear
+        ldx     #1
+        jsr     tags_clear
+        jsr     reload_restore
+        jsr     remember
+        lda     #1
+        sta     active
+        jsr     activate
+        jsr     reload_keep
+        ldx     #0
+        ldy     #1
+        jsr     copy_side
+        lda     pan_volume
+        sta     pan_volume+1
+        lda     pan_count
+        sta     pan_count+1
+        lda     pan_error
+        sta     pan_error+1
+        lda     pan_drive
+        sta     pan_drive+1
+        jsr     activate
+        jsr     reload_restore
+        jsr     remember
+        jmp     reload_home
+
+reload_keep:
+        lda     #0
+        sta     rl_have
+        lda     count
+        beq     @out
+        lda     #1
+        sta     rl_have
+        lda     selected
+        jsr     ent_index
+        jsr     ent_ptr
+        ldy     #0
+@copy:
+        lda     (ptr),y
+        sta     rl_name,y
+        iny
+        cpy     #NAME_LEN
+        bcc     @copy
+@out:
+        rts
+
+; reload_restore -- put the cursor back on rl_name when it is still in
+; the catalog, else clamp it.
+reload_restore:
         lda     rl_have
         beq     @clamp
+        lda     #<rl_name
+        sta     ptr2
+        lda     #>rl_name
+        sta     ptr2+1
         lda     #0
         sta     rl_i
 @search:
@@ -1141,12 +1239,12 @@ reload:
         ldy     #0
 @compare:
         lda     (ptr),y
-        cmp     rl_name,y
+        cmp     (ptr2),y
         bne     @nextentry
         iny
         cpy     #NAME_LEN
         bcc     @compare
-        lda     rl_i            ; found it again, by name
+        lda     rl_i
         sta     selected
         jmp     @clamp
 @nextentry:
@@ -1167,15 +1265,7 @@ reload:
         sta     selected
 @place:
         lda     selected
-        jsr     land
-        jsr     remember
-        inc     active
-        lda     active
-        cmp     #2
-        jcc     @side
-        lda     rl_home
-        sta     active
-        jmp     activate
+        jmp     land
 
 ; splash -- the same centered layout HELLO prints: title at the top,
 ; credits and the wait line at the bottom. A2FILECMD is written once.
@@ -1543,68 +1633,13 @@ copy_tags:
 
 copy_entries_to_right:
         ldx     #0
-@fields:
-        lda     ent_track,x
-        sta     ent_track+SIDE_STRIDE,x
-        lda     ent_sector,x
-        sta     ent_sector+SIDE_STRIDE,x
-        lda     ent_type,x
-        sta     ent_type+SIDE_STRIDE,x
-        lda     ent_seclo,x
-        sta     ent_seclo+SIDE_STRIDE,x
-        lda     ent_sechi,x
-        sta     ent_sechi+SIDE_STRIDE,x
-        inx
-        cpx     #SIDE_STRIDE
-        bcc     @fields
-        SETPTR  ptr, ent_name
-        SETPTR  ptr2, ent_name+SIDE_STRIDE*NAME_STRIDE
-        jmp     copy_names
+        ldy     #1
+        jmp     copy_side
 
 copy_entries_to_left:
-        ldx     #0
-@fields:
-        lda     ent_track+SIDE_STRIDE,x
-        sta     ent_track,x
-        lda     ent_sector+SIDE_STRIDE,x
-        sta     ent_sector,x
-        lda     ent_type+SIDE_STRIDE,x
-        sta     ent_type,x
-        lda     ent_seclo+SIDE_STRIDE,x
-        sta     ent_seclo,x
-        lda     ent_sechi+SIDE_STRIDE,x
-        sta     ent_sechi,x
-        inx
-        cpx     #SIDE_STRIDE
-        bcc     @fields
-        SETPTR  ptr, ent_name+SIDE_STRIDE*NAME_STRIDE
-        SETPTR  ptr2, ent_name
-        jmp     copy_names
-
-; copy_names -- ptr to ptr2, one panel's worth of name storage
-copy_names:
-        lda     #>(SIDE_STRIDE*NAME_STRIDE)
-        sta     t2
+        ldx     #1
         ldy     #0
-@page:
-        lda     (ptr),y
-        sta     (ptr2),y
-        iny
-        bne     @page
-        inc     ptr+1
-        inc     ptr2+1
-        dec     t2
-        bne     @page
-        ldy     #0
-@tail:
-        cpy     #<(SIDE_STRIDE*NAME_STRIDE)
-        bcs     @done
-        lda     (ptr),y
-        sta     (ptr2),y
-        iny
-        bne     @tail
-@done:
-        rts
+        jmp     copy_side
 
 ; ---------------------------------------------------------------------
 ; looks_hgr -- carry set when the selected file is a binary of 32 to 34
@@ -2049,8 +2084,14 @@ keep_note:
         sta     have_note
         rts
 
-; result_done -- show the result, reread both panels, return to them.
+; result_done -- show the result, reread the written disk, return to
+; the panels. Marks on both sides are consumed: a tagged copy must not
+; leave the source marked for a second pass. Ctrl-R still reads both.
 result_done:
         jsr     keep_note
         jsr     present
-        jmp     reload
+        ldx     #0
+        jsr     tags_clear
+        ldx     #1
+        jsr     tags_clear
+        jmp     reload_written

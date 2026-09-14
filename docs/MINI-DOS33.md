@@ -15,8 +15,10 @@ the top of the 40-column screen, then `GPL3 VERHILLE ARNAUD` and
 `BRUN A2FC.MINI`. The same
 layout stays on screen while the first catalog is read. From DOS 3.3,
 use `BRUN A2FC.MINI`.
-Both panels initially show the boot disk. Each remembers its drive, selection,
-and scroll position independently.
+Both panels initially show the boot disk. The right panel is a full copy
+of that catalog, catalog slots included, so a write from either side
+holds the same entry. Each remembers its drive, selection, and scroll
+position independently.
 
 | Key | Action |
 |---|---|
@@ -95,7 +97,15 @@ After rereading or copying, selections are restored by name when still present.
    so the rest of the batch can still land. An uncertain write stops the
    batch. The panels reread themselves when the result is ready.
 
-Copying preserves the name byte for byte (inverse, flashing or control
+After a write, only panels showing the **written** disk are reread. Two
+panels on that same drive share one catalog read; the other snapshot is
+filled with `copy_side`, which copies every entry field including the
+catalog slot. Ctrl-R still rereads every panel. The copy engine does not
+borrow the name tables as extra RAM: a tagged batch still needs the
+source snapshot until the last file, and a 32-sector file therefore
+costs a handful of drive changes rather than one per sector.
+
+Copying preserves the name byte for byte (inverse, flashing or control)
 characters that the panel shows as `?` included), the type, the lock flag,
 and every byte of the file's data sectors, including DOS headers and the
 final sector. **An existing name is refused at prepare time**, even when the
@@ -212,7 +222,15 @@ few thousand cycles, so the chain is read at the speed of the disk.
 The copy engine reads a batch of sectors from the source, then writes and
 reads each of them back on the target. The two disks are not compared
 again. A change of drive costs a seek and a motor spin-up, so writes stay
-on the destination until the next batch of source reads.
+on the destination until the next batch of source reads. Per-sector
+readback is kept: a grouped verify of the whole batch would write more
+reserved sectors after a silent bad write before noticing. The extra
+seconds are the cost of catching that on the sector that failed.
+
+After Y, the result line appears and then the written disk's catalog is
+read. Two panels on the same drive used to pay that catalog twice
+(about 7 s with spin-up); they now share the one read. A copy to the
+other drive rereads only the destination. Ctrl-R still reads both.
 
 ## Building
 
