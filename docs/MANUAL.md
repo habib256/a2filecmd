@@ -3,6 +3,18 @@
 **Version 0.8.6** — A two-panel ProDOS file manager for an Apple II with
 128 KB and 80-column support. Free software by Arnaud Verhille, under GPL v3.
 
+This manual describes two programs that share a name, a version number and
+a way of working, but nothing else:
+
+- **A2 File Cmd for ProDOS** — every section from *Start here* to *Limits
+  and troubleshooting*. Apple IIe, //c or IIgs with 128 KB and 80 columns,
+  ProDOS 8, overlays and plugins, floppy and XL editions.
+- **A2FileCmd Mini DOS3.3** — its own section, [A2FileCmd Mini
+  DOS3.3](#a2filecmd-mini-dos33-apple-ii-48-kb), near the end. Apple II+
+  with 48 KB, DOS 3.3, 40 columns, two Disk II drives, one disk, no
+  overlay, no plugin. Nothing written about the ProDOS edition applies to
+  it.
+
 ![The two panels in A2 File Cmd 0.7.6](screenshots/01-panels-0.7.6.png)
 
 ## Start here
@@ -33,7 +45,10 @@ The download names include the CPU, category and version:
 | Development tools | `A2FILECMD-6502-DEVTOOLS-0.8.6.dsk` |
 | Complete, 6502 | `A2FILECMD-6502-XL-0.8.6.2mg` |
 | Complete, 65C02 | `A2FILECMD-65C02-XL-0.8.6.2mg` |
-| A2FileCmd Mini DOS3.3, Apple II+ | `A2FC-MINI-DOS33-0.8.6.dsk` |
+
+**A2FileCmd Mini DOS3.3** is a different program for a different machine and
+ships as one more file, `A2FC-MINI-DOS33-0.8.6.dsk`, a DOS 3.3 disk for an
+Apple II+; see [its section](#a2filecmd-mini-dos33-apple-ii-48-kb).
 
 All floppies are 6502 and supplied as `.dsk` in DOS sector order; XL uses `.2mg`.
 Use the downloaded files directly: changing an extension does not convert an image.
@@ -651,6 +666,110 @@ Super Serial Card and //c operation remains unverified.
 
 `make disk` builds both CPU families; `make test` runs host checks.
 Development: README, `sdk/README.md`, `bench/README.md`. Remaining work: `TODO.md`.
+
+## A2FileCmd Mini DOS3.3 (Apple II+, 48 KB)
+
+A standalone edition for an **Apple II+ with 48 KB and an NMOS 6502**: two
+panels in 40 columns and DOS 3.3 copying between two Disk II drives. No
+ProDOS, no 80-column card, no auxiliary memory, no language card. It is a
+separate program on its own disk, `A2FC-MINI-DOS33-0.8.6.dsk`; nothing in
+the sections above applies to it, and it carries no overlay or plugin.
+Written entirely in 6502 assembly. The developer guide, measurements and
+build notes are in [MINI-DOS33.md](MINI-DOS33.md).
+
+![Two panels with inverse video and bottom shortcuts](mini-dos33.png)
+
+### Booting
+
+The disk boots through an Applesoft `HELLO` that shows `A2FILECMD`,
+`MINI DOS 3.3` and `V0.8.6`, then `BRUN A2FC.MINI`. From DOS 3.3, use
+`BRUN A2FC.MINI`. Both panels open on the boot disk; each remembers its
+drive, selection and scroll position. Each panel shows 18 rows and a catalog
+of up to 105 files; `?` lists every control.
+
+### Keys
+
+| Key | Action |
+|---|---|
+| Tab (Ctrl-I), or 1 | Switch panels |
+| Up / down (Ctrl-K / Ctrl-J), or I / K | Previous / next file |
+| Left / right, or - / +, or < / > | Previous / next page (18 files) |
+| [ / ] | First / last file |
+| Return, or 2 | Preview by type; a 32–34 sector binary opens as hi-res |
+| T / H | Text / hexadecimal preview; also available inside the preview |
+| G | Hi-res viewer: first 8 KB of the selected file |
+| Space | Tag or untag the selected file |
+| Ctrl-T / Ctrl-N / * | Tag all / none / invert on the active panel |
+| N | New text file: name, then the editor |
+| E | Edit a text file in RAM, then save under a new exclusive name |
+| D | Delete tagged files, or the cursor if nothing is tagged |
+| L | Lock or unlock: the cursor toggles; tagged files unlock if any is locked, or lock if all are unlocked |
+| R | Rename the cursor file (exclusive new name; locked files refused) |
+| C, or 3 | Copy tagged files, or the cursor if nothing is tagged |
+| /, or 4 | Switch the active panel's drive and reread it |
+| Ctrl-R, or 5 | Reread both panels, preserving selection by name |
+| = | Show the same disk in the other panel |
+| Escape in preview, help or editor | Return to the panels |
+| ?, or 6 | Keyboard help |
+| Q, or 7 | Ask to return to DOS 3.3 |
+
+Questions appear in inverse video on the footer: **Y confirms, N or Escape
+cancels**, every other key is ignored. Copy, delete, lock, rename and create
+return to the panels on their own; the result stays on the footer. Escape at
+the browser does nothing: DOS 3.3 has no parent directory.
+
+### Copying, and every other disk write
+
+1. Give the two panels **two different drives** (Tab and `/`).
+2. Tag the files (Space, Ctrl-T / Ctrl-N, `*`), or leave the cursor alone,
+   and press C. The footer asks `COPY name?` or `COPY N MARKED?`.
+3. Each file is created exclusively: an existing name is skipped and the
+   batch goes on. A `[********----]` bar fills while the file's sectors are
+   written and read back. An uncertain write stops the batch.
+
+A copy preserves the name byte for byte, the type, the lock flag and every
+byte of the data sectors. The source is never written or deleted. Required
+sectors are reserved in the destination VTOC before any data, each written
+sector is read back, and the catalog entry is published last, only if its
+slot is still free.
+
+N and E create text files with the same engine: one new name, never an
+overwrite. E loads at most 32 data sectors (8 KB) and refuses a larger
+file rather than save it truncated. L writes only the catalog type byte; R
+only the catalog name bytes, to a name that does not exist yet; a locked
+file must be unlocked first. D marks the catalog entry deleted first, as
+DOS does, then frees the sectors; locked files are skipped.
+
+Every write goes back to the **catalog slot the panel read** and holds the
+disk to it: the T/S pointer, type, sector count and name must still match,
+or the operation is refused as **DISK CHANGED** before any write. A
+write-protected disk is refused as such. A looping catalog chain is refused
+rather than followed.
+
+### Limits
+
+Standard 35-track, 16-sector DOS 3.3 disks, with multiple T/S lists per
+file. Sparse or inconsistent chains, and data on track 0 or the catalog
+track, are refused; 13-sector, 40-track and protected formats are not
+supported. Two drives on the boot controller are required: no single-drive
+copy by swapping disks. After Y, the keyboard cannot interrupt. A disk
+swapped at the prompt is refused, but a byte-identical twin is not caught.
+A DOS sector write is not atomic: a power loss while the VTOC or a shared
+catalog sector is written can damage metadata; readback detects errors, it
+cannot repair them. An uncertain error leaves reservations in place and
+blocks further writes for that run: have the disk checked before reuse.
+Previews show the first 256 stored bytes only. After changing a disk, press
+Ctrl-R to reread both panels.
+
+### Speed
+
+Measured on POM2's NMOS core with Disk II timing (`bench/mini33_time.py`):
+a 16-sector catalog reads in 1 703 567 cycles instead of 4 898 568, and
+copying the 85-sector `A2FC.MINI` takes 62.7 s at 1 MHz instead of 280 s
+for the former C version. DOS 3.3's 2:1 interleave leaves about 25 000
+cycles to digest a sector before the next one passes the head; the
+assembly parser stays inside that window, and the copy engine reads a
+batch of sectors before writing and reading them back on the target.
 
 ## Credits, inspirations and reused code
 

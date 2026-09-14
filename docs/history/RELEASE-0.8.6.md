@@ -26,6 +26,12 @@ A2FileCmd Mini DOS3.3 est construite localement (`make mini-disk` sur la
 disquette 0.8.5 comme maître) et jointe avec `SHA256SUMS-0.8.6.txt`
 complété ; les huit empreintes de la CI sont identiques au lien local.
 
+## Après le tag
+
+Le manuel PDF de la release a été remplacé après le tag (commit qui suit
+`40ce339`) : A2FileCmd Mini DOS3.3 y a sa propre section, séparée de
+l’édition ProDOS ; `SHA256SUMS-0.8.6.txt` a été régénéré en conséquence.
+
 ## Non refait
 
 Les bancs de `bench/plugins.py` hors GOTO n’ont pas été relus contre les

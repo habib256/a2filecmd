@@ -16,6 +16,9 @@ downloads and installation.
 - VOLNAME moves from BOOT to DISKTOOLS; BOOT has four blocks free again. The floppy launcher's title page is a line shorter.
 - The DOS 3.3 catalog and disk-image directory readers live in a CATALOG overlay (BOOT and XL); a read requested while another overlay runs is deferred and settled by the main loop. 65C02 resident headroom: 299 bytes (was 23).
 
+### Manual
+- A2FileCmd Mini DOS3.3 has its own section, clearly apart from the ProDOS edition: keys, disk writes, limits and speed; the download list separates its disk from the ProDOS images.
+
 ### Validation
 - 653 host tests in 72 suites. POM2 benches on both CPUs, with the test host now writing the emulated hard disk back so byte comparisons are real; the 73-check session passes, BASIC return included.
 
