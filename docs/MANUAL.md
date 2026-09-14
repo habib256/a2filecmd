@@ -841,7 +841,7 @@ C extracts DOS BIN/BAS/INT to the exact length declared by the DOS header.
 BIN retains its original load address as the ProDOS auxtype; BAS uses $0801.
 Sector padding and the DOS header are excluded. TXT retains its sector data.
 The DOSGET overlay lives on FILES/XL; BOOT asks for FILES when required.
-Reading a DOS 3.3 catalog as a panel uses the internal DOS33 overlay, on BOOT and XL.
+Reading a DOS 3.3 catalog as a panel uses the internal CATALOG overlay, on BOOT and XL, which also walks the directories of a disk image opened as a folder.
 An existing destination is refused. An I/O failure stops extraction; a failed
 cleanup names the newly created file that remains. Completed files survive a
 later source-close error, which is reported. Escape cancels between sectors.

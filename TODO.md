@@ -9,9 +9,10 @@ livrées sont dans le [CHANGELOG](CHANGELOG.md). Deux produits distincts,
 `make mini` ne partage pas `src/a2fc.c`. L’index des documents est dans
 [docs/README.md](docs/README.md).
 
-**Marge résidente 65C02 retrouvée** (14 septembre 2026) : le lecteur de
-catalogue DOS 3.3 est devenu la surcouche DOS33, et MAIN garde **537 octets**
-sur 65C02 (1 037 sur 6502), l’écart avant la pile 565/1 254. Restent serrés :
+**Marge résidente 65C02 retrouvée** (14 septembre 2026) : les lecteurs de
+catalogue DOS 3.3 et d’images sont devenus la surcouche CATALOG, et MAIN
+garde **847 octets** sur 65C02 (1 300 sur 6502), l’écart avant la pile
+875/1 517. Restent serrés :
 la carte langage 14/6, OPEN 11/43, DELETE 4/3, IMGFS 5/13, UNSHRINK 9/29.
 L’objectif du chantier 6 (256 octets MAIN sur 65C02) est tenu ; le respecter
 à chaque enrichissement, sans relever les plafonds
@@ -20,14 +21,50 @@ L’objectif du chantier 6 (256 octets MAIN sur 65C02) est tenu ; le respecter
 Sur ProDOS, le goulot reste d’écrire sans régresser, dans 128 Ko, pile C de
 192 octets. Les réserves se recalculent à chaque lien.
 
+## Prochaine étape (14 septembre 2026)
+
+Maintenant que le résident 65C02 a 847 octets de marge, le meilleur
+retour sur investissement est de **cesser d’accumuler de la marge et de la
+dépenser sur ce qui bloque vraiment**.
+
+1. **Chantier 2, parcours d’arbres itératifs.** Le seul changement
+   d’architecture qui débloque trois fonctions attendues d’un coup : MOVE
+   d’arbre entre volumes (chantier 4, le trou Commander le plus visible),
+   DELETE enrichi et SYNC plus profond. Il coûte du résident (état borné à
+   la place de la récursion), et c’est précisément ce que les 847 octets
+   permettent, à condition d’un **budget mémoire explicite par
+   extraction**, mesuré à chaque lien, sans redescendre sous 256.
+2. **Respiration des petites surcouches, seulement à la demande.** DELETE 4,
+   IMGFS 5, OPEN 11, UNSHRINK 9 octets libres : ne pas y toucher tant
+   qu’on n’a pas besoin de les modifier. Le jour où l’une d’elles doit
+   changer, déplacer un service partagé dans le résident pour la soulager.
+   Le faire d’avance dépenserait la marge sans gain visible.
+3. **Ce qui rapporte moins.** Continuer le chantier 1 (douze incréments ;
+   restent IMGFS/DOS33/DOSGET, CRC NuFX, relecture des extraits) :
+   nécessaire mais invisible, rendement décroissant. Encore extraire du
+   résident : CATALOG est plein (15/36 octets) et le prochain gros bloc
+   serait le moteur de copie, déjà partagé avec les plugins par l’API,
+   donc coûteux à sortir.
+4. **Hygiène avant le chantier 2.** Le banc de session complète
+   `bench/run.py` avait trois contrôles périmés depuis la 0.8.0, corrigés,
+   et bute encore sur le retour depuis BASIC.SYSTEM par `-A2FILE.SYSTEM`
+   (chantier 10, LAUNCHER). Ce n’est pas une régression, mais tant que ce
+   banc ne va pas au bout, la preuve de séquences du chantier 7 reste
+   incomplète. Ce scénario est désormais isolé dans le banc (`OPEN`,
+   chantier 10) : le reste de la session rend son verdict, et la ligne
+   `OPEN` rappelle ce qui reste à faire.
+
+En résumé : la passe CATALOG est commitée une fois les bancs verts, puis
+le chantier 2 s’attaque avec un budget mémoire explicite par extraction.
+
 ## Contrat
 
 Préserver les données prime. Un gestionnaire Apple II se juge sur les
 écritures, pas sur un format d’image de plus.
 
 Mini (**0**) est livré et indépendant de 1–10. Sur ProDOS :
-**1 → 6** (mesure mémoire à chaque extraction) **→ 2 → 3 → 4**, avec
-**7 en continu**. Puis **5**. Ensuite **un seul** parmi 8, 9 ou 10 — pas les
+**2 → 4** d’abord, avec un budget mémoire mesuré à chaque lien, **6 à la
+demande**, **1 et 3** en rendement décroissant, et **7 en continu**. Puis **5**. Ensuite **un seul** parmi 8, 9 ou 10 — pas les
 trois. Ne pas ouvrir SHRINK, l’écriture dans une image montée, un journal de
 coupure, Pascal/CP/M ni un nouveau média tant que 1–4 ne sont pas clos.
 Mini 0.8.5 a tags, HGR, création TXT exclusive, éditeur, DEL (catalogue
@@ -44,7 +81,7 @@ Les travaux sur lecteurs physiques sont signalés par **💾**.
 | **3** | Trous de préservation 0.8.x | Conversions relues, pannes combinées, nettoyages/restaurations consignés | À faire |
 | **4** | MOVE d’arbre entre volumes | Dossiers et marquage ; aucune source touchée après une copie partielle | À faire, après 1 et 2 |
 | **5** | FIXIT lecture seule | Diagnostic et plan choisis par l’utilisateur ; zéro écriture | Après 4 |
-| **6** | Contrats plugins et petites surcouches | Buffers, AUX, restauration ; respiration mesurée sans relever les plafonds | MAIN 65C02 à 537 octets (DOS33) ; petites surcouches à traiter |
+| **6** | Contrats plugins et petites surcouches | Buffers, AUX, restauration ; respiration mesurée sans relever les plafonds | MAIN 65C02 à 847 octets (CATALOG) ; petites surcouches à traiter |
 | **7** | Preuves de séquences | États d’overlays, mutations archives/FS, XL deux CPU, premier boot IIgs | Continu |
 | **8** | 💾 NIBCOPY réel, puis un gain | Qualification Disk II physique ; un seul format ou reprise ensuite | Après 5, au choix |
 | **9** | 💾 ADTPro blocs | Dossiers, envoi/réception, CRC, NAK ; pas de nibble en premier | Après 5, au choix |
@@ -200,16 +237,16 @@ BATCH n’est pas disponible pour un service partagé.
   états à restaurer, erreurs, consentement AUX. Uniformiser aussi
   ouverture, navigation, sortie et restauration d’écran des visualiseurs,
   sans changer le consentement AUX.
-- [x] **Marge résidente** — le lecteur de catalogue DOS 3.3 est la surcouche
-  DOS33 ; une lecture demandée pendant qu’une autre surcouche s’exécute est
-  différée et réglée par la boucle principale (`settle_panels`). MAIN 65C02
-  passe de 23 à 537 octets sans toucher aux plafonds.
+- [x] **Marge résidente** — les lecteurs de catalogue DOS 3.3 et de
+  répertoires d’images sont la surcouche CATALOG ; une lecture demandée
+  pendant qu’une autre surcouche s’exécute est différée et réglée par la
+  boucle principale (`settle_panels`), qui pose aussi la sélection que NAV
+  demandait. MAIN 65C02 passe de 23 à 847 octets sans toucher aux plafonds.
 - [ ] **Respiration mesurée** — viser de la marge dans chaque petite
   surcouche **modifiée** ; traiter DELETE, COPY, IMGFS et ATTR avant de les
   enrichir. OPEN ne doit pas retomber à quelques octets au prochain média.
-  Même recette possible pour la lecture des images ProDOS comme dossiers
-  (`read_image_panel`, `img_open`, `img_read_block` : ~1 300 octets), avec
-  la même règle de lecture différée.
+  Le résident a maintenant de quoi accueillir un service partagé qui
+  soulage ces surcouches ; chaque déplacement se mesure au lien.
 
 ## 7. Preuves de séquences (continu)
 

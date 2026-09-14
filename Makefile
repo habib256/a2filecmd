@@ -88,13 +88,13 @@ CODE   = $(BUILD)/A2FILE.CODE.BIN
 # launcher, the attributes, the editor, the menu, the disk images. Each has
 # two segments in its file: NAME (code) then NAMERO (strings). See
 # src/a2fc_plugin.h for the header and the service table.
-PLUGINS = BATCH NAV DOS33 OPEN COPY FORMAT IMAGE TEXT HEX DELETE HELP EDIT RUN ATTR MENU DISKIMG IMGFS DOSGET UNSHRINK BASLIST COMPARE SEARCH BINARY2 AWP
+PLUGINS = BATCH NAV CATALOG OPEN COPY FORMAT IMAGE TEXT HEX DELETE HELP EDIT RUN ATTR MENU DISKIMG IMGFS DOSGET UNSHRINK BASLIST COMPARE SEARCH BINARY2 AWP
 # The floppy edition: the commands, the two viewers that cost four blocks,
 # and the disk tools. The editor, the pictures, the music, the archives and
 # the document readers stay on the hard disk (45 blocks, with BASIC.SYSTEM's
 # 21, given back to the disk tools to come -- see TODO.md, "Les deux editions").
 # COMPARE also carries the S (sort) and M (mark differences) commands.
-PLUGINS_FLOPPY = BATCH NAV DOS33 OPEN COPY FORMAT HELP TEXT HEX DELETE RUN ATTR MENU DISKIMG IMGFS COMPARE
+PLUGINS_FLOPPY = BATCH NAV CATALOG OPEN COPY FORMAT HELP TEXT HEX DELETE RUN ATTR MENU DISKIMG IMGFS COMPARE
 # The service-table overlays: src/plugins/NAME.c, each compiled and linked
 # on its own like a third party's (sdk/plugin.cfg, no crt0, nothing of
 # A2FILE.CODE), because the resident is full -- they reach the program only
@@ -304,7 +304,7 @@ test: test-mini
 	python3 $(TOOLS)/test_media_transition.py
 	python3 $(TOOLS)/test_raw_transition.py
 	python3 $(TOOLS)/test_overlay_load.py
-	python3 $(TOOLS)/test_dos33_overlay.py
+	python3 $(TOOLS)/test_catalog_overlay.py
 	python3 $(TOOLS)/test_goto_safety.py
 	python3 $(TOOLS)/test_file_safety.py
 	python3 $(TOOLS)/test_binary2_safety.py

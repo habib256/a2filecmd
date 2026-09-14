@@ -80,7 +80,8 @@ int main(int argc,char**argv){
 '''
 NAV=(ROOT/'src/a2fc.c').read_text()
 NAV=NAV[NAV.index('static void nav_select('):NAV.index('static void go_up(')]
-C=C.replace('int main(int argc,char**argv){', '''static void select_name(struct Panel*p,const char*n){unsigned char i;p->cursor=p->top=0;for(i=0;i<p->count;++i)if(!strcmp(p->e[i].name,n)){p->cursor=i;break;}}
+C=C.replace('int main(int argc,char**argv){', '''static unsigned char panel_stale,reselect_panel;static char reselect[17];
+static void select_name(struct Panel*p,const char*n){unsigned char i;p->cursor=p->top=0;for(i=0;i<p->count;++i)if(!strcmp(p->e[i].name,n)){p->cursor=i;break;}}
 static void open_path(struct Panel*p){p->first=p->cursor=p->top=0;read_panel(p-panels);}
 '''+NAV+'int main(int argc,char**argv){')
 C=C.replace(' }else{\n  memset(h', ''' }else if(atoi(argv[1])==5){

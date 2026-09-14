@@ -134,8 +134,9 @@ static char overlay_loaded[12];     /* the overlay in place in the $1B00 window,
 /* in_overlay: an overlay's code may still be on the return stack, so the
  * window must not be reloaded until the main loop (or overlay_run) regains
  * control. panel_stale: panels whose DOS 3.3 catalog read was deferred. */
-static unsigned char in_overlay, panel_stale;
+static unsigned char in_overlay, panel_stale, reselect_panel;
 static unsigned char read_dos33_overlay(struct Panel* pan);
+static unsigned char read_image_dir_overlay(struct Panel* pan);
 static char reselect[NAME_LEN];    /* on return from a big overlay: the name to reselect */
 static struct Entry selected;      /* the entry under the cursor, copied before a big overlay overwrites the table */
 static char note[80];              /* ... and the message to write on line 22 */
@@ -317,21 +318,6 @@ static unsigned char img_read_block(unsigned int block, unsigned char* buf)
         if (fseek(img_f, img_base + ((((long)(block >> 3) << 4) + IMG_SECT[((block & 7) << 1) + half]) << 8), SEEK_SET)) return 0;
         if (fread(buf + half * 256, 1, 256, img_f) != 256) return 0;
     }
-    return 1;
-}
-
-/* Opens the directory with key block `key` in the already open image.
- * Returns 0 if it is not a ProDOS directory. */
-static unsigned char dir_open_image(unsigned int key)
-{
-    dir_error = 0;
-    dir_img = 1;
-    dir_block_key = key;
-    if (!img_read_block(key, copy_buf) || (copy_buf[4] >> 4) < 0x0E) return 0;
-    dir_entry_len = copy_buf[4 + 0x1F];
-    dir_per_block = copy_buf[4 + 0x20];
-    if (dir_entry_len != 0x27 || dir_per_block != 0x0D) return 0;
-    dir_index = 1;
     return 1;
 }
 
@@ -752,11 +738,11 @@ static void read_volumes(struct Panel* pan)
  * the C stack (low RAM is full); none of them is recursive. */
 #pragma static-locals (push, off)
 
-/* The DOS 3.3 catalog reader lives in the DOS33 overlay: it only runs
+/* The DOS 3.3 catalog reader lives in the CATALOG overlay: it only runs
  * during a panel read, never while another overlay's code is on the stack
  * (read_dos33_overlay defers such reads). Nothing here uses the window. */
-#pragma code-name (push, "DOS33")
-#pragma rodata-name (push, "DOS33RO")
+#pragma code-name (push, "CATALOG")
+#pragma rodata-name (push, "CATALOGRO")
 /* The closest ProDOS type to a DOS 3.3 type (catalog byte, bit 7 =
  * locked): T text, I Integer, A Applesoft, B binary, everything else BIN. */
 static unsigned char dos33_type(unsigned char t)
@@ -839,10 +825,56 @@ static unsigned char read_dos33_panel(struct Panel* pan)
 /* M: tags the files missing from the other panel or of a different size,
  * the basis of a synchronization by C. */
 
-static unsigned char read_image_panel(struct Panel* pan)
+#pragma code-name (push, "CATALOG")
+#pragma rodata-name (push, "CATALOGRO")
+/* Opens the directory with key block `key` in the already open image.
+ * Returns 0 if it is not a ProDOS directory. */
+static unsigned char dir_open_image(unsigned int key)
+{
+    dir_error = 0;
+    dir_img = 1;
+    dir_block_key = key;
+    if (!img_read_block(key, copy_buf) || (copy_buf[4] >> 4) < 0x0E) return 0;
+    dir_entry_len = copy_buf[4 + 0x1F];
+    dir_per_block = copy_buf[4 + 0x20];
+    if (dir_entry_len != 0x27 || dir_per_block != 0x0D) return 0;
+    dir_index = 1;
+    return 1;
+}
+
+/* Fills the panel from the ProDOS directory dir_key of the open image
+ * (img_f): ".." for a subdirectory, then the entries, sorted when they all
+ * fit. Returns 1, 0 on a read error, or 2 when the key block is not a
+ * ProDOS directory. The image stays open: the caller closes it. */
+static unsigned char read_image_dir(struct Panel* pan)
 {
     struct Entry* e;
     unsigned int parent = 2;
+    pan->count = 0;
+    pan->more = 0;
+    memset(pan->tags, 0, sizeof pan->tags);
+    if (!dir_open_image(pan->dir_key)) return 2;
+    if (pan->dir_key != 2)          /* parent pointer of a subdirectory (0x23 in the header) */
+        parent = copy_buf[4 + 0x23] | ((unsigned int)copy_buf[4 + 0x24] << 8);
+    if (pan->dir_key != 2) { e = add_entry(pan, "..", 0x0F); e->mdate = parent; }
+    while (dir_next()) {
+        if (pan->count >= MAX_ENTRIES) { pan->more = 1; break; }
+        e = add_entry(pan, dir_entry.name, dir_entry.type);
+        e->access = dir_entry.access;
+        e->aux = dir_entry.aux;
+        e->blocks = dir_entry.blocks;
+        e->size = dir_entry.size;
+        e->mdate = dir_entry.key;   /* the key block, to navigate and extract */
+    }
+    if (dir_error) return 0;
+    if (pan->count > 2) sort_entries(pan);
+    return 1;
+}
+#pragma rodata-name (pop)
+#pragma code-name (pop)
+
+static unsigned char read_image_panel(struct Panel* pan)
+{
     unsigned char i;
     dos_unit = 0;
     if (pan->img_len) {             /* a file image */
@@ -861,36 +893,20 @@ static unsigned char read_image_panel(struct Panel* pan)
         if (!i) goto fail;
         return 1;
     }
-    /* ProDOS; if reading fails and the image is in DOS order, try DOS 3.3
-     * (a DOS 3.3 floppy read by mistake as ProDOS). */
-    pan->count = 0;
-    pan->more = 0;
-    memset(pan->tags, 0, sizeof pan->tags);
-    if (!dir_open_image(pan->dir_key)) {
-        if (img_dsk && pan->dir_key == 2 && !in_overlay && read_dos33_overlay(pan)) {
-            pan->fs = FS_DOS33;
-            dir_close();
-            if (dir_error) goto fail;
-            return 1;
-        }
-        dir_close();
-        goto fail;
+    /* ProDOS, walked by the overlay. If the image is in DOS order and its
+     * root is not a ProDOS directory, it may be a DOS 3.3 floppy read by
+     * mistake as ProDOS: the overlay says so (2) and the resident, which
+     * alone may reload the window, tries the DOS 3.3 reader. The image is
+     * closed here, whichever way the read went. */
+    i = read_image_dir_overlay(pan);
+    if (i == 2) {
+        dir_img = 0;
+        i = img_dsk && pan->dir_key == 2 && !in_overlay && read_dos33_overlay(pan);
+        if (i) pan->fs = FS_DOS33;
     }
-    if (pan->dir_key != 2)          /* parent pointer of a subdirectory (0x23 in the header) */
-        parent = copy_buf[4 + 0x23] | ((unsigned int)copy_buf[4 + 0x24] << 8);
-    if (pan->dir_key != 2) { e = add_entry(pan, "..", 0x0F); e->mdate = parent; }
-    while (dir_next()) {
-        if (pan->count >= MAX_ENTRIES) { pan->more = 1; break; }
-        e = add_entry(pan, dir_entry.name, dir_entry.type);
-        e->access = dir_entry.access;
-        e->aux = dir_entry.aux;
-        e->blocks = dir_entry.blocks;
-        e->size = dir_entry.size;
-        e->mdate = dir_entry.key;   /* the key block, to navigate and extract */
-    }
-    dir_close();
-    if (dir_error) goto fail;
-    if (pan->count > 2) sort_entries(pan);
+    if (img_f) { if (fclose(img_f)) i = 0; img_f = 0; }
+    dir_img = 0;
+    if (!i) goto fail;
     return 1;
 fail:
     pan->fs = FS_PRODOS;
@@ -1003,6 +1019,14 @@ static void open_path(struct Panel* pan)
  * Directory reads only; no saved index can select an unrelated entry. */
 static void nav_select(struct Panel* pan, const char* name)
 {
+    /* The read was deferred (read_dos33_overlay, read_image_dir_overlay):
+     * the panel is empty until settle_panels rereads it, which then lands
+     * on this name. */
+    if (panel_stale & (1 << (pan - panels))) {
+        reselect_panel = pan - panels;
+        strcpy(reselect, name);
+        return;
+    }
     for (;;) {
         select_name(pan, name);
         if (pan->count && !strcmp(pan->e[pan->cursor].name, name)) return;
@@ -2082,21 +2106,32 @@ static unsigned char load_overlay(const char* name, unsigned char any)
 }
 #define overlay(name) load_overlay(name, 0)
 
-/* Reads a flat DOS 3.3 catalog through the DOS33 overlay. While another
+/* Reads a flat DOS 3.3 catalog through the CATALOG overlay. While another
  * overlay's code may be on the return stack (in_overlay, set by every
  * successful load_overlay and cleared when control returns to the main
  * loop), the window cannot be reloaded: the panel is left empty, marked
  * in panel_stale, and settle_panels rereads it before the next key. */
+static unsigned char defer_panel(struct Panel* pan)
+{
+    panel_stale |= 1 << (pan - panels);
+    pan->count = 0; pan->more = 0;
+    memset(pan->tags, 0, sizeof pan->tags);
+    return 1;
+}
 static unsigned char read_dos33_overlay(struct Panel* pan)
 {
     unsigned char ok;
-    if (in_overlay) {
-        panel_stale |= 1 << (pan - panels);
-        pan->count = 0; pan->more = 0;
-        memset(pan->tags, 0, sizeof pan->tags);
-        return 1;
-    }
-    ok = overlay("DOS33") && read_dos33_panel(pan);
+    if (in_overlay) return defer_panel(pan);
+    ok = overlay("CATALOG") && read_dos33_panel(pan);
+    in_overlay = 0;
+    return ok;
+}
+/* The same window walks a ProDOS directory inside an image (read_image_dir). */
+static unsigned char read_image_dir_overlay(struct Panel* pan)
+{
+    unsigned char ok;
+    if (in_overlay) return defer_panel(pan);
+    ok = overlay("CATALOG") ? read_image_dir(pan) : 0;
     in_overlay = 0;
     return ok;
 }
@@ -3298,7 +3333,7 @@ static const char mn_catalog_path[] = "/A2FILE/EXTRAS.CAT";
 static const char mn_dir[] = "/A2FILE";
 static const char mn_suffix[] = ".PLG";
 /* Routing overlays the core loads by itself: never a menu command. */
-static const char mn_hidden[] = "|MENU|COPY|OPEN|NAV|BATCH|DOS33|DOSIMAGE|DOSPUT|";
+static const char mn_hidden[] = "|MENU|COPY|OPEN|NAV|BATCH|CATALOG|DOSIMAGE|DOSPUT|";
 static const char mn_bad[] = "(unreadable)";
 static const char mn_stale[] = "(another A2 File Cmd build)";
 static const char mn_noentry[] = "(no entry point)";
@@ -3507,16 +3542,21 @@ static void refresh_both(void)
     draw_info();
 }
 
-/* Back in the main loop: no overlay code is on the stack any more. A DOS
- * 3.3 panel whose read was deferred (read_dos33_overlay) is reread now,
- * and only that one: rereading the other would forget its tags. */
+/* Back in the main loop: no overlay code is on the stack any more. A panel
+ * whose catalog read was deferred (read_dos33_overlay, read_image_dir_overlay)
+ * is reread now, and only that one: rereading the other would forget its
+ * tags. A name NAV wanted selected in it (nav_select) is found then. */
 static void settle_panels(void)
 {
     unsigned char p, stale = panel_stale;
     in_overlay = 0;
     panel_stale = 0;
     for (p = 0; p < 2; ++p)
-        if (stale & (1 << p)) { read_panel(p); draw_panel(p); }
+        if (stale & (1 << p)) {
+            read_panel(p);
+            if (reselect[0] && p == reselect_panel) { select_name(&panels[p], reselect); reselect[0] = 0; }
+            draw_panel(p);
+        }
     if (stale) { draw_status(); draw_info(); }
 }
 

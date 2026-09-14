@@ -6,11 +6,12 @@ Réserves au lien, en octets, 65C02/6502 ; ce ne sont pas des sommes :
 
 | Zone | 65C02 | 6502 | Objectif |
 | --- | ---: | ---: | --- |
-| MAIN (résident, plafond `$BEE0`) | **537** | 1 037 | 256 sur 65C02 : tenu |
+| MAIN (résident, plafond `$BEE0`) | **847** | 1 300 | 256 sur 65C02 : tenu |
 | Carte langage | 14 | 6 | ne pas descendre |
-| DOS33 (lecteur de catalogue DOS 3.3) | 488 | 484 | — |
-| LOWRAM | 240 | 265 | — |
-| Écart avant la pile C de 192 octets | 565 | 1 254 | — |
+| CATALOG (catalogues DOS 3.3 et images) | 15 | 36 | surcouche de lecture, pas à enrichir |
+| LOWRAM | 238 | 263 | — |
+| Écart avant la pile C de 192 octets | 875 | 1 517 | — |
+| NAV | 142 | 208 | — |
 | OPEN | 11 | 43 | ne pas retomber à quelques octets au prochain média |
 | DELETE | 4 | 3 | respiration avant enrichissement |
 | IMGFS | 5 | 13 | idem |
@@ -25,11 +26,17 @@ la réserve retrouvée au neuvième incrément du chantier 1. Le reste de ce
 document est le journal chronologique de la consolidation, le plus récent
 en premier.
 
-DOS33, 14 septembre 2026 : le lecteur de catalogue DOS 3.3
-(`read_dos33_panel`, `dos33_type`, 707 + 40 octets de code) quitte le
-résident pour une petite surcouche DOS33, sur BOOT et XL, chargée à chaque
-lecture d’un panneau DOS 3.3 (disque réel ou image en ordre DOS) et mise en
-cache comme les autres. Ce que la surcouche ne peut pas faire : être chargée
+CATALOG, 14 septembre 2026 : le lecteur de catalogue DOS 3.3
+(`read_dos33_panel`, `dos33_type`, 707 + 40 octets de code) puis le parcours
+d’un répertoire ProDOS dans une image (`read_image_dir`, `dir_open_image`)
+quittent le résident pour une petite surcouche CATALOG, sur BOOT et XL,
+chargée à chaque lecture d’un panneau étranger (disque DOS 3.3 réel, image
+en ordre DOS, image ProDOS ouverte comme dossier) et mise en cache comme les
+autres. `img_open`, `img_read_block` et `dos_read_sector` restent résidents :
+IMGFS et DOSGET s’en servent depuis leur propre fenêtre. Quand une image en
+ordre DOS n’a pas de répertoire ProDOS à sa racine, la surcouche répond 2
+et le résident, seul autorisé à recharger la fenêtre, tente le lecteur
+DOS 3.3 ; l’image est fermée par le résident dans tous les cas. Ce que la surcouche ne peut pas faire : être chargée
 pendant qu’une autre surcouche a encore du code sur la pile de retour — HELP
 relit les deux panneaux, le tri S hébergé par TEXT relit le sien, et un
 plugin SDK relit par `api->read_panel` le panneau DOS qu’il vient d’écrire
@@ -38,12 +45,19 @@ succès de cache ; `read_dos33_overlay` diffère alors la lecture (panneau
 vide, bit dans `panel_stale`) et `settle_panels`, appelé en tête de la boucle
 principale, relit et redessine ce seul panneau — relire l’autre lui ferait
 perdre ses marques. `overlay_run` remet `in_overlay` à zéro dès que le point
-d’entrée a rendu la main. Coût résident : 2 octets de BSS, +6 octets dans
-MENU pour la liste des surcouches cachées. Gain MAIN 514/519 octets ; DOS33
-garde 488/484 octets libres. Test hôte `tools/test_dos33_overlay.py`
-(différé, direct, chargement refusé, catalogue refusé) et banc
-`bench/dos33_overlay.py` (aide et tri depuis un panneau DOS, octets de
-l’image conservés, deux CPU). Les bancs DOSWRITE, DOSIMAGE, catalogues
+d’entrée a rendu la main. NAV relit un panneau puis y cherche le dossier quitté
+(`nav_select`) : quand cette lecture est différée, le nom est confié à
+`reselect` et `settle_panels` le sélectionne après la relecture, sinon Échap
+depuis un sous-dossier d’image perdait sa sélection (vu au banc). Coût
+résident : 3 octets de BSS, 46/64 octets de code pour ce report, +8 octets
+dans MENU pour la liste des surcouches cachées. Gain MAIN net 824/782
+octets ;
+CATALOG garde 15/36 octets libres, ce qui suffit à une surcouche de lecture
+qui n’a pas vocation à grossir. Test hôte `tools/test_catalog_overlay.py`
+(différé, direct, chargement refusé, catalogue refusé, « pas un répertoire »
+transmis) et banc `bench/catalog_overlay.py` (aide et tri depuis un panneau
+DOS puis depuis une image ProDOS et son sous-dossier, octets de l’image
+conservés, deux CPU). Les bancs DOSWRITE, DOSIMAGE, catalogues
 malformés, smoke et XL passent sur les deux CPU.
 
 
