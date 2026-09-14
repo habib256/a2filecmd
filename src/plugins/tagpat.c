@@ -11,8 +11,8 @@
  * pattern, ESC cancels, Delete or the left arrow erases. Then one key:
  * T tags the matches, U untags them, X tags the matches and untags
  * everything else (an exact selection). Directories, `..` included, are
- * matched by name and counted among the "(M matched)", but never tagged:
- * the core never tags one either (tag_all skips them) and their `<DIR>`
+ * matched by name and counted among the "(M matched)", but never tagged
+ * by a pattern (the core does tag one on Space since 0.8.6) and their `<DIR>`
  * row has no room for the mark. The message line ends with
  * "N tagged (M matched)", "N untagged" after a U.
  *

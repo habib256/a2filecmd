@@ -1,6 +1,9 @@
 /* BATCH code ends below $3000. Its caller snapshots the active entry table
  * at $3000 before loading it. Only the exclusively created destination
- * A2MOVE.LST is written here; MOVE owns each actual transfer. No AUX use. */
+ * A2MOVE.LST is written here; MOVE owns each actual transfer, except a
+ * directory bound for another volume, which MOVE hands back (a note that
+ * starts with byte 2) for the resident to walk. A record may name a
+ * directory (storage type $D on disk). No AUX use. */
 #ifndef BATCH_ENTRIES
 #define BATCH_ENTRIES ((struct Entry*)0x3000)
 #endif
@@ -8,7 +11,7 @@ static const char batch_leaf[] = "A2MOVE.LST";
 static const char batch_bad[] = "Move list read/write failed; remaining sources kept.";
 static const char batch_kept[] = "A2MOVE.LST kept in destination; check it before retrying.";
 
-static const char bt_s0[] = "Cannot batch move directories or A2MOVE.LST.";
+static const char bt_s0[] = "Cannot batch move A2MOVE.LST.";
 static const char bt_s1[] = "Move %u to %s?";
 static const char bt_s2[] = "Cannot reserve A2MOVE.LST; no file moved.";
 static const char bt_s3[] = "wb";
@@ -39,7 +42,7 @@ static unsigned char batch_record(FILE* f)
     for (i = 0; i < NAME_LEN && selected.name[i]; ++i)
         if (!((selected.name[i] >= 'A' && selected.name[i] <= 'Z') ||
               (i && ((selected.name[i] >= '0' && selected.name[i] <= '9') || selected.name[i] == '.')))) return 0;
-    return i && i <= 15 && selected.type != 0x0F;
+    return i && i <= 15;
 }
 
 static unsigned char batch_close(FILE* f, unsigned char bad)
@@ -69,7 +72,7 @@ static void batch_write(void)
     if (!push_name(MB->list, batch_leaf)) { too_long(); return; }
     for (i = 0; i < pan->count; ++i) if (tagged(pan, i)) {
         e = &BATCH_ENTRIES[i];
-        if (is_dir(e) || !strcmp(e->name, batch_leaf)) {
+        if (!strcmp(e->name, batch_leaf)) {
             strcpy(note, bt_s0); return;
         }
         ++MB->count;
@@ -123,7 +126,8 @@ static void batch_read(void)
     if (!bad && !batch_record(f)) bad = 1;
     if (!batch_close(f, bad)) { strcpy(note, batch_bad); return; }
     if (!build_full(full, &panels[active], &selected) || !file_info(full) ||
-        (gfi[3] & 0x81) != 0x81 || gfi[7] < 1 || gfi[7] > 3 || gfi[4] != selected.type ||
+        (gfi[3] & 0x81) != 0x81 || gfi[4] != selected.type ||
+        (selected.type == 0x0F ? gfi[7] != 0x0D : gfi[7] < 1 || gfi[7] > 3) ||
         (gfi[5] | ((unsigned int)gfi[6] << 8)) != selected.aux) {
         strcpy(note, bt_s6); return;
     }
@@ -155,10 +159,25 @@ static void batch_finish(void)
     else batch_discard();
 }
 
+/* After the core moved a directory tree itself, the copy engine has been
+ * through the storage MB borrows (CP and MB share text_starts): the three
+ * paths are rebuilt from the panels, which the batch has kept on the same
+ * two directories, and the reason cleared; the counters sit past the copy
+ * state and survive. */
+static void batch_repath(void)
+{
+    strcpy(MB->source, panels[active].path); strcpy(MB->target, panels[!active].path);
+    strcpy(MB->list, MB->target);
+    if (!push_name(MB->list, batch_leaf)) { too_long(); return; }
+    MB->reason[0] = 0;
+    MB->ready = 1;
+}
+
 void __fastcall__ batch_entry(const struct A2fcApi* a)
 {
     MB->ready = 0;
     if (a->arg == 'W') batch_write();
     else if (a->arg == 'R') batch_read();
+    else if (a->arg == 'X') batch_repath();
     else batch_finish();
 }

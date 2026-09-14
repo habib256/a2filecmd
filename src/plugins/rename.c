@@ -15,7 +15,7 @@
  * characters answers $40. Two tests the window has no room for, and the
  * count at the end says as much either way. The entry under the cursor is
  * renamed whatever it is when nothing is tagged, directories included
- * (tags are never on a directory); ".." is not a name on the disk, so the
+ * (a directory carries a tag like a file since 0.8.6); ".." is not a name on the disk, so the
  * RENAME simply fails and counts as skipped.
  *
  * It must be small: a big overlay is loaded over the panels' entry tables

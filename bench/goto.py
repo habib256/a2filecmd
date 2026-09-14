@@ -250,7 +250,7 @@ def main():
                 return result
             for call in (1,2):
                 line=fail_rename((call,))
-                s.ok('rename failure '+str(call)+' reports error',line=='GOTO.CFG cannot be written.')
+                s.ok('rename failure '+str(call)+' reports error and keeps the verified temporary',line.endswith('GOTO.TMP kept.'),line)
                 s.ok('rename failure '+str(call)+' preserves old favourites',favourites()==preserved);leave(ESC)
             open_goto();line=move(b'1',b'2')
             s.ok('retry after failures saves successfully',line=='Favourite moved.' and favourites()==['1 /WORKHD/GONESOON','2 '+OTHER]);leave(ESC)

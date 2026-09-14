@@ -71,6 +71,8 @@ static FILE* new_output(const char* path);
 static unsigned char push_name(char* path, const char* name);
 int main(void);
 static void too_long(void);
+static unsigned char move_tree_across(void);
+static void copy_or_move(unsigned char move);
 static unsigned char target_check(void);
 static void progress_bar(const char* name, unsigned long copied, unsigned long size);
 static void refresh_both(void);
@@ -2218,7 +2220,6 @@ media_done:
 
 #pragma code-name (push, "LC")
 #pragma rodata-name (push, "LC")
-static const char batch_cancel[] = "Cancelled; remaining sources kept.";
 /* BATCH keeps its snapshot above its own code. MOVE may use the whole
  * graphics page; the next phase takes a fresh snapshot after panel refresh. */
 static void batch_stage(unsigned char arg)
@@ -2240,6 +2241,10 @@ static void batch_stage(unsigned char arg)
     }
 }
 
+/* Each record of the manifest in turn: the MOVE overlay rewrites the entry
+ * on the same volume and copies a file across. A directory bound for
+ * another volume -- MOVE knows the units, it says so with a note that
+ * starts with byte 2 -- is walked by the resident (move_tree_across). */
 static void move_marked(void)
 {
     memset(MB, 0, sizeof *MB);
@@ -2250,9 +2255,10 @@ static void move_marked(void)
         batch_stage('R');
         if (!MB->ready) { strcpy(MB->reason, note); break; }
         overlay_run("MOVE", 'B');
+        if (!reselect[0] && note[0] == 2) move_tree_across();
         if (!reselect[0]) { strcpy(MB->reason, note); break; }
         ++MB->index;
-        if (abort_key()) { strcpy(MB->reason, batch_cancel); break; }
+        if (abort_key()) { extern const char batch_cancel[]; strcpy(MB->reason, batch_cancel); break; }
     }
     batch_stage('F');
 }
@@ -3342,7 +3348,7 @@ static const char mn_suffix[] = ".PLG";
 /* Routing overlays the core loads by itself: never a menu command. */
 static const char mn_hidden[] = "|MENU|COPY|OPEN|NAV|BATCH|CATALOG|DOSIMAGE|DOSPUT|";
 static const char mn_bad[] = "(unreadable)";
-static const char mn_stale[] = "(another A2 File Cmd build)";
+static const char mn_stale[] = "(other A2FC build)";
 static const char mn_noentry[] = "(no entry point)";
 static const char mn_title[] = "  A2FILE/*.PLG  -  the overlays, run on the selection";
 static const char mn_empty[] = "No overlay here.";
@@ -3679,6 +3685,30 @@ static unsigned char copy_one(const struct Entry* e)
         ++a2fc_ops;
     }
     return walk_tree(WALK_COPY) == 1;
+}
+
+static const char msg_treekept[] = "Directory not moved; source kept.";
+const char batch_cancel[] = "Cancelled; remaining sources kept.";
+/* A directory record of a marked move whose target is another volume: no
+ * entry can point across, so it gets exactly what V does for one directory
+ * -- the cursor put on it, no other mark, then copy_or_move: the tree
+ * counted, copied and read back file by file, deleted only if every file
+ * arrived and none was skipped, both panels reread. Moved means the source
+ * is gone; a copy that stopped, or a source that could not be removed,
+ * leaves it and stops the batch. Reports through `note` and `reselect`
+ * like the MOVE overlay does. */
+static unsigned char move_tree_across(void)
+{
+    struct Panel* pan = &panels[active];
+    reselect[0] = 0;                    /* the tags went into the manifest: none is left on the panel */
+    select_name(pan, selected.name);
+    if (pan->count && !strcmp(pan->e[pan->cursor].name, selected.name)) copy_or_move(1);
+    /* The copy engine went through the storage the batch state borrows:
+     * BATCH rebuilds the paths from the panels (its counters survived). */
+    batch_stage('X');
+    if (!build_full(full, pan, &selected) || exists(full)) { strcpy(note, msg_treekept); return 0; }
+    strcpy(reselect, selected.name);
+    return 1;
 }
 
 /* The files targeted by C, V and D: the panel's tags, otherwise the
@@ -4606,19 +4636,20 @@ static void toggle_tag(void)
     const struct Entry* e;
     if (!pan->count || !pan->path[0]) return;
     e = &pan->e[pan->cursor];
-    if (!is_dir(e)) set_tag(pan, pan->cursor, !tagged(pan, pan->cursor));
+    if (!is_up(e)) set_tag(pan, pan->cursor, !tagged(pan, pan->cursor));
     land(pan->cursor);                 /* the tag shows; the cursor stays where it is */
 }
 
-/* Ctrl-T tags every file of the panel (mode 1), Ctrl-N untags them all
- * (0), * inverts the tags (2); directories are never tagged. */
+/* Ctrl-T tags every entry of the panel (mode 1), Ctrl-N untags them all
+ * (0), * inverts the tags (2); ".." is never tagged. Directories carry a
+ * tag like files since 0.8.6: C, V, D and the marked MOVE walk them. */
 static void retag(unsigned char mode)
 {
     struct Panel* pan = &panels[active];
     unsigned char i;
     if (!pan->path[0]) return;
     for (i = 0; i < pan->count; ++i)
-        set_tag(pan, i, !is_dir(&pan->e[i]) && (mode == 2 ? !tagged(pan, i) : mode));
+        set_tag(pan, i, !is_up(&pan->e[i]) && (mode == 2 ? !tagged(pan, i) : mode));
     show_active();
 }
 

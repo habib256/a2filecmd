@@ -123,7 +123,7 @@ an unrelated entry. If it has disappeared, the parent opens at its beginning.
 | **TAB / =** | Switch panel / show the same directory in the other panel. |
 | **RETURN / ESC / /** | Open / go up / list volumes. Return asks before running a program. |
 | **'**, then letter or digit | Jump to the next name with that initial. |
-| **SPACE / \*** | Toggle the selection's tag / invert all tags. |
+| **SPACE / \*** | Toggle the selection's tag / invert all tags. Directories can be tagged; `..` never is. |
 | **Ctrl-T / Ctrl-N / Ctrl-R** | Tag all / untag all / reread both panels. |
 | **S / M** | Change sorting / tag files absent or different in size/date in the other panel. |
 | **C / V** | Copy / move tagged entries, otherwise the selection, to the other panel. Includes directories. Move deletes originals after copying. |
@@ -216,7 +216,7 @@ Menu categories describe tasks and do not require changing disks just to browse.
 | **MKIMAGE** | Create an empty ProDOS PO or 2MG: 140 KB, 800 KB, 2/4/8 MB or 32,767 blocks. New images are data volumes, without a boot program. |
 | **RESCUE** | F recovers a file; V recovers a ProDOS volume. Uses up to 30 attempts per block, zero-fills unreadable chunks and writes a LOG. Destination must be another online volume. |
 | **SYNC** | Recursively copy missing or newer files to the other panel after confirming direction. Destination-only files remain; copies are read back before replacement. |
-| **MOVE** | Move marked files, or the selected entry without marks. Within a volume, move without copying its data blocks; locked sources are refused. Every path component must still be a directory. A full subdirectory grows if space is available; damaged parent references are refused before writing. Across volumes, copy and verify a file before deleting the source; existing destination names are refused, and a size mismatch preserves the source and removes the incomplete copy. Directories across volumes require V. Available on FILES and XL. |
+| **MOVE** | Move marked entries, or the selected entry without marks. Within a volume, move without copying data blocks, directories included; locked sources are refused. Every path component must still be a directory. A full subdirectory grows if space is available; damaged parent references are refused before writing. Across volumes, a file is copied and verified before its source is deleted; existing destination names are refused, and a size mismatch preserves the source and removes the incomplete copy. A marked directory bound for another volume is walked like V does: counted, copied and read back file by file, and its source deleted only once every file has arrived; a copy that stops, or a skipped file, keeps the whole source and stops the batch. The selected directory alone (no marks) across volumes still needs V. Available on FILES and XL. |
 | **TREE** | Show file sizes and cumulative directory totals. Space advances a page; ESC exits. |
 
 ### Recovery and comparison limits

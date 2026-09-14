@@ -42,7 +42,7 @@ static void keep_tags(unsigned char n){(void)n;}
 static unsigned char confirm(const char*s){assert(strlen(s)<80);return !eq("cancel");}
 static unsigned char push_name(char*p,const char*n){if(strlen(p)+strlen(n)+1>=64)return 0;strcat(p,"/");strcat(p,n);return 1;}
 static unsigned char build_full(char*p,const struct Panel*pan,const struct Entry*e){strcpy(p,pan->path);return push_name(p,e->name);}
-static unsigned char file_info(const char*p){struct stat st;if(eq("stat")||stat(p,&st))return 0;gfi[7]=1;gfi[3]=eq("locked")?1:0xC3;gfi[4]=4;gfi[5]=gfi[6]=0;return 1;}
+static unsigned char file_info(const char*p){struct stat st;if(eq("stat")||stat(p,&st))return 0;gfi[7]=S_ISDIR(st.st_mode)?0x0D:1;gfi[3]=eq("locked")?1:0xC3;gfi[4]=S_ISDIR(st.st_mode)?0x0F:4;gfi[5]=gfi[6]=0;return 1;}
 static FILE* bfopen(const char*p,const char*m){
  if(!strcmp(m,"wb")&&(eq("reserve_close")||eq("reserve_close_remove")))abort();
  phase=!strcmp(m,"wb")?0:++reads;
@@ -83,6 +83,7 @@ int main(int argc,char**argv){
  strcpy(panels[active].path,argv[1]);strcpy(panels[!active].path,argv[2]);panels[active].count=3;
  for(i=0;i<3;++i){entries[i].name[0]='A'+i;entries[i].type=4;entries[i].access=0xC3;entries[i].size=4;}
  set_tag(&panels[active],0,1);set_tag(&panels[active],2,1);
+ if(eq("dirs")){entries[1].type=15;set_tag(&panels[active],1,1);}   /* B is a directory, marked too */
  api.arg='W';batch_entry(&api);
  if(MB->ready){
   if(eq("corrupt")){f=fopen(MB->list,"r+b");fputc('B',f);fclose(f);}
@@ -91,13 +92,14 @@ int main(int argc,char**argv){
    api.arg='R';batch_entry(&api);
    if(!MB->ready){strcpy(MB->reason,note);break;}
    strcpy(dst,MB->target);push_name(dst,selected.name);
-   assert(!strcmp(selected.name,i?"C":"A"));
+   assert(!strcmp(selected.name,eq("dirs")?(i==0?"A":i==1?"B":"C"):(i?"C":"A")));
+   assert(!!(selected.type==15)==(eq("dirs")&&i==1));
    assert(!rename(full,dst));++MB->index;
    if(eq("partial")){strcpy(MB->reason,"Cancelled");break;}
   }
   /* Rebuild the active snapshot just like the real core after MOVE. */
   n=0;for(i=0;i<3;++i){char p[81];strcpy(p,panels[active].path);strcat(p,"/");p[strlen(p)+1]=0;p[strlen(p)]='A'+i;
-   if(!access(p,F_OK)){memset(&entries[n],0,sizeof entries[n]);entries[n].name[0]='A'+i;entries[n].type=4;++n;}}
+   if(!access(p,F_OK)){memset(&entries[n],0,sizeof entries[n]);entries[n].name[0]='A'+i;entries[n].type=(eq("dirs")&&i==1)?15:4;++n;}}
   panels[active].count=n;api.arg='F';batch_entry(&api);
  }
  printf("%u|%u|%s|",MB->index,MB->owned,note);
@@ -116,6 +118,7 @@ class Batch(unittest.TestCase):
  def run_case(self,fault='',collision=False,active=0,retry=False):
   d=Path(tempfile.mkdtemp(prefix='q-',dir=self.root));src=d/'s';dst=d/'d';src.mkdir();dst.mkdir()
   for n in 'ABC':(src/n).write_bytes((n*4).encode())
+  if fault=='dirs':(src/'B').unlink();(src/'B').mkdir();(src/'B'/'INSIDE').write_bytes(b'inside the directory')
   if collision:(dst/'A2MOVE.LST').write_bytes(b'personal bytes')
   out=subprocess.check_output([self.exe,src,dst,fault,str(active)],text=True)
   if retry:
@@ -123,7 +126,8 @@ class Batch(unittest.TestCase):
    again=subprocess.check_output([self.exe,src,dst,'',str(active)],text=True)
    self.assertTrue(again.startswith('0|0|'),again)
    self.assertEqual({p.name:p.read_bytes() for p in dst.iterdir()},saved)
-  return out,{p.name:p.read_bytes() for p in src.iterdir()},{p.name:p.read_bytes() for p in dst.iterdir()}
+  tree=lambda root:{p.name:(p.read_bytes() if p.is_file() else {q.name:q.read_bytes() for q in p.iterdir()}) for p in root.iterdir()}
+  return out,tree(src),tree(dst)
  def test_only_marked_names_both_panels(self):
   for active in (0,1):
    out,src,dst=self.run_case(active=active);self.assertTrue(out.startswith('2|0|'),out)
@@ -155,6 +159,11 @@ class Batch(unittest.TestCase):
     self.assertEqual(src,{n:(n*4).encode() for n in 'ABC'})
     self.assertEqual(dst,{'A2MOVE.LST':b''})
 
+ def test_marked_directory_records_travel_through_the_manifest(self):
+  out,src,dst=self.run_case('dirs')
+  self.assertTrue(out.startswith('3|0|3/3 moved. |'),out)   # A, the directory B, C: three records
+  self.assertEqual(src,{})
+  self.assertEqual(dst,{'A':b'AAAA','B':{'INSIDE':b'inside the directory'},'C':b'CCCC'})
  def test_collision_never_grants_ownership_even_when_cleanup_would_fail(self):
   out,src,dst=self.run_case('reserve_close_remove',collision=True)
   self.assertTrue(out.startswith('0|0|'),out)

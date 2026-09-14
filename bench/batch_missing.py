@@ -12,7 +12,7 @@ def main():
  with tempfile.TemporaryDirectory(prefix='batch-missing-') as t:
   with boot_hd(Path(t),files,port=6897) as(p,s):
    pair(s,p,'DST','SRC');s.key(TAB);mark(s,p,40);menu_run(s,p,'MOVE');p.stable()
-   s.wait(lambda:s.has('Batch unavailable'),'missing entry refused')
+   s.wait(lambda:s.has('unavailable; files kept'),'missing entry refused')
    rows=s.rows()[2:20]
    s.ok('right source names and marks restored',all(any(r[40:58].startswith(n+' ') and '*' in r[40:58] for r in rows) for n in ('A','C')))
    s.ok('left destination remains readable',any(r.startswith('KEEP ') for r in rows))

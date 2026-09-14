@@ -105,7 +105,8 @@ static struct {
 
 static const char m_dirs[]  = "Open a real ProDOS directory in each panel.";
 static const char m_same[]  = "Both panels: same directory.";
-static const char m_tree[]  = "A tree across volumes: V copies it, this cannot.";
+static const char m_tree[]  = "A tree across volumes: mark it, or V copies it.";
+static const char m_btree[] = "\2";   /* batch: the core walks the tree itself */
 static const char m_here[]  = "%s is already in the other panel.";
 static const char m_cask[]  = "Another volume: copy %s there and remove it here?";
 static const char m_cbad[]  = "Copy failed: %s was NOT removed.";
@@ -339,7 +340,7 @@ static void copy_across(const struct Entry* e)
     unsigned int n, i;
     unsigned char bad = 0, err;
 
-    if (e->type == 0x0F) { note(m_tree); return; }
+    if (e->type == 0x0F) { note(a.arg == 'B' ? m_btree : m_tree); return; }
     if (!join(target, other->path, e->name)) { note(m_walk); return; }
 
     a.sprintf((char*)scratch, m_cask, e->name);

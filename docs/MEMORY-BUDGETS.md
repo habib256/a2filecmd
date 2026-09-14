@@ -6,11 +6,11 @@ Réserves au lien, en octets, 65C02/6502 ; ce ne sont pas des sommes :
 
 | Zone | 65C02 | 6502 | Objectif |
 | --- | ---: | ---: | --- |
-| MAIN (résident, plafond `$BEE0`) | **590** | 1 037 | 256 sur 65C02 : tenu |
-| Carte langage | 14 | 6 | ne pas descendre |
+| MAIN (résident, plafond `$BEE0`) | **335** | 779 | 256 sur 65C02 : tenu |
+| Carte langage | 34 | 26 | ne pas descendre |
 | CATALOG (catalogues DOS 3.3 et images) | 15 | 36 | surcouche de lecture, pas à enrichir |
-| LOWRAM | 131 | 156 | — |
-| Écart avant la pile C de 192 octets | 618 | 1 254 | — |
+| LOWRAM | 129 | 154 | — |
+| Écart avant la pile C de 192 octets | 363 | 996 | — |
 | NAV | 142 | 208 | — |
 | DELETE | 409 | 405 | libéré par le parcours résident |
 | OPEN | 11 | 43 | ne pas retomber à quelques octets au prochain média |
@@ -25,6 +25,32 @@ DUET, DOSGET, IDENT/FIXTYPES et la sonde DUET du routage avaient consommé
 la réserve retrouvée au neuvième incrément du chantier 1. Le reste de ce
 document est le journal chronologique de la consolidation, le plus récent
 en premier.
+
+Dossiers marqués (chantier 4), 14 septembre 2026 : Espace et Ctrl-T
+marquent un dossier ; BATCH accepte l’enregistrement (type de stockage `$D`
+vérifié à la relecture) ; MOVE réécrit l’entrée d’un dossier sur le même
+volume comme pour un fichier ; vers un autre volume, MOVE, qui connaît les
+unités ProDOS, rend la main avec une note commençant par l’octet 2, et le
+résident (`move_tree_across`) pose le curseur sur le dossier, efface les
+marques et appelle `copy_or_move(1)` : l’arbre est compté, copié, relu
+fichier par fichier et sa source effacée seulement si tout est arrivé ; la
+réussite se constate par la disparition de la source. Quatre formes
+mesurées : dupliquer la logique de V dans le résident et comparer les
+volumes par nom coûtait 582 octets (MAIN 8) ; réutiliser `copy_or_move`
+ramène l’aide à 205 octets ; la comparaison de volumes coûtait 131 octets
+où qu’elle soit (résident ou BATCH, où elle faisait franchir un bloc à
+BATCH.PLG et déborder la disquette BOOT) ; la remise par MOVE la supprime.
+`move_marked` reste en carte langage, sa chaîne d’annulation passe au
+résident. Le moteur de copie et l’état du lot empruntent tous deux
+`text_starts` (207 et 279 octets sur 320) : après un déplacement d’arbre,
+une phase `X` de BATCH reconstruit les trois chemins depuis les panneaux
+(les compteurs, au-delà des 207 octets, survivent) — reconstruire dans le
+résident coûtait 70 octets de plus. BATCH.PLG 6502 passe à 2 659 octets,
+un bloc de plus sur BOOT ; MENU.PLG rend ce bloc en raccourcissant un
+message (3 591 → 3 582 octets, sous 3 584). Réserves : MAIN 335/779, LC
+34/26, LOWRAM 129/154, écart avant pile 363/996 ; BOOT à 0 bloc libre. Test hôte `tools/test_batch.py` (un dossier traverse le manifeste,
+relu comme `$D`), banc `bench/roi.py` (dossier marqué à deux niveaux sur le
+même volume puis vers l’autre disque, arbres relus, sources parties).
 
 Parcours d’arbres itératif (chantier 2), 14 septembre 2026 : `count_tree`,
 `copy_tree` et `delete_tree` récursifs sont remplacés par un moteur unique
