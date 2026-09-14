@@ -9,8 +9,8 @@ a way of working, but nothing else:
 - **A2 File Cmd for ProDOS** — every section from *Start here* to *Limits
   and troubleshooting*. Apple IIe, //c or IIgs with 128 KB and 80 columns,
   ProDOS 8, overlays and plugins, floppy and XL editions.
-- **A2FileCmd Mini DOS3.3** — its own section, [A2FileCmd Mini
-  DOS3.3](#a2filecmd-mini-dos33-apple-ii-48-kb), near the end. Apple II+
+- **A2FileCmd Mini DOS3.3** — [its own section](#a2filecmd-mini-dos33),
+  near the end of this manual. Apple II+
   with 48 KB, DOS 3.3, 40 columns, two Disk II drives, one disk, no
   overlay, no plugin. Nothing written about the ProDOS edition applies to
   it.
@@ -48,7 +48,7 @@ The download names include the CPU, category and version:
 
 **A2FileCmd Mini DOS3.3** is a different program for a different machine and
 ships as one more file, `A2FC-MINI-DOS33-0.8.6.dsk`, a DOS 3.3 disk for an
-Apple II+; see [its section](#a2filecmd-mini-dos33-apple-ii-48-kb).
+Apple II+; see [its section](#a2filecmd-mini-dos33).
 
 All floppies are 6502 and supplied as `.dsk` in DOS sector order; XL uses `.2mg`.
 Use the downloaded files directly: changing an extension does not convert an image.
@@ -667,7 +667,7 @@ Super Serial Card and //c operation remains unverified.
 `make disk` builds both CPU families; `make test` runs host checks.
 Development: README, `sdk/README.md`, `bench/README.md`. Remaining work: `TODO.md`.
 
-## A2FileCmd Mini DOS3.3 (Apple II+, 48 KB)
+## A2FileCmd Mini DOS3.3
 
 A standalone edition for an **Apple II+ with 48 KB and an NMOS 6502**: two
 panels in 40 columns and DOS 3.3 copying between two Disk II drives. No
