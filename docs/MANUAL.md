@@ -595,7 +595,7 @@ Set the destination in the other panel, select the archive, then use **!**:
 
 | Tool | Supported archives |
 |---|---|
-| **UNSHRINK** | ShrinkIt `.SHK`: stored data, LZW/1 and LZW/2. Files retain ProDOS type and auxiliary type; names are adapted to ProDOS. Disk-image members become PO files. Resource forks and comments are skipped. |
+| **UNSHRINK** | ShrinkIt `.SHK`: stored data, LZW/1 and LZW/2. Files retain ProDOS type and auxiliary type; names are adapted to ProDOS. Disk-image members become PO files. Resource forks and comments are skipped. Each file is decoded a second time and compared with the file read back; a mismatch removes it. |
 | **BINARY2** | Binary II `.BNY`/`.BQY`: extracts members with their names and attributes. Directory entries are skipped. Compressed members may need a second extraction with UNSHRINK. |
 
 ShrinkIt extraction clears `/RAM` and refuses it as a destination. Keep

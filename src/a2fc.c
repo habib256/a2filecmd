@@ -67,7 +67,6 @@ void mouse_hide(void);
 extern unsigned char mouse_x, mouse_y;
 #endif
 static unsigned char exists(const char* path);
-static FILE* new_output(const char* path);
 static unsigned char push_name(char* path, const char* name);
 int main(void);
 static void too_long(void);
@@ -3765,79 +3764,111 @@ static unsigned char target_check(void)
 #pragma rodata-name (push, "IMGFSRO")
 static const char im_target[]  = "Open a ProDOS folder in the other panel.";
 static const char im_reopen[]  = "Cannot reopen the image.";
+static const char im_done[]    = "%u file%s extracted.";
+static const char im_done_big[] = "%u file%s extracted, %u too big (>128K).";
+static const char im_error[]   = "Extract failed; %u complete.";
+static const char im_cleanup[] = "Cleanup failed: %s retained.";
+static const char im_wb[] = "wb";
+static const char im_rb[] = "rb";
 #pragma static-locals (push, off)
 
-/* Writes the ProDOS file with key block `key`, size `size`, to `out`, read
- * from the open image (img_f). The storage type follows from the size:
- * seedling (<= 512: the key is the data block) or sapling (the key is an
- * index block of 256 pointers, low bytes [0..255] then high bytes
+/* A big overlay: the code may reach $2800, the entries are read from the
+ * snapshot at $3000, and the two 512-byte buffers below it are the index
+ * block of the file and one block of the output read back. */
+#ifndef IM_IDX
+#define IM_IDX ((unsigned char*)0x2800)
+#define IM_CMP ((unsigned char*)0x2A00)
+#endif
+static FILE* im_out;
+static unsigned char im_owned;
+
+/* One pass over the ProDOS file with key block e->mdate and size e->size,
+ * read from the open image (img_f). The storage type follows from the
+ * size: seedling (<= 512: the key is the data block) or sapling (the key
+ * is an index block of 256 pointers, low bytes [0..255] then high bytes
  * [256..511]); a null block pointer is a hole (zeros). Tree files
- * (> 128 KB) are rare on a floppy and refused. `idx` is a 512-byte buffer
- * outside the panel tables. Returns 0 on error, 2 if the file is too
- * large. */
-static unsigned char img_read_file(unsigned int key, unsigned long size, FILE* out, unsigned char* idx)
+ * (> 128 KB) are rare on a floppy and refused before any reservation (2).
+ * Pass 0 reserves and writes the output; pass 1 opens the closed file
+ * again and compares every byte with the blocks read a second time, and
+ * the file must end where the data ends. The caller closes im_out either
+ * way. Returns 1 on success, 0 on a failure. */
+static unsigned char img_pass(const struct Entry* e, unsigned char verify)
 {
-    unsigned int need = (unsigned int)((size + 511) >> 9), i, n, blk;
-    unsigned long left = size;
-    if (size > 128UL * 1024) return 2;
-    if (size > 512 && !img_read_block(key, idx)) return 0;
+    unsigned char* idx = IM_IDX;
+    unsigned int need = (unsigned int)((e->size + 511) >> 9), i, n, blk;
+    unsigned long left = e->size;
+    if (e->size > 128UL * 1024) return 2;
+    if (verify) {
+        if (!(im_out = fopen(other_full, im_rb))) return 0;
+    } else {
+        _filetype = e->type;
+        _auxtype = e->aux;
+        im_owned = reserve_output(other_full);
+        if (im_owned != OUTPUT_RESERVED || !(im_out = fopen(other_full, im_wb))) return 0;
+    }
+    if (e->size > 512 && !img_read_block(e->mdate, idx)) return 0;
     for (i = 0; i < need; ++i) {
-        blk = size <= 512 ? key : (idx[i] | ((unsigned int)idx[256 + i] << 8));
+        blk = e->size <= 512 ? e->mdate : (idx[i] | ((unsigned int)idx[256 + i] << 8));
         n = left > 512 ? 512 : (unsigned int)left;
         if (blk) { if (!img_read_block(blk, copy_buf)) return 0; }
         else memset(copy_buf, 0, 512);
-        if (fwrite(copy_buf, 1, n, out) != n) return 0;
+        if (verify) {
+            if (fread(IM_CMP, 1, n, im_out) != n || memcmp(IM_CMP, copy_buf, n)) return 0;
+        } else if (fwrite(copy_buf, 1, n, im_out) != n || ferror(im_out)) return 0;
         left -= n;
     }
+    if (verify && (fread(IM_CMP, 1, 1, im_out) || ferror(im_out))) return 0;
     return 1;
 }
 
 /* C on an image opened as a directory: extracts the tagged files, else the
  * file under the cursor, to the ProDOS directory of the other panel
- * (subdirectories have to be entered and extracted one at a time). The
- * index buffer borrows the destination panel's table, unused during the
- * operation; both panels are re-read on return. */
+ * (subdirectories have to be entered and extracted one at a time). Every
+ * file is written, closed, then read back against the image; only an
+ * exclusive reservation grants cleanup rights. The tags stay in the panel
+ * while the loader keeps their copy in picked[]. */
 static void extract_targets(void)
 {
     struct Panel* pan = &panels[active];
     struct Panel* dst = &panels[!active];
-    unsigned char* idx = (unsigned char*)dst->e;
-    unsigned char n, i, done = 0, big = 0, r;
-    FILE* out;
-    if (dst->fs || !dst->path[0]) { message(im_target); return; }
-    n = pick_targets();
-    if (!n) return;
-    progress_total = n;
+    unsigned char n = pan->count, i, done = 0, big = 0, r = 1;
+    if (dst->fs || !dst->path[0]) { strcpy(note, im_target); return; }
+    if (!n || !pan->path[0]) return;
+    progress_total = tag_count(pan);
+    if (!progress_total) progress_total = 1;
     progress_done = 0;
     i = pan->path[pan->img_len];         /* reopen the image without losing the inner path */
     pan->path[pan->img_len] = 0;
     r = img_open(pan->path);
     pan->path[pan->img_len] = i;
-    if (!r) { message(im_reopen); return; }
+    if (!r) { strcpy(note, im_reopen); return; }
     for (i = 0; i < n; ++i) {
-        const struct Entry* e = &pan->e[picked[i]];
-        if (is_up(e) || is_dir(e)) { ++progress_done; continue; }
-        if (strlen(dst->path) + 1 + strlen(e->name) >= PATH_LEN) { too_long(); break; }
-        sprintf(other_full, "%s/%s", dst->path, e->name);
-        _filetype = e->type;
-        _auxtype = e->aux;
-        out = new_output(other_full);
-        if (!out) { report_error("Create"); break; }
-        progress_bar(e->name, 0, e->size);
-        r = img_read_file(e->mdate, e->size, out, idx);
-        if (fclose(out)) r = 0;
-        if (r != 1) { remove(other_full); if (r == 0) { report_error("Extract"); break; } ++big; }
-        else { ++a2fc_ops; ++done; }
+        const struct Entry* e = &ENTRY_SNAPSHOT[i];
+        if (tag_count(pan) ? !tagged(pan, i) : i != pan->cursor) continue;
         ++progress_done;
+        if (is_up(e) || is_dir(e)) continue;
+        if (!build_full(other_full, dst, e)) { r = 0; break; }
+        im_out = NULL; im_owned = 0;
+        progress_bar(e->name, 0, e->size);
+        r = img_pass(e, 0);
+        if (im_out && fclose(im_out)) r = 0;
+        im_out = NULL;
+        if (r == 2) { ++big; r = 1; continue; }
+        if (r) {
+            r = img_pass(e, 1);
+            if (im_out && fclose(im_out)) r = 0;
+            im_out = NULL;
+        }
+        if (!r) {
+            if (im_owned && remove(other_full)) sprintf(note, im_cleanup, e->name);
+            break;
+        }
+        ++a2fc_ops; ++done;
         progress_bar(e->name, e->size, e->size);
     }
-    fclose(img_f);
-    refresh_both();                       /* the destination table was used as a buffer */
-    clear_row(22);
-    gotoxy(0, 22);
-    cprintf("%u file%s extracted", done, done == 1 ? "" : "s");
-    if (big) cprintf(", %u too big (>128K)", big);
-    cputc('.');
+    if (fclose(img_f)) r = 0;
+    img_f = 0;
+    if (!note[0]) sprintf(note, r ? (big ? im_done_big : im_done) : im_error, done, done == 1 ? "" : "s", big);
 }
 
 void __fastcall__ imgfs_entry(const struct A2fcApi* a)
@@ -3984,7 +4015,7 @@ void __fastcall__ dosget_entry(const struct A2fcApi* a)
 /* The LZW/RLE core is in assembly (src/unshrink.s), at the head of the      */
 /* overlay ($1B00-$1FFF) and copied to AUX at the same address so it runs    */
 /* under RAMRD/RAMWRT AUX, where the dictionary tables live; this C driver,  */
-/* for its part, stays in MAIN ($2000-$2FFF). Launched from the ! menu on    */
+/* for its part, stays in MAIN ($2000-$3BFF). Launched from the ! menu on    */
 /* the selected archive.                                                     */
 /* ---------------------------------------------------------------------- */
 #pragma code-name (push, "UNSHRINK")
@@ -3997,14 +4028,16 @@ void __fastcall__ dosget_entry(const struct A2fcApi* a)
  * closer to $BF00, where the launcher keeps its C stack (31 bytes of
  * literal were enough to freeze the boot). A named array follows the
  * UNSHRINKRO segment, in the overlay's file. Likewise, the bulky state
- * lives in a structure at a fixed address, $3000, outside LOWBSS (full) and
- * the C stack (192 bytes); true locals go on the C stack
- * (static-locals off). */
+ * lives in a structure at a fixed address, $3E00 (DISKIMG's, never loaded
+ * at the same time), outside LOWBSS (full) and the C stack (192 bytes);
+ * true locals go on the C stack (static-locals off). The block of the
+ * output read back sits at $3C00, just below; the code may reach $3BFF. */
 
 static const char us_extract_failed[] = "Extract failed: I/O error.";
 static const char us_create_failed[] = "Create failed; existing files kept.";
 static const char us_cleanup_failed[] = "Cleanup failed: %s retained.";
 static const char us_cancelled[] = "Extraction cancelled.";
+static const char us_differs[] = "Extract failed: %s reads back different.";
 static const char us_wb[] = "wb";
 
 /* The assembly core, src/unshrink.s. Its AUX addresses, repeated here. */
@@ -4026,7 +4059,10 @@ struct UsState {
     unsigned char th[8 * 16];       /* up to eight thread headers */
     unsigned char hdr[256];         /* the attributes of one record */
 };
-#define US ((struct UsState*)0x3000)
+#define US ((struct UsState*)0x3E00)
+#ifndef US_CMP
+#define US_CMP ((unsigned char*)0x3C00)     /* 512 bytes of the output, read back */
+#endif
 typedef char us_state_fits[512 - sizeof(struct UsState) + 1];
 #define U16(p, o) ((unsigned int)(p)[o] | ((unsigned int)(p)[(o) + 1] << 8))
 /* Apple II is little-endian. memcpy/memcmp are already resident; reuse
@@ -4099,16 +4135,64 @@ static unsigned char us_fill(void)
     return 1;
 }
 
-/* The first n bytes of the decoded block (OUTBUF, AUX) into the file. */
-static unsigned char __fastcall__ us_write(unsigned int n)
+/* The n bytes of copy_buf into the file (verify = 0), or compared with
+ * the next n bytes of the file read back (verify = 1). */
+static unsigned char __fastcall__ us_put(unsigned int n, unsigned char verify)
+{
+    if (!verify) return fwrite(copy_buf, 1, n, US->out) == n;
+    return fread(US_CMP, 1, n, US->out) == n && !memcmp(US_CMP, copy_buf, n);
+}
+
+/* The first n bytes of the decoded block (OUTBUF, AUX), through us_put. */
+static unsigned char __fastcall__ us_write(unsigned int n, unsigned char verify)
 {
     unsigned int off, k;
     for (off = 0; off < n; off += 512) {
         k = n - off > 512 ? 512 : n - off;
         aux_copy((unsigned int)copy_buf, US_OUTBUF + off, 0);
-        if (fwrite(copy_buf, 1, k, US->out) != k) return 0;
+        if (!us_put(k, verify)) return 0;
     }
     return 1;
+}
+
+/* The thread's data, from its start in the archive: written to the file
+ * (verify = 0), or decoded a second time and compared with the closed
+ * file read back (verify = 1), which must end where the data ends.
+ * Returns 1 on success; the caller reports. */
+static unsigned char __fastcall__ us_stream(unsigned char verify)
+{
+    unsigned int n, used, hdr;
+    unsigned char r = 1;
+    US->rem_in = US->ceof;
+    US->rem_out = US->total;
+    US->done = 0;
+    if (US->fmt == 0) {                    /* stored as is */
+        if (US->rem_in < US->rem_out) return 0;
+        while (US->rem_out && r) {
+            n = US->rem_out > 512 ? 512 : (unsigned int)US->rem_out;
+            if (abort_key() || !us_read(copy_buf, n) || !us_put(n, verify)) r = 0;
+            else { US->rem_out -= n; US->rem_in -= n; US->done += n; progress_bar(US->name, US->done, US->total); }
+        }
+    } else {                               /* LZW/1 or LZW/2: the stream header, then block by block */
+        hdr = US->fmt == 2 ? 4 : 2;        /* LZW/1: crc(2) vol esc; LZW/2: vol esc */
+        if (US->rem_in < hdr || !us_read(copy_buf, hdr)) return 0;
+        US->rem_in -= hdr;
+        us_init(((unsigned int)copy_buf[hdr - 1] << 8) | US->fmt);
+        US->win_len = US->win_pos = 0;
+        while (US->rem_out && r) {
+            if (abort_key() || !us_fill()) { r = 0; break; }
+            used = us_chunk(US_INBUF + US->win_pos);
+            if (!used || used > US->win_len - US->win_pos) { r = 0; break; }
+            US->win_pos += used;
+            n = US->rem_out > 4096 ? 4096 : (unsigned int)US->rem_out;
+            if (!us_write(n, verify)) { r = 0; break; }
+            US->rem_out -= n;
+            US->done += n;
+            progress_bar(US->name, US->done, US->total);
+        }
+    }
+    if (r && verify && (fread(US_CMP, 1, 1, US->out) || ferror(US->out))) r = 0;
+    return r;
 }
 
 /* A ProDOS name from the archive name: the last component, upper case,
@@ -4134,8 +4218,8 @@ static void __fastcall__ us_prodos_name(const char* src, unsigned int len)
  * panel. Returns 0 on a failure already reported. */
 static unsigned char us_extract_thread(void)
 {
-    unsigned int n, used, hdr;
-    unsigned char r = 1, owned;
+    long start;
+    unsigned char r, owned, differs = 0;
     if (US->disk) {                        /* a disk image: NAME.PO, blocks of 512 */
         if (US->name_len > 12) US->name_len = 12;
         strcpy(US->name + US->name_len, us_po);
@@ -4143,16 +4227,14 @@ static unsigned char us_extract_thread(void)
          * whose support routines would get linked into the resident, full):
          * low word = blocks << 9, high word = blocks >> 7. */
         { union { unsigned long l; unsigned int w[2]; } ro;
-          ro.w[0] = US->auxtype << 9; ro.w[1] = US->auxtype >> 7; US->rem_out = ro.l; }
+          ro.w[0] = US->auxtype << 9; ro.w[1] = US->auxtype >> 7; US->total = ro.l; }
         _filetype = 0x06;
         _auxtype = 0;
     } else {
-        US->rem_out = US->teof;
+        US->total = US->teof;
         _filetype = (unsigned char)US->filetype;
         _auxtype = US->auxtype;
     }
-    US->total = US->rem_out;
-    US->done = 0;
     sprintf(other_full, us_path, panels[!active].path, US->name);
     owned = reserve_output(other_full);
     if (!owned) { strcpy(note, us_create_failed); return 0; }
@@ -4160,37 +4242,19 @@ static unsigned char us_extract_thread(void)
     US->out = fopen(other_full, us_wb);
     if (!US->out) goto failed;
     progress_bar(US->name, 0, US->total);
-    US->rem_in = US->ceof;
-    if (US->fmt == 0) {                    /* stored as is */
-        if (US->rem_in < US->rem_out) r = 0;
-        while (US->rem_out && r) {
-            n = US->rem_out > 512 ? 512 : (unsigned int)US->rem_out;
-            if (abort_key() || !us_read(copy_buf, n) || fwrite(copy_buf, 1, n, US->out) != n) r = 0;
-            else { US->rem_out -= n; US->rem_in -= n; US->done += n; progress_bar(US->name, US->done, US->total); }
-        }
-    } else {                               /* LZW/1 or LZW/2: the stream header, then block by block */
-        hdr = US->fmt == 2 ? 4 : 2;        /* LZW/1: crc(2) vol esc; LZW/2: vol esc */
-        if (US->rem_in < hdr || !us_read(copy_buf, hdr)) r = 0;
-        else {
-            US->rem_in -= hdr;
-            us_init(((unsigned int)copy_buf[hdr - 1] << 8) | US->fmt);
-            US->win_len = US->win_pos = 0;
-            while (US->rem_out && r) {
-                if (abort_key() || !us_fill()) { r = 0; break; }
-                used = us_chunk(US_INBUF + US->win_pos);
-                if (!used || used > US->win_len - US->win_pos) { r = 0; break; }
-                US->win_pos += used;
-                n = US->rem_out > 4096 ? 4096 : (unsigned int)US->rem_out;
-                if (!us_write(n)) { r = 0; break; }
-                US->rem_out -= n;
-                US->done += n;
-                progress_bar(US->name, US->done, US->total);
-            }
-        }
-    }
+    start = ftell(US->in);
+    r = us_stream(0);
     if (ferror(US->out)) r = 0;
     if (fclose(US->out)) r = 0;
     US->out = NULL;
+    if (r) {
+        /* The second pass: back to the start of the thread, the same
+         * decode against the file read back. */
+        US->out = fopen(other_full, us_rb);
+        if (!US->out || fseek(US->in, start, SEEK_SET) || !us_stream(1)) { r = 0; differs = 1; }
+        if (US->out && fclose(US->out)) r = 0;
+        US->out = NULL;
+    }
     if (!r || !us_skip(US->rem_in)) goto failed;
     ++US->n_done;
     return 1;
@@ -4198,7 +4262,9 @@ failed:
     /* No stream is open here. Only this thread's exclusive reservation
      * grants ownership, including a failed reservation close. */
     if (remove(other_full)) sprintf(note, us_cleanup_failed, US->name);
-    else strcpy(note, progress_abort ? us_cancelled : us_extract_failed);
+    else if (progress_abort) strcpy(note, us_cancelled);
+    else if (differs) sprintf(note, us_differs, US->name);
+    else strcpy(note, us_extract_failed);
     return 0;
 }
 

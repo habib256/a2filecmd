@@ -28,6 +28,8 @@ compte rendu d'injection de pannes sur les lecteurs physiques. Voir le
 | DISKIMG | Image source tronquée ou 2MG malformée acceptée avant écriture destructrice ; possibilité de cibler le volume contenant l’image | Validation de la taille réelle, du format, de la plage de données et des pistes DSK. Volume source protégé comme cible ; refus de lire un disque dans une image située sur ce même volume ; disque RAM exclu des transferts bruts utilisant AUX. `test_diskimg_input.py`, `test_diskimg_verify.py`. |
 | Images, ShrinkIt, copies de disque et formatage physique | Utilisation d’AUX détruisant le disque RAM avec un avis seulement après coup | Drapeau `OVERLAY_AUX` et confirmation explicite avant utilisation, également pour une surcouche déjà chargée ; confirmation dédiée avant le formatage physique. La reconstruction reste permise pour libérer de la mémoire. `bench/data_safety.py` compare les octets AUX avant/après refus. |
 | BLKEDIT | Tampon déclaré propre après échec de relecture de contrôle | Le tampon reste modifié pour permettre une nouvelle tentative ou un abandon explicite. |
+| IMGFS, extraction d’une image ouverte comme dossier | Sortie fermée sans relecture ; fichier arbre (> 128 Ko) créé puis supprimé | Réservation exclusive après le refus des fichiers arbre ; chaque fichier écrit, fermé, puis relu bloc par bloc contre l’image ; octet faux, réouverture impossible, lecture courte ou image perdue en seconde passe retirent le fichier possédé. `test_imgfs_safety.py`, `bench/run.py`. |
+| UNSHRINK | Fil décodé une seule fois ; écriture acceptée sur la seule fermeture | Après fermeture, retour au début du fil et second décodage (stocké, LZW/1, LZW/2) comparé au fichier relu, fin du fichier contrôlée ; `reads back different` retire le fichier possédé. `test_unshrink_safety.py`, `bench/shk.py`. |
 | BOOTBLK | Premier bloc écrasé avant lecture du second ; aucune vérification ni restauration | Lecture préalable des deux blocs source et des deux blocs d’origine. Chaque écriture est relue et comparée. Sur erreur, restauration et vérification des deux originaux ; avertissement distinct si elle échoue. `test_bootblk.py` injecte les erreurs avant et après écriture effective, ainsi que les corruptions silencieuses et les échecs de restauration. |
 
 ## Autres chemins d’écriture examinés
@@ -70,11 +72,12 @@ récupération avant de réessayer. Une
 relecture valide le contenu rendu par le pilote, pas sa persistance après une
 perte d’alimentation. Chaque conversion ou extraction vérifie ses écritures et
 fermetures ; TXTCONV, IMGCONV, COPY, SYNC, l’éditeur, la configuration, et
-depuis le 14 septembre 2026 DOSGET et BINARY2, relisent en plus le résultat
-fermé en entier et le comparent à ce qui devait être produit. IMGFS (extraction
-d’une image ouverte comme dossier) et UNSHRINK n’ont pas cette seconde
-comparaison : leurs surcouches n’ont plus de place (5 et 9 octets), et
-l’ajouter demande d’abord d’y faire de la marge.
+depuis le 14 septembre 2026 DOSGET, BINARY2, IMGFS et UNSHRINK, relisent en
+plus le résultat fermé en entier et le comparent à ce qui devait être
+produit : les blocs de l’image lus une seconde fois, ou le fil de l’archive
+décodé une seconde fois depuis son début, contre le fichier rouvert, qui
+doit finir où finissent les données. Une relecture qui échoue retire le
+fichier possédé et nomme le fichier si ce retrait échoue.
 
 WIPE F refuse les stockages étendus et les profondeurs dépassant sa pile de
 parcours ; il privilégie le refus à l’effacement avec un diagnostic incomplet.

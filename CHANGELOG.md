@@ -5,7 +5,9 @@ downloads and installation.
 
 ## Unreleased
 
-- DOSGET and BINARY2 read their output back: once the file is closed, the DOS sectors (a second walk of the T/S lists) or the archive record are read again and compared byte for byte with the file, which must end where the data ends; a wrong byte, an unreadable output or a short read fails the extraction and removes the owned file. Host tests inject each. IMGFS and UNSHRINK still lack this second pass: their overlays have no room left.
+- Every extraction now reads its output back. DOSGET, BINARY2, IMGFS (a disk image opened as a folder) and UNSHRINK reopen the closed file and compare it byte for byte with the source read a second time: the DOS sectors, the archive record, the image blocks, or the ShrinkIt thread decoded again from its start; the file must end where the data ends. A wrong byte, an unreadable output, a short read or a source lost during the second pass fails the extraction and removes the owned file. Host tests inject each fault.
+- To make room, IMGFS is a big overlay (its entries come from the snapshot) and UNSHRINK keeps its state at $3E00 with its code allowed up to $3BFF; the unused `new_output` wrapper leaves the resident. 65C02 resident headroom: 429 bytes. The BOOT floppy keeps 3 blocks free.
+- The archive benches run on the 6502 bench floppy too (`make benchfloppy ARCH=6502`, `A2FC_BUILD=build-6502 A2FC_IMG=A2FILECMD-full`).
 
 ## [0.8.6] - 2026-09-14
 

@@ -1,4 +1,4 @@
-"""Execute resident reservation states and the output wrapper on both CPUs."""
+"""Execute the resident reservation states on both CPUs."""
 import shutil
 import subprocess
 import tempfile
@@ -30,21 +30,12 @@ static int discard(const char* p) {
 static void reset(void) {entry=mode==2?'P':0;closes=opens=removes=0;}
 int main(void) {
     unsigned char status, i;
-    FILE* f;
     for(i=0;i<3;++i)for(mode=0;mode<7;++mode) {
         reset();status=reserve_output("/V/OUT");
         if(mode==1 || mode==2) {
             if(status || closes || opens || removes || entry!=(mode==2?'P':0))return 1;
         } else if(status!=(mode==3 || mode==5?OUTPUT_CLOSE_FAILED:OUTPUT_RESERVED) ||
                   entry!='E' || closes!=1 || opens || removes)return 2;
-        reset();f=new_output("/V/OUT");
-        if((f!=NULL)!=(mode==0))return 3;
-        if(mode==1 || mode==2) {
-            if(closes || opens || removes || entry!=(mode==2?'P':0))return 4;
-        } else {
-            if(closes!=1 || opens!=(mode==3 || mode==5?0:1) || removes!=(mode?1:0))return 5;
-            if(entry!=(mode==0 || mode==5 || mode==6?'E':0))return 6;
-        }
     }
     return 0;
 }

@@ -51,7 +51,10 @@ bancs de l'editeur, des images, des archives et des lecteurs (`shk.py`,
 `bny.py`, `awp.py`, `find.py`, la session complete de `run.py`) ont besoin de
 `make benchfloppy ARCH=enh` : `A2FC_IMG=A2FILECMD-full python3 bench/run.py`
 prend `build/A2FILECMD-full.po`, la disquette 65C02 des scénarios de session
-avec BASIC.SYSTEM, jamais publiée, et les symboles de `build/`. Le lecteur
+avec BASIC.SYSTEM, jamais publiée, et les symboles de `build/`. Avec
+`A2FC_BUILD=build-6502 A2FC_PRESET=iie_unenh A2FC_IMG=A2FILECMD-full`, la
+même disquette de banc en 6502 (`make benchfloppy ARCH=6502`) sert aux bancs
+d'archives (`shk.py`, `bny.py`) sur ce CPU. Le lecteur
 MUSIC est chargé depuis une copie de MEDIA en lecteur 2. Les bancs AWP,
 Binary II et ShrinkIt utilisent `archive_support.py` pour substituer leur
 lecteur à FORMAT/DISKIMG dans une copie jetable de cette disquette : tous

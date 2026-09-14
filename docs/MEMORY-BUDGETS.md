@@ -6,7 +6,7 @@ Réserves au lien, en octets, 65C02/6502 ; ce ne sont pas des sommes :
 
 | Zone | 65C02 | 6502 | Objectif |
 | --- | ---: | ---: | --- |
-| MAIN (résident, plafond `$BEE0`) | **299** | 742 | 256 sur 65C02 : tenu |
+| MAIN (résident, plafond `$BEE0`) | **429** | 873 | 256 sur 65C02 : tenu |
 | Carte langage | 34 | 26 | ne pas descendre |
 | CATALOG (catalogues DOS 3.3 et images) | 15 | 36 | surcouche de lecture, pas à enrichir |
 | LOWRAM | 129 | 154 | — |
@@ -14,8 +14,8 @@ Réserves au lien, en octets, 65C02/6502 ; ce ne sont pas des sommes :
 | NAV | 142 | 208 | — |
 | DELETE | 409 | 405 | libéré par le parcours résident |
 | OPEN | 11 | 43 | ne pas retomber à quelques octets au prochain média |
-| IMGFS | 5 | 13 | idem |
-| UNSHRINK | 9 | 29 | idem |
+| IMGFS (grande depuis le 14 septembre) | 1 520 | 1 530 | — |
+| UNSHRINK (code jusqu’à `$3BFF`) | 2 727 | 2 739 | — |
 | ATTR | 26 | 26 | idem |
 | COPY | 54 | 51 | — |
 | Mini (sous DOS à `$9600`) | 270 | — | — |
@@ -25,6 +25,20 @@ DUET, DOSGET, IDENT/FIXTYPES et la sonde DUET du routage avaient consommé
 la réserve retrouvée au neuvième incrément du chantier 1. Le reste de ce
 document est le journal chronologique de la consolidation, le plus récent
 en premier.
+
+Relectures IMGFS et UNSHRINK (chantier 3), 14 septembre 2026 : les deux
+surcouches n’avaient plus que 5 et 9 octets. IMGFS devient une grande
+surcouche (plafond `$2800`) : ses entrées viennent de l’instantané `$3000`
+comme DOSGET, le bloc d’index et le bloc relu occupent `$2800` et `$2A00`,
+et la marque « surcouche grande » ne coûte qu’un bloc de plus sur BOOT
+(3 libres). UNSHRINK garde son cœur assembleur en tête et son pilote C
+jusqu’à `$3BFF` ; l’état passe de `$3000` à `$3E00` (la place de DISKIMG,
+jamais chargée en même temps) et le tampon relu à `$3C00`. Leçon : ce
+tampon d’abord posé à `$3000` a été recouvert par le code dès que la
+surcouche a dépassé son ancien plafond — un tampon à adresse fixe se place
+au-dessus du plafond de `check_layout`, jamais dedans. L’enrobage
+`new_output`, sans appelant, quitte le résident : MAIN 65C02 passe de 299
+à 429 octets (6502 : 742 à 873). IMGFS 1 520/1 530, UNSHRINK 2 727/2 739.
 
 Dossiers marqués (chantier 4), 14 septembre 2026 : Espace et Ctrl-T
 marquent un dossier ; BATCH accepte l’enregistrement (type de stockage `$D`
@@ -348,17 +362,17 @@ Les surcouches se recouvrent et leurs réserves ne s'additionnent pas non plus.
 | EDIT | 370 | 358 |
 | MENU | 2241 | 2184 |
 | DISKIMG | 328 | 283 |
-| IMGFS | 5 | 13 |
+| IMGFS | 1520 | 1530 |
 | DOS33 | 59 | 84 |
-| UNSHRINK | 122 | 137 |
+| UNSHRINK | 2727 | 2739 |
 | BASLIST | 1863 | 1856 |
 | COMPARE | 86 | 111 |
 | SEARCH | 335 | 338 |
 | BINARY2 | 1968 | 1992 |
 | AWP | 216 | 197 |
 
-Viser au moins 64 octets dans chaque petite surcouche modifiée ; traiter DELETE,
-IMGFS, COPY et ATTR en priorité avant de les enrichir. Les plugins SDK liés
+Viser au moins 64 octets dans chaque petite surcouche modifiée ; traiter
+OPEN, COPY et ATTR en priorité avant de les enrichir. Les plugins SDK liés
 séparément ne figurent pas dans ce relevé : leurs limites code/BSS et tampons
 restent imposées par leurs configurations de lien, à contrôler aussi lors des
 extractions. BINARY2 utilise ici sa grande fenêtre sur les deux architectures.

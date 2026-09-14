@@ -82,7 +82,7 @@ _a2fc_link_id:
         .segment "DISKIMG"
         header  BIG|AUX, _diskimg_entry, "Disk images: write one to a floppy, read a floppy, copy a floppy"
         .segment "IMGFS"
-        header  0, _imgfs_entry, "Extract the tagged files of a disk image into the other panel (C)"
+        header  BIG, _imgfs_entry, "Extract the tagged files of a disk image into the other panel (C)"
         .segment "DOSGET"
         header  BIG, _dosget_entry, "A DOS 3.3 disk or image: extract its tagged files (C)"
         .segment "UNSHRINK"

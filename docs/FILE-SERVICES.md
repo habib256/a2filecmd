@@ -211,21 +211,24 @@ la source et la destination précédente, restaurée ou conservée en sauvegarde
 Pas de nouvelle qualification POM2, CI ou matérielle ni de suite globale
 `make test` pour cet incrément.
 
-## Réservation exclusive : `new_output(path)`
+## Réservation exclusive : `reserve_output(path)`
 
 Le chemin désigne un nouveau fichier ProDOS. `reserve_output(path)` doit
-renvoyer `OUTPUT_RESERVED` avant toute ouverture `wb`. Une collision ou une erreur ne permet
-jamais de tronquer un fichier préexistant. Après réservation, la fermeture du
-descripteur est contrôlée ; seule l'entrée créée par cet appel peut être
-nettoyée. Le service renvoie le flux d'écriture, ou NULL. L'appelant doit
-contrôler écriture, fermeture et relecture avant de considérer le résultat
-comme utilisable. Les type et aux-type sont ceux préparés par l'appelant.
+renvoyer `OUTPUT_RESERVED` avant toute ouverture `wb`. Une collision ou une
+erreur ne permet jamais de tronquer un fichier préexistant. Après
+réservation, la fermeture du descripteur est contrôlée ; seule l'entrée
+créée par cet appel peut être nettoyée, par l'appelant, qui garde la
+propriété. L'appelant ouvre lui-même le flux d'écriture et doit contrôler
+écriture, fermeture et relecture avant de considérer le résultat comme
+utilisable. Les type et aux-type sont ceux préparés par l'appelant. Depuis
+le 14 septembre 2026, plus aucun appelant ne passe par l'ancien enrobage
+`new_output` (ouverture et nettoyage automatiques) : IMGFS, son dernier
+utilisateur, réserve directement comme DOSGET ; l'enrobage est retiré.
 
-Le service est résident : il ne charge aucune surcouche. Ses locaux statiques
-et les tampons d'E/S cc65 sont en RAM principale. Il ne touche pas au stockage
-AUX de `/RAM`. Un échec de suppression après réservation peut laisser un
-fichier vide ; NULL ne garantit donc pas que le chemin soit redevenu libre.
-Le prochain essai doit refaire une création exclusive.
+Le service est résident : il ne charge aucune surcouche. Il ne touche pas
+au stockage AUX de `/RAM`. Un échec de suppression après réservation peut
+laisser un fichier vide ; le prochain essai doit refaire une création
+exclusive.
 
 ## Sauvegarde de l'éditeur : réservation et nettoyage
 
@@ -734,3 +737,15 @@ ASan/UBSan, octets conservés et garde de pile dans le banc natif. Restent
 IMGFS/DOS33, les CRC et métadonnées NuFX complets, la validation complète du
 décodeur LZW sur flux malformés et la relecture des extraits ; aucune case
 globale close.
+
+Chantier 3, 14 septembre 2026 : IMGFS et UNSHRINK relisent leurs sorties
+comme DOSGET et BINARY2. IMGFS réserve directement (`reserve_output`,
+refus des fichiers arbre avant toute réservation), écrit, ferme, puis
+relit le fichier bloc par bloc contre l'image relue ; UNSHRINK revient au
+début du fil (`ftell`/`fseek`) et le décode une seconde fois contre le
+fichier rouvert, fin de fichier comprise ; le message nomme le fichier qui
+« reads back different ». Harnais hôtes : octet faux, réouverture
+refusée, lecture courte, image ou position perdue en seconde passe,
+nettoyage en échec avec octets conservés ; bancs `run.py`, `shk.py`
+(les deux CPU), `six.py`, `open_images.py`. Restent DOSWRITE sur disque
+réel et les séquences entre outils.

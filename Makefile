@@ -310,6 +310,7 @@ test: test-mini
 	python3 $(TOOLS)/test_file_safety.py
 	python3 $(TOOLS)/test_binary2_safety.py
 	python3 $(TOOLS)/test_unshrink_safety.py
+	python3 $(TOOLS)/test_imgfs_safety.py
 	python3 $(TOOLS)/test_dos_extract.py
 	python3 $(TOOLS)/test_format_repair.py
 	python3 $(TOOLS)/test_doswrite.py

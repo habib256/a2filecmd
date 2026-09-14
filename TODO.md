@@ -7,7 +7,7 @@ Mini (II+ 48 Ko, DOS 3.3) et ProDOS (IIe 128 Ko), même numéro.
 
 Préserver les données prime. Ne pas relever les plafonds
 ([MEMORY-BUDGETS.md](docs/MEMORY-BUDGETS.md)) ; MAIN 65C02 ≥ 256 octets
-(299 aujourd’hui). **💾** = lecteurs physiques.
+(429 aujourd’hui). **💾** = lecteurs physiques.
 
 Le Commander (arbres, MOVE, retour au programme) est **clos**. Ce qui
 reste n’est plus une fonction manquante, c’est la preuve que les
@@ -18,17 +18,17 @@ reste n’est plus une fonction manquante, c’est la preuve que les
 [DATA-SAFETY.md](docs/DATA-SAFETY.md). Une erreur de lecture, métadonnées
 ou fermeture n’est ni une EOF ni un chemin libre.
 
-- [ ] **Conversions** — comparer le résultat relu, pas seulement les
+- [x] **Conversions** — comparer le résultat relu, pas seulement les
   écritures et fermetures. Fait pour TXTCONV, IMGCONV, COPY, SYNC, EDIT,
-  CFG, et le 14 septembre 2026 pour DOSGET et BINARY2 (tests hôtes : octet
-  faux, sortie illisible, lecture courte). Restent IMGFS et UNSHRINK, dont
-  les surcouches n’ont plus de place (5 et 9 octets) : faire de la marge
-  avant (chantier 6).
+  CFG, et le 14 septembre 2026 pour DOSGET, BINARY2, IMGFS et UNSHRINK
+  (tests hôtes : octet faux, sortie illisible, lecture courte, source
+  perdue en seconde passe). IMGFS est devenue une grande surcouche, l’état
+  d’UNSHRINK est monté à `$3E00` : les deux ont plus de 1 500 octets.
 - [ ] **Pannes combinées** — couvertes par les harnais hôtes de COPY, EDIT,
-  CFG, GOTO, SYNC, TXTCONV, IMGCONV, BATCH, DOSGET, BINARY2, UNSHRINK et
-  DISKIMG (fermeture + collision + annulation, taille périmée, renommage,
-  restauration et nettoyage en échec). Restent IMGFS et DOSWRITE sur
-  disque réel, et les séquences entre outils (chantier 7).
+  CFG, GOTO, SYNC, TXTCONV, IMGCONV, BATCH, DOSGET, BINARY2, UNSHRINK,
+  IMGFS et DISKIMG (fermeture + collision + annulation, taille périmée,
+  renommage, restauration et nettoyage en échec). Restent DOSWRITE sur
+  disque réel et les séquences entre outils (chantier 7).
 - [x] **Autres chemins** — revue du 14 septembre 2026 des décisions
   « fichier absent » du résident : la création exclusive garde chaque
   chemin (éditeur, copie, mkdir) même quand `GET_FILE_INFO` échoue ; le seul
@@ -37,7 +37,7 @@ ou fermeture n’est ni une EOF ni un chemin libre.
 
 Sans ça, chaque nouveau média ou FIXIT dilue la preuve. Ne pas ouvrir
 SHRINK, l’écriture dans une image, un journal de coupure, Pascal/CP/M
-ni un format neuf tant que ces trois cases ne sont pas closes.
+ni un format neuf tant que la dernière case n’est pas close.
 
 ## En continu : les séquences
 
@@ -47,9 +47,10 @@ ni un format neuf tant que ces trois cases ne sont pas closes.
   changement de disque.
 - [ ] **`bench/plugins.py`** — relire les messages depuis la 0.8.5
   (ils passent, ce n’est pas une relecture).
-- [ ] **`bench/shk.py` sur disquette 6502** — UNSHRINK est sur FILES ; le
-  banc met son disque cible en lecteur 2 et attend « Insert A2FILES6502 »
-  au lieu de l’avis AUX (`bny.py` a reçu FILES en lecteur 2 le 14/09).
+- [x] **`bench/shk.py` sur disquette 6502** — le 14 septembre 2026, les
+  bancs d’archives amorcent `build-6502/A2FILECMD-full.po`
+  (`make benchfloppy ARCH=6502`, `A2FC_BUILD=build-6502
+  A2FC_IMG=A2FILECMD-full`) : 30/30 sur les deux CPU.
 - [ ] **Mutations** — `tools/fuzz_images.py` : UNSHRINK, BINARY2, IMGFS,
   DOS33 ; CI.
 - [ ] **Images XL** — `bench/run.py` 6502 et 65C02.

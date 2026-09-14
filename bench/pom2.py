@@ -41,8 +41,13 @@ VERSION = re.search(r'^A2FC_VERSION\s*=\s*(\S+)', (ROOT / 'Makefile').read_text(
 IMG = os.environ.get('A2FC_IMG', 'A2FILECMD-6502-BOOT')
 BUILD = ROOT / os.environ.get('A2FC_BUILD', 'build' if IMG.endswith('-full') or '65C02' in IMG else 'build-6502')
 DISK = ROOT / ('dist/%s.po' % (IMG + '-' + VERSION if IMG.endswith('-BOOT') else IMG))
-if not DISK.exists() and (ROOT / ('build/%s.po' % IMG)).exists():
-    DISK = ROOT / ('build/%s.po' % IMG)
+# The bench floppy of the build in use: build-6502/A2FILECMD-full.po with
+# A2FC_BUILD=build-6502 (make benchfloppy ARCH=6502), build/ otherwise.
+if not DISK.exists():
+    for base in (BUILD, ROOT / 'build'):
+        if (base / ('%s.po' % IMG)).exists():
+            DISK = base / ('%s.po' % IMG)
+            break
 FULL = 'build-6502' not in BUILD.name   # la version 65C02 : souris, opcodes enhanced
 # A2FC_PRESET=iie_unenh : la machine de POM2, le IIe non enhanced (6502 NMOS,
 # firmware de 1983) -- la seule qui prouve la version 6502.

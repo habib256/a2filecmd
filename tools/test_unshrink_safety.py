@@ -16,7 +16,7 @@ START = SOURCE.index('static const char us_extract_failed[]')
 END = SOURCE.index('#pragma rodata-name (pop)', START)
 DRIVER = SOURCE[START:END].replace('unsigned long', 'uint32_t')
 DRIVER = DRIVER.replace('unsigned int w[2]', 'uint16_t w[2]')
-DRIVER = DRIVER.replace('#define US ((struct UsState*)0x3000)',
+DRIVER = DRIVER.replace('#define US ((struct UsState*)0x3E00)',
                         'static struct UsState state;\n#define US (&state)')
 DRIVER = DRIVER.replace('(unsigned int)copy_buf', '(uintptr_t)copy_buf')
 DRIVER = DRIVER.replace('*(volatile unsigned char*)0xC056 = 0;', '(void)0;')
@@ -39,7 +39,8 @@ static unsigned int _auxtype,progress_total,progress_done;
 static char full[81],other_full[81],note[80],reselect[17];
 static int fault,cleanup_bad,removes,reads,read_at,read_error,write_error;
 static int opens,writes,progress_calls,cancel_at,decoder_calls,init_fmt;
-static unsigned char aux[65536];
+static unsigned char aux[65536],cmpbuf[512];
+#define US_CMP cmpbuf
 static FILE *archive,*output;
 static int output_open;
 static int is_dir(struct Entry* e){return 0;}
@@ -80,15 +81,17 @@ static FILE* open_file(const char* p,const char* mode){
     FILE* f;
     if(!strcmp(mode,"wb") && fault==2)abort();
     if(!strcmp(mode,"wb") && fault==3)return NULL;
+    if(!strcmp(mode,"rb") && strcmp(p,full)==0){archive=fopen(p,mode);return archive;}
+    if(!strcmp(mode,"rb") && fault==20)return NULL;   /* the closed output cannot be reopened */
     f=fopen(p,mode);
-    if(!strcmp(mode,"rb"))archive=f;
-    else{output=f;output_open=f!=NULL;}
+    output=f;output_open=f!=NULL;
     return f;
 }
 static size_t read_file(void* p,size_t s,size_t n,FILE* f){
     size_t got;
     ++reads;
     if(reads==read_at && fault==4){read_error=1;return 0;}
+    if(fault==21 && f==output && n>1)n-=1;              /* the readback comes up short */
     got=fread(p,s,n,f);
     if(reads==read_at && fault==12)read_error=1;
     return got;
@@ -100,6 +103,7 @@ static size_t write_file(const void* p,size_t s,size_t n,FILE* f){
     ++writes;
     if(fault==5)return fwrite(p,s,n/2,f);
     if(fault==13)write_error=1;
+    if(fault==19 && n>8){unsigned char c[4096];memcpy(c,p,n);c[7]^=1;return fwrite(c,s,n,f);}   /* a byte lands wrong: only the readback can see it */
     return fwrite(p,s,n,f);
 }
 static int close_file(FILE* f){
@@ -109,6 +113,7 @@ static int close_file(FILE* f){
     return fault==18 || (fault==6 && is_output) || (fault==7 && !is_output)?-1:r;
 }
 static int remove_file(const char* p){++removes;return cleanup_bad?-1:remove(p);}
+static int seek_file(FILE* f,long o,int w){if(fault==22)return -1;return fseek(f,o,w);}
 #define open reserve
 #define close close_reserved
 #define fopen open_file
@@ -117,6 +122,7 @@ static int remove_file(const char* p){++removes;return cleanup_bad?-1:remove(p);
 #define ferror error_file
 #define fclose close_file
 #define remove remove_file
+#define fseek seek_file
 ''' + (ROOT/'src/file_output.h').read_text() + DRIVER + r'''
 int main(int argc,char** argv){
     strcpy(full,argv[1]);strcpy(panels[0].path,"/SOURCE");
@@ -246,13 +252,35 @@ class UnshrinkSafety(unittest.TestCase):
                 else:
                     self.assertFalse(target.exists())
 
+    def test_readback_catches_wrong_byte_failed_reopen_short_read_and_failed_seek(self):
+        for fault in (19, 20, 21, 22):
+            with self.subTest(fault=fault):
+                out = self.run_extract(fault)
+                self.assertIn('DATA reads back different', out)
+                self.assertIn('removes=1', out)
+                self.assertFalse((self.dst/'DATA').exists())
+        # every second-pass read failing (archive or output) removes the file;
+        # the last one-byte read is the end-of-file check, where 0 is the answer
+        for at in (8, 9, 10, 11):
+            with self.subTest(read_at=at):
+                self.assertIn('reads back different', self.run_extract(4, read_at=at))
+                self.assertFalse((self.dst/'DATA').exists())
+        # a failed cleanup retains the complete bytes as written, wrong byte included
+        out = self.run_extract(19, cleanup=True)
+        self.assertIn('Cleanup failed: DATA retained', out)
+        written = (self.dst/'DATA').read_bytes()
+        self.assertEqual(len(written), len(self.payload))
+        self.assertNotEqual(written, self.payload)
+        self.assertIn('Create failed', self.run_extract())
+        self.assertEqual((self.dst/'DATA').read_bytes(), written)
+
     def test_archive_close_failure_keeps_completed_outputs(self):
         self.assertIn('Extract failed', self.run_extract(7))
         self.assertEqual((self.dst/'DATA').read_bytes(), self.payload)
 
     def test_failed_padding_cleanup_keeps_closed_output_and_retry_refuses_it(self):
         self.src.write_bytes(archive(record('DATA', self.payload+b'PAD', eof=len(self.payload))))
-        out = self.run_extract(4, cleanup=True, read_at=8)
+        out = self.run_extract(4, cleanup=True, read_at=13)
         self.assertIn('Cleanup failed: DATA retained', out)
         self.assertEqual((self.dst/'DATA').read_bytes(), self.payload)
         self.assertIn('Create failed', self.run_extract())
@@ -303,7 +331,9 @@ class UnshrinkSafety(unittest.TestCase):
             (self.dst/'DATA').unlink()
 
     def test_full_count_read_errors_in_every_parser_phase(self):
-        for call in range(1, 8):
+        # archive reads: header, record, attributes, threads, name, data (2) and
+        # the second pass over the data (2); 9, 11 and 12 read the output back
+        for call in (1, 2, 3, 4, 5, 6, 7, 8, 10):
             self.assertNotIn('file(s) extracted', self.run_extract(12, read_at=call))
             self.assertEqual(list(self.dst.iterdir()), [])
 
@@ -340,7 +370,7 @@ class UnshrinkSafety(unittest.TestCase):
             self.assertIn('1 file(s) extracted', self.run_extract())
             self.assertEqual((self.dst/'DATA').read_bytes(), payload)
             (self.dst/'DATA').unlink()
-            for fault in (5, 6, 13, 16, 17):
+            for fault in (5, 6, 13, 16, 17, 19, 21):
                 self.assertIn('Extract failed', self.run_extract(fault))
                 self.assertFalse((self.dst/'DATA').exists())
 
