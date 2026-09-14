@@ -14,7 +14,7 @@ base=base.replace('static void prepare_text(void){}','static unsigned char route
 harness=r'''
 static struct A2fcApi api;
 static unsigned char media_aux_scope,batch_snapshot;
-static char reselect[17],note[80],overlay_loaded[17];
+static char reselect[17],note[80],overlay_loaded[17];static unsigned char in_overlay;
 static unsigned char mode,calls,draws,switches;
 static const char* target;
 const char msg_noentry[]="Missing entry";

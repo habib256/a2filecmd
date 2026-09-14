@@ -258,7 +258,10 @@ credits and seven specialized image viewers. `large_nav.py` checks more than
 Both use disposable volumes and `POM2=/tmp/a2fc-pt3-trace`.
 
 `catalog_safety.py` rejects cyclic ProDOS/DOS catalogs and invalid DOS sectors,
-then compares every byte of its disposable HDV and AUX. `tree_safety.py`
+then compares every byte of its disposable HDV and AUX. `dos33_overlay.py`
+opens a DOS-order image as a panel, then asks for help and sorts from that
+panel: both reread it from inside an overlay, so the DOS33 read is deferred
+and settled by the main loop; the catalog must be back and the image intact. `tree_safety.py`
 reproduces the 20-level recursion case: copy and delete must refuse with the
 stack canary and the whole disk intact; a three-level copy must still preserve
 all source and destination bytes. Run both with each `A2FC_BUILD`/`A2FC_PRESET`

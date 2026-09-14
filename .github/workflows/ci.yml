@@ -174,9 +174,11 @@ jobs:
         run: |
           A2FC_BUILD=build-6502 A2FC_PRESET=iie_unenh python3 bench/tree_safety.py
           A2FC_BUILD=build-6502 A2FC_PRESET=iie_unenh python3 bench/catalog_safety.py
+          A2FC_BUILD=build-6502 A2FC_PRESET=iie_unenh python3 bench/dos33_overlay.py
           A2FC_BUILD=build-6502 A2FC_PRESET=iie_unenh python3 bench/large_nav.py
           A2FC_BUILD=build A2FC_PRESET=iie python3 bench/tree_safety.py
           A2FC_BUILD=build A2FC_PRESET=iie python3 bench/catalog_safety.py
+          A2FC_BUILD=build A2FC_PRESET=iie python3 bench/dos33_overlay.py
           A2FC_BUILD=build A2FC_PRESET=iie python3 bench/large_nav.py
       - name: Session complete, 65C02 (disquette de banc, toutes les surcouches)
         run: A2FC_IMG=A2FILECMD-full python3 bench/run.py --out bench-out

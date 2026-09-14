@@ -5,6 +5,8 @@ downloads and installation.
 
 ## Unreleased
 
+- The DOS 3.3 catalog reader moves out of the resident program into a DOS33 overlay (BOOT and XL), loaded when a DOS 3.3 disk or DOS-order image is read as a panel. A read requested while another overlay's code is still running (help, the sort hosted by TEXT, a plugin refreshing the DOS panel it wrote to) is deferred: the panel is left empty and marked, and the main loop rereads it before the next key, so the running overlay is never overwritten. Resident headroom on the 65C02 build rises from 23 to 537 bytes (6502: 518 to 1,037); ceilings, stack and BSS ceilings are unchanged. Host test and POM2 bench (`bench/dos33_overlay.py`) cover the deferred and direct reads on both CPUs.
+
 ## [0.8.5] - 2026-09-13
 
 ### Two editions, one version number

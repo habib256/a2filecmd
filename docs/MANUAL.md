@@ -20,7 +20,7 @@ starting and identifies the edition on its title screen.
 | Edition | What to use |
 |---|---|
 | **6502 floppies** | BOOT plus whichever 140 KB category disks you need: FILES, MEDIA, DISKTOOLS, DEVTOOLS. These floppies also run on enhanced machines. |
-| **XL 6502 or 65C02** | One bootable 32 MB `.2mg` with all 65 overlays, BASIC.SYSTEM, INTBASIC.SYSTEM and demonstration files. No companion disk is needed. |
+| **XL 6502 or 65C02** | One bootable 32 MB `.2mg` with all 66 overlays, BASIC.SYSTEM, INTBASIC.SYSTEM and demonstration files. No companion disk is needed. |
 
 The download names include the CPU, category and version:
 
@@ -841,6 +841,7 @@ C extracts DOS BIN/BAS/INT to the exact length declared by the DOS header.
 BIN retains its original load address as the ProDOS auxtype; BAS uses $0801.
 Sector padding and the DOS header are excluded. TXT retains its sector data.
 The DOSGET overlay lives on FILES/XL; BOOT asks for FILES when required.
+Reading a DOS 3.3 catalog as a panel uses the internal DOS33 overlay, on BOOT and XL.
 An existing destination is refused. An I/O failure stops extraction; a failed
 cleanup names the newly created file that remains. Completed files survive a
 later source-close error, which is reported. Escape cancels between sectors.

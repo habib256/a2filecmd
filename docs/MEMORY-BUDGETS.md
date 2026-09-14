@@ -1,15 +1,16 @@
 # Consolidation : budgets mémoire
 
-## État à la 0.8.5 (13 septembre 2026)
+## État après la 0.8.5 (14 septembre 2026)
 
 Réserves au lien, en octets, 65C02/6502 ; ce ne sont pas des sommes :
 
 | Zone | 65C02 | 6502 | Objectif |
 | --- | ---: | ---: | --- |
-| MAIN (résident, plafond `$BEE0`) | **23** | 518 | 256 sur 65C02 |
+| MAIN (résident, plafond `$BEE0`) | **537** | 1 037 | 256 sur 65C02 : tenu |
 | Carte langage | 14 | 6 | ne pas descendre |
-| LOWRAM | 245 | 270 | — |
-| Écart avant la pile C de 192 octets | 51 | 735 | — |
+| DOS33 (lecteur de catalogue DOS 3.3) | 488 | 484 | — |
+| LOWRAM | 240 | 265 | — |
+| Écart avant la pile C de 192 octets | 565 | 1 254 | — |
 | OPEN | 11 | 43 | ne pas retomber à quelques octets au prochain média |
 | DELETE | 4 | 3 | respiration avant enrichissement |
 | IMGFS | 5 | 13 | idem |
@@ -18,11 +19,33 @@ Réserves au lien, en octets, 65C02/6502 ; ce ne sont pas des sommes :
 | COPY | 54 | 51 | — |
 | Mini (sous DOS à `$9600`) | 270 | — | — |
 
-La marge MAIN 65C02 est repassée sous l’objectif de 256 octets retrouvé au
-neuvième incrément du chantier 1 (276/786) : DUET, DOSGET, IDENT/FIXTYPES
-et la sonde DUET du routage ont consommé la réserve. C’est la première tâche
-de la [feuille de route](../TODO.md). Le reste de ce document est le journal
-chronologique de la consolidation, le plus récent en premier.
+Au lien de la 0.8.5, MAIN 65C02 ne gardait que 23 octets (518 sur 6502) :
+DUET, DOSGET, IDENT/FIXTYPES et la sonde DUET du routage avaient consommé
+la réserve retrouvée au neuvième incrément du chantier 1. Le reste de ce
+document est le journal chronologique de la consolidation, le plus récent
+en premier.
+
+DOS33, 14 septembre 2026 : le lecteur de catalogue DOS 3.3
+(`read_dos33_panel`, `dos33_type`, 707 + 40 octets de code) quitte le
+résident pour une petite surcouche DOS33, sur BOOT et XL, chargée à chaque
+lecture d’un panneau DOS 3.3 (disque réel ou image en ordre DOS) et mise en
+cache comme les autres. Ce que la surcouche ne peut pas faire : être chargée
+pendant qu’une autre surcouche a encore du code sur la pile de retour — HELP
+relit les deux panneaux, le tri S hébergé par TEXT relit le sien, et un
+plugin SDK relit par `api->read_panel` le panneau DOS qu’il vient d’écrire
+(DOSWRITE). `load_overlay` pose donc `in_overlay` à chaque chargement ou
+succès de cache ; `read_dos33_overlay` diffère alors la lecture (panneau
+vide, bit dans `panel_stale`) et `settle_panels`, appelé en tête de la boucle
+principale, relit et redessine ce seul panneau — relire l’autre lui ferait
+perdre ses marques. `overlay_run` remet `in_overlay` à zéro dès que le point
+d’entrée a rendu la main. Coût résident : 2 octets de BSS, +6 octets dans
+MENU pour la liste des surcouches cachées. Gain MAIN 514/519 octets ; DOS33
+garde 488/484 octets libres. Test hôte `tools/test_dos33_overlay.py`
+(différé, direct, chargement refusé, catalogue refusé) et banc
+`bench/dos33_overlay.py` (aide et tri depuis un panneau DOS, octets de
+l’image conservés, deux CPU). Les bancs DOSWRITE, DOSIMAGE, catalogues
+malformés, smoke et XL passent sur les deux CPU.
+
 
 UNSHRINK, 13 septembre 2026 : réservation possédée, nettoyage contrôlé,
 lectures exactes des threads ignorés, erreurs de flux/fermeture et annulation.

@@ -26,7 +26,7 @@ def main():
         volume = ('A2FC' if role == 'BOOT' else VOLUMES[role]) + a.cpu
         description = (volume.encode('ascii') + b': ' + description)[:65]
         key = bytearray(name.encode('ascii').ljust(12, b'\0'))
-        if name in ('MENU', 'COPY', 'OPEN', 'NAV', 'BATCH', 'DOSIMAGE', 'DOSPUT'):
+        if name in ('MENU', 'COPY', 'OPEN', 'NAV', 'DOS33', 'BATCH', 'DOSIMAGE', 'DOSPUT'):
             key[11] = 1  # routing only, never a menu command
         records.append(bytes(key) + description.ljust(66, b'\0'))
     # Runtime routing uses the first twelve name bytes, as ask_disk does.

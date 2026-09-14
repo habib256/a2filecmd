@@ -47,6 +47,8 @@ _a2fc_link_id:
         header BIG, _batch_entry, "Internal marked-file move list"
         .segment "NAV"
         header 0, 0, "Internal directory navigation"
+        .segment "DOS33"
+        header 0, 0, "Internal DOS 3.3 catalog reader"
         .segment "OPEN"
         header 0, _open_entry, "Internal file viewer selection"
         .segment "COPY"

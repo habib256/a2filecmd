@@ -31,6 +31,9 @@ import mkdemo
 import mkdos33
 
 README_LEN = (ROOT / 'data/README.TXT').stat().st_size
+sys.path.insert(0, str(ROOT / 'tools'))
+import mkdemo
+SAMPLE_LEN = len(mkdemo.SAMPLE.replace('\n', '\r').encode('ascii'))
 
 ESC, RET, DOWN, UP, LEFT, RIGHT, TAB = b'\x1b', b'\r', b'\x0a', b'\x0b', b'\x08', b'\x15', b'\t'
 
@@ -135,7 +138,7 @@ def main():
             # ── 1. le demarrage ───────────────────────────────────────────
             s.boot()
             s.ok('la disquette amorce sur les deux panneaux', s.has('/A2FILECMD'), s.rows()[0][:30])
-            s.ok('la version est affichee', s.has('A2 FILE CMD 0.7'))
+            s.ok('la version est affichee', s.has('A2 FILE CMD ' + VERSION))
             s.ok('le panneau droit, sans DEMO sur la disquette, montre les volumes',
                  '[Volumes]' in s.rows()[0][40:], s.rows()[0][40:70])
             s.ok('les blocs libres sont comptes',
@@ -453,7 +456,7 @@ def main():
                  any(r.startswith('README ') and '%d' % README_LEN in r for r in s.rows()),
                  next((r[:40] for r in s.rows() if r.startswith('README ')), 'absent'))
             s.ok('la copie garde nom, type et taille',
-                 any(r.startswith('SAMPLE ') and 'TXT' in r and '712' in r for r in s.rows()),
+                 any(r.startswith('SAMPLE ') and 'TXT' in r and '%d' % SAMPLE_LEN in r for r in s.rows()),
                  next((r[:40] for r in s.rows() if r.startswith('SAMPLE ')), 'absent'))
             s.select('SAMPLE'); s.key(b'R'); s.wait(lambda: s.has('New name:'), 'renommer')
             p.raw(b'\x08' * 6); s.type('COPIE'); s.key(RET); p.stable()
@@ -527,9 +530,10 @@ def main():
                 s.ok("le firmware borne la souris a l'ecran", p.peek(s.sym['_mouse_x'], 1)[0] == 79,
                      p.peek(s.sym['_mouse_x'], 1)[0])
                 p.home()
-                p.click(x0 + 37, 5)                            # DEMO trie : ligne 5 = HGR.RLE ; en bout de ligne, hors du nom
+                row = next(i for i, r in enumerate(s.rows()) if r[x0:].startswith('HGR.RLE'))   # en bout de ligne, hors du nom
+                p.click(x0 + 37, row)
                 s.ok('un clic selectionne la ligne', s.line(x0).startswith('HGR.RLE'), s.line(x0)[:20])
-                p.click(x0 + 37, 5)
+                p.click(x0 + 37, row)
                 s.allow_aux()
                 s.wait(lambda: s.value('view', 1) == 1, 'image par la souris', 40); time.sleep(1)
                 s.ok("un second clic sur la selection l'ouvre", s.value('view', 1) == 1)

@@ -131,6 +131,11 @@ static unsigned char gfi_path[PATH_LEN + 1];
 static unsigned char picked[MAX_ENTRIES];
 static char album[2][NAME_LEN];    /* image viewer: the left and right neighbours */
 static char overlay_loaded[12];     /* the overlay in place in the $1B00 window, "" if none */
+/* in_overlay: an overlay's code may still be on the return stack, so the
+ * window must not be reloaded until the main loop (or overlay_run) regains
+ * control. panel_stale: panels whose DOS 3.3 catalog read was deferred. */
+static unsigned char in_overlay, panel_stale;
+static unsigned char read_dos33_overlay(struct Panel* pan);
 static char reselect[NAME_LEN];    /* on return from a big overlay: the name to reselect */
 static struct Entry selected;      /* the entry under the cursor, copied before a big overlay overwrites the table */
 static char note[80];              /* ... and the message to write on line 22 */
@@ -747,6 +752,11 @@ static void read_volumes(struct Panel* pan)
  * the C stack (low RAM is full); none of them is recursive. */
 #pragma static-locals (push, off)
 
+/* The DOS 3.3 catalog reader lives in the DOS33 overlay: it only runs
+ * during a panel read, never while another overlay's code is on the stack
+ * (read_dos33_overlay defers such reads). Nothing here uses the window. */
+#pragma code-name (push, "DOS33")
+#pragma rodata-name (push, "DOS33RO")
 /* The closest ProDOS type to a DOS 3.3 type (catalog byte, bit 7 =
  * locked): T text, I Integer, A Applesoft, B binary, everything else BIN. */
 static unsigned char dos33_type(unsigned char t)
@@ -811,7 +821,8 @@ static unsigned char read_dos33_panel(struct Panel* pan)
     }
     return 1;
 }
-
+#pragma rodata-name (pop)
+#pragma code-name (pop)
 
 /* Fills the panel from an image or a real disk opened as a directory
  * (pan->fs != 0). The source is a file image when pan->img_len > 0 (path
@@ -845,7 +856,7 @@ static unsigned char read_image_panel(struct Panel* pan)
         img_f = 0;
     }
     if (pan->fs == FS_DOS33) {       /* flat catalog, read by the overlay */
-        i = read_dos33_panel(pan);
+        i = read_dos33_overlay(pan);
         if (img_f) { if (fclose(img_f)) i = 0; img_f = 0; }
         if (!i) goto fail;
         return 1;
@@ -856,7 +867,7 @@ static unsigned char read_image_panel(struct Panel* pan)
     pan->more = 0;
     memset(pan->tags, 0, sizeof pan->tags);
     if (!dir_open_image(pan->dir_key)) {
-        if (img_dsk && pan->dir_key == 2 && read_dos33_panel(pan)) {
+        if (img_dsk && pan->dir_key == 2 && !in_overlay && read_dos33_overlay(pan)) {
             pan->fs = FS_DOS33;
             dir_close();
             if (dir_error) goto fail;
@@ -2019,8 +2030,10 @@ static unsigned char load_overlay(const char* name, unsigned char any)
 {
     FILE* f;
     unsigned char ok = 0, big = 0;
-    if (!strcmp(overlay_loaded, name))
+    if (!strcmp(overlay_loaded, name)) {
+        in_overlay = 1;
         return !(OVL->flags & OVERLAY_AUX) || confirm_aux();
+    }
     overlay_loaded[0] = 0;
     f = open_overlay(name, 1);
     if (f) {
@@ -2037,7 +2050,7 @@ static unsigned char load_overlay(const char* name, unsigned char any)
                 && !ferror(f) && !fread(copy_buf, 1, 1, f) && !ferror(f)) ok = 1;
         }
         if (fclose(f)) ok = 0;
-        if (ok) strcpy(overlay_loaded, name);
+        if (ok) { strcpy(overlay_loaded, name); in_overlay = 1; }
         else if (big) {
             read_panel(0); read_panel(1); keep_tags(0); draw_all();
         }
@@ -2068,6 +2081,25 @@ static unsigned char load_overlay(const char* name, unsigned char any)
     return ok;
 }
 #define overlay(name) load_overlay(name, 0)
+
+/* Reads a flat DOS 3.3 catalog through the DOS33 overlay. While another
+ * overlay's code may be on the return stack (in_overlay, set by every
+ * successful load_overlay and cleared when control returns to the main
+ * loop), the window cannot be reloaded: the panel is left empty, marked
+ * in panel_stale, and settle_panels rereads it before the next key. */
+static unsigned char read_dos33_overlay(struct Panel* pan)
+{
+    unsigned char ok;
+    if (in_overlay) {
+        panel_stale |= 1 << (pan - panels);
+        pan->count = 0; pan->more = 0;
+        memset(pan->tags, 0, sizeof pan->tags);
+        return 1;
+    }
+    ok = overlay("DOS33") && read_dos33_panel(pan);
+    in_overlay = 0;
+    return ok;
+}
 
 /* Runs the overlay `name` through its entry point, with `arg` (the key
  * that invokes it, 0 from the menu) in the service table. A big overlay
@@ -2107,6 +2139,7 @@ again:
     note[0] = 0;
     if (OVL->entry) OVL->entry(&api);
     else { extern const char msg_noentry[]; strcpy(note, msg_noentry); }
+    in_overlay = 0;              /* its code has returned: the window is free again */
     if(media && media_request) {
         dir=media_request==KEY_RIGHT;
         pan->first=media_first[dir];
@@ -3265,7 +3298,7 @@ static const char mn_catalog_path[] = "/A2FILE/EXTRAS.CAT";
 static const char mn_dir[] = "/A2FILE";
 static const char mn_suffix[] = ".PLG";
 /* Routing overlays the core loads by itself: never a menu command. */
-static const char mn_hidden[] = "|MENU|COPY|OPEN|NAV|BATCH|DOSIMAGE|DOSPUT|";
+static const char mn_hidden[] = "|MENU|COPY|OPEN|NAV|BATCH|DOS33|DOSIMAGE|DOSPUT|";
 static const char mn_bad[] = "(unreadable)";
 static const char mn_stale[] = "(another A2 File Cmd build)";
 static const char mn_noentry[] = "(no entry point)";
@@ -3472,6 +3505,19 @@ static void refresh_both(void)
     draw_panel(1);
     draw_status();
     draw_info();
+}
+
+/* Back in the main loop: no overlay code is on the stack any more. A DOS
+ * 3.3 panel whose read was deferred (read_dos33_overlay) is reread now,
+ * and only that one: rereading the other would forget its tags. */
+static void settle_panels(void)
+{
+    unsigned char p, stale = panel_stale;
+    in_overlay = 0;
+    panel_stale = 0;
+    for (p = 0; p < 2; ++p)
+        if (stale & (1 << p)) { read_panel(p); draw_panel(p); }
+    if (stale) { draw_status(); draw_info(); }
 }
 
 /* Reads a directory into pool[base..]: names, types, auxtypes. Returns 0
@@ -4801,6 +4847,7 @@ int main(void)
     if (key) { extern const char msg_vdrive[]; sprintf(question, msg_vdrive, key >> 4, key & 15); message(question); }
 #endif
     for (;;) {
+        settle_panels();
         pan = &panels[active];
         key = wait_key();
         if (key >= '0' && key <= '9') key = bar_nth(key == '0' ? 9 : key - '1');
