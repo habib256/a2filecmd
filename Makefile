@@ -103,7 +103,7 @@ PLUGINS_FLOPPY = BATCH NAV CATALOG OPEN COPY FORMAT HELP TEXT HEX DELETE RUN ATT
 # overlay ($1B00-$3FFF); `PLUGIN_MAGIC, 0,` as a small one.
 XPLUGINS = $(sort $(basename $(notdir $(wildcard $(SRC)/plugins/*.c))))
 # The ones that also go on the floppy edition (TODO.md, the floppy budget).
-XPLUGINS_FLOPPY = $(filter txtconv date verify tagpat volname drivespd wipe,$(XPLUGINS))
+XPLUGINS_FLOPPY = $(filter txtconv date verify tagpat drivespd wipe,$(XPLUGINS))
 # The cc65 target library for the plugin link: the one of the machine's cc65
 # for apple2enh, the one of cc65 master for apple2.
 ifeq ($(ARCH),6502)

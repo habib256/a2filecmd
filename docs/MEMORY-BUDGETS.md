@@ -54,9 +54,9 @@ Lanceur, 14 septembre 2026 : RUN.PLG 6502 passe à 3 734 octets (neuf blocs)
 pour épeler la commande de retour ; le lanceur disquette rend le bloc en
 tombant à 6 134 octets (douze blocs, dix octets de marge) : noms de mois
 abrégés, ligne descriptive retirée sur disquette seulement, deux notes
-raccourcies. BOOT reste à 0 bloc libre ; les tailles sous surveillance sont
-RUN.PLG (3 734/4 096), MENU.PLG (3 582/3 584), BATCH.PLG (2 659/3 072) et
-le lanceur (6 134/6 144). Test hôte `tools/test_batch.py` (un dossier traverse le manifeste,
+raccourcies. VOLNAME passe ensuite sur DISKTOOLS : BOOT retrouve 4 blocs
+libres. Les tailles encore au bord d’un bloc sont RUN.PLG (3 734/4 096),
+MENU.PLG (3 582/3 584), BATCH.PLG (2 659/3 072) et le lanceur (6 134/6 144). Test hôte `tools/test_batch.py` (un dossier traverse le manifeste,
 relu comme `$D`), banc `bench/roi.py` (dossier marqué à deux niveaux sur le
 même volume puis vers l’autre disque, arbres relus, sources parties).
 

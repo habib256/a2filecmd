@@ -34,7 +34,7 @@ média tant que 1–4 ne sont pas clos.
 | **7** | Preuves de séquences | Continu |
 | **8** | 💾 NIBCOPY réel, puis un gain | Après 5, au choix |
 | **9** | 💾 ADTPro blocs | Après 5, au choix |
-| **10** | LAUNCHER | Retour épelé et validé ; favoris ouverts |
+| **10** | LAUNCHER | **Clos** : retour épelé et validé ; favoris de programmes en « Plus tard » |
 
 ## 0. Mini DOS 3.3
 
@@ -155,17 +155,21 @@ GOTO a les dossiers ; il manque les programmes.
   l’écran : 3/3 retours en 2,9 s, scénario réintégré. Un retour
   *automatique* n’existe pas avec BASIC.SYSTEM (fin de programme = invite
   `]`) ; INTBASIC.SYSTEM revient déjà au sélecteur.
-- [ ] **`SYNTAX ERROR` après `HOME` sur //e non amélioré** — signalé sur
+- [x] **`SYNTAX ERROR` après `HOME` sur //e non amélioré** — signalé sur
   `bench/extras.py` ; non reproduit le 14 septembre 2026 (3/3, retour par
-  le chemin absolu après `HOME`). À surveiller sur les prochains passages ;
-  refermer après trois passages propres.
-- [ ] **Favoris de programmes** — une liste de programmes à lancer, comme
-  GOTO pour les dossiers ; ne pas écraser la configuration ni le préfixe.
+  le chemin absolu après `HOME`, puis session complète 73/73). Clos.
+
+**Chantier clos le 14 septembre 2026.** Les favoris de programmes passent
+dans « Plus tard » : une liste comme GOTO pour les dossiers, sans écraser la
+configuration ni le préfixe, quand le besoin se présente.
 
 ## Plus tard
 
 Pas avant la clôture de 1–4, et seulement si 5 est clos ou si 8/9/10
 n’est pas déjà ouvert.
+
+**Favoris de programmes** — une liste de programmes à lancer, comme GOTO
+pour les dossiers, sans écraser la configuration ni le préfixe.
 
 **Médias** — cadence PT3 à 1 MHz, effets multiples, autres puces AY ;
 a2dgrx ; Purplesoft GLOAD 16 Ko ; Fantavision ; ANIMATE ; MACPAINT / BMP /

@@ -248,16 +248,25 @@ def main():
                     result=move(b'1',b'2')
                 finally:p.poke(address,saved)
                 return result
-            for call in (1,2):
-                line=fail_rename((call,))
-                s.ok('rename failure '+str(call)+' reports error and keeps the verified temporary',line.endswith('GOTO.TMP kept.'),line)
-                s.ok('rename failure '+str(call)+' preserves old favourites',favourites()==preserved);leave(ESC)
-            open_goto();line=move(b'1',b'2')
-            s.ok('retry after failures saves successfully',line=='Favourite moved.' and favourites()==['1 /WORKHD/GONESOON','2 '+OTHER]);leave(ESC)
             def rename_saved(old,new):
                 path_to('/WORKHD/A2FILE');s.select(old)
                 s.key(b'R');s.wait(lambda:s.has('New name'),'rename recovery file',20)
                 s.key(b'\x7f'*len(old));s.type(new);s.key(RET);p.stable();s.select(new)
+            def discard_temp():
+                # The recoverable installation keeps the verified GOTO.TMP after
+                # any failure and refuses to overwrite it: the user reviews it,
+                # then removes it before saving again.
+                path_to('/WORKHD/A2FILE');s.select('GOTO.TMP');s.key(b'D')
+                s.wait(lambda:s.has('Delete GOTO.TMP'),'delete kept temporary',20);s.key(b'Y');p.stable()
+            for call in (1,2):
+                line=fail_rename((call,))
+                s.ok('rename failure '+str(call)+' reports error and keeps the verified temporary',line.endswith('GOTO.TMP kept.'),line)
+                s.ok('rename failure '+str(call)+' preserves old favourites',favourites()==preserved);leave(ESC)
+                open_goto();line=move(b'1',b'2')
+                s.ok('kept GOTO.TMP blocks saving until reviewed',line=='GOTO.TMP exists; check saved files.',line);leave(ESC)
+                discard_temp()
+            open_goto();line=move(b'1',b'2')
+            s.ok('retry after failures saves successfully',line=='Favourite moved.' and favourites()==['1 /WORKHD/GONESOON','2 '+OTHER]);leave(ESC)
             current=['1 /WORKHD/GONESOON','2 '+OTHER]
             line=fail_rename((2,3))
             s.ok('failed rollback retains named recovery files',line=='Save failed; restore GOTO.BAK. GOTO.TMP kept.')

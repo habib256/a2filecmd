@@ -58,7 +58,7 @@ FIND combines name/content searches with type and modification-date filters (TAB
 then continues through successive pages of 20 matches. V on a text result
 shows occurrence offsets and excerpts; ESC returns to the same list.
 VERIFY handles tagged files and VOLINFO exports allocation reports and file blocks.
-DATE, TAGPAT, TXTCONV, VOLNAME and
+DATE, TAGPAT, TXTCONV and
 WIPE also fit the floppy edition. See the [tool reference](docs/MANUAL.md#more-tools-in-the--menu).
 
 ## See it in action

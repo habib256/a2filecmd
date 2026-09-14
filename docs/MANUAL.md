@@ -74,7 +74,7 @@ full command catalog. The distribution is declared in `config/packages.mk`.
 |---|---|---|
 | **FILES** | DOSGET, DOSWRITE, DOSIMAGE, DOSPUT, EDIT, SEARCH, AWP, BINARY2, UNSHRINK, CRC, FIND, FIXTYPES, GOTO, IDENT, MDVIEW, RENAME, SYNC, MOVE, TREE | `/A2FILES6502` |
 | **MEDIA** | IMAGE, MUSIC, DGRVIEW, EXTASIE, PACKFOT, PAINT816, PURPLE, LZ4FH, PRINTSHOP, FONTVIEW, PT3, DUET | `/A2MEDIA6502` |
-| **DISKTOOLS** | BOOTBLK, BLKVIEW, BLKEDIT, DISKCMP, NIBCOPY, IMGCONV, MKIMAGE, RESCUE, UNDELETE | `/A2DISKS6502` |
+| **DISKTOOLS** | BOOTBLK, BLKVIEW, BLKEDIT, DISKCMP, NIBCOPY, IMGCONV, MKIMAGE, RESCUE, UNDELETE, VOLNAME | `/A2DISKS6502` |
 | **DEVTOOLS** | BASLIST, DISASM, INTBASIC listings, plus BASIC.SYSTEM and INTBASIC.SYSTEM runtimes | `/A2DEVTOOLS6502` |
 
 BOOT keeps the essential file manager and disk operations. Use the **same
@@ -186,17 +186,17 @@ The following tools supplement the main keys and readers.
 | **DATE** | S sets date/time from `DDMMYYYYHHMM` (1940–2039); impossible dates are rejected. F stamps modification dates on tagged files or the selection. Creation dates stay unchanged; a hardware clock may replace the entered time. |
 | **VERIFY** | Read tagged files (skip directories), the selection, or every block of a volume. Report processed files and errors; ESC cancels. No writes. |
 | **TAGPAT** | Name patterns: `=` any string, `?` one character. Add comma-separated filters: `T04` TXT, `>2000` or `<2000` bytes, `D` modified today. T tags, U untags, X replaces tags. |
-| **VOLNAME** | Rename a ProDOS volume and update the affected panel/program paths. |
 | **WIPE** | F checks live directory/file references against the bitmap before zeroing free blocks. Unreadable, inconsistent or unsupported allocation is refused. W zeroes the whole volume after `ERASE`; the running program's volume is refused. |
 
 ### On category disks and XL
 
-VOLINFO is on DISKTOOLS; the menu requests that disk when necessary.
+VOLINFO and VOLNAME are on DISKTOOLS; the menu requests that disk when necessary.
 Menu categories describe tasks and do not require changing disks just to browse.
 
 | Tool | Operation |
 |---|---|
 | **VOLINFO** | Audit allocation and fragmentation. M = bitmap (`.` free, `#` used), F = selected file blocks, E = export to the other panel. N/P pages; ESC returns. No repairs. |
+| **VOLNAME** | Rename a ProDOS volume and update the affected panel/program paths. |
 | **SEARCH** | Find text in the active directory and tag matching files, ignoring case. ESC cancels a long scan and keeps tags already found. |
 | **FIXTYPES** | Review and confirm type/auxtype repairs on tagged files or the selection. Recognizes validated DUET content with a name/type hint and explicit suffixes; optional suffix removal. DUET names, image suffixes and `.SYSTEM` stay. |
 | **GOTO** | P opens a typed `/VOLUME/DIRECTORY` path (63 characters max; Delete/Left edits, ESC cancels). Nine favourites: A adds, D then a digit removes, M then two digits reorders, 1–9 jumps. Saved in `A2FILE/GOTO.CFG`. |
