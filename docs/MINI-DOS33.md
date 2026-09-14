@@ -1,4 +1,4 @@
-# A2FC Mini DOS 3.3 — 0.8.5
+# A2FC Mini DOS 3.3 — 0.8.6
 
 A standalone edition for **Apple II+ 48 KB, NMOS 6502**, with two panels in
 40 columns and DOS 3.3 copying between two Disk II drives. No ProDOS,
@@ -8,8 +8,8 @@ Written entirely in 6502 assembly; see [Speed](#speed) for what that buys.
 
 ![Two panels with inverse video and bottom shortcuts](mini-dos33.png)
 
-The disk image `dist/A2FC-MINI-DOS33-0.8.5.dsk` boots through the Applesoft
-`HELLO` program, which centres `A2FILECMD`, `MINI DOS 3.3` and `V0.8.5` at
+The disk image `dist/A2FC-MINI-DOS33-0.8.6.dsk` boots through the Applesoft
+`HELLO` program, which centres `A2FILECMD`, `MINI DOS 3.3` and `V0.8.6` at
 the top of the 40-column screen, then `GPL3 VERHILLE ARNAUD` and
 `LOADING .... PLEASE WAIT ....` at the bottom, before
 `BRUN A2FC.MINI`. The same

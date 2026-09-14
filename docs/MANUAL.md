@@ -1,6 +1,6 @@
 # The A2 File Cmd manual
 
-**Version 0.8.5** — A two-panel ProDOS file manager for an Apple II with
+**Version 0.8.6** — A two-panel ProDOS file manager for an Apple II with
 128 KB and 80-column support. Free software by Arnaud Verhille, under GPL v3.
 
 ![The two panels in A2 File Cmd 0.7.6](screenshots/01-panels-0.7.6.png)
@@ -26,22 +26,22 @@ The download names include the CPU, category and version:
 
 | Role | Image name |
 |---|---|
-| Boot | `A2FILECMD-6502-BOOT-0.8.5.dsk` |
-| Files | `A2FILECMD-6502-FILES-0.8.5.dsk` |
-| Media | `A2FILECMD-6502-MEDIA-0.8.5.dsk` |
-| Disk tools | `A2FILECMD-6502-DISKTOOLS-0.8.5.dsk` |
-| Development tools | `A2FILECMD-6502-DEVTOOLS-0.8.5.dsk` |
-| Complete, 6502 | `A2FILECMD-6502-XL-0.8.5.2mg` |
-| Complete, 65C02 | `A2FILECMD-65C02-XL-0.8.5.2mg` |
-| Mini, Apple II+ DOS 3.3 | `A2FC-MINI-DOS33-0.8.5.dsk` |
+| Boot | `A2FILECMD-6502-BOOT-0.8.6.dsk` |
+| Files | `A2FILECMD-6502-FILES-0.8.6.dsk` |
+| Media | `A2FILECMD-6502-MEDIA-0.8.6.dsk` |
+| Disk tools | `A2FILECMD-6502-DISKTOOLS-0.8.6.dsk` |
+| Development tools | `A2FILECMD-6502-DEVTOOLS-0.8.6.dsk` |
+| Complete, 6502 | `A2FILECMD-6502-XL-0.8.6.2mg` |
+| Complete, 65C02 | `A2FILECMD-65C02-XL-0.8.6.2mg` |
+| A2FileCmd Mini DOS3.3, Apple II+ | `A2FC-MINI-DOS33-0.8.6.dsk` |
 
 All floppies are 6502 and supplied as `.dsk` in DOS sector order; XL uses `.2mg`.
 Use the downloaded files directly: changing an extension does not convert an image.
 Each floppy image is 143,360 bytes. Check downloads against
-`SHA256SUMS-0.8.5.txt`; if all release files are together, run:
+`SHA256SUMS-0.8.6.txt`; if all release files are together, run:
 
 ```sh
-sha256sum -c SHA256SUMS-0.8.5.txt
+sha256sum -c SHA256SUMS-0.8.6.txt
 ```
 
 Boot the image, or launch `A2FILE.SYSTEM` from a ProDOS selector. To install

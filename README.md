@@ -82,19 +82,19 @@ readers and more disk tools. See the [changelog](CHANGELOG.md).*
 **Start with the [latest release](https://github.com/habib256/a2filecmd/releases/latest).**
 No build required. Choose the image that fits your setup:
 
-The table describes the current 0.8.5 source build. The latest published release
-is 0.8.0; its downloads retain their own version numbers.
+The table describes the current 0.8.6 source build. The latest published release
+is 0.8.5; its downloads retain their own version numbers.
 
-| Image (0.8.5) | Contents |
+| Image (0.8.6) | Contents |
 |---|---|
-| `A2FILECMD-6502-BOOT-0.8.5.dsk` | Bootable 140 KB floppy: file manager, essential disk tools and formatter |
-| `A2FILECMD-6502-FILES-0.8.5.dsk` | Edit and read documents, find, rename, copy, synchronize and unpack files |
-| `A2FILECMD-6502-MEDIA-0.8.5.dsk` | Pictures, Mockingboard and Electric Duet music |
-| `A2FILECMD-6502-DISKTOOLS-0.8.5.dsk` | Disk images, block tools, boot repair and recovery |
-| `A2FILECMD-6502-DEVTOOLS-0.8.5.dsk` | BASIC listings, disassembly, BASIC.SYSTEM and INTBASIC.SYSTEM |
-| `A2FILECMD-6502-XL-0.8.5.2mg` | Complete bootable 32 MB image for 6502 |
-| `A2FILECMD-65C02-XL-0.8.5.2mg` | Complete bootable 32 MB image for 65C02, with optional mouse support |
-| `A2FC-MINI-DOS33-0.8.5.dsk` | A2FC Mini: the standalone DOS 3.3 edition for a 48 KB Apple II+ |
+| `A2FILECMD-6502-BOOT-0.8.6.dsk` | Bootable 140 KB floppy: file manager, essential disk tools and formatter |
+| `A2FILECMD-6502-FILES-0.8.6.dsk` | Edit and read documents, find, rename, copy, synchronize and unpack files |
+| `A2FILECMD-6502-MEDIA-0.8.6.dsk` | Pictures, Mockingboard and Electric Duet music |
+| `A2FILECMD-6502-DISKTOOLS-0.8.6.dsk` | Disk images, block tools, boot repair and recovery |
+| `A2FILECMD-6502-DEVTOOLS-0.8.6.dsk` | BASIC listings, disassembly, BASIC.SYSTEM and INTBASIC.SYSTEM |
+| `A2FILECMD-6502-XL-0.8.6.2mg` | Complete bootable 32 MB image for 6502 |
+| `A2FILECMD-65C02-XL-0.8.6.2mg` | Complete bootable 32 MB image for 65C02, with optional mouse support |
+| `A2FC-MINI-DOS33-0.8.6.dsk` | A2FileCmd Mini DOS3.3: the standalone edition for a 48 KB Apple II+ |
 
 **All floppies use 6502 code**, including on enhanced machines. Choose the
 categories you need; every companion carries the menu and full catalog.
