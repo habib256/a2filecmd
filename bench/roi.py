@@ -45,7 +45,7 @@ def main():
             files[f'S{i}/C#040000']=b'C'*1800
             files[f'D{i}/KEEP#040000']=b'destination original\r'
         files['D2/C#040000']=b'collision original\r'
-        for i in (7,8):   # a marked directory with contents, beside the marked files
+        for i in (7,8,9):   # a directory with contents, beside the files (S9: unmarked, MOVE from the menu on the cursor)
             files[f'S{i}/SUB/X#040000']=b'inside the moved directory\r'
             files[f'S{i}/SUB/DEEP/Y#040000']=b'two levels down\r'
             files[f'S{i}/A#041234']=b'A'+bytes(range(256))*4
@@ -56,6 +56,7 @@ def main():
         stage=tmp/'target';(stage/'DST').mkdir(parents=True)
         (stage/'DST'/'KEEP#040000').write_bytes(b'other disk original\r')
         (stage/'DST8').mkdir();(stage/'DST8'/'KEEP#040000').write_bytes(b'other disk original\r')   # S8's own target: DST already holds S5's A and C
+        (stage/'DST9').mkdir();(stage/'DST9'/'KEEP#040000').write_bytes(b'other disk original\r')
         disk=tmp/'TARGET.po'
         subprocess.run([sys.executable,str(ROOT/'tools/mkvolume.py'),str(stage),str(disk),'--volume','TARGET','--blocks','280'],check=True,capture_output=True)
         with boot_hd(tmp,files,port=6893,floppy2=disk) as(p,s):
@@ -86,12 +87,16 @@ def main():
             pair(s,p,'S8','DST8','/TARGET');mark(s,p);s.select('SUB');s.key(b' ');p.stable();menu_run(s,p,'MOVE');s.key(b'Y')
             s.wait(lambda:s.has('3/3 moved.'),'cross-volume batch with a directory',240);p.stable()
             s.ok('a marked directory moves across volumes',s.has('3/3 moved.') and not any(r.startswith('SUB/') for r in s.rows()[2:20]))
+            # No mark, the cursor on a directory, MOVE from the menu, another volume: the core walks it like V.
+            pair(s,p,'S9','DST9','/TARGET');s.select('SUB');menu_run(s,p,'MOVE')
+            s.wait(lambda:s.has('2 files moved.'),'cursor directory moved across volumes',240);p.stable()
+            s.ok('the selected directory moves across volumes from the menu',not any(r.startswith('SUB/') for r in s.rows()[2:20]))
             s.ok('AUX preserved',p.peek(0x1000,0xb000,'aux')==aux)
             s.ok('stack floor preserved',p.peek(floor,8)==b'\xa5'*8)
-            s.key(b'Q');s.wait(lambda:s.has('Quit to ProDOS?'),'quit question');s.key(b'Y');s.wait(lambda:not s.has('/WORKHD/S8'), 'return to ProDOS', 120);p.stable()
+            s.key(b'Q');s.wait(lambda:s.has('Quit to ProDOS?'),'quit question');s.key(b'Y');s.wait(lambda:not s.has('/WORKHD/S9'), 'return to ProDOS', 120);p.stable()
             s.ok('preferences save without a warning',not s.has('Configuration warning'))
         image=Image((tmp/'WORKHD.hdv').read_bytes());dest=Image(disk.read_bytes())
-        s.ok('saved configuration exact',data(image,'A2FILE/A2FILE.CFG')==b'/WORKHD/S8\r/TARGET/DST8\rS0A0\r')
+        s.ok('saved configuration exact',data(image,'A2FILE/A2FILE.CFG')==b'/WORKHD/S9\r/TARGET/DST9\rS0A0\r')
         for name in ('A','C'):
             s.ok('same-volume bytes '+name,data(image,'D1/'+name)==files['S1/'+name+('#041234' if name=='A' else '#040000')])
             s.ok('right-panel moved bytes '+name,data(image,'D6/'+name)==files['S6/'+name+('#041234' if name=='A' else '#040000')])
@@ -99,14 +104,15 @@ def main():
         s.ok('collision target bytes preserved',data(image,'D2/C')==b'collision original\r')
         s.ok('same-volume moved directory keeps its tree',data(image,'D7/SUB/X')==b'inside the moved directory\r' and data(image,'D7/SUB/DEEP/Y')==b'two levels down\r')
         s.ok('cross-volume moved directory arrived whole',data(dest,'DST8/SUB/X')==b'inside the moved directory\r' and data(dest,'DST8/SUB/DEEP/Y')==b'two levels down\r' and data(dest,'DST8/KEEP')==b'other disk original\r')
-        for i in (7,8):
+        s.ok('cursor-moved directory arrived whole',data(dest,'DST9/SUB/X')==b'inside the moved directory\r' and data(dest,'DST9/SUB/DEEP/Y')==b'two levels down\r')
+        for i in (7,8,9):
             try: entry(image,f'S{i}/SUB');gone=False
             except StopIteration: gone=True
             s.ok(f'moved directory left S{i}',gone)
         s.ok('preexisting list bytes preserved',data(image,'D4/A2MOVE.LST')==b'personal manifest name\r')
-        for i in range(1,9):s.ok('unmarked bytes S'+str(i),data(image,f'S{i}/B')==b'untagged original\r')
+        for i in range(1,10):s.ok('unmarked bytes S'+str(i),data(image,f'S{i}/B')==b'untagged original\r')
         with Pom2(tmp/'WORKHD.hdv',floppy2=disk,port=6893) as p:
             s2=Session(p);s2.boot();p.stable()
-            s.ok('verified configuration loads on restart',s2.rows()[0].startswith('/WORKHD/S8') and s2.rows()[0][40:].startswith('/TARGET/DST8'))
+            s.ok('verified configuration loads on restart',s2.rows()[0].startswith('/WORKHD/S9') and s2.rows()[0][40:].startswith('/TARGET/DST9'))
         return ok_all(s,'configuration and batch MOVE')
 if __name__=='__main__':raise SystemExit(main())

@@ -707,10 +707,10 @@ class CopyAcrossVolumes(unittest.TestCase):
         self.assertEqual(Path('/tmp/mv/s/HELLO').read_bytes(), payload)
         self.assertFalse(Path('/tmp/mv/d/HELLO').exists())
 
-    def test_a_directory_across_volumes_says_to_use_V(self):
+    def test_a_directory_across_volumes_is_handed_to_the_core(self):
         self.fixture()
         note = self.run_copy('/tmp/mv/s', '/tmp/mv/d', 'HELLO', ftype=0x0F)
-        self.assertIn('V copies it', note)
+        self.assertEqual(note, '\x02')   # the core walks the tree, marked or not
         self.assertTrue(Path('/tmp/mv/s/HELLO').exists())
 
     def test_declining_copies_nothing(self):

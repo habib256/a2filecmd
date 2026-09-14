@@ -75,7 +75,7 @@ class OverlayLoad(unittest.TestCase):
   dispatch=source[source.index("        case '!':"):source.index("        case 'i': case 'I':")]
   harness=r'''
 #include <string.h>
-static char input[17];
+static char input[17],note[80];static int walked;static void copy_or_move(unsigned char m){++walked;}
 static int panels[2],active,mode,calls,moved;
 static int tag_count(int* p){return 1;}
 static void move_marked(void){++moved;}

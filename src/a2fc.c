@@ -3687,7 +3687,7 @@ static unsigned char copy_one(const struct Entry* e)
     return walk_tree(WALK_COPY) == 1;
 }
 
-static const char msg_treekept[] = "Directory not moved; source kept.";
+static const char msg_treekept[] = "Tree not verified; source kept.";
 const char batch_cancel[] = "Cancelled; remaining sources kept.";
 /* A directory record of a marked move whose target is another volume: no
  * entry can point across, so it gets exactly what V does for one directory
@@ -4314,8 +4314,13 @@ static void copy_or_move(unsigned char move)
          * been copied, it stays; a directory in which a file was skipped
          * stays as well, whole, rather than losing part of it. */
         if (move && progress_skipped == skipped_before) {
+            /* A moved directory's source goes only now: copy_one returned 1,
+             * so the walk reached the end of the tree and every file was read
+             * back as it was written. */
             build_full(full, pan, e);
+            sub = progress_done;   /* the delete walk counts files and directories too; the summary counts copies */
             if (is_dir(e) ? !(overlay("DELETE") && delete_tree()) : remove(full) != 0) { if (!is_dir(e) && !progress_abort) report_error("Delete source"); break; }
+            progress_done = sub;
             drop_entry(pan, picked[i] - removed);      /* gone: the source shows it right away */
             ++removed;
             draw_panel(active);
@@ -4966,7 +4971,12 @@ int main(void)
             input[0] = 0;   /* A failed menu load must not replay an old command. */
             overlay_run("MENU", 0);
             if (!strcmp(input, "MOVE") && tag_count(&panels[active])) move_marked();
-            else if (input[0]) overlay_run(input, 0);
+            else if (input[0]) {
+                overlay_run(input, 0);
+                /* MOVE on a directory bound for another volume: it says so
+                 * (a note starting with byte 2) and the core walks the tree. */
+                if (note[0] == 2) copy_or_move(1);
+            }
             break;
         case 'i': case 'I':
             if (pan->count && !is_dir(&pan->e[pan->cursor]) && pan->path[0]) {

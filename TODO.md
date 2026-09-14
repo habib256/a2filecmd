@@ -26,9 +26,9 @@ média tant que 1–4 ne sont pas clos.
 | --- | --- | --- |
 | **0** | Mini 6502 pur | Livrée en 0.8.5 ; qualification II+ ouverte |
 | **1** | Services de fichiers sûrs | En cours : IMGFS/DOS33/DOSGET, NuFX, relectures |
-| **2** | Parcours d’arbres itératifs | État borné fait ; relecture d’arbre avec le 4 |
+| **2** | Parcours d’arbres itératifs | **Fait** ; reste la couverture des très grands répertoires |
 | **3** | Trous de préservation 0.8.x | À faire |
-| **4** | MOVE d’arbre entre volumes | Dossiers marqués faits ; curseur seul via V |
+| **4** | MOVE d’arbre entre volumes | **Clos** : marqués et curseur, même volume et autre volume |
 | **5** | FIXIT lecture seule | Après 4 |
 | **6** | Contrats plugins | Petites surcouches à traiter à la demande |
 | **7** | Preuves de séquences | Continu |
@@ -65,8 +65,12 @@ grossir `src/a2fc.c`.
 `walk_tree` (`src/tree_walk.h`) remplace la récursion. Sans ça : pas de
 MOVE d’arbre, DELETE enrichi ni SYNC plus profond.
 
-- [ ] **Relecture d’arbre avant suppression de source** — avec le chantier 4.
-- [ ] **Très grands répertoires** — étendre les scénarios restants.
+- [x] **Relecture d’arbre avant suppression de source** — tranché le
+  14 septembre 2026 : `copy_one` ne rend 1 qu’après avoir parcouru l’arbre
+  jusqu’au bout et relu chaque fichier écrit ; un recomptage de la
+  destination avant l’effacement coûtait 85 octets de résident pour aucune
+  garantie supplémentaire, retiré. La source n’est effacée qu’après ce 1.
+- [ ] **Très grands répertoires** — étendre les scénarios restants (bancs).
 
 ## 3. Trous de préservation
 
@@ -85,8 +89,10 @@ métadonnées ou fermeture n’est ni une EOF ni un chemin libre.
 Dossiers marqués : copie relue, source intacte si le lot s’arrête. Même
 volume = réécriture d’entrée.
 
-- [ ] **Dossier sous le curseur, autre volume** — le menu MOVE renvoie
-  encore vers V ; le marquer suffit.
+- [x] **Dossier sous le curseur, autre volume** — le menu MOVE rend la
+  main au résident (note commençant par l’octet 2), qui applique
+  `copy_or_move(1)` au curseur : même parcours que V, même garantie.
+  **Chantier clos le 14 septembre 2026.**
 
 ## 5. FIXIT : plan, zéro écriture
 

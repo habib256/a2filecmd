@@ -6,11 +6,11 @@ Réserves au lien, en octets, 65C02/6502 ; ce ne sont pas des sommes :
 
 | Zone | 65C02 | 6502 | Objectif |
 | --- | ---: | ---: | --- |
-| MAIN (résident, plafond `$BEE0`) | **335** | 779 | 256 sur 65C02 : tenu |
+| MAIN (résident, plafond `$BEE0`) | **299** | 742 | 256 sur 65C02 : tenu |
 | Carte langage | 34 | 26 | ne pas descendre |
 | CATALOG (catalogues DOS 3.3 et images) | 15 | 36 | surcouche de lecture, pas à enrichir |
 | LOWRAM | 129 | 154 | — |
-| Écart avant la pile C de 192 octets | 363 | 996 | — |
+| Écart avant la pile C de 192 octets | 327 | 959 | — |
 | NAV | 142 | 208 | — |
 | DELETE | 409 | 405 | libéré par le parcours résident |
 | OPEN | 11 | 43 | ne pas retomber à quelques octets au prochain média |
