@@ -6,14 +6,14 @@ Réserves au lien, en octets, 65C02/6502 ; ce ne sont pas des sommes :
 
 | Zone | 65C02 | 6502 | Objectif |
 | --- | ---: | ---: | --- |
-| MAIN (résident, plafond `$BEE0`) | **847** | 1 300 | 256 sur 65C02 : tenu |
+| MAIN (résident, plafond `$BEE0`) | **590** | 1 037 | 256 sur 65C02 : tenu |
 | Carte langage | 14 | 6 | ne pas descendre |
 | CATALOG (catalogues DOS 3.3 et images) | 15 | 36 | surcouche de lecture, pas à enrichir |
-| LOWRAM | 238 | 263 | — |
-| Écart avant la pile C de 192 octets | 875 | 1 517 | — |
+| LOWRAM | 131 | 156 | — |
+| Écart avant la pile C de 192 octets | 618 | 1 254 | — |
 | NAV | 142 | 208 | — |
+| DELETE | 409 | 405 | libéré par le parcours résident |
 | OPEN | 11 | 43 | ne pas retomber à quelques octets au prochain média |
-| DELETE | 4 | 3 | respiration avant enrichissement |
 | IMGFS | 5 | 13 | idem |
 | UNSHRINK | 9 | 29 | idem |
 | ATTR | 26 | 26 | idem |
@@ -25,6 +25,28 @@ DUET, DOSGET, IDENT/FIXTYPES et la sonde DUET du routage avaient consommé
 la réserve retrouvée au neuvième incrément du chantier 1. Le reste de ce
 document est le journal chronologique de la consolidation, le plus récent
 en premier.
+
+Parcours d’arbres itératif (chantier 2), 14 septembre 2026 : `count_tree`,
+`copy_tree` et `delete_tree` récursifs sont remplacés par un moteur unique
+`walk_tree(mode)` dans `src/tree_walk.h`, résident, avec un cadre de trois
+octets par niveau dans trois tableaux `lv_base/lv_n/lv_i[TREE_DEPTH]`
+(32 niveaux, ce qu’un chemin ProDOS de 64 caractères ne peut dépasser) et
+les entrées de chaque niveau empilées dans la réserve de 213 entrées comme
+avant. Budget mesuré : quatre formes essayées. Un moteur unique avec les
+cadres adressés par pointeur de structure coûtait 423 octets de résident ;
+une instance par mode depuis l’en-tête (mode en constante) faisait déborder
+DELETE de 268 octets, et les trois instances résidentes ramenaient MAIN à
+11 octets — cc65 produit ~450 à 600 octets par copie de la boucle. La forme
+retenue (moteur unique, cadres en tableaux d’octets indexés par la
+profondeur, aides communes `push_paths`/`pop_paths`) coûte 257 octets de
+code et 99 de BSS ; DELETE ne garde que l’appel et gagne 405 octets.
+Réserves : MAIN 590/1 037, LOWRAM 131/156, écart avant pile 618/1 254,
+DELETE 409/405. Test hôte `tools/test_tree_walk.py` (ordre, bornes,
+arrêts sur erreur, dix scénarios sur un système de fichiers simulé) et banc
+`bench/tree_safety.py` réécrit : un arbre de 18 niveaux se copie, un arbre
+de 20 niveaux s’efface mais sa copie s’arrête proprement (le nom temporaire
+`A2FC.COPY` dans le dossier cible dépasse 64 caractères), un chemin de 221
+entrées est refusé avant toute écriture.
 
 CATALOG, 14 septembre 2026 : le lecteur de catalogue DOS 3.3
 (`read_dos33_panel`, `dos33_type`, 707 + 40 octets de code) puis le parcours

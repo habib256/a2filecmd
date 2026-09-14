@@ -109,6 +109,16 @@ POM2=/chemin/vers/pom2_headless python3 bench/memory.py
 Sans la variable `POM2`, les bancs cherchent l'executable a l'emplacement par
 defaut de l'auteur et s'arretent proprement s'il n'y est pas.
 
+L'hote doit **activer l'ecriture differee du disque dur et la vider a
+l'arret** (`setWriteBackEnabled(true)` sur la carte HDV et l'unite SmartPort
+du //c, `flushBay`/`saveDirty` avant de rendre la main) : POM2 garde les
+blocs ecrits par l'invite en RAM et ne les recopie dans le `.hdv` que sur
+demande. Sans cela, toute comparaison d'octets du `.hdv` apres l'arret est
+creuse -- un fichier copie en est simplement absent -- et les controles
+« preserve every disk byte » passent a vide. `pom2_playtest` le fait depuis le
+14 septembre 2026 ; pour s'en assurer sur un autre hote, copier un fichier
+seul dans le banc et relire le `.hdv` avec `tools/prodos_read.py`.
+
 `Pom2(..., preset='iie')` est la machine par defaut, un Apple //e Enhanced
 avec la carte HDV en slot 5 et un Mockingboard en slot 2. `preset='iic'`
 donne un Apple //c (ROM 32 Ko) : son lecteur integre est le Disk II du slot

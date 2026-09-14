@@ -172,7 +172,7 @@ $(SYSTEM) $(FLOPPY_SYSTEM): $(BUILD)/crt0_loader.o $(BUILD)/loader_mli.o Makefil
 	  -o $@ $(BUILD)/crt0_loader.o $(BUILD)/loader_mli.o \
 	  $(BUILD)/$(if $(filter $(FLOPPY_SYSTEM),$@),launcher_floppy,launcher).o $(IOBUF)
 
-$(CODE): $(SRC)/plugins/file_install.h $(SRC)/file_output.h $(SRC)/file_copy.h $(SRC)/display_types.h $(SRC)/launch.h $(SRC)/errors.h $(SRC)/media.h $(SRC)/viewer_ids.h $(SRC)/duet_probe.h $(SRC)/batch.h $(SRC)/config.h $(SRC)/format.c $(SRC)/a2fc.c $(SRC)/a2fc.cfg $(SRC)/a2fc_plugin.h $(SRC)/music.h $(SRC)/memory_swap.h $(BUILD)/display.o $(OBJS) Makefile | $(BUILD)
+$(CODE): $(SRC)/plugins/file_install.h $(SRC)/file_output.h $(SRC)/file_copy.h $(SRC)/tree_walk.h $(SRC)/display_types.h $(SRC)/launch.h $(SRC)/errors.h $(SRC)/media.h $(SRC)/viewer_ids.h $(SRC)/duet_probe.h $(SRC)/batch.h $(SRC)/config.h $(SRC)/format.c $(SRC)/a2fc.c $(SRC)/a2fc.cfg $(SRC)/a2fc_plugin.h $(SRC)/music.h $(SRC)/memory_swap.h $(BUILD)/display.o $(OBJS) Makefile | $(BUILD)
 	$(CL) $(CFLAGS) -D 'A2FC_VERSION="$(A2FC_VERSION)"' -C $(SRC)/a2fc.cfg \
 	  -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__STACKSIZE__=$(A2FC_STACK) -Wl -D,__BIN2SIZE__=$(BIN2SIZE) \
 	  -Wl -m,$(BUILD)/a2fc.map -Wl -Ln,$(BUILD)/a2fc.lbl \
@@ -305,6 +305,7 @@ test: test-mini
 	python3 $(TOOLS)/test_raw_transition.py
 	python3 $(TOOLS)/test_overlay_load.py
 	python3 $(TOOLS)/test_catalog_overlay.py
+	python3 $(TOOLS)/test_tree_walk.py
 	python3 $(TOOLS)/test_goto_safety.py
 	python3 $(TOOLS)/test_file_safety.py
 	python3 $(TOOLS)/test_binary2_safety.py

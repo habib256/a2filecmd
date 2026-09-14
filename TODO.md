@@ -12,7 +12,8 @@ livrées sont dans le [CHANGELOG](CHANGELOG.md). Deux produits distincts,
 **Marge résidente 65C02 retrouvée** (14 septembre 2026) : les lecteurs de
 catalogue DOS 3.3 et d’images sont devenus la surcouche CATALOG, et MAIN
 garde **847 octets** sur 65C02 (1 300 sur 6502), l’écart avant la pile
-875/1 517. Restent serrés :
+875/1 517 ; le chantier 2 en a dépensé 257 (code) et 99 (BSS) : **590**
+octets après le parcours itératif. Restent serrés :
 la carte langage 14/6, OPEN 11/43, DELETE 4/3, IMGFS 5/13, UNSHRINK 9/29.
 L’objectif du chantier 6 (256 octets MAIN sur 65C02) est tenu ; le respecter
 à chaque enrichissement, sans relever les plafonds
@@ -77,11 +78,11 @@ Les travaux sur lecteurs physiques sont signalés par **💾**.
 | --- | --- | --- | --- |
 | **0** | Mini 6502 pur | Copie 4,4× plus rapide ; HGR, éditeur, TXT, DEL, tags, LOCK, RENAME | **Livré en 0.8.5** ; qualification II+ physique ouverte |
 | **1** | Services de fichiers sûrs | Un contrat unique : création exclusive, remplacement récupérable, copie vérifiée | En cours : douze incréments ; IMGFS/DOS33/DOSGET, NuFX et relectures ouverts |
-| **2** | Parcours d’arbres itératifs | État borné à la place de la récursivité ; refus sûrs conservés | À faire |
+| **2** | Parcours d’arbres itératifs | État borné à la place de la récursivité ; refus sûrs conservés | **État borné fait** ; relecture d’arbre avant suppression avec le 4 |
 | **3** | Trous de préservation 0.8.x | Conversions relues, pannes combinées, nettoyages/restaurations consignés | À faire |
 | **4** | MOVE d’arbre entre volumes | Dossiers et marquage ; aucune source touchée après une copie partielle | À faire, après 1 et 2 |
 | **5** | FIXIT lecture seule | Diagnostic et plan choisis par l’utilisateur ; zéro écriture | Après 4 |
-| **6** | Contrats plugins et petites surcouches | Buffers, AUX, restauration ; respiration mesurée sans relever les plafonds | MAIN 65C02 à 847 octets (CATALOG) ; petites surcouches à traiter |
+| **6** | Contrats plugins et petites surcouches | Buffers, AUX, restauration ; respiration mesurée sans relever les plafonds | MAIN 65C02 à 590 octets après CATALOG et le chantier 2 ; petites surcouches à traiter |
 | **7** | Preuves de séquences | États d’overlays, mutations archives/FS, XL deux CPU, premier boot IIgs | Continu |
 | **8** | 💾 NIBCOPY réel, puis un gain | Qualification Disk II physique ; un seul format ou reprise ensuite | Après 5, au choix |
 | **9** | 💾 ADTPro blocs | Dossiers, envoi/réception, CRC, NAK ; pas de nibble en premier | Après 5, au choix |
@@ -176,9 +177,14 @@ la pile est trop courte est correct ; ce n’est pas une architecture. Sans
 état borné : pas de MOVE d’arborescence entre volumes, pas de DELETE
 enrichi, pas de SYNC plus profond.
 
-- [ ] **État borné** — remplacer progressivement la récursivité ; conserver
-  les refus sûrs, le précontrôle avant le premier effacement, et la
-  vérification complète avant toute suppression de source.
+- [x] **État borné** — `walk_tree` (`src/tree_walk.h`) parcourt l’arbre
+  sans récursion, un cadre de trois octets par niveau ; refus explicites
+  avant toute écriture (chemin de 64 caractères, 213 entrées par chemin,
+  répertoire illisible), précontrôle complet avant le premier effacement
+  conservé. Coût 257 octets de code et 99 de BSS ; MAIN 65C02 590 octets.
+- [ ] **Vérification complète avant suppression de source** — le MOVE d’un
+  dossier efface encore la source après une copie dont chaque fichier a été
+  relu, sans relecture de l’arbre entier : à traiter avec le chantier 4.
 - [ ] **Très grands répertoires** — étendre les scénarios restants ; le
   retour au dossier quitté et la navigation entre fenêtres sont acquis.
 

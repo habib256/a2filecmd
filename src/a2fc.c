@@ -148,15 +148,22 @@ struct MoveBatch {
 };
 #define MB ((struct MoveBatch*)text_starts)
 typedef char batch_state_fits[sizeof text_starts - sizeof(struct MoveBatch)];
-/* The recursive walks (copying and deleting a directory) stack the
+/* The tree walks (counting, copying, deleting a directory) stack the
  * entries of each level: a level occupies pool[base..base+n[, the next
  * level starts at base+n. A tree in which one path accumulates more than
  * POOL_SIZE entries is refused before any write. The pool occupies the
  * entry table of the inactive panel (4060 bytes), useless during the
- * operation since both panels are reread afterwards. */
+ * operation since both panels are reread afterwards. The walk itself is
+ * not recursive: one frame per directory level -- where its entries sit
+ * in the pool, how many, which is in hand -- in three byte arrays indexed
+ * by the depth, which the 6502 addresses in one instruction. A
+ * 64-character ProDOS path cannot nest more than TREE_DEPTH levels. */
 #define POOL_SIZE 213
+#define TREE_DEPTH 32
 struct Mini { char name[16]; unsigned char type; unsigned int aux; };
 static struct Mini* pool;
+static unsigned char lv_base[TREE_DEPTH], lv_n[TREE_DEPTH], lv_i[TREE_DEPTH];
+typedef char pool_fits[MAX_ENTRIES * sizeof(struct Entry) - POOL_SIZE * sizeof(struct Mini) + 1];
 
 /* ---------------------------------------------------------------------- */
 /* MLI: GET_FILE_INFO and SET_FILE_INFO                                    */
@@ -3629,82 +3636,30 @@ static void drop_entry(struct Panel* pan, unsigned char i)
 
 #include "file_copy.h"
 
-/* The three tree walks that follow are recursive: their local variables
- * must live on the stack, not in statics as -Cl wants for the rest of the
- * program, otherwise the inner level overwrites the outer level's path
- * length and the parent directory is never found again. */
-#pragma static-locals (push, off)
-
-/* The number of files under `full` (directories excluded), for the
- * progress counter. 0xFFFF if the tree cannot be walked. */
-static unsigned int count_tree(unsigned char base)
+/* Drops the last "/name" of a path. */
+static void pop_name(char* path)
 {
-    unsigned char n, i, len = strlen(full);
-    unsigned int files = 0, sub;
-    if (!list_dir(full, base, &n)) return 0xFFFF;
-    for (i = 0; i < n; ++i) {
-        if (pool[base + i].type != 0x0F) { ++files; continue; }
-        if (!push_name(full, pool[base + i].name)) return 0xFFFF;
-        sub = count_tree(base + n);
-        full[len] = 0;
-        if (sub == 0xFFFF) return sub;
-        files += sub;
-    }
-    return files;
+    char* slash = strrchr(path, '/');
+    if (slash) *slash = 0;
 }
 
-/* Copies the contents of directory `full` into directory `other_full`,
- * which already exists, subdirectories included; a subdirectory already
- * present is filled in, not recreated. */
-static unsigned char copy_tree(unsigned char base)
-{
-    unsigned char n, i, sl = strlen(full), dl = strlen(other_full), ok = 1;
-    if (!list_dir(full, base, &n)) { dir_fail(); return 0; }
-    for (i = 0; i < n && ok; ++i) {
-        const struct Mini* m = &pool[base + i];
-        if (abort_key()) { ok = 0; break; }
-        if (!push_name(full, m->name) || !push_name(other_full, m->name)) { too_long(); ok = 0; }
-        else if (m->type == 0x0F) {
-            if (!exists(other_full) && mkdir(other_full)) { report_error("Mkdir"); ok = 0; }
-            else ok = copy_tree(base + n);
-        } else ok = copy_file(m->name, m->type, m->aux) != 0;
-        full[sl] = 0;
-        other_full[dl] = 0;
-    }
-    return ok;
-}
+/* The walk is resident, deleting included: the DELETE window could not
+ * hold a walk of its own, and the resident has the room since the walks
+ * stopped recursing. */
+#include "tree_walk.h"
 
-/* Deletes everything the directory `full` contains, then the directory. */
 /* The DELETE overlay, first half: delete_tree, which moving a directory
- * also loads, once the copy is done. */
+ * also loads, once the copy is done. The whole tree is walked first, so
+ * nothing is erased from a tree that cannot be walked to its end. */
 #pragma code-name (push, "DELETE")
 #pragma rodata-name (push, "DELETERO")
-static unsigned char delete_tree(unsigned char base)
+static unsigned char delete_tree(void)
 {
-    unsigned char n, i, len = strlen(full), ok = 1;
-    if (!base && count_tree(0) == 0xFFFF) { dir_fail(); return 0; }
-    if (!list_dir(full, base, &n)) { dir_fail(); return 0; }
-    progress_total += n;
-    for (i = 0; i < n && ok; ++i) {
-        progress_bar(pool[base + i].name, progress_done, progress_total);
-        if (abort_key()) { ok = 0; break; }
-        if (!push_name(full, pool[base + i].name)) { too_long(); ok = 0; break; }
-        if (pool[base + i].type == 0x0F) ok = delete_tree(base + n);
-        else if (remove(full)) { report_error("Delete"); ok = 0; }
-        else { ++a2fc_ops; ++progress_done; }
-        full[len] = 0;
-    }
-    if (ok && rmdir(full)) { report_error("Delete"); ok = 0; }
-    if (ok) {
-        ++a2fc_ops;
-        ++progress_done;
-    }
-    return ok;
+    if (walk_tree(WALK_COUNT) == 0xFFFF) { dir_fail(); return 0; }
+    return walk_tree(WALK_DELETE) == 1;
 }
 #pragma rodata-name (pop)
 #pragma code-name (pop)
-
-#pragma static-locals (pop)
 
 /* Copies the entry into the other panel's directory: a file, or a whole
  * directory. Returns 1 if everything is copied. */
@@ -3723,7 +3678,7 @@ static unsigned char copy_one(const struct Entry* e)
         if (mkdir(other_full)) { report_error("Mkdir"); return 0; }
         ++a2fc_ops;
     }
-    return copy_tree(0);
+    return walk_tree(WALK_COPY) == 1;
 }
 
 /* The files targeted by C, V and D: the panel's tags, otherwise the
@@ -4316,7 +4271,7 @@ static void copy_or_move(unsigned char move)
         if (is_up(e)) continue;
         if (!is_dir(e)) { ++progress_total; continue; }
         if (!build_full(full, pan, e)) { too_long(); refresh_both(); return; }   /* the pool has overwritten the other panel */
-        sub = count_tree(0);
+        sub = walk_tree(WALK_COUNT);
         if (sub == 0xFFFF) { dir_fail(); refresh_both(); return; }
         progress_total += sub;
     }
@@ -4330,7 +4285,7 @@ static void copy_or_move(unsigned char move)
          * stays as well, whole, rather than losing part of it. */
         if (move && progress_skipped == skipped_before) {
             build_full(full, pan, e);
-            if (is_dir(e) ? !(overlay("DELETE") && delete_tree(0)) : remove(full) != 0) { if (!is_dir(e) && !progress_abort) report_error("Delete source"); break; }
+            if (is_dir(e) ? !(overlay("DELETE") && delete_tree()) : remove(full) != 0) { if (!is_dir(e) && !progress_abort) report_error("Delete source"); break; }
             drop_entry(pan, picked[i] - removed);      /* gone: the source shows it right away */
             ++removed;
             draw_panel(active);
@@ -4390,7 +4345,7 @@ static void delete_targets(void)
         progress_bar(e->name, progress_done, progress_total);
         if (abort_key()) break;
         if (!build_full(full, pan, e)) { too_long(); break; }
-        if (is_dir(e)) { if (!delete_tree(0)) break; }
+        if (is_dir(e)) { if (!delete_tree()) break; }
         else if (remove(full)) { report_error("Delete"); break; }
         else { ++a2fc_ops; ++progress_done; }
         ++done;
