@@ -76,7 +76,8 @@ CODESIZE ?= 100
 CFLAGS = -t $(TARGET) $(CLDEFS) -O -Oirs -Cl --codesize $(CODESIZE)
 
 # __HIMEM__ = $BF00: just below the ProDOS global page. The C stack fits in
-# 256 bytes -- maximum depth measured on the bench: 94 (bench/stack.py).
+# 192 bytes -- the deepest point measured is 145 bytes, a tree copy
+# (bench/memory.py); walk_tree stops descending 80 bytes above the floor.
 HIMEM      = 0xBF00
 A2FC_STACK = 0x00C0
 # The ProDOS I/O buffers come from $0800 upward instead of the heap:
