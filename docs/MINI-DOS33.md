@@ -1,4 +1,4 @@
-# A2FC Mini DOS 3.3 — 0.8.6
+# A2FC Mini DOS 3.3 — 0.8.7
 
 A standalone edition for **Apple II+ 48 KB, NMOS 6502**, with two panels in
 40 columns and DOS 3.3 copying between two Disk II drives. No ProDOS,
@@ -8,8 +8,8 @@ Written entirely in 6502 assembly; see [Speed](#speed) for what that buys.
 
 ![Two panels with inverse video and bottom shortcuts](mini-dos33.png)
 
-The disk image `dist/A2FC-MINI-DOS33-0.8.6.dsk` boots through the Applesoft
-`HELLO` program, which centres `A2FILECMD`, `MINI DOS 3.3` and `V0.8.6` at
+The disk image `dist/A2FC-MINI-DOS33-0.8.7.dsk` boots through the Applesoft
+`HELLO` program, which centres `A2FILECMD`, `MINI DOS 3.3` and `V0.8.7` at
 the top of the 40-column screen, then `GPL3 VERHILLE ARNAUD` and
 `LOADING .... PLEASE WAIT ....` at the bottom, before
 `BRUN A2FC.MINI`. The same
@@ -115,8 +115,8 @@ New text files (N) and editor saves (E) use the same exclusive-create engine
 with the working area as the source: one new name, never an overwrite.
 E loads a text file of at most 32 data sectors (8 KB), edits it in RAM, then
 asks for a **new** name. A larger file is refused rather than saved truncated.
-A full 8 KB of non-zero bytes is measured as 8191 so the trailing NUL stays
-inside the working area. There is no in-place replace.
+A full 8 KB of non-zero bytes is refused too: the editor keeps a NUL after
+the text, and the last byte would be lost. There is no in-place replace.
 
 L locks or unlocks. With no tags it toggles the cursor file. With tags, if
 any marked file is locked the batch **unlocks** (so D can follow); if every
@@ -127,15 +127,20 @@ R renames the cursor file only. The new name must not exist. A locked file
 must be unlocked first. Only the catalog name bytes are written.
 
 Delete (D) acts on the tagged files, or on the cursor when nothing is tagged.
-Locked files are skipped so the rest of a batch can still go. A read error,
+Locked files are skipped so the rest of a batch can still go, and the
+result counts both (`2 DELETED, 1 LOCKED`). A read error,
 an invalid chain (including T/S or data on DOS tracks 1–2 or the catalog
-track), or a changed disk stops the batch. The catalog entry is marked deleted first (DOS
+track), or a changed disk stops the batch. Before any write, delete walks
+every other live file on the disk and refuses if one of them claims a
+sector of the target (a cross-linked disk), has a malformed chain, or cannot
+be read. The catalog entry is marked deleted first (DOS
 `$FF`, with the T/S list track kept in the last name byte, entry `$20`, as
 DOS's own DELETE and the UNDELETE utilities expect), then the sectors are
 freed in the VTOC. A crash after the catalog write can leak sectors; the
 other order would hand those sectors to the next create while the name
-still claimed them. An uncertain write latches `del_fault` so this run
-cannot write again.
+still claimed them. An uncertain write (copy, create, delete, lock or
+rename) latches the fault byte (`copy_fault` and `del_fault` are two names
+for it) so this run cannot write again, by any command.
 
 Delete, lock, rename and copy go back to the **catalog slot** the panel
 read the entry from, then hold the disk to the panel: the slot must still
@@ -143,7 +148,7 @@ carry the T/S pointer, type, sector count and the name as it was shown, or
 the operation is refused as **DISK CHANGED** before any write. A name alone
 is not an identity: the panel shows unprintable characters as `?`, and a
 sibling disk can reuse a name for another file. A write-protected disk is
-refused as itself, before the first write, and does not latch `del_fault`;
+refused as itself, before the first write, and does not latch the fault;
 protection discovered after the catalog mark is treated as an uncertain
 write. A catalog chain longer than the 15 sectors of track 17 is a loop:
 rename's collision scan and copy's destination scan refuse it rather than

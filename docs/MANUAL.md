@@ -1,6 +1,6 @@
 # The A2 File Cmd manual
 
-**Version 0.8.6** — A two-panel ProDOS file manager for an Apple II with
+**Version 0.8.7** — A two-panel ProDOS file manager for an Apple II with
 128 KB and 80-column support. Free software by Arnaud Verhille, under GPL v3.
 
 This manual describes two programs that share a name, a version number and
@@ -38,25 +38,25 @@ The download names include the CPU, category and version:
 
 | Role | Image name |
 |---|---|
-| Boot | `A2FILECMD-6502-BOOT-0.8.6.dsk` |
-| Files | `A2FILECMD-6502-FILES-0.8.6.dsk` |
-| Media | `A2FILECMD-6502-MEDIA-0.8.6.dsk` |
-| Disk tools | `A2FILECMD-6502-DISKTOOLS-0.8.6.dsk` |
-| Development tools | `A2FILECMD-6502-DEVTOOLS-0.8.6.dsk` |
-| Complete, 6502 | `A2FILECMD-6502-XL-0.8.6.2mg` |
-| Complete, 65C02 | `A2FILECMD-65C02-XL-0.8.6.2mg` |
+| Boot | `A2FILECMD-6502-BOOT-0.8.7.dsk` |
+| Files | `A2FILECMD-6502-FILES-0.8.7.dsk` |
+| Media | `A2FILECMD-6502-MEDIA-0.8.7.dsk` |
+| Disk tools | `A2FILECMD-6502-DISKTOOLS-0.8.7.dsk` |
+| Development tools | `A2FILECMD-6502-DEVTOOLS-0.8.7.dsk` |
+| Complete, 6502 | `A2FILECMD-6502-XL-0.8.7.2mg` |
+| Complete, 65C02 | `A2FILECMD-65C02-XL-0.8.7.2mg` |
 
 **A2FileCmd Mini DOS3.3** is a different program for a different machine and
-ships as one more file, `A2FC-MINI-DOS33-0.8.6.dsk`, a DOS 3.3 disk for an
+ships as one more file, `A2FC-MINI-DOS33-0.8.7.dsk`, a DOS 3.3 disk for an
 Apple II+; see [its section](#a2filecmd-mini-dos33).
 
 All floppies are 6502 and supplied as `.dsk` in DOS sector order; XL uses `.2mg`.
 Use the downloaded files directly: changing an extension does not convert an image.
 Each floppy image is 143,360 bytes. Check downloads against
-`SHA256SUMS-0.8.6.txt`; if all release files are together, run:
+`SHA256SUMS-0.8.7.txt`; if all release files are together, run:
 
 ```sh
-sha256sum -c SHA256SUMS-0.8.6.txt
+sha256sum -c SHA256SUMS-0.8.7.txt
 ```
 
 Boot the image, or launch `A2FILE.SYSTEM` from a ProDOS selector. To install
@@ -672,7 +672,7 @@ Development: README, `sdk/README.md`, `bench/README.md`. Remaining work: `TODO.m
 A standalone edition for an **Apple II+ with 48 KB and an NMOS 6502**: two
 panels in 40 columns and DOS 3.3 copying between two Disk II drives. No
 ProDOS, no 80-column card, no auxiliary memory, no language card. It is a
-separate program on its own disk, `A2FC-MINI-DOS33-0.8.6.dsk`; nothing in
+separate program on its own disk, `A2FC-MINI-DOS33-0.8.7.dsk`; nothing in
 the sections above applies to it, and it carries no overlay or plugin.
 Written entirely in 6502 assembly. The developer guide, measurements and
 build notes are in [MINI-DOS33.md](MINI-DOS33.md).
@@ -682,7 +682,7 @@ build notes are in [MINI-DOS33.md](MINI-DOS33.md).
 ### Booting
 
 The disk boots through an Applesoft `HELLO` that shows `A2FILECMD`,
-`MINI DOS 3.3` and `V0.8.6`, then `BRUN A2FC.MINI`. From DOS 3.3, use
+`MINI DOS 3.3` and `V0.8.7`, then `BRUN A2FC.MINI`. From DOS 3.3, use
 `BRUN A2FC.MINI`. Both panels open on the boot disk; each remembers its
 drive, selection and scroll position. Each panel shows 18 rows and a catalog
 of up to 105 files; `?` lists every control.

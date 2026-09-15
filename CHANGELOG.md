@@ -5,6 +5,31 @@ downloads and installation.
 
 ## Unreleased
 
+## [0.8.7] - 2026-09-15
+
+### Data preservation
+- UNSHRINK wrote ShrinkIt runs of 130 to 256 identical bytes as a single byte and still reported the file verified (the read-back decoded it the same way). Runs are decoded in full; malformed streams (codes outside the table, oversized chunks, lengths that do not add up) are refused instead of hanging or writing into I/O space; the LZW/1 stream CRC and the NuFX v3 thread CRC are checked; /RAM is recognised by its driver, not its name; a verified file is kept when only the archive tail is damaged. The real assembly core now runs under sim65 in the host tests.
+- DOSGET keeps sparse random-access text files and every sector of S, R and new A/B files (no header stripped). IMGFS reads the storage type from the directory entry. DISKIMG reads non-ProDOS floppies, recognises a Disk II by its slot ROM, checks the disk at every one-drive swap and names the disk that will really be erased; W accepts real image names only.
+- COMPARE and SEARCH report read and close errors instead of "Identical" or "not found"; BINARY2 skips folder records; a failed image panel read no longer mixes stale entries with volumes; the editor asks before saving converted text and leaves an unchanged file alone; tagged deletes say when directories go with their contents.
+- MOVE reads and compares everything again after the confirmation (a disk swapped during the question writes nothing), bounds directory walks, never takes a read error for a free name, and allows moves at the program volume's root. BLKEDIT refuses the running volume from a subdirectory, writes into images and refuses locked ones. RESCUE really retries and uses the fresh size; UNDELETE walks a volume root and recovers empty files; VOLNAME keeps image panels consistent; TXTCONV, IMGCONV and DOSWRITE tell a refused install (nothing changed, temporary removed) from a failed one.
+- PAINT816 and EXTASIE never touch /RAM for a refused picture; DISKCMP never compares a disk with itself; FIND reports unreadable files; VERIFY verifies every tagged volume; VOLINFO skips directory headers; MDVIEW and INTBASIC lose no text at a page end, and INTBASIC reads past 64 KB.
+
+### Disks, VDrive and launch
+- FORMAT identifies the target again just before the first write: a disk swapped during the prompts is left untouched. The language card is always restored after a direct driver call.
+- VDrive: a send that never completes (no cable) returns an I/O error instead of freezing; STATUS no longer claims 65,535 blocks, so a blank host image is refused by FORMAT; the interrupt handler starts with CLD; both drive vectors are restored on exit.
+- The launcher refuses a truncated A2FILE.CODE; the page-3 chain closes its file on every path.
+- BIN launch uses the file's own load address and type, not the panel's.
+
+### A2FileCmd Mini DOS3.3
+- One write-fault latch for every command; the destination panel is reread after a failed copy; copies never allocate on tracks 1–2; `$8D` line ends in the editor; a full 8 KB text is refused rather than cut; batch results count what was done and skipped; renaming to the same name says so; delete refuses a cross-linked disk.
+
+### Distribution
+- The BOOT floppy and the bench floppies keep 3 free blocks, what saving A2FILE.CFG needs: messages that no test checks were shortened and duplicated code folded where fixes had pushed overlays over a block boundary.
+- Benches: VOLINFO waits for its disk prompt and runs from the bench floppy; data_safety uses a real image name.
+
+### Validation
+- 731 host tests in 62 suites, each new test first seen failing on 0.8.6. POM2 benches on both CPUs, the complete session 73/73.
+
 - Mini: copying a panel (`=` and the boot duplicate) now includes the catalog slot, so a mirrored view is a full identity. After a write, only panels showing that disk are reread; two views share one catalog instead of paying it twice. The copy engine still does not borrow the name tables. Host tests cover the slot, a namelist without one, and names left intact after execute.
 - Every extraction now reads its output back. DOSGET, BINARY2, IMGFS (a disk image opened as a folder) and UNSHRINK reopen the closed file and compare it byte for byte with the source read a second time: the DOS sectors, the archive record, the image blocks, or the ShrinkIt thread decoded again from its start; the file must end where the data ends. A wrong byte, an unreadable output, a short read or a source lost during the second pass fails the extraction and removes the owned file. Host tests inject each fault.
 - To make room, IMGFS is a big overlay (its entries come from the snapshot) and UNSHRINK keeps its state at $3E00 with its code allowed up to $3BFF; the unused `new_output` wrapper leaves the resident. 65C02 resident headroom: 429 bytes. The BOOT floppy keeps 3 blocks free.
