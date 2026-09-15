@@ -684,7 +684,7 @@ build notes are in [MINI-DOS33.md](MINI-DOS33.md).
 The disk boots through an Applesoft `HELLO` that shows `A2FILECMD`,
 `MINI DOS 3.3` and `V0.8.7`, then `BRUN A2FC.MINI`. From DOS 3.3, use
 `BRUN A2FC.MINI`. Both panels open on the boot disk; each remembers its
-drive, selection and scroll position. Each panel shows 18 rows and a catalog
+drive, selection and scroll position. Each panel shows 19 rows and a catalog
 of up to 105 files; `?` lists every control.
 
 ### Keys
@@ -693,7 +693,7 @@ of up to 105 files; `?` lists every control.
 |---|---|
 | Tab (Ctrl-I), or 1 | Switch panels |
 | Up / down (Ctrl-K / Ctrl-J), or I / K | Previous / next file |
-| Left / right, or - / +, or < / > | Previous / next page (18 files) |
+| Left / right, or - / +, or < / > | Previous / next page (19 files) |
 | [ / ] | First / last file |
 | Return, or 2 | Preview by type; a 32–34 sector binary opens as hi-res, any other binary runs (BRUN, after Y) |
 | T / H | Text / hexadecimal preview; also available inside the preview |
@@ -716,7 +716,9 @@ of up to 105 files; `?` lists every control.
 
 Questions appear in inverse video on the footer: **Y confirms, N or Escape
 cancels**, every other key is ignored. Copy, delete, lock, rename and create
-return to the panels on their own; the result stays on the footer. Only
+return to the panels on their own; the result takes the file name line
+until the next key. The last row shows the main keys in inverse, each with
+its action attached: TAB Pan, C Copy, D Del, B Run, / Drv, ? Help, Q Quit. Only
 panels showing the written disk are reread; two views of that disk share
 one catalog. Ctrl-R still rereads both. Escape at the browser does
 nothing: DOS 3.3 has no parent directory.

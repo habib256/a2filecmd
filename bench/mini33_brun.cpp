@@ -48,7 +48,8 @@ int main(int argc,char** argv) {
     keys("\r");
     for(int n=0;n<400 && m.data()[0x2000]!=0x55;++n) run(cpu,1000000);
     if(m.data()[0x2000]!=0x55 || m.data()[0x2001]!=0x2A) fail("RETURN on PIC shows the picture");
-    if(screen(m).find("BRUN")!=std::string::npos) fail("no BRUN prompt for a picture");
+    // The key bar reads B+RUN: look for the question itself.
+    if(screen(m).find("BRUN PIC")!=std::string::npos) fail("no BRUN prompt for a picture");
     keys(" "); wait("PIC");
     // RETURN on GAME: the BRUN question, N keeps the panels.
     keys("K"); keys("\r"); wait("BRUN GAME");

@@ -20,10 +20,10 @@ static std::string screen(Memory& m) {
         if(c<32) c+=64; s+=c;
     } s+='\n'; } return s;
 }
-// the file rows of one panel: rows 2-19, 19 columns
+// the file rows of one panel: rows 2-20, 19 columns
 static std::string panel(Memory& m,int side) {
     std::string s=screen(m),out;
-    for(int y=2;y<20;++y) out+=s.substr(y*41+side*20,19)+"\n";
+    for(int y=2;y<21;++y) out+=s.substr(y*41+side*20,19)+"\n";
     return out;
 }
 static void run(M6502& c,int cycles) { for(int n=0;n<cycles;) n+=c.run(1024); }

@@ -76,7 +76,7 @@ int main(int argc,char** argv) {
     m.pasteRawKeys("Y",1);
     for(int n=0;n<4000;++n) {
         run(cpu,100000);
-        std::string s=screen(m), banner=s.substr(20*41,40);
+        std::string s=screen(m), banner=s.substr(21*41,40);
         if(banner.compare(0,5,"COPY ")==0 && banner.find("MARKED")==std::string::npos &&
            banner.substr(5,5)!="HELLO" && banner.substr(5,5)!="READM") {
             fprintf(stderr,"Torn copy banner\n%s",s.c_str()); std::exit(1);

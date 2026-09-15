@@ -1,5 +1,5 @@
 ; fileops.s -- lock, unlock and rename on the two panels. LOWCODE.
-; Prompts and results stay on the footer (rows 20-23), like copy.
+; Prompts and results stay on the footer (rows 21-23), like copy.
 
         .include "mini.inc"
 
@@ -27,7 +27,7 @@ fo_st:          .res 1
 .endif
 
 foot_ask:
-        ldy     #20
+        ldy     #21
         ldx     #0
         lda     #40
         jsr     zone

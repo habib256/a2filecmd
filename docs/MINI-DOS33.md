@@ -24,7 +24,7 @@ position independently.
 |---|---|
 | Tab (Ctrl-I), or 1 | Switch panels |
 | Up / down (Ctrl-K / Ctrl-J), or I / K | Previous / next file |
-| Left / right, or - / +, or < / > | Previous / next page (18 files) |
+| Left / right, or - / +, or < / > | Previous / next page (19 files) |
 | [ / ] | First / last file |
 | Return, or 2 | Preview by type; a 32–34 sector binary opens as hi-res, any other binary runs (BRUN, after Y) |
 | T / H | Text / hexadecimal preview; also available inside the preview |
@@ -52,15 +52,16 @@ an `L` lock marker on the right. The active panel header and selected file use
 **native II+ inverse video**. The inactive panel remembers its selection but
 uses normal characters. The lower separator shows the program name and file
 count, followed by the full selected filename and allocated sector count.
-Each panel displays **18 rows**, scrolling one row at the edge and paging by
-18 entries with the horizontal arrows. Each catalog can hold up to 105 files.
+Each panel displays **19 rows**, scrolling one row at the edge and paging by
+19 entries with the horizontal arrows. Each catalog can hold up to 105 files.
 
-One **inverse** command bar sits on the last row:
-**TAB C D L R N E / ? Q** (panel, copy, delete, lock, rename, new, edit,
-drive, help, quit). Questions use the same inverse video on the line above.
-Copy, delete, lock, rename and create return to the two panels as soon as
-the write finishes; the result stays on the footer. There is no extra key
-to dismiss it.
+The last row lists the main keys, each in inverse with its short action
+attached in normal video: **TAB**Pan **C**Copy **D**Del **B**Run **/**Drv
+**?**Help **Q**Quit. The other keys are in `?`. Questions use inverse video
+on the status line, just above the file name line. Copy, delete, lock,
+rename and create return to the two panels as soon as the write finishes;
+the result takes the file name line until the next key. There is no extra
+key to dismiss it.
 Numbers 1–7 still mean Tab, Open, Copy, Drive, Reread, Help and Quit.
 `?` lists every control.
 

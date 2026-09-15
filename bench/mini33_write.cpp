@@ -55,7 +55,9 @@ int main(int argc,char**argv) {
     keys("Y"); wait("DISK IS WRITE PROTECTED"); settle();
     assert(d->getWriteFlushCount()==0);
     d->setDriveHostWriteProtected(1,false);
-    assert(screen(m).substr(21*41,9)=="A2FC.MINI");
+    // The result holds the name row until a key; Z does nothing else.
+    assert(screen(m).substr(22*41,23)=="DISK IS WRITE PROTECTED");
+    keys("Z"); assert(screen(m).substr(22*41,9)=="A2FC.MINI");
     // The target is swapped while COPY A2FC.MINI? waits for Y: the VTOC
     // reserved on the first disk must not be written over the second.
     keys("C"); wait("CANCEL");
@@ -64,12 +66,12 @@ int main(int argc,char**argv) {
     assert(d->getWriteFlushCount()==0);
     assert(d->insertDisk(1,argv[3]));
     keys("\x12"); settle(); expect(m,"KEEP.DST");   // Ctrl-R: reread both
-    assert(screen(m).substr(21*41,9)=="A2FC.MINI");
+    assert(screen(m).substr(22*41,9)=="A2FC.MINI");
     keys("C"); wait("CANCEL"); keys("Y"); wait("COPIED"); settle();
     assert(d->getWriteFlushCount()>0); assert(d->flushPendingWrites());
     for(int i=0;i<0x800;++i) assert(m.data()[0x0800+i]==0xa5);
     auto writes=d->getWriteFlushCount();
-    assert(screen(m).substr(21*41,9)=="A2FC.MINI");
+    keys("Z"); assert(screen(m).substr(22*41,9)=="A2FC.MINI");
     keys("C"); wait("NAME EXISTS"); settle();
     assert(d->getWriteFlushCount()==writes);
     keys("Q"); keys("Y"); expect(m,"\n]");

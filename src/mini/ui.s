@@ -75,7 +75,7 @@ cf_ok:          .res 1          ; how many of a batch landed
 pg_acc:         .res 2          ; copy_progress: done * 32
 pg_fill:        .res 1
 pg_i:           .res 1
-have_note:      .res 1          ; last operation result, drawn on row 22
+have_note:      .res 1          ; last operation result, drawn on row 22 until the next key
 brun_go:        .res 1          ; 1: page 3 holds the BRUN stub, start.s jumps there
 br_idx:         .res 1          ; brun_file locals
 br_last:        .res 1
@@ -526,13 +526,13 @@ draw:
         jsr     put
         ldy     t2
         iny
-        cpy     #20
+        cpy     #21
         bcc     @divider
         lda     #0
         jsr     draw_panel
         lda     #1
         jsr     draw_panel
-        ldy     #20
+        ldy     #21
         ldx     #0
         lda     #40
         jsr     zone
@@ -551,7 +551,7 @@ draw:
 @nomarks:
         lda     #0
         sta     inverse
-        ldy     #21
+        ldy     #22
         ldx     #0
         jsr     at
         lda     count
@@ -586,13 +586,7 @@ draw:
         cpx     #40
         bne     @note
 @keys:
-        ldy     #23
-        ldx     #0
-        lda     #40
-        jsr     zone
-        PRINT   " TAB  C  D  L  R  N  E  /  ?  Q"
-        lda     #0
-        sta     inverse
+        KEYBAR  23, "TAB Pan,C Copy,D Del,B Run,/ Drv,? Help,Q Quit"
         rts
 
 ; ---------------------------------------------------------------------
@@ -713,7 +707,7 @@ view:
         jsr     preview         ; read once; T and H only redraw it
         sta     error
         beq     @render
-        ldy     #20
+        ldy     #21
         ldx     #0
         lda     #40
         jsr     zone
@@ -937,7 +931,7 @@ copy_ask_one:
         jmp     copy_ask_bar
 
 copy_ask_many:
-        ldy     #20
+        ldy     #21
         ldx     #0
         lda     #40
         jsr     zone
@@ -953,7 +947,7 @@ copy_ask_bar:
 
 ; copy_banner -- inverse "COPY " and the first 15 name characters
 copy_banner:
-        ldy     #20
+        ldy     #21
         ldx     #0
         lda     #40
         jsr     zone
@@ -991,7 +985,7 @@ cf_dest_show:
         lda     cp_dest
         sta     drive
 cf_show:
-        ldy     #20
+        ldy     #21
         ldx     #0
         lda     #40
         jsr     zone
@@ -1342,6 +1336,8 @@ main:
         jsr     copy_entries_to_right
 @loop:
         jsr     draw
+        lda     #0              ; the result is drawn once: the next key
+        sta     have_note       ; gives its row back to the name
         jsr     key
         sta     ck
         cmp     #'1'
@@ -1357,7 +1353,7 @@ main:
         lda     ck
         cmp     #'Q'
         bne     @notquit
-        ldy     #22
+        ldy     #21
         ldx     #0
         lda     #40
         jsr     zone
@@ -1869,7 +1865,7 @@ show_hgr:
         lda     LOWSCR
         rts
 @fail:
-        ldy     #20
+        ldy     #21
         ldx     #0
         lda     #40
         jsr     zone
@@ -1962,7 +1958,7 @@ edit_file:
         and     #$7F
         cmp     #TYPE_TEXT
         beq     @text
-        ldy     #20
+        ldy     #21
         ldx     #0
         lda     #40
         jsr     zone
@@ -1995,7 +1991,7 @@ edit_file:
         jsr     name_to_cs
         jmp     save_new
 @fail:
-        ldy     #20
+        ldy     #21
         ldx     #0
         lda     #40
         jsr     zone
@@ -2008,7 +2004,7 @@ edit_file:
         PRINT   "INVALID T-S LIST - NOT LOADED"
         jmp     keep_note
 @big:
-        ldy     #20
+        ldy     #21
         ldx     #0
         lda     #40
         jsr     zone
@@ -2120,7 +2116,7 @@ delete_file:
         ldx     active
         jsr     tag_count
         sta     tg_n
-        ldy     #20
+        ldy     #21
         ldx     #0
         lda     #40
         jsr     zone
@@ -2226,7 +2222,7 @@ batch_done:
         rts
 
 foot_zone:
-        ldy     #20
+        ldy     #21
         ldx     #0
         lda     #40
         jmp     zone
@@ -2295,12 +2291,12 @@ del_show:
         PRINT   "UNSUPPORTED / INVALID DOS STRUCTURE"
         rts
 
-; keep_note -- remember row 20 as the status line. The next draw shows
-; the two panels with that result on row 22; no extra key.
+; keep_note -- remember row 21, the question and result line. The next
+; draw shows the two panels with that result on row 22 until a key.
 keep_note:
         ldx     #0
 @copy:
-        lda     screen_image+20*40,x
+        lda     screen_image+21*40,x
         sta     note_line,x
         inx
         cpx     #40

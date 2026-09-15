@@ -16,7 +16,7 @@ NAME_LEN        = 30            ; DOS name characters kept per entry
 NAME_STRIDE     = 32            ; power of two: index*32 needs no multiply
 ENT_CAT_TRACK   = NAME_LEN      ; the stride's two spare bytes say where the
 ENT_CAT_SLOT    = NAME_LEN+1    ; entry was read: track, then sector<<3 | slot
-PANEL_ROWS      = 18            ; visible file rows per panel
+PANEL_ROWS      = 19            ; visible file rows per panel
 SCREEN_CELLS    = 960           ; 24 rows of 40 columns, composed off-screen
 TAG_BYTES       = 14            ; 105 marks, one bit each, per panel
 

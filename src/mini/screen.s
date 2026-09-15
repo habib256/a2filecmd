@@ -369,8 +369,8 @@ filetype:
 ; ---------------------------------------------------------------------
 ; keys_bar -- A = row, w1 = spec address. On return t2 indexes the NUL.
 ;
-; "TAB Panel,RET Open" becomes an inverse key block then a plain label.
-; A one-character key is centred, so "C Copy" reads as " C  COPY".
+; "TAB Pan,C Copy" becomes each key in inverse, its label attached in
+; normal video, one space between pairs: [TAB]PAN [C]COPY.
 ; ---------------------------------------------------------------------
 keys_bar:
         tax                     ; row
@@ -394,36 +394,15 @@ keys_bar:
         beq     @end
         lda     #1
         sta     inverse
-        lda     col
-        sta     t6              ; where this key block starts
-        ldy     t2
-        iny
-        lda     (w1),y          ; a single-character key is padded left
-        cmp     #' '
-        bne     @keys
-        lda     #' '
-        jsr     put
 @keys:
         ldy     t2
         lda     (w1),y
-        beq     @pad
-        cmp     #' '
-        beq     @pad
+        beq     @end
         inc     t2
+        cmp     #' '
+        beq     @label
         jsr     put
         jmp     @keys
-@pad:
-        lda     t6
-        clc
-        adc     #3
-        sta     t5
-@padloop:
-        lda     col
-        cmp     t5
-        bcs     @label
-        lda     #' '
-        jsr     put
-        jmp     @padloop
 @label:
         lda     #0
         sta     inverse
@@ -431,16 +410,14 @@ keys_bar:
         ldy     t2
         lda     (w1),y
         beq     @end
+        inc     t2
         cmp     #','
         beq     @comma
-        inc     t2
         jsr     put
         jmp     @labelloop
 @comma:
-        inc     t2              ; step over the comma, space out the next
         lda     #' '
         jsr     put
-        ldy     t2
         jmp     @field
 @end:
         rts

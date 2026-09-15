@@ -60,10 +60,11 @@ int main(int argc,char**argv) {
             assert(changes.hits[a]==expected);
         }
     };
-    // Only the active header is inverse; the shortcut row is inverse too.
+    // Only the active header is inverse; on the shortcut row the key is
+    // inverse and its label, attached, is normal: [TAB]PAN.
     assert(m.data()[0x400]<0x40); assert(m.data()[0x414]>=0x80);
     const int bar=0x400+(23&7)*128+(23>>3)*40;
-    assert(m.data()[bar]<0x40); assert(m.data()[bar+3]<0x40);
+    assert(m.data()[bar]<0x40); assert(m.data()[bar+2]<0x40); assert(m.data()[bar+3]>=0x80);
     changedOnly("Z"); changedOnly("\x1b"); // root ESC does not quit
     changedOnly("K"); changedOnly("\x0a"); // HELLO -> A2FC.MINI -> README
     auto chosen=screen(m);
@@ -74,7 +75,7 @@ int main(int argc,char**argv) {
     keys("T"); expect(m,"APPLE II+ 48 KB"); keys("\x1b");
     auto pane=[&](int side) {
         std::string p; auto s=screen(m);
-        for(int y=1;y<20;++y) {
+        for(int y=1;y<21;++y) {
             assert(s[y*41+19]==':'); assert(s[y*41+39]==' ');
             p+=s.substr(y*41+side*20,19);
         } return p;
@@ -82,24 +83,24 @@ int main(int argc,char**argv) {
     changedOnly("1"); // numeric first bar button: TAB
     assert(m.data()[0x400]>=0x80); assert(m.data()[0x414]<0x40);
     auto left=pane(0);
-    assert(screen(m).substr(21*41,5)=="HELLO");
+    assert(screen(m).substr(22*41,5)=="HELLO");
     keys("2"); expect(m,"PREVIEW: FIRST SECTOR"); keys("\x1b");
     keys("4"); expect(m,"D2"); expect(m,"20 FILES"); assert(pane(0)==left);
-    changedOnly("\x15"); // RIGHT pages by 18; does not switch pane
-    assert(screen(m).substr(21*41,6)=="FILE18");
-    changedOnly("K"); expect(m,"ABCDEFGHIJKLMN+");
-    expect(m,"ABCDEFGHIJKLMNOPQRSTUVWXYZ1234"); assert(pane(0)==left);
+    changedOnly("\x15"); // RIGHT pages by 19; does not switch pane
+    assert(screen(m).substr(22*41,30)=="ABCDEFGHIJKLMNOPQRSTUVWXYZ1234");
+    expect(m,"ABCDEFGHIJKLMN+"); assert(pane(0)==left);
     changedOnly("K"); // last entry: no physical screen writes
     keys("\r"); expect(m,"LONG NAME CONTENT"); keys("\x1b");
-    changedOnly("\x08"); assert(screen(m).substr(21*41,6)=="FILE01");
-    changedOnly("["); assert(screen(m).substr(21*41,9)=="GREETINGS");
+    changedOnly("\x08"); assert(screen(m).substr(22*41,9)=="GREETINGS");
+    changedOnly("K"); assert(screen(m).substr(22*41,6)=="FILE01");
+    changedOnly("["); assert(screen(m).substr(22*41,9)=="GREETINGS");
     changedOnly("]"); expect(m,"ABCDEFGHIJKLMNOPQRSTUVWXYZ1234");
-    changedOnly("-"); assert(screen(m).substr(21*41,6)=="FILE01");
+    changedOnly("-"); assert(screen(m).substr(22*41,9)=="GREETINGS");
     changedOnly("+"); expect(m,"ABCDEFGHIJKLMNOPQRSTUVWXYZ1234");
     keys("5"); expect(m,"ABCDEFGHIJKLMNOPQRSTUVWXYZ1234"); assert(pane(0)==left);
-    changedOnly("\t"); assert(screen(m).substr(21*41,6)=="README");
+    changedOnly("\t"); assert(screen(m).substr(22*41,6)=="README");
     auto right=pane(1);
-    keys("\x12"); assert(screen(m).substr(21*41,6)=="README"); assert(pane(1)==right);
+    keys("\x12"); assert(screen(m).substr(22*41,6)=="README"); assert(pane(1)==right);
     keys("H"); expect(m,"00: 41324643"); keys("\x1b");
     keys("\t"); left=pane(0);
     assert(raw->insertDisk(1,argv[4]));
@@ -111,7 +112,7 @@ int main(int argc,char**argv) {
     assert(raw->insertDisk(1,argv[3]));
     keys("\x12"); expect(m,"GREETINGS"); assert(pane(0)==left);
     keys("="); keys("\t"); expect(m,"20 FILES");
-    assert(screen(m).substr(21*41,9)=="GREETINGS");
+    assert(screen(m).substr(22*41,9)=="GREETINGS");
     keys("/"); expect(m,"4 FILES"); expect(m,"GREETINGS");
     for(int i=0;i<0x800;++i) assert(m.data()[0x0800+i]==0xa5);
     puts(screen(m).c_str());

@@ -56,6 +56,15 @@ ajoute RETURN et B pour lancer un binaire par BRUN (`bench/mini33_brun.py`,
 depuis HELLO et depuis l’invite DOS). Le manuel PDF de la release a été
 régénéré pour ces touches, et `SHA256SUMS-0.8.7.txt` avec lui.
 
+Elle a été remplacée une seconde fois le même jour pour simplifier le bas
+de l’écran : panneaux de 19 lignes, lignes d’état et de nom descendues
+d’une ligne sur l’ancienne ligne de résultat, et une dernière ligne de
+touches en inverse suivies de leur action abrégée (`TAB`Pan `C`Copy
+`D`Del `B`Run `/`Drv `?`Help `Q`Quit). Le résultat d’une opération prend
+la ligne du nom jusqu’à la touche suivante. `mini33`, `mini33_ops`,
+`mini33_write`, `mini33_review` et `mini33_brun` suivent la nouvelle
+disposition et passent, avec sim65 26 + 57 et `make test`.
+
 ## Non refait
 
 Pas de qualification sur matériel réel de cette révision. Le délai d’envoi

@@ -47,7 +47,7 @@ _ask_name:
         lda     #0
         sta     nm_len
 @draw:
-        ldy     #20
+        ldy     #21
         ldx     #0
         lda     #40
         jsr     zone
