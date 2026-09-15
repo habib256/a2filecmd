@@ -25,13 +25,32 @@ static void clear_(void)
     for (r = 0; r < LINES; ++r) { for (c = 0; c < 80; ++c) screen[r][c] = ' '; screen[r][80] = 0; }
     hrow = hcol = 0;
 }
+/* argv[2]: page through listpage() from that offset, as Space does. */
+static void pages(unsigned long from)
+{
+    int r, n, c;
+    starts[0] = from; page = 0; known = 1;
+    for (;;) {
+        r = listpage();
+        printf("PAGE %d %ld\n", r, known == page + 2 ? (long)starts[page + 1] : -1L);
+        for (n = 0; n < LINES; ++n) {
+            c = 79;
+            while (c >= 0 && screen[n][c] == ' ') --c;
+            screen[n][c + 1] = 0;
+            printf("|%s\n", screen[n]);
+        }
+        if (r != 1 || page + 1 >= known) break;
+        ++page;
+    }
+}
 int main(int argc, char** argv)
 {
     static unsigned char data[512];
     int r = 1, rows;
     a.sprintf = sprintf; a.fread = fread; a.fseek = fseek;
-    a.cputc = putc_; a.gotoxy = xy_; buf = data;
+    a.cputc = putc_; a.gotoxy = xy_; a.clrscr = clear_; buf = data;
     f = fopen(argv[1], "rb");
+    if (argc > 2) { pages(strtoul(argv[2], 0, 10)); return 0; }
     clear_();
     seek(0);
     row = col = 0; space = 1;
@@ -130,6 +149,26 @@ def wrapped(lines):
             l = l[80:]
         out.append(l.rstrip())
     return out
+
+
+def paged(lines, rows=22):
+    """The pages as they must come: whole lines while they fit; a line that
+    runs off the bottom is started there and shown again, whole, at the top
+    of the next page (unless it began its own page, which it then fills)."""
+    pages, i = [], 0
+    while i < len(lines):
+        page, first = [], i
+        while i < len(lines) and len(page) < rows:
+            w = wrapped([lines[i]])
+            if len(page) + len(w) > rows:
+                page += w[:rows - len(page)]
+                if i != first:
+                    break
+            else:
+                page += w
+            i += 1
+        pages.append(page)
+    return pages
 
 
 def prog(lines):
@@ -249,6 +288,55 @@ class IntBasic(unittest.TestCase):
         st, lines = self.run_list(b'')
         self.assertEqual(st, 0)
         self.assertEqual(lines, [])
+
+    # -- pages -------------------------------------------------------------
+    def run_pages(self, data, start=0):
+        f = self.p / 'in.bin'
+        f.write_bytes(data)
+        out = subprocess.check_output([str(self.exe), str(f), str(start)], text=True, timeout=20)
+        pages = []
+        for l in out.splitlines():
+            if l.startswith('PAGE '):
+                _, r, nxt = l.split()
+                pages.append((int(r), int(nxt), []))
+            else:
+                pages[-1][2].append(l[1:])
+        for _, _, rows in pages:
+            while rows and not rows[-1]:
+                rows.pop()
+        return pages
+
+    def test_a_long_line_at_the_bottom_is_shown_whole_on_the_next_page(self):
+        """The tail of a line wrapped past row 21 used to be skipped: the
+        next page started after the line."""
+        p = prog([(i, bytes([0x4B])) for i in range(1, 21)]
+                 + [(100, bytes([0x5D]) + chars('X' * 200))] + [(200, bytes([0x51]))])
+        pages = self.run_pages(p)
+        self.assertEqual([rows for _, _, rows in pages], paged(listing(p)))
+        self.assertTrue(pages[1][2][0].startswith('100 REM XXX'))
+        self.assertEqual(pages[1][2][3], '200 END')
+
+    def test_every_row_of_every_line_is_shown_at_every_offset(self):
+        for lead in range(0, 23):
+            for size in (60, 77, 78, 150, 157, 158, 237, 240):
+                body = [(i, bytes([0x4B])) for i in range(1, lead + 1)]
+                body += [(1000 + k, bytes([0x5D]) + chars(chr(65 + k) * size)) for k in range(12)]
+                p = prog(body)
+                with self.subTest(lead=lead, size=size):
+                    pages = self.run_pages(p)
+                    self.assertTrue(all(r in (0, 1) for r, _, _ in pages))
+                    self.assertEqual([rows for _, _, rows in pages if rows], paged(listing(p)))
+
+    def test_page_offsets_past_64k(self):
+        """Offsets are 24-bit in ProDOS: a page starting past 65,535 must
+        read from there, and the next page's start must not wrap."""
+        p = prog([(i + 1, bytes([0x4B])) for i in range(14000)])    # 5 bytes a line
+        self.assertEqual(len(p), 70000)
+        (r, nxt, rows), = self.run_pages(p, 66000)[:1]
+        self.assertEqual(r, 1)
+        self.assertEqual(rows[0], '13201 TEXT')
+        self.assertEqual(rows[21], '13222 TEXT')
+        self.assertEqual(nxt, 66110)
 
     # -- the real thing ----------------------------------------------------
     def test_the_first_lines_of_breakout(self):

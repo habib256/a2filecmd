@@ -1,5 +1,6 @@
 """Run actual overlay C routines against damaged images and failed writes."""
 import json
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -165,12 +166,117 @@ int main(int argc,char** argv) {
 }
 '''
 
+RESCUE_FILE=PREFIX+r'''
+static void mock_clearerr(FILE*);
+#define clearerr mock_clearerr
+#include "src/plugins/rescue.c"
+#undef clearerr
+static unsigned int attempts,failures;
+static unsigned char errflag;   /* cc65's _FERROR: fread refuses a flagged stream */
+static void mock_clearerr(FILE* f){(void)f;errflag=0;}
+static FILE* mock_open(const char* p,const char* m){return fopen(p,m);}
+static size_t mock_read(void* p,size_t s,size_t n,FILE* f){
+    if(errflag)return 0;
+    if(++attempts<=failures){errflag=1;return 0;}
+    return fread(p,s,n,f);
+}
+static int listed;static struct DirEntry dirent;
+static unsigned char dopen(const char* p){printf("dir %s\n",p);listed=0;return 1;}
+static unsigned char dnext(void){
+    static const char* names[]={"OTHER","DATA"};static const unsigned long sizes[]={5,1234};
+    if(listed==2)return 0;
+    strcpy(dirent.name,names[listed]);dirent.size=sizes[listed];++listed;return 1;
+}
+static void dclose(void){}
+int main(int argc,char** argv) {
+    unsigned char scratch[512],r;
+    buf=scratch;a.fopen=mock_open;a.fread=mock_read;a.fseek=fseek;a.fclose=fclose;a.memset=memset;
+    a.strlen=strlen;a.strcmp=strcmp;a.dir_open=dopen;a.dir_next=dnext;a.dir_close=dclose;a.dir_entry=&dirent;
+    if(!strcmp(argv[1],"size")){
+        strcpy(source,argv[2]);size=99;r=fresh_size();printf("%u %lu %s\n",r,size,source);return 0;
+    }
+    disk=0;in=0;strcpy(source,argv[1]);failures=atoi(argv[2]);offset=520;memset(buf,0xA5,512);
+    r=read_chunk(100,1);
+    printf("%u %u %u %u %u\n",r,attempts,retried,buf[0],buf[99]);return 0;
+}
+'''
+
+UNDELETE_ROOT=PREFIX+r'''
+#include "src/plugins/undelete.c"
+static FILE* diskfile;static const char* dirfile;static char keypress;static unsigned int used;
+static unsigned char mli(unsigned char cmd,void* p) {
+    if(cmd==0x80) {
+        struct Block* b=p;
+        if(fseek(diskfile,(long)b->block*512,SEEK_SET))return 0x27;
+        return fread(b->buffer,1,512,diskfile)==512?0:0x27;
+    }
+    if(cmd==0xC4) {                 /* the source volume: every block in use, as ProDOS says */
+        struct Info* i=p;
+        if(i->path[0]!=2 || memcmp(i->path+1,"/V",2))abort();
+        i->storage=15;i->blocks=used;return 0;
+    }
+    if(cmd==0xC5) {
+        struct Online* o=p;memset(o->buffer,0,256);
+        o->buffer[0]=0x61;o->buffer[1]='V';o->buffer[16]=0x73;memcpy(o->buffer+17,"tmp",3);return 0;
+    }
+    if(cmd==0xC0) {
+        struct Create* c=p;char path[81];FILE* f;
+        memcpy(path,c->path+1,c->path[0]);path[c->path[0]]=0;
+        f=fopen(path,"wx");if(!f)return 0x47;fclose(f);return 0;
+    }
+    abort();                        /* nothing may write to the source */
+}
+/* The volume directory read as a file: its linked blocks, end to end. */
+static FILE* open_file(const char* path,const char* mode){return fopen(strcmp(path,"/V")?path:dirfile,mode);}
+static char getkey(void){return keypress;}
+static unsigned char yes(const char* s){(void)s;return 1;}
+static void quiet(const char* s){(void)s;}
+static void nothing(void){}
+static int noprint(const char* f,...){(void)f;return 0;}
+int main(int argc,char** argv) {
+    static struct A2fcApi api;static struct Panel panels[2];static struct Entry selected;
+    static unsigned char active,scratch[512];static char note[80];
+    diskfile=fopen(argv[1],"rb");dirfile=argv[2];used=atoi(argv[3]);keypress=argv[4][0];
+    strcpy(panels[0].path,"/V");strcpy(panels[1].path,argv[5]);
+    api.panels=panels;api.active=&active;api.selected=&selected;api.note=note;api.copy_buf=scratch;
+    api.mli=mli;api.fopen=open_file;api.fread=fread;api.fwrite=fwrite;api.fseek=fseek;api.fclose=fclose;
+    api.remove=remove;api.memcpy=memcpy;api.memset=memset;api.strcpy=strcpy;api.strlen=strlen;
+    api.sprintf=sprintf;api.cgetc=getkey;api.confirm=yes;api.message=quiet;api.cputs=quiet;
+    api.cprintf=noprint;api.clrscr=nothing;
+    plugin_entry(&api);puts(note);fclose(diskfile);return 0;
+}
+'''
+
+def root_volume(deleted=(), total=280):
+    """/V with a FOUR-block root (2-5), its bitmap at 6, one live file whose
+    block 10 makes the volume's used count larger than the root, and
+    deleted entries given as (block, slot, name, key, blocks, eof, data)."""
+    d=bytearray(total*512);chain=[2,3,4,5]
+    for i,b in enumerate(chain):
+        d[b*512:b*512+2]=(chain[i-1] if i else 0).to_bytes(2,'little')
+        d[b*512+2:b*512+4]=(chain[i+1] if i+1<len(chain) else 0).to_bytes(2,'little')
+    h=1028;d[h]=0xF1;d[h+1]=ord('V');d[h+0x1F]=39;d[h+0x20]=13
+    d[h+0x21:h+0x23]=(1).to_bytes(2,'little');d[h+0x23:h+0x25]=(6).to_bytes(2,'little')
+    d[h+0x25:h+0x27]=total.to_bytes(2,'little')
+    live=h+39;d[live]=0x14;d[live+1:live+5]=b'LIVE';d[live+16]=4
+    d[live+17:live+19]=(10).to_bytes(2,'little');d[live+19:live+21]=(1).to_bytes(2,'little');d[live+21]=3
+    d[10*512:10*512+3]=b'abc'
+    for b in range(total):d[6*512+(b>>3)]|=0x80>>(b&7)
+    used=[0,1,2,3,4,5,6,10]
+    for b in used:d[6*512+(b>>3)]&=~(0x80>>(b&7))
+    for block,slot,name,key,blocks,eof,data in deleted:
+        e=block*512+4+39*slot;d[e]=len(name);d[e+1:e+1+len(name)]=name;d[e+16]=4
+        d[e+17:e+19]=key.to_bytes(2,'little');d[e+19:e+21]=blocks.to_bytes(2,'little')
+        d[e+21:e+24]=eof.to_bytes(3,'little');d[key*512:key*512+len(data)]=data
+    return bytes(d),len(used),b''.join(d[b*512:(b+1)*512] for b in chain)
+
 class SixPlugins(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.temp=tempfile.TemporaryDirectory(prefix='six-',dir='/tmp');cls.root=Path(cls.temp.name)
         cls.exe={}
-        for name,text in [('undelete',UNDELETE),('mkimage',MKIMAGE),('sync',SYNC),('rescue',RESCUE)]:
+        for name,text in [('undelete',UNDELETE),('mkimage',MKIMAGE),('sync',SYNC),('rescue',RESCUE),
+                          ('rescue_file',RESCUE_FILE),('undelete_root',UNDELETE_ROOT)]:
             source=cls.root/(name+'.c');source.write_text(text);exe=cls.root/name
             subprocess.run(['cc','-std=c11','-Wno-unknown-pragmas','-I',str(ROOT),str(source),'-o',str(exe)],check=True)
             cls.exe[name]=exe
@@ -222,6 +328,46 @@ class SixPlugins(unittest.TestCase):
     def test_rescue_retry_success(self):self.assertEqual(self.rescue(29),[1,30,1,90,90])
     def test_rescue_zero_fill_after_30_failures(self):self.assertEqual(self.rescue(30),[0,30,1,0,165])
     def test_rescue_cancel_does_not_read(self):self.assertEqual(self.rescue(30,True),[0,0,0,165,165])
+    def rescue_file(self,failures):
+        path=self.root/'rescue.bin';path.write_bytes(bytes(range(256))*4)
+        return [int(x) for x in subprocess.check_output([str(self.exe['rescue_file']),str(path),str(failures)]).split()]
+    def test_rescue_file_retries_really_reread_after_a_failed_read(self):
+        """cc65's fread refuses a stream with its error flag set, and fseek
+        clears only EOF: every retry after the first failure must still
+        reach the file, and a readable chunk must not be zero-filled."""
+        self.assertEqual(self.rescue_file(0),[1,1,0,8,107])
+        self.assertEqual(self.rescue_file(1),[1,2,1,8,107])
+        self.assertEqual(self.rescue_file(29),[1,30,1,8,107])
+        self.assertEqual(self.rescue_file(30),[0,30,1,0,0])
+    def test_rescue_file_size_comes_from_the_directory_entry_now(self):
+        out=subprocess.check_output([str(self.exe['rescue_file']),'size','/V/D/DATA'],text=True).split('\n')
+        self.assertEqual(out[0],'dir /V/D');self.assertEqual(out[1],'1 1234 /V/D/DATA')
+        out=subprocess.check_output([str(self.exe['rescue_file']),'size','/V/D/NONE'],text=True).split('\n')
+        self.assertEqual(out[1],'0 99 /V/D/NONE')
+    def undelete_root(self,deleted,key):
+        image,used,directory=root_volume(deleted)
+        img=self.root/'root.po';img.write_bytes(image);dirs=self.root/'root.dir';dirs.write_bytes(directory)
+        out=self.root/'recovered';shutil.rmtree(out,ignore_errors=True);out.mkdir()
+        note=subprocess.check_output([str(self.exe['undelete_root']),str(img),str(dirs),str(used),key,str(out)],
+                                     text=True,timeout=20).strip()
+        self.assertEqual(img.read_bytes(),image,'the source volume was written')
+        return note,out
+    def test_undelete_walks_a_volume_root_by_its_own_blocks(self):
+        """GET_FILE_INFO on a volume counts its used blocks, not the root's
+        four: the walk must stop at the end of the chain, not fail past it."""
+        note,_=self.undelete_root([],'n')
+        self.assertIn('No more deleted entries',note)
+        note,out=self.undelete_root([(5,12,b'LAST',20,1,5,b'hello')],'r')
+        self.assertIn('Recovered LAST',note)
+        self.assertEqual((out/'LAST').read_bytes(),b'hello')
+    def test_undelete_recovers_a_deleted_empty_file(self):
+        note,out=self.undelete_root([(3,4,b'EMPTY',20,1,0,b'')],'r')
+        self.assertIn('Recovered EMPTY',note)
+        self.assertEqual((out/'EMPTY').read_bytes(),b'')
+    def test_undelete_empty_file_whose_key_block_is_reused_is_refused(self):
+        note,out=self.undelete_root([(3,4,b'EMPTY',10,1,0,b'')],'r')   # block 10 belongs to LIVE
+        self.assertNotIn('Recovered',note)
+        self.assertFalse((out/'EMPTY').exists())
     def test_mkimage_sizes(self):
         for size in (280,1600,4000,8000,16000,32767):
             with self.subTest(size=size):

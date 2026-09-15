@@ -60,6 +60,11 @@ class CatalogTest(unittest.TestCase):
     def name(self, index):
         return bytes(self.mini.peek('ent_name', 30, offset=index * 32))
 
+    def where(self, index):
+        """The two spare bytes of a name stride: catalog track, then
+        catalog sector << 3 | slot."""
+        return bytes(self.mini.peek('ent_name', 2, offset=index * 32 + 30))
+
     def test_catalog_and_preview(self):
         self.assertEqual(self.mini.catalog(), CAT_OK)
         self.assertEqual(self.count(), 4)
@@ -108,13 +113,45 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual(self.mini.byte('load_more'), 0)
         self.assertEqual(self.mini.image(1), disk)
 
-    def test_measure_text_caps_at_scratch_minus_one(self):
+    def test_measure_text_refuses_a_full_area(self):
+        # 32 sectors of text whose last byte is not a NUL cannot be held
+        # with the NUL the editor keeps after the text: refuse, never cut.
         self.assertEqual(self.mini.catalog(), CAT_OK)
         self.assertEqual(self.mini.load_file(2), CAT_OK)
         self.mini.poke('load_count', bytes([32]))
         self.mini.poke('scratch', bytes([0x41]), offset=8191)
-        self.mini.measure_text()
+        self.assertEqual(self.mini.measure_text(), 1)
+        self.mini.poke('scratch', bytes([0x41, 0]), offset=8190)
+        self.assertEqual(self.mini.measure_text(), 0)
         self.assertEqual(self.mini.word('edit_len'), 8191)
+
+    def test_load_file_sees_data_past_a_full_area(self):
+        # The area is full after 32 sectors. A later pair after a hole, or
+        # a next T/S list, is still the file: load_more must say so.
+        base = make_disk([('BIG', 0, bytes([0xC1]) * (256 * 34)),
+                          ('SMALL', 0, b'HELLO')])
+        ts = offset(*read_files(base)['BIG']['lists'][0])
+        img = bytearray(base)
+        img[ts + 12 + 80:ts + 14 + 80] = base[ts + 12 + 66:ts + 14 + 66]
+        img[ts + 12 + 64:ts + 12 + 68] = bytes(4)
+        img[offset(17, 15) + 11 + 33] = 33
+        self.mini.load(1, bytes(img))
+        self.assertEqual(self.mini.catalog(), CAT_OK)
+        self.assertEqual(self.mini.load_file(0), CAT_OK)
+        self.assertEqual(self.mini.byte('load_count'), 32)
+        self.assertEqual(self.mini.byte('load_more'), 1, 'a pair after a hole')
+
+        base = make_disk([('BIG', 0, bytes([0xC1]) * (256 * 123))])
+        ts = offset(*read_files(base)['BIG']['lists'][0])
+        img = bytearray(base)
+        img[ts + 12 + 64:ts + 12 + 244] = bytes(180)
+        img[offset(17, 15) + 11 + 33] = 33
+        self.fresh()
+        self.mini.load(1, bytes(img))
+        self.assertEqual(self.mini.catalog(), CAT_OK)
+        self.assertEqual(self.mini.load_file(0), CAT_OK)
+        self.assertEqual(self.mini.byte('load_count'), 32)
+        self.assertEqual(self.mini.byte('load_more'), 1, 'another T/S list')
 
     def test_tiger_is_a_locked_hgr_binary(self):
         self.assertEqual(self.mini.catalog(), CAT_OK)
@@ -130,7 +167,7 @@ class CatalogTest(unittest.TestCase):
             self.assertEqual(self.mini.byte('ent_track', i), entry[0])
             self.assertEqual(self.mini.byte('ent_sector', i), entry[1])
             self.assertEqual(self.mini.byte('ent_type', i), entry[2])
-            self.assertEqual(self.mini.byte('ent_slot', i), (15 << 3) | i)
+            self.assertEqual(self.where(i), bytes([17, (15 << 3) | i]))
             self.assertEqual(self.mini.byte('ent_seclo', i) |
                              (self.mini.byte('ent_sechi', i) << 8),
                              struct.unpack_from('<H', entry, 33)[0])
@@ -245,19 +282,19 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual(self.name(0), bytes(30), 'panel 0 untouched')
 
     def test_copy_side_keeps_the_catalog_slot(self):
-        # '=' and the boot copy of the right panel must include ent_slot.
-        # A name list without it is not an identity: writes refuse rather
-        # than aim at catalog sector 0 (the VTOC).
+        # '=' and the boot copy of the right panel must include where each
+        # entry was read. A name list without it is not an identity: writes
+        # refuse rather than aim at catalog sector 0 (the VTOC).
         self.assertEqual(self.mini.catalog(), CAT_OK)
         self.assertEqual(self.mini.lock_prepare(2, 1), 0)
         self.assertEqual(self.mini.lock_execute(), 0)
         self.assertEqual(self.mini.catalog(), CAT_OK)
-        slot0 = self.mini.byte('ent_slot', 0)
+        slot0 = self.where(0)
         name0 = self.name(0)
-        self.assertNotEqual(slot0, 0)
+        self.assertEqual(slot0, bytes([17, 15 << 3]))
         self.assertEqual(self.mini.byte('ent_type', 2) & 0x80, 0)
         self.mini.copy_side(0, 1)
-        self.assertEqual(self.mini.byte('ent_slot', 105), slot0)
+        self.assertEqual(self.where(105), slot0)
         self.assertEqual(self.name(105), name0)
         self.assertEqual(self.name(0), name0, 'source panel untouched')
         self.mini.poke('active', bytes([1]))
@@ -273,7 +310,7 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual(self.mini.lock_execute(), 0)
         self.assertEqual(self.mini.catalog(), CAT_OK)
         self.mini.copy_side(0, 1)
-        self.mini.poke('ent_slot', bytes([0]), offset=105 + 2)
+        self.mini.poke('ent_name', bytes([0, 0]), offset=(105 + 2) * 32 + 30)
         self.mini.poke('active', bytes([1]))
         writes = self.mini.writes
         self.assertEqual(self.mini.delete_prepare(2), 2)
@@ -281,10 +318,10 @@ class CatalogTest(unittest.TestCase):
 
     def test_copy_side_same_panel_is_a_noop(self):
         self.assertEqual(self.mini.catalog(), CAT_OK)
-        before = bytes(self.mini.peek('ent_slot', 4))
+        before = bytes(self.mini.peek('ent_name', 4 * 32))
         name0 = self.name(0)
         self.mini.copy_side(0, 0)
-        self.assertEqual(bytes(self.mini.peek('ent_slot', 4)), before)
+        self.assertEqual(bytes(self.mini.peek('ent_name', 4 * 32)), before)
         self.assertEqual(self.name(0), name0)
 
 

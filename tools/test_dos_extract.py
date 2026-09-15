@@ -7,6 +7,7 @@ ROOT=Path(__file__).resolve().parents[1]
 s=(ROOT/'src/a2fc.c').read_text()
 a=s.index('static const char d3_target[]');b=s.index('#pragma static-locals (pop)',a)
 DRIVER=s[a:b]
+TYPE=s[s.index('static unsigned char dos33_type('):s.index('/* Fills the panel from the DOS 3.3 catalog')]
 C=r'''
 #include <stdio.h>
 #include <stdlib.h>
@@ -63,9 +64,10 @@ static int remove_file(const char* p){++removes;return fault==8?-1:remove(p);}
 #define ferror error_file
 #define fclose close_file
 #define remove remove_file
-'''+(ROOT/'src/file_output.h').read_text()+DRIVER+r'''
+'''+(ROOT/'src/file_output.h').read_text()+TYPE+DRIVER+r'''
 int main(int argc,char** argv){
  unsigned i,len=atoi(argv[3]),skip,type=atoi(argv[2]);fault=atoi(argv[4]);
+ if(argc>5){printf("%u\n",dos33_type(atoi(argv[5])));return 0;}
  strcpy(panels[1].path,argv[1]);strcpy(panels[0].path,"X");panels[0].img_len=1;panels[0].count=1;
  strcpy(entries[0].name,"OUTPUT");entries[0].type=type;entries[0].mdate=0x0100;
  skip=type==6?4:type>=250?2:0;
@@ -77,6 +79,11 @@ int main(int argc,char** argv){
  if(fault==11)sectors[16][16]=0; /* premature EOF */
  if(fault==12){sectors[16][14]=2;sectors[16][15]=0;} /* duplicate sector */
  if(fault==13){sectors[16][1]=1;sectors[16][2]=0;} /* TS cycle */
+ if(fault==20){sectors[16][14]=0;sectors[16][15]=0;} /* a hole between data sectors */
+ if(fault==21)for(i=6;i<8;++i){sectors[16][12+i*2]=0;sectors[16][13+i*2]=0;} /* trailing holes */
+ if(fault==22){for(i=2;i<8;++i){sectors[16][12+i*2]=0;sectors[16][13+i*2]=0;}
+  sectors[16][1]=1;sectors[16][2]=5;sectors[21][12]=2;sectors[21][13]=2;} /* data again in the next T/S list */
+ if(fault==23){sectors[16][12]=0;sectors[16][13]=0;} /* the first sector is a hole */
  dos_extract();
  printf("%u %u %u %d %d %s\n",a2fc_ops,_filetype,_auxtype,removes,writes,note);return 0;
 }
@@ -123,4 +130,22 @@ class DosExtract(unittest.TestCase):
   out,data=self.run_case(fault=9);self.assertIn('Extract failed',out);self.assertEqual(len(data),600)
  def test_cycle_is_rejected_before_reusing_sectors(self):
   out,data=self.run_case(4,fault=13);self.assertTrue(out.startswith('0 '),out);self.assertIsNone(data)
+ def test_sparse_text_holes_are_zero_sectors_and_trailing_holes_end_the_file(self):
+  pat=bytes((i*17+3)&255 for i in range(2048))
+  out,data=self.run_case(4,fault=20);self.assertTrue(out.startswith('1 4 0 '),out)
+  self.assertEqual(data,pat[:256]+bytes(256)+pat[512:])
+  out,data=self.run_case(4,fault=21);self.assertTrue(out.startswith('1 4 0 '),out);self.assertEqual(data,pat[:1536])
+  out,data=self.run_case(4,fault=22);self.assertTrue(out.startswith('1 4 0 '),out)
+  self.assertEqual(data,pat[:512]+bytes(120*256)+pat[512:768])
+ def test_a_sized_file_cannot_start_with_a_hole(self):
+  for typ in (6,250,252):
+   out,data=self.run_case(typ,fault=23);self.assertTrue(out.startswith('0 '),out);self.assertIsNone(data)
+ def test_dos_types_without_a_bin_header_keep_every_byte(self):
+  types={0:4,1:250,2:252,4:6,0x84:6,8:0,0x10:0,0x20:0,0x40:0,0x88:0}
+  for dos,prodos in types.items():
+   with self.subTest(dos=dos):
+    out=subprocess.check_output([str(self.exe),'.','0','0','0',str(dos)],text=True)
+    self.assertEqual(int(out),prodos)
+  out,data=self.run_case(0,600);self.assertTrue(out.startswith('1 0 0 '),out)
+  self.assertEqual(data,bytes((i*17+3)&255 for i in range(2048)))
 if __name__=='__main__':unittest.main()

@@ -16,6 +16,8 @@
         .export activate, confirm, reload, keep_note, result_done
         .export say_protected
         .export print_name, print_name15, print_byte, tag_count, tag_test
+        .export batch_number, batch_skipped, batch_done, foot_zone
+        .export cf_ok, cf_marked, tg_n
 
         .import present, restore_holes, at, put, inline_text, clear, zone
         .import number, hexbyte, filetype, keys_bar, keys_bar_inline
@@ -877,7 +879,7 @@ copy_file:
         bne     @batch
         jsr     copy_prepare
         sta     cf_status
-        jne     cf_show
+        jne     cf_dest_show
         jsr     copy_ask_one
         bcs     @one
         jsr     copy_cancel
@@ -886,7 +888,7 @@ copy_file:
 @one:
         jsr     copy_execute
         sta     cf_status
-        jmp     cf_show
+        jmp     cf_dest_show
 @batch:
         jsr     copy_ask_many
         bcc     @out
@@ -908,7 +910,7 @@ copy_file:
         cmp     #COPY_EXISTS
         beq     @next
         sta     cf_status
-        jmp     cf_show
+        jmp     cf_dest_show
 @landed:
         inc     cf_ok
 @next:
@@ -921,7 +923,7 @@ copy_file:
         lda     #COPY_OK
 @none:
         sta     cf_status
-        jmp     cf_show
+        jmp     cf_dest_show
 @out:
         rts
 
@@ -977,6 +979,13 @@ one_copy:
 @ret:
         rts
 
+; cf_dest_show -- a disk copy writes only cp_dest, but a failure on the
+; source side (a tagged file that no longer maps, a batch read) leaves
+; `drive` on the source after files already landed: reread the
+; destination, not wherever the last read happened to be.
+cf_dest_show:
+        lda     cp_dest
+        sta     drive
 cf_show:
         ldy     #20
         ldx     #0
@@ -1005,7 +1014,7 @@ cf_show:
         cmp     #COPY_SAME
         bne     @notsame
         PRINT   "SELECT TWO DIFFERENT DRIVES"
-        jmp     result_done
+        jmp     keep_note       ; nothing was tried: no reread, marks stay
 @notsame:
         cmp     #COPY_PROTECTED
         bne     @notprot
@@ -1809,7 +1818,8 @@ edit_file:
         bne     @fail
         lda     load_more       ; the catalog count lied: a 33rd data
         jne     @big            ; sector exists, never save it truncated
-        jsr     measure_text
+        jsr     measure_text    ; carry: 8 KB of text leave no room for
+        jcs     @big            ; the NUL, and the last byte would be cut
         jsr     edit_text
         jcc     @out
         lda     #0
@@ -1978,10 +1988,12 @@ delete_file:
 @tagged:
         lda     #0
         sta     tg_index
+        sta     cf_ok           ; deleted
+        sta     cf_marked       ; refused as locked
 @each:
         lda     tg_index
         cmp     count
-        bcs     @show
+        bcs     @summary
         lda     tg_index
         ldx     active
         jsr     tag_test
@@ -1990,19 +2002,68 @@ delete_file:
         sta     del_index
         jsr     one_delete
         sta     hg_status
-        cmp     #DEL_OK
-        beq     @next
+        bne     @notdone
+        inc     cf_ok
+        bne     @next           ; always: 105 at most
+@notdone:
         cmp     #DEL_LOCKED
-        beq     @next
-        jmp     @show
+        bne     @show           ; anything else stops the batch
+        inc     cf_marked
 @next:
         inc     tg_index
         jmp     @each
 @show:
         jsr     del_show
         jmp     result_done
+@summary:
+        jsr     batch_count     ; "3 DELETED, 1 LOCKED": every file counted
+        PRINT   "DELETED"
+        jsr     batch_skipped
+        beq     @said
+        PRINT   "LOCKED"
+@said:
+        jmp     result_done
 @out:
         rts
+
+; batch_count -- a tagged batch ran to its end: the footer, then cf_ok
+; and a space. batch_skipped then adds ", n " when cf_marked files were
+; refused without a write, Z clear so the caller names why.
+batch_count:
+        jsr     foot_zone
+        lda     cf_ok
+batch_number:
+        jsr     print_byte
+        lda     #' '
+        jmp     put
+
+batch_skipped:
+        lda     cf_marked
+        beq     @none
+        PRINT   ", "
+        lda     cf_marked
+        jsr     batch_number
+        lda     #1              ; Z clear
+@none:
+        rts
+
+; batch_done -- a batch stopped by a refusal: "n DONE, " first when
+; files were already changed, so the refusal never reads as nothing
+batch_done:
+        lda     tg_n
+        beq     @none
+        lda     cf_ok
+        beq     @none
+        jsr     print_byte
+        PRINT   " DONE, "
+@none:
+        rts
+
+foot_zone:
+        ldy     #20
+        ldx     #0
+        lda     #40
+        jmp     zone
 
 ; print_name15 -- A = array index: the first 15 name characters, for the
 ; DELETE / LOCK / UNLOCK prompts. put builds its own screen pointer in
@@ -2032,10 +2093,8 @@ one_delete:
         rts
 
 del_show:
-        ldy     #20
-        ldx     #0
-        lda     #40
-        jsr     zone
+        jsr     foot_zone
+        jsr     batch_done
         lda     hg_status
         bne     @notok
         PRINT   "DELETED"

@@ -53,9 +53,18 @@ const struct PluginHeader __plugin_header = {
 
 struct Start { long off; unsigned long skip; unsigned char fence, r0, r1, r2; };
 
+#ifdef PLUGIN_HOST                         /* tools/test_mdview.py runs this file on the host */
+static struct Start host_starts[MAXPAGES];
+static char host_rb[80];
+static unsigned char host_vbuf[VBUFSZ];
+#define STARTS host_starts
+#define RB     host_rb
+#define VBUF   host_vbuf
+#else
 #define STARTS ((struct Start*)0x3000)     /* 64 x 12 = 768: $3000-$32FF */
 #define RB     ((char*)0x3300)             /* the row being built, 80: $3300-$337F */
 #define VBUF   ((unsigned char*)0x3800)    /* the read buffer: $3800-$3FFF */
+#endif
 
 /* BSS: nothing zeroes it; everything below is written before it is read. */
 static struct A2fcApi a;                   /* the service table, copied */
@@ -263,7 +272,12 @@ static unsigned char render_line(void)
         }
         put_((unsigned char)c);
     }
-    if (!marker && (rc > indent || rows_done == 0)) emit();
+    if (!marker && (rc > indent || rows_done == 0)) {
+        /* A wrap filled the page and carried the line's last word: that row
+         * belongs to the next page, which replays this line (next is set). */
+        if (row > LASTROW) return 1;
+        emit();
+    }
     next.off = tell_(); next.skip = 0; next.fence = fence;
     return 1;
 }

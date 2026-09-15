@@ -82,8 +82,11 @@ _mini_delete_prepare:
 _mini_delete_execute:
         jmp     delete_execute
 
-_mini_measure_text:
-        jmp     measure_text
+_mini_measure_text:             ; carry out as A: 1 when the text fills the area
+        jsr     measure_text
+        lda     #0
+        rol     a
+        rts
 
 _mini_lock_prepare:
         jmp     lock_prepare

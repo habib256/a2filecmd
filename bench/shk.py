@@ -27,7 +27,10 @@ from run import scratch_volume, RET, TAB, volume
 import mkshk
 from prodos_read import Image
 
-TEXT = b"SHRINKIT ON THE APPLE II. " * 400        # ~10 Ko, tres compressible
+# ~14 Ko, tres compressible ; les suites de plus de 129 octets (compte RLE
+# $81-$FF) sortaient en un seul octet avant la correction du coeur.
+TEXT = (b"SHRINKIT ON THE APPLE II. " * 400 + bytes(3000) + b'\xFF' * 700
+        + bytes((mkshk.ESC,)) * 300 + b"END OF THE RUNS.\r")
 NOTE = b"HELLO FROM A STORED THREAD.\r" * 3
 FORMATS = ((3, 'LZW/2 after DHGR', 'OUTA', 'DHGR.RLE'),
            (2, 'LZW/1 after HGR', 'OUTB', 'HGR.RLE'),

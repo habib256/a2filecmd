@@ -8,13 +8,18 @@ ASM=r'''
 .export test_destruct, _handler, _callptr
 .bss
 _callptr: .res 2
+save_x: .res 1
+save_y: .res 1
 .code
 test_destruct:
  lda #$AA
  sta ptr1
  sta ptr1+1
  rts
+; The MLI keeps X and Y (ProDOS 8 Technical Reference): so does the mock.
 _handler:
+ stx save_x
+ sty save_y
  tsx
  lda $0101,x
  sta _callptr
@@ -28,6 +33,8 @@ _handler:
  lda _callptr
  ldx _callptr+1
  jsr _mock_call
+ ldx save_x
+ ldy save_y
  cmp #$65
  beq quit
  cmp #1
@@ -44,6 +51,8 @@ extern unsigned int callptr,chain_addr,chain_size;
 void __fastcall__ chain_command(const char*);
 void __fastcall__ chain_load(const char*);
 static unsigned char fault,opened,read_ok,closed,quit_ok,bad;
+/* fault 1 OPEN, 2 READ, 3 CLOSE, 4 low length byte short, 5 high length
+ * byte wrong, 6 READ and CLOSE both fail */
 unsigned char __fastcall__ mock_call(unsigned int ret){
  unsigned char cmd=*(unsigned char*)(ret+1);
  unsigned char*p=*(unsigned char**)(ret+2);
@@ -56,22 +65,21 @@ unsigned char __fastcall__ mock_call(unsigned int ret){
  }
  if(cmd==0xCA){
   if(*(unsigned int*)(p+2)!=0x2000 || *(unsigned int*)(p+4)!=64)bad=1;
-  *(unsigned int*)(p+6)=fault==4?63:64;
-  read_ok=1;*(unsigned char*)0x2000=0x60;return fault==2;
+  *(unsigned int*)(p+6)=fault==4?63:fault==5?320:64;
+  read_ok=1;*(unsigned char*)0x2000=0x60;return fault==2||fault==6;
  }
- if(cmd==0xCC){closed=1;return fault==3;}
+ if(cmd==0xCC){++closed;if(p[0]!=1||p[1])bad=1;return fault==3||fault==6;}
  bad=1;return 1;
 }
 int main(void){
  *(unsigned char*)0xBF00=0x4C;*(unsigned int*)0xBF01=(unsigned int)handler;
- for(fault=0;fault<5;++fault){
+ for(fault=0;fault<7;++fault){
   opened=read_ok=closed=quit_ok=bad=0;
   chain_command("/VOL/PROGRAM");chain_addr=0x2000;chain_size=64;chain_load("/VOL/RUN");
   if(bad || !opened || quit_ok!=(fault!=0))return 1;
   if(!fault && (*(unsigned char*)0x2006!=12 || memcmp((void*)0x2007,"/VOL/PROGRAM",12)))return 2;
   if(fault==1 && (read_ok||closed))return 3;
-  if((fault==2 || fault==4) && closed)return 4;
-  if(fault==3 && !closed)return 5;
+  if(fault!=1 && closed!=1)return 4;   /* once opened, closed exactly once, even after a failed READ */
  }
  return 0;
 }

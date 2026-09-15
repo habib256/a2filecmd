@@ -81,6 +81,8 @@ instart: .word  0
 outcnt: .word   0
 code:   .word   0
 width:  .byte   0
+savesp: .byte   0               ; the 6502 stack at us_chunk entry, for us_fail
+srcend: .word   0               ; where the RLE source must end
 hmask:  .byte   $01, $03, $07, $0F   ; high byte of a 9, 10, 11, 12-bit code
 
 ; ---- us_init: format and escape, empty table, empty bit buffer ----
@@ -116,6 +118,8 @@ _us_chunk:
         sei
         sta     WRAUX
         sta     RDAUX           ; from here on, the AUX copy is what executes
+        tsx
+        stx     savesp
         lda     ptr1
         sta     instart
         lda     ptr1+1
@@ -146,20 +150,22 @@ _us_chunk:
         jsr     getb
         jmp     @hdone
 @h2none: jsr    reset_table     ; a chunk without LZW starts afresh
-@hdone: lda     rlelen          ; RLE in use if rlelen != 4096
-        bne     @rle
-        lda     rlelen+1
+@hdone: lda     rlelen+1        ; RLE in use if rlelen < 4096
         cmp     #>CHUNK
-        bne     @rle
-        lda     lzwon           ; --- no RLE ---
+        bcc     @rle
+        bne     @long           ; no chunk is longer than 4096
+        lda     rlelen
+        beq     @norle
+@long:  jmp     us_fail
+@norle: lda     lzwon           ; --- no RLE ---
         beq     @raw
         lda     #<OUTBUF        ; LZW alone: straight into OUTBUF
         ldx     #>OUTBUF
         jsr     lzw
         jsr     byte_align
-        jmp     @done
+        jmp     us_done
 @raw:   jsr     copy_raw        ; neither one nor the other: 4096 bytes as they are
-        jmp     @done
+        jmp     us_done
 @rle:   lda     lzwon           ; --- RLE ---
         beq     @rleonly
         lda     #<TMPBUF        ; LZW to TMPBUF, then RLE from TMPBUF to OUTBUF
@@ -169,7 +175,7 @@ _us_chunk:
         lda     #<TMPBUF
         ldx     #>TMPBUF
         jsr     rle
-        jmp     @done
+        jmp     us_done
 @rleonly:
         lda     ptr1            ; RLE from the input itself
         ldx     ptr1+1
@@ -178,7 +184,8 @@ _us_chunk:
         sta     ptr1
         lda     ptr3+1
         sta     ptr1+1
-@done:  sec                     ; consumed = ptr1 - instart, computed BEFORE
+us_done:
+        sec                     ; consumed = ptr1 - instart, computed BEFORE
         lda     ptr1            ; going back to MAIN: instart exists only in AUX
         sbc     instart
         sta     ptr4
@@ -191,6 +198,17 @@ _us_chunk:
         lda     ptr4
         ldx     ptr4+1
         rts
+
+; A malformed chunk, from any depth: back to us_chunk's stack, nothing
+; consumed. The driver takes 0 as a failure, the file is not kept.
+us_fail:
+        ldx     savesp
+        txs
+        lda     instart
+        sta     ptr1
+        lda     instart+1
+        sta     ptr1+1
+        jmp     us_done
 
 ; ---- the bytes ----
 getb:   ldy     #0              ; A = the next input byte
@@ -249,10 +267,17 @@ copy_raw:
         jmp     @l
 @e:     rts
 
-; ---- RLE: from the source (A/X) to OUTBUF, 4096 bytes ----
-; esc val cnt: val repeated cnt+1 times; any other byte, as it is.
+; ---- RLE: rlelen bytes from the source (A/X) to OUTBUF, 4096 bytes ----
+; esc val cnt: val repeated cnt+1 times (1 to 256); any other byte, as it
+; is. As in nufxlib, the source must make exactly 4096 bytes and be used up.
 rle:    sta     ptr3
         stx     ptr3+1
+        clc
+        adc     rlelen
+        sta     srcend
+        txa
+        adc     rlelen+1
+        sta     srcend+1
         lda     #<OUTBUF
         sta     ptr2
         lda     #>OUTBUF
@@ -272,12 +297,22 @@ rle:    sta     ptr3
         sta     tmp3            ; the value
         jsr     getsrc
         sta     tmp4            ; the count minus one
+        inc     tmp4            ; the count, 0 standing for 256
 @rep:   lda     tmp3
         jsr     out
         dec     tmp4
-        bpl     @rep
+        bne     @rep
         jmp     @loop
-@end:   rts
+@end:   lda     outcnt          ; a run past the chunk overflows it
+        bne     @bad
+        lda     ptr3
+        cmp     srcend
+        bne     @bad
+        lda     ptr3+1
+        cmp     srcend+1
+        bne     @bad
+        rts
+@bad:   jmp     us_fail
 
 ; ---- LZW: rlelen bytes to (A/X) ----
 lzw:    sta     ptr2
@@ -306,7 +341,9 @@ lzw:    sta     ptr2
         jmp     @loop
 @nclr:  lda     fresh
         beq     @norm
-        lda     code            ; the first code of a fresh table: a byte
+        lda     code+1          ; the first code of a fresh table: a byte
+        bne     @bad
+        lda     code
         jsr     out
         lda     code
         sta     old
@@ -316,7 +353,13 @@ lzw:    sta     ptr2
         lda     #0
         sta     fresh
         jmp     @loop
-@norm:  lda     code            ; p = code, empty stack
+@bad:   jmp     us_fail
+@norm:  lda     code+1          ; $100 other than LZW/2's clear: no such string
+        cmp     #>CLEAR
+        bne     @notclr
+        lda     code
+        beq     @bad
+@notclr: lda    code            ; p = code, empty stack
         sta     tmp1
         lda     code+1
         sta     tmp2
@@ -324,13 +367,14 @@ lzw:    sta     ptr2
         sta     ptr3
         lda     #>STACK
         sta     ptr3+1
-        lda     tmp2            ; p >= entry: KwKwK -> push final, p = old
-        cmp     entry+1
-        bcc     @walk
-        bne     @kwk
+        lda     tmp2            ; p = entry: KwKwK -> push final, p = old
+        cmp     entry+1         ; p > entry is not in the table: every prefix
+        bcc     @walk           ; then stays below its own entry, and the walk
+        bne     @bad            ; below ends within the decode stack
         lda     tmp1
         cmp     entry
         bcc     @walk
+        bne     @bad
 @kwk:   lda     final
         jsr     push
         lda     old
@@ -411,7 +455,14 @@ lzw:    sta     ptr2
         lda     code+1
         sta     old+1
         jmp     @loop
-@end:   rts
+@end:   lda     outcnt          ; the last string must end on rlelen exactly
+        cmp     rlelen
+        bne     @over
+        lda     outcnt+1
+        cmp     rlelen+1
+        beq     @exact
+@over:  jmp     us_fail
+@exact: rts
 
 ; ptr1 -= bc>>3: getcode reads WHOLE bytes into its bit buffer but only
 ; consumes `width` of them: at the end of the chunk, ptr1 has read up to two

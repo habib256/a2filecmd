@@ -8,7 +8,20 @@ from test_six_plugins import PREFIX, ROOT
 
 HARNESS=PREFIX+r'''
 #include <stddef.h>
+static int find_ferror(FILE*);
+#define ferror find_ferror
 #include "src/plugins/find.c"
+#undef ferror
+/* A file whose reads fail: 100 bytes come back, then the error flag. */
+static FILE* bad_file;
+static unsigned char view_bad;
+static int find_ferror(FILE* f) { return (bad_file && f==bad_file) || ferror(f); }
+static size_t read_(void* p,size_t z,size_t n,FILE* f) {
+    if(bad_file && f==bad_file)return fread(p,z,n>100?100:n,f);
+    return fread(p,z,n,f);
+}
+static int close_(FILE* f) { if(f==bad_file)bad_file=NULL;return fclose(f); }
+static FILE* view_open(const char* p,const char* m) { FILE* f=fopen(p,m);if(view_bad)bad_file=f;return f; }
 struct MockEntry { char dir[64],name[16];unsigned char type,content;unsigned int date; };
 static struct MockEntry entries[1024];
 static int count,cursor,opened,reads,cancel_after;
@@ -38,6 +51,7 @@ static FILE* open_file(const char* p,const char* mode) {
         f=tmpfile();
         for(j=0;j<507;++j)fputc('x',f);
         fputs(entries[i].content ? "needle across boundary" : "nothing",f);
+        if(entries[i].content==3)bad_file=f;
         rewind(f);return f;
     }
     abort();return NULL;
@@ -55,7 +69,8 @@ int main(int argc,char** argv) {
     unsigned char scratch[512];struct DirEntry de;int type,content,round=0,i,date;
     if(argc>2 && !strcmp(argv[1],"view")) {
         viewing=1;view_keys=argc>4 ? argv[4] : "";
-        a.fopen=fopen;a.fread=fread;a.fclose=fclose;a.copy_buf=scratch;
+        view_bad=argc>5 && !strcmp(argv[5],"bad");
+        a.fopen=view_open;a.fread=read_;a.fclose=close_;a.copy_buf=scratch;
         a.cprintf=printf;a.cputs=puts_;a.cputc=putc_;a.gotoxy=xy_;
         a.clrscr=clear_;a.cgetc=key_;a.message=message_;
         strcpy(pat,argv[3]);plen=strlen(pat);
@@ -99,7 +114,7 @@ int main(int argc,char** argv) {
     fclose(manifest);
     a.sprintf=sprintf;a.strcpy=strcpy;a.strlen=strlen;a.memcpy=memcpy;a.message=message_;
     a.dir_open=open_dir;a.dir_next=next_dir;a.dir_close=close_dir;a.dir_entry=&de;
-    a.fopen=open_file;a.fread=fread;a.fclose=fclose;a.copy_buf=scratch;
+    a.fopen=open_file;a.fread=read_;a.fclose=close_;a.copy_buf=scratch;
     path=pbuf;dir=dbuf;strcpy(root,"/V");strcpy(QUEUE,root);
     text=atoi(argv[2]);strcpy(pat,text ? "NEEDLE ACROSS" : argv[3]);plen=strlen(pat);
     cancel_after=argc>4 ? atoi(argv[4]) : 0;
@@ -130,9 +145,9 @@ class Find(unittest.TestCase):
         pages=[list(map(int,r.split()[1:])) for r in lines if r.startswith('PAGE ')]
         paths=[r for r in lines if r.startswith('/')];reads=int(lines[-1].split()[1])
         return pages,paths,reads
-    def view(self,data,pattern,keys='NNNN'):
+    def view(self,data,pattern,keys='NNNN',bad=False):
         f=self.p/'content';f.write_bytes(data)
-        output=subprocess.check_output([self.exe,'view',f,pattern,keys],text=True,timeout=15)
+        output=subprocess.check_output([self.exe,'view',f,pattern,keys]+(['bad'] if bad else []),text=True,timeout=15)
         hits=[(int(m[0],16),m[1]) for m in re.findall(r'^([0-9A-F]{6}) (.*)$',output,re.M)]
         return output,hits
     def test_occurrence_offsets_overlap_boundary_and_24bit(self):
@@ -213,9 +228,20 @@ class Find(unittest.TestCase):
         pages,paths,_=self.run_tree(entries)
         self.assertEqual(len(paths),32);self.assertTrue(pages[-1][2])
     def test_unreadable_paths_mark_results_incomplete(self):
-        for entries,text in (([('/V','BROKEN',15,0)],0),([('/V','BAD',4,2)],1)):
+        for entries,text in (([('/V','BROKEN',15,0)],0),([('/V','BAD',4,2)],1),([('/V','ERR',4,3)],1)):
             pages,paths,_=self.run_tree(entries,text)
             self.assertEqual(paths,[]);self.assertTrue(pages[-1][2])
+    def test_read_error_is_not_an_end_of_file(self):
+        """A text search over a file that fails after 100 bytes must say the
+        search is incomplete, not "complete" with nothing found."""
+        entries=[('/V','GOOD',4,1),('/V','ERR',4,3),('/V','ALSO',4,1)]
+        pages,paths,reads=self.run_tree(entries,1)
+        self.assertEqual(paths,['/V/GOOD','/V/ALSO']);self.assertTrue(pages[-1][2]);self.assertEqual(reads,3)
+        output,hits=self.view(b'needle '*20,'NEEDLE',bad=True)
+        self.assertIn('Read error',output)
+        self.assertNotIn('End. ESC Back',output);self.assertNotIn('No occurrences',output)
+        output,hits=self.view(b'nothing','NEEDLE',bad=True)
+        self.assertIn('Read error',output);self.assertNotIn('No occurrences',output)
     def test_long_file_path_is_reported_and_skipped(self):
         d='/V';entries=[]
         for i in range(3):

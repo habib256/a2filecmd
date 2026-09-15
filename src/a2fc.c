@@ -654,16 +654,30 @@ static int compare(const void* a, const void* b)
     return strcmp(x->name, y->name);
 }
 
-/* Insertion sort, ".." stays first: less code than qsort, and the
- * directories on disk arrive almost sorted. */
+/* Insertion sort of a whole directory: less code than qsort, and the
+ * directories on disk arrive almost sorted. ".." needs no special case: a
+ * directory whose '.' sorts before the letter every ProDOS name starts
+ * with, it stays first -- and an image root, which has none, sorts its
+ * first entry too. A window of a larger directory (first, more), a DOS 3.3
+ * catalog and the volume list keep their disk order. Each tag moves with
+ * its entry: S sorts the table in place and the marks stay on their files. */
 static void sort_entries(struct Panel* pan)
 {
-    unsigned char i, j;
+    unsigned char i, j, t;
     struct Entry tmp;
-    for (i = 2; i < pan->count; ++i) {
-        tmp = pan->e[i];
-        for (j = i; j > 1 && compare(&pan->e[j - 1], &tmp) > 0; --j) pan->e[j] = pan->e[j - 1];
-        pan->e[j] = tmp;
+    struct Entry* e;
+    if (!pan->path[0] || pan->fs == FS_DOS33 || pan->first || pan->more) return;
+    for (i = 1; i < pan->count; ++i) {
+        e = pan->e + i;             /* a pointer: no multiply per step */
+        tmp = *e;
+        t = tagged(pan, i);
+        for (j = i; j && compare(e - 1, &tmp) > 0; --j) {
+            *e = e[-1];
+            --e;
+            set_tag(pan, j, tagged(pan, j - 1));
+        }
+        *e = tmp;
+        set_tag(pan, j, t);
     }
 }
 
@@ -752,7 +766,9 @@ static void read_volumes(struct Panel* pan)
 #pragma code-name (push, "CATALOG")
 #pragma rodata-name (push, "CATALOGRO")
 /* The closest ProDOS type to a DOS 3.3 type (catalog byte, bit 7 =
- * locked): T text, I Integer, A Applesoft, B binary, everything else BIN. */
+ * locked): T text, I Integer, A Applesoft, B binary. Everything else (S,
+ * R, new A, new B) is typeless: DOSGET strips the 4-byte header of a real
+ * B only, and keeps every sector of the others. */
 static unsigned char dos33_type(unsigned char t)
 {
     switch (t & 0x7F) {
@@ -761,7 +777,7 @@ static unsigned char dos33_type(unsigned char t)
     case 0x02: return 0xFC;   /* A -> BAS */
     case 0x04: return 0x06;   /* B -> BIN */
     }
-    return 0x06;
+    return 0x00;
 }
 
 /* Fills the panel from the DOS 3.3 catalog of the already established
@@ -784,7 +800,9 @@ static unsigned char read_dos33_panel(struct Panel* pan)
     pan->more = 0;
     memset(pan->tags, 0, sizeof pan->tags);
     while (ct && pan->count < MAX_ENTRIES) {
-        if (!remaining-- || !dos_read_sector(ct, cs)) return 0;
+        /* The count is its own statement: cc65 has miscompiled ++/-- inside a test. */
+        if (!remaining || !dos_read_sector(ct, cs)) return 0;
+        --remaining;
         ct = copy_buf[1]; cs = copy_buf[2];
         for (i = 0; i < 7 && pan->count < MAX_ENTRIES; ++i) {
             d = copy_buf + 0x0B + i * 0x23;
@@ -875,7 +893,7 @@ static unsigned char read_image_dir(struct Panel* pan)
         e->mdate = dir_entry.key;   /* the key block, to navigate and extract */
     }
     if (dir_error) return 0;
-    if (pan->count > 2) sort_entries(pan);
+    sort_entries(pan);
     return 1;
 }
 #pragma rodata-name (pop)
@@ -917,9 +935,6 @@ static unsigned char read_image_panel(struct Panel* pan)
     if (!i) goto fail;
     return 1;
 fail:
-    pan->fs = FS_PRODOS;
-    pan->path[0] = 0;
-    read_volumes(pan);
     return 0;
 }
 #pragma static-locals (pop)
@@ -931,38 +946,39 @@ static unsigned char read_panel(unsigned char p)
     unsigned int skip = pan->first;
     unsigned char ok = 1;
     if (pan->fs) {
-        ok = read_image_panel(pan);
-        goto placed;
+        if (read_image_panel(pan)) goto placed;
+        /* The volume list starts from an empty table: ON_LINE only appends,
+         * and a failed image read can leave part of the image listed. */
+        ok = 0;
+        pan->fs = FS_PRODOS;
+        pan->path[0] = 0;
     }
     pan->count = 0;
     pan->more = 0;
     memset(pan->tags, 0, sizeof pan->tags);
+    if (pan->path[0] && !dir_open(pan->path)) {
+        ok = 0;
+        pan->path[0] = 0;
+    }
     if (!pan->path[0]) {
         pan->first = 0;
         read_volumes(pan);
     } else {
-        if (!dir_open(pan->path)) {
-            ok = 0;
-            pan->path[0] = 0;
-            pan->first = 0;
-            read_volumes(pan);
-        } else {
-            if (!pan->first) add_entry(pan, "..", 0x0F);
-            while (dir_next()) {
-                if (skip) { --skip; continue; }
-                if (pan->count >= (pan->first ? WINDOW : MAX_ENTRIES)) { pan->more = 1; break; }
-                e = add_entry(pan, dir_entry.name, dir_entry.type);
-                e->access = dir_entry.access;
-                e->aux = dir_entry.aux;
-                e->blocks = dir_entry.blocks;
-                e->size = dir_entry.size;
-                e->mdate = dir_entry.mdate;
-            }
-            dir_close();
-            if (dir_error) {pan->count=pan->more=0;ok=0;goto placed;}
-            if (pan->first && !pan->count) { pan->first = 0; return read_panel(p); }
-            if (!pan->first && !pan->more && pan->count > 2) sort_entries(pan);
+        if (!pan->first) add_entry(pan, "..", 0x0F);
+        while (dir_next()) {
+            if (skip) { --skip; continue; }
+            if (pan->count >= (pan->first ? WINDOW : MAX_ENTRIES)) { pan->more = 1; break; }
+            e = add_entry(pan, dir_entry.name, dir_entry.type);
+            e->access = dir_entry.access;
+            e->aux = dir_entry.aux;
+            e->blocks = dir_entry.blocks;
+            e->size = dir_entry.size;
+            e->mdate = dir_entry.mdate;
         }
+        dir_close();
+        if (dir_error) {pan->count=pan->more=0;ok=0;goto placed;}
+        if (pan->first && !pan->count) { pan->first = 0; return read_panel(p); }
+        sort_entries(pan);
     }
     volume_space(pan);
 placed:
@@ -1313,7 +1329,9 @@ static void view_text(const char* path)
 }
 
 /* S: the next sort order. Hosted by the TEXT overlay, which has room and is
- * on the floppy edition (the low RAM and the resident being full). */
+ * on the floppy edition (the low RAM and the resident being full). The
+ * tables are sorted in place, not reread: a reread forgot the tags, and
+ * sort_entries moves each tag with its file. */
 static void resort(void)
 {
     unsigned char p;
@@ -1321,7 +1339,7 @@ static void resort(void)
     sort_mode = (sort_mode + 1) % SORT_MODES;
     for (p = 0; p < 2; ++p) {
         strcpy(keep, panels[p].count ? panels[p].e[panels[p].cursor].name : "");
-        read_panel(p);
+        sort_entries(&panels[p]);
         select_name(&panels[p], keep);
         draw_panel(p);
     }
@@ -1548,6 +1566,7 @@ static const char cmp_nooth[]  = "No such file in the other panel.";
 static const char cmp_ident[]  = "Identical: %lu bytes.";
 static const char cmp_diff[]   = "Differ at byte %lu.";
 static const char cmp_short[]  = "Same for %lu bytes, then longer.";
+static const char cmp_io[]     = "Compare failed: read/close error.";
 
 /* M: tags the files missing from the other panel, or of a different size
  * or modification date (Cat Doctor's "compare directories"). Hosted by the
@@ -1580,31 +1599,39 @@ void __fastcall__ compare_entry(const struct A2fcApi* a)
     FILE* fb;
     unsigned int na, nb, i, m;
     unsigned long pos = 0;
+    const char* fmt = cmp_ident;
     if (a->arg == 'M') { mark_differences(); return; }
     if (!selected.name[0] || is_dir(&selected) || !full[0]) { message(cmp_pick); return; }
     if (!oth->path[0] || oth->fs) { message(cmp_nooth); return; }
-    sprintf(other_full, "%s/%s", oth->path, selected.name);
+    if (!build_full(other_full, oth, &selected)) { too_long(); return; }
     fa = fopen(full, "rb");
     if (!fa) { report_error("Open"); return; }
     fb = fopen(other_full, "rb");
-    if (!fb) { fclose(fa); message(cmp_nooth); return; }
+    if (!fb) {
+        /* Only a missing file is "no such file" (a busy or unreadable one is
+         * an error); report before the close clears _oserror. */
+        if (_oserror == 0x46) message(cmp_nooth);
+        else report_error("Open");
+        fclose(fa);
+        return;
+    }
     for (;;) {
         na = fread(copy_buf, 1, 256, fa);
         nb = fread(copy_buf + 256, 1, 256, fb);
+        /* A short read is the end of a file only without an error. */
+        if (ferror(fa) || ferror(fb)) { fmt = cmp_io; break; }
         m = na < nb ? na : nb;
         for (i = 0; i < m; ++i)
-            if (copy_buf[i] != copy_buf[256 + i]) {
-                fclose(fa); fclose(fb);
-                sprintf(question, cmp_diff, pos + i);
-                message(question);
-                return;
-            }
+            if (copy_buf[i] != copy_buf[256 + i]) { pos += i; fmt = cmp_diff; goto done; }
         pos += m;
-        if (na != nb) { fclose(fa); fclose(fb); sprintf(question, cmp_short, pos); message(question); return; }
+        if (na != nb) { fmt = cmp_short; break; }
         if (na < 256) break;
     }
-    fclose(fa); fclose(fb);
-    sprintf(question, cmp_ident, pos);
+done:
+    /* Both files are closed, whatever happened; a failed close is no verdict. */
+    na = fclose(fa);
+    if (fclose(fb) || na) fmt = cmp_io;
+    sprintf(question, fmt, pos);
     message(question);
 }
 #pragma static-locals (pop)
@@ -1623,9 +1650,10 @@ void __fastcall__ compare_entry(const struct A2fcApi* a)
 #pragma static-locals (push, off)
 
 static const char srch_label[] = "Search for";
-static const char srch_none[]  = "No file in this panel.";
+static const char srch_none[]  = "Empty panel.";
 static const char srch_res[]   = "%u file(s) contain \"%s\", now tagged.";
-static const char srch_cancel[] = "%u file(s) tagged; search cancelled.";
+static const char srch_cancel[] = "%u tagged; cancelled.";
+static const char srch_error[] = "Read error: %s; %u tagged, stopped.";
 
 /* SEARCH can spend several seconds opening and scanning a large panel.  The
  * keyboard strobe is safe to poll between files; consume ESC so it cannot
@@ -1639,47 +1667,53 @@ static unsigned char search_cancel(void)
 
 /* fread (already resident) rather than fgetc (which would link into the main
  * window, which is full): one block in copy_buf, a sliding window of plen
- * bytes over it, case-insensitive. */
+ * bytes over it, case-insensitive. Returns 1 if the file contains the text,
+ * 0 if it does not, 2 if it could not be opened, read or closed: a file
+ * never read to its end is not a file without the text. */
 static unsigned char file_has(const char* path, const char* pat, unsigned char plen)
 {
     FILE* f = fopen(path, "rb");
-    unsigned char win[16], wlen = 0, i, c;
+    unsigned char win[16], wlen = 0, c, found = 0;
     unsigned int n, j;
-    if (!f) return 0;
+    if (!f) return 2;
     for (;;) {
         n = fread(copy_buf, 1, 512, f);
+        if (ferror(f)) { found = 2; break; }
         for (j = 0; j < n; ++j) {
             c = copy_buf[j] & 0x7F;
             if (c >= 'a' && c <= 'z') c -= 32;
-            if (wlen < plen) win[wlen++] = c;
-            else { for (i = 1; i < plen; ++i) win[i - 1] = win[i]; win[plen - 1] = c; }
-            if (wlen == plen) {
-                for (i = 0; i < plen && win[i] == (unsigned char)pat[i]; ++i) ;
-                if (i == plen) { fclose(f); return 1; }
-            }
+            /* the window slides down one byte (memcpy copies upwards, so an
+             * overlapping move towards the start is safe) */
+            if (wlen < plen) { win[wlen] = c; ++wlen; }
+            else { memcpy(win, win + 1, plen - 1); win[plen - 1] = c; }
+            if (wlen == plen && !memcmp(win, pat, plen)) { found = 1; goto done; }
         }
         if (n < 512) break;
     }
-    fclose(f);
-    return 0;
+done:
+    if (fclose(f)) found = 2;
+    return found;
 }
 
 void __fastcall__ search_entry(const struct A2fcApi* a)
 {
     struct Panel* pan = &panels[active];
-    unsigned char plen, i, found = 0, cancelled = 0;
+    unsigned char plen, i, found = 0, r = 0;
     (void)a;
     if (!pan->count) { message(srch_none); return; }
     if (!prompt(srch_label, 0, 0)) return;          /* input: the text, in upper case */
     plen = strlen(input);
     if (!plen || plen > 15) return;
     for (i = 0; i < pan->count; ++i) {
-        if (search_cancel()) { cancelled = 1; break; }
+        if (search_cancel()) { r = 3; break; }
         if (is_dir(&pan->e[i]) || !build_full(full, pan, &pan->e[i])) continue;
-        if (file_has(full, input, plen)) { set_tag(pan, i, 1); ++found; }
+        r = file_has(full, input, plen);
+        if (r == 2) break;                          /* stop on the file, and name it */
+        if (r) { set_tag(pan, i, 1); ++found; }
     }
     draw_panel(active);
-    if (cancelled) sprintf(question, srch_cancel, found);
+    if (r == 2) sprintf(question, srch_error, pan->e[i].name, found);
+    else if (r == 3) sprintf(question, srch_cancel, found);
     else sprintf(question, srch_res, found, input);
     message(question);
 }
@@ -1707,7 +1741,7 @@ static const char b2_pick[]  = "Select a Binary II archive.";
 static const char b2_notdir[] = "Other panel must be a ProDOS folder.";
 static const char b2_bad[]   = "Not a Binary II archive.";
 static const char b2_path[]  = "%s/%s";
-static const char b2_done[]  = "%u file(s) extracted.";
+static const char b2_done[]  = "%u file(s) extracted, %u folder(s) skipped.";
 
 /* A ProDOS name out of the one in the archive: letters, digits and
  * periods, a letter first, 15 at most. */
@@ -1743,7 +1777,7 @@ void __fastcall__ binary2_entry(const struct A2fcApi* a)
     FILE* in;
     FILE* out = NULL;
     unsigned long eof, size, start;
-    unsigned int n, done = 0;
+    unsigned int n, done = 0, folders = 0;
     unsigned char more = 1, owned = 0, pad;
     const char* error = b2_io_failed;
     char name[17];
@@ -1763,6 +1797,19 @@ void __fastcall__ binary2_entry(const struct A2fcApi* a)
               | ((unsigned long)copy_buf[0x16] << 16);
         pad = (128 - (eof & 127)) & 127;
         more = copy_buf[0x7F] != 0;
+        if (copy_buf[4] == 0x0F || copy_buf[7] == 0x0D) {
+            /* A folder record (type $0F or storage type $0D): extracted as a
+             * plain file it could be neither opened nor deleted here. Nothing
+             * is created; its data and padding are read, not sought, so a
+             * truncated archive still fails. Its files follow as their own
+             * records, named by their last component. */
+            for (eof += pad; eof; eof -= n) {
+                n = eof > 512 ? 512 : (unsigned int)eof;
+                if (fread(copy_buf, 1, n, in) != n || ferror(in)) goto failed;
+            }
+            ++folders;
+            continue;
+        }
         b2_name(copy_buf + 0x18, copy_buf[0x17], name);
         _filetype = copy_buf[4];
         _auxtype = copy_buf[5] | (copy_buf[6] << 8);
@@ -1804,7 +1851,7 @@ void __fastcall__ binary2_entry(const struct A2fcApi* a)
 #ifndef A2FC_BIG_BINARY2
     refresh_both();
 #endif
-    sprintf(question, b2_done, done);
+    sprintf(question, b2_done, done, folders);
     b2_say(question);
     return;
 failed:
@@ -2526,23 +2573,26 @@ static void view_image(void)
 #pragma rodata-name (push, "EDITRO")
 static const char ed_menukeys[] = "ESC Menu";
 static const char ed_newtitle[] = "New text file";
-static const char ed_discardkeys[] = "Y Discard the changes,N Keep editing";
-static const char ed_savekeys[] = "S Save,X Save and exit,Q Quit without saving,ESC Continue editing";
+static const char ed_discardkeys[] = "Y Discard,N Keep editing";
+static const char ed_savekeys[] = "S Save,X Save and exit,Q Quit without saving,ESC Edit";
 static const char ed_status[]  = " %-30.30s  Line %u  Col %u  %u/%u bytes %s";
 static const char ed_openf[]   = "Open failed.";
 static const char ed_buffull[] = "Buffer full.";
 static const char ed_nodir[]   = "Open a directory first.";
-static const char ed_exists[]  = "File exists: select it to edit.";
+static const char ed_exists[]  = "File exists.";
 static const char ed_toobig[]  = "Too big for the editor (5 KB).";
+static const char ed_convert[] = "Save converted text?";
 
 /* The text lives in the HGR MAIN page, above the overlay's code
  * ($2C00-$3FEF: 5 KB), CR line endings, bit 7 stripped on loading.
  * The cursor is an offset into the buffer; the screen shows 22 lines from
- * `etop`, the start of a line, with no wrapping of long lines. */
+ * `etop`, the start of a line, with no wrapping of long lines.
+ * `econv`: the buffer is not the file's bytes (bit 7 or LF changed on
+ * loading); saving then asks first. */
 #define EDIT_ROWS 22
 static unsigned char efresh;
 static unsigned int elen, ecur, etop, ewant;
-static unsigned char edirty, etype;
+static unsigned char edirty, etype, econv;
 static unsigned int eaux;
 
 static unsigned int line_start(unsigned int pos)
@@ -2563,22 +2613,27 @@ static unsigned int next_line(unsigned int pos)
     return pos < elen ? pos + 1 : pos;
 }
 
-/* Redraws the lines from `from` (screen row number) on. */
+/* Redraws the lines from `from` (screen row number) on. The text is walked
+ * with a pointer: cc65 2.18 compiled EDIT_BUF[pos] here without ever
+ * storing the low byte of its pointer, across the gotoxy/cputc calls. */
 static void edit_draw(unsigned char from)
 {
     unsigned int pos = etop;
+    const unsigned char* p;
+    const unsigned char* end = (const unsigned char*)EDIT_BUF + elen;
     unsigned char row, col;
     for (row = 0; row < from; ++row) pos = next_line(pos);
+    p = (const unsigned char*)EDIT_BUF + pos;
     for (row = from; row < EDIT_ROWS; ++row) {
         gotoxy(0, row);
         col = 0;
-        while (pos < elen && EDIT_BUF[pos] != '\r') {
-            if (col < 79) cputc(EDIT_BUF[pos] < 32 ? '.' : EDIT_BUF[pos]);
-            ++pos;
+        while (p != end && *p != '\r') {
+            if (col < 79) cputc(*p < 32 ? '.' : *p);
+            ++p;
             ++col;
         }
         if (col < 79) cclear(79 - col);
-        if (pos < elen) ++pos;
+        if (p != end) ++p;
     }
 }
 
@@ -2666,6 +2721,8 @@ static unsigned char edit_save(void)
     FILE* f;
     unsigned int n, pos;
     unsigned char ok, old;
+    if (!edirty && !efresh) return 1;          /* nothing changed: the file is left alone */
+    if (econv && !confirm(ed_convert)) return 0;
     strcpy(EDIT_TMP, full); *strrchr(EDIT_TMP, '/') = 0;
     strcpy(EDIT_BAK, EDIT_TMP);
     if (!push_name(EDIT_TMP, ed_tempname) || !push_name(EDIT_BAK, ed_backupname)) {
@@ -2705,7 +2762,7 @@ static unsigned char edit_save(void)
         return 0;
     }
     if (old && remove(EDIT_BAK)) message(ed_safety_4);
-    efresh = edirty = 0;
+    efresh = edirty = econv = 0;
     ++a2fc_ops;
     return 1;
 }
@@ -2716,11 +2773,12 @@ static unsigned char edit_file(unsigned char fresh, unsigned char type, unsigned
 {
     FILE* f;
     unsigned int i, ls;
+    unsigned char* p;
     unsigned char row, written = 0;
     char key;
     efresh = fresh;
     elen = ecur = etop = ewant = 0;
-    edirty = 0;
+    edirty = econv = 0;
     etype = type;
     eaux = aux;
     if (!fresh) {
@@ -2731,7 +2789,12 @@ static unsigned char edit_file(unsigned char fresh, unsigned char type, unsigned
             fclose(f); strcpy(note, ed_openf); return 0xFF;
         }
         if (fclose(f)) { strcpy(note, ed_openf); return 0xFF; }
-        for (i = 0; i < elen; ++i) { EDIT_BUF[i] &= 0x7F; if (EDIT_BUF[i] == '\n') EDIT_BUF[i] = '\r'; }
+        /* a pointer, not EDIT_BUF[i]: cc65 miscompiles a 16-bit index into a page-aligned constant */
+        for (p = (unsigned char*)EDIT_BUF; p != (unsigned char*)EDIT_BUF + elen; ++p)
+            if (*p >= 0x80 || *p == '\n') {
+                econv = 1;
+                if ((*p &= 0x7F) == '\n') *p = '\r';
+            }
     }
     a2fc_view = 5;
     clrscr();
@@ -2841,12 +2904,31 @@ static unsigned char __fastcall__ prepare_audio(unsigned char arg)
 /* The HELP overlay: the help page, in A2FILE/HELP.PLG. */
 #pragma code-name (push, "HELP")
 #pragma rodata-name (push, "HELPRO")
-const char msg_nohelp[] = "A2FILE/A2FILE.HELP is missing.";
+const char msg_nohelp[] = "A2FILE.HELP missing.";
 static const char help_file[] = "A2FILE.HELP";
-static const char HELP_KEYS[] = "ANY Return to the panels";
+static const char HELP_KEYS[] = "ANY Back";
+/* The help text being drawn, and the two readers every line shares. */
+static const char* hs;
+
+/* A decimal number, then its comma; $FF (an impossible row or column) when
+ * the comma is missing. */
+static unsigned char help_num(void)
+{
+    unsigned char v = 0;
+    while (*hs >= '0' && *hs <= '9') { v = v * 10 + (*hs - '0'); ++hs; }
+    if (*hs != ',') return 0xFF;
+    ++hs;
+    return v;
+}
+
+/* The rest of the line, up to its CR or LF. */
+static void help_line(void)
+{
+    while (*hs && *hs != '\n' && *hs != '\r') { cputc(*hs); ++hs; }
+}
+
 static void view_help(void)
 {
-    const char* s = HELP_BUF;
     FILE* f;
     unsigned int n;
     unsigned char x, y, klen, i, kind;
@@ -2859,30 +2941,29 @@ static void view_help(void)
     keep_tags(1);
     a2fc_view = 4;
     clrscr();
-    while (*s) {
-        x = 0; while (*s >= '0' && *s <= '9') x = x * 10 + (*s++ - '0');
-        if (*s++ != ',') break;
-        y = 0; while (*s >= '0' && *s <= '9') y = y * 10 + (*s++ - '0');
-        if (*s++ != ',' || x >= 80 || y >= 23) break;
+    hs = HELP_BUF;
+    while (*hs) {
+        x = help_num();
+        y = help_num();
+        if (x >= 80 || y >= 23) break;
         gotoxy(x, y);
-        kind = *s;
+        kind = *hs;
         if (kind == '#' || kind == '~') {         /* # section title, ~ plain text */
             if (kind == '#') { revers(1); cputc(' '); }
-            ++s;
-            while (*s && *s != '\n' && *s != '\r') cputc(*s++);
+            ++hs;
+            help_line();
             if (kind == '#') { cputc(' '); revers(0); }
         } else {
-            for (klen = 0; s[klen] && s[klen] != ',' && s[klen] != '\r' && s[klen] != '\n'; ++klen) {}
-            if (s[klen] != ',') break;
-            revers(1);
-            if (klen == 1) { cputc(' '); cputc(*s); cputc(' '); }
-            else for (i = 0; i < 3; ++i) cputc(i < klen ? s[i] : ' ');
+            for (klen = 0; hs[klen] && hs[klen] != ',' && hs[klen] != '\r' && hs[klen] != '\n'; ++klen) {}
+            if (hs[klen] != ',') break;
+            revers(1);                              /* the key in 3 columns, one letter centred */
+            for (i = 0; i < 3; ++i) cputc(klen == 1 ? (i == 1 ? *hs : ' ') : i < klen ? hs[i] : ' ');
             revers(0);
             cputc(' ');
-            s += klen + 1;
-            while (*s && *s != '\n' && *s != '\r') cputc(*s++);
+            hs += klen + 1;
+            help_line();
         }
-        while (*s == '\n' || *s == '\r') ++s;
+        while (*hs == '\n' || *hs == '\r') ++hs;
     }
     bar_begin();
     keys_bar(0, HELP_KEYS);
@@ -2927,31 +3008,31 @@ void __fastcall__ help_entry(const struct A2fcApi* a)
  * the main window. */
 static const char S_TITLEFMT[] = "%-79.79s";
 static const char S_TITLE[] = "  A2 FILE CMD  -  DISK IMAGES";
-static const char S_INTRO[] = "PO/DSK/DO/2MG. Target must be formatted. Disk writes are read back.";
+static const char S_INTRO[] = "Target disks must be formatted.";
 static const char S_W[] = "W  Write %s to a disk";
-static const char S_R[] = "R  Read a disk into a new image file, in this directory";
-static const char S_O[] = "O  Copy disk (one drive: swap SOURCE and TARGET)";
+static const char S_R[] = "R  Read a disk into a new image here";
+static const char S_O[] = "O  Copy disk (one drive: swap the disks)";
 static const char S_KEYS[] = "W Write,R Read,O Copy,ESC Back";
-static const char S_PICK_KEYS[] = "1-8 Choose the disk,ESC Back";
+static const char S_PICK_KEYS[] = "1-8 Disk,ESC Back";
 static const char S_DEV[] = "%c  %s  %-17s %5u blocks%s";
 static const char S_WHERE[] = "slot %u drive %u";
-static const char S_NOVOL[] = "(no ProDOS volume)";
+static const char S_NOVOL[] = "(no volume)";
 static const char S_INUSE[] = "  IN USE";
 static const char S_EMPTY[] = "";
 static const char S_HOLDS[] = "Disk in use: choose another.";
 static const char S_LOST[] = " EVERYTHING on %s (%s) WILL BE LOST. ";
-static const char S_ERASE[] = "Type ERASE then RETURN to go on";
+static const char S_ERASE[] = "Type ERASE, then RETURN";
 static const char S_WORD[] = "ERASE";
 static const char S_TO[] = "Write the image to which disk?";
-static const char S_FROM[] = "Read which disk into an image?";
+static const char S_FROM[] = "Read which disk?";
 static const char S_CFROM[] = "Copy FROM which disk?";
-static const char S_CTO[] = "Copy TO which drive? Same drive: swap disks.";
-static const char S_NOTIMG[] = "The selection is not a disk image (.PO, .DSK, .2MG).";
-static const char S_SMALL[] = "That disk is smaller than the image.";
-static const char S_NODIR[] = "Open a ProDOS directory first: the image goes there.";
-static const char S_NOSIZE[] = "Unknown size: neither a ProDOS volume nor a Disk II.";
+static const char S_CTO[] = "Copy TO which drive?";
+static const char S_NOTIMG[] = "Not a disk image.";
+static const char S_SMALL[] = "Disk smaller than the image.";
+static const char S_NODIR[] = "Open a ProDOS directory.";
+static const char S_NOSIZE[] = "Unknown disk size.";
 static const char S_NAME[] = "Image name, without suffix";
-static const char S_LONG[] = "Name too long for its suffix.";
+static const char S_LONG[] = "Name too long.";
 static const char S_ORDER[] = "\1P ProDOS order (.PO) or D DOS 3.3 order (.DSK)?";
 static const char S_DOT[] = "%s.%s";
 static const char S_SLASH[] = "%s/%s";
@@ -2963,7 +3044,8 @@ static const char S_VERIFIED[] = " Verified.";
 static const char S_WRITTEN[] = "written to";
 static const char S_READ[] = "read from";
 static const char S_COPIED[] = "copied to";
-static const char S_INSERT[] = "Insert %s for %s in %s. Key/ESC.";
+static const char S_INSERT[] = "%sInsert %s for %s in %s. Key/ESC.";
+static const char S_WRONG[] = "WRONG DISK. ";
 static const char S_SOURCE[] = "SOURCE";
 static const char S_TARGET[] = "TARGET copy";
 static const char S_READING[] = "Reading";
@@ -2974,8 +3056,8 @@ static const char S_FAILED[] = "Failed: %s.";
 static const char S_E_CANCEL[] = "cancelled";
 static const char S_E_IO[] = "I/O error";
 static const char S_E_NODEV[] = "no device there";
-static const char S_E_WP[] = "the disk is write protected";
-static const char S_E_SWITCH[] = "the disk was switched";
+static const char S_E_WP[] = "disk write protected";
+static const char S_E_SWITCH[] = "disk switched";
 static const char S_E_CODE[] = "ProDOS error $%02X";
 static const char S_RAM[] = "  /RAM was rebuilt empty.";
 
@@ -2986,7 +3068,7 @@ static const char S_RAM[] = "  /RAM was rebuilt empty.";
 #define DI_AUX_BLOCKS 80
 #define DI ((struct DiskImg*)0x3E00)
 
-enum { SIDE_DEVICE, SIDE_PO, SIDE_DSK };
+enum { SIDE_DEVICE, SIDE_PO, SIDE_DSK, SIDE_2MG };
 struct Side { unsigned char kind, unit; FILE* f; unsigned long base; };
 struct Dev { unsigned char unit, inuse; unsigned int blocks; char name[NAME_LEN]; };
 struct DiskImg {
@@ -2997,7 +3079,13 @@ struct DiskImg {
     unsigned char parms[6];
     unsigned char checking;
     unsigned int checkblock;
-    const char* source_name;
+    /* working bytes at fixed addresses (no low-RAM statics), the first
+     * block of a pass, the name of the single-drive copy's source */
+    unsigned char want, sr;
+    const char* wrong;
+    const unsigned char* rom;
+    unsigned int first;
+    char source[NAME_LEN];
 };
 
 typedef char diskimg_state_fits[0x200 - sizeof(struct DiskImg) + 1];
@@ -3049,12 +3137,33 @@ static void di_stage(unsigned char i, unsigned char put)
     }
 }
 
-static unsigned char di_ask(const char* which)
+/* One drive for both disks: nothing tells a swapped floppy but its
+ * contents. Once ERASE is typed, the single-drive copy first marks the
+ * target, still in the drive: its block 2 becomes DI_MARK bytes. The passes
+ * then go from the end of the disk backwards, so block 2 is only copied in
+ * the last one, after its last prompt. Every TARGET prompt wants the mark
+ * and every SOURCE prompt refuses it: an out-of-step swap can neither
+ * write onto the source (nor onto another disk) nor read the target as
+ * the source. */
+#define DI_MARK 0xA5
+/* Asks for the SOURCE (want = 0) or the TARGET (want = 1) and asks again
+ * while the disk inserted is the wrong one; another `want` only asks.
+ * Returns 0, the ProDOS error, or $FF on Escape. */
+static unsigned char __fastcall__ di_ask(unsigned char want)
 {
-    question_begin();
-    cprintf(S_INSERT, which, DI->source_name, di_where(DI->src.unit));
-    revers(0);
-    return cgetc() != KEY_ESC;
+    DI->want = want;
+    DI->wrong = S_EMPTY;
+    for (;;) {
+        question_begin();
+        cprintf(S_INSERT, DI->wrong, DI->want ? S_TARGET : S_SOURCE, DI->source, di_where(DI->src.unit));
+        revers(0);
+        if (cgetc() == KEY_ESC) return 0xFF;
+        if (DI->want > 1) return 0;
+        if ((DI->sr = di_xfer(&DI->src, 2, 0))) return DI->sr;
+        memset(copy_buf, DI_MARK, 512);
+        if (!memcmp(copy_buf, DI_BLOCK, 512) == DI->want) return 0;
+        DI->wrong = S_WRONG;
+    }
 }
 
 /* A .DSK image writes its sectors at scattered positions in the file (the
@@ -3075,8 +3184,9 @@ static unsigned char di_presize(struct Side* s, unsigned int blocks)
 }
 
 /* Copies DI->total blocks from src to dst, one staging area per pass; with
- * `swap` (a single drive), asks for the floppy at each pass. Returns 0,
- * the ProDOS error, or $FF if the user gave up. */
+ * `swap` (a single drive, the target already in it), marks the target,
+ * then asks for each floppy at each pass, last blocks first, and checks
+ * it. Returns 0, the ProDOS error, or $FF if the user gave up. */
 static unsigned char di_copy(unsigned char swap)
 {
     unsigned int done = 0, total = DI->total, left;
@@ -3084,21 +3194,26 @@ static unsigned char di_copy(unsigned char swap)
     if (DI->dst.kind != SIDE_DEVICE && (r = di_presize(&DI->dst, total))) return r;
     progress_total = 1;
     progress_done = 0;
+    if (swap) {
+        memset(DI_BLOCK, DI_MARK, 512);
+        if ((r = di_xfer(&DI->dst, 2, 1))) return r;
+    }
     while ((left = total - done) != 0) {
         n = left < per ? (unsigned char)left : per;
-        if (swap && !di_ask(S_SOURCE)) return 0xFF;
+        DI->first = swap ? left - n : done;
+        if (swap && (r = di_ask(0))) return r;
         for (i = 0; i < n; ++i) {
-            if ((r = di_xfer(&DI->src, done + i, 0))) return r;
+            if ((r = di_xfer(&DI->src, DI->first + i, 0))) return r;
             di_stage(i, 1);
             progress_bar(S_READING, done + i + 1, total);
         }
-        if (swap && !di_ask(S_TARGET)) return 0xFF;
+        if (swap && (r = di_ask(1))) return r;
         for (i = 0; i < n; ++i) {
             di_stage(i, 0);
-            if ((r = di_xfer(&DI->dst, done + i, 1))) return r;
+            if ((r = di_xfer(&DI->dst, DI->first + i, 1))) return r;
             if (DI->dst.kind == SIDE_DEVICE) {
                 DI->checking = 1;
-                DI->checkblock = done + i;
+                DI->checkblock = DI->first + i;
                 memcpy(copy_buf, DI_BLOCK, 512);
                 if ((r = di_xfer(&DI->dst, DI->checkblock, 0))) return r;
                 if (memcmp(copy_buf, DI_BLOCK, 512)) return 0xFE;
@@ -3111,10 +3226,14 @@ static unsigned char di_copy(unsigned char swap)
     return 0;
 }
 
+#ifndef DI_SLOTROM
+#define DI_SLOTROM(slot) ((const unsigned char*)(0xC000 + ((unsigned)(slot) << 8)))
+#endif
 /* The block devices ProDOS knows (DEVLST), their volume if there is one
- * (ON_LINE), their size (the volume's, or 280 for a Disk II: its driver
- * is in the language card, below $FF00 where the /RAM one lives), and
- * whether the program is running on them. */
+ * (ON_LINE), their size, and whether the program is running on them. A
+ * Disk II is 280 blocks: ProDOS's own driver, in the language card (not
+ * /RAM's $FF00), and the Disk II signature in the ROM of its slot, as
+ * FORMAT tells it. Any other disk has its volume's size, or none. */
 static void di_scan(void)
 {
     unsigned char i, n = *(unsigned char*)0xBF31 + 1, len;
@@ -3127,7 +3246,11 @@ static void di_scan(void)
         d = &DI->dev[DI->ndev];
         d->unit = ((unsigned char*)0xBF32)[i] & 0xF0;
         drv = ((unsigned int*)0xBF10)[d->unit >> 4];
-        d->blocks = drv >= 0xD000 && drv < 0xFF00 ? 280 : 0;
+        d->blocks = 0;
+        if (drv >= 0xD000 && drv != 0xFF00 && (d->unit & 0x70)) {
+            DI->rom = DI_SLOTROM((d->unit >> 4) & 7);
+            if (DI->rom[1] == 0x20 && !DI->rom[3] && DI->rom[5] == 0x03 && !DI->rom[0xFF]) d->blocks = 280;
+        }
         d->name[0] = 0;
         d->inuse = 0;
         p[0] = 2; p[1] = d->unit;
@@ -3140,8 +3263,11 @@ static void di_scan(void)
              * Disk II: a floppy is 280 blocks, whatever volume was
              * written on it */
             if (!d->blocks) volume_blocks(d->name, &d->blocks, &dummy);
-            d->inuse = (!strncmp(cfg_path, d->name, len + 1) && cfg_path[len + 1] == '/') ||
-                (!strncmp(full, d->name, len + 1) && full[len + 1] == '/');
+            /* 1: the program's disk; 2: the disk holding `full` (for R,
+             * the panel's directory): the whole volume name, so a disk
+             * without a ProDOS volume holds nothing */
+            d->inuse = !strncmp(cfg_path, d->name, len + 1) && cfg_path[len + 1] == '/';
+            if (!strncmp(full, d->name, len + 1) && full[len + 1] == '/') d->inuse = 2;
         }
         ++DI->ndev;
     }
@@ -3196,20 +3322,22 @@ static unsigned char di_erase(const struct Dev* d)
 }
 
 /* Opens the image `full` (entry e): the sector order from its name (.DSK
- * or .DO: DOS 3.3; .2MG: its header says; otherwise ProDOS), the number
- * of blocks from its size. Returns 0 if it is not an image. */
+ * or .DO: DOS 3.3; .2MG: its header says; .PO: ProDOS; any other name is
+ * not an image), the number of blocks from its size. Returns 0 if it is
+ * not an image. */
 static unsigned char di_open_image(struct Side* s, const struct Entry* e)
 {
-    unsigned char n = strlen(e->name);
-    const char* end = e->name + n;
+    const char* dot = strrchr(e->name, '.');
     unsigned long size = e->size;
-    s->kind = SIDE_PO;
     s->base = 0;
-    if ((n > 4 && !strcmp(end - 4, ".DSK")) || (n > 3 && !strcmp(end - 3, ".DO"))) s->kind = SIDE_DSK;
+    if (!dot) return 0;
+    s->kind = !strcmp(dot + 1, S_DSK) || !strcmp(dot, ".DO") ? SIDE_DSK : !strcmp(dot + 1, S_PO) ? SIDE_PO :
+        !strcmp(dot, ".2MG") ? SIDE_2MG : SIDE_DEVICE;
+    if (!s->kind) return 0;
     s->f = fopen(full, "rb");
     if (!s->f) return 0;
     if (fseek(s->f, 0, SEEK_END) || ftell(s->f) != size || fseek(s->f, 0, SEEK_SET)) return 0;
-    if (n > 4 && !strcmp(end - 4, ".2MG")) {
+    if (s->kind == SIDE_2MG) {
         if (fread(DI_BLOCK, 1, 64, s->f) != 64 || memcmp(DI_BLOCK, "2IMG", 4) || DI_BLOCK[0x0C] > 1 ||
             DI_BLOCK[0x0D] || DI_BLOCK[0x0E] || DI_BLOCK[0x0F]) return 0;
         s->kind = DI_BLOCK[0x0C] ? SIDE_PO : SIDE_DSK;
@@ -3289,6 +3417,8 @@ void __fastcall__ diskimg_entry(const struct A2fcApi* a)
     keys_bar(0, S_KEYS);
     do key = cgetc() & 0xDF; while (key != 'W' && key != 'R' && key != 'O' && key != 0x1B);
     if (key == 0x1B) return;
+    /* R: the panel's directory, followed by a slash, for di_scan */
+    if (key == 'R') sprintf(full, S_SLASH, pan->path, S_EMPTY);
     di_scan();
     if (key == 'W') {
         verb = S_WRITTEN;
@@ -3305,7 +3435,7 @@ void __fastcall__ diskimg_entry(const struct A2fcApi* a)
         if (!(to = di_pick(S_FROM, 0))) goto out;
         DI->total = to->blocks;
         if (!DI->total) { strcpy(note, S_NOSIZE); goto out; }
-        if (!strncmp(pan->path, to->name, strlen(to->name))) { strcpy(note, S_HOLDS); goto out; }
+        if (to->inuse == 2) { strcpy(note, S_HOLDS); goto out; }
         if (!prompt(S_NAME, NULL, 0)) goto out;
         if (strlen(input) > 11 || strlen(pan->path) + 17 >= PATH_LEN) { strcpy(note, S_LONG); goto out; }
         message(S_ORDER);
@@ -3327,12 +3457,19 @@ void __fastcall__ diskimg_entry(const struct A2fcApi* a)
         DI->total = from->blocks;
         if (!DI->total) { strcpy(note, S_NOSIZE); goto out; }
         if (!(to = di_pick(S_CTO, 1))) goto out;
-        if (to->blocks && to->blocks < DI->total) { strcpy(note, S_SMALL); goto out; }
-        if (!di_erase(to)) goto out;
+        strcpy(DI->source, from->name);
         src->kind = dst->kind = SIDE_DEVICE;
         src->unit = from->unit;
         dst->unit = to->unit;
-        DI->source_name = from->name;
+        if (from == to) {
+            /* One drive: the target goes in first, so that the warning
+             * names the disk really erased (the list saw the source). */
+            if (di_ask(8)) goto out;
+            di_scan();
+            if (to->inuse) { strcpy(note, S_HOLDS); goto out; }
+        }
+        if (to->blocks && to->blocks < DI->total) { strcpy(note, S_SMALL); goto out; }
+        if (!di_erase(to)) goto out;
         r = di_copy(from == to);
     }
     if (!r) sprintf(note, S_DONE, DI->total, verb, di_where(to->unit), dst->kind == SIDE_DEVICE ? S_VERIFIED : S_EMPTY);
@@ -3762,10 +3899,10 @@ static unsigned char target_check(void)
 /* ---------------------------------------------------------------------- */
 #pragma code-name (push, "IMGFS")
 #pragma rodata-name (push, "IMGFSRO")
-static const char im_target[]  = "Open a ProDOS folder in the other panel.";
-static const char im_reopen[]  = "Cannot reopen the image.";
+static const char im_target[]  = "Other panel: open a folder.";
+static const char im_reopen[]  = "Bad image.";
 static const char im_done[]    = "%u file%s extracted.";
-static const char im_done_big[] = "%u file%s extracted, %u too big (>128K).";
+static const char im_done_big[] = "%u file%s extracted, %u not supported (tree/fork).";
 static const char im_error[]   = "Extract failed; %u complete.";
 static const char im_cleanup[] = "Cleanup failed: %s retained.";
 static const char im_wb[] = "wb";
@@ -3782,22 +3919,46 @@ static const char im_rb[] = "rb";
 static FILE* im_out;
 static unsigned char im_owned;
 
+/* The storage type of the file with key block e->mdate, from its own entry
+ * in the directory `block` of the open image -- never guessed from the
+ * size: a seedling may be sparse beyond its only block. A key block
+ * belongs to one file of the volume; the entry must also still carry the
+ * snapshot's size. Returns the type (1 seedling, 2 sapling, 3 tree, 5
+ * extended), 0 on a read error or when no entry matches. The directory
+ * blocks go through IM_IDX; 255 blocks at most, so a cycle ends. */
+static unsigned char img_storage(const struct Entry* e, unsigned int block)
+{
+    unsigned char* p;
+    unsigned char k, guard, t;
+    for (guard = 0; block && guard < 255; ++guard) {
+        if (!img_read_block(block, IM_IDX)) return 0;
+        for (k = 0, p = IM_IDX + 4; k < 13; ++k, p += 0x27) {
+            t = *p >> 4;
+            if (t && t < 0x0D && !memcmp(p + 0x11, &e->mdate, 2) && !memcmp(p + 0x15, &e->size, 3))
+                return t;
+        }
+        block = IM_IDX[2] | ((unsigned int)IM_IDX[3] << 8);
+    }
+    return 0;
+}
+
 /* One pass over the ProDOS file with key block e->mdate and size e->size,
- * read from the open image (img_f). The storage type follows from the
- * size: seedling (<= 512: the key is the data block) or sapling (the key
- * is an index block of 256 pointers, low bytes [0..255] then high bytes
- * [256..511]); a null block pointer is a hole (zeros). Tree files
- * (> 128 KB) are rare on a floppy and refused before any reservation (2).
- * Pass 0 reserves and writes the output; pass 1 opens the closed file
- * again and compares every byte with the blocks read a second time, and
- * the file must end where the data ends. The caller closes im_out either
- * way. Returns 1 on success, 0 on a failure. */
-static unsigned char img_pass(const struct Entry* e, unsigned char verify)
+ * read from the open image (img_f), with the storage type found in its
+ * entry: seedling (the key is the data block; beyond it, a sparse seedling
+ * reads zeros) or sapling (the key is an index block of 256 pointers, low
+ * bytes [0..255] then high bytes [256..511]); a null block pointer is a
+ * hole (zeros). Tree and extended (forked) files, and anything above
+ * 128 KB, are refused before any reservation (2). Pass 0 reserves and
+ * writes the output; pass 1 opens the closed file again and compares
+ * every byte with the blocks read a second time, and the file must end
+ * where the data ends. The caller closes im_out either way. Returns 1 on
+ * success, 0 on a failure. */
+static unsigned char img_pass(const struct Entry* e, unsigned char storage, unsigned char verify)
 {
     unsigned char* idx = IM_IDX;
     unsigned int need = (unsigned int)((e->size + 511) >> 9), i, n, blk;
     unsigned long left = e->size;
-    if (e->size > 128UL * 1024) return 2;
+    if (e->size > 128UL * 1024 || (unsigned char)(storage - 1) > 1) return 2;   /* 1 or 2 only */
     if (verify) {
         if (!(im_out = fopen(other_full, im_rb))) return 0;
     } else {
@@ -3806,9 +3967,9 @@ static unsigned char img_pass(const struct Entry* e, unsigned char verify)
         im_owned = reserve_output(other_full);
         if (im_owned != OUTPUT_RESERVED || !(im_out = fopen(other_full, im_wb))) return 0;
     }
-    if (e->size > 512 && !img_read_block(e->mdate, idx)) return 0;
+    if (storage == 2 && !img_read_block(e->mdate, idx)) return 0;
     for (i = 0; i < need; ++i) {
-        blk = e->size <= 512 ? e->mdate : (idx[i] | ((unsigned int)idx[256 + i] << 8));
+        blk = storage == 1 ? (i ? 0 : e->mdate) : (idx[i] | ((unsigned int)idx[256 + i] << 8));
         n = left > 512 ? 512 : (unsigned int)left;
         if (blk) { if (!img_read_block(blk, copy_buf)) return 0; }
         else memset(copy_buf, 0, 512);
@@ -3821,6 +3982,16 @@ static unsigned char img_pass(const struct Entry* e, unsigned char verify)
     return 1;
 }
 
+/* One pass, then its output closed whatever the pass returned; a refusal
+ * (2) before any reservation stays 2 when nothing was open. */
+static unsigned char img_run(const struct Entry* e, unsigned char storage, unsigned char verify)
+{
+    unsigned char r = img_pass(e, storage, verify);
+    if (im_out && fclose(im_out)) r = 0;
+    im_out = NULL;
+    return r;
+}
+
 /* C on an image opened as a directory: extracts the tagged files, else the
  * file under the cursor, to the ProDOS directory of the other panel
  * (subdirectories have to be entered and extracted one at a time). Every
@@ -3831,34 +4002,32 @@ static void extract_targets(void)
 {
     struct Panel* pan = &panels[active];
     struct Panel* dst = &panels[!active];
-    unsigned char n = pan->count, i, done = 0, big = 0, r = 1;
+    const struct Entry* e;
+    char* cut;
+    unsigned char n = pan->count, i, done = 0, big = 0, r = 1, storage;
     if (dst->fs || !dst->path[0]) { strcpy(note, im_target); return; }
     if (!n || !pan->path[0]) return;
     progress_total = tag_count(pan);
     if (!progress_total) progress_total = 1;
     progress_done = 0;
-    i = pan->path[pan->img_len];         /* reopen the image without losing the inner path */
-    pan->path[pan->img_len] = 0;
+    cut = pan->path + pan->img_len;       /* reopen the image without losing the inner path */
+    i = *cut;
+    *cut = 0;
     r = img_open(pan->path);
-    pan->path[pan->img_len] = i;
+    *cut = i;
     if (!r) { strcpy(note, im_reopen); return; }
-    for (i = 0; i < n; ++i) {
-        const struct Entry* e = &ENTRY_SNAPSHOT[i];
+    for (i = 0, e = ENTRY_SNAPSHOT; i < n; ++i, ++e) {
         if (tag_count(pan) ? !tagged(pan, i) : i != pan->cursor) continue;
         ++progress_done;
         if (is_up(e) || is_dir(e)) continue;
         if (!build_full(other_full, dst, e)) { r = 0; break; }
         im_out = NULL; im_owned = 0;
         progress_bar(e->name, 0, e->size);
-        r = img_pass(e, 0);
-        if (im_out && fclose(im_out)) r = 0;
-        im_out = NULL;
+        /* found once: the read-back walks the same blocks */
+        if (!(storage = img_storage(e, pan->dir_key))) { r = 0; break; }
+        r = img_run(e, storage, 0);
         if (r == 2) { ++big; r = 1; continue; }
-        if (r) {
-            r = img_pass(e, 1);
-            if (im_out && fclose(im_out)) r = 0;
-            im_out = NULL;
-        }
+        if (r) r = img_run(e, storage, 1);
         if (!r) {
             if (im_owned && remove(other_full)) sprintf(note, im_cleanup, e->name);
             break;
@@ -3885,13 +4054,13 @@ void __fastcall__ imgfs_entry(const struct A2fcApi* a)
 /* ---------------------------------------------------------------------- */
 #pragma code-name (push, "DOSGET")
 #pragma rodata-name (push, "DOSGETRO")
-static const char d3_target[]  = "Open a ProDOS folder in the other panel.";
-static const char d3_reopen[]  = "Cannot reopen the image.";
+static const char d3_target[]  = "Other panel: open a folder.";
+static const char d3_reopen[]  = "Image unreadable.";
 static const char d3_done[]    = "%u file%s extracted.";
 static const char d3_wb[] = "wb";
 static const char d3_rb[] = "rb";
-static const char d3_error[] = "Extract failed; %u complete.";
-static const char d3_cleanup[] = "Cleanup failed: %s retained.";
+static const char d3_error[] = "Extract failed; %u done.";
+static const char d3_cleanup[] = "Cleanup failed: %s kept.";
 #pragma static-locals (push, on)
 
 /* DOS BIN/BAS/INT headers carry the exact EOF; BIN also carries its load
@@ -3916,48 +4085,70 @@ static unsigned char d3_read(unsigned char track, unsigned char sector)
  * writes it; pass 1 opens the closed file again and compares every byte
  * with the DOS sectors read a second time, and the file must end where
  * the data ends. Both passes walk the same chain with the same checks;
- * the caller closes d3_out either way. Returns 1 on success. */
+ * the caller closes d3_out either way. Returns 1 on success.
+ * A 00/00 pair is a hole (a sparse random-access text file): it stands
+ * for a sector of zeros once a later pair holds data, in this list or a
+ * following one; the holes after the last data sector are not the file's.
+ * Only BIN, INT and BAS carry a header and an exact length; a header
+ * cannot be a hole. */
 static unsigned char d3_pass(const struct Entry* e, unsigned char verify)
 {
-    unsigned char* tsbuf = DOS_TSBUF;
+    unsigned char* tsbuf = DOS_TSBUF, * ts;
     unsigned char tslt = e->mdate >> 8, tsls = e->mdate;
-    unsigned char j, skip = 0, first = 1, lists = 0, type = e->type, r = 1;
-    unsigned int left = 0, count;
+    unsigned char j, skip = 0, first = 1, lists = 0, type = e->type;
+    unsigned char sized = type == 6 || type >= 0xFA;
+    unsigned int left = 0, count, holes = 0;
     memset(DOS_SEEN, 0, 70);
-    while (tslt && r) {
+    while (tslt) {
         if (++lists > 5 || !d3_read(tslt, tsls)) return 0;
         tslt = copy_buf[1]; tsls = copy_buf[2];
         if ((!tslt && tsls) || tslt >= 35 || tsls >= 16) return 0;
         memcpy(tsbuf, copy_buf + 0x0C, 244);
-        for (j = 0; j < 122; ++j) {
+        for (j = 0, ts = tsbuf; j < 122; ++j, ts += 2) {
             if (kbhit() && cgetc() == KEY_ESC) return 0;
-            if (!tsbuf[j * 2]) { if (tslt || tsbuf[j * 2 + 1]) r = 0; tslt = 0; break; }
-            if (!d3_read(tsbuf[j * 2], tsbuf[j * 2 + 1])) return 0;
-            if (first) {
-                first = 0;
-                skip = (type >= 0xFA) ? 2 : type == 6 ? 4 : 0;
-                if (skip) left = copy_buf[skip-2] | ((unsigned int)copy_buf[skip-1] << 8);
-                if (verify) {
-                    if (!(d3_out = fopen(other_full, d3_rb))) return 0;
-                } else {
-                    _filetype = e->type;
-                    _auxtype = type == 0xFC ? 0x0801 : 0;
-                    if (skip == 4) _auxtype = copy_buf[0] | ((unsigned int)copy_buf[1] << 8);
-                    d3_owned = reserve_output(other_full);
-                    if (d3_owned != OUTPUT_RESERVED || !(d3_out = fopen(other_full, d3_wb))) return 0;
+            if (!ts[0]) { if (ts[1]) return 0; ++holes; continue; }
+            for (;;) {                  /* the pending holes, then this sector */
+                if (holes) memset(copy_buf, 0, 256);
+                else if (!d3_read(ts[0], ts[1])) return 0;
+                if (first) {
+                    first = 0;
+                    if (sized && holes) return 0;
+                    skip = (type >= 0xFA) ? 2 : type == 6 ? 4 : 0;
+                    if (skip) left = copy_buf[skip-2] | ((unsigned int)copy_buf[skip-1] << 8);
+                    if (verify) {
+                        if (!(d3_out = fopen(other_full, d3_rb))) return 0;
+                    } else {
+                        _filetype = e->type;
+                        _auxtype = type == 0xFC ? 0x0801 : 0;
+                        if (skip == 4) _auxtype = copy_buf[0] | ((unsigned int)copy_buf[1] << 8);
+                        d3_owned = reserve_output(other_full);
+                        if (d3_owned != OUTPUT_RESERVED || !(d3_out = fopen(other_full, d3_wb))) return 0;
+                    }
                 }
+                count = 256 - skip;
+                if (sized && count > left) count = left;
+                if (verify) {
+                    if (fread(DOS_CMP, 1, count, d3_out) != count || memcmp(DOS_CMP, copy_buf + skip, count)) return 0;
+                } else if (fwrite(copy_buf + skip, 1, count, d3_out) != count || ferror(d3_out)) return 0;
+                skip = 0;
+                if (sized) { left -= count; if (!left) goto end; }
+                if (!holes) break;
+                --holes;
             }
-            count = 256 - skip;
-            if (type != 4 && count > left) count = left;
-            if (verify) {
-                if (fread(DOS_CMP, 1, count, d3_out) != count || memcmp(DOS_CMP, copy_buf + skip, count)) return 0;
-            } else if (fwrite(copy_buf + skip, 1, count, d3_out) != count || ferror(d3_out)) return 0;
-            skip = 0;
-            if (type != 4) { left -= count; if (!left) { tslt = 0; break; } }
         }
     }
+end:
     if (first || left) return 0;
     if (verify && fread(DOS_CMP, 1, 1, d3_out)) return 0;
+    return 1;
+}
+
+/* One pass, then its output closed whatever the pass returned. */
+static unsigned char d3_run(const struct Entry* e, unsigned char verify)
+{
+    unsigned char r = d3_pass(e, verify);
+    if (d3_out && fclose(d3_out)) r = 0;
+    d3_out = NULL;
     return r;
 }
 
@@ -3965,16 +4156,18 @@ static void dos_extract(void)
 {
     struct Panel* pan = &panels[active];
     struct Panel* dst = &panels[!active];
+    char* cut;
     unsigned char n, i, done = 0, r = 1;
     if (dst->fs || !dst->path[0]) { message(d3_target); return; }
     n = pan->count;
     if (!n) return;
     dos_unit = 0;
     if (pan->img_len) {
-        i = pan->path[pan->img_len];
-        pan->path[pan->img_len] = 0;
+        cut = pan->path + pan->img_len;
+        i = *cut;
+        *cut = 0;
         r = img_open(pan->path);
-        pan->path[pan->img_len] = i;
+        *cut = i;
         if (!r) { message(d3_reopen); return; }
     } else dos_unit = (unsigned char)pan->dir_key;
     for (i = 0; i < n; ++i) {
@@ -3982,14 +4175,7 @@ static void dos_extract(void)
         if (is_up(e) || (tag_count(pan) ? !tagged(pan,i) : i != pan->cursor)) continue;
         if (!build_full(other_full, dst, e)) { r = 0; break; }
         d3_out = NULL; d3_owned = 0;
-        r = d3_pass(e, 0);
-        if (d3_out && fclose(d3_out)) r = 0;
-        d3_out = NULL;
-        if (r) {
-            r = d3_pass(e, 1);
-            if (d3_out && fclose(d3_out)) r = 0;
-            d3_out = NULL;
-        }
+        if ((r = d3_run(e, 0)) != 0) r = d3_run(e, 1);
         if (!r) {
             if (d3_owned && remove(other_full)) sprintf(note, d3_cleanup, e->name);
             break;
@@ -4038,6 +4224,8 @@ static const char us_create_failed[] = "Create failed; existing files kept.";
 static const char us_cleanup_failed[] = "Cleanup failed: %s retained.";
 static const char us_cancelled[] = "Extraction cancelled.";
 static const char us_differs[] = "Extract failed: %s reads back different.";
+static const char us_crcerr[] = "CRC error: %s not extracted.";
+static const char us_kept[] = "%s extracted; %s";
 static const char us_wb[] = "wb";
 
 /* The assembly core, src/unshrink.s. Its AUX addresses, repeated here. */
@@ -4055,6 +4243,9 @@ struct UsState {
     unsigned int win_len, win_pos, n_done, name_len;
     unsigned long teof, ceof, rem_in, rem_out, total, done;
     unsigned char fmt, klass, kind, sep, disk;
+    unsigned char v3, thcrc, crcbad, ch, cl, cx;
+    unsigned char crc[4];           /* high bytes [0] stream, [1] thread; low bytes [2], [3] */
+    unsigned int want[2];           /* the stored CRCs: LZW/1 stream, thread (record version >= 3) */
     char name[17];
     unsigned char th[8 * 16];       /* up to eight thread headers */
     unsigned char hdr[256];         /* the attributes of one record */
@@ -4065,6 +4256,13 @@ struct UsState {
 #endif
 typedef char us_state_fits[512 - sizeof(struct UsState) + 1];
 #define U16(p, o) ((unsigned int)(p)[o] | ((unsigned int)(p)[(o) + 1] << 8))
+#ifndef US_DEVADR
+#define US_DEVADR ((unsigned int*)0xBF10)
+#endif
+/* The CRC-16 (XMODEM) table, high bytes then low bytes: built at the start
+ * of pass 0, when the read-back block US_CMP is idle. */
+#define US_CRCHI US_CMP
+#define US_CRCLO (US_CMP + 256)
 /* Apple II is little-endian. memcpy/memcmp are already resident; reuse
  * them instead of duplicating byte operations in this tight overlay. */
 static unsigned long __fastcall__ us_u32(const unsigned char* p)
@@ -4090,6 +4288,25 @@ static const char us_extract[]  = "Extract";
 static const char us_rb[]       = "rb";
 static const unsigned char us_magic_master[] = { 0x4E, 0xF5, 0x46, 0xE9, 0x6C, 0xE5 };
 static const unsigned char us_magic_record[] = { 0x4E, 0xF5, 0x46, 0xD8 };
+
+/* 1 when the volume of `path` is served by the /RAM driver (DEVADR $FF00:
+ * its blocks are the AUX bank the LZW tables use), whatever the volume is
+ * called -- or when ON_LINE does not list that volume. */
+static unsigned char __fastcall__ us_on_ram(const char* path)
+{
+    unsigned char parms[4], len, k;
+    const unsigned char* rec = copy_buf;
+    const char* slash = strchr(path + 1, '/');
+    len = (unsigned char)((slash ? slash : path + strlen(path)) - path - 1);
+    parms[0] = 2;
+    parms[1] = 0;                           /* every volume on line, 16 bytes each */
+    parms[2] = (unsigned char)((unsigned)copy_buf & 0xFF);
+    parms[3] = (unsigned char)((unsigned)copy_buf >> 8);
+    if (mli_call(0xC5, parms)) return 1;
+    for (k = 0; k < 16 && *rec; ++k, rec += 16)
+        if ((*rec & 15) == len && !memcmp(rec + 1, path + 1, len)) return US_DEVADR[*rec >> 4] == 0xFF00;
+    return 1;
+}
 
 /* Exact reads, including a stream error reported with the full byte count. */
 static unsigned char __fastcall__ us_read(void* p, unsigned int n)
@@ -4135,22 +4352,69 @@ static unsigned char us_fill(void)
     return 1;
 }
 
+static void us_crc_table(void)
+{
+    unsigned int c;
+    unsigned char i = 0, b;
+    do {
+        c = (unsigned int)i << 8;
+        for (b = 0; b < 8; ++b) c = (c & 0x8000) ? (c << 1) ^ 0x1021 : c << 1;
+        US_CRCHI[i] = (unsigned char)(c >> 8);
+        US_CRCLO[i] = (unsigned char)c;
+        ++i;
+    } while (i);
+}
+
+/* The CRC-16 w (0: the LZW/1 stream, 1: the thread) over the first n bytes
+ * of copy_buf. The working bytes sit at fixed addresses: no C stack in the
+ * loop. */
+static void __fastcall__ us_crc(unsigned char w, unsigned int n)
+{
+    register unsigned char* p = copy_buf;
+    register unsigned char* end = copy_buf + n;
+    US->ch = US->crc[w];
+    US->cl = US->crc[w + 2];
+    while (p != end) {
+        US->cx = US->ch ^ *p;
+        US->ch = US->cl ^ US_CRCHI[US->cx];
+        US->cl = US_CRCLO[US->cx];
+        ++p;
+    }
+    US->crc[w] = US->ch;
+    US->crc[w + 2] = US->cl;
+}
+
+static unsigned char __fastcall__ us_crc_bad(unsigned char w)
+{
+    return (((unsigned int)US->crc[w] << 8) | US->crc[w + 2]) != US->want[w];
+}
+
 /* The n bytes of copy_buf into the file (verify = 0), or compared with
- * the next n bytes of the file read back (verify = 1). */
+ * the next n bytes of the file read back (verify = 1). The thread CRC
+ * covers the bytes written. */
 static unsigned char __fastcall__ us_put(unsigned int n, unsigned char verify)
 {
-    if (!verify) return fwrite(copy_buf, 1, n, US->out) == n;
+    if (!verify) {
+        if (US->thcrc) us_crc(1, n);
+        return fwrite(copy_buf, 1, n, US->out) == n;
+    }
     return fread(US_CMP, 1, n, US->out) == n && !memcmp(US_CMP, copy_buf, n);
 }
 
-/* The first n bytes of the decoded block (OUTBUF, AUX), through us_put. */
+/* The first n bytes of the decoded block (OUTBUF, AUX), through us_put.
+ * In pass 0 the LZW/1 stream CRC covers the whole 4096-byte block, the
+ * zero padding of the last one included (as ShrinkIt computes it). */
 static unsigned char __fastcall__ us_write(unsigned int n, unsigned char verify)
 {
     unsigned int off, k;
-    for (off = 0; off < n; off += 512) {
-        k = n - off > 512 ? 512 : n - off;
+    for (off = 0; off < 4096; off += 512) {
+        if (off >= n && (verify || US->fmt != 2)) break;
         aux_copy((unsigned int)copy_buf, US_OUTBUF + off, 0);
-        if (!us_put(k, verify)) return 0;
+        if (!verify && US->fmt == 2) us_crc(0, 512);
+        if (off < n) {
+            k = n - off > 512 ? 512 : n - off;
+            if (!us_put(k, verify)) return 0;
+        }
     }
     return 1;
 }
@@ -4166,6 +4430,11 @@ static unsigned char __fastcall__ us_stream(unsigned char verify)
     US->rem_in = US->ceof;
     US->rem_out = US->total;
     US->done = 0;
+    if (!verify) {
+        us_crc_table();
+        US->crc[0] = US->crc[2] = 0;         /* stream: seed 0 */
+        US->crc[1] = US->crc[3] = 0xFF;      /* thread: seed $FFFF */
+    }
     if (US->fmt == 0) {                    /* stored as is */
         if (US->rem_in < US->rem_out) return 0;
         while (US->rem_out && r) {
@@ -4177,6 +4446,7 @@ static unsigned char __fastcall__ us_stream(unsigned char verify)
         hdr = US->fmt == 2 ? 4 : 2;        /* LZW/1: crc(2) vol esc; LZW/2: vol esc */
         if (US->rem_in < hdr || !us_read(copy_buf, hdr)) return 0;
         US->rem_in -= hdr;
+        US->want[0] = U16(copy_buf, 0);
         us_init(((unsigned int)copy_buf[hdr - 1] << 8) | US->fmt);
         US->win_len = US->win_pos = 0;
         while (US->rem_out && r) {
@@ -4192,6 +4462,9 @@ static unsigned char __fastcall__ us_stream(unsigned char verify)
         }
     }
     if (r && verify && (fread(US_CMP, 1, 1, US->out) || ferror(US->out))) r = 0;
+    /* A corrupt archive (or a decoding fault) decodes the same way twice:
+     * only the CRCs can tell. Checked before the read-back. */
+    if (r && !verify && ((US->fmt == 2 && us_crc_bad(0)) || (US->thcrc && us_crc_bad(1)))) { US->crcbad = 1; r = 0; }
     return r;
 }
 
@@ -4220,6 +4493,7 @@ static unsigned char us_extract_thread(void)
 {
     long start;
     unsigned char r, owned, differs = 0;
+    US->crcbad = 0;
     if (US->disk) {                        /* a disk image: NAME.PO, blocks of 512 */
         if (US->name_len > 12) US->name_len = 12;
         strcpy(US->name + US->name_len, us_po);
@@ -4255,14 +4529,21 @@ static unsigned char us_extract_thread(void)
         if (US->out && fclose(US->out)) r = 0;
         US->out = NULL;
     }
-    if (!r || !us_skip(US->rem_in)) goto failed;
+    if (!r) goto failed;
+    /* Written and verified: the file stays, even if the rest of the thread
+     * (compressed padding) cannot be read -- that error is the archive's. */
     ++US->n_done;
+    if (!us_skip(US->rem_in)) {
+        sprintf(note, us_kept, US->name, progress_abort ? us_cancelled : us_corrupt);
+        return 0;
+    }
     return 1;
 failed:
     /* No stream is open here. Only this thread's exclusive reservation
      * grants ownership, including a failed reservation close. */
     if (remove(other_full)) sprintf(note, us_cleanup_failed, US->name);
     else if (progress_abort) strcpy(note, us_cancelled);
+    else if (US->crcbad) sprintf(note, us_crcerr, US->name);
     else if (differs) sprintf(note, us_differs, US->name);
     else strcpy(note, us_extract_failed);
     return 0;
@@ -4277,9 +4558,10 @@ void __fastcall__ unshrink_entry(const struct A2fcApi* a)
     if (!pan->count || !pan->path[0] || is_dir(&selected) || !full[0]) { strcpy(note, us_notfile); return; }
     if (!panels[!active].path[0] || panels[!active].fs) { strcpy(note, us_notdir); return; }
     /* The auxiliary bank carries the LZW dictionary AND the /RAM disk:
-     * extracting to /RAM would destroy it (and ram_format rebuilds it empty
-     * afterwards). We refuse; any other volume will do. */
-    if (!strncmp(panels[!active].path, "/RAM", 4) || !strncmp(full, "/RAM", 4)) {
+     * extracting to /RAM, or from it, would destroy it (and ram_format
+     * rebuilds it empty afterwards). The disk is known by its driver, not
+     * its name. We refuse; any other volume will do. */
+    if (us_on_ram(panels[!active].path) || us_on_ram(full)) {
         strcpy(note, us_noram); return;
     }
     if (strlen(panels[!active].path) + 17 >= PATH_LEN) { too_long(); return; }
@@ -4317,6 +4599,7 @@ void __fastcall__ unshrink_entry(const struct A2fcApi* a)
         US->filetype = U16(US->hdr, 0x16);
         US->auxtype = U16(US->hdr, 0x1A);
         US->storage = U16(US->hdr, 0x1E);
+        US->v3 = US->hdr[8] >= 3 || US->hdr[9];    /* record version >= 3: threads carry a CRC */
         len = U16(US->hdr, US->attrib - 2);            /* name in the header (old ShrinkIt) */
         US->name[0] = 0;
         US->name_len = 0;
@@ -4328,6 +4611,8 @@ void __fastcall__ unshrink_entry(const struct A2fcApi* a)
         if (!us_read(US->th, US->threads * 16)) goto corrupt;
         for (t = 0; t < US->threads; ++t) {
             th = US->th + t * 16;
+            US->thcrc = US->v3;
+            US->want[1] = U16(th, 6);
             US->klass = th[0];
             US->fmt = th[2];
             US->kind = th[4];
@@ -4464,7 +4749,9 @@ static const char dl_nothing[] = "Nothing to delete here.";
 #endif
 static const char dl_ask1[]    = "Delete %s%s?";
 static const char dl_inside[]  = " and everything inside";
-static const char dl_askn[]    = "Delete %u tagged files?";
+static const char dl_askn[]    = "Delete %u tagged %s?";
+static const char dl_files[]   = "files";
+static const char dl_items[]   = "items, directories with everything inside";
 static const char dl_done[]    = "%u item%s deleted.";
 static const char dl_stop[]    = "Interrupted: %u of %u deleted.";
 static void delete_targets(void)
@@ -4478,12 +4765,17 @@ static void delete_targets(void)
     e = &pan->e[picked[0]];
     if (n == 1 && is_up(e)) { message(dl_nothing); return; }
     if (n == 1) sprintf(question, dl_ask1, e->name, dl_inside + (is_dir(e) ? 0 : sizeof dl_inside - 1));   /* "": the end of the array */
-    else sprintf(question, dl_askn, n);
+    else {
+        /* say so when a tagged directory takes its whole tree with it */
+        for (i = 0; i < n && !is_dir(&pan->e[picked[i]]); ++i) {}
+        sprintf(question, dl_askn, n, i < n ? dl_items : dl_files);
+    }
     if (!confirm(question)) return;
     /* Start with the selected entries.  Directory walks add their children
      * to the denominator as they are discovered, so nested deletes show
      * useful progress without a slow preliminary scan. */
     progress_total = n;
+    progress_done = 0;
     progress_abort = 0;
     memset(pan->tags, 0, sizeof pan->tags);            /* the tags are in picked: the entries are about to move */
     for (i = 0; i < n; ++i) {

@@ -49,7 +49,13 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
             dst.unit=src.unit;
             if(!mount_source(&dst)){note("Comparison cancelled.");goto done;}
             ok=volume_open(&dst,dst.unit);
-        }else if(ok)ok=volume_open(&dst,0);
+        }else if(ok) {
+            ok=volume_open(&dst,0);
+            /* An original and its backup may share one name: the first unit
+             * with it may be the source itself, so take another unit with
+             * that name, or refuse -- a volume is never compared with itself. */
+            if(dst.unit==src.unit)for(ok=0,j=0x10;j && !ok;j+=0x10)if(j!=src.unit)ok=volume_open(&dst,j);
+        }
     }
     if(!ok)goto invalid;
     if(src.blocks!=dst.blocks){note("Different sizes: volumes/images are not identical.");goto done;}

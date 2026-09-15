@@ -110,7 +110,9 @@ static struct A2fcApi a;
 #define f_memcpy (a.memcpy)
 #define f_strcpy (a.strcpy)
 #define f_strlen (a.strlen)
+#define f_ferror ferror
 #else
+unsigned char __fastcall__ f_ferror(FILE*); /* find.s: 0 or 1, no errno */
 void __fastcall__ f_message(const char*);
 unsigned char __fastcall__ f_prompt(const char*,const char*,unsigned char);
 void __fastcall__ f_keys_bar(unsigned char,const char*);
@@ -327,8 +329,12 @@ static unsigned char file_has(const char* filename,unsigned char view)
         n = keep;base+=512-keep;
         if (abort_key()) break;
     }
-    if(view && !aborted) {
-        msg(row ? "End. ESC Back" : "No occurrences. ESC Back");
+    /* A short read may be a read error, not the end of the file: the file
+     * was not searched to its end, so the results cannot be "complete". */
+    c = f_ferror(f);
+    if(!view) cut|=c;
+    else if(!aborted) {
+        msg(c ? "Read error. ESC Back" : row ? "End. ESC Back" : "No occurrences. ESC Back");
         while(f_cgetc()!=KEY_ESC);
     }
 closed:

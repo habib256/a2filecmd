@@ -26,13 +26,16 @@
         .export _cs_track, _cs_sector, _cs_type, _cs_name
         .export _cs_seclo, _cs_sechi
         .export valid_data, read_at, vtoc_bit, memcpy256, memcmp256
-        .export slot_offset
+        .export slot_where, walk, wipe_seen, load_vtoc
+        .export cat_first, cat_open, cat_step, del_fault, _del_fault
+        .export wlk_t, wlk_s, wlk_nt, wlk_ns, wlk_j, wlk_expect, wlk_collect
+        .export aud_t, aud_s, aud_i, aud_off
 
         .import read_sector, write_sector, rwts_error
         .import buffer, drive, track, sector, count, sector_seen
         .import ent_track, ent_sector, ent_seclo, ent_sechi, ent_type
-        .import ent_slot, ent_index, ent_ptr, sanitise
-        .import seen_bit, bit_masks
+        .import ent_index, ent_ptr, sanitise
+        .import seen_bit, bit_masks, valid_cs
         .import scratch
         .import copy_progress
 
@@ -44,8 +47,9 @@ cs_sector:      .res 1
 cs_type:        .res 1
 cs_seclo:       .res 1
 cs_sechi:       .res 1
-cs_slot:        .res 1          ; catalog sector << 3 | slot, from ent_slot
-cs_name:        .res NAME_LEN
+cs_name:        .res NAME_STRIDE ; the name, then where the panel read it
+cs_cat_track    = cs_name + ENT_CAT_TRACK
+cs_slot         = cs_name + ENT_CAT_SLOT
 _cs_track       = cs_track
 _cs_sector      = cs_sector
 _cs_type        = cs_type
@@ -57,7 +61,11 @@ copy_from:      .res 1
 copy_to:        .res 1
 copy_src_volume: .res 1
 copy_dst_volume: .res 1
-copy_fault:     .res 1          ; latched: no further writes this run
+; latched: no further writes this run. One byte for every write, so an
+; uncertain copy stops delete, lock and rename too, and the reverse.
+copy_fault:
+del_fault:      .res 1
+_del_fault      = del_fault
 cp_index:       .res 1          ; copy_prepare arguments
 cp_dest:        .res 1
 ram_source:     .res 1          ; 1: the working area is the source
@@ -104,9 +112,7 @@ src_cat_track:  .res 1
 src_cat_sector: .res 1
 src_cat_offset: .res 1
 
-; ---- audit locals
-aud_source:     .res 1
-aud_recheck:    .res 1
+; ---- catalog walk locals, shared with delete.s
 aud_t:          .res 1
 aud_s:          .res 1
 aud_nt:         .res 1
@@ -116,9 +122,6 @@ aud_off:        .res 1
 aud_files:      .res 1
 aud_slot:       .res 1
 aud_n:          .res 1          ; catalog sectors visited: 15 at most
-aud_first_t:    .res 1
-aud_first_s:    .res 1
-aud_size:       .res 2
 
 ; ---- walk locals
 wlk_t:          .res 1
@@ -189,6 +192,8 @@ free_sector:
 ; itself then files data there. So they are accepted only while the VTOC
 ; in RAM (the disk being walked) shows at least one free sector on them:
 ; a chain pointing into a live DOS image is still refused. A preserved.
+; reserve never hands them out: were a copy to take their last free
+; sectors, every file there, its own included, would read as invalid.
 valid_data:
         cpx     #16
         bcs     @no
@@ -221,17 +226,43 @@ valid_data:
 .else
         .segment "LOWCODE"      ; prepare-time only: room below the area
 .endif
-; slot_offset -- A = slot 0-6 in a catalog sector, returns its offset
-slot_offset:
-        tax
+; slot_where -- A = catalog track, X = sector << 3 | slot, as catalog()
+; recorded them after the name. Carry set when they name a slot: X = the
+; sector, A = the entry's offset in it. Clear for track 0 (an entry no
+; catalog filled), a place off the disk, the VTOC or an eighth slot.
+slot_where:
+        sta     s2
+        txa
+        lsr     a
+        lsr     a
+        lsr     a
+        sta     s3              ; the sector
+        txa
+        and     #7
+        cmp     #CAT_ENTRIES
+        bcs     @no
+        tay
+        ldx     s3
+        lda     s2
+        jsr     valid_cs        ; track 1-34, sector 0-15
+        bcc     @no
+        cmp     #CATALOG_TRACK
+        bne     @offset
+        txa
+        beq     @no             ; (17,0) is the VTOC
+@offset:
         lda     #CAT_FIRST
-@loop:
-        dex
-        bmi     @done
-        clc
+        clc                     ; 11 + 6*35 never carries
+@step:
+        dey
+        bmi     @have
         adc     #CAT_ENTRY_LEN
-        jmp     @loop
-@done:
+        bcc     @step           ; always
+@have:
+        sec
+        rts
+@no:
+        clc
         rts
         .segment "CODE"
 
@@ -634,20 +665,13 @@ map_source:
 ; becomes src_entry, so the copy keeps the name byte for byte, catalog
 ; art included, and copy_execute can check the slot again after Y.
 locate_source:
-        lda     cs_slot
-        lsr     a
-        lsr     a
-        lsr     a
-        beq     @invalid
-        sta     src_cat_sector
-        lda     #CATALOG_TRACK
-        sta     src_cat_track
-        lda     cs_slot
-        and     #7
-        cmp     #CAT_ENTRIES
-        bcs     @invalid
-        jsr     slot_offset
+        lda     cs_cat_track    ; reading only: the slot may be on any
+        sta     src_cat_track   ; track the catalog chain went through
+        ldx     cs_slot
+        jsr     slot_where
+        bcc     @invalid
         sta     src_cat_offset
+        stx     src_cat_sector
         lda     src_cat_track
         ldx     src_cat_sector
         jsr     read_at
@@ -710,53 +734,61 @@ wipe_seen:
         bpl     @wipe
         rts
 
-; scan_catalog -- destination VTOC and catalog names only. Finds a free
-; slot and refuses a name that already exists. Other files' T/S chains
-; are not followed.
-scan_catalog:
-        lda     #0
-        sta     aud_files
-        sta     aud_slot
-        sta     aud_n
-        sta     out_track
+; load_vtoc -- T17 S0 of the current drive into vtoc, held to the
+; geometry every write here assumes. A = 0, COPY_READ or COPY_INVALID.
+load_vtoc:
         lda     #CATALOG_TRACK
         ldx     #0
         jsr     read_at
-        jne     @out
+        bne     @out
         SETPTR  ptr, buffer
         SETPTR  ptr2, vtoc
         jsr     memcpy256
         lda     vtoc+3
         cmp     #3
-        jne     @invalid
+        bne     @invalid
         lda     vtoc+$34
         cmp     #35
-        jne     @invalid
+        bne     @invalid
         lda     vtoc+$35
         cmp     #16
-        jne     @invalid
-        lda     vtoc+6
-        sta     copy_dst_volume
+        bne     @invalid
+        lda     #0
+@out:
+        rts
+@invalid:
+        lda     #COPY_INVALID
+        rts
+
+; cat_first / cat_open / cat_step -- walk the catalog chain of the disk
+; whose VTOC is in vtoc, for a routine about to write. cat_first starts
+; at the VTOC's link, cat_open reads aud_t/aud_s into cat_buf and points
+; aud_off at its first entry, A = 0 or COPY_READ / COPY_INVALID. Only
+; track 17 is followed: writes never aim a catalog sector at a track a
+; file may use, and a 16th sector is a loop. cat_step moves to the next
+; entry: carry clear in the same sector; carry set when the sector is
+; done, with Z set (and A = 0) at the end of the chain.
+cat_first:
+        lda     #0
+        sta     aud_n
         lda     vtoc+1
         sta     aud_t
         lda     vtoc+2
         sta     aud_s
-@chain:
-        inc     aud_n           ; the catalog track has 15 sectors: a
-        lda     aud_n           ; longer chain is a loop, and the panel
-        cmp     #16             ; read that refused it may be stale
-        jcs     @invalid
+cat_open:
+        inc     aud_n
+        lda     aud_n
+        cmp     #16
+        bcs     @invalid
         lda     aud_t
         cmp     #CATALOG_TRACK
-        jne     @invalid
-        lda     aud_s
-        jeq     @invalid
-        cmp     #16
-        jcs     @invalid
-        lda     aud_t
+        bne     @invalid
         ldx     aud_s
+        beq     @invalid        ; the VTOC
+        cpx     #16
+        bcs     @invalid
         jsr     read_at
-        jne     @out
+        bne     @out
         SETPTR  ptr, buffer
         SETPTR  ptr2, cat_buf
         jsr     memcpy256
@@ -768,6 +800,43 @@ scan_catalog:
         sta     aud_off
         lda     #CAT_ENTRIES
         sta     aud_i
+        lda     #0
+@out:
+        rts
+@invalid:
+        lda     #COPY_INVALID
+        rts
+
+cat_step:
+        lda     aud_off
+        clc
+        adc     #CAT_ENTRY_LEN
+        sta     aud_off
+        dec     aud_i
+        clc
+        bne     @same
+        lda     aud_ns
+        sta     aud_s
+        lda     aud_nt
+        sta     aud_t
+        sec
+@same:
+        rts
+
+; scan_catalog -- destination VTOC and catalog names only. Finds a free
+; slot and refuses a name that already exists. Other files' T/S chains
+; are not followed.
+scan_catalog:
+        lda     #0
+        sta     aud_files
+        sta     aud_slot
+        sta     out_track
+        jsr     load_vtoc
+        bne     @out
+        lda     vtoc+6
+        sta     copy_dst_volume
+        jsr     cat_first
+        bne     @out
 @entry:
         ldx     aud_off
         lda     cat_buf,x
@@ -788,7 +857,7 @@ scan_catalog:
         jsr     memcpy256
         lda     #1
         sta     aud_slot
-        jmp     @next
+        bne     @next           ; always
 @live:
         inc     aud_files
         lda     aud_off
@@ -800,31 +869,23 @@ scan_catalog:
         lda     #COPY_EXISTS
         rts
 @next:
-        lda     aud_off
-        clc
-        adc     #CAT_ENTRY_LEN
-        sta     aud_off
-        dec     aud_i
-        jne     @entry
-        lda     aud_nt
-        sta     aud_t
-        lda     aud_ns
-        sta     aud_s
-        lda     aud_t
-        jne     @chain
+        jsr     cat_step
+        bcc     @entry
+        beq     @end
+        jsr     cat_open
+        beq     @entry
+@out:
+        rts
+@end:
         lda     aud_slot
         beq     @full
         lda     aud_files
         cmp     #MINI_MAX
         bcs     @full           ; 105 or a malformed count above it
         lda     #COPY_OK
-@out:
         rts
 @full:
         lda     #COPY_FULL
-        rts
-@invalid:
-        lda     #COPY_INVALID
         rts
 
 ; =====================================================================
@@ -983,17 +1044,15 @@ _copy_prepare:
         sta     cs_seclo
         lda     ent_sechi,y
         sta     cs_sechi
-        lda     ent_slot,y
-        sta     cs_slot
         lda     cp_index
         jsr     ent_index
         jsr     ent_ptr
         ldy     #0
 @name:
-        lda     (ptr),y
+        lda     (ptr),y         ; the name and where it was read
         sta     cs_name,y
         iny
-        cpy     #NAME_LEN
+        cpy     #NAME_STRIDE
         bcc     @name
         lda     drive
         sta     copy_from
@@ -1079,9 +1138,9 @@ reserve:
         lda     #0
         sta     num             ; sectors chosen so far
         sta     num+1
-        lda     #1              ; track 0 is the boot track; 1 and 2 are
-        sta     s4              ; free only on a disk without DOS, where
-@track:                         ; DOS itself files data on them
+        lda     #3              ; track 0 is the boot track; 1 and 2 are
+        sta     s4              ; DOS's, and only valid_data's "still one
+@track:                         ; free there" rule lets a DOS-less file live on them
         lda     num
         cmp     allocated_count
         bne     @room

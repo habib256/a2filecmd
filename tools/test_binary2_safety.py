@@ -202,6 +202,37 @@ class Binary2Safety(unittest.TestCase):
         self.assertEqual((self.dst/'FIRST').read_bytes(), self.payload)
         self.assertFalse((self.dst/'LAST').exists())
 
+    def test_folder_records_are_skipped_not_extracted_as_files(self):
+        def folder(name, data=b'', more=True, filetype=0x0F, storage=0x0D):
+            r = bytearray(record(name, data, more))
+            r[4], r[7] = filetype, storage
+            return bytes(r)
+        self.src.write_bytes(folder('SUB') + record('SUB/DATA', self.payload, True)
+                             + folder('SUB/DEEP', bytes(range(39))) + record('SUB/DEEP/END', b'end'))
+        out = self.run_extract()
+        self.assertIn('2 file(s) extracted, 2 folder(s) skipped', out)
+        self.assertEqual(sorted(x.name for x in self.dst.iterdir()), ['DATA', 'END'])
+        self.assertEqual((self.dst/'DATA').read_bytes(), self.payload)
+        self.assertEqual((self.dst/'END').read_bytes(), b'end')
+        for x in self.dst.iterdir():
+            x.unlink()
+        # Either mark alone is a folder: type $0F, or storage type $0D.
+        for filetype, storage in ((0x0F, 1), (6, 0x0D)):
+            with self.subTest(filetype=filetype, storage=storage):
+                self.src.write_bytes(folder('DIR', b'x' * 600, True, filetype, storage) + record('LAST', b'end'))
+                self.assertIn('1 file(s) extracted, 1 folder(s) skipped', self.run_extract())
+                self.assertEqual(sorted(x.name for x in self.dst.iterdir()), ['LAST'])
+                (self.dst/'LAST').unlink()
+        # A folder record cut short (data or padding) is a failure, never success.
+        whole = folder('DIR', bytes(200)) + record('LAST', b'end')
+        for length in (128 + 100, 128 + 200 + 10):
+            with self.subTest(length=length):
+                self.src.write_bytes(whole[:length])
+                out = self.run_extract()
+                self.assertIn('Extract failed', out)
+                self.assertIn('removes=0', out)
+                self.assertEqual(list(self.dst.iterdir()), [])
+
     def test_sanitized_name_collision_keeps_first_record(self):
         self.src.write_bytes(record('A-B', b'first', True) + record('A?B', b'second'))
         self.assertIn('Create failed', self.run_extract())

@@ -48,11 +48,13 @@ struct Entry {char name[17];unsigned char type,access;unsigned int aux,blocks,md
 struct Panel {char path[81];unsigned char fs,count,more,cursor,top,tags[18];unsigned int first;struct Entry*e;};
 static struct Panel panels[2];static struct Entry entries[140];
 static unsigned int image_reads,volume_reads;
-static unsigned char read_image_panel(struct Panel*p){++image_reads;return 0;}
-static void read_volumes(struct Panel*p){++volume_reads;p->count=0;}
 static void volume_space(struct Panel*p){}
 static void sort_entries(struct Panel*p){}
 static struct Entry* add_entry(struct Panel*p,const char*n,unsigned char t){struct Entry*e=&p->e[p->count++];strcpy(e->name,n);e->type=t;return e;}
+/* Like the real readers: a failed image read can leave part of the image
+ * listed, and ON_LINE only appends volumes to whatever the table holds. */
+static unsigned char read_image_panel(struct Panel*p){++image_reads;add_entry(p,"STALE",6);return 0;}
+static void read_volumes(struct Panel*p){++volume_reads;add_entry(p,"/VOL",15);}
 ''' + section('static unsigned char read_panel(unsigned char p)\n{','static void set_cursor(')
 PANEL += r"""
 static void message(const char* s) {}
@@ -75,6 +77,14 @@ HARNESS=HARNESS.replace('int main(int argc,char**argv) {',PANEL+'''int main(int 
             if(panels[0].fs || panels[0].path[0])return 3;
         }
         printf("%u %u\\n",image_reads,volume_reads);return 0;
+    }
+    if(argc>2 && !strcmp(argv[2],"imagefail")) {
+        unsigned char ok,i,tags=0;struct Panel*pan=&panels[0];
+        pan->e=entries;pan->fs=1;strcpy(pan->path,"/V/DISK.PO");
+        add_entry(pan,"OLD1",6);add_entry(pan,"OLD2",6);memset(pan->tags,0xFF,sizeof pan->tags);pan->more=1;
+        ok=read_panel(0);
+        for(i=0;i<sizeof pan->tags;++i)tags|=pan->tags[i];
+        printf("%u %u %u %u %u %s %u\\n",ok,pan->fs,(unsigned)strlen(pan->path),pan->count,pan->more,pan->e[0].name,tags);return 0;
     }
     if(argc>2 && !strcmp(argv[2],"cycle")) {
         valid_chain=argc>3;dir_img=1;dir_block_key=2;dir_index=13;dir_per_block=13;dir_entry_len=39;
@@ -107,6 +117,11 @@ class CoreDirscan(unittest.TestCase):
     def test_volume_key_leaves_dos_and_image_modes_before_rereading(self):
         result=subprocess.check_output([self.exe,'unused','volumes'],text=True)
         self.assertEqual(result.split(),['0','2'])
+
+    def test_failed_image_read_falls_back_to_volumes_only(self):
+        # ok, fs, path length, count, more, the one volume, no tag left on it.
+        result=subprocess.check_output([self.exe,'unused','imagefail'],text=True)
+        self.assertEqual(result.split(),['0','0','0','1','0','/VOL','0'])
 
     def test_malformed_names_cannot_redirect_file_operations(self):
         for name in (b'',b'..',b'A/B',b'A:B',b'A\x00B',b'1BAD'):

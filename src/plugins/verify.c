@@ -126,6 +126,8 @@ static void verify_volume(void)
     print((char*)buf, "%s: %u blocks read%s, %u bad", (const char*)e,
               bp.block, aborted ? ", interrupted" : "", bad);
     t_message((char*)buf);
+    if (bad || aborted) ++errors;
+    ++did;
 }
 
 void plugin_entry(void)
@@ -203,8 +205,10 @@ ready:
         asm("rol a");
         asm("sta %v", bit);
         if (any ? bit : i == cursor) {
-            if (!pan->path[0]) { verify_volume(); return; }
-            if (!any || e->type != 0x0F) verify_file();
+            /* The volume list: one volume keeps its own report; tagged
+             * volumes are each read, then counted in the summary. */
+            if (!pan->path[0]) { verify_volume(); if (!any) return; }
+            else if (!any || e->type != 0x0F) verify_file();
         }
         asm("inc %v", i);             /* the next entry, 29 bytes on */
         asm("lda #%b", sizeof(struct Entry));

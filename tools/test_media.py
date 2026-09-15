@@ -26,6 +26,8 @@ static unsigned char read_panel(unsigned char p){
  unsigned int i;struct Panel*pan=&panels[p];
  if((failure==1 && pan->first==139) || (failure==2 && !pan->first))return 0;
  if(failure==3 && !pan->first)total=1;
+ /* dir_open failed: read_panel has fallen back to the volume list. */
+ if(failure==6 && pan->first==139){pan->path[0]=0;pan->first=0;pan->count=0;memset(pan->tags,0,18);return 0;}
  pan->count=0;memset(pan->tags,0,18);
  for(i=pan->first;i<total && pan->count<WINDOW;++i)entries[pan->count++]=all[i];
  pan->more=i<total;return 1;
@@ -50,7 +52,15 @@ int main(int argc,char**argv){
   total=300;for(i=0;i<300;++i)sprintf(all[i].name,"F%03u.PT3",i);
   strcpy(all[0].name,"A.MB");strcpy(all[299].name,"Z.MB");read_panel(0);panels[0].cursor=0;media_prepare(1);
   if(strcmp(album[1],"Z.MB")||media_first[1]!=278||panels[0].first||panels[0].cursor)return 4;
+  /* A failed read in the next window puts the panel back as it was:
+   * window, cursor, scroll and marks. */
+  panels[0].cursor=5;panels[0].top=2;panels[0].tags[0]=0x21;
   failure=1;if(media_prepare(1))return 5;
+  if(panels[0].first||panels[0].cursor!=5||panels[0].top!=2||panels[0].tags[0]!=0x21)return 20;
+  /* ...unless the panel fell back to the volume list: no marks put back there. */
+  failure=0;panels[0].first=0;read_panel(0);panels[0].cursor=5;panels[0].tags[0]=0x21;
+  failure=6;if(media_prepare(1)||panels[0].path[0]||panels[0].tags[0])return 21;
+  strcpy(panels[0].path,"/TEST");
   failure=0;panels[0].first=0;read_panel(0);
   failure=2;if(media_prepare(1))return 12;
  }else if(atoi(argv[1])==7){

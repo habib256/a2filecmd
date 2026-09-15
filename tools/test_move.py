@@ -45,6 +45,12 @@ static int mock_fclose(FILE* f) {
 }
 static unsigned int write_number, fail_write;
 static unsigned char fail_after;
+/* What happens while the question is on screen: one byte of the disk
+ * changed, or the whole disk swapped for another image. */
+static long poke_at = -1;
+static unsigned char poke_xor;
+static const char* swap_with;
+static unsigned int fail_read = 0xFFFF;         /* this block's next read fails, once */
 
 struct Blk { unsigned char n, unit; unsigned char* buffer; unsigned int block; };
 struct Onl { unsigned char n, unit; unsigned char* buffer; };
@@ -65,6 +71,7 @@ static unsigned char mock_mli(unsigned char cmd, void* p)
         if (!f) return errno == EEXIST ? 0x47 : 0x27;
         return fclose(f) ? 0x27 : 0;
     }
+    if (cmd == 0x80 && b->block == fail_read) { fail_read = 0xFFFF; return 0x27; }   /* once */
     if (cmd == 0x80 || cmd == 0x81) {
         if (fseek(disk, (long)b->block * 512, SEEK_SET)) return 0x27;
         if (cmd == 0x80) return fread(b->buffer, 1, 512, disk) == 512 ? 0 : 0x27;
@@ -83,7 +90,24 @@ static unsigned char mock_mli(unsigned char cmd, void* p)
     return 0x01;
 }
 
-static unsigned char mock_confirm(const char* q) { (void)q; return answer; }
+static unsigned char mock_confirm(const char* q)
+{
+    unsigned char block[512];
+    (void)q;
+    if (poke_at >= 0) {
+        fseek(disk, poke_at, SEEK_SET); fread(block, 1, 1, disk);
+        block[0] ^= poke_xor;
+        fseek(disk, poke_at, SEEK_SET); fwrite(block, 1, 1, disk); fflush(disk);
+    }
+    if (swap_with) {
+        FILE* f = fopen(swap_with, "rb");
+        size_t n;
+        fseek(disk, 0, SEEK_SET);
+        while ((n = fread(block, 1, 512, f)) > 0) fwrite(block, 1, n, disk);
+        fclose(f); fflush(disk);
+    }
+    return answer;
+}
 static FILE* mock_fopen(const char* path, const char* mode)
 {
     /* Fail only the initial destination existence probe, as a transient
@@ -146,6 +170,11 @@ int main(int argc, char** argv)
     if (argc > 10) io_fault = atoi(argv[10]);
     if (argc > 11) fail_write = atoi(argv[11]);
     if (argc > 12) fail_after = atoi(argv[12]);
+    api.cfg_path = argc > 13 ? argv[13] : "/NOWHERE/A2FILE/A2FILE.CFG";
+    if (argc > 14) poke_at = atol(argv[14]);
+    if (argc > 15) poke_xor = atoi(argv[15]);
+    if (argc > 16 && strcmp(argv[16], "-")) swap_with = argv[16];
+    if (argc > 17) fail_read = atoi(argv[17]);
     host_note[0] = 0;
     host_active = 0;
 
@@ -154,7 +183,6 @@ int main(int argc, char** argv)
     api.other_full = host_target;
     api.note = host_note; api.reselect = host_reselect;
     api.copy_buf = host_buf;
-    api.cfg_path = "/NOWHERE/A2FILE/A2FILE.CFG";
     api.mli = mock_mli; api.confirm = mock_confirm;
     api.progress_bar = mock_bar;
     api.fopen = mock_fopen; api.fread = mock_fread; api.fwrite = mock_fwrite;
@@ -217,6 +245,9 @@ def chain(img, key):
         out.append(b)
         b = int.from_bytes(img.block(b)[2:4], 'little')
     return out
+
+
+E_EOF = 0x15
 
 
 def header_count(img, key):
@@ -416,6 +447,119 @@ class Move(unittest.TestCase):
         damaged[key*512+4+0x23:key*512+4+0x25]=bytes([1,0]);path.write_bytes(damaged)
         self.run_move(path,'/MOVE/SRC','/MOVE/DST','SUB')
         self.assertEqual(path.read_bytes(),damaged)
+
+    def run_ext(self, img, src, dst, name, cfg='/NOWHERE/A2FILE/A2FILE.CFG',
+                poke=-1, xor=0, swap='-', fail_read=65535, timeout=30):
+        """run_move with what the question may hide: a byte of the disk
+        changed or the disk swapped while it is on screen, a block whose
+        next read fails, the program's settings path."""
+        return subprocess.check_output(
+            [str(self.exe), str(img), 'MOVE', src, dst, name, '1', '0', '0', '-1', '0', '0', '0',
+             cfg, str(poke), str(xor), swap, str(fail_read)], text=True, timeout=timeout).strip()
+
+    def test_a_disk_changed_during_the_question_is_not_written(self):
+        """Block numbers read before the question must not be written to
+        whatever is in the drive after it (the DOSWRITE guard)."""
+        base = Image(self.volume().read_bytes())
+        srckey, dstkey = child_key(base, 2, 'SRC'), child_key(base, 2, 'DST')
+        sblk, sslot, _ = find(base, srckey, 'HELLO')
+        entry = sblk * 512 + 4 + 39 * sslot
+        free = dstkey * 512 + 4 + 39 * (len(entries(base, dstkey)) + 1)
+        other = self.p / 'other'
+        subprocess.run(['rm', '-rf', str(other)], check=True)
+        (other / 'SRC').mkdir(parents=True)
+        (other / 'DST').mkdir()
+        (other / 'EXTRA#040000').write_bytes(b'e' * 700)
+        (other / 'SRC' / 'HELLO#040000').write_bytes(b'another disk' * 9)
+        swap = self.p / 'other.po'
+        subprocess.run(['python3', str(ROOT / 'tools' / 'mkvolume.py'), str(other), str(swap),
+                        '--volume', 'MOVE', '--blocks', '280'], check=True, capture_output=True)
+        cases = {
+            'source entry type': dict(poke=entry + 0x10, xor=0x01),
+            'source entry length': dict(poke=entry + E_EOF, xor=0x40),
+            'destination slot taken': dict(poke=free, xor=0x11),
+            'volume creation date': dict(poke=2 * 512 + 4 + 0x18, xor=0x01),
+            'same name, another disk': dict(swap=str(swap)),
+        }
+        for label, change in cases.items():
+            with self.subTest(label):
+                img = self.volume()
+                expect = bytearray(img.read_bytes())
+                if 'poke' in change:
+                    expect[change['poke']] ^= change['xor']
+                else:
+                    expect = bytearray(swap.read_bytes())
+                note = self.run_ext(img, '/MOVE/SRC', '/MOVE/DST', 'HELLO', **change)
+                self.assertNotIn('moved', note)
+                self.assertEqual(img.read_bytes(), bytes(expect), 'written after the disk changed')
+        # Nothing changed: the second reading agrees and the move goes ahead.
+        img = self.volume()
+        self.assertIn('moved', self.run_ext(img, '/MOVE/SRC', '/MOVE/DST', 'HELLO'))
+
+    def test_a_failed_read_of_the_target_is_not_a_free_name(self):
+        stage = self.p / 'twice'
+        subprocess.run(['rm', '-rf', str(stage)], check=True)
+        (stage / 'SRC').mkdir(parents=True)
+        (stage / 'DST').mkdir()
+        (stage / 'SRC' / 'KEEP#040000').write_bytes(b'source keep')
+        (stage / 'DST' / 'KEEP#040000').write_bytes(b'target keep')
+        img = self.p / 'twice.po'
+        subprocess.run(['python3', str(ROOT / 'tools' / 'mkvolume.py'), str(stage), str(img),
+                        '--volume', 'MOVE', '--blocks', '280'], check=True, capture_output=True)
+        before = img.read_bytes()
+        dstkey = child_key(Image(before), 2, 'DST')
+        for key in (dstkey, child_key(Image(before), 2, 'SRC')):
+            with self.subTest(block=key):
+                note = self.run_ext(img, '/MOVE/SRC', '/MOVE/DST', 'KEEP', fail_read=key)
+                self.assertNotIn('moved', note)
+                self.assertEqual(img.read_bytes(), before)
+        self.assertEqual([e for e in entries(Image(img.read_bytes()), dstkey)
+                          if e[2][1:5] == b'KEEP'].__len__(), 1)
+
+    def test_a_directory_chain_that_loops_is_refused_without_hanging(self):
+        for label in ('target loops on itself', 'source loops on itself',
+                      'second target block loops back', 'full target loops'):
+            with self.subTest(label):
+                img = (self.wide_volume() if label.startswith('second') else
+                       self.full_volume() if label.startswith('full') else self.volume())
+                data = bytearray(img.read_bytes())
+                vol = Image(data)
+                key = child_key(vol, 2, 'SRC' if label.startswith('source') else 'DST')
+                blocks = chain(vol, key)
+                last = blocks[-1]
+                data[last * 512 + 2:last * 512 + 4] = key.to_bytes(2, 'little')
+                img.write_bytes(data)
+                # The source loop matters only when the walk must follow it:
+                # a name found in the first block never reaches the link.
+                name = ('SUB' if label.startswith('second') else
+                        'NOPE' if label.startswith('source') else 'HELLO')
+                try:
+                    note = self.run_ext(img, '/MOVE/SRC', '/MOVE/DST', name, timeout=20)
+                except subprocess.TimeoutExpired:
+                    self.fail('MOVE hangs on a looping directory chain')
+                self.assertNotIn('moved', note)
+                self.assertEqual(img.read_bytes(), bytes(data))
+
+    def test_only_the_program_directory_and_its_parents_are_protected(self):
+        """A2FC in /MOVE/A2FILE: the root /MOVE itself stays usable; the
+        A2FILE directory, and any directory holding it, never move."""
+        cfg = '/MOVE/A2FILE/A2FILE.CFG'
+        img = self.volume()
+        self.assertIn('moved', self.run_ext(img, '/MOVE/SRC', '/MOVE', 'HELLO', cfg=cfg))
+        self.assertIn('moved', self.run_ext(img, '/MOVE', '/MOVE/DST', 'HELLO', cfg=cfg))
+        self.assertIn('moved', self.run_ext(img, '/MOVE', '/MOVE/DST', 'SRC', cfg=cfg))
+        for src, dst, name, where in (
+                ('/MOVE/SRC', '/MOVE/DST', 'HELLO', '/MOVE/SRC/A2FILE.CFG'),      # out of it
+                ('/MOVE/SRC', '/MOVE/DST', 'HELLO', '/MOVE/DST/A2FILE.CFG'),      # into it
+                ('/MOVE/SRC', '/MOVE/DST', 'SUB', '/MOVE/SRC/SUB/A2FILE.CFG'),    # the directory itself
+                ('/MOVE/SRC', '/MOVE/DST', 'SUB', '/MOVE/SRC/SUB/A2FILE/A2FILE.CFG'),  # a parent
+                ('/MOVE', '/MOVE/DST', 'SRC', '/MOVE/SRC/SUB/A2FILE/A2FILE.CFG')):     # a grandparent
+            with self.subTest(src=src, name=name, cfg=where):
+                img = self.volume()
+                before = img.read_bytes()
+                note = self.run_ext(img, src, dst, name, cfg=where)
+                self.assertIn("program's A2FILE", note)
+                self.assertEqual(img.read_bytes(), before)
 
     def run_move(self, img, src, dst, name, confirm=1):
         return subprocess.check_output(

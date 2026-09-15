@@ -8,6 +8,7 @@
         .import at, put, inline_text, zone
         .import activate, confirm, keep_note, result_done, say_protected
         .import print_name, print_name15, print_byte, tag_count, tag_test
+        .import batch_number, batch_skipped, batch_done, cf_ok, cf_marked, tg_n
         .import lock_prepare, lock_execute, rename_prepare, rename_execute
         .import del_index, del_fault, lock_op, ren_name
         .import ask_name, name_buf, ask_kind
@@ -46,6 +47,7 @@ lock_file:
         ldx     active
         jsr     tag_count
         sta     fo_n
+        sta     tg_n            ; batch_done: a single file has no prefix
         lda     #0
         sta     lock_op
         lda     fo_n
@@ -92,7 +94,7 @@ lock_file:
         PRINT   " MARKED?"
 @go:
         jsr     foot_bar
-        bcc     @out
+        jcc     @out
         lda     #DEL_OK
         sta     fo_st
         lda     fo_n
@@ -105,10 +107,12 @@ lock_file:
 @tagged:
         lda     #0
         sta     fo_i
+        sta     cf_ok           ; changed
+        sta     cf_marked       ; already in the wanted state, not written
 @each:
         lda     fo_i
         cmp     count
-        bcs     @show
+        bcs     @summary
         lda     fo_i
         ldx     active
         jsr     tag_test
@@ -117,16 +121,28 @@ lock_file:
         sta     del_index
         jsr     one_lock
         sta     fo_st
-        cmp     #DEL_OK
-        beq     @next
+        bne     @notdone
+        inc     cf_ok
+        bne     @next           ; always: 105 at most
+@notdone:
         cmp     #DEL_LOCKED
-        beq     @next
-        jmp     @show
+        bne     @show           ; anything else stops the batch
+        inc     cf_marked
 @next:
         inc     fo_i
         jmp     @each
 @show:
         jsr     lock_show
+        jmp     foot_done
+@summary:                       ; "2 LOCKED, 1 ALREADY SET"
+        jsr     foot_ask
+        lda     cf_ok
+        jsr     batch_number
+        jsr     lock_said       ; fo_st is DEL_OK or DEL_LOCKED here
+        jsr     batch_skipped
+        beq     @said
+        PRINT   "ALREADY SET"
+@said:
         jmp     foot_done
 @out:
         rts
@@ -167,8 +183,10 @@ one_lock:
 
 lock_show:
         jsr     foot_ask
+        jsr     batch_done
         lda     fo_st
-        bne     @notok
+        bne     lock_fail
+lock_said:
         lda     lock_op
         beq     @togmsg
         cmp     #1
@@ -187,7 +205,7 @@ lock_show:
 @saidun:
         PRINT   "UNLOCKED"
         rts
-@notok:
+lock_fail:
         cmp     #DEL_LOCKED
         bne     @notsame
         PRINT   "ALREADY SET"
@@ -255,6 +273,11 @@ rename_file:
         PRINT   "RENAMED"
         jmp     foot_done
 @notok:
+        cmp     #REN_SAME
+        bne     @notsame
+        PRINT   "SAME NAME - NOT RENAMED"
+        jmp     keep_note       ; nothing written: no reread, marks stay
+@notsame:
         cmp     #REN_EXISTS
         bne     @notex
         PRINT   "NAME EXISTS - NO OVERWRITE"

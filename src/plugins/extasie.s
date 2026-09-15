@@ -8,13 +8,16 @@
 ; too, so no STZ.
 
         .export _ex_aux_move, _ex_show, _ex_main_bank
-        .export _ex_top, _ex_put, _ex_col
+        .export _ex_top, _ex_put, _ex_col, _ex_plane, _ex_dry
         .segment "CODE"
 
 ; void ex_aux_move(void): $2000-$3FFF from the main bank to the auxiliary
 ; one in a single AUXMOVE ($C311). Interrupts off for its duration: an
-; interrupt taken with the banks half switched never comes back.
+; interrupt taken with the banks half switched never comes back. Nothing at
+; all in a checking pass (_ex_dry): AUX holds /RAM and must stay untouched.
 _ex_aux_move:
+        lda     _ex_dry
+        bne     moved
         lda     #$00
         sta     $3C                     ; A1 = $2000, the source
         sta     $42                     ; A4 = $2000, the destination
@@ -30,7 +33,7 @@ _ex_aux_move:
         sec                             ; carry set: main to auxiliary
         jsr     $C311
         plp
-        rts
+moved:  rts
 
 ; void ex_show(void): the picture on the air in the Chat Mauve's MIXED mode,
 ; the one Extasie draws in -- 560 dots in black and white and 140 cells of
@@ -160,3 +163,4 @@ _ex_g0:  .res 1                         ; the row number's low three bits
 _ex_g1:  .res 1                         ; its next three
 _ex_g2:  .res 1                         ; its top two: the third of the screen
 _ex_plane: .res 1                       ; 0 the auxiliary plane, 1 the main one
+_ex_dry: .res 1                         ; 1: a checking pass, no move to AUX

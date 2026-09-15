@@ -33,8 +33,10 @@
 ; Timing: at 115 200 baud a byte arrives about every 87 cycles; the receive
 ; loop takes ~60, with interrupts disabled (SEI) for the duration of a
 ; block, otherwise the Mockingboard music would lose bytes. Each wait for a
-; byte has a timeout (~0.3 s): an absent host yields an I/O error ($27)
-; instead of freezing the machine -- the volume list reports it.
+; byte, received or sent, has a timeout (~0.3 s): an absent host, or a
+; 6551 whose transmitter never empties (CTS not asserted: no cable), yields
+; an I/O error ($27) instead of freezing the machine -- the volume list
+; reports it.
 
         .export         _vsdrive_install, _vsdrive_uninstall
         .destructor     _vsdrive_uninstall, 9
@@ -72,16 +74,20 @@ THUNK           = $0300
 vs_slot         = $03B0         ; the slot of the volumes
 vs_dev1         = $03B1         ; its drive 1 unit (slot x 16)
 vs_dev2         = $03B2         ; drive 2 (+ $80)
-vs_orig         = $03B3         ; the former DEVADR of this slot (2 bytes)
-vs_on           = $03B5         ; 1: installed
-vs_acia         = $03B6         ; the X index of the 6551 (slot x 16 + $8F)
-vs_chk          = $03B7
-vs_cmd          = $03B8
-vs_to           = $03B9         ; the timeout countdown (2 bytes)
-vs_dt           = $03BB         ; time and date received (4 bytes)
-vs_pg           = $03BF         ; the pages of the block still to go
-vs_int          = $03C0         ; the ProDOS number of our interrupt handler, 0 without
-vs_ip           = $03C1         ; its MLI parameters (3 bytes): count, number, address
+vs_orig         = $03B3         ; the former DEVADR words of this slot, drive 1
+                                ; then drive 2 (4 bytes; see swap_devadr)
+vs_on           = $03B7         ; 1: installed
+vs_acia         = $03B8         ; the X index of the 6551 (slot x 16 + $8F)
+vs_chk          = $03B9
+vs_cmd          = $03BA
+vs_to           = $03BB         ; the timeout countdown (2 bytes)
+vs_dt           = $03BD         ; time and date received (4 bytes)
+vs_pg           = $03C1         ; the pages of the block still to go
+vs_int          = $03C2         ; the ProDOS number of our interrupt handler, 0 without
+vs_ip           = $03C3         ; its MLI parameters (4 bytes): count, number, address
+vs_sp           = $03C7         ; the 6502 stack under the envelope's php
+vs_msk          = $03C8         ; the 6551 status bit awaited
+        .assert vs_msk < $03D0, error, "VDrive page-3 variables reach the vectors"
 
 ; ----------------------------------------------------------------------
 ; The destructor: in the main window, because _exit (crt0) restores the ROM
@@ -95,15 +101,7 @@ _vsdrive_uninstall:
         lda     #0
         sta     vs_on
         jsr     del_irq
-        lda     vs_slot                 ; the former driver takes DEVADR back
-        asl
-        tax
-        lda     vs_orig
-        sta     DEVADR,x
-        sta     DEVADR+16,x
-        lda     vs_orig+1
-        sta     DEVADR+1,x
-        sta     DEVADR+17,x
+        jsr     swap_devadr             ; the former drivers take DEVADR back
         ldx     #0                      ; our two units leave DEVLST,
         ldy     #0                      ; wherever they are (a rebuilt /RAM
 un_scan:                                ; may have added some after us)
@@ -126,6 +124,30 @@ un_skip:
         sta     ACIA_CMD,x
 un_done:
         rts
+
+; Exchanges the DEVADR words of slot vs_slot, drive 1 and drive 2, with
+; the four bytes of vs_orig. At install time vs_orig holds the thunk's
+; address twice: ProDOS gets the thunk, vs_orig the former drivers --
+; each drive its own, which need not be the same one (a /RAM moved out of
+; DEVLST keeps $FF00 in drive 2). The destructor exchanges them back.
+; In the main window: the destructor runs with the ROM switched in.
+swap_devadr:
+        ldy     #3
+sw_byte:
+        lda     vs_slot
+        asl                             ; slot x 2 (carry clear: slot < 8)
+        adc     sw_ofs,y
+        tax
+        lda     DEVADR,x
+        pha
+        lda     vs_orig,y
+        sta     DEVADR,x
+        pla
+        sta     vs_orig,y
+        dey
+        bpl     sw_byte
+        rts
+sw_ofs: .byte   0, 1, 16, 17
 
 ; ----------------------------------------------------------------------
 ; The rest in the language card.
@@ -184,8 +206,10 @@ ld_src:                                 ; A <- (P_BUF),y in ProDOS's bank
 ; lines, unplugging the host would kill ProDOS ("RESTART SYSTEM -
 ; $01", nobody claimed the interrupt). Reading the status register
 ; acknowledges it; bit 7 says whether it was us. The address is filled in
-; at install time (page 3: writable).
+; at install time (page 3: writable). ProDOS 8 wants its interrupt
+; handlers to begin with CLD (Technical Reference, ALLOC_INTERRUPT).
 irq_src:
+        cld
         lda     $C089                   ; -> $C089 + slot x 16
         and     #$80
         beq     irq_no
@@ -194,7 +218,7 @@ irq_src:
 irq_no: sec
         rts
 thunk_len = * - thunk_src
-irq_adr = THUNK + (irq_src - thunk_src) + 1
+irq_adr = THUNK + (irq_src - thunk_src) + 2
 IRQH    = THUNK + (irq_src - thunk_src)
 
 ; Registering and removing the handler (MLI $40 / $41), in the main
@@ -328,20 +352,14 @@ ins_dev:
         beq     ins_slot
         dey
         bpl     ins_dev
-        ; The slot is free: DEVADR, DEVLST, the thunk.
-        lda     vs_slot
-        asl
-        tax
-        lda     DEVADR,x
-        sta     vs_orig
-        lda     DEVADR+1,x
-        sta     vs_orig+1
+        ; The slot is free: DEVADR (both drives), DEVLST, the thunk.
         lda     #<THUNK
-        sta     DEVADR,x
-        sta     DEVADR+16,x
+        sta     vs_orig
+        sta     vs_orig+2
         lda     #>THUNK
-        sta     DEVADR+1,x
-        sta     DEVADR+17,x
+        sta     vs_orig+1
+        sta     vs_orig+3
+        jsr     swap_devadr
         ldy     DEVCNT
         iny
         lda     vs_dev1
@@ -395,11 +413,12 @@ drv_other:
         clc
         rts
 drv_status:
-        lda     #0                      ; unknown size: $FFFF blocks
-        ldx     #$FF
-        ldy     #$FF
-        clc
-        rts
+        lda     #0                      ; the size: 0 blocks, "unknown". The
+        tax                             ; protocol has no size query, and
+        tay                             ; $FFFF let FORMAT write a 65535-
+        clc                             ; block volume past the end of a
+        rts                             ; blank image; the volume header
+                                        ; stays the only size (format.c)
 
 drv_read:
         clc
@@ -524,6 +543,8 @@ envelope:
         pla
         php
         sei
+        tsx                             ; putc's way out (see putc)
+        stx     vs_sp
         pha
         tya
         pha
@@ -548,25 +569,39 @@ putc_chk:
         sta     vs_chk
         rts
 
-; One byte sent (A preserved). X = the 6551.
+; One byte sent (A preserved). X = the 6551. A transmitter that stays full
+; (CTS high: no cable, no host) must not freeze the machine with interrupts
+; off: after ~0.3 s the stack goes back to where the envelope left it --
+; the php on top -- and the driver returns its I/O error.
 putc:
         pha
-:       lda     ACIA_STATUS,x
-        and     #$10                    ; TDRE
-        beq     :-
+        lda     #$10                    ; TDRE
+        jsr     wait
         pla
+        bcs     pu_dead
         sta     ACIA_DATA,x
         rts
+pu_dead:
+        ldx     vs_sp
+        txs
+        jmp     drv_fail
 
-; One byte received in A, carry clear; carry set after ~0.3 s with nothing.
-; X = the 6551, Y intact.
+; One byte received in A, carry clear; carry set after ~0.3 s with nothing
+; (the data register read then is harmless). X = the 6551, Y intact.
 getc:
-        lda     #0
-        sta     vs_to
+        lda     #$08                    ; RDRF
+        jsr     wait
+        lda     ACIA_DATA,x
+        rts
+
+; Waits for the status bit A of the 6551 X: carry clear when it is up,
+; set after ~0.3 s (the low byte of the countdown starts wherever it is).
+wait:
+        sta     vs_msk
         lda     #$C0
         sta     vs_to+1
 :       lda     ACIA_STATUS,x
-        and     #$08                    ; RDRF
+        and     vs_msk
         bne     :+
         inc     vs_to
         bne     :-
@@ -574,6 +609,5 @@ getc:
         bne     :-
         sec
         rts
-:       lda     ACIA_DATA,x
-        clc
+:       clc
         rts

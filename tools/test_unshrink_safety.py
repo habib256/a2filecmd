@@ -5,12 +5,15 @@ threads exercise the whole parser and file lifecycle; raw LZW blocks exercise
 the C window/refill/write paths. bench/shk.py executes the actual decoder.
 """
 import struct
+import sys
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT/'tools'))
+from mkshk import crc16  # noqa: E402
 SOURCE = (ROOT/'src/a2fc.c').read_text()
 START = SOURCE.index('static const char us_extract_failed[]')
 END = SOURCE.index('#pragma rodata-name (pop)', START)
@@ -19,6 +22,7 @@ DRIVER = DRIVER.replace('unsigned int w[2]', 'uint16_t w[2]')
 DRIVER = DRIVER.replace('#define US ((struct UsState*)0x3E00)',
                         'static struct UsState state;\n#define US (&state)')
 DRIVER = DRIVER.replace('(unsigned int)copy_buf', '(uintptr_t)copy_buf')
+DRIVER = DRIVER.replace('(unsigned)copy_buf', '(uintptr_t)copy_buf')
 DRIVER = DRIVER.replace('*(volatile unsigned char*)0xC056 = 0;', '(void)0;')
 C = r'''
 #include <stdio.h>
@@ -41,6 +45,32 @@ static int fault,cleanup_bad,removes,reads,read_at,read_error,write_error;
 static int opens,writes,progress_calls,cancel_at,decoder_calls,init_fmt;
 static unsigned char aux[65536],cmpbuf[512];
 #define US_CMP cmpbuf
+static unsigned int devadr[16];
+#define US_DEVADR devadr
+static char dstroot[81];
+/* "/RAMDISK" names the host output directory: a volume called like /RAM
+ * that is not the /RAM driver. */
+static const char* mapped(const char* p){
+    static char b[256];
+    if(!strncmp(p,"/RAMDISK",8)){snprintf(b,sizeof b,"%s%s",dstroot,p+8);return b;}
+    return p;
+}
+/* ON_LINE for every unit: the archive's volume in unit $60, the output's in
+ * unit $50 when it is another volume. */
+static unsigned char mli_call(unsigned char cmd,void* parms){
+    const char* vols[2];unsigned char units[2]={0x60,0x50},*out=copy_buf;int i,len;
+    if(cmd!=0xC5||((unsigned char*)parms)[1])abort();
+    if(fault==31)return 0x27;
+    memset(copy_buf,0,256);
+    vols[0]=full;vols[1]=panels[1].path;
+    for(i=0;i<2;++i){
+        const char* v=vols[i]+1,*sl=strchr(v,'/');
+        len=sl?(int)(sl-v):(int)strlen(v);
+        if(i==1&&!strncmp(full+1,v,len)&&(full[len+1]=='/'||!full[len+1]))break;
+        out[0]=units[i]|len;memcpy(out+1,v,len);out+=16;
+    }
+    return 0;
+}
 static FILE *archive,*output;
 static int output_open;
 static int is_dir(struct Entry* e){return 0;}
@@ -74,7 +104,7 @@ static int reserve(const char* p,int flags){
     ++opens;
     if(fault==1)return -1;
     if(fault==9){FILE* f=fopen(p,"wx");if(!f)abort();fputs("arrival",f);fclose(f);}
-    return open(p,flags,0600);
+    return open(mapped(p),flags,0600);
 }
 static int close_reserved(int fd){int r=close(fd);return fault==2?-1:r;}
 static FILE* open_file(const char* p,const char* mode){
@@ -83,7 +113,7 @@ static FILE* open_file(const char* p,const char* mode){
     if(!strcmp(mode,"wb") && fault==3)return NULL;
     if(!strcmp(mode,"rb") && strcmp(p,full)==0){archive=fopen(p,mode);return archive;}
     if(!strcmp(mode,"rb") && fault==20)return NULL;   /* the closed output cannot be reopened */
-    f=fopen(p,mode);
+    f=fopen(mapped(p),mode);
     output=f;output_open=f!=NULL;
     return f;
 }
@@ -112,7 +142,7 @@ static int close_file(FILE* f){
     if(is_output)output_open=0;
     return fault==18 || (fault==6 && is_output) || (fault==7 && !is_output)?-1:r;
 }
-static int remove_file(const char* p){++removes;return cleanup_bad?-1:remove(p);}
+static int remove_file(const char* p){++removes;return cleanup_bad?-1:remove(mapped(p));}
 static int seek_file(FILE* f,long o,int w){if(fault==22)return -1;return fseek(f,o,w);}
 #define open reserve
 #define close close_reserved
@@ -126,9 +156,12 @@ static int seek_file(FILE* f,long o,int w){if(fault==22)return -1;return fseek(f
 ''' + (ROOT/'src/file_output.h').read_text() + DRIVER + r'''
 int main(int argc,char** argv){
     strcpy(full,argv[1]);strcpy(panels[0].path,"/SOURCE");
-    strcpy(panels[1].path,argv[2]);panels[0].count=1;
-    strcpy(selected.name,"ARCHIVE.SHK");
-    fault=atoi(argv[3]);cleanup_bad=atoi(argv[4]);read_at=atoi(argv[5]);cancel_at=atoi(argv[6]);
+    fault=atoi(argv[3]);
+    strcpy(dstroot,argv[2]);
+    strcpy(panels[1].path,fault==30||fault==32?"/RAMDISK":argv[2]);panels[0].count=1;
+    if(fault==30)devadr[5]=0xFF00;      /* the output volume is the /RAM driver's, whatever its name */
+    if(fault==33)devadr[6]=0xFF00;      /* the archive's volume is */
+    strcpy(selected.name,"ARCHIVE.SHK");cleanup_bad=atoi(argv[4]);read_at=atoi(argv[5]);cancel_at=atoi(argv[6]);
     /* Scratch is not zero-initialized on Apple II overlay entry. */
     memset(&state,0xA5,sizeof state);
     unshrink_entry(NULL);
@@ -139,18 +172,19 @@ int main(int argc,char** argv){
 '''
 
 
-def thread(data, klass=2, fmt=0, kind=0, eof=None, ceof=None):
-    return (struct.pack('<HHHHII', klass, fmt, kind, 0,
+def thread(data, klass=2, fmt=0, kind=0, eof=None, ceof=None, crc=0):
+    return (struct.pack('<HHHHII', klass, fmt, kind, crc,
                         len(data) if eof is None else eof,
                         len(data) if ceof is None else ceof), data)
 
 
-def record(name, data=b'', extra=(), fmt=0, eof=None, ceof=None, kind=0, auxtype=0):
+def record(name, data=b'', extra=(), fmt=0, eof=None, ceof=None, kind=0, auxtype=0, version=0, crc=0):
     name = name.encode()
     threads = [thread(name, klass=3), *extra,
-               thread(data, fmt=fmt, eof=eof, ceof=ceof, kind=kind)]
+               thread(data, fmt=fmt, eof=eof, ceof=ceof, kind=kind, crc=crc)]
     header = bytearray(60)
     header[:4] = bytes.fromhex('4E F5 46 D8')
+    header[8] = version
     struct.pack_into('<H', header, 6, 60)
     struct.pack_into('<H', header, 10, len(threads))
     header[16] = ord('/')
@@ -278,10 +312,20 @@ class UnshrinkSafety(unittest.TestCase):
         self.assertIn('Extract failed', self.run_extract(7))
         self.assertEqual((self.dst/'DATA').read_bytes(), self.payload)
 
-    def test_failed_padding_cleanup_keeps_closed_output_and_retry_refuses_it(self):
+    def test_verified_file_survives_unreadable_padding_and_retry_refuses_it(self):
         self.src.write_bytes(archive(record('DATA', self.payload+b'PAD', eof=len(self.payload))))
-        out = self.run_extract(4, cleanup=True, read_at=13)
-        self.assertIn('Cleanup failed: DATA retained', out)
+        for cleanup in (False, True):
+            out = self.run_extract(4, cleanup=cleanup, read_at=13)
+            self.assertIn('DATA extracted; Corrupt archive.', out)
+            self.assertIn('removes=0', out)
+            self.assertEqual((self.dst/'DATA').read_bytes(), self.payload)
+            if not cleanup:
+                (self.dst/'DATA').unlink()
+        # truncated inside the padding: the same
+        self.src.write_bytes(archive(record('DATA', self.payload+b'PAD', eof=len(self.payload)))[:-1])
+        self.assertIn('Create failed', self.run_extract())
+        (self.dst/'DATA').unlink()
+        self.assertIn('DATA extracted; Corrupt archive.', self.run_extract())
         self.assertEqual((self.dst/'DATA').read_bytes(), self.payload)
         self.assertIn('Create failed', self.run_extract())
         self.assertEqual((self.dst/'DATA').read_bytes(), self.payload)
@@ -299,7 +343,7 @@ class UnshrinkSafety(unittest.TestCase):
 
     def test_truncated_headers_data_and_padding(self):
         whole = archive(record('DATA', self.payload+b'PAD', eof=len(self.payload)))
-        for length in (0, 47, 48, 55, 107, 139, 143, 145, len(whole)-1):
+        for length in (0, 47, 48, 55, 107, 139, 143, 145, len(whole)-4):
             self.src.write_bytes(whole[:length])
             self.assertNotIn('file(s) extracted', self.run_extract())
             self.assertFalse((self.dst/'DATA').exists())
@@ -361,7 +405,10 @@ class UnshrinkSafety(unittest.TestCase):
     def test_lzw_window_refill_and_output_errors(self):
         payload = bytes(range(256))*49
         for fmt in (2, 3):
-            stream = (b'\0\0' if fmt==2 else b'') + b'\xfe\xdb'
+            crc = 0
+            for offset in range(0,len(payload),4096):
+                crc = crc16(payload[offset:offset+4096].ljust(4096,b'\0'), crc)
+            stream = (struct.pack('<H', crc) if fmt==2 else b'') + b'\xfe\xdb'
             for offset in range(0,len(payload),4096):
                 stream += b'\0\x10' + (b'\0' if fmt==2 else b'')
                 stream += payload[offset:offset+4096].ljust(4096,b'\0')
@@ -373,6 +420,74 @@ class UnshrinkSafety(unittest.TestCase):
             for fault in (5, 6, 13, 16, 17, 19, 21):
                 self.assertIn('Extract failed', self.run_extract(fault))
                 self.assertFalse((self.dst/'DATA').exists())
+
+    @staticmethod
+    def raw_lzw(payload, fmt, crc=None):
+        """An LZW container of raw chunks the host stand-in decoder copies."""
+        if crc is None:
+            crc = 0
+            for offset in range(0, len(payload), 4096):
+                crc = crc16(payload[offset:offset+4096].ljust(4096, b'\0'), crc)
+        stream = (struct.pack('<H', crc) if fmt == 2 else b'') + b'\xfe\xdb'
+        for offset in range(0, len(payload), 4096):
+            stream += b'\0\x10' + (b'\0' if fmt == 2 else b'')
+            stream += payload[offset:offset+4096].ljust(4096, b'\0')
+        return stream + b'\0'
+
+    def test_lzw1_stream_crc_covers_padded_chunks(self):
+        payload = bytes(range(256))*20 + b'tail'
+        good = self.raw_lzw(payload, 2)
+        self.src.write_bytes(archive(record('DATA', good, fmt=2, eof=len(payload))))
+        self.assertIn('1 file(s) extracted', self.run_extract())
+        self.assertEqual((self.dst/'DATA').read_bytes(), payload)
+        (self.dst/'DATA').unlink()
+        # one bit of the padding of the last chunk: the file bytes are the same
+        bad = bytearray(good)
+        bad[-2] ^= 1
+        for stream in (bytes(bad), self.raw_lzw(payload, 2, crc=crc16(payload) ^ 0x8000)):
+            self.src.write_bytes(archive(record('DATA', stream, fmt=2, eof=len(payload))))
+            out = self.run_extract()
+            self.assertIn('CRC error: DATA not extracted.', out)
+            self.assertIn('removes=1', out)
+            self.assertFalse((self.dst/'DATA').exists())
+        # a failed cleanup names the retained file
+        self.assertIn('Cleanup failed: DATA retained', self.run_extract(cleanup=True))
+
+    def test_thread_crc_of_version_3_records(self):
+        payload = bytes(range(256))*20 + b'tail'
+        right = crc16(payload, 0xFFFF)
+        cases = ((dict(data=payload), 0), (dict(data=self.raw_lzw(payload, 3), fmt=3), 3),
+                 (dict(data=self.raw_lzw(payload, 2), fmt=2), 2))
+        for kwargs, fmt in cases:
+            with self.subTest(fmt=fmt):
+                self.src.write_bytes(archive(record('DATA', eof=len(payload), version=3, crc=right, **kwargs)))
+                self.assertIn('1 file(s) extracted', self.run_extract())
+                self.assertEqual((self.dst/'DATA').read_bytes(), payload)
+                (self.dst/'DATA').unlink()
+                self.src.write_bytes(archive(record('DATA', eof=len(payload), version=3, crc=right ^ 1, **kwargs)))
+                self.assertIn('CRC error: DATA not extracted.', self.run_extract())
+                self.assertFalse((self.dst/'DATA').exists())
+                # before version 3 the field is not a CRC
+                self.src.write_bytes(archive(record('DATA', eof=len(payload), version=2, crc=right ^ 1, **kwargs)))
+                self.assertIn('1 file(s) extracted', self.run_extract())
+                (self.dst/'DATA').unlink()
+        # a disk image: the CRC covers blocks * 512
+        disk = bytes(range(256))*4
+        self.src.write_bytes(archive(record('DISK', disk, kind=1, auxtype=2, eof=0, version=3, crc=crc16(disk, 0xFFFF))))
+        self.assertIn('1 file(s) extracted', self.run_extract())
+        self.assertEqual((self.dst/'DISK.PO').read_bytes(), disk)
+
+    def test_ram_disk_is_known_by_its_driver_not_its_name(self):
+        for fault in (30, 31, 33):       # output on the /RAM driver, no ON_LINE, archive on it
+            with self.subTest(fault=fault):
+                out = self.run_extract(fault)
+                self.assertIn('/RAM shares AUX', out)
+                self.assertIn('opens=0', out)
+                self.assertIn('reads=0', out)
+                self.assertEqual(list(self.dst.iterdir()), [])
+        out = self.run_extract(32)       # a volume merely named /RAMDISK
+        self.assertIn('1 file(s) extracted', out)
+        self.assertEqual((self.dst/'DATA').read_bytes(), self.payload)
 
     def test_lzw_header_and_chunk_lengths_are_bounded(self):
         for fmt in (2, 3):

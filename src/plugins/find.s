@@ -43,8 +43,25 @@ _f_strcpy: jmp ($3FEE)
 .export _f_strlen
 _f_strlen: jmp ($3FF2)
 
-; Parse two decimal digits, or return $FF. No software stack needed.
 .importzp ptr1, tmp1
+
+; unsigned char __fastcall__ f_ferror(FILE*): 1 if the _FERROR bit ($04) of
+; _FILE::f_flags (offset 1, asminc/_file.inc) is set, else 0. libc's ferror
+; would also link errno for its EINVAL path, which FIND has no room for; the
+; FILE is always open here.
+.export _f_ferror
+_f_ferror:
+    sta ptr1
+    stx ptr1+1
+    ldy #1
+    lda (ptr1),y
+    and #$04
+    lsr a
+    lsr a
+    ldx #0
+    rts
+
+; Parse two decimal digits, or return $FF. No software stack needed.
 .export _pair
 _pair:
     sta ptr1

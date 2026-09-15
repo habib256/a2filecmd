@@ -10,7 +10,7 @@ panneau actif, les fichiers qui le contiennent (insensible a la casse). Les
 fichiers d'essai sont dans des sous-dossiers a eux, petits, pour que la
 lecture reste rapide (SEARCH lit chaque fichier en entier)."""
 
-import shutil, sys, tempfile, time
+import os, shutil, sys, tempfile, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -41,7 +41,7 @@ def main():
         (stage / 'FIND/NOPE.TXT').write_bytes(b'nothing to see here\r')
         hdv = volume(stage, tmp / 'SCRATCH.hdv', 'SCRATCH', 1600)
 
-        with Pom2(hdv, floppy=floppy, port=6708, mouse=True) as p:
+        with Pom2(hdv, floppy=floppy, port=6708 + int(os.environ.get('A2FC_PORT_OFFSET', '0')), mouse=True) as p:
             s = Session(p)
             s.boot()
 

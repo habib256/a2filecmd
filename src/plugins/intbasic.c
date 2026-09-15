@@ -70,12 +70,14 @@ static const char m_cut[] = "Program ends in the middle of a line.";
 #define PAGES 40
 
 static FILE* f;
-static unsigned int fpos;               /* the offset of the next byte read */
+/* File offsets are 24-bit in ProDOS: 16 bits wrapped past 64K. */
+static unsigned long fpos;              /* the offset of the next byte read */
 static unsigned char have, at;
 static unsigned char row, col;
 static unsigned char space;             /* the last character written was a space */
 static unsigned char alnum;             /* ... a letter or a digit */
-static unsigned int starts[PAGES];      /* where each page seen so far begins */
+static unsigned char clipped;           /* a character fell below the last row */
+static unsigned long starts[PAGES];     /* where each page seen so far begins */
 
 /* 255 bytes at a time, not 256: `have` and `at` are bytes, and 256 does not
  * fit in one -- cast down, a full read comes back as zero and reads as the
@@ -91,7 +93,7 @@ static int getb(void)
     return buf[at++];
 }
 
-static void seek(unsigned int off)
+static void seek(unsigned long off)
 {
     a.fseek(f, (long)off, SEEK_SET);
     fpos = off;
@@ -100,10 +102,11 @@ static void seek(unsigned int off)
 
 /* One character on the screen, cut at 80 columns and at LINES rows; past that
  * we stop writing but keep reading, so a page always ends on a line boundary
- * the next one can start from. */
+ * the next one can start from. A character that falls off is `clipped`: the
+ * next page then starts with that line again. */
 static void put(char c)
 {
-    if (row >= LINES) return;
+    if (row >= LINES) { if (c != 13) clipped = 1; return; }
     if (c == 13) {
         ++row; col = 0;
         if (row < LINES) a.gotoxy(0, row);
@@ -111,7 +114,7 @@ static void put(char c)
     }
     if (col == 80) {
         ++row; col = 0;
-        if (row >= LINES) return;
+        if (row >= LINES) { clipped = 1; return; }
         a.gotoxy(0, row);
     }
     a.cputc(c);
@@ -208,10 +211,37 @@ static unsigned char line(void)
     return 1;
 }
 
+static unsigned char page, known;
+
+/* Page `page` on the screen, from starts[page]. Returns what the last line()
+ * returned: 1 the page is full, 0 the end of the program, 2 a cut record.
+ * Separate from plugin_entry so that the host harness runs THIS. */
+static unsigned char listpage(void)
+{
+    unsigned long last;
+    unsigned char r;
+    seek(starts[page]);
+    a.clrscr();
+    row = col = 0; space = 1; clipped = 0;
+    a.gotoxy(0, 0);
+    do { last = fpos; r = line(); } while (r == 1 && row < LINES);
+    /* The offset the next page starts from is a line boundary: a page is
+     * never re-entered in the middle of a record. It is where this one
+     * stopped reading -- or the start of the last line when its tail ran
+     * off the bottom, unless that line began the page (it then has the
+     * whole screen and there is nowhere else to show it). */
+    if (clipped && last != starts[page]) { r = 1; fpos = last; }
+    if (r == 1 && page + 1 < PAGES && known == page + 1) {
+        starts[page + 1] = fpos;
+        known = page + 2;
+    }
+    return r;
+}
+
 void __fastcall__ plugin_entry(const struct A2fcApi* api)
 {
     const struct Entry* e;
-    unsigned char page = 0, known = 1, done, cut = 0, r;
+    unsigned char done, cut = 0, r;
     char key;
 
     init(api);
@@ -219,23 +249,11 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     if (e->type != 0xFA || pan->fs) { note(m_bad); return; }
     f = a.fopen(a.full, "rb");
     if (!f) { note(m_open); return; }
-    starts[0] = 0;
+    starts[0] = 0; page = 0; known = 1;
     for (;;) {
-        seek(starts[page]);
-        a.clrscr();
-        row = col = 0; space = 1; done = 0;
-        a.gotoxy(0, 0);
-        while (row < LINES) {
-            r = line();
-            if (r != 1) { done = 1; cut = r == 2; break; }
-        }
-        /* The offset the next page starts from is where this one stopped
-         * reading, which is a line boundary: a page is never re-entered in
-         * the middle of a record. */
-        if (!done && page + 1 < PAGES && known == page + 1) {
-            starts[page + 1] = fpos;
-            known = page + 2;
-        }
+        r = listpage();
+        done = r != 1;
+        if (done) cut = r == 2;
         a.bar_begin();
         a.cprintf(st_line, a.full, page + 1, done ? st_end : (const char*)"");
         a.keys_bar(52, st_keys);

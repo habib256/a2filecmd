@@ -31,7 +31,9 @@ static unsigned char mli(unsigned char cmd,void* params) {
         struct stat st;
         if(fault==1)return 0x27;
         if(stat(old,&st))return errno==ENOENT?0x46:0x27;
-        memset(replace_ip.result,0,15);replace_ip.result[0]=0xC3;replace_ip.result[4]=1;return 0;
+        memset(replace_ip.result,0,15);replace_ip.result[0]=0xC3;replace_ip.result[4]=1;
+        if(fault==29 && !strstr(old,"A2FC.BAK"))replace_ip.result[0]=0x01; /* locked */
+        return 0;
     }
     if(cmd==0xC0) {
         if(fault==2){f=fopen(old,"wb");fputs("new arrival",f);fclose(f);}
@@ -234,6 +236,23 @@ class ImgconvSafety(unittest.TestCase):
         self.assertIn('Converted; A2FC.BAK retained', self.convert(27))
         self.assertEqual(self.dst.read_bytes()[64:], self.data)
         self.assertEqual((self.d / 'A2FC.BAK').read_bytes(), b'old image')
+    def test_precheck_refusal_removes_this_runs_temporary_only(self):
+        """A2FC.BAK present or target locked: nothing renamed, an accurate
+        message, and no IMGCONV.TMP left to block the next run."""
+        bak=self.d/'A2FC.BAK'
+        for fault,backup in ((0,True),(29,False)):
+            with self.subTest(fault=fault):
+                if backup:bak.write_bytes(b'older backup')
+                note=self.convert(fault)
+                self.assertIn('nothing changed',note)
+                self.assertEqual(self.dst.read_bytes(),b'old image')
+                self.assertFalse((self.d/'IMGCONV.TMP').exists())
+                if backup:
+                    self.assertEqual(bak.read_bytes(),b'older backup')
+                    self.assertIn('nothing changed',self.convert())
+                    self.assertFalse((self.d/'IMGCONV.TMP').exists())
+                    bak.unlink()
+                else:self.assertFalse(bak.exists())
     def test_temporary_collision_is_untouched(self):
         tmp=self.d/'IMGCONV.TMP';tmp.write_bytes(b'previous recovery')
         self.convert();self.assertEqual(tmp.read_bytes(),b'previous recovery')

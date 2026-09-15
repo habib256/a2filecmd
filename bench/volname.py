@@ -117,6 +117,35 @@ def main():
                  s.has('Volume renamed to /WORKHD') and s.rows()[0][:8] == '/WORKHD ', s.rows()[0][:20])
             s.ok("l'autre panneau suit aussi, en /WORKHD/WORK", s.rows()[0][40:].startswith('/WORKHD/WORK'), s.rows()[0][40:].strip())
 
+            # 5b. Une image ouverte comme un dossier dans l'autre panneau : son
+            #     chemin suit, et img_len (la coupure image / chemin interne)
+            #     doit bouger avec la longueur du nom du volume.
+            def image_right(vol):
+                # The screen alone does not show it: the listing may still
+                # read. The core splits image and inner path at img_len
+                # (going up, entering a directory), so the byte itself is
+                # checked. panels[2] opens LOWBSS; struct Panel is 98 bytes,
+                # fs at 94 and img_len at 95.
+                raw = p.peek(s.sym['__LOWBSS_RUN__'] + 98, 98)
+                image = '/%s/WORK/TINY.PO' % vol
+                return (raw[:64].split(b'\0')[0].decode('ascii', 'replace') == image
+                        and raw[94] != 0 and raw[95] == len(image)
+                        and s.rows()[0][40:].startswith(image)
+                        and any(r[40:].startswith('INSIDE ') for r in s.rows()[2:20]))
+            s.key(TAB); p.stable()
+            s.select('TINY.PO', 40); s.key(RET)
+            s.wait(lambda: image_right('WORKHD'), "l'image ouverte a droite", 30); p.stable()
+            s.key(TAB); p.stable()
+            s.key(b'/'); s.wait(lambda: s.rows()[0].startswith('[Volumes]'), 'volumes'); p.stable()
+            s.select('/WORKHD')
+            rename_to(s, p, 'WORKHD', 'RENAMED')
+            s.ok("l'image ouverte a droite suit un nom de volume plus long (/RENAMED)",
+                 image_right('RENAMED'), '\n'.join(r[40:] for r in s.rows()[:4]))
+            s.select('/RENAMED')
+            rename_to(s, p, 'RENAMED', 'WORKHD')
+            s.ok("... puis un nom plus court (/WORKHD), toujours lisible",
+                 image_right('WORKHD'), '\n'.join(r[40:] for r in s.rows()[:4]))
+
             # 6. /RAM -> /RAMDISK, et retour.
             s.key(b'/'); s.wait(lambda: s.rows()[0].startswith('[Volumes]'), 'volumes'); p.stable()
             s.select('/RAM')

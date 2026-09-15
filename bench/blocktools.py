@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tagged VERIFY, streamed VOLINFO reports and read-only BLKVIEW under POM2."""
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -30,7 +31,7 @@ def main():
         work=int.from_bytes(named(img,2,'WORK')[17:19],'little')
         bad=named(img,work,'BAD'); off=data.index(bad,work*512)
         data[off+17:off+19]=b'\xff\xff';hd.write_bytes(data)
-        with Pom2(hd,floppy2=target,port=6846) as p:
+        with Pom2(hd,floppy2=target,port=6846+int(os.environ.get('A2FC_PORT_OFFSET','0'))) as p:
             s=Session(p);s.boot();s.select('WORK');s.key(RET);p.stable()
             stack=p.peek(0x80,2)
             floor=s.sym['__HIMEM__']-s.sym['__STACKSIZE__'];p.poke(floor,b'\xa5'*8)

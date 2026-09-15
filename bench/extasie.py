@@ -55,7 +55,8 @@ def main():
     main_plane = page_of(stream[COLS * ROWS:])
     files = {
         'WORK/BASTILLE#F20000': BASTILLE,
-        'WORK/HALF#F20000': BASTILLE[:len(BASTILLE) // 2],   # tronquee
+        'WORK/HALF#F20000': BASTILLE[:len(BASTILLE) // 2],   # tronquee dans le 1er plan
+        'WORK/CUT#F20000': BASTILLE[:len(BASTILLE) * 4 // 5],  # tronquee dans le 2e plan
         'WORK/PLAIN.BIN#062000': bytes(8192),                # pas une $F2
     }
     with tempfile.TemporaryDirectory(prefix='a2fc-extasie-') as tmp:
@@ -73,12 +74,22 @@ def main():
             s.ok('refuse un binaire ordinaire',
                  s.rows()[22].strip() == 'Not an Extasie $F2 picture.', s.rows()[22].strip())
 
-            # 2. Une image coupee est signalee, pas montree a moitie.
-            s.select('HALF', 0); p.stable()
-            menu_run(s, p, 'EXTASIE')
-            s.wait(lambda: s.has('truncated'), 'le flux coupe', 30); p.stable()
-            s.ok('signale un flux tronque', s.rows()[22].strip() == 'Picture truncated.',
-                 s.rows()[22].strip())
+            # 2. Une image coupee est signalee, pas montree a moitie -- et ne
+            #    coute ni la banque auxiliaire ni /RAM, qui y vit : coupee dans
+            #    le premier plan comme dans le second, AUX reste octet pour octet.
+            aux_before = bytes(p.peek(0x0800, 0xB800, 'aux'))
+            for name in ('HALF', 'CUT'):
+                s.select(name, 0); p.stable()
+                menu_run(s, p, 'EXTASIE')
+                s.wait(lambda: s.has('truncated'), 'le flux coupe', 30); p.stable()
+                s.ok('signale un flux tronque (%s)' % name,
+                     s.rows()[22].strip() == 'Picture truncated.', s.rows()[22].strip())
+            aux_after = bytes(p.peek(0x0800, 0xB800, 'aux'))
+            s.ok('un refus ne touche pas AUX ($0800-$BFFF) : ni plan deplace, ni /RAM refait',
+                 aux_before == aux_after,
+                 '%d octets differents, le premier en $%04X' % (
+                     sum(1 for a, b in zip(aux_before, aux_after) if a != b),
+                     0x0800 + next((i for i, (a, b) in enumerate(zip(aux_before, aux_after)) if a != b), 0)))
 
             # 3. L'image entiere : les deux plans, octet par octet. Le plan
             #    auxiliaire est aussi le seul controle du passage de banque.

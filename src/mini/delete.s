@@ -8,31 +8,36 @@
 ; free, and the next create would destroy the data.
 ;
 ; A physical write is not atomic. An uncertain catalog or VTOC write
-; latches del_fault so this run cannot write again.
+; latches del_fault so this run cannot write again. del_fault is the
+; copy engine's copy_fault: one latch for every write in the run.
+;
+; Before any write, every other file on the disk is walked too. Two
+; entries claiming one sector is a cross-linked disk: freeing that sector
+; would hand the other file's data to the next copy, so delete refuses.
 
         .include "mini.inc"
 
         .export delete_prepare, delete_execute, delete_cancel
         .export lock_prepare, lock_execute, rename_prepare, rename_execute
-        .export del_index, del_fault, lock_op, lock_ready, ren_name
+        .export del_index, lock_op, lock_ready, ren_name
         .export _delete_prepare, _delete_execute, _delete_cancel
         .export _lock_prepare, _lock_execute, _rename_prepare, _rename_execute
-        .export _del_index, _del_fault, _lock_op, _lock_ready, _ren_name
+        .export _del_index, _lock_op, _lock_ready, _ren_name
 
         .import read_sector, write_sector, rwts_error
-        .import buffer, drive, track, sector, count, sector_seen
+        .import buffer, drive, track, sector, count
         .import ent_track, ent_sector, ent_type, ent_seclo, ent_sechi
-        .import ent_slot, ent_index, ent_ptr, sanitise
-        .import seen_bit, bit_masks
+        .import ent_index, ent_ptr, sanitise
         .import valid_data, read_at, vtoc_bit, memcpy256, memcmp256
-        .import slot_offset
+        .import slot_where, walk, wipe_seen, load_vtoc
+        .import cat_first, cat_open, cat_step, del_fault
+        .import wlk_t, wlk_s, wlk_nt, wlk_ns, wlk_j, wlk_expect, wlk_collect
+        .import aud_t, aud_s, aud_off
         .import vtoc, catalog_before, verify, cat_buf
 
         .segment "BSS"
 del_index:      .res 1
-del_fault:      .res 1
 _del_index      = del_index
-_del_fault      = del_fault
 
 del_ready:      .res 1
 lock_ready:     .res 1
@@ -47,7 +52,7 @@ del_sector:     .res 1
 del_type:       .res 1
 del_seclo:      .res 1
 del_sechi:      .res 1
-del_name:       .res NAME_LEN
+del_name:       .res NAME_STRIDE    ; the panel's name, then where it was read
 del_cat_t:      .res 1
 del_cat_s:      .res 1
 del_cat_off:    .res 1
@@ -57,26 +62,10 @@ pan_sector:     .res 1          ; is held to it, name alone is not an
 pan_type:       .res 1          ; identity (contiguous, same order as
 pan_seclo:      .res 1          ; del_track..del_sechi)
 pan_sechi:      .res 1
-pan_slot:       .res 1          ; catalog sector << 3 | slot the entry came from
-aud_n:          .res 1          ; catalog sectors visited: 15 at most
+pan_cat_track   = del_name + ENT_CAT_TRACK
+pan_slot        = del_name + ENT_CAT_SLOT
 
-ts_list         = cat_buf
-
-wlk_t:          .res 1
-wlk_s:          .res 1
-wlk_nt:         .res 1
-wlk_ns:         .res 1
-wlk_ended:      .res 1
-wlk_j:          .res 1
-wlk_total:      .res 2
-wlk_expect:     .res 2
-wlk_offset:     .res 2          ; data sectors already seen, as in copy walk
-aud_t:          .res 1
-aud_s:          .res 1
-aud_nt:         .res 1
-aud_ns:         .res 1
-aud_i:          .res 1
-aud_off:        .res 1
+ts_list         = cat_buf           ; free_chain only: nothing walks by then
 
 .ifdef SIM65
         .segment "CODE"
@@ -85,8 +74,8 @@ aud_off:        .res 1
 .endif
 
 ; ---------------------------------------------------------------------
-; memcpy256, memcmp256, read_at and vtoc_bit come from copy.s: the DEL_
-; and COPY_ codes for OK and READ are the same numbers.
+; memcpy256, memcmp256, read_at, vtoc_bit and walk come from copy.s: the
+; DEL_ and COPY_ codes for OK, READ and INVALID are the same numbers.
 
 ; put_verified -- A = track, X = sector. Write protection is reported as
 ; itself: RWTS refuses before touching the disk, so the caller knows
@@ -138,18 +127,6 @@ free_in_vtoc:
         lda     #DEL_CHANGED
         rts
 
-allocated:
-        jsr     vtoc_bit
-        ldx     bidx
-        lda     vtoc,x
-        and     bmsk
-        bne     @free
-        lda     #DEL_OK
-        rts
-@free:
-        lda     #DEL_INVALID
-        rts
-
 ; ---------------------------------------------------------------------
 delete_cancel:
 _delete_cancel:
@@ -164,18 +141,8 @@ delete_prepare:
 _delete_prepare:
         lda     #0
         sta     del_ready
-        lda     del_fault
-        beq     @allowed
-        lda     #DEL_UNCERTAIN
-        rts
-@allowed:
-        lda     del_index
-        cmp     count
-        jcs     @invalid
-        lda     drive
-        beq     @invalid
-        cmp     #3
-        bcs     @invalid
+        jsr     meta_gate
+        bne     @out
         jsr     snapshot_panel
         lda     pan_type
         and     #$80
@@ -185,16 +152,16 @@ _delete_prepare:
 @unlocked:
         jsr     find_and_walk
         bne     @out
+        jsr     audit_others
+        bne     @out
         lda     #1
         sta     del_ready
         lda     #DEL_OK
 @out:
         rts
-@invalid:
-        lda     #DEL_INVALID
-        rts
 
-; find_and_walk -- hold the disk to the panel's idea of the file
+; find_and_walk -- hold the disk to the panel's idea of the file, then
+; claim every sector it owns: allocated, on a data track, owned once
 find_and_walk:
         jsr     find_entry
         bne     @out
@@ -204,13 +171,52 @@ find_and_walk:
         lda     #DEL_LOCKED
         rts
 @walkit:
-        ldx     #69
+        jsr     wipe_seen
         lda     #0
-@wipe:
-        sta     sector_seen,x
-        dex
-        bpl     @wipe
-        jsr     walk_file
+        sta     wlk_collect
+        lda     del_track
+        sta     wlk_t
+        lda     del_sector
+        sta     wlk_s
+        lda     del_seclo
+        sta     wlk_expect
+        lda     del_sechi
+        sta     wlk_expect+1
+        jmp     walk
+@out:
+        rts
+
+; audit_others -- every other live entry's chain, claimed on top of the
+; file's own sectors. A sector two entries share, a chain that does not
+; add up, or one that cannot be read refuses the delete: freeing a
+; cross-linked sector would let the next copy overwrite the other file.
+; Costs one read per T/S list on the disk, before the first write.
+audit_others:
+        jsr     cat_first
+        bne     @out
+@entry:
+        jsr     our_slot
+        bcs     @next
+        ldx     aud_off
+        lda     cat_buf,x
+        beq     @next           ; never used
+        cmp     #$FF
+        beq     @next           ; deleted: its sectors are free
+        sta     wlk_t
+        lda     cat_buf+1,x
+        sta     wlk_s
+        lda     cat_buf+33,x
+        sta     wlk_expect
+        lda     cat_buf+34,x
+        sta     wlk_expect+1
+        jsr     walk            ; reads into buffer; cat_buf is kept
+        bne     @out
+@next:
+        jsr     cat_step
+        bcc     @entry
+        beq     @out            ; the end of the chain, A = 0
+        jsr     cat_open
+        beq     @entry
 @out:
         rts
 
@@ -221,43 +227,27 @@ find_and_walk:
 ; alone is not an identity: the panel shows unprintable characters as
 ; '?', and a sibling disk can reuse a name. Locked files are allowed: lock
 ; and rename need the slot. The T/S chain is not followed.
+;
+; Only a slot on track 17 is written. catalog() follows a chain onto any
+; track, but a write there could land on a sector a file uses, and a
+; slot read elsewhere must never be taken for the track-17 one.
 find_entry:
-        lda     #CATALOG_TRACK
-        ldx     #0
-        jsr     read_at
+        jsr     load_vtoc
         jne     @out
-        SETPTR  ptr, buffer
-        SETPTR  ptr2, vtoc
-        jsr     memcpy256
-        lda     vtoc+3
-        cmp     #3
-        jne     @invalid
-        lda     vtoc+$34
-        cmp     #35
-        jne     @invalid
-        lda     vtoc+$35
-        cmp     #16
-        jne     @invalid
         lda     vtoc+6
         sta     del_volume
-        lda     pan_slot
-        lsr     a
-        lsr     a
-        lsr     a
-        jeq     @invalid
-        sta     del_cat_s
-        lda     #CATALOG_TRACK
+        lda     pan_cat_track
+        cmp     #CATALOG_TRACK
+        bne     @invalid
         sta     del_cat_t
-        lda     pan_slot
-        and     #7
-        cmp     #CAT_ENTRIES
-        jcs     @invalid
-        jsr     slot_offset
+        ldx     pan_slot
+        jsr     slot_where
+        bcc     @invalid
         sta     del_cat_off
+        stx     del_cat_s
         lda     del_cat_t
-        ldx     del_cat_s
         jsr     read_at
-        jne     @out
+        bne     @out
         SETPTR  ptr, buffer
         SETPTR  ptr2, catalog_before
         jsr     memcpy256
@@ -315,131 +305,6 @@ same_as_panel:
         rts
 @no:
         clc
-        rts
-
-; walk_file -- every sector the file owns must be allocated and unique
-walk_file:
-        lda     del_track
-        sta     wlk_t
-        lda     del_sector
-        sta     wlk_s
-        lda     #0
-        sta     wlk_ended
-        sta     wlk_total
-        sta     wlk_total+1
-        sta     wlk_offset
-        sta     wlk_offset+1
-        lda     del_seclo
-        sta     wlk_expect
-        lda     del_sechi
-        sta     wlk_expect+1
-@list:
-        lda     wlk_t
-        ldx     wlk_s
-        jsr     valid_data
-        jcc     @invalid
-        jsr     claim_used
-        jne     @out
-        inc     wlk_total       ; the T/S list itself is in the catalog count
-        bne     @nolist
-        inc     wlk_total+1
-@nolist:
-        lda     wlk_t
-        ldx     wlk_s
-        jsr     read_at
-        jne     @out
-        ldx     #0
-@keep:
-        lda     buffer,x
-        sta     ts_list,x
-        inx
-        bne     @keep
-        lda     ts_list+1
-        sta     wlk_nt
-        lda     ts_list+2
-        sta     wlk_ns
-        lda     ts_list+5
-        cmp     wlk_offset
-        jne     @invalid
-        lda     ts_list+6
-        cmp     wlk_offset+1
-        jne     @invalid
-        lda     #0
-        sta     wlk_j
-@pair:
-        lda     wlk_j
-        asl     a
-        tax
-        lda     ts_list+12,x
-        sta     wlk_t
-        lda     ts_list+13,x
-        sta     wlk_s
-        ora     wlk_t
-        bne     @live
-        lda     #1
-        sta     wlk_ended
-        jmp     @nextpair
-@live:
-        lda     wlk_ended
-        bne     @invalid
-        lda     wlk_t
-        ldx     wlk_s
-        jsr     valid_data
-        bcc     @invalid
-        jsr     claim_used
-        bne     @out
-        inc     wlk_total
-        bne     @off
-        inc     wlk_total+1
-@off:
-        inc     wlk_offset
-        bne     @nextpair
-        inc     wlk_offset+1
-@nextpair:
-        inc     wlk_j
-        lda     wlk_j
-        cmp     #TS_PER_LIST
-        bcc     @pair
-        lda     wlk_nt
-        beq     @check
-        lda     wlk_ended
-        bne     @invalid
-        lda     wlk_nt
-        sta     wlk_t
-        lda     wlk_ns
-        sta     wlk_s
-        jmp     @list
-@check:
-        lda     wlk_total
-        cmp     wlk_expect
-        bne     @invalid
-        lda     wlk_total+1
-        cmp     wlk_expect+1
-        bne     @invalid
-        lda     #DEL_OK
-@out:
-        rts
-@invalid:
-        lda     #DEL_INVALID
-        rts
-
-claim_used:
-        sta     s0
-        stx     s1
-        jsr     seen_bit
-        ldx     bidx
-        lda     sector_seen,x
-        and     bmsk
-        bne     @invalid
-        lda     sector_seen,x
-        ora     bmsk
-        sta     sector_seen,x
-        lda     s0
-        ldx     s1
-        jsr     allocated
-        rts
-@invalid:
-        lda     #DEL_INVALID
         rts
 
 ; ---------------------------------------------------------------------
@@ -665,8 +530,10 @@ _lock_execute:
 
 ; ---------------------------------------------------------------------
 ; rename_prepare -- del_index is the old name, ren_name the new one.
-; Locked files are refused. A live collision is refused. The same name
-; is a no-op (DEL_LOCKED to the batch, no write).
+; Locked files are refused. A live collision is refused. A name the slot
+; already holds, byte for byte, is REN_SAME and writes nothing; the
+; panel's sanitised text is not that name, so a FLASH or control name
+; can still be normalised by typing what the panel shows.
 ; ---------------------------------------------------------------------
 rename_prepare:
 _rename_prepare:
@@ -675,22 +542,27 @@ _rename_prepare:
         jsr     meta_gate
         bne     @out
         jsr     snapshot_panel
-        jsr     names_same
-        bcs     @same
         jsr     find_entry
         bne     @out
         lda     del_type
         and     #$80
         bne     @locked
+        SETPTR  ptr, catalog_before
+        SETPTR  ptr2, cat_buf
+        jsr     memcpy256
+        lda     del_cat_off
+        sta     aud_off
+        jsr     name_ren
+        bcs     @same
         jsr     ren_collision
-        bcs     @out            ; A says why: REN_EXISTS, INVALID or READ
+        bne     @out            ; REN_EXISTS, INVALID or READ
         lda     #1
         sta     ren_ready
         lda     #DEL_OK
 @out:
         rts
 @same:
-        lda     #DEL_LOCKED
+        lda     #REN_SAME
         rts
 @locked:
         lda     #DEL_LOCKED
@@ -713,7 +585,7 @@ _rename_execute:
         jsr     recat_same
         bne     @out
         jsr     ren_collision
-        bcs     @out            ; A says why: REN_EXISTS, INVALID or READ
+        bne     @out            ; REN_EXISTS, INVALID or READ
         SETPTR  ptr, catalog_before
         SETPTR  ptr2, buffer
         jsr     memcpy256
@@ -776,33 +648,16 @@ snapshot_panel:
         sta     pan_seclo
         lda     ent_sechi,y
         sta     pan_sechi
-        lda     ent_slot,y
-        sta     pan_slot
         lda     del_index
         jsr     ent_index
         jsr     ent_ptr
         ldy     #0
 @n:
-        lda     (ptr),y
+        lda     (ptr),y         ; the name, then where it was read
         sta     del_name,y
         iny
-        cpy     #NAME_LEN
+        cpy     #NAME_STRIDE
         bcc     @n
-        rts
-
-names_same:
-        ldy     #0
-@n:
-        lda     del_name,y
-        cmp     ren_name,y
-        bne     @no
-        iny
-        cpy     #NAME_LEN
-        bcc     @n
-        sec
-        rts
-@no:
-        clc
         rts
 
 ; recat_same -- VTOC and the saved catalog sector are still the ones
@@ -840,75 +695,34 @@ latch_fault:
         lda     s0
         rts
 
-; ren_collision -- carry set when the rename must be refused, with A
-; saying why: REN_EXISTS when ren_name is already a live file that is not
-; the slot we are renaming, DEL_INVALID for a malformed or looping chain,
-; DEL_READ when a catalog sector could not be read. Destroys buffer;
-; catalog_before still holds our sector.
+; ren_collision -- A = 0 when ren_name is free, REN_EXISTS when it is
+; already a live file that is not the slot being renamed, DEL_INVALID
+; for a malformed or looping chain, DEL_READ when a catalog sector could
+; not be read. Destroys buffer and cat_buf; catalog_before still holds
+; our sector.
 ren_collision:
-        lda     #0
-        sta     aud_n
-        lda     vtoc+1
-        sta     aud_t
-        lda     vtoc+2
-        sta     aud_s
-@chain:
-        inc     aud_n           ; a chain longer than the track is a loop
-        lda     aud_n
-        cmp     #16
-        bcs     @inv
-        lda     aud_t
-        cmp     #CATALOG_TRACK
-        bne     @inv
-        lda     aud_s
-        beq     @inv
-        cmp     #16
-        bcs     @inv
-        lda     aud_t
-        ldx     aud_s
-        jsr     read_at
-        bne     @rd
-        lda     buffer+1
-        sta     aud_nt
-        lda     buffer+2
-        sta     aud_ns
-        lda     #CAT_FIRST
-        sta     aud_off
-        lda     #CAT_ENTRIES
-        sta     aud_i
+        jsr     cat_first
+        bne     @out
 @entry:
         jsr     our_slot
         bcs     @next
         ldx     aud_off
-        lda     buffer,x
+        lda     cat_buf,x
         beq     @next
         cmp     #$FF
         beq     @next
         jsr     name_ren
         bcs     @yes
 @next:
-        lda     aud_off
-        clc
-        adc     #CAT_ENTRY_LEN
-        sta     aud_off
-        dec     aud_i
-        bne     @entry
-        lda     aud_nt
-        sta     aud_t
-        lda     aud_ns
-        sta     aud_s
-        lda     aud_t
-        bne     @chain
-        clc
+        jsr     cat_step
+        bcc     @entry
+        beq     @out            ; the end of the chain, A = 0
+        jsr     cat_open
+        beq     @entry
+@out:
         rts
 @yes:
         lda     #REN_EXISTS
-        sec
-        rts
-@inv:
-        lda     #DEL_INVALID
-@rd:                            ; A is already DEL_READ from read_at
-        sec
         rts
 
 our_slot:
@@ -927,6 +741,8 @@ our_slot:
         clc
         rts
 
+; name_ren -- carry set when the entry at aud_off in cat_buf holds
+; ren_name exactly, high bits included
 name_ren:
         ldx     aud_off
         inx
@@ -934,7 +750,7 @@ name_ren:
         inx
         ldy     #0
 @char:
-        lda     buffer,x
+        lda     cat_buf,x
         sta     s0
         lda     ren_name,y
         ora     #$80

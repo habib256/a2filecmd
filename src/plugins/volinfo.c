@@ -313,7 +313,7 @@ static void map(void)
 static unsigned char selected_file(void)
 {
     FILE* f;
-    unsigned char j, len, found = 0;
+    unsigned char j, len, kind, found = 0;
     struct Panel* p = A->panels + *A->active;
     if (!p->path[0] || !A->selected->name[0] || A->selected->type == 15) return 0;
     f = v_fopen(p->path, "rb");
@@ -322,7 +322,10 @@ static unsigned char selected_file(void)
         for (j = 0; j < 13; ++j) {
             v_memcpy(entry, buf+4+39*j, 39);
             len = entry[0] & 15;
-            if (!(entry[0] >> 4) || !len) continue;
+            kind = entry[0] >> 4;
+            /* A directory or volume header ($E/$F) carries the name of
+             * its directory, which a file inside may share: never a fork. */
+            if (!kind || kind >= 14 || !len) continue;
             entry[1+len] = 0;
             if (!v_strcmp((char*)entry+1, A->selected->name)) { found = 1; break; }
         }

@@ -51,7 +51,8 @@ static void indexblock(unsigned int b) {
 static void walk(void) {
     unsigned int i,b;
     refs=logical=0;written=0;
-    if(kind==1){if(!key && size){invalid=1;return;}data(key);if(!size && key)touch(key);}
+    /* An empty seedling still owns its key block, which holds no data. */
+    if(kind==1){if(!key && size){invalid=1;return;}if(size)data(key);else touch(key);}
     else if(!key)invalid=1;
     else if(kind==2)indexblock(key);
     else {
@@ -90,7 +91,16 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
     if(pan->fs || other->fs || !other->path[0]){note("Open a recovery directory on another ProDOS volume.");return;}
     a.strcpy(dir,pan->path[0]?pan->path:a.selected->name);
     if(dir[0]!='/' || getinfo(dir) || (info.storage!=13 && info.storage!=15)){note("Select a ProDOS source directory.");return;}
-    blocks=info.blocks;unit=unit_of(dir,pan->path[0]?0:(unsigned char)(a.selected->mdate<<4));dunit=unit_of(other->path,0);
+    blocks=info.blocks;
+    if(info.storage==15) {
+        /* On a volume GET_FILE_INFO counts every block in use, not the root
+         * directory's: count the root's linked blocks, bounded by that. */
+        f=a.fopen(dir,"rb");if(!f){note("Cannot read source directory.");return;}
+        b=0;
+        do{if(stop()||b==info.blocks||a.fread(db,1,512,f)!=512){a.fclose(f);note("Directory read failed.");return;}++b;}while(rd16(db+2));
+        a.fclose(f);blocks=b;
+    }
+    unit=unit_of(dir,pan->path[0]?0:(unsigned char)(a.selected->mdate<<4));dunit=unit_of(other->path,0);
     if(!unit||!dunit||unit==dunit){note("UNDELETE destination must be on another online volume.");return;}
     if(readblk(unit,2,buf)||(buf[4]>>4)!=15){note("Cannot read volume header.");return;}
     total=rd16(buf+41);bitmap=rd16(buf+39);

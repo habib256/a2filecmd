@@ -45,7 +45,7 @@ static const char fm_title_text[] = "  A2 FILE CMD " A2FC_VERSION " - FORMAT A D
 static const char fm_bar_format[] = "%-79.79s";
 static const char fm_generic_error[] = "ProDOS error";
 static const char fm_protected_error[] = "the disk is write protected";
-static const char fm_io_error[] = "I/O error, the disk may be missing or damaged";
+static const char fm_io_error[] = "I/O error: disk missing or damaged";
 static const char fm_device_error[] = "no device connected there";
 static const char fm_switched_error[] = "the disk was switched";
 static const char fm_error_format[] = "Failed: %s ($%02X).";
@@ -56,11 +56,11 @@ static const char fm_no_volume[] = "(no ProDOS volume)";
 static const char fm_device_format[] = "  %c  Slot %u, drive %u  %-15s %-18s %5u blocks%s";
 static const char fm_in_use[] = "  IN USE";
 static const char fm_empty[] = "";
-static const char fm_list_hint[] = "Press the number of the disk to format. Nothing is written before you confirm.";
+static const char fm_list_hint[] = "Press a disk number. Nothing is written before you confirm.";
 static const char fm_list_keys[] = "1-9 Choose a disk    ESC Back to A2 File Cmd";
 static const char fm_name_intro[] = "Step 2 of 3: the name of the new volume.";
 static const char fm_target_format[] = "Disk: slot %u, drive %u, %s, %u blocks.";
-static const char fm_name_rules[] = "A ProDOS volume name: a letter, then letters, digits or periods, 15 at most.";
+static const char fm_name_rules[] = "Volume name: a letter, then letters, digits, periods (15 max).";
 static const char fm_default_hint[] = "RETURN alone names it BLANK.";
 static const char fm_name_keys[] = "RETURN Accept    DEL Erase    ESC Back to A2 File Cmd";
 static const char fm_name_format[] = "New volume name: /%s_   ";
@@ -72,24 +72,25 @@ static const char fm_confirm_volume[] = "currently the volume /%s, %u blocks.";
 static const char fm_confirm_no_volume[] = "which holds no ProDOS volume, %u blocks.";
 static const char fm_erase_warning[] = " EVERYTHING ON THAT DISK WILL BE LOST FOREVER. ";
 static const char fm_confirm_name[] = "The new, empty volume will be named /%s.";
-static const char fm_erase_hint[] = "To confirm, type the word ERASE in capital letters, then press RETURN.";
-static const char fm_cancel_hint[] = "Anything else, or ESC, cancels without touching the disk.";
-static const char fm_ram_warning[] = "Disk II formatting also clears /RAM: copy its files elsewhere first.";
+static const char fm_erase_hint[] = "To confirm, type ERASE in capitals, then RETURN.";
+static const char fm_cancel_hint[] = "Anything else, or ESC, cancels: nothing written.";
+static const char fm_ram_warning[] = "Disk II formatting also clears /RAM: save its files first.";
 static const char fm_confirm_keys[] = "Type ERASE then RETURN to format    ESC Cancel";
 static const char fm_typed_format[] = "> %s_   ";
 static const char fm_erase_word[] = "ERASE";
-static const char fm_format_intro[] = "Formatting. Do not open the drive door or switch off the computer.";
+static const char fm_format_intro[] = "Formatting: do not open the drive or switch off.";
 static const char fm_format_target[] = "Slot %u, drive %u, %s -> /%s";
 static const char fm_wait_text[] = "Please wait ...";
 static const char fm_track_format[] = "Track %2u of 35 ";
-static const char fm_structures_text[] = "Writing the ProDOS boot blocks, directory and bitmap ...";
+static const char fm_structures_text[] = "Writing boot blocks, directory and bitmap ...";
 static const char fm_verified_text[] = "Read back and verified.";
-static const char fm_in_use_error[] = " That disk holds the running program: it cannot be formatted from here. ";
+static const char fm_in_use_error[] = " That disk holds the running program: cannot be formatted. ";
 static const char fm_unknown_size[] = " No disk, or its size is unknown: nothing to format. ";
 static const char fm_failed_hint[] = "The disk may be unusable until formatted again.";
 static const char fm_done_format[] = "Done: /%s, %u blocks, %u free.";
 static const char fm_done_keys[] = "Any key: back to the list    ESC: A2 File Cmd";
 static const char fm_ram_note[] = "/RAM was rebuilt empty.";
+static const char fm_switched_text[] = " The disk changed: nothing written. ";
 
 enum { KIND_DISKII, KIND_SMART, KIND_RAM, KIND_BLOCK };
 static const char kind_disk[] = "Disk II 5.25\"";
@@ -102,6 +103,7 @@ struct Dev {
     unsigned char unit, kind, inuse, valid;
     char name[16];              /* the current volume, without the slash */
     unsigned int blocks;
+    unsigned int sig;           /* block 2: its checksum or read error (identify) */
 };
 static struct Dev devs[9];
 static unsigned char ndev;
@@ -207,20 +209,19 @@ static unsigned char kind_of(unsigned char unit)
     return KIND_BLOCK;
 }
 
-static void scan_devices(void)
+/* What the disk now in d->unit is: its type, volume name, size, and whether
+ * the program runs from it. Every other field is cleared, so two probes of
+ * the same disk compare equal byte for byte. */
+static void probe(struct Dev* d)
 {
-    unsigned char i, n = DEVCNT + 1, len;
+    unsigned char len, unit = d->unit;
     static unsigned char parms[4], online[16], gfi[18];
     static char path[18];
-    ndev = 0;
-    for (i = 0; i < n && ndev < 9; ++i) {
-        struct Dev* d = &devs[ndev];
-        d->unit = DEVLST[i] & 0xF0;
-        d->kind = kind_of(d->unit);
-        d->inuse = boot_unit && d->unit == boot_unit;
-        d->name[0] = 0;
-        d->valid = 0;
-        d->blocks = 0;
+    memset(d, 0, sizeof *d);
+    d->unit = unit;
+    d->kind = kind_of(unit);
+    d->inuse = boot_unit && unit == boot_unit;
+    {
         /* ON_LINE: the unit's volume name, or its error */
         parms[0] = 2; parms[1] = d->unit;
         parms[2] = (unsigned char)((unsigned)online & 0xFF);
@@ -249,6 +250,16 @@ static void scan_devices(void)
         if (d->kind == KIND_DISKII) d->blocks = 280;   /* its STATUS does not count blocks, and a header may lie */
         else if (!format_driver_call(d->unit, 0, DEVADR[d->unit >> 4] >= 0xD000) && format_driver_blocks && (!d->blocks || format_driver_blocks < d->blocks)) d->blocks = format_driver_blocks;
         if (d->kind == KIND_RAM && d->blocks > 127) d->blocks = 127;   /* STATUS says 255: 128 blocks, of which ProDOS keeps one */
+    }
+}
+
+static void scan_devices(void)
+{
+    unsigned char i, n = DEVCNT + 1;
+    ndev = 0;
+    for (i = 0; i < n && ndev < 9; ++i) {
+        devs[ndev].unit = DEVLST[i] & 0xF0;
+        probe(&devs[ndev]);
         ++ndev;
     }
 }
@@ -292,6 +303,31 @@ static unsigned char read_block(unsigned char unit, unsigned int block)
     parms[2] = 0x00; parms[3] = 0x3E;
     parms[4] = (unsigned char)(block & 0xFF); parms[5] = (unsigned char)(block >> 8);
     return mli_call(0x80, parms);
+}
+
+/* The chosen disk, identified: probe, plus block 2 read raw -- a checksum
+ * of its 512 bytes, or its read error. Two floppies carrying the same
+ * volume name and size still differ there (their directory entries). Only
+ * the target gets it: reading every drive of the list twice would be slow
+ * on empty Disk II drives. */
+static void identify(struct Dev* d)
+{
+    unsigned int i, sig;
+    unsigned char r;
+    probe(d);
+    memset(BLOCK, 0, 512);
+    r = read_block(d->unit, 2);
+    sig = 0xFF00 | r;
+    if (!r) for (sig = i = 0; i < 512; ++i) sig = ((sig << 1) | (sig >> 15)) + BLOCK[i];
+    d->sig = sig;
+}
+
+/* Why the disk d must not be formatted, or NULL. */
+static const char* refusal(const struct Dev* d)
+{
+    if (d->inuse || (d->kind == KIND_DISKII && boot_unit && DEVADR[boot_unit >> 4] == 0xFF00)) return fm_in_use_error;
+    if (d->blocks < 7 + bitmap_size(d->blocks)) return fm_unknown_size;
+    return NULL;
 }
 
 /* Boot blocks, root directory (blocks 2-5), allocation bitmap (from block 6
@@ -475,6 +511,8 @@ void __fastcall__ format_entry(const struct A2fcApi* api)
 {
     char key;
     unsigned char r;
+    const char* why;
+    static struct Dev now;
     A = api;
     boot_unit = ram_cleared = 0;
     for (;;) {
@@ -486,18 +524,13 @@ void __fastcall__ format_entry(const struct A2fcApi* api)
             if (key >= '1' && key < '1' + ndev) break;
         }
         target = &devs[key - '1'];
-        if (target->inuse || (target->kind == KIND_DISKII && boot_unit && DEVADR[boot_unit >> 4] == 0xFF00)) {
+        /* Looked at again now: the list may be stale, and the next two
+         * screens describe to the user exactly what identify reads. */
+        identify(target);
+        if ((why = refusal(target)) != NULL) {
             gotoxy(1, 8 + ndev);
             revers(1);
-            cputs(fm_in_use_error);
-            revers(0);
-            cgetc();
-            continue;
-        }
-        if (target->blocks < 7 + bitmap_size(target->blocks)) {
-            gotoxy(1, 8 + ndev);
-            revers(1);
-            cputs(fm_unknown_size);
+            cputs(why);
             revers(0);
             cgetc();
             continue;
@@ -506,6 +539,22 @@ void __fastcall__ format_entry(const struct A2fcApi* api)
         if (!confirm()) continue;
         if (target->kind == KIND_DISKII &&
             !A->confirm("Formatting uses AUX: ALL /RAM files will be LOST. Continue?")) continue;
+        /* The last look before the first write: the prompts left all the
+         * time needed to switch disks, and the confirmation named this one.
+         * Anything different -- name, size, block 2, in use -- writes
+         * nothing. */
+        now.unit = target->unit;
+        identify(&now);
+        if (memcmp(&now, target, sizeof now) || refusal(&now)) {
+            title(fm_confirm_intro);
+            gotoxy(1, 8);
+            revers(1);
+            cputs(fm_switched_text);
+            revers(0);
+            bar(fm_done_keys);
+            if (cgetc() == 27) break;
+            continue;
+        }
         r = do_format();
         if (r) {
             error_line(8, r);

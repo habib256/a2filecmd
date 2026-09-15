@@ -7,7 +7,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from pom2 import Pom2, Session, ROOT, DISK
+from pom2 import Pom2, Session, ROOT, DISK, BUILD
 from xplug import menu_run, RET, ESC, ok_all
 sys.path.insert(0, str(ROOT/'tools'))
 from prodos_read import Image
@@ -28,10 +28,30 @@ def disk(tmp, name, blocks):
     return path
 
 
+def boot_floppy(tmp):
+    """The boot floppy. The published BOOT reaches VOLINFO on DISKTOOLS; the
+    bench floppy (A2FC_IMG=A2FILECMD-full) has no category disk, so a
+    disposable copy carries this build's VOLINFO in place of FORMAT and
+    DISKIMG, as the archive benches do (archive_support.py)."""
+    out = tmp/'BOOT.po'
+    if DISK.name != 'A2FILECMD-full.po':
+        shutil.copyfile(DISK, out)
+        return out
+    stage = tmp/'boot-stage'
+    shutil.copytree(BUILD/'benchvol', stage)
+    for tool in ('FORMAT', 'DISKIMG'):
+        (stage/'A2FILE'/f'{tool}.PLG#061B00').unlink()
+    shutil.copyfile(BUILD/'volinfo.PLG', stage/'A2FILE'/'VOLINFO.PLG#061B00')
+    subprocess.run([sys.executable, str(ROOT/'tools/mkvolume.py'), str(stage), str(out),
+                    '--volume', 'A2FILECMD', '--boot', str(ROOT/'data/prodos_boot.tmpl'), '--blocks', '280'],
+                   check=True, capture_output=True)
+    return out
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix='a2fc-volinfo-') as tmp:
         tmp = Path(tmp)
-        boot = tmp/'BOOT.po'; shutil.copyfile(DISK, boot)
+        boot = boot_floppy(tmp)
         tools_disk = tmp/'DISKTOOLS.po'
         shutil.copyfile(DISK.with_name(DISK.name.replace("-BOOT-", "-DISKTOOLS-")), tools_disk)
         tools_before = tools_disk.read_bytes()
@@ -61,16 +81,30 @@ def main():
                 s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes'); p.stable()
                 s.select('/'+name)
 
+            swapped = [False]                   # DISKTOOLS sits in drive 1, not the boot floppy
+
             def tool(name):
                 menu_run(s, p, name)
+                # The overlay is looked for on the boot disk, then on the
+                # companion drive, before the swap prompt shows: menu_run can
+                # return while those reads are still going on.
+                started = (lambda: s.has('READ ONLY') or s.has('M Bitmap')) if name == 'VOLINFO' \
+                    else (lambda: s.value('view', 1) == 4)
+                s.wait(lambda: s.has('Insert ') or started(), name + ' ou son disque', 60)
                 if s.has('Insert '):
                     s.key(b'1')
                     p.insert(0, str(tools_disk if name == 'VOLINFO' else boot))
+                    swapped[0] = name == 'VOLINFO'
                     s.key(RET)
 
             def run():
                 tool('VOLINFO')
                 s.wait(lambda: s.has('M Bitmap'), 'fin du diagnostic', 180); p.stable()
+                # VOLINFO is in memory: the boot floppy goes back in drive 1,
+                # where the resident overlays (NAV, HELP...) are read from.
+                if swapped[0]:
+                    p.insert(0, str(boot))
+                    swapped[0] = False
 
             def number(label):
                 text = '\n'.join(s.rows())

@@ -2,6 +2,13 @@
 struct Source { FILE* file; unsigned char unit,kind; unsigned int blocks; unsigned long base; char path[PATH_LEN]; };
 static const unsigned char sectors[16]={0,14,13,12,11,10,9,8,7,6,5,4,3,2,1,15};
 static unsigned long image_size;
+#ifdef IMAGEIO_WRITE
+/* cc65 opens "rb" O_RDONLY, so a writer needs "r+b". An image that cannot be
+ * opened for update still opens read-only, to be looked at, and
+ * source_write refuses it. ProDOS OPENs a LOCKED file for update and fails
+ * only its WRITE, so the caller also sets this from the entry's write bit. */
+static unsigned char image_readonly;
+#endif
 static unsigned char size_of(const char* path) {
     unsigned char i; static char dir[PATH_LEN], name[16];
     a.strcpy(dir,path);for(i=a.strlen(dir);i && dir[i]!='/';--i);
@@ -25,7 +32,13 @@ static unsigned char image_open(struct Source* s) {
     s->file=0;s->unit=0;s->base=0;s->kind=0;
     if(!size_of(s->path))return 0;
     n=image_kind(s->path);if(!n)return 0;s->kind=n-1;
-    s->file=a.fopen(s->path,"rb");if(!s->file)return 0;
+#ifdef IMAGEIO_WRITE
+    image_readonly=0;s->file=a.fopen(s->path,"r+b");
+    if(!s->file){image_readonly=1;s->file=a.fopen(s->path,"rb");}
+#else
+    s->file=a.fopen(s->path,"rb");
+#endif
+    if(!s->file)return 0;
     if(s->kind==2) {
         if(a.fread(buf,1,64,s->file)!=64 || rd16(buf)!=0x4932 || rd16(buf+2)!=0x474D ||
            rd16(buf+8)<64 || rd16(buf+12)!=1 || rd16(buf+14) || rd16(buf+22) ||
@@ -50,6 +63,12 @@ static unsigned char source_read(struct Source* s,unsigned int b,unsigned char* 
     unsigned char half;unsigned long off;
     if(b>=s->blocks)return 0;
     if(s->unit)return !readblk(s->unit,b,out);
+#ifdef IMAGEIO_WRITE
+    /* cc65's fread and fwrite refuse a stream whose error flag is set, and
+     * fseek does not clear it: one failed write would fail every later
+     * read and write of the session. Each block starts clean. */
+    clearerr(s->file);
+#endif
     if(s->kind!=1)return !a.fseek(s->file,s->base+(unsigned long)b*512,SEEK_SET) && a.fread(out,1,512,s->file)==512;
     for(half=0;half<2;++half) {
         off=((unsigned long)(b>>3)<<12)+((unsigned int)sectors[(b&7)*2+half]<<8);
@@ -64,6 +83,8 @@ static unsigned char source_write(struct Source* s,unsigned int b,const unsigned
     unsigned char half;unsigned long off;
     if(b>=s->blocks)return 0;
     if(s->unit)return !writeblk(s->unit,b,in);
+    if(image_readonly)return 0;
+    clearerr(s->file);
     if(s->kind!=1)return !a.fseek(s->file,s->base+(unsigned long)b*512,SEEK_SET) && a.fwrite(in,1,512,s->file)==512;
     for(half=0;half<2;++half) {
         off=((unsigned long)(b>>3)<<12)+((unsigned int)sectors[(b&7)*2+half]<<8);

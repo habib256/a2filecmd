@@ -137,14 +137,19 @@ int main(void)
         cgetc();
         return 1;
     }
-    if (fread((void*)LC_STAGE, 1, STAGE_BYTES, f) != STAGE_BYTES) {
-        fclose(f);
-        cputs("\r\nTruncated image.\r\n");
-        cgetc();
-        return 1;
-    }
+    if (fread((void*)LC_STAGE, 1, STAGE_BYTES, f) != STAGE_BYTES) goto truncated;
     /* Never beyond $BEFF: the ProDOS global page is at $BF00. */
     while (dst < (unsigned char*)0xBF00 && (n = fread(dst, 1, (unsigned char*)0xBF00 - dst < CHUNK ? (unsigned char*)0xBF00 - dst : CHUNK, f)) > 0) dst += n;
+    /* Jump only into the whole file: the reads must have stopped at its
+     * end (GET_EOF bytes read), not on a read error -- a bad sector stops
+     * fread short as well -- nor at $BF00 with bytes left over. The last
+     * ProDOS READ tells: cc65's read leaves _oserror at $4C (end of file)
+     * only when it ran into the end; a full read leaves 0, a failed one its
+     * error, and after an error fread no longer calls READ. (feof/ferror
+     * cost 100 bytes: the floppy launcher must stay within 12 blocks.)
+     * A file cut short ON the disk still ends on $4C: only a length stored
+     * in the image could tell. */
+    if (_oserror != 0x4C) goto truncated;
     fclose(f);
 
     /* A2 File Cmd never comes back here: it leaves through the ProDOS QUIT. */
@@ -153,4 +158,10 @@ int main(void)
 #endif
     ((void (*)(void))CODE_ADDR)();
     return 0;
+
+truncated:
+    fclose(f);
+    cputs("\r\nTruncated image.\r\n");
+    cgetc();
+    return 1;
 }

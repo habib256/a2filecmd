@@ -29,7 +29,7 @@ unsigned char mini_create_prepare(void);
 unsigned char mini_create_execute(void);
 unsigned char mini_delete_prepare(void);
 unsigned char mini_delete_execute(void);
-void mini_measure_text(void);
+unsigned char mini_measure_text(void);
 unsigned char mini_lock_prepare(void);
 unsigned char mini_lock_execute(void);
 unsigned char mini_rename_prepare(void);
@@ -140,8 +140,7 @@ int main(void)
             reply(mini_delete_execute());
             break;
         case 13:
-            mini_measure_text();
-            reply(0);
+            reply(mini_measure_text());
             break;
         case 14:
             reply(mini_lock_prepare());

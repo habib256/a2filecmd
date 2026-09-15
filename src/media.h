@@ -18,7 +18,7 @@ static unsigned char media_prepare(unsigned char kind)
     struct Panel* pan=&panels[active];
     unsigned int first=pan->first;
     unsigned char cursor=pan->cursor, top=pan->top, dir, i, changed=0;
-    unsigned char viewer;
+    unsigned char viewer, ok=1;
     const struct Entry* e;
     album[0][0]=album[1][0]=0;
     media_request=0;
@@ -30,14 +30,17 @@ static unsigned char media_prepare(unsigned char kind)
         strcpy(selected.name,pan->e[cursor].name);
         selected.name[strlen(selected.name)-1]='1';
     }
-    for(dir=0;dir<2;++dir) {
+    /* A failed read in another window still goes through the restore below:
+     * returning from there would leave the panel on that window, the cursor
+     * on another file and the marks forgotten. */
+    for(dir=0;dir<2 && ok;++dir) {
         i=cursor;
         for(;;) {
             if (dir) {
                 if (++i>=pan->count) {
                     if (!pan->more || pan->first>65535U-WINDOW) break;
                     pan->first+=WINDOW; changed=1;
-                    if (!read_panel(active)) return 0;
+                    if (!read_panel(active)) { ok=0; break; }
                     if (!pan->count) break;
                     i=0;
                 }
@@ -45,7 +48,7 @@ static unsigned char media_prepare(unsigned char kind)
                 if (!i) {
                     if (!pan->first) break;
                     pan->first-=WINDOW; changed=1;
-                    if (!read_panel(active)) return 0;
+                    if (!read_panel(active)) { ok=0; break; }
                     if (!pan->count) break;
                     i=pan->count;
                 }
@@ -63,12 +66,13 @@ static unsigned char media_prepare(unsigned char kind)
         }
         if (changed) {
             pan->first=first;
-            if (!read_panel(active) || pan->first!=first || cursor>=pan->count) return 0;
+            /* A panel fallen back to the volume list gets no marks back. */
+            if (!pan->path[0] || !read_panel(active) || pan->first!=first || cursor>=pan->count) return 0;
             keep_tags(0);
         }
         pan->cursor=cursor;pan->top=top;
     }
-    return 1;
+    return ok;
 }
 
 #pragma code-name(push, "LC")

@@ -22,7 +22,7 @@ C=r'''
 #define __fastcall__
 struct A2fcApi {int unused;};
 struct Entry {char name[17];unsigned char type;unsigned int aux,mdate;unsigned long size;};
-struct Panel {char path[512];unsigned char fs,count,cursor,img_len,tags[4];};
+struct Panel {char path[512];unsigned char fs,count,cursor,img_len,tags[4];unsigned int dir_key;};
 static struct Panel panels[2];
 static struct Entry entries[4];
 #define ENTRY_SNAPSHOT entries
@@ -42,7 +42,7 @@ static int tagged(const struct Panel* p,unsigned i){return p->tags[i];}
 static int build_full(char* p,const struct Panel* pan,const struct Entry* e){if(fault==17)return 0;sprintf(p,"%s/%s",pan->path,e->name);return 1;}
 static void progress_bar(const char* s,unsigned long n,unsigned long total){++progress_calls;}
 static int img_read_block(unsigned block,unsigned char* buf){
- ++reads;if(block>=300)abort();
+ if(block>=300)abort();if(block!=290)++reads;   /* the directory (290) is not counted */
  if((fault==4||fault==8)&&reads==3)return 0;        /* 8: and the cleanup fails too */
  if(fault==18&&reads>3)return 0;              /* the second pass cannot read the image */
  memcpy(buf,blocks[block],512);return 1;
@@ -67,15 +67,21 @@ static int remove_file(const char* p){++removes;return fault==8?-1:remove(p);}
 #define remove remove_file
 '''+(ROOT/'src/file_output.h').read_text()+DRIVER+r'''
 int main(int argc,char** argv){
- unsigned i,n=atoi(argv[2]),k;unsigned long size=strtoul(argv[3],0,10);fault=atoi(argv[4]);int hole=atoi(argv[5]);
+ unsigned i,n=atoi(argv[2]),k;unsigned long size=strtoul(argv[3],0,10);fault=atoi(argv[4]);int hole=atoi(argv[5]),storage=argc>6?atoi(argv[6]):0;
  strcpy(panels[1].path,argv[1]);strcpy(panels[0].path,"/X/IMG.PO/DIR");panels[0].img_len=9;panels[0].count=n;
  for(i=0;i<n;++i){sprintf(entries[i].name,"OUT%u",i);entries[i].type=4;entries[i].aux=0x1234+i;entries[i].size=size;entries[i].mdate=2+i;
   if(n>1)panels[0].tags[i]=1;}
  if(n>2){strcpy(entries[1].name,"SUBDIR");entries[1].type=0x0F;}   /* a tagged directory is skipped */
  /* file f: key block 2+f; seedling data there, else an index block there and data in 20+f*64+k */
+ panels[0].dir_key=290;blocks[290][4]=0xF1;      /* the directory: its header, then one entry per file */
+ for(i=0;i<n;++i){unsigned char* d=blocks[290]+4+(i+1)*0x27;unsigned long eof=size+(storage==8);
+  d[0]=((storage&&storage!=8)?storage:size<=512?1:size<=131072?2:3)<<4|4;memcpy(d+1,entries[i].name,4);
+  d[0x11]=entries[i].mdate;d[0x12]=entries[i].mdate>>8;d[0x15]=eof;d[0x16]=eof>>8;d[0x17]=eof>>16;
+  if(storage==9)d[0]=0;}                     /* 9: no entry (deleted since the snapshot) */
  for(i=0;i<n&&size<=131072;++i){          /* a tree file has no blocks to prepare: it is refused */
   unsigned long need=(size+511)>>9;
-  if(size<=512)for(k=0;k<size;++k)blocks[2+i][k]=(k*17+3)&255;
+  if(storage==1)for(k=0;k<512;++k)blocks[2+i][k]=(k*17+3)&255;
+  else if(size<=512)for(k=0;k<size;++k)blocks[2+i][k]=(k*17+3)&255;
   else for(k=0;k<need;++k){unsigned blk=20+i*64+k,j;
    if(hole&&k==1)blk=0;
    blocks[2+i][k]=blk&255;blocks[2+i][256+k]=blk>>8;
@@ -99,11 +105,11 @@ class ImgfsExtract(unittest.TestCase):
   if r.returncode:raise RuntimeError(r.stderr)
  @classmethod
  def tearDownClass(cls):cls.tmp.cleanup()
- def run_case(self,size=600,fault=0,files=1,hole=0,existing=None):
+ def run_case(self,size=600,fault=0,files=1,hole=0,existing=None,storage=0):
   with tempfile.TemporaryDirectory(dir=self.root) as d:
    p=Path(d)/'OUT0'
    if existing is not None:p.write_bytes(existing)
-   out=subprocess.check_output([str(self.exe),d,str(files),str(size),str(fault),str(hole)],text=True)
+   out=subprocess.check_output([str(self.exe),d,str(files),str(size),str(fault),str(hole),str(storage)],text=True)
    return out,p.read_bytes() if p.exists() else None,{q.name:q.read_bytes() for q in Path(d).iterdir()}
  def test_exact_bytes_seedling_sapling_and_holes(self):
   for n in (0,1,511,512,513,1024,1025,5000,131072):
@@ -114,7 +120,7 @@ class ImgfsExtract(unittest.TestCase):
   out,data,_=self.run_case(2000,hole=1);self.assertEqual(data,expected(2000,1))
  def test_tree_file_is_refused_before_any_reservation(self):
   out,data,_=self.run_case(131073);self.assertIsNone(data);self.assertTrue(out.startswith('0 0 0 0 0 0 '),out)
-  self.assertIn('0 files extracted, 1 too big (>128K).',out)
+  self.assertIn('0 files extracted, 1 not supported (tree/fork).',out)
  def test_failures_never_leave_unverified_output(self):
   for fault in (1,2,3,4,5,6,7,17):
    with self.subTest(fault=fault):
@@ -139,4 +145,18 @@ class ImgfsExtract(unittest.TestCase):
   self.assertIn('Extract failed; 0 complete.',out);self.assertEqual(files,{})
   out,_,files=self.run_case(files=3,fault=9)
   self.assertEqual(sorted(files),['OUT0','OUT2'])
+ def test_storage_type_comes_from_the_directory_entry(self):
+  # a sparse seedling: its key block is data, never an index; zeros follow
+  for n in (513,1000,5000):
+   with self.subTest(n=n):
+    out,data,_=self.run_case(n,storage=1);self.assertIn('1 file extracted.',out)
+    self.assertEqual(data,expected(512)+bytes(n-512))
+  for st in (3,5):                         # tree or forked below 128K: refused, nothing reserved
+   with self.subTest(storage=st):
+    out,data,_=self.run_case(600,storage=st);self.assertIsNone(data);self.assertTrue(out.startswith('0 0 0 0 0 0 '),out)
+    self.assertIn('1 not supported (tree/fork).',out)
+  for st in (8,9):                         # stale size or entry gone: no guess, no output
+   with self.subTest(storage=st):
+    out,data,_=self.run_case(600,storage=st);self.assertIsNone(data);self.assertIn('Extract failed; 0 complete.',out)
+    self.assertIn(' 0 0 0 ',out)
 if __name__=='__main__':unittest.main()

@@ -43,6 +43,8 @@ def main():
         (stage/'SRC/EDIT.TXT').write_bytes(TEXT)
         (stage/'SRC/KEEP.TXT').write_bytes(b'RAM must survive refusal\r')
         (stage/'SRC/PICTURE#062000').write_bytes(bytes(16384))
+        # W takes a real image name (.PO/.DSK/.DO/.2MG), not any 512-byte multiple.
+        (stage/'SRC/DISK.PO#060000').write_bytes(bytes(16384))
         (stage/'DST/DATA.TXT').write_bytes(b'previous destination\r')
         po=tmp/'SAFE.po'
         subprocess.run([sys.executable,ROOT/'tools/mkvolume.py',stage,po,'--volume','SAFE','--blocks','280'],check=True,capture_output=True)
@@ -91,6 +93,7 @@ def main():
                 s.key(key);s.wait(lambda:any('/SAFE' in row and 'drive' in row for row in s.rows()),'disk choice')
                 row=next(row for row in s.rows() if '/SAFE' in row and 'drive' in row)
                 s.key(row.strip()[0].encode())
+            s.select('DISK.PO',0)
             disk_mode(b'W');s.wait(lambda:s.has('Disk in use'),'source volume refused')
             s.ok('image cannot overwrite its own source volume',s.has('Disk in use'))
             s.key(ESC);s.wait(lambda:s.has('Type  Aux'),'disk writer return');p.stable()

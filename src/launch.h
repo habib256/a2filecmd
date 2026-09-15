@@ -74,17 +74,20 @@ static unsigned char basic_path(const char* suffix)
     }
 }
 
-/* Check the real file length, not a possibly stale panel size. The chain
- * thunk's I/O buffer begins at $BB00. Interpreters must advertise enough
- * space for the ProDOS path at +6 before we write into that header. */
-static unsigned char launch_check(unsigned int addr, unsigned char interpreter)
+/* Check the real file, not a possibly stale panel entry: its length, its
+ * type (`type`: $FF for a system program or an interpreter, $06 for a
+ * binary) and, for a binary, the load address, its aux type on disk, given
+ * back in *addr. The chain thunk's I/O buffer begins at $BB00. Interpreters
+ * must advertise enough space for the ProDOS path at +6 before we write
+ * into that header. */
+static unsigned char launch_check(unsigned int* addr, unsigned char interpreter, unsigned char type)
 {
     FILE* f;
     long size;
     unsigned char bad;
     if (!file_info(LS->runtime)) { report_error(run_err); return 0; }
-    if (gfi[7] < 1 || gfi[7] > 3 || !(gfi[3] & 1) ||
-        (interpreter && gfi[4] != 0xFF)) { message(run_bad); return 0; }
+    if (gfi[7] < 1 || gfi[7] > 3 || !(gfi[3] & 1) || gfi[4] != type) { message(run_bad); return 0; }
+    if (type == 0x06) *addr = gfi[5] | (gfi[6] << 8);
     f = fopen(LS->runtime, cfg_rb);
     if (!f) { report_error(run_err); return 0; }
     bad = 0;
@@ -95,7 +98,7 @@ static unsigned char launch_check(unsigned int addr, unsigned char interpreter)
     }
     if (fseek(f, 0, SEEK_END)) bad = 1;
     size = ftell(f);
-    if (size <= 0 || addr < 0x0800 || addr >= 0xBB00 || size > (unsigned int)(0xBB00 - addr) ||
+    if (size <= 0 || *addr < 0x0800 || *addr >= 0xBB00 || size > (unsigned int)(0xBB00 - *addr) ||
         (interpreter && size < 53)) bad = 1;
     if (fclose(f)) bad = 1;
     if (bad) message(run_bad);
@@ -111,17 +114,16 @@ static void run_selected(const struct Entry* e)
     bas = e->type == 0xFA || e->type == 0xFC;
     if (!bas && e->type != 0xFF && e->type != 0x06) { message(run_types); return; }
     if (!build_full(LS->command, &panels[active], e)) { too_long(); return; }
+    addr = 0x2000;              /* a binary's own address comes from launch_check */
     if (bas) {
         if (!basic_path(e->type == 0xFA ? run_integer : run_basic)) return;
         /* Long absolute paths use the source directory as prefix. */
         if (strlen(LS->command) > 46) strcpy(LS->command, e->name);
-        addr = 0x2000;
     } else {
         strcpy(LS->runtime, LS->command);
         LS->command[0] = 0;
-        addr = e->type == 0xFF ? 0x2000 : e->aux;
     }
-    if (!launch_check(addr, bas)) return;
+    if (!launch_check(&addr, bas, bas ? 0xFF : e->type)) return;
     addr_len = strlen(cfg_path);           /* "/VOL/.../A2FILE/A2FILE.CFG": 18 past the directory */
     if (addr_len > 18 && addr_len - 18 <= 40) {
         memcpy(other_full, cfg_path, addr_len - 18);

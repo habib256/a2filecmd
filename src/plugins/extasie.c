@@ -36,6 +36,8 @@ void ex_main_bank(void);
 void ex_top(void);                      /* the top of a fresh plane */
 void __fastcall__ ex_put(unsigned char v);   /* one byte, and one row down */
 extern unsigned char ex_col;            /* 0 to 39, then 40: the plane is full */
+extern unsigned char ex_plane;          /* 1 once the auxiliary plane is complete */
+extern unsigned char ex_dry;            /* 1: never move a plane to AUX */
 
 struct Header { unsigned int signature; unsigned char flags;
     void __fastcall__ (*entry)(const struct A2fcApi*); unsigned char r[3];
@@ -117,9 +119,20 @@ void __fastcall__ plugin_entry(const struct A2fcApi* a)
     if (a->selected->type != 0xF2) { a->strcpy(a->note, m_bad); return; }
     in = a->fopen(a->full, "rb");
     if (!in) { a->strcpy(a->note, m_bad); return; }
+    /* The whole stream is decoded once with the move to AUX skipped: the
+     * auxiliary plane goes to the auxiliary bank -- where /RAM lives -- the
+     * moment it is complete, so a picture refused after that would have cost
+     * /RAM for nothing. Only a stream found whole is decoded for real. */
+    ex_dry = 1;
     k = picture();
+    ex_dry = ex_plane = 0;              /* that pass moved nothing */
+    if (k) k = picture();
     a->fclose(in);
-    if (!k) { a->ram_format(); a->strcpy(a->note, m_cut); return; }
+    if (!k) {
+        if (ex_plane) a->ram_format();  /* a read failing only the second time */
+        a->strcpy(a->note, m_cut);
+        return;
+    }
     ex_show();
     a->media_wait();
     a->strcpy(a->reselect, a->selected->name);

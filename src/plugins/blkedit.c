@@ -99,6 +99,7 @@ static const char m_open[]  = "Invalid or unreadable image.";
 static const char m_vol[]   = "Cannot open that ProDOS volume.";
 static const char m_read[]  = "Block read failed.";
 static const char m_boot[]  = "That volume holds the running program: refused.";
+static const char m_ro[]    = "The image is locked or read-only: nothing written.";
 static const char m_none[]  = "Nothing changed yet. The hex digits edit a byte.";
 static const char m_stop[]  = "Nothing was written.";
 static const char m_wfail[] = "Write failed: the block is unchanged or half written.";
@@ -163,14 +164,16 @@ static void draw(void)
 }
 
 /* Is this source the volume A2FC itself runs from? api->cfg_path is
- * "/VOL/A2FILE/A2FILE.CFG", so its first component is that volume. A source
- * that is an image FILE is never the running program, whatever it holds. */
+ * "/VOL/A2FILE/A2FILE.CFG", so its first component is that volume; the
+ * source path is the panel's, a subdirectory as often as a volume root, so
+ * only its first component counts too. A source that is an image FILE is
+ * never the running program, whatever it holds. */
 static unsigned char boot_volume(void)
 {
     unsigned char i;
     if (!source.unit) return 0;
-    for (i = 0; source.path[i] && source.path[i] == a.cfg_path[i]; ++i) ;
-    return !source.path[i] && a.cfg_path[i] == '/';
+    for (i = 1; source.path[i] && source.path[i] != '/' && source.path[i] == a.cfg_path[i]; ++i) ;
+    return (!source.path[i] || source.path[i] == '/') && a.cfg_path[i] == '/';
 }
 
 /* W: the block back to the disk, once, with everything that guards it. */
@@ -179,6 +182,7 @@ static void write_block(void)
     unsigned int i;
     if (!dirty) { v_message(m_none); v_cgetc(); return; }
     if (boot_volume()) { v_message(m_boot); v_cgetc(); return; }
+    if (!source.unit && image_readonly) { v_message(m_ro); v_cgetc(); return; }
     v_gotoxy(0, 20);
     v_revers(1);
     v_cprintf(" BLOCK %u OF %s WILL BE OVERWRITTEN. ", block, source.path);
@@ -243,6 +247,9 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         if (!a.full[0]) { note(m_pick); return; }
         v_strcpy(source.path, a.full);
         if (!image_open(&source)) { note(m_open); return; }
+        /* ProDOS OPENs a locked file for update and refuses only the WRITE:
+         * say so before the ERASE prompt, from the entry's write bit. */
+        if (!(a.selected->access & 0x02)) image_readonly = 1;
     } else {
         v_strcpy(source.path, pan->path[0] ? pan->path : a.selected->name);
         unit = pan->path[0] ? 0 : (unsigned char)(a.selected->mdate << 4);

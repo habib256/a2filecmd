@@ -23,7 +23,7 @@ def get_file(image,path):
 @contextmanager
 def launch_session(tmp,files,companion):
     if not companion:
-        with boot_hd(tmp,files,port=6970) as pair:
+        with boot_hd(tmp,files,port=6970 + int(__import__('os').environ.get('A2FC_PORT_OFFSET', '0'))) as pair:
             yield (*pair,'/WORKHD')
         return
     assert BUILD.name=='build-6502', 'BOOT and DEVTOOLS contain the 6502 build'
@@ -34,7 +34,7 @@ def launch_session(tmp,files,companion):
     boot=tmp/'BOOT.po';tools=tmp/'DEVTOOLS.po'
     for dest,role in ((boot,'BOOT'),(tools,'DEVTOOLS')):
         shutil.copyfile(ROOT/('dist/A2FILECMD-6502-%s-%s.po'%(role,VERSION)),dest)
-    with Pom2(hd,floppy=boot,floppy2=tools,port=6970) as p:
+    with Pom2(hd,floppy=boot,floppy2=tools,port=6970 + int(__import__('os').environ.get('A2FC_PORT_OFFSET', '0'))) as p:
         s=Session(p);s.boot();yield p,s,'/SCRATCH'
 
 

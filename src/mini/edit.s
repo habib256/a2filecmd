@@ -27,6 +27,7 @@ ed_k:           .res 1
 ed_off:         .res 2
 ed_left:        .res 2
 ed_lines:       .res 1
+ed_high:        .res 1          ; $80 or 0: bit 7 of every typed character
 
 .ifdef SIM65
         .segment "CODE"
@@ -143,6 +144,15 @@ _edit_text:
         sta     ed_cur
         sta     ed_cur+1
         jsr     cap_len
+        lda     scratch         ; the file's own convention: DOS writes
+        ldx     ed_len          ; text with bit 7 set, CR as $8D. Typed
+        bne     @have           ; characters follow the first byte, so a
+        ldx     ed_len+1        ; file never mixes $0D and $8D; a new
+        bne     @have           ; file follows DOS
+        lda     #$80
+@have:
+        and     #$80
+        sta     ed_high
 @loop:
         jsr     draw_edit
         jsr     key
@@ -289,6 +299,7 @@ insert:
         jsr     copy_down
         jsr     at_cur
         lda     ed_k
+        ora     ed_high
         ldy     #0
         sta     (ptr),y
         inc     ed_len
@@ -458,6 +469,7 @@ step_down:
         ldy     #0
         lda     (ptr),y
         jsr     bump_off
+        and     #$7F            ; $0D and DOS's $8D both end a line
         cmp     #13
         bne     @sc
         lda     ed_off
@@ -489,6 +501,7 @@ line_start:
         jsr     at_off
         ldy     #0
         lda     (ptr),y
+        and     #$7F            ; $0D or $8D
         cmp     #13
         bne     @lp
         jmp     bump_off
@@ -568,9 +581,9 @@ draw_edit:
         ldy     #0
         lda     (ptr),y
         jsr     bump_off
+        and     #$7F            ; $8D is a line end too
         cmp     #13
         beq     @nl
-        and     #$7F
         cmp     #32
         bcc     @dot
         cmp     #127

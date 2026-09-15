@@ -8,7 +8,7 @@ nulib2), le banc la pose sur /SCRATCH, l'ouvre par le menu ! (surcouche
 A2FILE/BINARY2.PLG) vers un dossier, puis verifie que chaque fichier en sort
 avec son nom, son type et sa taille."""
 
-import shutil, sys, tempfile, time
+import os, shutil, sys, tempfile, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -44,7 +44,7 @@ def main():
             companion = tmp / 'FILES.po'
             shutil.copyfile(ROOT / f'dist/A2FILECMD-6502-FILES-{VERSION}.po', companion)
 
-        with Pom2(hdv, floppy=floppy, floppy2=companion, port=6714, mouse=True) as p:
+        with Pom2(hdv, floppy=floppy, floppy2=companion, port=6714 + int(os.environ.get('A2FC_PORT_OFFSET', '0')), mouse=True) as p:
             s = Session(p)
             s.boot()
 

@@ -162,10 +162,15 @@ static unsigned char __fastcall__ fix(char* path)
 }
 #pragma optimize (pop)
 
-/* A panel whose path named the volume: rewritten, reread from its start. */
+/* A panel whose path named the volume: rewritten, reread from its start.
+ * With an image open, img_len splits the path into the image file and the
+ * path inside it: it moves by the change in the volume name's length. */
 static void __fastcall__ fix_panel(struct Panel* pan)
 {
-    if (fix(pan->path)) pan->first = 0;
+    if (fix(pan->path)) {
+        pan->first = 0;
+        if (pan->fs && pan->img_len) pan->img_len += NEW[0] - n;
+    }
 }
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api)

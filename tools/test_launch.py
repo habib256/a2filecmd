@@ -23,7 +23,7 @@ static unsigned char scratch[128];
 static unsigned int chain_addr, chain_size, launches, asks, saves, prompts;
 static char command[64],runtime[64],prefix[64];
 static const char* root;
-static int fault;
+static int fault, disk_type, disk_aux;
 static unsigned char is_dir(const struct Entry* e){return e->type==15;}
 static void message(const char*s){strcpy(note,s);}
 static void report_error(const char*s){strcpy(note,s);}
@@ -40,7 +40,8 @@ static unsigned char file_info(const char*p){
  FILE*f;if(fault==1){_oserror=0x27;return 0;}
  if(strncmp(p,"/TOOLS/",7)){_oserror=0x46;return 0;}
  f=open_path(p,"rb");if(!f){_oserror=0x46;return 0;}fclose(f);
- gfi[3]=fault==2?0:0xC3;gfi[4]=fault==3?6:255;gfi[7]=fault==4?5:1;return 1;
+ gfi[3]=fault==2?0:0xC3;gfi[4]=fault==3?6:strstr(p,"PROGRAM")?disk_type:255;gfi[7]=fault==4?5:1;
+ gfi[5]=disk_aux&255;gfi[6]=disk_aux>>8;return 1;
 }
 static unsigned char companion_path(const char*s){strcpy(other_full,"/TOOLS");strcat(other_full,s);return 1;}
 static unsigned char ask_disk(const char*s){(void)s;++asks;return 0;}
@@ -63,11 +64,13 @@ static int close_file(FILE*f){int r=fclose(f);return fault==12?-1:r;}
 #define chdir change_dir
 #include "src/launch.h"
 int main(int argc,char**argv){
- struct Entry e;(void)argc;root=argv[1];fault=atoi(argv[2]);
+ struct Entry e;root=argv[1];fault=atoi(argv[2]);
  strcpy(panels[0].path,argv[4]);strcpy(cfg_path,"/BOOT/A2FILE/A2FILE.CFG");
- strcpy(e.name,"PROGRAM");e.type=atoi(argv[3]);e.aux=0x2000;e.size=1;
+ strcpy(e.name,"PROGRAM");e.type=atoi(argv[3]);e.size=1;
+ /* The file on disk (aux, type) may differ from the panel's stale entry. */
+ disk_aux=argc>5?atoi(argv[5]):0x2000;e.aux=argc>6?atoi(argv[6]):0x2000;disk_type=argc>7?atoi(argv[7]):e.type;
  strcpy(command,"OLD.COMMAND");run_selected(&e);
- printf("%u|%s|%s|%u|%u|%s\n",launches,runtime,command,asks,saves,prefix);
+ printf("%u|%s|%s|%u|%u|%s|%u\n",launches,runtime,command,asks,saves,prefix,chain_addr);
  return 0;
 }
 '''
@@ -82,17 +85,32 @@ class Launch(unittest.TestCase):
         subprocess.run(['cc','-std=c99','-I',str(ROOT),str(cls.root/'test.c'),'-o',str(cls.exe)],check=True)
     @classmethod
     def tearDownClass(cls):cls.tmp.cleanup()
-    def run_case(self, fault=0, kind=250, path='/SOURCE/WORK', data=None):
+    def run_case(self, fault=0, kind=250, path='/SOURCE/WORK', data=None, disk_aux=0x2000, panel_aux=0x2000, disk_type=None):
         if data is None:data=bytes.fromhex('4c0020eeee4100')+bytes(93)
         for name in ('BASIC.SYSTEM','INTBASIC.SYSTEM','PROGRAM'):(self.root/name).write_bytes(data)
-        out=subprocess.check_output([str(self.exe),str(self.root),str(fault),str(kind),path],text=True).strip().split('|')
+        args=[str(self.exe),str(self.root),str(fault),str(kind),path,str(disk_aux),str(panel_aux)]
+        if disk_type is not None:args.append(str(disk_type))
+        out=subprocess.check_output(args,text=True).strip().split('|')
         for name in ('BASIC.SYSTEM','INTBASIC.SYSTEM','PROGRAM'):self.assertEqual((self.root/name).read_bytes(),data)
         return out
     def test_both_runtimes_keep_paths_across_config_save(self):
         for kind,name in ((250,'INTBASIC.SYSTEM'),(252,'BASIC.SYSTEM')):
             out=self.run_case(kind=kind)
             self.assertEqual(out[:3],['1','/TOOLS/'+name,'/SOURCE/WORK/PROGRAM'])
-            self.assertEqual(out[3:],['0','1','/SOURCE/WORK'])
+            self.assertEqual(out[3:],['0','1','/SOURCE/WORK',str(0x2000)])
+    def test_binary_loads_at_the_aux_type_on_disk_not_the_panel_copy(self):
+        # A stale panel address never reaches chain_addr: the file's own one does.
+        out=self.run_case(kind=6,path='/TOOLS',disk_aux=0x2000,panel_aux=0x0300)
+        self.assertEqual((out[0],out[6]),('1',str(0x2000)))
+        out=self.run_case(kind=6,path='/TOOLS',disk_aux=0x4000,panel_aux=0x2000)
+        self.assertEqual((out[0],out[6]),('1',str(0x4000)))
+        # The panel said a valid address; the file now says an invalid one.
+        self.assertEqual(self.run_case(kind=6,path='/TOOLS',disk_aux=0x0300,panel_aux=0x2000)[0],'0')
+        # The panel's type is stale too: the file on disk decides.
+        for kind,disk_type in ((6,255),(255,6),(255,4)):
+            with self.subTest(kind=kind,disk_type=disk_type):
+                self.assertEqual(self.run_case(kind=kind,path='/TOOLS',disk_type=disk_type)[0],'0')
+        self.assertEqual(self.run_case(kind=255,path='/TOOLS')[0],'1')
     def test_long_path_uses_filename_and_source_prefix(self):
         path='/SOURCE/'+('A'*14+'/')*3
         out=self.run_case(path=path.rstrip('/'))

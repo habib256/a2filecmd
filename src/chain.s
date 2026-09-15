@@ -35,24 +35,25 @@ stub_src:
 stub:   jsr $BF00               ; OPEN
         .byte $C8
         .word open_p
-        bcs fail
+        bcs quit                ; nothing opened: nothing to close
         lda ref_num
         sta rd_ref
-        sta cl_ref
-        jsr $BF00               ; READ
+        ldx #1                  ; the MLI keeps X and Y: X reaches $FF only
+        jsr $BF00               ; READ    once both length bytes match
         .byte $CA
         .word read_p
-        bcs fail
-        ldx #1
+        bcs close               ; a failed READ still closes the file
 :       lda rd_got,x
         cmp rd_len,x
-        bne fail                ; no execution after a successful short read
+        bne close               ; no execution after a successful short read
         dex
         bpl :-
-        jsr $BF00               ; CLOSE
+close:  jsr $BF00               ; CLOSE, whether the READ succeeded or not
         .byte $CC
         .word close_p
-        bcs fail
+        bcs quit                ; a failed CLOSE is not retried
+        inx                     ; X = $FF: the whole file is in memory
+        bne quit
         ldy cmd                 ; a command to pass?
         beq run
 :       lda cmd,y
@@ -61,7 +62,7 @@ stub:   jsr $BF00               ; OPEN
         bpl :-
 run:    bit $C082
         jmp (rd_addr)
-fail:   jsr $BF00               ; QUIT : Bitsy Bye
+quit:   jsr $BF00               ; QUIT : Bitsy Bye
         .byte $65
         .word quit_p
 open_p: .byte 3
@@ -78,7 +79,10 @@ rd_len: .word $2000             ; validated file length
 rd_got: .word 0
 close_p:
         .byte 1
-cl_ref: .byte 0
+        .byte 0                 ; ref 0: every open file (ProDOS LEVEL 0).
+                                ; Only ours can be open once the program
+                                ; being replaced has run its destructors,
+                                ; and page 3 has no room for a ref copy.
 quit_p: .byte 4, 0
         .word 0
         .byte 0

@@ -28,11 +28,27 @@ static unsigned char read_chunk(unsigned int n,unsigned int block) {
     for(t=0;t<30 && !ok;++t) {
         if(stop())return 0;
         if(!disk && !in)in=a.fopen(source,"rb");
+        /* cc65's fread refuses a stream whose error flag is set and fseek
+         * clears only EOF: without this, one failure fails all 29 retries. */
+        if(in)clearerr(in);
         ok=disk?!readblk(unit,block,buf):(in!=0 && !a.fseek(in,offset,SEEK_SET)&&a.fread(buf,1,n,in)==n);
     }
     if(t>1)++retried;
     if(!ok)a.memset(buf,0,n);
     return ok;
+}
+/* The file's length as its directory entry says now, not as the panel
+ * read it: a stale size would truncate or pad the recovery. */
+static unsigned char fresh_size(void) {
+    unsigned char i=a.strlen(source),found=0;
+    while(i && source[i]!='/')--i;
+    if(!i)return 0;
+    source[i]=0;
+    if(a.dir_open(source)) {
+        while(a.dir_next())if(!a.strcmp(a.dir_entry->name,source+i+1)){size=a.dir_entry->size;found=1;break;}
+        a.dir_close();
+    }
+    source[i]='/';return found;
 }
 void __fastcall__ plugin_entry(const struct A2fcApi* api) {
     unsigned char k,ok,dunit;unsigned int n,block;unsigned long left;
@@ -46,7 +62,8 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
     dunit=unit_of(other->path,0);
     if(!unit || !dunit || unit==dunit){note("Destination must be on another online volume.");return;}
     if(disk) {if(readblk(unit,2,buf)||(buf[4]>>4)!=15){note("Cannot determine ProDOS volume size.");return;}size=(unsigned long)rd16(buf+41)*512;}
-    else {if(getinfo(source)||info.storage>3){note("Extended/unsupported files cannot be rescued in file mode.");return;}size=a.selected->size;}
+    else {if(getinfo(source)||info.storage>3){note("Extended/unsupported files cannot be rescued in file mode.");return;}
+        if(!fresh_size()){note("Cannot read the file's directory entry.");return;}}
     if(!a.prompt("Recovery base name (up to 8 characters)","RESCUED",0))return;
     if(a.strlen(a.input)>8){note("Name too long.");return;}a.strcpy(base,a.input);
     a.sprintf(a.full,"%s.LOG",base);if(!join(logpath,other->path,a.full)){note("Path too long.");return;}

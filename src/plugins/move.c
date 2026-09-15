@@ -46,8 +46,13 @@
  *   - a FULL volume directory: a subdirectory with no free entry is grown
  *     by a block, but the volume directory's four are fixed and it has no
  *     entry of its own to rewrite;
- *   - anything in the program's own A2FILE directory: moving A2FILE.CODE or
- *     a .PLG out from under a running A2FC breaks it.
+ *   - anything in the program's own A2FILE directory, or that directory
+ *     itself or one of its parents: moving A2FILE.CODE or a .PLG out from
+ *     under a running A2FC breaks it, and so does renaming its path;
+ *   - a disk that changed while the question was on screen: everything
+ *     the move was decided on is read again and compared after the answer;
+ *   - a directory that cannot be read, or whose block chain does not end:
+ *     a failed read is never taken for a free name or a free entry.
  *
  * One entry per run, the one under the cursor. A big overlay's code covers
  * the panels' entry tables at $2000, so the tags -- which are indexes INTO
@@ -86,10 +91,26 @@ const struct Header __plugin_header = {
 #define H_TOTAL     0x25            /* ... and how many blocks the volume has */
 #define E_BLOCKS    0x13            /* in an entry: blocks used */
 #define E_EOF       0x15            /* ... and the length in bytes, three of them */
+/* No directory is longer: its header counts 65,535 entries at most, 13 to a
+ * block. With the volume's own size, the bound on any walk of a chain, so
+ * a chain that loops back on itself ends in a refusal, not a hang. */
+#define DIR_MAX     5042
 
 /* BSS: nothing zeroes it; everything below is written before it is read. */
 static unsigned char unit;              /* the ProDOS unit of the volume */
 static unsigned int srckey, dstkey;     /* the two directories, by key block */
+static unsigned int dirmax;             /* the longest chain a walk follows */
+/* Where the move reads and writes, as examine() found it. */
+static struct Plan {
+    unsigned int sblk, dblk, subkey, blocks;
+    unsigned char sslot, dslot, isdir, room;
+} plan;
+/* Every block examine() reads goes into a Fletcher sum (two 16-bit halves):
+ * one byte changed anywhere in them always changes it. */
+static unsigned int sum1, sum2, asked1, asked2;
+static unsigned int hit_blk;            /* where locate/free_slot found it */
+static unsigned char hit_slot;
+static const struct Entry* sel;         /* api->selected */
 static unsigned char ent[ENTRY_LEN];    /* the entry being carried across */
 static unsigned char scratch[512];      /* the readback */
 /* Lookups finish before ent carries the moved entry or scratch is used for
@@ -103,32 +124,36 @@ static struct {
     unsigned int aux; unsigned char storage; unsigned int date, time;
 } create;
 
-static const char m_dirs[]  = "Open a real ProDOS directory in each panel.";
+static const char m_dirs[]  = "ProDOS directories in both panels.";
 static const char m_same[]  = "Both panels: same directory.";
 static const char m_btree[] = "\2";   /* a tree across volumes: the core walks it itself, marked or not */
 static const char m_here[]  = "%s is already in the other panel.";
 static const char m_cask[]  = "Another volume: copy %s there and remove it here?";
 static const char m_cbad[]  = "Copy failed: %s was NOT removed.";
-static const char m_vbad[]  = "The copy reads back different: %s was NOT removed.";
-static const char m_del[]   = "%s copied across, but it could not be removed here.";
+static const char m_vbad[]  = "Copy differs: %s was NOT removed.";
+static const char m_del[]   = "%s copied, but not removed here.";
 static const char m_cok[]   = "%s copied to the other volume and removed here.";
 static const char m_prog[]  = "Cannot move the program's A2FILE files.";
 static const char m_pick[]  = "Select an entry to move.";
 static const char m_locked[] = "Source is locked.";
-static const char m_self[]  = "A directory cannot move inside itself.";
-static const char m_walk[]  = "The directories cannot be walked from the volume root.";
-static const char m_taken[] = "The other panel already has a %s.";
-static const char m_gone[]  = "%s is no longer in this directory.";
-static const char m_full[]  = "The volume directory is full and cannot grow.";
+static const char m_self[]  = "Cannot move inside itself.";
+static const char m_walk[]  = "The directories cannot be walked.";
+static const char m_taken[] = "Other panel already has %s.";
+static const char m_gone[]  = "%s is no longer here.";
+static const char m_full[]  = "Volume directory full: cannot grow.";
 static const char m_grew[]  = "Move %s into %s? Its directory must grow a block.";
-static const char m_nogrow[] = "The target directory could not be made longer.";
+static const char m_nogrow[] = "Target directory could not be made longer.";
+static const char m_changed[] = "Disk changed: nothing written.";
 static const char m_ok[]    = "%s moved: %u block%s untouched, nothing copied.";
 static const char m_ask[]   = "Move %s into %s without copying it?";
 
-/* One block into api->copy_buf. */
+/* One block into api->copy_buf, added to the sum. */
 static unsigned char rd(unsigned int b)
 {
-    return !readblk(unit, b, buf);
+    unsigned int i;
+    if (readblk(unit, b, buf)) return 0;
+    for (i = 0; i < 512; ++i) { sum1 += buf[i]; sum2 += sum1; }
+    return 1;
 }
 
 /* copy_buf back to block `b`, then read back and compare: a drive that
@@ -151,20 +176,22 @@ static void name_of(unsigned char k)
     found[n] = 0;
 }
 
-/* Walk the directory whose key block is `key` looking for `seek`. On
- * success the block that holds it is left in copy_buf and *blk / *slot say
- * where it is. Storage types 14 and 15 are headers, never entries. */
-static unsigned char locate(unsigned int key, unsigned int* blk, unsigned char* slot)
+/* Walk the directory whose key block is `key` looking for `seek`. 1: found,
+ * the block that holds it is left in copy_buf and hit_blk / hit_slot say
+ * where it is; 0: not there; 2: a block could not be read or the chain does not end
+ * -- never proof that the name is free. Storage types 14 and 15 are
+ * headers, never entries. */
+static unsigned char locate(unsigned int key)
 {
-    unsigned int b = key;
+    unsigned int b = key, n = 0;
     unsigned char k, kind;
     while (b) {
-        if (!rd(b)) return 0;
+        if (++n > dirmax || stop() || !rd(b)) return 2;
         for (k = 0; k < PER_BLOCK; ++k) {
             kind = buf[4 + (unsigned int)k * ENTRY_LEN] >> 4;
             if (!kind || kind >= 14) continue;
             name_of(k);
-            if (!RF(strcmp)(found, seek)) { *blk = b; *slot = k; return 1; }
+            if (!RF(strcmp)(found, seek)) { hit_blk = b; hit_slot = k; return 1; }
         }
         b = rd16(buf + 2);
     }
@@ -172,15 +199,16 @@ static unsigned char locate(unsigned int key, unsigned int* blk, unsigned char* 
 }
 
 /* The first free entry of that directory, a deleted one included. Entry 0
- * of the first block is the header and is never free. */
-static unsigned char free_slot(unsigned int key, unsigned int* blk, unsigned char* slot)
+ * of the first block is the header and is never free. 1: found, 0: the
+ * directory is full, 2: unreadable or endless, as for locate. */
+static unsigned char free_slot(unsigned int key)
 {
-    unsigned int b = key;
+    unsigned int b = key, n = 0;
     unsigned char k, first = 1;
     while (b) {
-        if (!rd(b)) return 0;
+        if (++n > dirmax || !rd(b)) return 2;
         for (k = first; k < PER_BLOCK; ++k)
-            if (!(buf[4 + (unsigned int)k * ENTRY_LEN] >> 4)) { *blk = b; *slot = k; return 1; }
+            if (!(buf[4 + (unsigned int)k * ENTRY_LEN] >> 4)) { hit_blk = b; hit_slot = k; return 1; }
         first = 0;
         b = rd16(buf + 2);
     }
@@ -225,9 +253,8 @@ static unsigned int alloc_block(void)
  * block is lost, never a directory cut in two. */
 static unsigned char grow_dir(unsigned int key)
 {
-    unsigned int last, next, nb, pblk;
+    unsigned int last, next, nb, pblk, n = 0;
     unsigned char* p;
-    unsigned long eof;
     unsigned char pslot;
 
     if (!rd(key)) return 0;
@@ -248,6 +275,7 @@ static unsigned char grow_dir(unsigned int key)
     for (;;) {
         next = rd16(buf + 2);
         if (!next) break;
+        if (++n >= dirmax) return 0;            /* a chain that loops */
         last = next;
         if (!rd(last)) return 0;
     }
@@ -266,10 +294,7 @@ static unsigned char grow_dir(unsigned int key)
     if (!rd(pblk)) return 0;                    /* one more block, 512 more bytes */
     p = buf + 4 + (unsigned int)pslot * ENTRY_LEN;
     wr16(p + E_BLOCKS, rd16(p + E_BLOCKS) + 1);
-    eof = rd24(p + E_EOF) + 512;
-    p[E_EOF] = (unsigned char)eof;
-    p[E_EOF + 1] = (unsigned char)(eof >> 8);
-    p[E_EOF + 2] = (unsigned char)(eof >> 16);
+    if ((p[E_EOF + 1] += 2) < 2) ++p[E_EOF + 2];    /* 512 more bytes: 2 in the middle one */
     return wr(pblk);
 }
 
@@ -278,8 +303,8 @@ static unsigned char grow_dir(unsigned int key)
  * it is an entry to step into. 0 if any of it is missing. */
 static unsigned int key_of(const char* path)
 {
-    unsigned int b = 2, blk;
-    unsigned char i, n, slot;
+    unsigned int b = 2;
+    unsigned char i, n;
     unsigned char* entry;
     if (path[0] != '/') return 0;
     for (i = 1; path[i] && path[i] != '/'; ++i) ;
@@ -289,8 +314,8 @@ static unsigned int key_of(const char* path)
             if (n < NAME_LEN - 1) seek[n++] = path[i];
         seek[n] = 0;
         if (!n) break;                          /* a trailing slash */
-        if (!locate(b, &blk, &slot)) return 0;
-        entry = buf + 4 + (unsigned int)slot * ENTRY_LEN;
+        if (locate(b) != 1) return 0;
+        entry = buf + 4 + (unsigned int)hit_slot * ENTRY_LEN;
         /* A cached panel path does not guarantee this entry is still a
          * directory. Never walk a file's data/index blocks as directory records. */
         if ((entry[0] >> 4) != 13) return 0;
@@ -308,24 +333,74 @@ static unsigned char count_add(unsigned int key, unsigned int delta)
     return wr(key);
 }
 
-/* Is `path` the directory the program keeps itself in? api->cfg_path is
- * "/VOL/A2FILE/A2FILE.CFG", so that directory is cfg_path up to its last
- * slash. Moving A2FILE.CODE or a .PLG out from under a running A2FC is not
- * something to find out about afterwards. */
-static unsigned char program_dir(const char* path)
+/* `p` as a whole-component prefix of `q`: the index in q just past it
+ * (q[i] is 0 or '/'), or 0 if it is not one. `p` is never empty. */
+static unsigned char prefix(const char* p, const char* q)
 {
     unsigned char i;
-    for (i = 0; path[i] && path[i] == a.cfg_path[i]; ++i) ;
-    return !path[i] && a.cfg_path[i] == '/';
+    for (i = 0; p[i] && p[i] == q[i]; ++i) ;
+    return !p[i] && (!q[i] || q[i] == '/') ? i : 0;
 }
 
-/* `dst` is `entry` itself or something under it: moving a directory there
- * would cut it off from the root. The same test copy_one makes in the core. */
-static unsigned char into_itself(const char* entry, const char* dst)
+/* Where is `path` from the directory the program keeps itself in?
+ * api->cfg_path is "/VOL/A2FILE/A2FILE.CFG", so that directory is cfg_path
+ * up to its last slash. 1: that directory; 2: one of its parents, the
+ * volume root included; 0: neither. Moving A2FILE.CODE or a .PLG out from
+ * under a running A2FC, or the directory that holds them, is not something
+ * to find out about afterwards -- but the volume root is only a parent: its
+ * other entries may come and go. */
+static unsigned char program_dir(const char* path)
 {
-    unsigned char i;
-    for (i = 0; entry[i] && entry[i] == dst[i]; ++i) ;
-    return !entry[i] && (!dst[i] || dst[i] == '/');
+    unsigned char i = prefix(path, a.cfg_path);
+    if (!i || !a.cfg_path[i]) return 0;
+    for (++i; a.cfg_path[i] && a.cfg_path[i] != '/'; ++i) ;
+    return a.cfg_path[i] ? 2 : 1;
+}
+
+/* Everything the move is decided on, read from the disk into `plan` and
+ * `ent`, every block of it summed. 0 if the move may go ahead, otherwise
+ * the refusal (written with the entry's name). */
+static const char* examine(void)
+{
+    unsigned char k;
+
+    sum1 = sum2 = 0;
+    if (!rd(2) || (buf[4] >> 4) != 15) return m_walk;
+    dirmax = rd16(buf + 4 + H_TOTAL);
+    if (dirmax > DIR_MAX) dirmax = DIR_MAX;
+
+    srckey = key_of(pan->path);
+    dstkey = key_of(other->path);
+    if (!srckey || !dstkey || srckey == dstkey) return m_walk;
+
+    RF(strcpy)(seek, sel->name);
+    k = locate(dstkey);
+    if (k == 1) return m_taken;
+    if (k) return m_walk;
+    k = locate(srckey);
+    if (k == 2) return m_walk;
+    if (!k) return m_gone;
+    plan.sblk = hit_blk; plan.sslot = hit_slot;
+    RF(memcpy)(ent, buf + 4 + (unsigned int)hit_slot * ENTRY_LEN, ENTRY_LEN);
+    /* Raw directory writes bypass ProDOS DESTROY's access check. Use the
+     * freshly read entry, not a possibly stale panel access flag. */
+    if (!(ent[30] & 0x80)) return m_locked;
+    k = ent[0] >> 4;
+    plan.isdir = k == 13;
+    plan.subkey = rd16(ent + 0x11);
+    plan.blocks = rd16(ent + 0x13);
+    if (!plan.isdir && (k < 1 || k > 3)) return m_walk;
+    if (plan.isdir && (!rd(plan.subkey) || (buf[4] >> 4) != 14 ||
+        rd16(buf + 4 + H_PARENT) != plan.sblk || buf[4 + H_PARENTNUM] != plan.sslot + 1 ||
+        buf[4 + H_PARENTLEN] != ENTRY_LEN)) return m_walk;
+    /* A target with no free entry is grown by a block -- but only after the
+     * user has said yes, and never the volume directory, whose four blocks
+     * are fixed and which has no entry of its own to rewrite. */
+    plan.room = free_slot(dstkey);
+    plan.dblk = hit_blk; plan.dslot = hit_slot;
+    if (plan.room == 2) return m_walk;
+    if (!plan.room && dstkey == 2) return m_full;
+    return 0;
 }
 
 /* No entry can point from one volume to another, so across volumes a move
@@ -398,56 +473,50 @@ static void copy_across(const struct Entry* e)
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api)
 {
-    const struct Entry* e;
-    unsigned int sblk, dblk, subkey, blocks;
-    unsigned char sslot, dslot, isdir, room, restored;
+    unsigned char restored;
     unsigned int src_count, dst_count;
+    const char* why;
 
     init(api);
-    e = a.selected;
+    sel = a.selected;
 
     if (pan->fs || other->fs || !pan->path[0] || !other->path[0]) { note(m_dirs); return; }
     if (!RF(strcmp)(pan->path, other->path)) { note(m_same); return; }
-    if (program_dir(pan->path) || program_dir(other->path)) { note(m_prog); return; }
-    if (!e->name[0] || (e->name[0] == '.' && e->name[1] == '.')) { note(m_pick); return; }
+    if (program_dir(pan->path) == 1 || program_dir(other->path) == 1) { note(m_prog); return; }
+    if (!sel->name[0] || (sel->name[0] == '.' && sel->name[1] == '.')) { note(m_pick); return; }
     if (!a.full[0]) { note(m_pick); return; }
-    if (into_itself(a.full, other->path)) { note(m_self); return; }
+    if (program_dir(a.full)) { note(m_prog); return; }
+    /* The other panel is the entry itself or under it: moving a directory
+     * there would cut it off from the root, as copy_one refuses in the core. */
+    if (prefix(a.full, other->path)) { note(m_self); return; }
 
     /* The same volume, compared by UNIT: two names can be the same drive.
      * Anything else has to be copied -- no entry points across a volume. */
     unit = unit_of(pan->path, 0);
-    if (!unit || unit != unit_of(other->path, 0)) { copy_across(e); return; }
+    if (!unit || unit != unit_of(other->path, 0)) { copy_across(sel); return; }
 
-    srckey = key_of(pan->path);
-    dstkey = key_of(other->path);
-    if (!srckey || !dstkey || srckey == dstkey) { note(m_walk); return; }
+    why = examine();
+    if (!why && a.arg != 'B') {
+        asked1 = sum1; asked2 = sum2;
+        a.sprintf((char*)scratch, plan.room ? m_ask : m_grew, sel->name, other->path);
+        if (!RF(confirm)((char*)scratch)) { note(""); return; }
+        /* The same guard as DOSWRITE's: a floppy swapped, or a directory
+         * changed, while the question was on screen must not receive block
+         * numbers read from the disk that was there before. Everything is
+         * read again; the writes below use this second reading, and only if
+         * every block of it matches the first -- the volume header in
+         * block 2 included, so another disk in the drive does not pass. A
+         * sum, not a copy: MOVE has no room for one. It misses no single
+         * changed byte; several changes cancelling out is left to a chance
+         * of about one in 2^32. */
+        why = examine();
+        if (!why && (sum1 != asked1 || sum2 != asked2)) why = m_changed;
+    }
+    if (why) { a.sprintf(a.note, why, sel->name); return; }
 
-    RF(strcpy)(seek, e->name);
-    if (locate(dstkey, &dblk, &dslot)) { a.sprintf(a.note, m_taken, e->name); return; }
-    if (!locate(srckey, &sblk, &sslot)) { a.sprintf(a.note, m_gone, e->name); return; }
-    RF(memcpy)(ent, buf + 4 + (unsigned int)sslot * ENTRY_LEN, ENTRY_LEN);
-    /* Raw directory writes bypass ProDOS DESTROY's access check. Use the
-     * freshly read entry, not a possibly stale panel access flag. */
-    if (!(ent[30] & 0x80)) { note(m_locked); return; }
-    isdir = (ent[0] >> 4) == 13;
-    subkey = rd16(ent + 0x11);
-    blocks = rd16(ent + 0x13);
-    if (!isdir && ((ent[0] >> 4) < 1 || (ent[0] >> 4) > 3)) { note(m_walk); return; }
-    if (isdir && (!rd(subkey) || (buf[4] >> 4) != 14 ||
-        rd16(buf + 4 + H_PARENT) != sblk || buf[4 + H_PARENTNUM] != sslot + 1 ||
-        buf[4 + H_PARENTLEN] != ENTRY_LEN)) { note(m_walk); return; }
-    /* A target with no free entry is grown by a block -- but only after the
-     * user has said yes, and never the volume directory, whose four blocks
-     * are fixed and which has no entry of its own to rewrite. */
-    room = free_slot(dstkey, &dblk, &dslot);
-    if (!room && dstkey == 2) { note(m_full); return; }
-
-    a.sprintf((char*)scratch, room ? m_ask : m_grew, e->name, other->path);
-    if (a.arg != 'B' && !RF(confirm)((char*)scratch)) { note(""); return; }
-
-    if (!room && (!grow_dir(dstkey) || !free_slot(dstkey, &dblk, &dslot))) {
-        note(m_nogrow);
-        return;
+    if (!plan.room) {
+        if (!grow_dir(dstkey) || free_slot(dstkey) != 1) { note(m_nogrow); return; }
+        plan.dblk = hit_blk; plan.dslot = hit_slot;
     }
 
     if (!rd(srckey)) { note(m_walk); return; }
@@ -459,30 +528,30 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
      *    This one first: interrupted after it, the file is in two places,
      *    which is recoverable; the other way round it would be in none. */
     wr16(ent + E_HDRPTR, dstkey);
-    if (!rd(dblk)) { goto fail; }
-    RF(memcpy)(buf + 4 + (unsigned int)dslot * ENTRY_LEN, ent, ENTRY_LEN);
-    if (!wr(dblk)) { goto fail; }
+    if (!rd(plan.dblk)) { goto fail; }
+    RF(memcpy)(buf + 4 + (unsigned int)plan.dslot * ENTRY_LEN, ent, ENTRY_LEN);
+    if (!wr(plan.dblk)) { goto fail; }
 
     /* 2. A moved subdirectory says where its own entry now lives. */
-    if (isdir) {
-        if (!rd(subkey)) { goto fail; }
-        wr16(buf + 4 + H_PARENT, dblk);
-        buf[4 + H_PARENTNUM] = dslot + 1;           /* counted from one */
+    if (plan.isdir) {
+        if (!rd(plan.subkey)) { goto fail; }
+        wr16(buf + 4 + H_PARENT, plan.dblk);
+        buf[4 + H_PARENTNUM] = plan.dslot + 1;           /* counted from one */
         buf[4 + H_PARENTLEN] = ENTRY_LEN;
-        if (!wr(subkey)) { goto fail; }
+        if (!wr(plan.subkey)) { goto fail; }
     }
 
     /* 3. The old entry goes. Storage type 0 is what DESTROY leaves. */
-    if (!rd(sblk)) { goto fail; }
-    buf[4 + (unsigned int)sslot * ENTRY_LEN] = 0;
-    if (!wr(sblk)) { goto fail; }
+    if (!rd(plan.sblk)) { goto fail; }
+    buf[4 + (unsigned int)plan.sslot * ENTRY_LEN] = 0;
+    if (!wr(plan.sblk)) { goto fail; }
 
     /* 4. Both counts. */
     if (!count_add(srckey, 0xFFFF)) { goto fail; }
     if (!count_add(dstkey, 1)) { goto fail; }
 
-    RF(strcpy)(a.reselect, e->name);
-    a.sprintf(a.note, m_ok, e->name, blocks, blocks == 1 ? "" : "s");
+    RF(strcpy)(a.reselect, sel->name);
+    a.sprintf(a.note, m_ok, sel->name, plan.blocks, plan.blocks == 1 ? "" : "s");
     return;
 fail:
     /* A reported I/O failure may have committed its write. Restore the
@@ -490,26 +559,26 @@ fail:
      * Never destroy the destination if restoring the source failed. */
     restored = 0;
     wr16(ent + E_HDRPTR, srckey);
-    if (rd(sblk)) {
-        RF(memcpy)(buf + 4 + (unsigned int)sslot * ENTRY_LEN, ent, ENTRY_LEN);
-        restored = wr(sblk);
+    if (rd(plan.sblk)) {
+        RF(memcpy)(buf + 4 + (unsigned int)plan.sslot * ENTRY_LEN, ent, ENTRY_LEN);
+        restored = wr(plan.sblk);
     }
-    if (restored && isdir) {
-        restored = rd(subkey);
+    if (restored && plan.isdir) {
+        restored = rd(plan.subkey);
         if (restored) {
-            wr16(buf + 4 + H_PARENT, sblk);
-            buf[4 + H_PARENTNUM] = sslot + 1;
-            restored = wr(subkey);
+            wr16(buf + 4 + H_PARENT, plan.sblk);
+            buf[4 + H_PARENTNUM] = plan.sslot + 1;
+            restored = wr(plan.subkey);
         }
     }
-    if (restored && rd(dblk)) {
-        buf[4 + (unsigned int)dslot * ENTRY_LEN] = 0;
-        restored = wr(dblk);
+    if (restored && rd(plan.dblk)) {
+        buf[4 + (unsigned int)plan.dslot * ENTRY_LEN] = 0;
+        restored = wr(plan.dblk);
     } else restored = 0;
     if (restored && rd(srckey)) { wr16(buf + 4 + H_COUNT, src_count); restored = wr(srckey); }
     else restored = 0;
     if (restored && rd(dstkey)) { wr16(buf + 4 + H_COUNT, dst_count); restored = wr(dstkey); }
     else restored = 0;
     if (restored) note("Move failed; original restored.");
-    else note("Move incomplete: DO NOT DELETE either entry. Run VOLINFO; recover first.");
+    else note("Move incomplete: delete neither entry; run VOLINFO.");
 }

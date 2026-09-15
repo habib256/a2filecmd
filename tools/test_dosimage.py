@@ -39,6 +39,8 @@ static unsigned char mli(unsigned char cmd,void* p){
  if(cmd==0xC0){if(mode==8)return 0x48;fd=open(name,O_CREAT|O_EXCL|O_WRONLY,0600);if(fd<0)return 0x47;return close(fd)?0x27:0;}
  if(cmd!=0xC4)abort();
  if(mode==9)return 0x27;
+ /* mode 17: A2FC.BAK appears during the copy, so the install pre-check refuses. */
+ if(mode==17 && phase==3 && ends(name,"A2FC.BAK")){unsigned char* q=(unsigned char*)p+offsetof(struct Info,access);memset(q,0,15);q[0]=0xC3;q[4]=1;return 0;}
  f=fopen(name,"rb");if(!f)return 0x46;fclose(f);
  /* replace_info returns packed 15 bytes rather than a native Info. */
  if(ends(name,"A2FC.BAK") || phase==3){unsigned char* q=(unsigned char*)p+offsetof(struct Info,access);memset(q,0,15);q[0]=0xC3;q[4]=1;}
@@ -138,6 +140,12 @@ class DosImage(unittest.TestCase):
    self.assertEqual(self.disk.read_bytes(),self.original)
   for mode in (8,9,10,11):
    self.run_op(mode);self.assertEqual(self.disk.read_bytes(),self.original)
+ def test_refused_install_removes_its_own_temp_and_says_nothing_changed(self):
+  # A2FC.BAK appears while the copy runs: replace_commit's pre-check refuses,
+  # nothing was renamed, so the verified A2FC.DOS this run created is dropped.
+  _,out=self.run_op(17);self.assertEqual(self.disk.read_bytes(),self.original)
+  self.assertIn('nothing changed',out);self.assertNotIn('install failed',out)
+  self.assertFalse((self.p/'A2FC.DOS').exists())
  def test_restore_failure_and_retained_backup(self):
   _,out=self.run_op(7);self.assertIn('recovery',out);self.assert_original_recoverable()
   self.assertTrue((self.p/'A2FC.DOS').exists())

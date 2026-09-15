@@ -88,21 +88,20 @@ static unsigned char getb(void)
     return A->copy_buf[at++];
 }
 
-/* One plane: its $FF marker, then records until all 40 columns are full.
- * Returns 0 when the marker is not there -- the one thing in the file that
- * can be checked -- so a file that is not one of these is refused rather
- * than shown as noise.
+/* One plane's records, after its $FF marker, until all 40 columns are full.
+ * picture() checks the marker -- the one thing in the file that can be
+ * checked -- so a file that is not one of these is refused rather than
+ * shown as noise.
  *
  * A stream that stops early is padded rather than refused: half a picture is
  * worth more than none. The end needs no flag of its own -- `have` is the
  * length of the last read, and only a read that came back empty leaves it
  * at zero. */
-static unsigned char plane(void)
+static void plane(void)
 {
     unsigned char tag, n, i, len, b;
     static unsigned char pat[8];
 
-    if (getb() != 0xFF) return 0;   /* a getb past the end returns 0, not $FF */
     p8_top();
     while (!(p8_col & 0x80)) {
         tag = getb();
@@ -140,7 +139,6 @@ static unsigned char plane(void)
         }
     }
     while (!(p8_col & 0x80)) p8_put(0); /* a truncated stream: the rest in zeros */
-    return 1;
 }
 
 /* The whole file: the prefix a double hi-res one opens with, then its
@@ -158,10 +156,17 @@ static unsigned char picture(unsigned char two)
     /* The screen stays on text while the page is decoded -- the panels are
      * intact in $400-$7FF -- so the picture lights up only once complete,
      * and never column by column. */
-    if (!plane()) return 0;
-    if (!two) return 1;
-    p8_aux_move();
-    return plane();
+    if (getb() != 0xFF) return 0;       /* a getb past the end returns 0, not $FF */
+    plane();
+    if (two) {
+        /* The second marker BEFORE the first plane goes to the auxiliary
+         * bank: a refusal must not have cost the /RAM volume that lives
+         * there, since only the success path rebuilds it. */
+        if (getb() != 0xFF) return 0;
+        p8_aux_move();
+        plane();
+    }
+    return 1;
 }
 
 static const char m_bad[] = "Not a packed 816/Paint page.";

@@ -12,6 +12,8 @@ HARNESS=r'''
 #include <stdlib.h>
 #define SIDE_PO 1
 #define SIDE_DSK 2
+#define SIDE_2MG 3
+#define SIDE_DEVICE 0
 static char full[256];
 static unsigned char data[512];
 #define DI_BLOCK data
@@ -20,6 +22,7 @@ struct Entry {char name[17];unsigned long size;};
 static struct {unsigned int total;} state;
 #define DI (&state)
 static int fault;
+static const char S_DSK[] = "DSK", S_PO[] = "PO";
 static int seek(FILE* f,long off,int whence) {return fault?-1:fseek(f,off,whence);}
 #define fseek seek
 '''+section('static unsigned char di_open_image(', 'static const char* di_error(')+r'''
@@ -55,6 +58,11 @@ class DiskInput(unittest.TestCase):
         for data in (self.image(base=0),self.image(base=32),self.image(base=1000),
                      self.image(size=1024),self.image(size=0),self.image(fmt=256),self.image()[:-1]):
             with self.subTest(header=data[:32]):self.assertEqual(self.check(data),0)
+    def test_only_image_suffixes_are_images(self):
+        for name in ('IMAGE.BIN', 'IMAGE', 'NOTES.TXT', 'IMAGE.P', 'PO', 'IMAGE.2M'):
+            with self.subTest(name=name):self.assertEqual(self.check(bytes(4096),name),0)
+        for name in ('IMAGE.DO', 'A.PO'):
+            with self.subTest(name=name):self.assertEqual(self.check(bytes(4096),name),1)
     def test_partial_blocks_and_tracks(self):
         self.assertEqual(self.check(bytes(511),'IMAGE.PO'),0)
         self.assertEqual(self.check(bytes(512),'IMAGE.DSK'),0)

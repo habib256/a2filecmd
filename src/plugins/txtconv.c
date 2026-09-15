@@ -51,13 +51,14 @@ static const char latin[] = "AAAAAAACEEEEIIIIDNOOOOO?OUUUUY?y";
 
 static const char keys_msg[]  = "\1To C)R L)F D)CRLF, H)igh bit off S)et, T)abs A)ccents, ESC ";
 static const char m_pick[]    = "Select a file to convert.";
-static const char m_other[]   = "Other panel: same directory, or not ProDOS.";
+static const char m_other[]   = "Other panel: same folder, or not ProDOS.";
 static const char m_inplace[] = "In place? (N = to the other panel)";
 static const char m_over[]    = "Overwrite it in the other panel?";
 static const char m_done[]    = "Converted %lu bytes -> %lu bytes";
 static const char m_fail[]    = "%s failed.";
-static const char m_temp[]    = "TXTCONV.TMP already exists: rename or remove it first.";
+static const char m_temp[]    = "TXTCONV.TMP already exists.";
 static const char m_exists[]  = "Destination already exists.";
+static const char m_refused[] = "A2FC.BAK exists or target locked: nothing changed.";
 static const char f_tmp[]     = "%s/TXTCONV.TMP";
 static const char f_other[]   = "%s/%s";
 
@@ -74,7 +75,10 @@ static void flush(void)
 
 static void put(unsigned char c)
 {
-    obuf[olen++] = c;
+    /* Never `obuf[olen++]`: cc65 miscompiles an increment inside the
+     * expression, and the verify pass re-runs this same code. */
+    obuf[olen] = c;
+    ++olen;
     if (olen == 256) flush();
 }
 
@@ -219,7 +223,7 @@ convert_pass:
         if (fail) break;
         n = T.fread(T.copy_buf, 1, 256, in);
         nin += n;
-        for (p = T.copy_buf, i = n; i; --i) convert(*p++);
+        for (p = T.copy_buf, i = n; i; --i) { convert(*p); ++p; }
         if (n < 256 || fail) break;
     }
     if (mode == 'A' && pend) put('?');             /* incomplete sequence at EOF */
@@ -247,8 +251,14 @@ convert_pass:
     }
     if (inplace || replace) {
         k = replace_commit(target, final_path);
-        if (k == REPLACE_RESTORE_FAILED) { T.strcpy(T.note, "Restore failed: original in A2FC.BAK; TXTCONV.TMP kept."); return; }
-        if (!k) { T.strcpy(T.note, "Install failed: recover TXTCONV.TMP / A2FC.BAK."); return; }
+        if (k == REPLACE_RESTORE_FAILED) { T.strcpy(T.note, "Restore failed: A2FC.BAK, TXTCONV.TMP kept."); return; }
+        if (k == REPLACE_REFUSED) {
+            /* Nothing was renamed: the original is intact and the temporary
+             * is this run's own verified output, safe to remove. */
+            if (replace_discard(target)) T.strcpy(T.note, m_refused);
+            return;
+        }
+        if (k != REPLACE_DONE && k != REPLACE_BACKUP) { T.strcpy(T.note, "Install failed: recover TXTCONV.TMP / A2FC.BAK."); return; }
         if (k == REPLACE_BACKUP) { T.strcpy(T.note, "Converted; A2FC.BAK retained."); return; }
     }
     T.strcpy(T.reselect, e->name);

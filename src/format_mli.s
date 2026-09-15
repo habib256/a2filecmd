@@ -40,11 +40,10 @@ _format_driver_call:
         php
         stx _format_driver_blocks
         sty _format_driver_blocks+1
-        pha
-        lda lcflag
-        beq :+
-        bit $C080               ; A2FC language-card bank 2, read-only
-:       pla
+        ; A2FC language-card bank 2, read-only, whatever the driver left:
+        ; VDrive's page-3 thunk (DEVADR $0300, so lcflag 0) returns with
+        ; ProDOS's bank 1 in, and no MLI exit is there to put ours back.
+        bit $C080
         plp
         bcs :+
         lda #0

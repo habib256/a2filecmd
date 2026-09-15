@@ -104,6 +104,9 @@ static void image_finish(void) {
  }
  if(!image_unchanged()){note("Original image changed or unreadable; A2FC.DOS retained.");return;}
  result=replace_commit(image_temp,other->path);
+ /* A pre-check refused (A2FC.BAK present, image locked): nothing was
+  * renamed, the original is intact and A2FC.DOS is this run's own copy. */
+ if(result==REPLACE_REFUSED){if(replace_discard(image_temp))note("A2FC.BAK exists or image locked: nothing changed.");return;}
  if(result==REPLACE_DONE)note("Copied to DOS 3.3 image; source kept.");
  else note(result==REPLACE_BACKUP?"Copied; old image retained in A2FC.BAK.":
       "Image install failed; keep A2FC.DOS / A2FC.BAK for recovery.");

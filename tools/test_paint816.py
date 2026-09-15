@@ -55,7 +55,7 @@ int main(int argc, char** argv)
     memset(arena, 0x5A, sizeof arena);
     memset(host_page, 0xEE, 8192);            /* nothing may be left unwritten */
     have = at = 0;
-    if (!picture((unsigned char)two)) { fprintf(stderr, "refused\n"); return 2; }
+    if (!picture((unsigned char)two)) { fprintf(stderr, "refused %d\n", crossings); return 2; }
     for (i = 0; i < 256; ++i)
         if (arena[i] != 0x5A || arena[256 + 8192 + i] != 0x5A) {
             fprintf(stderr, "wrote outside the page\n");
@@ -348,6 +348,21 @@ class Paint816(unittest.TestCase):
     def test_a_missing_marker_is_refused(self):
         rc, _ = self.decode(b'\x00' + literals(bytes(COLS * ROWS))[1:] + TRAILER)
         self.assertEqual(rc, 2)
+
+    def test_a_refused_double_page_never_reaches_the_auxiliary_bank(self):
+        """Only the success path rebuilds /RAM: a refusal, even on the second
+        plane's marker, must come before the first plane is moved to AUX."""
+        a = runs_stream()
+        page = page_of(a)
+        f = self.p / 'in.bin'
+        for label, data in (('second marker missing', page[:8] + pack(a)),
+                            ('second marker wrong', page[:8] + pack(a) + b'\x00' + pack(a)[1:]),
+                            ('first marker missing', page[:8] + b'\x00' + pack(a)[1:])):
+            with self.subTest(label):
+                f.write_bytes(data)
+                r = subprocess.run([str(self.exe), str(f), '2'], capture_output=True, text=True)
+                self.assertEqual(r.returncode, 2)
+                self.assertEqual(r.stderr, 'refused 0\n')
 
     def test_an_empty_file_is_refused(self):
         self.assertEqual(self.decode(b'')[0], 2)

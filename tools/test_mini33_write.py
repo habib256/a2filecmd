@@ -119,12 +119,12 @@ class WriteTest(unittest.TestCase):
         # working area is the extra RAM; ent_name stays the panel's until
         # the UI reloads after the last file.
         names = bytes(self.mini.peek('ent_name', 30))
-        slots = bytes(self.mini.peek('ent_slot', 4))
+        slots = bytes(self.mini.peek('ent_name', 2 * 32))
         self.assertEqual(self.prepare(), OK)
         self.assertEqual(self.mini.execute(), OK)
         self.copied()
         self.assertEqual(bytes(self.mini.peek('ent_name', 30)), names)
-        self.assertEqual(bytes(self.mini.peek('ent_slot', 4)), slots)
+        self.assertEqual(bytes(self.mini.peek('ent_name', 2 * 32)), slots)
 
     def test_batches_do_not_alternate_drives(self):
         # The point of the batching: a change of drive costs a seek and a
@@ -428,8 +428,8 @@ class WriteTest(unittest.TestCase):
 
     def test_dosless_disks_use_tracks_1_and_2(self):
         # A disk formatted without DOS frees tracks 1-2 and DOS files
-        # data there. Such a file is copied, such a destination is used,
-        # and such a file is deleted; an ordinary disk (tracks 1-2 fully
+        # data there. Such a file is copied and deleted. A copy never
+        # allocates there itself; an ordinary disk (tracks 1-2 fully
         # allocated) still refuses a chain into them.
         src = make_disk([('ON.TRACK1', 0x04, bytes(range(256)) * 5)], dosless=True)
         dst = make_disk([('KEEP.DST', 0x80, b'DESTINATION SAFE')], dosless=True)
@@ -440,8 +440,8 @@ class WriteTest(unittest.TestCase):
         self.preserved()
         result = read_files(self.image(2))['ON.TRACK1']
         self.assertEqual(result['data'], read_files(src)['ON.TRACK1']['data'])
-        self.assertLess(min(t for t, _ in result['blocks'] + result['lists']), 3,
-                        'the free sectors of tracks 1-2 are used, as DOS would')
+        self.assertGreaterEqual(min(t for t, _ in result['blocks'] + result['lists']), 3,
+                                'the copy leaves tracks 1-2 alone')
         self.mini.poke('drive', bytes([1]))     # as the UI's reread does
         self.assertEqual(self.mini.delete_prepare(0), self.DEL_OK)
         self.assertEqual(self.mini.delete_execute(), self.DEL_OK)
@@ -597,13 +597,14 @@ class WriteTest(unittest.TestCase):
         self.assertEqual(self.image(1)[a], 255, 'the second slot is the deleted one')
 
     def test_looping_catalog_does_not_hang_delete_lock_rename(self):
-        # Delete and lock touch only the slot's own sector; rename has to
-        # scan every name and refuses a chain that never ends.
+        # Lock touches only the slot's own sector; rename scans every name
+        # and delete walks every other file, so both refuse a chain that
+        # never ends.
         a, b = self.two_files()
         img = bytearray(self.src)
         img[offset(17, 13) + 1:offset(17, 13) + 3] = bytes([17, 14])
         self.mini.load(1, bytes(img))
-        self.assertEqual(self.mini.delete_prepare(0), self.DEL_OK)
+        self.assertEqual(self.mini.delete_prepare(0), self.DEL_INVALID)
         self.assertEqual(self.mini.lock_prepare(0, 0), self.DEL_OK)
         self.assertEqual(self.mini.rename_prepare(0, 'NEW.TXT'), self.DEL_INVALID)
         self.assertEqual(self.mini.write_log, [])
@@ -809,6 +810,165 @@ class WriteTest(unittest.TestCase):
         for t, s in keep['blocks'] + keep['lists']:
             a = offset(t, s)
             self.assertEqual(self.image(1)[a:a + 256], self.src[a:a + 256])
+
+
+    # ---- review fixes: one latch, DOS tracks, rename, slots, audit --
+    DEL_NOT_READY, REN_EXISTS, REN_SAME = 6, 7, 9
+
+    def test_uncertain_copy_blocks_delete_lock_rename(self):
+        # Every write in a run shares one promise: after an uncertain
+        # write, no further write. A torn copy must stop delete too.
+        self.assertEqual(self.prepare(), OK)
+        self.mini.fail_write = 1                # the first data sector
+        self.assertEqual(self.mini.execute(), UNCERTAIN)
+        dst_after = self.image(2)
+        writes = len(self.mini.write_log)
+        self.mini.poke('drive', bytes([1]))
+        self.assertEqual(self.mini.delete_prepare(1), self.DEL_UNCERTAIN)
+        self.assertEqual(self.mini.delete_execute(), self.DEL_UNCERTAIN)
+        self.assertEqual(self.mini.lock_prepare(1, 2), self.DEL_UNCERTAIN)
+        self.assertEqual(self.mini.lock_execute(), self.DEL_UNCERTAIN)
+        self.assertEqual(self.mini.rename_prepare(1, 'OTHER'), self.DEL_UNCERTAIN)
+        self.assertEqual(self.mini.rename_execute(), self.DEL_UNCERTAIN)
+        self.assertEqual(len(self.mini.write_log), writes)
+        self.assertEqual(self.image(1), self.src)
+        self.assertEqual(self.image(2), dst_after)
+
+    def test_uncertain_delete_blocks_copy_and_create(self):
+        self.two_files()
+        self.assertEqual(self.mini.delete_prepare(0), self.DEL_OK)
+        self.mini.fail_write = 0
+        self.assertEqual(self.mini.delete_execute(), self.DEL_UNCERTAIN)
+        src_after = self.image(1)
+        writes = len(self.mini.write_log)
+        self.mini.poke('drive', bytes([1]))
+        self.assertEqual(self.mini.prepare(1, 2), UNCERTAIN)
+        self.assertEqual(self.mini.execute(), UNCERTAIN)
+        self.assertEqual(self.create(), UNCERTAIN)
+        self.assertEqual(self.mini.create_execute(), UNCERTAIN)
+        self.assertEqual(len(self.mini.write_log), writes)
+        self.assertEqual(self.image(1), src_after)
+        self.assertEqual(self.image(2), self.dst)
+
+    def test_copy_never_allocates_dos_tracks(self):
+        # valid_data accepts a chain on tracks 1-2 only while one of their
+        # sectors is free. A copy that took the last ones would turn every
+        # file there, its own included, into an invalid structure.
+        dst = bytearray(make_disk([('KEEP.DST', 0x80, b'DESTINATION SAFE')], dosless=True))
+        v = offset(17, 0)
+        for t in range(3, 35):
+            dst[v + 0x38 + t * 4:v + 0x3a + t * 4] = b'\0\0'
+        self.load(dst=bytes(dst))
+        self.assertEqual(self.prepare(), FULL)
+        self.assertEqual(self.mini.write_log, [])
+        self.assertEqual(self.image(2), bytes(dst))
+
+    def test_rename_to_the_same_name_is_a_no_op(self):
+        self.load(src=make_disk([('SAME.TXT', 0, b'KEEP ME'),
+                                 ('KEEP.SRC', 0, b'SOURCE SAFE')]))
+        self.assertEqual(self.mini.rename_prepare(0, 'SAME.TXT'), self.REN_SAME)
+        self.assertEqual(self.mini.rename_execute(), self.DEL_NOT_READY)
+        self.assertEqual(self.mini.write_log, [])
+        self.assertEqual(self.image(1), self.src)
+
+    def test_rename_normalises_a_flash_name(self):
+        # FLASH letters are $40-$5F: the panel shows FLASH, the disk does
+        # not hold it. Typing the visible name is a real rename.
+        src = bytearray(make_disk([('FLASH', 0, b'FLASH DATA'),
+                                   ('KEEP.SRC', 0, b'SOURCE SAFE')]))
+        a = offset(17, 15) + 11
+        for i in range(5):
+            src[a + 3 + i] &= 0x7F
+        self.load(src=bytes(src))
+        self.assertEqual(bytes(self.mini.peek('ent_name', 5)), b'FLASH')
+        self.assertEqual(self.mini.rename_prepare(0, 'FLASH'), self.DEL_OK)
+        self.assertEqual(self.mini.rename_execute(), self.DEL_OK)
+        want = bytearray(src)
+        want[a + 3:a + 8] = bytes(c | 128 for c in b'FLASH')
+        self.assertEqual(self.image(1), bytes(want))
+
+    def moved_catalog(self):
+        """MOVED and KEEP.SRC listed in (18,3), which the VTOC links first.
+        A stale copy of that sector's entries sits in (17,3), out of the
+        chain: the slot a track-17 assumption would aim at."""
+        base = make_disk([('MOVED', 0, b'MOVED DATA'), ('KEEP.SRC', 0, b'SOURCE SAFE')])
+        img = bytearray(base)
+        v = offset(17, 0)
+        img[offset(18, 3):offset(18, 4)] = base[offset(17, 15):offset(18, 0)]
+        img[offset(18, 3) + 1:offset(18, 3) + 3] = bytes([17, 14])
+        img[v + 1:v + 3] = bytes([18, 3])
+        img[v + 0x38 + 18 * 4 + 1] &= ~(1 << 3) & 255
+        img[offset(17, 4) + 1:offset(17, 4) + 3] = bytes([17, 2])
+        img[offset(17, 3) + 11:offset(17, 3) + 81] = base[offset(17, 15) + 11:offset(17, 15) + 81]
+        read_files(bytes(img))
+        return bytes(img)
+
+    def test_catalog_off_track_17_is_never_aimed_at_track_17(self):
+        img = self.moved_catalog()
+        self.load(src=img)
+        self.assertEqual(self.mini.delete_prepare(0), self.DEL_INVALID)
+        self.assertEqual(self.mini.delete_execute(), self.DEL_NOT_READY)
+        self.assertEqual(self.mini.lock_prepare(0, 2), self.DEL_INVALID)
+        self.assertEqual(self.mini.rename_prepare(0, 'NEW.NAME'), self.DEL_INVALID)
+        self.assertEqual(self.mini.write_log, [])
+        self.assertEqual(self.image(1), img)
+        # The copy reads the slot where the entry really is, not the stale
+        # one, which no longer matches the panel.
+        self.mini.disks[0][offset(17, 3) + 11 + 3] ^= 1
+        self.src = self.image(1)
+        self.assertEqual(self.prepare(), OK)
+        self.assertEqual(self.mini.execute(), OK)
+        self.assertEqual(read_files(self.image(2))['MOVED']['data'].rstrip(b'\0'),
+                         b'MOVED DATA')
+        self.preserved()
+        self.assertEqual(bytes(self.mini.peek('ent_name', 2, offset=30)),
+                         bytes([18, 3 << 3]))
+
+    def cross_linked(self):
+        base = make_disk([('A.FILE', 0, b'A' * 600), ('B.FILE', 0, b'B' * 300),
+                          ('C.FILE', 0, b'CCC')])
+        files = read_files(base)
+        img = bytearray(base)
+        bts = offset(*files['B.FILE']['lists'][0])
+        img[bts + 12:bts + 14] = bytes(files['A.FILE']['blocks'][1])
+        return bytes(img)
+
+    def test_delete_refuses_a_cross_linked_disk(self):
+        # B's data sector is also A's second one. Freeing A's sectors would
+        # hand B's data to the next copy, and C cannot be told apart from
+        # a disk whose allocation graph is sound.
+        img = self.cross_linked()
+        self.load(src=img)
+        for index in (0, 1, 2):
+            with self.subTest(index=index):
+                self.assertEqual(self.mini.delete_prepare(index), self.DEL_INVALID)
+                self.assertEqual(self.mini.delete_execute(), self.DEL_NOT_READY)
+        self.assertEqual(self.mini.write_log, [])
+        self.assertEqual(self.image(1), img)
+
+    def test_delete_refuses_when_another_chain_is_malformed(self):
+        self.two_files()
+        keep = read_files(self.src)['KEEP.SRC']
+        img = bytearray(self.src)
+        img[offset(*keep['lists'][0]) + 5] = 122
+        self.load(src=bytes(img))
+        self.assertEqual(self.mini.delete_prepare(0), self.DEL_INVALID)
+        self.assertEqual(self.mini.write_log, [])
+        self.assertEqual(self.image(1), bytes(img))
+
+    def test_delete_every_read_failure_during_the_audit(self):
+        self.two_files()
+        self.assertEqual(self.mini.delete_prepare(0), self.DEL_OK)
+        plan_reads = self.mini.reads
+        self.assertGreater(plan_reads, 3, 'the other entries are read too')
+        for n in range(plan_reads):
+            with self.subTest(read=n):
+                self.two_files()
+                self.mini.fail_read = n
+                self.assertEqual(self.mini.delete_prepare(0), self.DEL_READ)
+                self.assertEqual(self.mini.delete_execute(), self.DEL_NOT_READY)
+                self.assertEqual(self.mini.write_log, [])
+                self.assertEqual(self.image(1), self.src)
 
 
 if __name__ == '__main__':

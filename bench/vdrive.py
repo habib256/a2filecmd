@@ -12,7 +12,7 @@ relit, et qu'un hote qui ne repond plus donne une erreur d'E/S propre.
 Sans le drapeau --ssc dans pom2_playtest (voir le TODO de POM2), le banc
 s'arrete la, en le disant : rien n'est verifie."""
 
-import shutil, subprocess, sys, tempfile, time
+import os, re, shutil, subprocess, sys, tempfile, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -22,7 +22,7 @@ from vsdrive_server import Server
 sys.path.insert(0, str(ROOT / 'tools'))
 from prodos_read import Image
 
-SSC_PORT = 6740
+SSC_PORT = 6740 + int(os.environ.get('A2FC_PORT_OFFSET', '0'))
 
 
 def playtest_has_ssc():
@@ -49,9 +49,11 @@ def main():
         remote.mkdir()
         (remote / 'FAR.TXT').write_bytes(b'served over the serial line\r' * 4)
         image = volume(remote, tmp / 'REMOTE.po', 'REMOTE', 800)
-        server = Server([str(image)], port=SSC_PORT).start()
+        blank = tmp / 'BLANK.po'                # drive 2: a blank host image, 140 blocks
+        blank.write_bytes(bytes(140 * 512))
+        server = Server([str(image), str(blank)], port=SSC_PORT).start()
         try:
-            with Pom2(hdv, floppy=floppy, port=6741, ssc=SSC_PORT) as p:
+            with Pom2(hdv, floppy=floppy, port=6741 + int(os.environ.get('A2FC_PORT_OFFSET', '0')), ssc=SSC_PORT) as p:
                 s = Session(p)
                 s.boot()
                 ok('VDrive annonce sa carte serie et son slot', s.has('VDrive:'), s.rows()[22].strip()[:70])
@@ -80,6 +82,28 @@ def main():
                 ok("l'image sur l'hote porte le fichier, octet pour octet",
                    got.get('/NOTE') == ('TXT', 8) and note == b'scratch\r', (got.get('/NOTE'), note))
                 devcnt = p.peek(0xBF31, 1)[0]
+                # FORMAT: the protocol has no size query. The volume keeps its
+                # header's size; the blank image has none, so nothing is written.
+                s.key(b'F'); s.wait(lambda: s.has('ERASES EVERYTHING'), 'FORMAT', 60); p.stable()
+                rows = [r for r in s.rows() if re.match(r'\s+[1-9]\s+Slot', r)]
+                far = next((r for r in rows if '/REMOTE' in r), '')
+                ok('FORMAT: le volume distant garde la taille de son en-tete', '800 blocks' in far, far.strip())
+                slot = re.search(r'Slot (\d), drive 1', far)
+                none = next((r for r in rows if slot and ('Slot %s, drive 2' % slot.group(1)) in r), '')
+                ok("FORMAT: l'image vierge n'annonce pas 65535 blocs", none and '65535' not in none, none.strip())
+                writes = sum(1 for e in server.log if e[0] == 'write')
+                if none:
+                    s.key(none.strip()[0].encode())
+                    s.wait(lambda: s.has('size is unknown') or s.has('New volume name'), 'refus taille', 60)
+                    ok("FORMAT refuse l'image vierge dont la taille est inconnue", s.has('size is unknown'))
+                    if s.has('New volume name'):
+                        s.key(ESC)
+                    else:
+                        s.key(RET)
+                    s.wait(lambda: s.has('ERASES EVERYTHING'), 'liste FORMAT'); p.stable()
+                s.key(ESC); s.wait(lambda: s.has('Type  Aux'), 'retour panneaux', 30); p.stable()
+                ok("l'image vierge n'a recu aucune ecriture", blank.read_bytes() == bytes(140 * 512)
+                   and writes == sum(1 for e in server.log if e[0] == 'write'))
                 ok('les deux unites sont dans DEVLST', devcnt >= 2, devcnt)
                 # l'hote s'en va : la prochaine lecture doit echouer proprement
                 server.close(); time.sleep(0.5)

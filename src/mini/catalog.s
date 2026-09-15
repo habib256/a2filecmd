@@ -28,7 +28,7 @@
         .import read_sector
         .import buffer, count, volume, track, sector, active, sector_seen
         .import ent_track, ent_sector, ent_type, ent_seclo, ent_sechi
-        .import ent_slot, ent_name, prv_index
+        .import ent_name, prv_index
         .import scratch, cat_buf, edit_len
 
         .segment "BSS"
@@ -59,7 +59,8 @@ bit_masks:
         .byte   1, 2, 4, 8, 16, 32, 64, 128
 copy_fields:
         .word   ent_track, ent_sector, ent_type
-        .word   ent_seclo, ent_sechi, ent_slot
+        .word   ent_seclo, ent_sechi
+COPY_FIELDS     = 5
 
         .segment "CODE"
 
@@ -211,16 +212,6 @@ store_entry:
         sta     ent_seclo,y
         lda     buffer+34,x
         sta     ent_sechi,y
-        lda     #CAT_ENTRIES    ; where it lives: sector in bits 7-3,
-        sec                     ; slot 0-6 in bits 2-0. sector still holds
-        sbc     cat_i           ; the catalog sector being parsed
-        sta     t1
-        lda     sector
-        asl     a
-        asl     a
-        asl     a
-        ora     t1
-        sta     ent_slot,y
         lda     cat_idx
         jsr     ent_ptr
         lda     cat_off
@@ -236,6 +227,19 @@ store_entry:
         iny
         cpy     #NAME_LEN
         bcc     @char
+        lda     track           ; then where it lives: track and sector
+        sta     (ptr),y         ; still hold the catalog sector being
+        iny                     ; parsed, whatever track the chain is on
+        lda     #CAT_ENTRIES    ; (Y = ENT_CAT_SLOT)
+        sec
+        sbc     cat_i
+        sta     t1              ; slot 0-6 in bits 2-0
+        lda     sector
+        asl     a
+        asl     a
+        asl     a
+        ora     t1
+        sta     (ptr),y
         rts
 
 ; sanitise -- A = raw name byte from the catalog, returns the character
@@ -358,15 +362,24 @@ load_file:
 @pair:
         lda     ldf_got         ; the area is full: show what we have,
         cmp     #SCRATCH_SIZE/256 ; but say whether the file went on, so
-        bcc     @room           ; the editor never saves a truncated copy
+        bcc     @room           ; the editor never saves a truncated copy.
+        lda     ldf_nt          ; A later pair, even after a hole, or a
+        bne     @more           ; next T/S list is still the file.
+@rest:
         lda     ldf_j
         asl     a
         tax
         lda     ldf_list+12,x
         ora     ldf_list+13,x
-        beq     @done
+        bne     @more
+        inc     ldf_j
+        lda     ldf_j
+        cmp     #TS_PER_LIST
+        bcc     @rest
+        bcs     @done
+@more:
         inc     ldf_more
-        jmp     @done
+        bne     @done           ; always: it was zero
 @room:
         lda     ldf_j
         asl     a
@@ -402,7 +415,7 @@ load_file:
         inc     ldf_j
         lda     ldf_j
         cmp     #TS_PER_LIST
-        bcc     @pair
+        jcc     @pair
         lda     ldf_nt
         beq     @done
         lda     ldf_ended       ; a hole, and still another list
@@ -471,8 +484,9 @@ ent_index:
 
 ; ---------------------------------------------------------------------
 ; copy_side -- X = source panel, Y = destination. Copies every catalog
-; array, including ent_slot. A name list without the slot is not an
-; identity: writes would refuse it rather than aim at catalog sector 0.
+; array, and the whole name strides, whose spare bytes say where each
+; entry was read. A name list without them is not an identity: writes
+; would refuse it rather than aim at catalog sector 0.
 ; '=' and the boot copy of the right panel use this so they need no
 ; second catalog read. The copy engine never borrows these arrays: a
 ; tagged batch still needs the source snapshot until the last file.
@@ -529,7 +543,7 @@ _copy_side:
         bne     @byte
         inc     t2
         lda     t2
-        cmp     #6
+        cmp     #COPY_FIELDS
         bcc     @field
         lda     t0
         jsr     @namebase
@@ -653,9 +667,10 @@ seen_bit:
 
 ; ---------------------------------------------------------------------
 ; measure_text -- edit_len = one past the last non-zero byte in the
-; working area, never past SCRATCH_SIZE-1. A full 8 KB of non-zero
-; data would otherwise leave edit_len = $2000, and poke_nul would
-; write the first byte of the resident program at $4000.
+; working area. Carry set when that is the whole area: the editor keeps
+; a NUL after the text, so a full 8 KB cannot be edited without losing
+; its last byte, and poke_nul would write the first byte of the resident
+; program at $4000. The caller refuses the file rather than cut it.
 ; ---------------------------------------------------------------------
 measure_text:
 _measure_text:
@@ -669,7 +684,6 @@ _measure_text:
         lda     edit_len
         bne     @dec
         dec     edit_len+1
-        lda     edit_len+1
         bmi     @empty
 @dec:
         dec     edit_len
@@ -684,25 +698,13 @@ _measure_text:
         lda     (ptr),y
         beq     @scan
         inc     edit_len
-        bne     @cap
-        inc     edit_len+1
-@cap:
-        lda     #>(SCRATCH_SIZE-1)
-        cmp     edit_len+1
-        bcc     @fix
         bne     @done
-        lda     #<(SCRATCH_SIZE-1)
-        cmp     edit_len
-        bcs     @done
-@fix:
-        lda     #<(SCRATCH_SIZE-1)
-        sta     edit_len
-        lda     #>(SCRATCH_SIZE-1)
-        sta     edit_len+1
-        rts
+        inc     edit_len+1
+        bne     @done           ; always
 @empty:
         lda     #0
-        sta     edit_len
         sta     edit_len+1
 @done:
+        lda     edit_len+1
+        cmp     #>SCRATCH_SIZE
         rts

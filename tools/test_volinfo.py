@@ -13,7 +13,7 @@ HARNESS = r'''
 #include <stdlib.h>
 static FILE* disk;
 static unsigned int reject;
-static unsigned char selection_mode, listing_mode;
+static unsigned char selection_mode, listing_mode, named_mode;
 static char line[81];
 static unsigned char scratch[512];
 static unsigned char mock_mli(unsigned char cmd, void* p) {
@@ -32,6 +32,12 @@ static unsigned char mock_mli(unsigned char cmd, void* p) {
     return fread(b->buf, 1, 512, disk) == 512 ? 0 : 0x27;
 }
 static void noop(void) {}
+/* The directory file of /V, as fopen of the panel's path reads it: block 2. */
+static FILE* dir_file(const char* p, const char* m) {
+    unsigned char blk[512]; FILE* f = tmpfile();
+    if (strcmp(p, "/V") || fseek(disk, 1024, SEEK_SET) || fread(blk, 1, 512, disk) != 512) abort();
+    fwrite(blk, 1, 512, f); rewind(f); return f;
+}
 static void puts_noop(const char* s) {}
 static void unexpected(const char* s) { abort(); }
 static int printf_noop(const char* s, ...) { return 0; }
@@ -45,7 +51,8 @@ int main(int argc, char** argv) {
     if (!disk) return 2;
     selection_mode = argc > 2 && !strcmp(argv[2], "unit");
     listing_mode = argc > 2 && !strcmp(argv[2], "list");
-    reject = argc > 2 && !selection_mode && !listing_mode ? atoi(argv[2]) : 65535U;
+    named_mode = argc > 4 && !strcmp(argv[2], "named");
+    reject = argc > 2 && !selection_mode && !listing_mode && !named_mode ? atoi(argv[2]) : 65535U;
     api.mli = mock_mli; api.memcpy = memcpy; api.memset = memset;
     A = &api; buf = scratch; io.n = 3;
     io.unit = 0xE0;
@@ -56,6 +63,14 @@ int main(int argc, char** argv) {
         api.sprintf = sprintf; api.fwrite = fwrite; api.other_full = line;
         memcpy(entry, buf+43, 39); listing = 1;
         reportfile = fopen(argv[3], "wb"); file(); fclose(reportfile); reportfile = 0;
+    } else if (named_mode) {
+        api.panels = panels; api.active = &active; api.selected = &selected;
+        api.fopen = dir_file; api.fread = fread; api.fclose = fclose; api.strcmp = strcmp;
+        api.sprintf = sprintf; api.fwrite = fwrite; api.other_full = line;
+        strcpy(panels[0].path, "/V"); strcpy(selected.name, argv[3]); selected.type = 4;
+        if (selected_file()) {
+            listing = 1; reportfile = fopen(argv[4], "wb"); file(); fclose(reportfile); reportfile = 0;
+        }
     } else if (selection_mode) {
         api.panels = panels; api.active = &active; api.selected = &selected;
         api.copy_buf = scratch; api.clrscr = noop; api.cputs = puts_noop;
@@ -145,6 +160,28 @@ class Volinfo(unittest.TestCase):
         subprocess.check_output([str(self.exe), str(path), 'list', str(report)], timeout=10)
         self.assertEqual(path.read_bytes(), d)
         return report.read_text()
+
+    def named_list(self, d, name):
+        path = self.work/'disk.po'; path.write_bytes(d)
+        report = self.work/'named.txt'
+        if report.exists(): report.unlink()
+        r = json.loads(subprocess.check_output([str(self.exe), str(path), 'named', name, str(report)], timeout=10))
+        self.assertEqual(path.read_bytes(), d)
+        return (report.read_bytes().decode() if report.exists() else None), r
+
+    def test_selected_file_named_like_its_directory_is_not_the_header(self):
+        """The volume header of /V is named V too: the file V is the entry
+        in slot 2, never the storage-$F header in slot 0."""
+        e = entry(1, 4, 1, 1); e[1] = ord('V')
+        text, r = self.named_list(fixture(entries=[entry(1, 7, 1, 1), e]), 'V')
+        self.assertEqual(text, 'D     4 ($0004)\r\n')
+        self.assertEqual(r['failed'], 0)
+        self.assertEqual(r['incomplete'], 0)
+
+    def test_selected_file_absent_is_not_found(self):
+        text, r = self.named_list(fixture(entries=[entry()]), 'V')
+        self.assertIsNone(text)
+        self.assertEqual(r['failed'], 1)
 
     def test_selected_tree_lists_roles_in_order(self):
         d = fixture(entries=[entry(3, 4, 4, 1024)])

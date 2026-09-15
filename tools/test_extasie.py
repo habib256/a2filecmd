@@ -28,7 +28,7 @@ static int hseek(FILE* f, long off, int whence) { return fseek(src, off, whence)
  * is the same rule written plainly, so that the tests below exercise the
  * STREAM against it; the shipped 6502 geometry is checked in the emulator
  * instead (bench/extasie.py). */
-unsigned char ex_col;
+unsigned char ex_col, ex_dry;
 static unsigned char ex_row, ex_plane;
 static unsigned char host_aux[8192];
 static int crossings;
@@ -44,11 +44,16 @@ void __fastcall__ ex_put(unsigned char v)
     ex_row = 0;
     if (++ex_col < 40 || ex_plane) return;
     ex_plane = 1;                        /* the auxiliary plane is full */
-    ex_aux_move();
+    if (!ex_dry) ex_aux_move();          /* a checking pass leaves AUX alone */
     ex_col = 0;
 }
 #include "src/plugins/extasie.c"
 void ex_show(void) {}
+static int formats;
+static unsigned char format_(void) { ++formats; return 1; }
+static FILE* open_(const char* p, const char* m) { rewind(src); return src; }
+static int close_(FILE* f) { return 0; }
+static char wait_(void) { return 27; }
 void ex_main_bank(void) {}
 int main(int argc, char** argv)
 {
@@ -60,6 +65,16 @@ int main(int argc, char** argv)
     src = fopen(argv[1], "rb");
     memset(arena, 0x5A, sizeof arena);
     memset(host_page, 0xEE, 8192);            /* nothing may be left unwritten */
+    if (argc > 2) {                           /* the whole entry point: AUX and /RAM */
+        static struct Entry sel;
+        static char note[80], resel[17], full[81];
+        sel.type = 0xF2; api.selected = &sel; api.full = full;
+        api.fopen = open_; api.fclose = close_; api.strcpy = strcpy;
+        api.note = note; api.reselect = resel; api.ram_format = format_; api.media_wait = wait_;
+        plugin_entry(&api);
+        printf("%d %d %s\n", crossings, formats, note);
+        return 0;
+    }
     if (!picture()) { fprintf(stderr, "truncated\n"); return 2; }
     for (i = 0; i < 256; ++i)
         if (arena[i] != 0x5A || arena[256 + 8192 + i] != 0x5A) {
@@ -310,6 +325,25 @@ class Extasie(unittest.TestCase):
     def test_a_stream_one_plane_short_is_refused(self):
         """The main plane is missing: half a picture is not shown as whole."""
         self.assertEqual(self.decode(header(rle(bytes(COLS * ROWS))))[0], 2)
+
+    # -- the auxiliary bank ------------------------------------------------
+    def entry(self, data):
+        f = self.p / 'in.bin'
+        f.write_bytes(data)
+        out = subprocess.check_output([str(self.exe), str(f), 'entry'], text=True).split(' ', 2)
+        return int(out[0]), int(out[1]), out[2].strip()
+
+    def test_a_refusal_never_touches_aux_or_ram(self):
+        """/RAM lives in the auxiliary bank: a truncated picture, cut in the
+        first plane OR in the second, must neither move a plane there nor
+        rebuild /RAM (which would erase its files for nothing)."""
+        full = header(rle(bytes((i * 37) & 0x7F for i in range(COLS * ROWS * 2))))
+        for cut in (len(full) // 4, len(full) * 3 // 4, len(full) - 1):
+            with self.subTest(cut=cut):
+                self.assertEqual(self.entry(full[:cut]), (0, 0, 'Picture truncated.'))
+
+    def test_a_whole_picture_moves_one_plane_and_rebuilds_ram(self):
+        self.assertEqual(self.entry(BASTILLE), (1, 1, '/RAM rebuilt.'))
 
     # -- the real thing ----------------------------------------------------
     def test_a_real_extasie_picture(self):

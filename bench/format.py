@@ -98,6 +98,28 @@ def main():
             p.insert(1, str(target))
             s.ok('les chemins des panneaux sont conserves', s.rows()[0] == original)
 
+            # A floppy switched after the confirmation screen named the disk:
+            # same volume name and size, other directory. Nothing is written.
+            (tmp / 'twin' / 'OLDVOL').mkdir(parents=True)
+            (tmp / 'twin' / 'OLDVOL' / 'OTHER.TXT').write_bytes(b'switched in during the prompts\r' * 20)
+            twin = tmp / 'TWIN.po'
+            subprocess.run([sys.executable, str(ROOT / 'tools/mkvolume.py'), str(tmp / 'twin' / 'OLDVOL'), str(twin),
+                            '--volume', 'OLDVOL', '--blocks', '280'], check=True, capture_output=True)
+            twin_before = twin.read_bytes()
+            open_format()
+            choose('/OLDVOL'); s.wait(lambda: s.has('New volume name'), 'nom avant echange')
+            s.type('SWAPTEST'); s.key(RET); s.wait(lambda: s.has('final confirmation'), 'confirmation avant echange')
+            p.insert(1, str(twin))
+            s.type('ERASE'); s.key(RET); s.allow_aux()
+            s.wait(lambda: s.has('nothing written') or s.has('Done:') or s.has('Failed:'), 'disque echange', 60)
+            p.stable()
+            s.ok('un disque echange apres la confirmation n est pas formate', s.has('disk changed: nothing written'))
+            back()
+            p.eject(1)
+            s.ok('le disque glisse pendant les invites est intact', twin.read_bytes() == twin_before)
+            p.insert(1, str(target))
+            s.ok('le disque confirme puis retire est intact', target.read_bytes() == before)
+
             # A locked 2IMG exercises the early Disk II write-error path.
             locked = tmp / 'LOCKED.2mg'
             data = bytearray(to_2mg(before)); data[19] |= 0x80

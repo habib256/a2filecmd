@@ -29,13 +29,16 @@ HARNESS = r'''
 static unsigned char gfi[18], _oserror, _filetype;
 static unsigned int _auxtype;
 static char full[64], other_full[64], message_text[100];
-static unsigned char copy_buf[512], active, efresh, edirty;
+static unsigned char copy_buf[512], active, efresh, edirty, econv;
 static char edit_buf[6144];
 #define EDIT_BUF edit_buf
 static unsigned int elen, etype, eaux, a2fc_ops;
 static long text_starts[80];
 static unsigned int progress_skipped, progress_done, progress_abort, over_policy=1;
 static int fault, fired, rename_calls, output_open;
+static int confirms;
+static const char ed_convert[] = "Save converted text?";
+static unsigned char confirm(const char* text) {++confirms;strcpy(message_text,text);return fault!=97;}
 static FILE* output;
 static FILE* input;
 static unsigned char old_bytes[4096];
@@ -174,8 +177,11 @@ int main(int argc,char**argv) {
         FILE* f=fopen(full,"rb");elen=fread(EDIT_BUF,1,sizeof edit_buf,f);fclose(f);
         memset(EDIT_BUF,'N',elen);edirty=1;etype=6;eaux=0;
         if(!strcmp(argv[1],"editfresh")){unlink(full);efresh=1;}
+        if(!strcmp(argv[1],"editnoop"))edirty=0;          /* nothing typed */
+        if(!strcmp(argv[1],"editconv"))econv=1;           /* bit 7 or LF changed on loading */
         snapshot_destination(full);copy_mode=2;
         r=edit_save();
+        if(!r && fault!=97 && econv)abort();
         if(!r) {
             unsigned int i;
             if(!edirty)abort();
@@ -191,7 +197,7 @@ int main(int argc,char**argv) {
         snapshot_destination(other_full);
         r=copy_file("DATA",6,0);
     }
-    printf("%u %u %s\n",r,edirty,message_text);
+    printf("%u %u %s\nconfirms=%d\n",r,edirty,message_text,confirms);
     return 0;
 }
 '''
@@ -409,6 +415,26 @@ class FileSafety(unittest.TestCase):
         self.assertEqual(self.dst.read_bytes(), self.original)
         self.assertEqual(next_dst.read_bytes(), b'next original')
         self.assertFalse((self.p/'A2FC.BAK').exists())
+
+    def test_editor_save_without_changes_leaves_the_file_alone(self):
+        before = sorted(q.name for q in self.p.iterdir())
+        result, out = self.run_op('editnoop')
+        self.assertEqual(result, 1)
+        self.assertIn('confirms=0', out)
+        self.assertEqual(self.src.read_bytes(), self.original)
+        self.assertEqual(sorted(q.name for q in self.p.iterdir()), before)
+
+    def test_editor_converted_text_is_saved_only_when_confirmed(self):
+        before = sorted(q.name for q in self.p.iterdir())
+        result, out = self.run_op('editconv', 97)
+        self.assertEqual(result, 0)
+        self.assertIn('confirms=1', out)
+        self.assertEqual(self.src.read_bytes(), self.original)
+        self.assertEqual(sorted(q.name for q in self.p.iterdir()), before)
+        result, out = self.run_op('editconv')
+        self.assertEqual(result, 1)
+        self.assertIn('confirms=1', out)
+        self.assertEqual(self.src.read_bytes(), b'N'*len(self.original))
 
     def test_editor_save_verifies_and_installs(self):
         self.assertEqual(self.run_op('edit')[0],1)

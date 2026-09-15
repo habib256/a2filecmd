@@ -176,9 +176,10 @@ def main():
             s.key(b'V');s.wait(lambda:s.has('End. ESC Back'),'filtered preview',30);s.key(ESC)
             s.wait(lambda:s.has('Results 1-20'),'filtered results restored');p.stable()
             s.ok('query, volume and filters retained',s.has('Type $04') and s.has('20260907-20260907') and s.has('in /WORKHD'))
-            s.key(b'N');s.wait(lambda:s.has('Results 21-40'),'filtered second page',60)
-            s.key(b'N');s.wait(lambda:s.has('Results 41-46'),'filtered final page',60)
-            s.ok('combined filters retain late subdirectory',listed(s)[-1]=='/WORKHD/MANY/ZZZ/DEEP/HITEND')
+            # choose() writes row 22 before the list: settle before reading the rows.
+            s.key(b'N');s.wait(lambda:s.has('Results 21-40'),'filtered second page',60);p.stable()
+            s.key(b'N');s.wait(lambda:s.has('Results 41-46'),'filtered final page',60);p.stable()
+            s.ok('combined filters retain late subdirectory',listed(s)[-1]=='/WORKHD/MANY/ZZZ/DEEP/HITEND',(listed(s),s.rows()[0].strip(),s.rows()[22].strip()))
             s.key(ESC);p.stable()
             find(s,p,'OTHER')
             s.ok('new invocation resets filters',listed(s)==['/WORKHD/WORK/SUB/OTHER'] and s.has('Any type'))

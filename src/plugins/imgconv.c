@@ -349,7 +349,13 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     if (replacing) {
         k = replace_commit(target, final_path);
         if (k == REPLACE_RESTORE_FAILED) { RF(strcpy)(T.note, "Restore failed: original in A2FC.BAK; IMGCONV.TMP kept."); return; }
-        if (!k) { RF(strcpy)(T.note, "Recover IMGCONV.TMP / A2FC.BAK."); return; }
+        if (k == REPLACE_REFUSED) {
+            /* Nothing was renamed: the old image is intact and the temporary
+             * is this run's own verified output, safe to remove. */
+            if (replace_discard(target)) RF(strcpy)(T.note, "A2FC.BAK exists or target locked: nothing changed.");
+            return;
+        }
+        if (k != REPLACE_DONE && k != REPLACE_BACKUP) { RF(strcpy)(T.note, "Recover IMGCONV.TMP / A2FC.BAK."); return; }
         if (k == REPLACE_BACKUP) { RF(strcpy)(T.note, "Converted; A2FC.BAK retained."); return; }
     }
     RF(strcpy)(T.reselect, e->name);

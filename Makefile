@@ -293,6 +293,7 @@ $(FULLPO): $(STAGE_DEPS) $(DATA)/BASIC.SYSTEM.SYS
 test: test-mini
 	python3 $(TOOLS)/test_loader_prefix.py
 	python3 $(TOOLS)/test_chain.py
+	python3 $(TOOLS)/test_vsdrive.py
 	python3 $(TOOLS)/test_launch.py
 	python3 $(TOOLS)/test_errors.py
 	python3 $(TOOLS)/test_display.py
@@ -309,7 +310,10 @@ test: test-mini
 	python3 $(TOOLS)/test_goto_safety.py
 	python3 $(TOOLS)/test_file_safety.py
 	python3 $(TOOLS)/test_binary2_safety.py
+	python3 $(TOOLS)/test_compare_search.py
+	python3 $(TOOLS)/test_panel_sort.py
 	python3 $(TOOLS)/test_unshrink_safety.py
+	python3 $(TOOLS)/test_unshrink_core.py
 	python3 $(TOOLS)/test_imgfs_safety.py
 	python3 $(TOOLS)/test_dos_extract.py
 	python3 $(TOOLS)/test_format_repair.py
@@ -330,6 +334,8 @@ test: test-mini
 	python3 $(TOOLS)/test_diskimg_verify.py
 	python3 $(TOOLS)/test_diskimg_input.py
 	python3 $(TOOLS)/test_diskimg_output.py
+	python3 $(TOOLS)/test_diskimg_scan.py
+	python3 $(TOOLS)/test_delete_confirm.py
 	python3 $(TOOLS)/test_dirscan.py
 	python3 $(TOOLS)/test_blkview.py
 	python3 $(TOOLS)/test_blkedit.py
@@ -361,6 +367,8 @@ test: test-mini
 	python3 $(TOOLS)/test_extasie.py
 	python3 $(TOOLS)/test_intbasic.py
 	python3 $(TOOLS)/test_find.py
+	python3 $(TOOLS)/test_mdview.py
+	python3 $(TOOLS)/test_diskcmp.py
 	python3 $(TOOLS)/test_six_plugins.py
 
 # The headless POM2 test host the benches drive, built from its source kept

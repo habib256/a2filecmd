@@ -64,7 +64,9 @@ static unsigned char mli(unsigned char cmd, void* p) {
         memcpy(from, i->path + 1, i->path[0]); from[i->path[0]] = 0;
         f = fopen(from, "rb");
         if (!f) return errno == ENOENT ? 0x46 : 0x27;
-        fclose(f); memset(i->result,0,15); i->result[0]=0xC3; i->result[4]=1; return 0;
+        fclose(f); memset(i->result,0,15); i->result[0]=0xC3; i->result[4]=1;
+        if (fault == 25 && !strstr(from, "A2FC.BAK")) i->result[0] = 0x01;  /* locked */
+        return 0;
     }
     if (cmd == 0xC0) {
         struct Create* c = p;
@@ -297,13 +299,34 @@ class Txtconv(unittest.TestCase):
         self.assertEqual(bak.read_bytes(), b'\xC1' * 400)
 
     def test_existing_backup_is_preserved(self):
+        """A pre-check refusal renames nothing: the message says so, the
+        temporary this run created goes, and the next run is not blocked."""
         bak=self.root/'A2FC.BAK';bak.write_bytes(b'recover original')
         self.addCleanup(bak.unlink,missing_ok=True)
         self.addCleanup((self.root/'TXTCONV.TMP').unlink,missing_ok=True)
-        note,data=self.convert(b'\xC1'*400)
-        self.assertIn('Install failed',note)
-        self.assertEqual(data,b'\xC1'*400)
-        self.assertEqual(bak.read_bytes(),b'recover original')
+        for run in (1, 2):
+            with self.subTest(run=run):
+                note,data=self.convert(b'\xC1'*400)
+                self.assertIn('nothing changed',note)
+                self.assertNotIn('Install failed',note)
+                self.assertEqual(data,b'\xC1'*400)
+                self.assertEqual(bak.read_bytes(),b'recover original')
+                self.assertFalse((self.root/'TXTCONV.TMP').exists())
+
+    def test_locked_target_refusal_removes_only_this_runs_temporary(self):
+        dest=self.root/'D'/'TEXT';dest.parent.mkdir(exist_ok=True)
+        dest.write_bytes(b'locked destination');self.addCleanup(dest.unlink,missing_ok=True)
+        for tmp in (self.root/'TXTCONV.TMP', dest.parent/'TXTCONV.TMP'):
+            self.addCleanup(tmp.unlink,missing_ok=True)
+        for inplace in (True, False):
+            with self.subTest(inplace=inplace):
+                note,data=self.convert(b'\xC1'*400,fault=25,inplace=inplace,overwrite=True)
+                self.assertIn('nothing changed',note)
+                self.assertEqual(data,b'\xC1'*400)
+                self.assertEqual(dest.read_bytes(),b'locked destination')
+                self.assertFalse((self.root/'TXTCONV.TMP').exists())
+                self.assertFalse((dest.parent/'TXTCONV.TMP').exists())
+                self.assertFalse((self.root/'A2FC.BAK').exists())
 
     def test_success_including_empty_and_exact_chunk_boundary(self):
         for size in (0, 255, 256, 257, 512, 800):
