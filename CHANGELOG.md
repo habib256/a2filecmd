@@ -26,7 +26,7 @@ downloads and installation.
 ### A2FileCmd Mini DOS3.3 disk, replaced after the tag
 - Stray characters no longer appear in column 8 during disk access (a letter missing from `COPY 5 MARKED?`, a lone letter lower on the screen). Around every RWTS call the Mini saved and restored the Disk II screen holes at `$0478+slot×16`, which are visible cells, instead of `$0478+slot`, where DOS 3.3 keeps each drive's current track.
 - RETURN on a binary runs it: a 32–34 sector binary still opens as a hi-res picture, any other binary asks `BRUN NAME?` and, after Y, A2FC Mini leaves and DOS runs it from the panel's drive. B does the same on any binary. The command runs from page 3, so nothing of the Mini runs after the program, which may load over it; a name DOS could not read back (a comma, an unprintable character) is refused.
-- A simpler footer: panels show 19 files, the status and file name lines move down one row, and the last row lists fewer, clearer keys, each in inverse with its action attached (TAB Pan, C Copy, D Del, B Run, / Drv, ? Help, Q Quit). An operation's result takes the file name line until the next key.
+- A simpler footer: panels show 19 files, the status and file name lines move down one row, and the last row lists fewer, clearer keys, each in inverse with its action attached (TAB PAN, C OPY, D EL, B RUN, / DRV, ? HELP, Q UIT): a label that starts with its key's letter does not repeat it, so questions read Y ES, N O, ESC ANCEL. An operation's result takes the file name line until the next key.
 
 ### Distribution
 - The BOOT floppy and the bench floppies keep 3 free blocks, what saving A2FILE.CFG needs: messages that no test checks were shortened and duplicated code folded where fixes had pushed overlays over a block boundary.

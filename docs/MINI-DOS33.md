@@ -56,8 +56,9 @@ Each panel displays **19 rows**, scrolling one row at the edge and paging by
 19 entries with the horizontal arrows. Each catalog can hold up to 105 files.
 
 The last row lists the main keys, each in inverse with its short action
-attached in normal video: **TAB**Pan **C**Copy **D**Del **B**Run **/**Drv
-**?**Help **Q**Quit. The other keys are in `?`. Questions use inverse video
+attached in normal video: **TAB**PAN **C**OPY **D**EL **B**RUN **/**DRV
+**?**HELP **Q**UIT. A label that starts with its key's letter does not
+repeat it (**Y**ES **N**O **ESC**ANCEL). The other keys are in `?`. Questions use inverse video
 on the status line, just above the file name line. Copy, delete, lock,
 rename and create return to the two panels as soon as the write finishes;
 the result takes the file name line until the next key. There is no extra

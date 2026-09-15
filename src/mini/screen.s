@@ -370,7 +370,8 @@ filetype:
 ; keys_bar -- A = row, w1 = spec address. On return t2 indexes the NUL.
 ;
 ; "TAB Pan,C Copy" becomes each key in inverse, its label attached in
-; normal video, one space between pairs: [TAB]PAN [C]COPY.
+; normal video, one space between pairs: [TAB]PAN [C]OPY. A label that
+; starts with the key's last character drops it: no [Y]YES, [ESC]CANCEL.
 ; ---------------------------------------------------------------------
 keys_bar:
         tax                     ; row
@@ -401,11 +402,17 @@ keys_bar:
         inc     t2
         cmp     #' '
         beq     @label
+        sta     t5              ; the key's last character
         jsr     put
         jmp     @keys
 @label:
         lda     #0
         sta     inverse
+        ldy     t2
+        lda     (w1),y
+        cmp     t5
+        bne     @labelloop
+        inc     t2              ; already shown in inverse
 @labelloop:
         ldy     t2
         lda     (w1),y

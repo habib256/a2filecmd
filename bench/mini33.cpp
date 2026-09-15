@@ -65,6 +65,8 @@ int main(int argc,char**argv) {
     assert(m.data()[0x400]<0x40); assert(m.data()[0x414]>=0x80);
     const int bar=0x400+(23&7)*128+(23>>3)*40;
     assert(m.data()[bar]<0x40); assert(m.data()[bar+2]<0x40); assert(m.data()[bar+3]>=0x80);
+    // A label never repeats its key: [C]OPY, not [C]COPY.
+    assert(screen(m).substr(23*41,40)=="TABPAN COPY DEL BRUN /DRV ?HELP QUIT    ");
     changedOnly("Z"); changedOnly("\x1b"); // root ESC does not quit
     changedOnly("K"); changedOnly("\x0a"); // HELLO -> A2FC.MINI -> README
     auto chosen=screen(m);
@@ -117,7 +119,7 @@ int main(int argc,char**argv) {
     for(int i=0;i<0x800;++i) assert(m.data()[0x0800+i]==0xa5);
     puts(screen(m).c_str());
     auto beforeQuit=screen(m);
-    keys("7"); expect(m,"QUIT TO DOS 3.3?"); keys("Z"); expect(m,"CANCEL");
+    keys("7"); expect(m,"QUIT TO DOS 3.3?"); expect(m,"YES NO ESCANCEL"); keys("Z"); expect(m,"CANCEL");
     keys("N"); assert(screen(m)==beforeQuit);
     keys("Q"); keys("Y"); expect(m,"\n]");
     keys("CATALOG\r"); expect(m,"DISK VOLUME"); expect(m,"A2FC.MINI");

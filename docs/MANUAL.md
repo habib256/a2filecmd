@@ -718,7 +718,8 @@ Questions appear in inverse video on the footer: **Y confirms, N or Escape
 cancels**, every other key is ignored. Copy, delete, lock, rename and create
 return to the panels on their own; the result takes the file name line
 until the next key. The last row shows the main keys in inverse, each with
-its action attached: TAB Pan, C Copy, D Del, B Run, / Drv, ? Help, Q Quit. Only
+its action attached, without repeating the key's letter: TAB PAN, C OPY,
+D EL, B RUN, / DRV, ? HELP, Q UIT; questions show Y ES, N O, ESC ANCEL. Only
 panels showing the written disk are reread; two views of that disk share
 one catalog. Ctrl-R still rereads both. Escape at the browser does
 nothing: DOS 3.3 has no parent directory.

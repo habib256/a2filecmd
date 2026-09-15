@@ -59,8 +59,9 @@ régénéré pour ces touches, et `SHA256SUMS-0.8.7.txt` avec lui.
 Elle a été remplacée une seconde fois le même jour pour simplifier le bas
 de l’écran : panneaux de 19 lignes, lignes d’état et de nom descendues
 d’une ligne sur l’ancienne ligne de résultat, et une dernière ligne de
-touches en inverse suivies de leur action abrégée (`TAB`Pan `C`Copy
-`D`Del `B`Run `/`Drv `?`Help `Q`Quit). Le résultat d’une opération prend
+touches en inverse suivies de leur action abrégée (`TAB`PAN `C`OPY
+`D`EL `B`RUN `/`DRV `?`HELP `Q`UIT), sans répéter la lettre de la touche
+(`Y`ES `N`O `ESC`ANCEL, et non `Y`YES `N`NO `ESC`CANCEL vu sur la machine). Le résultat d’une opération prend
 la ligne du nom jusqu’à la touche suivante. `mini33`, `mini33_ops`,
 `mini33_write`, `mini33_review` et `mini33_brun` suivent la nouvelle
 disposition et passent, avec sim65 26 + 57 et `make test`.
