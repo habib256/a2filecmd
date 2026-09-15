@@ -66,6 +66,17 @@ la ligne du nom jusqu’à la touche suivante. `mini33`, `mini33_ops`,
 `mini33_write`, `mini33_review` et `mini33_brun` suivent la nouvelle
 disposition et passent, avec sim65 26 + 57 et `make test`.
 
+Troisième remplacement, le même jour : RETURN ouvre un fichier selon son
+contenu. Il lit le premier secteur de données : un binaire dont l’en-tête
+DOS correspond à sa taille est une image s’il charge 8 Ko en `$2000` ou
+`$4000`, de l’hexadécimal s’il ne peut pas tourner (vide, sous `$0800`,
+jusqu’aux tampons DOS en `$9600`), du texte si ses octets en sont, sinon
+un programme (`BRUN NOM?`) ; sans en-tête valide, une image brute à 32–34
+secteurs, sinon de l’hexadécimal ; un fichier T qui n’est pas du texte
+s’ouvre en hexadécimal. Le programme s’appelle désormais `A2FC` sur la
+disquette (`BRUN A2FC`). `mini33_brun` couvre six nouveaux cas ; les cinq
+bancs POM2, `mini33_time`, sim65 26 + 57 et `make test` passent.
+
 ## Non refait
 
 Pas de qualification sur matériel réel de cette révision. Le délai d’envoi

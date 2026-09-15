@@ -70,7 +70,7 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual(self.count(), 4)
         self.assertEqual(self.mini.byte('volume'), 254)
         self.assertEqual(self.name(0), b'HELLO'.ljust(30))
-        self.assertEqual(self.name(1), b'A2FC.MINI'.ljust(30))
+        self.assertEqual(self.name(1), b'A2FC'.ljust(30))
         self.assertEqual(self.name(2), b'README'.ljust(30))
         self.assertEqual(self.name(3), b'TIGER'.ljust(30))
         self.assertEqual(self.mini.preview(2), CAT_OK)
@@ -345,7 +345,7 @@ class ImageTest(unittest.TestCase):
         self.assertNotIn(b'A2FILECMD V' + mkmini33.MINI_VERSION.encode('ascii'), self.image)
         self.assertIn(b'GPL3 VERHILLE ARNAUD', self.image)
         self.assertIn(b'LOADING .... PLEASE WAIT ....', self.image)
-        self.assertIn(b'BRUN A2FC.MINI', self.image)
+        self.assertIn(b'"BRUN A2FC"', self.image)
         tiger = ROOT / 'data' / 'IMGHGR' / 'TIGER#062000'
         data = tiger.read_bytes()
         self.assertEqual(len(data), 8192)

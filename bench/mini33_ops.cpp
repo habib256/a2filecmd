@@ -66,7 +66,7 @@ int main(int argc,char** argv) {
     keys("Y"); wait("DELETED"); settle();
     assert(screen(m).find("NOTE")==std::string::npos);
     assert(screen(m).find("MEMO")==std::string::npos);
-    // Tagged batch: HELLO and README onto the other disk. A2FC.MINI stays.
+    // Tagged batch: HELLO and README onto the other disk. A2FC stays.
     keys("[ "); keys("KK ");
     keys("C"); wait("COPY 2");
     // The banner row reads COPY and the file at every moment of the batch.

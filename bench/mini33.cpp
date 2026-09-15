@@ -68,7 +68,7 @@ int main(int argc,char**argv) {
     // A label never repeats its key: [C]OPY, not [C]COPY.
     assert(screen(m).substr(23*41,40)=="TABPAN COPY DEL BRUN /DRV ?HELP QUIT    ");
     changedOnly("Z"); changedOnly("\x1b"); // root ESC does not quit
-    changedOnly("K"); changedOnly("\x0a"); // HELLO -> A2FC.MINI -> README
+    changedOnly("K"); changedOnly("\x0a"); // HELLO -> A2FC -> README
     auto chosen=screen(m);
     keys("6"); expect(m,"A2FC MINI - COMMANDS");
     keys("\x1b"); assert(screen(m)==chosen);
@@ -122,8 +122,8 @@ int main(int argc,char**argv) {
     keys("7"); expect(m,"QUIT TO DOS 3.3?"); expect(m,"YES NO ESCANCEL"); keys("Z"); expect(m,"CANCEL");
     keys("N"); assert(screen(m)==beforeQuit);
     keys("Q"); keys("Y"); expect(m,"\n]");
-    keys("CATALOG\r"); expect(m,"DISK VOLUME"); expect(m,"A2FC.MINI");
-    keys("BRUN A2FC.MINI\r"); run(cpu,40000000); expect(m,"4 FILES");
+    keys("CATALOG\r"); expect(m,"DISK VOLUME"); expect(m,"A2FC");
+    keys("BRUN A2FC\r"); run(cpu,40000000); expect(m,"4 FILES");
     m.clearWriteWatches(); m.setWatchSink(nullptr);
     assert(raw->getWriteFlushCount()==0); assert(!raw->hasUnsavedChanges());
     puts("PASS: II+ NMOS boot, ProDOS ergonomics, inverse key blocks, numeric shortcuts, help, changed-character-only writes, two panes, pagination, long names, preview, drive isolation, malformed/missing disk, recovery, quit/relaunch; zero disk writes");

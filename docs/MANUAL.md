@@ -682,8 +682,8 @@ build notes are in [MINI-DOS33.md](MINI-DOS33.md).
 ### Booting
 
 The disk boots through an Applesoft `HELLO` that shows `A2FILECMD`,
-`MINI DOS 3.3` and `V0.8.7`, then `BRUN A2FC.MINI`. From DOS 3.3, use
-`BRUN A2FC.MINI`. Both panels open on the boot disk; each remembers its
+`MINI DOS 3.3` and `V0.8.7`, then `BRUN A2FC`. From DOS 3.3, use
+`BRUN A2FC`. Both panels open on the boot disk; each remembers its
 drive, selection and scroll position. Each panel shows 19 rows and a catalog
 of up to 105 files; `?` lists every control.
 
@@ -695,7 +695,7 @@ of up to 105 files; `?` lists every control.
 | Up / down (Ctrl-K / Ctrl-J), or I / K | Previous / next file |
 | Left / right, or - / +, or < / > | Previous / next page (19 files) |
 | [ / ] | First / last file |
-| Return, or 2 | Preview by type; a 32–34 sector binary opens as hi-res, any other binary runs (BRUN, after Y) |
+| Return, or 2 | Open by content: text, hi-res picture, hexadecimal, or `BRUN NAME?` for a program (see below) |
 | T / H | Text / hexadecimal preview; also available inside the preview |
 | G | Hi-res viewer: first 8 KB of the selected file |
 | B | BRUN the selected binary after Y: A2FC Mini leaves, then DOS runs it from the panel's drive |
@@ -713,6 +713,22 @@ of up to 105 files; `?` lists every control.
 | Escape in preview, help or editor | Return to the panels |
 | ?, or 6 | Keyboard help |
 | Q, or 7 | Ask to return to DOS 3.3 |
+
+Return reads the file's first data sector, writes nothing, and picks the
+view from what the file holds:
+
+- **T**: the text viewer, or hexadecimal when the bytes are not text.
+- **B** whose DOS header (load address and length) matches the file's size:
+  an 8 KB load at `$2000` or `$4000` opens in the hi-res viewer; an empty
+  file, a load below `$0800` or one reaching DOS's buffers at `$9600`
+  opens in hexadecimal; text opens in the text viewer, after the 4-byte
+  header; anything else is a program and asks `BRUN NAME?`.
+- **B** without a matching header: a raw hi-res page at 32–34 sectors,
+  otherwise hexadecimal.
+- **A, I, S, R**: hexadecimal.
+
+Bytes read as text when at most one in 16 is neither printable nor RETURN.
+T, H, G and B still force the text, hexadecimal or hi-res view, or BRUN.
 
 Questions appear in inverse video on the footer: **Y confirms, N or Escape
 cancels**, every other key is ignored. Copy, delete, lock, rename and create
@@ -771,7 +787,7 @@ Ctrl-R to reread both panels.
 
 Measured on POM2's NMOS core with Disk II timing (`bench/mini33_time.py`):
 a 16-sector catalog reads in 1 703 567 cycles instead of 4 898 568, and
-copying the 85-sector `A2FC.MINI` takes 62.7 s at 1 MHz instead of 280 s
+copying the 85-sector `A2FC` takes 62.7 s at 1 MHz instead of 280 s
 for the former C version. DOS 3.3's 2:1 interleave leaves about 25 000
 cycles to digest a sector before the next one passes the head; the
 assembly parser stays inside that window, and the copy engine reads a

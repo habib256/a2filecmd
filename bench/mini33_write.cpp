@@ -57,8 +57,8 @@ int main(int argc,char**argv) {
     d->setDriveHostWriteProtected(1,false);
     // The result holds the name row until a key; Z does nothing else.
     assert(screen(m).substr(22*41,23)=="DISK IS WRITE PROTECTED");
-    keys("Z"); assert(screen(m).substr(22*41,9)=="A2FC.MINI");
-    // The target is swapped while COPY A2FC.MINI? waits for Y: the VTOC
+    keys("Z"); assert(screen(m).substr(22*41,5)=="A2FC ");
+    // The target is swapped while COPY A2FC? waits for Y: the VTOC
     // reserved on the first disk must not be written over the second.
     keys("C"); wait("CANCEL");
     assert(d->insertDisk(1,argv[5]));
@@ -66,18 +66,18 @@ int main(int argc,char**argv) {
     assert(d->getWriteFlushCount()==0);
     assert(d->insertDisk(1,argv[3]));
     keys("\x12"); settle(); expect(m,"KEEP.DST");   // Ctrl-R: reread both
-    assert(screen(m).substr(22*41,9)=="A2FC.MINI");
+    assert(screen(m).substr(22*41,5)=="A2FC ");
     keys("C"); wait("CANCEL"); keys("Y"); wait("COPIED"); settle();
     assert(d->getWriteFlushCount()>0); assert(d->flushPendingWrites());
     for(int i=0;i<0x800;++i) assert(m.data()[0x0800+i]==0xa5);
     auto writes=d->getWriteFlushCount();
-    keys("Z"); assert(screen(m).substr(22*41,9)=="A2FC.MINI");
+    keys("Z"); assert(screen(m).substr(22*41,5)=="A2FC ");
     keys("C"); wait("NAME EXISTS"); settle();
     assert(d->getWriteFlushCount()==writes);
     keys("Q"); keys("Y"); expect(m,"\n]");
-    keys("CATALOG,D2\r"); wait("A2FC.MINI");
+    keys("CATALOG,D2\r"); wait("A2FC");
     // DOS itself loads the new binary and then allocates another file.
-    keys("BLOAD A2FC.MINI,D2\r"); run(cpu,30000000);
+    keys("BLOAD A2FC,D2\r"); run(cpu,30000000);
     std::ifstream in(argv[4],std::ios::binary);
     std::string binary((std::istreambuf_iterator<char>(in)),{});
     assert(!binary.empty());

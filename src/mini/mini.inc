@@ -106,6 +106,7 @@ HISCR           = $C055
 LORES           = $C056
 HIRES           = $C057
 SCREEN          = $0400         ; 40-column text page 1
+DOS_BUFFERS_HI  = $96           ; HIMEM $9600: DOS's file buffers start here
 RWTS_ENTRY      = $03D9         ; DOS 3.3 RWTS, A/Y = IOB
 DOS_WARM        = $03D0         ; DOS 3.3 warm start: the prompt
 COUT            = $FDED         ; character out, through DOS's hook

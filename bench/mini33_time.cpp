@@ -84,10 +84,10 @@ int main(int argc, char** argv) {
     run(cpu, 12000000);
     expect(m, "4 FILES");
 
-    // Then the copy of A2FC.MINI, the largest file on the boot disk.
+    // Then the copy of A2FC, the largest file on the boot disk.
     m.pasteRawKeys("\t/\tK", 4);
     run(cpu, 24000000);
-    expect(m, "A2FC.MINI");
+    expect(m, "A2FC");
     long prepare = timed(m, cpu, "C", "CANCEL");
     expect(m, "COPY ");
     expect(m, "KEEP.DST");
@@ -96,9 +96,9 @@ int main(int argc, char** argv) {
     printf("catalog, first switch to drive 2: %ld cycles\n", to_target);
     printf("catalog, warm switches:           %ld %ld %ld %ld %ld %ld cycles\n",
            warm[0], warm[1], warm[2], warm[3], warm[4], warm[5]);
-    printf("copy A2FC.MINI, prepare:          %ld cycles\n", prepare);
-    printf("copy A2FC.MINI, writing phase:    %ld cycles\n", execute);
-    printf("copy A2FC.MINI, total:            %ld cycles = %.1f s at 1 MHz\n",
+    printf("copy A2FC, prepare:          %ld cycles\n", prepare);
+    printf("copy A2FC, writing phase:    %ld cycles\n", execute);
+    printf("copy A2FC, total:            %ld cycles = %.1f s at 1 MHz\n",
            prepare + execute, (prepare + execute) / 1.0e6);
     assert(d->flushPendingWrites());
     puts("PASS: measured");

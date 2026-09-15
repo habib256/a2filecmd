@@ -12,9 +12,9 @@ The disk image `dist/A2FC-MINI-DOS33-0.8.7.dsk` boots through the Applesoft
 `HELLO` program, which centres `A2FILECMD`, `MINI DOS 3.3` and `V0.8.7` at
 the top of the 40-column screen, then `GPL3 VERHILLE ARNAUD` and
 `LOADING .... PLEASE WAIT ....` at the bottom, before
-`BRUN A2FC.MINI`. The same
+`BRUN A2FC`. The same
 layout stays on screen while the first catalog is read. From DOS 3.3,
-use `BRUN A2FC.MINI`.
+use `BRUN A2FC`.
 Both panels initially show the boot disk. The right panel is a full copy
 of that catalog, catalog slots included, so a write from either side
 holds the same entry. Each remembers its drive, selection, and scroll
@@ -26,7 +26,7 @@ position independently.
 | Up / down (Ctrl-K / Ctrl-J), or I / K | Previous / next file |
 | Left / right, or - / +, or < / > | Previous / next page (19 files) |
 | [ / ] | First / last file |
-| Return, or 2 | Preview by type; a 32–34 sector binary opens as hi-res, any other binary runs (BRUN, after Y) |
+| Return, or 2 | Open by content: text, hi-res picture, hexadecimal, or `BRUN NAME?` for a program (see below) |
 | T / H | Text / hexadecimal preview; also available inside the preview |
 | G | Hi-res viewer: first 8 KB of the selected file |
 | B | BRUN the selected binary after Y: A2FC Mini leaves, then DOS runs it from the panel's drive |
@@ -65,6 +65,22 @@ the result takes the file name line until the next key. There is no extra
 key to dismiss it.
 Numbers 1–7 still mean Tab, Open, Copy, Drive, Reread, Help and Quit.
 `?` lists every control.
+
+Return reads the file's first data sector, writes nothing, and picks the
+view from what the file holds:
+
+- **T**: the text viewer, or hexadecimal when the bytes are not text.
+- **B** whose DOS header (load address and length) matches the file's size:
+  an 8 KB load at `$2000` or `$4000` opens in the hi-res viewer; an empty
+  file, a load below `$0800` or one reaching DOS's buffers at `$9600`
+  opens in hexadecimal; text opens in the text viewer, after the 4-byte
+  header; anything else is a program and asks `BRUN NAME?`.
+- **B** without a matching header: a raw hi-res page at 32–34 sectors,
+  otherwise hexadecimal.
+- **A, I, S, R**: hexadecimal.
+
+Bytes read as text when at most one in 16 is neither printable nor RETURN.
+T, H, G and B still force the text, hexadecimal or hi-res view, or BRUN.
 
 Since v0.4, horizontal arrows page through files and Tab switches panels.
 `/` replaces the old D for drive selection, and Ctrl-R replaces R for
@@ -217,8 +233,8 @@ records both on POM2's NMOS core with Disk II timing:
 | Operation | Before (C, 48 sectors) | Now (asm, 85 sectors) |
 |---|---:|---:|
 | Read a 16-sector catalog (`/`, motor already turning) | 4 898 568 cycles | 1 703 567 cycles |
-| Copy `A2FC.MINI` — prepare (source file + dest names) | 21 577 238 | 5 899 687 |
-| Copy `A2FC.MINI` — write and read back | 258 512 282 | 56 775 543 |
+| Copy `A2FC` — prepare (source file + dest names) | 21 577 238 | 5 899 687 |
+| Copy `A2FC` — write and read back | 258 512 282 | 56 775 543 |
 | **Copy, total at 1 MHz** | **280 s** | **62.7 s** |
 
 DOS 3.3 lays out a track with a 2:1 soft interleave, which leaves a
@@ -251,7 +267,7 @@ make mini-disk MINI_MASTER="/path/to/dos33_master.dsk"
 ```
 
 The master must be a standard 140 KB DOS-order DOS 3.3 image that starts `HELLO`.
-Only its three system tracks are read. The builder creates HELLO, A2FC.MINI,
+Only its three system tracks are read. The builder creates HELLO, A2FC,
 README and the raw 8 KB HGR picture TIGER on a new image without changing
 the master. Return or G on TIGER opens hi-res. It refuses an existing
 output; use `MINI_DISK=dist/A2FC-MINI-test.dsk` for another build. A failed build

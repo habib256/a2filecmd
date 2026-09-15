@@ -33,7 +33,7 @@ def hello_program():
         (40, bytes([HTAB]) + b'18:' + bytes([PRINT]) + b'"' + version + b'"'),
         (50, bytes([VTAB]) + b'22:' + bytes([HTAB]) + b'11:' + bytes([PRINT]) + b'"GPL3 VERHILLE ARNAUD"'),
         (60, bytes([VTAB]) + b'23:' + bytes([HTAB]) + b'6:' + bytes([PRINT]) + b'"LOADING .... PLEASE WAIT ...."'),
-        (70, bytes([PRINT, CHRS]) + b'(4);"BRUN A2FC.MINI"'),
+        (70, bytes([PRINT, CHRS]) + b'(4);"BRUN A2FC"'),
     ])
 
 
@@ -55,7 +55,7 @@ def build(master, binary):
         raise ValueError('TIGER must be a raw 8192-byte HGR page')
     program = hello_program()
     files = [('HELLO',2,struct.pack('<H',len(program))+program),
-             ('A2FC.MINI',4,struct.pack('<HH',0x1000,len(binary))+binary),
+             ('A2FC',4,struct.pack('<HH',0x1000,len(binary))+binary),
              ('README',0,b'A2FC MINI DOS 3.3\rAPPLE II+ 48 KB - DOS 3.3 COPY\rTAB: PANEL - I/K: SELECT\rRETURN: PREVIEW - /: DRIVE\rC: COPY TO THE OTHER PANEL\rCTRL-R: REREAD - Q: DOS\rT/H: TEXT/HEX - ?: HELP\rG: TIGER HI-RES\rL: LOCK/UNLOCK - R: RENAME\rD: DELETE - SPACE: TAG\rY: CONFIRM - N/ESC: CANCEL\r\0'),
              ('TIGER',4,tiger)]
     free = [(t,s) for t in range(3,35) if t != 17 for s in range(16)]

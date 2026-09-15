@@ -532,10 +532,7 @@ draw:
         jsr     draw_panel
         lda     #1
         jsr     draw_panel
-        ldy     #21
-        ldx     #0
-        lda     #40
-        jsr     zone
+        jsr     foot_zone
         PRINT   "A2FC MINI DOS 3.3  "
         lda     count
         jsr     print_byte
@@ -552,8 +549,7 @@ draw:
         lda     #0
         sta     inverse
         ldy     #22
-        ldx     #0
-        jsr     at
+        jsr     at_left
         lda     count
         beq     @noinfo
         lda     error
@@ -653,51 +649,41 @@ help:
         lda     #0
         sta     inverse
         ldy     #2
-        ldx     #0
-        jsr     at
+        jsr     at_left
         PRINT   "TAB: PANEL   RET: OPEN"
         ldy     #4
-        ldx     #0
-        jsr     at
+        jsr     at_left
         PRINT   "CTRL-K/J OR I/K: UP/DOWN"
         ldy     #6
-        ldx     #0
-        jsr     at
+        jsr     at_left
         PRINT   "ARROWS OR -/+: PAGE   [/]: FIRST/LAST"
         ldy     #8
-        ldx     #0
-        jsr     at
+        jsr     at_left
         PRINT   "/: DRIVE   CTRL-R: REREAD BOTH"
         ldy     #10
-        ldx     #0
-        jsr     at
+        jsr     at_left
         PRINT   "=: SAME DISK IN THE OTHER PANEL"
         ldy     #12
-        ldx     #0
-        jsr     at
+        jsr     at_left
         PRINT   "T/H/G: VIEW   C: COPY MARKED OR CURSOR"
         ldy     #14
-        ldx     #0
-        jsr     at
+        jsr     at_left
         PRINT   "SPACE: TAG  CTRL-T/N: ALL/NONE  *: INVERT"
         ldy     #16
-        ldx     #0
-        jsr     at
+        jsr     at_left
         PRINT   "N: NEW TXT  E: EDIT  D: DELETE"
         ldy     #18
-        ldx     #0
-        jsr     at
+        jsr     at_left
         PRINT   "L: LOCK/UNLOCK  R: RENAME  B: BRUN"
         ldy     #20
-        ldx     #0
-        jsr     at
+        jsr     at_left
         PRINT   "Y CONFIRMS A WRITE. UNLOCK TO DELETE."
         KEYBAR  23, "ESC Back"
         jsr     key
         rts
 
 ; ---------------------------------------------------------------------
-; view -- A = 1 for hex. Shows the first stored sector and says so: it
+; view -- A = 1 for hex, 0 for text, 4 for text after a binary's header. Shows the first stored sector and says so: it
 ; is not a claim to have read or checked the whole file.
 ; ---------------------------------------------------------------------
 view:
@@ -705,12 +691,11 @@ view:
         lda     selected
         sta     prv_index
         jsr     preview         ; read once; T and H only redraw it
+; view_read -- A = preview status, vw_mode set: the sector is in buffer
+view_read:
         sta     error
         beq     @render
-        ldy     #21
-        ldx     #0
-        lda     #40
-        jsr     zone
+        jsr     foot_zone
         lda     error
         cmp     #1
         bne     @nopreview
@@ -725,17 +710,16 @@ view:
 @render:
         jsr     clear
         ldy     #0
-        ldx     #0
-        jsr     at
+        jsr     at_left
         lda     selected
         jsr     ent_index
         jsr     print_name
         ldy     #1
-        ldx     #0
-        jsr     at
+        jsr     at_left
         PRINT   "PREVIEW: FIRST SECTOR (256 BYTES)"
         lda     vw_mode
-        beq     @text
+        cmp     #1
+        bne     @text
         lda     #0
         sta     vw_i
 @hexrow:
@@ -743,8 +727,7 @@ view:
         clc
         adc     #3
         tay
-        ldx     #0
-        jsr     at
+        jsr     at_left
         lda     vw_i
         asl     a
         asl     a
@@ -781,9 +764,8 @@ view:
         jmp     @keys
 @text:
         ldy     #3
-        ldx     #0
-        jsr     at
-        lda     #0
+        jsr     at_left
+        lda     vw_mode         ; 0, or 4 past a binary's header
         sta     vw_i
 @char:
         lda     row             ; the text stops at the bars
@@ -931,10 +913,7 @@ copy_ask_one:
         jmp     copy_ask_bar
 
 copy_ask_many:
-        ldy     #21
-        ldx     #0
-        lda     #40
-        jsr     zone
+        jsr     foot_zone
         PRINT   "COPY "
         lda     cf_marked
         jsr     print_byte
@@ -947,10 +926,7 @@ copy_ask_bar:
 
 ; copy_banner -- inverse "COPY " and the first 15 name characters
 copy_banner:
-        ldy     #21
-        ldx     #0
-        lda     #40
-        jsr     zone
+        jsr     foot_zone
         PRINT   "COPY "
         ldy     #0
 @name:
@@ -985,10 +961,7 @@ cf_dest_show:
         lda     cp_dest
         sta     drive
 cf_show:
-        ldy     #21
-        ldx     #0
-        lda     #40
-        jsr     zone
+        jsr     foot_zone
         lda     cf_status
         bne     @notok
         PRINT   "COPIED"
@@ -1042,8 +1015,7 @@ say_protected:
 ; in normal video, as copy_done / copy_total. The panels stay put.
 copy_progress:
         ldy     #22
-        ldx     #0
-        jsr     at
+        jsr     at_left
         lda     #0
         sta     inverse
         lda     copy_total
@@ -1353,10 +1325,7 @@ main:
         lda     ck
         cmp     #'Q'
         bne     @notquit
-        ldy     #21
-        ldx     #0
-        lda     #40
-        jsr     zone
+        jsr     foot_zone
         PRINT   "QUIT TO DOS 3.3?"
         lda     #0
         sta     inverse
@@ -1470,25 +1439,9 @@ main:
         lda     ck
         cmp     #13
         bne     @explicit
-        jsr     looks_hgr
-        bcc     @bytype
-        jsr     show_hgr
-        jmp     @notview
-@bytype:
-        lda     selected        ; RETURN picks by type: text reads as text
-        jsr     ent_index
-        tay
-        lda     ent_type,y
-        and     #$7F
-        beq     @astext
-        cmp     #TYPE_BINARY    ; a binary that is not a picture is a
-        bne     @ashex          ; program: RETURN runs it, after Y, as B
-        jsr     brun_file
+        jsr     smart_open      ; RETURN looks inside; carry set: BRUN
         bcc     @notview
         jmp     @leave
-@ashex:
-        lda     #1
-        jmp     @doview
 @astext:
         lda     #0
         jmp     @doview
@@ -1599,8 +1552,7 @@ main:
 @leave:
         jsr     clear
         ldy     #0
-        ldx     #0
-        jsr     at
+        jsr     at_left
         PRINT   "A2FC MINI - BACK TO DOS 3.3"
         jsr     present
         jmp     restore_holes
@@ -1813,28 +1765,155 @@ brun_head:
         .segment "CODE"
 
 ; ---------------------------------------------------------------------
-; looks_hgr -- carry set when the selected file is a binary of 32 to 34
-; sectors, the usual size of a hi-res page with or without a BSAVE header.
+; smart_open -- RETURN. Reads the first data sector once, writes nothing,
+; and picks the view from what the file holds:
+;   T: text, or hex when the bytes are not text;
+;   B whose DOS header matches its size: hi-res for an 8 KB load at $2000
+;     or $4000; hex when it cannot run (empty, below $0800, reaching DOS's
+;     buffers at $9600); text when the bytes are text; else BRUN after Y;
+;   B without a matching header: a raw hi-res page at 32-34 sectors, else
+;     hex; anything else: hex.
+; Carry set when brun_file leaves for DOS.
 ; ---------------------------------------------------------------------
-looks_hgr:
+smart_open:
+        lda     #1              ; a failed read shows as hex, which reports it
+        sta     vw_mode
+        lda     selected
+        sta     prv_index
+        jsr     preview
+        bne     @show
         lda     selected
         jsr     ent_index
         tay
         lda     ent_type,y
         and     #$7F
-        cmp     #TYPE_BINARY
-        bne     @no
-        lda     ent_sechi,y
-        bne     @no
+        sta     t2              ; 0 for T: a NUL ends the text
+        bne     @nottext
+        ldx     #255
+        ldy     #0
+        jsr     looks_text
+        bcs     @text
+@hex:
+        lda     #1
+        .byte   $2C             ; BIT abs: skips the LDA #0
+@text:
+        lda     #0
+@mode:
+        sta     vw_mode
+        lda     #CAT_OK
+@show:
+        jsr     view_read
+        clc
+        rts
+@hgr:
+        jsr     show_hgr
+        clc
+        rts
+@raw:
+        lda     ent_sechi,y     ; no DOS header: a raw hi-res page by size
+        bne     @hex
         lda     ent_seclo,y
         cmp     #32
-        bcc     @no
+        bcc     @hex
         cmp     #35
-        bcs     @no
+        bcc     @hgr
+        bcs     @hex
+@nottext:
+        cmp     #TYPE_BINARY
+        bne     @hex
+        clc                     ; data sectors the header asks for:
+        lda     buffer+2        ; (length + 4 + 255) / 256
+        adc     #$03
+        lda     buffer+3
+        adc     #$01
+        bcs     @raw
+        sta     t3
+        lda     ent_sechi,y
+        bne     @raw
+        lda     ent_seclo,y     ; the catalog adds 1 to 3 T/S lists
         sec
-        rts
-@no:
+        sbc     t3
+        bcc     @raw
+        sbc     #1
+        cmp     #3
+        bcs     @raw
+        lda     buffer          ; an 8 KB load at $2000 or $4000
+        bne     @code
+        lda     buffer+1
+        cmp     #$20
+        beq     @page
+        cmp     #$40
+        bne     @code
+@page:
+        lda     buffer+3
+        cmp     #$1F
+        beq     @hgr
+        cmp     #$20
+        beq     @hgr
+@code:
+        lda     buffer+2
+        ora     buffer+3
+        beq     @farhex         ; nothing to run
+        lda     buffer+1
+        cmp     #$08            ; pages 0-7: stack, DOS vectors, screen
+        bcc     @farhex
         clc
+        lda     buffer
+        adc     buffer+2
+        lda     buffer+1
+        adc     buffer+3
+        bcs     @farhex
+        cmp     #DOS_BUFFERS_HI
+        bcs     @farhex
+        ldx     buffer+2        ; the bytes after the header, up to its length
+        lda     buffer+3
+        beq     @scan
+        ldx     #252
+@scan:
+        ldy     #4
+        jsr     looks_text
+        bcc     @run
+        lda     #4              ; text, after the header
+        jmp     @mode
+@farhex:
+        jmp     @hex
+@run:
+        jmp     brun_file
+
+; looks_text -- X bytes (1-255) of buffer from Y; t2 = 0 stops at a NUL,
+; where a T file ends. Carry set when at most one byte in 16 of those
+; looked at is neither printable nor a RETURN.
+looks_text:
+        lda     #0
+        sta     t3              ; bytes looked at
+        sta     t4              ; bytes that are not text
+@byte:
+        lda     buffer,y
+        bne     @some
+        lda     t2
+        beq     @done           ; T: the text ends here
+        bne     @bad
+@some:
+        and     #$7F
+        cmp     #$0D
+        beq     @ok
+        cmp     #$20
+        bcs     @ok
+@bad:
+        inc     t4
+@ok:
+        inc     t3
+        iny
+        beq     @done           ; the sector ends
+        dex
+        bne     @byte
+@done:
+        lda     t3
+        lsr     a
+        lsr     a
+        lsr     a
+        lsr     a
+        cmp     t4
         rts
 
 ; ---------------------------------------------------------------------
@@ -1865,10 +1944,7 @@ show_hgr:
         lda     LOWSCR
         rts
 @fail:
-        ldy     #21
-        ldx     #0
-        lda     #40
-        jsr     zone
+        jsr     foot_zone
         lda     hg_status
         cmp     #1
         bne     @bad
@@ -1958,10 +2034,7 @@ edit_file:
         and     #$7F
         cmp     #TYPE_TEXT
         beq     @text
-        ldy     #21
-        ldx     #0
-        lda     #40
-        jsr     zone
+        jsr     foot_zone
         PRINT   "EDIT IS FOR TEXT FILES"
         jmp     keep_note
 @text:
@@ -1991,10 +2064,7 @@ edit_file:
         jsr     name_to_cs
         jmp     save_new
 @fail:
-        ldy     #21
-        ldx     #0
-        lda     #40
-        jsr     zone
+        jsr     foot_zone
         lda     hg_status
         cmp     #CAT_READ
         bne     @notread
@@ -2004,10 +2074,7 @@ edit_file:
         PRINT   "INVALID T-S LIST - NOT LOADED"
         jmp     keep_note
 @big:
-        ldy     #21
-        ldx     #0
-        lda     #40
-        jsr     zone
+        jsr     foot_zone
         PRINT   "FILE TOO LARGE TO EDIT"
         jmp     keep_note
 @out:
@@ -2029,8 +2096,7 @@ save_new:
         jsr     sectors_from_len
         jsr     clear
         ldy     #2
-        ldx     #0
-        jsr     at
+        jsr     at_left
         PRINT   "CHECKING DISK..."
         jsr     present
         jsr     create_prepare
@@ -2045,8 +2111,7 @@ save_new:
         lda     #0
         sta     inverse
         ldy     #2
-        ldx     #0
-        jsr     at
+        jsr     at_left
         ldy     #0
 @nm:
         sty     t1
@@ -2057,8 +2122,7 @@ save_new:
         cpy     #NAME_LEN
         bcc     @nm
         ldy     #4
-        ldx     #0
-        jsr     at
+        jsr     at_left
         lda     data_count
         jsr     print_byte
         PRINT   " SECTORS - NEW FILE ONLY"
@@ -2069,8 +2133,7 @@ save_new:
 @go:
         jsr     clear
         ldy     #2
-        ldx     #0
-        jsr     at
+        jsr     at_left
         PRINT   "WRITING AND VERIFYING..."
         jsr     present
         jsr     create_execute
@@ -2116,10 +2179,7 @@ delete_file:
         ldx     active
         jsr     tag_count
         sta     tg_n
-        ldy     #21
-        ldx     #0
-        lda     #40
-        jsr     zone
+        jsr     foot_zone
         lda     tg_n
         bne     @many
         PRINT   "DELETE "
@@ -2226,6 +2286,11 @@ foot_zone:
         ldx     #0
         lda     #40
         jmp     zone
+
+; at_left -- Y = row, cursor at column 0
+at_left:
+        ldx     #0
+        jmp     at
 
 ; print_name15 -- A = array index: the first 15 name characters, for the
 ; DELETE / LOCK / UNLOCK prompts. put builds its own screen pointer in

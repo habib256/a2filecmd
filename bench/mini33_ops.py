@@ -39,6 +39,6 @@ with tempfile.TemporaryDirectory(prefix='mini33-ops-') as tmp:
     boot_files = read_files(original)
     assert after_other['HELLO']['data'] == boot_files['HELLO']['data']
     assert after_other['README']['data'] == boot_files['README']['data']
-    assert 'A2FC.MINI' not in after_other
+    assert 'A2FC' not in after_other
     assert a.disk.read_bytes() == original
     print('PASS: picture untouched; NOTE created then deleted; tagged HELLO+README copied; master unchanged')

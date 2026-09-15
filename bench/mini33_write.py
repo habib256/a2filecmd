@@ -33,8 +33,8 @@ with tempfile.TemporaryDirectory(prefix='mini33-write-') as tmp:
     assert swapped.read_bytes()==original_swapped, 'the swapped-in disk must stay untouched'
     before=read_files(original_target); after=read_files(target.read_bytes()); source=read_files(original)
     assert after['KEEP.DST']==before['KEEP.DST']
-    assert after['A2FC.MINI']['data']==source['A2FC.MINI']['data']
-    assert after['A2FC.MINI']['type']==source['A2FC.MINI']['type']
-    assert set(after)=={'KEEP.DST','A2FC.MINI','CHECK.DOS'}
+    assert after['A2FC']['data']==source['A2FC']['data']
+    assert after['A2FC']['type']==source['A2FC']['type']
+    assert set(after)=={'KEEP.DST','A2FC','CHECK.DOS'}
     assert a.disk.read_bytes()==original
     print('PASS: source image unchanged; swapped disk untouched; existing target bytes preserved; binary exact; DOS allocation graph valid')
