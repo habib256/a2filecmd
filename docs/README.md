@@ -19,6 +19,7 @@ rapports datés, qui ne sont plus mis à jour.
 
 | Rapport | Objet |
 | --- | --- |
+| [RELEASE-0.8.7.md](history/RELEASE-0.8.7.md) | Qualification de la 0.8.7, la chasse aux bugs : chaque correction testée sur les deux CPU, le job bancs de la CI rejoué en entier |
 | [RELEASE-0.8.6.md](history/RELEASE-0.8.6.md) | Qualification de la 0.8.6, la release qui clôt la partie Commander, avec des comparaisons d’octets réelles sur le disque dur émulé |
 | [RELEASE-0.8.5.md](history/RELEASE-0.8.5.md) | Qualification locale et CI de la 0.8.5 ; première release où la Mini porte le numéro de l’édition ProDOS |
 | [BUG-HUNT-0.8.0.md](history/BUG-HUNT-0.8.0.md) | Dernière passe avant la 0.8.0 : 219 contrôles POM2, mutations, empreintes |
