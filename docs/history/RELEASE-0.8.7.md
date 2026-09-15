@@ -41,6 +41,21 @@ A2FileCmd Mini DOS3.3 est construite localement (`make mini-disk` sur la
 disquette 0.8.6 comme maître) et jointe avec `SHA256SUMS-0.8.7.txt`
 complété.
 
+## Après le tag
+
+La disquette A2FileCmd Mini DOS3.3 de la release a été remplacée le même
+jour, à la demande : sur une vraie machine, un caractère disparaissait en
+colonne 8 (`COPY 5 M RKED?`) et une lettre isolée apparaissait plus bas.
+La Mini sauvait et restaurait autour de chaque appel RWTS les trous d’écran
+du Disk II à `$0478+slot×16`, des cases visibles, au lieu de `$0478+slot`
+où DOS 3.3 garde la piste courante (vérifié dans le RWTS de la disquette
+maître : `TXA`, quatre `LSR`, `TAY`, puis `$0478,Y`). Le banc
+`mini33_ops` lit désormais la bannière de copie en continu : il reproduit
+la capture sur l’ancien binaire et passe sur le nouveau. La même disquette
+ajoute RETURN et B pour lancer un binaire par BRUN (`bench/mini33_brun.py`,
+depuis HELLO et depuis l’invite DOS). Le manuel PDF de la release a été
+régénéré pour ces touches, et `SHA256SUMS-0.8.7.txt` avec lui.
+
 ## Non refait
 
 Pas de qualification sur matériel réel de cette révision. Le délai d’envoi

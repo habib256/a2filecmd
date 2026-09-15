@@ -23,6 +23,10 @@ downloads and installation.
 ### A2FileCmd Mini DOS3.3
 - One write-fault latch for every command; the destination panel is reread after a failed copy; copies never allocate on tracks 1–2; `$8D` line ends in the editor; a full 8 KB text is refused rather than cut; batch results count what was done and skipped; renaming to the same name says so; delete refuses a cross-linked disk.
 
+### A2FileCmd Mini DOS3.3 disk, replaced after the tag
+- Stray characters no longer appear in column 8 during disk access (a letter missing from `COPY 5 MARKED?`, a lone letter lower on the screen). Around every RWTS call the Mini saved and restored the Disk II screen holes at `$0478+slot×16`, which are visible cells, instead of `$0478+slot`, where DOS 3.3 keeps each drive's current track.
+- RETURN on a binary runs it: a 32–34 sector binary still opens as a hi-res picture, any other binary asks `BRUN NAME?` and, after Y, A2FC Mini leaves and DOS runs it from the panel's drive. B does the same on any binary. The command runs from page 3, so nothing of the Mini runs after the program, which may load over it; a name DOS could not read back (a comma, an unprintable character) is refused.
+
 ### Distribution
 - The BOOT floppy and the bench floppies keep 3 free blocks, what saving A2FILE.CFG needs: messages that no test checks were shortened and duplicated code folded where fixes had pushed overlays over a block boundary.
 - Benches: VOLINFO waits for its disk prompt and runs from the bench floppy; data_safety uses a real image name.
@@ -30,6 +34,7 @@ downloads and installation.
 ### Validation
 - 731 host tests in 62 suites, each new test first seen failing on 0.8.6. POM2 benches on both CPUs, the complete session 73/73.
 
+### Earlier in this cycle
 - Mini: copying a panel (`=` and the boot duplicate) now includes the catalog slot, so a mirrored view is a full identity. After a write, only panels showing that disk are reread; two views share one catalog instead of paying it twice. The copy engine still does not borrow the name tables. Host tests cover the slot, a namelist without one, and names left intact after execute.
 - Every extraction now reads its output back. DOSGET, BINARY2, IMGFS (a disk image opened as a folder) and UNSHRINK reopen the closed file and compare it byte for byte with the source read a second time: the DOS sectors, the archive record, the image blocks, or the ShrinkIt thread decoded again from its start; the file must end where the data ends. A wrong byte, an unreadable output, a short read or a source lost during the second pass fails the extraction and removes the owned file. Host tests inject each fault.
 - To make room, IMGFS is a big overlay (its entries come from the snapshot) and UNSHRINK keeps its state at $3E00 with its code allowed up to $3BFF; the unused `new_output` wrapper leaves the resident. 65C02 resident headroom: 429 bytes. The BOOT floppy keeps 3 blocks free.

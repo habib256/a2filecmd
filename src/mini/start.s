@@ -14,7 +14,7 @@
         .export start
 
         .import main, save_holes
-        .import slot, drive
+        .import slot, drive, brun_go
         .import __BSS_RUN__, __BSS_SIZE__
 
         .segment "DATA"
@@ -86,4 +86,8 @@ start:
         bpl     @restore
         ldx     saved_stack
         txs
+        lda     brun_go         ; B or RETURN on a program: page 3 holds
+        beq     @done           ; the stub ui.s wrote, and DOS runs it
+        jmp     BRUN_PAGE
+@done:
         rts

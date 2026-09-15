@@ -19,7 +19,7 @@
 
         .segment "BSS"
 digits:         .res 5          ; a 16-bit value never needs more
-hole_save:      .res 7          ; $0478+s*16 through $0778+s*16; $07F8+s*16 is past $7FF
+hole_save:      .res 8          ; $0478+slot through $07F8+slot, one every $80
 
         .segment "RODATA"
 
@@ -105,17 +105,16 @@ present_top:
         bcc     @row
         rts
 
-; DOS 3.3 keeps the current track at $0478+slot*16, then the same
-; offset every $80 bytes through $0778+slot*16. Seven holes, not eight:
-; $07F8+slot*16 sits past the text page. Those cells sit inside the
-; 40-column window (slot 6: row 17 column 8). present() draws them;
-; RWTS must see the saved values or the next seek is a wrong track.
+; The slot's screen holes: $0478+slot, then the same offset every $80
+; bytes through $07F8+slot, the 8 bytes of each $80 block no row shows.
+; DOS 3.3 RWTS keeps the current track of drive 1 at $0478+slot and of
+; drive 2 at $04F8+slot: it turns IBSLOT (slot*16) into the slot number
+; (TXA, four LSRs, TAY) before indexing them. They were once taken at
+; $0478+slot*16, which are visible cells (slot 6: column 8 of rows 5,
+; 8, 11, 14, 17, 20 and 23): every RWTS call then put stale characters
+; back on the screen.
 hole_ptr:
         lda     slot
-        asl     a
-        asl     a
-        asl     a
-        asl     a
         clc
         adc     #$78
         sta     ptr
@@ -139,7 +138,7 @@ save_holes:
         inc     ptr+1
 @noc:
         inx
-        cpx     #7
+        cpx     #8
         bcc     @one
         rts
 
@@ -158,7 +157,7 @@ restore_holes:
         inc     ptr+1
 @noc:
         inx
-        cpx     #7
+        cpx     #8
         bcc     @one
         rts
 

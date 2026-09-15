@@ -695,9 +695,10 @@ of up to 105 files; `?` lists every control.
 | Up / down (Ctrl-K / Ctrl-J), or I / K | Previous / next file |
 | Left / right, or - / +, or < / > | Previous / next page (18 files) |
 | [ / ] | First / last file |
-| Return, or 2 | Preview by type; a 32–34 sector binary opens as hi-res |
+| Return, or 2 | Preview by type; a 32–34 sector binary opens as hi-res, any other binary runs (BRUN, after Y) |
 | T / H | Text / hexadecimal preview; also available inside the preview |
 | G | Hi-res viewer: first 8 KB of the selected file |
+| B | BRUN the selected binary after Y: A2FC Mini leaves, then DOS runs it from the panel's drive |
 | Space | Tag or untag the selected file |
 | Ctrl-T / Ctrl-N / * | Tag all / none / invert on the active panel |
 | N | New text file: name, then the editor |

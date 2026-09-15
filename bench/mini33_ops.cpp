@@ -68,7 +68,22 @@ int main(int argc,char** argv) {
     assert(screen(m).find("MEMO")==std::string::npos);
     // Tagged batch: HELLO and README onto the other disk. A2FC.MINI stays.
     keys("[ "); keys("KK ");
-    keys("C"); wait("COPY 2"); keys("Y"); wait("COPIED"); settle();
+    keys("C"); wait("COPY 2");
+    // The banner row reads COPY and the file at every moment of the batch.
+    // The Disk II screen holes are $0478+slot: taken at $0478+slot*16, the
+    // save and restore around each RWTS call put stale characters back at
+    // column 8 of rows 5, 8, 11, 14, 17, 20 and 23.
+    m.pasteRawKeys("Y",1);
+    for(int n=0;n<4000;++n) {
+        run(cpu,100000);
+        std::string s=screen(m), banner=s.substr(20*41,40);
+        if(banner.compare(0,5,"COPY ")==0 && banner.find("MARKED")==std::string::npos &&
+           banner.substr(5,5)!="HELLO" && banner.substr(5,5)!="READM") {
+            fprintf(stderr,"Torn copy banner\n%s",s.c_str()); std::exit(1);
+        }
+        if(s.find("COPIED")!=std::string::npos) break;
+    }
+    wait("COPIED"); settle();
     keys("\t"); expect(m,"4 FILES");
     expect(m,"HELLO"); expect(m,"README"); expect(m,"PIC");
     assert(d->flushPendingWrites());

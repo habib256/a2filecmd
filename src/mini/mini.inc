@@ -107,6 +107,10 @@ LORES           = $C056
 HIRES           = $C057
 SCREEN          = $0400         ; 40-column text page 1
 RWTS_ENTRY      = $03D9         ; DOS 3.3 RWTS, A/Y = IOB
+DOS_WARM        = $03D0         ; DOS 3.3 warm start: the prompt
+COUT            = $FDED         ; character out, through DOS's hook
+CURLIN_HI       = $76           ; Applesoft CURLIN high byte, $FF at the prompt
+BRUN_PAGE       = $0300         ; B: the stub and its DOS command, run at exit
 RWTS_LOCATE_IOB = $03E3         ; returns Y = IOB low, A = IOB high
 IOB_SLOT        = 1             ; slot * 16
 IOB_DRIVE       = 2

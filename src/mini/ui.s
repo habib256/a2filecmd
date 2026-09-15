@@ -17,7 +17,7 @@
         .export say_protected
         .export print_name, print_name15, print_byte, tag_count, tag_test
         .export batch_number, batch_skipped, batch_done, foot_zone
-        .export cf_ok, cf_marked, tg_n
+        .export cf_ok, cf_marked, tg_n, brun_go
 
         .import present, restore_holes, at, put, inline_text, clear, zone
         .import number, hexbyte, filetype, keys_bar, keys_bar_inline
@@ -76,6 +76,10 @@ pg_acc:         .res 2          ; copy_progress: done * 32
 pg_fill:        .res 1
 pg_i:           .res 1
 have_note:      .res 1          ; last operation result, drawn on row 22
+brun_go:        .res 1          ; 1: page 3 holds the BRUN stub, start.s jumps there
+br_idx:         .res 1          ; brun_file locals
+br_last:        .res 1
+br_i:           .res 1
 note_line:      .res 40
 
         .segment "RODATA"
@@ -689,7 +693,7 @@ help:
         ldy     #18
         ldx     #0
         jsr     at
-        PRINT   "L: LOCK/UNLOCK  R: RENAME"
+        PRINT   "L: LOCK/UNLOCK  R: RENAME  B: BRUN"
         ldy     #20
         ldx     #0
         jsr     at
@@ -1278,8 +1282,9 @@ reload_restore:
 
 ; splash -- the same centered layout HELLO prints: title at the top,
 ; credits and the wait line at the bottom. A2FILECMD is written once.
-; present() would overwrite Disk II's slot scratch in $400; restore
-; those seven holes so the first catalog still seeks the right track.
+; The slot's screen holes are put back after the screen is drawn, as
+; before every RWTS call, so the first catalog seeks from the track DOS
+; left there.
 splash:
         jsr     clear
         ldy     #0
@@ -1480,6 +1485,12 @@ main:
         lda     ent_type,y
         and     #$7F
         beq     @astext
+        cmp     #TYPE_BINARY    ; a binary that is not a picture is a
+        bne     @ashex          ; program: RETURN runs it, after Y, as B
+        jsr     brun_file
+        bcc     @notview
+        jmp     @leave
+@ashex:
         lda     #1
         jmp     @doview
 @astext:
@@ -1577,6 +1588,17 @@ main:
         bne     @notren
         jsr     rename_file
 @notren:
+        lda     ck
+        cmp     #'B'
+        bne     @notbrun
+        lda     count
+        beq     @notbrun
+        lda     error
+        bne     @notbrun
+        jsr     brun_file
+        bcc     @notbrun
+        jmp     @leave
+@notbrun:
         jmp     @loop
 @leave:
         jsr     clear
@@ -1649,6 +1671,150 @@ copy_entries_to_left:
         ldx     #1
         ldy     #0
         jmp     copy_side
+
+; ---------------------------------------------------------------------
+; brun_file -- B, or RETURN on a binary that is not a picture. Carry set
+; once Y was answered: brun_cmd then holds the command DOS runs after A2FC
+; Mini has left (start.s), on the slot and the active panel's drive. A
+; name DOS could not read back from a typed line -- a comma, or a
+; character the catalog could not print (shown as ?) -- is refused.
+; ---------------------------------------------------------------------
+.ifdef SIM65
+        .segment "CODE"
+.else
+        .segment "LOWCODE"
+.endif
+brun_file:
+        jsr     activate
+        jsr     foot_zone
+        lda     selected
+        jsr     ent_index
+        sta     br_idx
+        tay
+        lda     ent_type,y
+        and     #$7F
+        cmp     #TYPE_BINARY
+        beq     @binary
+        PRINT   "BRUN IS FOR BINARY FILES"
+        jmp     @refused
+@binary:
+        lda     br_idx
+        jsr     ent_ptr         ; the 30 name characters, as the panel shows them
+        ldy     #NAME_LEN
+@trim:
+        dey
+        jmi     @bad            ; all spaces
+        lda     (ptr),y
+        cmp     #' '
+        beq     @trim
+        sty     br_last
+@scan:
+        lda     (ptr),y
+        cmp     #','
+        jeq     @bad
+        cmp     #'?'
+        jeq     @bad
+        dey
+        bpl     @scan
+        PRINT   "BRUN "
+        lda     br_idx
+        jsr     print_name15
+        PRINT   "?"
+        lda     #0
+        sta     inverse
+        jsr     confirm
+        jcc     @no
+        ldx     #BRUN_STUB_LEN-1 ; the stub, then the command after it
+@stub:
+        lda     brun_stub,x
+        sta     BRUN_PAGE,x
+        dex
+        bpl     @stub
+        ldx     #0
+@head:
+        lda     brun_head,x
+        beq     @name
+        sta     BRUN_TEXT,x
+        inx
+        bne     @head
+@name:
+        stx     br_i
+        lda     br_idx
+        jsr     ent_ptr         ; again: the prompt used ptr
+        ldy     #0
+@char:
+        lda     (ptr),y
+        ora     #$80
+        ldx     br_i
+        sta     BRUN_TEXT,x
+        inc     br_i
+        cpy     br_last
+        beq     @tail
+        iny
+        bne     @char
+@tail:
+        ldx     br_i
+        lda     #','|$80
+        sta     BRUN_TEXT,x
+        inx
+        lda     #'S'|$80
+        sta     BRUN_TEXT,x
+        inx
+        lda     slot
+        ora     #'0'|$80
+        sta     BRUN_TEXT,x
+        inx
+        lda     #','|$80
+        sta     BRUN_TEXT,x
+        inx
+        lda     #'D'|$80
+        sta     BRUN_TEXT,x
+        inx
+        ldy     active
+        lda     pan_drive,y
+        ora     #'0'|$80
+        sta     BRUN_TEXT,x
+        inx
+        lda     #$8D
+        sta     BRUN_TEXT,x
+        inx
+        lda     #0
+        sta     BRUN_TEXT,x
+        lda     #1
+        sta     brun_go
+        sec
+        rts
+@bad:
+        PRINT   "NAME HAS , OR ? - CANNOT BRUN"
+@refused:
+        jsr     keep_note
+@no:
+        clc
+        rts
+
+; The page-3 stub (start.s jumps to it once A2FC Mini has left): nothing
+; of A2FC Mini runs after the program, which may load over it. It prints
+; the command through COUT, where DOS takes a line starting with Ctrl-D.
+; DOS reads such lines only from a running program, so CURLIN's high byte
+; is cleared first, which also covers a start from the DOS prompt. A
+; program that returns lands on DOS's warm start.
+brun_stub:
+        .byte   $A9, $00                ; LDA #0
+        .byte   $85, CURLIN_HI          ; STA CURLIN+1
+        .byte   $A2, $00                ; LDX #0
+        .byte   $BD, <BRUN_TEXT, >BRUN_TEXT ; LDA text,X
+        .byte   $F0, $06                ; BEQ to the JMP
+        .byte   $20, <COUT, >COUT       ; JSR COUT
+        .byte   $E8                     ; INX
+        .byte   $D0, $F5                ; BNE to the LDA
+        .byte   $4C, <DOS_WARM, >DOS_WARM ; JMP DOS warm start
+BRUN_STUB_LEN   = * - brun_stub
+BRUN_TEXT       = BRUN_PAGE + BRUN_STUB_LEN
+        .assert BRUN_TEXT + 48 <= DOS_WARM, error, "BRUN stub and command reach the DOS vectors"
+; the start of the command, high ASCII as DOS reads a typed line
+brun_head:
+        .byte   $8D, $84, 'B'|$80, 'R'|$80, 'U'|$80, 'N'|$80, ' '|$80, 0
+        .segment "CODE"
 
 ; ---------------------------------------------------------------------
 ; looks_hgr -- carry set when the selected file is a binary of 32 to 34
