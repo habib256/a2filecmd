@@ -190,6 +190,10 @@ jobs:
         run: |
           A2FC_CPU=6502 A2FC_PRESET=iie_unenh python3 bench/hd.py
           python3 bench/hd.py
+      - name: Session complete sur les deux XL publiees
+        run: |
+          python3 bench/run.py --xl 6502 --out bench-out/xl-6502
+          python3 bench/run.py --xl 65C02 --out bench-out/xl-65c02
       - name: Apple //c (disquette 6502, SmartPort, XL 65C02, souris)
         run: python3 bench/iic.py
       - name: Nouvelles surcouches, IIe non enhanced

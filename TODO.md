@@ -76,7 +76,10 @@ ne sont pas clos.
   référence hôte, verdict honnête). Les deux ont leur tranche dans
   `make test` ; `tools/fuzz_images.py` couvre toujours les lecteurs
   d'images.
-- [ ] **Images XL** — `bench/run.py` 6502 et 65C02.
+- [x] **Images XL** — le 16 septembre 2026, `bench/run.py --xl 6502|65C02`
+  joue la session complète sur les deux XL publiées (74 et 66 contrôles,
+  en CI) : le volume XL est rebâti avec les fichiers de travail, après
+  vérification qu’il redonne le `.2mg` octet à octet.
 - [x] **Banc //c** — le 16 septembre 2026, `bench/iic.py` (20 contrôles,
   en CI) : disquette 6502 et disque SmartPort (copies vers /RAM et vers le
   SmartPort relues), XL 65C02 amorcée par le SmartPort, pile, souris. La

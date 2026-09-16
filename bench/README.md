@@ -6,7 +6,7 @@ livre pour cela : les adresses des variables observees viennent de la table de
 symboles du lien (`build/a2fc.lbl`), et l'ecran est lu la ou l'Apple II le
 range, en `$400-$7FF`.
 
-Les bancs disquette utilisent l’image interne `dist/A2FILECMD-6502-BOOT-0.8.7.po`.
+Les bancs disquette utilisent l’image interne `dist/A2FILECMD-6502-BOOT-0.8.8.po`.
 La conversion DSK publiée conserve les mêmes blocs ProDOS ; les `.po` ne sont
 pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 
@@ -23,7 +23,7 @@ pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 | `machine.py` | le controle de machine du lanceur : MACHID falsifie a 64 Ko depuis BASIC, `-A2FILE.SYSTEM` refuse en 40 colonnes et rend la main ; un //c passe |
 | `iic.py` | l'Apple //c (`preset='iic'`) : la disquette 6502 publiee dans le lecteur integre avec un disque SmartPort (volumes, lecture, copies vers /RAM et vers le SmartPort relues dans le `.hdv`, pile C et plancher, disquette jamais ecrite), puis la XL 65C02 amorcee par le SmartPort (copie relue, pile, souris du //c : statut, pointeur, borne, clics). **20 controles.** La copie disquette → SmartPort, lecteur 2 vide, demande POM2 7dc429b ou plus recent (le sequenceur Disk II n'etait pas remis a zero moteur allume sur un lecteur vide) : `make pom2host` apres la mise a jour de `~/src/pom2` |
 | `hd.py` | le disque dur `.2mg` publie amorce-t-il, avec son dossier DEMO au complet ; une page brute s'affiche, un `.2MG` s'ouvre comme un dossier |
-| `run.py` | la session complete : naviguer, marquer, copier, deplacer, renommer, verrouiller, changer type et auxtype, creer un dossier, supprimer, lire un texte et des octets, editer, afficher les deux formats d'image et les comparer octet a octet, jouer la fanfare, ecrire et relire des images disque (.PO et .DSK) et copier une disquette, ouvrir une image comme un dossier et en extraire un fichier, lire un catalogue DOS 3.3 et en extraire un fichier, ouvrir le formateur, cliquer a la souris (pointeur, bornes, selection, ouverture, changement de panneau, barre de touches), lancer un programme Applesoft (depuis le disque dur, avec le BASIC.SYSTEM de la disquette) et revenir sur les panneaux par -A2FILE.SYSTEM. **72 controles.** |
+| `run.py` | la session complete : naviguer, marquer, copier, deplacer, renommer, verrouiller, changer type et auxtype, creer un dossier, supprimer, lire un texte et des octets, editer, afficher les deux formats d'image et les comparer octet a octet, jouer la fanfare, ecrire et relire des images disque (.PO et .DSK) et copier une disquette, ouvrir une image comme un dossier et en extraire un fichier, lire un catalogue DOS 3.3 et en extraire un fichier, ouvrir le formateur, cliquer a la souris (pointeur, bornes, selection, ouverture, changement de panneau, barre de touches), lancer un programme Applesoft (depuis le disque dur, avec le BASIC.SYSTEM de la disquette) et revenir sur les panneaux par -A2FILE.SYSTEM. **73 controles** (74 sur la XL 65C02, 66 sur la XL 6502). |
 | `disksingle.py` | comparaison exacte de 280 blocs sur un seul lecteur, changement D2 vers D1, noms des disques à chaque échange et images sources intactes |
 | `six.py` | UNDELETE, DISKCMP, MKIMAGE, RESCUE, SYNC et TREE : volumes jetables, effacement ProDOS réel, contenu relu sur l’hôte et pile surveillée |
 | `volinfo.py` | diagnostic ProDOS en lecture seule, disquette saine/corrompue et volume de 32 Mo, carte paginée et retour avec pile préservée, sur les deux processeurs |
@@ -48,7 +48,7 @@ pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 
 ## Les deux editions
 
-`dist/A2FILECMD-6502-BOOT-0.8.7.po` est l'**edition disquette**, construite en 6502
+`dist/A2FILECMD-6502-BOOT-0.8.8.po` est l'**edition disquette**, construite en 6502
 (`build-6502/`) avec le gestionnaire et les outils disque seulement : c'est
 elle que les bancs amorcent par defaut, et sa table de symboles est prise
 dans `build-6502/` sans rien dire. `run.py` y saute la section souris, et les
@@ -64,8 +64,13 @@ MUSIC est chargé depuis une copie de MEDIA en lecteur 2. Les bancs AWP,
 Binary II et ShrinkIt utilisent `archive_support.py` pour substituer leur
 lecteur à FORMAT/DISKIMG dans une copie jetable de cette disquette : tous
 les outils ne tiennent plus ensemble sur 140 Ko.
-`hd.py` amorce `dist/A2FILECMD-65C02-XL-0.8.7.2mg` ;
+`hd.py` amorce `dist/A2FILECMD-65C02-XL-0.8.8.2mg` ;
 `A2FC_CPU=6502 A2FC_PRESET=iie_unenh python3 bench/hd.py` teste la XL 6502.
+`run.py --xl 65C02` et `run.py --xl 6502` jouent la session complète sur
+la XL publiée de ce processeur (la 6502 sur le IIe non enhanced, sans
+souris) : POM2 ne prend qu’un disque dur, donc le volume XL est rebâti
+avec les fichiers de travail à sa racine, après avoir vérifié qu’il
+redonne sans eux le `.2mg` publié octet à octet.
 `extras.py` vérifie BOOT + FILES et les demandes des autres catégories avec deux lecteurs, les échanges avec un
 seul lecteur et BASIC.SYSTEM. Par défaut il prend le 6502 ;
 `python3 bench/extras.py` vérifie les mêmes disquettes 6502 sur IIe enhanced.
@@ -135,7 +140,7 @@ donne un Apple //c (ROM 32 Ko) : son lecteur integre est le Disk II du slot
 6, donc `--boot 6` amorce la disquette comme sur le //e, et le disque dur est
 une unite SmartPort sur le port arriere, servie par le firmware du //c en
 slot 5 (pas de carte, pas de Mockingboard). Les deux presets amorcent
-`dist/A2FILECMD-6502-BOOT-0.8.7.po` jusqu'aux panneaux. `Pom2(..., floppy2=...)` met une
+`dist/A2FILECMD-6502-BOOT-0.8.8.po` jusqu'aux panneaux. `Pom2(..., floppy2=...)` met une
 seconde disquette dans le lecteur 2 du meme Disk II des l'amorcage
 (`pom2_playtest --disk2`) : un vrai DOS 3.3 dans un lecteur, sans passer par
 `/disk` -- ce que le banc des disques physiques attendait.

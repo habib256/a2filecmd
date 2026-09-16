@@ -8,12 +8,21 @@ d'image et les comparer octet a octet, jouer une musique, ouvrir le
 formateur, et enfin lancer un programme Applesoft.
 
     make disk && POM2=/chemin/vers/pom2 python3 bench/run.py [--out DOSSIER]
+    make disk && python3 bench/run.py --xl 65C02     # ou --xl 6502
+
+Avec --xl, la meme session amorce le .2mg XL publie de ce processeur : POM2
+ne prend qu'un disque dur, donc le volume XL est rebati avec les fichiers de
+travail a sa racine (et d'abord sans eux, pour verifier qu'il redonne
+l'image publiee octet a octet) ; la disquette BOOT publiee reste en lecteur
+1 pour les images disque et le formateur. La XL 6502 tourne sur le IIe non
+enhanced, sans la section souris.
 
 Chaque controle imprime PASS ou FAIL ; le premier echec arrete le banc et
 imprime l'ecran. Avec --out, les captures et un resume JSON y sont ecrits.
 """
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -25,10 +34,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-from pom2 import BUILD, Pom2, Session, ROOT, DISK, IMG, VERSION, Timeout
-HAS_MOUSE = 'build-6502' not in str(BUILD)   # pas de souris dans la version 6502
+from pom2 import BUILD, PRESET, Pom2, Session, ROOT, DISK, IMG, VERSION, Timeout, labels
 import mkdemo
 import mkdos33
+from prodos_read import Image
 
 README_LEN = (ROOT / 'data/README.TXT').stat().st_size
 sys.path.insert(0, str(ROOT / 'tools'))
@@ -84,11 +93,9 @@ def volume(stage, out, name, blocks):
     return out
 
 
-def scratch_volume(dirpath, name='SCRATCH', blocks=1600):
-    """Un disque dur vide : POM2 en veut un, et les copies ont besoin d'une cible.
-    Il porte aussi TINY.PO, une petite image ProDOS de 64 blocs (un texte, un
-    dossier) pour les essais d'images disque."""
-    stage = dirpath / 'scratch'
+def scratch_files(stage, dirpath):
+    """Ce que la session attend a la racine du disque de travail : WORK,
+    OUT, TINY.PO (une image ProDOS de 64 blocs) et DOS33.DSK."""
     (stage / 'WORK').mkdir(parents=True)
     (stage / 'WORK/NOTE.TXT').write_bytes(b'scratch\r')
     tiny = dirpath / 'tiny'
@@ -104,6 +111,14 @@ def scratch_volume(dirpath, name='SCRATCH', blocks=1600):
     ])[:18 * 16 * 256]
     (stage / 'DOS33.DSK').write_bytes(dos)
     (stage / 'OUT').mkdir()
+
+
+def scratch_volume(dirpath, name='SCRATCH', blocks=1600):
+    """Un disque dur vide : POM2 en veut un, et les copies ont besoin d'une cible.
+    Il porte aussi TINY.PO, une petite image ProDOS de 64 blocs (un texte, un
+    dossier) pour les essais d'images disque."""
+    stage = dirpath / 'scratch'
+    scratch_files(stage, dirpath)
     # le dossier DEMO, tel que le .2mg le livre mais en petit : la disquette
     # publiee n'en porte plus, c'est ici que le banc l'essaie
     mkdemo.make(stage / 'DEMO', full=False)
@@ -111,22 +126,88 @@ def scratch_volume(dirpath, name='SCRATCH', blocks=1600):
     return volume(stage, dirpath / 'SCRATCH.hdv', name, blocks)
 
 
+HOST_EXT = {0x04: 'TXT', 0x06: 'BIN', 0xFA: 'INT', 0xFC: 'BAS', 0xFF: 'SYS'}
+
+
+def extract(image, key, dest):
+    """Un repertoire de l'image vers un dossier que mkvolume.py relit a
+    l'identique : NOM.EXT quand l'extension suffit, NOM#TTAAAA sinon (l'ordre
+    alphabetique des noms d'hote est celui de la construction)."""
+    dest.mkdir(parents=True)
+    for e in image.entries(key):
+        name = e[1:1 + (e[0] & 15)].decode('ascii')
+        if e[0] >> 4 == 0xD:
+            extract(image, int.from_bytes(e[0x11:0x13], 'little'), dest / name)
+            continue
+        ftype, aux = e[0x10], int.from_bytes(e[0x1F:0x21], 'little')
+        host = '%s.%s' % (name, HOST_EXT[ftype]) if ftype in HOST_EXT and not aux \
+            else '%s#%02X%04X' % (name, ftype, aux)
+        (dest / host).write_bytes(image.read(e))
+
+
+def xl_volume(dirpath, cpu):
+    """Le .2mg XL publie, rebati avec les fichiers de travail a sa racine :
+    POM2 ne prend qu'un disque dur, qui doit amorcer et servir de cible.
+    Rend (image, nom du volume, TINY.PO, rebati == publie) : le dernier dit
+    si le volume rebati sans ajout est l'image publiee, octet a octet."""
+    payload = (ROOT / ('dist/A2FILECMD-%s-XL-%s.2mg' % (cpu, VERSION))).read_bytes()[64:]
+    image = Image(payload)
+    name = image.header()['name']
+    boot = dirpath / 'xl-boot'
+    boot.write_bytes(payload[:1024])
+    stage = dirpath / 'xl'
+    extract(image, 2, stage)
+
+    def build(out):
+        subprocess.run([sys.executable, str(ROOT / 'tools/mkvolume.py'), str(stage), str(out),
+                        '--volume', name, '--boot', str(boot), '--blocks', str(image.header()['blocks'])],
+                       check=True, capture_output=True)
+        return out
+    same = build(dirpath / 'XL-rebuilt.po').read_bytes() == payload
+    (dirpath / 'XL-rebuilt.po').unlink()
+    scratch_files(stage, dirpath)
+    return build(dirpath / 'XL.hdv'), '/' + name, stage / 'TINY.PO', same
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--out', type=Path, help='ou ecrire captures et resume')
-    ap.add_argument('--port', type=int, default=6610)
+    ap.add_argument('--port', type=int)
+    ap.add_argument('--xl', choices=('6502', '65C02'),
+                    help="amorcer le .2mg XL publie de ce processeur au lieu de la disquette")
     args = ap.parse_args()
+    xl = args.xl
+    port = args.port or {None: 6610, '65C02': 6616, '6502': 6617}[xl]
     if args.out:
         args.out.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory(prefix='a2fc-bench-') as tmp:
         tmp = Path(tmp)
         floppy = tmp / 'A2FILECMD.po'
-        shutil.copyfile(DISK, floppy)
         media_floppy = tmp / 'MEDIA.po'
         shutil.copyfile(ROOT / f'dist/A2FILECMD-6502-MEDIA-{VERSION}.po', media_floppy)
-        with Pom2(scratch_volume(tmp), floppy=floppy, floppy2=media_floppy, port=args.port, mouse=True) as p:
-            s = Session(p)
+        if xl:
+            # XL : le disque dur amorce, la disquette BOOT publiee reste en
+            # lecteur 1 pour les images disque et le formateur
+            build = ROOT / ('build-6502' if xl == '6502' else 'build')
+            shutil.copyfile(ROOT / f'dist/A2FILECMD-6502-BOOT-{VERSION}.po', floppy)
+            hdv, vol, tiny_po, same = xl_volume(tmp, xl)
+            scr, blocks, boot = vol, 65535, None
+            preset = os.environ.get('A2FC_PRESET') or ('iie_unenh' if xl == '6502' else 'iie')
+        else:
+            build = BUILD
+            shutil.copyfile(DISK, floppy)
+            hdv = scratch_volume(tmp)
+            scr, blocks, boot, preset = '/SCRATCH', 280, 6, PRESET
+            tiny_po = tmp / 'scratch/TINY.PO'
+        fvol = '/' + Image(floppy.read_bytes()).header()['name']
+        vol = vol if xl else fvol
+        has_mouse = build.name != 'build-6502'
+        with Pom2(hdv, floppy=floppy, floppy2=media_floppy, port=port, mouse=True,
+                  preset=preset, boot=boot) as p:
+            s = Session(p, labels(build / 'a2fc.lbl'))
+            if xl:
+                s.ok('le volume XL rebati sans ajout est le .2mg publie, octet a octet', same)
 
             def shot(name):
                 if not args.out:
@@ -137,25 +218,29 @@ def main():
 
             # ── 1. le demarrage ───────────────────────────────────────────
             s.boot()
-            s.ok('la disquette amorce sur les deux panneaux', s.has('/A2FILECMD'), s.rows()[0][:30])
+            s.ok('le programme amorce sur les deux panneaux', s.rows()[0].startswith(vol + ' '), s.rows()[0][:30])
             s.ok('la version est affichee', s.has('A2 FILE CMD ' + VERSION))
-            s.ok('le panneau droit, sans DEMO sur la disquette, montre les volumes',
-                 '[Volumes]' in s.rows()[0][40:], s.rows()[0][40:70])
+            if xl:
+                s.ok('le panneau droit ouvre le DEMO du disque XL',
+                     s.rows()[0][40:].startswith(vol + '/DEMO '), s.rows()[0][40:70])
+            else:
+                s.ok('le panneau droit, sans DEMO sur la disquette, montre les volumes',
+                     '[Volumes]' in s.rows()[0][40:], s.rows()[0][40:70])
             s.ok('les blocs libres sont comptes',
-                 re.search(r'\d+ of 280 blocks free', s.rows()[20]) is not None, s.rows()[20][:70])
+                 re.search(r'\d+ of %d blocks free' % blocks, s.rows()[20]) is not None, s.rows()[20][:70])
             shot('01-panels')
 
             # ── 2. naviguer ───────────────────────────────────────────────
             s.select('A2FILE'); s.key(RET)
-            s.wait(lambda: s.has('/A2FILECMD/A2FILE'), 'ouvrir A2FILE'); p.stable()
+            s.wait(lambda: s.has(vol + '/A2FILE'), 'ouvrir A2FILE'); p.stable()
             s.ok('Entree ouvre un dossier', any(r.startswith('A2FILE.CODE') for r in s.rows()))
-            s.key(ESC); s.wait(lambda: s.rows()[0][:11] == '/A2FILECMD ', 'remonter'); p.stable()
+            s.key(ESC); s.wait(lambda: s.rows()[0].startswith(vol + ' '), 'remonter'); p.stable()
             s.ok('Echap remonte et reselectionne le dossier quitte',
                  s.line().startswith('A2FILE/'), s.line()[:20])
             before = s.line()
             s.key(RIGHT); p.stable()
             s.ok('la fleche droite fait une page, elle n ouvre pas',
-                 s.rows()[0][:11] == '/A2FILECMD ' and s.line() != before, s.line()[:20])
+                 s.rows()[0].startswith(vol + ' ') and s.line() != before, s.line()[:20])
             s.key(b'['); p.stable()
             s.ok('[ revient a la premiere entree', s.line().startswith('.. '), s.line()[:12])
 
@@ -163,10 +248,12 @@ def main():
             dhgr = decode_rle(mkdemo.image(b'DHRR', 16384, mkdemo.dhgr_card()), 16384)
             hgr = decode_rle(mkdemo.image(b'HGRR', 8192, mkdemo.hgr_card()), 8192)
             s.key(TAB)                                    # le panneau droit : /SCRATCH/DEMO
-            s.select('/SCRATCH', 40); s.key(RET)
-            s.wait(lambda: s.rows()[0][40:].startswith('/SCRATCH '), 'SCRATCH droit'); p.stable()
+            if '[Volumes]' not in s.rows()[0][40:]:       # XL : il est deja sur DEMO
+                s.key(b'/'); s.wait(lambda: '[Volumes]' in s.rows()[0][40:], 'volumes droit')
+            s.select(scr, 40); s.key(RET)
+            s.wait(lambda: s.rows()[0][40:].startswith(scr + ' '), 'SCRATCH droit'); p.stable()
             s.select('DEMO', 40); s.key(RET)
-            s.wait(lambda: s.has('/SCRATCH/DEMO'), 'DEMO droit'); p.stable()
+            s.wait(lambda: s.has(scr + '/DEMO'), 'DEMO droit'); p.stable()
             s.select('DHGR.RLE', 40); s.key(RET); s.allow_aux()
             s.wait(lambda: s.value('view', 1) == 1, 'image DHGR', 40); time.sleep(1.5)
             page = p.peek(0x2000, 8192, 'aux') + p.peek(0x2000, 8192)
@@ -248,8 +335,8 @@ def main():
             if s.cursor_row(0) is None:      # le panneau gauche actif : / et select y agissent
                 s.key(TAB)
             s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes')
-            s.select('/SCRATCH'); s.key(RET)
-            s.wait(lambda: s.rows()[0][:9] == '/SCRATCH ', 'ouvrir SCRATCH'); p.stable()
+            s.select(scr); s.key(RET)
+            s.wait(lambda: s.rows()[0].startswith(scr + ' '), 'ouvrir SCRATCH'); p.stable()
 
             def drive_key(slot, drive):
                 for _ in range(20):
@@ -275,7 +362,7 @@ def main():
             shot('10-diskimg')
             s.key(b'R'); s.wait(lambda: s.has('Read which disk'), 'choix du lecteur'); p.stable()
             s.ok('la liste des lecteurs nomme la disquette du programme et la vierge',
-                 s.has('/A2FILECMD') and s.has('/BLANK') and s.has('IN USE'), s.rows()[4:8])
+                 s.has(fvol) and s.has('/BLANK') and s.has('IN USE'), s.rows()[4:8])
             s.key(drive_key(6, 1)); s.wait(lambda: s.has('Image name'), 'nom')
             s.type('BACK'); s.key(RET); s.wait(lambda: s.has('ProDOS order (.PO) or D'), 'ordre')
             s.key(b'D')
@@ -304,10 +391,10 @@ def main():
             s.wait(lambda: s.has('64 blocks written to slot 6 drive 2') or s.has('Failed') or s.has('Readback failed'), 'ecriture', 120)
             p.stable()
             s.ok("l'image .PO est ecrite sur la disquette, les panneaux reviennent",
-                 s.has('64 blocks written to slot 6 drive 2') and s.has('Verified.') and s.rows()[0][:9] == '/SCRATCH ',
+                 s.has('64 blocks written to slot 6 drive 2') and s.has('Verified.') and s.rows()[0].startswith(scr + ' '),
                  s.rows()[22].strip())
             p.eject(1); time.sleep(.5)
-            tiny = (tmp / 'scratch/TINY.PO').read_bytes()
+            tiny = tiny_po.read_bytes()
             s.ok('la disquette porte les 64 blocs de TINY.PO, octet a octet',
                  blank.read_bytes()[:len(tiny)] == tiny and len(blank.read_bytes()) == 143360)
             blank_disk()
@@ -336,19 +423,19 @@ def main():
             if s.cursor_row(40) is None:        # activer le panneau droit
                 s.key(TAB)
             s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes')
-            s.select('/SCRATCH', 40); s.key(RET)
-            s.wait(lambda: s.rows()[0][40:].startswith('/SCRATCH '), 'scratch droit'); p.stable()
+            s.select(scr, 40); s.key(RET)
+            s.wait(lambda: s.rows()[0][40:].startswith(scr + ' '), 'scratch droit'); p.stable()
             s.select('TINY.PO', 40); s.key(RET)
-            s.wait(lambda: s.has('/SCRATCH/TINY.PO') or s.has('Not a ProDOS'), 'ouvrir image', 20); p.stable()
+            s.wait(lambda: s.has(scr + '/TINY.PO') or s.has('Not a ProDOS'), 'ouvrir image', 20); p.stable()
             s.ok("Entree ouvre une image .PO comme un dossier",
-                 s.has('/SCRATCH/TINY.PO') and any(r[40:].startswith('HELLO ') for r in s.rows()),
+                 s.has(scr + '/TINY.PO') and any(r[40:].startswith('HELLO ') for r in s.rows()),
                  s.rows()[0][40:70])
             shot('11-imgfs')
             s.select('INSIDE', 40); s.key(RET)
-            s.wait(lambda: s.has('/SCRATCH/TINY.PO/INSIDE'), 'sous-dossier'); p.stable()
+            s.wait(lambda: s.has(scr + '/TINY.PO/INSIDE'), 'sous-dossier'); p.stable()
             s.ok("on descend dans les sous-dossiers de l'image",
                  any(r[40:].startswith('DEEP ') for r in s.rows()))
-            s.key(ESC); s.wait(lambda: s.rows()[0][40:].startswith('/SCRATCH/TINY.PO '), 'remonter'); p.stable()
+            s.key(ESC); s.wait(lambda: s.rows()[0][40:].startswith(scr + '/TINY.PO '), 'remonter'); p.stable()
             s.ok("Echap remonte a la racine de l'image",
                  any(r[40:].startswith('INSIDE/') for r in s.rows()))
             # C : extraire HELLO vers le panneau gauche (/SCRATCH)
@@ -371,12 +458,12 @@ def main():
             # que la suite attend
             if s.cursor_row(40) is None:
                 s.key(TAB)
-            s.key(ESC); s.wait(lambda: s.rows()[0][40:].startswith('/SCRATCH '), 'sortir image'); p.stable()
+            s.key(ESC); s.wait(lambda: s.rows()[0][40:].startswith(scr + ' '), 'sortir image'); p.stable()
             s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes')
-            s.select('/SCRATCH', 40); s.key(RET)
-            s.wait(lambda: s.rows()[0][40:].startswith('/SCRATCH '), 'racine droite'); p.stable()
+            s.select(scr, 40); s.key(RET)
+            s.wait(lambda: s.rows()[0][40:].startswith(scr + ' '), 'racine droite'); p.stable()
             s.select('DEMO', 40); s.key(RET)
-            s.wait(lambda: s.has('/SCRATCH/DEMO'), 'DEMO droit'); p.stable()
+            s.wait(lambda: s.has(scr + '/DEMO'), 'DEMO droit'); p.stable()
 
             # ── 5d. une disquette DOS 3.3 (image) ─────────────────────────
             # Entree sur DOS33.DSK montre son catalogue DOS 3.3 (types T/A/B) ;
@@ -385,19 +472,19 @@ def main():
             if s.cursor_row(0) is None:         # panneau gauche actif
                 s.key(TAB)
             s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes')
-            s.select('/SCRATCH'); s.key(RET)
-            s.wait(lambda: s.rows()[0][:9] == '/SCRATCH ', 'scratch gauche'); p.stable()
-            s.select('OUT'); s.key(RET); s.wait(lambda: s.has('/SCRATCH/OUT'), 'OUT'); p.stable()
+            s.select(scr); s.key(RET)
+            s.wait(lambda: s.rows()[0].startswith(scr + ' '), 'scratch gauche'); p.stable()
+            s.select('OUT'); s.key(RET); s.wait(lambda: s.has(scr + '/OUT'), 'OUT'); p.stable()
             if s.cursor_row(40) is None:
                 s.key(TAB)
             s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes')
-            s.select('/SCRATCH', 40); s.key(RET)
-            s.wait(lambda: s.rows()[0][40:].startswith('/SCRATCH '), 'scratch droit'); p.stable()
+            s.select(scr, 40); s.key(RET)
+            s.wait(lambda: s.rows()[0][40:].startswith(scr + ' '), 'scratch droit'); p.stable()
             s.select('DOS33.DSK', 40); s.key(RET)
-            s.wait(lambda: s.has('/SCRATCH/DOS33.DSK') or s.has('Not a ProDOS'), 'ouvrir DOS 3.3', 20)
+            s.wait(lambda: s.has(scr + '/DOS33.DSK') or s.has('Not a ProDOS'), 'ouvrir DOS 3.3', 20)
             p.stable()
             s.ok('Entree ouvre une image DOS 3.3 et montre son catalogue',
-                 s.has('/SCRATCH/DOS33.DSK') and any(r[40:].startswith('GREETINGS ') for r in s.rows()),
+                 s.has(scr + '/DOS33.DSK') and any(r[40:].startswith('GREETINGS ') for r in s.rows()),
                  s.rows()[0][40:70])
             shot('12-dos33')
             s.ok('les types DOS 3.3 sont traduits en ProDOS',
@@ -419,18 +506,18 @@ def main():
             # sortir de l'image et rendre au panneau droit son dossier DEMO
             if s.cursor_row(40) is None:
                 s.key(TAB)
-            s.key(ESC); s.wait(lambda: s.rows()[0][40:].startswith('/SCRATCH '), 'sortir DOS 3.3'); p.stable()
+            s.key(ESC); s.wait(lambda: s.rows()[0][40:].startswith(scr + ' '), 'sortir DOS 3.3'); p.stable()
             s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes')
-            s.select('/SCRATCH', 40); s.key(RET)
-            s.wait(lambda: s.rows()[0][40:].startswith('/SCRATCH '), 'racine droite'); p.stable()
+            s.select(scr, 40); s.key(RET)
+            s.wait(lambda: s.rows()[0][40:].startswith(scr + ' '), 'racine droite'); p.stable()
             s.select('DEMO', 40); s.key(RET)
-            s.wait(lambda: s.has('/SCRATCH/DEMO'), 'DEMO droit 2'); p.stable()
+            s.wait(lambda: s.has(scr + '/DEMO'), 'DEMO droit 2'); p.stable()
 
             # ── 6. copier, deplacer, renommer, supprimer ──────────────────
             s.key(TAB)                                    # le panneau gauche, la racine
             s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes')
-            s.select('/SCRATCH'); s.key(RET)
-            s.wait(lambda: s.rows()[0][:9] == '/SCRATCH ', 'ouvrir SCRATCH'); p.stable()
+            s.select(scr); s.key(RET)
+            s.wait(lambda: s.rows()[0].startswith(scr + ' '), 'ouvrir SCRATCH'); p.stable()
             s.ok('la liste des volumes ouvre le disque dur', s.has('WORK/'), s.line()[:20])
             s.key(TAB)                                    # retour a DEMO, la source
             s.select('SAMPLE', 40); row = s.cursor_row(40); s.key(b' '); p.stable()
@@ -496,15 +583,15 @@ def main():
             # ── 9. le formateur ───────────────────────────────────────────
             s.key(b'F'); s.wait(lambda: s.has('ERASES EVERYTHING'), 'formateur', 60); p.stable()
             s.ok('F ouvre le formateur, qui liste les lecteurs',
-                 s.has('Disk II 5.25') and s.has('/A2FILECMD'), s.rows()[3][:60])
+                 s.has('Disk II 5.25') and s.has(fvol), s.rows()[3][:60])
             shot('09-format')
             # ESC quitte la surcouche et restaure directement les panneaux.
             s.key(ESC); s.wait(lambda: s.has('Type  Aux     Size'), 'retour au gestionnaire', 90)
             p.stable()
             s.ok('Echap retourne aux panneaux sans relancer le gestionnaire',
-                 s.rows()[0].startswith('/SCRATCH ') and '/SCRATCH/DEMO' in s.rows()[0], s.rows()[0][:60])
+                 s.rows()[0].startswith(scr + ' ') and scr + '/DEMO' in s.rows()[0], s.rows()[0][:60])
 
-            if HAS_MOUSE:   # pas de souris dans la version 6502
+            if has_mouse:   # pas de souris dans la version 6502
                 # ── 10. la souris ─────────────────────────────────────────────
                 # Une AppleMouse II en slot 4 depuis le debut de la session : tout ce
                 # qui precede s'est fait au clavier avec elle en place, sans que le
@@ -512,9 +599,9 @@ def main():
                 s.ok('la souris est vue en slot 4, la ligne de statut le dit',
                      s.value('mouse', 1) == 4 and s.has(' Mouse '), s.rows()[20][60:])
                 s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes')
-                s.select('/SCRATCH'); s.key(RET)
-                s.wait(lambda: s.rows()[0][:9] == '/SCRATCH ', 'racine'); p.stable()
-                s.select('DEMO'); s.key(RET); s.wait(lambda: s.has('/SCRATCH/DEMO'), 'DEMO')
+                s.select(scr); s.key(RET)
+                s.wait(lambda: s.rows()[0].startswith(scr + ' '), 'racine'); p.stable()
+                s.select('DEMO'); s.key(RET); s.wait(lambda: s.has(scr + '/DEMO'), 'DEMO')
                 p.stable()
                 x0 = 0 if s.cursor_row(0) is not None else 40      # le panneau actif
                 other = 40 - x0
@@ -553,9 +640,9 @@ def main():
 
             # ── 11. Applesoft, en dernier : on ne revient pas ─────────────
             s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes')
-            s.select('/SCRATCH'); s.key(RET)
-            s.wait(lambda: s.rows()[0][:9] == '/SCRATCH ', 'racine'); p.stable()
-            s.select('DEMO'); s.key(RET); s.wait(lambda: s.has('/SCRATCH/DEMO'), 'DEMO')
+            s.select(scr); s.key(RET)
+            s.wait(lambda: s.rows()[0].startswith(scr + ' '), 'racine'); p.stable()
+            s.select('DEMO'); s.key(RET); s.wait(lambda: s.has(scr + '/DEMO'), 'DEMO')
             p.stable()
             # T sur un BAS : la surcouche BASLIST le detokenise (au lieu de l'hexa)
             s.select('HELLO'); p.stable()
@@ -570,9 +657,9 @@ def main():
             # BASIC.SYSTEM restera sur le dossier du programme lance, donc le
             # -A2FILE.SYSTEM nu n'y resoudrait pas.
             back = re.search(r'Back: (-\S+/A2FILE\.SYSTEM)', s.rows()[22])
-            s.ok('un BAS demande confirmation et epelle le retour', back is not None and '/A2FILECMD/' in back.group(1),
+            s.ok('un BAS demande confirmation et epelle le retour', back is not None and vol + '/' in back.group(1),
                  s.rows()[22].strip())
-            back = back.group(1) if back else '-/A2FILECMD/A2FILE.SYSTEM'
+            back = back.group(1) if back else '-%s/A2FILE.SYSTEM' % vol
             s.key(b'Y')
             s.wait(lambda: any('A2 FILE CMD RUNS APPLESOFT' in r for r in s.rows40()),
                    'Applesoft', 60)
@@ -587,7 +674,7 @@ def main():
             s.type(back); s.key(RET)
             s.wait(lambda: s.has('Type  Aux     Size'), 'retour a A2FC', 90); p.stable()
             s.ok(back + ' relance A2 File Cmd depuis Applesoft',
-                 s.rows()[0].startswith('/SCRATCH') and '/SCRATCH/DEMO' in s.rows()[0], s.rows()[0][:60])
+                 s.rows()[0].startswith(scr) and scr + '/DEMO' in s.rows()[0], s.rows()[0][:60])
 
             passed = sum(1 for c in s.checks if c['ok'])
             print(f'\n{passed} controles, tous passes', flush=True)

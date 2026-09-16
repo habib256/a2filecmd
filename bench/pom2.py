@@ -68,12 +68,15 @@ class Pom2:
     """Un emulateur, sa copie de la disquette, et de quoi la piloter."""
 
     def __init__(self, hdv, floppy=None, port=6600, speed=200000, exe=POM2, mouse=False,
-                 preset=None, floppy2=None, ssc=None, uthernet=False, chatmauve=None):
+                 preset=None, floppy2=None, ssc=None, uthernet=False, chatmauve=None,
+                 boot=6):
         """`hdv` : le disque dur (toujours present, POM2 en veut un).
         `floppy` : la disquette 5,25 a mettre en slot 6 et a amorcer.
         `floppy2` : une seconde disquette, lecteur 2 du meme Disk II, presente
         des l'amorcage (un vrai DOS 3.3 dans un lecteur, sans passer par /disk).
         `mouse` : une AppleMouse II en slot 4, que mouse() fait bouger.
+        `boot` : le slot a amorcer quand une disquette est la (6), ou None
+        pour amorcer le disque dur malgre elle.
         `ssc` : le port TCP du pont de la Super Serial Card (slot 2), en mode
         brut, pour le banc VDrive -- si pom2_playtest a le drapeau --ssc.
         `uthernet` : une Uthernet II (W5100) en slot 3, loopback ouvert, pour
@@ -86,6 +89,7 @@ class Pom2:
         self.port, self.base = port, 'http://127.0.0.1:%d' % port
         self.hdv, self.floppy = str(hdv), str(floppy) if floppy else None
         self.floppy2 = str(floppy2) if floppy2 else None
+        self.boot = boot
         self.speed, self.exe, self.proc = speed, exe, None
         self.preset = preset or PRESET
         self.chatmauve = chatmauve
@@ -100,7 +104,9 @@ class Pom2:
         args = [self.exe, '--preset', self.preset, '--ai-control=%d' % self.port,
                 '--speed', str(self.speed)]
         if self.floppy:
-            args += ['--disk', self.floppy, '--boot', '6']
+            args += ['--disk', self.floppy]
+            if self.boot:
+                args += ['--boot', str(self.boot)]
         if self.floppy2:
             args += ['--disk2', self.floppy2]
         if self.with_mouse:
