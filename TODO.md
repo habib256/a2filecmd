@@ -54,8 +54,11 @@ ni un format neuf tant que la dernière case n’est pas close.
   bancs d’archives amorcent `build-6502/A2FILECMD-full.po`
   (`make benchfloppy ARCH=6502`, `A2FC_BUILD=build-6502
   A2FC_IMG=A2FILECMD-full`) : 30/30 sur les deux CPU.
-- [ ] **Mutations** — `tools/fuzz_images.py` : UNSHRINK, BINARY2, IMGFS,
-  DOS33 ; CI.
+- [ ] **Mutations** — `tools/fuzz_prodos.py` pour FIXIT/REPAIR : fait le
+  16 septembre 2026, 15 000 cas sur trois graines, dans `make test`
+  (`--count 150 --seed 1`) ; il a valu le refus du plan entier sur `XLINK`
+  (docs/FIXIT.md §5 et §7). Reste `tools/fuzz_images.py` : UNSHRINK,
+  BINARY2, IMGFS, DOS33 ; CI.
 - [ ] **Images XL** — `bench/run.py` 6502 et 65C02.
 - [ ] **Banc //c** — session, pile, disquette, souris.
 - [ ] **💾 IIgs** — premier boot (SmartPort, `$C000`) ; documenter Disk II.

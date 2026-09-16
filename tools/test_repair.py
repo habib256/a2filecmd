@@ -563,19 +563,17 @@ class Repair(unittest.TestCase):
         self.assertEqual(r['on'] & 8, 0, 'BM_LOST is off')
         self.assertEqual(r['note'], M_PARTIAL)
 
-    def test_a_lost_block_beside_a_cross_link_is_not_freed(self):
-        """The bitmap corrections that only mark used are still applied."""
-        data, _ = self.corrupted('crosslink', 'bitmap_reserved_free')
+    def test_a_cross_link_beside_a_bitmap_fault_writes_nothing_either(self):
+        """A cross-link refuses the whole plan, the bitmap page included."""
+        data, result = self.corrupted('crosslink', 'bitmap_reserved_free')
         r, after = self.fix(data)
+        self.assertNoWrite(r, data, after)
+        self.assertEqual(r['note'], M_XLINK)
+        self.assertEqual(r['corr'], 0, 'nothing is offered')
         self.assertEqual(r['on'] & 8, 0)
-        self.assertEqual(r['nwrite'], 1, r)
-        lines = self.plan_lines(r)
-        self.assertIn('BM_RESERVED', lines)
-        self.assertNotIn('BM_LOST', lines, 'the plan never offers what it refuses')
-        self.assertIn(M_XLINK, r['screen'])
-        # the block the cross-link orphaned is still marked used
-        left = prodos_check.check(after)
-        self.assertIn('BM_LOST', {f.id for f in left.findings})
+        self.assertNotIn('Plan:', r['screen'], 'no plan is even offered')
+        self.assertEqual(prodos_check.to_json(prodos_check.check(after).findings),
+                         prodos_check.to_json(result.findings))
 
     def test_a_directory_loop_refuses_the_whole_plan(self):
         data, result = self.corrupted('chain_loop')
@@ -898,21 +896,64 @@ class Repair(unittest.TestCase):
                 self.assertNoWrite(r, data, after)
                 self.assertEqual(r['note'], M_NOTHING)
 
-    # -- (i) what a cross-link still allows ----------------------------------
-    def test_a_cross_link_refuses_the_freeing_and_nothing_else(self):
-        """Section 5: only BM_LOST waits on a cross-link. The rest is written."""
+    # -- (i) what a cross-link refuses ---------------------------------------
+    def test_a_cross_link_refuses_the_whole_plan(self):
+        """Section 5: a block two things claim stops every repair.
+
+        Until the campaign of tools/fuzz_prodos.py only BM_LOST waited on a
+        cross-link, and the seven directory corrections went out anyway.
+        Invariant 5 of that campaign showed the cost: a block a file claims
+        as data is a block a counter repair rewrites, and the file loses
+        those bytes. The message said "before any repair" and the code
+        repaired; it refuses now, and eleven corrections wait with it.
+        """
         data, result = self.corrupted(*(REPAIRABLE + ('crosslink',)))
         r, after = self.fix(data)
+        self.assertNoWrite(r, data, after)
+        self.assertEqual(r['note'], M_XLINK)
+        self.assertEqual(r['corr'], 0, 'nothing is offered')
         self.assertEqual(r['on'] & 8, 0, 'BM_LOST is off')
-        self.assertIn(M_XLINK, r['screen'])
-        self.assertNotIn('BM_LOST', self.plan_lines(r),
-                         'the plan never offers what it refuses')
-        for id in DIR_IDS:
-            self.assertIn(id, self.plan_lines(r), id)
-        left = {f.id for f in prodos_check.check(after).findings}
-        self.assertEqual(left, {'XLINK', 'BM_LOST'}, sorted(left))
-        # the verdict counts what is left instead of claiming a repair
-        self.assertTrue(r['note'].endswith('findings.'), r['note'])
+        self.assertNotIn('Plan:', r['screen'], 'no plan is even offered')
+        self.assertEqual(prodos_check.to_json(prodos_check.check(after).findings),
+                         prodos_check.to_json(result.findings))
+
+    def cross_linked_directory_block(self, block_of):
+        """A file whose key is a directory block, and a fault on that block.
+
+        The two shapes tools/fuzz_prodos.py found: the volume directory
+        block 2 miscounted, and a subdirectory header naming the wrong
+        parent. In both, the block the repair would rewrite is the block the
+        file reads.
+        """
+        data = bytearray(self.clean)
+        inv = corrupt_prodos.Inventory(bytes(data))
+        block = block_of(data, inv)
+        data = bytes(data)
+        found = {f.id for f in prodos_check.check(data).findings}
+        self.assertIn('XLINK', found)
+        r, after = self.fix(data)
+        self.assertNoWrite(r, data, after)
+        self.assertEqual(r['note'], M_XLINK)
+        self.assertEqual(after[block * BLOCK:(block + 1) * BLOCK],
+                         data[block * BLOCK:(block + 1) * BLOCK],
+                         'the block the file reads keeps its bytes')
+
+    def test_a_file_that_claims_the_volume_directory_keeps_its_bytes(self):
+        def build(data, inv):
+            ref = inv.first(prodos_check.SEEDLING)
+            corrupt_prodos.put_word(data, ref.offset + 0x11, 2)
+            corrupt_prodos.put_word(data, 2 * BLOCK + 4 + 0x21, inv.file_count + 1)
+            return 2
+        self.cross_linked_directory_block(build)
+
+    def test_a_file_that_claims_a_subdirectory_header_keeps_its_bytes(self):
+        def build(data, inv):
+            sub = inv.first(prodos_check.SUBDIR)
+            ref = inv.seedlings()[-1]       # walked after the subdirectory
+            corrupt_prodos.put_word(data, ref.offset + 0x11, sub.key)
+            data[sub.key * BLOCK + 4 + 0x25] = sub.slot + 2
+            return sub.key
+        self.cross_linked_directory_block(build)
 
     def test_the_checks_repair_does_not_carry_are_the_declared_ones(self):
         """Dropping one is a measurement, never a silent omission."""

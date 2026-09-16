@@ -97,9 +97,9 @@ static void plan_screen(void)
         if (n && (k > 3 || (on & BIT[k])))
             v_cprintf(M_LINE, chkname(k), n);
     }
-    /* What the plan refuses, and why, said on the screen that offers it. */
-    if (counts[CHK_XLINK]) line(M_XLINK);
-    else if (counts[CHK_BM_LOST] && !(on & 8)) line(M_PARTIAL);
+    /* What the plan refuses, and why, said on the screen that offers it. A
+     * cross-linked volume never gets here: it is refused whole, above. */
+    if (counts[CHK_BM_LOST] && !(on & 8)) line(M_PARTIAL);
     v_cputs(M_RKEYS);
 }
 
@@ -130,6 +130,13 @@ static void repair_main(void)
     if (!readblock(2, blk)) { note(M_NOREAD); return; }
     v_memcpy(hdr, blk + H_STORAGE, HDRLEN);
 
+    /* A cross-linked volume is refused WHOLE, not just its freeing. A block
+     * two things claim is a block a counter repair may rewrite while a file
+     * holds it as data: tools/fuzz_prodos.py showed a file losing bytes to a
+     * FILE_COUNT written into the very block it pointed at. Nothing here can
+     * tell which claimant owns the block, and the message already says what
+     * to do -- copy both files to another volume BEFORE any repair. */
+    if (counts[CHK_XLINK]) { note(M_XLINK); return; }
     /* The three bitmap corrections that only mark a block used are always
      * allowed; giving a lost block back has its own condition. */
     on = 7;
@@ -140,8 +147,7 @@ static void repair_main(void)
     }
     blocks = ((on & 8) ? pgany : pgused) + dblocks;
     if (!corr) {
-        note(counts[CHK_XLINK] ? M_XLINK
-             : counts[CHK_BM_LOST] ? M_PARTIAL : M_CLEAN);
+        note(counts[CHK_BM_LOST] ? M_PARTIAL : M_CLEAN);
         return;
     }
 

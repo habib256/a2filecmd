@@ -465,16 +465,17 @@ qui restait sous `$3F9D` après elle :
 | la seconde passe jugée sur `!found` au lieu d'une boucle sur les onze compteurs : plus court **et** plus honnête (un volume qui « reste à 3 constats » ne se dit plus réparé) | CODE −57 | +82 | **oui** |
 | `M_CANCEL` retiré de REPAIR, Échap répondant `Scan incomplete: no repair.` | CODE −12, RODATA −49 | +82 → +21 | **non**, repris : la place trouvée ailleurs paie le message |
 | le `stop()` en tête de `fix()` : sans lui, une deuxième correction sur un bloc encore dans `blk` — donc sans relecture pour l'arrêter — s'écrivait après une restauration ratée (montage `two_faults_on_one_entry` : 4 écritures au lieu de 2) | CODE +9 | +12 | **oui**, obligatoire |
+| le refus du plan entier sur `XLINK` (section 5), trouvé par `tools/fuzz_prodos.py` : un `if` de plus en tête, mais la ligne `M_XLINK` de l'écran de plan et le ternaire du verdict `!corr` disparaissent avec lui | CODE −14 | +26 | **oui**, obligatoire |
 
-Mesure au lien des incréments 9 à 15, 65C02 : CODE 6 791 (fin `$35CD`),
-RODATA 1 015 (`$39C4`), DATA 3, BSS 1 482 (fin `$3F91`), fichier
-7 880 octets, **12 octets libres** sous `$3F9D` ; 6502 : les mêmes tailles,
-fin `$3F91`, fichier 7 880 octets, **12 libres**. `build/fixit.PLG` fait
+Mesure au lien des incréments 9 à 15 **et du refus `XLINK`**, 65C02 : CODE
+6 777 (fin `$35BF`), RODATA 1 015 (`$39B6`), DATA 3, BSS 1 482 (fin `$3F83`),
+fichier 7 866 octets, **26 octets libres** sous `$3F9D` ; 6502 : CODE 6 776,
+fin `$3F82`, fichier 7 865 octets, **27 libres**. `build/fixit.PLG` fait
 toujours 7 819 octets et
 `build-6502/fixit.PLG` 7 805, aux empreintes SHA-1
 `b440a94748c56461ea56af0f231edfcddaa14038` et
 `04979b23af23bf77b04fedcdfc41696e59cc9545` : toutes les retouches du
-parcours partagé sont sous `#ifdef REPAIR`.
+parcours partagé sont sous `#ifdef REPAIR`, le refus `XLINK` compris.
 
 Les **onze** contrôles réparables sont donc tous appliqués. Ce qui n'est pas
 entré, et qui est dit en section 5 : le regroupement des corrections d'un
@@ -628,7 +629,16 @@ Refus explicites :
 - `XLINK`. Ne jamais désigner un gagnant. Le message reprend la règle de
   [DATA-SAFETY.md](DATA-SAFETY.md) pour MOVE : `Cross-linked blocks: copy both
   files to another volume before any repair.` Tant qu'un `XLINK` subsiste,
-  `BM_LOST` est refusé aussi.
+  **le plan entier** est refusé : ni bitmap, ni compteur, ni lien. Le message
+  dit « before any repair » et le code le tient depuis
+  `tools/fuzz_prodos.py` (section 7) : jusque-là seul `BM_LOST` attendait, et
+  les sept corrections de répertoire partaient quand même. Un bloc que deux
+  choses réclament est un bloc qu'une correction de compteur réécrit pendant
+  qu'un fichier le tient pour ses données — la campagne a montré
+  `/CHECKVOL/A` perdre deux octets au `FILE_COUNT` écrit dans le bloc 2 que
+  sa clé désignait, et le même dégât sur un en-tête de sous-répertoire par
+  `DIR_PARENT`. Rien dans la fenêtre ne permet de dire lequel des deux
+  réclamants possède le bloc ; le refus est la seule réponse sûre.
 - `ENT_KEY`, `IDX_RANGE`, et de même `ENT_STORAGE`, `FORK_STORAGE`. Tronquer
   un fichier est une perte. Plus tard, et seulement ainsi : choix fichier par
   fichier, entrée d'origine conservée en RAM et réécrite si la troncature
@@ -708,12 +718,13 @@ Confirmation puis vérification :
 4. application, puis **seconde passe de lecture obligatoire**. La note ne dit
    `repaired` que si la passe ne rapporte **plus aucun constat** ; sinon
    `Applied %u of %u blocks; rescan still reports %u findings.` compte ce
-   qu'elle voit encore. Un volume à blocs partagés, dont les corrections de
-   répertoire et les pages « marquer utilisé » ont bien été appliquées mais
-   dont l'`XLINK` et les blocs perdus subsistent, tombe donc dans le second
-   cas : dire `repaired` et compter des constats dans la même phrase serait
-   se contredire. `%u of %u blocks` compte les **écritures**, une par
-   correction de répertoire plus une par page de bitmap.
+   qu'elle voit encore. Un volume dont une entrée partielle
+   (`ENT_KEY`, `IDX_RANGE`, `ENT_STORAGE`, `FORK_STORAGE`) retient les blocs
+   perdus, mais dont les compteurs et les pages « marquer utilisé » ont bien
+   été appliqués, tombe donc dans le second cas : dire `repaired` et compter
+   des constats dans la même phrase serait se contredire. `%u of %u blocks`
+   compte les **écritures**, une par correction de répertoire plus une par
+   page de bitmap.
 
 ## 6. Interface
 
@@ -893,6 +904,150 @@ que l'oracle nomme modifiés ; un volume à blocs partagés est refusé ; Échap
 réécrit jamais le `.hdv` d'amorçage : le volume contrôlé est la disquette du
 lecteur 2 (`boot_hd(..., floppy2=po)`), relue sur l'hôte par
 `tools/prodos_read.py`. Les deux processeurs.
+
+### Campagne de mutations `tools/fuzz_prodos.py`
+
+Une seule question : **REPAIR peut-il rendre un volume pire ?** La campagne
+casse des volumes sains de toutes les façons qu'un bloc abîmé, un pointeur
+faux ou un répertoire à demi écrit savent le faire, fait tourner le **vrai C**
+— le parcours de `src/plugins/fixit_walk.h`, compilé depuis les harnais de
+`tools/test_fixit.py` et `tools/test_repair.py` avec
+`-fsanitize=address,undefined -fno-sanitize-recover=all` — et juge chaque
+exécution contre l'oracle hôte `tools/prodos_check.py`.
+
+```
+python3 tools/fuzz_prodos.py --count 5000 --seed 11 --out build/fuzz-prodos
+```
+
+**Graines**, toutes jetables et construites dans un répertoire temporaire :
+la fixture 1 600 blocs de `corrupt_prodos.make_fixture()` (un exemplaire de
+chaque type de stockage, fichier étendu compris), une disquette 280 blocs
+écrite par `mkvolume.py` (un sous-répertoire, un arbrisseau, deux graines),
+et un volume **8 193 blocs** fabriqué à la main : trois pages de bitmap,
+donc trois fenêtres de parcours, des fichiers dans deux d'entre elles, et un
+nid **légal** de quinze sous-répertoires — les profondeurs 2 à 16, la limite
+de ProDOS. `DIR_DEPTH` est le seul constat qu'aucune mutation d'un volume
+plat ne sait atteindre (un pointeur qui remonte l'arbre est une boucle, pas
+un niveau de plus) : la graine est donc posée à un quartet de la
+dix-septième.
+
+**Mutateurs**, tirés par cas et graine du numéro de cas, donc reproductibles
+un par un : un champ d'une entrée vivante (type de stockage, longueur et
+octets du nom, clé, blocs utilisés, eof, pointeur d'en-tête, accès, type de
+fichier) ; un champ d'en-tête de répertoire (nombre de fichiers, longueur
+d'entrée, entrées par bloc, les trois champs de parent, les chaînages avant
+et arrière) ; un pointeur d'un bloc d'index ou d'index maître (dans la
+plage, hors plage, nul, lui-même, un bloc de répertoire, une page de
+bitmap) ; des bits de bitmap (mis, effacés, dans le rembourrage) ; les
+champs de l'en-tête de volume (bitmap, total, type de stockage) ; une
+mini-entrée de fourche d'un fichier étendu ; deux à cinq octets aveugles
+dans des blocs de **métadonnées** seulement ; une à trois corruptions
+nommées de `corrupt_prodos.py` empilées ; deux mutations structurées à la
+fois. Les blocs de **données** des fichiers ne sont touchés que dans une
+petite part des cas, marquée comme telle : ce sont eux la charge utile dont
+l'invariant 5 contrôle l'intégrité.
+
+**Sept invariants.** Chaque échec garde l'image, le numéro de cas, le JSON
+de chaque exécution et une ligne de motif dans `--out` :
+
+1. **ni plantage ni blocage** : FIXIT, le plan de REPAIR, REPAIR avec `FIX`
+   et `prodos_check.check()` terminent proprement ; un dépassement de tampon
+   est un échec ASan, un délai dépassé est un blocage ;
+2. **différentiel** : les compteurs de FIXIT et son `complete` sont ceux de
+   l'oracle, et la passe de plan de REPAIR est d'accord avec FIXIT sur les
+   identifiants qu'elle porte ;
+3. **un refus n'écrit rien** : pas un `WRITE_BLOCK`, et l'image est
+   identique octet pour octet ;
+4. **les écritures restent dans le plan** : tout bloc écrit est une page de
+   bitmap ou un bloc de répertoire que l'oracle a parcouru lui aussi ;
+   jamais un bloc d'index, jamais un bloc de données, jamais 0 ni 1 ;
+5. **les fichiers survivent** : chaque fichier que le lecteur tolérant de la
+   campagne lisait avant la réparation rend exactement les mêmes octets
+   après, et aucune entrée n'a vu bouger son type, sa clé ou son eof ;
+6. **monotonie** : l'oracle ne trouve après la réparation aucun identifiant
+   qu'il ne trouvait pas avant ; `repaired` n'est dit que d'un volume propre
+   de tout ce que REPAIR porte ; `still reports N findings` compte ce que
+   l'oracle compte ; et une seconde passe de REPAIR sur le volume réparé
+   n'écrit rien ;
+7. **idempotence sous panne** : avec une erreur d'écriture, une relecture
+   différente ou une restauration ratée injectée à une écriture tirée au
+   hasard, chaque **octet** porte soit ce que le volume portait, soit ce
+   qu'une réparation complète y écrit — une correction dont la restauration
+   a réussi n'arrête pas le parcours (section 5), donc l'image finit en
+   l'original portant un **sous-ensemble** des corrections ; aucun bloc
+   qu'aucune écriture n'a nommé n'a bougé ; et `not restored` laisse le
+   volume tel qu'il était.
+
+**Divergences admises**, avec la ligne qui les documente, comptées et
+affichées, jamais cachées :
+
+- `HDR_TOTAL_SHORT` (section 3, ligne 5) : un en-tête qui annonce **moins**
+  de blocs que l'image n'en porte est `HDR_TOTAL` pour l'oracle, qui compare
+  à la taille du fichier, et rien du tout pour le parcours, qui sait lire le
+  dernier bloc annoncé. Les deux marchent ensuite avec le même total : c'est
+  le seul compteur qui diffère ;
+- `WINDOW_LOOP` (section 4, « Une bitmap complète des blocs référencés est
+  écartée ») : `seen` ne couvre qu'une fenêtre de 4 096 blocs et l'arbre est
+  reparcouru une fois par fenêtre, donc un bloc atteint deux fois n'est vu
+  comme tel que dans la fenêtre **qui le contient**. Une boucle ou un
+  partage dont les deux bouts tombent dans deux fenêtres différentes est
+  nommé dans l'une et manqué dans l'autre, et le parcours de celle qui le
+  manque continue dans ce que le pointeur désigne — où il nomme des fautes
+  que l'oracle, arrêté à la boucle, n'atteint jamais (jusqu'à quelques
+  milliers de `XLINK` fantômes sur un volume bouclé de 8 193 blocs). C'est
+  une divergence du **rapport** seulement : quelle que soit la fenêtre qui
+  le nomme, la passe est marquée incomplète, et REPAIR refuse une passe
+  incomplète avant l'écran de plan (`Scan incomplete: no repair.`) — rien
+  n'est écrit. L'admission est donc limitée à cet état, et le désaccord sur
+  `complete`, lui, reste une faute.
+
+**Reproduire un cas** : le numéro imprimé par `FAIL case N` est la graine du
+générateur de ce cas. `python3 tools/fuzz_prodos.py --count 1 --seed S` ne
+suffit pas — les numéros dépendent de la graine de campagne — mais
+`--out DIR` a gardé `case-NNNNNN.po`, `case-NNNNNN.json` (le JSON de chaque
+exécution : compteurs, écritures, écran, note) et `case-NNNNNN.txt` (la
+ligne de motif). L'image seule se rejoue avec
+`python3 tools/prodos_check.py case.po` et les deux harnais de
+`test_fixit.py` / `test_repair.py`.
+
+**La grande passe, 16 septembre 2026** : trois campagnes de 5 000 cas
+(`--seed 11`, `--seed 12`, `--seed 13`), **15 000 images**, dont
+5 508 ont fait écrire REPAIR. **Zéro échec** sur les sept invariants après la
+correction ci-dessous, **28/28** identifiants couverts par chaque campagne, et
+les divergences admises comptées : `HDR_TOTAL_SHORT` 68 fois,
+`WINDOW_LOOP` 123 fois. Les identifiants produits, cumulés sur les trois
+campagnes, du plus fréquent au plus rare : `BM_LOST` 2 677, `FILE_BLOCKS`
+2 093, `XLINK` 1 841, `BM_TAIL` 1 305, `DIR_PARENT` 1 200, `ENT_NAME` 1 135,
+`IDX_RANGE` 1 077, `BM_USED_FREE` 861, `FILE_COUNT` 730, `ENT_HEADER_PTR`
+688, `HDR_BITMAP` 671, `HDR_STORAGE` 620, `DIR_CHAIN` 594, `ENT_ACCESS` 575,
+`ENT_STORAGE` 550, `ENT_KEY` 518, `DIR_LOOP` 490, `HDR_TOTAL` 463,
+`DIR_HEADER` 446, `DIR_EOF` 352, `DIR_BLOCKS` 319, `FILE_EOF` 303,
+`HDR_ENTRY_LEN` 226, `FORK_STORAGE` 177, `VOLDIR_SIZE` 177, `BM_RESERVED`
+133, `HDR_PER_BLOCK` 113, `DIR_DEPTH` 101.
+
+**Ce qu'elle a trouvé**, une faute, et c'en était une de sûreté : l'invariant
+5 a vu `/CHECKVOL/A` perdre deux octets. Sa clé désignait le **bloc 2**, et
+l'en-tête du volume comptait un fichier de trop : REPAIR appliquait le
+`FILE_COUNT` dans le bloc que le fichier tenait pour ses données. Même dégât
+avec un fichier dont la clé désignait l'**en-tête d'un sous-répertoire** et un
+`DIR_PARENT` à corriger. Jusque-là seul `BM_LOST` attendait un `XLINK`, et
+les sept corrections de répertoire partaient quand même — pendant que le
+message affiché disait, mot pour mot, `copy both files to another volume
+before any repair`. Le refus porte maintenant sur le plan entier (section 5),
+il coûte **−14 octets** de code (section 4), et `tools/test_repair.py` le tient
+par quatre tests, dont deux construits sur les deux formes que la campagne a
+gardées. Aucune autre faute : ni plantage ASan ou UBSan, ni blocage, ni
+écriture hors plan, ni fichier modifié, ni constat neuf après réparation, ni
+image incohérente sous injection de panne.
+
+`make test` fait tourner la tranche déterministe `--count 150 --seed 1`
+(13 secondes sur huit cœurs) juste après `test_repair.py`, puis
+`tools/test_fuzz_prodos.py`, qui tient la campagne elle-même : une tranche
+courte tourne de bout en bout, les graines sont des volumes sains portant les
+formes que les mutateurs visent, et un **bug planté** dans le harnais — une
+écriture qui n'atteint jamais le disque pendant que la relecture prétend le
+contraire — doit être attrapé par l'invariant 6. REPAIR ne peut rien y voir :
+il écrit, relit, compare et dit `repaired`. L'oracle, lui, lit l'image.
 
 **Disposition** : `make disk` en 65C02 et en 6502. Le lien refuse un
 dépassement de fenêtre ; ne jamais relever un plafond pour faire passer une

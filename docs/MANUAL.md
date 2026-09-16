@@ -294,14 +294,17 @@ the drive, Return retries and Escape cancels. A read error or cancellation
 never produces an “identical” verdict. Image comparison supports PO/HDV,
 DSK/DO and ProDOS-order 2MG.
 
-**REPAIR** refuses what it cannot settle. Cross-linked blocks stop every
-repair of the bitmap that would free a block, and so does a file entry the
-walk had to abandon (a key or an index pointer out of range, an impossible
-storage type): the blocks nobody claims may be that file's tail, which
-RESCUE and UNDELETE can still read. Neither stops the other repairs --
-directory corrections and the bitmap pages that only mark a block used are
-still written. A refused header, a read error, a directory loop or a pass
-Escape cut short refuse the plan whole. So does the volume the program
+**REPAIR** refuses what it cannot settle. Cross-linked blocks stop the plan
+whole -- not one bitmap page, not one counter: a block two things claim may
+be the block a counter repair rewrites while a file holds it as data, and
+nothing can tell which claimant owns it. Copy both files to another volume
+first, as the message says. A file entry the walk had to abandon (a key or
+an index pointer out of range, an impossible storage type) stops the repairs
+of the bitmap that would free a block: the blocks nobody claims may be that
+file's tail, which RESCUE and UNDELETE can still read. That one does not
+stop the other repairs -- directory corrections and the bitmap pages that
+only mark a block used are still written. A refused header, a read error, a
+directory loop or a pass Escape cut short refuse the plan whole. So does the volume the program
 itself is running from, before a single block is read: ProDOS 8 keeps a
 bitmap block of its own in memory and would write it back over the repair.
 Between the plan and the first write the header of block 2 is read again and
