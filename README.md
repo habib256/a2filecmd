@@ -82,8 +82,8 @@ readers and more disk tools. See the [changelog](CHANGELOG.md).*
 **Start with the [latest release](https://github.com/habib256/a2filecmd/releases/latest).**
 No build required. Choose the image that fits your setup:
 
-The table describes the current 0.8.8 source build. The latest published release
-is 0.8.7; its downloads retain their own version numbers.
+The table describes 0.8.8, the latest published release; older downloads
+retain their own version numbers.
 
 | Image (0.8.8) | Contents |
 |---|---|

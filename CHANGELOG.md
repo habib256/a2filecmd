@@ -5,6 +5,8 @@ downloads and installation.
 
 ## Unreleased
 
+## [0.8.8] - 2026-09-17
+
 ### FIXIT and REPAIR (DISKTOOLS)
 - FIXIT checks a ProDOS volume and writes nothing: 30 checks over the header, the directory chains and back-links, every entry's storage type, name, access bits and pointers, file and directory counters, index blocks, extended forks, cross-linked blocks and the allocation bitmap (blocks used but marked free, lost blocks, reserved blocks marked free, padding bits). Findings are listed one check a line with their count and first block, 18 a page; `R` scans again. A pass cut short (loop, depth, read error, Escape) reports no lost blocks at all, since a block nobody claims may belong to the part not reached. Every check is compared to a host reference checker (`tools/prodos_check.py`) on 26 named corruptions (`tools/corrupt_prodos.py`); the published images all check clean.
 - REPAIR runs the same pass, shows the plan, asks for the word `FIX`, reads the header again before the first write, then rewrites the bitmap pages recomputed from the walk and seven directory repairs (file counts, blocks used, directory EOF, header and parent back-links, back pointers of a chain). Each block is kept in main RAM, written, read back into another buffer and compared; on any error the original is written back and checked, and a block that could not be restored is named. A second pass must come back with nothing for the note to say `repaired`. Cross-linked files are never arbitrated: a cross-link refuses the whole plan, bitmap page and counter alike, because a block two things claim may be the one a counter repair rewrites while a file holds it as data. Lost blocks are not freed while a broken entry remains; an invalid header, an incomplete pass or the volume the program runs from refuse the whole plan. Originals do not survive a power cut. `tools/fuzz_prodos.py` is a sanitizer-backed mutation campaign over the same C, judged case by case against the host oracle: 15 000 images over three seeds, seven invariants, and it is what found the cross-link hole above. Both live in the `!` menu under Disks, on the DISKTOOLS disk and the XL image.
@@ -23,6 +25,10 @@ downloads and installation.
 - The loading screen says `CAPS LOCK ON IS NEEDED` in the middle, with the licence line moved to the bottom row; HELLO and the program's own splash draw the same layout.
 - The Mini reproduces itself: a blank diskette in drive 2, F, then every file of drive 1 marked and copied, gives a second bootable Mini disk (manual, "Making another Mini disk").
 - F formats the active panel's drive as a bootable DOS 3.3 disk: RWTS formats the 35 tracks (volume 254), the 48 DOS sectors of tracks 0–2 are copied from the boot drive, then an empty catalog and the VTOC as `INIT` leaves them. The boot disk is read in full before anything is written and is never written; the boot drive, a latched fault and a boot disk without a DOS 3.3 boot sector are refused untouched; write protection is sensed by writing the target's VTOC sector back as it was, since RWTS's FORMAT does not report it; every target write is read back. The engine runs from `$0200–$03CF`; the splash and the start-up code moved into the working area to make room. Under sim65 the assembler now really sees `SIM65`, which `cl65 -D` never passed on.
+
+### Distribution
+- The BOOT floppy keeps 3 free blocks again. Naming FIXIT and REPAIR in the menu had cost it one, and with 2 left, preferences saved once and every later quit warned and kept the old file: A2FILE.TMP made ProDOS extend the full A2FILE directory with the last free block. Two menu strings are shorter; `tools/check_images.py` now refuses a bootable image without room to save A2FILE.CFG twice.
+- Benches: `bench/run.py --xl 6502|65C02` plays the full session on the published XL images, rebuilt byte for byte with the work files at their root.
 
 ## [0.8.7] - 2026-09-15
 
