@@ -94,9 +94,13 @@ unsigned int us_chunk(unsigned int addr){
     ++decoder_calls;
     if(fault==16)return 0;
     if(fault==17)return 8193;
-    /* Raw, uncompressed 4096-byte chunks in an LZW container. */
+    /* Raw, uncompressed 4096-byte chunks in an LZW container. memmove, not
+     * memcpy: on a truncated thread us_fill hands the decoder a window
+     * holding less than one whole block, so the source runs into OUTBUF at
+     * $8000 -- which is what the 6502 core reads there too, and what the
+     * caller then rejects on `used > win_len - win_pos`. */
     if(addr+header+4096>sizeof aux)abort();
-    memcpy(aux+0x8000,aux+addr+header,4096);
+    memmove(aux+0x8000,aux+addr+header,4096);
     return header+4096;
 }
 static int reserve(const char* p,int flags){

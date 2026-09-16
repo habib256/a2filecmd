@@ -88,8 +88,9 @@ Les temporaires et sauvegardes préexistants sont conservés ; une erreur de
 restauration laisse les fichiers récupérables et bloque une nouvelle sauvegarde.
 Une sauvegarde seule peut être chargée si CFG manque. Cela ne garantit pas une
 transaction atomique lors d'une coupure physique.
-La résistance complète des décodeurs à tout fichier
-malformé demanderait une campagne de fuzzing distincte.
+La résistance des décodeurs aux fichiers malformés est
+mesurée par les campagnes de mutations décrites plus bas, pas prouvée :
+elles couvrent ce que leurs mutateurs savent produire.
 
 Les lecteurs MB1 et PT3 sont désormais des surcouches au premier plan :
 ils conservent leurs données en mémoire principale et préservent `/RAM`.
@@ -101,6 +102,32 @@ routines C. `make disk` compile les deux architectures et contrôle les plafonds
 résident, pile, BSS et surcouches avant de fabriquer les supports. Les nouveaux
 scénarios natifs sont dans `bench/data_safety.py` ; les autres bancs cités plus
 haut utilisent également des volumes jetables.
+
+Depuis le 16 septembre 2026, `tools/fuzz_archives.py` mène une campagne de
+mutations déterministe sur les quatre lecteurs qui écrivent des fichiers sur un
+volume : BINARY2, IMGFS, DOSGET et UNSHRINK — pilote NuFX d'un côté, cœur LZW
+assembleur de `src/unshrink.s` sous sim65 et sur les deux processeurs de
+l'autre. Chaque cas casse une archive ou une image saine (troncature à chaque
+frontière du format, champs de longueur nuls, démesurés ou décalés d'un, noms
+illégaux ou de plus de quinze caractères, CRC LZW/1 et CRC de fil NuFX faussés,
+chaînes de catalogue DOS 3.3 et listes T/S bouclées ou hors disque, VTOC
+incohérente, et les corruptions nommées de `tools/corrupt_prodos.py` pour les
+images ProDOS), exécute le vrai C sous ASan et UBSan vers un volume jetable qui
+contient déjà des fichiers, puis juge cinq invariants : aucun plantage ni
+blocage ; aucun fichier préexistant touché (mêmes octets, même taille, même
+date, jamais rouvert en écriture, création toujours exclusive) ; tout fichier
+conservé identique octet pour octet à ce que décode le déchiffreur de
+référence hôte, aucun fichier partiel gardé ; un message de succès prononcé
+seulement sur une entrée lue en entier, et son compte est celui de la
+référence ; l'archive ou l'image jamais modifiée. **20 000 cas sur deux graines
+(2 000 par lecteur et par graine) : aucun défaut, 44 993 fichiers produits
+vérifiés.** La seule divergence relevée est nommée dans la
+campagne (`NUFX_16BIT_LOW`) : `struct UsState` réduit les champs 16 et 32 bits
+de NuFX à leur partie basse, ce qui rend UNSHRINK plus permissif qu'un lecteur
+strict sans jamais perdre ni abîmer un fichier. `make test` en exécute une
+tranche déterministe (`--count 60 --seed 1`) suivie de
+`tools/test_fuzz_archives.py`, qui plante un défaut par famille de décodeur
+pour prouver que chaque invariant mord.
 
 Résultats de cette revue : **290 tests hôtes réussis**, huit images contrôlées
 (BOOT, EXTRA, EXTRA2 et XL pour 6502 et 65C02), **14/14 contrôles de sécurité

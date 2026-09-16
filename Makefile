@@ -337,6 +337,8 @@ test: test-mini
 	python3 $(TOOLS)/test_repair.py
 	python3 $(TOOLS)/fuzz_prodos.py --count 150 --seed 1
 	python3 $(TOOLS)/test_fuzz_prodos.py
+	python3 $(TOOLS)/fuzz_archives.py --count 60 --seed 1
+	python3 $(TOOLS)/test_fuzz_archives.py
 	python3 $(TOOLS)/test_diskimg_verify.py
 	python3 $(TOOLS)/test_diskimg_input.py
 	python3 $(TOOLS)/test_diskimg_output.py
