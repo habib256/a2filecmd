@@ -5,6 +5,10 @@ downloads and installation.
 
 ## Unreleased
 
+### FIXIT and REPAIR (DISKTOOLS)
+- FIXIT checks a ProDOS volume and writes nothing: 30 checks over the header, the directory chains and back-links, every entry's storage type, name, access bits and pointers, file and directory counters, index blocks, extended forks, cross-linked blocks and the allocation bitmap (blocks used but marked free, lost blocks, reserved blocks marked free, padding bits). Findings are listed one check a line with their count and first block, 18 a page; `R` scans again. A pass cut short (loop, depth, read error, Escape) reports no lost blocks at all, since a block nobody claims may belong to the part not reached. Every check is compared to a host reference checker (`tools/prodos_check.py`) on 26 named corruptions (`tools/corrupt_prodos.py`); the published images all check clean.
+- REPAIR runs the same pass, shows the plan, asks for the word `FIX`, reads the header again before the first write, then rewrites the bitmap pages recomputed from the walk and seven directory repairs (file counts, blocks used, directory EOF, header and parent back-links, back pointers of a chain). Each block is kept in main RAM, written, read back into another buffer and compared; on any error the original is written back and checked, and a block that could not be restored is named. A second pass must come back with nothing for the note to say `repaired`. Cross-linked files are never arbitrated and lost blocks are not freed while a broken entry or a cross-link remains; an invalid header, an incomplete pass or the volume the program runs from refuse the whole plan. Originals do not survive a power cut. Both live in the `!` menu under Other, on the DISKTOOLS disk and the XL image.
+
 ## [0.8.7] - 2026-09-15
 
 ### Data preservation

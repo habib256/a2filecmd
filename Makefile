@@ -190,7 +190,7 @@ $(BUILD)/%.PLG: $(SRC)/plugins/%.c $(wildcard $(SRC)/plugins/*.h) $(wildcard $(S
 	$(CC65BIN)ca65 -t $(TARGET) -o $(BUILD)/$*.o $(BUILD)/$*.s
 	@helper=; if [ -f $(SRC)/plugins/$*.s ]; then $(AS) -t $(TARGET) -o $(BUILD)/$*_svc.o $(SRC)/plugins/$*.s || exit; helper=$(BUILD)/$*_svc.o; fi; \
 	  if grep -qE 'PLUGIN_MAGIC, *OVERLAY_BIG' $<; then big=1; else big=0; fi; \
-	  $(CC65BIN)ld65 -C $(if $(filter find,$*),sdk/find.cfg,$(if $(filter pt3,$*),sdk/pt3.cfg,$(if $(filter nibcopy,$*),sdk/nibcopy.cfg,sdk/plugin.cfg))) -D __OVLSIZE__=$$( if [ $$big = 1 ]; then echo $(if $(filter $*,$(XPLUGINS_HGR)),0x0500,$(if $(filter $*,$(XPLUGINS_SCRATCH)),$(if $(filter find,$*),0x1600,0x1500),$(if $(filter volinfo blkview blkedit,$*),0x249E,$(if $(filter duet,$*),0x0900,0x2500)))); elif [ "$*" = verify ]; then echo 0x04C2; else echo 0x0500; fi ) -m $(BUILD)/$*.map -Ln $(BUILD)/$*.lbl -o $@ $(BUILD)/$*.o $$helper $(CC65LIB) && \
+	  $(CC65BIN)ld65 -C $(if $(filter find,$*),sdk/find.cfg,$(if $(filter pt3,$*),sdk/pt3.cfg,$(if $(filter nibcopy,$*),sdk/nibcopy.cfg,sdk/plugin.cfg))) -D __OVLSIZE__=$$( if [ $$big = 1 ]; then echo $(if $(filter $*,$(XPLUGINS_HGR)),0x0500,$(if $(filter $*,$(XPLUGINS_SCRATCH)),$(if $(filter find,$*),0x1600,0x1500),$(if $(filter volinfo blkview blkedit fixit repair,$*),0x249E,$(if $(filter duet,$*),0x0900,0x2500)))); elif [ "$*" = verify ]; then echo 0x04C2; else echo 0x0500; fi ) -m $(BUILD)/$*.map -Ln $(BUILD)/$*.lbl -o $@ $(BUILD)/$*.o $$helper $(CC65LIB) && \
 	  limit=$$( [ $$big = 1 ] && echo $(if $(filter $*,$(XPLUGINS_HGR)),1280,$(if $(filter duet,$*),2304,9472)) || echo 1280 ) && \
 	  { test $$(wc -c < $@) -le $$limit || { echo "$@: $$(wc -c < $@) bytes, more than its $$limit-byte window"; rm -f $@; exit 1; }; } && \
 	  echo "$@: $$(wc -c < $@) bytes ($$( [ $$big = 1 ] && echo big || echo small ) overlay)"
@@ -332,6 +332,9 @@ test: test-mini
 	python3 $(TOOLS)/test_prodos_read.py
 	python3 $(TOOLS)/test_mkdemo.py
 	python3 $(TOOLS)/test_volinfo.py
+	python3 $(TOOLS)/test_prodos_check.py
+	python3 $(TOOLS)/test_fixit.py
+	python3 $(TOOLS)/test_repair.py
 	python3 $(TOOLS)/test_diskimg_verify.py
 	python3 $(TOOLS)/test_diskimg_input.py
 	python3 $(TOOLS)/test_diskimg_output.py

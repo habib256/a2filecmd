@@ -11,7 +11,7 @@ EXPECTED = {
  'Programming': 'BASLIST CRC DISASM IDENT INTBASIC RUN',
  'System': 'DATE HELP',
  'Archives': 'BINARY2 UNSHRINK',
- 'Other': '',
+ 'Other': 'FIXIT REPAIR',
 }
 
 def cells(p, row=22):

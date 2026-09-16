@@ -37,7 +37,7 @@ ou fermeture n’est ni une EOF ni un chemin libre.
   cas qui confondait une erreur d’E/S avec une disparition, le contrôle de
   fin du déplacement d’arbre par lot, exige désormais le `$46` positif.
 
-Sans ça, chaque nouveau média ou FIXIT dilue la preuve. Ne pas ouvrir
+Sans ça, chaque nouveau média dilue la preuve. Ne pas ouvrir
 SHRINK, l’écriture dans une image, un journal de coupure, Pascal/CP/M
 ni un format neuf tant que la dernière case n’est pas close.
 
@@ -59,6 +59,8 @@ ni un format neuf tant que la dernière case n’est pas close.
 - [ ] **Images XL** — `bench/run.py` 6502 et 65C02.
 - [ ] **Banc //c** — session, pile, disquette, souris.
 - [ ] **💾 IIgs** — premier boot (SmartPort, `$C000`) ; documenter Disk II.
+- [ ] **💾 REPAIR sur fer** — une disquette réellement abîmée : les harnais
+  et les bancs POM2 couvrent chaque écriture, pas le lecteur.
 
 ## Ensuite, pas avant
 
@@ -68,13 +70,6 @@ rendement décroissant, extraire sans grossir `src/a2fc.c` :
 - [ ] contrat unique (création exclusive, original récupérable, nettoyage
   limité aux fichiers créés, collisions refusées) ;
 - [ ] IMGFS / DOS33 / DOSGET, CRC et métadonnées NuFX, relecture des extraits.
-
-**FIXIT** — après la preuve ci-dessus, pas avant :
-
-- [ ] diagnostic sans écriture (allocation, références, pointeurs,
-  compteurs, blocs perdus) ;
-- [ ] corrections seulement après un plan choisi, original conservé,
-  chaque écriture vérifiée.
 
 Puis **un seul** :
 
@@ -86,7 +81,9 @@ Puis **un seul** :
 
 Une petite surcouche (DELETE, COPY, IMGFS, ATTR, OPEN) ne bouge que si
 on doit la modifier : alors extraire un service partagé, mesurer au
-lien. OPEN ne retombe pas à quelques octets.
+lien. OPEN ne retombe pas à quelques octets. À la prochaine retouche du
+résident, nommer FIXIT et REPAIR dans `mn_group3` (« Disks », six octets) :
+le menu `!` les range sous « Other ».
 
 ## Mini — indépendante
 
@@ -115,7 +112,9 @@ Confort (DATE, TAGPAT, PASSWORD…). Corpus : `GISTDATA.hdv`,
 [SAMPLE-MEDIA.md](docs/SAMPLE-MEDIA.md).
 
 Clos et sortis de cette page : arbres itératifs, MOVE d’arbre, LAUNCHER
-(retour épelé). Détail dans le changelog.
+(retour épelé), FIXIT et REPAIR ([FIXIT.md](docs/FIXIT.md) : diagnostic
+sans écriture, réparations relues et restaurées, seconde passe). Détail
+dans le changelog.
 
 ## Livraison
 

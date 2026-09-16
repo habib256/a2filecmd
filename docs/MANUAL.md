@@ -205,12 +205,14 @@ The following tools supplement the main keys and readers.
 
 ### On category disks and XL
 
-VOLINFO and VOLNAME are on DISKTOOLS; the menu requests that disk when necessary.
+VOLINFO, FIXIT, REPAIR and VOLNAME are on DISKTOOLS; the menu requests that disk when necessary.
 Menu categories describe tasks and do not require changing disks just to browse.
 
 | Tool | Operation |
 |---|---|
 | **VOLINFO** | Audit allocation and fragmentation. M = bitmap (`.` free, `#` used), F = selected file blocks, E = export to the other panel. N/P pages; ESC returns. No repairs. |
+| **FIXIT** | Check a ProDOS volume and name each fault: header, directory chains and parents, entry names, access bits, key and index pointers, file and directory counters, cross-linked, lost and wrongly marked blocks. One line per check with its count and first block; 18 lines a page, a key continues. R scans again after a disk change; ESC/Return leaves. FIXIT only reads: it writes nothing and repairs nothing. REPAIR is the tool that writes. |
+| **REPAIR** | Repair a ProDOS volume. It walks the volume itself, shows a plan -- one line per check with the number of corrections, plus what it refuses and why -- and writes nothing until `F` is pressed and the word FIX typed in full. It repairs eleven faults: in the bitmap, blocks a file uses but the bitmap calls free, reserved blocks marked free, bits set past the end of the volume and blocks nobody claims; in the directory tree, a header's file count, a file's or a subdirectory's blocks used, a subdirectory's eof, an entry's pointer back to its own directory, the three parent fields of a subdirectory header and a directory block's back-pointer. Every block written is read back and compared; a block that cannot be verified has its original rewritten and verified. The volume is then walked again and the verdict says what that second pass found. |
 | **VOLNAME** | Rename a ProDOS volume and update the affected panel/program paths. |
 | **SEARCH** | Find text in the active directory and tag matching files, ignoring case. ESC cancels a long scan and keeps tags already found. |
 | **FIXTYPES** | Review and confirm type/auxtype repairs on tagged files or the selection. Recognizes validated DUET content with a name/type hint and explicit suffixes; optional suffix removal. DUET names, image suffixes and `.SYSTEM` stay. |
@@ -291,6 +293,44 @@ swaps. Each prompt names the expected disk and slot/drive; **1/2** changes
 the drive, Return retries and Escape cancels. A read error or cancellation
 never produces an “identical” verdict. Image comparison supports PO/HDV,
 DSK/DO and ProDOS-order 2MG.
+
+**REPAIR** refuses what it cannot settle. Cross-linked blocks stop every
+repair of the bitmap that would free a block, and so does a file entry the
+walk had to abandon (a key or an index pointer out of range, an impossible
+storage type): the blocks nobody claims may be that file's tail, which
+RESCUE and UNDELETE can still read. Neither stops the other repairs --
+directory corrections and the bitmap pages that only mark a block used are
+still written. A refused header, a read error, a directory loop or a pass
+Escape cut short refuse the plan whole. So does the volume the program
+itself is running from, before a single block is read: ProDOS 8 keeps a
+bitmap block of its own in memory and would write it back over the repair.
+Between the plan and the first write the header of block 2 is read again and
+compared, all thirty-nine bytes of it, so a floppy swapped while the
+question was on the screen receives nothing. The forward chain of a
+directory is never rebuilt, only the back-pointer. REPAIR names only what it
+can repair or refuse: file names, access bits, oversized eofs, the volume
+name and the shape of the volume directory are FIXIT's business.
+
+Each correction is one verified write, so a block carrying several of them
+is written once per correction; each write keeps the block as it was in
+main memory, reads it back and compares all 512 bytes, and puts the original
+back if anything differs. Those originals live in RAM only: they do not
+survive a power cut, and ProDOS offers no transaction over several blocks,
+so a plan interrupted leaves part of it applied. The verdict says `repaired`
+only when the second pass comes back with nothing at all; otherwise it
+counts what it still sees. Large volumes are walked three times, once for
+the plan, once to write and once to check, and REPAIR shows no progress line
+while it walks.
+
+**FIXIT** examines a real ProDOS volume only; an image or a DOS 3.3 disk
+opened as a directory is refused, and the volume must be on line. Large
+volumes are walked once per 4,096 blocks, so they take longer. A read error,
+a directory loop, more than 16 levels or a refused header stops the pass: it
+then says so and never reports lost blocks, which may belong to the part of
+the tree it could not reach. Only the first sixteen findings keep a block
+number; beyond that a check shows its count alone. Nothing is written, on
+the checked volume or anywhere else, and no report is exported: REPAIR is
+the tool that writes.
 
 **VOLINFO** supports ProDOS files, both forks and directories up to 16 levels.
 Large volumes take longer; incomplete counts are unconfirmed. File lists show
