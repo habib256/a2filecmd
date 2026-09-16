@@ -13,6 +13,11 @@ Le Commander (arbres, MOVE, retour au programme) est **clos**. Ce qui
 reste n’est plus une fonction manquante, c’est la preuve que les
 écritures tiennent.
 
+Deux niveaux de preuve, distingués partout : **qualifié POM2** (harnais
+hôtes sur le vrai C, fuzzers, bancs POM2 sur les deux CPU) et **qualifié
+sur matériel** (💾). Un chantier se ferme au premier niveau ; le second
+reste ouvert à part, marqué 💾, sans bloquer la suite.
+
 ## Maintenant : les trous de préservation
 
 [DATA-SAFETY.md](docs/DATA-SAFETY.md). Une erreur de lecture, métadonnées
@@ -24,22 +29,27 @@ ou fermeture n’est ni une EOF ni un chemin libre.
   (tests hôtes : octet faux, sortie illisible, lecture courte, source
   perdue en seconde passe). IMGFS est devenue une grande surcouche, l’état
   d’UNSHRINK est monté à `$3E00` : les deux ont plus de 1 500 octets.
-- [ ] **Pannes combinées** — couvertes par les harnais hôtes de COPY, EDIT,
+- [x] **Pannes combinées** (qualifié POM2) — couvertes par les harnais hôtes de COPY, EDIT,
   CFG, GOTO, SYNC, TXTCONV, IMGCONV, BATCH, DOSGET, BINARY2, UNSHRINK,
   IMGFS et DISKIMG (fermeture + collision + annulation, taille périmée,
   renommage, restauration et nettoyage en échec). Les séquences entre
   outils ont leur banc depuis le 14 septembre 2026 (`bench/sequences.py`,
-  deux CPU, en CI). Reste 💾 DOSWRITE sur disque réel : le harnais hôte et
-  le banc Disk II de POM2 couvrent chaque écriture, pas le fer.
+  deux CPU, en CI). Le harnais hôte et le banc Disk II de POM2 couvrent
+  chaque écriture de DOSWRITE.
+- [ ] **💾 DOSWRITE sur disque réel** — en attente de matériel ; ne bloque
+  plus rien.
 - [x] **Autres chemins** — revue du 14 septembre 2026 des décisions
   « fichier absent » du résident : la création exclusive garde chaque
   chemin (éditeur, copie, mkdir) même quand `GET_FILE_INFO` échoue ; le seul
   cas qui confondait une erreur d’E/S avec une disparition, le contrôle de
   fin du déplacement d’arbre par lot, exige désormais le `$46` positif.
 
-Sans ça, chaque nouveau média dilue la preuve. Ne pas ouvrir
+Décision du 16 septembre 2026 : la règle est assouplie. Les cases
+qualifiées POM2 suffisent pour avancer, et les Services de fichiers
+sont ouverts, parce qu’ils renforcent justement la préservation.
 SHRINK, l’écriture dans une image, un journal de coupure, Pascal/CP/M
-ni un format neuf tant que la dernière case n’est pas close.
+et les formats neufs restent fermés tant que les Services de fichiers
+ne sont pas clos.
 
 ## En continu : les séquences
 
@@ -77,16 +87,19 @@ ni un format neuf tant que la dernière case n’est pas close.
 - [ ] **💾 REPAIR sur fer** — une disquette réellement abîmée : les harnais
   et les bancs POM2 couvrent chaque écriture, pas le lecteur.
 
-## Ensuite, pas avant
+## Maintenant aussi : les Services de fichiers
 
-**Services de fichiers** ([FILE-SERVICES.md](docs/FILE-SERVICES.md)) —
-rendement décroissant, extraire sans grossir `src/a2fc.c` :
+**Services de fichiers** ([FILE-SERVICES.md](docs/FILE-SERVICES.md)),
+ouverts le 16 septembre 2026 : ils renforcent la préservation. Extraire
+sans grossir `src/a2fc.c` :
 
 - [ ] contrat unique (création exclusive, original récupérable, nettoyage
   limité aux fichiers créés, collisions refusées) ;
 - [ ] IMGFS / DOS33 / DOSGET, CRC et métadonnées NuFX, relecture des extraits.
 
-Puis **un seul** :
+## Ensuite, pas avant
+
+Après les Services de fichiers, **un seul** :
 
 - [ ] 💾 **NIBCOPY** — IIe et //c, un et deux lecteurs, 300 tr/min et
   accélérateur ; ensuite **un** gain (reprise de piste **ou** `.NIB`).
