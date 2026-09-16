@@ -20,6 +20,7 @@
         .export delete_prepare, delete_execute, delete_cancel
         .export lock_prepare, lock_execute, rename_prepare, rename_execute
         .export del_index, lock_op, lock_ready, ren_name
+        .export put_verified, del_audited, _del_audited, del_cat_off
         .export _delete_prepare, _delete_execute, _delete_cancel
         .export _lock_prepare, _lock_execute, _rename_prepare, _rename_execute
         .export _del_index, _lock_op, _lock_ready, _ren_name
@@ -34,16 +35,22 @@
         .import wlk_t, wlk_s, wlk_nt, wlk_ns, wlk_j, wlk_expect, wlk_collect
         .import aud_t, aud_s, aud_off
         .import vtoc, catalog_before, verify, cat_buf
+        .import cs_name, name_buf
 
         .segment "BSS"
 del_index:      .res 1
 _del_index      = del_index
+del_audited:    .res 1          ; the disk was audited for this batch of deletes
+_del_audited    = del_audited
 
 del_ready:      .res 1
 lock_ready:     .res 1
 ren_ready:      .res 1
 lock_op:        .res 1          ; 0 toggle, 1 unlock, 2 lock
-ren_name:       .res NAME_LEN
+; the name typed for R stays where ask_name left it; a delete, lock or
+; rename never runs while a copy holds its source name, so the panel's
+; copy of the entry shares the copy engine's
+ren_name        = name_buf
 _lock_ready     = lock_ready
 _lock_op        = lock_op
 _ren_name       = ren_name
@@ -52,7 +59,7 @@ del_sector:     .res 1
 del_type:       .res 1
 del_seclo:      .res 1
 del_sechi:      .res 1
-del_name:       .res NAME_STRIDE    ; the panel's name, then where it was read
+del_name        = cs_name           ; the panel's name, then where it was read
 del_cat_t:      .res 1
 del_cat_s:      .res 1
 del_cat_off:    .res 1
@@ -152,8 +159,12 @@ _delete_prepare:
 @unlocked:
         jsr     find_and_walk
         bne     @out
-        jsr     audit_others
-        bne     @out
+        lda     del_audited     ; once per batch: the audit walks every
+        bne     @audited        ; live file, and deleting one cannot
+        jsr     audit_others    ; cross-link the others. Each file still
+        bne     @out            ; has its own chain walked and its slot
+        inc     del_audited     ; and the VTOC held to the panel.
+@audited:
         lda     #1
         sta     del_ready
         lda     #DEL_OK
@@ -351,6 +362,7 @@ _delete_execute:
         beq     @marked
         cmp     #DEL_PROTECTED  ; refused before the first write: nothing
         bne     @aftercat       ; on the disk moved, nothing to latch
+        tay                     ; Z clear: a refusal, whatever the caller tests
         rts
 @marked:
         jsr     free_chain
@@ -522,7 +534,10 @@ _lock_execute:
         jsr     put_verified
         beq     @ok
         cmp     #DEL_PROTECTED  ; the only write, refused: nothing to latch
-        beq     @ok
+        bne     @latch
+        tay                     ; Z clear: a refusal, whatever the caller tests
+        rts
+@latch:
         jsr     latch_fault
 @ok:
 @out:
@@ -582,11 +597,9 @@ _rename_execute:
 @planned:
         lda     #0
         sta     ren_ready
-        jsr     recat_same
-        bne     @out
-        jsr     ren_collision
-        bne     @out            ; REN_EXISTS, INVALID or READ
-        SETPTR  ptr, catalog_before
+        jsr     recat_same      ; the VTOC and the slot's sector are byte
+        bne     @out            ; for byte what prepare scanned: the new
+        SETPTR  ptr, catalog_before      ; name is still free
         SETPTR  ptr2, buffer
         jsr     memcpy256
         ldx     del_cat_off
@@ -607,7 +620,10 @@ _rename_execute:
         jsr     put_verified
         beq     @ok
         cmp     #DEL_PROTECTED  ; the only write, refused: nothing to latch
-        beq     @ok
+        bne     @latch
+        tay                     ; Z clear: a refusal, whatever the caller tests
+        rts
+@latch:
         jsr     latch_fault
 @ok:
 @out:

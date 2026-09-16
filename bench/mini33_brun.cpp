@@ -15,6 +15,10 @@ static std::string screen(Memory& m) {
         if(c<32) c+=64; s+=c;
     } s+='\n'; } return s;
 }
+static std::string mini_files(const char* suffix) {
+    // the boot disk's file count, from the driver: the shipped disk may carry more than the four built files
+    const char* n=getenv("MINI_FILES"); return std::string(n?n:"4")+suffix;
+}
 static void run(M6502& c,int cycles) { for(int n=0;n<cycles;) n+=c.run(1024); }
 int main(int argc,char** argv) {
     assert(argc==4);
@@ -41,7 +45,7 @@ int main(int argc,char** argv) {
         return m.data()[6]==times && m.data()[7]==0x5A;
     };
     if(m.data()[6]!=0) fail("$06 starts at zero");
-    run(cpu,180000000); wait("4 FILES");
+    run(cpu,180000000); wait(mini_files(" FILES").c_str());
     // The right panel on drive 2: PIC first, GAME second.
     keys("\t/"); wait("PIC");
     // RETURN on a picture-sized binary: the hi-res viewer, not BRUN.

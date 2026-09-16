@@ -13,15 +13,17 @@
 
         .export start
 
-        .import main, save_holes
-        .import slot, drive, brun_go
+        .import main
+        .import slot, drive, boot_drive, brun_go
         .import __BSS_RUN__, __BSS_SIZE__
 
         .segment "DATA"
 saved_stack:    .byte 0
 saved_zp:       .res ZP_COUNT
 
-        .segment "STARTUP"
+; The entry runs once from the working area, like the splash; only the
+; way back to DOS is resident.
+        .segment "INIT"
 
 start:
         cld
@@ -74,8 +76,12 @@ start:
         ldy     #IOB_DRIVE
         lda     (iob),y
         sta     drive
-        jsr     save_holes
+        sta     boot_drive      ; format's DOS source, whatever / does later
+        jmp     start_resident
 
+        .segment "STARTUP"
+
+start_resident:
         jsr     main
 
         ldx     #ZP_COUNT-1

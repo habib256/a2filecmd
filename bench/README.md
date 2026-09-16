@@ -41,7 +41,8 @@ pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 | `mini33.py` | the Apple II+ 48 KB DOS 3.3 edition on an NMOS core: panels, pagination, long names, preview, malformed and missing disks, quit and relaunch, and changed-character-only screen writes through watchpoints |
 | `mini33_write.py` | the same edition's real DOS writes on disposable images: cancel, hardware write protection, a copy that stays on the panels, a refused collision, then DOS BLOAD and SAVE over the result |
 | `mini33_ops.py` | tags, hi-res viewer, exclusive TXT create, catalog-first delete, and a tagged two-file copy, on disposable images |
-| `mini33_time.py` | what the disk paths cost in cycles, since a missed sector is a whole 200 000-cycle revolution: catalog reads and a 48-sector copy. Read-only on the catalog paths |
+| `mini33_format.py` | F on disposable images: refused on the boot drive, cancelled, refused on a write-protected disk, then a real RWTS format with DOS copied from the boot disk, every shipped file copied onto it, and the result booted into A2FC Mini; then the same from a zero-filled image and from a never formatted diskette (POM2's `insertBlankDisk`, no address fields; `--no-fresh` skips it), watching the progress bar. Every Mini bench reads the boot disk's file count from the image (`MINI_FILES`), so a dist disk holding more than the four built files still passes |
+| `mini33_time.py` | what the disk paths cost in cycles, since a missed sector is a whole 200 000-cycle revolution: catalog reads and a 48-sector copy, with the copy's writing phase broken down per RWTS call (reads, writes, read-backs, drive switches, revolutions per data sector; `--max-rev-per-sector` turns that last one into a failure). Read-only on the catalog paths |
 | `pom2.py` | le pilote d'emulateur commun |
 
 ## Les deux editions

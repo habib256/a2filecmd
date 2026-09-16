@@ -28,16 +28,19 @@
         .export valid_data, read_at, vtoc_bit, memcpy256, memcmp256
         .export slot_where, walk, wipe_seen, load_vtoc
         .export cat_first, cat_open, cat_step, del_fault, _del_fault
+        .export add_progress, fm_tick, bat_t, bat_s
         .export wlk_t, wlk_s, wlk_nt, wlk_ns, wlk_j, wlk_expect, wlk_collect
         .export aud_t, aud_s, aud_i, aud_off
 
-        .import read_sector, write_sector, rwts_error
+        .import read_sector, write_sector, read_into, write_into
+        .import rwts_error, rwts_buf
         .import buffer, drive, track, sector, count, sector_seen
         .import ent_track, ent_sector, ent_seclo, ent_sechi, ent_type
         .import ent_index, ent_ptr, sanitise
         .import seen_bit, bit_masks, valid_cs
         .import scratch
         .import copy_progress
+        .import fm_n, dos_sig
 
         .segment "BSS"
 
@@ -81,8 +84,11 @@ _ram_source     = ram_source
 ; ---- whole sectors kept for comparison
 vtoc:           .res 256        ; the target VTOC as reserved
 catalog_before: .res 256        ; the catalog sector holding the free slot
-verify:         .res 256        ; what a write was supposed to leave
 cat_buf:        .res 256        ; the catalog sector being walked
+; what put_verified's write was supposed to leave. It shares cat_buf:
+; every put_verified comes after the catalog walk, the T/S lists (delete's
+; ts_list) or the loaded list (catalog's ldf_list) it held are done with
+verify          = cat_buf
 src_entry:      .res CAT_ENTRY_LEN
 
 ; ---- the source file's sectors, in file order
@@ -91,8 +97,11 @@ source_map_s:   .res MAX_DATA
 data_count:     .res 2
 _data_count     = data_count
 
-; ---- the target reservation
-target_bits:    .res 70
+; ---- the target reservation. Its bitmap is the walk's sector_seen:
+; the source is walked (map_source) before reserve fills this, and
+; nothing walks again until the copy is over; delete's audit and the
+; panel's catalog read never run inside a copy.
+target_bits     = sector_seen
 target_index:   .res 2
 tgt_t:          .res 1
 tgt_s:          .res 1
@@ -112,6 +121,7 @@ src_cat_track:  .res 1
 src_cat_sector: .res 1
 src_cat_offset: .res 1
 
+dos_seen:       .res 1          ; valid_data's boot sector verdict: 0 not read, 1 DOS, 2 none
 ; ---- catalog walk locals, shared with delete.s
 aud_t:          .res 1
 aud_s:          .res 1
@@ -141,6 +151,11 @@ bat_k:          .res 1
 bat_t:          .res BATCH_SECTORS
 bat_s:          .res BATCH_SECTORS
 bat_index:      .res 2          ; first source_map index of the batch
+bat_saved:      .res 2          ; target_index after the first batch's plan
+bat_first:      .res 1          ; 1: the first batch is already read
+bat_lo:         .res 1          ; the run of one track being written: first index
+bat_hi:         .res 1          ; and one past its last
+bat_pass:       .res 1          ; 0: even offsets being read back, 1: odd
 lst_no:         .res 1          ; T/S list being built
 lst_pair:       .res 1
 
@@ -189,11 +204,15 @@ free_sector:
 ; data: tracks 1 to 34, never track 0 (the boot sector) or the catalog
 ; track. Tracks 1 and 2 hold DOS on a normal disk, where the VTOC marks
 ; all 32 of their sectors allocated; a "no DOS" disk frees them and DOS
-; itself then files data there. So they are accepted only while the VTOC
-; in RAM (the disk being walked) shows at least one free sector on them:
-; a chain pointing into a live DOS image is still refused. A preserved.
-; reserve never hands them out: were a copy to take their last free
-; sectors, every file there, its own included, would read as invalid.
+; itself then files data there. So they are accepted while the VTOC in
+; RAM (the disk being walked) shows a free sector on them; with all 32
+; used, the disk is either a DOS disk or a full one without DOS, and the
+; boot sector decides, read once per walk into the working area's first
+; page (free during any walk: a copy's batch comes after): a DOS 3.3
+; boot sector there means a chain pointing into a live DOS image, which
+; is refused; anything else, or an unreadable sector, is taken as DOS
+; too unless the sector reads and is not one. A preserved reserve never
+; hands their last free sectors out either.
 valid_data:
         cpx     #16
         bcs     @no
@@ -210,13 +229,40 @@ valid_data:
         ora     vtoc+VTOC_BITMAP+5
         ora     vtoc+VTOC_BITMAP+8      ; track 2
         ora     vtoc+VTOC_BITMAP+9
-        beq     @dos                    ; nothing free there: DOS lives there
+        beq     @dos                    ; nothing free there: DOS, or a full disk
         pla
 @yes:
         sec
         rts
 @dos:
+        txa
+        pha                             ; the sector, over the track
+        lda     dos_seen
+        bne     @known
+        inc     dos_seen                ; 1: DOS, until the boot sector says otherwise
+        lda     #0
+        sta     track
+        sta     sector
+        SETPTR  rwts_buf, scratch
+        jsr     read_into
+        bne     @known                  ; unreadable: keep assuming DOS
+        ldx     #DOS_SIG_LEN-1
+@sig:
+        lda     scratch,x
+        cmp     dos_sig,x
+        bne     @nodos
+        dex
+        bpl     @sig
+        bmi     @known                  ; the DOS 3.3 boot sector: DOS lives there
+@nodos:
+        inc     dos_seen                ; 2: no DOS 3.3 here, the tracks hold files
+@known:
         pla
+        tax
+        pla
+        ldy     dos_seen
+        cpy     #2
+        beq     @yes
 @no:
         clc
         rts
@@ -388,7 +434,11 @@ bump_total:
 @done:
         rts
 
-; next_target -- hands out the reserved sectors in disk order. A = 0 with
+; next_target -- hands out the reserved sectors track by track, and
+; within a track from sector 15 down, as DOS allocates. DOS 3.3's 2:1
+; skew puts logical sector n-1 two slots after n, so a descending chain
+; is written, read back and later read by DOS without a lost turn;
+; an ascending one waits fourteen slots per sector. A = 0 with
 ; tgt_t/tgt_s set, or COPY_INVALID once they run out.
 next_target:
 @loop:
@@ -406,6 +456,8 @@ next_target:
         lda     target_index+1
         sta     t1
         lda     target_index
+        eor     #15             ; the track's sectors from 15 down
+        sta     t2
         sta     t0
         lsr     t1
         ror     t0
@@ -414,7 +466,7 @@ next_target:
         lsr     t1
         ror     t0              ; t0 = index >> 3
         ldx     t0
-        lda     target_index
+        lda     t2
         and     #7
         tay
         lda     target_bits,x
@@ -423,7 +475,7 @@ next_target:
         lda     t0
         lsr     a
         sta     tgt_t           ; index >> 4
-        lda     target_index
+        lda     t2
         and     #15
         sta     tgt_s
         jsr     bump_target
@@ -727,6 +779,7 @@ locate_source:
 
 wipe_seen:
         lda     #0
+        sta     dos_seen                ; the boot sector is read again per walk
         ldx     #69
 @wipe:
         sta     sector_seen,x
@@ -738,12 +791,12 @@ wipe_seen:
 ; geometry every write here assumes. A = 0, COPY_READ or COPY_INVALID.
 load_vtoc:
         lda     #CATALOG_TRACK
-        ldx     #0
-        jsr     read_at
-        bne     @out
-        SETPTR  ptr, buffer
-        SETPTR  ptr2, vtoc
-        jsr     memcpy256
+        sta     track
+        lda     #0
+        sta     sector
+        SETPTR  rwts_buf, vtoc
+        jsr     read_into
+        bne     @out            ; 1 is COPY_READ
         lda     vtoc+3
         cmp     #3
         bne     @invalid
@@ -787,11 +840,11 @@ cat_open:
         beq     @invalid        ; the VTOC
         cpx     #16
         bcs     @invalid
-        jsr     read_at
-        bne     @out
-        SETPTR  ptr, buffer
-        SETPTR  ptr2, cat_buf
-        jsr     memcpy256
+        sta     track
+        stx     sector
+        SETPTR  rwts_buf, cat_buf ; straight in: a copy here would miss
+        jsr     read_into       ; the next sector of the chain
+        bne     @out            ; 1 is COPY_READ
         lda     cat_buf+1
         sta     aud_nt
         lda     cat_buf+2
@@ -1125,9 +1178,11 @@ count_lists:
         rts
         .segment "CODE"
 
-; reserve -- choose allocated_count free sectors in disk order. The last
-; list_count of them become the T/S lists. Nothing is written: the VTOC
-; on the disk keeps its own bits until the user confirms.
+; reserve -- choose allocated_count free sectors track by track, within
+; a track from sector 15 down: the order next_target hands them out in,
+; so that the last list_count of them, the T/S lists, are the same
+; sectors in both. Nothing is written: the VTOC on the disk keeps its
+; own bits until the user confirms.
 reserve:
         lda     #0
         ldx     #69
@@ -1153,7 +1208,7 @@ reserve:
         bcs     @done
         cmp     #CATALOG_TRACK
         beq     @nexttrack
-        lda     #0
+        lda     #15
         sta     w2
 @sector:
         lda     num
@@ -1164,8 +1219,7 @@ reserve:
         beq     @done
 @space:
         lda     w2
-        cmp     #16
-        bcs     @nexttrack
+        bmi     @nexttrack      ; past sector 0
         lda     s4
         ldx     w2
         jsr     free_sector
@@ -1196,7 +1250,7 @@ reserve:
 @isdata:
         jsr     bump_num
 @nextsector:
-        inc     w2
+        dec     w2
         jmp     @sector
 @nexttrack:
         inc     s4
@@ -1259,6 +1313,27 @@ _copy_execute:
         cpy     #CAT_ENTRY_LEN
         bcc     @srccmp
 @srcok:
+        lda     #0              ; the first batch is read now, while the
+        sta     target_index    ; source drive turns: the VTOC check and
+        sta     target_index+1  ; write then follow with one change of
+        sta     bat_index       ; drive instead of two. Only reads so far:
+        sta     bat_index+1     ; a refusal below still writes nothing.
+        sta     bat_saved
+        sta     bat_saved+1
+        sta     bat_first
+        lda     data_count
+        ora     data_count+1
+        beq     @vtoccheck      ; an empty file has no batch
+        jsr     batch_plan
+        jne     @changed        ; the reservation image does not add up
+        jsr     batch_read
+        jne     @unread
+        lda     target_index
+        sta     bat_saved
+        lda     target_index+1
+        sta     bat_saved+1
+        inc     bat_first
+@vtoccheck:
         lda     copy_to         ; the VTOC is about to be replaced from
         sta     drive           ; the reservation image: it must still be
         lda     #CATALOG_TRACK  ; the one that image was planned on, or
@@ -1331,9 +1406,11 @@ _copy_execute:
 
 ; ---- the data, one batch per change of drive ----
 @data:
-        lda     #0
+        lda     bat_saved       ; where the first batch's plan left off
         sta     target_index
+        lda     bat_saved+1
         sta     target_index+1
+        lda     #0
         sta     bat_index
         sta     bat_index+1
 @batch:
@@ -1344,10 +1421,17 @@ _copy_execute:
         cmp     data_count+1
         beq     @lists
 @batchwork:
+        lda     bat_first
+        beq     @plan
+        lda     #0              ; the first batch is planned and read
+        sta     bat_first
+        beq     @write          ; always
+@plan:
         jsr     batch_plan
         jne     @uncertain
         jsr     batch_read
         jne     @uncertain
+@write:
         jsr     batch_write
         bne     @writefail
         lda     bat_index
@@ -1358,9 +1442,8 @@ _copy_execute:
         inc     bat_index+1
         jmp     @batch
 @writefail:
-        cmp     #COPY_PROTECTED
-        jeq     @prot_after
-        jmp     @uncertain
+        jmp     @uncertain      ; a data write refused after the VTOC went
+                                ; down: reserved sectors, not an untouched disk
 
 ; ---- the T/S lists, once every data sector is down and checked ----
 @lists:
@@ -1445,9 +1528,7 @@ _copy_execute:
         jsr     tick_progress
         jmp     @nextlist
 @listfail:
-        cmp     #COPY_PROTECTED
-        jeq     @prot_after
-        jmp     @uncertain
+        jmp     @uncertain      ; likewise for a T/S list write
 @nextlist:
         inc     lst_no
         jmp     @onelist
@@ -1492,14 +1573,9 @@ _copy_execute:
         lda     #COPY_OK
         rts
 @pubfail:
-        cmp     #COPY_PROTECTED
-        jeq     @prot_after
-        jmp     @uncertain
-@prot_after:
-        lda     #1
-        sta     copy_fault
-        lda     #COPY_PROTECTED
-        rts
+        jmp     @uncertain      ; a tab flipped after the VTOC went down:
+                                ; sectors are reserved, the disk is not
+                                ; untouched, so it is an uncertain write
 @uncertain:
         lda     #1
         sta     copy_fault
@@ -1563,7 +1639,8 @@ batch_source_index:
         sta     num+1
         rts
 
-; batch_read -- the source drive, once, into the working area.
+; batch_read -- the source drive, once, into the working area, each
+; sector straight into its page: nothing but the IOB between two reads.
 ; A RAM source already lives there; reading it again would overwrite it.
 batch_read:
         lda     ram_source
@@ -1580,14 +1657,17 @@ batch_read:
         jsr     map_ptr
         ldy     #0
         lda     (ptr2),y
-        tax
+        sta     sector
         lda     (ptr),y
-        jsr     read_at
-        bne     @fail
-        SETPTR  ptr, buffer
+        sta     track
         lda     bat_k
         jsr     batch_ptr
-        jsr     memcpy256
+        lda     ptr2
+        sta     rwts_buf
+        lda     ptr2+1
+        sta     rwts_buf+1
+        jsr     read_into
+        bne     @fail
         inc     bat_k
         jmp     @loop
 @ram:
@@ -1598,36 +1678,122 @@ batch_read:
         lda     #COPY_UNCERTAIN ; past the first write, a read failure is
         rts                     ; uncertain, not a plain read error
 
-; batch_write -- the target drive, once: write each sector and read it
-; back, exactly as the C edition's put_verified did
+; batch_write -- the target drive, once. The batch is written and read
+; back one track at a time: every sector of the run straight from its
+; page, then every one read back into buffer and compared with its page,
+; even offsets first, then odd, so that a read-back and its compare are
+; done before the next sector to read passes under the head (four slots
+; away instead of two). A run stays on one track, so the read-backs never
+; seek back to the other track of the batch. Nothing is copied between
+; two RWTS calls: a 256-byte move in that gap is what cost a whole turn
+; per sector. A file is still published only after every one of its
+; sectors read back; between a bad write and its detection the sectors
+; at risk are reserved and unpublished, as with a batch stopped at its
+; first sector. The bar moves once per batch: a redraw between two
+; sectors would lose a turn too.
 batch_write:
+        lda     copy_to
+        sta     drive
         lda     #0
+        sta     bat_lo
+@run:
+        ldx     bat_lo          ; the run: indices of one track
+        lda     bat_t,x
+        sta     s2
+@scan:
+        inx
+        cpx     bat_n
+        bcs     @have
+        lda     bat_t,x
+        cmp     s2
+        beq     @scan
+@have:
+        stx     bat_hi
+        lda     bat_lo
         sta     bat_k
-@loop:
+@write:
         lda     bat_k
+        cmp     bat_hi
+        bcs     @readback
+        jsr     batch_page
+        jsr     write_into
+        bne     @wfail
+        inc     bat_k
+        bne     @write          ; always: 32 at most
+@readback:
+        lda     #0
+        sta     bat_pass
+        lda     bat_lo
+        sta     bat_k
+@verify:
+        lda     bat_k
+        cmp     bat_hi
+        bcs     @parity
+        jsr     batch_page      ; ptr2 = the page
+        jsr     read_sector     ; into buffer
+        bne     @uncertain
+        SETPTR  ptr, buffer
+        jsr     memcmp256
+        bne     @uncertain
+        inc     bat_k
+        inc     bat_k
+        bne     @verify         ; always
+@parity:
+        lda     bat_pass
+        bne     @nextrun        ; the odd pass is over
+        inc     bat_pass
+        ldx     bat_lo
+        inx
+        stx     bat_k
+        bne     @verify         ; always
+@nextrun:
+        lda     bat_hi
+        sta     bat_lo
         cmp     bat_n
-        bcs     @done
+        bcc     @run
+        lda     bat_n
+        jsr     add_progress
+        lda     #COPY_OK
+        rts
+@wfail:
+        lda     rwts_error
+        cmp     #RWTS_PROTECTED
+        bne     @uncertain
+        lda     #COPY_PROTECTED
+        rts
+@uncertain:
+        lda     #COPY_UNCERTAIN
+        rts
+
+; add_progress -- A = sectors just done: the bar, redrawn when a cell
+; changes. fm_tick is the format's: its batches count like a copy's.
+add_progress:
+        clc
+        adc     copy_done
+        sta     copy_done
+        bcc     @drawn
+        inc     copy_done+1
+@drawn:
+        jmp     copy_progress
+
+fm_tick:
+        lda     fm_n
+        jmp     add_progress
+
+; batch_page -- index bat_k: rwts_buf and ptr2 on its page of the
+; working area, track and sector from bat_t / bat_s
+batch_page:
         lda     bat_k
         jsr     batch_ptr
         lda     ptr2
-        sta     ptr
+        sta     rwts_buf
         lda     ptr2+1
-        sta     ptr+1
-        SETPTR  ptr2, buffer
-        jsr     memcpy256
+        sta     rwts_buf+1
         ldx     bat_k
-        lda     bat_s,x
-        sta     s3
         lda     bat_t,x
-        ldx     s3
-        jsr     put_verified
-        bne     @fail
-        jsr     tick_progress
-        inc     bat_k
-        jmp     @loop
-@done:
-        lda     #COPY_OK
-@fail:
+        sta     track
+        lda     bat_s,x
+        sta     sector
         rts
 
 tick_progress:

@@ -7,7 +7,8 @@
  *
  * Framing, 6502 to host:
  *   'P'                        give me a command
- *   'S' cmd drive track sector a sector, plus 256 bytes when writing
+ *   'S' cmd drive track sector a sector, plus 256 bytes when writing;
+ *                              cmd 4 is RWTS FORMAT of the whole drive
  *   'R' ...                    the result of the last command
  * Host to 6502:
  *   after 'P': one command byte
@@ -17,6 +18,7 @@
 #include <unistd.h>
 
 extern unsigned char track, sector, drive, buffer[256];
+extern unsigned char *rwts_buf;     /* where a sector moves: buffer, or a page */
 unsigned char sim_rwts_error;
 
 unsigned char mini_catalog(void);
@@ -35,6 +37,9 @@ unsigned char mini_lock_execute(void);
 unsigned char mini_rename_prepare(void);
 unsigned char mini_rename_execute(void);
 void mini_copy_side(void);
+unsigned char mini_format(void);
+unsigned char mini_patch_type(void);
+unsigned char mini_patch_name(void);
 
 static unsigned char msg[5];
 static unsigned char scratch[256];
@@ -72,7 +77,7 @@ unsigned char sim_read(void)
     get(msg, 2);
     sim_rwts_error = msg[1];
     if (msg[0]) return 1;       /* a failure is never an end of file */
-    get(buffer, 256);
+    get(rwts_buf, 256);
     return 0;
 }
 
@@ -84,7 +89,20 @@ unsigned char sim_write(void)
     msg[3] = track;
     msg[4] = sector;
     put(msg, 5);
-    put(buffer, 256);
+    put(rwts_buf, 256);
+    get(msg, 2);
+    sim_rwts_error = msg[1];
+    return msg[0] ? 1 : 0;
+}
+
+unsigned char sim_format(void)
+{
+    msg[0] = 'S';
+    msg[1] = 4;
+    msg[2] = drive;
+    msg[3] = 0;
+    msg[4] = 0;
+    put(msg, 5);
     get(msg, 2);
     sim_rwts_error = msg[1];
     return msg[0] ? 1 : 0;
@@ -157,6 +175,15 @@ int main(void)
         case 18:
             mini_copy_side();
             reply(0);
+            break;
+        case 19:
+            reply(mini_format());
+            break;
+        case 20:
+            reply(mini_patch_type());
+            break;
+        case 21:
+            reply(mini_patch_name());
             break;
         case 6:                 /* peek: address low, high, length */
             get(msg, 3);

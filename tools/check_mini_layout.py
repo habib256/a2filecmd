@@ -16,6 +16,9 @@ DOS_FLOOR = 0x9600
 BRUN = 0x1000
 RESIDENT = 0x4000
 LOW_CEILING = 0x2000
+FORMAT_HOME = 0x0200        # format.s runs here, copied out of the image
+DOS_VECTORS = 0x03D0        # and must stop before DOS's page-three vectors
+HGR = 0x2000                # the working area: splash runs there once
 
 
 def segments(text):
@@ -35,9 +38,18 @@ def main():
     if len(sys.argv) != 2:
         raise SystemExit('usage: check_mini_layout.py build-mini/mini.map')
     segs = segments(Path(sys.argv[1]).read_text())
-    for name in ('LOWSTART', 'LOWCODE', 'STARTUP', 'CODE', 'RODATA', 'DATA', 'BSS'):
+    for name in ('LOWSTART', 'LOWCODE', 'FORMAT', 'INIT', 'STARTUP', 'CODE',
+                 'RODATA', 'DATA', 'BSS'):
         if name not in segs:
             raise SystemExit(f'{name} missing from the map')
+    fmt_start, _, fmt_size = segs['FORMAT']
+    if fmt_start != FORMAT_HOME:
+        raise SystemExit(f'FORMAT must run from ${FORMAT_HOME:04X}, not ${fmt_start:04X}')
+    if fmt_start + fmt_size > DOS_VECTORS:
+        raise SystemExit(f'FORMAT reaches ${fmt_start + fmt_size:04X}, into the DOS vectors')
+    init_start, _, init_size = segs['INIT']
+    if init_start < HGR or init_start + init_size > RESIDENT:
+        raise SystemExit('INIT must lie inside the working area')
     if segs['LOWSTART'][0] != BRUN:
         raise SystemExit(f'LOWSTART must start at ${BRUN:04X}: BRUN enters there')
     if segs['STARTUP'][0] != RESIDENT:
@@ -47,14 +59,16 @@ def main():
     if low_end > LOW_CEILING:
         raise SystemExit(f'LOW code reaches ${low_end:04X}, into the working area')
     end = max(start + size for start, _, size in segs.values() if start >= RESIDENT)
-    code = sum(segs[n][2] for n in ('LOWSTART', 'LOWCODE', 'STARTUP', 'CODE',
-                                    'RODATA', 'DATA'))
+    code = sum(segs[n][2] for n in ('LOWSTART', 'LOWCODE', 'FORMAT', 'INIT',
+                                    'STARTUP', 'CODE', 'RODATA', 'DATA'))
     free = DOS_FLOOR - end
     low_free = LOW_CEILING - low_end
+    fmt_free = DOS_VECTORS - fmt_start - fmt_size
     print(f'mini: code+data {code} bytes, BSS {segs["BSS"][2]} bytes, '
           f'resident ends at ${end:04X}, {free} bytes free below DOS at '
           f'${DOS_FLOOR:04X}; LOW ends at ${low_end:04X}, {low_free} bytes '
-          f'free below the working area')
+          f'free below the working area; FORMAT {fmt_size} bytes at '
+          f'${FORMAT_HOME:04X}, {fmt_free} bytes free below the DOS vectors')
     if free < 0:
         raise SystemExit('mini: the program would overwrite DOS 3.3')
 

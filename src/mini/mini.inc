@@ -50,6 +50,24 @@ REN_EXISTS      = 7             ; rename: the new name is already live
 DEL_PROTECTED   = 8             ; RWTS refused before the first write
 REN_SAME        = 9             ; rename: the disk already holds that name
 
+; format_disk() status. The prompt is answered before any of these.
+; From FMT_SRC_READ up nothing was written; the UI relies on the order.
+FMT_OK          = 0
+FMT_PROTECTED   = 1             ; RWTS refused the write-back: nothing written
+FMT_UNCERTAIN   = 2             ; a write did not read back: latched, no more writes
+FMT_FAILED      = 3             ; RWTS FORMAT failed: protected blank disk, bad disk, or erased
+FMT_SRC_LATE    = 4             ; the boot disk failed after the format: erased, no DOS, no VTOC
+FMT_SRC_READ    = 5             ; the boot disk failed before the format: nothing written
+FMT_NO_DOS      = 6             ; no DOS 3.3 boot sector on the boot disk: nothing written
+FMT_SAME        = 7             ; the target is the boot drive: nothing written
+; The format's progress bar counts sectors like a copy's, one tick per
+; batch: 48 read before, 48 read and 48 written after (the read-backs
+; are not counted), 16 for the catalog track, and RWTS's own FORMAT,
+; one opaque call of about half the time, counted as FMT_WEIGHT once it
+; returns.
+FMT_WEIGHT      = 224
+FMT_TOTAL       = 48 + FMT_WEIGHT + 96 + 16
+
 ; DOS 3.3 file type bits, lock aside.
 TYPE_TEXT       = $00
 TYPE_INTEGER    = $01
@@ -123,7 +141,12 @@ IOB_COMMAND     = 12            ; 1 = read, 2 = write
 IOB_RETURN      = 13
 RWTS_READ       = 1
 RWTS_WRITE      = 2
+RWTS_FORMAT     = 4             ; every track, from format.s only
 RWTS_PROTECTED  = $10           ; return code for write protection
+DOS_VOLUME      = 254           ; what INIT stamps when no volume is asked
+DOS_SIG_LEN     = 5             ; bytes of a DOS 3.3 boot sector checked (dos_sig)
+FORMAT_HOME     = $0200         ; where format.s runs: input buffer and page three
+FORMAT_ROOM     = DOS_WARM - FORMAT_HOME
 
 ; ---------------------------------------------------------------------
 ; DOS 3.3 on-disk layout

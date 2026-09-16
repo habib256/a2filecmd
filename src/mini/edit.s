@@ -5,8 +5,9 @@
 
         .include "mini.inc"
 
-        .export ask_name, edit_text, name_buf, ask_kind
-        .export _ask_name, _edit_text, _name_buf, _ask_kind
+        .export ask_name, edit_text, ask_kind
+        .export _ask_name, _edit_text, _ask_kind
+        .import name_buf
 
         .import present, at, put, inline_text, clear, zone
         .import keys_bar_inline
@@ -15,9 +16,7 @@
         .import edit_len
 
         .segment "BSS"
-name_buf:       .res NAME_LEN
-_name_buf       = name_buf
-ask_kind:       .res 1          ; 0 new text, 1 rename
+ask_kind:       .res 1          ; 0 new text, 1 rename, 2 the name exists: another
 _ask_kind       = ask_kind
 nm_len:         .res 1
 ed_len          = edit_len
@@ -56,7 +55,12 @@ _ask_name:
         PRINT   "NEW: "
         jmp     @field
 @ren:
+        cmp     #1
+        bne     @taken
         PRINT   "RENAME: "
+        jmp     @field
+@taken:
+        PRINT   "EXISTS: "       ; 8 columns: the 30-character field must fit the row
 @field:
         ldx     #0
 @ch:
@@ -189,14 +193,6 @@ _edit_text:
         beq     @dn
         cmp     #11
         beq     @up
-        cmp     #'J'
-        beq     @lf
-        cmp     #'L'
-        beq     @rt
-        cmp     #'I'
-        beq     @up
-        cmp     #'K'
-        beq     @dn
         cmp     #13
         beq     @put
         cmp     #32
@@ -618,5 +614,5 @@ draw_edit:
         lda     #0
         sta     inverse
 @bar:
-        KEYBAR  23, "^S Save,ESC Leave,IJKL Move"
+        KEYBAR  23, "^S Save,ESC Leave,^K/^J Up/Dn"
         rts

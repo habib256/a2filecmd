@@ -13,9 +13,10 @@
 ; test harnesses; the assembler modules use the bare names.
 
         .export active, count, volume, drive, slot, track, sector
-        .export selected, error, buffer, sector_seen
+        .export boot_drive, _boot_drive
+        .export selected, error, buffer, sector_seen, rwts_buf
         .export _active, _count, _volume, _drive, _slot, _track, _sector
-        .export _selected, _error, _buffer, _sector_seen
+        .export _selected, _error, _buffer, _sector_seen, _rwts_buf
         .export ent_track, ent_sector, ent_type, ent_seclo, ent_sechi, ent_name
         .export _ent_track, _ent_sector, _ent_type, _ent_seclo, _ent_sechi
         .export _ent_name
@@ -27,6 +28,7 @@
         .export prv_index, _prv_index
         .export tags, _tags
         .export edit_len, _edit_len
+        .export name_buf, _name_buf
 
         .segment "BSS"
 
@@ -36,6 +38,8 @@ count:          .res 1          ; entries in the active panel
 volume:         .res 1          ; DOS volume number last read
 drive:          .res 1          ; 1 or 2, the drive RWTS will use
 slot:           .res 1          ; slot A2FC was run from
+boot_drive:     .res 1          ; drive A2FC was run from: format's DOS source
+_boot_drive     = boot_drive
 track:          .res 1          ; RWTS target
 sector:         .res 1
 selected:       .res 1          ; cursor in the active panel
@@ -58,9 +62,18 @@ _prv_index      = prv_index
 edit_len:       .res 2
 _edit_len       = edit_len
 
+; ---- the name ask_name collects: N's new file, R's new name (ren_name)
+name_buf:       .res NAME_LEN
+_name_buf       = name_buf
+
 ; ---- the one sector buffer RWTS fills ------------------------------
 buffer:         .res 256
 _buffer         = buffer
+; where read_into / write_into move a sector: a page of the working
+; area, so a batch is not copied sector by sector between two RWTS
+; calls. read_sector / write_sector point it at buffer themselves.
+rwts_buf:       .res 2
+_rwts_buf       = rwts_buf
 
 ; ---- 560 allocation bits, reused by the catalog scan and the audit --
 ; Never both at once: the catalog scan finishes before a copy starts.

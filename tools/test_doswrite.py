@@ -3,7 +3,13 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-from mini33_fixture import make_disk, read_files, offset
+from mini33_fixture import make_disk as _make_disk, read_files, offset
+
+
+def make_disk(files):
+    # the sector offsets below (T3 S0 list, S1 data) assume the fixture's
+    # original ascending layout
+    return _make_disk(files, descending=False)
 ROOT=Path(__file__).resolve().parents[1]
 C=r'''
 #define __fastcall__

@@ -31,9 +31,16 @@ def hello_program():
         (20, bytes([HTAB]) + b'16:' + bytes([PRINT]) + b'"A2FILECMD"'),
         (30, bytes([HTAB]) + b'15:' + bytes([PRINT]) + b'"MINI DOS 3.3"'),
         (40, bytes([HTAB]) + b'18:' + bytes([PRINT]) + b'"' + version + b'"'),
-        (50, bytes([VTAB]) + b'22:' + bytes([HTAB]) + b'11:' + bytes([PRINT]) + b'"GPL3 VERHILLE ARNAUD"'),
-        (60, bytes([VTAB]) + b'23:' + bytes([HTAB]) + b'6:' + bytes([PRINT]) + b'"LOADING .... PLEASE WAIT ...."'),
-        (70, bytes([PRINT, CHRS]) + b'(4);"BRUN A2FC"'),
+        # The same layout as splash in src/mini/ui.s (rows 11, 13 and 23 of
+        # the screen; VTAB counts from 1), so the screen does not move when
+        # A2FC takes over. Row 24's PRINT ends with ';' so it cannot scroll;
+        # the DOS command then starts on its own line at the top, where a
+        # carriage return moves nothing.
+        (50, bytes([VTAB]) + b'12:' + bytes([HTAB]) + b'6:' + bytes([PRINT]) + b'"LOADING .... PLEASE WAIT ...."'),
+        (60, bytes([VTAB]) + b'14:' + bytes([HTAB]) + b'10:' + bytes([PRINT]) + b'"CAPS LOCK ON IS NEEDED"'),
+        (70, bytes([VTAB]) + b'24:' + bytes([HTAB]) + b'11:' + bytes([PRINT]) + b'"GPL3 VERHILLE ARNAUD";'),
+        (80, bytes([VTAB]) + b'1:' + bytes([HTAB]) + b'1:' + bytes([PRINT])),
+        (90, bytes([PRINT, CHRS]) + b'(4);"BRUN A2FC"'),
     ])
 
 
@@ -56,9 +63,11 @@ def build(master, binary):
     program = hello_program()
     files = [('HELLO',2,struct.pack('<H',len(program))+program),
              ('A2FC',4,struct.pack('<HH',0x1000,len(binary))+binary),
-             ('README',0,b'A2FC MINI DOS 3.3\rAPPLE II+ 48 KB - DOS 3.3 COPY\rTAB: PANEL - I/K: SELECT\rRETURN: PREVIEW - /: DRIVE\rC: COPY TO THE OTHER PANEL\rCTRL-R: REREAD - Q: DOS\rT/H: TEXT/HEX - ?: HELP\rG: TIGER HI-RES\rL: LOCK/UNLOCK - R: RENAME\rD: DELETE - SPACE: TAG\rY: CONFIRM - N/ESC: CANCEL\r\0'),
+             ('README',0,b'A2FC MINI DOS 3.3\rAPPLE II+ 48 KB - DOS 3.3 COPY\rCAPS LOCK ON IS NEEDED\rTAB: PANEL - I/K: SELECT\rRETURN: PREVIEW - /: DRIVE\rC: COPY TO THE OTHER PANEL\rCTRL-R: REREAD - Q: DOS\rT/H: TEXT/HEX - ?: HELP\rG: TIGER HI-RES\rL: LOCK/UNLOCK - R: RENAME\rD: DELETE - SPACE: TAG\rY: CONFIRM - N/ESC: CANCEL\r\0'),
              ('TIGER',4,tiger)]
-    free = [(t,s) for t in range(3,35) if t != 17 for s in range(16)]
+    # Within a track from sector 15 down, as DOS allocates: DOS 3.3's
+    # 2:1 skew makes a descending chain the one read without lost turns.
+    free = [(t,s) for t in range(3,35) if t != 17 for s in range(15,-1,-1)]
     used = {(t,s) for t in (0,1,2,17) for s in range(16)}
     def alloc():
         ts=free.pop(0); used.add(ts); return ts

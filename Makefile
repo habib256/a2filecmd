@@ -14,7 +14,7 @@
 # every time by tools/check_layout.py, which catches the two overflows that
 # ld65 lets through silently. See docs/MANUAL.md.
 
-A2FC_VERSION = 0.8.7
+A2FC_VERSION = 0.8.8
 VOLUME       = A2FC$(CPU)
 
 # The .2mg hard disk: another volume name, to coexist with the floppy.
@@ -387,7 +387,7 @@ pom2host:
 
 bench: disk
 	$(MAKE) ARCH=enh benchfloppy
-	python3 bench/run.py
+	A2FC_IMG=A2FILECMD-full python3 bench/run.py
 
 # The third-party example overlay (sdk/), compiled OUTSIDE the tree with only
 # src/a2fc_plugin.h: the proof that the ABI holds. Produces build/HELLO.PLG,
@@ -407,7 +407,7 @@ MINI_LD ?= ld65
 MINI_MASTER ?=
 MINI_DISK ?= $(DIST)/A2FC-MINI-DOS33-$(A2FC_VERSION).dsk
 # start.s must come first: its STARTUP segment lands on the load address.
-MINI_MODULES = lowstart start rwts screen catalog copy keyboard ui data scratch delete edit fileops
+MINI_MODULES = lowstart start rwts screen catalog copy keyboard ui data scratch delete edit fileops format
 MINI_OBJS = $(addprefix $(MINI_BUILD)/,$(addsuffix .o,$(MINI_MODULES)))
 .PHONY: mini mini-disk test-mini
 mini: $(MINI_BUILD)/A2FC.MINI
@@ -431,3 +431,4 @@ mini-disk: mini | $(DIST)
 test-mini: mini
 	python3 $(TOOLS)/test_mini33.py
 	python3 $(TOOLS)/test_mini33_write.py
+	python3 $(TOOLS)/test_mini33_format.py

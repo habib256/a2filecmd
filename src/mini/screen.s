@@ -11,15 +11,13 @@
 
         .include "mini.inc"
 
-        .export present, present_top, at, put, inline_text, clear, zone
+        .export present, at, put, inline_text, clear, zone
         .export number, hexbyte, filetype, keys_bar, keys_bar_inline
-        .export save_holes, restore_holes
 
         .import screen_image, slot
 
         .segment "BSS"
 digits:         .res 5          ; a 16-bit value never needs more
-hole_save:      .res 8          ; $0478+slot through $07F8+slot, one every $80
 
         .segment "RODATA"
 
@@ -80,86 +78,10 @@ present:
         bcc     @row
         rts
 
-; Only the four banner rows. The Disk II current-track bytes sit in $400
-; where a full present() would overwrite them; the first catalog still
-; needs those values.
-present_top:
-        ldx     #0
-@row:
-        lda     scr_lo,x
-        sta     ptr
-        lda     scr_hi,x
-        sta     ptr+1
-        lda     img_lo,x
-        sta     ptr2
-        lda     img_hi,x
-        sta     ptr2+1
-        ldy     #39
-@cell:
-        lda     (ptr2),y
-        sta     (ptr),y
-        dey
-        bpl     @cell
-        inx
-        cpx     #4
-        bcc     @row
-        rts
-
-; The slot's screen holes: $0478+slot, then the same offset every $80
-; bytes through $07F8+slot, the 8 bytes of each $80 block no row shows.
-; DOS 3.3 RWTS keeps the current track of drive 1 at $0478+slot and of
-; drive 2 at $04F8+slot: it turns IBSLOT (slot*16) into the slot number
-; (TXA, four LSRs, TAY) before indexing them. They were once taken at
-; $0478+slot*16, which are visible cells (slot 6: column 8 of rows 5,
-; 8, 11, 14, 17, 20 and 23): every RWTS call then put stale characters
-; back on the screen.
-hole_ptr:
-        lda     slot
-        clc
-        adc     #$78
-        sta     ptr
-        lda     #$04
-        adc     #0
-        sta     ptr+1
-        rts
-
-save_holes:
-        jsr     hole_ptr
-        ldx     #0
-@one:
-        ldy     #0
-        lda     (ptr),y
-        sta     hole_save,x
-        lda     ptr
-        clc
-        adc     #$80
-        sta     ptr
-        bcc     @noc
-        inc     ptr+1
-@noc:
-        inx
-        cpx     #8
-        bcc     @one
-        rts
-
-restore_holes:
-        jsr     hole_ptr
-        ldx     #0
-@one:
-        lda     hole_save,x
-        ldy     #0
-        sta     (ptr),y
-        lda     ptr
-        clc
-        adc     #$80
-        sta     ptr
-        bcc     @noc
-        inc     ptr+1
-@noc:
-        inx
-        cpx     #8
-        bcc     @one
-        rts
+; The text page's screen holes ($0478+slot and the same offset every
+; $80 bytes) hold DOS 3.3's current track per drive. Nothing here writes
+; them: present covers the 960 visible cells only, and the hi-res viewer
+; shows page $2000. So no RWTS call needs them saved or put back.
 
 ; ---------------------------------------------------------------------
 ; at -- Y = row, X = column
@@ -210,6 +132,8 @@ put:
 ; ---------------------------------------------------------------------
 ; inline_text -- prints the NUL-terminated string that follows the call
 ; and resumes after it. Saves the address setup at every message site.
+; A '~' in the text flips inverse video instead of printing: the help
+; page shows its keys that way, like the key bar.
 ; ---------------------------------------------------------------------
 inline_text:
         pla
@@ -221,7 +145,15 @@ inline_text:
         lda     (w0),y
         beq     @done
         sty     t1
+        cmp     #'~'
+        bne     @char
+        lda     inverse
+        eor     #1
+        sta     inverse
+        bpl     @next           ; always: inverse is 0 or 1
+@char:
         jsr     put
+@next:
         ldy     t1
         iny
         bne     @loop

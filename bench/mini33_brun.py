@@ -17,11 +17,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
 from mini33_fixture import make_disk
 from mkmini33 import MINI_VERSION
+from mini33_fixture import read_files as _read_files
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--pom2-root', type=Path, required=True)
 p.add_argument('--disk', type=Path, default=ROOT/f'dist/A2FC-MINI-DOS33-{MINI_VERSION}.dsk')
 a = p.parse_args()
 original = a.disk.read_bytes()
+MINI_ENV = dict(os.environ, MINI_FILES=str(len(_read_files(original))))   # the boot disk's file count, for the screen checks
 picture = bytes((0x55, 0x2A) * 4096)
 # INC $06 / LDA #$5A / STA $07 / RTS, loaded at $6000 (over A2FC Mini)
 game = bytes((0x00, 0x60, 7, 0)) + bytes((0xE6, 0x06, 0xA9, 0x5A, 0x85, 0x07, 0x60))
@@ -47,7 +49,7 @@ with tempfile.TemporaryDirectory(prefix='mini33-brun-') as tmp:
                     str(a.pom2_root / 'build/libpom2_core_test.a'),
                     '-o', str(d / 'bench')], check=True)
     subprocess.run([str(d / 'bench'), str(a.pom2_root), str(boot), str(other)],
-                   check=True, timeout=300)
+                   env=MINI_ENV, check=True, timeout=300)
     assert other.read_bytes() == other_image, 'the program disk was written'
     assert a.disk.read_bytes() == original
     print('PASS: RETURN picks hi-res, text, hex or BRUN by content; RETURN and B BRUN a binary from HELLO and from the DOS prompt')

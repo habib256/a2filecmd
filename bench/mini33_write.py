@@ -15,6 +15,7 @@ p.add_argument('--pom2-root',type=Path,required=True)
 p.add_argument('--disk',type=Path,default=ROOT/f'dist/A2FC-MINI-DOS33-{MINI_VERSION}.dsk')
 a=p.parse_args()
 original=a.disk.read_bytes()
+MINI_ENV = dict(os.environ, MINI_FILES=str(len(read_files(original))))   # the boot disk's file count, for the screen checks
 with tempfile.TemporaryDirectory(prefix='mini33-write-') as tmp:
     d=Path(tmp); boot=d/'boot.dsk'; target=d/'target.dsk'
     boot.write_bytes(original)
@@ -28,7 +29,7 @@ with tempfile.TemporaryDirectory(prefix='mini33-write-') as tmp:
     subprocess.run([os.environ.get('CXX','c++'),'-std=c++17','-O2',
         *['-I'+str(a.pom2_root/s) for s in ('src','include','build/generated')],
         str(ROOT/'bench/mini33_write.cpp'),str(a.pom2_root/'build/libpom2_core_test.a'),'-o',str(d/'bench')],check=True)
-    subprocess.run([str(d/'bench'),str(a.pom2_root),str(boot),str(target),str(ROOT/'build-mini/A2FC.MINI'),str(swapped)],check=True,timeout=180)
+    subprocess.run([str(d/'bench'),str(a.pom2_root),str(boot),str(target),str(ROOT/'build-mini/A2FC.MINI'),str(swapped)],env=MINI_ENV,check=True,timeout=180)
     assert boot.read_bytes()==original
     assert swapped.read_bytes()==original_swapped, 'the swapped-in disk must stay untouched'
     before=read_files(original_target); after=read_files(target.read_bytes()); source=read_files(original)

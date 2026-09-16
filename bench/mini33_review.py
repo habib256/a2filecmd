@@ -21,6 +21,7 @@ def high(text):
 
 
 original = a.disk.read_bytes()
+MINI_ENV = dict(os.environ, MINI_FILES=str(len(read_files(original))))   # the boot disk's file count, for the screen checks
 copy_fixture = bytearray(make_disk([('GOOD.A', 0, b'GOOD DATA A'),
                                     ('BAD.B', 0, b'BAD DATA B')]))
 copy_fixture[offset(17, 15) + 11 + 35 + 33] = 9     # a count the chain does not have
@@ -43,7 +44,7 @@ with tempfile.TemporaryDirectory(prefix='mini33-review-') as tmp:
                     str(a.pom2_root / 'build/libpom2_core_test.a'),
                     '-o', str(d / 'bench')], check=True)
     ui = subprocess.run([str(d / 'bench'), str(a.pom2_root), str(boot), str(first), str(second)],
-                        timeout=600)
+                        env=MINI_ENV, timeout=600)
     if ui.returncode:
         failures.append(f'{ui.returncode} screen checks')
 

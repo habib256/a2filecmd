@@ -325,7 +325,7 @@ class WriteTest(unittest.TestCase):
     def test_protect_after_vtoc_latches(self):
         self.assertEqual(self.prepare(), OK)
         self.mini.protect_write = 1
-        self.assertEqual(self.mini.execute(), PROTECTED)
+        self.assertEqual(self.mini.execute(), UNCERTAIN)   # reserved sectors are down: not "untouched"
         self.assertEqual(self.mini.byte('copy_fault'), 1)
         self.assertNotIn('COPY.ME', read_files(self.image(2)))
         self.assertEqual(self.mini.prepare(0, 2), UNCERTAIN)
@@ -663,16 +663,73 @@ class WriteTest(unittest.TestCase):
         self.assertEqual(self.image(1)[a + 1:a + 32], self.src[a + 1:a + 32])
         self.assertEqual(self.image(1)[a + 33:a + 35], self.src[a + 33:a + 35])
 
+    def test_delete_audits_the_disk_once_per_batch(self):
+        # The audit walks every live file's T/S lists; on a full disk that
+        # is a hundred scattered reads. It runs for the first file of a
+        # batch only: deleting a file cannot cross-link the others, and
+        # each later file still has its own chain walked and its slot and
+        # the VTOC held to the panel before any write.
+        files = [(f'F{i:03d}', 0, b'X' * 300) for i in range(60)]
+        self.load(src=make_disk(files))
+        self.assertEqual(self.mini.delete_prepare(0), self.DEL_OK)
+        first = self.mini.reads
+        self.assertGreater(first, 60)
+        self.assertEqual(self.mini.delete_execute(), self.DEL_OK)
+        self.mini.reads = 0
+        self.assertEqual(self.mini.delete_prepare(1, new_batch=False), self.DEL_OK)
+        self.assertLess(self.mini.reads, 8, 'no second audit within a batch')
+        self.assertEqual(self.mini.delete_execute(), self.DEL_OK)
+        # The next D audits again.
+        self.mini.reads = 0
+        self.assertEqual(self.mini.delete_prepare(2), self.DEL_OK)
+        self.assertGreater(self.mini.reads, 58)
+        self.assertEqual(self.mini.delete_execute(), self.DEL_OK)
+        after = read_files(self.image(1))
+        self.assertEqual(len(after), 57)
+        for name in ('F000', 'F001', 'F002'):
+            self.assertNotIn(name, after)
+        # A swapped disk inside a batch is still refused on identity.
+        self.assertEqual(self.mini.delete_prepare(3, new_batch=False), self.DEL_OK)
+        self.mini.load(1, make_disk(files[::-1]))
+        self.assertEqual(self.mini.delete_execute(), self.DEL_CHANGED)
+        self.assertEqual(self.mini.image(1), make_disk(files[::-1]))
+
+    def test_full_dosless_disk_keeps_its_files_deletable(self):
+        # A disk formatted without DOS whose tracks 1-2 filled up: the VTOC
+        # alone cannot tell it from a DOS disk, the boot sector can. Every
+        # file stays valid, so a delete's whole-disk audit still passes and
+        # a file living on track 1 copies; on a disk whose boot sector is
+        # DOS 3.3's, a chain into track 1 is still refused.
+        files = [(f'S{i:02d}', 0, b'X' * 100) for i in range(16)]   # 16 x 2 sectors: tracks 1-2 full
+        files.append(('LATER', 0, b'ON TRACK 3'))
+        disk = bytearray(make_disk(files, dosless=True))
+        self.load(src=bytes(disk), dst=make_disk([]))
+        self.assertEqual(self.mini.delete_prepare(16), self.DEL_OK)
+        reads = self.mini.reads
+        self.assertEqual(self.mini.delete_execute(), self.DEL_OK)
+        self.assertNotIn('LATER', read_files(self.image(1)))
+        self.assertEqual(self.mini.prepare(0, 2), OK)          # S00 lives on track 1
+        self.assertEqual(self.mini.execute(), OK)
+        self.assertEqual(read_files(self.image(2))['S00']['data'][:100], b'X' * 100)
+        disk[0:5] = self.SIG
+        self.load(src=bytes(disk), dst=make_disk([]))
+        self.assertEqual(self.mini.delete_prepare(16), self.DEL_INVALID)
+        self.assertEqual(self.mini.prepare(0, 2), INVALID)
+        self.assertEqual(self.mini.write_log, [])
+
     def test_delete_refuses_locked(self):
         self.load(src=make_disk([('LOCK.ME', 0x80, b'SAFE')]))
         self.assertEqual(self.mini.delete_prepare(0), self.DEL_LOCKED)
         self.assertEqual(len(self.mini.write_log), 0)
         self.assertEqual(self.image(1), self.src)
 
+    SIG = bytes([0x01, 0xA5, 0x27, 0xC9, 0x09])     # a DOS 3.3 boot sector starts so
+
     def test_delete_refuses_dos_system_track(self):
         self.load(src=make_disk([('GONE.TXT', 0, b'DELETE ME'),
                                  ('KEEP.SRC', 0, b'SOURCE SAFE')]))
         img = bytearray(self.image(1))
+        img[0:5] = self.SIG                     # tracks 1-2 all used and DOS booting: DOS's
         img[offset(17, 15) + 11] = 1
         img[offset(17, 15) + 12] = 0
         self.mini.load(1, bytes(img))
@@ -783,11 +840,45 @@ class WriteTest(unittest.TestCase):
         self.assertEqual(files['NEW.TXT']['data'], before['OLD.TXT']['data'])
         self.assertEqual(files['KEEP.SRC']['data'], before['KEEP.SRC']['data'])
         self.assertEqual(self.mini.write_log, [(1, 17, 15)])
+        # execute holds the disk to prepare's scan (VTOC and slot sector
+        # byte for byte, then the read-back): three reads, no second scan
+        self.assertEqual(self.mini.reads, 17 + 3)
         self.assertEqual(self.mini.catalog(), 0)
         self.assertEqual(self.mini.rename_prepare(0, 'KEEP.SRC'), 7)
         self.assertEqual(len(self.mini.write_log), 1)
         self.assertIn('NEW.TXT', read_files(self.image(1)))
         self.assertIn('KEEP.SRC', read_files(self.image(1)))
+
+    def test_patched_entry_after_rename_and_lock_still_holds_the_slot(self):
+        # The UI patches the panel entry instead of rereading the catalog.
+        # The patched entry must be what a reread would store (names are
+        # kept sanitised), or the next write would refuse DISK CHANGED.
+        self.load(src=make_disk([('OLD.TXT', 0, b'RENAME ME'),
+                                 ('KEEP.SRC', 0, b'SOURCE SAFE')]))
+        self.assertEqual(self.mini.rename_prepare(0, 'MEMO'), self.DEL_OK)
+        self.assertEqual(self.mini.rename_execute(), self.DEL_OK)
+        self.assertEqual(self.mini.patch_name(), self.DEL_OK)
+        patched = self.mini.peek('ent_name', 32)
+        self.assertEqual(self.mini.lock_prepare(0, 2), self.DEL_OK)
+        self.assertEqual(self.mini.lock_execute(), self.DEL_OK)
+        self.assertEqual(self.mini.patch_type(), self.DEL_OK)
+        self.assertEqual(self.mini.byte('ent_type'), 0x80)
+        self.assertEqual(self.mini.lock_prepare(0, 1), self.DEL_OK)
+        self.assertEqual(self.mini.lock_execute(), self.DEL_OK)
+        self.assertEqual(self.mini.patch_type(), self.DEL_OK)
+        self.assertEqual(self.mini.byte('ent_type'), 0)
+        self.assertEqual(self.mini.delete_prepare(0), self.DEL_OK)
+        self.assertEqual(self.mini.delete_execute(), self.DEL_OK)
+        self.assertNotIn('MEMO', read_files(self.image(1)))
+        # and byte for byte what a reread stores
+        self.load(src=make_disk([('OLD.TXT', 0, b'RENAME ME'),
+                                 ('KEEP.SRC', 0, b'SOURCE SAFE')]))
+        self.assertEqual(self.mini.rename_prepare(0, 'MEMO'), self.DEL_OK)
+        self.assertEqual(self.mini.rename_execute(), self.DEL_OK)
+        self.assertEqual(self.mini.patch_name(), self.DEL_OK)
+        patched = self.mini.peek('ent_name', 32)
+        self.assertEqual(self.mini.catalog(), 0)
+        self.assertEqual(self.mini.peek('ent_name', 32), patched)
 
     def test_rename_refuses_locked(self):
         self.load(src=make_disk([('LOCK.ME', 0x80, b'SAFE')]))

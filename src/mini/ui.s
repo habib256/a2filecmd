@@ -14,12 +14,13 @@
 
         .export main, copy_progress
         .export activate, confirm, reload, keep_note, result_done
-        .export say_protected
+        .export result_kept
+        .export say_protected, say_uncertain, say_unsupported
         .export print_name, print_name15, print_byte, tag_count, tag_test
         .export batch_number, batch_skipped, batch_done, foot_zone
         .export cf_ok, cf_marked, tg_n, brun_go
 
-        .import present, restore_holes, at, put, inline_text, clear, zone
+        .import present, at, put, inline_text, clear, zone
         .import number, hexbyte, filetype, keys_bar, keys_bar_inline
         .import key
         .import catalog, preview, load_file, load_count, load_more
@@ -33,11 +34,11 @@
         .import create_prepare, create_execute
         .import data_count, copy_done, copy_total
         .import delete_prepare, delete_execute, delete_cancel
-        .import del_index, del_fault
-        .import lock_file, rename_file
+        .import del_index, del_fault, del_audited
+        .import lock_file, rename_file, format_file
         .import ask_name, edit_text, name_buf, ask_kind
         .import edit_len
-        .import cp_index, cp_dest
+        .import cp_index, cp_dest, verify, catalog_before
         .import cs_name, cs_type, cs_seclo, cs_sechi
         .import active, count, volume, drive, slot, selected, error
         .import buffer, prv_index
@@ -64,7 +65,9 @@ vw_i:           .res 1
 vw_prev:        .res 1
 rl_home:        .res 1          ; reload locals
 rl_have:        .res 1
-rl_name:        .res NAME_LEN
+; the name a reread keeps the selection by lives in the write engine's
+; read-back page: a reread only reads, and no write runs during one
+rl_name         = verify
 rl_i:           .res 1
 rl_mask:        .res 1          ; 0 = every panel (Ctrl-R)
 rl_drive:       .res 1          ; written drive when rl_mask is set
@@ -72,18 +75,25 @@ ck:             .res 1          ; the key being acted on
 cf_status:      .res 1          ; copy_file status
 cf_marked:      .res 1          ; tagged files to copy, 0 = cursor only
 cf_ok:          .res 1          ; how many of a batch landed
+cf_full:        .res 1          ; a file of the batch did not fit: the batch's word
 pg_acc:         .res 2          ; copy_progress: done * 32
 pg_fill:        .res 1
+pg_last:        .res 1          ; the bar as drawn: an unchanged bar is not redrawn
 pg_i:           .res 1
 have_note:      .res 1          ; last operation result, drawn on row 22 until the next key
 brun_go:        .res 1          ; 1: page 3 holds the BRUN stub, start.s jumps there
 br_idx:         .res 1          ; brun_file locals
 br_last:        .res 1
 br_i:           .res 1
-note_line:      .res 40
+; the result line kept for the next draw shares the write engines'
+; catalog_before: that is written during an operation, this one at its
+; end and read at the next draw, with only reads in between
+note_line       = catalog_before
 
         .segment "RODATA"
-; '1' to '7' stand in for the seven buttons on the bottom bars.
+; '1' to '7': Tab, Return, Copy, Drive, Reread, Help, Quit, the numbers
+; documented since the first bars; the bar's labels changed since and
+; the numbers deliberately did not.
 digit_keys:
         .byte   9, 13, 'C', '/', 18, '?', 'Q'
 
@@ -299,7 +309,8 @@ activate:
 ; cannot confirm a write by accident.
 ; ---------------------------------------------------------------------
 confirm:
-        KEYBAR  23, "Y Yes,N No,ESC Cancel"
+        bit     KBDSTROBE       ; a key typed during the operation before
+        KEYBAR  23, "Y Yes,N No,ESC Cancel"   ; this is not an answer to it
 @ask:
         jsr     key
         cmp     #'Y'
@@ -310,9 +321,18 @@ confirm:
         bne     @ask
 @no:
         clc
-        rts
+        bcc     @bar
 @yes:
         sec
+@bar:
+        php                     ; the question is answered: the main keys
+        jsr     main_bar        ; come back for the operation's duration
+        plp
+        rts
+
+; main_bar -- the last row of the panels
+main_bar:
+        KEYBAR  23, "TAB Pan,C Copy,D Del,B Run,/ Drv,? Help,Q Quit"
         rts
 
 ; ---------------------------------------------------------------------
@@ -582,7 +602,7 @@ draw:
         cpx     #40
         bne     @note
 @keys:
-        KEYBAR  23, "TAB Pan,C Copy,D Del,B Run,/ Drv,? Help,Q Quit"
+        jsr     main_bar
         rts
 
 ; ---------------------------------------------------------------------
@@ -650,34 +670,34 @@ help:
         sta     inverse
         ldy     #2
         jsr     at_left
-        PRINT   "TAB: PANEL   RET: OPEN"
+        PRINT   "~TAB~: PANEL   ~RET~: OPEN"
         ldy     #4
         jsr     at_left
-        PRINT   "CTRL-K/J OR I/K: UP/DOWN"
+        PRINT   "~CTRL-K/J~ OR ~I/K~: UP/DOWN"
         ldy     #6
         jsr     at_left
-        PRINT   "ARROWS OR -/+: PAGE   [/]: FIRST/LAST"
+        PRINT   "~ARROWS~ OR ~-/+~: PAGE   ~[/]~: FIRST/LAST"
         ldy     #8
         jsr     at_left
-        PRINT   "/: DRIVE   CTRL-R: REREAD BOTH"
+        PRINT   "~/~: DRIVE   ~CTRL-R~: REREAD BOTH   ~Q~: QUIT"
         ldy     #10
         jsr     at_left
-        PRINT   "=: SAME DISK IN THE OTHER PANEL"
+        PRINT   "~=~: SAME DISK IN THE OTHER PANEL"
         ldy     #12
         jsr     at_left
-        PRINT   "T/H/G: VIEW   C: COPY MARKED OR CURSOR"
+        PRINT   "~T/H/G~: VIEW   ~C~: COPY MARKED OR CURSOR"
         ldy     #14
         jsr     at_left
-        PRINT   "SPACE: TAG  CTRL-T/N: ALL/NONE  *: INVERT"
+        PRINT   "~SPACE~: TAG  ~CTRL-T/N~: ALL/NONE ~*~: INVERT"
         ldy     #16
         jsr     at_left
-        PRINT   "N: NEW TXT  E: EDIT  D: DELETE"
+        PRINT   "~N~: NEW  ~E~: EDIT  ~D~: DELETE  ~F~: FORMAT"
         ldy     #18
         jsr     at_left
-        PRINT   "L: LOCK/UNLOCK  R: RENAME  B: BRUN"
+        PRINT   "~L~: LOCK/UNLOCK  ~R~: RENAME  ~B~: BRUN"
         ldy     #20
         jsr     at_left
-        PRINT   "Y CONFIRMS A WRITE. UNLOCK TO DELETE."
+        PRINT   "~Y~ CONFIRMS A WRITE. UNLOCK TO DELETE."
         KEYBAR  23, "ESC Back"
         jsr     key
         rts
@@ -874,6 +894,7 @@ copy_file:
         bcc     @out
         lda     #0
         sta     cf_ok
+        sta     cf_full
         sta     tg_index
 @each:
         lda     tg_index
@@ -889,6 +910,11 @@ copy_file:
         beq     @landed
         cmp     #COPY_EXISTS
         beq     @next
+        cmp     #COPY_FULL      ; nothing written: a smaller file may still fit
+        bne     @stop
+        sta     cf_full
+        beq     @next           ; always: the cmp matched
+@stop:
         sta     cf_status
         jmp     cf_dest_show
 @landed:
@@ -902,6 +928,10 @@ copy_file:
         beq     @none
         lda     #COPY_OK
 @none:
+        ldx     cf_full         ; one file did not fit: say so, whatever landed
+        beq     @say
+        lda     #COPY_FULL
+@say:
         sta     cf_status
         jmp     cf_dest_show
 @out:
@@ -998,21 +1028,32 @@ cf_show:
         jmp     result_done
 @notchanged:
         cmp     #COPY_UNCERTAIN
-        bne     @unsupported
+        bne     say_unsupported
+        ; fall through: the copy engine latched already, once more is harmless
+
+; say_uncertain -- one copy for copy, delete and format: the result,
+; the latch so nothing writes again this run, then the reread.
+say_uncertain:
         PRINT   "UNCERTAIN WRITE - STOP"
+        lda     #1
+        sta     del_fault
         jmp     result_done
-@unsupported:
+
+say_unsupported:
         PRINT   "UNSUPPORTED / INVALID DOS STRUCTURE"
         jmp     result_done
 
-; say_protected -- the one copy of the message for copy, delete, lock
-; and rename. RWTS refused before writing: the disk is unchanged.
+; say_protected -- the one copy of the message for copy, delete, lock,
+; rename and format. RWTS refused before writing: the disk is unchanged.
 say_protected:
         PRINT   "DISK IS WRITE PROTECTED"
         rts
 
 ; copy_progress -- [********----] on the footer, 32 stars or dashes
 ; in normal video, as copy_done / copy_total. The panels stay put.
+; Drawn only when a cell changes: presenting the screen costs about
+; 31 000 cycles, more than the gap before the next sector passes under
+; the head, so a redraw at every sector would lose a turn each time.
 copy_progress:
         ldy     #22
         jsr     at_left
@@ -1020,7 +1061,7 @@ copy_progress:
         sta     inverse
         lda     copy_total
         ora     copy_total+1
-        beq     @present
+        jeq     @present
         lda     copy_done
         sta     pg_acc
         lda     copy_done+1
@@ -1051,6 +1092,15 @@ copy_progress:
         cmp     #32
         bcc     @div
 @have:
+        lda     copy_done
+        ora     copy_done+1
+        beq     @fresh          ; the empty bar at the start is always drawn
+        lda     pg_fill
+        cmp     pg_last
+        jeq     @same
+@fresh:
+        lda     pg_fill
+        sta     pg_last
         lda     #'['
         jsr     put
         lda     #0
@@ -1073,6 +1123,8 @@ copy_progress:
         jsr     put
 @present:
         jmp     present
+@same:
+        rts
 
 ; ---------------------------------------------------------------------
 ; reload -- read both panels again, keeping each selection by name.
@@ -1248,9 +1300,9 @@ reload_restore:
 
 ; splash -- the same centered layout HELLO prints: title at the top,
 ; credits and the wait line at the bottom. A2FILECMD is written once.
-; The slot's screen holes are put back after the screen is drawn, as
-; before every RWTS call, so the first catalog seeks from the track DOS
-; left there.
+; It runs from the working area: nothing owns that yet, and the bytes
+; are not wanted in the resident afterwards.
+        .segment "INIT"
 splash:
         jsr     clear
         ldy     #0
@@ -1265,20 +1317,26 @@ splash:
         ldx     #17
         jsr     at
         PRINT   VERSION_STR
-        ldy     #21
-        ldx     #10
-        jsr     at
-        PRINT   "GPL3 VERHILLE ARNAUD"
-        ldy     #22
+        ldy     #11
         ldx     #5
         jsr     at
         PRINT   "LOADING .... PLEASE WAIT ...."
-        jsr     present
-        jmp     restore_holes
+        ldy     #13
+        ldx     #9
+        jsr     at
+        PRINT   "CAPS LOCK ON IS NEEDED"
+        ldy     #23
+        ldx     #10
+        jsr     at
+        PRINT   "GPL3 VERHILLE ARNAUD"
+        jmp     present
+        .segment "CODE"
 
 ; ---------------------------------------------------------------------
-; main
+; main -- the set-up runs once, from the working area like the splash;
+; the key loop is resident.
 ; ---------------------------------------------------------------------
+        .segment "INIT"
 main:
         sta     CLR80STORE      ; IIe: writes must hit main $400, not AUX
         sta     CLR80VID        ; IIe: 40 columns; a leftover 80-column
@@ -1306,6 +1364,9 @@ main:
         lda     pan_top
         sta     pan_top+1
         jsr     copy_entries_to_right
+        jmp     @loop
+
+        .segment "CODE"
 @loop:
         jsr     draw
         lda     #0              ; the result is drawn once: the next key
@@ -1538,6 +1599,11 @@ main:
         jsr     rename_file
 @notren:
         lda     ck
+        cmp     #'F'
+        bne     @notformat
+        jsr     format_file
+@notformat:
+        lda     ck
         cmp     #'B'
         bne     @notbrun
         lda     count
@@ -1554,8 +1620,7 @@ main:
         ldy     #0
         jsr     at_left
         PRINT   "A2FC MINI - BACK TO DOS 3.3"
-        jsr     present
-        jmp     restore_holes
+        jmp     present
 
 ; ---------------------------------------------------------------------
 ; mirror_panel -- '=' shows the active panel's disk on the other side,
@@ -1632,6 +1697,21 @@ copy_entries_to_left:
 .else
         .segment "LOWCODE"
 .endif
+; result_kept -- like result_done when the panel already shows what was
+; written (lock and rename patch their entry): no catalog reread, unless
+; the other panel is on the same drive, which then reads it once. In the
+; low code: entered by jmp from fileops.s, and the resident is full.
+result_kept:
+        lda     pan_drive
+        cmp     pan_drive+1
+        jeq     result_done
+        jsr     keep_note
+        jsr     present
+        ldx     #0
+        jsr     tags_clear
+        ldx     #1
+        jmp     tags_clear
+
 brun_file:
         jsr     activate
         jsr     foot_zone
@@ -2101,7 +2181,16 @@ save_new:
         jsr     present
         jsr     create_prepare
         sta     cf_status
-        jne     copy_report
+        beq     @planned
+        cmp     #COPY_EXISTS    ; the text is still in the working area:
+        jne     copy_report     ; ask for another name rather than lose it
+        lda     #2
+        sta     ask_kind
+        jsr     ask_name
+        bcc     @out            ; Escape gives the text up
+        jsr     name_to_cs
+        jmp     save_new
+@planned:
         jsr     clear
         ldy     #0
         ldx     #0
@@ -2129,6 +2218,7 @@ save_new:
         jsr     confirm
         bcs     @go
         jsr     copy_cancel
+@out:
         rts
 @go:
         jsr     clear
@@ -2176,6 +2266,8 @@ copy_report:
 ; ---------------------------------------------------------------------
 delete_file:
         jsr     activate
+        lda     #0
+        sta     del_audited     ; one whole-disk audit per batch
         ldx     active
         jsr     tag_count
         sta     tg_n
@@ -2235,8 +2327,7 @@ delete_file:
         inc     tg_index
         jmp     @each
 @show:
-        jsr     del_show
-        jmp     result_done
+        jmp     del_show
 @summary:
         jsr     batch_count     ; "3 DELETED, 1 LOCKED": every file counted
         PRINT   "DELETED"
@@ -2319,42 +2410,42 @@ one_delete:
 @out:
         rts
 
+; del_show -- the result of one delete on the footer, then result_done:
+; entered by jmp, never by jsr, because the shared say_uncertain and
+; say_unsupported end at result_done themselves.
 del_show:
         jsr     foot_zone
         jsr     batch_done
         lda     hg_status
         bne     @notok
         PRINT   "DELETED"
-        rts
+        jmp     result_done
 @notok:
         cmp     #DEL_LOCKED
         bne     @notlock
         PRINT   "LOCKED - NOT DELETED"
-        rts
+        jmp     result_done
 @notlock:
         cmp     #DEL_CHANGED
         bne     @notchg
         PRINT   "DISK CHANGED - DELETE REFUSED"
-        rts
+        jmp     result_done
 @notchg:
         cmp     #DEL_READ
         bne     @notread
         PRINT   "READ ERROR - DELETE REFUSED"
-        rts
+        jmp     result_done
 @notread:
         cmp     #DEL_PROTECTED
         bne     @notprot
-        jmp     say_protected
+        jsr     say_protected
+        jmp     result_done
 @notprot:
         cmp     #DEL_UNCERTAIN
         bne     @bad
-        PRINT   "UNCERTAIN WRITE - STOP"
-        lda     #1
-        sta     del_fault
-        rts
+        jmp     say_uncertain
 @bad:
-        PRINT   "UNSUPPORTED / INVALID DOS STRUCTURE"
-        rts
+        jmp     say_unsupported
 
 ; keep_note -- remember row 21, the question and result line. The next
 ; draw shows the two panels with that result on row 22 until a key.
@@ -2381,3 +2472,5 @@ result_done:
         ldx     #1
         jsr     tags_clear
         jmp     reload_written
+
+

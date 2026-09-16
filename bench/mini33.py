@@ -13,13 +13,14 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools'))
 from mkdos33 import build
 from mkmini33 import MINI_VERSION
+from mini33_fixture import read_files as _read_files
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--pom2-root',type=Path,required=True)
 p.add_argument('--disk',type=Path,default=ROOT/f'dist/A2FC-MINI-DOS33-{MINI_VERSION}.dsk')
 a=p.parse_args()
 with tempfile.TemporaryDirectory(prefix='a2fc-mini-') as tmp:
     d=Path(tmp)
-    boot=a.disk.read_bytes(); data=bytearray(build([('GREETINGS',0,b'HELLO\r\0')] +
+    boot=a.disk.read_bytes(); MINI_ENV=dict(os.environ, MINI_FILES=str(len(_read_files(boot)))); data=bytearray(build([('GREETINGS',0,b'HELLO\r\0')] +
         [(f'FILE{i:02}',0,b'PAGE TWO\r\0') for i in range(1,19)] +
         [('ABCDEFGHIJKLMNOPQRSTUVWXYZ1234',0,b'LONG NAME CONTENT\r\0')]))
     data[17*4096+13*256+1:17*4096+13*256+3]=b'\0\0'
@@ -31,7 +32,7 @@ with tempfile.TemporaryDirectory(prefix='a2fc-mini-') as tmp:
         *['-I'+str(a.pom2_root/s) for s in ('src','include','build/generated')],
         str(ROOT/'bench/mini33.cpp'),str(a.pom2_root/'build/libpom2_core_test.a'),
         '-o',str(d/'bench')],check=True)
-    subprocess.run([str(d/'bench'),str(a.pom2_root),*map(str,paths)],check=True,timeout=120)
+    subprocess.run([str(d/'bench'),str(a.pom2_root),*map(str,paths)],env=MINI_ENV,check=True,timeout=120)
     for path,image in zip(paths,images):
         assert path.read_bytes()==image, f'disk changed: {path}'
     print('PASS: all three disposable images preserved byte for byte')

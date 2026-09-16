@@ -345,6 +345,7 @@ class ImageTest(unittest.TestCase):
         self.assertNotIn(b'A2FILECMD V' + mkmini33.MINI_VERSION.encode('ascii'), self.image)
         self.assertIn(b'GPL3 VERHILLE ARNAUD', self.image)
         self.assertIn(b'LOADING .... PLEASE WAIT ....', self.image)
+        self.assertIn(b'CAPS LOCK ON IS NEEDED', self.image)
         self.assertIn(b'"BRUN A2FC"', self.image)
         tiger = ROOT / 'data' / 'IMGHGR' / 'TIGER#062000'
         data = tiger.read_bytes()

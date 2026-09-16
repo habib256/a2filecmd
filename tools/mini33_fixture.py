@@ -6,12 +6,16 @@ def offset(t,s):
     assert 0<=t<35 and 0<=s<16
     return (t*16+s)*256
 
-def make_disk(files, dosless=False):
+def make_disk(files, dosless=False, descending=True):
     """A DOS 3.3 image. dosless=True frees tracks 1-2, as a disk
-    formatted without DOS has them, and files are placed there first."""
+    formatted without DOS has them, and files are placed there first.
+    Sectors are handed out from 15 down within a track, as DOS does;
+    descending=False keeps the old ascending layout for tests that
+    address sectors by hand."""
     disk=bytearray(SIZE)
     first=1 if dosless else 3
-    free=[(t,s) for t in range(first,35) if t!=17 for s in range(16)]
+    order=range(15,-1,-1) if descending else range(16)
+    free=[(t,s) for t in range(first,35) if t!=17 for s in order]
     assert len(files)<=105
     def alloc(): return free.pop(0)
     def put(ts,data):

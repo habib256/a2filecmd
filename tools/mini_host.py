@@ -17,13 +17,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SIZE = 143360
 
-MODULES = ('data.s', 'catalog.s', 'copy.s', 'delete.s')
+MODULES = ('data.s', 'catalog.s', 'copy.s', 'delete.s', 'format.s')
 
 CATALOG, PREVIEW, PREPARE, EXECUTE, CANCEL, PEEK, POKE, QUIT = 1, 2, 3, 4, 5, 6, 7, 0
 LOAD, CREATE_PREPARE, CREATE_EXECUTE, DELETE_PREPARE, DELETE_EXECUTE = 8, 9, 10, 11, 12
 MEASURE = 13
 LOCK_PREPARE, LOCK_EXECUTE, RENAME_PREPARE, RENAME_EXECUTE = 14, 15, 16, 17
 COPY_SIDE = 18
+FORMAT = 19
+PATCH_TYPE, PATCH_NAME = 20, 21
 
 
 class SimError(RuntimeError):
@@ -50,7 +52,9 @@ def build(target):
     shutil.copy(ROOT / 'src/mini/mini.inc', target)
     for source in sources:
         shutil.copy(source, target)
+    # cl65 hands -D to the C compiler only: the assembler needs its own.
     subprocess.run([cl65, '-t', 'sim6502', '--cpu', '6502', '-O', '-DSIM65',
+                    '--asm-define', 'SIM65',
                     '-o', program.name, '-Ln', labels.name,
                     *[s.name for s in sources]],
                    check=True, capture_output=True, cwd=target)
@@ -76,6 +80,11 @@ class Mini:
         self.partial_write = -1
         self.corrupt_write = -1
         self.protected_drive = 0
+        self.formats = 0
+        self.fail_format = -1
+        # Every write in order, (drive, track, sector); a format is
+        # (drive, 'FORMAT', reads so far), so a test can see what was
+        # read before the disk was erased.
         self.write_log = []
         # A routine that follows a looping chain never returns; the cap
         # turns that hang into a test failure.
@@ -103,6 +112,28 @@ class Mini:
         payload = self._recv(256) if cmd == 2 else None
         placed = 1 <= drive <= 2 and track < 35 and sector < 16
         offset = (track * 16 + sector) * 256 if placed else 0
+        if cmd == 4:
+            # RWTS FORMAT: every sector zero, checked against DOS's INIT
+            # in POM2. A protected disk is untouched but the error is not
+            # $10: RWTS's INIT does not sense the tab, it fails to read
+            # back (seen in POM2). A failed format is left half done,
+            # which is what a real one would leave.
+            self.write_log.append((drive, 'FORMAT', self.reads))
+            if self.protected_drive == drive:
+                self._send(bytes([1, 0x08]))
+                return
+            n = self.formats
+            self.formats += 1
+            if not (1 <= drive <= 2):
+                self._send(bytes([1, 0x80]))
+                return
+            if n == self.fail_format:
+                self.disks[drive - 1][:SIZE // 2] = bytes(SIZE // 2)
+                self._send(bytes([1, 0x08]))
+                return
+            self.disks[drive - 1][:] = bytes(SIZE)
+            self._send(bytes([0, 0]))
+            return
         if cmd == 1:
             if not placed:
                 self._send(bytes([1, 0x80]))
@@ -185,7 +216,12 @@ class Mini:
         self._command(CREATE_EXECUTE)
         return self._recv(1)[0]
 
-    def delete_prepare(self, index):
+    def delete_prepare(self, index, new_batch=True):
+        # The UI clears del_audited once per D: the whole-disk audit runs
+        # for the first file of a batch only. new_batch=False is the
+        # second and later files of one batch.
+        if new_batch:
+            self.poke('del_audited', bytes([0]))
         self.poke('del_index', bytes([index]))
         self._command(DELETE_PREPARE)
         return self._recv(1)[0]
@@ -217,6 +253,20 @@ class Mini:
 
     def rename_execute(self):
         self._command(RENAME_EXECUTE)
+        return self._recv(1)[0]
+
+    def format(self):
+        self._command(FORMAT)
+        return self._recv(1)[0]
+
+    def patch_type(self):
+        # what the UI does after a lock: the panel entry takes the type
+        # byte just written and read back
+        self._command(PATCH_TYPE)
+        return self._recv(1)[0]
+
+    def patch_name(self):
+        self._command(PATCH_NAME)
         return self._recv(1)[0]
 
     def copy_side(self, src, dst):
@@ -267,6 +317,8 @@ class Mini:
         self.partial_write = -1
         self.corrupt_write = -1
         self.protected_drive = 0
+        self.formats = 0
+        self.fail_format = -1
         self.write_log = []
 
     def close(self):

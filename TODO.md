@@ -95,8 +95,8 @@ lien. OPEN ne retombe pas à quelques octets.
 
 ## Mini — indépendante
 
-[MINI-DOS33.md](docs/MINI-DOS33.md). Pas de remplacement sur place, de
-copie à un seul lecteur ni de formatage.
+[MINI-DOS33.md](docs/MINI-DOS33.md). Pas de remplacement sur place, ni de
+copie ou de formatage à un seul lecteur.
 
 - [ ] **💾 II+ physique** — les bancs POM2 ne remplacent pas le fer.
 - [x] **Changements de lecteur** — `copy_side` copie aussi `ent_slot`,

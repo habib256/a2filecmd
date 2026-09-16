@@ -10,6 +10,7 @@
 #include "DiskIICard.h"
 #include <cassert>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -25,6 +26,10 @@ static std::string panel(Memory& m,int side) {
     std::string s=screen(m),out;
     for(int y=2;y<21;++y) out+=s.substr(y*41+side*20,19)+"\n";
     return out;
+}
+static std::string mini_files(const char* suffix) {
+    // the boot disk's file count, from the driver: the shipped disk may carry more than the four built files
+    const char* n=getenv("MINI_FILES"); return std::string(n?n:"4")+suffix;
 }
 static void run(M6502& c,int cycles) { for(int n=0;n<cycles;) n+=c.run(1024); }
 static int failures=0;
@@ -44,7 +49,7 @@ int main(int argc,char** argv) {
     m.clearRam(); m.resetSoftSwitches(); m.slotBus().reset(); cpu.hardReset();
     cpu.setProgramCounter(0xc600);
     run(cpu,180000000);
-    if(screen(m).find("4 FILES")==std::string::npos) { fprintf(stderr,"no boot\n%s",screen(m).c_str()); return 99; }
+    if(screen(m).find(mini_files(" FILES").c_str())==std::string::npos) { fprintf(stderr,"no boot\n%s",screen(m).c_str()); return 99; }
     auto keys=[&](const char* s) { m.pasteRawKeys(s,strlen(s)); run(cpu,20000000); };
     auto wait=[&](const char* s) {
         for(int n=0;n<800 && screen(m).find(s)==std::string::npos;++n) run(cpu,1000000);
@@ -95,7 +100,7 @@ int main(int argc,char** argv) {
     keys("E"); check(wait("LEAVE"),"editor open",m);
     std::string s=screen(m);
     check(s.substr(0,3)=="ONE" && s.substr(41,3)=="TWO","F4: $8D ends a line on screen",m);
-    keys("K"); keys("X"); keys("\r"); keys("\x13");
+    keys("\x0a"); keys("X"); keys("\r"); keys("\x13");   // Ctrl-J: down a line; K is a letter now
     check(wait("NEW: "),"save asks for a name",m);
     keys("EDITED"); keys("\r");
     check(wait("CREATE TEXT FILE"),"create prompt",m);

@@ -7,6 +7,7 @@
 
         .import at, put, inline_text, zone
         .import activate, confirm, keep_note, result_done, say_protected
+        .import result_kept, patch_type, patch_name, say_uncertain, say_unsupported
         .import print_name, print_name15, print_byte, tag_count, tag_test
         .import batch_number, batch_skipped, batch_done, cf_ok, cf_marked, tg_n
         .import lock_prepare, lock_execute, rename_prepare, rename_execute
@@ -26,20 +27,24 @@ fo_st:          .res 1
         .segment "LOWCODE"
 .endif
 
+; the two footer helpers are resident: LOWCODE is the scarcer room
+        .segment "CODE"
 foot_ask:
         ldy     #21
         ldx     #0
         lda     #40
-        jsr     zone
-        rts
+        jmp     zone
 
 foot_bar:
         lda     #0
         sta     inverse
         jmp     confirm
 
-foot_done:
-        jmp     result_done
+.ifdef SIM65
+        .segment "CODE"
+.else
+        .segment "LOWCODE"
+.endif
 
 ; ---------------------------------------------------------------------
 lock_file:
@@ -133,7 +138,13 @@ lock_file:
         jmp     @each
 @show:
         jsr     lock_show
-        jmp     foot_done
+        lda     fo_st
+        beq     @kept
+        cmp     #DEL_LOCKED     ; already set: nothing written either
+        beq     @kept
+        jmp     result_done
+@kept:
+        jmp     result_kept
 @summary:                       ; "2 LOCKED, 1 ALREADY SET"
         jsr     foot_ask
         lda     cf_ok
@@ -143,7 +154,7 @@ lock_file:
         beq     @said
         PRINT   "ALREADY SET"
 @said:
-        jmp     foot_done
+        jmp     result_kept     ; the batch ran to its end: every entry patched
 @out:
         rts
 
@@ -178,6 +189,8 @@ one_lock:
         jsr     lock_prepare
         bne     @out
         jsr     lock_execute
+        bne     @out
+        jmp     patch_type      ; the panel shows the new type: no reread
 @out:
         rts
 
@@ -193,13 +206,13 @@ lock_said:
         beq     @saidun
         PRINT   "LOCKED"
         rts
-@togmsg:
+@togmsg:                        ; the entry was patched: it shows the new state
         lda     del_index
         jsr     ent_index
         tay
         lda     ent_type,y
         and     #$80
-        bne     @saidun
+        beq     @saidun
         PRINT   "LOCKED"
         rts
 @saidun:
@@ -250,15 +263,8 @@ rename_file:
 @open:
         lda     #1
         sta     ask_kind
-        jsr     ask_name
+        jsr     ask_name        ; ren_name is name_buf: the typed name is in place
         jcc     @out
-        ldy     #0
-@copy:
-        lda     name_buf,y
-        sta     ren_name,y
-        iny
-        cpy     #NAME_LEN
-        bcc     @copy
         lda     selected
         sta     del_index
         jsr     rename_prepare
@@ -266,12 +272,14 @@ rename_file:
         bne     @show
         jsr     rename_execute
         sta     fo_st
+        bne     @show
+        jsr     patch_name      ; the panel shows the new name: no reread
 @show:
         jsr     foot_ask
         lda     fo_st
         bne     @notok
         PRINT   "RENAMED"
-        jmp     foot_done
+        jmp     result_kept
 @notok:
         cmp     #REN_SAME
         bne     @notsame
@@ -281,36 +289,32 @@ rename_file:
         cmp     #REN_EXISTS
         bne     @notex
         PRINT   "NAME EXISTS - NO OVERWRITE"
-        jmp     foot_done
+        jmp     result_done
 @notex:
         cmp     #DEL_LOCKED
         bne     @notlk
         PRINT   "LOCKED - UNLOCK FIRST"
-        jmp     foot_done
+        jmp     result_done
 @notlk:
         cmp     #DEL_CHANGED
         bne     @notchg
         PRINT   "DISK CHANGED - RENAME REFUSED"
-        jmp     foot_done
+        jmp     result_done
 @notchg:
         cmp     #DEL_READ
         bne     @notrd
         PRINT   "READ ERROR - RENAME REFUSED"
-        jmp     foot_done
+        jmp     result_done
 @notrd:
         cmp     #DEL_PROTECTED
         bne     @notprot
         jsr     say_protected
-        jmp     foot_done
+        jmp     result_done
 @notprot:
         cmp     #DEL_UNCERTAIN
         bne     @bad
-        PRINT   "UNCERTAIN WRITE - STOP"
-        lda     #1
-        sta     del_fault
-        jmp     foot_done
+        jmp     say_uncertain   ; both end at result_done
 @bad:
-        PRINT   "UNSUPPORTED / INVALID DOS STRUCTURE"
-        jmp     foot_done
+        jmp     say_unsupported
 @out:
         rts

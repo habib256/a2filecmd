@@ -22,14 +22,16 @@
         .export blank_scratch
         .export measure_text, _measure_text
         .export valid_cs, seen_bit, bit_masks, ent_ptr, ent_index, sanitise
+        .export patch_type, patch_name, _patch_type, _patch_name
+        .import del_index, del_cat_off
         .export copy_side, side_from, side_to
         .export _copy_side, _side_from, _side_to
 
-        .import read_sector
+        .import read_sector, read_into, rwts_buf, memcpy256
         .import buffer, count, volume, track, sector, active, sector_seen
         .import ent_track, ent_sector, ent_type, ent_seclo, ent_sechi
         .import ent_name, prv_index
-        .import scratch, cat_buf, edit_len
+        .import scratch, cat_buf, edit_len, bat_t, bat_s
 
         .segment "BSS"
 cat_nt:         .res 1          ; link to the next catalog sector
@@ -37,6 +39,12 @@ cat_ns:         .res 1
 cat_off:        .res 1          ; entry offset inside the sector
 cat_i:          .res 1          ; entries left in this sector
 cat_idx:        .res 1          ; where the entry lands, panel included
+cat_n:          .res 1          ; pages of the stage read so far
+cat_p:          .res 1          ; the page being parsed
+; where each page was read, for store_entry's identity of the entry:
+; the copy engine's batch lists, which a panel read never overlaps
+stage_t         = bat_t
+stage_s         = bat_s
 ldf_t:          .res 1          ; load_file: the T/S list being followed
 ldf_s:          .res 1
 ldf_nt:         .res 1
@@ -66,10 +74,21 @@ COPY_FIELDS     = 5
 
 ; ---------------------------------------------------------------------
 ; catalog -- fills the active panel. A = 0 read, 1 read error, 2 invalid.
+;
+; Two passes. The VTOC and the catalog chain, at most 15 sectors, are
+; first read straight into the upper half of the working area, one page
+; each, with nothing but the link check between two reads: DOS 3.3's 2:1
+; skew leaves a few hundred cycles between consecutive sectors, and
+; parsing seven entries takes ten thousand, a lost turn per sector on a
+; full disk. The pages are parsed afterwards, from buffer. The working
+; area has no owner while the panels are up, and this runs only then.
 ; ---------------------------------------------------------------------
+CAT_STAGE       = scratch + 16*256     ; pages 0-15: the VTOC, then the chain
+
 catalog:
         lda     #0
         sta     count
+        sta     cat_n
         ldx     #69
 @wipe:
         sta     sector_seen,x
@@ -80,33 +99,36 @@ catalog:
         sta     track
         lda     #0
         sta     sector
-        jsr     read_sector
+        jsr     stage_read      ; page 0: the VTOC
         beq     @vtoc
+@unread:
+        lda     #0
+        sta     count
         lda     #CAT_READ
         rts
 @vtoc:
-        lda     buffer+3        ; DOS release marker
+        lda     CAT_STAGE+3     ; DOS release marker
         cmp     #3
         bne     @bad
-        lda     buffer+$27      ; pairs per T/S list
+        lda     CAT_STAGE+$27   ; pairs per T/S list
         cmp     #TS_PER_LIST
         bne     @bad
-        lda     buffer+$34      ; tracks
+        lda     CAT_STAGE+$34   ; tracks
         cmp     #35
         bne     @bad
-        lda     buffer+$35      ; sectors per track
+        lda     CAT_STAGE+$35   ; sectors per track
         cmp     #16
         bne     @bad
-        lda     buffer+$36      ; bytes per sector, low then high: 256
+        lda     CAT_STAGE+$36   ; bytes per sector, low then high: 256
         bne     @bad
-        lda     buffer+$37
+        lda     CAT_STAGE+$37
         cmp     #1
         bne     @bad
-        lda     buffer+6
+        lda     CAT_STAGE+6
         sta     volume
-        lda     buffer+1
+        lda     CAT_STAGE+1
         sta     cat_nt
-        lda     buffer+2
+        lda     CAT_STAGE+2
         sta     cat_ns
         lda     cat_nt
         bne     @chain
@@ -117,6 +139,9 @@ catalog:
         rts
 
 @chain:
+        lda     cat_n
+        cmp     #16
+        bcs     @bad            ; a 16th catalog sector is not DOS's
         ldx     cat_ns
         lda     cat_nt
         jsr     valid_cs
@@ -142,22 +167,33 @@ catalog:
         sta     track
         lda     cat_ns
         sta     sector
-        jsr     read_sector
-        beq     @parse
-        lda     #0
-        sta     count
-        lda     #CAT_READ
-        rts
-@parse:
-        lda     buffer+1
+        jsr     stage_read      ; page cat_n; ptr on it
+        jne     @unread
+        ldy     #1
+        lda     (ptr),y
         sta     cat_nt
-        lda     buffer+2
+        iny
+        lda     (ptr),y
         sta     cat_ns
         lda     cat_nt
-        bne     @entries
+        bne     @chain
         lda     cat_ns          ; no track but a sector: malformed
         bne     @bad
-@entries:
+
+        lda     #1              ; the chain is in: parse its pages
+        sta     cat_p
+@page:
+        lda     cat_p
+        cmp     cat_n
+        bcs     @done
+        jsr     stage_ptr       ; A = cat_p: ptr on that page
+        SETPTR  ptr2, buffer
+        jsr     memcpy256
+        ldx     cat_p           ; the sector the page came from, for the
+        lda     stage_t,x       ; slot store_entry writes into the name stride
+        sta     track
+        lda     stage_s,x
+        sta     sector
         lda     #CAT_FIRST
         sta     cat_off
         lda     #CAT_ENTRIES
@@ -186,9 +222,36 @@ catalog:
         sta     cat_off
         dec     cat_i
         bne     @entry
-        lda     cat_nt
-        jne     @chain
+        inc     cat_p
+        jmp     @page
+@done:
         lda     #CAT_OK
+        rts
+
+; stage_read -- track/sector into page cat_n of the stage, ptr on it,
+; cat_n bumped. A = 0, or 1 with Z clear on a read error.
+stage_read:
+        ldx     cat_n
+        lda     track
+        sta     stage_t,x
+        lda     sector
+        sta     stage_s,x
+        txa
+        jsr     stage_ptr
+        lda     ptr
+        sta     rwts_buf
+        lda     ptr+1
+        sta     rwts_buf+1
+        inc     cat_n
+        jmp     read_into
+
+; stage_ptr -- A = page number: ptr = CAT_STAGE + A * 256
+stage_ptr:
+        clc
+        adc     #>CAT_STAGE
+        sta     ptr+1
+        lda     #<CAT_STAGE
+        sta     ptr
         rts
 
 ; ---------------------------------------------------------------------
@@ -256,6 +319,7 @@ sanitise:
         lda     #'?'
 @keep:
         rts
+
 
 ; ---------------------------------------------------------------------
 ; preview -- prv_index selects the file. Reads its first T/S list, then
@@ -707,4 +771,46 @@ _measure_text:
 @done:
         lda     edit_len+1
         cmp     #>SCRATCH_SIZE
+        rts
+
+; The two panel patches are called from fileops.s, in the low code, and
+; live there too: the resident is the scarcer room.
+.ifdef SIM65
+        .segment "CODE"
+.else
+        .segment "LOWCODE"
+.endif
+; patch_type / patch_name -- entry del_index of the active panel takes
+; the type byte or the name that lock_execute / rename_execute just
+; wrote and read back: buffer holds the catalog sector as it is on the
+; disk, del_cat_off the entry in it. The name is stored as store_entry
+; stores it, sanitised, so the next write still holds the slot to the
+; panel. A = DEL_OK for the caller.
+patch_type:
+_patch_type:
+        lda     del_index
+        jsr     ent_index
+        tay
+        ldx     del_cat_off
+        lda     buffer+2,x
+        sta     ent_type,y
+        lda     #DEL_OK
+        rts
+
+patch_name:
+_patch_name:
+        lda     del_index
+        jsr     ent_index
+        jsr     ent_ptr
+        ldx     del_cat_off
+        ldy     #0
+@char:
+        lda     buffer+3,x
+        jsr     sanitise
+        sta     (ptr),y
+        inx
+        iny
+        cpy     #NAME_LEN
+        bcc     @char
+        lda     #DEL_OK
         rts

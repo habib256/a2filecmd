@@ -1,17 +1,19 @@
-# A2FC Mini DOS 3.3 — 0.8.7
+# A2FC Mini DOS 3.3 — 0.8.8
 
 A standalone edition for **Apple II+ 48 KB, NMOS 6502**, with two panels in
-40 columns and DOS 3.3 copying between two Disk II drives. No ProDOS,
+40 columns, DOS 3.3 copying between two Disk II drives, and formatting
+of bootable DOS 3.3 disks. No ProDOS,
 80-column hardware, auxiliary memory, or language card is required.
 The interface, help, messages, and bundled README are entirely in English.
 Written entirely in 6502 assembly; see [Speed](#speed) for what that buys.
 
 ![Two panels with inverse video and bottom shortcuts](mini-dos33.png)
 
-The disk image `dist/A2FC-MINI-DOS33-0.8.7.dsk` boots through the Applesoft
-`HELLO` program, which centres `A2FILECMD`, `MINI DOS 3.3` and `V0.8.7` at
-the top of the 40-column screen, then `GPL3 VERHILLE ARNAUD` and
-`LOADING .... PLEASE WAIT ....` at the bottom, before
+The disk image `dist/A2FC-MINI-DOS33-0.8.8.dsk` boots through the Applesoft
+`HELLO` program, which centres `A2FILECMD`, `MINI DOS 3.3` and `V0.8.8` at
+the top of the 40-column screen, `LOADING .... PLEASE WAIT ....` and
+`CAPS LOCK ON IS NEEDED` in the middle (the keys are compared in upper
+case, all a II+ types), and `GPL3 VERHILLE ARNAUD` on the last row, before
 `BRUN A2FC`. The same
 layout stays on screen while the first catalog is read. From DOS 3.3,
 use `BRUN A2FC`.
@@ -41,6 +43,7 @@ position independently.
 | C, or 3 | Copy tagged files, or the cursor if nothing is tagged |
 | /, or 4 | Switch the active panel's drive and reread it |
 | Ctrl-R, or 5 | Reread both panels, preserving selection by name |
+| F | Format the active panel's drive as a bootable DOS 3.3 disk, DOS taken from the boot drive (see [Formatting](#formatting)) |
 | ?, or 6 | Show keyboard help |
 | = | Show the same disk in the other panel |
 | Q, or 7 | Ask to return to DOS 3.3 |
@@ -64,7 +67,16 @@ rename and create return to the two panels as soon as the write finishes;
 the result takes the file name line until the next key. There is no extra
 key to dismiss it.
 Numbers 1–7 still mean Tab, Open, Copy, Drive, Reread, Help and Quit.
-`?` lists every control.
+`?` lists every control, each key in inverse video. A key typed while an
+operation runs is dropped before the next question: it cannot answer it.
+
+A panel shows `INVALID CATALOG` when the VTOC does not describe a standard
+35-track, 16-sector DOS 3.3 disk, when its catalog link is 0/0 or points
+off track 17, when the chain loops or exceeds 15 sectors, or when an entry
+points at a sector that cannot exist; `READ ERROR` when a sector cannot be
+read. Neither state is ever half shown: the panel is then empty. Return, T,
+H and G read whatever a file's chain points at, catalog or DOS tracks
+included; only C and D refuse such a chain, since they would write.
 
 Return reads the file's first data sector, writes nothing, and picks the
 view from what the file holds:
@@ -111,10 +123,13 @@ After rereading or copying, selections are restored by name when still present.
    write the destination. Other keys, including numeric shortcuts, are
    ignored.
 4. Each file is created exclusively. A normal-video `[********----]`
-   bar (32 stars or dashes) fills while that file's sectors are written
-   and read back. An existing name is skipped
-   so the rest of the batch can still land. An uncertain write stops the
-   batch. The panels reread themselves when the result is ready.
+   bar (32 stars or dashes) fills as that file's sectors are written
+   and read back, moving once per batch of 32. An existing name is skipped
+   so the rest of the batch can still land, and so is a file that does not
+   fit, nothing having been written for it: smaller files after it still
+   land, and the result then says `DISK OR CATALOG FULL`. An uncertain
+   write stops the batch. The panels reread themselves when the result is
+   ready.
 
 After a write, only panels showing the **written** disk are reread. Two
 panels on that same drive share one catalog read; the other snapshot is
@@ -130,8 +145,16 @@ and every byte of the file's data sectors, including DOS headers and the
 final sector. **An existing name is refused at prepare time**, even when the
 existing file is unlocked. The source is never written or deleted by a copy.
 
+The editor: typed characters and RETURN insert, the left arrow deletes the
+character before the cursor, the right arrow moves right, Ctrl-K and Ctrl-J
+move up and down, Ctrl-S saves, Escape leaves (after `Y Save, N Abandon`).
+Letters are letters: I, J, K and L are typed, not moves.
+
 New text files (N) and editor saves (E) use the same exclusive-create engine
-with the working area as the source: one new name, never an overwrite.
+with the working area as the source: one new name, never an overwrite. A
+name that already exists is not the end of the text: the footer asks
+`EXISTS:` for another name, as long as needed; Escape there gives the text
+up.
 E loads a text file of at most 32 data sectors (8 KB), edits it in RAM, then
 asks for a **new** name. A larger file is refused rather than saved truncated.
 A full 8 KB of non-zero bytes is refused too: the editor keeps a NUL after
@@ -143,16 +166,28 @@ marked file is unlocked the batch locks. Already-set files are skipped.
 Only the catalog type byte is written; file data is not touched.
 
 R renames the cursor file only. The new name must not exist. A locked file
-must be unlocked first. Only the catalog name bytes are written.
+must be unlocked first. Only the catalog name bytes are written. The
+collision scan runs once, at the prompt; before writing, the VTOC and the
+slot's catalog sector are read again and must be byte for byte what was
+scanned. A sibling disk swapped at the prompt that differs only by a name
+in another catalog sector would not be caught.
+
+After a lock or a rename the panel entry is patched from the sector just
+read back, so the catalog is not reread; when the other panel shows the
+same drive, it is read once and shared.
 
 Delete (D) acts on the tagged files, or on the cursor when nothing is tagged.
 Locked files are skipped so the rest of a batch can still go, and the
 result counts both (`2 DELETED, 1 LOCKED`). A read error,
 an invalid chain (including T/S or data on DOS tracks 1–2 or the catalog
-track), or a changed disk stops the batch. Before any write, delete walks
-every other live file on the disk and refuses if one of them claims a
-sector of the target (a cross-linked disk), has a malformed chain, or cannot
-be read. The catalog entry is marked deleted first (DOS
+track), or a changed disk stops the batch. Before the first write of a
+batch, delete walks every live file on the disk and refuses if two of them
+claim one sector (a cross-linked disk), one has a malformed chain, or one
+cannot be read. That audit runs once per D: deleting a file cannot
+cross-link the others, and every file of the batch still has its own chain
+walked and its slot and the VTOC held to the panel before its write. A
+full disk of 105 files costs about 16 s of scattered reads, once, not per
+file. The catalog entry is marked deleted first (DOS
 `$FF`, with the T/S list track kept in the last name byte, entry `$20`, as
 DOS's own DELETE and the UNDELETE utilities expect), then the sectors are
 freed in the VTOC. A crash after the catalog write can leak sectors; the
@@ -197,11 +232,73 @@ or file data on track 0 or the catalog track are refused. Tracks 1 and 2 hold
 DOS on an ordinary disk, whose VTOC keeps all 32 of their sectors allocated,
 and a chain pointing into them is refused there; on a disk formatted without
 DOS, whose VTOC frees some of them, files may live on those tracks and copies
-are written there, exactly as DOS itself files data. An oversized, full, or partly unreadable
+are written there, exactly as DOS itself files data. When all 32 are
+allocated, the boot sector decides, read once per file walked: a DOS 3.3 boot
+sector means DOS lives there and a chain into it is refused; a disk without
+DOS whose tracks 1–2 filled up keeps every file valid, deletable and
+copyable. An oversized, full, or partly unreadable
 catalog prevents copying. A free entry must exist in the current catalog chain;
 the engine does not extend shortened catalogs. The bundled disk supplies all
 105 standard entries. 13-sector, 40-track, and nonstandard protected formats
 are unsupported.
+
+## Formatting
+
+F formats the disk in the **active panel's drive** and puts DOS on it,
+the equivalent of DOS's `INIT` without the HELLO program. The DOS image
+is not taken from memory: its 48 sectors on tracks 0–2 are copied from
+the drive A2FC Mini was run from, the **boot drive**, whatever `/` has
+shown since. So two drives are needed, the target in the active panel
+and the boot disk in the other; on the boot drive F answers
+`BOOT DRIVE - FORMAT THE OTHER ONE` and asks nothing. The shipped disk
+carries the relocatable master image, so a disk made from it boots on any
+memory size, like the shipped disk itself. Copy HELLO, A2FC, README and
+TIGER onto it afterwards (Ctrl-T, C) and it boots straight into A2FC Mini.
+
+The footer asks `FORMAT D2 WITH DOS: ERASE ALL FILES?`. **Y confirms; N or
+Escape cancels**; every other key is ignored. The target is the drive, not a
+file: whatever disk is in it when Y is pressed is erased, so do not change
+disks at the question. Once a question is answered,
+the last row shows the main keys again for the operation's duration.
+Then, in this order:
+
+1. The 48 DOS sectors are read from the boot drive before anything is
+   written. A read error, or a first sector that is not a DOS 3.3 boot
+   sector, refuses with `NO DOS READ ON THE BOOT DRIVE` and the
+   target untouched: a read error is no proof that DOS is absent, so the
+   message claims neither.
+2. Write protection. RWTS's FORMAT does not sense the tab (it fails without
+   saying why, the disk untouched), but a sector write does, before touching
+   the disk: the target's VTOC sector is read and written back exactly as it
+   was, and a protected disk answers `DISK IS WRITE PROTECTED` with nothing
+   changed. A target that cannot be read, a blank disk, cannot be sensed and
+   goes straight to the format.
+3. RWTS formats the 35 tracks with volume 254, about 30 seconds on a real
+   drive, under `FORMATTING...`. A progress bar on the file name line fills
+   in steps, between the disk phases: the boot disk read, RWTS's own
+   format (one call, about half the time, credited when it returns), the
+   DOS batches written and read back, the catalog track.
+4. The DOS sectors are read again and written to the target in two batches
+   through the working area (tracks 0–1, then 2), each batch then read back
+   and compared, as the copy does.
+5. Catalog sectors 15 down to 1 are built empty in the working area,
+   chained as `INIT` chains them, and go out as a third batch, written
+   from 15 down and then read back and compared like the DOS ones; the
+   VTOC comes last, on its own: volume 254, tracks 0–2 and 17 reserved,
+   496 free sectors, allocation starting after the catalog track. A disk
+   whose VTOC reads as valid therefore always has a valid catalog behind
+   it, because the VTOC goes down only once every catalog sector has been
+   read back.
+
+`FORMATTED WITH DOS 3.3` rereads the panels on that drive: `EMPTY DISK`,
+`V254`. `FORMAT FAILED: PROTECTED, BAD OR ERASED` covers what RWTS does not
+tell apart: a protected blank disk (untouched), a disk it could not format
+(state unknown), or the boot disk failing after the format (erased, no DOS).
+None of these has a VTOC written, so the reread shows what happened, and the
+disk can be formatted again. A target write that does not read back is
+`UNCERTAIN WRITE - STOP` and latches the run's write fault, like every other
+write here. The boot disk is never written. There is no format without DOS
+and no volume number prompt.
 
 ### Errors and physical limitations
 
@@ -227,34 +324,64 @@ a first data sector cannot be previewed.
 ## Speed
 
 The edition is written in 6502 assembly, and the reason is measurable.
-Two things used to cost whole disk revolutions, and `bench/mini33_time.py`
-records both on POM2's NMOS core with Disk II timing:
+`bench/mini33_time.py` records these on POM2's NMOS core with Disk II
+timing, tracing every RWTS call:
 
-| Operation | Before (C, 48 sectors) | Now (asm, 85 sectors) |
-|---|---:|---:|
-| Read a 16-sector catalog (`/`, motor already turning) | 4 898 568 cycles | 1 703 567 cycles |
-| Copy `A2FC` — prepare (source file + dest names) | 21 577 238 | 5 899 687 |
-| Copy `A2FC` — write and read back | 258 512 282 | 56 775 543 |
-| **Copy, total at 1 MHz** | **280 s** | **62.7 s** |
+| Operation | C, 48 sectors | asm, 85 sectors | now, 90 sectors |
+|---|---:|---:|---:|
+| Read a 16-sector catalog with `/` (4 files; a drive change, so about 1.1 M of it is RWTS waiting for the motor) | 4 898 568 cycles | 1 703 567 | 1 916 884 |
+| The same on a full disk of 105 files, disk time only | — | 4 347 636 | 1 785 324 |
+| Copy `A2FC` — prepare (source file + dest names) | 21 577 238 | 5 899 687 | 3 471 793 |
+| Copy `A2FC` — write and read back | 258 512 282 | 56 775 543 | 21 565 582 |
+| **Copy, total at 1 MHz** | **280 s** | **62.7 s** | **25.0 s** |
 
-DOS 3.3 lays out a track with a 2:1 soft interleave, which leaves a
-program roughly 25 000 cycles to digest one sector before the next
-arrives under the head. Miss that window and RWTS waits a whole
-revolution, about 200 000 cycles. Parsing a catalog sector now takes a
-few thousand cycles, so the chain is read at the speed of the disk.
+DOS 3.3 lays a track down with a 2:1 soft interleave: logical sector n-1
+sits two physical slots after sector n, so a chain read **from 15 down to
+0** costs two slots (about 24 000 cycles) a sector and a track in two
+turns, while an ascending chain waits fourteen slots, nearly a whole
+turn, at every sector. DOS allocates its files that way for that reason.
+Everything here now follows: the copy reserves and hands out its target
+sectors from 15 down, the format visits tracks 0–2 that way, and the disk
+builder lays the shipped files down that way too.
 
-The copy engine reads a batch of sectors from the source, then writes and
-reads each of them back on the target. The two disks are not compared
-again. A change of drive costs a seek and a motor spin-up, so writes stay
-on the destination until the next batch of source reads. Per-sector
-readback is kept: a grouped verify of the whole batch would write more
-reserved sectors after a silent bad write before noticing. The extra
-seconds are the cost of catching that on the sector that failed.
+The window is small. RWTS decodes a sector after reading it and encodes
+one before writing it, and what is left for the program between two
+consecutive sectors is a few hundred cycles, not the 25 000 an earlier
+version of this page claimed: a 256-byte copy between two RWTS calls
+(4 000 cycles) or a redraw of the screen (about 31 000) each cost a whole
+turn. So RWTS moves sectors straight to and from their page of the
+working area, the progress bar is redrawn only when a cell changes, once
+per batch, and the DOS-3.3 screen holes are no longer saved and put back
+around every call: nothing in the program writes them.
+
+The copy engine reads a batch of up to 32 sectors from the source, then
+writes and verifies it one track at a time: every sector of the track,
+then every one read back into a buffer and compared with its page, even
+offsets first, then odd, so that a compare fits before the next sector to
+read passes under the head (four slots away instead of two; 44 000 cycles
+a read-back) and the read-backs never seek back to the batch's other
+track. A file is still published only after every one of its sectors
+read back. What changed: between a silent bad write and its detection,
+the rest of that track is written to sectors that are reserved and
+unpublished, where before the batch stopped at that sector; the outcome
+for the disk is the same, and on a failing drive the diagnosis comes up
+to 15 sectors later. The first batch is read from the source before the
+target's VTOC is checked and written, so the copy opens with one change
+of drive instead of two. What is left is the drive changes, about a
+million cycles each for RWTS to wait for the motor (five for this file),
+and the first sector of each track after a seek.
+
+Before the copy, the destination catalog is scanned for the name and a
+free slot; the panel's own catalog read stages the VTOC and the chain
+in the upper half of the working area, one page each, and parses them
+afterwards, since parsing seven entries takes longer than the gap
+between two sectors. RWTS reads the chain straight into its buffers in
+both cases.
 
 After Y, the result line appears and then the written disk's catalog is
-read. Two panels on the same drive used to pay that catalog twice
-(about 7 s with spin-up); they now share the one read. A copy to the
-other drive rereads only the destination. Ctrl-R still reads both.
+read. Two panels on the same drive share the one read; a copy to the
+other drive rereads only the destination; lock and rename patch the entry
+instead. Ctrl-R still reads both.
 
 ## Building
 
@@ -283,22 +410,31 @@ cc65's C compiler and runtime: the assembly modules are linked by
 - `$0080–$009F`: the only zero page this program touches, saved on entry and
   restored before the closing RTS, because Applesoft keeps its pointers there
   and `HELLO` has to survive the BRUN.
+- `$0200–$03CF`: the format engine, DOS's input buffer and the free part of
+  page three. It travels inside the working area of the BRUN image and is
+  copied out at `$1000` before anything else runs; nothing in DOS or in
+  A2FC Mini touches those pages while the panels are up, and the page-3
+  BRUN stub is written only on the way out.
 - `$0400–$07FF`: 40-column screen; only changed visible characters are written.
-  Disk II's current-track bytes live in that page (`$0478+slot×16` and the
-  following holes). They are saved at entry and restored before every RWTS
-  call, so drawing the panels cannot send the next seek to the wrong track.
+  DOS 3.3 keeps each drive's current track in the screen holes (`$0478+slot`
+  and the following holes); nothing here writes them, so they are left alone.
 - `$0800–$0FFF`: the Applesoft launcher, left untouched.
 - `$1000–$1FFF`: editor, delete, lock and rename, and the copy engine's
   prepare-time routines (locating the source entry, counting T/S lists).
   Nothing in the batch path lives here.
 - `$2000–$3FFF`: hi-res page one, the one 8 KB working area. Exactly one
-  owner at a time: a copy batch, a picture, or the editor buffer.
+  owner at a time: a copy batch, a picture, the editor buffer, the DOS
+  sectors of a format, or, while the panels are read, the catalog chain
+  staged in its upper half. RWTS reads and writes those sectors in place,
+  one page each. In the file it also carries the format engine and
+  the code that runs once at start (entry, splash, the first catalog),
+  which nothing needs once the panels are up.
 - `$4000–$95FF`: resident program and BSS. `$9600` is Applesoft's HIMEM
   under this DOS, measured on a running machine.
 - No software stack: page one is the only one.
 - `make mini` prints the remaining room at every link and
-  `tools/check_mini_layout.py` refuses a build that would reach into DOS
-  or into the working area.
+  `tools/check_mini_layout.py` refuses a build that would reach into DOS,
+  into the working area, or into the DOS vectors at `$03D0`.
 - DOS, its buffers, and RWTS remain in place. No auxiliary bank or language
   card is used. There are no overlays or dynamic heap allocations.
 
@@ -315,7 +451,12 @@ with inverse or control characters; fragmented destinations; empty files; files 
 lists; loading a file without losing its T/S list, and knowing when it did
 not fit; exclusive create and its collisions; delete that marks the
 catalog before the VTOC with the DOS UNDELETE mark; and delete, lock and
-rename refusing an entry whose identity no longer matches the panel. What
+rename refusing an entry whose identity no longer matches the panel; and
+format refused on the boot drive, on a latched fault, on a protected
+disk (blank or not) and on an unreadable boot disk, stopped by every read,
+write, torn write and corruption of its 64 writes after the format, and
+otherwise leaving tracks 0–2 equal to the boot disk's and track 17 as
+`INIT` leaves it. What
 is asserted is the bytes: the source unchanged on a copy, every
 pre-existing target byte intact, and a consistent allocation graph
 afterwards.
@@ -326,6 +467,7 @@ With POM2 built and its Apple II+ / Disk II ROMs available:
 python3 bench/mini33.py --pom2-root /path/to/pom2
 python3 bench/mini33_write.py --pom2-root /path/to/pom2
 python3 bench/mini33_ops.py --pom2-root /path/to/pom2
+python3 bench/mini33_format.py --pom2-root /path/to/pom2
 python3 bench/mini33_time.py --pom2-root /path/to/pom2
 ```
 
@@ -335,7 +477,12 @@ memory watchpoints: unchanged characters must never be rewritten. The second
 checks cancellation, ignored confirmation keys, physical protection, verified
 copying, and collisions. It then reloads the copied binary with **DOS BLOAD**
 and creates another file with **DOS SAVE**. `mini33_ops.py` checks the hi-res
-viewer, exclusive TXT create and delete. Contents and allocations are
+viewer, exclusive TXT create and delete. `mini33_format.py` refuses F on
+the boot drive, cancels, meets a write-protected disk, then formats a
+disk holding files, a zero-filled image and a diskette that was never
+formatted (no address fields, so the panel reads nothing and the
+write-protect probe cannot sense it), copies the four shipped files onto
+each and boots the result into A2FC Mini. Contents and allocations are
 independently checked afterward. `mini33_time.py` reports the cycle costs
 in the table above.
 
