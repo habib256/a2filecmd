@@ -2,7 +2,8 @@
 
 A standalone edition for **Apple II+ 48 KB, NMOS 6502**, with two panels in
 40 columns, DOS 3.3 copying between two Disk II drives, and formatting
-of bootable DOS 3.3 disks. No ProDOS,
+of bootable DOS 3.3 disks: with a blank diskette in the second drive, it
+makes another copy of itself (see [Making another Mini disk](#making-another-mini-disk)). No ProDOS,
 80-column hardware, auxiliary memory, or language card is required.
 The interface, help, messages, and bundled README are entirely in English.
 Written entirely in 6502 assembly; see [Speed](#speed) for what that buys.
@@ -289,6 +290,21 @@ Then, in this order:
    whose VTOC reads as valid therefore always has a valid catalog behind
    it, because the VTOC goes down only once every catalog sector has been
    read back.
+
+### Making another Mini disk
+
+The Mini reproduces itself. With the Mini disk booted in drive 1 and any
+diskette, new or old, in drive 2:
+
+1. Tab, then `/` until the right panel shows drive 2.
+2. F, then Y: the disk is formatted and DOS is copied onto it from drive 1.
+3. Tab back to drive 1, Ctrl-T to mark every file, C, then Y.
+
+The disk in drive 2 now boots on its own into A2FC Mini, HELLO, A2FC, README,
+TIGER and whatever else the first disk carried included, and can in turn make
+the next one. `bench/mini33_format.py` does exactly this in POM2, from a disk
+holding files, from a zero-filled image and from a never formatted diskette,
+and boots each result.
 
 `FORMATTED WITH DOS 3.3` rereads the panels on that drive: `EMPTY DISK`,
 `V254`. `FORMAT FAILED: PROTECTED, BAD OR ERASED` covers what RWTS does not

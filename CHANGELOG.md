@@ -21,6 +21,7 @@ downloads and installation.
 - A new text saved under a name that exists asks for another name instead of losing the text; the format's refusal message no longer takes a read error of the boot disk for the absence of DOS, and a VTOC write refused by a write-protect tab after the format reports a failure instead of latching an uncertain write.
 - The help page shows every key in inverse video, like the key bar, and lists Q.
 - The loading screen says `CAPS LOCK ON IS NEEDED` in the middle, with the licence line moved to the bottom row; HELLO and the program's own splash draw the same layout.
+- The Mini reproduces itself: a blank diskette in drive 2, F, then every file of drive 1 marked and copied, gives a second bootable Mini disk (manual, "Making another Mini disk").
 - F formats the active panel's drive as a bootable DOS 3.3 disk: RWTS formats the 35 tracks (volume 254), the 48 DOS sectors of tracks 0–2 are copied from the boot drive, then an empty catalog and the VTOC as `INIT` leaves them. The boot disk is read in full before anything is written and is never written; the boot drive, a latched fault and a boot disk without a DOS 3.3 boot sector are refused untouched; write protection is sensed by writing the target's VTOC sector back as it was, since RWTS's FORMAT does not report it; every target write is read back. The engine runs from `$0200–$03CF`; the splash and the start-up code moved into the working area to make room. Under sim65 the assembler now really sees `SIM65`, which `cl65 -D` never passed on.
 
 ## [0.8.7] - 2026-09-15
