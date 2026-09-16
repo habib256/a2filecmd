@@ -1,17 +1,17 @@
 """Category menu and inverse questions, on a disposable volume only."""
 import tempfile
 from pathlib import Path
-from xplug import boot_hd, menu_run, ok_all, RET, ESC
+from xplug import boot_hd, menu_category_names, menu_run, ok_all, RET, ESC
 
 EXPECTED = {
  'Files': 'ATTR AWP COMPARE DELETE EDIT FIND FIXTYPES GOTO HEX MDVIEW MOVE RENAME SEARCH SYNC TAGPAT TEXT TREE TXTCONV',
  'Images': 'DGRVIEW EXTASIE FONTVIEW IMAGE LZ4FH PACKFOT PAINT816 PRINTSHOP PURPLE',
  'Music': 'DUET MUSIC PT3',
- 'Disks': 'BLKEDIT BLKVIEW BOOTBLK DISKCMP DISKIMG DOSGET DOSWRITE FORMAT IMGCONV IMGFS MKIMAGE NIBCOPY RESCUE UNDELETE VERIFY VOLINFO VOLNAME WIPE',
+ 'Disks': 'BLKEDIT BLKVIEW BOOTBLK DISKCMP DISKIMG DOSGET DOSWRITE FIXIT FORMAT IMGCONV IMGFS MKIMAGE NIBCOPY REPAIR RESCUE UNDELETE VERIFY VOLINFO VOLNAME WIPE',
  'Programming': 'BASLIST CRC DISASM IDENT INTBASIC RUN',
  'System': 'DATE HELP',
  'Archives': 'BINARY2 UNSHRINK',
- 'Other': 'FIXIT REPAIR',
+ 'Other': '',
 }
 
 def cells(p, row=22):
@@ -36,11 +36,12 @@ def main():
                 s.ok('category '+name,row[2:14].strip()==name and row[14:17].strip()==str(len(names.split())) and row[20:].strip()!='',row)
                 s.key(RET);p.stable()
                 s.ok(name+' names itself above its list',s.rows()[1][:20]==row[:20],s.rows()[1])
-                actual=[r[2:14].strip() for r in s.rows()[2:20] if r[2:14].strip()]
-                s.ok(name+' complete and sorted',actual==names.split() if names else s.has('No overlay here.'),actual)
                 if len(names.split())>6:
                     s.key(b'\x15');p.stable();s.ok(name+' right +6',s.cursor_row(2)==8)
                     s.key(b'\x08');p.stable();s.ok(name+' left -6',s.cursor_row(2)==2)
+                # Paging: Disks holds more names than the 18 rows of a page.
+                actual=menu_category_names(s,p)
+                s.ok(name+' complete and sorted',actual==names.split() if names else s.has('No overlay here.'),actual)
                 s.key(ESC);p.stable()
                 s.ok(name+' escape returns to category',s.cursor_row()==2+number)
                 if number<7:s.key(b'\x0a')

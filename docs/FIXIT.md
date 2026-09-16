@@ -14,13 +14,17 @@ recoupés avec `src/plugins/volinfo.c`, `src/plugins/move.c`,
 
 FIXIT est une **grande surcouche** `A2FILE/FIXIT.PLG`, catégorie DISKTOOLS
 (`config/packages.mk`). La disquette BOOT est pleine, un bloc libre : FIXIT
-n'y va pas. Le menu `!` range FIXIT sous « Other » tant que la chaîne
-`mn_group3` (« Disks ») du résident ne le nomme pas : six octets de résident,
-à prendre à la prochaine retouche de `src/a2fc.c`, pas avant.
+n'y va pas. Le menu `!` range FIXIT sous « Disks » : la chaîne `mn_group3`
+de `src/a2fc.c` le nomme, avec REPAIR, depuis le 16 septembre 2026. Ces
+treize octets ne sortent pas du résident — `mn_group3` appartient à la
+surcouche MENU (`MENURO`) : MAIN est inchangé (361 octets libres en 65C02,
+790 en 6502) et la réserve de MENU passe de 1 846 à 1 833 octets (6502 :
+1 794 à 1 781). La catégorie tient alors vingt commandes, soit deux pages
+de dix-huit lignes.
 
 Le chantier WRITE est une **seconde** grande surcouche,
 `A2FILE/REPAIR.PLG` (`src/plugins/repair.c`), même catégorie et même
-« Other » : c'est le recours 5 de la section 4, et il a bien fallu s'en
+groupe « Disks » : c'est le recours 5 de la section 4, et il a bien fallu s'en
 servir — la fenêtre du chantier Read s'est fermée à sept octets près
 (mesure du 16 septembre 2026). Aucun état ne survit d'une surcouche à
 l'autre : REPAIR **refait sa propre passe** avant de proposer quoi que ce
@@ -1054,7 +1058,8 @@ dépassement de fenêtre ; ne jamais relever un plafond pour faire passer une
 compilation. FIXIT est ajouté à `PACKAGE_DISKTOOLS` dans
 `config/packages.mk`, et `tools/check_images.py` vérifie le contenu exact des
 sept supports. `tools/test_release_notes.py` compte les surcouches livrées en
-dur (67 avec FIXIT) et `bench/menu.py` attend FIXIT sous « Other ».
+dur (67 avec FIXIT) et `bench/menu.py` attend FIXIT et REPAIR sous
+« Disks », sur les deux pages de la catégorie.
 
 ## 8. Ordre des travaux
 

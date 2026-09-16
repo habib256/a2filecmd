@@ -84,9 +84,7 @@ Puis **un seul** :
 
 Une petite surcouche (DELETE, COPY, IMGFS, ATTR, OPEN) ne bouge que si
 on doit la modifier : alors extraire un service partagé, mesurer au
-lien. OPEN ne retombe pas à quelques octets. À la prochaine retouche du
-résident, nommer FIXIT et REPAIR dans `mn_group3` (« Disks », six octets) :
-le menu `!` les range sous « Other ».
+lien. OPEN ne retombe pas à quelques octets.
 
 ## Mini — indépendante
 

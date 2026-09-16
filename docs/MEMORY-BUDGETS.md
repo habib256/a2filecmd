@@ -20,6 +20,8 @@ Réserves au lien, en octets, 65C02/6502 ; ce ne sont pas des sommes :
 | COPY | 54 | 51 | — |
 | Mini (sous DOS à `$9600`) | **9** | — | 270 : `copy_side` et la relecture groupée |
 
+16 septembre 2026 : `mn_group3` nomme FIXIT et REPAIR (catégorie « Disks ») ; ces chaînes vivent dans la surcouche MENU, dont la réserve passe de 1 846 à 1 833 octets en 65C02 (1 794 à 1 781 en 6502), MAIN inchangé (361 et 790 au lien du jour).
+
 Au lien de la 0.8.5, MAIN 65C02 ne gardait que 23 octets (518 sur 6502) :
 DUET, DOSGET, IDENT/FIXTYPES et la sonde DUET du routage avaient consommé
 la réserve retrouvée au neuvième incrément du chantier 1. Le reste de ce

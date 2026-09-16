@@ -62,13 +62,30 @@ def boot_hd(tmp, files=None, port=6800, blocks=4000, name='WORKHD', floppy=None,
         yield p, s
 
 
+def menu_category_names(s, p):
+    """Every name of the open category, paging when it holds more than 18 rows.
+
+    The counter in the top right corner ("cur/count") says how many names the
+    category holds; Right moves six entries, so three presses turn the page.
+    """
+    total = int(s.rows()[0][70:].split('/')[1])
+    names = []
+    for _page in range(4):
+        names.extend(r[2:14].strip() for r in s.rows()[2:20] if r[2:14].strip())
+        if len(names) >= total:
+            break
+        for _ in range(3): s.key(b'\x15')
+        p.stable()
+    return names
+
+
 def menu_inventory(s, p):
     """Read every category of an already open menu, leaving its root open."""
     names = []
     for category in range(8):
         s.key(RET); p.stable()
         if not s.has('No overlay here.'):
-            names.extend(r[2:14].strip() for r in s.rows()[2:20] if r[2:14].strip())
+            names.extend(menu_category_names(s, p))
         s.key(ESC); p.stable()
         if category < 7: s.key(b'\x0a')
     return names
