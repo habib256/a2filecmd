@@ -16,6 +16,26 @@ def entries(image, block):
     return {e[1:1 + (e[0] & 15)].decode('ascii'): e for e in image.entries(block)}
 
 
+def directory_blocks(image, block):
+    count = 0
+    while block:
+        count += 1
+        block = int.from_bytes(image.block(block)[2:4], 'little')
+    return count
+
+
+def check_config_room(image, directory, key, path):
+    """Saving preferences on a bootable volume adds A2FILE.CFG, then
+    A2FILE.TMP next to it (one block each); when A2FILE/ is full, ProDOS
+    also extends the directory by a block, which it never gives back. A
+    volume short of that saves once and then refuses every later save."""
+    capacity = directory_blocks(image, key) * 13 - 1
+    entries_needed = len(directory) + 2 - ('A2FILE.CFG' in directory)
+    needed = 2 + (entries_needed > capacity)
+    assert image.free_blocks() >= needed, (path, 'no room to save A2FILE.CFG twice',
+                                           image.free_blocks(), needed)
+
+
 def check_launch_version(program):
     marker = ('A2 FILE CMD ' + VERSION + ' - ').encode('ascii')
     assert marker in program, 'launcher version differs from release version ' + VERSION
@@ -49,6 +69,8 @@ def check_cpu(cpu):
         boot_only = role in ('BOOT', 'XL')
         assert ('FORMAT.PLG' in directory) == boot_only, path
         assert ('VOLINFO.PLG' in directory) == (role in ('DISKTOOLS', 'XL')), path
+        if boot_only:
+            check_config_room(image, directory, int.from_bytes(root['A2FILE'][17:19], 'little'), path)
         plugins[role] = {name for name in directory if name.endswith('.PLG')}
         for name in plugins[role]:
             entry = directory[name]

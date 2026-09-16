@@ -3502,7 +3502,7 @@ static const char mn_hidden[] = "|MENU|COPY|OPEN|NAV|BATCH|CATALOG|DOSIMAGE|DOSP
 static const char mn_bad[] = "(unreadable)";
 static const char mn_stale[] = "(other A2FC build)";
 static const char mn_noentry[] = "(no entry point)";
-static const char mn_title[] = "  A2FILE/*.PLG  -  the overlays, run on the selection";
+static const char mn_title[] = "  A2FILE/*.PLG - the overlays, run on selection";
 static const char mn_empty[] = "No overlay here.";
 static const char mn_keys[] = "U/D Choose,L/R 6 rows,RET Open,ESC Back";
 static const char mn_cat0[] = "Files";
@@ -3523,7 +3523,7 @@ static const char mn_what3[] = "Images, format, blocks, copies, rescue";
 static const char mn_what4[] = "BASIC listings, disassembly, CRC, IDENT";
 static const char mn_what5[] = "Help and the clock";
 static const char mn_what6[] = "ShrinkIt and Binary II";
-static const char mn_what7[] = "Not categorized";
+static const char mn_what7[] = "Unsorted";
 static const char* const mn_whats[] = {
     mn_what0, mn_what1, mn_what2, mn_what3, mn_what4, mn_what5, mn_what6, mn_what7
 };
