@@ -20,7 +20,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from xplug import boot_hd, menu_run, ok_all, RET, ESC
+from xplug import boot_hd, menu_run, ok_all, wait_note, RET, ESC
 
 PORT = 6806
 DOWN, UP = b'\x0a', b'\x0b'
@@ -77,7 +77,8 @@ def main():
             s.ok('le panneau actif est sur /WORKHD/WORK/SUB/DEEP', s.rows()[0].startswith('/WORKHD/WORK/SUB/DEEP '),
                  s.rows()[0].strip()[:40])
             s.ok('le curseur est sur TARGET', s.line(0).startswith('TARGET '), s.line(0).strip()[:24])
-            s.ok('la note dit les deux trouvailles', s.rows()[22].startswith('2 match(es).'), s.rows()[22].strip())
+            # a.note de src/plugins/find.c : "%lu match(es)%s." et rien d'autre.
+            s.ok('la note dit les deux trouvailles', s.rows()[22].strip() == '2 match(es).', s.rows()[22].strip())
 
             # -- "NEEDLE : un seul fichier contient le texte -----------------
             find(s, p, '"NEEDLE')
@@ -102,7 +103,8 @@ def main():
 
             # -- ZZZ= : rien ---------------------------------------------------
             find(s, p, 'ZZZ=')
-            s.ok('ZZZ= : rien trouve', s.rows()[22].startswith('Nothing found.'), s.rows()[22].strip())
+            note = wait_note(s, p)
+            s.ok('ZZZ= : rien trouve', note == 'Nothing found.', note)
 
             # -- ESC a l'invite : rien ne bouge --------------------------------
             menu_run(s, p, 'FIND')
@@ -139,7 +141,7 @@ def main():
                 s.key(b'N');p.stable();s.ok('N at end leaves final results visible',listed(s)==last)
                 for _ in range(len(last)-1):s.key(DOWN)
                 s.key(RET);s.wait(lambda:s.rows()[0].startswith('/WORKHD/MANY/ZZZ/DEEP'),'late result opened',30);p.stable()
-                s.ok('result beyond 40 opens correct file',s.line(0).startswith('HITEND ') and s.rows()[22].startswith('46 match(es).'))
+                s.ok('result beyond 40 opens correct file',s.line(0).startswith('HITEND ') and s.rows()[22].strip()=='46 match(es).',s.rows()[22].strip())
             find(s,p,'ONLY=')
             s.ok('exactly 20 results are complete without empty next page',len(listed(s))==20 and s.has('Results 1-20; complete') and not s.has('N Next'))
             s.key(ESC);p.stable()
@@ -161,12 +163,13 @@ def main():
                 s.key(b'D');s.wait(lambda:s.has('From YYYYMMDD'),'start date');s.type(lo);s.key(RET)
                 s.wait(lambda:s.has('To YYYYMMDD'),'end date');s.type(hi);s.key(RET);p.stable()
             s.key(b'D');s.wait(lambda:s.has('From YYYYMMDD'),'start date');s.type('20260229');s.key(RET)
-            s.wait(lambda:s.has('Invalid dates.'),'invalid leap day');s.ok('invalid leap day rejected',True)
+            s.wait(lambda:s.has('Invalid dates'),'invalid leap day')
+            s.ok('invalid leap day rejected',s.rows()[22].strip()=='Invalid dates.',s.rows()[22].strip())
             s.key(RET);p.stable()
             dates('20260907','20260907')
             s.ok('inclusive modification date range displayed',s.has('20260907-20260907'))
             dates('20260908','20260907')
-            s.ok('reversed dates rejected',s.has('Invalid dates.'));s.key(RET);p.stable()
+            s.ok('reversed dates rejected',s.rows()[22].strip()=='Invalid dates.',s.rows()[22].strip());s.key(RET);p.stable()
             s.ok('invalid edit retains previous range',s.has('20260907-20260907'))
             s.key(b'D');s.wait(lambda:s.has('From YYYYMMDD'),'start date');s.type('20260901');s.key(RET)
             s.wait(lambda:s.has('To YYYYMMDD'),'end date');s.key(ESC);p.stable()
@@ -189,7 +192,8 @@ def main():
             s.key(b'T');s.wait(lambda:s.has('Type (2 hex)'),'type prompt');s.type('04');s.key(RET)
             s.key(RET);s.wait(lambda:s.has(PROMPT),'query');s.key(RET)
             s.wait(lambda:s.has('Nothing found'),'excluded BIN',60)
-            s.ok('type filter excludes BIN from TXT search',s.has('Nothing found.'))
+            note=wait_note(s,p)
+            s.ok('type filter excludes BIN from TXT search',note=='Nothing found.',note)
             menu_run(s,p,'FIND');s.wait(lambda:s.has(PROMPT),'FIND prompt',20)
             s.type('OTHER');s.key(b'\x09');s.wait(lambda:s.has('FIND FILTERS'),'filters')
             dates('20260908','20391231');s.key(b'A');p.stable()

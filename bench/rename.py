@@ -73,7 +73,9 @@ def main():
             # 1. La liste des volumes n'a pas de chemin : refus.
             s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'la liste des volumes'); p.stable()
             menu_run(s, p, 'RENAME')
-            s.ok('refuse la liste des volumes', s.has('Open a directory'), s.rows()[22].strip())
+            # m_dir de src/plugins/rename.c, seul sur la ligne 22.
+            s.wait(lambda: s.rows()[22].strip() != '', 'le refus de la liste des volumes', 20); p.stable()
+            s.ok('refuse la liste des volumes', s.rows()[22].strip() == 'Open a directory.', s.rows()[22].strip())
 
             go(0, 'WORK')
             s.ok('le panneau gauche est sur /WORKHD/WORK et montre les cinq fichiers',
@@ -81,7 +83,10 @@ def main():
 
             # 2. ESC a la question : rien ne bouge.
             menu_run(s, p, 'RENAME')
-            s.wait(lambda: s.has('P)refix S)uffix'), 'la question du motif', 30)
+            s.wait(lambda: s.has('N)um ESC'), 'la question du motif', 30); p.stable()
+            # m_ask de src/plugins/rename.c, sans son \1 de video inverse.
+            s.ok('la question du motif est celle que rename.c ecrit',
+                 s.rows()[22].strip() == 'P)refix S)uffix E)xt X)strip N)um ESC', s.rows()[22].strip())
             s.key(ESC); p.stable()
             s.ok('ESC a la question ne renomme rien',
                  not s.has(' renamed, ') and names(s) == ['..', 'A.TXT', 'B.TXT', 'C', 'D.TXT', 'OLDD.TXT'],

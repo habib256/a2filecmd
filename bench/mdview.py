@@ -65,6 +65,12 @@ SPLIT = ('é' * 1023 + '漢\nEND\n').encode('utf-8')
 FILES = {'WORK/SPLIT.TXT': SPLIT, 'WORK/UTF.TXT': UTF, 'WORK/BOM.MD#040000': BOM, 'WORK/SOLID.TXT': SOLID, 'WORK/MANY.MD#040000': MANY, 'WORK/README.MD#040000': README, 'WORK/LONG.TXT': LONG, 'WORK/HI.TXT': HI}
 
 
+# m_page de src/plugins/mdview.c : "Page %lu%s: Space/Down next, Up back,
+# R start, ESC quits", %s valant m_end (" (end)") sur la derniere page.
+def page_line(n, end=False):
+    return 'Page %d%s: Space/Down next, Up back, R start, ESC quits' % (n, ' (end)' if end else '')
+
+
 def wrap(text, first='', rest=''):
     return textwrap.wrap(text, 79, initial_indent=first, subsequent_indent=rest,
                          break_long_words=False, break_on_hyphens=False)
@@ -104,7 +110,7 @@ def main():
             s.select('WORK', 0); p.stable()
             menu_run(s, p, 'MDVIEW')
             s.wait(lambda: s.has('Select a text file'), 'le refus du dossier', 30); p.stable()
-            s.ok('refuse un dossier', s.rows()[22].startswith('Select a text file to read.') and s.has('Type  Aux'),
+            s.ok('refuse un dossier', s.rows()[22].strip() == 'Select a text file to read.' and s.has('Type  Aux'),
                  s.rows()[22].strip())
 
             s.select('WORK', 0); s.key(RET); s.wait(lambda: s.has('/WORKHD/WORK'), 'WORK'); p.stable()
@@ -130,7 +136,7 @@ def main():
             s.ok('e pour e accent aigu, e pour e accent grave, ** et ` supprimes', rows[c + 2] == ACC_OUT, rows[c + 2])
             s.ok('toute la page 1 est celle attendue', rows == PAGE1,
                  [(i, a, b) for i, (a, b) in enumerate(zip(rows, PAGE1)) if a != b][:3])
-            s.ok('la ligne 22 dit la page 1', s.rows()[22].startswith('Page 1: Space/Down next, Up back, R start, ESC quits'),
+            s.ok('la ligne 22 dit la page 1, mot pour mot', s.rows()[22].strip() == page_line(1),
                  s.rows()[22].strip())
 
             # -- Espace : page 2, la fin ; Haut : page 1 ------------------------
@@ -138,9 +144,9 @@ def main():
             rows = text_rows(s)
             s.ok('Espace : la page 2 reprend a la ligne de queue suivante, et dit la fin',
                  rows[:len(TAIL) - 6] == TAIL[6:] and rows[len(TAIL) - 6] == ''
-                 and s.rows()[22].startswith('Page 2 (end)'), (rows[:2], s.rows()[22].strip()))
+                 and s.rows()[22].strip() == page_line(2, True), (rows[:2], s.rows()[22].strip()))
             s.key(b' '); p.stable()
-            s.ok('Espace a la fin : la page 2 reste', s.rows()[22].startswith('Page 2 (end)'), s.rows()[22].strip())
+            s.ok('Espace a la fin : la page 2 reste', s.rows()[22].strip() == page_line(2, True), s.rows()[22].strip())
             s.key(UP); s.wait(lambda: s.has('Page 1'), 'le retour a la page 1', 20); p.stable()
             s.ok("Haut : la page 1 revient, l'en-tete en inverse",
                  text_rows(s) == PAGE1 and inverse(p, 1, 18), text_rows(s)[:2])
@@ -167,7 +173,7 @@ def main():
             h = len(HUGE_ROWS) - len(top)
             s.ok('LONG : la ligne de %d caracteres, a cheval sur les pages 1 et 2 (%d + %d lignes), sans rupture'
                  % (len(HUGE), len(top), h),
-                 top + rows2[:h] == HUGE_ROWS and rows2[h] == 'last' and s.rows()[22].startswith('Page 2 (end)'),
+                 top + rows2[:h] == HUGE_ROWS and rows2[h] == 'last' and s.rows()[22].strip() == page_line(2, True),
                  (top[-1:], rows2[:1], rows2[h - 1:h + 1], s.rows()[22].strip()))
             s.key(UP); s.wait(lambda: s.has('Page 1'), 'le retour a la page 1 de LONG', 20); p.stable()
             s.ok('LONG : Haut rend la page 1 a l identique', text_rows(s) == rows, text_rows(s)[k:k + 2])
@@ -184,9 +190,9 @@ def main():
             p.stable()
             s.ok('lecture au-dela de 64 pages, fin et titre hors du bloc',
                  text_rows(s)[0] == 'Last heading' and inverse(p, 1, 12)
-                 and s.rows()[22].startswith('Page 67 (end)'), s.rows()[22].strip())
+                 and s.rows()[22].strip() == page_line(67, True), s.rows()[22].strip())
             s.key(DOWN); p.stable()
-            s.ok('la fin au-dela de 64 reste stable', s.rows()[22].startswith('Page 67 (end)'))
+            s.ok('la fin au-dela de 64 reste stable', s.rows()[22].strip() == page_line(67, True), s.rows()[22].strip())
             for page in range(66, 3, -1):
                 s.key(UP)
                 s.wait(lambda: s.rows()[22].startswith('Page %d:' % page), 'back page %d' % page, 20)
@@ -194,13 +200,13 @@ def main():
             s.ok('les 64 pages retenues gardent le texte et le bloc de code',
                  text_rows(s) == MANY_ROWS[63:84], text_rows(s)[:2])
             s.key(UP); p.stable()
-            s.ok('Haut reste sur la plus ancienne page retenue', s.rows()[22].startswith('Page 4:'))
+            s.ok('Haut reste sur la plus ancienne page retenue', s.rows()[22].strip() == page_line(4), s.rows()[22].strip())
             s.key(DOWN); s.wait(lambda: s.has('Page 5:'), 'forward retained'); p.stable()
             s.ok('retour avant dans les pages retenues', text_rows(s) == MANY_ROWS[84:105])
             s.key(b'r'); s.wait(lambda: s.has('Page 1:'), 'restart'); p.stable()
             s.ok('R repart au debut avec le bon etat Markdown', text_rows(s) == MANY_ROWS[:21])
             s.key(UP); p.stable()
-            s.ok('Haut ne depasse pas la premiere page', s.rows()[22].startswith('Page 1:'))
+            s.ok('Haut ne depasse pas la premiere page', s.rows()[22].strip() == page_line(1), s.rows()[22].strip())
             s.key(ESC)
             s.wait(lambda: s.has('Type  Aux     Size'), 'les panneaux apres MANY', 30); p.stable()
             s.ok('ESC restaure la selection du document long', s.line(0).startswith('MANY.MD '))
@@ -216,7 +222,7 @@ def main():
                 want = expected[(page - 1) * 21:page * 21]
                 s.ok('ligne sans saut : page %d exacte' % page,
                      text_rows(s) == want + [''] * (21 - len(want)), text_rows(s)[:1])
-            s.ok('la longue ligne atteint la vraie fin', s.rows()[22].startswith('Page 14 (end)'))
+            s.ok('la longue ligne atteint la vraie fin', s.rows()[22].strip() == page_line(14, True), s.rows()[22].strip())
             for page in (13, 12):
                 s.key(UP)
                 s.wait(lambda: s.rows()[22].startswith('Page %d:' % page), 'solid back %d' % page, 60)
@@ -257,7 +263,7 @@ def main():
             view(s, p, 'HI')
             rows = text_rows(s)
             s.ok('HI : le bit haut retire, CR en fin de ligne', rows[:3] == ['HELLO WORLD', 'SECOND LINE', '']
-                 and s.rows()[22].startswith('Page 1 (end)'), rows[:3])
+                 and s.rows()[22].strip() == page_line(1, True), rows[:3])
             s.key(ESC)
             s.wait(lambda: s.has('Type  Aux     Size'), 'le retour aux panneaux', 30); p.stable()
     return ok_all(s, 'mdview')

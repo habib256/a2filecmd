@@ -124,6 +124,36 @@ def menu_run(s, p, name, tries=40, allow_aux=True):
     raise AssertionError(f'{name} introuvable dans le menu\n' + '\n'.join(s.rows()))
 
 
+def wait_note(s, p, seconds=60, gone=None):
+    """La ligne 22 une fois le dernier mot ecrit ; rend son texte.
+
+    Une grosse surcouche ne parle pas par `api->message` : le resident relit
+    les panneaux, redessine et n'ecrit `api->note` qu'ensuite. Lire la ligne
+    22 des que « ! More » revient la trouve encore vide un passage sur deux.
+    On attend donc qu'elle porte quelque chose, et c'est le controle qui dit
+    quoi : les bancs comparent ce texte, mot pour mot, a ce que la source de
+    la surcouche ecrit aujourd'hui.
+
+    `gone` est ce que la ligne 22 portait avant -- une question posee par la
+    surcouche elle-meme, qui y reste jusqu'au redessin : sans quoi l'attente
+    serait satisfaite tout de suite, par la question et non par la reponse."""
+    if gone:
+        s.wait(lambda: not s.has(gone), 'la question effacee', seconds)
+    s.wait(lambda: s.rows()[22].strip() != '', 'le dernier mot de la surcouche', seconds)
+    p.stable()
+    return s.rows()[22].strip()
+
+
+def note_blank(s, p, seconds=30):
+    """L'inverse : la ligne 22 rendue vide (une surcouche qui n'a rien a dire).
+
+    Un abandon laisse `api->note` vide et le resident redessine : la ligne 22
+    doit finir vide, et le rester."""
+    s.wait(lambda: s.rows()[22].strip() == '', 'la ligne 22 rendue vide', seconds)
+    p.stable()
+    return s.rows()[22].strip()
+
+
 def ok_all(s, script=None):
     """Le verdict : n/m controles, code de retour 0 si tout passe."""
     passed = sum(1 for c in s.checks if c['ok'])

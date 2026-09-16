@@ -31,6 +31,12 @@ DAY, MONTH, YEAR, HOUR, MINUTE = 15, 6, 26, 14, 30
 DATE_WORD = (YEAR << 9) | (MONTH << 5) | DAY           # $34CF
 TIME_WORD = (HOUR << 8) | MINUTE                       # $0E1E
 SHOWN = '%02u/%02u/%04u %02u:%02u' % (DAY, MONTH, 2000 + YEAR, HOUR, MINUTE)
+# La ligne 22 de DATE, mot pour mot : show() de src/plugins/date.c ecrit la
+# date (ou m_none), puis m_clock, la lettre de MACHID, puis m_keys.
+BAR = ' clock:%s S Set F Date'
+BAD = 'Bad date'                # m_bad
+ONLY = 'Open a dir.'            # m_only
+DATED = '%u files dated'        # count() + m_files
 
 
 def entries_of(img, path):
@@ -69,30 +75,39 @@ def main():
 
             # 1. DATE montre l'etat de $BF90-$BF93 et de MACHID.
             clock = p.peek(0xBF98, 1)[0] & 1
-            year = p.peek(0xBF91, 1)[0] >> 1
+            stamp = p.peek(0xBF90, 4)
+            packed = int.from_bytes(stamp[:2], 'little')
+            shown = 'No date' if packed == 0 else '%02u/%02u/%04u %02u:%02u' % (
+                packed & 31, (packed >> 5) & 15, 1900 + (packed >> 9) + (100 if (packed >> 9) < 40 else 0),
+                stamp[3], stamp[2])
             menu_run(s, p, 'DATE')
             row = s.rows()[22].rstrip()
+            want = shown + BAR % ('Y' if clock else 'N')
             s.ok('DATE montre la date systeme (aucune sur POM2) et l horloge (MACHID)',
-                 ('No date' in row) == (year == 0) and ('clock:%s' % ('Y' if clock else 'N')) in row
-                 and 'S Set' in row, row)
+                 row == want, (row, want))
 
             # 2. S : douze chiffres, la date se retrouve en $BF90-$BF93.
             s.key(b'S'); p.stable()
             row = s.rows()[22].rstrip()
-            s.ok('S demande les douze chiffres DDMMYYYYHHMM', 'DDMMYYYYHHMM' in row, row)
+            # m_ask = "\1DDMMYYYYHHMM: " ; message() retire le \1 (inverse video).
+            s.ok('S demande les douze chiffres DDMMYYYYHHMM', row.strip() == 'DDMMYYYYHHMM:', row)
             s.type('%02u%02u%04u%02u%02u' % (DAY, MONTH, 2000 + YEAR, HOUR, MINUTE))
             s.wait(lambda: SHOWN in s.rows()[22], 'la date posee', 20); p.stable()
             got = p.peek(0xBF90, 4)
             want = DATE_WORD.to_bytes(2, 'little') + bytes([MINUTE, HOUR])
             s.ok('$BF90-$BF93 portent %s (jour, mois, annee, minute, heure)' % SHOWN,
                  got == want, got.hex() + ' attendu ' + want.hex())
-            s.ok('la ligne 22 relit la date systeme', SHOWN in s.rows()[22], s.rows()[22].rstrip())
+            bar = BAR % ('Y' if clock else 'N')
+            s.ok('la ligne 22 relit la date systeme, avec l horloge et les deux touches',
+                 s.rows()[22].rstrip() == SHOWN + bar, s.rows()[22].rstrip())
 
             # Year 2000 is valid although its packed year field is zero.
             menu_run(s, p, 'DATE'); s.key(b'S'); p.stable()
             s.type('010120000000')
-            s.wait(lambda: '01/01/2000 00:00' in s.rows()[22], 'annee 2000', 20)
-            s.ok('2000 est affiche comme une date', 'No date' not in s.rows()[22], s.rows()[22].rstrip())
+            s.wait(lambda: '01/01/2000 00:00' in s.rows()[22], 'annee 2000', 20); p.stable()
+            s.ok('2000 est affiche comme une date, pas comme m_none',
+                 s.rows()[22].rstrip() == '01/01/2000 00:00' + BAR % ('Y' if clock else 'N'),
+                 s.rows()[22].rstrip())
             menu_run(s, p, 'DATE'); s.key(b'S'); p.stable()
             s.type('%02u%02u%04u%02u%02u' % (DAY, MONTH, 2000 + YEAR, HOUR, MINUTE))
             s.wait(lambda: SHOWN in s.rows()[22], 'date restauree', 20)
@@ -100,8 +115,9 @@ def main():
             # 3. Une date impossible est refusee, $BF90 intact.
             menu_run(s, p, 'DATE'); s.key(b'S'); p.stable()
             s.type('311320261430')
-            s.wait(lambda: s.has('Bad date'), 'le refus', 20); p.stable()
-            s.ok('31/13 est refuse, la date systeme reste', p.peek(0xBF90, 4) == want, s.rows()[22].rstrip())
+            s.wait(lambda: s.has(BAD), 'le refus', 20); p.stable()
+            s.ok('31/13 est refuse : "%s" seul, et la date systeme reste' % BAD,
+                 s.rows()[22].strip() == BAD and p.peek(0xBF90, 4) == want, s.rows()[22].rstrip())
 
             # Gregorian month lengths, leap years and unchanged state on errors.
             for day,month,year,hour,minute in (
@@ -111,15 +127,17 @@ def main():
                 (1,1,2040,14,30),(1,1,2026,24,0),(1,1,2026,23,60)):
                 menu_run(s,p,'DATE');s.key(b'S');p.stable()
                 value=f'{day:02}{month:02}{year:04}{hour:02}{minute:02}'
-                s.type(value);s.wait(lambda:s.has('Bad date'),'invalid calendar date',20)
-                s.ok('invalid '+value+' preserves date and time',p.peek(0xBF90,4)==want)
+                s.type(value);s.wait(lambda:s.has(BAD),'invalid calendar date',20);p.stable()
+                s.ok('invalid '+value+' says "'+BAD+'" and preserves date and time',
+                     s.rows()[22].strip()==BAD and p.peek(0xBF90,4)==want,s.rows()[22].rstrip())
             for day,month,year in ((29,2,1940),(29,2,1996),(29,2,2000),(29,2,2024),(30,4,2026),(31,12,2039)):
                 menu_run(s,p,'DATE');s.key(b'S');p.stable()
                 s.type(f'{day:02}{month:02}{year:04}2359')
                 shown=f'{day:02}/{month:02}/{year:04} 23:59'
-                s.wait(lambda:shown in s.rows()[22],'valid calendar date',20)
+                s.wait(lambda:shown in s.rows()[22],'valid calendar date',20);p.stable()
                 packed=(((year%100)<<9)|(month<<5)|day).to_bytes(2,'little')+bytes((59,23))
-                s.ok('valid '+shown,p.peek(0xBF90,4)==packed)
+                s.ok('valid '+shown,p.peek(0xBF90,4)==packed
+                     and s.rows()[22].rstrip()==shown+bar,s.rows()[22].rstrip())
             menu_run(s,p,'DATE');s.key(b'S');p.stable()
             s.type('150620261430');s.wait(lambda:SHOWN in s.rows()[22],'restore stamping date',20)
 
@@ -128,10 +146,12 @@ def main():
             s.select('B', 0); s.key(b' '); p.stable()
             s.ok('A et B marques', '2 tagged' in s.rows()[21], s.rows()[21].rstrip())
             menu_run(s, p, 'DATE')
-            s.ok('DATE relance montre la date posee', SHOWN in s.rows()[22], s.rows()[22].rstrip())
+            s.ok('DATE relance montre la date posee', s.rows()[22].rstrip() == SHOWN + bar,
+                 s.rows()[22].rstrip())
             s.key(b'F')
-            s.wait(lambda: s.has('2 files dated'), 'les deux fichiers dates', 30); p.stable()
-            s.ok('F annonce 2 files dated', s.has('2 files dated'), s.rows()[22].rstrip())
+            s.wait(lambda: s.has(DATED % 2), 'les deux fichiers dates', 30); p.stable()
+            s.ok('F annonce "%s" et rien d autre' % (DATED % 2),
+                 s.rows()[22].strip() == DATED % 2, s.rows()[22].rstrip())
             s.select('A', 0); p.stable()
             s.ok('le panneau reli montre A au %02u/%02u/%02u' % (DAY, MONTH, YEAR),
                  '%02u/%02u/%02u' % (DAY, MONTH, YEAR) in s.rows()[21], s.rows()[21].rstrip())
@@ -139,8 +159,9 @@ def main():
             # 5. La liste des volumes est refusee.
             s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'la liste des volumes'); p.stable()
             menu_run(s, p, 'DATE'); s.key(b'F')
-            s.wait(lambda: s.has('Open a dir.'), 'le refus des volumes', 20); p.stable()
-            s.ok('F dans la liste des volumes est refuse', s.has('Open a dir.'), s.rows()[22].rstrip())
+            s.wait(lambda: s.has(ONLY), 'le refus des volumes', 20); p.stable()
+            s.ok('F dans la liste des volumes est refuse : "%s" seul' % ONLY,
+                 s.rows()[22].strip() == ONLY, s.rows()[22].rstrip())
 
         # 6. La disquette relue sur l'hote (POM2 l'a recopiee a l'arret) :
         # creation et modification, date et heure.

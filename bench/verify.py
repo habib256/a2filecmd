@@ -13,6 +13,11 @@ from pom2 import BUILD, Pom2
 from xplug import boot_hd, menu_run, ok_all, RET, ESC
 
 PORT = 6804
+# Le volume de banc porte BUILD/vol en entier : sa taille suit celle du
+# programme et de ses surcouches. 800 blocs ne suffisaient plus (504 Ko
+# poses depuis la 0.8.7) ; le compte annonce par VERIFY est celui-ci, il
+# n'est pas recopie a la main.
+BLOCKS = 1200
 BAR = re.compile(r'\[#*\.*\] ')      # le nom du volume du programme, quarante cases
 FAST = 200000                        # cycles par trame : le reglage de bench/pom2.py
 SLOW = 17030                         # la vitesse reelle, pour voir passer la barre
@@ -63,7 +68,7 @@ def main():
     note = b'A short note, to be read again.\r'
     files = {'WORK/BIG.BIN': big, 'WORK/NOTE.TXT': note}
     with tempfile.TemporaryDirectory(prefix='a2fc-verify-') as tmp:
-        with boot_hd(tmp, files, port=PORT, blocks=800, plugins=['verify']) as (p, s):
+        with boot_hd(tmp, files, port=PORT, blocks=BLOCKS, plugins=['verify']) as (p, s):
             s.ok("VERIFY.PLG est une petite surcouche signee PLUGIN_MAGIC, sous 1 280 octets",
                  plg[:2] == b'\xfc\xa2' and plg[2] == 0 and len(plg) <= 1280, len(plg))
 
@@ -96,14 +101,16 @@ def main():
             s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'la liste des volumes'); p.stable()
             s.select('/WORKHD'); p.stable()
             menu_pick(s, p, 'VERIFY')
-            speed(p, SLOW)                               # sinon les 800 blocs passent trop vite
+            speed(p, SLOW)                               # sinon la barre passe trop vite
             p.raw(RET)
-            s.wait(lambda: line22(p).strip() == '/WORKHD', 'volume en cours', 30)
-            s.ok('le volume en cours est affiche', True)
+            # verify.c ecrit le nom du volume seul pendant la lecture (t_message(e)).
+            s.wait(lambda: 'WORKHD' in line22(p), 'volume en cours', 30)
+            s.ok('le volume en cours est affiche, son nom et rien d autre',
+                 line22(p).strip() == '/WORKHD', line22(p).strip())
+            speed(p, FAST)                               # la barre a ete vue : la suite peut courir
             row = verdict(s, p, 'blocks read', 'le verdict de /WORKHD')
-            speed(p, FAST)
-            s.ok('les 800 blocs de /WORKHD sont lus : "/WORKHD: 800 blocks read, 0 bad"',
-                 row == '/WORKHD: 800 blocks read, 0 bad', row)
+            s.ok('les %d blocs de /WORKHD sont lus : "/WORKHD: %d blocks read, 0 bad"' % (BLOCKS, BLOCKS),
+                 row == '/WORKHD: %d blocks read, 0 bad' % BLOCKS, row)
             s.ok('la liste des volumes est toujours a l\'ecran', s.has('[Volumes]'))
 
             # 3. ESC interrompt une lecture du volume
@@ -112,11 +119,11 @@ def main():
             p.raw(RET)
             s.wait(lambda: line22(p).strip() == '/WORKHD', 'seconde lecture', 30)
             p.raw(ESC)
-            row = verdict(s, p, 'blocks read', "l'interruption")
             speed(p, FAST)
+            row = verdict(s, p, 'blocks read', "l'interruption")
             m = re.fullmatch(r'/WORKHD: (\d+) blocks read, interrupted, 0 bad', row)
             s.ok('ESC arrete la lecture et le message le dit, avec le compte atteint',
-                 m is not None and 0 < int(m.group(1)) < 800, row)
+                 m is not None and 0 < int(m.group(1)) < BLOCKS, row)
 
             # 4. la surcouche resert apres tout cela : rien ne s'est use en route
             s.select('/WORKHD'); s.key(RET)

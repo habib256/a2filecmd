@@ -11,8 +11,9 @@ from pathlib import Path
 import subprocess
 import sys
 
-BENCHES = ('bootblk', 'crc', 'date', 'disasm', 'findfile', 'fixtypes', 'goto', 'ident',
-           'imgconv', 'mdview', 'rename', 'tagpat', 'txtconv', 'verify', 'volname', 'wipe')
+BENCHES = ('bootblk', 'crc', 'date', 'disasm', 'findfile', 'fixit', 'fixtypes', 'goto',
+           'ident', 'imgconv', 'mdview', 'rename', 'repair', 'tagpat', 'txtconv',
+           'verify', 'volname', 'wipe')
 
 
 def main():

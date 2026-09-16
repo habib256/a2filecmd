@@ -29,7 +29,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-from xplug import boot_hd, menu_run, ok_all, RET, TAB
+from xplug import boot_hd, menu_run, ok_all, wait_note, RET, TAB
 from pom2 import ROOT
 from prodos_read import Image
 
@@ -104,8 +104,8 @@ def main():
             # Refuse dans la liste des volumes (le message vient par api->note).
             s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes'); p.stable()
             menu_run(s, p, 'FIXTYPES')
-            s.wait(lambda: s.has('Open a ProDOS directory'), 'le refus', 20)
-            s.ok('refuse dans la liste des volumes', s.has('Open a ProDOS directory'), s.rows()[22].strip())
+            note = wait_note(s, p)
+            s.ok('refuse dans la liste des volumes', note == 'Open a ProDOS directory.', note)
 
             # Passage 1 : le panneau DROIT sur /WORKPO/WORK, huit fichiers marques, Y.
             s.key(TAB); p.stable()
@@ -115,7 +115,9 @@ def main():
             s.ok('%d fichiers marques dans le panneau droit' % len(TAGGED),
                  s.has('%d tagged' % len(TAGGED)), s.rows()[21][60:].strip())
             line = run_fixtypes(s, p, b'Y')
-            s.ok('6 types, 4 renommes, 2 passes, collision signalee', line.startswith('6 typed, 4 renamed, 2 skipped, 1 failed'), line)
+            # api->note de src/plugins/fixtypes.c : "%u typed, %u renamed, %u skipped, %u failed".
+            s.ok('6 types, 4 renommes, 2 passes, collision signalee',
+                 line == '6 typed, 4 renamed, 2 skipped, 1 failed', line)
             s.ok('le panneau est relu : ARCHIVE sans suffixe, en $E0/$8002',
                  any(r[40:].startswith('ARCHIVE ') and '$8002' in r[40:] for r in s.rows()[2:20]),
                  [r[40:78] for r in s.rows()[2:20] if r[40:].startswith('ARCHIVE')])
@@ -127,7 +129,7 @@ def main():
             s.select('ONE.BAS', 0); p.stable()
             line = run_fixtypes(s, p, b'N')
             s.ok('N refuse toute modification du fichier sous le curseur',
-                 line.startswith('0 typed, 0 renamed, 1 skipped, 0 failed'), line)
+                 line == '0 typed, 0 renamed, 1 skipped, 0 failed', line)
             s.ok('ONE.BAS garde son nom et son type BIN apres N',
                  s.line(0).startswith('ONE.BAS ') and 'BIN' in s.line(0) and '$0000' in s.line(0), s.line(0).rstrip())
             try:

@@ -44,7 +44,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-from xplug import boot_hd, menu_run, ok_all, RET, ESC
+from xplug import boot_hd, menu_run, ok_all, wait_note, RET, ESC
 from pom2 import ROOT
 import corrupt_prodos
 import prodos_check
@@ -136,17 +136,6 @@ def changed_blocks(before, after):
 def wait_plan(s, p):
     s.wait(lambda: s.has(KEYS), 'l ecran de plan de REPAIR', 120)
     p.stable()
-
-
-def wait_note(s, p):
-    """La ligne 22 une fois le verdict ecrit ; rend son texte.
-
-    `api->note` est ecrit apres que le resident a repose la barre de
-    touches : lire la ligne 22 des qu'« ! More » revient la trouve encore
-    vide un passage sur deux (bench/fixit.py, meme course)."""
-    s.wait(lambda: s.rows()[22].strip() != '', 'le verdict de REPAIR', 60)
-    p.stable()
-    return s.rows()[22].strip()
 
 
 def session(tmp, po, checks):

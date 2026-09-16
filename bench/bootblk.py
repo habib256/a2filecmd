@@ -26,13 +26,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-from xplug import boot_hd, menu_run, ok_all, RET
+from xplug import boot_hd, menu_run, ok_all, note_blank, wait_note, RET
 from pom2 import ROOT
 from prodos_read import Image
 
 PORT = 6814
 TMPL = (ROOT / 'data/prodos_boot.tmpl').read_bytes()
 GARBAGE = bytes((i * 7 + 13) & 0xFF for i in range(1024))
+# Les lignes que src/plugins/bootblk.c ecrit aujourd'hui, mot pour mot :
+# a_1 + TGT + a_2 + SRC + a_3 pour la question (que confirm() suit de
+# " (Y/N) "), d_1 + TGT + d_2 + SRC pour le dernier mot, m_same pour le refus.
 QUESTION = 'Rewrite the boot blocks of /WORKPO from /WORKHD?'
 DONE = 'Boot blocks of /WORKPO rewritten from /WORKHD'
 BOOTVOL = 'That is the volume booted from.'
@@ -79,39 +82,41 @@ def main():
             #    (l'unite vient de Entry.mdate) : refuse.
             s.select('/WORKHD')
             menu_run(s, p, 'BOOTBLK')
-            s.wait(lambda: s.has(BOOTVOL), 'refus du volume source')
-            p.stable()
+            note = wait_note(s, p)
             s.ok('refuse le volume d amorcage, choisi dans la liste des volumes',
-                 s.has(BOOTVOL) and not s.has('(Y/N)'), s.rows()[22].strip())
+                 note == BOOTVOL and not s.has('(Y/N)'), note)
 
             # 3. Depuis un panneau ouvert dans le volume d'amorcage : l'unite
             #    vient cette fois d'ON_LINE sur le nom du chemin. Refuse aussi.
             s.select('/WORKHD'); s.key(RET)
             s.wait(lambda: s.rows()[0][:8] == '/WORKHD ', 'la racine de /WORKHD'); p.stable()
             menu_run(s, p, 'BOOTBLK')
-            s.wait(lambda: s.has(BOOTVOL), 'refus du volume source')
-            p.stable()
+            note = wait_note(s, p)
             s.ok('refuse aussi depuis un panneau ouvert dans le volume d amorcage',
-                 s.has(BOOTVOL) and not s.has('(Y/N)'), s.rows()[22].strip())
+                 note == BOOTVOL and not s.has('(Y/N)'), note)
 
             # 4. La question nomme la cible et la source ; N n'ecrit rien.
             volume_list()
             s.select('/WORKPO')
             menu_run(s, p, 'BOOTBLK')
             s.wait(lambda: s.has(QUESTION), 'la question de BOOTBLK', 20)
-            s.ok('la question nomme la cible et la source', s.has(QUESTION + ' (Y/N)'),
+            p.stable()
+            s.ok('la question nomme la cible et la source, telle que confirm la pose',
+                 s.rows()[22].strip() == QUESTION + ' (Y/N)', s.rows()[22].strip())
+            s.key(b'N')
+            # bootblk.c rend la main sans ecrire api->note : le resident
+            # redessine et la ligne 22 reste vide. Rien d'autre ne doit y venir.
+            note = note_blank(s, p)
+            s.ok('N a la question : aucun dernier mot, donc rien n est reecrit',
+                 note == '' and not s.has('rewritten') and not s.has('failed'),
                  s.rows()[22].strip())
-            s.key(b'N'); p.stable()
-            s.ok('N a la question : rien n est reecrit',
-                 not s.has('rewritten') and not s.has('failed'), s.rows()[22].strip())
 
             # 5. Y : les blocs 0 et 1 de /WORKHD passent sur /WORKPO.
             menu_run(s, p, 'BOOTBLK')
             s.wait(lambda: s.has(QUESTION), 'la question de BOOTBLK', 20)
             s.key(b'Y')
-            s.wait(lambda: s.has(DONE) or s.has('failed'), 'la fin de BOOTBLK', 30)
-            p.stable()
-            s.ok('Y : "%s"' % DONE, s.has(DONE), s.rows()[22].strip())
+            note = wait_note(s, p)
+            s.ok('Y : "%s"' % DONE, note == DONE, note)
             s.ok('A2FC a repris la main sur ses panneaux',
                  s.rows()[0].startswith('[Volumes]') and '/WORKPO' in volumes(s), volumes(s))
 

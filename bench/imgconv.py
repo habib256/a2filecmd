@@ -24,7 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-from xplug import boot_hd, menu_run, ok_all, RET, TAB, ESC
+from xplug import boot_hd, menu_run, note_blank, ok_all, RET, TAB, ESC
 from pom2 import ROOT
 from prodos_read import Image
 from po2dsk import SECTORS          # la table d'entrelacement livree
@@ -35,6 +35,13 @@ PORT = 6815
 # Ce qui met fin a une execution de la surcouche, sur la ligne 22 (note).
 DONE = (' -> ', 'failed', 'already in that format', 'Other panel',
         'whole tracks', 'Aborted', 'Select a .PO', 'Not a ProDOS-order 2IMG')
+
+# Les refus de src/plugins/imgconv.c, mot pour mot : ce que l'utilisateur lit.
+M_PICK  = 'Select a .PO/.HDV/.DSK/.DO/.2MG image.'
+M_SAME  = 'Image already in that format.'
+M_OTHER = 'Other panel: same directory or not ProDOS.'
+M_TRACK = 'DSK needs whole tracks (8-block multiples).'
+M_2MG   = 'Not a ProDOS-order 2IMG file.'
 
 
 def to_dsk(po):
@@ -151,48 +158,46 @@ def main():
             before = s.rows()[22]
             launch('NOTE', 0)
             line = finished(before, 30)
-            s.ok('refuse un fichier qui n\'est pas une image', 'Select a .PO' in line, line)
+            s.ok('refuse un fichier qui n\'est pas une image', line == M_PICK, line)
 
             # 2. ESC a la question annule.
             launch('TINY.PO', 0)
-            s.wait(lambda: s.has('Convert to P)'), 'la question du format', 20)
+            s.wait(lambda: s.has('ESC cancels'), 'la question du format', 20); p.stable()
+            # m_keys, sans son \1 de video inverse.
+            s.ok('la question du format est celle de m_keys',
+                 s.rows()[22].strip() == 'Convert to P) .PO, D) .DSK, 2) .2MG, ESC cancels',
+                 s.rows()[22].strip())
             s.key(ESC)
-            s.wait(lambda: 'Convert to P)' not in s.rows()[22], 'le retour de la surcouche', 20)
-            p.stable()
-            s.ok('ESC annule sans rien ecrire',
-                 not s.has(' -> ') and s.has('Type  Aux'), s.rows()[22].strip())
+            # imgconv.c rend la main sans note : la ligne 22 finit vide.
+            line = note_blank(s, p)
+            s.ok('ESC annule sans rien ecrire, et sans dernier mot',
+                 line == '' and not s.has(' -> ') and s.has('Type  Aux'), s.rows()[22].strip())
 
             # 3. Meme format : refus.
             line = convert('TINY.PO', 0, b'P', 30)
-            s.ok('refuse la conversion vers le meme format',
-                 'already in that format' in line, line)
+            s.ok('refuse la conversion vers le meme format', line == M_SAME, line)
 
             # 4. Une image qui ne fait pas des pistes entieres : refus pour un .DSK.
             line = convert('ODD.PO', 0, b'D', 30)
-            s.ok('refuse un .DSK qui ne ferait pas des pistes entieres',
-                 'whole tracks' in line, line)
+            s.ok('refuse un .DSK qui ne ferait pas des pistes entieres', line == M_TRACK, line)
 
             line = convert('BADFMT.2MG', 0, b'D', 30)
-            s.ok('refuses the full unsupported 32-bit format',
-                 'Not a ProDOS-order 2IMG' in line, line)
+            s.ok('refuses the full unsupported 32-bit format', line == M_2MG, line)
             line = convert('VALID.2MG', 0, b'D')
             s.ok('valid 2MG input reuses the header page for DSK output',
                  line == 'VALID.2MG -> VALID.DSK, 16 blocks', line)
             line = convert('BADCOUNT.2MG', 0, b'D', 30)
-            s.ok('refuses a block count that would wrap to 16 bits',
-                 'Not a ProDOS-order 2IMG' in line, line)
+            s.ok('refuses a block count that would wrap to 16 bits', line == M_2MG, line)
 
             # 5. .PO -> .2MG, puis .PO -> .DSK, dans /WORKPO/OUT.
             line = convert('TINY.PO', 0, b'2')
             s.ok('TINY.PO -> TINY.2MG, 64 blocks', line == 'TINY.PO -> TINY.2MG, 64 blocks', line)
             line = convert('BADSTART.2MG', 0, b'D', 30)
-            s.ok('refuses data inside the 2MG header before overwrite',
-                 'Not a ProDOS-order 2IMG' in line, line)
+            s.ok('refuses data inside the 2MG header before overwrite', line == M_2MG, line)
             line = convert('TINY.PO', 0, b'D')
             s.ok('TINY.PO -> TINY.DSK, 64 blocks', line == 'TINY.PO -> TINY.DSK, 64 blocks', line)
             line = convert('TRUNC.2MG', 0, b'D', 30)
-            s.ok('refuses truncated 2MG data before overwrite',
-                 'Not a ProDOS-order 2IMG' in line, line)
+            s.ok('refuses truncated 2MG data before overwrite', line == M_2MG, line)
 
             # 6. Le nom coupe a 15 caracteres : VERYLONGNAME.PO -> VERYLONGNAM.DSK.
             line = convert('VERYLONGNAME.PO', 0, b'D')
@@ -208,8 +213,7 @@ def main():
             # 8. L'autre panneau sur le meme dossier : refus.
             open_panel(40, '/WORKPO', 'OUT')
             line = convert('TINY.DSK', 0, b'P', 30)
-            s.ok("refuse l'autre panneau quand c'est le meme dossier",
-                 'Other panel' in line, line)
+            s.ok("refuse l'autre panneau quand c'est le meme dossier", line == M_OTHER, line)
 
         # La disquette, ecrite dans son fichier a l'arret de POM2.
         out = catalog(po, 'OUT')

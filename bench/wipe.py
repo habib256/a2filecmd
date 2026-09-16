@@ -29,12 +29,19 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-from xplug import boot_hd, menu_run, ok_all, RET, ESC
+from xplug import boot_hd, menu_run, ok_all, wait_note, RET, ESC
 from pom2 import ROOT
 from prodos_read import Image
 
 PORT = 6813
 BLOCKS = 280
+
+# Les lignes de src/plugins/wipe.c, mot pour mot.
+M_BOOT   = 'That volume holds the running program: choose another.'
+M_CANCEL = 'Nothing was written.'
+M_DONE   = '%u blocks zeroed on %s'        # M_DONE avec une queue vide
+M_ASKF   = 'Zero every free block of %s?'
+M_ERASE  = 'Type ERASE to confirm'
 
 # GONE fait 3 000 octets : un sapling, un bloc index et six blocs de donnees,
 # tous non nuls -- de quoi voir la difference apres le nettoyage.
@@ -131,21 +138,24 @@ def main():
 
             # WIPE, F, sur /WORKPO depuis la liste des volumes.
             ask_wipe(s, p, '/WORKPO', b'F')
-            s.wait(lambda: s.has('Zero every free block of /WORKPO?'), 'la confirmation de F', 20)
+            s.wait(lambda: s.has('free block of /WORKPO?'), 'la confirmation de F', 20); p.stable()
+            # M_ASKF, suivi du " (Y/N) " que confirm() ajoute.
+            s.ok('la confirmation de F nomme le volume',
+                 s.rows()[22].strip() == M_ASKF % '/WORKPO' + ' (Y/N)', s.rows()[22].strip())
             s.key(b'Y')
             s.wait(lambda: s.has('blocks zeroed') or s.has('Nothing was written') or s.has('failed'),
                    'la fin du nettoyage des blocs libres', 300)
             p.stable()
             line, nfree = zeroed(s)
             s.ok('F annonce les blocs mis a zero et A2FC reprend la main',
-                 'zeroed on /WORKPO' in line and s.rows()[0].startswith('[Volumes]'), line)
+                 line == M_DONE % (nfree, '/WORKPO') and s.rows()[0].startswith('[Volumes]'), line)
 
             # W sur le volume d'amorcage : refuse avant toute question.
             ask_wipe(s, p, '/WORKHD', b'W')
-            s.wait(lambda: s.has('holds the running program'), 'le refus du volume d amorcage', 30)
-            p.stable()
+            # M_ASK reste sur la ligne 22 jusqu'au redessin : l'attendre partie.
+            note = wait_note(s, p, gone='the WHOLE volume')
             s.ok('W sur le volume d amorcage est refuse',
-                 s.has('holds the running program') and not s.has('Type ERASE'), s.rows()[22].strip())
+                 note == M_BOOT and not s.has('Type ERASE'), note)
 
         # La disquette, recopiee dans son .po a l'arret de POM2.
         after = Image(po1.read_bytes())
@@ -168,20 +178,21 @@ def main():
 
             # ESC a la question : rien n'est ecrit.
             ask_wipe(s2, p, '/WIPEPO', ESC)
-            s2.wait(lambda: s2.has('Nothing was written'), "l'abandon a la question", 30)
-            p.stable()
+            note = wait_note(s2, p, gone='the WHOLE volume')
             s2.ok('ESC a la question n ecrit rien',
-                  s2.has('Nothing was written') and '/WIPEPO' in volumes(s2), volumes(s2))
+                  note == M_CANCEL and '/WIPEPO' in volumes(s2), (note, volumes(s2)))
 
             # Un mot autre qu'ERASE : rien n'est ecrit.
             ask_wipe(s2, p, '/WIPEPO', b'W')
-            s2.wait(lambda: s2.has('Type ERASE to confirm'), "l'invite ERASE", 20)
+            s2.wait(lambda: s2.has('ERASE to confirm'), "l'invite ERASE", 20); p.stable()
+            # M_ERASE, suivi du ": " et du curseur que prompt() ajoute.
+            s2.ok("l'invite demande le mot en entier",
+                  s2.rows()[22].strip() == M_ERASE + ': _', s2.rows()[22].strip())
             s2.type('NOPE')
             s2.key(RET)
-            s2.wait(lambda: s2.has('Nothing was written'), 'le refus', 30)
-            p.stable()
+            note = wait_note(s2, p, gone='ERASE to confirm')
             s2.ok('un autre mot qu ERASE n ecrit rien et le volume reste en ligne',
-                  s2.has('Nothing was written') and '/WIPEPO' in volumes(s2), volumes(s2))
+                  note == M_CANCEL and '/WIPEPO' in volumes(s2), (note, volumes(s2)))
 
             # ERASE : les 280 blocs, en-tete comprise.
             ask_wipe(s2, p, '/WIPEPO', b'W')
@@ -193,7 +204,7 @@ def main():
             p.stable()
             line, nall = zeroed(s2)
             s2.ok('W efface les 280 blocs du volume et A2FC reprend la main',
-                  nall == BLOCKS and s2.rows()[0].startswith('[Volumes]'), line)
+                  line == M_DONE % (BLOCKS, '/WIPEPO') and s2.rows()[0].startswith('[Volumes]'), line)
 
         data = po2.read_bytes()
         s2.ok('sur l hote, le bloc 2 (en-tete du repertoire de volume) est a zero',

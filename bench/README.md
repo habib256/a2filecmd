@@ -151,10 +151,18 @@ sont verifies partout, la session complete la ou l'Apple II existe.
 
 ## Les quinze nouvelles surcouches
 
-`bench/plugins.py` exécute les quinze bancs, avec un journal par outil.
-Chaque banc construit son disque dur de travail et y ajoute explicitement
-sa surcouche ; ceux qui écrivent vérifient ensuite la disquette du lecteur 2
-sur l'hôte. Ces volumes sont des fixtures, pas les images publiées.
+`bench/plugins.py` exécute les bancs des surcouches à table de services --
+les quinze d'origine plus `fixit.py` et `repair.py` --, avec un journal par
+outil. Chaque banc construit son disque dur de travail et y ajoute
+explicitement sa surcouche ; ceux qui écrivent vérifient ensuite la
+disquette du lecteur 2 sur l'hôte. Ces volumes sont des fixtures, pas les
+images publiées. Chacun **relit le dernier mot** de son outil : la ligne 22
+est comparée mot pour mot à ce que `src/plugins/NOM.c` écrit aujourd'hui
+(`api->message`, `api->note`, les questions de `confirm`/`prompt`), et non à
+un fragment qui survivrait à n'importe quelle reformulation. Une grosse
+surcouche parle après le redessin du résident : `xplug.wait_note` attend que
+la ligne 22 porte quelque chose, `xplug.note_blank` qu'elle soit rendue vide
+quand l'outil abandonne sans rien dire.
 
 ```sh
 make disk

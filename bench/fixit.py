@@ -54,7 +54,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-from xplug import boot_hd, menu_run, ok_all, RET, ESC
+from xplug import boot_hd, menu_run, ok_all, wait_note, RET, ESC
 from pom2 import ROOT
 import corrupt_prodos
 import prodos_check
@@ -76,6 +76,9 @@ MORE = 'Key: next / ESC: back'
 OVER = 'more findings than the table holds'
 SUMMARY = '%u findings.  R rescan  ESC/RETURN back'
 LINES_PER_PAGE = 18
+# Le dernier mot, mot pour mot : M_CLEAN et M_FOUND de fixit_walk.h.
+CLEAN = 'This volume is consistent: nothing to repair.'
+FOUND = '%u findings, nothing written: FIXIT only reads.'
 
 
 def make_po(tmp, name):
@@ -147,18 +150,6 @@ def wait_findings(s, p, mark, gone=None):
     p.stable()
 
 
-def wait_note(s, p):
-    """La ligne 22 une fois le verdict ecrit ; rend son texte.
-
-    `api->note` ecrit apres que le resident a repose la barre de touches :
-    lire la ligne 22 des qu'« ! More » revient la trouve encore vide un
-    passage sur deux. On attend qu'elle porte quelque chose, et c'est le
-    controle qui dit quoi."""
-    s.wait(lambda: s.rows()[22].strip() != '', 'le verdict de FIXIT', 30)
-    p.stable()
-    return s.rows()[22].strip()
-
-
 def line_of(rows, id):
     """La ligne de constat de `id` : « ID  compteur  block N [slot S] »."""
     for row in rows:
@@ -213,8 +204,8 @@ def healthy(tmp, po):
              not any(k in text for k in ('P plan', 'F fix', 'E export')), text)
         back('liste des volumes')
         note = wait_note(s, p)
-        s.ok('le verdict, sur la ligne de message, annonce un volume coherent',
-             note.startswith('This volume is consistent'), note)
+        s.ok('le verdict, sur la ligne de message, est celui de fixit_walk.h',
+             note == CLEAN, note)
 
         # 2. depuis un dossier du meme volume : l'unite vient d'ON_LINE
         volume_list()
@@ -301,7 +292,7 @@ def broken(tmp, po, expect, total):
         back('volume corrompu')
         note = wait_note(s, p)
         s.ok('le verdict compte les constats et dit que rien n a ete ecrit',
-             note.startswith('%u findings, nothing written' % total), note)
+             note == FOUND % total, note)
     return session(tmp, po, checks)
 
 

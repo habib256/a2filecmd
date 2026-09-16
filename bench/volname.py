@@ -45,15 +45,19 @@ def make_po(tmp, name, files):
 
 
 def rename_to(s, p, old, new):
-    """Lance VOLNAME sur la selection, verifie l'invite, remplace le nom."""
+    """Lance VOLNAME sur la selection, verifie l'invite, remplace le nom.
+
+    Rend la ligne 22 : `done` de src/plugins/volname.c, « Volume renamed to
+    /NOUVEAU » et rien d'autre, ou le rapport d'erreur."""
     menu_run(s, p, 'VOLNAME')
     s.wait(lambda: s.has('Rename volume /%s to: %s' % (old, old)), "l'invite de VOLNAME", 20)
     for _ in old:
         s.key(DEL, 0.1)
     s.type(new)
     s.key(RET)
-    s.wait(lambda: s.has('Volume renamed to /' + new) or s.has('failed'), 'la fin de VOLNAME', 30)
+    s.wait(lambda: s.has('renamed to /' + new) or s.has('failed'), 'la fin de VOLNAME', 30)
     p.stable()
+    return s.rows()[22].strip()
 
 
 def volumes(s):
@@ -87,14 +91,17 @@ def main():
             s.select('TINY.PO'); s.key(RET)
             s.wait(lambda: s.has('INSIDE '), "l'image ouverte comme un dossier", 30); p.stable()
             menu_run(s, p, 'VOLNAME')
-            s.ok("refuse une image ouverte comme un dossier", s.has('Not a ProDOS volume.'), s.rows()[22].strip())
+            s.wait(lambda: s.rows()[22].strip() != '', "le refus de l'image", 20); p.stable()
+            # m_ro de src/plugins/volname.c, seul sur la ligne 22.
+            s.ok("refuse une image ouverte comme un dossier",
+                 s.rows()[22].strip() == 'Not a ProDOS volume.', s.rows()[22].strip())
             s.key(ESC); s.wait(lambda: s.rows()[0].startswith('/WORKHD/WORK') and s.has('TINY.PO'), 'retour dans WORK'); p.stable()
 
             # 3. Le volume d'amorcage, renomme depuis la liste des volumes.
             s.key(b'/'); s.wait(lambda: s.rows()[0].startswith('[Volumes]'), 'volumes'); p.stable()
             s.select('/WORKHD')
-            rename_to(s, p, 'WORKHD', 'RENAMED')
-            s.ok('/WORKHD renomme /RENAMED : le message', s.has('Volume renamed to /RENAMED'), s.rows()[22].strip())
+            line = rename_to(s, p, 'WORKHD', 'RENAMED')
+            s.ok('/WORKHD renomme /RENAMED : le message', line == 'Volume renamed to /RENAMED', line)
             vols = volumes(s)
             s.ok('la liste des volumes, relue par ON_LINE, montre /RENAMED et plus /WORKHD',
                  '/RENAMED' in vols and '/WORKHD' not in vols, vols)
@@ -112,9 +119,10 @@ def main():
             #    encore (cfg_path suit), et le volume est celui du chemin.
             s.key(RET); s.wait(lambda: s.rows()[0][:9] == '/RENAMED ', 'la racine de /RENAMED'); p.stable()
             s.ok('le volume renomme s ouvre, A2FILE/ dedans', s.has('A2FILE/'), s.rows()[0][:20])
-            rename_to(s, p, 'RENAMED', 'WORKHD')
+            line = rename_to(s, p, 'RENAMED', 'WORKHD')
             s.ok("depuis le panneau ouvert dedans, le menu ! se charge et /RENAMED redevient /WORKHD",
-                 s.has('Volume renamed to /WORKHD') and s.rows()[0][:8] == '/WORKHD ', s.rows()[0][:20])
+                 line == 'Volume renamed to /WORKHD' and s.rows()[0][:8] == '/WORKHD ',
+                 (line, s.rows()[0][:20]))
             s.ok("l'autre panneau suit aussi, en /WORKHD/WORK", s.rows()[0][40:].startswith('/WORKHD/WORK'), s.rows()[0][40:].strip())
 
             # 5b. Une image ouverte comme un dossier dans l'autre panneau : son
@@ -149,16 +157,19 @@ def main():
             # 6. /RAM -> /RAMDISK, et retour.
             s.key(b'/'); s.wait(lambda: s.rows()[0].startswith('[Volumes]'), 'volumes'); p.stable()
             s.select('/RAM')
-            rename_to(s, p, 'RAM', 'RAMDISK')
-            s.ok('/RAM renomme /RAMDISK', '/RAMDISK' in volumes(s) and '/RAM' not in volumes(s), volumes(s))
+            line = rename_to(s, p, 'RAM', 'RAMDISK')
+            s.ok('/RAM renomme /RAMDISK', line == 'Volume renamed to /RAMDISK'
+                 and '/RAMDISK' in volumes(s) and '/RAM' not in volumes(s), (line, volumes(s)))
             s.select('/RAMDISK')
-            rename_to(s, p, 'RAMDISK', 'RAM')
-            s.ok('/RAMDISK renomme /RAM', '/RAM' in volumes(s) and '/RAMDISK' not in volumes(s), volumes(s))
+            line = rename_to(s, p, 'RAMDISK', 'RAM')
+            s.ok('/RAMDISK renomme /RAM', line == 'Volume renamed to /RAM'
+                 and '/RAM' in volumes(s) and '/RAMDISK' not in volumes(s), (line, volumes(s)))
 
             # 7. La disquette du lecteur 2, relue sur l'hote apres l'arret.
             s.select('/WORKPO')
-            rename_to(s, p, 'WORKPO', 'FLOPPY')
-            s.ok('/WORKPO renomme /FLOPPY a l ecran', '/FLOPPY' in volumes(s) and '/WORKPO' not in volumes(s), volumes(s))
+            line = rename_to(s, p, 'WORKPO', 'FLOPPY')
+            s.ok('/WORKPO renomme /FLOPPY a l ecran', line == 'Volume renamed to /FLOPPY'
+                 and '/FLOPPY' in volumes(s) and '/WORKPO' not in volumes(s), (line, volumes(s)))
             s.ok('A2FC a repris la main sur ses panneaux', s.has('Type  Aux'))
 
         block2 = po.read_bytes()[2 * 512:3 * 512]

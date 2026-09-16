@@ -21,7 +21,9 @@ def main():
         with boot_hd(Path(tmp), files, port=6807, plugins=['crc']) as (p, s):
             s.select('WORK')
             menu_run(s, p, 'CRC')
-            s.ok('un dossier est refuse', s.has('Select a file.'), s.rows()[22])
+            # NONE de src/plugins/crc.c : la ligne 22 entiere, pas un fragment.
+            s.wait(lambda: s.rows()[22].strip() != '', 'le refus du dossier', 30); p.stable()
+            s.ok('un dossier est refuse', s.rows()[22].strip() == 'Select a file.', s.rows()[22].strip())
             s.key(RET)
             s.wait(lambda: s.has('/WORKHD/WORK'), 'WORK')
             p.stable()
@@ -52,10 +54,14 @@ def main():
             expected=[f'{name}: CRC-32 ${zlib.crc32(data):08X}, {len(data)} bytes' for name,data in batch.items()]
             menu_run(s,p,'CRC');s.wait(lambda:s.has('Key Next/ESC'),'first page',30);p.stable()
             s.ok('first 20 checksums remain visible',page_lines()==expected[:20])
+            s.ok('the first page asks for a key exactly as crc.c writes it',
+                 s.rows()[22].strip()=='Key Next/ESC',s.rows()[22].strip())
             s.key(b' ');s.wait(lambda:s.has('F20: CRC-32') and s.has('Key Next/ESC'),'second page',30);p.stable()
             s.ok('second 20 checksums match zlib',page_lines()==expected[20:40])
             s.key(RET);s.wait(lambda:s.has('F40: CRC-32') and s.has('Any key'),'last page',30);p.stable()
             s.ok('final five checksums match zlib',page_lines()==expected[40:])
+            s.ok('the last page says ANYKEY and nothing else',
+                 s.rows()[22].strip()=='Any key',s.rows()[22].strip())
             s.key(ESC);p.stable()
             s.ok('pagination preserves all tags',s.has('45 tagged'))
             menu_run(s,p,'CRC');s.wait(lambda:s.has('Key Next/ESC'),'cancel first page',30);s.key(ESC);p.stable()

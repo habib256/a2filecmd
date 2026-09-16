@@ -71,7 +71,7 @@ def main():
                 """Un motif, une touche (T, U ou X) ; rend la ligne 22."""
                 ask(pattern)
                 s.key(RET)
-                s.wait(lambda: s.has('T Tag'), 'les touches T/U/X', 20)
+                s.wait(lambda: s.has('X Only  ESC'), 'les touches T/U/X', 20)   # la fin de s_keys
                 s.key(key)
                 s.wait(lambda: s.has('matched)'), 'le compte final', 30)
                 p.stable()
@@ -82,8 +82,11 @@ def main():
             s.wait(lambda: s.has('[Volumes]'), 'la liste des volumes')
             p.stable()
             menu_run(s, p, 'TAGPAT')
+            s.wait(lambda: s.rows()[22].strip() != '', 'le refus de la liste des volumes', 20)
             p.stable()
-            s.ok('refuse la liste des volumes', s.has('Open a directory.'), s.rows()[22].strip())
+            # s_vol de src/plugins/tagpat.c, seul sur la ligne 22.
+            s.ok('refuse la liste des volumes', s.rows()[22].strip() == 'Open a directory.',
+                 s.rows()[22].strip())
 
             # Le panneau gauche sur /WORKHD/WORK.
             s.select('/WORKHD', 0)
@@ -109,13 +112,18 @@ def main():
             # 3. Delete efface le dernier caractere tape.
             ask('=.TXTZ')
             s.key(DEL)
-            s.wait(lambda: s.has(': =.TXT_'), 'Delete efface un caractere', 20)
-            s.ok('Delete efface le dernier caractere du motif', s.has(': =.TXT_'),
+            s.wait(lambda: s.has(': =.TXT_'), 'Delete efface un caractere', 20); p.stable()
+            # s_prompt de src/plugins/tagpat.c, sans son \1, puis l'echo du motif.
+            s.ok('Delete efface le dernier caractere du motif',
+                 s.rows()[22].strip() == 'Pattern (= ?),Tnn,>n,<n,D: =.TXT_',
                  s.rows()[22].strip())
 
             # 4. `=` prend n'importe quelle suite : les quatre .TXT, T les marque.
             s.key(RET)
-            s.wait(lambda: s.has('T Tag'), 'les touches T/U/X', 20)
+            s.wait(lambda: s.has('X Only  ESC'), 'les touches T/U/X', 20); p.stable()
+            # s_keys de src/plugins/tagpat.c, sans son \1 de video inverse.
+            s.ok('les trois touches proposees sont celles de s_keys',
+                 s.rows()[22].strip() == 'T Tag  U Untag  X Only  ESC', s.rows()[22].strip())
             s.key(b'T')
             s.wait(lambda: s.has('matched)'), 'le compte final', 30)
             p.stable()
@@ -170,8 +178,9 @@ def main():
             s.key(RET)
             s.wait(lambda: s.has('Bad filter'), 'le refus du filtre', 20)
             p.stable()
+            # s_bad de src/plugins/tagpat.c : la ligne entiere, sans compte.
             s.ok('un filtre inconnu est refuse sans toucher au marquage',
-                 s.has('Bad filter') and tagged(s) == ['CD.TXT', 'F.BIN'],
+                 s.rows()[22].strip() == 'Bad filter' and tagged(s) == ['CD.TXT', 'F.BIN'],
                  (s.rows()[22].strip(), tagged(s)))
 
             # 12. `D` compare la mdate a la date systeme ($BF90). La machine du

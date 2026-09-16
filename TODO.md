@@ -48,8 +48,11 @@ ni un format neuf tant que la dernière case n’est pas close.
 - [x] **Séquences** — image → musique → copie ; annulation → reprise ;
   changement de disque : `bench/sequences.py`, 21 contrôles, octets relus
   après la sortie, deux CPU.
-- [ ] **`bench/plugins.py`** — relire les messages depuis la 0.8.5
-  (ils passent, ce n’est pas une relecture).
+- [x] **`bench/plugins.py`** — le 16 septembre 2026, les 18 bancs de
+  surcouches relisent le message final mot pour mot (`wait_note`,
+  `note_blank` dans `bench/xplug.py`), deux CPU, 558 contrôles chacun ;
+  deux libellés de TXTCONV avaient changé depuis la 0.8.5 sans que les
+  bancs le voient.
 - [x] **`bench/shk.py` sur disquette 6502** — le 14 septembre 2026, les
   bancs d’archives amorcent `build-6502/A2FILECMD-full.po`
   (`make benchfloppy ARCH=6502`, `A2FC_BUILD=build-6502

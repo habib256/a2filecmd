@@ -20,7 +20,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-from xplug import boot_hd, menu_run, ok_all, RET, TAB, ESC
+from xplug import boot_hd, menu_run, note_blank, ok_all, wait_note, RET, TAB, ESC
 from pom2 import ROOT
 from prodos_read import Image
 
@@ -34,6 +34,14 @@ ACC_OUT = b'cafe A ca s y ? ?end\n'
 TABS = b'a\tb\n\tx\nabcdefgh\ty\n\t\tz\n'
 BROKEN = b'A' * 255 + b'\xc3Z / \xe2X / \xf0\x9f'
 BROKEN_OUT = b'A' * 255 + b'?Z / ?X / ?'
+
+# Les lignes de src/plugins/txtconv.c, mot pour mot. m_other et m_temp ont
+# change depuis la 0.8.5 : le banc les relit telles qu'elles sont ecrites
+# aujourd'hui, pas par un fragment qui survivrait a n'importe quelle reforme.
+M_PICK  = 'Select a file to convert.'
+M_OTHER = 'Other panel: same folder, or not ProDOS.'
+M_TEMP  = 'TXTCONV.TMP already exists.'
+KEYS    = 'To C)R L)F D)CRLF, H)igh bit off S)et, T)abs A)ccents, ESC'
 
 HD_FILES = {'WORK/LF.TXT': LF, 'WORK/CRLF#040123': CRLF}
 RECOVERY = b'previous conversion to recover\r'
@@ -127,7 +135,8 @@ def main():
 
             # 1. Refus dans un panneau vide.
             menu_run(s, p, 'TXTCONV')
-            s.ok('refuse un panneau vide', s.has('Select a file to convert'), s.rows()[22].strip())
+            note = wait_note(s, p)
+            s.ok('refuse un panneau vide', note == M_PICK, note)
 
             open_panel(0, '/WORKHD', 'WORK')
             s.ok('le panneau gauche est sur /WORKHD/WORK', s.rows()[0].startswith('/WORKHD/WORK'), s.rows()[0][:38])
@@ -135,9 +144,15 @@ def main():
             # 2. ESC a la question annule.
             s.select('LF', 0); p.stable()
             menu_run(s, p, 'TXTCONV')
-            s.wait(lambda: s.has('C)R L)F D)CRLF'), 'la question', 20)
-            s.key(ESC); p.stable()
-            s.ok('ESC annule sans rien ecrire', not s.has('Converted') and s.has('Type  Aux'), s.rows()[22].strip())
+            s.wait(lambda: s.has('A)ccents, ESC'), 'la question', 20); p.stable()
+            # keys_msg, sans son \1 de video inverse (une espace de fin).
+            s.ok('la question des modes est celle de keys_msg',
+                 s.rows()[22].strip() == KEYS, s.rows()[22].strip())
+            s.key(ESC)
+            # txtconv.c rend la main sans note : la ligne 22 finit vide.
+            line = note_blank(s, p)
+            s.ok('ESC annule sans rien ecrire, et sans dernier mot',
+                 line == '' and not s.has('Converted') and s.has('Type  Aux'), s.rows()[22].strip())
 
             # 3. LF -> CR vers l'autre panneau (meme taille), puis accents par-dessus, refuse.
             line = convert('LF', 0, b'C', inplace=False)
@@ -146,7 +161,10 @@ def main():
             s.ok('le panneau droit montre LF', any(r[40:].startswith('LF ') for r in s.rows()[2:20]),
                  [r[40:78] for r in s.rows()[2:20] if r[40:].strip()][:3])
             line = convert('LF', 0, b'A', inplace=False, overwrite=False)
-            s.ok("N a l'ecrasement : rien n'est converti", not s.has('Converted'), line)
+            # N a la question d'ecrasement : txtconv.c revient sans note.
+            line = note_blank(s, p)
+            s.ok("N a l'ecrasement : rien n'est converti, et rien n'est dit",
+                 line == '' and not s.has('Converted'), s.rows()[22].strip())
 
             # 4. CRLF -> LF vers l'autre panneau : la paire a cheval sur 256 et 512, l'auxtype garde.
             line = convert('CRLF', 0, b'L', inplace=False)
@@ -175,8 +193,9 @@ def main():
             s.select('HI', 0); p.stable()
             menu_run(s, p, 'TXTCONV')
             s.wait(lambda: s.has('C)R L)F D)CRLF'), 'la question', 20)
-            s.key(b'C'); s.wait(lambda: s.has('In place?'), 'sur place', 20); s.key(b'N'); p.stable()
-            s.ok("refuse l'autre panneau quand c'est le meme dossier", s.has('Other panel'), s.rows()[22].strip())
+            s.key(b'C'); s.wait(lambda: s.has('In place?'), 'sur place', 20); s.key(b'N')
+            note = wait_note(s, p)
+            s.ok("refuse l'autre panneau quand c'est le meme dossier", note == M_OTHER, note)
 
             # A previous recovery result must survive both another in-place
             # conversion and selection of TXTCONV.TMP itself as the source.
@@ -184,7 +203,7 @@ def main():
             for name in ('KEEP', 'TXTCONV.TMP'):
                 line = convert(name, 40, b'S', inplace=True)
                 s.ok('existing temporary file refuses conversion of ' + name,
-                     'TXTCONV.TMP already exists' in line, line)
+                     line == M_TEMP, line)
 
         # La disquette, ecrite dans son fichier a l'arret de POM2 (SIGTERM -> flush).
         out = catalog(po, 'WORK/OUT')

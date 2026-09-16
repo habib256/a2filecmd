@@ -5,7 +5,7 @@ import tempfile
 import urllib.request
 from pathlib import Path
 from pom2 import BUILD, Pom2, Session
-from xplug import stage_hd, menu_run, RET, ESC, ok_all
+from xplug import stage_hd, menu_run, wait_note, RET, ESC, ok_all
 from six import make_disk, entry
 from prodos_read import Image
 
@@ -47,17 +47,24 @@ def main():
             s.key(b'G');s.wait(lambda:s.has('File offset'),'export start');s.type('0000002');s.key(RET);p.stable()
             before_export=s.rows()[2:21]
             s.key(b'E');s.wait(lambda:s.has('Export from $000002'),'export filename');s.key(RET)
-            s.wait(lambda:s.has('Disassembly exported'),'export complete',60);s.ok('export completes to other panel',True);s.key(RET);p.stable()
+            s.wait(lambda:s.has('Disassembly exported'),'export complete',60);p.stable()
+            # export_status, ligne 21 de render() : le mot entier de disasm.c.
+            s.ok('export completes to other panel',s.rows()[21].strip()=='Disassembly exported to other panel.',s.rows()[21].strip())
+            s.key(RET);p.stable()
             s.ok('export preserves current page',s.rows()[2:21]==before_export)
             s.key(b'E');s.wait(lambda:s.has('Export from'),'existing name');s.key(RET)
-            s.wait(lambda:s.has('Cannot create file'),'overwrite refused');s.ok('existing export never overwritten',True);s.key(RET);p.stable()
+            s.wait(lambda:s.has('Cannot create file'),'overwrite refused');p.stable()
+            s.ok('existing export never overwritten',s.rows()[22].strip()=='Cannot create file (name in use?).',s.rows()[22].strip())
+            s.key(RET);p.stable()
             s.key(b'E');s.wait(lambda:s.has('Export from'),'cancel prompt');s.key(ESC);p.stable()
             s.ok('cancelled filename returns to viewer',s.rows()[2:21]==before_export)
             s.key(b'G');s.wait(lambda:s.has('File offset'),'offset');s.type(f'{len(code)-2:07X}');s.key(RET);p.stable()
             s.ok('truncated tail is data, clean EOF',s.has('.BYTE $4C') and s.has('.BYTE $34') and s.has('End of file.'))
             tail=s.rows()[2:21];s.key(b'N');p.stable();s.ok('next at EOF stays put',s.rows()[2:21]==tail)
             s.key(b'G');s.wait(lambda:s.has('File offset'),'invalid offset');s.type('0FFFFFF');s.key(RET)
-            s.wait(lambda:s.has('Offset outside file'),'invalid refused');s.key(RET);p.stable()
+            s.wait(lambda:s.has('outside file.'),'invalid refused')   # la fin du texte : la ligne est ecrite
+            s.ok('an offset past EOF says just that',s.rows()[22].strip()=='Offset outside file.',s.rows()[22].strip())
+            s.key(RET);p.stable()
             s.ok('invalid offset keeps page',s.rows()[2:21]==tail)
             s.key(b'R');p.stable();s.ok('restart returns to byte zero',s.has('000000  4000'))
             s.key(ESC);p.stable()
@@ -68,10 +75,19 @@ def main():
             s.ok('24-bit offset and 16-bit address wrap',s.has('010001  0000') and s.has('LDA #$42'))
             s.key(b'R');s.key(b'E');s.wait(lambda:s.has('Export from'),'cancelled export name')
             s.key(b'\x7F'*10);p.stable();s.type('CANCEL.TXT');s.key(RET)
-            s.wait(lambda:s.has('Exporting...'),'export started');s.key(ESC)
-            s.wait(lambda:s.has('Export cancelled'),'cancelled export');s.ok('ESC interrupts active export',True);s.key(RET);p.stable()
+            s.wait(lambda:s.has('ESC cancels'),'export started')       # la fin du texte
+            s.ok('the export names its escape key while it runs',s.rows()[22].strip()=='Exporting... ESC cancels',s.rows()[22].strip())
+            s.key(ESC)
+            # La ligne d'etat est relevee a l'instant ou elle parait : ESC pendant
+            # l'export annule ET sort du lecteur, la page d'etat ne reste donc pas.
+            seen=[]
+            s.wait(lambda:seen.append(s.rows()[21].strip()) or 'Export cancelled' in seen[-1],'cancelled export')
+            s.ok('ESC interrupts active export',seen[-1]=='Export cancelled; partial file kept.',seen[-1])
+            s.key(RET);p.stable()
             s.key(ESC);p.stable()
-            s.select('NOTE');menu_run(s,p,'DISASM');s.ok('non-code selection refused',s.has('Select a BIN or SYS'))
+            s.select('NOTE');menu_run(s,p,'DISASM')
+            note=wait_note(s,p)
+            s.ok('non-code selection refused',note=='Select a BIN or SYS file on a ProDOS volume.',note)
             s.ok('stack restored and budget respected',p.peek(0x80,2)==stack and p.peek(floor,8)==b'\xA5'*8)
             p.eject(1)
         s.ok('source volume unchanged',hd.read_bytes()==original)

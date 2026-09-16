@@ -55,10 +55,15 @@ def main():
                 return s.rows()
 
             def leave(*keys):
-                """Tape les touches, attend le retour aux panneaux, rend la ligne 22."""
+                """Tape les touches, attend le retour aux panneaux, rend la ligne 22.
+
+                La barre de touches des panneaux (« ! More ») est reposee par
+                le redessin qui precede l'ecriture d'api->note : l'attendre,
+                puis laisser l'ecran se fixer, c'est lire le dernier mot et
+                non la ligne 22 d'avant."""
                 for k in keys:
                     s.key(k)
-                s.wait(lambda: not s.has(TITLE), 'le retour aux panneaux', 30)
+                s.wait(lambda: not s.has(TITLE) and s.has('! More'), 'le retour aux panneaux', 30)
                 p.stable()
                 return s.rows()[22].strip()
 
@@ -67,14 +72,17 @@ def main():
                 return [r.strip() for r in screen[2:14] if r.strip() and r.strip()[0].isdigit()]
 
             # The menu now spans several pages: use its normal navigation.
-            open_goto()
-            s.ok('GOTO opens from the plugin menu',s.has(TITLE))
+            screen = open_goto()
+            # draw() : m_title en (2,1), m_none en (2,3), m_keys dans la barre.
+            s.ok('GOTO opens from the plugin menu, m_title where draw() puts it',
+                 screen[1].strip() == TITLE, screen[1].strip())
             leave(ESC)
 
             # 2. Liste vide : l'ecran le dit, et le message aussi en sortant.
             screen = open_goto()
             s.ok('la liste vide affiche le titre, le mode d\'emploi et la barre de touches',
-                 s.has('No favourites yet') and any('1-9' in r and 'ESC' in r for r in screen),
+                 screen[3].strip() == 'No favourites yet: A adds this directory'
+                 and any('1-9' in r and 'ESC' in r for r in screen),
                  [r.strip() for r in screen[:5] if r.strip()])
             line = leave(ESC)
             s.ok('ESC sur une liste vide : "No favourites yet: A adds this directory"',
