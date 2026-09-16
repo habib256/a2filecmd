@@ -67,7 +67,12 @@ ni un format neuf tant que la dernière case n’est pas close.
   `make test` ; `tools/fuzz_images.py` couvre toujours les lecteurs
   d'images.
 - [ ] **Images XL** — `bench/run.py` 6502 et 65C02.
-- [ ] **Banc //c** — session, pile, disquette, souris.
+- [x] **Banc //c** — le 16 septembre 2026, `bench/iic.py` (20 contrôles,
+  en CI) : disquette 6502 et disque SmartPort (copies vers /RAM et vers le
+  SmartPort relues), XL 65C02 amorcée par le SmartPort, pile, souris. La
+  copie disquette → SmartPort a révélé un défaut de POM2, corrigé dans
+  POM2 (7dc429b) : le séquenceur Disk II n'était pas remis à zéro quand le
+  moteur démarrait sur le lecteur 2 vide.
 - [ ] **💾 IIgs** — premier boot (SmartPort, `$C000`) ; documenter Disk II.
 - [ ] **💾 REPAIR sur fer** — une disquette réellement abîmée : les harnais
   et les bancs POM2 couvrent chaque écriture, pas le lecteur.
