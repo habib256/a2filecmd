@@ -339,6 +339,7 @@ test: test-mini
 	python3 $(TOOLS)/test_repair.py
 	python3 $(TOOLS)/test_fixit_bits.py
 	python3 $(TOOLS)/test_strobe.py
+	python3 $(TOOLS)/test_flag_reuse.py
 	python3 $(TOOLS)/fuzz_prodos.py --count 150 --seed 1
 	python3 $(TOOLS)/test_fuzz_prodos.py
 	python3 $(TOOLS)/fuzz_archives.py --count 60 --seed 1

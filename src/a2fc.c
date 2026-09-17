@@ -279,14 +279,21 @@ static unsigned char img_suffix(const char* name)
  * failure; img_f open. */
 static unsigned char img_open(const char* path)
 {
-    unsigned char kind = img_suffix(path);
+    unsigned char kind = img_suffix(path), order;
     img_f = fopen(path, "rb");
     if (!img_f) return 0;
     img_dsk = kind == DI_DSK;
     img_base = 0;
     if (kind == DI_2MG) {
-        if (fread(copy_buf, 1, 64, img_f) != 64 || memcmp(copy_buf, "2IMG", 4) || copy_buf[0x0C] > 1) goto bad;
-        img_dsk = copy_buf[0x0C] == 0;
+        if (fread(copy_buf, 1, 64, img_f) != 64 || memcmp(copy_buf, "2IMG", 4)) goto bad;
+        /* The order byte read once, into a variable: written as two tests
+         * of copy_buf[0x0C], cc65 reused the flags of the first comparison
+         * for the second, and every DOS-order .2MG was read as ProDOS
+         * (tools/test_flag_reuse.py refuses the pattern). */
+        order = copy_buf[0x0C];
+        if (order > 1) goto bad;
+        img_dsk = 0;
+        if (!order) img_dsk = 1;
         img_base = *(unsigned long*)(copy_buf + 0x18);
     }
     if (kind == DI_DC) {       /* a name of 63 characters at most, then $0100 at +82 */

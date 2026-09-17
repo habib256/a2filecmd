@@ -13,6 +13,9 @@ downloads and installation.
 - T (and BASLIST from the menu) lists the Apple ///'s Business BASIC programs (BA3, `$09`) with CiderPress II's token tables; `tools/busbasic_ref.py` is the reference.
 - MDVIEW skips the 256-byte header of a Magic Window document (`.MW`, starting `$8D`) and reads its high-bit text. Teach documents are extended files: ProDOS 8 cannot open them, so they are not supported.
 
+### Fixed
+- A DOS 3.3 disk image inside a `.2MG` opened as "Not a ProDOS disk image (or DOS 3.3)": cc65 compiled `img_dsk = copy_buf[0x0C] == 0;`, written just after `if (copy_buf[0x0C] > 1)`, into a `booleq` on the flags of that first comparison, so the sector order read as ProDOS whatever the header said. The order byte is now read into a variable and tested once, and `tools/test_flag_reuse.py` compiles the resident for both editions and refuses a boolean built on a comparison a branch has already used. `bench/dosimage.py` is what caught it; it is back to 20/20 on both processors.
+
 ### Menu
 - The overlay menu keeps 88 entries instead of 64: with the new overlays the list passed 64 and the last ones read were dropped (WIPE and VOLNAME vanished from Disks). The list now sits at `$2A00`, and `tools/check_layout.py` keeps MENU's code below it.
 

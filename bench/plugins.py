@@ -11,9 +11,10 @@ from pathlib import Path
 import subprocess
 import sys
 
-BENCHES = ('bootblk', 'crc', 'date', 'disasm', 'findfile', 'fixit', 'fixtypes', 'goto',
-           'ident', 'imgconv', 'mdview', 'rename', 'repair', 'tagpat', 'txtconv',
-           'verify', 'volname', 'wipe')
+BENCHES = ('arlequin', 'awdata', 'bootblk', 'crc', 'date', 'disasm', 'diskcopy', 'findfile',
+           'fixit', 'fixtypes', 'goto', 'ident', 'imgconv', 'macpaint', 'mdview', 'rename',
+           'repair', 'shapes', 'squeeze', 'tagpat', 'txtconv', 'verify', 'volname', 'wipe',
+           'wrappers')
 
 
 def main():
