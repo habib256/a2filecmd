@@ -4,7 +4,6 @@ import subprocess
 import shutil
 import sys
 import tempfile
-import zlib
 from pathlib import Path
 
 from pom2 import VERSION, Pom2, Session, ROOT, BUILD, FULL
@@ -65,15 +64,18 @@ def main():
             note = b'scratch volume\r'
             s.key(b'E')
             s.wait(lambda: s.value('view', 1) == 5, 'EDIT depuis le lecteur 2', 30)
+            # view passes 5 before the text is drawn: wait for the page, not the flag
+            s.wait(lambda: 'cratch volume' in s.rows()[0], "le texte de l'editeur", 30)
+            p.stable()
             s.ok('E charge EDIT absent de la disquette principale', 'cratch volume' in s.rows()[0])
             s.key(ESC); p.stable()
             # Editor's menu: Q leaves without saving unchanged text.
             if not s.has('Type  Aux'):
                 s.key(b'Q')
             s.wait(lambda: s.has('Type  Aux'), 'retour editeur', 30)
-            menu_run(s, p, 'CRC')
-            expected = 'NOTE: CRC-32 $%08X, %d bytes' % (zlib.crc32(note), len(note))
-            s.wait(lambda: expected in s.rows()[22], 'CRC du complement', 30)
+            menu_run(s, p, 'UNWRAP')
+            expected = 'Not an AppleSingle or MacBinary file.'
+            s.wait(lambda: expected in s.rows()[22], 'UNWRAP du complement', 30)
             s.ok('le menu charge une surcouche a table de services du lecteur 2', s.rows()[22].strip() == expected)
             s.key(b'!'); s.wait(lambda: s.has('the overlays'), 'menu fusionne', 30); p.stable()
             s.ok('le menu contient les commandes de toutes les categories', len(menu_inventory(s, p)) == menu_count, menu_count)
@@ -121,18 +123,20 @@ def main():
             s = Session(p); s.boot()
             s.key(b'/'); s.select('/SCRATCH'); s.key(RET)
             s.select('WORK'); s.key(RET); s.select('NOTE'); p.stable()
-            menu_run(s, p, 'CRC')
+            menu_run(s, p, 'UNWRAP')
             s.wait(lambda: s.has('Insert ' + extravol + ' S6,D2'), 'demande de complement', 30)
             s.key(b'1')
             s.wait(lambda: s.has('Insert ' + extravol + ' S6,D1'), 'lecteur choisi', 30)
             s.ok('un seul lecteur : nom du complement et lecteur 1 explicites', s.has('Insert ' + extravol + ' S6,D1'))
             p.insert(0, str(companion)); s.key(RET)
-            s.wait(lambda: expected in s.rows()[22], 'CRC apres echange', 30)
-            s.ok('CRC charge apres remplacement de la disquette dans le lecteur 1', expected in s.rows()[22])
+            s.wait(lambda: expected in s.rows()[22], 'UNWRAP apres echange', 30)
+            s.ok('UNWRAP charge apres remplacement de la disquette dans le lecteur 1', expected in s.rows()[22])
             # MENU accompanies both disks, so another command remains selectable.
-            menu_run(s, p, 'IDENT')
-            s.wait(lambda: s.has('Text, CR ends'), 'IDENT sur le meme disque', 30)
-            s.ok('le menu reste accessible pendant l echange', s.has('Text, CR ends'))
+            menu_run(s, p, 'UNSQ')
+            # a text file: either refusal shows the overlay ran
+            unsq = ('Not a SQueezed file or an ACU archive.', 'Other panel: open a ProDOS directory.')
+            s.wait(lambda: s.rows()[22].strip() in unsq, 'UNSQ sur le meme disque', 30)
+            s.ok('le menu reste accessible pendant l echange', s.rows()[22].strip() in unsq)
             s.key(b'T')
             s.wait(lambda: s.has('Insert ' + bootvol + ' S6,D1'), 'demande du disque principal', 30)
             s.ok('le retour nomme la disquette principale et le meme lecteur', s.has('Insert ' + bootvol + ' S6,D1'))

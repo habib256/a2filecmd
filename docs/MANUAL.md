@@ -1,6 +1,6 @@
 # The A2 File Cmd manual
 
-**Version 0.8.8** — A two-panel ProDOS file manager for an Apple II with
+**Version 0.8.9** — A two-panel ProDOS file manager for an Apple II with
 128 KB and 80-column support. Free software by Arnaud Verhille, under GPL v3.
 
 This manual describes two programs that share a name, a version number and
@@ -38,25 +38,25 @@ The download names include the CPU, category and version:
 
 | Role | Image name |
 |---|---|
-| Boot | `A2FILECMD-6502-BOOT-0.8.8.dsk` |
-| Files | `A2FILECMD-6502-FILES-0.8.8.dsk` |
-| Media | `A2FILECMD-6502-MEDIA-0.8.8.dsk` |
-| Disk tools | `A2FILECMD-6502-DISKTOOLS-0.8.8.dsk` |
-| Development tools | `A2FILECMD-6502-DEVTOOLS-0.8.8.dsk` |
-| Complete, 6502 | `A2FILECMD-6502-XL-0.8.8.2mg` |
-| Complete, 65C02 | `A2FILECMD-65C02-XL-0.8.8.2mg` |
+| Boot | `A2FILECMD-6502-BOOT-0.8.9.dsk` |
+| Files | `A2FILECMD-6502-FILES-0.8.9.dsk` |
+| Media | `A2FILECMD-6502-MEDIA-0.8.9.dsk` |
+| Disk tools | `A2FILECMD-6502-DISKTOOLS-0.8.9.dsk` |
+| Development tools | `A2FILECMD-6502-DEVTOOLS-0.8.9.dsk` |
+| Complete, 6502 | `A2FILECMD-6502-XL-0.8.9.2mg` |
+| Complete, 65C02 | `A2FILECMD-65C02-XL-0.8.9.2mg` |
 
 **A2FileCmd Mini DOS3.3** is a different program for a different machine and
-ships as one more file, `A2FC-MINI-DOS33-0.8.8.dsk`, a DOS 3.3 disk for an
+ships as one more file, `A2FC-MINI-DOS33-0.8.9.dsk`, a DOS 3.3 disk for an
 Apple II+; see [its section](#a2filecmd-mini-dos33).
 
 All floppies are 6502 and supplied as `.dsk` in DOS sector order; XL uses `.2mg`.
 Use the downloaded files directly: changing an extension does not convert an image.
 Each floppy image is 143,360 bytes. Check downloads against
-`SHA256SUMS-0.8.8.txt`; if all release files are together, run:
+`SHA256SUMS-0.8.9.txt`; if all release files are together, run:
 
 ```sh
-sha256sum -c SHA256SUMS-0.8.8.txt
+sha256sum -c SHA256SUMS-0.8.9.txt
 ```
 
 Boot the image, or launch `A2FILE.SYSTEM` from a ProDOS selector. To install
@@ -79,6 +79,9 @@ you cancel quitting if saving fails. Existing `A2FILE.TMP` or `A2FILE.BAK`
 files are preserved for recovery. This is not power-fail atomicity.
 On the first XL start, the right panel
 opens `DEMO/`; try its text, pictures, music and sample archives.
+`DEMO/CIDERPRESS/` holds real files from CiderPress II's test data, one or
+more for each format that only a real file shows well (MacPaint, AppleWorks
+data bases and spreadsheets).
 
 ### The companion floppy and disk swaps
 
@@ -87,10 +90,10 @@ full command catalog. The distribution is declared in `config/packages.mk`.
 
 | Category | Plugins | ProDOS volume |
 |---|---|---|
-| **FILES** | DOSGET, DOSWRITE, DOSIMAGE, DOSPUT, EDIT, SEARCH, AWP, BINARY2, UNSHRINK, CRC, FIND, FIXTYPES, GOTO, IDENT, MDVIEW, RENAME, SYNC, MOVE, TREE | `/A2FILES6502` |
-| **MEDIA** | IMAGE, MUSIC, DGRVIEW, EXTASIE, PACKFOT, PAINT816, PURPLE, LZ4FH, PRINTSHOP, FONTVIEW, PT3, DUET | `/A2MEDIA6502` |
-| **DISKTOOLS** | BOOTBLK, BLKVIEW, BLKEDIT, DISKCMP, NIBCOPY, IMGCONV, MKIMAGE, RESCUE, UNDELETE, VOLNAME | `/A2DISKS6502` |
-| **DEVTOOLS** | BASLIST, DISASM, INTBASIC listings, plus BASIC.SYSTEM and INTBASIC.SYSTEM runtimes | `/A2DEVTOOLS6502` |
+| **FILES** | DOSGET, DOSWRITE, DOSIMAGE, DOSPUT, EDIT, SEARCH, AWP, AWDATA, BINARY2, UNSHRINK, UNWRAP, SCIIBIN, UNSQ, FIND, FIXTYPES, GOTO, MDVIEW, RENAME, SYNC, MOVE, TREE | `/A2FILES6502` |
+| **MEDIA** | IMAGE, MUSIC, DGRVIEW, EXTASIE, ARLEQUIN, MACPAINT, SHAPES, PACKFOT, PAINT816, PURPLE, LZ4FH, PRINTSHOP, FONTVIEW, PT3, DUET | `/A2MEDIA6502` |
+| **DISKTOOLS** | BOOTBLK, BLKVIEW, BLKEDIT, DISKCMP, NIBCOPY, IMGCONV, MKIMAGE, RESCUE, UNDELETE, VOLNAME, VOLINFO, FIXIT, REPAIR, WIPE | `/A2DISKS6502` |
+| **DEVTOOLS** | BASLIST, DISASM, INTBASIC listings, CRC, IDENT, plus BASIC.SYSTEM and INTBASIC.SYSTEM runtimes | `/A2DEVTOOLS6502` |
 
 BOOT keeps the essential file manager and disk operations. Use the **same
 release** for all floppies. XL is complete; never replace its 65C02 native
@@ -144,7 +147,7 @@ an unrelated entry. If it has disappeared, the parent opens at its beginning.
 | **C / V** | Copy / move tagged entries, otherwise the selection, to the other panel. Includes directories. Move deletes originals after copying. |
 | **D** | Delete tagged entries or the selection, including directory contents, after confirmation. |
 | **R / K** | Rename / create a directory. Names: letter first, then letters, digits or periods; maximum 15 characters. |
-| **A / L** | Change hexadecimal type/auxtype / lock or unlock. Locked files refuse deletion and renaming. |
+| **A / L** | Change hexadecimal type/auxtype / lock or unlock. Locked files refuse deletion, renaming and writing; the other access bits (read, backup, invisible) are kept. |
 | **T / H / I** | Read text / hexadecimal / picture. T also lists BAS and AWP files. |
 | **E** | Edit text; on a directory or `..`, create a text file. |
 | **X** | Run a program after confirmation, replacing A2FC. |
@@ -213,19 +216,20 @@ Menu categories describe tasks and do not require changing disks just to browse.
 | **VOLINFO** | Audit allocation and fragmentation. M = bitmap (`.` free, `#` used), F = selected file blocks, E = export to the other panel. N/P pages; ESC returns. No repairs. |
 | **FIXIT** | Check a ProDOS volume and name each fault: header, directory chains and parents, entry names, access bits, key and index pointers, file and directory counters, cross-linked, lost and wrongly marked blocks. One line per check with its count and first block; 18 lines a page, a key continues. R scans again after a disk change; ESC/Return leaves. On a volume above 4,096 blocks it first asks for **Q** (quick: directories only) or **F** (full), then whether /RAM may be lost. FIXIT only reads: it writes nothing and repairs nothing. REPAIR is the tool that writes. |
 | **REPAIR** | Repair a ProDOS volume. It walks the volume itself, shows a plan -- one line per check with the number of corrections, plus what it refuses and why -- and writes nothing until `F` is pressed and the word FIX typed in full. It repairs eleven faults: in the bitmap, blocks a file uses but the bitmap calls free, reserved blocks marked free, bits set past the end of the volume and blocks nobody claims; in the directory tree, a header's file count, a file's or a subdirectory's blocks used, a subdirectory's eof, an entry's pointer back to its own directory, the three parent fields of a subdirectory header and a directory block's back-pointer. Every block written is read back and compared; a block that cannot be verified has its original rewritten and verified. The volume is then walked again and the verdict says what that second pass found. |
-| **VOLNAME** | Rename a ProDOS volume and update the affected panel/program paths. |
+| **VOLNAME** | Rename a ProDOS volume and update the affected panel/program paths. A name another online volume already has is refused ("Name in use."): ProDOS itself would accept it, and two volumes would then answer to one path. |
 | **SEARCH** | Find text in the active directory and tag matching files, ignoring case. ESC cancels a long scan and keeps tags already found. |
 | **FIXTYPES** | Review and confirm type/auxtype repairs on tagged files or the selection. Recognizes validated DUET content with a name/type hint and explicit suffixes; optional suffix removal. DUET names, image suffixes and `.SYSTEM` stay. |
 | **GOTO** | P opens a typed `/VOLUME/DIRECTORY` path (63 characters max; Delete/Left edits, ESC cancels). Nine favourites: A adds, D then a digit removes, M then two digits reorders, 1–9 jumps. Saved in `A2FILE/GOTO.CFG`. |
 | **FIND** | Search the volume by name pattern; start with `"` to search contents, ignoring case. TAB sets type (T, two hex digits) and modification dates (D, inclusive YYYYMMDD, 1940–2039); A clears filters. Undated files are excluded by date filters. N shows the next 20 results; Return jumps there. V on a text result shows occurrence offsets (hex) and excerpts; N/Space continues, ESC returns. |
 | **BLKVIEW** | Read device or image blocks: H hex/ASCII, D directory, I index, N/P block, Space page, G four-digit hex block, F find four bytes (8 hex digits), A find next, X extract blocks, ESC back. Source stays unchanged. |
+| **ARLEQUIN** | View ARLEQUIN/Chat Mauve ProDOS `$F8` pictures, full screen or windows. `Return` and `I` select it when the file carries Arlequin's signature. |
 | **EXTASIE** | View Extasie/Chat Mauve ProDOS `$F2` images. The original count/repeat stream is decoded into the HGR page; ESC returns to the panels. `Return` and `I` select EXTASIE automatically on both processors. |
 | **DISASM** | Read BIN/SYS as assembly: N/Space next, P previous (last 64 pages), C 6502/65C02, G seven-digit file offset, L four-digit CPU load address, R start, E export, ESC back. BIN uses its auxtype; SYS starts at $2000. |
 | **CRC** | Calculate CRC-32 for the selection or tagged files. Results appear in pages of 20; a key continues, ESC at a page boundary stops the batch. |
 | **IDENT** | Identify supported music, picture, font, archive, program and disk families from headers, attributes or names; DUET candidates are read completely. Text statistics cover the first 512 bytes. |
 | **MDVIEW** | Wrapped Markdown/text; no forward limit. Up: last 64 pages. R: restart. |
 | **RENAME** | Batch prefix, suffix, extension replacement/removal or numbering. For example E then BAK sets `.BAK`. Conflicts are skipped. |
-| **IMGCONV** | Convert PO/HDV, DSK/DO and 2MG into the other panel, preserving disk blocks. Unsupported 2MG formats, block counts exceeding 16 bits, and data ranges inside the header or beyond the source size are refused before destination access. Read or seek failures abort conversion and attempt to remove incomplete output; failed cleanup is reported. |
+| **IMGCONV** | Convert PO/HDV, DSK/DO, 2MG and DiskCopy 4.2 (C; `$E0/$8005`, 400K/800K/720K/1440K only) into the other panel, preserving disk blocks. A DiskCopy source is checked against its own checksum before anything is written; its tag bytes are not converted. Unsupported 2MG formats, block counts exceeding 16 bits, and data ranges inside the header or beyond the source size are refused before destination access. Read or seek failures abort conversion and attempt to remove incomplete output; failed cleanup is reported. |
 | **BOOTBLK** | Copy ProDOS boot blocks from the boot volume to another volume after confirmation. Saves both originals in main memory, verifies writes and restores both blocks on error. An incomplete restoration is reported explicitly; the backup does not survive a power cut. |
 | **UNDELETE** | Browse deleted ProDOS entries. N skips; R recovers a validated candidate to another online volume. Existing names are refused. |
 | **NIBCOPY** | Physical Disk II copy, one or two drives. Copies 35 standard 16-sector tracks, retaining encoded fields and sector order, regenerating sync gaps, and verifying each track. Requires a write-protected source and prior AUX/target confirmations. |
@@ -233,7 +237,7 @@ Menu categories describe tasks and do not require changing disks just to browse.
 | **MKIMAGE** | Create an empty ProDOS PO or 2MG: 140 KB, 800 KB, 2/4/8 MB or 32,767 blocks. New images are data volumes, without a boot program. |
 | **RESCUE** | F recovers a file; V recovers a ProDOS volume. Uses up to 30 attempts per block, zero-fills unreadable chunks and writes a LOG. Destination must be another online volume. |
 | **SYNC** | Recursively copy missing or newer files to the other panel after confirming direction. Destination-only files remain; copies are read back before replacement. |
-| **MOVE** | Move marked entries, or the selected entry without marks. Within a volume, move without copying data blocks, directories included; locked sources are refused. Every path component must still be a directory. A full subdirectory grows if space is available; damaged parent references are refused before writing. Across volumes, a file is copied and verified before its source is deleted; existing destination names are refused, and a size mismatch preserves the source and removes the incomplete copy. A directory bound for another volume, marked or under the cursor, is walked like V does: counted, copied and read back file by file, and its source deleted only once every file has arrived; a copy that stops, or a skipped file, keeps the whole source and stops the batch. Available on FILES and XL. |
+| **MOVE** | Move marked entries, or the selected entry without marks. Within a volume, move without copying data blocks, directories included; locked sources are refused. Every path component must still be a directory. A full subdirectory grows if space is available; damaged parent references are refused before writing. Across volumes, a file is copied and verified before its source is deleted; existing destination names are refused, and a size mismatch preserves the source and removes the incomplete copy (if that removal fails, the message says the partial copy stays). A directory bound for another volume, marked or under the cursor, is walked like V does: counted, copied and read back file by file, and its source deleted only once every file has arrived; a copy that stops, or a skipped file, keeps the whole source and stops the batch. Available on FILES and XL. |
 | **TREE** | Show file sizes and cumulative directory totals. Space advances a page; ESC exits. |
 
 ### Recovery and comparison limits
@@ -388,10 +392,20 @@ The text reader clips lines beyond 80 columns and remembers up to 96 page
 starts. Use **MDVIEW** for wrapped text. The hex reader shows addresses,
 bytes and text. HEX: **G** goes to a seven-digit file offset; **R/E** first/last.
 
-T on a BAS file lists Applesoft line numbers and keywords. T or Return on
+T on a BAS file lists Applesoft line numbers and keywords; on a BA3 (`$09`)
+file, the Apple ///'s Business BASIC. T or Return on
 an AWP document reads AppleWorks word-processor text; formatting commands
-are omitted and tabs expanded. AppleWorks databases and spreadsheets are
-not supported.
+are omitted and tabs expanded.
+
+Return on an AppleWorks data base (`$19`) or spreadsheet (`$1B`) opens
+**AWDATA**. A data base shows one record at a time, a row per category, with
+dates and times as AppleWorks writes them; **TAB** shows categories 23 to 30.
+A spreadsheet shows one cell per row, in file order: its reference, then its
+text, its number, or its formula followed by `=` and the result AppleWorks
+saved with it. Numbers are printed by the Applesoft ROM, as `PRINT` would;
+its ninth digit may differ by one from exact rounding. **Space**/**B**/**R**
+page as in the other readers. AWDATA goes back to the first 3,200 records
+or 200 pages of cells; reports and window settings are not shown.
 
 ### Pictures
 
@@ -404,10 +418,14 @@ identification read or close stops opening the file.
 | Format | Identification | Viewer |
 |---|---|---|
 | Extasie / Chat Mauve | ProDOS type `$F2` | EXTASIE |
+| Arlequin / Chat Mauve | ProDOS type `$F8`, `gs` after the two size bytes | ARLEQUIN |
+| MacPaint (576 × 720) | Name ending in `.MAC` (other names: **!** → MACPAINT); the viewer validates the whole file | MACPAINT |
+| Applesoft shape table | Name ending in `.SHAPE`, or **!** → SHAPES on any file | SHAPES |
 | Packed FOT / PackBytes | Type `$08`, auxiliary `$4000` or `$4001` | PACKFOT |
 | LZ4FH compressed HGR | Type `$08`, auxiliary `$8066` | LZ4FH |
 | Print Shop monochrome clip art | BIN, auxiliary `$4800`/`$5800`/`$6800`/`$7800`, 572 or 576 bytes | PRINTSHOP |
 | MGTK / Apple II Desktop font | Type `$07` | FONTVIEW |
+| Hi-res 7 × 8 font (DOS Toolkit, HRCG) | Type `$07`, 768 or 1,024 bytes (a BIN of that size: **!** → FONTVIEW) | FONTVIEW |
 | Purplesoft GRLOAD pair | Matching `.FOTO1` and `.FOTO2`, 8 KB each | PURPLE |
 | Packed 816/Paint | Type `$06`, auxiliary `$E001` or `$E002` | PAINT816 |
 | Lo-res page | Type `$06` or `$08`, auxiliary `$0400`, 1–2,048 bytes | DGRVIEW |
@@ -425,12 +443,39 @@ including for a picture. Unsupported binary formats retain the hex fallback.
 
 FONTVIEW displays the glyphs in code order, sixteen per row. It accepts
 MGTK fonts with one or two seven-bit columns, up to 128 glyphs and 22 rows
-per glyph. PRINTSHOP displays 88 × 52 clip art at its 2 × 3 display scale.
+per glyph, and hi-res fonts of 96 or 128 glyphs of 7 × 8 dots, a row's
+high bit shifting it half a dot as on the screen. PRINTSHOP displays 88 × 52 clip art at its 2 × 3 display scale.
 LZ4FH, PRINTSHOP and FONTVIEW use only main memory and preserve `/RAM`.
 They reject truncated data and report read or close errors.
 
+ARLEQUIN shows the pictures of Le Chat Mauve's ARLEQUIN 1.1 graphics
+interpreter (1985), ProDOS type `$F8`: a full-screen picture, or a window
+such as the demonstration disk's seasons, centred on black. Like EXTASIE it
+uses the card's mixed mode, colour or black and white chosen byte by byte,
+and on a machine without the card the ordinary double hi-res colours. The
+whole file is checked before the auxiliary memory is written; a truncated
+picture is refused and `/RAM` is left alone, and after a picture `/RAM` is
+rebuilt empty. A `$F8` file without Arlequin's signature opens in hex.
+
+MACPAINT shows MacPaint documents, the Macintosh's 576 × 720 black and
+white pictures, with or without the 128-byte MacBinary header that files
+downloaded from Mac archives often carry. The screen holds 560 × 192 of
+them in double hi-res black and white (eight dots are cut at each edge),
+and **Up**/**Down** move the view by 96 lines.
+An RGB card (Le Chat Mauve, Video-7) is put in its 560-dot black and white
+mode. The whole file is checked before the auxiliary memory is written;
+anything that does not unpack into exactly 720 lines is refused, and after
+a picture `/RAM` is rebuilt empty.
+
+SHAPES draws an Applesoft shape table (the tables `DRAW` and `XDRAW` use)
+24 shapes a page, each at scale 1 in the middle of its cell, with the page
+in the text rows below: **Space**/**Down** show the next page, **B**/**Up**
+the previous one. A shape that does not end within the file stays blank; a
+file whose shape count is zero, or whose offsets run past its end, is
+refused. Main memory only: `/RAM` is left alone.
+
 **Left/Right** browse the previous/next file handled by the same specialized
-viewer: Extasie, PACKFOT, 816/Paint, Purplesoft, DGRVIEW, FONTVIEW, LZ4FH and PRINTSHOP.
+viewer: Extasie, Arlequin, MacPaint, PACKFOT, 816/Paint, Purplesoft, DGRVIEW, FONTVIEW, LZ4FH and PRINTSHOP.
 The directory's displayed order is used, including across large-directory
 windows. At either end the arrow does nothing; Escape returns to the panels.
 While the neighbour loads, the screen keeps what it shows: a hi-res viewer
@@ -581,8 +626,10 @@ Escape cancels before writing. Disk-image operations can clear `/RAM`.
 
 ### A disk image as a folder
 
-Return on PO, DSK/DO or 2MG opens a supported ProDOS or DOS 3.3 image
-read-only. Navigate with Return and Escape; Escape at its root leaves the
+Return on PO, DSK/DO, 2MG or a DiskCopy 4.2 image (`.DC`, `.DC42`,
+`.IMAGE`, `.IMG`, the 800K disks of the IIgs and of Mac archives) opens a
+supported ProDOS or DOS 3.3 image read-only. A DiskCopy image of a Mac disk
+(HFS) is refused as not ProDOS. Navigate with Return and Escape; Escape at its root leaves the
 image. **C** extracts tagged files, or the selection, to a real ProDOS
 directory in the other panel, preserving type and auxiliary type.
 
@@ -655,8 +702,12 @@ Set the destination in the other panel, select the archive, then use **!**:
 
 | Tool | Supported archives |
 |---|---|
-| **UNSHRINK** | ShrinkIt `.SHK`: stored data, LZW/1 and LZW/2. Files retain ProDOS type and auxiliary type; names are adapted to ProDOS. Disk-image members become PO files. Resource forks and comments are skipped. Each file is decoded a second time and compared with the file read back; a mismatch removes it. |
+| **UNSHRINK** | ShrinkIt `.SHK`: stored data, LZW/1 and LZW/2. Files retain ProDOS type and auxiliary type, then their archived lock and modification date once read back; names are adapted to ProDOS. Disk-image members become PO files. Resource forks and comments are skipped, and so is a file whose type or auxiliary type ProDOS cannot hold, or a disk image not made of 512-byte blocks. Each file is decoded a second time and compared with the file read back; a mismatch removes it. |
 | **BINARY2** | Binary II `.BNY`/`.BQY`: extracts members with their names and attributes. Directory entries are skipped. Compressed members may need a second extraction with UNSHRINK. |
+| **MDVIEW** (Magic Window) | A Magic Window document (a DOS file named `.MW`, once extracted) opens past its 256-byte header, its high-bit text read plainly. Teach documents cannot be read: they are extended files, which ProDOS 8 does not open. |
+| **SCIIBIN** | BinSCII text (`.BSC`, `.BSQ`), the Usenet encoding of Apple II files: decodes the file it carries into the other panel, with its name and ProDOS type. A file posted in several parts: select the first one; the files after it in the directory are read while the file is incomplete. Every chunk's header and data CRCs are checked, the parts must follow each other in order, and the result is read back against the CRCs. Nothing is left behind on any failure. Return opens `.BSC` and `.BSQ` files. |
+| **UNSQ** | SQueezed files (`.QQ`, as BLU makes them; a `.BQY` archive's members come out of BINARY2 as such files) and AppleLink ACU archives (`.ACU`): extracts into the other panel under the stored names (a `.QQ` keeps its own ProDOS type; ACU records carry theirs), directories skipped and paths flattened. A taken name is skipped and counted; a damaged stream or a failed write removes that file and stops. A `.QQ` is checked against its checksum; ACU's data CRCs are not trustworthy, so its lengths are checked instead. Every file is read back. Opened from **!**. |
+| **UNWRAP** | AppleSingle (`$E0/$0001` or `.AS`, versions 1 and 2) and MacBinary I/II/III: extracts the data fork into the other panel under the wrapped file's name, made a ProDOS name (or the wrapper's, less its suffix), with its ProDOS type -- from the ProDOS information, or converted from the Mac type and creator as AppleShare does. The file is created only if the name is free, read back and compared, and removed on any failure. The resource fork is left out, and the note says so. Return opens AppleSingle files; use **!** for MacBinary. |
 
 ShrinkIt extraction clears `/RAM` and refuses it as a destination. Keep
 archives and recovered files on another volume. A warning requires confirmation
@@ -665,9 +716,13 @@ Existing files are never replaced. On error or cancellation, only the current
 new file is cleaned up; if cleanup fails, the message names the retained file.
 A retry refuses that file without truncating it. Completed earlier members
 remain available. Truncated skipped threads, stream errors and failed closes
-are reported instead of a successful extraction. Unsupported compression
-remains visible in the final message even if other members were extracted.
-Full CRC validation and readback of the written files remain unimplemented.
+are reported instead of a successful extraction. An unsupported member
+("Unsupported file skipped.") remains visible in the final message even if
+other members were extracted. Every CRC the archive carries is checked: the
+master header and each record header before anything of that record is
+written ("Header CRC error: archive not trusted."), the LZW/1 stream and,
+from record version 3, each thread's data. A file whose attributes cannot be
+set stays, verified, and the message says so ("attributes not set").
 
 ### Running BASIC and machine-language programs
 
@@ -732,7 +787,7 @@ Development: README, `sdk/README.md`, `bench/README.md`. Remaining work: `TODO.m
 A standalone edition for an **Apple II+ with 48 KB and an NMOS 6502**: two
 panels in 40 columns and DOS 3.3 copying between two Disk II drives. No
 ProDOS, no 80-column card, no auxiliary memory, no language card. It is a
-separate program on its own disk, `A2FC-MINI-DOS33-0.8.8.dsk`; nothing in
+separate program on its own disk, `A2FC-MINI-DOS33-0.8.9.dsk`; nothing in
 the sections above applies to it, and it carries no overlay or plugin.
 Written entirely in 6502 assembly. The developer guide, measurements and
 build notes are in [MINI-DOS33.md](MINI-DOS33.md).
@@ -742,7 +797,7 @@ build notes are in [MINI-DOS33.md](MINI-DOS33.md).
 ### Booting
 
 The disk boots through an Applesoft `HELLO` that shows `A2FILECMD`,
-`MINI DOS 3.3` and `V0.8.8`, then `BRUN A2FC`. From DOS 3.3, use
+`MINI DOS 3.3` and `V0.8.9`, then `BRUN A2FC`. From DOS 3.3, use
 `BRUN A2FC`. Both panels open on the boot disk; each remembers its
 drive, selection and scroll position. Each panel shows 19 rows and a catalog
 of up to 105 files; `?` lists every control.
@@ -912,6 +967,13 @@ The Mockingboard rendition of Electric Duet songs in `src/plugins/duet.c`
 follows his player: one AY tone per voice. A2FileCmd times it with the VIA
 instead of delay loops, and scales the periods to the speaker player.
 URL: [electric-mock repository](https://github.com/cybernesto/electric-mock)
+
+**Andy McFadden — CiderPress II**
+The format notes of CiderPress II guided the MacPaint and AppleWorks data
+base and spreadsheet readers, and its test files are the real samples the
+tests use. The ones A2FileCmd reads ship in the XL image's
+`DEMO/CIDERPRESS` folder (`data/CP2/README.TXT` lists them).
+URL: [CiderPress II](https://github.com/fadden/CiderPress2) · [format notes](https://ciderpress2.com/formatdoc/)
 
 **POM2 — Arnaud Verhille**
 Separate emulator project used for repeatable Apple IIe, //c and disk-device

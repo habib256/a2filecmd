@@ -9,6 +9,73 @@ de renommage. BATCH, COPY, EDIT et les utilisateurs résidents de `new_output`
 partagent la réservation exclusive. Les autres politiques de création et
 de nettoyage restent à rapprocher.
 
+## Contrat unique — clos le 17 septembre 2026
+
+Toute écriture de fichier ProDOS obéit à quatre règles, et un inventaire de
+chaque site qui crée, ouvre en écriture, renomme, supprime ou change les
+attributs d'un fichier (résident et surcouches) les a vérifiées une à une :
+
+1. **Création exclusive.** Un nouveau fichier naît d'un CREATE qui refuse un
+   nom existant : `reserve_output` dans le résident (seul `OUTPUT_RESERVED`
+   autorise `wb`), `newfile` dans les surcouches (seul zéro l'autorise).
+   Aucun `wb` n'est ouvert sans cela, donc aucun fichier existant n'est
+   tronqué.
+2. **Original récupérable.** Remplacer passe par un temporaire possédé,
+   fermé et relu, puis par `file_install` (`edit_install` dans EDIT,
+   `cfg_install` pour A2FILE.CFG, la variante `FI_STATE` de COPY) ou
+   `replace.h` (conversions, DOSIMAGE) : l'ancien fichier reste sous son nom
+   ou dans la sauvegarde jusqu'à l'installation.
+3. **Nettoyage limité aux créations de l'opération**, et contrôlé : un
+   nettoyage refusé n'est jamais annoncé comme fait, le message nomme ce qui
+   reste (`replace_discard`, `discard` de `util.h`, les chemins propres à
+   COPY, EDIT, BATCH, DISKIMG, IMGFS, DOSGET, UNSHRINK, BINARY2).
+4. **Collisions refusées.** Le CREATE exclusif et le RENAME ProDOS refusent
+   un nom pris ; COPY exige `$46` pour sa sauvegarde, et depuis ce jour avant
+   d'écrire quand une ancienne cible doit être mise de côté (une cible neuve
+   ne touche jamais `A2FC.BAK`).
+
+**Un seul CREATE.** `plugins/file_create.h` porte le seul bloc de paramètres
+CREATE des surcouches. IMGCONV, VOLINFO (export E) et MOVE (copie entre
+volumes) avaient le leur ; GOTO passait par son bloc GET_FILE_INFO. Tous
+appellent `newfile`, avec leur tampon de chemin (`FC_PATH`/`FC_PREPARE`) ;
+GOTO garde ses droits `$E3` par `FC_ACCESS`. VOLINFO ne réécrit plus le
+`full[]` du résident avec un chemin Pascal. Le résident n'a qu'un CREATE de
+fichier, `reserve_output` : la sauvegarde des préférences l'appelle
+désormais au lieu de refaire `open`/`close`.
+
+**Nettoyages contrôlés.** MKIMAGE, UNDELETE et RESCUE ignoraient le résultat
+de la suppression et annonçaient « removed » ; `discard` (`UTIL_DISCARD`)
+le contrôle, et un échec arrête l'outil avec « Cleanup failed: the
+incomplete file stays. ». MOVE entre volumes a une seule sortie d'échec qui
+dit « its partial copy stays there too » si la copie partielle n'a pu être
+retirée. VOLINFO retire son rapport vide si l'ouverture échoue, ou le nomme.
+
+**Droits et noms.** ATTR L ne bascule que destroy, rename et write (`$C2`) :
+read, backup et invisible restent. SYNC exige destroy **et** rename sur une
+cible existante avant de copier, au lieu de l'apprendre à l'installation.
+VOLNAME refuse le nom d'un autre volume en ligne : ProDOS l'accepte (vérifié
+sous POM2, deux `/WORKHD` dans la liste), et deux volumes répondent alors au
+même chemin — un SET_PREFIX sur « /NOUVEAU » doit rendre `$45`.
+
+**Débordement de table.** BLKEDIT et BLKVIEW (`UTIL_FIXED_API`) copiaient
+aussi 106 octets de table à `$3F9E` ; ils en copient 98, comme FIXIT,
+REPAIR, VOLINFO et FIND.
+
+**Hors du contrat de fichier, assumé et documenté :**
+
+- les écritures de blocs bruts (DISKIMG W/O, BLKEDIT, WIPE, BOOTBLK, REPAIR,
+  MOVE sur un même volume, FORMAT, NIBCOPY) : chacune a sa confirmation, sa
+  relecture et sa restauration propres, décrites avec l'outil ;
+- DOSWRITE sur un vrai disque DOS 3.3 (section plus bas) ;
+- les exports et journaux (DISASM, BLKVIEW X, VOLINFO E, RESCUE) : nouveau
+  fichier exclusif, publié sous son nom, sans relecture ; un échec garde le
+  fichier partiel et le dit (« partial file kept », « empty file remains ») ;
+- COPY et MOVE d'une arborescence créent les dossiers absents et entrent
+  dans ceux qui existent déjà, sans jamais les supprimer.
+
+Aucune garantie de coupure d'alimentation : ProDOS n'offre pas de
+transaction sur plusieurs blocs.
+
 ## Erreur du flux de destination après une écriture complète
 
 COPY et EDIT contrôlent `ferror` sur le flux de destination avant fermeture,
@@ -58,9 +125,9 @@ Le tampon Pascal est prêté par l'appelant : `pas` pour `util.h`, début de
 aucune donnée encore utile. La requête CREATE est entièrement réinitialisée,
 y compris après une erreur ou un changement fichier/répertoire. Elle utilise
 la table API de l'appelant, sans chargement de surcouche ni accès au stockage
-AUX. Les permissions initiales restent `$C3`, les dates initiales nulles.
-GOTO conserve sa création spécifique `$E3` ; IMGCONV et le résident ne sont
-pas encore migrés vers ce contrat de requête MLI.
+AUX. Les permissions initiales sont `$C3` (`FC_ACCESS` pour une autre
+valeur), les dates initiales nulles. Depuis le 17 septembre 2026, GOTO
+(`$E3`), IMGCONV, VOLINFO et MOVE passent aussi par ce service.
 
 Le banc `test_file_create.py` exécute le service compilé sur les deux CPU
 avec sim65 : disposition MLI de 12 octets, BSS sale, propagation des 256 codes
@@ -362,9 +429,10 @@ Neuf tests exécutent le vrai C sur fichiers jetables : tailles limites,
 troncatures, lectures/écritures/fermetures échouées, réservation, collisions,
 nettoyage échoué puis retry et conservation des enregistrements précédents.
 Le test est intégré à `make test`. Les deux liens et les sept images ProDOS
-sont contrôlés. L'extraction ne relit pas encore les octets écrits et ne
-valide pas tous les attributs Binary II ; ceci ne constitue pas une garantie
-contre une corruption physique silencieuse ou une coupure d'alimentation.
+sont contrôlés. Depuis le 14 septembre 2026, chaque extrait est relu et
+comparé (chantier 3). L'extraction ne valide pas tous les attributs
+Binary II ; ceci ne constitue pas une garantie contre une coupure
+d'alimentation.
 
 ## DOSWRITE : création exclusive sur un vrai disque DOS 3.3
 
@@ -532,16 +600,36 @@ passent également. POM2 : 30/30 contrôles sur 65C02 et 30/30 sur 6502 NMOS,
 avec fichiers stockés, LZW/1, LZW/2, retours HGR/DHGR, octets persistés et
 garde de pile. Aucun essai sur matériel physique ni résultat CI revendiqué.
 
-Limites : pas encore de contrôle complet des CRC et métadonnées NuFX, de
-validation complète des flux LZW malformés ni de relecture des sorties par
-UNSHRINK lui-même. La vérification des octets par le banc ne remplace pas cette
-relecture en production. Aucune atomicité sur coupure n'est promise.
+Depuis, UNSHRINK relit chaque sortie (14 septembre), son cœur refuse les
+flux LZW malformés (15 septembre, `tools/test_unshrink_core.py`) et, le
+17 septembre 2026, les CRC et métadonnées NuFX sont complets :
 
-### Services restants
+- CRC de l'en-tête maître (40 octets) et de chaque en-tête
+  d'enregistrement (attributs depuis leur compte, nom gardé dans l'en-tête,
+  en-têtes de fils), contrôlés avant que rien de cet enregistrement ne soit
+  écrit : « Header CRC error: archive not trusted. » ; CRC du flux LZW/1 et,
+  depuis la version 3 d'enregistrement, CRC de chaque fil sur les octets
+  décodés, comme avant ;
+- un type de fichier au-delà de 8 bits ou un aux-type au-delà de 16
+  (types HFS, aux-types 32 bits) n'est pas tronqué : le fichier est sauté,
+  « Unsupported file skipped. » ; une image disque doit être faite de blocs
+  de 512 octets (champ de stockage) ;
+- une fois l'extrait relu, ses droits (lecture toujours gardée) et sa date
+  de modification viennent de l'archive par GET/SET_FILE_INFO ; une année
+  NuFX hors de 1940-2039 laisse la date de création. Un échec laisse le
+  fichier vérifié et arrête : « NAME extracted; attributes not set. ».
 
-COPY utilise maintenant la transaction des temporaires vérifiés. Les
-nettoyages internes de `new_output` pour ses autres appelants restent ouverts.
-Le code dépend du
+`tools/test_unshrink_safety.py` compte 30 tests (CRC faux à chaque endroit
+couvert, types, blocs, droits, dates limites, échec d'attributs) ;
+`tools/fuzz_archives.py` recalcule les CRC après trois mutations sur quatre
+pour atteindre l'analyseur, garde des CRC faux pour le reste, et sa
+référence applique les mêmes règles. Aucune atomicité sur coupure n'est
+promise.
+
+### Dépendance ProDOS
+
+COPY utilise la transaction des temporaires vérifiés ; l'enrobage
+`new_output` a disparu le 14 septembre 2026. Le code dépend du
 refus d'écrasement de RENAME ProDOS ; un port POSIX doit le reproduire.
 Une coupure d'alimentation pendant une écriture ou un renommage reste hors
 des garanties de restauration sur erreur signalée.

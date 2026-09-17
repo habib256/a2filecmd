@@ -80,6 +80,7 @@ static int crem(const char* p){
 #define remove crem
 #define CONFIG_STATE (&host_config)
 static struct ConfigState host_config;
+#include "src/file_output.h"
 #include "src/config.h"
 int main(int argc,char** argv){
  strcpy(cfg_path,argv[1]);fault=argv[2];strcpy(panels[0].path,"/NEW/LEFT");strcpy(panels[1].path,"/NEW/RIGHT");

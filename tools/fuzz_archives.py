@@ -15,7 +15,7 @@ reference decoder written here from the format.
     python3 tools/fuzz_archives.py --count 2000 --seed 1 --out build/fuzz-archives
 
 Why a sibling of `tools/fuzz_images.py` and not the same file: that campaign
-fuzzes the *viewers* (DGR, EXTASIE, PACKFOT, 816PAINT, FONTVIEW, PRINTSHOP,
+fuzzes the *viewers* (DGR, EXTASIE, PACKFOT, 816PAINT, PRINTSHOP,
 LZ4FH). They take one buffer and paint a screen; the only question is whether
 they stay inside their buffers, so one CLI, one mutator set and one invariant
 (no bounds violation) fit them all. The four readers here take an archive or a
@@ -533,7 +533,35 @@ def us_thread_heads(data):
     return [th for th, _, _ in us_threads(data)]
 
 
+def us_fix_crcs(data):
+    """The master and record header CRCs made right again after a mutation,
+    so that most cases reach the parser behind them; the structure is read
+    as it now stands, and a record too broken to bound is left alone."""
+    d = bytearray(data)
+    base = 128 if d[:3] == b'\x0aGL' else 0
+    if len(d) >= base + 48:
+        d[base + 6:base + 8] = mkshk.crc16(bytes(d[base + 8:base + 48])).to_bytes(2, 'little')
+    for h in us_record_heads(bytes(d)):
+        attrib = u16(d, h + 6)
+        if not 34 <= attrib <= 256 or h + attrib > len(d):
+            continue
+        end = h + attrib + u16(d, h + attrib - 2) + 16 * u16(d, h + 0x0A)
+        if u16(d, h + 0x0A) > 8 or end > len(d):
+            continue
+        d[h + 4:h + 6] = mkshk.crc16(bytes(d[h + 6:end])).to_bytes(2, 'little')
+    return bytes(d)
+
+
 def us_mutate(data, rng):
+    out, tag = us_mutate_raw(data, rng)
+    # A CRC left wrong is its own case (master.crc, record.crc, and one in
+    # four of the others); the rest are repaired so the parser is reached.
+    if tag not in ('master.crc', 'record.crc') and rng.randrange(4):
+        out = us_fix_crcs(out)
+    return out, tag
+
+
+def us_mutate_raw(data, rng):
     d = bytearray(data)
     kind = rng.randrange(11)
     if kind == 0:
@@ -555,9 +583,14 @@ def us_mutate(data, rng):
     if kind == 2 and heads:                         # a record attribute
         h = rng.choice(heads)
         field = rng.choice(['magic', 'attrib', 'version', 'threads', 'sep',
-                            'filetype', 'auxtype', 'storage', 'namelen'])
+                            'filetype', 'auxtype', 'storage', 'namelen', 'crc',
+                            'typehigh'])
         if field == 'magic':
             d[h + rng.randrange(4)] = rng.randrange(256)
+        elif field == 'crc':
+            d[h + 4 + rng.randrange(2)] ^= 1 << rng.randrange(8)
+        elif field == 'typehigh':             # a file or aux type ProDOS cannot hold
+            d[h + rng.choice([0x17, 0x18, 0x19, 0x1C, 0x1D])] = rng.randrange(1, 256)
         elif field == 'attrib':
             d[h + 6:h + 8] = rng.choice([0, 1, 33, 34, 35, 59, 60, 61, 255,
                                          256, 257, 65535]).to_bytes(2, 'little')
@@ -754,6 +787,8 @@ def us_reference(data, existing):
             hdr = r.take(48)
         if hdr[0:6] != b'\x4e\xf5\x46\xe9\x6c\xe5':
             return Expect([], False, 'not a NuFX archive')
+        if mkshk.crc16(hdr[8:48]) != u16(hdr, 6):
+            return Expect([], False, 'master header CRC')
         records = u16(hdr, 8)
         for _ in range(records):
             head = r.take(8)
@@ -766,19 +801,28 @@ def us_reference(data, existing):
             nthreads = u16(hdr, 0x0A)
             sep = hdr[0x10]
             auxtype = u16(hdr, 0x1A)
+            storage = u16(hdr, 0x1E)
             v3 = hdr[8] >= 3 or hdr[9]
-            if u16(hdr, 0x0C) or u16(hdr, 0x18) or u16(hdr, 0x1C):
-                narrow()                # total_threads, file_type, extra_type
+            # A file type or aux type beyond 8 and 16 bits: that file is
+            # skipped, never truncated into a ProDOS one.
+            oddtype = hdr[0x17] | hdr[0x18] | hdr[0x19] | hdr[0x1C] | hdr[0x1D]
+            if u16(hdr, 0x0C):
+                narrow()                # total_threads
             namelen = u16(hdr, attrib - 2)
-            name, have_name = '', False
+            name, have_name, rawname = '', False, b''
             if namelen:
                 if namelen > 255:
                     raise Cut('name in header too long')
-                name = prodos_name(r.take(namelen), (sep,))
+                rawname = r.take(namelen)
+                name = prodos_name(rawname, (sep,))
                 have_name = True
             if nthreads > 8:
                 raise Cut('%d threads' % nthreads)
             th = r.take(nthreads * 16)
+            # The header CRC: attributes from their count, the name kept in
+            # the header, the thread headers.
+            if mkshk.crc16(hdr[6:attrib] + rawname + th) != u16(hdr, 4):
+                raise Cut('record header CRC')
             for t in range(nthreads):
                 e = th[t * 16:t * 16 + 16]
                 klass, fmt, kind = e[0], e[2], e[4]      # the driver's low byte
@@ -792,8 +836,8 @@ def us_reference(data, existing):
                     have_name = True
                     r.skip(ceof - n)
                 elif klass == 2 and kind in (0, 1):
-                    if fmt not in (0, 2, 3):
-                        unsupported += 1        # "Unsupported compression"
+                    if fmt not in (0, 2, 3) or (storage != 512 if kind == 1 else oddtype):
+                        unsupported += 1        # "Unsupported file skipped"
                         r.skip(ceof)
                         continue
                     if not have_name:
@@ -817,7 +861,7 @@ def us_reference(data, existing):
 
 
 def us_verdict(note, expect):
-    """A thread the driver cannot decompress leaves "Unsupported compression."
+    """A thread the driver cannot decompress leaves "Unsupported file skipped."
     in `note`, and the final count is only printed when `note` is still empty
     (src/a2fc.c, `unshrink_entry`): such an archive has no success message."""
     if expect.whole and not expect.extra:

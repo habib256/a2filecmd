@@ -19,7 +19,8 @@ from run import RET, TAB, ESC, solid_bands
 import urllib.request
 
 DEMO = ['DHGR.RAW', 'DHGR.RLE', 'DOS33.DSK', 'HELLO', 'HGR.RAW', 'HGR.RLE', 'LETTER', 'README',
-        'SAMPLE', 'SAMPLE.BNY', 'SAMPLE.SHK', 'TINY.2MG', 'TINY.PO', 'WELCOME.MB']
+        'SAMPLE', 'SAMPLE.BNY', 'SAMPLE.SHK', 'TINY.2MG', 'TINY.PO', 'WELCOME.MB',
+        'DISK800.DC', 'CIDERPRESS/']
 
 
 def main():
@@ -70,6 +71,15 @@ def main():
             ok('le .2MG s ouvre comme un dossier', s.has('HELLO ') and s.has('INSIDE/'),
                s.rows()[0][40:70])
             s.key(ESC); s.wait(lambda: s.has(volume + '/DEMO'), 'sortir'); p.stable()
+            s.select('DISK800.DC', 40); s.key(RET)
+            s.wait(lambda: s.has('SAMPLE ') and s.has('INSIDE/'), 'ouvrir le DiskCopy', 30); p.stable()
+            ok('l image DiskCopy s ouvre comme un dossier, 800K',
+               s.has('HELLO ') and s.has('INSIDE/') and 'DISK800.DC' in s.rows()[0], s.rows()[0][40:70])
+            s.key(ESC); s.wait(lambda: s.has(volume + '/DEMO'), 'sortir'); p.stable()
+            s.select('CIDERPRESS', 40); s.key(RET)
+            s.wait(lambda: s.has('/DEMO/CIDERPRESS'), 'CIDERPRESS', 30); p.stable()
+            ok('CIDERPRESS porte ses dossiers d exemples', s.has('DOCS/') and s.has('GRAPHICS/'),
+               s.rows()[2][40:70])
 
     passed = sum(1 for c in checks if c)
     print(f'\n{passed}/{len(checks)} controles', flush=True)

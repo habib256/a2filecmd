@@ -45,6 +45,7 @@ static const struct A2fcApi* A;
 #define v_fread (A->fread)
 #define v_fwrite (A->fwrite)
 #define v_fclose (A->fclose)
+#define v_remove (A->remove)
 #define v_strcmp (A->strcmp)
 #define v_strlen (A->strlen)
 #define v_prompt (A->prompt)
@@ -65,6 +66,7 @@ FILE* __fastcall__ v_fopen(const char*,const char*);
 size_t __fastcall__ v_fread(void*,size_t,size_t,FILE*);
 size_t __fastcall__ v_fwrite(const void*,size_t,size_t,FILE*);
 int __fastcall__ v_fclose(FILE*);
+int __fastcall__ v_remove(const char*);
 int __fastcall__ v_strcmp(const char*,const char*);
 size_t __fastcall__ v_strlen(const char*);
 unsigned char __fastcall__ v_prompt(const char*,const char*,unsigned char);
@@ -83,8 +85,6 @@ static unsigned char seen[512], idx[512];
 static unsigned char listing, row, role;
 static FILE* reportfile;
 static unsigned char reporterror;
-static struct { unsigned char n; char* path; unsigned char access,type;
-    unsigned int aux; unsigned char storage; unsigned int date,time; } create;
 static struct Frame stack[16];
 static unsigned char entry[39], forks[12];
 static unsigned char *buf, depth, failed, incomplete, cancelled;
@@ -357,6 +357,14 @@ static void summary(void)
         failed || cancelled ? "Scan incomplete: read error or cancelled." :
         incomplete ? "Incomplete traversal: lost-block count unavailable." : "Scan complete.");
 }
+/* The shared exclusive CREATE. Its Pascal path goes at the head of buf
+ * (copy_buf), which summary() fills only once the report is created: the
+ * resident's own full[] is left alone. */
+#define RF(n) v_##n
+#define FC_PATH buf
+#define FC_PREPARE(p) (buf[0] = v_strlen(p), v_memcpy(buf + 1, p, buf[0] + 1))
+#include "file_create.h"
+
 static void export_report(void)
 {
     struct Panel* p = A->panels + !*A->active;
@@ -367,14 +375,15 @@ static void export_report(void)
     if (!v_prompt("Report name (other panel)", "VOLINFO.TXT", 0)) return;
     if (v_strlen(p->path)+v_strlen(A->input)+2 > PATH_LEN) return;
     v_sprintf(A->other_full, "%s/%s", p->path, A->input);
-    n = v_strlen(A->other_full);
-    A->full[0] = n; v_memcpy(A->full+1, A->other_full, n+1);
-    create.n = 7; create.path = A->full; create.access = 0xC3; create.type = 4;
-    create.aux = create.date = create.time = 0; create.storage = 1;
-    if (v_mli(0xC0, &create)) { v_message("Cannot create report (name in use?)."); v_cgetc(); return; }
+    if (newfile(A->other_full, 4, 0, 1)) { v_message("Cannot create report (name in use?)."); v_cgetc(); return; }
     *A->filetype = 4; *A->auxtype = 0;
     reportfile = v_fopen(A->other_full, "wb");
-    if (!reportfile) { v_report_error("Report"); return; }
+    if (!reportfile) {
+        /* The empty entry is this run's own: removed, or named as kept. */
+        if (!v_remove(A->other_full)) { v_report_error("Report"); return; }
+        v_message("Report failed; empty file kept.");
+        v_cgetc(); return;
+    }
     summary(); n = v_strlen((char*)buf);
     reporterror = v_fwrite(buf, 1, n, reportfile) != n;
     if (!reporterror && !failed && !cancelled) {

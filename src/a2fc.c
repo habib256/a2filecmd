@@ -255,31 +255,48 @@ static unsigned char dos_unit;
  * the track (T x 8 + value >> 1) and half (value & 1). */
 static const unsigned char DOS_TS[16] = { 0, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 15 };
 
-/* Recognises a disk image by its suffix. Returns 1 (FS_IMG) if it is one,
- * FS_PRODOS (0) otherwise. The sector order is deduced from the suffix by
- * img_open. */
-static unsigned char image_order(const char* name)
+/* The disk image suffixes, and what each one says: DI_PO ProDOS order,
+ * DI_DSK DOS 3.3 order, DI_2MG a 2IMG header, DI_DC a DiskCopy 4.2
+ * header (84 bytes, then the blocks in ProDOS order). */
+enum { DI_NONE, DI_PO, DI_DSK, DI_2MG, DI_DC };
+static const char img_ext[] = ".PO\0.DO\0.DSK\0.2MG\0.DC\0.DC42\0.IMAGE\0.IMG\0";
+static const unsigned char img_kinds[] = { DI_PO, DI_DSK, DI_DSK, DI_2MG, DI_DC, DI_DC, DI_DC, DI_DC };
+
+/* Recognises a disk image by its suffix: its DI_ kind, or DI_NONE. */
+static unsigned char img_suffix(const char* name)
 {
-    unsigned char n = strlen(name);
-    return (n > 4 && (!strcmp(name + n - 4, ".DSK") || !strcmp(name + n - 4, ".2MG")))
-        || (n > 3 && (!strcmp(name + n - 3, ".PO") || !strcmp(name + n - 3, ".DO"))) ? FS_IMG : FS_PRODOS;
+    unsigned char n = strlen(name), k, i = 0;
+    const char* s;
+    for (s = img_ext; *s; s += k + 1, ++i) {
+        k = strlen(s);
+        if (n > k && !strcmp(name + n - k, s)) return img_kinds[i];
+    }
+    return DI_NONE;
 }
 
-/* Opens the image `path`: the sector order comes from the suffix (.PO ProDOS,
- * .DSK/.DO DOS 3.3, .2MG from its header). Returns 0 on failure; img_f open. */
+/* Opens the image `path`: the sector order and where the blocks start come
+ * from the suffix and, for .2MG and DiskCopy, the header. Returns 0 on
+ * failure; img_f open. */
 static unsigned char img_open(const char* path)
 {
-    unsigned char n = strlen(path);
+    unsigned char kind = img_suffix(path);
     img_f = fopen(path, "rb");
     if (!img_f) return 0;
-    img_dsk = (n > 4 && !strcmp(path + n - 4, ".DSK")) || (n > 3 && !strcmp(path + n - 3, ".DO"));
+    img_dsk = kind == DI_DSK;
     img_base = 0;
-    if (n > 4 && !strcmp(path + n - 4, ".2MG")) {
-        if (fread(copy_buf, 1, 64, img_f) != 64 || memcmp(copy_buf, "2IMG", 4) || copy_buf[0x0C] > 1) { fclose(img_f); return 0; }
+    if (kind == DI_2MG) {
+        if (fread(copy_buf, 1, 64, img_f) != 64 || memcmp(copy_buf, "2IMG", 4) || copy_buf[0x0C] > 1) goto bad;
         img_dsk = copy_buf[0x0C] == 0;
         img_base = *(unsigned long*)(copy_buf + 0x18);
     }
+    if (kind == DI_DC) {       /* a name of 63 characters at most, then $0100 at +82 */
+        if (fread(copy_buf, 1, 84, img_f) != 84 || copy_buf[0] > 63 || copy_buf[82] != 1 || copy_buf[83]) goto bad;
+        img_base = 84;
+    }
     return 1;
+bad:
+    fclose(img_f);
+    return 0;
 }
 
 /* Reads the logical DOS 3.3 sector (track, sector), 256 bytes, into copy_buf.
@@ -1230,7 +1247,8 @@ static unsigned char page_size(const unsigned long* size)
 
 /* One classification for Return, I and the raw-image album. Explicit
  * packed formats take precedence over coincidental raw-page file sizes.
- * 0 unknown, 1 raw/RLE, 2 Extasie, 3 packed FOT, 4 816/Paint, 5 lo-res. */
+ * 0 unknown, 1 raw/RLE, 2 Extasie, 3 packed FOT, 4 816/Paint, 5 lo-res;
+ * 6 Arlequin is only the probe's (file_viewer): $F8 alone says nothing. */
 static unsigned char image_kind(const struct Entry* e)
 {
     unsigned char n, type = e->type;
@@ -1357,7 +1375,8 @@ void __fastcall__ text_entry(const struct A2fcApi* a)
 /* ---------------------------------------------------------------------- */
 /* The BASLIST overlay: listing an Applesoft program, in BASLIST.PLG.     */
 /* `T` on a BAS ($FC) loads it instead of the text viewer: instead of the */
-/* hex of the tokens, the detokenised listing. It reads the file back     */
+/* hex of the tokens, the detokenised listing; and on a BA3 ($09), the    */
+/* Apple ///'s Business BASIC (tools/busbasic_ref.py) the same way. It reads the file back     */
 /* through view_getc (resident) and pages the way the text viewer does,   */
 /* remembering the start of each page in text_starts. No buffer: it stays */
 /* a small overlay.                                                       */
@@ -1387,11 +1406,37 @@ static const char BAS_TOK[] =
     "FRE\0SCRN(\0PDL\0POS\0SQR\0RND\0LOG\0EXP\0COS\0SIN\0TAN\0ATN\0PEEK\0LEN\0"
     "STR$\0VAL\0ASC\0CHR$\0LEFT$\0RIGHT$\0MID$";
 
-static const char* bas_token(unsigned char n)
+/* Business BASIC's (the Apple ///'s, BA3 $09): $80-$FF, and after $FF an
+ * extended set from $80, CiderPress II's tables (BusinessBASIC.cs). An
+ * empty entry is a token with no name; past the extended table too. */
+static const char BB_TOK[] =
+    "END\0FOR\0NEXT\0INPUT\0OUTPUT\0DIM\0READ\0WRITE\0OPEN\0CLOSE\0\0TEXT\0"
+    "\0BYE\0\0\0\0\0\0WINDOW\0INVOKE\0PERFORM\0\0\0FRE\0HPOS\0VPOS\0ERRLIN\0"
+    "ERR\0KBD\0EOF\0TIME$\0DATE$\0PREFIX$\0EXFN.\0EXFN%.\0OUTREC\0INDENT\0\0"
+    "\0\0\0\0\0\0POP\0HOME\0\0SUB$(\0OFF\0TRACE\0NOTRACE\0NORMAL\0INVERSE\0"
+    "SCALE(\0RESUME\0\0LET\0GOTO\0IF\0RESTORE\0SWAP\0GOSUB\0RETURN\0REM\0"
+    "STOP\0ON\0\0LOAD\0SAVE\0DELETE\0RUN\0RENAME\0LOCK\0UNLOCK\0CREATE\0"
+    "EXEC\0CHAIN\0\0\0\0CATALOG\0\0\0DATA\0IMAGE\0CAT\0DEF\0\0PRINT\0DEL\0"
+    "ELSE\0CONT\0LIST\0CLEAR\0GET\0NEW\0TAB\0TO\0SPC(\0USING\0THEN\0\0MOD\0"
+    "STEP\0AND\0OR\0EXTENSION\0DIV\0\0FN\0NOT\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
+    "\0\0";
+
+/* $FF then $80 up, trailing unknowns left out: past the table, '?'. */
+static const char BB_EXT[] =
+    "TAB(\0TO\0SPC(\0USING\0THEN\0\0MOD\0STEP\0AND\0OR\0EXTENSION\0DIV\0\0"
+    "FN\0NOT\0\0\0\0\0\0\0\0\0\0\0\0\0\0AS\0SGN(\0INT(\0ABS(\0\0TYP(\0REC(\0"
+    "\0\0\0\0\0\0\0\0\0\0PDL(\0BUTTON(\0SQR(\0RND(\0LOG(\0EXP(\0COS(\0SIN(\0"
+    "TAN(\0ATN(\0\0\0\0\0\0\0\0\0\0\0\0\0STR$(\0HEX$(\0CHR$(\0LEN(\0VAL(\0"
+    "ASC(\0TEN(\0\0\0CONV(\0CONV&(\0CONV$(\0CONV%(\0LEFT$(\0RIGHT$(\0MID$(\0"
+    "INSTR(\0";
+static const char bl_unknown[] = "?";
+
+/* Entry n of a table of count zero-ended names; "?" for none. */
+static const char* tok_at(const char* s, unsigned char n, unsigned char count)
 {
-    const char* s = BAS_TOK;
+    if (n >= count) return bl_unknown;
     while (n--) { while (*s) ++s; ++s; }
-    return s;
+    return *s ? s : bl_unknown;
 }
 
 #define bl_row input[0]      /* 2 bytes of the resident input[] buffer: LOWBSS is full */
@@ -1412,22 +1457,24 @@ static void bl_puts(const char* s) { while (*s) bl_putc(*s++); }
 
 void __fastcall__ baslist_entry(const struct A2fcApi* a)
 {
-    unsigned char page = 0, known = 1, done;
+    unsigned char page = 0, known = 1, done, bb = selected.type == 0x09;
     unsigned int num;
     int lo, hi, t;
     char key, buf[7];
+    const char* name;
     (void)a;
     vf = fopen(full, "rb");
     if (!vf) { report_error("Open"); return; }
     a2fc_view = 2;
-    text_starts[0] = 0;
+    text_starts[0] = bb ? 2 : 0;           /* BA3: after its length word */
     for (;;) {
         view_seek(text_starts[page]);
         clrscr();
         bl_row = 0; bl_col = 0; done = 0;
         while (bl_row < TEXT_ROWS) {
-            lo = view_getc(); hi = view_getc();      /* the next-line pointer */
-            if (lo < 0 || (lo == 0 && hi == 0)) { done = 1; break; }
+            lo = view_getc();                        /* BA3: the line's length */
+            hi = bb ? 1 : view_getc();               /* BAS: the next-line pointer */
+            if (lo < 0 || (lo == 0 && (bb || hi == 0))) { done = 1; break; }
             num = (unsigned int)view_getc();
             num |= (unsigned int)view_getc() << 8;    /* the line number */
             sprintf(buf, bl_number, num);
@@ -1435,7 +1482,13 @@ void __fastcall__ baslist_entry(const struct A2fcApi* a)
             for (;;) {
                 t = view_getc();
                 if (t <= 0) break;                    /* $00 ends the line (or EOF) */
-                if (t >= 0x80 && t <= 0xEA) { bl_putc(' '); bl_puts(bas_token((unsigned char)(t - 0x80))); bl_putc(' '); }
+                if (t >= 0x80 && (bb || t <= 0xEA)) {
+                    if (!bb) name = tok_at(BAS_TOK, (unsigned char)(t - 0x80), 107);
+                    else if (t != 0xFF) name = tok_at(BB_TOK, (unsigned char)(t - 0x80), 128);
+                    else if ((t = view_getc()) < 0) break;
+                    else name = tok_at(BB_EXT, (unsigned char)(t & 0x7F), 84);
+                    bl_putc(' '); bl_puts(name); bl_putc(' ');
+                }
                 else bl_putc((char)(t & 0x7F));
             }
             bl_putc(13);
@@ -3502,7 +3555,7 @@ static const char mn_hidden[] = "|MENU|COPY|OPEN|NAV|BATCH|CATALOG|DOSIMAGE|DOSP
 static const char mn_bad[] = "(unreadable)";
 static const char mn_stale[] = "(other A2FC build)";
 static const char mn_noentry[] = "(no entry point)";
-static const char mn_title[] = "  A2FILE/*.PLG - the overlays, run on selection";
+static const char mn_title[] = "  A2FILE/*.PLG - the overlays";
 static const char mn_empty[] = "No overlay here.";
 static const char mn_keys[] = "U/D Choose,L/R 6 rows,RET Open,ESC Back";
 static const char mn_cat0[] = "Files";
@@ -3516,24 +3569,24 @@ static const char mn_cat7[] = "Other";
 static const char* const mn_categories[] = {
     mn_cat0, mn_cat1, mn_cat2, mn_cat3, mn_cat4, mn_cat5, mn_cat6, mn_cat7
 };
-static const char mn_what0[] = "Read, edit, search, rename, move, compare";
-static const char mn_what1[] = "HGR, DHGR, lo-res, fonts, packed pictures";
+static const char mn_what0[] = "Read, edit, search, move";
+static const char mn_what1[] = "HGR, DHGR, lo-res, fonts, packed";
 static const char mn_what2[] = "MB1, ProTracker 3, Electric Duet";
 static const char mn_what3[] = "Images, format, blocks, copies, rescue";
 static const char mn_what4[] = "BASIC listings, disassembly, CRC, IDENT";
-static const char mn_what5[] = "Help and the clock";
-static const char mn_what6[] = "ShrinkIt and Binary II";
+static const char mn_what5[] = "Help, clock";
+static const char mn_what6[] = "Archives and wrappers";
 static const char mn_what7[] = "Unsorted";
 static const char* const mn_whats[] = {
     mn_what0, mn_what1, mn_what2, mn_what3, mn_what4, mn_what5, mn_what6, mn_what7
 };
-static const char mn_group0[] = "|TEXT|HEX|EDIT|SEARCH|FIND|FIXTYPES|GOTO|MDVIEW|RENAME|SYNC|MOVE|TREE|DELETE|ATTR|TXTCONV|TAGPAT|COMPARE|AWP|";
-static const char mn_group1[] = "|IMAGE|DGRVIEW|EXTASIE|PACKFOT|PAINT816|PURPLE|LZ4FH|PRINTSHOP|FONTVIEW|";
+static const char mn_group0[] = "|TEXT|HEX|EDIT|SEARCH|FIND|FIXTYPES|GOTO|MDVIEW|RENAME|SYNC|MOVE|TREE|DELETE|ATTR|TXTCONV|TAGPAT|COMPARE|AWP|AWDATA|";
+static const char mn_group1[] = "|IMAGE|DGRVIEW|EXTASIE|ARLEQUIN|MACPAINT|SHAPES|PACKFOT|PAINT816|PURPLE|LZ4FH|PRINTSHOP|FONTVIEW|";
 static const char mn_group2[] = "|MUSIC|PT3|DUET|";
 static const char mn_group3[] = "|FORMAT|DISKIMG|IMGFS|DOSGET|DOSWRITE|BOOTBLK|BLKVIEW|BLKEDIT|DISKCMP|NIBCOPY|IMGCONV|MKIMAGE|RESCUE|UNDELETE|VOLNAME|VOLINFO|FIXIT|REPAIR|WIPE|VERIFY|";
 static const char mn_group4[] = "|BASLIST|DISASM|INTBASIC|RUN|CRC|IDENT|";
 static const char mn_group5[] = "|HELP|DATE|";
-static const char mn_group6[] = "|BINARY2|UNSHRINK|";
+static const char mn_group6[] = "|BINARY2|UNSHRINK|UNWRAP|SCIIBIN|UNSQ|";
 static const char* const mn_groups[] = {
     mn_group0, mn_group1, mn_group2, mn_group3, mn_group4, mn_group5, mn_group6
 };
@@ -3566,8 +3619,11 @@ static const char mn_row[]     = "  %-12s%-65.51s";
 /* A category row: its name, how many overlays it holds, what they do. */
 static const char mn_catrow[]  = "  %-12s%3u   %-59.59s";
 struct MenuItem { char name[12]; char desc[52]; };
-#define MENU_ITEMS ((struct MenuItem*)0x3000)
-#define MENU_MAX 64                 /* 64 x 64 bytes: $3000-$3FFF */
+/* 88 x 64 bytes: $2A00-$3FFF, above MENU's code (check_layout.py holds
+ * that code under $2A00). 64 items were too few once the visible
+ * overlays passed that many: the last ones read were dropped. */
+#define MENU_ITEMS ((struct MenuItem*)0x2A00)
+#define MENU_MAX 88
 #define MENU_ROWS 18                /* rows 2..19 per page, like a panel */
 #define MENU_STEP 6                 /* horizontal arrows: six entries */
 /* A category row, on the category page and above a category's list. */
@@ -4226,6 +4282,8 @@ static const char us_cancelled[] = "Extraction cancelled.";
 static const char us_differs[] = "Extract failed: %s reads back different.";
 static const char us_crcerr[] = "CRC error: %s not extracted.";
 static const char us_kept[] = "%s extracted; %s";
+static const char us_hdrcrc[] = "Header CRC error: archive not trusted.";
+static const char us_noattr[] = "attributes not set.";
 static const char us_wb[] = "wb";
 
 /* The assembly core, src/unshrink.s. Its AUX addresses, repeated here. */
@@ -4243,7 +4301,9 @@ struct UsState {
     unsigned int win_len, win_pos, n_done, name_len;
     unsigned long teof, ceof, rem_in, rem_out, total, done;
     unsigned char fmt, klass, kind, sep, disk;
-    unsigned char v3, thcrc, crcbad, ch, cl, cx;
+    unsigned char v3, thcrc, crcbad, ch, cl, cx, oddtype, access;
+    unsigned char* cp;              /* what us_crc reads */
+    unsigned char when[8];          /* the record's modification date, NuFX DateTime */
     unsigned char crc[4];           /* high bytes [0] stream, [1] thread; low bytes [2], [3] */
     unsigned int want[2];           /* the stored CRCs: LZW/1 stream, thread (record version >= 3) */
     char name[17];
@@ -4279,7 +4339,7 @@ static const char us_notarch[]  = "Not a ShrinkIt (NuFX) archive.";
 static const char us_notdir[]   = "Other panel must be a ProDOS folder.";
 static const char us_noram[]    = "/RAM shares AUX: use another disk.";
 static const char us_corrupt[]  = "Corrupt archive.";
-static const char us_unsupp[]   = "Unsupported compression.";
+static const char us_unsupp[]   = "Unsupported file skipped.";
 static const char us_done[]     = "%u file(s) extracted.";
 static const char us_path[]     = "%s/%s";
 static const char us_po[]       = ".PO";
@@ -4365,13 +4425,13 @@ static void us_crc_table(void)
     } while (i);
 }
 
-/* The CRC-16 w (0: the LZW/1 stream, 1: the thread) over the first n bytes
- * of copy_buf. The working bytes sit at fixed addresses: no C stack in the
- * loop. */
+/* The CRC-16 w (0: the LZW/1 stream or a header, 1: the thread) over the
+ * n bytes at US->cp (copy_buf while a thread is decoded). The working bytes
+ * sit at fixed addresses: no C stack in the loop. */
 static void __fastcall__ us_crc(unsigned char w, unsigned int n)
 {
-    register unsigned char* p = copy_buf;
-    register unsigned char* end = copy_buf + n;
+    register unsigned char* p = US->cp;
+    register unsigned char* end = p + n;
     US->ch = US->crc[w];
     US->cl = US->crc[w + 2];
     while (p != end) {
@@ -4430,6 +4490,7 @@ static unsigned char __fastcall__ us_stream(unsigned char verify)
     US->rem_in = US->ceof;
     US->rem_out = US->total;
     US->done = 0;
+    US->cp = copy_buf;
     if (!verify) {
         us_crc_table();
         US->crc[0] = US->crc[2] = 0;         /* stream: seed 0 */
@@ -4466,6 +4527,41 @@ static unsigned char __fastcall__ us_stream(unsigned char verify)
      * only the CRCs can tell. Checked before the read-back. */
     if (r && !verify && ((US->fmt == 2 && us_crc_bad(0)) || (US->thcrc && us_crc_bad(1)))) { US->crcbad = 1; r = 0; }
     return r;
+}
+
+/* A header CRC (seed 0) starts: the table is rebuilt, since the read-back
+ * of the previous thread used its page. want[0] is the stored value. */
+static void __fastcall__ us_hcrc_start(unsigned int want)
+{
+    us_crc_table();
+    US->crc[0] = US->crc[2] = 0;
+    US->want[0] = want;
+}
+
+static void __fastcall__ us_hcrc(unsigned char* p, unsigned int n)
+{
+    US->cp = p;
+    us_crc(0, n);
+}
+
+/* The archived access and modification date, on the extracted file once it
+ * has been read back: SET_FILE_INFO over what GET_FILE_INFO returned. Read
+ * stays on whatever the archive says. A NuFX year outside 1940-2039 is no
+ * date ProDOS can hold, and the file keeps the one it was created with. */
+static unsigned char us_set_attrs(void)
+{
+    const unsigned char* w = US->when;
+    unsigned int d;
+    if (!file_info(other_full)) return 0;
+    gfi[3] = (US->access & 0xE7) | 0x01;
+    if (w[3] >= 40 && w[3] < 140 && w[5] < 12 && w[4] < 31 && w[2] < 24 && w[1] < 60) {
+        d = ((unsigned int)(w[3] % 100) << 9) | ((w[5] + 1) << 5) | (w[4] + 1);
+        gfi[10] = (unsigned char)d;
+        gfi[11] = (unsigned char)(d >> 8);
+        gfi[12] = w[1];
+        gfi[13] = w[2];
+    }
+    return set_info();
 }
 
 /* A ProDOS name from the archive name: the last component, upper case,
@@ -4531,8 +4627,13 @@ static unsigned char us_extract_thread(void)
     }
     if (!r) goto failed;
     /* Written and verified: the file stays, even if the rest of the thread
-     * (compressed padding) cannot be read -- that error is the archive's. */
+     * (compressed padding) cannot be read -- that error is the archive's --
+     * or its attributes cannot be set. */
     ++US->n_done;
+    if (!us_set_attrs()) {
+        sprintf(note, us_kept, US->name, us_noattr);
+        return 0;
+    }
     if (!us_skip(US->rem_in)) {
         sprintf(note, us_kept, US->name, progress_abort ? us_cancelled : us_corrupt);
         return 0;
@@ -4585,6 +4686,9 @@ void __fastcall__ unshrink_entry(const struct A2fcApi* a)
         if (!us_read(US->hdr + 48, 80) || !us_read(US->hdr, 48)) goto corrupt;
     }
     if (!us_eq(US->hdr, us_magic_master, 6)) { strcpy(note, us_notarch); goto close_in; }
+    us_hcrc_start(U16(US->hdr, 6));         /* the 40 bytes after the CRC */
+    us_hcrc(US->hdr + 8, 40);
+    if (us_crc_bad(0)) goto badcrc;
     US->records = U16(US->hdr, 8);
     progress_total = US->records;
     for (i = 0; i < US->records; ++i) {
@@ -4600,15 +4704,27 @@ void __fastcall__ unshrink_entry(const struct A2fcApi* a)
         US->auxtype = U16(US->hdr, 0x1A);
         US->storage = U16(US->hdr, 0x1E);
         US->v3 = US->hdr[8] >= 3 || US->hdr[9];    /* record version >= 3: threads carry a CRC */
+        /* A file type or an aux type ProDOS cannot hold (an HFS type, a
+         * 32-bit aux type) is not truncated into one: its data is skipped. */
+        US->oddtype = US->hdr[0x17] | US->hdr[0x18] | US->hdr[0x19] | US->hdr[0x1C] | US->hdr[0x1D];
+        US->access = US->hdr[0x12];
+        memcpy(US->when, US->hdr + 0x28, 8);
+        /* The header CRC covers the attributes from their count, the name
+         * kept in the header, and the thread headers. */
+        us_hcrc_start(U16(US->hdr, 4));
+        us_hcrc(US->hdr + 6, US->attrib - 6);
         len = U16(US->hdr, US->attrib - 2);            /* name in the header (old ShrinkIt) */
         US->name[0] = 0;
         US->name_len = 0;
         if (len) {
             if (len > 255 || !us_read(US->hdr, len)) goto corrupt;
+            us_hcrc(US->hdr, len);
             us_prodos_name((char*)US->hdr, len);
         }
         if (US->threads > 8) goto corrupt;
         if (!us_read(US->th, US->threads * 16)) goto corrupt;
+        us_hcrc(US->th, US->threads * 16);
+        if (us_crc_bad(0)) goto badcrc;
         for (t = 0; t < US->threads; ++t) {
             th = US->th + t * 16;
             US->thcrc = US->v3;
@@ -4624,7 +4740,10 @@ void __fastcall__ unshrink_entry(const struct A2fcApi* a)
                 us_prodos_name((char*)copy_buf, US->teof > len ? len : (unsigned int)US->teof);
                 if (!us_skip(US->ceof - len)) goto corrupt;
             } else if (US->klass == 2 && (US->kind == 0 || US->kind == 1)) {   /* data or disk image */
-                if (US->fmt != 0 && US->fmt != 2 && US->fmt != 3) {
+                /* A disk image is blocks of 512 (the storage field); a file
+                 * needs a ProDOS type. */
+                if ((US->fmt != 0 && US->fmt != 2 && US->fmt != 3)
+                        || (US->kind ? US->storage != 512 : US->oddtype)) {
                     strcpy(note, us_unsupp);
                     if (!us_skip(US->ceof)) goto corrupt;
                     continue;
@@ -4637,6 +4756,9 @@ void __fastcall__ unshrink_entry(const struct A2fcApi* a)
             }
         }
     }
+    goto close_in;
+badcrc:
+    strcpy(note, us_hdrcrc);
     goto close_in;
 corrupt:
     strcpy(note, progress_abort ? us_cancelled : us_corrupt);
@@ -4867,7 +4989,9 @@ static void change_attributes(const struct Entry* e, unsigned char lock)
         aux = hex_value(input);
     }
     if (!file_info(full)) { report_error("Get info"); return; }
-    if (lock) gfi[3] = is_locked(e) ? 0xC3 : 0x01;   /* everything, or read-only */
+    /* Destroy, rename and write together: set to unlock, cleared to lock.
+     * Read, backup and invisible keep what the file had. */
+    if (lock) gfi[3] = is_locked(e) ? gfi[3] | 0xC2 : gfi[3] & 0x3D;
     else { gfi[4] = type; gfi[5] = (unsigned char)(aux & 0xFF); gfi[6] = (unsigned char)(aux >> 8); }
     if (!set_info()) { report_error("Set info"); return; }
     ++a2fc_ops;
@@ -4908,20 +5032,22 @@ void __fastcall__ run_entry(const struct A2fcApi* a)
 #pragma rodata-name (pop)
 #pragma code-name (pop)
 
-/* Return on a .PO/.DSK/.DO/.2MG file of a real directory: open it read-only
+/* Return on a disk image file (img_suffix) of a real directory: open it read-only
  * as a directory (read_image_panel). The image's path becomes pan->path,
  * pan->fs its sector order, and the volume directory (block 2) is displayed.
  * Returns 1 if the entry was an image (handled), 0 otherwise. */
 static unsigned char open_image(struct Panel* pan, const struct Entry* e)
 {
-    unsigned char ord = pan->fs ? FS_PRODOS : image_order(e->name);
+    unsigned char kind = pan->fs ? DI_NONE : img_suffix(e->name);
     char* slash;
-    if (!ord || e->size < 512 || ((e->size & 511) && (e->size & 511) != 64)) return 0;   /* 64: the 2IMG header */
+    /* Whole blocks, or a 64-byte 2IMG header; a DiskCopy image may also
+     * carry tag bytes after its blocks. */
+    if (!kind || e->size < 512 || (kind != DI_DC && (e->size & 511) && (e->size & 511) != 64)) return 0;
     if (!build_full(full, pan, e)) { too_long(); return 1; }
     strcpy(input, e->name);
     strcpy(pan->path, full);
     pan->img_len = strlen(full);
-    pan->fs = ord;
+    pan->fs = FS_IMG;
     pan->dir_key = 2;
     pan->cursor = pan->top = pan->first = 0;
     if (!read_panel(active)) {      /* not a ProDOS volume: back to the directory */
@@ -4941,30 +5067,52 @@ static unsigned char open_image(struct Panel* pan, const struct Entry* e)
  * it from inside OPEN would overwrite code still on the return stack. */
 #pragma code-name(push, "OPEN")
 #pragma rodata-name(push, "OPENRO")
-static const unsigned char image_viewers[] = {V_HEX, V_RAW, V_EXT, V_PACK, V_PAINT, V_DGR};
+static const unsigned char image_viewers[] = {V_HEX, V_RAW, V_EXT, V_PACK, V_PAINT, V_DGR, V_ARL};
 static const char open_dgr[] = "DGR";
-static const char open_error[] = "Identify failed: I/O.";
+static const char* fv_name;
+static unsigned char fv_len;
+/* Does the name end in s, with something before it? */
+static unsigned char ends(const char* s)
+{
+    unsigned char k = strlen(s);
+    return fv_len > k && !strcmp(fv_name + fv_len - k, s);
+}
+/* The viewers a suffix names: the music (V_DUET and below) and formats with
+ * no ProDOS type of their own. */
+static const char fv_ext[] = ".MB\0.PT3\0.ED\0.FOTO1\0.FOTO2\0.MAC\0.AS\0.BSC\0.BSQ\0.SHAPE\0";
+static const unsigned char fv_ids[] = { V_MUSIC, V_PT3, V_DUET, V_PURPLE, V_PURPLE, V_MAC,
+    V_UNWRAP, V_SCII, V_SCII, V_SHAPES };
+static unsigned char by_suffix(void)
+{
+    const char* s = fv_ext;
+    unsigned char i = 0;
+    for (; *s; s += strlen(s) + 1, ++i) if (ends(s)) return fv_ids[i];
+    return 0;
+}
 static unsigned char file_viewer(const struct Entry* e, unsigned char pictures)
 {
     unsigned char kind = image_kind(e);
     FILE* f;
-    unsigned char n = strlen(e->name), failed, music = 0;
-    unsigned char candidate = e->type==6 && e->name[0]=='M' && e->name[1]=='.';
-    if(e->type==6 && n>3 && !strcmp(e->name+n-3,".MB")) music=V_MUSIC;
-    if(n>4 && !strcmp(e->name+n-4,".PT3")) music=V_PT3;
-    if((e->type==0xD5 && e->aux==0xD0E7) || (n>3 && !strcmp(e->name+n-3,".ED"))) music=V_DUET;
+    /* The type, once: every e->type is a load of e off the C stack. */
+    unsigned char type = e->type;
+    unsigned int aux = e->aux;
+    unsigned char n = strlen(e->name), failed, music, named;
+    unsigned char candidate = type==6 && e->name[0]=='M' && e->name[1]=='.';
+    fv_name = e->name; fv_len = n;
+    named = by_suffix();
+    music = named <= V_DUET ? named : 0;
+    if (type==0xD5 && aux==0xD0E7) music=V_DUET;
     /* Album scans can reject unrelated names without opening every file. */
     if (pictures >= 2) {
         if (music != pictures-1 && !(pictures==4 && candidate)) return V_HEX;
         pictures = 0;
     }
-    if (e->type == 7) return V_FONT;
-    if (e->type == 8 && e->aux == 0x8066) return V_LZ;
-    if (e->type == 6 && (e->aux & 0xCFFF) == 0x4800 &&
+    if (type == 7) return V_FONT;
+    if (type == 8 && aux == 0x8066) return V_LZ;
+    if (type == 6 && (aux & 0xCFFF) == 0x4800 &&
         (e->size == 572 || e->size == 576)) return V_PS;
-    if (!pictures && e->type == 0xFA) return V_RUN;
-    if (n>6 && !memcmp(e->name+n-6,".FOTO",5) &&
-        (unsigned char)(e->name[n-1]-'1')<2) return V_PURPLE;
+    if (!pictures && type == 0xFA) return V_RUN;
+    if (named > V_DUET) return named;
     if (!pictures && music>=V_PT3) return music;
     /* Probe only in main-RAM copy_buf, never in a graphics/AUX bank.
      * Explicit packed metadata wins; the other formats can identify
@@ -4979,19 +5127,23 @@ static unsigned char file_viewer(const struct Entry* e, unsigned char pictures)
         if (failed) return 0;
         if (candidate && n==8 && copy_buf[0] && copy_buf[3]) music=V_DUET;
         if (n >= 3 && !memcmp(copy_buf, open_dgr, 3)) kind = 5;
+        /* An Arlequin picture: type $F8 and "gs" after its size. */
+        else if (type == 0xF8 && n >= 4 && copy_buf[2] == 'g' && copy_buf[3] == 's') kind = 6;
         else if (n == 8 && (!memcmp(copy_buf, "HGRR\1\0\0\x20", 8) ||
                            !memcmp(copy_buf, "DHRR\1\0\0\x40", 8))) kind = 1;
         /* I supplies the missing intent for an unmarked lo-res screen or
          * pixmap. Return must not mistake every small BIN for a sprite. */
-        else if (!kind && pictures && (e->type == 0x06 || e->type == 0x08) &&
+        else if (!kind && pictures && (type == 0x06 || type == 0x08) &&
                  e->size && e->size <= 2048) kind = 5;
     }
     if (kind) return image_viewers[kind];
     if (pictures) return V_RAW; /* I may explicitly try an untyped raw file. */
     if (music) return music;
-    if (e->type == 0x04) return V_TEXT;
-    if (e->type == 0x1A) return V_AWP;
-    if (e->type == 0xFF || e->type == 0xFC) return V_RUN;
+    if (type == 0x04) return V_TEXT;
+    if (type == 0x1A) return V_AWP;
+    if ((type & 0xFD) == 0x19) return V_AWD;    /* $19 data base, $1B spreadsheet */
+    if (type == 0xE0 && aux == 1) return V_UNWRAP;      /* AppleSingle */
+    if (type == 0xFF || type == 0xFC) return V_RUN;
     return V_HEX;
 }
 void __fastcall__ open_entry(const struct A2fcApi* a)
@@ -5001,7 +5153,7 @@ void __fastcall__ open_entry(const struct A2fcApi* a)
     if (selected.name[0] && !is_dir(&selected) && full[0]) {
         viewer = file_viewer(&selected, a->arg);
         if (viewer) strcpy(input, media_names[viewer]);
-        else message(open_error);
+        else report_error(selected.name);      /* "NAME failed (...)" */
     }
 }
 #pragma rodata-name(pop)
@@ -5356,7 +5508,7 @@ int main(void)
             ent = &pan->e[pan->cursor];
             if (is_dir(ent) || !build_full(full, pan, ent)) break;
             key = ent->type;
-            if ((unsigned char)key == 0xFC) overlay_run("BASLIST", 0);   /* big overlay */
+            if ((unsigned char)key == 0xFC || key == 0x09) overlay_run("BASLIST", 0);   /* big overlay */
             else if ((unsigned char)key == 0x1A) overlay_run("AWP", 0);
             else if ((unsigned char)key == 0xFA) overlay_run("INTBASIC", 0);
             else if (overlay("TEXT")) view_text(full);

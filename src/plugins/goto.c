@@ -242,9 +242,15 @@ static void pascal(char* out,const char* path)
 static unsigned char fileop(unsigned char cmd,const char* path)
 {
     pascal(A->full,path);info.path=A->full;
-    info.n=cmd==0xC4 ? 10 : cmd==0xC0 ? 7 : 1;
+    info.n=cmd==0xC4 ? 10 : 1;
     return mli(cmd,&info);
 }
+/* The shared exclusive CREATE, with GOTO's own $E3 (backup bit set). */
+#define RF(n) n
+#define FC_PATH ((unsigned char*)A->full)
+#define FC_PREPARE(p) pascal(A->full,p)
+#define FC_ACCESS 0xE3
+#include "file_create.h"
 static unsigned char rename_file(const char* from,const char* to)
 {
     pascal(A->full,from);pascal(A->other_full,to);
@@ -303,9 +309,7 @@ static void save(unsigned char dead)
        ((info.fields[0]&0xC2)!=0xC2 || info.fields[4]<1 || info.fields[4]>3))) {
         scpy(N,m_err);return;
     }
-    for(i=0;i<15;++i)info.fields[i]=0;
-    info.fields[0]=0xE3;info.fields[1]=0x04;info.fields[4]=1;
-    i=fileop(0xC0,temp);
+    i=newfile(temp,0x04,0,1);
     if(i) { scpy(N,i==0x47 ? (const char*)"GOTO.TMP exists; check saved files." : m_err);return; }
     *A->filetype=0x04;*A->auxtype=0;
     fh=fopn(temp,f_wb);

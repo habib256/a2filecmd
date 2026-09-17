@@ -21,6 +21,7 @@ decodage des couleurs est juste.
   SAMPLE.BNY les memes dans une archive Binary II
   TINY.PO    une petite image de disquette ProDOS (64 blocs, un dossier)
   TINY.2MG   la meme, habillee de l'en-tete 2IMG
+  DISK800.DC un volume ProDOS de 800 Ko en image DiskCopy 4.2 (tools/dc42.py)
   DOS33.DSK  une disquette DOS 3.3 : un texte, un Applesoft, un binaire
   LETTER     un document AppleWorks (traitement de texte), pour la surcouche AWP
 
@@ -36,6 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mkawp
 import mkbny
 import mkdos33
+import dc42
 import mkshk
 import po22mg
 
@@ -271,6 +273,17 @@ def make(out, full=True):
                             str(out / 'TINY.PO'), '--volume', 'TINY', '--blocks', '64'],
                            check=True, capture_output=True)
         (out / 'TINY.2MG').write_bytes(po22mg.to_2mg((out / 'TINY.PO').read_bytes()))
+        with tempfile.TemporaryDirectory() as tmp:
+            big = Path(tmp) / 'big'
+            (big / 'INSIDE').mkdir(parents=True)
+            (big / 'INSIDE/DEEP.TXT').write_bytes(b'deep inside a DiskCopy image\r')
+            (big / 'SAMPLE.TXT').write_bytes(sample)
+            (big / 'HELLO#FC0801').write_bytes(hello)
+            po = Path(tmp) / 'disk800.po'
+            subprocess.run([sys.executable, str(Path(__file__).with_name('mkvolume.py')), str(big),
+                            str(po), '--volume', 'DISK800', '--blocks', '1600'],
+                           check=True, capture_output=True)
+            (out / 'DISK800.DC#E08005').write_bytes(dc42.wrap(po.read_bytes(), b'DISK800'))
         (out / 'DOS33.DSK').write_bytes(mkdos33.build([
             ('GREETINGS', 0x00, b'HELLO FROM A DOS 3.3 DISK\r' * 4 + b'\x00'),
             ('MYPROG', 0x02, bytes([0x05, 0x00]) + b'\x00\x00'),

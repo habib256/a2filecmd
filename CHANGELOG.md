@@ -3,7 +3,64 @@
 Changes in upcoming and published releases. See the [README](README.md) for features,
 downloads and installation.
 
-## Unreleased
+## [0.8.9] - 2026-09-17
+
+### SQueeze and ACU (FILES)
+- UNSQ extracts SQueezed files (`.QQ`, BLU's; the squeezed members BINARY2 takes out of a `.BQY` archive) and AppleLink ACU archives, with their names and types, following the file-service contract: a taken name is skipped, a damaged stream or failed write removes the file, every file is read back. `tools/squeeze_ref.py` (decoder and encoder) is the reference, checked on CiderPress II's samples: the `.QQ` of its Binary II archive decodes to the plain copy stored next to it. `tools/test_unsq.py` runs the real entry point on synthetic and real files.
+- CRC and IDENT move from FILES to DEVTOOLS, where the menu already lists them under Programming: FILES had 5 blocks left.
+
+### Business BASIC and Magic Window
+- T (and BASLIST from the menu) lists the Apple ///'s Business BASIC programs (BA3, `$09`) with CiderPress II's token tables; `tools/busbasic_ref.py` is the reference.
+- MDVIEW skips the 256-byte header of a Magic Window document (`.MW`, starting `$8D`) and reads its high-bit text. Teach documents are extended files: ProDOS 8 cannot open them, so they are not supported.
+
+### Menu
+- The overlay menu keeps 88 entries instead of 64: with the new overlays the list passed 64 and the last ones read were dropped (WIPE and VOLNAME vanished from Disks). The list now sits at `$2A00`, and `tools/check_layout.py` keeps MENU's code below it.
+
+### Hi-res fonts (MEDIA)
+- FONTVIEW also shows the 7 × 8 hi-res fonts of DOS Toolkit and HRCG (96 or 128 glyphs, 768 or 1,024 bytes, FNT or BIN). FONTVIEW is now assembly, entry point included: both formats take 1,127 bytes where MGTK alone took 1,252 in C. `tools/test_fontview.py` runs the whole overlay under sim65 (it replaces FONTVIEW's host harness); an MGTK font of exactly 768 bytes stays MGTK.
+- Print Shop borders were not added: neither a specification nor CiderPress II describes their layout, and the sample's bytes do not settle it.
+
+### Applesoft shape tables (MEDIA)
+- SHAPES draws a shape table 24 shapes a page on the hi-res screen, each centred in its cell, the page shown in the mixed-mode text; Space and B turn the pages. Its own vector tracer and plotter, in assembly with the entry point, fit the 1,280 bytes below the picture page. Return opens `.SHAPE` files. `tools/shapes_ref.py` is the reference; `tools/test_shapes.py` runs the whole overlay under sim65 with a scripted service table and compares every page byte for byte, CiderPress II's three tables included (shipped in `DEMO/CIDERPRESS/GRAPHICS/SHAPETABLE`).
+
+### File viewers by suffix
+- The suffixes that name a viewer on their own (`.MB`, `.PT3`, `.ED`, `.FOTO1/2`, `.MAC`, `.AS`, `.BSC`, `.BSQ`, `.SHAPE`) are one table in OPEN: the new formats fitted with it. `.PNTG` did not: open such a MacPaint file from the **!** menu. A `.MB` file now goes to MUSIC whatever its type; MUSIC checks it. A file that cannot be read to identify it now says "NAME failed (...)".
+- MENU texts were shortened to keep MENU.PLG within 7 blocks.
+
+### BinSCII (FILES)
+- SCIIBIN decodes BinSCII (`.BSC`, `.BSQ`), the text encoding Apple II files travelled in on Usenet, into the file it carries, with its ProDOS type. A file posted in several parts is decoded from the first one: the files that follow it in the directory are read until the file is complete. Header and data CRCs are checked on the way in, and the file is read back against them; any failure removes it. The CRC runs through a table in assembly (`src/plugins/sciibin.s`). `tools/binscii_ref.py` is the reference; `tools/test_sciibin.py` decodes synthetic files, damaged ones and CiderPress II's real posts -- ShrinkIt and a five-part Z-Link, both in `DEMO/CIDERPRESS/ARCHIVES`.
+
+### AppleSingle and MacBinary (FILES)
+- UNWRAP extracts the data fork of an AppleSingle file (versions 1 and 2, as GS/ShrinkIt and Mac OS write them) or a MacBinary file (I, II, III) into the other panel, with its name and ProDOS type: from the ProDOS information when there is some, otherwise converted from the Mac type and creator as AppleShare and the GS/OS FSTs do. It follows the file-service contract: exclusive creation, read-back comparison, removal on failure. Return opens `$E0/$0001` and `.AS` files. `tools/unwrap_ref.py` is the reference; `tools/test_unwrap.py` runs the real entry point on synthetic files and on CiderPress II's samples, three of which ship in `DEMO/CIDERPRESS/ARCHIVES`.
+
+### DiskCopy 4.2 images
+- Return opens a DiskCopy 4.2 image (`.DC`, `.DC42`, `.IMAGE`, `.IMG`) as a folder, like a `.PO`: the 84-byte header is checked and skipped. The resident's suffix tests became one table, which paid for it (4 bytes on the 65C02 edition).
+- IMGCONV converts to and from DiskCopy (**C**): the output carries the checksum of its blocks and the `$E0/$8005` file type; a DiskCopy source must match its own checksum, checked before anything is created, or the conversion is refused. The checksum is computed in assembly (`src/plugins/imgconv.s`): in C, the 32-bit rotation over an 800K disk would take minutes. `tools/dc42.py` is the reference, checked against a real Apple image; `tools/test_dc42.py` and `bench/diskcopy.py` (11 checks on both processors) test both sides.
+- The XL demo folder has `DISK800.DC`, an 800K ProDOS volume in DiskCopy form.
+
+### AppleWorks data bases and spreadsheets (FILES)
+- AWDATA reads AppleWorks data bases (`$19`), one record at a time with their dates and times, and spreadsheets (`$1B`), one cell per row: text, number, or formula with the result AppleWorks saved. Return opens them. The layouts follow CiderPress II's converters (`tools/awdata_ref.py`); `tools/test_awdata.py` compares every screen of the C with it on the host.
+- Numbers are printed by Applesoft's FOUT from the ROM, after converting AppleWorks' 64-bit doubles to the ROM's 5-byte form in assembly. FOUT needs `$A4` at 0, as BASIC leaves it; any other value prints 0.5 as `.500592008`. A test runs the shipped routine against an Apple II+ ROM under sim65 when one is at hand.
+- cc65 master (the 6502 edition) drops the sign extension of `(signed char)f()`: relative cell references printed `#ERR#` on the 6502 edition only, now extended by hand.
+
+### Floppies and samples
+- WIPE moves from BOOT to DISKTOOLS: every new overlay adds a 78-byte record to BOOT's command catalog, and BOOT had fallen to 0 free blocks. BOOT has 11 again.
+- The XL image carries real files from CiderPress II's test data in `DEMO/CIDERPRESS` (a MacPaint picture, an AppleWorks data base and spreadsheet), from `data/CP2/`. MACPAINT's tests and bench now also read ESCHERWATER.MAC.
+
+### MacPaint pictures (MEDIA)
+- MACPAINT shows MacPaint documents (576 × 720 dots, PackBits lines), with or without a MacBinary header, in double hi-res black and white, 560 × 192 at a time; Up and Down scroll by 96 lines. Return opens a `.MAC` file (any other name through the **!** menu), and Left/Right browse them. The whole file is unpacked once before the auxiliary memory is written, noting where every 48th line starts, so each view is drawn from a seek. The overlay is written in assembly, entry point included, to fit its 1,280 bytes; `tools/macpaint_ref.py` is the reference, `tools/test_macpaint.py` runs the decoder under sim65 on both processors.
+
+### Arlequin pictures (MEDIA)
+- ARLEQUIN shows the pictures of Le Chat Mauve's ARLEQUIN 1.1 interpreter (1985), ProDOS type `$F8`, in the card's mixed mode: full-screen pictures and windows, centred on black. They are not Purplesoft GRLOAD pairs, which is why PURPLE refused the ones in `/GISTDATA/IMG/PURPLE`. The format was read in ARLEQUIN's own loader and checked against it byte for byte under POM2 with a Féline card (`docs/ARLEQUIN-FORMAT.md`). Return and I open a `$F8` file that carries Arlequin's signature; Left/Right browse the pictures of a folder. The whole file is checked before the auxiliary memory is written, and `/RAM` is rebuilt afterwards.
+
+### File services closed
+- Every file A2 File Cmd writes now follows one contract: new files by exclusive creation only, the original kept until its replacement is written, closed and read back, cleanup limited to what the operation created and never reported when it failed, name collisions refused. GOTO, IMGCONV, VOLINFO and MOVE use the shared ProDOS CREATE; saving preferences uses the shared reservation and publication.
+- MKIMAGE, UNDELETE, RESCUE and MOVE checked nothing when removing an incomplete file and could say "removed" when it was not; a failed removal now stops the tool and says the incomplete file stays. VOLINFO removes the empty report it could not open.
+- COPY refused a brand-new file whenever an old A2FC.BAK lay in the destination, after copying it; A2FC.BAK now matters only when an existing file is replaced, and is checked before writing.
+- VOLNAME refuses a name another online volume already has ("Name in use."). ProDOS accepts it, and two volumes then answer to the same path.
+- Lock and unlock (L) keep the read, backup and invisible bits. SYNC checks that an existing target may be renamed as well as deleted before copying.
+- UNSHRINK checks the master and record header CRCs before writing anything of a record, skips files whose type ProDOS cannot hold and disk images not made of 512-byte blocks, and gives each extracted file its archived lock and modification date after reading it back.
+- BLKEDIT and BLKVIEW no longer write 8 bytes past their service-table copy into the resident.
 
 ### FIXIT and REPAIR on hard disks
 - FIXIT and REPAIR walk a volume's directory tree once, whatever its size. Above 4,096 blocks they used to walk it once per bitmap block, sixteen times on a 32 MB disk: a full FIXIT of a 32 MB hard disk with 690 files took about 69 minutes of a 1 MHz machine, REPAIR about three times as long. The blocks reached are now recorded in auxiliary memory, one bit each: the same FIXIT takes about 2 minutes 15 seconds, a REPAIR that writes about 7 minutes (measured under POM2).

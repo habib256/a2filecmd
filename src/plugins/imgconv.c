@@ -1,13 +1,21 @@
 /* imgconv.c -- convert a disk image from one container to another:
- * .PO/.HDV (ProDOS block order), .DSK/.DO (DOS 3.3 sector order) and .2MG
- * (a 64-byte 2IMG header over ProDOS order). The same blocks, laid out
- * differently: nothing of the file system inside is read or touched.
+ * .PO/.HDV (ProDOS block order), .DSK/.DO (DOS 3.3 sector order), .2MG
+ * (a 64-byte 2IMG header over ProDOS order) and DiskCopy 4.2 (.DC, .DC42,
+ * .IMAGE, .IMG: an 84-byte header over ProDOS order; tools/dc42.py). The
+ * same blocks, laid out differently: nothing of the file system inside is
+ * read or touched.
  *
  * From the ! menu, on the selected image of the active panel. One key
- * picks the target container (P, D, 2); the result is written into the
+ * picks the target container (P, D, 2, C); the result is written into the
  * OTHER panel's directory, under the same base name (cut so the ProDOS
  * name stays within 15 characters) with the new suffix, as a $06 BIN of
- * auxtype $0000.
+ * auxtype $0000 -- a DiskCopy image as $E0/$8005, its file type.
+ *
+ * A DiskCopy image carries a checksum of its blocks (imgconv.s): one read
+ * from a DiskCopy file must match it, or the conversion is refused and its
+ * output removed; one written gets it in its header, filled in once the
+ * blocks are written. DiskCopy holds only 400K, 800K, 720K and 1440K
+ * disks; its tag bytes, after the blocks, are not converted.
  *
  * Output is sequential in every format. To produce DOS sector order we
  * seek each sector in the ProDOS-order source, instead of reserving a 4 KB
@@ -30,7 +38,7 @@ struct PluginHeader {
 #pragma rodata-name (push, "OVLHDR")
 const struct PluginHeader __plugin_header = {
     PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry, 0, 0, 0,
-    "Convert a disk image: .DSK/.DO, .PO, .2MG"
+    "Convert a disk image: .DSK/.DO, .PO, .2MG, DiskCopy"
 };
 #pragma rodata-name (pop)
 
@@ -51,6 +59,22 @@ const struct PluginHeader __plugin_header = {
 #define K_PO  0
 #define K_DSK 1
 #define K_2MG 2
+#define K_DC  3
+
+#ifndef PLUGIN_HOST
+void __fastcall__ dc_add(const unsigned char* p);      /* imgconv.s */
+extern unsigned long dc_sum;
+#else                                   /* the host tests: the same sum in C */
+static unsigned long dc_sum;
+static void dc_add(const unsigned char* p)
+{
+    unsigned i;
+    for (i = 0; i < 256; i += 2) {
+        dc_sum = (dc_sum + ((unsigned)p[i] << 8 | p[i + 1])) & 0xFFFFFFFFUL;
+        dc_sum = ((dc_sum >> 1) | (dc_sum << 31)) & 0xFFFFFFFFUL;
+    }
+}
+#endif
 
 /* ProDOS block b of a track occupies these two physical sectors (low half
  * then high half): the table of tools/po2dsk.py, flattened to
@@ -62,16 +86,22 @@ static const char s_po[]  = ".PO";
 static const char s_dsk[] = ".DSK";
 static const char s_2mg[] = ".2MG";
 static const char s_do[]  = ".DO";
-static const char s_hdv[] = ".HDV";
-static const char* const SUF[3] = { s_po, s_dsk, s_2mg };
+static const char s_dc[]  = ".DC";
+static const char* const SUF[4] = { s_po, s_dsk, s_2mg, s_dc };
+/* The suffixes classify() knows, one after another, and their containers. */
+static const char suffixes[] = ".PO\0.HDV\0.DSK\0.DO\0.2MG\0.DC\0.DC42\0.IMAGE\0.IMG\0";
+static const unsigned char kinds[] = { K_PO, K_PO, K_DSK, K_DSK, K_2MG, K_DC, K_DC, K_DC, K_DC };
 
-static const char m_pick[]   = "Select a .PO/.HDV/.DSK/.DO/.2MG image.";
-static const char m_keys[]   = "\1Convert to P) .PO, D) .DSK, 2) .2MG, ESC cancels";
+static const char m_pick[]   = "Select a disk image (.PO .DSK .2MG .DC...).";
+static const char m_keys[]   = "\1Convert to P) .PO, D) .DSK, 2) .2MG, C) DiskCopy, ESC";
 static const char m_same[]   = "Image already in that format.";
 static const char m_other[]  = "Other panel: same directory or not ProDOS.";
 static const char m_blocks[] = "Partial 512-byte block.";
 static const char m_track[]  = "DSK needs whole tracks (8-block multiples).";
 static const char m_2mg[]    = "Not a ProDOS-order 2IMG file.";
+static const char m_dc[]     = "Not a DiskCopy 4.2 image.";
+static const char m_dcsize[] = "DiskCopy holds 400K, 800K, 720K or 1440K.";
+static const char m_dcsum[]  = "DiskCopy checksum";
 static const char m_over[]   = "Overwrite destination?";
 static const char m_stop[]   = "Aborted, %s removed.";
 static const char m_done[]   = "%s -> %s, %u blocks";
@@ -85,32 +115,64 @@ static struct A2fcApi T;
 #define replace_backup ((char*)T.copy_buf + 256)
 #include "replace.h"
 #define final_path T.note /* idle until the final result is reported */
+/* The shared exclusive CREATE, its Pascal path at the head of copy_buf. */
+#define FC_PATH T.copy_buf
+#define FC_PREPARE(p) (T.copy_buf[0] = RF(strlen)(p), RF(strcpy)((char*)T.copy_buf + 1, p))
+#include "file_create.h"
 static unsigned char replacing;
-static struct { unsigned char n; unsigned char* path; unsigned char access,type;
-    unsigned int aux; unsigned char storage; unsigned int date,time; } create;
 static FILE* in;
 static FILE* out;
 static unsigned char* buf;              /* api->copy_buf: one ProDOS block */
 static unsigned long sbase;             /* offset of the data in the source (.2MG) */
 static unsigned int blocks, n;
 static unsigned char skind, dkind, cut;
+static unsigned long dc_want;           /* a DiskCopy source's checksum */
 static char nname[NAME_LEN];            /* the name of the result */
 
 /* Recognises the container by the suffix; sets skind and cut (how many
  * characters of the name the suffix takes). 0: not an image we know. */
 static unsigned char __fastcall__ classify(const char* s)
 {
-    unsigned char len = RF(strlen)(s);
-    if (len > 4) {
-        if (!RF(strcmp)(s + len - 4, s_dsk)) { skind = K_DSK; cut = 4; return 1; }
-        if (!RF(strcmp)(s + len - 4, s_2mg)) { skind = K_2MG; cut = 4; return 1; }
-        if (!RF(strcmp)(s + len - 4, s_hdv)) { skind = K_PO;  cut = 4; return 1; }
-    }
-    if (len > 3) {
-        if (!RF(strcmp)(s + len - 3, s_po)) { skind = K_PO;  cut = 3; return 1; }
-        if (!RF(strcmp)(s + len - 3, s_do)) { skind = K_DSK; cut = 3; return 1; }
+    unsigned char len = RF(strlen)(s), i = 0;
+    const char* x;
+    for (x = suffixes; *x; x += cut + 1, ++i) {
+        cut = RF(strlen)(x);
+        if (len > cut && !RF(strcmp)(s + len - cut, x)) { skind = kinds[i]; return 1; }
     }
     return 0;
+}
+
+/* DiskCopy's format fields for a disk of `blocks` blocks: the disk format
+ * in the low nibble, the format byte's index above; 0 when it holds none. */
+static unsigned char dc_format(void)
+{
+    switch (blocks) {
+    case 800:  return 0x10;             /* 400K, $12 */
+    case 1600: return 0x21;             /* 800K, $24 (an Apple II disk) */
+    case 1440: return 0x32;             /* 720K, $22 */
+    case 2880: return 0x33;             /* 1440K, $22 */
+    }
+    return 0;
+}
+static const unsigned char dc_bytes[] = { 0, 0x12, 0x24, 0x22 };
+
+/* The 84-byte header of tools/dc42.py (wrap), for the output nname and
+ * the checksum in dc_sum. */
+static void make_dc_header(void)
+{
+    unsigned char f = dc_format(), k = RF(strlen)(nname);
+    T.memset(TRACK, 0, 84);
+    TRACK[0] = k;
+    RF(memcpy)(TRACK + 1, nname, k);
+    TRACK[0x41] = (unsigned char)(blocks >> 7);         /* blocks x 512, big-endian */
+    TRACK[0x42] = (unsigned char)(blocks << 1);
+    TRACK[0x48] = (unsigned char)(dc_sum >> 24);
+    TRACK[0x49] = (unsigned char)(dc_sum >> 16);
+    TRACK[0x4A] = (unsigned char)(dc_sum >> 8);
+    TRACK[0x4B] = (unsigned char)dc_sum;
+    TRACK[0x50] = f & 15;
+    TRACK[0x51] = dc_bytes[f >> 4];
+    TRACK[0x52] = 1;
 }
 
 /* Reads ProDOS block `n` of the source into buf. A .PO, a .HDV and the
@@ -175,7 +237,14 @@ static void make_2mg_header(void)
 /* Compare complete logical blocks after closing the output, including its
  * generated header and exact EOF. The original destination is still named
  * normally here. Only a successful verification may install its replacement. */
-static unsigned char check[512];
+static unsigned char check[256];
+static unsigned char header_matches(unsigned char len)
+{
+    unsigned char i;
+    if (RF(fread)(check, 1, len, out) != len) return 0;
+    for (i = 0; i < len; ++i) if (check[i] != TRACK[i]) return 0;
+    return 1;
+}
 static unsigned char verify_output(const char* path)
 {
     unsigned char bad = 0, half, sector;
@@ -187,27 +256,30 @@ static unsigned char verify_output(const char* path)
     if (!bad && RF(fseek)(in, sbase, SEEK_SET)) bad = 1;
     if (!bad && dkind == K_2MG) {
         make_2mg_header();
-        if (RF(fread)(check, 1, 64, out) != 64) bad = 1;
-        else for (i = 0; i < 64; ++i) if (check[i] != TRACK[i]) bad = 1;
+        bad = !header_matches(64);
+    }
+    if (!bad && dkind == K_DC) {
+        make_dc_header();
+        bad = !header_matches(84);
     }
     for (n = 0; n < blocks && !bad; ++n) {
         if (*KBD == (KEY_ESC | 0x80)) { *STROBE = 0; bad = 1; break; }
         if (!read_block()) { bad = 1; break; }
-        if (dkind == K_DSK) {
-            sector = (unsigned char)(n & 7) << 1;
-            off = (long)(n >> 3) << 12;
-            for (half = 0; half < 2; ++half) {
-                if (RF(fseek)(out, off + ((long)SECT[sector + half] << 8), SEEK_SET) ||
-                    RF(fread)(check + (unsigned int)half * 256, 1, 256, out) != 256) {
-                    bad = 1; break;
-                }
+        /* Half a block at a time: check holds 256 bytes. */
+        sector = (unsigned char)(n & 7) << 1;
+        off = (long)(n >> 3) << 12;
+        for (half = 0; half < 2 && !bad; ++half) {
+            if ((dkind == K_DSK && RF(fseek)(out, off + ((long)SECT[sector + half] << 8), SEEK_SET)) ||
+                RF(fread)(check, 1, 256, out) != 256) {
+                bad = 1;
+                break;
             }
-        } else if (RF(fread)(check, 1, 512, out) != 512) bad = 1;
-        if (!bad) for (i = 0; i < 512; ++i) if (check[i] != buf[i]) { bad = 1; break; }
+            for (i = 0; i < 256; ++i) if (check[i] != buf[(half << 8) + i]) { bad = 1; break; }
+        }
     }
     /* 2MG source trailers are permitted; raw source tails are not. The
      * final logical block also ends at the final physical DSK sector. */
-    if (!bad && ((skind != K_2MG && RF(fread)(buf, 1, 1, in)) ||
+    if (!bad && ((skind < K_2MG && RF(fread)(buf, 1, 1, in)) ||
                  RF(fread)(check, 1, 1, out))) bad = 1;
     if (in) { if (ferror(in)) bad = 1; if (RF(fclose)(in)) bad = 1; }
     if (out) { if (ferror(out)) bad = 1; if (RF(fclose)(out)) bad = 1; }
@@ -246,6 +318,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         if (k == 'P') { dkind = K_PO;  break; }
         if (k == 'D') { dkind = K_DSK; break; }
         if (k == '2') { dkind = K_2MG; break; }
+        if (k == 'C') { dkind = K_DC;  break; }
     }
     if (dkind == skind) { what = m_same; goto note; }
     if (!oth->path[0] || oth->fs || !RF(strcmp)(oth->path, pan->path)) {
@@ -278,9 +351,36 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
             what = "Read";
             goto err;
         }
+    } else if (skind == K_DC) {
+        /* A name of 63 at most, $0100 at +82, and whole blocks, fewer than
+         * 65,536 of them, within the file; tags may follow. */
+        if (RF(fread)(TRACK, 1, 84, in) != 84 || TRACK[0] > 63 || TRACK[0x52] != 1
+            || TRACK[0x53] || TRACK[0x40] || TRACK[0x43] || (TRACK[0x42] & 1)) {
+            what = m_dc;
+            goto badsource;
+        }
+        blocks = ((unsigned int)TRACK[0x41] << 7) | (TRACK[0x42] >> 1);
+        dc_want = ((unsigned long)TRACK[0x48] << 24) | ((unsigned long)TRACK[0x49] << 16)
+                | ((unsigned int)TRACK[0x4A] << 8) | TRACK[0x4B];
+        sbase = 84;
+        if ((unsigned long)blocks > ((e->size - 84) >> 9)) { what = m_dc; goto badsource; }
     } else {
         if (e->size & 511) { what = m_blocks; goto badsource; }
         blocks = (unsigned int)(e->size >> 9);
+    }
+    if (dkind == K_DC && !dc_format()) { what = m_dcsize; goto badsource; }
+    if (skind == K_DC) {
+        /* The checksum first, over the blocks as they are: nothing is
+         * created for an image that does not match its own header. */
+        dc_sum = 0;
+        for (n = 0; n < blocks; ++n) {
+            if (!(n & 31)) T.progress_bar(e->name, n, blocks);
+            if (!read_block()) { RF(fclose)(in); what = "Read"; goto err; }
+            dc_add(buf);
+            dc_add(buf + 256);
+        }
+        if (dc_sum != dc_want) { what = m_dcsum; goto sumbad; }
+        if (RF(fseek)(in, sbase, SEEK_SET)) { RF(fclose)(in); what = "Read"; goto err; }
     }
     if (!blocks || ((blocks & 7) && (dkind == K_DSK || skind == K_DSK))) {
         what = blocks ? m_track : m_blocks;
@@ -290,7 +390,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     /* The name of the result: the base, cut so that name + suffix stays
      * within the 15 characters of a ProDOS name. */
     suf = SUF[dkind];
-    n = dkind ? 11 : 12;                /* 15 less the suffix: ".PO" 3, the others 4 */
+    n = dkind % 3 ? 11 : 12;            /* 15 less the suffix: ".PO" and ".DC" 3, the others 4 */
     k = RF(strlen)(e->name) - cut;
     if (k > (unsigned char)n) k = (unsigned char)n;
     RF(memcpy)(nname, e->name, k);
@@ -307,12 +407,10 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         if (RF(strlen)(oth->path) + 13 >= PATH_LEN) { what = "Path too long"; goto badsource; }
         T.sprintf(target, f_path, oth->path, "IMGCONV.TMP");
     }
-    *T.filetype = 0x06; *T.auxtype = 0;
+    k = dkind == K_DC ? 0xE0 : 0x06;
+    *T.filetype = k; *T.auxtype = dkind == K_DC ? 0x8005 : 0;
     what = "Create";
-    T.copy_buf[0] = RF(strlen)(target); RF(strcpy)((char*)T.copy_buf + 1, target);
-    create.n = 7; create.path = T.copy_buf; create.access = 0xC3;
-    create.type = 6; create.aux = 0; create.storage = 1; create.date = create.time = 0;
-    if (RF(mli)(0xC0, &create)) { RF(fclose)(in); goto err; }
+    if (newfile(target, k, *T.auxtype, 1)) { RF(fclose)(in); goto err; }
     out = RF(fopen)(target, "wb");
     if (!out) { RF(fclose)(in); goto errrm2; }
 
@@ -320,6 +418,11 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     if (dkind == K_2MG) {
         make_2mg_header();
         if (RF(fwrite)(TRACK, 1, 64, out) != 64) goto errrm;
+    }
+    dc_sum = 0;
+    if (dkind == K_DC) {                /* the checksum is filled in after */
+        make_dc_header();
+        if (RF(fwrite)(TRACK, 1, 84, out) != 84) goto errrm;
     }
     what = "Read";
     for (n = 0; n < blocks; ++n) {
@@ -336,6 +439,13 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         }
         if (dkind != K_DSK && !read_block()) goto errrm;
         if (!write_block()) { what = "Write"; goto errrm; }
+        /* The block in ProDOS order, as a DiskCopy output holds it. */
+        if (dkind == K_DC) { dc_add(buf); dc_add(buf + 256); }
+    }
+    if (dkind == K_DC) {
+        make_dc_header();
+        what = "Write";
+        if (RF(fseek)(out, 0x48, SEEK_SET) || RF(fwrite)(TRACK + 0x48, 1, 4, out) != 4) goto errrm;
     }
     k = ferror(in) || ferror(out);
     if (RF(fclose)(in)) k = 1;
@@ -369,6 +479,10 @@ errrm2:
     if (!replace_discard(target)) return;
 err:
     T.sprintf(T.note, m_fail, what);    /* report_error would not survive the redraw */
+    return;
+sumbad:
+    T.sprintf(T.note, "%s mismatch: nothing written.", what);
+    RF(fclose)(in);
     return;
 bad2mg:
     what = m_2mg;

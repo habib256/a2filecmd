@@ -4,6 +4,7 @@
 #define UTIL_VOLUME
 #define UTIL_INFO
 #define UTIL_CREATE
+#define UTIL_DISCARD
 #include "util.h"
 void __fastcall__ plugin_entry(const struct A2fcApi*);
 struct Header {unsigned int magic;unsigned char flags;void __fastcall__ (*entry)(const struct A2fcApi*);unsigned char r[3];char desc[52];};
@@ -125,10 +126,10 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
                 if(!a.confirm("Recover this candidate to the other volume?"))continue;
                 if(!valid()){a.message("Candidate is no longer recoverable.");continue;}
                 if(!join(dest,other->path,name)||newfile(dest,e[16],rd16(e+31),1)){a.message("Cannot create destination (existing name?).");continue;}
-                out=a.fopen(dest,"wb");if(!out){a.remove(dest);a.message("Cannot open recovery file.");continue;}
+                out=a.fopen(dest,"wb");if(!out){if(!discard(dest))return;a.message("Cannot open recovery file.");continue;}
                 invalid=0;writing=1;walk();writing=0;
                 if(a.fclose(out))invalid=1;out=0;
-                if(invalid){a.remove(dest);a.message("Recovery failed; incomplete destination removed.");}
+                if(invalid){if(!discard(dest))return;a.message("Recovery failed; incomplete destination removed.");}
                 else {a.sprintf(a.note,"Recovered %s to other volume; source unchanged.",name);return;}
             }
         }

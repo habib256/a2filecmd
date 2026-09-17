@@ -114,7 +114,7 @@ def menu_run(s, p, name, tries=40, allow_aux=True):
         r = s.cursor_row(2)
         if r is not None and s.rows()[r][2:14].strip() == name:
             s.key(RET)
-            if allow_aux and name in ('EXTASIE','PACKFOT','PAINT816','MUSIC','UNSHRINK','DISKIMG','IMAGE'):
+            if allow_aux and name in ('EXTASIE','ARLEQUIN','MACPAINT','PACKFOT','PAINT816','MUSIC','UNSHRINK','DISKIMG','IMAGE'):
                 s.allow_aux()
             time.sleep(0.5)
             p.stable()

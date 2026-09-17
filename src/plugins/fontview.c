@@ -1,52 +1,37 @@
-/* Main-bank HGR only: no AUX or disk writes. */
+/* fontview.c -- fonts on the hi-res screen, 16 glyphs a row. From Return
+ * on a FNT ($07) file, or the ! menu. Main-bank HGR only: no AUX or disk
+ * writes.
+ *
+ * Two formats (tools/test_fontview.py has the oracle of each page):
+ *
+ *   MGTK fonts (Apple II DeskTop; a2stuff/a2d bin/dump_font.pl): a flag,
+ *   the last character, the height, the widths, then one plane per row
+ *   and column, a byte per glyph. One or two HGR bytes a glyph.
+ *   Hi-res fonts (DOS Toolkit, HRCG; CiderPress II's notes): 96 or 128
+ *   glyphs of 7 x 8 dots, 8 bytes each, the top row first, the leftmost
+ *   dot in bit 0, a set high bit shifting the row half a dot. These are
+ *   files of exactly 768 or 1,024 bytes, typed FNT or BIN; a FNT file of
+ *   768 bytes that is a well-formed MGTK font of that size stays MGTK.
+ *
+ * All of it is fontview.s, entry point included, as in macpaint.c: in C
+ * the two formats did not fit the 1,280 bytes below the picture page. This
+ * file gives it the header and the offsets it reads. */
+#include <stddef.h>
 #include "../a2fc_plugin.h"
-void __fastcall__ plugin_entry(const struct A2fcApi*);
-void hv_clear(void);
-void hv_show(void);
-unsigned char* __fastcall__ hv_row(unsigned char y);
+
+void __fastcall__ plugin_entry(const struct A2fcApi*);   /* fontview.s */
+
 struct Header { unsigned int signature; unsigned char flags;
- void __fastcall__ (*entry)(const struct A2fcApi*); unsigned char r[3]; char desc[12]; };
+ void __fastcall__ (*entry)(const struct A2fcApi*); unsigned char r[3]; char desc[22]; };
 #pragma rodata-name(push, "OVLHDR")
 const struct Header __plugin_header = { MEDIA_PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry,
- {0,0,0}, "MGTK fonts" };
+ {0,0,0}, "MGTK and hi-res fonts" };
 #pragma rodata-name(pop)
-static const struct A2fcApi* A;
-#include "hgr_io.h"
-static FILE* f;
-static unsigned char bad;
-static unsigned char readn(void* p, unsigned int n) {
- if (frd(p,1,n,f)!=n) { bad=1; return 0; }
- return 1;
-}
-static void finish(void) {
- unsigned char b;
- if (frd(&b,1,1,f) || ferror(f)) bad=1;
- if (fcls(f)) bad=1;
- if (!bad) { hv_show(); getkey(0); }
- scpy(A->reselect,A->selected->name);
- if (bad) scpy(A->note,"Bad data/I/O");
-}
 
-/* MGTK format: flag/last/height, widths, then row/column/character planes.
- * Reference: a2stuff/a2d bin/dump_font.pl. 16 cells per row, two HGR
- * bytes per glyph; all 128 glyphs fit without touching auxiliary RAM. */
-unsigned char fh, fn, fr, fc;
-void __fastcall__ font_draw(unsigned char*);
-void __fastcall__ plugin_entry(const struct A2fcApi* api) {
- unsigned char h[3], cols,g;
-
- A=api; bad=0;
- if(A->selected->type!=7) return;
- f=fopn(A->full,"rb"); if(!f) { scpy(A->note,"Bad data/I/O"); return; }
- if(!readn(h,3)) goto end;
- cols=h[0]==0?1:2; fn=h[1]+1; fh=h[2];
- if((h[0]!=0 && h[0]!=128) || !fn || fn>128 || !fh || fh>22) { bad=1; goto end; }
- if(!readn(A->copy_buf,fn)) goto end;
- for(g=0;g<fn;++g) if(A->copy_buf[g]>cols*7) { bad=1; goto end; }
- hv_clear();
- for(fr=0;fr<fh;++fr) for(fc=0;fc<cols;++fc) {
-  if(!readn(A->copy_buf+128,fn)) goto end;
-  font_draw(A->copy_buf);
- }
-end: finish();
-}
+/* The offsets fontview.s reads, in the order of its FO_ constants. */
+#define OFS(field) offsetof(struct A2fcApi, field)
+const unsigned char fv_ofs[] = {
+ OFS(full), OFS(copy_buf), OFS(note), OFS(reselect), OFS(selected),
+ OFS(fopen), OFS(fread), OFS(fclose), OFS(strcpy), OFS(media_wait),
+ offsetof(struct Entry, type), offsetof(struct Entry, size)
+};

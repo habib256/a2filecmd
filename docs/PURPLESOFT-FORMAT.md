@@ -45,6 +45,10 @@ are opened read-only and never rewritten. The consent destroys all `/RAM`
 files; it does not make a picture stored on that same RAM volume safe to
 continue reading after AUX has been overwritten.
 
+The single `$F8` files of Le Chat Mauve's later ARLEQUIN interpreter
+(`AIGLE`, `MOTO`, `FE1`…) are another format again, read by the ARLEQUIN
+viewer: see [ARLEQUIN-FORMAT.md](ARLEQUIN-FORMAT.md).
+
 Pascal GLOAD/GSAVE's single 16 KB file is a separate format and is not
 accepted by this implementation. No signature or bank order is guessed for
 that variant. The original DOS images are not distributed in this repository.

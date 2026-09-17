@@ -16,7 +16,7 @@ from test_dgrview import HARNESS as DGR
 from test_extasie import HARNESS as EXT, BASTILLE
 from test_packfot import HARNESS as PACK
 from test_paint816 import HARNESS as PAINT, LADDER_PACKED, RUNS_PACKED
-from test_sample_media import HARNESS as MEDIA, FONT, PS
+from test_sample_media import HARNESS as MEDIA, PS
 
 # Poison unread input bytes too: ASan alone cannot detect reads of stale bytes
 # inside a statically allocated staging buffer.
@@ -35,8 +35,6 @@ SPECS = {
     'extasie': (EXT, [BASTILLE], []),
     'packfot': (PACK, [bytes([255, 0x33]) * 32, bytes([255, 0x55]) * 64], ['2']),
     'paint816': (PAINT, [LADDER_PACKED, RUNS_PACKED], ['2']),
-    'fontview': (MEDIA.replace('PLUGIN.c','fontview.c').replace('HELPERS',FONT),
-                 [bytes([128,127,22])+bytes([14])*128+bytes([127])*5632], ['0','7']),
     'printshop': (MEDIA.replace('PLUGIN.c','printshop.c').replace('HELPERS',PS),
                   [bytes([0x55])*572,bytes([0x33])*576], ['0','6']),
     'lz4fh': (MEDIA.replace('PLUGIN.c','lz4fh.c').replace('HELPERS',''),

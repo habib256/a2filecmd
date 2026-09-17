@@ -10,7 +10,9 @@ que les panneaux suivent, que le menu `!` se charge encore (le programme
 lit ses surcouches par un chemin absolu qui portait l'ancien nom), puis il
 est renomme WORKHD depuis un panneau ouvert dedans (l'autre branche : le
 volume est le premier composant du chemin). /RAM devient /RAMDISK et
-revient. Une image ouverte comme un dossier est refusee.
+revient. Une image ouverte comme un dossier est refusee, et un nom deja
+porte par un autre volume en ligne aussi : ProDOS l'accepterait, et deux
+volumes repondraient alors au meme chemin.
 
 pom2_playtest ne recopie pas le disque dur dans son fichier (seul le Disk II
 a l'ecriture en retour) : la preuve sur l'hote se fait sur une disquette en
@@ -50,12 +52,13 @@ def rename_to(s, p, old, new):
     Rend la ligne 22 : `done` de src/plugins/volname.c, « Volume renamed to
     /NOUVEAU » et rien d'autre, ou le rapport d'erreur."""
     menu_run(s, p, 'VOLNAME')
-    s.wait(lambda: s.has('Rename volume /%s to: %s' % (old, old)), "l'invite de VOLNAME", 20)
+    s.wait(lambda: s.has('New name for /%s: %s' % (old, old)), "l'invite de VOLNAME", 20)
     for _ in old:
         s.key(DEL, 0.1)
     s.type(new)
     s.key(RET)
-    s.wait(lambda: s.has('renamed to /' + new) or s.has('failed'), 'la fin de VOLNAME', 30)
+    s.wait(lambda: s.has('renamed to /' + new) or s.has('failed') or s.has('Name in use.'),
+           'la fin de VOLNAME', 30)
     p.stable()
     return s.rows()[22].strip()
 
@@ -92,9 +95,9 @@ def main():
             s.wait(lambda: s.has('INSIDE '), "l'image ouverte comme un dossier", 30); p.stable()
             menu_run(s, p, 'VOLNAME')
             s.wait(lambda: s.rows()[22].strip() != '', "le refus de l'image", 20); p.stable()
-            # m_ro de src/plugins/volname.c, seul sur la ligne 22.
+            # m_sel de src/plugins/volname.c, seul sur la ligne 22.
             s.ok("refuse une image ouverte comme un dossier",
-                 s.rows()[22].strip() == 'Not a ProDOS volume.', s.rows()[22].strip())
+                 s.rows()[22].strip() == 'Select a ProDOS volume.', s.rows()[22].strip())
             s.key(ESC); s.wait(lambda: s.rows()[0].startswith('/WORKHD/WORK') and s.has('TINY.PO'), 'retour dans WORK'); p.stable()
 
             # 3. Le volume d'amorcage, renomme depuis la liste des volumes.
@@ -111,9 +114,19 @@ def main():
             # 4. Escape a l'invite : rien ne bouge.
             s.select('/RENAMED')
             menu_run(s, p, 'VOLNAME')
-            s.wait(lambda: s.has('Rename volume /RENAMED to: RENAMED'), "l'invite", 20)
+            s.wait(lambda: s.has('New name for /RENAMED: RENAMED'), "l'invite", 20)
             s.key(ESC); p.stable()
-            s.ok("Escape a l'invite ne renomme rien", '/RENAMED' in volumes(s) and not s.has('Rename volume'), volumes(s))
+            s.ok("Escape a l'invite ne renomme rien", '/RENAMED' in volumes(s) and not s.has('New name for'), volumes(s))
+
+            # 4b. Le nom d'un autre volume en ligne : refuse, rien ne bouge,
+            #     et le menu ! se charge encore (le prefixe est remis).
+            s.select('/WORKPO')
+            line = rename_to(s, p, 'WORKPO', 'RENAMED')
+            s.ok("le nom d'un autre volume en ligne est refuse", line == 'Name in use.', line)
+            vols = volumes(s)
+            s.ok('les deux volumes gardent leur nom',
+                 '/WORKPO' in vols and vols.count('/RENAMED') == 1, vols)
+            s.select('/RENAMED')
 
             # 5. Depuis un panneau ouvert dans le volume : le menu `!` se charge
             #    encore (cfg_path suit), et le volume est celui du chemin.

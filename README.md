@@ -58,8 +58,8 @@ FIND combines name/content searches with type and modification-date filters (TAB
 then continues through successive pages of 20 matches. V on a text result
 shows occurrence offsets and excerpts; ESC returns to the same list.
 VERIFY handles tagged files and VOLINFO exports allocation reports and file blocks.
-DATE, TAGPAT, TXTCONV and
-WIPE also fit the floppy edition. See the [tool reference](docs/MANUAL.md#more-tools-in-the--menu).
+DATE, TAGPAT and TXTCONV
+also fit the boot floppy. See the [tool reference](docs/MANUAL.md#more-tools-in-the--menu).
 
 ## See it in action
 
@@ -82,19 +82,19 @@ readers and more disk tools. See the [changelog](CHANGELOG.md).*
 **Start with the [latest release](https://github.com/habib256/a2filecmd/releases/latest).**
 No build required. Choose the image that fits your setup:
 
-The table describes 0.8.8, the latest published release; older downloads
+The table describes 0.8.9, the latest published release; older downloads
 retain their own version numbers.
 
-| Image (0.8.8) | Contents |
+| Image (0.8.9) | Contents |
 |---|---|
-| `A2FILECMD-6502-BOOT-0.8.8.dsk` | Bootable 140 KB floppy: file manager, essential disk tools and formatter |
-| `A2FILECMD-6502-FILES-0.8.8.dsk` | Edit and read documents, find, rename, copy, synchronize and unpack files |
-| `A2FILECMD-6502-MEDIA-0.8.8.dsk` | Pictures, Mockingboard and Electric Duet music |
-| `A2FILECMD-6502-DISKTOOLS-0.8.8.dsk` | Disk images, block tools, boot repair and recovery |
-| `A2FILECMD-6502-DEVTOOLS-0.8.8.dsk` | BASIC listings, disassembly, BASIC.SYSTEM and INTBASIC.SYSTEM |
-| `A2FILECMD-6502-XL-0.8.8.2mg` | Complete bootable 32 MB image for 6502 |
-| `A2FILECMD-65C02-XL-0.8.8.2mg` | Complete bootable 32 MB image for 65C02, with optional mouse support |
-| `A2FC-MINI-DOS33-0.8.8.dsk` | A2FileCmd Mini DOS3.3: the standalone edition for a 48 KB Apple II+ |
+| `A2FILECMD-6502-BOOT-0.8.9.dsk` | Bootable 140 KB floppy: file manager, essential disk tools and formatter |
+| `A2FILECMD-6502-FILES-0.8.9.dsk` | Edit and read documents, find, rename, copy, synchronize and unpack files |
+| `A2FILECMD-6502-MEDIA-0.8.9.dsk` | Pictures, Mockingboard and Electric Duet music |
+| `A2FILECMD-6502-DISKTOOLS-0.8.9.dsk` | Disk images, block tools, boot repair and recovery |
+| `A2FILECMD-6502-DEVTOOLS-0.8.9.dsk` | BASIC listings, disassembly, BASIC.SYSTEM and INTBASIC.SYSTEM |
+| `A2FILECMD-6502-XL-0.8.9.2mg` | Complete bootable 32 MB image for 6502 |
+| `A2FILECMD-65C02-XL-0.8.9.2mg` | Complete bootable 32 MB image for 65C02, with optional mouse support |
+| `A2FC-MINI-DOS33-0.8.9.dsk` | A2FileCmd Mini DOS3.3: the standalone edition for a 48 KB Apple II+ |
 
 **All floppies use 6502 code**, including on enhanced machines. Choose the
 categories you need; every companion carries the menu and full catalog.
