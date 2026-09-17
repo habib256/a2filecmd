@@ -33,6 +33,7 @@ static const struct A2fcApi* A;
 #define v_memset (A->memset)
 #define v_strcpy (A->strcpy)
 #define v_strcmp (A->strcmp)
+#define v_confirm (A->confirm)
 #ifdef REPAIR
 #define v_prompt (A->prompt)
 #endif
@@ -48,6 +49,7 @@ void* __fastcall__ v_memcpy(void*, const void*, size_t);
 void* __fastcall__ v_memset(void*, int, size_t);
 char* __fastcall__ v_strcpy(char*, const char*);
 int __fastcall__ v_strcmp(const char*, const char*);
+unsigned char __fastcall__ v_confirm(const char*);
 #ifdef REPAIR
 unsigned char __fastcall__ v_prompt(const char*, const char*, unsigned char);
 #endif
@@ -155,9 +157,17 @@ static const char M_UNSURE[]  = "Scan incomplete: lost blocks unconfirmed, freei
 #endif
 static const char M_CANCEL[]  = "Scan cancelled: no plan from an incomplete scan.";
 static const char M_IOERR[]   = "Read error: this volume was not fully checked.";
+/* The loss the core names for the pictures (aux_warning in a2fc.c). */
+static const char M_AUXASK[]  = "ALL /RAM files will be LOST. Continue?";
+#ifndef REPAIR
+static const char M_QCLEAN[]  = "Directories consistent (quick check).";
+static const char M_MODES[]   = "Q quick (directories)  F full  ESC back";
+/* What the title adds: "" at offset 0, " - QUICK" at offset `quick`. */
+static const char M_QUICK[]   = "\0 - QUICK";
+#endif
 #ifndef REPAIR
 static const char M_MORE[]    = "Key: next / ESC: back";
-static const char M_TITLE[]   = "FIXIT %s - READ ONLY\r\n\r\n";
+static const char M_TITLE[]   = "FIXIT %s - READ ONLY%s\r\n\r\n";
 #else
 static const char M_TITLE[]   = "REPAIR %s\r\n\r\n";
 #endif
@@ -193,13 +203,15 @@ static const char M_RKEYS[]   = "\r\nF fix  ESC back";
 /* BSS: nothing zeroes it, every field is written before it is read. */
 static struct Blk io;
 static struct Onl onl;
-static unsigned int counts[CHK_COUNT];
+/* One counter per check, then two more cells the one memset of reset()
+ * empties with them: `found`, and the byte of `quick` (below). */
+static unsigned int counts[CHK_COUNT + 2];
 #ifndef REPAIR
 static struct Sample sample[SAMPLES];
 static unsigned char nsample, overflow;
 #endif
 static unsigned char complete, failed, cancelled;
-static unsigned int found;          /* every finding, counters summed as they come */
+#define found counts[CHK_COUNT]     /* every finding, counters summed as they come */
 /* The directory block and the slot of the entry being examined: what a
  * finding about that entry has to name. */
 static unsigned int curblock;
@@ -217,10 +229,49 @@ static char boot[NAME_LEN];         /* "/BOOTVOLUME", from cfg_path */
 static char nm[NAME_LEN];           /* one name of the ON_LINE table */
 #endif
 static unsigned char unit, isboot;
-/* The walker of increment 2: the 4096-block window, the block buffer, the
+/* The walker of increment 2: the claim bitmap, the block buffer, the
  * directory stack, the entry being read and the two mini-entries of an
- * extended file, eight bytes each (a type, a key, a length and an eof). */
-static unsigned char seen[512], blk[512];
+ * extended file, eight bytes each (a type, a key, a length and an eof).
+ *
+ * THE CLAIM BITMAP, one bit per block the walk reaches. Up to 4 096 blocks
+ * it is seen[] itself. Beyond, it lives in the auxiliary bank ($4000-$5FFF,
+ * src/plugins/fixit_bits.inc), and the tree is walked ONCE
+ * whatever the size of the volume, where the 4 096-block window of 0.8.8
+ * walked it once per window -- sixteen times, 69 minutes, on 32 MB. `aux`
+ * says which; `granted` that the user agreed to lose the /RAM files the
+ * auxiliary bank holds, asked once per run of the overlay. seen[] is not
+ * static: the assembly reads and writes it. REPAIR builds a corrected
+ * bitmap page in it once the claims of that page have been read. */
+unsigned char seen[512];
+unsigned char aux;
+static unsigned char granted;
+/* A quick check (FIXIT only, chosen with the auxiliary bank): the tree of
+ * directories and nothing else -- no index block, no key block of an
+ * extended file, no bitmap page. REPAIR never offers it: a directory
+ * correction written without the file claims could land in a block a
+ * file holds as data, which is what refusing XLINK prevents. 1 for a quick
+ * check, cleared by reset() with the counters. */
+#ifndef REPAIR
+#define quick (*(unsigned char*)&counts[CHK_COUNT + 1])
+#endif
+static unsigned char blk[512];
+#ifdef FIXIT_HOST
+static unsigned char auxbits[8192];
+static unsigned char bit_op(unsigned int b, unsigned char set)
+{
+    unsigned char* p = (aux ? auxbits : seen) + (b >> 3);
+    unsigned char m = 0x80 >> (b & 7), old = *p & m;
+    if (set) *p |= m;
+    return old;
+}
+#define bit_test(b) bit_op(b, 0)
+#define bit_set(b) bit_op(b, 1)
+static void bit_init(void) { v_memset(auxbits, 0, sizeof auxbits); }
+#else
+unsigned char __fastcall__ bit_test(unsigned int b);
+unsigned char __fastcall__ bit_set(unsigned int b);
+void bit_init(void);
+#endif
 static struct Frame stack[MAX_DEPTH];
 /* The entry being examined, read straight inside the directory block: the
  * copy of 39 bytes it replaces cost both the bytes and the memcpy. It is
@@ -352,13 +403,12 @@ static void finding(unsigned char id)
 {
     inc(&counts[id]); inc(&found);
 }
-static void dfinding0(unsigned char id) { if (!base) finding(id); }
-#define dfinding(id, block, slot) dfinding0(id)
+#define dfinding(id, block, slot) finding(id)
 #define vfinding(id) finding(id)
 #define bfinding(id, b) finding(id)
-#define nfinding(id, b) dfinding0(id)
-#define hfinding(id, b) dfinding0(id)
-#define efinding(id) dfinding0(id)
+#define nfinding(id, b) finding(id)
+#define hfinding(id, b) finding(id)
+#define efinding(id) finding(id)
 #else
 static void finding(unsigned char id, unsigned int block, unsigned char slot)
 {
@@ -371,24 +421,21 @@ static void finding(unsigned char id, unsigned int block, unsigned char slot)
     } else overflow = 1;
 }
 
-/* A finding about the directory tree: the same tree is walked once per
- * bitmap window, so only the first window may report it. */
-static void dfinding(unsigned char id, unsigned int block, unsigned char slot)
-{
-    if (!base) finding(id, block, slot);
-}
+/* A finding about the directory tree. The tree is walked once, so it is
+ * reported once: the name survives from the window walks of 0.8.8. */
+#define dfinding finding
 
 /* Five shorthands. Each argument of a call costs cc65 some fifteen bytes at
  * the call site, and these five shapes cover thirty of the thirty-four
  * findings: a fault of the volume header (block 2, slot 0), one that names
  * no entry, one about a directory header (slot 0), one about the entry the
- * walk is looking at, and the bitmap's own, which are per window and so
- * never go through dfinding. */
+ * walk is looking at, and the bitmap's own. A fault of the tree that names
+ * no entry is written like a bitmap one. */
 static void vfinding(unsigned char id) { finding(id, 2, 0); }
 static void bfinding(unsigned char id, unsigned int b) { finding(id | NO_SLOT_BIT, b, 0); }
-static void nfinding(unsigned char id, unsigned int b) { dfinding(id | NO_SLOT_BIT, b, 0); }
-static void hfinding(unsigned char id, unsigned int b) { dfinding(id, b, 0); }
-static void efinding(unsigned char id) { dfinding(id, curblock, curslot); }
+#define nfinding bfinding
+static void hfinding(unsigned char id, unsigned int b) { finding(id, b, 0); }
+static void efinding(unsigned char id) { finding(id, curblock, curslot); }
 #endif
 
 /* READ_BLOCK, the only MLI call that ever touches the volume's data. A
@@ -413,10 +460,12 @@ static unsigned char readblock(unsigned int b, unsigned char* dst)
  *
  * THE BUFFERS. There are two 512-byte areas in this window and no third:
  * `blk`, which the walk reads every directory block into, and `buf`
- * (api->copy_buf). `seen` is the window's claim bitmap and is live from the
- * memset of audit() to the page comparison at the end of it, so it can only
- * serve as the readback buffer where it is already dead -- the bitmap page,
- * built once from it and then written (recours 3 of section 4).
+ * (api->copy_buf). `seen` holds the claims of a volume of one bitmap page
+ * and is live from the memset of audit() to the page comparison at the end
+ * of it, so it can only serve where each byte is already dead -- the
+ * corrected bitmap page, each byte written once its eight claims are read,
+ * then written to the disk (recours 3 of section 4). The claims of a bigger
+ * volume live in the auxiliary bank, and seen[] is free for the page.
  *
  * A directory correction has no such moment: it is written in the middle of
  * the walk. What spares it a third buffer is that a directory correction is
@@ -457,15 +506,12 @@ static unsigned char restored(unsigned int b, unsigned char* w)
 /* ONE directory correction, written where the walk computed its value: `n`
  * bytes of nv[] at `p`, a place inside blk, in block b. All seven of them
  * come through here -- the plan pass only counts the block the write will
- * cost, the second pass does nothing, and only the first bitmap window
- * answers, as dfinding does, because the same tree is walked once per
- * window. `p` is an address inside blk and stays valid across the reread:
- * blk does not move. */
+ * cost, the second pass does nothing. `p` is an address inside blk and
+ * stays valid across the reread: blk does not move. */
 static void fix(unsigned int b, unsigned char* p, unsigned char n)
 {
     unsigned char i, c;
 
-    if (base) return;
     if (mode != MD_APPLY) { if (!mode) inc(&dblocks); return; }
     /* Escape, a read error, or a block that could not be put back: the
      * walk stops after the correction in hand, never inside one, and a
@@ -484,14 +530,13 @@ static void fix(unsigned int b, unsigned char* p, unsigned char n)
 
 /* What a pass must not inherit from the one before it, and nothing more:
  * `total`, `bitmap` and `pages` are written by header() before anything
- * reads them, `base` and `span` by audit() before the first claim(). Ten
+ * reads them, `base` and `span` by audit() before the bitmap pages. Ten
  * dead stores paid for the BM_LOST retraction of scan() (docs/FIXIT.md
  * section 4); tools/test_fixit.py fills the whole BSS with $AA before every
  * run to hold that claim. */
 static void reset(void)
 {
-    v_memset(counts, 0, sizeof counts);
-    found = 0;
+    v_memset(counts, 0, sizeof counts);     /* found and quick too */
 #ifndef REPAIR
     nsample = 0; overflow = 0;
 #endif
@@ -562,26 +607,20 @@ static unsigned char reserved(unsigned int b)
     return b < 2 + VOLDIR_BLOCKS || (b >= bitmap && b - bitmap < pages);
 }
 
-/* Was b already reached in this window? The walk uses it as the oracle
- * uses its set of visited directory blocks: a chain that leads back into
- * what we have already seen is a loop, not a longer chain. */
+/* Was b already reached? The walk uses it as the oracle uses its set of
+ * visited directory blocks: a chain that leads back into what we have
+ * already seen is a loop, not a longer chain. A block past the end of the
+ * volume was never reached. */
 static unsigned char claimed(unsigned int b)
 {
-    unsigned int n;
-    if (b < base || b - base >= span) return 0;
-    n = b - base;
-    return (seen[n >> 3] & (0x80 >> (n & 7))) != 0;
+    return b < total && bit_test(b);
 }
 
-/* Record that the walk reached block b. 0 means it was reached twice. */
-static unsigned char claim(unsigned int b)
+/* Record that the walk reached block b, which is on the volume: every
+ * caller has checked its range. Reached twice, it is cross-linked. */
+static void claim(unsigned int b)
 {
-    unsigned int n;
-    if (b < base || b - base >= span) return 1;     /* outside this window */
-    if (claimed(b)) { bfinding(CHK_XLINK, b); return 0; }
-    n = b - base;
-    seen[n >> 3] |= 0x80 >> (n & 7);
-    return 1;
+    if (bit_set(b)) bfinding(CHK_XLINK, b);
 }
 
 static void data(unsigned int b)
@@ -647,6 +686,9 @@ static void file(void)
         efinding(CHK_ENT_KEY);
         return;
     }
+#ifndef REPAIR
+    if (quick) return;
+#endif
     if (kind == 5) {
         /* The key block of an extended file: two mini-entries of 18 bytes,
          * at +$000 and +$100, each a storage type, a key, a block count and
@@ -838,7 +880,8 @@ static void walk(void)
         }
         if (!f->slot) {
             /* A block entered for the first time. A chain longer than the
-             * volume itself can only be a loop the window did not see. */
+             * volume itself can only be a loop: the claims name it first,
+             * this is the bound that holds whatever they say. */
             if (!budget) {
                 nfinding(CHK_DIR_LOOP, f->block); complete = 0;
                 --depth; continue;
@@ -940,7 +983,7 @@ static unsigned char freeing_ok(void)
         && !counts[CHK_FORK_STORAGE];
 }
 
-/* One bitmap page against the window just walked -- the same loop for the
+/* One bitmap page against the claims of the walk -- the same loop for the
  * three passes, because cc65 writes 450 to 600 bytes for a copy of one
  * (docs/MEMORY-BUDGETS.md). The plan pass reports a finding per wrong bit
  * and remembers which checks the page carries; the apply pass flips
@@ -959,17 +1002,19 @@ static unsigned char bitmap_page(void)
     if (mode == MD_APPLY && (!complete || ((on & 8) && !freeing_ok()))) return 0;
     hit = 0; changed = 0; n = 0;
     for (i = 0; i < 512; ++i) {
-        fb = blk[i]; sb = seen[i]; nb = fb;
+        fb = blk[i]; nb = fb;
         for (mask = 0x80; mask; mask >>= 1) {
             id = 255;
             if (n >= span) {
                 if (fb & mask) id = REP_BM_TAIL;
             } else {
-                resv = reserved(base + n);
+                b = base + n;
+                resv = reserved(b);
+                sb = bit_test(b);
                 if (fb & mask) {
                     if (resv) id = REP_BM_RESERVED;
-                    else if (sb & mask) id = REP_BM_USED_FREE;
-                } else if (!resv && !(sb & mask) && complete) id = REP_BM_LOST;
+                    else if (sb) id = REP_BM_USED_FREE;
+                } else if (!resv && !sb && complete) id = REP_BM_LOST;
             }
             if (id != 255) {
                 hit |= BIT[id];
@@ -978,6 +1023,7 @@ static unsigned char bitmap_page(void)
             }
             ++n;
         }
+        /* In the main bank this is the byte whose bits were just read. */
         if (mode == MD_APPLY) seen[i] = nb;
     }
     if (mode == MD_APPLY) {
@@ -995,7 +1041,8 @@ static unsigned char bitmap_page(void)
 }
 #endif
 
-/* The whole volume, one 4096-block window at a time. */
+/* The whole volume: the tree once, then the bitmap one page -- 4 096
+ * blocks -- at a time. A quick check stops after the tree. */
 static void audit(void)
 {
     unsigned int n;
@@ -1005,36 +1052,38 @@ static void audit(void)
 #endif
 
     base = 0;
+    v_memset(seen, 0, 512);
+    if (aux) bit_init();
+    claim(0); claim(1);
+    for (n = 0; n < pages; ++n) claim(bitmap + n);
+    walk();
+#ifndef REPAIR
+    if (quick) return;
+#endif
     do {
         span = total - base; if (span > 4096) span = 4096;
-#if !defined(FIXIT_HOST) && !defined(REPAIR)
-        v_gotoxy(0, 4); v_cprintf("Blocks %u..%u / %u    ", base, base + span - 1, total);
-#endif
-        v_memset(seen, 0, 512);
-        claim(0); claim(1);
-        for (n = 0; n < pages; ++n) claim(bitmap + n);
-        walk();
         if (stop() || !readblock(bitmap + (base >> 12), blk)) return;
 #ifdef REPAIR
         if (!bitmap_page()) return;
 #else
         /* The whole page, not just its span: past the last block of the
          * volume the padding of the last bitmap page must be zero, which
-         * is BM_TAIL. Every other window is full, so its tail is empty.
-         * A byte of the bitmap and its eight bits, rather than one counter
-         * shifted and masked 4 096 times: the two bytes are fetched once. */
+         * is BM_TAIL. Every other page is full, so its tail is empty.
+         * A byte of the bitmap and its eight bits, the claim of each block
+         * asked of the bitmap wherever it lives. */
         n = 0; b = base;
         for (i = 0; i < 512; ++i) {
-            fb = blk[i]; sb = seen[i];
+            fb = blk[i];
             for (mask = 0x80; mask; mask >>= 1) {
                 if (n >= span) {
                     if (fb & mask) bfinding(CHK_BM_TAIL, b);
                 } else {
                     resv = reserved(b);
+                    sb = bit_test(b);
                     if (fb & mask) {                /* bit set: free */
                         if (resv) bfinding(CHK_BM_RESERVED, b);
-                        else if (sb & mask) bfinding(CHK_BM_USED_FREE, b);
-                    } else if (!resv && !(sb & mask) && complete) {
+                        else if (sb) bfinding(CHK_BM_USED_FREE, b);
+                    } else if (!resv && !sb && complete) {
                         bfinding(CHK_BM_LOST, b);
                     }
                 }
@@ -1069,7 +1118,11 @@ static unsigned char nextline(void)
 static void title(void)
 {
     v_clrscr();
+#ifdef REPAIR
     v_cprintf(M_TITLE, volume);
+#else
+    v_cprintf(M_TITLE, volume, M_QUICK + quick);
+#endif
 }
 
 #ifndef REPAIR
@@ -1106,21 +1159,54 @@ static unsigned char findings_screen(void)
 }
 #endif
 
+/* A volume the auxiliary bank has to serve. FIXIT asks at every pass how
+ * deep to look, Q or F, so that R can follow a quick check with a full one;
+ * the question on the /RAM files comes once per run of the overlay. 0:
+ * Escape, or the /RAM files kept. */
+static unsigned char bigvol(void)
+{
+#ifndef REPAIR
+    unsigned char k;
+#endif
+
+    /* Slot 3, drive 2 is where ProDOS puts /RAM, and where a bigger RAM
+     * disk living in the auxiliary bank replaces it: the claims would be
+     * written over the very blocks being checked. */
+    if (unit == 0xB0) return 0;
+#ifndef REPAIR
+    title();
+    v_cputs(M_MODES);
+    for (;;) {
+        k = v_cgetc() & 0xDF;           /* upper case; Escape stays $1B */
+        if (k == KEY_ESC) return 0;
+        if (k == 'F') break;
+        if (k == 'Q') { quick = 1; break; }
+    }
+#endif
+    if (!granted) granted = v_confirm(M_AUXASK);
+    return granted;
+}
+
 /* One pass over the volume: block 2, the header revalidated, the audit.
  * R comes back through here because the disk may have been swapped, so
  * nothing of the previous pass is believed -- reset() empties the counters
- * and the sample table. 2: block 2 unreadable, 0: header refused. */
+ * and the sample table. 2: block 2 unreadable, 0: header refused, 3: the
+ * auxiliary bank refused, which a volume of more than 4 096 blocks -- more
+ * than one bitmap page -- needs; the pass then counts as cancelled. */
 static unsigned char scan(void)
 {
     reset();
     if (!readblock(2, blk)) return 2;
     if (!header()) return 0;
+    aux = pages - 1;
+    if (aux && !bigvol()) { cancelled = 1; return 3; }
     title(); v_cputs(M_SCAN);
     audit();
-    /* Completeness is a property of the whole pass, and window 1's bitmap
-     * was compared before window 2 was even walked: a cut found later takes
-     * back every BM_LOST already recorded, not only the ones after it. The
-     * sample slots they used are not given back (docs/FIXIT.md section 4). */
+    /* Completeness is a property of the whole pass, and a page of the
+     * bitmap compared before an Escape has already named its BM_LOST: a cut
+     * takes back every BM_LOST already recorded, not only the ones after
+     * it. The sample slots they used are not given back (docs/FIXIT.md
+     * section 4). */
     if (!complete) { found -= counts[CHK_BM_LOST]; counts[CHK_BM_LOST] = 0; }
     return 1;
 }
@@ -1129,14 +1215,18 @@ static unsigned char scan(void)
  * pointer walked down the chain costs more than the six call sites: cc65
  * compiles -Cl locals into BSS and stores a pointer in two instructions. */
 #ifndef REPAIR
-static void verdict(unsigned char state)
+/* What the last scan() answered. A static rather than an argument: cc65
+ * then ends each branch below with a jump to note() instead of a call
+ * followed by the pop of the argument. */
+static unsigned char state;
+static void verdict(void)
 {
     if (state == 2) note(M_NOREAD);
     else if (!state) note(M_BADHDR);
     else if (cancelled) note(M_CANCEL);
     else if (failed) note(M_IOERR);
     else if (!complete) note(M_UNSURE);
-    else if (!found) note(M_CLEAN);
+    else if (!found) note(quick ? M_QCLEAN : M_CLEAN);
     else v_sprintf(A->note, M_FOUND, found);
 }
 #endif
@@ -1147,16 +1237,16 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     const char* path;
     unsigned char* e;
     unsigned char i, len, bootunit;
-#ifndef REPAIR
-    unsigned char state;
-#endif
 
 #ifdef FIXIT_HOST
     A = api;
 #else
-    api->memcpy((void*)A, api, sizeof *A);
+    /* Up to cfg_path: the fields after it would land on the resident at
+     * $4000, and are read through `api`. */
+    api->memcpy((void*)A, api, offsetof(struct A2fcApi, ram_format));
 #endif
     buf = A->copy_buf;
+    granted = 0;
     reset();
 
     /* A real ProDOS volume only: an image or a DOS 3.3 disk opened as a
@@ -1203,16 +1293,19 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
      * changed the disk, so the header is read and judged again), ESC or
      * RETURN leaves, and any other key only redraws the list. */
     state = scan();
-    for (;;) {
+    while (state != 3) {
         if (!findings_screen()) break;
         len = v_cgetc();
         if (len == KEY_ESC || len == KEY_RETURN) break;
         if (len == 'r' || len == 'R') state = scan();
     }
-    verdict(state);
+    verdict();
 #else
     repair_main();
 #endif
+    /* The auxiliary bank was written: /RAM is rebuilt empty, as the core
+     * does on return from a picture, or its next write returns anything. */
+    if (granted) api->ram_format();
     /* A big overlay: the core rereads both panels, redraws and writes the
      * note. No read_panel, no draw_all, and nothing written to the disk. */
 }

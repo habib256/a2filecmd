@@ -185,7 +185,7 @@ $(CODE): $(SRC)/plugins/file_install.h $(SRC)/file_output.h $(SRC)/file_copy.h $
 # -- The service-table overlays ---------------------------------------------
 $(BUILD)/dosput.PLG: $(SRC)/plugins/doswrite.c
 
-$(BUILD)/%.PLG: $(SRC)/plugins/%.c $(wildcard $(SRC)/plugins/*.h) $(wildcard $(SRC)/plugins/*.s) $(wildcard $(SRC)/plugins/pt3lib/*) $(SRC)/a2fc_plugin.h sdk/plugin.cfg sdk/find.cfg sdk/pt3.cfg sdk/nibcopy.cfg Makefile | $(BUILD)
+$(BUILD)/%.PLG: $(SRC)/plugins/%.c $(wildcard $(SRC)/plugins/*.h) $(wildcard $(SRC)/plugins/*.s) $(wildcard $(SRC)/plugins/*.inc) $(wildcard $(SRC)/plugins/pt3lib/*) $(SRC)/a2fc_plugin.h sdk/plugin.cfg sdk/find.cfg sdk/pt3.cfg sdk/nibcopy.cfg Makefile | $(BUILD)
 	$(CC65BIN)cc65 -t $(TARGET) $(CCDEFS) -O -Oirs -Cl --codesize $(CODESIZE) -o $(BUILD)/$*.s $<
 	$(CC65BIN)ca65 -t $(TARGET) -o $(BUILD)/$*.o $(BUILD)/$*.s
 	@helper=; if [ -f $(SRC)/plugins/$*.s ]; then $(AS) -t $(TARGET) -o $(BUILD)/$*_svc.o $(SRC)/plugins/$*.s || exit; helper=$(BUILD)/$*_svc.o; fi; \
@@ -335,6 +335,7 @@ test: test-mini
 	python3 $(TOOLS)/test_prodos_check.py
 	python3 $(TOOLS)/test_fixit.py
 	python3 $(TOOLS)/test_repair.py
+	python3 $(TOOLS)/test_fixit_bits.py
 	python3 $(TOOLS)/fuzz_prodos.py --count 150 --seed 1
 	python3 $(TOOLS)/test_fuzz_prodos.py
 	python3 $(TOOLS)/fuzz_archives.py --count 60 --seed 1

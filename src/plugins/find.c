@@ -42,6 +42,7 @@
  * the overlay within its code and BSS budget. TAB opens type/date filters. */
 
 #include "../a2fc_plugin.h"
+#include <stddef.h>
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api);
 
@@ -501,7 +502,9 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
 {
     unsigned char i, sel;
     char* s;
-    api->memcpy(&a, api, sizeof a);
+    /* Up to cfg_path: the fields after it would land on the resident at
+     * $4000. */
+    api->memcpy(&a, api, offsetof(struct A2fcApi, ram_format));
     pan = a.panels;
     if (*a.active) ++pan;
     path = a.full;
