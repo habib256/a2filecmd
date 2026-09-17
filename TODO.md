@@ -89,6 +89,17 @@ ne sont pas clos.
 - [ ] **💾 IIgs** — premier boot (SmartPort, `$C000`) ; documenter Disk II.
 - [ ] **💾 REPAIR sur fer** — une disquette réellement abîmée : les harnais
   et les bancs POM2 couvrent chaque écriture, pas le lecteur.
+- [x] **FIXIT/REPAIR sur disque dur** — le 17 septembre 2026 : l'arbre est
+  parcouru une fois, les réclamations au-delà de 4 096 blocs vivent en AUX
+  (`src/plugins/fixit_bits.inc`, question /RAM avant, /RAM reconstruit
+  après, S3,D2 refusé) ; FIXIT propose Q (répertoires seuls) ou F. 32 Mo :
+  69 min → 2 min 15 s (complet), 8 s (rapide). `bench/bigvol.py` (S5,D2 par
+  `pom2_playtest --hd2`), `tools/test_fixit_bits.py` (sim65, deux CPU),
+  docs/FIXIT.md §4.
+- [ ] **💾 FIXIT/REPAIR en AUX sur fer** — la bascule RAMRD avec le miroir
+  du code n'est prouvée que sous POM2 (IIe enhanced et non enhanced) : un
+  disque dur de plus de 4 096 blocs sur un vrai IIe et sur un //c, /RAM
+  relu après.
 
 ## Maintenant aussi : les Services de fichiers
 

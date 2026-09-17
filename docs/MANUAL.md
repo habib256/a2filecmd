@@ -211,7 +211,7 @@ Menu categories describe tasks and do not require changing disks just to browse.
 | Tool | Operation |
 |---|---|
 | **VOLINFO** | Audit allocation and fragmentation. M = bitmap (`.` free, `#` used), F = selected file blocks, E = export to the other panel. N/P pages; ESC returns. No repairs. |
-| **FIXIT** | Check a ProDOS volume and name each fault: header, directory chains and parents, entry names, access bits, key and index pointers, file and directory counters, cross-linked, lost and wrongly marked blocks. One line per check with its count and first block; 18 lines a page, a key continues. R scans again after a disk change; ESC/Return leaves. FIXIT only reads: it writes nothing and repairs nothing. REPAIR is the tool that writes. |
+| **FIXIT** | Check a ProDOS volume and name each fault: header, directory chains and parents, entry names, access bits, key and index pointers, file and directory counters, cross-linked, lost and wrongly marked blocks. One line per check with its count and first block; 18 lines a page, a key continues. R scans again after a disk change; ESC/Return leaves. On a volume above 4,096 blocks it first asks for **Q** (quick: directories only) or **F** (full), then whether /RAM may be lost. FIXIT only reads: it writes nothing and repairs nothing. REPAIR is the tool that writes. |
 | **REPAIR** | Repair a ProDOS volume. It walks the volume itself, shows a plan -- one line per check with the number of corrections, plus what it refuses and why -- and writes nothing until `F` is pressed and the word FIX typed in full. It repairs eleven faults: in the bitmap, blocks a file uses but the bitmap calls free, reserved blocks marked free, bits set past the end of the volume and blocks nobody claims; in the directory tree, a header's file count, a file's or a subdirectory's blocks used, a subdirectory's eof, an entry's pointer back to its own directory, the three parent fields of a subdirectory header and a directory block's back-pointer. Every block written is read back and compared; a block that cannot be verified has its original rewritten and verified. The volume is then walked again and the verdict says what that second pass found. |
 | **VOLNAME** | Rename a ProDOS volume and update the affected panel/program paths. |
 | **SEARCH** | Find text in the active directory and tag matching files, ignoring case. ESC cancels a long scan and keeps tags already found. |
@@ -321,19 +321,36 @@ back if anything differs. Those originals live in RAM only: they do not
 survive a power cut, and ProDOS offers no transaction over several blocks,
 so a plan interrupted leaves part of it applied. The verdict says `repaired`
 only when the second pass comes back with nothing at all; otherwise it
-counts what it still sees. Large volumes are walked three times, once for
+counts what it still sees. Every volume is walked three times, once for
 the plan, once to write and once to check, and REPAIR shows no progress line
-while it walks.
+while it walks: about seven minutes for a full 32 MB hard disk on a 1 MHz
+machine.
 
 **FIXIT** examines a real ProDOS volume only; an image or a DOS 3.3 disk
-opened as a directory is refused, and the volume must be on line. Large
-volumes are walked once per 4,096 blocks, so they take longer. A read error,
+opened as a directory is refused, and the volume must be on line. A read error,
 a directory loop, more than 16 levels or a refused header stops the pass: it
 then says so and never reports lost blocks, which may belong to the part of
 the tree it could not reach. Only the first sixteen findings keep a block
 number; beyond that a check shows its count alone. Nothing is written, on
 the checked volume or anywhere else, and no report is exported: REPAIR is
 the tool that writes.
+
+**Volumes above 4,096 blocks.** FIXIT and REPAIR keep one bit per block of
+the whole volume, 8 KB, in auxiliary memory, where ProDOS keeps the /RAM
+disk. Before touching it they ask "ALL /RAM files will be LOST. Continue?"
+once per run; N leaves with "Scan cancelled" and nothing read beyond the
+volume header. On the way out /RAM is rebuilt empty. A volume in slot 3,
+drive 2 -- where /RAM lives, and where a larger RAM disk in auxiliary
+memory replaces it -- is never checked this way. FIXIT asks first how deep
+to look, at every pass (so R can follow a quick check with a full one):
+**Q** reads the directories and nothing else -- names, access bits,
+counters, chains, parents, key pointers, eofs -- in seconds, and its title
+ends with `- QUICK`; it does not check index blocks, extended files, block
+counts, cross-links or the bitmap, and a clean result says "Directories
+consistent (quick check)". **F** checks everything, about two minutes and a
+quarter for a full 32 MB hard disk on a 1 MHz machine. REPAIR always does
+the full walk: without the file blocks it could not tell whether a
+directory block it rewrites is also held by a file.
 
 **VOLINFO** supports ProDOS files, both forks and directories up to 16 levels.
 Large volumes take longer; incomplete counts are unconfirmed. File lists show

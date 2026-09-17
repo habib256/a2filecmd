@@ -100,9 +100,9 @@ class Seeds(unittest.TestCase):
     def test_the_seeds_carry_the_shapes_the_mutators_aim_at(self):
         big = self.seeds['big8193']
         self.assertEqual(big.total, 8193)
-        self.assertEqual(big.pages, 3, 'three bitmap pages, three windows')
+        self.assertEqual(big.pages, 3, 'three bitmap pages')
         self.assertTrue([b for b in big.data_blocks if b >= 4096],
-                        'files in the second window')
+                        'files in the second bitmap page')
         self.assertIsNotNone(big.deepest, 'one level short of DIR_DEPTH')
         fixture = self.seeds['fixture1600']
         self.assertTrue(fixture.ext_keys, 'an extended file, for FORK_STORAGE')

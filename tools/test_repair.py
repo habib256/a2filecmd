@@ -35,6 +35,7 @@ sys.path.insert(0, str(ROOT / 'tools'))
 import corrupt_prodos
 import prodos_check
 from prodos_check import BLOCK, ENTRY_LEN
+from test_prodos_check import allocated, entry, fixture, word
 
 # The user-facing messages of src/plugins/repair.c and fixit_walk.h.
 M_NOTVOL = 'Select a real ProDOS volume.'
@@ -56,6 +57,7 @@ M_DONE = 'Applied %u of %u blocks; rescan clean: repaired.'
 M_LEFT = 'Applied %u of %u blocks; rescan still reports %u findings.'
 M_NOREST = 'Block %u not restored: recover this volume before using it.'
 M_RKEYS = 'F fix  ESC back'
+M_AUXASK = 'ALL /RAM files will be LOST. Continue?'
 
 # The eleven corrections REPAIR applies: four in the bitmap, seven in the
 # directory tree.
@@ -80,8 +82,8 @@ HARNESS = r'''
 #include <string.h>
 #include <stdarg.h>
 
-#define TARGET_UNIT 0xE0
 #define BOOT_UNIT   0x50
+static unsigned char TARGET_UNIT = 0xE0;    /* S6,D2; S3,D2 is $B0 */
 
 static FILE* disk;
 static FILE* second;                /* a second volume, same session, same BSS */
@@ -100,6 +102,15 @@ static char volname[17];
 static int errwrite, failall, badread, changed;
 static const char* answer = "FIX";  /* what prompt() types, "" = Escape */
 static int prompted;
+/* A volume of more than 4 096 blocks: the answer to the question on the
+ * /RAM files, how often it was asked, how often /RAM was rebuilt. */
+static int consent = 1, confirms, rams;
+static unsigned char mock_confirm(const char* q) {
+    (void)q;
+    ++confirms;
+    return (unsigned char)consent;
+}
+static unsigned char mock_ram_format(void) { ++rams; return 1; }
 
 /* Every WRITE_BLOCK: its block, whether it succeeded, and its bytes. */
 #define MAXW 64
@@ -198,6 +209,8 @@ static void poison_bss(void) {
     memset(&onl, 0xAA, sizeof onl);
     memset(zz, 0xAA, sizeof zz);        /* the plan counters, hdr is in stack */
     memset(nv, 0xAA, sizeof nv);
+    memset(auxbits, 0xAA, sizeof auxbits);
+    granted = aux = 0xAA;
     complete = failed = cancelled = 0xAA;
     depth = partial = curslot = unit = isboot = 0xAA;
     mode = on = hurt = 0xAA;
@@ -260,6 +273,8 @@ int main(int argc, char** argv) {
         else if (opt(argv[i], "changed", &v)) changed = atoi(v);
         else if (opt(argv[i], "poison", &v)) poison = atoi(v);
         else if (opt(argv[i], "after", &v)) other = v;
+        else if (opt(argv[i], "consent", &v)) consent = atoi(v);
+        else if (opt(argv[i], "unit", &v)) TARGET_UNIT = (unsigned char)strtol(v, 0, 16);
         else return 2;
     }
     if (other[0]) {
@@ -280,6 +295,7 @@ int main(int argc, char** argv) {
     api.prompt = cap_prompt; api.input = inputbuf;
     api.panels = panels; api.active = &active; api.selected = &selected;
     api.copy_buf = scratch; api.note = note;
+    api.confirm = mock_confirm; api.ram_format = mock_ram_format;
     api.cfg_path = "/BOOTVL/A2FILE/A2FILE.CFG";
 
     for (;;) {
@@ -307,14 +323,15 @@ int main(int argc, char** argv) {
         memcpy(volname, head + 5, i);
         volname[i] = 0;
         screenn = 0; keyi = 0; keyn = 0; reads = 0; nwrite = 0; prompted = 0;
+        confirms = 0; rams = 0;
     }
 
     printf("{\"complete\":%u,\"failed\":%u,\"reads\":%d,\"unit\":%u,"
            "\"isboot\":%u,\"found\":%u,\"keys\":%d,\"applied\":%u,"
            "\"corr\":%u,\"blocks\":%u,\"dblocks\":%u,\"on\":%u,\"hurt\":%u,"
-           "\"prompted\":%d,\"note\":\"%s\",\"counts\":{",
+           "\"prompted\":%d,\"confirms\":%d,\"rams\":%d,\"note\":\"%s\",\"counts\":{",
            complete, failed, reads, unit, isboot, found, keyn, applied,
-           corr, blocks, dblocks, on, hurt, prompted, note);
+           corr, blocks, dblocks, on, hurt, prompted, confirms, rams, note);
     for (i = 0, first = 1; i < CHK_COUNT; ++i) {
         if (!counts[i]) continue;
         printf("%s\"%d\":%u", first ? "" : ",", i, counts[i]);
@@ -1053,7 +1070,7 @@ class Repair(unittest.TestCase):
         for message in (M_NOTVOL, M_NOVOL, M_BADHDR, M_NOREAD, M_CLEAN, M_CANCEL,
                         M_IOERR, M_NOPLAN, M_BOOTVOL, M_XLINK, M_PARTIAL,
                         M_NOTHING, M_CHANGED, M_ASK, M_PLANLN,
-                        M_DONE, M_LEFT, M_NOREST, M_RKEYS):
+                        M_DONE, M_LEFT, M_NOREST, M_RKEYS, M_AUXASK):
             self.assertLessEqual(len(message % ((65535,) * message.count('%u'))
                                      if '%u' in message else message), 79, message)
             self.assertIn(message, source, message)
@@ -1068,8 +1085,63 @@ class Repair(unittest.TestCase):
         self.assertEqual(source.count('static void fix('), 1,
                          'the seven directory corrections share one function')
         self.assertEqual(source.count('static unsigned char readblock'), 1)
-        for absent in ('fopen', 'fwrite(', 'ram_format', 'v_mli(0xC0'):
+        for absent in ('fopen', 'fwrite(', 'v_mli(0xC0'):
             self.assertNotIn(absent, source, 'REPAIR creates no file')
+        # The one write elsewhere: /RAM rebuilt empty once the user agreed to
+        # lose it for the claims of a big volume (test_a_big_volume_*).
+        self.assertEqual(source.count('ram_format()'), 1)
+        self.assertIn('if (granted) api->ram_format();', source)
+
+    # -- more than 4 096 blocks: the claims in the auxiliary bank ------------
+    def big_volume(self):
+        """8 193 blocks: a lost block in the second bitmap page, a seedling in
+        the third, and a root that counts five files for one."""
+        d = fixture(8193, [entry(1, b'A', key=8100)])
+        allocated(d, 8100)
+        allocated(d, 5000)                               # lost
+        word(d, 1061, 5)                                 # FILE_COUNT
+        data = bytes(d)
+        self.assertEqual({f.id for f in prodos_check.check(data).findings},
+                         {'BM_LOST', 'FILE_COUNT'}, 'the fixture')
+        return data
+
+    def test_a_big_volume_is_repaired_in_three_walks(self):
+        data = self.big_volume()
+        r, image = self.fix(data)
+        self.assertEqual(r['note'], M_DONE % (2, 2), r)
+        self.assertEqual(prodos_check.check(image).findings, [])
+        self.assertEqual((r['confirms'], r['rams']), (1, 1), r)
+        self.assertEqual([w['block'] for w in r['writes']], [2, 7], r)
+        # three walks of the root (2 is read again by the walk) and three
+        # bitmap pages; block 2 and the last block for the plan and the
+        # rescan; the guard's two rereads of block 2; the reread of block 2
+        # before its correction and the two read backs.
+        self.assertEqual(r['reads'], 3 * (4 + 3) + 2 * 2 + 2 + 3, r)
+
+    def test_keeping_the_ram_files_writes_nothing(self):
+        data = self.big_volume()
+        r, image = self.fix(data, consent=0)
+        self.assertEqual(r['note'], M_NOTHING, r)
+        self.assertEqual(image, data)
+        self.assertEqual((r['confirms'], r['rams'], r['nwrite']), (1, 0, 0), r)
+        self.assertEqual(r['reads'], 2, 'block 2 and the last block only')
+
+    def test_a_big_volume_in_slot_3_drive_2_is_never_repaired(self):
+        data = self.big_volume()
+        r, image = self.fix(data, unit='B0')
+        self.assertEqual(r['unit'], 0xB0, r)
+        self.assertEqual(r['note'], M_NOTHING, r)
+        self.assertEqual(image, data)
+        self.assertEqual((r['confirms'], r['rams'], r['nwrite']), (0, 0, 0), r)
+
+    def test_a_volume_of_one_bitmap_page_asks_nothing(self):
+        data, _ = self.corrupted('bitmap_lost')
+        r, _ = self.fix(data)
+        self.assertEqual((r['confirms'], r['rams']), (0, 0), r)
+
+    def test_a_poisoned_bss_repairs_a_big_volume_the_same(self):
+        data = self.big_volume()
+        self.assertEqual(self.fix(data, poison=1), self.fix(data))
 
 
 if __name__ == '__main__':

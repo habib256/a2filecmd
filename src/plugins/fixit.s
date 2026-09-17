@@ -22,3 +22,6 @@ _v_memset: jmp ($3FEC)
 _v_strcpy: jmp ($3FEE)
 .export _v_strcmp
 _v_strcmp: jmp ($3FF0)
+.export _v_confirm
+_v_confirm: jmp ($3FB0)
+.include "fixit_bits.inc"

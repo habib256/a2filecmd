@@ -404,7 +404,9 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
 #ifdef VOLINFO_HOST
     A = api;
 #else
-    api->memcpy((void*)A, api, sizeof *A);
+    /* Up to cfg_path: the fields after it would land on the resident at
+     * $4000. */
+    api->memcpy((void*)A, api, offsetof(struct A2fcApi, ram_format));
 #endif
     buf = A->copy_buf; pan = A->panels + *A->active;
     if (pan->fs) { v_message("Select a real ProDOS volume."); return; }

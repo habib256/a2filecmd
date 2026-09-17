@@ -314,13 +314,13 @@ DEEP_LEVELS = 15                # depths 2 to 16: one more is DIR_DEPTH
 
 
 def build_big():
-    """A hand-made 8193-block volume: three bitmap pages, files in two windows.
+    """A hand-made 8193-block volume: three bitmap pages, files in two of them.
 
-    The walker works one 4096-block window at a time and reports a fault of
-    the directory tree in the first window only, so a volume whose files do
-    not all live in window 0 is the one that exercises `base`, `span` and
-    the per-window bitmap page. 8193 blocks give a last window of one block,
-    which is also where BM_TAIL lives.
+    Past one bitmap page the walker keeps its claims in the auxiliary bank
+    and compares the bitmap page by page, so a volume whose files do not all
+    live in page 0 is the one that exercises the 16-bit claims, `base`,
+    `span` and the per-page comparison. 8193 blocks give a last page of one
+    block, which is also where BM_TAIL lives.
 
     It also carries a legal nest of fifteen subdirectories, which is depths
     2 to 16 -- the deepest ProDOS allows. DIR_DEPTH is a fault no mutation
@@ -709,19 +709,6 @@ ALLOWED = {
     # read the last block it declares. Both then walk with the same total,
     # so this is the only counter that differs.
     'HDR_TOTAL_SHORT': 'header total below the image size: the oracle alone calls it HDR_TOTAL',
-    # docs/FIXIT.md section 4, "Une bitmap complete des blocs references est
-    # ecartee": the walker keeps `seen` for one 4096-block window at a time
-    # and walks the whole tree once per window, so a block reached twice is
-    # only ever seen as reached twice in the window that HOLDS it. A loop or
-    # a cross-link whose two ends fall in different windows is therefore
-    # named in one window and not in the other, and the walk of the window
-    # that misses it goes on into whatever the pointer leads to -- where it
-    # names faults the oracle, which stopped at the loop, never reaches.
-    # It is a divergence of the report only: whichever window names it, the
-    # pass is marked incomplete, and REPAIR refuses an incomplete pass
-    # before the plan screen (`Scan incomplete: no repair.`), so nothing is
-    # written. The allowance is therefore limited to that state.
-    'WINDOW_LOOP': 'loop across bitmap windows on a volume of more than 4096 blocks, both passes incomplete',
 }
 
 
@@ -741,13 +728,9 @@ def allowance(data, oracle, oracle_counts, fixit_counts, fixit_complete):
         if not counts['HDR_TOTAL']:
             del counts['HDR_TOTAL']
         fired.append('HDR_TOTAL_SHORT')
-    # Counted only when the two really part company: a multi-window volume
-    # whose pass is incomplete usually still agrees, and an allowance that
-    # fired on every such case would say nothing.
-    if (counts != fixit_counts and total > 4096
-            and not oracle.complete and not fixit_complete):
-        fired.append('WINDOW_LOOP')
-        return counts, fired, False
+    # WINDOW_LOOP, a loop or a cross-link whose two ends fell in two bitmap
+    # windows, was allowed here until the claims covered the whole volume
+    # (fixit_bits.inc): the walker now sees what the oracle sees.
     return counts, fired, True
 
 

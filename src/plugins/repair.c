@@ -16,10 +16,9 @@
  * THE PLAN IS NOT A LIST. Nothing of what the first pass found is kept but
  * a counter per check, the number of bitmap pages each bitmap check touches
  * and the number of writes the directory corrections will cost. A corrected
- * bitmap page is recomputed, page by page, from a fresh walk: during the
- * apply pass the tree is walked once per 4 096-block window, exactly as the
- * check does, and the page is derived from seen[] and from the page on the
- * disk. A directory correction is written where the walk computes its
+ * bitmap page is recomputed, page by page, from a fresh walk: the apply
+ * pass walks the tree again, exactly as the check does, and each page is
+ * derived from the claims and from the page on the disk. A directory correction is written where the walk computes its
  * value, for the same reason. A list of blocks would be a copy of the
  * truth; the walk is the truth. The table plan[32] docs/FIXIT.md section 4
  * reserved was measured and dropped: it cost 632 bytes of code and 205 of
@@ -34,6 +33,10 @@
  * Six of FIXIT's thirty checks are not carried here, because REPAIR repairs
  * none of them and the window is full: ENT_NAME, ENT_ACCESS, FILE_EOF,
  * HDR_NAME, VOLDIR_SIZE and DIR_HEADER (docs/FIXIT.md sections 4 and 5).
+ *
+ * A volume of more than 4 096 blocks keeps its claims in the auxiliary bank
+ * (src/plugins/fixit_bits.inc): REPAIR asks once whether the /RAM files may
+ * be lost, walks the tree once per pass, and rebuilds /RAM on its way out.
  *
  * A BIG overlay, window $1B00-$3F9D (__OVLSIZE__=0x249E, as FIXIT and
  * VOLINFO): code, rodata AND bss end before the copy of the service table
@@ -119,6 +122,7 @@ static void repair_main(void)
     hurt = 0; on = 0;
     v_memset(zz, 0, sizeof zz);
     state = scan();
+    if (state == 3) { note(M_NOTHING); return; }
     if (state != 1) { note(state ? M_NOREAD : M_BADHDR); return; }
     if (cancelled || failed || !complete) {
         note(cancelled ? M_CANCEL : failed ? M_IOERR : M_NOPLAN);
@@ -162,16 +166,14 @@ static void repair_main(void)
     }
     if (!readblock(2, blk) || !same_header()) { note(M_CHANGED); return; }
 
-    /* The apply pass walks the volume again, window by window. Each
-     * directory correction is written where the walk computes its value,
-     * and each bitmap page is derived from that walk before being written.
-     * Writing a page changes nothing the walk depends on -- the walk reads
-     * the directory tree, never the bitmap -- and writing a directory block
-     * changes it the way the walk wants it, so walking then writing per
-     * window is sound. The directory blocks of window 1 therefore go out
-     * before any bitmap page: an interrupted counter fix leaves nothing
-     * worse than before, where a page that FREES blocks before a directory
-     * write is the order section 5 argues about. */
+    /* The apply pass walks the volume again, then goes through the bitmap
+     * page by page. Each directory correction is written where the walk
+     * computes its value, and each bitmap page is derived from that walk
+     * before being written. Writing a directory block changes it the way
+     * the walk wants it, and the pages come after the whole walk, so every
+     * directory block goes out before any bitmap page: an interrupted
+     * counter fix leaves nothing worse than before, where a page that FREES
+     * blocks before a directory write is the order section 5 argues about. */
     mode = MD_APPLY;
     reset();
     title(); v_cputs(M_WRITING);

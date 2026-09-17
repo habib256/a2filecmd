@@ -184,9 +184,10 @@ Règle de complétude, identique à celle de `prodos_check.py`, à deux niveaux 
   partie de l'arbre que le parcours n'a pas atteinte. `BM_USED_FREE` reste
   signalé : une référence constatée est un fait. VOLINFO le dit déjà :
   « Lost blocks (unconfirmed) ». La règle porte sur la passe **entière**,
-  pas sur la fenêtre en cours : une coupure survenue dans la fenêtre 3
-  annule aussi les `BM_LOST` des fenêtres 1 et 2, déjà inscrits (section 4,
-  « La reprise de `BM_LOST` »).
+  pas sur la page de bitmap en cours : une coupure survenue pendant la
+  comparaison de la page 3 (Échap, page illisible) annule aussi les
+  `BM_LOST` des pages 1 et 2, déjà inscrits (section 4, « La reprise de
+  `BM_LOST` »).
 - **Entrée partielle** : `ENT_KEY`, `ENT_STORAGE`, `IDX_RANGE`,
   `FORK_STORAGE`. Seule cette entrée est abandonnée : `FILE_BLOCKS` n'est pas
   émis pour elle (la cause est signalée, pas l'arithmétique qui en découle),
@@ -208,11 +209,90 @@ FIXIT n'est **pas** dans `XPLUGINS_SCRATCH` : la variante à 4 Ko de brouillon
 (`$3000-$3FFF`) obligerait code et BSS à finir avant `$3000`, soit 5 376
 octets, où le seul parcours de VOLINFO n'entre pas.
 
-Une bitmap complète des blocs référencés est écartée : 65 535 blocs font
-8 192 octets, à comparer aux 9 374 qui portent aussi le code. FIXIT garde donc
-la fenêtre de 4 096 blocs et le `seen[512]` de VOLINFO, et recommence le
-parcours du répertoire une fois par fenêtre, jusqu'à 16 fois sur un volume de
-32 Mo. C'est lent et c'est éprouvé.
+Une bitmap complète des blocs référencés est écartée **de la fenêtre** :
+65 535 blocs font 8 192 octets, à comparer aux 9 374 qui portent aussi le
+code. Jusqu'à la 0.8.8, FIXIT gardait donc la fenêtre de 4 096 blocs et le
+`seen[512]` de VOLINFO, et recommençait le parcours du répertoire une fois
+par fenêtre, jusqu'à 16 fois sur un volume de 32 Mo : 69 minutes mesurées
+sous POM2 pour 690 fichiers, trois fois plus pour REPAIR. Depuis le
+17 septembre 2026 la bitmap complète vit en mémoire **auxiliaire** et l'arbre
+est parcouru une fois (section suivante).
+
+### Un seul parcours : les réclamations en mémoire AUX (17 septembre 2026)
+
+**Le problème.** Le coût était le parcours et non les lectures : chaque
+fenêtre relisait tous les blocs de répertoire et tous les blocs d'index, et
+refaisait la boucle de 256 pointeurs de chaque bloc d'index en C. Sur
+l'image de mesure (65 535 blocs, 58 458 occupés, 690 fichiers), 16 × 907 =
+14 514 lectures et **4 157 millions de cycles**.
+
+**La forme retenue.**
+
+- Jusqu'à 4 096 blocs (une page de bitmap), rien ne change pour
+  l'utilisateur : `seen[512]` est la bitmap des réclamations.
+- Au-delà, les 65 536 bits vivent en AUX `$4000-$5FFF`. Lire la banque
+  auxiliaire (RAMRD) y va aussi chercher les instructions : les deux
+  questions `bit_test` et `bit_set` sont écrites en assembleur
+  (`src/plugins/fixit_bits.inc`, partagé par `fixit.s` et `repair.s`) et
+  leur corps est **recopié en AUX à sa propre adresse** par `bit_init`,
+  comme le cœur d'UNSHRINK. L'écriture seule (RAMWRT) n'a pas besoin de
+  copie : l'effacement des 8 Ko se fait depuis la banque principale. ALTZP
+  n'est jamais touché, les interruptions sont coupées pendant la bascule.
+- L'arbre est parcouru **une fois**, puis la bitmap du volume est comparée
+  page par page, chaque bit de réclamation demandé à `bit_test` : la copie
+  d'une page AUX dans `seen` (`bit_page`, 51 octets) a été retirée pour la
+  place ; elle coûte environ 8 millions de cycles sur 32 Mo.
+- `dfinding` n'a plus de condition : l'arbre n'est parcouru qu'une fois.
+  `claim` et `claimed` passent de 251 à 65 octets ; la divergence
+  `WINDOW_LOOP` du banc de mutations disparaît (section 7).
+- La mémoire AUX porte le disque /RAM (AGENTS.md) : **avant** la première
+  écriture, la question du cœur, « ALL /RAM files will be LOST. Continue? »,
+  par `api->confirm`, une fois par exécution de la surcouche. À la sortie,
+  si elle a été acceptée, `api->ram_format()` reconstruit /RAM vide, par le
+  pointeur reçu et non par la copie de la table. Un volume en **S3,D2**
+  (`unit` `$B0`) n'est jamais contrôlé ainsi : c'est la place de /RAM, et
+  celle d'un disque RAM plus grand logé en AUX, dont les blocs seraient
+  écrasés pendant qu'on les lit.
+- **FIXIT** demande en plus la profondeur, à chaque passe (donc aussi après
+  `R`) : `Q quick (directories)  F full  ESC back`. Le contrôle **rapide** ne
+  lit que les blocs de répertoire : ni bloc d'index, ni bloc clé d'un
+  fichier étendu, ni page de bitmap. Il ne nomme donc jamais `FILE_BLOCKS`,
+  `IDX_RANGE`, `FORK_STORAGE`, `BM_*`, ni `XLINK` hors des répertoires ; le
+  titre porte ` - QUICK` et un volume sans constat reçoit « Directories
+  consistent (quick check). ». Échap, un refus de /RAM ou S3,D2 comptent
+  comme une passe annulée (`Scan cancelled: ...`). **REPAIR** n'offre pas
+  le mode rapide : sans les réclamations des fichiers, une correction de
+  répertoire pourrait tomber dans un bloc qu'un fichier tient comme donnée,
+  exactement ce que le refus de `XLINK` empêche.
+
+**Mesures** (POM2, IIe enhanced, image de mesure en S5,D2) :
+
+| | 0.8.8 | 17 septembre 2026 |
+| --- | ---: | ---: |
+| FIXIT complet, 32 Mo | 4 157 M cycles, ≈ 69 min | **135 M**, ≈ 2 min 15 s |
+| FIXIT rapide, 32 Mo | — | **≈ 8 M**, ≈ 8 s |
+| REPAIR, une passe, 32 Mo | ≈ 4 300 M par passe | **143 M** par passe |
+
+Un million de cycles fait une seconde sur un vrai IIe. REPAIR fait trois
+passes quand il écrit (plan, application, relecture) : ≈ 7 minutes au lieu
+de 3 h 30 environ.
+
+**Place.** FIXIT n'avait que 7 octets. Ce qui l'a payé : les chaînes
+raccourcies (le choix et la question tiennent en 40 et 39 caractères), la
+ligne `Blocks %u..%u / %u` retirée (elle ne suivait plus que la comparaison
+des pages, quelques secondes), `bit_page` retiré, `verdict()` sans argument
+(chaque branche finit par un saut vers `note()`), `found` et le drapeau
+`quick` rangés dans `counts[]` que le `memset` de `reset()` efface déjà, et le
+titre qui prend `M_QUICK + quick` dans `"\0 - QUICK"` au lieu d'une
+condition. Restent **4** octets en 65C02, 6 en 6502 ; REPAIR 65 et 47.
+
+**Le débordement de la copie de table.** La table de services compte
+106 octets depuis la version 3 de l'API (`ram_format`, puis les trois
+services média) : copiée entière à `$3F9E`, elle écrasait `$4000-$4007`, le
+début du résident (le démarrage de crt0, qui ne s'exécute qu'au chargement
+— d'où l'absence de symptôme). FIXIT, REPAIR, VOLINFO et FIND ne copient
+plus que `offsetof(struct A2fcApi, ram_format)`, 98 octets ; le code ne
+change que d'une constante.
 
 Ce qu'une passe retient :
 
@@ -515,16 +595,15 @@ l'ordre :
 Trois passes, et la mémoire n'en garde aucune liste :
 
 1. **le plan** : le parcours entier, qui remplit `counts[]`, le nombre de
-   pages de bitmap que chaque contrôle touche par fenêtre de 4 096 blocs, et
+   pages de bitmap (4 096 blocs chacune) que chaque contrôle touche, et
    `dblocks`, le nombre d'écritures de répertoire que l'application fera ;
-2. **l'application** : le **même** parcours refait, fenêtre par fenêtre.
-   Chaque correction de répertoire est écrite **là où le parcours calcule sa
-   valeur** ; la page de bitmap corrigée est **recalculée** de `seen[]` et de
-   la page telle qu'elle est sur le disque. Écrire une page de bitmap ne
-   change rien de ce dont le parcours dépend — le parcours lit l'arbre des
-   répertoires, jamais la bitmap — donc parcourir puis écrire, fenêtre par
-   fenêtre, est correct ; écrire un bloc de répertoire le change, et c'est
-   voulu : le bloc corrigé reste dans `blk`, qui est le cache du parcours ;
+2. **l'application** : le **même** parcours refait, puis les pages de
+   bitmap une à une. Chaque correction de répertoire est écrite **là où le
+   parcours calcule sa valeur** ; la page de bitmap corrigée est
+   **recalculée** des réclamations et de la page telle qu'elle est sur le
+   disque. Écrire un bloc de répertoire le change, et c'est voulu : le bloc
+   corrigé reste dans `blk`, qui est le cache du parcours. (Jusqu'à la
+   0.8.8 le parcours était refait par fenêtre de 4 096 blocs, section 4.)
 3. **la seconde passe de lecture**, obligatoire : le verdict ne dit
    `repaired` que si la passe revient **sans aucun constat** — pas même un
    que REPAIR n'a jamais proposé de réparer. Sinon il compte ce qui reste.
@@ -566,13 +645,10 @@ Cinq décisions que la préparation laissait ouvertes, et pourquoi :
   reste les 512 octets entiers. La page de bitmap suit la même règle une
   fois construite **dans `seen`** au lieu de `buf` : la relecture va
   toujours dans `buf`, et `verified()` n'a plus de choix à faire.
-- **L'ordre des écritures.** Avec le parcours-puis-écriture par fenêtre,
-  l'ordre naturel est : les blocs de répertoire de la fenêtre 1 au fil du
-  parcours, puis la page de bitmap de la fenêtre 1, puis les fenêtres
-  suivantes — où plus aucune correction de répertoire n'a lieu, l'arbre
-  étant le même dans toutes les fenêtres et les corrections n'étant
-  comptées et appliquées que dans la première. Les blocs de répertoire
-  précèdent donc **toutes** les pages de bitmap. C'est l'inverse de l'ordre
+- **L'ordre des écritures.** Le parcours entier vient avant la première
+  page : les blocs de répertoire, au fil du parcours, précèdent donc
+  **toutes** les pages de bitmap (c'était déjà vrai avec les fenêtres de la
+  0.8.8, qui ne corrigeaient l'arbre que dans la première). C'est l'inverse de l'ordre
   annoncé plus bas (« d'abord les pages qui ne font que marquer utilisé »),
   et c'est assumé : une correction de compteur interrompue ne laisse rien de
   pire qu'avant, puisque la bitmap n'a pas bougé. Le risque que l'ordre
@@ -738,9 +814,14 @@ liste des volumes ou chemin -> sélection -> en-tête -> parcours -> constats
                                                 R relance   (P plan   F fix)
 ```
 
-- **Parcours** : `FIXIT /VOL - READ ONLY`, puis `Scanning... ESC cancels.` et
-  `Blocks %u..%u / %u` par fenêtre, réécrit en ligne 4. Le test d'Échap lit
-  `$C000` et acquitte par `$C010`, comme `volinfo.c`.
+- **Profondeur** (plus d'une page de bitmap) : `Q quick (directories)  F
+  full  ESC back`, puis, une fois par exécution, la question de /RAM en
+  ligne 22 (section 4, « Un seul parcours »). Le titre d'un contrôle rapide
+  finit par ` - QUICK`.
+- **Parcours** : `FIXIT /VOL - READ ONLY`, puis `Scanning... ESC cancels.`
+  (la ligne `Blocks %u..%u / %u` par fenêtre a été retirée le 17 septembre
+  2026). Le test d'Échap lit `$C000` et acquitte par `$C010`, comme
+  `volinfo.c`.
 - **Constats** : une ligne par contrôle non nul, id, compteur, premier bloc
   et, quand le constat en porte un, le rang de l'entrée ; 18 lignes par page,
   `Key: next / ESC: back`. Un contrôle dont le premier constat est tombé
@@ -990,20 +1071,20 @@ affichées, jamais cachées :
   à la taille du fichier, et rien du tout pour le parcours, qui sait lire le
   dernier bloc annoncé. Les deux marchent ensuite avec le même total : c'est
   le seul compteur qui diffère ;
-- `WINDOW_LOOP` (section 4, « Une bitmap complète des blocs référencés est
-  écartée ») : `seen` ne couvre qu'une fenêtre de 4 096 blocs et l'arbre est
-  reparcouru une fois par fenêtre, donc un bloc atteint deux fois n'est vu
-  comme tel que dans la fenêtre **qui le contient**. Une boucle ou un
-  partage dont les deux bouts tombent dans deux fenêtres différentes est
-  nommé dans l'une et manqué dans l'autre, et le parcours de celle qui le
-  manque continue dans ce que le pointeur désigne — où il nomme des fautes
-  que l'oracle, arrêté à la boucle, n'atteint jamais (jusqu'à quelques
-  milliers de `XLINK` fantômes sur un volume bouclé de 8 193 blocs). C'est
-  une divergence du **rapport** seulement : quelle que soit la fenêtre qui
-  le nomme, la passe est marquée incomplète, et REPAIR refuse une passe
-  incomplète avant l'écran de plan (`Scan incomplete: no repair.`) — rien
-  n'est écrit. L'admission est donc limitée à cet état, et le désaccord sur
-  `complete`, lui, reste une faute.
+- `WINDOW_LOOP`, **retirée le 17 septembre 2026** : les réclamations
+  couvrent désormais tout le volume (section 4, « Un seul parcours ») et le
+  parcours voit ce que voit l'oracle ; sans elle, deux campagnes de
+  15 000 cas (`--seed 7` et `--seed 11`) passent sans échec. Ce qu'elle
+  admettait : `seen` ne couvrait qu'une fenêtre de 4 096 blocs et l'arbre
+  était reparcouru une fois par fenêtre, donc un bloc atteint deux fois
+  n'était vu comme tel que dans la fenêtre **qui le contenait**. Une boucle
+  ou un partage dont les deux bouts tombaient dans deux fenêtres
+  différentes était nommé dans l'une et manqué dans l'autre, et le parcours
+  de celle qui le manquait continuait dans ce que le pointeur désignait —
+  où il nommait des fautes que l'oracle, arrêté à la boucle, n'atteint
+  jamais (jusqu'à quelques milliers de `XLINK` fantômes sur un volume bouclé
+  de 8 193 blocs). C'était une divergence du **rapport** seulement : la
+  passe était marquée incomplète et REPAIR refusait d'écrire.
 
 **Reproduire un cas** : le numéro imprimé par `FAIL case N` est la graine du
 générateur de ce cas. `python3 tools/fuzz_prodos.py --count 1 --seed S` ne

@@ -34,25 +34,25 @@
  * the eight checks of increments 4 to 7 did not fit in the 49 that were
  * left. What was measured, form by form, is in docs/FIXIT.md section 4.
  *
- * The walk is VOLINFO's, window by window of 4 096 blocks, the whole
- * directory tree once per window (docs/FIXIT.md section 4: a full bitmap
- * of referenced blocks does not fit). Where VOLINFO increments one
- * anonymous counter -- bad, counts, shared, usedfree, lost -- FIXIT names
- * the fault. Two rules of section 3 hold the report together:
+ * The walk is VOLINFO's. The directory tree is walked once; the blocks it
+ * reaches are claimed in seen[] up to 4 096 blocks, and beyond in the
+ * auxiliary bank (src/plugins/fixit_bits.inc), which a full bitmap of
+ * 65 536 blocks needs: FIXIT then asks for a quick check (the directories
+ * alone) or a full one, and whether the /RAM files may be lost, and
+ * rebuilds /RAM on its way out. The volume bitmap is compared page by page.
+ * Where VOLINFO increments one anonymous counter -- bad, counts, shared,
+ * usedfree, lost -- FIXIT names the fault. Two rules of section 3 hold the
+ * report together:
  *
  *  - an incomplete pass (IO_ERROR, DIR_DEPTH, DIR_LOOP, a next pointer
  *    out of range, HDR_BITMAP, Escape) silences BM_LOST, because a block
  *    nobody claims may live in the part of the tree we never reached --
- *    in EVERY window, so a cut found in window 3 takes back what windows 1
- *    and 2 already recorded (scan());
+ *    in EVERY bitmap page, so a cut found while page 3 is compared takes
+ *    back what pages 1 and 2 already recorded (scan());
  *    BM_USED_FREE stays, a claim we did make is a fact;
  *  - a partial entry (ENT_KEY, ENT_STORAGE, IDX_RANGE, FORK_STORAGE)
  *    abandons that entry alone: FILE_BLOCKS is not emitted for it, the
  *    pass stays complete and BM_LOST still names its orphaned blocks.
- *
- * Findings that describe the directory tree are recorded on the FIRST
- * window only (dfinding), so the sixteen passes of a 32 MB volume do not
- * report the same fault sixteen times; bitmap findings are per window.
  */
 #include "../a2fc_plugin.h"
 #include <stddef.h>

@@ -5,6 +5,12 @@ downloads and installation.
 
 ## Unreleased
 
+### FIXIT and REPAIR on hard disks
+- FIXIT and REPAIR walk a volume's directory tree once, whatever its size. Above 4,096 blocks they used to walk it once per bitmap block, sixteen times on a 32 MB disk: a full FIXIT of a 32 MB hard disk with 690 files took about 69 minutes of a 1 MHz machine, REPAIR about three times as long. The blocks reached are now recorded in auxiliary memory, one bit each: the same FIXIT takes about 2 minutes 15 seconds, a REPAIR that writes about 7 minutes (measured under POM2).
+- Auxiliary memory holds the /RAM disk: above 4,096 blocks both tools first ask "ALL /RAM files will be LOST. Continue?", once per run, and rebuild /RAM empty on the way out. A volume in slot 3, drive 2 is never checked that way. Volumes up to 4,096 blocks (floppies, 800K disks) work as before and ask nothing.
+- FIXIT asks how deep to look on such a volume: **Q**, a quick check of the directories alone (about 8 seconds on the same disk, title marked `- QUICK`), or **F**, the full check. `R` asks again. REPAIR always checks in full.
+- FIXIT, REPAIR, VOLINFO and FIND copied the whole 106-byte service table below `$4000` and overwrote the first 8 bytes of the resident, its start-up code; nothing ran them again before the next load, so nothing showed. They now copy the 98 bytes they read.
+
 ## [0.8.8] - 2026-09-17
 
 ### FIXIT and REPAIR (DISKTOOLS)

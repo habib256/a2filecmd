@@ -69,6 +69,12 @@ COMPARED = {
 CLOSED_BY = {}
 NOT_YET = set(prodos_check.CHECKS) - COMPARED
 
+# What a quick check still names: the tree of directories, read without a
+# single index block, key block of an extended file or bitmap page.
+NOT_QUICK = {'FILE_BLOCKS', 'IDX_RANGE', 'FORK_STORAGE', 'XLINK',
+             'BM_USED_FREE', 'BM_LOST', 'BM_RESERVED', 'BM_TAIL'}
+QUICK = COMPARED - NOT_QUICK
+
 # What VOLINFO's `bad` and `counts` become once the causes are named.
 STRUCTURE = ('DIR_CHAIN', 'DIR_LOOP', 'DIR_HEADER', 'DIR_DEPTH', 'ENT_STORAGE',
              'ENT_KEY', 'IDX_RANGE', 'FORK_STORAGE', 'VOLDIR_SIZE',
@@ -84,6 +90,8 @@ M_FOUND = '%u findings, nothing written: FIXIT only reads.'
 M_UNSURE = 'Scan incomplete: lost blocks unconfirmed, freeing refused.'
 M_IOERR = 'Read error: this volume was not fully checked.'
 M_CANCEL = 'Scan cancelled: no plan from an incomplete scan.'
+M_QCLEAN = 'Directories consistent (quick check).'
+M_AUXASK = 'ALL /RAM files will be LOST. Continue?'
 # The summary line of the findings screen, and the paging prompt. No P and
 # no F: those keys belong to the WRITE chantier (docs/FIXIT.md section 6).
 M_KEYS = '%u findings.  R rescan  ESC/RETURN back'
@@ -106,8 +114,8 @@ HARNESS = r'''
 #include <string.h>
 #include <stdarg.h>
 
-#define TARGET_UNIT 0xE0
 #define BOOT_UNIT   0x50
+static unsigned char TARGET_UNIT = 0xE0;    /* S6,D2; S3,D2 is $B0 */
 
 static FILE* disk;
 static FILE* swapped;               /* the disk R will find in the drive */
@@ -119,6 +127,12 @@ static int reads;
 static int online = 1;
 static int poison;
 static char volname[17];
+/* A volume of more than 4 096 blocks: the depths FIXIT is given, one per
+ * question (Q, F, or Escape; the last one repeats), and the answer to the
+ * question on the /RAM files. */
+static const char* level = "F";
+static int consent = 1;
+static int levels, confirms, rams;
 
 /* READ_BLOCK and ON_LINE only. Any other call -- a WRITE_BLOCK above all --
  * ends the process: the Read chantier writes nothing. A block past the end
@@ -157,6 +171,14 @@ static void cap_puts(const char* s) {
     if (screenn + n < sizeof screen) { memcpy(screen + screenn, s, n); screenn += n; }
 }
 static void cap_clrscr(void) { cap_puts("\f"); }
+/* The two services a volume of more than 4 096 blocks calls. The question
+ * lands on line 22 in the core, not on the overlay's screen. */
+static unsigned char mock_confirm(const char* q) {
+    (void)q;
+    ++confirms;
+    return (unsigned char)consent;
+}
+static unsigned char mock_ram_format(void) { ++rams; return 1; }
 static int cap_printf(const char* f, ...) {
     char line[256];
     va_list ap;
@@ -173,6 +195,8 @@ static int cap_printf(const char* f, ...) {
  * here, so a field read before it is written shows up as a different
  * answer -- which a fresh host process never could. */
 static void poison_bss(void) {
+    memset(auxbits, 0xAA, sizeof auxbits);
+    granted = aux = state = 0xAA;       /* quick lives in counts[] */
     memset(counts, 0xAA, sizeof counts);
     memset(sample, 0xAA, sizeof sample);
     memset(seen, 0xAA, sizeof seen);
@@ -212,6 +236,16 @@ static void print_screen(void) {
  * nothing of the one before it. */
 static char key_script(void) {
     char k = 27;
+    static const char modes[] = "F full  ESC back";
+    /* The depth question is answered on its own, so that the script of the
+     * findings screen is the same whatever the size of the volume. */
+    if (screenn >= sizeof modes - 1
+            && !memcmp(screen + screenn - (sizeof modes - 1), modes, sizeof modes - 1)) {
+        k = level[levels < (int)strlen(level) ? levels : (int)strlen(level) - 1];
+        ++levels;
+        cap_puts("\n");
+        return k;
+    }
     ++keyn;
     if (keys[keyi]) k = keys[keyi++];
     if ((k == 'R' || k == 'r') && swapped) {
@@ -246,6 +280,9 @@ int main(int argc, char** argv) {
         if (!second) return 2;
     }
     if (argc > 7 && argv[7][0]) poison = 1;
+    if (argc > 8 && argv[8][0]) level = argv[8];
+    if (argc > 9 && argv[9][0]) consent = atoi(argv[9]);
+    if (argc > 10 && argv[10][0]) TARGET_UNIT = (unsigned char)strtol(argv[10], 0, 16);
 
     /* The volume name ON_LINE answers with, straight from block 2 -- not
      * through mock_mli, so it does not count as a read of the overlay. */
@@ -260,6 +297,7 @@ int main(int argc, char** argv) {
     api.gotoxy = noop_gotoxy; api.cgetc = key_script; api.sprintf = sprintf;
     api.panels = panels; api.active = &active; api.selected = &selected;
     api.copy_buf = scratch; api.note = note;
+    api.confirm = mock_confirm; api.ram_format = mock_ram_format;
     api.cfg_path = "/BOOTVL/A2FILE/A2FILE.CFG";
 
     /* One session, one or two volumes: the second run of plugin_entry finds
@@ -290,11 +328,14 @@ int main(int argc, char** argv) {
         memcpy(volname, head + 5, i);
         volname[i] = 0;
         screenn = 0; keyi = 0; keyn = 0; reads = 0;
+        levels = 0; confirms = 0; rams = 0;
     }
 
     printf("{\"complete\":%u,\"overflow\":%u,\"failed\":%u,\"reads\":%d,"
-           "\"unit\":%u,\"isboot\":%u,\"found\":%u,\"keys\":%d,\"note\":\"%s\",\"counts\":{",
-           complete, overflow, failed, reads, unit, isboot, found, keyn, note);
+           "\"unit\":%u,\"isboot\":%u,\"found\":%u,\"keys\":%d,\"note\":\"%s\","
+           "\"levels\":%d,\"confirms\":%d,\"rams\":%d,\"counts\":{",
+           complete, overflow, failed, reads, unit, isboot, found, keyn, note,
+           levels, confirms, rams);
     for (i = 0, first = 1; i < CHK_COUNT; ++i) {
         if (!counts[i]) continue;
         printf("%s\"%s\":%u", first ? "" : ",", chkname(i), counts[i]);
@@ -638,7 +679,7 @@ class Fixit(unittest.TestCase):
         cls.tmp.cleanup()
 
     def run_fixit(self, data, mode='run', reject=None, keys='', swap=None,
-                  after=None, poison=False):
+                  after=None, poison=False, level='F', consent=True, unit=None):
         """FIXIT over `data`; the image must come back byte for byte.
 
         `keys` is what the findings screen reads, Escape once it runs out;
@@ -647,6 +688,10 @@ class Fixit(unittest.TestCase):
         process, with the BSS the first call left -- what the cached overlay
         really sees when the menu runs it again, and what a fresh host
         process can never show. `poison` fills every static with $AA first.
+        `level` answers the depth questions of a volume of more than 4 096
+        blocks, one letter each (F, Q or Escape, the last one repeating),
+        `consent` the question on the /RAM files,
+        `unit` the unit ON_LINE gives the volume, in hex (E0 by default).
         """
         path = self.work / 'disk.po'
         path.write_bytes(data)
@@ -661,6 +706,7 @@ class Fixit(unittest.TestCase):
             images.append((other, extra))
             args.append(str(other))
         args.append('X' if poison else '')
+        args += [level, '1' if consent else '0', unit or '']
         out = subprocess.check_output(args, timeout=300)
         for where, expected in images:
             self.assertEqual(where.read_bytes(), expected, 'FIXIT must never write')
@@ -763,7 +809,10 @@ class Fixit(unittest.TestCase):
         self.assertEqual(r['samples'][0], {'id': 'BM_LOST', 'block': 40, 'slot': None})
 
     def test_a_directory_fault_is_reported_once_over_every_window(self):
-        """Three windows, one broken back-pointer: one DIR_CHAIN, not three."""
+        """Three bitmap pages, one broken back-pointer: one DIR_CHAIN.
+
+        0.8.8 walked the tree once per page and had to silence the later
+        walks; the tree is now walked once, and this still holds."""
         d = fixture(8193)
         word(d, 3 * BLOCK, 999)
         r = self.run_fixit(bytes(d))
@@ -1090,11 +1139,11 @@ class Fixit(unittest.TestCase):
     def test_a_cut_in_a_later_window_takes_back_the_lost_blocks_of_the_first(self):
         """docs/FIXIT.md section 3: an incomplete pass reports no BM_LOST.
 
-        Window 1 compares its bitmap before window 2 is even walked, so a
-        cut discovered later has to take those findings back -- otherwise the
+        Page 1 of the bitmap is compared before page 2 is even read, so a cut
+        discovered later has to take those findings back -- otherwise the
         summary names lost blocks under a verdict that says they cannot be
-        trusted. The read of the second window's bitmap page fails here, as
-        a bad sector would.
+        trusted. The read of the second bitmap page fails here, as a bad
+        sector would.
         """
         d = fixture(8193)
         for b in range(40, 44):
@@ -1111,10 +1160,11 @@ class Fixit(unittest.TestCase):
     def test_a_loop_found_only_in_a_later_window_takes_them_back_too(self):
         """The same, with no read error at all: two entries, one directory.
 
-        The key block lies past the first window, so window 1 cannot see the
-        second reference and walks the directory twice; window 2 does, calls
-        it a loop and leaves the pass incomplete. The oracle, which walks the
-        whole image once, says incomplete and reports no lost block either.
+        The key block lies past the first bitmap page. 0.8.8, whose claims
+        covered one page at a time, walked the directory twice before a later
+        window called it a loop; the claims now cover the whole volume and
+        name it at once. The oracle, which walks the whole image once, says
+        incomplete and reports no lost block either.
         """
         key = 5000
         d = fixture(8193, [entry(0xD, b'D', key=key, blocks=1, eof=BLOCK),
@@ -1132,6 +1182,114 @@ class Fixit(unittest.TestCase):
                          'an incomplete pass reports no lost block, in any window')
         self.assertEqual(r['found'], sum(r['counts'].values()), r)
         self.assertEqual(r['note'], M_UNSURE, r)
+
+    # -- more than 4 096 blocks: one walk, the claims in the auxiliary bank ---
+    def big_volume(self):
+        """8 193 blocks: a sapling whose index names a block past the volume,
+        a subdirectory in the second bitmap page that miscounts its files, a
+        seedling in the second page, and one lost block."""
+        d = fixture(8193, [entry(2, b'S', key=30, blocks=2, eof=1024),
+                           entry(0xD, b'D', key=5000, blocks=1, eof=BLOCK),
+                           entry(1, b'A', key=6000)])
+        ptr(d, 30, 0, 31)
+        ptr(d, 30, 1, 9000)                              # IDX_RANGE
+        subdir_header(d, 5000, 2, 2, count=3)            # FILE_COUNT
+        for b in (30, 31, 5000, 6000, 40):               # 40 is lost
+            allocated(d, b)
+        return bytes(d)
+
+    def test_a_big_volume_is_walked_once(self):
+        """Sixteen bitmap pages, one walk: 0.8.8 walked the tree sixteen times."""
+        d = fixture(65535, [entry(1, b'A', key=40)])
+        allocated(d, 40)
+        r = self.run_fixit(bytes(d))
+        self.assertEqual(r['counts'], {}, r)
+        self.assertEqual(r['note'], M_CLEAN)
+        # block 2, the last block, the four blocks of the root, sixteen pages
+        self.assertEqual(r['reads'], 1 + 1 + 4 + 16, r)
+        self.assertEqual((r['levels'], r['confirms'], r['rams']), (1, 1, 1), r)
+
+    def test_a_big_volume_matches_the_oracle(self):
+        data = self.big_volume()
+        result = prodos_check.check(data)
+        self.assertEqual(set(oracle_counts(result.findings)),
+                         {'IDX_RANGE', 'FILE_COUNT', 'BM_LOST'}, 'the fixture')
+        r = self.run_fixit(data)
+        self.assertEqual(only_compared(r['counts']), oracle_counts(result.findings), r)
+        self.assertEqual(first_samples(r['samples']), first_findings(result.findings), r)
+        self.assertEqual(bool(r['complete']), result.complete, r)
+
+    def test_a_quick_check_reads_the_directories_and_nothing_else(self):
+        data = self.big_volume()
+        result = prodos_check.check(data)
+        full = self.run_fixit(data)
+        r = self.run_fixit(data, level='Q')
+        expect = {k: v for k, v in oracle_counts(result.findings).items() if k in QUICK}
+        self.assertEqual(r['counts'], expect, r)
+        self.assertEqual(r['complete'], 1, r)
+        self.assertIn('FIXIT /V - READ ONLY - QUICK\r\n', r['screen'])
+        self.assertNotIn('QUICK', full['screen'])
+        # the index block of the sapling and the three bitmap pages
+        self.assertEqual(r['reads'], full['reads'] - 1 - 3, (r, full))
+        self.assertEqual(r['note'], M_FOUND.replace('%u', str(r['found'])))
+
+    def test_a_clean_quick_check_says_what_it_did_not_check(self):
+        r = self.run_fixit(bytes(fixture(8193)), level='Q')
+        self.assertEqual(r['counts'], {}, r)
+        self.assertEqual(r['note'], M_QCLEAN)
+        self.assertEqual((r['levels'], r['confirms'], r['rams']), (1, 1, 1), r)
+
+    def test_escape_at_the_depth_question_reads_nothing_more(self):
+        r = self.run_fixit(bytes(fixture(8193)), level='\x1b')
+        self.assertEqual((r['levels'], r['confirms'], r['rams']), (1, 0, 0), r)
+        self.assertEqual(r['reads'], 2, 'block 2 and the last block only')
+        self.assertEqual(r['keys'], 0, 'no findings screen')
+        self.assertEqual(r['note'], M_CANCEL, r)
+
+    def test_keeping_the_ram_files_reads_nothing_more(self):
+        r = self.run_fixit(bytes(fixture(8193)), consent=False)
+        self.assertEqual((r['levels'], r['confirms'], r['rams']), (1, 1, 0), r)
+        self.assertEqual(r['reads'], 2, 'block 2 and the last block only')
+        self.assertEqual(r['keys'], 0, 'no findings screen')
+        self.assertEqual(r['note'], M_CANCEL, r)
+
+    def test_a_big_volume_in_slot_3_drive_2_is_never_checked(self):
+        """Where ProDOS puts /RAM, and a bigger RAM disk in the auxiliary
+        bank replaces it: the claims would land on the blocks being read."""
+        r = self.run_fixit(bytes(fixture(8193)), unit='B0')
+        self.assertEqual(r['unit'], 0xB0, r)
+        self.assertEqual((r['levels'], r['confirms'], r['rams']), (0, 0, 0), r)
+        self.assertEqual(r['reads'], 2, 'block 2 and the last block only')
+        self.assertEqual(r['note'], M_CANCEL, r)
+        small = self.run_fixit(self.clean, unit='B0')
+        self.assertEqual(small['note'], M_CLEAN, 'one bitmap page needs no AUX')
+
+    def test_a_volume_of_one_bitmap_page_asks_nothing(self):
+        for total in (1600, 4096):
+            with self.subTest(total=total):
+                r = self.run_fixit(bytes(fixture(total)))
+                self.assertEqual((r['levels'], r['confirms'], r['rams']), (0, 0, 0), r)
+                self.assertEqual(r['note'], M_CLEAN)
+
+    def test_r_asks_the_depth_again_and_the_ram_files_once(self):
+        r = self.run_fixit(bytes(fixture(8193)), keys='R')
+        self.assertEqual((r['levels'], r['confirms'], r['rams']), (2, 1, 1), r)
+        r = self.run_fixit(bytes(fixture(8193)), keys='R', level='Q')
+        self.assertEqual(r['note'], M_QCLEAN, r)
+
+    def test_r_onto_a_small_volume_is_a_full_check_again(self):
+        r = self.run_fixit(bytes(fixture(8193)), keys='R', swap=self.clean, level='Q')
+        self.assertEqual((r['levels'], r['confirms'], r['rams']), (1, 1, 1), r)
+        # the swapped disk answers to another name: that is all it has
+        self.assertEqual(r['counts'], {'HDR_NAME': 1}, r)
+        last = pages(r['screen'])[-1]
+        self.assertFalse(any('QUICK' in line for line in last), last)
+
+    def test_escape_after_r_still_rebuilds_ram(self):
+        """The first pass wrote the auxiliary bank; the second never starts."""
+        r = self.run_fixit(bytes(fixture(8193)), keys='R', level='F\x1b')
+        self.assertEqual((r['levels'], r['confirms'], r['rams']), (2, 1, 1), r)
+        self.assertEqual(r['note'], M_CANCEL, r)
 
     # -- the BSS a cached overlay really finds -------------------------------
     def test_a_second_run_in_the_same_session_believes_nothing_of_the_first(self):
@@ -1186,7 +1344,8 @@ class Fixit(unittest.TestCase):
 
     def test_messages_stay_inside_the_message_line(self):
         for message in (M_NOTVOL, M_NOVOL, M_BADHDR, M_NOREAD, M_CLEAN, M_FOUND,
-                        M_UNSURE, M_IOERR, M_CANCEL, M_KEYS, M_MORE):
+                        M_UNSURE, M_IOERR, M_CANCEL, M_KEYS, M_MORE, M_QCLEAN,
+                        M_AUXASK):
             self.assertLessEqual(len(message), 79, message)
             self.assertIn(message, fixit_source())
 

@@ -63,7 +63,7 @@ int main(int argc, char** argv) {
         bool mouse = false, uthernet = false, chatMauve = false;
         LeChatMauveCard::Variant lcmVariant = LeChatMauveCard::Variant::Feline;
         bool lcmVariantGiven = false;
-        std::string disk, floppy, floppy2, preset = "iie";
+        std::string disk, disk2, floppy, floppy2, preset = "iie";
         for (int i = 1; i < argc; ++i) {
             std::string a = argv[i];
             if (a == "--preset" && i + 1 < argc) {
@@ -77,6 +77,10 @@ int main(int argc, char** argv) {
             // presente des l'amorcage (le banc des disques physiques d'A2 File
             // Cmd : un vrai DOS 3.3 dans un lecteur, sans passer par /disk).
             else if (a == "--disk2" && i + 1 < argc) floppy2 = argv[++i];
+            // --hd2 : un second disque dur, lecteur 2 de la carte HDV du slot 5
+            // (S5,D2) : le volume de plus de 4 096 blocs que FIXIT et REPAIR
+            // examinent sans qu'il soit celui du programme.
+            else if (a == "--hd2" && i + 1 < argc) disk2 = argv[++i];
             // --boot 6 : amorcer la disquette plutot que le disque dur.
             else if (a == "--boot" && i + 1 < argc) bootSlot = std::stoi(argv[++i]);
             // --mouse : une AppleMouse II (HLE AppleWin) en slot 4 ;
@@ -109,6 +113,7 @@ int main(int argc, char** argv) {
         if (disk.empty() || port < 1 || port > 65535 || speed < 1) return 3;
         if (sscPort < 0 || sscPort > 65535 || sscPort == port) return 3;
         if (uthernet && preset == "iic") return 3;   // no physical slot on a //c
+        if (!disk2.empty() && preset == "iic") return 3;   // the //c bench has one HDV unit
         const bool iic = (preset == "iic");
         const bool unenh = (preset == "iie_unenh");
         EmulationController ctrl;
@@ -159,6 +164,10 @@ int main(int argc, char** argv) {
             // POM2 ne recopie les blocs modifies que si on le lui demande
             // (flushBay a l'arret, ci-dessous).
             hdv->setWriteBackEnabled(true);
+            if (!disk2.empty()) {
+                if (!hdv->loadDrive(1, disk2)) throw std::runtime_error("Cannot load HDV 2");
+                hdv->setBayWriteBack(1, true);
+            }
             diskCard = hdv.get();
             mem.slotBus().plug(5, std::move(hdv));
             if (!sscPort) mem.slotBus().plug(2, std::make_unique<MockingboardCard>(2));
@@ -263,6 +272,8 @@ int main(int argc, char** argv) {
         if (diskCard) {
             std::string err;
             if (!diskCard->flushBay(0, err)) std::cerr << "HDV write-back failed: " << err << '\n';
+            if (!disk2.empty() && !diskCard->flushBay(1, err))
+                std::cerr << "HDV 2 write-back failed: " << err << '\n';
         }
         if (spUnit && !spUnit->saveDirty()) std::cerr << "SmartPort HDV write-back failed\n";
         return 0;
