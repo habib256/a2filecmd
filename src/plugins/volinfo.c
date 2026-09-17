@@ -100,7 +100,7 @@ static unsigned char stop(void)
 {
 #ifndef VOLINFO_HOST
     if (*(volatile unsigned char*)0xC000 == (0x80 | KEY_ESC)) {
-        (void)*(volatile unsigned char*)0xC010;
+        *(volatile unsigned char*)0xC010 = 0;
         cancelled = 1;
     }
 #endif

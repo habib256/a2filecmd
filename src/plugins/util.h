@@ -26,7 +26,7 @@ static void note(const char* s) { RF(strcpy)(a.note,s); }
 static unsigned char stop(void) {
 #ifndef PLUGIN_HOST
     if (*(volatile unsigned char*)0xC000 == (KEY_ESC|0x80)) {
-        (void)*(volatile unsigned char*)0xC010; cancelled=1;
+        *(volatile unsigned char*)0xC010 = 0; cancelled=1;
     }
 #endif
     return cancelled;

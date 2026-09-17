@@ -1661,7 +1661,7 @@ static const char srch_error[] = "Read error: %s; %u tagged, stopped.";
 static unsigned char search_cancel(void)
 {
     if (*(volatile unsigned char*)0xC000 != 155) return 0;
-    (void)*(volatile unsigned char*)0xC010;
+    *(volatile unsigned char*)0xC010 = 0;
     return 1;
 }
 

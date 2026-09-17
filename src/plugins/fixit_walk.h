@@ -378,12 +378,14 @@ static unsigned char eof_over(unsigned char kind, const unsigned char* e)
 #endif
 
 /* Escape is read at the keyboard and acknowledged by the strobe, as in
- * volinfo.c; a read error stops the pass just the same. */
+ * volinfo.c; a read error stops the pass just the same. The strobe is
+ * WRITTEN: cc65 drops a read whose value is thrown away, and the Escape
+ * then stayed in the keyboard and closed the findings screen at once. */
 static unsigned char stop(void)
 {
 #ifndef FIXIT_HOST
     if (*(volatile unsigned char*)0xC000 == (0x80 | KEY_ESC)) {
-        (void)*(volatile unsigned char*)0xC010;
+        *(volatile unsigned char*)0xC010 = 0;
         cancelled = 1; complete = 0;
     }
 #endif
