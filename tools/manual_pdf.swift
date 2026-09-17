@@ -177,16 +177,20 @@ func annotation(_ text: String, _ x: CGFloat, _ top: CGFloat, _ width: CGFloat, 
     a.shouldPrint=true; toc.addAnnotation(a)
 }
 annotation("Contents",margin,510,width,18)
-var top: CGFloat = 548
+// The contents stop above the two credit lines below: with enough headings,
+// the rows are set closer together instead of running into them.
+let firstRow: CGFloat = 548, lastRow: CGFloat = 712
+let step = min(20, (lastRow-firstRow)/CGFloat(max(headings.count-1,1)))
+var top: CGFloat = firstRow
 for (title,index,_) in headings {
     annotation(title,margin,top,width-45,10)
     annotation("\(index+1)",W-margin-30,top,30,10)
-    let link = PDFAnnotation(bounds:CGRect(x:margin,y:H-top-24,width:width,height:24),forType:.link,withProperties:nil)
+    let link = PDFAnnotation(bounds:CGRect(x:margin,y:H-top-step,width:width,height:step),forType:.link,withProperties:nil)
     link.destination = PDFDestination(page:document.page(at:index)!,at:CGPoint(x:margin,y:H-margin))
-    toc.addAnnotation(link);top += 20
+    toc.addAnnotation(link);top += step
 }
-annotation("By Arnaud Verhille · GNU GPL v3",margin,750,width,9)
-annotation("English guide · Generated \(generatedDate)",margin,774,width,8)
+annotation("By Arnaud Verhille · GNU GPL v3",margin,max(top+14,750),width,9)
+annotation("English guide · Generated \(generatedDate)",margin,max(top+38,774),width,8)
 let finalURL = url.deletingPathExtension().appendingPathExtension("final.pdf")
 if !document.write(to:finalURL) { fatalError("Cannot save PDF") }
 try FileManager.default.removeItem(at:url);try FileManager.default.moveItem(at:finalURL,to:url)

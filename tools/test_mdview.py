@@ -34,6 +34,8 @@ int main(int argc, char** argv)
     fseek(host, 0, SEEK_END); sel.size = ftell(host); rewind(host);
     a.fread = rd_; a.fseek = seek__; a.gotoxy = xy_; a.cputs = puts__; a.revers = rev_;
     a.memset = memset; a.memcpy = memcpy; a.selected = &sel;
+    a.strlen = strlen; a.strcmp = strcmp;
+    if (argc > 2) strcpy(sel.name, argv[2]);
     vf = host; vbase = 0; vlen = vpos = 0;
     st.off = sniff(); st.skip = 0; st.fence = 0;
     for (page = 0; page < 200; ++page) {
@@ -64,10 +66,11 @@ class Mdview(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def pages(self, data):
+    def pages(self, data, name=''):
         f = self.p / 'in.txt'
         f.write_bytes(data)
-        out = subprocess.check_output([str(self.exe), str(f)], text=True, timeout=10)
+        out = subprocess.check_output([str(self.exe), str(f)] + ([name] if name else []),
+                                      text=True, timeout=10)
         pages = []
         for line in out.splitlines():
             if line.startswith('PAGE '):
@@ -79,6 +82,18 @@ class Mdview(unittest.TestCase):
 
     def words(self, pages):
         return ' '.join(' '.join(p['rows']) for p in pages).split()
+
+    def test_a_magic_window_document_skips_its_header(self):
+        text = 'Dear reader,\rthis is a Magic Window letter.\r'
+        body = bytes(c | 0x80 for c in text.encode())
+        head = bytes([0x8D, 0x00]) + bytes(c | 0x80 for c in b'HEADER TEXT'.ljust(64)) + bytes(190)
+        for name, words in (('LETTER.MW', text.split()), ('LETTER', None)):
+            pages = self.pages(head + body, name)
+            got = self.words(pages)
+            if words:
+                self.assertEqual(got, words)
+            else:                       # another name: the header is read as text
+                self.assertNotEqual(got[:2], text.split()[:2])
 
     def test_a_wrap_that_fills_the_page_on_the_last_character_of_a_line(self):
         """Row 21 is filled by a wrap whose carried word is the end of its

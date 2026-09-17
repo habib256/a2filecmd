@@ -119,10 +119,11 @@ static unsigned char scratch[512];      /* the readback */
 #define found ((char*)scratch)
 /* The resident provides a destination path buffer outside this overlay. */
 #define target a.other_full
-static struct {
-    unsigned char n; unsigned char* path; unsigned char access, type;
-    unsigned int aux; unsigned char storage; unsigned int date, time;
-} create;
+/* The shared exclusive CREATE, its Pascal path in the readback buffer,
+ * which is free until copying starts. */
+#define FC_PATH scratch
+#define FC_PREPARE(p) (scratch[0] = RF(strlen)(p), RF(strcpy)((char*)scratch + 1, p))
+#include "file_create.h"
 
 static const char m_dirs[]  = "ProDOS directories in both panels.";
 static const char m_same[]  = "Both panels: same directory.";
@@ -131,6 +132,7 @@ static const char m_here[]  = "%s is already in the other panel.";
 static const char m_cask[]  = "Another volume: copy %s there and remove it here?";
 static const char m_cbad[]  = "Copy failed: %s was NOT removed.";
 static const char m_vbad[]  = "Copy differs: %s was NOT removed.";
+static const char m_kept[]  = "%s NOT removed; its partial copy stays there too.";
 static const char m_del[]   = "%s copied, but not removed here.";
 static const char m_cok[]   = "%s copied to the other volume and removed here.";
 static const char m_prog[]  = "Cannot move the program's A2FILE files.";
@@ -413,6 +415,7 @@ static void copy_across(const struct Entry* e)
     unsigned long left, done = 0;
     unsigned int n, i;
     unsigned char bad = 0, err;
+    const char* m = m_cbad;
 
     if (e->type == 0x0F) { note(m_btree); return; }
     if (!join(target, other->path, e->name)) { note(m_walk); return; }
@@ -421,14 +424,8 @@ static void copy_across(const struct Entry* e)
     if (a.arg != 'B' && !RF(confirm)((char*)scratch)) { note(""); return; }
 
     /* CREATE must grant us a new entry before fopen("wb") or failure
-     * cleanup can touch this path. Use the readback buffer for its Pascal
-     * path; it is free until copying starts. */
-    scratch[0] = RF(strlen)(target);
-    RF(strcpy)((char*)scratch + 1, target);
-    create.n = 7; create.path = scratch; create.access = 0xC3;
-    create.type = e->type; create.aux = e->aux; create.storage = 1;
-    create.date = create.time = 0;
-    err = RF(mli)(0xC0, &create);
+     * cleanup can touch this path. */
+    err = newfile(target, e->type, e->aux, 1);
     if (err) {
         a.sprintf(a.note, err == 0x47 ? m_here : m_cbad, e->name);
         return;
@@ -445,9 +442,10 @@ static void copy_across(const struct Entry* e)
     }
     if (in) { if (ferror(in)) bad = 1; if (RF(fclose)(in)) bad = 1; }
     if (out) { if (ferror(out)) bad = 1; if (RF(fclose)(out)) bad = 1; }
-    if (bad) { RF(remove)(target); a.sprintf(a.note, m_cbad, e->name); return; }
+    if (bad) goto drop;
 
     /* Read both back and compare before the original is touched. */
+    m = m_vbad;
     in = RF(fopen)(a.full, "rb");
     out = RF(fopen)(target, "rb");
     if (!in || !out) bad = 1;
@@ -464,11 +462,16 @@ static void copy_across(const struct Entry* e)
      * Keep the source until both verification handles have closed too. */
     if (in) { if (ferror(in)) bad = 1; if (RF(fclose)(in)) bad = 1; }
     if (out) { if (ferror(out)) bad = 1; if (RF(fclose)(out)) bad = 1; }
-    if (bad) { RF(remove)(target); a.sprintf(a.note, m_vbad, e->name); return; }
+    if (bad) goto drop;
 
     if (RF(remove)(a.full)) { a.sprintf(a.note, m_del, e->name); return; }
     RF(strcpy)(a.reselect, e->name);
     a.sprintf(a.note, m_cok, e->name);
+    return;
+drop:
+    /* Only the entry newly created above is removed. If it stays, the note
+     * says so: a retry's exclusive CREATE refuses it, nothing overwrites it. */
+    a.sprintf(a.note, RF(remove)(target) ? m_kept : m, e->name);
 }
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api)

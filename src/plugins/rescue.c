@@ -2,6 +2,7 @@
  * zero filled and listed in a companion log. Source is never written. */
 #define UTIL_VOLUME
 #define UTIL_CREATE
+#define UTIL_DISCARD
 #define UTIL_INFO
 #include "util.h"
 void __fastcall__ plugin_entry(const struct A2fcApi*);
@@ -75,7 +76,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
         if(!out) {
             ++part;a.sprintf(a.full,disk?"%s.P%02u":"%s.REC",base,part);
             if(!join(path,other->path,a.full) || newfile(path,disk?6:a.selected->type,disk?0:a.selected->aux,1))goto fail;
-            out=a.fopen(path,"wb");if(!out){a.remove(path);goto fail;}
+            out=a.fopen(path,"wb");if(!out){if(!discard(path)){logline("INCOMPLETE: an empty part could not be removed.\r");return;}goto fail;}
         }
         if(stop())goto fail;
         left=size-offset;n=left>512?512:(unsigned int)left;block=(unsigned int)(offset>>9);

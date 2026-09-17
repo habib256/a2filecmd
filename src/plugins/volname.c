@@ -53,17 +53,16 @@ const struct PluginHeader __plugin_header = {
 struct Rn  { unsigned char n; unsigned char* old; unsigned char* new; };
 struct Pfx { unsigned char n; unsigned char* path; };
 
-static const char m_ro[]   = "Not a ProDOS volume.";
-static const char m_sel[]  = "Select a volume.";
-static const char m_to[]   = " to";
+static const char m_sel[]  = "Select a ProDOS volume.";
+static const char m_used[] = "Name in use.";
 static const char m_fail[] = "Rename volume";
 static const unsigned char nopfx = 0;       /* a zero-length Pascal path: no prefix */
 /* The two lines built in place (DATA, loaded with the file): the prompt's
  * label "Rename volume /OLD to", the last message "Volume renamed to /NEW"
  * -- kept here, not in copy_buf, which rereading the panels overwrites. */
-static char ask[]  = "Rename volume /...............   ";
+static char ask[]  = "New name for /...............";
 static char done[] = "Volume renamed to /...............";
-#define ASK_NAME  14
+#define ASK_NAME  13
 #define DONE_NAME 18
 
 /* Nothing here is read before being written at entry. */
@@ -108,7 +107,7 @@ static char* __fastcall__ scpy(char* d, const char* s) STUB(strcpy)
 static unsigned char __fastcall__ slen(const char* s) STUB(strlen)
 #pragma optimize (pop)
 
-static void __fastcall__ set_prefix(const unsigned char* p) { pfx.path = (unsigned char*)p; mli(0xC6, &pfx); }
+static unsigned char __fastcall__ set_prefix(const unsigned char* p) { pfx.path = (unsigned char*)p; return mli(0xC6, &pfx); }
 static unsigned char rename_volume(void) { return mli(0xC2, &rn); }
 
 /* If `path` starts with "/OLD" (whole component), rewrites it in place with
@@ -182,11 +181,11 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     PFX = api->copy_buf;
     pan = api->panels;
     if (*api->active) ++pan;
-    if (pan->fs) { msg(m_ro); return; }
 
-    /* "/OLD": the selected volume, or the first component of the path. */
+    /* "/OLD": the selected volume, or the first component of the path.
+     * An image or a DOS 3.3 disk has no ProDOS volume to rename. */
     p = pan->path[0] ? pan->path : api->selected->name;
-    if (*p != '/') { msg(m_sel); return; }     /* nothing, or a DOS 3.3 disk */
+    if (pan->fs || *p != '/') { msg(m_sel); return; }
     scpy(TMP, p);
     for (n = 1; (c = TMP[n]) != 0 && c != '/'; ++n) ;
     TMP[n] = 0;
@@ -194,7 +193,6 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     OLD[0] = n;
 
     scpy(ask + ASK_NAME, (char*)OLD + 1);
-    scpy(ask + ASK_NAME + n, m_to);
     if (!prompt(ask, (char*)OLD + 2, 0)) return;
     NEW[1] = '/';
     scpy((char*)NEW + 2, api->input);
@@ -204,10 +202,16 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
      * without a prefix if ProDOS refuses. */
     pfx.path = PFX;
     mli(0xC7, &pfx);
+    /* ProDOS renames a volume to the name of another volume on line, and
+     * two volumes then answer to one path. SET_PREFIX finds no volume
+     * ($45) only when "/NEW" is free; anything else refuses, the prefix
+     * put back. */
+    if (set_prefix(NEW) != 0x45) { msg(m_used); goto restore; }
     if (rename_volume()) {
         set_prefix(&nopfx);
         if (rename_volume()) {
             report_error(m_fail);
+restore:
             set_prefix(PFX);
             return;
         }

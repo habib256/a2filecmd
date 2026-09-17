@@ -122,7 +122,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
             ++depth;RF(strcpy)(sdir,source);RF(strcpy)(ddir,target);
             frames[depth].slen=RF(strlen)(sdir);frames[depth].dlen=RF(strlen)(ddir);frames[depth].pos=0;continue;
         }
-        if((raw[0]>>4)>3 || (exists && (info.storage>3 || !(info.access&0x80)))){++errors;continue;}
+        if((raw[0]>>4)>3 || (exists && (info.storage>3 || (info.access&0xC0)!=0xC0))){++errors;continue;}
         if(exists && !newer(rd16(raw+33),rd16(raw+35),info.mdate,info.mtime)){++skipped;continue;}
         meta.access=raw[30];meta.type=raw[16];meta.aux=rd16(raw+31);meta.storage=raw[0]>>4;
         meta.blocks=rd16(raw+19);meta.mdate=rd16(raw+33);meta.mtime=rd16(raw+35);

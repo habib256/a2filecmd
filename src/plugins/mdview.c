@@ -149,14 +149,22 @@ static unsigned char is_utf8(void)
     return seen;
 }
 
-/* Return the first content offset: skip only an initial UTF-8 BOM. */
-static unsigned char sniff(void)
+/* Return the first content offset: past a UTF-8 BOM or a Magic Window header. */
+static unsigned int sniff(void)
 {
     unsigned int i, n = 0;
     hibit = 0;
     seek_(0);
     if (getc_() < 0) return 0;
     if (vlen >= 3 && VBUF[0] == 0xEF && VBUF[1] == 0xBB && VBUF[2] == 0xBF) return 3;
+    /* A Magic Window document (a DOS B file named .MW): a 256-byte header
+     * starting $8D, then high-bit text (CiderPress II's notes). */
+    n = a.strlen(a.selected->name);
+    if (vlen > 256 && VBUF[0] == 0x8D && n > 3 && !a.strcmp(a.selected->name + n - 3, ".MW")) {
+        hibit = 1;
+        return 256;
+    }
+    n = 0;
     if (is_utf8()) return 0;
     for (i = 0; i < vlen; ++i) if (VBUF[i] & 0x80) ++n;
     hibit = n > vlen / 2;
@@ -298,7 +306,8 @@ static void render_page(const struct Start* st)
 void __fastcall__ plugin_entry(const struct A2fcApi* api)
 {
     struct Panel* pan;
-    unsigned char page = 0, known = 1, head = 0, start;
+    unsigned char page = 0, known = 1, head = 0;
+    unsigned int start;
     unsigned long first = 1;
     char k;
     api->memcpy(&a, api, sizeof a);

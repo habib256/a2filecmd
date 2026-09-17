@@ -34,10 +34,10 @@ PORT = 6815
 
 # Ce qui met fin a une execution de la surcouche, sur la ligne 22 (note).
 DONE = (' -> ', 'failed', 'already in that format', 'Other panel',
-        'whole tracks', 'Aborted', 'Select a .PO', 'Not a ProDOS-order 2IMG')
+        'whole tracks', 'Aborted', 'Select a disk image', 'Not a ProDOS-order 2IMG')
 
 # Les refus de src/plugins/imgconv.c, mot pour mot : ce que l'utilisateur lit.
-M_PICK  = 'Select a .PO/.HDV/.DSK/.DO/.2MG image.'
+M_PICK  = 'Select a disk image (.PO .DSK .2MG .DC...).'
 M_SAME  = 'Image already in that format.'
 M_OTHER = 'Other panel: same directory or not ProDOS.'
 M_TRACK = 'DSK needs whole tracks (8-block multiples).'
@@ -162,10 +162,10 @@ def main():
 
             # 2. ESC a la question annule.
             launch('TINY.PO', 0)
-            s.wait(lambda: s.has('ESC cancels'), 'la question du format', 20); p.stable()
+            s.wait(lambda: s.has('C) DiskCopy, ESC'), 'la question du format', 20); p.stable()
             # m_keys, sans son \1 de video inverse.
             s.ok('la question du format est celle de m_keys',
-                 s.rows()[22].strip() == 'Convert to P) .PO, D) .DSK, 2) .2MG, ESC cancels',
+                 s.rows()[22].strip() == 'Convert to P) .PO, D) .DSK, 2) .2MG, C) DiskCopy, ESC',
                  s.rows()[22].strip())
             s.key(ESC)
             # imgconv.c rend la main sans note : la ligne 22 finit vide.

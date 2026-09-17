@@ -14,7 +14,7 @@
 # every time by tools/check_layout.py, which catches the two overflows that
 # ld65 lets through silently. See docs/MANUAL.md.
 
-A2FC_VERSION = 0.8.8
+A2FC_VERSION = 0.8.9
 VOLUME       = A2FC$(CPU)
 
 # The .2mg hard disk: another volume name, to coexist with the floppy.
@@ -93,7 +93,7 @@ PLUGINS = BATCH NAV CATALOG OPEN COPY FORMAT IMAGE TEXT HEX DELETE HELP EDIT RUN
 # The floppy edition: the commands, the two viewers that cost four blocks,
 # and the disk tools. The editor, the pictures, the music, the archives and
 # the document readers stay on the hard disk (45 blocks, with BASIC.SYSTEM's
-# 21, given back to the disk tools to come -- see TODO.md, "Les deux editions").
+# 21, given back to the disk tools to come -- see docs/MEMORY-BUDGETS.md).
 # COMPARE also carries the S (sort) and M (mark differences) commands.
 PLUGINS_FLOPPY = BATCH NAV CATALOG OPEN COPY FORMAT HELP TEXT HEX DELETE RUN ATTR MENU DISKIMG IMGFS COMPARE
 # The service-table overlays: src/plugins/NAME.c, each compiled and linked
@@ -103,8 +103,8 @@ PLUGINS_FLOPPY = BATCH NAV CATALOG OPEN COPY FORMAT HELP TEXT HEX DELETE RUN ATT
 # A header written `PLUGIN_MAGIC, OVERLAY_BIG,` (one line) is linked as a big
 # overlay ($1B00-$3FFF); `PLUGIN_MAGIC, 0,` as a small one.
 XPLUGINS = $(sort $(basename $(notdir $(wildcard $(SRC)/plugins/*.c))))
-# The ones that also go on the floppy edition (TODO.md, the floppy budget).
-XPLUGINS_FLOPPY = $(filter txtconv date verify tagpat drivespd wipe,$(XPLUGINS))
+# The ones that also go on the floppy edition (tools/check_images.py keeps BOOT's free blocks).
+XPLUGINS_FLOPPY = $(filter txtconv date verify tagpat drivespd,$(XPLUGINS))
 # The cc65 target library for the plugin link: the one of the machine's cc65
 # for apple2enh, the one of cc65 master for apple2.
 ifeq ($(ARCH),6502)
@@ -121,7 +121,7 @@ XPLUGINS_SCRATCH = music bootblk find goto mdview wipe dgrview fixtypes
 # sets the tags aside and rereads the panels) but their CODE must still stop
 # before $2000: they are linked with the small window, which makes ld65
 # enforce that boundary instead of leaving it to luck.
-XPLUGINS_HGR = purple extasie packfot paint816 fontview printshop lz4fh
+XPLUGINS_HGR = purple extasie arlequin macpaint shapes packfot paint816 fontview printshop lz4fh
 # DUET stages its song at $2400 (7 KB, the largest known Electric Duet
 # files are 5.5 KB): code and BSS are linked into $1B00-$23FF.
 XPLG = $(patsubst %,$(BUILD)/%.PLG,$(XPLUGINS))
@@ -265,12 +265,14 @@ endif
 # XL: the complete edition for the selected CPU.
 $(TWOMG): $(STAGE_DEPS) $(XPLG) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS $(DATA)/README.TXT \
        $(TOOLS)/mkdemo.py $(TOOLS)/po22mg.py \
-       $(TOOLS)/mkshk.py $(TOOLS)/mkbny.py $(TOOLS)/mkdos33.py $(wildcard $(DATA)/IMGHGR/*) | $(DIST)
+       $(TOOLS)/mkshk.py $(TOOLS)/mkbny.py $(TOOLS)/mkdos33.py $(wildcard $(DATA)/IMGHGR/*) \
+       $(shell find $(DATA)/CP2 -type f) | $(DIST)
 	$(call stage,$(PLUGINS),$(XPLUGINS))
 	cp $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS $(STAGE)/
 	mkdir -p $(STAGE)/DEMO
 	cp $(DATA)/README.TXT $(STAGE)/DEMO/README.TXT
 	python3 $(TOOLS)/mkdemo.py $(STAGE)/DEMO
+	cp -R $(DATA)/CP2 $(STAGE)/DEMO/CIDERPRESS
 	cp -R $(DATA)/IMGHGR $(STAGE)/IMGHGR
 	python3 $(TOOLS)/mkvolume.py $(STAGE) $(HDV) --volume $(VOLUME_HD) \
 	  --boot $(DATA)/prodos_boot.tmpl --blocks 65535
@@ -375,6 +377,24 @@ test: test-mini
 	python3 $(TOOLS)/test_purple.py
 	python3 $(TOOLS)/test_paint816.py
 	python3 $(TOOLS)/test_extasie.py
+	python3 $(TOOLS)/arlequin_ref.py --selftest
+	python3 $(TOOLS)/test_arlequin.py
+	python3 $(TOOLS)/macpaint_ref.py --selftest
+	python3 $(TOOLS)/test_macpaint.py
+	python3 $(TOOLS)/awdata_ref.py --selftest
+	python3 $(TOOLS)/test_awdata.py
+	python3 $(TOOLS)/dc42.py --selftest
+	python3 $(TOOLS)/test_dc42.py
+	python3 $(TOOLS)/unwrap_ref.py --selftest
+	python3 $(TOOLS)/test_unwrap.py
+	python3 $(TOOLS)/binscii_ref.py --selftest
+	python3 $(TOOLS)/test_sciibin.py
+	python3 $(TOOLS)/shapes_ref.py --selftest
+	python3 $(TOOLS)/test_shapes.py
+	python3 $(TOOLS)/test_fontview.py
+	python3 $(TOOLS)/busbasic_ref.py --selftest
+	python3 $(TOOLS)/squeeze_ref.py --selftest
+	python3 $(TOOLS)/test_unsq.py
 	python3 $(TOOLS)/test_intbasic.py
 	python3 $(TOOLS)/test_find.py
 	python3 $(TOOLS)/test_mdview.py

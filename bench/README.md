@@ -6,7 +6,7 @@ livre pour cela : les adresses des variables observees viennent de la table de
 symboles du lien (`build/a2fc.lbl`), et l'ecran est lu la ou l'Apple II le
 range, en `$400-$7FF`.
 
-Les bancs disquette utilisent l’image interne `dist/A2FILECMD-6502-BOOT-0.8.8.po`.
+Les bancs disquette utilisent l’image interne `dist/A2FILECMD-6502-BOOT-0.8.9.po`.
 La conversion DSK publiée conserve les mêmes blocs ProDOS ; les `.po` ne sont
 pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 
@@ -29,6 +29,8 @@ pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 | `volinfo.py` | diagnostic ProDOS en lecture seule, disquette saine/corrompue et volume de 32 Mo, carte paginée et retour avec pile préservée, sur les deux processeurs |
 | `fixit.py` | FIXIT, chantier Read (increments 1 a 8) : volume jetable sain controle depuis la liste des volumes puis depuis un dossier, ecran « READ ONLY » sans aucun constat, ligne de resume « 0 findings.  R rescan  ESC/RETURN back » sans aucune touche du chantier WRITE, et verdict « consistent » ; puis la meme disquette cassee sur l'hote en dix-sept endroits, qui remplit une page de 18 lignes : chaque identifiant de l'oracle est nomme avec son compteur, son premier bloc et son premier rang, « more findings than the table holds » clot les seize echantillons, « Key: next / ESC: back » attend une touche, `R` refait le parcours et rend exactement les memes lignes, et le verdict compte les constats sans rien ecrire ; Echap avec resident et pile C preserves, les deux disquettes relues octet pour octet et la saine toujours saine pour `tools/prodos_check.py`, sur les deux processeurs |
 | `repair.py` | REPAIR, chantier WRITE (increments 9 a 15) : quatre disquettes jetables, chacune son amorcage, les deux moities de l'oracle hote recoupees avant chacun. (1) seule la bitmap est fausse (`bitmap_lost` + `bitmap_free_used` + `bitmap_reserved_free`) : l'ecran de plan nomme chaque controle avec son compteur, la ligne « Plan: 3 corrections over 1 blocks. Nothing written yet. » et les seules touches « F fix  ESC back » ; `F` puis le mot FIX tape en entier rendent « Applied 1 of 1 blocks; rescan clean: repaired. », et sur l'hote la disquette est saine pour `tools/prodos_check.py` avec le SEUL bloc de bitmap modifie. (2) le repertoire ET la bitmap (`file_count_high` + `dir_eof_wrong` + `parent_wrong` + `bitmap_lost`) : les quatre controles au plan, « Plan: 4 corrections over 4 blocks. », « Applied 4 of 4 blocks; rescan clean: repaired. », disquette saine sur l'hote et seuls les blocs que l'oracle nomme modifies. (3) blocs partages : refus (« Cross-linked blocks: ... »). (4) Echap a la question. Les disquettes refusees relues octet pour octet, resident et pile C preserves, sur les deux processeurs |
+| `macpaint.py` | MACPAINT, les documents MacPaint synthetiques (`tools/macpaint_ref.py`) : refus d'un binaire, d'un flux coupe et d'une version d'en-tete inconnue, AUX intacte ; Retour sur un `.MAC`, les deux plans relus a chaque position du defilement (Bas jusqu'a la butee 528, Haut jusqu'a 0), « /RAM rebuilt. », curseur, resident et pile C ; un `.PNTG` avec en-tete MacBinary par le menu. 20 controles sur les deux processeurs |
+| `arlequin.py` | ARLEQUIN, les images `$F8` d'ARLEQUIN 1.1 (Le Chat Mauve), sur une Feline (`Pom2(chatmauve='feline')`) : refus d'un binaire, d'un `$F8` sans signature et d'un flux coupe, AUX intacte apres chacun ; une image plein ecran et une fenetre 9 x 81 synthetiques (`tools/arlequin_ref.py`), et AIGLE et FE1 du constructeur si `/GISTDATA` est la : les deux plans relus contre la reference (noir compris autour d'une fenetre), « /RAM rebuilt. », curseur, resident et pile C ; Retour ouvre ARLEQUIN. 21 controles sur les deux processeurs |
 | `bigvol.py` | FIXIT et REPAIR au-dela d'une page de bitmap : un volume jetable de 20 000 blocs en S5,D2 (`pom2_playtest --hd2`, `Pom2(hd2=...)`), casse sur l'hote (FILE_COUNT d'un sous-dossier lointain, un bloc perdu dans la quatrieme page). Echap a la question de profondeur et N a celle de /RAM : « Scan cancelled », motif en AUX `$4000` intact ; Q puis Y : controle rapide titre « - QUICK », FILE_COUNT seul, reclamations en AUX ; R puis F sans nouvelle question /RAM : FILE_COUNT et BM_LOST aux blocs de l'oracle ; REPAIR (question /RAM reposee) : « Plan: 2 corrections over 2 blocks », FIX, « repaired » ; sur l'hote le volume est sain et seuls la cle du sous-dossier et la page de bitmap ont bouge. Cycles des deux controles affiches ; resident, pile C et /RAM verifies, sur les deux processeurs (32 controles) |
 | `menu.py` | Catégories complètes, ordre alphabétique, flèches ±6, Échap, conservation AUX, questions et saisies en inverse |
 | `blocktools.py` | VERIFY par lots avec fichier illisible, rapport VOLINFO relu sur la disquette éjectée, refus d’écrasement, BLKVIEW, recherche traversant les blocs, extraction exacte et bornes de navigation |
@@ -37,6 +39,11 @@ pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 | `hexnav.py` | HEX : offset fichier sur sept chiffres, G/R/E, pages avant/arrière, annulation, hors fichier, dernier octet, fichier vide et pile |
 | `textrestart.py` | TEXT : pages, R vers le début, retour borné et sélection restaurée |
 | `restart_readers.py` | BASLIST et AppleWorks : page suivante puis R vers la première page |
+| `shapes.py` | SHAPES : une table refusee, une table synthetique par Retour (pages 1 et 2, Espace en fin, B, ligne d'etat), les trois tables de CiderPress II par le menu, chaque page HGR comparee a `tools/shapes_ref.py` ; curseur, resident, pile C et /RAM intacts |
+| `squeeze.py` | UNSQ par le menu : un .QQ et une archive ACU synthetiques (dossier saute, nom deja pris compte), un .QQ abime qui ne laisse rien, le .QQ de l'archive Binary II et IconEd.ACU de CiderPress II quand le cache les a ; les fichiers relus sur un second disque dur contre `tools/squeeze_ref.py`. Puis T sur un programme Business BASIC ($09) et TIMESET (cache local) : l'ecran contre `tools/busbasic_ref.py`. Port 6859 |
+| `wrappers.py` | UNWRAP et SCIIBIN : les trois AppleSingle de `data/CP2` par Retour, un MacBinary par le menu, un nom deja pris refuse ; Z-Link en cinq parties BinSCII, SHRINKIT refuse car deja present, une deuxieme partie seule refusee ; les fichiers relus sur un second disque dur contre `tools/unwrap_ref.py` et `tools/binscii_ref.py` |
+| `diskcopy.py` | une image DiskCopy 4.2 de 800 Ko ouverte comme dossier (resident) et un fichier copie hors d'elle ; une image DiskCopy Mac refusee ; IMGCONV .DC -> .PO, .PO -> .DC (octet pour octet `tools/dc42.py`, type `$E0/$8005`) et le refus d'une somme fausse, sorties sur un second disque dur (`hd2`). 11 controles sur les deux processeurs |
+| `awdata.py` | AWDATA : un tableur synthetique de 23 nombres relus contre le FOUT de reference (`tools/awdata_ref.py`, 9e chiffre a une unite pres), la formule de la page 2, (end), B et Echap, curseur, resident et pile C ; PRESIDENTS (4 fiches, barre, R) par le menu et les 16 pages de MATH.QUIZ par Retour, de `data/CP2`. 40 controles sur les deux processeurs |
 | `mdview.py` | Markdown, repliement, CRLF/bit haut, document de 67 pages, historique circulaire de 64 pages, ligne de 22 Ko sans saut (280 lignes écran), UTF-8 majoritaire/BOM/caractère coupé à 2 Ko, blocs de code, retour et reprise par R |
 | `tree.py` | parcours de la racine XL jusqu’au résultat complet, totaux exacts comparés à l’image et pile préservée |
 | `memory.py` | le creux maximal de la pile C, mesure en faisant travailler le programme |
@@ -49,7 +56,7 @@ pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 
 ## Les deux editions
 
-`dist/A2FILECMD-6502-BOOT-0.8.8.po` est l'**edition disquette**, construite en 6502
+`dist/A2FILECMD-6502-BOOT-0.8.9.po` est l'**edition disquette**, construite en 6502
 (`build-6502/`) avec le gestionnaire et les outils disque seulement : c'est
 elle que les bancs amorcent par defaut, et sa table de symboles est prise
 dans `build-6502/` sans rien dire. `run.py` y saute la section souris, et les
@@ -65,7 +72,7 @@ MUSIC est chargé depuis une copie de MEDIA en lecteur 2. Les bancs AWP,
 Binary II et ShrinkIt utilisent `archive_support.py` pour substituer leur
 lecteur à FORMAT/DISKIMG dans une copie jetable de cette disquette : tous
 les outils ne tiennent plus ensemble sur 140 Ko.
-`hd.py` amorce `dist/A2FILECMD-65C02-XL-0.8.8.2mg` ;
+`hd.py` amorce `dist/A2FILECMD-65C02-XL-0.8.9.2mg` ;
 `A2FC_CPU=6502 A2FC_PRESET=iie_unenh python3 bench/hd.py` teste la XL 6502.
 `run.py --xl 65C02` et `run.py --xl 6502` jouent la session complète sur
 la XL publiée de ce processeur (la 6502 sur le IIe non enhanced, sans
@@ -141,7 +148,7 @@ donne un Apple //c (ROM 32 Ko) : son lecteur integre est le Disk II du slot
 6, donc `--boot 6` amorce la disquette comme sur le //e, et le disque dur est
 une unite SmartPort sur le port arriere, servie par le firmware du //c en
 slot 5 (pas de carte, pas de Mockingboard). Les deux presets amorcent
-`dist/A2FILECMD-6502-BOOT-0.8.8.po` jusqu'aux panneaux. `Pom2(..., floppy2=...)` met une
+`dist/A2FILECMD-6502-BOOT-0.8.9.po` jusqu'aux panneaux. `Pom2(..., floppy2=...)` met une
 seconde disquette dans le lecteur 2 du meme Disk II des l'amorcage
 (`pom2_playtest --disk2`) : un vrai DOS 3.3 dans un lecteur, sans passer par
 `/disk` -- ce que le banc des disques physiques attendait.

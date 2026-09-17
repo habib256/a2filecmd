@@ -1,5 +1,6 @@
 /* Shared service-overlay helpers. No resident addresses or writable source disks. */
 #include "../a2fc_plugin.h"
+#include <stddef.h>
 #if defined(UTIL_FIXED_API) && !defined(PLUGIN_HOST)
 #define a (*(struct A2fcApi*)0x3F9E)
 #else
@@ -19,7 +20,14 @@ static unsigned int rd16(const unsigned char* p) { return p[0] | ((unsigned int)
 static unsigned long rd24(const unsigned char* p) { return rd16(p) | ((unsigned long)p[2]<<16); }
 static void wr16(unsigned char* p, unsigned int v) { p[0]=v; p[1]=v>>8; }
 static void init(const struct A2fcApi* api) {
-    api->memcpy(&a,api,sizeof a); buf=a.copy_buf; cancelled=0;
+#ifdef UTIL_FIXED_API
+    /* Up to cfg_path: at $3F9E the fields after it would land on the
+     * resident at $4000, and no util.h overlay reads them. */
+    api->memcpy(&a,api,offsetof(struct A2fcApi,ram_format));
+#else
+    api->memcpy(&a,api,sizeof a);
+#endif
+    buf=a.copy_buf; cancelled=0;
     pan=a.panels+*a.active; other=a.panels+!(*a.active);
 }
 static void note(const char* s) { RF(strcpy)(a.note,s); }
@@ -52,6 +60,17 @@ static unsigned char getinfo(const char* path) {
 #define FC_PATH pas
 #define FC_PREPARE(path) ppath(path)
 #include "file_create.h"
+#endif
+#ifdef UTIL_DISCARD
+/* Removes an entry this run created and still owns (newfile returned zero).
+ * On failure the note says the incomplete file stays and nothing may call
+ * it removed: the caller stops, and a retry's exclusive creation cannot
+ * touch it. The name is the one the user just gave or saw. 1: it is gone. */
+static unsigned char discard(const char* path) {
+    if (!RF(remove)(path)) return 1;
+    note("Cleanup failed: the incomplete file stays.");
+    return 0;
+}
 #endif
 #ifdef UTIL_VOLUME
 struct Block { unsigned char n,unit; unsigned char* buffer; unsigned int block; };

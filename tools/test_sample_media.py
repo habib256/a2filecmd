@@ -90,13 +90,6 @@ int main(int argc,char**argv) {
  return shown?0:2;
 }
 '''
-FONT=r'''
-void __fastcall__ font_draw(unsigned char* b){
- unsigned int g,w;
- for(g=0;g<fn;++g){w=b[g]>fc*7?b[g]-fc*7:0;if(w>7)w=7;
- hv_row((g/16)*(fh+2)+fr)[4+(g%16)*2+fc]=b[128+g]&((1<<w)-1);}
-}
-'''
 PS=r'''
 void __fastcall__ ps_draw(unsigned char* b){
  unsigned int x,y,px;
@@ -111,7 +104,8 @@ class SampleMedia(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp=tempfile.TemporaryDirectory(prefix='a2fc-media-');cls.root=Path(cls.tmp.name);cls.exes={}
-        for n,helper in [('fontview',FONT),('printshop',PS),('lz4fh','')]:
+        # FONTVIEW is assembly, entry point included: tools/test_fontview.py.
+        for n,helper in [('printshop',PS),('lz4fh','')]:
             src=cls.root/(n+'.c');src.write_text(HARNESS.replace('plugins/PLUGIN.c','plugins/'+n+'.c').replace('HELPERS',helper))
             exe=cls.root/n
             subprocess.run(['cc','-std=c99','-Wno-unknown-pragmas','-I',str(ROOT),str(src),'-o',str(exe)],check=True,capture_output=True)
@@ -122,7 +116,7 @@ class SampleMedia(unittest.TestCase):
 
     def run_file(self,name,data,good=True,fault=0,expected=None):
         p=self.root/'input';p.write_bytes(data)
-        r=subprocess.run([str(self.exes[name]),str(p),str(fault),str(7 if name=='fontview' else 6)],capture_output=True,timeout=5)
+        r=subprocess.run([str(self.exes[name]),str(p),str(fault),'6'],capture_output=True,timeout=5)
         self.assertEqual(r.returncode,0 if good else 2,r.stderr)
         self.assertEqual(p.read_bytes(),data)
         if expected is not None:self.assertEqual(r.stdout,expected)
@@ -131,7 +125,7 @@ class SampleMedia(unittest.TestCase):
         font=bytes([128,127,16])+bytes([14]*128)+bytes((i*31)&127 for i in range(4096))
         clip=bytes((i*37)&255 for i in range(572))
         lz=b'\x66\x40ABCD\x00\x00\x0f\xfe'
-        return [('fontview',font,font_page),('printshop',clip,clip_page),('lz4fh',lz,lz_page)]
+        return [('printshop',clip,clip_page),('lz4fh',lz,lz_page)]
 
     def test_valid_pixels(self):
         for name,data,oracle in self.fixtures():self.run_file(name,data,expected=oracle(data))
@@ -145,11 +139,6 @@ class SampleMedia(unittest.TestCase):
         for name,data,_ in self.fixtures():
             for n in (0,1,2,3,len(data)//2,len(data)-1):self.run_file(name,data[:n],False)
             self.run_file(name,data+b'X',False)
-
-    def test_font_bounds(self):
-        for head in (b'\x01\x7f\x08',b'\0\xff\x08',b'\0\x80\x08',b'\0\x7f\0',b'\0\x7f\x17'):
-            self.run_file('fontview',head+bytes(5000),False)
-        self.run_file('fontview',b'\0\x7f\x08'+bytes([8])*128+bytes(1024),False)
 
     def test_lz_bad_matches_and_overflow(self):
         for data in (b'\x66\0\0\0',b'\x66\x10A\x01\0',b'\x66\x0f\xff\0\0',b'\x66\xf0\xff'):

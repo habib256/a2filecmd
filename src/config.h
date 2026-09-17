@@ -91,10 +91,16 @@ static void cfg_discard(void)
     strcpy(note, remove(CF->temp) ? cfg_recovery : cfg_failed);
 }
 
+/* The shared publication (docs/FILE-SERVICES.md), under its own name in
+ * this overlay, as EDIT does. */
+#define FI_RENAME rename
+#define file_install cfg_install
+#include "plugins/file_install.h"
+#undef file_install
+
 static unsigned char save_config(void)
 {
     FILE* f;
-    int fd;
     unsigned int n;
     unsigned char old, bad;
     strcpy(note, cfg_failed);
@@ -110,19 +116,17 @@ static unsigned char save_config(void)
     memcpy(CF->read, CF->text, n); CF->size = n;
     if (!cfg_parse(0)) return 0;
     _filetype = 0x04; _auxtype = 0;
-    fd = open(CF->temp, O_WRONLY | O_CREAT | O_EXCL);
-    if (fd < 0) { strcpy(note, cfg_recovery); return 0; }
-    if (close(fd)) { cfg_discard(); return 0; }
+    bad = reserve_output(CF->temp);
+    if (!bad) { strcpy(note, cfg_recovery); return 0; }
+    if (bad != OUTPUT_RESERVED) { cfg_discard(); return 0; }
     f = fopen(CF->temp, cfg_wb);
     if (!f) { cfg_discard(); return 0; }
     bad = fwrite(CF->text, 1, n, f) != n;
     if (ferror(f)) bad = 1;
     if (fclose(f)) bad = 1;
     if (bad || !cfg_verify(CF->temp, n)) { cfg_discard(); return 0; }
-    if (old && rename(cfg_path, CF->backup)) { strcpy(note, cfg_recovery); return 0; }
-    if (rename(CF->temp, cfg_path)) {
-        if (old && rename(CF->backup, cfg_path)) { strcpy(note, cfg_recovery); return 0; }
-        /* A failed rename may be ambiguous: preserve TMP and any new CFG. */
+    /* A failed or ambiguous rename keeps TMP, BAK and any new CFG. */
+    if (cfg_install(CF->temp, cfg_path, CF->backup, old) != FILE_INSTALLED) {
         strcpy(note, cfg_recovery); return 0;
     }
     if (!cfg_verify(cfg_path, n)) { strcpy(note, cfg_recovery); return 0; }

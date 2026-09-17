@@ -1,5 +1,6 @@
 /* Create a new, empty ProDOS filesystem in a PO or 2MG file. */
 #define UTIL_CREATE
+#define UTIL_DISCARD
 #include "util.h"
 void __fastcall__ plugin_entry(const struct A2fcApi*);
 struct Header {unsigned int magic;unsigned char flags;void __fastcall__ (*entry)(const struct A2fcApi*);unsigned char r[3];char desc[52];};
@@ -41,7 +42,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
     if(!join(path,pan->path,a.full)) {note("Path too long.");return;}
     if(newfile(path,6,0,1)) {note("Cannot create image: name exists or disk unavailable.");return;}
     *a.filetype=6;*a.auxtype=0;out=a.fopen(path,"wb");
-    if(!out) {a.remove(path);note("Cannot open new image.");return;}
+    if(!out) {if(discard(path))note("Cannot open new image.");return;}
     if(two) {
         a.memset(buf,0,64);a.memcpy(buf,"2IMGA2FC",8);buf[8]=64;buf[10]=buf[12]=1;
         wr16(buf+20,blocks);buf[24]=64;length=(unsigned long)blocks*512;
@@ -56,5 +57,5 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
     if(a.fclose(out))goto closedfail;
     a.sprintf(a.note,"Created %s: %u blocks, empty ProDOS volume.",name,blocks);return;
 fail:a.fclose(out);
-closedfail:a.remove(path);note("Image incomplete: removed (cancelled or write error).");
+closedfail:if(discard(path))note("Image incomplete: removed (cancelled or write error).");
 }

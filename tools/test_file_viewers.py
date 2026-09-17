@@ -19,6 +19,7 @@ static unsigned char fail_open;
 static unsigned char is_dir(const struct Entry* e) { return e->type == 0x0F; }
 static void overlay_run(const char*, unsigned char);
 static void message(const char* msg) { (void)msg; strcpy(chosen, "ERROR"); }
+static void report_error(const char* what) { (void)what; strcpy(chosen, "ERROR"); }
 static FILE* probe_open(const char* path, const char* mode) {
     if (strcmp(mode, "rb")) abort();
     return fail_open == 2 ? NULL : fopen(path, mode);
@@ -127,6 +128,18 @@ class FileViewers(unittest.TestCase):
                 self.route('LONGNAMEX.'+suffix,6,0,1,'PURPLE',picture)
             for name in ('FOTO1','.FOTO1','A.FOTO','A.FOTO0','A.FOTO3','A.FOTO12'):
                 self.route(name,6,0,4096,'IMAGE' if picture else 'HEX',picture)
+
+    def test_appleworks_types(self):
+        for typ, viewer in ((0x19, 'AWDATA'), (0x1A, 'AWP'), (0x1B, 'AWDATA'), (0x18, 'HEX'),
+                            (0x1D, 'HEX'), (0x39, 'HEX')):
+            self.route('DOC', typ, 0, 1000, viewer)
+
+    def test_macpaint_suffixes(self):
+        for picture in (0, 1):
+            for name, typ in (('SEAGULL.MAC', 0), ('A.MAC', 0x08)):
+                self.route(name, typ, 0x2000, 40000, 'MACPAINT', picture)
+        for name in ('.MAC', 'MAC', 'A.MACX', 'A.MA', 'A.PNTG'):
+            self.route(name, 0, 0, 40000, 'HEX')
 
     def test_audio_scan_filter_and_format_precedence(self):
         self.route('TUNE.MB',6,0,100,'MUSIC',picture=2)

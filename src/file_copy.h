@@ -7,7 +7,7 @@ struct CopyState {
     char target[PATH_LEN], backup[PATH_LEN], temp[PATH_LEN];
     const char* name;
     unsigned long size;
-    unsigned char type, had_old, owned, ok;
+    unsigned char type, had_old, owned, ok, bak;
     unsigned int aux;
 };
 #define CP ((struct CopyState*)text_starts)
@@ -41,7 +41,7 @@ static unsigned char copy_stage(void)
     FILE *in, *out;
     unsigned int n;
     unsigned long copied = 0;
-    CP->had_old = CP->owned = CP->ok = 0;
+    CP->had_old = CP->owned = CP->ok = CP->bak = 0;
     if (exists(CP->target)) {
         if (gfi[4] == 15 || !may_overwrite(CP->name)) {
             ++progress_skipped; ++progress_done; return 2;
@@ -54,6 +54,9 @@ static unsigned char copy_stage(void)
     if (!push_name(CP->temp, copy_tempname) || !strcmp(CP->temp, CP->target)) return 0;
     strcpy(CP->backup, CP->temp);
     strcpy(strrchr(CP->backup, '.') + 1, "BAK");
+    /* A2FC.BAK only matters when an old entry has to move aside: then a
+     * leftover one refuses the copy before its first byte is written. */
+    if (CP->had_old && (exists(CP->backup) || _oserror != 0x46)) { CP->bak = 1; return 0; }
     in = fopen(full, "rb");
     if (!in) return 0;
     if (fseek(in, 0, SEEK_END) || (long)(CP->size = ftell(in)) < 0 || fseek(in, 0, SEEK_SET)) {
@@ -116,11 +119,13 @@ static unsigned char copy_finish(void)
     if (!CP->ok) {
         /* Do not restore over an output whose deletion failed. */
         if (CP->owned && remove(CP->temp)) message("Cleanup failed; check target.");
-        else if (!progress_abort) message("Failed; source kept.");
+        else if (!progress_abort) message(CP->bak ? copy_backup_kept : (const char*)"Failed; source kept.");
         return 0;
     }
     installed = FILE_INSTALL_FAILED;
-    if (!exists(CP->backup) && _oserror == 0x46) installed = file_install();
+    /* Checked again: the name may have appeared since. A new target sets
+     * no old entry aside and never touches A2FC.BAK. */
+    if (!CP->had_old || (!exists(CP->backup) && _oserror == 0x46)) installed = file_install();
     if (installed != FILE_INSTALLED) { message(copy_backup_kept); return 0; }
     if (CP->had_old && remove(CP->backup)) {
         message(copy_backup_kept); return 0;

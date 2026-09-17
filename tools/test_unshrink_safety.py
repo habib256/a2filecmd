@@ -24,6 +24,8 @@ DRIVER = DRIVER.replace('#define US ((struct UsState*)0x3E00)',
 DRIVER = DRIVER.replace('(unsigned int)copy_buf', '(uintptr_t)copy_buf')
 DRIVER = DRIVER.replace('(unsigned)copy_buf', '(uintptr_t)copy_buf')
 DRIVER = DRIVER.replace('*(volatile unsigned char*)0xC056 = 0;', '(void)0;')
+# The 512-byte bound is the Apple II's; host pointers are 8 bytes wide.
+DRIVER = DRIVER.replace('typedef char us_state_fits[512 - sizeof(struct UsState) + 1];', '')
 C = r'''
 #include <stdio.h>
 #include <stdlib.h>
@@ -73,6 +75,22 @@ static unsigned char mli_call(unsigned char cmd,void* parms){
 }
 static FILE *archive,*output;
 static int output_open;
+/* GET/SET_FILE_INFO on the extracted file: 40 fails the get, 41 the set.
+ * The date bytes start as a creation stamp the archive may replace. */
+static unsigned char gfi[18];
+static int sets;
+static unsigned char file_info(const char* p){
+    (void)p;
+    if(fault==40)return 0;
+    memset(gfi,0,sizeof gfi);gfi[0]=0x0A;gfi[3]=0xC3;gfi[10]=0x11;gfi[11]=0x22;gfi[12]=0x33;gfi[13]=0x04;
+    return 1;
+}
+static unsigned char set_info(void){
+    if(gfi[0]!=0x0A)abort();            /* only after a GET_FILE_INFO */
+    gfi[0]=0x07;
+    ++sets;
+    return fault!=41;
+}
 static int is_dir(struct Entry* e){return 0;}
 static void too_long(void){strcpy(note,"Path too long");}
 static void report_error(const char* s){strcpy(note,s);}
@@ -171,6 +189,7 @@ int main(int argc,char** argv){
     unshrink_entry(NULL);
     if(output_open)abort();
     printf("%s\nremoves=%d opens=%d writes=%d reads=%d decoded=%d\n",note,removes,opens,writes,reads,decoder_calls);
+    printf("sets=%d access=%02X date=%02X%02X time=%02X%02X\n",sets,gfi[3],gfi[11],gfi[10],gfi[13],gfi[12]);
     return 0;
 }
 '''
@@ -182,7 +201,14 @@ def thread(data, klass=2, fmt=0, kind=0, eof=None, ceof=None, crc=0):
                         len(data) if ceof is None else ceof), data)
 
 
-def record(name, data=b'', extra=(), fmt=0, eof=None, ceof=None, kind=0, auxtype=0, version=0, crc=0):
+# A NuFX DateTime: second, minute, hour, year - 1900, day - 1, month - 1.
+WHEN = bytes((5, 34, 12, 126, 16, 8, 0, 3))          # 17 September 2026, 12:34
+
+
+def record(name, data=b'', extra=(), fmt=0, eof=None, ceof=None, kind=0, auxtype=0, version=0,
+           crc=0, hcrc=None, access=0xE3, when=WHEN, ftype=6, storage=None, inname=b''):
+    """One record. The header CRC is right unless `hcrc` says otherwise;
+    `inname` is a name kept in the header, as old ShrinkIt did."""
     name = name.encode()
     threads = [thread(name, klass=3), *extra,
                thread(data, fmt=fmt, eof=eof, ceof=ceof, kind=kind, crc=crc)]
@@ -192,15 +218,23 @@ def record(name, data=b'', extra=(), fmt=0, eof=None, ceof=None, kind=0, auxtype
     struct.pack_into('<H', header, 6, 60)
     struct.pack_into('<H', header, 10, len(threads))
     header[16] = ord('/')
-    header[22] = 6
-    struct.pack_into('<H', header, 26, auxtype)
-    return bytes(header) + b''.join(h for h, _ in threads) + b''.join(d for _, d in threads)
+    struct.pack_into('<I', header, 0x12, access)
+    struct.pack_into('<I', header, 0x16, ftype)
+    struct.pack_into('<I', header, 26, auxtype)
+    struct.pack_into('<H', header, 0x1E, storage if storage is not None else 512 if kind else 1)
+    header[0x28:0x30] = when
+    struct.pack_into('<H', header, 58, len(inname))
+    heads = b''.join(h for h, _ in threads)
+    struct.pack_into('<H', header, 4, crc16(bytes(header[6:]) + inname + heads)
+                     if hcrc is None else hcrc)
+    return bytes(header) + inname + heads + b''.join(d for _, d in threads)
 
 
-def archive(*records):
+def archive(*records, mcrc=None):
     header = bytearray(48)
     header[:6] = bytes.fromhex('4E F5 46 E9 6C E5')
     struct.pack_into('<I', header, 8, len(records))
+    struct.pack_into('<H', header, 6, crc16(bytes(header[8:])) if mcrc is None else mcrc)
     return bytes(header) + b''.join(records)
 
 
@@ -334,6 +368,85 @@ class UnshrinkSafety(unittest.TestCase):
         self.assertIn('Create failed', self.run_extract())
         self.assertEqual((self.dst/'DATA').read_bytes(), self.payload)
 
+    # -- NuFX headers and attributes ------------------------------------------
+    def test_a_master_header_crc_error_extracts_nothing(self):
+        self.src.write_bytes(archive(record('DATA', self.payload), mcrc=0x1234))
+        out = self.run_extract()
+        self.assertIn('Header CRC error: archive not trusted.', out)
+        self.assertIn('opens=0', out)
+        self.assertEqual(list(self.dst.iterdir()), [])
+
+    def test_a_record_header_crc_error_stops_before_its_data(self):
+        bad = record('NEXT', b'next', hcrc=0x5555)
+        self.src.write_bytes(archive(record('FIRST', self.payload), bad))
+        out = self.run_extract()
+        self.assertIn('Header CRC error', out)
+        self.assertEqual((self.dst/'FIRST').read_bytes(), self.payload, 'verified before')
+        self.assertFalse((self.dst/'NEXT').exists())
+        self.assertIn('opens=1', out)
+
+    def test_the_header_crc_covers_attributes_name_and_thread_headers(self):
+        good = record('DATA', self.payload, inname=b'OLD/NAME')
+        self.src.write_bytes(archive(good))
+        self.assertIn('1 file(s) extracted', self.run_extract())
+        (self.dst/'DATA').unlink()
+        for at in (0x12, 60 + 3, 60 + 8 + 4):   # access, the name, a thread header
+            with self.subTest(at=at):
+                data = bytearray(good)
+                data[at] ^= 1
+                self.src.write_bytes(archive(bytes(data)))
+                self.assertIn('Header CRC error', self.run_extract())
+                self.assertEqual(list(self.dst.iterdir()), [])
+
+    def test_a_type_prodos_cannot_hold_is_skipped_not_truncated(self):
+        for kw in (dict(ftype=0x1006), dict(ftype=0x54455854), dict(auxtype=0x12000)):
+            with self.subTest(**kw):
+                self.src.write_bytes(archive(record('DATA', self.payload, **kw)))
+                out = self.run_extract()
+                self.assertIn('Unsupported file skipped', out)
+                self.assertIn('opens=0', out)
+                self.assertEqual(list(self.dst.iterdir()), [])
+
+    def test_a_disk_image_must_be_512_byte_blocks(self):
+        data = bytes(range(256))*4
+        self.src.write_bytes(archive(record('DISK', data, kind=1, auxtype=4, eof=0, storage=256)))
+        out = self.run_extract()
+        self.assertIn('Unsupported file skipped', out)
+        self.assertEqual(list(self.dst.iterdir()), [])
+
+    def test_access_and_modification_date_are_set_after_the_read_back(self):
+        for access, want in ((0xE3, 'E3'), (0x21, '21'), (0x00, '01'), (0xC7, 'C7')):
+            with self.subTest(access=access):
+                self.src.write_bytes(archive(record('DATA', self.payload, access=access)))
+                out = self.run_extract()
+                self.assertIn('1 file(s) extracted', out)
+                # 17 September 2026, 12:34
+                self.assertIn('sets=1 access=%s date=3531 time=0C22' % want, out)
+                (self.dst/'DATA').unlink()
+
+    def test_a_date_prodos_cannot_hold_keeps_the_creation_stamp(self):
+        for when in (bytes(8), bytes((0, 0, 0, 39, 0, 0, 0, 0)), bytes((0, 0, 0, 140, 0, 0, 0, 0)),
+                     bytes((0, 60, 0, 126, 0, 0, 0, 0)), bytes((0, 0, 24, 126, 0, 0, 0, 0)),
+                     bytes((0, 0, 0, 126, 31, 0, 0, 0)), bytes((0, 0, 0, 126, 0, 12, 0, 0))):
+            with self.subTest(when=when.hex()):
+                self.src.write_bytes(archive(record('DATA', self.payload, when=when)))
+                self.assertIn('date=2211 time=0433', self.run_extract())
+                (self.dst/'DATA').unlink()
+        self.src.write_bytes(archive(record('DATA', self.payload,
+                                            when=bytes((0, 0, 0, 40, 0, 0, 0, 0)))))
+        self.assertIn('date=5021 time=0000', self.run_extract(), '1 January 1940')
+
+    def test_attributes_not_set_keep_the_verified_file_and_stop(self):
+        for fault in (40, 41):
+            with self.subTest(fault=fault):
+                self.src.write_bytes(archive(record('DATA', self.payload), record('NEXT', b'next')))
+                out = self.run_extract(fault)
+                self.assertIn('DATA extracted; attributes not set.', out)
+                self.assertIn('removes=0', out)
+                self.assertEqual((self.dst/'DATA').read_bytes(), self.payload)
+                self.assertFalse((self.dst/'NEXT').exists())
+                (self.dst/'DATA').unlink()
+
     def test_disk_member_uses_block_count_and_po_suffix(self):
         data = bytes(range(256))*4
         self.src.write_bytes(archive(record('LONGDISKIMAGENAME', data, kind=1, auxtype=2, eof=0)))
@@ -374,7 +487,7 @@ class UnshrinkSafety(unittest.TestCase):
             self.src.write_bytes(archive(record('DATA', self.payload,
                                                 extra=[thread(b'comment', klass=klass, fmt=fmt)])))
             out = self.run_extract()
-            self.assertIn('Unsupported compression' if klass==2 else '1 file(s) extracted', out)
+            self.assertIn('Unsupported file skipped' if klass==2 else '1 file(s) extracted', out)
             self.assertEqual((self.dst/'DATA').read_bytes(), self.payload)
             (self.dst/'DATA').unlink()
 

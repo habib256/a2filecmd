@@ -30,6 +30,8 @@ _v_fread: jmp ($3FCE)
 _v_fwrite: jmp ($3FD0)
 .export _v_fclose
 _v_fclose: jmp ($3FD2)
+.export _v_remove
+_v_remove: jmp ($3FD6)
 .export _v_strcmp
 _v_strcmp: jmp ($3FF0)
 .export _v_strlen
