@@ -284,7 +284,10 @@ des pages, quelques secondes), `bit_page` retiré, `verdict()` sans argument
 (chaque branche finit par un saut vers `note()`), `found` et le drapeau
 `quick` rangés dans `counts[]` que le `memset` de `reset()` efface déjà, et le
 titre qui prend `M_QUICK + quick` dans `"\0 - QUICK"` au lieu d'une
-condition. Restent **4** octets en 65C02, 6 en 6502 ; REPAIR 65 et 47.
+condition. Restaient 4 octets en 65C02, 6 en 6502 ; l'acquittement
+d'Échap écrit ensuite `$C010` au lieu de le lire (cc65 supprimait la
+lecture, `tools/test_strobe.py`) : restent **1** octet sur les deux
+processeurs ; REPAIR 62 et 42.
 
 **Le débordement de la copie de table.** La table de services compte
 106 octets depuis la version 3 de l'API (`ram_format`, puis les trois

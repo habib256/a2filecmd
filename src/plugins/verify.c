@@ -44,7 +44,7 @@ unsigned int __fastcall__ t_fread(void*,unsigned int,unsigned int,FILE*);
 
 static unsigned char stop(void) {
     if (*(volatile unsigned char*)0xC000 != 155) return 0;
-    (void)*(volatile unsigned char*)0xC010; return aborted = 1;
+    *(volatile unsigned char*)0xC010 = 0; return aborted = 1;
 }
 
 /* Count the chunk on 24 bits, the width of a ProDOS EOF. */

@@ -216,7 +216,7 @@ convert_pass:
         T.progress_bar(e->name, nin, e->size);
 #ifndef PLUGIN_HOST
         if (*(volatile unsigned char*)0xC000 == (KEY_ESC | 0x80)) {
-            (void)*(volatile unsigned char*)0xC010;
+            *(volatile unsigned char*)0xC010 = 0;
             fail = 1;
         }
 #endif

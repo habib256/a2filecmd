@@ -27,7 +27,9 @@ Une seule session POM2 :
    controle complet nomme FILE_COUNT et BM_LOST au bloc de l'oracle, et
    prend plus de cycles que le rapide ;
 5. Echap : le verdict compte deux constats, resident et pile C preserves,
-   /RAM toujours en ligne ;
+   /RAM toujours en ligne ; puis un controle complet coupe par Echap garde
+   son ecran de constats (la touche ne fuit plus, `tools/test_strobe.py`)
+   et se dit annule ;
 6. REPAIR : la question de /RAM est reposee (autre surcouche), le plan
    compte deux corrections sur deux blocs, F puis FIX, « rescan clean:
    repaired ».
@@ -40,6 +42,7 @@ un million de cycles font une seconde.
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -231,6 +234,25 @@ def main():
             s.ok('FIXIT : le verdict compte les deux constats', note == FOUND % 2, note)
             if ram:
                 s.ok('/RAM est toujours en ligne', '/RAM' in volume_list())
+
+            # 5b. Echap pendant le parcours : l'ecran des constats reste. La
+            # touche suit le Y dans la file du clavier, le parcours la lit.
+            start('FIXIT')
+            s.wait(lambda: s.has(MODES), 'la question de la profondeur', 60)
+            p.stable()
+            s.key(b'F')
+            s.wait(lambda: AUXASK in s.rows()[22], 'la question de /RAM', 60)
+            p.stable()
+            s.key(b'Y' + ESC)
+            s.wait(lambda: s.has('ESC/RETURN back'), 'les constats apres Echap', 600)
+            time.sleep(1)
+            p.stable()
+            s.ok('Echap pendant le parcours : les constats restent a l ecran',
+                 s.has('ESC/RETURN back'), '\n'.join(s.rows()))
+            s.key(ESC)
+            back('Echap pendant le parcours')
+            note = wait_note(s, p)
+            s.ok('Echap pendant le parcours : le verdict dit annule', note == CANCEL, note)
 
             # 6. REPAIR
             start('REPAIR')
