@@ -35,6 +35,7 @@ static unsigned char catalog_read(unsigned char t,unsigned char s){
 static unsigned char dos33_type(unsigned char t){return 6;}
 static struct Entry entries[MAX_ENTRIES];
 static struct Entry* add_entry(struct Panel*p,const char*n,unsigned char t){return &entries[p->count++];}
+static void empty_panel(struct Panel*p){p->count=0;p->more=0;memset(p->tags,0,sizeof p->tags);}
 #define dos_read_sector catalog_read
 ''' + section('static unsigned char read_dos33_panel(', '/* Fills the panel from an image or a real disk') + r'''
 #undef dos_read_sector

@@ -27,6 +27,7 @@ static unsigned int col, waits;
 static const char* keys;
 static void clear_row(unsigned char row) { assert(row==22); memset(line,0,sizeof line); col=0; }
 static void gotoxy(unsigned char x,unsigned char y) { assert(y==22); col=x; }
+static void open_row22(void) { clear_row(22); gotoxy(0,22); }
 static void revers(unsigned char v) { inverse=v; }
 static void cputsxy(unsigned char x,unsigned char y,const char* s) {
     gotoxy(x,y);while(*s) { styles[col]=inverse;line[col++]=*s++; } line[col]=0;

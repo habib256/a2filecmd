@@ -84,6 +84,7 @@ static unsigned char target_check(void) { return 1; }
 static void show_active(void) {}
 static void clear_row(unsigned char r) { (void)r; }
 static void gotoxy(unsigned char x, unsigned char y) { (void)x; (void)y; }
+static void open_row22(void) { clear_row(22); gotoxy(0, 22); }
 static void draw_panel(unsigned char p) { (void)p; }
 #define cprintf printf
 static unsigned char prompt(const char* l, const char* i, unsigned char h) {

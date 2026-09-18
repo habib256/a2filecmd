@@ -45,6 +45,8 @@ static void snapshot_entries(void){}
 static void keep_tags(int save){saved+=save?1:-1;}
 static int read_panel(int p){++restored;memset(window+1280,0xEE,100);return 1;}
 static void draw_all(void){++draws;}
+static void reread_both(void){read_panel(0);read_panel(1);keep_tags(0);draw_all();}
+static void open_row22(void){}
 static int exists(const char* p){return 1;}
 static int disk_question(const char* p){return 0;}
 static void clear_row(int y){}
