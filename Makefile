@@ -7,7 +7,8 @@
 #   make benchfloppy  build/A2FILECMD-full.po: a 65C02 floppy with the core
 #                   overlay, for the benches only -- never shipped
 #   make test       the tests outside the emulator (memory layout, volume)
-#   make bench      the POM2 benches (needs the emulator, see bench/README.md)
+#   make bench      one POM2 session (needs the emulator, see bench/README.md)
+#   make qualify    every bench of bench/all.py, the release replay
 #   make clean
 #
 # The program only just fits in the machine's memory: the link is checked
@@ -73,6 +74,12 @@ DIST  = dist
 # 100 the generator stops using some inline sequences and the code GROWS
 # AGAIN; the minimum is a plateau from 100 to 130.
 CODESIZE ?= 100
+# Benches at once in `make qualify`. One by default: several emulators at
+# 200 000 cycles a second starve each other on one machine, and the benches
+# that count wall-clock time (a nibble copy, an interrupted copy) then time
+# out although nothing is wrong. BENCH_JOBS=3 is for iterating, not for
+# qualifying a version.
+BENCH_JOBS ?= 1
 CFLAGS = -t $(TARGET) $(CLDEFS) -O -Oirs -Cl --codesize $(CODESIZE)
 
 # __HIMEM__ = $BF00: just below the ProDOS global page. The C stack fits in
@@ -140,7 +147,7 @@ OBJS = $(BUILD)/crt0.o $(BUILD)/overlay.o $(BUILD)/unshrink.o $(VDRIVEOBJ) $(BUI
 
 .DELETE_ON_ERROR:
 
-.PHONY: all disk benchfloppy xplugins test bench example clean pom2host
+.PHONY: all disk benchfloppy xplugins test bench qualify example clean pom2host
 all: $(SYSTEM) $(CODE)
 
 $(BUILD) $(DIST):
@@ -330,6 +337,7 @@ test: test-mini
 	python3 $(TOOLS)/test_catalog_safety.py
 	python3 $(TOOLS)/test_imgconv_safety.py
 	python3 $(TOOLS)/test_check_layout.py
+	python3 $(TOOLS)/test_bench_inventory.py
 	python3 $(TOOLS)/test_mkvolume.py
 	python3 $(TOOLS)/test_prodos_read.py
 	python3 $(TOOLS)/test_mkdemo.py
@@ -340,6 +348,9 @@ test: test-mini
 	python3 $(TOOLS)/test_fixit_bits.py
 	python3 $(TOOLS)/test_strobe.py
 	python3 $(TOOLS)/test_flag_reuse.py
+	python3 $(TOOLS)/test_cc65_traps.py
+	python3 $(TOOLS)/check_warnings.py
+	python3 $(TOOLS)/test_hw_media.py
 	python3 $(TOOLS)/fuzz_prodos.py --count 150 --seed 1
 	python3 $(TOOLS)/test_fuzz_prodos.py
 	python3 $(TOOLS)/fuzz_archives.py --count 60 --seed 1
@@ -411,6 +422,15 @@ pom2host:
 bench: disk
 	$(MAKE) ARCH=enh benchfloppy
 	A2FC_IMG=A2FILECMD-full python3 bench/run.py
+
+# The whole bench table (bench/all.py), which is what qualifies a release:
+# every bench with the machine and the image it needs, one log per step, and
+# a missing fixture counted as a failure instead of a silent gap.
+qualify: disk
+	$(MAKE) ARCH=enh benchfloppy
+	$(MAKE) ARCH=6502 benchfloppy
+	$(MAKE) ARCH=6502 xplugins
+	python3 bench/all.py --setup --strict --jobs $(BENCH_JOBS) --out $(BUILD)/bench
 
 # The third-party example overlay (sdk/), compiled OUTSIDE the tree with only
 # src/a2fc_plugin.h: the proof that the ABI holds. Produces build/HELLO.PLG,

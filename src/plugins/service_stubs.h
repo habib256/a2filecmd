@@ -3,6 +3,7 @@
 #ifndef PLUGIN_HOST
 #include <stddef.h>
 #pragma optimize(push, off)
+#pragma warn (unused-param, push, off)
 static void service_tramp(void) {
     asm("sta tmp1"); asm("stx tmp2"); asm("jsr incsp2");
     asm("lda #<%v", SERVICE_API); asm("sta ptr1");
@@ -25,6 +26,7 @@ static size_t __fastcall__ r_strlen(const char* p) SERVICE(strlen)
 static void* __fastcall__ r_memcpy(void* d, const void* s, size_t n) SERVICE(memcpy)
 static unsigned char __fastcall__ r_confirm(const char* p) SERVICE(confirm)
 static void __fastcall__ r_message(const char* p) SERVICE(message)
+#pragma warn (unused-param, pop)
 #pragma optimize(pop)
 #define RF(name) r_##name
 #else

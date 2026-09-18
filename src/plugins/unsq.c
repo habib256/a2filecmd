@@ -209,7 +209,7 @@ static unsigned char one(unsigned char squeezed, unsigned long n, unsigned long 
     out = RF(fopen)(dest, "wb");
     olen = osum = 0;
     ocount = 0;
-    ok = out && (squeezed ? unsqueeze() : copy(n));
+    ok = out != 0 && (squeezed ? unsqueeze() : copy(n));
     if (out) {
         flush();
         if (ferror(out)) ok = 0;

@@ -78,6 +78,7 @@ static struct Pfx pfx = { 1, 0 };
 
 /* The stubs into the service table (see above). */
 #pragma optimize (push, off)
+#pragma warn (unused-param, push, off)
 static void tramp(void)
 {
     asm("sta tmp1");
@@ -105,6 +106,7 @@ static unsigned char __fastcall__ read_panel(unsigned int i) STUB(read_panel)
 static unsigned char __fastcall__ mli(unsigned char cmd, void* block) STUB(mli)
 static char* __fastcall__ scpy(char* d, const char* s) STUB(strcpy)
 static unsigned char __fastcall__ slen(const char* s) STUB(strlen)
+#pragma warn (unused-param, pop)
 #pragma optimize (pop)
 
 static unsigned char __fastcall__ set_prefix(const unsigned char* p) { pfx.path = (unsigned char*)p; return mli(0xC6, &pfx); }
@@ -114,6 +116,7 @@ static unsigned char rename_volume(void) { return mli(0xC2, &rn); }
  * "/NEW" (if the result fits PATH_LEN); returns 1 if it did. Plain 6502:
  * the tail goes through TMP, then "/NEW" and the tail are laid down. */
 #pragma optimize (push, off)
+#pragma warn (unused-param, push, off)
 static unsigned char __fastcall__ fix(char* path)
 {
     asm("sta ptr1");
@@ -159,6 +162,7 @@ static unsigned char __fastcall__ fix(char* path)
     asm("fxno: lda #0");
     asm("fx9: ldx #0");
 }
+#pragma warn (unused-param, pop)
 #pragma optimize (pop)
 
 /* A panel whose path named the volume: rewritten, reread from its start.

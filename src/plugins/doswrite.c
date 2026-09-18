@@ -154,6 +154,9 @@ static unsigned char end_source(unsigned int left) {
 static unsigned char verify_source(void);
 static unsigned char lists_io(unsigned char writing) {
  unsigned int i,j,cur;
+#ifndef DOS_IMAGE
+ (void)writing;                    /* only the image build reads back */
+#endif
  for(i=0;i<lists;++i) {
   a.memset(data,0,256);
   if(i+1<lists){cur=allocated(i+1);data[1]=cur/16;data[2]=cur&15;}

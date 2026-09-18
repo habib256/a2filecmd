@@ -253,7 +253,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         if (RF(fclose)(out)) ok = 0;
         if (ok) {
             out = RF(fopen)(dest, "rb");
-            ok = out && pass(1);
+            ok = out != 0 && pass(1);
             if (out && RF(fclose)(out)) ok = 0;
         }
     }

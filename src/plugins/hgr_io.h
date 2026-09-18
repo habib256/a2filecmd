@@ -2,6 +2,7 @@
 #include <stddef.h>
 #ifndef PLUGIN_HOST
 #pragma optimize (push, off)
+#pragma warn (unused-param, push, off)
 static void tramp(void)
 {
     asm("sta tmp1");
@@ -26,6 +27,7 @@ static FILE* __fastcall__ fopn(const char* path, const char* mode) STUB(fopen)
 static unsigned int __fastcall__ frd(void* p, unsigned int sz, unsigned int n, FILE* f) STUB(fread)
 static int __fastcall__ fcls(FILE* f) STUB(fclose)
 static char __fastcall__ getkey(unsigned int unused) STUB(media_wait)
+#pragma warn (unused-param, pop)
 #pragma optimize(pop)
 #else
 #define scpy A->strcpy

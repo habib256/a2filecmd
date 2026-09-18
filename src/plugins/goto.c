@@ -115,6 +115,7 @@ static char cfg[PATH_LEN];              /* "/VOL/A2FILE/GOTO.CFG" */
 /* The stubs into the service table (see above). */
 #ifndef PLUGIN_HOST
 #pragma optimize (push, off)
+#pragma warn (unused-param, push, off)
 static void tramp(void)
 {
     asm("sta tmp1");
@@ -150,6 +151,7 @@ static FILE* __fastcall__ fopn(const char* path, const char* mode) STUB(fopen)
 static unsigned int __fastcall__ frd(void* p, unsigned int sz, unsigned int n, FILE* f) STUB(fread)
 static unsigned int __fastcall__ fwr(const void* p, unsigned int sz, unsigned int n, FILE* f) STUB(fwrite)
 static int __fastcall__ fcls(FILE* f) STUB(fclose)
+#pragma warn (unused-param, pop)
 #pragma optimize (pop)
 #else
 #define mli(cmd,params) A->mli(cmd,params)

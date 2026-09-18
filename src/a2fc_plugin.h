@@ -130,7 +130,9 @@ struct A2fcApi {
     unsigned char (*confirm)(const char*);                     /* (Y/N), 1 = yes */
     unsigned char (*prompt)(const char*, const char*, unsigned char);   /* a ProDOS name into input, or hex digits; 0 = cancelled */
     void (*progress_bar)(const char*, unsigned long, unsigned long);
-    void (*keys_bar)(unsigned char, const char*);              /* "KEY Label,..." at column x */
+    /* "KEY Label,..." at column x. A key is shown on exactly three
+     * characters, padded or cut: "SPC/B Page" reads "SPC" on the screen. */
+    void (*keys_bar)(unsigned char, const char*);
     void (*bar_begin)(void);                                   /* clears the bar */
     void (*draw_all)(void);                                    /* the whole panel screen */
     unsigned char (*read_panel)(unsigned char);                /* re-reads a panel */

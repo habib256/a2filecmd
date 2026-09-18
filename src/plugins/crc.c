@@ -122,12 +122,15 @@ void go(void)
     asm("jmp (ptr1)");
 }
 #define THUNK(f) { off = SOFF(f); asm("jmp _go"); }
+/* Their arguments are the ABI's, not this code's: the thunk jumps away. */
+#pragma warn (unused-param, push, off)
 static void __fastcall__ t_message(const char* p) THUNK(message)
 static void __fastcall__ t_cputs(const char* p) THUNK(cputs)
 static void __fastcall__ t_fclose(FILE* f) THUNK(fclose)
 static FILE* __fastcall__ t_fopen(const char* p, const char* m) THUNK(fopen)
 static unsigned char __fastcall__ t_build_full(char* p, const struct Panel* q, const struct Entry* r) THUNK(build_full)
 static unsigned int __fastcall__ t_fread(void* p, unsigned int sz, unsigned int m, FILE* f) THUNK(fread)
+#pragma warn (unused-param, pop)
 
 /* The n bytes at buf counted into `done` and folded into the CRC (none:
  * nothing): each xored into the CRC's low byte, then two steps. `done`
