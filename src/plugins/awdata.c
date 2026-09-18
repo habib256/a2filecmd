@@ -10,19 +10,26 @@
  * Space/Down go to the next record, B/Up back, R to the first; TAB shows
  * categories 23 to 30 when there are more than 22.
  *
- * A spreadsheet shows a row per cell, in the file's order: the cell, then
- * its text, its number, or its formula and the result AppleWorks saved with
- * it. Space/Down, B/Up and R page through them.
+ * A spreadsheet is shown as a sheet: the column letters on the first line,
+ * then a row of the file a line, each cell in its own column at the width
+ * the header gives it (bytes 4-130). Values sit against the right of their
+ * column, labels from the left, and a label wider than its column runs into
+ * the next ones until a cell writes over it -- what AppleWorks itself shows,
+ * and what makes a sentence typed across a row readable again. A formula
+ * cell shows its saved display string or its result. Space/Down and B/Up
+ * page through the rows, < and > move a screen of columns, R goes back to
+ * the top left. F swaps to the cell-by-cell view -- a cell a line with its
+ * formula spelled out -- and back.
  *
  * Numbers are 64-bit doubles: awdata.s converts each to the ROM's 5-byte
  * form and lets Applesoft's FOUT print it, as BASIC would.
  *
  * The file is read through the core's 512-byte buffer, never loaded whole.
- * Records, rows and cells carry their own lengths: `left` counts down what remains
- * of the one being read, so that only a start kept for going back needs a
- * 32-bit offset. Those starts -- each 16th record, or each page of cells,
- * 200 of them -- are kept; going back replays from the nearest one. A data
- * base shows its first 3,200 records, a spreadsheet its first 200 pages.
+ * Records, rows and cells carry their own lengths: `left` counts down what
+ * remains of the one being read. The starts kept for going back -- each
+ * 64th record, or each page -- are 16-bit offsets, which is what an
+ * AppleWorks document can reach; going back replays from the nearest one. A
+ * data base reaches its first 2,688 records, a sheet its first 882 rows.
  *
  * A big overlay: its tables sit after the code, below $4000. Being a big
  * overlay, the core redraws the panels on return. */
@@ -47,11 +54,17 @@ const struct PluginHeader __plugin_header = {
 
 #define LINES     22                    /* text rows 0-21; 22 is the message, 23 the bar */
 #define WIDTH     79
-#define STEP      16                    /* records between two kept starts */
-#define MAXMARKS  200
+#define COLS      127                   /* A to DW, the columns of an AppleWorks sheet */
+#define GUTTER    4                     /* the row number down the left of the grid */
+#define STEP      64                    /* records between two kept starts */
+#define MAXMARKS  42                    /* pages kept: 42 x 21 = 882 rows of a sheet */
 #define RBSZ      512                   /* api->copy_buf */
 
-struct Mark { unsigned long off; unsigned char skip; };
+/* Where a page starts, and how many cells of its first row belong to the
+ * page before it. The offset is 16 bits: an AppleWorks document lives on
+ * its desktop, which holds some 55 KB, and a file that somehow went past
+ * 64 KB simply stops being paged there. */
+struct Mark { unsigned int off; unsigned char skip; };
 
 extern char aw_num[];                   /* awdata.s */
 void __fastcall__ aw_fout(const unsigned char* d);
@@ -59,7 +72,11 @@ void __fastcall__ aw_fout(const unsigned char* d);
 /* BSS: nothing zeroes it; everything below is written before it is read. */
 static struct A2fcApi a;
 static struct Mark marks[MAXMARKS + 1];
+/* A file is a data base or a sheet, never both: the categories of the one
+ * are the column widths and the formula buffer of the other. */
 static char names[30 * 21];
+#define cw ((unsigned char*)names)      /* a sheet: 127 column widths */
+#define SHOWN (names + COLS)            /* ... and the display string of a formula */
 static unsigned char* rbuf;
 static FILE* f;
 static unsigned long size, base;        /* the file's size; the offset of rbuf[0] */
@@ -74,6 +91,8 @@ static unsigned int nrecs;
 static unsigned short row;              /* the spreadsheet row being shown */
 static int col;
 static unsigned char num[8];
+static unsigned char vcol;              /* the leftmost column on the screen */
+static unsigned char formulas;          /* the cell-by-cell view instead of the grid */
 
 /* -- the reader ---------------------------------------------------------- */
 
@@ -154,7 +173,8 @@ static void putu(unsigned int v)
     while (n) put(d[--n]);
 }
 
-/* line at (x, y), then emptied. */
+/* line at (x, y), then emptied. A grid line is the whole width, blanks and
+ * all: the screen was cleared, so they cost nothing but the writing. */
 static void flush(unsigned char x, unsigned char y)
 {
     line[pos] = 0;
@@ -244,8 +264,8 @@ static void db_walk(void)
         if (!next_len()) return;
         if (!first) {
             if (!(nrecs % STEP)) {
-                if (nrecs / STEP == MAXMARKS) return;
-                marks[nrecs / STEP].off = off;
+                if (nrecs / STEP == MAXMARKS || off > 0xFFFFUL) return;
+                marks[nrecs / STEP].off = (unsigned int)off;
             }
             ++nrecs;
         }
@@ -310,7 +330,7 @@ static const char tokens[] =
 
 static void putcol(int c)
 {
-    if (c < 0 || c > 127) { puts_("#ERR#"); return; }
+    if ((unsigned int)c > 126) { puts_("#ERR#"); return; }
     if (c >= 26) put('@' + c / 26);
     put('A' + c % 26);
 }
@@ -350,105 +370,219 @@ static void formula(void)
     }
 }
 
-/* The cell of cleft bytes at hand, as one line. */
-static void ss_cell(void)
+/* The cell of cleft bytes at hand, written where `out` points. Returns 1
+ * for a value -- a number, or a formula's result --, which the grid puts at
+ * the right of its column as AppleWorks does, 0 for a label.
+ *
+ * The grid shows what the sheet shows: a formula's saved display string, or
+ * its result. The formula itself belongs to the cell-by-cell view (F), the
+ * only place where reading `@SUM(A1...A9)` makes sense. */
+static unsigned char ss_cell(void)
 {
     unsigned char f0, f1, n, k, c;
-    char shown[WIDTH];
-    putcol(col);
-    putu(row);
-    while (pos < 7) put(' ');
+    char* shown = SHOWN;                /* free while a sheet is open */
     f0 = cget();
     if (!(f0 & 0x80)) {
-        if (f0 & 0x20) {
+        if (f0 & 0x20) {                /* a label repeated across its column */
             f1 = awc(cget());
-            for (n = 0; n < 8; ++n) put(f1);
+            n = col < COLS ? cw[col] : 8;
+            while (n) { put(f1); --n; }
         } else {
             while (cleft) putaw(cget());
         }
-    } else {
-        f1 = cget();
-        if (f0 & 0x20) {
-            getnum(num);
-            putnum(num);
-        } else if (f1 & 0x08) {
-            /* The display string AppleWorks saved comes first; it is shown
-             * after the formula. */
-            n = cget();
-            k = 0;
-            while (n-- && cleft) {
-                c = awc(cget());
-                if (k < WIDTH) shown[k++] = c;
-            }
-            formula();
-            puts_("  = ");
-            for (n = 0; n < k; ++n) put(shown[n]);
-        } else {
-            getnum(num);                /* the result; formula() has its own */
-            formula();
-            puts_("  = ");
-            putnum(num);
+        skipn(cleft);
+        return 0;
+    }
+    f1 = cget();
+    if (f0 & 0x20) {
+        getnum(num);
+        putnum(num);
+    } else if (f1 & 0x08) {
+        /* The display string AppleWorks saved comes first; the cell-by-cell
+         * view shows it after the formula. */
+        n = cget();
+        k = 0;
+        while (n-- && cleft) {
+            c = awc(cget());
+            if (k < WIDTH) shown[k++] = c;
         }
+        if (formulas) { formula(); puts_("  = "); }
+        for (n = 0; n < k; ++n) put(shown[n]);
+    } else {
+        getnum(num);                    /* the result; formula() has its own */
+        if (formulas) { formula(); puts_("  = "); }
+        putnum(num);
     }
     skipn(cleft);
+    return 1;
 }
 
-/* A page of cells from the start m; the next page's start in *next.
- * 1 when the file ended on this page (cut says how). */
-static unsigned char ss_page(const struct Mark* m, struct Mark* next)
+/* The line, all spaces, ready for cells to be placed in it. */
+static void blank(void)
 {
-    unsigned char y = 0, c, k, skip = m->skip;
+    for (pos = 0; pos < WIDTH; ++pos) line[pos] = ' ';
+}
+
+/* Where column c starts on the screen, or 255 when it is not on it. A sheet
+ * has 127 columns; a malformed file can claim more, and the walk below
+ * counts in bytes. */
+static unsigned char colx(int c)
+{
+    unsigned int x = GUTTER;
+    unsigned char i;
+    if (c < vcol || c >= COLS) return 255;
+    for (i = vcol; i < c; ++i) {
+        x += cw[i];
+        if (x >= WIDTH) return 255;
+    }
+    return x >= WIDTH ? 255 : (unsigned char)x;
+}
+
+/* A page of the sheet from the start m; the next page's start in *next,
+ * 1 when the file ended on this page (cut says how). One walk for the two
+ * views: the grid gives a row a line, cells in their columns, and F gives a
+ * cell a line with its formula. */
+static unsigned char ss_show(const struct Mark* m, struct Mark* next)
+{
+    unsigned char y, c, n, x, i, d, value, k, skip = m->skip;
     unsigned long off;
     a.clrscr();
+    y = 0;
+    if (!formulas) {                    /* the column letters over their columns */
+        blank();
+        for (c = vcol; c < COLS; ++c) {
+            x = colx(c);
+            if (x == 255) break;
+            pos = x;
+            putcol(c);
+        }
+        pos = WIDTH;
+        flush(0, y);
+        y = 1;
+    }
     if (!seek(m->off)) { cut = 1; return 1; }
     for (;;) {
         off = base + at;
         if (next_len() < 2) return 1;   /* the end, or a row too short for its number */
+        if (!formulas && y == LINES) {
+            if (off > 0xFFFFUL) return 1;
+            next->off = (unsigned int)off;
+            next->skip = 0;
+            return 0;
+        }
         row = get16();
         col = 0;
         k = 0;
+        if (!formulas) {
+            blank();
+            pos = 0;
+            putu(row);
+            pos = WIDTH;
+        }
         while (left && !eof) {
             c = getb();
             if (c == 0xFF) break;
             if (c < 0x80) {
                 if (!c || c > left) break;
-                if (k >= skip) {
-                    if (y == LINES) { next->off = off; next->skip = k; return 0; }
-                    cleft = c;
-                    ss_cell();
-                    flush(0, y++);
+                if (formulas) {
+                    if (k >= skip) {
+                        if (y == LINES) {
+                            if (off > 0xFFFFUL) return 1;
+                            next->off = (unsigned int)off;
+                            next->skip = k;
+                            return 0;
+                        }
+                        cleft = c;
+                        putcol(col);
+                        putu(row);
+                        while (pos < 7) put(' ');
+                        ss_cell();
+                        flush(0, y);
+                        ++y;
+                    } else {
+                        skipn(c);
+                    }
+                    ++k;
                 } else {
-                    skipn(c);
+                    x = colx(col);
+                    if (x == 255) {
+                        skipn(c);       /* left of the window, or past its right edge */
+                    } else {
+                        cleft = c;
+                        /* The cell owns its column: whatever spilled into it
+                         * from the left goes, as it does in AppleWorks. */
+                        for (i = 0; i < cw[col] && x + i < WIDTH; ++i) line[x + i] = ' ';
+                        pos = x;
+                        value = ss_cell();
+                        n = pos - x;
+                        /* A value goes against the right of its column: what
+                         * it wrote moves there, the gap becomes blanks. */
+                        if (value && n < cw[col] && x + cw[col] <= WIDTH) {
+                            d = cw[col] - n;
+                            i = n;
+                            while (i) { --i; line[x + d + i] = line[x + i]; }
+                            for (i = 0; i < d; ++i) line[x + i] = ' ';
+                        }
+                        pos = WIDTH;
+                    }
                 }
-                ++k;
             } else {
                 col += c - 0x81;
             }
             ++col;
         }
         skip = 0;
+        if (!formulas) { flush(0, y); ++y; }
         skipn(left);
         if (eof) { cut = 1; return 1; }
     }
 }
 
+/* The first column of the screen that starts at v. */
+static unsigned char next_from(unsigned char v)
+{
+    unsigned int x = GUTTER;
+    while (v < COLS && x < WIDTH) { x += cw[v]; ++v; }
+    return v;
+}
+
+/* One screen to the right, or back to the left. The screens are the ones a
+ * walk from column A gives, so going back lands on the window one came
+ * from, whatever the widths on the way. */
+static void scroll(unsigned char right)
+{
+    unsigned char c, prev = 0;
+    if (right) {
+        c = next_from(vcol);
+        if (c < COLS) vcol = c;
+        return;
+    }
+    for (c = next_from(0); c < vcol; c = next_from(c)) {
+        if (c <= prev) break;
+        prev = c;
+    }
+    vcol = prev;
+}
+
 /* -- the entry --------------------------------------------------------------- */
 
 static const char k_db[] = "SPC Next,B Prev,R First,TAB More,ESC";
-static const char k_ss[] = "SPC Next,B Prev,R First,ESC";
+static const char k_ss[] = "SPC Page,B Back,<> Cols,F Cells,ESC";
+static const char k_sf[] = "SPC Page,B Back,F Grid,ESC";
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api)
 {
     const struct Entry* e = api->selected;
     unsigned char type = e->type, done = 0;
-    unsigned int k = 0, known = 1;
+    unsigned int k = 0, known = 1, last;
     unsigned long off;
+    unsigned char grid;
     char key;
     a = *api;
     rbuf = a.copy_buf;
     size = e->size;
     if ((type != 0x19 && type != 0x1B) || !api->full[0] || !(f = a.fopen(api->full, "rb"))) {
-        a.strcpy(a.note, "Not an AppleWorks data base or spreadsheet.");
+        a.strcpy(a.note, "Not an AppleWorks data base or sheet.");
         return;
     }
     base = have = at = pos = eof = cat0 = 0;
@@ -461,33 +595,54 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
             return;
         }
     } else {
-        for (k = 0; k < 243; ++k) off = getb();
-        marks[0].off = off ? 302 : 300;
-        marks[0].skip = 0;
-        k = 0;
         if (size < 302) {
             a.fclose(f);
             a.strcpy(a.note, "Not an AppleWorks spreadsheet.");
             return;
         }
+        /* The header is the first read: 127 column widths at bytes 4-130,
+         * and at 242 the version byte that says whether the rows start at
+         * 300 or 302. A column of no width would stack its cell on the next
+         * one, so it is shown at the default nine. */
+        getb();
+        for (k = 0; k < COLS; ++k) cw[k] = rbuf[4 + k] ? rbuf[4 + k] : 9;
+        marks[0].off = rbuf[242] ? 302 : 300;
+        marks[0].skip = 0;
+        k = 0;
+        vcol = 0;
+        formulas = 0;
     }
     for (;;) {
         if (type == 0x19) db_show(k);
         else {
-            done = ss_page(marks + k, marks + k + 1);
+            done = ss_show(marks + k, marks + k + 1);
             if (!done && known == k + 1 && known < MAXMARKS) ++known;
         }
         a.bar_begin();
         a.cprintf("%s  %s %u", e->name, type == 0x19 ? "record" : "page", k + 1);
         if (type == 0x19) a.cprintf(" of %u%s", nrecs, cut ? " (cut)" : "");
         else if (done) a.cputs(cut ? " (cut)" : " (end)");
-        a.keys_bar(44, type == 0x19 ? k_db : k_ss);
+        a.keys_bar(44, type == 0x19 ? k_db : formulas ? k_sf : k_ss);
         key = a.cgetc();
-        if (key == KEY_ESC || key == 'q' || key == 'Q') break;
-        if (key == 'r' || key == 'R') k = 0;
-        if ((key == ' ' || key == KEY_RETURN || key == KEY_RIGHT || key == KEY_DOWN)
-            && k + 1 < (type == 0x19 ? nrecs : known)) ++k;
-        if ((key == 'b' || key == 'B' || key == KEY_LEFT || key == KEY_UP) && k) --k;
+        /* In the grid the horizontal arrows and <> walk the columns: what a
+         * sheet pages through is its rows. The cell-by-cell view and the
+         * data base keep them for paging. */
+        grid = type == 0x1B && !formulas;
+        last = type == 0x19 ? nrecs : known;
+        if (key == KEY_ESC || (key | 0x20) == 'q') break;
+        if ((key | 0x20) == 'r') { k = 0; vcol = 0; }
+        if ((key == ' ' || key == KEY_RETURN || key == KEY_DOWN
+             || (!grid && key == KEY_RIGHT)) && k + 1 < last) ++k;
+        if (((key | 0x20) == 'b' || key == KEY_UP
+             || (!grid && key == KEY_LEFT)) && k) --k;
+        if (grid && (key == KEY_RIGHT || key == '>')) scroll(1);
+        if (grid && (key == KEY_LEFT || key == '<')) scroll(0);
+        if (type == 0x1B && (key | 0x20) == 'f') {
+            formulas = !formulas;       /* the marks belong to one view or the other */
+            k = 0;
+            known = 1;
+            marks[0].skip = 0;
+        }
         if (key == KEY_TAB && ncats > LINES) cat0 = cat0 ? 0 : LINES;
     }
     a.fclose(f);

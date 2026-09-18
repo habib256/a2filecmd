@@ -400,12 +400,26 @@ are omitted and tabs expanded.
 Return on an AppleWorks data base (`$19`) or spreadsheet (`$1B`) opens
 **AWDATA**. A data base shows one record at a time, a row per category, with
 dates and times as AppleWorks writes them; **TAB** shows categories 23 to 30.
-A spreadsheet shows one cell per row, in file order: its reference, then its
-text, its number, or its formula followed by `=` and the result AppleWorks
-saved with it. Numbers are printed by the Applesoft ROM, as `PRINT` would;
-its ninth digit may differ by one from exact rounding. **Space**/**B**/**R**
-page as in the other readers. AWDATA goes back to the first 3,200 records
-or 200 pages of cells; reports and window settings are not shown.
+A spreadsheet is shown as a sheet: the column letters on the first line, a
+row of the file a line, each cell in the column the file gives it and at the
+width AppleWorks saved for that column. Values sit against the right of
+their column, labels from the left, and a label wider than its column runs
+into the next ones until a cell writes over it -- so a sentence typed across
+several columns reads as one sentence. A formula cell shows what the sheet
+shows: the display string AppleWorks saved, or the result. Only the rows the
+file holds are drawn, one after another, so an empty stretch does not cost a
+page; the row number down the left says where you are.
+
+**Space**, **Down** and **B**, **Up** page through the rows, **&lt;** and
+**&gt;** (or the horizontal arrows) move one screen of columns, **R** goes
+back to the first page and the first column. **F** swaps to the cell-by-cell
+view -- one cell a row, its reference, then its text, its number, or its
+formula followed by `=` and the result AppleWorks saved with it --, which is
+where a formula can be read; **F** again returns to the sheet. Numbers are
+printed by the Applesoft ROM, as `PRINT` would; its ninth digit may differ
+by one from exact rounding. AWDATA reaches the first 2,688 records of a data
+base and the first 882 rows of a sheet; reports, cell formats and window
+settings are not shown.
 
 ### Pictures
 
