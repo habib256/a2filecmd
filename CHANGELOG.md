@@ -3,6 +3,38 @@
 Changes in upcoming and published releases. See the [README](README.md) for features,
 downloads and installation.
 
+## [Unreleased]
+
+### AppleWorks spreadsheets are shown as sheets (FILES, XL)
+- AWDATA draws a `$1B` file as a grid: the column letters on the first line, a row of the file a line, each cell in its own column at the width AppleWorks saved for it (header bytes 4-130). Values sit against the right of their column, labels from the left, and a label wider than its column runs into the next ones until a cell writes over it -- so a sentence typed across a row reads as a sentence instead of as twenty three-character cells, one per line. A formula cell shows what the sheet shows: the display string AppleWorks saved, or the result.
+- **&lt;** and **&gt;** (or the horizontal arrows) move one screen of columns, **Space**/**B** page through the rows, **R** returns to the top left. **F** swaps to the cell-by-cell view -- a cell a line with its formula spelled out -- and back; that view is where a formula can be read.
+- What the grid cost had to come from the same window: the page marks are 16-bit offsets, 42 of them (2,688 records of a data base, 882 rows of a sheet), and a sheet borrows the data base's category names for its column widths. `tools/awdata_ref.py` gained `ss_rows`, `ss_screen` and `ss_next_col`, `tools/test_awdata.py` compares every grid page, the two views and the column windows, and `bench/awdata.py` reads them back from POM2 on both processors.
+
+### Browsing pictures no longer flashes the panels
+- Between two images of an album (Left/Right on an HGR or DHGR picture), the screen carries the name being loaded and nothing else -- the transition the media overlays already gave. The panels are still read again, because the picture ate their table, but they are not drawn until the album is left. `tools/test_raw_transition.py` runs the real loop and refuses a redraw between two images.
+
+### The build says only what it cannot help saying
+- The compiler printed 505 warnings, none of them real, which is the same as printing none: `#pragma warn (unused-param, ...)` now surrounds the service-stub blocks whose parameters belong to the ABI, `doswrite.c` says it ignores `writing` outside the image build, `unsq.c` and `unwrap.c` test their `FILE*` against zero instead of converting it, and a dead `.DO` suffix leaves IMGCONV. 193 remain, of two kinds that the stub idiom and the shared headers cannot avoid.
+- `tools/check_warnings.py` (in `make test`, 7 seconds for both editions) builds everything and refuses any warning that is not one of those two kinds, in the files that may emit them. An unused parameter outside a stub block, a pointer used as an integer, a comparison that is always true: the build fails instead of hiding them in the flood.
+
+### A hardware session is prepared, not improvised
+- `docs/HARDWARE-CHECKLIST.md` is the sheet for the five 💾 lines of the roadmap -- the Mini on a II+, DOSWRITE on a real drive, FIXIT/REPAIR on a really damaged floppy, the auxiliary-memory pass above 4,096 blocks, the first IIgs boot: what to prepare, what to type, what must appear, what to write down.
+- `tools/hw_media.py` writes the disks it needs -- a healthy 280-block volume, the same one broken in four places REPAIR can put right, a DOS 3.3 disk, and with `--big` a 20,000-block volume broken past the first bitmap page -- and prints the findings FIXIT must name, from the two oracles the benches use: the corruption declares what it produces, `prodos_check.py` reads it back, and a disagreement refuses the fixture. `tools/test_hw_media.py` keeps the images and the sheet in step.
+
+### Every bench is played by the qualification
+- `bench/all.py` holds the whole bench table: each of the ninety-three benches with the machine, the image and the fixtures it needs, in groups. `make qualify` plays it; `--list`, `--group`, `--only`, `--strict`, `--setup` and `--jobs` choose and prepare what runs, the port of each bench is read from its source so two benches never answer on the same one, and a step whose fixture is missing is a skip that names the command to build it. The `bench` job of `ci.yml` is now those groups, not a copy of the commands.
+- `tools/test_bench_inventory.py` (in `make test`) refuses a bench file that is in no step, a step that names no bench, and a group the CI does not play. Before it, the release replay was twenty-five benches out of ninety-three: the seven written for the 0.8.9 formats were not among them, and nothing said so.
+- The first full replay found `bench/plugin.py` broken at the published 0.8.9: the menu's category line has carried its count and description for a while, and the bench still compared the whole line with `Other`. It was in no CI step, so nothing said so. The check now reads the first word, and the SDK plugin bench is back to 4/4.
+- It also showed that `bench/mb4c.py` cannot play its Mockingboard 4c half here: the card comes from POM2 sources newer than the emulator library the hosts are built against, so the bench passes its "absent card" checks (5/5) and then waits for a card that answers nothing. It is an emulator to rebuild, not a defect of A2FC; bench/README.md says so where the bench is described.
+- The runner also refuses to trust a disk image older than `build/`: `make all` relinks without restaging the volumes, and a bench then boots the previous binary with the new overlays -- which looks like a crash, not like a stale file.
+
+### The cc65 traps are read in every unit
+- `tools/test_cc65_traps.py` compiles the resident and the fifty-four overlays in both editions and reads the assembly for the two shapes that have cost a release: a boolean built on the flags of a comparison a branch has already used (the DOS-order `.2MG` of 0.8.9) and a pointer whose high byte is set while its low byte is never written (DUET's page-aligned validator). `tools/test_flag_reuse.py` only ever read `src/a2fc.c`. A source rule refuses `(signed char)f()`, whose sign extension cc65 master drops.
+
+### 190 bytes back in the resident
+- MAIN goes from 276 to 466 bytes free on 65C02 (677 to 865 on 6502), the language card from 34 to 60, CATALOG from 30 to 224, with no change in behaviour: `empty_panel` and `fill_entry` replace the panel clears and entry fills written out in `read_panel`, `read_image_dir` and `read_dos33_panel`; the ten keys that only open an overlay and hand it their own letter become a table read in the `default` of the main switch (`main`: 1,980 bytes to 1,680); `file_at_cursor`, `open_row22` and `reread_both` each replace a sequence written out two to seven times.
+- Written just above `read_dos33_panel`, those first two helpers landed **inside the CATALOG overlay** -- the `#pragma code-name (push, "CATALOG")` comes before it -- and the resident `read_panel` called them in an overlay's window. The link passed and MAIN claimed 172 bytes more than it had, exactly their size; the program would have worked only while CATALOG happened to be loaded. A function shared by the resident and an overlay goes outside the `code-name` blocks, and `ca65 -l` is what says which segment a `.proc` fell into. What else did not pay is in [docs/MEMORY-BUDGETS.md](docs/MEMORY-BUDGETS.md).
+
 ## [0.8.9] - 2026-09-17
 
 ### SQueeze and ACU (FILES)
