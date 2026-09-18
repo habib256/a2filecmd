@@ -147,7 +147,22 @@ def db_screens(data):
     return names, out
 
 
-def ss_screens(data):
+def ss_screens(data, vcol=0):
+    """The grid the viewer opens on: a page is 21 rows under the letters."""
+    rows, end = ref.ss_rows(data)
+    pages = max(1, (len(rows) + ref.SHEET_ROWS - 1) // ref.SHEET_ROWS)
+    out = []
+    for k in range(pages):
+        screen, _ = ref.ss_screen(data, k, vcol)
+        tail = ''
+        if k == pages - 1:
+            tail = ' (end)' if end else ' (cut)'
+        out.append((screen, 'SAMPLE  page %d%s' % (k + 1, tail)))
+    return out
+
+
+def ss_cell_screens(data):
+    """The cell-by-cell view behind F: a cell a line, formulas included."""
     lines, end = ref.ss_lines(data)
     pages = [lines[i:i + ref.ROWS] for i in range(0, max(len(lines), 1), ref.ROWS)]
     out = []
@@ -320,16 +335,41 @@ class AwData(unittest.TestCase):
             self.assertEqual([r.rstrip() for r in rows], expect + [''] * (ref.ROWS - len(expect)),
                              'record %d' % (k + 1))
 
-    def check_ss(self, data):
-        want = ss_screens(data)
-        keys = ' ' * (len(want) - 1) + ' ' + 'B' * (len(want) - 1)
-        got, note = self.run_host(data, '1B', keys)
-        order = list(range(len(want))) + [len(want) - 1] + list(range(len(want) - 2, -1, -1))
+    def compare(self, got, order, want, what):
         self.assertEqual(len(got), len(order))
         for (rows, bar), k in zip(got, order):
             want_rows, want_bar = want[k]
             self.assertEqual(bar, want_bar)
-            self.assertEqual(rows, want_rows + [''] * (ref.ROWS - len(want_rows)), 'page %d' % (k + 1))
+            expect = [r.rstrip() for r in want_rows]
+            self.assertEqual([r.rstrip() for r in rows],
+                             expect + [''] * (ref.ROWS - len(expect)), '%s %d' % (what, k + 1))
+
+    def check_ss(self, data):
+        """The grid, page by page and back, then the same file cell by cell."""
+        want = ss_screens(data)
+        keys = ' ' * (len(want) - 1) + ' ' + 'B' * (len(want) - 1)
+        got, note = self.run_host(data, '1B', keys)
+        order = list(range(len(want))) + [len(want) - 1] + list(range(len(want) - 2, -1, -1))
+        self.compare(got, order, want, 'page')
+
+        cells = ss_cell_screens(data)
+        keys = 'F' + ' ' * (len(cells) - 1) + 'F'
+        got, note = self.run_host(data, '1B', keys)
+        # the grid, then F and its pages, then F again: the grid from the top
+        self.compare(got[1:1 + len(cells)], list(range(len(cells))), cells, 'cell page')
+        self.assertEqual([r.rstrip() for r in got[-1][0]],
+                         [r.rstrip() for r in want[0][0]]
+                         + [''] * (ref.ROWS - len(want[0][0])))
+
+    def check_ss_columns(self, data):
+        """> and < walk the columns; R comes back to the first of them."""
+        first = ref.ss_next_col(data)
+        if not first:
+            return
+        second = ref.ss_next_col(data, first)
+        want = [ss_screens(data, vcol)[0] for vcol in (0, first, second, first, 0)]
+        got, note = self.run_host(data, '1B', '>><R')
+        self.compare(got, [0, 1, 2, 3, 4], want, 'column window')
 
     def test_the_ciderpress_samples(self):
         v = cp2_samples.volume()
@@ -337,6 +377,7 @@ class AwData(unittest.TestCase):
             self.skipTest('no CiderPress II samples (tools/cp2_samples.py)')
         self.check_db(v['/DOCS/PRESIDENTS'][2])
         self.check_ss(v['/DOCS/MATH.QUIZ'][2])
+        self.check_ss_columns(v['/DOCS/MATH.QUIZ'][2])
 
     def test_synthetic_data_bases(self):
         rng = random.Random(3)
@@ -364,7 +405,7 @@ class AwData(unittest.TestCase):
         rng = random.Random(5)
         good = make_db(rng, 3, 2)
         for data, typ, note in (
-                (good, '1A', 'Not an AppleWorks data base or spreadsheet.'),
+                (good, '1A', 'Not an AppleWorks data base or sheet.'),
                 (good[:300], '19', 'Not an AppleWorks data base.'),
                 (bytes(35) + b'\x00' + good[36:], '19', 'Not an AppleWorks data base.'),
                 (bytes(35) + b'\x1f' + good[36:], '19', 'Not an AppleWorks data base.'),

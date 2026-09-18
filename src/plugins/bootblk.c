@@ -68,6 +68,7 @@ static void msg(const char* s) { A->strcpy(A->note, s); }
 /* The stubs into the service table (see above). */
 #ifndef PLUGIN_HOST
 #pragma optimize (push, off)
+#pragma warn (unused-param, push, off)
 static void tramp(void)
 {
     asm("sta tmp1");
@@ -173,6 +174,7 @@ static unsigned char __fastcall__ find_unit(const char* name)
     asm("fu6: lda #0");
     asm("fu7: ldx #0");
 }
+#pragma warn (unused-param, pop)
 #pragma optimize (pop)
 
 #else

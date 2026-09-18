@@ -1,4 +1,10 @@
-"""Execute the raw-image browsing loop with its entry tables overwritten."""
+"""Execute the raw-image browsing loop with its entry tables overwritten.
+
+Between two images the screen carries the name being loaded and nothing
+else: the panels are read again (the image ate their table) but never
+drawn, so an album never flashes them back. draw_all is called once, when
+the album is left.
+"""
 import subprocess,tempfile,unittest
 from pathlib import Path
 from test_media_transition import base,ROOT
@@ -22,12 +28,15 @@ static unsigned char ram_format(void){return 0;}
 static void too_long(void){abort();}
 static void clear_row(unsigned char r){}
 static void gotoxy(unsigned char x,unsigned char y){}
+static void open_row22(void){}
 #define cprintf(...) ((void)0)
 static void set_cursor(struct Panel*p,unsigned char i){p->cursor=i;}
 static unsigned char image_kind(const struct Entry*e){return strstr(e->name,".HGR")!=0;}
 static unsigned char load_image(const struct Entry*e){
  ++calls;if(calls>2)abort();
- if(calls==2 && strcmp(e->name,"B.HGR"))abort();
+ /* The neighbour is loaded with the panels never redrawn in between: the
+  * screen carried its name and nothing else (the EXTASIE transition). */
+ if(calls==2 && (strcmp(e->name,"B.HGR") || draws))abort();
  memset(entries,0xA5,sizeof entries);return IMG_HGR;
 }
 static void switch_to_text(void){
@@ -48,7 +57,7 @@ int main(int argc,char**argv){
  total=3;strcpy(all[0].name,"A.HGR");strcpy(all[1].name,"OTHER.TXT");strcpy(all[2].name,"B.HGR");
  read_panel(0);view_image();
  if(a2fc_view)return 1;
- if(calls!=(mode?1:2) || draws!=(mode?1:2))return 2;
+ if(calls!=(mode?1:2) || draws!=1)return 2;   /* one redraw, on the way out */
  return 0;
 }
 '''

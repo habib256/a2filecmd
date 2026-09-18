@@ -110,7 +110,8 @@ static unsigned char i, n, any, done, g, j, acc, pad, u1, u2;
 static unsigned char fld[6];            /* day, month, century, year, hour, minute */
 static struct Gfi gfi;
 
-#pragma optimize (push, off)            /* the assembler text goes out as written */
+#pragma optimize (push, off)
+#pragma warn (unused-param, push, off)            /* the assembler text goes out as written */
 
 /* One service of the table: Y its offset, A/X the last argument, the earlier
  * ones already pushed. Six-byte stubs jump here; nothing is on the C stack
@@ -354,4 +355,5 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     asm("pe2: lda %v\n cmp #'F'\n bne pe3\n jsr %v", u1, stamp_files);
     asm("pe3:");
 }
+#pragma warn (unused-param, pop)
 #pragma optimize (pop)

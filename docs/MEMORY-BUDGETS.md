@@ -1,24 +1,68 @@
 # Consolidation : budgets mémoire
 
-## État après la 0.8.5 (14 septembre 2026)
+## État au 18 septembre 2026
 
-Réserves au lien, en octets, 65C02/6502 ; ce ne sont pas des sommes :
+Réserves au lien, en octets, 65C02/6502 ; ce ne sont pas des sommes. Le
+tableau est celui que `tools/check_layout.py` imprime à chaque lien
+(« reserves ») : le relire après chaque relink plutôt que le recopier.
 
 | Zone | 65C02 | 6502 | Objectif |
 | --- | ---: | ---: | --- |
-| MAIN (résident, plafond `$BEE0`) | **429** | 873 | 256 sur 65C02 : tenu |
-| Carte langage | 34 | 26 | ne pas descendre |
-| CATALOG (catalogues DOS 3.3 et images) | 15 | 36 | surcouche de lecture, pas à enrichir |
-| LOWRAM | 129 | 154 | — |
-| Écart avant la pile C de 192 octets | 327 | 959 | — |
+| MAIN (résident, plafond `$BEE0`) | **466** | 865 | 256 sur 65C02 : tenu |
+| Carte langage | 60 | 51 | ne pas descendre |
+| CATALOG (catalogues DOS 3.3 et images) | 224 | 208 | surcouche de lecture, pas à enrichir |
+| LOWRAM | 86 | 111 | — |
+| Écart avant la pile C de 192 octets | 494 | 1 082 | — |
 | NAV | 142 | 208 | — |
-| DELETE | 409 | 405 | libéré par le parcours résident |
-| OPEN | 11 | 43 | ne pas retomber à quelques octets au prochain média |
-| IMGFS (grande depuis le 14 septembre) | 1 520 | 1 530 | — |
-| UNSHRINK (code jusqu’à `$3BFF`) | 2 727 | 2 739 | — |
-| ATTR | 26 | 26 | idem |
-| COPY | 54 | 51 | — |
+| DELETE | 304 | 309 | libéré par le parcours résident |
+| OPEN | 26 | **4** | le plus serré : un format de plus n'y entre pas |
+| IMGFS (grande depuis le 14 septembre) | 1 286 | 1 310 | — |
+| UNSHRINK (code jusqu’à `$3BFF`) | 907 | 899 | — |
+| ATTR | 19 | 20 | idem |
+| EDIT | 19 | **5** | — |
+| COMPARE | 23 | 47 | — |
+| COPY | 21 | 18 | — |
 | Mini (sous DOS à `$9600`) | **9** | — | 270 : `copy_side` et la relecture groupée |
+
+18 septembre 2026, **+190 octets de MAIN en 65C02 (+188 en 6502)**, sans
+changement de comportement : MAIN passe de 276 à 466 (6502 : 677 à 865),
+la carte langage de 34 à 60, CATALOG de 30 à 224. Quatre formes écrites
+plusieurs fois deviennent une fonction, et la répartition des touches du
+menu principal devient une table :
+
+- `empty_panel` et `fill_entry` (les trois vidages de panneau et les deux
+  remplissages d'entrée de `read_panel`, `read_image_dir` et
+  `read_dos33_panel`) : CATALOG passe de 30 à 224 octets libres, MAIN y
+  perd les 172 octets des deux fonctions et en regagne autant en appels ;
+- `ov_keys` / `ov_names` : les dix lettres qui ne font qu'ouvrir une
+  surcouche en lui passant leur propre lettre (M, S, X, F, E, W, puis R, K,
+  A, L pour ATTR) quittent le `switch` de `main` pour une table lue dans le
+  `default` : **+115**, `main` de 1 980 à 1 680 octets ;
+- `file_at_cursor` (le fichier sous le curseur, `full` construit), partagé
+  par T et H : **+37** ;
+- `open_row22` (la ligne de message effacée et prête, sept appelants) :
+  **+36** ; `reread_both` (les deux panneaux relus et redessinés, trois
+  appelants) : **+11**.
+
+Piège rencontré en chemin : posées juste avant `read_dos33_panel`,
+`empty_panel` et `fill_entry` tombaient **dans le segment CATALOG** (le
+`#pragma code-name (push, "CATALOG")` les précède), et `read_panel`, qui
+est résident, les appelait dans la fenêtre d'une surcouche. Le lien
+passait, la réserve MAIN annonçait 638 octets — 172 de trop, la taille
+exacte des deux fonctions — et le programme n'aurait marché que tant que
+CATALOG était chargée. Une fonction partagée par le résident et une
+surcouche se pose **hors** des blocs `code-name` ; ici, juste après
+`add_entry`. Vérifier avec `ca65 -l` dans quel segment chaque `.proc`
+tombe, la réserve seule ne le dit pas.
+
+Mesure : `cc65` vers `.s`, `ca65 -l`, somme des `.proc`/`.endproc` par
+segment — les fonctions statiques ne sont pas dans `a2fc.lbl`. Ce qui n'a
+rien donné : `--codesize` (80 comme 125 débordent, 100 est un optimum
+local) ; les chaînes dupliquées (cc65 les fusionne déjà : 5 octets en tout).
+Ce qui reste, par ordre de taille : la famille `printf` de la bibliothèque
+cc65 (1 292 octets pour 84 appels), et sortir du résident la liste des
+volumes (`read_volumes` + `ask_disk`, ~720 octets) dans une petite
+surcouche, comme CATALOG l'a fait — au prix d'un bloc de la disquette BOOT.
 
 17 septembre 2026 : FIXIT et REPAIR gardent leurs réclamations en AUX au-delà de 4 096 blocs (`src/plugins/fixit_bits.inc`) et ne parcourent l'arbre qu'une fois ; FIXIT gagne le contrôle rapide. Réserves au lien, après l'acquittement d'Échap par écriture de `$C010` : FIXIT **1** octet sur les deux processeurs, REPAIR 62 (42). Le journal des formes est dans docs/FIXIT.md §4, « Un seul parcours ». VOLINFO et FIND ne copient plus que 98 octets de la table de services : même taille.
 

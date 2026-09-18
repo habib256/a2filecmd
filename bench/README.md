@@ -103,6 +103,13 @@ POM2. Il teste MB1/PT3 avec et sans carte, pause/sortie, registres AY/IRQ et
 conservation des octets AUX et du volume jetable. Le corpus PT3 est lu sans
 modification. L'ancien hôte `pom2_playtest` ne branche aucune carte sur //c.
 
+Si `mb4c.py` passe sa phase « sans carte » (5/5) puis expire sur
+`WELCOME.MB on MB4c`, c'est la bibliothèque de l'émulateur qui est en
+retard sur ses sources : la carte vient d'une version de POM2 plus récente
+que `~/src/pom2/build/libpom2_core.a`. Reconstruire POM2, puis
+`python3 bench/build_pt3_trace.py` (et `make pom2host`), avant de chercher
+du côté d'A2FC. Constaté le 18 septembre 2026 avec POM2 0.9.4.
+
 `bench/launch.py` exécute un programme Integer BASIC et un programme Applesoft,
 après annulation puis confirmation, en contrôlant leurs octets sur le volume
 jetable. Utiliser `A2FC_IMG=A2FILECMD-full` ou `A2FC_BUILD=build-6502` ; avec
@@ -158,6 +165,42 @@ l'arret comme le premier : le volume de plus de 4 096 blocs que `bigvol.py`
 fait controler et reparer sans que ce soit celui du programme. Un hote
 construit avant le 17 septembre 2026 refuse l'option : `make pom2host`.
 
+## Les jouer tous : `bench/all.py`
+
+La table de `bench/all.py` porte **chaque** banc avec la machine et l'image
+qu'il demande. C'est elle que rejoue la qualification d'une version, et c'est
+elle que joue la CI, groupe par groupe :
+
+```sh
+make qualify                      # disques, disquettes de banc, puis tout
+python3 bench/all.py --list       # ce qui serait joue, et ce qui manque
+python3 bench/all.py --group media cards --out /tmp/a2fc-bench
+python3 bench/all.py --only fixit repair --jobs 2
+```
+
+`--jobs` sert à itérer, pas à qualifier : plusieurs émulateurs à 200 000
+cycles par seconde se privent l'un l'autre, et les bancs qui comptent le
+temps réel (une copie nibble, une copie interrompue par Échap) expirent
+alors sans que rien ne soit cassé. `make qualify` joue la table un banc à
+la fois.
+
+Un pas dont la fixture manque est **SKIP**, avec la commande qui la
+construit ; `--strict` en fait un echec, ce que veut une publication.
+`--setup` construit ce qu'une commande sait construire (les hotes POM2
+jetables ; avec `--make`, les disques aussi). Le port de chaque banc est lu
+dans sa source, jamais recopie ici : avec `--jobs`, deux bancs qui
+repondraient sur le meme port ne partent jamais ensemble. Un journal par pas
+dans `--out`, et un resume qui nomme les echecs et les sauts.
+
+Avant, la liste vivait dans `ci.yml` : vingt-cinq bancs sur les
+quatre-vingt-treize de ce dossier, et les sept bancs des formats de la 0.8.9
+n'en faisaient pas partie -- rien ne le disait. `tools/test_bench_inventory.py`,
+dans `make test`, refuse desormais un fichier de banc qui n'est dans aucun
+pas (ou qui n'est pas declare comme utilitaire dans `HELPERS`), et verifie
+que le travail `bench` de la CI joue bien tous les groupes de la table.
+`bench/plugins.py` garde la liste des surcouches a table de services : c'est
+le pas `plugins` du lanceur.
+
 ## En integration continue
 
 L'emulateur n'est pas sur les executeurs de GitHub, et il ne serait pas
@@ -167,7 +210,9 @@ variable de depot **`POM2_RUNNER`** contient l'etiquette d'un executeur
 auto-heberge qui a POM2 ; sinon il est saute, et la publication n'exige que
 la construction et les tests hors emulateur. C'est la limite honnete du
 dispositif : la compilation, les budgets memoire et la fabrication des images
-sont verifies partout, la session complete la ou l'Apple II existe.
+sont verifies partout, la session complete la ou l'Apple II existe. Le
+travail appelle `bench/all.py --group ...` : les etapes portent les groupes
+de la table, pas une copie des commandes.
 
 ## Les quinze nouvelles surcouches
 

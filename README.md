@@ -32,7 +32,7 @@ pictures. The tools are right there, beside your files.
 | **Manage your files** | Copy, move, rename and delete files or whole directory trees. Tag batches, sort by name, size or type, change ProDOS attributes and lock files. Progress bars and overwrite prompts keep transfers clear. |
 | **Explore disks and images** | Browse ProDOS and DOS 3.3 disk images as read-only folders, then extract files to the other panel. Read physical DOS 3.3 disks and copy selected ProDOS files onto them, create and write floppy images, copy floppies and format ProDOS disks. |
 | **Unpack classic archives** | Extract ShrinkIt `.SHK` archives, including LZW/1 and LZW/2 compression, and Binary II `.BNY` archives with their ProDOS file attributes. |
-| **Read, edit and compare** | Text and hex viewers, a 5 KB text editor, readable Applesoft listings and an AppleWorks word-processing viewer. Compare two files byte by byte, search files for text, or mark differences between panels. |
+| **Read, edit and compare** | Text and hex viewers, a 5 KB text editor, readable Applesoft listings, AppleWorks word-processing documents, and AppleWorks data bases and spreadsheets — a sheet is shown as a sheet, column by column, with **F** for the formulas. Compare two files byte by byte, search files for text, or mark differences between panels. |
 | **Enjoy pictures and sound** | Full-screen HGR and DHGR, raw or RLE-compressed. Use the arrow keys to browse pictures like an album. Play `.MB` and `.PT3` music in foreground overlays on a Mockingboard, and Electric Duet songs on the Mockingboard or, without one, on the speaker; Left/Right browse tunes of the same type. PT3 accepts modules up to 65,535 bytes, preserves `/RAM`, and displays title, artist and player credits. |
 | **Make it yours** | Keyboard shortcuts throughout, optional AppleMouse II support and remembered panel settings. Launch SYS, BIN, Applesoft and Integer BASIC programs, or add your own tools with the plugin SDK. |
 
@@ -50,6 +50,18 @@ select a ProDOS TXT/BIN/BAS/INT file in the other and press **C**. DOSWRITE
 `.DO`, DOS-order `.2MG`) are copied to a verified temporary before replacement.
 One selected file per operation, up to 65,535 bytes; existing DOS names are
 refused and the source is kept. [Usage and limits](docs/MANUAL.md).
+
+**Check a volume, then repair it.** FIXIT walks a ProDOS volume without
+writing a single byte and names every fault it finds -- header and directory
+chains, entry names and access bits, key and index pointers, file and
+directory counters, cross-linked, lost and wrongly marked blocks -- one line
+a check, with its count and its first block. REPAIR then shows a plan, says
+what it refuses and why, and writes nothing until you press **F** and type
+the word FIX in full; every block it writes is read back, and a block it
+cannot verify gets its original rewritten. Above 4,096 blocks both keep
+their findings in auxiliary memory and offer a quick, directories-only pass;
+a 32 MB volume is checked in one walk (DISKTOOLS and XL,
+[details](docs/FIXIT.md)).
 
 NIBCOPY copies standard 16-sector Disk II tracks with one or two drives and
 verified readback ([details](docs/NIBCOPY.md)).

@@ -32,7 +32,11 @@ def main():
             s.key(b'!');s.wait(lambda:s.has('the overlays'),'categories');p.stable()
             from xplug import menu_category
             menu_category(s,p,'HELLO')
-            s.ok('third-party plugin is in Other',s.rows()[1].strip()=='Other' and s.has('Example third-party plugin'))
+            # The category line carries its count and description since the menu
+            # showed them: the name is its first word.
+            s.ok('third-party plugin is in Other',
+                 s.rows()[1].split()[:1]==['Other'] and s.has('Example third-party plugin'),
+                 s.rows()[1].strip())
             s.key(RET);p.stable()
             row=s.rows()[22]
             s.ok('plugin reads selected name/type/path','"NOTE"' in row and '04' in row and '/WORKHD/WORK' in row,row)

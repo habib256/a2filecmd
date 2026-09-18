@@ -85,7 +85,6 @@ static const unsigned char SECT[16] = {
 static const char s_po[]  = ".PO";
 static const char s_dsk[] = ".DSK";
 static const char s_2mg[] = ".2MG";
-static const char s_do[]  = ".DO";
 static const char s_dc[]  = ".DC";
 static const char* const SUF[4] = { s_po, s_dsk, s_2mg, s_dc };
 /* The suffixes classify() knows, one after another, and their containers. */

@@ -1,12 +1,12 @@
 # A2 File Cmd — feuille de route
 
-[0.8.8](https://github.com/habib256/a2filecmd/releases/tag/v0.8.8)
+[0.8.9](https://github.com/habib256/a2filecmd/releases/tag/v0.8.9)
 ([CHANGELOG](CHANGELOG.md)). Mini (II+ 48 Ko, DOS 3.3) et ProDOS
 (IIe 128 Ko), même numéro. `make mini` ne partage pas `src/a2fc.c`.
 
 Préserver les données prime. Ne pas relever les plafonds
 ([MEMORY-BUDGETS.md](docs/MEMORY-BUDGETS.md)) ; MAIN 65C02 ≥ 256 octets
-(290 aujourd’hui). **💾** = lecteurs physiques.
+(466 depuis la passe du 18 septembre). **💾** = lecteurs physiques.
 
 Deux niveaux de preuve : **qualifié POM2** et **qualifié sur matériel**.
 Un chantier se ferme au premier ; le fer reste ouvert à part, sans
@@ -14,7 +14,10 @@ bloquer le reste — mais c’est lui, maintenant.
 
 ## Maintenant : le fer 💾
 
-POM2 ne remplace pas le lecteur.
+POM2 ne remplace pas le lecteur. La marche à suivre, les images d'essai et
+ce que chaque écran doit montrer :
+[HARDWARE-CHECKLIST.md](docs/HARDWARE-CHECKLIST.md) et
+`python3 tools/hw_media.py --out dist/hw`.
 
 - [ ] **Mini sur II+** — déjà un défaut d’écran vu sur machine ; le reste
   des écritures n’est pas qualifié.
@@ -60,10 +63,10 @@ après ADTPro, TFTP). Confort (DATE, TAGPAT, PASSWORD…). Corpus :
 `GISTDATA.hdv`, [SAMPLE-MEDIA.md](docs/SAMPLE-MEDIA.md).
 
 Clos (CHANGELOG) : contrat d’écriture, séquences, FIXIT/REPAIR, Mini
-entrelacement et relecture, Commander.
+entrelacement et relecture, Commander, grille des tableurs AppleWorks.
 
 ## Livraison
 
 [AGENTS.md](AGENTS.md). `/RAM` : confirmer **avant**. Jetables pour les
-essais destructifs. Deux CPU. Avant release : `make test`, sept supports,
-`tools/check_images.py`, `bench/extras.py`.
+essais destructifs. Deux CPU. Avant release : `make test`, `make qualify`
+(toute la table de `bench/all.py`, `--strict`), `tools/check_images.py`.

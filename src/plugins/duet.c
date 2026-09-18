@@ -35,10 +35,12 @@ static const struct A2fcApi* A;
 #include "hgr_io.h"
 #ifndef PLUGIN_HOST
 #pragma optimize (push, off)
+#pragma warn (unused-param, push, off)
 static void __fastcall__ text(const char* s) STUB(cputs)
 static void __fastcall__ clear(unsigned int unused) STUB(clrscr)
 static unsigned char __fastcall__ mkey(unsigned int key) STUB(media_key)
 static char __fastcall__ getc_(unsigned int unused) STUB(cgetc)
+#pragma warn (unused-param, pop)
 #pragma optimize(pop)
 #else
 #define text A->cputs

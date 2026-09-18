@@ -57,6 +57,7 @@ static void draw_panel(unsigned char p) {}
 static void refresh_both(void) {}
 static void clear_row(unsigned char r) {}
 static void gotoxy(unsigned char x, unsigned char y) {}
+static void open_row22(void) {}
 static void cprintf(const char* f, ...) { va_list a; va_start(a, f); vprintf(f, a); va_end(a); putchar('\n'); }
 ''' + section('static unsigned char pick_targets(void)', 'static unsigned char target_check(void)') \
     + section('static const char dl_nothing[]', 'void __fastcall__ delete_entry(') + r'''

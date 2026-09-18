@@ -89,6 +89,7 @@ static const char s_fmt[]    = "%u %stagged (%u matched)";
 static const char s_un[]     = "un";                /* s_un + 2: the empty string */
 
 #pragma optimize (push, off)
+#pragma warn (unused-param, push, off)
 
 /* The table's function at offset Y, into ptr2. */
 static void getfn(void)
@@ -680,4 +681,5 @@ void __fastcall__ plugin_entry(void)
     asm("jsr %v", run);
 }
 
+#pragma warn (unused-param, pop)
 #pragma optimize (pop)

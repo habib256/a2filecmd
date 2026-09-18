@@ -80,6 +80,7 @@ static char nm[32];                 /* the new name (31 at most), then the closi
 
 /* The stubs into the service table (see above). */
 #pragma optimize (push, off)
+#pragma warn (unused-param, push, off)
 static void tramp(void)
 {
     asm("sta tmp1");
@@ -253,6 +254,7 @@ static void cut(void)
     asm("sta %v,x", nm);
     asm("cu2: lda #0");
 }
+#pragma warn (unused-param, pop)
 #pragma optimize (pop)
 
 #pragma static-locals (on)

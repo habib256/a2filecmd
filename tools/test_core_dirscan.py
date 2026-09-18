@@ -51,6 +51,9 @@ static unsigned int image_reads,volume_reads;
 static void volume_space(struct Panel*p){}
 static void sort_entries(struct Panel*p){}
 static struct Entry* add_entry(struct Panel*p,const char*n,unsigned char t){struct Entry*e=&p->e[p->count++];strcpy(e->name,n);e->type=t;return e;}
+static void empty_panel(struct Panel*p){p->count=0;p->more=0;memset(p->tags,0,sizeof p->tags);}
+static struct Entry* fill_entry(struct Panel*p){struct Entry*e=add_entry(p,dir_entry.name,dir_entry.type);
+ e->access=dir_entry.access;e->aux=dir_entry.aux;e->blocks=dir_entry.blocks;e->size=dir_entry.size;return e;}
 /* Like the real readers: a failed image read can leave part of the image
  * listed, and ON_LINE only appends volumes to whatever the table holds. */
 static unsigned char read_image_panel(struct Panel*p){++image_reads;add_entry(p,"STALE",6);return 0;}

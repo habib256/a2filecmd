@@ -49,6 +49,7 @@ unsigned char* ar_buf;                  /* api->copy_buf, read by ar_decode */
 
 #ifndef PLUGIN_HOST
 #pragma optimize (push, off)
+#pragma warn (unused-param, push, off)
 static void tramp(void)
 {
     asm("sta tmp1");
@@ -77,6 +78,7 @@ static char* __fastcall__ s_strcpy(char* d, const char* s) STUB(strcpy)
 static void* __fastcall__ s_memset(void* p, int c, unsigned int n) STUB(memset)
 static char __fastcall__ s_wait(unsigned int unused) STUB(media_wait)
 static unsigned char __fastcall__ s_ramfmt(unsigned int unused) STUB(ram_format)
+#pragma warn (unused-param, pop)
 #pragma optimize (pop)
 #else
 #define s_fopen A->fopen

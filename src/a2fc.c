@@ -435,6 +435,14 @@ static void clear_row(unsigned char row)
     cclearxy(0, row, 80);
 }
 
+/* The message row, cleared and ready to be written on: seven callers wrote
+ * the two calls out. */
+static void open_row22(void)
+{
+    clear_row(22);
+    gotoxy(0, 22);
+}
+
 #pragma code-name (push, "LC")
 static void message(const char* text)
 {
@@ -717,6 +725,27 @@ static struct Entry* add_entry(struct Panel* pan, const char* name, unsigned cha
     return e;
 }
 
+/* An emptied panel: no entries, nothing beyond the window, no marks. */
+static void empty_panel(struct Panel* pan)
+{
+    pan->count = 0;
+    pan->more = 0;
+    memset(pan->tags, 0, sizeof pan->tags);
+}
+
+/* The entry `dir_next` has just read, added to the panel with the fields
+ * both readers share; each sets `mdate` itself (a key block here, a date
+ * there). */
+static struct Entry* fill_entry(struct Panel* pan)
+{
+    struct Entry* e = add_entry(pan, dir_entry.name, dir_entry.type);
+    e->access = dir_entry.access;
+    e->aux = dir_entry.aux;
+    e->blocks = dir_entry.blocks;
+    e->size = dir_entry.size;
+    return e;
+}
+
 /* DEVNUM ($BF30): the last device ProDOS touched. Enumerating the volumes
  * leaves it on the last drive queried (/RAM on a IIe), and Bitsy Bye would
  * open there on return: we put it back the way it was. */
@@ -820,9 +849,7 @@ static unsigned char read_dos33_panel(struct Panel* pan)
     char c;
     if (!dos_vtoc_ok()) return 0;
     ct = copy_buf[1]; cs = copy_buf[2];
-    pan->count = 0;
-    pan->more = 0;
-    memset(pan->tags, 0, sizeof pan->tags);
+    empty_panel(pan);
     while (ct && pan->count < MAX_ENTRIES) {
         /* The count is its own statement: cc65 has miscompiled ++/-- inside a test. */
         if (!remaining || !dos_read_sector(ct, cs)) return 0;
@@ -900,20 +927,14 @@ static unsigned char read_image_dir(struct Panel* pan)
 {
     struct Entry* e;
     unsigned int parent = 2;
-    pan->count = 0;
-    pan->more = 0;
-    memset(pan->tags, 0, sizeof pan->tags);
+    empty_panel(pan);
     if (!dir_open_image(pan->dir_key)) return 2;
     if (pan->dir_key != 2)          /* parent pointer of a subdirectory (0x23 in the header) */
         parent = copy_buf[4 + 0x23] | ((unsigned int)copy_buf[4 + 0x24] << 8);
     if (pan->dir_key != 2) { e = add_entry(pan, "..", 0x0F); e->mdate = parent; }
     while (dir_next()) {
         if (pan->count >= MAX_ENTRIES) { pan->more = 1; break; }
-        e = add_entry(pan, dir_entry.name, dir_entry.type);
-        e->access = dir_entry.access;
-        e->aux = dir_entry.aux;
-        e->blocks = dir_entry.blocks;
-        e->size = dir_entry.size;
+        e = fill_entry(pan);
         e->mdate = dir_entry.key;   /* the key block, to navigate and extract */
     }
     if (dir_error) return 0;
@@ -977,9 +998,7 @@ static unsigned char read_panel(unsigned char p)
         pan->fs = FS_PRODOS;
         pan->path[0] = 0;
     }
-    pan->count = 0;
-    pan->more = 0;
-    memset(pan->tags, 0, sizeof pan->tags);
+    empty_panel(pan);
     if (pan->path[0] && !dir_open(pan->path)) {
         ok = 0;
         pan->path[0] = 0;
@@ -992,11 +1011,7 @@ static unsigned char read_panel(unsigned char p)
         while (dir_next()) {
             if (skip) { --skip; continue; }
             if (pan->count >= (pan->first ? WINDOW : MAX_ENTRIES)) { pan->more = 1; break; }
-            e = add_entry(pan, dir_entry.name, dir_entry.type);
-            e->access = dir_entry.access;
-            e->aux = dir_entry.aux;
-            e->blocks = dir_entry.blocks;
-            e->size = dir_entry.size;
+            e = fill_entry(pan);
             e->mdate = dir_entry.mdate;
         }
         dir_close();
@@ -1157,8 +1172,7 @@ static void enter_dir(struct Panel* pan, const struct Entry* e)
 
 static void question_begin(void)
 {
-    clear_row(22);
-    gotoxy(0, 22);
+    open_row22();
     revers(1);
 }
 
@@ -1647,8 +1661,7 @@ static void mark_differences(void)
         n += differs;
     }
     show_active();
-    clear_row(22);
-    gotoxy(0, 22);
+    open_row22();
     cprintf("%u missing from the other panel or of another size/date.", n);
 }
 
@@ -2175,6 +2188,17 @@ static unsigned char confirm_aux(void)
     if (media_aux_scope) media_aux_scope = 2;
     return 1;
 }
+/* A big overlay took the entry pool and the marks with it: both panels are
+ * read again and the screen redrawn. Written out three times, it cost more
+ * than the call. */
+static void reread_both(void)
+{
+    read_panel(0);
+    read_panel(1);
+    keep_tags(0);
+    draw_all();
+}
+
 #define OVL ((struct Overlay*)OVERLAY_WINDOW)
 static void snapshot_entries(void)
 {
@@ -2207,7 +2231,7 @@ static unsigned char load_overlay(const char* name, unsigned char any)
         if (fclose(f)) ok = 0;
         if (ok) { strcpy(overlay_loaded, name); in_overlay = 1; }
         else if (big) {
-            read_panel(0); read_panel(1); keep_tags(0); draw_all();
+            reread_both();
         }
     }
     /* A one-drive swap loaded the code, but its input may be on the disk
@@ -2222,15 +2246,14 @@ static unsigned char load_overlay(const char* name, unsigned char any)
             if (!disk_question(name)) {
                 overlay_loaded[0] = 0;
                 if (OVL->flags & OVERLAY_BIG) {
-                    read_panel(0); read_panel(1); keep_tags(0); draw_all();
+                    reread_both();
                 }
                 return 0;
             }
         }
     }
     if (!ok) {
-        clear_row(22);
-        gotoxy(0, 22);
+        open_row22();
         cprintf("A2FILE/%s.PLG is missing or stale on this volume.", name);
     }
     return ok;
@@ -2357,7 +2380,7 @@ static void batch_stage(unsigned char arg)
     if (MB->ready == 255) {
         MB->ready = 0;
         overlay_loaded[0] = 0;
-        read_panel(0); read_panel(1); keep_tags(0); draw_all();
+        reread_both();
         strcpy(note, "Tool unavailable; files kept.");
         message(note);
     }
@@ -2531,8 +2554,7 @@ void __fastcall__ image_entry(const struct A2fcApi* a)
 
 static void loading(const char* name)
 {
-    clear_row(22);
-    gotoxy(0, 22);
+    open_row22();
     cprintf("Loading %s...", name);
 }
 
@@ -2589,8 +2611,12 @@ static void view_image(void)
         if (key != KEY_LEFT && key != KEY_RIGHT) break;
         dir = key == KEY_RIGHT;
         /* Back to text before read_panel rewrites the entry table, hence the
-         * graphics page; the neighbour's name is shown while it is looked
-         * for, and the cursor joins it as soon as it is there. */
+         * graphics page. Between two images the screen carries the name
+         * being loaded and nothing else -- the same transition as the media
+         * overlays (EXTASIE, ARLEQUIN...) give: the panels are read again
+         * because the image ate their table, but they are not drawn, so
+         * leafing through an album never flashes them back. The cursor
+         * follows in memory; the panels are redrawn once, on the way out. */
         media_loading(dir);
         switch_to_text();
         if(!read_panel(active) || !read_panel(active^1))break;
@@ -2598,7 +2624,6 @@ static void view_image(void)
         for (next = 0; next < pan->count && strcmp(pan->e[next].name, album[dir]); ++next) {}
         if (next >= pan->count) break;   /* the directory changed under our feet */
         set_cursor(pan,next);
-        draw_all();
         index = next;
     }
     switch_to_text();
@@ -2620,8 +2645,7 @@ static void view_image(void)
     keep_tags(0);
     draw_all();
     if (!full[0]) { too_long(); return; }
-    clear_row(22);
-    gotoxy(0, 22);
+    open_row22();
     if (img_kind == IMG_NONE) cprintf("%s: not an image.", input);
     else cprintf("%s: %s, %lu bytes on screen.%s", input, IMG_NAMES[img_kind], IMG_BYTES[img_kind], ram_note);
 }
@@ -4858,8 +4882,7 @@ static void copy_or_move(unsigned char move)
     refresh_both();
     if (progress_abort) { sprintf(question, "Interrupted: %u of %u done.", done, n); message(question); }
     else if (done == n) {
-        clear_row(22);
-        gotoxy(0, 22);
+        open_row22();
         cprintf("%u file%s %s", progress_done - progress_skipped, progress_done - progress_skipped == 1 ? "" : "s", move ? "moved" : "copied");
         if (progress_skipped) cprintf(", %u skipped", progress_skipped);
         cputc('.');
@@ -4924,8 +4947,7 @@ static void delete_targets(void)
     refresh_both();
     if (progress_abort) { sprintf(question, dl_stop, done, n); message(question); }
     else if (done == n) {
-        clear_row(22);
-        gotoxy(0, 22);
+        open_row22();
         cprintf(dl_done, done, done > 1 ? "s" : "");
     }
 }
@@ -5372,6 +5394,25 @@ static char wait_key(void)
 #endif
 }
 
+/* The overlays that a single key opens, in the order of ov_keys. The four
+ * letters after them all go to ATTR, which reads the letter itself: K makes
+ * a directory, R renames, L locks, A changes type and access. */
+static const char ov_keys[] = "MSXFEWRKAL";
+static const char* const ov_names[] = { "COMPARE", "TEXT", "RUN", "FORMAT", "EDIT", "DISKIMG" };
+
+/* The file under the cursor, with `full` built for it, or nothing when the
+ * panel is empty, the entry is a directory, or the path does not fit. T and
+ * H wrote this sequence out; one copy is what pays for it. */
+static struct Entry* file_at_cursor(void)
+{
+    struct Panel* pan = &panels[active];
+    struct Entry* e;
+    if (!pan->count) return 0;
+    e = &pan->e[pan->cursor];
+    if (is_dir(e) || !build_full(full, pan, e)) return 0;
+    return e;
+}
+
 /* The service table: what a third party's overlay receives at its entry
  * point (a2fc_plugin.h). The program's own overlays do not need it, they
  * are linked with it. */
@@ -5500,20 +5541,14 @@ int main(void)
             break;
         case 'c': case 'C': copy_or_move(0); break;
         case 'v': case 'V': copy_or_move(1); break;
-        case 'r': case 'R': case 'k': case 'K': case 'a': case 'A': case 'l': case 'L':
-            overlay_run("ATTR", key & 0xDF);
-            break;
-        case 'm': case 'M': overlay_run("COMPARE", 'M'); break;
         case 'd': case 'D': if (overlay("DELETE")) delete_targets(); break;
-        case 's': case 'S': overlay_run("TEXT", 'S'); break;
         /* The entry under the cursor ONCE: pan->e[pan->cursor] is an entry of
          * 29 bytes, so each mention costs a multiplication, and these two
          * cases used it three times apiece. The pointer paid for the reader
          * below, which would not have fitted under $BEE0 otherwise. */
         case 't': case 'T':
-            if (!pan->count) break;
-            ent = &pan->e[pan->cursor];
-            if (is_dir(ent) || !build_full(full, pan, ent)) break;
+            ent = file_at_cursor();
+            if (!ent) break;
             key = ent->type;
             if ((unsigned char)key == 0xFC || key == 0x09) overlay_run("BASLIST", 0);   /* big overlay */
             else if ((unsigned char)key == 0x1A) overlay_run("AWP", 0);
@@ -5521,15 +5556,9 @@ int main(void)
             else if (overlay("TEXT")) view_text(full);
             break;
         case 'h': case 'H':
-            if (!pan->count) break;
-            ent = &pan->e[pan->cursor];
-            if (is_dir(ent) || !build_full(full, pan, ent)) break;
-            if (overlay("HEX")) view_hex(full, ent->size);
+            ent = file_at_cursor();
+            if (ent && overlay("HEX")) view_hex(full, ent->size);
             break;
-        case 'x': case 'X': overlay_run("RUN", 'X'); break;
-        case 'f': case 'F': overlay_run("FORMAT", 'F'); break;
-        case 'e': case 'E': overlay_run("EDIT", 'E'); break;
-        case 'w': case 'W': overlay_run("DISKIMG", 'W'); break;
         case '!':
             input[0] = 0;   /* A failed menu load must not replay an old command. */
             overlay_run("MENU", 0);
@@ -5547,6 +5576,17 @@ int main(void)
             }
             break;
         case '?': if (overlay("HELP")) view_help(); break;
+        /* The keys that only load an overlay and hand it their own letter:
+         * a table costs less than one case apiece. R, K, A and L all go to
+         * ATTR, which reads the letter to know what to do. `key` is never
+         * zero here (wait_key blocks), but `& 0xDF` would map it to the
+         * terminator, so the test comes first. */
+        default:
+            if (key) {
+                const char* hit = strchr(ov_keys, key & 0xDF);
+                if (hit) overlay_run(hit - ov_keys < 6 ? ov_names[hit - ov_keys] : (const char*)"ATTR", key & 0xDF);
+            }
+            break;
         case 'q': case 'Q':
             if (confirm("Quit to ProDOS?")) {
                 api.arg = 0;

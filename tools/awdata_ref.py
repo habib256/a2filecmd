@@ -305,39 +305,59 @@ def formula(b, col, row):
     return out
 
 
-def ss_cell(b, col, row):
+def ss_cell(b, col, row, width=8, formulas=True):
+    """(text, value): what the cell shows, and whether it is a number.
+
+    The grid shows what the sheet shows -- a formula's saved display string,
+    or its result. `formulas` adds the formula itself, which is the whole
+    point of the cell-by-cell view (F).
+    """
     # Fixed fields past the cell read as zeros; text stops at its end.
     end, z = len(b), b + bytes(11)
     f = b[0]
     if f & 0x80:
         if f & 0x20:
-            return number(z[2:10])
+            return number(z[2:10]), True
         if z[1] & 0x08:
             n = z[2]
             shown = text(b[3:3 + n])
-            return formula(b[3 + n:], col, row) + '  = ' + shown
-        return formula(b[10:], col, row) + '  = ' + number(z[2:10])
+            if not formulas:
+                return shown, True
+            return formula(b[3 + n:], col, row) + '  = ' + shown, True
+        if not formulas:
+            return number(z[2:10]), True
+        return formula(b[10:], col, row) + '  = ' + number(z[2:10]), True
     if f & 0x20:
-        return char(z[1]) * 8
-    return text(b[1:end])
+        return char(z[1]) * width, False
+    return text(b[1:end]), False
 
 
-def ss_lines(data):
-    """Every line the viewer shows, and whether the $FFFF end was reached."""
+GUTTER = 4                              # the row number down the left of the grid
+COLS = 127                              # A to DW
+SHEET_ROWS = 21                         # rows of a grid page, under the column letters
+
+
+def ss_widths(data):
+    """The column widths, header bytes 4-130; a width of nothing shows as 9."""
+    return [w or 9 for w in data[4:4 + COLS]]
+
+
+def ss_rows(data):
+    """[(row, [(col, cell bytes)])] for every row record, and the clean end."""
     if len(data) < 302:
         raise Bad('short')
     o = 302 if data[242] else 300
-    lines = []
+    rows = []
     while True:
         if o + 2 > len(data):
-            return lines, False
+            return rows, False
         n = data[o] | data[o + 1] << 8
         if n == 0xFFFF:
-            return lines, True
+            return rows, True
         if n < 2 or o + 2 + n > len(data):
-            return lines, False
+            return rows, False
         rec = data[o + 2:o + 2 + n]
-        row = rec[0] | rec[1] << 8
+        row, cells = rec[0] | rec[1] << 8, []
         col, i = 0, 2
         while i < len(rec):
             c = rec[i]
@@ -347,13 +367,86 @@ def ss_lines(data):
             if c <= 0x7F:
                 if c == 0 or i + c > len(rec):
                     break
-                ref = '%s%u' % (col_name(col), row)
-                lines.append(('%-7s%s' % (ref, ss_cell(rec[i:i + c], col, row)))[:WIDTH])
+                cells.append((col, rec[i:i + c]))
                 i += c
             else:
                 col += c - 0x81
             col += 1
+        rows.append((row, cells))
         o += 2 + n
+
+
+def ss_lines(data):
+    """Every line the cell-by-cell view (F) shows, and whether it ended clean."""
+    widths = ss_widths(data)
+    rows, end = ss_rows(data)
+    lines = []
+    for row, cells in rows:
+        for col, b in cells:
+            text, _ = ss_cell(b, col, row, widths[col] if col < COLS else 9)
+            lines.append(('%-7s%s' % ('%s%u' % (col_name(col), row), text))[:WIDTH])
+    return lines, end
+
+
+def ss_next_col(data, vcol=0):
+    """Where a screen to the right starts: the first column off this one."""
+    widths, x = ss_widths(data), GUTTER
+    c = vcol
+    while c < COLS:
+        if x >= WIDTH:
+            break
+        x += widths[c]
+        c += 1
+    return c if vcol < c < COLS else vcol
+
+
+def ss_screen(data, page=0, vcol=0):
+    """The grid as the viewer draws it: column letters, then a row a line.
+
+    Mirrors the overlay: a column whose left edge is off the screen is not
+    drawn, a value sits against the right of its column when it fits, and a
+    label wider than its column runs into the next ones until a later cell
+    writes over it.
+    """
+    widths = ss_widths(data)
+    rows, end = ss_rows(data)
+
+    def colx(c):
+        x = GUTTER
+        for i in range(vcol, c):
+            x += widths[i]
+            if x >= WIDTH:
+                return None
+        return None if c < vcol or x >= WIDTH else x
+
+    def place(line, x, s):
+        for i, ch in enumerate(s):
+            if x + i < WIDTH:
+                line[x + i] = ch
+
+    head = [' '] * WIDTH
+    for c in range(vcol, COLS):
+        x = colx(c)
+        if x is None:
+            break
+        place(head, x, col_name(c))
+    screen = [''.join(head).rstrip()]
+    for row, cells in rows[page * SHEET_ROWS:(page + 1) * SHEET_ROWS]:
+        line = [' '] * WIDTH
+        place(line, 0, '%u' % row)
+        for col, b in cells:
+            x = colx(col)
+            if x is None:
+                continue
+            width = widths[col] if col < COLS else 9
+            text, value = ss_cell(b, col, row, width, formulas=False)
+            text = text[:WIDTH - x]
+            place(line, x, ' ' * width)     # the cell owns its column
+            if value and len(text) < width and x + width <= WIDTH:
+                x += width - len(text)
+            place(line, x, text)
+        screen.append(''.join(line).rstrip())
+    return screen, end
 
 
 # -- self test ---------------------------------------------------------------
