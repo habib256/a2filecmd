@@ -49,13 +49,15 @@ int main(void){
   * as a file's: tagging a directory used to change nothing on screen. */
  panels[0].count=1;panels[0].top=0;strcpy(panels[0].path,"/VOL");
  strcpy(e->name,"DOCS");e->type=15;e->access=0xC3;e->blocks=7;panels[0].tags[0]=0;
- reset();draw_entry(0,0);assert(!memcmp(screen[2],"DOCS             <DIR>              7 ",38));
+ reset();draw_entry(0,0);assert(!memcmp(screen[2],"DOCS/            <DIR>              7 ",38));
  panels[0].tags[0]=1;
- reset();draw_entry(0,0);assert(!memcmp(screen[2],"DOCS           * <DIR>              7 ",38));
+ reset();draw_entry(0,0);assert(!memcmp(screen[2],"DOCS/          * <DIR>              7 ",38));
  e->access=0;
- reset();draw_entry(0,0);assert(!memcmp(screen[2],"DOCS           *L<DIR>              7 ",38));
+ reset();draw_entry(0,0);assert(!memcmp(screen[2],"DOCS/          *L<DIR>              7 ",38));
+ /* Un nom de 15 caracteres : la barre oblique pousse les deux marques
+  * d'une colonne vers la droite, comme elle l'a toujours fait. */
  strcpy(e->name,"ABCDEFGHIJKLMNO");
- reset();draw_entry(0,0);assert(!memcmp(screen[2],"ABCDEFGHIJKLMNO*L<DIR>              7 ",38));
+ reset();draw_entry(0,0);assert(!memcmp(screen[2],"ABCDEFGHIJKLMNO/*L<DIR>              7",38));
  panels[0].tags[0]=0;guard();
  panels[0].count=1;strcpy(e->name,"ABCDEFGHIJKLMNO");e->type=255;e->access=0;e->aux=65535;e->blocks=65535;e->size=16777215;e->mdate=(127u<<9)|(12<<5)|31;
  for(p=0;p<2;++p){reset();panels[0].fs=p;draw_info();sprintf(expected,"%s  type $FF  aux $FFFF  65535 blocks  16777215 bytes%s",e->name,p?"  (in image)":"  31/12/27  locked");expected[79]=0;line_is(21,expected);guard();}

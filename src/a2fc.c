@@ -579,10 +579,16 @@ static void draw_entry(unsigned char p, unsigned char index)
     }
     else {
         /* The name and the two marks once, whatever follows them: written
-         * out twice, the three arguments cost more than the second call. */
-        cprintf("%-15s%c%c", e->name, tagged(pan, index) ? '*' : ' ',
-                is_locked(e) ? 'L' : ' ');
-        if (is_dir(e)) cprintf("<DIR>          %5u ", e->blocks);
+         * out twice, the three arguments cost more than the second call.
+         * A directory keeps the slash after its name -- that is what the
+         * eye reads first, and seven benches read it too -- and now carries
+         * the tag and lock marks like a file. A 15-character name makes the
+         * slash push those marks one column right, as it always did. */
+        unsigned char dir = is_dir(e);
+        if (dir) sprintf(question, "%s/", e->name);
+        cprintf("%-15s%c%c", dir ? question : e->name,
+                tagged(pan, index) ? '*' : ' ', is_locked(e) ? 'L' : ' ');
+        if (dir) cprintf("<DIR>          %5u ", e->blocks);
         else cprintf("%s $%04X %8lu   ", type_name(e->type), e->aux, e->size);
     }
     revers(0);

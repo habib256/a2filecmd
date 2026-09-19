@@ -88,15 +88,20 @@ def main():
                     s.wait(lambda: s.rows()[0][x:].startswith(path), path); p.stable()
 
             def run(name, key=None):
-                before = s.rows()[22]
                 if s.cursor_row(0) is None:
                     s.key(TAB)
+                # Ctrl-R relit les deux panneaux et efface la ligne 22. Deux
+                # extractions de suite disent mot pour mot la meme chose :
+                # attendre que le message CHANGE aurait attendu pour rien,
+                # l'extraction etant deja faite. Meme piege que foreignfs.py.
+                s.key(b'\x12')
+                s.wait(lambda: not s.rows()[22].strip(), 'la ligne de message vide', 60)
                 s.select(name, 0); p.stable()
                 if key:
                     s.key(key)          # Retour : c'est OPEN qui choisit UNSQ
                 else:
                     menu_run(s, p, 'UNSQ')
-                s.wait(lambda: s.rows()[22] != before and any(m in s.rows()[22] for m in DONE),
+                s.wait(lambda: any(m in s.rows()[22] for m in DONE),
                        'la fin de ' + name, 600)
                 p.stable()
                 return s.rows()[22].strip()

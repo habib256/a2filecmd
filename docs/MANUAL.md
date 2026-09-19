@@ -69,7 +69,8 @@ The highlighted panel is active; **TAB** switches sides. Each panel shows
 names, file types, auxiliary types and sizes. The selected row is highlighted,
 a star marks a tagged entry, and **L** marks a locked one; both marks sit in
 the same two columns on every line, a directory's included -- a directory
-carries a tag like a file, and `<DIR>` stands where a file shows its type.
+carries a tag like a file. A directory still shows the slash after its name,
+and `<DIR>` stands where a file shows its type.
 The header's star identifies the sort order. Below the panels are free space, selection details,
 messages and the key bar. **?** opens the help screen.
 
