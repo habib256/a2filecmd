@@ -4851,6 +4851,7 @@ out:
 static const char doswrite_plugin[] = "DOSWRITE";
 static const char dosimage_plugin[] = "DOSIMAGE";
 static const char dosput_plugin[] = "DOSPUT";
+static const char imgput_plugin[] = "IMGPUT";
 #pragma rodata-name(pop)
 /* input carries only the phase and data offset across overlay loads. Each
  * phase closes every file; DOSIMAGE rebuilds its sibling path after loading. */
@@ -4874,6 +4875,12 @@ static void copy_or_move(unsigned char move)
     if (pan->fs) { overlay_run("IMGFS", 0); return; }   /* extraction from a ProDOS image */
     if (panels[!active].fs == FS_DOS33) {
         copy_dos(move); return;
+    }
+    /* C into a mounted ProDOS image: IMGPUT writes it. Only C -- a move
+     * would have to delete the source once the image holds the file, and
+     * IMGPUT does not delete anything; V keeps the old refusal. */
+    if (!move && panels[!active].fs == FS_IMG) {
+        overlay_run(imgput_plugin, 0); return;
     }
     if (!target_check()) return;
     n = pick_targets();

@@ -31,6 +31,7 @@ PORT = 6914
 ROOT = Path(__file__).resolve().parents[1]
 PAYLOAD = b'a line written into the image.\r' * 40      # 1240 octets : un sapling
 KEEP = b'this one was there first\r' * 20
+THIRD = b'this one came in with the C key\r' * 3
 DONE = ('Copied', 'No room', 'Not enough', 'Not a ProDOS', 'ProDOS file here',
         'Image is read-only', 'Image changed')
 
@@ -68,7 +69,8 @@ def main():
     target = make_target(Path(tempfile.mkdtemp(prefix='a2fc-imgput-mk-')))
     files = {'IMG/TARGET.PO#060000': target,
              'IN/HELLO.TXT#04C001': PAYLOAD,
-             'IN/OTHER.TXT#040000': b'a second source\r'}
+             'IN/OTHER.TXT#040000': b'a second source\r',
+             'IN/THIRD.TXT#040000': THIRD}
 
     with tempfile.TemporaryDirectory(prefix='a2fc-imgput-') as tmp:
         tmp = Path(tmp)
@@ -145,6 +147,21 @@ def main():
             s.ok('un second fichier entre aussi',
                  line == 'Copied into the image; source kept.', line)
 
+            # 5. La touche C : le geste naturel, et le meme travail. Le
+            #    panneau d'en face etait refuse en lecture seule avant.
+            s.key(b'\x12')
+            s.wait(lambda: not s.rows()[22].strip(), 'la ligne de message vide', 60)
+            s.select('THIRD.TXT', 0); p.stable()
+            s.key(b'C')
+            s.wait(lambda: s.has('Copy THIRD.TXT into the image?'),
+                   'la question posee par C', 90)
+            s.key(b'Y')
+            s.wait(lambda: any(m in s.rows()[22] for m in DONE), 'la copie par C', 300)
+            p.stable()
+            s.ok('C copie dans l image comme le menu',
+                 s.rows()[22].strip() == 'Copied into the image; source kept.',
+                 s.rows()[22].strip())
+
         # A l'arret : l'image extraite du disque dur, lue comme un volume.
         raw = catalog(Path(p.hdv), 'IMG')['TARGET.PO'][2]
         s.ok('le refus du doublon n avait rien ecrit',
@@ -152,7 +169,7 @@ def main():
         im = Image(raw)
         got = {e[1:1 + (e[0] & 15)].decode(): e for e in im.entries(2)}
         s.ok('les trois fichiers sont dans l image',
-             sorted(got) == ['HELLO.TXT', 'KEEP.TXT', 'OTHER.TXT'], sorted(got))
+             sorted(got) == ['HELLO.TXT', 'KEEP.TXT', 'OTHER.TXT', 'THIRD.TXT'], sorted(got))
         s.ok('HELLO.TXT porte ses octets exacts',
              im.read(got['HELLO.TXT']) == PAYLOAD,
              (len(im.read(got['HELLO.TXT'])), len(PAYLOAD)))
@@ -161,11 +178,13 @@ def main():
              int.from_bytes(got['HELLO.TXT'][0x1F:0x21], 'little') == 0xC001,
              (got['HELLO.TXT'][0x10], int.from_bytes(got['HELLO.TXT'][0x1F:0x21], 'little')))
         s.ok('OTHER.TXT aussi', im.read(got['OTHER.TXT']) == b'a second source\r')
+        s.ok('THIRD.TXT, entre par C, porte ses octets',
+             im.read(got['THIRD.TXT']) == THIRD)
         s.ok('le fichier qui y etait est intact', im.read(got['KEEP.TXT']) == KEEP)
         s.ok('le compte de fichiers du volume est a jour',
-             int.from_bytes(raw[2 * 512 + 4 + 0x21:2 * 512 + 4 + 0x23], 'little') == 3,
+             int.from_bytes(raw[2 * 512 + 4 + 0x21:2 * 512 + 4 + 0x23], 'little') == 4,
              int.from_bytes(raw[2 * 512 + 4 + 0x21:2 * 512 + 4 + 0x23], 'little'))
-        for n in ('HELLO.TXT', 'OTHER.TXT'):
+        for n in ('HELLO.TXT', 'OTHER.TXT', 'THIRD.TXT'):
             b = blocks_of(raw, got[n])
             s.ok('les blocs de %s sont occupes dans le bitmap' % n,
                  bitmap_says_used(raw, b), b[:4])

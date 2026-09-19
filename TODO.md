@@ -111,7 +111,9 @@ fermeture, et jamais d'atomicité promise que ProDOS ne donne pas.
   DISKTOOLS et XL) copie le fichier sélectionné dans le répertoire qu'un
   panneau a ouvert **dans** une image ProDOS. C'est le second écrivain
   ProDOS : il alloue dans le bitmap de l'image, écrit les blocs de données
-  et le bloc d'index, puis l'entrée de répertoire.
+  et le bloc d'index, puis l'entrée de répertoire. Lancé par **C** avec
+  l'image en face, ou depuis le menu ; **V** refuse toujours, un
+  déplacement devant supprimer la source.
   L'ordre est ce qui décide du coût d'une coupure : données d'abord, dans
   des blocs que le bitmap appelle encore libres — une coupure là ne change
   **rien** ; puis le bitmap ; puis l'entrée. Entre les deux derniers, on
@@ -129,7 +131,7 @@ fermeture, et jamais d'atomicité promise que ProDOS ne donne pas.
   **Limites dites, pas devinées** : au-delà de 128 Ko il faudrait un
   fichier « tree » — refusé ; un répertoire sans emplacement libre est
   refusé (étendre la chaîne est une écriture de plus).
-  `bench/imgput.py` (port 6914, 18/18 sur les deux processeurs) monte une
+  `bench/imgput.py` (port 6914, 21/21 sur les deux processeurs) monte une
   vraie image dans le panneau droit et relit l'image extraite du disque
   dur à l'arrêt. Il a trouvé ce que le banc d'essai hôte ne pouvait pas
   voir : l'en-tête de volume était lu avec les décalages d'une **entrée de

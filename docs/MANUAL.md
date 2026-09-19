@@ -64,7 +64,10 @@ elsewhere, keep `A2FILE.SYSTEM` beside its complete `A2FILE/` directory.
 Do not mix `A2FILE.CODE` and native plugins from different builds.
 
 Writing into a ProDOS image is IMGPUT: open the image in one panel, put the
-cursor on a file in the other, and **!** -> Disks -> IMGPUT copies it in. The
+cursor on a file in the other, and press **C** -- or **!** -> Disks -> IMGPUT,
+which does the same thing. One file, the one under the cursor: tags are not
+read here, and **V** still refuses, because a move would have to delete the
+source and IMGPUT deletes nothing. The
 data goes to blocks the image still calls free, is read back, and only then
 does the bitmap and the entry follow, so an interruption costs space at
 worst and never a file. A file needing more than 128 KB, and a directory
