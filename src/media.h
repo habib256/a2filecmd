@@ -75,6 +75,16 @@ static unsigned char media_prepare(unsigned char kind)
     return ok;
 }
 
+/* The screen a picture is loaded behind: the name being read and nothing
+ * else. The panels are never part of it -- neither between two images of
+ * an album nor while the first one is decoding, which is the same wait
+ * seen from the same place. In MAIN, not in the language card below: the
+ * card had the smaller reserve of the two, and both callers reach here. */
+static void loading_screen(const char* name)
+{
+    prepare_text();clrscr();cputs("Loading ");cputs(name);
+}
+
 #pragma code-name(push, "LC")
 static void media_loading(unsigned char dir)
 {
@@ -83,7 +93,7 @@ static void media_loading(unsigned char dir)
      * A lo-res picture lives in that very RAM: it stays on the air until
      * its neighbour is drawn over it (overlay_run keeps graphics on). */
     if(media_kind==V_DGR)return;
-    prepare_text();clrscr();cputs("Loading ");cputs(album[dir]);
+    loading_screen(album[dir]);
 }
 static unsigned char media_key(unsigned char key)
 {

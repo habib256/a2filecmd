@@ -18,7 +18,7 @@ C=r'''
 #define __fastcall__
 #define KEY_ESC 27
 struct A2fcApi {int unused;};
-struct Entry {char name[17];unsigned char type;unsigned int mdate;};
+struct Entry {char name[17];unsigned char type;unsigned int mdate,blocks;};
 struct Panel {char path[512];unsigned char fs,count,cursor,img_len;unsigned int dir_key;};
 static struct Panel panels[2];
 static struct Entry entries[2];
@@ -38,6 +38,13 @@ static int is_up(const struct Entry* e){return e->name[0]=='.';}
 static int tag_count(const struct Panel* p){return alltags;}
 static int tagged(const struct Panel* p,unsigned i){return alltags;}
 static int build_full(char* p,const struct Panel* pan,const struct Entry* e){sprintf(p,"%s/%s",pan->path,e->name);return 1;}
+/* The progress bar the extraction shows: never backwards, never past its
+ * total, and at least once a file -- a Disk II read is slow enough that a
+ * silent screen reads as a hang. */
+static unsigned long bar_done,bar_total;static int bar_calls,bar_bad;
+static void progress_bar(const char* n,unsigned long done,unsigned long total){
+ if(!n||!*n||!total||done>total||(bar_calls&&total==bar_total&&done<bar_done))bar_bad=1;
+ bar_done=done;bar_total=total;++bar_calls;}
 static int kbhit(void){return fault==10;}
 static int cgetc(void){return ++keys==2?27:0;}
 static int dos_read_sector(unsigned t,unsigned s){
@@ -70,6 +77,7 @@ int main(int argc,char** argv){
  if(argc>5){printf("%u\n",dos33_type(atoi(argv[5])));return 0;}
  strcpy(panels[1].path,argv[1]);strcpy(panels[0].path,"X");panels[0].img_len=1;panels[0].count=1;
  strcpy(entries[0].name,"OUTPUT");entries[0].type=type;entries[0].mdate=0x0100;
+ entries[0].blocks=9;                /* the catalog's count: one T/S list, eight data */
  skip=type==6?4:type>=250?2:0;
  for(i=0;i<8;++i){sectors[16][12+i*2]=2;sectors[16][13+i*2]=i;}
  for(i=0;i<2048;++i)sectors[32+i/256][i%256]=(i-skip)*17+3;
@@ -85,7 +93,8 @@ int main(int argc,char** argv){
   sectors[16][1]=1;sectors[16][2]=5;sectors[21][12]=2;sectors[21][13]=2;} /* data again in the next T/S list */
  if(fault==23){sectors[16][12]=0;sectors[16][13]=0;} /* the first sector is a hole */
  dos_extract();
- printf("%u %u %u %d %d %s\n",a2fc_ops,_filetype,_auxtype,removes,writes,note);return 0;
+ printf("%u %u %u %d %d %d %d %s\n",a2fc_ops,_filetype,_auxtype,removes,writes,
+        bar_calls,bar_bad,note);return 0;
 }
 '''
 class DosExtract(unittest.TestCase):
@@ -110,6 +119,15 @@ class DosExtract(unittest.TestCase):
      out,data=self.run_case(typ,n)
      self.assertTrue(out.startswith(f'1 {typ} {4660 if typ==6 else 2049 if typ==252 else 0} '),out)
      self.assertEqual(data,bytes((i*17+3)&255 for i in range(n)))
+ def test_the_extraction_shows_progress(self):
+  """A Disk II read is slow; a screen that says nothing reads as a hang."""
+  for typ in (4,6,252):
+   with self.subTest(typ=typ):
+    out,_=self.run_case(typ,600)
+    calls,bad=out.split()[5],out.split()[6]
+    self.assertEqual(bad,'0',out)        # never backwards, never past the total
+    self.assertGreater(int(calls),1,out) # and more than once over the file
+
  def test_text_preserves_sector_bytes(self):
   out,data=self.run_case(4);self.assertTrue(out.startswith('1 4 0 '));self.assertEqual(len(data),2048)
  def test_failures_never_leave_unverified_output(self):

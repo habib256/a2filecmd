@@ -21,7 +21,6 @@ static const char*IMG_NAMES[]={"None","HGR","RLE"};
 static unsigned long IMG_BYTES[]={0,8192,8192};
 #define RAM_NOTE "RAM rebuilt"
 static char input[81];
-static void loading(const char*n){strcpy(output,n);}
 static void show_hgr(void){}
 static void switch_to_hgr(void){}
 static unsigned char ram_format(void){return 0;}
@@ -33,7 +32,13 @@ static void open_row22(void){}
 static void set_cursor(struct Panel*p,unsigned char i){p->cursor=i;}
 static unsigned char image_kind(const struct Entry*e){return strstr(e->name,".HGR")!=0;}
 static unsigned char load_image(const struct Entry*e){
+ char want[40];
  ++calls;if(calls>2)abort();
+ /* Every picture decodes behind its own name and nothing else -- the first
+  * one of the album as much as its neighbour. The panels used to stay on
+  * the air for the whole of this first read. */
+ strcpy(want,"Loading ");strcat(want,e->name);
+ if(strcmp(output,want))abort();
  /* The neighbour is loaded with the panels never redrawn in between: the
   * screen carried its name and nothing else (the EXTASIE transition). */
  if(calls==2 && (strcmp(e->name,"B.HGR") || draws))abort();
@@ -58,6 +63,7 @@ int main(int argc,char**argv){
  read_panel(0);view_image();
  if(a2fc_view)return 1;
  if(calls!=(mode?1:2) || draws!=1)return 2;   /* one redraw, on the way out */
+
  return 0;
 }
 '''

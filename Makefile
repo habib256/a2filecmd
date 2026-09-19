@@ -324,10 +324,17 @@ test: test-mini
 	python3 $(TOOLS)/test_panel_sort.py
 	python3 $(TOOLS)/test_unshrink_safety.py
 	python3 $(TOOLS)/test_unshrink_core.py
+	python3 $(TOOLS)/lzc_ref.py --selftest
 	python3 $(TOOLS)/test_imgfs_safety.py
 	python3 $(TOOLS)/test_dos_extract.py
 	python3 $(TOOLS)/test_format_repair.py
 	python3 $(TOOLS)/test_doswrite.py
+	python3 $(TOOLS)/test_dos33w.py
+	python3 $(TOOLS)/test_dosrepl.py
+	python3 $(TOOLS)/pascal_ref.py --selftest
+	python3 $(TOOLS)/test_pascal.py
+	python3 $(TOOLS)/cpm_ref.py --selftest
+	python3 $(TOOLS)/test_cpm.py
 	python3 $(TOOLS)/test_dosimage.py
 	python3 $(TOOLS)/test_file_create.py
 	python3 $(TOOLS)/test_file_output.py
