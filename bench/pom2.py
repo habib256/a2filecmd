@@ -222,6 +222,19 @@ class Pom2:
         """Sort la disquette du lecteur : POM2 la recopie dans son fichier."""
         return self.rq('/eject', {'drive': drive})
 
+    def sync_disks(self):
+        """Ecrit les images sur l'hote et rend la main quand c'est fait.
+
+        POM2 sauve une disquette tout seul, environ une seconde apres la fin
+        d'une ecriture. Lire le fichier avant cela rend l'image telle qu'elle
+        a ete inseree : un controle « rien n'a ete ecrit » passerait alors
+        quoi que fasse le guest. Mesure du 2026-09-19, trois passes : juste
+        apres le message de fin le fichier n'a pas encore bouge, et
+        /disk/sync le met a jour en 2 ms, au meme octet que ce que donnerait
+        une ejection. Tout controle sur les octets d'une disquette passe donc
+        par ici (ou par une ejection, qui reste bonne)."""
+        return self.rq('/disk/sync', {})
+
     def raw(self, data):
         """Des octets bruts (ESC = \\x1b, Bas = \\x0a).
 

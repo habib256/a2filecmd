@@ -14,9 +14,10 @@ T/S et les trente-trois secteurs qu'il faut reserver avant la bascule.
 DOSREPL veut le panneau ProDOS actif -- c'est lui qui nomme le fichier -- et
 le disque DOS en face.
 
-Ce qui est verifie, ce sont les octets de la disquette, et POM2 ne la
-reecrit sur l'hote qu'a l'ejection : chaque controle ejecte d'abord. Sans
-cela, un « rien n'a ete ecrit » passerait quoi que fasse le programme."""
+Ce qui est verifie, ce sont les octets de la disquette, et POM2 ne la sauve
+qu'environ une seconde apres la fin d'une ecriture : chaque controle passe
+par `flushed()`, qui force la sauvegarde et attend. Sans cela, un « rien
+n'a ete ecrit » passerait quoi que fasse le programme."""
 import os
 import sys
 import tempfile
@@ -102,11 +103,10 @@ def main():
             s.boot()
 
             def flushed():
-                """Les octets de la disquette, vraiment."""
-                p.eject(1)
-                data = target.read_bytes()
-                p.insert(1, str(target))
-                return data
+                """Les octets de la disquette, vraiment : sauvegarde forcee,
+                puis lecture. Voir `Pom2.sync_disks`."""
+                p.sync_disks()
+                return target.read_bytes()
 
             def open_dos():
                 """Le disque DOS dans le panneau droit, le ProDOS a gauche."""

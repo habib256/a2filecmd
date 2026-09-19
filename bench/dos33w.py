@@ -68,13 +68,12 @@ def main():
                 p.stable()
 
             def flushed():
-                """Les octets de la disquette, vraiment. POM2 ne la reecrit
-                sur l'hote qu'a l'ejection : la relire sans ejecter donnerait
-                l'image de depart et ferait passer n'importe quoi."""
-                p.eject(1)
-                data = target.read_bytes()
-                p.insert(1, str(target))
-                return data
+                """Les octets de la disquette, vraiment : POM2 la sauve environ
+                une seconde apres la fin d'ecriture, et la lire avant cela
+                donnerait l'image de depart -- de quoi faire passer n'importe
+                quoi. `sync_disks` attend que ce soit ecrit."""
+                p.sync_disks()
+                return target.read_bytes()
 
             def verb(name, key=None):
                 """Le fichier `name` sous le curseur, DOS33W, puis `key`.
