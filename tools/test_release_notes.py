@@ -44,7 +44,9 @@ class ReleaseNotes(unittest.TestCase):
     def test_current_notes_list_all_shipped_overlays(self):
         result = subprocess.check_output([sys.executable, notes.__file__, 'main'], text=True)
         # Current distribution inventory, independently checked by check_images.py.
-        self.assertIn('XL includes all 75 overlays', result)
+        # 79 since DOS33W, DOSREPL, PASCAL and CPM (18 September 2026); the number is
+        # written down on purpose, so adding an overlay is a line to change.
+        self.assertIn('XL includes all 79 overlays', result)
         self.assertIn('A2FILECMD-6502-BOOT-%s.dsk' % notes.build_version(), result)
         self.assertNotIn('{overlays}', result)
 

@@ -3,13 +3,15 @@
 
     make all disk && A2FC_IMG=A2FILECMD-full python3 bench/squeeze.py
 
-UNSQ, lance par le menu, extrait dans l'autre panneau, un second disque dur
-(`hd2`, /WORKWR/OUT) relu a l'arret contre tools/squeeze_ref.py : un .QQ et
-une archive ACU synthetiques, le .QQ de l'archive Binary II de CiderPress II
-et IconEd.ACU quand ils sont dans le cache, un nom deja pris, un .QQ abime
-(rien d'ecrit). Puis T sur un programme BA3 ($09) : l'ecran doit etre le
-listing de tools/busbasic_ref.py, ligne a ligne ; TIMESET (exemple Apple,
-cache local seulement) aussi quand il est la."""
+UNSQ, lance par le menu ou par Retour sur un .QQ, extrait dans l'autre
+panneau, un second disque dur (`hd2`, /WORKWR/OUT) relu a l'arret contre
+tools/squeeze_ref.py : un .QQ et une archive ACU synthetiques, le .QQ de
+l'archive Binary II de CiderPress II et IconEd.ACU quand ils sont dans le
+cache, un nom deja pris, un .QQ abime (rien d'ecrit). Puis le meme programme
+Business BASIC liste deux fois, par T sur le fichier BA3 ($09) et par Retour
+sur sa copie nommee .BA3 mais typee $06 : l'ecran doit etre le listing de
+tools/busbasic_ref.py, ligne a ligne ; TIMESET (exemple Apple, cache local
+seulement) aussi quand il est la."""
 import sys
 import tempfile
 from pathlib import Path
@@ -33,6 +35,7 @@ def main():
     text = b'SQueezed on the Apple II, the same line again.\r' * 60
     files = {
         'IN/NOTES.QQ#040000': ref.squeeze(text, b'NOTES.TXT'),
+        'IN/RETKEY.QQ#040000': ref.squeeze(text, b'RETKEY.TXT'),
         'IN/BROKEN.QQ#040000': ref.squeeze(text, b'BROKEN')[:-20],
         'IN/PACK.ACU#E08001': ref.make_acu([
             (b'DOCS', 0x0F, 0, b'', False, True),
@@ -41,7 +44,7 @@ def main():
             (b'TAKEN', 4, 0, b'new\r', False, False)]),
     }
     expect = {}
-    for n, sq in (('NOTES.QQ', True), ('PACK.ACU', False)):
+    for n, sq in (('NOTES.QQ', True), ('RETKEY.QQ', True), ('PACK.ACU', False)):
         for name, t, a, body in ref.unsqueeze(files['IN/%s#%s' % (n, '040000' if sq else 'E08001')], n):
             if name != 'TAKEN':
                 expect[name] = (4 if t is None else t, 0 if a is None else a, body)
@@ -62,6 +65,8 @@ def main():
     program = busbasic_ref.make([(10, b'\xc0 BUSINESS BASIC'), (20, b'\xd9"TOTAL";\xff\x9d1)'),
                                  (30, b'\x8a\xfe'), (40, b'\xc0 ' + b'X' * 90)])
     files['BB/LEDGER#090000'] = program
+    # Le meme programme sans son type ProDOS : c'est le nom qui le dit.
+    files['BB/LEDGER.BA3#060000'] = program
     timeset = cp2_samples.volume().get('/CODE/TIMESET')
     if timeset:
         files['BB/TIMESET#%02X%04X' % timeset[:2]] = timeset[2]
@@ -82,12 +87,15 @@ def main():
                     path += '/' + n
                     s.wait(lambda: s.rows()[0][x:].startswith(path), path); p.stable()
 
-            def run(name):
+            def run(name, key=None):
                 before = s.rows()[22]
                 if s.cursor_row(0) is None:
                     s.key(TAB)
                 s.select(name, 0); p.stable()
-                menu_run(s, p, 'UNSQ')
+                if key:
+                    s.key(key)          # Retour : c'est OPEN qui choisit UNSQ
+                else:
+                    menu_run(s, p, 'UNSQ')
                 s.wait(lambda: s.rows()[22] != before and any(m in s.rows()[22] for m in DONE),
                        'la fin de ' + name, 600)
                 p.stable()
@@ -97,6 +105,9 @@ def main():
             open_panel(0, '/WORKHD', 'IN')
             line = run('NOTES.QQ')
             s.ok('UNSQ NOTES.QQ', line == '1 extracted, 0 skipped (name taken).', line)
+            line = run('RETKEY.QQ', RET)
+            s.ok('Retour sur un .QQ ouvre UNSQ',
+                 line == '1 extracted, 0 skipped (name taken).', line)
             line = run('PACK.ACU')
             s.ok('UNSQ PACK.ACU : dossier saute, TAKEN refuse',
                  line == '2 extracted, 1 skipped (name taken).', line)
@@ -108,16 +119,17 @@ def main():
                 s.ok('UNSQ %s (CiderPress II)' % name,
                      line == '%d extracted, 0 skipped (name taken).' % len(got), line)
 
-            # Business BASIC par T
+            # Business BASIC par T sur le type $09, par Retour sur le nom .BA3
             s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes')
             s.select('/WORKHD', 0); s.key(RET)
             s.wait(lambda: s.rows()[0].startswith('/WORKHD '), 'la racine'); p.stable()
             s.select('BB', 0); s.key(RET)
             s.wait(lambda: s.rows()[0].startswith('/WORKHD/BB'), 'BB'); p.stable()
-            progs = [('LEDGER', program)] + ([('TIMESET', timeset[2])] if timeset else [])
-            for name, data in progs:
+            progs = [('LEDGER', program, b'T'), ('LEDGER.BA3', program, RET)]
+            progs += [('TIMESET', timeset[2], b'T')] if timeset else []
+            for name, data, key in progs:
                 s.select(name, 0); p.stable()
-                s.key(b'T')
+                s.key(key)
                 s.wait(lambda: s.value('view', 1) == 2, 'BASLIST ' + name, 30)
                 s.wait(lambda: s.rows()[23].startswith('/WORKHD/BB/' + name), 'la barre', 30)
                 p.stable()

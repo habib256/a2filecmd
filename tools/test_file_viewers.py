@@ -134,6 +134,19 @@ class FileViewers(unittest.TestCase):
                             (0x1D, 'HEX'), (0x39, 'HEX')):
             self.route('DOC', typ, 0, 1000, viewer)
 
+    def test_squeezed_archives_and_business_basic(self):
+        for picture in (0, 1):
+            for name in ('ARCH.QQ', 'DISK.ACU'):
+                self.route(name, 0, 0, 5000, 'UNSQ', picture)
+                self.route(name, 6, 0x2000, 5000, 'UNSQ', picture)
+            self.route('LEDGER.BA3', 6, 0, 5000, 'BASLIST', picture)
+        self.route('LEDGER', 0x09, 0, 5000, 'BASLIST')      # the ProDOS type alone
+        self.route('LEDGER.BA3', 0x09, 0, 5000, 'BASLIST')
+        for name in ('.QQ', 'QQ', 'A.QQX', 'A.Q', '.ACU', 'A.ACUX', '.BA3', 'A.BA', 'A.BA33'):
+            self.route(name, 0, 0, 5000, 'HEX')
+        for picture, name in ((2, 'ARCH.QQ'), (3, 'DISK.ACU'), (4, 'LEDGER.BA3')):
+            self.route(name, 6, 0, 5000, 'HEX', picture)    # the music album skips them
+
     def test_macpaint_suffixes(self):
         for picture in (0, 1):
             for name, typ in (('SEAGULL.MAC', 0), ('A.MAC', 0x08)):

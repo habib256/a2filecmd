@@ -8,14 +8,14 @@ tableau est celui que `tools/check_layout.py` imprime à chaque lien
 
 | Zone | 65C02 | 6502 | Objectif |
 | --- | ---: | ---: | --- |
-| MAIN (résident, plafond `$BEE0`) | **466** | 865 | 256 sur 65C02 : tenu |
-| Carte langage | 60 | 51 | ne pas descendre |
+| MAIN (résident, plafond `$BEE0`) | **465** | 862 | 256 sur 65C02 : tenu |
+| Carte langage | 73 | 64 | ne pas descendre |
 | CATALOG (catalogues DOS 3.3 et images) | 224 | 208 | surcouche de lecture, pas à enrichir |
 | LOWRAM | 86 | 111 | — |
-| Écart avant la pile C de 192 octets | 494 | 1 082 | — |
+| Écart avant la pile C de 192 octets | 493 | 1 079 | — |
 | NAV | 142 | 208 | — |
 | DELETE | 304 | 309 | libéré par le parcours résident |
-| OPEN | 26 | **4** | le plus serré : un format de plus n'y entre pas |
+| OPEN | 43 | **28** | le plus serré ; un suffixe coûte cinq octets |
 | IMGFS (grande depuis le 14 septembre) | 1 286 | 1 310 | — |
 | UNSHRINK (code jusqu’à `$3BFF`) | 907 | 899 | — |
 | ATTR | 19 | 20 | idem |
@@ -23,6 +23,43 @@ tableau est celui que `tools/check_layout.py` imprime à chaque lien
 | COMPARE | 23 | 47 | — |
 | COPY | 21 | 18 | — |
 | Mini (sous DOS à `$9600`) | **9** | — | 270 : `copy_side` et la relecture groupée |
+
+19 septembre 2026, **ce qu'`audit()` ne rend pas**. Quatre tentatives
+mesurées au lien, toutes perdantes : le parcours des paires de la liste
+T/S au pointeur (+26), `claim()` avec `free_sector` et `mask` inlinés
+(+41), `claim(piste, secteur)` au lieu d'un numéro 0-559 (+22 en 6502).
+Gardée malgré son coût : le contrôle des pistes réservées lu directement
+dans le bitmap, deux octets par piste au lieu de 560 tours avec deux
+divisions — **+3** octets pour une boucle 140 fois plus courte, sur un
+chemin que toute écriture DOS 3.3 emprunte deux fois. `audit()` reste à
+826 octets en 65C02, dans trois surcouches. Ne pas refaire ces passes.
+
+18 septembre 2026, deux corrections qui *rendent* des octets : la ligne
+d'un dossier qui n'affichait pas ses marques (les deux formats partagent
+leur tête, le `sprintf` qui posait la barre oblique disparaît : **+27** de
+MAIN) et l'écran d'attente du visionneur d'images, `loading_screen`, une
+seule fonction pour l'entrée dans l'album et pour ses transitions, posée
+dans MAIN et non dans la carte langage — la carte remonte de 60 à 73
+(51 à 64 en 6502), MAIN de 457 à 465 après que `overlay_run` a étendu le
+même écran d'attente aux dix visionneurs spécialisés.
+
+18 septembre 2026, **la place prise dans OPEN** pour le routage Retour
+des `.QQ`, `.ACU` et `.BA3` : la surcouche la plus serrée passe de 4 à 28
+octets libres en 6502 (26 à 43 en 65C02), les trois suffixes, le type
+`$09` et deux entrées de `media_names` déjà payés. Deux formes :
+
+- `ends` fondu dans `by_suffix` : séparées, la longueur de chaque suffixe
+  était mesurée deux fois, une par fonction (**+26**) ;
+- la queue de `file_viewer`, les types ProDOS qui nomment une surcouche à
+  eux seuls (`$04`, `$09`, `$19`, `$1A`, `$1B`, `$FC`, `$FF`), devient deux
+  tables lues dans une boucle : quatorze octets de code par type contre
+  deux de données, et un type de plus ne coûte plus que ces deux octets.
+
+Ce qui n’a pas payé : lire `e->size` comme deux mots (l’idiome de
+`page_size`) pour les deux comparaisons longues de `file_viewer`. La
+fonction y gagne 24 octets, l’aide résidente en coûte 43 : une comparaison
+longue ne se paie qu'à partir de trois mentions. MAIN perd 9 octets, les
+deux noms ajoutés à `media_names` (`UNSQ`, `BASLIST`).
 
 18 septembre 2026, **+190 octets de MAIN en 65C02 (+188 en 6502)**, sans
 changement de comportement : MAIN passe de 276 à 466 (6502 : 677 à 865),

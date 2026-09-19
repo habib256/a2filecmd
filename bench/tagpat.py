@@ -20,8 +20,9 @@ l'hote -- l'ecran suffit. Une ligne marquee porte une etoile juste apres le
 nom, en colonne 15 du panneau (draw_entry, "%-15s%c%c..."), et c'est ainsi
 qu'on lit l'ensemble des fichiers marques. Les dossiers (`..` compris) sont
 compares au motif comme les fichiers et comptent dans les "(M matched)", mais
-ne sont jamais marques : le noyau lui-meme n'en marque pas, et leur ligne
-`<DIR>` n'a pas de place pour l'etoile."""
+ne sont jamais marques : c'est la regle de TAGPAT, un filtre sur des
+fichiers. Le noyau, lui, en marque (Espace, Ctrl-T, `*`) et depuis le
+18 septembre la ligne `<DIR>` le montre, dans la meme colonne 15."""
 import sys
 import tempfile
 from pathlib import Path
@@ -203,6 +204,28 @@ def main():
                  (line, tagged(s)))
             s.ok('le dossier SUB entre dans le compte sans etre marque',
                  line == '6 tagged (7 matched)', line)
+
+            # 14. TAGPAT ne marque pas les dossiers, mais Espace si, et la
+            #     ligne doit le montrer : l'etoile est en colonne 15 comme
+            #     pour un fichier, et `<DIR>` reste en colonne 17. La ligne
+            #     d'un dossier ne l'imprimait pas du tout avant le 18
+            #     septembre : le bit etait pose, l'ecran n'en disait rien.
+            s.select('SUB', 0)
+            p.stable()
+            before = s.line(0)
+            s.key(b' ')
+            p.stable()
+            row = s.line(0)
+            s.ok('Espace sur un dossier affiche l etoile en colonne 15',
+                 row[:3] == 'SUB' and row[15] == '*' and row[17:22] == '<DIR>', repr(row[:24]))
+            # Les six fichiers de l'etape 13 sont encore marques : le dossier
+            # fait le septieme, et la ligne 21 le compte comme les autres.
+            s.ok('le noyau compte le dossier marque', '7 tagged' in s.rows()[21],
+                 s.rows()[21][60:].strip())
+            s.key(b' ')
+            p.stable()
+            s.ok('Espace a nouveau retire l etoile', s.line(0) == before,
+                 (repr(before[:24]), repr(s.line(0)[:24])))
 
     return ok_all(s, 'tagpat')
 

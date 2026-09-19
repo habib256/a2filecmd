@@ -563,7 +563,7 @@ def main():
                  next((r[:40] for r in s.rows() if r.startswith('COPIE ')), ''))
             s.key(b'K'); s.wait(lambda: s.has('New directory'), 'mkdir')
             s.type('NEUF'); s.key(RET); p.stable()
-            s.ok('K cree un dossier', any(r.startswith('NEUF/') and '<DIR>' in r for r in s.rows()))
+            s.ok('K cree un dossier', any(r.startswith('NEUF ') and '<DIR>' in r for r in s.rows()))
             s.select('COPIE'); s.key(b'D'); s.wait(lambda: s.has('Delete COPIE?'), 'suppression')
             s.key(b'Y'); p.stable()
             s.ok('D supprime', not any(r.startswith('COPIE ') for r in s.rows()))

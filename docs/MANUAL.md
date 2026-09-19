@@ -67,8 +67,10 @@ Do not mix `A2FILE.CODE` and native plugins from different builds.
 
 The highlighted panel is active; **TAB** switches sides. Each panel shows
 names, file types, auxiliary types and sizes. The selected row is highlighted,
-a star marks a tagged file, and **L** marks a locked file. The header's star
-identifies the sort order. Below the panels are free space, selection details,
+a star marks a tagged entry, and **L** marks a locked one; both marks sit in
+the same two columns on every line, a directory's included -- a directory
+carries a tag like a file, and `<DIR>` stands where a file shows its type.
+The header's star identifies the sort order. Below the panels are free space, selection details,
 messages and the key bar. **?** opens the help screen.
 
 The program remembers panel directories, sorting and the active side in
@@ -92,8 +94,8 @@ full command catalog. The distribution is declared in `config/packages.mk`.
 |---|---|---|
 | **FILES** | DOSGET, DOSWRITE, DOSIMAGE, DOSPUT, EDIT, SEARCH, AWP, AWDATA, BINARY2, UNSHRINK, UNWRAP, SCIIBIN, UNSQ, FIND, FIXTYPES, GOTO, MDVIEW, RENAME, SYNC, MOVE, TREE | `/A2FILES6502` |
 | **MEDIA** | IMAGE, MUSIC, DGRVIEW, EXTASIE, ARLEQUIN, MACPAINT, SHAPES, PACKFOT, PAINT816, PURPLE, LZ4FH, PRINTSHOP, FONTVIEW, PT3, DUET | `/A2MEDIA6502` |
-| **DISKTOOLS** | BOOTBLK, BLKVIEW, BLKEDIT, DISKCMP, NIBCOPY, IMGCONV, MKIMAGE, RESCUE, UNDELETE, VOLNAME, VOLINFO, FIXIT, REPAIR, WIPE | `/A2DISKS6502` |
-| **DEVTOOLS** | BASLIST, DISASM, INTBASIC listings, CRC, IDENT, plus BASIC.SYSTEM and INTBASIC.SYSTEM runtimes | `/A2DEVTOOLS6502` |
+| **DISKTOOLS** | DOS33W, DOSREPL, BOOTBLK, BLKVIEW, BLKEDIT, DISKCMP, NIBCOPY, IMGCONV, MKIMAGE, RESCUE, UNDELETE, VOLNAME, VOLINFO, FIXIT, REPAIR, WIPE | `/A2DISKS6502` |
+| **DEVTOOLS** | PASCAL, CPM, BASLIST, DISASM, INTBASIC listings, CRC, IDENT, plus BASIC.SYSTEM and INTBASIC.SYSTEM runtimes | `/A2DEVTOOLS6502` |
 
 BOOT keeps the essential file manager and disk operations. Use the **same
 release** for all floppies. XL is complete; never replace its 65C02 native
@@ -393,7 +395,10 @@ starts. Use **MDVIEW** for wrapped text. The hex reader shows addresses,
 bytes and text. HEX: **G** goes to a seven-digit file offset; **R/E** first/last.
 
 T on a BAS file lists Applesoft line numbers and keywords; on a BA3 (`$09`)
-file, the Apple ///'s Business BASIC. T or Return on
+file, the Apple ///'s Business BASIC. Return on a BA3 does the same, and so
+does Return on a name ending in `.BA3` whatever type it arrived with -- a
+Business BASIC program brought from a host keeps its name, not its type, and
+read as Applesoft the same bytes would be another program. T or Return on
 an AWP document reads AppleWorks word-processor text; formatting commands
 are omitted and tabs expanded.
 
@@ -449,8 +454,10 @@ identification read or close stops opening the file.
 
 Raw HGR accepts 8,192 or 8,184 bytes; raw DHGR accepts 16,384 or 16,376,
 auxiliary plane first. **Left/Right** browses the raw/RLE album and skips
-formats handled by other viewers. **Escape** returns from every picture
-viewer. For an unmarked lo-res screen or sprite (BIN/FOT, 1–2,048 bytes),
+formats handled by other viewers. The panels leave the screen the moment the
+viewer opens, not when the picture lights up: from there until Escape the
+screen carries the name being read and then the picture, never the panels.
+**Escape** returns from every picture viewer. For an unmarked lo-res screen or sprite (BIN/FOT, 1–2,048 bytes),
 press **I**: DGRVIEW opens and asks for the width when needed. **Return**
 keeps ordinary small binaries in hex because a sprite has no signature. **H** explicitly opens hex,
 including for a picture. Unsupported binary formats retain the hex fallback.
@@ -492,10 +499,11 @@ refused. Main memory only: `/RAM` is left alone.
 viewer: Extasie, Arlequin, MacPaint, PACKFOT, 816/Paint, Purplesoft, DGRVIEW, FONTVIEW, LZ4FH and PRINTSHOP.
 The directory's displayed order is used, including across large-directory
 windows. At either end the arrow does nothing; Escape returns to the panels.
-While the neighbour loads, the screen keeps what it shows: a hi-res viewer
-leaves a loading line, and a lo-res picture stays on the air in graphics
-mode until the next one is drawn over it; the panels reappear only when the
-browsing ends.
+The panels leave the screen as the viewer opens, not when the first picture
+lights up. While the neighbour loads, the screen keeps what it shows: a
+hi-res viewer carries the name being read, and a lo-res picture stays on the
+air in graphics mode until the next one is drawn over it; the panels
+reappear only when the browsing ends.
 A viewer that uses AUX asks once before the first AUX write in a browsing session.
 Left/Right keeps that consent; leaving the viewer clears it.
 
@@ -666,8 +674,67 @@ Supported sources are **TXT, BIN, BAS and INT**, up to 65,535 bytes. BIN gets
 its DOS load-address/length prefix from the ProDOS auxiliary type; BAS/INT get
 their length prefix. TXT bytes are preserved. The destination name is the
 selected ProDOS name. Existing names, locked or unlocked, are refused.
-**V** does not delete the source; use C. Replacing, renaming and deleting
-existing DOS files are not supported by this command.
+**V** does not delete the source; use C. Replacing an existing DOS file is
+not supported by this command.
+
+To **read an Apple Pascal (UCSD) disk**, put the cursor on its image
+(`.PO`, `.DSK`, `.DO` or `.2MG`), open a ProDOS directory in the other panel
+and launch **PASCAL** from **! -> Disks** (DISKTOOLS and XL). It lists
+nothing and asks nothing: it extracts every file of the volume into that
+directory, under the one contract the other extractors follow -- a name
+already taken is skipped and counted, each file is read back against the
+image before it counts as done, and a failure removes the file it was
+writing and stops. The image itself is never written to.
+
+A Pascal name becomes a ProDOS one (upper case, anything but a letter, a
+digit or a period becomes a period, fifteen characters at most). A code file
+comes out as `$02 PCD`, a text file as `$03 PTX`, a data file as `$05 PDA`,
+and the rest untyped. A `.TEXT` file arrives as it lies on the disk, its
+1,024-byte header and its page padding included: turning that into plain
+text is a conversion, not a reading, and PASCAL does not pretend to.
+
+**CPM** reads an Apple CP/M disk the same way, from the same two panels.
+A CP/M disk keeps three tracks for itself, then a directory of 64 entries of
+32 bytes and files in blocks of 1,024; a file longer than 16 KB has several
+directory entries, and CPM puts them back in order. CP/M records no exact
+length, only a count of 128-byte records, so a file arrives rounded up to
+the record -- a text file ends at the `$1A` inside it, as it does under CP/M.
+Every file comes out untyped; the user number and the read-only and system
+attributes are not carried over.
+
+CP/M reads the Apple's sectors through an order of its own. The one CPM
+uses was measured on disks from the Asimov archive, not chosen from the
+published tables, which disagree; it reads them whole. CPM still does not
+trust it blindly: it tries its orders and keeps the one whose directory
+explains itself, so a disk laid out differently is refused ("Not a CP/M
+volume this can read") rather than read wrongly. Two of the four disks
+tried are refused that way -- their directories begin elsewhere.
+
+To **replace a file on a real DOS 3.3 disk**, arrange the panels as for a
+copy -- the ProDOS file selected, the DOS disk opposite -- and launch
+**DOSREPL** from **! -> Disks** (DISKTOOLS and XL). It writes the new copy
+into sectors of its own, reads it back, and only then switches the catalog
+entry to it in a single sector write; the old file stays whole and readable
+until that instant. The disk therefore has to hold both copies at once, and
+says so when it cannot. An interruption before the switch leaves the
+original untouched; after it, the old sectors may stay marked in use, and
+the message says so rather than calling the work done.
+
+To **delete or rename a file on a real DOS 3.3 disk**, open that disk in the
+active panel, put the cursor on the file and launch **DOS33W** from
+**! → Disks** (DISKTOOLS and XL); **D** deletes, **R** renames, each after a
+question naming the file and the drive. The file is identified by the track
+and sector of its first track/sector list, not by the name on screen, which
+is a ProDOS-shaped copy of the DOS name. A locked file, a write-protected
+disk, a drive that is not a standard Disk II, and any volume whose catalog
+and track/sector lists do not add up are refused before the first write --
+and the same audit runs again after the question is answered, because the
+drive door is open while it waits. Deleting writes the catalog entry first
+and the bitmap after, so an interruption between them loses space, never
+data; the message says so when that happens, and FIXIT finds the sectors.
+A new name is read by the usual prompt, so it holds letters, digits and
+periods: DOS 3.3 itself allows more, including the comma that breaks its own
+CATALOG listing.
 
 The target must be a standard 35-track, 16-sector DOS 3.3 disk in a Disk II
 in any slot 1–7, with the standard Disk II ROM signature. The command checks physical write protection, the VTOC, catalog,
@@ -720,7 +787,7 @@ Set the destination in the other panel, select the archive, then use **!**:
 | **BINARY2** | Binary II `.BNY`/`.BQY`: extracts members with their names and attributes. Directory entries are skipped. Compressed members may need a second extraction with UNSHRINK. |
 | **MDVIEW** (Magic Window) | A Magic Window document (a DOS file named `.MW`, once extracted) opens past its 256-byte header, its high-bit text read plainly. Teach documents cannot be read: they are extended files, which ProDOS 8 does not open. |
 | **SCIIBIN** | BinSCII text (`.BSC`, `.BSQ`), the Usenet encoding of Apple II files: decodes the file it carries into the other panel, with its name and ProDOS type. A file posted in several parts: select the first one; the files after it in the directory are read while the file is incomplete. Every chunk's header and data CRCs are checked, the parts must follow each other in order, and the result is read back against the CRCs. Nothing is left behind on any failure. Return opens `.BSC` and `.BSQ` files. |
-| **UNSQ** | SQueezed files (`.QQ`, as BLU makes them; a `.BQY` archive's members come out of BINARY2 as such files) and AppleLink ACU archives (`.ACU`): extracts into the other panel under the stored names (a `.QQ` keeps its own ProDOS type; ACU records carry theirs), directories skipped and paths flattened. A taken name is skipped and counted; a damaged stream or a failed write removes that file and stops. A `.QQ` is checked against its checksum; ACU's data CRCs are not trustworthy, so its lengths are checked instead. Every file is read back. Opened from **!**. |
+| **UNSQ** | SQueezed files (`.QQ`, as BLU makes them; a `.BQY` archive's members come out of BINARY2 as such files) and AppleLink ACU archives (`.ACU`): extracts into the other panel under the stored names (a `.QQ` keeps its own ProDOS type; ACU records carry theirs), directories skipped and paths flattened. A taken name is skipped and counted; a damaged stream or a failed write removes that file and stops. A `.QQ` is checked against its checksum; ACU's data CRCs are not trustworthy, so its lengths are checked instead. Every file is read back. Return opens `.QQ` and `.ACU` files; **!** opens any other. |
 | **UNWRAP** | AppleSingle (`$E0/$0001` or `.AS`, versions 1 and 2) and MacBinary I/II/III: extracts the data fork into the other panel under the wrapped file's name, made a ProDOS name (or the wrapper's, less its suffix), with its ProDOS type -- from the ProDOS information, or converted from the Mac type and creator as AppleShare does. The file is created only if the name is free, read back and compared, and removed on any failure. The resource fork is left out, and the note says so. Return opens AppleSingle files; use **!** for MacBinary. |
 
 ShrinkIt extraction clears `/RAM` and refuses it as a destination. Keep

@@ -57,6 +57,16 @@ def main():
                     # One consent must be sufficient: a second prompt would time out.
                     s.wait(lambda: visible(bytes(p.peek(0x2000, 8192))) == visible(expected), label, 60)
                     s.ok(label + ' displays the decoded picture', True)
+                    # A specialized viewer opens on the name it is reading,
+                    # not on the panels: the first decoding used to happen
+                    # behind them while every later one of the album got a
+                    # screen of its own. The overlay draws into the hi-res
+                    # page, so the text page still holds what the core put
+                    # there. (DGRVIEW is the exception below: its picture
+                    # IS the text page.)
+                    rows = [r.rstrip() for r in s.rows()]
+                    s.ok(label + ' opens on the name alone, not on the panels',
+                         rows[0] == 'Loading ' + name and not any(rows[1:]), rows[:3])
                     if aux is not None:
                         s.ok(label + ' decodes the auxiliary plane',
                              visible(bytes(p.peek(0x2000, 8192, 'aux'))) == visible(aux))
@@ -89,6 +99,14 @@ def main():
             # Specialized formats between ARAW and ZRAW must not enter raw's album.
             s.select('ARAW'); s.key(RET); s.allow_aux()
             s.wait(lambda: s.value('view', 1) == 1, 'raw image', 30)
+            # The panels leave the screen as the viewer opens, not when the
+            # picture lights up. The screen is already text at that moment,
+            # so there is no switch to trap: what says it is the text page
+            # itself, which nothing writes to again until the album is left.
+            # It used to hold both panels and `Loading ARAW...` on row 22.
+            rows = [r.rstrip() for r in s.rows()]
+            s.ok('the viewer opens on the name alone, not on the panels',
+                 rows[0] == 'Loading ARAW' and not any(rows[1:]), rows[:4])
             s.key(bytes([21]))
             s.wait(lambda: bytes(p.peek(0x2000, 8192)) == bytes([0x22]) * 8192, 'next raw image', 40)
             s.ok('raw album skips Extasie, PACKFOT, Paint and lo-res', True)

@@ -548,8 +548,13 @@ static void keep_tags(unsigned char save)
 
 /* One entry line, exactly 38 characters (a shorter line would leave the
  * end of the previous line on screen), in inverse when the cursor is on
- * it; a star after the name marks a file selected with Space, an L a
- * locked file. */
+ * it; a star after the name marks an entry selected with Space, an L a
+ * locked one. Columns 15 and 16 are those two marks on every line, a
+ * directory's included: the core has tagged directories since 0.8.6 (C,
+ * V, D and the marked MOVE walk them) and the line did not show it, so a
+ * tagged directory looked untagged. Its name no longer carries a trailing
+ * slash -- with fifteen characters and the slash there was no room for the
+ * two marks, and `<DIR>`, still in the same column, says as much. */
 static void draw_entry(unsigned char p, unsigned char index)
 {
     struct Panel* pan = &panels[p];
@@ -572,9 +577,14 @@ static void draw_entry(unsigned char p, unsigned char index)
             cprintf("%-16sS%u,D%u %5u/%5u free", question, e->mdate & 7, (e->mdate >> 3) + 1, e->aux, e->blocks);
         }
     }
-    else if (is_dir(e)) { sprintf(question, "%s/", e->name); cprintf("%-17s<DIR>          %5u ", question, e->blocks); }
-    else cprintf("%-15s%c%c%s $%04X %8lu   ", e->name, tagged(pan, index) ? '*' : ' ',
-                 is_locked(e) ? 'L' : ' ', type_name(e->type), e->aux, e->size);
+    else {
+        /* The name and the two marks once, whatever follows them: written
+         * out twice, the three arguments cost more than the second call. */
+        cprintf("%-15s%c%c", e->name, tagged(pan, index) ? '*' : ' ',
+                is_locked(e) ? 'L' : ' ');
+        if (is_dir(e)) cprintf("<DIR>          %5u ", e->blocks);
+        else cprintf("%s $%04X %8lu   ", type_name(e->type), e->aux, e->size);
+    }
     revers(0);
 }
 
@@ -1451,6 +1461,9 @@ static const char BB_EXT[] =
     "ASC(\0TEN(\0\0\0CONV(\0CONV&(\0CONV$(\0CONV%(\0LEFT$(\0RIGHT$(\0MID$(\0"
     "INSTR(\0";
 static const char bl_unknown[] = "?";
+/* A named array, not a literal: cc65 gathers literals into the resident
+ * RODATA, and this one belongs to the overlay (see BAS_TOK above). */
+static const char bl_ba3[] = ".BA3";
 
 /* Entry n of a table of count zero-ended names; "?" for none. */
 static const char* tok_at(const char* s, unsigned char n, unsigned char count)
@@ -1478,12 +1491,18 @@ static void bl_puts(const char* s) { while (*s) bl_putc(*s++); }
 
 void __fastcall__ baslist_entry(const struct A2fcApi* a)
 {
-    unsigned char page = 0, known = 1, done, bb = selected.type == 0x09;
+    unsigned char page = 0, known = 1, done, bb;
     unsigned int num;
     int lo, hi, t;
     char key, buf[7];
     const char* name;
     (void)a;
+    /* Business BASIC by its ProDOS type, or by the name a host gave it:
+     * Return routes a .BA3 here whatever the type it arrived with, and
+     * read as Applesoft the same bytes would be another program. */
+    num = strlen(selected.name);
+    bb = selected.type == 0x09;
+    if (!bb && num > 4 && !strcmp(selected.name + num - 4, bl_ba3)) bb = 1;
     vf = fopen(full, "rb");
     if (!vf) { report_error("Open"); return; }
     a2fc_view = 2;
@@ -2303,7 +2322,7 @@ static unsigned char __fastcall__ prepare_audio(unsigned char arg);
 static void overlay_run(const char* name, unsigned char arg)
 {
     struct Panel* pan = &panels[active];
-    unsigned char big, media=media_type(name), dir, gr;
+    unsigned char big, media=media_type(name), dir, gr, first=1;
     media_aux_scope = media ? 1 : 0;
     media_kind = media;
 again:
@@ -2326,6 +2345,12 @@ again:
     api.arg = prepare_audio(arg);
     reselect[0] = 0;
     note[0] = 0;
+    /* The panels leave the screen as a picture viewer opens, not when the
+     * picture lights up: the first decoding used to happen behind them,
+     * while every later one of the album got a screen of its own. Only the
+     * first: a neighbour already has its name from media_loading, and the
+     * music viewers clear the screen themselves to write their credits. */
+    if (first && media >= V_EXT && media <= MEDIA_COUNT) loading_screen(selected.name);
     if (OVL->entry) OVL->entry(&api);
     else { extern const char msg_noentry[]; strcpy(note, msg_noentry); }
     in_overlay = 0;              /* its code has returned: the window is free again */
@@ -2357,6 +2382,7 @@ again:
     } else if (!OVL->entry) message(note);
     if(media && media_request) {
         name=media_names[media];
+        first=0;
         goto again;
     }
 media_done:
@@ -2552,12 +2578,6 @@ void __fastcall__ image_entry(const struct A2fcApi* a)
 #pragma rodata-name (pop)
 #pragma code-name (pop)
 
-static void loading(const char* name)
-{
-    open_row22();
-    cprintf("Loading %s...", name);
-}
-
 /* The image under the cursor, full screen, HGR or DHGR according to what
  * the file holds. Left / Right move to the previous / next image of the
  * same directory without going back to the panels: the DHGR directory is
@@ -2578,7 +2598,11 @@ static void view_image(void)
      * to find the neighbour there. */
     keep_tags(1);
     a2fc_view = 1;
-    loading(pan->e[index].name);
+    /* The panels go at once, not when the first image lights up: they were
+     * left on the air for the whole decoding, and an album that starts on
+     * them and then never shows them again reads as a flash. The screen now
+     * carries the name being read, here as between two images. */
+    loading_screen(pan->e[index].name);
     for (;;) {
         full[0] = 0;
         if (!build_full(full, pan, &pan->e[index])) break;
@@ -3614,7 +3638,7 @@ static const char* const mn_whats[] = {
 static const char mn_group0[] = "|TEXT|HEX|EDIT|SEARCH|FIND|FIXTYPES|GOTO|MDVIEW|RENAME|SYNC|MOVE|TREE|DELETE|ATTR|TXTCONV|TAGPAT|COMPARE|AWP|AWDATA|";
 static const char mn_group1[] = "|IMAGE|DGRVIEW|EXTASIE|ARLEQUIN|MACPAINT|SHAPES|PACKFOT|PAINT816|PURPLE|LZ4FH|PRINTSHOP|FONTVIEW|";
 static const char mn_group2[] = "|MUSIC|PT3|DUET|";
-static const char mn_group3[] = "|FORMAT|DISKIMG|IMGFS|DOSGET|DOSWRITE|BOOTBLK|BLKVIEW|BLKEDIT|DISKCMP|NIBCOPY|IMGCONV|MKIMAGE|RESCUE|UNDELETE|VOLNAME|VOLINFO|FIXIT|REPAIR|WIPE|VERIFY|";
+static const char mn_group3[] = "|FORMAT|DISKIMG|IMGFS|DOSGET|DOSWRITE|DOS33W|DOSREPL|PASCAL|CPM|BOOTBLK|BLKVIEW|BLKEDIT|DISKCMP|NIBCOPY|IMGCONV|MKIMAGE|RESCUE|UNDELETE|VOLNAME|VOLINFO|FIXIT|REPAIR|WIPE|VERIFY|";
 static const char mn_group4[] = "|BASLIST|DISASM|INTBASIC|RUN|CRC|IDENT|";
 static const char mn_group5[] = "|HELP|DATE|";
 static const char mn_group6[] = "|BINARY2|UNSHRINK|UNWRAP|SCIIBIN|UNSQ|";
@@ -4160,12 +4184,20 @@ static const char d3_cleanup[] = "Cleanup failed: %s kept.";
 #endif
 static FILE* d3_out;
 static unsigned char d3_owned;
+/* The sectors this pass has read, counted for the progress bar against the
+ * catalog's own count. A Disk II reads a sector at a time and both passes
+ * cross the whole file, so the bar runs once over the two: the write, then
+ * the reading back. Without it the screen said nothing at all for as long
+ * as the drive took, which on a full disk is most of a minute. */
+static unsigned int d3_sectors;
+
 static unsigned char d3_read(unsigned char track, unsigned char sector)
 {
     unsigned int k = (unsigned int)track * 16 + sector;
     unsigned char mask = 1U << (k & 7);
     if (!track || track >= 35 || sector >= 16 || (DOS_SEEN[k >> 3] & mask)) return 0;
     DOS_SEEN[k >> 3] |= mask;
+    ++d3_sectors;
     return dos_read_sector(track, sector);
 }
 /* One pass over the entry's T/S lists. Pass 0 creates the output and
@@ -4186,6 +4218,7 @@ static unsigned char d3_pass(const struct Entry* e, unsigned char verify)
     unsigned char sized = type == 6 || type >= 0xFA;
     unsigned int left = 0, count, holes = 0;
     memset(DOS_SEEN, 0, 70);
+    d3_sectors = 0;
     while (tslt) {
         if (++lists > 5 || !d3_read(tslt, tsls)) return 0;
         tslt = copy_buf[1]; tsls = copy_buf[2];
@@ -4217,6 +4250,8 @@ static unsigned char d3_pass(const struct Entry* e, unsigned char verify)
                 if (verify) {
                     if (fread(DOS_CMP, 1, count, d3_out) != count || memcmp(DOS_CMP, copy_buf + skip, count)) return 0;
                 } else if (fwrite(copy_buf + skip, 1, count, d3_out) != count || ferror(d3_out)) return 0;
+                progress_bar(e->name, (unsigned long)(verify ? e->blocks : 0) + d3_sectors,
+                             (unsigned long)e->blocks * 2);
                 skip = 0;
                 if (sized) { left -= count; if (!left) goto end; }
                 if (!holes) break;
@@ -5100,22 +5135,27 @@ static const unsigned char image_viewers[] = {V_HEX, V_RAW, V_EXT, V_PACK, V_PAI
 static const char open_dgr[] = "DGR";
 static const char* fv_name;
 static unsigned char fv_len;
-/* Does the name end in s, with something before it? */
-static unsigned char ends(const char* s)
-{
-    unsigned char k = strlen(s);
-    return fv_len > k && !strcmp(fv_name + fv_len - k, s);
-}
 /* The viewers a suffix names: the music (V_DUET and below) and formats with
  * no ProDOS type of their own. */
-static const char fv_ext[] = ".MB\0.PT3\0.ED\0.FOTO1\0.FOTO2\0.MAC\0.AS\0.BSC\0.BSQ\0.SHAPE\0";
+static const char fv_ext[] = ".MB\0.PT3\0.ED\0.FOTO1\0.FOTO2\0.MAC\0.AS\0.BSC\0.BSQ\0.SHAPE\0"
+                             ".QQ\0.ACU\0.BA3\0";
 static const unsigned char fv_ids[] = { V_MUSIC, V_PT3, V_DUET, V_PURPLE, V_PURPLE, V_MAC,
-    V_UNWRAP, V_SCII, V_SCII, V_SHAPES };
+    V_UNWRAP, V_SCII, V_SCII, V_SHAPES, V_UNSQ, V_UNSQ, V_BASLIST };
+/* The viewers a ProDOS type names on its own, once no suffix, no picture
+ * and no music has answered: text, Business BASIC ($09, like T), the two
+ * AppleWorks documents ($19 data base, $1B spreadsheet), and the programs. */
+static const unsigned char fv_types[] = { 0x04, 0x09, 0x19, 0x1A, 0x1B, 0xFC, 0xFF };
+static const unsigned char fv_tids[] = { V_TEXT, V_BASLIST, V_AWD, V_AWP, V_AWD, V_RUN, V_RUN };
+/* The viewer the name ends for, with something before the suffix. One walk:
+ * split in two, the length of each suffix was measured twice. */
 static unsigned char by_suffix(void)
 {
     const char* s = fv_ext;
-    unsigned char i = 0;
-    for (; *s; s += strlen(s) + 1, ++i) if (ends(s)) return fv_ids[i];
+    unsigned char i = 0, k;
+    for (; *s; s += k + 1, ++i) {
+        k = strlen(s);
+        if (fv_len > k && !strcmp(fv_name + fv_len - k, s)) return fv_ids[i];
+    }
     return 0;
 }
 static unsigned char file_viewer(const struct Entry* e, unsigned char pictures)
@@ -5168,11 +5208,10 @@ static unsigned char file_viewer(const struct Entry* e, unsigned char pictures)
     if (kind) return image_viewers[kind];
     if (pictures) return V_RAW; /* I may explicitly try an untyped raw file. */
     if (music) return music;
-    if (type == 0x04) return V_TEXT;
-    if (type == 0x1A) return V_AWP;
-    if ((type & 0xFD) == 0x19) return V_AWD;    /* $19 data base, $1B spreadsheet */
     if (type == 0xE0 && aux == 1) return V_UNWRAP;      /* AppleSingle */
-    if (type == 0xFF || type == 0xFC) return V_RUN;
+    /* The types, as a table: written out, each one cost fourteen bytes of
+     * OPEN, the tightest window of the program. */
+    for (n = 0; n < sizeof fv_types; ++n) if (type == fv_types[n]) return fv_tids[n];
     return V_HEX;
 }
 void __fastcall__ open_entry(const struct A2fcApi* a)

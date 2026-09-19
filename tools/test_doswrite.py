@@ -136,7 +136,9 @@ int main(void) {
 }
 '''
   p=Path(self.tmp.name);(p/'sensor.c').write_text(code)
+  # doswrite.s is one .include: the sensing itself is shared with DOS33W.
   (p/'sensor_io.s').write_text((ROOT/'src/plugins/doswrite.s').read_text())
+  (p/'dos33_sense.inc').write_text((ROOT/'src/plugins/dos33_sense.inc').read_text())
   for cpu in ('sim6502','sim65c02'):
    exe=p/('sensor-'+cpu)
    subprocess.run(['cl65','-t',cpu,'-O',str(p/'sensor.c'),str(p/'sensor_io.s'),'-o',str(exe)],check=True,capture_output=True)
