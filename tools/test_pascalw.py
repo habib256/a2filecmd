@@ -18,6 +18,8 @@ import unittest
 from pathlib import Path
 
 import pascal_ref
+from po22mg import to_2mg
+from po2dsk import to_dsk
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -233,6 +235,29 @@ class PascalW(unittest.TestCase):
         runs = sorted((f['first'], f['last']) for f in v['files'])
         for (f1, l1), (f2, _) in zip(runs, runs[1:]):
             self.assertLessEqual(l1, f2, runs)
+
+    def test_the_containers_that_move_the_blocks_around(self):
+        """A .DSK stores the halves of every block in DOS sector order and a
+        .2MG puts a header in front of the volume. The Asimov Pascal disks
+        are .do files, so the DOS order is the real case, not the exotic
+        one -- and nothing exercised either path for writing."""
+        for suffix, wrap, unwrap in (
+                ('.DSK', to_dsk, to_dsk),          # the order is its own inverse
+                ('.2MG', to_2mg, lambda d: d[int.from_bytes(d[24:26], 'little'):])):
+            with self.subTest(suffix=suffix):
+                self.setUp()
+                img = self.dir / ('VOL' + suffix)
+                img.write_bytes(wrap(self.original))
+                self.give('NEW', b'new bytes\r' * 30)
+                out = subprocess.check_output(
+                    [str(self.exe), str(img), str(self.src), '0', '1', '0'],
+                    text=True).strip()
+                self.assertIn('1 put', out)
+                raw = unwrap(img.read_bytes())
+                v = pascal_ref.volume(raw)
+                self.assertIsNotNone(v, out)
+                e = next(f for f in v['files'] if f['name'] == 'NEW')
+                self.assertEqual(pascal_ref.contents(raw, e), b'new bytes\r' * 30)
 
     # -- what must not ------------------------------------------------------
 

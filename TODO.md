@@ -211,6 +211,19 @@ fermeture, et jamais d'atomicité promise que ProDOS ne donne pas.
   celui que le lecteur donne ($02→code, $03→texte, $05→données, le reste
   non typé) : un TXT ProDOS ne devient **pas** un textfile UCSD, ce format
   portant un en-tête de 1 024 octets.
+- [x] **Chasse aux bugs dans les chemins d'écriture** (après la lecture
+  détaillée des formats). Une vraie trouvaille : un bitmap ProDOS qui
+  déclare libres le répertoire de volume et le bitmap lui-même faisait
+  écrire IMGPUT par-dessus, et le volume ne se relisait plus. L'allocateur
+  part maintenant au-delà de la dernière page du bitmap et jamais sous le
+  bloc 6. Le premier correctif n'avait rien fait — le remplacement n'a pas
+  trouvé son texte, `floor_block` restait nul — et seule la ré-exécution du
+  scénario l'a montré ; les tests étaient verts avant comme après.
+  Les conteneurs `.2MG` et `.DSK` n'avaient jamais été écrits par aucun
+  test ni aucun banc : les trois écrivains les traitent correctement, c'est
+  vérifié et figé. Écartés après vérification : copier une image dans
+  elle-même (impossible par arithmétique) et le cache de page du bitmap
+  (invalidé par ceinture).
 - [x] **CP/M — écriture.** `src/plugins/cpmw.c` (CPMW, DEVTOOLS et XL),
   miroir de CPM, mêmes panneaux, même contrat. `src/plugins/cpm_fs.h`
   porte la couche commune aux deux.

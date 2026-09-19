@@ -17,6 +17,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from po22mg import to_2mg
+from po2dsk import to_dsk
 from prodos_read import Image
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -230,6 +232,31 @@ class ImgPut(unittest.TestCase):
         self.assertEqual(got, [self.payload, self.payload])
         self.assertEqual(free_blocks(self.original) - free_blocks(self.img.read_bytes()), 6)
 
+    def test_the_containers_that_move_the_blocks_around(self):
+        """A .PO is the flat case. A .2MG puts a header in front of the
+        volume and a .DSK stores the halves of every block in DOS sector
+        order: writing has to undo exactly what reading does, and nothing
+        exercised either of those paths before."""
+        for suffix, wrap, unwrap in (
+                ('.2MG', to_2mg, lambda d: d[int.from_bytes(d[24:26], 'little'):]),
+                ('.DSK', to_dsk, lambda d: to_dsk(d))):   # the order is its own inverse
+            with self.subTest(suffix=suffix):
+                img = self.dir / ('DISK' + suffix)
+                img.write_bytes(wrap(self.original))
+                before = img.read_bytes()
+                out = subprocess.check_output(
+                    [str(self.exe), str(img), str(self.src), '0', '1',
+                     'HELLO', '4', '0', '2', '0'], text=True).strip()
+                self.assertIn('Copied', out)
+                after = img.read_bytes()
+                self.assertEqual(len(after), len(before))
+                if suffix == '.2MG':
+                    self.assertEqual(after[:64], before[:64], 'the 2MG header moved')
+                im = Image(unwrap(after))
+                e = next(x for x in im.entries(2)
+                         if x[1:1 + (x[0] & 15)].decode() == 'HELLO')
+                self.assertEqual(im.read(e)[:len(self.payload)], self.payload)
+
     # -- what must not ------------------------------------------------------
 
     def test_answering_no_writes_nothing(self):
@@ -270,6 +297,35 @@ class ImgPut(unittest.TestCase):
         self.assertEqual(writes, 0, note)
         self.assertIn('Not enough free blocks', note)
         self.assertEqual(self.img.read_bytes(), untouched)
+
+    def test_a_lying_bitmap_never_gets_the_directory_overwritten(self):
+        """A bitmap that calls the volume directory or the bitmap itself
+        free is not a reason to write there. ProDOS trusts the bitmap and
+        would; an image with a damaged one is what FIXIT is for, and
+        handing it a file on top of its own directory destroys the volume.
+
+        Measured before the floor existed: with blocks 1 to 6 marked free,
+        the file went over the directory and the bitmap and the volume did
+        not read back at all."""
+        bm = bitmap_at(self.original) * 512
+        for lo, hi in ((1, 7), (0, 7), (6, 7), (2, 6)):
+            with self.subTest(free=(lo, hi)):
+                d = bytearray(self.original)
+                for b in range(lo, hi):
+                    d[bm + (b & 0xFFF) // 8] |= 0x80 >> (b & 7)
+                self.img.write_bytes(bytes(d))
+                writes, note = self.run_op()
+                self.assertIn('Copied', note)
+                e = self.entry()
+                self.assertIsNotNone(e, note)
+                # it reads back, and nothing of it lives among the reserved
+                im = Image(self.img.read_bytes())
+                self.assertEqual(im.read(e)[:len(self.payload)], self.payload)
+                key = int.from_bytes(e[0x11:0x13], 'little')
+                idx = self.img.read_bytes()[key * 512:(key + 1) * 512]
+                used = [key] + [idx[i] | (idx[256 + i] << 8)
+                                for i in range(-(-len(self.payload) // 512))]
+                self.assertTrue(all(b >= 7 for b in used), used)
 
     def test_a_failure_before_the_bitmap_leaves_the_image_untouched(self):
         """The data blocks go into space the bitmap still calls free, so a

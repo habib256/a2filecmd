@@ -72,6 +72,15 @@ static unsigned int vol_blocks, bm_first;
 static unsigned int bm_page;            /* page held in bits[]; NOPAGE = none */
 static unsigned char bm_dirty;
 static unsigned int scan;               /* next block the walk will consider */
+/* The first block a file may ever have. Below it lie the boot blocks, the
+ * four of the volume directory and the bitmap itself -- and a bitmap that
+ * calls any of them free is not a reason to write there. ProDOS trusts the
+ * bitmap and would; an image with a damaged one is exactly what FIXIT is
+ * for, and handing it a file on top of its own directory destroys the
+ * volume outright. Measured: without this, a bitmap marking blocks 1 to 6
+ * free made IMGPUT write the file over the directory and the bitmap, and
+ * the volume did not read back at all. */
+static unsigned int floor_block;
 static unsigned int dir_first, dir_blk; /* chain head (the header) and the slot's block */
 static unsigned char dir_slot;
 static unsigned int data_blocks, needed;
@@ -114,7 +123,7 @@ static unsigned char bm_load(unsigned int page) {
  * none: block 0 holds the boot code and is never free, so 0 can say it. */
 static unsigned int next_free(void) {
  unsigned int b;
- for(b=scan;b<vol_blocks;++b) {
+ for(b=scan<floor_block?floor_block:scan;b<vol_blocks;++b) {
   if(!bm_load(b>>12))return 0;
   if(bits[(b&0xFFF)>>3] & (0x80>>(b&7))) { scan=b+1; return b; }
  }
@@ -177,8 +186,11 @@ static unsigned char header_ok(void) {
   * file count sit at 0x23, 0x25 and 0x21, where a file keeps its auxtype,
   * its modification date and its header pointer. */
  bm_first=rd16(dirb+4+0x23);vol_blocks=rd16(dirb+4+0x25);
- return vol_blocks<=src.blocks && vol_blocks>=7 && bm_first>=3 && bm_first<vol_blocks &&
-        (unsigned int)((vol_blocks-1)>>12)+1<=vol_blocks-bm_first;
+ if(!(vol_blocks<=src.blocks && vol_blocks>=7 && bm_first>=3 && bm_first<vol_blocks &&
+      (unsigned int)((vol_blocks-1)>>12)+1<=vol_blocks-bm_first))return 0;
+ floor_block=bm_first+(unsigned int)((vol_blocks-1)>>12)+1;
+ if(floor_block<6)floor_block=6;
+ return floor_block<vol_blocks;
 }
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api) {
@@ -221,7 +233,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
   * the key block and every data block, and fills the index block with them
   * -- so the walk that proves the room is the one that chooses the blocks,
   * and the bitmap is not read again until it is written. */
- scan=0;a.memset(idx,0,512);
+ scan=floor_block;a.memset(idx,0,512);
  key=next_free();
  if(!key) { note("Not enough free blocks.");goto done; }
  for(i=0;i<data_blocks && data_blocks>1;++i) {
@@ -269,6 +281,9 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
 
  /* One directory block, one write: the entry and, when it lives there,
   * the file count. From that instant the name means the file. */
+ /* dirb is about to stop being the bitmap page: say so, or a later
+  * bm_load would hand out directory bytes as a bitmap. */
+ bm_page=NOPAGE;
  if(!source_read(&src,dir_blk,dirb)) { note("Copied; entry unfinished: run FIXIT.");goto done; }
  p=dirb+4+dir_slot*0x27;
  if(*p&0xF0) { note("Copied; entry unfinished: run FIXIT.");goto done; }

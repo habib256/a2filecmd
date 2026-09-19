@@ -18,6 +18,7 @@ import unittest
 from pathlib import Path
 
 import cpm_ref
+from po2dsk import to_dsk
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -223,6 +224,22 @@ class CpmW(unittest.TestCase):
             for b in f['blocks']:
                 self.assertNotIn(b, seen, (f['name'], b))
                 seen.add(b)
+
+    def test_a_dos_order_container_writes_the_same(self):
+        """CP/M has a skew of its own on top of the container's order, so
+        the two undo each other here and nowhere else. Nothing exercised a
+        DOS-order container for writing."""
+        img = self.dir / 'VOL.DSK'
+        img.write_bytes(to_dsk(self.original))     # the order is its own inverse
+        self.give('NEW.TXT', b'new bytes\r\n' * 30)
+        out = subprocess.check_output(
+            [str(self.exe), str(img), str(self.src), '0', '1', '0'], text=True).strip()
+        self.assertIn('1 put', out)
+        raw = to_dsk(img.read_bytes())
+        v = cpm_ref.volume(raw)
+        self.assertIsNotNone(v, out)
+        e = next(f for f in v['files'] if f['name'] == 'NEW.TXT')
+        self.assertEqual(cpm_ref.contents(raw, e, v['skew'])[:330], b'new bytes\r\n' * 30)
 
     # -- what must not ------------------------------------------------------
 
