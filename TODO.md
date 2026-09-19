@@ -171,7 +171,35 @@ fermeture, et jamais d'atomicité promise que ProDOS ne donne pas.
   écriture, on peut essayer les tables candidates et garder celle dont le
   répertoire se valide — un mauvais décalage donne un refus, jamais des
   octets faux. À faire avec un vrai disque sous la main.
-- [ ] **Pascal / CP/M — écriture.** Après la lecture, et pas avant.
+- [x] **Pascal — écriture.** `src/plugins/pascalw.c` (PASCALW, DEVTOOLS et
+  XL) met tous les fichiers du dossier ProDOS d'en face dans le volume
+  UCSD sous le curseur — le miroir exact de PASCAL, mêmes panneaux, même
+  contrat : un nom déjà dans le volume est sauté et compté, jamais écrasé.
+  `src/plugins/pascal_fs.h` porte la couche commune aux deux.
+  **Règle de placement, stricte et assumée** : un fichier va après le
+  dernier bloc utilisé, jamais dans un trou laissé entre deux fichiers.
+  Le filer Pascal sait combler ces trous parce qu'il sait décaler ce qui
+  suit ; décaler les fichiers de quelqu'un d'autre ne se fait pas sans
+  qu'on le demande. Un volume dont la place libre est au milieu est donc
+  refusé, et K(runch du filer la ramène au bout.
+  Ordre : données au-delà du dernier bloc utilisé (invisibles), puis
+  l'entrée à l'indice compte+1 (au-delà du compte, donc invisible aussi),
+  puis le compte — l'instant où le fichier existe. Quand l'entrée et le
+  compte tombent dans le même bloc (les dix-neuf premières), c'est une
+  seule écriture et il n'y a pas de fenêtre du tout.
+  `tools/test_pascalw.py` casse chaque écriture à son tour, avec
+  `tools/pascal_ref.py` comme oracle indépendant. Il a trouvé deux vrais
+  défauts : le compte écrit quatre octets trop loin (un répertoire UCSD
+  n'a pas l'en-tête de chaînage d'un répertoire ProDOS, ses entrées
+  commencent à l'octet 0 du bloc), et un « le volume est intact » annoncé
+  alors qu'une écriture de répertoire venait d'atterrir fausse — les
+  anciens octets sont maintenant remis, et si ça échoue aussi le message
+  le dit. Marge de fenêtre : 364 octets (6502), 347 (65C02).
+  **Reste : un banc POM2**, et le genre UCSD écrit est l'inverse exact de
+  celui que le lecteur donne ($02→code, $03→texte, $05→données, le reste
+  non typé) : un TXT ProDOS ne devient **pas** un textfile UCSD, ce format
+  portant un en-tête de 1 024 octets.
+- [ ] **CP/M — écriture.** Après Pascal.
 
 Une petite surcouche (DELETE, COPY, IMGFS, ATTR, OPEN) ne bouge que si
 on doit la modifier : extraire un service, mesurer au lien.

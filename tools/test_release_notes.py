@@ -46,7 +46,7 @@ class ReleaseNotes(unittest.TestCase):
         # Current distribution inventory, independently checked by check_images.py.
         # 79 since DOS33W, DOSREPL, PASCAL and CPM (18 September 2026); the number is
         # written down on purpose, so adding an overlay is a line to change.
-        self.assertIn('XL includes all 80 overlays', result)
+        self.assertIn('XL includes all 81 overlays', result)
         self.assertIn('A2FILECMD-6502-BOOT-%s.dsk' % notes.build_version(), result)
         self.assertNotIn('{overlays}', result)
 

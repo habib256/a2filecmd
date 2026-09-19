@@ -334,6 +334,7 @@ test: test-mini
 	python3 $(TOOLS)/test_imgput.py
 	python3 $(TOOLS)/pascal_ref.py --selftest
 	python3 $(TOOLS)/test_pascal.py
+	python3 $(TOOLS)/test_pascalw.py
 	python3 $(TOOLS)/cpm_ref.py --selftest
 	python3 $(TOOLS)/test_cpm.py
 	python3 $(TOOLS)/test_dosimage.py

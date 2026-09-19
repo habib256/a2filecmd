@@ -53,20 +53,8 @@ const struct PluginHeader __plugin_header = {
 
 #pragma static-locals (on)
 
-#define DIR_BLOCK 2
-#define DIR_BLOCKS 4
-#define ENTRY 26
-#define MAX_FILES 77
+#include "pascal_fs.h"
 
-static struct Source src;
-/* One directory entry at a time, not the whole directory: four blocks would
- * have left this overlay eighteen bytes of room, and the next change to it
- * would not have linked. An entry is twenty-six bytes and the blocks are
- * five hundred and twelve, so one entry in nineteen straddles two of them;
- * entry_at() reads the second when it has to. */
-static unsigned char ent[ENTRY];
-static unsigned char count;             /* files in the directory */
-static unsigned int vblocks;            /* blocks the volume claims */
 static char name[16], dest[PATH_LEN + 1];
 /* The file read back, half a block at a time. Not `dest`: that one is a
  * path of sixty-five bytes, and a block is five hundred and twelve. */
@@ -82,7 +70,6 @@ static unsigned char prodos_type(unsigned char kind)
     if (kind == 5) return 0x05;         /* PDA */
     return 0;
 }
-
 /* A ProDOS name from n bytes of a Pascal name: upper case, anything but a
  * letter, a digit or a period becomes a period, a name must start on a
  * letter, fifteen characters at most. */
@@ -98,57 +85,6 @@ static void set_name(const unsigned char* s, unsigned char n)
         name[k++] = c;
     }
     name[k] = 0;
-}
-
-static unsigned int word(const unsigned char* p) { return p[0] | ((unsigned int)p[1] << 8); }
-
-/* Entry i of the directory into `ent`, the second block read when the entry
- * straddles two. `buf` is free between files: it holds a data block only
- * while one is being copied. */
-static unsigned char entry_at(unsigned char i)
-{
-    unsigned int off = (unsigned int)i * ENTRY, k = off & 511, part;
-    if (!source_read(&src, DIR_BLOCK + (off >> 9), buf)) return 0;
-    part = 512 - k;
-    if (part > ENTRY) part = ENTRY;
-    memcpy(ent, buf + k, part);
-    if (part < ENTRY) {
-        if (!source_read(&src, DIR_BLOCK + (off >> 9) + 1, buf)) return 0;
-        memcpy(ent + part, buf, ENTRY - part);
-    }
-    return 1;
-}
-
-/* The volume directory, read and explained, or 0. Everything the entries
- * claim is checked against the image before a single byte is extracted: a
- * directory we cannot explain is not a directory we read files from. */
-static unsigned char read_dir(void)
-{
-    unsigned char i, n;
-    unsigned int first, last, prev = DIR_BLOCK + DIR_BLOCKS, used;
-    if (!entry_at(0)) return 0;
-    if (word(ent) || word(ent + 2) != DIR_BLOCK + DIR_BLOCKS || word(ent + 4)) return 0;
-    n = ent[6];
-    if (!n || n > 7) return 0;
-    for (i = 0; i < n; ++i) {
-        unsigned char c = ent[7 + i];
-        if (c <= 32 || c >= 127 || c == '$' || c == '=' || c == '?' || c == ',') return 0;
-    }
-    vblocks = word(ent + 14);
-    if (word(ent + 16) > MAX_FILES || !vblocks || vblocks > src.blocks) return 0;
-    count = (unsigned char)word(ent + 16);
-    for (i = 1; i <= count; ++i) {
-        if (!entry_at(i)) return 0;
-        first = word(ent);
-        last = word(ent + 2);
-        used = word(ent + 22);
-        n = ent[6];
-        if (!n || n > 15) return 0;
-        if (last <= first || last > vblocks || first < prev) return 0;
-        if (!used || used > 512) return 0;
-        prev = last;
-    }
-    return 1;
 }
 
 /* One file's bytes: written to `out` (verify 0) or compared with the file
