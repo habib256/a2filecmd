@@ -82,8 +82,9 @@ class Pom2:
         brut, pour le banc VDrive -- si pom2_playtest a le drapeau --ssc.
         `uthernet` : une Uthernet II (W5100) en slot 3, loopback ouvert, pour
         la version reseau du meme banc (pom2_playtest --uthernet).
-        `preset` : la machine, `iie` (enhanced), `iic` ou `iie_unenh` (le IIe
-        de 1983, 6502 NMOS, pour la version 6502) ; par defaut A2FC_PRESET.
+        `preset` : la machine, `iie` (enhanced), `iic`, `iie_unenh` (le IIe
+        de 1983, 6502 NMOS, pour la version 6502) ou `iie_nmos` (firmware
+        enhanced, 6502 NMOS remis dans le support) ; par defaut A2FC_PRESET.
         `chatmauve` : la carte RGB Le Chat Mauve en slot 7, l'ecran rendu par
         elle (`True` = Feline, ou une variante : feline, iic, eve, video7,
         rvbgraph).

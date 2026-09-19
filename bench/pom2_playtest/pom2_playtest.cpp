@@ -25,6 +25,9 @@
 // executes as the NMOS undocumented one or traps, instead of working. It is
 // the machine A2 File Cmd's `ARCH=6502` build (`A2FILECMD-6502.po`) is for,
 // and the only one that can prove it. Same slot map as `iie`.
+// `--preset iie_nmos`: the enhanced //e firmware and character ROM with a
+// NMOS 6502 put back in its socket -- the machine where a firmware check
+// alone lets 65C02 code run on the wrong processor. Same slot map as `iie`.
 // `--chatmauve [feline|iic|eve|video7|rvb|rvbgraph]`: the Le Chat Mauve RGB card
 // in slot 7 (the GUI's fresh-install slot; variant Féline by default, the
 // //c adapter on the //c preset) with the display on its RGB pipeline, so
@@ -69,7 +72,7 @@ int main(int argc, char** argv) {
             if (a == "--preset" && i + 1 < argc) {
                 preset = argv[++i];
                 if (preset == "iie-u") preset = "iie_unenh";
-                if (preset != "iie" && preset != "iic" && preset != "iie_unenh") return 2;
+                if (preset != "iie" && preset != "iic" && preset != "iie_unenh" && preset != "iie_nmos") return 2;
             } else if (a == "--speed" && i + 1 < argc) speed = std::stoi(argv[++i]);
             // --disk : une disquette 5,25 pouces dans un Disk II en slot 6.
             else if (a == "--disk" && i + 1 < argc) floppy = argv[++i];
@@ -116,6 +119,7 @@ int main(int argc, char** argv) {
         if (!disk2.empty() && preset == "iic") return 3;   // the //c bench has one HDV unit
         const bool iic = (preset == "iic");
         const bool unenh = (preset == "iie_unenh");
+        const bool nmos = unenh || preset == "iie_nmos";
         EmulationController ctrl;
         auto& mem = ctrl.memory();
         mem.setIIEMode(true);
@@ -141,7 +145,7 @@ int main(int argc, char** argv) {
             throw std::runtime_error("Character ROM unavailable");
         // A 65C02 is soldered on the Enhanced //e and the //c; the 1983 //e
         // has a NMOS 6502, and a build meant for it must run on one.
-        ctrl.cpu().setCpuMode(unenh ? M6502::CpuMode::NMOS : M6502::CpuMode::CMOS);
+        ctrl.cpu().setCpuMode(nmos ? M6502::CpuMode::NMOS : M6502::CpuMode::CMOS);
         ProDOSHardDiskCard* diskCard = nullptr;
         pom2::SmartPortHdvUnit* spUnit = nullptr;
         if (iic) {
@@ -257,6 +261,7 @@ int main(int argc, char** argv) {
         server.attach(&ctrl, &display, floppyCard, diskCard);   // floppyCard : POST /disk et /eject pilotent le Disk II (banc des images disque d'A2 File Cmd)
         server.setProfileLabel(iic   ? "Apple //c (headless)"
                              : unenh ? "Apple //e Unenhanced (headless)"
+                             : nmos  ? "Apple //e Enhanced, NMOS 6502 (headless)"
                                      : "Apple //e Enhanced (headless)");
         if (!server.start(static_cast<uint16_t>(port))) return 1;
         if (ssc && !ssc->startListening(static_cast<uint16_t>(sscPort)))

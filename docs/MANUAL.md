@@ -20,11 +20,15 @@ a way of working, but nothing else:
 ## Start here
 
 All floppies use **6502** code and run on an original or enhanced IIe. For
-XL, choose **6502** for an original IIe, or **65C02** for an enhanced IIe or
-//c with optional AppleMouse II support.
+XL, **6502** runs everywhere; **65C02** adds MouseText and optional
+AppleMouse II support, and needs **both** a 65C02 processor and the
+enhanced ROM: an enhanced IIe, a //c or a IIgs. An enhanced IIe with a 6502
+put back in, or an unenhanced IIe with a 65C02 accelerator, needs the 6502
+edition.
 It runs on real Apple //c, enhanced IIe and unenhanced IIe machines —
-confirmed by the maintainer and by testers. The launcher checks the CPU
-and memory before starting and identifies the edition on its title screen.
+confirmed by the maintainer and by testers. The launcher checks the
+machine, the ROM, the processor and the memory before starting, says in
+40 columns what is missing, and identifies the edition on its title screen.
 
 ### Choose your disks
 

@@ -20,7 +20,7 @@ pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 | `sequences.py` | les enchainements entre outils, etat et octets relus apres la sortie : image HGR puis musique puis copie de deux fichiers marques ; ESC pendant une copie de 300 Ko puis la meme copie au bout puis V vers un autre dossier ; disquette remplacee en lecteur 2 sous un panneau ouvert, volumes relus, copie depuis chacune. Deux CPU sur la disquette de banc. |
 | `ops.py` | les operations longues : la barre de progression sur toute la ligne pendant une copie de 300 Ko, ESC qui l'interrompt (fichier partiel retire), trois fichiers marques copies puis supprimes avec la barre |
 | `chatmauve.py` | la carte RGB Le Chat Mauve en slot 7 (`pom2_playtest --chatmauve [variante]`, `Pom2(chatmauve=...)`) : ALIEN vu depuis A2FC est, pixel pour pixel, l'ecran que BASIC en fait avec la carte ; une seconde HGR, puis la mire DHGR brute (bandes unies, seize couleurs), puis ALIEN de nouveau identique -- le verrou de mode de la carte ne derive pas (6 controles par variante ; `python3 bench/chatmauve.py feline video7 eve`) |
-| `machine.py` | le controle de machine du lanceur : MACHID falsifie a 64 Ko depuis BASIC, `-A2FILE.SYSTEM` refuse en 40 colonnes et rend la main ; un //c passe |
+| `machine.py` | le controle de machine du lanceur : MACHID falsifie a 64 Ko depuis BASIC, `-A2FILE.SYSTEM` refuse en 40 colonnes et rend la main ; sur IIe enhanced a 6502 NMOS (`--preset iie_nmos`) l'edition 65C02 refuse le processeur, la 6502 passe ; un //c passe |
 | `iic.py` | l'Apple //c (`preset='iic'`) : la disquette 6502 publiee dans le lecteur integre avec un disque SmartPort (volumes, lecture, copies vers /RAM et vers le SmartPort relues dans le `.hdv`, pile C et plancher, disquette jamais ecrite), puis la XL 65C02 amorcee par le SmartPort (copie relue, pile, souris du //c : statut, pointeur, borne, clics). **20 controles.** La copie disquette → SmartPort, lecteur 2 vide, demande POM2 7dc429b ou plus recent (le sequenceur Disk II n'etait pas remis a zero moteur allume sur un lecteur vide) : `make pom2host` apres la mise a jour de `~/src/pom2` |
 | `hd.py` | le disque dur `.2mg` publie amorce-t-il, avec son dossier DEMO au complet ; une page brute s'affiche, un `.2MG` s'ouvre comme un dossier |
 | `run.py` | la session complete : naviguer, marquer, copier, deplacer, renommer, verrouiller, changer type et auxtype, creer un dossier, supprimer, lire un texte et des octets, editer, afficher les deux formats d'image et les comparer octet a octet, jouer la fanfare, ecrire et relire des images disque (.PO et .DSK) et copier une disquette, ouvrir une image comme un dossier et en extraire un fichier, lire un catalogue DOS 3.3 et en extraire un fichier, ouvrir le formateur, cliquer a la souris (pointeur, bornes, selection, ouverture, changement de panneau, barre de touches), lancer un programme Applesoft (depuis le disque dur, avec le BASIC.SYSTEM de la disquette) et revenir sur les panneaux par -A2FILE.SYSTEM. **73 controles** (74 sur la XL 65C02, 66 sur la XL 6502). |
@@ -96,6 +96,8 @@ Avec `A2FC_PRESET=iie_unenh`, POM2 est le IIe de 1983 (`pom2_playtest
 --preset iie_unenh` : 6502 NMOS, firmware sans MouseText, `$FBC0 = $EA`) --
 la seule machine qui prouve l'edition disquette, puisqu'un `stz` ou un `bra`
 y sont des opcodes indefinis. La version 65C02 y affiche son refus.
+Avec `iie_nmos`, POM2 garde le firmware enhanced mais met un 6502 NMOS :
+la machine ou seul le test du processeur arrete l'edition 65C02.
 
 ## Les faire tourner
 

@@ -105,14 +105,19 @@ retain their own version numbers.
 | `A2FILECMD-6502-DISKTOOLS-0.9.0.dsk` | Disk images, block tools, boot repair and recovery |
 | `A2FILECMD-6502-DEVTOOLS-0.9.0.dsk` | BASIC listings, disassembly, BASIC.SYSTEM and INTBASIC.SYSTEM |
 | `A2FILECMD-6502-XL-0.9.0.2mg` | Complete bootable 32 MB image for 6502 |
-| `A2FILECMD-65C02-XL-0.9.0.2mg` | Complete bootable 32 MB image for 65C02, with optional mouse support |
+| `A2FILECMD-65C02-XL-0.9.0.2mg` | Complete bootable 32 MB image for a 65C02 with the enhanced ROM (enhanced IIe, //c, IIgs), with optional mouse support |
 | `A2FC-MINI-DOS33-0.9.0.dsk` | A2FileCmd Mini DOS3.3: the standalone edition for a 48 KB Apple II+ |
 
 **All floppies use 6502 code**, including on enhanced machines. Choose the
 categories you need; every companion carries the menu and full catalog.
 XL includes all 82 overlays, BASIC.SYSTEM, INTBASIC.SYSTEM, `DEMO/` and `IMGHGR/`, so it needs
-no companion. Choose XL **6502** for an original IIe; XL **65C02** for an
-enhanced IIe or //c. All editions require 128 KB and 80 columns.
+no companion. XL **6502** runs on every supported machine. XL **65C02**
+needs **both** a 65C02 processor (its code uses 65C02 instructions) **and**
+the enhanced ROM (MouseText, mouse): an enhanced IIe, a //c or a IIgs. The
+two do not always come together: an enhanced IIe with a 6502 put back in,
+or an unenhanced IIe with a 65C02 accelerator, needs XL 6502. The launcher
+checks the processor and the ROM, and says which one is missing. All
+editions require 128 KB and 80 columns.
 Use matching releases. Do not mix the native plugins of XL 65C02 with the
 6502 floppies. Floppies are distributed as `.dsk`; XL uses `.2mg`.
 

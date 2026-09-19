@@ -164,7 +164,9 @@ question, l'état de `/RAM` après un refus puis après un accord.
 
 1. Amorcer la XL. *Le lanceur refuse une machine qui ne convient pas en 40
    colonnes : s'il refuse ici, noter le message exact, c'est le contrôle de
-   machine qu'il faudra revoir.*
+   machine qu'il faudra revoir. Le 65816 doit passer le test du processeur
+   de l'édition 65C02 (drapeaux décimaux justes) : POM2 n'a pas de IIgs,
+   c'est la seule machine où ce test n'a été vu que sous sim65.*
 2. Panneaux, navigation, `?` (aide), `!` (menu) : les surcouches se
    chargent.
 3. Ouvrir une image HGR puis une DHGR, feuilleter avec les flèches.

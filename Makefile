@@ -172,6 +172,8 @@ $(BUILD)/launcher.o $(BUILD)/launcher_floppy.o: $(SRC)/loader.c Makefile | $(BUI
 	  $(if $(filter %/launcher_floppy.o,$@),-DA2FC_FLOPPY) -D 'A2FC_VERSION="$(A2FC_VERSION)"' -o $(@:.o=.s) $<
 	$(AS) -t $(TARGET) $(ASDEFS) -o $@ $(@:.o=.s)
 
+$(BUILD)/crt0_loader.o: $(SRC)/machine_check.inc
+
 $(SYSTEM): $(BUILD)/launcher.o
 $(FLOPPY_SYSTEM): $(BUILD)/launcher_floppy.o
 $(SYSTEM) $(FLOPPY_SYSTEM): $(BUILD)/crt0_loader.o $(BUILD)/loader_mli.o Makefile | $(BUILD)
@@ -302,6 +304,7 @@ $(FULLPO): $(STAGE_DEPS) $(DATA)/BASIC.SYSTEM.SYS
 
 test: test-mini
 	python3 $(TOOLS)/test_loader_prefix.py
+	python3 $(TOOLS)/test_machine_check.py
 	python3 $(TOOLS)/test_chain.py
 	python3 $(TOOLS)/test_vsdrive.py
 	python3 $(TOOLS)/test_launch.py
