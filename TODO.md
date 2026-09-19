@@ -206,7 +206,25 @@ fermeture, et jamais d'atomicité promise que ProDOS ne donne pas.
   celui que le lecteur donne ($02→code, $03→texte, $05→données, le reste
   non typé) : un TXT ProDOS ne devient **pas** un textfile UCSD, ce format
   portant un en-tête de 1 024 octets.
-- [ ] **CP/M — écriture.** Après Pascal.
+- [x] **CP/M — écriture.** `src/plugins/cpmw.c` (CPMW, DEVTOOLS et XL),
+  miroir de CPM, mêmes panneaux, même contrat. `src/plugins/cpm_fs.h`
+  porte la couche commune aux deux.
+  Deux choses n'existent qu'ici. Un secteur CP/M est la **moitié** d'un
+  bloc ProDOS : chaque écriture est une lecture-modification-écriture, et
+  le jumeau — qui appartient à un autre fichier — est relu avec le nôtre ;
+  le perdre mangerait un voisin. Et CP/M **n'a pas de bitmap** : ce qui est
+  occupé est ce que les entrées vivantes réclament, donc tant que l'entrée
+  n'est pas écrite, le volume n'a pas changé.
+  **L'ordre des secteurs n'est toujours pas deviné**, et cela vaut refus
+  d'écrire dans un volume **vide** : toutes les entrées libres, rien ne
+  distingue un ordre d'un autre, et écrire par le mauvais poserait le
+  fichier là où CP/M n'ira jamais le chercher.
+  **Un seul extent, donc 16 Ko au plus.** Un fichier plus long demande
+  plusieurs entrées, et une coupure entre deux donnerait un fichier dont
+  la longueur vient d'un extent présent alors qu'un précédent manque.
+  `tools/test_cpmw.py` (9 contrôles) casse chaque écriture à son tour ;
+  `bench/cpmw.py` (port 6916, 17/17 sur les deux processeurs) le joue dans
+  POM2. Marge de fenêtre : 163 octets (6502), 115 (65C02).
 
 Une petite surcouche (DELETE, COPY, IMGFS, ATTR, OPEN) ne bouge que si
 on doit la modifier : extraire un service, mesurer au lien.

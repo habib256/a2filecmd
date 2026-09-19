@@ -337,6 +337,7 @@ test: test-mini
 	python3 $(TOOLS)/test_pascalw.py
 	python3 $(TOOLS)/cpm_ref.py --selftest
 	python3 $(TOOLS)/test_cpm.py
+	python3 $(TOOLS)/test_cpmw.py
 	python3 $(TOOLS)/test_dosimage.py
 	python3 $(TOOLS)/test_file_create.py
 	python3 $(TOOLS)/test_file_output.py
