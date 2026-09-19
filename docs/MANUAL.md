@@ -63,6 +63,13 @@ Boot the image, or launch `A2FILE.SYSTEM` from a ProDOS selector. To install
 elsewhere, keep `A2FILE.SYSTEM` beside its complete `A2FILE/` directory.
 Do not mix `A2FILE.CODE` and native plugins from different builds.
 
+Writing into a ProDOS image is IMGPUT: open the image in one panel, put the
+cursor on a file in the other, and **!** -> Disks -> IMGPUT copies it in. The
+data goes to blocks the image still calls free, is read back, and only then
+does the bitmap and the entry follow, so an interruption costs space at
+worst and never a file. A file needing more than 128 KB, and a directory
+with no free slot, are refused rather than half-written.
+
 ### Read the panels
 
 The highlighted panel is active; **TAB** switches sides. Each panel shows

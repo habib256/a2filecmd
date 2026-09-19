@@ -54,15 +54,19 @@ static unsigned char image_open(struct Source* s) {
     return 1;
 fail:a.fclose(s->file);s->file=0;return 0;
 }
+#ifndef IMAGEIO_NODEVICE
 static unsigned char volume_open(struct Source* s,unsigned char requested) {
     s->file=0;s->unit=unit_of(s->path,requested);
     if(!s->unit || readblk(s->unit,2,buf) || (buf[4]>>4)!=15)return 0;
     s->blocks=rd16(buf+41);return s->blocks>=3;
 }
+#endif
 static unsigned char source_read(struct Source* s,unsigned int b,unsigned char* out) {
     unsigned char half;unsigned long off;
     if(b>=s->blocks)return 0;
+#ifndef IMAGEIO_NODEVICE
     if(s->unit)return !readblk(s->unit,b,out);
+#endif
 #ifdef IMAGEIO_WRITE
     /* cc65's fread and fwrite refuse a stream whose error flag is set, and
      * fseek does not clear it: one failed write would fail every later
@@ -82,7 +86,9 @@ static unsigned char source_read(struct Source* s,unsigned int b,unsigned char* 
 static unsigned char source_write(struct Source* s,unsigned int b,const unsigned char* in) {
     unsigned char half;unsigned long off;
     if(b>=s->blocks)return 0;
+#ifndef IMAGEIO_NODEVICE
     if(s->unit)return !writeblk(s->unit,b,in);
+#endif
     if(image_readonly)return 0;
     clearerr(s->file);
     if(s->kind!=1)return !a.fseek(s->file,s->base+(unsigned long)b*512,SEEK_SET) && a.fwrite(in,1,512,s->file)==512;

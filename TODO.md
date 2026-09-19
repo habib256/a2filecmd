@@ -107,9 +107,29 @@ fermeture, et jamais d'atomicité promise que ProDOS ne donne pas.
   pas le message — et POM2 ne réécrit la disquette sur l'hôte qu'à
   l'éjection, donc chaque contrôle éjecte d'abord ; sans cela un « rien
   n'est écrit » aurait laissé passer n'importe quoi.
-- [ ] **Écriture dans une image** montée (le panneau ouvre déjà une image
-  en lecture seule). C'est un second écrivain ProDOS : bitmap de l'image,
-  entrées de répertoire, extension de fichier.
+- [x] **Écriture dans une image** montée. `src/plugins/imgput.c` (IMGPUT,
+  DISKTOOLS et XL) copie le fichier sélectionné dans le répertoire qu'un
+  panneau a ouvert **dans** une image ProDOS. C'est le second écrivain
+  ProDOS : il alloue dans le bitmap de l'image, écrit les blocs de données
+  et le bloc d'index, puis l'entrée de répertoire.
+  L'ordre est ce qui décide du coût d'une coupure : données d'abord, dans
+  des blocs que le bitmap appelle encore libres — une coupure là ne change
+  **rien** ; puis le bitmap ; puis l'entrée. Entre les deux derniers, on
+  perd de la place et rien d'autre, et le message le dit au lieu de
+  prétendre le travail fait. `tools/test_imgput.py` casse chaque écriture
+  à son tour et vérifie lequel des deux est arrivé.
+  Il a trouvé un vrai trou en chemin : la page de bitmap n'était pas
+  relue, si bien qu'une page écrite de travers laissait une entrée nommant
+  des blocs déclarés libres — la seule panne qui donne un volume corrompu
+  plutôt que de la place perdue. Elle passe maintenant par `put_verified`.
+  Marge de fenêtre : 277 octets (6502), 270 (65C02) — trouvés en
+  compilant hors du chemin périphérique (`IMAGEIO_NODEVICE` : ni
+  `unit_of`, ni `readblk`, ni `writeblk`, 520 octets) et en prenant type,
+  aux, accès et date dans l'entrée que le panneau a déjà lue.
+  **Limites dites, pas devinées** : au-delà de 128 Ko il faudrait un
+  fichier « tree » — refusé ; un répertoire sans emplacement libre est
+  refusé (étendre la chaîne est une écriture de plus) ; et il n'y a
+  **pas encore de banc POM2**, seulement le banc d'essai hôte.
 - [x] **Pascal — lecture.** `src/plugins/pascal.c` (DEVTOOLS) extrait tous
   les fichiers d'un volume UCSD depuis une image, contrat des services de
   fichiers compris ; `tools/pascal_ref.py` est la référence et le
