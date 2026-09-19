@@ -5,11 +5,15 @@ d'un ecran vide.
 
     make disk && POM2=/chemin/vers/pom2_playtest python3 bench/machine.py
 
-Le lanceur (crt0_loader.s) verifie en pur 6502, avant tout code 65C02 :
-IIe ou plus recent ($FBB3), pas le IIe non enhanced ($FBC0), 128 Ko et carte
-80 colonnes (MACHID $BF98). POM2 n'a pas de IIe non enhanced ici : on
-falsifie MACHID depuis l'invite BASIC (bit 5, les 128 Ko, a zero) avant de
-lancer -A2FILE.SYSTEM, puis on verifie qu'un //c passe le controle."""
+Le lanceur (crt0_loader.s, src/machine_check.inc) verifie en pur 6502, avant
+tout code 65C02 : IIe ou plus recent ($FBB3), 128 Ko et carte 80 colonnes
+(MACHID $BF98) ; l'edition 65C02 veut en plus le firmware enhanced ($FBC0)
+ET un vrai 65C02. On falsifie MACHID depuis l'invite BASIC (bit 5, les
+128 Ko, a zero) avant de lancer -A2FILE.SYSTEM ; sur `--preset iie_nmos`
+(firmware enhanced, 6502 NMOS) l'edition 65C02 doit refuser le processeur et
+l'edition 6502 passer ; enfin un //c passe le controle.
+
+Les deux editions doivent etre construites : make disk."""
 
 import shutil, subprocess, sys, tempfile, time
 from pathlib import Path
@@ -23,6 +27,21 @@ def has40(s, needle):
     return any(needle in r for r in s.rows40())
 
 
+def basic_hd(tmp, build, name):
+    """Un disque dur qui amorce BASIC.SYSTEM, l'edition de `build` sous APPS/."""
+    stage = tmp / name
+    apps = stage / 'APPS'                    # pas a la racine : A2FILE.SYSTEM y passerait avant BASIC.SYSTEM
+    shutil.copytree(build / 'vol/A2FILE', apps / 'A2FILE')
+    shutil.copyfile(build / 'vol/A2FILE.SYSTEM.SYS', apps / 'A2FILE.SYSTEM.SYS')
+    shutil.copyfile(ROOT / 'data/PRODOS.SYS', stage / 'PRODOS.SYS')
+    shutil.copyfile(ROOT / 'data/BASIC.SYSTEM.SYS', stage / 'BASIC.SYSTEM.SYS')
+    hdv = tmp / (name + '.hdv')              # amorce sur BASIC.SYSTEM, seul .SYSTEM de la racine
+    subprocess.run([sys.executable, str(ROOT / 'tools/mkvolume.py'), str(stage), str(hdv),
+                    '--volume', 'HD', '--blocks', '1600',
+                    '--boot', str(ROOT / 'data/prodos_boot.tmpl')], check=True, capture_output=True)
+    return hdv
+
+
 def main():
     checks = []
     def ok(label, cond, detail=''):
@@ -31,16 +50,7 @@ def main():
 
     with tempfile.TemporaryDirectory(prefix='a2fc-machine-') as tmp:
         tmp = Path(tmp)
-        stage = tmp / 'hd'
-        apps = stage / 'APPS'                # pas a la racine : A2FILE.SYSTEM y passerait avant BASIC.SYSTEM
-        shutil.copytree(BUILD / 'vol/A2FILE', apps / 'A2FILE')
-        shutil.copyfile(BUILD / 'vol/A2FILE.SYSTEM.SYS', apps / 'A2FILE.SYSTEM.SYS')
-        shutil.copyfile(ROOT / 'data/PRODOS.SYS', stage / 'PRODOS.SYS')
-        shutil.copyfile(ROOT / 'data/BASIC.SYSTEM.SYS', stage / 'BASIC.SYSTEM.SYS')
-        hdv = tmp / 'HD.hdv'                 # amorce sur BASIC.SYSTEM, seul .SYSTEM de la racine
-        subprocess.run([sys.executable, str(ROOT / 'tools/mkvolume.py'), str(stage), str(hdv),
-                        '--volume', 'HD', '--blocks', '1600',
-                        '--boot', str(ROOT / 'data/prodos_boot.tmpl')], check=True, capture_output=True)
+        hdv = basic_hd(tmp, BUILD, 'hd')
 
         with Pom2(hdv, port=6743) as p:
             s = Session(p)
@@ -57,6 +67,28 @@ def main():
                    'retour a ProDOS', 60)
             ok('une touche rend la main a ProDOS (BASIC ou Bitsy Bye)', True)
             p.poke(0xBF98, bytes([machid]))                   # la machine telle qu elle est
+
+        # Un IIe enhanced avec un 6502 NMOS : le firmware seul ne suffit pas
+        # a l'edition 65C02, dont le code partirait dans le decor.
+        for build, edition in ((ROOT / 'build', '65C02'), (ROOT / 'build-6502', '6502')):
+            with Pom2(basic_hd(tmp, build, 'hd-' + edition), port=6745, preset='iie_nmos') as p:
+                s = Session(p)
+                s.wait(lambda: any(r.startswith(']') for r in s.rows40()), 'invite BASIC (' + edition + ')', 90)
+                time.sleep(1)
+                s.type('-APPS/A2FILE.SYSTEM'); s.key(RET)
+                if edition == '65C02':
+                    s.wait(lambda: has40(s, 'NEEDS A 65C02'), 'le refus du processeur', 30); time.sleep(0.5)
+                    ok('edition 65C02 sur IIe enhanced a 6502 : refus du processeur, en 40 colonnes',
+                       has40(s, 'USE THE 6502 EDITION') and has40(s, 'PRESS A KEY'),
+                       [r for r in s.rows40() if r.strip()][:4])
+                    s.key(b' ')
+                    s.wait(lambda: any(r.startswith(']') for r in s.rows40()) or has40(s, 'BITSY')
+                           or has40(s, 'ProDOS'), 'retour a ProDOS', 60)
+                    ok('et une touche rend la main a ProDOS', True)
+                else:
+                    s.wait(lambda: s.has('/HD'), 'les panneaux', 90); p.stable()
+                    ok('edition 6502 sur IIe enhanced a 6502 : le controle passe, panneaux affiches',
+                       not has40(s, 'NEEDS A') and s.has('/HD'), s.rows()[0][:30])
 
         floppy = tmp / 'A2FILECMD.po'
         shutil.copyfile(DISK, floppy)

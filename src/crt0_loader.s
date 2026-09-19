@@ -57,32 +57,32 @@ callmain:
         ; apple2enh library runs (65C02 opcodes, the 80-column firmware):
         ; on a II+, an unenhanced IIe or a 64 KB machine the screen would
         ; just go blank, ProDOS alive underneath (a user saw exactly that,
-        ; 2026-09-08). IIe or later ($FBB3 = $06), not the unenhanced IIe
-        ; ($FBC0 = $EA : 6502, no MouseText), 128 KB and an 80-column card
-        ; (MACHID $BF98, bits 5 and 1). Otherwise say so on the 40-column
-        ; screen, wait for a key, and quit to ProDOS.
-        lda     $FBB3
-        cmp     #$06
-        bne     unfit
+        ; 2026-09-08); on an enhanced IIe with a 6502 in it, the 65C02 code
+        ; would run astray. Otherwise say why on the 40-column screen, wait
+        ; for a key, and quit to ProDOS.
+        .include        "machine_check.inc"
+        jmp     fit
 .ifndef A2_6502
-        lda     $FBC0
-        cmp     #$EA
-        beq     unfit
+nmos:   lda     #nmos_msg-unfit_msg
+        bne     refuse          ; Branch always
 .endif
-        lda     $BF98
-        and     #$22
-        cmp     #$22
-        beq     fit
-unfit:  jsr     $FC58           ; HOME
-        ldx     #0
-:       lda     unfit_msg,x
+unfit:  lda     #0
+refuse: pha
+        jsr     $FC58           ; HOME
+        pla
+        tax
+        jsr     print
+        ldx     #key_msg-unfit_msg
+        jsr     print
+        jsr     $FD0C           ; RDKEY
+        jmp     quit
+print:  lda     unfit_msg,x     ; X: the offset of a text ending with 0
         beq     :+
         ora     #$80
         jsr     $FDED           ; COUT
         inx
-        bne     :-
-:       jsr     $FD0C           ; RDKEY
-        jmp     quit
+        bne     print
+:       rts
 fit:
         jsr     init
 
@@ -191,18 +191,27 @@ reset:  stx     SOFTEV
         sta     PWREDUP
 return: rts
 
-        ; Quit to the ProDOS dispatcher.
 unfit_msg:
 .ifdef A2_6502
         .byte   $0D, "A2 FILE CMD NEEDS AN APPLE IIE, IIC OR", $0D
-        .byte   "IIGS WITH 128K AND AN 80-COLUMN CARD.", $0D, $0D
+        .byte   "IIGS WITH 128K AND AN 80-COLUMN CARD.", $0D, $0D, 0
 .else
         .byte   $0D, "A2 FILE CMD NEEDS AN ENHANCED APPLE IIE,", $0D
         .byte   "A IIC OR A IIGS, WITH 128K AND", $0D
         .byte   "AN 80-COLUMN CARD.", $0D, $0D
+        .byte   "UNENHANCED IIE: USE THE 6502 EDITION.", $0D, $0D, 0
+nmos_msg:
+        .byte   $0D, "THIS EDITION NEEDS A 65C02 PROCESSOR:", $0D
+        .byte   "USE THE 6502 EDITION.", $0D, $0D, 0
 .endif
+        ; print reads them with an 8-bit offset: 256 bytes at most, which
+        ; the .assert below keeps.
+key_msg:
         .byte   "PRESS A KEY TO RETURN TO PRODOS.", $0D, 0
+msg_end:
+        .assert msg_end - unfit_msg <= 256, error, "refusal texts beyond print's reach"
 
+        ; Quit to the ProDOS dispatcher.
 quit:   jsr     $BF00           ; MLI call entry point
         .byte   $65             ; Quit
         .word   q_param
