@@ -265,30 +265,34 @@ def _selftest():
             with open(src, 'wb') as f:
                 f.write(body)
             for bits in (12, 13, 14, 16):
+                stats = {}
+                ours = compress(body, bits, stats=stats)
+                # NuFX stores an empty thread as no bytes. BSD compress does
+                # the same; ncompress (Ubuntu) writes a header anyway.
+                if not body:
+                    assert ours == b''
+                    assert compress(body, bits, block=False) == b''
+                    continue
                 z = subprocess.run(['compress', '-b', str(bits), '-c', src],
                                    capture_output=True)
                 assert z.returncode == 0, f'compress refused: {z.stderr}'
                 # The strong oracle: as long as the table has room, our
                 # stream IS the one /usr/bin/compress writes, byte for byte.
-                stats = {}
-                ours = compress(body, bits, stats=stats)
                 assert stats['frozen'] or ours == z.stdout, \
                     f'ours differs from compress: {bits} bits, body {i}'
-                assert not body or expand(ours) == body, \
+                assert expand(ours) == body, \
                     f'our own round trip: {bits} bits, body {i}'
-                if body:
-                    seen = {}
-                    assert expand(z.stdout, stats=seen) == body, \
-                        f'expand {bits}, body {i}'
-                    clears += seen['clears']
+                seen = {}
+                assert expand(z.stdout, stats=seen) == body, \
+                    f'expand {bits}, body {i}'
+                clears += seen['clears']
                 # gzip reads .Z too, but only from 12 bits up.
-                if bits >= 12 and body:
-                    g = subprocess.run(['gzip', '-dc'], input=z.stdout,
-                                       capture_output=True)
-                    assert g.returncode == 0 and g.stdout == body, \
-                        f'gzip: {bits} bits, body {i}, {g.stderr}'
+                g = subprocess.run(['gzip', '-dc'], input=z.stdout,
+                                   capture_output=True)
+                assert g.returncode == 0 and g.stdout == body, \
+                    f'gzip: {bits} bits, body {i}, {g.stderr}'
                 ours = compress(body, bits, block=False)
-                assert not body or expand(ours) == body, \
+                assert expand(ours) == body, \
                     f'no block mode {bits} bits, body {i}'
     # A stream whose table filled sends CLEAR: the fixtures must reach it.
     assert clears, 'no CLEAR in any fixture: that path is untested'
