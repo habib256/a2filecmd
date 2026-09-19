@@ -182,6 +182,22 @@ static unsigned char patch(unsigned int b, unsigned int at,
 }
 
 /* 1 the file exists, 0 nothing changed, 2 the directory needs looking at. */
+/* The UCSD date: year in bits 9-15, day in 4-8, month in 0-3 -- where
+ * ProDOS keeps year in 9-15, month in 5-8 and day in 0-4. The year sits in
+ * the same place in both and both count from 1900, so only the day and the
+ * month move. A month of zero means no date at all, which is what an entry
+ * written with a zero word carried until now.
+ *
+ * Byte by byte, not word by word: the same shuffle written on 16-bit
+ * values cost 227 bytes of a window that had 364. */
+static unsigned char dlo, dhi;
+static void set_date(unsigned int prodos)
+{
+    unsigned char lo = (unsigned char)prodos, hi = (unsigned char)(prodos >> 8);
+    dlo = (unsigned char)(((lo & 15) << 4) | ((hi & 1) << 3) | (lo >> 5));
+    dhi = (unsigned char)((hi & 0xFE) | ((lo >> 4) & 1));
+}
+
 static unsigned char commit(unsigned int first, unsigned int last,
                             unsigned int used, unsigned char kind)
 {
@@ -194,6 +210,8 @@ static unsigned char commit(unsigned int first, unsigned int last,
     newent[6] = pnamelen;
     /* the name is already in newent[7..], put there by one() */
     newent[22] = (unsigned char)used;  newent[23] = (unsigned char)(used >> 8);
+    newent[24] = dlo;
+    newent[25] = dhi;
     part = 512 - k;
     if (part > ENTRY) part = ENTRY;
     if (part < ENTRY) {                         /* the tail of the entry, first */
@@ -216,6 +234,9 @@ static unsigned char one(const char* name, unsigned char type, unsigned long siz
     unsigned int blocks, used, b, n, first;
     unsigned char i;
 
+    /* The date comes straight from the entry the walk is standing on: a
+     * fifth parameter went on the stack and cost the window fifty bytes. */
+    set_date(a.dir_entry->mdate);
     pnamelen = (unsigned char)RF(strlen)(name);
     if (!pnamelen || pnamelen > 15 || !size) { ++skipped; return 1; }
     a.memset(newent, 0, ENTRY);

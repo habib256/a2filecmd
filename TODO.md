@@ -194,7 +194,12 @@ fermeture, et jamais d'atomicité promise que ProDOS ne donne pas.
   commencent à l'octet 0 du bloc), et un « le volume est intact » annoncé
   alors qu'une écriture de répertoire venait d'atterrir fausse — les
   anciens octets sont maintenant remis, et si ça échoue aussi le message
-  le dit. Marge de fenêtre : 364 octets (6502), 347 (65C02).
+  le dit. La **date** passe maintenant de l'entrée ProDOS à l'entrée UCSD
+  (année bits 9-15 dans les deux, jour et mois qui changent de place) ; un
+  mot nul signifie « pas de date », ce qu'écrivaient les premières
+  versions. Décalage fait en octets : sur des valeurs 16 bits il coûtait
+  227 octets de fenêtre, et lu directement dans l'entrée plutôt que passé
+  en cinquième paramètre. Marge : 168 octets (6502), 119 (65C02).
   `bench/pascalw.py` (port 6915, 13/13 sur les deux processeurs) le joue
   dans POM2 et relit l'image extraite du disque dur à l'arrêt. Il a trouvé
   ce que le banc d'essai hôte ne pouvait pas voir : le répertoire ProDOS
@@ -219,9 +224,14 @@ fermeture, et jamais d'atomicité promise que ProDOS ne donne pas.
   d'écrire dans un volume **vide** : toutes les entrées libres, rien ne
   distingue un ordre d'un autre, et écrire par le mauvais poserait le
   fichier là où CP/M n'ira jamais le chercher.
-  **Un seul extent, donc 16 Ko au plus.** Un fichier plus long demande
-  plusieurs entrées, et une coupure entre deux donnerait un fichier dont
-  la longueur vient d'un extent présent alors qu'un précédent manque.
+  **Un seul extent, donc 16 Ko au plus — et la raison est la fenêtre.**
+  Vérifié dans la documentation du format : CP/M n'impose **aucun ordre**
+  aux extents, donc les écrire de 0 vers le haut laisserait, après une
+  coupure, une suite 0..k et un fichier qui se lit comme une troncature
+  propre. Ce qui ne tient pas, c'est le code — un emplacement libre par
+  extent et la boucle des données à travers eux — dans une surcouche qui a
+  cent et quelques octets de reste. C'est une mesure, pas une histoire de
+  sûreté, et le jour où la fenêtre se libère c'est faisable.
   `tools/test_cpmw.py` (9 contrôles) casse chaque écriture à son tour ;
   `bench/cpmw.py` (port 6916, 17/17 sur les deux processeurs) le joue dans
   POM2. Marge de fenêtre : 163 octets (6502), 115 (65C02).

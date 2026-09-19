@@ -29,12 +29,19 @@
  * whatever the live entries claim -- so an entry is the only thing that
  * makes a block belong to anyone.
  *
- * **One extent, so 16 KB at most.** A longer file needs several entries,
- * and a cut between two of them gives a file whose length comes from an
- * extent that is there while an earlier one is not. Sixteen kilobytes is
- * an eighth of a 5.25" CP/M disk and covers what those disks carry; a
- * bigger file is refused rather than written in a way that could read as
- * something else.
+ * **One extent, so 16 KB at most, and the reason is the window.** A longer
+ * file needs one directory entry per 16 KB. The danger is not the order:
+ * CP/M puts no ordering requirement on extents, so writing them from 0
+ * upwards would leave, after a cut, a run of extents 0..k and a file that
+ * reads as a clean truncation. What does not fit is the code -- finding a
+ * free slot per extent and looping the data across them -- in an overlay
+ * that has a hundred-odd bytes left. So a bigger file is skipped, and the
+ * roadmap carries the measurement rather than a story about safety.
+ *
+ * There is no date here and there is nothing to write: a CP/M 2.2
+ * directory entry has no date field at all (stamps came later, with CP/M 3
+ * and DateStamper), so unlike a UCSD entry there is nothing to carry over
+ * from the ProDOS one.
  *
  * A name is the CP/M eight-and-three: the ProDOS name up to the last
  * period is the name, what follows is the type, both upper case. A name

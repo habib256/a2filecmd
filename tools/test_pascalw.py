@@ -100,6 +100,7 @@ static unsigned char h_dir_next(void) {
     strcpy(de.name, names[nat]);
     de.type = types[nat];
     de.aux = 0;
+    de.mdate = 0x3533;                  /* 19 September 2026, ProDOS-shaped */
     de.size = 0;
     f = fopen(path, "rb");
     if (f) { fseek(f, 0, SEEK_END); de.size = ftell(f); fclose(f); }
@@ -205,6 +206,15 @@ class PascalW(unittest.TestCase):
                          ['ALREADY', 'DATA', 'HELLO'])
         for name in ('HELLO', 'DATA'):
             self.assertEqual(self.contents(name), self.files[name], name)
+
+    def test_the_date_comes_across_from_the_prodos_entry(self):
+        """ProDOS keeps year 9-15, month 5-8, day 0-4; UCSD keeps year in
+        the same place but day 4-8 and month 0-3. A month of zero would
+        mean no date at all, which is what a zero word used to write."""
+        self.give('DATED', b'x' * 600)
+        self.run_op()
+        e = next(f for f in self.volume()['files'] if f['name'] == 'DATED')
+        self.assertEqual(e['date'], (26, 9, 19), e)
 
     def test_the_kind_is_the_inverse_of_what_the_reader_gives(self):
         for type_, kind in ((0x02, 2), (0x03, 3), (0x05, 5), (0x04, 0), (0xFF, 0)):
