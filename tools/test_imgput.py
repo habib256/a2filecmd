@@ -12,6 +12,7 @@ Every write is broken in turn and the image is read back with
 tools/prodos_read.py to check which of the two happened.
 """
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -113,32 +114,33 @@ int main(int argc, char** argv) {
 
 
 def make_image(blocks=280, name='TEST'):
-    """A freshly formatted ProDOS volume: boot blocks, the volume directory
-    chain of four blocks, and the bitmap."""
-    d = bytearray(blocks * 512)
-    for b in range(2, 6):                               # the directory chain
-        prev = b - 1 if b > 2 else 0
-        nxt = b + 1 if b < 5 else 0
-        d[b * 512] = prev & 0xFF; d[b * 512 + 1] = prev >> 8
-        d[b * 512 + 2] = nxt & 0xFF; d[b * 512 + 3] = nxt >> 8
-    h = 2 * 512 + 4                                     # the volume header
-    d[h] = 0xF0 | len(name)
-    d[h + 1:h + 1 + len(name)] = name.encode()
-    d[h + 0x1B] = 0x27; d[h + 0x1C] = 0x0D              # entry length, per block
-    d[h + 0x1D] = 0; d[h + 0x1E] = 0                    # file count
-    d[h + 0x1F] = 6; d[h + 0x20] = 0                    # bitmap at block 6
-    d[h + 0x21] = blocks & 0xFF; d[h + 0x22] = blocks >> 8
-    bm = 6 * 512
-    pages = (blocks - 1) // 4096 + 1
-    for b in range(blocks):
-        used = b < 7 + pages - 1
-        if not used:
-            d[bm + (b & 0xFFF) // 8] |= 0x80 >> (b & 7)
-    return bytes(d)
+    """A real ProDOS volume, written by tools/mkvolume.py.
+
+    It used to be built here, by hand. That made the fixture and the overlay
+    share one assumption -- both read the volume header with a file entry's
+    offsets -- so this test passed while the overlay refused every real
+    image. An independent writer is the point of a fixture.
+    """
+    with tempfile.TemporaryDirectory(prefix='mkvol') as d:
+        stage = Path(d) / 'stage'
+        stage.mkdir()
+        out = Path(d) / 'v.po'
+        subprocess.run([sys.executable, str(ROOT / 'tools/mkvolume.py'), str(stage), str(out),
+                        '--volume', name, '--blocks', str(blocks)],
+                       check=True, capture_output=True)
+        return out.read_bytes()
+
+
+def bitmap_at(data):
+    return int.from_bytes(data[2 * 512 + 4 + 0x23:2 * 512 + 4 + 0x25], 'little')
+
+
+def file_count(data):
+    return int.from_bytes(data[2 * 512 + 4 + 0x21:2 * 512 + 4 + 0x23], 'little')
 
 
 def free_blocks(data, blocks=280):
-    bm = 6 * 512
+    bm = bitmap_at(data) * 512
     return sum(1 for b in range(blocks) if data[bm + (b & 0xFFF) // 8] & (0x80 >> (b & 7)))
 
 
@@ -202,7 +204,7 @@ class ImgPut(unittest.TestCase):
     def test_the_volume_header_counts_the_new_file(self):
         self.run_op()
         d = self.img.read_bytes()
-        self.assertEqual(int.from_bytes(d[2 * 512 + 4 + 0x1D:2 * 512 + 4 + 0x1F], 'little'), 1)
+        self.assertEqual(file_count(d), 1)
 
     def test_the_blocks_it_took_are_no_longer_free(self):
         before = free_blocks(self.original)
@@ -258,7 +260,7 @@ class ImgPut(unittest.TestCase):
         """Every block but two is taken: a three-block file cannot fit, and
         the refusal must come before anything is written."""
         d = bytearray(self.original)
-        bm = 6 * 512
+        bm = bitmap_at(self.original) * 512
         for b in range(280):
             if b > 8:
                 d[bm + (b & 0xFFF) // 8] &= ~(0x80 >> (b & 7))
@@ -297,7 +299,7 @@ class ImgPut(unittest.TestCase):
                         continue                   # nothing claims anything
                     d = self.img.read_bytes()
                     key = int.from_bytes(e[0x11:0x13], 'little')
-                    bm = 6 * 512
+                    bm = bitmap_at(d) * 512
                     self.assertFalse(d[bm + (key & 0xFFF) // 8] & (0x80 >> (key & 7)),
                                      'the entry names a block the bitmap calls free')
                     self.assertIn('Copied', note)

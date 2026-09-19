@@ -128,8 +128,15 @@ fermeture, et jamais d'atomicité promise que ProDOS ne donne pas.
   aux, accès et date dans l'entrée que le panneau a déjà lue.
   **Limites dites, pas devinées** : au-delà de 128 Ko il faudrait un
   fichier « tree » — refusé ; un répertoire sans emplacement libre est
-  refusé (étendre la chaîne est une écriture de plus) ; et il n'y a
-  **pas encore de banc POM2**, seulement le banc d'essai hôte.
+  refusé (étendre la chaîne est une écriture de plus).
+  `bench/imgput.py` (port 6914, 18/18 sur les deux processeurs) monte une
+  vraie image dans le panneau droit et relit l'image extraite du disque
+  dur à l'arrêt. Il a trouvé ce que le banc d'essai hôte ne pouvait pas
+  voir : l'en-tête de volume était lu avec les décalages d'une **entrée de
+  fichier** (bitmap et total sont en `0x23`/`0x25`, le compte en `0x21`),
+  et la fixture du test hôte, écrite à la main, portait la même erreur —
+  elle ne vérifiait donc rien de cet en-tête. La fixture passe maintenant
+  par `tools/mkvolume.py`, un écrivain indépendant.
 - [x] **Pascal — lecture.** `src/plugins/pascal.c` (DEVTOOLS) extrait tous
   les fichiers d'un volume UCSD depuis une image, contrat des services de
   fichiers compris ; `tools/pascal_ref.py` est la référence et le

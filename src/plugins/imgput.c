@@ -173,7 +173,10 @@ static void fill_entry(unsigned char* p,unsigned int key) {
 static unsigned char header_ok(void) {
  if(!source_read(&src,2,dirb) || (dirb[4]>>4)!=15)return 0;
  bm_page=NOPAGE;
- bm_first=rd16(dirb+4+0x1F);vol_blocks=rd16(dirb+4+0x21);
+ /* A volume header is not a file entry: its bitmap pointer, total and
+  * file count sit at 0x23, 0x25 and 0x21, where a file keeps its auxtype,
+  * its modification date and its header pointer. */
+ bm_first=rd16(dirb+4+0x23);vol_blocks=rd16(dirb+4+0x25);
  return vol_blocks<=src.blocks && vol_blocks>=7 && bm_first>=3 && bm_first<vol_blocks &&
         (unsigned int)((vol_blocks-1)>>12)+1<=vol_blocks-bm_first;
 }
@@ -270,11 +273,11 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
  p=dirb+4+dir_slot*0x27;
  if(*p&0xF0) { note("Copied; entry unfinished: run FIXIT.");goto done; }
  fill_entry(p,key);
- if(dir_blk==dir_first)wr16(dirb+4+0x1D,rd16(dirb+4+0x1D)+1);
+ if(dir_blk==dir_first)wr16(dirb+4+0x21,rd16(dirb+4+0x21)+1);
  if(!put_verified(dir_blk,dirb,idx)) { note("Copied; entry unfinished: run FIXIT.");goto done; }
  if(dir_blk!=dir_first) {
   if(!source_read(&src,dir_first,dirb)) { note("Copied; entry unfinished: run FIXIT.");goto done; }
-  wr16(dirb+4+0x1D,rd16(dirb+4+0x1D)+1);
+  wr16(dirb+4+0x21,rd16(dirb+4+0x21)+1);
   if(!put_verified(dir_first,dirb,idx)) { note("Copied; entry unfinished: run FIXIT.");goto done; }
  }
  note("Copied into the image; source kept.");

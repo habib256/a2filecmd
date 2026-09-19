@@ -12,7 +12,7 @@ import subprocess
 import sys
 
 BENCHES = ('arlequin', 'awdata', 'bootblk', 'crc', 'date', 'disasm', 'diskcopy', 'findfile',
-           'dos33w', 'dosrepl', 'fixit', 'fixtypes', 'foreignfs', 'goto', 'ident', 'imgconv', 'macpaint',
+           'dos33w', 'dosrepl', 'fixit', 'fixtypes', 'foreignfs', 'goto', 'ident', 'imgconv', 'imgput', 'macpaint',
            'mdview', 'rename',
            'repair', 'shapes', 'squeeze', 'tagpat', 'txtconv', 'verify', 'volname', 'wipe',
            'wrappers')
