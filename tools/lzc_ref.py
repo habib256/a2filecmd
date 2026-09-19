@@ -28,6 +28,7 @@ Widths run from 12 (`compress`'s own floor, and NuFX format 4) to 16
 (format 5). A nine-bit table is full before it starts and `compress`
 handles it its own way; NuFX never asks for one, and neither does this.
 """
+import shutil
 import subprocess
 import sys
 
@@ -243,6 +244,8 @@ def compress(data, maxbits=12, block=True, stats=None):
 def _selftest():
     import os
     import tempfile
+    if shutil.which('compress') is None:
+        raise SystemExit('lzc_ref --selftest needs UNIX compress (ncompress)')
     bodies = [
         b'',
         b'A',
