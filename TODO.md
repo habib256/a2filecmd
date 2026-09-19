@@ -110,14 +110,15 @@ fermeture, et jamais d'atomicité promise que ProDOS ne donne pas.
 - [ ] **Écriture dans une image** montée (le panneau ouvre déjà une image
   en lecture seule). C'est un second écrivain ProDOS : bitmap de l'image,
   entrées de répertoire, extension de fichier.
-- [x] **Pascal — lecture.** `src/plugins/pascal.c` (DISKTOOLS) extrait tous
+- [x] **Pascal — lecture.** `src/plugins/pascal.c` (DEVTOOLS) extrait tous
   les fichiers d'un volume UCSD depuis une image, contrat des services de
   fichiers compris ; `tools/pascal_ref.py` est la référence et le
   générateur de fixtures, `tools/test_pascal.py` dans `make test`.
-  Vérifié contre le format publié et des volumes synthétiques, **pas
-  encore contre un vrai disque Pascal** : il n'y en a aucun dans le
-  corpus. Marge de fenêtre : 1 697 octets.
-- [x] **CP/M — lecture.** `src/plugins/cpm.c` (DISKTOOLS) : extensions
+  Vérifié contre le format publié, des volumes synthétiques **et quatre
+  vrais disques Pascal d'Asimov** (FORT1, TGP, TK, EXPRESS) : les 46
+  fichiers sortent octet pour octet comme `tools/pascal_ref.py` les lit.
+  Marge de fenêtre : 1 697 octets.
+- [x] **CP/M — lecture.** `src/plugins/cpm.c` (DEVTOOLS) : extensions
   remises en ordre, longueur prise sur le compte de records du dernier
   extent, contrat des services de fichiers. Le décalage de secteurs n'est
   pas deviné — la surcouche essaie les tables candidates et garde celle
