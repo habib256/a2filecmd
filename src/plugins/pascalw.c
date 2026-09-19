@@ -91,6 +91,7 @@ static unsigned char undo[ENTRY + 2];
 
 static unsigned int tail;               /* first block no file uses */
 static unsigned char put, skipped, stopped;
+static unsigned int nth;
 static FILE* src_file;
 
 /* The UCSD kind for a ProDOS type: the exact inverse of what pascal.c
@@ -279,14 +280,21 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     /* The image may have been swapped while the question waited. */
     if (!read_dir() || !find_tail()) { note("Image changed; nothing done."); goto done; }
 
-    if (!a.dir_open(other->path)) { note("Cannot read the other panel."); goto done; }
-    while (a.dir_next()) {
+    /* One entry per pass, the directory closed before the file is opened.
+     * Leaving it open makes three files open at once -- the image, the
+     * directory and the source -- and ProDOS runs out of buffers: the very
+     * first source refused to open. */
+    for (nth = 0; ; ++nth) {
+        unsigned int k;
+        if (!a.dir_open(other->path)) { note("Cannot read the other panel."); goto done; }
+        for (k = 0; k <= nth; ++k) if (!a.dir_next()) break;
+        a.dir_close();
+        if (k <= nth) break;                                  /* past the end */
         if (a.dir_entry->type == 0x0F) continue;              /* a directory */
         if (!join(source_path, other->path, a.dir_entry->name) ||
             !a.strcmp(source_path, a.full)) { ++skipped; continue; }   /* the image itself */
         if (!one(a.dir_entry->name, a.dir_entry->type, a.dir_entry->size)) { stopped = 1; break; }
     }
-    a.dir_close();
     if (stopped) goto done;
     a.sprintf(a.note, "%u put, %u skipped (name taken or empty).", put, skipped);
 done:

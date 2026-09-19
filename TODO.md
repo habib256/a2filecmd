@@ -195,7 +195,14 @@ fermeture, et jamais d'atomicité promise que ProDOS ne donne pas.
   alors qu'une écriture de répertoire venait d'atterrir fausse — les
   anciens octets sont maintenant remis, et si ça échoue aussi le message
   le dit. Marge de fenêtre : 364 octets (6502), 347 (65C02).
-  **Reste : un banc POM2**, et le genre UCSD écrit est l'inverse exact de
+  `bench/pascalw.py` (port 6915, 13/13 sur les deux processeurs) le joue
+  dans POM2 et relit l'image extraite du disque dur à l'arrêt. Il a trouvé
+  ce que le banc d'essai hôte ne pouvait pas voir : le répertoire ProDOS
+  restait ouvert pendant la copie, et avec l'image cela faisait trois
+  fichiers ouverts — ProDOS n'a plus de tampon et le tout premier fichier
+  source refusait de s'ouvrir. Le répertoire est maintenant refermé avant
+  chaque copie.
+  Le genre UCSD écrit est l'inverse exact de
   celui que le lecteur donne ($02→code, $03→texte, $05→données, le reste
   non typé) : un TXT ProDOS ne devient **pas** un textfile UCSD, ce format
   portant un en-tête de 1 024 octets.
