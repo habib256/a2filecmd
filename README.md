@@ -94,23 +94,23 @@ readers and more disk tools. See the [changelog](CHANGELOG.md).*
 **Start with the [latest release](https://github.com/habib256/a2filecmd/releases/latest).**
 No build required. Choose the image that fits your setup:
 
-The table describes 0.8.9, the latest published release; older downloads
+The table describes 0.9.0, the latest published release; older downloads
 retain their own version numbers.
 
-| Image (0.8.9) | Contents |
+| Image (0.9.0) | Contents |
 |---|---|
-| `A2FILECMD-6502-BOOT-0.8.9.dsk` | Bootable 140 KB floppy: file manager, essential disk tools and formatter |
-| `A2FILECMD-6502-FILES-0.8.9.dsk` | Edit and read documents, find, rename, copy, synchronize and unpack files |
-| `A2FILECMD-6502-MEDIA-0.8.9.dsk` | Pictures, Mockingboard and Electric Duet music |
-| `A2FILECMD-6502-DISKTOOLS-0.8.9.dsk` | Disk images, block tools, boot repair and recovery |
-| `A2FILECMD-6502-DEVTOOLS-0.8.9.dsk` | BASIC listings, disassembly, BASIC.SYSTEM and INTBASIC.SYSTEM |
-| `A2FILECMD-6502-XL-0.8.9.2mg` | Complete bootable 32 MB image for 6502 |
-| `A2FILECMD-65C02-XL-0.8.9.2mg` | Complete bootable 32 MB image for 65C02, with optional mouse support |
-| `A2FC-MINI-DOS33-0.8.9.dsk` | A2FileCmd Mini DOS3.3: the standalone edition for a 48 KB Apple II+ |
+| `A2FILECMD-6502-BOOT-0.9.0.dsk` | Bootable 140 KB floppy: file manager, essential disk tools and formatter |
+| `A2FILECMD-6502-FILES-0.9.0.dsk` | Edit and read documents, find, rename, copy, synchronize and unpack files |
+| `A2FILECMD-6502-MEDIA-0.9.0.dsk` | Pictures, Mockingboard and Electric Duet music |
+| `A2FILECMD-6502-DISKTOOLS-0.9.0.dsk` | Disk images, block tools, boot repair and recovery |
+| `A2FILECMD-6502-DEVTOOLS-0.9.0.dsk` | BASIC listings, disassembly, BASIC.SYSTEM and INTBASIC.SYSTEM |
+| `A2FILECMD-6502-XL-0.9.0.2mg` | Complete bootable 32 MB image for 6502 |
+| `A2FILECMD-65C02-XL-0.9.0.2mg` | Complete bootable 32 MB image for 65C02, with optional mouse support |
+| `A2FC-MINI-DOS33-0.9.0.dsk` | A2FileCmd Mini DOS3.3: the standalone edition for a 48 KB Apple II+ |
 
 **All floppies use 6502 code**, including on enhanced machines. Choose the
 categories you need; every companion carries the menu and full catalog.
-XL includes all 66 overlays, BASIC.SYSTEM, INTBASIC.SYSTEM, `DEMO/` and `IMGHGR/`, so it needs
+XL includes all 82 overlays, BASIC.SYSTEM, INTBASIC.SYSTEM, `DEMO/` and `IMGHGR/`, so it needs
 no companion. Choose XL **6502** for an original IIe; XL **65C02** for an
 enhanced IIe or //c. All editions require 128 KB and 80 columns.
 Use matching releases. Do not mix the native plugins of XL 65C02 with the
@@ -130,10 +130,10 @@ on Apple //c at `$C400–$C4FF`); an **AppleMouse II** enables point
 and click navigation. Both are optional and can be in any supported slot.
 
 **Tested on real hardware:** Apple //c, enhanced Apple IIe and unenhanced
-Apple IIe, with successful operation confirmed by the maintainer on September 12,
-2026. Also tested in [Virtual II](https://www.virtualii.com/) and
+Apple IIe, by the maintainer and by testers, who report it working as
+expected. Also tested in [Virtual II](https://www.virtualii.com/) and
 [POM2](https://github.com/habib256/pom2), including the //c and unenhanced
-1983 IIe with the 6502 build. The Apple IIgs has not been tried yet.
+1983 IIe with the 6502 build.
 
 ### Take a quick tour
 

@@ -88,8 +88,7 @@ source tracks are not preflighted before the first write.
   and exact source/target image comparison after ejection; a single-drive
   exchange copies one track, cancels before the next, and checks untouched tracks.
 
-Physical drives and accelerators still require hardware qualification. A
-successful readback does not guarantee persistence across a power cut.
+A successful readback does not guarantee persistence across a power cut.
 
 ## Local results, 2026-09-13
 

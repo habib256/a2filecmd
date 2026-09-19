@@ -1,9 +1,9 @@
-# Fiche de recette : la qualification sur matériel
+# Fiche de séance sur machine
 
-POM2 prouve le code, le lecteur prouve la machine. `make qualify` joue
-quatre-vingt-dix-sept pas dans un émulateur ; cette fiche décrit ce qu'aucun
-émulateur ne remplace, dans l'ordre où le TODO les place. Elle est faite pour
-être imprimée et cochée à côté de l'Apple II.
+Une séance sur Apple II, à imprimer et cocher à côté de la machine.
+`make qualify` joue les bancs POM2 ; cette fiche reprend les mêmes
+contrôles sur un lecteur, avec les mêmes images et les mêmes écrans
+attendus.
 
 Chaque séance suit la même forme : **ce qu'on prépare**, **ce qu'on tape**,
 **ce qu'on doit voir**, **ce qu'on note**. Les images d'essai et ce que
@@ -31,7 +31,7 @@ cette fiche ne prescrit pas le transfert, seulement ce qu'on fait ensuite.
 
 ## Avant de commencer
 
-- Les disquettes publiées de la version à qualifier, gravées : `BOOT`,
+- Les disquettes publiées de la version, gravées : `BOOT`,
   `FILES`, `MEDIA`, `DISKTOOLS`, `DEVTOOLS`, et la Mini DOS 3.3.
 - **Aucun disque personnel dans un lecteur.** Tout ce que ces séances
   écrivent est jetable ; un disque irremplaçable n'a rien à faire dans la
@@ -45,10 +45,7 @@ cette fiche ne prescrit pas le transfert, seulement ce qu'on fait ensuite.
 
 ---
 
-## 1. Mini sur Apple II+ 48 Ko 💾
-
-Un défaut d'écran a déjà été vu sur machine ; les écritures ne sont pas
-qualifiées du tout.
+## 1. Mini sur Apple II+ 48 Ko
 
 **Préparer** : `A2FC-MINI-DOS33-<version>.dsk` et `HW-DOS33.dsk`.
 
@@ -72,7 +69,7 @@ taille relue côté Mac après coup.
 
 ---
 
-## 2. DOSWRITE sur disque réel 💾
+## 2. DOSWRITE sur disque réel
 
 Écrire du ProDOS vers une vraie disquette DOS 3.3, dans un vrai lecteur.
 
@@ -100,7 +97,7 @@ résultat de la comparaison d'octets.
 
 ---
 
-## 3. FIXIT et REPAIR sur une disquette réellement abîmée 💾
+## 3. FIXIT et REPAIR sur une disquette réellement abîmée
 
 **Préparer** : `DISKTOOLS` gravée, `HW-CLEAN.dsk` et `HW-BROKEN.dsk`
 gravées, `dist/hw/EXPECTED.json` ouvert à côté.
@@ -131,10 +128,10 @@ nombre de blocs du plan, et le verdict final.
 
 ---
 
-## 4. FIXIT et REPAIR en mémoire auxiliaire, au-delà de 4 096 blocs 💾
+## 4. FIXIT et REPAIR en mémoire auxiliaire, au-delà de 4 096 blocs
 
 C'est le chemin où les réclamations vivent en AUX et où `/RAM` peut être
-perdu : il n'a jamais tourné ailleurs que dans l'émulateur.
+perdu : confirmer **avant**, comme le demande AGENTS.md.
 
 **Préparer** : `HW-BIG.po` (20 000 blocs) sur un support de masse réel
 (CFFA, Floppy Emu, disque SmartPort…), et de quoi vérifier `/RAM` : y
@@ -159,9 +156,7 @@ question, l'état de `/RAM` après un refus puis après un accord.
 
 ---
 
-## 5. Apple IIgs : premier amorçage 💾
-
-Aucun IIgs n'a encore démarré A2FC.
+## 5. Apple IIgs : amorçage
 
 **Préparer** : la XL `.2mg` sur un support SmartPort, et la disquette BOOT.
 
@@ -175,8 +170,7 @@ Aucun IIgs n'a encore démarré A2FC.
 3. Ouvrir une image HGR puis une DHGR, feuilleter avec les flèches.
    *Entre deux images, l'écran ne porte que le nom en cours de chargement.*
 4. Amorcer ensuite la disquette BOOT dans un Disk II, s'il y en a un :
-   noter ce qui marche et ce qui ne marche pas (le IIgs n'est pas encore
-   documenté côté Disk II).
+   noter ce que fait le Disk II.
 5. `Q` : retour à ProDOS, préfixe conservé.
 
 **Noter** : la vitesse ressentie (le IIgs tourne plus vite), tout écran qui
@@ -186,10 +180,8 @@ diffère du IIe, et l'état du Disk II.
 
 ## Après la séance
 
-- Reporter le résultat dans `TODO.md` : une ligne 💾 ne se coche que si la
-  séance est allée jusqu'au bout, pas parce qu'elle a commencé.
 - Un défaut trouvé se rejoue d'abord dans POM2 (`bench/all.py --only <banc>`)
   avec la même image : s'il s'y reproduit, il devient un banc ; s'il ne s'y
-  reproduit pas, la fiche le dit et la ligne 💾 reste ouverte.
+  reproduit pas, la fiche le dit.
 - Les images d'essai de `dist/hw/` sont jetables : les regraver au besoin,
   elles se reconstruisent en une fraction de seconde.

@@ -5,6 +5,8 @@ downloads and installation.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-19
+
 ### Return opens SQueezed files, ACU archives and Business BASIC
 - **Return** on a name ending in `.QQ` or `.ACU` opens UNSQ, which extracts
   the archive into the other panel as **!** already did; on a `.BA3`, or on a
@@ -113,7 +115,7 @@ downloads and installation.
 - `tools/check_warnings.py` (in `make test`, 7 seconds for both editions) builds everything and refuses any warning that is not one of those two kinds, in the files that may emit them. An unused parameter outside a stub block, a pointer used as an integer, a comparison that is always true: the build fails instead of hiding them in the flood.
 
 ### A hardware session is prepared, not improvised
-- `docs/HARDWARE-CHECKLIST.md` is the sheet for the five 💾 lines of the roadmap -- the Mini on a II+, DOSWRITE on a real drive, FIXIT/REPAIR on a really damaged floppy, the auxiliary-memory pass above 4,096 blocks, the first IIgs boot: what to prepare, what to type, what must appear, what to write down.
+- `docs/HARDWARE-CHECKLIST.md` is a printable session sheet for a real Apple II: Mini on a II+, DOSWRITE, FIXIT/REPAIR on a damaged floppy, the auxiliary-memory pass above 4,096 blocks, a first IIgs boot -- what to prepare, what to type, what must appear, what to write down.
 - `tools/hw_media.py` writes the disks it needs -- a healthy 280-block volume, the same one broken in four places REPAIR can put right, a DOS 3.3 disk, and with `--big` a 20,000-block volume broken past the first bitmap page -- and prints the findings FIXIT must name, from the two oracles the benches use: the corruption declares what it produces, `prodos_check.py` reads it back, and a disagreement refuses the fixture. `tools/test_hw_media.py` keeps the images and the sheet in step.
 
 ### Every bench is played by the qualification
@@ -129,6 +131,8 @@ downloads and installation.
 ### 190 bytes back in the resident
 - MAIN goes from 276 to 466 bytes free on 65C02 (677 to 865 on 6502), the language card from 34 to 60, CATALOG from 30 to 224, with no change in behaviour: `empty_panel` and `fill_entry` replace the panel clears and entry fills written out in `read_panel`, `read_image_dir` and `read_dos33_panel`; the ten keys that only open an overlay and hand it their own letter become a table read in the `default` of the main switch (`main`: 1,980 bytes to 1,680); `file_at_cursor`, `open_row22` and `reread_both` each replace a sequence written out two to seven times.
 - Written just above `read_dos33_panel`, those first two helpers landed **inside the CATALOG overlay** -- the `#pragma code-name (push, "CATALOG")` comes before it -- and the resident `read_panel` called them in an overlay's window. The link passed and MAIN claimed 172 bytes more than it had, exactly their size; the program would have worked only while CATALOG happened to be loaded. A function shared by the resident and an overlay goes outside the `code-name` blocks, and `ca65 -l` is what says which segment a `.proc` fell into. What else did not pay is in [docs/MEMORY-BUDGETS.md](docs/MEMORY-BUDGETS.md).
+
+[Full changelog](https://github.com/habib256/a2filecmd/compare/v0.8.9...v0.9.0)
 
 ## [0.8.9] - 2026-09-17
 

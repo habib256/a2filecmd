@@ -1,12 +1,11 @@
-"""The disks a session on real hardware needs, and what each must show.
+"""The disks a session on a real Apple II needs, and what each must show.
 
-POM2 proves the code; the drive proves the machine. A hardware session is
-expensive -- a floppy to write, a machine to set up, an afternoon -- so it
-should not also be spent building fixtures and guessing what a correct
-screen looks like. This writes them, and prints the findings the checks
-must report, from the same two oracles the benches use: `corrupt_prodos.py`
-declares what each corruption produces, `prodos_check.py` reads it back on
-the image, and a disagreement condemns the fixture before anyone boots.
+A session at the machine should not also be spent building fixtures and
+guessing what a correct screen looks like. This writes them, and prints
+the findings the checks must report, from the same two oracles the benches
+use: `corrupt_prodos.py` declares what each corruption produces,
+`prodos_check.py` reads it back on the image, and a disagreement condemns
+the fixture before anyone boots.
 
     python3 tools/hw_media.py --out dist/hw          # the three floppies
     python3 tools/hw_media.py --out dist/hw --big    # plus a 20,000-block volume

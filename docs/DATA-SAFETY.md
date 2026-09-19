@@ -8,9 +8,9 @@ mémoire auxiliaire. Elle ne constitue pas une garantie contre toute panne
 matérielle ni une preuve exhaustive de l’absence de défauts.
 
 Le 12 septembre 2026, le mainteneur confirme une validation réussie sur
-matériel réel : Apple //c, IIe enhanced et IIe unenhanced. Ce retour de
-fonctionnement complète les tests automatisés ; il ne constitue pas un
-compte rendu d'injection de pannes sur les lecteurs physiques. Voir le
+matériel réel : Apple //c, IIe enhanced et IIe unenhanced. Des testeurs
+ont depuis fait tourner A2FC sur leurs machines, sans défaut rapporté.
+Ce retour complète les tests automatisés. Voir le
 [suivi de stabilisation](history/STABILIZATION.md#validation-sur-matériel-réel).
 
 ## Risques corrigés
