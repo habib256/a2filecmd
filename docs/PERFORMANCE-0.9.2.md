@@ -51,7 +51,9 @@ Le banc `recovery` vérifie séparément l’aide et la récupération sur les
 deux CPU, avec comparaison des octets après fermeture de l’émulateur.
 Résultat : 2/2 scénarios, 14/14 contrôles. La suite hôte finale `make test`
 passe : 1 168 tests dans 111 suites, plus les campagnes de fuzz intégrées.
-Ces campagnes ne remplacent pas la qualification complète avant release.
+La [qualification automatisée complète](QUALIFICATION-0.9.2.md) est également
+terminée : 100/100 scénarios au bilan consolidé, aucun ignoré. Les essais
+sur matériel physique restent à effectuer.
 
 Le guide RECOVER et l’aide occupent 10 blocs supplémentaires sur 140K,
 qui conserve 22 blocs libres. La version DOS 3.3 n’a pas reçu ces changements

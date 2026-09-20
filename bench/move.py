@@ -30,7 +30,9 @@ def main():
     for i in range(12):
         files['DST/F%02d#040000' % i] = b'x' * 16
     with tempfile.TemporaryDirectory(prefix='a2fc-move-') as tmp:
-        with boot_hd(tmp, files, port=PORT, blocks=1000,
+        # Leave room for the complete distribution and the test directories.
+        # DST itself still has exactly one full block and must grow on MOVE.
+        with boot_hd(tmp, files, port=PORT, blocks=1600,
                      plugins=['move', 'volinfo']) as (p, s):
             # Le panneau de gauche sur SRC, celui de droite sur DST.
             s.select('SRC'); s.key(RET)

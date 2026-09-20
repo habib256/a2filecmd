@@ -19,7 +19,9 @@ se ferme avec un oracle hôte et un banc POM2.
 - [ ] Indexer les grands catalogues sans état périmé après changement de disque.
 - [ ] Évaluer un cache sûr des informations de volume ; prototype écarté
   pour préserver les marges mémoire.
-- [ ] Qualification complète des cinq images avant publication 0.9.2.
+- [x] Qualification automatisée des cinq images : 100/100 scénarios au
+  bilan consolidé, 1 168 tests hôte ; [rapport](docs/QUALIFICATION-0.9.2.md).
+- [ ] Recette sur matériel physique avant la 1.0.
 
 [Mesures et limites](docs/PERFORMANCE-0.9.2.md). Les cinq pistes ont une
 première réalisation ; le parcours de catalogue relit encore les blocs

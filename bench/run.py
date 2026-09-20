@@ -160,7 +160,7 @@ def xl_volume(dirpath, cpu):
 
     def build(out):
         subprocess.run([sys.executable, str(ROOT / 'tools/mkvolume.py'), str(stage), str(out),
-                        '--volume', name, '--boot', str(boot), '--blocks', str(image.header()['blocks'])],
+                        '--volume', name, '--a2fc-layout', '--boot', str(boot), '--blocks', str(image.header()['blocks'])],
                        check=True, capture_output=True)
         return out
     same = build(dirpath / 'XL-rebuilt.po').read_bytes() == payload
@@ -293,7 +293,10 @@ def main():
             shot('05-hex')
             s.key(ESC); s.wait(lambda: s.value('view', 1) == 0, 'retour')
             s.key(b'?'); s.wait(lambda: s.value('view', 1) == 4, 'aide'); p.stable()
-            s.ok("l'aide est lue sur la disquette", s.has('A2 FILE CMD 0.7'), s.rows()[0][:50])
+            s.ok("l'aide est lue sur la disquette",
+                 'A2 FILE CMD  -  ProDOS file manager' in s.rows()[0]
+                 and 'RECOVER' in s.rows()[2]
+                 and s.rows()[23].strip() == 'ANY Back to panels', s.rows()[0])
             shot('06-help')
             s.key(b' '); s.wait(lambda: s.value('view', 1) == 0, 'retour'); p.stable()
 

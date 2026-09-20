@@ -31,6 +31,12 @@ downloads and installation.
 - Introduce DOS3.3 before the expanded ProDOS workflow in both the guide and
   README. Add current 0.9.2 panel captures; keep the cover image compact.
 
+### Qualification
+- Complete automated qualification: 100/100 scenarios in the consolidated
+  result, including four reruns after test fixture updates; 1,168 host tests.
+  All five images pass inventory checks and all four ProDOS volumes pass
+  filesystem audits. See [results and remaining limits](docs/QUALIFICATION-0.9.2.md).
+
 ## [0.9.1] - 2026-09-20
 
 ### Mockingboard 4c on Apple //c
