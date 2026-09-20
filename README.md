@@ -71,7 +71,7 @@ then continues through successive pages of 20 matches. V on a text result
 shows occurrence offsets and excerpts; ESC returns to the same list.
 VERIFY handles tagged files and VOLINFO exports allocation reports and file blocks.
 DATE, TAGPAT and TXTCONV
-also fit the boot floppy. See the [tool reference](docs/MANUAL.md#more-tools-in-the--menu).
+also fit the boot floppy. See the [tool reference](docs/MANUAL.md#find-and-maintain-files).
 
 ## See it in action
 

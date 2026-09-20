@@ -26,6 +26,8 @@ downloads and installation.
 - Reorganize the 0.9.2 user guide around installation, everyday operations,
   incident recovery and reference chapters. Refresh the PDF cover and linked
   contents; keep numbered steps separate and headings with their text.
+- Condense the user guide to 11 pages including its cover, with 12 contents
+  entries and unchanged text size. Preserve full attribution in `docs/CREDITS.md`.
 
 ## [0.9.1] - 2026-09-20
 

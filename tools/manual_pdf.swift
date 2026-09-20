@@ -91,6 +91,9 @@ let lines = source.components(separatedBy: .newlines)
 var i = 0
 while i < lines.count {
     let line = lines[i]
+    if line == "<!-- pagebreak -->" {
+        newPage(); i += 1; continue
+    }
     // Markdown has its own linked contents; the PDF uses the cover's page links.
     if line == "## Contents" {
         i += 1
@@ -138,7 +141,7 @@ while i < lines.count {
         // The companion catalog needs room for lists of tools; volume names
         // are short identifiers. Other three-column tables describe commands.
         let companionCatalog = rows[0] == ["Category", "Plugins", "ProDOS volume"]
-        let imageCatalog = rows[0] == ["Image", "Contents"]
+        let imageCatalog = rows[0] == ["Image", "Contents"] || rows[0] == ["Image", "Choose it for"]
         let recoveryCatalog = rows[0] == ["Operation", "New candidate", "Previous version"]
         let ratios: [CGFloat] = imageCatalog ? [0.55,0.45] : recoveryCatalog ? [0.34,0.33,0.33] : companionCatalog ? [0.18,0.55,0.27] :
             (count == 2 ? [0.25,0.75] : (count == 3 ? [0.22,0.16,0.62] : Array(repeating: 1/CGFloat(count), count: count)))
