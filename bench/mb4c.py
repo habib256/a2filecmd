@@ -29,6 +29,7 @@ def main():
                 with boot_hd(Path(tmp), files, port=6997, plugins=['music', 'pt3'],
                              preset='iic') as (p, s):
                     before_disk = Path(p.hdv).read_bytes()
+                    before_mouse = s.value('mouse', 1)
                     s.key(b'/'); s.select('/WORKHD'); s.key(RET)
                     s.select('WORK'); s.key(RET); p.stable()
                     for name, title in (('WELCOME.MB', 'MB1 - WELCOME.MB'),
@@ -46,13 +47,16 @@ def main():
                             s.ok(name + ': pause silences hardware',
                                  ay[7] & 63 == 63 and not any(ay[8:11]))
                             s.key(ESC); s.wait(lambda: s.has('Type  Aux'), 'panels', 30)
+                            p.rq('/speed', {'cycles_per_frame': p.speed}); p.stable()
                             ay = ay_snapshot(p, 'stopped')
                             s.ok(name + ': exit silences AY and disables VIA IRQ',
                                  ay[7] & 63 == 63 and not any(ay[8:11]) and ay[16] & 127 == 0)
-                            s.select(name); s.key(RET)
+                            s.select(name)
+                            p.rq('/speed', {'preset': '1x'}); s.key(RET)
                             s.wait(lambda: s.has(title), name + ' replay', 30)
                             p.rq('/speed', {'preset': 'max'})
                             s.wait(lambda: s.has('Type  Aux'), name + ' natural end', 90)
+                            p.rq('/speed', {'cycles_per_frame': p.speed}); p.stable()
                             s.ok(name + ': natural end restores both panels without a key',
                                  s.rows()[0].startswith('/WORKHD/WORK') and
                                  bool(s.rows()[0][40:].strip()) and not s.has('Invalid PT3.'))
@@ -64,7 +68,9 @@ def main():
                             s.ok(name + ': absent card refused, panels intact', s.has('Type  Aux'))
                         s.ok(name + ': AUX storage preserved byte for byte',
                              bytes(p.peek(0x1000, 0xB000, 'aux')) == before_aux)
-                        p.rq('/speed', {'preset': 'max'}); p.stable()
+                        s.ok(name + ': masked mouse ROM is never called',
+                             s.value('mouse', 1) == (0 if present else before_mouse))
+                        p.rq('/speed', {'cycles_per_frame': p.speed}); p.stable()
                 s.ok('Source volume preserved byte for byte', Path(p.hdv).read_bytes() == before_disk)
                 if ok_all(s, 'mb4c present' if present else 'mb4c absent'):
                     return 1

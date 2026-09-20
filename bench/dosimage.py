@@ -33,7 +33,7 @@ def main(container=False):
                    '--boot',str(ROOT/'data/prodos_boot.tmpl'),'--blocks','65535'],check=True,capture_output=True)
    original=hd.read_bytes()
   else:
-   original=(BUILD/f'A2FILECMD-{cpu}-BOOT.hdv').read_bytes();hd.write_bytes(original)
+   original=(BUILD/'A2FILECMD-XL.hdv').read_bytes();hd.write_bytes(original)
   before=Image(original);entries=demo(before);old=before.read(entries[dos_name])
   with Pom2(hd,port=6897,exe=os.environ.get('POM2_DOS','/tmp/a2fc-dos-host')) as p:
    s=Session(p);s.boot()

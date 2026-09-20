@@ -5,6 +5,37 @@ downloads and installation.
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-09-20
+
+### Mockingboard 4c on Apple //c
+- Wake the card before probing its VIA timers, only after identifying a //c
+  from its ROM. Temporarily expose firmware and restore Language Card RAM
+  before returning to the caller. A plain //c still reports no card.
+- When the 4c masks the //c mouse ROM, stop calling that firmware and keep
+  keyboard navigation. Mouse support remains available on a plain //c.
+- Both CPU editions exercise MB1/PT3 playback, pause and end-of-song cleanup
+  on disposable POM2 volumes, checking source files and AUX byte for byte.
+
+### Visible phases during long operations
+- ProDOS directory scanning, volume probes and sorting show an activity
+  indicator. Counting files and loading tools announce their phase.
+- COPY distinguishes copying from verification: the verification byte counter
+  restarts at zero and advances during readback. Result/error messages keep
+  their own row. Blocking disk calls can still pause the indicator.
+
+### Five self-contained images
+- Replace BOOT/FILES/MEDIA/DISKTOOLS/DEVTOOLS with one essential 140K
+  ProDOS disk, one complete 800K ProDOS disk, XL 6502, XL
+  **65C02-enhanced-mouse**, and DOS 3.3 (`A2FILECMD-DOS3.3-<version>.dsk`). The enhanced image requires
+  both the processor and enhanced ROM; mouse support is optional.
+- 140K includes text editing and MOVE, with space for preferences. Its menu
+  no longer advertises absent category disks; unavailable shortcuts return
+  a missing-tool message. 800K contains all 82 overlays and both BASIC
+  runtimes without the XL demo corpus.
+- Build and verify Mini as part of `make disk`; its DOS boot tracks come
+  from the previously distributed Mini 0.9.0. Release checksums and uploads
+  include exactly the five images and manual.
+
 ### The 65C02 edition checks the processor, not only the ROM
 - On an enhanced IIe with a 6502 put back in, the 65C02 edition passed the
   ROM check and ran on the wrong processor. The launcher now tests the

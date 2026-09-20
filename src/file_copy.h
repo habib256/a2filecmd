@@ -14,16 +14,23 @@ struct CopyState {
 /* Fail the build if the borrowed pagination storage becomes too small. */
 typedef char copy_state_fits[sizeof text_starts - sizeof(struct CopyState) + 1];
 
+static const char copy_tempname[] = "A2FC.COPY";
+static void __fastcall__ copy_progress(unsigned long checked);
+static const char copy_overwrite[] = "%s: Overwrite/Skip/All/None? ";
 #pragma code-name(push, "COPY")
 #pragma rodata-name(push, "COPYRO")
-static const char copy_tempname[] = "A2FC.COPY";
+static void __fastcall__ copy_progress(unsigned long checked)
+{
+    progress_bar(CP->name, checked, CP->size);
+}
+
 static unsigned char may_overwrite(const char* name)
 {
     char key;
     if (over_policy == OVERWRITE_ALL) return 1;
     if (over_policy == SKIP_ALL) return 0;
     question_begin();
-    cprintf("%s: Overwrite/Skip/All/None? ", name);
+    cprintf(copy_overwrite, name);
     revers(0);
     for (;;) {
         key = cgetc() | 0x20;
@@ -41,7 +48,6 @@ static unsigned char copy_stage(void)
     FILE *in, *out;
     unsigned int n;
     unsigned long copied = 0;
-    CP->had_old = CP->owned = CP->ok = CP->bak = 0;
     if (exists(CP->target)) {
         if (gfi[4] == 15 || !may_overwrite(CP->name)) {
             ++progress_skipped; ++progress_done; return 2;
@@ -67,11 +73,11 @@ static unsigned char copy_stage(void)
     if (CP->owned != OUTPUT_RESERVED) { fclose(in); return 0; }
     out = fopen(CP->temp, "wb");
     if (!out) { fclose(in); return 0; }
-    CP->owned = CP->ok = 1;
+    CP->ok = 1; /* owned is already OUTPUT_RESERVED */
     while ((n = fread(copy_buf, 1, 512, in)) != 0) {
         if (fwrite(copy_buf, 1, n, out) != n || abort_key()) { CP->ok = 0; break; }
         copied += n;
-        progress_bar(CP->name, copied, CP->size);
+        copy_progress(copied);
     }
     if (ferror(in) || ferror(out) || copied != CP->size) CP->ok = 0;
     if (fclose(in)) CP->ok = 0;
@@ -98,6 +104,7 @@ static void copy_check(void)
             if (fread(copy_buf + 256, 1, 256, out) != n ||
                 memcmp(copy_buf, copy_buf + 256, n) || abort_key()) { CP->ok = 0; break; }
             checked += n;
+            copy_progress(checked);
             if (n < 256) break;
         }
         if (in) { if (ferror(in)) CP->ok = 0; if (fclose(in)) CP->ok = 0; }
@@ -107,6 +114,7 @@ static void copy_check(void)
 }
 #pragma rodata-name(pop)
 #pragma code-name(pop)
+
 
 #define FI_RENAME rename
 #define FI_STATE CP
@@ -139,8 +147,13 @@ static unsigned char copy_file(const char* name, unsigned char type, unsigned in
     strcpy(CP->target, other_full);
     CP->name = name; CP->type = type; CP->aux = aux;
     if (overlay("COPY")) {
+        CP->had_old = CP->owned = CP->ok = CP->bak = 0;
+        activity_begin("Copying...");
         r = copy_stage();
-        if (r != 2) { copy_check(); r = copy_finish(); }
+        if (r != 2) {
+            if (CP->ok) { activity_begin("Verifying..."); copy_progress(0); }
+            copy_check(); r = copy_finish();
+        }
     }
     strcpy(other_full, CP->target);
     return r;

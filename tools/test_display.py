@@ -78,6 +78,11 @@ ASM_C = r'''
 #include <stdio.h>
 void keys_bar(unsigned char,const char*);
 unsigned int __fastcall__ hex_value(const char*);
+void activity_tick(void);
+void __fastcall__ activity_begin(const char*);
+static unsigned char phase_bad;
+void cclearxy(unsigned char x,unsigned char y,unsigned char count){if(x||y!=21||count!=79)phase_bad=1;}
+void cputsxy(unsigned char x,unsigned char y,const char*s){if(x||y!=21||strcmp(s,"Verifying..."))phase_bad=1;}
 static char text[1024],colors[1024];
 static unsigned n;
 static unsigned char rev,bad;
@@ -90,6 +95,15 @@ static const char*spec[]={"", "A Alpha,ESC Back", "AB Two,LONG Label", "X", " La
 int main(void){
  unsigned i,j,refn;static char reftext[1024],refcolors[1024],hex[8];unsigned char r;
  static char boundary[512];void (*api)(unsigned char,const char*)=keys_bar;
+ /* The simulator executes the production stores. All surrounding text
+  * bytes, including the result row, must survive every heartbeat. */
+ memset((void*)0x400,0xA5,1024);
+ for(i=0;i<8;++i){
+  activity_tick();
+  if(*(unsigned char*)0x6F7 != (unsigned char)"\xAF\xAD\xDC\xFC"[i%4])return 5;
+  for(j=0;j<1024;++j)if(j!=0x2F7&&((unsigned char*)0x400)[j]!=0xA5)return 6;
+ }
+ activity_begin("Verifying...");if(phase_bad)return 7;
  for(i=0;i<sizeof(spec)/sizeof(*spec);++i){
   /* Place the input across an actual page boundary, as plugin constants can be. */
   char*s=boundary+255-((unsigned)boundary&255);strcpy(s,spec[i]);
@@ -144,9 +158,12 @@ static void reference(unsigned char x,const char*spec){
             (p / 'test.c').write_text(ASM_C.replace('/* REFERENCE */', reference))
             # Only relocate LC for the simulator; execute the production code.
             (p / 'display.s').write_text((ROOT / 'src/display.s').read_text().replace('.segment "LC"', '.segment "CODE"'))
+            # Keep simulator code away from the actual Apple II text page.
+            cfg = Path(shutil.which('cl65')).resolve().parents[1] / 'share/cc65/cfg/sim6502.cfg'
+            (p / 'sim.cfg').write_text(cfg.read_text().replace('start = $0200, size = $FDF0', 'start = $2000, size = $DFF0'))
             for cpu, target in [('6502', 'sim6502'), ('65c02', 'sim65c02')]:
                 with self.subTest(cpu=cpu):
-                    subprocess.run([shutil.which('cl65'), '-t', target, '--cpu', cpu, '-O', '-o', str(p / 'test'), str(p / 'test.c'), str(p / 'display.s')], check=True)
+                    subprocess.run([shutil.which('cl65'), '-t', target, '-C', str(p / 'sim.cfg'), '--cpu', cpu, '-O', '-o', str(p / 'test'), str(p / 'test.c'), str(p / 'display.s')], check=True)
                     subprocess.run([shutil.which('sim65'), str(p / 'test')], check=True, timeout=60)
 
 

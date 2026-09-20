@@ -74,6 +74,8 @@ static unsigned char move_tree_across(void);
 static void copy_or_move(unsigned char move);
 static unsigned char target_check(void);
 static void progress_bar(const char* name, unsigned long copied, unsigned long size);
+void __fastcall__ activity_begin(const char* text);
+void activity_tick(void); /* display.s: MAIN text cell only; never AUX or disk */
 static void refresh_both(void);
 static unsigned char abort_key(void);
 static void dir_fail(void);
@@ -381,6 +383,7 @@ static unsigned char dir_block_next(void)
 {
     unsigned int next = copy_buf[2] | ((unsigned int)copy_buf[3] << 8);
     if (!next) return 0;
+    activity_tick();
     if (dir_img) {
         if (img_read_block(next, copy_buf) &&
             (copy_buf[0] | ((unsigned int)copy_buf[1] << 8)) == dir_block_key) {
@@ -716,6 +719,7 @@ static void sort_entries(struct Panel* pan)
     struct Entry* e;
     if (!pan->path[0] || pan->fs == FS_DOS33 || pan->first || pan->more) return;
     for (i = 1; i < pan->count; ++i) {
+        activity_tick();
         e = pan->e + i;             /* a pointer: no multiply per step */
         tmp = *e;
         t = tagged(pan, i);
@@ -796,6 +800,7 @@ static void read_volumes(struct Panel* pan)
             name[len + 1] = 0;
             e = add_entry(pan, name, 0x0F);
             e->mdate = b >> 4;
+            activity_tick();
             volume_blocks(name, &e->blocks, &e->aux);
         }
     /* DOS 3.3 disks have no ProDOS volume: we probe each unit (DEVLST) for
@@ -807,6 +812,7 @@ static void read_volumes(struct Panel* pan)
         for (i = 0; i < nd && pan->count < MAX_ENTRIES; ++i) {
             unit = ((unsigned char*)0xBF32)[i] & 0xF0;
             dos_unit = unit;
+            activity_tick();
             if (dos_vtoc_ok()) {
                 e = add_entry(pan, "DOS 3.3", 0x0F);
                 e->mdate = unit;
@@ -868,6 +874,7 @@ static unsigned char read_dos33_panel(struct Panel* pan)
     empty_panel(pan);
     while (ct && pan->count < MAX_ENTRIES) {
         /* The count is its own statement: cc65 has miscompiled ++/-- inside a test. */
+        activity_tick();
         if (!remaining || !dos_read_sector(ct, cs)) return 0;
         --remaining;
         ct = copy_buf[1]; cs = copy_buf[2];
@@ -1006,6 +1013,7 @@ static unsigned char read_panel(unsigned char p)
     struct Entry* e;
     unsigned int skip = pan->first;
     unsigned char ok = 1;
+    activity_begin("Reading directory...");
     if (pan->fs) {
         if (read_image_panel(pan)) goto placed;
         /* The volume list starts from an empty table: ON_LINE only appends,
@@ -2166,6 +2174,7 @@ static unsigned char ask_disk(const char* name)
         }
         fclose(f);
     }
+    if (!strcmp(question, "tool disk")) return 0;
     return disk_question(name);
 }
 
@@ -2239,6 +2248,7 @@ static unsigned char load_overlay(const char* name, unsigned char any)
         return !(OVL->flags & OVERLAY_AUX) || confirm_aux();
     }
     overlay_loaded[0] = 0;
+    activity_begin("Loading tool...");
     f = open_overlay(name, 1);
     if (f) {
         if (fread(OVERLAY_WINDOW, 1, 8, f) == 8 && !ferror(f)
@@ -3892,6 +3902,7 @@ static unsigned char abort_key(void)
 static void progress_bar(const char* name, unsigned long copied, unsigned long size)
 {
     unsigned char filled = size ? (unsigned char)(copied * 40 / size) : 40, i;
+    activity_tick();
     if (copied && filled == bar_last && name == bar_name) return;
     bar_last = filled;
     bar_name = name;
@@ -4893,6 +4904,7 @@ static void copy_or_move(unsigned char move)
     progress_skipped = 0;
     progress_abort = 0;
     over_policy = ASK;
+    activity_begin("Counting files...");
     if (move) memset(pan->tags, 0, sizeof pan->tags);   /* the tags are in picked: the entries are about to move */
     for (i = 0; i < n; ++i) {
         const struct Entry* e = &pan->e[picked[i]];

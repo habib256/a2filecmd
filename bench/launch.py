@@ -33,7 +33,7 @@ def launch_session(tmp,files,companion):
                     '--volume','SCRATCH','--blocks','1600'],check=True,capture_output=True)
     boot=tmp/'BOOT.po';tools=tmp/'DEVTOOLS.po'
     for dest,role in ((boot,'BOOT'),(tools,'DEVTOOLS')):
-        shutil.copyfile(ROOT/('dist/A2FILECMD-6502-%s-%s.po'%(role,VERSION)),dest)
+        shutil.copyfile((ROOT/('dist/A2FILECMD-140K-%s.po'%VERSION) if role == 'BOOT' else ROOT/'build-6502/legacy/DEVTOOLS.po'),dest)
     with Pom2(hd,floppy=boot,floppy2=tools,port=6970 + int(__import__('os').environ.get('A2FC_PORT_OFFSET', '0'))) as p:
         s=Session(p);s.boot();yield p,s,'/SCRATCH'
 

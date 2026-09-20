@@ -12,7 +12,7 @@ from mini33_fixture import make_disk, read_files
 from mkmini33 import MINI_VERSION
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--pom2-root', type=Path, required=True)
-p.add_argument('--disk', type=Path, default=ROOT/f'dist/A2FC-MINI-DOS33-{MINI_VERSION}.dsk')
+p.add_argument('--disk', type=Path, default=ROOT/f'dist/A2FILECMD-DOS3.3-{MINI_VERSION}.dsk')
 a = p.parse_args()
 original = a.disk.read_bytes()
 MINI_ENV = dict(os.environ, MINI_FILES=str(len(read_files(original))))   # the boot disk's file count, for the screen checks

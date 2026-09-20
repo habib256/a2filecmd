@@ -130,3 +130,46 @@ hv_done:
         lda ptr2
         ldx ptr2+1
         rts
+
+; A heartbeat at row 21, column 79: odd columns of the 80-column display
+; are MAIN RAM ($06F7). No conio state, soft switch, AUX or file is touched.
+; CODE is permanently resident and covered by the normal layout checks.
+        .export _activity_tick
+        .bss
+activity_phase: .res 1
+        .code
+_activity_tick:
+        inc activity_phase
+        lda activity_phase
+        and #3
+        tax
+        lda activity_chars,x
+        sta $06F7
+        rts
+activity_chars:
+        .byte $FC, $AF, $AD, $DC  ; normal-video | / - backslash
+
+; Temporary phase on the information row. Result/error row 22 is preserved.
+; The panels redraw row 21 when the operation returns. No disk or AUX above
+; the normal text page is used; the conio helpers select their text bank.
+        .export _activity_begin
+        .import _cclearxy, _cputsxy
+        .code
+_activity_begin:
+        pha
+        txa
+        pha
+        lda #0
+        jsr pusha
+        lda #21
+        jsr pusha
+        lda #79
+        jsr _cclearxy
+        lda #0
+        jsr pusha
+        lda #21
+        jsr pusha
+        pla
+        tax
+        pla
+        jmp _cputsxy

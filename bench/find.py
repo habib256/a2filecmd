@@ -10,7 +10,7 @@ panneau actif, les fichiers qui le contiennent (insensible a la casse). Les
 fichiers d'essai sont dans des sous-dossiers a eux, petits, pour que la
 lecture reste rapide (SEARCH lit chaque fichier en entier)."""
 
-import os, shutil, sys, tempfile, time
+import os, shutil, subprocess, sys, tempfile, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -28,7 +28,16 @@ def main():
     with tempfile.TemporaryDirectory(prefix='a2fc-find-') as tmp:
         tmp = Path(tmp)
         floppy = tmp / 'A2FILECMD.po'
-        shutil.copyfile(DISK, floppy)
+        # The general 140K bench fixture no longer carries SEARCH. Build a
+        # disposable edition for this test, replacing the unused BASLIST.
+        build = ROOT / os.environ.get('A2FC_BUILD', 'build')
+        boot = tmp / 'boot'
+        shutil.copytree(build / 'benchvol', boot)
+        (boot / 'A2FILE/BASLIST.PLG#061B00').unlink()
+        shutil.copyfile(build / 'A2FILE.CODE.BIN.SEARCH', boot / 'A2FILE/SEARCH.PLG#061B00')
+        subprocess.run([sys.executable, str(ROOT / 'tools/mkvolume.py'),
+                        str(boot), str(floppy), '--volume', 'A2FILECMD',
+                        '--boot', str(ROOT / 'data/prodos_boot.tmpl'), '--blocks', '280'], check=True)
         hdv = scratch_volume(tmp)
         stage = tmp / 'scratch'
         # deux dossiers pour COMPARE, un troisieme pour SEARCH -- petits fichiers.

@@ -29,7 +29,7 @@ def main():
    s.key(TAB);s.select('BINARY',40);s.ok('BIN keeps address $1234 and exact EOF 601','$1234' in s.line(40) and '601' in s.line(40))
    s.select('M.CANON',40);p.rq('/speed',{'preset':'1x'});s.key(RET)
    s.wait(lambda:s.has('Electric Duet - M.CANON'),'Return opens extracted M.*',30);s.ok('Return opens untyped DOS M.*',True)
-   s.key(ESC);s.wait(lambda:s.has('Type  Aux'),'player exit');p.stable();p.rq('/speed',{'preset':'max'})
+   s.key(ESC);s.wait(lambda:s.has('Type  Aux'),'player exit');p.stable();p.rq('/speed',{'cycles_per_frame':p.speed})
    menu_run(s,p,'IDENT');s.wait(lambda:s.has('Electric Duet compatible'),'IDENT recognizes extraction');s.ok('IDENT reads the complete DOS song',True)
    line=run_fixtypes(s,p,b'Y');s.ok('confirmed FIXTYPES repairs exact extraction',line.startswith('1 typed, 0 renamed, 0 skipped, 0 failed'),line)
    open_dir(s,p,40,'/OUTPUT','OLD');s.select('M.LEGACY',40)

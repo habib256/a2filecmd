@@ -7,6 +7,8 @@ from test_file_safety import section
 ROOT=Path(__file__).resolve().parents[1]
 C=r'''
 #include <stdio.h>
+static void activity_tick(void) {}
+static void activity_begin(const char* text) {}
 #include <string.h>
 #include <stdlib.h>
 #define __fastcall__

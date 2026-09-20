@@ -9,6 +9,7 @@ source = (ROOT / 'src/a2fc.c').read_text()
 loader = source[source.index('static unsigned char load_overlay('):source.index('\n#define overlay(name)')]
 C = r'''
 #include <stdio.h>
+static void activity_begin(const char* text) {}
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>

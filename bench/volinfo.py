@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Published BOOT + DISKTOOLS: VOLINFO on healthy/corrupt floppies and a 32 MB volume."""
+"""VOLINFO on disposable healthy/corrupt floppies and a 32 MB volume."""
 import os
 import re
 import shutil
@@ -29,14 +29,12 @@ def disk(tmp, name, blocks):
 
 
 def boot_floppy(tmp):
-    """The boot floppy. The published BOOT reaches VOLINFO on DISKTOOLS; the
-    bench floppy (A2FC_IMG=A2FILECMD-full) has no category disk, so a
-    disposable copy carries this build's VOLINFO in place of FORMAT and
-    DISKIMG, as the archive benches do (archive_support.py)."""
+    """A disposable standalone floppy with this CPU's VOLINFO.
+
+    The essential release does not ship VOLINFO. Replace unused FORMAT and
+    DISKIMG in the bench fixture, without modifying any distributed image.
+    """
     out = tmp/'BOOT.po'
-    if DISK.name != 'A2FILECMD-full.po':
-        shutil.copyfile(DISK, out)
-        return out
     stage = tmp/'boot-stage'
     shutil.copytree(BUILD/'benchvol', stage)
     for tool in ('FORMAT', 'DISKIMG'):
@@ -52,9 +50,6 @@ def main():
     with tempfile.TemporaryDirectory(prefix='a2fc-volinfo-') as tmp:
         tmp = Path(tmp)
         boot = boot_floppy(tmp)
-        tools_disk = tmp/'DISKTOOLS.po'
-        shutil.copyfile(DISK.with_name(DISK.name.replace("-BOOT-", "-DISKTOOLS-")), tools_disk)
-        tools_before = tools_disk.read_bytes()
         target = disk(tmp, 'AUDIT', 280)
         hd = disk(tmp, 'WORKHD', 65535)
         before = target.read_bytes(); boot_before = boot.read_bytes(); hd_before = hd.read_bytes()
@@ -81,30 +76,12 @@ def main():
                 s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes'); p.stable()
                 s.select('/'+name)
 
-            swapped = [False]                   # DISKTOOLS sits in drive 1, not the boot floppy
-
             def tool(name):
                 menu_run(s, p, name)
-                # The overlay is looked for on the boot disk, then on the
-                # companion drive, before the swap prompt shows: menu_run can
-                # return while those reads are still going on.
-                started = (lambda: s.has('READ ONLY') or s.has('M Bitmap')) if name == 'VOLINFO' \
-                    else (lambda: s.value('view', 1) == 4)
-                s.wait(lambda: s.has('Insert ') or started(), name + ' ou son disque', 60)
-                if s.has('Insert '):
-                    s.key(b'1')
-                    p.insert(0, str(tools_disk if name == 'VOLINFO' else boot))
-                    swapped[0] = name == 'VOLINFO'
-                    s.key(RET)
 
             def run():
                 tool('VOLINFO')
                 s.wait(lambda: s.has('M Bitmap'), 'fin du diagnostic', 180); p.stable()
-                # VOLINFO is in memory: the boot floppy goes back in drive 1,
-                # where the resident overlays (NAV, HELP...) are read from.
-                if swapped[0]:
-                    p.insert(0, str(boot))
-                    swapped[0] = False
 
             def number(label):
                 text = '\n'.join(s.rows())
@@ -149,7 +126,6 @@ def main():
         assert target.read_bytes() == before
         assert corrupt.read_bytes() == d
         assert boot.read_bytes() == boot_before
-        assert tools_disk.read_bytes() == tools_before
         assert hd.read_bytes() == hd_before
         s.ok('aucune image modifiee', True)
         return ok_all(s, 'volinfo')

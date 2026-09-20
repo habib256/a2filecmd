@@ -9,7 +9,7 @@ from prodos_read import Image
 
 def main():
     cpu='6502' if BUILD.name=='build-6502' else '65C02'
-    data=(ROOT/'dist'/f'A2FILECMD-{cpu}-XL-{VERSION}.2mg').read_bytes()[64:]
+    data=(ROOT/'dist'/f"A2FILECMD-{'65C02-enhanced-mouse-' if cpu == '65C02' else ''}XL-{VERSION}.2mg").read_bytes()[64:]
     files=[size for name,kind,size in Image(data).walk() if kind!='DIR']
     with tempfile.TemporaryDirectory(prefix='a2fc-tree-') as t:
         disk=Path(t)/'XL.hdv';disk.write_bytes(data)

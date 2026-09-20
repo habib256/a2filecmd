@@ -51,7 +51,7 @@ def main():
         floppy = tmp / 'A2FILECMD.po'
         shutil.copyfile(DISK, floppy)
         media = tmp / 'MEDIA.po'
-        shutil.copyfile(ROOT / f'dist/A2FILECMD-6502-MEDIA-{VERSION}.po', media)
+        shutil.copyfile(ROOT / 'build-6502/legacy/MEDIA.po', media)
         hdv = scratch_volume(tmp)                    # DEMO, WORK, OUT, TINY.PO...
         stage = tmp / 'scratch'
         (stage / 'BIG').write_bytes(BIG)
@@ -104,7 +104,7 @@ def main():
             p.rq('/speed', {'preset': '1x'}); s.key(RET)
             s.wait(lambda: s.has('MB1 - WELCOME.MB'), 'lecteur MB1', 30)
             s.wait(lambda: s.has('Type  Aux     Size'), 'fin du flux MB1', 30); p.stable()
-            p.rq('/speed', {'preset': 'max'})
+            p.rq('/speed', {'cycles_per_frame': p.speed})
             ok('A : la musique rend les panneaux, curseur sur le morceau', s.line(40).startswith('WELCOME.MB'))
             msg = copy(40, 'README', 'SAMPLE')
             ok('A : deux fichiers copies apres image et musique', msg.startswith('2 files copied'), msg)

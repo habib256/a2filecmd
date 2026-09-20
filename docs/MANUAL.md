@@ -30,36 +30,30 @@ confirmed by the maintainer and by testers. The launcher checks the
 machine, the ROM, the processor and the memory before starting, says in
 40 columns what is missing, and identifies the edition on its title screen.
 
-### Choose your disks
+### Choose your disk
 
-| Edition | What to use |
+Version 0.9.1 replaces the category disks with five self-contained images.
+
+| Image | Contents |
 |---|---|
-| **6502 floppies** | BOOT plus whichever 140 KB category disks you need: FILES, MEDIA, DISKTOOLS, DEVTOOLS. These floppies also run on enhanced machines. |
-| **XL 6502 or 65C02** | One bootable 32 MB `.2mg` with all 82 overlays, BASIC.SYSTEM, INTBASIC.SYSTEM and demonstration files. No companion disk is needed. |
+| `A2FILECMD-XL-0.9.1.2mg` | Complete 32 MB ProDOS image, 6502, all tools and examples |
+| `A2FILECMD-65C02-enhanced-mouse-XL-0.9.1.2mg` | Complete XL; 65C02 **and** enhanced ROM required, mouse support optional |
+| `A2FILECMD-DOS3.3-0.9.1.dsk` | Standalone Mini, DOS 3.3, Apple II+ 48 KB, 40 columns |
+| `A2FILECMD-800K-0.9.1.po` | Bootable 800 KB ProDOS image, 6502, all tools and BASIC runtimes, no demo corpus |
+| `A2FILECMD-140K-0.9.1.dsk` | Bootable 5¼-inch ProDOS disk, 6502, essential file operations, editor, text/hex readers, format and verify |
 
-The download names include the CPU, category and version:
+The ProDOS editions need 128 KB and 80 columns. `mouse` denotes optional
+mouse support; the enhanced edition still works with the keyboard alone.
+It requires **both** a 65C02 and enhanced ROM. Mini is a separate program;
+see [its section](#a2filecmd-mini-dos33).
 
-| Role | Image name |
-|---|---|
-| Boot | `A2FILECMD-6502-BOOT-0.9.0.dsk` |
-| Files | `A2FILECMD-6502-FILES-0.9.0.dsk` |
-| Media | `A2FILECMD-6502-MEDIA-0.9.0.dsk` |
-| Disk tools | `A2FILECMD-6502-DISKTOOLS-0.9.0.dsk` |
-| Development tools | `A2FILECMD-6502-DEVTOOLS-0.9.0.dsk` |
-| Complete, 6502 | `A2FILECMD-6502-XL-0.9.0.2mg` |
-| Complete, 65C02 | `A2FILECMD-65C02-XL-0.9.0.2mg` |
-
-**A2FileCmd Mini DOS3.3** is a different program for a different machine and
-ships as one more file, `A2FC-MINI-DOS33-0.9.0.dsk`, a DOS 3.3 disk for an
-Apple II+; see [its section](#a2filecmd-mini-dos33).
-
-All floppies are 6502 and supplied as `.dsk` in DOS sector order; XL uses `.2mg`.
-Use the downloaded files directly: changing an extension does not convert an image.
-Each floppy image is 143,360 bytes. Check downloads against
-`SHA256SUMS-0.9.0.txt`; if all release files are together, run:
+140K and Mini are 143,360-byte `.dsk` files in DOS sector order. 800K is
+an 819,200-byte `.po` in ProDOS block order. XL is a 32 MB `.2mg`.
+Use them directly: changing the extension does not convert an image.
+With the release images and PDF in one directory, check downloads with:
 
 ```sh
-sha256sum -c SHA256SUMS-0.9.0.txt
+sha256sum -c SHA256SUMS-0.9.1.txt
 ```
 
 Boot the image, or launch `A2FILE.SYSTEM` from a ProDOS selector. To install
@@ -99,37 +93,25 @@ opens `DEMO/`; try its text, pictures, music and sample archives.
 more for each format that only a real file shows well (MacPaint, AppleWorks
 data bases and spreadsheets).
 
-### The companion floppy and disk swaps
+### Essential and complete editions
 
-The companions group tools by function. Every disk also carries MENU and the
-full command catalog. The distribution is declared in `config/packages.mk`.
+The 140K edition includes navigation, tagging, copying, moving, deleting,
+renaming, attributes, text editing, text and hex readers, comparison,
+formatting and verification. It can browse mounted images and extract
+ProDOS files through IMGFS. It does not include disk imaging, DOS file
+extraction, archives, media players, document readers or BASIC runtimes.
+The menu lists available tools. A shortcut to a missing tool reports that
+it is missing, without asking for an obsolete category disk.
 
-| Category | Plugins | ProDOS volume |
-|---|---|---|
-| **FILES** | DOSGET, DOSWRITE, DOSIMAGE, DOSPUT, EDIT, SEARCH, AWP, AWDATA, BINARY2, UNSHRINK, UNWRAP, SCIIBIN, UNSQ, FIND, FIXTYPES, GOTO, MDVIEW, RENAME, SYNC, MOVE, TREE | `/A2FILES6502` |
-| **MEDIA** | IMAGE, MUSIC, DGRVIEW, EXTASIE, ARLEQUIN, MACPAINT, SHAPES, PACKFOT, PAINT816, PURPLE, LZ4FH, PRINTSHOP, FONTVIEW, PT3, DUET | `/A2MEDIA6502` |
-| **DISKTOOLS** | DOS33W, DOSREPL, BOOTBLK, BLKVIEW, BLKEDIT, DISKCMP, NIBCOPY, IMGCONV, MKIMAGE, RESCUE, UNDELETE, VOLNAME, VOLINFO, FIXIT, REPAIR, WIPE | `/A2DISKS6502` |
-| **DEVTOOLS** | PASCAL, CPM, BASLIST, DISASM, INTBASIC listings, CRC, IDENT, plus BASIC.SYSTEM and INTBASIC.SYSTEM runtimes | `/A2DEVTOOLS6502` |
+800K and both XL editions include all 82 overlays and both BASIC runtimes.
+Only XL includes the large demonstration corpus. Use a complete edition
+for advanced tools. Keep the program and native overlays from the same
+build; never mix the two CPU builds.
 
-BOOT keeps the essential file manager and disk operations. Use the **same
-release** for all floppies. XL is complete; never replace its 65C02 native
-plugins with the 6502 companions.
-
-With two Disk II drives, keep BOOT in **slot 6, drive 1** and put the required
-category in **slot 6, drive 2**. The **!** menu lists every command; an absent
-tool's description starts with the volume containing it.
-
-With one drive, choose the tool normally. If a disk is missing, the prompt
-names the required volume, slot, drive and file. Press **1** or **2** to
-choose the drive, insert the named disk, then press **Return**. If the input
-file was on the removed disk, a second prompt asks for that disk. **Escape**
-cancels and returns to the panels. The chosen drive is remembered for the
-session; these plugin-loading prompts use slot 6.
-
-BOOT is `/A2FC6502`; the complete disks are `/A2XL6502` and `/A2XL65C02`.
-The menu retains every command when companions are absent. Tools that need both
-source and destination online still require another drive or volume.
-**DISKCMP S** and **W → Copy** have their own single-drive exchange modes.
+The volume names are `/A2FC6502` (140K), `/A28006502` (800K),
+`/A2XL6502` and `/A2XL65C02`. Operations requiring source and destination
+online still need a second drive or volume. **DISKCMP S** and **W → Copy**
+in the complete editions retain their single-drive disk exchange modes.
 
 ### Protect files in /RAM
 
@@ -186,6 +168,11 @@ transferring it; directory deletion also scans it before the first removal.
 Copy or delete smaller subdirectories separately if needed.
 
 Long operations display progress, including each item during recursive deletes.
+ProDOS copies show separate **Copying...** and **Verifying...** phases; the
+byte counter restarts for verification and advances during readback. Directory
+scans and sorting show an activity indicator. Counting files and loading tools
+announce their phase. A blocking disk call can pause the indicator until it
+returns.
 **ESC** interrupts; completed work remains,
 an incomplete ordinary file copy is removed, and the final message reports
 what was done. Read the result before removing a disk.
@@ -211,7 +198,7 @@ response, including typed names, confirmations, conversion choices and disk
 swaps. Ordinary information and results remain in normal video.
 The following tools supplement the main keys and readers.
 
-### On BOOT and XL
+### File and volume tools
 
 | Tool | Operation |
 |---|---|
@@ -222,9 +209,11 @@ The following tools supplement the main keys and readers.
 | **TAGPAT** | Name patterns: `=` any string, `?` one character. Add comma-separated filters: `T04` TXT, `>2000` or `<2000` bytes, `D` modified today. T tags, U untags, X replaces tags. |
 | **WIPE** | F checks live directory/file references against the bitmap before zeroing free blocks. Unreadable, inconsistent or unsupported allocation is refused. W zeroes the whole volume after `ERASE`; the running program's volume is refused. |
 
-### On category disks and XL
+### More tools on 800K and XL
 
-VOLINFO, FIXIT, REPAIR and VOLNAME are on DISKTOOLS; the menu requests that disk when necessary.
+VOLINFO, FIXIT, REPAIR and VOLNAME are included on 800K and XL.
+Of the preceding table, 140K includes COMPARE and VERIFY; TXTCONV, DATE,
+TAGPAT and WIPE require 800K or XL.
 Menu categories describe tasks and do not require changing disks just to browse.
 
 | Tool | Operation |
@@ -253,7 +242,7 @@ Menu categories describe tasks and do not require changing disks just to browse.
 | **MKIMAGE** | Create an empty ProDOS PO or 2MG: 140 KB, 800 KB, 2/4/8 MB or 32,767 blocks. New images are data volumes, without a boot program. |
 | **RESCUE** | F recovers a file; V recovers a ProDOS volume. Uses up to 30 attempts per block, zero-fills unreadable chunks and writes a LOG. Destination must be another online volume. |
 | **SYNC** | Recursively copy missing or newer files to the other panel after confirming direction. Destination-only files remain; copies are read back before replacement. |
-| **MOVE** | Move marked entries, or the selected entry without marks. Within a volume, move without copying data blocks, directories included; locked sources are refused. Every path component must still be a directory. A full subdirectory grows if space is available; damaged parent references are refused before writing. Across volumes, a file is copied and verified before its source is deleted; existing destination names are refused, and a size mismatch preserves the source and removes the incomplete copy (if that removal fails, the message says the partial copy stays). A directory bound for another volume, marked or under the cursor, is walked like V does: counted, copied and read back file by file, and its source deleted only once every file has arrived; a copy that stops, or a skipped file, keeps the whole source and stops the batch. Available on FILES and XL. |
+| **MOVE** | Move marked entries, or the selected entry without marks. Within a volume, move without copying data blocks, directories included; locked sources are refused. Every path component must still be a directory. A full subdirectory grows if space is available; damaged parent references are refused before writing. Across volumes, a file is copied and verified before its source is deleted; existing destination names are refused, and a size mismatch preserves the source and removes the incomplete copy (if that removal fails, the message says the partial copy stays). A directory bound for another volume, marked or under the cursor, is walked like V does: counted, copied and read back file by file, and its source deleted only once every file has arrived; a copy that stops, or a skipped file, keeps the whole source and stops the batch. Available on every ProDOS edition. |
 | **TREE** | Show file sizes and cumulative directory totals. Space advances a page; ESC exits. |
 
 ### Recovery and comparison limits
@@ -536,12 +525,12 @@ through INTBASIC.SYSTEM after confirmation.
 
 Destructive AUX use requires prior consent. Opening a viewer again starts a new
 session and asks again; declining preserves `/RAM`.
-With floppies, specialized picture viewers are on **MEDIA**, and BOOT holds
-the internal `OPEN.PLG` dispatcher. Keep it with the matching program build.
+Specialized picture viewers require 800K or XL. Every ProDOS edition holds
+the internal `OPEN.PLG` dispatcher; keep it with its matching program build.
 
 ### The Mockingboard music
 
-Return on an MB1 `.MB` stream opens the foreground MUSIC overlay on MEDIA
+Return on an MB1 `.MB` stream opens the foreground MUSIC overlay on 800K or XL
 (maximum 4,096 bytes, six voices). **P** pauses/resumes; **Escape** returns
 to the panels. Playback also returns at the stream's end. The complete file
 is read, closed and validated before playback. The player uses main RAM and
@@ -553,13 +542,19 @@ the detected address page. In POM2, enable the card in the //c configuration
 and use a build containing its Mockingboard 4c support. A plain //c without
 the card reports its absence.
 
+On the //c, waking a 4c can hide the built-in mouse firmware. If that
+firmware is no longer visible, A2FC disables mouse calls and keeps keyboard
+navigation available while the card hides that ROM (reset the machine to
+restore it). This does not affect a slot-based
+Mockingboard on a IIe, or a //c without the 4c.
+
 In all three music players, **Left/Right** select the previous/next tune of the
 same type in the same directory (MB1 stays with MB1, PT3 with PT3, Electric
 Duet with Electric Duet), including across large-directory windows. An arrow without a neighbour does nothing.
 Changing tracks stops the old output and starts the new track unpaused.
 
 **Return** on a `.PT3` module opens the foreground ProTracker 3 player on
-MEDIA. Ordinary modules use three voices on the first AY chip. Standard
+800K or XL. Ordinary modules use three voices on the first AY chip. Standard
 TurboSound `02TS` containers use both AY chips for two independent modules
 and six voices; playback ends once both modules have finished.
 **P** pauses/resumes; **Escape** stops and returns to the panels. Playback
@@ -591,7 +586,7 @@ loading or playback and return to the panels. Source URLs are listed in
 ### Electric Duet
 
 **Return** on an Electric Duet song opens the foreground DUET overlay on
-MEDIA. A song is recognized by the Apple II DeskTop convention, file type
+800K or XL. A song is recognized by the Apple II DeskTop convention, file type
 `$D5` (MUS) with auxtype `$D0E7`, by a name ending in `.ED` whatever its
 type, or by a BIN name starting with `M.` and a compatible record prefix; the `!` menu runs DUET on any file, which is then validated: complete
 three-byte records, a terminator before the end of the file, at least one
@@ -680,7 +675,7 @@ leaves DOS mode, so the same physical disk can be opened again.
 
 To **write to a real DOS 3.3 disk from A2FC ProDOS**, open that disk in one
 panel and select a ProDOS file in the other. Press **C**, then confirm the
-filename, slot and drive displayed by the confirmation. **DOSWRITE** is on FILES and XL; it can
+filename, slot and drive displayed by the confirmation. **DOSWRITE** is on 800K and XL; it can
 also be launched from **! → Disks**. It copies the file under the cursor,
 even if other files are tagged. The ProDOS source must be on another device.
 
@@ -693,7 +688,7 @@ not supported by this command.
 
 To **read an Apple Pascal (UCSD) disk**, put the cursor on its image
 (`.PO`, `.DSK`, `.DO` or `.2MG`), open a ProDOS directory in the other panel
-and launch **PASCAL** from **! -> Disks** (DISKTOOLS and XL). It lists
+and launch **PASCAL** from **! -> Disks** (800K and XL). It lists
 nothing and asks nothing: it extracts every file of the volume into that
 directory, under the one contract the other extractors follow -- a name
 already taken is skipped and counted, each file is read back against the
@@ -726,7 +721,7 @@ tried are refused that way -- their directories begin elsewhere.
 
 To **replace a file on a real DOS 3.3 disk**, arrange the panels as for a
 copy -- the ProDOS file selected, the DOS disk opposite -- and launch
-**DOSREPL** from **! -> Disks** (DISKTOOLS and XL). It writes the new copy
+**DOSREPL** from **! -> Disks** (800K and XL). It writes the new copy
 into sectors of its own, reads it back, and only then switches the catalog
 entry to it in a single sector write; the old file stays whole and readable
 until that instant. The disk therefore has to hold both copies at once, and
@@ -736,7 +731,7 @@ the message says so rather than calling the work done.
 
 To **delete or rename a file on a real DOS 3.3 disk**, open that disk in the
 active panel, put the cursor on the file and launch **DOS33W** from
-**! → Disks** (DISKTOOLS and XL); **D** deletes, **R** renames, each after a
+**! → Disks** (800K and XL); **D** deletes, **R** renames, each after a
 question naming the file and the drive. The file is identified by the track
 and sector of its first track/sector list, not by the name on screen, which
 is a ProDOS-shaped copy of the DOS name. A locked file, a write-protected
@@ -766,7 +761,7 @@ name and complete target image path. Supported containers are **.DSK**, **.DO**
 and DOS-order **.2MG**, holding a standard 35-track, 16-sector disk. A locked
 2MG container or protected ProDOS image file is refused.
 
-The FILES/XL helpers create **A2FC.DOS** beside the image, copy and compare
+The 800K/XL helpers create **A2FC.DOS** beside the image, copy and compare
 every byte, then perform the same DOS allocation audit and verified copy on
 that temporary. The closed result is reread before installation, and the original image is
 checked again for changes using its full length and CRC-32. The original
@@ -826,15 +821,15 @@ program replaces A2FC; it does not automatically return. A BIN loads at its
 auxiliary address, which must be between `$0800` and `$BAFF`.
 
 Applesoft (`$FC`) requires `BASIC.SYSTEM`; Integer BASIC (`$FA`) requires
-`INTBASIC.SYSTEM` v0.9. Both are supplied on DEVTOOLS and XL; the runtime is
+`INTBASIC.SYSTEM` v0.9. Both are supplied on 800K and XL; the runtime is
 chosen automatically. **T** lists either BASIC source without executing it.
-A2FC searches the program's volume, its own volume and the companion, and
-names DEVTOOLS when the runtime disk is absent. An unreadable or incompatible
+A2FC searches the program's volume, its own volume and a tool disk if present.
+Use 800K or XL for the supplied BASIC runtimes. An unreadable or incompatible
 runtime is refused. With one floppy drive, keep the BASIC program on another
 online volume so it remains readable after the runtime loads.
 
 Launch checks use the file's actual size and keep the load below `$BB00`,
-where the loader's ProDOS I/O buffer starts. If BOOT is full and preferences
+where the loader's ProDOS I/O buffer starts. If the program disk is full and preferences
 cannot be saved, A2FC asks whether to run anyway; it does not silently discard
 that failure. Integer BASIC returns to the ProDOS selector at program end.
 Its upstream runtime supports a subset of DOS commands; see
@@ -842,7 +837,7 @@ Its upstream runtime supports a subset of DOS commands; see
 
 The confirmation before a launch spells out the way back, for example
 `Run HELLO? Back: -/A2FC6502/A2FILE.SYSTEM`: from the Applesoft `]` prompt,
-reinsert BOOT if needed and enter that command. BASIC.SYSTEM keeps its
+reinsert the program disk if needed and enter that command. BASIC.SYSTEM keeps its
 prefix on the launched program's directory, so the bare `-A2FILE.SYSTEM`
 only works when that directory is A2FC's own. `BYE` also leaves to the
 ProDOS selector, where `A2FILE.SYSTEM` can be picked. BAS paths over 46
@@ -864,7 +859,7 @@ The driver is removed on quit or program launch.
 | Symptom or limit | What to do |
 |---|---|
 | CPU or memory refusal at startup | Use the matching CPU build, with 128 KB and 80-column support. |
-| Missing or stale plugin | Insert matching BOOT/category disks from the same release. Keep A2FILE.CODE and its native plugins together. |
+| Missing or stale plugin | Use 800K or XL for advanced tools. Keep A2FILE.CODE and its native plugins from the same build together. |
 | GOTO.TMP or GOTO.BAK remains | A failed install keeps the verified GOTO.TMP; failed cleanup before verification can leave an incomplete temporary. If GOTO.CFG is missing and GOTO.BAK is present, inspect and restore the backup. Inspect all recovery files before renaming or deleting them; retrying does not overwrite them. |
 | Disk changed but old contents remain | Press Ctrl-R to reread both panels. |
 | Run failed: file not found | Check the selected program, its path and BASIC.SYSTEM for BAS files. |
@@ -881,7 +876,7 @@ Development: README, `sdk/README.md`, `bench/README.md`. Remaining work: `TODO.m
 A standalone edition for an **Apple II+ with 48 KB and an NMOS 6502**: two
 panels in 40 columns and DOS 3.3 copying between two Disk II drives. No
 ProDOS, no 80-column card, no auxiliary memory, no language card. It is a
-separate program on its own disk, `A2FC-MINI-DOS33-0.9.0.dsk`; nothing in
+separate program on its own disk, `A2FILECMD-DOS3.3-0.9.1.dsk`; nothing in
 the sections above applies to it, and it carries no overlay or plugin.
 Written entirely in 6502 assembly. The developer guide, measurements and
 build notes are in [MINI-DOS33.md](MINI-DOS33.md).
@@ -891,7 +886,7 @@ build notes are in [MINI-DOS33.md](MINI-DOS33.md).
 ### Booting
 
 The disk boots through an Applesoft `HELLO` that shows `A2FILECMD`,
-`MINI DOS 3.3` and `V0.9.0`, then `BRUN A2FC`. From DOS 3.3, use
+`MINI DOS 3.3` and `V0.9.1`, then `BRUN A2FC`. From DOS 3.3, use
 `BRUN A2FC`. Both panels open on the boot disk; each remembers its
 drive, selection and scroll position. Each panel shows 19 rows and a catalog
 of up to 105 files; `?` lists every control.
@@ -1155,7 +1150,7 @@ and the limits of recovery after interrupted physical writes.
 
 ### NIBCOPY: physical 5¼-inch copies
 
-Open `!` → Disks → NIBCOPY from DISKTOOLS or XL. Select the Disk II slot,
+Open `!` → Disks → NIBCOPY from 800K or XL. Select the Disk II slot,
 source drive and target drive. Selecting the same drive enables exchanges.
 Use normal 1 MHz speed and disable accelerators for this timing-sensitive transport.
 Cover the source disk's write notch **before** starting and keep it covered:
@@ -1164,8 +1159,8 @@ This also prevents writing the source accidentally during a single-drive exchang
 
 The loader first warns that **all `/RAM` files will be lost** and requests
 permission before NIBCOPY uses auxiliary memory. Save those files elsewhere
-before accepting. NIBCOPY keeps its code and buffers in RAM; BOOT and DISKTOOLS
-can be removed while copying. Remove those disks before inserting the source
+before accepting. NIBCOPY keeps its code and buffers in RAM; the program disk
+can be removed while copying. Remove it before inserting the source
 and target. Confirm destruction of **all target files, including locked files**
 on the displayed slot/drive before the first write. In single-drive mode the
 same confirmation is required after every target exchange. Return accepts a
@@ -1194,8 +1189,8 @@ remains necessary; native automated tests cover both IIe CPU variants in POM2.
 C extracts DOS BIN/BAS/INT to the exact length declared by the DOS header.
 BIN retains its original load address as the ProDOS auxtype; BAS uses $0801.
 Sector padding and the DOS header are excluded. TXT retains its sector data.
-The DOSGET overlay lives on FILES/XL; BOOT asks for FILES when required.
-Reading a DOS 3.3 catalog as a panel uses the internal CATALOG overlay, on BOOT and XL, which also walks the directories of a disk image opened as a folder.
+The DOSGET overlay requires 800K or XL.
+Reading a DOS 3.3 catalog as a panel uses the internal CATALOG overlay, on every ProDOS edition, which also walks the directories of a disk image opened as a folder.
 An existing destination is refused. An I/O failure stops extraction; a failed
 cleanup names the newly created file that remains. Completed files survive a
 later source-close error, which is reported. Escape cancels between sectors.

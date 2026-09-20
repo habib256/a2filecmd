@@ -4,42 +4,38 @@
     release_notes.py 0.6.8 > dist/RELEASE_NOTES.md
 
 Prend la section "## [0.6.8]" du CHANGELOG (ou "## Unreleased" si le numero
-n'y est pas encore), et y ajoute les disquettes 6502 par categorie et les deux XL."""
+n'y est pas encore), et y ajoute les cinq images autonomes."""
 import re
 import sys
-from disk_packages import ROOT, assignments
+from distribution import ROOT, inventories
 
 FILES = """
 ### Files
 
 | Image | Contents |
 |---|---|
-| `A2FILECMD-6502-BOOT-{version}.dsk` | Bootable 140 KB file manager and essential tools |
-| `A2FILECMD-6502-FILES-{version}.dsk` | Documents, search, archives, file operations |
-| `A2FILECMD-6502-MEDIA-{version}.dsk` | Pictures and music |
-| `A2FILECMD-6502-DISKTOOLS-{version}.dsk` | Disk images, blocks, boot repair and recovery |
-| `A2FILECMD-6502-DEVTOOLS-{version}.dsk` | BASIC listings, disassembly, BASIC.SYSTEM and INTBASIC.SYSTEM |
-| `A2FILECMD-6502-XL-{version}.2mg` | Complete bootable 32 MB image, 6502 |
-| `A2FILECMD-65C02-XL-{version}.2mg` | Complete bootable 32 MB image, 65C02 with optional mouse |
-| `A2FC-MINI-DOS33-{version}.dsk` | A2FileCmd Mini DOS3.3: the standalone edition for a 48 KB Apple II+, two drives |
+| `A2FILECMD-XL-{version}.2mg` | Complete bootable 32 MB image, 6502, with demonstration files |
+| `A2FILECMD-65C02-enhanced-mouse-XL-{version}.2mg` | Complete 32 MB image; requires both a 65C02 and enhanced ROM, optional mouse |
+| `A2FILECMD-DOS3.3-{version}.dsk` | Standalone DOS 3.3 edition for Apple II+ 48 KB, 40 columns, two drives |
+| `A2FILECMD-800K-{version}.po` | Bootable 800 KB ProDOS image, 6502, all tools and BASIC runtimes, no demo corpus |
+| `A2FILECMD-140K-{version}.dsk` | Bootable 5.25-inch ProDOS disk, 6502, essential file operations, text editor, text/hex readers, format and verify |
 
-The concise English user guide is included as `A2FILECMD-MANUAL-EN-{version}.pdf`, with a screenshot of both panels, clickable contents and bookmarks.
+The English user guide is included as `A2FILECMD-MANUAL-EN-{version}.pdf`.
 
-All floppies use 6502 code and also run on enhanced machines. Choose the
-categories you need, from the same release as BOOT. Each carries MENU and
-the full command catalog. XL includes all {overlays} overlays, BASIC.SYSTEM, INTBASIC.SYSTEM, DEMO
-and IMGHGR; it needs no companion. Choose XL 6502 for an original IIe, or
-XL 65C02 for an enhanced IIe or //c. All editions need 128 KB and 80 columns.
-Do not mix native plugins from XL 65C02 with the 6502 companions.
-A2FileCmd Mini DOS3.3 is a separate program for the Apple II+ (48 KB, DOS 3.3, 40 columns):
-boot its `.dsk` on its own; see `docs/MINI-DOS33.md`.
+XL includes all {overlays} overlays, BASIC.SYSTEM, INTBASIC.SYSTEM, DEMO
+and IMGHGR. The 800K edition has the same tools without the demonstration
+corpus. The 140K edition is self-contained; its menu lists available tools,
+without asking for the former FILES/MEDIA/DISKTOOLS/DEVTOOLS disks.
+All ProDOS editions need 128 KB and 80 columns. The enhanced XL requires
+both the 65C02 processor and enhanced ROM; if either is absent use a 6502
+edition. Mini is a separate DOS 3.3 program for the 48 KB Apple II+.
 
-Boot an image and press **?** for the key map; `sha256sum -c SHA256SUMS-{version}.txt`
-checks the download. The bootable images carry ProDOS 8 2.4.3; the `.2mg` and DEVTOOLS carry
-BASIC.SYSTEM (John Brooks' free distribution; they are Apple's), plus
-INTBASIC.SYSTEM v0.9 by Joshua Bell (<https://github.com/a2stuff/intbasic>). Sources,
-manual and benches:
-<https://github.com/habib256/a2filecmd>.
+Boot an image and press **?** for help. `sha256sum -c SHA256SUMS-{version}.txt`
+checks the five images and manual. ProDOS images carry ProDOS 8 2.4.3.
+XL and 800K include BASIC.SYSTEM (John Brooks' free distribution; Apple's
+software) and INTBASIC.SYSTEM v0.9 by Joshua Bell
+(<https://github.com/a2stuff/intbasic>).
+Sources, manual and benches: <https://github.com/habib256/a2filecmd>.
 """
 
 
@@ -54,9 +50,7 @@ def check_tag(tag):
 
 
 def overlay_count():
-    native = re.search(r'^PLUGINS = (.+)$', (ROOT / 'Makefile').read_text(), re.M)[1].split()
-    plugins = [p.stem for p in (ROOT / 'src/plugins').glob('*.c')]
-    return len(assignments(native, plugins))
+    return len(inventories()[1])
 
 
 def main():
@@ -80,7 +74,7 @@ def main():
     text = (ROOT / 'CHANGELOG.md').read_text()
     m = re.search(r'^## \[%s\][^\n]*\n(.*?)(?=^## |\Z)' % re.escape(version), text, re.S | re.M) if version else None
     if not m:
-        m = re.search(r'^## Unreleased\n(.*?)(?=^## |\Z)', text, re.S | re.M)
+        m = re.search(r'^## \[?Unreleased\]?\n(.*?)(?=^## |\Z)', text, re.S | re.M)
     if not m or not m.group(1).strip():
         m = re.search(r'^## \[([^\]]+)\][^\n]*\n(.*?)(?=^## |\Z)', text, re.S | re.M)
         body = m.group(2) if m and m.lastindex == 2 else (m.group(1) if m else '')

@@ -1,4 +1,4 @@
-"""One distribution manifest, shared by image building, catalogs and checks."""
+"""Historical companion inventories for disk-swap regression fixtures."""
 from pathlib import Path
 import re
 
@@ -15,8 +15,8 @@ RUNTIMES = VALUES['PACKAGE_RUNTIMES'].split()
 def assignments(native, plugins):
     """Fail the build on duplicates, missing tools, or unknown names."""
     makefile = (ROOT / 'Makefile').read_text()
-    boot_native = re.search(r'^PLUGINS_FLOPPY = (.+)$', makefile, re.M)[1].split()
-    boot_plugins = re.search(r'^XPLUGINS_FLOPPY = \$\(filter ([^,]+),', makefile, re.M)[1].upper().split()
+    boot_native = 'BATCH NAV CATALOG OPEN COPY FORMAT HELP TEXT HEX DELETE RUN ATTR MENU DISKIMG IMGFS COMPARE'.split()
+    boot_plugins = 'TXTCONV DATE VERIFY TAGPAT'.split()
     expected = set(native) | {p.upper() for p in plugins}
     boot = set(boot_native) | (set(boot_plugins) & expected)
     result = {name: 'BOOT' for name in boot}

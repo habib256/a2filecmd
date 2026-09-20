@@ -1,4 +1,4 @@
-# A2FC Mini DOS 3.3 — 0.9.0
+# A2FC Mini DOS 3.3 — 0.9.1
 
 A standalone edition for **Apple II+ 48 KB, NMOS 6502**, with two panels in
 40 columns, DOS 3.3 copying between two Disk II drives, and formatting
@@ -10,8 +10,8 @@ Written entirely in 6502 assembly; see [Speed](#speed) for what that buys.
 
 ![Two panels with inverse video and bottom shortcuts](mini-dos33.png)
 
-The disk image `dist/A2FC-MINI-DOS33-0.9.0.dsk` boots through the Applesoft
-`HELLO` program, which centres `A2FILECMD`, `MINI DOS 3.3` and `V0.9.0` at
+The disk image `dist/A2FILECMD-DOS3.3-0.9.1.dsk` boots through the Applesoft
+`HELLO` program, which centres `A2FILECMD`, `MINI DOS 3.3` and `V0.9.1` at
 the top of the 40-column screen, `LOADING .... PLEASE WAIT ....` and
 `CAPS LOCK ON IS NEEDED` in the middle (the keys are compared in upper
 case, all a II+ types), and `GPL3 VERHILLE ARNAUD` on the last row, before
@@ -406,15 +406,20 @@ Requirements: cc65 (`ca65`, `ld65`; `cl65` for the tests), Python 3, make.
 ```sh
 make mini
 make test-mini
-make mini-disk MINI_MASTER="/path/to/dos33_master.dsk"
+make mini-disk
 ```
 
-The master must be a standard 140 KB DOS-order DOS 3.3 image that starts `HELLO`.
-Only its three system tracks are read. The builder creates HELLO, A2FC,
-README and the raw 8 KB HGR picture TIGER on a new image without changing
-the master. Return or G on TIGER opens hi-res. It refuses an existing
-output; use `MINI_DISK=dist/A2FC-MINI-test.dsk` for another build. A failed build
-may leave a newly created partial output, which must not be used.
+The default build uses the three DOS 3.3 boot tracks in
+`data/dos33_boot.tmpl`, taken from the already distributed Mini 0.9.0.
+It builds HELLO, A2FC, README and TIGER from repository inputs, writes a
+verified temporary and then replaces the generated output. A failed write
+or publication preserves the previous image. `MINI_DISK` selects a different
+output path. The direct `mkmini33.py` CLI still refuses existing outputs.
+
+An optional `MINI_MASTER=/path/to/dos33_master.dsk` supplies a standard
+140 KB DOS-order DOS 3.3 master starting HELLO. Only its three boot tracks
+are copied, and the master is never modified. Use a fresh `MINI_DISK` path
+when selecting a different master.
 
 The raw binary is `build-mini/A2FC.MINI`. The disk builder adds its `$1000` load
 address and length. `make mini` is independent of the ProDOS editions and of

@@ -7,6 +7,8 @@ from test_file_safety import SOURCE, section
 
 HARNESS = r'''
 #include <stdio.h>
+static void activity_tick(void) {}
+static void activity_begin(const char* text) {}
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>

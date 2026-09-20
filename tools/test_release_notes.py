@@ -47,7 +47,7 @@ class ReleaseNotes(unittest.TestCase):
         # 79 since DOS33W, DOSREPL, PASCAL and CPM (18 September 2026); the number is
         # written down on purpose, so adding an overlay is a line to change.
         self.assertIn('XL includes all 82 overlays', result)
-        self.assertIn('A2FILECMD-6502-BOOT-%s.dsk' % notes.build_version(), result)
+        self.assertIn('A2FILECMD-140K-%s.dsk' % notes.build_version(), result)
         self.assertNotIn('{overlays}', result)
 
     def render_fixture(self, ref):
@@ -63,12 +63,12 @@ class ReleaseNotes(unittest.TestCase):
 
     def test_empty_unreleased_keeps_current_asset_version_on_branch(self):
         result = self.render_fixture('main')
-        self.assertIn('A2FILECMD-6502-BOOT-0.8.0.dsk', result)
-        self.assertNotIn('BOOT-0.7.5.dsk', result)
+        self.assertIn('A2FILECMD-140K-0.8.0.dsk', result)
+        self.assertNotIn('140K-0.7.5.dsk', result)
 
     def test_historical_notes_can_still_be_generated_explicitly(self):
         result = self.render_fixture('v0.7.5')
-        self.assertIn('A2FILECMD-6502-BOOT-0.7.5.dsk', result)
+        self.assertIn('A2FILECMD-140K-0.7.5.dsk', result)
         self.assertIn('Old changes.', result)
 
 

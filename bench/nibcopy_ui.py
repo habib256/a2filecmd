@@ -17,7 +17,7 @@ def main(single=False):
         tmp=Path(tmp)
         boot=tmp/'boot.po';companion=tmp/'tools.po'
         for target,role in ((boot,'BOOT'),(companion,'DISKTOOLS')):
-            shutil.copyfile(ROOT/f'dist/A2FILECMD-6502-{role}-{VERSION}.po',target)
+            shutil.copyfile((ROOT/f'dist/A2FILECMD-140K-{VERSION}.po' if role == 'BOOT' else ROOT/f'build-6502/legacy/{role}.po'),target)
         original_boot=boot.read_bytes();original_tools=companion.read_bytes()
         source=tmp/'source.dsk';target=tmp/'target.dsk'
         original=build([('SOURCE',0,bytes(range(256))*20)])

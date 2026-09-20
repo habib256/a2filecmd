@@ -57,10 +57,11 @@ PT3_HOST = {'POM2': '/tmp/a2fc-pt3-trace'}
 Fixture = namedtuple('Fixture', 'paths build')
 FIXTURES = {
     'host': Fixture([ROOT / 'build/pom2_playtest'], ['make', 'pom2host']),
-    'boot': Fixture([ROOT / ('dist/A2FILECMD-6502-BOOT-%s.po' % VERSION)], ['make', 'disk']),
-    'categories': Fixture([ROOT / ('dist/A2FILECMD-6502-%s-%s.po' % (name, VERSION))
-                           for name in ('FILES', 'MEDIA', 'DISKTOOLS', 'DEVTOOLS')], ['make', 'disk']),
-    'xl': Fixture([ROOT / ('dist/A2FILECMD-%s-XL-%s.2mg' % (cpu, VERSION)) for cpu in ('6502', '65C02')],
+    'boot': Fixture([ROOT / ('dist/A2FILECMD-140K-%s.po' % VERSION)], ['make', 'disk']),
+    'categories': Fixture([ROOT / ('build-6502/legacy/%s.po' % name)
+                           for name in ('FILES', 'MEDIA', 'DISKTOOLS', 'DEVTOOLS')], ['make', 'benchpackages', 'ARCH=6502']),
+    '800k': Fixture([ROOT / ('dist/A2FILECMD-800K-%s.po' % VERSION)], ['make', 'disk']),
+    'xl': Fixture([ROOT / ('dist/A2FILECMD-%sXL-%s.2mg' % ('65C02-enhanced-mouse-' if cpu == '65C02' else '', VERSION)) for cpu in ('6502', '65C02')],
                   ['make', 'disk']),
     'full-enh': Fixture([ROOT / 'build/A2FILECMD-full.po'], ['make', 'benchfloppy', 'ARCH=enh']),
     'full-6502': Fixture([ROOT / 'build-6502/A2FILECMD-full.po'], ['make', 'benchfloppy', 'ARCH=6502']),
@@ -71,7 +72,7 @@ FIXTURES = {
                            [sys.executable, str(BENCH / 'build_dos_host.py'), '--slot', '5']),
     'pt3-host': Fixture([Path('/tmp/a2fc-pt3-trace')], [sys.executable, str(BENCH / 'build_pt3_trace.py')]),
     'sample': Fixture([SAMPLE_DISK], None),              # the media corpus, not in the repository
-    'mini': Fixture([ROOT / 'dist'], ['make', 'mini-disk']),   # the .dsk name carries MINI_VERSION
+    'mini': Fixture([ROOT / ('dist/A2FILECMD-DOS3.3-%s.dsk' % VERSION)], ['make', 'mini-disk']),   # the .dsk name carries MINI_VERSION
     'pom2-src': Fixture([POM2_ROOT / 'build/libpom2_core.a'], None),
 }
 
@@ -81,14 +82,16 @@ _STEPS = []
 
 def step(bench, label, group, env=(), args=(), needs=('host', 'boot')):
     """One bench, one machine: the name is what --only and the summary use."""
+    if bench in ('run', 'sequences', 'bny') and 'categories' not in needs:
+        needs = (*needs, 'categories')
     _STEPS.append(Step('%s:%s' % (bench, label), bench, group, dict(env), list(args), tuple(needs)))
 
 
 # -- The published floppies boot ---------------------------------------------
 step('smoke', '6502', 'boot', UNENH)
 step('smoke', 'enh', 'boot', {})
-step('extras', '6502', 'boot', UNENH, needs=('host', 'boot', 'categories'))
-step('extras', 'enh', 'boot', {}, needs=('host', 'boot', 'categories'))
+step('extras', '6502', 'boot', UNENH, needs=('host', 'boot', 'xl', '800k'))
+step('extras', 'enh', 'boot', {}, needs=('host', 'boot', 'xl', '800k'))
 step('machine', 'launcher', 'boot', FULL, needs=('host', 'boot', 'full-enh'))
 step('subdir', 'hd', 'boot', FULL, needs=('host', 'boot', 'full-enh'))
 
@@ -100,8 +103,8 @@ step('tree', '6502', 'core', UNENH)
 step('tree', 'enh', 'core', FULL, needs=('host', 'boot', 'full-enh'))
 step('blocktools', '6502', 'core', UNENH)
 step('blocktools', 'enh', 'core', FULL, needs=('host', 'boot', 'full-enh'))
-step('volinfo', '6502', 'core', UNENH, needs=('host', 'boot', 'categories'))
-step('volinfo', 'enh', 'core', FULL, needs=('host', 'boot', 'full-enh', 'categories'))
+step('volinfo', '6502', 'core', UNENH, needs=('host', 'boot', 'full-6502', 'plg-6502'))
+step('volinfo', 'enh', 'core', FULL, needs=('host', 'boot', 'full-enh', 'plg-enh'))
 step('format', '6502', 'core', UNENH)
 step('format', 'enh', 'core', FULL, needs=('host', 'boot', 'full-enh'))
 step('open_images', '6502', 'core', UNENH)
@@ -123,7 +126,7 @@ step('nibcopy_ui', '6502', 'dos', UNENH, needs=('host', 'boot', 'categories'))
 step('purple', 'grload', 'dos', {})
 
 # -- What must never lose a byte ---------------------------------------------
-step('data_safety', '6502', 'safety', {**UNENH, 'A2FC_IMG': 'A2FILECMD-6502-BOOT'})
+step('data_safety', '6502', 'safety', {**UNENH, 'A2FC_IMG': 'A2FILECMD-140K'})
 step('data_safety', 'enh', 'safety', FULL, needs=('host', 'boot', 'full-enh'))
 step('tree_safety', '6502', 'safety', SIX_BUILD)
 step('tree_safety', 'enh', 'safety', ENH_BUILD)
@@ -141,7 +144,8 @@ step('move_bitmap', 'alloc', 'safety', {})
 step('run', 'enh', 'session', FULL, needs=('host', 'boot', 'full-enh'))
 step('sequences', '6502', 'session', FULL_6502, needs=('host', 'boot', 'full-6502'))
 step('sequences', 'enh', 'session', FULL, needs=('host', 'boot', 'full-enh'))
-step('ops', 'progress', 'session', {})
+step('ops', 'progress', 'session', UNENH)
+step('ops', 'enh', 'session', FULL, needs=('host', 'boot', 'full-enh'))
 step('roi', 'preferences', 'session', {})
 step('menu', 'categories', 'session', {})
 step('launch', 'enh', 'session', FULL, needs=('host', 'boot', 'full-enh'))
@@ -235,8 +239,6 @@ def missing(step_):
     for tag in step_.needs:
         fixture = FIXTURES[tag]
         absent = [p for p in fixture.paths if not p.exists()]
-        if tag == 'mini':                       # the Mini disk carries its own version
-            absent = [] if list((ROOT / 'dist').glob('A2FC-MINI-DOS33-*.dsk')) else [ROOT / 'dist']
         if absent:
             hint = ' '.join(fixture.build) if fixture.build else 'not buildable here'
             return '%s: %s' % (tag, hint)
@@ -259,8 +261,10 @@ def stale():
         made = resident.stat().st_mtime
         images = list((ROOT / build).glob('*.po'))          # the bench floppies
         cpu = '6502' if build.endswith('6502') else '65C02'
-        for suffix in ('.po', '.2mg'):
-            images += (ROOT / 'dist').glob('A2FILECMD-%s-*%s%s' % (cpu, VERSION, suffix))
+        names = (['A2FILECMD-140K-%s.po' % VERSION, 'A2FILECMD-800K-%s.po' % VERSION,
+                  'A2FILECMD-XL-%s.2mg' % VERSION] if cpu == '6502' else
+                 ['A2FILECMD-65C02-enhanced-mouse-XL-%s.2mg' % VERSION])
+        images += [ROOT / 'dist' / name for name in names if (ROOT / 'dist' / name).exists()]
         late += [p for p in images if p.stat().st_mtime < made]
     return sorted(late)
 

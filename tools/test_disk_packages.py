@@ -91,13 +91,13 @@ int main(int argc, char** argv) {
         data[11] = 1
         self.assertEqual(self.prompt(data, 'COPY'), 'A2FC6502')
 
-    def test_short_unknown_and_malformed_catalogs_use_generic_prompt(self):
+    def test_short_unknown_and_malformed_catalogs_do_not_request_obsolete_disks(self):
         for text in (': empty', 'No volume delimiter', 'X' * 64 + ':', 'A' * 16 + ': too long'):
             with self.subTest(text=text):
-                self.assertEqual(self.prompt(self.record('EDIT', text)), 'tool disk')
-        self.assertEqual(self.prompt(self.record('EDIT', 'A2FILES6502: Edit')[:-1]), 'tool disk')
-        self.assertEqual(self.prompt(self.record('IMAGE', 'A2MEDIA6502: Image')), 'tool disk')
-        self.assertEqual(self.prompt(b''), 'tool disk')
+                self.assertEqual(self.prompt(self.record('EDIT', text)), '')
+        self.assertEqual(self.prompt(self.record('EDIT', 'A2FILES6502: Edit')[:-1]), '')
+        self.assertEqual(self.prompt(self.record('IMAGE', 'A2MEDIA6502: Image')), '')
+        self.assertEqual(self.prompt(b''), '')
 
 
 if __name__ == '__main__':

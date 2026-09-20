@@ -1,6 +1,6 @@
 # Consolidation : budgets mémoire
 
-## État au 18 septembre 2026
+## État au 20 septembre 2026 (préparation 0.9.1)
 
 Réserves au lien, en octets, 65C02/6502 ; ce ne sont pas des sommes. Le
 tableau est celui que `tools/check_layout.py` imprime à chaque lien
@@ -8,11 +8,11 @@ tableau est celui que `tools/check_layout.py` imprime à chaque lien
 
 | Zone | 65C02 | 6502 | Objectif |
 | --- | ---: | ---: | --- |
-| MAIN (résident, plafond `$BEE0`) | **465** | 862 | 256 sur 65C02 : tenu |
-| Carte langage | 73 | 64 | ne pas descendre |
-| CATALOG (catalogues DOS 3.3 et images) | 224 | 208 | surcouche de lecture, pas à enrichir |
-| LOWRAM | 86 | 111 | — |
-| Écart avant la pile C de 192 octets | 493 | 1 079 | — |
+| MAIN (résident, plafond `$BEE0`) | **91** | 494 | 256 sur 65C02 : à rétablir avant enrichissement |
+| Carte langage | 66 | 57 | ne pas descendre |
+| CATALOG (catalogues DOS 3.3 et images) | 221 | 205 | surcouche de lecture, pas à enrichir |
+| LOWRAM | 81 | 106 | — |
+| Écart avant la pile C de 192 octets | 119 | 711 | — |
 | NAV | 142 | 208 | — |
 | DELETE | 304 | 309 | libéré par le parcours résident |
 | OPEN | 43 | **28** | le plus serré ; un suffixe coûte cinq octets |
@@ -21,8 +21,23 @@ tableau est celui que `tools/check_layout.py` imprime à chaque lien
 | ATTR | 19 | 20 | idem |
 | EDIT | 19 | **5** | — |
 | COMPARE | 23 | 47 | — |
-| COPY | 21 | 18 | — |
+| COPY | 13 | 10 | — |
 | Mini (sous DOS à `$9600`) | **9** | — | 270 : `copy_side` et la relecture groupée |
+
+20 septembre 2026 : réveil de la Mockingboard 4c sur //c uniquement, avec
+exposition temporaire de la ROM puis restauration de la carte langage.
+La souris est désactivée si la carte masque sa ROM sur //c. Coût résident :
+33 octets enhanced, 21 octets 6502 ; aucune écriture AUX ou disque.
+
+19 septembre 2026 : phases et activité visibles, contrôles de disposition
+inchangés et valides sur les deux architectures. La réserve MAIN 65C02 est
+sous l'objectif de confort de 256 octets : ne pas ajouter de fonctions avant
+de la reconstituer. Le compteur d'activité occupe un octet de BSS ; sa seule
+écriture d'écran directe est `$06F7` (MAIN, ligne 21, colonne 79). Les phases
+utilisent la ligne d'information, sans effacer le résultat ou l'erreur ligne 22.
+Le banc POM2 `memory:stack` mesure 145 octets de pile utilisés sur 192
+(47 de marge) pour ses parcours de visionneuses et de copie récursive ;
+ce résultat ne couvre pas tous les chemins possibles.
 
 19 septembre 2026, **ce qu'`audit()` ne rend pas**. Quatre tentatives
 mesurées au lien, toutes perdantes : le parcours des paires de la liste

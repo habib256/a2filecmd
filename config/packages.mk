@@ -1,4 +1,5 @@
-# Companion categories. Names are overlay stems, native or service-table.
+# Historical companion fixtures for regression tests only; never published.
+# Names are overlay stems, native or service-table.
 # Every overlay absent from BOOT must appear exactly once here; MENU is shared.
 PACKAGE_ROLES = FILES MEDIA DISKTOOLS DEVTOOLS
 PACKAGE_FILES = DOSGET DOSWRITE DOSIMAGE DOSPUT EDIT SEARCH AWP AWDATA BINARY2 UNSHRINK UNWRAP SCIIBIN UNSQ FIND FIXTYPES GOTO MDVIEW RENAME SYNC MOVE TREE

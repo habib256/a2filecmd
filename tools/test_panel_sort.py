@@ -18,6 +18,8 @@ def section(start, end):
 
 C = r'''
 #include <stdio.h>
+static void activity_tick(void) {}
+static void activity_begin(const char* text) {}
 #include <stdlib.h>
 #include <string.h>
 #define __fastcall__

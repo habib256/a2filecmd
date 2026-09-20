@@ -76,7 +76,7 @@ def main():
         hd = d / 'test.hdv'
         target = d / 'dos.dsk'
         cpu = '6502' if BUILD.name == 'build-6502' else '65C02'
-        source = (BUILD / f'A2FILECMD-{cpu}-BOOT.hdv').read_bytes()
+        source = (BUILD / 'A2FILECMD-XL.hdv').read_bytes()
         hd.write_bytes(source)
         im = Image(source)
 

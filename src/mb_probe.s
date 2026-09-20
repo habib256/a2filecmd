@@ -1,9 +1,14 @@
 ; Hardware-only Mockingboard probe, no AUX, IRQ vector or resident player.
 ; Includes the //c Mockingboard 4c: its connector answers at $C400-$C4FF.
 ; Return the VIA address page (4), not an emulator's virtual storage slot.
-; Probe T1 before any VIA write; plain //c ROM must remain a no-card result.
+; A sleeping 4c exposes the //c ROM until its first $C4xx write. Wake it
+; through DDRA (inputs), only on a positively identified //c. No AUX or
+; disk writes. The timer probe must still reject a plain //c without a card.
 .export _music_detect_card
 .importzp ptr1, ptr2
+.ifndef A2_6502
+.import _a2fc_mouse
+.endif
 .segment "CODE"
 t1_probe:
  ldy #4
@@ -27,6 +32,22 @@ init1:
  sta (ptr1),y
  rts
 _music_detect_card:
+ bit $C082                ; expose firmware: the caller runs in LC RAM
+ lda $FBB3
+ cmp #$06
+ bne @scan
+ lda $FBC0
+ bne @scan
+ sta $C403                 ; A=0: wake 4c without driving the AY data bus
+.ifndef A2_6502
+ lda $C4FB                ; waking 4c can hide the //c mouse firmware
+ cmp #$D6
+ beq @scan
+ lda #0
+ sta _a2fc_mouse          ; never dispatch mouse calls into VIA registers
+.endif
+@scan:
+ bit $C080                ; restore bank 2 RAM before returning to LC caller
  ldx #7
 @slot:
  cpx #3

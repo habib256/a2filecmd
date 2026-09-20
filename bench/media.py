@@ -56,7 +56,7 @@ def main():
     s.key(ESC);s.wait(lambda:s.has('Type  Aux'),'music exit');p.stable()
    s.select('A.MB');s.ok('music navigation preserves marks','*' in s.line())
    s.ok('music navigation preserves AUX',p.peek(0x1000,0xB000,'aux')==before)
-   p.rq('/speed',{'preset':'max'})
+   p.rq('/speed',{'cycles_per_frame':p.speed})
    for prefix,consent,oracle in cases:
     s.select(prefix+'1');s.key(RET)
     if consent:s.allow_aux()

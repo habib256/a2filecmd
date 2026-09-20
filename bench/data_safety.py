@@ -2,7 +2,7 @@
 """Native copy/move/save and RAM consent on disposable ProDOS media.
 
 A2FC_IMG=A2FILECMD-full python3 bench/data_safety.py
-A2FC_IMG=A2FILECMD-6502-BOOT A2FC_PRESET=iie_unenh python3 bench/data_safety.py
+A2FC_IMG=A2FILECMD-140K A2FC_PRESET=iie_unenh python3 bench/data_safety.py
 """
 import os
 import shutil

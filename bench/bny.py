@@ -42,7 +42,7 @@ def main():
         companion = None
         if DISK.name != 'A2FILECMD-full.po':
             companion = tmp / 'FILES.po'
-            shutil.copyfile(ROOT / f'dist/A2FILECMD-6502-FILES-{VERSION}.po', companion)
+            shutil.copyfile(ROOT / 'build-6502/legacy/FILES.po', companion)
 
         with Pom2(hdv, floppy=floppy, floppy2=companion, port=6714 + int(os.environ.get('A2FC_PORT_OFFSET', '0')), mouse=True) as p:
             s = Session(p)

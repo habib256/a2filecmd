@@ -31,8 +31,7 @@ cette fiche ne prescrit pas le transfert, seulement ce qu'on fait ensuite.
 
 ## Avant de commencer
 
-- Les disquettes publiées de la version, gravées : `BOOT`,
-  `FILES`, `MEDIA`, `DISKTOOLS`, `DEVTOOLS`, et la Mini DOS 3.3.
+- Les disquettes publiées de la version, gravées : `140K`, `800K`, les deux XL et la Mini DOS 3.3.
 - **Aucun disque personnel dans un lecteur.** Tout ce que ces séances
   écrivent est jetable ; un disque irremplaçable n'a rien à faire dans la
   machine pendant une recette.
@@ -47,7 +46,7 @@ cette fiche ne prescrit pas le transfert, seulement ce qu'on fait ensuite.
 
 ## 1. Mini sur Apple II+ 48 Ko
 
-**Préparer** : `A2FC-MINI-DOS33-<version>.dsk` et `HW-DOS33.dsk`.
+**Préparer** : `A2FILECMD-DOS3.3-<version>.dsk` et `HW-DOS33.dsk`.
 
 **Taper et voir**
 
@@ -73,7 +72,7 @@ taille relue côté Mac après coup.
 
 Écrire du ProDOS vers une vraie disquette DOS 3.3, dans un vrai lecteur.
 
-**Préparer** : `FILES` (ou XL) gravée, `HW-DOS33.dsk` gravée, et une
+**Préparer** : `800K` (ou XL) gravée, `HW-DOS33.dsk` gravée, et une
 disquette DOS 3.3 **jetable** de plus, formatée.
 
 **Taper et voir**
@@ -99,7 +98,7 @@ résultat de la comparaison d'octets.
 
 ## 3. FIXIT et REPAIR sur une disquette réellement abîmée
 
-**Préparer** : `DISKTOOLS` gravée, `HW-CLEAN.dsk` et `HW-BROKEN.dsk`
+**Préparer** : `800K` ou XL gravée, `HW-CLEAN.dsk` et `HW-BROKEN.dsk`
 gravées, `dist/hw/EXPECTED.json` ouvert à côté.
 
 **Taper et voir**
@@ -139,7 +138,7 @@ copier **avant** un fichier reconnaissable.
 
 **Taper et voir**
 
-1. Amorcer A2FC sur un IIe 128 Ko. Copier un fichier dans `/RAM`.
+1. Amorcer A2FC 800K ou XL sur un IIe 128 Ko. Copier un fichier dans `/RAM`.
 2. `!` → Disks → **FIXIT** sur `HWBIG`. La question de profondeur arrive :
    `Q` (rapide, dossiers seulement) puis `F` (complet).
 3. La question `/RAM` arrive ensuite : répondre **N** une première fois.
@@ -158,7 +157,7 @@ question, l'état de `/RAM` après un refus puis après un accord.
 
 ## 5. Apple IIgs : amorçage
 
-**Préparer** : la XL `.2mg` sur un support SmartPort, et la disquette BOOT.
+**Préparer** : la XL `.2mg` sur un support SmartPort, et la disquette 140K.
 
 **Taper et voir**
 
@@ -171,12 +170,31 @@ question, l'état de `/RAM` après un refus puis après un accord.
    chargent.
 3. Ouvrir une image HGR puis une DHGR, feuilleter avec les flèches.
    *Entre deux images, l'écran ne porte que le nom en cours de chargement.*
-4. Amorcer ensuite la disquette BOOT dans un Disk II, s'il y en a un :
+4. Amorcer ensuite la disquette 140K dans un Disk II, s'il y en a un :
    noter ce que fait le Disk II.
 5. `Q` : retour à ProDOS, préfixe conservé.
 
 **Noter** : la vitesse ressentie (le IIgs tourne plus vite), tout écran qui
 diffère du IIe, et l'état du Disk II.
+
+---
+
+## 6. Mockingboard 4c sur //c
+
+**Préparer** : une XL enhanced, une XL 6502 et un volume jetable contenant
+un morceau MB1 et un PT3. Faire d’abord un essai sans carte, machine éteinte
+avant toute intervention matérielle.
+
+1. Sans carte : ouvrir chaque morceau. Attendu : `No Mockingboard.`, retour
+   aux panneaux ; la souris reste utilisable avec l’édition enhanced.
+2. Avec la 4c : écouter chaque morceau, pause avec `P`, puis `Escape`.
+   Vérifier le silence et la navigation clavier après retour aux panneaux.
+3. Rejouer chaque morceau jusqu’à sa fin naturelle. Vérifier le silence et
+   les deux panneaux. Refaire avec l’autre édition.
+4. Sur enhanced, si la carte masque la ROM souris, la navigation reste au
+   clavier et l’indication `Mouse` disparaît. Aucun appel dans la ROM masquée.
+5. Comparer les fichiers sources et ceux de `/RAM` avant/après ; noter la
+   révision ROM du //c, la carte, tout bruit résiduel ou touche sans réponse.
 
 ---
 

@@ -1,5 +1,6 @@
 """Real MB1 loader C: malformed headers, read/close failures, no hardware writes."""
 import subprocess
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -73,5 +74,55 @@ class MUSIC(unittest.TestCase):
         for tail in (b'\x80',b'\x86\0\xE0',b'\x80\x3c\xE0',b'\xA0\x10\xE0',b'\xB0\x20\xE0',b'\0\xE0',b'\xE0\1',b'\xC0\xE0'):
             self.run_data(module()[:8]+tail)
 
+
+
+class CardProbe(unittest.TestCase):
+    def test_real_probe_wakes_only_iic_and_still_rejects_absent_card(self):
+        # sim65 has RAM rather than VIA timers at $Cn04: no card may be
+        # reported. Execute the unmodified production assembly and observe
+        # every byte of the card/ROM pages, on both CPU instruction sets.
+        harness = r"""
+#include <string.h>
+unsigned char music_detect_card(void);
+unsigned char a2fc_mouse;
+static const unsigned char ids[][2] = {
+ {0x06,0x00}, {0x06,0x00}, {0x06,0xE0}, {0x06,0xEA}, {0xEA,0xEA}, {0xEA,0x00}
+};
+int main(void) {
+ unsigned i, j;
+ for(i=0;i<sizeof(ids)/sizeof(ids[0]);++i) {
+  memset((void*)0xC100,0xA5,0x700);
+  if(i==0) *(volatile unsigned char*)0xC4FB=0xD6;
+  a2fc_mouse=4;
+  *(volatile unsigned char*)0xFBB3=ids[i][0];
+  *(volatile unsigned char*)0xFBC0=ids[i][1];
+  if(music_detect_card()!=0)return 1;
+#ifdef A2FC_TEST_NOMOUSE
+  if(a2fc_mouse!=4)return 3;
+#else
+  if(a2fc_mouse!=(i==1?0:4))return 3;
+#endif
+  for(j=0;j<0x700;++j) {
+   unsigned char expected=(i<2 && j==0x303)?0:0xA5;
+   if(i==0 && j==0x3FB)expected=0xD6;
+   if(((volatile unsigned char*)0xC100)[j]!=expected)return 2;
+  }
+ }
+ return 0;
+}
+"""
+        with tempfile.TemporaryDirectory(prefix='mb-probe-') as tmp:
+            root=Path(tmp)
+            (root/'harness.c').write_text(harness)
+            # Avoid compiler intermediates in the source tree.
+            shutil.copyfile(ROOT/'src/mb_probe.s',root/'probe.s')
+            for cpu,target in [('6502','sim6502'),('65c02','sim65c02')]:
+                with self.subTest(cpu=cpu):
+                    flags = ['--asm-define','A2_6502','-DA2FC_TEST_NOMOUSE'] if cpu=='6502' else []
+                    subprocess.run(['cl65','-t',target,'--cpu',cpu,'-O',
+                                    *flags,
+                                    '-o',str(root/'probe'),str(root/'harness.c'),
+                                    str(root/'probe.s')],check=True)
+                    subprocess.run(['sim65',str(root/'probe')],check=True,timeout=20)
 
 if __name__=='__main__':unittest.main()

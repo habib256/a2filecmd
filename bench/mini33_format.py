@@ -14,7 +14,7 @@ from mini33_fixture import make_disk, read_files, offset
 from mkmini33 import MINI_VERSION
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--pom2-root', type=Path, required=True)
-p.add_argument('--disk', type=Path, default=ROOT/f'dist/A2FC-MINI-DOS33-{MINI_VERSION}.dsk')
+p.add_argument('--disk', type=Path, default=ROOT/f'dist/A2FILECMD-DOS3.3-{MINI_VERSION}.dsk')
 p.add_argument('--no-fresh', action='store_true',
                help='skip the never formatted diskette (POM2 insertBlankDisk, its legacy nibble gate fixed 2026-09-16)')
 a = p.parse_args()

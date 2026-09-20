@@ -16,6 +16,7 @@ def section(start, end):
 
 HARNESS = r'''
 #include <stdio.h>
+#define __fastcall__
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
@@ -95,7 +96,18 @@ static void revers(int r) {}
 static void gotoxy(int x,int y) {}
 #define cprintf(...) ((void)0)
 static char cgetc(void) {return 'o';}
-static void progress_bar(const char* s,unsigned long d,unsigned long t) {}
+static int verify_phase, verify_events;
+static unsigned long last_verified;
+static void activity_begin(const char* s) {
+    if(!strcmp(s,"Verifying...")){verify_phase=1;last_verified=0;}
+    else verify_phase=0;
+}
+static void progress_bar(const char* s,unsigned long d,unsigned long t) {
+    if(verify_phase){
+        if(d<last_verified)abort();
+        last_verified=d;++verify_events;
+    }
+}
 static unsigned char abort_key(void) {if(fault==16 || fault==23)progress_abort=1;return progress_abort;}
 static unsigned char overlay(const char* s) {strcpy(other_full,"/overlay/clobbered");return fault!=17;}
 static unsigned char push_name(char* p,const char* n) {
@@ -197,7 +209,7 @@ int main(int argc,char**argv) {
         snapshot_destination(other_full);
         r=copy_file("DATA",6,0);
     }
-    printf("%u %u %s\nconfirms=%d\n",r,edirty,message_text,confirms);
+    printf("%u %u %s\nconfirms=%d\nverify_events=%d verified=%lu\n",r,edirty,message_text,confirms,verify_events,last_verified);
     return 0;
 }
 '''
@@ -230,7 +242,9 @@ class FileSafety(unittest.TestCase):
         return int(out.split()[0]), out
 
     def test_copy_success_is_verified_and_preserves_source(self):
-        self.assertEqual(self.run_op()[0], 1)
+        result, out = self.run_op()
+        self.assertEqual(result, 1)
+        self.assertIn('verify_events=6 verified=1050', out)
         self.assertEqual(self.src.read_bytes(), self.original)
         self.assertEqual(self.dst.read_bytes(), self.original)
         self.assertFalse((self.p/'A2FC.BAK').exists())
@@ -386,7 +400,9 @@ class FileSafety(unittest.TestCase):
         for size in (0,256,512,1024):
             with self.subTest(size=size):
                 data=bytes(range(256))*(size//256);self.src.write_bytes(data)
-                self.assertEqual(self.run_op()[0],1)
+                result, out = self.run_op()
+                self.assertEqual(result,1)
+                self.assertIn(f'verify_events={2+size//256} verified={size}',out)
                 self.assertEqual(self.dst.read_bytes(),data)
                 self.assertEqual(self.src.read_bytes(),data)
                 self.assertFalse((self.p/'A2FC.COPY').exists())

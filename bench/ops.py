@@ -73,7 +73,18 @@ def main():
             for n in ('AA', 'BB', 'CC'):
                 s.select(n, 0); s.key(b' ')
             p.stable()
-            s.key(b'C'); s.wait(lambda: s.has('copied') or s.has('failed'), 'copie', 60); p.stable()
+            s.key(b'C')
+            phases = set()
+            deadline = time.time() + 60
+            while time.time() < deadline:
+                rows = s.rows()
+                for phase in ('Copying...', 'Verifying...'):
+                    if phase in rows[21]: phases.add(phase)
+                if 'copied' in rows[22] or 'failed' in rows[22]: break
+                time.sleep(0.02)
+            ok('la copie et sa verification annoncent leur phase',
+               phases == {'Copying...', 'Verifying...'}, sorted(phases))
+            p.stable()
             ok('trois fichiers marques copies', s.has('3 files copied'), s.rows()[22].strip()[:40])
             ok('la cible les montre', all(any(r[40:].startswith(n + ' ') for r in s.rows()) for n in ('AA', 'BB', 'CC')))
             # 3. la suppression, avec la barre, et les entrees disparaissent

@@ -15,7 +15,7 @@ def main():
  with tempfile.TemporaryDirectory(prefix='doswrite-ui-') as d:
   d=Path(d);hd=d/'test.hdv';target=d/'dos.dsk'
   cpu='6502' if BUILD.name=='build-6502' else '65C02'
-  original=(BUILD/f'A2FILECMD-{cpu}-BOOT.hdv').read_bytes()
+  original=(BUILD/'A2FILECMD-XL.hdv').read_bytes()
   hd.write_bytes(original)
   im=Image(original);vol=im.header()['name']
   demo=next(e for e in im.entries(2) if e[1:5]==b'DEMO')

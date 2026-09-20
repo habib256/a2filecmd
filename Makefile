@@ -1,9 +1,8 @@
 # A2 File Cmd -- two-panel ProDOS file manager, Apple IIe.
 #
 #   make            the launcher, resident and overlays, in build/ or build-6502/
-#   make disk       BOOT + FILES/MEDIA/DISKTOOLS/DEVTOOLS in 6502 (.po/.dsk),
-#                   plus XL .2mg for 6502 and 65C02.
-#                   ARCH=6502: the floppies and XL; ARCH=enh: XL only.
+#   make disk       140K essentials, 800K complete, Mini, XL 6502 and
+#                   XL 65C02-enhanced. ARCH=enh builds only its XL.
 #   make benchfloppy  build/A2FILECMD-full.po: a 65C02 floppy with the core
 #                   overlay, for the benches only -- never shipped
 #   make test       the tests outside the emulator (memory layout, volume)
@@ -15,7 +14,7 @@
 # every time by tools/check_layout.py, which catches the two overflows that
 # ld65 lets through silently. See docs/MANUAL.md.
 
-A2FC_VERSION = 0.9.0
+A2FC_VERSION = 0.9.1
 VOLUME       = A2FC$(CPU)
 
 # The .2mg hard disk: another volume name, to coexist with the floppy.
@@ -38,7 +37,7 @@ CLDEFS = --asm-define A2_6502 --asm-define CC65_MASTER -DA2FC_6502 -DA2FC_NOMOUS
 MOUSEOBJ =
 # The edition and the processor, in the file name.
 CPU = 6502
-IMG = A2FILECMD-$(CPU)-BOOT
+IMG = A2FILECMD-140K
 BUILD_SUFFIX = -6502
 BIN2SIZE = 0x0D00
 LAYOUT_BIG = --big BINARY2
@@ -50,7 +49,7 @@ CLDEFS = -DA2FC_BIG_BINARY2
 MOUSEOBJ = $(BUILD)/mouse.o
 # The processor precedes the disk role for alphabetical grouping.
 CPU = 65C02
-IMG = A2FILECMD-$(CPU)-BOOT
+IMG = A2FILECMD-140K
 BUILD_SUFFIX =
 BIN2SIZE = 0x0D00
 LAYOUT_BIG = --big BINARY2
@@ -97,12 +96,10 @@ CODE   = $(BUILD)/A2FILE.CODE.BIN
 # two segments in its file: NAME (code) then NAMERO (strings). See
 # src/a2fc_plugin.h for the header and the service table.
 PLUGINS = BATCH NAV CATALOG OPEN COPY FORMAT IMAGE TEXT HEX DELETE HELP EDIT RUN ATTR MENU DISKIMG IMGFS DOSGET UNSHRINK BASLIST COMPARE SEARCH BINARY2 AWP
-# The floppy edition: the commands, the two viewers that cost four blocks,
-# and the disk tools. The editor, the pictures, the music, the archives and
-# the document readers stay on the hard disk (45 blocks, with BASIC.SYSTEM's
-# 21, given back to the disk tools to come -- see docs/MEMORY-BUDGETS.md).
-# COMPARE also carries the S (sort) and M (mark differences) commands.
-PLUGINS_FLOPPY = BATCH NAV CATALOG OPEN COPY FORMAT HELP TEXT HEX DELETE RUN ATTR MENU DISKIMG IMGFS COMPARE
+# Essential 140K: file operations, editor, readers, format and verify.
+# No catalog advertises missing tools; IMGFS also extracts mounted images.
+# COMPARE provides sorting and panel comparison; MOVE handles marked moves.
+PLUGINS_FLOPPY = BATCH NAV CATALOG OPEN COPY FORMAT HELP TEXT HEX DELETE RUN ATTR MENU IMGFS COMPARE EDIT
 # The service-table overlays: src/plugins/NAME.c, each compiled and linked
 # on its own like a third party's (sdk/plugin.cfg, no crt0, nothing of
 # A2FILE.CODE), because the resident is full -- they reach the program only
@@ -111,7 +108,7 @@ PLUGINS_FLOPPY = BATCH NAV CATALOG OPEN COPY FORMAT HELP TEXT HEX DELETE RUN ATT
 # overlay ($1B00-$3FFF); `PLUGIN_MAGIC, 0,` as a small one.
 XPLUGINS = $(sort $(basename $(notdir $(wildcard $(SRC)/plugins/*.c))))
 # The ones that also go on the floppy edition (tools/check_images.py keeps BOOT's free blocks).
-XPLUGINS_FLOPPY = $(filter txtconv date verify tagpat drivespd,$(XPLUGINS))
+XPLUGINS_FLOPPY = $(filter move verify,$(XPLUGINS))
 # The cc65 target library for the plugin link: the one of the machine's cc65
 # for apple2enh, the one of cc65 master for apple2.
 ifeq ($(ARCH),6502)
@@ -139,15 +136,13 @@ PO     = $(DIST)/$(IMG)-$(A2FC_VERSION).po
 DSK    = $(DIST)/$(IMG)-$(A2FC_VERSION).dsk
 include config/packages.mk
 CATALOG = $(BUILD)/EXTRAS.CAT
-PACKAGE_PO = $(foreach role,$(PACKAGE_ROLES),$(DIST)/A2FILECMD-$(CPU)-$(role)-$(A2FC_VERSION).po)
-PACKAGE_DSK = $(PACKAGE_PO:.po=.dsk)
 
 OBJS = $(BUILD)/crt0.o $(BUILD)/overlay.o $(BUILD)/unshrink.o $(VDRIVEOBJ) $(BUILD)/a2fc_mli.o $(BUILD)/chain.o \
        $(BUILD)/mb_probe.o $(BUILD)/memory_swap.o $(BUILD)/mli_safe.o $(MOUSEOBJ) $(BUILD)/format_diskii.o $(BUILD)/format_mli.o
 
 .DELETE_ON_ERROR:
 
-.PHONY: all disk benchfloppy xplugins test bench qualify example clean pom2host
+.PHONY: all disk benchpackages benchfloppy xplugins test bench qualify example clean pom2host
 all: $(SYSTEM) $(CODE)
 
 $(BUILD) $(DIST):
@@ -207,11 +202,12 @@ xplugins: $(XPLG)
 all: xplugins
 
 # -- Published disks --------------------------------------------------------
-# BOOT has ProDOS, the launcher, file manager and disk tools; categories carry
-# the remaining tools and BASIC.SYSTEM. XL contains everything plus demos.
+# 140K is self-contained with essential tools; 800K has all tools.
+# XL contains the same complete toolset plus the demo corpus.
 STAGE = $(BUILD)/vol
-HDV = $(BUILD)/$(IMG).hdv
-TWOMG = $(DIST)/A2FILECMD-$(CPU)-XL-$(A2FC_VERSION).2mg
+HDV = $(BUILD)/A2FILECMD-XL.hdv
+TWOMG = $(DIST)/A2FILECMD-$(if $(filter 65C02,$(CPU)),65C02-enhanced-mouse-,)XL-$(A2FC_VERSION).2mg
+PO800 = $(DIST)/A2FILECMD-800K-$(A2FC_VERSION).po
 FULLPO = $(BUILD)/A2FILECMD-full.po
 STAGE_DEPS = $(SYSTEM) $(CODE) $(DATA)/A2FILE.HELP.TXT $(DATA)/PRODOS.SYS \
        $(DATA)/prodos_boot.tmpl $(TOOLS)/mkvolume.py
@@ -221,7 +217,7 @@ disk:
 	$(MAKE) ARCH=6502 disk
 	$(MAKE) ARCH=enh disk
 else ifeq ($(ARCH),6502)
-disk: $(PO) $(DSK) $(TWOMG) $(PACKAGE_PO) $(PACKAGE_DSK)
+disk: $(PO) $(DSK) $(PO800) $(TWOMG) mini-disk
 else
 disk: $(TWOMG)
 endif
@@ -241,10 +237,9 @@ endef
 # BOOT: the universal 6502 floppy.
 ifeq ($(ARCH),6502)
 $(PO): STAGE = $(BUILD)/floppy
-$(PO): $(FLOPPY_SYSTEM) $(STAGE_DEPS) $(XPLG_FLOPPY) $(CATALOG) $(TOOLS)/po2dsk.py | $(DIST)
+$(PO): $(FLOPPY_SYSTEM) $(STAGE_DEPS) $(XPLG_FLOPPY) $(TOOLS)/po2dsk.py | $(DIST)
 	$(call stage,$(PLUGINS_FLOPPY),$(XPLUGINS_FLOPPY))
 	cp $(FLOPPY_SYSTEM) $(STAGE)/A2FILE.SYSTEM.SYS
-	cp $(CATALOG) $(STAGE)/A2FILE/EXTRAS.CAT.BIN
 	python3 $(TOOLS)/mkvolume.py $(STAGE) $(PO) --volume $(VOLUME) \
 	  --boot $(DATA)/prodos_boot.tmpl --blocks 280
 	@python3 $(TOOLS)/prodos_read.py $(PO) | head -1
@@ -260,15 +255,16 @@ $(CATALOG): $(CODE) $(XPLG) $(TOOLS)/mkoverlay_catalog.py $(TOOLS)/disk_packages
 	python3 $(TOOLS)/mkoverlay_catalog.py $@ $(BUILD) --cpu $(CPU) --native $(PLUGINS) --plugins $(XPLUGINS)
 
 ifeq ($(ARCH),6502)
-# Each category carries MENU and the full catalog for single-drive swaps.
-# Resolve native/service overlays from the same build; never copy old staging.
-define package_disk
-$(DIST)/A2FILECMD-$(CPU)-$(1)-$(A2FC_VERSION).po: $(CODE) $(CATALOG) $(XPLG) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS $(TOOLS)/mkvolume.py $(TOOLS)/mkpackage.py $(TOOLS)/disk_packages.py config/packages.mk Makefile | $(DIST)
-	python3 $(TOOLS)/mkpackage.py $(BUILD) $$@ --role $(1) --cpu $(CPU)
-$(DIST)/A2FILECMD-$(CPU)-$(1)-$(A2FC_VERSION).dsk: $(DIST)/A2FILECMD-$(CPU)-$(1)-$(A2FC_VERSION).po $(TOOLS)/po2dsk.py
-	python3 $(TOOLS)/po2dsk.py $$< $$@
-endef
-$(foreach role,$(PACKAGE_ROLES),$(eval $(call package_disk,$(role))))
+# Historical category fixtures, used only by the disk-swap regression benches.
+benchpackages: $(CATALOG) $(XPLG)
+	@mkdir -p $(BUILD)/legacy
+	@for role in $(PACKAGE_ROLES); do python3 $(TOOLS)/mkpackage.py $(BUILD) $(BUILD)/legacy/$$role.po --role $$role --cpu $(CPU) || exit; done
+
+$(PO800): STAGE = $(BUILD)/vol800
+$(PO800): $(STAGE_DEPS) $(XPLG) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS | $(DIST)
+	$(call stage,$(PLUGINS),$(XPLUGINS))
+	cp $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS $(STAGE)/
+	python3 $(TOOLS)/mkvolume.py $(STAGE) $@ --volume A28006502 --boot $(DATA)/prodos_boot.tmpl --blocks 1600
 endif
 
 # XL: the complete edition for the selected CPU.
@@ -295,8 +291,11 @@ $(TWOMG): $(STAGE_DEPS) $(XPLG) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM
 benchfloppy: $(FULLPO)
 $(FULLPO): STAGE = $(BUILD)/benchvol
 # Archive benches build their own disposable boot fixtures (archive_support.py).
-$(FULLPO): $(STAGE_DEPS) $(DATA)/BASIC.SYSTEM.SYS
-	$(call stage,$(filter-out UNSHRINK BINARY2 AWP,$(PLUGINS)),)
+# Both fixtures use the compact launcher and omit SEARCH to fit 140K.
+# Its UI bench adds SEARCH to a disposable fixture; both XLs keep it.
+$(FULLPO): $(STAGE_DEPS) $(FLOPPY_SYSTEM) $(DATA)/BASIC.SYSTEM.SYS
+	$(call stage,$(filter-out UNSHRINK BINARY2 AWP SEARCH,$(PLUGINS)),)
+	cp $(FLOPPY_SYSTEM) $(STAGE)/A2FILE.SYSTEM.SYS
 	cp $(DATA)/BASIC.SYSTEM.SYS $(STAGE)/
 	python3 $(TOOLS)/mkvolume.py $(STAGE) $(FULLPO) --volume A2FILECMD \
 	  --boot $(DATA)/prodos_boot.tmpl --blocks 280
@@ -379,6 +378,7 @@ test: test-mini
 	python3 $(TOOLS)/test_bootblk.py
 	python3 $(TOOLS)/test_nibcopy.py
 	python3 $(TOOLS)/test_disk_packages.py
+	python3 $(TOOLS)/test_distribution.py
 	python3 $(TOOLS)/test_release_notes.py
 	python3 $(TOOLS)/test_file_viewers.py
 	python3 $(TOOLS)/test_move.py
@@ -434,6 +434,7 @@ pom2host:
 
 bench: disk
 	$(MAKE) ARCH=enh benchfloppy
+	$(MAKE) ARCH=6502 benchpackages
 	A2FC_IMG=A2FILECMD-full python3 bench/run.py
 
 # The whole bench table (bench/all.py), which is what qualifies a release:
@@ -442,7 +443,7 @@ bench: disk
 qualify: disk
 	$(MAKE) ARCH=enh benchfloppy
 	$(MAKE) ARCH=6502 benchfloppy
-	$(MAKE) ARCH=6502 xplugins
+	$(MAKE) ARCH=6502 xplugins benchpackages
 	python3 bench/all.py --setup --strict --jobs $(BENCH_JOBS) --out $(BUILD)/bench
 
 # The third-party example overlay (sdk/), compiled OUTSIDE the tree with only
@@ -461,7 +462,7 @@ MINI_BUILD = build-mini
 MINI_AS ?= ca65
 MINI_LD ?= ld65
 MINI_MASTER ?=
-MINI_DISK ?= $(DIST)/A2FC-MINI-DOS33-$(A2FC_VERSION).dsk
+MINI_DISK ?= $(DIST)/A2FILECMD-DOS3.3-$(A2FC_VERSION).dsk
 # start.s must come first: its STARTUP segment lands on the load address.
 MINI_MODULES = lowstart start rwts screen catalog copy keyboard ui data scratch delete edit fileops format
 MINI_OBJS = $(addprefix $(MINI_BUILD)/,$(addsuffix .o,$(MINI_MODULES)))
@@ -481,9 +482,9 @@ $(MINI_BUILD)/A2FC.MINI: $(MINI_OBJS) $(SRC)/mini/mini-asm.cfg
 	$(MINI_LD) -C $(SRC)/mini/mini-asm.cfg -m $(MINI_BUILD)/mini.map \
 		-Ln $(MINI_BUILD)/mini.lbl -o $@ $(MINI_OBJS)
 	python3 $(TOOLS)/check_mini_layout.py $(MINI_BUILD)/mini.map
-mini-disk: mini | $(DIST)
-	@test -n "$(MINI_MASTER)" || { echo 'Set MINI_MASTER to a DOS 3.3 master .dsk (HELLO startup)'; exit 1; }
-	python3 $(TOOLS)/mkmini33.py --master "$(MINI_MASTER)" --binary $(MINI_BUILD)/A2FC.MINI --output "$(MINI_DISK)"
+mini-disk: $(MINI_DISK)
+$(MINI_DISK): $(MINI_BUILD)/A2FC.MINI $(DATA)/dos33_boot.tmpl $(TOOLS)/mkmini33.py $(TOOLS)/build_mini_disk.py $(DATA)/IMGHGR/TIGER\#062000 | $(DIST)
+	python3 $(TOOLS)/build_mini_disk.py $(if $(MINI_MASTER),--master "$(MINI_MASTER)",--boot-template $(DATA)/dos33_boot.tmpl) --binary $(MINI_BUILD)/A2FC.MINI --output "$@"
 test-mini: mini
 	python3 $(TOOLS)/test_mini33.py
 	python3 $(TOOLS)/test_mini33_write.py

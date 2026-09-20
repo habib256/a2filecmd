@@ -1,201 +1,67 @@
 #!/usr/bin/env python3
-"""Published 6502 category disks: loading, named prompts and one-drive swaps."""
-import subprocess
+"""Published 140K essentials and complete 800K: boot, menus and missing tools."""
+import re
 import shutil
 import sys
 import tempfile
 from pathlib import Path
-
-from pom2 import VERSION, Pom2, Session, ROOT, BUILD, FULL
+from pom2 import VERSION, Pom2, Session, ROOT, BUILD
 from smoke import scratch
 from xplug import menu_inventory, menu_run, ok_all, RET, ESC
-from volname import rename_to
 sys.path.insert(0, str(ROOT / 'tools'))
-from prodos_read import Image
-from disk_packages import PACKAGES, VOLUMES
+from distribution import image_name, inventories
 from check_images import check_cpu
-import mkdemo
 
 
-def catalog(image):
-    img = Image(image.read_bytes())
-    def name(e):
-        return e[1:1 + (e[0] & 15)].decode('ascii')
-    root = {name(e): e for e in img.entries(2)}
-    key = int.from_bytes(root['A2FILE'][17:19], 'little')
-    return img, root, {name(e): e for e in img.entries(key)}
+def check_menu(s, p, expected):
+    hidden = set(re.search(r'mn_hidden\[\] = "([^"\n]+)"', (ROOT / 'src/a2fc.c').read_text())[1].strip('|').split('|'))
+    s.key(b'!'); s.wait(lambda: s.has('the overlays'), 'menu', 30); p.stable()
+    names = set(menu_inventory(s, p))
+    s.ok('menu lists exactly the tools available on this image', names == expected - hidden,
+         sorted(names ^ (expected - hidden)))
+    s.key(ESC)
 
 
 def main():
-    cpu = '6502'
-    assert not FULL, 'Published floppies use the 6502 build'
-    check_cpu(cpu)
-    bootvol, extravol = 'A2FC' + cpu, VOLUMES['FILES'] + cpu
-    boot = ROOT / ('dist/A2FILECMD-%s-BOOT-%s.po' % (cpu, VERSION))
-    extra = ROOT / ('dist/A2FILECMD-%s-FILES-%s.po' % (cpu, VERSION))
-    bi, br, bc = catalog(boot)
-    xi, xr, xc = catalog(extra)
-    assert len(extra.read_bytes()) == 143360
-    assert 'PRODOS' not in xr and 'BASIC.SYSTEM' not in xr
-    assert set(bc).intersection(xc) == {'MENU.PLG', 'EXTRAS.CAT'}, 'seuls le menu et le catalogue accompagnent les deux disques'
-    assert {n for n in xc if n.endswith('.PLG')} == {n + '.PLG' for n in PACKAGES['FILES']} | {'MENU.PLG'}
-    raw_catalog = (BUILD / 'EXTRAS.CAT').read_bytes()
-    menu_count = sum(raw_catalog[i + 11] == 0 for i in range(0, len(raw_catalog), 78))
-    for name, entry in xc.items():
-        if not name.endswith('.PLG'): continue
-        assert entry[16] == 6 and int.from_bytes(entry[31:33], 'little') == 0x1B00
-        stem = name[:-4]
-        path = BUILD / (stem.lower() + '.PLG')
-        if not path.exists():
-            path = BUILD / ('A2FILE.CODE.BIN.' + stem)
-        assert xi.read(entry) == path.read_bytes(), name
-    print('PASS FILES contient exactement ses outils, avec menu commun et bons attributs', flush=True)
-
-    with tempfile.TemporaryDirectory(prefix='a2fc-extras-') as tmp:
-        tmp = Path(tmp)
-        floppy = tmp / 'BOOT.po'; shutil.copyfile(boot, floppy)
-        companion = tmp / 'EXTRAS.po'; shutil.copyfile(extra, companion)
-        hd = scratch(tmp)
-        # Use the published boot and companion floppies, a scratch HD for the file.
-        with Pom2(hd, floppy=floppy, floppy2=companion, port=6830) as p:
+    check_cpu('6502')
+    essential, complete = inventories()
+    with tempfile.TemporaryDirectory(prefix='a2fc-distribution-') as directory:
+        tmp = Path(directory)
+        floppy = tmp / 'essential.po'
+        shutil.copyfile(ROOT / 'dist' / image_name('140K').replace('.dsk', '.po'), floppy)
+        with Pom2(scratch(tmp), floppy=floppy, port=6830) as p:
             s = Session(p); s.boot()
+            check_menu(s, p, essential)
             s.key(b'/'); s.select('/SCRATCH'); s.key(RET)
             s.select('WORK'); s.key(RET); s.select('NOTE'); p.stable()
-            note = b'scratch volume\r'
-            s.key(b'E')
-            s.wait(lambda: s.value('view', 1) == 5, 'EDIT depuis le lecteur 2', 30)
-            # view passes 5 before the text is drawn: wait for the page, not the flag
-            s.wait(lambda: 'cratch volume' in s.rows()[0], "le texte de l'editeur", 30)
-            p.stable()
-            s.ok('E charge EDIT absent de la disquette principale', 'cratch volume' in s.rows()[0])
-            s.key(ESC); p.stable()
-            # Editor's menu: Q leaves without saving unchanged text.
-            if not s.has('Type  Aux'):
-                s.key(b'Q')
-            s.wait(lambda: s.has('Type  Aux'), 'retour editeur', 30)
-            menu_run(s, p, 'UNWRAP')
-            expected = 'Not an AppleSingle or MacBinary file.'
-            s.wait(lambda: expected in s.rows()[22], 'UNWRAP du complement', 30)
-            s.ok('le menu charge une surcouche a table de services du lecteur 2', s.rows()[22].strip() == expected)
-            s.key(b'!'); s.wait(lambda: s.has('the overlays'), 'menu fusionne', 30); p.stable()
-            s.ok('le menu contient les commandes de toutes les categories', len(menu_inventory(s, p)) == menu_count, menu_count)
-            s.key(ESC)
-            # Every absent category must be named correctly, even with FILES online.
-            for role, command in [('MEDIA', 'IMAGE'), ('DISKTOOLS', 'BLKVIEW'), ('DEVTOOLS', 'BASLIST')]:
-                menu_run(s, p, command, allow_aux=False)
-                prompt = 'Insert ' + VOLUMES[role] + cpu + ' S6,D2'
-                s.wait(lambda: s.has(prompt), 'demande de ' + role, 30)
-                s.ok('le disque absent est identifie : ' + role, s.has(prompt))
-                s.key(ESC)
-                s.wait(lambda: s.has('missing or stale'), 'annuler ' + role, 30)
-            # VOLNAME lives on DISKTOOLS: that disk takes drive 2 for the rename,
-            # then a DISKTOOLS tool has to load from the renamed volume.
-            toolsvol = VOLUMES['DISKTOOLS'] + cpu
-            shutil.copyfile(ROOT / ('dist/A2FILECMD-%s-DISKTOOLS-%s.po' % (cpu, VERSION)), tmp / 'DISKTOOLS.po')
-            p.insert(1, 'DISKTOOLS.po')
-            s.key(b'/'); s.wait(lambda: s.has('/' + toolsvol), 'DISKTOOLS en ligne', 30)
-            s.select('/' + toolsvol); p.stable()
-            rename_to(s, p, toolsvol, 'TOOLS')
-            s.ok('le complement peut etre renomme', s.has('Volume renamed to /TOOLS'))
-            s.select('/SCRATCH'); s.key(RET); s.select('WORK'); s.key(RET); s.select('NOTE')
-            menu_run(s, p, 'VOLINFO')
-            s.wait(lambda: s.has('M Bitmap'), 'VOLINFO apres renommage', 180); p.stable()
-            s.ok('le chargeur retrouve le nom actuel du lecteur 2', s.has('M Bitmap'))
-            s.key(ESC); s.wait(lambda: s.has('! More'), 'retour aux panneaux', 30); p.stable()
-            p.eject(1)
-            s.key(b'E')
-            s.wait(lambda: s.has('Insert ' + extravol + ' S6,D2'), 'complement absent', 30)
-            s.ok('la demande nomme le disque et le lecteur', s.has('Insert ' + extravol + ' S6,D2'))
-            s.key(ESC)
-            s.ok('sans complement E signale la surcouche absente', s.has('EDIT.PLG is missing or stale'))
-            s.key(b'T'); s.wait(lambda: s.has('scratch volume'), 'texte principal', 30)
-            s.ok('les outils de la disquette principale restent utilisables', s.has('scratch volume'))
-            s.key(ESC)
-            s.key(b'!'); s.wait(lambda: s.has('the overlays'), 'menu sans complement', 30); p.stable()
-            s.ok('sans complement le catalogue garde toutes les commandes', len(menu_inventory(s, p)) == menu_count, menu_count)
-            s.key(ESC)
-    first = ok_all(s, 'categories, deux lecteurs')
-    with tempfile.TemporaryDirectory(prefix='a2fc-extras-one-') as tmp:
-        tmp = Path(tmp)
-        floppy = tmp / 'BOOT.po'; shutil.copyfile(boot, floppy)
-        companion = tmp / 'EXTRAS.po'; shutil.copyfile(extra, companion)
-        with Pom2(scratch(tmp), floppy=floppy, port=6831) as p:
-            s = Session(p); s.boot()
-            s.key(b'/'); s.select('/SCRATCH'); s.key(RET)
-            s.select('WORK'); s.key(RET); s.select('NOTE'); p.stable()
-            menu_run(s, p, 'UNWRAP')
-            s.wait(lambda: s.has('Insert ' + extravol + ' S6,D2'), 'demande de complement', 30)
-            s.key(b'1')
-            s.wait(lambda: s.has('Insert ' + extravol + ' S6,D1'), 'lecteur choisi', 30)
-            s.ok('un seul lecteur : nom du complement et lecteur 1 explicites', s.has('Insert ' + extravol + ' S6,D1'))
-            p.insert(0, str(companion)); s.key(RET)
-            s.wait(lambda: expected in s.rows()[22], 'UNWRAP apres echange', 30)
-            s.ok('UNWRAP charge apres remplacement de la disquette dans le lecteur 1', expected in s.rows()[22])
-            # MENU accompanies both disks, so another command remains selectable.
-            menu_run(s, p, 'UNSQ')
-            # a text file: either refusal shows the overlay ran
-            unsq = ('Not a SQueezed file or an ACU archive.', 'Other panel: open a ProDOS directory.')
-            s.wait(lambda: s.rows()[22].strip() in unsq, 'UNSQ sur le meme disque', 30)
-            s.ok('le menu reste accessible pendant l echange', s.rows()[22].strip() in unsq)
-            s.key(b'T')
-            s.wait(lambda: s.has('Insert ' + bootvol + ' S6,D1'), 'demande du disque principal', 30)
-            s.ok('le retour nomme la disquette principale et le meme lecteur', s.has('Insert ' + bootvol + ' S6,D1'))
-            p.insert(0, str(floppy)); s.key(RET)
-            s.wait(lambda: s.value('view', 1) == 2 and s.has('scratch volume'), 'TEXT apres retour du disque principal', 30)
-            s.ok('TEXT fonctionne apres restitution de la disquette principale', s.has('scratch volume'))
-            s.key(ESC)
-            # The file itself can be on the boot floppy, without a hard disk.
-            s.key(b'/'); s.select('/' + bootvol); s.key(RET)
-            s.select('A2FILE'); s.key(RET); s.select('A2FILE.HELP')
-            s.key(b'E')
-            s.wait(lambda: s.has('Insert ' + extravol + ' S6,D1'), 'disque de l editeur', 30)
-            p.insert(0, str(companion)); s.key(RET)
-            s.wait(lambda: s.has('Insert ' + bootvol + ' S6,D1'), 'disque du fichier', 30)
-            s.ok('apres le code, le disque contenant le fichier est demande', s.has('Insert ' + bootvol + ' S6,D1'))
-            p.insert(0, str(floppy)); s.key(RET)
-            s.wait(lambda: s.value('view', 1) == 5 and s.has('A2 FILE CMD'), 'edition depuis une seule disquette', 30)
-            p.stable()
-            s.ok('le fichier de la disquette principale est lu apres l echange', s.has('A2 FILE CMD'))
+            s.key(b'E'); s.wait(lambda: s.value('view', 1) == 5 and s.has('cratch volume'), 'essential editor', 30)
+            s.ok('the essential disk includes the text editor', True)
             s.key(ESC); p.stable()
             if not s.has('Type  Aux'): s.key(b'Q')
-            s.wait(lambda: s.has('Type  Aux'), 'retour des panneaux', 30)
-            s.key(b'E')
-            s.wait(lambda: s.has('Insert ' + extravol + ' S6,D1'), 'editeur encore', 30)
-            p.insert(0, str(companion)); s.key(RET)
-            s.wait(lambda: s.has('Insert ' + bootvol + ' S6,D1'), 'annuler la lecture du fichier', 30)
-            s.key(ESC); p.stable()
-            s.ok('ESC apres une grande surcouche restaure les panneaux', s.has('Type  Aux') or s.has('Volume          Slot'))
-    second = ok_all(s, 'categories, un lecteur')
-    with tempfile.TemporaryDirectory(prefix='a2fc-extras-basic-') as tmp:
-        tmp = Path(tmp)
-        floppy = tmp / 'BOOT.po'; shutil.copyfile(boot, floppy)
-        companion = tmp / 'EXTRAS.po'; shutil.copyfile(ROOT / ('dist/A2FILECMD-6502-DEVTOOLS-%s.po' % VERSION), companion)
-        hd = scratch(tmp)
-        program = mkdemo.applesoft([(10, bytes([mkdemo.HOME])),
-            (20, bytes([mkdemo.PRINT]) + b'"EXTRAS BASIC OK"'), (30, bytes([mkdemo.END]))])
-        (tmp / 'scratch/WORK/HELLO.BAS').write_bytes(program)
-        subprocess.run([sys.executable, str(ROOT / 'tools/mkvolume.py'), str(tmp / 'scratch'), str(hd),
-                        '--volume', 'SCRATCH', '--blocks', '1600'], check=True, capture_output=True)
-        with Pom2(hd, floppy=floppy, floppy2=companion, port=6832) as p:
+            s.wait(lambda: s.has('Type  Aux'), 'panels', 30)
+            s.key(b'W'); s.wait(lambda: s.has('DISKIMG.PLG is missing or stale'), 'unavailable command returns immediately', 30)
+            s.ok('no obsolete companion request for an unavailable tool', not s.has('Insert '))
+            s.key(b'T'); s.wait(lambda: s.has('scratch volume'), 'text reader after refusal', 30)
+            s.ok('normal commands still work after an unavailable tool', True)
+            s.key(ESC)
+        first = ok_all(s, '140K essentials')
+    with tempfile.TemporaryDirectory(prefix='a2fc-800k-') as directory:
+        tmp = Path(directory)
+        hd = tmp / 'complete800.po'
+        shutil.copyfile(ROOT / 'dist' / image_name('800K'), hd)
+        # Boot the published block image through the emulator's block device.
+        # This checks ProDOS boot/content, not a physical 3.5-inch drive.
+        with Pom2(hd, port=6831, boot=5) as p:
             s = Session(p); s.boot()
-            s.key(b'/'); s.select('/SCRATCH'); s.key(RET)
-            s.select('WORK'); s.key(RET); s.select('HELLO'); s.key(RET)
-            s.wait(lambda: s.has('Run HELLO?'), 'confirmation BASIC', 30)
-            s.key(b'Y')
-            s.wait(lambda: s.has('Configuration warning.') or
-                   any('EXTRAS BASIC OK' in r for r in s.rows40()), 'lancement ou configuration pleine', 60)
-            if s.has('Configuration warning.'):
-                s.ok('BOOT plein signale la configuration non sauvegardee', True)
-                s.key(b'Y')
-            s.wait(lambda: any('EXTRAS BASIC OK' in r for r in s.rows40()), 'BASIC du complement', 60)
-            s.ok('BASIC.SYSTEM du lecteur 2 execute le programme du disque de travail', True)
-            s.wait(lambda: any(r.lstrip().startswith(']') for r in s.rows40()), 'invite Applesoft', 30)
-            p.stable()
-            s.type('-/' + bootvol + '/A2FILE.SYSTEM'); s.key(RET)
-            s.wait(lambda: s.has('Type  Aux'), 'retour de BASIC', 90)
-            s.ok('le chemin absolu relance A2FC sur sa disquette', s.has('Type  Aux'))
-    return first or second or ok_all(s, 'categories, BASIC')
+            s.ok('800K boots as a self-contained ProDOS volume', s.rows()[0].startswith('/A28006502'))
+            check_menu(s, p, complete)
+            s.select('A2FILE'); s.key(RET); s.select('A2FILE.HELP'); s.key(b'T')
+            s.wait(lambda: s.value('view', 1) == 2, '800K text reader', 30)
+            s.ok('800K loads its reader without a companion disk', True)
+            s.key(ESC)
+        second = ok_all(s, '800K complete')
+    return first or second
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    raise SystemExit(main())

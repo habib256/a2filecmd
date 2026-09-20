@@ -42,11 +42,11 @@ video while waiting for your answer.
 
 The menu also offers text and disk-image conversion, CRC-32, file
 identification, Markdown reading, volume-wide search, favourite directories,
-batch renaming and type repair. DISKTOOLS and XL also provide UNDELETE recovery,
+batch renaming and type repair. 800K and XL also provide UNDELETE recovery,
 DISKCMP comparison, MKIMAGE creation, RESCUE extraction, SYNC updates and TREE totals. BLKVIEW searches and extracts blocks while preserving the source; DISKIMG reads back disk writes.
 **Write to DOS 3.3 from ProDOS:** open a DOS disk or a DOS image in one panel,
 select a ProDOS TXT/BIN/BAS/INT file in the other and press **C**. DOSWRITE
-(FILES/XL) uses the selected Disk II slot, including slot 5. Images (`.DSK`,
+(800K/XL) uses the selected Disk II slot, including slot 5. Images (`.DSK`,
 `.DO`, DOS-order `.2MG`) are copied to a verified temporary before replacement.
 One selected file per operation, up to 65,535 bytes; existing DOS names are
 refused and the source is kept. [Usage and limits](docs/MANUAL.md).
@@ -60,7 +60,7 @@ what it refuses and why, and writes nothing until you press **F** and type
 the word FIX in full; every block it writes is read back, and a block it
 cannot verify gets its original rewritten. Above 4,096 blocks both keep
 their findings in auxiliary memory and offer a quick, directories-only pass;
-a 32 MB volume is checked in one walk (DISKTOOLS and XL,
+a 32 MB volume is checked in one walk (800K and XL,
 [details](docs/FIXIT.md)).
 
 NIBCOPY copies standard 16-sector Disk II tracks with one or two drives and
@@ -94,41 +94,40 @@ readers and more disk tools. See the [changelog](CHANGELOG.md).*
 **Start with the [latest release](https://github.com/habib256/a2filecmd/releases/latest).**
 No build required. Choose the image that fits your setup:
 
-The table describes 0.9.0, the latest published release; older downloads
-retain their own version numbers.
+Download [**0.9.1**](https://github.com/habib256/a2filecmd/releases/tag/v0.9.1):
+Older releases retain their original filenames and category disks.
 
-| Image (0.9.0) | Contents |
+| Image (0.9.1) | Contents |
 |---|---|
-| `A2FILECMD-6502-BOOT-0.9.0.dsk` | Bootable 140 KB floppy: file manager, essential disk tools and formatter |
-| `A2FILECMD-6502-FILES-0.9.0.dsk` | Edit and read documents, find, rename, copy, synchronize and unpack files |
-| `A2FILECMD-6502-MEDIA-0.9.0.dsk` | Pictures, Mockingboard and Electric Duet music |
-| `A2FILECMD-6502-DISKTOOLS-0.9.0.dsk` | Disk images, block tools, boot repair and recovery |
-| `A2FILECMD-6502-DEVTOOLS-0.9.0.dsk` | BASIC listings, disassembly, BASIC.SYSTEM and INTBASIC.SYSTEM |
-| `A2FILECMD-6502-XL-0.9.0.2mg` | Complete bootable 32 MB image for 6502 |
-| `A2FILECMD-65C02-XL-0.9.0.2mg` | Complete bootable 32 MB image for a 65C02 with the enhanced ROM (enhanced IIe, //c, IIgs), with optional mouse support |
-| `A2FC-MINI-DOS33-0.9.0.dsk` | A2FileCmd Mini DOS3.3: the standalone edition for a 48 KB Apple II+ |
+| `A2FILECMD-XL-0.9.1.2mg` | Complete 32 MB ProDOS image, 6502, all tools and examples |
+| `A2FILECMD-65C02-enhanced-mouse-XL-0.9.1.2mg` | Complete XL; 65C02 **and** enhanced ROM required, mouse support optional |
+| `A2FILECMD-DOS3.3-0.9.1.dsk` | Standalone Mini, DOS 3.3, Apple II+ 48 KB, 40 columns |
+| `A2FILECMD-800K-0.9.1.po` | Bootable 800 KB ProDOS image, 6502, all tools and BASIC runtimes, no demo corpus |
+| `A2FILECMD-140K-0.9.1.dsk` | Bootable 5¼-inch ProDOS disk, 6502, essential file operations, editor, text/hex readers, format and verify |
 
-**All floppies use 6502 code**, including on enhanced machines. Choose the
-categories you need; every companion carries the menu and full catalog.
-XL includes all 82 overlays, BASIC.SYSTEM, INTBASIC.SYSTEM, `DEMO/` and `IMGHGR/`, so it needs
-no companion. XL **6502** runs on every supported machine. XL **65C02**
-needs **both** a 65C02 processor (its code uses 65C02 instructions) **and**
-the enhanced ROM (MouseText, mouse): an enhanced IIe, a //c or a IIgs. The
-two do not always come together: an enhanced IIe with a 6502 put back in,
-or an unenhanced IIe with a 65C02 accelerator, needs XL 6502. The launcher
-checks the processor and the ROM, and says which one is missing. All
-editions require 128 KB and 80 columns.
-Use matching releases. Do not mix the native plugins of XL 65C02 with the
-6502 floppies. Floppies are distributed as `.dsk`; XL uses `.2mg`.
+**Five self-contained images replace the category disks.** XL includes all
+82 overlays, BASIC.SYSTEM, INTBASIC.SYSTEM, `DEMO/` and `IMGHGR/`. The 800K
+edition has the same tools without the demo corpus. The 140K edition has
+18 overlays and lists available tools in its menu; advanced tools require
+booting 800K or XL. Its spare space allows preferences to be saved repeatedly.
 
-1. Boot BOOT or XL. ProDOS 8 is included. With floppies, put the required
-   category in slot 6, drive 2. With one drive, A2FC names the required disk
-   and drive; press **1**, insert that disk, then press **Return**.
-   `make disk` builds all seven volumes; `ARCH=6502` builds the floppies and
-   XL 6502, while `ARCH=enh` builds XL 65C02 only.
+The 6502 ProDOS editions need 128 KB and 80 columns. The enhanced XL needs
+**both a 65C02 processor and enhanced ROM**. An enhanced IIe with a 6502
+put back in, or an unenhanced IIe with a 65C02 accelerator, needs the 6502
+edition. The launcher checks both. **Mouse support is optional:** the
+`mouse` in the filename does not require a mouse to be connected.
+Mini is separate and needs only 48 KB on an Apple II+.
 
-2. Press **`TAB`** to switch panels, **`RETURN`** to open and **`ESC`** to go up. Press **`?`** for the full key map.
-3. On the `.2mg`, explore the `DEMO/` folder already open in the right panel. On BOOT, the right panel shows the available volumes; `E`, `I` and the `!` menu load missing tools from the matching category disk.
+1. Boot the image matching your machine and storage. ProDOS 8 is included
+   in the ProDOS images. 140K and Mini use DOS-order `.dsk`; 800K is a
+   ProDOS-order `.po`; XL uses `.2mg`. Do not convert by renaming extensions.
+2. Press **TAB** to switch panels, **Return** to open, **Escape** to go up
+   and **?** for help.
+3. On XL, explore `DEMO/` in the right panel. 140K and 800K start with the
+   available volumes in the right panel.
+
+`make disk` builds all five images. `ARCH=6502` builds 140K, 800K, XL and
+Mini; `ARCH=enh` builds only 65C02-enhanced-mouse XL.
 
 A **Mockingboard** enables music playback (including the **Mockingboard 4c**
 on Apple //c at `$C400–$C4FF`); an **AppleMouse II** enables point
@@ -172,7 +171,7 @@ directory, with `<version>` the release you downloaded. To verify one image
 on macOS:
 
 ```sh
-shasum -a 256 A2FILECMD-65C02-XL-<version>.2mg
+shasum -a 256 A2FILECMD-65C02-enhanced-mouse-XL-<version>.2mg
 ```
 
 Compare the result with its line in `SHA256SUMS-<version>.txt`. To check
@@ -261,7 +260,7 @@ Created by **Arnaud VERHILLE** (`@habib256`). Free software under the
 
 The disk images include **ProDOS 8 2.4.3** and **BASIC.SYSTEM**, distributed
 for the Apple II community by John Brooks; these are Apple's software.
-DEVTOOLS and XL also include [INTBASIC.SYSTEM v0.9](https://github.com/a2stuff/intbasic),
+800K and XL also include [INTBASIC.SYSTEM v0.9](https://github.com/a2stuff/intbasic),
 by Joshua Bell; see [its provenance and credits](data/INTBASIC.md).
 The low-level 5.25" formatter descends from **ProDOS Hyper-FORMAT** by
 Jerry Hewett (1985, public domain) and Gary Desrochers (1989), as carried by ADTPro.

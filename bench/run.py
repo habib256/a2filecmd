@@ -1,6 +1,6 @@
 """Le banc fonctionnel d'A2 File Cmd, sur la disquette telle qu'elle est publiee.
 
-Il amorce dist/A2FILECMD-6502-BOOT.po dans POM2 sans fenetre, avec un second volume
+Il amorce dist/A2FILECMD-140K.po dans POM2 sans fenetre, avec un second volume
 vide comme cible, et joue une session complete : naviguer, marquer, copier,
 deplacer, renommer, supprimer, creer un dossier, changer type et verrou,
 lire un texte et des octets, editer et sauver, afficher les deux formats
@@ -150,7 +150,7 @@ def xl_volume(dirpath, cpu):
     POM2 ne prend qu'un disque dur, qui doit amorcer et servir de cible.
     Rend (image, nom du volume, TINY.PO, rebati == publie) : le dernier dit
     si le volume rebati sans ajout est l'image publiee, octet a octet."""
-    payload = (ROOT / ('dist/A2FILECMD-%s-XL-%s.2mg' % (cpu, VERSION))).read_bytes()[64:]
+    payload = (ROOT / ('dist/A2FILECMD-%sXL-%s.2mg' % ('65C02-enhanced-mouse-' if cpu == '65C02' else '', VERSION))).read_bytes()[64:]
     image = Image(payload)
     name = image.header()['name']
     boot = dirpath / 'xl-boot'
@@ -185,12 +185,12 @@ def main():
         tmp = Path(tmp)
         floppy = tmp / 'A2FILECMD.po'
         media_floppy = tmp / 'MEDIA.po'
-        shutil.copyfile(ROOT / f'dist/A2FILECMD-6502-MEDIA-{VERSION}.po', media_floppy)
+        shutil.copyfile(ROOT / 'build-6502/legacy/MEDIA.po', media_floppy)
         if xl:
             # XL : le disque dur amorce, la disquette BOOT publiee reste en
             # lecteur 1 pour les images disque et le formateur
             build = ROOT / ('build-6502' if xl == '6502' else 'build')
-            shutil.copyfile(ROOT / f'dist/A2FILECMD-6502-BOOT-{VERSION}.po', floppy)
+            shutil.copyfile(ROOT / f'dist/A2FILECMD-140K-{VERSION}.po', floppy)
             hdv, vol, tiny_po, same = xl_volume(tmp, xl)
             scr, blocks, boot = vol, 65535, None
             preset = os.environ.get('A2FC_PRESET') or ('iie_unenh' if xl == '6502' else 'iie')
@@ -308,7 +308,9 @@ def main():
             p.stable()
             s.ok('le flux MB1 revient aux panneaux sur END',s.line(40).startswith('WELCOME.MB'))
             s.ok('la musique conserve AUX sans confirmation destructive',p.peek(0x1000,0xB000,'aux')==aux_before)
-            p.rq('/speed',{'preset':'max'})
+            # Restore the configured budget: 'max' starves control requests
+            # and makes later panel navigation much slower on the host.
+            p.rq('/speed',{'cycles_per_frame':p.speed})
 
             # ── 5b. les images disque ──────────────────────────────────────
             # R lit la disquette d'amorce (slot 6 lecteur 1) dans une image
@@ -563,7 +565,8 @@ def main():
                  next((r[:40] for r in s.rows() if r.startswith('COPIE ')), ''))
             s.key(b'K'); s.wait(lambda: s.has('New directory'), 'mkdir')
             s.type('NEUF'); s.key(RET); p.stable()
-            s.ok('K cree un dossier', any(r.startswith('NEUF ') and '<DIR>' in r for r in s.rows()))
+            s.ok('K cree un dossier', any(r.startswith('NEUF/ ') and '<DIR>' in r for r in s.rows()),
+                 '\n'.join(s.rows()))
             s.select('COPIE'); s.key(b'D'); s.wait(lambda: s.has('Delete COPIE?'), 'suppression')
             s.key(b'Y'); p.stable()
             s.ok('D supprime', not any(r.startswith('COPIE ') for r in s.rows()))

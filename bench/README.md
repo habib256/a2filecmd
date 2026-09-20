@@ -6,7 +6,7 @@ livre pour cela : les adresses des variables observees viennent de la table de
 symboles du lien (`build/a2fc.lbl`), et l'ecran est lu la ou l'Apple II le
 range, en `$400-$7FF`.
 
-Les bancs disquette utilisent l’image interne `dist/A2FILECMD-6502-BOOT-0.9.0.po`.
+Les bancs disquette utilisent l’image interne `dist/A2FILECMD-140K-0.9.1.po`.
 La conversion DSK publiée conserve les mêmes blocs ProDOS ; les `.po` ne sont
 pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 
@@ -62,7 +62,7 @@ pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 
 ## Les deux editions
 
-`dist/A2FILECMD-6502-BOOT-0.9.0.po` est l'**edition disquette**, construite en 6502
+`dist/A2FILECMD-140K-0.9.1.po` est l'**edition disquette**, construite en 6502
 (`build-6502/`) avec le gestionnaire et les outils disque seulement : c'est
 elle que les bancs amorcent par defaut, et sa table de symboles est prise
 dans `build-6502/` sans rien dire. `run.py` y saute la section souris, et les
@@ -77,20 +77,23 @@ d'archives (`shk.py`, `bny.py`) sur ce CPU. Le lecteur
 MUSIC est chargé depuis une copie de MEDIA en lecteur 2. Les bancs AWP,
 Binary II et ShrinkIt utilisent `archive_support.py` pour substituer leur
 lecteur à FORMAT/DISKIMG dans une copie jetable de cette disquette : tous
-les outils ne tiennent plus ensemble sur 140 Ko.
-`hd.py` amorce `dist/A2FILECMD-65C02-XL-0.9.0.2mg` ;
+les outils ne tiennent plus ensemble sur 140 Ko. `find.py` remplace de même
+BASLIST par SEARCH dans sa propre image jetable ; la disquette de banc
+générale utilise le lanceur compact et ne contient plus SEARCH.
+`hd.py` amorce `dist/A2FILECMD-65C02-enhanced-mouse-XL-0.9.1.2mg` ;
 `A2FC_CPU=6502 A2FC_PRESET=iie_unenh python3 bench/hd.py` teste la XL 6502.
 `run.py --xl 65C02` et `run.py --xl 6502` jouent la session complète sur
 la XL publiée de ce processeur (la 6502 sur le IIe non enhanced, sans
 souris) : POM2 ne prend qu’un disque dur, donc le volume XL est rebâti
 avec les fichiers de travail à sa racine, après avoir vérifié qu’il
 redonne sans eux le `.2mg` publié octet à octet.
-`extras.py` vérifie BOOT + FILES et les demandes des autres catégories avec deux lecteurs, les échanges avec un
-seul lecteur et BASIC.SYSTEM. Par défaut il prend le 6502 ;
-`python3 bench/extras.py` vérifie les mêmes disquettes 6502 sur IIe enhanced.
-La même variable choisit la disquette dans `smoke.py`. Les quatre catégories sont
-indépendantes. `python3 tools/check_images.py` relit les six volumes,
-compare les surcouches aux builds respectifs et vérifie les copies `.dsk`.
+`extras.py` vérifie la 140K essentielle et la 800K complète : amorçage,
+menu exact, éditeur local et refus immédiat d'un outil absent. La 800K est
+amorcée comme périphérique de blocs, sans simuler un lecteur 3½ physique.
+Les deux passent sur IIe enhanced et non enhanced avec le code 6502.
+`check_images.py` relit les cinq images et compare leurs fichiers aux builds.
+Les anciennes catégories ne sont fabriquées que dans `build-6502/legacy/`
+par `make benchpackages ARCH=6502`, pour les tests de chargement optionnel.
 
 Avec `A2FC_PRESET=iie_unenh`, POM2 est le IIe de 1983 (`pom2_playtest
 --preset iie_unenh` : 6502 NMOS, firmware sans MouseText, `$FBC0 = $EA`) --
@@ -163,7 +166,7 @@ donne un Apple //c (ROM 32 Ko) : son lecteur integre est le Disk II du slot
 6, donc `--boot 6` amorce la disquette comme sur le //e, et le disque dur est
 une unite SmartPort sur le port arriere, servie par le firmware du //c en
 slot 5 (pas de carte, pas de Mockingboard). Les deux presets amorcent
-`dist/A2FILECMD-6502-BOOT-0.9.0.po` jusqu'aux panneaux. `Pom2(..., floppy2=...)` met une
+`dist/A2FILECMD-140K-0.9.1.po` jusqu'aux panneaux. `Pom2(..., floppy2=...)` met une
 seconde disquette dans le lecteur 2 du meme Disk II des l'amorcage
 (`pom2_playtest --disk2`) : un vrai DOS 3.3 dans un lecteur, sans passer par
 `/disk` -- ce que le banc des disques physiques attendait.
@@ -191,6 +194,16 @@ cycles par seconde se privent l'un l'autre, et les bancs qui comptent le
 temps réel (une copie nibble, une copie interrompue par Échap) expirent
 alors sans que rien ne soit cassé. `make qualify` joue la table un banc à
 la fois.
+
+Les scénarios qui passent temporairement en vitesse musicale `1x` doivent
+restaurer ensuite `p.speed` avec `cycles_per_frame`, plutôt que le préréglage
+`max`. Ce dernier allonge les réponses de l'interface de contrôle et peut
+faire durer une navigation plusieurs minutes. Les assertions restent les
+mêmes ; le scénario reprend son budget initial.
+
+VOLINFO utilise une disquette de banc autonome jetable sur chaque CPU,
+avec VOLINFO à la place de FORMAT et DISKIMG. La disquette essentielle
+publiée ne propose plus les anciennes catégories BOOT/DISKTOOLS.
 
 Un pas dont la fixture manque est **SKIP**, avec la commande qui la
 construit ; `--strict` en fait un echec, ce que veut une publication.
