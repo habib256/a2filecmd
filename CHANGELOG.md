@@ -23,6 +23,9 @@ downloads and installation.
   limits of recovery after a power failure; no automatic recovery is promised.
 - Space the last help row within 80 columns and give the return-to-panels
   footer a readable label. Move editor shortcuts onto a separate line.
+- Reorganize the 0.9.2 user guide around installation, everyday operations,
+  incident recovery and reference chapters. Refresh the PDF cover and linked
+  contents; keep numbered steps separate and headings with their text.
 
 ## [0.9.1] - 2026-09-20
 

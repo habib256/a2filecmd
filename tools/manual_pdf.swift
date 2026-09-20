@@ -79,17 +79,11 @@ newPage()
 y = 84
 paragraph("A2 FILE CMD", size: 30, font: "Arial-BoldMT", gap: 12)
 paragraph("User guide · \(guideVersion)", size: 19, gap: 16)
-paragraph("6502 floppies by category · XL 6502 / 65C02 · A2FileCmd Mini DOS3.3", size: 12, gap: 12)
-// The current panels screenshot and clickable contents share the cover.
-let screenshotURL = URL(fileURLWithPath:input).deletingLastPathComponent().appendingPathComponent("screenshots/01-panels-0.7.6.png")
-guard let screenshot = NSImage(contentsOf:screenshotURL),
-      let panelImage = screenshot.cgImage(forProposedRect:nil,context:nil,hints:nil) else {
-    fatalError("Missing panels screenshot: \(screenshotURL.path)")
+paragraph("ProDOS: 140K essential · 800K complete · XL 6502", size: 12, gap: 8)
+paragraph("XL enhanced 65C02 with optional mouse · DOS3.3", size: 12, gap: 8)
+if source.contains("— Preparation edition.") {
+    paragraph("Preparation edition — release qualification in progress", size: 10, gap: 8)
 }
-let imageWidth:CGFloat = 400
-let imageHeight = imageWidth * 384 / 560
-ctx.interpolationQuality = .none
-ctx.draw(panelImage,in:CGRect(x:(W-imageWidth)/2,y:H-210-imageHeight,width:imageWidth,height:imageHeight))
 
 let contentsIndex = page-1
 newPage()
@@ -97,13 +91,30 @@ let lines = source.components(separatedBy: .newlines)
 var i = 0
 while i < lines.count {
     let line = lines[i]
+    // Markdown has its own linked contents; the PDF uses the cover's page links.
+    if line == "## Contents" {
+        i += 1
+        while i < lines.count && !lines[i].hasPrefix("## ") { i += 1 }
+        continue
+    }
     if line.hasPrefix("![") { i += 1; continue }
     if line.trimmingCharacters(in: .whitespaces).isEmpty { i += 1; continue }
     if line.hasPrefix("#") {
         let level = line.prefix(while: {$0 == "#"}).count
         let title = String(line.dropFirst(level)).trimmingCharacters(in: .whitespaces)
         if level == 1 { i += 1; continue }
-        ensure(level <= 2 ? 100 : 70)
+        // Paragraphs are kept whole: reserve the first one with its heading,
+        // otherwise a title can be stranded at the foot of the previous page.
+        var next = i + 1
+        while next < lines.count && lines[next].isEmpty { next += 1 }
+        var firstText = ""
+        while next < lines.count && !lines[next].isEmpty && !lines[next].hasPrefix("#") && !lines[next].hasPrefix("|") && !lines[next].hasPrefix("```") {
+            if !firstText.isEmpty && (lines[next].hasPrefix("- ") || lines[next].range(of: #"^\d+\. "#, options: .regularExpression) != nil) { break }
+            firstText += " " + lines[next]; next += 1
+        }
+        let firstHeight = firstText.isEmpty ? 65 : height(attributed(firstText), width-10)+6
+        let titleHeight = height(attributed(title, level <= 2 ? 18 : 13, "Arial-BoldMT"), width)
+        ensure(titleHeight + 22 + firstHeight)
         y += level <= 2 ? 10 : 5
         if level <= 2 { headings.append((plain(title),page-1,y)) }
         paragraph(title, size: level <= 2 ? 18 : 13, font: "Arial-BoldMT", gap: 12)
@@ -128,7 +139,8 @@ while i < lines.count {
         // are short identifiers. Other three-column tables describe commands.
         let companionCatalog = rows[0] == ["Category", "Plugins", "ProDOS volume"]
         let imageCatalog = rows[0] == ["Image", "Contents"]
-        let ratios: [CGFloat] = imageCatalog ? [0.55,0.45] : companionCatalog ? [0.18,0.55,0.27] :
+        let recoveryCatalog = rows[0] == ["Operation", "New candidate", "Previous version"]
+        let ratios: [CGFloat] = imageCatalog ? [0.55,0.45] : recoveryCatalog ? [0.34,0.33,0.33] : companionCatalog ? [0.18,0.55,0.27] :
             (count == 2 ? [0.25,0.75] : (count == 3 ? [0.22,0.16,0.62] : Array(repeating: 1/CGFloat(count), count: count)))
         func tableRow(_ cells: [String], header: Bool) {
             let texts = cells.enumerated().map { (j,s) in attributed(s, header ? 9 : 9.2, header ? "Arial-BoldMT" : "ArialMT") }
@@ -154,11 +166,12 @@ while i < lines.count {
     }
     var text = line; i += 1
     let bullet = line.hasPrefix("- ") || line.hasPrefix("* ")
-    while i < lines.count && !lines[i].isEmpty && !lines[i].hasPrefix("#") && !lines[i].hasPrefix("|") && !lines[i].hasPrefix("```") && !lines[i].hasPrefix("- ") && !lines[i].hasPrefix("* ") {
+    let numbered = line.range(of: #"^\d+\. "#, options: .regularExpression) != nil
+    while i < lines.count && !lines[i].isEmpty && !lines[i].hasPrefix("#") && !lines[i].hasPrefix("|") && !lines[i].hasPrefix("```") && !lines[i].hasPrefix("- ") && !lines[i].hasPrefix("* ") && lines[i].range(of: #"^\d+\. "#, options: .regularExpression) == nil {
         text += " " + lines[i].trimmingCharacters(in:.whitespaces); i += 1
     }
     if bullet { text = "• " + String(text.dropFirst(2)) }
-    paragraph(text, indent: bullet ? 10 : 0)
+    paragraph(text, indent: bullet || numbered ? 10 : 0)
 }
 ctx.endPDFPage();ctx.closePDF()
 let document = PDFDocument(url:url)!
@@ -177,11 +190,11 @@ func annotation(_ text: String, _ x: CGFloat, _ top: CGFloat, _ width: CGFloat, 
     a.contents=text;a.font=NSFont(name:"Arial",size:size);a.fontColor=NSColor.black;a.color=NSColor.clear
     a.shouldPrint=true; toc.addAnnotation(a)
 }
-annotation("Contents",margin,510,width,18)
+annotation("Contents",margin,270,width,18)
 // The contents stop above the two credit lines below: with enough headings,
 // the rows are set closer together instead of running into them.
-let firstRow: CGFloat = 548, lastRow: CGFloat = 712
-let step = min(20, (lastRow-firstRow)/CGFloat(max(headings.count-1,1)))
+let firstRow: CGFloat = 308, lastRow: CGFloat = 712
+let step = min(28, (lastRow-firstRow)/CGFloat(max(headings.count-1,1)))
 var top: CGFloat = firstRow
 for (title,index,_) in headings {
     annotation(title,margin,top,width-45,10)
