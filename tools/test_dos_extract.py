@@ -35,7 +35,8 @@ static int fault,reads,removes,writes,io_error,source_close,alltags,keys;
 static int img_open(const char* p){img_f=tmpfile();return img_f!=NULL;}
 static void message(const char* p){strcpy(note,p);}
 static int is_up(const struct Entry* e){return e->name[0]=='.';}
-static int tag_count(const struct Panel* p){return alltags;}
+static int tag_calls;
+static int tag_count(const struct Panel* p){if(++tag_calls>1)abort();return alltags;}
 static int tagged(const struct Panel* p,unsigned i){return alltags;}
 static int build_full(char* p,const struct Panel* pan,const struct Entry* e){sprintf(p,"%s/%s",pan->path,e->name);return 1;}
 /* The progress bar the extraction shows: never backwards, never past its

@@ -37,7 +37,8 @@ static int fault,reads,removes,writes,io_error,progress_calls,opens;
 static int img_open(const char* p){img_f=tmpfile();return img_f!=NULL;}
 static int is_up(const struct Entry* e){return e->name[0]=='.';}
 static int is_dir(const struct Entry* e){return e->type==0x0F;}
-static int tag_count(const struct Panel* p){return p->tags[0]+p->tags[1]+p->tags[2]+p->tags[3];}
+static int tag_calls;
+static int tag_count(const struct Panel* p){if(++tag_calls>1)abort();return p->tags[0]+p->tags[1]+p->tags[2]+p->tags[3];}
 static int tagged(const struct Panel* p,unsigned i){return p->tags[i];}
 static int build_full(char* p,const struct Panel* pan,const struct Entry* e){if(fault==17)return 0;sprintf(p,"%s/%s",pan->path,e->name);return 1;}
 static void progress_bar(const char* s,unsigned long n,unsigned long total){++progress_calls;}

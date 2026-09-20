@@ -30,6 +30,9 @@ static void gotoxy(unsigned char x,unsigned char y){assert(x<80&&y<24);xpos=x;yp
 static void revers(unsigned char r){rev=r;}
 static void cputc(char c){assert(ypos<24);screen[ypos][xpos]=c;inverse[ypos][xpos]=rev;if(++xpos==80){xpos=0;++ypos;}}
 static void cputs(const char*s){while(*s)cputc(*s++);}
+static unsigned char tag_count(const struct Panel*p){unsigned i,n=0;for(i=0;i<p->count;++i)n+=(p->tags[i>>3]>>(i&7))&1;return n;}
+static void entry_label(const char*s){unsigned char n=0;while(*s){cputc(*s++);++n;}while(n++<15)cputc(' ');}
+static void panel_label(const char*s){unsigned char n;for(n=0;n<38;++n)cputc(*s?*s++:' ');}
 static void cputcxy(unsigned char x,unsigned char y,char c){gotoxy(x,y);cputc(c);}
 static void cclearxy(unsigned char x,unsigned char y,unsigned char n){gotoxy(x,y);while(n--)cputc(' ');}
 static void cprintf(const char*f,...){char b[512];va_list a;va_start(a,f);vsnprintf(b,sizeof b,f,a);va_end(a);cputs(b);}
@@ -74,10 +77,15 @@ int main(void){
 '''
 
 ASM_C = r'''
+#include <stddef.h>
+#include "src/a2fc_plugin.h"
 #include <string.h>
 #include <stdio.h>
 void keys_bar(unsigned char,const char*);
 unsigned int __fastcall__ hex_value(const char*);
+void __fastcall__ panel_label(const char*);
+void __fastcall__ entry_label(const char*);
+unsigned char __fastcall__ tag_count(const void*);
 void activity_tick(void);
 void __fastcall__ activity_begin(const char*);
 static unsigned char phase_bad;
@@ -95,6 +103,28 @@ static const char*spec[]={"", "A Alpha,ESC Back", "AB Two,LONG Label", "X", " La
 int main(void){
  unsigned i,j,refn;static char reftext[1024],refcolors[1024],hex[8];unsigned char r;
  static char boundary[512];void (*api)(unsigned char,const char*)=keys_bar;
+ if(offsetof(struct Panel,count)!=64||offsetof(struct Panel,tags)!=76)return 14;
+ for(i=0;i<3;++i){
+  const char*s=i==0?"":i==1?"Name*            Type  Aux     Size":"123456789012345678901234567890123456789012345";
+  n=bad=0;rev=1;panel_label(s);
+  if(n!=38||bad||rev!=1)return 8;
+  for(j=0;j<38;++j)if(text[j]!=(j<strlen(s)?s[j]:' ')||colors[j]!=1)return 9;
+ }
+ for(i=0;i<3;++i){
+  const char*s=i==0?"":i==1?"FILE.TXT":"ABCDEFGHIJKLMNO/";
+  n=bad=0;rev=1;entry_label(s);
+  if(n!=(strlen(s)>15?strlen(s):15)||bad||rev!=1)return 10;
+  for(j=0;j<n;++j)if(text[j]!=(j<strlen(s)?s[j]:' ')||colors[j]!=1)return 11;
+ }
+ {
+  static unsigned char panel[100];unsigned count,pattern,expected;
+  for(count=0;count<=140;++count)for(pattern=0;pattern<256;++pattern){
+   memset(panel,(unsigned char)pattern,sizeof panel);panel[64]=count;expected=0;
+   for(j=0;j<count;++j)expected+=(pattern>>(j&7))&1;
+   if(tag_count(panel)!=expected)return 12;
+   for(j=0;j<sizeof panel;++j)if(panel[j]!=(j==64?count:pattern))return 13;
+  }
+ }
  /* The simulator executes the production stores. All surrounding text
   * bytes, including the result row, must survive every heartbeat. */
  memset((void*)0x400,0xA5,1024);
@@ -128,7 +158,7 @@ class Display(unittest.TestCase):
         source = (ROOT / 'src/a2fc.c').read_text()
         parts = [section(source, 'static void clear_row(', '#pragma code-name (push, "LC")'),
                  '#include "src/display_types.h"\n',
-                 section(source, 'static unsigned char is_up(', '/* The tags of both panels'),
+                 section(source, 'static unsigned char is_up(', 'unsigned char __fastcall__ tag_count('),
                  section(source, 'static void draw_entry(', '/* The separator line'),
                  section(source, 'static void draw_info(', 'static void draw_all('),
                  section(source, 'static void question_begin(', 'unsigned int __fastcall__ hex_value('),
@@ -163,7 +193,7 @@ static void reference(unsigned char x,const char*spec){
             (p / 'sim.cfg').write_text(cfg.read_text().replace('start = $0200, size = $FDF0', 'start = $2000, size = $DFF0'))
             for cpu, target in [('6502', 'sim6502'), ('65c02', 'sim65c02')]:
                 with self.subTest(cpu=cpu):
-                    subprocess.run([shutil.which('cl65'), '-t', target, '-C', str(p / 'sim.cfg'), '--cpu', cpu, '-O', '-o', str(p / 'test'), str(p / 'test.c'), str(p / 'display.s')], check=True)
+                    subprocess.run([shutil.which('cl65'), '-I', str(ROOT), '-t', target, '-C', str(p / 'sim.cfg'), '--cpu', cpu, '-O', '-o', str(p / 'test'), str(p / 'test.c'), str(p / 'display.s')], check=True)
                     subprocess.run([shutil.which('sim65'), str(p / 'test')], check=True, timeout=60)
 
 

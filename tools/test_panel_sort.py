@@ -45,7 +45,7 @@ static unsigned char dir_next(void) {
 static void draw_panel(unsigned char p) { (void)p; }
 static void draw_info(void) {}
 ''' + section('static unsigned char is_dir(', 'static unsigned char is_locked(') \
-  + section('static unsigned char tagged(', 'static unsigned char tag_count(') \
+  + section('static unsigned char tagged(', 'unsigned char __fastcall__ tag_count(') \
   + section('static int compare(', 'static struct Entry* add_entry(') \
   + section('static struct Entry* add_entry(', '/* DEVNUM') + r'''
 /* What a reread did before: forget the tags, sort the fresh table. */

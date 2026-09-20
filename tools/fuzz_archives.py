@@ -899,9 +899,9 @@ def im_harness():
                'unsigned char fs,cursor,img_len,tags[4];unsigned int count;',
                'its panel')
     c = _patch(c, 'static int tag_count(const struct Panel* p){'
-                  'return p->tags[0]+p->tags[1]+p->tags[2]+p->tags[3];}',
+                  'if(++tag_calls>1)abort();return p->tags[0]+p->tags[1]+p->tags[2]+p->tags[3];}',
                'static int alltags;\n'
-               'static int tag_count(const struct Panel* p){return alltags;}',
+               'static int tag_count(const struct Panel* p){if(++tag_calls>1)abort();return alltags;}',
                'its tag counter')
     c = _patch(c, 'static int tagged(const struct Panel* p,unsigned i){return p->tags[i];}',
                'static int tagged(const struct Panel* p,unsigned i){(void)i;return 1;}',

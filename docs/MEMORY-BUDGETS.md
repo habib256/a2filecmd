@@ -1,6 +1,15 @@
 # Consolidation : budgets mémoire
 
-## État au 20 septembre 2026 (préparation 0.9.1)
+## Préparation 0.9.2 : optimisation et récupération
+
+Après compilation des deux architectures, réserves 65C02/6502 : MAIN
+**83/491**, carte langage **66/57**, LOWRAM **82/107**, écart avant la
+pile **111/708**, HELP **395/369**, IMGFS **1295/1306**, DOSGET **1218/1218**.
+COPY reste à **13/10**. Aucun plafond ni contrôle de disposition modifié.
+L’objectif MAIN 65C02 de 256 octets reste ouvert. Le prototype de cache
+des informations de volume a été écarté pour son coût résident.
+
+## État au 20 septembre 2026 (0.9.1 publiée)
 
 Réserves au lien, en octets, 65C02/6502 ; ce ne sont pas des sommes. Le
 tableau est celui que `tools/check_layout.py` imprime à chaque lien

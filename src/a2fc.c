@@ -232,6 +232,7 @@ static void volume_space(struct Panel* pan)
 static int dir_fd = -1;
 static unsigned char dir_index, dir_per_block, dir_entry_len, dir_error;
 static unsigned int dir_block_key;
+static unsigned int dir_skip_count; /* validated entries omitted by panel paging */
 static struct DirEntry dir_entry;
 
 /* ---------------------------------------------------------------------- */
@@ -358,6 +359,7 @@ static unsigned char img_read_block(unsigned int block, unsigned char* buf)
 static unsigned char dir_open(const char* path)
 {
     dir_error = 0;
+    dir_skip_count = 0;
     dir_img = 0;
     dir_fd = open(path, O_RDONLY);
     if (dir_fd < 0) return 0;
@@ -371,6 +373,7 @@ static unsigned char dir_open(const char* path)
 
 static void dir_close(void)
 {
+    dir_skip_count = 0;
     if (dir_img) { if (img_f && fclose(img_f)) dir_error = 1; img_f = 0; dir_img = 0; return; }
     if (dir_fd >= 0 && close(dir_fd)) dir_error = 1;
     dir_fd = -1;
@@ -417,6 +420,9 @@ static unsigned char dir_next(void)
             dir_entry.name[i] = e[i + 1];
         }
         if (!len) { dir_error = 1; return 0; }
+        /* Skipped pages still validate every name and every block read.
+         * Only decoding metadata for invisible entries is omitted. */
+        if (dir_skip_count) { --dir_skip_count; continue; }
         dir_entry.name[len] = 0;
         dir_entry.type = e[0x10];
         dir_entry.key = e[0x11] | ((unsigned int)e[0x12] << 8);
@@ -485,6 +491,8 @@ extern unsigned char tree_stack_ok(void);
 extern const char MAIN_KEYS[];   /* defined in the language card, further down (LC) */
 extern const char VIEW_KEYS[];   /* in the language card, defined further down */
 
+void __fastcall__ panel_label(const char* text);
+void __fastcall__ entry_label(const char* text);
 void keys_bar(unsigned char x, const char* spec); /* display.s; same plugin ABI */
 
 /* Clears line 23 (79 columns, see keys_bar) before rewriting it. */
@@ -528,12 +536,7 @@ static void set_tag(struct Panel* pan, unsigned char index, unsigned char on)
     else pan->tags[index >> 3] &= ~(1 << (index & 7));
 }
 
-static unsigned char tag_count(const struct Panel* pan)
-{
-    unsigned char i, n = 0;
-    for (i = 0; i < pan->count; ++i) n += tagged(pan, i);
-    return n;
-}
+unsigned char __fastcall__ tag_count(const struct Panel* pan);
 
 /* The tags of both panels, set aside in picked[] while an image, the help
  * or the editor overwrites the entry tables (save = 1), then given back
@@ -589,8 +592,9 @@ static void draw_entry(unsigned char p, unsigned char index)
          * slash push those marks one column right, as it always did. */
         unsigned char dir = is_dir(e);
         if (dir) sprintf(question, "%s/", e->name);
-        cprintf("%-15s%c%c", dir ? question : e->name,
-                tagged(pan, index) ? '*' : ' ', is_locked(e) ? 'L' : ' ');
+        entry_label(dir ? question : e->name);
+        cputc(tagged(pan, index) ? '*' : ' ');
+        cputc(is_locked(e) ? 'L' : ' ');
         if (dir) cprintf("<DIR>          %5u ", e->blocks);
         else cprintf("%s $%04X %8lu   ", type_name(e->type), e->aux, e->size);
     }
@@ -604,17 +608,16 @@ static void draw_panel(unsigned char p)
     extern const char a2fc_header[];
     static const unsigned char sort_column[SORT_MODES] = { 4, 35, 21 };
     ++a2fc_draws;
-    cclearxy(x, 0, 38);
     if (p == active) revers(1);
     gotoxy(x, 0);
     i = strlen(pan->path);
-    cprintf("%-38.38s", !pan->path[0] ? "[Volumes]" : i > 38 ? pan->path + i - 38 : pan->path);
+    panel_label(!pan->path[0] ? "[Volumes]" : i > 38 ? pan->path + i - 38 : pan->path);
     revers(0);
     gotoxy(x, 1);
-    if (!pan->path[0]) cprintf("%-38s", "Volume          Slot   Free/Total");
+    if (!pan->path[0]) panel_label("Volume          Slot   Free/Total");
     else if (pan->first || pan->more) cprintf("%-4u+ disk order    Type  Aux     Size", pan->first);
     else {
-        cprintf("%-38s", a2fc_header);
+        panel_label(a2fc_header);
         cputcxy(x + sort_column[sort_mode], 1, '*');
     }
     for (i = 0; i < ROWS; ++i) draw_entry(p, pan->top + i);
@@ -1011,7 +1014,6 @@ static unsigned char read_panel(unsigned char p)
 {
     struct Panel* pan = &panels[p];
     struct Entry* e;
-    unsigned int skip = pan->first;
     unsigned char ok = 1;
     activity_begin("Reading directory...");
     if (pan->fs) {
@@ -1032,8 +1034,8 @@ static unsigned char read_panel(unsigned char p)
         read_volumes(pan);
     } else {
         if (!pan->first) add_entry(pan, "..", 0x0F);
+        dir_skip_count = pan->first;
         while (dir_next()) {
-            if (skip) { --skip; continue; }
             if (pan->count >= (pan->first ? WINDOW : MAX_ENTRIES)) { pan->more = 1; break; }
             e = fill_entry(pan);
             e->mdate = dir_entry.mdate;
@@ -3030,7 +3032,7 @@ static unsigned char __fastcall__ prepare_audio(unsigned char arg)
 #pragma rodata-name (push, "HELPRO")
 const char msg_nohelp[] = "A2FILE.HELP missing.";
 static const char help_file[] = "A2FILE.HELP";
-static const char HELP_KEYS[] = "ANY Back";
+static const char HELP_KEYS[] = "ANY  Back to panels";
 /* The help text being drawn, and the two readers every line shares. */
 static const char* hs;
 
@@ -4132,10 +4134,11 @@ static void extract_targets(void)
     struct Panel* dst = &panels[!active];
     const struct Entry* e;
     char* cut;
-    unsigned char n = pan->count, i, done = 0, big = 0, r = 1, storage;
+    unsigned char n = pan->count, i, done = 0, big = 0, r = 1, storage, marked;
     if (dst->fs || !dst->path[0]) { strcpy(note, im_target); return; }
     if (!n || !pan->path[0]) return;
-    progress_total = tag_count(pan);
+    marked = tag_count(pan);
+    progress_total = marked;
     if (!progress_total) progress_total = 1;
     progress_done = 0;
     cut = pan->path + pan->img_len;       /* reopen the image without losing the inner path */
@@ -4145,7 +4148,7 @@ static void extract_targets(void)
     *cut = i;
     if (!r) { strcpy(note, im_reopen); return; }
     for (i = 0, e = ENTRY_SNAPSHOT; i < n; ++i, ++e) {
-        if (tag_count(pan) ? !tagged(pan, i) : i != pan->cursor) continue;
+        if (marked ? !tagged(pan, i) : i != pan->cursor) continue;
         ++progress_done;
         if (is_up(e) || is_dir(e)) continue;
         if (!build_full(other_full, dst, e)) { r = 0; break; }
@@ -4296,10 +4299,11 @@ static void dos_extract(void)
     struct Panel* pan = &panels[active];
     struct Panel* dst = &panels[!active];
     char* cut;
-    unsigned char n, i, done = 0, r = 1;
+    unsigned char n, i, done = 0, r = 1, marked;
     if (dst->fs || !dst->path[0]) { message(d3_target); return; }
     n = pan->count;
     if (!n) return;
+    marked = tag_count(pan);
     dos_unit = 0;
     if (pan->img_len) {
         cut = pan->path + pan->img_len;
@@ -4311,7 +4315,7 @@ static void dos_extract(void)
     } else dos_unit = (unsigned char)pan->dir_key;
     for (i = 0; i < n; ++i) {
         const struct Entry* e = &ENTRY_SNAPSHOT[i];
-        if (is_up(e) || (tag_count(pan) ? !tagged(pan,i) : i != pan->cursor)) continue;
+        if (is_up(e) || (marked ? !tagged(pan,i) : i != pan->cursor)) continue;
         if (!build_full(other_full, dst, e)) { r = 0; break; }
         d3_out = NULL; d3_owned = 0;
         if ((r = d3_run(e, 0)) != 0) r = d3_run(e, 1);

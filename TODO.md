@@ -8,6 +8,23 @@ Préserver les données prime ([AGENTS.md](AGENTS.md)). Ne pas relever
 les plafonds ([MEMORY-BUDGETS.md](docs/MEMORY-BUDGETS.md)). Un chantier
 se ferme avec un oracle hôte et un banc POM2.
 
+## 0.9.2 en préparation
+
+- [x] Regrouper les fichiers de démarrage et les overlays fréquents sur disque.
+- [x] Accélérer les libellés des panneaux et le comptage des sélections.
+- [x] Grouper davantage les lectures du chargeur sans tampon supplémentaire.
+- [x] Éviter le décodage des métadonnées précédant la page affichée.
+- [x] Supprimer les recomptages de sélections pendant les extractions.
+- [x] Livrer un guide de récupération, accessible depuis l’aide ProDOS.
+- [ ] Indexer les grands catalogues sans état périmé après changement de disque.
+- [ ] Évaluer un cache sûr des informations de volume ; prototype écarté
+  pour préserver les marges mémoire.
+- [ ] Qualification complète des cinq images avant publication 0.9.2.
+
+[Mesures et limites](docs/PERFORMANCE-0.9.2.md). Les cinq pistes ont une
+première réalisation ; le parcours de catalogue relit encore les blocs
+précédents. Aucun cache persistant n’a été ajouté.
+
 ## 0.9.1
 
 Cinq images, plus de disquettes par catégorie : XL 6502, XL 65C02

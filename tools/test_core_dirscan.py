@@ -20,7 +20,7 @@ static int checked_close(int fd) {int r=close(fd);return fail_close?-1:r;}
 static int dir_fd=-1;
 static FILE* img_f;
 static unsigned char dir_img,dir_error,dir_index,dir_per_block,dir_entry_len;
-static unsigned int dir_block_key;
+static unsigned int dir_block_key,dir_skip_count;
 static int valid_chain;
 static unsigned char tree_room=1;
 static unsigned char tree_stack_ok(void){return tree_room;}
@@ -96,6 +96,12 @@ HARNESS=HARNESS.replace('int main(int argc,char**argv) {',PANEL+'''int main(int 
         copy_buf[2]=3;
         printf("%u ",dir_next());printf("%u\\n",dir_error);return 0;
     }
+    if(argc>2 && !strcmp(argv[2],"skip")) {
+        unsigned char got;
+        if(!dir_open(argv[1]))return 5;
+        dir_skip_count=atoi(argv[3]);got=dir_next();dir_close();
+        printf("%u %u %u %s\\n",got,dir_error,dir_skip_count,got?dir_entry.name:"NONE");return 0;
+    }
     if(argc>2 && !strcmp(argv[2],"panel")) {
         unsigned char ok;panels[0].e=entries;strcpy(panels[0].path,argv[1]);fail_close=argc>3;
         ok=read_panel(0);printf("%u %u %u\\n",ok,panels[0].count,dir_error);return 0;
@@ -119,6 +125,22 @@ class CoreDirscan(unittest.TestCase):
         result=subprocess.check_output([self.exe,f]+(['panel'] if panel else [])+(['close-error'] if close_error else []),text=True)
         self.assertEqual(f.read_bytes(),d)
         return list(map(int,result.split()))
+    def test_paging_skips_metadata_but_keeps_validation_and_errors(self):
+        for damaged in (False, True):
+            data=bytearray(512);data[4]=0xF1;data[35:37]=bytes([39,13])
+            for i,name in enumerate((b'ALPHA',b'BETA',b'GAMMA'),1):
+                off=4+i*39;data[off]=0x10|len(name);data[off+1:off+1+len(name)]=name
+            if damaged:data[44]=ord('/')
+            f=self.p/'skipdir';f.write_bytes(data)
+            out=subprocess.check_output([self.exe,f,'skip','2'],text=True).split()
+            self.assertEqual(out,['0','1','0','NONE'] if damaged else ['1','0','0','GAMMA'])
+            self.assertEqual(f.read_bytes(),data)
+        # A missing linked block in the skipped range is an error, not EOF.
+        data[44]=ord('A');data[2]=3;f.write_bytes(data)
+        out=subprocess.check_output([self.exe,f,'skip','20'],text=True).split()
+        self.assertEqual(out,['0','1','0','NONE'])
+        self.assertEqual(f.read_bytes(),data)
+
     def test_volume_key_leaves_dos_and_image_modes_before_rereading(self):
         result=subprocess.check_output([self.exe,'unused','volumes'],text=True)
         self.assertEqual(result.split(),['0','2'])

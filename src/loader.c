@@ -34,7 +34,7 @@
 extern void set_boot_prefix(void);
 
 #define CODE_ADDR   0x4000
-#define CHUNK       1024
+#define CHUNK       8192
 #define LC_STAGE    0x1000
 #define LC_BYTES    0x0C00      /* the language card image */
 #define STAGE_BYTES 0x0C00      /* nothing else: the RAM above belongs to the overlays */

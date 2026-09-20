@@ -120,7 +120,7 @@ static void copy_check(void)
 #define FI_STATE CP
 #include "plugins/file_install.h"
 
-static const char copy_backup_kept[] = "Check A2FC.COPY / A2FC.BAK; source kept.";
+static const char copy_backup_kept[] = "Check A2FC.COPY / A2FC.BAK; source kept. ? help.";
 static unsigned char copy_finish(void)
 {
     unsigned char installed;

@@ -173,3 +173,81 @@ _activity_begin:
         tax
         pla
         jmp _cputsxy
+
+; Exactly 38 cells, clipped and padded, with the caller's inverse state.
+; Shared scratch with keys_bar; neither calls the other or runs in an IRQ.
+        .export _panel_label
+        .code
+_panel_label:
+        sta kb_ptr
+        stx kb_ptr+1
+        lda #38
+        sta kb_len
+@cell:  jsr kb_peek
+        beq @space
+        pha
+        jsr kb_next
+        pla
+        jmp @put
+@space: lda #' '
+@put:   jsr _cputc
+        dec kb_len
+        bne @cell
+        rts
+
+; Minimum width 15, like %-15s: a 15-character directory plus slash
+; occupies 16 cells. Input names are bounded by the directory reader.
+        .export _entry_label
+_entry_label:
+        sta kb_ptr
+        stx kb_ptr+1
+        lda #15
+        sta kb_len
+@char:  jsr kb_peek
+        beq @pad
+        jsr _cputc
+        jsr kb_next
+        lda kb_len
+        beq @char
+        dec kb_len
+        jmp @char
+@pad:   lda kb_len
+        beq @done
+        lda #' '
+        jsr _cputc
+        dec kb_len
+        bne @pad
+@done:  rts
+
+; Count marks in one pass without repeatedly computing index/8 and bit
+; shifts in C. Ignore unused trailing bits, as the old per-entry loop did.
+; Panel.count is at 64 and Panel.tags at 76 (a2fc_plugin.h ABI).
+        .export _tag_count
+        .importzp tmp1, tmp2, tmp3
+_tag_count:
+        sta ptr1
+        stx ptr1+1
+        ldy #64
+        lda (ptr1),y
+        tax
+        lda #0
+        sta tmp1
+        cpx #0
+        beq @done
+        ldy #76
+@byte:  lda (ptr1),y
+        sta tmp2
+        lda #8
+        sta tmp3
+@bit:   lsr tmp2
+        bcc :+
+        inc tmp1
+:       dex
+        beq @done
+        dec tmp3
+        bne @bit
+        iny
+        bne @byte
+@done:  lda tmp1
+        ldx #0
+        rts

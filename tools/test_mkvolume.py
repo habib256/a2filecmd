@@ -17,6 +17,8 @@ def build(stage, **kw):
     out = stage.parent / 'test.po'
     cmd = [sys.executable, str(ROOT / 'tools/mkvolume.py'), str(stage), str(out),
            '--volume', kw.get('volume', 'TESTVOL'), '--blocks', str(kw.get('blocks', 280))]
+    if kw.get('a2fc_layout'):
+        cmd += ['--a2fc-layout']
     if kw.get('boot'):
         cmd += ['--boot', str(kw['boot'])]
     subprocess.run(cmd, check=True, capture_output=True)
@@ -38,6 +40,41 @@ class Roundtrip(unittest.TestCase):
 
     def tearDown(self):
         self.tmp.cleanup()
+
+    def test_hot_layout_preserves_all_files_and_metadata(self):
+        from prodos_check import check
+        app = self.stage / 'A2FILE'
+        app.mkdir()
+        for name in ('A2FILE.CODE.BIN', 'NAV.PLG#061B00', 'OPEN.PLG#061B00',
+                     'MENU.PLG#061B00', 'COPY.PLG#061B00', 'TEXT.PLG#061B00',
+                     'AAA.PLG#061B00', 'ZZZ.PLG#061B00'):
+            (app/name).write_bytes(name.encode()*60)
+        (self.stage/'PRODOS.SYS').write_bytes(b'prodos'*100)
+        (self.stage/'A2FILE.SYSTEM.SYS').write_bytes(b'launcher'*100)
+        cold, _ = build(self.stage)
+        hot, _ = build(self.stage, a2fc_layout=True)
+        def names(img, key):
+            return [e[1:1+(e[0]&15)].decode() for e in img.entries(key)]
+        self.assertEqual(names(hot,2)[:3], ['PRODOS','A2FILE.SYSTEM','A2FILE'])
+        a = next(e for e in hot.entries(2) if e[1:7]==b'A2FILE' and e[0]>>4==13)
+        self.assertEqual(names(hot,int.from_bytes(a[17:19],'little'))[:6],
+                         ['NAV.PLG','OPEN.PLG','MENU.PLG','A2FILE.CODE','COPY.PLG','TEXT.PLG'])
+        def files(img, key=2, prefix=''):
+            result={}
+            for e in img.entries(key):
+                name=prefix+'/'+e[1:1+(e[0]&15)].decode()
+                if e[0]>>4==13:
+                    result.update(files(img,int.from_bytes(e[17:19],'little'),name))
+                else:
+                    result[name]=(img.read(e),bytes(e[16:17]+e[21:37]))
+            return result
+        self.assertEqual(files(cold), files(hot))
+        self.assertEqual(cold.free_blocks(),hot.free_blocks())
+        result=check(bytes(hot.d))
+        self.assertTrue(result.complete)
+        self.assertEqual(result.findings,[])
+        again,_=build(self.stage,a2fc_layout=True)
+        self.assertEqual(hot.d,again.d)
 
     def test_header_and_layout(self):
         img, _ = build(self.stage)

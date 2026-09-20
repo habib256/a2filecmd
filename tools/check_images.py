@@ -76,6 +76,8 @@ def check_cpu(cpu):
         assert plugins == {name + '.PLG' for name in required}, (path, plugins ^ {n + '.PLG' for n in required})
         assert 'EXTRAS.CAT' not in directory, (path, 'obsolete companion catalog')
         assert 'FORMAT.SYS' not in directory, path
+        assert root['RECOVER'][16] == 4, (path, 'recovery guide is not text')
+        assert image.read(root['RECOVER']) == (ROOT / 'data/RECOVER.TXT').read_bytes(), (path, 'missing or stale recovery guide')
         for name in plugins:
             entry = directory[name]
             assert entry[16] == 6 and int.from_bytes(entry[31:33], 'little') == 0x1B00, (path, name)

@@ -5,6 +5,25 @@ downloads and installation.
 
 ## [Unreleased]
 
+### Faster ProDOS startup and panels
+- Place the launcher and frequently used overlays together on distribution
+  disks; load the resident program in larger reads without an extra buffer.
+- Use compact native routines for panel labels and tag counts. Skip metadata
+  decoding for directory entries before the visible page, retaining read and
+  name validation. Count tags once per image extraction operation.
+- Measured on POM2's NMOS 6502 / Disk II: startup takes 19% fewer cycles,
+  cursor movement 15% fewer and scrolling 21% fewer than 0.9.1.
+  See [method, results and limits](docs/PERFORMANCE-0.9.2.md).
+
+### Recovery instructions and readable help
+- Include `RECOVER` at the root of each ProDOS distribution disk. Explain
+  backup and temporary names, ambiguous states, working on a duplicate and
+  verifying recovered copies without overwriting surviving candidates.
+- Point copy recovery messages to help and help to the guide. Document the
+  limits of recovery after a power failure; no automatic recovery is promised.
+- Space the last help row within 80 columns and give the return-to-panels
+  footer a readable label. Move editor shortcuts onto a separate line.
+
 ## [0.9.1] - 2026-09-20
 
 ### Mockingboard 4c on Apple //c

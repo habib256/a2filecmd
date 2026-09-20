@@ -245,6 +245,38 @@ Menu categories describe tasks and do not require changing disks just to browse.
 | **MOVE** | Move marked entries, or the selected entry without marks. Within a volume, move without copying data blocks, directories included; locked sources are refused. Every path component must still be a directory. A full subdirectory grows if space is available; damaged parent references are refused before writing. Across volumes, a file is copied and verified before its source is deleted; existing destination names are refused, and a size mismatch preserves the source and removes the incomplete copy (if that removal fails, the message says the partial copy stays). A directory bound for another volume, marked or under the cursor, is walked like V does: counted, copied and read back file by file, and its source deleted only once every file has arrived; a copy that stops, or a skipped file, keeps the whole source and stops the batch. Available on every ProDOS edition. |
 | **TREE** | Show file sizes and cumulative directory totals. Space advances a page; ESC exits. |
 
+### Recovering after an interrupted operation
+
+Every ProDOS distribution disk includes **RECOVER**, a text guide at its root.
+Open it with Return; the help screen (`?`) also points to it. It identifies
+COPY, editor, SYNC, conversion and preference recovery files, and explains
+partial moves and extraction outputs. DOS3.3 has a different writer: its
+files must not be interpreted using ProDOS temporary names.
+
+1. Stop retrying. Record the error and both full paths. Preserve a disk image
+   or duplicate before modifying anything; work on that duplicate and recover
+   to a separate healthy disk. If the only copy cannot be read reliably, stop.
+   For `/RAM`, keep power on and refuse operations that reclaim AUX.
+2. Keep the target, temporary and backup. Names, dates and matching sizes
+   cannot establish completeness or identify the original target of a generic
+   `A2FC.BAK`. If the target is unknown, do not guess or restore over a file.
+3. On the duplicate, rename a candidate to an unused name such as `RECOV.OLD`
+   or `RECOV.NEW`, clear tags, then copy it to a fresh recovery directory.
+   This rename is necessary for `A2FC.COPY`, a reserved final copy name.
+   Refuse overwrite, and wait for copying **and verification** to succeed.
+4. Check the recovered contents; compare every byte with a known good source
+   where available. Only then give the recovered copy its intended name in an
+   empty recovery directory. Retain the image and other candidates until the
+   recovery is confirmed. A temporary may be partial; a backup may be old.
+5. For a partial move, compare source and destination file by file. A retained
+   `A2MOVE.LST` is a work list, not file contents or a safe automatic replay.
+   Preserve remaining sources while recovering missing files.
+
+A2FC does not infer a target name from a generic backup, automatically resume
+an interrupted transaction, or guarantee recovery after power loss. The
+bundled guide distinguishes these uncertain states from reported save success
+with backup cleanup failure.
+
 ### Recovery and comparison limits
 
 COPY writes `A2FC.COPY` in the destination directory and verifies its closed

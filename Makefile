@@ -14,7 +14,7 @@
 # every time by tools/check_layout.py, which catches the two overflows that
 # ld65 lets through silently. See docs/MANUAL.md.
 
-A2FC_VERSION = 0.9.1
+A2FC_VERSION = 0.9.2
 VOLUME       = A2FC$(CPU)
 
 # The .2mg hard disk: another volume name, to coexist with the floppy.
@@ -209,7 +209,7 @@ HDV = $(BUILD)/A2FILECMD-XL.hdv
 TWOMG = $(DIST)/A2FILECMD-$(if $(filter 65C02,$(CPU)),65C02-enhanced-mouse-,)XL-$(A2FC_VERSION).2mg
 PO800 = $(DIST)/A2FILECMD-800K-$(A2FC_VERSION).po
 FULLPO = $(BUILD)/A2FILECMD-full.po
-STAGE_DEPS = $(SYSTEM) $(CODE) $(DATA)/A2FILE.HELP.TXT $(DATA)/PRODOS.SYS \
+STAGE_DEPS = $(SYSTEM) $(CODE) $(DATA)/A2FILE.HELP.TXT $(DATA)/RECOVER.TXT $(DATA)/PRODOS.SYS \
        $(DATA)/prodos_boot.tmpl $(TOOLS)/mkvolume.py
 
 ifdef BOTH_EDITIONS
@@ -240,8 +240,9 @@ $(PO): STAGE = $(BUILD)/floppy
 $(PO): $(FLOPPY_SYSTEM) $(STAGE_DEPS) $(XPLG_FLOPPY) $(TOOLS)/po2dsk.py | $(DIST)
 	$(call stage,$(PLUGINS_FLOPPY),$(XPLUGINS_FLOPPY))
 	cp $(FLOPPY_SYSTEM) $(STAGE)/A2FILE.SYSTEM.SYS
+	cp $(DATA)/RECOVER.TXT $(STAGE)/
 	python3 $(TOOLS)/mkvolume.py $(STAGE) $(PO) --volume $(VOLUME) \
-	  --boot $(DATA)/prodos_boot.tmpl --blocks 280
+	  --a2fc-layout --boot $(DATA)/prodos_boot.tmpl --blocks 280
 	@python3 $(TOOLS)/prodos_read.py $(PO) | head -1
 	@echo "==> $(PO): the boot floppy ($(CPU))"
 
@@ -264,7 +265,8 @@ $(PO800): STAGE = $(BUILD)/vol800
 $(PO800): $(STAGE_DEPS) $(XPLG) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS | $(DIST)
 	$(call stage,$(PLUGINS),$(XPLUGINS))
 	cp $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS $(STAGE)/
-	python3 $(TOOLS)/mkvolume.py $(STAGE) $@ --volume A28006502 --boot $(DATA)/prodos_boot.tmpl --blocks 1600
+	cp $(DATA)/RECOVER.TXT $(STAGE)/
+	python3 $(TOOLS)/mkvolume.py $(STAGE) $@ --volume A28006502 --a2fc-layout --boot $(DATA)/prodos_boot.tmpl --blocks 1600
 endif
 
 # XL: the complete edition for the selected CPU.
@@ -279,8 +281,9 @@ $(TWOMG): $(STAGE_DEPS) $(XPLG) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM
 	python3 $(TOOLS)/mkdemo.py $(STAGE)/DEMO
 	cp -R $(DATA)/CP2 $(STAGE)/DEMO/CIDERPRESS
 	cp -R $(DATA)/IMGHGR $(STAGE)/IMGHGR
+	cp $(DATA)/RECOVER.TXT $(STAGE)/
 	python3 $(TOOLS)/mkvolume.py $(STAGE) $(HDV) --volume $(VOLUME_HD) \
-	  --boot $(DATA)/prodos_boot.tmpl --blocks 65535
+	  --a2fc-layout --boot $(DATA)/prodos_boot.tmpl --blocks 65535
 	python3 $(TOOLS)/po22mg.py $(HDV) $(TWOMG)
 	@rm -rf $(STAGE)/DEMO $(STAGE)/IMGHGR   # the stage keeps the program alone (bench/plugin.py picks it up)
 	@echo "==> $(TWOMG): the complete edition ($(ARCH))"
@@ -298,7 +301,7 @@ $(FULLPO): $(STAGE_DEPS) $(FLOPPY_SYSTEM) $(DATA)/BASIC.SYSTEM.SYS
 	cp $(FLOPPY_SYSTEM) $(STAGE)/A2FILE.SYSTEM.SYS
 	cp $(DATA)/BASIC.SYSTEM.SYS $(STAGE)/
 	python3 $(TOOLS)/mkvolume.py $(STAGE) $(FULLPO) --volume A2FILECMD \
-	  --boot $(DATA)/prodos_boot.tmpl --blocks 280
+	  --a2fc-layout --boot $(DATA)/prodos_boot.tmpl --blocks 280
 	@echo "==> $(FULLPO): the bench floppy, core overlays ($(ARCH))"
 
 test: test-mini

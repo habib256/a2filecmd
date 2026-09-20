@@ -128,6 +128,8 @@ step('purple', 'grload', 'dos', {})
 # -- What must never lose a byte ---------------------------------------------
 step('data_safety', '6502', 'safety', {**UNENH, 'A2FC_IMG': 'A2FILECMD-140K'})
 step('data_safety', 'enh', 'safety', FULL, needs=('host', 'boot', 'full-enh'))
+step('recovery', '6502', 'safety', SIX_BUILD)
+step('recovery', 'enh', 'safety', ENH_BUILD)
 step('tree_safety', '6502', 'safety', SIX_BUILD)
 step('tree_safety', 'enh', 'safety', ENH_BUILD)
 step('catalog_safety', '6502', 'safety', SIX_BUILD)

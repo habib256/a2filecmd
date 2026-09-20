@@ -486,3 +486,14 @@ renames, collisions and cancellation from the left panel.
 Host regressions: `tools/test_dos_extract.py`, `tools/test_format_repair.py`,
 `tools/test_file_viewers.py`, `tools/test_overlay_load.py` (including overlapping
 entry snapshots). All are included in `make test`.
+
+### Incident recovery and help layout
+
+`python3 bench/all.py --only recovery --strict` runs both ProDOS CPU editions
+on disposable volumes. It checks the help footer, opens the bundled RECOVER
+guide, refuses the reserved temporary name, then renames and copies a
+candidate on the working volume. After shutdown it compares recovered bytes,
+the old backup and an unrelated destination file.
+
+For startup and panel cycle measurements, see
+[the 0.9.2 methodology](../docs/PERFORMANCE-0.9.2.md).

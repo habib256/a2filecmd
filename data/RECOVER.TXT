@@ -1,0 +1,75 @@
+A2FC - RECOVERY AFTER AN INTERRUPTED OPERATION
+
+1. KEEP THE EVIDENCE
+Stop the failed operation. Do not retry, delete backups, format, or run
+REPAIR yet. Note the exact message, source path and intended target path.
+Make an image or duplicate of the affected disk before changing it. Work
+on that duplicate; keep the original untouched. Use a separate healthy
+disk for recovered files. If reads fail, stop instead of treating the
+file as absent. If no independent copy is possible, seek help first.
+If files are in /RAM, keep power on: do not reboot or allow AUX reclaim.
+
+2. RECOGNIZE THE FILES
+Look in the directory of the intended destination:
+  A2FC.COPY     new copy candidate; A2FC.BAK is the old target candidate
+  A2FC.EDIT     edited candidate; A2FC.ED.BAK is the old text candidate
+  A2FC.SYNC     SYNC candidate; A2FC.BAK is the old target candidate
+  TXTCONV.TMP   converted text; A2FC.BAK is the old target candidate
+  IMGCONV.TMP   converted image; A2FC.BAK is the old target candidate
+In A2FILE/ on the program disk:
+  A2FILE.CFG    preferences; A2FILE.TMP new, A2FILE.BAK old candidate
+  GOTO.CFG      GOTO preferences; GOTO.TMP new, GOTO.BAK old candidate
+A2MOVE.LST in the destination is a move work list, NOT a backup of data.
+Archive/image extraction can leave a partial file under its normal name.
+
+Names alone prove neither completeness nor which file was replaced.
+A generic A2FC.BAK may belong to an earlier operation. If you cannot
+identify the intended target from your notes, preserve every candidate:
+do not guess its name or restore it over another file.
+
+3. UNDERSTAND THE STATE
+Target plus backup: the target may be the newly installed file, with
+cleanup unfinished. Keep both until you have checked their contents.
+Target missing, backup present: the old file may be waiting for restore.
+A temporary file is a new candidate, possibly partial or unverified.
+Temporary plus target: the old target may still be in place. Keep both.
+No backup or temporary does NOT prove that an interrupted write finished.
+A recorded "Saved; ... retained" message means the save reported success
+but could not remove its backup. Read and validate the saved file first.
+After power loss, any of these states needs checking; rename is not atomic.
+
+4. RECOVER WITHOUT OVERWRITING A CANDIDATE
+On the DUPLICATE only, identify one candidate and its original full path.
+Use R to rename it to an unused name, for example RECOV.OLD or RECOV.NEW.
+This is necessary for A2FC.COPY: C cannot copy that reserved name as-is.
+Do not reuse those example names if they already exist; choose new names.
+Put a healthy recovery directory in the other panel, clear tags with ^N,
+select the renamed candidate, then C. Never choose overwrite. Wait for
+copy AND verification to finish. A refusal/error means recovery is not
+confirmed. Keep the source candidate and disk image.
+
+Open the recovered copy with the appropriate reader/program. Compare
+all bytes against a known good source when available (COMPARE on 800K/XL
+or a host tool). A matching size, date or readable beginning is not proof.
+Do not run an unknown recovered program just to test it.
+If the temporary is incomplete, recover the old candidate or retry from
+a known good source to a fresh destination, keeping the failed copy.
+
+Only after verification, give the recovered copy the intended name in
+an EMPTY recovery directory using R. If that name is occupied, keep it
+and choose another directory. Test the file before replacing a working
+copy. Retain the original disk image and candidates until satisfied.
+
+5. PREFERENCES AND PARTIAL MOVES
+For preferences, recover to a separate folder first; do not overwrite a
+live CFG while testing. A2FC can read A2FILE.BAK when CFG is missing, but
+that does not remove the need to check and preserve the candidates.
+For a partial move, check both source and destination file by file. Do
+not replay, edit or delete A2MOVE.LST as a recovery shortcut. Copy missing
+files to a fresh folder and verify them; keep all remaining sources.
+Only then archive/remove the leftover work list on your working copy.
+
+DOS3.3 uses a different writer: the ProDOS names above do not apply.
+Preserve the source and a disk image, and inspect partial destinations
+on a duplicate. No recovery procedure guarantees survival of a power
+failure during a physical disk write.
