@@ -1,0 +1,19 @@
+{
+  "version": "0.9.2",
+  "date": "2026-09-20",
+  "emulator": "POM2 disposable copies; no file operation",
+  "captures": [
+    {
+      "image": "A2FILECMD-DOS3.3-0.9.2.dsk",
+      "sha256": "a230e4f68919bcf08a2bb7900908c18f5af7c1e1b8a8104f0a5d999326ab61a6",
+      "preset": "iie_unenh",
+      "capture": "dos33-panels-0.9.2.png"
+    },
+    {
+      "image": "A2FILECMD-65C02-enhanced-mouse-XL-0.9.2.2mg",
+      "sha256": "da8e644d20f91708d41377b5f162e6f2eb88b119b7563dceb7a895716bd4017f",
+      "preset": "iie",
+      "capture": "prodos-panels-0.9.2.png"
+    }
+  ]
+}

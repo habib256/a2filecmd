@@ -2,180 +2,102 @@
 
 # A2FileCmd
 
-**Two panels. One Apple II.**
+**Two panels. Your Apple II. Start with 48 KB.**
 
-A complete ProDOS file manager for the Apple IIe.\
-Browse disks, unpack archives, read documents, view pictures and play music — in 128 KB.
+Select on one side. Copy to the other.\
+From the essentials of DOS3.3 to a complete ProDOS workspace.
 
 [![Latest release](https://img.shields.io/github/v/release/habib256/a2filecmd?color=0075b6)](https://github.com/habib256/a2filecmd/releases/latest)
 [![Build](https://github.com/habib256/a2filecmd/actions/workflows/ci.yml/badge.svg)](https://github.com/habib256/a2filecmd/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/license-GPL_v3-blue.svg)](LICENSE)
 
-**[Download](https://github.com/habib256/a2filecmd/releases/latest) · [Manual](docs/MANUAL.md) · [Changelog](CHANGELOG.md) · [Plugin SDK](sdk/README.md)**
-
-![A2FileCmd's two panels: files, ProDOS attributes and keyboard commands in 80 columns](docs/screenshots/01-panels.png)
-
-*80 columns. Keyboard and mouse. Boots from a single 5.25" floppy.*
+**[Download](https://github.com/habib256/a2filecmd/releases/latest) · [Read the guide](docs/MANUAL.md) · [11-page PDF](docs/A2FILECMD-MANUAL-EN.pdf)**
 
 </div>
 
-Inspired by [A2Command, Ammonoid and Norton Commander](#inspirations),
-A2FileCmd brings the familiar source-and-destination workflow to your Apple II.
-Tag a group of files and copy them across. Open a disk image like a folder. Unpack a ShrinkIt archive,
-read an AppleWorks letter, or leaf through a directory of double hi-res
-pictures. The tools are right there, beside your files.
+## Start with the essentials: DOS3.3
 
-## What you can do
+An Apple II+, 48 KB and two Disk II drives. One panel for each side of the job:
+choose a file, tag a few more, then copy them across and let A2FileCmd verify
+the result. Read text, inspect bytes, view a hi-res picture or edit a small note.
+Rename, lock and delete are a key away.
 
-| | |
+![A2 File Cmd DOS3.3 0.9.2 showing both catalogs and its keyboard bar](docs/screenshots/dos33-panels-0.9.2.png)
+
+*DOS3.3 is the product distilled: 40 columns, pure 6502 assembly, no ProDOS,
+80-column card or plugins. Fresh POM2 capture of the 0.9.2 preparation build,
+also used on the manual's cover.*
+
+Copies refuse existing destination names, keep the source and read back what was written.
+The bottom bar shows the main keys; **?** opens help. You do not need to learn
+the larger ProDOS toolbox to get started.
+
+## Then grow into ProDOS
+
+The same source-and-destination idea opens up in 80 columns. On an Apple IIe,
+//c or IIgs with 128 KB, browse folders, tag batches and keep your files beside
+the tools that work on them.
+
+![A2 File Cmd ProDOS XL 0.9.2 with demo files in its two panels](docs/screenshots/prodos-panels-0.9.2.png)
+
+*ProDOS XL, captured from the 0.9.2 preparation build in POM2.
+[Capture details](docs/screenshots/panels-0.9.2.json).*
+
+| You want to… | ProDOS gives you… |
 |---|---|
-| **Manage your files** | Copy, move, rename and delete files or whole directory trees. Tag batches, sort by name, size or type, change ProDOS attributes and lock files. Progress bars and overwrite prompts keep transfers clear. |
-| **Explore disks and images** | Browse ProDOS and DOS 3.3 disk images as read-only folders, then extract files to the other panel. Read physical DOS 3.3 disks and copy selected ProDOS files onto them, create and write floppy images, copy floppies and format ProDOS disks. |
-| **Unpack classic archives** | Extract ShrinkIt `.SHK` archives, including LZW/1 and LZW/2 compression, and Binary II `.BNY` archives with their ProDOS file attributes. |
-| **Read, edit and compare** | Text and hex viewers, a 5 KB text editor, readable Applesoft listings, AppleWorks word-processing documents, and AppleWorks data bases and spreadsheets — a sheet is shown as a sheet, column by column, with **F** for the formulas. Compare two files byte by byte, search files for text, or mark differences between panels. |
-| **Enjoy pictures and sound** | Full-screen HGR and DHGR, raw or RLE-compressed. Use the arrow keys to browse pictures like an album. Play `.MB` and `.PT3` music in foreground overlays on a Mockingboard, and Electric Duet songs on the Mockingboard or, without one, on the speaker; Left/Right browse tunes of the same type. PT3 accepts modules up to 65,535 bytes, preserves `/RAM`, and displays title, artist and player credits. |
-| **Make it yours** | Keyboard shortcuts throughout, optional AppleMouse II support and remembered panel settings. Launch SYS, BIN, Applesoft and Integer BASIC programs, or add your own tools with the plugin SDK. |
+| **Organize a disk** | Copy and move directory trees, tags, sorting, attributes, file comparison and a text editor. |
+| **Open old files** | Text, hex, BASIC listings, AppleWorks documents and sheets; extract ShrinkIt, Binary II and other classic archives. |
+| **Browse a collection** | HGR/DHGR and specialist picture viewers, fonts and shapes. Arrow through an album without returning to the panels. |
+| **Listen** | Mockingboard MB1/PT3 playback, including Mockingboard 4c on //c; Electric Duet also plays through the speaker. |
+| **Work with disks** | Browse images as folders, extract files, create/convert images, transfer DOS files, compare, format and check volumes. |
 
-The **!** menu groups tools by category. Choose a category, then a tool;
-Escape goes back one level. Questions on the penultimate line appear in inverse
-video while waiting for your answer.
+**!** opens tools by category. **800K and XL** include the full toolbox;
+the **140K** edition keeps essential file operations on one 5¼-inch disk.
+Mouse support is optional in the **65C02-enhanced-mouse XL** edition.
+See the [guide](docs/MANUAL.md) for supported formats and each tool's limits.
 
-The menu also offers text and disk-image conversion, CRC-32, file
-identification, Markdown reading, volume-wide search, favourite directories,
-batch renaming and type repair. 800K and XL also provide UNDELETE recovery,
-DISKCMP comparison, MKIMAGE creation, RESCUE extraction, SYNC updates and TREE totals. BLKVIEW searches and extracts blocks while preserving the source; DISKIMG reads back disk writes.
-**Write to DOS 3.3 from ProDOS:** open a DOS disk or a DOS image in one panel,
-select a ProDOS TXT/BIN/BAS/INT file in the other and press **C**. DOSWRITE
-(800K/XL) uses the selected Disk II slot, including slot 5. Images (`.DSK`,
-`.DO`, DOS-order `.2MG`) are copied to a verified temporary before replacement.
-One selected file per operation, up to 65,535 bytes; existing DOS names are
-refused and the source is kept. [Usage and limits](docs/MANUAL.md).
+## Choose your disk
 
-**Check a volume, then repair it.** FIXIT walks a ProDOS volume without
-writing a single byte and names every fault it finds -- header and directory
-chains, entry names and access bits, key and index pointers, file and
-directory counters, cross-linked, lost and wrongly marked blocks -- one line
-a check, with its count and its first block. REPAIR then shows a plan, says
-what it refuses and why, and writes nothing until you press **F** and type
-the word FIX in full; every block it writes is read back, and a block it
-cannot verify gets its original rewritten. Above 4,096 blocks both keep
-their findings in auxiliary memory and offer a quick, directories-only pass;
-a 32 MB volume is checked in one walk (800K and XL,
-[details](docs/FIXIT.md)).
+**[0.9.1 is the published release](https://github.com/habib256/a2filecmd/releases/tag/v0.9.1).**
+The screenshots and guide in this branch prepare **0.9.2**, which is not yet
+published. No build is needed to use the release downloads.
 
-NIBCOPY copies standard 16-sector Disk II tracks with one or two drives and
-verified readback ([details](docs/NIBCOPY.md)).
-DISASM reads BIN/SYS files as 6502 or 65C02 assembly and exports text listings.
-FIND combines name/content searches with type and modification-date filters (TAB),
-then continues through successive pages of 20 matches. V on a text result
-shows occurrence offsets and excerpts; ESC returns to the same list.
-VERIFY handles tagged files and VOLINFO exports allocation reports and file blocks.
-DATE, TAGPAT and TXTCONV
-also fit the boot floppy. See the [tool reference](docs/MANUAL.md#find-and-maintain-files).
-
-## See it in action
-
-<table>
-  <tr>
-    <td width="50%"><img src="docs/screenshots/02-dhgr.png" alt="The DHGR viewer displaying a sixteen-colour test card"><br><strong>Double hi-res, full screen</strong><br>Browse HGR and DHGR pictures with the arrow keys.</td>
-    <td width="50%"><img src="docs/screenshots/04-text.png" alt="The text viewer displaying the sample document"><br><strong>Read without leaving your files</strong><br>Page through text, Applesoft listings and AppleWorks documents.</td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="docs/screenshots/05-hex.png" alt="The hex viewer showing bytes alongside their text representation"><br><strong>Look inside any file</strong><br>Inspect hexadecimal bytes and their text side by side.</td>
-    <td width="50%"><img src="docs/screenshots/09-format.png" alt="The ProDOS formatter listing available drives and volumes"><br><strong>Keep your disks ready</strong><br>Format Disk II, SmartPort and RAM volumes.</td>
-  </tr>
-</table>
-
-*Screenshots from v0.5; the current release adds archive extraction, document
-readers and more disk tools. See the [changelog](CHANGELOG.md).*
-
-## Download and boot
-
-**Start with the [latest release](https://github.com/habib256/a2filecmd/releases/latest).**
-No build required. Choose the image that fits your setup:
-
-Download [**0.9.1**](https://github.com/habib256/a2filecmd/releases/tag/v0.9.1):
-Older releases retain their original filenames and category disks.
-
-| Image (0.9.1) | Contents |
+| Your setup | Download from 0.9.1 |
 |---|---|
-| `A2FILECMD-XL-0.9.1.2mg` | Complete 32 MB ProDOS image, 6502, all tools and examples |
-| `A2FILECMD-65C02-enhanced-mouse-XL-0.9.1.2mg` | Complete XL; 65C02 **and** enhanced ROM required, mouse support optional |
-| `A2FILECMD-DOS3.3-0.9.1.dsk` | Standalone Mini, DOS 3.3, Apple II+ 48 KB, 40 columns |
-| `A2FILECMD-800K-0.9.1.po` | Bootable 800 KB ProDOS image, 6502, all tools and BASIC runtimes, no demo corpus |
-| `A2FILECMD-140K-0.9.1.dsk` | Bootable 5¼-inch ProDOS disk, 6502, essential file operations, editor, text/hex readers, format and verify |
+| **Apple II+ · 48 KB · two Disk II drives** | [DOS3.3 — standalone 40-column edition](https://github.com/habib256/a2filecmd/releases/download/v0.9.1/A2FILECMD-DOS3.3-0.9.1.dsk) |
+| **ProDOS · one 5¼-inch program disk** | [140K — essentials, 6502](https://github.com/habib256/a2filecmd/releases/download/v0.9.1/A2FILECMD-140K-0.9.1.dsk) |
+| **ProDOS · all tools without sample media** | [800K — complete, 6502](https://github.com/habib256/a2filecmd/releases/download/v0.9.1/A2FILECMD-800K-0.9.1.po) |
+| **ProDOS · hard disk or emulator** | [XL — complete with demonstrations, 6502](https://github.com/habib256/a2filecmd/releases/download/v0.9.1/A2FILECMD-XL-0.9.1.2mg) |
+| **ProDOS · 65C02 and enhanced ROM** | [XL — enhanced 65C02, optional mouse](https://github.com/habib256/a2filecmd/releases/download/v0.9.1/A2FILECMD-65C02-enhanced-mouse-XL-0.9.1.2mg) |
 
-**Five self-contained images replace the category disks.** XL includes all
-82 overlays, BASIC.SYSTEM, INTBASIC.SYSTEM, `DEMO/` and `IMGHGR/`. The 800K
-edition has the same tools without the demo corpus. The 140K edition has
-18 overlays and lists available tools in its menu; advanced tools require
-booting 800K or XL. Its spare space allows preferences to be saved repeatedly.
+All ProDOS editions require **128 KB and 80 columns**. The 6502 editions also
+work on enhanced machines. Choose enhanced XL only when **both the CPU and
+ROM** qualify; a 65C02 upgrade alone is not enough. Mouse and Mockingboard
+hardware are optional. Each disk is self-contained: there are no category
+disks to juggle. DOS3.3 remains a separate program with its own commands.
 
-The 6502 ProDOS editions need 128 KB and 80 columns. The enhanced XL needs
-**both a 65C02 processor and enhanced ROM**. An enhanced IIe with a 6502
-put back in, or an unenhanced IIe with a 65C02 accelerator, needs the 6502
-edition. The launcher checks both. **Mouse support is optional:** the
-`mouse` in the filename does not require a mouse to be connected.
-Mini is separate and needs only 48 KB on an Apple II+.
+### Your first minute
 
-1. Boot the image matching your machine and storage. ProDOS 8 is included
-   in the ProDOS images. 140K and Mini use DOS-order `.dsk`; 800K is a
-   ProDOS-order `.po`; XL uses `.2mg`. Do not convert by renaming extensions.
-2. Press **TAB** to switch panels, **Return** to open, **Escape** to go up
-   and **?** for help.
-3. On XL, explore `DEMO/` in the right panel. 140K and 800K start with the
-   available volumes in the right panel.
+1. **Boot the matching image.** DOS3.3 can also start with `BRUN A2FC`;
+   ProDOS starts with `A2FILE.SYSTEM` from a selector.
+2. **Try the shared basics:** TAB switches panels, arrows select, Return opens,
+   Space tags, **C** copies and **?** shows the edition's help.
+3. **Use a spare disk for a first copy.** In DOS3.3, `/` selects the active
+   panel's drive. In ProDOS, `/` lists volumes; open the destination opposite.
+4. **On XL, explore DEMO.** Read `SAMPLE`, open an HGR/DHGR picture, browse
+   `TINY.PO`, or play `CANON.ED` through the speaker. Advanced tools are in **!**.
 
-`make disk` builds all five images. `ARCH=6502` builds 140K, 800K, XL and
-Mini; `ARCH=enh` builds only 65C02-enhanced-mouse XL.
-
-A **Mockingboard** enables music playback (including the **Mockingboard 4c**
-on Apple //c at `$C400–$C4FF`); an **AppleMouse II** enables point
-and click navigation. Both are optional and can be in any supported slot.
-
-**Tested on real hardware:** Apple //c, enhanced Apple IIe and unenhanced
-Apple IIe, by the maintainer and by testers, who report it working as
-expected. Also tested in [Virtual II](https://www.virtualii.com/) and
-[POM2](https://github.com/habib256/pom2), including the //c and unenhanced
-1983 IIe with the 6502 build.
-
-### Take a quick tour
-
-The hard-disk image includes examples generated especially for A2FileCmd:
-
-- Open `DHGR.RLE` or `HGR.RAW` to see the picture viewer; use **Left / Right** to browse.
-- Read `SAMPLE`, list the `HELLO` Applesoft program with **`T`**, or open the AppleWorks `LETTER`.
-- Open `TINY.PO`, `TINY.2MG` or `DOS33.DSK` as a folder; **`C`** extracts a selected file to the other panel.
-- Select `SAMPLE.SHK` or `SAMPLE.BNY`, press **`!`** and choose its extractor.
-- With a Mockingboard, open `WELCOME.MB` for a fanfare; **`P`** pauses or resumes it.
-- Open `CANON.ED`, an Electric Duet canon, on the Mockingboard or on the speaker; **`1`**/**`2`** switch outputs. Legacy DOS songs named `M.*` also open with Return. For old BIN/$0000 copies, mark the songs and run **! → Files → FIXTYPES** to review `$D5/$D0E7` repairs; names and content stay intact.
-
-> **Using `/RAM`?** DHGR pictures and single-drive floppy copying use auxiliary
-> memory and can rebuild `/RAM` empty. A2FC asks for explicit consent before
-> destructive AUX use. Save its files elsewhere first. MB1/PT3/Electric Duet
-> playback uses main memory, preserves `/RAM`, and returns to both panels when
-> the music ends.
-
-### Install on an existing hard disk
-
-Copy `A2FILE.SYSTEM` and the complete `A2FILE/` folder **side by side** into
-any directory. Keep the program and its overlays from the same release.
-Launch `A2FILE.SYSTEM` from Bitsy Bye or with `-A2FILE.SYSTEM` from BASIC
-in that directory. Settings and support files live beside the program.
+DOS3.3 and 140K are DOS-order `.dsk`; 800K is ProDOS-order `.po`; XL is `.2mg`.
+Changing the extension does not convert a disk. To install ProDOS elsewhere,
+keep `A2FILE.SYSTEM` and its complete `A2FILE/` folder side by side, from the
+same build. For 0.9.2, copy the root `RECOVER` guide as well.
 
 <details>
-<summary>Verify your download</summary>
+<summary>Check a downloaded image</summary>
 
-Download `SHA256SUMS-<version>.txt` from the same release into the image's
-directory, with `<version>` the release you downloaded. To verify one image
-on macOS:
-
-```sh
-shasum -a 256 A2FILECMD-65C02-enhanced-mouse-XL-<version>.2mg
-```
-
-Compare the result with its line in `SHA256SUMS-<version>.txt`. To check
-every image and the PDF together on Linux:
+Get `SHA256SUMS-<version>.txt` from the same release. Compare the output of
+`shasum -a 256 <image>` on macOS with its entry. With every release image and
+the PDF together, Linux can check the whole set:
 
 ```sh
 sha256sum -c SHA256SUMS-<version>.txt
@@ -183,107 +105,58 @@ sha256sum -c SHA256SUMS-<version>.txt
 
 </details>
 
-## The keys you'll use most
+## Keep the originals safe
 
-| Key | Action |
-|---|---|
-| `TAB` · `RETURN` · `ESC` | Switch panel · open · go up |
-| Up / Down · Left / Right | Select an entry · page through a directory |
-| `SPACE` | Tag a file for a batch operation |
-| `C` · `V` · `R` · `D` · `K` | Copy · move · rename · delete · make directory — a full-width progress bar, panels updating file by file, `ESC` to stop |
-| `T` · `H` · `I` · `E` | Read text or a document · inspect hex · view a picture · edit text |
-| `W` · `F` | Disk-image tools · format a disk |
-| `!` | Open the plugin menu, including archive extraction, compare and search |
-| `?` · `Q` | Help · quit to ProDOS |
+A2FileCmd checks copies, preserves originals during supported replacements,
+and names files left for recovery when an operation cannot finish. **Read the
+result before retrying or removing a disk.** Verification cannot make a
+physical metadata write atomic through a power cut.
 
-With a mouse, click a file to select it and click again to open it. Column
-headers change the sort order; the path goes up; the bottom bar runs commands.
-The [manual](docs/MANUAL.md) covers every shortcut and file format.
-A [printable PDF](docs/A2FILECMD-MANUAL-EN.pdf) is also included in each release.
+Some ProDOS tools need auxiliary memory and can clear **all files in /RAM**.
+They ask before using it; save those files elsewhere first. Music playback
+preserves /RAM. DOS3.3 has no auxiliary-memory requirement; once a disk write
+starts, its keyboard cannot interrupt it.
 
-<details>
-<summary>Limits to keep in mind</summary>
+The 0.9.2 guide includes a practical [incident recovery procedure](docs/MANUAL.md#recover-after-an-incident):
+identify the temporary or backup, preserve a disk image, and recover from a
+duplicate to a fresh destination. [Data-safety details](docs/DATA-SAFETY.md)
+explain the protections and remaining limits.
 
-- Large directories are read in windows of 139 disk entries plus the parent entry, in disk order without sorting.
-- ProDOS paths are limited to 64 characters.
-- The text editor holds 5,104 bytes; a `.MB` tune must fit in 4,096 bytes.
-- Images opened as folders are read-only. Extract files before viewing or editing them; ProDOS image extraction supports files up to 128 KB, and subdirectories must be entered individually.
-- Launching another program replaces A2FileCmd. The FORMAT overlay returns directly to the panels; from Applesoft, you can relaunch A2FileCmd as described in the manual.
+## Read, build or contribute
 
-</details>
+- **Use it:** [manual](docs/MANUAL.md), [printable PDF](docs/A2FILECMD-MANUAL-EN.pdf),
+  [changes](CHANGELOG.md) and [roadmap](TODO.md).
+- **Explore DOS3.3:** [developer guide and measurements](docs/MINI-DOS33.md).
+- **Add a ProDOS tool:** [plugin SDK](sdk/README.md), with an example and build script.
+- **Test it:** [emulator benches](bench/README.md) and [real-hardware checklist](docs/HARDWARE-CHECKLIST.md).
+- **Report a problem:** [open an issue](https://github.com/habib256/a2filecmd/issues)
+  with version, machine/emulator, disk format, exact message and reproduction steps.
 
-## Build it. Extend it.
-
-A2FileCmd is written in C and 6502 assembly, built with **cc65 2.19 or later**
-and **Python 3**. The disk-image tools and demo generators are included.
+With the cc65 toolchain installed:
 
 ```sh
-make          # build the ProDOS program and its overlays
-make disk     # five 6502 floppies (.po/.dsk), plus XL 6502 and 65C02 (.2mg)
-make test     # run checks that do not need an Apple II
+make mini    # standalone DOS3.3 binary
+make         # ProDOS program and overlays
+make disk    # all five distribution images
+make test    # host checks
 ```
 
-`make bench` exercises the program in [POM2](https://github.com/habib256/pom2).
-See the [bench guide](bench/README.md) for setup and coverage.
-
-Want to add a tool? The **[plugin SDK](sdk/README.md)** includes a worked
-example, a build script and a stable API. Plugins appear in the **`!`** menu
-and work with the selected file.
-
-| Directory | Contents |
-|---|---|
-| [`src/`](src/) | File manager, launcher, drivers and plugins |
-| [`sdk/`](sdk/) | Plugin guide, example and build tools |
-| [`tools/`](tools/) | Disk-image tools, format readers and demo generators |
-| [`bench/`](bench/) | Emulator sessions and verification |
-| [`data/`](data/) | Help, boot blocks, ProDOS and BASIC.SYSTEM |
-| [`docs/`](docs/) | Manual, data-safety and memory notes, Mini guide, dated reports in `history/` ([index](docs/README.md)) |
-
-Found a bug or have an idea? [Open an issue](https://github.com/habib256/a2filecmd/issues).
-For a bug, include the release, machine or emulator, disk format and steps to reproduce it.
-
-## Inspirations
-
-A2FileCmd owes a tip of the hat to these file managers. Explore the programs
-that inspired it, from the classic two-panel workflow to serial virtual drives:
-
-| Inspiration | What it brings to A2FileCmd | Disk-image download |
-|---|---|---|
-| **A2Command** | The Commander-style file and disk manager on Apple II. | [A2Command 1.1 — ZIP containing `a2cmd-1.1-140k.po`](https://mirrors.apple2.org.za/ftp.apple.asimov.net/utility/A2Command%20v1.1.zip), preserved by the Asimov mirror. |
-| **[Ammonoid](https://github.com/colinleroy/a2tools)**, by Colin Leroy | An Apple II file manager and an inspiration for integrated serial virtual drives. | [Download `ammonoid.po`](https://github.com/colinleroy/a2tools/releases/latest/download/ammonoid.po) from the author's latest release. |
-| **Norton Commander** | The classic two-panel interface and keyboard command bar. | [Norton Commander 3.0 — floppy images on WinWorld](https://winworldpc.com/download/d0ee2b62-911a-11ec-84e0-0200008a0da4) (7z archive; choose a download mirror). **For IBM PC compatibles running DOS.** |
+Previous versions have been tried on real //c, enhanced and unenhanced IIe
+machines by the maintainer and testers, and in Virtual II and
+[POM2](https://github.com/habib256/pom2). Current-release qualification is
+tracked separately; emulator results are not a physical-drive guarantee.
+Contributors must follow [AGENTS.md](AGENTS.md): preserving data comes first.
 
 ## Credits
 
-Created by **Arnaud VERHILLE** (`@habib256`). Free software under the
-[GNU GPL v3](LICENSE), in the spirit of A2Command, Ammonoid and Norton Commander.
+Created by **Arnaud Verhille** (`@habib256`), under [GNU GPL v3](LICENSE).
+Inspired by **A2Command**, **Ammonoid** by Colin Leroy and **Norton Commander**.
+[Full attributions and reference links](docs/CREDITS.md) identify reused code,
+formats and test material, including cc65, Hyper-FORMAT, Electric Duet,
+CiderPress II and the PT3 player work.
 
-The disk images include **ProDOS 8 2.4.3** and **BASIC.SYSTEM**, distributed
-for the Apple II community by John Brooks; these are Apple's software.
-800K and XL also include [INTBASIC.SYSTEM v0.9](https://github.com/a2stuff/intbasic),
-by Joshua Bell; see [its provenance and credits](data/INTBASIC.md).
-The low-level 5.25" formatter descends from **ProDOS Hyper-FORMAT** by
-Jerry Hewett (1985, public domain) and Gary Desrochers (1989), as carried by ADTPro.
-All the demo pictures, music, documents and archives are generated by `tools/mkdemo.py`.
-
-A2FileCmd grew out of an Apple IIe game and became a project of its own.
-Its companion emulator, [POM2](https://github.com/habib256/pom2), is by the same author.
-
-### Data safety and contributions
-
-Preserving user data is a central requirement. Every AI or contributor must
-follow [AGENTS.md](AGENTS.md). See the [data-safety audit](docs/DATA-SAFETY.md)
-for protections, failure tests, recovery files and remaining limitations.
-
-## Apple II+: A2FC Mini DOS 3.3
-
-A standalone edition for 48 KB machines with two panels in 40 columns:
-independent DOS 3.3 catalogs, verified copying between drives, a hi-res
-viewer, a basic text editor, exclusive TXT creation, tagged selection and
-delete that marks the catalog before freeing sectors. Only changed screen
-characters are rewritten. The interface and bundled documentation are in English.
-Written entirely in 6502 assembly. A catalog read takes a third of the time it
-used to, and a 48-sector copy a quarter. Since 0.8.5 the Mini carries the same
-release number as the ProDOS edition.
-Build with `make mini`. See the [Mini DOS 3.3 guide](docs/MINI-DOS33.md)
-for the disk image, the controls and the measurements.
+ProDOS images include ProDOS 8 2.4.3; 800K and XL supply BASIC.SYSTEM,
+Apple software distributed for the community by John Brooks, and
+[INTBASIC.SYSTEM](data/INTBASIC.md) by Joshua Bell. Generated demonstrations and third-party
+samples are distinguished in their source notices. The companion emulator
+[POM2](https://github.com/habib256/pom2) is a separate project by the same author.

@@ -1,0 +1,24 @@
+S6,D1 / V254       :S6,D1 / V254        
+NAME            T L:NAME            T L 
+HELLO           A L:HELLO           A L 
+A2FC            B L:A2FC            B L 
+README          T L:README          T L 
+TIGER           B L:TIGER           B L 
+                   :                    
+                   :                    
+                   :                    
+                   :                    
+                   :                    
+                   :                    
+                   :                    
+                   :                    
+                   :                    
+                   :                    
+                   :                    
+                   :                    
+                   :                    
+                   :                    
+                   :                    
+A2FC MINI DOS 3.3  4 FILES              
+HELLO                          2 S      
+TABPAN COPY DEL BRUN /DRV ?HELP QUIT    

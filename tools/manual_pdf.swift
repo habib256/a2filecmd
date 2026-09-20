@@ -79,11 +79,29 @@ newPage()
 y = 84
 paragraph("A2 FILE CMD", size: 30, font: "Arial-BoldMT", gap: 12)
 paragraph("User guide · \(guideVersion)", size: 19, gap: 16)
-paragraph("ProDOS: 140K essential · 800K complete · XL 6502", size: 12, gap: 8)
-paragraph("XL enhanced 65C02 with optional mouse · DOS3.3", size: 12, gap: 8)
+paragraph("DOS3.3: the essentials · ProDOS: the complete workspace", size: 12, gap: 8)
+paragraph("From 48 KB and 40 columns to 128 KB and 80 columns", size: 12, gap: 8)
 if source.contains("— Preparation edition.") {
     paragraph("Preparation edition — release qualification in progress", size: 10, gap: 8)
 }
+// Use the manual's first image on the cover; the Markdown names its actual
+// capture, so a new edition cannot silently keep an unrelated screenshot.
+let imagePattern = try! NSRegularExpression(pattern: #"!\[([^\]]*)\]\(([^)]+)\)"#)
+let sourceText = source as NSString
+guard let imageMatch = imagePattern.firstMatch(in:source, range:NSRange(location:0,length:sourceText.length)) else {
+    fatalError("The manual needs a current panels screenshot")
+}
+let screenshotURL = URL(fileURLWithPath:input).deletingLastPathComponent()
+    .appendingPathComponent(sourceText.substring(with:imageMatch.range(at:2)))
+guard let screenshot = NSImage(contentsOf:screenshotURL),
+      let panelImage = screenshot.cgImage(forProposedRect:nil,context:nil,hints:nil) else {
+    fatalError("Cannot load panels screenshot: \(screenshotURL.path)")
+}
+let imageWidth = min(220,172 * CGFloat(panelImage.width) / CGFloat(panelImage.height))
+let imageHeight = imageWidth * CGFloat(panelImage.height) / CGFloat(panelImage.width)
+ctx.interpolationQuality = .none
+ctx.draw(panelImage,in:CGRect(x:(W-imageWidth)/2,y:H-250-imageHeight,width:imageWidth,height:imageHeight))
+draw(attributed(sourceText.substring(with:imageMatch.range(at:1)),8),margin,430,width,16)
 
 let contentsIndex = page-1
 newPage()
@@ -101,6 +119,7 @@ while i < lines.count {
         continue
     }
     if line.hasPrefix("![") { i += 1; continue }
+    if line.hasPrefix("**Version ") { i += 1; continue } // already on the cover
     if line.trimmingCharacters(in: .whitespaces).isEmpty { i += 1; continue }
     if line.hasPrefix("#") {
         let level = line.prefix(while: {$0 == "#"}).count
@@ -193,17 +212,17 @@ func annotation(_ text: String, _ x: CGFloat, _ top: CGFloat, _ width: CGFloat, 
     a.contents=text;a.font=NSFont(name:"Arial",size:size);a.fontColor=NSColor.black;a.color=NSColor.clear
     a.shouldPrint=true; toc.addAnnotation(a)
 }
-annotation("Contents",margin,270,width,18)
+annotation("Contents",margin,460,width,18)
 // The contents stop above the two credit lines below: with enough headings,
 // the rows are set closer together instead of running into them.
-let firstRow: CGFloat = 308, lastRow: CGFloat = 712
+let firstRow: CGFloat = 498, lastRow: CGFloat = 712
 let step = min(28, (lastRow-firstRow)/CGFloat(max(headings.count-1,1)))
 var top: CGFloat = firstRow
-for (title,index,_) in headings {
+for (title,index,headingTop) in headings {
     annotation(title,margin,top,width-45,10)
     annotation("\(index+1)",W-margin-30,top,30,10)
     let link = PDFAnnotation(bounds:CGRect(x:margin,y:H-top-step,width:width,height:step),forType:.link,withProperties:nil)
-    link.destination = PDFDestination(page:document.page(at:index)!,at:CGPoint(x:margin,y:H-margin))
+    link.destination = PDFDestination(page:document.page(at:index)!,at:CGPoint(x:margin,y:H-headingTop))
     toc.addAnnotation(link);top += step
 }
 annotation("By Arnaud Verhille · GNU GPL v3",margin,max(top+14,750),width,9)

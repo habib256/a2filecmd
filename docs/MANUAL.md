@@ -2,9 +2,12 @@
 
 **Version 0.9.2** — Preparation edition. By Arnaud Verhille, GNU GPL v3.
 
+![A2 File Cmd DOS3.3 0.9.2: two panels captured in POM2](screenshots/dos33-panels-0.9.2.png)
+
 ## Contents
 
-- [Choose and start an edition](#choose-and-start-an-edition)
+- [A2 File Cmd DOS3.3](#a2-file-cmd-dos33)
+- [From DOS3.3 to ProDOS](#from-dos33-to-prodos)
 - [Keys and panels](#keys-and-panels)
 - [Copy, move and edit](#copy-move-and-edit)
 - [Recover after an incident](#recover-after-an-incident)
@@ -14,26 +17,85 @@
 - [Work with disks and images](#work-with-disks-and-images)
 - [Find and maintain files](#find-and-maintain-files)
 - [Limits, troubleshooting and VDrive](#limits-troubleshooting-and-vdrive)
-- [A2 File Cmd DOS3.3](#a2-file-cmd-dos33)
 - [Credits and further reading](#credits-and-further-reading)
 
-## Choose and start an edition
+## A2 File Cmd DOS3.3
 
-A2 File Cmd has two panels: select files on one side and open their destination
-on the other. This guide covers two separate programs. **ProDOS** needs an
-Apple IIe, //c or IIgs with **128 KB and 80 columns**. **DOS3.3** needs an Apple
-II+ with **48 KB**, uses 40 columns and has its own commands near the end of
-this guide. ProDOS plugins and recovery filenames do not apply to DOS3.3.
+Two panels, a source and a destination: DOS3.3 distils A2 File Cmd into
+selecting, reading, editing and verified copying. It uses an **Apple II+ with
+48 KB**, NMOS 6502, 40 columns and **two Disk II drives on the boot controller**.
+The following chapters extend this workflow with ProDOS folders and tools.
+
+Boot `A2FILECMD-DOS3.3-0.9.2.dsk`, or use **BRUN A2FC** from DOS 3.3. Both panels
+start on the boot disk; each remembers drive, selection and scroll. Catalogs
+hold up to 105 files and show 19 rows. `?` opens help.
+
+| Keys | Action |
+|---|---|
+| TAB/Ctrl-I or 1; / or 4 | Switch panels; change active drive. |
+| Up/Down or I/K; Left/Right | Previous/next file; previous/next page. [/] first/last. |
+| Return or 2; T/H/G; B | Open; force text/hex/hi-res; confirm BRUN. |
+| Space; Ctrl-T/N; * | Tag one; all/none; invert tags. |
+| C or 3; N/E; D/R/L | Copy; new/edit text; delete/rename/lock. |
+| Ctrl-R or 5; = | Reread both panels; same disk opposite. |
+| ? or 6; Q or 7; Escape | Help; confirm quit; leave preview/help/editor. |
+
+Questions use **Y** to confirm and **N/Escape** to cancel. Other keys do not
+confirm. Escape in the browser has no effect: DOS has no parent directories.
+After changing a disk, reread with Ctrl-R. Prompts and the result occupy the
+footer; read them before inserting another disk.
+
+### Copy and edit
+
+1. Put the panels on different drives using TAB and `/`.
+2. Select/tag the sources and press C. Check `COPY name?` or the marked count.
+3. Confirm Y, then wait for the progress bar and final result. **Once started,
+   the disk-writing operation cannot be interrupted from the keyboard.**
+
+Copies preserve DOS names, type, lock flag and all data-sector bytes. Existing
+names are skipped. Destination sectors are reserved first, written and read
+back, then the catalog entry is published. An uncertain write stops the batch;
+the source is neither written nor deleted. There is no single-drive copy by
+swapping disks.
+
+N/E uses the same exclusive writer. E accepts at most **8 KB** and refuses larger
+files rather than truncating them. It always saves to a new name. R refuses an
+existing name or locked file. D skips locked files; L toggles the cursor's lock,
+or unlocks a tagged set if any member is locked, otherwise locks the set.
+
+### Preview and limits
+
+Return identifies text, hi-res or a binary program from content and DOS headers;
+a program asks `BRUN NAME?`. T/H previews only the first 256 stored bytes; G
+shows the first 8 KB as hi-res. A valid 8 KB BIN load at $2000/$4000 is a picture;
+unsupported or unsafe program headers fall back to hex. BRUN leaves A2FC.
+
+Only standard 35-track, 16-sector DOS 3.3 is supported. Sparse/inconsistent
+chains, reserved-track data, 13-sector, 40-track and protected formats are
+refused. Before a write, the catalog entry must still match the panel's identity;
+a changed disk is refused, though a byte-identical twin cannot be distinguished.
+Physical write protection is checked. After an uncertain error, reserved space
+is retained and further writes are blocked for that run: preserve and inspect a
+copy of the disk. Readback cannot repair metadata damaged by a power failure.
+
+<!-- pagebreak -->
+
+## From DOS3.3 to ProDOS
+
+ProDOS builds on the same two-panel workflow: folders, attributes, archives,
+documents, pictures, music and disk tools. It needs an **Apple IIe, //c or IIgs
+with 128 KB and 80 columns**. This is a separate program: its commands, plugins
+and recovery filenames do not apply to the DOS3.3 edition introduced first.
 
 ### Five self-contained images
 
 | Image | Choose it for |
 |---|---|
+| `A2FILECMD-DOS3.3-0.9.2.dsk` | Standalone DOS 3.3 file manager for Apple II+ and two Disk II drives. |
 | `A2FILECMD-140K-0.9.2.dsk` | One 5¼-inch ProDOS disk with essential file operations and text editing; 6502. |
 | `A2FILECMD-800K-0.9.2.po` | All ProDOS tools and BASIC runtimes, without the demonstration corpus; 6502. |
 | `A2FILECMD-XL-0.9.2.2mg` | Complete 32 MB ProDOS edition with tools and demonstrations; 6502. |
 | `A2FILECMD-65C02-enhanced-mouse-XL-0.9.2.2mg` | Complete XL with MouseText and optional mouse support. Requires both 65C02 and enhanced ROM. |
-| `A2FILECMD-DOS3.3-0.9.2.dsk` | Standalone DOS 3.3 file manager for Apple II+ and two Disk II drives. |
 
 The ProDOS 6502 editions also run on enhanced machines. A 65C02 processor
 alone does not make an unenhanced IIe suitable for the enhanced edition;
@@ -482,67 +544,6 @@ For reproducible failures, note the A2FC version/edition, machine, disk type,
 full paths, exact message and actions. Keep a disk image before any repair.
 The project's issue tracker and detailed data-safety notes are linked in the
 last chapter. Automated emulator tests do not replace trials on physical drives.
-
-<!-- pagebreak -->
-
-## A2 File Cmd DOS3.3
-
-This standalone program uses an **Apple II+ with 48 KB**, NMOS 6502, 40 columns
-and **two Disk II drives on the boot controller**. It needs no ProDOS, auxiliary
-memory, language card, plugin or 80-column card. Its commands and recovery model
-are separate from the ProDOS edition.
-
-Boot `A2FILECMD-DOS3.3-0.9.2.dsk`, or use **BRUN A2FC** from DOS 3.3. Both panels
-start on the boot disk; each remembers drive, selection and scroll. Catalogs
-hold up to 105 files and show 19 rows. `?` opens help.
-
-| Keys | Action |
-|---|---|
-| TAB/Ctrl-I or 1; / or 4 | Switch panels; change active drive. |
-| Up/Down or I/K; Left/Right | Previous/next file; previous/next page. [/] first/last. |
-| Return or 2; T/H/G; B | Open; force text/hex/hi-res; confirm BRUN. |
-| Space; Ctrl-T/N; * | Tag one; all/none; invert tags. |
-| C or 3; N/E; D/R/L | Copy; new/edit text; delete/rename/lock. |
-| Ctrl-R or 5; = | Reread both panels; same disk opposite. |
-| ? or 6; Q or 7; Escape | Help; confirm quit; leave preview/help/editor. |
-
-Questions use **Y** to confirm and **N/Escape** to cancel. Other keys do not
-confirm. Escape in the browser has no effect: DOS has no parent directories.
-After changing a disk, reread with Ctrl-R. Prompts and the result occupy the
-footer; read them before inserting another disk.
-
-### Copy and edit
-
-1. Put the panels on different drives using TAB and `/`.
-2. Select/tag the sources and press C. Check `COPY name?` or the marked count.
-3. Confirm Y, then wait for the progress bar and final result. **Once started,
-   the disk-writing operation cannot be interrupted from the keyboard.**
-
-Copies preserve DOS names, type, lock flag and all data-sector bytes. Existing
-names are skipped. Destination sectors are reserved first, written and read
-back, then the catalog entry is published. An uncertain write stops the batch;
-the source is neither written nor deleted. There is no single-drive copy by
-swapping disks.
-
-N/E uses the same exclusive writer. E accepts at most **8 KB** and refuses larger
-files rather than truncating them. It always saves to a new name. R refuses an
-existing name or locked file. D skips locked files; L toggles the cursor's lock,
-or unlocks a tagged set if any member is locked, otherwise locks the set.
-
-### Preview and limits
-
-Return identifies text, hi-res or a binary program from content and DOS headers;
-a program asks `BRUN NAME?`. T/H previews only the first 256 stored bytes; G
-shows the first 8 KB as hi-res. A valid 8 KB BIN load at $2000/$4000 is a picture;
-unsupported or unsafe program headers fall back to hex. BRUN leaves A2FC.
-
-Only standard 35-track, 16-sector DOS 3.3 is supported. Sparse/inconsistent
-chains, reserved-track data, 13-sector, 40-track and protected formats are
-refused. Before a write, the catalog entry must still match the panel's identity;
-a changed disk is refused, though a byte-identical twin cannot be distinguished.
-Physical write protection is checked. After an uncertain error, reserved space
-is retained and further writes are blocked for that run: preserve and inspect a
-copy of the disk. Readback cannot repair metadata damaged by a power failure.
 
 <!-- pagebreak -->
 

@@ -28,6 +28,8 @@ downloads and installation.
   contents; keep numbered steps separate and headings with their text.
 - Condense the user guide to 11 pages including its cover, with 12 contents
   entries and unchanged text size. Preserve full attribution in `docs/CREDITS.md`.
+- Introduce DOS3.3 before the expanded ProDOS workflow in both the guide and
+  README. Add current 0.9.2 panel captures; keep the cover image compact.
 
 ## [0.9.1] - 2026-09-20
 
