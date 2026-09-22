@@ -14,7 +14,10 @@ se ferme avec un oracle hôte et un banc POM2.
 - [x] Progression visible dans toute opération longue, ProDOS et DOS 3.3 :
   barre, ou signe d'activité (/ \\) là où aucune barre ne tient ;
   [qualification](docs/QUALIFICATION-0.9.3.md).
-- [ ] RWTS FORMAT du Mini (~18 s en un appel DOS) reste sans signe.
+- [x] RWTS FORMAT du Mini : la boucle par piste de DOS fait tourner le
+  signe d'activité pendant les ~18 s de l'appel (banc `mini33_format`).
+- [ ] Une lecture RWTS d'une disquette jamais formatée (~5 s de tentatives
+  dans un seul appel) reste sans signe.
 - [ ] MAIN 65C02 à 82 octets : l'objectif de 256 reste ouvert.
 
 ## 0.9.2 (préparation, publiée dans 0.9.3)

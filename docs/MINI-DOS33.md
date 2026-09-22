@@ -278,7 +278,14 @@ Then, in this order:
    drive, under `FORMATTING...`. A progress bar on the file name line fills
    in steps, between the disk phases: the boot disk read, RWTS's own
    format (one call, about half the time, credited when it returns), the
-   DOS batches written and read back, the catalog track.
+   DOS batches written and read back, the catalog track. That one call
+   returns nothing until all 35 tracks are done, so for its duration the
+   last cell of the key bar turns `/` `\` once a track: DOS's own
+   per-track loop calls it, and the borrowed call is given back the
+   instant the format returns. A diskette that was never formatted has
+   one silent wait left before that, a few seconds: reading it to sense
+   the write-protect tab is a single RWTS call that retries and
+   recalibrates on a surface with no address field.
 4. The DOS sectors are read again and written to the target in two batches
    through the working area (tracks 0–1, then 2), each batch then read back
    and compared, as the copy does.

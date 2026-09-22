@@ -5,6 +5,20 @@ downloads and installation.
 
 ## [Unreleased]
 
+### DOS 3.3: the format no longer stands still
+- Lend DOS's own per-track loop to the activity cell while RWTS formats a
+  disk: that call returns nothing for some eighteen seconds, and the key
+  bar's last cell now turns once a track. The three bytes it redirects are
+  checked first, so another DOS formats exactly as before, and they go back
+  the instant the format returns.
+- Pay for it with 92 resident bytes freed by three rewrites that write the
+  same values in the same order: the panel fields as one block walked by
+  `remember`/`activate` and `mirror_panel`, and `have_entry` for the two
+  questions eight keys asked in line. 42 bytes free below DOS.
+- `bench/mini33_format.py` now measures the longest the screen stands
+  still: under 3 seconds, and under 6 on a never formatted diskette, where
+  one RWTS read retries and recalibrates inside a single call.
+
 ## [0.9.3] - 2026-09-22
 
 ### Visible progress in long operations

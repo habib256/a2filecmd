@@ -88,8 +88,18 @@ int main(int argc,char** argv) {
         // While it formats: the message, a bar that fills on row 22, and the
         // main key bar on row 23 instead of the Y/N/ESC question.
         bool bar_seen=false, stars_seen=false, question_seen=false;
-        for(int n=0;n<3000;++n) {
-            run(cpu,1000000);
+        // What is measured here is the longest the screen stands still.
+        // RWTS formats all thirty-five tracks in one call and gives nothing
+        // back for some eighteen seconds; DOS's own per-track loop lends
+        // its first call to fmt_hook (format.s) for the duration, so the
+        // last cell of row 23 turns once a track, about twice a second.
+        // Without that hook this gap is the whole call: a still screen.
+        long gap=0, worst=0; unsigned char last=0;
+        for(int n=0;n<300000;++n) {
+            run(cpu,10000); gap+=10000;
+            unsigned char cell=m.data()[0x7F7];
+            if(cell!=last && (cell==0xAF||cell==0xDC)) { if(gap>worst) worst=gap; gap=0; }
+            last=cell;
             std::string s=screen(m);
             std::string row22=s.substr(22*41,40), row23=s.substr(23*41,40);
             if(s.find("FORMATTING...")!=std::string::npos && row22[0]=='[') {
@@ -104,6 +114,17 @@ int main(int argc,char** argv) {
             fprintf(stderr,"progress bar %d, stars %d, question left on row 23 %d\n",bar_seen,stars_seen,question_seen);
             std::exit(1);
         }
+        // Three seconds at 1 MHz, and six on a never formatted diskette:
+        // there the write-protect probe reads a surface with no address
+        // field at all, and RWTS spends its whole retry sequence -- 48
+        // tries with recalibrations -- inside ONE call, which nothing of
+        // this program can interrupt. The format itself is covered.
+        long allowed=mode=="fresh" ? 6000000 : 3000000;
+        if(worst>allowed) {
+            fprintf(stderr,"the screen stood still for %ld cycles\n",worst);
+            std::exit(1);
+        }
+        printf("the screen never stood still for more than %ld cycles\n",worst);
         settle(); expect(m,"EMPTY DISK"); expect(m,"V254");
         copy_all();
         printf("PASS: a %s drive 2 formatted with a progress bar, every file copied onto it\n",
