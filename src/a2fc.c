@@ -384,9 +384,10 @@ static void dir_close(void)
  * real directory, ProDOS assembles the blocks, a plain read is enough. */
 static unsigned char dir_block_next(void)
 {
-    unsigned int next = copy_buf[2] | ((unsigned int)copy_buf[3] << 8);
+    unsigned int next;
+    activity_tick();            /* before the test: a one-block directory ticks too */
+    next = copy_buf[2] | ((unsigned int)copy_buf[3] << 8);
     if (!next) return 0;
-    activity_tick();
     if (dir_img) {
         if (img_read_block(next, copy_buf) &&
             (copy_buf[0] | ((unsigned int)copy_buf[1] << 8)) == dir_block_key) {
@@ -1689,6 +1690,7 @@ static void mark_differences(void)
     for (i = 0; i < pan->count; ++i) {
         const struct Entry* e = &pan->e[i];
         unsigned char differs = 1;
+        activity_tick();            /* 140 x 140 names: seconds */
         if (is_dir(e)) continue;
         for (j = 0; j < other->count; ++j)
             if (!strcmp(other->e[j].name, e->name)) { differs = other->e[j].size != e->size || other->e[j].mdate != e->mdate; break; }
@@ -1724,6 +1726,7 @@ void __fastcall__ compare_entry(const struct A2fcApi* a)
         return;
     }
     for (;;) {
+        activity_tick();            /* no room for a bar: two 800K files are a minute */
         na = fread(copy_buf, 1, 256, fa);
         nb = fread(copy_buf + 256, 1, 256, fb);
         /* A short read is the end of a file only without an error. */
@@ -1785,6 +1788,7 @@ static unsigned char file_has(const char* path, const char* pat, unsigned char p
     unsigned int n, j;
     if (!f) return 2;
     for (;;) {
+        activity_tick();                            /* a big file is seconds a block */
         n = fread(copy_buf, 1, 512, f);
         if (ferror(f)) { found = 2; break; }
         for (j = 0; j < n; ++j) {
@@ -1815,6 +1819,10 @@ void __fastcall__ search_entry(const struct A2fcApi* a)
     for (i = 0; i < pan->count; ++i) {
         if (search_cancel()) { r = 3; break; }
         if (is_dir(&pan->e[i]) || !build_full(full, pan, &pan->e[i])) continue;
+        /* the file being read, and how far through the panel */
+        progress_done = i;
+        progress_total = pan->count;
+        progress_bar(pan->e[i].name, i, pan->count);
         r = file_has(full, input, plen);
         if (r == 2) break;                          /* stop on the file, and name it */
         if (r) { set_tag(pan, i, 1); ++found; }
@@ -1905,6 +1913,9 @@ void __fastcall__ binary2_entry(const struct A2fcApi* a)
               | ((unsigned long)copy_buf[0x16] << 16);
         pad = (128 - (eof & 127)) & 127;
         more = copy_buf[0x7F] != 0;
+        /* the bar's "n/m": this record among the ones the header says follow */
+        progress_done = done;
+        progress_total = done + 1 + copy_buf[0x7F];
         if (copy_buf[4] == 0x0F || copy_buf[7] == 0x0D) {
             /* A folder record (type $0F or storage type $0D): extracted as a
              * plain file it could be neither opened nor deleted here. Nothing
@@ -1930,6 +1941,8 @@ void __fastcall__ binary2_entry(const struct A2fcApi* a)
         size = eof;
         start = ftell(in);
         while (eof) {
+            /* one bar over the copy and the check, as DOSGET */
+            progress_bar(name, size - eof, size * 2);
             n = eof > 512 ? 512 : (unsigned int)eof;
             if (fread(copy_buf, 1, n, in) != n || ferror(in) ||
                 fwrite(copy_buf, 1, n, out) != n) goto failed;
@@ -1941,6 +1954,7 @@ void __fastcall__ binary2_entry(const struct A2fcApi* a)
          * archive read a second time; it must end where the record ends. */
         if (fseek(in, start, SEEK_SET) || !(out = fopen(other_full, "rb"))) goto failed;
         for (eof = size; eof; eof -= n) {
+            progress_bar(name, size + size - eof, size * 2);
             n = eof > 256 ? 256 : (unsigned int)eof;
             if (fread(copy_buf, 1, n, in) != n || ferror(in) ||
                 fread(copy_buf + 256, 1, n, out) != n || memcmp(copy_buf, copy_buf + 256, n)) {
@@ -2369,6 +2383,10 @@ again:
      * first: a neighbour already has its name from media_loading, and the
      * music viewers clear the screen themselves to write their credits. */
     if (first && media >= V_EXT && media <= MEDIA_COUNT) loading_screen(selected.name);
+    /* progress_bar prints these as "n/m": a plugin cannot set them, and
+     * the last copy or delete left its own ("4/3") */
+    progress_done = 0;
+    progress_total = 1;
     if (OVL->entry) OVL->entry(&api);
     else { extern const char msg_noentry[]; strcpy(note, msg_noentry); }
     in_overlay = 0;              /* its code has returned: the window is free again */
@@ -3175,7 +3193,8 @@ static const char S_WRONG[] = "WRONG DISK. ";
 static const char S_SOURCE[] = "SOURCE";
 static const char S_TARGET[] = "TARGET copy";
 static const char S_READING[] = "Reading";
-static const char S_WRITING[] = "Writing / verifying";
+static const char S_WRITING[] = "Write + verify";   /* the bar shows 15 characters */
+static const char S_PREPARE[] = "Preparing";
 static const char S_CHECKFAIL[] = "Readback failed at block %u: %s.";
 static const char S_DIFFER[] = "data mismatch";
 static const char S_FAILED[] = "Failed: %s.";
@@ -3304,8 +3323,12 @@ static unsigned char di_presize(struct Side* s, unsigned int blocks)
     unsigned int b;
     memset(copy_buf, 0, 512);
     fseek(s->f, s->base, SEEK_SET);
-    for (b = 0; b < blocks; ++b)
+    /* the whole image in zeros before the first block is read: minutes
+     * for 800K, far more for a hard disk */
+    for (b = 0; b < blocks; ++b) {
+        if (!(b & 15)) progress_bar(S_PREPARE, b, blocks);
         if (fwrite(copy_buf, 1, 512, s->f) != 512) return 0x27;
+    }
     return 0;
 }
 
@@ -3317,9 +3340,9 @@ static unsigned char di_copy(unsigned char swap)
 {
     unsigned int done = 0, total = DI->total, left;
     unsigned char n, i, r, per = swap ? DI_MAIN_BLOCKS + DI_AUX_BLOCKS : DI_MAIN_BLOCKS;
-    if (DI->dst.kind != SIDE_DEVICE && (r = di_presize(&DI->dst, total))) return r;
     progress_total = 1;
     progress_done = 0;
+    if (DI->dst.kind != SIDE_DEVICE && (r = di_presize(&DI->dst, total))) return r;
     if (swap) {
         memset(DI_BLOCK, DI_MARK, 512);
         if ((r = di_xfer(&DI->dst, 2, 1))) return r;
@@ -3369,6 +3392,7 @@ static void di_scan(void)
     struct Dev* d;
     DI->ndev = 0;
     for (i = 0; i < n && DI->ndev < 8; ++i) {
+        activity_tick();            /* an empty drive answers ON_LINE in a second or more */
         d = &DI->dev[DI->ndev];
         d->unit = ((unsigned char*)0xBF32)[i] & 0xF0;
         drv = ((unsigned int*)0xBF10)[d->unit >> 4];
@@ -3736,6 +3760,7 @@ void __fastcall__ menu_entry(const struct A2fcApi* a)
         dir_close();
     }
     for (i = 0; i < n; ++i) {          /* the header of each: its description */
+        activity_tick();               /* one directory search per tool */
         strcpy(m[i].desc, mn_bad);
         f = open_overlay(m[i].name, 0);
         if (!f) continue;
@@ -3946,6 +3971,38 @@ static unsigned char delete_tree(void)
     if (walk_tree(WALK_COUNT) == 0xFFFF) { dir_fail(); return 0; }
     return walk_tree(WALK_DELETE) == 1;
 }
+
+/* The source of a moved directory, once its copy is verified. The delete
+ * walk counts what it removes into the bar's "n/m", which belongs to the
+ * copy: both counters go back as they were, or every file moved after this
+ * directory showed a total swollen by its deletions. */
+#pragma optimize (push, off)    /* it would pair the pushes with the pulls across the jsr */
+static unsigned char moved_tree_delete(void)
+{
+    /* on the 6502 stack: static locals would cost DELETE a block of its file */
+    asm("lda %v", progress_done);
+    asm("pha");
+    asm("lda %v+1", progress_done);
+    asm("pha");
+    asm("lda %v", progress_total);
+    asm("pha");
+    asm("lda %v+1", progress_total);
+    asm("pha");
+    asm("jsr %v", delete_tree);
+    asm("tay");
+    asm("pla");
+    asm("sta %v+1", progress_total);
+    asm("pla");
+    asm("sta %v", progress_total);
+    asm("pla");
+    asm("sta %v+1", progress_done);
+    asm("pla");
+    asm("sta %v", progress_done);
+    asm("tya");
+    asm("ldx #0");
+    return __A__;
+}
+#pragma optimize (pop)
 #pragma rodata-name (pop)
 #pragma code-name (pop)
 
@@ -4099,6 +4156,8 @@ static unsigned char img_pass(const struct Entry* e, unsigned char storage, unsi
     }
     if (storage == 2 && !img_read_block(e->mdate, idx)) return 0;
     for (i = 0; i < need; ++i) {
+        /* up to 256 blocks, twice: the check restarts the bar at 0 */
+        progress_bar(e->name, i, need);
         blk = storage == 1 ? (i ? 0 : e->mdate) : (idx[i] | ((unsigned int)idx[256 + i] << 8));
         n = left > 512 ? 512 : (unsigned int)left;
         if (blk) { if (!img_read_block(blk, copy_buf)) return 0; }
@@ -4140,7 +4199,7 @@ static void extract_targets(void)
     marked = tag_count(pan);
     progress_total = marked;
     if (!progress_total) progress_total = 1;
-    progress_done = 0;
+    progress_done = 0xFFFF;              /* incremented before its bar: the first file is 1/n */
     cut = pan->path + pan->img_len;       /* reopen the image without losing the inner path */
     i = *cut;
     *cut = 0;
@@ -4152,8 +4211,7 @@ static void extract_targets(void)
         ++progress_done;
         if (is_up(e) || is_dir(e)) continue;
         if (!build_full(other_full, dst, e)) { r = 0; break; }
-        im_out = NULL; im_owned = 0;
-        progress_bar(e->name, 0, e->size);
+        im_out = NULL; im_owned = 0;       /* img_pass draws the bar from 0 */
         /* found once: the read-back walks the same blocks */
         if (!(storage = img_storage(e, pan->dir_key))) { r = 0; break; }
         r = img_run(e, storage, 0);
@@ -4313,9 +4371,11 @@ static void dos_extract(void)
         *cut = i;
         if (!r) { message(d3_reopen); return; }
     } else dos_unit = (unsigned char)pan->dir_key;
+    progress_total = marked ? marked : 1;   /* the bar's "n/m": files, not sectors */
     for (i = 0; i < n; ++i) {
         const struct Entry* e = &ENTRY_SNAPSHOT[i];
         if (is_up(e) || (marked ? !tagged(pan,i) : i != pan->cursor)) continue;
+        progress_done = done;
         if (!build_full(other_full, dst, e)) { r = 0; break; }
         d3_out = NULL; d3_owned = 0;
         if ((r = d3_run(e, 0)) != 0) r = d3_run(e, 1);
@@ -4469,6 +4529,7 @@ static unsigned char __fastcall__ us_skip(unsigned long n)
     unsigned int k;
     while (n) {
         k = n > 512 ? 512 : (unsigned int)n;
+        activity_tick();            /* a skipped 800K thread is minutes */
         if (abort_key() || !us_read(copy_buf, k)) return 0;
         n -= k;
     }
@@ -4932,9 +4993,9 @@ static void copy_or_move(unsigned char move)
              * so the walk reached the end of the tree and every file was read
              * back as it was written. */
             build_full(full, pan, e);
-            sub = progress_done;   /* the delete walk counts files and directories too; the summary counts copies */
-            if (is_dir(e) ? !(overlay("DELETE") && delete_tree()) : remove(full) != 0) { if (!is_dir(e) && !progress_abort) report_error("Delete source"); break; }
-            progress_done = sub;
+            /* the delete walk counts files and directories too: the summary
+             * counts copies, and moved_tree_delete puts the counters back */
+            if (is_dir(e) ? !(overlay("DELETE") && moved_tree_delete()) : remove(full) != 0) { if (!is_dir(e) && !progress_abort) report_error("Delete source"); break; }
             drop_entry(pan, picked[i] - removed);      /* gone: the source shows it right away */
             ++removed;
             draw_panel(active);

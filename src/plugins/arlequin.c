@@ -94,6 +94,17 @@ static unsigned char __fastcall__ s_ramfmt(unsigned int unused) STUB(ram_format)
  * of the file or on an error -- either way the stream is over. */
 unsigned char ar_read(void)
 {
+#ifndef PLUGIN_HOST
+    /* a refill of the stream: turn the resident's activity cell
+     * ($06F7, row 21) between / and \ while the picture decodes
+     * behind the Loading screen (see spin.h) */
+    asm("lda #$AF");
+    asm("cmp $06F7");
+    asm("bne %g", spun);
+    asm("lda #$DC");
+spun:
+    asm("sta $06F7");
+#endif
     return (unsigned char)s_fread(ar_buf, 1, 255, in);
 }
 

@@ -60,7 +60,7 @@ static size_t h_fwrite(const void* p, size_t s, size_t n, FILE* f) {
 static unsigned char h_confirm(const char* s) { (void)s; return mode != 1; }
 static void h_message(const char* s) { (void)s; }
 static void h_progress(const char* s, unsigned long a, unsigned long b)
-{ (void)s; (void)a; (void)b; }
+{ fprintf(stderr, "BAR %s %lu %lu\n", s, a, b); }
 
 /* One directory at a time, real files on the host. A ProDOS name carries no
  * suffix, so the types come from a ".types" manifest the enumerator skips. */
@@ -175,9 +175,11 @@ class CpmW(unittest.TestCase):
         (self.src / name).write_bytes(data)
 
     def run_op(self, mode=0, at=1, wrong=0):
-        out = subprocess.check_output(
+        run = subprocess.run(
             [str(self.exe), str(self.img), str(self.src), str(mode), str(at), str(wrong)],
-            text=True).strip()
+            text=True, capture_output=True, check=True)
+        out = run.stdout.strip()
+        self.trace = run.stderr.splitlines()
         n, _, note = out.partition(' ')
         return int(n), note
 
@@ -191,6 +193,17 @@ class CpmW(unittest.TestCase):
         return cpm_ref.contents(raw, e, v['skew'])
 
     # -- what must happen ---------------------------------------------------
+
+    def test_every_file_shows_its_name_then_its_blocks(self):
+        # `name` is one buffer for every file: 0 redraws it, so the bar
+        # names each file -- a skipped one too -- then fills to the end.
+        self.give('HELLO.TXT', b'hello, CP/M\r\n' * 100)      # 1,400 bytes: 2 blocks
+        self.give('EMPTY', b'')                                  # skipped
+        writes, note = self.run_op()
+        self.assertIn('1 put', note)
+        bars = [tuple(l.split()[1:]) for l in self.trace if l.startswith('BAR ')]
+        self.assertEqual(sorted(set(bars)), sorted({('EMPTY', '0', '1'), ('HELLO.TXT', '0', '1'),
+                                                    ('HELLO.TXT', '1', '2'), ('HELLO.TXT', '2', '2')}))
 
     def test_files_land_in_the_volume_with_their_bytes(self):
         self.give('HELLO.TXT', b'hello, CP/M\r\n' * 40)

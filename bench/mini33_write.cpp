@@ -72,7 +72,27 @@ int main(int argc,char**argv) {
     assert(d->insertDisk(1,argv[3]));
     keys("\x12"); settle(); expect(m,"KEEP.DST");   // Ctrl-R: reread both
     assert(screen(m).substr(22*41,5)=="A2FC ");
-    keys("C"); wait("CANCEL"); keys("Y"); wait("COPIED"); settle();
+    keys("C"); wait("CANCEL");
+    // Y, then the copy watched while it runs: the question leaves the
+    // screen at once (confirm presents the main bar), and the last cell of
+    // row 23 turns / and \ with the sectors (rwts.s), where it used to
+    // keep "COPY A2FC? Y N CANCEL" for seconds of disk.
+    m.pasteRawKeys("Y",1);
+    {
+        int turns=0; unsigned char last=0;
+        for(int n=0;n<3000 && screen(m).find("COPIED")==std::string::npos;++n) {
+            run(cpu,20000);
+            unsigned char c=m.data()[0x7F7];
+            if(c!=last && (c==0xAF || c==0xDC)) ++turns;
+            last=c;
+            if(n==50 && screen(m).find("CANCEL")!=std::string::npos) {
+                fprintf(stderr,"The Y/N bar outlived the answer\n%s",screen(m).c_str()); std::exit(1);
+            }
+        }
+        expect(m,"COPIED");
+        if(turns<10) { fprintf(stderr,"The activity cell turned %d times\n",turns); std::exit(1); }
+    }
+    settle();
     assert(d->getWriteFlushCount()>0); assert(d->flushPendingWrites());
     for(int i=0;i<0x800;++i) assert(m.data()[0x0800+i]==0xa5);
     auto writes=d->getWriteFlushCount();

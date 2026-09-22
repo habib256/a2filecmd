@@ -54,6 +54,16 @@ with_buffer:
         stx     rwts_buf+1
 rwts:
         sta     command
+        ; Every sector read, written or formatted turns the last cell of
+        ; row 23 between / and \ (a space in every bar): a delete's audit
+        ; or a batch of a copy is seconds of disk with no other change.
+        ; Straight to the text page: the next present puts the image's
+        ; space back. Some 20 cycles, far inside the gap between sectors.
+        lda     #$AF
+        cmp     $07F7
+        bne     @spun
+        lda     #$DC
+@spun:  sta     $07F7
         lda     #0
         sta     rwts_error
         jsr     RWTS_LOCATE_IOB

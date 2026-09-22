@@ -125,6 +125,9 @@ static unsigned char copy_file(const unsigned char* first, FILE* out, unsigned c
         for (j = 16; j < 32 && left; ++j) {
             b = e[j];
             if (!b) continue;
+            /* Every kilobyte, from 0: a pass starts with a fresh bar, the
+             * read-back included, whatever the file before this one. */
+            a.progress_bar(name, fsize - left, fsize);
             for (l = 0; l < 4 && left; ++l) {
                 unsigned int n = left > 256 ? 256 : (unsigned int)left;
                 if (!cpm_sector((unsigned int)b * 4 + l, sec)) return 0;
@@ -138,7 +141,6 @@ static unsigned char copy_file(const unsigned char* first, FILE* out, unsigned c
             }
             if (stop()) return 0;
         }
-        a.progress_bar(name, fsize - left, fsize);
         ++ext;
         if (ext > 256) return 0;         /* a file cannot have that many */
     }

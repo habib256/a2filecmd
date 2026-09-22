@@ -33,6 +33,7 @@ static unsigned char read_panel(unsigned char p){
  pan->more=i<total;return 1;
 }
 static unsigned char build_full(char*out,const struct Panel*p,const struct Entry*e){strcpy(out,e->name);return 1;}
+static unsigned int ticks;static void activity_tick(void){++ticks;}
 #include "src/media.h"
 static unsigned char file_viewer(const struct Entry*e,unsigned char pic){
  if(failure==4 && !strcmp(e->name,"BAD.MB"))return V_ERROR;
@@ -52,6 +53,8 @@ int main(int argc,char**argv){
   total=300;for(i=0;i<300;++i)sprintf(all[i].name,"F%03u.PT3",i);
   strcpy(all[0].name,"A.MB");strcpy(all[299].name,"Z.MB");read_panel(0);panels[0].cursor=0;media_prepare(1);
   if(strcmp(album[1],"Z.MB")||media_first[1]!=278||panels[0].first||panels[0].cursor)return 4;
+  /* 299 neighbours opened one by one: the activity cell turns for each */
+  if(ticks<299)return 30;
   /* A failed read in the next window puts the panel back as it was:
    * window, cursor, scroll and marks. */
   panels[0].cursor=5;panels[0].top=2;panels[0].tags[0]=0x21;

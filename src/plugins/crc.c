@@ -101,7 +101,7 @@ static const char ANYKEY[] = "Any key";
 static struct Svc s;               /* the service table, copied */
 static const struct Panel* pan;
 static const struct Entry* e;      /* the file being read */
-static unsigned char* buf;         /* s.copy_buf: the chunk, then the line */
+#define buf s.copy_buf             /* the chunk, then the line: read in place, no copy */
 static unsigned int n;             /* the bytes of the chunk */
 static unsigned char TG[(MAX_ENTRIES + 7) / 8];   /* the tag bits, copied */
 static unsigned char any;          /* files tagged: the list, no progress bar */
@@ -149,9 +149,9 @@ static void fold(void)
     asm("bcc %g", counted);
     asm("inc %v+2", done);
 counted:
-    asm("lda %v", buf);
+    asm("lda %v+%b", s, offsetof(struct Svc, copy_buf));
     asm("sta ptr2");
-    asm("lda %v+1", buf);
+    asm("lda %v+%b", s, offsetof(struct Svc, copy_buf) + 1);
     asm("sta ptr2+1");
     asm("lda %v", n);
     asm("sta ptr3");
@@ -220,7 +220,14 @@ init:
         for (;;) {
             n = t_fread(buf, 1, 512, f);
             fold();                   /* which counts the chunk in, too */
-
+            /* A megabyte is minutes at 1 MHz: every chunk turns the
+             * resident's activity cell ($06F7, row 21) between / and \. */
+            asm("lda #$AF");
+            asm("cmp $06F7");
+            asm("bne %g", spun);
+            asm("lda #$DC");
+spun:
+            asm("sta $06F7");
             if (n < 512) break;       /* a short chunk, or none: the end */
         }
         t_fclose(f);
@@ -273,7 +280,6 @@ copy:
 
     pan = s.panels;
     if (*s.active) ++pan;
-    buf = s.copy_buf;
     did = page = 0;
 
     /* Everything wanted of the panel, in one pass through it: how many

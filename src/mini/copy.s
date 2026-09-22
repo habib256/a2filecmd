@@ -1294,6 +1294,8 @@ _copy_execute:
         lda     allocated_count+1
         adc     #0
         sta     copy_total+1
+        jsr     copy_progress   ; the empty bar before the first reads: the
+                                ; question must not stay on through them
         lda     ram_source      ; a disk source: its catalog slot must
         bne     @srcok          ; still be the entry that was mapped, or
         lda     copy_from       ; a source swapped at the prompt would be
@@ -1344,7 +1346,6 @@ _copy_execute:
         SETPTR  ptr2, vtoc
         jsr     memcmp256
         jne     @changed
-        jsr     copy_progress
 
 ; Take the reserved sectors out of the VTOC image. Still in RAM.
 @clearbits:

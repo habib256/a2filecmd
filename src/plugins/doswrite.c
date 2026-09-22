@@ -58,6 +58,8 @@ static unsigned char verify_preserved(void) {
  if(RF(fseek)(image,0,SEEK_SET))return 0;
  source=RF(fopen)(other->path,"rb");if(!source)return 0;
  do {
+  /* 140 KB twice more, compared byte by byte: the bar, from 0 */
+  a.progress_bar("Checking image",pos,rd24((unsigned char*)a.input+9));
   n=RF(fread)(buf,1,256,source);m=RF(fread)(verify,1,256,image);
   if(n!=m || ferror(source) || ferror(image) || stop())goto done;
   for(i=0;i<n;++i)if(buf[i]!=verify[i]) {
@@ -141,7 +143,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
  if(!read_sector(272,ts) || memcmp(ts,vtoc,256) || !audit() ||
     !read_sector(272+catsector,cat))goto refused;
  e=cat+11+slot*35;if(e[0] && e[0]!=255)goto refused;
- for(i=0;i<needed;++i)vtoc[bitpos(allocated(i))]&=~mask(allocated(i));
+ reserve();
  if(!write_sector(272,vtoc) || !transfer())goto failed;
  /* Preserve the complete catalog sector and reject late metadata changes. */
  if(!read_sector(272+catsector,ts) || memcmp(ts,cat,256) ||

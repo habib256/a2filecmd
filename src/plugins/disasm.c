@@ -127,6 +127,7 @@ static unsigned char export_text(FILE* out)
     if(!write_record(out))return 1;
     while(pos<size) {
         if(stop())return 3;
+        a.progress_bar(a.input,pos-offset,size-offset);
         got=read_page(pos);
         if(failed)return 2;
         used=0;
@@ -153,7 +154,8 @@ static void export(void)
     *a.filetype=4;*a.auxtype=0;
     out=a.fopen(a.other_full,"wb");
     if(!out) { a.message("Cannot open output; empty file remains.");a.cgetc();return; }
-    cancelled=0;a.message("Exporting... ESC cancels");
+    /* the bar takes row 22: the hint goes on the status row */
+    cancelled=0;a.gotoxy(0,21);a.cprintf("%-79s","Exporting... ESC cancels");
     result=export_text(out);
     if(a.fclose(out))result=1;
     export_status=result==3 ? "Export cancelled; partial file kept." :

@@ -51,7 +51,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
     }
     maps=(blocks+4095U)/4096;
     for(b=0;b<blocks;++b) {
-        if(!(b&31)) {a.progress_bar("Creating image (ESC cancels)",b,blocks);if(stop())goto fail;}
+        if(!(b&31)) {a.progress_bar("New image (ESC)",b,blocks);if(stop())goto fail;}
         makeblock();if(a.fwrite(buf,1,512,out)!=512)goto fail;
     }
     if(a.fclose(out))goto closedfail;

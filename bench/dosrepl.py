@@ -136,7 +136,9 @@ def main():
                 p.stable()
                 menu_run(s, p, 'DOSREPL')
                 q = 'Replace %s on DOS S%s,D2?' % (name, slot)
-                s.wait(lambda: s.has(q) or s.rows()[22].strip(),
+                # audit() annonce sa lecture du disque sur la ligne 22 :
+                # ce n'est ni la question ni le refus
+                s.wait(lambda: s.has(q) or s.rows()[22].strip() not in ('', 'Checking DOS 3.3 disk...'),
                        'la question de DOSREPL ou son refus', 90)
                 return s.has(q)
 

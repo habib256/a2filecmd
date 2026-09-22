@@ -173,6 +173,9 @@ static unsigned char one(const char* name, unsigned long size)
     unsigned char blocks, b, i, l;
 
     a.memset(newent, 0, ENTRY);
+    /* 0 redraws: the name shows while the directory is searched for it,
+     * skipped files included -- `name` is the same buffer for every one */
+    a.progress_bar(name, 0, 1);
     if (!size || size > MAX_BYTES || !cpm_name(name)) { ++skipped; return 1; }
     if (survey()) { ++skipped; return 1; }
     if (slot == 0xFF) { note("No room left in the volume."); return 0; }
@@ -202,7 +205,7 @@ static unsigned char one(const char* name, unsigned long size)
             }
             left -= n;
         }
-        a.progress_bar(name, i, blocks);
+        a.progress_bar(name, i + 1, blocks);
     }
     RF(fclose)(src_file); src_file = 0;
     dsec_at = 0xFF;                             /* it was the twin buffer */

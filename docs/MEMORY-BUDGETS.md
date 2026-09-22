@@ -1,5 +1,32 @@
 # Consolidation : budgets mémoire
 
+## Préparation 0.9.2 : progression visible
+
+Réserves après les barres et les signes d'activité, 65C02/6502 : MAIN
+**82/485** (83/491 avant), carte langage **66/57** inchangée, LOWRAM
+82/107, écart avant la pile 110/702. Surcouches du cœur : DELETE 261/266,
+IMGFS 1287/1299, DOSGET 1195/1191, BINARY2 967/987, SEARCH 177/193,
+COMPARE **17/41**, MENU 260/209, UNSHRINK 904/896, **DISKIMG 57/9**
+(la barre de pré-remplissage coûte 42 octets en 6502), FORMAT 269/269.
+
+Ce qui l'a payé : la remise à zéro des compteurs « n/m » avant chaque
+surcouche (14 octets MAIN) et le parcours d'album (8) sont compensés par la
+sauvegarde des compteurs déplacée de `copy_or_move` vers DELETE
+(`moved_tree_delete`, en assembleur : la pile 6502 garde les compteurs ;
+en C, ses variables statiques faisaient passer DELETE à trois blocs et la
+disquette de banc à zéro bloc libre, où la configuration ne s'écrit plus). `activity_tick` lit RDTEXT ($C01A) et n'écrit plus
+sur une image lo-res. Dans FORMAT, le code Disk II est aligné sur 256
+octets : la réécriture rapide du bitmap faisait passer la partie C sur la
+page suivante (269 → 13) ; seul un signe d'activité par page a été gardé.
+
+Surcouches de service les plus serrées après ce travail : `crc` 13/4
+(la copie `buf` de `copy_buf` retirée pour payer le signe), `date` 8/7
+(mois par `ror`, table des dizaines remplacée par des décalages),
+`rename` 18/3, `verify` 55/40, `fixit` 3 (description du menu
+raccourcie), `dosrepl` 1 en 6502 (réservation VTOC en assembleur),
+`undelete` 25/21, `paint816` (refus regroupés). Mini : 19 octets sous
+DOS (34 avant) pour le signe RWTS et la barre principale après Y.
+
 ## Préparation 0.9.2 : optimisation et récupération
 
 Après compilation des deux architectures, réserves 65C02/6502 : MAIN

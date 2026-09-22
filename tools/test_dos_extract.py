@@ -43,6 +43,7 @@ static int build_full(char* p,const struct Panel* pan,const struct Entry* e){spr
  * total, and at least once a file -- a Disk II read is slow enough that a
  * silent screen reads as a hang. */
 static unsigned long bar_done,bar_total;static int bar_calls,bar_bad;
+static unsigned int progress_done,progress_total;   /* the "n/m" of the bar: files */
 static void progress_bar(const char* n,unsigned long done,unsigned long total){
  if(!n||!*n||!total||done>total||(bar_calls&&total==bar_total&&done<bar_done))bar_bad=1;
  bar_done=done;bar_total=total;++bar_calls;}

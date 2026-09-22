@@ -16,14 +16,19 @@ static unsigned char image_close(void) {
  * swapped/changed original before the recoverable rename transaction. */
 static unsigned long image_crc;
 #include "dosimage_crc.h"
+/* A whole image through a C CRC is tens of seconds at 1 MHz, twice: the
+ * bar counts the bytes hashed against image_total, from 0 (which redraws). */
+static const char image_checking[]="Checking image";
+static unsigned long image_done,image_total;
 static void image_hash(unsigned int n) {
  unsigned int i;
+ a.progress_bar(image_checking,image_done,image_total);image_done+=n;
  for(i=0;i<n;++i)image_crc=(image_crc>>8)^image_crc_table[(unsigned char)(image_crc^buf[i])];
 }
 static unsigned char image_unchanged(void) {
  unsigned long total=0;unsigned int n;unsigned char ok;
  source=RF(fopen)(other->path,"rb");if(!source)return 0;
- image_crc=0xFFFFFFFFUL;
+ image_crc=0xFFFFFFFFUL;image_done=0;image_total=rd24((unsigned char*)a.input+9);
  do {n=RF(fread)(buf,1,256,source);image_hash(n);total+=n;}
  while(n==256 && total<=0xFFFFFFUL && !stop());
  ok=!ferror(source) && !cancelled && total==rd24((unsigned char*)a.input+9) &&
@@ -66,6 +71,7 @@ static unsigned char image_prepare(void) {
  image=RF(fopen)(image_temp,"wb");if(!image)goto bad;
  source=RF(fopen)(other->path,"rb");if(!source)goto bad;
  do {
+  a.progress_bar("Copying image",total,image_base+143360UL);
   n=RF(fread)(buf,1,256,source);total+=n;
   if(ferror(source) || stop() || total>0xFFFFFFUL || RF(fwrite)(buf,1,n,image)!=n || ferror(image))goto clone_bad;
  }while(n==256);
@@ -76,7 +82,7 @@ clone_bad:
  if(!image_close())ok=0;
  if(!ok)goto bad;
  /* Verify every byte of the closed clone, including container metadata. */
- image_crc=0xFFFFFFFFUL;
+ image_crc=0xFFFFFFFFUL;image_done=0;image_total=total;
  image=RF(fopen)(image_temp,"rb");if(!image)goto bad;
  source=RF(fopen)(other->path,"rb");if(!source)goto bad;
  do {

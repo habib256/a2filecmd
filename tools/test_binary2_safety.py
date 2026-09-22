@@ -66,6 +66,10 @@ static int close_file(FILE* f) {
     return (fault==6 && is_output) || (fault==7 && !is_output)?-1:r;
 }
 static int remove_file(const char* p) {++removes;return cleanup_bad?-1:remove(p);}
+static unsigned int progress_done, progress_total;
+static void progress_bar(const char* s,unsigned long d,unsigned long t) {
+    fprintf(stderr,"BAR %u/%u %s %lu %lu\n",progress_done+1,progress_total,s,d,t);
+}
 #define open reserve
 #define close close_reserved
 #define fopen open_file
@@ -126,6 +130,17 @@ class Binary2Safety(unittest.TestCase):
                                        str(fault), str(int(cleanup))], text=True)
         self.assertEqual(self.src.read_bytes(), before)
         return out
+
+    def test_each_record_moves_one_bar_over_copy_and_check(self):
+        # Two records: the "n/m" says which, the bar runs once over the
+        # write and the read-back (DOSGET's rule), never past its total.
+        self.src.write_bytes(record('ONE', b'1' * 1100, more=True) + record('TWO', b'2' * 300))
+        run = subprocess.run([self.exe, self.src, self.dst, '0', '0'], text=True,
+                             capture_output=True, check=True)
+        self.assertIn('2 file(s) extracted', run.stdout)
+        bars = [l.split()[1:] for l in run.stderr.splitlines()]
+        self.assertEqual(bars, [['1/2', 'ONE', str(d), '2200'] for d in (0, 512, 1024, 1100, 1356, 1612, 1868, 2124)]
+                         + [['2/2', 'TWO', str(d), '600'] for d in (0, 300, 556)])
 
     def test_complete_records_and_padding(self):
         for size in (0, 1, 127, 128, 512, 1024):

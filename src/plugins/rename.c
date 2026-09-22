@@ -327,6 +327,14 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         PB = rn.new; mkpath(nm);
         /* $47 if another file owns the name; an unchanged name succeeds. */
         if (mli(0xC2, &rn)) ++skipped; else ++renamed;
+        /* 140 renames are some 40 s on a floppy: each turns the resident's
+         * activity cell ($06F7, row 21) between / and \ (see spin.h). */
+        asm("lda #$AF");
+        asm("cmp $06F7");
+        asm("bne %g", spun);
+        asm("lda #$DC");
+spun:
+        asm("sta $06F7");
     }
 
     /* A small overlay redraws what it changed: the panel, then the count. */

@@ -61,6 +61,8 @@ static int close_(FILE* f)
 static int remove_(const char* p) { printf("REMOVE %s\n", strrchr(p, '/') + 1); return fault == 4 ? -1 : remove(p); }
 static size_t read_(void* p, size_t s, size_t n, FILE* f) { return fread(p, s, n, f); }
 static int seek_(FILE* f, long o, int w) { return fseek(f, o, w); }
+static unsigned long bars, overflows;
+static void bar_(const char* n, unsigned long d, unsigned long t) { ++bars; if (d > t || !*n) ++overflows; }
 int main(int argc, char** argv)
 {
     static struct A2fcApi api;
@@ -80,8 +82,13 @@ int main(int argc, char** argv)
     api.memcpy = memcpy; api.memset = memset; api.strcpy = strcpy; api.strlen = strlen;
     api.strcmp = strcmp; api.sprintf = sprintf; api.fopen = open_; api.fread = read_;
     api.fwrite = write_; api.fseek = seek_; api.fclose = close_; api.remove = remove_;
-    api.mli = mli_;
+    api.mli = mli_; api.progress_bar = bar_;
+    {
+        FILE* f = fopen(full, "rb");
+        if (f) { fseek(f, 0, SEEK_END); sel.size = ftell(f); fclose(f); }
+    }
     plugin_entry(&api);
+    printf("BARS %lu %lu\n", bars, overflows);
     printf("NOTE %s\n", note);
     return 0;
 }
@@ -132,6 +139,7 @@ class Unsq(unittest.TestCase):
         note = [l[5:] for l in lines if l.startswith('NOTE ')][0]
         created = [l.split()[1:] for l in lines if l.startswith('CREATE ')]
         removed = [l.split()[1] for l in lines if l.startswith('REMOVE ')]
+        self.bars = [int(v) for l in lines if l.startswith('BARS ') for v in l.split()[1:]]
         made = {p.name: p.read_bytes() for p in (case / 'D').iterdir()}
         return note, created, removed, made
 
@@ -183,6 +191,21 @@ class Unsq(unittest.TestCase):
             self.check('ICONED.ACU', acu.read_bytes(), typ=0xE0, aux=0x8001)
         if not found:
             self.skipTest('no CiderPress II samples')
+
+    def test_progress(self):
+        # Minutes at 1 MHz for a big file: the bar must move during the
+        # decoding (every KB written) and the read-back (every block).
+        rng = random.Random(3)
+        data = bytes(rng.choice(b'abcdefgh \r') for _ in range(20000))
+        self.check('BIG.QQ', ref.squeeze(data, b'BIG'))
+        calls, bad = self.bars
+        self.assertGreaterEqual(calls, 20000 // 1024 + 20000 // 512)
+        self.assertEqual(bad, 0)
+        acu = ref.make_acu([(b'A', 4, 0, data, True, False), (b'B', 4, 0, data[:3000], False, False)])
+        self.check('BIG.ACU', acu, typ=0xE0, aux=0x8001)
+        calls, bad = self.bars
+        self.assertGreaterEqual(calls, 23000 // 1024 + 23000 // 512)
+        self.assertEqual(bad, 0)
 
     def test_damage_and_failures(self):
         good = ref.squeeze(b'the same text, the same text, the same text\r' * 40, b'TEXT')

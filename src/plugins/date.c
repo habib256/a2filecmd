@@ -97,7 +97,6 @@ static const char m_files[] = " files dated";
 /* The six pairs of digits read, and what is echoed before each of them. */
 static const char sepr[6] = { 0, '/', '/', 0, ' ', ':' };
 static const unsigned char days[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
-static const unsigned char ten[10] = { 0, 10, 20, 30, 40, 50, 60, 70, 80, 90 };
 
 /* Nothing here is read before being written at entry. */
 static const struct A2fcApi* A;
@@ -170,8 +169,8 @@ static void show(void)
     asm("clc\n bcc sw2");
     asm("sw1: lda %v\n and #31\n jsr %v", u2, pr2);                 /* the day */
     asm("lda #'/'\n jsr %v", s_put);
-    asm("lda %v\n lsr a\n lsr a\n lsr a\n lsr a\n lsr a\n sta %v", u2, mask);
-    asm("lda %v\n and #1\n asl a\n asl a\n asl a\n ora %v", j, mask);
+    /* the month: bit 0 of $BF91 rotated above bits 5-7 of $BF90 */
+    asm("lda %v\n lsr a\n lda %v\n ror a\n lsr a\n lsr a\n lsr a\n lsr a", j, u2);
     asm("jsr %v", pr2);                                             /* the month */
     asm("lda #'/'\n jsr %v", s_put);
     asm("ldx #20\n lda %v\n cmp #40\n bcc sw3\n ldx #19", acc);
@@ -189,8 +188,8 @@ static void show(void)
 }
 
 /* The twelve digits into fld[], echoed with their separators; A = 0 on
- * Escape. Two at a time, so no field leaves the byte: the tens come from a
- * table, which spares cc65's 16-bit multiplication. */
+ * Escape. Two at a time, so no field leaves the byte: the tens are shifts
+ * and an add, which spares cc65's 16-bit multiplication. */
 static void digits(void)
 {
     asm("lda #<%v\n ldx #>%v\n jsr %v", m_ask, m_ask, s_msg);   /* the cursor stays after it */
@@ -204,7 +203,8 @@ static void digits(void)
     asm("cmp #'0'\n bcc dg3");
     asm("cmp #$3A\n bcs dg3");
     asm("sta %v\n jsr %v", u1, s_put);
-    asm("ldy %v\n lda %v,y\n clc\n adc %v\n sec\n sbc #'0'\n sta %v", acc, ten, u1, acc);
+    /* acc * 10 + the digit: acc is 0-9, so no shift carries out */
+    asm("lda %v\n asl a\n asl a\n adc %v\n asl a\n adc %v\n sec\n sbc #'0'\n sta %v", acc, acc, u1, acc);
     asm("dec %v\n bne dg3", j);
     asm("ldy %v\n lda %v\n sta %v,y", g, acc, fld);
     asm("inc %v\n lda %v\n cmp #6\n bcc dg1", g, g);
@@ -233,6 +233,9 @@ static void dates(void)
  * A = 1 once E is stamped. */
 static void stamp(void)
 {
+    /* 140 files are some 40 s on a floppy: each turns the resident's
+     * activity cell ($06F7, row 21) between / and \ (spin.h). */
+    asm("lda #$AF\n cmp $06F7\n bne sp1\n lda #$DC\n sp1: sta $06F7");
     asm("lda %v\n clc\n adc #1\n tay\n lda %v+1\n adc #0\n tax\n tya", PATH, PATH);
     asm("jsr pushax");                                          /* build_full(PATH + 1, */
     asm("lda %v\n ldx %v+1\n jsr pushax", P, P);                /*            P, */

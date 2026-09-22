@@ -81,6 +81,17 @@ static const unsigned char mask_of[4] = { 0, 1, 3, 7 };
 static unsigned char getb(void)
 {
     if (at == have) {
+#ifndef PLUGIN_HOST
+        /* a refill of the stream: turn the resident's activity cell
+         * ($06F7, row 21) between / and \ while the picture decodes
+         * behind the Loading screen (see spin.h) */
+        asm("lda #$AF");
+        asm("cmp $06F7");
+        asm("bne %g", spun);
+        asm("lda #$DC");
+spun:
+        asm("sta $06F7");
+#endif
         have = (unsigned char)A->fread(A->copy_buf, 1, 255, in);
         at = 0;
         if (!have) return 0;            /* `at` stays 0, so the next call retries */
@@ -182,16 +193,17 @@ void __fastcall__ plugin_entry(const struct A2fcApi* a)
      * tells one of these from any other binary. A missing path or an
      * unreadable file falls out of fopen below, which spares a guard. */
     two = (unsigned char)e->aux - 1;
-    if (e->type != 0x06 || (e->aux >> 8) != 0xE0 || two > 1) {
-        a->strcpy(a->note, m_bad);
-        return;
-    }
+    if (e->type != 0x06 || (e->aux >> 8) != 0xE0 || two > 1) goto bad;
     in = a->fopen(a->full, "rb");
-    if (!in) { a->strcpy(a->note, m_bad); return; }
+    if (!in) goto bad;
     have = at = 0;
     ok = picture(two);
     a->fclose(in);                      /* one close for both ways out */
-    if (!ok) { a->strcpy(a->note, m_bad); return; }
+    if (!ok) {
+bad:                                    /* one refusal for the three ways in */
+        a->strcpy(a->note, m_bad);
+        return;
+    }
 
     p8_show(two);
     a->media_wait();

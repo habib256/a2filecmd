@@ -96,6 +96,7 @@ static void too_long(void){strcpy(note,"Path too long");}
 static void report_error(const char* s){strcpy(note,s);}
 static unsigned char ram_format(void){return 0;}
 static void progress_bar(const char* s,uint32_t n,uint32_t total){++progress_calls;}
+static unsigned int ticks;static void activity_tick(void){++ticks;}
 static unsigned char abort_key(void){
     if(cancel_at && progress_calls>=cancel_at)progress_abort=1;
     return progress_abort;

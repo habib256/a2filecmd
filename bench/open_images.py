@@ -15,6 +15,16 @@ def visible(page):
     return b''.join(page[i:i + 120] for i in range(0, 8192, 128))
 
 
+def loading_rows(s):
+    """The text page behind a viewer, the activity cell left out: row 21,
+    last column, where the decoder turns / and \\ while it reads
+    (src/plugins/spin.h). Anything else there is still a leftover."""
+    rows = [r.rstrip() for r in s.rows()]
+    if rows[21][79:] in ('/', '\\'):
+        rows[21] = rows[21][:79].rstrip()
+    return rows
+
+
 def main():
     stream = unrle(BASTILLE)
     ext_aux, ext_main = page_of(stream[:COLS * ROWS]), page_of(stream[COLS * ROWS:])
@@ -64,7 +74,7 @@ def main():
                     # page, so the text page still holds what the core put
                     # there. (DGRVIEW is the exception below: its picture
                     # IS the text page.)
-                    rows = [r.rstrip() for r in s.rows()]
+                    rows = loading_rows(s)
                     s.ok(label + ' opens on the name alone, not on the panels',
                          rows[0] == 'Loading ' + name and not any(rows[1:]), rows[:3])
                     if aux is not None:
@@ -104,7 +114,7 @@ def main():
             # so there is no switch to trap: what says it is the text page
             # itself, which nothing writes to again until the album is left.
             # It used to hold both panels and `Loading ARAW...` on row 22.
-            rows = [r.rstrip() for r in s.rows()]
+            rows = loading_rows(s)
             s.ok('the viewer opens on the name alone, not on the panels',
                  rows[0] == 'Loading ARAW' and not any(rows[1:]), rows[:4])
             s.key(bytes([21]))

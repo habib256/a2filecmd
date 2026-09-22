@@ -231,8 +231,15 @@ close:  lda     in
 ; file or on an error -- either way the stream is over.
 mp_read:
         lda     #255
-; fread(copy_buf, 1, A, in): the count in A.
+; fread(copy_buf, 1, A, in): the count in A. Every read also turns the
+; resident's activity cell ($06F7, row 21) between / and \: the scan and
+; the drawing are seconds behind the Loading screen (see spin.h).
 readn:  pha
+        lda     #$AF
+        cmp     $06F7
+        bne     spun
+        lda     #$DC
+spun:   sta     $06F7
         lda     _mp_buf
         ldx     _mp_buf+1
         jsr     pushax

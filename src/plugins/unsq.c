@@ -113,7 +113,11 @@ static void putb(unsigned char c)
     ++ocount;
     obuf[olen++] = c;
     if (olen == sizeof obuf) flush();
-    if (!(ocount & 1023) && stop()) bad = 1;
+    if (!(ocount & 1023)) {
+        /* measured on the archive: a .QQ does not say how long it grows */
+        a.progress_bar(name, tell(), a.selected->size);
+        if (stop()) bad = 1;
+    }
 }
 
 /* -- the stream ---------------------------------------------------------- */
@@ -190,6 +194,7 @@ static unsigned char read_back(void)
     while ((k = RF(fread)(obuf, 1, sizeof obuf, f)) != 0) {
         for (i = 0; i < k; ++i) s += obuf[i];
         n += k;
+        a.progress_bar(name, n, ocount);
     }
     k = ferror(f);
     if (RF(fclose)(f)) k = 1;

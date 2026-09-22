@@ -22,6 +22,7 @@ static size_t write_(const void* p,size_t s,size_t n,FILE* f) {
     return fwrite(p,s,n,f);
 }
 static void clear_(void) {}
+static void bar_(const char* p,unsigned long d,unsigned long t) { fprintf(stderr,"BAR %s %lu %lu\n",p,d,t); }
 static void xy_(unsigned char x,unsigned char y) {}
 int main(int argc,char** argv) {
     unsigned char data[512],n,i;
@@ -31,6 +32,7 @@ int main(int argc,char** argv) {
     if(!strcmp(argv[2],"export")) {
         FILE* out;
         a.fseek=seek_;a.fread=read_;a.fwrite=write_;a.full="/SOURCE/CODE";buf=data;
+        a.progress_bar=bar_;a.input="OUT.TXT";
         file=fopen(argv[3],"rb");size=strtoul(argv[4],0,10);offset=strtoul(argv[5],0,10);
         origin=strtoul(argv[6],0,16);readfail=atol(argv[7]);writefail=atoi(argv[8]);cancelafter=atoi(argv[9]);
         out=fopen(argv[10],"wb");n=export_text(out);fclose(out);fclose(file);
@@ -68,8 +70,10 @@ class Disasm(unittest.TestCase):
     def export(self,data,offset=0,cpu=1,origin=0x2000,readfail=-1,writefail=0,cancelafter=0,size=None):
         path=self.p/'source';out=self.p/'export';path.write_bytes(data)
         args=[self.exe,str(cpu),'export',path,str(len(data) if size is None else size),str(offset),f'{origin:X}',str(readfail),str(writefail),str(cancelafter),out]
-        status,position=map(int,subprocess.check_output(args,text=True).split())
+        run=subprocess.run(args,capture_output=True,text=True,check=True)
+        status,position=map(int,run.stdout.split())
         self.assertEqual(position,offset);self.assertEqual(path.read_bytes(),data)
+        self.bars=[tuple(map(int,l.split()[2:])) for l in run.stderr.splitlines() if l.startswith('BAR OUT.TXT ')]
         return status,out.read_bytes()
     def test_every_opcode_roundtrips_through_assembler(self):
         self.assertIsNotNone(shutil.which('ca65'))
@@ -131,6 +135,16 @@ class Disasm(unittest.TestCase):
                 raw=bytes.fromhex(row[14:23]);rebuilt+=raw;pos+=len(raw)
             self.assertEqual(rebuilt,data[2:])
             if cpu:self.assertIn(b'.BYTE $4C\r\n',text)
+    def test_export_moves_the_bar(self):
+        # One sprintf and one write per line: minutes for a big BIN at 1 MHz.
+        data=bytes.fromhex('A9428D00C0')*400
+        status,text=self.export(data,offset=5)
+        self.assertEqual(status,0)
+        done=[d for d,t in self.bars]
+        self.assertEqual({t for d,t in self.bars},{len(data)-5})
+        self.assertEqual(done[0],0);self.assertEqual(done,sorted(done))
+        self.assertGreaterEqual(len(done),(len(data)-5)//(19*5))
+        self.assertLess(done[-1],len(data)-5)
     def test_export_uses_selected_cpu_and_origin(self):
         for cpu,instruction in ((0,b'.BYTE $80'),(1,b'BRA $4000')):
             status,text=self.export(bytes.fromhex('80FE'),cpu=cpu,origin=0x4000)

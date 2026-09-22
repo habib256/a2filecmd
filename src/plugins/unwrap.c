@@ -200,6 +200,7 @@ static unsigned char pass(unsigned char check)
             for (i = 0; i < n; ++i) if (cmp[i] != blk[i]) return 0;
         } else if (RF(fwrite)(blk, 1, n, out) != n) return 0;
         left -= n;
+        a.progress_bar(name, len - left, len);
         if (stop()) return 0;
     }
     return !check || RF(fread)(cmp, 1, 1, out) == 0;

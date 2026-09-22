@@ -258,6 +258,8 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
   * bitmap page it held is gone. */
  bm_page=NOPAGE;
  for(i=0;i<data_blocks;++i) {
+  /* up to 256 blocks, each written then read back */
+  a.progress_bar(a.selected->name,i,data_blocks);
   b=(data_blocks>1)?(idx[i]|((unsigned int)idx[256+i]<<8)):key;
   a.memset(buf,0,512);
   n=(RF(fread)(buf,1,512,source)==512);

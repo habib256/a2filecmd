@@ -326,8 +326,9 @@ confirm:
         sec
 @bar:
         php                     ; the question is answered: the main keys
-        jsr     main_bar        ; come back for the operation's duration
-        plp
+        jsr     main_bar        ; come back for the operation's duration,
+        jsr     present         ; at once -- a Y/N bar left on through a
+        plp                     ; long delete looked like an ignored Y
         rts
 
 ; main_bar -- the last row of the panels

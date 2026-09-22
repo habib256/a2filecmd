@@ -205,4 +205,31 @@ with `tools/mkvolume.py`, flushed when POM2 stops), as `bench/txtconv.py`
 does. Two more facts learned the hard way: after a **big** overlay the core
 clears the screen and redraws, so its last words must go through
 `api->note`, not `api->message`; and `api->progress_bar` shows the core's
-own file counters, which an overlay cannot set (cosmetic).
+own file counters, which the core resets to "1/1" before every overlay.
+
+## Progress: never a still screen
+
+Anything that can last more than a few seconds at 1 MHz -- a volume walk,
+a whole file read, copied, converted or read back -- must move something
+on the screen, or it passes for a crash:
+
+- `api->progress_bar(name, done, total)` on row 22. Only the first **15
+  characters** of `name` show: a label with its escape key reads "Rescue
+  (ESC)", not "Recovering (ESC cancels)". It redraws only when a cell of
+  the bar or the `name` pointer changes, so a pass must start with
+  `done == 0`, which always redraws: a verification pass that restarts at
+  0 is visible, and a static `name` buffer shared by every file (a
+  directory entry) still shows each new file. The same call with the same
+  values only turns the activity cell -- useful inside retries.
+- With no room for a bar, `spin()` (`spin.h`, 15 bytes) or the same four
+  instructions inline (12 bytes) turns the resident's activity cell, row
+  21 column 79 of the MAIN text page, between / and \. Call it once per
+  block or per file, not in a loop that may run an even number of times
+  between two reads, or the glyph stands still. Never from DGRVIEW: a
+  lo-res picture is the text page.
+- A picture viewer decodes behind the core's "Loading NAME" screen, which
+  stays in text: the activity cell is safe there, a conio call after the
+  decoder turned 80STORE off is not.
+
+The host harnesses (`tools/test_*.py`) record every bar their stub
+receives; a new long loop comes with a test that the bar moves in it.

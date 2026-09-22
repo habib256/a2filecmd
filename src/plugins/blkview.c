@@ -62,6 +62,22 @@ static unsigned char pattern[4], have_pattern, matched;
 static unsigned int found_block, found_offset;
 static unsigned long next_search;
 
+/* stop(), once per block of a search or an extraction: a whole volume is
+ * minutes, so each block also turns the resident's activity cell ($06F7,
+ * row 21) between / and \ (see spin.h). No room here for a bar. */
+static unsigned char busy(void)
+{
+#ifndef PLUGIN_HOST
+    asm("lda #$AF");
+    asm("cmp $06F7");
+    asm("bne %g", spun);
+    asm("lda #$DC");
+spun:
+    asm("sta $06F7");
+#endif
+    return stop();
+}
+
 /* Shift register search crosses block boundaries and finds overlapping matches.
  * Results are byte positions in normalized ProDOS order, never container offsets.
  * 0: exhausted; 1: found; 2: read error; 3: cancelled. */
@@ -74,7 +90,7 @@ static unsigned char search_bytes(unsigned long start)
              (unsigned int)pattern[2]<<8 | pattern[3];
     b = (unsigned int)(start>>9); i = (unsigned int)start & 511;
     for (; b < source.blocks; ++b) {
-        if (stop()) return 3;
+        if (busy()) return 3;
         if (!source_read(&source,b,buf)) return 2;
         for (; i < 512; ++i) {
             rolling = ((rolling<<8) | buf[i]) & 0xFFFFFFFFUL;
@@ -122,7 +138,7 @@ static unsigned char extract_blocks(FILE* out,unsigned int count)
 {
     unsigned int i;
     for(i=0;i<count;++i) {
-        if(stop())return 3;
+        if(busy())return 3;
         if(!source_read(&source,block+i,buf))return 2;
         if(v_fwrite(buf,1,512,out)!=512)return 1;
     }

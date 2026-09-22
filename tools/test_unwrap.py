@@ -61,6 +61,8 @@ static int close_(FILE* f)
 }
 static size_t read_(void* p, size_t s, size_t n, FILE* f) { return fread(p, s, n, f); }
 static int seek_(FILE* f, long o, int w) { return fseek(f, o, w); }
+static unsigned long bars, overflows;
+static void bar_(const char* n, unsigned long d, unsigned long t) { ++bars; if (d > t || !*n) ++overflows; }
 int main(int argc, char** argv)
 {
     static struct A2fcApi api;
@@ -81,7 +83,9 @@ int main(int argc, char** argv)
     api.memcpy = memcpy; api.memset = memset; api.strcpy = strcpy; api.strlen = strlen;
     api.sprintf = sprintf; api.fopen = open_; api.fread = read_; api.fwrite = write_;
     api.fseek = seek_; api.fclose = close_; api.remove = remove_; api.mli = mli_;
+    api.progress_bar = bar_;
     plugin_entry(&api);
+    printf("BARS %lu %lu\n", bars, overflows);
     printf("NOTE %s\n", note);
     return 0;
 }
@@ -117,6 +121,7 @@ class Unwrap(unittest.TestCase):
         note = [l[5:] for l in lines if l.startswith('NOTE ')][0]
         created = [l.split()[1:] for l in lines if l.startswith('CREATE ')]
         removed = [l.split()[1] for l in lines if l.startswith('REMOVE ')]
+        self.bars = [int(v) for l in lines if l.startswith('BARS ') for v in l.split()[1:]]
         files = {p.name: p.read_bytes() for p in (case / 'D').iterdir()}
         self.assertEqual((case / 'S' / name).read_bytes(), data, 'the source is untouched')
         return note, created, removed, files
@@ -180,6 +185,13 @@ class Unwrap(unittest.TestCase):
         for i, data in enumerate(real):
             with self.subTest(i=i):
                 self.check('SAMPLE.AS', data, typ='E0')
+
+    def test_progress(self):
+        # A big fork is tens of seconds of floppy I/O: the bar moves on
+        # every block of the copy and of the read-back.
+        fork = bytes(range(256)) * 40
+        self.check('BIG.AS', ref.make_as([(3, b'Big'), (1, fork)]))
+        self.assertEqual(self.bars, [2 * ((len(fork) + 511) // 512), 0])
 
     def test_precedence_and_macbinary_i(self):
         prodos = (11, bytes([0, 0xC3, 0, 0x06, 0, 0, 0x20, 0x00]))

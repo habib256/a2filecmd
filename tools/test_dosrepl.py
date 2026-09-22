@@ -72,6 +72,7 @@ static unsigned char mli(unsigned char cmd, void* p) {
 }
 static unsigned char do_confirm(const char* s) { (void)s; return mode!=7; }
 static void progress(const char* s,unsigned long n,unsigned long t){(void)s;(void)n;(void)t;}
+static void message(const char* s){(void)s;}
 /* The overlay is handed a ProDOS path (it resolves its drive through
  * ON_LINE); the bytes come from the real file the test wrote. */
 static FILE* src_open(const char* p,const char* m){(void)p;return fopen(full_path,m);}
@@ -93,7 +94,7 @@ int main(int argc,char** argv) {
  api.memcpy=memcpy; api.memset=memset; api.strcpy=strcpy; api.strlen=strlen;
  api.sprintf=sprintf; api.mli=mli; api.confirm=do_confirm;
  api.fopen=src_open; api.fread=fread; api.fwrite=fwrite; api.fclose=fclose;
- api.fseek=fseek; api.progress_bar=progress;
+ api.fseek=fseek; api.progress_bar=progress; api.message=message;
  plugin_entry(&api);
  fclose(disk);
  printf("%d %d %s\n",writes,reads,note_text);

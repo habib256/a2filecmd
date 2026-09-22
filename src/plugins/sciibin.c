@@ -89,6 +89,7 @@ static char src[PATH_LEN + 1];          /* the part being read */
 static const char* why;
 static char parts[MAXPARTS * 16];       /* the selected file, then those after it */
 static unsigned char nparts, more;      /* more: the file seen is a later part */
+static unsigned char lines;             /* the bar moves every 16 lines of 48 bytes */
 
 /* The next line of the input, into line: CR, LF or CRLF ends it, blanks
  * around it are dropped, and so is the high bit. 0 at the end of the file. */
@@ -200,6 +201,7 @@ static unsigned char chunk(void)
         bs_crc(bytes);
         k = left > 48 ? 48 : left;
         if (RF(fwrite)(bytes, 1, k, out) != k) { why = "Write"; return 0; }
+        if (!(++lines & 15)) a.progress_bar(name, written + seglen - left + k, total);
         if (stop()) { why = "Stopped"; return 0; }
     }
     if (!next_line() || llen < 4 || !unpack(0, 4)) return 0;
@@ -214,6 +216,7 @@ static unsigned char chunk(void)
 static unsigned char read_back(void)
 {
     unsigned int s, left, k, n;
+    unsigned long done = 0;
     FILE* f = RF(fopen)(path, "rb");
     if (!f) return 0;
     for (s = 0; s < segs; ++s) {
@@ -224,6 +227,8 @@ static unsigned char read_back(void)
             if (n != k) { RF(fclose)(f); return 0; }
             if (k < 48) a.memset(bytes + k, 0, 48 - k);
             bs_crc(bytes);
+            done += k;
+            if (!(++lines & 15)) a.progress_bar(name, done, written);
         }
         if (bs_sum != crcs[s]) { RF(fclose)(f); return 0; }
     }

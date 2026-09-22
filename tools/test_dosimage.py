@@ -72,7 +72,12 @@ static unsigned char cf(const char* p){
  if(mode==15){FILE* changed=fopen(panels[1].path,"r+b");fseek(changed,at,SEEK_SET);fputc(0x80,changed);fclose(changed);}
  return mode!=11;
 }
-static void progress(const char* p,unsigned long n,unsigned long t){}
+static unsigned long bars,bar_over;static char bar_names[256];
+static void progress(const char* p,unsigned long n,unsigned long t){
+ ++bars;if(n>t)++bar_over;
+ if(!strstr(bar_names,p) && strlen(bar_names)+strlen(p)+2<sizeof bar_names){strcat(bar_names,p);strcat(bar_names,"|");}
+}
+static void message(const char* p){(void)p;}
 int main(int argc,char**argv){
  mode=atoi(argv[1]);at=atoi(argv[2]);strcpy(full,argv[3]);strcpy(panels[1].path,argv[4]);
  panels[1].fs=FS_DOS33;panels[1].img_len=strlen(argv[4]);strcpy(selected.name,"NEW");selected.type=6;
@@ -80,7 +85,7 @@ int main(int argc,char**argv){
  api.copy_buf=buf;api.note=note;api.reselect=reselect;api.selected=&selected;
  api.memcpy=memcpy;api.memset=memset;api.strcpy=strcpy;api.strcmp=strcmp;api.strlen=strlen;api.sprintf=sprintf;
  api.mli=mli;api.fopen=op;api.fread=rd;api.fwrite=wr;api.fclose=cl;api.fseek=sk;api.remove=rm;
- api.confirm=cf;api.progress_bar=progress;
+ api.confirm=cf;api.progress_bar=progress;api.message=message;
  phase=1;api.arg='P';prep(&api);
  if(input[0]=='I'){
   /* The loader borrows other_full and rereads panels between phases. */
@@ -88,7 +93,8 @@ int main(int argc,char**argv){
   if(mode==12){FILE* changed=fopen(panels[1].path,"r+b");fputc(0x99,changed);fclose(changed);}
   strcpy(other_full,"/LOADER/DOSIMAGE.PLG");phase=3;api.arg=input[0]=='F'?'F':'X';prep(&api);
  }
- printf("%d %d %d %d %d %s\n",reads,writes,closes,seeks,renames,note);return 0;
+ printf("%d %d %d %d %d %s\n",reads,writes,closes,seeks,renames,note);
+ fprintf(stderr,"%lu %lu %s\n",bars,bar_over,bar_names);return 0;
 }
 '''
 class DosImage(unittest.TestCase):
@@ -110,11 +116,20 @@ class DosImage(unittest.TestCase):
   self.original=make_disk([('KEEP',0x80,b'precious\r'*70)])
   self.payload=bytes(range(256))*32;self.src.write_bytes(self.payload);self.disk.write_bytes(self.original)
  def run_op(self,mode=0,at=1):
-  out=subprocess.check_output([self.exe,str(mode),str(at),str(self.src),str(self.disk)],text=True)
+  run=subprocess.run([self.exe,str(mode),str(at),str(self.src),str(self.disk)],text=True,capture_output=True,check=True)
+  out=run.stdout;self.bars=run.stderr.rstrip('\n').split(' ',2)
   self.assertEqual(self.src.read_bytes(),self.payload)
   return [int(x) for x in out.split()[:5]],out
  def assert_original_recoverable(self):
   self.assertTrue(any(p.exists() and p.read_bytes()==self.original for p in (self.disk,self.p/'A2FC.BAK')))
+ def test_every_long_phase_moves_a_bar(self):
+  # Clone, CRC of the clone, the copy itself, the image kept around it, the
+  # CRC again before the install: 140 KB each, seconds to a minute at 1 MHz.
+  _,out=self.run_op();self.assertIn('Copied to DOS 3.3 image',out)
+  calls,over,names=self.bars
+  self.assertEqual(names.split('|')[:-1],['Copying image','Checking image','NEW'])
+  self.assertGreater(int(calls),3*143360//256)
+  self.assertEqual(over,'0')
  def test_copy_and_container_bytes(self):
   for suffix in ('DSK','DO','2MG'):
    self.disk=self.p/('D.'+suffix)
@@ -193,8 +208,10 @@ class DosImage(unittest.TestCase):
   code=r'''#define PLUGIN_HOST
 #include "src/plugins/dosimage.c"
 static unsigned char sample[256];
+static void bar(const char* s,unsigned long n,unsigned long t){(void)s;(void)n;(void)t;}
 int main(void) {
  unsigned int i;unsigned char j;
+ a.progress_bar=bar;
  buf=(unsigned char*)"123456789";image_crc=0xFFFFFFFFUL;image_hash(9);
  if(image_crc!=0x340BC6D9UL)return 1;
  buf=sample;for(i=0;i<256;++i)sample[i]=i;
