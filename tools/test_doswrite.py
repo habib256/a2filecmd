@@ -64,7 +64,8 @@ static size_t source_read(void* p,size_t s,size_t n,FILE* f){
 }
 static int source_close(FILE* f){++closes;fclose(f);return ((mode==10 && closes==3) || (mode==17 && closes==1))?-1:0;}
 static unsigned char confirm(const char* s){return mode!=6;}
-static void progress(const char* s,unsigned long n,unsigned long t){if(mode==11)cancelled=1;}
+static void progress(const char* s,unsigned long n,unsigned long t){if(mode==11)cancelled=1;fprintf(stderr,"BAR %s %lu %lu\n",s,n,t);}
+static void message(const char* s){fprintf(stderr,"MSG %s\n",s);}
 int main(int argc,char**argv){
  struct A2fcApi api;memset(&api,0,sizeof api);
  disk=fopen(argv[1],"r+b");strcpy(path,argv[2]);mode=atoi(argv[3]);fail_at=atoi(argv[4]);
@@ -73,7 +74,7 @@ int main(int argc,char**argv){
  api.panels=panels;api.active=&active;api.selected=&selected;api.full="/V/NEW";api.copy_buf=scratch;
  api.note=note_text;api.reselect=reselect;api.memcpy=memcpy;api.memset=memset;api.strcpy=strcpy;
  api.strlen=strlen;api.sprintf=sprintf;api.mli=mli;api.fopen=source_open;api.fread=source_read;api.fclose=source_close;
- api.confirm=confirm;api.progress_bar=progress;
+ api.confirm=confirm;api.progress_bar=progress;api.message=message;
  if(mode==19)api.arg=1;
  if(mode==20)panels[1].img_len=5;
  plugin_entry(&api);fclose(disk);
@@ -94,12 +95,20 @@ class DosWrite(unittest.TestCase):
   self.original=make_disk([('KEEP',0x80,b'original\r'*100)])
   self.disk.write_bytes(self.original);self.payload=bytes(range(256))*4+b'end';self.src.write_bytes(self.payload)
  def run_op(self,mode=0,at=1,kind=6):
-  out=subprocess.check_output([self.exe,self.disk,self.src,str(mode),str(at),str(kind)],text=True)
+  run=subprocess.run([self.exe,self.disk,self.src,str(mode),str(at),str(kind)],text=True,capture_output=True,check=True)
+  out=run.stdout;self.trace=run.stderr.splitlines()
   self.assertEqual(self.src.read_bytes(),self.payload)
   return int(out.split()[0]),out
  def assert_keep(self):
   before=read_files(self.original)['KEEP'];after=read_files(self.disk.read_bytes())['KEEP']
   self.assertEqual(after,before)
+ def test_progress_covers_audit_copy_and_read_back(self):
+  # 1,029 bytes + a 4-byte prefix: five sectors. The audit says what it
+  # reads, the copy fills the bar to 5/5, the read-back starts it again.
+  _,out=self.run_op(kind=6);self.assertIn('Copied to DOS',out)
+  self.assertEqual(self.trace[0],'MSG Checking DOS 3.3 disk...')
+  bars=[l for l in self.trace if l.startswith('BAR ')]
+  self.assertEqual(bars,['BAR NEW %d 5'%k for k in (1,2,3,4,5,0,1,2,3,4)])
  def test_types_and_size_boundaries(self):
   for kind,prefix in ((4,b''),(6,b'\x00\x20'),(0xFC,b''),(0xFA,b'')):
    for size in (0,1,252,254,256,512,31232,65535):

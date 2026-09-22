@@ -237,6 +237,9 @@ static unsigned char one(const char* name, unsigned char type, unsigned long siz
     /* The date comes straight from the entry the walk is standing on: a
      * fifth parameter went on the stack and cost the window fifty bytes. */
     set_date(a.dir_entry->mdate);
+    /* 0 redraws: the name shows while the volume is searched for it,
+     * skipped files included -- `name` is the same buffer for every one */
+    a.progress_bar(name, 0, 1);
     pnamelen = (unsigned char)RF(strlen)(name);
     if (!pnamelen || pnamelen > 15 || !size) { ++skipped; return 1; }
     a.memset(newent, 0, ENTRY);
@@ -260,7 +263,7 @@ static unsigned char one(const char* name, unsigned char type, unsigned long siz
         if (stop()) { note("Stopped; the volume is whole."); goto bad; }
         if (!source_write(&src, first + b, buf) || !source_read(&src, first + b, work) ||
             memcmp(buf, work, 512)) { note("Write failed; the volume is whole."); goto bad; }
-        a.progress_bar(name, b, blocks);
+        a.progress_bar(name, b + 1, blocks);
     }
     RF(fclose)(src_file); src_file = 0;
     /* Nothing above this line is visible to a reader: the blocks are past

@@ -132,19 +132,25 @@ hv_done:
         rts
 
 ; A heartbeat at row 21, column 79: odd columns of the 80-column display
-; are MAIN RAM ($06F7). No conio state, soft switch, AUX or file is touched.
+; are MAIN RAM ($06F7). No conio state, AUX or file is touched, and no soft
+; switch is changed: RDTEXT ($C01A, bit 7 set in text mode) is only read,
+; so that nothing is written over a lo-res picture, which lives in the text
+; page -- the album scan ticks while one is on the air.
 ; CODE is permanently resident and covered by the normal layout checks.
         .export _activity_tick
         .bss
 activity_phase: .res 1
         .code
 _activity_tick:
+        bit $C01A
+        bpl activity_off
         inc activity_phase
         lda activity_phase
         and #3
         tax
         lda activity_chars,x
         sta $06F7
+activity_off:
         rts
 activity_chars:
         .byte $FC, $AF, $AD, $DC  ; normal-video | / - backslash

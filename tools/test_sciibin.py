@@ -61,6 +61,8 @@ static int close_(FILE* f)
 static int remove_(const char* p) { printf("REMOVE %s\n", strrchr(p, '/') + 1); return fault == 4 ? -1 : remove(p); }
 static size_t read_(void* p, size_t s, size_t n, FILE* f) { return fread(p, s, n, f); }
 static int seek_(FILE* f, long o, int w) { return fseek(f, o, w); }
+static unsigned long bars, overflows;
+static void bar_(const char* n, unsigned long d, unsigned long t) { ++bars; if (d > t || !*n) ++overflows; }
 static unsigned char dopen_(const char* p) { dir_i = 5; return 1; }
 static unsigned char dnext_(void)
 {
@@ -90,7 +92,9 @@ int main(int argc, char** argv)
     api.strcmp = strcmp; api.sprintf = sprintf; api.fopen = open_; api.fread = read_;
     api.fwrite = write_; api.fseek = seek_; api.fclose = close_; api.remove = remove_;
     api.mli = mli_; api.dir_open = dopen_; api.dir_next = dnext_; api.dir_close = dclose_;
+    api.progress_bar = bar_;
     plugin_entry(&api);
+    printf("BARS %lu %lu\n", bars, overflows);
     printf("NOTE %s\n", note);
     return 0;
 }
@@ -147,6 +151,7 @@ class Sciibin(unittest.TestCase):
         note = [l[5:] for l in lines if l.startswith('NOTE ')][0]
         created = [l.split()[1:] for l in lines if l.startswith('CREATE ')]
         removed = [l.split()[1] for l in lines if l.startswith('REMOVE ')]
+        self.bars = [int(v) for l in lines if l.startswith('BARS ') for v in l.split()[1:]]
         made = {p.name: p.read_bytes() for p in (case / 'D').iterdir()}
         return note, created, removed, made
 
@@ -189,6 +194,15 @@ class Sciibin(unittest.TestCase):
                     self.assertTrue(note.startswith('Parts out of order') or note.endswith('removed.'), note)
                     note = self.check([files[0], ('NOTE', b'text'), *files[1:]], 'P.00')
                     self.assertEqual(note, 'Parts missing: PROG.NAME removed.')
+
+    def test_progress(self):
+        # About 15 ms a line at 1 MHz: a 40,000-byte file is 834 lines to
+        # decode and 834 to read back, the bar moving every 16 of them.
+        data = bytes(range(256)) * 157
+        self.check([('P.BSC', ref.encode('BIG', data))], 'P.BSC')
+        lines = (len(data) + 47) // 48
+        self.assertGreaterEqual(self.bars[0], 2 * (lines // 16) - 2)
+        self.assertEqual(self.bars[1], 0)
 
     def test_damage_is_refused(self):
         text = ref.encode('DOC', bytes(range(256)) * 10)

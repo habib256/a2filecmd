@@ -6,6 +6,7 @@
 #define UTIL_CREATE
 #define UTIL_DISCARD
 #include "util.h"
+#include "spin.h"
 void __fastcall__ plugin_entry(const struct A2fcApi*);
 struct Header {unsigned int magic;unsigned char flags;void __fastcall__ (*entry)(const struct A2fcApi*);unsigned char r[3];char desc[52];};
 #pragma rodata-name(push,"OVLHDR")
@@ -31,6 +32,7 @@ static void data(unsigned int b) {
     if(logical>=need){if(b)invalid=1;return;}
     ++logical;if(b)touch(b);
     if(!writing || invalid)return;
+    if(!(logical&7))a.progress_bar(name,written,size);   /* logical 1 draws it */
     n=size-written>512?512:(unsigned int)(size-written);
     if(b){if(readblk(unit,b,buf)){invalid=1;return;}}
     else a.memset(buf,0,512);
@@ -44,6 +46,7 @@ static void unflip(unsigned char* p) {
 }
 static void indexblock(unsigned int b) {
     unsigned int i;
+    spin();   /* a tree file is up to 128 index blocks, checked twice */
     if(b){touch(b);if(invalid||readblk(unit,b,idx)){invalid=1;return;}}
     else a.memset(idx,0,512);
     unflip(idx);
@@ -108,6 +111,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
     if(total<7 || bitmap<3 || bitmap>=total || (total-1)/4096+1>total-bitmap){note("Invalid volume bitmap.");return;}
     for(b=0;b<blocks && !stop();++b) {
         for(slot=b?0:1;slot<13 && !stop();++slot) {
+        spin();   /* each slot reopens the directory: seconds between candidates */
         f=a.fopen(dir,"rb");if(!f){note("Cannot read source directory.");return;}
         if(a.fseek(f,(unsigned long)b*512,SEEK_SET)||a.fread(db,1,512,f)!=512){a.fclose(f);note("Directory read failed.");return;}a.fclose(f);
             a.memcpy(e,db+4+39*slot,39);

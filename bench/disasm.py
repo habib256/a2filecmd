@@ -76,7 +76,10 @@ def main():
             s.key(b'R');s.key(b'E');s.wait(lambda:s.has('Export from'),'cancelled export name')
             s.key(b'\x7F'*10);p.stable();s.type('CANCEL.TXT');s.key(RET)
             s.wait(lambda:s.has('ESC cancels'),'export started')       # la fin du texte
-            s.ok('the export names its escape key while it runs',s.rows()[22].strip()=='Exporting... ESC cancels',s.rows()[22].strip())
+            # la ligne 22 porte la barre de progression, la touche est sur la 21
+            # column 79 of row 21 is the activity cell the bar turns
+            s.ok('the export names its escape key while it runs',s.rows()[21][:79].strip()=='Exporting... ESC cancels',s.rows()[21].strip())
+            s.wait(lambda:'CANCEL.TXT' in s.rows()[22] and '[' in s.rows()[22],'export progress bar')
             s.key(ESC)
             # La ligne d'etat est relevee a l'instant ou elle parait : ESC pendant
             # l'export annule ET sort du lecteur, la page d'etat ne reste donc pas.

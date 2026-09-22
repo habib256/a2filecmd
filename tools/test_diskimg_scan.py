@@ -37,6 +37,7 @@ static struct { struct Dev dev[8]; unsigned char ndev, parms[6]; const unsigned 
 #define DI (&state)
 static unsigned char copy_buf[512], devcnt, devlst[14], slotrom[8][256];
 static unsigned int devadr[16];
+static unsigned int ticks; static void activity_tick(void) { ++ticks; }
 static char cfg_path[65] = "/BOOT/A2FILE/A2FILE.CODE", full[81];
 static const char* volumes[16];
 #define DI_SLOTROM(slot) ((const unsigned char*)slotrom[slot])

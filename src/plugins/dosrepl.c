@@ -119,7 +119,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
     !read_sector(272+hit_cat,cat))goto refused;
  e=cat+11+hit_slot*35;
  if(memcmp(e+3,name,30) || (e[2]&0x80))goto refused;
- for(i=0;i<needed;++i)vtoc[bitpos(allocated(i))]&=~mask(allocated(i));
+ reserve();
  if(!write_sector(272,vtoc) || !transfer())goto failed;
  if(!read_sector(272+hit_cat,ts) || memcmp(ts,cat,256) ||
     !read_sector(272,ts) || memcmp(ts,vtoc,256))goto failed;

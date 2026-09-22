@@ -445,6 +445,18 @@ static void efinding(unsigned char id) { finding(id, curblock, curslot); }
 static unsigned char readblock(unsigned int b, unsigned char* dst)
 {
     if (stop()) return 0;
+#ifndef FIXIT_HOST
+    /* A big volume is minutes of block reads: each turns the resident's
+     * activity cell ($06F7, row 21) between / and \ (see spin.h). Here,
+     * not in stop(): an even number of stop() calls between two reads
+     * would leave the same glyph on the screen. */
+    asm("lda #$AF");
+    asm("cmp $06F7");
+    asm("bne %g", spun);
+    asm("lda #$DC");
+spun:
+    asm("sta $06F7");
+#endif
     /* Only a read into blk can lose the cached directory block; a read
      * into api->copy_buf leaves it, which spares a reread per file. */
     if (dst == blk) cached = 65535U;

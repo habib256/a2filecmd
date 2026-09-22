@@ -109,6 +109,18 @@ static unsigned char stop(void)
 static unsigned char readblock(unsigned int b, unsigned char* dst)
 {
     if (stop()) return 0;
+#ifndef VOLINFO_HOST
+    /* A big volume is minutes of block reads: each turns the resident's
+     * activity cell ($06F7, row 21) between / and \ (see spin.h). Here,
+     * not in stop(): an even number of stop() calls between two reads
+     * would leave the same glyph on the screen. */
+    asm("lda #$AF");
+    asm("cmp $06F7");
+    asm("bne %g", spun);
+    asm("lda #$DC");
+spun:
+    asm("sta $06F7");
+#endif
     if (b >= total) { if (!base) inc(&bad); incomplete = 1; return 0; }
     if (dst == buf) cached = 65535U;
     io.block = b; io.buf = dst;

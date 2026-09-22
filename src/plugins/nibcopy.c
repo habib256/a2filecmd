@@ -190,7 +190,7 @@ unsigned char __fastcall__ nb_run(const struct A2fcApi* api) {
  if(!nb_protected()){status="Source must be write-protected";goto motor;}
  nb_end();
  for(nb_track=0;nb_track<35;++nb_track) {
-  a.progress_bar("NIBCOPY (ESC cancels between tracks)",nb_track,35);
+  a.progress_bar("NIBCOPY (ESC)",nb_track,35)   /* 15 characters show */;
   if(stop())goto end;
   if(single && nb_track && !key("\1Insert WRITE-PROTECTED SOURCE. RETURN ready, ESC cancels"))goto end;
   nb_begin(source);

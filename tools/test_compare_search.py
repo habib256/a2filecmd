@@ -86,6 +86,11 @@ static void clear_row(unsigned char r) { (void)r; }
 static void gotoxy(unsigned char x, unsigned char y) { (void)x; (void)y; }
 static void open_row22(void) { clear_row(22); gotoxy(0, 22); }
 static void draw_panel(unsigned char p) { (void)p; }
+static unsigned int progress_done, progress_total, ticks;
+static void activity_tick(void) { ++ticks; }
+static void progress_bar(const char* s, unsigned long d, unsigned long t) {
+    fprintf(stderr, "BAR %u/%u %s %lu %lu\n", progress_done + 1, progress_total, s, d, t);
+}
 #define cprintf printf
 static unsigned char prompt(const char* l, const char* i, unsigned char h) {
     (void)l; (void)i; (void)h; strcpy(input, "WIDGET"); return 1;
@@ -104,6 +109,7 @@ int main(int argc, char** argv) {
         strcpy(selected.name, strrchr(argv[3], '/') + 1); selected.type = 6;
         compare_entry(&api);
         printf("%s|%d\n", shown, opens - closes);
+        fprintf(stderr, "TICKS %u\n", ticks);
     } else {
         /* argv: search FAULTS /dir NAME... */
         strcpy(panels[0].path, argv[3]);
@@ -146,8 +152,10 @@ class CompareSearch(unittest.TestCase):
 
     def compare(self, faults='', other=None):
         before = {p: p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
-        out = subprocess.check_output([str(self.exe), 'compare', faults, str(self.root / 'A/F'),
-                                       other or str(self.root / 'B')], text=True).strip()
+        run = subprocess.run([str(self.exe), 'compare', faults, str(self.root / 'A/F'),
+                              other or str(self.root / 'B')], text=True, capture_output=True, check=True)
+        out = run.stdout.strip()
+        self.trace = run.stderr.splitlines()
         self.assertEqual({p: p.read_bytes() for p in self.root.rglob('*') if p.is_file()}, before)
         shown, leaked = out.rsplit('|', 1)
         self.assertEqual(leaked, '0')
@@ -161,6 +169,13 @@ class CompareSearch(unittest.TestCase):
         self.assertEqual(self.compare(), 'Differ at byte 300.')
         self.files(data, data[:400])
         self.assertEqual(self.compare(), 'Same for 400 bytes, then longer.')
+
+    def test_a_long_compare_keeps_the_activity_cell_turning(self):
+        # No room for a bar in COMPARE: one tick per 256-byte read.
+        data = bytes(range(256)) * 12
+        self.files(data, data)
+        self.assertEqual(self.compare(), 'Identical: 3072 bytes.')
+        self.assertEqual(self.trace, ['TICKS 13'])
 
     def test_read_errors_are_not_the_end_of_a_file(self):
         data = b'z' * 600
@@ -187,8 +202,10 @@ class CompareSearch(unittest.TestCase):
 
     def search(self, faults, *names):
         before = {p: p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
-        out = subprocess.check_output([str(self.exe), 'search', faults, str(self.root / 'A'), *names],
-                                      text=True).strip()
+        run = subprocess.run([str(self.exe), 'search', faults, str(self.root / 'A'), *names],
+                             text=True, capture_output=True, check=True)
+        out = run.stdout.strip()
+        self.trace = run.stderr.splitlines()
         self.assertEqual({p: p.read_bytes() for p in self.root.rglob('*') if p.is_file()}, before)
         shown, leaked, tags = out.rsplit('|', 2)
         self.assertEqual(leaked, '0')
@@ -198,6 +215,14 @@ class CompareSearch(unittest.TestCase):
         for name, text in (('HAS1', b'x' * 510 + b'wid' + b'get'), ('NONE', b'nothing'), ('HAS2', b'WIDGET')):
             (self.root / 'A' / name).write_bytes(text)
         self.assertEqual(self.search('', 'HAS1', 'NONE', 'HAS2'), ('2 file(s) contain "WIDGET", now tagged.', 0b101))
+
+    def test_search_names_each_file_it_reads(self):
+        # "n/m NAME": which file of the panel is being read, bar across the panel.
+        (self.root / 'A/HAS1').write_bytes(b'a WIDGET here')
+        (self.root / 'A/NONE').write_bytes(b'nothing')
+        self.search('', 'HAS1', 'NONE')
+        self.assertEqual([l for l in self.trace if l.startswith('BAR ')],
+                         ['BAR 1/2 HAS1 0 2', 'BAR 2/2 NONE 1 2'])
 
     def test_search_stops_and_reports_unreadable_files(self):
         for name in ('HAS1', 'BAD', 'HAS2'):

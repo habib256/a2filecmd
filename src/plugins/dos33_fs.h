@@ -95,6 +95,8 @@ static unsigned char claim(unsigned int s) {
  * all writes. T/S lists describe successive groups of 122 logical sectors. */
 static unsigned char audit(void) {
  unsigned char c,next,j,k,t,s;unsigned int cats=0,cur,count,want,logical;
+ /* the whole catalog and every track/sector list: seconds on a Disk II */
+ a.message("Checking DOS 3.3 disk...");
 #ifdef DOS33_FIND
  hit_cat=0;hit_slot=0;hit_type=0;hit_count=0;name_taken=0;
  a.memset(victim,0,sizeof victim);

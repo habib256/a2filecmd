@@ -84,7 +84,10 @@ int main(int argc,char** argv) {
     expect(m,"MEMO");
     keys("]"); expect(m,"MEMO");
     keys("D"); wait("DELETE MEMO");
-    keys("Y"); wait("DELETED"); settle();
+    // The answer takes the Y/N bar off at once: a delete audits every file
+    // before it writes, seconds with the question still asked on screen.
+    m.pasteRawKeys("Y",1); run(cpu,60000); absent(m,"CANCEL");
+    wait("DELETED"); settle();
     assert(screen(m).find("NOTE")==std::string::npos);
     assert(screen(m).find("MEMO")==std::string::npos);
     // A new text under a name that exists: the save asks for another name

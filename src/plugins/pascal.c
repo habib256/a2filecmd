@@ -104,7 +104,7 @@ static unsigned char copy_file(unsigned int first, unsigned int last,
                     memcmp(back, buf + k, part)) return 0;
             }
         } else if (RF(fwrite)(buf, 1, n, out) != n || ferror(out)) return 0;
-        a.progress_bar(name, b - first, last - first);
+        a.progress_bar(name, b - first + 1, last - first);
         if (stop()) return 0;
     }
     if (verify && RF(fread)(back, 1, 1, out)) return 0;   /* it must end there */
@@ -157,6 +157,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     }
     RF(strcpy)(src.path, a.full);
     if (!image_open(&src)) { note("Not a disk image this can open."); return; }
+    a.message("Reading the Pascal directory...");   /* a block per entry */
     if (!read_dir()) {
         source_close(&src);
         note("Not an Apple Pascal volume.");

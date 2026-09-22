@@ -5,6 +5,32 @@ downloads and installation.
 
 ## [Unreleased]
 
+### Visible progress in long operations
+- Every tool that can work for more than a few seconds at 1 MHz now moves
+  something on screen. A progress bar is added to squeezed and ACU archives,
+  AppleSingle/MacBinary, BinSCII, disassembly export, the image conversion
+  check, cross-volume moves, file synchronisation, deleted file recovery,
+  copies into ProDOS, CP/M, Pascal and DOS 3.3 images, the DOS 3.3 image
+  clone and checks, Binary II and image extractions, and the zero-filling of
+  a new disk image. Verification passes restart the bar instead of leaving
+  it full.
+- Where no bar fits, the activity cell (row 21, last column) turns: CRC,
+  VERIFY, FIXIT, REPAIR, VOLINFO, text search, block search and
+  extraction, the WIPE allocation check, dating and renaming tagged files,
+  COMPARE, SEARCH, ShrinkIt threads skipped, the tools menu, drive scans,
+  bitmap writing while formatting, picture viewers while they decode, and
+  the scan for a picture's neighbours.
+- The file counter at the start of the bar no longer shows another
+  operation's count ("4/3") in tools, and a moved directory no longer
+  inflates it for the files after it.
+- DOS 3.3 copies reserve their sectors in one pass instead of a
+  quadratic one, a silent pause of seconds after the confirmation.
+- Bar labels fit the 15 characters shown, keeping their escape key.
+- DOS 3.3 edition: every sector read or written turns the last cell of the
+  key bar, the question leaves the screen as soon as it is answered, and a
+  copy shows its empty bar before its first reads. RWTS's own format of a
+  disk (about 18 s) still cannot show anything but its message.
+
 ### Faster ProDOS startup and panels
 - Place the launcher and frequently used overlays together on distribution
   disks; load the resident program in larger reads without an extra buffer.

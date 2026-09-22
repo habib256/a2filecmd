@@ -64,6 +64,17 @@ static unsigned char have, at;
 static unsigned char getb(void)
 {
     if (at == have) {
+#ifndef PLUGIN_HOST
+        /* a refill of the stream: turn the resident's activity cell
+         * ($06F7, row 21) between / and \ while the picture decodes
+         * behind the Loading screen (see spin.h) */
+        asm("lda #$AF");
+        asm("cmp $06F7");
+        asm("bne %g", spun);
+        asm("lda #$DC");
+spun:
+        asm("sta $06F7");
+#endif
         have = (unsigned char)A->fread(A->copy_buf, 1, 255, in);
         at = 0;
         if (!have) return 0;            /* `at` stays 0, so the next call retries */

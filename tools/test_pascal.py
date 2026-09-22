@@ -69,8 +69,8 @@ static size_t write_(const void* p,size_t s,size_t n,FILE* f){
  return fwrite(p,s,n,f);
 }
 static int close_(FILE* f){int r=fclose(f);return mode==5?-1:r;}
-static void progress_(const char* n,unsigned long d,unsigned long t){(void)n;(void)d;(void)t;}
-static void message_(const char* s){(void)s;}
+static void progress_(const char* n,unsigned long d,unsigned long t){fprintf(stderr,"BAR %s %lu %lu\n",n,d,t);}
+static void message_(const char* s){fprintf(stderr,"MSG %s\n",s);}
 static unsigned char confirm_(const char* s){(void)s;return 1;}
 /* dir_open/dir_next: imageio's size_of asks the core for the image's size. */
 static int listing;
@@ -141,9 +141,11 @@ class Pascal(unittest.TestCase):
         self.image.write_bytes(self.data)
 
     def run_op(self, mode=0, at=1):
-        note = subprocess.check_output(
+        run = subprocess.run(
             [str(self.exe), str(self.image), str(self.out) + '/', str(mode), str(at)],
-            text=True).strip()
+            text=True, capture_output=True, check=True)
+        note = run.stdout.strip()
+        self.trace = run.stderr.splitlines()
         # the image is read only: it never changes, whatever happened
         self.assertEqual(self.image.read_bytes(), self.data)
         return note
@@ -161,6 +163,17 @@ class Pascal(unittest.TestCase):
             name = entry['name'].replace('-', '.')
             got = (self.out / name).read_bytes()
             self.assertEqual(got, P.contents(self.data, entry), name)
+
+    def test_the_directory_read_is_announced_and_each_pass_fills_its_bar(self):
+        note = self.run_op()
+        self.assertEqual(self.trace[0], 'MSG Reading the Pascal directory...')
+        for entry in P.volume(self.data)['files']:
+            name = entry['name'].replace('-', '.')
+            with self.subTest(name=name):
+                blocks = entry['last'] - entry['first']
+                done = [l.split()[2:] for l in self.trace if l.startswith('BAR %s ' % name)]
+                steps = [[str(k), str(blocks)] for k in range(1, blocks + 1)]
+                self.assertEqual(done, steps * 2)
 
     def test_a_name_already_there_is_skipped_and_left_alone(self):
         (self.out / 'SHORT').write_bytes(b'KEEP ME')

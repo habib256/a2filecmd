@@ -125,7 +125,7 @@ static FILE* mock_fopen(const char* path, const char* mode)
     }
 }
 static void mock_bar(const char* n, unsigned long d, unsigned long t)
-{ (void)n; (void)d; (void)t; if (io_fault == 9) cancelled = 1; }
+{ if (io_fault == 9) cancelled = 1; if (io_fault == 20) fprintf(stderr, "BAR %s %lu %lu\n", n, d, t); }
 
 /* A copy that comes up short or wrong: the verify pass must catch it and
  * the original must survive. */
@@ -770,6 +770,18 @@ class CopyAcrossVolumes(unittest.TestCase):
         self.assertIn('copied to the other volume and removed', note)
         self.assertEqual(Path('/tmp/mv/d/HELLO').read_bytes(), payload)
         self.assertFalse(Path('/tmp/mv/s/HELLO').exists())
+
+    def test_the_bar_covers_the_copy_and_the_check(self):
+        # The read-back is as long as the copy: its bar starts again at 0
+        # instead of staying full while the machine reads.
+        payload = self.fixture(b'y' * 1300)
+        run = subprocess.run(
+            [str(self.exe), str(self.p / 'vol.po'), 'MOVE', '/tmp/mv/s', '/tmp/mv/d', 'HELLO',
+             '1', '4', '1300', '-1', '20'], text=True, capture_output=True, check=True)
+        self.assertIn('copied to the other volume and removed', run.stdout)
+        self.assertEqual(Path('/tmp/mv/d/HELLO').read_bytes(), payload)
+        bars = [l for l in run.stderr.splitlines() if l.startswith('BAR ')]
+        self.assertEqual(bars, ['BAR HELLO %d 1300' % k for k in (0, 512, 1024) * 2])
 
     def test_a_bad_copy_never_costs_the_original(self):
         payload = self.fixture()

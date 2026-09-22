@@ -253,11 +253,14 @@ static void probe(struct Dev* d)
     }
 }
 
+void activity_tick(void);   /* display.s: one text cell, row 21; never AUX or disk */
+
 static void scan_devices(void)
 {
     unsigned char i, n = DEVCNT + 1;
     ndev = 0;
     for (i = 0; i < n && ndev < 9; ++i) {
+        activity_tick();                    /* an empty drive is a second or more */
         devs[ndev].unit = DEVLST[i] & 0xF0;
         probe(&devs[ndev]);
         ++ndev;
@@ -368,6 +371,7 @@ static unsigned char write_structures(struct Dev* d)
     if ((r = write_block(d->unit, 2))) return r;
     /* the allocation bitmap: one bit per block, 1 = free */
     for (i = 0; i < bitmap_blocks; ++i) {
+        activity_tick();                    /* a second a page: 16 on 32 MB */
         memset(BLOCK, 0, 512);
         for (b = 0; b < 4096; ++b) {
             unsigned int block = ((unsigned int)i << 12) + b;

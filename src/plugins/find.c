@@ -30,9 +30,9 @@
  * Traversal state survives each result page. "Nothing
  * found." when there is no match.
  *
- * Resident code/BSS stays below $3100. Setup code is initially loaded in
- * $3100-$38FF and discarded after read_pattern returns, before the queue
- * is initialized. sdk/find.cfg fills the gap for the linear loader.
+ * Resident code/BSS stays below $3100. Setup code -- setup(), the pattern
+ * and the filters -- is initially loaded in $3100-$38FF and discarded
+ * once setup() returns, before the queue is initialized. sdk/find.cfg fills the gap for the linear loader.
  * $3100-$3FFF is then scratch memory --
  * the queue (32 paths of 64), the matches (20 paths of 64) and the name
  * pool (25 names of 16). api->full carries the path being built (and
@@ -328,6 +328,19 @@ static unsigned char file_has(const char* filename,unsigned char view)
         if (end < 512) break;
         for (j = 0; j < keep; ++j) buf[j] = buf[512 - keep + j];
         n = keep;base+=512-keep;
+        /* A big file is seconds per kilobyte of this loop: every block
+         * turns the resident's activity cell ($06F7, row 21) between / and
+         * \ (see spin.h). */
+#ifndef PLUGIN_HOST
+        if (!view) {
+            asm("lda #$AF");
+            asm("cmp $06F7");
+            asm("bne %g", spun);
+            asm("lda #$DC");
+spun:
+            asm("sta $06F7");
+        }
+#endif
         if (abort_key()) break;
     }
     /* A short read may be a read error, not the end of the file: the file
@@ -458,6 +471,36 @@ static unsigned char read_pattern(void)
     }
 }
 
+/* Everything before the search: the panel, the volume, the pattern. It
+ * runs from $3100 with the rest of SETUP, which the queue covers once it
+ * has returned. 1: search. */
+static unsigned char setup(void)
+{
+    unsigned char i;
+    char* s;
+    pan = a.panels;
+    if (*a.active) ++pan;
+    path = a.full;
+    dir = a.other_full;
+    type_on=date_on=0;
+    if (pan->fs) { msg("ProDOS volumes only."); return 0; }
+    /* The volume: the first component of the path, or the selected volume. */
+    s = pan->path;
+    if (!s[0]) s = a.selected->name;
+    if (s[0] != '/') { msg("Select a ProDOS volume."); return 0; }
+    for (i = 1; s[i] && s[i] != '/' && i < NAME_LEN - 1; ++i) root[i] = s[i];
+    root[0] = '/';
+    root[i] = 0;
+    if (!read_pattern()) { a.note[0]=0;return 0; }
+    text = pat[0] == '"';
+    if (text) {
+        for (i = 0; i < plen; ++i) pat[i] = pat[i + 1];
+        --plen;
+        if (!plen) { a.note[0]=0;msg(""); return 0; }
+    }
+    return 1;
+}
+
 #pragma rodata-name (pop)
 #pragma code-name (pop)
 
@@ -505,27 +548,8 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     /* Up to cfg_path: the fields after it would land on the resident at
      * $4000. */
     api->memcpy(&a, api, offsetof(struct A2fcApi, ram_format));
-    pan = a.panels;
-    if (*a.active) ++pan;
-    path = a.full;
-    dir = a.other_full;
-    type_on=date_on=0;
-    if (pan->fs) { msg("ProDOS volumes only."); return; }
-    /* The volume: the first component of the path, or the selected volume. */
-    s = pan->path;
-    if (!s[0]) s = a.selected->name;
-    if (s[0] != '/') { msg("Select a ProDOS volume."); return; }
-    for (i = 1; s[i] && s[i] != '/' && i < NAME_LEN - 1; ++i) root[i] = s[i];
-    root[0] = '/';
-    root[i] = 0;
-    if (!read_pattern()) { a.note[0]=0;return; }
-    f_strcpy(QUEUE, root);
-    text = pat[0] == '"';
-    if (text) {
-        for (i = 0; i < plen; ++i) pat[i] = pat[i + 1];
-        --plen;
-        if (!plen) { a.note[0]=0;msg(""); return; }
-    }
+    if (!setup()) return;
+    f_strcpy(QUEUE, root);                 /* setup() has returned: $3100 is the queue's */
     nres=0;qhead=0;qtail=1;aborted=cut=0;
     pool_count=pool_pos=dir_active=ready=0;dir_skip=0;total=0;
     next_page();

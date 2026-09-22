@@ -126,13 +126,14 @@ static void clear_screen(void) {}
 static int print_screen(const char* s,...) {return 0;}
 static unsigned char confirm_sync(const char* s) {return 1;}
 static void show_source(const char* s) {if(mode==17)cancelled=1;}
+static void sync_bar(const char* s,unsigned long d,unsigned long t) {fprintf(stderr,"BAR %s %lu %lu\n",s,d,t);}
 int main(int argc,char** argv) {
     unsigned char scratch[512], result;char msg[80]={0};
     static struct Panel panels[2];static unsigned char active;
     struct A2fcApi api;
     a.strlen=strlen;a.strcpy=strcpy;a.memcpy=memcpy;a.memset=memset;a.mli=mock;
     a.fopen=sync_open;a.fclose=sync_close;a.fread=sync_read;a.fwrite=write_fail;a.remove=sync_remove;
-    a.note=msg;buf=scratch;
+    a.note=msg;buf=scratch;a.progress_bar=sync_bar;strcpy(name,"DATA");
     strcpy(sdir,argv[1]);strcpy(ddir,argv[2]);join(source,sdir,"DATA");join(target,ddir,"DATA");
     if(!newer((30<<9)|33,0,(26<<9)|33,0) || newer((99<<9)|33,0,(0<<9)|33,0) ||
        !newer((26<<9)|33,0x0D00,(26<<9)|33,0x0C00))abort();
@@ -157,12 +158,14 @@ static unsigned char mock(unsigned char cmd,void* p) {
     if(attempts<=failures)return 0x27;
     memset(b->buffer,0x5A,512);return 0;
 }
+static unsigned int bars;
+static void rbar(const char* s,unsigned long d,unsigned long t){(void)s;(void)d;(void)t;++bars;}
 int main(int argc,char** argv) {
     unsigned char scratch[512],r;
-    buf=scratch;a.mli=mock;a.memset=memset;disk=1;unit=0x60;
+    buf=scratch;a.mli=mock;a.memset=memset;disk=1;unit=0x60;a.progress_bar=rbar;
     memset(buf,0xA5,512);failures=atoi(argv[1]);cancelled=argc>2;
     r=read_chunk(27,2);
-    printf("%u %u %u %u %u\n",r,attempts,retried,buf[0],buf[27]);return 0;
+    printf("%u %u %u %u %u\n",r,attempts,retried,buf[0],buf[27]);fprintf(stderr,"%u\n",bars);return 0;
 }
 '''
 
@@ -188,9 +191,10 @@ static unsigned char dnext(void){
     strcpy(dirent.name,names[listed]);dirent.size=sizes[listed];++listed;return 1;
 }
 static void dclose(void){}
+static void rbar(const char* s,unsigned long d,unsigned long t){(void)s;(void)d;(void)t;}
 int main(int argc,char** argv) {
     unsigned char scratch[512],r;
-    buf=scratch;a.fopen=mock_open;a.fread=mock_read;a.fseek=fseek;a.fclose=fclose;a.memset=memset;
+    buf=scratch;a.progress_bar=rbar;a.fopen=mock_open;a.fread=mock_read;a.fseek=fseek;a.fclose=fclose;a.memset=memset;
     a.strlen=strlen;a.strcmp=strcmp;a.dir_open=dopen;a.dir_next=dnext;a.dir_close=dclose;a.dir_entry=&dirent;
     if(!strcmp(argv[1],"size")){
         strcpy(source,argv[2]);size=99;r=fresh_size();printf("%u %lu %s\n",r,size,source);return 0;
@@ -326,6 +330,11 @@ class SixPlugins(unittest.TestCase):
         return [int(x) for x in subprocess.check_output(args).split()]
     def test_rescue_first_read(self):self.assertEqual(self.rescue(0),[1,1,0,90,90])
     def test_rescue_retry_success(self):self.assertEqual(self.rescue(29),[1,30,1,90,90])
+    def test_rescue_retries_keep_the_screen_alive(self):
+        # 30 slow retries of a bad block: each one after the first ticks the
+        # resident's activity cell through the bar.
+        run=subprocess.run([str(self.exe['rescue']),'29'],capture_output=True,check=True)
+        self.assertEqual(run.stderr.split(),[b'29'])
     def test_rescue_zero_fill_after_30_failures(self):self.assertEqual(self.rescue(30),[0,30,1,0,165])
     def test_rescue_cancel_does_not_read(self):self.assertEqual(self.rescue(30,True),[0,0,0,165,165])
     def rescue_file(self,failures):
@@ -402,6 +411,16 @@ class SixPlugins(unittest.TestCase):
             if mode in (12,18):self.assertIn(b'restore failed',output[2])
             return ok
     def test_sync_verified_replace(self):self.assertTrue(self.sync(0))
+    def test_sync_bar_covers_copy_and_check(self):
+        # 1,600 bytes, 256 at a time: seven steps of copy, then seven of the
+        # read-back, which restarts the bar at 0 instead of leaving it full.
+        with tempfile.TemporaryDirectory(prefix='s-',dir='/tmp') as t:
+            root=Path(t);s=root/'S';d=root/'D';s.mkdir();d.mkdir()
+            (s/'DATA').write_bytes(bytes(range(200))*8);(d/'DATA').write_bytes(b'old')
+            run=subprocess.run([str(self.exe['sync']),str(s),str(d),'0','1600'],capture_output=True,check=True)
+            bars=[l.split()[1:] for l in run.stderr.decode().splitlines() if l.startswith('BAR ')]
+            steps=[int(k) for k in range(0,1600,256)]
+            self.assertEqual(bars,[['DATA',str(k),'1600'] for k in steps*2])
     def test_sync_empty_file_replace(self):self.assertTrue(self.sync(0,cached_size=0,payload=b''))
     def test_sync_write_failure_keeps_original(self):self.assertFalse(self.sync(1))
     def test_sync_install_failure_rolls_back(self):self.assertFalse(self.sync(2))

@@ -34,6 +34,7 @@
  * never api->message, and it must not call read_panel itself: that would
  * rebuild the entry tables over these very buffers. */
 #include "../a2fc_plugin.h"
+#include "spin.h"
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api);
 
@@ -82,6 +83,7 @@ static const char M_ERASE[]  = "Type ERASE to confirm";
 static const char M_WORD[]   = "ERASE";
 static const char M_BOOT[]   = "That volume holds the running program: choose another.";
 static const char M_CANCEL[] = "Nothing was written.";
+static const char M_CHECK[]  = "Checking the allocation... ESC cancels";
 static const char M_DONE[]   = "%u blocks zeroed on %s%s";
 static const char M_STOP[]   = ", stopped by ESC";
 static const char M_ERR[]    = ", then ProDOS $%02X";
@@ -223,6 +225,7 @@ static unsigned char free_safe(void) {
         if (!allocated(b)) return 0;
     walk[0].block = 2; walk[0].slot = 0;
     for (;;) {
+        spin();                         /* a big tree is minutes of reads */
         if (stopped() || !allocated(walk[depth].block) ||
             !read_at(walk[depth].block, A->copy_buf)) return 0;
         if (!walk[depth].slot) {
@@ -333,6 +336,9 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         return;
     }
 
+    /* Nothing is written before this walk of the whole tree has vouched
+     * for every free bit; it is long on a big volume, so it says so. */
+    if (!whole) api->message(M_CHECK);
     if (!whole && !free_safe()) {
         api->strcpy(api->note, "Free wipe refused: unreadable/unsafe allocation or cancelled."); return;
     }

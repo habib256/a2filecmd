@@ -414,7 +414,7 @@ static void copy_across(const struct Entry* e)
     FILE *in, *out;
     unsigned long left, done = 0;
     unsigned int n, i;
-    unsigned char bad = 0, err;
+    unsigned char bad = 0, err, check;
     const char* m = m_cbad;
 
     if (e->type == 0x0F) { note(m_btree); return; }
@@ -432,37 +432,33 @@ static void copy_across(const struct Entry* e)
     }
     *a.filetype = e->type;
     *a.auxtype = e->aux;
-    in = RF(fopen)(a.full, "rb");
-    out = RF(fopen)(target, "wb");
-    if (!in || !out) bad = 1;
-    for (left = e->size; left && !bad; left -= n) {
-        n = left > 512 ? 512 : (unsigned int)left;
-        if (stop() || RF(fread)(buf, 1, n, in) != n || RF(fwrite)(buf, 1, n, out) != n) bad = 1;
-        else { done += n; a.progress_bar(e->name, done, e->size); }
+    /* Two passes over the same loop: the copy, then both files read back
+     * and compared BEFORE the original is touched. The bar restarts at 0
+     * for the check, which is as long as the copy. */
+    for (check = 0; check < 2; ++check) {
+        if (check) m = m_vbad;
+        in = RF(fopen)(a.full, "rb");
+        out = RF(fopen)(target, check ? "rb" : "wb");
+        if (!in || !out) bad = 1;
+        for (left = e->size, done = 0; left && !bad; left -= n) {
+            a.progress_bar(e->name, done, e->size);
+            n = left > 512 ? 512 : (unsigned int)left;
+            if (stop() || RF(fread)(buf, 1, n, in) != n) bad = 1;
+            else if (!check) { if (RF(fwrite)(buf, 1, n, out) != n) bad = 1; }
+            else if (RF(fread)(scratch, 1, n, out) != n) bad = 1;
+            else for (i = 0; i < n; ++i) if (buf[i] != scratch[i]) { bad = 1; break; }
+            done += n;
+        }
+        /* The panel's size can be stale. Matching that prefix is not enough:
+         * deleting a longer source would silently discard its remaining bytes.
+         * Both streams must end at the size we copied, including empty files. */
+        if (check && !bad && (RF(fread)(buf, 1, 1, in) || RF(fread)(scratch, 1, 1, out))) bad = 1;
+        /* A zero-byte probe is EOF only if neither stream has an I/O error.
+         * Keep the source until both verification handles have closed too. */
+        if (in) { if (ferror(in)) bad = 1; if (RF(fclose)(in)) bad = 1; }
+        if (out) { if (ferror(out)) bad = 1; if (RF(fclose)(out)) bad = 1; }
+        if (bad) goto drop;
     }
-    if (in) { if (ferror(in)) bad = 1; if (RF(fclose)(in)) bad = 1; }
-    if (out) { if (ferror(out)) bad = 1; if (RF(fclose)(out)) bad = 1; }
-    if (bad) goto drop;
-
-    /* Read both back and compare before the original is touched. */
-    m = m_vbad;
-    in = RF(fopen)(a.full, "rb");
-    out = RF(fopen)(target, "rb");
-    if (!in || !out) bad = 1;
-    for (left = e->size; left && !bad; left -= n) {
-        n = left > 512 ? 512 : (unsigned int)left;
-        if (stop() || RF(fread)(buf, 1, n, in) != n || RF(fread)(scratch, 1, n, out) != n) bad = 1;
-        else for (i = 0; i < n; ++i) if (buf[i] != scratch[i]) { bad = 1; break; }
-    }
-    /* The panel's size can be stale. Matching that prefix is not enough:
-     * deleting a longer source would silently discard its remaining bytes.
-     * Both streams must end at the size we copied, including empty files. */
-    if (!bad && (RF(fread)(buf, 1, 1, in) || RF(fread)(scratch, 1, 1, out))) bad = 1;
-    /* A zero-byte probe is EOF only if neither stream has an I/O error.
-     * Keep the source until both verification handles have closed too. */
-    if (in) { if (ferror(in)) bad = 1; if (RF(fclose)(in)) bad = 1; }
-    if (out) { if (ferror(out)) bad = 1; if (RF(fclose)(out)) bad = 1; }
-    if (bad) goto drop;
 
     if (RF(remove)(a.full)) { a.sprintf(a.note, m_del, e->name); return; }
     RF(strcpy)(a.reselect, e->name);

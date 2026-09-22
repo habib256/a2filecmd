@@ -18,9 +18,13 @@ static char reselect[17],note[80],overlay_loaded[17];static unsigned char in_ove
 static unsigned char mode,calls,draws,switches;
 static const char* target;
 const char msg_noentry[]="Missing entry";
+/* What the last copy left: a plugin's bar must not read "8/3". */
+static unsigned int progress_done=7,progress_total=3;
 static void entry(const struct A2fcApi* a){
  unsigned char key;
  ++calls;if(calls>2)abort();
+ if(progress_done!=0 || progress_total!=1)abort();
+ progress_done=5;progress_total=2;     /* and a neighbour starts from 1/1 again */
  if(calls==2 && (strcmp(selected.name,target)||strcmp(full,target)))abort();
  strcpy(reselect,selected.name);strcpy(output,"OLD FILE");routed=0;
  key=calls==2 || mode==4?KEY_ESC:mode==6?KEY_LEFT:KEY_RIGHT;

@@ -71,7 +71,7 @@ static size_t write_(const void* p,size_t s,size_t n,FILE* f){
  return fwrite(p,s,n,f);
 }
 static int close_(FILE* f){int r=fclose(f);return mode==5?-1:r;}
-static void progress_(const char* n,unsigned long d,unsigned long t){(void)n;(void)d;(void)t;}
+static void progress_(const char* n,unsigned long d,unsigned long t){fprintf(stderr,"BAR %s %lu %lu\n",n,d,t);}
 static void message_(const char* s){(void)s;}
 static unsigned char confirm_(const char* s){(void)s;return 1;}
 /* dir_open/dir_next: imageio's size_of asks the core for the image's size. */
@@ -147,9 +147,11 @@ class Cpm(unittest.TestCase):
         self.image.write_bytes(self.data)
 
     def run_op(self, mode=0, at=1):
-        note = subprocess.check_output(
+        run = subprocess.run(
             [str(self.exe), str(self.image), str(self.out) + '/', str(mode), str(at)],
-            text=True).strip()
+            text=True, capture_output=True, check=True)
+        note = run.stdout.strip()
+        self.bars = [l.split()[1:] for l in run.stderr.splitlines() if l.startswith('BAR ')]
         # read only: the image never changes, whatever happened
         self.assertEqual(self.image.read_bytes(), self.data)
         return note
@@ -158,6 +160,18 @@ class Cpm(unittest.TestCase):
         return sorted(p.name for p in self.out.iterdir())
 
     # -- what must happen ---------------------------------------------------
+
+    def test_every_file_redraws_its_bar_for_both_passes(self):
+        # A kilobyte at a time from 0, once for the copy and once for the
+        # read-back: a small file after a big one still shows its own name.
+        self.assertEqual(self.run_op(), '4 extracted, 0 skipped (name taken).')
+        for name, data in FILES:
+            with self.subTest(name=name):
+                size = (len(data) + 127) // 128 * 128     # CP/M counts 128-byte records
+                done = [int(d) for n, d, t in self.bars if n == name]
+                self.assertTrue(all(t == str(size) for n, d, t in self.bars if n == name))
+                one = list(range(0, size, 1024))
+                self.assertEqual(done, one * 2)
 
     def test_each_candidate_sector_order_is_found_and_read(self):
         """The overlay is never told the skew; it keeps the one that

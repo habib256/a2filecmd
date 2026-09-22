@@ -24,10 +24,15 @@ static unsigned char logline(const char* text) {
     length=a.strlen(text);ok=a.fwrite(text,1,length,logfile)==length;
     if(a.fclose(logfile))ok=0;logfile=0;return ok;
 }
+/* The bar's label: 15 characters show, the escape key among them. */
+static const char m_bar[]="Rescue (ESC)";
 static unsigned char read_chunk(unsigned int n,unsigned int block) {
     unsigned char t,ok=n==0;
     for(t=0;t<30 && !ok;++t) {
         if(stop())return 0;
+        /* A bad block is up to 30 slow retries: the same bar again only
+         * turns the resident's activity cell, the bar itself stays. */
+        if(t)a.progress_bar(m_bar,offset,size);
         if(!disk && !in)in=a.fopen(source,"rb");
         /* cc65's fread refuses a stream whose error flag is set and fseek
          * clears only EOF: without this, one failure fails all 29 retries. */
@@ -80,7 +85,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
         }
         if(stop())goto fail;
         left=size-offset;n=left>512?512:(unsigned int)left;block=(unsigned int)(offset>>9);
-        if(!(block&7))a.progress_bar("Recovering (ESC cancels)",offset,size);
+        if(!(block&7))a.progress_bar(m_bar,offset,size);
         ok=read_chunk(n,block);if(cancelled)goto fail;
         if(!ok) {
             ++bad;a.sprintf(a.other_full,"ZERO block %u, offset %lu, bytes %u\r",block,offset,n);

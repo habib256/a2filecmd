@@ -5,6 +5,7 @@
 #define UTIL_CREATE
 #include "util.h"
 #include "dirscan.h"
+#include "spin.h"
 void __fastcall__ plugin_entry(const struct A2fcApi*);
 struct Header {unsigned int magic;unsigned char flags;void __fastcall__ (*entry)(const struct A2fcApi*);unsigned char r[3];char desc[52];};
 #pragma rodata-name(push,"OVLHDR")
@@ -53,6 +54,7 @@ static unsigned char copy_file(unsigned char exists) {
     left=size;error=0;
     while(left && !error) {
         n=left>sizeof check?sizeof check:(unsigned int)left;
+        a.progress_bar(name,size-left,size);   /* the copy, then the check: 0 redraws */
         if(stop() || RF(fread)(buf,1,n,in)!=n || RF(fwrite)(buf,1,n,out)!=n)error=1;
         left-=n;
     }
@@ -63,6 +65,7 @@ static unsigned char copy_file(unsigned char exists) {
     left=size;
     while(left && !error) {
         n=left>sizeof check?sizeof check:(unsigned int)left;
+        a.progress_bar(name,size-left,size);
         if(stop() || RF(fread)(buf,1,n,in)!=n || RF(fread)(check,1,n,out)!=n)error=1;
         else for(i=0;i<n;++i)if(buf[i]!=check[i]){error=1;break;}
         left-=n;
@@ -108,6 +111,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
     if(!dir_begin(sdir,&frames[0].blocks)){note("Cannot read source directory.");return;}
     frames[0].pos=0;frames[0].slen=RF(strlen)(sdir);frames[0].dlen=RF(strlen)(ddir);
     for(;;) {
+        spin();   /* an up-to-date tree is compared entry by entry, silently */
         if(stop())break;f=&frames[depth];r=dir_next(sdir,f->blocks,&f->pos);
         if(r==2){++errors;r=0;}
         if(!r){if(!depth)break;--depth;sdir[frames[depth].slen]=ddir[frames[depth].dlen]=0;continue;}

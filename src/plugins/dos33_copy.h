@@ -24,6 +24,36 @@ static unsigned int allocated(unsigned int index) {
  for(s=48;s<560;++s)if(allocation[s>>3]&mask(s)) {if(!index)return s;--index;}
  return 560;
 }
+#ifdef PLUGIN_HOST
+static void reserve(void) {
+ unsigned int s;
+ for(s=48;s<560;++s)if(allocation[s>>3]&mask(s))vtoc[bitpos(s)]&=~mask(s);
+}
+#else
+/* The same, track by track: bitpos() puts sectors 0-7 of track t at
+ * $39+4t and 8-15 at $38+4t, under the masks allocation[2t] and [2t+1]
+ * already use. cc65 makes some 90 bytes of the C; this is 30. */
+static void reserve(void) {
+ asm("ldx #6");                      /* allocation: track 3 */
+ asm("ldy #$44");                    /* vtoc: $38 + 4 * 3 */
+ asm("rs1: lda %v,x", allocation);
+ asm("eor #$FF");
+ asm("and %v+1,y", vtoc);
+ asm("sta %v+1,y", vtoc);
+ asm("lda %v+1,x", allocation);
+ asm("eor #$FF");
+ asm("and %v,y", vtoc);
+ asm("sta %v,y", vtoc);
+ asm("iny");
+ asm("iny");
+ asm("iny");
+ asm("iny");
+ asm("inx");
+ asm("inx");
+ asm("cpx #70");
+ asm("bne rs1");
+}
+#endif
 static unsigned char source_length(void) {
  unsigned int n;unsigned long total=0;
  source=RF(fopen)(a.full,"rb");if(!source)return 0;
@@ -74,7 +104,7 @@ static unsigned char transfer(void) {
  source=RF(fopen)(a.full,"rb");if(!source)return 0;
  for(i=0;i<sectors;++i) {
   if(!chunk(i,&left) || !write_sector(allocated(lists+i),data))goto bad;
-  a.progress_bar(a.selected->name,i,sectors);
+  a.progress_bar(a.selected->name,i+1,sectors);
  }
  if(!end_source(left))return 0;
  if(!lists_io(1))return 0;
@@ -86,6 +116,8 @@ static unsigned char verify_source(void) {
  unsigned int i,left=length;unsigned char ok;
  source=RF(fopen)(a.full,"rb");if(!source)return 0;
  for(i=0;i<sectors;++i) {
+  /* the read-back is as long as the writes: the bar starts again at 0 */
+  a.progress_bar(a.selected->name,i,sectors);
   if(stop() || !chunk(i,&left) || !read_sector(allocated(lists+i),ts) || memcmp(data,ts,256))goto bad;
  }
  return end_source(left);

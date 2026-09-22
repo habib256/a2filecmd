@@ -97,7 +97,7 @@ static int remove_file(const char* p) {
     return remove(p);
 }
 static void message(const char* p){}
-static void progress(const char* p,unsigned long n,unsigned long t){}
+static void progress(const char* p,unsigned long n,unsigned long t){fprintf(stderr,"BAR %s %lu %lu\n",p,n,t);}
 int main(int argc,char**argv) {
     static struct A2fcApi api;static struct Panel panels[2];static struct Entry e;
     static char source[64],dest[64],note[80],reselect[17];
@@ -182,6 +182,19 @@ class ImgconvSafety(unittest.TestCase):
         self.assertNotIn(' -> ',self.convert(14,choice='D'))
         self.assertEqual(self.dst.read_bytes(),b'old image')
         self.assertFalse((self.d/'IMGCONV.TMP').exists())
+    def test_readback_moves_the_bar(self):
+        # The read-back of an 800K image is a minute or two at 1 MHz: it
+        # restarts the bar at 0 instead of leaving the conversion's near 100%.
+        self.src.write_bytes(bytes(range(256))*256);self.data=self.src.read_bytes()
+        out=subprocess.run([self.exe,self.s,self.d,'0','2',self.src.name,str(len(self.data))],
+                           capture_output=True,text=True,check=True)
+        self.assertIn(' -> ',out.stdout)
+        bars=[l.split()[1:] for l in out.stderr.splitlines() if l.startswith('BAR ')]
+        done=[int(n) for _,n,t in bars]
+        self.assertTrue(all(t=='128' and name=='INPUT.2MG' for name,_,t in bars),bars)
+        restart=done.index(0,1)
+        self.assertGreater(max(done[:restart]),0)
+        self.assertEqual(done[restart:],list(range(0,128,8)))
     def test_success_replaces_only_after_complete_conversion(self):
         self.assertIn(' -> ',self.convert())
         self.assertEqual(self.dst.read_bytes()[64:],self.data)

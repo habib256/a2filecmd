@@ -101,6 +101,14 @@ void __fastcall__ plugin_entry(const struct A2fcApi* a) {
  n=0;io_bad=r=0;
  do {
 #ifndef PLUGIN_HOST
+  /* up to 64 KB before a note plays: the resident's activity cell ($06F7,
+   * row 21) turns between / and \ at every read (see spin.h) */
+  asm("lda #$AF");
+  asm("cmp $06F7");
+  asm("bne %g", spun);
+  asm("lda #$DC");
+spun:
+  asm("sta $06F7");
   if(*(volatile unsigned char*)0xC000==0x9B) {
    *(volatile unsigned char*)0xC010=0;goto done;
   }

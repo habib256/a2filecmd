@@ -61,12 +61,12 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api);
 struct PluginHeader {
     unsigned int signature; unsigned char flags;
     void __fastcall__ (*entry)(const struct A2fcApi*);
-    unsigned char reserved[3]; char desc[63];
+    unsigned char reserved[3]; char desc[49];
 };
 #pragma rodata-name (push, "OVLHDR")
 const struct PluginHeader __plugin_header = {
     PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry, {0,0,0},
-    "Check a ProDOS volume: allocation, links, counters (read only)"
+    "Check ProDOS volume links and bitmap (read only)"
 };
 #pragma rodata-name (pop)
 

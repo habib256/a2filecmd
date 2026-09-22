@@ -42,7 +42,16 @@ FILE* __fastcall__ t_fopen(const char*,const char*);
 unsigned char __fastcall__ t_build_full(char*,const struct Panel*,const struct Entry*);
 unsigned int __fastcall__ t_fread(void*,unsigned int,unsigned int,FILE*);
 
+/* Called for every chunk and every block: a 32 MB volume is minutes, so it
+ * also turns the resident's activity cell ($06F7, row 21) between / and \
+ * (see spin.h; there is no room here for a bar). */
 static unsigned char stop(void) {
+    asm("lda #$AF");
+    asm("cmp $06F7");
+    asm("bne %g", spun);
+    asm("lda #$DC");
+spun:
+    asm("sta $06F7");
     if (*(volatile unsigned char*)0xC000 != 155) return 0;
     *(volatile unsigned char*)0xC010 = 0; return aborted = 1;
 }

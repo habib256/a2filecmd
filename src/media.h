@@ -54,6 +54,9 @@ static unsigned char media_prepare(unsigned char kind)
                 }
                 --i;
             }
+            /* a file opened per neighbour: seconds in a big folder (never
+             * over a lo-res picture: activity_tick reads RDTEXT first) */
+            activity_tick();
             e=&pan->e[i];
             if (is_dir(e)) continue;
             if (!build_full(full,pan,e)) break;

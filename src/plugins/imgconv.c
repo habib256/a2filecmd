@@ -263,6 +263,7 @@ static unsigned char verify_output(const char* path)
     }
     for (n = 0; n < blocks && !bad; ++n) {
         if (*KBD == (KEY_ESC | 0x80)) { *STROBE = 0; bad = 1; break; }
+        if (!(n & 7)) T.progress_bar(nname, n, blocks);   /* n = 0 redraws it: the check restarts */
         if (!read_block()) { bad = 1; break; }
         /* Half a block at a time: check holds 256 bytes. */
         sector = (unsigned char)(n & 7) << 1;

@@ -61,6 +61,7 @@ static size_t h_fwrite(const void* p, size_t s, size_t n, FILE* f) {
 }
 static unsigned char h_confirm(const char* s) { (void)s; return mode != 1; }
 static void h_message(const char* s) { (void)s; }
+static void h_bar(const char* s, unsigned long n, unsigned long t) { fprintf(stderr, "BAR %s %lu %lu\n", s, n, t); }
 
 /* The one directory read the overlay makes is imageio's size_of, looking
  * for the image file to learn its length. */
@@ -107,7 +108,7 @@ int main(int argc, char** argv) {
     api.strcmp = strcmp; api.strlen = strlen; api.sprintf = sprintf;
     api.fopen = h_fopen; api.fread = fread; api.fwrite = h_fwrite;
     api.fclose = fclose; api.fseek = fseek;
-    api.confirm = h_confirm; api.message = h_message;
+    api.confirm = h_confirm; api.message = h_message; api.progress_bar = h_bar;
     plugin_entry(&api);
     printf("%d %s\n", writes, note_text);
     return 0;
@@ -176,9 +177,12 @@ class ImgPut(unittest.TestCase):
         self.src.write_bytes(self.payload)
 
     def run_op(self, mode=0, at=1, name='HELLO', typ=4, aux=0, key=2, wrong=0):
-        out = subprocess.check_output(
+        run = subprocess.run(
             [str(self.exe), str(self.img), str(self.src), str(mode), str(at),
-             name, str(typ), str(aux), str(key), str(wrong)], text=True).strip()
+             name, str(typ), str(aux), str(key), str(wrong)], text=True,
+            capture_output=True, check=True)
+        out = run.stdout.strip()
+        self.bars = [l.split()[1:] for l in run.stderr.splitlines() if l.startswith('BAR ')]
         self.assertEqual(self.src.read_bytes(), self.payload)    # never touched
         n, _, note = out.partition(' ')
         return int(n), note
@@ -189,6 +193,12 @@ class ImgPut(unittest.TestCase):
                      if e[1:1 + (e[0] & 15)].decode() == name), None)
 
     # -- what must happen ---------------------------------------------------
+
+    def test_the_copy_moves_a_bar(self):
+        # 780 bytes: two data blocks, each written and read back.
+        writes, note = self.run_op()
+        self.assertIn('Copied into the image', note)
+        self.assertEqual(self.bars, [['HELLO', '0', '2'], ['HELLO', '1', '2']])
 
     def test_a_file_lands_in_the_image_with_its_bytes_and_its_entry(self):
         writes, note = self.run_op(typ=4, aux=0x1234)

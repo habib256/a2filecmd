@@ -62,7 +62,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
     a.clrscr();a.cprintf("DISKCMP - READ ONLY\r\n%s\r\n%s\r\n",src.path,dst.path);
     diff=0;first=65535U;
     for(b=0;b<src.blocks;) {
-        a.progress_bar("Comparing (ESC cancels)",b,src.blocks);
+        a.progress_bar("Compare (ESC)",b,src.blocks);
         if(stop()){note("Comparison cancelled; no complete verdict.");goto done;}
         count=single && src.blocks-b>1?2:1;
         if(single && !mount_source(&src))goto cancelled;
