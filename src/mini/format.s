@@ -48,8 +48,12 @@
         .import rwts_format, rwts_error, read_at, rwts_buf
         .import buffer, drive, track, sector, boot_drive
         .import del_fault, put_verified, memcmp256, scratch, fm_tick
+        .import heartbeat
 
 .ifdef SIM65
+        .segment "CODE"         ; no DOS under sim65: nothing to hook
+fmt_ticking:
+        jmp     rwts_format
 .else                           ; ca65 2.18: .ifndef does not see a -D symbol
         .export format_file
         .import foot_zone, confirm, keep_note, result_done, activate
@@ -75,6 +79,62 @@ _fm_status      = fm_status
 ; question: it is where DOS comes from. Every result with a write behind
 ; it rereads the target's panels.
 ; ---------------------------------------------------------------------
+; ---------------------------------------------------------------------
+; A sign of life during RWTS's FORMAT. That one call formats all
+; thirty-five tracks and hands nothing back for some eighteen seconds:
+; no instruction of this program runs, so by itself nothing on screen
+; can move. DOS's own loop runs once per track -- $BED4 to $BEFF,
+; thirty-five times, measured in POM2 -- and it opens with a JSR at
+; $BED6. While the format runs, and only then, that call's operand
+; points at fmt_hook: the cell turns, A is kept, and DOS's own routine
+; runs as it always did. The three bytes are checked first, so any
+; other DOS formats exactly as before, without the heartbeat, and the
+; operand goes back the instant the format returns -- DOS reclaims this
+; memory for its file buffers when A2FC Mini quits.
+; ---------------------------------------------------------------------
+FM_JSR  = $BED6                 ; DOS 3.3: the per-track loop's first call
+FM_DEST = $BE5A                 ; what it calls
+
+        .segment "CODE"
+fmt_hook:
+        pha
+        jsr     heartbeat
+        pla
+        jmp     FM_DEST
+
+; The format itself, with the heartbeat hooked for its duration only.
+; One call, so the engine at $0200 pays the three bytes it always paid.
+fmt_ticking:
+        jsr     fmt_on
+        jsr     rwts_format
+        pha
+        jsr     fmt_off
+        pla                     ; the status again, and its Z
+        rts
+
+fmt_on:
+        ldx     #2
+@check: lda     FM_JSR,x
+        cmp     fm_sig,x
+        bne     @out            ; another DOS: leave it alone
+        dex
+        bpl     @check
+        lda     #<fmt_hook
+        sta     FM_JSR+1
+        lda     #>fmt_hook
+        sta     FM_JSR+2
+@out:   rts
+
+fmt_off:
+        lda     FM_JSR+2        ; ours? then DOS's own target again
+        cmp     #>fmt_hook
+        bne     @out
+        lda     #<FM_DEST
+        sta     FM_JSR+1
+        lda     #>FM_DEST
+        sta     FM_JSR+2
+@out:   rts
+
         .segment "CODE"
 format_file:
         jsr     activate        ; drive is the active panel's, as every write command
@@ -178,7 +238,7 @@ _format_disk:
         cpx     #RWTS_PROTECTED
         beq     @done           ; any other refusal: the format decides
 @format:
-        jsr     rwts_format     ; RWTS's INIT never reports the tab: a
+        jsr     fmt_ticking     ; RWTS's INIT never reports the tab: a
         beq     @formatted      ; protected blank disk fails here
         lda     #FMT_FAILED
         bne     @done
@@ -429,6 +489,13 @@ write_catalog:
         rts
 
         .segment "RODATA"       ; read with absolute indexing: any segment
+.ifdef SIM65
+.else                           ; no DOS to hook under sim65, and no FM_DEST
+; JSR FM_DEST, the three bytes fmt_on wants at $BED6 before it hooks.
+fm_sig:
+        .byte   $20, <FM_DEST, >FM_DEST
+.endif
+
 ; The first bytes of a DOS 3.3 boot sector: the sector count for the
 ; controller ROM, then LDA $27 / CMP #$09, read from the shipped disk.
 dos_sig:

@@ -41,6 +41,7 @@
         .import cp_index, cp_dest, verify, catalog_before
         .import cs_name, cs_type, cs_seclo, cs_sechi
         .import active, count, volume, drive, slot, selected, error
+        .import live_panel
         .import buffer, prv_index
         .import ent_type, ent_seclo, ent_sechi
         .import pan_drive, pan_volume, pan_count, pan_selected, pan_error
@@ -275,33 +276,37 @@ tag_count:
 ; ---------------------------------------------------------------------
 ; remember / activate -- the panels keep their own drive, volume, count,
 ; selection and error; only one set is live at a time.
+;
+; data.s keeps the five live values in one block, in the same order as
+; the pan_* block, which is two bytes wide per field. So both are one
+; loop: X walks the live block by one, Y walks pan_* by two from the
+; active side. Naming the ten addresses twice cost thirty bytes more,
+; and the asserts in data.s refuse a build where the orders drift.
 ; ---------------------------------------------------------------------
 remember:
-        ldx     active
-        lda     drive
-        sta     pan_drive,x
-        lda     volume
-        sta     pan_volume,x
-        lda     count
-        sta     pan_count,x
-        lda     selected
-        sta     pan_selected,x
-        lda     error
-        sta     pan_error,x
+        ldy     active
+        ldx     #0
+@field:
+        lda     live_panel,x
+        sta     pan_drive,y
+        iny
+        iny
+        inx
+        cpx     #PANEL_FIELDS
+        bcc     @field
         rts
 
 activate:
-        ldx     active
-        lda     pan_drive,x
-        sta     drive
-        lda     pan_volume,x
-        sta     volume
-        lda     pan_count,x
-        sta     count
-        lda     pan_selected,x
-        sta     selected
-        lda     pan_error,x
-        sta     error
+        ldy     active
+        ldx     #0
+@field:
+        lda     pan_drive,y
+        sta     live_panel,x
+        iny
+        iny
+        inx
+        cpx     #PANEL_FIELDS
+        bcc     @field
         rts
 
 ; ---------------------------------------------------------------------
@@ -604,6 +609,23 @@ draw:
         bne     @note
 @keys:
         jsr     main_bar
+        rts
+
+; ---------------------------------------------------------------------
+; have_entry -- Z set when the active panel holds nothing to act on:
+; either it is empty, or its catalog did not read, and a command that
+; needs a file must not run on a snapshot that is not there. Eight keys
+; asked those two questions in line; asking them here costs five bytes
+; per key instead of ten. The order of the two tests does not matter:
+; both must hold, neither writes anything.
+; ---------------------------------------------------------------------
+have_entry:
+        lda     error
+        bne     @none
+        lda     count
+        rts
+@none:
+        lda     #0
         rts
 
 ; ---------------------------------------------------------------------
@@ -1494,10 +1516,8 @@ main:
         cmp     #'H'
         bne     @notview
 @maybeview:
-        lda     count
+        jsr     have_entry
         beq     @notview
-        lda     error
-        bne     @notview
         lda     ck
         cmp     #13
         bne     @explicit
@@ -1518,10 +1538,8 @@ main:
         lda     ck
         cmp     #'C'
         bne     @notcopy
-        lda     count
+        jsr     have_entry
         beq     @notcopy
-        lda     error
-        bne     @notcopy
         jsr     copy_file
 @notcopy:
         lda     ck
@@ -1552,10 +1570,8 @@ main:
         lda     ck
         cmp     #'G'
         bne     @nothgr
-        lda     count
+        jsr     have_entry
         beq     @nothgr
-        lda     error
-        bne     @nothgr
         jsr     show_hgr
 @nothgr:
         lda     ck
@@ -1566,37 +1582,29 @@ main:
         lda     ck
         cmp     #'E'
         bne     @notedit
-        lda     count
+        jsr     have_entry
         beq     @notedit
-        lda     error
-        bne     @notedit
         jsr     edit_file
 @notedit:
         lda     ck
         cmp     #'D'
         bne     @notdel
-        lda     count
+        jsr     have_entry
         beq     @notdel
-        lda     error
-        bne     @notdel
         jsr     delete_file
 @notdel:
         lda     ck
         cmp     #'L'
         bne     @notlock
-        lda     count
+        jsr     have_entry
         beq     @notlock
-        lda     error
-        bne     @notlock
         jsr     lock_file
 @notlock:
         lda     ck
         cmp     #'R'
         bne     @notren
-        lda     count
+        jsr     have_entry
         beq     @notren
-        lda     error
-        bne     @notren
         jsr     rename_file
 @notren:
         lda     ck
@@ -1607,10 +1615,8 @@ main:
         lda     ck
         cmp     #'B'
         bne     @notbrun
-        lda     count
+        jsr     have_entry
         beq     @notbrun
-        lda     error
-        bne     @notbrun
         jsr     brun_file
         bcc     @notbrun
         jmp     @leave
@@ -1627,41 +1633,42 @@ main:
 ; mirror_panel -- '=' shows the active panel's disk on the other side,
 ; entries included, without touching the drive
 ; ---------------------------------------------------------------------
+; The six fields are one block of two-byte pairs (data.s), so the six
+; named copies are one loop stepping both indices by two. X starts on
+; the active side and Y on the other, exactly as the named copies did.
 mirror_panel:
         ldx     active
-        lda     active
+        txa
         eor     #1
         tay
+@field:
         lda     pan_drive,x
         sta     pan_drive,y
-        lda     pan_volume,x
-        sta     pan_volume,y
-        lda     pan_count,x
-        sta     pan_count,y
-        lda     pan_selected,x
-        sta     pan_selected,y
-        lda     pan_error,x
-        sta     pan_error,y
-        lda     pan_top,x
-        sta     pan_top,y
+        inx
+        inx
+        iny
+        iny
+        cpx     #PAN_BYTES      ; 12 from side 0, 13 from side 1: both stop
+        bcc     @field          ; after the sixth pair
         jsr     copy_tags
-        lda     active
-        bne     copy_entries_to_left
-        jmp     copy_entries_to_right
+        ldx     active          ; the entries the same way round
+        txa
+        eor     #1
+        tay
+        jmp     copy_side
 
-; copy_tags -- X = source side, Y = dest side
+; copy_tags -- the active side's marks onto the other side's. '=' is its
+; only caller, so the sides are read from `active` here rather than
+; passed in registers: the two blocks are TAG_BYTES apart, so one EOR
+; turns the source offset into the destination's.
 copy_tags:
         lda     #0
-        cpx     #0
+        ldx     active
         beq     @fromleft
         lda     #TAG_BYTES
 @fromleft:
         sta     t2
-        lda     #0
-        cpy     #0
-        beq     @toleft
-        lda     #TAG_BYTES
-@toleft:
+        eor     #TAG_BYTES
         sta     t3
         ldx     #0
 @byte:
@@ -1679,11 +1686,6 @@ copy_tags:
 copy_entries_to_right:
         ldx     #0
         ldy     #1
-        jmp     copy_side
-
-copy_entries_to_left:
-        ldx     #1
-        ldy     #0
         jmp     copy_side
 
 ; ---------------------------------------------------------------------
