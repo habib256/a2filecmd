@@ -19,6 +19,11 @@ ENT_CAT_SLOT    = NAME_LEN+1    ; entry was read: track, then sector<<3 | slot
 PANEL_ROWS      = 19            ; visible file rows per panel
 SCREEN_CELLS    = 960           ; 24 rows of 40 columns, composed off-screen
 TAG_BYTES       = 14            ; 105 marks, one bit each, per panel
+; Values a panel owns: drive, volume, count, selected, error. data.s
+; keeps the live copies in that order, and the pan_* block holds the
+; same five two-byte wide, so remember and activate are one short loop.
+PANEL_FIELDS    = 5
+PAN_BYTES       = 2 * (PANEL_FIELDS + 1)        ; the five, plus pan_top
 
 ; catalog() and preview() status, unchanged from the C edition.
 CAT_OK          = 0

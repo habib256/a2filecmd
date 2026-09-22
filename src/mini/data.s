@@ -34,16 +34,28 @@
 
 ; ---- panel-independent globals -------------------------------------
 active:         .res 1          ; 0 or 1: which panel the keys act on
-count:          .res 1          ; entries in the active panel
-volume:         .res 1          ; DOS volume number last read
-drive:          .res 1          ; 1 or 2, the drive RWTS will use
 slot:           .res 1          ; slot A2FC was run from
 boot_drive:     .res 1          ; drive A2FC was run from: format's DOS source
 _boot_drive     = boot_drive
 track:          .res 1          ; RWTS target
 sector:         .res 1
+
+; The five values a panel owns, in the order of the pan_* block below
+; and nowhere else: remember and activate walk the two blocks side by
+; side, one index each, instead of naming ten addresses twice. The
+; asserts keep that promise even if someone inserts a byte here.
+live_panel:
+drive:          .res 1          ; 1 or 2, the drive RWTS will use
+volume:         .res 1          ; DOS volume number last read
+count:          .res 1          ; entries in the active panel
 selected:       .res 1          ; cursor in the active panel
 error:          .res 1          ; 0 none, 1 read error, 2 invalid catalog
+        .export live_panel
+        .assert * - live_panel = PANEL_FIELDS, error, "live block and PANEL_FIELDS disagree"
+        .assert volume = drive + 1, error, "remember/activate walk drive..error"
+        .assert count = drive + 2, error, "remember/activate walk drive..error"
+        .assert selected = drive + 3, error, "remember/activate walk drive..error"
+        .assert error = drive + 4, error, "remember/activate walk drive..error"
 _active         = active
 _count          = count
 _volume         = volume
@@ -99,12 +111,22 @@ _ent_sechi      = ent_sechi
 _ent_name       = ent_name
 
 ; ---- per-panel metadata --------------------------------------------
+; One block of six two-byte fields, left side first. The order of the
+; first five matches the live globals above, and pan_top follows them,
+; so remember, activate and mirror_panel index the block instead of
+; naming every field twice. The asserts hold the layout in place.
 pan_drive:      .res 2
 pan_volume:     .res 2
 pan_count:      .res 2
 pan_selected:   .res 2
 pan_error:      .res 2
 pan_top:        .res 2
+        .assert * - pan_drive = PAN_BYTES, error, "pan_* block and PAN_BYTES disagree"
+        .assert pan_volume = pan_drive + 2, error, "pan_* must stay one block"
+        .assert pan_count = pan_drive + 4, error, "pan_* must stay one block"
+        .assert pan_selected = pan_drive + 6, error, "pan_* must stay one block"
+        .assert pan_error = pan_drive + 8, error, "pan_* must stay one block"
+        .assert pan_top = pan_drive + 10, error, "pan_* must stay one block"
 _pan_drive      = pan_drive
 _pan_volume     = pan_volume
 _pan_count      = pan_count

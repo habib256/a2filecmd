@@ -29,6 +29,21 @@ command:        .res 1
 ; the page rwts_buf points at, set by the caller. The 2:1 skew leaves
 ; about a sector slot between two consecutive sectors of a chain, and
 ; a 256-byte copy in that gap is what turns it into a lost turn.
+; The sign of life, the last cell of row 23: a space in every bar, so
+; the next present puts it back on its own. Every sector read, written
+; or formatted turns it between / and \ -- a delete's audit or a batch
+; of a copy is seconds of disk with no other change on screen. Straight
+; to the text page, some 20 cycles, far inside the gap between sectors.
+; format.s lends it to DOS for the duration of an RWTS FORMAT.
+        .export heartbeat
+heartbeat:
+        lda     #$AF
+        cmp     $07F7
+        bne     @spun
+        lda     #$DC
+@spun:  sta     $07F7
+        rts
+
 read_into:
         lda     #RWTS_READ
         bne     rwts            ; always taken
@@ -54,16 +69,7 @@ with_buffer:
         stx     rwts_buf+1
 rwts:
         sta     command
-        ; Every sector read, written or formatted turns the last cell of
-        ; row 23 between / and \ (a space in every bar): a delete's audit
-        ; or a batch of a copy is seconds of disk with no other change.
-        ; Straight to the text page: the next present puts the image's
-        ; space back. Some 20 cycles, far inside the gap between sectors.
-        lda     #$AF
-        cmp     $07F7
-        bne     @spun
-        lda     #$DC
-@spun:  sta     $07F7
+        jsr     heartbeat
         lda     #0
         sta     rwts_error
         jsr     RWTS_LOCATE_IOB

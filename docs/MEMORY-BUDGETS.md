@@ -1,5 +1,29 @@
 # Consolidation : budgets mémoire
 
+## Mini : 92 octets rendus pour le signe de vie du formatage
+
+Le crochet posé sur la boucle par piste de RWTS FORMAT (`fmt_hook`,
+`fmt_on`, `fmt_off`) faisait passer le résident 50 octets sous DOS. Trois
+réécritures à comportement identique l'ont payé, mesurées au lien : le
+résident finit à **$95D6, 42 octets libres** sous `$9600`.
+
+- **+30** : les cinq valeurs vivantes d'un panneau (`drive`, `volume`,
+  `count`, `selected`, `error`) sont un bloc de `data.s` dans l'ordre du
+  bloc `pan_*`, qui est le même à deux octets par champ. `remember` et
+  `activate` parcourent les deux blocs avec un index chacun. Des
+  `.assert` dans `data.s` refusent une construction où les deux ordres
+  divergeraient.
+- **+34** : `mirror_panel` copie les six paires du bloc `pan_*` en
+  boucle, `copy_tags` lit les côtés dans `active` (« = » est son seul
+  appelant) et passe de la source à la destination par un
+  `eor #TAG_BYTES`, et `copy_entries_to_left` disparaît avec lui.
+- **+28** : `have_entry`, les deux questions — panneau vide, catalogue
+  illisible — que huit touches de la boucle principale posaient en ligne.
+
+Ce que cela ne change pas : aucune écriture, aucun ordre d'écriture,
+aucun texte d'écran. `bench/mini33_time.py` donne 1,11 tour de disque par
+secteur avant comme après (25 274 290 contre 25 275 251 cycles au total).
+
 ## Préparation 0.9.2 : progression visible
 
 Réserves après les barres et les signes d'activité, 65C02/6502 : MAIN
