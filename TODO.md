@@ -1,14 +1,23 @@
 # A2 File Cmd — feuille de route
 
-[0.9.1](https://github.com/habib256/a2filecmd/releases/tag/v0.9.1)
-([CHANGELOG](CHANGELOG.md)). Mini et ProDOS, même numéro ;
+[0.9.3](https://github.com/habib256/a2filecmd/releases/tag/v0.9.3)
+([CHANGELOG](CHANGELOG.md)), publiée le 22 septembre 2026 : la préparation
+0.9.2 (jamais publiée seule) et la progression visible. Mini et ProDOS, même numéro ;
 `make mini` ne partage pas `src/a2fc.c`.
 
 Préserver les données prime ([AGENTS.md](AGENTS.md)). Ne pas relever
 les plafonds ([MEMORY-BUDGETS.md](docs/MEMORY-BUDGETS.md)). Un chantier
 se ferme avec un oracle hôte et un banc POM2.
 
-## 0.9.2 en préparation
+## 0.9.3
+
+- [x] Progression visible dans toute opération longue, ProDOS et DOS 3.3 :
+  barre, ou signe d'activité (/ \\) là où aucune barre ne tient ;
+  [qualification](docs/QUALIFICATION-0.9.3.md).
+- [ ] RWTS FORMAT du Mini (~18 s en un appel DOS) reste sans signe.
+- [ ] MAIN 65C02 à 82 octets : l'objectif de 256 reste ouvert.
+
+## 0.9.2 (préparation, publiée dans 0.9.3)
 
 - [x] Regrouper les fichiers de démarrage et les overlays fréquents sur disque.
 - [x] Accélérer les libellés des panneaux et le comptage des sélections.

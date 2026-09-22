@@ -1,6 +1,6 @@
 # The A2 File Cmd manual
 
-**Version 0.9.2** — Preparation edition. By Arnaud Verhille, GNU GPL v3.
+**Version 0.9.3**. By Arnaud Verhille, GNU GPL v3.
 
 ![A2 File Cmd DOS3.3 0.9.2: two panels captured in POM2](screenshots/dos33-panels-0.9.2.png)
 
@@ -26,7 +26,7 @@ selecting, reading, editing and verified copying. It uses an **Apple II+ with
 48 KB**, NMOS 6502, 40 columns and **two Disk II drives on the boot controller**.
 The following chapters extend this workflow with ProDOS folders and tools.
 
-Boot `A2FILECMD-DOS3.3-0.9.2.dsk`, or use **BRUN A2FC** from DOS 3.3. Both panels
+Boot `A2FILECMD-DOS3.3-0.9.3.dsk`, or use **BRUN A2FC** from DOS 3.3. Both panels
 start on the boot disk; each remembers drive, selection and scroll. Catalogs
 hold up to 105 files and show 19 rows. `?` opens help.
 
@@ -91,11 +91,11 @@ and recovery filenames do not apply to the DOS3.3 edition introduced first.
 
 | Image | Choose it for |
 |---|---|
-| `A2FILECMD-DOS3.3-0.9.2.dsk` | Standalone DOS 3.3 file manager for Apple II+ and two Disk II drives. |
-| `A2FILECMD-140K-0.9.2.dsk` | One 5¼-inch ProDOS disk with essential file operations and text editing; 6502. |
-| `A2FILECMD-800K-0.9.2.po` | All ProDOS tools and BASIC runtimes, without the demonstration corpus; 6502. |
-| `A2FILECMD-XL-0.9.2.2mg` | Complete 32 MB ProDOS edition with tools and demonstrations; 6502. |
-| `A2FILECMD-65C02-enhanced-mouse-XL-0.9.2.2mg` | Complete XL with MouseText and optional mouse support. Requires both 65C02 and enhanced ROM. |
+| `A2FILECMD-DOS3.3-0.9.3.dsk` | Standalone DOS 3.3 file manager for Apple II+ and two Disk II drives. |
+| `A2FILECMD-140K-0.9.3.dsk` | One 5¼-inch ProDOS disk with essential file operations and text editing; 6502. |
+| `A2FILECMD-800K-0.9.3.po` | All ProDOS tools and BASIC runtimes, without the demonstration corpus; 6502. |
+| `A2FILECMD-XL-0.9.3.2mg` | Complete 32 MB ProDOS edition with tools and demonstrations; 6502. |
+| `A2FILECMD-65C02-enhanced-mouse-XL-0.9.3.2mg` | Complete XL with MouseText and optional mouse support. Requires both 65C02 and enhanced ROM. |
 
 The ProDOS 6502 editions also run on enhanced machines. A 65C02 processor
 alone does not make an unenhanced IIe suitable for the enhanced edition;
@@ -107,7 +107,7 @@ XL uses `.2mg`. Renaming an extension does not convert an image. With all
 release images and the PDF in the same directory, check their downloads:
 
 ```sh
-sha256sum -c SHA256SUMS-0.9.2.txt
+sha256sum -c SHA256SUMS-0.9.3.txt
 ```
 
 ### Install and start
@@ -504,9 +504,10 @@ an error. None of these tools should be tried first on an irreplaceable disk.
 ### Read the status before acting
 
 Long copies distinguish **Copying** from **Verifying**; the verification counter
-starts again at zero. Directory scans/sorting show activity; counting and loading
-announce their phase. A blocking disk call can pause that indication. REPAIR's
-full walks can take minutes without a progress line. Do not remove media just
+starts again at zero. Every long tool shows a bar or, where none fits, turns
+a `/` `\` mark at the end of the line above the messages (DOS3.3: the last
+cell of the key bar). One blocking disk call, such as a low-level format, can
+still pause it. Do not remove media just
 because a counter has stopped; record the screen and wait for a result or a
 safe cancellation point.
 
@@ -590,7 +591,7 @@ describes the CiderPress corpus.
   `bench/README.md` describe development and test workflows.
 - **Bugs and source:** [A2 File Cmd on GitHub](https://github.com/habib256/a2filecmd).
 
-This is the preparation guide for **0.9.2**. It describes supported behavior and
+This is the guide for **0.9.3**. It describes supported behavior and
 limits; it is not a claim that physical hardware qualification has finished.
 Keep original disks safe, use matching program/tools, and read each operation's
 result before starting the next one.

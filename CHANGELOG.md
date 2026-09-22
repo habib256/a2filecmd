@@ -5,6 +5,8 @@ downloads and installation.
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-09-22
+
 ### Visible progress in long operations
 - Every tool that can work for more than a few seconds at 1 MHz now moves
   something on screen. A progress bar is added to squeezed and ACU archives,

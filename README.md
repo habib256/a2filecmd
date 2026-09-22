@@ -58,17 +58,16 @@ See the [guide](docs/MANUAL.md) for supported formats and each tool's limits.
 
 ## Choose your disk
 
-**[0.9.1 is the published release](https://github.com/habib256/a2filecmd/releases/tag/v0.9.1).**
-The screenshots and guide in this branch prepare **0.9.2**, which is not yet
-published. No build is needed to use the release downloads.
+**[0.9.3 is the published release](https://github.com/habib256/a2filecmd/releases/tag/v0.9.3).**
+No build is needed to use the release downloads.
 
-| Your setup | Download from 0.9.1 |
+| Your setup | Download from 0.9.3 |
 |---|---|
-| **Apple II+ · 48 KB · two Disk II drives** | [DOS3.3 — standalone 40-column edition](https://github.com/habib256/a2filecmd/releases/download/v0.9.1/A2FILECMD-DOS3.3-0.9.1.dsk) |
-| **ProDOS · one 5¼-inch program disk** | [140K — essentials, 6502](https://github.com/habib256/a2filecmd/releases/download/v0.9.1/A2FILECMD-140K-0.9.1.dsk) |
-| **ProDOS · all tools without sample media** | [800K — complete, 6502](https://github.com/habib256/a2filecmd/releases/download/v0.9.1/A2FILECMD-800K-0.9.1.po) |
-| **ProDOS · hard disk or emulator** | [XL — complete with demonstrations, 6502](https://github.com/habib256/a2filecmd/releases/download/v0.9.1/A2FILECMD-XL-0.9.1.2mg) |
-| **ProDOS · 65C02 and enhanced ROM** | [XL — enhanced 65C02, optional mouse](https://github.com/habib256/a2filecmd/releases/download/v0.9.1/A2FILECMD-65C02-enhanced-mouse-XL-0.9.1.2mg) |
+| **Apple II+ · 48 KB · two Disk II drives** | [DOS3.3 — standalone 40-column edition](https://github.com/habib256/a2filecmd/releases/download/v0.9.3/A2FILECMD-DOS3.3-0.9.3.dsk) |
+| **ProDOS · one 5¼-inch program disk** | [140K — essentials, 6502](https://github.com/habib256/a2filecmd/releases/download/v0.9.3/A2FILECMD-140K-0.9.3.dsk) |
+| **ProDOS · all tools without sample media** | [800K — complete, 6502](https://github.com/habib256/a2filecmd/releases/download/v0.9.3/A2FILECMD-800K-0.9.3.po) |
+| **ProDOS · hard disk or emulator** | [XL — complete with demonstrations, 6502](https://github.com/habib256/a2filecmd/releases/download/v0.9.3/A2FILECMD-XL-0.9.3.2mg) |
+| **ProDOS · 65C02 and enhanced ROM** | [XL — enhanced 65C02, optional mouse](https://github.com/habib256/a2filecmd/releases/download/v0.9.3/A2FILECMD-65C02-enhanced-mouse-XL-0.9.3.2mg) |
 
 All ProDOS editions require **128 KB and 80 columns**. The 6502 editions also
 work on enhanced machines. Choose enhanced XL only when **both the CPU and
@@ -90,7 +89,7 @@ disks to juggle. DOS3.3 remains a separate program with its own commands.
 DOS3.3 and 140K are DOS-order `.dsk`; 800K is ProDOS-order `.po`; XL is `.2mg`.
 Changing the extension does not convert a disk. To install ProDOS elsewhere,
 keep `A2FILE.SYSTEM` and its complete `A2FILE/` folder side by side, from the
-same build. For 0.9.2, copy the root `RECOVER` guide as well.
+same build. Copy the root `RECOVER` guide as well.
 
 <details>
 <summary>Check a downloaded image</summary>
@@ -117,7 +116,7 @@ They ask before using it; save those files elsewhere first. Music playback
 preserves /RAM. DOS3.3 has no auxiliary-memory requirement; once a disk write
 starts, its keyboard cannot interrupt it.
 
-The 0.9.2 guide includes a practical [incident recovery procedure](docs/MANUAL.md#recover-after-an-incident):
+The guide includes a practical [incident recovery procedure](docs/MANUAL.md#recover-after-an-incident):
 identify the temporary or backup, preserve a disk image, and recover from a
 duplicate to a fresh destination. [Data-safety details](docs/DATA-SAFETY.md)
 explain the protections and remaining limits.
