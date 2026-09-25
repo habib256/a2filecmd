@@ -71,6 +71,25 @@ Ordre retenu après la recherche du 25 septembre 2026 (File Type Notes,
 CiderPress II, rétro-ingénieries publiques ; échantillons vérifiés sur des
 images publiques). Aucun de ces formats n'a de spécification officielle.
 
+0. [ ] **The Newsroom** (Springboard) : photos `PH.*` et bannières
+   `BN.*` des disques d'utilisateurs, vrais fichiers DOS 3.3 de type B
+   (chargés en `$4000`). Format décodé : longueur L, cadre y1 y2 x1 x2,
+   historique des clips jusqu'au premier `$FF`, puis bitmap de
+   (x2 − x1) div 7 + 1 octets × (y2 − y1 + 1) lignes, 7 pixels par
+   octet, bit 0 à gauche, 1 = blanc. Contrôles : L = largeur × hauteur =
+   taille − (position du `$FF` + 1) ; 125 fichiers réels décodés sans
+   écart (bulletins de chorale, de paroisse, de lycée). Sources :
+   routines NRTOGP/NRTONR de Ferg Brand (1986),
+   [newswire](https://github.com/classilla/newswire) (format C64).
+   Échantillons : archive.org `703_Newsroom_Page`, `103_…` à `106_…`,
+   `105_The_Newsroom_Photo_Data_Disk`, `169_Page_Data_Disk_The_Newsroom`,
+   `a2_Newsroom_Banner_Datadisk_198x_`, `009_`/`010_Clipart_*_For_NewsRoom`.
+   À faire : visualiseur hi-res en lecture seule (refus si un contrôle
+   échoue, Gauche/Droite entre photos), oracle Python et tests sur les
+   vrais fichiers, spécification `docs/NEWSROOM-FORMAT.md`. Ensuite : le
+   texte des panneaux `PN.*` et pages `PG.*` (compris en partie), puis le
+   clip art commercial (index piste 34 « SSI CLIP » lu, compression non
+   décodée).
 1. [ ] **Epistole** (Version Soft, France). Documents ProDOS `$04`, ASCII
    7 bits, CR ; commandes en ligne `_MG10`, `_CE`, `_JD`…, variables
    `#NOM]`, calculs `#:PR=…]` ; accents ISO 646-FR (`{`=é, `}`=è, `@`=à).
@@ -122,7 +141,5 @@ les deux, pas de 3½) ; XMODEM, ADTPro blocs, TFTP ; PASSWORD ;
 ## Écarté
 
 - Hors de portée : NuFX 5 en 16 bits, Squeeze NuFX, Teach, a2dgrx.
-- The Newsroom : le clip art n'est pas dans des fichiers DOS ou ProDOS
-  (faux catalogue, pistes entières occupées).
 - Sans documents ni spécification trouvés : Bank Street Writer, Fontrix
   GRAFFILE, The New Print Shop (`$F5`).
