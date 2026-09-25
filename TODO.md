@@ -28,10 +28,11 @@ machine réelle. Même règle : pas de fonctionnalité nouvelle hors affichage.
   ou non » dans le README, le manuel et les notes de release.
 - [x] DEMO du XL rangé par sorte de fichier (`tools/stage_demo.py`).
 - [x] README révisé et capture 80 colonnes au bon ratio
-  (`bench/capture_panels.py`), aussi en couverture du manuel.
+  (`tools/capture_panels.py`), aussi en couverture du manuel.
 - [x] ABI des overlays et `A2FILE.CFG` gelés (`tools/test_abi_freeze.py`).
-- [ ] Mini : hexadécimal lisible, 8 octets par ligne espacés avec leurs
-  caractères, en deux moitiés (Gauche/Droite).
+- [x] Mini : hexadécimal lisible, 8 octets par ligne espacés avec leurs
+  caractères, en deux moitiés (Gauche/Droite, `-`/`+`, `<`/`>`) ; payé
+  par la page d'aide (`|` dans `inline_text`), 43 octets libres sous DOS.
 - [x] Manuel : Dazzle Draw (BIN `$2000`, 16 Ko, AUX d'abord) cité parmi
   les images DHGR déjà lues.
 - [ ] Une vraie image Dazzle Draw dans un banc (oracle : `DD.PICLOADER`
@@ -64,8 +65,9 @@ Chaque étape suppose la précédente fermée. Un défaut trouvé aux étapes
      ([mesures](docs/PERFORMANCE-0.9.2.md)).
    - [ ] Trancher : cache des informations de volume. Prototype écarté
      pour préserver les marges mémoire ; le fermer ou le reporter en 1.1.
-   - [ ] Trancher : MAIN 65C02 à 82 octets, objectif 256. Bloquant 1.0,
-     ou condition d'entrée d'un format 1.1.
+   - [x] MAIN 65C02 : **494 octets libres** (82 avant), 6502 : 885.
+     `pan_at(p)` remplace les 90 `panels[p]` à indice variable, que cc65
+     multipliait par 98. LC, pile et douze surcouches y gagnent aussi.
    - [ ] VDrive sonde `$C2` puis `$C1` (`src/vsdrive.s`) : sur un IIe dont
      la seule SSC est en slot 1, reliée à une imprimante, il la
      reprogrammerait à 115 200 bauds et y enverrait ses enveloppes (vu par
@@ -86,7 +88,7 @@ Chaque étape suppose la précédente fermée. Un défaut trouvé aux étapes
 7. **Tag 1.0.**
    - [ ] Aucun défaut connu qui puisse perdre des données.
    - [ ] README et manuel : passer les liens de téléchargement aux
-     nouveaux noms d'images, reprendre `bench/capture_panels.py`.
+     nouveaux noms d'images, reprendre `tools/capture_panels.py`.
 
 Rappels de release : `/RAM` se confirme **avant** d'y toucher ; images
 jetables pour les essais destructifs ; deux CPU.

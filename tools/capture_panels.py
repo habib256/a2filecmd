@@ -2,7 +2,7 @@
 """The README and manual screenshot: the 80-column ProDOS panels, from the
 published enhanced XL image, at the display's aspect ratio.
 
-    make disk && python3 bench/capture_panels.py [--out docs/screenshots]
+    make disk && python3 tools/capture_panels.py [--out docs/screenshots]
 
 POM2 renders 80-column text as 560 x 192: one pixel per half column, one
 per scan line, a 2.9:1 picture that looks squashed. A monitor shows those
@@ -17,7 +17,7 @@ import argparse, hashlib, json, struct, sys, tempfile, urllib.request, zlib
 from datetime import date
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'bench'))
 from pom2 import VERSION, Pom2, Session, ROOT, labels
 
 

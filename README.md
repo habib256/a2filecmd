@@ -16,7 +16,7 @@ From the essentials of DOS3.3 to a complete ProDOS workspace.
 ![A2 File Cmd ProDOS XL in 80 columns: the volume root on the left, the DEMO folder on the right](docs/screenshots/prodos-panels-0.9.3.png)
 
 *ProDOS XL in 80 columns on an enhanced Apple IIe, captured in POM2 at the
-screen's proportions ([how](bench/capture_panels.py), [source image](docs/screenshots/prodos-panels-0.9.3.json)).*
+screen's proportions ([how](tools/capture_panels.py), [source image](docs/screenshots/prodos-panels-0.9.3.json)).*
 
 </div>
 

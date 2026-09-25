@@ -10,7 +10,7 @@ its SHA-256 checksum and attaches it to the GitHub release.
 
 The cover uses the first Markdown image in `MANUAL.md`, currently
 `screenshots/prodos-panels-0.9.3.png`: the 80-column ProDOS XL panels, which
-the README shows first too. `python3 bench/capture_panels.py` retakes it from
+the README shows first too. `python3 tools/capture_panels.py` retakes it from
 the published enhanced XL image of the Makefile's version: POM2's 560 x 192
 picture has each scan line doubled to 560 x 384, the screen's proportions.
 It boots a disposable copy, checks the image unchanged afterwards, and writes
