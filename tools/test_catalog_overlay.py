@@ -14,6 +14,7 @@ HARNESS = r'''
 struct Entry {char name[17];};
 struct Panel {unsigned char count,more,tags[18];struct Entry*e;};
 static struct Panel panels[2];
+#define pan_at(p) (&panels[p])   /* the resident helper: the same address */
 static unsigned char in_overlay,panel_stale,reselect_panel,load_ok=1,read_ok=1;
 static char reselect[17];static unsigned selects;
 static void select_name(struct Panel* p,const char* n){++selects;}

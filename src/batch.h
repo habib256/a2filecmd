@@ -60,14 +60,14 @@ static void batch_discard(void)
 
 static void batch_write(void)
 {
-    struct Panel* pan = &panels[active];
+    struct Panel* pan = pan_at(active);
     struct Entry* e;
     FILE* f;
     unsigned char i, bad = 0, crc[2];
     unsigned int sum;
     memset(MB, 0, sizeof *MB);
-    if (pan->fs || panels[!active].fs || !target_check()) return;
-    strcpy(MB->source, pan->path); strcpy(MB->target, panels[!active].path);
+    if (pan->fs || pan_at(!active)->fs || !target_check()) return;
+    strcpy(MB->source, pan->path); strcpy(MB->target, pan_at(!active)->path);
     strcpy(MB->list, MB->target);
     if (!push_name(MB->list, batch_leaf)) { too_long(); return; }
     for (i = 0; i < pan->count; ++i) if (tagged(pan, i)) {
@@ -117,7 +117,7 @@ static void batch_read(void)
     FILE* f;
     unsigned char bad;
     MB->ready = 0;
-    if (strcmp(panels[active].path, MB->source) || strcmp(panels[!active].path, MB->target)) {
+    if (strcmp(pan_at(active)->path, MB->source) || strcmp(pan_at(!active)->path, MB->target)) {
         strcpy(note, bt_s5); return;
     }
     f = fopen(MB->list, bt_s4);
@@ -125,7 +125,7 @@ static void batch_read(void)
     bad = fseek(f, (unsigned long)MB->index * (sizeof selected + 2), SEEK_SET) != 0;
     if (!bad && !batch_record(f)) bad = 1;
     if (!batch_close(f, bad)) { strcpy(note, batch_bad); return; }
-    if (!build_full(full, &panels[active], &selected) || !file_info(full) ||
+    if (!build_full(full, pan_at(active), &selected) || !file_info(full) ||
         (gfi[3] & 0x81) != 0x81 || gfi[4] != selected.type ||
         (selected.type == 0x0F ? gfi[7] != 0x0D : gfi[7] < 1 || gfi[7] > 3) ||
         (gfi[5] | ((unsigned int)gfi[6] << 8)) != selected.aux) {
@@ -138,7 +138,7 @@ static void batch_finish(void)
 {
     FILE* f;
     unsigned char i, j, bad = 0;
-    struct Panel* pan = &panels[active];
+    struct Panel* pan = pan_at(active);
     memset(panels[0].tags, 0, sizeof panels[0].tags);
     memset(panels[1].tags, 0, sizeof panels[1].tags);
     f = fopen(MB->list, bt_s4);
@@ -166,7 +166,7 @@ static void batch_finish(void)
  * state and survive. */
 static void batch_repath(void)
 {
-    strcpy(MB->source, panels[active].path); strcpy(MB->target, panels[!active].path);
+    strcpy(MB->source, pan_at(active)->path); strcpy(MB->target, pan_at(!active)->path);
     strcpy(MB->list, MB->target);
     if (!push_name(MB->list, batch_leaf)) { too_long(); return; }
     MB->reason[0] = 0;

@@ -30,6 +30,7 @@ struct Entry { char name[17]; unsigned char type; };
 struct Mini { char name[17]; };
 struct Panel { char path[64]; struct Entry e[8]; unsigned char count, cursor, tags[8]; };
 static struct Panel panels[2];
+#define pan_at(p) (&panels[p])   /* the resident helper: the same address */
 static struct Mini* pool;
 static unsigned char active, picked[8], progress_abort;
 static unsigned int progress_total, progress_done, a2fc_ops;

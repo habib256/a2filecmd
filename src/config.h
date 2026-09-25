@@ -75,7 +75,7 @@ static unsigned char cfg_parse(unsigned char apply)
         for (p = 0; p < 2; ++p) {
             start = i;
             while (bytes[i] != '\r') ++i;
-            bytes[i++] = 0; strcpy(panels[p].path, bytes + start);
+            bytes[i++] = 0; strcpy(pan_at(p)->path, bytes + start);
         }
     }
     return 1;

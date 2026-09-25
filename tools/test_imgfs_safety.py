@@ -24,6 +24,7 @@ struct A2fcApi {int unused;};
 struct Entry {char name[17];unsigned char type;unsigned int aux,mdate;unsigned long size;};
 struct Panel {char path[512];unsigned char fs,count,cursor,img_len,tags[4];unsigned int dir_key;};
 static struct Panel panels[2];
+#define pan_at(p) (&panels[p])   /* the resident helper: the same address */
 static struct Entry entries[4];
 #define ENTRY_SNAPSHOT entries
 static unsigned char idxbuf[512],cmp[512],copy_buf[512],active,_filetype;

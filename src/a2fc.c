@@ -151,6 +151,16 @@ struct MoveBatch {
 };
 #define MB ((struct MoveBatch*)text_starts)
 typedef char batch_state_fits[sizeof text_starts - sizeof(struct MoveBatch)];
+
+/* &panels[p] for p = 0 or 1. cc65 computes panels + p * 98 with a
+ * multiplication routine: some twenty bytes at each of the eighty sites,
+ * where this call costs five. Resident, outside every code-name block:
+ * the overlays call it too. */
+static struct Panel* __fastcall__ pan_at(unsigned char p)
+{
+    return p ? panels + 1 : panels;
+}
+
 /* The tree walks (counting, copying, deleting a directory) stack the
  * entries of each level: a level occupies pool[base..base+n[, the next
  * level starts at base+n. A tree in which one path accumulates more than
@@ -564,7 +574,7 @@ static void keep_tags(unsigned char save)
  * two marks, and `<DIR>`, still in the same column, says as much. */
 static void draw_entry(unsigned char p, unsigned char index)
 {
-    struct Panel* pan = &panels[p];
+    struct Panel* pan = pan_at(p);
     unsigned char x = p ? 40 : 0;
     unsigned char row = 2 + (index - pan->top);
     const struct Entry* e = &pan->e[index];
@@ -604,7 +614,7 @@ static void draw_entry(unsigned char p, unsigned char index)
 
 static void draw_panel(unsigned char p)
 {
-    struct Panel* pan = &panels[p];
+    struct Panel* pan = pan_at(p);
     unsigned char x = p ? 40 : 0, i;
     extern const char a2fc_header[];
     static const unsigned char sort_column[SORT_MODES] = { 4, 35, 21 };
@@ -628,7 +638,7 @@ static void draw_panel(unsigned char p)
  * active panel's volume. */
 static void draw_status(void)
 {
-    struct Panel* pan = &panels[active];
+    struct Panel* pan = pan_at(active);
     chlinexy(0, 20, 80);
     cputsxy(2, 20, " A2 FILE CMD " A2FC_VERSION " ");
     if (pan->total_blocks) {
@@ -651,7 +661,7 @@ static void draw_frame(void)
 
 static void draw_info(void)
 {
-    struct Panel* pan = &panels[active];
+    struct Panel* pan = pan_at(active);
     const struct Entry* e;
     unsigned char n;
     clear_row(21);
@@ -1013,7 +1023,7 @@ fail:
 
 static unsigned char read_panel(unsigned char p)
 {
-    struct Panel* pan = &panels[p];
+    struct Panel* pan = pan_at(p);
     struct Entry* e;
     unsigned char ok = 1;
     activity_begin("Reading directory...");
@@ -1066,7 +1076,7 @@ static void set_cursor(struct Panel* pan, unsigned char index)
  * otherwise, then the information line. */
 static void land(unsigned char index)
 {
-    struct Panel* pan = &panels[active];
+    struct Panel* pan = pan_at(active);
     unsigned char previous = pan->cursor, old_top = pan->top;
     set_cursor(pan, index);
     if (pan->top != old_top) draw_panel(active);
@@ -1404,9 +1414,9 @@ static void resort(void)
     char keep[NAME_LEN];
     sort_mode = (sort_mode + 1) % SORT_MODES;
     for (p = 0; p < 2; ++p) {
-        strcpy(keep, panels[p].count ? panels[p].e[panels[p].cursor].name : "");
-        sort_entries(&panels[p]);
-        select_name(&panels[p], keep);
+        strcpy(keep, pan_at(p)->count ? pan_at(p)->e[pan_at(p)->cursor].name : "");
+        sort_entries(pan_at(p));
+        select_name(pan_at(p), keep);
         draw_panel(p);
     }
     draw_info();
@@ -1683,8 +1693,8 @@ static const char cmp_io[]     = "Compare failed: read/close error.";
  * COMPARE overlay, on the floppy edition too (the resident being full). */
 static void mark_differences(void)
 {
-    struct Panel* pan = &panels[active];
-    struct Panel* other = &panels[!active];
+    struct Panel* pan = pan_at(active);
+    struct Panel* other = pan_at(!active);
     unsigned char i, j, n = 0;
     if (!target_check()) return;
     for (i = 0; i < pan->count; ++i) {
@@ -1704,7 +1714,7 @@ static void mark_differences(void)
 
 void __fastcall__ compare_entry(const struct A2fcApi* a)
 {
-    struct Panel* oth = &panels[!active];
+    struct Panel* oth = pan_at(!active);
     FILE* fa;
     FILE* fb;
     unsigned int na, nb, i, m;
@@ -1809,7 +1819,7 @@ done:
 
 void __fastcall__ search_entry(const struct A2fcApi* a)
 {
-    struct Panel* pan = &panels[active];
+    struct Panel* pan = pan_at(active);
     unsigned char plen, i, found = 0, r = 0;
     (void)a;
     if (!pan->count) { message(srch_none); return; }
@@ -1889,7 +1899,7 @@ static void b2_name(const unsigned char* src, unsigned char len, char* out)
 
 void __fastcall__ binary2_entry(const struct A2fcApi* a)
 {
-    struct Panel* oth = &panels[!active];
+    struct Panel* oth = pan_at(!active);
     FILE* in;
     FILE* out = NULL;
     unsigned long eof, size, start;
@@ -2060,7 +2070,7 @@ static void view_hex(const char* path, unsigned long size)
 void __fastcall__ hex_entry(const struct A2fcApi* a)
 {
     (void)a;
-    if (full[0]) view_hex(full, panels[active].e[panels[active].cursor].size);
+    if (full[0]) view_hex(full, pan_at(active)->e[pan_at(active)->cursor].size);
 }
 #pragma rodata-name (pop)
 #pragma code-name (pop)
@@ -2252,7 +2262,7 @@ static void reread_both(void)
 #define OVL ((struct Overlay*)OVERLAY_WINDOW)
 static void snapshot_entries(void)
 {
-    struct Panel* pan = &panels[active];
+    struct Panel* pan = pan_at(active);
     memmove(ENTRY_SNAPSHOT, pan->e, pan->count * sizeof(struct Entry));
 }
 static unsigned char load_overlay(const char* name, unsigned char any)
@@ -2353,7 +2363,7 @@ static unsigned char __fastcall__ prepare_audio(unsigned char arg);
 #include "media.h"
 static void overlay_run(const char* name, unsigned char arg)
 {
-    struct Panel* pan = &panels[active];
+    struct Panel* pan = pan_at(active);
     unsigned char big, media=media_type(name), dir, gr, first=1;
     media_aux_scope = media ? 1 : 0;
     media_kind = media;
@@ -2406,7 +2416,7 @@ again:
         big=read_panel(0);
         if(!read_panel(1))big=0;
         keep_tags(0);
-        if (reselect[0]) select_name(&panels[active], reselect);
+        if (reselect[0]) select_name(pan_at(active), reselect);
         if(media && media_request && (!big || !pan->count || strcmp(pan->e[pan->cursor].name,reselect)))media_request=0;
         /* On the way to a neighbour the panels are not drawn: the loading
          * screen, or the lo-res picture, stays until the next one shows. */
@@ -2431,7 +2441,7 @@ media_done:
  * graphics page; the next phase takes a fresh snapshot after panel refresh. */
 static void batch_stage(unsigned char arg)
 {
-    struct Panel* pan = &panels[active];
+    struct Panel* pan = pan_at(active);
     MB->ready = 255;
     keep_tags(1);
     batch_snapshot = 1;
@@ -2625,7 +2635,7 @@ void __fastcall__ image_entry(const struct A2fcApi* a)
  * safely overwrite the old graphics page. */
 static void view_image(void)
 {
-    struct Panel* pan = &panels[active];
+    struct Panel* pan = pan_at(active);
     unsigned char index = pan->cursor, next, p, dir;
     char key;
     aux_dirty = 0;
@@ -3001,7 +3011,7 @@ leave:
  * the core rereads the panels and puts the cursor back on `reselect`. */
 void __fastcall__ edit_entry(const struct A2fcApi* a)
 {
-    struct Panel* pan = &panels[active];
+    struct Panel* pan = pan_at(active);
     const struct Entry* e = &selected;
     unsigned char fresh = 0;
     (void)a;
@@ -3537,7 +3547,7 @@ static void di_finish(unsigned char r)
 
 void __fastcall__ diskimg_entry(const struct A2fcApi* a)
 {
-    struct Panel* pan = &panels[active];
+    struct Panel* pan = pan_at(active);
     const struct Entry* e = &selected;
     struct Dev* from;
     struct Dev* to;
@@ -3873,7 +3883,7 @@ static void settle_panels(void)
     for (p = 0; p < 2; ++p)
         if (stale & (1 << p)) {
             read_panel(p);
-            if (reselect[0] && p == reselect_panel) { select_name(&panels[p], reselect); reselect[0] = 0; }
+            if (reselect[0] && p == reselect_panel) { select_name(pan_at(p), reselect); reselect[0] = 0; }
             draw_panel(p);
         }
     if (stale) { draw_status(); draw_info(); }
@@ -4010,9 +4020,9 @@ static unsigned char moved_tree_delete(void)
  * directory. Returns 1 if everything is copied. */
 static unsigned char copy_one(const struct Entry* e)
 {
-    struct Panel* dst = &panels[!active];
+    struct Panel* dst = pan_at(!active);
     unsigned char len;
-    if (!build_full(full, &panels[active], e) || !build_full(other_full, dst, e)) { too_long(); return 0; }
+    if (!build_full(full, pan_at(active), e) || !build_full(other_full, dst, e)) { too_long(); return 0; }
     if (!is_dir(e)) return copy_file(e->name, e->type, e->aux) != 0;
     len = strlen(full);
     if (!strncmp(dst->path, full, len) && (dst->path[len] == '/' || !dst->path[len])) {
@@ -4038,7 +4048,7 @@ const char batch_cancel[] = "Cancelled; remaining sources kept.";
  * like the MOVE overlay does. */
 static unsigned char move_tree_across(void)
 {
-    struct Panel* pan = &panels[active];
+    struct Panel* pan = pan_at(active);
     reselect[0] = 0;                    /* the tags went into the manifest: none is left on the panel */
     select_name(pan, selected.name);
     if (pan->count && !strcmp(pan->e[pan->cursor].name, selected.name)) copy_or_move(1);
@@ -4057,7 +4067,7 @@ static unsigned char move_tree_across(void)
  * cursor. Returns their number and drops them into `picked`. */
 static unsigned char pick_targets(void)
 {
-    struct Panel* pan = &panels[active];
+    struct Panel* pan = pan_at(active);
     unsigned char i, n = 0;
     if (!pan->count || !pan->path[0]) return 0;
     for (i = 0; i < pan->count; ++i) if (tagged(pan, i)) picked[n++] = i;
@@ -4067,11 +4077,11 @@ static unsigned char pick_targets(void)
 
 static unsigned char target_check(void)
 {
-    struct Panel* dst = &panels[!active];
-    if (!panels[active].path[0]) { message("Open a directory first."); return 0; }
+    struct Panel* dst = pan_at(!active);
+    if (!pan_at(active)->path[0]) { message("Open a directory first."); return 0; }
     if (dst->fs) { { extern const char msg_otherro[]; message(msg_otherro); }; return 0; }
     if (!dst->path[0]) { message("Open a directory in the other panel."); return 0; }
-    if (!strcmp(dst->path, panels[active].path)) { { extern const char msg_samedir[]; message(msg_samedir); }; return 0; }
+    if (!strcmp(dst->path, pan_at(active)->path)) { { extern const char msg_samedir[]; message(msg_samedir); }; return 0; }
     return 1;
 }
 
@@ -4189,8 +4199,8 @@ static unsigned char img_run(const struct Entry* e, unsigned char storage, unsig
  * while the loader keeps their copy in picked[]. */
 static void extract_targets(void)
 {
-    struct Panel* pan = &panels[active];
-    struct Panel* dst = &panels[!active];
+    struct Panel* pan = pan_at(active);
+    struct Panel* dst = pan_at(!active);
     const struct Entry* e;
     char* cut;
     unsigned char n = pan->count, i, done = 0, big = 0, r = 1, storage, marked;
@@ -4354,8 +4364,8 @@ static unsigned char d3_run(const struct Entry* e, unsigned char verify)
 
 static void dos_extract(void)
 {
-    struct Panel* pan = &panels[active];
-    struct Panel* dst = &panels[!active];
+    struct Panel* pan = pan_at(active);
+    struct Panel* dst = pan_at(!active);
     char* cut;
     unsigned char n, i, done = 0, r = 1, marked;
     if (dst->fs || !dst->path[0]) { message(d3_target); return; }
@@ -4753,7 +4763,7 @@ static unsigned char us_extract_thread(void)
         _filetype = (unsigned char)US->filetype;
         _auxtype = US->auxtype;
     }
-    sprintf(other_full, us_path, panels[!active].path, US->name);
+    sprintf(other_full, us_path, pan_at(!active)->path, US->name);
     owned = reserve_output(other_full);
     if (!owned) { strcpy(note, us_create_failed); return 0; }
     if (owned != OUTPUT_RESERVED) goto failed;
@@ -4800,20 +4810,20 @@ failed:
 
 void __fastcall__ unshrink_entry(const struct A2fcApi* a)
 {
-    struct Panel* pan = &panels[active];
+    struct Panel* pan = pan_at(active);
     unsigned int i, t, len;
     unsigned char* th;
     (void)a;
     if (!pan->count || !pan->path[0] || is_dir(&selected) || !full[0]) { strcpy(note, us_notfile); return; }
-    if (!panels[!active].path[0] || panels[!active].fs) { strcpy(note, us_notdir); return; }
+    if (!pan_at(!active)->path[0] || pan_at(!active)->fs) { strcpy(note, us_notdir); return; }
     /* The auxiliary bank carries the LZW dictionary AND the /RAM disk:
      * extracting to /RAM, or from it, would destroy it (and ram_format
      * rebuilds it empty afterwards). The disk is known by its driver, not
      * its name. We refuse; any other volume will do. */
-    if (us_on_ram(panels[!active].path) || us_on_ram(full)) {
+    if (us_on_ram(pan_at(!active)->path) || us_on_ram(full)) {
         strcpy(note, us_noram); return;
     }
-    if (strlen(panels[!active].path) + 17 >= PATH_LEN) { too_long(); return; }
+    if (strlen(pan_at(!active)->path) + 17 >= PATH_LEN) { too_long(); return; }
     /* After a picture, HIRES stays armed. With 80STORE, PAGE2 then dictates
      * the bank for $2000-$3FFF even under RAMRD/RAMWRT AUX: the LZW
      * dictionary would overwrite the C driver and the panel tables in MAIN.
@@ -4933,7 +4943,7 @@ static const char imgput_plugin[] = "IMGPUT";
  * phase closes every file; DOSIMAGE rebuilds its sibling path after loading. */
 static void copy_dos(unsigned char move)
 {
-    if (!move && panels[!active].img_len) {
+    if (!move && pan_at(!active)->img_len) {
         input[0] = 0;
         overlay_run(dosimage_plugin, 'P');
         if (input[0] != 'I') return;
@@ -4944,24 +4954,24 @@ static void copy_dos(unsigned char move)
 }
 static void copy_or_move(unsigned char move)
 {
-    struct Panel* pan = &panels[active];
+    struct Panel* pan = pan_at(active);
     unsigned char n, i, done = 0, removed = 0;
     unsigned int sub;
     if (pan->fs == FS_DOS33) { overlay_run("DOSGET", 'C'); return; }   /* DOS 3.3 extraction */
     if (pan->fs) { overlay_run("IMGFS", 0); return; }   /* extraction from a ProDOS image */
-    if (panels[!active].fs == FS_DOS33) {
+    if (pan_at(!active)->fs == FS_DOS33) {
         copy_dos(move); return;
     }
     /* C into a mounted ProDOS image: IMGPUT writes it. Only C -- a move
      * would have to delete the source once the image holds the file, and
      * IMGPUT does not delete anything; V keeps the old refusal. */
-    if (!move && panels[!active].fs == FS_IMG) {
+    if (!move && pan_at(!active)->fs == FS_IMG) {
         overlay_run(imgput_plugin, 0); return;
     }
     if (!target_check()) return;
     n = pick_targets();
     if (!n) return;
-    pool = (struct Mini*)panels[!active].e;
+    pool = (struct Mini*)pan_at(!active)->e;
     /* The "file x of y" counter needs to know y: a first pass counts the
      * files, directories included. */
     progress_total = 0;
@@ -5033,12 +5043,12 @@ static const char dl_done[]    = "%u item%s deleted.";
 static const char dl_stop[]    = "Interrupted: %u of %u deleted.";
 static void delete_targets(void)
 {
-    struct Panel* pan = &panels[active];
+    struct Panel* pan = pan_at(active);
     unsigned char n, i, done = 0, removed = 0;
     const struct Entry* e;
     n = pick_targets();
     if (!n) { message(dl_nothing); return; }
-    pool = (struct Mini*)panels[!active].e;
+    pool = (struct Mini*)pan_at(!active)->e;
     e = &pan->e[picked[0]];
     if (n == 1 && is_up(e)) { message(dl_nothing); return; }
     if (n == 1) sprintf(question, dl_ask1, e->name, dl_inside + (is_dir(e) ? 0 : sizeof dl_inside - 1));   /* "": the end of the array */
@@ -5099,21 +5109,21 @@ static const char at_pick[]    = "Select a file or directory.";
 static const char at_dirtype[] = "A directory keeps its type.";
 static void rename_selected(const struct Entry* e)
 {
-    if (is_up(e) || !panels[active].path[0]) { message(at_rename); return; }
+    if (is_up(e) || !pan_at(active)->path[0]) { message(at_rename); return; }
     if (!prompt(at_name, e->name, 0)) return;
-    if (!build_full(full, &panels[active], e)) { too_long(); return; }
-    if (strlen(panels[active].path) + 1 + strlen(input) >= PATH_LEN) { too_long(); return; }
-    sprintf(other_full, "%s/%s", panels[active].path, input);
+    if (!build_full(full, pan_at(active), e)) { too_long(); return; }
+    if (strlen(pan_at(active)->path) + 1 + strlen(input) >= PATH_LEN) { too_long(); return; }
+    sprintf(other_full, "%s/%s", pan_at(active)->path, input);
     if (rename(full, other_full)) { report_error("Rename"); return; }
     ++a2fc_ops;
     read_panel(active);
-    select_name(&panels[active], input);
+    select_name(pan_at(active), input);
     show_active();
 }
 
 static void make_directory(void)
 {
-    struct Panel* pan = &panels[active];
+    struct Panel* pan = pan_at(active);
     if (!pan->path[0]) { message(at_novol); return; }
     if (!prompt(at_dir, NULL, 0)) return;
     if (strlen(pan->path) + 1 + strlen(input) >= PATH_LEN) { too_long(); return; }
@@ -5131,8 +5141,8 @@ static void change_attributes(const struct Entry* e, unsigned char lock)
 {
     unsigned char type;
     unsigned int aux;
-    if (is_up(e) || !panels[active].path[0]) { message(at_pick); return; }
-    if (!build_full(full, &panels[active], e)) { too_long(); return; }
+    if (is_up(e) || !pan_at(active)->path[0]) { message(at_pick); return; }
+    if (!build_full(full, pan_at(active), e)) { too_long(); return; }
     if (!lock) {
         if (is_dir(e)) { message(at_dirtype); return; }
         sprintf(input, "%02X", e->type);
@@ -5151,13 +5161,13 @@ static void change_attributes(const struct Entry* e, unsigned char lock)
     ++a2fc_ops;
     strcpy(input, e->name);
     read_panel(active);
-    select_name(&panels[active], input);
+    select_name(pan_at(active), input);
     show_active();
 }
 
 void __fastcall__ attr_entry(const struct A2fcApi* a)
 {
-    struct Panel* pan = &panels[active];
+    struct Panel* pan = pan_at(active);
     const struct Entry* e = &pan->e[pan->cursor];
     (void)a;
     if (api.arg == 'K') make_directory();
@@ -5178,7 +5188,7 @@ void __fastcall__ attr_entry(const struct A2fcApi* a)
 
 void __fastcall__ run_entry(const struct A2fcApi* a)
 {
-    struct Panel* pan = &panels[active];
+    struct Panel* pan = pan_at(active);
     (void)a;
     if (a->arg == 'S') { api.arg = save_config(); return; }
     if (pan->count) run_selected(a->selected);
@@ -5325,7 +5335,7 @@ static void open_viewer(unsigned char pictures)
 
 static void open_selected(void)
 {
-    struct Panel* pan = &panels[active];
+    struct Panel* pan = pan_at(active);
     const struct Entry* e;
     if (!pan->count) return;
     e = &pan->e[pan->cursor];
@@ -5351,7 +5361,7 @@ static void open_selected(void)
 
 static void toggle_tag(void)
 {
-    struct Panel* pan = &panels[active];
+    struct Panel* pan = pan_at(active);
     const struct Entry* e;
     if (!pan->count || !pan->path[0]) return;
     e = &pan->e[pan->cursor];
@@ -5364,7 +5374,7 @@ static void toggle_tag(void)
  * tag like files since 0.8.6: C, V, D and the marked MOVE walk them. */
 static void retag(unsigned char mode)
 {
-    struct Panel* pan = &panels[active];
+    struct Panel* pan = pan_at(active);
     unsigned char i;
     if (!pan->path[0]) return;
     for (i = 0; i < pan->count; ++i)
@@ -5380,7 +5390,7 @@ static const char tx_jump[] = "\1Jump to name starting with: ";
 static const char tx_noname[] = "No such name in this panel.";
 static void find_letter(void)
 {
-    struct Panel* pan = &panels[active];
+    struct Panel* pan = pan_at(active);
     unsigned char i, j;
     char key;
     message(tx_jump);
@@ -5406,7 +5416,7 @@ static void find_letter(void)
  * the next or previous window. */
 static void move_cursor(int delta)
 {
-    struct Panel* pan = &panels[active];
+    struct Panel* pan = pan_at(active);
     int target;
     if (!pan->count) return;
     target = (int)pan->cursor + delta;
@@ -5489,7 +5499,7 @@ static char click(void)
     if (y >= 20) return 0;
     swapped = (x >= 40) != active;
     if (swapped) swap_panels();
-    pan = &panels[active];
+    pan = pan_at(active);
     if (y < 2) return swapped ? 0 : y ? 's' : KEY_ESC;
     i = pan->top + y - 2;
     if (i >= pan->count) return 0;
@@ -5534,7 +5544,7 @@ static const char* const ov_names[] = { "COMPARE", "TEXT", "RUN", "FORMAT", "EDI
  * H wrote this sequence out; one copy is what pays for it. */
 static struct Entry* file_at_cursor(void)
 {
-    struct Panel* pan = &panels[active];
+    struct Panel* pan = pan_at(active);
     struct Entry* e;
     if (!pan->count) return 0;
     e = &pan->e[pan->cursor];
@@ -5612,7 +5622,7 @@ int main(void)
 #endif
     for (;;) {
         settle_panels();
-        pan = &panels[active];
+        pan = pan_at(active);
         key = wait_key();
         if (key >= '0' && key <= '9') key = bar_nth(key == '0' ? 9 : key - '1');
         if (key != KEY_ESC && key != 'q' && key != 'Q') clear_row(22);
@@ -5663,9 +5673,9 @@ int main(void)
              * fs and an img_len that indexed the OLD path, and read_panel
              * then split the new one past its terminator. A path that is
              * itself inside an image simply fails to open, and says so. */
-            panels[!active].fs = FS_PRODOS;
-            strcpy(panels[!active].path, pan->path);
-            open_path(&panels[!active]);
+            pan_at(!active)->fs = FS_PRODOS;
+            strcpy(pan_at(!active)->path, pan->path);
+            open_path(pan_at(!active));
             draw_panel(!active);
             break;
         case 'c': case 'C': copy_or_move(0); break;
@@ -5691,7 +5701,7 @@ int main(void)
         case '!':
             input[0] = 0;   /* A failed menu load must not replay an old command. */
             overlay_run("MENU", 0);
-            if (!strcmp(input, "MOVE") && tag_count(&panels[active])) move_marked();
+            if (!strcmp(input, "MOVE") && tag_count(pan_at(active))) move_marked();
             else if (input[0]) {
                 overlay_run(input, 0);
                 /* MOVE on a directory bound for another volume: it says so

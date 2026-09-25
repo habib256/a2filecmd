@@ -16,6 +16,7 @@ C=r'''
 #define PATH_LEN 64
 #define SORT_MODES 3
 static struct {char path[64];} panels[2];
+#define pan_at(p) (&panels[p])   /* the resident helper: the same address */
 static char cfg_path[64],note[80];
 static unsigned char sort_mode=1,active=1,gfi[18],_oserror,_filetype;
 static unsigned int _auxtype;

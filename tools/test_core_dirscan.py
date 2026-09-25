@@ -49,6 +49,7 @@ PANEL = r'''
 struct Entry {char name[17];unsigned char type,access;unsigned int aux,blocks,mdate;unsigned long size;};
 struct Panel {char path[81];unsigned char fs,count,more,cursor,top,tags[18];unsigned int first;struct Entry*e;};
 static struct Panel panels[2];static struct Entry entries[140];
+#define pan_at(p) (&panels[p])   /* the resident helper: the same address */
 static unsigned int image_reads,volume_reads;
 static void volume_space(struct Panel*p){}
 static void sort_entries(struct Panel*p){}

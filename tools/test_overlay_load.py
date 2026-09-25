@@ -80,6 +80,7 @@ class OverlayLoad(unittest.TestCase):
 #include <string.h>
 static char input[17],note[80];static int walked;static void copy_or_move(unsigned char m){++walked;}
 static int panels[2],active,mode,calls,moved;
+#define pan_at(p) (&panels[p])   /* the resident helper: the same address */
 static int tag_count(int* p){return 1;}
 static void move_marked(void){++moved;}
 static void overlay_run(const char* name,int arg){
@@ -111,6 +112,7 @@ struct Entry {unsigned char bytes[29];};
 struct Panel {struct Entry* e;unsigned char count;};
 static unsigned char ram[8192],active;
 static struct Panel panels[2];
+#define pan_at(p) (&panels[p])   /* the resident helper: the same address */
 #define ENTRY_SNAPSHOT ((struct Entry*)(ram+4096))
 '''+snapshot+r'''
 int main(void){unsigned side,n,k;unsigned char original[4060];

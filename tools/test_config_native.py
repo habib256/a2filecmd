@@ -16,6 +16,7 @@ class NativeConfig(unittest.TestCase):
 #define SORT_MODES 3
 #define CONFIG_STATE ((struct ConfigState*)0x6000)
 static struct {char path[64];} panels[2];
+#define pan_at(p) (&panels[p])   /* the resident helper: the same address */
 static unsigned char active,sort_mode;
 '''+struct+parser+'''
 int main(void){

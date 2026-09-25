@@ -27,6 +27,7 @@ C = r'''
 #define __fastcall__
 #include "src/a2fc_plugin.h"
 static struct Panel panels[2];
+#define pan_at(p) (&panels[p])   /* the resident helper: the same address */
 static struct Entry table[2][MAX_ENTRIES], selected;
 static unsigned char active, copy_buf[512], _oserror, keyboard;
 static char full[PATH_LEN + NAME_LEN], other_full[PATH_LEN + NAME_LEN], input[NAME_LEN], question[64], shown[128];

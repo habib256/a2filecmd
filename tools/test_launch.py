@@ -14,6 +14,7 @@ C = r'''
 #define PATH_LEN 64
 struct Entry { char name[16]; unsigned char type; unsigned int aux; unsigned long size; };
 static struct { char path[64]; unsigned char fs; } panels[2];
+#define pan_at(p) (&panels[p])   /* the resident helper: the same address */
 static unsigned char active, gfi[18], _oserror, copy_buf[512];
 static char full[64],other_full[64],cfg_path[64],question[128],note[128];
 static const char cfg_rb[]="rb";
