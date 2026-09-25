@@ -570,8 +570,8 @@ source notices and redistribution terms remain in the repository and LICENSE.
   **Vince Weaver, pt3_lib:** PT3 player work adapted by A2FC.
 - **Andy McFadden, CiderPress II:** format notes and real reader test samples.
 - **NuLib / ShrinkIt references:** NuFX and Binary II specifications.
-- **POM2 / Arnaud Verhille:** separate emulator for repeatable tests;
-  **ADTPro:** disk-transfer and virtual-drive workflows.
+- **David Schmidt, ADTPro:** disk-transfer and virtual-drive workflows.
+- **POM2 / Arnaud Verhille:** separate emulator for repeatable tests.
 
 The complete attributions, reference URLs and source-file notices are preserved
 in [Credits and provenance](CREDITS.md). Keep that document, the affected source

@@ -70,7 +70,7 @@ Separate emulator project used for repeatable Apple IIe, //c and disk-device
 verification.
 URL: [POM2 repository](https://github.com/habib256/pom2)
 
-**ADTPro**
+**David Schmidt — ADTPro**
 Virtual-drive and disk-transfer workflows support moving the supplied `.dsk`
 images to real hardware.
 URL: [ADTPro project](https://adtpro.com/)
