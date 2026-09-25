@@ -506,9 +506,10 @@ an error. None of these tools should be tried first on an irreplaceable disk.
 Long copies distinguish **Copying** from **Verifying**; the verification counter
 starts again at zero. Every long tool shows a bar or, where none fits, turns
 a `/` `\` mark at the end of the line above the messages (DOS3.3: the last
-cell of the key bar). One blocking disk call can still pause it: reading a
-diskette that was never formatted retries for a few seconds inside a single
-call. Do not remove media just
+cell of the key bar, which also turns inside DOS's own long calls: the
+format, and the retries on a diskette that was never formatted). A drive
+change or a head recalibration can still hold it for a second or so. Do
+not remove media just
 because a counter has stopped; record the screen and wait for a result or a
 safe cancellation point.
 

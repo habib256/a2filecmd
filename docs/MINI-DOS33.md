@@ -280,12 +280,10 @@ Then, in this order:
    format (one call, about half the time, credited when it returns), the
    DOS batches written and read back, the catalog track. That one call
    returns nothing until all 35 tracks are done, so for its duration the
-   last cell of the key bar turns `/` `\` once a track: DOS's own
-   per-track loop calls it, and the borrowed call is given back the
-   instant the format returns. A diskette that was never formatted has
-   one silent wait left before that, a few seconds: reading it to sense
-   the write-protect tab is a single RWTS call that retries and
-   recalibrates on a surface with no address field.
+   last cell of the key bar turns `/` `\` once a track (see *Signs of
+   life inside RWTS* below). On a diskette that was never formatted, the
+   read that senses the write-protect tab retries for about five seconds
+   before the format; the cell turns through that too.
 4. The DOS sectors are read again and written to the target in two batches
    through the working area (tracks 0–1, then 2), each batch then read back
    and compared, as the copy does.
@@ -333,6 +331,51 @@ you to stop writing to the target disk and have it checked before reuse.
 A physical DOS sector write is **not atomic**. Power loss or failure while writing
 the VTOC or a shared catalog sector can damage metadata, including metadata for
 existing files. Readback verification detects errors; it cannot guarantee repair.
+
+### Signs of life inside RWTS
+
+The last cell of the key bar turns `/` `\` on every RWTS call, but one
+call can last long: a FORMAT takes some eighteen seconds, and a READ of
+a diskette that was never formatted tries 48 address fields, recalibrates
+the head, tries 48 more, and only then reports its error, about five
+seconds of a screen that did not move. For
+those two commands, and only for the length of the call, `rwts.s` lends
+one of RWTS's own JSRs to the heartbeat, which then runs DOS's routine as
+before. Both were found with a per-instruction trace in POM2, not from a
+listing:
+
+| Site | Instruction | Runs | Lent during |
+|---|---|---|---|
+| `$BDC4` | `JSR $B944` (RDADR16) | once per address field tried, about every 25 ms on a blank surface | READ |
+| `$BED6` | `JSR $BE5A` (seek) | once per track, 35 times | FORMAT |
+
+The three bytes are checked before each call and the operand is put back
+the instant RWTS returns, on success and on error alike: a DOS that does
+not hold exactly those bytes is left alone and runs without the heartbeat,
+and DOS reclaims this memory for its file buffers when A2FC Mini quits.
+**No WRITE ever runs with a site lent**; the only writes under a lent
+site are the ones RWTS's own FORMAT makes, the per-track seek being
+before the track is laid down. Before RDADR16 the hook costs some 45
+cycles of what is a wait for the next address field anyway, and 6 after
+it, far inside the gap before the data field.
+
+`bench/mini33_lend.py` runs the same session (the blank diskette read,
+formatted, then filled with every file of the boot disk: 749 RWTS calls)
+with the sites lent and with the lending refused, and requires every call
+to return the same carry, code and bytes and the two diskettes to come
+out byte for byte identical. `bench/mini33_format.py` measures the
+longest the screen stands still on the never formatted diskette: 1.4 s
+while the panel reads it, 1.5 s through the format, down from 4.8 and
+4.9 s; its gate is 3 s. What remains are the waits RWTS makes between
+two address fields: about one second for the motor to come up to speed
+after a change of drive, and about 1.2 s for the recalibration's long
+seek.
+
+Limit: a RESET pressed during one of those calls leaves the site lent,
+pointing into A2FC Mini's memory; that is harmless while A2FC Mini's
+memory is intact, but a program loaded over it afterwards would take the
+next DOS disk access with it. Reboot after a RESET in the middle of a
+disk access.
 
 ## Browsing
 
@@ -497,6 +540,7 @@ python3 bench/mini33_write.py --pom2-root /path/to/pom2
 python3 bench/mini33_ops.py --pom2-root /path/to/pom2
 python3 bench/mini33_format.py --pom2-root /path/to/pom2
 python3 bench/mini33_time.py --pom2-root /path/to/pom2
+python3 bench/mini33_lend.py --pom2-root /path/to/pom2
 ```
 
 The benches use disposable images and an NMOS CPU. The first checks panels,
@@ -511,8 +555,10 @@ disk holding files, a zero-filled image and a diskette that was never
 formatted (no address fields, so the panel reads nothing and the
 write-protect probe cannot sense it), copies the four shipped files onto
 each and boots the result into A2FC Mini. Contents and allocations are
-independently checked afterward. `mini33_time.py` reports the cycle costs
-in the table above.
+independently checked afterward, and the longest still screen must stay
+under three seconds. `mini33_time.py` reports the cycle costs in the table
+above; `mini33_lend.py` proves the lent RWTS JSRs change nothing but the
+screen.
 
 Physical Apple II+ validation of this edition's writes remains outstanding.
 The RWTS interface follows the [Apple DOS manual, chapter 9](https://manuals.plus/m/c08d8e894bc01bf74e7348df79c1e3b2360f43ada6e2b08e39f9686651575161).

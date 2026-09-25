@@ -213,6 +213,7 @@ step('mini33_format', 'format', 'mini', {}, args=MINI_ROOT, needs=('mini', 'pom2
 step('mini33_brun', 'run', 'mini', {}, args=MINI_ROOT, needs=('mini', 'pom2-src'))
 step('mini33_review', 'fixes', 'mini', {}, args=MINI_ROOT, needs=('mini', 'pom2-src'))
 step('mini33_time', 'cycles', 'mini', {}, args=MINI_ROOT, needs=('mini', 'pom2-src'))
+step('mini33_lend', 'hooks', 'mini', {}, args=MINI_ROOT, needs=('mini', 'pom2-src'))
 
 STEPS = tuple(_STEPS)
 GROUPS = tuple(dict.fromkeys(s.group for s in STEPS))
