@@ -9,10 +9,15 @@ repeated table headings. The release workflow copies it into `dist/` as
 its SHA-256 checksum and attaches it to the GitHub release.
 
 The cover uses the first Markdown image in `MANUAL.md`, currently
-`screenshots/dos33-panels-0.9.2.png`. The README also shows the matching
-ProDOS XL capture. `screenshots/panels-0.9.2.json` records the source disk hashes
-and POM2 presets; both captures use disposable copies of the current images.
-The program disks are checked unchanged afterwards.
+`screenshots/prodos-panels-0.9.3.png`: the 80-column ProDOS XL panels, which
+the README shows first too. `python3 bench/capture_panels.py` retakes it from
+the published enhanced XL image of the Makefile's version: POM2's 560 x 192
+picture has each scan line doubled to 560 x 384, the screen's proportions.
+It boots a disposable copy, checks the image unchanged afterwards, and writes
+the source hash and preset to `screenshots/prodos-panels-<version>.json`. The
+DOS3.3 capture (`screenshots/dos33-panels-0.9.2.png`, recorded in
+`screenshots/panels-0.9.2.json`) illustrates the DOS3.3 chapter; the PDF
+shows only the cover image.
 
 Explicit `<!-- pagebreak -->` markers keep related chapters together without
 reducing the text size. After regeneration, verify 11 pages, 12 bookmarks,

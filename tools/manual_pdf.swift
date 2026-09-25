@@ -97,7 +97,7 @@ guard let screenshot = NSImage(contentsOf:screenshotURL),
       let panelImage = screenshot.cgImage(forProposedRect:nil,context:nil,hints:nil) else {
     fatalError("Cannot load panels screenshot: \(screenshotURL.path)")
 }
-let imageWidth = min(220,172 * CGFloat(panelImage.width) / CGFloat(panelImage.height))
+let imageWidth = min(260,172 * CGFloat(panelImage.width) / CGFloat(panelImage.height))
 let imageHeight = imageWidth * CGFloat(panelImage.height) / CGFloat(panelImage.width)
 ctx.interpolationQuality = .none
 ctx.draw(panelImage,in:CGRect(x:(W-imageWidth)/2,y:H-250-imageHeight,width:imageWidth,height:imageHeight))

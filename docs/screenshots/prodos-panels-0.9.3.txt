@@ -1,0 +1,24 @@
+/A2XL65C02                             |/A2XL65C02/DEMO                         
+Name*            Type  Aux     Size    |Name*            Type  Aux     Size     
+..               <UP>                  |..               <UP>                   
+A2FILE/          <DIR>              7  |CIDERPRESS/      <DIR>              1   
+DEMO/            <DIR>              2  |CANON.ED         $D5 $D0E7      282     
+IMGHGR/          <DIR>              1  |DHGR.RAW         BIN $0000    16384     
+A2FILE.SYSTEM    SYS $0000     6132    |DHGR.RLE         BIN $0000    12030     
+BASIC.SYSTEM     SYS $0000    10240    |DISK800.DC       $E0 $8005   819284     
+INTBASIC.SYSTEM  SYS $0000     7395    |DOS33.DSK        BIN $0000   143360     
+PRODOS           SYS $0000    17128    |HELLO            BAS $0801      102     
+RECOVER          TXT $0000     4342    |HGR.RAW          BIN $0000     8192     
+                                       |HGR.RLE          BIN $0000      978     
+                                       |LETTER           AWP $0000     1336     
+                                       |README           TXT $0000     1315     
+                                       |SAMPLE           TXT $0000      838     
+                                       |SAMPLE.BNY       BIN $0000     1280     
+                                       |SAMPLE.SHK       BIN $0000     1076     
+                                       |TINY.2MG         BIN $0000    32832     
+                                       |TINY.PO          BIN $0000    32768     
+                                       |WELCOME.MB       BIN $0000       56     
+__ A2 FILE CMD 0.9.3 _________ 61843 of 65535 blocks free ____________ Mouse ___
+Parent directory                                                                
+                                                                                
+TABPanel RETOpen SPCTag  C Copy  V Move  R Ren  D Del  K Mkdir  ! More  ? Help  

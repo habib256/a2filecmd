@@ -2,7 +2,7 @@
 
 **Version 0.9.3**. By Arnaud Verhille, GNU GPL v3.
 
-![A2 File Cmd DOS3.3 0.9.2: two panels captured in POM2](screenshots/dos33-panels-0.9.2.png)
+![A2 File Cmd ProDOS XL 0.9.3 in 80 columns: two panels captured in POM2](screenshots/prodos-panels-0.9.3.png)
 
 ## Contents
 
@@ -20,6 +20,8 @@
 - [Credits and further reading](#credits-and-further-reading)
 
 ## A2 File Cmd DOS3.3
+
+![A2 File Cmd DOS3.3: two catalogs in 40 columns, captured in POM2](screenshots/dos33-panels-0.9.2.png)
 
 Two panels, a source and a destination: DOS3.3 distils A2 File Cmd into
 selecting, reading, editing and verified copying. It uses an **Apple II+ with
