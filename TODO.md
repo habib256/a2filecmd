@@ -196,7 +196,25 @@ images publiques). Aucun de ces formats n'a de spécification officielle.
    par la routine `DECOMPRESS` du source publié par Bill Budge
    ([PCS_AppleII](https://github.com/billbudge/PCS_AppleII), MIT, 2013).
    Deux variantes probables (BudgeCo, EA) à distinguer.
-11. [ ] Dazzle Draw, sections `.SEC` (`$06`/`$F200`, 11 522 octets :
+11. [ ] **Fantavision** (Brøderbund, 1985) : format des films `M.*`
+   (ProDOS BIN, aux `$8400`, 513 à 9 216 octets) **entièrement décodé**
+   le 25 septembre 2026. En-tête de 416 octets (vitesse, lectures, octet
+   3 = 4, fond, octet 5 = 8, fenêtre de découpage), puis au plus 127
+   images de 8 objets (points, lignes, formes pleines ; couleur par
+   quartet de ligne paire/impaire ; modes normal, trace, arrière-plan,
+   éclair ; jusqu'à 32 points), interpolation 8.8 entre clés, double
+   tampon HGR1/HGR2, décor `$4000` séparé. Un rendu de référence
+   reproduit **18 230 images sur 18 230** du lecteur d'origine sous POM2
+   (80 films). Coût : 11 000 à 128 000 cycles par image, moteur de 5 à
+   6 Ko en assembleur, deux pages HGR et un tampon de décor. Plan : un
+   **lecteur autonome** lancé par A2FC puis retour par A2FILE.SYSTEM
+   (mémoire principale seule, sans AUX ni /RAM), écrit **en salle
+   blanche** depuis `docs/FANTAVISION-FORMAT.md` (le lecteur Brøderbund
+   n'est pas libre) ; oracle et générateur de films synthétiques, tests
+   sim65 des routines (division, pente, remplissage), banc POM2 octet par
+   octet, validation stricte (un film abîmé bloque l'original). Outils
+   de l'étude, privés, dans `~/.cache/a2fc/fantavision/` (non publiés).
+12. [ ] Dazzle Draw, sections `.SEC` (`$06`/`$F200`, 11 522 octets :
    largeur, hauteur, lignes en flux de 7 bits), déduites de deux fichiers.
    Rares ; les images plein écran sont déjà lues.
 
@@ -232,9 +250,7 @@ Pas d'impression dans le Mini (19 octets libres ; `PR#1` depuis BASIC).
 
 ## Plus tard
 
-Favoris de programmes ; PT3 sous pression, ANIMATE ; Fantavision 8 bits
-(films `M.*` BIN `$8400`, format non documenté, moteur d'interpolation
-coûteux ; échantillons nombreux) ; Beagle « Double Scrunch » (routine de
+Favoris de programmes ; PT3 sous pression, ANIMATE ; Beagle « Double Scrunch » (routine de
 469 octets, mais aucune image compressée trouvée) ; lecteur de films
 Movie Maker `.MVM` (lecteur d'origine MMA.OBJ ~4 Ko à désassembler,
 oracle AUTOPLAY sous POM2, ~13 films d'éditeur, aucun d'utilisateur) ;
