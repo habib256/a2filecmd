@@ -37,6 +37,14 @@ machine réelle. Même règle : pas de fonctionnalité nouvelle hors affichage.
 - [ ] Une vraie image Dazzle Draw dans un banc (oracle : `DD.PICLOADER`
   sous POM2) : le manuel l'affirme d'après le code, pas encore d'après
   l'écran.
+- [ ] Mini : Retour sur une table Pinball Construction Set (`*.PB`, B
+  chargé en `$4000`) propose `BRUN`, et le BRUN finit dans le moniteur
+  (`BRK` en `$4002`, vu sous POM2). Pas de perte de données, mais un
+  piège : ouvrir un `*.PB` en hexadécimal, ne jamais proposer BRUN.
+- [ ] Manuel : un jeu autonome PCS (« Make Game » : un seul fichier B,
+  `$177D`, `$7783` octets, `JMP` en tête) se lance déjà par Retour/B
+  dans le Mini et par X sous ProDOS (copié en BIN `$06`, aux `$177D`) ;
+  vérifié sous POM2 par les trois chemins. Il faut un joystick.
 - [ ] Publier : version dans le Makefile, CHANGELOG, `make test`,
   `make qualify`, `tools/check_images.py`, liens du README et du manuel
   vers les nouveaux noms, capture reprise.
@@ -180,7 +188,13 @@ images publiques). Aucun de ces formats n'a de spécification officielle.
    est un second cœur, recopié en AUX `$1B00`.
 9. [ ] Merlin (sources à bit haut, colonnes étiquette / opcode /
    opérande / commentaire) et AppleWriter.
-10. [ ] Dazzle Draw, sections `.SEC` (`$06`/`$F200`, 11 522 octets :
+10. [ ] **Pinball Construction Set, tables `.PB`** (B, `$4000`, 4 à
+   10 secteurs : logique, réglages, objets, image hi-res compressée par
+   plages de zéros). Montrer le nom et l'image de la table, décompressée
+   par la routine `DECOMPRESS` du source publié par Bill Budge
+   ([PCS_AppleII](https://github.com/billbudge/PCS_AppleII), MIT, 2013).
+   Deux variantes probables (BudgeCo, EA) à distinguer.
+11. [ ] Dazzle Draw, sections `.SEC` (`$06`/`$F200`, 11 522 octets :
    largeur, hauteur, lignes en flux de 7 bits), déduites de deux fichiers.
    Rares ; les images plein écran sont déjà lues.
 
@@ -222,7 +236,9 @@ coûteux ; échantillons nombreux) ; Beagle « Double Scrunch » (routine de
 469 octets, mais aucune image compressée trouvée) ; lecteur de films
 Movie Maker `.MVM` (lecteur d'origine MMA.OBJ ~4 Ko à désassembler,
 oracle AUTOPLAY sous POM2, ~13 films d'éditeur, aucun d'utilisateur) ;
-Print Shop GS polices (`$C316`), motifs et pixels ;
+Print Shop GS polices (`$C316`), motifs et pixels ; jouer une table
+`.PB` seule en y greffant le moteur d'un jeu autonome de l'utilisateur
+(rien de redistribué ; chemin LOAD/PLAY d'EDIT/PPAK à rétro-concevoir) ;
 DIRSORT, BACKUP, SHRINK ; NIBCOPY reprise de piste **ou** `.NIB` (pas
 les deux, pas de 3½) ; XMODEM, ADTPro blocs, TFTP ; PASSWORD ;
 `GISTDATA.hdv` ; CPMW à plusieurs extents si la fenêtre se libère.
