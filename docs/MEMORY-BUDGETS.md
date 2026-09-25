@@ -1,5 +1,26 @@
 # Consolidation : budgets mémoire
 
+## Mini : le signe de vie dans les relectures RWTS
+
+Le crochet de `format.s` (`fmt_hook`, `fmt_on`, `fmt_off`, `fmt_ticking`,
+`fm_sig`, 64 octets) laisse la place à un seul mécanisme dans `rwts.s`,
+qui prête le JSR de RDADR16 (`$BDC4`) pendant une lecture et celui de la
+recherche de piste (`$BED6`) pendant un formatage : une table de deux
+sites et de deux signatures indexée par commande, un crochet commun
+(`lend_hook`, qui rappelle la routine de DOS par un JSR recopié de la
+signature) et une restauration sans condition après l'appel : quand
+rien n'est prêté, `iob` pointe sur `lend_call` lui-même, que la boucle
+réécrit avec ses propres octets. L'adresse de l'IOB est redemandée à
+`RWTS_LOCATE_IOB` (un octet de moins que `lda`/`ldy`), ce qui libère
+`iob` pour désigner le site. Au lien : **+23 octets**, le résident finit
+à **$95ED, 19 octets libres** sous `$9600` (42 avant). FORMAT à `$0200`
+inchangé (459 octets, 5 libres) : l'appel y reste `jsr rwts_format`.
+
+Ce que cela ne change pas : `bench/mini33_lend.py` compare 749 appels
+RWTS avec et sans prêt (retenue, code, octets lus) et les deux disquettes
+octet pour octet ; `bench/mini33_time.py` donne 25 275 341 cycles contre
+25 275 251, toujours 1,11 tour par secteur.
+
 ## Mini : 92 octets rendus pour le signe de vie du formatage
 
 Le crochet posé sur la boucle par piste de RWTS FORMAT (`fmt_hook`,
