@@ -17,6 +17,27 @@ se ferme avec un oracle hôte et un banc POM2.
   overlay plein retouché sauf pour corriger un défaut.
 - **1.1** : les formats et le reste, une fois la 1.0 publiée.
 
+## 0.9.4 — prochaine publication
+
+Ce qui est prêt depuis la 0.9.3, publié avant la 1.0 pour être essayé sur
+machine réelle. Même règle : pas de fonctionnalité nouvelle hors affichage.
+
+- [x] Mini : la case d'activité tourne pendant le FORMAT RWTS et pendant
+  les tentatives sur une disquette jamais formatée.
+- [x] Noms d'images `A2FILECMD-PRODOS-*` et `A2FILECMD-DOS3.3` ; « enhanced
+  ou non » dans le README, le manuel et les notes de release.
+- [x] DEMO du XL rangé par sorte de fichier (`tools/stage_demo.py`).
+- [x] README révisé et capture 80 colonnes au bon ratio
+  (`bench/capture_panels.py`), aussi en couverture du manuel.
+- [x] ABI des overlays et `A2FILE.CFG` gelés (`tools/test_abi_freeze.py`).
+- [ ] Mini : hexadécimal lisible, 8 octets par ligne espacés avec leurs
+  caractères, en deux moitiés (Gauche/Droite).
+- [ ] Manuel : citer Dazzle Draw (BIN `$2000`, 16 Ko, AUX d'abord) parmi
+  les images DHGR déjà lues ; une vraie image Dazzle dans un banc.
+- [ ] Publier : version dans le Makefile, CHANGELOG, `make test`,
+  `make qualify`, `tools/check_images.py`, liens du README et du manuel
+  vers les nouveaux noms, capture reprise.
+
 ## 1.0 — chemin critique
 
 Chaque étape suppose la précédente fermée. Un défaut trouvé aux étapes
@@ -26,10 +47,6 @@ Chaque étape suppose la précédente fermée. Un défaut trouvé aux étapes
    - [x] Geler les formats : `A2FILE.CFG` et l'ABI des overlays (API v5,
      structures, constantes), [sdk](sdk/README.md) ;
      `tools/test_abi_freeze.py` dans `make test`.
-   - [x] Noms d'images : `A2FILECMD-PRODOS-{140K,800K,XL,XL-65C02-enhanced}`
-     et `A2FILECMD-DOS3.3` ; la séparation est « enhanced ou non ».
-   - [ ] DEMO du XL rangé par sorte de fichier, sans dossier CIDERPRESS,
-     l'album HGR dans `PICTURES/ALBUM` (`tools/stage_demo.py`).
 2. **Solder la dette (1.0-rc1).**
    - [ ] Indexer les grands catalogues sans état périmé après changement
      de disque ; le parcours relit encore les blocs précédents
@@ -39,9 +56,6 @@ Chaque étape suppose la précédente fermée. Un défaut trouvé aux étapes
    - [ ] Trancher : MAIN 65C02 à 82 octets, objectif 256. Bloquant 1.0,
      ou condition d'entrée d'un format 1.1.
 3. **Retour visuel.**
-   - [x] Mini : la case d'activité tourne pendant les tentatives RWTS sur
-     une disquette jamais formatée (4,8 s → 1,4 s d'immobilité ; banc
-     `mini33_lend` : appels et disquettes identiques octet à octet).
    - [ ] Vérifier que la progression 0.9.3 couvre les pauses à 1 MHz
      (catalogue, copie, vérification, chargement), puis fermer cette ligne.
 4. **Qualification (1.0-rc).**
