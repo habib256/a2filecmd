@@ -57,11 +57,11 @@ PT3_HOST = {'POM2': '/tmp/a2fc-pt3-trace'}
 Fixture = namedtuple('Fixture', 'paths build')
 FIXTURES = {
     'host': Fixture([ROOT / 'build/pom2_playtest'], ['make', 'pom2host']),
-    'boot': Fixture([ROOT / ('dist/A2FILECMD-140K-%s.po' % VERSION)], ['make', 'disk']),
+    'boot': Fixture([ROOT / ('dist/A2FILECMD-PRODOS-140K-%s.po' % VERSION)], ['make', 'disk']),
     'categories': Fixture([ROOT / ('build-6502/legacy/%s.po' % name)
                            for name in ('FILES', 'MEDIA', 'DISKTOOLS', 'DEVTOOLS')], ['make', 'benchpackages', 'ARCH=6502']),
-    '800k': Fixture([ROOT / ('dist/A2FILECMD-800K-%s.po' % VERSION)], ['make', 'disk']),
-    'xl': Fixture([ROOT / ('dist/A2FILECMD-XL-%s%s.2mg' % ('65C02-enhanced-' if cpu == '65C02' else '', VERSION)) for cpu in ('6502', '65C02')],
+    '800k': Fixture([ROOT / ('dist/A2FILECMD-PRODOS-800K-%s.po' % VERSION)], ['make', 'disk']),
+    'xl': Fixture([ROOT / ('dist/A2FILECMD-PRODOS-XL-%s%s.2mg' % ('65C02-enhanced-' if cpu == '65C02' else '', VERSION)) for cpu in ('6502', '65C02')],
                   ['make', 'disk']),
     'full-enh': Fixture([ROOT / 'build/A2FILECMD-full.po'], ['make', 'benchfloppy', 'ARCH=enh']),
     'full-6502': Fixture([ROOT / 'build-6502/A2FILECMD-full.po'], ['make', 'benchfloppy', 'ARCH=6502']),
@@ -126,7 +126,7 @@ step('nibcopy_ui', '6502', 'dos', UNENH, needs=('host', 'boot', 'categories'))
 step('purple', 'grload', 'dos', {})
 
 # -- What must never lose a byte ---------------------------------------------
-step('data_safety', '6502', 'safety', {**UNENH, 'A2FC_IMG': 'A2FILECMD-140K'})
+step('data_safety', '6502', 'safety', {**UNENH, 'A2FC_IMG': 'A2FILECMD-PRODOS-140K'})
 step('data_safety', 'enh', 'safety', FULL, needs=('host', 'boot', 'full-enh'))
 step('recovery', '6502', 'safety', SIX_BUILD)
 step('recovery', 'enh', 'safety', ENH_BUILD)
@@ -264,9 +264,9 @@ def stale():
         made = resident.stat().st_mtime
         images = list((ROOT / build).glob('*.po'))          # the bench floppies
         cpu = '6502' if build.endswith('6502') else '65C02'
-        names = (['A2FILECMD-140K-%s.po' % VERSION, 'A2FILECMD-800K-%s.po' % VERSION,
-                  'A2FILECMD-XL-%s.2mg' % VERSION] if cpu == '6502' else
-                 ['A2FILECMD-XL-65C02-enhanced-%s.2mg' % VERSION])
+        names = (['A2FILECMD-PRODOS-140K-%s.po' % VERSION, 'A2FILECMD-PRODOS-800K-%s.po' % VERSION,
+                  'A2FILECMD-PRODOS-XL-%s.2mg' % VERSION] if cpu == '6502' else
+                 ['A2FILECMD-PRODOS-XL-65C02-enhanced-%s.2mg' % VERSION])
         images += [ROOT / 'dist' / name for name in names if (ROOT / 'dist' / name).exists()]
         late += [p for p in images if p.stat().st_mtime < made]
     return sorted(late)

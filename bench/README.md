@@ -6,7 +6,7 @@ livre pour cela : les adresses des variables observees viennent de la table de
 symboles du lien (`build/a2fc.lbl`), et l'ecran est lu la ou l'Apple II le
 range, en `$400-$7FF`.
 
-Les bancs disquette utilisent l’image interne `dist/A2FILECMD-140K-0.9.1.po`.
+Les bancs disquette utilisent l’image interne `dist/A2FILECMD-PRODOS-140K-0.9.1.po`.
 La conversion DSK publiée conserve les mêmes blocs ProDOS ; les `.po` ne sont
 pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 
@@ -64,7 +64,7 @@ pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 
 ## Les deux editions
 
-`dist/A2FILECMD-140K-0.9.1.po` est l'**edition disquette**, construite en 6502
+`dist/A2FILECMD-PRODOS-140K-0.9.1.po` est l'**edition disquette**, construite en 6502
 (`build-6502/`) avec le gestionnaire et les outils disque seulement : c'est
 elle que les bancs amorcent par defaut, et sa table de symboles est prise
 dans `build-6502/` sans rien dire. `run.py` y saute la section souris, et les
@@ -82,7 +82,7 @@ lecteur à FORMAT/DISKIMG dans une copie jetable de cette disquette : tous
 les outils ne tiennent plus ensemble sur 140 Ko. `find.py` remplace de même
 BASLIST par SEARCH dans sa propre image jetable ; la disquette de banc
 générale utilise le lanceur compact et ne contient plus SEARCH.
-`hd.py` amorce `dist/A2FILECMD-XL-65C02-enhanced-<version>.2mg` ;
+`hd.py` amorce `dist/A2FILECMD-PRODOS-XL-65C02-enhanced-<version>.2mg` ;
 `A2FC_CPU=6502 A2FC_PRESET=iie_unenh python3 bench/hd.py` teste la XL 6502.
 `run.py --xl 65C02` et `run.py --xl 6502` jouent la session complète sur
 la XL publiée de ce processeur (la 6502 sur le IIe non enhanced, sans
@@ -168,7 +168,7 @@ donne un Apple //c (ROM 32 Ko) : son lecteur integre est le Disk II du slot
 6, donc `--boot 6` amorce la disquette comme sur le //e, et le disque dur est
 une unite SmartPort sur le port arriere, servie par le firmware du //c en
 slot 5 (pas de carte, pas de Mockingboard). Les deux presets amorcent
-`dist/A2FILECMD-140K-0.9.1.po` jusqu'aux panneaux. `Pom2(..., floppy2=...)` met une
+`dist/A2FILECMD-PRODOS-140K-0.9.1.po` jusqu'aux panneaux. `Pom2(..., floppy2=...)` met une
 seconde disquette dans le lecteur 2 du meme Disk II des l'amorcage
 (`pom2_playtest --disk2`) : un vrai DOS 3.3 dans un lecteur, sans passer par
 `/disk` -- ce que le banc des disques physiques attendait.

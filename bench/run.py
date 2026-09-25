@@ -1,6 +1,6 @@
 """Le banc fonctionnel d'A2 File Cmd, sur la disquette telle qu'elle est publiee.
 
-Il amorce dist/A2FILECMD-140K.po dans POM2 sans fenetre, avec un second volume
+Il amorce dist/A2FILECMD-PRODOS-140K.po dans POM2 sans fenetre, avec un second volume
 vide comme cible, et joue une session complete : naviguer, marquer, copier,
 deplacer, renommer, supprimer, creer un dossier, changer type et verrou,
 lire un texte et des octets, editer et sauver, afficher les deux formats
@@ -150,7 +150,7 @@ def xl_volume(dirpath, cpu):
     POM2 ne prend qu'un disque dur, qui doit amorcer et servir de cible.
     Rend (image, nom du volume, TINY.PO, rebati == publie) : le dernier dit
     si le volume rebati sans ajout est l'image publiee, octet a octet."""
-    payload = (ROOT / ('dist/A2FILECMD-XL-%s%s.2mg' % ('65C02-enhanced-' if cpu == '65C02' else '', VERSION))).read_bytes()[64:]
+    payload = (ROOT / ('dist/A2FILECMD-PRODOS-XL-%s%s.2mg' % ('65C02-enhanced-' if cpu == '65C02' else '', VERSION))).read_bytes()[64:]
     image = Image(payload)
     name = image.header()['name']
     boot = dirpath / 'xl-boot'
@@ -190,7 +190,7 @@ def main():
             # XL : le disque dur amorce, la disquette BOOT publiee reste en
             # lecteur 1 pour les images disque et le formateur
             build = ROOT / ('build-6502' if xl == '6502' else 'build')
-            shutil.copyfile(ROOT / f'dist/A2FILECMD-140K-{VERSION}.po', floppy)
+            shutil.copyfile(ROOT / f'dist/A2FILECMD-PRODOS-140K-{VERSION}.po', floppy)
             hdv, vol, tiny_po, same = xl_volume(tmp, xl)
             scr, blocks, boot = vol, 65535, None
             preset = os.environ.get('A2FC_PRESET') or ('iie_unenh' if xl == '6502' else 'iie')

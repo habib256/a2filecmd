@@ -12,7 +12,8 @@ def image_name(role, version=VERSION):
     suffix = '2mg' if role in ('XL', 'XL-65C02-enhanced') else 'po' if role == '800K' else 'dsk'
     if role not in ('XL', 'XL-65C02-enhanced', 'DOS3.3', '800K', '140K'):
         raise ValueError('unknown image role: ' + role)
-    return f'A2FILECMD-{role}-{version}.{suffix}'
+    system = '' if role == 'DOS3.3' else 'PRODOS-'   # the file names say which system boots
+    return f'A2FILECMD-{system}{role}-{version}.{suffix}'
 
 
 def image_names(version=VERSION):

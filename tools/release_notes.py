@@ -14,11 +14,11 @@ FILES = """
 
 | Image | Contents |
 |---|---|
-| `A2FILECMD-XL-{version}.2mg` | Complete bootable 32 MB image, 6502, with demonstration files |
-| `A2FILECMD-XL-65C02-enhanced-{version}.2mg` | Complete 32 MB image for an enhanced IIe, //c or IIgs: MouseText, optional mouse |
+| `A2FILECMD-PRODOS-XL-{version}.2mg` | Complete bootable 32 MB image, 6502, with demonstration files |
+| `A2FILECMD-PRODOS-XL-65C02-enhanced-{version}.2mg` | Complete 32 MB image for an enhanced IIe, //c or IIgs: MouseText, optional mouse |
 | `A2FILECMD-DOS3.3-{version}.dsk` | Standalone DOS 3.3 edition for Apple II+ 48 KB, 40 columns, two drives |
-| `A2FILECMD-800K-{version}.po` | Bootable 800 KB ProDOS image, 6502, all tools and BASIC runtimes, no demo corpus |
-| `A2FILECMD-140K-{version}.dsk` | Bootable 5.25-inch ProDOS disk, 6502, essential file operations, text editor, text/hex readers, format and verify |
+| `A2FILECMD-PRODOS-800K-{version}.po` | Bootable 800 KB ProDOS image, 6502, all tools and BASIC runtimes, no demo corpus |
+| `A2FILECMD-PRODOS-140K-{version}.dsk` | Bootable 5.25-inch ProDOS disk, 6502, essential file operations, text editor, text/hex readers, format and verify |
 
 The English user guide is included as `A2FILECMD-MANUAL-EN-{version}.pdf`.
 

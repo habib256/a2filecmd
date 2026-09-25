@@ -52,7 +52,7 @@ def main():
     ap.add_argument('--out', default=str(ROOT / 'docs/screenshots'))
     args = ap.parse_args()
     out = Path(args.out)
-    image = ROOT / f'dist/A2FILECMD-XL-65C02-enhanced-{VERSION}.2mg'
+    image = ROOT / f'dist/A2FILECMD-PRODOS-XL-65C02-enhanced-{VERSION}.2mg'
     before = image.read_bytes()
     if before[:4] != b'2IMG':
         sys.exit(f'{image}: not a 2IMG file')

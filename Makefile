@@ -37,7 +37,7 @@ CLDEFS = --asm-define A2_6502 --asm-define CC65_MASTER -DA2FC_6502 -DA2FC_NOMOUS
 MOUSEOBJ =
 # The edition and the processor, in the file name.
 CPU = 6502
-IMG = A2FILECMD-140K
+IMG = A2FILECMD-PRODOS-140K
 BUILD_SUFFIX = -6502
 BIN2SIZE = 0x0D00
 LAYOUT_BIG = --big BINARY2
@@ -49,7 +49,7 @@ CLDEFS = -DA2FC_BIG_BINARY2
 MOUSEOBJ = $(BUILD)/mouse.o
 # The processor precedes the disk role for alphabetical grouping.
 CPU = 65C02
-IMG = A2FILECMD-140K
+IMG = A2FILECMD-PRODOS-140K
 BUILD_SUFFIX =
 BIN2SIZE = 0x0D00
 LAYOUT_BIG = --big BINARY2
@@ -206,8 +206,8 @@ all: xplugins
 # XL contains the same complete toolset plus the demo corpus.
 STAGE = $(BUILD)/vol
 HDV = $(BUILD)/A2FILECMD-XL.hdv
-TWOMG = $(DIST)/A2FILECMD-XL-$(if $(filter 65C02,$(CPU)),65C02-enhanced-,)$(A2FC_VERSION).2mg
-PO800 = $(DIST)/A2FILECMD-800K-$(A2FC_VERSION).po
+TWOMG = $(DIST)/A2FILECMD-PRODOS-XL-$(if $(filter 65C02,$(CPU)),65C02-enhanced-,)$(A2FC_VERSION).2mg
+PO800 = $(DIST)/A2FILECMD-PRODOS-800K-$(A2FC_VERSION).po
 FULLPO = $(BUILD)/A2FILECMD-full.po
 STAGE_DEPS = $(SYSTEM) $(CODE) $(DATA)/A2FILE.HELP.TXT $(DATA)/RECOVER.TXT $(DATA)/PRODOS.SYS \
        $(DATA)/prodos_boot.tmpl $(TOOLS)/mkvolume.py

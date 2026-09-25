@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # The headless test host is built from bench/pom2_playtest/ (make pom2host)
 # into build/; it needs only the POM2 emulator library.
 POM2 = os.environ.get('POM2', str(Path(__file__).resolve().parents[1] / 'build/pom2_playtest'))
-# Les deux processeurs (Makefile, TODO.md) : dist/A2FILECMD-140K.po est l'edition
+# Les deux processeurs (Makefile, TODO.md) : dist/A2FILECMD-PRODOS-140K.po est l'edition
 # disquette, construite en 6502 (build-6502/), et c'est elle que les bancs
 # amorcent par defaut -- elle tourne aussi sur le IIe enhanced de POM2.
 # A2FC_IMG=A2FILECMD-full prend build/A2FILECMD-full.po (make benchfloppy) :
@@ -38,7 +38,7 @@ POM2 = os.environ.get('POM2', str(Path(__file__).resolve().parents[1] / 'build/p
 # bancs de l'editeur, des images, des archives et des lecteurs ; sa table de
 # symboles est build/. A2FC_BUILD force le dossier de construction.
 VERSION = re.search(r'^A2FC_VERSION\s*=\s*(\S+)', (ROOT / 'Makefile').read_text(), re.M)[1]
-IMG = os.environ.get('A2FC_IMG', 'A2FILECMD-140K')
+IMG = os.environ.get('A2FC_IMG', 'A2FILECMD-PRODOS-140K')
 BUILD = ROOT / os.environ.get('A2FC_BUILD', 'build' if IMG.endswith('-full') or '65C02' in IMG else 'build-6502')
 DISK = ROOT / ('dist/%s.po' % (IMG + '-' + VERSION if IMG.endswith('-140K') else IMG))
 # The bench floppy of the build in use: build-6502/A2FILECMD-full.po with

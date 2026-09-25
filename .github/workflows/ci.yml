@@ -78,7 +78,7 @@ jobs:
             sed -n '/^Name  *Start/,/^LC /p' $b/a2fc.map >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
           done
-          python3 tools/prodos_read.py dist/A2FILECMD-140K-*.po >> $GITHUB_STEP_SUMMARY
+          python3 tools/prodos_read.py dist/A2FILECMD-PRODOS-140K-*.po >> $GITHUB_STEP_SUMMARY
 
       # Les images seules : tous les chemins sous dist/, dont
       # upload-artifact retire le prefixe commun -- le telechargement du
@@ -89,11 +89,11 @@ jobs:
         with:
           name: a2filecmd-disk
           path: |
-            dist/A2FILECMD-140K-[0-9].*.dsk
-            dist/A2FILECMD-800K-[0-9].*.po
+            dist/A2FILECMD-PRODOS-140K-[0-9].*.dsk
+            dist/A2FILECMD-PRODOS-800K-[0-9].*.po
             dist/A2FILECMD-DOS3.3-[0-9].*.dsk
-            dist/A2FILECMD-XL-[0-9].*.2mg
-            dist/A2FILECMD-XL-65C02-enhanced-[0-9].*.2mg
+            dist/A2FILECMD-PRODOS-XL-[0-9].*.2mg
+            dist/A2FILECMD-PRODOS-XL-65C02-enhanced-[0-9].*.2mg
             dist/A2FILECMD-MANUAL-EN-*.pdf
             dist/SHA256SUMS-*.txt
             dist/RELEASE_NOTES.md
@@ -165,10 +165,10 @@ jobs:
           name: "A2 File Cmd ${{ env.VERSION }} — Two panels. One Apple II."
           body_path: dist/RELEASE_NOTES.md
           files: |
-            dist/A2FILECMD-140K-[0-9].*.dsk
-            dist/A2FILECMD-800K-[0-9].*.po
+            dist/A2FILECMD-PRODOS-140K-[0-9].*.dsk
+            dist/A2FILECMD-PRODOS-800K-[0-9].*.po
             dist/A2FILECMD-DOS3.3-[0-9].*.dsk
-            dist/A2FILECMD-XL-[0-9].*.2mg
-            dist/A2FILECMD-XL-65C02-enhanced-[0-9].*.2mg
+            dist/A2FILECMD-PRODOS-XL-[0-9].*.2mg
+            dist/A2FILECMD-PRODOS-XL-65C02-enhanced-[0-9].*.2mg
             dist/A2FILECMD-MANUAL-EN-*.pdf
             dist/SHA256SUMS-*.txt
