@@ -76,9 +76,76 @@ int main(int argc,char**argv) {
     changedOnly("K"); changedOnly("\x0a"); // HELLO -> A2FC -> README
     auto chosen=screen(m);
     keys("6"); expect(m,"A2FC MINI - COMMANDS");
+    // The help page, row for row: one '|'-separated text since 0.9.4.
+    assert(screen(m)==
+        "A2FC MINI - COMMANDS                    \n"
+        "                                        \n"
+        "TAB: PANEL   RET: OPEN                  \n"
+        "                                        \n"
+        "CTRL-K/J OR I/K: UP/DOWN                \n"
+        "                                        \n"
+        "ARROWS OR -/+: PAGE   [/]: FIRST/LAST   \n"
+        "                                        \n"
+        "/: DRIVE   CTRL-R: REREAD BOTH   Q: QUIT\n"
+        "                                        \n"
+        "=: SAME DISK IN THE OTHER PANEL         \n"
+        "                                        \n"
+        "T/H/G: VIEW   C: COPY MARKED OR CURSOR  \n"
+        "                                        \n"
+        "SPACE: TAG  CTRL-T/N: ALL/NONE *: INVERT\n"
+        "                                        \n"
+        "N: NEW  E: EDIT  D: DELETE  F: FORMAT   \n"
+        "                                        \n"
+        "L: LOCK/UNLOCK  R: RENAME  B: BRUN      \n"
+        "                                        \n"
+        "Y CONFIRMS A WRITE. UNLOCK TO DELETE.   \n"
+        "                                        \n"
+        "                                        \n"
+        "ESCBACK                                 \n"
+    );
+    assert(m.data()[0x400]<0x40 && m.data()[0x400+39]<0x40); // inverse title bar
+    assert(m.data()[0x400+(2&7)*128]<0x40 && m.data()[0x400+(2&7)*128+3]>=0x80); // [TAB]: PANEL
     keys("\x1b"); assert(screen(m)==chosen);
     keys("T"); expect(m,"APPLE II+ 48 KB");
-    keys("H"); expect(m,"00: 41324643");
+    // Hex: half a sector per screen, eight bytes a row, then their
+    // characters; the panels' page keys pick the half.
+    auto hexHalf=[&](int first) {
+        auto s=screen(m);
+        char head[40]; snprintf(head,sizeof head,"PREVIEW: FIRST SECTOR, BYTES %02X-%02X",first,first|0x7f);
+        assert(s.substr(41,40)==std::string(head)+std::string(40-strlen(head),' '));
+        assert(s.substr(23*41,40)=="TEXT HEX <>HALF ESCBACK                 ");
+        for(int r=0;r<16;++r) {
+            auto row=s.substr((3+r)*41,40);
+            char off[4]; snprintf(off,sizeof off,"%02X:",first+r*8);
+            assert(row.substr(0,3)==off); assert(row[27]==' ');
+            assert(row.substr(36)=="    ");
+            for(int i=0;i<8;++i) {
+                assert(row[3+i*3]==' ');
+                int b=(int)strtol(row.substr(4+i*3,2).c_str(),nullptr,16)&127;
+                char c=(b<32||b==127)?'.':(b>='a'&&b<='z')?b-32:b;
+                assert(row[28+i]==c);
+            }
+        }
+        for(int y : {2,19,20}) assert(s.substr(y*41,40)==std::string(40,' '));
+    };
+    keys("H"); expect(m,"00: 41 32 46 43"); hexHalf(0);
+    auto firstHalf=screen(m);
+    fputs(firstHalf.c_str(),stdout);
+    changedOnly("\x08"); assert(screen(m)==firstHalf); // already there
+    keys("\x15"); hexHalf(0x80); fputs(screen(m).c_str(),stdout);
+    auto secondHalf=screen(m);
+    changedOnly(">"); assert(screen(m)==secondHalf);
+    keys("\x08"); assert(screen(m)==firstHalf);
+    keys("+"); assert(screen(m)==secondHalf);
+    keys("-"); assert(screen(m)==firstHalf);
+    keys(">"); assert(screen(m)==secondHalf);
+    keys("<"); assert(screen(m)==firstHalf);
+    keys("\x15"); keys("T"); expect(m,"APPLE II+ 48 KB");
+    expect(m,"PREVIEW: FIRST SECTOR (256 BYTES)");
+    assert(screen(m).substr(23*41,40)=="TEXT HEX <>HALF ESCBACK                 ");
+    keys("H"); assert(screen(m)==firstHalf); // H starts at the first half
+    keys("\x15"); keys("\x1b"); assert(screen(m)==chosen); // ESC from the second half
+    keys("T"); keys("\x15"); assert(screen(m)==chosen); // text has no halves: RIGHT leaves, as before
     keys("T"); expect(m,"APPLE II+ 48 KB"); keys("\x1b");
     auto pane=[&](int side) {
         std::string p; auto s=screen(m);
@@ -108,7 +175,7 @@ int main(int argc,char**argv) {
     changedOnly("\t"); assert(screen(m).substr(22*41,6)=="README");
     auto right=pane(1);
     keys("\x12"); assert(screen(m).substr(22*41,6)=="README"); assert(pane(1)==right);
-    keys("H"); expect(m,"00: 41324643"); keys("\x1b");
+    keys("H"); expect(m,"00: 41 32 46 43"); keys("\x1b");
     keys("\t"); left=pane(0);
     assert(raw->insertDisk(1,argv[4]));
     keys("\x12"); expect(m,"INVALID CATALOG"); assert(pane(0)==left);

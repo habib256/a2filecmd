@@ -1,5 +1,31 @@
 # Consolidation : budgets mémoire
 
+## Mini : l'aperçu hexadécimal lisible payé par la page d'aide
+
+L'aperçu hexadécimal passe de 16 lignes de 32 chiffres collés à huit
+octets espacés par ligne suivis de leurs caractères, en deux moitiés de
+128 octets que gauche/droite (`-`/`+`, `<`/`>`) choisissent. Mesuré au
+lien : le code et les données restent à 15 659 octets, le BSS passe
+de 11 203 à 11 202 ; le résident finit à **$95D5, 43 octets libres**
+sous `$9600` (42 avant). LOW (1) et FORMAT (5) inchangés.
+
+- **−66** : la fonctionnalité. `hex_rows` (dans `screen.s`, pour que le
+  banc sim65 l'exécute sans `ui.s`) remplace la boucle hexadécimale de
+  `view` ; `put_char`, le « caractère ou point » que l'aperçu texte
+  faisait en ligne, sert aux deux ; les touches de moitié sont une table
+  de six octets parcourue par `dex`, et la moitié vit dans le bit 7 de
+  `vw_mode` (1 ou $81), lu par `lsr`/`asl`. Le texte `PREVIEW: FIRST
+  SECTOR` est commun, le suffixe dépend du mode.
+- **+66** : la page d'aide. `inline_text` comprend `|` (deux lignes plus
+  bas, colonne 0, 14 octets) ; les dix couples `ldy`/`jsr at_left`,
+  neuf `PRINT` sur onze et le `lda #0`/`sta inverse` après le titre
+  disparaissent (un `~` éteint l'inverse). Deux textes et non un : un
+  `PRINT` s'arrête à 255 octets. `jsr key`/`rts` devient `jmp key`.
+- **+1** de BSS : `vw_prev`, qui ne servait qu'à l'ancienne boucle.
+
+Ce que cela ne change pas : l'écran d'aide, vérifié cellule par cellule
+dans `bench/mini33.py`, l'aperçu texte, aucune écriture disque.
+
 ## Mini : 92 octets rendus pour le signe de vie du formatage
 
 Le crochet posé sur la boucle par piste de RWTS FORMAT (`fmt_hook`,

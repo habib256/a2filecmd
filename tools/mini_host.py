@@ -17,7 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SIZE = 143360
 
-MODULES = ('data.s', 'catalog.s', 'copy.s', 'delete.s', 'format.s')
+MODULES = ('data.s', 'catalog.s', 'copy.s', 'delete.s', 'format.s', 'screen.s')
 
 CATALOG, PREVIEW, PREPARE, EXECUTE, CANCEL, PEEK, POKE, QUIT = 1, 2, 3, 4, 5, 6, 7, 0
 LOAD, CREATE_PREPARE, CREATE_EXECUTE, DELETE_PREPARE, DELETE_EXECUTE = 8, 9, 10, 11, 12
@@ -26,6 +26,7 @@ LOCK_PREPARE, LOCK_EXECUTE, RENAME_PREPARE, RENAME_EXECUTE = 14, 15, 16, 17
 COPY_SIDE = 18
 FORMAT = 19
 PATCH_TYPE, PATCH_NAME = 20, 21
+HEX_ROWS, PRINT_ROWS = 22, 23
 
 
 class SimError(RuntimeError):
@@ -274,6 +275,38 @@ class Mini:
         self.poke('side_to', bytes([dst]))
         self._command(COPY_SIDE)
         return self._recv(1)[0]
+
+    def screen(self):
+        """The composed 40x24 image as 24 strings, and a parallel list of
+        24 strings marking inverse cells with '#'."""
+        cells = b''.join(self.peek('screen_image', 240, offset=o)
+                         for o in range(0, 960, 240))
+        rows, marks = [], []
+        for r in range(24):
+            line = cells[r * 40:r * 40 + 40]
+            text = ''
+            for c in line:
+                if c >= 0x80:
+                    code = c & 0x7F
+                else:
+                    code = c & 0x3F
+                    if code < 32:
+                        code += 64
+                text += chr(code)
+            rows.append(text)
+            marks.append(''.join('#' if c < 0x80 else ' ' for c in line))
+        return rows, marks
+
+    def hex_rows(self, half):
+        self.poke('hex_half', bytes([half]))
+        self._command(HEX_ROWS)
+        self._recv(1)
+        return self.screen()
+
+    def print_rows(self):
+        self._command(PRINT_ROWS)
+        self._recv(1)
+        return self.screen()
 
     # ---- memory ---------------------------------------------------
     def address(self, name):

@@ -5,6 +5,19 @@ downloads and installation.
 
 ## [Unreleased]
 
+### DOS 3.3: a hex preview you can read
+- The Mini's hexadecimal preview now shows eight bytes a row, separated by
+  spaces, with their characters beside them (high bit ignored, `.` for a
+  control character or `$7F`), instead of 32 digits glued together. The
+  sector is shown in two halves; Left/Right, `-`/`+` or `<`/`>` switch
+  between bytes `00-7F` and `80-FF`, and the header says which is on
+  screen. Text preview and every other screen are unchanged.
+- Paid for by the help page, now one text whose `|` starts the next row:
+  43 bytes free below DOS, one more than before.
+- `tools/test_mini33.py` renders both halves with the shipped `screen.s`
+  under sim65 and checks every cell; `bench/mini33.py` drives the half keys
+  and checks the help page row for row.
+
 ### DOS 3.3: the format no longer stands still
 - Lend DOS's own per-track loop to the activity cell while RWTS formats a
   disk: that call returns nothing for some eighteen seconds, and the key

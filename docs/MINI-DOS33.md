@@ -31,6 +31,7 @@ position independently.
 | [ / ] | First / last file |
 | Return, or 2 | Open by content: text, hi-res picture, hexadecimal, or `BRUN NAME?` for a program (see below) |
 | T / H | Text / hexadecimal preview; also available inside the preview |
+| Left / right, or - / +, or < / > in the hexadecimal preview | Bytes `00`-`7F` / `80`-`FF` of the sector |
 | G | Hi-res viewer: first 8 KB of the selected file |
 | B | BRUN the selected binary after Y: A2FC Mini leaves, then DOS runs it from the panel's drive |
 | Space | Tag or untag the selected file |
@@ -343,6 +344,25 @@ reports an error after DOS retries; the other panel remains usable afterward.
 Previews show only the **first 256 stored bytes** and do not verify the complete
 file. BASIC and binary DOS headers are visible in hexadecimal. Files without
 a first data sector cannot be previewed.
+
+The hexadecimal preview shows the sector in two halves of 128 bytes, eight
+bytes a row: the offset within the sector, the bytes separated by spaces,
+then the same bytes as characters, high bit ignored, with `.` for a control
+character or `$7F` (lower case shows in upper case, as everywhere on a II+).
+The header names the half on screen, `PREVIEW: FIRST SECTOR, BYTES 00-7F`;
+left, `-` or `<` show bytes `00`-`7F`, right, `+` or `>` bytes `80`-`FF`, the
+keys that page the panels. **H** always starts on the first half. The key
+bar reads **T**EXT **H**EX **<>**HALF **ESC**BACK. In the text preview the
+arrows still return to the panels, like any key other than T and H.
+
+```
+README
+PREVIEW: FIRST SECTOR, BYTES 00-7F
+
+00: 41 32 46 43 20 4D 49 4E A2FC MIN
+08: 49 20 44 4F 53 20 33 2E I DOS 3.
+10: 33 0D 41 50 50 4C 45 20 3.APPLE
+```
 
 ## Speed
 

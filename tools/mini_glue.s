@@ -20,6 +20,7 @@
         .export _mini_lock_prepare, _mini_lock_execute
         .export _mini_rename_prepare, _mini_rename_execute
         .export _mini_copy_side, _mini_format, _mini_patch_type, _mini_patch_name
+        .export _mini_hex_rows, _mini_print_rows, hex_half
 
         .import _sim_read, _sim_write, _sim_format, _sim_rwts_error
         .import buffer, rwts_buf
@@ -27,12 +28,15 @@
         .import copy_side, side_from, side_to
         .import catalog, preview, load_file, measure_text
         .import copy_prepare, copy_execute, copy_cancel
+        .import clear, at, hex_rows, inline_text
         .import create_prepare, create_execute
         .import delete_prepare, delete_execute
         .import lock_prepare, lock_execute, rename_prepare, rename_execute
         .export copy_progress
 
 rwts_error      = _sim_rwts_error
+
+        .include "mini.inc"     ; PRINT
 
 ; Eight real kilobytes for the working area. On the Apple II+ this is
 ; hi-res page one at $2000; here that address is inside the harness, so
@@ -41,6 +45,8 @@ rwts_error      = _sim_rwts_error
         .segment "BSS"
 scratch:
         .res    $2000
+hex_half:
+        .res    1               ; $00 or $80: the half hex_rows draws
 
         .segment "CODE"
 
@@ -132,3 +138,23 @@ _mini_patch_type:
 
 _mini_patch_name:
         jmp     patch_name
+
+; The hex preview as view draws it: a clear screen, the header's cursor
+; just after "PREVIEW: FIRST SECTOR" (row 1, column 21), then the rows.
+_mini_hex_rows:
+        jsr     clear
+        ldy     #1
+        ldx     #21
+        jsr     at
+        lda     hex_half
+        jmp     hex_rows
+
+; inline_text's two escapes: '~' flips inverse, '|' goes two rows down
+; to the first column, as the help page uses them.
+_mini_print_rows:
+        jsr     clear
+        ldy     #0
+        ldx     #5
+        jsr     at
+        PRINT   "AB~|~CD|E~F~"
+        rts
