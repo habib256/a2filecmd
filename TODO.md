@@ -32,8 +32,11 @@ machine réelle. Même règle : pas de fonctionnalité nouvelle hors affichage.
 - [x] ABI des overlays et `A2FILE.CFG` gelés (`tools/test_abi_freeze.py`).
 - [ ] Mini : hexadécimal lisible, 8 octets par ligne espacés avec leurs
   caractères, en deux moitiés (Gauche/Droite).
-- [ ] Manuel : citer Dazzle Draw (BIN `$2000`, 16 Ko, AUX d'abord) parmi
-  les images DHGR déjà lues ; une vraie image Dazzle dans un banc.
+- [x] Manuel : Dazzle Draw (BIN `$2000`, 16 Ko, AUX d'abord) cité parmi
+  les images DHGR déjà lues.
+- [ ] Une vraie image Dazzle Draw dans un banc (oracle : `DD.PICLOADER`
+  sous POM2) : le manuel l'affirme d'après le code, pas encore d'après
+  l'écran.
 - [ ] Publier : version dans le Makefile, CHANGELOG, `make test`,
   `make qualify`, `tools/check_images.py`, liens du README et du manuel
   vers les nouveaux noms, capture reprise.

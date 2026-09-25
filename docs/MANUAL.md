@@ -288,7 +288,7 @@ Specialized viewers and media tools require **800K or XL**.
 
 | Picture or font | Identification / tool |
 |---|---|
-| Raw HGR / DHGR, HGRR / DHRR | IMAGE; raw pages or version 1 RLE. |
+| Raw HGR / DHGR, HGRR / DHRR | IMAGE; raw pages or version 1 RLE. Dazzle Draw pictures are raw DHGR. |
 | Lo-res / DGR | DGRVIEW; DGR signature or BIN/FOT with aux $0400. I can ask for a raw sprite width. |
 | Extasie / Arlequin | EXTASIE ($F2); ARLEQUIN ($F8 with its signature). |
 | MacPaint | MACPAINT; `.MAC`, optionally with a MacBinary header. |
@@ -300,7 +300,8 @@ Specialized viewers and media tools require **800K or XL**.
 | Applesoft shapes | SHAPES; `.SHAPE` or choose the tool directly. |
 
 Raw HGR accepts **8,184/8,192 bytes**; DHGR accepts **16,376/16,384**, auxiliary
-plane first. Left/Right browses the previous/next file handled by the same
+plane first: the one-file layout Dazzle Draw saves (BIN, aux $2000, 16,384
+bytes), so its pictures and slide-show disks open as they are. Left/Right browses the previous/next file handled by the same
 viewer, including across directory windows. At an end it does nothing.
 Loading shows the filename; Escape returns to the panels. Ordinary small BIN
 files open in hex with Return; I can treat a suitable one as a sprite.
