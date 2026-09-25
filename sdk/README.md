@@ -62,6 +62,19 @@ is assembled and linked as an optional helper (see VERIFY and VOLINFO's
 service-call trampolines). Their linker limits reserve the fixed API copies
 above code and BSS; keep those limits in sync with the assembly tables.
 
+## Frozen for 1.0
+
+From release 1.0, what an overlay compiled once depends on does not change:
+`struct Entry` (29 bytes), `struct Panel`, `struct DirEntry` and the overlay
+header `struct Overlay`, field for field; the first 54 services of
+`struct A2fcApi` (API version 5), in order; `PLUGIN_MAGIC`,
+`MEDIA_PLUGIN_MAGIC`, the `OVERLAY_*` flags and windows, `MAX_ENTRIES`,
+`PATH_LEN`, `NAME_LEN`, `ROWS`, the `FS_*` values and `ENTRY_SNAPSHOT` at
+`$3000`. A new service is appended after `music_info` and raises
+`A2FC_API_VERSION`; an overlay that needs it checks `api->version` first.
+The settings file `A2FILE.CFG` keeps its text layout as well.
+`tools/test_abi_freeze.py`, part of `make test`, fails on any other change.
+
 ## Rules to keep
 
 - **No uninitialised static that must be zero**: nothing clears the overlay

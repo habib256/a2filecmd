@@ -314,6 +314,7 @@ test: test-mini
 	python3 $(TOOLS)/test_display.py
 	python3 $(TOOLS)/test_config.py
 	python3 $(TOOLS)/test_config_native.py
+	python3 $(TOOLS)/test_abi_freeze.py
 	python3 $(TOOLS)/test_batch.py
 	python3 $(TOOLS)/test_ui.py
 	python3 $(TOOLS)/test_media.py
