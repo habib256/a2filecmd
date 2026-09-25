@@ -27,6 +27,7 @@ static void activity_begin(const char* text) {}
 enum { SORT_NAME, SORT_SIZE, SORT_TYPE, SORT_MODES };
 static unsigned char sort_mode, dir_error, copy_buf[512];
 static struct Panel panels[2];
+#define pan_at(p) (&panels[p])   /* the resident helper: the same address */
 static struct Entry table[2][MAX_ENTRIES];
 static struct DirEntry dir_entry;
 static int feed_n, feed_i, rereads;

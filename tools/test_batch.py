@@ -27,6 +27,7 @@ static struct MoveBatch state;
 static struct Entry entries[140],selected;
 #define BATCH_ENTRIES entries
 static struct Panel panels[2];
+#define pan_at(p) (&panels[p])   /* the resident helper: the same address */
 static unsigned char active,copy_buf[512],gfi[18],_filetype,_oserror;
 static unsigned int _auxtype;
 static char note[80],full[81];

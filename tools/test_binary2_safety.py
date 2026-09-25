@@ -21,6 +21,7 @@ struct A2fcApi { int unused; };
 struct Entry { char name[17]; };
 struct Panel { char path[64]; unsigned char fs; };
 static struct Panel panels[2];
+#define pan_at(p) (&panels[p])   /* the resident helper: the same address */
 static struct Entry selected;
 static unsigned char active, copy_buf[512], _filetype;
 static unsigned int _auxtype;

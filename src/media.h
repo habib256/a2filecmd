@@ -15,7 +15,7 @@ static unsigned char media_type(const char* name)
 
 static unsigned char media_prepare(unsigned char kind)
 {
-    struct Panel* pan=&panels[active];
+    struct Panel* pan=pan_at(active);
     unsigned int first=pan->first;
     unsigned char cursor=pan->cursor, top=pan->top, dir, i, changed=0;
     unsigned char viewer, ok=1;

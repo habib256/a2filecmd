@@ -10,6 +10,7 @@ C=r'''
 #include "src/a2fc_plugin.h"
 #define WINDOW 139
 static struct Panel panels[2];static unsigned char active;
+#define pan_at(p) (&panels[p])   /* the resident helper: the same address */
 static struct Entry entries[140],all[300],selected;
 static unsigned int total;static int failure;
 static char full[81],album[2][17],output[1024];

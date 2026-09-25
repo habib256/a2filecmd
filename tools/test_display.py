@@ -21,6 +21,7 @@ C = r'''
 struct Entry { char name[16]; unsigned char type,access; unsigned aux,blocks,mdate; unsigned long size; };
 struct Panel { char path[64]; unsigned char count,cursor,top,fs,more,tags[8]; unsigned first; struct Entry e[64]; };
 static struct Panel panels[2];
+#define pan_at(p) (&panels[p])   /* the resident helper: the same address */
 static unsigned char active,sort_mode,rev,xpos,ypos,keys[256];
 static unsigned a2fc_draws,ki;
 static char screen[24][80],inverse[24][80],input[64],question[128];

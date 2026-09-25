@@ -57,7 +57,7 @@ static void runtime_root(const char* path, const char* suffix)
 static unsigned char basic_path(const char* suffix)
 {
     signed char found;
-    runtime_root(panels[active].path, suffix);
+    runtime_root(pan_at(active)->path, suffix);
     found = runtime_probe(full);
     if (found) return found > 0;
     if (cfg_path[0]) {
@@ -110,10 +110,10 @@ static void run_selected(const struct Entry* e)
 {
     unsigned int addr;
     unsigned char bas, addr_len;
-    if (is_dir(e) || !panels[active].path[0] || panels[active].fs) { message(run_pick); return; }
+    if (is_dir(e) || !pan_at(active)->path[0] || pan_at(active)->fs) { message(run_pick); return; }
     bas = e->type == 0xFA || e->type == 0xFC;
     if (!bas && e->type != 0xFF && e->type != 0x06) { message(run_types); return; }
-    if (!build_full(LS->command, &panels[active], e)) { too_long(); return; }
+    if (!build_full(LS->command, pan_at(active), e)) { too_long(); return; }
     addr = 0x2000;              /* a binary's own address comes from launch_check */
     if (bas) {
         if (!basic_path(e->type == 0xFA ? run_integer : run_basic)) return;
@@ -132,7 +132,7 @@ static void run_selected(const struct Entry* e)
     } else sprintf(question, run_ask, e->name);
     if (!confirm(question)) return;
     if (!save_config() && !confirm(run_cfgwarn)) return;
-    if (chdir(panels[active].path)) { report_error(run_prefix); return; }
+    if (chdir(pan_at(active)->path)) { report_error(run_prefix); return; }
     /* Shared buffers and configuration I/O cannot alter either path now. */
     chain_command(LS->command);
     chain_addr = addr;

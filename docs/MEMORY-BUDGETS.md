@@ -1,5 +1,52 @@
 # Consolidation : budgets mémoire
 
+## Préparation 1.0 : 412 octets rendus par `pan_at`
+
+L'objectif MAIN de 256 octets sur 65C02 est atteint. Réserves au lien
+après `rm -rf build build-6502`, 65C02/6502 : MAIN **494/885** (82/485
+avant), carte langage **77/68** (66/57), LOWRAM 82/107 inchangée, écart
+avant la pile 522/1102 (110/702).
+
+Ce qui a payé : une seule réécriture mécanique. cc65 calcule
+`&panels[active]`, `&panels[!active]` et `panels[p].champ` en multipliant
+l'indice par 98 (`sizeof(struct Panel)`) avec `tosmula0` : une vingtaine
+d'octets par site, et il y en avait 35 dans le seul segment résident.
+`pan_at(p)` (`__fastcall__`, 21 octets, dans CODE, hors de tout bloc
+`code-name`) rend `panels + 1` ou `panels`, et chaque site coûte cinq
+octets. `p` vaut toujours 0 ou 1 : `active` n'est écrit que par
+`active = !active` et par `cfg_parse`, qui refuse tout autre chiffre que
+0 ou 1. Les indices constants (`panels[0]`, `panels[1]`) et les `sizeof`
+restent tels quels : cc65 les résout au lien. Les surcouches liées avec le
+résident appellent la même fonction, d'où leurs gains :
+
+| Surcouche | 65C02 avant → après | 6502 avant → après |
+| --- | ---: | ---: |
+| ATTR | 19 → **153** | 20 → **150** |
+| TEXT | 44 → 120 | 16 → 94 |
+| COMPARE | 17 → 59 | 41 → 83 |
+| EDIT | 19 → 30 | 5 → 16 |
+| DISKIMG | 57 → 68 | 9 → 20 |
+| HEX | 49 → 74 | 42 → 67 |
+| DELETE | 261 → 286 | 266 → 291 |
+| SEARCH | 177 → 191 | 193 → 207 |
+| BATCH, RUN, IMGFS, DOSGET, UNSHRINK, BINARY2 | +14 à +117 | +14 à +117 |
+
+NAV, CATALOG, OPEN, COPY, FORMAT, IMAGE, HELP, MENU, BASLIST et AWP ne
+changent pas : leur code n'avait aucun de ces sites. Disquettes : la 140K
+passe de 22 à 24 blocs libres, la 800K de 608 à 610, les deux XL gagnent
+deux blocs.
+
+Les harnais hôtes qui découpent `a2fc.c` ou incluent `batch.h`,
+`config.h`, `launch.h` et `media.h` déclarent leurs propres `panels` : ils
+reçoivent `#define pan_at(p) (&panels[p])`, la même adresse. La fonction
+est placée après `batch_state_fits`, hors de la tranche `#define
+POOL_SIZE` que découpe `test_tree_walk.py`.
+
+À ne pas refaire à la main : la même multiplication existe pour
+`pan->e[i]` (29 octets par entrée, 26 sites résidents). Une aide à deux
+paramètres coûte plus cher à l'appel ; ne l'essayer que si la réserve
+redescend, en mesurant au lien.
+
 ## Mini : 92 octets rendus pour le signe de vie du formatage
 
 Le crochet posé sur la boucle par piste de RWTS FORMAT (`fmt_hook`,
