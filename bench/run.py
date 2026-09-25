@@ -150,7 +150,7 @@ def xl_volume(dirpath, cpu):
     POM2 ne prend qu'un disque dur, qui doit amorcer et servir de cible.
     Rend (image, nom du volume, TINY.PO, rebati == publie) : le dernier dit
     si le volume rebati sans ajout est l'image publiee, octet a octet."""
-    payload = (ROOT / ('dist/A2FILECMD-%sXL-%s.2mg' % ('65C02-enhanced-mouse-' if cpu == '65C02' else '', VERSION))).read_bytes()[64:]
+    payload = (ROOT / ('dist/A2FILECMD-XL-%s%s.2mg' % ('65C02-enhanced-' if cpu == '65C02' else '', VERSION))).read_bytes()[64:]
     image = Image(payload)
     name = image.header()['name']
     boot = dirpath / 'xl-boot'

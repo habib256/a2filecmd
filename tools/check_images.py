@@ -49,10 +49,10 @@ def check_cpu(cpu):
     expected.update({p.stem.upper() + '.PLG': (build / (p.stem + '.PLG')).read_bytes()
                      for p in (ROOT / 'src/plugins').glob('*.c')})
     essential, complete = inventories()
-    for role in (('140K', '800K', 'XL') if cpu == '6502' else ('65C02-enhanced-mouse-XL',)):
+    for role in (('140K', '800K', 'XL') if cpu == '6502' else ('XL-65C02-enhanced',)):
         path = ROOT / 'dist' / image_name(role)
         raw = path.read_bytes()
-        xl = role.endswith('XL')
+        xl = role.startswith('XL')
         blocks = 65535 if xl else 1600 if role == '800K' else 280
         if xl:
             assert len(raw) == 64 + blocks * 512 and raw[:4] == b'2IMG', path

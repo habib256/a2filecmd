@@ -1,5 +1,5 @@
 """Self-contained release inventories and failure-safe Mini image generation."""
-import re
+import fnmatch, re
 import contextlib
 import io
 import subprocess
@@ -17,7 +17,7 @@ import release_assets
 class Distribution(unittest.TestCase):
     def test_five_explicit_images(self):
         self.assertEqual(dist.image_names('1.0.0'), [
-            'A2FILECMD-XL-1.0.0.2mg', 'A2FILECMD-65C02-enhanced-mouse-XL-1.0.0.2mg',
+            'A2FILECMD-XL-1.0.0.2mg', 'A2FILECMD-XL-65C02-enhanced-1.0.0.2mg',
             'A2FILECMD-DOS3.3-1.0.0.dsk', 'A2FILECMD-800K-1.0.0.po', 'A2FILECMD-140K-1.0.0.dsk'])
         with self.assertRaises(ValueError): dist.image_name('FILES')
 
@@ -32,7 +32,11 @@ class Distribution(unittest.TestCase):
     def test_release_uploads_exactly_the_five_image_patterns(self):
         workflow = (dist.ROOT / '.github/workflows/ci.yml').read_text()
         patterns = set(re.findall(r'^\s+(dist/A2FILECMD-\S+\.(?:dsk|po|2mg))$', workflow, re.M))
-        self.assertEqual(patterns, {'dist/' + n.replace(dist.VERSION, '*') for n in dist.image_names()})
+        # [0-9].* : a version opens with a digit and a period, so the 6502 XL's pattern
+        # cannot also take A2FILECMD-XL-65C02-enhanced-*.2mg
+        self.assertEqual(patterns, {'dist/' + n.replace(dist.VERSION, '[0-9].*') for n in dist.image_names()})
+        for pattern in patterns:
+            self.assertEqual(len(fnmatch.filter(['dist/' + n for n in dist.image_names()], pattern)), 1, pattern)
         self.assertIn('python3 tools/release_assets.py', workflow)
 
     def test_checksums_exclude_stale_or_legacy_images(self):

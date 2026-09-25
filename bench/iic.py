@@ -34,7 +34,7 @@ from run import RET, TAB, scratch_volume
 from prodos_read import Image
 
 BOOT = ROOT / f'dist/A2FILECMD-140K-{VERSION}.po'
-XL = ROOT / f'dist/A2FILECMD-65C02-enhanced-mouse-XL-{VERSION}.2mg'
+XL = ROOT / f'dist/A2FILECMD-XL-65C02-enhanced-{VERSION}.2mg'
 PORT = int(os.environ.get('A2FC_PORT', 6760))
 
 

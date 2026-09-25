@@ -9,18 +9,18 @@ RUNTIMES = ('BASIC.SYSTEM', 'INTBASIC.SYSTEM')
 
 
 def image_name(role, version=VERSION):
-    suffix = '2mg' if role in ('XL', '65C02-enhanced-mouse-XL') else 'po' if role == '800K' else 'dsk'
-    if role not in ('XL', '65C02-enhanced-mouse-XL', 'DOS3.3', '800K', '140K'):
+    suffix = '2mg' if role in ('XL', 'XL-65C02-enhanced') else 'po' if role == '800K' else 'dsk'
+    if role not in ('XL', 'XL-65C02-enhanced', 'DOS3.3', '800K', '140K'):
         raise ValueError('unknown image role: ' + role)
     return f'A2FILECMD-{role}-{version}.{suffix}'
 
 
 def image_names(version=VERSION):
-    return [image_name(role, version) for role in ('XL', '65C02-enhanced-mouse-XL', 'DOS3.3', '800K', '140K')]
+    return [image_name(role, version) for role in ('XL', 'XL-65C02-enhanced', 'DOS3.3', '800K', '140K')]
 
 
 def xl_name(cpu):
-    return image_name('65C02-enhanced-mouse-XL' if cpu == '65C02' else 'XL')
+    return image_name('XL-65C02-enhanced' if cpu == '65C02' else 'XL')
 
 
 def inventories():

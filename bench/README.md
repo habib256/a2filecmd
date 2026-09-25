@@ -82,7 +82,7 @@ lecteur à FORMAT/DISKIMG dans une copie jetable de cette disquette : tous
 les outils ne tiennent plus ensemble sur 140 Ko. `find.py` remplace de même
 BASLIST par SEARCH dans sa propre image jetable ; la disquette de banc
 générale utilise le lanceur compact et ne contient plus SEARCH.
-`hd.py` amorce `dist/A2FILECMD-65C02-enhanced-mouse-XL-0.9.1.2mg` ;
+`hd.py` amorce `dist/A2FILECMD-XL-65C02-enhanced-<version>.2mg` ;
 `A2FC_CPU=6502 A2FC_PRESET=iie_unenh python3 bench/hd.py` teste la XL 6502.
 `run.py --xl 65C02` et `run.py --xl 6502` jouent la session complète sur
 la XL publiée de ce processeur (la 6502 sur le IIe non enhanced, sans

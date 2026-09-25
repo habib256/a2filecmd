@@ -89,11 +89,11 @@ jobs:
         with:
           name: a2filecmd-disk
           path: |
-            dist/A2FILECMD-140K-*.dsk
-            dist/A2FILECMD-800K-*.po
-            dist/A2FILECMD-DOS3.3-*.dsk
-            dist/A2FILECMD-XL-*.2mg
-            dist/A2FILECMD-65C02-enhanced-mouse-XL-*.2mg
+            dist/A2FILECMD-140K-[0-9].*.dsk
+            dist/A2FILECMD-800K-[0-9].*.po
+            dist/A2FILECMD-DOS3.3-[0-9].*.dsk
+            dist/A2FILECMD-XL-[0-9].*.2mg
+            dist/A2FILECMD-XL-65C02-enhanced-[0-9].*.2mg
             dist/A2FILECMD-MANUAL-EN-*.pdf
             dist/SHA256SUMS-*.txt
             dist/RELEASE_NOTES.md
@@ -165,10 +165,10 @@ jobs:
           name: "A2 File Cmd ${{ env.VERSION }} — Two panels. One Apple II."
           body_path: dist/RELEASE_NOTES.md
           files: |
-            dist/A2FILECMD-140K-*.dsk
-            dist/A2FILECMD-800K-*.po
-            dist/A2FILECMD-DOS3.3-*.dsk
-            dist/A2FILECMD-XL-*.2mg
-            dist/A2FILECMD-65C02-enhanced-mouse-XL-*.2mg
+            dist/A2FILECMD-140K-[0-9].*.dsk
+            dist/A2FILECMD-800K-[0-9].*.po
+            dist/A2FILECMD-DOS3.3-[0-9].*.dsk
+            dist/A2FILECMD-XL-[0-9].*.2mg
+            dist/A2FILECMD-XL-65C02-enhanced-[0-9].*.2mg
             dist/A2FILECMD-MANUAL-EN-*.pdf
             dist/SHA256SUMS-*.txt

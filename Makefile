@@ -206,7 +206,7 @@ all: xplugins
 # XL contains the same complete toolset plus the demo corpus.
 STAGE = $(BUILD)/vol
 HDV = $(BUILD)/A2FILECMD-XL.hdv
-TWOMG = $(DIST)/A2FILECMD-$(if $(filter 65C02,$(CPU)),65C02-enhanced-mouse-,)XL-$(A2FC_VERSION).2mg
+TWOMG = $(DIST)/A2FILECMD-XL-$(if $(filter 65C02,$(CPU)),65C02-enhanced-,)$(A2FC_VERSION).2mg
 PO800 = $(DIST)/A2FILECMD-800K-$(A2FC_VERSION).po
 FULLPO = $(BUILD)/A2FILECMD-full.po
 STAGE_DEPS = $(SYSTEM) $(CODE) $(DATA)/A2FILE.HELP.TXT $(DATA)/RECOVER.TXT $(DATA)/PRODOS.SYS \

@@ -61,7 +61,7 @@ FIXTURES = {
     'categories': Fixture([ROOT / ('build-6502/legacy/%s.po' % name)
                            for name in ('FILES', 'MEDIA', 'DISKTOOLS', 'DEVTOOLS')], ['make', 'benchpackages', 'ARCH=6502']),
     '800k': Fixture([ROOT / ('dist/A2FILECMD-800K-%s.po' % VERSION)], ['make', 'disk']),
-    'xl': Fixture([ROOT / ('dist/A2FILECMD-%sXL-%s.2mg' % ('65C02-enhanced-mouse-' if cpu == '65C02' else '', VERSION)) for cpu in ('6502', '65C02')],
+    'xl': Fixture([ROOT / ('dist/A2FILECMD-XL-%s%s.2mg' % ('65C02-enhanced-' if cpu == '65C02' else '', VERSION)) for cpu in ('6502', '65C02')],
                   ['make', 'disk']),
     'full-enh': Fixture([ROOT / 'build/A2FILECMD-full.po'], ['make', 'benchfloppy', 'ARCH=enh']),
     'full-6502': Fixture([ROOT / 'build-6502/A2FILECMD-full.po'], ['make', 'benchfloppy', 'ARCH=6502']),
@@ -266,7 +266,7 @@ def stale():
         cpu = '6502' if build.endswith('6502') else '65C02'
         names = (['A2FILECMD-140K-%s.po' % VERSION, 'A2FILECMD-800K-%s.po' % VERSION,
                   'A2FILECMD-XL-%s.2mg' % VERSION] if cpu == '6502' else
-                 ['A2FILECMD-65C02-enhanced-mouse-XL-%s.2mg' % VERSION])
+                 ['A2FILECMD-XL-65C02-enhanced-%s.2mg' % VERSION])
         images += [ROOT / 'dist' / name for name in names if (ROOT / 'dist' / name).exists()]
         late += [p for p in images if p.stat().st_mtime < made]
     return sorted(late)
