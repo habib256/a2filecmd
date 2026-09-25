@@ -13,8 +13,9 @@
 
         .export present, at, put, inline_text, clear, zone
         .export number, hexbyte, filetype, keys_bar, keys_bar_inline
+        .export put_char, hex_rows
 
-        .import screen_image, slot
+        .import screen_image, slot, buffer
 
         .segment "BSS"
 digits:         .res 5          ; a 16-bit value never needs more
@@ -133,7 +134,8 @@ put:
 ; inline_text -- prints the NUL-terminated string that follows the call
 ; and resumes after it. Saves the address setup at every message site.
 ; A '~' in the text flips inverse video instead of printing: the help
-; page shows its keys that way, like the key bar.
+; page shows its keys that way, like the key bar. A '|' moves two rows
+; down to the first column, which lays out the whole help page.
 ; ---------------------------------------------------------------------
 inline_text:
         pla
@@ -152,6 +154,14 @@ inline_text:
         sta     inverse
         bpl     @next           ; always: inverse is 0 or 1
 @char:
+        cmp     #'|'            ; two rows down, first column: the help page
+        bne     @put
+        inc     row
+        inc     row
+        lda     #0
+        sta     col
+        beq     @next           ; always
+@put:
         jsr     put
 @next:
         ldy     t1
@@ -280,6 +290,74 @@ hexbyte:
         tax
         lda     hex_digits,x
         jmp     put
+
+; ---------------------------------------------------------------------
+; put_char -- A = byte, shown as its 7-bit character; '.' when that is
+; not printable (below 32, or 127). Both previews show bytes this way.
+; ---------------------------------------------------------------------
+put_char:
+        and     #$7F
+        cmp     #32
+        bcc     @dot
+        cmp     #127
+        bcc     @show
+@dot:
+        lda     #'.'
+@show:
+        jmp     put
+
+; ---------------------------------------------------------------------
+; hex_rows -- A = first byte of the half, $00 or $80. Ends the header
+; line at the cursor with ", BYTES 00-7F", then rows 3-18 show the half
+; of buffer eight bytes a row: offset, the bytes, their characters.
+;   00: 41 32 46 43 20 4D 49 4E A2FC MIN
+; ---------------------------------------------------------------------
+hex_rows:
+        sta     t3              ; the row's first byte
+        PRINT   ", BYTES "
+        lda     t3
+        jsr     hexbyte
+        lda     #'-'
+        jsr     put
+        lda     t3
+        ora     #$7F
+        jsr     hexbyte
+        ldy     #3
+@row:
+        ldx     #0
+        jsr     at
+        lda     t3
+        sta     t2
+        jsr     hexbyte
+        lda     #':'
+        jsr     put
+@hex:
+        lda     #' '
+        jsr     put
+        ldx     t2
+        lda     buffer,x
+        jsr     hexbyte
+        inc     t2
+        lda     t2
+        and     #7
+        bne     @hex
+        inc     col             ; one blank before the characters
+        ldx     t3
+@char:
+        stx     t2
+        lda     buffer,x
+        jsr     put_char
+        ldx     t2
+        inx
+        txa
+        and     #7
+        bne     @char
+        stx     t3              ; wraps to 0 after the last row of $80
+        ldy     row
+        iny
+        cpy     #19
+        bcc     @row
+        rts
 
 ; ---------------------------------------------------------------------
 ; filetype -- A = DOS type byte, returns its letter, '?' when unknown

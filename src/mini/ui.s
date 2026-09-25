@@ -22,6 +22,7 @@
 
         .import present, at, put, inline_text, clear, zone
         .import number, hexbyte, filetype, keys_bar, keys_bar_inline
+        .import put_char, hex_rows
         .import key
         .import catalog, preview, load_file, load_count, load_more
         .import blank_scratch
@@ -63,7 +64,6 @@ tg_left:        .res 1
 hg_status:      .res 1          ; hi-res viewer
 vw_mode:        .res 1          ; view locals
 vw_i:           .res 1
-vw_prev:        .res 1
 rl_home:        .res 1          ; reload locals
 rl_have:        .res 1
 ; the name a reread keeps the selection by lives in the write engine's
@@ -688,43 +688,32 @@ help:
         ldx     #0
         lda     #40
         jsr     zone
-        PRINT   "A2FC MINI - COMMANDS"
-        lda     #0
-        sta     inverse
-        ldy     #2
-        jsr     at_left
-        PRINT   "~TAB~: PANEL   ~RET~: OPEN"
-        ldy     #4
-        jsr     at_left
-        PRINT   "~CTRL-K/J~ OR ~I/K~: UP/DOWN"
-        ldy     #6
-        jsr     at_left
-        PRINT   "~ARROWS~ OR ~-/+~: PAGE   ~[/]~: FIRST/LAST"
-        ldy     #8
-        jsr     at_left
-        PRINT   "~/~: DRIVE   ~CTRL-R~: REREAD BOTH   ~Q~: QUIT"
-        ldy     #10
-        jsr     at_left
-        PRINT   "~=~: SAME DISK IN THE OTHER PANEL"
-        ldy     #12
-        jsr     at_left
-        PRINT   "~T/H/G~: VIEW   ~C~: COPY MARKED OR CURSOR"
-        ldy     #14
-        jsr     at_left
-        PRINT   "~SPACE~: TAG  ~CTRL-T/N~: ALL/NONE ~*~: INVERT"
-        ldy     #16
-        jsr     at_left
-        PRINT   "~N~: NEW  ~E~: EDIT  ~D~: DELETE  ~F~: FORMAT"
-        ldy     #18
-        jsr     at_left
-        PRINT   "~L~: LOCK/UNLOCK  ~R~: RENAME  ~B~: BRUN"
-        ldy     #20
-        jsr     at_left
-        PRINT   "~Y~ CONFIRMS A WRITE. UNLOCK TO DELETE."
+        ; What PRINT expands to, one help row a line: '~' ends the inverse
+        ; title, each '|' starts a row two lower. Two texts, not one:
+        ; inline_text indexes a text with Y.
+        jsr     inline_text
+        .byte   "A2FC MINI - COMMANDS~|"
+        .byte   "~TAB~: PANEL   ~RET~: OPEN|"
+        .byte   "~CTRL-K/J~ OR ~I/K~: UP/DOWN|"
+        .byte   "~ARROWS~ OR ~-/+~: PAGE   ~[/]~: FIRST/LAST|"
+        .byte   "~/~: DRIVE   ~CTRL-R~: REREAD BOTH   ~Q~: QUIT|"
+        .byte   "~=~: SAME DISK IN THE OTHER PANEL|", 0
+        jsr     inline_text
+        .byte   "~T/H/G~: VIEW   ~C~: COPY MARKED OR CURSOR|"
+        .byte   "~SPACE~: TAG  ~CTRL-T/N~: ALL/NONE ~*~: INVERT|"
+        .byte   "~N~: NEW  ~E~: EDIT  ~D~: DELETE  ~F~: FORMAT|"
+        .byte   "~L~: LOCK/UNLOCK  ~R~: RENAME  ~B~: BRUN|"
+        .byte   "~Y~ CONFIRMS A WRITE. UNLOCK TO DELETE.", 0
         KEYBAR  23, "ESC Back"
-        jsr     key
-        rts
+        jmp     key
 
+        .segment "RODATA"
+; LEFT, '-', '<' show bytes $00-$7F of the hex preview, RIGHT, '+', '>'
+; bytes $80-$FF: the same keys page the panels.
+half_keys:
+        .byte   8, '-', '<', 21, '+', '>'
+
+        .segment "CODE"
 ; ---------------------------------------------------------------------
 ; view -- A = 1 for hex, 0 for text, 4 for text after a binary's header. Shows the first stored sector and says so: it
 ; is not a claim to have read or checked the whole file.
@@ -759,53 +748,15 @@ view_read:
         jsr     print_name
         ldy     #1
         jsr     at_left
-        PRINT   "PREVIEW: FIRST SECTOR (256 BYTES)"
-        lda     vw_mode
-        cmp     #1
-        bne     @text
-        lda     #0
-        sta     vw_i
-@hexrow:
-        lda     vw_i
-        clc
-        adc     #3
-        tay
-        jsr     at_left
-        lda     vw_i
-        asl     a
-        asl     a
-        asl     a
-        asl     a
-        jsr     hexbyte
-        lda     #':'
-        jsr     put
-        lda     #' '
-        jsr     put
-        lda     vw_i
-        asl     a
-        asl     a
-        asl     a
-        asl     a
-        sta     vw_prev         ; the row's first byte
-        ldx     #0
-@bytes:
-        stx     t2
-        txa
-        clc
-        adc     vw_prev
-        tax
-        lda     buffer,x
-        jsr     hexbyte
-        ldx     t2
-        inx
-        cpx     #16
-        bcc     @bytes
-        inc     vw_i
-        lda     vw_i
-        cmp     #16
-        bcc     @hexrow
+        PRINT   "PREVIEW: FIRST SECTOR"
+        lda     vw_mode         ; 1 or $81: hex, bit 7 the second half
+        lsr     a
+        bcc     @text
+        asl     a               ; $00 or $80
+        jsr     hex_rows
         jmp     @keys
 @text:
+        PRINT   " (256 BYTES)"
         ldy     #3
         jsr     at_left
         lda     vw_mode         ; 0, or 4 past a binary's header
@@ -836,14 +787,7 @@ view_read:
         sta     col
         jmp     @nextchar
 @printable:
-        cmp     #32
-        bcc     @dot
-        cmp     #127
-        bcc     @emit
-@dot:
-        lda     #'.'
-@emit:
-        jsr     put
+        jsr     put_char
         lda     col
         cmp     #40
         bcc     @nextchar
@@ -855,21 +799,34 @@ view_read:
         lda     vw_i
         bne     @char
 @keys:
-        KEYBAR  23, "T Text,H Hex,ESC Back"
+        KEYBAR  23, "T Text,H Hex,<> Half,ESC Back"
         jsr     key
+        ldx     #1
         cmp     #'H'
-        bne     @nothex
-        lda     #1
-        sta     vw_mode
-        jmp     @render
-@nothex:
+        beq     @mode
+        dex
         cmp     #'T'
-        bne     @leave
-        lda     #0
-        sta     vw_mode
-        jmp     @render
+        beq     @mode
+        ldx     #5              ; the panels' page keys pick a hex half
+@half:
+        cmp     half_keys,x
+        beq     @arrow
+        dex
+        bpl     @half
 @leave:
         rts
+@arrow:
+        lda     vw_mode
+        lsr     a
+        bcc     @leave          ; text has no halves: the key leaves, as before
+        cpx     #3              ; carry: a right-hand key, the second half
+        lda     #0
+        ror     a
+        ora     #1
+        tax
+@mode:
+        stx     vw_mode
+        jmp     @render
 
 ; ---------------------------------------------------------------------
 ; copy_file -- tagged files of the active panel, or the cursor when

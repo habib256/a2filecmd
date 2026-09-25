@@ -69,7 +69,9 @@ or unlocks a tagged set if any member is locked, otherwise locks the set.
 
 Return identifies text, hi-res or a binary program from content and DOS headers;
 a program asks `BRUN NAME?`. T/H previews only the first 256 stored bytes; G
-shows the first 8 KB as hi-res. A valid 8 KB BIN load at $2000/$4000 is a picture;
+shows the first 8 KB as hi-res. The hex preview shows eight bytes a row with
+their characters, one half of the sector at a time: Left/Right (or -/+, </>)
+switch between bytes 00-7F and 80-FF. A valid 8 KB BIN load at $2000/$4000 is a picture;
 unsupported or unsafe program headers fall back to hex. BRUN leaves A2FC.
 
 Only standard 35-track, 16-sector DOS 3.3 is supported. Sparse/inconsistent

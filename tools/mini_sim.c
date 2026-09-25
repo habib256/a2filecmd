@@ -40,6 +40,8 @@ void mini_copy_side(void);
 unsigned char mini_format(void);
 unsigned char mini_patch_type(void);
 unsigned char mini_patch_name(void);
+void mini_hex_rows(void);
+void mini_print_rows(void);
 
 static unsigned char msg[5];
 static unsigned char scratch[256];
@@ -184,6 +186,14 @@ int main(void)
             break;
         case 21:
             reply(mini_patch_name());
+            break;
+        case 22:
+            mini_hex_rows();
+            reply(0);
+            break;
+        case 23:
+            mini_print_rows();
+            reply(0);
             break;
         case 6:                 /* peek: address low, high, length */
             get(msg, 3);

@@ -400,6 +400,90 @@ class ImageTest(unittest.TestCase):
                 mkmini33.build(master, binary)
 
 
+class HexPreviewTest(unittest.TestCase):
+    """The hex preview's rows, drawn by the shipped screen.s into the
+    composed image: offset, eight bytes, their characters."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.harness = mini_host.Harness()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.harness.cleanup()
+
+    def setUp(self):
+        self.mini = self.harness.start()
+
+    def tearDown(self):
+        self.mini.close()
+
+    @staticmethod
+    def shown(b):
+        c = b & 0x7F
+        if c < 32 or c == 127:
+            return '.'
+        return chr(c).upper()   # put folds lower case: the II+ has none
+
+    def expected(self, sector, half):
+        rows = [' ' * 40] * 24
+        rows[1] = (' ' * 21 + f', BYTES {half:02X}-{half | 0x7F:02X}').ljust(40)
+        for r in range(16):
+            first = half + r * 8
+            data = sector[first:first + 8]
+            line = (f'{first:02X}:' + ''.join(f' {b:02X}' for b in data) +
+                    ' ' + ''.join(self.shown(b) for b in data))
+            rows[3 + r] = line.ljust(40)
+        return rows
+
+    def check(self, sector):
+        self.mini.poke('buffer', sector)
+        for half in (0x00, 0x80):
+            with self.subTest(half=half):
+                rows, marks = self.mini.hex_rows(half)
+                self.assertEqual(rows, self.expected(sector, half))
+                self.assertEqual(marks, [' ' * 40] * 24, 'no inverse cell')
+                self.assertEqual(bytes(self.mini.peek('buffer', 256)), sector,
+                                 'the preview only reads the sector')
+
+    def test_known_sector(self):
+        head = bytes(c | 0x80 for c in b'A2FC MINI DOS 3.3')  # DOS text
+        sector = bytearray(range(256))
+        sector[0:len(head)] = head
+        sector[0x20:0x28] = bytes([0x00, 0x0D, 0x8D, 0x1F, 0x9F, 0x7F, 0xFF, 0xA0])
+        sector[0x28:0x30] = b'abc{|}~`'
+        sector[0x88:0x90] = bytes([0xC1, 0x41, 0x80, 0x20, 0xFE, 0xDF, 0x60, 0xE0])
+        self.check(bytes(sector))
+        rows, _ = self.mini.hex_rows(0)
+        self.assertEqual(rows[3], '00: C1 B2 C6 C3 A0 CD C9 CE A2FC MIN    ')
+        self.assertEqual(rows[7], '20: 00 0D 8D 1F 9F 7F FF A0 ....... '.ljust(40),
+                         'controls, $7F and $FF are dots; $A0 a space')
+        self.assertEqual(rows[1].rstrip(), ' ' * 21 + ', BYTES 00-7F')
+        rows, _ = self.mini.hex_rows(0x80)
+        self.assertEqual(rows[1].rstrip(), ' ' * 21 + ', BYTES 80-FF')
+        self.assertEqual(rows[3][:3], '80:')
+        self.assertEqual(rows[4], '88: C1 41 80 20 FE DF 60 E0 AA. ~_``    ')
+        self.assertEqual(rows[18][:3], 'F8:')
+        self.assertTrue(all(len(r) == 40 for r in rows))
+        self.assertLessEqual(max(len(r.rstrip()) for r in rows), 36,
+                             'a row never reaches the 40th column')
+
+    def test_every_byte_value(self):
+        self.check(bytes(range(256)))
+        self.check(bytes(255 - i for i in range(256)))
+        self.check(bytes(256))
+
+    def test_print_row_escape(self):
+        rows, marks = self.mini.print_rows()
+        self.assertEqual(rows[0].rstrip(), '     AB')
+        self.assertEqual(rows[2].rstrip(), 'CD')
+        self.assertEqual(rows[4].rstrip(), 'EF')
+        self.assertEqual(marks[0].rstrip(), '')
+        self.assertEqual(marks[2].rstrip(), '')
+        self.assertEqual(marks[4].rstrip(), ' #', 'the ~ escape still flips inverse')
+        self.assertEqual(rows[1].strip() + rows[3].strip(), '')
+
+
 class LayoutTest(unittest.TestCase):
     """The shipped binary has to stay clear of DOS."""
 

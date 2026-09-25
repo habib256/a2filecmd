@@ -69,12 +69,12 @@ int main(int argc,char** argv) {
     keys("K"); keys("\r"); wait("THIS BINARY HOLDS TEXT"); // after its header
     if(screen(m).find("SECOND LINE")==std::string::npos) fail("NOTE.BIN in the text viewer");
     back();
-    keys("K"); keys("\r"); wait("00: 00C00800"); back();   // ROMPATCH cannot run
-    keys("K"); keys("\r"); wait("00: 00030800"); back();   // PAGE3 would load over DOS's page 3
+    keys("K"); keys("\r"); wait("00: 00 C0 08 00"); back();   // ROMPATCH cannot run
+    keys("K"); keys("\r"); wait("00: 00 03 08 00"); back();   // PAGE3 would load over DOS's page 3
     keys("K"); keys("\r"); wait("BRUN BIGGAME");           // 33 sectors, yet a program
     keys("N"); wait("8 FILES");
     if(m.data()[6]!=0) fail("N runs nothing on BIGGAME");
-    keys("K"); keys("\r"); wait("00: 01020304"); back();   // JUNK: a T file that is not text
+    keys("K"); keys("\r"); wait("00: 01 02 03 04"); back();   // JUNK: a T file that is not text
     keys("["); keys("K");                                    // back on GAME
     // Y: A2FC Mini leaves and DOS runs GAME from drive 2.
     keys("\r"); wait("BRUN GAME"); keys("Y");
