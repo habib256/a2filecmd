@@ -94,15 +94,17 @@ and recovery filenames do not apply to the DOS3.3 edition introduced first.
 | Image | Choose it for |
 |---|---|
 | `A2FILECMD-DOS3.3-0.9.3.dsk` | Standalone DOS 3.3 file manager for Apple II+ and two Disk II drives. |
-| `A2FILECMD-140K-0.9.3.dsk` | One 5¼-inch ProDOS disk with essential file operations and text editing; 6502. |
-| `A2FILECMD-800K-0.9.3.po` | All ProDOS tools and BASIC runtimes, without the demonstration corpus; 6502. |
-| `A2FILECMD-XL-0.9.3.2mg` | Complete 32 MB ProDOS edition with tools and demonstrations; 6502. |
-| `A2FILECMD-65C02-enhanced-mouse-XL-0.9.3.2mg` | Complete XL with MouseText and optional mouse support. Requires both 65C02 and enhanced ROM. |
+| `A2FILECMD-140K-0.9.3.dsk` | One 5¼-inch ProDOS disk with essential file operations and text editing; any IIe. |
+| `A2FILECMD-800K-0.9.3.po` | All ProDOS tools and BASIC runtimes, without the demonstration corpus; any IIe. |
+| `A2FILECMD-XL-0.9.3.2mg` | Complete 32 MB ProDOS edition with tools and demonstrations; any IIe. |
+| `A2FILECMD-65C02-enhanced-mouse-XL-0.9.3.2mg` | Complete XL for an enhanced IIe, //c or IIgs: MouseText and optional mouse support. |
 
-The ProDOS 6502 editions also run on enhanced machines. A 65C02 processor
-alone does not make an unenhanced IIe suitable for the enhanced edition;
-use 6502 when either the processor or ROM is unsuitable. The launcher checks
-machine, processor and memory before starting. Mouse hardware is optional.
+The choice is **enhanced or not**. The enhanced XL needs an enhanced IIe,
+a //c or a IIgs; every other ProDOS image runs on any IIe, enhanced or not.
+An enhanced machine always has the 65C02 the enhanced XL is compiled for:
+the launcher checks machine, processor and memory before starting, so a
+hand-modified machine is refused rather than crashed. Mouse hardware is
+optional.
 
 140K and DOS3.3 use DOS-sector-order `.dsk`; 800K uses ProDOS-order `.po`.
 XL uses `.2mg`. Renaming an extension does not convert an image. With all

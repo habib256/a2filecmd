@@ -51,16 +51,17 @@ No build is needed to use the release downloads.
 
 | Your setup | Download from 0.9.3 |
 |---|---|
-| **ProDOS · hard disk or emulator** | [XL — complete with demonstrations, 6502](https://github.com/habib256/a2filecmd/releases/download/v0.9.3/A2FILECMD-XL-0.9.3.2mg) |
-| **ProDOS · 65C02 and enhanced ROM** | [XL — enhanced 65C02, optional mouse](https://github.com/habib256/a2filecmd/releases/download/v0.9.3/A2FILECMD-65C02-enhanced-mouse-XL-0.9.3.2mg) |
-| **ProDOS · all tools without sample media** | [800K — complete, 6502](https://github.com/habib256/a2filecmd/releases/download/v0.9.3/A2FILECMD-800K-0.9.3.po) |
-| **ProDOS · one 5¼-inch program disk** | [140K — essentials, 6502](https://github.com/habib256/a2filecmd/releases/download/v0.9.3/A2FILECMD-140K-0.9.3.dsk) |
+| **ProDOS · hard disk or emulator, any IIe** | [XL — complete with demonstrations](https://github.com/habib256/a2filecmd/releases/download/v0.9.3/A2FILECMD-XL-0.9.3.2mg) |
+| **ProDOS · enhanced IIe, //c or IIgs** | [XL enhanced — MouseText, optional mouse](https://github.com/habib256/a2filecmd/releases/download/v0.9.3/A2FILECMD-65C02-enhanced-mouse-XL-0.9.3.2mg) |
+| **ProDOS · all tools without sample media** | [800K — complete](https://github.com/habib256/a2filecmd/releases/download/v0.9.3/A2FILECMD-800K-0.9.3.po) |
+| **ProDOS · one 5¼-inch program disk** | [140K — essentials](https://github.com/habib256/a2filecmd/releases/download/v0.9.3/A2FILECMD-140K-0.9.3.dsk) |
 | **Apple II+ · 48 KB · two Disk II drives** | [DOS3.3 — standalone 40-column edition](https://github.com/habib256/a2filecmd/releases/download/v0.9.3/A2FILECMD-DOS3.3-0.9.3.dsk) |
 
-- Every ProDOS edition needs **128 KB and 80 columns**. The 6502 editions
-  also run on enhanced machines.
-- Choose the enhanced XL only when **both the CPU and the ROM** qualify: a
-  65C02 upgrade alone is not enough. Mouse and Mockingboard are optional.
+- Every ProDOS edition needs **128 KB and 80 columns**.
+- **Enhanced or not** is the only choice: the enhanced XL is for an enhanced
+  IIe, a //c or a IIgs, and adds MouseText and the optional mouse. Every other
+  ProDOS image runs on any IIe, enhanced or not. Mouse and Mockingboard are
+  optional.
 - 800K and XL carry every tool; 140K keeps the essential file operations on
   one disk. Each disk is self-contained: no category disks to juggle.
 - DOS3.3 and 140K are DOS-order `.dsk`, 800K is ProDOS-order `.po`, XL is
