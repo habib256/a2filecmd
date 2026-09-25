@@ -91,8 +91,9 @@ sha256sum -c SHA256SUMS-<version>.txt
 3. **Use a spare disk for a first copy.** In ProDOS, `/` lists volumes: open
    the destination in the opposite panel. In DOS3.3, `/` selects the active
    panel's drive.
-4. **On XL, explore DEMO.** Read `SAMPLE`, open an HGR/DHGR picture, browse
-   `TINY.PO`, or play `CANON.ED` through the speaker. Advanced tools are in **!**.
+4. **On XL, explore DEMO**, one folder per kind of file: read
+   `DOCUMENTS/SAMPLE`, arrow through `PICTURES/ALBUM`, browse `DISKS/TINY.PO`,
+   or play `MUSIC/CANON.ED` through the speaker. Advanced tools are in **!**.
 
 ## DOS3.3: the essentials in 48 KB
 

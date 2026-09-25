@@ -95,7 +95,11 @@ def check_cpu(cpu):
             if runtime in root:
                 assert root[runtime][16] == 0xFF, (path, runtime)
                 assert image.read(root[runtime]) == (ROOT / ('data/' + runtime + '.SYS')).read_bytes(), (path, runtime)
-        assert ('DEMO' in root) == xl and ('IMGHGR' in root) == xl, path
+        assert ('DEMO' in root) == xl and 'IMGHGR' not in root, path
+        if xl:   # DEMO sorted by kind (tools/stage_demo.py), no borrowed-sample folder
+            demo = entries(image, int.from_bytes(root['DEMO'][0x11:0x13], 'little'))
+            assert set(demo) == {'README', 'DOCUMENTS', 'PICTURES', 'MUSIC', 'ARCHIVES',
+                                 'DISKS', 'PROGRAMS', 'FONTS.SHAPES'}, (path, sorted(demo))
         print('PASS %s: %d overlays, %d free blocks, matching build and disk layout' %
               (path.name, len(plugins), image.free_blocks()))
 

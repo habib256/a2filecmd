@@ -165,6 +165,12 @@ def xl_volume(dirpath, cpu):
         return out
     same = build(dirpath / 'XL-rebuilt.po').read_bytes() == payload
     (dirpath / 'XL-rebuilt.po').unlink()
+    # The shipped DEMO is sorted by kind (tools/stage_demo.py, checked by
+    # bench/hd.py); this session walks the flat DEMO of the scratch volume,
+    # so the XL gets the same one, complete.
+    shutil.rmtree(stage / 'DEMO')
+    mkdemo.make(stage / 'DEMO', full=True)
+    shutil.copyfile(ROOT / 'data/README.TXT', stage / 'DEMO/README.TXT')
     scratch_files(stage, dirpath)
     return build(dirpath / 'XL.hdv'), '/' + name, stage / 'TINY.PO', same
 

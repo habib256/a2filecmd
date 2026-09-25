@@ -126,7 +126,9 @@ attributes, text editing, text/hex readers, comparison, formatting, verification
 and ProDOS image extraction. Advanced disk tools, DOS extraction, archives,
 media players and BASIC runtimes require **800K or XL**. Their menus list the
 available tools without asking for category disks. Both complete editions
-include all 82 overlays; only XL includes `DEMO/` and its sample media.
+include all 82 overlays; only XL includes `DEMO/`: one example of every kind of
+file A2 File Cmd opens, in DOCUMENTS, PICTURES (with an HGR album), MUSIC,
+ARCHIVES, DISKS, PROGRAMS and FONTS.SHAPES, and a README saying what is where.
 
 ### Before working
 
@@ -578,9 +580,9 @@ source notices and redistribution terms remain in the repository and LICENSE.
 
 The complete attributions, reference URLs and source-file notices are preserved
 in [Credits and provenance](CREDITS.md). Keep that document, the affected source
-notices and LICENSE when redistributing a modified build. Generated demo media
-are identified separately from third-party samples; `data/CP2/README.TXT`
-describes the CiderPress corpus.
+notices and LICENSE when redistributing a modified build. `DEMO/README` on the
+XL disk tells generated demonstrations from the CiderPress II samples it
+reuses; `data/CP2/README.TXT` describes that corpus.
 
 ### Where to go next
 

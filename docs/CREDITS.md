@@ -61,8 +61,9 @@ URL: [electric-mock repository](https://github.com/cybernesto/electric-mock)
 **Andy McFadden — CiderPress II**
 The format notes of CiderPress II guided the MacPaint and AppleWorks data
 base and spreadsheet readers, and its test files are the real samples the
-tests use. The ones A2FileCmd reads ship in the XL image's
-`DEMO/CIDERPRESS` folder (`data/CP2/README.TXT` lists them).
+tests use (`data/CP2/README.TXT` lists them). The best of them ship in the
+XL image's DEMO folder, each in the folder of its kind, and `DEMO/README`
+names them and their source.
 URL: [CiderPress II](https://github.com/fadden/CiderPress2) · [format notes](https://ciderpress2.com/formatdoc/)
 
 **POM2 — Arnaud Verhille**

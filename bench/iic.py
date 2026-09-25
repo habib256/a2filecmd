@@ -122,10 +122,12 @@ def xl_session(tmp):
         s.ok('//c : la souris est vue en slot 4, la ligne de statut le dit',
              s.value('mouse', 1) == 4 and s.has(' Mouse '), s.rows()[20][60:])
         stack = p.peek(0x80, 2)
-        # le panneau droit ouvre DEMO : LETTER vers la racine, a gauche
+        # le panneau droit ouvre DEMO : DOCUMENTS/LETTER vers la racine, a gauche
         s.ok('//c : le panneau droit ouvre DEMO', s.rows()[0][40:].startswith('/A2XL65C02/DEMO'),
              s.rows()[0][40:70])
-        s.key(TAB); s.select('LETTER', 40); s.key(b'C')
+        s.key(TAB); s.select('DOCUMENTS', 40); s.key(RET)
+        s.wait(lambda: s.has('/DEMO/DOCUMENTS'), 'DOCUMENTS', 60); p.stable()
+        s.select('LETTER', 40); s.key(b'C')
         s.wait(lambda: s.has('copied') or s.has('Failed'), 'copie SmartPort', 90); p.stable()
         s.ok('//c : C copie sur le SmartPort, relue', s.has('1 file copied'), s.rows()[22].strip())
         s.ok('//c : pile C rendue apres la copie', p.peek(0x80, 2) == stack,
@@ -154,7 +156,7 @@ def xl_session(tmp):
              (s.cursor_row(x0), s.cursor_row(40 - x0)))
 
     img = Image(hdv.read_bytes())
-    want = Image(two[64:]).read(find(Image(two[64:]), '/DEMO/LETTER'))
+    want = Image(two[64:]).read(find(Image(two[64:]), '/DEMO/DOCUMENTS/LETTER'))
     got = img.read(find(img, '/LETTER'))
     s.ok('//c : le .hdv porte la copie octet a octet', got == want, (len(got), len(want)))
     return s.checks

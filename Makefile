@@ -271,21 +271,17 @@ endif
 
 # XL: the complete edition for the selected CPU.
 $(TWOMG): $(STAGE_DEPS) $(XPLG) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS $(DATA)/README.TXT \
-       $(TOOLS)/mkdemo.py $(TOOLS)/po22mg.py \
+       $(TOOLS)/mkdemo.py $(TOOLS)/stage_demo.py $(TOOLS)/po22mg.py \
        $(TOOLS)/mkshk.py $(TOOLS)/mkbny.py $(TOOLS)/mkdos33.py $(wildcard $(DATA)/IMGHGR/*) \
        $(shell find $(DATA)/CP2 -type f) | $(DIST)
 	$(call stage,$(PLUGINS),$(XPLUGINS))
 	cp $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS $(STAGE)/
-	mkdir -p $(STAGE)/DEMO
-	cp $(DATA)/README.TXT $(STAGE)/DEMO/README.TXT
-	python3 $(TOOLS)/mkdemo.py $(STAGE)/DEMO
-	cp -R $(DATA)/CP2 $(STAGE)/DEMO/CIDERPRESS
-	cp -R $(DATA)/IMGHGR $(STAGE)/IMGHGR
+	python3 $(TOOLS)/stage_demo.py $(STAGE)/DEMO
 	cp $(DATA)/RECOVER.TXT $(STAGE)/
 	python3 $(TOOLS)/mkvolume.py $(STAGE) $(HDV) --volume $(VOLUME_HD) \
 	  --a2fc-layout --boot $(DATA)/prodos_boot.tmpl --blocks 65535
 	python3 $(TOOLS)/po22mg.py $(HDV) $(TWOMG)
-	@rm -rf $(STAGE)/DEMO $(STAGE)/IMGHGR   # the stage keeps the program alone (bench/plugin.py picks it up)
+	@rm -rf $(STAGE)/DEMO   # the stage keeps the program alone (bench/plugin.py picks it up)
 	@echo "==> $(TWOMG): the complete edition ($(ARCH))"
 
 # A 65C02 floppy with the core overlays and BASIC.SYSTEM, for the benches that

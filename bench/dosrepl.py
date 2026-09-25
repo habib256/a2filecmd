@@ -80,13 +80,15 @@ def main():
         hd.write_bytes(source)
         im = Image(source)
 
-        def find(folder, name):
-            top = next(e for e in im.entries(2) if e[1:1 + len(folder)] == folder)
-            return next(e for e in im.entries(int.from_bytes(top[17:19], 'little'))
-                        if e[1:1 + len(name)] == name)
+        def find(path):   # DEMO is sorted by kind (tools/stage_demo.py)
+            key = 2
+            for part in path.split('/'):
+                e = next(e for e in im.entries(key) if e[1:1 + (e[0] & 15)].decode() == part)
+                key = int.from_bytes(e[17:19], 'little')
+            return e
 
-        hello = find(b'DEMO', b'HELLO')
-        tiger = find(b'IMGHGR', b'TIGER')
+        hello = find('DEMO/PROGRAMS/HELLO')
+        tiger = find('DEMO/PICTURES/ALBUM/TIGER')
         bas = im.read(hello)
         bin_ = im.read(tiger)
         want_bas = dos_bytes(len(bas).to_bytes(2, 'little'), bas)
@@ -122,13 +124,14 @@ def main():
                 p.stable()
                 s.key(b'\t')
 
-            def enter(folder):
+            def enter(*folders):
                 s.select('..', 0)
                 s.key(b'\r')
                 p.stable()
-                s.select(folder, 0)
-                s.key(b'\r')
-                p.stable()
+                for folder in folders:
+                    s.select(folder, 0)
+                    s.key(b'\r')
+                    p.stable()
 
             def run(name):
                 """`name` sous le curseur a gauche, DOSREPL, puis la question."""
@@ -164,7 +167,11 @@ def main():
 
             s.select('DEMO', 0)
             s.key(b'\r')
-            s.wait(lambda: s.has('HELLO'), 'le dossier DEMO')
+            s.wait(lambda: s.has('PROGRAMS/'), 'le dossier DEMO')
+            p.stable()
+            s.select('PROGRAMS', 0)
+            s.key(b'\r')
+            s.wait(lambda: s.has('HELLO'), 'le dossier DEMO/PROGRAMS')
             p.stable()
             open_dos()
 
@@ -184,7 +191,7 @@ def main():
 
             # 3. Un binaire de 8 Ko : adresse, longueur, et une liste T/S
             #    entierement remplie.
-            enter('IMGHGR')
+            enter('PICTURES', 'ALBUM')
             after = replace('TIGER', want_bin, before['TIGER'])
             s.ok('le type DOS de TIGER est binaire', after['TIGER']['type'] == 4,
                  after['TIGER']['type'])

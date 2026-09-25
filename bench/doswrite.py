@@ -18,9 +18,12 @@ def main():
   original=(BUILD/'A2FILECMD-XL.hdv').read_bytes()
   hd.write_bytes(original)
   im=Image(original);vol=im.header()['name']
-  demo=next(e for e in im.entries(2) if e[1:5]==b'DEMO')
-  entries=im.entries(int.from_bytes(demo[17:19],'little'))
-  hello=next(e for e in entries if e[1:6]==b'HELLO');payload=im.read(hello)
+  def find(path):   # DEMO is sorted by kind (tools/stage_demo.py)
+   key=2
+   for part in path.split('/'):
+    e=next(e for e in im.entries(key) if e[1:1+(e[0]&15)].decode()==part);key=int.from_bytes(e[17:19],'little')
+   return e
+  hello=find('DEMO/PROGRAMS/HELLO');payload=im.read(hello)
   before=make_disk([('KEEP',0x80,b'old text\r'*50)])
   target.write_bytes(before)
   dos_slot=os.environ.get('A2FC_DOS_SLOT','6')
@@ -28,7 +31,9 @@ def main():
    s=Session(p);s.boot()
    guard_start=s.sym['__ONCE_RUN__'];guard_end=s.sym['__HIMEM__']-s.sym['__STACKSIZE__']
    guard=bytes([0xEE])*(guard_end-guard_start);p.poke(guard_start,guard)
-   s.select('DEMO');s.key(b'\r');p.stable();s.select('HELLO')
+   def into(*names):
+    for name in names:s.select(name);s.key(b'\r');p.stable()
+   into('DEMO','PROGRAMS');s.select('HELLO')
    s.key(b'\t');s.key(b'/');p.stable()
    for _ in range(15):
     if 'DOS 3.3 disk' in s.line(41):break
@@ -54,14 +59,14 @@ def main():
    s.key(b'Y');s.wait(lambda:s.has('Copied to DOS 3.3; source kept.'),'verified physical copy',120)
    s.ok('AUX RAM disk storage preserved',aux==p.peek(0x1000,0xB000,'aux'))
    s.key(b'C');s.wait(lambda:s.has('Copy refused:'),'collision refused',60)
-   for name in ('HGR.RLE','README'):
-    s.select(name);s.key(b'C')
+   for path,name in ((('..','PICTURES'),'HGR.RLE'),(('..',),'README')):
+    into(*path);s.select(name);s.key(b'C')
     s.wait(lambda:s.has('Copy '+name+' to DOS 3.3 S'+dos_slot+',D2?'),'copy '+name,60)
     s.key(b'Y');s.wait(lambda:s.has('Copied to DOS 3.3; source kept.'),'verified '+name,120)
-   s.select('..');s.key(b'\r');p.stable();s.select('IMGHGR');s.key(b'\r');p.stable();s.select('TIGER')
+   into('PICTURES','ALBUM');s.select('TIGER')
    s.key(b'C');s.wait(lambda:s.has('Copy TIGER to DOS 3.3 S'+dos_slot+',D2?'),'TIGER confirmation',60)
    s.key(b'Y');s.wait(lambda:s.has('Copied to DOS 3.3; source kept.'),'verified TIGER copy',120)
-   s.select('..');s.key(b'\r');p.stable();s.select('DEMO');s.key(b'\r');p.stable()
+   into('..','..','DOCUMENTS')
    p.eject(1)
    saved=target.read_bytes();target.chmod(0o444);p.insert(1,str(target))
    s.select('SAMPLE');s.key(b'C')
@@ -75,12 +80,11 @@ def main():
   expected=len(payload).to_bytes(2,'little')+payload
   s.ok('Applesoft program and DOS length prefix exact',result['HELLO']['type']==2 and result['HELLO']['data']==expected+bytes((-len(expected))%256))
   for name,kind in (('HGR.RLE',4),('README',0)):
-   e=next(e for e in entries if e[1:1+(e[0]&15)].decode()==name)
+   e=find({'HGR.RLE':'DEMO/PICTURES/HGR.RLE','README':'DEMO/README'}[name])
    expected=im.read(e)
    if kind==4:expected=e[31:33]+len(expected).to_bytes(2,'little')+expected
    s.ok(name+' has exact DOS type, prefix and payload',result[name]['type']==kind and result[name]['data']==expected+bytes((-len(expected))%256))
-  pictures=next(e for e in im.entries(2) if e[1:7]==b'IMGHGR')
-  tiger=next(e for e in im.entries(int.from_bytes(pictures[17:19],'little')) if e[1:6]==b'TIGER')
+  tiger=find('DEMO/PICTURES/ALBUM/TIGER')
   payload=im.read(tiger);expected=tiger[31:33]+len(payload).to_bytes(2,'little')+payload
   s.ok('Screenshot case: TIGER BIN $2000, 8192 bytes exact',len(payload)==8192 and result['TIGER']['data']==expected+bytes((-len(expected))%256))
   s.ok('Source volume preserved',hd.read_bytes()==original)

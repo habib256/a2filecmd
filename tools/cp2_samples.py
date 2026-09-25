@@ -4,8 +4,8 @@
 
 fadden/CiderPress2 keeps samples of most formats it converts in TestData/.
 The ones A2 File Cmd reads are in data/CP2/, in their CiderPress folders and
-with their ProDOS type in the name (NAME#TTAAAA); the XL image carries them
-in DEMO/CIDERPRESS. The rest of the corpus is looked for in
+with their ProDOS type in the name (NAME#TTAAAA); the XL image carries the
+best of them in the DEMO folder of their kind (tools/stage_demo.py). The rest of the corpus is looked for in
 A2FC_CP2_SAMPLES (default ~/.cache/a2fc/cp2): `test-files.po`, the 800K
 ProDOS volume inside TestData/fileconv/test-files.sdk (unpacked with
 nulib2), and other TestData files downloaded as they are, their path with

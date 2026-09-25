@@ -2,8 +2,8 @@
   "version": "0.9.3",
   "date": "2026-09-25",
   "emulator": "POM2 pom2_playtest, disposable copy; no file operation",
-  "image": "A2FILECMD-65C02-enhanced-mouse-XL-0.9.3.2mg",
-  "sha256": "fbd36b385dc0835338b8bd70bd4ca7b461f0771575f6abcb5acd6a688a06a88c",
+  "image": "A2FILECMD-PRODOS-XL-65C02-enhanced-0.9.3.2mg",
+  "sha256": "984ed6fa9fc91881eb79a6f985c80e92c28a0660b4b1a93f2941826bb6330ed6",
   "preset": "iie",
   "size": "560x384, each 80-column scan line doubled"
 }

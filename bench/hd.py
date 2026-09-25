@@ -4,7 +4,8 @@
     make disk && POM2=/chemin/vers/pom2_playtest python3 bench/hd.py
 
 Le .2mg est le volume /A2FILECMD complet : le programme et un dossier DEMO
-avec un exemplaire de chaque chose qu'A2 File Cmd sait ouvrir. POM2 le prend
+avec un exemplaire de chaque chose qu'A2 File Cmd sait ouvrir, range par
+sorte de fichier (tools/stage_demo.py). POM2 le prend
 sans son en-tete de 64 octets, comme disque dur en slot 7, sans disquette :
 c'est lui qui amorce. On verifie les deux panneaux, le compte des blocs, la
 liste de DEMO, puis qu'une page brute s'affiche et qu'un .2MG s'ouvre comme
@@ -18,9 +19,9 @@ from pom2 import VERSION, Pom2, Session, ROOT, DISK, labels
 from run import RET, TAB, ESC, solid_bands
 import urllib.request
 
-DEMO = ['DHGR.RAW', 'DHGR.RLE', 'DOS33.DSK', 'HELLO', 'HGR.RAW', 'HGR.RLE', 'LETTER', 'README',
-        'SAMPLE', 'SAMPLE.BNY', 'SAMPLE.SHK', 'TINY.2MG', 'TINY.PO', 'WELCOME.MB',
-        'DISK800.DC', 'CIDERPRESS/']
+# DEMO sorted by kind (tools/stage_demo.py): no folder of borrowed samples
+DEMO = ['ARCHIVES/', 'DISKS/', 'DOCUMENTS/', 'FONTS.SHAPES/', 'MUSIC/', 'PICTURES/',
+        'PROGRAMS/', 'README']
 
 
 def main():
@@ -48,37 +49,45 @@ def main():
                s.rows()[0][40:70])
             ok('le volume fait 65535 blocs', 'of 65535 blocks free' in s.rows()[20], s.rows()[20][:70])
             names = [r[40:].split(' ')[0] for r in s.rows()[2:20]]
-            ok('DEMO montre un exemplaire de chaque type', all(n in names for n in DEMO),
-               [n for n in DEMO if n not in names])
+            ok('DEMO est range par sorte de fichier, sans dossier CIDERPRESS',
+               sorted(n for n in names if n and n != '..') == DEMO, names)
             names_left = [r[:16].split(' ')[0].rstrip('/') for r in s.rows()[2:20]]
-            ok('IMGHGR est a la racine', 'IMGHGR' in names_left, names_left[:6])
-            s.select('IMGHGR', 0); s.key(RET); s.wait(lambda: s.has(volume + '/IMGHGR'), 'IMGHGR'); p.stable()
-            imgs = [r[:16].split(' ')[0] for r in s.rows()[2:20] if r[:16].strip() and not r.startswith('..')]
+            ok('la racine ne porte plus IMGHGR', 'IMGHGR' not in names_left, names_left[:8])
+            s.key(TAB); s.select('PICTURES', 40); s.key(RET)
+            s.wait(lambda: s.has(volume + '/DEMO/PICTURES'), 'PICTURES'); p.stable()
+            ok('PICTURES porte les mires, le MacPaint et l album',
+               all(s.has(n) for n in ('ALBUM/', 'DHGR.RAW', 'HGR.RLE', 'ESCHERWATER.MAC')), s.rows()[2][40:70])
+            s.select('ALBUM', 40); s.key(RET); s.wait(lambda: s.has('/PICTURES/ALBUM'), 'ALBUM'); p.stable()
+            imgs = [r[40:56].split(' ')[0] for r in s.rows()[2:20] if r[40:56].strip() and not r[40:].startswith('..')]
             ok('neuf pages HGR de POM1, aux noms ProDOS anglais', len(imgs) == 9 and 'TIGER' in imgs and 'VILLAGE' in imgs and 'LIZARD' in imgs, imgs)
-            s.select('TIGER', 0); s.key(RET); s.allow_aux()
+            s.select('TIGER', 40); s.key(RET); s.allow_aux()
             s.wait(lambda: s.value('view', 1) == 1, 'image TIGER', 40); time.sleep(1)
             ok('une page HGR de la collection s affiche', s.value('view', 1) == 1)
             s.key(ESC); s.wait(lambda: s.value('view', 1) == 0, 'retour'); p.stable()
-            s.key(TAB)
+            s.select('..', 40); s.key(RET); s.wait(lambda: s.has('ESCHERWATER'), 'PICTURES'); p.stable()
             s.select('DHGR.RAW', 40); s.key(RET); s.allow_aux()
             s.wait(lambda: s.value('view', 1) == 1, 'image DHGR brute', 40); time.sleep(1)
             ok('la page DHGR brute s affiche', s.value('view', 1) == 1)
             solid, rows, colours = solid_bands(urllib.request.urlopen(p.base + '/screen.ppm').read())
             ok('en bandes unies, quinze couleurs', solid == rows and colours >= 15, (solid, rows, colours))
             s.key(ESC); s.wait(lambda: s.value('view', 1) == 0, 'retour'); p.stable()
+            s.select('..', 40); s.key(RET); s.wait(lambda: s.has('FONTS.SHAPES/'), 'DEMO'); p.stable()
+            s.select('DISKS', 40); s.key(RET); s.wait(lambda: s.has(volume + '/DEMO/DISKS'), 'DISKS'); p.stable()
             s.select('TINY.2MG', 40); s.key(RET)
             s.wait(lambda: s.has('HELLO ') and s.has('INSIDE/'), 'ouvrir le .2MG', 30); p.stable()
             ok('le .2MG s ouvre comme un dossier', s.has('HELLO ') and s.has('INSIDE/'),
                s.rows()[0][40:70])
-            s.key(ESC); s.wait(lambda: s.has(volume + '/DEMO'), 'sortir'); p.stable()
+            s.key(ESC); s.wait(lambda: s.has(volume + '/DEMO/DISKS'), 'sortir'); p.stable()
             s.select('DISK800.DC', 40); s.key(RET)
             s.wait(lambda: s.has('SAMPLE ') and s.has('INSIDE/'), 'ouvrir le DiskCopy', 30); p.stable()
             ok('l image DiskCopy s ouvre comme un dossier, 800K',
                s.has('HELLO ') and s.has('INSIDE/') and 'DISK800.DC' in s.rows()[0], s.rows()[0][40:70])
-            s.key(ESC); s.wait(lambda: s.has(volume + '/DEMO'), 'sortir'); p.stable()
-            s.select('CIDERPRESS', 40); s.key(RET)
-            s.wait(lambda: s.has('/DEMO/CIDERPRESS'), 'CIDERPRESS', 30); p.stable()
-            ok('CIDERPRESS porte ses dossiers d exemples', s.has('DOCS/') and s.has('GRAPHICS/'),
+            s.key(ESC); s.wait(lambda: s.has(volume + '/DEMO/DISKS'), 'sortir'); p.stable()
+            s.select('..', 40); s.key(RET); s.wait(lambda: s.has('FONTS.SHAPES/'), 'DEMO'); p.stable()
+            s.select('DOCUMENTS', 40); s.key(RET)
+            s.wait(lambda: s.has(volume + '/DEMO/DOCUMENTS'), 'DOCUMENTS', 30); p.stable()
+            ok('DOCUMENTS reunit texte, AppleWorks et les exemples de CiderPress II',
+               all(s.has(n) for n in ('SAMPLE ', 'LETTER ', 'PRESIDENTS ', 'MATH.QUIZ ')),
                s.rows()[2][40:70])
 
     passed = sum(1 for c in checks if c)

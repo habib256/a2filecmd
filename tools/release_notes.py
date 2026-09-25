@@ -22,13 +22,13 @@ FILES = """
 
 The English user guide is included as `A2FILECMD-MANUAL-EN-{version}.pdf`.
 
-XL includes all {overlays} overlays, BASIC.SYSTEM, INTBASIC.SYSTEM, DEMO
-and IMGHGR. The 800K edition has the same tools without the demonstration
+XL includes all {overlays} overlays, BASIC.SYSTEM, INTBASIC.SYSTEM and a DEMO
+folder sorted by kind of file. The 800K edition has the same tools without the demonstration
 corpus. The 140K edition is self-contained; its menu lists available tools,
 without asking for the former FILES/MEDIA/DISKTOOLS/DEVTOOLS disks.
-All ProDOS editions need 128 KB and 80 columns. The enhanced XL requires
-both the 65C02 processor and enhanced ROM; if either is absent use a 6502
-edition. Mini is a separate DOS 3.3 program for the 48 KB Apple II+.
+All ProDOS editions need 128 KB and 80 columns. The choice is enhanced or
+not: the enhanced XL is for an enhanced IIe, a //c or a IIgs; every other
+ProDOS image runs on any IIe. Mini is a separate DOS 3.3 program for the 48 KB Apple II+.
 
 Boot an image and press **?** for help. `sha256sum -c SHA256SUMS-{version}.txt`
 checks the five images and manual. ProDOS images carry ProDOS 8 2.4.3.
