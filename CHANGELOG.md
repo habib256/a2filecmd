@@ -5,6 +5,20 @@ downloads and installation.
 
 ## [Unreleased]
 
+### VDrive leaves the printer alone
+- VDrive no longer looks at slot 1: on a //e that is where the printer's
+  Super Serial Card lives, and on a //c it is the printer port. With no
+  serial card in slot 2, a //e whose only SSC sat in slot 1 had its 6551
+  probed, set to 115,200 bps with DTR on, and sent 100 bytes of VDrive
+  envelopes during one short session (volume list, a directory, quit) --
+  garbage for the printer, and its settings lost. VDrive now tries slot 2,
+  then 3 to 7, and never reads or writes slot 1's registers. A VDrive host
+  cabled to a slot-1 card is no longer served: move the card to slot 2.
+- `bench/vdrive_printer.py` plugs a logging printer SSC in slot 1
+  (`pom2_playtest --printer-ssc LOG`) on the //e and the //c and requires no
+  access to it, alone and next to a working VDrive on slot 2;
+  `tools/test_vsdrive.py` checks the same under sim65.
+
 ### DOS 3.3: a hex preview you can read
 - The Mini's hexadecimal preview now shows eight bytes a row, separated by
   spaces, with their characters beside them (high bit ignored, `.` for a

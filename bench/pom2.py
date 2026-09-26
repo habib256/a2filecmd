@@ -69,7 +69,7 @@ class Pom2:
 
     def __init__(self, hdv, floppy=None, port=6600, speed=200000, exe=POM2, mouse=False,
                  preset=None, floppy2=None, ssc=None, uthernet=False, chatmauve=None,
-                 hd2=None,
+                 hd2=None, printer_log=None,
                  boot=6):
         """`hdv` : le disque dur (toujours present, POM2 en veut un).
         `floppy` : la disquette 5,25 a mettre en slot 6 et a amorcer.
@@ -89,7 +89,10 @@ class Pom2:
         elle (`True` = Feline, ou une variante : feline, iic, eve, video7,
         rvbgraph).
         `hd2` : un second disque dur, lecteur 2 de la carte du slot 5 (S5,D2),
-        recopie dans son fichier a l'arret comme le premier."""
+        recopie dans son fichier a l'arret comme le premier.
+        `printer_log` : une SSC imprimante en slot 1 (le port 1 du //c), dont
+        chaque acces aux registres est journalise dans ce fichier
+        (pom2_playtest --printer-ssc)."""
         self.port, self.base = port, 'http://127.0.0.1:%d' % port
         self.hdv, self.floppy = str(hdv), str(floppy) if floppy else None
         self.floppy2 = str(floppy2) if floppy2 else None
@@ -101,6 +104,7 @@ class Pom2:
         self.ssc = ssc
         self.uthernet = uthernet
         self.hd2 = str(hd2) if hd2 else None
+        self.printer_log = str(printer_log) if printer_log else None
 
     # ── cycle de vie ───────────────────────────────────────────────────────
     def start(self):
@@ -120,6 +124,8 @@ class Pom2:
             args += ['--mouse']
         if self.ssc:
             args += ['--ssc', str(self.ssc)]
+        if self.printer_log:
+            args += ['--printer-ssc', self.printer_log]
         if self.uthernet:
             args += ['--uthernet']
         if self.chatmauve:

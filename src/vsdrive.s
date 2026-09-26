@@ -14,7 +14,8 @@
 ;
 ; As in Ammonoid (Colin Leroy-Mira, a2tools/src/lib/vsdrive.s, which this
 ; driver draws on): the driver lives INSIDE the program, not inside ProDOS. At
-; install time we look for a serial card (the Pascal 1.1 signature of its
+; install time we look for a serial card in slot 2, then 3 to 7 -- never
+; slot 1, the printer's (see `slots`) -- (the Pascal 1.1 signature of its
 ; ROM: $Cn05=$38 $Cn07=$18 $Cn0B=$01 $Cn0C=$31, then a 6551 that answers), we
 ; set it to 115 200 baud 8N1, and we take the first slot 1..7 of which neither
 ; drive 1 nor drive 2 appears in DEVLST: its DEVADR entry receives our
@@ -158,10 +159,17 @@ sw_ofs: .byte   0, 1, 16, 17
 id_ofs: .byte   $05, $07, $0B, $0C
 id_val: .byte   $38, $18, $01, $31
 ; The slots in the order we probe them: 2 first -- the modem port of a
-; //c, whose port 1 (printer) carries the same signature and the same
-; 6551; the usual place of a modem on a IIe --, then 1, 3 to 7.
-; (Michel Sitruk, //c, 0.6.7: the VDrive went out on the printer port.)
-slots:  .byte   $C2, $C1, $C3, $C4, $C5, $C6, $C7, 0
+; //c, the usual place of a modem on a IIe --, then 3 to 7. NEVER slot 1:
+; it is the printer's, the //c's port 1 (printer port) and the SSC a //e
+; keeps for its printer, with the same signature and the same 6551. The
+; probe below writes the 6551's command register, and a card taken is
+; reprogrammed (115 200 baud, DTR) and sent an envelope at every block:
+; on a printer that is garbage on paper and its settings lost. Slot 1 is
+; not even read, so a VDrive host on a slot-1 SSC is not served.
+; (Michel Sitruk, //c, 0.6.7: the VDrive went out on the printer port;
+; bench/vdrive_printer.py: a //e with its only SSC in slot 1 got 100 bytes
+; of envelopes and control $10, command $0B.)
+slots:  .byte   $C2, $C3, $C4, $C5, $C6, $C7, 0
 
 ; The thunk, copied to $0300. Its source is in main memory (segment CODE),
 ; not in the language card: the LC image is full to within 7 bytes, and a

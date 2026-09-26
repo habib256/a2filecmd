@@ -202,6 +202,8 @@ step('chatmauve', 'rgb', 'cards', {}, args=('feline', 'video7', 'eve'))
 step('mb4c', 'enh', 'cards', {**PT3_HOST, **FULL}, needs=('host', 'boot', 'full-enh', 'pt3-host'))
 step('mb4c', '6502', 'cards', {**PT3_HOST, 'A2FC_BUILD': 'build-6502'}, needs=('host', 'boot', 'pt3-host'))
 step('vdrive', 'serial', 'cards', {})
+step('vdrive_printer', '6502', 'cards', UNENH)
+step('vdrive_printer', 'enh', 'cards', FULL, needs=('host', 'boot', 'full-enh'))
 
 # -- The Apple II+ edition, DOS 3.3 ------------------------------------------
 # Each builds its own C++ bench against the POM2 sources (--pom2-root).
