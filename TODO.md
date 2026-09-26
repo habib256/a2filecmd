@@ -68,11 +68,15 @@ Chaque étape suppose la précédente fermée. Un défaut trouvé aux étapes
    - [x] MAIN 65C02 : **494 octets libres** (82 avant), 6502 : 885.
      `pan_at(p)` remplace les 90 `panels[p]` à indice variable, que cc65
      multipliait par 98. LC, pile et douze surcouches y gagnent aussi.
-   - [ ] VDrive sonde `$C2` puis `$C1` (`src/vsdrive.s`) : sur un IIe dont
-     la seule SSC est en slot 1, reliée à une imprimante, il la
-     reprogrammerait à 115 200 bauds et y enverrait ses enveloppes (vu par
-     POM2 sur le port imprimante du //c en 0.6.6). Reproduire sous POM2,
-     puis ne jamais prendre une carte réglée en mode imprimante.
+   - [x] VDrive ne lit ni n'écrit plus jamais le slot 1 (IIe et //c).
+     Reproduit avant correction : un IIe dont la seule SSC était en slot 1
+     recevait 100 octets d'enveloppes et un réglage à 115 200 bauds.
+     `bench/vdrive_printer.py` exige zéro accès au slot 1 (8/8, deux CPU),
+     `tools/test_vsdrive.py` aussi sous sim65. Restent : un hôte VDrive
+     câblé en slot 1 n'est plus servi (le manuel dit de passer en slot 2),
+     une imprimante sur le port modem du //c recevrait encore les
+     enveloppes, une SSC imprimante en slots 2-7 est encore sondée (les
+     commutateurs de mode ne sont pas émulés par POM2).
 3. **Retour visuel.**
    - [ ] Vérifier que la progression 0.9.3 couvre les pauses à 1 MHz
      (catalogue, copie, vérification, chargement), puis fermer cette ligne.
