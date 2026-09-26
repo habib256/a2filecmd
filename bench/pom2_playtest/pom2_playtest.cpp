@@ -35,6 +35,15 @@
 // viewer misbehaves only with the card plugged, and the headless bench could
 // not see it. The variant is consumed only when the next word is one of the
 // five keys, so `--chatmauve disk.hdv` still takes the disk.
+// `--printer-ssc LOG`: a Super Serial Card in slot 1 with its printer tap on
+// and no host transport -- the printer a //e keeps in slot 1, or the //c's
+// port 1 (the printer port). Every access to its device-select registers
+// ($C098-$C09F) is appended to LOG as it happens, one line each: `W r v`
+// for a write of v to register r (0-F), `R r v` for a read; slot-ROM reads
+// are not logged (a signature check is harmless). A2 File Cmd's printer
+// bench (bench/vdrive_printer.py) asserts the file stays empty of writes.
+// On the //c preset, without `--ssc`, port 2 (slot 2) gets a plain,
+// transport-less SSC too: a real //c always has both ports.
 // Exit codes: 2 = unknown flag (probed by the benches, before anything
 // else), 3 = no disk / bad port / a card the preset cannot take.
 #include "EmulationController.h"
@@ -55,9 +64,34 @@
 #include "W5100Device.h"
 #include <string>
 #include <csignal>
+#include <cstdio>
+#include <stdexcept>
 #include <iostream>
 
 static volatile std::sig_atomic_t stopped = 0;
+
+// The slot-1 printer SSC of --printer-ssc: the card itself, plus a line per
+// device-select access, flushed at once (a bench may SIGKILL the host).
+class LoggingSsc : public SuperSerialCard {
+public:
+    LoggingSsc(int slot, const std::string& path) : SuperSerialCard(slot), log_(std::fopen(path.c_str(), "w")) {
+        if (!log_) throw std::runtime_error("cannot write " + path);
+    }
+    ~LoggingSsc() override { if (log_) std::fclose(log_); }
+    uint8_t deviceSelectRead(uint8_t low4) override {
+        const uint8_t v = SuperSerialCard::deviceSelectRead(low4);
+        std::fprintf(log_, "R %X %02X\n", low4 & 15, v);
+        std::fflush(log_);
+        return v;
+    }
+    void deviceSelectWrite(uint8_t low4, uint8_t v) override {
+        std::fprintf(log_, "W %X %02X\n", low4 & 15, v);
+        std::fflush(log_);
+        SuperSerialCard::deviceSelectWrite(low4, v);
+    }
+private:
+    std::FILE* log_;
+};
 static void stop(int) { stopped = 1; }
 
 int main(int argc, char** argv) {
@@ -66,7 +100,7 @@ int main(int argc, char** argv) {
         bool mouse = false, uthernet = false, chatMauve = false;
         LeChatMauveCard::Variant lcmVariant = LeChatMauveCard::Variant::Feline;
         bool lcmVariantGiven = false;
-        std::string disk, disk2, floppy, floppy2, preset = "iie";
+        std::string disk, disk2, floppy, floppy2, preset = "iie", printerLog;
         for (int i = 1; i < argc; ++i) {
             std::string a = argv[i];
             if (a == "--preset" && i + 1 < argc) {
@@ -92,6 +126,9 @@ int main(int argc, char** argv) {
             // --ssc PORT : la Super Serial Card en slot 2, pont TCP en mode
             // brut, pour le banc VDrive d'A2 File Cmd (bench/vdrive.py).
             else if (a == "--ssc" && i + 1 < argc) sscPort = std::stoi(argv[++i]);
+            // --printer-ssc LOG : une SSC imprimante en slot 1, chaque acces
+            // a ses registres journalise dans LOG (bench/vdrive_printer.py).
+            else if (a == "--printer-ssc" && i + 1 < argc) printerLog = argv[++i];
             // --uthernet : une Uthernet II (W5100) en slot 3, loopback ouvert,
             // pour la version reseau du banc VDrive d'A2 File Cmd.
             else if (a == "--uthernet") uthernet = true;
@@ -192,6 +229,12 @@ int main(int argc, char** argv) {
             card->setTransport(pom2::makeSuperSerialTcpTransport(*card, 2));
             ssc = card.get();
             mem.slotBus().plug(2, std::move(card));
+        }
+        if (!printerLog.empty()) {
+            auto card = std::make_unique<LoggingSsc>(1, printerLog);
+            card->setPrinterTap(true);
+            mem.slotBus().plug(1, std::move(card));
+            if (iic && !sscPort) mem.slotBus().plug(2, std::make_unique<SuperSerialCard>(2));
         }
         if (uthernet) {
             // No ROM on this card: a driver finds it by probing the W5100's

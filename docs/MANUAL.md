@@ -546,7 +546,13 @@ Verification cannot make physical metadata writes atomic across a power cut.
 ### VDrive: remote volumes
 
 A detected Super Serial Card or //c serial port can expose two remote ProDOS
-volumes at **115,200 bps**, with slot 2 tried first. Use ADTPro's virtual-drive
+volumes at **115,200 bps**. VDrive tries slot 2 (the //c's modem port) first,
+then slots 3 to 7, and **never slot 1**: that is the printer's (a //e's
+printer SSC, the //c's printer port), and VDrive would reprogram it and send
+it its packets. It does not even read that card. A VDrive cable on a slot-1
+card is therefore not served: put the card in slot 2. On a //c, port 2 is
+always taken when present, so keep printers off the modem port while
+A2FC runs. Use ADTPro's virtual-drive
 server, `veserver.py` or `surl-server`. The status line identifies the serial
 interface and assigned drives; browse and copy as with local volumes. The host
 supplies date/time during reads. A disconnected server produces an I/O error;

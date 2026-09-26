@@ -1,7 +1,8 @@
 """Run the real VDrive driver (src/vsdrive.s) under sim65: install over two
 distinct DEVADR drivers, the interrupt handler's CLD, STATUS's block count,
 a 6551 whose transmitter never empties (CTS high) or dies mid-block, a silent
-host, and the destructor giving each drive its own driver back.
+host, the destructor giving each drive its own driver back, and a serial
+card in slot 1 (the printer's) left alone: not taken, its 6551 not written.
 
 sim65 memory is plain RAM: the slot ROM signature and the 6551 registers are
 bytes the test writes. Only the software-reset check of install (DTR must
@@ -132,7 +133,17 @@ static unsigned char io_error(unsigned char cmd){
 }
 int main(void){
  unsigned char* h;
+ unsigned char i;
  PEEK(0xBF00)=0x4C;*(unsigned int*)0xBF01=(unsigned int)mli;
+ /* Slot 1 is the printer's (//e SSC, //c port 1): a serial card there alone
+  * is not VDrive's. Its 6551 registers ($C098-$C09B) must keep every byte:
+  * no probe, no baud rate, no envelope. */
+ PEEK(0xC105)=0x38;PEEK(0xC107)=0x18;PEEK(0xC10B)=0x01;PEEK(0xC10C)=0x31;
+ for(i=0;i<4;++i)PEEK(0xC098+i)=0xA0+i;
+ PEEK(0xBF31)=0;PEEK(0xBF32)=0x60;
+ if(vsdrive_install()!=0)return 20;
+ if(PEEK(0xBF31)!=0||PEEK(0xBF32)!=0x60)return 21;
+ for(i=0;i<4;++i)if(PEEK(0xC098+i)!=0xA0+i)return 22;
  PEEK(0xC205)=0x38;PEEK(0xC207)=0x18;PEEK(0xC20B)=0x01;PEEK(0xC20C)=0x31;
  DEVADR[1]=0x1111;DEVADR[9]=0x2222;      /* slot 1: drive 1, drive 2 */
  PEEK(0xBF31)=0;PEEK(0xBF32)=0x60;
@@ -157,6 +168,7 @@ int main(void){
  if(DEVADR[1]!=0x1111||DEVADR[9]!=0x2222)return 13;
  if(PEEK(0xBF31)!=0||PEEK(0xBF32)!=0x60)return 14;
  if(mli_cmds!=2)return 15;
+ for(i=0;i<4;++i)if(PEEK(0xC098+i)!=0xA0+i)return 23;   /* the printer, untouched */
  return 0;
 }
 '''
