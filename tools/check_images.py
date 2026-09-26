@@ -89,6 +89,12 @@ def check_cpu(cpu):
         title = cpu + (' FLOPPY EDITION' if role == '140K' else ' COMPLETE EDITION')
         assert title.encode('ascii') in program, (path, 'wrong launch screen')
         assert image.read(directory['A2FILE.CODE']) == (build / 'A2FILE.CODE.BIN').read_bytes(), path
+        # The Fantavision player (src/fanta/): 800K and XL, the same bytes.
+        assert ('FANTA.SYSTEM' in directory) == (role != '140K'), (path, 'FANTA.SYSTEM')
+        if role != '140K':
+            assert directory['FANTA.SYSTEM'][16] == 0xFF, (path, 'FANTA.SYSTEM type')
+            assert image.read(directory['FANTA.SYSTEM']) == (build / 'FANTA.SYSTEM.SYS').read_bytes(), \
+                (path, 'stale FANTA.SYSTEM')
         assert image.read(root['PRODOS']) == (ROOT / 'data/PRODOS.SYS').read_bytes(), path
         for runtime in RUNTIMES:
             assert (runtime in root) == (role != '140K'), (path, runtime)

@@ -201,6 +201,16 @@ $(BUILD)/%.PLG: $(SRC)/plugins/%.c $(wildcard $(SRC)/plugins/*.h) $(wildcard $(S
 xplugins: $(XPLG)
 all: xplugins
 
+# The Fantavision player, a separate ProDOS interpreter (src/fanta/): plain
+# 6502 assembly, the same bytes for both editions, staged in A2FILE/ of the
+# 800K and XL disks. Its tests: tools/test_fantavision.py.
+FANTA = $(BUILD)/FANTA.SYSTEM.SYS
+$(FANTA): $(SRC)/fanta/fanta.s $(SRC)/fanta/engine.s $(SRC)/fanta/fanta.cfg | $(BUILD)
+	$(AS) -t apple2 --cpu 6502 -o $(BUILD)/fanta.o $(SRC)/fanta/fanta.s
+	$(AS) -t apple2 --cpu 6502 -o $(BUILD)/fanta_engine.o $(SRC)/fanta/engine.s
+	$(CC65BIN)ld65 -C $(SRC)/fanta/fanta.cfg -m $(BUILD)/fanta.map -o $@ $(BUILD)/fanta.o $(BUILD)/fanta_engine.o
+all: $(FANTA)
+
 # -- Published disks --------------------------------------------------------
 # 140K is self-contained with essential tools; 800K has all tools.
 # XL contains the same complete toolset plus the demo corpus.
@@ -262,19 +272,21 @@ benchpackages: $(CATALOG) $(XPLG)
 	@for role in $(PACKAGE_ROLES); do python3 $(TOOLS)/mkpackage.py $(BUILD) $(BUILD)/legacy/$$role.po --role $$role --cpu $(CPU) || exit; done
 
 $(PO800): STAGE = $(BUILD)/vol800
-$(PO800): $(STAGE_DEPS) $(XPLG) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS | $(DIST)
+$(PO800): $(STAGE_DEPS) $(XPLG) $(FANTA) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS | $(DIST)
 	$(call stage,$(PLUGINS),$(XPLUGINS))
+	cp $(FANTA) $(STAGE)/A2FILE/FANTA.SYSTEM.SYS
 	cp $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS $(STAGE)/
 	cp $(DATA)/RECOVER.TXT $(STAGE)/
 	python3 $(TOOLS)/mkvolume.py $(STAGE) $@ --volume A28006502 --a2fc-layout --boot $(DATA)/prodos_boot.tmpl --blocks 1600
 endif
 
 # XL: the complete edition for the selected CPU.
-$(TWOMG): $(STAGE_DEPS) $(XPLG) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS $(DATA)/README.TXT \
+$(TWOMG): $(STAGE_DEPS) $(XPLG) $(FANTA) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS $(DATA)/README.TXT \
        $(TOOLS)/mkdemo.py $(TOOLS)/stage_demo.py $(TOOLS)/po22mg.py \
        $(TOOLS)/mkshk.py $(TOOLS)/mkbny.py $(TOOLS)/mkdos33.py $(wildcard $(DATA)/IMGHGR/*) \
        $(shell find $(DATA)/CP2 -type f) | $(DIST)
 	$(call stage,$(PLUGINS),$(XPLUGINS))
+	cp $(FANTA) $(STAGE)/A2FILE/FANTA.SYSTEM.SYS
 	cp $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS $(STAGE)/
 	python3 $(TOOLS)/stage_demo.py $(STAGE)/DEMO
 	cp $(DATA)/RECOVER.TXT $(STAGE)/
@@ -428,6 +440,8 @@ test: test-mini
 	python3 $(TOOLS)/test_mdview.py
 	python3 $(TOOLS)/test_diskcmp.py
 	python3 $(TOOLS)/test_six_plugins.py
+	python3 $(TOOLS)/fantavision_ref.py --selftest
+	python3 $(TOOLS)/test_fantavision.py
 
 # The headless POM2 test host the benches drive, built from its source kept
 # here (bench/pom2_playtest/) against the POM2 emulator library (POM2_ROOT,
