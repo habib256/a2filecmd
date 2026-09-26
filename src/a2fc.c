@@ -3967,7 +3967,7 @@ static void progress_bar(const char* name, unsigned long copied, unsigned long s
  * deleted or moved file disappears at once. */
 static void drop_entry(struct Panel* pan, unsigned char i)
 {
-    memmove(&pan->e[i], &pan->e[i + 1], (pan->count - i - 1) * sizeof(struct Entry));
+    memmove(&pan->e[i], &pan->e[i + 1], (unsigned char)(pan->count - i - 1) * sizeof(struct Entry));
     if (--pan->count && pan->cursor >= pan->count) pan->cursor = pan->count - 1;
 }
 
@@ -5005,7 +5005,7 @@ static void copy_or_move(unsigned char move)
         progress_total += sub;
     }
     for (i = 0; i < n; ++i) {
-        const struct Entry* e = &pan->e[picked[i] - removed];
+        const struct Entry* e = &pan->e[(unsigned char)(picked[i] - removed)];
         unsigned int skipped_before = progress_skipped;
         if (is_up(e)) { ++done; continue; }
         if (abort_key() || !copy_one(e)) break;
@@ -5080,7 +5080,7 @@ static void delete_targets(void)
     progress_abort = 0;
     memset(pan->tags, 0, sizeof pan->tags);            /* the tags are in picked: the entries are about to move */
     for (i = 0; i < n; ++i) {
-        e = &pan->e[picked[i] - removed];
+        e = &pan->e[(unsigned char)(picked[i] - removed)];
         if (is_up(e)) continue;
         progress_bar(e->name, progress_done, progress_total);
         if (abort_key()) break;
@@ -5439,7 +5439,8 @@ static void move_cursor(int delta)
      * an UNSIGNED comparison: a negative target passed for one beyond the
      * end, and Up or Left near the top of any window but the last loaded
      * the NEXT window. Once target is known non-negative, both readings
-     * agree (tools/test_move_cursor.py; tools/measure_paging.py pages back
+     * agree, and the cast below says so to both compilers
+     * (tools/test_move_cursor.py; tools/measure_paging.py pages back
      * through every window and reports a forward jump). */
     if (target < 0) {
         if (pan->first) {
@@ -5452,7 +5453,7 @@ static void move_cursor(int delta)
         }
         target = 0;
     }
-    if (target >= pan->count) {
+    if ((unsigned int)target >= pan->count) {
         if (pan->more) {
             pan->first += WINDOW;
             pan->cursor = pan->top = 0;

@@ -98,7 +98,7 @@ static unsigned char launch_check(unsigned int* addr, unsigned char interpreter,
     }
     if (fseek(f, 0, SEEK_END)) bad = 1;
     size = ftell(f);
-    if (size <= 0 || *addr < 0x0800 || *addr >= 0xBB00 || size > (unsigned int)(0xBB00 - *addr) ||
+    if (size <= 0 || *addr < 0x0800 || *addr >= 0xBB00 || (unsigned long)size > 0xBB00 - *addr ||
         (interpreter && size < 53)) bad = 1;
     if (fclose(f)) bad = 1;
     if (bad) message(run_bad);
@@ -125,7 +125,7 @@ static void run_selected(const struct Entry* e)
     }
     if (!launch_check(&addr, bas, bas ? 0xFF : e->type)) return;
     addr_len = strlen(cfg_path);           /* "/VOL/.../A2FILE/A2FILE.CFG": 18 past the directory */
-    if (addr_len > 18 && addr_len - 18 <= 40) {
+    if (addr_len > 18 && addr_len <= 18 + 40) {
         memcpy(other_full, cfg_path, addr_len - 18);
         other_full[addr_len - 18] = 0;
         sprintf(question, run_back, e->name, other_full);

@@ -76,6 +76,7 @@ static unsigned long hex_number(unsigned char digits)
 {
     unsigned long v=0;
     unsigned char i,c;
+    /* sign-ok: the prompt accepts exactly `digits` hex digits, c-'0' and c-'A'+10 are 0..15 */
     for(i=0;i<digits;++i) { c=a.input[i];v=(v<<4)|(c<='9' ? c-'0' : c-'A'+10); }
     return v;
 }

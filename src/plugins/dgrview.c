@@ -212,8 +212,8 @@ static unsigned char pixmap(void)
     h = (unsigned char)(len / w);
     wide = 1;
     clear();
-    x0 = (WIDE - w) >> 1;
-    y0 = (TALL - h) >> 1;
+    x0 = (unsigned char)(WIDE - w) >> 1;    /* w <= WIDE and h <= TALL: checked above */
+    y0 = (unsigned char)(TALL - h) >> 1;
     for (y = 0; y < h; ++y)
         for (x = 0; x < w; ++x) {
             b = STAGE[i++];
