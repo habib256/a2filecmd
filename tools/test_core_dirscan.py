@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from test_file_safety import SOURCE, section
+from test_dir_paging import DIR_COUNT_BLOCK_C   # the host twin of the assembly
 
 HARNESS = r'''
 #include <stdio.h>
@@ -34,7 +35,7 @@ static unsigned char img_read_block(unsigned int b,unsigned char* buf) {
  if(valid_chain){buf[0]=b-1;buf[2]=b==3?4:0;}else{buf[0]=2;buf[2]=3;}
  return 1;
 }
-''' + section('static unsigned char dir_open(const char* path)\n{', '/* ---------------------------------------------------------------------- */\n/* Display') + section('static unsigned char list_dir(const char* path,', '/* Appends "/name"') + r'''
+''' + DIR_COUNT_BLOCK_C + section('static unsigned char dir_open(const char* path)\n{', '/* ---------------------------------------------------------------------- */\n/* Display') + section('static unsigned char list_dir(const char* path,', '/* Appends "/name"') + r'''
 int main(int argc,char**argv) {
     unsigned char n=0,ok;fail_close=argc>2;if(argc>2 && !strcmp(argv[2],"stack-low"))tree_room=0;ok=list_dir(argv[1],0,&n);
     printf("%u %u %u\n",ok,n,dir_error);return 0;

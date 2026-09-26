@@ -368,7 +368,12 @@ BATCH entry point, including a source in the right panel.
 `media.py` checks same-format Left/Right navigation, boundaries, marks, PT3
 credits and seven specialized image viewers. `large_nav.py` checks more than
 300 mixed entries, nested parent returns, both panels and music across windows.
-Both use disposable volumes and `POM2=/tmp/a2fc-pt3-trace`.
+Both use disposable volumes and `POM2=/tmp/a2fc-pt3-trace`. `paging_swap.py`
+reads whole windows from A2FC's entry table and compares them with the
+directory read back from the images: across a swap between two floppies
+holding the same `/FLOP/BIG`, and after the other panel deleted an entry of
+window 0 and copied a file into its hole (same file count, another order).
+`tools/measure_paging.py` gives the cycles of each page on the HDV card.
 
 `catalog_safety.py` rejects cyclic ProDOS/DOS catalogs and invalid DOS sectors,
 then compares every byte of its disposable HDV and AUX. `catalog_overlay.py`

@@ -242,8 +242,9 @@ static void volume_space(struct Panel* pan)
 static int dir_fd = -1;
 static unsigned char dir_index, dir_per_block, dir_entry_len, dir_error;
 static unsigned int dir_block_key;
-static unsigned int dir_skip_count; /* validated entries omitted by panel paging */
+static unsigned int dir_skip_count; /* active entries omitted by panel paging */
 static struct DirEntry dir_entry;
+unsigned char __fastcall__ dir_count_block(const unsigned char* entries);
 
 /* ---------------------------------------------------------------------- */
 /* A disk image read as a directory (IMGFS)                               */
@@ -418,6 +419,18 @@ static unsigned char dir_next(void)
         if (dir_index >= dir_per_block) {
             if (!dir_block_next()) return 0;
             dir_index = 0;
+            /* A block wholly before the window (it holds 13 entries at
+             * most) is only counted: its active entries, each with a name
+             * length, and no name validated or decoded (dir_count_block,
+             * a2fc_mli.s). The count comes from the block just read, never
+             * from an earlier reading: nothing to go stale when the disk or
+             * the directory changes. A read error is still an error. */
+            while (dir_skip_count >= 13) {
+                i = dir_count_block(copy_buf + 4);
+                if (i > 13) { dir_error = 1; return 0; }
+                dir_skip_count -= i;
+                if (!dir_block_next()) return 0;
+            }
         }
         e = copy_buf + 4 + dir_index * dir_entry_len;
         ++dir_index;
@@ -431,8 +444,9 @@ static unsigned char dir_next(void)
             dir_entry.name[i] = e[i + 1];
         }
         if (!len) { dir_error = 1; return 0; }
-        /* Skipped pages still validate every name and every block read.
-         * Only decoding metadata for invisible entries is omitted. */
+        /* The last few skipped entries (those sharing a block with the
+         * window) are validated like the shown ones; only decoding their
+         * metadata is omitted. Whole blocks before are counted above. */
         if (dir_skip_count) { --dir_skip_count; continue; }
         dir_entry.name[len] = 0;
         dir_entry.type = e[0x10];
@@ -5420,23 +5434,34 @@ static void move_cursor(int delta)
     int target;
     if (!pan->count) return;
     target = (int)pan->cursor + delta;
-    if (target >= pan->count && pan->more) {
-        pan->first += WINDOW;
-        pan->cursor = pan->top = 0;
-        read_panel(active);
-        show_active();
-        return;
+    /* The sign first. cc65 2.19 (the 65C02 build) compiles
+     * `target >= pan->count`, an int against a promoted unsigned char, as
+     * an UNSIGNED comparison: a negative target passed for one beyond the
+     * end, and Up or Left near the top of any window but the last loaded
+     * the NEXT window. Once target is known non-negative, both readings
+     * agree (tools/test_move_cursor.py; tools/measure_paging.py pages back
+     * through every window and reports a forward jump). */
+    if (target < 0) {
+        if (pan->first) {
+            pan->first -= WINDOW;
+            pan->cursor = pan->top = 0;
+            read_panel(active);
+            set_cursor(pan, pan->count - 1);
+            show_active();
+            return;
+        }
+        target = 0;
     }
-    if (target < 0 && pan->first) {
-        pan->first -= WINDOW;
-        pan->cursor = pan->top = 0;
-        read_panel(active);
-        set_cursor(pan, pan->count - 1);
-        show_active();
-        return;
+    if (target >= pan->count) {
+        if (pan->more) {
+            pan->first += WINDOW;
+            pan->cursor = pan->top = 0;
+            read_panel(active);
+            show_active();
+            return;
+        }
+        target = pan->count - 1;
     }
-    if (target < 0) target = 0;
-    if (target >= pan->count) target = pan->count - 1;
     land((unsigned char)target);
 }
 

@@ -1,5 +1,35 @@
 # Consolidation : budgets mémoire
 
+## Préparation 1.0 : les grands catalogues comptés, pas indexés
+
+Réserves au lien après `rm -rf build build-6502`, 65C02/6502 : MAIN
+**413/805** (494/885 avant), carte langage 77/68, LOWRAM 82/107 et NAV
+142/208 inchangées, écart avant la pile 441/1022. L'objectif de 256 octets
+MAIN sur 65C02 reste tenu, avec 157 octets de marge.
+
+Ce qui coûte 81/80 octets : `dir_count_block` (a2fc_mli.s, une quarantaine
+d'octets) compte les entrées actives d'un bloc de répertoire entièrement
+situé avant la fenêtre ; la boucle qui l'appelle dans `dir_next` ; et
+`move_cursor` réordonné (le signe testé d'abord : cc65 2.19 compilait
+`target >= pan->count` comme une comparaison non signée, et Haut ou Gauche
+près du haut de toute fenêtre sauf la dernière chargeait la suivante sur
+65C02). Aucune BSS : rien n'est retenu d'une page à l'autre.
+
+L'index de points de reprise demandé par la piste 4 a été prototypé et
+mesuré, puis écarté. En C, il coûtait 658 octets MAIN en 6502 ; réécrit en
+assembleur (table de 4 fenêtres par panneau, somme du bloc d'en-tête et du
+bloc repris, SET_MARK et READ directs), encore 488 octets en 65C02, soit
+**6 octets** libres : sous l'objectif de 256, et 56 octets de LOWRAM en plus.
+Et il ne supprimait pas la lecture : SET_MARK sur un fichier répertoire fait
+parcourir la chaîne des blocs à ProDOS (environ 6 500 cycles par bloc sur la
+carte HDV de POM2), si bien qu'une fenêtre sautée coûtait encore ~70 000
+cycles (prototype C mesuré en 6502) contre ~247 000 avec le comptage et
+~431 000 avant. Le comptage garde un peu plus de la moitié du gain du
+prototype sur la dernière page d'un catalogue de 700 ou 1 500 entrées, sans
+aucun état à invalider après un changement de disque ou une écriture. Les
+chiffres sont dans
+[les mesures](PERFORMANCE-0.9.2.md#pagination-des-grands-catalogues-10).
+
 ## Préparation 1.0 : 412 octets rendus par `pan_at`
 
 L'objectif MAIN de 256 octets sur 65C02 est atteint. Réserves au lien

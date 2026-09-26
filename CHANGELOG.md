@@ -5,6 +5,37 @@ downloads and installation.
 
 ## [Unreleased]
 
+### Large directories: faster pages, and Up no longer jumps forward
+- A page of a directory larger than a window (139 entries) no longer
+  validates every name before it: the blocks wholly before the window are
+  only counted (their active entries, each with a name length) by a small
+  assembly routine, straight from the block just read. Nothing is kept from
+  one page to the next, so a page after a disk swap or after the directory
+  changed shows exactly what the disk now holds. A read error while counting
+  is still an error, never the end of the directory. The entries sharing a
+  block with the window, and all the shown ones, are validated as before.
+- Measured on POM2's HDV card (`tools/measure_paging.py`): a skipped window
+  costs about 247,000 cycles instead of 431,000 (6502) or 485,000 (65C02);
+  the last page of 1,500 entries takes 4.0 s instead of 5.8 s (6502) or
+  6.4 s (65C02) at 1 MHz, the last of 700 entries 1.9 s instead of 2.8/3.0 s.
+  A block index was prototyped and dropped: 488 resident bytes (6 left on
+  the 65C02), and ProDOS still walks the directory's chain on SET_MARK.
+- Fix, 65C02 edition: Up or Left less than a page from the top of a window
+  that has another after it loaded the NEXT window. cc65 2.19 compiled
+  `target >= pan->count` (an int against an unsigned char) as an unsigned
+  comparison; `move_cursor` now tests the sign first.
+- 81 bytes (80 on the 6502): 413 bytes free in the 65C02 resident, 805 on
+  the 6502.
+- Tests: `tools/test_dir_paging.py` runs the real `dir_open`/`dir_next` and
+  the real assembly under sim65 with each edition's compiler, against the
+  list of active entries and a step-by-step model (deleted entries, sizes
+  up to 1,500, nameless entries, bad names, truncated files, early chain
+  ends, a directory changed between two pages, fuzz);
+  `tools/test_move_cursor.py` pages both ways with both compilers;
+  `bench/paging_swap.py` swaps two floppies holding the same `/FLOP/BIG`
+  between pages, deletes and creates in a big directory from the other
+  panel, and compares whole windows with the images read back.
+
 ### DOS 3.3: a hex preview you can read
 - The Mini's hexadecimal preview now shows eight bytes a row, separated by
   spaces, with their characters beside them (high bit ignored, `.` for a
