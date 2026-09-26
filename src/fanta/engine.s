@@ -11,6 +11,8 @@
 ;
 ; Interface (all variables in BSS, the routines preserve nothing):
 ;   fv_movie, fv_len  the movie's address and length, set by the caller
+;   fv_count   nonzero: count each frame's work, for fv_timing (the
+;              original speed); the picture is the same either way
 ;   fv_check   A = 0 if the movie is accepted, else a reason code 1-6
 ;   fv_begin   builds the background and copies it to both pages
 ;   fv_first   draws key frame 0 on page 1 (fv_shown = $20)
@@ -28,7 +30,7 @@
 
         .macpack longbranch
         .export fv_check, fv_begin, fv_first, fv_next, fv_timing
-        .export fv_movie, fv_len, fv_shown, fv_done, fv_frames
+        .export fv_movie, fv_len, fv_shown, fv_done, fv_frames, fv_count
         .export fv_counts, fv_orig, fv_own, fv_wait
 
 PAGE1   = $20
@@ -40,17 +42,17 @@ MAXPTS  = 32
 ; (tools/test_fantavision.py --calibrate: least squares on 1,000 frames,
 ; relative error, no negative cost). The reference carries the original's.
 ORIG_BASE  = 6300
-OWN_BASE    = 10005      ; per frame, fv_timing included
-OWN_SPANS   = 185       ; cycles per unit of each counter
-OWN_BYTES   = 49
-OWN_EROWS   = 321
+OWN_BASE    = 10410      ; per frame, fv_timing included
+OWN_SPANS   = 205       ; cycles per unit of each counter
+OWN_BYTES   = 41
+OWN_EROWS   = 326
 OWN_EBYTES  = 12
-OWN_EDGES   = 105
-OWN_IPOINTS = 208
-OWN_OBJECTS = 1746
-OWN_LROWS   = 64
-OWN_FROWS   = 103
-OWN_ASTEP   = 161
+OWN_EDGES   = 109
+OWN_IPOINTS = 212
+OWN_OBJECTS = 1683
+OWN_LROWS   = 63
+OWN_FROWS   = 0
+OWN_ASTEP   = 170
 
 ; The per-frame counters, 24 bits each (fv_counts + offset).
 C_SPANS   = 0           ; row segments drawn on the page built
@@ -132,6 +134,18 @@ t0:     .res 1
 t1:     .res 1
 t2:     .res 1
 t3:     .res 1
+fstop:  .res 1          ; fill, two edges: the row to stop at
+frow:   .res 1          ;                  the row started from
+fla:    .res 1          ;                  edge a: fraction, crossing,
+xca:    .res 1          ;                  slope, sign
+sla:    .res 1
+sha:    .res 1
+sga:    .res 1
+flb:    .res 1          ;                  edge b
+xcb:    .res 1
+slb:    .res 1
+shb:    .res 1
+sgb:    .res 1
 osp:    .res 2          ; spans and bytes of the object being drawn
 oby:    .res 2
 erw:    .res 2          ; rows and bytes erased this frame
@@ -139,6 +153,7 @@ eby:    .res 2
 
         .bss
 fv_movie: .res 2
+fv_count: .res 1        ; nonzero: count the work (original speed)
 fv_len:   .res 2
 fv_shown: .res 1
 fv_done:  .res 1
@@ -932,11 +947,12 @@ build:  lda     fv_shown
         sta     oby+1
         lda     bpage
         sta     pagehi
-        lda     #1                      ; a normal object leaves extents
-        ldx     oanim
+        lda     fv_count                ; counts at the original speed only;
+        ldx     oanim                   ; a normal object leaves extents
         bne     :+
         jsr     rows
-        lda     #$81
+        lda     fv_count
+        ora     #$80
 :       sta     counting
         jsr     drawobj
         lda     #0
@@ -1220,6 +1236,8 @@ erase:  lda     #0
 @dst:   sta     $FFFF,y
         dey
         bpl     @src
+        lda     fv_count                ; (counted at the original speed)
+        beq     @next
         inc     erw
         bne     :+
         inc     erw+1
@@ -1531,8 +1549,10 @@ seg:    lda     gx0
 @row:   lda     gy
         cmp     cbot
         beq     :+
-        bcs     @done                   ; below the window: nothing more
-:       inc     fv_counts+O_LROWS
+        jcs     @done                   ; below the window: nothing more
+:       lda     fv_count                ; (counted at the original speed)
+        beq     :+
+        inc     fv_counts+O_LROWS
         bne     :+
         inc     fv_counts+O_LROWS+1
         bne     :+
@@ -1914,7 +1934,10 @@ fill:   ldx     qm                      ; the extent: outside the window,
         beq     :+
         jcs     @done
 :       cmp     ct
-        bcc     @step
+        jcc     @step
+        lda     nact
+        cmp     #2
+        jeq     @two
         ldx     #1                      ; act sorted by crossing: it was on
 @is:    cpx     nact                    ; the row before, so this is quick
         bcs     @isd
@@ -1955,13 +1978,15 @@ fill:   ldx     qm                      ; the extent: outside the window,
         iny
         iny
         bne     @pr                     ; (always)
-@step:  inc     fv_counts+O_FROWS       ; next row: sums and crossings
+@step:  lda     fv_count                ; next row: sums and crossings
+        beq     :++
+        inc     fv_counts+O_FROWS
         bne     :+
         inc     fv_counts+O_FROWS+1
 :       lda     nact
         ldx     #O_ASTEP
         jsr     cadd
-        ldy     nact
+:       ldy     nact
         dey
 :       ldx     act,y
         clc
@@ -1978,6 +2003,115 @@ fill:   ldx     qm                      ; the extent: outside the window,
 @inc:   inc     gy
         jmp     @row
 @done:  rts
+
+; Two active edges (every convex shape): row after row with the two edges
+; in the zero page, up to the next row where an edge ends or starts, or the
+; window's bottom.
+@two:   lda     nend
+        sta     fstop
+        ldy     nxt
+        cpy     ne
+        beq     :+
+        ldx     ord,y
+        lda     eya,x
+        cmp     fstop
+        bcs     :+
+        sta     fstop
+:       ldx     cbot
+        inx
+        cpx     fstop
+        bcs     :+
+        stx     fstop
+:       lda     gy
+        sta     frow
+        ldx     act
+        lda     eal,x
+        sta     fla
+        lda     exc,x
+        sta     xca
+        lda     esl,x
+        sta     sla
+        lda     esh,x
+        sta     sha
+        lda     esg,x
+        sta     sga
+        ldx     act+1
+        lda     eal,x
+        sta     flb
+        lda     exc,x
+        sta     xcb
+        lda     esl,x
+        sta     slb
+        lda     esh,x
+        sta     shb
+        lda     esg,x
+        sta     sgb
+@tr:    ldy     gy
+        jsr     srow
+        lda     xca
+        eor     sga
+        sta     t3
+        lda     xcb
+        eor     sgb
+        cmp     t3
+        bcs     :+
+        tax                             ; b left of a
+        ldy     t3
+        jmp     :++
+:       tay
+        ldx     t3
+:       jsr     sx
+        clc
+        lda     fla
+        adc     sla
+        sta     fla
+        lda     xca
+        adc     sha
+        sta     xca
+        clc
+        lda     flb
+        adc     slb
+        sta     flb
+        lda     xcb
+        adc     shb
+        sta     xcb
+        inc     gy
+        lda     gy
+        cmp     fstop
+        bne     @tr
+        ldx     act                     ; back into the edge list
+        lda     fla
+        sta     eal,x
+        lda     xca
+        sta     exc,x
+        eor     esg,x
+        sta     xs
+        ldx     act+1
+        lda     flb
+        sta     eal,x
+        lda     xcb
+        sta     exc,x
+        eor     esg,x
+        sta     xs+1
+        lda     fv_count
+        beq     :+
+        lda     gy                      ; rows and edge steps, counted
+        sec
+        sbc     frow
+        pha
+        ldx     #O_FROWS
+        jsr     cadd
+        pla
+        asl
+        php
+        ldx     #O_ASTEP
+        jsr     cadd
+        plp
+        bcc     :+
+        inc     fv_counts+O_ASTEP+1
+        bne     :+
+        inc     fv_counts+O_ASTEP+2
+:       jmp     @row
 
 ; -- spans ---------------------------------------------------------------------------
 ; The object's colour byte A: patterns for even rows (high nibble) and odd
@@ -2064,7 +2198,7 @@ sx:     cpx     cl
         and     mr
         sta     msk
         PUT
-        lda     counting
+        ldx     counting                ; 0, 1 count, $80 extents, $81 both
         jne     @one
 @out:   rts
 @multi: sta     msk
@@ -2112,21 +2246,27 @@ sx:     cpx     cl
 @right: lda     mr
         sta     msk
         PUT
-        lda     counting
+        ldx     counting
         beq     @out
+        cpx     #$80
+        beq     @track
         lda     ccb                     ; bytes beyond the first: ccb - scol
         sec                             ; (build adds one a span)
         sbc     scol
         clc
         adc     oby
         sta     oby
-        bcc     @one
+        bcc     @inc
         inc     oby+1
-@one:   inc     osp
+        bcs     @inc                    ; (always)
+@one:   cpx     #$80
+        beq     @track
+@inc:   inc     osp
         bne     :+
         inc     osp+1
-:       bit     counting
+:       txa
         bpl     sxret
+@track:
         ldy     crow                    ; the row's extent (the addresses
         lda     scol                    ; of the page's arrays are written
 tmin1:  cmp     emin1,y                 ; in by build)

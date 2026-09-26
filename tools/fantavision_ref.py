@@ -526,6 +526,39 @@ def demo_movie(kind, speed=3, seed=0, n=8, frames=3, anim=0, mode=None, big=Fals
     return out + b'\x00' + b'\x00' * max(0, MIN_SIZE - len(out) - 1)
 
 
+def shaped_movie(seed, objects=4, frames=4, speed=3):
+    """Closer to what people draw: simple (star-shaped) polygons, polylines
+    and dot groups that move and turn between keys, normal animation, the
+    usual window 5-250 x 12-159. For the timings."""
+    import math
+    rng = random.Random(seed)
+    out = bytes(header(rng, speed=speed, count=1, clip=(5, 250, 12, 159), bg=rng.choice([0x00, 0x11, 0x55])))
+    shapes = []
+    for o in range(objects):
+        kind = rng.choice([0, 1, 1, 2, 2, 2])
+        n = rng.randrange(4, 13) if kind else rng.randrange(3, 9)
+        mode = {0: rng.randrange(1, 5), 1: rng.choice([10, 11, 2]), 2: rng.choice([0, 1, 2])}[kind]
+        shapes.append((kind, mode, rng.randrange(256), n, rng.randrange(20, 60),
+                       rng.randrange(40, 216), rng.randrange(40, 140), rng.random() * 6.28))
+    for f in range(frames):
+        frame = b''
+        for kind, mode, colour, n, r, cx, cy, a0 in shapes:
+            cx2 = min(230, max(25, cx + int(30 * math.cos(f + a0))))
+            cy2 = min(140, max(30, cy + int(20 * math.sin(f * 1.3 + a0))))
+            turn = a0 + f * 0.4
+            xs, ys = [], []
+            for i in range(n):
+                rr = r * (0.6 + 0.4 * ((i * 7 + seed) % 5) / 4)
+                t = turn + 6.2832 * i / n
+                xs.append(min(255, max(0, int(cx2 + rr * math.cos(t)))))
+                ys.append(min(191, max(0, int(cy2 + rr * 0.8 * math.sin(t)))))
+            frame += record(kind, mode, colour, 0, xs, ys)
+        frame += b'\x01' * (8 - objects)
+        out += frame
+    out += b'\x00'
+    return out + b'\x00' * max(0, MIN_SIZE - len(out))
+
+
 # -- self test ----------------------------------------------------------------
 
 def visible(page):
@@ -576,6 +609,8 @@ def selftest():
     m = synthetic(3, frames=3, speed=2, count=2)
     n = sum(1 for _ in Player(m).play())
     assert n == 1 + (2 * len(parse(m)) - 1) * 2, n
+    for seed in range(4):
+        assert check(shaped_movie(seed)) is None
     # Many random movies render without leaving the buffers.
     for seed in range(40):
         mv = synthetic(seed)

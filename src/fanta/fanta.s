@@ -23,7 +23,7 @@
 ; Plain 6502: the same file serves both editions.
 
         .import fv_check, fv_begin, fv_first, fv_next, fv_timing
-        .import fv_movie, fv_len, fv_shown, fv_wait
+        .import fv_movie, fv_len, fv_shown, fv_wait, fv_count
         .import __CODE_LOAD__, __CODE_RUN__, __CODE_SIZE__, __RODATA_SIZE__
         .import __BSS_RUN__, __BSS_SIZE__
         .macpack longbranch
@@ -289,6 +289,7 @@ key:    and     #$7F
         lda     mode
         eor     #1
         sta     mode
+        sta     fv_count        ; the engine counts at the original speed
         pla
         rts
 :       cmp     #'0'

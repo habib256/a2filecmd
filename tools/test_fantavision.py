@@ -48,11 +48,12 @@ OWN_BASE, OWN = engine_constants()
 GLUE = r'''
         .import fv_check, fv_begin, fv_first, fv_next, fv_timing
         .import fv_movie, fv_len, fv_shown, fv_done, fv_frames
-        .import fv_counts, fv_orig, fv_own, fv_wait
+        .import fv_counts, fv_orig, fv_own, fv_wait, fv_count
         .export _fv_check, _fv_begin, _fv_first, _fv_next, _fv_timing
         .export _fv_movie := fv_movie, _fv_len := fv_len, _fv_shown := fv_shown
         .export _fv_done := fv_done, _fv_frames := fv_frames, _fv_counts := fv_counts
         .export _fv_orig := fv_orig, _fv_own := fv_own, _fv_wait := fv_wait
+        .export _fv_count := fv_count
 _fv_check:
         jsr     fv_check
         ldx     #0
@@ -77,6 +78,7 @@ extern unsigned int fv_len;
 extern unsigned char fv_shown, fv_done, fv_frames;
 extern unsigned char fv_counts[45];
 extern unsigned long fv_orig, fv_own, fv_wait;
+extern unsigned char fv_count;
 unsigned char fv_check(void);
 void fv_begin(void);
 void fv_first(void);
@@ -98,6 +100,7 @@ int main(int, char** argv)
     int fd, n;
     unsigned limit = atoi(argv[1]), f;
     unsigned char r;
+    fv_count = argv[2][0] == '1';           /* original speed: counts */
     memset((void*)0x0200, 0x5A, 0x1E00);
     memset((void*)0x2000, 0xEE, 0x6000);
     fd = open("movie.bin", O_RDONLY);
@@ -165,10 +168,11 @@ class Sim:
                        check=True, cwd=workdir, env=env)
         self.sim = str(HEAD / 'bin/sim65')
 
-    def run(self, movie, limit=20):
+    def run(self, movie, limit=20, count=True):
         (self.dir / 'movie.bin').write_bytes(movie)
         # -x: a hang shows as a failure, not as a stuck test
-        p = subprocess.run([self.sim, '-x', '1000000000', str(self.exe), str(limit)],
+        p = subprocess.run([self.sim, '-x', '1000000000', str(self.exe), str(limit),
+                            '1' if count else '0'],
                            cwd=self.dir, capture_output=True, timeout=900)
         if p.returncode != 0:
             raise AssertionError('sim65 exit %d: %s' % (p.returncode, p.stderr[-300:]))
@@ -223,19 +227,22 @@ class Fantavision(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def compare(self, cpu, movie, limit=16, label=''):
-        res = self.sims[cpu].run(movie, limit)
+    def compare(self, cpu, movie, limit=16, label='', count=True):
+        res = self.sims[cpu].run(movie, limit, count)
         self.assertEqual(res['code'], 0, label)
         player, frames = ref_frames(movie, limit)
         self.assertEqual(len(res['frames']), len(frames), label)
         for i, ((shown, c, _, _, page), (rshown, rpage, rc)) in enumerate(zip(res['frames'], frames)):
             where = '%s frame %d' % (label, i)
             self.assertEqual(shown, 0x20 if rshown == 1 else 0x40, where)
-            for k in COUNTERS + ['orig']:
+            for k in (COUNTERS + ['orig']) if count else ():
                 self.assertEqual(c[k], rc[k], '%s: %s' % (where, k))
-            self.assertEqual(c['own'], OWN_BASE + sum(OWN[k] * c['own_' + k] for k in OWN_COUNTERS),
-                             where + ': own estimate')
-            self.assertEqual(c['wait'], max(0, c['orig'] - c['own']), where + ': wait')
+            if not count:
+                pass
+            else:
+                self.assertEqual(c['own'], OWN_BASE + sum(OWN[k] * c['own_' + k] for k in OWN_COUNTERS),
+                                 where + ': own estimate')
+                self.assertEqual(c['wait'], max(0, c['orig'] - c['own']), where + ': wait')
             if page != rpage:
                 diff = [a for a in range(0x2000) if page[a] != rpage[a]]
                 self.fail('%s: %d bytes differ, first at $%04X: %02X, ref %02X' %
@@ -251,7 +258,18 @@ class Fantavision(unittest.TestCase):
         for cpu, seeds in (('6502', range(80)), ('65c02', range(0, 80, 4))):
             for seed in seeds:
                 self.compare(cpu, ref.synthetic(seed), 14, '%s seed %d' % (cpu, seed))
+        for seed in range(6):
+            self.compare('6502', ref.shaped_movie(seed), 14, 'shaped %d' % seed)
         print('PASS fantavision: synthetic movies match the reference (80 on 6502, 20 on 65C02)')
+
+    def test_accelerated_same_picture(self):
+        """Without counting (the accelerated speed) the pages are the same."""
+        for seed in range(0, 80, 5):
+            self.compare('6502', ref.synthetic(seed), 14, 'uncounted seed %d' % seed, count=False)
+        for kind in range(3):
+            self.compare('65c02', ref.demo_movie(kind, big=True, n=20), 12, 'uncounted kind %d' % kind,
+                         count=False)
+        print('PASS fantavision: the accelerated speed (no counting) draws the same frames')
 
     def test_kinds(self):
         for cpu in ('6502', '65c02'):
@@ -387,6 +405,7 @@ class Fantavision(unittest.TestCase):
 def measure_set():
     """(label, movie) of the synthetic set used for the timings."""
     out = [('synthetic %d' % s, ref.synthetic(s)) for s in range(40)]
+    out += [('shaped %d' % s, ref.shaped_movie(s)) for s in range(12)]
     names = {0: 'dots', 1: 'lines', 2: 'solids', 3: 'solids'}
     for kind in (0, 1, 2):
         for big in (False, True):
@@ -396,26 +415,31 @@ def measure_set():
     return out
 
 
-def collect(sim, limit=24):
+def collect(sim, limit=24, count=True):
+    """(label, frame, counters, cycles, fv_timing cycles) per frame; with
+    count=False the cycles are the accelerated speed's (no counting), the
+    counters those of the counted run of the same movie."""
     rows = []
     for label, movie in measure_set():
         res = sim.run(movie, limit)
-        for i, (shown, c, cyc, tcyc, _) in enumerate(res['frames']):
-            rows.append((label, i, c, cyc, tcyc))
+        fast = sim.run(movie, limit, count=False)['frames'] if not count else res['frames']
+        for i, ((shown, c, cyc, tcyc, _), f) in enumerate(zip(res['frames'], fast)):
+            rows.append((label, i, c, f[2] if not count else cyc, tcyc))
     return rows
 
 
 def measure():
     with tempfile.TemporaryDirectory(prefix='a2fc-fanta-') as d:
         sim = Sim('6502', Path(d))
-        rows = collect(sim)
+        rows = collect(sim, count=False)
+        counted = collect(sim)
     def stats(xs):
         xs = sorted(xs)
         return '%7d %7d %7d' % (xs[0], statistics.median(xs), xs[-1])
-    print('cycles per frame (6502, sim65): min median max  | original model min median max')
+    print('cycles per frame (6502, sim65), accelerated: min median max | original model: min median max | speed-up (median)')
     groups = {}
     for label, i, c, cyc, tcyc in rows:
-        key = label.split(' ')[0] if not label.startswith('synthetic') else 'synthetic'
+        key = label.split(' ')[0]
         if label.endswith('big'):
             key += ' big'
         groups.setdefault(key, []).append((cyc, c['orig'], c['own'], tcyc))
@@ -423,10 +447,10 @@ def measure():
     for key, g in sorted(groups.items()) + [('ALL', allr)]:
         print('%-12s %s | %s  x%.1f' % (key, stats([r[0] for r in g]), stats([r[1] for r in g]),
                                         statistics.median([r[1] / r[0] for r in g])))
-    err = [abs(r[2] - r[0] - r[3]) / (r[0] + r[3]) for r in allr]
+    err = [abs(c['own'] - cyc - tcyc) / (cyc + tcyc) for _, _, c, cyc, tcyc in counted]
     print('own estimate vs measured (build + timing): median error %.1f%%, 90%% within %.1f%%' %
           (100 * statistics.median(err), 100 * sorted(err)[int(len(err) * 0.9)]))
-    print('fv_timing: %d-%d cycles' % (min(r[3] for r in allr), max(r[3] for r in allr)))
+    print('fv_timing: %d-%d cycles' % (min(r[4] for r in counted), max(r[4] for r in counted)))
 
 
 def lstsq(rows, ys):
