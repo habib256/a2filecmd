@@ -167,8 +167,9 @@ class Sim:
 
     def run(self, movie, limit=20):
         (self.dir / 'movie.bin').write_bytes(movie)
-        p = subprocess.run([self.sim, str(self.exe), str(limit)], cwd=self.dir,
-                           capture_output=True, timeout=900)
+        # -x: a hang shows as a failure, not as a stuck test
+        p = subprocess.run([self.sim, '-x', '1000000000', str(self.exe), str(limit)],
+                           cwd=self.dir, capture_output=True, timeout=900)
         if p.returncode != 0:
             raise AssertionError('sim65 exit %d: %s' % (p.returncode, p.stderr[-300:]))
         o = p.stdout

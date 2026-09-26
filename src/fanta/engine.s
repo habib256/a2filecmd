@@ -40,17 +40,17 @@ MAXPTS  = 32
 ; (tools/test_fantavision.py --calibrate: least squares on 1,000 frames,
 ; relative error, no negative cost). The reference carries the original's.
 ORIG_BASE  = 6300
-OWN_BASE    = 7986      ; per frame, fv_timing included
-OWN_SPANS   = 148       ; cycles per unit of each counter
-OWN_BYTES   = 62
-OWN_EROWS   = 367
-OWN_EBYTES  = 10
-OWN_EDGES   = 1115
-OWN_IPOINTS = 1
-OWN_OBJECTS = 1653
-OWN_LROWS   = 76
-OWN_FROWS   = 0
-OWN_ASTEP   = 173
+OWN_BASE    = 10005      ; per frame, fv_timing included
+OWN_SPANS   = 185       ; cycles per unit of each counter
+OWN_BYTES   = 49
+OWN_EROWS   = 321
+OWN_EBYTES  = 12
+OWN_EDGES   = 105
+OWN_IPOINTS = 208
+OWN_OBJECTS = 1746
+OWN_LROWS   = 64
+OWN_FROWS   = 103
+OWN_ASTEP   = 161
 
 ; The per-frame counters, 24 bits each (fv_counts + offset).
 C_SPANS   = 0           ; row segments drawn on the page built
@@ -173,6 +173,7 @@ qy:     .res MAXPTS
 ne:     .res 1          ; its edges
 nact:   .res 1
 nxt:    .res 1
+nend:   .res 1          ; the first row where an active edge ends
 exa:    .res MAXPTS     ; x at the top end
 eya:    .res MAXPTS     ; top row
 eyb:    .res MAXPTS     ; bottom row, excluded
@@ -1436,6 +1437,31 @@ seg:    lda     gx0
         ldx     gx1
         sta     gx1
         stx     gx0
+:       lda     gy1                     ; outside the window: nothing
+        cmp     ct
+        jcc     @done
+        lda     gy0
+        cmp     cbot
+        beq     :+
+        jcs     @done
+:       lda     gx0
+        cmp     gx1
+        bcc     :+
+        lda     gx1                     ; t0 = left, A = right
+        sta     t0
+        lda     gx0
+        jmp     :++
+:       sta     t0
+        lda     gx1
+:       clc
+        adc     #1
+        bcs     :+
+        cmp     cl
+        jcc     @done
+:       lda     t0
+        cmp     cr
+        beq     :+
+        jcs     @done
 :       lda     gy0
         cmp     gy1
         bne     @slope
@@ -1479,6 +1505,29 @@ seg:    lda     gx0
         sta     gcur
         lda     gy0
         sta     gy
+        lda     ct                      ; starting above the window: straight
+        sec                             ; to its top row
+        sbc     gy0
+        bcc     @row
+        beq     @row
+        ldx     ct
+        cpx     gy1
+        bcc     :+
+        lda     gy1                     ; only the bottom row is in it
+        jmp     @bottom
+:       jsr     mulac
+        lda     ct
+        sta     gy
+        lda     gsg
+        bmi     :+
+        lda     gx0
+        clc
+        adc     gac+1
+        jmp     :++
+:       lda     gx0
+        sec
+        sbc     gac+1
+:       sta     gcur
 @row:   lda     gy
         cmp     cbot
         beq     :+
@@ -1533,6 +1582,7 @@ seg:    lda     gx0
         lda     gy
         cmp     gy1
         bne     @row
+@bottom:
         cmp     ct                      ; the bottom row
         bcc     @done
         cmp     cbot
@@ -1547,6 +1597,31 @@ seg:    lda     gx0
         dey
 :       jmp     sx
 @done:  rts
+
+; mulac: gac = 128 + gsl * A, 16 bits (the callers' products fit). X is kept.
+mulac:  sta     t0
+        lda     gsl
+        sta     t1
+        lda     gsl+1
+        sta     t2
+        lda     #128
+        sta     gac
+        lda     #0
+        sta     gac+1
+:       lsr     t0
+        bcc     :+
+        clc
+        lda     gac
+        adc     t1
+        sta     gac
+        lda     gac+1
+        adc     t2
+        sta     gac+1
+:       asl     t1
+        rol     t2
+        lda     t0
+        bne     :--
+        rts
 
 ; gsl = gadx * 256 / gdy, 16 bits (gdy > 0).
 slope:  lda     #0
@@ -1636,7 +1711,48 @@ dot:    lda     dcy
 ; Scan-line fill, even-odd, of q[0..qm-1] (qm >= 3). An edge covers the rows
 ; ya <= y < yb; its crossing is xa +- (128 + slope * (y - ya)) >> 8, kept
 ; as a running 8.8 sum. The active edges' crossings, sorted, pair into spans.
-fill:   lda     #0
+fill:   ldx     qm                      ; the extent: outside the window,
+        dex                             ; nothing to fill
+        lda     qx,x
+        sta     gx0                     ; x min
+        sta     gx1                     ; x max
+        lda     qy,x
+        sta     gy0                     ; y min
+        sta     gy1                     ; y max
+:       dex
+        bmi     :++++
+        lda     qx,x
+        cmp     gx0
+        bcs     :+
+        sta     gx0
+:       cmp     gx1
+        bcc     :+
+        sta     gx1
+:       lda     qy,x
+        cmp     gy0
+        bcs     :+
+        sta     gy0
+:       cmp     gy1
+        bcc     :----
+        sta     gy1
+        bcs     :----                   ; (always)
+:       lda     gy1                     ; rows ymin .. ymax - 1
+        cmp     ct
+        beq     :+
+        bcc     :+
+        lda     gy0
+        cmp     cbot
+        beq     :++
+        bcc     :++
+:       rts
+:       lda     gx1
+        cmp     cl
+        bcc     :--
+        lda     gx0
+        cmp     cr
+        beq     :+
+        bcs     :--
+:       lda     #0
         sta     ne
         sta     oi
 @edge:  ldx     oi                      ; edge oi -> oi + 1
@@ -1714,66 +1830,97 @@ fill:   lda     #0
 :       lda     #0
         sta     nact
         sta     nxt
+        lda     #$FF
+        sta     nend
         ldx     ord
         lda     eya,x
-        sta     gy
+        cmp     ct                      ; from the window's top at the latest
+        bcs     :+
+        lda     ct
+:       sta     gy
 @row:   ldy     nxt                     ; edges starting on this row
         cpy     ne
         beq     @rm
         ldx     ord,y
         lda     eya,x
         cmp     gy
-        bne     @rm
-        lda     #128
+        beq     :+
+        bcs     @rm                     ; later
+        lda     eyb,x                   ; begun above the window: ended
+        cmp     gy                      ; there already?
+        beq     @gone
+        bcc     @gone
+:       lda     esl,x                   ; its sum on this row
+        sta     gsl
+        lda     esh,x
+        sta     gsl+1
+        lda     gy
+        sec
+        sbc     eya,x
+        jsr     mulac
+        lda     gac
         sta     eal,x
-        lda     exa,x                   ; x, or ~x going left: always added to
+        lda     eyb,x                   ; the next row where an edge ends
+        cmp     nend
+        bcs     :+
+        sta     nend
+:       lda     exa,x                   ; x, or ~x going left: always added to
         eor     esg,x
+        clc
+        adc     gac+1
         sta     exc,x
-        txa
+        eor     esg,x
         ldy     nact
+        sta     xs,y
+        txa
         sta     act,y
         inc     nact
-        inc     nxt
-        bne     @row                    ; (always)
-@rm:    ldy     #0                      ; edges ending on this row
+@gone:  inc     nxt
+        jmp     @row
+@rm:    lda     gy                      ; edges ending on this row, looked
+        cmp     nend                    ; for only when one does
+        bne     @kept
+        lda     #$FF
+        sta     nend
+        ldy     #0
         sty     t0
 :       cpy     nact
-        beq     :++
+        beq     :+++
         ldx     act,y
         lda     eyb,x
         cmp     gy
-        beq     :+
-        txa
+        beq     :++
+        cmp     nend
+        bcs     :+
+        sta     nend
+:       txa
         ldx     t0
         sta     act,x
+        lda     xs,y
+        sta     xs,x
         inc     t0
 :       iny
-        bne     :--                     ; (always)
+        bne     :---                    ; (always)
 :       lda     t0
         sta     nact
+@kept:  lda     nact
         bne     @work
         lda     nxt
         cmp     ne
         jeq     @done
-        jmp     @step
+        jmp     @inc
 @work:  lda     gy
         cmp     cbot
         beq     :+
         jcs     @done
 :       cmp     ct
         bcc     @step
-        ldy     #0                      ; crossings
-@cx:    ldx     act,y
-        lda     exc,x
-        eor     esg,x
-        sta     xs,y
-        iny
-        cpy     nact
-        bne     @cx
         ldx     #1                      ; act sorted by crossing: it was on
 @is:    cpx     nact                    ; the row before, so this is quick
         bcs     @isd
         lda     xs,x
+        cmp     xs-1,x
+        bcs     @isn                    ; in place already
         sta     t0
         lda     act,x
         sta     t1
@@ -1792,7 +1939,7 @@ fill:   lda     #0
         sta     xs,y
         lda     t1
         sta     act,y
-        inx
+@isn:   inx
         bne     @is                     ; (always)
 @isd:   ldy     gy                      ; pairs
         jsr     srow
@@ -1808,11 +1955,10 @@ fill:   lda     #0
         iny
         iny
         bne     @pr                     ; (always)
-@step:  inc     fv_counts+O_FROWS
+@step:  inc     fv_counts+O_FROWS       ; next row: sums and crossings
         bne     :+
         inc     fv_counts+O_FROWS+1
 :       lda     nact
-        beq     @inc
         ldx     #O_ASTEP
         jsr     cadd
         ldy     nact
@@ -1825,6 +1971,8 @@ fill:   lda     #0
         lda     exc,x
         adc     esh,x
         sta     exc,x
+        eor     esg,x
+        sta     xs,y
         dey
         bpl     :-
 @inc:   inc     gy
