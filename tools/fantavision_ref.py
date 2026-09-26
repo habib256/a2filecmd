@@ -115,6 +115,10 @@ class Record:
         return self.attr >> 4
 
 
+# fv_check's return codes (src/fanta/engine.s).
+CODES = {None: 0, 'size': 1, 'header': 2, 'clip': 3, 'record': 4, 'truncated': 5, 'frames': 6}
+
+
 def check(data):
     """None if the movie is accepted, else the reason ("Checks")."""
     n = len(data)
@@ -126,6 +130,8 @@ def check(data):
         return 'clip'
     pos, frames = HDR, 0
     while pos < n and data[pos] != 0:
+        if frames == MAX_FRAMES:
+            return 'frames'
         for _ in range(8):
             if pos >= n:
                 return 'truncated'
@@ -139,8 +145,6 @@ def check(data):
                 return 'truncated'
             pos += size
         frames += 1
-        if frames > MAX_FRAMES:
-            return 'frames'
     if frames == 0:
         return 'frames'
     return None
@@ -329,11 +333,11 @@ def orig_cycles(c):
 
 
 def own_cycles(c):
-    return OWN_BASE + sum(OWN[k] * c['own_' + k] for k in OWN)
+    return OWN_BASE + OWN_TIMING + sum(OWN[k] * c['own_' + k] for k in OWN)
 
 
 def wait_cycles(c):
-    return max(0, orig_cycles(c) - own_cycles(c) - OWN_TIMING)
+    return max(0, orig_cycles(c) - own_cycles(c))
 
 
 # -- playing ------------------------------------------------------------------
