@@ -61,6 +61,28 @@ downloads and installation.
   (`pom2_playtest --printer-ssc LOG`) on the //e and the //c and requires no
   access to it, alone and next to a working VDrive on slot 2;
   `tools/test_vsdrive.py` checks the same under sim65.
+- In slots 2 to 7, VDrive now skips a Super Serial Card set up for a
+  printer before its first write. It used to write the 6551's command
+  register of any card with the serial Pascal signature, and a printer's
+  SSC in slot 2 (no VDrive host anywhere) was reprogrammed and sent
+  envelopes like the slot-1 one. The signature ($Cn0C = $31) is the same on
+  every SSC, so VDrive first reads the card's mode switches -- DIP bank 1
+  at $C081 + slot x 16, bits $03, a read with no side effect -- and takes
+  the card only in communications mode ($00); printer mode ($02) and the
+  two SIC emulations ($01, $03), which Apple's firmware drives as printers,
+  are left alone. Nothing is written, and the 6551's status register
+  (which acknowledges its interrupt) is not read, before that decision. On
+  a //c (MACHID) the ports have no switches: port 2 is taken as before,
+  and a printer on the modem port still receives envelopes (the manual
+  says so).
+- `tools/test_vsdrive.py` puts a printer-mode SSC (and each SIC mode) in
+  slot 2: not taken, its 6551 bytes intact; with a communications SSC in
+  slot 4, slot 4 is taken and slot 2 stays intact; a //c takes port 2
+  whatever $C0A1 holds. `bench/vdrive_printer.py` adds the same on POM2
+  (`pom2_playtest --printer-slot 2`, `--ssc-slot 4`, with the SSC switches
+  of POM2's printer-detection work): no write to slot 2 and no access to
+  its 6551, only the read of its switches; it skips those cases with a
+  message against an older POM2.
 
 ### Large directories: faster pages, and Up no longer jumps forward
 - A page of a directory larger than a window (139 entries) no longer

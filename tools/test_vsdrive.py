@@ -1,11 +1,15 @@
 """Run the real VDrive driver (src/vsdrive.s) under sim65: install over two
 distinct DEVADR drivers, the interrupt handler's CLD, STATUS's block count,
 a 6551 whose transmitter never empties (CTS high) or dies mid-block, a silent
-host, the destructor giving each drive its own driver back, and a serial
-card in slot 1 (the printer's) left alone: not taken, its 6551 not written.
+host, the destructor giving each drive its own driver back, a serial
+card in slot 1 (the printer's) left alone: not taken, its 6551 not written,
+and a Super Serial Card whose mode switches say printer (or a SIC printer
+emulation) skipped in slot 2 -- not taken, its 6551 not written, a
+communications card in slot 4 taken instead -- except on a //c (MACHID),
+whose ports have no switches.
 
-sim65 memory is plain RAM: the slot ROM signature and the 6551 registers are
-bytes the test writes. Only the software-reset check of install (DTR must
+sim65 memory is plain RAM: the slot ROM signature, the DIP switches and the
+6551 registers are bytes the test writes. Only the software-reset check of install (DTR must
 drop, which RAM cannot do) is bypassed."""
 import shutil,subprocess,tempfile,unittest
 from pathlib import Path
@@ -133,7 +137,7 @@ static unsigned char io_error(unsigned char cmd){
 }
 int main(void){
  unsigned char* h;
- unsigned char i;
+ unsigned char i,j;
  PEEK(0xBF00)=0x4C;*(unsigned int*)0xBF01=(unsigned int)mli;
  /* Slot 1 is the printer's (//e SSC, //c port 1): a serial card there alone
   * is not VDrive's. Its 6551 registers ($C098-$C09B) must keep every byte:
@@ -144,7 +148,39 @@ int main(void){
  if(vsdrive_install()!=0)return 20;
  if(PEEK(0xBF31)!=0||PEEK(0xBF32)!=0x60)return 21;
  for(i=0;i<4;++i)if(PEEK(0xC098+i)!=0xA0+i)return 22;
+ /* An SSC in slot 2 whose mode switches (DIP bank 1, $C0A1, bits $03) say
+  * printer, or one of the SIC printer emulations: never taken, its 6551
+  * ($C0A8-$C0AB) keeps every byte. */
  PEEK(0xC205)=0x38;PEEK(0xC207)=0x18;PEEK(0xC20B)=0x01;PEEK(0xC20C)=0x31;
+ for(i=0;i<4;++i)PEEK(0xC0A8+i)=0xB0+i;
+ for(j=1;j<4;++j){
+  PEEK(0xC0A1)=0xFC|j;
+  PEEK(0xBF31)=0;PEEK(0xBF32)=0x60;
+  if(vsdrive_install()!=0)return 30;
+  if(PEEK(0xBF31)!=0||PEEK(0xBF32)!=0x60||PEEK(0x03B7))return 31;
+  for(i=0;i<4;++i)if(PEEK(0xC0A8+i)!=0xB0+i)return 32;
+ }
+ /* The printer in slot 2, a communications SSC in slot 4: slot 4 is
+  * taken, and slot 2 is still untouched after the destructor too. */
+ PEEK(0xC0A1)=0xFE;
+ PEEK(0xC405)=0x38;PEEK(0xC407)=0x18;PEEK(0xC40B)=0x01;PEEK(0xC40C)=0x31;
+ PEEK(0xC0C1)=0xFC;
+ PEEK(0xBF31)=0;PEEK(0xBF32)=0x60;
+ if(vsdrive_install()!=0x41)return 33;
+ if(PEEK(0xC0CB)!=0x10||PEEK(0xC0CA)!=0x0B)return 34;   /* slot 4: 115,200 bps, DTR */
+ vsdrive_uninstall();
+ if(PEEK(0xBF31)!=0||PEEK(0xBF32)!=0x60)return 35;
+ for(i=0;i<4;++i)if(PEEK(0xC0A8+i)!=0xB0+i)return 36;
+ PEEK(0xC40C)=0;
+ /* A //c (MACHID $88: bits 7,6,3 = 1,0,1) has no switches: $C0A1 means
+  * nothing there, and port 2 is taken as it always was. */
+ PEEK(0xBF98)=0xBB;          /* //c, 128K, 80 columns, clock */
+ PEEK(0xBF31)=0;PEEK(0xBF32)=0x60;
+ if(vsdrive_install()!=0x21)return 37;
+ vsdrive_uninstall();
+ PEEK(0xBF98)=0;
+ PEEK(0xC0A1)=0xFC;                      /* communications mode, 19,200 bps */
+ mli_cmds=0;
  DEVADR[1]=0x1111;DEVADR[9]=0x2222;      /* slot 1: drive 1, drive 2 */
  PEEK(0xBF31)=0;PEEK(0xBF32)=0x60;
  if(vsdrive_install()!=0x21)return 1;    /* serial slot 2, volumes in slot 1 */

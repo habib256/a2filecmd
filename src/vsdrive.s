@@ -16,7 +16,9 @@
 ; driver draws on): the driver lives INSIDE the program, not inside ProDOS. At
 ; install time we look for a serial card in slot 2, then 3 to 7 -- never
 ; slot 1, the printer's (see `slots`) -- (the Pascal 1.1 signature of its
-; ROM: $Cn05=$38 $Cn07=$18 $Cn0B=$01 $Cn0C=$31, then a 6551 that answers), we
+; ROM: $Cn05=$38 $Cn07=$18 $Cn0B=$01 $Cn0C=$31, its mode switches read and
+; found in communications mode -- a card set up for a printer is left
+; before any write --, then a 6551 that answers), we
 ; set it to 115 200 baud 8N1, and we take the first slot 1..7 of which neither
 ; drive 1 nor drive 2 appears in DEVLST: its DEVADR entry receives our
 ; driver, its two units enter DEVLST, and the volume list shows them like
@@ -64,6 +66,7 @@ ACIA_DATA       = $C088 - ACIA_OFS
 ACIA_STATUS     = $C089 - ACIA_OFS
 ACIA_CMD        = $C08A - ACIA_OFS
 ACIA_CTRL       = $C08B - ACIA_OFS
+SSC_DSW1        = $C081 - ACIA_OFS      ; the SSC's DIP bank 1 (see the probe)
 
 ; The protocol
 VD_ENV          = $C5
@@ -165,7 +168,9 @@ id_val: .byte   $38, $18, $01, $31
 ; probe below writes the 6551's command register, and a card taken is
 ; reprogrammed (115 200 baud, DTR) and sent an envelope at every block:
 ; on a printer that is garbage on paper and its settings lost. Slot 1 is
-; not even read, so a VDrive host on a slot-1 SSC is not served.
+; not even read, so a VDrive host on a slot-1 SSC is not served. In slots
+; 2-7, an SSC whose switches say printer is skipped before the probe
+; writes anything (see ins_6551).
 ; (Michel Sitruk, //c, 0.6.7: the VDrive went out on the printer port;
 ; bench/vdrive_printer.py: a //e with its only SSC in slot 1 got 100 bytes
 ; of envelopes and control $10, command $0B.)
@@ -297,6 +302,28 @@ ins_id: ldy     id_ofs,x
         clc
         adc     #ACIA_OFS
         tax
+        ; A Super Serial Card set to anything but communications mode is a
+        ; printer's: leave it before the first write, and before reading
+        ; its 6551 (a status read acknowledges the ACIA's interrupt). The
+        ; mode is SW1-5/6, DIP bank 1 at $C081 + slot x 16, bits $03:
+        ; $00 communications, $01 and $03 the SIC P8/P8A emulations, $02
+        ; printer (MAME a2ssc.cpp read_c0nx and DSW1; Apple's firmware
+        ; 341-0065-A reads the same `lda $C081,y` at $C828 and takes its
+        ; printer path for every value but $00). Reading it has no side
+        ; effect. The Pascal byte $31 is also that of the //c's ports, which
+        ; have no switches ($C0A1 is not a register there): on a //c (MACHID
+        ; bits 7,6,3 = 1,0,1, ProDOS 8 Technical Reference 5.2.4) port 2 is
+        ; taken as before -- nothing can tell a printer on it from a modem.
+        ; A IIgs reads as a IIe: its $C0n1 is a real SSC's switches or no
+        ; register at all (its own ports are an SCC at $C038-$C03B).
+        lda     $BF98                   ; MACHID
+        and     #$C8
+        cmp     #$88
+        beq     ins_6551                ; a //c: no switches to read
+        lda     SSC_DSW1,x
+        and     #$03
+        bne     ins_next                ; printer or SIC emulation: not ours
+ins_6551:
         ; Does a 6551 answer there? Two values written to its command
         ; register must read back (a2tools); otherwise we put everything back.
         lda     ACIA_STATUS,x
