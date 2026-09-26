@@ -197,6 +197,43 @@ done:   lda tmp2
         ldx tmp3
         rts
 
+; unsigned char __fastcall__ dir_count_block(const unsigned char* entries);
+;
+; The thirteen 39-byte entries of a directory block (entries = the block
+; + 4): how many are active (storage type, the high nibble of their first
+; byte, not 0), or $FF when an active one has a zero name length. dir_next
+; (a2fc.c) counts the blocks wholly before the window of a large directory
+; this way instead of validating each name in C: 3,100 cycles an entry
+; became about 1,800, the block read by ProDOS included
+; (docs/PERFORMANCE-0.9.2.md, tools/test_dir_paging.py).
+        .export _dir_count_block
+_dir_count_block:
+        sta ptr1
+        stx ptr1+1
+        lda #0
+        sta tmp1                ; active entries
+        ldx #13
+dcount: ldy #0
+        lda (ptr1),y
+        cmp #$10
+        bcc dnext               ; storage type 0: deleted
+        and #$0F
+        beq dbad                ; active, with no name
+        inc tmp1
+dnext:  lda ptr1
+        clc
+        adc #$27
+        sta ptr1
+        bcc :+
+        inc ptr1+1
+:       dex
+        bne dcount
+        lda tmp1
+        rts                     ; X = 0
+dbad:   lda #$FF
+        ldx #0
+        rts
+
 ; void __fastcall__ aux_copy(unsigned int main_addr, unsigned int aux_addr,
 ;                            unsigned char to_aux);
 ;

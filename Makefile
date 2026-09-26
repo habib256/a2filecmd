@@ -345,6 +345,8 @@ test: test-mini
 	python3 $(TOOLS)/test_file_output.py
 	python3 $(TOOLS)/test_file_install.py
 	python3 $(TOOLS)/test_core_dirscan.py
+	python3 $(TOOLS)/test_dir_paging.py
+	python3 $(TOOLS)/test_move_cursor.py
 	python3 $(TOOLS)/test_tree_stack.py
 	python3 $(TOOLS)/test_catalog_safety.py
 	python3 $(TOOLS)/test_imgconv_safety.py

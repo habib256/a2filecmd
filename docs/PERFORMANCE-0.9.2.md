@@ -34,6 +34,9 @@ distribution statistique d’essais matériels.
 4. Catalogues : les entrées précédant la page restent lues et validées,
    mais leurs métadonnées ne sont plus décodées. Un index de blocs reste à
    concevoir avec une invalidation sûre lors des changements de disque.
+   Préparation 1.0 : les blocs entièrement avant la page sont désormais
+   comptés sans valider les noms ; l'index a été mesuré et écarté (voir
+   plus bas).
 5. Extraction d’images : un comptage des tags par opération au lieu d’un
    comptage par entrée. Le prototype de réutilisation des informations de
    volume a été abandonné pour son coût mémoire. Aucun cache persistant.
@@ -59,6 +62,51 @@ Le guide RECOVER et l’aide occupent 10 blocs supplémentaires sur 140K,
 qui conserve 22 blocs libres. La version DOS 3.3 n’a pas reçu ces changements
 ProDOS. La préservation des originaux et les vérifications de copie restent
 prioritaires ; aucune garantie d’atomicité physique n’est ajoutée.
+
+## Pagination des grands catalogues (1.0)
+
+Mesure du 26 septembre 2026 : `tools/measure_paging.py`, POM2, carte HDV
+du slot 5 sans écriture, répertoires de 300, 700 et 1 500 fichiers. La
+build 6502 tourne sur un IIe non enhanced (NMOS), la build 65C02 sur un IIe
+enhanced. Chaque valeur est le coût de la touche qui charge une fenêtre,
+jusqu'au retour à la lecture clavier (dessin compris).
+
+| Mesure | 6502 avant | 6502 après | 65C02 avant | 65C02 après |
+| --- | ---: | ---: | ---: | ---: |
+| Coût d'une fenêtre sautée (139 entrées) | 431 000 | 247 000 | 485 000 | 246 000 |
+| 700 entrées, dernière page | 2 774 556 | 1 885 361 | 3 013 706 | 1 860 042 |
+| 700 entrées, de la page 0 à la dernière | 14 002 528 | 11 389 105 | 15 050 652 | 11 652 691 |
+| 1 500 entrées, dernière page | 5 835 766 | 4 023 462 | 6 419 278 | 4 066 927 |
+| 1 500 entrées, de la page 0 à la dernière | 40 783 739 | 30 974 315 | 44 397 078 | 31 653 954 |
+| Ouverture (fenêtre 0) | 1 689 307 | 1 689 965 | 1 758 597 | 1 757 593 |
+
+À 1 MHz, la dernière page de 700 entrées passe de 2,8 à 1,9 s (6502) et de
+3,0 à 1,9 s (65C02) ; celle de 1 500 entrées de 5,8 à 4,0 s et de 6,4 à
+4,1 s. Ce qui reste par fenêtre sautée est la lecture des blocs par ProDOS
+(environ 23 000 cycles par bloc de 13 entrées sur cette carte) ; valider
+les noms en C y ajoutait environ 75 %.
+
+Le prototype d'index (points de reprise par fenêtre, SET_MARK puis
+vérification du bloc repris) descendait à ~70 000 cycles par fenêtre
+sautée : 2 447 162 pour la dernière page de 1 500 entrées en 6502. SET_MARK
+sur un répertoire fait suivre la chaîne des blocs à ProDOS, donc la lecture
+n'était pas évitée, seulement la copie. Il coûtait 488 octets MAIN même en
+assembleur (6 libres en 65C02) et un état à invalider ; il n'est pas livré
+(voir [les budgets](MEMORY-BUDGETS.md)). Sur un lecteur 3,5 pouces ou une
+Disk II réels, dominés par les accès disque, ni l'un ni l'autre ne
+supprime ces lectures : le gain y est moindre que sur la carte HDV, et n'a
+pas été mesuré sur matériel.
+
+La même mesure a révélé une erreur de la build 65C02 : Haut ou Gauche près
+du haut d'une fenêtre qui en a une suivante chargeait cette suivante
+(comparaison signée compilée non signée par cc65 2.19). `move_cursor` teste
+désormais le signe d'abord ; `measure_paging.py` signale tout saut dans le
+mauvais sens.
+
+```sh
+A2FC_BUILD=build-6502 python3 tools/measure_paging.py --out /tmp/p6502.json
+A2FC_BUILD=build python3 tools/measure_paging.py --out /tmp/p65c02.json
+```
 
 ## Reproduire
 
