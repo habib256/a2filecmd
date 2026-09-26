@@ -87,8 +87,17 @@ Chaque étape suppose la précédente fermée. Un défaut trouvé aux étapes
      `tools/test_vsdrive.py` aussi sous sim65. Restent : un hôte VDrive
      câblé en slot 1 n'est plus servi (le manuel dit de passer en slot 2),
      une imprimante sur le port modem du //c recevrait encore les
-     enveloppes, une SSC imprimante en slots 2-7 est encore sondée (les
-     commutateurs de mode ne sont pas émulés par POM2).
+     enveloppes, une SSC imprimante en slots 2-7 est encore sondée.
+   - [ ] Quand la branche `work/printer-detection` de POM2 sera publiée :
+     VDrive lit le mode de la SSC (bits `$03` de `$C0n1`, `$02` =
+     imprimante ; lecture sans effet) et ignore une carte en mode
+     imprimante dans les slots 2-7. `$Cn0C` vaut `$31` sur la SSC, le //c
+     et le IIgs : seul ce registre distingue imprimante et modem. Ne pas
+     lire l'état du 6551 pour détecter (la lecture efface son
+     interruption). Banc : `--printer-port N:mode=printer`, `/slot-log`
+     à zéro écriture. Reconstruire `pom2_playtest`, rejouer `vdrive` et
+     `vdrive_printer` (en mode communications, le firmware Apple attend
+     désormais DSR et DCD).
 3. **Retour visuel.**
    - [ ] Vérifier que la progression 0.9.3 couvre les pauses à 1 MHz
      (catalogue, copie, vérification, chargement), puis fermer cette ligne.
@@ -250,9 +259,17 @@ Pas d'impression dans le Mini (19 octets libres ; `PR#1` depuis BASIC).
   ports //c en accès direct au matériel, attente bornée, Échap, barre de
   progression, message « imprimante pas prête » ; autres cartes Pascal 1.1
   par leur firmware, avec avertissement. Refuser le slot de VDrive.
-- [ ] Bancs : `--printer grappler|parallel|ssc1` et `--spool` dans
-  `pom2_playtest` (POM2 émule déjà Grappler, SSC imprimante, ImageWriter,
-  Epson) ; tests sim65 avec un pilote bouchon ; section imprimante dans
+- [ ] Bancs : s'appuyer sur ce que POM2 fournit depuis
+  `work/printer-detection` : SSC avec commutateurs par slot et firmware
+  Apple 341-0065-A, lignes DCD/DSR/CTS selon le câble, Grappler+ hors
+  ligne / sans papier / absente commutables en cours de route, Grappler
+  1981 et Apple Parallel Interface, journal `/slot-log`, octets imprimés
+  et rendu PNG ImageWriter/Epson depuis `libpom2_core_test.a`. Référence :
+  `docs/printer-detection.md` de POM2 (ce qui se lit sans effet, ce qui a
+  un effet — sur la Grappler 1981, lire `$C0n2/$C0n3` déclenche un strobe
+  —, ce qui peut bloquer : la Grappler+ 3.1 sans papier boucle en
+  silence). Remplacer `--printer-ssc` de `pom2_playtest` par ces options.
+  Tests sim65 avec un pilote bouchon ; section imprimante dans
   HARDWARE-CHECKLIST.
 - [ ] Ensuite (~1 semaine) : images HGR / DHGR / Print Shop en ImageWriter
   (`ESC G`) et Epson (`ESC K`), lues dans le fichier par bandes, sans
