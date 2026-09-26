@@ -26,6 +26,7 @@
         .import fv_movie, fv_len, fv_shown, fv_wait, fv_count
         .import __CODE_LOAD__, __CODE_RUN__, __CODE_SIZE__, __RODATA_SIZE__
         .import __BSS_RUN__, __BSS_SIZE__
+        .import __TABLES_LOAD__, __TABLES_RUN__, __TABLES_SIZE__
         .macpack longbranch
 
 MLI     = $BF00
@@ -128,7 +129,26 @@ start:  cld
         dec     cnt+1
 :       dec     cnt
         jmp     @copy
-@run:   jmp     main
+@run:   lda     #<__TABLES_LOAD__ ; the x tables, to low memory
+        sta     src
+        lda     #>__TABLES_LOAD__
+        sta     src+1
+        lda     #<__TABLES_RUN__
+        sta     dst
+        lda     #>__TABLES_RUN__
+        sta     dst+1
+        ldx     #>__TABLES_SIZE__ ; whole pages (768 bytes)
+        ldy     #0
+:       lda     (src),y
+        sta     (dst),y
+        iny
+        bne     :-
+        inc     src+1
+        inc     dst+1
+        dex
+        bne     :-
+        jmp     main
+        .assert <__TABLES_SIZE__ = 0, error, "TABLES must be whole pages"
 
 ; -- the program, at $A400 -----------------------------------------------------
         .code

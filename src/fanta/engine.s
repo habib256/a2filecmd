@@ -239,6 +239,8 @@ rowhi:
 ; Movie x is screen x + 14: its byte column, and the masks of the dots from
 ; x to the end of its byte (left end of a span) and from the start of its
 ; byte to x (right end). Bit 7 is always in: the byte takes the palette.
+; (Segment TABLES: FANTA.SYSTEM runs it in low memory, see fanta.cfg.)
+        .segment "TABLES"
 colof:
         .repeat 256, I
         .byte (I + 14) / 7
@@ -251,6 +253,7 @@ rmx:
         .repeat 256, I
         .byte $80 | ((2 << ((I + 14) .mod 7)) - 1)
         .endrep
+        .rodata
 ; Colour nibble -> byte at an even and at an odd column.
 pate:   .byte $00, $55, $2A, $7F, $36, $49, $2D, $56
         .byte $80, $D5, $AA, $FF, $B6, $C9, $AD, $D6

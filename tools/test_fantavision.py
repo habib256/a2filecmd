@@ -158,6 +158,8 @@ class Sim:
         cfg, k = re.subn(r'start = \$0200, size = \$FFC0 - \$0200 - __STACKSIZE__',
                          'start = $8000, size = $FFC0 - $8000 - __STACKSIZE__', cfg)
         assert k == 1, 'sim65 config changed'
+        cfg, k = re.subn(r'(\n\s*RODATA:[^\n]*\n)', r'\1    TABLES:   load = MAIN,   type = ro;\n', cfg)
+        assert k == 1, 'sim65 config: no RODATA line'
         (workdir / f'{cpu}.cfg').write_text(cfg)
         (workdir / 'harness.c').write_text(HARNESS)
         (workdir / 'glue.s').write_text(GLUE)
