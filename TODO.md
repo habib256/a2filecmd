@@ -60,12 +60,24 @@ Chaque étape suppose la précédente fermée. Un défaut trouvé aux étapes
      structures, constantes), [sdk](sdk/README.md) ;
      `tools/test_abi_freeze.py` dans `make test`.
 2. **Solder la dette (1.0-rc1).**
-   - [ ] Indexer les grands catalogues sans état périmé après changement
-     de disque ; le parcours relit encore les blocs précédents
-     ([mesures](docs/PERFORMANCE-0.9.2.md)).
+   - [x] Grands catalogues : les blocs entiers avant la fenêtre sont
+     comptés par `dir_count_block` (asm, ~40 octets), sans état mémorisé,
+     donc rien de périmé après un changement de disque. Dernière page de
+     1 500 entrées : 6,4 s → 4,1 s (65C02). Un index à points de reprise a
+     été mesuré et écarté (488 octets de MAIN, gain limité : ProDOS relit
+     les blocs sur SET_MARK). Bancs `paging_swap` 15/15 et `large_nav`
+     9/9 sur les deux CPU.
+   - [x] Bug 65C02 corrigé au passage : cc65 2.19 compilait
+     `target >= pan->count` (int contre unsigned char) en comparaison non
+     signée ; Haut près du début d'une fenêtre chargeait la suivante.
+   - [ ] Auditer les ~38 autres comparaisons int signé / non signé que
+     cc65 2.19 compile en non signé (`draw_entry`, `set_cursor`,
+     `view_getc`, `batch_write`, `click`…) : fautives seulement si l'int
+     peut être négatif ; un test de piège comme `test_flag_reuse.py`.
    - [ ] Trancher : cache des informations de volume. Prototype écarté
      pour préserver les marges mémoire ; le fermer ou le reporter en 1.1.
-   - [x] MAIN 65C02 : **494 octets libres** (82 avant), 6502 : 885.
+   - [x] MAIN 65C02 : **494 octets libres** (82 avant), 6502 : 885 ;
+     413 / 805 après le comptage des blocs de catalogue.
      `pan_at(p)` remplace les 90 `panels[p]` à indice variable, que cc65
      multipliait par 98. LC, pile et douze surcouches y gagnent aussi.
    - [x] VDrive ne lit ni n'écrit plus jamais le slot 1 (IIe et //c).
