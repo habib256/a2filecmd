@@ -79,10 +79,10 @@ Chaque étape suppose la précédente fermée. Un défaut trouvé aux étapes
      (arbre syntaxique clang, règles vérifiées sur les deux compilateurs).
    - [ ] CI : vérifier que clang est présent sur l'image Ubuntu, sinon
      `test_sign_compare` saute son analyse au lieu d'échouer.
-   - [ ] `make pom2host` produit un hôte qui plante au démarrage (« mutex
-     lock failed ») avec la bibliothèque POM2 actuelle (branche
-     `work/printer-detection` non publiée) ; bancs lancés avec un hôte
-     antérieur. À rejouer quand POM2 publiera.
+   - [ ] `make pom2host` a produit une fois un hôte qui plantait au
+     démarrage (« mutex lock failed ») pendant que POM2 travaillait sur
+     `work/printer-detection` ; un build suivant fonctionnait. Revérifier
+     quand POM2 publiera, et rejouer `make qualify` sur cet hôte.
    - [ ] Trancher : cache des informations de volume. Prototype écarté
      pour préserver les marges mémoire ; le fermer ou le reporter en 1.1.
    - [x] MAIN 65C02 : **494 octets libres** (82 avant), 6502 : 885 ;
@@ -97,16 +97,15 @@ Chaque étape suppose la précédente fermée. Un défaut trouvé aux étapes
      câblé en slot 1 n'est plus servi (le manuel dit de passer en slot 2),
      une imprimante sur le port modem du //c recevrait encore les
      enveloppes, une SSC imprimante en slots 2-7 est encore sondée.
-   - [ ] Quand la branche `work/printer-detection` de POM2 sera publiée :
-     VDrive lit le mode de la SSC (bits `$03` de `$C0n1`, `$02` =
-     imprimante ; lecture sans effet) et ignore une carte en mode
-     imprimante dans les slots 2-7. `$Cn0C` vaut `$31` sur la SSC, le //c
-     et le IIgs : seul ce registre distingue imprimante et modem. Ne pas
-     lire l'état du 6551 pour détecter (la lecture efface son
-     interruption). Banc : `--printer-port N:mode=printer`, `/slot-log`
-     à zéro écriture. Reconstruire `pom2_playtest`, rejouer `vdrive` et
-     `vdrive_printer` (en mode communications, le firmware Apple attend
-     désormais DSR et DCD).
+   - [x] VDrive ne prend plus une SSC réglée en imprimante (ni en
+     émulation SIC) dans aucun slot : lecture des commutateurs (DIP 1,
+     `$C081 + slot × 16`, bits `$03`, `$00` = communications ; MAME
+     `a2ssc.cpp`, firmware 341-0065-A) avant toute écriture et sans lire
+     le 6551 ; le //c (MACHID) garde son port 2. `vdrive_printer` 19/19 et
+     `vdrive` 13/13 sur les deux CPU ; l'ancien pilote écrivait 106 fois
+     sur une imprimante en slot 2. Coût : 16 octets de carte langage (62
+     libres en 65C02, 53 en 6502). Limites : le IIgs n'est pas testé
+     (POM2 ne l'émule pas) ; une imprimante sur le port modem du //c.
 3. **Retour visuel.**
    - [ ] Vérifier que la progression 0.9.3 couvre les pauses à 1 MHz
      (catalogue, copie, vérification, chargement), puis fermer cette ligne.
