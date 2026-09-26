@@ -5,7 +5,7 @@ rapports datés, qui ne sont plus mis à jour.
 
 | Document | Contenu | Langue |
 | --- | --- | --- |
-| [MANUAL.md](MANUAL.md) | De DOS3.3 à ProDOS ; [PDF de 11 pages](A2FILECMD-MANUAL-EN.pdf), 12 entrées et capture récente ([régénération](MANUAL-PDF.md)) | EN |
+| [MANUAL.md](MANUAL.md) | De DOS3.3 à ProDOS ; [PDF de 12 pages](A2FILECMD-MANUAL-EN.pdf), 12 entrées et capture récente ([régénération](MANUAL-PDF.md)) | EN |
 | [CREDITS.md](CREDITS.md) | Attributions complètes, notices de provenance et références | EN |
 | [MINI-DOS33.md](MINI-DOS33.md) | A2FC Mini : l’édition Apple II+ 48 Ko DOS 3.3, ses touches, ses garanties d’écriture et ses mesures | EN |
 | [DATA-SAFETY.md](DATA-SAFETY.md) | Revue des chemins d’écriture, de remplacement, d’effacement et d’usage d’AUX ; fichiers de récupération et limites | FR |

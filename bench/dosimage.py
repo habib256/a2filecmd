@@ -20,20 +20,22 @@ def main(container=False):
  with tempfile.TemporaryDirectory(prefix='dosimage-ui-') as d:
   hd=Path(d)/'test.hdv';cpu='6502' if BUILD.name=='build-6502' else '65C02'
   dos_name='DOS33.2MG' if container else 'DOS33.DSK'
+  # An isolated XL-like volume whose DEMO is flat, as mkdemo writes it: the
+  # shipped DEMO is sorted by kind (tools/stage_demo.py, checked by
+  # bench/hd.py), and this bench copies three files of one folder into the
+  # DOS image that sits beside them.
+  from mkdemo import make
+  stage=Path(d)/'stage';shutil.copytree(BUILD/'vol',stage);make(stage/'DEMO')
+  shutil.copyfile(ROOT/'data/README.TXT',stage/'DEMO/README.TXT')
   if container:
-   # Build an isolated XL-like volume with a DOS-order 2IMG fixture.
-   from mkdemo import make
-   stage=Path(d)/'stage';shutil.copytree(BUILD/'vol',stage);make(stage/'DEMO')
-   shutil.copyfile(ROOT/'data/README.TXT',stage/'DEMO/README.TXT')
+   # A DOS-order 2IMG fixture in place of the .DSK.
    disk=stage/'DEMO/DOS33.DSK';raw=disk.read_bytes();disk.unlink()
    header=bytearray(64);header[:4]=b'2IMG';header[8:12]=b'\x40\x00\x01\x00'
    header[20:24]=(280).to_bytes(4,'little');header[24:28]=(64).to_bytes(4,'little');header[28:32]=len(raw).to_bytes(4,'little')
    (stage/'DEMO'/dos_name).write_bytes(header+raw)
-   subprocess.run([sys.executable,str(ROOT/'tools/mkvolume.py'),str(stage),str(hd),'--volume','A2IMGTEST',
-                   '--boot',str(ROOT/'data/prodos_boot.tmpl'),'--blocks','65535'],check=True,capture_output=True)
-   original=hd.read_bytes()
-  else:
-   original=(BUILD/'A2FILECMD-XL.hdv').read_bytes();hd.write_bytes(original)
+  subprocess.run([sys.executable,str(ROOT/'tools/mkvolume.py'),str(stage),str(hd),'--volume','A2IMGTEST',
+                  '--boot',str(ROOT/'data/prodos_boot.tmpl'),'--blocks','65535'],check=True,capture_output=True)
+  original=hd.read_bytes()
   before=Image(original);entries=demo(before);old=before.read(entries[dos_name])
   with Pom2(hd,port=6897,exe=os.environ.get('POM2_DOS','/tmp/a2fc-dos-host')) as p:
    s=Session(p);s.boot()

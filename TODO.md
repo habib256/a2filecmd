@@ -17,38 +17,15 @@ se ferme avec un oracle hôte et un banc POM2.
   overlay plein retouché sauf pour corriger un défaut.
 - **1.1** : les formats et le reste, une fois la 1.0 publiée.
 
-## 0.9.4 — prochaine publication
+## 0.9.4 — publiée le 26 septembre 2026
 
-Ce qui est prêt depuis la 0.9.3, publié avant la 1.0 pour être essayé sur
-machine réelle. Même règle : pas de fonctionnalité nouvelle hors affichage.
-
-- [x] Mini : la case d'activité tourne pendant le FORMAT RWTS et pendant
-  les tentatives sur une disquette jamais formatée.
-- [x] Noms d'images `A2FILECMD-PRODOS-*` et `A2FILECMD-DOS3.3` ; « enhanced
-  ou non » dans le README, le manuel et les notes de release.
-- [x] DEMO du XL rangé par sorte de fichier (`tools/stage_demo.py`).
-- [x] README révisé et capture 80 colonnes au bon ratio
-  (`tools/capture_panels.py`), aussi en couverture du manuel.
-- [x] ABI des overlays et `A2FILE.CFG` gelés (`tools/test_abi_freeze.py`).
-- [x] Mini : hexadécimal lisible, 8 octets par ligne espacés avec leurs
-  caractères, en deux moitiés (Gauche/Droite, `-`/`+`, `<`/`>`) ; payé
-  par la page d'aide (`|` dans `inline_text`), 43 octets libres sous DOS.
-- [x] Manuel : Dazzle Draw (BIN `$2000`, 16 Ko, AUX d'abord) cité parmi
-  les images DHGR déjà lues.
-- [ ] Une vraie image Dazzle Draw dans un banc (oracle : `DD.PICLOADER`
-  sous POM2) : le manuel l'affirme d'après le code, pas encore d'après
-  l'écran.
-- [ ] Mini : Retour sur une table Pinball Construction Set (`*.PB`, B
-  chargé en `$4000`) propose `BRUN`, et le BRUN finit dans le moniteur
-  (`BRK` en `$4002`, vu sous POM2). Pas de perte de données, mais un
-  piège : ouvrir un `*.PB` en hexadécimal, ne jamais proposer BRUN.
-- [ ] Manuel : un jeu autonome PCS (« Make Game » : un seul fichier B,
-  `$177D`, `$7783` octets, `JMP` en tête) se lance déjà par Retour/B
-  dans le Mini et par X sous ProDOS (copié en BIN `$06`, aux `$177D`) ;
-  vérifié sous POM2 par les trois chemins. Il faut un joystick.
-- [ ] Publier : version dans le Makefile, CHANGELOG, `make test`,
-  `make qualify`, `tools/check_images.py`, liens du README et du manuel
-  vers les nouveaux noms, capture reprise.
+Ce qui était prêt depuis la 0.9.3, publié pour être essayé sur machine
+réelle : noms d'images PRODOS / DOS3.3, DEMO rangé, README et capture
+80 colonnes, ABI gelée, 494 octets libres dans MAIN, grands catalogues,
+Haut qui ne saute plus de fenêtre (65C02), VDrive qui laisse les
+imprimantes, audit des signes, hexadécimal et signes d'activité RWTS du
+Mini. Détail : [CHANGELOG](CHANGELOG.md),
+[qualification](docs/QUALIFICATION-0.9.4.md).
 
 ## 1.0 — chemin critique
 
@@ -77,8 +54,19 @@ Chaque étape suppose la précédente fermée. Un défaut trouvé aux étapes
      visible ; AWDATA durci (tableur piégé), IDENT 6502 corrigé (libellé).
      Piège permanent : `tools/sign_compare.py` + `test_sign_compare.py`
      (arbre syntaxique clang, règles vérifiées sur les deux compilateurs).
-   - [ ] CI : vérifier que clang est présent sur l'image Ubuntu, sinon
-     `test_sign_compare` saute son analyse au lieu d'échouer.
+   - [x] CI : clang est présent sur l'image Ubuntu (`test_sign_compare`
+     analyse le code en CI, 4 tests, aucun sauté).
+   - [ ] Mini : Retour sur une table Pinball Construction Set (`*.PB`, B
+     chargé en `$4000`) propose `BRUN`, et le BRUN finit dans le moniteur
+     (`BRK` en `$4002`, vu sous POM2). Pas de perte de données, mais un
+     piège : ouvrir un `*.PB` en hexadécimal, ne jamais proposer BRUN.
+   - [ ] Manuel : un jeu autonome PCS (« Make Game » : un seul fichier B,
+     `$177D`, `$7783` octets, `JMP` en tête) se lance déjà par Retour/B
+     dans le Mini et par X sous ProDOS (copié en BIN `$06`, aux `$177D`) ;
+     vérifié sous POM2 par les trois chemins. Il faut un joystick.
+   - [ ] Une vraie image Dazzle Draw dans un banc (oracle : `DD.PICLOADER`
+     sous POM2) : le manuel l'affirme d'après le code, pas encore d'après
+     l'écran.
    - [ ] `make pom2host` a produit une fois un hôte qui plantait au
      démarrage (« mutex lock failed ») pendant que POM2 travaillait sur
      `work/printer-detection` ; un build suivant fonctionnait. Revérifier
@@ -120,8 +108,8 @@ Chaque étape suppose la précédente fermée. Un défaut trouvé aux étapes
      ne fournit pas.
 7. **Tag 1.0.**
    - [ ] Aucun défaut connu qui puisse perdre des données.
-   - [ ] README et manuel : passer les liens de téléchargement aux
-     nouveaux noms d'images, reprendre `tools/capture_panels.py`.
+   - [ ] README et manuel : liens de téléchargement vers la 1.0,
+     reprendre `tools/capture_panels.py`, régénérer le PDF.
 
 Rappels de release : `/RAM` se confirme **avant** d'y toucher ; images
 jetables pour les essais destructifs ; deux CPU.

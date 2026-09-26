@@ -3,7 +3,46 @@
 Changes in upcoming and published releases. See the [README](README.md) for features,
 downloads and installation.
 
-## [Unreleased]
+## [0.9.4] - 2026-09-26
+
+### Disks named for their system, and a DEMO sorted by kind
+- The ProDOS images now say so in their name, like the DOS 3.3 one:
+  `A2FILECMD-PRODOS-140K`, `-PRODOS-800K`, `-PRODOS-XL` and
+  `-PRODOS-XL-65C02-enhanced` (formerly `A2FILECMD-65C02-enhanced-mouse-XL`),
+  beside `A2FILECMD-DOS3.3`. The choice between the two XL images is simply
+  enhanced or not: the enhanced XL is for an enhanced IIe, a //c or a IIgs;
+  every other ProDOS image runs on any IIe.
+- The XL disk's DEMO folder is sorted by kind of file: DOCUMENTS, PICTURES
+  (with the HGR album, formerly `/IMGHGR`), MUSIC, ARCHIVES, DISKS,
+  PROGRAMS and FONTS.SHAPES, and a README saying what is where. The best
+  CiderPress II samples join the folder of their kind instead of a
+  CIDERPRESS folder of their own.
+- The README is revised and opens on the 80-column panels at the screen's
+  proportions (560 x 384), also the guide's cover. The guide names Dazzle
+  Draw among the double hi-res pictures it already opens, and credits
+  David Schmidt for ADTPro.
+
+### A resident with room again
+- 494 bytes free in the 65C02 resident instead of 82 (6502: 885 instead of
+  485), with no behaviour change: a helper replaces the 90 places where
+  cc65 multiplied a panel index by 98 to reach `panels[p]`. The language
+  card, the stack margin and twelve overlays gain room too, and the 140K
+  disk two blocks. The bytes then paid for the directory paging below.
+
+### Frozen for 1.0
+- The overlay ABI (API version 5: shared structures, the order of the 54
+  services, the constants that place an overlay) and the `A2FILE.CFG`
+  layout are frozen; new services are only appended with a new version.
+  `tools/test_abi_freeze.py`, in `make test`, refuses anything else.
+
+### DOS 3.3: the activity cell turns during RWTS's retries
+- Reading a never formatted diskette used to keep RWTS busy for about five
+  seconds in one call with nothing moving. For the duration of a READ,
+  RWTS's own call to its address-field reader is lent to the activity cell,
+  checked and restored like the format's: the longest still screen falls
+  from 4.8 s to 1.4 s. A WRITE never runs with it; `bench/mini33_lend.py`
+  replays a session with and without the hook and requires every call and
+  both diskettes to be identical byte for byte.
 
 ### The two compilers now read every sign alike
 - An audit of every C unit of both editions (the resident and its headers,

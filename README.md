@@ -13,10 +13,10 @@ From the essentials of DOS3.3 to a complete ProDOS workspace.
 
 **[Download](https://github.com/habib256/a2filecmd/releases/latest) · [Read the guide](docs/MANUAL.md) · [PDF guide](docs/A2FILECMD-MANUAL-EN.pdf)**
 
-![A2 File Cmd ProDOS XL in 80 columns: the volume root on the left, the DEMO folder on the right](docs/screenshots/prodos-panels-0.9.3.png)
+![A2 File Cmd ProDOS XL in 80 columns: the volume root on the left, the DEMO folder on the right](docs/screenshots/prodos-panels-0.9.4.png)
 
 *ProDOS XL in 80 columns on an enhanced Apple IIe, captured in POM2 at the
-screen's proportions ([how](tools/capture_panels.py), [source image](docs/screenshots/prodos-panels-0.9.3.json)).*
+screen's proportions ([how](tools/capture_panels.py), [source image](docs/screenshots/prodos-panels-0.9.4.json)).*
 
 </div>
 
@@ -46,16 +46,16 @@ The [guide](docs/MANUAL.md) lists the supported formats and each tool's limits.
 
 ## Choose your disk
 
-**[0.9.3 is the published release](https://github.com/habib256/a2filecmd/releases/tag/v0.9.3).**
+**[0.9.4 is the published release](https://github.com/habib256/a2filecmd/releases/tag/v0.9.4).**
 No build is needed to use the release downloads.
 
-| Your setup | Download from 0.9.3 |
+| Your setup | Download from 0.9.4 |
 |---|---|
-| **ProDOS · hard disk or emulator, any IIe** | [XL — complete with demonstrations](https://github.com/habib256/a2filecmd/releases/download/v0.9.3/A2FILECMD-XL-0.9.3.2mg) |
-| **ProDOS · enhanced IIe, //c or IIgs** | [XL enhanced — MouseText, optional mouse](https://github.com/habib256/a2filecmd/releases/download/v0.9.3/A2FILECMD-65C02-enhanced-mouse-XL-0.9.3.2mg) |
-| **ProDOS · all tools without sample media** | [800K — complete](https://github.com/habib256/a2filecmd/releases/download/v0.9.3/A2FILECMD-800K-0.9.3.po) |
-| **ProDOS · one 5¼-inch program disk** | [140K — essentials](https://github.com/habib256/a2filecmd/releases/download/v0.9.3/A2FILECMD-140K-0.9.3.dsk) |
-| **Apple II+ · 48 KB · two Disk II drives** | [DOS3.3 — standalone 40-column edition](https://github.com/habib256/a2filecmd/releases/download/v0.9.3/A2FILECMD-DOS3.3-0.9.3.dsk) |
+| **ProDOS · hard disk or emulator, any IIe** | [XL — complete with demonstrations](https://github.com/habib256/a2filecmd/releases/download/v0.9.4/A2FILECMD-PRODOS-XL-0.9.4.2mg) |
+| **ProDOS · enhanced IIe, //c or IIgs** | [XL enhanced — MouseText, optional mouse](https://github.com/habib256/a2filecmd/releases/download/v0.9.4/A2FILECMD-PRODOS-XL-65C02-enhanced-0.9.4.2mg) |
+| **ProDOS · all tools without sample media** | [800K — complete](https://github.com/habib256/a2filecmd/releases/download/v0.9.4/A2FILECMD-PRODOS-800K-0.9.4.po) |
+| **ProDOS · one 5¼-inch program disk** | [140K — essentials](https://github.com/habib256/a2filecmd/releases/download/v0.9.4/A2FILECMD-PRODOS-140K-0.9.4.dsk) |
+| **Apple II+ · 48 KB · two Disk II drives** | [DOS3.3 — standalone 40-column edition](https://github.com/habib256/a2filecmd/releases/download/v0.9.4/A2FILECMD-DOS3.3-0.9.4.dsk) |
 
 - Every ProDOS edition needs **128 KB and 80 columns**.
 - **Enhanced or not** is the only choice: the enhanced XL is for an enhanced

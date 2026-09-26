@@ -1,7 +1,7 @@
 # PDF manual
 
 `A2FILECMD-MANUAL-EN.pdf` is the printable English edition of `MANUAL.md`.
-The eleven-page guide starts with DOS3.3, then develops the same workflow
+The twelve-page guide starts with DOS3.3, then develops the same workflow
 under ProDOS. Its cover includes a current two-panel screenshot and twelve
 clickable contents entries, followed by section bookmarks, page numbers and
 repeated table headings. The release workflow copies it into `dist/` as
@@ -9,7 +9,7 @@ repeated table headings. The release workflow copies it into `dist/` as
 its SHA-256 checksum and attaches it to the GitHub release.
 
 The cover uses the first Markdown image in `MANUAL.md`, currently
-`screenshots/prodos-panels-0.9.3.png`: the 80-column ProDOS XL panels, which
+`screenshots/prodos-panels-0.9.4.png`: the 80-column ProDOS XL panels, which
 the README shows first too. `python3 tools/capture_panels.py` retakes it from
 the published enhanced XL image of the Makefile's version: POM2's 560 x 192
 picture has each scan line doubled to 560 x 384, the screen's proportions.
@@ -20,7 +20,7 @@ DOS3.3 capture (`screenshots/dos33-panels-0.9.2.png`, recorded in
 shows only the cover image.
 
 Explicit `<!-- pagebreak -->` markers keep related chapters together without
-reducing the text size. After regeneration, verify 11 pages, 12 bookmarks,
+reducing the text size. After regeneration, verify 12 pages, 12 bookmarks,
 the first chapter DOS3.3, and the cover image and contents layout.
 
 Regenerate the PDF after updating the manual, before publishing a release.
