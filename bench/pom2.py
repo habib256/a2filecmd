@@ -69,7 +69,7 @@ class Pom2:
 
     def __init__(self, hdv, floppy=None, port=6600, speed=200000, exe=POM2, mouse=False,
                  preset=None, floppy2=None, ssc=None, uthernet=False, chatmauve=None,
-                 hd2=None, printer_log=None,
+                 hd2=None, printer_log=None, printer_slot=None, ssc_slot=None,
                  boot=6):
         """`hdv` : le disque dur (toujours present, POM2 en veut un).
         `floppy` : la disquette 5,25 a mettre en slot 6 et a amorcer.
@@ -92,7 +92,11 @@ class Pom2:
         recopie dans son fichier a l'arret comme le premier.
         `printer_log` : une SSC imprimante en slot 1 (le port 1 du //c), dont
         chaque acces aux registres est journalise dans ce fichier
-        (pom2_playtest --printer-ssc)."""
+        (pom2_playtest --printer-ssc).
+        `printer_slot` : le slot de cette SSC (2-7 au lieu de 1), ses
+        commutateurs en mode imprimante ; `ssc_slot` : celui de la SSC de
+        `ssc` (au lieu de 2), en mode communication (pom2_playtest
+        --printer-slot / --ssc-slot, POM2 avec les commutateurs de la SSC)."""
         self.port, self.base = port, 'http://127.0.0.1:%d' % port
         self.hdv, self.floppy = str(hdv), str(floppy) if floppy else None
         self.floppy2 = str(floppy2) if floppy2 else None
@@ -105,6 +109,7 @@ class Pom2:
         self.uthernet = uthernet
         self.hd2 = str(hd2) if hd2 else None
         self.printer_log = str(printer_log) if printer_log else None
+        self.printer_slot, self.ssc_slot = printer_slot, ssc_slot
 
     # ── cycle de vie ───────────────────────────────────────────────────────
     def start(self):
@@ -126,6 +131,10 @@ class Pom2:
             args += ['--ssc', str(self.ssc)]
         if self.printer_log:
             args += ['--printer-ssc', self.printer_log]
+        if self.printer_slot:
+            args += ['--printer-slot', str(self.printer_slot)]
+        if self.ssc_slot:
+            args += ['--ssc-slot', str(self.ssc_slot)]
         if self.uthernet:
             args += ['--uthernet']
         if self.chatmauve:

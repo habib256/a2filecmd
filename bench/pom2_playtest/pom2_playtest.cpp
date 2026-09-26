@@ -38,12 +38,21 @@
 // `--printer-ssc LOG`: a Super Serial Card in slot 1 with its printer tap on
 // and no host transport -- the printer a //e keeps in slot 1, or the //c's
 // port 1 (the printer port). Every access to its device-select registers
-// ($C098-$C09F) is appended to LOG as it happens, one line each: `W r v`
-// for a write of v to register r (0-F), `R r v` for a read; slot-ROM reads
+// ($C0n0-$C0nF: $C098-$C09F in slot 1) is appended to LOG as it happens,
+// one line each: `W r v` for a write of v to register r (0-F; 8-B are the
+// 6551, 1 and 2 the DIP switches), `R r v` for a read; slot-ROM reads
 // are not logged (a signature check is harmless). A2 File Cmd's printer
 // bench (bench/vdrive_printer.py) asserts the file stays empty of writes.
 // On the //c preset, without `--ssc`, port 2 (slot 2) gets a plain,
 // transport-less SSC too: a real //c always has both ports.
+// `--printer-slot N` (2-7, //e presets): the --printer-ssc card goes in
+// slot N instead of slot 1, its mode switches (DIP bank 1 at $C0n1, bits
+// $03) set to printer; `--ssc-slot N` (2-7, //e presets) moves the --ssc
+// card, set to communications mode, the same way. Together they put a
+// printer SSC in slot 2 and VDrive's host in slot 4 (bench/vdrive_printer.py).
+// Both need a POM2 library with the SSC's DIP switches (SuperSerialCard::
+// setMode, shipped with PrinterPortControl.h); built against an older one,
+// they are unknown flags (exit code 2).
 // Exit codes: 2 = unknown flag (probed by the benches, before anything
 // else), 3 = no disk / bad port / a card the preset cannot take.
 #include "EmulationController.h"
@@ -62,6 +71,9 @@
 #include "SuperSerialTransport.h"
 #include "UthernetIICard.h"
 #include "W5100Device.h"
+#if __has_include("PrinterPortControl.h")
+#define HAVE_SSC_DIP 1          // SuperSerialCard::setMode, the DIP switches
+#endif
 #include <string>
 #include <csignal>
 #include <cstdio>
@@ -70,7 +82,7 @@
 
 static volatile std::sig_atomic_t stopped = 0;
 
-// The slot-1 printer SSC of --printer-ssc: the card itself, plus a line per
+// The printer SSC of --printer-ssc (slot 1, or --printer-slot): the card itself, plus a line per
 // device-select access, flushed at once (a bench may SIGKILL the host).
 class LoggingSsc : public SuperSerialCard {
 public:
@@ -97,6 +109,7 @@ static void stop(int) { stopped = 1; }
 int main(int argc, char** argv) {
     try {
         int port = 6503, speed = 200000, bootSlot = 5, sscPort = 0;
+        int printerSlot = 1, sscSlot = 2;
         bool mouse = false, uthernet = false, chatMauve = false;
         LeChatMauveCard::Variant lcmVariant = LeChatMauveCard::Variant::Feline;
         bool lcmVariantGiven = false;
@@ -129,6 +142,12 @@ int main(int argc, char** argv) {
             // --printer-ssc LOG : une SSC imprimante en slot 1, chaque acces
             // a ses registres journalise dans LOG (bench/vdrive_printer.py).
             else if (a == "--printer-ssc" && i + 1 < argc) printerLog = argv[++i];
+#ifdef HAVE_SSC_DIP
+            // --printer-slot N / --ssc-slot N : ces deux cartes ailleurs
+            // (commutateurs en mode imprimante / communication).
+            else if (a == "--printer-slot" && i + 1 < argc) printerSlot = std::stoi(argv[++i]);
+            else if (a == "--ssc-slot" && i + 1 < argc) sscSlot = std::stoi(argv[++i]);
+#endif
             // --uthernet : une Uthernet II (W5100) en slot 3, loopback ouvert,
             // pour la version reseau du banc VDrive d'A2 File Cmd.
             else if (a == "--uthernet") uthernet = true;
@@ -152,11 +171,16 @@ int main(int argc, char** argv) {
         }
         if (disk.empty() || port < 1 || port > 65535 || speed < 1) return 3;
         if (sscPort < 0 || sscPort > 65535 || sscPort == port) return 3;
+        if (printerSlot < 1 || printerSlot > 7 || sscSlot < 2 || sscSlot > 7) return 3;
         if (uthernet && preset == "iic") return 3;   // no physical slot on a //c
         if (!disk2.empty() && preset == "iic") return 3;   // the //c bench has one HDV unit
         const bool iic = (preset == "iic");
         const bool unenh = (preset == "iie_unenh");
         const bool nmos = unenh || preset == "iie_nmos";
+        // The //c's ports are where they are; slot 5 and 6 hold the disks.
+        if (iic && (printerSlot != 1 || sscSlot != 2)) return 3;
+        if (printerSlot == 5 || printerSlot == 6 || sscSlot == 5 || sscSlot == 6) return 3;
+        if (!printerLog.empty() && sscPort && printerSlot == sscSlot) return 3;
         EmulationController ctrl;
         auto& mem = ctrl.memory();
         mem.setIIEMode(true);
@@ -211,7 +235,8 @@ int main(int argc, char** argv) {
             }
             diskCard = hdv.get();
             mem.slotBus().plug(5, std::move(hdv));
-            if (!sscPort) mem.slotBus().plug(2, std::make_unique<MockingboardCard>(2));
+            if (!sscPort && !(!printerLog.empty() && printerSlot == 2))
+                mem.slotBus().plug(2, std::make_unique<MockingboardCard>(2));
         }
         SuperSerialCard* ssc = nullptr;
         if (sscPort) {
@@ -219,21 +244,27 @@ int main(int argc, char** argv) {
             // Pascal signature, probes the 6551's command register, then
             // writes control $10 (16x external clock = 115 200 in its book;
             // POM2 paces that index as unconstrained) and command $0B.
-            auto card = std::make_unique<SuperSerialCard>(2);
+            auto card = std::make_unique<SuperSerialCard>(sscSlot);
+#ifdef HAVE_SSC_DIP
+            card->setMode(SuperSerialCard::Mode::Communications);
+#endif
             card->setRawMode(true);
             // A VDrive cable (USB-serial, null-modem) has no carrier: the
             // host going away is silence and a timeout, not a DCD drop —
             // which, on a driver with no interrupt handler, is ProDOS's
             // "RESTART SYSTEM - $01". Tie the modem lines.
             card->setModemLinesTied(true);
-            card->setTransport(pom2::makeSuperSerialTcpTransport(*card, 2));
+            card->setTransport(pom2::makeSuperSerialTcpTransport(*card, sscSlot));
             ssc = card.get();
-            mem.slotBus().plug(2, std::move(card));
+            mem.slotBus().plug(sscSlot, std::move(card));
         }
         if (!printerLog.empty()) {
-            auto card = std::make_unique<LoggingSsc>(1, printerLog);
+            auto card = std::make_unique<LoggingSsc>(printerSlot, printerLog);
+#ifdef HAVE_SSC_DIP
+            card->setMode(SuperSerialCard::Mode::Printer);
+#endif
             card->setPrinterTap(true);
-            mem.slotBus().plug(1, std::move(card));
+            mem.slotBus().plug(printerSlot, std::move(card));
             if (iic && !sscPort) mem.slotBus().plug(2, std::make_unique<SuperSerialCard>(2));
         }
         if (uthernet) {

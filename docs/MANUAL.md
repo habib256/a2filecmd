@@ -550,9 +550,15 @@ volumes at **115,200 bps**. VDrive tries slot 2 (the //c's modem port) first,
 then slots 3 to 7, and **never slot 1**: that is the printer's (a //e's
 printer SSC, the //c's printer port), and VDrive would reprogram it and send
 it its packets. It does not even read that card. A VDrive cable on a slot-1
-card is therefore not served: put the card in slot 2. On a //c, port 2 is
-always taken when present, so keep printers off the modem port while
-A2FC runs. Use ADTPro's virtual-drive
+card is therefore not served: put the card in slot 2. In slots 2 to 7, a
+Super Serial Card whose mode switches (SW1-5 and SW1-6) are not set to
+communications mode -- printer mode, or a SIC emulation -- is a printer's:
+VDrive reads those switches first and skips the card without writing to it.
+Set the card that talks to the VDrive host to communications mode. A //c has
+no switches, so nothing tells a printer on its modem port from a modem:
+port 2 is always taken when present, and a printer plugged there receives
+VDrive's packets. Keep printers off the //c's modem port while A2FC runs.
+Use ADTPro's virtual-drive
 server, `veserver.py` or `surl-server`. The status line identifies the serial
 interface and assigned drives; browse and copy as with local volumes. The host
 supplies date/time during reads. A disconnected server produces an I/O error;
