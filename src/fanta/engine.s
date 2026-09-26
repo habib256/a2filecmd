@@ -37,11 +37,20 @@ MAXPTS  = 32
 
 ; The original player's time for a frame (docs, "How long the original
 ; takes"), and this engine's own, calibrated with sim65 on the synthetic set
-; (tools/test_fantavision.py --calibrate). tools/fantavision_ref.py carries
-; the same numbers.
+; (tools/test_fantavision.py --calibrate: least squares on 1,000 frames,
+; relative error, no negative cost). The reference carries the original's.
 ORIG_BASE  = 6300
-OWN_BASE   = 1500
-OWN_TIMING = 0
+OWN_BASE    = 7986      ; per frame, fv_timing included
+OWN_SPANS   = 148       ; cycles per unit of each counter
+OWN_BYTES   = 62
+OWN_EROWS   = 367
+OWN_EBYTES  = 10
+OWN_EDGES   = 1115
+OWN_IPOINTS = 1
+OWN_OBJECTS = 1653
+OWN_LROWS   = 76
+OWN_FROWS   = 0
+OWN_ASTEP   = 173
 
 ; The per-frame counters, 24 bits each (fv_counts + offset).
 C_SPANS   = 0           ; row segments drawn on the page built
@@ -56,9 +65,13 @@ O_EBYTES  = 24          ; bytes restored
 O_EDGES   = 27
 O_IPOINTS = 30          ; tweened points stepped
 O_OBJECTS = 33          ; object drawings (one per buffer)
-NCOUNTS   = 36
+O_LROWS   = 36          ; rows stepped along segments
+O_FROWS   = 39          ; rows stepped by the fill
+O_ASTEP   = 42          ; active edges stepped by the fill
+NCOUNTS   = 45
 
         .zeropage
+jv:     .res 2          ; jump vector (kept off a page end: first in ZP)
 mov:    .res 2          ; the movie
 rp:     .res 2          ; a record
 pa:     .res 2          ; key k's record (tweening set-up)
@@ -68,11 +81,12 @@ yp:     .res 2          ; its y coordinates
 rowp:   .res 2          ; the row being written
 bgp:    .res 2          ; the same row in the background copy
 pagehi: .res 1          ; the buffer drawn into: $20, $40 or $60
-counting: .res 1        ; nonzero: spans count (the page built only)
-sy:     .res 1          ; span: row
-sxa:    .res 1          ;       first movie x
-sxb:    .res 1          ;       last movie x
-scol:   .res 1          ;       its first byte column
+counting: .res 1        ; 1: spans count (page built); $81: and extents too
+crow:   .res 1          ; the row set by srow
+pidx:   .res 1          ; page built: 0 (page 1) or 1 (page 2)
+pmin:   .res 2          ; its extents: first byte touched per row
+pmax:   .res 2          ;              last byte touched per row
+scol:   .res 1          ; span: its first byte column
 ccb:    .res 1          ;       its last byte column
 mr:     .res 1          ;       mask of the last byte
 msk:    .res 1
@@ -118,6 +132,10 @@ t0:     .res 1
 t1:     .res 1
 t2:     .res 1
 t3:     .res 1
+osp:    .res 2          ; spans and bytes of the object being drawn
+oby:    .res 2
+erw:    .res 2          ; rows and bytes erased this frame
+eby:    .res 2
 
         .bss
 fv_movie: .res 2
@@ -126,6 +144,7 @@ fv_shown: .res 1
 fv_done:  .res 1
 fv_frames: .res 1
 fv_counts: .res NCOUNTS
+normal: .res 6          ; spans and bytes of the normal objects (fv_counts + 36)
 fv_orig:  .res 4
 fv_own:   .res 4
 fv_wait:  .res 4
@@ -144,9 +163,6 @@ obj:    .res 1
 bpage:  .res 1          ; page built
 opage:  .res 1          ; the other one
 targets: .res 1
-snap:   .res 6          ; C_SPANS and C_BYTES before an object
-delta:  .res 6          ; what the object added
-normal: .res 6          ; spans and bytes of the normal objects
 prevn:  .res 6          ; the same, frame before
 acc:    .res 4          ; fv_timing
 mulv:   .res 4
@@ -163,16 +179,17 @@ eyb:    .res MAXPTS     ; bottom row, excluded
 esl:    .res MAXPTS     ; slope, 8.8
 esh:    .res MAXPTS
 esg:    .res MAXPTS     ; $FF: x decreases downwards
-eal:    .res MAXPTS     ; running sum, 8.8
-eah:    .res MAXPTS
+eal:    .res MAXPTS     ; running sum, fraction
 ord:    .res MAXPTS     ; edges by top row
 act:    .res MAXPTS     ; active edges
 xs:     .res MAXPTS     ; their crossings on this row
-bval:   .res 16         ; erase boxes: 8 objects x 2 pages
-br0:    .res 16
-br1:    .res 16
-bc0:    .res 16
-bc1:    .res 16
+emin1:  .res 192        ; page 1: per row, the first and last byte
+emax1:  .res 192        ; columns the normal objects covered
+emin2:  .res 192        ; page 2
+emax2:  .res 192
+erlo:   .res 2          ; rows with extents, per page: first
+erhi:   .res 2          ; and last ($FF, 0 when none)
+exc:    .res MAXPTS     ; an edge's crossing on this row, x or ~x
 tfl:    .res 8          ; object tweened in this transition
 tal:    .res 8          ; its key k record
 tah:    .res 8
@@ -234,6 +251,23 @@ dhw:    .byte 1, 1
         .byte 3, 4, 5, 6, 7, 7, 7, 7, 7, 7, 6, 5, 4, 3
         .byte 3, 5, 6, 7, 7, 8, 8, 8, 8, 8, 8, 7, 7, 6, 5, 3
         .byte 3, 5, 6, 7, 8, 8, 9, 9, 9, 9, 9, 9, 8, 8, 7, 6, 5, 3
+; Entries into the unrolled chains for n full bytes.
+chlo:
+        .repeat 37, N
+        .byte <(chaince - 5 * N)
+        .endrep
+chhi:
+        .repeat 37, N
+        .byte >(chaince - 5 * N)
+        .endrep
+cplo:
+        .repeat 37, N
+        .byte <(chainpe - 3 * N)
+        .endrep
+cphi:
+        .repeat 37, N
+        .byte >(chainpe - 3 * N)
+        .endrep
 ; fv_timing's terms: counter offset, then cycles per unit (16 bits).
 origt:  .byte C_SPANS
         .word 230
@@ -247,19 +281,25 @@ origt:  .byte C_SPANS
         .word 1100
         .byte $FF
 ownt:   .byte O_SPANS
-        .word 150
+        .word OWN_SPANS
         .byte O_BYTES
-        .word 17
+        .word OWN_BYTES
         .byte O_EROWS
-        .word 60
+        .word OWN_EROWS
         .byte O_EBYTES
-        .word 16
+        .word OWN_EBYTES
         .byte O_EDGES
-        .word 300
+        .word OWN_EDGES
         .byte O_IPOINTS
-        .word 60
+        .word OWN_IPOINTS
         .byte O_OBJECTS
-        .word 400
+        .word OWN_OBJECTS
+        .byte O_LROWS
+        .word OWN_LROWS
+        .byte O_FROWS
+        .word OWN_FROWS
+        .byte O_ASTEP
+        .word OWN_ASTEP
         .byte $FF
 
         .code
@@ -459,10 +499,24 @@ fv_begin:
 :       sta     prevn,x
         dex
         bpl     :-
-        ldx     #15
-:       sta     bval,x
+        ldx     #191                    ; no extents
+:       sta     emax1,x
+        sta     emax2,x
         dex
-        bpl     :-
+        cpx     #$FF
+        bne     :-
+        sta     erhi
+        sta     erhi+1
+        lda     #$FF
+        sta     erlo
+        sta     erlo+1
+        ldx     #191
+:       sta     emin1,x
+        sta     emin2,x
+        dex
+        cpx     #$FF
+        bne     :-
+        lda     #0
         ldx     #7
 :       sta     tfl,x
         dex
@@ -495,13 +549,11 @@ fv_begin:
         jsr     setcol
         lda     #12
         sta     gy
-@bg:    lda     gy
-        sta     sy
-        lda     #5
-        sta     sxa
-        lda     #250
-        sta     sxb
-        jsr     span
+@bg:    ldy     gy
+        jsr     srow
+        ldx     #5
+        ldy     #250
+        jsr     sx
         inc     gy
         lda     gy
         cmp     #160
@@ -789,13 +841,43 @@ build:  lda     fv_shown
         sta     bpage
         eor     #$60
         sta     opage
+        ldx     #0                      ; the page's extents
+        lda     #<emin1
+        ldy     #>emin1
+        sta     pmin
+        sty     pmin+1
+        lda     #<emax1
+        ldy     #>emax1
+        sta     pmax
+        sty     pmax+1
+        lda     bpage
+        cmp     #PAGE1
+        beq     :+
+        inx
+        lda     #<emin2
+        ldy     #>emin2
+        sta     pmin
+        sty     pmin+1
+        lda     #<emax2
+        ldy     #>emax2
+        sta     pmax
+        sty     pmax+1
+:       stx     pidx
+        lda     pmin
+        sta     tmin1+1
+        sta     tmin2+1
+        lda     pmin+1
+        sta     tmin1+2
+        sta     tmin2+2
+        lda     pmax
+        sta     tmax1+1
+        sta     tmax2+1
+        lda     pmax+1
+        sta     tmax1+2
+        sta     tmax2+2
         lda     #0
-        ldx     #NCOUNTS - 1
+        ldx     #NCOUNTS + 5            ; the counters and normal
 :       sta     fv_counts,x
-        dex
-        bpl     :-
-        ldx     #5
-:       sta     normal,x
         dex
         bpl     :-
         lda     prevn
@@ -842,15 +924,19 @@ build:  lda     fv_shown
         jsr     cadd
         dey
         bne     :-
-:       ldx     #5
-:       lda     fv_counts+C_SPANS,x     ; C_SPANS then C_BYTES: 6 bytes
-        sta     snap,x
-        dex
-        bpl     :-
+:       lda     #0
+        sta     osp
+        sta     osp+1
+        sta     oby
+        sta     oby+1
         lda     bpage
         sta     pagehi
-        lda     #1
-        sta     counting
+        lda     #1                      ; a normal object leaves extents
+        ldx     oanim
+        bne     :+
+        jsr     rows
+        lda     #$81
+:       sta     counting
         jsr     drawobj
         lda     #0
         sta     counting
@@ -866,39 +952,24 @@ build:  lda     fv_shown
         lda     #BGPAGE
         sta     pagehi
         jsr     drawobj
-@drawn: sec                             ; delta = counts - snap
-        ldx     #0
-:       lda     fv_counts+C_SPANS,x
-        sbc     snap,x
-        sta     delta,x
-        inx
-        txa
-        eor     #6
-        bne     :-
+@drawn: clc                             ; one byte a span, plus the extra ones
+        lda     oby
+        adc     osp
+        sta     oby
+        lda     oby+1
+        adc     osp+1
+        sta     oby+1
+        ldx     #C_SPANS
+        jsr     addo
         ldy     targets
-@own:   clc
-        ldx     #0
-:       lda     fv_counts+O_SPANS,x
-        adc     delta,x
-        sta     fv_counts+O_SPANS,x
-        inx
-        txa
-        eor     #6
-        bne     :-
+:       ldx     #O_SPANS
+        jsr     addo
         dey
-        bne     @own
+        bne     :-
         lda     oanim
         bne     @next
-        clc                             ; a normal object: counted and boxed
-        ldx     #0
-:       lda     normal,x
-        adc     delta,x
-        sta     normal,x
-        inx
-        txa
-        eor     #6
-        bne     :-
-        jsr     bbox
+        ldx     #NCOUNTS                ; a normal object: counted
+        jsr     addo
 @next:  inc     obj
         lda     obj
         cmp     #8
@@ -1023,6 +1094,71 @@ attrs:  ldy     #1
         sta     oanim
         rts
 
+; The rows a normal object may touch, from its points: widened by the dot
+; size or by one row, added to the page's range erlo..erhi (erase looks
+; there for extents).
+rows:   ldy     #0
+        lda     (yp),y
+        sta     t0                      ; min
+        sta     t1                      ; max
+:       iny
+        cpy     onp
+        bcs     :++
+        lda     (yp),y
+        cmp     t0
+        bcs     :+
+        sta     t0
+:       cmp     t1
+        bcc     :--
+        sta     t1
+        bcs     :--                     ; (always)
+:       lda     #1
+        ldx     okind
+        bne     :+
+        lda     omode
+:       sta     t2                      ; margin
+        ldx     pidx
+        lda     t0
+        sec
+        sbc     t2
+        bcs     :+
+        lda     #0
+:       cmp     erlo,x
+        bcs     :+
+        sta     erlo,x
+:       lda     t1
+        clc
+        adc     t2
+        bcs     :+
+        cmp     #192
+        bcc     :++
+:       lda     #191
+:       cmp     erhi,x
+        bcc     :+
+        sta     erhi,x
+:       rts
+
+; Adds the object's osp and oby to the counters at fv_counts + X, + X + 3.
+addo:   clc
+        lda     fv_counts,x
+        adc     osp
+        sta     fv_counts,x
+        lda     fv_counts+1,x
+        adc     osp+1
+        sta     fv_counts+1,x
+        bcc     :+
+        inc     fv_counts+2,x
+:       clc
+        lda     fv_counts+3,x
+        adc     oby
+        sta     fv_counts+3,x
+        lda     fv_counts+4,x
+        adc     oby+1
+        sta     fv_counts+4,x
+        bcc     :+
+        inc     fv_counts+5,x
+:       rts
+
 ; Adds A to the 24-bit counter at fv_counts + X.
 cadd:   clc
         adc     fv_counts,x
@@ -1034,173 +1170,76 @@ cadd:   clc
 :       rts
 
 ; -- erasing --------------------------------------------------------------------
-; The bounding box of a normal object: its points' extent, widened by the
-; dot size (dots) or by one dot left and right and one row up (lines,
-; solids), clipped, in byte columns. Stored for page bpage, object obj.
-bbox:   ldx     onp
-        jeq     @none
-        lda     okind
-        bne     :+
-        lda     omode                   ; dots: size 1-9 only
-        jeq     @none
-        cmp     #10
-        jcs     @none
-        sta     t3
-        bcc     :++
-:       lda     #1
-        sta     t3
-:       ldy     #0                      ; min and max: t0 x0, t1 x1, gx0 y0, gx1 y1
-        lda     (xp),y
-        sta     t0
-        sta     t1
-        lda     (yp),y
-        sta     gx0
-        sta     gx1
-@mm:    iny
-        cpy     onp
-        beq     @ext
-        lda     (xp),y
-        cmp     t0
-        bcs     :+
-        sta     t0
-:       cmp     t1
-        bcc     :+
-        sta     t1
-:       lda     (yp),y
-        cmp     gx0
-        bcs     :+
-        sta     gx0
-:       cmp     gx1
-        bcc     @mm
-        sta     gx1
-        bcs     @mm                     ; (always)
-@ext:   ldx     obj                     ; box slot
-        lda     bpage
-        cmp     #PAGE1
-        beq     :+
-        txa
-        ora     #8
-        tax
-:       lda     t0                      ; x0 = max(xmin - w, cl)
-        sec
-        sbc     t3
-        bcc     :+
-        cmp     cl
-        bcs     :++
-:       lda     cl
-:       sta     t0
-        ; x1 = min(xmax + w - 1, cr) (dots) or min(xmax + 1, cr)
-        lda     okind
-        beq     :+
-        lda     t1
-        clc
-        adc     #1
-        bcs     @xr
-        bcc     @xc                     ; (always)
-:       lda     t1
-        clc
-        adc     t3
-        bcs     @xr                     ; >= 256: the right side
-        sbc     #0                      ; C = 0: - 1
-@xc:    cmp     cr
-        bcc     :+
-@xr:    lda     cr
-:       sta     t1
-        cmp     t0
-        bcc     @none
-        lda     gx0                     ; y0 = max(ymin - w, ct)
-        sec
-        sbc     t3
-        bcc     :+
-        cmp     ct
-        bcs     :++
-:       lda     ct
-:       sta     gx0
-        lda     okind                   ; y1 = min(ymax + w - 1 or ymax, cbot)
-        bne     @y1
-        lda     gx1
-        clc
-        adc     t3
-        bcs     @yb
-        sbc     #0
-        jmp     @yc
-@y1:    lda     gx1
-@yc:    cmp     cbot
-        bcc     :+
-@yb:    lda     cbot
-:       cmp     gx0
-        bcc     @none
-        sta     br1,x
-        lda     gx0
-        sta     br0,x
-        ldy     t0
-        lda     colof,y
-        sta     bc0,x
-        ldy     t1
-        lda     colof,y
-        sta     bc1,x
-        lda     #1
-        sta     bval,x
-@none:  rts
-
-; Restores the boxes recorded for page bpage from the background copy.
-erase:  ldx     #0
-        lda     bpage
-        cmp     #PAGE1
-        beq     :+
-        ldx     #8
-:       stx     t3
-        txa
-        clc
-        adc     #8
-        sta     t2                      ; end slot
-@box:   ldx     t3
-        lda     bval,x
-        beq     @next
-        lda     #0
-        sta     bval,x
-        lda     br0,x
+; Restores, row by row, the byte columns the normal objects covered on page
+; bpage (its extents) from the background copy, and clears the extents.
+; The copy loop's two addresses are written into it for each row.
+erase:  lda     #0
+        sta     erw
+        sta     erw+1
+        sta     eby
+        sta     eby+1
+        ldx     pidx
+        lda     erlo,x
         sta     gy
-        lda     bc0,x
+        lda     erhi,x
+        sta     gnxt
+        lda     #$FF
+        sta     erlo,x
+        lda     #0
+        sta     erhi,x
+        lda     gnxt
+        cmp     gy
+        bcc     @done                   ; none
+@row:   ldy     gy
+        lda     (pmin),y
         sta     t0
-        dec     t0                      ; column before the first (>= 1)
-        lda     bc1,x
-        sta     t1
+        lda     (pmax),y
         sec
         sbc     t0
-        sta     gcur                    ; columns
-        lda     br1,x
-        sta     gnxt
-@row:   ldx     gy
-        lda     rowlo,x
-        sta     rowp
-        sta     bgp
-        lda     rowhi,x
+        bcc     @next                   ; nothing on this row
+        sta     gcur                    ; columns - 1
+        lda     #$FF
+        sta     (pmin),y
+        lda     #0
+        sta     (pmax),y
+        lda     rowlo,y
+        clc
+        adc     t0
+        sta     @src+1
+        sta     @dst+1
+        lda     rowhi,y
+        adc     #0
         ora     #BGPAGE
-        sta     bgp+1
+        sta     @src+2
         eor     #BGPAGE
         ora     bpage
-        sta     rowp+1
-        ldy     t1
-:       lda     (bgp),y
-        sta     (rowp),y
+        sta     @dst+2
+        ldy     gcur
+@src:   lda     $FFFF,y
+@dst:   sta     $FFFF,y
         dey
-        cpy     t0
-        bne     :-
-        ldx     #O_EROWS
-        lda     #1
-        jsr     cadd
-        ldx     #O_EBYTES
-        lda     gcur
-        jsr     cadd
-        lda     gy
+        bpl     @src
+        inc     erw
+        bne     :+
+        inc     erw+1
+:       sec
+        lda     eby
+        adc     gcur
+        sta     eby
+        bcc     @next
+        inc     eby+1
+@next:  lda     gy
         inc     gy
         cmp     gnxt
         bne     @row
-@next:  inc     t3
-        lda     t3
-        cmp     t2
-        bne     @box
+@done:  lda     erw
+        sta     fv_counts+O_EROWS
+        lda     erw+1
+        sta     fv_counts+O_EROWS+1
+        lda     eby
+        sta     fv_counts+O_EBYTES
+        lda     eby+1
+        sta     fv_counts+O_EBYTES+1
         rts
 
 ; -- objects ------------------------------------------------------------------
@@ -1400,20 +1439,23 @@ seg:    lda     gx0
 :       lda     gy0
         cmp     gy1
         bne     @slope
-        sta     sy                      ; horizontal: one span
-        lda     gx0
-        ldx     gx1
-        cmp     gx1
+        cmp     ct                      ; horizontal: one span
+        jcc     @done
+        cmp     cbot
+        beq     :+
+        jcs     @done
+:       tay
+        jsr     srow
+        ldx     gx0
+        ldy     gx1
+        cpx     gx1
         bcc     :+
-        stx     sxa
-        tax
-        bcs     :++                     ; (always)
-:       sta     sxa
-:       inx
+        ldx     gx1
+        ldy     gx0
+:       iny
         bne     :+
-        dex
-:       stx     sxb
-        jmp     span
+        dey
+:       jmp     sx
 @slope: lda     #0
         sta     gsg
         lda     gx1
@@ -1441,6 +1483,11 @@ seg:    lda     gx0
         cmp     cbot
         beq     :+
         bcs     @done                   ; below the window: nothing more
+:       inc     fv_counts+O_LROWS
+        bne     :+
+        inc     fv_counts+O_LROWS+1
+        bne     :+
+        inc     fv_counts+O_LROWS+2
 :       clc
         lda     gac
         adc     gsl
@@ -1464,41 +1511,63 @@ seg:    lda     gx0
         sec
         sbc     gac+1
 @have:  sta     gnxt
+        ldy     gy
+        cpy     ct
+        bcc     @skip                   ; above the window: stepped only
+        jsr     srow
+        lda     gnxt
         cmp     gcur
         bcs     :+
-        sta     sxa                     ; next < current
-        lda     gcur
+        tax                             ; next < current
+        ldy     gcur
         jmp     :++
 :       ldx     gcur
-        stx     sxa
-:       clc
-        adc     #1
-        bcc     :+
-        lda     #255
-:       sta     sxb
-        lda     gy
-        sta     sy
-        jsr     span
-        lda     gnxt
+        tay
+:       iny
+        bne     :+
+        dey
+:       jsr     sx
+@skip:  lda     gnxt
         sta     gcur
         inc     gy
         lda     gy
         cmp     gy1
         bne     @row
-        sta     sy                      ; the bottom row
-        lda     gx1
-        sta     sxa
-        clc
-        adc     #1
-        bcc     :+
-        lda     #255
-:       sta     sxb
-        jmp     span
+        cmp     ct                      ; the bottom row
+        bcc     @done
+        cmp     cbot
+        beq     :+
+        bcs     @done
+:       tay
+        jsr     srow
+        ldx     gx1
+        ldy     gx1
+        iny
+        bne     :+
+        dey
+:       jmp     sx
 @done:  rts
 
 ; gsl = gadx * 256 / gdy, 16 bits (gdy > 0).
-slope:  lda     gadx
-        sta     gsl+1
+slope:  lda     #0
+        sta     gsl
+        lda     gadx
+        cmp     gdy
+        bcs     @full
+        ldx     #0                      ; |dx| < dy: the integer part is 0,
+        stx     gsl+1                   ; the remainder |dx|: 8 steps
+        ldx     #8
+:       asl     gsl
+        asl
+        bcs     :+
+        cmp     gdy
+        bcc     :++
+:       sbc     gdy
+        inc     gsl
+:       dex
+        bne     :---
+        rts
+@full:  sta     gsl+1
         lda     #0
         sta     gsl
         ldx     #16
@@ -1532,31 +1601,36 @@ dot:    lda     dcy
         sta     dcnt
 @row:   lda     drh                     ; rows 0-255 only
         bne     @next
-        ldx     ddi
+        ldy     drl
+        cpy     ct
+        bcc     @next
+        cpy     cbot
+        beq     :+
+        bcs     @done                   ; below the window: no more
+:       jsr     srow
+        ldy     ddi
         lda     dcx
         sec
-        sbc     dhw,x
+        sbc     dhw,y
         bcs     :+
         lda     #0
-:       sta     sxa
+:       tax
         lda     dcx
         clc
-        adc     dhw,x
+        adc     dhw,y
         bcs     :+
         sbc     #0                      ; C = 0: - 1
+        tay
         jmp     :++
-:       lda     #255
-:       sta     sxb
-        lda     drl
-        sta     sy
-        jsr     span
+:       ldy     #255
+:       jsr     sx
 @next:  inc     drl
         bne     :+
         inc     drh
 :       inc     ddi
         dec     dcnt
         bne     @row
-        rts
+@done:  rts
 
 ; -- solids -----------------------------------------------------------------------
 ; Scan-line fill, even-odd, of q[0..qm-1] (qm >= 3). An edge covers the rows
@@ -1652,8 +1726,9 @@ fill:   lda     #0
         bne     @rm
         lda     #128
         sta     eal,x
-        lda     #0
-        sta     eah,x
+        lda     exa,x                   ; x, or ~x going left: always added to
+        eor     esg,x
+        sta     exc,x
         txa
         ldy     nact
         sta     act,y
@@ -1689,24 +1764,19 @@ fill:   lda     #0
         bcc     @step
         ldy     #0                      ; crossings
 @cx:    ldx     act,y
-        lda     esg,x
-        bmi     :+
-        lda     exa,x
-        clc
-        adc     eah,x
-        jmp     :++
-:       lda     exa,x
-        sec
-        sbc     eah,x
-:       sta     xs,y
+        lda     exc,x
+        eor     esg,x
+        sta     xs,y
         iny
         cpy     nact
         bne     @cx
-        ldx     #1                      ; sorted
-@is:    cpx     nact
+        ldx     #1                      ; act sorted by crossing: it was on
+@is:    cpx     nact                    ; the row before, so this is quick
         bcs     @isd
         lda     xs,x
         sta     t0
+        lda     act,x
+        sta     t1
         txa
         tay
 :       lda     xs-1,y
@@ -1714,38 +1784,47 @@ fill:   lda     #0
         bcc     :+
         beq     :+
         sta     xs,y
+        lda     act-1,y
+        sta     act,y
         dey
         bne     :-
 :       lda     t0
         sta     xs,y
+        lda     t1
+        sta     act,y
         inx
         bne     @is                     ; (always)
-@isd:   ldy     #1                      ; pairs
+@isd:   ldy     gy                      ; pairs
+        jsr     srow
+        ldy     #1
 @pr:    cpy     nact
         bcs     @step
-        lda     xs-1,y
-        sta     sxa
-        lda     xs,y
-        sta     sxb
-        lda     gy
-        sta     sy
         sty     t3
-        jsr     span
+        ldx     xs-1,y
+        lda     xs,y
+        tay
+        jsr     sx
         ldy     t3
         iny
         iny
         bne     @pr                     ; (always)
-@step:  ldy     nact
+@step:  inc     fv_counts+O_FROWS
+        bne     :+
+        inc     fv_counts+O_FROWS+1
+:       lda     nact
         beq     @inc
+        ldx     #O_ASTEP
+        jsr     cadd
+        ldy     nact
         dey
 :       ldx     act,y
         clc
         lda     eal,x
         adc     esl,x
         sta     eal,x
-        lda     eah,x
+        lda     exc,x
         adc     esh,x
-        sta     eah,x
+        sta     exc,x
         dey
         bpl     :-
 @inc:   inc     gy
@@ -1787,31 +1866,9 @@ setcol: pha
         sta     (rowp),y
 .endmacro
 
-; Fills movie x sxa..sxb (sxa <= sxb expected) on row sy of pagehi, within
-; the clip window.
-span:   lda     sy
-        cmp     ct
-        bcc     @out
-        cmp     cbot
-        beq     :+
-        bcs     @out
-:       lda     sxa
-        cmp     cl
-        bcs     :+
-        lda     cl
-:       sta     t2                      ; left
-        lda     sxb
-        cmp     cr
-        bcc     :+
-        lda     cr
-:       cmp     t2
-        bcc     @out
-        tax
-        lda     colof,x
-        sta     ccb
-        lda     rmx,x
-        sta     mr
-        ldy     sy
+; Sets up row Y (0-191, inside the window) of pagehi: rowp, and the row's
+; patterns p0 (even columns), p1 (odd columns), pd = p0 ^ p1.
+srow:   sty     crow
         lda     rowlo,y
         sta     rowp
         lda     rowhi,y
@@ -1823,14 +1880,34 @@ span:   lda     sy
         lda     ce0
         sta     p0
         lda     ce1
-        bcc     :++                     ; (always)
+        sta     p1
+        eor     p0
+        sta     pd
+        rts
 :       lda     co0
         sta     p0
         lda     co1
-:       sta     p1
+        sta     p1
         eor     p0
         sta     pd
-        ldx     t2
+        rts
+
+; Fills movie x X..Y on the row set by srow, within cl..cr; counts the
+; span and its bytes in osp, oby when counting.
+sx:     cpx     cl
+        bcs     :+
+        ldx     cl
+:       cpy     cr
+        bcc     :+
+        ldy     cr
+:       sty     t2
+        cpx     t2
+        beq     :+
+        bcs     @out
+:       lda     rmx,y
+        sta     mr
+        lda     colof,y
+        sta     ccb
         lda     lmx,x
         ldy     colof,x
         sty     scol
@@ -1839,48 +1916,101 @@ span:   lda     sy
         and     mr
         sta     msk
         PUT
-        jmp     @count
+        lda     counting
+        jne     @one
 @out:   rts
 @multi: sta     msk
         PUT
         iny
         cpy     ccb
         beq     @right
+        sty     t2                      ; full bytes: ccb - y of them
+        lda     ccb
+        sec
+        sbc     t2
+        tax
+        cpx     #3
+        bcs     @chain
         tya
         lsr
         lda     p0
-        bcc     @full
+        bcc     :+
         lda     p1
-@full:  sta     (rowp),y
+:       sta     (rowp),y
         eor     pd
         iny
-        cpy     ccb
-        bne     @full
+        dex
+        bne     :-
+        beq     @right                  ; (always)
+@chain: lda     pd                      ; unrolled: one colour or two
+        beq     @plain
+        lda     chlo,x
+        sta     jv
+        lda     chhi,x
+        sta     jv+1
+        tya
+        lsr
+        lda     p0
+        bcc     :+
+        lda     p1
+:       jsr     sxjump
+        jmp     @right
+@plain: lda     cplo,x
+        sta     jv
+        lda     cphi,x
+        sta     jv+1
+        lda     p0
+        jsr     sxjump
 @right: lda     mr
         sta     msk
         PUT
-@count: lda     counting
+        lda     counting
         beq     @out
-        inc     fv_counts+C_SPANS
-        bne     :+
-        inc     fv_counts+C_SPANS+1
-        bne     :+
-        inc     fv_counts+C_SPANS+2
-:       lda     ccb                     ; bytes: ccb - scol + 1
-        sec
+        lda     ccb                     ; bytes beyond the first: ccb - scol
+        sec                             ; (build adds one a span)
         sbc     scol
-        sec
-        adc     fv_counts+C_BYTES
-        sta     fv_counts+C_BYTES
-        bcc     @out
-        inc     fv_counts+C_BYTES+1
-        bne     @out
-        inc     fv_counts+C_BYTES+2
+        clc
+        adc     oby
+        sta     oby
+        bcc     @one
+        inc     oby+1
+@one:   inc     osp
+        bne     :+
+        inc     osp+1
+:       bit     counting
+        bpl     sxret
+        ldy     crow                    ; the row's extent (the addresses
+        lda     scol                    ; of the page's arrays are written
+tmin1:  cmp     emin1,y                 ; in by build)
+        bcs     :+
+tmin2:  sta     emin1,y
+:       lda     ccb
+tmax1:  cmp     emax1,y
+        bcc     sxret
+tmax2:  sta     emax1,y
+sxret:   rts
+sxjump:  jmp     (jv)
+
+; Full bytes from Y on, A the pattern: entered n copies before the end.
+chainc:
+        .repeat 36
+        sta     (rowp),y
+        eor     pd
+        iny
+        .endrep
+chaince:
+        rts
+chainp:
+        .repeat 36
+        sta     (rowp),y
+        iny
+        .endrep
+chainpe:
         rts
 
 ; -- timing ---------------------------------------------------------------------------
-; fv_orig = ORIG_BASE + the terms of origt, fv_own = OWN_BASE + OWN_TIMING
-; + the terms of ownt, fv_wait = max(0, fv_orig - fv_own).
+; fv_orig = ORIG_BASE + the terms of origt, fv_own = OWN_BASE + the terms
+; of ownt, fv_wait = max(0, fv_orig - fv_own).
 fv_timing:
         lda     #<ORIG_BASE
         ldx     #>ORIG_BASE
@@ -1891,8 +2021,8 @@ fv_timing:
         sta     fv_orig,x
         dex
         bpl     :-
-        lda     #<(OWN_BASE + OWN_TIMING)
-        ldx     #>(OWN_BASE + OWN_TIMING)
+        lda     #<OWN_BASE
+        ldx     #>OWN_BASE
         ldy     #ownt - origt
         jsr     terms
         sec
@@ -1934,8 +2064,10 @@ terms:  sta     acc
         sta     mulv+2
         lda     #0
         sta     mulv+3
-        ldx     #16
-@bit:   lsr     mulk+1
+@bit:   lda     mulk
+        ora     mulk+1
+        beq     @nextt                  ; no bits left
+        lsr     mulk+1
         ror     mulk
         bcc     :+
         clc
@@ -1955,9 +2087,8 @@ terms:  sta     acc
         rol     mulv+1
         rol     mulv+2
         rol     mulv+3
-        dex
-        bne     @bit
-        iny
+        jmp     @bit
+@nextt: iny
         iny
         iny
         bne     @term                   ; (always)

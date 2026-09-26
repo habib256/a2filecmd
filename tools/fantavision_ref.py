@@ -36,10 +36,10 @@ What the specification leaves open, and how it is settled here
 * Play count: the low nibble; 0 (whatever the high nibble) loops forever.
 * Trace objects are drawn on both pages, background objects on both pages
   and the background copy, lightning on the page being built only.
-* Erasing: the bounding box of a normal object (rows and byte columns,
-  see bbox), restored from the background copy on the page it was drawn on
-  when that page is next built. Trace or lightning versions under that box
-  are lost with it.
+* Erasing: on the page they were drawn on, when that page is next built,
+  the byte columns that the normal objects covered, row by row (from the
+  first to the last byte touched on each row, clipped), are restored from
+  the background copy. Trace or lightning versions under them are lost.
 """
 import argparse
 import random
@@ -69,16 +69,6 @@ DOT_HALF = {
 
 # The original's time for a frame (docs, "How long the original takes").
 ORIG_BASE, ORIG_SEG, ORIG_BYTE, ORIG_ESEG, ORIG_EBYTE, ORIG_EDGE = 6300, 230, 20, 270, 45, 1100
-
-# This player's own cost for a frame, calibrated with sim65 on the synthetic
-# set (tools/test_fantavision.py --calibrate): cycles ~ OWN_BASE + sum of
-# OWN[name] * count. The engine carries the same constants (engine.s).
-OWN_BASE = 1500
-OWN = {'spans': 150, 'bytes': 17, 'erows': 60, 'ebytes': 16, 'edges': 300,
-       'ipoints': 60, 'objects': 400}
-# What the engine spends computing the wait itself, and what the shell's
-# wait loop cannot shorten: subtracted once.
-OWN_TIMING = 0
 
 
 def row_address(y):
@@ -189,6 +179,7 @@ class Canvas:
         self.buf = None
         self.colour = 0
         self.counting = False
+        self.extents = None              # row -> [first, last] byte, or None
         self.spans = self.bytes = 0
 
     def span(self, y, xa, xb):
@@ -203,6 +194,9 @@ class Canvas:
         if self.counting:
             self.spans += 1
             self.bytes += cb - ca + 1
+            if self.extents is not None:
+                e = self.extents.get(y)
+                self.extents[y] = [ca, cb] if e is None else [min(e[0], ca), max(e[1], cb)]
         nib = self.colour & 15 if y & 1 else self.colour >> 4
         base = ROW[y]
         buf = self.buf
@@ -307,37 +301,9 @@ class Canvas:
             self.segment(qx[i], qy[i], qx[j], qy[j])
 
 
-def bbox(kind, mode, xs, ys, clip):
-    """(row0, row1, col0, col1) of what draw() may touch, or None."""
-    if not xs:
-        return None
-    if kind == 0:
-        if not 1 <= mode <= 9:
-            return None
-        x0, x1 = min(xs) - mode, max(xs) + mode - 1
-        y0, y1 = min(ys) - mode, max(ys) + mode - 1
-    else:
-        x0, x1 = min(xs) - 1, max(xs) + 1
-        y0, y1 = min(ys) - 1, max(ys)
-    cl, cr, ct, cb = clip
-    x0, x1 = max(x0, cl), min(x1, cr)
-    y0, y1 = max(y0, ct), min(y1, cb, ROWS - 1)
-    if x0 > x1 or y0 > y1:
-        return None
-    return y0, y1, (x0 + 14) // 7, (x1 + 14) // 7
-
-
 def orig_cycles(c):
     return (ORIG_BASE + ORIG_SEG * c['spans'] + ORIG_BYTE * c['bytes'] +
             ORIG_ESEG * c['espans'] + ORIG_EBYTE * c['ebytes'] + ORIG_EDGE * c['edges'])
-
-
-def own_cycles(c):
-    return OWN_BASE + OWN_TIMING + sum(OWN[k] * c['own_' + k] for k in OWN)
-
-
-def wait_cycles(c):
-    return max(0, orig_cycles(c) - own_cycles(c))
 
 
 # -- playing ------------------------------------------------------------------
@@ -353,7 +319,7 @@ class Player:
         self.clip = (data[8], data[9], data[10], data[11])
         self.bg = bytearray(PAGE)
         self.pages = {1: None, 2: None}
-        self.boxes = {1: [None] * 8, 2: [None] * 8}
+        self.extents = {1: {}, 2: {}}
         self.prev_normal = (0, 0)
         canvas = Canvas((0, 255, 0, 255))
         canvas.buf, canvas.colour = self.bg, data[4]
@@ -368,17 +334,11 @@ class Player:
         other = 3 - page
         buf = self.pages[page]
         c = dict(spans=0, bytes=0, edges=0, espans=self.prev_normal[0],
-                 ebytes=self.prev_normal[1], own_spans=0, own_bytes=0,
-                 own_erows=0, own_ebytes=0, own_edges=0, own_ipoints=0, own_objects=0)
-        for box in self.boxes[page]:
-            if box:
-                r0, r1, c0, c1 = box
-                c['own_erows'] += r1 - r0 + 1
-                c['own_ebytes'] += (r1 - r0 + 1) * (c1 - c0 + 1)
-                for r in range(r0, r1 + 1):
-                    a = ROW[r]
-                    buf[a + c0:a + c1 + 1] = self.bg[a + c0:a + c1 + 1]
-        self.boxes[page] = [None] * 8
+                 ebytes=self.prev_normal[1])
+        for r, (c0, c1) in self.extents[page].items():
+            a = ROW[r]
+            buf[a + c0:a + c1 + 1] = self.bg[a + c0:a + c1 + 1]
+        self.extents[page] = {}
         nspans = nbytes = 0
         canvas = Canvas(self.clip)
         for o, v in enumerate(versions):
@@ -386,34 +346,25 @@ class Player:
                 continue
             kind, mode, colour, anim, xs, ys, interp = v
             anim = min(anim, 3)
-            if interp:
-                c['own_ipoints'] += len(xs)
             targets = [buf]
             if anim in (1, 2):
                 targets.append(self.pages[other])
             if anim == 2:
                 targets.append(self.bg)
-            edges = len(xs) if kind else 0
-            c['edges'] += edges
-            c['own_edges'] += edges * len(targets)
-            c['own_objects'] += len(targets)
+            c['edges'] += len(xs) if kind else 0
             canvas.spans = canvas.bytes = 0
             for i, t in enumerate(targets):
                 canvas.buf = t
                 canvas.counting = i == 0
+                canvas.extents = self.extents[page] if i == 0 and anim == 0 else None
                 canvas.draw(kind, mode, colour, xs, ys)
             c['spans'] += canvas.spans
             c['bytes'] += canvas.bytes
-            c['own_spans'] += canvas.spans * len(targets)
-            c['own_bytes'] += canvas.bytes * len(targets)
             if anim == 0:
                 nspans += canvas.spans
                 nbytes += canvas.bytes
-                self.boxes[page][o] = bbox(kind, mode, xs, ys, self.clip)
         self.prev_normal = (nspans, nbytes)
         c['orig'] = orig_cycles(c)
-        c['own'] = own_cycles(c)
-        c['wait'] = wait_cycles(c)
         return c
 
     @staticmethod

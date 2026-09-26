@@ -35,6 +35,16 @@ import fantavision_ref as ref  # noqa: E402
 
 HEAD = Path(os.environ.get('CC65_HEAD', str(Path.home() / 'opt/cc65-head')))
 
+
+def engine_constants():
+    """OWN_* of engine.s: the engine's own-cost estimate."""
+    text = (ROOT / 'src/fanta/engine.s').read_text()
+    got = {m[1].lower(): int(m[2]) for m in re.finditer(r'^OWN_(\w+)\s*=\s*(\d+)', text, re.M)}
+    return got.pop('base'), got
+
+
+OWN_BASE, OWN = engine_constants()
+
 GLUE = r'''
         .import fv_check, fv_begin, fv_first, fv_next, fv_timing
         .import fv_movie, fv_len, fv_shown, fv_done, fv_frames
@@ -65,7 +75,7 @@ HARNESS = r'''
 extern unsigned char* fv_movie;
 extern unsigned int fv_len;
 extern unsigned char fv_shown, fv_done, fv_frames;
-extern unsigned char fv_counts[36];
+extern unsigned char fv_counts[45];
 extern unsigned long fv_orig, fv_own, fv_wait;
 unsigned char fv_check(void);
 void fv_begin(void);
@@ -111,7 +121,7 @@ int main(int, char** argv)
             c1 = cyc(); cb = c1 - c0;
             c0 = cyc(); fv_timing(); c1 = cyc(); ct = c1 - c0;
             out(&fv_shown, 1);
-            out(fv_counts, 36);
+            out(fv_counts, 45);
             out(&fv_orig, 4); out(&fv_own, 4); out(&fv_wait, 4);
             out(&cb, 4); out(&ct, 4);
             out((void*)(fv_shown << 8), 0x2000);
@@ -126,9 +136,12 @@ int main(int, char** argv)
 }
 '''
 
-COUNTERS = ['spans', 'bytes', 'espans', 'ebytes', 'edges', 'own_spans', 'own_bytes',
-            'own_erows', 'own_ebytes', 'own_edges', 'own_ipoints', 'own_objects']
-FRAME = 1 + 36 + 12 + 8 + 0x2000
+# fv_counts: what the original-time formula uses (checked against the
+# reference), then what the engine's own-cost estimate uses (engine only).
+COUNTERS = ['spans', 'bytes', 'espans', 'ebytes', 'edges']
+OWN_COUNTERS = ['spans', 'bytes', 'erows', 'ebytes', 'edges', 'ipoints', 'objects',
+                'lrows', 'frows', 'astep']
+FRAME = 1 + 45 + 12 + 8 + 0x2000
 
 
 class Sim:
@@ -167,12 +180,13 @@ class Sim:
             while o[pos] != 0xFF:
                 shown = o[pos]
                 c = {}
-                for i, name in enumerate(COUNTERS):
+                names = COUNTERS + ['own_' + k for k in OWN_COUNTERS]
+                for i, name in enumerate(names):
                     b = o[pos + 1 + 3 * i:pos + 4 + 3 * i]
                     c[name] = b[0] | b[1] << 8 | b[2] << 16
-                orig, own, wait, cyc, tcyc = struct.unpack_from('<IIIII', o, pos + 37)
+                orig, own, wait, cyc, tcyc = struct.unpack_from('<IIIII', o, pos + 46)
                 c.update(orig=orig, own=own, wait=wait)
-                page = o[pos + 57:pos + 57 + 0x2000]
+                page = o[pos + 66:pos + 66 + 0x2000]
                 res['frames'].append((shown, c, cyc - res['overhead'],
                                       tcyc - res['overhead'], page))
                 pos += FRAME
@@ -216,8 +230,11 @@ class Fantavision(unittest.TestCase):
         for i, ((shown, c, _, _, page), (rshown, rpage, rc)) in enumerate(zip(res['frames'], frames)):
             where = '%s frame %d' % (label, i)
             self.assertEqual(shown, 0x20 if rshown == 1 else 0x40, where)
-            for k in COUNTERS + ['orig', 'own', 'wait']:
+            for k in COUNTERS + ['orig']:
                 self.assertEqual(c[k], rc[k], '%s: %s' % (where, k))
+            self.assertEqual(c['own'], OWN_BASE + sum(OWN[k] * c['own_' + k] for k in OWN_COUNTERS),
+                             where + ': own estimate')
+            self.assertEqual(c['wait'], max(0, c['orig'] - c['own']), where + ': wait')
             if page != rpage:
                 diff = [a for a in range(0x2000) if page[a] != rpage[a]]
                 self.fail('%s: %d bytes differ, first at $%04X: %02X, ref %02X' %
@@ -329,8 +346,10 @@ class Fantavision(unittest.TestCase):
         cases.append((h + b'\x01' * 8 * 127 + b'\x00' * 10, None))      # 127 frames
         cases.append((h + b'\x01' * 8 * 128 + b'\x00' * 10, 'frames'))  # 128 frames
         cases.append((h + b'\x01' * 7 + b'\x00' + b'\x01' * 200, 'record'))  # 0 inside a frame
-        for bad in (2, 3, 5, 69, 70, 255):
-            cases.append((h + bytes([bad]) + bytes(80) + b'\x01' * 200, 'record'))
+        for bad in (2, 3, 5, 69, 70, 71, 72, 254, 255):
+            # otherwise well formed: the length alone is wrong
+            rec = bytes([bad, 2, 0x33, 0]) + bytes(max(0, bad - 4))
+            cases.append((h + rec + b'\x01' * 7 + b'\x00' * 100, 'record'))
         # n = 33
         cases.append((h + ref.record(2, 1, 3, 0, [1] * 33, [1] * 33)[:1] + bytes(70) + b'\x01' * 60,
                       'record'))
@@ -403,29 +422,58 @@ def measure():
     for key, g in sorted(groups.items()) + [('ALL', allr)]:
         print('%-12s %s | %s  x%.1f' % (key, stats([r[0] for r in g]), stats([r[1] for r in g]),
                                         statistics.median([r[1] / r[0] for r in g])))
-    err = [abs(r[2] - r[0] - r[3]) / r[0] for r in allr]
+    err = [abs(r[2] - r[0] - r[3]) / (r[0] + r[3]) for r in allr]
     print('own estimate vs measured (build + timing): median error %.1f%%, 90%% within %.1f%%' %
           (100 * statistics.median(err), 100 * sorted(err)[int(len(err) * 0.9)]))
     print('fv_timing: %d-%d cycles' % (min(r[3] for r in allr), max(r[3] for r in allr)))
 
 
+def lstsq(rows, ys):
+    """Least squares, relative (each row weighted by 1 / y), normal equations."""
+    n = len(rows[0])
+    m = [[0.0] * (n + 1) for _ in range(n)]
+    for r, y in zip(rows, ys):
+        w = 1.0 / (y * y)
+        for i in range(n):
+            for j in range(n):
+                m[i][j] += w * r[i] * r[j]
+            m[i][n] += w * r[i] * y
+    for i in range(n):                       # Gauss-Jordan, partial pivoting
+        p = max(range(i, n), key=lambda k: abs(m[k][i]))
+        m[i], m[p] = m[p], m[i]
+        if abs(m[i][i]) < 1e-12:
+            continue
+        for k in range(n):
+            if k != i:
+                f = m[k][i] / m[i][i]
+                for j in range(i, n + 1):
+                    m[k][j] -= f * m[i][j]
+    return [m[i][n] / m[i][i] if abs(m[i][i]) > 1e-12 else 0.0 for i in range(n)]
+
+
 def calibrate():
-    import numpy as np
     with tempfile.TemporaryDirectory(prefix='a2fc-fanta-') as d:
         sim = Sim('6502', Path(d))
         rows = collect(sim)
-    names = list(ref.OWN)
-    A = np.array([[1.0] + [c['own_' + k] for k in names] for _, _, c, _, _ in rows])
-    y = np.array([cyc + tcyc for _, _, _, cyc, tcyc in rows], dtype=float)
-    # relative least squares: weight each frame by 1 / cycles
-    w = 1 / y
-    coef, *_ = np.linalg.lstsq(A * w[:, None], y * w, rcond=None)
+    names = OWN_COUNTERS
+    A = [[1.0] + [c['own_' + k] for k in names] for _, _, c, _, _ in rows]
+    y = [cyc + tcyc for _, _, _, cyc, tcyc in rows]
+    keep = list(range(len(names) + 1))
+    while True:                              # no negative cost: drop and refit
+        sub = lstsq([[r[i] for i in keep] for r in A], y)
+        worst = min(range(len(keep)), key=lambda i: sub[i])
+        if sub[worst] >= 0:
+            break
+        del keep[worst]
+    coef = [0.0] * (len(names) + 1)
+    for i, v in zip(keep, sub):
+        coef[i] = v
     print('OWN_BASE (incl. fv_timing) = %d' % round(coef[0]))
     for k, v in zip(names, coef[1:]):
         print('  %-8s %d' % (k, round(v)))
-    pred = A @ coef
-    err = np.abs(pred - y) / y
-    print('median error %.1f%%, max %.1f%%' % (100 * np.median(err), 100 * err.max()))
+    err = sorted(abs(sum(a * c for a, c in zip(r, coef)) - v) / v for r, v in zip(A, y))
+    print('median error %.1f%%, 90%% within %.1f%%, max %.1f%%' %
+          (100 * err[len(err) // 2], 100 * err[int(len(err) * 0.9)], 100 * err[-1]))
 
 
 if __name__ == '__main__':
