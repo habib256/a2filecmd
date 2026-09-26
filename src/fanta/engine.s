@@ -42,17 +42,17 @@ MAXPTS  = 32
 ; (tools/test_fantavision.py --calibrate: least squares on 1,000 frames,
 ; relative error, no negative cost). The reference carries the original's.
 ORIG_BASE  = 6300
-OWN_BASE    = 10410      ; per frame, fv_timing included
-OWN_SPANS   = 205       ; cycles per unit of each counter
-OWN_BYTES   = 41
-OWN_EROWS   = 326
-OWN_EBYTES  = 12
-OWN_EDGES   = 109
-OWN_IPOINTS = 212
-OWN_OBJECTS = 1683
-OWN_LROWS   = 63
+OWN_BASE    = 10364      ; per frame, fv_timing included
+OWN_SPANS   = 229       ; cycles per unit of each counter
+OWN_BYTES   = 30
+OWN_EROWS   = 295
+OWN_EBYTES  = 7
+OWN_EDGES   = 112
+OWN_IPOINTS = 207
+OWN_OBJECTS = 1568
+OWN_LROWS   = 55
 OWN_FROWS   = 0
-OWN_ASTEP   = 170
+OWN_ASTEP   = 164
 
 ; The per-frame counters, 24 bits each (fv_counts + offset).
 C_SPANS   = 0           ; row segments drawn on the page built
@@ -891,6 +891,18 @@ build:  lda     fv_shown
         lda     pmax+1
         sta     tmax1+2
         sta     tmax2+2
+        lda     pmin
+        sta     ermn1+1
+        sta     ermn2+1
+        lda     pmin+1
+        sta     ermn1+2
+        sta     ermn2+2
+        lda     pmax
+        sta     ermx1+1
+        sta     ermx2+1
+        lda     pmax+1
+        sta     ermx1+2
+        sta     ermx2+2
         lda     #0
         ldx     #NCOUNTS + 5            ; the counters and normal
 :       sta     fv_counts,x
@@ -1206,52 +1218,52 @@ erase:  lda     #0
         sta     erhi,x
         lda     gnxt
         cmp     gy
-        bcc     @done                   ; none
-@row:   ldy     gy
-        lda     (pmin),y
-        sta     t0
-        lda     (pmax),y
+        bcc     edone                   ; none
+        ldx     gy
+        inc     gnxt                    ; the row after the last
+erow:
+ermn1:  lda     emin1,x                 ; (the addresses of the page's arrays
+        sta     t0                      ; are written in by build)
+ermx1:  lda     emax1,x
         sec
         sbc     t0
-        bcc     @next                   ; nothing on this row
-        sta     gcur                    ; columns - 1
+        bcc     enext                   ; nothing on this row
+        tay                             ; columns - 1
         lda     #$FF
-        sta     (pmin),y
+ermn2:  sta     emin1,x
         lda     #0
-        sta     (pmax),y
-        lda     rowlo,y
+ermx2:  sta     emax1,x
+        lda     rowlo,x
         clc
         adc     t0
-        sta     @src+1
-        sta     @dst+1
-        lda     rowhi,y
+        sta     esrc+1
+        sta     edst+1
+        lda     rowhi,x
         adc     #0
         ora     #BGPAGE
-        sta     @src+2
+        sta     esrc+2
         eor     #BGPAGE
         ora     bpage
-        sta     @dst+2
-        ldy     gcur
-@src:   lda     $FFFF,y
-@dst:   sta     $FFFF,y
-        dey
-        bpl     @src
+        sta     edst+2
         lda     fv_count                ; (counted at the original speed)
-        beq     @next
+        beq     esrc
         inc     erw
         bne     :+
         inc     erw+1
-:       sec
-        lda     eby
-        adc     gcur
+:       tya
+        sec
+        adc     eby
         sta     eby
-        bcc     @next
+        bcc     esrc
         inc     eby+1
-@next:  lda     gy
-        inc     gy
-        cmp     gnxt
-        bne     @row
-@done:  lda     erw
+esrc:   lda     $FFFF,y
+edst:   sta     $FFFF,y
+        dey
+        bpl     esrc
+enext:  inx
+        cpx     gnxt
+        bne     erow
+edone:  lda     erw
         sta     fv_counts+O_EROWS
         lda     erw+1
         sta     fv_counts+O_EROWS+1
@@ -2149,7 +2161,7 @@ setcol: pha
 .endmacro
 
 ; Sets up row Y (0-191, inside the window) of pagehi: rowp, and the row's
-; patterns p0 (even columns), p1 (odd columns), pd = p0 ^ p1.
+; patterns p0 (even columns) and p1 (odd columns).
 srow:   sty     crow
         lda     rowlo,y
         sta     rowp
@@ -2163,15 +2175,11 @@ srow:   sty     crow
         sta     p0
         lda     ce1
         sta     p1
-        eor     p0
-        sta     pd
         rts
 :       lda     co0
         sta     p0
         lda     co1
         sta     p1
-        eor     p0
-        sta     pd
         rts
 
 ; Fills movie x X..Y on the row set by srow, within cl..cr; counts the
@@ -2206,7 +2214,10 @@ sx:     cpx     cl
         iny
         cpy     ccb
         beq     @right
-        sty     t2                      ; full bytes: ccb - y of them
+        lda     p0                      ; full bytes: ccb - y of them,
+        eor     p1                      ; the two patterns alternating
+        sta     pd
+        sty     t2
         lda     ccb
         sec
         sbc     t2
