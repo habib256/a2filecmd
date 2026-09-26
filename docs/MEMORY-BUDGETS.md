@@ -1,5 +1,22 @@
 # Consolidation : budgets mémoire
 
+## Préparation 1.0 : l'audit des signes rend des octets
+
+Réserves au lien après `rm -rf build build-6502`, 65C02/6502 : MAIN
+**415/821** (413/805 avant), écart avant la pile 443/1038 (441/1022),
+carte langage 78/69, LOWRAM 82/107 et NAV 142/208 inchangées. Surcouches :
+RUN 1700/1708 (1691/1696), DELETE 286/296 (286/291) ; AWDATA 8 034/8 181
+octets (8 040/8 195), DGRVIEW 2 999/3 058 (2 999/3 082) ; IDENT, MDVIEW et
+DISASM gardent leur taille.
+
+Rien n'a coûté : les sites de `tools/sign_compare.py` prouvés non négatifs
+reçoivent un transtypage vers le type que cc65 2.19 employait déjà (code
+65C02 identique ou plus court), et la comparaison non signée du 6502 est
+plus courte que la signée. `addr_len <= 18 + 40` compare un octet au lieu
+d'un mot. Le transtypage `(unsigned char)` des chiffres hexadécimaux de
+DISASM coûtait 2 octets dans les deux éditions : la ligne est annotée à la
+place.
+
 ## Préparation 1.0 : les grands catalogues comptés, pas indexés
 
 Réserves au lien après `rm -rf build build-6502`, 65C02/6502 : MAIN

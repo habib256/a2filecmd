@@ -5,6 +5,49 @@ downloads and installation.
 
 ## [Unreleased]
 
+### The two compilers now read every sign alike
+- An audit of every C unit of both editions (the resident and its headers,
+  the launcher, the service overlays) for the defect behind the Up bug
+  below. cc65 2.19, which builds the 65C02 edition, makes `a < b` unsigned
+  as soon as either side is unsigned, an unsigned char included (C makes
+  it a signed int, as cc65 master does for the 6502 edition), and it
+  computes the difference of two unsigned chars on eight bits. 768
+  comparisons are signed differently by the two compilers; in all but six,
+  both sides are provably never negative, so both editions answer alike.
+  The six, the eight-bit differences, and the divisions, shifts and
+  widenings to `long` of such values were traced one by one: apart from
+  `move_cursor`, none could give a different answer with a real disk.
+- Hardening, both editions: AWDATA's column counter is unsigned. A crafted
+  spreadsheet row skipping more than 32,767 columns made it negative, and
+  the cell-by-cell view (F) then took a repeated label's width from a byte
+  in front of the column table (the line stayed within the screen).
+- Fix, 6502 edition: IDENT called a packed Extasie picture (`$F2`) of
+  32 KB or more merely "Extasie picture": the length in its first word
+  was sign-extended before being compared with the file's. A packed double
+  hi-res page is far smaller, so no real picture was misnamed; the 65C02
+  edition was right.
+- The other sites now say what they rely on, at no cost: a cast of the
+  side already proven non-negative (`move_cursor`, `drop_entry`, the
+  picked entries of copy, move and delete, `launch_check`, DGRVIEW's
+  centring), `addr_len <= 18 + 40` instead of `addr_len - 18 <= 40`, and
+  two lines annotated with their proof (DISASM's hex digits, MDVIEW's
+  offsets).
+- `tools/sign_compare.py` reads clang's syntax tree of each unit with each
+  edition's defines and cc65 headers (16-bit int, unsigned char), re-derives
+  every operand's type under cc65 2.19's rule and its value range in C, and
+  reports a comparison unsigned in either edition with an operand that may
+  be negative, a signed overflow of byte arithmetic, `/`, `%`, `>>` or a
+  widening to `long` of such an operand, and an eight-bit difference used
+  on sixteen bits (`--inventory` lists all 768 sites).
+  `tools/test_sign_compare.py`, in `make test`, refuses any such site that
+  is not annotated `/* sign-ok: <proof> */`, refuses an annotation nobody
+  needs, and checks the rules themselves: 25 shapes compiled by both
+  compilers under sim65, where every reported shape gives a wrong answer
+  in at least one edition and every accepted one the right answer in both.
+- MAIN 415/821 bytes free (413/805 before); AWDATA 6/14 bytes smaller,
+  DGRVIEW 24 bytes smaller on the 6502; RUN and DELETE gain a few bytes of
+  margin.
+
 ### VDrive leaves the printer alone
 - VDrive no longer looks at slot 1: on a //e that is where the printer's
   Super Serial Card lives, and on a //c it is the printer port. With no

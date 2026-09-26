@@ -89,7 +89,7 @@ static unsigned char pos;               /* the length of line */
 static unsigned char ncats, cat0, cut;
 static unsigned int nrecs;
 static unsigned short row;              /* the spreadsheet row being shown */
-static int col;
+static unsigned int col;                /* unsigned: a crafted row wraps it, never makes it negative */
 static unsigned char num[8];
 static unsigned char vcol;              /* the leftmost column on the screen */
 static unsigned char formulas;          /* the cell-by-cell view instead of the grid */
@@ -425,8 +425,9 @@ static void blank(void)
 
 /* Where column c starts on the screen, or 255 when it is not on it. A sheet
  * has 127 columns; a malformed file can claim more, and the walk below
- * counts in bytes. */
-static unsigned char colx(int c)
+ * counts in bytes. Unsigned, like col: the two compilers would read
+ * `c < vcol` differently for a negative int (tools/sign_compare.py). */
+static unsigned char colx(unsigned int c)
 {
     unsigned int x = GUTTER;
     unsigned char i;

@@ -363,6 +363,7 @@ test: test-mini
 	python3 $(TOOLS)/test_strobe.py
 	python3 $(TOOLS)/test_flag_reuse.py
 	python3 $(TOOLS)/test_cc65_traps.py
+	python3 $(TOOLS)/test_sign_compare.py
 	python3 $(TOOLS)/check_warnings.py
 	python3 $(TOOLS)/test_hw_media.py
 	python3 $(TOOLS)/fuzz_prodos.py --count 150 --seed 1

@@ -237,7 +237,7 @@ static const char* identify(void)
      * them with their own length: a double hi-res page, compressed, for the
      * Le Chat Mauve card (EXTASIE reads them). */
     if (t == 0xF2)
-        return SZ[0] == (unsigned long)(b[0] | (b[1] << 8))
+        return SZ[0] == (unsigned long)(unsigned int)(b[0] | (b[1] << 8))
             ? "Extasie picture (Chat Mauve), packed" : "Extasie picture (Chat Mauve)";
     /* 816/Paint saves packed by default, as a $06 with an auxtype of its
      * own: $E001 a hi-res page, $E002 a double hi-res one (PAINT816 reads

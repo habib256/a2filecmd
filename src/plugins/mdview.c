@@ -110,6 +110,7 @@ static long tell_(void) { return vbase + vpos; }
 
 static void seek_(long off)
 {
+    /* sign-ok: every offset comes from tell_() or is 0, never negative */
     if (off >= vbase && off < vbase + vlen) { vpos = (unsigned int)(off - vbase); return; }
     a.fseek(vf, off, SEEK_SET);
     vbase = off;
