@@ -198,6 +198,8 @@ step('sample_media', 'corpus', 'media', {}, needs=('host', 'boot', 'sample'))
 step('paint816', 'pictures', 'media', {}, needs=('host', 'boot', 'sample'))
 step('extasie', 'pictures', 'media', {})
 step('bigvol', 'fixit-repair', 'media', {})
+step('fantavision', '6502', 'media', UNENH)
+step('fantavision', 'enh', 'media', {'A2FC_PRESET': 'iie'})
 
 # -- The cards and the serial line -------------------------------------------
 step('chatmauve', 'rgb', 'cards', {}, args=('feline', 'video7', 'eve'))

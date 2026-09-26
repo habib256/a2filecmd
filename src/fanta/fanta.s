@@ -132,28 +132,11 @@ start:  cld
 
 ; -- the program, at $A400 -----------------------------------------------------
         .code
-main:   ldx     #23             ; mark $0C00-$BEFF in use, keep the old bitmap
-:       lda     BITMAP,x
+main:   ldx     #23             ; the bitmap as it is, given back on the
+:       lda     BITMAP,x        ; way out
         sta     savebm,x
         dex
         bpl     :-
-        ldx     #$0C
-:       txa
-        lsr
-        lsr
-        lsr
-        tay
-        txa
-        and     #7
-        sty     cnt
-        tay
-        lda     bits,y
-        ldy     cnt
-        ora     BITMAP,y
-        sta     BITMAP,y
-        inx
-        cpx     #$BF
-        bne     :-
         lda     mpath
         bne     :+
         lda     #<nopath
@@ -171,20 +154,20 @@ main:   ldx     #23             ; mark $0C00-$BEFF in use, keep the old bitmap
         .word   eofp
         jcs     rdclose
         lda     eofw+2          ; 513 to 9,216 bytes
-        bne     szclose
+        jne     szclose
         lda     eofw+1
         cmp     #>MAXLEN
         bcc     :+
-        bne     szclose
+        jne     szclose
         lda     eofw
-        bne     szclose
+        jne     szclose
 :       lda     eofw+1
         cmp     #>513
-        bcc     szclose
+        jcc     szclose
         bne     :+
         lda     eofw
         cmp     #<513
-        bcc     szclose
+        jcc     szclose
 :       lda     eofw
         sta     rdlen
         lda     eofw+1
@@ -192,15 +175,32 @@ main:   ldx     #23             ; mark $0C00-$BEFF in use, keep the old bitmap
         jsr     MLI             ; READ, all of it
         .byte   $CA
         .word   readp
-        bcs     rdclose
+        jcs     rdclose
         lda     rdgot           ; a short read is an error, not an end
         cmp     rdlen
-        bne     rdclose
+        jne     rdclose
         lda     rdgot+1
         cmp     rdlen+1
-        bne     rdclose
+        jne     rdclose
         jsr     close
-        bcs     rderr
+        jcs     rderr
+        ldx     #$0C            ; the movie read: mark $0C00-$BEFF in use
+:       txa                     ; (not before: ProDOS will not READ into
+        lsr                     ; marked pages)
+        lsr
+        lsr
+        tay
+        txa
+        and     #7
+        sty     cnt
+        tay
+        lda     bits,y
+        ldy     cnt
+        ora     BITMAP,y
+        sta     BITMAP,y
+        inx
+        cpx     #$BF
+        bne     :-
         lda     #<MOVIE
         sta     fv_movie
         lda     #>MOVIE
@@ -398,11 +398,12 @@ back:   ldx     #$FF
         sta     BITMAP,x
         dex
         bpl     :-
-        ldy     #thunk_len - 1
+        ldy     #0              ; (more than 128 bytes: counted up)
 :       lda     thunk_src,y
         sta     $0300,y
-        dey
-        bpl     :-
+        iny
+        cpy     #thunk_len
+        bne     :-
         jmp     $0300
 
 ; dst = the start of text row X (page 1).
