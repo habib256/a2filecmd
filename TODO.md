@@ -70,10 +70,19 @@ Chaque étape suppose la précédente fermée. Un défaut trouvé aux étapes
    - [x] Bug 65C02 corrigé au passage : cc65 2.19 compilait
      `target >= pan->count` (int contre unsigned char) en comparaison non
      signée ; Haut près du début d'une fenêtre chargeait la suivante.
-   - [ ] Auditer les ~38 autres comparaisons int signé / non signé que
-     cc65 2.19 compile en non signé (`draw_entry`, `set_cursor`,
-     `view_getc`, `batch_write`, `click`…) : fautives seulement si l'int
-     peut être négatif ; un test de piège comme `test_flag_reuse.py`.
+   - [x] Audit signé / non signé : cc65 2.19 rend non signée toute
+     opération dont un côté l'est (et calcule `uchar - uchar` sur 8 bits).
+     768 comparaisons signées différemment selon l'édition, 6 avec un
+     opérande qui peut être négatif, toutes tracées : aucun nouveau bug
+     visible ; AWDATA durci (tableur piégé), IDENT 6502 corrigé (libellé).
+     Piège permanent : `tools/sign_compare.py` + `test_sign_compare.py`
+     (arbre syntaxique clang, règles vérifiées sur les deux compilateurs).
+   - [ ] CI : vérifier que clang est présent sur l'image Ubuntu, sinon
+     `test_sign_compare` saute son analyse au lieu d'échouer.
+   - [ ] `make pom2host` produit un hôte qui plante au démarrage (« mutex
+     lock failed ») avec la bibliothèque POM2 actuelle (branche
+     `work/printer-detection` non publiée) ; bancs lancés avec un hôte
+     antérieur. À rejouer quand POM2 publiera.
    - [ ] Trancher : cache des informations de volume. Prototype écarté
      pour préserver les marges mémoire ; le fermer ou le reporter en 1.1.
    - [x] MAIN 65C02 : **494 octets libres** (82 avant), 6502 : 885 ;
