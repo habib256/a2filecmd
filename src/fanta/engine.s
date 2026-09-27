@@ -91,6 +91,10 @@ pmax:   .res 2          ;              last byte touched per row
 scol:   .res 1          ; span: its first byte column
 ccb:    .res 1          ;       its last byte column
 mr:     .res 1          ;       mask of the last byte
+ml:     .res 1          ;       mask of the first byte
+dt0:    .res 1          ; dot: the two rows drawn together
+dt1:    .res 1
+dfast:  .res 1          ; the dots of this object are all inside the window
 msk:    .res 1
 p0:     .res 1          ; the pattern of this row, even and odd columns
 p1:     .res 1
@@ -134,6 +138,7 @@ t0:     .res 1
 t1:     .res 1
 t2:     .res 1
 t3:     .res 1
+gstop:  .res 1          ; segfast: the row to stop at
 fstop:  .res 1          ; fill, two edges: the row to stop at
 frow:   .res 1          ;                  the row started from
 fla:    .res 1          ;                  edge a: fraction, crossing,
@@ -321,6 +326,19 @@ ownt:   .byte O_SPANS
         .byte O_ASTEP
         .word OWN_ASTEP
         .byte $FF
+
+; Writes the pattern into the covered dots of one byte: Y column, msk.
+.macro  PUT
+        tya
+        lsr
+        lda     p0
+        bcc     :+
+        lda     p1
+:       eor     (rowp),y
+        and     msk
+        eor     (rowp),y
+        sta     (rowp),y
+.endmacro
 
         .code
 
@@ -532,6 +550,7 @@ fv_begin:
         sta     kf
         sta     tstep
         sta     counting
+        sta     dfast
         ldx     #5
 :       sta     prevn,x
         dex
@@ -912,6 +931,17 @@ build:  lda     fv_shown
         lda     pmax+1
         sta     tmax1+2
         sta     tmax2+2
+        sta     fmax1+2
+        sta     fmax2+2
+        lda     pmax
+        sta     fmax1+1
+        sta     fmax2+1
+        lda     pmin
+        sta     fmin1+1
+        sta     fmin2+1
+        lda     pmin+1
+        sta     fmin1+2
+        sta     fmin2+2
         lda     pmin
         sta     ermn1+1
         sta     ermn2+1
@@ -1311,6 +1341,7 @@ drawobj:
         cmp     #10
         bcs     @ret
         sta     dsz
+        jsr     dotsin                  ; all inside the window? (dfast)
         ldy     #0
 :       lda     (xp),y
         sta     dcx
@@ -1322,6 +1353,8 @@ drawobj:
         iny
         cpy     onp
         bne     :-
+        lda     #0
+        sta     dfast
 @ret:   rts
 @lines: lda     onp
         cmp     #1
@@ -1365,6 +1398,66 @@ drawobj:
         cmp     oseg
         bne     @seg
         rts
+
+; dfast = 1 when every spot of the dot object (size dsz) lies inside the
+; window: min x - s >= cl, max x + s - 1 <= cr, the same for the rows.
+dotsin: lda     #0
+        sta     dfast
+        ldy     #0
+        lda     (xp),y
+        sta     gx0
+        sta     gx1
+        lda     (yp),y
+        sta     gy0
+        sta     gy1
+:       iny
+        cpy     onp
+        bcs     :++++
+        lda     (xp),y
+        cmp     gx0
+        bcs     :+
+        sta     gx0
+:       cmp     gx1
+        bcc     :+
+        sta     gx1
+:       lda     (yp),y
+        cmp     gy0
+        bcs     :+
+        sta     gy0
+:       cmp     gy1
+        bcc     :----
+        sta     gy1
+        bcs     :----                   ; (always)
+:       lda     gx0
+        sec
+        sbc     dsz
+        bcc     @no
+        cmp     cl
+        bcc     @no
+        lda     gy0
+        sec
+        sbc     dsz
+        bcc     @no
+        cmp     ct
+        bcc     @no
+        lda     gx1
+        clc
+        adc     dsz
+        bcs     @no
+        sbc     #0                      ; C = 0: - 1
+        cmp     cr
+        beq     :+
+        bcs     @no
+:       lda     gy1
+        clc
+        adc     dsz
+        bcs     @no
+        sbc     #0
+        cmp     cbot
+        beq     :+
+        bcs     @no
+:       inc     dfast
+@no:    rts
 
 ; A smallest dot at point Y of the object.
 dot1:   lda     (xp),y
@@ -1469,16 +1562,16 @@ qseg:   lda     qx,x
 ; on the bottom row x1, x1 + 1. x(y) = x0 +- (128 + slope * (y - y0)) >> 8.
 seg:    lda     gx0
         cmp     gx1
-        bne     @line
+        bne     seg_line
         lda     gy0
         cmp     gy1
-        bne     @line
+        bne     seg_line
         lda     gx0                     ; a point: a smallest dot
         sta     dcx
         lda     gy0
         sta     dcy
         jmp     dot1c
-@line:  lda     gy1                     ; downwards
+seg_line:  lda     gy1                     ; downwards
         cmp     gy0
         bcs     :+
         ldx     gy0
@@ -1490,11 +1583,11 @@ seg:    lda     gx0
         stx     gx0
 :       lda     gy1                     ; outside the window: nothing
         cmp     ct
-        jcc     @done
+        jcc     seg_done
         lda     gy0
         cmp     cbot
         beq     :+
-        jcs     @done
+        jcs     seg_done
 :       lda     gx0
         cmp     gx1
         bcc     :+
@@ -1508,19 +1601,19 @@ seg:    lda     gx0
         adc     #1
         bcs     :+
         cmp     cl
-        jcc     @done
+        jcc     seg_done
 :       lda     t0
         cmp     cr
         beq     :+
-        jcs     @done
+        jcs     seg_done
 :       lda     gy0
         cmp     gy1
-        bne     @slope
+        bne     seg_slope
         cmp     ct                      ; horizontal: one span
-        jcc     @done
+        jcc     seg_done
         cmp     cbot
         beq     :+
-        jcs     @done
+        jcs     seg_done
 :       tay
         jsr     srow
         ldx     gx0
@@ -1533,7 +1626,7 @@ seg:    lda     gx0
         bne     :+
         dey
 :       jmp     sx
-@slope: lda     #0
+seg_slope: lda     #0
         sta     gsg
         lda     gx1
         sec
@@ -1559,13 +1652,13 @@ seg:    lda     gx0
         lda     ct                      ; starting above the window: straight
         sec                             ; to its top row
         sbc     gy0
-        bcc     @row
-        beq     @row
+        bcc     seg_fchk
+        beq     seg_fchk
         ldx     ct
         cpx     gy1
         bcc     :+
         lda     gy1                     ; only the bottom row is in it
-        jmp     @bottom
+        jmp     seg_bottom
 :       jsr     mulac
         lda     ct
         sta     gy
@@ -1579,10 +1672,34 @@ seg:    lda     gx0
         sec
         sbc     gac+1
 :       sta     gcur
-@row:   lda     gy
+seg_fchk:
+        ; Accelerated (not counting), steep (|dx| <= dy: a row's run is 2
+        ; or 3 dots, 2 bytes at most), x inside the window: the rows are
+        ; written here directly.
+        lda     counting
+        lsr
+        bcs     seg_row
+        lda     gadx
+        cmp     gdy
+        beq     :+
+        bcs     seg_row
+:       lda     gx0                     ; min x >= cl
+        cmp     gx1
+        bcc     :+
+        lda     gx1
+:       cmp     cl
+        bcc     seg_row
+        lda     gx0                     ; max x < cr
+        cmp     gx1
+        bcs     :+
+        lda     gx1
+:       cmp     cr
+        bcs     seg_row
+        jmp     segfast
+seg_row:   lda     gy
         cmp     cbot
         beq     :+
-        jcs     @done                   ; below the window: nothing more
+        jcs     seg_done                   ; below the window: nothing more
 :       lda     fv_count                ; (counted at the original speed)
         beq     :+
         inc     fv_counts+O_LROWS
@@ -1602,20 +1719,20 @@ seg:    lda     gx0
         cpx     gy1
         bne     :+
         lda     gx1
-        jmp     @have
+        jmp     seg_have
 :       lda     gsg
         bmi     :+
         lda     gx0
         clc
         adc     gac+1
-        jmp     @have
+        jmp     seg_have
 :       lda     gx0
         sec
         sbc     gac+1
-@have:  sta     gnxt
+seg_have:  sta     gnxt
         ldy     gy
         cpy     ct
-        bcc     @skip                   ; above the window: stepped only
+        bcc     seg_skip                   ; above the window: stepped only
         jsr     srow
         lda     gnxt
         cmp     gcur
@@ -1629,18 +1746,18 @@ seg:    lda     gx0
         bne     :+
         dey
 :       jsr     sx
-@skip:  lda     gnxt
+seg_skip:  lda     gnxt
         sta     gcur
         inc     gy
         lda     gy
         cmp     gy1
-        bne     @row
-@bottom:
-        cmp     ct                      ; the bottom row
-        bcc     @done
+        bne     seg_row
+seg_bottom:
+segbot: cmp     ct                      ; the bottom row
+        bcc     seg_done
         cmp     cbot
         beq     :+
-        bcs     @done
+        bcs     seg_done
 :       tay
         jsr     srow
         ldx     gx1
@@ -1649,7 +1766,116 @@ seg:    lda     gx0
         bne     :+
         dey
 :       jmp     sx
-@done:  rts
+seg_done:  rts
+
+; The fast rows of seg (see there): gy .. min(gy1, cbot + 1) - 1, then the
+; bottom row as seg does it.
+segfast:
+        ldx     cbot
+        inx
+        cpx     gy1
+        bcc     :+
+        ldx     gy1
+:       stx     gstop
+        lda     gy
+        cmp     gstop
+        jcs     sf_end
+sf_f:     clc
+        lda     gac
+        adc     gsl
+        sta     gac
+        lda     gac+1
+        adc     gsl+1
+        sta     gac+1
+        ldx     gy
+        inx
+        cpx     gy1
+        bne     :+
+        ldx     gx1                     ; the last: x1 itself
+        jmp     sf_fh
+:       lda     gsg
+        bmi     :+
+        lda     gx0
+        clc
+        adc     gac+1
+        tax
+        jmp     sf_fh
+:       lda     gx0
+        sec
+        sbc     gac+1
+        tax
+sf_fh:    ldy     gy                      ; the row
+        lda     rowlo,y
+        sta     rowp
+        lda     rowhi,y
+        ora     pagehi
+        sta     rowp+1
+        tya
+        lsr
+        bcs     :+
+        lda     ce0
+        sta     p0
+        lda     ce1
+        sta     p1
+        jmp     :++
+:       lda     co0
+        sta     p0
+        lda     co1
+        sta     p1
+:       stx     gnxt                    ; the run: min .. max + 1
+        cpx     gcur
+        bcc     :+
+        ldx     gcur
+        ldy     gnxt
+        iny
+        jmp     :++
+:       ldy     gcur
+        iny
+:       lda     colof,y
+        sta     ccb
+        lda     rmx,y
+        sta     mr
+        lda     lmx,x
+        ldy     colof,x
+        sty     scol
+        cpy     ccb
+        bne     sf_two
+        and     mr
+        sta     msk
+        PUT
+        jmp     sf_trk
+sf_two:   sta     msk
+        PUT
+        iny
+        lda     mr
+        sta     msk
+        PUT
+sf_trk:   bit     counting                ; a normal object: the extent
+        bpl     sf_next
+        ldy     gy
+        lda     scol
+fmin1:  cmp     emin1,y
+        bcs     :+
+fmin2:  sta     emin1,y
+:       lda     ccb
+fmax1:  cmp     emax1,y
+        bcc     sf_next
+fmax2:  sta     emax1,y
+sf_next:  lda     gnxt
+        sta     gcur
+        inc     gy
+        lda     gy
+        cmp     gstop
+        jne     sf_f
+sf_end:   lda     gy
+        cmp     gy1
+        bne     :+
+        jmp     segbot
+:       rts
+
+; The span writer of the fill's two-edge rows, chosen per shape.
+ftjmp:
+ftj:    jmp     sx
 
 ; mulac: gac = 128 + gsl * A, 16 bits (the callers' products fit). X is kept.
 mulac:  sta     t0
@@ -1727,6 +1953,8 @@ dot:    lda     dcy
         txa
         asl
         sta     dcnt
+        lda     dfast
+        bne     @fast
 @row:   lda     drh                     ; rows 0-255 only
         bne     @next
         ldy     drl
@@ -1759,6 +1987,46 @@ dot:    lda     dcy
         dec     dcnt
         bne     @row
 @done:  rts
+; Inside the window: the top and bottom rows at once, with the same bytes
+; and masks, row i and row 2s-1-i.
+@fast:  lda     drl
+        sta     dt0
+        clc
+        adc     dcnt
+        sta     dt1
+        dec     dt1
+        lda     dsz
+        sta     dcnt
+@fh:    ldy     ddi
+        lda     dcx
+        sec
+        sbc     dhw,y
+        tax
+        lda     dcx
+        clc
+        adc     dhw,y
+        tay
+        dey
+        lda     rmx,y
+        sta     mr
+        lda     colof,y
+        sta     ccb
+        lda     lmx,x
+        sta     ml
+        lda     colof,x
+        sta     scol
+        ldy     dt0
+        jsr     srow
+        jsr     wbody
+        ldy     dt1
+        jsr     srow
+        jsr     wbody
+        inc     dt0
+        dec     dt1
+        inc     ddi
+        dec     dcnt
+        bne     @fh
+        rts
 
 ; -- solids -----------------------------------------------------------------------
 ; Scan-line fill, even-odd, of q[0..qm-1] (qm >= 3). An edge covers the rows
@@ -2040,7 +2308,21 @@ fill:   ldx     qm                      ; the extent: outside the window,
 ; Two active edges (every convex shape): row after row with the two edges
 ; in the zero page, up to the next row where an edge ends or starts, or the
 ; window's bottom.
-@two:   lda     nend
+@two:   ldy     gx0                     ; x min, max of the shape (gx0, gx1,
+        cpy     cl                      ; from fill's start) inside the
+        bcc     @tcl                    ; window: no clipping on the rows
+        ldy     gx1
+        cpy     cr
+        beq     @tnc
+        bcs     @tcl
+@tnc:   lda     #<sxnc
+        ldx     #>sxnc
+        bne     @tset                   ; (always)
+@tcl:   lda     #<sx
+        ldx     #>sx
+@tset:  sta     ftj+1
+        stx     ftj+2
+        lda     nend
         sta     fstop
         ldy     nxt
         cpy     ne
@@ -2093,7 +2375,7 @@ fill:   ldx     qm                      ; the extent: outside the window,
         jmp     :++
 :       tay
         ldx     t3
-:       jsr     sx
+:       jsr     ftjmp                   ; sx, or sxnc when the shape is inside
         clc
         lda     fla
         adc     sla
@@ -2168,18 +2450,6 @@ setcol: pha
         sta     co1
         rts
 
-; Writes the pattern into the covered dots of one byte: Y column, msk.
-.macro  PUT
-        tya
-        lsr
-        lda     p0
-        bcc     :+
-        lda     p1
-:       eor     (rowp),y
-        and     msk
-        eor     (rowp),y
-        sta     (rowp),y
-.endmacro
 
 ; Sets up row Y (0-191, inside the window) of pagehi: rowp, and the row's
 ; patterns p0 (even columns) and p1 (odd columns).
@@ -2213,28 +2483,34 @@ sx:     cpx     cl
         ldy     cr
 :       sty     t2
         cpx     t2
-        beq     :+
-        bcs     @out
-:       lda     rmx,y
+        beq     sxnc
+        bcs     sx_out
+; The same without the clipping: X <= Y, both inside the window.
+sxnc:   lda     rmx,y
         sta     mr
         lda     colof,y
         sta     ccb
         lda     lmx,x
-        ldy     colof,x
-        sty     scol
+        sta     ml
+        lda     colof,x
+        sta     scol
+; The same from the byte columns scol..ccb and their masks ml, mr.
+wbody:  ldy     scol
         cpy     ccb
-        bne     @multi
+        bne     sx_multi
+        lda     ml
         and     mr
         sta     msk
         PUT
         ldx     counting                ; 0, 1 count, $80 extents, $81 both
-        jne     @one
-@out:   rts
-@multi: sta     msk
+        jne     sx_one
+sx_out:   rts
+sx_multi: lda    ml
+        sta     msk
         PUT
         iny
         cpy     ccb
-        beq     @right
+        beq     sx_right
         lda     p0                      ; full bytes: ccb - y of them,
         eor     p1                      ; the two patterns alternating
         sta     pd
@@ -2244,7 +2520,7 @@ sx:     cpx     cl
         sbc     t2
         tax
         cpx     #3
-        bcs     @chain
+        bcs     sx_chain
         tya
         lsr
         lda     p0
@@ -2255,9 +2531,9 @@ sx:     cpx     cl
         iny
         dex
         bne     :-
-        beq     @right                  ; (always)
-@chain: lda     pd                      ; unrolled: one colour or two
-        beq     @plain
+        beq     sx_right                  ; (always)
+sx_chain: lda     pd                      ; unrolled: one colour or two
+        beq     sx_plain
         lda     chlo,x
         sta     jv
         lda     chhi,x
@@ -2268,37 +2544,37 @@ sx:     cpx     cl
         bcc     :+
         lda     p1
 :       jsr     sxjump
-        jmp     @right
-@plain: lda     cplo,x
+        jmp     sx_right
+sx_plain: lda     cplo,x
         sta     jv
         lda     cphi,x
         sta     jv+1
         lda     p0
         jsr     sxjump
-@right: lda     mr
+sx_right: lda     mr
         sta     msk
         PUT
         ldx     counting
-        beq     @out
+        jeq     sx_out
         cpx     #$80
-        beq     @track
+        beq     sx_track
         lda     ccb                     ; bytes beyond the first: ccb - scol
         sec                             ; (build adds one a span)
         sbc     scol
         clc
         adc     oby
         sta     oby
-        bcc     @inc
+        bcc     sx_inc
         inc     oby+1
-        bcs     @inc                    ; (always)
-@one:   cpx     #$80
-        beq     @track
-@inc:   inc     osp
+        bcs     sx_inc                    ; (always)
+sx_one:   cpx     #$80
+        beq     sx_track
+sx_inc:   inc     osp
         bne     :+
         inc     osp+1
 :       txa
         bpl     sxret
-@track:
+sx_track:
         ldy     crow                    ; the row's extent (the addresses
         lda     scol                    ; of the page's arrays are written
 tmin1:  cmp     emin1,y                 ; in by build)

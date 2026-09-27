@@ -233,7 +233,12 @@ class Fantavision(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def compare(self, cpu, movie, limit=16, label='', count=True):
+    def compare(self, cpu, movie, limit=16, label='', count=None):
+        """Both speeds by default: the original (counting, generic paths)
+        and the accelerated (fast paths); the same pages either way."""
+        if count is None:
+            self.compare(cpu, movie, limit, label + ' (accelerated)', False)
+            count = True
         res = self.sims[cpu].run(movie, limit, count)
         self.assertEqual(res['code'], 0, label)
         _, starts, end = ref.scan(movie)
