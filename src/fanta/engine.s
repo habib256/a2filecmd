@@ -139,6 +139,8 @@ t1:     .res 1
 t2:     .res 1
 t3:     .res 1
 gstop:  .res 1          ; segfast: the row to stop at
+glast:  .res 1          ;          the row before the last
+gxc:    .res 1          ;          x, or ~x going left
 fstop:  .res 1          ; fill, two edges: the row to stop at
 frow:   .res 1          ;                  the row started from
 fla:    .res 1          ;                  edge a: fraction, crossing,
@@ -1680,11 +1682,7 @@ seg_fchk:
         lda     counting
         lsr
         bcs     seg_row
-        lda     gadx
-        cmp     gdy
-        beq     :+
-        bcs     seg_row
-:       lda     gx0                     ; min x >= cl
+        lda     gx0                     ; min x >= cl
         cmp     gx1
         bcc     :+
         lda     gx1
@@ -1778,33 +1776,30 @@ segfast:
         bcc     :+
         ldx     gy1
 :       stx     gstop
+        ldx     gy1
+        dex
+        stx     glast
+        lda     gx0                     ; x, or ~x going left: always added to
+        eor     gsg
+        clc
+        adc     gac+1
+        sta     gxc
         lda     gy
         cmp     gstop
         jcs     sf_end
-sf_f:     clc
+sf_f:   clc                             ; the next row's x
         lda     gac
         adc     gsl
         sta     gac
-        lda     gac+1
+        lda     gxc
         adc     gsl+1
-        sta     gac+1
-        ldx     gy
-        inx
-        cpx     gy1
-        bne     :+
+        sta     gxc
+        eor     gsg
+        tax
+        lda     gy
+        cmp     glast
+        bne     sf_fh
         ldx     gx1                     ; the last: x1 itself
-        jmp     sf_fh
-:       lda     gsg
-        bmi     :+
-        lda     gx0
-        clc
-        adc     gac+1
-        tax
-        jmp     sf_fh
-:       lda     gx0
-        sec
-        sbc     gac+1
-        tax
 sf_fh:    ldy     gy                      ; the row
         lda     rowlo,y
         sta     rowp
@@ -1845,7 +1840,16 @@ sf_fh:    ldy     gy                      ; the row
         sta     msk
         PUT
         jmp     sf_trk
-sf_two:   sta     msk
+sf_two:   iny                           ; more than two bytes: the writer
+        cpy     ccb
+        beq     sf_2
+        sta     ml
+        lda     gy                      ; (its extent: row crow)
+        sta     crow
+        jsr     wbody
+        jmp     sf_next
+sf_2:   dey
+        sta     msk
         PUT
         iny
         lda     mr
