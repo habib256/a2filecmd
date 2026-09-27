@@ -112,10 +112,27 @@ start:  cld
         sta     cnt
         lda     #>(__CODE_SIZE__ + __RODATA_SIZE__)
         sta     cnt+1
-        ldy     #0
+        jsr     copy
+        lda     #<__TABLES_LOAD__ ; the engine's tables, to low memory
+        sta     src
+        lda     #>__TABLES_LOAD__
+        sta     src+1
+        lda     #<__TABLES_RUN__
+        sta     dst
+        lda     #>__TABLES_RUN__
+        sta     dst+1
+        lda     #<__TABLES_SIZE__
+        sta     cnt
+        lda     #>__TABLES_SIZE__
+        sta     cnt+1
+        jsr     copy
+        jmp     main
+
+; cnt bytes from src to dst, upwards.
+copy:   ldy     #0
 @copy:  lda     cnt
         ora     cnt+1
-        beq     @run
+        beq     @done
         lda     (src),y
         sta     (dst),y
         inc     src
@@ -129,26 +146,7 @@ start:  cld
         dec     cnt+1
 :       dec     cnt
         jmp     @copy
-@run:   lda     #<__TABLES_LOAD__ ; the x tables, to low memory
-        sta     src
-        lda     #>__TABLES_LOAD__
-        sta     src+1
-        lda     #<__TABLES_RUN__
-        sta     dst
-        lda     #>__TABLES_RUN__
-        sta     dst+1
-        ldx     #>__TABLES_SIZE__ ; whole pages (1,280 bytes)
-        ldy     #0
-:       lda     (src),y
-        sta     (dst),y
-        iny
-        bne     :-
-        inc     src+1
-        inc     dst+1
-        dex
-        bne     :-
-        jmp     main
-        .assert <__TABLES_SIZE__ = 0, error, "TABLES must be whole pages"
+@done:  rts
 
 ; -- the program, at $A400 -----------------------------------------------------
         .code

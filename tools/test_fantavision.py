@@ -163,6 +163,8 @@ class Sim:
         assert k == 1, 'sim65 config changed'
         cfg, k = re.subn(r'(\n\s*RODATA:[^\n]*\n)', r'\1    TABLES:   load = MAIN,   type = ro;\n', cfg)
         assert k == 1, 'sim65 config: no RODATA line'
+        cfg, k = re.subn(r'(\n\s*BSS:[^\n]*\n)', r'\1    EBSS:     load = MAIN,   type = bss;\n', cfg)
+        assert k == 1, 'sim65 config: no BSS line'
         (workdir / f'{cpu}.cfg').write_text(cfg)
         (workdir / 'harness.c').write_text(HARNESS)
         (workdir / 'glue.s').write_text(GLUE)

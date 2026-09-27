@@ -207,10 +207,6 @@ eal:    .res MAXPTS     ; running sum, fraction
 ord:    .res MAXPTS     ; edges by top row
 act:    .res MAXPTS     ; active edges
 xs:     .res MAXPTS     ; their crossings on this row
-emin1:  .res 192        ; page 1: per row, the first and last byte
-emax1:  .res 192        ; columns the normal objects covered
-emin2:  .res 192        ; page 2
-emax2:  .res 192
 erlo:   .res 2          ; rows with extents, per page: first
 erhi:   .res 2          ; and last ($FF, 0 when none)
 exc:    .res MAXPTS     ; an edge's crossing on this row, x or ~x
@@ -233,7 +229,13 @@ sxh:    .res 256
 syl:    .res 256
 syh:    .res 256
 
-        .rodata
+        .segment "EBSS"                 ; (FANTA.SYSTEM: $0800, free once
+emin1:  .res 192        ; the movie is read) page 1: per row, the first and
+emax1:  .res 192        ; last byte columns the normal objects covered
+emin2:  .res 192        ; page 2
+emax2:  .res 192
+
+        .segment "TABLES"               ; (FANTA.SYSTEM: in low memory)
 ; Movie x is screen x + 14: its byte column, and the masks of the dots from
 ; x to the end of its byte (left end of a span) and from the start of its
 ; byte to x (right end). Bit 7 is always in: the byte takes the palette.
@@ -261,8 +263,7 @@ rmx:
         .repeat 256, I
         .byte $80 | ((2 << ((I + 14) .mod 7)) - 1)
         .endrep
-        .res    1280 - 768 - 2 * 192    ; whole pages: the loader copies pages
-        .rodata
+
 ; Colour nibble -> byte at an even and at an odd column.
 pate:   .byte $00, $55, $2A, $7F, $36, $49, $2D, $56
         .byte $80, $D5, $AA, $FF, $B6, $C9, $AD, $D6
