@@ -123,12 +123,12 @@ unsigned char a2fc_mouse;      /* the slot of the mouse, 0 without */
 static unsigned char pointer;  /* the mouse has moved once: the pointer is shown */
 #endif
 
-static char full[PATH_LEN + NAME_LEN];
+char full[PATH_LEN + NAME_LEN];           /* not static: open.s reads it */
 static char other_full[PATH_LEN + NAME_LEN];
 static char cfg_path[PATH_LEN];
 static char input[NAME_LEN];
 static char question[64];
-static unsigned char copy_buf[512];
+unsigned char copy_buf[512];              /* not static: open.s probes into it */
 static unsigned char gfi[18];
 static unsigned char gfi_path[PATH_LEN + 1];
 static unsigned char picked[MAX_ENTRIES];
@@ -1320,14 +1320,22 @@ static unsigned char page_size(const unsigned long* size)
 /* One classification for Return, I and the raw-image album. Explicit
  * packed formats take precedence over coincidental raw-page file sizes.
  * 0 unknown, 1 raw/RLE, 2 Extasie, 3 packed FOT, 4 816/Paint, 5 lo-res;
- * 6 Arlequin is only the probe's (file_viewer): $F8 alone says nothing. */
-static unsigned char image_kind(const struct Entry* e)
+ * 6 Arlequin is only the probe's (file_viewer): $F8 alone says nothing;
+ * 7 a Newsroom photo PH. or banner BN. (a B file loaded at $4000). Here
+ * and not in OPEN: the name test cost that full window some 80 bytes. A
+ * Movie Maker shape sheet (BIN $1DF0, 8,720 bytes) is 1: its page follows
+ * a 528-byte header, which load_image skips. 8 is a Fantavision movie (BIN
+ * $8400), which RUN hands to FANTA.SYSTEM. */
+unsigned char __fastcall__ named_kind(const struct Entry* e);   /* display.s */
+unsigned int __fastcall__ sheet_header(const struct Entry* e);  /* display.s */
+unsigned char __fastcall__ image_kind(const struct Entry* e)   /* open.s calls it too */
 {
     unsigned char n, type = e->type;
     if (type == 0xF2) return 2;
     if (type != 0x06 && type != 0x08) return 0;
     if (type == 0x08 && ((e->aux & 0xFFFE) == 0x4000 || e->aux == 0x8066)) return 3;
     if (type == 0x06 && (e->aux == 0xE001 || e->aux == 0xE002)) return 4;
+    if ((n = named_kind(e))) return n;      /* Newsroom; Movie Maker .SHP */
     if (e->aux == 0x0400 && e->size && e->size <= 2048) return 5;
     if (page_size(&e->size)) return 1;
     n = strlen(e->name);
@@ -2592,7 +2600,10 @@ static unsigned char load_image(const struct Entry* e)
 {
     FILE* f;
     unsigned int size = page_size(&e->size) ? (unsigned int)e->size : 0;
+    /* A Movie Maker shape sheet: its page after a 528-byte header. */
+    unsigned int skip = sheet_header(e);
     unsigned char kind = IMG_NONE, ok = 0;
+    if (skip) size = 8192;
     /* The 80-column firmware leaves 80STORE armed and uses PAGE2 to reach
      * the auxiliary bank. With HIRES still active (a previous image),
      * $2000-$3FFF would follow that routing and the read would go to AUX:
@@ -2609,7 +2620,7 @@ static unsigned char load_image(const struct Entry* e)
     }
     if (kind == IMG_DHRR) { aux_dirty = 1; ok = decode_rle(f, 16384); }
     else if (kind == IMG_HGRR) ok = decode_rle(f, 8192);
-    else if (kind == IMG_HGR) { rewind(f); ok = fread(HGR_MAIN, 1, 8192, f) >= 8184; }
+    else if (kind == IMG_HGR) { vf = f; view_seek(skip); ok = fread(HGR_MAIN, 1, 8192, f) >= 8184; }
     else if (kind == IMG_DHGR) {
         /* The auxiliary plane is read into main $2000, then goes to AUX by
          * AUXMOVE (aux_hgr_to_aux), not by an MLI call that would itself
@@ -3701,8 +3712,8 @@ static const char mn_what7[] = "Unsorted";
 static const char* const mn_whats[] = {
     mn_what0, mn_what1, mn_what2, mn_what3, mn_what4, mn_what5, mn_what6, mn_what7
 };
-static const char mn_group0[] = "|TEXT|HEX|EDIT|SEARCH|FIND|FIXTYPES|GOTO|MDVIEW|RENAME|SYNC|MOVE|TREE|DELETE|ATTR|TXTCONV|TAGPAT|COMPARE|AWP|AWDATA|";
-static const char mn_group1[] = "|IMAGE|DGRVIEW|EXTASIE|ARLEQUIN|MACPAINT|SHAPES|PACKFOT|PAINT816|PURPLE|LZ4FH|PRINTSHOP|FONTVIEW|";
+static const char mn_group0[] = "|TEXT|HEX|EDIT|SEARCH|FIND|FIXTYPES|GOTO|MDVIEW|DOCVIEW|RENAME|SYNC|MOVE|TREE|DELETE|ATTR|TXTCONV|TAGPAT|COMPARE|AWP|AWDATA|";
+static const char mn_group1[] = "|IMAGE|DGRVIEW|EXTASIE|ARLEQUIN|MACPAINT|SHAPES|PACKFOT|PAINT816|PURPLE|LZ4FH|PRINTSHOP|NEWSROOM|FONTVIEW|";
 static const char mn_group2[] = "|MUSIC|PT3|DUET|";
 static const char mn_group3[] = "|FORMAT|DISKIMG|IMGFS|IMGPUT|DOSGET|DOSWRITE|DOS33W|DOSREPL|PASCAL|PASCALW|CPM|CPMW|BOOTBLK|BLKVIEW|BLKEDIT|DISKCMP|NIBCOPY|IMGCONV|MKIMAGE|RESCUE|UNDELETE|VOLNAME|VOLINFO|FIXIT|REPAIR|WIPE|VERIFY|";
 static const char mn_group4[] = "|BASLIST|DISASM|INTBASIC|RUN|CRC|IDENT|";
@@ -5245,89 +5256,24 @@ static unsigned char open_image(struct Panel* pan, const struct Entry* e)
  * it from inside OPEN would overwrite code still on the return stack. */
 #pragma code-name(push, "OPEN")
 #pragma rodata-name(push, "OPENRO")
-static const unsigned char image_viewers[] = {V_HEX, V_RAW, V_EXT, V_PACK, V_PAINT, V_DGR, V_ARL};
-static const char open_dgr[] = "DGR";
-static const char* fv_name;
-static unsigned char fv_len;
+/* The tables of the classifier, file_viewer, in open.s: the IDs stay
+ * here, beside viewer_ids.h. image_kind's answer to viewer. */
+const unsigned char image_viewers[] = {V_HEX, V_RAW, V_EXT, V_PACK, V_PAINT, V_DGR, V_ARL, V_NEWS, V_RUN, V_DOC};
 /* The viewers a suffix names: the music (V_DUET and below) and formats with
  * no ProDOS type of their own. */
-static const char fv_ext[] = ".MB\0.PT3\0.ED\0.FOTO1\0.FOTO2\0.MAC\0.AS\0.BSC\0.BSQ\0.SHAPE\0"
-                             ".QQ\0.ACU\0.BA3\0";
-static const unsigned char fv_ids[] = { V_MUSIC, V_PT3, V_DUET, V_PURPLE, V_PURPLE, V_MAC,
+const char fv_ext[] = ".MB\0.PT3\0.ED\0.FOTO1\0.FOTO2\0.MAC\0.AS\0.BSC\0.BSQ\0.SHAPE\0"
+                      ".QQ\0.ACU\0.BA3\0";
+const unsigned char fv_ids[] = { V_MUSIC, V_PT3, V_DUET, V_PURPLE, V_PURPLE, V_MAC,
     V_UNWRAP, V_SCII, V_SCII, V_SHAPES, V_UNSQ, V_UNSQ, V_BASLIST };
 /* The viewers a ProDOS type names on its own, once no suffix, no picture
  * and no music has answered: text, Business BASIC ($09, like T), the two
  * AppleWorks documents ($19 data base, $1B spreadsheet), and the programs. */
-static const unsigned char fv_types[] = { 0x04, 0x09, 0x19, 0x1A, 0x1B, 0xFC, 0xFF };
-static const unsigned char fv_tids[] = { V_TEXT, V_BASLIST, V_AWD, V_AWP, V_AWD, V_RUN, V_RUN };
-/* The viewer the name ends for, with something before the suffix. One walk:
- * split in two, the length of each suffix was measured twice. */
-static unsigned char by_suffix(void)
-{
-    const char* s = fv_ext;
-    unsigned char i = 0, k;
-    for (; *s; s += k + 1, ++i) {
-        k = strlen(s);
-        if (fv_len > k && !strcmp(fv_name + fv_len - k, s)) return fv_ids[i];
-    }
-    return 0;
-}
-static unsigned char file_viewer(const struct Entry* e, unsigned char pictures)
-{
-    unsigned char kind = image_kind(e);
-    FILE* f;
-    /* The type, once: every e->type is a load of e off the C stack. */
-    unsigned char type = e->type;
-    unsigned int aux = e->aux;
-    unsigned char n = strlen(e->name), failed, music, named;
-    unsigned char candidate = type==6 && e->name[0]=='M' && e->name[1]=='.';
-    fv_name = e->name; fv_len = n;
-    named = by_suffix();
-    music = named <= V_DUET ? named : 0;
-    if (type==0xD5 && aux==0xD0E7) music=V_DUET;
-    /* Album scans can reject unrelated names without opening every file. */
-    if (pictures >= 2) {
-        if (music != pictures-1 && !(pictures==4 && candidate)) return V_HEX;
-        pictures = 0;
-    }
-    if (type == 7) return V_FONT;
-    if (type == 8 && aux == 0x8066) return V_LZ;
-    if (type == 6 && (aux & 0xCFFF) == 0x4800 &&
-        (e->size == 572 || e->size == 576)) return V_PS;
-    if (!pictures && type == 0xFA) return V_RUN;
-    if (named > V_DUET) return named;
-    if (!pictures && music>=V_PT3) return music;
-    /* Probe only in main-RAM copy_buf, never in a graphics/AUX bank.
-     * Explicit packed metadata wins; the other formats can identify
-     * themselves even without a filename suffix or a ProDOS image type.
-     * A partial DGR signature still belongs to DGRVIEW's validation. */
-    if (kind < 2) {
-        f = fopen(full, "rb");
-        if (!f) return 0;
-        n = fread(copy_buf, 1, 8, f);
-        failed = ferror(f) != 0;
-        if (fclose(f)) failed = 1;
-        if (failed) return 0;
-        if (candidate && n==8 && copy_buf[0] && copy_buf[3]) music=V_DUET;
-        if (n >= 3 && !memcmp(copy_buf, open_dgr, 3)) kind = 5;
-        /* An Arlequin picture: type $F8 and "gs" after its size. */
-        else if (type == 0xF8 && n >= 4 && copy_buf[2] == 'g' && copy_buf[3] == 's') kind = 6;
-        else if (n == 8 && (!memcmp(copy_buf, "HGRR\1\0\0\x20", 8) ||
-                           !memcmp(copy_buf, "DHRR\1\0\0\x40", 8))) kind = 1;
-        /* I supplies the missing intent for an unmarked lo-res screen or
-         * pixmap. Return must not mistake every small BIN for a sprite. */
-        else if (!kind && pictures && (type == 0x06 || type == 0x08) &&
-                 e->size && e->size <= 2048) kind = 5;
-    }
-    if (kind) return image_viewers[kind];
-    if (pictures) return V_RAW; /* I may explicitly try an untyped raw file. */
-    if (music) return music;
-    if (type == 0xE0 && aux == 1) return V_UNWRAP;      /* AppleSingle */
-    /* The types, as a table: written out, each one cost fourteen bytes of
-     * OPEN, the tightest window of the program. */
-    for (n = 0; n < sizeof fv_types; ++n) if (type == fv_types[n]) return fv_tids[n];
-    return V_HEX;
-}
+const unsigned char fv_types[] = { 0x04, 0x09, 0x19, 0x1A, 0x1B, 0xFC, 0xFF };
+const unsigned char fv_tids[] = { V_TEXT, V_BASLIST, V_AWD, V_AWP, V_AWD, V_RUN, V_RUN };
+/* The other IDs open.s answers with, in the order of its V_ names; then
+ * how many types fv_types holds. */
+const unsigned char fv_v[] = { V_HEX, V_FONT, V_LZ, V_PS, V_RUN, V_DUET, V_PT3, V_RAW, V_UNWRAP,
+    sizeof fv_types };
 void __fastcall__ open_entry(const struct A2fcApi* a)
 {
     unsigned char viewer;

@@ -128,7 +128,7 @@ attributes, text editing, text/hex readers, comparison, formatting, verification
 and ProDOS image extraction. Advanced disk tools, DOS extraction, archives,
 media players and BASIC runtimes require **800K or XL**. Their menus list the
 available tools without asking for category disks. Both complete editions
-include all 82 overlays; only XL includes `DEMO/`: one example of every kind of
+include all 84 overlays; only XL includes `DEMO/`: one example of every kind of
 file A2 File Cmd opens, in DOCUMENTS, PICTURES (with an HGR album), MUSIC,
 ARCHIVES, DISKS, PROGRAMS and FONTS.SHAPES, and a README saying what is where.
 
@@ -271,6 +271,11 @@ advances; B/Up goes back; Escape returns. TEXT clips lines at 80 columns and
 remembers 96 page starts; **R** restarts it. Use **MDVIEW** for wrapped text
 and Markdown, with 64 previous pages and no forward limit. It also reads
 extracted Magic Window `.MW` documents. Teach extended files are unsupported.
+Return on an Epistole document (text opening on a `_` command) or a Papyrus or
+HomeWord one (opening on a $FF code; the others through **!**) opens
+**DOCVIEW**, laid out as printed: margins, indents, centring, bold in inverse,
+mail-merge variables. French ISO 646-FR accents show unaccented; **A** shows
+them as stored, for a French character set.
 HEX uses **G** for a seven-digit offset and **R/E** for first/last page.
 
 T lists Applesoft, Integer BASIC and Business BASIC (`.BA3`) without running
@@ -291,6 +296,7 @@ Specialized viewers and media tools require **800K or XL**.
 | Picture or font | Identification / tool |
 |---|---|
 | Raw HGR / DHGR, HGRR / DHRR | IMAGE; raw pages or version 1 RLE. Dazzle Draw pictures are raw DHGR. |
+| Movie Maker | IMAGE; `.BKG` backgrounds are raw pages, `.SHP` shape sheets (BIN $1DF0, 8,720 bytes) a page after a 528-byte header. |
 | Lo-res / DGR | DGRVIEW; DGR signature or BIN/FOT with aux $0400. I can ask for a raw sprite width. |
 | Extasie / Arlequin | EXTASIE ($F2); ARLEQUIN ($F8 with its signature). |
 | MacPaint | MACPAINT; `.MAC`, optionally with a MacBinary header. |
@@ -298,6 +304,7 @@ Specialized viewers and media tools require **800K or XL**.
 | Packed 816/Paint | PAINT816; BIN with aux $E001 or $E002. |
 | Purplesoft | PURPLE; matching `.FOTO1` and `.FOTO2` in one directory. |
 | Print Shop | PRINTSHOP; 572/576-byte BIN clip art, aux $4800/$5800/$6800/$7800. |
+| The Newsroom | NEWSROOM; photos `PH.*` and banners `BN.*`, BIN aux $4000 (copied from DOS 3.3). |
 | MGTK or hi-res fonts | FONTVIEW; type $07, or select the tool for an untyped font. |
 | Applesoft shapes | SHAPES; `.SHAPE` or choose the tool directly. |
 
@@ -310,10 +317,20 @@ files open in hex with Return; I can treat a suitable one as a sprite.
 
 Viewers that need AUX ask **before** writing it and can rebuild /RAM empty.
 Consent lasts only for that browsing session; leaving and reopening asks again.
-Malformed pictures are refused. LZ4FH, PRINTSHOP, FONTVIEW and SHAPES preserve
+Malformed pictures are refused. LZ4FH, PRINTSHOP, NEWSROOM, FONTVIEW and SHAPES preserve
 /RAM. Keep both Purplesoft companion files; extended EVE modes require compatible
 hardware. MACPAINT shows 560 × 192 of its 576 × 720 image; Up/Down pans by 96
 lines. SHAPES shows 24 shapes a page, Space/Down next and B/Up previous.
+
+Return on a Fantavision movie (`M.*`, BIN $8400) plays it in **FANTA.SYSTEM**
+(800K and XL), which replaces A2FC while it plays and brings it back after.
+**Tab** switches between the accelerated speed (the default) and the
+original's, **Space** pauses, **1**-**9** slow the accelerated speed down,
+**0** removes the delay, **Escape** returns. A counted movie waits for a key
+on its last frame. A damaged tail is cut; a movie with no whole frame is
+refused with its reason. Main memory only: /RAM is untouched. Backdrop:
+mark (Space) one hi-res picture in the movie's folder before Return;
+otherwise `NAME` beside `M.NAME` is used when there is one.
 
 <!-- pagebreak -->
 

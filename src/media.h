@@ -4,7 +4,7 @@
 static unsigned char media_request;
 static unsigned char media_kind;      /* the media overlay running, or 0 */
 static unsigned int media_first[2];
-static unsigned char file_viewer(const struct Entry*, unsigned char);
+unsigned char __fastcall__ file_viewer(const struct Entry*, unsigned char);   /* open.s */
 
 static unsigned char media_type(const char* name)
 {

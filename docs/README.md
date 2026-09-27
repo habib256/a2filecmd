@@ -12,6 +12,7 @@ rapports datés, qui ne sont plus mis à jour.
 | [FILE-SERVICES.md](FILE-SERVICES.md) | Contrats des services de fichiers (réservation exclusive, installation récupérable, copie vérifiée) et journal du chantier 1 | FR |
 | [MEMORY-BUDGETS.md](MEMORY-BUDGETS.md) | Réserves par zone mémoire, objectifs et journal de la consolidation | FR |
 | [NIBCOPY.md](NIBCOPY.md) | Copie nibble de Disk II : ce qui est conservé, régénéré et vérifié | EN |
+| [NEWSROOM-FORMAT.md](NEWSROOM-FORMAT.md) | Photos `PH.*` et bannières `BN.*` de The Newsroom : format, pièges, contrôles | EN |
 | [PURPLESOFT-FORMAT.md](PURPLESOFT-FORMAT.md) | Format des images Purplesoft `.FOTO1`/`.FOTO2` | FR |
 | [SAMPLE-MEDIA.md](SAMPLE-MEDIA.md) | Prise en charge du corpus `SAMPLE.MEDIA` (polices MGTK, LZ4FH, Print Shop, Integer BASIC) | FR |
 | [screenshots/](screenshots/) | Captures des deux panneaux | — |

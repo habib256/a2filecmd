@@ -89,6 +89,16 @@ void __fastcall__ entry_label(const char*);
 unsigned char __fastcall__ tag_count(const void*);
 void activity_tick(void);
 void __fastcall__ activity_begin(const char*);
+unsigned char __fastcall__ named_kind(const struct Entry*);
+unsigned int __fastcall__ sheet_header(const struct Entry*);
+/* The classification, written out as its specification: a Movie Maker
+ * shape sheet, a Newsroom photo or banner. */
+static unsigned char named_ref(const struct Entry*e){
+ if(e->type==6&&e->aux==0x1DF0&&e->size==8720)return 1;
+ if(e->type==6&&e->aux==0x8400&&e->size>=513&&e->size<=9216)return 8;
+ return e->type==6&&e->aux==0x4000&&e->name[2]=='.'&&
+  ((e->name[0]=='P'&&e->name[1]=='H')||(e->name[0]=='B'&&e->name[1]=='N'))?7:0;
+}
 static unsigned char phase_bad;
 void cclearxy(unsigned char x,unsigned char y,unsigned char count){if(x||y!=21||count!=79)phase_bad=1;}
 void cputsxy(unsigned char x,unsigned char y,const char*s){if(x||y!=21||strcmp(s,"Verifying..."))phase_bad=1;}
@@ -105,6 +115,28 @@ int main(void){
  unsigned i,j,refn;static char reftext[1024],refcolors[1024],hex[8];unsigned char r;
  static char boundary[512];void (*api)(unsigned char,const char*)=keys_bar;
  if(offsetof(struct Panel,count)!=64||offsetof(struct Panel,tags)!=76)return 14;
+ if(offsetof(struct Entry,type)!=17||offsetof(struct Entry,aux)!=19||offsetof(struct Entry,size)!=23)return 15;
+ {
+  static const char*const names[]={"PH.CAT","BN.SUN","PH.","BN.X","PN.CAT","PG.PAGE","BH.X","PN.X",
+   "ph.cat","PHOTO","PH","BN","P.H","XPH.CAT","PHX.A","",".PH.",
+   "\xD0H.X","P\xC8.X","PH\xAE","DOG.SHP"};
+  static const unsigned char types[]={6,4,7,0};
+  static const unsigned aux[]={0x4000,0x2000,0x4001,0x0040,0xC000,0,0x1DF0,0x1DF1,0x1CF0,0xF01D,0x8400,0x8401,0x0084};
+  static const unsigned long sizes[]={8720,2096,8719,8721,0x12210UL,0x1002210UL,0x2210UL<<8,0,
+   512,513,0x2FF,0x300,0x2300,0x23FF,9216,9217,0x2500,0x12400UL,0x1000200UL};
+  static struct Entry e;unsigned char k,t,a,z,r;unsigned hits=0,sheets=0,movies=0;
+  for(k=0;k<sizeof names/sizeof*names;++k)for(t=0;t<4;++t)for(a=0;a<sizeof aux/sizeof*aux;++a)for(z=0;z<sizeof sizes/sizeof*sizes;++z){
+   memset(&e,0xA5,sizeof e);strcpy(e.name,names[k]);e.type=types[t];e.aux=aux[a];e.size=sizes[z];
+   r=named_kind(&e);
+   if(r!=named_ref(&e))return 16;
+   if(sheet_header(&e)!=(r==1?528:0))return 18;
+   hits+=r==7;sheets+=r==1;movies+=r==8;
+  }
+  /* 4 Newsroom names x 19 sizes; for each of the 21 names one sheet size
+   * and ten movie sizes (513 to 9,216: 2096, 8719-8721, 513, $2FF, $300,
+   * $2300, $23FF, 9,216). */
+  if(hits!=4*19||sheets!=21||movies!=21*10)return 17;
+ }
  for(i=0;i<3;++i){
   const char*s=i==0?"":i==1?"Name*            Type  Aux     Size":"123456789012345678901234567890123456789012345";
   n=bad=0;rev=1;panel_label(s);

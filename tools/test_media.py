@@ -36,7 +36,7 @@ static unsigned char read_panel(unsigned char p){
 static unsigned char build_full(char*out,const struct Panel*p,const struct Entry*e){strcpy(out,e->name);return 1;}
 static unsigned int ticks;static void activity_tick(void){++ticks;}
 #include "src/media.h"
-static unsigned char file_viewer(const struct Entry*e,unsigned char pic){
+unsigned char file_viewer(const struct Entry*e,unsigned char pic){   /* open.s in the program */
  if(failure==4 && !strcmp(e->name,"BAD.MB"))return V_ERROR;
  if(strstr(e->name,".FOTO"))return V_PURPLE;
  const char*p=strrchr(e->name,'.');return p && !strcmp(p,".MB")?V_MUSIC:V_PT3;

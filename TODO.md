@@ -144,25 +144,16 @@ Ordre retenu après la recherche du 25 septembre 2026 (File Type Notes,
 CiderPress II, rétro-ingénieries publiques ; échantillons vérifiés sur des
 images publiques). Aucun de ces formats n'a de spécification officielle.
 
-0. [ ] **The Newsroom** (Springboard) : photos `PH.*` et bannières
-   `BN.*` des disques d'utilisateurs, vrais fichiers DOS 3.3 de type B
-   (chargés en `$4000`). Format décodé : longueur L, cadre y1 y2 x1 x2,
-   historique des clips jusqu'au premier `$FF`, puis bitmap de
-   (x2 − x1) div 7 + 1 octets × (y2 − y1 + 1) lignes, 7 pixels par
-   octet, bit 0 à gauche, 1 = blanc. Contrôles : L = largeur × hauteur =
-   taille − (position du `$FF` + 1) ; 125 fichiers réels décodés sans
-   écart (bulletins de chorale, de paroisse, de lycée). Sources :
-   routines NRTOGP/NRTONR de Ferg Brand (1986),
-   [newswire](https://github.com/classilla/newswire) (format C64).
-   Échantillons : archive.org `703_Newsroom_Page`, `103_…` à `106_…`,
-   `105_The_Newsroom_Photo_Data_Disk`, `169_Page_Data_Disk_The_Newsroom`,
-   `a2_Newsroom_Banner_Datadisk_198x_`, `009_`/`010_Clipart_*_For_NewsRoom`.
-   À faire : visualiseur hi-res en lecture seule (refus si un contrôle
-   échoue, Gauche/Droite entre photos), oracle Python et tests sur les
-   vrais fichiers, spécification `docs/NEWSROOM-FORMAT.md`. Ensuite : le
-   texte des panneaux `PN.*` et pages `PG.*` (compris en partie), puis le
-   clip art commercial (index piste 34 « SSI CLIP » lu, compression non
-   décodée).
+0. [ ] **The Newsroom** (Springboard) : photos `PH.*` et bannières `BN.*`
+   **faites** (NEWSROOM, `docs/NEWSROOM-FORMAT.md`, 2026-09-26) : BIN
+   `$4000`, reconnus par le nom dans `image_kind` (prédicat en assembleur
+   dans `display.s`, 91 octets de MAIN), bitmap pris sur les **L derniers
+   octets** — 18 des 93 fichiers distincts ont un `$FF` dans l'historique,
+   la règle « premier `$FF` » les décalait. 125 fichiers réels validés par
+   `tools/test_newsroom.py` (sim65, deux CPU). À faire : le banc POM2 sur
+   une vraie photo, puis le texte des panneaux `PN.*` et pages `PG.*`
+   (compris en partie), puis le clip art commercial (index piste 34
+   « SSI CLIP » lu, compression non décodée).
 1. [ ] **Print Shop GS, clip art** (`$F8`/`$C323` couleur, `$C313` mono,
    88 × 52) : trois plans jaune, magenta, cyan, 8 couleurs fixes, décodés
    par CiderPress II (`PrintShopClip.cs`, Apache-2.0) ; 707 clips sur les
@@ -170,24 +161,28 @@ images publiques). Aucun de ces formats n'a de spécification officielle.
    PRINTSHOP (~100 octets, ~280 libres), aiguillage résident ~20-30 octets
    **avant** la sonde Arlequin (`$F8` aussi) sur auxtype et taille exacts ;
    la couleur en DHGR ensuite (nouvel overlay, consentement /RAM, ~1 Ko).
-2. [ ] **Movie Maker** (Interactive Picture Systems, Reston 1984 / EA
-   1985, DOS 3.3) : décors `.BKG` (B, 8 192 octets à `$4000`, page HGR
-   brute) et planches `.SHP` (B, 8 720 octets à `$1DF0` : en-tête de
-   528 octets puis page HGR), vérifiés sur disques. Coût quasi nul :
-   reconnaissance, et sauter l'en-tête de `.SHP`.
-3. [ ] **Epistole** (Version Soft, France). Documents ProDOS `$04`, ASCII
-   7 bits, CR ; commandes en ligne `_MG10`, `_CE`, `_JD`…, variables
-   `#NOM]`, calculs `#:PR=…]` ; accents ISO 646-FR (`{`=é, `}`=è, `@`=à).
-   Dans TEXT, détecté par le contenu : pas d'entrée dans la table de
-   suffixes d'OPEN. Échantillons et oracle : collection Antoine Vignau
-   ([Spring 2023](https://archive.org/details/Antoine_Applesauce_5.25_Vignau_Spring_2023),
-   v5.06 : EXEMPLE.LETTRE, DOCUM.DEMO, DEMO.FACTURE ;
-   [autres versions](https://archive.org/details/Antoine_Applesauce_Vignau)).
-4. [ ] **Papyrus traitement de texte** (Ediciel) et **HomeWord** (Sierra),
-   dont Papyrus est l'adaptation. Fichiers T DOS 3.3 : bit haut, CR,
-   ISO 646-FR, quelques codes (`$19` = ê). Même lecteur que 3 ; codes de
-   contrôle à confirmer avec l'oracle. Ne pas confondre avec *Papyrus, le
-   cours de dactylographie* (adaptation de MasterType).
+2. [x] **Movie Maker** (2026-09-26) : décors `.BKG` (page brute, déjà
+   lus) et planches `.SHP` (BIN `$1DF0`, 8 720 octets, en-tête de 528
+   octets sauté par IMAGE, décision dans `named_kind`/`sheet_header` de
+   `display.s`). `bench/moviemaker.py` sur les vrais fichiers. Les films
+   `.MVM` restent en « Plus tard ».
+3. [x] **Epistole** (Version Soft) — fait le 2026-09-26 : DOCVIEW
+   (`src/plugins/docview.c`), ouvert par Retour sur un texte `$04` qui
+   commence par `_`. Relevé sur les 21 documents du disque v5.06 : `_CE`
+   centre **jusqu'à** `_PC`/`_CL`/`_JD`, `_TDn` tabulation, `#:X=…]`
+   affectation muette, `#:?X]` valeur, `#*X=]` saisie, `[` = « ° ». Non
+   interprétés (imprimante seule) : `_JD`, `_CC`, `_LP`, `_LF`, `_ND`,
+   en-têtes `_EN…__EA` et bas de page `_DB…__BA` montrés comme du texte.
+4. [x] **Papyrus traitement de texte** (Ediciel) et **HomeWord** (Sierra)
+   — même DOCVIEW, texte à bit haut. Codes `$FF c … $FF` : `$06` centre
+   la ligne, `$05` saut de page, les autres (`$0D` marges, `$0A`, `$0E n`
+   points de plan) ignorés ; `$19` = ê et `$1B` = ô vus sur de vrais
+   documents, `$18`/`$1A`/`$1C` = â/î/û supposés. Retour seulement si le
+   document commence par un code, sinon `!` DOCVIEW. Échantillons :
+   `Papyrus - Le traitement de texte personnel` (Spring 2023) et
+   `RIAG_Homeword_Word_Processor_Data_Disk` ; ne pas confondre avec le
+   cours de dactylographie (`a2_Ediciel_Papyrus_Side_1/2`). À faire :
+   confirmer les autres codes sur plus de documents.
 5. [ ] **Graphics Magician** (Penguin Software). Commandes de tracé HGR de
    1 à 3 octets, documentées par la rétro-ingénierie de
    [McFadden (2025)](https://6502disassembly.com/a2-graphics-magician/).
@@ -217,24 +212,25 @@ images publiques). Aucun de ces formats n'a de spécification officielle.
    par la routine `DECOMPRESS` du source publié par Bill Budge
    ([PCS_AppleII](https://github.com/billbudge/PCS_AppleII), MIT, 2013).
    Deux variantes probables (BudgeCo, EA) à distinguer.
-11. [ ] **Fantavision** (Brøderbund, 1985) : format des films `M.*`
-   (ProDOS BIN, aux `$8400`, 513 à 9 216 octets) **entièrement décodé**
-   le 25 septembre 2026. En-tête de 416 octets (vitesse, lectures, octet
-   3 = 4, fond, octet 5 = 8, fenêtre de découpage), puis au plus 127
-   images de 8 objets (points, lignes, formes pleines ; couleur par
-   quartet de ligne paire/impaire ; modes normal, trace, arrière-plan,
-   éclair ; jusqu'à 32 points), interpolation 8.8 entre clés, double
-   tampon HGR1/HGR2, décor `$4000` séparé. Un rendu de référence
-   reproduit **18 230 images sur 18 230** du lecteur d'origine sous POM2
-   (80 films). Coût : 11 000 à 128 000 cycles par image, moteur de 5 à
-   6 Ko en assembleur, deux pages HGR et un tampon de décor. Plan : un
-   **lecteur autonome** lancé par A2FC puis retour par A2FILE.SYSTEM
-   (mémoire principale seule, sans AUX ni /RAM), écrit **en salle
-   blanche** depuis `docs/FANTAVISION-FORMAT.md` (le lecteur Brøderbund
-   n'est pas libre) ; oracle et générateur de films synthétiques, tests
-   sim65 des routines (division, pente, remplissage), banc POM2 octet par
-   octet, validation stricte (un film abîmé bloque l'original). Outils
-   de l'étude, privés, dans `~/.cache/a2fc/fantavision/` (non publiés).
+11. [x] **Fantavision** (Brøderbund, 1985) — lecteur livré le 2026-09-26/27 :
+   `FANTA.SYSTEM` (`src/fanta/`), écrit en salle blanche par un agent qui
+   n'a lu que `docs/FANTAVISION-FORMAT.md` ; A2FC le lance par Retour sur
+   un BIN `$8400` (`named_kind` 8 → RUN, `src/launch.h`) et il revient par
+   `A2FILE.SYSTEM`. Fidélité mesurée hors dépôt contre l'oracle privé :
+   141/144 films réels acceptés avant la règle « fin abîmée coupée », écart
+   médian 1,4 % des octets d'écran, mêmes nombres d'images. Vitesse
+   d'origine par un modèle de cycles de l'original (médiane 10 %), bascule
+   Tab. Deuxième tour (2026-09-27) : les fins abîmées sont coupées (les
+   144 films réels sont lus : POOL 1 image, PARADIES 40, ENGLISHFONT 9) ;
+   vitesse accélérée, médianes simulées sous sim65 : 2,1× l'original sur
+   points et lignes, 2,3× sur grandes lignes, 1,7–1,9× sur pleins, 1,8× sur
+   formes dessinées. Troisième tour : **décors** (l'image hi-res marquée
+   dans le dossier du film, sinon `NOM` à côté de `M.NOM`), écart moyen
+   0,2 à 1 % des octets contre l'original sur PARADIES, STREAM,
+   CHECKERBOARD ; première image après Tab juste à 1 % près. Reste : pleins
+   auto-sécants à 1,7× (il faudrait ~1,5 Ko de plus : réciproques,
+   contour tiré du remplissage), un trait tireté de PARADIES (près de
+   « STIGMA ») plein chez l'original, mesure sur vraie machine.
 12. [ ] Dazzle Draw, sections `.SEC` (`$06`/`$F200`, 11 522 octets :
    largeur, hauteur, lignes en flux de 7 bits), déduites de deux fichiers.
    Rares ; les images plein écran sont déjà lues.

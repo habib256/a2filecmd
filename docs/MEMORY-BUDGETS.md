@@ -209,14 +209,14 @@ tableau est celui que `tools/check_layout.py` imprime à chaque lien
 
 | Zone | 65C02 | 6502 | Objectif |
 | --- | ---: | ---: | --- |
-| MAIN (résident, plafond `$BEE0`) | **91** | 494 | 256 sur 65C02 : à rétablir avant enrichissement |
+| MAIN (résident, plafond `$BEE0`) | **203** | 609 | 256 sur 65C02 : à rétablir avant enrichissement |
 | Carte langage | 66 | 57 | ne pas descendre |
 | CATALOG (catalogues DOS 3.3 et images) | 221 | 205 | surcouche de lecture, pas à enrichir |
-| LOWRAM | 81 | 106 | — |
+| LOWRAM | 98 | 123 | — |
 | Écart avant la pile C de 192 octets | 119 | 711 | — |
 | NAV | 142 | 208 | — |
 | DELETE | 304 | 309 | libéré par le parcours résident |
-| OPEN | 43 | **28** | le plus serré ; un suffixe coûte cinq octets |
+| OPEN | 168 | 173 | classifieur en assembleur (`src/open.s`) depuis le 26 septembre ; une règle coûte 10 à 20 octets |
 | IMGFS (grande depuis le 14 septembre) | 1 286 | 1 310 | — |
 | UNSHRINK (code jusqu’à `$3BFF`) | 907 | 899 | — |
 | ATTR | 19 | 20 | idem |
@@ -224,6 +224,17 @@ tableau est celui que `tools/check_layout.py` imprime à chaque lien
 | COMPARE | 23 | 47 | — |
 | COPY | 13 | 10 | — |
 | Mini (sous DOS à `$9600`) | **9** | — | 270 : `copy_side` et la relecture groupée |
+
+26 septembre 2026 : **OPEN desserré**. Newsroom, Movie Maker, Fantavision
+et DOCVIEW avaient ramené OPEN à 20/4 octets ; le classifieur `file_viewer`
+occupait à lui seul 893 des 1 280 octets de la fenêtre en 6502. Il est passé
+en assembleur (`src/open.s`), mêmes règles dans le même ordre, tables et
+identifiants restés en C à côté de `viewer_ids.h`. OPEN : 168/173 octets
+libres, LOWRAM +16 (les statiques du C). La version C est gardée comme
+spécification (`tools/file_viewer_ref.c`) : `tools/test_file_viewers.py`
+exécute l'assembleur sous sim65 sur les deux processeurs et exige la même
+réponse que la référence sur toutes les attentes et sur 300 cas tirés au
+hasard (noms, types, aux, tailles, contenus, `pictures`, pannes d'E/S).
 
 20 septembre 2026 : réveil de la Mockingboard 4c sur //c uniquement, avec
 exposition temporaire de la ROM puis restauration de la carte langage.

@@ -12,15 +12,21 @@ C = r'''
 #include <string.h>
 #include <errno.h>
 #define PATH_LEN 64
+#define NAME_LEN 17
 struct Entry { char name[16]; unsigned char type; unsigned int aux; unsigned long size; };
-static struct { char path[64]; unsigned char fs; } panels[2];
+struct Panel { char path[64]; unsigned char fs, count; struct Entry e[64]; unsigned char tags[64]; };
+static struct Panel panels[2];
+static unsigned char tagged(const struct Panel* p, unsigned char i) { return p->tags[i]; }
+static unsigned char page_size(const unsigned long* s) { return *s == 8184 || *s == 8192; }
+/* As in memory: the entry snapshot at $3000 and LaunchState at $3400 over it. */
+static unsigned char mem[0x1000];
+#define ENTRY_SNAPSHOT ((struct Entry*)mem)
 #define pan_at(p) (&panels[p])   /* the resident helper: the same address */
 static unsigned char active, gfi[18], _oserror, copy_buf[512];
 static char full[64],other_full[64],cfg_path[64],question[128],note[128];
 static const char cfg_rb[]="rb";
 struct ConfigState { char reserved[402]; };
-static unsigned char scratch[128];
-#define LAUNCH_STATE ((struct LaunchState*)scratch)
+#define LAUNCH_STATE ((struct LaunchState*)(mem + 0x400))
 static unsigned int chain_addr, chain_size, launches, asks, saves, prompts;
 static char command[64],runtime[64],prefix[64];
 static const char* root;
@@ -63,10 +69,19 @@ static int close_file(FILE*f){int r=fclose(f);return fault==12?-1:r;}
 #define ferror error_file
 #define fclose close_file
 #define chdir change_dir
+/* display.s's classification, tested there under sim65: 8 is a movie. */
+static unsigned char named_kind(const struct Entry*e){return e->type==6&&e->aux==0x8400?8:0;}
 #include "src/launch.h"
 int main(int argc,char**argv){
  struct Entry e;root=argv[1];fault=atoi(argv[2]);
- strcpy(panels[0].path,argv[4]);strcpy(cfg_path,"/BOOT/A2FILE/A2FILE.CFG");
+ strcpy(panels[0].path,argv[4]);strcpy(cfg_path,argc>8?argv[8]:"/BOOT/A2FILE/A2FILE.CFG");
+ /* argv[9]: the panel's entries, NAME:SIZE:MARK;... */
+ if(argc>9){char*t=argv[9],*end;unsigned long z;int m;
+  while(*t&&panels[0].count<64){struct Entry*x=&panels[0].e[panels[0].count];end=strchr(t,';');if(end)*end=0;
+   if(sscanf(t,"%15[^:]:%lu:%d",x->name,&z,&m)!=3)return 99;x->size=z;
+   /* the snapshot is what RUN may trust; the table is garbage under it */
+   ENTRY_SNAPSHOT[panels[0].count]=*x;memset(x,0xA5,sizeof*x);x->name[15]=0;panels[0].tags[panels[0].count++]=m;
+   if(!end)break;t=end+1;}}
  strcpy(e.name,"PROGRAM");e.type=atoi(argv[3]);e.size=1;
  /* The file on disk (aux, type) may differ from the panel's stale entry. */
  disk_aux=argc>5?atoi(argv[5]):0x2000;e.aux=argc>6?atoi(argv[6]):0x2000;disk_type=argc>7?atoi(argv[7]):e.type;
@@ -86,13 +101,15 @@ class Launch(unittest.TestCase):
         subprocess.run(['cc','-std=c99','-I',str(ROOT),str(cls.root/'test.c'),'-o',str(cls.exe)],check=True)
     @classmethod
     def tearDownClass(cls):cls.tmp.cleanup()
-    def run_case(self, fault=0, kind=250, path='/SOURCE/WORK', data=None, disk_aux=0x2000, panel_aux=0x2000, disk_type=None):
+    def run_case(self, fault=0, kind=250, path='/SOURCE/WORK', data=None, disk_aux=0x2000, panel_aux=0x2000, disk_type=None, cfg=None, panel=None):
         if data is None:data=bytes.fromhex('4c0020eeee4100')+bytes(93)
-        for name in ('BASIC.SYSTEM','INTBASIC.SYSTEM','PROGRAM'):(self.root/name).write_bytes(data)
+        for name in ('BASIC.SYSTEM','INTBASIC.SYSTEM','PROGRAM','FANTA.SYSTEM'):(self.root/name).write_bytes(data)
         args=[str(self.exe),str(self.root),str(fault),str(kind),path,str(disk_aux),str(panel_aux)]
-        if disk_type is not None:args.append(str(disk_type))
+        if disk_type is not None or cfg is not None:args.append(str(kind if disk_type is None else disk_type))
+        if cfg is not None or panel is not None:args.append(cfg or '/BOOT/A2FILE/A2FILE.CFG')
+        if panel is not None:args.append(panel)
         out=subprocess.check_output(args,text=True).strip().split('|')
-        for name in ('BASIC.SYSTEM','INTBASIC.SYSTEM','PROGRAM'):self.assertEqual((self.root/name).read_bytes(),data)
+        for name in ('BASIC.SYSTEM','INTBASIC.SYSTEM','PROGRAM','FANTA.SYSTEM'):self.assertEqual((self.root/name).read_bytes(),data)
         return out
     def test_both_runtimes_keep_paths_across_config_save(self):
         for kind,name in ((250,'INTBASIC.SYSTEM'),(252,'BASIC.SYSTEM')):
@@ -131,5 +148,39 @@ class Launch(unittest.TestCase):
         out=self.run_case(kind=6,path='/TOOLS')
         self.assertEqual(out[:3],['1','/TOOLS/PROGRAM',''])
         self.assertEqual(self.run_case(kind=6,path='/TOOLS',data=bytes(0x9B01))[0],'0')
+
+    def test_fantavision_movie_plays_in_fanta_system_from_a2fc_home(self):
+        # The movie's full path goes to FANTA.SYSTEM (an interpreter, from
+        # A2FC's own A2FILE directory); the prefix is A2FC's directory, where
+        # the player finds A2FILE.SYSTEM to come back. No question asked.
+        out=self.run_case(kind=6,path='/SOURCE/WORK',panel_aux=0x8400,disk_type=255,cfg='/TOOLS/A2FILE/A2FILE.CFG')
+        self.assertEqual(out,['1','/TOOLS/A2FILE/FANTA.SYSTEM','/SOURCE/WORK/PROGRAM','0','1','/TOOLS',str(0x2000)])
+        # An invalid player, a failed lookup or prefix, an unknown home: never
+        # launched. (Faults 5 and 13 refuse the first question, which a movie
+        # never asks: its only one is the configuration warning.)
+        self.assertEqual(self.run_case(kind=6,panel_aux=0x8400,disk_type=255,cfg='/TOOLS/A2FILE/A2FILE.CFG',data=bytes(100))[0],'0')
+        for fault in (1,2,4,7,8,11,12):
+            with self.subTest(fault=fault):
+                self.assertEqual(self.run_case(fault=fault,kind=6,panel_aux=0x8400,disk_type=255,cfg='/TOOLS/A2FILE/A2FILE.CFG')[0],'0')
+        self.assertEqual(self.run_case(kind=6,panel_aux=0x8400,disk_type=255,cfg='A2FILE.CFG')[0],'0')
+        # A path too long for the interpreter's buffer is refused, not cut.
+        self.assertEqual(self.run_case(kind=6,path='/SOURCE/'+'A'*15+'/'+'B'*15,panel_aux=0x8400,disk_type=255,cfg='/TOOLS/A2FILE/A2FILE.CFG')[0],'0')
+
+    def test_fantavision_backdrop_is_the_one_marked_hi_res_page(self):
+        movie=dict(kind=6,path='/SOURCE/WORK',panel_aux=0x8400,disk_type=255,cfg='/TOOLS/A2FILE/A2FILE.CFG')
+        out=self.run_case(panel='PROGRAM:4000:0;PARADIES:8192:1;NOTE:100:1',**movie)
+        self.assertEqual(out[:3],['1','/TOOLS/A2FILE/FANTA.SYSTEM','/SOURCE/WORK/PROGRAM,PARADIES'])
+        # an 8,184-byte save counts; a marked text does not
+        self.assertEqual(self.run_case(panel='PIC:8184:1',**movie)[2],'/SOURCE/WORK/PROGRAM,PIC')
+        self.assertEqual(self.run_case(panel='NOTE:100:1;PIC:8192:0',**movie)[2],'/SOURCE/WORK/PROGRAM')
+        # two marked pictures: which one? Nothing is launched.
+        self.assertEqual(self.run_case(panel='A:8192:1;B:8192:1',**movie)[0],'0')
+        # the name would pass the thunk's 46 characters: refused, never cut
+        long=dict(movie,path='/SOURCE/'+'A'*15+'/'+'B'*11)   # 35 + '/PROGRAM' = 43
+        self.assertEqual(self.run_case(panel='PIC:8192:0',**long)[0],'1')
+        self.assertEqual(self.run_case(panel='PICTURE:8192:1',**long)[0],'0')
+        # 60 entries: the 51st lies where LaunchState overwrites the snapshot.
+        many=';'.join('F%02d:100:0' % i for i in range(50))+';DECOR:8192:1;'+';'.join('G%02d:100:0' % i for i in range(9))
+        self.assertEqual(self.run_case(panel=many,**movie)[2],'/SOURCE/WORK/PROGRAM,DECOR')
 
 if __name__=='__main__':unittest.main()

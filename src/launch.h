@@ -6,6 +6,7 @@
  */
 struct LaunchState {
     char runtime[PATH_LEN], command[PATH_LEN];
+    char backdrop[NAME_LEN];            /* a movie's marked backdrop, or "" */
 };
 typedef char launch_state_fits[0x400 - sizeof(struct LaunchState)];
 typedef char launch_config_separate[0x400 - sizeof(struct ConfigState)];
@@ -32,6 +33,12 @@ static const char run_err[] = "Run";
 static const char run_prefix[] = "Prefix";
 #pragma rodata-name(pop)
 static const char run_cfgwarn[] = "Configuration warning. Run anyway?";
+/* Fantavision movies play in FANTA.SYSTEM, beside the overlays; it comes
+ * back by the A2FILE.SYSTEM of the prefix it was started with. */
+static const char run_fanta[] = "/A2FILE/FANTA.SYSTEM";
+static const char run_nohome[] = "A2FC's own directory is unknown.";
+static const char run_onebd[] = "Mark one hi-res picture as the backdrop.";
+static const char run_bdname[] = ",";
 
 /* 1 found, 0 genuinely absent, -1 lookup error. Never
  * reinterpret an unreadable runtime as a request to try another disk. */
@@ -113,8 +120,63 @@ static void run_selected(const struct Entry* e)
     if (is_dir(e) || !pan_at(active)->path[0] || pan_at(active)->fs) { message(run_pick); return; }
     bas = e->type == 0xFA || e->type == 0xFC;
     if (!bas && e->type != 0xFF && e->type != 0x06) { message(run_types); return; }
+    /* A movie's backdrop: the one hi-res page (8,184 or 8,192 bytes) marked
+     * in its panel. Looked up first, in the entries RUN was given at $3000
+     * (a big overlay covers the table at $2000): LaunchState at $3400 is
+     * written over the rest of that snapshot below, the name last. */
+    {
+        const struct Panel* pan = pan_at(active);
+        unsigned char i, bd = 0xFF;
+        if (named_kind(e) == 8)
+            for (i = 0; i < pan->count; ++i)
+                if (tagged(pan, i) && page_size(&ENTRY_SNAPSHOT[i].size)) {
+                    if (bd != 0xFF) { message(run_onebd); return; }
+                    bd = i;
+                }
+        /* LaunchState lies over the snapshot: the name moves only now,
+         * with memmove (the two may overlap). */
+        if (bd != 0xFF) memmove(LS->backdrop, ENTRY_SNAPSHOT[bd].name, NAME_LEN);
+        else LS->backdrop[0] = 0;
+    }
     if (!build_full(LS->command, pan_at(active), e)) { too_long(); return; }
     addr = 0x2000;              /* a binary's own address comes from launch_check */
+    addr_len = strlen(cfg_path);           /* "/VOL/.../A2FILE/A2FILE.CFG": 18 past the directory */
+    if (named_kind(e) == 8) {
+        /* A Fantavision movie: FANTA.SYSTEM, an interpreter, is given its
+         * full path, with the prefix on A2FC's own directory -- where it
+         * finds A2FILE.SYSTEM to come back. Read-only; no question: the
+         * way back is automatic. */
+        if (addr_len <= 18 || addr_len + 2 >= PATH_LEN) { message(run_nohome); return; }
+        /* The backdrop found above goes by name after a comma
+         * (FANTA.SYSTEM reads it from the movie's directory). None marked:
+         * FANTA.SYSTEM looks for NAME beside M.NAME itself. The chain
+         * thunk's 46 characters are checked before anything is appended:
+         * LS->command holds PATH_LEN, a name 15 more. */
+        {
+            unsigned char n = strlen(LS->command);
+            if (n > 46 || (LS->backdrop[0] && n + 1 + strlen(LS->backdrop) > 46)) { too_long(); return; }
+            if (LS->backdrop[0]) {
+                strcat(LS->command, run_bdname);
+                strcat(LS->command, LS->backdrop);
+            }
+        }
+        memcpy(other_full, cfg_path, addr_len - 18);
+        other_full[addr_len - 18] = 0;
+        strcpy(LS->runtime, other_full);
+        strcat(LS->runtime, run_fanta);
+        if (!launch_check(&addr, 1, 0xFF)) return;
+        if (!save_config() && !confirm(run_cfgwarn)) return;
+        /* save_config may reuse other_full: the directory again, from the
+         * runtime path LaunchState keeps. */
+        memcpy(other_full, LS->runtime, addr_len - 18);
+        other_full[addr_len - 18] = 0;
+        if (chdir(other_full)) { report_error(run_prefix); return; }
+        chain_command(LS->command);
+        chain_addr = addr;
+        clrscr();
+        chain_load(LS->runtime);
+        return;
+    }
     if (bas) {
         if (!basic_path(e->type == 0xFA ? run_integer : run_basic)) return;
         /* Long absolute paths use the source directory as prefix. */
@@ -124,7 +186,6 @@ static void run_selected(const struct Entry* e)
         LS->command[0] = 0;
     }
     if (!launch_check(&addr, bas, bas ? 0xFF : e->type)) return;
-    addr_len = strlen(cfg_path);           /* "/VOL/.../A2FILE/A2FILE.CFG": 18 past the directory */
     if (addr_len > 18 && addr_len <= 18 + 40) {
         memcpy(other_full, cfg_path, addr_len - 18);
         other_full[addr_len - 18] = 0;

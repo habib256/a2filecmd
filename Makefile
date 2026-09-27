@@ -120,12 +120,12 @@ CCDEFS =
 endif
 # These overlays reserve $3000-$3FFF for scratch (FIND: $3100-$3FFF): code AND BSS must
 # stop before their scratch area. ld65 enforces that boundary at link time.
-XPLUGINS_SCRATCH = music bootblk find goto mdview wipe dgrview fixtypes
+XPLUGINS_SCRATCH = music bootblk find goto mdview docview wipe dgrview fixtypes
 # These decode a picture into the graphics page, so they are big (the core
 # sets the tags aside and rereads the panels) but their CODE must still stop
 # before $2000: they are linked with the small window, which makes ld65
 # enforce that boundary instead of leaving it to luck.
-XPLUGINS_HGR = purple extasie arlequin macpaint shapes packfot paint816 fontview printshop lz4fh
+XPLUGINS_HGR = purple extasie arlequin macpaint shapes packfot paint816 fontview printshop lz4fh newsroom
 # DUET stages its song at $2400 (7 KB, the largest known Electric Duet
 # files are 5.5 KB): code and BSS are linked into $1B00-$23FF.
 XPLG = $(patsubst %,$(BUILD)/%.PLG,$(XPLUGINS))
@@ -137,7 +137,7 @@ DSK    = $(DIST)/$(IMG)-$(A2FC_VERSION).dsk
 include config/packages.mk
 CATALOG = $(BUILD)/EXTRAS.CAT
 
-OBJS = $(BUILD)/crt0.o $(BUILD)/overlay.o $(BUILD)/unshrink.o $(VDRIVEOBJ) $(BUILD)/a2fc_mli.o $(BUILD)/chain.o \
+OBJS = $(BUILD)/crt0.o $(BUILD)/overlay.o $(BUILD)/open.o $(BUILD)/unshrink.o $(VDRIVEOBJ) $(BUILD)/a2fc_mli.o $(BUILD)/chain.o \
        $(BUILD)/mb_probe.o $(BUILD)/memory_swap.o $(BUILD)/mli_safe.o $(MOUSEOBJ) $(BUILD)/format_diskii.o $(BUILD)/format_mli.o
 
 .DELETE_ON_ERROR:
@@ -181,7 +181,7 @@ $(CODE): $(SRC)/plugins/file_install.h $(SRC)/file_output.h $(SRC)/file_copy.h $
 	$(CL) $(CFLAGS) -D 'A2FC_VERSION="$(A2FC_VERSION)"' -C $(SRC)/a2fc.cfg \
 	  -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__STACKSIZE__=$(A2FC_STACK) -Wl -D,__BIN2SIZE__=$(BIN2SIZE) \
 	  -Wl -m,$(BUILD)/a2fc.map -Wl -Ln,$(BUILD)/a2fc.lbl \
-	  -o $@ $(BUILD)/crt0.o $(BUILD)/overlay.o $(BUILD)/unshrink.o $(VDRIVEOBJ) $(SRC)/a2fc.c $(SRC)/format.c $(BUILD)/format_diskii.o $(BUILD)/format_mli.o $(BUILD)/a2fc_mli.o \
+	  -o $@ $(BUILD)/crt0.o $(BUILD)/overlay.o $(BUILD)/open.o $(BUILD)/unshrink.o $(VDRIVEOBJ) $(SRC)/a2fc.c $(SRC)/format.c $(BUILD)/format_diskii.o $(BUILD)/format_mli.o $(BUILD)/a2fc_mli.o \
 	  $(BUILD)/display.o $(BUILD)/chain.o $(BUILD)/mb_probe.o $(BUILD)/memory_swap.o $(BUILD)/mli_safe.o \
 	  $(MOUSEOBJ) $(IOBUF)
 	@python3 $(TOOLS)/check_layout.py --lbl $(BUILD)/a2fc.lbl --bin $@ $(LAYOUT_BIG)
@@ -409,6 +409,8 @@ test: test-mini
 	python3 $(TOOLS)/test_arlequin.py
 	python3 $(TOOLS)/macpaint_ref.py --selftest
 	python3 $(TOOLS)/test_macpaint.py
+	python3 $(TOOLS)/newsroom_ref.py --selftest
+	python3 $(TOOLS)/test_newsroom.py
 	python3 $(TOOLS)/awdata_ref.py --selftest
 	python3 $(TOOLS)/test_awdata.py
 	python3 $(TOOLS)/dc42.py --selftest
@@ -426,6 +428,7 @@ test: test-mini
 	python3 $(TOOLS)/test_intbasic.py
 	python3 $(TOOLS)/test_find.py
 	python3 $(TOOLS)/test_mdview.py
+	python3 $(TOOLS)/test_docview.py
 	python3 $(TOOLS)/test_diskcmp.py
 	python3 $(TOOLS)/test_six_plugins.py
 

@@ -257,3 +257,117 @@ _tag_count:
 @done:  lda tmp1
         ldx #0
         rts
+
+; unsigned char __fastcall__ named_kind(const struct Entry* e): image_kind's
+; answer for the files a BIN's load address, size and name tell apart --
+; 7 for a Newsroom photo PH.x or banner BN.x (BIN $06 at $4000), 1 (a raw
+; hi-res page) for a Movie Maker shape sheet (BIN at $1DF0, 8,720 bytes:
+; a 528-byte header, then the page), 8 for a Fantavision movie (BIN at
+; $8400, 513 to 9,216 bytes; RUN plays it with FANTA.SYSTEM), else 0. In C this cost the resident
+; over 110 bytes. Entry.type is at 17, Entry.aux at 19, Entry.size at 23
+; (a2fc_plugin.h ABI, NAME_LEN 17).
+        .export _named_kind
+        .code
+_named_kind:
+        sta ptr1
+        stx ptr1+1
+        ldy #17
+        lda (ptr1),y
+        cmp #$06
+        bne @no
+        ldy #20
+        lda (ptr1),y
+        cmp #$40
+        beq @news
+        cmp #$84
+        beq @movie
+        cmp #$1D
+        beq @sheet
+@no:    lda #0
+        tax
+        rts
+@sheet: dey
+        lda (ptr1),y
+        cmp #$F0
+        bne @no
+        ldy #23                 ; size $00002210
+        lda (ptr1),y
+        cmp #$10
+        bne @no
+        iny
+        lda (ptr1),y
+        cmp #$22
+        bne @no
+        iny
+        lda (ptr1),y
+        iny
+        ora (ptr1),y
+        bne @no
+        lda #1
+        ldx #0
+        rts
+@movie: dey                     ; aux $8400, 513 to 9,216 bytes
+        lda (ptr1),y
+        bne @no
+        ldy #26
+        lda (ptr1),y
+        dey
+        ora (ptr1),y
+        bne @no
+        dey                     ; size bits 8-15: $02 to $24
+        lda (ptr1),y
+        cmp #$02
+        bcc @no
+        cmp #$24
+        bcc @film               ; $0200-$23FF: all but $0200 itself
+        bne @no
+        dey                     ; $24xx: only $2400
+        lda (ptr1),y
+        bne @no
+        beq @yes8
+@film:  cmp #$02
+        bne @yes8
+        dey                     ; $02xx: from $0201
+        lda (ptr1),y
+        beq @no
+@yes8:  lda #8
+        ldx #0
+        rts
+@news:  dey
+        lda (ptr1),y
+        bne @no
+        ldy #2
+        lda (ptr1),y
+        cmp #'.'
+        bne @no
+        ldy #0
+        lda (ptr1),y
+        ldx #'H'
+        cmp #'P'
+        beq @second
+        ldx #'N'
+        cmp #'B'
+        bne @no
+@second:
+        txa
+        iny
+        cmp (ptr1),y
+        bne @no
+        lda #7
+        ldx #0
+        rts
+
+; unsigned int __fastcall__ sheet_header(const struct Entry* e): the bytes
+; before a Movie Maker shape sheet's hi-res page (528), else 0: IMAGE's
+; load_image skips them, at a few bytes of its full window.
+        .export _sheet_header
+_sheet_header:
+        jsr _named_kind
+        cmp #1
+        bne @none
+        lda #<528
+        ldx #>528
+        rts
+@none:  lda #0
+        tax
+        rts

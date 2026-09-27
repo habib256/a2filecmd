@@ -13,7 +13,7 @@ import sys
 
 BENCHES = ('arlequin', 'awdata', 'bootblk', 'cpmw', 'crc', 'date', 'disasm', 'diskcopy', 'findfile',
            'dos33w', 'dosrepl', 'fixit', 'fixtypes', 'foreignfs', 'goto', 'ident', 'imgconv', 'imgput', 'macpaint',
-           'mdview', 'pascalw', 'rename',
+           'docview', 'fanta_a2fc', 'mdview', 'moviemaker', 'newsroom', 'pascalw', 'rename',
            'progress', 'repair', 'shapes', 'squeeze', 'tagpat', 'txtconv', 'verify', 'volname', 'wipe',
            'wrappers')
 

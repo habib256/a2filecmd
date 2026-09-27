@@ -3,183 +3,132 @@
 Changes in upcoming and published releases. See the [README](README.md) for features,
 downloads and installation.
 
+## [Unreleased]
+
+### The Newsroom photos and banners
+- NEWSROOM shows The Newsroom's (Springboard, 1984) user pictures: photos
+  `PH.*` and banners `BN.*`, DOS 3.3 B files at $4000 that become BIN $4000
+  once copied to ProDOS. Return and I recognise them by name and type;
+  Left/Right go to the neighbouring one. Centered on a black hi-res page,
+  main bank only: `/RAM` is untouched and nothing is written.
+- The format is documented in `docs/NEWSROOM-FORMAT.md`, a first: the
+  bitmap is the last L bytes, since the clip history before it can hold
+  $FF. Any failed check or I/O error refuses the file before it is shown.
+- Tests: `tools/newsroom_ref.py` (reference), `tools/test_newsroom.py`
+  runs the whole overlay under sim65 on both processors, including 125 real
+  files when their disks are present. XL and 800K: 83 overlays.
+
+### Movie Maker backgrounds and shape sheets
+- IMAGE opens Movie Maker's (Interactive Picture Systems, 1984) shape
+  sheets `.SHP`: BIN $1DF0 of 8,720 bytes, a 528-byte header then a hi-res
+  page. Its backgrounds `.BKG` already opened as raw pages; both join the
+  Left/Right album. Checked under POM2 on files from the original disks
+  (`bench/moviemaker.py`). Films `.MVM` and animations `.ANI` are not read.
+
+### Epistole, Papyrus and HomeWord documents
+- DOCVIEW lays out the documents of three French and American word
+  processors as they print: Epistole (Version Soft; ProDOS text with `_MG10`
+  margin, `_CE` centring, `_IG` bold... commands and `#NOM]` mail-merge
+  variables) and Papyrus (Ediciel), the French HomeWord (Sierra; DOS 3.3
+  high-bit text with `$FF` codes). Margins, indents, tab stops, centring and
+  page breaks are applied, bold and variables shown in inverse, printer-only
+  commands hidden. Their ISO 646-FR accents (`{` for e acute...) show as
+  plain letters on a US character set, as stored with A. Return opens it on
+  a text that starts with a command or a code; the ! menu on any other.
+- `tools/test_docview.py` renders synthetic documents and every document of
+  the Epistole and Papyrus disks when present; `bench/docview.py` opens
+  them by Return under POM2 on both editions. XL and 800K: 84 overlays.
+
+### Room to recognise more formats
+- OPEN, the overlay that decides which viewer a file opens in, had 4 bytes
+  left on the 6502 after this release's formats. Its classifier is now
+  written in assembly, with the same rules in the same order: 168/173
+  bytes free (65C02/6502), room for several more formats. The former C is
+  kept as the specification: `tools/test_file_viewers.py` runs the
+  assembly under sim65 on both processors and requires the same answer on
+  every expected route and 300 random cases, I/O failures included.
+
+### Fantavision movies
+- Return on a Fantavision movie (Broderbund, 1985: `M.*`, BIN $8400) plays
+  it in FANTA.SYSTEM, a player of our own that A2FC launches with the
+  movie's path and that brings A2FC back when it ends (800K and XL).
+  Written in clean room from `docs/FANTAVISION-FORMAT.md` alone -- the
+  format and the original player's behaviour as observed on 144 movies;
+  none of Broderbund's code or tables is used. Its drawing is its own:
+  within a few percent of the original's screen bytes, frame for frame.
+- Two speeds, switched by Tab: accelerated (the default: about twice the
+  original on dots and lines, 1.7-1.9x on solid shapes, simulated) and the
+  original's, from a cycle model of the original player fitted on 6,787
+  timed frames (median error 10 %). Space pauses, 1-9 add a delay, Escape
+  returns. Main memory only: /RAM untouched, nothing written to disk.
+- Backdrops: the hi-res picture marked in the movie's folder, or else the
+  picture `NAME` beside `M.NAME` (as on Fantavision's own disks), is the
+  background the movie plays on.
+- A damaged tail is cut: all 144 real movies of the study play, three of
+  them up to their damage. A movie with no whole first frame is refused
+  with its reason.
+- Tests: `tools/test_fantavision.py` runs the engine under sim65 on both
+  processors against `tools/fantavision_ref.py` byte for byte, damaged
+  movies included; `bench/fantavision.py` plays it on three machines under
+  POM2; `bench/fanta_a2fc.py` goes from A2FC's Return to the movie and back.
+
 ## [0.9.4] - 2026-09-26
 
 ### Disks named for their system, and a DEMO sorted by kind
-- The ProDOS images now say so in their name, like the DOS 3.3 one:
-  `A2FILECMD-PRODOS-140K`, `-PRODOS-800K`, `-PRODOS-XL` and
-  `-PRODOS-XL-65C02-enhanced` (formerly `A2FILECMD-65C02-enhanced-mouse-XL`),
-  beside `A2FILECMD-DOS3.3`. The choice between the two XL images is simply
-  enhanced or not: the enhanced XL is for an enhanced IIe, a //c or a IIgs;
-  every other ProDOS image runs on any IIe.
-- The XL disk's DEMO folder is sorted by kind of file: DOCUMENTS, PICTURES
-  (with the HGR album, formerly `/IMGHGR`), MUSIC, ARCHIVES, DISKS,
-  PROGRAMS and FONTS.SHAPES, and a README saying what is where. The best
-  CiderPress II samples join the folder of their kind instead of a
-  CIDERPRESS folder of their own.
-- The README is revised and opens on the 80-column panels at the screen's
-  proportions (560 x 384), also the guide's cover. The guide names Dazzle
-  Draw among the double hi-res pictures it already opens, and credits
-  David Schmidt for ADTPro.
+- ProDOS images are now `A2FILECMD-PRODOS-140K`, `-PRODOS-800K`,
+  `-PRODOS-XL` and `-PRODOS-XL-65C02-enhanced` (formerly
+  `A2FILECMD-65C02-enhanced-mouse-XL`), beside `A2FILECMD-DOS3.3`. The
+  enhanced XL is for an enhanced IIe, a //c or a IIgs; every other ProDOS
+  image runs on any IIe.
+- The XL DEMO folder is sorted by kind (DOCUMENTS, PICTURES with the HGR
+  album, MUSIC, ARCHIVES, DISKS, PROGRAMS, FONTS.SHAPES) with a README; the
+  CiderPress II samples join the folder of their kind.
+- Revised README and guide cover (the 80-column panels at 560 x 384); the
+  guide names Dazzle Draw and credits David Schmidt for ADTPro.
 
-### A resident with room again
+### Room, and a frozen ABI for 1.0
 - 494 bytes free in the 65C02 resident instead of 82 (6502: 885 instead of
-  485), with no behaviour change: a helper replaces the 90 places where
-  cc65 multiplied a panel index by 98 to reach `panels[p]`. The language
-  card, the stack margin and twelve overlays gain room too, and the 140K
-  disk two blocks. The bytes then paid for the directory paging below.
-
-### Frozen for 1.0
-- The overlay ABI (API version 5: shared structures, the order of the 54
-  services, the constants that place an overlay) and the `A2FILE.CFG`
-  layout are frozen; new services are only appended with a new version.
-  `tools/test_abi_freeze.py`, in `make test`, refuses anything else.
-
-### DOS 3.3: the activity cell turns during RWTS's retries
-- Reading a never formatted diskette used to keep RWTS busy for about five
-  seconds in one call with nothing moving. For the duration of a READ,
-  RWTS's own call to its address-field reader is lent to the activity cell,
-  checked and restored like the format's: the longest still screen falls
-  from 4.8 s to 1.4 s. A WRITE never runs with it; `bench/mini33_lend.py`
-  replays a session with and without the hook and requires every call and
-  both diskettes to be identical byte for byte.
-
-### The two compilers now read every sign alike
-- An audit of every C unit of both editions (the resident and its headers,
-  the launcher, the service overlays) for the defect behind the Up bug
-  below. cc65 2.19, which builds the 65C02 edition, makes `a < b` unsigned
-  as soon as either side is unsigned, an unsigned char included (C makes
-  it a signed int, as cc65 master does for the 6502 edition), and it
-  computes the difference of two unsigned chars on eight bits. 768
-  comparisons are signed differently by the two compilers; in all but six,
-  both sides are provably never negative, so both editions answer alike.
-  The six, the eight-bit differences, and the divisions, shifts and
-  widenings to `long` of such values were traced one by one: apart from
-  `move_cursor`, none could give a different answer with a real disk.
-- Hardening, both editions: AWDATA's column counter is unsigned. A crafted
-  spreadsheet row skipping more than 32,767 columns made it negative, and
-  the cell-by-cell view (F) then took a repeated label's width from a byte
-  in front of the column table (the line stayed within the screen).
-- Fix, 6502 edition: IDENT called a packed Extasie picture (`$F2`) of
-  32 KB or more merely "Extasie picture": the length in its first word
-  was sign-extended before being compared with the file's. A packed double
-  hi-res page is far smaller, so no real picture was misnamed; the 65C02
-  edition was right.
-- The other sites now say what they rely on, at no cost: a cast of the
-  side already proven non-negative (`move_cursor`, `drop_entry`, the
-  picked entries of copy, move and delete, `launch_check`, DGRVIEW's
-  centring), `addr_len <= 18 + 40` instead of `addr_len - 18 <= 40`, and
-  two lines annotated with their proof (DISASM's hex digits, MDVIEW's
-  offsets).
-- `tools/sign_compare.py` reads clang's syntax tree of each unit with each
-  edition's defines and cc65 headers (16-bit int, unsigned char), re-derives
-  every operand's type under cc65 2.19's rule and its value range in C, and
-  reports a comparison unsigned in either edition with an operand that may
-  be negative, a signed overflow of byte arithmetic, `/`, `%`, `>>` or a
-  widening to `long` of such an operand, and an eight-bit difference used
-  on sixteen bits (`--inventory` lists all 768 sites).
-  `tools/test_sign_compare.py`, in `make test`, refuses any such site that
-  is not annotated `/* sign-ok: <proof> */`, refuses an annotation nobody
-  needs, and checks the rules themselves: 25 shapes compiled by both
-  compilers under sim65, where every reported shape gives a wrong answer
-  in at least one edition and every accepted one the right answer in both.
-- MAIN 415/821 bytes free (413/805 before); AWDATA 6/14 bytes smaller,
-  DGRVIEW 24 bytes smaller on the 6502; RUN and DELETE gain a few bytes of
-  margin.
-
-### VDrive leaves the printer alone
-- VDrive no longer looks at slot 1: on a //e that is where the printer's
-  Super Serial Card lives, and on a //c it is the printer port. With no
-  serial card in slot 2, a //e whose only SSC sat in slot 1 had its 6551
-  probed, set to 115,200 bps with DTR on, and sent 100 bytes of VDrive
-  envelopes during one short session (volume list, a directory, quit) --
-  garbage for the printer, and its settings lost. VDrive now tries slot 2,
-  then 3 to 7, and never reads or writes slot 1's registers. A VDrive host
-  cabled to a slot-1 card is no longer served: move the card to slot 2.
-- `bench/vdrive_printer.py` plugs a logging printer SSC in slot 1
-  (`pom2_playtest --printer-ssc LOG`) on the //e and the //c and requires no
-  access to it, alone and next to a working VDrive on slot 2;
-  `tools/test_vsdrive.py` checks the same under sim65.
-- In slots 2 to 7, VDrive now skips a Super Serial Card set up for a
-  printer before its first write. It used to write the 6551's command
-  register of any card with the serial Pascal signature, and a printer's
-  SSC in slot 2 (no VDrive host anywhere) was reprogrammed and sent
-  envelopes like the slot-1 one. The signature ($Cn0C = $31) is the same on
-  every SSC, so VDrive first reads the card's mode switches -- DIP bank 1
-  at $C081 + slot x 16, bits $03, a read with no side effect -- and takes
-  the card only in communications mode ($00); printer mode ($02) and the
-  two SIC emulations ($01, $03), which Apple's firmware drives as printers,
-  are left alone. Nothing is written, and the 6551's status register
-  (which acknowledges its interrupt) is not read, before that decision. On
-  a //c (MACHID) the ports have no switches: port 2 is taken as before,
-  and a printer on the modem port still receives envelopes (the manual
-  says so).
-- `tools/test_vsdrive.py` puts a printer-mode SSC (and each SIC mode) in
-  slot 2: not taken, its 6551 bytes intact; with a communications SSC in
-  slot 4, slot 4 is taken and slot 2 stays intact; a //c takes port 2
-  whatever $C0A1 holds. `bench/vdrive_printer.py` adds the same on POM2
-  (`pom2_playtest --printer-slot 2`, `--ssc-slot 4`, with the SSC switches
-  of POM2's printer-detection work): no write to slot 2 and no access to
-  its 6551, only the read of its switches; it skips those cases with a
-  message against an older POM2.
+  485), with no behaviour change; the language card, twelve overlays and
+  the 140K disk gain room too.
+- The overlay ABI (API version 5, 54 services) and the `A2FILE.CFG` layout
+  are frozen: new services are only appended with a new version
+  (`tools/test_abi_freeze.py`).
 
 ### Large directories: faster pages, and Up no longer jumps forward
-- A page of a directory larger than a window (139 entries) no longer
-  validates every name before it: the blocks wholly before the window are
-  only counted (their active entries, each with a name length) by a small
-  assembly routine, straight from the block just read. Nothing is kept from
-  one page to the next, so a page after a disk swap or after the directory
-  changed shows exactly what the disk now holds. A read error while counting
-  is still an error, never the end of the directory. The entries sharing a
-  block with the window, and all the shown ones, are validated as before.
-- Measured on POM2's HDV card (`tools/measure_paging.py`): a skipped window
-  costs about 247,000 cycles instead of 431,000 (6502) or 485,000 (65C02);
-  the last page of 1,500 entries takes 4.0 s instead of 5.8 s (6502) or
-  6.4 s (65C02) at 1 MHz, the last of 700 entries 1.9 s instead of 2.8/3.0 s.
-  A block index was prototyped and dropped: 488 resident bytes (6 left on
-  the 65C02), and ProDOS still walks the directory's chain on SET_MARK.
-- Fix, 65C02 edition: Up or Left less than a page from the top of a window
-  that has another after it loaded the NEXT window. cc65 2.19 compiled
-  `target >= pan->count` (an int against an unsigned char) as an unsigned
-  comparison; `move_cursor` now tests the sign first.
-- 81 bytes (80 on the 6502): 413 bytes free in the 65C02 resident, 805 on
-  the 6502.
-- Tests: `tools/test_dir_paging.py` runs the real `dir_open`/`dir_next` and
-  the real assembly under sim65 with each edition's compiler, against the
-  list of active entries and a step-by-step model (deleted entries, sizes
-  up to 1,500, nameless entries, bad names, truncated files, early chain
-  ends, a directory changed between two pages, fuzz);
-  `tools/test_move_cursor.py` pages both ways with both compilers;
-  `bench/paging_swap.py` swaps two floppies holding the same `/FLOP/BIG`
-  between pages, deletes and creates in a big directory from the other
-  panel, and compares whole windows with the images read back.
+- Blocks wholly before the shown window are only counted, not validated:
+  the last page of 1,500 entries takes 4.0 s instead of 5.8/6.4 s at 1 MHz.
+  Nothing is cached, so a disk swap or a changed directory shows what the
+  disk now holds; a read error is still an error.
+- Fix, 65C02 edition: Up or Left near the top of a window with another after
+  it loaded the next window (cc65 2.19 compiled a signed comparison as
+  unsigned).
 
-### DOS 3.3: a hex preview you can read
-- The Mini's hexadecimal preview now shows eight bytes a row, separated by
-  spaces, with their characters beside them (high bit ignored, `.` for a
-  control character or `$7F`), instead of 32 digits glued together. The
-  sector is shown in two halves; Left/Right, `-`/`+` or `<`/`>` switch
-  between bytes `00-7F` and `80-FF`, and the header says which is on
-  screen. Text preview and every other screen are unchanged.
-- Paid for by the help page, now one text whose `|` starts the next row:
-  43 bytes free below DOS, one more than before.
-- `tools/test_mini33.py` renders both halves with the shipped `screen.s`
-  under sim65 and checks every cell; `bench/mini33.py` drives the half keys
-  and checks the help page row for row.
+### Both compilers now read every sign alike
+- All C units of both editions were audited for comparisons cc65 2.19 and
+  cc65 master sign differently (768 sites): only the Up bug above could
+  differ with a real disk. `tools/sign_compare.py` now refuses any
+  unproven site in `make test`.
+- Hardening: AWDATA's column counter is unsigned (a crafted row could read
+  a label width from outside its table). Fix, 6502 edition: IDENT named a
+  packed Extasie picture of 32 KB or more wrongly.
 
-### DOS 3.3: the format no longer stands still
-- Lend DOS's own per-track loop to the activity cell while RWTS formats a
-  disk: that call returns nothing for some eighteen seconds, and the key
-  bar's last cell now turns once a track. The three bytes it redirects are
-  checked first, so another DOS formats exactly as before, and they go back
-  the instant the format returns.
-- Pay for it with 92 resident bytes freed by three rewrites that write the
-  same values in the same order: the panel fields as one block walked by
-  `remember`/`activate` and `mirror_panel`, and `have_entry` for the two
-  questions eight keys asked in line. 42 bytes free below DOS.
-- `bench/mini33_format.py` now measures the longest the screen stands
-  still: under 3 seconds, and under 6 on a never formatted diskette, where
-  one RWTS read retries and recalibrates inside a single call.
+### VDrive leaves the printer alone
+- VDrive no longer touches slot 1 (the //e printer SSC, the //c printer
+  port): it tries slot 2, then 3 to 7. A VDrive host on a slot-1 card must
+  move to slot 2.
+- In slots 2 to 7, it first reads the SSC's mode switches, with no side
+  effect, and takes the card only in communications mode: a printer-mode
+  SSC is no longer reprogrammed nor sent envelopes. On a //c, port 2 is
+  used as before.
+
+### DOS 3.3 edition (Mini)
+- The hex preview shows eight bytes a row with their characters, in two
+  halves switched by Left/Right, `-`/`+` or `<`/`>`.
+- The activity cell turns during a format (once a track) and during RWTS's
+  retries on an unformatted diskette: the longest still screen falls from
+  18 s to under 3 s, and from 4.8 s to 1.4 s on such a read. The borrowed
+  DOS hooks are checked first and restored at once; writes never run with
+  them.
 
 ## [0.9.3] - 2026-09-22
 
