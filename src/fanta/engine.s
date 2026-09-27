@@ -138,6 +138,7 @@ t0:     .res 1
 t1:     .res 1
 t2:     .res 1
 t3:     .res 1
+krp:    .res 2          ; version: the next record of the key frame
 gcv:    .res 1          ; seg: nonzero, gcsl/gcsh is the slope to use
 gcsl:   .res 1
 gcsh:   .res 1
@@ -968,10 +969,17 @@ build:  lda     fv_shown
         sta     ermx1+2
         sta     ermx2+2
         lda     #0
-        ldx     #NCOUNTS + 5            ; the counters and normal
+        ldx     #5                      ; normal, and the counters when
+:       sta     normal,x                ; counting (the original speed)
+        dex
+        bpl     :-
+        ldx     fv_count
+        beq     :++
+        ldx     #NCOUNTS - 1
 :       sta     fv_counts,x
         dex
         bpl     :-
+:
         lda     prevn
         sta     fv_counts+C_ESPANS
         lda     prevn+1
@@ -1079,11 +1087,25 @@ build:  lda     fv_shown
 version:
         lda     vkey
         beq     @tween
-        ldx     obj
-        lda     vframe
-        jsr     record
+        ldx     obj                     ; the records one after the other
+        bne     :+
+        ldy     vframe
+        lda     ftlo,y
+        sta     krp
+        lda     fthi,y
+        sta     krp+1
+:       lda     krp
+        sta     rp
+        lda     krp+1
+        sta     rp+1
         ldy     #0
         lda     (rp),y
+        clc
+        adc     krp
+        sta     krp
+        bcc     :+
+        inc     krp+1
+:       lda     (rp),y
         cmp     #1
         bne     :+
         sec
