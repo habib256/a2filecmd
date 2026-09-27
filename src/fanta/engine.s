@@ -1471,8 +1471,11 @@ dotsin: lda     #0
         cmp     cbot
         beq     :+
         bcs     @no
-:       inc     dfast
-@no:    rts
+:       inc     dfast                   ; 1: all inside
+        rts
+@no:    lda     #2                      ; 2: some maybe not
+        sta     dfast
+        rts
 
 ; A smallest dot at point Y of the object.
 dot1:   lda     (xp),y
@@ -2163,8 +2166,35 @@ dot:    lda     dcy
         txa
         asl
         sta     dcnt
-        lda     dfast
-        bne     @fast
+        lda     dfast                   ; 1: the object inside, 2: look at
+        beq     @row                    ; each spot
+        lsr
+        bcs     @fast
+        lda     drh                     ; this spot inside?
+        bne     @row
+        lda     drl
+        cmp     ct
+        bcc     @row
+        adc     dcnt                    ; (C = 1: top + 2s + 1)
+        bcs     @row
+        sbc     #1                      ; C = 0: - 2, the bottom row
+        cmp     cbot
+        beq     :+
+        bcs     @row
+:       lda     dcx
+        sec
+        sbc     dsz
+        bcc     @row
+        cmp     cl
+        bcc     @row
+        lda     dcx
+        clc
+        adc     dsz
+        bcs     @row
+        sbc     #0
+        cmp     cr
+        beq     @fast
+        bcc     @fast
 @row:   lda     drh                     ; rows 0-255 only
         bne     @next
         ldy     drl
