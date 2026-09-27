@@ -2078,7 +2078,22 @@ fill:   ldx     qm                      ; the extent: outside the window,
         cmp     cr
         beq     :+
         bcs     :--
-:       lda     #0
+:
+        ldy     gx0                     ; x min, max of the shape (gx0, gx1,
+        cpy     cl                      ; from fill's start) inside the
+        bcc     @tcl                    ; window: no clipping on the rows
+        ldy     gx1
+        cpy     cr
+        beq     @tnc
+        bcs     @tcl
+@tnc:   lda     #<sxnc
+        ldx     #>sxnc
+        bne     @tset                   ; (always)
+@tcl:   lda     #<sx
+        ldx     #>sx
+@tset:  sta     ftj+1
+        stx     ftj+2
+        lda     #0
         sta     ne
         sta     oi
 @edge:  ldx     oi                      ; edge oi -> oi + 1
@@ -2279,7 +2294,7 @@ fill:   ldx     qm                      ; the extent: outside the window,
         ldx     xs-1,y
         lda     xs,y
         tay
-        jsr     sx
+        jsr     ftjmp
         ldy     t3
         iny
         iny
@@ -2313,21 +2328,7 @@ fill:   ldx     qm                      ; the extent: outside the window,
 ; Two active edges (every convex shape): row after row with the two edges
 ; in the zero page, up to the next row where an edge ends or starts, or the
 ; window's bottom.
-@two:   ldy     gx0                     ; x min, max of the shape (gx0, gx1,
-        cpy     cl                      ; from fill's start) inside the
-        bcc     @tcl                    ; window: no clipping on the rows
-        ldy     gx1
-        cpy     cr
-        beq     @tnc
-        bcs     @tcl
-@tnc:   lda     #<sxnc
-        ldx     #>sxnc
-        bne     @tset                   ; (always)
-@tcl:   lda     #<sx
-        ldx     #>sx
-@tset:  sta     ftj+1
-        stx     ftj+2
-        lda     nend
+@two:   lda     nend
         sta     fstop
         ldy     nxt
         cpy     ne
