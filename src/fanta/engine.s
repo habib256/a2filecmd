@@ -1283,6 +1283,17 @@ erase:  lda     #0
         lda     gnxt
         cmp     gy
         bcc     edone                   ; none
+        lda     bpage                   ; page = (background | row) ^ this
+        eor     #BGPAGE
+        sta     epg+1
+        lda     #<esrc                  ; the counting only at the original
+        ldy     #>esrc                  ; speed: a jump over it otherwise
+        ldx     fv_count
+        beq     :+
+        lda     #<ecount
+        ldy     #>ecount
+:       sta     ecj+1
+        sty     ecj+2
         ldx     gy
         inc     gnxt                    ; the row after the last
 erow:
@@ -1297,21 +1308,18 @@ ermx1:  lda     emax1,x
 ermn2:  sta     emin1,x
         lda     #0
 ermx2:  sta     emax1,x
-        lda     rowlo,x
-        clc
+        lda     rowlo,x                 ; (a row's start plus a column never
+        clc                             ; crosses a page)
         adc     t0
         sta     esrc+1
         sta     edst+1
         lda     rowhi,x
-        adc     #0
         ora     #BGPAGE
         sta     esrc+2
-        eor     #BGPAGE
-        ora     bpage
+epg:    eor     #$00                    ; (written above)
         sta     edst+2
-        lda     fv_count                ; (counted at the original speed)
-        beq     esrc
-        inc     erw
+ecj:    jmp     esrc                    ; (or ecount)
+ecount: inc     erw
         bne     :+
         inc     erw+1
 :       tya
