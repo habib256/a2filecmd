@@ -925,6 +925,10 @@ build:  lda     fv_shown
         txa
         clc
         adc     #>emin1
+        sta     dmin1e+2
+        sta     dmin2e+2
+        sta     dmin1o+2
+        sta     dmin2o+2
         sta     tmin1+2
         sta     tmin2+2
         sta     fmin1e+2
@@ -940,6 +944,10 @@ build:  lda     fv_shown
         txa
         clc
         adc     #>emax1
+        sta     dmax1e+2
+        sta     dmax2e+2
+        sta     dmax1o+2
+        sta     dmax2o+2
         sta     tmax1+2
         sta     tmax2+2
         sta     fmax1e+2
@@ -2283,18 +2291,129 @@ dot:    lda     dcy
         sta     ml
         lda     colof,x
         sta     scol
+        lda     counting                ; counting: the common writer
+        lsr
+        bcs     @fc
+        lda     dt0                     ; the top row even: the bottom odd
+        lsr
         ldy     dt0
+        bcs     :+
+        jsr     drowe
+        ldy     dt1
+        jsr     drowo
+        jmp     @fn
+:       jsr     drowo
+        ldy     dt1
+        jsr     drowe
+        jmp     @fn
+@fc:    ldy     dt0
         jsr     srow
         jsr     wbody
         ldy     dt1
         jsr     srow
         jsr     wbody
-        inc     dt0
+@fn:    inc     dt0
         dec     dt1
         inc     ddi
         dec     dcnt
         bne     @fh
         rts
+
+; A dot's row Y of even parity: bytes scol..ccb, masks ml, mr, at the
+; accelerated speed (no counting); the extent when tracking.
+drowe: sty    crow
+        lda     rowlo,y
+        sta     rowp
+        lda     rowhi,y
+        ora     pagehi
+        sta     rowp+1
+        ldy     scol
+        cpy     ccb
+        bne     dme
+        lda     ml
+        and     mr
+        sta     msk
+        PUTP    ce0, ce1
+        jmp     dte
+dme:  lda     ml
+        sta     msk
+        PUTP    ce0, ce1
+        iny
+        cpy     ccb
+        beq     dre
+        tya                             ; the full bytes (two at most)
+        lsr
+        lda     ce0
+        bcc     :+
+        lda     ce1
+:       sta     (rowp),y
+        eor     pde
+        iny
+        cpy     ccb
+        bne     :-
+dre:  lda     mr
+        sta     msk
+        PUTP    ce0, ce1
+dte:  bit     counting
+        bpl     dxe
+        ldy     crow
+        lda     scol
+dmin1e: cmp   emin1,y
+        bcs     :+
+dmin2e: sta   emin1,y
+:       lda     ccb
+dmax1e: cmp   emax1,y
+        bcc     dxe
+dmax2e: sta   emax1,y
+dxe:  rts
+
+; A dot's row Y of odd parity: bytes scol..ccb, masks ml, mr, at the
+; accelerated speed (no counting); the extent when tracking.
+drowo: sty    crow
+        lda     rowlo,y
+        sta     rowp
+        lda     rowhi,y
+        ora     pagehi
+        sta     rowp+1
+        ldy     scol
+        cpy     ccb
+        bne     dmo
+        lda     ml
+        and     mr
+        sta     msk
+        PUTP    co0, co1
+        jmp     dto
+dmo:  lda     ml
+        sta     msk
+        PUTP    co0, co1
+        iny
+        cpy     ccb
+        beq     dro
+        tya                             ; the full bytes (two at most)
+        lsr
+        lda     co0
+        bcc     :+
+        lda     co1
+:       sta     (rowp),y
+        eor     pdo
+        iny
+        cpy     ccb
+        bne     :-
+dro:  lda     mr
+        sta     msk
+        PUTP    co0, co1
+dto:  bit     counting
+        bpl     dxo
+        ldy     crow
+        lda     scol
+dmin1o: cmp   emin1,y
+        bcs     :+
+dmin2o: sta   emin1,y
+:       lda     ccb
+dmax1o: cmp   emax1,y
+        bcc     dxo
+dmax2o: sta   emax1,y
+dxo:  rts
 
 ; -- solids -----------------------------------------------------------------------
 ; Scan-line fill, even-odd, of q[0..qm-1] (qm >= 3). An edge covers the rows
