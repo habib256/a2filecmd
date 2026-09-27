@@ -758,8 +758,8 @@ class FLoad(unittest.TestCase):
         M = '/HD/FV/M.PARADIES'
         B = '/HD/FV/PARADIES'
         S = '/HD/FV/STREAM'
-        NOBD = 'FANTAVISION: THE BACKDROP CANNOT BE USED.'
-        NOREAD = 'FANTAVISION: THE MOVIE CANNOT BE READ.'
+        NOBD = 'THE BACKDROP CANNOT BE USED.'
+        NOREAD = 'THE MOVIE CANNOT BE READ.'
         # the same-name backdrop
         self.load(M, {M: movie})
         self.load(M, {M: movie, B: pic}, bdrop=pic)
@@ -785,8 +785,8 @@ class FLoad(unittest.TestCase):
         self.load('/HD/M.X,', {'/HD/M.X': movie, '/HD/X': pic}, msg=NOBD)    # an empty name
         self.load('M.X', {'M.X': movie, 'X': pic}, bdrop=pic)               # no directory
         # the movie first
-        self.load('', {}, msg='FANTAVISION: NO MOVIE WAS GIVEN.')
-        self.load(',STREAM', {S: pic}, msg='FANTAVISION: NO MOVIE WAS GIVEN.')
+        self.load('', {}, msg='NO MOVIE WAS GIVEN.')
+        self.load(',STREAM', {S: pic}, msg='NO MOVIE WAS GIVEN.')
         self.load(M, {}, msg=NOREAD)
         self.load(M + ',STREAM', {S: pic}, msg=NOREAD)
         for fault in 'OERSTC':

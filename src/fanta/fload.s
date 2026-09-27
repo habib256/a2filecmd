@@ -292,10 +292,10 @@ dlen:   .res    1               ; the directory's length
 t:      .res    1
 bpath:  .res    65              ; the backdrop's path, length first
 
-nopath: .byte   "FANTAVISION: NO MOVIE WAS GIVEN.", 0
+nopath: .byte   "NO MOVIE WAS GIVEN.", 0
 cantread:
-        .byte   "FANTAVISION: THE MOVIE CANNOT BE READ.", 0
-cantbd: .byte   "FANTAVISION: THE BACKDROP CANNOT BE USED.", 0
+        .byte   "THE MOVIE CANNOT BE READ.", 0
+cantbd: .byte   "THE BACKDROP CANNOT BE USED.", 0
 notfv:  .byte   "NOT A FANTAVISION MOVIE (CHECK "
 whyofs  = * - notfv
         .byte   "0).", 0

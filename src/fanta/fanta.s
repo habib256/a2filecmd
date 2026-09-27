@@ -155,7 +155,16 @@ refuse: sta     msgp
         bpl     :-
         dex
         bpl     @clr
-        ldx     #10             ; the message on row 10, the key on 12
+        ldx     #8              ; the title on row 8, the message on 10,
+        jsr     textrow         ; the key on 12 (40 columns at most)
+        ldy     #0
+:       lda     title,y
+        beq     :+
+        ora     #$80
+        sta     (dst),y
+        iny
+        bne     :-
+:       ldx     #10
         jsr     textrow
         ldy     #0
 :       lda     (msgp),y
@@ -163,6 +172,7 @@ refuse: sta     msgp
         ora     #$80
         sta     (dst),y
         iny
+        cpy     #40
         bne     :-
 :       ldx     #12
         jsr     textrow
@@ -202,6 +212,7 @@ textrow:
 rowx40: .byte   $00, $28, $50
 presskey:
         .byte   "PRESS A KEY TO RETURN.", 0
+title:  .byte   "FANTAVISION", 0
 
         .import __FCOLD_LOAD__, __FCOLD_RUN__
         .assert __FCOLD_LOAD__ = __TABLES_LOAD__ + __TABLES_SIZE__, error, "FCOLD must follow TABLES"

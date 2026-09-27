@@ -13,6 +13,9 @@ A2FILE.SYSTEM and counts at $039D the returns to it. For each movie:
   copy end exactly as tools/fantavision_ref.py says, the movie at $8000 is
   the file; a key returns, the ProDOS bitmap is given back;
 - a movie with a damaged tail plays its whole frames, then returns;
+- backdrops: M.PARADIES takes PARADIES of its directory, M.PARADIES,STREAM
+  takes STREAM (an 8,184-byte save); pages and background copy end as the
+  reference says; a named backdrop that is missing refuses the movie;
 - a refused movie (header byte 3 wrong) shows its reason, draws nothing and
   returns after a key; so does a missing file;
 - a looping movie keeps changing, Tab (original speed) and Space (pause)
@@ -20,6 +23,7 @@ A2FILE.SYSTEM and counts at $039D the returns to it. For each movie:
 - the disk image is byte for byte the same at the end: nothing written.
 """
 import argparse
+import random
 import os
 import shutil
 import subprocess
@@ -131,7 +135,12 @@ def movies():
     cut = bytearray(ref.synthetic(14, frames=4, speed=2, count=1))
     third = ref.scan(bytes(cut))[1][2]
     cut[third] = 3                      # an odd length: cut before frame 3
-    return {'M.COUNT': counted, 'M.LOOP': looping, 'M.BAD': bytes(bad), 'M.CUT': bytes(cut)}
+    rng = random.Random(1985)
+    pic = bytes(rng.randrange(256) for _ in range(8192))
+    stream = bytes(rng.randrange(256) for _ in range(8184))
+    paradies = ref.synthetic(15, frames=3, speed=2, count=1)
+    return {'M.COUNT': counted, 'M.LOOP': looping, 'M.BAD': bytes(bad), 'M.CUT': bytes(cut),
+            'M.PARADIES': paradies, 'PARADIES': pic, 'STREAM': stream}
 
 
 def main():
@@ -152,7 +161,8 @@ def main():
         (stage / 'A2FILE.SYSTEM.SYS').write_bytes(boot)
         shutil.copyfile(fanta, stage / 'FANTA.SYSTEM.SYS')
         for name, data in films.items():
-            (stage / (name + '#068400')).write_bytes(data)
+            aux = 0x8400 if name.startswith('M.') else 0x4000     # backdrops: BIN $4000
+            (stage / ('%s#06%04X' % (name, aux))).write_bytes(data)
         hdv = tmp / 'FANTAB.hdv'
         subprocess.run([sys.executable, str(ROOT / 'tools/mkvolume.py'), str(stage), str(hdv),
                         '--volume', VOLUME, '--boot', str(ROOT / 'data/prodos_boot.tmpl'),
@@ -208,6 +218,25 @@ def main():
                  % (len(cut.frames), n), True)
             s.key(b' ')
             returned('cut movie')
+
+            # Backdrops: the same name (M.PARADIES, PARADIES), then a named
+            # one (a short 8,184-byte save), then a named one missing.
+            for command, picture in (('M.PARADIES', films['PARADIES']),
+                                     ('M.PARADIES,STREAM', films['STREAM'])):
+                bd = ref.Player(films['M.PARADIES'], picture)
+                list(bd.play())
+                launch(command)
+                s.wait(lambda: p.peek(0x2000, 0x2000) == bytes(bd.pages[1]) and
+                       p.peek(0x4000, 0x2000) == bytes(bd.pages[2]), command + ': the last frame', 120)
+                s.ok('backdrop %s: pages and background copy as the reference' % command,
+                     p.peek(0x6000, 0x2000) == bytes(bd.bg))
+                s.key(b' ')
+                returned('backdrop ' + command)
+            launch('M.COUNT,NOPE')
+            s.wait(lambda: 'THE BACKDROP CANNOT BE USED.' in text(), 'the backdrop refusal', 60)
+            s.ok('a named backdrop missing: refused with its message', True)
+            s.key(b' ')
+            returned('backdrop missing')
 
             # A refused movie: nothing drawn.
             # (FANTA.SYSTEM's own file lands at $2000: past its end, nothing
