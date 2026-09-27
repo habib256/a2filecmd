@@ -489,6 +489,289 @@ class Fantavision(unittest.TestCase):
         print('PASS fantavision: a damaged tail is cut, the whole frames before it play, both processors')
 
 
+# -- fload: the command, the movie and the backdrop, with a fake MLI ------------
+
+FGLUE = r"""
+        .import fload, _fake_mli, pusha, fv_len, fv_bdrop
+        .importzp ptr1
+        .export _run_fload, path0, _path0 := path0
+        .export _fv_len := fv_len, _fv_bdrop := fv_bdrop
+        .bss
+path0:  .res    65
+mcmd:   .res    1
+mpl:    .res    1
+mph:    .res    1
+        .code
+; unsigned run_fload(void): 0, or the message's address
+_run_fload:
+        jsr     fload
+        bcs     :+
+        lda     #0
+        tax
+:       rts
+; The MLI, at $BF00: jsr $BF00 / .byte cmd / .word params.
+        .segment "MLISTUB"
+mli:    pla
+        sta     ptr1
+        pla
+        sta     ptr1+1
+        ldy     #1
+        lda     (ptr1),y
+        sta     mcmd
+        iny
+        lda     (ptr1),y
+        sta     mpl
+        iny
+        lda     (ptr1),y
+        sta     mph
+        clc
+        lda     ptr1
+        adc     #3
+        tax
+        lda     ptr1+1
+        adc     #0
+        pha
+        txa
+        pha
+        lda     mcmd
+        jsr     pusha
+        lda     mpl
+        ldx     mph
+        jsr     _fake_mli
+        cmp     #1                      ; C = an error
+        rts
+"""
+
+FHARNESS = r"""
+#include <fcntl.h>
+#include <unistd.h>
+#include <string.h>
+#include <stdlib.h>
+extern unsigned char path0[65];
+extern unsigned int fv_len;
+extern unsigned char fv_bdrop;
+unsigned int run_fload(void);
+extern unsigned char _MLISTUB_LOAD__[], _MLISTUB_SIZE__[];
+static char fault = '-', fpath[70], cur[70], host[80];
+static int fd = -1;
+static unsigned int size;
+static unsigned char scratch[256];
+static void hostname(const unsigned char* p)
+{
+    unsigned char i, n = p[0];
+    host[0] = 'f';
+    for (i = 0; i < n; ++i) host[i + 1] = p[i + 1] == '/' ? '_' : p[i + 1];
+    host[n + 1] = 0;
+    memcpy(cur, p + 1, n);
+    cur[n] = 0;
+}
+static unsigned char faulty(char kind)
+{
+    return fault == kind && strcmp(fpath, cur) == 0;
+}
+unsigned char __fastcall__ fake_mli(unsigned char cmd, unsigned char* p)
+{
+    int n;
+    unsigned int req;
+    unsigned char* buf;
+    switch (cmd) {
+    case 0xC8:                                  /* OPEN */
+        hostname(*(unsigned char**)(p + 1));
+        if (faulty('O')) return 0x27;
+        fd = open(host, O_RDONLY);
+        if (fd < 0) return 0x46;
+        size = 0;
+        while ((n = read(fd, scratch, sizeof scratch)) > 0) size += n;
+        close(fd);
+        fd = open(host, O_RDONLY);
+        p[5] = 1;
+        return 0;
+    case 0xD1:                                  /* GET_EOF */
+        if (faulty('E')) return 0x27;
+        p[2] = size & 255; p[3] = size >> 8; p[4] = 0;
+        return 0;
+    case 0xCA:                                  /* READ */
+        buf = *(unsigned char**)(p + 2);
+        req = p[4] | (p[5] << 8);
+        if (faulty('R')) {                      /* part of it, then an error */
+            n = read(fd, buf, req / 2);
+            p[6] = n & 255; p[7] = n >> 8;
+            return 0x27;
+        }
+        if (faulty('S')) --req;                 /* a short read, no error */
+        if (faulty('T')) req -= 256;            /* 256 bytes short */
+        n = read(fd, buf, req);
+        if (n < 0) return 0x27;
+        p[6] = n & 255; p[7] = n >> 8;
+        return 0;
+    case 0xCC:                                  /* CLOSE */
+        if (fd >= 0) close(fd);
+        fd = -1;
+        return faulty('C') ? 0x27 : 0;
+    }
+    return 0x01;
+}
+int main(int, char** argv)
+{
+    unsigned int r;
+    unsigned char n = strlen(argv[1]);
+    if (argv[1][0] == '.') n = 0;               /* "." : an empty command */
+    memcpy((void*)0xBF00, _MLISTUB_LOAD__, (unsigned)_MLISTUB_SIZE__);   /* the fake MLI */
+    memset((void*)0x0200, 0x5A, 0x1E00);
+    memset((void*)0x2000, 0xEE, 0x6000);
+    path0[0] = n;
+    memcpy(path0 + 1, argv[1], n);
+    if (argv[2][0] != '-') { fault = argv[2][0]; strcpy(fpath, argv[2] + 1); }
+    r = run_fload();
+    write(1, &r, 2);
+    write(1, r ? (void*)r : (void*)"", r ? 48 : 0);
+    write(1, &fv_len, 2);
+    write(1, &fv_bdrop, 1);
+    write(1, (void*)0x0200, 0x7E00);
+    return 0;
+}
+"""
+
+
+class FLoadSim:
+    """fload.s + the engine + a fake MLI, for one processor."""
+
+    def __init__(self, cpu, workdir):
+        self.dir = workdir
+        env = dict(os.environ, CC65_HOME=str(HEAD / 'share/cc65'))
+        target = 'sim65c02' if cpu == '65c02' else 'sim6502'
+        cfg = (HEAD / f'share/cc65/cfg/{target}.cfg').read_text()
+        cfg, k = re.subn(r'start = \$0200, size = \$FFC0 - \$0200 - __STACKSIZE__',
+                         'start = $8000, size = $BF00 - $8000 - __STACKSIZE__', cfg)
+        assert k == 1
+        cfg, k = re.subn(r'(\n\s*RODATA:[^\n]*\n)',
+                         r'\1    TABLES:   load = MAIN,   type = ro;\n    FCOLD:    load = MAIN,   type = ro;\n'
+                         r'    LOADER:   load = MAIN,   type = rw;\n'
+                         r'    MLISTUB:  load = MAIN, run = STUB, type = rw, define = yes;\n', cfg)
+        assert k == 1
+        cfg, k = re.subn(r'(\n\s*BSS:[^\n]*\n)', r'\1    EBSS:     load = MAIN,   type = bss;\n', cfg)
+        assert k == 1
+        cfg, k = re.subn(r'(\n\s*MAIN:[^\n]*\n)', r'\1    STUB:   file = "", start = $BF00, size = $0100;\n', cfg)
+        assert k == 1
+        (workdir / f'{cpu}.cfg').write_text(cfg)
+        (workdir / 'fharness.c').write_text(FHARNESS)
+        (workdir / 'fglue.s').write_text(FGLUE)
+        self.exe = workdir / f'fload-{cpu}'
+        subprocess.run([str(HEAD / 'bin/cl65'), '-t', target, '-C', str(workdir / f'{cpu}.cfg'),
+                        '-O', '--asm-define', 'MOVIE_AT=$2000', '-Wl', '-D,__STACKSIZE__=0x0200',
+                        '-o', str(self.exe),
+                        str(workdir / 'fharness.c'), str(workdir / 'fglue.s'),
+                        str(ROOT / 'src/fanta/fload.s'), str(ROOT / 'src/fanta/engine.s')],
+                       check=True, cwd=workdir, env=env)
+
+    def run(self, command, files, fault='-'):
+        for old in self.dir.glob('f_*'):
+            old.unlink()
+        for path, data in files.items():
+            (self.dir / ('f' + path.replace('/', '_'))).write_bytes(data)
+        p = subprocess.run([str(HEAD / 'bin/sim65'), '-x', '100000000', str(self.exe),
+                            command or '.', fault], cwd=self.dir, capture_output=True, timeout=300)
+        if p.returncode != 0:
+            raise AssertionError('sim65 exit %d: %s' % (p.returncode, p.stderr[-300:]))
+        o = p.stdout
+        r = struct.unpack_from('<H', o, 0)[0]
+        pos = 2
+        msg = None
+        if r:
+            msg = o[pos:pos + 48].split(b'\0')[0].decode()
+            pos += 48
+        length, bdrop = struct.unpack_from('<HB', o, pos)
+        mem = o[pos + 3:pos + 3 + 0x7E00]
+        return {'msg': msg, 'len': length, 'bdrop': bdrop, 'low': mem[:0x1E00],
+                'movie': mem[0x1E00:0x1E00 + length], 'page2': mem[0x3E00:0x5E00],
+                'bg': mem[0x5E00:0x7E00]}
+
+
+class FLoad(unittest.TestCase):
+    """The command, the movie and the backdrop (fload.s), both processors."""
+
+    @classmethod
+    def setUpClass(cls):
+        if not (HEAD / 'bin/sim65').exists():
+            raise unittest.SkipTest('cc65 master (CC65_HEAD) is needed')
+        cls.tmp = tempfile.TemporaryDirectory(prefix='a2fc-fload-')
+        cls.sims = {}
+        for cpu in ('6502', '65c02'):
+            d = Path(cls.tmp.name) / cpu
+            d.mkdir()
+            cls.sims[cpu] = FLoadSim(cpu, d)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def load(self, command, files, fault='-', msg=None, bdrop=None, cpus=('6502', '65c02')):
+        for cpu in cpus:
+            res = self.sims[cpu].run(command, files, fault)
+            self.assertEqual(res['msg'], msg, (cpu, command, fault))
+            self.assertEqual(res['page2'], b'\xEE' * 0x2000, 'page 2 untouched')
+            self.assertEqual(res['low'][:0x600], b'\x5A' * 0x600, 'memory below $0800 untouched')
+            if msg is None:
+                movie = files[command.split(',')[0]]
+                self.assertEqual(res['movie'], movie)
+                if bdrop is None:
+                    self.assertEqual(res['bdrop'], 0, command)
+                else:
+                    self.assertEqual(res['bdrop'], 1, command)
+                    self.assertEqual(res['bg'], bdrop + bytes(8192 - len(bdrop)))
+            else:
+                self.assertEqual(res['bdrop'], 0)
+        return res
+
+    def test_fload(self):
+        rng = __import__('random').Random(12)
+        movie = ref.synthetic(5, frames=2)
+        pic = bytes(rng.randrange(256) for _ in range(8192))
+        pic2 = bytes(rng.randrange(256) for _ in range(8192))
+        short = pic[:8184]
+        M = '/HD/FV/M.PARADIES'
+        B = '/HD/FV/PARADIES'
+        S = '/HD/FV/STREAM'
+        NOBD = 'FANTAVISION: THE BACKDROP CANNOT BE USED.'
+        NOREAD = 'FANTAVISION: THE MOVIE CANNOT BE READ.'
+        # the same-name backdrop
+        self.load(M, {M: movie})
+        self.load(M, {M: movie, B: pic}, bdrop=pic)
+        self.load(M, {M: movie, B: short}, bdrop=short)
+        for bad in (8191, 8185, 8193, 5000, 600):           # other sizes: not used
+            self.load(M, {M: movie, B: pic2[:bad] if bad <= 8192 else pic2 + b'x'}, cpus=('6502',))
+        for fault in 'OERSTC':                                 # unreadable: not used
+            self.load(M, {M: movie, B: pic}, fault + B)
+        self.load('/HD/FV/PARADIES2', {'/HD/FV/PARADIES2': movie, '/HD/FV/RADIES2': pic})   # no M.
+        self.load('/HD/FV/M.', {'/HD/FV/M.': movie})
+        # the explicit backdrop
+        self.load(M + ',STREAM', {M: movie, S: pic}, bdrop=pic)
+        self.load(M + ',STREAM', {M: movie, S: short}, bdrop=short)
+        self.load(M + ',STREAM', {M: movie, S: pic2, B: pic}, bdrop=pic2)   # before the same name
+        self.load(M + ',STREAM', {M: movie, B: pic}, msg=NOBD)               # missing
+        self.load(M + ',STREAM', {M: movie, S: pic[:8000]}, msg=NOBD)        # wrong size
+        for fault in 'OERSTC':
+            self.load(M + ',STREAM', {M: movie, S: pic}, fault + S, msg=NOBD)
+        name15 = 'ABCDEFGHIJKLMNO'
+        self.load('/HD/M.X,' + name15, {'/HD/M.X': movie, '/HD/' + name15: pic}, bdrop=pic)
+        self.load('/HD/M.X,' + name15 + 'P', {'/HD/M.X': movie, '/HD/' + name15 + 'P': pic},
+                  msg=NOBD)                                           # 16 characters
+        self.load('/HD/M.X,', {'/HD/M.X': movie, '/HD/X': pic}, msg=NOBD)    # an empty name
+        self.load('M.X', {'M.X': movie, 'X': pic}, bdrop=pic)               # no directory
+        # the movie first
+        self.load('', {}, msg='FANTAVISION: NO MOVIE WAS GIVEN.')
+        self.load(',STREAM', {S: pic}, msg='FANTAVISION: NO MOVIE WAS GIVEN.')
+        self.load(M, {}, msg=NOREAD)
+        self.load(M + ',STREAM', {S: pic}, msg=NOREAD)
+        for fault in 'OERSTC':
+            self.load(M, {M: movie, B: pic}, fault + M, msg=NOREAD)
+        self.load(M, {M: movie[:512], B: pic}, msg='NOT A FANTAVISION MOVIE (CHECK 1).')
+        bad = bytearray(movie)
+        bad[3] = 7
+        self.load(M + ',STREAM', {M: bytes(bad), S: pic}, msg='NOT A FANTAVISION MOVIE (CHECK 2).')
+        print('PASS fantavision: the command, the movie and its backdrop (fload), both processors')
+
+
 # -- measurements -----------------------------------------------------------------
 
 def measure_set():
