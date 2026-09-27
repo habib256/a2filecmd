@@ -42,17 +42,17 @@ MAXPTS  = 32
 ; (tools/test_fantavision.py --calibrate: least squares on 1,000 frames,
 ; relative error, no negative cost). The reference carries the original's.
 ORIG_BASE  = 6300
-OWN_BASE    = 10364      ; per frame, fv_timing included
-OWN_SPANS   = 229       ; cycles per unit of each counter
-OWN_BYTES   = 30
-OWN_EROWS   = 295
-OWN_EBYTES  = 7
-OWN_EDGES   = 112
-OWN_IPOINTS = 207
-OWN_OBJECTS = 1568
-OWN_LROWS   = 55
+OWN_BASE    = 9983      ; per frame, fv_timing included
+OWN_SPANS   = 172       ; cycles per unit of each counter
+OWN_BYTES   = 34
+OWN_EROWS   = 261
+OWN_EBYTES  = 6
+OWN_EDGES   = 93
+OWN_IPOINTS = 243
+OWN_OBJECTS = 1725
+OWN_LROWS   = 132
 OWN_FROWS   = 0
-OWN_ASTEP   = 164
+OWN_ASTEP   = 158
 
 ; The per-frame counters, 24 bits each (fv_counts + offset).
 C_SPANS   = 0           ; row segments drawn on the page built
