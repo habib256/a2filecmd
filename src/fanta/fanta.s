@@ -137,7 +137,7 @@ start:  cld
         sta     dst
         lda     #>__TABLES_RUN__
         sta     dst+1
-        ldx     #>__TABLES_SIZE__ ; whole pages (768 bytes)
+        ldx     #>__TABLES_SIZE__ ; whole pages (1,280 bytes)
         ldy     #0
 :       lda     (src),y
         sta     (dst),y

@@ -232,6 +232,11 @@ syl:    .res 256
 syh:    .res 256
 
         .rodata
+; Movie x is screen x + 14: its byte column, and the masks of the dots from
+; x to the end of its byte (left end of a span) and from the start of its
+; byte to x (right end). Bit 7 is always in: the byte takes the palette.
+; (Segment TABLES: FANTA.SYSTEM runs it in low memory, see fanta.cfg.)
+        .segment "TABLES"
 ; Row y of a page starts at page + (y & 7) * $400 + ((y >> 3) & 7) * $80
 ; + (y >> 6) * $28.
 rowlo:
@@ -242,11 +247,6 @@ rowhi:
         .repeat 192, R
         .byte >(((R .mod 8) * $400) + (((R / 8) .mod 8) * $80) + ((R / 64) * $28))
         .endrep
-; Movie x is screen x + 14: its byte column, and the masks of the dots from
-; x to the end of its byte (left end of a span) and from the start of its
-; byte to x (right end). Bit 7 is always in: the byte takes the palette.
-; (Segment TABLES: FANTA.SYSTEM runs it in low memory, see fanta.cfg.)
-        .segment "TABLES"
 colof:
         .repeat 256, I
         .byte (I + 14) / 7
@@ -259,6 +259,7 @@ rmx:
         .repeat 256, I
         .byte $80 | ((2 << ((I + 14) .mod 7)) - 1)
         .endrep
+        .res    1280 - 768 - 2 * 192    ; whole pages: the loader copies pages
         .rodata
 ; Colour nibble -> byte at an even and at an odd column.
 pate:   .byte $00, $55, $2A, $7F, $36, $49, $2D, $56
