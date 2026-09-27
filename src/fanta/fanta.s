@@ -23,7 +23,8 @@
 ; Plain 6502: the same file serves both editions.
 
         .import fv_check, fv_begin, fv_first, fv_next, fv_timing
-        .import fv_movie, fv_len, fv_shown, fv_wait, fv_count
+        .import fv_shown, fv_wait, fv_count, fload
+        .export path0
         .import __CODE_LOAD__, __CODE_RUN__, __CODE_SIZE__, __RODATA_SIZE__
         .import __BSS_RUN__, __BSS_SIZE__
         .import __TABLES_LOAD__, __TABLES_RUN__, __TABLES_SIZE__
@@ -44,9 +45,6 @@ HISCR   = $C055
 HIRES   = $C057
 SETAN3  = $C05F
 ROMIN   = $C082
-MOVIE   = $8000
-IOBUF   = $0800
-MAXLEN  = 9216
 PATHMAX = 64
 
         .zeropage
@@ -57,7 +55,6 @@ wl:     .res 2                  ; wait, in units of 257 cycles
 msgp:   .res 2
 
         .bss
-mpath:  .res PATHMAX + 1        ; the movie's path, length first
 savebm: .res 24                 ; the system bitmap as it was
 mode:   .res 1                  ; 0 accelerated, 1 original speed
 delay:  .res 1                  ; 0-9: per-frame delay, accelerated
@@ -94,14 +91,7 @@ start:  cld
         dec     cnt+1
 :       dec     cnt
         jmp     @zero
-@path:  ldx     path0           ; the path, if one fits
-        cpx     #PATHMAX + 1
-        bcs     @move
-:       lda     path0,x
-        sta     mpath,x
-        dex
-        bpl     :-
-@move:  lda     #<__CODE_LOAD__ ; the program, to $A400
+@path:  lda     #<__CODE_LOAD__ ; the program, to $A400
         sta     src
         lda     #>__CODE_LOAD__
         sta     src+1
@@ -149,6 +139,70 @@ copy:   ldy     #0
         jmp     @copy
 @done:  rts
 
+; A/X: a message for the text screen; then a key, then the way back.
+refuse: sta     msgp
+        stx     msgp+1
+        sta     STORE80OFF
+        sta     CLR80VID
+        sta     TXTSET
+        sta     LOWSCR
+        ldx     #23             ; clear the 40 columns of 24 rows
+@clr:   jsr     textrow
+        lda     #$A0
+        ldy     #39
+:       sta     (dst),y
+        dey
+        bpl     :-
+        dex
+        bpl     @clr
+        ldx     #10             ; the message on row 10, the key on 12
+        jsr     textrow
+        ldy     #0
+:       lda     (msgp),y
+        beq     :+
+        ora     #$80
+        sta     (dst),y
+        iny
+        bne     :-
+:       ldx     #12
+        jsr     textrow
+        ldy     #0
+:       lda     presskey,y
+        beq     :+
+        ora     #$80
+        sta     (dst),y
+        iny
+        bne     :-
+:       jsr     getkey
+        jmp     back
+
+; dst = the start of text row X (page 1).
+textrow:
+        txa
+        and     #7
+        lsr
+        sta     dst+1
+        lda     #0
+        ror
+        sta     dst
+        txa
+        lsr
+        lsr
+        lsr
+        tay
+        lda     dst
+        clc
+        adc     rowx40,y
+        sta     dst
+        lda     dst+1
+        adc     #$04
+        sta     dst+1
+        rts
+
+rowx40: .byte   $00, $28, $50
+presskey:
+        .byte   "PRESS A KEY TO RETURN.", 0
+
         .import __FCOLD_LOAD__, __FCOLD_RUN__
         .assert __FCOLD_LOAD__ = __TABLES_LOAD__ + __TABLES_SIZE__, error, "FCOLD must follow TABLES"
         .assert __FCOLD_RUN__ = __TABLES_RUN__ + __TABLES_SIZE__, error, "FCOLD must follow TABLES"
@@ -160,55 +214,11 @@ main:   ldx     #23             ; the bitmap as it is, given back on the
         sta     savebm,x
         dex
         bpl     :-
-        lda     mpath
-        bne     :+
-        lda     #<nopath
-        ldx     #>nopath
+        jsr     fload           ; the command, the movie, the backdrop
+        bcc     :+              ; (fload.s, where the file was loaded)
         jmp     refuse
-:       jsr     MLI             ; OPEN
-        .byte   $C8
-        .word   openp
-        jcs     rderr
-        lda     openref
-        sta     eofref
-        sta     readref
-        jsr     MLI             ; GET_EOF
-        .byte   $D1
-        .word   eofp
-        jcs     rdclose
-        lda     eofw+2          ; 513 to 9,216 bytes
-        jne     szclose
-        lda     eofw+1
-        cmp     #>MAXLEN
-        bcc     :+
-        jne     szclose
-        lda     eofw
-        jne     szclose
-:       lda     eofw+1
-        cmp     #>513
-        jcc     szclose
-        bne     :+
-        lda     eofw
-        cmp     #<513
-        jcc     szclose
-:       lda     eofw
-        sta     rdlen
-        lda     eofw+1
-        sta     rdlen+1
-        jsr     MLI             ; READ, all of it
-        .byte   $CA
-        .word   readp
-        jcs     rdclose
-        lda     rdgot           ; a short read is an error, not an end
-        cmp     rdlen
-        jne     rdclose
-        lda     rdgot+1
-        cmp     rdlen+1
-        jne     rdclose
-        jsr     close
-        jcs     rderr
-        ldx     #$0C            ; the movie read: mark $0C00-$BEFF in use
-:       txa                     ; (not before: ProDOS will not READ into
+:       ldx     #$0C            ; read: mark $0C00-$BEFF in use (not
+:       txa                     ; before: ProDOS will not READ into
         lsr                     ; marked pages)
         lsr
         lsr
@@ -224,39 +234,7 @@ main:   ldx     #23             ; the bitmap as it is, given back on the
         inx
         cpx     #$BF
         bne     :-
-        lda     #<MOVIE
-        sta     fv_movie
-        lda     #>MOVIE
-        sta     fv_movie+1
-        lda     eofw
-        sta     fv_len
-        lda     eofw+1
-        sta     fv_len+1
-        jsr     fv_check
-        beq     play
-        clc                     ; code 1-6: the reason
-        adc     #'0'
-        sta     notfv+whyofs
-        lda     #<notfv
-        ldx     #>notfv
-        jmp     refuse
-szclose:
-        jsr     close
-        lda     #1 + '0'
-        sta     notfv+whyofs
-        lda     #<notfv
-        ldx     #>notfv
-        jmp     refuse
-rdclose:
-        jsr     close
-rderr:  lda     #<cantread
-        ldx     #>cantread
-        jmp     refuse
-
-close:  jsr     MLI             ; CLOSE
-        .byte   $CC
-        .word   closep
-        rts
+        ;jmp    play
 
 ; -- playing ---------------------------------------------------------------------
 play:   jsr     fv_begin
@@ -375,43 +353,6 @@ waitorig:
 @done:  rts
 
 ; -- leaving ---------------------------------------------------------------------
-; A/X: a message for the text screen; then a key, then the way back.
-refuse: sta     msgp
-        stx     msgp+1
-        sta     STORE80OFF
-        sta     CLR80VID
-        sta     TXTSET
-        sta     LOWSCR
-        ldx     #23             ; clear the 40 columns of 24 rows
-@clr:   jsr     textrow
-        lda     #$A0
-        ldy     #39
-:       sta     (dst),y
-        dey
-        bpl     :-
-        dex
-        bpl     @clr
-        ldx     #10             ; the message on row 10, the key on 12
-        jsr     textrow
-        ldy     #0
-:       lda     (msgp),y
-        beq     :+
-        ora     #$80
-        sta     (dst),y
-        iny
-        bne     :-
-:       ldx     #12
-        jsr     textrow
-        ldy     #0
-:       lda     presskey,y
-        beq     :+
-        ora     #$80
-        sta     (dst),y
-        iny
-        bne     :-
-:       jsr     getkey
-        ;jmp    back
-
 ; Back to A2 File Cmd: text screen, the bitmap as it was, then the thunk.
 back:   ldx     #$FF
         txs
@@ -430,58 +371,8 @@ back:   ldx     #$FF
         bne     :-
         jmp     $0300
 
-; dst = the start of text row X (page 1).
-textrow:
-        txa
-        and     #7
-        lsr
-        sta     dst+1
-        lda     #0
-        ror
-        sta     dst
-        txa
-        lsr
-        lsr
-        lsr
-        tay
-        lda     dst
-        clc
-        adc     rowx40,y
-        sta     dst
-        lda     dst+1
-        adc     #$04
-        sta     dst+1
-        rts
-
-; -- MLI parameters ----------------------------------------------------------------
-openp:  .byte   3
-        .word   mpath
-        .word   IOBUF
-openref:
-        .byte   0
-eofp:   .byte   2
-eofref: .byte   0
-eofw:   .res    3
-readp:  .byte   4
-readref:
-        .byte   0
-        .word   MOVIE
-rdlen:  .word   0
-rdgot:  .word   0
-closep: .byte   1
-        .byte   0               ; every file: only ours is open
-
         .rodata
 bits:   .byte   $80, $40, $20, $10, $08, $04, $02, $01
-rowx40: .byte   $00, $28, $50
-nopath: .byte   "FANTAVISION: NO MOVIE WAS GIVEN.", 0
-cantread:
-        .byte   "FANTAVISION: THE MOVIE CANNOT BE READ.", 0
-notfv:  .byte   "NOT A FANTAVISION MOVIE (CHECK "
-whyofs  = * - notfv
-        .byte   "0).", 0
-presskey:
-        .byte   "PRESS A KEY TO RETURN.", 0
 
 ; The way back, run from page 3: A2FILE.SYSTEM from the prefix, read whole
 ; to $2000 with the I/O buffer at $BB00 (this program is over by then). A

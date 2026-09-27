@@ -108,9 +108,8 @@ hidden page and then shown, so no frame is seen half drawn.
 - Nothing is drawn outside the clip window (header bytes 8–11).
 - The background, when no backdrop picture is loaded, is black, with the
   rectangle movie x 5–250, rows 12–159 filled in the background colour
-  (header byte 4). Fantavision could also load a separate hi-res picture as
-  a backdrop (BIN `$4000`); a movie does not name it, and A2 File Cmd's
-  player does not load one.
+  (header byte 4). With a backdrop (below), the background is that picture,
+  the whole page, and header byte 4 is not used.
 - Erasing an object restores the background under it.
 
 ### Colours
@@ -186,6 +185,21 @@ The median error is 10 % (90 % of frames within 20 %): from about 10,000
 cycles a frame for a movie of small dots to 240,000 for large solids,
 roughly 100 down to 4 frames a second.
 
+## Backdrops
+
+A backdrop is an ordinary hi-res picture: the 8,192 bytes of page 1 (or
+8,184, a save that stops at the last byte the screen shows), a BIN file
+loaded at `$4000` when Fantavision saved it, and any other program's
+single hi-res screen file as well (the manual says so). Fantavision keeps
+them beside the movies, under names without a prefix (CHECKERBOARD,
+PARADIES, STREAM on its disks), and the user chooses one with Load
+Backdrop: **a movie does not name its backdrop.** The demonstration disks
+pair them by name: `M.PARADIES` and its backdrop `PARADIES`.
+
+With a backdrop, the player starts from that picture on both pages and in
+its background copy, whole (outside the clip window too); objects erased
+are restored from it, and Background-mode objects are drawn into it.
+
 ## Checks (A2 File Cmd)
 
 The player refuses a file, before anything is shown, unless:
@@ -241,3 +255,18 @@ movie's path.
   than the original is simply not delayed.
 - Return to A2 File Cmd by loading `A2FILE.SYSTEM` again.
 - An invalid movie is refused with a message, then the same return.
+- The command in the startup buffer is the movie's full path, optionally
+  followed by a comma and a backdrop's **name** (1 to 15 characters), a
+  file of the movie's own directory: `/HD/FV/M.PARADIES,PARADIES`. A comma
+  cannot occur in a ProDOS name, and Fantavision itself writes `NAME,2`.
+  The whole command is at most 46 characters (A2FC's chain thunk).
+- The backdrop: the name after the comma (A2FC gives the one hi-res
+  picture the user marked in the movie's panel), or else, when the movie
+  is `M.NAME`, a file `NAME` of the same directory if there is one. It
+  must be exactly 8,192 or 8,184 bytes (GET_EOF), whatever its type; it
+  is read into the background copy before anything is drawn, and nothing
+  else of it is read. A backdrop that is named but cannot be opened or
+  read, or has another size, refuses the movie with a message saying so
+  (the user asked for it); a same-name file that is not a hi-res page, or
+  cannot be read, is simply not used. A read error while reading it is
+  never taken for a picture.

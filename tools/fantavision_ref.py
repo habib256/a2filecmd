@@ -320,7 +320,10 @@ def orig_cycles(c):
 class Player:
     """Plays an accepted movie; frames() yields one entry per frame shown."""
 
-    def __init__(self, data):
+    def __init__(self, data, backdrop=None):
+        """`backdrop`: the picture file (8,192 or 8,184 bytes): the whole
+        background, header byte 4 unused; a short save's missing last 8
+        bytes (screen holes, not shown) are zeros."""
         self.data = bytes(data)
         self.frames = parse(self.data)
         self.S = steps(data[0])
@@ -330,10 +333,14 @@ class Player:
         self.pages = {1: None, 2: None}
         self.extents = {1: {}, 2: {}}
         self.prev_normal = (0, 0)
-        canvas = Canvas((0, 255, 0, 255))
-        canvas.buf, canvas.colour = self.bg, data[4]
-        for y in range(12, 160):
-            canvas.span(y, 5, 250)
+        if backdrop is not None:
+            assert len(backdrop) in (8192, 8184)
+            self.bg[:len(backdrop)] = backdrop
+        else:
+            canvas = Canvas((0, 255, 0, 255))
+            canvas.buf, canvas.colour = self.bg, data[4]
+            for y in range(12, 160):
+                canvas.span(y, 5, 250)
         self.pages[1] = bytearray(self.bg)
         self.pages[2] = bytearray(self.bg)
 

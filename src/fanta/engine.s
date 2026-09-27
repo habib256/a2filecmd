@@ -18,7 +18,9 @@
 ;              original speed); the picture is the same either way
 ;   fv_check   A = 0 if the movie is accepted, else a reason code 1-5; a
 ;              damaged tail is cut: fv_frames whole frames, ending at fv_end
-;   fv_begin   builds the background and copies it to both pages
+;   fv_begin   builds the background and copies it to both pages; with
+;              fv_bdrop set, the background is the backdrop the caller
+;              has read into $6000 (8,192 bytes)
 ;   fv_first   draws key frame 0 on page 1 (fv_shown = $20)
 ;   fv_next    builds the next frame on the hidden page and sets fv_shown;
 ;              A = 1 (nothing built) once a counted movie has ended
@@ -40,6 +42,7 @@
         .macpack longbranch
         .export fv_check, fv_begin, fv_first, fv_next, fv_timing
         .export fv_movie, fv_len, fv_shown, fv_done, fv_frames, fv_count, fv_end
+        .export fv_bdrop
         .export fv_counts, fv_orig, fv_own, fv_wait
 
 PAGE1   = $20
@@ -174,6 +177,7 @@ eby:    .res 2
         .bss
 fv_movie: .res 2
 fv_count: .res 1        ; nonzero: count the work (original speed)
+fv_bdrop: .res 1        ; nonzero: the background copy holds a backdrop
 fv_len:   .res 2
 fv_shown: .res 1
 fv_done:  .res 1
@@ -612,8 +616,11 @@ fv_begin:
 :       sta     tfl,x
         dex
         bpl     :-
-        ; The background: black, the rectangle x 5-250, rows 12-159 in the
-        ; colour of header byte 4, not clipped.
+        ; The background: a backdrop the caller has read into the copy
+        ; (fv_bdrop), or else black, the rectangle x 5-250, rows 12-159
+        ; in the colour of header byte 4, not clipped.
+        lda     fv_bdrop
+        bne     @pages
         lda     #BGPAGE
         sta     rowp+1
         ldx     #$20
@@ -657,7 +664,7 @@ fv_begin:
         sta     cr
         pla
         sta     cl
-        lda     #PAGE1
+@pages: lda     #PAGE1
         jsr     bgcopy
         lda     #PAGE1 + $20
         jmp     bgcopy                  ; (in the other segment)

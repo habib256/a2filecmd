@@ -205,10 +205,11 @@ all: xplugins
 # 6502 assembly, the same bytes for both editions, staged in A2FILE/ of the
 # 800K and XL disks. Its tests: tools/test_fantavision.py.
 FANTA = $(BUILD)/FANTA.SYSTEM.SYS
-$(FANTA): $(SRC)/fanta/fanta.s $(SRC)/fanta/engine.s $(SRC)/fanta/fanta.cfg | $(BUILD)
+$(FANTA): $(SRC)/fanta/fanta.s $(SRC)/fanta/fload.s $(SRC)/fanta/engine.s $(SRC)/fanta/fanta.cfg | $(BUILD)
 	$(AS) -t apple2 --cpu 6502 -o $(BUILD)/fanta.o $(SRC)/fanta/fanta.s
+	$(AS) -t apple2 --cpu 6502 -o $(BUILD)/fanta_load.o $(SRC)/fanta/fload.s
 	$(AS) -t apple2 --cpu 6502 -o $(BUILD)/fanta_engine.o $(SRC)/fanta/engine.s
-	$(CC65BIN)ld65 -C $(SRC)/fanta/fanta.cfg -m $(BUILD)/fanta.map -o $@ $(BUILD)/fanta.o $(BUILD)/fanta_engine.o
+	$(CC65BIN)ld65 -C $(SRC)/fanta/fanta.cfg -m $(BUILD)/fanta.map -o $@ $(BUILD)/fanta.o $(BUILD)/fanta_load.o $(BUILD)/fanta_engine.o
 all: $(FANTA)
 
 # -- Published disks --------------------------------------------------------

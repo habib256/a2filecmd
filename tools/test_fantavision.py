@@ -54,6 +54,8 @@ GLUE = r'''
         .export _fv_done := fv_done, _fv_frames := fv_frames, _fv_counts := fv_counts
         .export _fv_orig := fv_orig, _fv_own := fv_own, _fv_wait := fv_wait
         .export _fv_count := fv_count, _fv_end := fv_end
+        .import fv_bdrop
+        .export _fv_bdrop := fv_bdrop
 _fv_check:
         jsr     fv_check
         ldx     #0
@@ -80,6 +82,7 @@ extern unsigned char fv_counts[45];
 extern unsigned long fv_orig, fv_own, fv_wait;
 extern unsigned char fv_count;
 extern unsigned int fv_end;
+extern unsigned char fv_bdrop;
 unsigned char fv_check(void);
 void fv_begin(void);
 void fv_first(void);
@@ -118,6 +121,13 @@ int main(int, char** argv)
     out(&fv_frames, 1);
     out(&fv_end, 2);
     if (r == 0) {
+        fd = open("backdrop.bin", O_RDONLY);   /* the caller's backdrop */
+        if (fd >= 0) {
+            memset((void*)0x6000, 0, 0x2000);
+            if (read(fd, (void*)0x6000, 0x2000) < 0) return 12;
+            close(fd);
+            fv_bdrop = 1;
+        }
         c0 = cyc(); fv_begin(); c1 = cyc(); cb = c1 - c0;
         out(&cb, 4);
         for (f = 0; f < limit; ++f) {
@@ -175,8 +185,13 @@ class Sim:
                        check=True, cwd=workdir, env=env)
         self.sim = str(HEAD / 'bin/sim65')
 
-    def run(self, movie, limit=20, count=True):
+    def run(self, movie, limit=20, count=True, backdrop=None):
         (self.dir / 'movie.bin').write_bytes(movie)
+        bd = self.dir / 'backdrop.bin'
+        if backdrop is None:
+            bd.unlink(missing_ok=True)
+        else:
+            bd.write_bytes(backdrop)
         # -x: a hang shows as a failure, not as a stuck test
         p = subprocess.run([self.sim, '-x', '1000000000', str(self.exe), str(limit),
                             '1' if count else '0'],
@@ -213,8 +228,8 @@ class Sim:
         return res
 
 
-def ref_frames(movie, limit):
-    player = ref.Player(movie)
+def ref_frames(movie, limit, backdrop=None):
+    player = ref.Player(movie, backdrop)
     frames = list(player.play(limit=limit))
     return player, frames
 
@@ -235,17 +250,17 @@ class Fantavision(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def compare(self, cpu, movie, limit=16, label='', count=None):
+    def compare(self, cpu, movie, limit=16, label='', count=None, backdrop=None):
         """Both speeds by default: the original (counting, generic paths)
         and the accelerated (fast paths); the same pages either way."""
         if count is None:
-            self.compare(cpu, movie, limit, label + ' (accelerated)', False)
+            self.compare(cpu, movie, limit, label + ' (accelerated)', False, backdrop)
             count = True
-        res = self.sims[cpu].run(movie, limit, count)
+        res = self.sims[cpu].run(movie, limit, count, backdrop)
         self.assertEqual(res['code'], 0, label)
         _, starts, end = ref.scan(movie)
         self.assertEqual((res['nframes'], res['end']), (len(starts), end), label + ': the frames kept')
-        player, frames = ref_frames(movie, limit)
+        player, frames = ref_frames(movie, limit, backdrop)
         self.assertEqual(len(res['frames']), len(frames), label)
         for i, ((shown, c, _, _, page), (rshown, rpage, rc)) in enumerate(zip(res['frames'], frames)):
             where = '%s frame %d' % (label, i)
@@ -344,6 +359,32 @@ class Fantavision(unittest.TestCase):
             self.assertEqual(c['wait'], max(0, formula - c['own']))
         self.assertGreater(frames[2][2]['espans'], 0)
         print('PASS fantavision: the original-time target equals the formula of the reference')
+
+    def test_backdrop(self):
+        """A backdrop read into the background copy: the pages start from it,
+        whole; erasing restores it; Background-mode objects draw into it."""
+        rng = __import__('random').Random(11)
+        picture = bytes(rng.randrange(256) for _ in range(8192))
+        short = picture[:8184]
+        for cpu in ('6502', '65c02'):
+            for seed in (1, 4, 9):
+                self.compare(cpu, ref.synthetic(seed), 12, '%s backdrop seed %d' % (cpu, seed),
+                             backdrop=picture)
+            for anim in (0, 2):
+                mv = ref.demo_movie(2, anim=anim, n=6, speed=2)
+                self.compare(cpu, mv, 12, '%s backdrop anim %d' % (cpu, anim), backdrop=picture)
+            res = self.compare(cpu, ref.shaped_movie(2), 10, '%s short backdrop' % cpu, backdrop=short)
+        # The picture shows whole, outside the clip window too; the 8,184-byte
+        # save leaves the last 8 bytes (screen holes) zero.
+        h = ref.header(rng, speed=1, count=1, clip=(100, 120, 90, 100))
+        still = bytes(h) + ref.record(0, 2, 0x33, 0, [110], [95]) + b'\x01' * 7 + b'\x00' * 120
+        res = self.compare('6502', still, 2, 'backdrop, small window', backdrop=picture)
+        page = res['frames'][0][4]
+        self.assertEqual(page[:0x1000], picture[:0x1000])
+        res = self.compare('6502', still, 2, 'short backdrop, small window', backdrop=short)
+        self.assertEqual(res['bg'][0x1FF8:], bytes(8))
+        self.assertEqual(res['bg'][:0x1FF8], short)
+        print('PASS fantavision: backdrops (8,192 and 8,184 bytes) as the reference, both processors')
 
     def refused(self, movie, why, cpus=('6502', '65c02')):
         expect = ref.CODES[ref.check(movie)]
