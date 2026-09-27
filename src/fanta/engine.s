@@ -13,7 +13,7 @@
 ;   fv_movie, fv_len  the movie's address and length, set by the caller
 ;   fv_count   nonzero: count each frame's work, for fv_timing (the
 ;              original speed); the picture is the same either way
-;   fv_check   A = 0 if the movie is accepted, else a reason code 1-6
+;   fv_check   A = 0 if the movie is accepted, else a reason code 1-5
 ;   fv_begin   builds the background and copies it to both pages
 ;   fv_first   draws key frame 0 on page 1 (fv_shown = $20)
 ;   fv_next    builds the next frame on the hidden page and sets fv_shown;
@@ -30,7 +30,7 @@
 
         .macpack longbranch
         .export fv_check, fv_begin, fv_first, fv_next, fv_timing
-        .export fv_movie, fv_len, fv_shown, fv_done, fv_frames, fv_count
+        .export fv_movie, fv_len, fv_shown, fv_done, fv_frames, fv_count, fv_end
         .export fv_counts, fv_orig, fv_own, fv_wait
 
 PAGE1   = $20
@@ -158,6 +158,7 @@ fv_len:   .res 2
 fv_shown: .res 1
 fv_done:  .res 1
 fv_frames: .res 1
+fv_end:   .res 2        ; fv_check: where the movie ends (offset)
 fv_counts: .res NCOUNTS
 normal: .res 6          ; spans and bytes of the normal objects (fv_counts + 36)
 fv_orig:  .res 4
@@ -325,8 +326,9 @@ ownt:   .byte O_SPANS
 
 ; -- the checks -------------------------------------------------------------
 ; Everything is checked before anything is drawn; no byte past fv_len is
-; read. Codes: 1 size, 2 header, 3 clip window, 4 record length,
-; 5 truncated, 6 frame count.
+; read. A damaged tail is cut: the movie ends before the first frame that
+; is not whole (fv_frames frames, fv_end its offset). Codes: 1 size,
+; 2 header, 3 clip window, 4 not even one whole frame, 5 more than 127.
 fv_check:
         lda     fv_movie
         sta     mov
@@ -380,7 +382,11 @@ fv_check:
         lda     fv_len+1
         sbc     #>$1A0
         sta     t1
-@frame: lda     t0                      ; the end of the file: the end
+@frame: lda     rp                      ; where this frame starts: the end
+        sta     pa                      ; if it is not whole
+        lda     rp+1
+        sta     pa+1
+        lda     t0                      ; the end of the file: the end
         ora     t1
         beq     @end
         ldy     #0
@@ -388,32 +394,32 @@ fv_check:
         beq     @end                    ; 0 where a frame starts: the end
         ldx     fv_frames
         cpx     #127
-        jeq     bad6
+        beq     :+                      ; a 128th frame: only looked at
         lda     rp
         sta     ftlo,x
         lda     rp+1
         sta     fthi,x
-        lda     #8
+:       lda     #8
         sta     t2
-@rec:   lda     t0
-        ora     t1
-        jeq     bad5
+@rec:   lda     t0                      ; A damaged frame cuts the movie
+        ora     t1                      ; before it: the end of the file
+        beq     @cut                    ; inside a frame,
         ldy     #0
         lda     (rp),y
         cmp     #1
         beq     @adv
-        cmp     #4
-        jcc     bad4
-        cmp     #4 + 2 * MAXPTS + 1
-        jcs     bad4
-        lsr
-        jcs     bad4
+        cmp     #4                      ; a length 0, 2, 3,
+        bcc     @cut
+        cmp     #4 + 2 * MAXPTS + 1     ; above 68,
+        bcs     @cut
+        lsr                             ; odd,
+        bcs     @cut
         asl
         ldx     t1                      ; more than 255 left: it fits
         bne     @adv
-        cmp     t0
+        cmp     t0                      ; or past the end of the file
         beq     @adv
-        jcs     bad5
+        bcs     @cut
 @adv:   sta     t3                      ; rp += L, left -= L
         clc
         adc     rp
@@ -428,10 +434,24 @@ fv_check:
         dec     t1
 :       dec     t2
         bne     @rec
+        lda     fv_frames               ; a whole frame
+        cmp     #127
+        beq     bad5                    ; the 128th: refused
         inc     fv_frames
         jmp     @frame
-@end:   lda     fv_frames
-        jeq     bad6
+@cut:   lda     pa                      ; the end: where the damaged frame
+        sta     rp                      ; starts
+        lda     pa+1
+        sta     rp+1
+@end:   sec                             ; fv_end: the offset of the end
+        lda     rp
+        sbc     mov
+        sta     fv_end
+        lda     rp+1
+        sbc     mov+1
+        sta     fv_end+1
+        lda     fv_frames
+        beq     bad4                    ; not even one whole frame
         lda     #0
         rts
 bad1:   lda     #1
@@ -443,8 +463,6 @@ bad3:   lda     #3
 bad4:   lda     #4
         rts
 bad5:   lda     #5
-        rts
-bad6:   lda     #6
         rts
 
 ; -- start ------------------------------------------------------------------

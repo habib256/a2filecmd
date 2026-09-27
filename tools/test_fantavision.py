@@ -47,13 +47,13 @@ OWN_BASE, OWN = engine_constants()
 
 GLUE = r'''
         .import fv_check, fv_begin, fv_first, fv_next, fv_timing
-        .import fv_movie, fv_len, fv_shown, fv_done, fv_frames
+        .import fv_movie, fv_len, fv_shown, fv_done, fv_frames, fv_end
         .import fv_counts, fv_orig, fv_own, fv_wait, fv_count
         .export _fv_check, _fv_begin, _fv_first, _fv_next, _fv_timing
         .export _fv_movie := fv_movie, _fv_len := fv_len, _fv_shown := fv_shown
         .export _fv_done := fv_done, _fv_frames := fv_frames, _fv_counts := fv_counts
         .export _fv_orig := fv_orig, _fv_own := fv_own, _fv_wait := fv_wait
-        .export _fv_count := fv_count
+        .export _fv_count := fv_count, _fv_end := fv_end
 _fv_check:
         jsr     fv_check
         ldx     #0
@@ -79,6 +79,7 @@ extern unsigned char fv_shown, fv_done, fv_frames;
 extern unsigned char fv_counts[45];
 extern unsigned long fv_orig, fv_own, fv_wait;
 extern unsigned char fv_count;
+extern unsigned int fv_end;
 unsigned char fv_check(void);
 void fv_begin(void);
 void fv_first(void);
@@ -114,6 +115,8 @@ int main(int, char** argv)
     out(&cb, 4);
     r = fv_check();
     out(&r, 1);
+    out(&fv_frames, 1);
+    out(&fv_end, 2);
     if (r == 0) {
         c0 = cyc(); fv_begin(); c1 = cyc(); cb = c1 - c0;
         out(&cb, 4);
@@ -179,8 +182,9 @@ class Sim:
         if p.returncode != 0:
             raise AssertionError('sim65 exit %d: %s' % (p.returncode, p.stderr[-300:]))
         o = p.stdout
-        res = {'overhead': struct.unpack_from('<I', o, 0)[0], 'code': o[4], 'frames': []}
-        pos = 5
+        res = {'overhead': struct.unpack_from('<I', o, 0)[0], 'code': o[4], 'frames': [],
+               'nframes': o[5], 'end': struct.unpack_from('<H', o, 6)[0]}
+        pos = 8
         if res['code'] == 0:
             res['begin'] = struct.unpack_from('<I', o, pos)[0]
             pos += 4
@@ -232,6 +236,8 @@ class Fantavision(unittest.TestCase):
     def compare(self, cpu, movie, limit=16, label='', count=True):
         res = self.sims[cpu].run(movie, limit, count)
         self.assertEqual(res['code'], 0, label)
+        _, starts, end = ref.scan(movie)
+        self.assertEqual((res['nframes'], res['end']), (len(starts), end), label + ': the frames kept')
         player, frames = ref_frames(movie, limit)
         self.assertEqual(len(res['frames']), len(frames), label)
         for i, ((shown, c, _, _, page), (rshown, rpage, rc)) in enumerate(zip(res['frames'], frames)):
@@ -352,7 +358,6 @@ class Fantavision(unittest.TestCase):
         cases.append((good[:512], 'size'))
         cases.append((good + bytes(9217 - len(good)), 'size'))
         cases.append((b'\x01' * 9300, 'size'))
-        cases.append((h + b'\x01' * 8 + b'\x00' * 200, None))
         for i, v in ((3, 5), (5, 0)):
             b = bytearray(good)
             b[i] = v
@@ -363,30 +368,64 @@ class Fantavision(unittest.TestCase):
         b = bytearray(good)
         b[10], b[11] = 150, 149
         cases.append((bytes(b), 'clip'))
-        cases.append((h + b'\x00' * 200, 'frames'))                      # 0 frames
-        cases.append((h + b'\x01' * 8 * 127 + b'\x00' * 10, None))      # 127 frames
-        cases.append((h + b'\x01' * 8 * 128 + b'\x00' * 10, 'frames'))  # 128 frames
-        cases.append((h + b'\x01' * 7 + b'\x00' + b'\x01' * 200, 'record'))  # 0 inside a frame
+        cases.append((h + b'\x00' * 200, 'empty'))                        # 0 frames
+        cases.append((h + b'\x01' * 7 + b'\x00' + b'\x01' * 200, 'empty'))  # first frame damaged
+        cases.append((h + b'\x01' * 8 * 128 + b'\x00' * 10, 'frames'))   # 128 frames
         for bad in (2, 3, 5, 69, 70, 71, 72, 254, 255):
-            # otherwise well formed: the length alone is wrong
             rec = bytes([bad, 2, 0x33, 0]) + bytes(max(0, bad - 4))
-            cases.append((h + rec + b'\x01' * 7 + b'\x00' * 100, 'record'))
-        # n = 33
-        cases.append((h + ref.record(2, 1, 3, 0, [1] * 33, [1] * 33)[:1] + bytes(70) + b'\x01' * 60,
-                      'record'))
-        # a record running past the end, a frame cut short
-        big = h + b'\x01' * 7 + ref.record(2, 1, 3, 0, list(range(32)), list(range(32)))
-        cases.append((big + b'\x01' * 7 + bytes([68]) + bytes(40), 'truncated'))
-        cases.append((h + b'\x01' * 8 * 12 + b'\x01' * 7, 'truncated'))
-        # ends exactly at the end of the file
-        cases.append((h + b'\x01' * 8 * 13, None))
+            cases.append((h + rec + b'\x01' * 7 + b'\x00' * 100, 'empty'))
         for movie, why in cases:
-            if why is None:
-                self.assertIsNone(ref.check(movie))
-                for cpu in ('6502', '65c02'):
-                    self.compare(cpu, movie, 3, 'accepted edge case')
-            else:
-                self.refused(movie, why)
+            self.refused(movie, why)
+        print('PASS fantavision: every refusal happens before anything is drawn, both processors')
+
+    def cut(self, movie, whole, label, limit=None, cpus=('6502', '65c02')):
+        """A damaged tail: the frames before it play, exactly."""
+        why, starts, _ = ref.scan(movie)
+        self.assertIsNone(why, label)
+        self.assertEqual(len(starts), whole, label)
+        for cpu in cpus:
+            self.compare(cpu, movie, limit or 3 * whole + 4, '%s %s' % (cpu, label))
+
+    def test_cut(self):
+        rng = __import__('random').Random(10)
+        h = bytes(ref.header(rng, speed=2, count=1, clip=(5, 250, 12, 159)))
+        f1 = ref.record(2, 1, 0x2A, 0, [40, 200, 120], [30, 40, 150]) + b'\x01' * 7
+        f2 = ref.record(2, 1, 0x2A, 0, [60, 180, 100], [50, 30, 130]) + b'\x01' * 7
+        # a 0 inside frame 2
+        self.cut(h + f1 + f1[:12] + b'\x00' * 300, 1, '0 inside frame 2')
+        self.cut(h + f1 + f2 + ref.record(0, 3, 0x33, 0, [9], [9]) + b'\x01\x00' + b'\x01' * 200, 2,
+                 '0 inside frame 3')
+        # every bad length, in frame 3
+        for bad in (2, 3, 5, 69, 70, 71, 72, 254, 255):
+            rec = bytes([bad, 2, 0x33, 0]) + bytes(max(0, bad - 4))
+            self.cut(h + f1 + f2 + b'\x01' * 3 + rec + b'\x01' * 4 + b'\x00' * 60, 2,
+                     'length %d in frame 3' % bad, cpus=('6502',))
+        # a 68-point record in frame 10
+        body = b''.join(ref.record(1, 11, 0x55, 0, [20 + 10 * k + f, 200 - 5 * f], [30 + f, 150 - 8 * k])
+                        + b'\x01' * 7 for f, k in zip(range(9), range(9)))
+        pts = list(range(10, 146, 2))
+        big = bytes([4 + 2 * 68, 2, 0x33, 0]) + bytes(pts) + bytes(p % 190 for p in pts)
+        self.cut(h + body + big + b'\x01' * 7 + b'\x00', 9, '68 points in frame 10', limit=40)
+        # the end of the file inside frame 5, a record past the end
+        self.cut(h + (f1 + f2) * 3 + f1[:10], 6, 'end of file inside frame 7')
+        self.cut(h + (f1 + f2) * 3 + bytes([30]) + bytes(10), 6, 'record past the end')
+        # an odd length in frame 41 of a 9,216-byte movie (a save cut short)
+        frames = []
+        for f in range(40):
+            n = 30
+            xs = [(17 * f + 7 * i) % 240 + 8 for i in range(n)]
+            ys = [(11 * f + 5 * i) % 140 + 14 for i in range(n)]
+            frames.append(ref.record(f % 3, 11 if f % 3 == 1 else 1, 0x2A + f, 0, xs, ys) +
+                          ref.record(0, 2, 0x33, 0, xs[:8], ys[:8]) + b'\x01' * 6)
+        body = h + b''.join(frames)
+        tail = bytes([2 * 17 + 1]) + bytes(9216)
+        movie = (body + tail)[:9216]
+        self.assertEqual(len(movie), 9216)
+        self.cut(movie, 40, 'odd length in frame 41 of 9,216 bytes', limit=20)
+        # the 128th frame damaged: 127 kept
+        self.cut(h + b'\x01' * 8 * 127 + b'\x01' * 7 + b'\x00', 127, '128th frame cut', limit=5)
+        # ends exactly at the end of the file
+        self.cut(h + b'\x01' * 8 * 13, 13, 'end at the end of the file', limit=5)
         # A random damage campaign: flips and cuts, refused or played the same.
         for i in range(60):
             b = bytearray(ref.synthetic(200 + i, frames=3))
@@ -399,7 +438,7 @@ class Fantavision(unittest.TestCase):
                 self.compare('6502', b, 8, 'damaged %d' % i)
             else:
                 self.refused(b, ref.check(b), cpus=('6502',))
-        print('PASS fantavision: every check refuses before anything is drawn, both processors')
+        print('PASS fantavision: a damaged tail is cut, the whole frames before it play, both processors')
 
 
 # -- measurements -----------------------------------------------------------------

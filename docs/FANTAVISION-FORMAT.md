@@ -192,10 +192,19 @@ The player refuses a file, before anything is shown, unless:
 
 - it is 513 to 9,216 bytes, header byte 3 is 4 and byte 5 is 8;
 - the clip window has left ≤ right and top ≤ bottom;
-- from `$1A0`, frames are whole sets of eight records, each of length 1 or
-  `4 + 2n` with n ≤ 32, all within the file, ending with a 0 at a frame
-  boundary or exactly at the end of the file;
-- there are 1 to 127 frames.
+- from `$1A0` there is at least one whole frame: eight records, each of
+  length 1 or `4 + 2n` with n ≤ 32, all within the file.
+
+**A damaged tail is cut, not refused.** The movie ends at the first frame
+that is not whole: a 0 where a record should be, a record length that is
+odd, below 4 or above 68, a record running past the end of the file, or the
+end of the file inside a frame. The frames before it play; the original
+does the same with a 0 inside a frame (it shows only the frames before).
+Three of 144 real movies need this: one has a 0 inside its second frame,
+one ends in a corrupt record after 40 good frames (a save cut at 9,216
+bytes), one has a 68-point object in its tenth frame. A movie is refused
+only when not even its first frame is whole, or it has more than 127
+frames.
 
 Anything else in a record (unused bits, unexpected modes, animation values
 above 3) is played with the meanings above, never refused and never allowed

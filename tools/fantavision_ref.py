@@ -106,45 +106,54 @@ class Record:
 
 
 # fv_check's return codes (src/fanta/engine.s).
-CODES = {None: 0, 'size': 1, 'header': 2, 'clip': 3, 'record': 4, 'truncated': 5, 'frames': 6}
+CODES = {None: 0, 'size': 1, 'header': 2, 'clip': 3, 'empty': 4, 'frames': 5}
+
+
+def scan(data):
+    """(reason or None, frame offsets, end offset) -- the "Checks": a damaged
+    tail is cut, the movie ending before the first frame that is not whole
+    (a 0 where a record should be, a length odd, below 4 or above 68, a
+    record past the end of the file, the end of the file inside a frame)."""
+    n = len(data)
+    if n < MIN_SIZE or n > MAX_SIZE:
+        return 'size', [], 0
+    if data[3] != 4 or data[5] != 8:
+        return 'header', [], 0
+    if data[8] > data[9] or data[10] > data[11]:
+        return 'clip', [], 0
+    pos, frames = HDR, []
+    while pos < n and data[pos] != 0:
+        start = pos
+        for _ in range(8):
+            if pos >= n:
+                break
+            size = data[pos]
+            if size != 1 and (size < 4 or size & 1 or size > 4 + 2 * MAX_POINTS or pos + size > n):
+                break
+            pos += size
+        else:
+            if len(frames) == MAX_FRAMES:
+                return 'frames', frames, start
+            frames.append(start)
+            continue
+        pos = start
+        break
+    if not frames:
+        return 'empty', [], pos
+    return None, frames, pos
 
 
 def check(data):
-    """None if the movie is accepted, else the reason ("Checks")."""
-    n = len(data)
-    if n < MIN_SIZE or n > MAX_SIZE:
-        return 'size'
-    if data[3] != 4 or data[5] != 8:
-        return 'header'
-    if data[8] > data[9] or data[10] > data[11]:
-        return 'clip'
-    pos, frames = HDR, 0
-    while pos < n and data[pos] != 0:
-        if frames == MAX_FRAMES:
-            return 'frames'
-        for _ in range(8):
-            if pos >= n:
-                return 'truncated'
-            size = data[pos]
-            if size == 1:
-                pos += 1
-                continue
-            if size < 4 or size & 1 or size > 4 + 2 * MAX_POINTS:
-                return 'record'
-            if pos + size > n:
-                return 'truncated'
-            pos += size
-        frames += 1
-    if frames == 0:
-        return 'frames'
-    return None
+    """None if the movie is accepted, else the reason."""
+    return scan(data)[0]
 
 
 def parse(data):
     """The frames of an accepted movie: lists of eight Record or None."""
-    assert check(data) is None
-    frames, pos = [], HDR
-    while pos < len(data) and data[pos] != 0:
+    why, starts, _ = scan(data)
+    assert why is None
+    frames = []
+    for pos in starts:
         frame = []
         for _ in range(8):
             size = data[pos]
@@ -579,19 +588,18 @@ def selftest():
     assert check(good[:512]) == 'size'
     assert check(b'\0' * 9217) == 'size'
     h = header(rng)
-    assert check(bytes(h) + b'\0' * 200) == 'frames'
-    one = bytes(h) + b'\x01' * 8
-    assert check(one + b'\x00' * 100) is None
-    assert check(bytes(h) + b'\x01' * 7 + b'\x00' * 200) == 'record'
+    assert check(bytes(h) + b'\0' * 200) == 'empty'
+    assert check(bytes(h) + b'\x01' * 7 + b'\x00' * 200) == 'empty'
     assert check(bytes(h) + b'\x01' * 8 * 127 + b'\x00' * 10) is None
     assert check(bytes(h) + b'\x01' * 8 * 128 + b'\x00' * 10) == 'frames'
-    big = bytes(h) + bytes([70, 1, 3, 0]) + bytes(66) + b'\x01' * 7 + b'\x00' * 30
-    assert check(big) == 'record'
-    trunc = bytes(h) + b'\x01' * 7 + bytes([68, 1, 3, 0]) + bytes(40)
-    trunc += b'\x01' * (MIN_SIZE - len(trunc))
-    assert check(trunc) in ('record', 'truncated', 'frames'), check(trunc)
-    exact = bytes(h) + b'\x01' * 8 * 12       # ends exactly at the end: 512 bytes
-    assert len(exact) == 512 and check(exact) == 'size'
+    cut = bytes(h) + b'\x01' * 8 * 127 + b'\x01' * 7 + b'\x00'
+    assert check(cut) is None and len(parse(cut)) == 127
+    two = bytes(h) + b'\x01' * 8 + b'\x01' * 3 + b'\x00' + b'\x01' * 200
+    assert scan(two)[1:] == ([HDR], HDR + 8), scan(two)
+    big = bytes(h) + b'\x01' * 8 + bytes([140, 1, 3, 0]) + bytes(136) + b'\x01' * 7
+    assert scan(big)[0] is None and len(scan(big)[1]) == 1
+    exact = bytes(h) + b'\x01' * 8 * 12       # 512 bytes: too short
+    assert check(exact) == 'size'
     exact += b'\x01' * 8
     assert check(exact) is None and len(parse(exact)) == 13
     # Drawing: a white spot on black.
