@@ -104,6 +104,7 @@ int main(int, char** argv)
     int fd, n;
     unsigned limit = atoi(argv[1]), f;
     unsigned char r;
+    unsigned cfrom = argv[2][0] == 'K' ? atoi(argv[2] + 1) : 0;  /* Tab at frame cfrom */
     fv_count = argv[2][0] == '1';           /* original speed: counts */
     memset((void*)0x0200, 0x5A, 0x1E00);
     memset((void*)0x2000, 0xEE, 0x6000);
@@ -131,6 +132,7 @@ int main(int, char** argv)
         c0 = cyc(); fv_begin(); c1 = cyc(); cb = c1 - c0;
         out(&cb, 4);
         for (f = 0; f < limit; ++f) {
+            if (cfrom) fv_count = f >= cfrom;
             c0 = cyc();
             if (f == 0) fv_first();
             else if (fv_next()) break;
@@ -194,7 +196,7 @@ class Sim:
             bd.write_bytes(backdrop)
         # -x: a hang shows as a failure, not as a stuck test
         p = subprocess.run([self.sim, '-x', '1000000000', str(self.exe), str(limit),
-                            '1' if count else '0'],
+                            count if isinstance(count, str) else '1' if count else '0'],
                            cwd=self.dir, capture_output=True, timeout=900)
         if p.returncode != 0:
             raise AssertionError('sim65 exit %d: %s' % (p.returncode, p.stderr[-300:]))
@@ -385,6 +387,30 @@ class Fantavision(unittest.TestCase):
         self.assertEqual(res['bg'][0x1FF8:], bytes(8))
         self.assertEqual(res['bg'][:0x1FF8], short)
         print('PASS fantavision: backdrops (8,192 and 8,184 bytes) as the reference, both processors')
+
+    def test_tab_to_original(self):
+        """Tab mid-movie: the first counted frame takes its own normal
+        objects for what the frame before left to erase; then exact."""
+        for cpu in ('6502', '65c02'):
+            for seed, at in ((0, 1), (1, 4), (2, 4), (0, 6)):
+                mv = ref.synthetic(seed, frames=4, speed=2, count=0)
+                limit = at + 5
+                res = self.sims[cpu].run(mv, limit, 'K%d' % at)
+                frames = list(ref.Player(mv).play(limit=limit, count_from=at))
+                exact = list(ref.Player(mv).play(limit=limit))
+                self.assertEqual(len(res['frames']), len(frames))
+                for i in range(at, limit):
+                    c, rc = res['frames'][i][1], frames[i][2]
+                    for k in COUNTERS + ['orig']:
+                        self.assertEqual(c[k], rc[k], (cpu, seed, i, k))
+                    self.assertEqual(res['frames'][i][4], frames[i][1])
+                    if i > at:
+                        self.assertEqual(rc['orig'], exact[i][2]['orig'])
+                # not held short: something to erase is counted, as it
+                # would be without Tab
+                self.assertGreater(frames[at][2]['espans'], 0, (seed, at))
+                self.assertGreater(exact[at][2]['espans'], 0, (seed, at))
+        print('PASS fantavision: after Tab, the first counted frame is held by an estimate, then exact')
 
     def refused(self, movie, why, cpus=('6502', '65c02')):
         expect = ref.CODES[ref.check(movie)]

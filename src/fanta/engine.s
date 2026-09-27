@@ -178,6 +178,7 @@ eby:    .res 2
 fv_movie: .res 2
 fv_count: .res 1        ; nonzero: count the work (original speed)
 fv_bdrop: .res 1        ; nonzero: the background copy holds a backdrop
+lastcnt: .res 1         ; the frame before was counted
 fv_len:   .res 2
 fv_shown: .res 1
 fv_done:  .res 1
@@ -590,6 +591,8 @@ fv_begin:
         sta     tstep
         sta     counting
         sta     dfast
+        ldx     #1                      ; frame 0: nothing to erase, known
+        stx     lastcnt
         ldx     #5
 :       sta     prevn,x
         dex
@@ -1091,6 +1094,17 @@ build:  lda     fv_shown
         lda     obj
         cmp     #8
         jne     @obj
+        lda     fv_count                ; the first frame counted after some
+        beq     @prev                   ; were not (Tab): what the frame
+        lda     lastcnt                 ; before left to erase is unknown;
+        bne     @prev                   ; this frame's own normal objects
+        ldx     #5                      ; stand in for it
+:       lda     normal,x
+        sta     fv_counts+C_ESPANS,x
+        dex
+        bpl     :-
+@prev:  lda     fv_count
+        sta     lastcnt
         ldx     #5
 :       lda     normal,x
         sta     prevn,x

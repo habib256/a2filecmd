@@ -344,7 +344,7 @@ class Player:
         self.pages[1] = bytearray(self.bg)
         self.pages[2] = bytearray(self.bg)
 
-    def build(self, page, versions):
+    def build(self, page, versions, estimate=False):
         """Erase then draw `versions` (8 entries: None or (kind, mode, colour,
         anim, xs, ys, interpolated)) on `page`. Returns the counts."""
         other = 3 - page
@@ -379,6 +379,11 @@ class Player:
             if anim == 0:
                 nspans += canvas.spans
                 nbytes += canvas.bytes
+        if estimate:
+            # The first frame counted after uncounted ones (Tab to the
+            # original speed): what the frame before left to erase is not
+            # known; this frame's own normal objects stand in for it.
+            c['espans'], c['ebytes'] = nspans, nbytes
         self.prev_normal = (nspans, nbytes)
         c['orig'] = orig_cycles(c)
         return c
@@ -403,8 +408,10 @@ class Player:
                 out.append((acc & 0xFFFF) >> 8)
         return (a.kind, a.mode, a.colour, a.anim, xs, ys, True)
 
-    def play(self, limit=None):
-        """Yields (page shown, bytes of that page, counts) per frame shown."""
+    def play(self, limit=None, count_from=0):
+        """Yields (page shown, bytes of that page, counts) per frame shown.
+        `count_from`: the frame from which the player counts (the original
+        speed chosen by Tab then); earlier frames' counts are not kept."""
         shown = 1
         c = self.build(1, [self.key_version(r) for r in self.frames[0]])
         yield shown, bytes(self.pages[1]), c
@@ -425,7 +432,7 @@ class Player:
                           for a, b in zip(self.frames[k], self.frames[k1])]
                 else:
                     vs = [self.key_version(r) for r in self.frames[k1]]
-                c = self.build(page, vs)
+                c = self.build(page, vs, estimate=produced == count_from)
                 shown = page
                 produced += 1
                 yield shown, bytes(self.pages[page]), c
