@@ -344,6 +344,19 @@ ownt:   .byte O_SPANS
         sta     (rowp),y
 .endmacro
 
+; The same with the patterns of a known row parity.
+.macro  PUTP    pe, po
+        tya
+        lsr
+        lda     pe
+        bcc     :+
+        lda     po
+:       eor     (rowp),y
+        and     msk
+        eor     (rowp),y
+        sta     (rowp),y
+.endmacro
+
         .code
 
 ; -- the checks -------------------------------------------------------------
@@ -935,17 +948,25 @@ build:  lda     fv_shown
         lda     pmax+1
         sta     tmax1+2
         sta     tmax2+2
-        sta     fmax1+2
-        sta     fmax2+2
+        sta     fmax1e+2
+        sta     fmax2e+2
+        sta     fmax1o+2
+        sta     fmax2o+2
         lda     pmax
-        sta     fmax1+1
-        sta     fmax2+1
+        sta     fmax1e+1
+        sta     fmax2e+1
+        sta     fmax1o+1
+        sta     fmax2o+1
         lda     pmin
-        sta     fmin1+1
-        sta     fmin2+1
+        sta     fmin1e+1
+        sta     fmin2e+1
+        sta     fmin1o+1
+        sta     fmin2o+1
         lda     pmin+1
-        sta     fmin1+2
-        sta     fmin2+2
+        sta     fmin1e+2
+        sta     fmin2e+2
+        sta     fmin1o+2
+        sta     fmin2o+2
         lda     pmin
         sta     ermn1+1
         sta     ermn2+1
@@ -1788,7 +1809,10 @@ segfast:
         lda     gy
         cmp     gstop
         jcs     sf_end
-sf_f:   clc                             ; the next row's x
+        lsr                             ; (A = gy) rows alternate: an even
+        bcc     sf_e                    ; row, an odd row, each with its
+        jmp     sf_o                    ; own patterns
+sf_e:  clc                             ; an even row: the next row's x
         lda     gac
         adc     gsl
         sta     gac
@@ -1799,27 +1823,15 @@ sf_f:   clc                             ; the next row's x
         tax
         lda     gy
         cmp     glast
-        bne     sf_fh
+        bne     :+
         ldx     gx1                     ; the last: x1 itself
-sf_fh:    ldy     gy                      ; the row
+:       ldy     gy                      ; the row
         lda     rowlo,y
         sta     rowp
         lda     rowhi,y
         ora     pagehi
         sta     rowp+1
-        tya
-        lsr
-        bcs     :+
-        lda     ce0
-        sta     p0
-        lda     ce1
-        sta     p1
-        jmp     :++
-:       lda     co0
-        sta     p0
-        lda     co1
-        sta     p1
-:       stx     gnxt                    ; the run: min .. max + 1
+        stx     gnxt                    ; the run: min .. max + 1
         cpx     gcur
         bcc     :+
         ldx     gcur
@@ -1836,43 +1848,125 @@ sf_fh:    ldy     gy                      ; the row
         ldy     colof,x
         sty     scol
         cpy     ccb
-        bne     sf_two
+        bne     sf_2e
         and     mr
         sta     msk
-        PUT
-        jmp     sf_trk
-sf_two:   iny                           ; more than two bytes: the writer
+        PUTP    ce0, ce1
+        jmp     sf_te
+sf_2e: iny                            ; more than two bytes: the writer
         cpy     ccb
-        beq     sf_2
+        beq     :+
         sta     ml
         lda     gy                      ; (its extent: row crow)
         sta     crow
+        lda     ce0
+        sta     p0
+        lda     ce1
+        sta     p1
         jsr     wbody
-        jmp     sf_next
-sf_2:   dey
+        jmp     sf_ne
+:       dey
         sta     msk
-        PUT
+        PUTP    ce0, ce1
         iny
         lda     mr
         sta     msk
-        PUT
-sf_trk:   bit     counting                ; a normal object: the extent
-        bpl     sf_next
+        PUTP    ce0, ce1
+sf_te: bit    counting                ; a normal object: the extent
+        bpl     sf_ne
         ldy     gy
         lda     scol
-fmin1:  cmp     emin1,y
+fmin1e: cmp   emin1,y
         bcs     :+
-fmin2:  sta     emin1,y
+fmin2e: sta   emin1,y
 :       lda     ccb
-fmax1:  cmp     emax1,y
-        bcc     sf_next
-fmax2:  sta     emax1,y
-sf_next:  lda     gnxt
+fmax1e: cmp   emax1,y
+        bcc     sf_ne
+fmax2e: sta   emax1,y
+sf_ne: lda    gnxt
         sta     gcur
         inc     gy
         lda     gy
         cmp     gstop
-        jne     sf_f
+        jeq     sf_end
+sf_o:  clc                             ; an odd row: the next row's x
+        lda     gac
+        adc     gsl
+        sta     gac
+        lda     gxc
+        adc     gsl+1
+        sta     gxc
+        eor     gsg
+        tax
+        lda     gy
+        cmp     glast
+        bne     :+
+        ldx     gx1                     ; the last: x1 itself
+:       ldy     gy                      ; the row
+        lda     rowlo,y
+        sta     rowp
+        lda     rowhi,y
+        ora     pagehi
+        sta     rowp+1
+        stx     gnxt                    ; the run: min .. max + 1
+        cpx     gcur
+        bcc     :+
+        ldx     gcur
+        ldy     gnxt
+        iny
+        jmp     :++
+:       ldy     gcur
+        iny
+:       lda     colof,y
+        sta     ccb
+        lda     rmx,y
+        sta     mr
+        lda     lmx,x
+        ldy     colof,x
+        sty     scol
+        cpy     ccb
+        bne     sf_2o
+        and     mr
+        sta     msk
+        PUTP    co0, co1
+        jmp     sf_to
+sf_2o: iny                            ; more than two bytes: the writer
+        cpy     ccb
+        beq     :+
+        sta     ml
+        lda     gy                      ; (its extent: row crow)
+        sta     crow
+        lda     co0
+        sta     p0
+        lda     co1
+        sta     p1
+        jsr     wbody
+        jmp     sf_no
+:       dey
+        sta     msk
+        PUTP    co0, co1
+        iny
+        lda     mr
+        sta     msk
+        PUTP    co0, co1
+sf_to: bit    counting                ; a normal object: the extent
+        bpl     sf_no
+        ldy     gy
+        lda     scol
+fmin1o: cmp   emin1,y
+        bcs     :+
+fmin2o: sta   emin1,y
+:       lda     ccb
+fmax1o: cmp   emax1,y
+        bcc     sf_no
+fmax2o: sta   emax1,y
+sf_no: lda    gnxt
+        sta     gcur
+        inc     gy
+        lda     gy
+        cmp     gstop
+        beq     sf_end
+        jmp     sf_e
 sf_end:   lda     gy
         cmp     gy1
         bne     :+
