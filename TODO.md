@@ -116,9 +116,13 @@ jetables pour les essais destructifs ; deux CPU.
 
 ## 1.1 — formats
 
-Seulement s'il reste des octets. OPEN a 28 octets en 6502 (43 en
-65C02), UNSHRINK ~900, SHAPES est plein. Une petite surcouche (DELETE,
-COPY, IMGFS, ATTR, OPEN) ne bouge que si on doit la modifier.
+Seulement s'il reste des octets. OPEN a 168/173 octets (65C02/6502)
+depuis que son classifieur est en assembleur (`src/open.s`, 26 septembre
+2026) : une règle de routage coûte 10 à 20 octets, à écrire dans
+`open.s` **et** dans `tools/file_viewer_ref.c`. Le résident 65C02 est à
+203 octets (objectif 256) : tout nouveau format vit dans une surcouche.
+DOCVIEW a ~120 octets, UNSHRINK ~900, SHAPES est plein. Les nouvelles
+surcouches vont sur 800K et XL, pas sur la 140K.
 
 Méthode, avant d'ajouter des formats un par un :
 - [ ] **Recensement** (`tools/corpus_survey.py`) : parcourir Asimov et les
@@ -136,104 +140,132 @@ Méthode, avant d'ajouter des formats un par un :
 - [ ] **Outillage de rétro-ingénierie** : traceur POM2 générique (secteurs
   lus, routine de tracé), comparaison d'écran automatique avec le
   programme d'origine, modèle de `docs/<FORMAT>-FORMAT.md`.
-- Convertir plutôt qu'afficher quand l'affichage coûte trop (Super Hi-Res,
-  polices GS, films) ; publier les spécifications (CiderPress II,
-  Justsolve) ; lancer un appel à disques d'utilisateurs.
+- Convertir plutôt qu'afficher quand l'affichage coûte trop ; publier les
+  spécifications (CiderPress II, Justsolve) ; lancer un appel à disques
+  d'utilisateurs.
+- CiderPress II (Apache-2.0) fournit du code et des notes pour plusieurs
+  formats ci-dessous (`FileConv/`) : les reprendre avec attribution
+  (NOTICE) plutôt qu'en salle blanche.
 
-Ordre retenu après la recherche du 25 septembre 2026 (File Type Notes,
-CiderPress II, rétro-ingénieries publiques ; échantillons vérifiés sur des
-images publiques). Aucun de ces formats n'a de spécification officielle.
+Analyse du 27 septembre 2026 : les 60 convertisseurs de CiderPress II
+(`fadden/CiderPress2`, `FileConv/`) croisés avec ce qu'A2FC lit et avec la
+recherche du 25 septembre (File Type Notes, rétro-ingénieries publiques,
+échantillons vérifiés sur des images publiques). Les fréquences sont des
+estimations tant que le recensement (bloc méthode) n'existe pas : il
+validera ou corrigera cet ordre. Les formats propres au IIgs sont laissés
+de côté pour l'instant (voir « Plus tard »).
 
-0. [ ] **The Newsroom** (Springboard) : photos `PH.*` et bannières `BN.*`
-   **faites** (NEWSROOM, `docs/NEWSROOM-FORMAT.md`, 2026-09-26) : BIN
-   `$4000`, reconnus par le nom dans `image_kind` (prédicat en assembleur
-   dans `display.s`, 91 octets de MAIN), bitmap pris sur les **L derniers
-   octets** — 18 des 93 fichiers distincts ont un `$FF` dans l'historique,
-   la règle « premier `$FF` » les décalait. 125 fichiers réels validés par
-   `tools/test_newsroom.py` (sim65, deux CPU). À faire : le banc POM2 sur
-   une vraie photo, puis le texte des panneaux `PN.*` et pages `PG.*`
-   (compris en partie), puis le clip art commercial (index piste 34
-   « SSI CLIP » lu, compression non décodée).
-1. [ ] **Print Shop GS, clip art** (`$F8`/`$C323` couleur, `$C313` mono,
-   88 × 52) : trois plans jaune, magenta, cyan, 8 couleurs fixes, décodés
-   par CiderPress II (`PrintShopClip.cs`, Apache-2.0) ; 707 clips sur les
-   disques Asimov `images/gs/graphics/Print_Shop.zip`. Mono dans
-   PRINTSHOP (~100 octets, ~280 libres), aiguillage résident ~20-30 octets
-   **avant** la sonde Arlequin (`$F8` aussi) sur auxtype et taille exacts ;
-   la couleur en DHGR ensuite (nouvel overlay, consentement /RAM, ~1 Ko).
-2. [x] **Movie Maker** (2026-09-26) : décors `.BKG` (page brute, déjà
-   lus) et planches `.SHP` (BIN `$1DF0`, 8 720 octets, en-tête de 528
-   octets sauté par IMAGE, décision dans `named_kind`/`sheet_header` de
-   `display.s`). `bench/moviemaker.py` sur les vrais fichiers. Les films
-   `.MVM` restent en « Plus tard ».
-3. [x] **Epistole** (Version Soft) — fait le 2026-09-26 : DOCVIEW
-   (`src/plugins/docview.c`), ouvert par Retour sur un texte `$04` qui
-   commence par `_`. Relevé sur les 21 documents du disque v5.06 : `_CE`
-   centre **jusqu'à** `_PC`/`_CL`/`_JD`, `_TDn` tabulation, `#:X=…]`
-   affectation muette, `#:?X]` valeur, `#*X=]` saisie, `[` = « ° ». Non
-   interprétés (imprimante seule) : `_JD`, `_CC`, `_LP`, `_LF`, `_ND`,
-   en-têtes `_EN…__EA` et bas de page `_DB…__BA` montrés comme du texte.
-4. [x] **Papyrus traitement de texte** (Ediciel) et **HomeWord** (Sierra)
-   — même DOCVIEW, texte à bit haut. Codes `$FF c … $FF` : `$06` centre
-   la ligne, `$05` saut de page, les autres (`$0D` marges, `$0A`, `$0E n`
-   points de plan) ignorés ; `$19` = ê et `$1B` = ô vus sur de vrais
-   documents, `$18`/`$1A`/`$1C` = â/î/û supposés. Retour seulement si le
-   document commence par un code, sinon `!` DOCVIEW. Échantillons :
-   `Papyrus - Le traitement de texte personnel` (Spring 2023) et
-   `RIAG_Homeword_Word_Processor_Data_Disk` ; ne pas confondre avec le
-   cours de dactylographie (`a2_Ediciel_Papyrus_Side_1/2`). À faire :
-   confirmer les autres codes sur plus de documents.
-5. [ ] **Graphics Magician** (Penguin Software). Commandes de tracé HGR de
-   1 à 3 octets, documentées par la rétro-ingénierie de
-   [McFadden (2025)](https://6502disassembly.com/a2-graphics-magician/).
-   Effort moyen : lignes, remplissage, 108 motifs, pinceaux, police.
-   Trancher la licence avant de reprendre motifs et police de PICDRAWH.
-6. [ ] **Bordures Print Shop / Print Shop Companion** (BIN, 144 ou
+### Faits
+
+- [x] **The Newsroom** (Springboard) : photos `PH.*` et bannières `BN.*`
+  **faites** (NEWSROOM, `docs/NEWSROOM-FORMAT.md`, 2026-09-26) : BIN
+  `$4000`, reconnus par le nom dans `image_kind` (prédicat en assembleur
+  dans `display.s`, 91 octets de MAIN), bitmap pris sur les **L derniers
+  octets** — 18 des 93 fichiers distincts ont un `$FF` dans l'historique,
+  la règle « premier `$FF` » les décalait. 125 fichiers réels validés par
+  `tools/test_newsroom.py` (sim65, deux CPU) ; `bench/newsroom.py` sur de
+  vraies photos, 6/6 sur les deux éditions. La suite : n° 11 ci-dessous.
+- [x] **Movie Maker** (2026-09-26) : décors `.BKG` (page brute, déjà
+  lus) et planches `.SHP` (BIN `$1DF0`, 8 720 octets, en-tête de 528
+  octets sauté par IMAGE, décision dans `named_kind`/`sheet_header` de
+  `display.s`). `bench/moviemaker.py` sur les vrais fichiers. Les films
+  `.MVM` restent en « Plus tard ».
+- [x] **Epistole** (Version Soft) — fait le 2026-09-26 : DOCVIEW
+  (`src/plugins/docview.c`), ouvert par Retour sur un texte `$04` qui
+  commence par `_`. Relevé sur les 21 documents du disque v5.06 : `_CE`
+  centre **jusqu'à** `_PC`/`_CL`/`_JD`, `_TDn` tabulation, `#:X=…]`
+  affectation muette, `#:?X]` valeur, `#*X=]` saisie, `[` = « ° ». Non
+  interprétés (imprimante seule) : `_JD`, `_CC`, `_LP`, `_LF`, `_ND`,
+  en-têtes `_EN…__EA` et bas de page `_DB…__BA` montrés comme du texte.
+- [x] **Papyrus traitement de texte** (Ediciel) et **HomeWord** (Sierra)
+  — même DOCVIEW, texte à bit haut. Codes `$FF c … $FF` : `$06` centre
+  la ligne, `$05` saut de page, les autres (`$0D` marges, `$0A`, `$0E n`
+  points de plan) ignorés ; `$19` = ê et `$1B` = ô vus sur de vrais
+  documents, `$18`/`$1A`/`$1C` = â/î/û supposés. Retour seulement si le
+  document commence par un code, sinon `!` DOCVIEW. Échantillons :
+  `Papyrus - Le traitement de texte personnel` (Spring 2023) et
+  `RIAG_Homeword_Word_Processor_Data_Disk` ; ne pas confondre avec le
+  cours de dactylographie (`a2_Ediciel_Papyrus_Side_1/2`). À faire :
+  confirmer les autres codes sur plus de documents.
+- [x] **Fantavision** (Brøderbund, 1985) — lecteur livré le 2026-09-26/27 :
+  `FANTA.SYSTEM` (`src/fanta/`), écrit en salle blanche par un agent qui
+  n'a lu que `docs/FANTAVISION-FORMAT.md` ; A2FC le lance par Retour sur
+  un BIN `$8400` (`named_kind` 8 → RUN, `src/launch.h`) et il revient par
+  `A2FILE.SYSTEM`. Fidélité mesurée hors dépôt contre l'oracle privé :
+  141/144 films réels acceptés avant la règle « fin abîmée coupée », écart
+  médian 1,4 % des octets d'écran, mêmes nombres d'images. Vitesse
+  d'origine par un modèle de cycles de l'original (médiane 10 %), bascule
+  Tab. Deuxième tour (2026-09-27) : les fins abîmées sont coupées (les
+  144 films réels sont lus : POOL 1 image, PARADIES 40, ENGLISHFONT 9) ;
+  vitesse accélérée, médianes simulées sous sim65 : 2,1× l'original sur
+  points et lignes, 2,3× sur grandes lignes, 1,7–1,9× sur pleins, 1,8× sur
+  formes dessinées. Troisième tour : **décors** (l'image hi-res marquée
+  dans le dossier du film, sinon `NOM` à côté de `M.NOM`), écart moyen
+  0,2 à 1 % des octets contre l'original sur PARADIES, STREAM,
+  CHECKERBOARD ; première image après Tab juste à 1 % près. Reste : pleins
+  auto-sécants à 1,7× (il faudrait ~1,5 Ko de plus : réciproques,
+  contour tiré du remplissage), un trait tireté de PARADIES (près de
+  « STIGMA ») plein chez l'original, mesure sur vraie machine.
+
+### À faire, par ordre
+
+1. [ ] **Textes Apple Pascal** (`TEXT` des volumes Pascal : en-tête de
+   1 Ko, blancs compressés par DLE + compte). A2FC lit les volumes Pascal
+   mais montre ces fichiers bruts. Gain rapide, fréquent sur les disques
+   Pascal ; référence : CiderPress II `ApplePascal_Text.cs`.
+2. [ ] **Sources tokenisées S-C Assembler et LISA** : illisibles
+   aujourd'hui dans TEXT (jetons), fréquentes sur les disques de
+   développeurs. Lister à la manière de BASLIST ; références : CiderPress II
+   `SCAsm.cs`, `LisaAsm.cs` et leurs notes.
+3. [ ] **Apple Writer** (commandes `.LM`, `.RM`, `.CJ`… en début de ligne)
+   dans DOCVIEW, et **Merlin** (sources à bit haut, colonnes étiquette /
+   opcode / opérande / commentaire ; CiderPress II `MerlinAsm.cs`). Tous deux
+   déjà lisibles dans TEXT : c'est du confort, après 1 et 2. DOCVIEW n'a
+   que ~120 octets : Merlin irait plutôt dans une surcouche à part.
+4. [ ] **Bordures Print Shop / Print Shop Companion** (BIN, 144 ou
    148 octets, 12 × 12). Disposition des octets à établir avec Print Shop
    sous POM2, puis spécification publiée dans `docs/`. Se greffe sur
    PRINTSHOP. Échantillons : 77 bordures du disque « Gordon's Print Shop
-   Borders » (Asimov `productivity/graphics/printshop/`). Avec les
-   bordures **Print Shop GS** (`$C312` mono 130 octets, `$C322` couleur
-   382 octets) : en-tête de 4 octets, une tuile de coin et une de côté de
-   24 × 21 ; l'assemblage autour de la page reste à établir (oracle IIgs).
-7. [ ] **Music Construction Set** : le morceau compilé `.OBJ` sur
+   Borders » (Asimov `productivity/graphics/printshop/`).
+5. [ ] **Polices Fontrix** : sortie de « Écarté » : CiderPress II a
+   maintenant un convertisseur et des notes (`FontrixFont.cs`,
+   `Fontrix-notes.md`). Se greffe sur FONTVIEW ou une petite surcouche.
+6. [ ] **Music Construction Set** : le morceau compilé `.OBJ` sur
    Mockingboard, flux déduit du source officiel du lecteur (`MUSIC
    SOURCE`, et [mcs-player](https://github.com/cybernesto/mcs-player),
    MIT) ; en-tête à confirmer. Réutilise l'infrastructure de DUET.
+7. [ ] **Images WOZ ouvertes comme un dossier** (IMGFS) : c'est le
+   format des archives actuelles (Applesauce, archive.org). Décoder les
+   pistes brutes 5,25" (6-et-2) pour lire les blocs ou secteurs. Valeur
+   élevée, effort réel ; parcourir plus que visualiser.
 8. [ ] **LZC 12 bits dans UNSHRINK** (NuFX 4, et 5 si l'en-tête dit
    ≤ 12 bits). `tools/lzc_ref.py` est dans `make test`. Le cœur actuel
    tient en `$1B00–$1F59` ; PREFIX commence à `$2000`. Le décodeur LZC
    est un second cœur, recopié en AUX `$1B00`.
-9. [ ] Merlin (sources à bit haut, colonnes étiquette / opcode /
-   opérande / commentaire) et AppleWriter.
-10. [ ] **Pinball Construction Set, tables `.PB`** (B, `$4000`, 4 à
+9. [ ] **Graphics Magician** (Penguin Software). Commandes de tracé HGR de
+   1 à 3 octets, documentées par la rétro-ingénierie de
+   [McFadden (2025)](https://6502disassembly.com/a2-graphics-magician/).
+   Effort moyen : lignes, remplissage, 108 motifs, pinceaux, police.
+   Trancher la licence avant de reprendre motifs et police de PICDRAWH.
+10. [ ] **Gutenberg** (traitement de texte) : CiderPress II
+   `GutenbergWP.cs` et ses notes. Fréquence à mesurer.
+11. [ ] **The Newsroom, suite** : le texte des panneaux `PN.*` et pages
+   `PG.*` (compris en partie), puis le clip art commercial (index piste 34
+   « SSI CLIP » lu, compression non décodée).
+12. [ ] **Pinball Construction Set, tables `.PB`** (B, `$4000`, 4 à
    10 secteurs : logique, réglages, objets, image hi-res compressée par
    plages de zéros). Montrer le nom et l'image de la table, décompressée
    par la routine `DECOMPRESS` du source publié par Bill Budge
    ([PCS_AppleII](https://github.com/billbudge/PCS_AppleII), MIT, 2013).
    Deux variantes probables (BudgeCo, EA) à distinguer.
-11. [x] **Fantavision** (Brøderbund, 1985) — lecteur livré le 2026-09-26/27 :
-   `FANTA.SYSTEM` (`src/fanta/`), écrit en salle blanche par un agent qui
-   n'a lu que `docs/FANTAVISION-FORMAT.md` ; A2FC le lance par Retour sur
-   un BIN `$8400` (`named_kind` 8 → RUN, `src/launch.h`) et il revient par
-   `A2FILE.SYSTEM`. Fidélité mesurée hors dépôt contre l'oracle privé :
-   141/144 films réels acceptés avant la règle « fin abîmée coupée », écart
-   médian 1,4 % des octets d'écran, mêmes nombres d'images. Vitesse
-   d'origine par un modèle de cycles de l'original (médiane 10 %), bascule
-   Tab. Deuxième tour (2026-09-27) : les fins abîmées sont coupées (les
-   144 films réels sont lus : POOL 1 image, PARADIES 40, ENGLISHFONT 9) ;
-   vitesse accélérée, médianes simulées sous sim65 : 2,1× l'original sur
-   points et lignes, 2,3× sur grandes lignes, 1,7–1,9× sur pleins, 1,8× sur
-   formes dessinées. Troisième tour : **décors** (l'image hi-res marquée
-   dans le dossier du film, sinon `NOM` à côté de `M.NOM`), écart moyen
-   0,2 à 1 % des octets contre l'original sur PARADIES, STREAM,
-   CHECKERBOARD ; première image après Tab juste à 1 % près. Reste : pleins
-   auto-sécants à 1,7× (il faudrait ~1,5 Ko de plus : réciproques,
-   contour tiré du remplissage), un trait tireté de PARADIES (près de
-   « STIGMA ») plein chez l'original, mesure sur vraie machine.
-12. [ ] Dazzle Draw, sections `.SEC` (`$06`/`$F200`, 11 522 octets :
+13. [ ] **Dalton's Disk Disintegrator** (`.DDD`), courant à l'époque des
+   BBS : trouver une spécification (CiderPress I le lisait).
+14. [ ] Dazzle Draw, sections `.SEC` (`$06`/`$F200`, 11 522 octets :
    largeur, hauteur, lignes en flux de 7 bits), déduites de deux fichiers.
    Rares ; les images plein écran sont déjà lues.
+15. [ ] **Bank Street Writer, MultiScribe** : aucune spécification trouvée
+   (Bank Street déjà dans « Écarté ») ; MultiScribe était très répandu en
+   France. À rechercher avant tout travail.
 
 Limites connues : CPMW un extent (16 Ko) et volume vide refusé ; CPM
 `CPAM40B.dsk` / `CPM.DSK` refusés ; PASCALW sans Krunch ; IMGPUT sans
@@ -279,15 +311,23 @@ Favoris de programmes ; PT3 sous pression, ANIMATE ; Beagle « Double Scrunch »
 469 octets, mais aucune image compressée trouvée) ; lecteur de films
 Movie Maker `.MVM` (lecteur d'origine MMA.OBJ ~4 Ko à désassembler,
 oracle AUTOPLAY sous POM2, ~13 films d'éditeur, aucun d'utilisateur) ;
-Print Shop GS polices (`$C316`), motifs et pixels ; jouer une table
+jouer une table
 `.PB` seule en y greffant le moteur d'un jeu autonome de l'utilisateur
 (rien de redistribué ; chemin LOAD/PLAY d'EDIT/PPAK à rétro-concevoir) ;
 DIRSORT, BACKUP, SHRINK ; NIBCOPY reprise de piste **ou** `.NIB` (pas
 les deux, pas de 3½) ; XMODEM, ADTPro blocs, TFTP ; PASSWORD ;
 `GISTDATA.hdv` ; CPMW à plusieurs extents si la fenêtre se libère.
 
+- **Formats propres au IIgs**, laissés de côté pour l'instant (décision du
+  27 septembre 2026, peut-être repris plus tard) : Super Hi-Res (`$C1`,
+  `$C0` PackBytes, APF, Paintworks, 3200 couleurs, DreamGrafix), Print Shop
+  GS (clip art `$C313`/`$C323`, bordures `$C312`/`$C322`, polices
+  `$C316`), icônes Finder `$CA`, polices QuickDraw II `$C8`, animations
+  Paintworks `$C2`, AppleWorks GS, Teach, objets OMF, son Ensoniq (`$D8`,
+  ASIF, SoundSmith).
+
 ## Écarté
 
-- Hors de portée : NuFX 5 en 16 bits, Squeeze NuFX, Teach, a2dgrx.
-- Sans documents ni spécification trouvés : Bank Street Writer, Fontrix
-  GRAFFILE, The New Print Shop (`$F5`).
+- Hors de portée : NuFX 5 en 16 bits, Squeeze NuFX, a2dgrx.
+- Sans documents ni spécification trouvés : Bank Street Writer, The New
+  Print Shop (`$F5`).
