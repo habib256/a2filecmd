@@ -27,6 +27,7 @@
         .import __CODE_LOAD__, __CODE_RUN__, __CODE_SIZE__, __RODATA_SIZE__
         .import __BSS_RUN__, __BSS_SIZE__
         .import __TABLES_LOAD__, __TABLES_RUN__, __TABLES_SIZE__
+        .import __FCOLD_SIZE__
         .macpack longbranch
 
 MLI     = $BF00
@@ -121,9 +122,9 @@ start:  cld
         sta     dst
         lda     #>__TABLES_RUN__
         sta     dst+1
-        lda     #<__TABLES_SIZE__
-        sta     cnt
-        lda     #>__TABLES_SIZE__
+        lda     #<(__TABLES_SIZE__ + __FCOLD_SIZE__)
+        sta     cnt                     ; (FCOLD follows TABLES)
+        lda     #>(__TABLES_SIZE__ + __FCOLD_SIZE__)
         sta     cnt+1
         jsr     copy
         jmp     main
@@ -147,6 +148,10 @@ copy:   ldy     #0
 :       dec     cnt
         jmp     @copy
 @done:  rts
+
+        .import __FCOLD_LOAD__, __FCOLD_RUN__
+        .assert __FCOLD_LOAD__ = __TABLES_LOAD__ + __TABLES_SIZE__, error, "FCOLD must follow TABLES"
+        .assert __FCOLD_RUN__ = __TABLES_RUN__ + __TABLES_SIZE__, error, "FCOLD must follow TABLES"
 
 ; -- the program, at $A400 -----------------------------------------------------
         .code

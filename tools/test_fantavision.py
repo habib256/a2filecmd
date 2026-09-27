@@ -161,7 +161,7 @@ class Sim:
         cfg, k = re.subn(r'start = \$0200, size = \$FFC0 - \$0200 - __STACKSIZE__',
                          'start = $8000, size = $FFC0 - $8000 - __STACKSIZE__', cfg)
         assert k == 1, 'sim65 config changed'
-        cfg, k = re.subn(r'(\n\s*RODATA:[^\n]*\n)', r'\1    TABLES:   load = MAIN,   type = ro;\n', cfg)
+        cfg, k = re.subn(r'(\n\s*RODATA:[^\n]*\n)', r'\1    TABLES:   load = MAIN,   type = ro;\n    FCOLD:    load = MAIN,   type = ro;\n', cfg)
         assert k == 1, 'sim65 config: no RODATA line'
         cfg, k = re.subn(r'(\n\s*BSS:[^\n]*\n)', r'\1    EBSS:     load = MAIN,   type = bss;\n', cfg)
         assert k == 1, 'sim65 config: no BSS line'

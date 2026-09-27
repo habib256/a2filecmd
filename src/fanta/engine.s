@@ -86,8 +86,6 @@ pagehi: .res 1          ; the buffer drawn into: $20, $40 or $60
 counting: .res 1        ; 1: spans count (page built); $81: and extents too
 crow:   .res 1          ; the row set by srow
 pidx:   .res 1          ; page built: 0 (page 1) or 1 (page 2)
-pmin:   .res 2          ; its extents: first byte touched per row
-pmax:   .res 2          ;              last byte touched per row
 scol:   .res 1          ; span: its first byte column
 ccb:    .res 1          ;       its last byte column
 mr:     .res 1          ;       mask of the last byte
@@ -103,6 +101,8 @@ ce0:    .res 1          ; the object's patterns: even rows
 ce1:    .res 1
 co0:    .res 1          ; odd rows
 co1:    .res 1
+pde:    .res 1          ; ce0 ^ ce1
+pdo:    .res 1          ; co0 ^ co1
 cl:     .res 1          ; clip window
 cr:     .res 1
 ct:     .res 1
@@ -230,10 +230,10 @@ syl:    .res 256
 syh:    .res 256
 
         .segment "EBSS"                 ; (FANTA.SYSTEM: $0800, free once
-emin1:  .res 192        ; the movie is read) page 1: per row, the first and
-emax1:  .res 192        ; last byte columns the normal objects covered
-emin2:  .res 192        ; page 2
-emax2:  .res 192
+emin1:  .res 256        ; the movie is read) per row, the first and last
+emin2:  .res 256        ; byte columns the normal objects covered, page 1
+emax1:  .res 256        ; then page 2: 256 bytes apart (rows 0-191 used)
+emax2:  .res 256
 
         .segment "TABLES"               ; (FANTA.SYSTEM: in low memory)
 ; Movie x is screen x + 14: its byte column, and the masks of the dots from
@@ -359,6 +359,7 @@ ownt:   .byte O_SPANS
 
         .code
 
+        .segment "FCOLD"                ; (FANTA.SYSTEM: in low memory)
 ; -- the checks -------------------------------------------------------------
 ; Everything is checked before anything is drawn; no byte past fv_len is
 ; read. A damaged tail is cut: the movie ends before the first frame that
@@ -642,8 +643,9 @@ fv_begin:
         lda     #PAGE1
         jsr     bgcopy
         lda     #PAGE1 + $20
-        ;jmp    bgcopy
+        jmp     bgcopy                  ; (in the other segment)
 
+        .code
 ; Copies the background to the page A (hi byte).
 bgcopy: sta     rowp+1
         lda     #BGPAGE
@@ -914,69 +916,40 @@ build:  lda     fv_shown
         sta     bpage
         eor     #$60
         sta     opage
-        ldx     #0                      ; the page's extents
-        lda     #<emin1
-        ldy     #>emin1
-        sta     pmin
-        sty     pmin+1
-        lda     #<emax1
-        ldy     #>emax1
-        sta     pmax
-        sty     pmax+1
-        lda     bpage
-        cmp     #PAGE1
-        beq     :+
+        ldx     #0                      ; the page's extents: page 2's
+        lda     bpage                   ; arrays are 256 bytes above page
+        cmp     #PAGE1                  ; 1's, only the high bytes of the
+        beq     :+                      ; operands that use them change
         inx
-        lda     #<emin2
-        ldy     #>emin2
-        sta     pmin
-        sty     pmin+1
-        lda     #<emax2
-        ldy     #>emax2
-        sta     pmax
-        sty     pmax+1
 :       stx     pidx
-        lda     pmin
-        sta     tmin1+1
-        sta     tmin2+1
-        lda     pmin+1
+        txa
+        clc
+        adc     #>emin1
         sta     tmin1+2
         sta     tmin2+2
-        lda     pmax
-        sta     tmax1+1
-        sta     tmax2+1
-        lda     pmax+1
+        sta     fmin1e+2
+        sta     fmin2e+2
+        sta     fmin1o+2
+        sta     fmin2o+2
+        sta     qmin1e+2
+        sta     qmin2e+2
+        sta     qmin1o+2
+        sta     qmin2o+2
+        sta     ermn1+2
+        sta     ermn2+2
+        txa
+        clc
+        adc     #>emax1
         sta     tmax1+2
         sta     tmax2+2
         sta     fmax1e+2
         sta     fmax2e+2
         sta     fmax1o+2
         sta     fmax2o+2
-        lda     pmax
-        sta     fmax1e+1
-        sta     fmax2e+1
-        sta     fmax1o+1
-        sta     fmax2o+1
-        lda     pmin
-        sta     fmin1e+1
-        sta     fmin2e+1
-        sta     fmin1o+1
-        sta     fmin2o+1
-        lda     pmin+1
-        sta     fmin1e+2
-        sta     fmin2e+2
-        sta     fmin1o+2
-        sta     fmin2o+2
-        lda     pmin
-        sta     ermn1+1
-        sta     ermn2+1
-        lda     pmin+1
-        sta     ermn1+2
-        sta     ermn2+2
-        lda     pmax
-        sta     ermx1+1
-        sta     ermx2+1
-        lda     pmax+1
+        sta     qmax1e+2
+        sta     qmax2e+2
+        sta     qmax1o+2
+        sta     qmax2o+2
         sta     ermx1+2
         sta     ermx2+2
         lda     #0
@@ -1973,6 +1946,201 @@ sf_end:   lda     gy
         jmp     segbot
 :       rts
 
+; The fill's two-edge rows gy .. fstop - 1 at the accelerated speed, the
+; shape inside the window: written here, unrolled by row parity.
+tfast:  lda     gy
+        lsr
+        bcc     tf_e
+        jmp     tf_o
+tf_e:  ldy     gy                      ; an even row
+        lda     rowlo,y
+        sta     rowp
+        lda     rowhi,y
+        ora     pagehi
+        sta     rowp+1
+        lda     xca                     ; the run between the two edges
+        eor     sga
+        sta     t3
+        lda     xcb
+        eor     sgb
+        cmp     t3
+        bcs     :+
+        tax
+        ldy     t3
+        jmp     :++
+:       tay
+        ldx     t3
+:       lda     colof,y
+        sta     ccb
+        lda     rmx,y
+        sta     mr
+        lda     lmx,x
+        ldy     colof,x
+        sty     scol
+        cpy     ccb
+        bne     tf_me
+        and     mr
+        sta     msk
+        PUTP    ce0, ce1
+        jmp     tf_te
+tf_me: sta    msk                     ; the first byte,
+        PUTP    ce0, ce1
+        iny
+        cpy     ccb
+        beq     tf_re
+        sty     t2                      ; the full bytes (chains),
+        lda     ccb
+        sec
+        sbc     t2
+        tax
+        lda     pde
+        beq     :++
+        sta     pd
+        lda     chlo,x
+        sta     jv
+        lda     chhi,x
+        sta     jv+1
+        tya
+        lsr
+        lda     ce0
+        bcc     :+
+        lda     ce1
+:       jsr     sxjump
+        jmp     tf_re
+:       lda     cplo,x
+        sta     jv
+        lda     cphi,x
+        sta     jv+1
+        lda     ce0
+        jsr     sxjump
+tf_re: lda    mr                      ; the last byte
+        sta     msk
+        PUTP    ce0, ce1
+tf_te: bit    counting                ; a normal object: the extent
+        bpl     tf_se
+        ldy     gy
+        lda     scol
+qmin1e: cmp   emin1,y
+        bcs     :+
+qmin2e: sta   emin1,y
+:       lda     ccb
+qmax1e: cmp   emax1,y
+        bcc     tf_se
+qmax2e: sta   emax1,y
+tf_se: clc                            ; both edges one row down
+        lda     fla
+        adc     sla
+        sta     fla
+        lda     xca
+        adc     sha
+        sta     xca
+        clc
+        lda     flb
+        adc     slb
+        sta     flb
+        lda     xcb
+        adc     shb
+        sta     xcb
+        inc     gy
+        lda     gy
+        cmp     fstop
+        jeq     tf_x
+tf_o:  ldy     gy                      ; an odd row
+        lda     rowlo,y
+        sta     rowp
+        lda     rowhi,y
+        ora     pagehi
+        sta     rowp+1
+        lda     xca                     ; the run between the two edges
+        eor     sga
+        sta     t3
+        lda     xcb
+        eor     sgb
+        cmp     t3
+        bcs     :+
+        tax
+        ldy     t3
+        jmp     :++
+:       tay
+        ldx     t3
+:       lda     colof,y
+        sta     ccb
+        lda     rmx,y
+        sta     mr
+        lda     lmx,x
+        ldy     colof,x
+        sty     scol
+        cpy     ccb
+        bne     tf_mo
+        and     mr
+        sta     msk
+        PUTP    co0, co1
+        jmp     tf_to
+tf_mo: sta    msk                     ; the first byte,
+        PUTP    co0, co1
+        iny
+        cpy     ccb
+        beq     tf_ro
+        sty     t2                      ; the full bytes (chains),
+        lda     ccb
+        sec
+        sbc     t2
+        tax
+        lda     pdo
+        beq     :++
+        sta     pd
+        lda     chlo,x
+        sta     jv
+        lda     chhi,x
+        sta     jv+1
+        tya
+        lsr
+        lda     co0
+        bcc     :+
+        lda     co1
+:       jsr     sxjump
+        jmp     tf_ro
+:       lda     cplo,x
+        sta     jv
+        lda     cphi,x
+        sta     jv+1
+        lda     co0
+        jsr     sxjump
+tf_ro: lda    mr                      ; the last byte
+        sta     msk
+        PUTP    co0, co1
+tf_to: bit    counting                ; a normal object: the extent
+        bpl     tf_so
+        ldy     gy
+        lda     scol
+qmin1o: cmp   emin1,y
+        bcs     :+
+qmin2o: sta   emin1,y
+:       lda     ccb
+qmax1o: cmp   emax1,y
+        bcc     tf_so
+qmax2o: sta   emax1,y
+tf_so: clc                            ; both edges one row down
+        lda     fla
+        adc     sla
+        sta     fla
+        lda     xca
+        adc     sha
+        sta     xca
+        clc
+        lda     flb
+        adc     slb
+        sta     flb
+        lda     xcb
+        adc     shb
+        sta     xcb
+        inc     gy
+        lda     gy
+        cmp     fstop
+        beq     tf_x
+        jmp     tf_e
+tf_x:   rts
+
 ; The span writer of the fill's two-edge rows, chosen per shape.
 ftjmp:
 ftj:    jmp     sx
@@ -2462,6 +2630,17 @@ fill:   ldx     qm                      ; the extent: outside the window,
         sta     shb
         lda     esg,x
         sta     sgb
+        lda     counting                ; accelerated, the shape inside the
+        lsr                             ; window: the rows below
+        bcs     @tr
+        lda     ftj+1
+        cmp     #<sxnc
+        bne     @tr
+        lda     ftj+2
+        cmp     #>sxnc
+        bne     @tr
+        jsr     tfast
+        jmp     @tback
 @tr:    ldy     gy
         jsr     srow
         lda     xca
@@ -2495,7 +2674,7 @@ fill:   ldx     qm                      ; the extent: outside the window,
         lda     gy
         cmp     fstop
         bne     @tr
-        ldx     act                     ; back into the edge list
+@tback: ldx     act                     ; back into the edge list
         lda     fla
         sta     eal,x
         lda     xca
@@ -2547,8 +2726,13 @@ setcol: pha
         tax
         lda     pate,x
         sta     co0
+        eor     pato,x
+        sta     pdo
         lda     pato,x
         sta     co1
+        lda     ce0
+        eor     ce1
+        sta     pde
         rts
 
 
