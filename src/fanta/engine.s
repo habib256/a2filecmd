@@ -925,6 +925,10 @@ build:  lda     fv_shown
         txa
         clc
         adc     #>emin1
+        sta     gmin1e+2
+        sta     gmin2e+2
+        sta     gmin1o+2
+        sta     gmin2o+2
         sta     dmin1e+2
         sta     dmin2e+2
         sta     dmin1o+2
@@ -935,15 +939,15 @@ build:  lda     fv_shown
         sta     fmin2e+2
         sta     fmin1o+2
         sta     fmin2o+2
-        sta     qmin1e+2
-        sta     qmin2e+2
-        sta     qmin1o+2
-        sta     qmin2o+2
         sta     ermn1+2
         sta     ermn2+2
         txa
         clc
         adc     #>emax1
+        sta     gmax1e+2
+        sta     gmax2e+2
+        sta     gmax1o+2
+        sta     gmax2o+2
         sta     dmax1e+2
         sta     dmax2e+2
         sta     dmax1o+2
@@ -954,10 +958,6 @@ build:  lda     fv_shown
         sta     fmax2e+2
         sta     fmax1o+2
         sta     fmax2o+2
-        sta     qmax1e+2
-        sta     qmax2e+2
-        sta     qmax1o+2
-        sta     qmax2o+2
         sta     ermx1+2
         sta     ermx2+2
         lda     #0
@@ -1978,63 +1978,7 @@ tf_e:  ldy     gy                      ; an even row
         jmp     :++
 :       tay
         ldx     t3
-:       lda     colof,y
-        sta     ccb
-        lda     rmx,y
-        sta     mr
-        lda     lmx,x
-        ldy     colof,x
-        sty     scol
-        cpy     ccb
-        bne     tf_me
-        and     mr
-        sta     msk
-        PUTP    ce0, ce1
-        jmp     tf_te
-tf_me: sta    msk                     ; the first byte,
-        PUTP    ce0, ce1
-        iny
-        cpy     ccb
-        beq     tf_re
-        sty     t2                      ; the full bytes (chains),
-        lda     ccb
-        sec
-        sbc     t2
-        tax
-        lda     pde
-        beq     :++
-        sta     pd
-        lda     chlo,x
-        sta     jv
-        lda     chhi,x
-        sta     jv+1
-        tya
-        lsr
-        lda     ce0
-        bcc     :+
-        lda     ce1
-:       jsr     sxjump
-        jmp     tf_re
-:       lda     cplo,x
-        sta     jv
-        lda     cphi,x
-        sta     jv+1
-        lda     ce0
-        jsr     sxjump
-tf_re: lda    mr                      ; the last byte
-        sta     msk
-        PUTP    ce0, ce1
-tf_te: bit    counting                ; a normal object: the extent
-        bpl     tf_se
-        ldy     gy
-        lda     scol
-qmin1e: cmp   emin1,y
-        bcs     :+
-qmin2e: sta   emin1,y
-:       lda     ccb
-qmax1e: cmp   emax1,y
-        bcc     tf_se
-qmax2e: sta   emax1,y
+:       jsr     fspane
 tf_se: clc                            ; both edges one row down
         lda     fla
         adc     sla
@@ -2071,63 +2015,7 @@ tf_o:  ldy     gy                      ; an odd row
         jmp     :++
 :       tay
         ldx     t3
-:       lda     colof,y
-        sta     ccb
-        lda     rmx,y
-        sta     mr
-        lda     lmx,x
-        ldy     colof,x
-        sty     scol
-        cpy     ccb
-        bne     tf_mo
-        and     mr
-        sta     msk
-        PUTP    co0, co1
-        jmp     tf_to
-tf_mo: sta    msk                     ; the first byte,
-        PUTP    co0, co1
-        iny
-        cpy     ccb
-        beq     tf_ro
-        sty     t2                      ; the full bytes (chains),
-        lda     ccb
-        sec
-        sbc     t2
-        tax
-        lda     pdo
-        beq     :++
-        sta     pd
-        lda     chlo,x
-        sta     jv
-        lda     chhi,x
-        sta     jv+1
-        tya
-        lsr
-        lda     co0
-        bcc     :+
-        lda     co1
-:       jsr     sxjump
-        jmp     tf_ro
-:       lda     cplo,x
-        sta     jv
-        lda     cphi,x
-        sta     jv+1
-        lda     co0
-        jsr     sxjump
-tf_ro: lda    mr                      ; the last byte
-        sta     msk
-        PUTP    co0, co1
-tf_to: bit    counting                ; a normal object: the extent
-        bpl     tf_so
-        ldy     gy
-        lda     scol
-qmin1o: cmp   emin1,y
-        bcs     :+
-qmin2o: sta   emin1,y
-:       lda     ccb
-qmax1o: cmp   emax1,y
-        bcc     tf_so
-qmax2o: sta   emax1,y
+:       jsr     fspano
 tf_so: clc                            ; both edges one row down
         lda     fla
         adc     sla
@@ -2415,6 +2303,133 @@ dmax1o: cmp   emax1,y
 dmax2o: sta   emax1,y
 dxo:  rts
 
+; A fill span X..Y on row gy of even parity (rowp set), inside the
+; window, at the accelerated speed; the extent when tracking.
+fspane:
+        lda     colof,y
+        sta     ccb
+        lda     rmx,y
+        sta     mr
+        lda     lmx,x
+        ldy     colof,x
+        sty     scol
+        cpy     ccb
+        bne     fme
+        and     mr
+        sta     msk
+        PUTP    ce0, ce1
+        jmp     fte
+fme:  sta     msk                     ; the first byte,
+        PUTP    ce0, ce1
+        iny
+        cpy     ccb
+        beq     fre
+        sty     t2                      ; the full bytes (chains),
+        lda     ccb
+        sec
+        sbc     t2
+        tax
+        lda     pde
+        beq     :++
+        sta     pd
+        lda     chlo,x
+        sta     jv
+        lda     chhi,x
+        sta     jv+1
+        tya
+        lsr
+        lda     ce0
+        bcc     :+
+        lda     ce1
+:       jsr     sxjump
+        jmp     fre
+:       lda     cplo,x
+        sta     jv
+        lda     cphi,x
+        sta     jv+1
+        lda     ce0
+        jsr     sxjump
+fre:  lda     mr                      ; the last byte
+        sta     msk
+        PUTP    ce0, ce1
+fte:  bit     counting                ; a normal object: the extent
+        bpl     fxe
+        ldy     gy
+        lda     scol
+gmin1e: cmp   emin1,y
+        bcs     :+
+gmin2e: sta   emin1,y
+:       lda     ccb
+gmax1e: cmp   emax1,y
+        bcc     fxe
+gmax2e: sta   emax1,y
+fxe:  rts
+
+; A fill span X..Y on row gy of odd parity (rowp set), inside the
+; window, at the accelerated speed; the extent when tracking.
+fspano:
+        lda     colof,y
+        sta     ccb
+        lda     rmx,y
+        sta     mr
+        lda     lmx,x
+        ldy     colof,x
+        sty     scol
+        cpy     ccb
+        bne     fmo
+        and     mr
+        sta     msk
+        PUTP    co0, co1
+        jmp     fto
+fmo:  sta     msk                     ; the first byte,
+        PUTP    co0, co1
+        iny
+        cpy     ccb
+        beq     fro
+        sty     t2                      ; the full bytes (chains),
+        lda     ccb
+        sec
+        sbc     t2
+        tax
+        lda     pdo
+        beq     :++
+        sta     pd
+        lda     chlo,x
+        sta     jv
+        lda     chhi,x
+        sta     jv+1
+        tya
+        lsr
+        lda     co0
+        bcc     :+
+        lda     co1
+:       jsr     sxjump
+        jmp     fro
+:       lda     cplo,x
+        sta     jv
+        lda     cphi,x
+        sta     jv+1
+        lda     co0
+        jsr     sxjump
+fro:  lda     mr                      ; the last byte
+        sta     msk
+        PUTP    co0, co1
+fto:  bit     counting                ; a normal object: the extent
+        bpl     fxo
+        ldy     gy
+        lda     scol
+gmin1o: cmp   emin1,y
+        bcs     :+
+gmin2o: sta   emin1,y
+:       lda     ccb
+gmax1o: cmp   emax1,y
+        bcc     fxo
+gmax2o: sta   emax1,y
+fxo:  rts
+
+; The fill span writer of this row's parity.
+fsj:    jmp     fspane
+
 ; -- solids -----------------------------------------------------------------------
 ; Scan-line fill, even-odd, of q[0..qm-1] (qm >= 3). An edge covers the rows
 ; ya <= y < yb; its crossing is xa +- (128 + slope * (y - ya)) >> 8, kept
@@ -2667,7 +2682,40 @@ fill:   ldx     qm                      ; the extent: outside the window,
         sta     act,y
 @isn:   inx
         bne     @is                     ; (always)
-@isd:   ldy     gy                      ; pairs
+@isd:   lda     counting                ; accelerated, the shape inside:
+        lsr                             ; the spans below
+        bcs     @isg
+        lda     ftj+1
+        cmp     #<sxnc
+        bne     @isg
+        ldy     gy
+        lda     rowlo,y
+        sta     rowp
+        lda     rowhi,y
+        ora     pagehi
+        sta     rowp+1
+        tya
+        lsr
+        lda     #<fspane
+        ldx     #>fspane
+        bcc     :+
+        lda     #<fspano
+        ldx     #>fspano
+:       sta     fsj+1
+        stx     fsj+2
+        ldy     #1
+@pf:    cpy     nact
+        bcs     @step
+        sty     t3
+        ldx     xs-1,y
+        lda     xs,y
+        tay
+        jsr     fsj
+        ldy     t3
+        iny
+        iny
+        bne     @pf                     ; (always)
+@isg:   ldy     gy                      ; pairs
         jsr     srow
         ldy     #1
 @pr:    cpy     nact
