@@ -138,6 +138,9 @@ t0:     .res 1
 t1:     .res 1
 t2:     .res 1
 t3:     .res 1
+gcv:    .res 1          ; seg: nonzero, gcsl/gcsh is the slope to use
+gcsl:   .res 1
+gcsh:   .res 1
 gstop:  .res 1          ; segfast: the row to stop at
 glast:  .res 1          ;          the row before the last
 gxc:    .res 1          ;          x, or ~x going left
@@ -191,6 +194,10 @@ acc:    .res 4          ; fv_timing
 mulv:   .res 4
 mulk:   .res 2
 qm:     .res 1          ; a solid's points, deduplicated
+qstamp: .res 1          ; the shape being drawn, for the slope cache
+qv:     .res MAXPTS     ; edge i's slope cached for shape qstamp
+qsl:    .res MAXPTS
+qsh:    .res MAXPTS
 qx:     .res MAXPTS
 qy:     .res MAXPTS
 ne:     .res 1          ; its edges
@@ -1398,6 +1405,8 @@ drawobj:
         sta     gx1
         lda     (yp),y
         sta     gy1
+        lda     #0
+        sta     gcv
         jsr     seg
 @skip:  inc     oi
         lda     oi
@@ -1476,7 +1485,16 @@ dot1c:  lda     #1
 
 ; A solid: the points without consecutive repeats (nor the last equal to the
 ; first), filled, then its outline.
-shape:  ldy     #0
+shape:  inc     qstamp                  ; this shape's slopes, cached by fill
+        bne     :++
+        ldx     #MAXPTS - 1             ; (after 255 shapes: all stale)
+        lda     #0
+        sta     qstamp
+        inc     qstamp
+:       sta     qv,x
+        dex
+        bpl     :-
+:       ldy     #0
         lda     (xp),y
         sta     qx
         lda     (yp),y
@@ -1548,7 +1566,18 @@ shape:  ldy     #0
 @ret:   rts
 
 ; The segment from q[X] to q[X + 1] (wrapping).
-qseg:   lda     qx,x
+qseg:   lda     qv,x                    ; the fill's slope for this edge
+        cmp     qstamp
+        bne     :+
+        lda     qsl,x
+        sta     gcsl
+        lda     qsh,x
+        sta     gcsh
+        lda     #1
+        .byte   $2C                     ; (bit abs: skips the lda #0)
+:       lda     #0
+        sta     gcv
+        lda     qx,x
         sta     gx0
         lda     qy,x
         sta     gy0
@@ -1646,8 +1675,16 @@ seg_slope: lda     #0
         sec
         sbc     gy0
         sta     gdy
-        jsr     slope
-        lda     #128
+        lda     gcv                     ; a solid's outline: its fill's slope
+        beq     :+
+        lda     gcsl
+        sta     gsl
+        lda     gcsh
+        sta     gsl+1
+        bne     :++                     ; (skip; gsl+1 may be 0: see below)
+        beq     :++
+:       jsr     slope
+:       lda     #128
         sta     gac
         lda     #0
         sta     gac+1
@@ -2073,7 +2110,7 @@ slope:  lda     #0
         cmp     gdy
         bcs     @full
         ldx     #0                      ; |dx| < dy: the integer part is 0,
-        stx     gsl+1                   ; the remainder |dx|: 8 steps
+@frac:  stx     gsl+1                   ; the remainder A: 8 steps
         ldx     #8
 :       asl     gsl
         asl
@@ -2085,7 +2122,16 @@ slope:  lda     #0
 :       dex
         bne     :---
         rts
-@full:  sta     gsl+1
+@full:  ldx     #0                      ; integer part below 8: by subtraction
+@sub:   sbc     gdy                     ; (C = 1)
+        inx
+        cpx     #8
+        beq     @long
+        cmp     gdy
+        bcs     @sub
+        bcc     @frac                   ; (always)
+@long:  lda     gadx                    ; 8 or more: the long division
+        sta     gsl+1
         lda     #0
         sta     gsl
         ldx     #16
@@ -2535,6 +2581,13 @@ fill:   ldx     qm                      ; the extent: outside the window,
         dec     esg,x
 :       sta     gadx
         jsr     slope
+        ldx     oi                      ; kept for the outline: edge oi
+        lda     gsl
+        sta     qsl,x
+        lda     gsl+1
+        sta     qsh,x
+        lda     qstamp
+        sta     qv,x
         ldx     ne
         lda     gsl
         sta     esl,x
