@@ -3,17 +3,21 @@
 ; reference model and states the rules the spec leaves open).
 ;
 ; Plain 6502 throughout. The engine reads the movie and writes only its own
-; variables (segments ZEROPAGE and BSS) and three fixed 8 KB buffers:
-; hi-res page 1 ($2000), page 2 ($4000) and the background copy ($6000).
-; It never calls ProDOS or the ROM: FANTA.SYSTEM (fanta.s) loads the movie,
-; flips the pages and reads the keys; tools/test_fantavision.py links this
-; same file with a C harness under sim65.
+; variables (segments ZEROPAGE, BSS and EBSS), some of its own code (operands
+; patched per frame: the page's extents arrays, the erase copy addresses,
+; the fill's span writer) and three fixed 8 KB buffers: hi-res page 1
+; ($2000), page 2 ($4000) and the background copy ($6000). It never calls
+; ProDOS or the ROM: FANTA.SYSTEM (fanta.s) loads the movie, flips the pages
+; and reads the keys; tools/test_fantavision.py links this same file with a
+; C harness under sim65. Segments TABLES and FCOLD (constant tables, the
+; once-a-movie code) run from low memory in FANTA.SYSTEM (fanta.cfg).
 ;
 ; Interface (all variables in BSS, the routines preserve nothing):
 ;   fv_movie, fv_len  the movie's address and length, set by the caller
 ;   fv_count   nonzero: count each frame's work, for fv_timing (the
 ;              original speed); the picture is the same either way
-;   fv_check   A = 0 if the movie is accepted, else a reason code 1-5
+;   fv_check   A = 0 if the movie is accepted, else a reason code 1-5; a
+;              damaged tail is cut: fv_frames whole frames, ending at fv_end
 ;   fv_begin   builds the background and copies it to both pages
 ;   fv_first   draws key frame 0 on page 1 (fv_shown = $20)
 ;   fv_next    builds the next frame on the hidden page and sets fv_shown;
@@ -23,10 +27,15 @@
 ;              difference, never negative (cycles, 32 bits)
 ;
 ; Speed: spans are filled a byte at a time from tables (row addresses, edge
-; masks by x, colour patterns); solids use a scan-line fill with an active
-; edge list; tweened points and edge crossings are 8.8 sums, added and
-; never recomputed; an erased object restores only its bounding box (rows
-; and byte columns) from the background copy.
+; masks by x, colour patterns), full bytes by unrolled chains; solids use a
+; scan-line fill with an active edge list kept sorted; tweened points and
+; edge crossings are 8.8 sums, added and never recomputed; erasing restores,
+; row by row, only the byte columns the normal objects covered (their
+; extents) from the background copy. At the accelerated speed (fv_count 0),
+; objects inside the clip window take fast paths: segment rows, dot rows
+; (top and bottom together) and fill rows written inline, unrolled by row
+; parity so that each row's colour patterns are known; the counting speed
+; uses the common clipped writer. Both draw the same bytes.
 
         .macpack longbranch
         .export fv_check, fv_begin, fv_first, fv_next, fv_timing
