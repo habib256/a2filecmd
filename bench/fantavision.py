@@ -12,6 +12,7 @@ A2FILE.SYSTEM and counts at $039D the returns to it. For each movie:
 - a counted movie plays to its last frame: pages 1 and 2 and the background
   copy end exactly as tools/fantavision_ref.py says, the movie at $8000 is
   the file; a key returns, the ProDOS bitmap is given back;
+- a movie with a damaged tail plays its whole frames, then returns;
 - a refused movie (header byte 3 wrong) shows its reason, draws nothing and
   returns after a key; so does a missing file;
 - a looping movie keeps changing, Tab (original speed) and Space (pause)
@@ -127,7 +128,10 @@ def movies():
     looping = ref.synthetic(12, frames=3, speed=1, count=0)
     bad = bytearray(ref.synthetic(13, frames=2))
     bad[3] = 5
-    return {'M.COUNT': counted, 'M.LOOP': looping, 'M.BAD': bytes(bad)}
+    cut = bytearray(ref.synthetic(14, frames=4, speed=2, count=1))
+    third = ref.scan(bytes(cut))[1][2]
+    cut[third] = 3                      # an odd length: cut before frame 3
+    return {'M.COUNT': counted, 'M.LOOP': looping, 'M.BAD': bytes(bad), 'M.CUT': bytes(cut)}
 
 
 def main():
@@ -193,6 +197,17 @@ def main():
                  p.peek(RUNS, 1)[0] == runs[0])
             s.key(b' ')
             returned('counted movie')
+
+            # A damaged tail: the whole frames before it play, then a key.
+            cut = ref.Player(films['M.CUT'])
+            n = len(list(cut.play()))
+            launch('M.CUT')
+            s.wait(lambda: p.peek(0x2000, 0x2000) == bytes(cut.pages[1]) and
+                   p.peek(0x4000, 0x2000) == bytes(cut.pages[2]), 'the cut movie\'s last frame', 120)
+            s.ok('cut movie: its %d whole frames played, pages as the reference (%d shown)'
+                 % (len(cut.frames), n), True)
+            s.key(b' ')
+            returned('cut movie')
 
             # A refused movie: nothing drawn.
             # (FANTA.SYSTEM's own file lands at $2000: past its end, nothing
