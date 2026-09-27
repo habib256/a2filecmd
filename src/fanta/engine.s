@@ -2563,6 +2563,55 @@ gmax1o: cmp   emax1,y
 gmax2o: sta   emax1,y
 fxo:  rts
 
+; The fill: the row where the next edge ends or starts, or the window's
+; bottom + 1 (fstop).
+fstopc: lda     nend
+        sta     fstop
+        ldy     nxt
+        cpy     ne
+        beq     :+
+        ldx     ord,y
+        lda     eya,x
+        cmp     fstop
+        bcs     :+
+        sta     fstop
+:       ldx     cbot
+        inx
+        cpx     fstop
+        bcs     :+
+        stx     fstop
+:       rts
+
+; The fill's active edges sorted by crossing (they were on the row before:
+; this is quick).
+xsort:  ldx     #1
+@is:    cpx     nact
+        bcs     @isd
+        lda     xs,x
+        cmp     xs-1,x
+        bcs     @isn                    ; in place already
+        sta     t0
+        lda     act,x
+        sta     t1
+        txa
+        tay
+:       lda     xs-1,y
+        cmp     t0
+        bcc     :+
+        beq     :+
+        sta     xs,y
+        lda     act-1,y
+        sta     act,y
+        dey
+        bne     :-
+:       lda     t0
+        sta     xs,y
+        lda     t1
+        sta     act,y
+@isn:   inx
+        bne     @is                     ; (always)
+@isd:   rts
+
 ; The fill span writer of this row's parity.
 fsj:    jmp     fspane
 
@@ -2799,39 +2848,15 @@ fill:   ldx     qm                      ; the extent: outside the window,
         lda     nact
         cmp     #2
         jeq     @two
-        ldx     #1                      ; act sorted by crossing: it was on
-@is:    cpx     nact                    ; the row before, so this is quick
-        bcs     @isd
-        lda     xs,x
-        cmp     xs-1,x
-        bcs     @isn                    ; in place already
-        sta     t0
-        lda     act,x
-        sta     t1
-        txa
-        tay
-:       lda     xs-1,y
-        cmp     t0
-        bcc     :+
-        beq     :+
-        sta     xs,y
-        lda     act-1,y
-        sta     act,y
-        dey
-        bne     :-
-:       lda     t0
-        sta     xs,y
-        lda     t1
-        sta     act,y
-@isn:   inx
-        bne     @is                     ; (always)
+        jsr     xsort
 @isd:   lda     counting                ; accelerated, the shape inside:
         lsr                             ; the spans below
         bcs     @isg
         lda     ftj+1
         cmp     #<sxnc
         bne     @isg
-        ldy     gy
+        jsr     fstopc                  ; rows up to the next edge event
+@mrow:  ldy     gy
         lda     rowlo,y
         sta     rowp
         lda     rowhi,y
@@ -2848,7 +2873,7 @@ fill:   ldx     qm                      ; the extent: outside the window,
         stx     fsj+2
         ldy     #1
 @pf:    cpy     nact
-        bcs     @step
+        bcs     @mstep
         sty     t3
         ldx     xs-1,y
         lda     xs,y
@@ -2858,6 +2883,27 @@ fill:   ldx     qm                      ; the extent: outside the window,
         iny
         iny
         bne     @pf                     ; (always)
+@mstep: ldy     nact                    ; (not counting) the next row
+        dey
+:       ldx     act,y
+        clc
+        lda     eal,x
+        adc     esl,x
+        sta     eal,x
+        lda     exc,x
+        adc     esh,x
+        sta     exc,x
+        eor     esg,x
+        sta     xs,y
+        dey
+        bpl     :-
+        inc     gy
+        lda     gy
+        cmp     fstop
+        beq     :+
+        jsr     xsort
+        jmp     @mrow
+:       jmp     @row
 @isg:   ldy     gy                      ; pairs
         jsr     srow
         ldy     #1
@@ -2901,22 +2947,8 @@ fill:   ldx     qm                      ; the extent: outside the window,
 ; Two active edges (every convex shape): row after row with the two edges
 ; in the zero page, up to the next row where an edge ends or starts, or the
 ; window's bottom.
-@two:   lda     nend
-        sta     fstop
-        ldy     nxt
-        cpy     ne
-        beq     :+
-        ldx     ord,y
-        lda     eya,x
-        cmp     fstop
-        bcs     :+
-        sta     fstop
-:       ldx     cbot
-        inx
-        cpx     fstop
-        bcs     :+
-        stx     fstop
-:       lda     gy
+@two:   jsr     fstopc
+        lda     gy
         sta     frow
         ldx     act
         lda     eal,x
