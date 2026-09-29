@@ -76,6 +76,7 @@ static unsigned char target_check(void);
 static void progress_bar(const char* name, unsigned long copied, unsigned long size);
 void __fastcall__ activity_begin(const char* text);
 void activity_tick(void); /* display.s: MAIN text cell only; never AUX or disk */
+unsigned char __fastcall__ key_wait(unsigned char units);   /* display.s: 0 after the time, 1 for a key */
 static void refresh_both(void);
 static unsigned char abort_key(void);
 static void dir_fail(void);
@@ -5591,6 +5592,11 @@ int main(void)
 #ifdef A2FC_TRACE
     *(unsigned char*)0x03A0 = 5;
 #endif
+    /* The launcher's title page stays about two seconds once the panels
+     * are read: from a hard disk they are read in a blink, and the page
+     * was gone before it could be seen. A key cuts it short and is not
+     * taken for a command. */
+    if (key_wait(3)) cgetc();
     draw_all();
 #ifndef A2FC_NOVDRIVE
 #ifdef A2FC_TRACE

@@ -1,5 +1,11 @@
 # Consolidation : budgets mémoire
 
+## Pause de la page de titre
+
+MAIN **67/477** (93/503 avant), écart avant la pile 95/694 : `key_wait`
+(display.s), la boucle d'attente du diaporama devenue sous-programme, et
+son appel dans `main` (26 octets en tout).
+
 ## Diaporama des visionneuses et suite des films Fantavision
 
 Réserves au lien, 65C02/6502 : MAIN **93/503** (203/609 avant), écart

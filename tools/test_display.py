@@ -116,6 +116,7 @@ char cgetc(void){char c=*kq++;KBD=*kq?0x80|*kq:0;return c;}
 static void keyq(const char*s){kq=s;KBD=*s?0x80|*s:0;}
 extern unsigned char slideshow;
 unsigned int slide_getc(void);   /* char, and X = 0 */
+unsigned int __fastcall__ key_wait(unsigned char);   /* 0 or 1, X = 0 */
 static const char*spec[]={"", "A Alpha,ESC Back", "AB Two,LONG Label", "X", " Label", "A ,B Two", "TAB Panel,RET Open,SPC Tag,C Copy,V Move,R Ren,D Del,K Mkdir,! More,? Help"};
 /* C reference from before consolidation, rendered into the same capture. */
 /* REFERENCE */
@@ -206,6 +207,10 @@ int main(void){
  if(slide_getc()!='q'||slideshow!=1)return 26;
  slideshow=1;keyq("SSx");
  if(slide_getc()!='x'||slideshow!=1)return 27;
+ /* The title page's pause at start-up: the whole time without a key, cut
+  * short by one, which is left for cgetc. */
+ keyq("");if(key_wait(1)!=0||key_wait(3)!=0)return 28;
+ keyq("Q");if(key_wait(3)!=1||KBD!=(0x80|'Q'))return 29;
  for(i=0;;++i){sprintf(hex,"%04X",i);if(hex_value(hex)!=i)return 2;if(i==65535u)break;}
  if(hex_value("")||hex_value("123456")!=0x3456)return 3;
  for(j=0;j<4;++j){hex[j]='F';hex[j+1]=0;if(hex_value(hex)!=(65535u>>(12-4*j)))return 4;}

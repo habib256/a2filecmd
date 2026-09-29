@@ -171,16 +171,8 @@ _slide_getc:
         bit _slideshow
         bpl slide_read
         lda #7
-slide_wait:
-        bit $C000
-        bmi slide_read
-        dex
-        bne slide_wait
-        dey
-        bne slide_wait
-        sec
-        sbc #1
-        bne slide_wait
+        jsr _key_wait
+        bne slide_read
         lda #21                 ; KEY_RIGHT, X = 0
         rts
 slide_read:
@@ -201,6 +193,30 @@ slide_stop:
         txa
 slide_done:
         ldx #0
+        rts
+
+; key_wait(n): n x 65,536 turns of 11 cycles (0.72 s each at 1 MHz), cut
+; short by a key, which is left in the keyboard for cgetc. Returns 0 at
+; the end of the time, 1 for a key (X = 0 both ways). Only the keyboard
+; is read: the slideshow's pause, and the title page's at start-up.
+        .export _key_wait
+_key_wait:
+        ldx #0
+        ldy #0
+key_wait_loop:
+        bit $C000
+        bmi key_wait_key
+        dex
+        bne key_wait_loop
+        dey
+        bne key_wait_loop
+        sec
+        sbc #1
+        bne key_wait_loop
+        rts
+key_wait_key:
+        ldx #0
+        lda #1                  ; last: Z clear for the caller's bne
         rts
 
 ; Temporary phase on the information row. Result/error row 22 is preserved.

@@ -88,6 +88,12 @@ downloads and installation.
   command and the backdrop by prefix under sim65 with a fake MLI, errors
   included.
 
+### The title page stays long enough to be read
+- At start-up the launcher's title page stays about two seconds after the
+  panels are read ("Reading directory..." still shows at the bottom): from
+  a hard disk or an emulator it used to vanish at once. A key cuts it short
+  and is not taken for a command. MAIN 65C02/6502: 67/477 bytes free.
+
 ### DEMO: a file for every viewer
 - The XL disk's `DEMO/` now holds at least one file for each viewer:
   Extasie, Arlequin, PackFOT (hi-res and double), 816/Paint (both),
@@ -121,7 +127,8 @@ downloads and installation.
   for the browsing session are unchanged; a picture that cannot be read
   ends the slideshow with its message. The music viewers keep S as an
   ordinary key.
-- MAIN 65C02/6502: 93/503 bytes free (203/609 before).
+- MAIN 65C02/6502: 93/503 bytes free (203/609 before); 67/477 with the
+  title page's pause below.
 
 ## [0.9.4] - 2026-09-26
 
