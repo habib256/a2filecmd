@@ -128,9 +128,10 @@ attributes, text editing, text/hex readers, comparison, formatting, verification
 and ProDOS image extraction. Advanced disk tools, DOS extraction, archives,
 media players and BASIC runtimes require **800K or XL**. Their menus list the
 available tools without asking for category disks. Both complete editions
-include all 84 overlays; only XL includes `DEMO/`: one example of every kind of
-file A2 File Cmd opens, in DOCUMENTS, PICTURES (with an HGR album), MUSIC,
-ARCHIVES, DISKS, PROGRAMS and FONTS.SHAPES, and a README saying what is where.
+include all 84 overlays; only XL includes `DEMO/`: at least one example of every
+kind of file A2 File Cmd opens, for every viewer, in DOCUMENTS, PICTURES (with
+an HGR album), MOVIES (Fantavision), MUSIC, ARCHIVES, DISKS, PROGRAMS and
+FONTS.SHAPES, and a README saying what is where.
 
 ### Before working
 

@@ -13,8 +13,9 @@ Written entirely in 6502 assembly; see [Speed](#speed) for what that buys.
 The disk image `dist/A2FILECMD-DOS3.3-0.9.1.dsk` boots through the Applesoft
 `HELLO` program, which centres `A2FILECMD`, `MINI DOS 3.3` and `V0.9.1` at
 the top of the 40-column screen, `LOADING .... PLEASE WAIT ....` and
-`CAPS LOCK ON IS NEEDED` in the middle (the keys are compared in upper
-case, all a II+ types), and `GPL3 VERHILLE ARNAUD` on the last row, before
+`BE SURE CAPS LOCK IS DOWN` in the middle, in inverse video, in the words
+of the DOS 3.3 System Master (the keys are compared in upper case, all a
+II+ types), and `GPL3 VERHILLE ARNAUD` on the last row, before
 `BRUN A2FC`. The same
 layout stays on screen while the first catalog is read. From DOS 3.3,
 use `BRUN A2FC`.

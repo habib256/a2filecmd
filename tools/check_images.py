@@ -105,7 +105,7 @@ def check_cpu(cpu):
         if xl:   # DEMO sorted by kind (tools/stage_demo.py), no borrowed-sample folder
             demo = entries(image, int.from_bytes(root['DEMO'][0x11:0x13], 'little'))
             assert set(demo) == {'README', 'DOCUMENTS', 'PICTURES', 'MUSIC', 'ARCHIVES',
-                                 'DISKS', 'PROGRAMS', 'FONTS.SHAPES'}, (path, sorted(demo))
+                                 'DISKS', 'PROGRAMS', 'FONTS.SHAPES', 'MOVIES'}, (path, sorted(demo))
         print('PASS %s: %d overlays, %d free blocks, matching build and disk layout' %
               (path.name, len(plugins), image.free_blocks()))
 

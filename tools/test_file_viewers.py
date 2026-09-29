@@ -376,6 +376,36 @@ class FileViewers(unittest.TestCase):
         self.route('DIR', 0x0F, 0, 8192, '')
         self.route('PIC', 0xF2, 0, 100, '', fail=1)
 
+    def test_demo_folder_holds_every_viewer(self):
+        """The XL disk's DEMO: at least one file for every viewer Return
+        opens, each routed there by the real classifier on every build."""
+        import re
+        import sys
+        sys.path.insert(0, str(ROOT / 'tools'))
+        import mkvolume
+        import stage_demo
+        ids = (ROOT / 'src/viewer_ids.h').read_text()
+        names = re.findall(r'"([A-Z0-9]+)"', ids[ids.index('media_names'):])
+        wanted = (set(names) - {'DOCVIEW'}) | {'FANTAVISION', 'MOVIE MAKER', 'EPISTOLE', 'PAPYRUS'}
+        found = {}
+        with tempfile.TemporaryDirectory(prefix='demo-') as tmp:
+            demo = stage_demo.stage(Path(tmp) / 'DEMO')
+            for path in sorted(p for p in demo.rglob('*') if p.is_file()):
+                name, typ, aux = mkvolume.prodos_name(path.name)
+                data = path.read_bytes()
+                routes = {chosen for _, chosen in self.answers(name, typ, aux, len(data), data=data)}
+                self.assertEqual(len(routes), 1, (path, routes))
+                viewer = routes.pop()
+                # The ones that share a viewer, told apart by what they are.
+                if viewer == 'RUN' and typ == 6 and aux == 0x8400:
+                    viewer = 'FANTAVISION'
+                elif viewer == 'IMAGE' and typ == 6 and aux == 0x1DF0:
+                    viewer = 'MOVIE MAKER'
+                elif viewer == 'DOCVIEW':
+                    viewer = 'EPISTOLE' if data[:1] == b'_' else 'PAPYRUS'
+                found.setdefault(viewer, []).append(str(path.relative_to(demo)))
+        self.assertEqual(sorted(wanted - set(found)), [], found)
+
 
 if __name__ == '__main__':
     unittest.main()

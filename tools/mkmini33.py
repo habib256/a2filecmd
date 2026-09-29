@@ -12,6 +12,7 @@ SIZE = 35 * 16 * 256
 MINI_VERSION = re.search(r'^A2FC_VERSION\s*=\s*(\S+)',
                          (Path(__file__).resolve().parents[1] / 'Makefile').read_text(), re.M)[1]
 HTAB, HOME, VTAB, PRINT, CHRS = 0x96, 0x97, 0xA2, 0xBA, 0xE7
+NORMAL, INVERSE = 0x9D, 0x9E
 TIGER_PATH = Path(__file__).resolve().parents[1] / 'data' / 'IMGHGR' / 'TIGER#062000'
 
 
@@ -22,6 +23,9 @@ def applesoft(lines):
         addr += 2 + len(body)
         out += addr.to_bytes(2, 'little') + body
     return bytes(out) + b'\x00\x00'
+
+
+CAPS = b'BE SURE CAPS LOCK IS DOWN'
 
 
 def hello_program():
@@ -37,7 +41,10 @@ def hello_program():
         # the DOS command then starts on its own line at the top, where a
         # carriage return moves nothing.
         (50, bytes([VTAB]) + b'12:' + bytes([HTAB]) + b'6:' + bytes([PRINT]) + b'"LOADING .... PLEASE WAIT ...."'),
-        (60, bytes([VTAB]) + b'14:' + bytes([HTAB]) + b'10:' + bytes([PRINT]) + b'"CAPS LOCK ON IS NEEDED"'),
+        # DOS 3.3 System Master's own words, in inverse video as it shows
+        # them: the keys are compared in upper case.
+        (60, bytes([VTAB]) + b'14:' + bytes([HTAB]) + b'8:' + bytes([INVERSE]) + b':' + bytes([PRINT])
+         + b'"' + CAPS + b'":' + bytes([NORMAL])),
         (70, bytes([VTAB]) + b'24:' + bytes([HTAB]) + b'11:' + bytes([PRINT]) + b'"GPL3 VERHILLE ARNAUD";'),
         (80, bytes([VTAB]) + b'1:' + bytes([HTAB]) + b'1:' + bytes([PRINT])),
         (90, bytes([PRINT, CHRS]) + b'(4);"BRUN A2FC"'),
@@ -63,7 +70,7 @@ def build(master, binary):
     program = hello_program()
     files = [('HELLO',2,struct.pack('<H',len(program))+program),
              ('A2FC',4,struct.pack('<HH',0x1000,len(binary))+binary),
-             ('README',0,b'A2FC MINI DOS 3.3\rAPPLE II+ 48 KB - DOS 3.3 COPY\rCAPS LOCK ON IS NEEDED\rTAB: PANEL - I/K: SELECT\rRETURN: PREVIEW - /: DRIVE\rC: COPY TO THE OTHER PANEL\rCTRL-R: REREAD - Q: DOS\rT/H: TEXT/HEX - ?: HELP\rG: TIGER HI-RES\rL: LOCK/UNLOCK - R: RENAME\rD: DELETE - SPACE: TAG\rY: CONFIRM - N/ESC: CANCEL\r\0'),
+             ('README',0,b'A2FC MINI DOS 3.3\rAPPLE II+ 48 KB - DOS 3.3 COPY\rBE SURE CAPS LOCK IS DOWN\rTAB: PANEL - I/K: SELECT\rRETURN: PREVIEW - /: DRIVE\rC: COPY TO THE OTHER PANEL\rCTRL-R: REREAD - Q: DOS\rT/H: TEXT/HEX - ?: HELP\rG: TIGER HI-RES\rL: LOCK/UNLOCK - R: RENAME\rD: DELETE - SPACE: TAG\rY: CONFIRM - N/ESC: CANCEL\r\0'),
              ('TIGER',4,tiger)]
     # Within a track from sector 15 down, as DOS allocates: DOS 3.3's
     # 2:1 skew makes a descending chain the one read without lost turns.
