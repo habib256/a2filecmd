@@ -108,6 +108,14 @@ static unsigned char rev,bad;
 void gotoxy(unsigned char x,unsigned char y){if(x!=7||y!=23)bad=1;}
 unsigned char __fastcall__ revers(unsigned char r){unsigned char old=rev;rev=r;return old;}
 void __fastcall__ cputc(char c){if(n>=1024){bad=1;return;}text[n]=c;colors[n++]=rev;}
+/* The keyboard of the slideshow: $C000 holds bit 7 while a key waits,
+ * cgetc takes the next one. The address is ordinary RAM under sim65. */
+#define KBD (*(volatile unsigned char*)0xC000)
+static const char*kq;
+char cgetc(void){char c=*kq++;KBD=*kq?0x80|*kq:0;return c;}
+static void keyq(const char*s){kq=s;KBD=*s?0x80|*s:0;}
+extern unsigned char slideshow;
+unsigned int slide_getc(void);   /* char, and X = 0 */
 static const char*spec[]={"", "A Alpha,ESC Back", "AB Two,LONG Label", "X", " Label", "A ,B Two", "TAB Panel,RET Open,SPC Tag,C Copy,V Move,R Ren,D Del,K Mkdir,! More,? Help"};
 /* C reference from before consolidation, rendered into the same capture. */
 /* REFERENCE */
@@ -174,6 +182,30 @@ int main(void){
   n=bad=rev=0;api(7,s);
   if(bad||n!=refn||rev!=r||memcmp(text,reftext,n)||memcmp(colors,refcolors,n)||strcmp(s,spec[i]))return 1;
  }
+ /* The slideshow (media.h). Outside a picture viewer, S is a key. */
+ slideshow=0;keyq("Ss\xD3");
+ if(slide_getc()!='S'||slide_getc()!='s'||slide_getc()!=0xD3||slideshow)return 19;
+ /* In one, other keys go through and leave it stopped. */
+ slideshow=1;keyq("x\x15\x1B");
+ if(slide_getc()!='x'||slide_getc()!=0x15||slide_getc()!=0x1B||slideshow!=1)return 20;
+ /* S (either case, Open-Apple too) starts it: with no key, Right comes
+  * by itself once the time is up, and it keeps going. */
+ slideshow=1;keyq("S");
+ if(slide_getc()!=21||slideshow!=0x81)return 21;
+ if(slide_getc()!=21||slideshow!=0x81)return 22;
+ slideshow=1;keyq("\xF3");
+ if(slide_getc()!=21||slideshow!=0x81)return 23;
+ /* Any key stops it and is returned as read: Escape leaves the viewer,
+  * an arrow moves by hand, nothing is skipped or invented. */
+ slideshow=0x81;keyq("\x1B");
+ if(slide_getc()!=0x1B||slideshow!=1)return 24;
+ slideshow=0x81;keyq("\x08");
+ if(slide_getc()!=0x08||slideshow!=1)return 25;
+ /* S stops it too, and the next key is waited for, not a Right. */
+ slideshow=0x81;keyq("sq");
+ if(slide_getc()!='q'||slideshow!=1)return 26;
+ slideshow=1;keyq("SSx");
+ if(slide_getc()!='x'||slideshow!=1)return 27;
  for(i=0;;++i){sprintf(hex,"%04X",i);if(hex_value(hex)!=i)return 2;if(i==65535u)break;}
  if(hex_value("")||hex_value("123456")!=0x3456)return 3;
  for(j=0;j<4;++j){hex[j]='F';hex[j+1]=0;if(hex_value(hex)!=(65535u>>(12-4*j)))return 4;}

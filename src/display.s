@@ -155,6 +155,54 @@ activity_off:
 activity_chars:
         .byte $FC, $AF, $AD, $DC  ; normal-video | / - backslash
 
+
+; The key a picture viewer waits for, and the service table's cgetc
+; (media.h). slideshow: 0 outside a picture viewer, where this is cgetc
+; itself; 1 in one; $81 while its pictures follow one another: Right is
+; returned by itself after about five seconds at 1 MHz (7 x 65,536 turns
+; of 11 cycles) without a key. S starts or stops the slideshow; any other
+; key stops it and is returned as read. Only the keyboard is read.
+        .export _slide_getc, _slideshow
+        .import _cgetc
+        .bss
+_slideshow: .res 1
+        .code
+_slide_getc:
+        bit _slideshow
+        bpl slide_read
+        lda #7
+slide_wait:
+        bit $C000
+        bmi slide_read
+        dex
+        bne slide_wait
+        dey
+        bne slide_wait
+        sec
+        sbc #1
+        bne slide_wait
+        lda #21                 ; KEY_RIGHT, X = 0
+        rts
+slide_read:
+        jsr _cgetc
+        ldy _slideshow
+        beq slide_done
+        tax
+        and #$5F
+        cmp #'S'
+        bne slide_stop
+        tya
+        eor #$80
+        sta _slideshow
+        bne _slide_getc         ; always
+slide_stop:
+        ldy #1
+        sty _slideshow
+        txa
+slide_done:
+        ldx #0
+        rts
+
 ; Temporary phase on the information row. Result/error row 22 is preserved.
 ; The panels redraw row 21 when the operation returns. No disk or AUX above
 ; the normal text page is used; the conio helpers select their text bank.
