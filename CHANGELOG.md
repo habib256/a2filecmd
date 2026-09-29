@@ -5,6 +5,58 @@ downloads and installation.
 
 ## [Unreleased]
 
+### Fixed
+- FANTA.SYSTEM at the original speed: a frame the original player takes
+  65,536 cycles or more longer to draw (large solids) froze the movie for
+  about 16 seconds, keys unread. The wait was clipped whenever byte 2 of
+  its 32-bit length was set, not only byte 3. `tools/test_fanta_wait.py`
+  runs the routine from `fanta.s` under sim65 and counts its cycles.
+  FANTA.SYSTEM: 34 bytes free under `$BF00`.
+- DOCVIEW: a margin moved in the middle of a row (`_MG`, `_MI`) followed
+  by a word that wraps copied that word to the new left edge whole, past
+  the 80-byte row buffers, and printed a row of up to 147 characters over
+  the lines below it. The row is now cut where it is full in that case.
+  Screen only: nothing is written. `tools/test_docview.py` covers it.
+- FANTA.SYSTEM: a backdrop found by the start of its name (M.CHECKER,
+  CHECKERBOARD) in a directory deep enough made a path over 64 characters,
+  written past its buffer; it is now not used. Out of reach from A2 File
+  Cmd (46-character commands), not from another launcher. And the way on
+  now asserts at link time that FANTA.SYSTEM's own reading ends below the
+  command it keeps (`cmdbuf`). `tools/test_fantavision.py` covers the path.
+
+### Epistole's calculations, headers and footers
+- DOCVIEW computes Epistole's fields as Epistole prints them (checked
+  against its own print output, captured under POM2): `#:X=…]` sets a
+  variable, never set it is 0; `#:?…]` shows the value with `_ND` decimals
+  (2 by default), a decimal comma, BASIC's exponent kept (`1E+10,00`), no
+  minus sign when there are decimals; `_TDn` is a decimal tab, the comma at
+  column n and in force on the lines that follow. `+ - * / ^`, comparisons,
+  parentheses, SIN COS TAN ATN LOG EXP SGN ABS SQR INT, `1,5E2`.
+- The arithmetic is the Applesoft ROM's, called with the language card off,
+  the zero page $50-$FF saved around it; its errors (division by zero,
+  overflow, LOG of a negative number) are caught by ONERR through CHRGOT
+  and leave the field as written, in inverse -- they would have left for
+  BASIC. `#*X=]`, typed at print time, prints nothing and leaves X
+  unknown. The values at a page's top are replayed from the assignments
+  before it.
+- Headers `_EN…__EA` and footers `_DB…__BA` are no longer shown where they
+  are written (one empty row each, as printed): the footer, `%$` its page
+  number, ends each `_SP` page and the document, the header opens the
+  next page. Letters with bit 7 set (underlined in print) show in inverse.
+- A read error on a document says "(read error)", never "(end)"; a file
+  over 64 KB is refused (the programs kept their documents in memory).
+- cc65 2.19 dropped a structure member's offset in
+  `((unsigned*)&p->size)[1]`: with it, the 65C02 edition refused every
+  document as too long. Found by running the cc65-built DOCVIEW under sim65.
+- DOCVIEW is now a larger overlay, code in `$1B00-$3D5F` and its scratch in
+  `$3D60-$3FFF`; it remembers 16 pages back (was 64). Its evaluator is in
+  assembly (`src/plugins/docview.s`).
+- Tests: `tools/test_docview_calc.py` (the arithmetic and its trapped
+  errors on a real Apple II ROM under sim65), `tools/test_docview_sim.py`
+  (the cc65-built DOCVIEW under sim65: Epistole's demonstration documents
+  line for line as it prints them), `tools/test_docview.py` (headers,
+  footers, read errors), `bench/docview.py` 16/16 on both editions.
+
 ### The Newsroom photos and banners
 - NEWSROOM shows The Newsroom's (Springboard, 1984) user pictures: photos
   `PH.*` and banners `BN.*`, DOS 3.3 B files at $4000 that become BIN $4000

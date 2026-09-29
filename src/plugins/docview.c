@@ -26,14 +26,17 @@
  * unaccented letter, and A switches to the codes as stored -- right on a
  * machine with the French character set. docs/MANUAL.md, "Read documents".
  *
- * Paging both ways, as MDVIEW does: the starts of the last 64 pages --
+ * Paging both ways, as MDVIEW does: the starts of the last 16 pages --
  * the offset of the line a page starts in, how many of its rows precede
  * the page, and the layout state at that line -- so that a page is always
- * rendered by replaying its first line. Read-only; a big overlay whose
- * scratch is $3000-$3FFF: the page table (64 x 12 at $3000), the copy of
- * the service table ($3300: a call through it costs half of one through
- * api->), the row and its attributes ($3400, $3480), the read buffer
- * (2 KB at $3800). */
+ * rendered by replaying its first line. Read-only; a big overlay, code and
+ * BSS in $1B00-$3D5F, whose scratch is $3D60-$3FFF: the page table (at
+ * $3D60), the copy of the service table ($3E30: a call through it costs
+ * half of one through api->), the row and its attributes ($3EA0, $3EF0),
+ * the state ($3F40), the read buffer (128 bytes at $3F80). A read error
+ * ends the page and says so: it is never shown as the end of the document.
+ * Offsets are 16 bits: the programs kept their documents in memory, and a
+ * file over 64 KB is refused. */
 
 #include "../a2fc_plugin.h"
 
@@ -56,12 +59,20 @@ const struct PluginHeader __plugin_header = {
 #define WIDTH     79                       /* the widest row */
 #define ROW1      1                        /* the first text row; row 0 is the title */
 #define LASTROW   21                       /* the last text row; 22 is the status line */
-#define MAXPAGES  64
-#define VBUFSZ    2048
+#define MAXPAGES  16                       /* a power of 2: page numbers are masked */
+#define NVARS     12                       /* Epistole's variables */
+#define VNAME     6                        /* the characters of a name that count */
+#define MAXND     8                        /* decimals at most */
+#define DEFAULT_ND 2                       /* decimals before any _ND */
+#define VBUFSZ    128
 
-/* The layout state a line starts with: margins, indent, bold. */
-struct Layout { unsigned char lm, rm, mi, ma, inv, centre; };
-struct Start { long off; unsigned int skip; struct Layout lay; };
+/* The layout state a line starts with: margins, indent, bold, for a
+ * calculated number its decimals (_ND) and decimal tab (_TD), and the
+ * printed page's number, bit 7 set when a page break is due before the
+ * next text (so that a line replayed at a screen page's top redoes it). */
+struct Layout { unsigned char lm, rm, mi, ma, inv, centre, nd, td, pg; };
+#define PG_BREAK 0x80
+struct Start { unsigned int off, skip; struct Layout lay; };   /* 64 KB at most: offsets in 16 bits */
 
 #ifdef PLUGIN_HOST                         /* tools/test_docview.py runs this file on the host */
 static struct Start host_starts[MAXPAGES];
@@ -74,37 +85,78 @@ static unsigned char host_vbuf[VBUFSZ];
 #define VBUF   host_vbuf
 static struct A2fcApi a;                   /* the service table, copied */
 #else
-#define a      (*(struct A2fcApi*)0x3300)  /* the service table, copied: $3300-$33FF */
-typedef char api_copy_fits[256 - sizeof(struct A2fcApi)];
-#define STARTS ((struct Start*)0x3000)     /* 64 x 12 = 768: $3000-$32FF */
-#define RB     ((char*)0x3400)             /* the row being built, 80 */
-#define RA     ((unsigned char*)0x3480)    /* its inverse flags, 80 */
-#define VBUF   ((unsigned char*)0x3800)    /* the read buffer: $3800-$3FFF */
+/* The scratch, $3D60-$3FFF: the code and BSS end under it (Makefile). */
+#define STARTS ((struct Start*)0x3D60)     /* the page table: $3D60-$3E2F */
+typedef char starts_fit[0x3E30 - 0x3D60 + 1 - MAXPAGES * sizeof(struct Start)];
+#define a      (*(struct A2fcApi*)0x3E30)  /* the service table, copied: $3E30-$3E9F */
+typedef char api_copy_fits[0x70 + 1 - sizeof(struct A2fcApi)];
+#define RB     ((char*)0x3EA0)             /* the row being built, 80 */
+#define RA     ((unsigned char*)0x3EF0)    /* its inverse flags, 80 */
+#define VBUF   ((unsigned char*)0x3F80)    /* the read buffer: $3F80-$3FFF */
+/* libc's ferror links errno and fmisc, 90 bytes: _FILE::f_flags (offset 1,
+ * asminc/_file.inc) and its _FERROR bit, as FIND reads them. */
+#define ferror(f) (((unsigned char*)(f))[1] & 0x04)
 #endif
 
-/* BSS: nothing zeroes it; everything below is written before it is read. */
-static FILE* vf;
-static unsigned int vlen, vpos;            /* the window VBUF[0..vlen), read to vpos */
-static long vbase;                         /* the file offset of VBUF[0] */
-static long line_off;                      /* where the line being rendered starts */
-static struct Start next;                  /* where the next page starts */
-static struct Layout lay, line_lay;        /* the state now; at the line's start */
-static unsigned char papyrus;              /* 1: high-bit Papyrus/HomeWord; 0: Epistole */
-static unsigned char raw;                  /* 1: the ISO 646-FR codes as stored */
-static unsigned char row, rc, left;        /* the screen row; the row's length; its left edge */
-static unsigned char pending_page;         /* a page break seen: a rule row before the next text */
-/* Rows of one paragraph: 16 bits are 65,535 rows, 5 MB of text. */
-static unsigned int skip, rows_done;
-static unsigned char done;                 /* the end of the file was reached on this page */
+/* The state, in the scratch at $3F40. Nothing zeroes it; everything is
+ * written before it is read. */
+struct State {
+    struct Start next;                     /* where the next page starts */
+    struct Layout lay, line_lay;           /* the state now; at the line's start */
+    FILE* vf_;
+    unsigned int vlen_, vpos_;             /* the window VBUF[0..vlen), read to vpos */
+    unsigned int vbase_;                   /* the file offset of VBUF[0] */
+    unsigned int line_off_;                /* where the line being rendered starts */
+    unsigned char papyrus_;                /* 1: high-bit Papyrus/HomeWord; 0: Epistole */
+    unsigned char raw_;                    /* 1: the ISO 646-FR codes as stored */
+    unsigned char row_, rc_, left_;        /* the screen row; the row's length; its left edge */
+    unsigned char endmark_;                /* __XX seen: a header or footer ends */
+    /* Rows of one paragraph: 16 bits are 65,535 rows, 5 MB of text. */
+    unsigned int skip_rows_, rows_done_;
+    /* This page: 0 more follows; 1 the end of the file; 2 or 3 a read or
+     * a seek failed (bit 1), which ends the page too and is never shown
+     * as the end. */
+    unsigned char done_;
+    /* plugin_entry's: the page shown, the pages known, the oldest, its number */
+    unsigned char page_, known_, head_;
+    unsigned int first_;
+};
+#ifdef PLUGIN_HOST
+static struct State host_state;
+#define ST host_state
+#else
+#define ST (*(struct State*)0x3F40)
+typedef char state_fits[0x3F80 - 0x3F40 + 1 - sizeof(struct State)];   /* below VBUF */
+#endif
+#define NEXT         ST.next
+#define LAY          ST.lay
+#define LINE_LAY     ST.line_lay
+#define vf           ST.vf_
+#define vlen         ST.vlen_
+#define vpos         ST.vpos_
+#define vbase        ST.vbase_
+#define line_off     ST.line_off_
+#define papyrus      ST.papyrus_
+#define raw          ST.raw_
+#define row          ST.row_
+#define rc           ST.rc_
+#define left         ST.left_
+#define endmark      ST.endmark_
+#define skip_rows    ST.skip_rows_
+#define rows_done    ST.rows_done_
+#define done         ST.done_
 
 static const char iso[] = "{e}e|u\\c@a[o";  /* ISO 646-FR pairs: code, plain letter ([ is a degree sign) */
 static const char vowels[] = "aeiou";      /* Papyrus $18-$1C */
 
 static const char m_pick[] = "Select a document to read.";
 static const char m_open[] = "Open failed.";
+static const char m_big[]  = "Too long: DOCVIEW reads 64 KB at most.";
 static const char m_page[] = "Page %u%s: Space/Down next, Up back, R start, A accents, ESC quits";
 static const char m_end[]  = " (end)";
+static const char m_err[]  = " (read error)";
 static const char m_nil[]  = "";
+static const char* const m_ends[4] = { m_nil, m_end, m_err, m_err };
 
 /* -- reading ------------------------------------------------------------- */
 
@@ -114,20 +166,26 @@ static int getc_(void)
         vbase += vlen;
         vpos = 0;
         vlen = a.fread(VBUF, 1, VBUFSZ, vf);
-        if (!vlen) return -1;
+        if (vbase + vlen < vbase) {        /* past 64 KB (a stale size let it open): refused there */
+            vlen = 0xFFFF - vbase;
+            if (!vlen) done = 2;
+        }
+        if (!vlen) {                       /* the end -- or an error, never taken for it */
+            if (ferror(vf)) done = 2;
+            return -1;
+        }
     }
     return VBUF[vpos++];
 }
 
 #define unget() (--vpos)                   /* only right after a successful getc_ */
 
-static long tell_(void) { return vbase + vpos; }
+static unsigned int tell_(void) { return vbase + vpos; }
 
-static void seek_(long off)
+static void seek_(unsigned int off)
 {
-    /* sign-ok: every offset comes from tell_() or is 0, never negative */
-    if (off >= vbase && off < vbase + vlen) { vpos = (unsigned int)(off - vbase); return; }
-    a.fseek(vf, off, SEEK_SET);
+    if (off >= vbase && off < vbase + vlen) { vpos = off - vbase; return; }
+    if (a.fseek(vf, (long)off, SEEK_SET)) done = 2;
     vbase = off;
     vlen = vpos = 0;
 }
@@ -145,7 +203,7 @@ static int rd(void)
 
 static void pad(void)
 {
-    left = lay.lm + lay.mi;
+    left = LAY.lm + LAY.mi;
     if (left > WIDTH - 10) left = WIDTH - 10;
     a.memset(RB, ' ', left);
     a.memset(RA, 0, left);
@@ -160,15 +218,15 @@ static void emit(void)
 {
     unsigned char i, x, now = 0;
     ++rows_done;
-    if (skip) --skip;
+    if (skip_rows) --skip_rows;
     else {
         i = 0;
         x = 0;
-        if (lay.centre || line_lay.centre) {
+        if (LAY.centre || LINE_LAY.centre) {
             i = left;                      /* the text alone, as much room either side */
             x = rc - left;
             /* sign-ok: only when rm > left + x, so the difference is 1..79 */
-            x = lay.rm > left + x ? left + ((lay.rm - left - x) >> 1) : left;
+            x = LAY.rm > left + x ? left + ((LAY.rm - left - x) >> 1) : left;
         }
         a.gotoxy(x, row);
         for (; i < rc; ++i) {
@@ -176,7 +234,7 @@ static void emit(void)
             a.cputc(RB[i]);
         }
         if (now) a.revers(0);
-        if (++row > LASTROW) { next.off = line_off; next.skip = rows_done; next.lay = line_lay; }
+        if (++row > LASTROW) { NEXT.off = line_off; NEXT.skip = rows_done; NEXT.lay = LINE_LAY; }
     }
     pad();
 }
@@ -185,23 +243,28 @@ static void emit(void)
  * margin. */
 static void put_(unsigned char c)
 {
-    unsigned char i, keep, rm = lay.rm;
+    unsigned char i, rm = LAY.rm;
     if (rm > WIDTH) rm = WIDTH;
     if (rm < left + 10) rm = left + 10;
     if (rc >= rm) {
         if (c == ' ') { emit(); return; }
         for (i = rm - 1; i > left && RB[i] != ' '; --i) ;
-        if (i > left) {                    /* break at that space: the tail moves on */
-            keep = rm - 1 - i;
+        /* The tail goes to the next row's left edge (pad): a margin moved
+         * in this row (_MG, _MI) can put it past the tail, which pad would
+         * then blank and the copy carry beyond the 80 bytes of RB and RA.
+         * The row is then cut where it is full, as with no space (also for
+         * an edge past pad's clamp at 69: a row that narrow, no matter). */
+        if (i > left && (unsigned char)(LAY.lm + LAY.mi) <= i + 1) {   /* break at that space: the tail moves on */
+            rm -= i + 1;                   /* now the tail's length (-Cl: a byte less) */
             rc = i;
             emit();
-            a.memcpy(RB + rc, RB + i + 1, keep);
-            a.memcpy(RA + rc, RA + i + 1, keep);
-            rc += keep;
+            a.memcpy(RB + rc, RB + i + 1, rm);
+            a.memcpy(RA + rc, RA + i + 1, rm);
+            rc += rm;
         } else emit();                     /* no space: a hard break */
     }
     RB[rc] = c;                            /* not RB[rc++]: cc65 2.19 increments rc first */
-    RA[rc] = lay.inv;
+    RA[rc] = LAY.inv;
     ++rc;
 }
 
@@ -218,7 +281,7 @@ static unsigned char plain(unsigned char c)
 /* A new page: a rule from margin to margin, if the page has room. */
 static void rule(void)
 {
-    unsigned char i = lay.rm > WIDTH ? WIDTH : lay.rm;
+    unsigned char i = LAY.rm > WIDTH ? WIDTH : LAY.rm;
     if (row > LASTROW) return;
     while (rc < i) { RB[rc] = '-'; RA[rc] = 0; ++rc; }
     emit();
@@ -226,15 +289,17 @@ static void rule(void)
 
 /* An Epistole command, after its `_`: two letters and a number. Returns 0
  * when the `_` was no command (then it is a character). */
+static const char cmds[] = "MGMDMIMACEPCCLJDTDIGIDSGISSPNDDBEN";
 static unsigned char epistole(void)
 {
     int c;
-    unsigned char k1, k2 = 0;
+    unsigned char k1, k2 = 0, i;
     unsigned int n = 0;
     c = rd();
     if (c == '_') {                        /* __BA, __EA: a block ends; glossary marks */
         for (n = 0; n < 2 && (c = rd()) >= 'A' && c <= 'Z'; ++n) ;
         if (n < 2 && c >= 0) unget();
+        endmark = 1;
         return 1;
     }
     if (c < 'A' || c > 'z') { if (c >= 0) unget(); return 0; }
@@ -246,22 +311,120 @@ static unsigned char epistole(void)
     if (n > WIDTH) n = WIDTH;
     /* A space after a command that opens a row separates it from the text. */
     if (rc == left && rd() != ' ') unget();
-    if (k1 == 'M') {
-        if (k2 == 'G') lay.lm = n;
-        else if (k2 == 'D') lay.rm = n ? n : WIDTH;
-        else if (k2 == 'I') { lay.mi = lay.ma = n; if (rc == left) pad(); }
-        else if (k2 == 'A') lay.ma = n;
-        if (rc == left) pad();
-    } else if (k1 == 'C' && k2 == 'E') lay.centre = 1;
-    else if ((k1 == 'P' && k2 == 'C') || (k1 == 'C' && k2 == 'L') || (k1 == 'J' && k2 == 'D'))
-        lay.centre = 0;                    /* centring lasts until an alignment */
-    else if (k1 == 'T' && k2 == 'D')       /* a tab stop, from the margin */
-        while (rc < left + n && rc < WIDTH) { RB[rc] = ' '; RA[rc] = 0; ++rc; }
-    else if (k1 == 'I' && (k2 == 'G' || k2 == 'D')) lay.inv = 1;
-    else if (k1 == 'S' && k2 == 'G') lay.inv = 0;
-    else if (k1 == 'I' && k2 == 'S') lay.inv = 0;
-    else if (k1 == 'S' && k2 == 'P') pending_page = 1;
+    for (i = 0; i < sizeof cmds - 1 && (cmds[i] != k1 || cmds[i + 1] != k2); i += 2) ;
+    switch (i >> 1) {
+    case 0: LAY.lm = n; goto margin;                   /* MG */
+    case 1: LAY.rm = n ? n : WIDTH; goto margin;       /* MD */
+    case 2: LAY.mi = n;                                /* MI: now, and from the next line */
+    case 3: LAY.ma = n;                                /* MA: from the next line */
+    margin: if (rc == left) pad(); break;
+    case 4: LAY.centre = 1; break;                     /* CE: centring lasts until */
+    case 5: case 6: case 7: LAY.centre = 0; break;     /* PC CL JD: an alignment */
+    case 8: LAY.td = n; break;                         /* TD: a decimal tab for numbers, */
+                                                       /* from the margin; text stays */
+    case 9: case 10: LAY.inv = 1; break;               /* IG ID: bold, wide on */
+    case 11: case 12: LAY.inv = 0; break;              /* SG IS: off */
+    case 13: LAY.pg |= PG_BREAK; break;                /* SP: a new page */
+    case 14: LAY.nd = n > MAXND ? MAXND : n; break;    /* ND: decimals */
+    case 15: case 16:                      /* DB, EN: a footer, a header, shown at the */
+        for (endmark = 0; !endmark && (c = rd()) >= 0; )   /* page ends (show_def); */
+            if (c == '_' && !epistole()) unget();          /* here, the row it leaves */
+    }
     return 1;
+}
+
+
+/* -- Epistole's calculations --------------------------------------------- */
+/* #:X=expr] sets a variable, #:?expr] prints a value with _ND decimals, and
+ * #*X=] is typed at print time: its value is unknown here, and whatever
+ * uses it is shown as written, in inverse video, as a variable is. A
+ * variable never set is 0. + - * / ^, comparisons (1 or 0), parentheses,
+ * SIN COS TAN ATN LOG EXP SGN ABS SQR INT, a decimal comma or point. The
+ * arithmetic is Applesoft's, in the ROM, and the evaluator is docview.s:
+ * an error there -- division by zero, overflow, the logarithm of a
+ * negative number -- leaves the expression as written, never a wrong
+ * number. The values at the top of a page are those of the assignments
+ * before it, read again from where the previous page began, or from the
+ * start of the file going back. */
+#ifdef PLUGIN_HOST                         /* the host tests the layout: nothing is computed */
+static unsigned char calc_vars[NVARS * 12];
+static unsigned char* fp_zsave;
+static unsigned char calc_eval(const char* p) { (void)p; return 0; }
+static void calc_assign(const char* p) { (void)p; }
+static void calc_forget(const char* p) { (void)p; }
+static const char* calc_format(unsigned char nd) { (void)nd; return ""; }
+#else
+extern unsigned char calc_vars[NVARS * 12];
+extern unsigned char* fp_zsave;
+unsigned char __fastcall__ calc_eval(const char* p);
+void __fastcall__ calc_assign(const char* p);
+void __fastcall__ calc_forget(const char* p);
+const char* __fastcall__ calc_format(unsigned char nd);
+#endif
+/* In the service table's copy_buf, 512 bytes no service uses meanwhile:
+ * the variables at scan_off, where the page begins, then the field
+ * between #: (or #*) and ], then docview.s's copy of the zero page
+ * ($50-$FF, 176 bytes) while the ROM computes. */
+#define vscan  (a.copy_buf)
+#define EBUFSZ 64
+#define ebuf   ((char*)a.copy_buf + NVARS * 12)
+typedef char copy_buf_fits[512 + 1 - NVARS * 12 - EBUFSZ - 0xB0];
+static unsigned int scan_off;
+
+/* The field up to its ], which is taken; a line's end is left for the line. */
+static void gather(void)
+{
+    int c;
+    unsigned char n = 0;
+    while ((c = rd()) >= 32 && c != ']')   /* Epistole reads 1+2 3 as 1+23 */
+        if (c != ' ' && n < EBUFSZ - 1) { ebuf[n] = c; ++n; }
+    if (c >= 0 && c < 32) unget();
+    ebuf[n] = 0;
+}
+
+/* A field after #: or #*, as it is laid out: a #*X=] prints nothing (X
+ * is asked for before printing), nor does an assignment. A number goes to
+ * the decimal tab, its comma at the tab's column; what cannot be computed
+ * is shown as written, in inverse video. */
+static void calc_field(char kind)
+{
+    const char* p = ebuf;
+    unsigned char n;
+    gather();
+    if (kind == '*') { calc_forget(ebuf); return; }
+    if (*p != '?') { calc_assign(ebuf); return; }
+    if (calc_eval(++p)) {
+        p = calc_format(LAY.nd);
+        for (n = 0; p[n] && p[n] != ','; ++n) ;
+        if (LAY.td > n)                    /* its comma at the tab's column */
+            for (n = left + LAY.td - 1 - n; rc < n && rc < WIDTH; ) put_(' ');
+        for (; *p; ++p) put_(*p);
+        return;
+    }
+    LAY.inv |= 2;
+    for (; *p; ++p) put_(plain((unsigned char)*p));
+    LAY.inv &= 1;
+}
+
+/* The variables as they are at off, a line's start: the assignments before
+ * it, from scan_off on -- or from the start of the file. */
+static void calc_to(unsigned int off)
+{
+    int c;
+    if (off < scan_off) { a.memset(vscan, 0, NVARS * 12); scan_off = 0; }
+    a.memcpy(calc_vars, vscan, NVARS * 12);
+    seek_(scan_off);
+    while (tell_() < off && (c = rd()) >= 0) {
+        if (c != '#') continue;
+        c = rd();
+        if (c == ':' || c == '*') {
+            gather();
+            if (c == '*') calc_forget(ebuf);
+            else if (ebuf[0] != '?') calc_assign(ebuf);
+        } else if (c >= 0) unget();
+    }
+    scan_off = off;
+    a.memcpy(vscan, calc_vars, NVARS * 12);
 }
 
 /* A Papyrus code, after its first $FF: up to the next $FF. $06 centres
@@ -270,9 +433,46 @@ static void code(void)
 {
     int c = rd();
     unsigned char n = 0;
-    if (c == 6) lay.centre = 2;
-    if (c == 5) pending_page = 1;
+    if (c == 6) LAY.centre = 2;
+    if (c == 5) LAY.pg |= PG_BREAK;
     while (c >= 0 && c != 0xFF && ++n < 16) c = rd();
+}
+
+/* The footer ("DB", from _DB) or the header ("EN", from _EN) written before
+ * `back`, laid out here: Epistole prints the footer at the foot of every
+ * page and the header at the top of every page but the first, %$ the
+ * page's number. A viewer shows them where it sees a page end: at an _SP
+ * break, and the footer at the end of the document. The definition is
+ * looked for from the start of the file each time: nothing is kept. */
+static void show_def(const char* kk)
+{
+    static struct Layout keep;
+    unsigned int back = tell_();
+    unsigned char c, n;
+    keep = LAY;
+    seek_(0);
+    while (tell_() < back && (c = rd()) != 0xFF)
+        if (c == '_' && (rd() & 0xDF) == kk[0] && (rd() & 0xDF) == kk[1]) {
+            /* its lines, to its __XX or the screen page's end: the line
+             * replayed at the next page's top skips what was shown */
+            for (endmark = 0; !endmark && row <= LASTROW; ) {
+                pad();
+                while ((c = rd()) != 13 && c != 0xFF && !endmark) {
+                    if (c == '_' && epistole()) continue;
+                    if (c == '%' && rd() == '$') {   /* the page number, 1 to 99 */
+                        for (n = LAY.pg & 0x7F, c = '0'; n >= 10; n -= 10) ++c;
+                        if (c > '0') put_(c);
+                        c = '0' + n;
+                    }
+                    put_(plain(c));
+                }
+                if (c == 0xFF) break;
+                if (!endmark || rc > left) emit();   /* not the __XX line's own */
+            }
+            break;
+        }
+    LAY = keep;
+    seek_(back);
 }
 
 /* One logical line, to its end or to the end of the page. Returns 0 when
@@ -280,9 +480,9 @@ static void code(void)
 static unsigned char render_line(void)
 {
     int c, c2;
-    unsigned char first = 1;
+    unsigned char first = 1, n;
     line_off = tell_();
-    line_lay = lay;
+    LINE_LAY = LAY;
     rows_done = 0;
     pad();
     for (;;) {
@@ -292,10 +492,12 @@ static unsigned char render_line(void)
         if (c == 13) { c2 = rd(); if (c2 != 10 && c2 >= 0) unget(); break; }
         if (c == 10) break;
         if (row > LASTROW) return 1;       /* the page filled: next is set, the line is replayed there */
-        if (pending_page) {
-            pending_page = 0;
+        if (LAY.pg & PG_BREAK) {           /* the footer, the break, the header */
             if (rc > left) emit();
+            show_def("DB");
             rule();
+            LAY.pg = (LAY.pg & 0x7F) + 1;
+            show_def("EN");
             if (row > LASTROW) return 1;
         }
         if (papyrus) {
@@ -303,29 +505,27 @@ static unsigned char render_line(void)
             if (c >= 0x18 && c <= 0x1C) { put_(raw ? '?' : vowels[c - 0x18]); continue; }
         } else {
             if (c == '_' && epistole()) continue;
-            if (c == '#') {                /* #NAME], #*NAME=], #:?calc]: inverse, marks dropped */
+            if (c == '#') {                /* #NAME]: inverse, marks dropped; #: #* calculations */
                 c2 = rd();
-                if (c2 == ':') {           /* #:X=1] sets a variable: nothing printed */
-                    c2 = rd();
-                    if (c2 != '?') {
-                        while (c2 >= 32 && c2 != ']') c2 = rd();
-                        continue;
-                    }
-                    lay.inv |= 2;
-                    continue;
-                }
-                if (c2 >= 'A' || c2 == '*') {
-                    if (c2 != '*') unget();
-                    lay.inv |= 2;
+                if (c2 == ':' || c2 == '*') { calc_field(c2); continue; }
+                if (c2 >= 'A') {
+                    unget();
+                    LAY.inv |= 2;
                     continue;
                 }
                 if (c2 >= 0) unget();
             }
-            if (lay.inv & 2) {
-                if (c == ']') { lay.inv &= 1; continue; }
-                if (c == '=') continue;    /* #*M1=]: the name to be typed */
+            if (LAY.inv & 2) {
+                if (c == ']') { LAY.inv &= 1; continue; }
             }
             if (c == '^' && !raw && rc > left) continue;   /* a circumflex on the letter before */
+            if (c >= 0x80) {               /* a letter set apart (printed wide): inverse */
+                n = LAY.inv;
+                LAY.inv |= 1;
+                put_(plain((unsigned char)c & 0x7F));
+                LAY.inv = n;
+                continue;
+            }
         }
         if (c == 9) { do put_(' '); while ((rc & 3) && rc < WIDTH); continue; }
         if (c < 32 || c == 127) continue;
@@ -335,25 +535,30 @@ static unsigned char render_line(void)
         if (row > LASTROW) return 1;
         emit();
     }
-    if (lay.centre == 2) lay.centre = 0;   /* Papyrus centres one line; Epistole until _PC */
-    lay.inv &= 1;
-    lay.mi = lay.ma;
-    next.off = tell_(); next.skip = 0; next.lay = lay;
+    if (LAY.centre == 2) LAY.centre = 0;   /* Papyrus centres one line; Epistole until _PC */
+    LAY.inv &= 1;
+    LAY.mi = LAY.ma;
+    NEXT.off = tell_(); NEXT.skip = 0; NEXT.lay = LAY;
     return 1;
 }
 
 static void render_page(const struct Start* st)
 {
+    done = 0;                              /* before the seek, which may fail */
+    if (!papyrus) calc_to(st->off);
     seek_(st->off);
-    skip = st->skip;
-    lay = st->lay;
-    pending_page = 0;
+    skip_rows = st->skip;
+    LAY = st->lay;
     row = ROW1;
-    done = 0;
     while (row <= LASTROW)
-        if (!render_line()) { done = 1; return; }
-    seek_(next.off);                       /* a page that filled on the last line: the end too */
-    if (getc_() < 0) done = 1;
+        if (!render_line()) {
+            done |= 1;
+            show_def("DB");
+            if (row > LASTROW) done &= 2;  /* the footer goes on over the page */
+            return;
+        }
+    seek_(NEXT.off);                       /* a page that filled on the last line: the end too */
+    if (getc_() < 0) done |= 1;
 }
 
 /* The kind, from the first bytes: mostly high-bit, a Papyrus document. */
@@ -372,24 +577,41 @@ static void first_page(void)
     STARTS->off = 0; STARTS->skip = 0;
     a.memset(&STARTS->lay, 0, sizeof STARTS->lay);
     STARTS->lay.rm = WIDTH;
+    STARTS->lay.nd = DEFAULT_ND;
+    STARTS->lay.pg = 1;
+    a.memset(vscan, 0, NVARS * 12);      /* the variables start again */
+    scan_off = 0;
+}
+
+/* The page shown, in the page table. */
+static struct Start* slot(void)
+{
+    return STARTS + ((ST.head_ + ST.page_) & (MAXPAGES - 1));
 }
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api)
 {
+#define page  ST.page_
+#define known ST.known_
+#define head  ST.head_
+#define first ST.first_
     struct Panel* pan;
-    unsigned char page = 0, known = 1, head = 0;
-    unsigned int first = 1;
-    char k;
+    char k, l;
     api->memcpy(&a, api, sizeof a);
     pan = a.panels + *a.active;
     if (!a.selected->name[0] || a.selected->type == 0x0F || !a.full[0] || !pan->path[0] || pan->fs) {
         a.strcpy(a.note, m_pick);
         return;
     }
+    /* cc65 2.19 drops the member's offset from ((unsigned*)&p->size)[1]:
+     * the size's high bytes, one by one. */
+    if (a.selected->size >= 0x10000UL) { a.strcpy(a.note, m_big); return; }
     vf = a.fopen(a.full, "rb");
     if (!vf) { a.strcpy(a.note, m_open); return; }
     vbase = 0; vlen = vpos = 0;
-    raw = 0;
+    raw = page = head = 0;
+    known = first = 1;
+    fp_zsave = a.copy_buf + NVARS * 12 + EBUFSZ;
     sniff();
     first_page();
     for (;;) {
@@ -397,23 +619,28 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         a.revers(1);
         a.cprintf("%-79.79s", a.full);
         a.revers(0);
-        render_page(STARTS + ((head + page) & (MAXPAGES - 1)));
+        render_page(slot());
         a.gotoxy(0, 22);
-        a.cprintf(m_page, first + page, done ? m_end : m_nil);
+        a.cprintf(m_page, first + page, m_ends[done]);
         k = a.cgetc();
-        if (k == KEY_ESC || k == 'q' || k == 'Q') break;
+        l = k | 0x20;                      /* a letter in lower case */
+        if (k == KEY_ESC || l == 'q') break;
         if ((k == ' ' || k == KEY_RETURN || k == KEY_RIGHT || k == KEY_DOWN) && !done) {
             if (page + 1 < known) ++page;
             else {
                 if (known < MAXPAGES) { ++known; ++page; }
                 else { head = (head + 1) & (MAXPAGES - 1); ++first; }
-                a.memcpy(STARTS + ((head + page) & (MAXPAGES - 1)), &next, sizeof next);
+                a.memcpy(slot(), &NEXT, sizeof NEXT);
             }
         }
-        if (k == 'a' || k == 'A') raw ^= 1;
-        if (k == 'r' || k == 'R') { page = head = 0; known = 1; first = 1; first_page(); }
-        if ((k == 'b' || k == 'B' || k == KEY_LEFT || k == KEY_UP) && page) --page;
+        if (l == 'a') raw ^= 1;
+        if (l == 'r') { page = head = 0; known = first = 1; first_page(); }
+        if ((l == 'b' || k == KEY_LEFT || k == KEY_UP) && page) --page;
     }
     a.fclose(vf);
     a.note[0] = 0;
 }
+#undef page
+#undef known
+#undef head
+#undef first

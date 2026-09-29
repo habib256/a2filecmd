@@ -1,5 +1,22 @@
 # Consolidation : budgets mémoire
 
+## DOCVIEW : calculs, en-têtes et bas de page d'Epistole
+
+DOCVIEW quitte le groupe des surcouches à brouillon `$3000` : code et BSS
+dans `$1B00-$3D5F` (`__OVLSIZE__` `$2260`, cas à part dans le Makefile),
+brouillon `$3D60-$3FFF` (table des pages 16 × 13, copie de la table de
+services 112 octets, ligne et attributs, état, tampon de lecture 128
+octets). Libres sous `$3D60` : **39** (6502) / **77** (65C02). La copie
+de la page zéro `$50-$FF` pendant un calcul (176 octets), l'état des
+variables au début de la page (144) et le champ lu (64) vivent dans le
+`copy_buf` de la table de services.
+
+Ce qui a payé : l'évaluateur en assembleur (`docview.s`, ~1,9 Ko de code ;
+en C, cc65 en faisait 3,7 Ko), les positions sur 16 bits (plus
+d'arithmétique `long`), 16 pages d'historique au lieu de 64, le tampon de
+lecture de 2 Ko à 128 octets, `epistole()` par table. `--codesize` plus
+bas grossit le code (5074 → 6421 octets à 10) : ne pas y compter.
+
 ## Page de titre : ni effacée, ni escamotée
 
 MAIN **57/469** (93/503 avant) : `key_wait` (display.s), la boucle
@@ -21,7 +38,7 @@ octets ; la même en C en prenait 95), le tour de l'album dans
 `overlay_run` (+11). La carte langage (62/53) ne pouvait pas recevoir
 `slide_getc` sur 6502.
 
-FANTA.SYSTEM (hors résident) : programme `$A400-$BEE0`, 31 octets libres
+FANTA.SYSTEM (hors résident) : programme `$A400-$BEDD`, 34 octets libres
 sous `$BF00` ; `cmdbuf` (85 octets) en tête, sous `$BB00` que le tampon du
 thunk de retour recouvre ; LOW 52 octets libres ; page zéro jusqu'à `$D9`.
 Le chargeur (`LOADER`, `$2000-$2672`) porte la lecture du répertoire.

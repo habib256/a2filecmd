@@ -121,7 +121,8 @@ depuis que son classifieur est en assembleur (`src/open.s`, 26 septembre
 2026) : une règle de routage coûte 10 à 20 octets, à écrire dans
 `open.s` **et** dans `tools/file_viewer_ref.c`. Le résident 65C02 est à
 203 octets (objectif 256) : tout nouveau format vit dans une surcouche.
-DOCVIEW a ~120 octets, UNSHRINK ~900, SHAPES est plein. Les nouvelles
+DOCVIEW a ~60/120 octets (6502/65C02) dans sa fenêtre agrandie,
+UNSHRINK ~900, SHAPES est plein. Les nouvelles
 surcouches vont sur 800K et XL, pas sur la 140K.
 
 Méthode, avant d'ajouter des formats un par un :
@@ -175,8 +176,16 @@ de côté pour l'instant (voir « Plus tard »).
   commence par `_`. Relevé sur les 21 documents du disque v5.06 : `_CE`
   centre **jusqu'à** `_PC`/`_CL`/`_JD`, `_TDn` tabulation, `#:X=…]`
   affectation muette, `#:?X]` valeur, `#*X=]` saisie, `[` = « ° ». Non
-  interprétés (imprimante seule) : `_JD`, `_CC`, `_LP`, `_LF`, `_ND`,
-  en-têtes `_EN…__EA` et bas de page `_DB…__BA` montrés comme du texte.
+  interprétés (imprimante seule) : `_JD`, `_CC`, `_LP`, `_LF`.
+- [x] **Calculs, en-têtes et bas de page Epistole** — faits le 2026-09-29,
+  vérifiés contre l'impression d'Epistole 5.06 capturée sous POM2
+  (protection contournée en mémoire, carte SSC avec sa ROM) : format des
+  nombres (STR$ de |x| + ½ unité, virgule, pas de signe avec décimales),
+  `_TD` tabulation décimale, `_ND`, pieds `%$` aux `_SP` et à la fin.
+  Reste : les fins de page de l'imprimante (72 lignes, pied à la 60e) ne
+  sont pas simulées ; `AND`/`OR`/`NOT` non reconnus (champ laissé tel
+  quel) ; avec `_ND0`, un négatif calculé s'imprime décalé d'une unité
+  chez Epistole (5-8 → -2), DOCVIEW montre -3.
 - [x] **Papyrus traitement de texte** (Ediciel) et **HomeWord** (Sierra)
   — même DOCVIEW, texte à bit haut. Codes `$FF c … $FF` : `$06` centre
   la ligne, `$05` saut de page, les autres (`$0D` marges, `$0A`, `$0E n`
@@ -221,7 +230,7 @@ de côté pour l'instant (voir « Plus tard »).
    dans DOCVIEW, et **Merlin** (sources à bit haut, colonnes étiquette /
    opcode / opérande / commentaire ; CiderPress II `MerlinAsm.cs`). Tous deux
    déjà lisibles dans TEXT : c'est du confort, après 1 et 2. DOCVIEW n'a
-   que ~120 octets : Merlin irait plutôt dans une surcouche à part.
+   que ~60 octets : Merlin irait plutôt dans une surcouche à part.
 4. [ ] **Bordures Print Shop / Print Shop Companion** (BIN, 144 ou
    148 octets, 12 × 12). Disposition des octets à établir avec Print Shop
    sous POM2, puis spécification publiée dans `docs/`. Se greffe sur

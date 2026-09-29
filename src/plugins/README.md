@@ -42,6 +42,7 @@ line of the source. The link refuses a file over its window:
 | small (`flags = 0`) | `$1B00-$1FFF` | 1,280 bytes | `api->copy_buf` (512), `api->input` (17), `api->other_full` (81, if you do not need the other panel's path) |
 | big (`OVERLAY_BIG`) | `$1B00-$3FFF` | 9,472 bytes | the same, plus `$3000-$3FFF` (4 KB) **only if the ld65 map shows BSS ending under `$3000`** — the file size alone does not prove it, since BSS is not in the file |
 | DUET (its own case in the Makefile) | `$1B00-$23FF` | 2,304 bytes | `$2400-$3FFF` (7 KB) for the song |
+| DOCVIEW (its own case in the Makefile) | `$1B00-$3D5F` | 8,800 bytes | `$3D60-$3FFF` (672 bytes) |
 
 The Makefile writes `build/name.map` (or `build-6502/name.map`) and checks
 code **and BSS** against the window. Add an overlay using `$3000` scratch
