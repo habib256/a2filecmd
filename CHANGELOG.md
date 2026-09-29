@@ -88,11 +88,16 @@ downloads and installation.
   command and the backdrop by prefix under sim65 with a fake MLI, errors
   included.
 
-### The title page stays long enough to be read
-- At start-up the launcher's title page stays about two seconds after the
-  panels are read ("Reading directory..." still shows at the bottom): from
-  a hard disk or an emulator it used to vanish at once. A key cuts it short
-  and is not taken for a command. MAIN 65C02/6502: 67/477 bytes free.
+### The title page stays for the whole first loading
+- A2FC's main() called videomode(), whose 80-column firmware call ($C300,
+  a PR#3) cleared the launcher's title page as soon as A2FILE.CODE began:
+  the configuration and the panels were read on a blank screen. It is now
+  called only when 80 columns are not already on, so the page stays, with
+  "Reading directory..." at the bottom, until the panels are drawn.
+- It then stays about two seconds more: from a hard disk or an emulator the
+  whole loading takes a blink. A key cuts it short and is not taken for a
+  command. `tools/test_startup_screen.py` holds main() to it.
+  MAIN 65C02/6502: 57/469 bytes free.
 
 ### DEMO: a file for every viewer
 - The XL disk's `DEMO/` now holds at least one file for each viewer:
@@ -127,8 +132,8 @@ downloads and installation.
   for the browsing session are unchanged; a picture that cannot be read
   ends the slideshow with its message. The music viewers keep S as an
   ordinary key.
-- MAIN 65C02/6502: 93/503 bytes free (203/609 before); 67/477 with the
-  title page's pause below.
+- MAIN 65C02/6502: 93/503 bytes free (203/609 before); 57/469 with the
+  title page's changes below.
 
 ## [0.9.4] - 2026-09-26
 

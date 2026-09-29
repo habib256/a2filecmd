@@ -1,10 +1,11 @@
 # Consolidation : budgets mémoire
 
-## Pause de la page de titre
+## Page de titre : ni effacée, ni escamotée
 
-MAIN **67/477** (93/503 avant), écart avant la pile 95/694 : `key_wait`
-(display.s), la boucle d'attente du diaporama devenue sous-programme, et
-son appel dans `main` (26 octets en tout).
+MAIN **57/469** (93/503 avant) : `key_wait` (display.s), la boucle
+d'attente du diaporama devenue sous-programme, et son appel dans `main`
+(26 octets) ; le test de RD80VID/RD80STORE qui évite l'appel de
+`videomode` quand le lanceur a déjà mis le 80 colonnes (10 octets).
 
 ## Diaporama des visionneuses et suite des films Fantavision
 

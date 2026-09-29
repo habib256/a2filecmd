@@ -399,6 +399,7 @@ test: test-mini
 	python3 $(TOOLS)/test_release_notes.py
 	python3 $(TOOLS)/test_file_viewers.py
 	python3 $(TOOLS)/test_demo_viewers.py
+	python3 $(TOOLS)/test_startup_screen.py
 	python3 $(TOOLS)/test_move.py
 	python3 $(TOOLS)/test_move_alloc.py
 	python3 $(TOOLS)/test_txtconv.py

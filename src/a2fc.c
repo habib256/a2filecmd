@@ -5548,7 +5548,11 @@ int main(void)
     char key;
     struct Panel* pan;
     struct Entry* ent;
-    videomode(VIDEOMODE_80COL);
+    /* The launcher leaves 80 columns on (RD80VID, RD80STORE) and its title
+     * page on the screen, which stays for the whole first loading.
+     * videomode calls the 80-column firmware at $C300 -- a PR#3, which
+     * clears the screen -- so only when 80 columns are not on already. */
+    if (!(*(unsigned char*)0xC01F & *(unsigned char*)0xC018 & 0x80)) videomode(VIDEOMODE_80COL);
 #ifdef A2FC_TRACE
     *(unsigned char*)0x03A0 = 1;
 #endif
@@ -5592,9 +5596,9 @@ int main(void)
 #ifdef A2FC_TRACE
     *(unsigned char*)0x03A0 = 5;
 #endif
-    /* The launcher's title page stays about two seconds once the panels
-     * are read: from a hard disk they are read in a blink, and the page
-     * was gone before it could be seen. A key cuts it short and is not
+    /* The launcher's title page, on the screen since it started, stays
+     * about two seconds more once the panels are read: from a hard disk
+     * the whole loading takes a blink. A key cuts it short and is not
      * taken for a command. */
     if (key_wait(3)) cgetc();
     draw_all();
