@@ -236,8 +236,20 @@ movie's path.
 - Main memory only: pages 1 and 2 ($2000–$5FFF), the background copy, the
   movie (≤ 9 KB) and the engine above; no auxiliary memory, so `/RAM` is
   untouched. Nothing is ever written to a disk.
-- Keys: Escape stops and returns, Space pauses and resumes. The end of a
-  counted movie waits for a key.
+- Keys: Escape stops and returns, Space pauses and resumes, S starts or
+  stops the slideshow.
+- The end: a movie always starts again. A counted movie stays two seconds
+  on its last frame, then plays from the start: in place, or, with a
+  backdrop (Background objects are drawn into it), read again from the
+  disk. A single frame simply stays.
+- The slideshow: each movie plays once round (a looping one until key
+  frame 0 comes back), stays two seconds, then the next movie of its
+  directory plays, in directory order, the first after the last. A movie is
+  what A2 File Cmd hands over (BIN, aux $8400, 513 to 9,216 bytes); one
+  pass over the directory, as the movie is loaded, finds it. Any error
+  reading the directory (anything but its clean end) and there is no next
+  movie: the same one plays again. A movie refused during a slideshow shows
+  its reason three seconds, then the next one; a key returns.
 - Accelerated: the original spends 11,000 to 128,000 cycles a frame, most
   of it redrawing and erasing whole shapes. This player aims to be clearly
   faster on the same 1 MHz machine: erase only the rows and byte columns
@@ -245,24 +257,34 @@ movie's path.
   fill spans a byte at a time from tables (row addresses, edge masks,
   colour bytes), a scan-line fill with an active edge list, and 8.8
   fixed-point steps added, never recomputed.
-- Two speeds, switched by Tab while playing: **accelerated** (the default,
-  as fast as this player draws; the digits 1–9 add a delay per frame, 0
-  removes it) and **original**, where each frame is held until the time the
-  original would have taken for it has passed, by the formula of "How long
+- Two speeds, switched by Tab while playing: **original** (the default)
+  and **accelerated** (as fast as this player draws; the digits 1–9 add a
+  delay per frame, 0 removes it). At the original speed each frame is held
+  until the time the original would have taken for it has passed, by the formula of "How long
   the original takes" computed on the frame's own segments and edges. The
   player knows its own cost per frame (the same kind of count, calibrated
   on itself) and waits for the difference; a frame it cannot draw faster
   than the original is simply not delayed.
-- Return to A2 File Cmd by loading `A2FILE.SYSTEM` again.
+- Return to A2 File Cmd by loading `A2FILE.SYSTEM` again. The next movie,
+  or the same one read again, is played by `A2FILE/FANTA.SYSTEM` loaded
+  anew (from the prefix, A2 File Cmd's directory) with its own command;
+  if that fails, `A2FILE.SYSTEM` as for a return.
 - An invalid movie is refused with a message, then the same return.
 - The command in the startup buffer is the movie's full path, optionally
   followed by a comma and a backdrop's **name** (1 to 15 characters), a
   file of the movie's own directory: `/HD/FV/M.PARADIES,PARADIES`. A comma
   cannot occur in a ProDOS name, and Fantavision itself writes `NAME,2`.
   The whole command is at most 46 characters (A2FC's chain thunk).
+  FANTA.SYSTEM relaunched by itself puts two characters before the path:
+  `*` (a slideshow) or `+` (none), then the speed, `O` original or `A` to
+  `J` accelerated with the delay 0 to 9: `*O/HD/FV/M.STREAM`. Its command
+  is at most 64 characters.
 - The backdrop: the name after the comma (A2FC gives the one hi-res
   picture the user marked in the movie's panel), or else, when the movie
-  is `M.NAME`, a file `NAME` of the same directory if there is one. It
+  is `M.NAME`, a file `NAME` of the same directory if there is one, or
+  else the first picture of the directory whose name begins with `NAME`
+  (`NAME` of 4 characters or more; by the directory's EOF exactly 8,192 or
+  8,184 bytes, and not a movie): `CHECKERBOARD` for `M.CHECKER`. It
   must be exactly 8,192 or 8,184 bytes (GET_EOF), whatever its type; it
   is read into the background copy before anything is drawn, and nothing
   else of it is read. A backdrop that is named but cannot be opened or

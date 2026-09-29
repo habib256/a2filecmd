@@ -311,7 +311,14 @@ Specialized viewers and media tools require **800K or XL**.
 Raw HGR accepts **8,184/8,192 bytes**; DHGR accepts **16,376/16,384**, auxiliary
 plane first: the one-file layout Dazzle Draw saves (BIN, aux $2000, 16,384
 bytes), so its pictures and slide-show disks open as they are. Left/Right browses the previous/next file handled by the same
-viewer, including across directory windows. At an end it does nothing.
+viewer, including across directory windows. Right on the last one goes round
+to the first; Left on the first does nothing.
+**S** starts a slideshow in every picture viewer: the next picture comes by
+itself after about five seconds (at 1 MHz; faster on an accelerated machine),
+round the folder without end. **S** again, or any other key, stops it; that
+key then acts as usual (Escape returns, an arrow moves). A picture alone in
+its folder is shown again. A picture that cannot be read ends the slideshow
+with its message.
 Loading shows the filename; Escape returns to the panels. Ordinary small BIN
 files open in hex with Return; I can treat a suitable one as a sprite.
 
@@ -324,13 +331,22 @@ lines. SHAPES shows 24 shapes a page, Space/Down next and B/Up previous.
 
 Return on a Fantavision movie (`M.*`, BIN $8400) plays it in **FANTA.SYSTEM**
 (800K and XL), which replaces A2FC while it plays and brings it back after.
-**Tab** switches between the accelerated speed (the default) and the
-original's, **Space** pauses, **1**-**9** slow the accelerated speed down,
-**0** removes the delay, **Escape** returns. A counted movie waits for a key
-on its last frame. A damaged tail is cut; a movie with no whole frame is
+It plays at the **original speed** (each frame held as long as Fantavision
+itself takes to draw it on a 1 MHz Apple II). **Tab** switches to the
+accelerated speed and back, **Space** pauses, **1**-**9** slow the
+accelerated speed down, **0** removes the delay, **Escape** returns. A movie
+always starts again: a counted one stays two seconds on its last frame, then
+plays from the start. **S** starts or stops the slideshow: each movie plays
+once round, stays two seconds, and the next movie of its folder follows (in
+directory order, the first after the last), until Escape. A movie refused
+during a slideshow shows its reason three seconds, then the next one plays;
+a key returns. A damaged tail is cut; a movie with no whole frame is
 refused with its reason. Main memory only: /RAM is untouched. Backdrop:
 mark (Space) one hi-res picture in the movie's folder before Return;
-otherwise `NAME` beside `M.NAME` is used when there is one.
+otherwise `NAME` beside `M.NAME`, or else a picture whose name begins with
+`NAME` (`CHECKERBOARD` for `M.CHECKER`; `NAME` of
+4 characters or more), is used. The speed and the slideshow are not kept
+once back in A2FC.
 
 <!-- pagebreak -->
 

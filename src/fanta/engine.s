@@ -24,6 +24,8 @@
 ;   fv_first   draws key frame 0 on page 1 (fv_shown = $20)
 ;   fv_next    builds the next frame on the hidden page and sets fv_shown;
 ;              A = 1 (nothing built) once a counted movie has ended
+;   fv_vkey, fv_vframe  after fv_first or fv_next: nonzero if the frame
+;              built is key frame fv_vframe as stored
 ;   fv_timing  after a frame: fv_orig, the original player's time for it,
 ;              fv_own, this engine's estimated time, fv_wait = the
 ;              difference, never negative (cycles, 32 bits)
@@ -43,6 +45,7 @@
         .export fv_check, fv_begin, fv_first, fv_next, fv_timing
         .export fv_movie, fv_len, fv_shown, fv_done, fv_frames, fv_count, fv_end
         .export fv_bdrop
+        .export fv_vkey := vkey, fv_vframe := vframe
         .export fv_counts, fv_orig, fv_own, fv_wait
 
 PAGE1   = $20

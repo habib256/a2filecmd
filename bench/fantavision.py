@@ -11,15 +11,18 @@ A2FILE.SYSTEM and counts at $039D the returns to it. For each movie:
 
 - a counted movie plays to its last frame: pages 1 and 2 and the background
   copy end exactly as tools/fantavision_ref.py says, the movie at $8000 is
-  the file; a key returns, the ProDOS bitmap is given back;
-- a movie with a damaged tail plays its whole frames, then returns;
+  the file; two seconds later it plays again from frame 0; Escape returns,
+  the ProDOS bitmap is given back;
+- a movie with a damaged tail plays its whole frames, then Escape returns;
 - backdrops: M.PARADIES takes PARADIES of its directory, M.PARADIES,STREAM
   takes STREAM (an 8,184-byte save); pages and background copy end as the
   reference says; a named backdrop that is missing refuses the movie;
 - a refused movie (header byte 3 wrong) shows its reason, draws nothing and
   returns after a key; so does a missing file;
-- a looping movie keeps changing, Tab (original speed) and Space (pause)
+- a looping movie keeps changing, Tab (accelerated speed) and Space (pause)
   are obeyed, Escape returns;
+- S on a movie starts the slideshow: another movie of the directory is read
+  (FANTA.SYSTEM relaunched from A2FILE/, as A2 File Cmd installs it);
 - the disk image is byte for byte the same at the end: nothing written.
 """
 import argparse
@@ -160,6 +163,8 @@ def main():
         (stage / 'A1.SYSTEM.SYS').write_bytes(boot)
         (stage / 'A2FILE.SYSTEM.SYS').write_bytes(boot)
         shutil.copyfile(fanta, stage / 'FANTA.SYSTEM.SYS')
+        (stage / 'A2FILE').mkdir()        # where the slideshow relaunches it from
+        shutil.copyfile(fanta, stage / 'A2FILE' / 'FANTA.SYSTEM.SYS')
         for name, data in films.items():
             aux = 0x8400 if name.startswith('M.') else 0x4000     # backdrops: BIN $4000
             (stage / ('%s#06%04X' % (name, aux))).write_bytes(data)
@@ -202,10 +207,11 @@ def main():
                  p.peek(0x6000, 0x2000) == bytes(player.bg))
             s.ok('counted movie: the movie read whole at $8000',
                  p.peek(0x8000, len(films['M.COUNT'])) == films['M.COUNT'])
-            time.sleep(1)
-            s.ok('counted movie: stays on its last frame until a key',
+            s.wait(lambda: p.peek(0x2000, 0x2000) == bytes(shown[0][1]),
+                   'frame 0 again', 120)
+            s.ok('counted movie: plays again from the start, still in FANTA.SYSTEM',
                  p.peek(RUNS, 1)[0] == runs[0])
-            s.key(b' ')
+            s.key(b'\x1b')
             returned('counted movie')
 
             # A damaged tail: the whole frames before it play, then a key.
@@ -216,7 +222,7 @@ def main():
                    p.peek(0x4000, 0x2000) == bytes(cut.pages[2]), 'the cut movie\'s last frame', 120)
             s.ok('cut movie: its %d whole frames played, pages as the reference (%d shown)'
                  % (len(cut.frames), n), True)
-            s.key(b' ')
+            s.key(b'\x1b')
             returned('cut movie')
 
             # Backdrops: the same name (M.PARADIES, PARADIES), then a named
@@ -230,7 +236,7 @@ def main():
                        p.peek(0x4000, 0x2000) == bytes(bd.pages[2]), command + ': the last frame', 120)
                 s.ok('backdrop %s: pages and background copy as the reference' % command,
                      p.peek(0x6000, 0x2000) == bytes(bd.bg))
-                s.key(b' ')
+                s.key(b'\x1b')
                 returned('backdrop ' + command)
             launch('M.COUNT,NOPE')
             s.wait(lambda: 'THE BACKDROP CANNOT BE USED.' in text(), 'the backdrop refusal', 60)
@@ -268,7 +274,7 @@ def main():
                 snaps.add(p.peek(0x2000, 0x2000) + p.peek(0x4000, 0x2000))
                 time.sleep(0.05)
             s.ok('looping movie: keeps playing', len(snaps) > 1, len(snaps))
-            s.key(b'\x09')                       # Tab: the original speed
+            s.key(b'\x09')                       # Tab: the accelerated speed
             time.sleep(0.5)
             s.key(b' ')                          # pause
             time.sleep(0.5)
@@ -279,9 +285,22 @@ def main():
             s.key(b' ')                          # resume
             s.wait(lambda: p.peek(0x2000, 0x2000) + p.peek(0x4000, 0x2000) != b,
                    'playing again', 60)
-            s.ok('looping movie: Space resumes (original speed)', True)
+            s.ok('looping movie: Space resumes (accelerated speed)', True)
             s.key(b'\x1b')
             returned('looping movie, Escape')
+
+            # The slideshow: S, and once round the movie gives way to
+            # another of the directory (a refused one is shown, then skipped).
+            launch('M.LOOP')
+            s.wait(lambda: p.peek(0x2000, 0x2000) in seen, 'the looping movie drawn', 120)
+            s.key(b'S')
+            others = [n for n in films if n.startswith('M.') and n not in ('M.LOOP', 'M.BAD')]
+            s.wait(lambda: any(p.peek(0x8000, len(films[n])) == films[n] for n in others),
+                   'another movie read', 240)
+            s.ok('slideshow: S goes on to another movie of the directory',
+                 p.peek(RUNS, 1)[0] == runs[0])
+            s.key(b'\x1b')
+            returned('slideshow, Escape')
         s.ok('disk image unchanged: nothing written', hdv.read_bytes() == before)
     passed = sum(1 for c in s.checks if c['ok'])
     print('\n%d/%d controles (fantavision %s)' % (passed, len(s.checks), args.preset), flush=True)

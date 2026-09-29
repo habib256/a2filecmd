@@ -71,6 +71,35 @@ downloads and installation.
   processors against `tools/fantavision_ref.py` byte for byte, damaged
   movies included; `bench/fantavision.py` plays it on three machines under
   POM2; `bench/fanta_a2fc.py` goes from A2FC's Return to the movie and back.
+- The original speed is now the default (Tab for the accelerated one).
+  A movie always starts again: a counted one stays two seconds on its last
+  frame, then plays from the start (with a backdrop, read again from the
+  disk, since Background objects are drawn into it).
+- S starts the slideshow: each movie plays once round and the next movie of
+  its folder follows, in directory order, round and round until Escape.
+  FANTA.SYSTEM relaunches itself with the next movie, the speed and the
+  slideshow in its command; a movie refused on the way is shown three
+  seconds, then skipped.
+- Backdrops: a picture whose name begins with `NAME` is used for `M.NAME`
+  when there is no `NAME` itself: `M.CHECKER` now plays on `CHECKERBOARD`.
+- The movie's directory is read once, as the movie is loaded; anything but
+  its clean end (an error, a short block, a malformed header) and it is
+  not used. `tools/test_fantavision.py` checks the scan, the relaunch
+  command and the backdrop by prefix under sim65 with a fake MLI, errors
+  included.
+
+### Slideshows in the picture viewers
+- S in any picture viewer (IMAGE's HGR/DHGR album, DGRVIEW, EXTASIE,
+  ARLEQUIN, MACPAINT, PACKFOT, LZ4FH, PAINT816, PURPLE, PRINTSHOP,
+  NEWSROOM, FONTVIEW) starts a slideshow: the next picture comes after
+  about five seconds at 1 MHz, round the folder without end. S again or
+  any other key stops it, and that key acts as usual.
+- Right on the last picture of a folder now goes round to the first.
+- It only ever sends Right: the viewers' checks and the /RAM consent given
+  for the browsing session are unchanged; a picture that cannot be read
+  ends the slideshow with its message. The music viewers keep S as an
+  ordinary key.
+- MAIN 65C02/6502: 93/503 bytes free (203/609 before).
 
 ## [0.9.4] - 2026-09-26
 
