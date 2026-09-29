@@ -921,6 +921,20 @@ class FLoad(unittest.TestCase):
         for fault in 'OR':
             self.load(M, dict(base, **{D: prodos_dir([mv, board])}), fault + D)
             self.load(M, dict(base, **{D: prodos_dir([mv, board])}), fault + D + '/CHECKERBOARD')
+        # A deep directory: the name found (12 characters) is longer than
+        # NAME (7), so the backdrop's path can pass 64 characters while the
+        # movie's does not. It used to be written past bpath (65 bytes, over
+        # the message after it); it is now not used. At 64 exactly, it is.
+        for depth, found in ((51, True), (52, False), (54, False)):
+            deep = '/HD/' + '/'.join(['ABCDEFGHIJKLMNO'] * 4)
+            deep = deep[:depth].rstrip('/')
+            deep += 'X' * (depth - len(deep))
+            self.assertEqual(len(deep), depth)
+            dm = deep + '/M.CHECKER'
+            self.assertLessEqual(len(dm), 64)
+            f = {dm: movie, deep + '/CHECKERBOARD': pic, deep: prodos_dir([mv, board])}
+            with self.subTest(depth=depth):
+                self.load(dm, f, bdrop=pic if found else None)
         print('PASS fantavision: a backdrop by its name\'s beginning (M.CHECKER), both processors')
 
     def test_relaunch_command(self):
