@@ -76,6 +76,7 @@ static unsigned char target_check(void);
 static void progress_bar(const char* name, unsigned long copied, unsigned long size);
 void __fastcall__ activity_begin(const char* text);
 void activity_tick(void); /* display.s: MAIN text cell only; never AUX or disk */
+unsigned char __fastcall__ key_wait(unsigned char units);   /* display.s: 0 after the time, 1 for a key */
 static void refresh_both(void);
 static unsigned char abort_key(void);
 static void dir_fail(void);
@@ -2389,6 +2390,10 @@ static void overlay_run(const char* name, unsigned char arg)
     unsigned char big, media=media_type(name), dir, gr, first=1;
     media_aux_scope = media ? 1 : 0;
     media_kind = media;
+    /* S in a picture viewer only: the music viewers read keys through
+     * the same cgetc while they play. Everything that reads it runs
+     * under here, so the next overlay_run resets it. */
+    slideshow = media >= V_EXT;
 again:
     if(media && !media_prepare(media)) {draw_all();goto media_done;}
     /* The entry under the cursor and its path, kept safe: a big overlay
@@ -2669,6 +2674,7 @@ static void view_image(void)
      * to find the neighbour there. */
     keep_tags(1);
     a2fc_view = 1;
+    slideshow = 1;
     /* The panels go at once, not when the first image lights up: they were
      * left on the air for the whole decoding, and an album that starts on
      * them and then never shows them again reads as a flash. The screen now
@@ -2686,8 +2692,9 @@ static void view_image(void)
             album[dir][0] = 0;
             next = index;
             for (;;) {
+                /* Right goes round: past the last picture, the first. */
                 if (!dir) { if (!next) break; --next; }
-                else { if (next + 1 >= pan->count) break; ++next; }
+                else { if (++next >= pan->count) next = 0; if (next == index) break; }
                 if (image_kind(&pan->e[next]) == 1) { strcpy(album[dir], pan->e[next].name); break; }
             }
         }
@@ -2702,7 +2709,7 @@ static void view_image(void)
         if (img_kind == IMG_HGR || img_kind == IMG_HGRR) show_hgr();
         else switch_to_hgr();
         /* An arrow with no neighbour on its side does nothing: the image stays. */
-        do key = cgetc() & 127; while ((key == KEY_LEFT || key == KEY_RIGHT) && !album[key == KEY_RIGHT][0]);
+        do key = slide_getc() & 127; while ((key == KEY_LEFT || key == KEY_RIGHT) && !album[key == KEY_RIGHT][0]);
         if (key != KEY_LEFT && key != KEY_RIGHT) break;
         dir = key == KEY_RIGHT;
         /* Back to text before read_panel rewrites the entry table, hence the
@@ -5532,7 +5539,7 @@ static struct A2fcApi api = {
     panels, &active, full, other_full, input, copy_buf, &dir_entry,
     message, confirm, prompt, progress_bar, keys_bar, bar_begin, draw_all, read_panel, report_error, wait_key,
     build_full, dir_open, dir_next, dir_close, mli_call,
-    fopen, fread, fwrite, fclose, fseek, remove, cprintf, sprintf, cputs, cputc, gotoxy, revers, cclearxy, clrscr, cgetc,
+    fopen, fread, fwrite, fclose, fseek, remove, cprintf, sprintf, cputs, cputc, gotoxy, revers, cclearxy, clrscr, slide_getc,
     memcpy, memset, strcpy, strcmp, strlen, &_filetype, &_auxtype, reselect, note, &selected, cfg_path,
     ram_format, media_key, media_wait, music_info };
 
@@ -5541,7 +5548,11 @@ int main(void)
     char key;
     struct Panel* pan;
     struct Entry* ent;
-    videomode(VIDEOMODE_80COL);
+    /* The launcher leaves 80 columns on (RD80VID, RD80STORE) and its title
+     * page on the screen, which stays for the whole first loading.
+     * videomode calls the 80-column firmware at $C300 -- a PR#3, which
+     * clears the screen -- so only when 80 columns are not on already. */
+    if (!(*(unsigned char*)0xC01F & *(unsigned char*)0xC018 & 0x80)) videomode(VIDEOMODE_80COL);
 #ifdef A2FC_TRACE
     *(unsigned char*)0x03A0 = 1;
 #endif
@@ -5585,6 +5596,11 @@ int main(void)
 #ifdef A2FC_TRACE
     *(unsigned char*)0x03A0 = 5;
 #endif
+    /* The launcher's title page, on the screen since it started, stays
+     * about two seconds more once the panels are read: from a hard disk
+     * the whole loading takes a blink. A key cuts it short and is not
+     * taken for a command. */
+    if (key_wait(3)) cgetc();
     draw_all();
 #ifndef A2FC_NOVDRIVE
 #ifdef A2FC_TRACE

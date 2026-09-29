@@ -4,15 +4,25 @@
 ; Cmd loads it at $2000 with the movie's full path, the prefix set to its own
 ; directory. The program moves itself to $A400 (both hi-res pages are
 ; needed), reads the movie to $8000, has the engine (engine.s) check it and
-; plays it. Escape, the end of a counted movie followed by a key, or a
-; refused movie return to A2 File Cmd: A2FILE.SYSTEM is loaded again from
-; the prefix, the way src/chain.s does it; QUIT to ProDOS only if that fails.
+; plays it. Escape, or a refused movie followed by a key, return to A2 File
+; Cmd: A2FILE.SYSTEM is loaded again from the prefix, the way src/chain.s
+; does it; QUIT to ProDOS only if that fails.
 ;
 ; Keys while playing: Escape returns, Space pauses and resumes, Tab switches
-; between the accelerated speed (the default: as fast as the engine draws,
-; plus a delay per frame set by the digits 1-9, 0 for none) and the
-; original speed (each frame held until the original player's time for it
-; has passed: fv_timing).
+; between the original speed (the default: each frame held until the
+; original player's time for it has passed, fv_timing) and the accelerated
+; one (as fast as the engine draws, plus a delay per frame set by the
+; digits 1-9, 0 for none), S starts or stops the slideshow.
+;
+; The end: a movie always starts again. A counted movie stays two seconds
+; on its last frame, then plays from the start: in place, or, with a
+; backdrop (Background objects are drawn into it), read again from the
+; disk. In a slideshow each movie plays once round (a looping one until
+; frame 0 comes back), stays two seconds, and the next movie of the
+; directory follows (fload.s, scan), the first after the last. The next
+; one, or the same one read again, is played by FANTA.SYSTEM loaded anew
+; by the return thunk, its command given the slideshow and the speed. A
+; movie refused during a slideshow is shown three seconds, then the next.
 ;
 ; Data safety: the only MLI calls are OPEN, GET_EOF, READ and CLOSE (and
 ; QUIT); nothing is ever written to a disk. Main memory only: no auxiliary
@@ -23,7 +33,9 @@
 ; Plain 6502: the same file serves both editions.
 
         .import fv_check, fv_begin, fv_first, fv_next, fv_timing
-        .import fv_shown, fv_wait, fv_count, fload
+        .import fv_shown, fv_wait, fv_count, fv_bdrop, fv_frames
+        .import fv_vkey, fv_vframe, fload
+        .import cmdbuf, ocl, cdl, nextn, mode, delay, slide
         .export path0
         .import __CODE_LOAD__, __CODE_RUN__, __CODE_SIZE__, __RODATA_SIZE__
         .import __BSS_RUN__, __BSS_SIZE__
@@ -56,8 +68,6 @@ msgp:   .res 2
 
         .bss
 savebm: .res 24                 ; the system bitmap as it was
-mode:   .res 1                  ; 0 accelerated, 1 original speed
-delay:  .res 1                  ; 0-9: per-frame delay, accelerated
 
 ; -- at $2000: the interpreter header, then the move -----------------------
         .segment "LOADER"
@@ -139,80 +149,44 @@ copy:   ldy     #0
         jmp     @copy
 @done:  rts
 
-; A/X: a message for the text screen; then a key, then the way back.
-refuse: sta     msgp
-        stx     msgp+1
-        sta     STORE80OFF
-        sta     CLR80VID
-        sta     TXTSET
-        sta     LOWSCR
-        ldx     #23             ; clear the 40 columns of 24 rows
-@clr:   jsr     textrow
-        lda     #$A0
-        ldy     #39
-:       sta     (dst),y
-        dey
-        bpl     :-
+; A/X: a message for the text screen; then a key, then the way back. In a
+; slideshow, three seconds without a key go on to the next movie.
+refuse: pha
+        txa
+        pha
+        jsr     textscr
+        pla
+        tay
+        pla
+        ldx     #10             ; the message on row 10, the key on 12
+        jsr     print           ; (40 columns at most)
+        ldx     #12
+        lda     #<presskey
+        ldy     #>presskey
+        jsr     print
+        lda     slide
+        beq     @key
+        lda     nextn
+        beq     @key
+        lda     #12             ; 12 x 256 x ~1,000 cycles
+        sta     wl
+@w:     ldx     #0
+:       lda     KBD
+        bmi     @key
+        jsr     unit
+        jsr     unit
+        jsr     unit
+        jsr     unit
         dex
-        bpl     @clr
-        ldx     #8              ; the title on row 8, the message on 10,
-        jsr     textrow         ; the key on 12 (40 columns at most)
-        ldy     #0
-:       lda     title,y
-        beq     :+
-        ora     #$80
-        sta     (dst),y
-        iny
         bne     :-
-:       ldx     #10
-        jsr     textrow
-        ldy     #0
-:       lda     (msgp),y
-        beq     :+
-        ora     #$80
-        sta     (dst),y
-        iny
-        cpy     #40
-        bne     :-
-:       ldx     #12
-        jsr     textrow
-        ldy     #0
-:       lda     presskey,y
-        beq     :+
-        ora     #$80
-        sta     (dst),y
-        iny
-        bne     :-
-:       jsr     getkey
+        dec     wl
+        bne     @w
+        jmp     next
+@key:   jsr     getkey
         jmp     back
 
-; dst = the start of text row X (page 1).
-textrow:
-        txa
-        and     #7
-        lsr
-        sta     dst+1
-        lda     #0
-        ror
-        sta     dst
-        txa
-        lsr
-        lsr
-        lsr
-        tay
-        lda     dst
-        clc
-        adc     rowx40,y
-        sta     dst
-        lda     dst+1
-        adc     #$04
-        sta     dst+1
-        rts
-
-rowx40: .byte   $00, $28, $50
 presskey:
         .byte   "PRESS A KEY TO RETURN.", 0
-title:  .byte   "FANTAVISION", 0
 
         .import __FCOLD_LOAD__, __FCOLD_RUN__
         .assert __FCOLD_LOAD__ = __TABLES_LOAD__ + __TABLES_SIZE__, error, "FCOLD must follow TABLES"
@@ -228,8 +202,12 @@ main:   ldx     #23             ; the bitmap as it is, given back on the
         jsr     fload           ; the command, the movie, the backdrop
         bcc     :+              ; (fload.s, where the file was loaded)
         jmp     refuse
-:       ldx     #$0C            ; read: mark $0C00-$BEFF in use (not
-:       txa                     ; before: ProDOS will not READ into
+:       lda     mode            ; the engine counts at the original speed
+        sta     fv_count
+        ldx     #$0C
+        bne     mark            ; (always)
+                                ; read: mark $0C00-$BEFF in use (not
+mark:   txa                     ; before: ProDOS will not READ into
         lsr                     ; marked pages)
         lsr
         lsr
@@ -244,7 +222,7 @@ main:   ldx     #23             ; the bitmap as it is, given back on the
         sta     BITMAP,y
         inx
         cpx     #$BF
-        bne     :-
+        bne     mark
         ;jmp    play
 
 ; -- playing ---------------------------------------------------------------------
@@ -270,14 +248,49 @@ play:   jsr     fv_begin
         cmp     #$20
         beq     :+
         sta     HISCR
-        jmp     @loop
+        bne     @slide          ; (always)
 :       sta     LOWSCR
-        jmp     @loop
-@end:   jsr     getkey          ; the last frame stays until a key
-        jmp     back
+@slide: lda     slide           ; a slideshow: once round, key frame 0
+        beq     @loop           ; is shown again
+        lda     fv_vkey
+        beq     @loop
+        lda     fv_vframe
+        bne     @loop
+        jsr     hold
+        lda     slide           ; (S may have stopped it)
+        beq     @loop
+        lda     nextn
+        beq     @loop           ; the only movie: it goes on
+        jmp     next
+@end:   jsr     hold            ; a counted movie: its last frame
+        lda     slide
+        beq     :+
+        lda     nextn
+        beq     :+
+        jmp     next
+:       lda     fv_frames       ; a single frame stays
+        cmp     #1
+        beq     @end
+        lda     fv_bdrop        ; a backdrop may hold Background objects:
+        beq     :+              ; read again from the disk
+        jmp     same
+:       jmp     play            ; else from the start, in place
+
+; About two seconds at 1 MHz (30 x 256 units) on the frame shown, the keys
+; read.
+hold:   lda     #30
+        sta     wl
+@o:     jsr     keys
+        ldx     #0
+:       jsr     unit
+        dex
+        bne     :-
+        dec     wl
+        bne     @o
+        rts
 
 ; Reads a key if there is one: Escape returns, Space pauses, Tab switches
-; the speed, a digit sets the delay.
+; the speed, a digit sets the delay, S starts or stops the slideshow.
 keys:   lda     KBD
         bpl     @none
         sta     KBDSTRB
@@ -304,7 +317,15 @@ key:    and     #$7F
         sta     fv_count        ; the engine counts at the original speed
         pla
         rts
-:       cmp     #'0'
+:       pha
+        and     #$5F            ; S or s
+        cmp     #'S'
+        bne     :+
+        lda     slide
+        eor     #1
+        sta     slide
+:       pla
+        cmp     #'0'
         bcc     :+
         cmp     #'9' + 1
         bcs     :+
@@ -363,10 +384,58 @@ waitorig:
         jmp     @loop           ; 3: 257 a unit
 @done:  rts
 
+; -- the way on ---------------------------------------------------------------------
+; FANTA.SYSTEM loaded again by the return thunk, with a command (fload.s):
+; "*" and the next movie of the directory (next), or "+" and this one with
+; its backdrop (same), after the speed. The command is kept in cmdbuf: the
+; path as given from cmdbuf+3, its directory cdl characters long. Too long
+; for the startup buffer (64): back to A2 File Cmd instead.
+next:   lda     cdl
+        clc
+        adc     nextn
+        cmp     #PATHMAX - 1
+        bcs     back
+        tax
+        ldy     nextn           ; the name after the directory
+:       lda     nextn,y
+        sta     cmdbuf+2,x
+        dex
+        dey
+        bne     :-
+        lda     cdl
+        clc
+        adc     nextn
+        tax
+        lda     #'*'
+        bne     relaunch        ; (always)
+same:   ldx     ocl
+        cpx     #PATHMAX - 1
+        bcs     back
+        lda     #'+'
+; A: the marker, X: the path's length.
+relaunch:
+        sta     cmdbuf+1
+        inx
+        inx
+        stx     cmdbuf
+        lda     #'O'            ; the speed
+        ldx     mode
+        bne     :+
+        lda     delay
+        clc
+        adc     #'A'
+:       sta     cmdbuf+2
+        jsr     textscr         ; a clean screen while it loads
+        lda     cmdbuf
+        bne     leave           ; (always)
+
 ; -- leaving ---------------------------------------------------------------------
-; Back to A2 File Cmd: text screen, the bitmap as it was, then the thunk.
-back:   ldx     #$FF
+; Back to A2 File Cmd (back, A = 0), or FANTA.SYSTEM again (leave, A = the
+; command's length): text screen, the bitmap as it was, then the thunk.
+back:   lda     #0
+leave:  ldx     #$FF
         txs
+        pha
         sta     TXTSET
         sta     LOWSCR
         ldx     #23
@@ -380,20 +449,87 @@ back:   ldx     #$FF
         iny
         cpy     #thunk_len
         bne     :-
-        jmp     $0300
+        pla
+        sta     t_cmd
+        beq     :+
+        lda     #<t_fanta
+        sta     t_open+1
+        lda     #>t_fanta
+        sta     t_open+2
+:       jmp     $0300
+
+; The text screen, 40 columns, cleared, the title on row 8.
+textscr:
+        sta     STORE80OFF
+        sta     CLR80VID
+        sta     TXTSET
+        sta     LOWSCR
+        ldx     #23             ; clear the 40 columns of 24 rows
+@clr:   jsr     textrow
+        lda     #$A0
+        ldy     #39
+:       sta     (dst),y
+        dey
+        bpl     :-
+        dex
+        bpl     @clr
+        ldx     #8
+        lda     #<title
+        ldy     #>title
+; The string at A/Y on text row X, 40 characters at most.
+print:  sta     msgp
+        sty     msgp+1
+        jsr     textrow
+        ldy     #0
+:       lda     (msgp),y
+        beq     :+
+        ora     #$80
+        sta     (dst),y
+        iny
+        cpy     #40
+        bne     :-
+:       rts
+
+; dst = the start of text row X (page 1).
+textrow:
+        txa
+        and     #7
+        lsr
+        sta     dst+1
+        lda     #0
+        ror
+        sta     dst
+        txa
+        lsr
+        lsr
+        lsr
+        tay
+        lda     dst
+        clc
+        adc     rowx40,y
+        sta     dst
+        lda     dst+1
+        adc     #$04
+        sta     dst+1
+        rts
 
         .rodata
 bits:   .byte   $80, $40, $20, $10, $08, $04, $02, $01
+rowx40: .byte   $00, $28, $50
+title:  .byte   "FANTAVISION", 0
 
 ; The way back, run from page 3: A2FILE.SYSTEM from the prefix, read whole
 ; to $2000 with the I/O buffer at $BB00 (this program is over by then). A
-; failure goes to ProDOS's QUIT.
+; failure goes to ProDOS's QUIT. The way on (t_cmd nonzero): FANTA.SYSTEM
+; from A2FILE/ instead, then the command's t_cmd + 1 bytes from cmdbuf
+; (below $BB00, and above anything the read writes) to its startup buffer;
+; if FANTA.SYSTEM cannot be read, A2FILE.SYSTEM as above.
 thunk_src:
         .org    $0300
 thunk:  jsr     MLI             ; OPEN
         .byte   $C8
         .word   t_open
-        bcs     t_quit
+        bcs     t_fail
         lda     t_ref
         sta     t_eofref
         sta     t_rdref
@@ -423,12 +559,27 @@ thunk:  jsr     MLI             ; OPEN
         .byte   $CC
         .word   t_closep
         bcs     t_quit
-        bit     ROMIN
+        ldy     t_cmd           ; the way on: the startup buffer
+        beq     t_go
+:       lda     cmdbuf,y
+        sta     $2006,y
+        dey
+        bpl     :-
+t_go:   bit     ROMIN
         jmp     $2000
 t_close:
         jsr     MLI
         .byte   $CC
         .word   t_closep
+t_fail: lda     t_cmd           ; FANTA.SYSTEM failed: A2 File Cmd
+        beq     t_quit
+        lda     #0
+        sta     t_cmd
+        lda     #<t_name
+        sta     t_open+1
+        lda     #>t_name
+        sta     t_open+2
+        jmp     thunk
 t_quit: jsr     MLI             ; QUIT
         .byte   $65
         .word   t_quitp
@@ -453,8 +604,13 @@ t_quitp:
         .word   0
         .byte   0
         .word   0
+t_cmd:  .byte   0
 t_name: .byte   13, "A2FILE.SYSTEM"
+t_fanta:
+        .byte   19, "A2FILE/FANTA.SYSTEM"
 thunk_end:
         .reloc
 thunk_len = thunk_end - thunk
         .assert thunk_len <= $D0, error, "the return thunk overflows page 3"
+        .assert cmdbuf + 3 + PATHMAX + 18 <= $BB00, error, "cmdbuf under the thunk's I/O buffer"
+        .assert $2006 + 1 + PATHMAX <= start, error, "the startup buffer"

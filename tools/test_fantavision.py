@@ -519,9 +519,12 @@ class Fantavision(unittest.TestCase):
 
 FGLUE = r"""
         .import fload, _fake_mli, pusha, fv_len, fv_bdrop
+        .import cmdbuf, ocl, cdl, nextn, mode, delay, slide
         .importzp ptr1
         .export _run_fload, path0, _path0 := path0
         .export _fv_len := fv_len, _fv_bdrop := fv_bdrop
+        .export _cmdbuf := cmdbuf, _ocl := ocl, _cdl := cdl, _nextn := nextn
+        .export _mode := mode, _delay := delay, _slide := slide
         .bss
 path0:  .res    65
 mcmd:   .res    1
@@ -576,11 +579,12 @@ FHARNESS = r"""
 extern unsigned char path0[65];
 extern unsigned int fv_len;
 extern unsigned char fv_bdrop;
+extern unsigned char cmdbuf[67], ocl, cdl, nextn[16], mode, delay, slide;
 unsigned int run_fload(void);
 extern unsigned char _MLISTUB_LOAD__[], _MLISTUB_SIZE__[];
 static char fault = '-', fpath[70], cur[70], host[80];
 static int fd = -1;
-static unsigned int size;
+static unsigned int size, reads;
 static unsigned char scratch[256];
 static void hostname(const unsigned char* p)
 {
@@ -626,8 +630,10 @@ unsigned char __fastcall__ fake_mli(unsigned char cmd, unsigned char* p)
         }
         if (faulty('S')) --req;                 /* a short read, no error */
         if (faulty('T')) req -= 256;            /* 256 bytes short */
+        if (faulty('2') && ++reads == 2) return 0x27;   /* the second READ fails */
         n = read(fd, buf, req);
         if (n < 0) return 0x27;
+        if (!n && req) return 0x4C;             /* the end of the file */
         p[6] = n & 255; p[7] = n >> 8;
         return 0;
     case 0xCC:                                  /* CLOSE */
@@ -654,6 +660,13 @@ int main(int, char** argv)
     write(1, &fv_len, 2);
     write(1, &fv_bdrop, 1);
     write(1, (void*)0x0200, 0x7E00);
+    write(1, cmdbuf, 67);
+    write(1, &ocl, 1);
+    write(1, &cdl, 1);
+    write(1, nextn, 16);
+    write(1, &mode, 1);
+    write(1, &delay, 1);
+    write(1, &slide, 1);
     return 0;
 }
 """
@@ -675,9 +688,12 @@ class FLoadSim:
                          r'    LOADER:   load = MAIN,   type = rw;\n'
                          r'    MLISTUB:  load = MAIN, run = STUB, type = rw, define = yes;\n', cfg)
         assert k == 1
-        cfg, k = re.subn(r'(\n\s*BSS:[^\n]*\n)', r'\1    EBSS:     load = MAIN,   type = bss;\n', cfg)
+        cfg, k = re.subn(r'(\n\s*BSS:[^\n]*\n)', r'\1    EBSS:     load = HIGH,   type = bss;\n'
+                                                   r'    CMDBUF:   load = HIGH,   type = bss;\n', cfg)
         assert k == 1
-        cfg, k = re.subn(r'(\n\s*MAIN:[^\n]*\n)', r'\1    STUB:   file = "", start = $BF00, size = $0100;\n', cfg)
+        # $C000-$FFBF: plain memory under sim65 (its peripherals are above)
+        cfg, k = re.subn(r'(\n\s*MAIN:[^\n]*\n)', r'\1    STUB:   file = "", start = $BF00, size = $0100;\n'
+                                                     r'    HIGH:   file = "", start = $C000, size = $3F00;\n', cfg)
         assert k == 1
         (workdir / f'{cpu}.cfg').write_text(cfg)
         (workdir / 'fharness.c').write_text(FHARNESS)
@@ -708,9 +724,41 @@ class FLoadSim:
             pos += 48
         length, bdrop = struct.unpack_from('<HB', o, pos)
         mem = o[pos + 3:pos + 3 + 0x7E00]
+        pos += 3 + 0x7E00
+        cmd = o[pos:pos + 67]
+        ocl, cdl = o[pos + 67], o[pos + 68]
+        nextn = o[pos + 69:pos + 85]
+        mode, delay, slide = o[pos + 85:pos + 88]
         return {'msg': msg, 'len': length, 'bdrop': bdrop, 'low': mem[:0x1E00],
                 'movie': mem[0x1E00:0x1E00 + length], 'page2': mem[0x3E00:0x5E00],
-                'bg': mem[0x5E00:0x7E00]}
+                'bg': mem[0x5E00:0x7E00],
+                'cmd': cmd[3:3 + ocl].decode('latin-1'), 'ocl': ocl, 'cdl': cdl,
+                'next': nextn[1:1 + nextn[0]].decode('latin-1') if nextn[0] else '',
+                'mode': mode, 'delay': delay, 'slide': slide}
+
+
+def prodos_dir(entries, elen=0x27, epb=13, cut=0):
+    """A ProDOS directory file as READ returns it: the header, then the
+    entries (name, type, aux, eof[, storage]); None is a deleted entry."""
+    def entry(name, ftype, aux, eof, storage=1):
+        e = bytearray(elen)
+        e[0] = storage << 4 | len(name)
+        e[1:1 + len(name)] = name.encode()
+        e[0x10] = ftype
+        e[0x15:0x18] = eof.to_bytes(3, 'little')
+        e[0x1F:0x21] = aux.to_bytes(2, 'little')
+        return bytes(e)
+    header = bytearray(entry('FV', 0, 0, 0, 14))
+    header[0x1F], header[0x20] = elen, epb
+    slots = [bytes(header)] + [bytes(elen) if e is None else entry(*e) for e in entries]
+    blocks = []
+    for i in range(0, len(slots), epb):
+        b = bytearray(512)
+        for j, e in enumerate(slots[i:i + epb]):
+            b[4 + j * elen:4 + (j + 1) * elen] = e
+        blocks.append(bytes(b))
+    data = b''.join(blocks)
+    return data[:len(data) - cut]
 
 
 class FLoad(unittest.TestCase):
@@ -731,14 +779,18 @@ class FLoad(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def load(self, command, files, fault='-', msg=None, bdrop=None, cpus=('6502', '65c02')):
+    def load(self, command, files, fault='-', msg=None, bdrop=None, cpus=('6502', '65c02'), nxt=None):
         for cpu in cpus:
             res = self.sims[cpu].run(command, files, fault)
             self.assertEqual(res['msg'], msg, (cpu, command, fault))
             self.assertEqual(res['page2'], b'\xEE' * 0x2000, 'page 2 untouched')
             self.assertEqual(res['low'][:0x600], b'\x5A' * 0x600, 'memory below $0800 untouched')
+            path = command[2:] if len(command) >= 3 and command[0] in '*+' else command
+            self.assertEqual(res['cmd'], path, (cpu, command))
+            if nxt is not None:
+                self.assertEqual(res['next'], nxt, (cpu, command, fault))
             if msg is None:
-                movie = files[command.split(',')[0]]
+                movie = files[path.split(',')[0]]
                 self.assertEqual(res['movie'], movie)
                 if bdrop is None:
                     self.assertEqual(res['bdrop'], 0, command)
@@ -796,6 +848,98 @@ class FLoad(unittest.TestCase):
         bad[3] = 7
         self.load(M + ',STREAM', {M: bytes(bad), S: pic}, msg='NOT A FANTAVISION MOVIE (CHECK 2).')
         print('PASS fantavision: the command, the movie and its backdrop (fload), both processors')
+
+    def test_scan_next_movie(self):
+        movie = ref.synthetic(5, frames=2)
+        D = '/HD/FV'
+        mv = lambda n: (n, 0x06, 0x8400, len(movie))
+        listing = [mv('M.A'), ('PIC', 0x06, 0x2000, 8192), None, mv('M.B'),
+                   ('NOTE', 0x04, 0, 600), ('M.D', 0x0F, 0, 512, 13), mv('M.C'),
+                   ('M.SMALL', 0x06, 0x8400, 512), ('M.BIG', 0x06, 0x8400, 9217),
+                   ('M.AUX', 0x06, 0x8401, 2000), ('M.TXT', 0x04, 0x8400, 2000)]
+        files = {D: prodos_dir(listing)}
+        for cur, nxt in (('M.A', 'M.B'), ('M.B', 'M.C'), ('M.C', 'M.A'), ('M.GONE', 'M.A')):
+            f = dict(files, **{D + '/' + cur: movie})
+            res = self.load(D + '/' + cur, f, nxt=nxt)
+            self.assertEqual((res['cdl'], res['slide'], res['mode'], res['delay']), (7, 0, 1, 0))
+        # The only movie: none other, the slideshow plays it again.
+        only = {D: prodos_dir([('PIC', 6, 0x2000, 8192), mv('M.A')]), D + '/M.A': movie}
+        self.load(D + '/M.A', only, nxt='')
+        # Over several blocks: 40 entries, the next one in the fourth block.
+        many = [('F%02d' % i, 4, 0, 100) for i in range(40)]
+        many[3], many[38] = mv('M.A'), mv('M.Z')
+        big = {D: prodos_dir(many), D + '/M.A': movie}
+        self.assertEqual(len(big[D]), 4 * 512)
+        self.load(D + '/M.A', big, nxt='M.Z')
+        # Any failure but the clean end: no next movie.
+        for fault in 'ORC2':
+            self.load(D + '/M.A', big, fault + D, nxt='')
+        self.load(D + '/M.A', dict(big, **{D: prodos_dir(many, cut=1)}), nxt='')
+        self.load(D + '/M.A', dict(big, **{D: prodos_dir(many, elen=0x28, epb=12)}), nxt='')
+        # The volume directory, and no directory at all.
+        self.load('/HD/M.A', {'/HD': prodos_dir([mv('M.A'), mv('M.B')]), '/HD/M.A': movie}, nxt='M.B')
+        self.load('M.A', {'M.A': movie}, nxt='')
+        print('PASS fantavision: the next movie from one pass over the directory, both processors')
+
+    def test_scan_backdrop_by_prefix(self):
+        rng = __import__('random').Random(13)
+        movie = ref.synthetic(5, frames=2)
+        pic = bytes(rng.randrange(256) for _ in range(8192))
+        pic2 = bytes(rng.randrange(256) for _ in range(8192))
+        short = pic2[:8184]
+        D = '/HD/FV'
+        M = D + '/M.CHECKER'
+        mv = ('M.CHECKER', 0x06, 0x8400, len(movie))
+        board = ('CHECKERBOARD', 0x06, 0x4000, 8192)
+        base = {M: movie, D + '/CHECKERBOARD': pic}
+        # M.CHECKER and CHECKERBOARD, as on Fantavision's own disks.
+        self.load(M, dict(base, **{D: prodos_dir([mv, board])}), bdrop=pic)
+        # NAME itself first, wherever it is; then the first longer name.
+        f = dict(base, **{D + '/CHECKER': short,
+                          D: prodos_dir([board, mv, ('CHECKER', 6, 0x2000, 8184)])})
+        self.load(M, f, bdrop=short)
+        f = dict(base, **{D + '/CHECKERED': pic2,
+                          D: prodos_dir([('CHECKERED', 6, 0x2000, 8192), board, mv])})
+        self.load(M, f, bdrop=pic2)
+        # NAME of another size is no picture: the longer one.
+        f = dict(base, **{D + '/CHECKER': b'x' * 500,
+                          D: prodos_dir([('CHECKER', 4, 0, 500), mv, board])})
+        self.load(M, f, bdrop=pic)
+        # Neither a movie nor a short NAME (under 4 characters) by prefix.
+        self.load(M, dict(base, **{D: prodos_dir([mv, ('CHECKERBOARD', 6, 0x8400, 8192)])}))
+        short_name = {D + '/M.ABC': movie, D + '/ABCDEF': pic,
+                      D: prodos_dir([('M.ABC', 6, 0x8400, len(movie)), ('ABCDEF', 6, 0x2000, 8192)])}
+        self.load(D + '/M.ABC', short_name)
+        short_name[D + '/ABC'] = pic2
+        short_name[D] = prodos_dir([('M.ABC', 6, 0x8400, len(movie)), ('ABCDEF', 6, 0x2000, 8192),
+                                    ('ABC', 6, 0x2000, 8192)])
+        self.load(D + '/M.ABC', short_name, bdrop=pic2)
+        # A named backdrop wins; an unreadable directory finds nothing by
+        # prefix; an unreadable picture found is simply not used.
+        f = dict(base, **{D + '/STREAM': pic2, D: prodos_dir([mv, board])})
+        self.load(M + ',STREAM', f, bdrop=pic2)
+        for fault in 'OR':
+            self.load(M, dict(base, **{D: prodos_dir([mv, board])}), fault + D)
+            self.load(M, dict(base, **{D: prodos_dir([mv, board])}), fault + D + '/CHECKERBOARD')
+        print('PASS fantavision: a backdrop by its name\'s beginning (M.CHECKER), both processors')
+
+    def test_relaunch_command(self):
+        movie = ref.synthetic(5, frames=2)
+        rng = __import__('random').Random(14)
+        pic = bytes(rng.randrange(256) for _ in range(8192))
+        M = '/HD/FV/M.B'
+        f = {M: movie, '/HD/FV/STREAM': pic}
+        for cmd, want in (('*O' + M, (1, 1, 0)), ('+C' + M, (0, 0, 2)), ('*J' + M, (1, 0, 9)),
+                          ('+A' + M, (0, 0, 0)), ('*Z' + M, (1, 1, 0)), ('*K' + M, (1, 1, 0)),
+                          (M, (0, 1, 0))):
+            res = self.load(cmd, f)
+            self.assertEqual((res['slide'], res['mode'], res['delay']), want, cmd)
+            self.assertEqual(res['ocl'], len(M))
+        res = self.load('+C' + M + ',STREAM', f, bdrop=pic)
+        self.assertEqual(res['cmd'], M + ',STREAM')
+        # Too short for a prefix: a path like any other.
+        self.load('*O', {}, msg='THE MOVIE CANNOT BE READ.')
+        print('PASS fantavision: the relaunch command (slideshow, speed), both processors')
 
 
 # -- measurements -----------------------------------------------------------------

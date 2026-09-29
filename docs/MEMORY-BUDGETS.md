@@ -1,5 +1,31 @@
 # Consolidation : budgets mémoire
 
+## Page de titre : ni effacée, ni escamotée
+
+MAIN **57/469** (93/503 avant) : `key_wait` (display.s), la boucle
+d'attente du diaporama devenue sous-programme, et son appel dans `main`
+(26 octets) ; le test de RD80VID/RD80STORE qui évite l'appel de
+`videomode` quand le lanceur a déjà mis le 80 colonnes (10 octets).
+
+## Diaporama des visionneuses et suite des films Fantavision
+
+Réserves au lien, 65C02/6502 : MAIN **93/503** (203/609 avant), écart
+avant la pile 121/720 (231/826), carte langage 62/53 et LOWRAM 91/116
+(inchangées à l'octet près pour LC ; LOWRAM −2 : `slideshow`). Sous
+l'objectif de 256 octets MAIN sur 65C02, déjà manqué avant (203) par les
+formats non publiés ; aucun contrôle de disposition n'a été relâché.
+
+Ce qui coûte 110 octets : `slide_getc` en assembleur (display.s, 58
+octets ; la même en C en prenait 95), le tour de l'album dans
+`media_prepare` (+31) et `view_image` (+11), la portée du diaporama dans
+`overlay_run` (+11). La carte langage (62/53) ne pouvait pas recevoir
+`slide_getc` sur 6502.
+
+FANTA.SYSTEM (hors résident) : programme `$A400-$BEE0`, 31 octets libres
+sous `$BF00` ; `cmdbuf` (85 octets) en tête, sous `$BB00` que le tampon du
+thunk de retour recouvre ; LOW 52 octets libres ; page zéro jusqu'à `$D9`.
+Le chargeur (`LOADER`, `$2000-$2672`) porte la lecture du répertoire.
+
 ## Préparation 1.0 : l'audit des signes rend des octets
 
 Réserves au lien après `rm -rf build build-6502`, 65C02/6502 : MAIN

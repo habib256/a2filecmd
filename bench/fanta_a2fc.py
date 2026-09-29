@@ -51,9 +51,9 @@ def main():
                    bytes(p.peek(0x4000, 0x2000)) == bytes(player.pages[2]), 'the last frame', 180)
             s.ok('Return on a movie plays it in FANTA.SYSTEM, to the reference\'s last frame', True)
             s.ok('the movie is read whole', bytes(p.peek(0x8000, len(counted))) == counted)
-            s.key(b' ')
+            s.key(b'\x1b')
             back_in_a2fc(s)
-            s.ok('a key brings A2FC back', True)
+            s.ok('Escape brings A2FC back', True)
             s.ok('AUX and /RAM untouched', bytes(p.peek(0x1000, 0xB000, 'aux')) == aux)
             p.stable()
             if not s.has('M.BAD'):
@@ -67,7 +67,7 @@ def main():
             s.wait(lambda: bytes(p.peek(0x2000, 0x2000)) == bytes(player.pages[1]) and
                    bytes(p.peek(0x6000, 0x2000)) == bytes(player.bg), 'on the marked backdrop', 180)
             s.ok('a marked hi-res picture is the backdrop', True)
-            s.key(b' ')
+            s.key(b'\x1b')
             back_in_a2fc(s)
             p.stable()
             if not s.has('M.SAME'):
@@ -81,7 +81,7 @@ def main():
             s.wait(lambda: bytes(p.peek(0x2000, 0x2000)) == bytes(player.pages[1]) and
                    bytes(p.peek(0x6000, 0x2000)) == bytes(player.bg), 'on the same-name backdrop', 180)
             s.ok('SAME beside M.SAME is the backdrop without any mark', True)
-            s.key(b' ')
+            s.key(b'\x1b')
             back_in_a2fc(s)
             p.stable()
             if not s.has('M.BAD'):

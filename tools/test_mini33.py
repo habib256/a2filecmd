@@ -345,12 +345,30 @@ class ImageTest(unittest.TestCase):
         self.assertNotIn(b'A2FILECMD V' + mkmini33.MINI_VERSION.encode('ascii'), self.image)
         self.assertIn(b'GPL3 VERHILLE ARNAUD', self.image)
         self.assertIn(b'LOADING .... PLEASE WAIT ....', self.image)
-        self.assertIn(b'CAPS LOCK ON IS NEEDED', self.image)
+        self.assertIn(b'BE SURE CAPS LOCK IS DOWN', self.image)
         self.assertIn(b'"BRUN A2FC"', self.image)
         tiger = ROOT / 'data' / 'IMGHGR' / 'TIGER#062000'
         data = tiger.read_bytes()
         self.assertEqual(len(data), 8192)
         self.assertEqual(read_files(self.image)['TIGER']['data'], data)
+
+    def test_caps_lock_as_the_dos_master_says_it(self):
+        # DOS 3.3 System Master's words, in inverse video, then back to
+        # normal before the credits; the same row and column in HELLO
+        # (VTAB/HTAB count from 1) and in the Mini's own splash.
+        program = mkmini33.hello_program()
+        line = (bytes([mkmini33.VTAB]) + b'14:' + bytes([mkmini33.HTAB]) + b'8:'
+                + bytes([mkmini33.INVERSE]) + b':' + bytes([mkmini33.PRINT])
+                + b'"BE SURE CAPS LOCK IS DOWN":' + bytes([mkmini33.NORMAL]) + b'\0')
+        self.assertIn(line, program)
+        self.assertLess(program.index(line), program.index(b'GPL3'))
+        self.assertEqual((40 - len(mkmini33.CAPS)) // 2, 8 - 1)
+        ui = (ROOT / 'src/mini/ui.s').read_text()
+        splash = ui[ui.index('\nsplash:'):ui.index('jmp     present', ui.index('\nsplash:'))]
+        self.assertIn('ldy     #13             ; DOS 3.3 System Master', splash)
+        self.assertIn('ldx     #7 ', splash)
+        self.assertIn('PRINT   "~BE SURE CAPS LOCK IS DOWN~"', splash)
+        self.assertNotIn('CAPS LOCK ON', splash)
 
     def test_image_structure_and_allocations(self):
         self.assertEqual(self.image[:3 * 4096], self.master[:3 * 4096])

@@ -36,6 +36,7 @@ static unsigned char read_panel(unsigned char p){
 static unsigned char build_full(char*out,const struct Panel*p,const struct Entry*e){strcpy(out,e->name);return 1;}
 static unsigned int ticks;static void activity_tick(void){++ticks;}
 #include "src/media.h"
+unsigned char slideshow;char slide_getc(void){return cgetc();}   /* display.s */
 unsigned char file_viewer(const struct Entry*e,unsigned char pic){   /* open.s in the program */
  if(failure==4 && !strcmp(e->name,"BAD.MB"))return V_ERROR;
  if(strstr(e->name,".FOTO"))return V_PURPLE;
@@ -67,6 +68,33 @@ int main(int argc,char**argv){
   strcpy(panels[0].path,"/TEST");
   failure=0;panels[0].first=0;read_panel(0);
   failure=2;if(media_prepare(1))return 12;
+ }else if(atoi(argv[1])==9){
+  /* Right goes round: from the last one, the first; the panel stays put. */
+  total=4;strcpy(all[0].name,"A.MB");strcpy(all[1].name,"B.PT3");strcpy(all[2].name,"C.MB");strcpy(all[3].name,"D.MB");
+  read_panel(0);panels[0].cursor=3;panels[0].tags[0]=9;
+  if(!media_prepare(1)||strcmp(album[0],"C.MB")||strcmp(album[1],"A.MB")||media_first[1])return 31;
+  if(panels[0].cursor!=3||panels[0].first||panels[0].tags[0]!=9)return 32;
+  /* Alone in its folder, a file is its own neighbour: a slideshow shows
+   * it again, nothing else. */
+  total=3;strcpy(all[0].name,"A.PT3");strcpy(all[1].name,"B.MB");strcpy(all[2].name,"C.PT3");
+  read_panel(0);panels[0].cursor=1;
+  if(!media_prepare(1)||album[0][0]||strcmp(album[1],"B.MB"))return 33;
+  /* A cursor on a file of another kind, none of its own: the ring is
+   * walked once, and nothing is found. */
+  total=2;strcpy(all[0].name,"A.PT3");strcpy(all[1].name,"B.PT3");
+  read_panel(0);panels[0].cursor=0;ticks=0;
+  if(!media_prepare(1)||album[0][0]||album[1][0]||ticks!=3)return 34;
+ }else if(atoi(argv[1])==10){
+  /* Across windows: from the last window back to the first. */
+  total=300;for(i=0;i<300;++i)sprintf(all[i].name,"F%03u.PT3",i);
+  strcpy(all[5].name,"A.MB");strcpy(all[299].name,"Z.MB");
+  panels[0].first=278;read_panel(0);panels[0].cursor=21;panels[0].top=4;panels[0].tags[2]=0x40;
+  if(!media_prepare(1)||strcmp(album[1],"A.MB")||media_first[1]||strcmp(album[0],"A.MB"))return 35;
+  if(panels[0].first!=278||panels[0].cursor!=21||panels[0].top!=4||panels[0].tags[2]!=0x40)return 36;
+  /* A failed read on the way round: no neighbour is claimed, and the
+   * panel is put back as it was. */
+  failure=2;panels[0].first=278;
+  if(media_prepare(1)||album[1][0]||panels[0].first!=278||panels[0].cursor!=21||panels[0].tags[2]!=0x40)return 37;
  }else if(atoi(argv[1])==7){
   total=4;strcpy(all[0].name,"A.MB");strcpy(all[1].name,"BAD.MB");strcpy(all[2].name,"C.MB");
   read_panel(0);panels[0].cursor=0;failure=4;
@@ -116,6 +144,8 @@ class Media(unittest.TestCase):
   subprocess.run(['cc','-std=c99','-I',str(ROOT),str(p/'test.c'),'-o',str(cls.exe)],check=True,capture_output=True)
  @classmethod
  def tearDownClass(cls):cls.tmp.cleanup()
+ def test_right_goes_round_to_the_first(self):subprocess.run([str(self.exe),'9'],check=True)
+ def test_round_across_windows_and_read_failure(self):subprocess.run([str(self.exe),'10'],check=True)
  def test_probe_error_does_not_skip_to_a_later_file(self):subprocess.run([str(self.exe),'7'],check=True)
  def test_purple_pairs_and_media_identity(self):subprocess.run([str(self.exe),'8'],check=True)
  def test_media_keys_with_open_apple_flag(self):subprocess.run([str(self.exe),'6'],check=True)

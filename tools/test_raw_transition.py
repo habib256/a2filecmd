@@ -13,6 +13,7 @@ start=source.index('static void view_image(void)\n{')
 run=source[start:source.index('\n/* ---------------------------------------------------------------------- */',start)]
 harness=r'''
 static unsigned char aux_dirty,a2fc_view,img_kind,calls,mode,keys,draws;
+static const char*target="B.HGR";
 static const char*ram_note;
 #define IMG_NONE 0
 #define IMG_HGR 1
@@ -41,18 +42,18 @@ static unsigned char load_image(const struct Entry*e){
  if(strcmp(output,want))abort();
  /* The neighbour is loaded with the panels never redrawn in between: the
   * screen carried its name and nothing else (the EXTASIE transition). */
- if(calls==2 && (strcmp(e->name,"B.HGR") || draws))abort();
+ if(calls==2 && (strcmp(e->name,target) || draws))abort();
  memset(entries,0xA5,sizeof entries);return IMG_HGR;
 }
 static void switch_to_text(void){
  if(calls==1 && keys==1){
-  if(strcmp(output,"Loading B.HGR"))abort();
+  if(strncmp(output,"Loading ",8) || strcmp(output+8,target))abort();
   if(mode==1)failure=2;
   if(mode==2)strcpy(all[2].name,"GONE.TXT");
  }
 }
 static void draw_all(void){
- ++draws;if(!mode && strcmp(entries[panels[0].cursor].name,"B.HGR"))abort();
+ ++draws;if((!mode || mode==3) && strcmp(entries[panels[0].cursor].name,target))abort();
 }
 static char next_key(void){++keys;return keys==1?(KEY_RIGHT|128):KEY_ESC;}
 '''
@@ -60,9 +61,12 @@ main=r'''
 int main(int argc,char**argv){
  mode=atoi(argv[1]);panels[0].e=entries;strcpy(panels[0].path,"/TEST");
  total=3;strcpy(all[0].name,"A.HGR");strcpy(all[1].name,"OTHER.TXT");strcpy(all[2].name,"B.HGR");
- read_panel(0);view_image();
+ /* Right on the last picture goes round to the first one. */
+ if(mode==3){target="A.HGR";read_panel(0);panels[0].cursor=2;}
+ else read_panel(0);
+ view_image();
  if(a2fc_view)return 1;
- if(calls!=(mode?1:2) || draws!=1)return 2;   /* one redraw, on the way out */
+ if(calls!=(mode==1 || mode==2?1:2) || draws!=1)return 2;   /* one redraw, on the way out */
 
  return 0;
 }
@@ -71,10 +75,10 @@ class RawTransition(unittest.TestCase):
  def test_actual_loop_target_before_text_and_failed_rereads(self):
   with tempfile.TemporaryDirectory(prefix='raw-transition-') as d:
    p=Path(d)
-   (p/'test.c').write_text(base+harness+'\n#define cgetc next_key\n'+run+main)
+   (p/'test.c').write_text(base+harness+'\n#define slide_getc next_key\n'+run+main)
    r=subprocess.run(['cc','-std=c99','-I',str(ROOT),str(p/'test.c'),'-o',str(p/'test')],capture_output=True,text=True)
    self.assertEqual(r.returncode,0,r.stderr)
-   for mode in range(3):
+   for mode in range(4):
     with self.subTest(mode=mode):
      r=subprocess.run([str(p/'test'),str(mode)],capture_output=True,text=True,timeout=5)
      self.assertEqual(r.returncode,0,r.stdout+r.stderr)

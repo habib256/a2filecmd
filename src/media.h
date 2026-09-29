@@ -6,6 +6,13 @@ static unsigned char media_kind;      /* the media overlay running, or 0 */
 static unsigned int media_first[2];
 unsigned char __fastcall__ file_viewer(const struct Entry*, unsigned char);   /* open.s */
 
+/* The slideshow, S in a picture viewer (display.s): 0 outside one, 1 in
+ * one, $81 while its pictures follow one another. It only ever sends Right,
+ * the key the user could press: the viewers' own checks, and the AUX
+ * consent already given, stay what they are. */
+extern unsigned char slideshow;
+char slide_getc(void);
+
 static unsigned char media_type(const char* name)
 {
     unsigned char i=MEDIA_COUNT;
@@ -18,7 +25,7 @@ static unsigned char media_prepare(unsigned char kind)
     struct Panel* pan=pan_at(active);
     unsigned int first=pan->first;
     unsigned char cursor=pan->cursor, top=pan->top, dir, i, changed=0;
-    unsigned char viewer, ok=1;
+    unsigned char viewer, ok=1, wrap=0;
     const struct Entry* e;
     album[0][0]=album[1][0]=0;
     media_request=0;
@@ -37,8 +44,14 @@ static unsigned char media_prepare(unsigned char kind)
         i=cursor;
         for(;;) {
             if (dir) {
+                /* Past the last one, the first: the album is a ring, and
+                 * a slideshow goes round it until a key. Alone in its
+                 * folder, the file shown is its own neighbour. */
                 if (++i>=pan->count) {
-                    if (!pan->more || pan->first>65535U-WINDOW) break;
+                    if (!pan->more || pan->first>65535U-WINDOW) {
+                        if (wrap++) break;
+                        pan->first=-WINDOW;
+                    }
                     pan->first+=WINDOW; changed=1;
                     if (!read_panel(active)) { ok=0; break; }
                     if (!pan->count) break;
@@ -113,7 +126,7 @@ static unsigned char media_key(unsigned char key)
 static char media_wait(void)
 {
     char key;
-    do key=cgetc(); while(!media_key(key));
+    do key=slide_getc(); while(!media_key(key));
     return key;
 }
 

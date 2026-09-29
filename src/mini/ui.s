@@ -1301,10 +1301,10 @@ splash:
         ldx     #5
         jsr     at
         PRINT   "LOADING .... PLEASE WAIT ...."
-        ldy     #13
-        ldx     #9
+        ldy     #13             ; DOS 3.3 System Master's words, in
+        ldx     #7              ; inverse video as it shows them
         jsr     at
-        PRINT   "CAPS LOCK ON IS NEEDED"
+        PRINT   "~BE SURE CAPS LOCK IS DOWN~"
         ldy     #23
         ldx     #10
         jsr     at
