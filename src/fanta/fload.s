@@ -299,8 +299,16 @@ bnamep: stx     t
         lda     #>path0
         adc     #0
         sta     dd+1
-; bpath += nlen characters from (dd).
-bname:  ldx     dlen
+; bpath += nlen characters from (dd). Too long for bpath -- a backdrop
+; found by the scan, up to 15 characters, after a deep directory -- an
+; empty path, which OPEN refuses: no backdrop, nothing written past bpath.
+bname:  lda     dlen
+        clc
+        adc     nlen
+        ldx     #0
+        cmp     #PATHMAX + 1
+        bcs     @end
+        ldx     dlen
         ldy     #0
 :       lda     (dd),y
         sta     bpath+1,x
@@ -308,7 +316,7 @@ bname:  ldx     dlen
         iny
         cpy     nlen
         bne     :-
-        stx     bpath
+@end:   stx     bpath
         rts
 
 ; -- the directory --------------------------------------------------------------

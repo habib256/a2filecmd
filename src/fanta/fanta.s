@@ -359,9 +359,11 @@ unit:   lda     #33
         rts
 
 ; Original speed: fv_wait cycles, in units of 257 (the bits below are left).
+; wl is bytes 1 and 2 of the wait: only byte 3 makes it too long. Byte 2
+; set is a wait of 65,536 cycles or more, which a frame of large solids
+; takes (up to 240,000), not one to clip to 16 million.
 waitorig:
         lda     fv_wait+3
-        ora     fv_wait+2
         beq     :+
         lda     #$FF            ; over 16 million cycles: clipped
         sta     wl
@@ -613,4 +615,7 @@ thunk_end:
 thunk_len = thunk_end - thunk
         .assert thunk_len <= $D0, error, "the return thunk overflows page 3"
         .assert cmdbuf + 3 + PATHMAX + 18 <= $BB00, error, "cmdbuf under the thunk's I/O buffer"
+        ; The way on reads FANTA.SYSTEM from $2000 before it copies cmdbuf:
+        ; the file must end below it (FCOLD is the file's last segment).
+        .assert __FCOLD_LOAD__ + __FCOLD_SIZE__ <= cmdbuf, error, "FANTA.SYSTEM's read would cover cmdbuf"
         .assert $2006 + 1 + PATHMAX <= start, error, "the startup buffer"

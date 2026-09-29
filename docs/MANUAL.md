@@ -276,7 +276,16 @@ Return on an Epistole document (text opening on a `_` command) or a Papyrus or
 HomeWord one (opening on a $FF code; the others through **!**) opens
 **DOCVIEW**, laid out as printed: margins, indents, centring, bold in inverse,
 mail-merge variables. French ISO 646-FR accents show unaccented; **A** shows
-them as stored, for a French character set.
+them as stored, for a French character set. Epistole's calculations are
+computed as Epistole prints them, on the Applesoft ROM's arithmetic: `#:X=…]`
+sets a variable, `#:?…]` shows a value with `_ND` decimals (2 by default), a
+decimal comma, its comma on the `_TD` tab, and no minus sign when there are
+decimals, as Epistole prints it. What cannot be computed (a division by zero,
+a variable typed at print time, `#*X=]`) stays as written, in inverse.
+Headers (`_EN`) and footers (`_DB`, `%$` the page number) appear at each `_SP`
+page break and the footer again at the end; DOCVIEW does not repeat them at
+the printer's own page ends. It reads documents up to 64 KB and remembers 16
+pages back.
 HEX uses **G** for a seven-digit offset and **R/E** for first/last page.
 
 T lists Applesoft, Integer BASIC and Business BASIC (`.BA3`) without running

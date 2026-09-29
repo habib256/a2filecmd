@@ -18,12 +18,23 @@ from pathlib import Path
 from test_six_plugins import PREFIX, ROOT
 
 HARNESS = PREFIX + r"""
+static long host_fail = -1;                 /* a read error from this offset on */
+static int host_err;
+#define ferror(f) (host_err)
 #include "src/plugins/docview.c"
 static FILE* host;
 static unsigned char hx, hy, bad, hrev;
 static char screen[24][81];
 static char inverse[24][81];
-static size_t rd_(void* p, size_t z, size_t n, FILE* f) { return fread(p, z, n, host); }
+static size_t rd_(void* p, size_t z, size_t n, FILE* f)
+{
+    long at = ftell(host);
+    if (host_fail >= 0 && at + (long)n > host_fail) {
+        if (at >= host_fail) { host_err = 1; return 0; }
+        n = host_fail - at;               /* what comes before the bad block */
+    }
+    return fread(p, z, n, host);
+}
 static int seek__(FILE* f, long off, int whence) { return fseek(host, off, whence); }
 static void xy_(unsigned char x, unsigned char y) { hx = x; hy = y; }
 static void putc__(char c)
@@ -42,8 +53,10 @@ int main(int argc, char** argv)
     host = fopen(argv[1], "rb");
     fseek(host, 0, SEEK_END); sel.size = ftell(host); rewind(host);
     a.fread = rd_; a.fseek = seek__; a.gotoxy = xy_; a.cputc = putc__; a.revers = rev_;
-    a.memset = mset; a.memcpy = memcpy; a.selected = &sel;
-    raw = argc > 2;
+    static unsigned char copy_buf[512];
+    a.memset = mset; a.memcpy = memcpy; a.selected = &sel; a.copy_buf = copy_buf;
+    raw = argc > 2 && !strcmp(argv[2], "raw");
+    if (argc > 2 && argv[2][0] == 'E') host_fail = atol(argv[2] + 1);
     vf = host; vbase = 0; vlen = vpos = 0;
     sniff();
     first_page();
@@ -51,14 +64,14 @@ int main(int argc, char** argv)
     for (page = 0; page < 300; ++page) {
         memset(screen, 0, sizeof screen); memset(inverse, 0, sizeof inverse); bad = 0;
         render_page(&st);
-        printf("PAGE %d %u %u %u\n", page, done, bad, hrev);
+        printf("PAGE %d %u %u %u %u\n", page, done & 1, bad, hrev, done >> 1);
         for (r = ROW1; r <= LASTROW; ++r) {
             for (hx = 0; hx < 80; ++hx) if (!screen[r][hx]) { screen[r][hx] = ' '; inverse[r][hx] = ' '; }
             screen[r][80] = inverse[r][80] = 0;
             printf("|%s\n~%s\n", screen[r], inverse[r]);
         }
         if (done) break;
-        st = next;
+        st = NEXT;
     }
     return 0;
 }
@@ -81,16 +94,18 @@ class Docview(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def pages(self, data, raw=False):
+    def pages(self, data, raw=False, fail=None):
         f = self.p / 'in.txt'
         f.write_bytes(data)
-        out = subprocess.check_output([str(self.exe), str(f)] + (['raw'] if raw else []),
+        extra = ['raw'] if raw else ['E%d' % fail] if fail is not None else []
+        out = subprocess.check_output([str(self.exe), str(f)] + extra,
                                       text=True, timeout=10, errors='replace')
         pages = []
         for line in out.splitlines():
             if line.startswith('PAGE '):
-                _, _, done, bad, rev = line.split()
-                pages.append({'done': int(done), 'bad': int(bad), 'rev': int(rev), 'rows': [], 'inv': []})
+                _, _, done, bad, rev, err = line.split()
+                pages.append({'done': int(done), 'bad': int(bad), 'rev': int(rev), 'err': int(err),
+                              'rows': [], 'inv': []})
             elif line.startswith('|'):
                 pages[-1]['rows'].append(line[1:])
             else:
@@ -135,7 +150,9 @@ class Docview(unittest.TestCase):
         self.assertEqual(inv[g][fin.index('gras'):fin.index('gras') + 4], '####')
         self.assertNotIn('#', inv[g][fin.index('normal'):])
         calc = next(r for r in rows if 'X+1' in r)
-        self.assertEqual(calc.split(), ['X+1M1'], 'an assignment prints nothing')
+        # An assignment prints nothing, nor does #*M1=] (asked before
+        # printing); on the host nothing is computed: X+1 stays as written.
+        self.assertEqual(calc.split(), ['X+1'])
         raw = self.pages(doc, raw=True)
         self.assertIn('d{sirez', '\n'.join(r for pg in raw for r in pg['rows']))
 
@@ -168,6 +185,67 @@ class Docview(unittest.TestCase):
         pages = self.pages(hi)
         self.check_clean(pages)
         self.assertEqual(self.words(pages), words)
+
+    def test_margin_moved_mid_row_keeps_the_row_in_its_buffer(self):
+        # _MG in the middle of a row changes the next row's left edge, not
+        # this one's: a word wrapped from it used to be copied to the new
+        # edge whole, past the 80 bytes of RB and RA (up to RB[146]), and
+        # printed as one 147-character row.
+        for margin in (69, 40, 20):
+            for n in (78, 90, 60, 30):
+                word = b'W' * n
+                doc = b'a _MG%d' % margin + word + b' fin\r'
+                with self.subTest(margin=margin, n=n):
+                    pages = self.pages(doc)
+                    self.check_clean(pages)
+                    rows = [r.rstrip() for pg in pages for r in pg['rows']]
+                    self.assertEqual(''.join(''.join(rows).split()), 'a' + 'W' * n + 'fin')
+
+    def test_headers_and_footers_at_the_page_breaks(self):
+        # Epistole's print (bench oracle): the _DB and _EN blocks are not
+        # printed where they are written (one empty line each), the footer
+        # ends every page with %$ its number, the header opens every page
+        # but the first. Here: at the _SP break, and the footer at the end.
+        doc = (b'_MG10\rL2\r_DB\rFOOT %$\r__BA\r_EN HEAD\rH2\r__EA\rL9\rL10\r_SP\rP2A\r')
+        pages = self.pages(doc)
+        self.check_clean(pages)
+        rows = [r.rstrip() for pg in pages for r in pg['rows']]
+        text = [r.strip() for r in rows if r.strip()]
+        self.assertEqual(text[:3], ['L2', 'L9', 'L10'], 'the definitions are not in the text')
+        rule = next(k for k, t in enumerate(text) if set(t) == {'-'})
+        self.assertEqual(text[3:rule], ['FOOT 1'])
+        self.assertEqual(text[rule + 1:], ['HEAD', 'H2', 'P2A', 'FOOT 2'])
+        self.assertEqual(rows[rows.index('          L2') + 1:rows.index('          L9')], ['', ''],
+                         'each block leaves one empty row')
+        self.assertTrue('           HEAD' in rows, 'the header keeps the space after _EN')
+        # A footer that does not fit goes on over the next screen page.
+        long_doc = b'_DB\r' + b''.join(b'F%d\r' % i for i in range(8)) + b'__BA\r' + \
+            b''.join(b'T%d\r' % i for i in range(19)) + b'_SP\rEND\r'
+        pages = self.pages(long_doc)
+        self.check_clean(pages)
+        words = self.words(pages)
+        self.assertEqual(words, ['T%d' % i for i in range(19)] + ['F%d' % i for i in range(8)] +
+                         ['-' * 79, 'END'] + ['F%d' % i for i in range(8)])
+
+    def test_a_read_error_is_not_the_end(self):
+        # A block that cannot be read: the page stops there and says
+        # "read error"; before, it said "(end)" as if the document were whole.
+        doc = b'_MG5_MD60\r' + b''.join(b'ligne %d du document\r' % i for i in range(400))
+        whole = self.pages(doc)
+        self.check_clean(whole)
+        self.assertTrue(all(pg['err'] == 0 for pg in whole))
+        for fail in (0, 700, 2048, 3000):
+            with self.subTest(fail=fail):
+                pages = self.pages(doc, fail=fail)
+                self.assertEqual(pages[-1]['err'], 1, 'the error is reported')
+                self.assertTrue(all(pg['err'] == 0 for pg in pages[:-1]), 'only on the page it hit')
+                self.assertEqual(pages[-1]['bad'], 0)
+                shown = self.words(pages)
+                ref = self.words(whole)[:len(shown)]
+                if shown:                  # the last word stops where the bad block starts
+                    self.assertEqual(shown[:-1], ref[:-1], 'what was read is right')
+                    self.assertTrue(ref[-1].startswith(shown[-1]))
+                self.assertLess(len(shown), len(self.words(whole)))
 
     def test_arbitrary_bytes_never_leave_the_page(self):
         import random
