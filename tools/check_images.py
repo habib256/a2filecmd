@@ -95,6 +95,12 @@ def check_cpu(cpu):
             assert directory['FANTA.SYSTEM'][16] == 0xFF, (path, 'FANTA.SYSTEM type')
             assert image.read(directory['FANTA.SYSTEM']) == (build / 'FANTA.SYSTEM.SYS').read_bytes(), \
                 (path, 'stale FANTA.SYSTEM')
+        # The Take 1 player (src/take1/): 800K and XL, the same bytes.
+        assert ('TAKE1.SYSTEM' in directory) == (role != '140K'), (path, 'TAKE1.SYSTEM')
+        if role != '140K':
+            assert directory['TAKE1.SYSTEM'][16] == 0xFF, (path, 'TAKE1.SYSTEM type')
+            assert image.read(directory['TAKE1.SYSTEM']) == (build / 'TAKE1.SYSTEM.SYS').read_bytes(), \
+                (path, 'stale TAKE1.SYSTEM')
         assert image.read(root['PRODOS']) == (ROOT / 'data/PRODOS.SYS').read_bytes(), path
         for runtime in RUNTIMES:
             assert (runtime in root) == (role != '140K'), (path, runtime)
