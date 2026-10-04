@@ -250,10 +250,13 @@ FULLPO = $(BUILD)/A2FILECMD-full.po
 STAGE_DEPS = $(SYSTEM) $(CODE) $(DATA)/A2FILE.HELP.TXT $(DATA)/RECOVER.TXT $(DATA)/PRODOS.SYS \
        $(DATA)/prodos_boot.tmpl $(TOOLS)/mkvolume.py
 
+# BOTH_EDITIONS= in the sub-makes: given on the command line
+# (make BOTH_EDITIONS=1 disk), it reached them through MAKEFLAGS and each
+# one called itself again, without end.
 ifdef BOTH_EDITIONS
 disk:
-	$(MAKE) ARCH=6502 disk
-	$(MAKE) ARCH=enh disk
+	$(MAKE) ARCH=6502 BOTH_EDITIONS= disk
+	$(MAKE) ARCH=enh BOTH_EDITIONS= disk
 else ifeq ($(ARCH),6502)
 disk: $(PO) $(DSK) $(PO800) $(TWOMG) mini-disk
 else
@@ -433,6 +436,7 @@ test: test-mini $(TAKE1)
 	python3 $(TOOLS)/test_nibcopy.py
 	python3 $(TOOLS)/test_disk_packages.py
 	python3 $(TOOLS)/test_distribution.py
+	python3 $(TOOLS)/test_make_editions.py
 	python3 $(TOOLS)/test_release_notes.py
 	python3 $(TOOLS)/test_file_viewers.py
 	python3 $(TOOLS)/test_koala.py

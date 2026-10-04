@@ -584,10 +584,8 @@ Pas d'impression dans le Mini (19 octets libres ; `PR#1` depuis BASIC).
   images en 1.2 ou après ; repli firmware au risque d'un blocage ;
   `setOnline` dans POM2 pour tester l'imprimante hors ligne.
 
-- [ ] **`make BOTH_EDITIONS=1 disk` boucle** (vu le 2026-10-04) : la
-  variable passe au make récursif, qui se rappelle sans fin. Contourner par
-  `make ARCH=6502 disk && make ARCH=enh disk` ; corriger en la vidant dans
-  les sous-appels (`BOTH_EDITIONS=`). Ni la CI ni les images ne l'utilisent.
+- [x] **`make BOTH_EDITIONS=1 disk` bouclait** : corrigé le 2026-10-04
+  (`BOTH_EDITIONS=` dans les sous-appels), `tools/test_make_editions.py`.
 
 ## Plus tard
 
