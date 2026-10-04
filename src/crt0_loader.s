@@ -103,12 +103,13 @@ _exit:  ldx     #<exit
         ; Call the module destructors.
         jsr     donelib
 
-        ; Restore the original RESET vector.
-exit:   ldx     #$02
-:       lda     rvsave,x
-        sta     SOFTEV,x
-        dex
-        bpl     :-
+        ; Not the original RESET vector back: it may be BASIC.SYSTEM's,
+        ; whose code a partial load of A2FILE.CODE overwrote, and we quit
+        ; to the ProDOS dispatcher anyway. $FF59, the monitor's OLDRST in
+        ; ROM, as ProDOS sets it at boot (src/chain.s says why).
+exit:   ldx     #$59
+        lda     #$FF
+        jsr     reset
 
         ; Copy back the zero-page stuff.
         ldx     #zpspace-1
@@ -134,13 +135,6 @@ exit:   ldx     #$02
 init:   ldx     #zpspace-1
 :       lda     sp,x
         sta     zpsave,x
-        dex
-        bpl     :-
-
-        ; Save the original RESET vector.
-        ldx     #$02
-:       lda     SOFTEV,x
-        sta     rvsave,x
         dex
         bpl     :-
 
@@ -239,4 +233,3 @@ done:   jmp     DOSWARM         ; Potentially patched at runtime
         .segment        "INIT"
 
 zpsave: .res    zpspace
-rvsave: .res    3

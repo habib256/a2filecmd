@@ -4,10 +4,10 @@
     make disk pom2host && python3 bench/fantavision.py [--preset iie_unenh]
 
 A throwaway volume boots a stand-in launcher (A1.SYSTEM, assembled here):
-it waits in page 3 for a path poked at $03A0 and a flag at $039F, then
+it waits in page 3 for a path poked at $0203 and a flag at $0202, then
 loads FANTA.SYSTEM at $2000 and stores the path at $2006 -- what A2 File
 Cmd does through its chain thunk. The same program is the volume's
-A2FILE.SYSTEM and counts at $039D the returns to it. For each movie:
+A2FILE.SYSTEM and counts at $0200 the returns to it. For each movie:
 
 - a counted movie plays to its last frame: pages 1 and 2 and the background
   copy end exactly as tools/fantavision_ref.py says, the movie at $8000 is
@@ -20,7 +20,8 @@ A2FILE.SYSTEM and counts at $039D the returns to it. For each movie:
 - a refused movie (header byte 3 wrong) shows its reason, draws nothing and
   returns after a key; so does a missing file;
 - a looping movie keeps changing, Tab (accelerated speed) and Space (pause)
-  are obeyed, Escape returns;
+  are obeyed, Escape returns; so does Ctrl-Reset (the emulator's soft
+  reset, through the ROM and the reset vector);
 - S on a movie starts the slideshow: another movie of the directory is read
   (FANTA.SYSTEM relaunched from A2FILE/, as A2 File Cmd installs it);
 - the disk image is byte for byte the same at the end: nothing written.
@@ -42,9 +43,12 @@ import fantavision_ref as ref  # noqa: E402
 
 PORT = 6931
 VOLUME = 'FANTAB'
-# The mailbox, past the thunk in page 3 ($0280 is ProDOS's: the path of
+# The mailbox, in page 2 below $0280 (ProDOS's: the path of the running
+# system program). Not in page 3: FANTA.SYSTEM's return thunk fills
+# $0300-$03CF, and a mailbox at $039D was overwritten by it -- every return
+# then counted 1, and the second one timed out.
 # the running system program).
-RUNS, FAIL, FLAG, PATH = 0x039D, 0x039E, 0x039F, 0x03A0
+RUNS, FAIL, FLAG, PATH = 0x0200, 0x0201, 0x0202, 0x0203
 
 LAUNCHER = r'''
         .setcpu "6502"
@@ -53,9 +57,9 @@ LAUNCHER = r'''
         .byte   $EE, $EE, $41
         .res    65
 start:  cld
-        inc     $039D
+        inc     $0200
         lda     #0              ; RAM holds anything at power-up
-        sta     $039F
+        sta     $0202
         ldy     #thunk_end - thunk - 1
 :       lda     thunk_src,y
         sta     $0300,y
@@ -64,10 +68,10 @@ start:  cld
         jmp     $0300
 thunk_src:
         .org    $0300
-thunk:  lda     $039F
+thunk:  lda     $0202
         beq     thunk
         ldx     #0
-        stx     $039F
+        stx     $0202
         jsr     $BF00
         .byte   $C8
         .word   openp
@@ -91,15 +95,15 @@ thunk:  lda     $039F
         .byte   $CC
         .word   closep
         bcs     fail
-        ldy     $03A0
-:       lda     $03A0,y
+        ldy     $0203
+:       lda     $0203,y
         sta     $2006,y
         dey
         bpl     :-
         bit     $C082
         jmp     $2000
 fail:   lda     #$EE
-        sta     $039E
+        sta     $0201
 :       jmp     :-
 openp:  .byte   3
         .word   name
@@ -116,7 +120,7 @@ len:    .word   0
 closep: .byte   1, 0
 name:   .byte   12, "FANTA.SYSTEM"
 thunk_end:
-        .assert thunk_end <= $039D, error, "the thunk reaches the mailbox"
+        .assert thunk_end <= $03D0, error, "the thunk overflows page 3"
 '''
 
 
@@ -176,7 +180,7 @@ def main():
         port = PORT + int(os.environ.get('A2FC_PORT_OFFSET', '0'))
         with Pom2(hdv, port=port, preset=args.preset) as p:
             s = Session(p, sym={})
-            s.wait(lambda: p.peek(0x0300, 6) == boot[boot.index(b'\xAD\x9F\x03'):][:6],
+            s.wait(lambda: p.peek(0x0300, 6) == boot[boot.index(b'\xAD\x02\x02'):][:6],
                    'the stand-in launcher waiting', 60)
             p.poke(RUNS, b'\x00')
             bitmap = p.peek(0xBF58, 24)
@@ -288,6 +292,19 @@ def main():
             s.ok('looping movie: Space resumes (accelerated speed)', True)
             s.key(b'\x1b')
             returned('looping movie, Escape')
+
+            # Ctrl-Reset while a movie plays: back to A2FILE.SYSTEM as with
+            # Escape (before 0.9.5 the vector was A2 File Cmd's $400C, in
+            # hi-res page 2), and the vector is left on the monitor's OLDRST
+            # once the thunk runs (its I/O buffer covers the program's end).
+            launch('M.LOOP')
+            s.wait(lambda: p.peek(0x2000, 0x2000) in seen, 'the looping movie drawn', 120)
+            s.ok('Ctrl-Reset: the vector is the program\'s own way back',
+                 0xA400 <= int.from_bytes(p.peek(0x03F2, 2), 'little') < 0xBB00)
+            p.rq('/reset', {'kind': 'soft'})
+            returned('looping movie, Ctrl-Reset')
+            s.ok('Ctrl-Reset: the vector left on OLDRST ($FF59, valid)',
+                 p.peek(0x03F2, 3) == b'\x59\xff\x5a')
 
             # The slideshow: S, and once round the movie gives way to
             # another of the directory (a refused one is shown, then skipped).

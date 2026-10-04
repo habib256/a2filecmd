@@ -11,6 +11,7 @@
         .export         __STARTUP__ : absolute = 1      ; Mark as startup
 
         .import         initlib, donelib
+        .import         setsoftev       ; chain.s
         .import         zerobss
 .ifndef CC65_MASTER
         .import         callmain
@@ -68,7 +69,7 @@ callmain:
         ; Avoid a re-entrance of donelib. This is also the exit() entry.
 _exit:  ldx     #<exit
         lda     #>exit
-        jsr     reset           ; Setup RESET vector
+        jsr     setsoftev       ; Setup RESET vector
 
         ; Switch in ROM, in case it wasn't already switched in by a RESET.
         bit     $C082
@@ -76,12 +77,13 @@ _exit:  ldx     #<exit
         ; Call the module destructors.
         jsr     donelib
 
-        ; Restore the original RESET vector.
-exit:   ldx     #$02
-:       lda     rvsave,x
-        sta     SOFTEV,x
-        dex
-        bpl     :-
+        ; Not the original RESET vector back: A2FILE.SYSTEM leaves its
+        ; own, into the launcher's code that A2FC's pictures overwrite.
+        ; $FF59, the monitor's OLDRST in ROM, as ProDOS sets it at boot
+        ; (see chain.s, which does the same before it launches a program).
+exit:   ldx     #$59
+        lda     #$FF
+        jsr     setsoftev
 
         ; Copy back the zero-page stuff.
         ldx     #zpspace-1
@@ -107,13 +109,6 @@ exit:   ldx     #$02
 init:   ldx     #zpspace-1
 :       lda     sp,x
         sta     zpsave,x
-        dex
-        bpl     :-
-
-        ; Save the original RESET vector.
-        ldx     #$02
-:       lda     SOFTEV,x
-        sta     rvsave,x
         dex
         bpl     :-
 
@@ -153,7 +148,7 @@ basic:  lda     HIMEM
         ;  address of a routine that ... closes the files."
         ldx     #<_exit
         lda     #>_exit
-        jsr     reset           ; Setup RESET vector
+        jsr     setsoftev       ; Setup RESET vector
 
         ; The ROM first: a SYSTEM program launched by ProDOS starts with the
         ; ROM in, and the library's constructors count on it (the apple2
@@ -205,11 +200,6 @@ basic:  lda     HIMEM
 
         .code
 
-        ; Set up the RESET vector.
-reset:  stx     SOFTEV
-        sta     SOFTEV+1
-        eor     #$A5
-        sta     PWREDUP
 return: rts
 
         ; Quit to the ProDOS dispatcher.
@@ -240,4 +230,3 @@ done:   jmp     DOSWARM         ; Potentially patched at runtime
         .segment        "INIT"
 
 zpsave: .res    zpspace
-rvsave: .res    3
