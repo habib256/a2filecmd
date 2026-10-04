@@ -44,10 +44,10 @@ def main():
             s.select('A.BKG')
             aux = bytes(p.peek(0x1000, 0xB000, 'aux'))
             s.key(RET)
-            # IMAGE may show double hi-res, so it asks first; a single page
-            # then leaves AUX alone all the same.
-            s.wait(lambda: s.has('Continue? (Y/N)'), 'AUX consent asked', 30)
-            s.key(b'Y')
+            # IMAGE may show double hi-res, so it would ask first -- but /RAM
+            # is empty here, so no question (2026-10-03); a single page then
+            # leaves AUX alone all the same.
+            s.allow_aux()
             for name in sorted(pics):
                 want = pics[name][1][-8192:]
                 s.wait(lambda: bytes(p.peek(0x2000, 8192)) == want, name + ' rendered', 60)

@@ -48,8 +48,9 @@ def main(variants):
         shutil.copyfile(ROOT / 'data/IMGHGR/ALIEN#062000', stage / 'IMGHGR/ALIEN#062000')
         mkdemo.make(stage / 'DEMO', full=True)
         hdv = tmp / 'HD.hdv'                 # amorce sur BASIC.SYSTEM, seul .SYSTEM de la racine
+        # 6400 blocks: the 87 overlays and the full DEMO went past 3200 in 0.9.5.
         subprocess.run([sys.executable, str(ROOT / 'tools/mkvolume.py'), str(stage), str(hdv),
-                        '--volume', 'HD', '--blocks', '3200',
+                        '--volume', 'HD', '--blocks', '6400',
                         '--boot', str(ROOT / 'data/prodos_boot.tmpl')], check=True, capture_output=True)
 
         for n, variant in enumerate(variants):

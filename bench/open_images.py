@@ -48,7 +48,7 @@ def main():
             s.select('WORK'); s.key(RET); p.stable()
 
             # No destructive AUX use before consent, including Return's new route.
-            s.select('BASTILLE'); before = bytes(p.peek(0x1000, 0xB000, 'aux'))
+            s.select('BASTILLE'); s.ram_occupied(); before = bytes(p.peek(0x1000, 0xB000, 'aux'))
             s.key(RET)
             s.wait(lambda: s.has('ALL /RAM files will be LOST'), 'Extasie consent', 30)
             s.ok('Return on Extasie asks before damaging RAM',

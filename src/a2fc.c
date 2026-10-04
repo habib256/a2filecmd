@@ -48,6 +48,7 @@ extern unsigned int _auxtype;
 
 unsigned char __fastcall__ mli_gfi(void* params);   /* a2fc_mli.s */
 unsigned char ram_format(void);
+unsigned char ram_empty(void);        /* a2fc_mli.s: /RAM on line and without a file */
 extern unsigned int chain_addr;                    /* chain.s */
 void __fastcall__ chain_load(const char* path);
 void __fastcall__ chain_command(const char* name);
@@ -127,7 +128,7 @@ static unsigned char pointer;  /* the mouse has moved once: the pointer is shown
 char full[PATH_LEN + NAME_LEN];           /* not static: open.s reads it */
 static char other_full[PATH_LEN + NAME_LEN];
 static char cfg_path[PATH_LEN];
-static char input[NAME_LEN];
+char input[NAME_LEN];                    /* not static: open.s's open_entry writes it */
 static char question[64];
 unsigned char copy_buf[512];              /* not static: open.s probes into it */
 static unsigned char gfi[18];
@@ -142,7 +143,7 @@ static unsigned char in_overlay, panel_stale, reselect_panel;
 static unsigned char read_dos33_overlay(struct Panel* pan);
 static unsigned char read_image_dir_overlay(struct Panel* pan);
 static char reselect[NAME_LEN];    /* on return from a big overlay: the name to reselect */
-static struct Entry selected;      /* the entry under the cursor, copied before a big overlay overwrites the table */
+struct Entry selected;             /* (not static: open.s reads it) the entry under the cursor, copied before a big overlay overwrites the table */
 static char note[80];              /* ... and the message to write on line 22 */
 static long text_starts[80];   /* known page starts */
 /* MOVE manifest state survives all overlays in the idle text-viewer buffer. */
@@ -1312,9 +1313,12 @@ static unsigned char page_size(const unsigned long* size)
      * the last byte the screen actually shows drops the eight bytes of the
      * final screen hole. 816/Paint writes its uncompressed double hi-res
      * that way, and A2FC used to answer "not an image" to it. */
-    /* Fold each page size and its eight-byte-short variant together.
-     * Masking bit 3 after adding 8 maps precisely to $2000 or $4000. */
-    unsigned int rounded = (w[0] + 8) & 0xFFF7;
+    /* Every "nearly a page" size, from eight bytes short to seven over:
+     * adding 8 and masking the low four bits maps 8,184-8,199 to $2000 and
+     * 16,376-16,391 to $4000. Savers stop at the last shown byte (8,184),
+     * at $1FFF (8,191: KoalaPad pictures re-saved by a club disk), or write
+     * two bytes more (8,194: Terrapin Logo's SAVEPICT). */
+    unsigned int rounded = (w[0] + 8) & 0xFFF0;
     return !w[1] && (rounded == 8192 || rounded == 16384);
 }
 
@@ -2263,10 +2267,13 @@ static FILE* open_overlay(const char* name, unsigned char ask)
 static unsigned char media_aux_scope;
 #pragma rodata-name(push, "LC")
 static const char aux_warning[] = "Uses AUX memory: ALL /RAM files will be LOST. Continue?";
+static const char loading_tool[] = "Loading tool...";
 #pragma rodata-name(pop)
 static unsigned char confirm_aux(void)
 {
-    if (media_aux_scope == 2) return 1;
+    /* An empty /RAM has nothing to lose: no question (its blocks are
+     * rebuilt empty afterwards, as for any use of the auxiliary bank). */
+    if (media_aux_scope == 2 || ram_empty()) return 1;
     if (!confirm(aux_warning)) return 0;
     if (media_aux_scope) media_aux_scope = 2;
     return 1;
@@ -2297,7 +2304,7 @@ static unsigned char load_overlay(const char* name, unsigned char any)
         return !(OVL->flags & OVERLAY_AUX) || confirm_aux();
     }
     overlay_loaded[0] = 0;
-    activity_begin("Loading tool...");
+    activity_begin(loading_tool);
     f = open_overlay(name, 1);
     if (f) {
         if (fread(OVERLAY_WINDOW, 1, 8, f) == 8 && !ferror(f)
@@ -2620,7 +2627,7 @@ static unsigned char load_image(const struct Entry* e)
     if (fread(copy_buf, 1, 8, f) == 8) {
         if (!memcmp(copy_buf, "DHRR\1\0\0\x40", 8)) kind = IMG_DHRR;
         else if (!memcmp(copy_buf, "HGRR\1\0\0\x20", 8)) kind = IMG_HGRR;
-        else if (size > 8192) kind = IMG_DHGR;   /* 16,384 or 16,376 */
+        else if (size > 8199) kind = IMG_DHGR;   /* 16,376 to 16,391 */
         else if (size) kind = IMG_HGR;
     }
     if (kind == IMG_DHRR) { aux_dirty = 1; ok = decode_rle(f, 16384); }
@@ -3719,8 +3726,8 @@ static const char mn_what7[] = "Unsorted";
 static const char* const mn_whats[] = {
     mn_what0, mn_what1, mn_what2, mn_what3, mn_what4, mn_what5, mn_what6, mn_what7
 };
-static const char mn_group0[] = "|TEXT|HEX|EDIT|SEARCH|FIND|FIXTYPES|GOTO|MDVIEW|DOCVIEW|RENAME|SYNC|MOVE|TREE|DELETE|ATTR|TXTCONV|TAGPAT|COMPARE|AWP|AWDATA|";
-static const char mn_group1[] = "|IMAGE|DGRVIEW|EXTASIE|ARLEQUIN|MACPAINT|SHAPES|PACKFOT|PAINT816|PURPLE|LZ4FH|PRINTSHOP|NEWSROOM|FONTVIEW|";
+static const char mn_group0[] = "|TEXT|HEX|EDIT|SEARCH|FIND|FIXTYPES|GOTO|MDVIEW|DOCVIEW|RENAME|SYNC|MOVE|TREE|DELETE|ATTR|TXTCONV|TAGPAT|COMPARE|AWP|AWDATA|VISICALC|";
+static const char mn_group1[] = "|IMAGE|DGRVIEW|EXTASIE|ARLEQUIN|MACPAINT|SHAPES|PACKFOT|PAINT816|PURPLE|LZ4FH|PRINTSHOP|NEWSROOM|NRCLIP|GMAGIC|FONTVIEW|";
 static const char mn_group2[] = "|MUSIC|PT3|DUET|";
 static const char mn_group3[] = "|FORMAT|DISKIMG|IMGFS|IMGPUT|DOSGET|DOSWRITE|DOS33W|DOSREPL|PASCAL|PASCALW|CPM|CPMW|BOOTBLK|BLKVIEW|BLKEDIT|DISKCMP|NIBCOPY|IMGCONV|MKIMAGE|RESCUE|UNDELETE|VOLNAME|VOLINFO|FIXIT|REPAIR|WIPE|VERIFY|";
 static const char mn_group4[] = "|BASLIST|DISASM|INTBASIC|RUN|CRC|IDENT|";
@@ -5265,13 +5272,16 @@ static unsigned char open_image(struct Panel* pan, const struct Entry* e)
 #pragma rodata-name(push, "OPENRO")
 /* The tables of the classifier, file_viewer, in open.s: the IDs stay
  * here, beside viewer_ids.h. image_kind's answer to viewer. */
-const unsigned char image_viewers[] = {V_HEX, V_RAW, V_EXT, V_PACK, V_PAINT, V_DGR, V_ARL, V_NEWS, V_RUN, V_DOC};
+const unsigned char image_viewers[] = {V_HEX, V_RAW, V_EXT, V_PACK, V_PAINT, V_DGR, V_ARL, V_NEWS, V_RUN, V_DOC, V_VISI, V_GM};
 /* The viewers a suffix names: the music (V_DUET and below) and formats with
  * no ProDOS type of their own. */
 const char fv_ext[] = ".MB\0.PT3\0.ED\0.FOTO1\0.FOTO2\0.MAC\0.AS\0.BSC\0.BSQ\0.SHAPE\0"
-                      ".QQ\0.ACU\0.BA3\0";
+                      ".QQ\0.ACU\0.BA3\0.LOGO\0.SET\0.FONT\0";
+/* .SET (Apple's DOS Tool Kit HRCG sets) and .FONT (Beagle's copies of them)
+ * name FONTVIEW only for a BIN of 768 or 1,024 bytes: open.s drops the
+ * suffix otherwise. */
 const unsigned char fv_ids[] = { V_MUSIC, V_PT3, V_DUET, V_PURPLE, V_PURPLE, V_MAC,
-    V_UNWRAP, V_SCII, V_SCII, V_SHAPES, V_UNSQ, V_UNSQ, V_BASLIST };
+    V_UNWRAP, V_SCII, V_SCII, V_SHAPES, V_UNSQ, V_UNSQ, V_BASLIST, V_TEXT, V_FONT, V_FONT };
 /* The viewers a ProDOS type names on its own, once no suffix, no picture
  * and no music has answered: text, Business BASIC ($09, like T), the two
  * AppleWorks documents ($19 data base, $1B spreadsheet), and the programs. */
@@ -5281,16 +5291,9 @@ const unsigned char fv_tids[] = { V_TEXT, V_BASLIST, V_AWD, V_AWP, V_AWD, V_RUN,
  * how many types fv_types holds. */
 const unsigned char fv_v[] = { V_HEX, V_FONT, V_LZ, V_PS, V_RUN, V_DUET, V_PT3, V_RAW, V_UNWRAP,
     sizeof fv_types };
-void __fastcall__ open_entry(const struct A2fcApi* a)
-{
-    unsigned char viewer;
-    input[0] = 0;
-    if (selected.name[0] && !is_dir(&selected) && full[0]) {
-        viewer = file_viewer(&selected, a->arg);
-        if (viewer) strcpy(input, media_names[viewer]);
-        else report_error(selected.name);      /* "NAME failed (...)" */
-    }
-}
+/* OPEN's entry point, open_entry, is in open.s with the classifier (its C
+ * text, 104 bytes of cc65 code against 70, is tools/file_viewer_ref.c's
+ * ref_open_entry): the viewer's overlay name into input. */
 #pragma rodata-name(pop)
 #pragma code-name(pop)
 static void open_viewer(unsigned char pictures)
@@ -5541,7 +5544,7 @@ static struct A2fcApi api = {
     build_full, dir_open, dir_next, dir_close, mli_call,
     fopen, fread, fwrite, fclose, fseek, remove, cprintf, sprintf, cputs, cputc, gotoxy, revers, cclearxy, clrscr, slide_getc,
     memcpy, memset, strcpy, strcmp, strlen, &_filetype, &_auxtype, reselect, note, &selected, cfg_path,
-    ram_format, media_key, media_wait, music_info };
+    ram_format, media_key, media_wait, music_info, confirm_aux };
 
 int main(void)
 {

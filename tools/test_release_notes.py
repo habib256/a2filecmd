@@ -45,8 +45,8 @@ class ReleaseNotes(unittest.TestCase):
         result = subprocess.check_output([sys.executable, notes.__file__, 'main'], text=True)
         # Current distribution inventory, independently checked by check_images.py.
         # 79 since DOS33W, DOSREPL, PASCAL and CPM (18 September 2026); the number is
-        # written down on purpose, so adding an overlay is a line to change (83 with NEWSROOM, 84 with DOCVIEW).
-        self.assertIn('XL includes all 84 overlays', result)
+        # written down on purpose, so adding an overlay is a line to change (83 with NEWSROOM, 84 with DOCVIEW, 85 with NRCLIP, 86 with VISICALC, 87 with GMAGIC).
+        self.assertIn('XL includes all 87 overlays', result)
         self.assertIn('A2FILECMD-PRODOS-140K-%s.dsk' % notes.build_version(), result)
         self.assertNotIn('{overlays}', result)
 

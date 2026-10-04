@@ -20,8 +20,8 @@ from run import RET, TAB, ESC, solid_bands
 import urllib.request
 
 # DEMO sorted by kind (tools/stage_demo.py): no folder of borrowed samples
-DEMO = ['ARCHIVES/', 'DISKS/', 'DOCUMENTS/', 'FONTS.SHAPES/', 'MUSIC/', 'PICTURES/',
-        'PROGRAMS/', 'README']
+DEMO = ['ARCHIVES/', 'DISKS/', 'DOCUMENTS/', 'FONTS.SHAPES/', 'MOVIES/', 'MUSIC/',
+        'PICTURES/', 'PROGRAMS/', 'README']
 
 
 def main():

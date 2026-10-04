@@ -47,15 +47,27 @@ def main():
     if first.endswith('PT3'):
      s.wait(lambda:s.has('ESC Back'),'PT3 credits fully drawn')
      s.ok('PT3 title and artist',s.has('Title: Test title') and s.has('Test artist'))
-     s.ok('PT3 player credit',s.has('Player: Vince Weaver - A2FC adapter'))
+     # music_info writes pt3_lib's credit first; once GROUiK's engine is
+     # loaded and started, its driver writes its own over row 3.
+     s.wait(lambda:s.has('Player: GROUiK/French Touch, after S.V. Bulba - A2FC adapter'),'GROUiK credit',60)
+     s.ok('PT3 player credit',True)
     s.key(LEFT);p.stable();s.ok(first+' boundary stays',s.has(title+first))
     s.key(b'P');transition(p,s,RIGHT,last);p.rq('/speed',{'preset':'1x'});s.wait(lambda:s.has(title+last),'next same format')
     s.ok(first+' skips other formats',True)
-    s.key(RIGHT);p.stable();s.ok(last+' boundary stays',s.has(title+last))
+    # Right on the last goes round to the first (e510b94: albums wrap, the
+    # slideshow never ends); Left on the first stays, checked above.
+    s.key(RIGHT);p.rq('/speed',{'preset':'1x'});s.wait(lambda:s.has(title+first),'round to the first')
+    s.ok(last+' goes round to '+first,True)
+    s.key(b'P');transition(p,s,RIGHT,last);p.rq('/speed',{'preset':'1x'});s.wait(lambda:s.has(title+last),'next again')
     s.key(LEFT);s.wait(lambda:s.has(title+first),'previous same format');s.ok(first+' previous',True)
     s.key(ESC);s.wait(lambda:s.has('Type  Aux'),'music exit');p.stable()
+    # MB1 never touches AUX; PT3 plays with GROUiK's engine there (/RAM was
+    # empty: no question) and rebuilds /RAM on the way out, saying so on the
+    # note line -- read before the cursor moves, which clears it.
+    if first.endswith('PT3'):s.ok('PT3 navigation rebuilt /RAM and said so',s.has('/RAM rebuilt.'))
+    if first=='A.MB':s.ok('MB1 navigation preserves AUX',p.peek(0x1000,0xB000,'aux')==before)
    s.select('A.MB');s.ok('music navigation preserves marks','*' in s.line())
-   s.ok('music navigation preserves AUX',p.peek(0x1000,0xB000,'aux')==before)
+   s.ok('music navigation leaves /RAM empty and consistent',s.ram_files()==0)
    p.rq('/speed',{'cycles_per_frame':p.speed})
    for prefix,consent,oracle in cases:
     s.select(prefix+'1');s.key(RET)
@@ -69,7 +81,7 @@ def main():
     s.wait(lambda:visible(p.peek(0x2000,8192))==visible(oracle(0x11)),prefix+' previous',60)
     s.key(ESC);s.wait(lambda:s.has('Type  Aux'),prefix+' exit');p.stable();s.ok(prefix+' cursor restored',s.line().startswith(prefix+'1 '))
     if consent:
-     before=p.peek(0x800,0xF800,'aux')
+     s.ram_occupied();before=p.peek(0x800,0xF800,'aux')
      s.key(RET);s.wait(lambda:s.has('ALL /RAM files will be LOST'),prefix+' fresh consent')
      s.key(b'N');p.stable()
      s.ok(prefix+' reopening asks again; decline preserves AUX',p.peek(0x800,0xF800,'aux')==before)

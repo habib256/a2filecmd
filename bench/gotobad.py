@@ -23,8 +23,10 @@ def main():
         with boot_hd(Path(tmp), files, port=6818, plugins=['goto', 'crc']) as (p, s):
             s.select('A2FILE'); s.key(RET); s.wait(lambda: s.has('/WORKHD/A2FILE'), 'A2FILE'); p.stable()
             def rename(old, new):
-                s.select(old); s.key(b'R'); s.wait(lambda: s.has('New name'), 'rename')
-                s.key(b'\x7f' * len(old)); s.type(new); s.key(RET); p.stable(); s.select(new)
+                # A2FILE holds ~100 entries since the 87 overlays: TEN sits
+                # past the 80 Down presses select() tries by default.
+                s.select(old, tries=250); s.key(b'R'); s.wait(lambda: s.has('New name'), 'rename')
+                s.key(b'\x7f' * len(old)); s.type(new); s.key(RET); p.stable(); s.select(new, tries=250)
 
             for name, data in CASES.items():
                 rename(name, 'GOTO.CFG')

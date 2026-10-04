@@ -1,4 +1,5 @@
 """Actual resident C rendering/input and 6502/65C02 presentation helpers."""
+import re
 import shutil
 import subprocess
 import tempfile
@@ -99,9 +100,9 @@ static unsigned char named_ref(const struct Entry*e){
  return e->type==6&&e->aux==0x4000&&e->name[2]=='.'&&
   ((e->name[0]=='P'&&e->name[1]=='H')||(e->name[0]=='B'&&e->name[1]=='N'))?7:0;
 }
-static unsigned char phase_bad;
-void cclearxy(unsigned char x,unsigned char y,unsigned char count){if(x||y!=21||count!=79)phase_bad=1;}
-void cputsxy(unsigned char x,unsigned char y,const char*s){if(x||y!=21||strcmp(s,"Verifying..."))phase_bad=1;}
+static unsigned char phase_bad,phase_calls;
+void cclearxy(unsigned char x,unsigned char y,unsigned char count){++phase_calls;if(x||y!=21||count!=79)phase_bad=1;}
+void cputsxy(unsigned char x,unsigned char y,const char*s){++phase_calls;if(x||y!=21||strcmp(s,"Verifying..."))phase_bad=1;}
 static char text[1024],colors[1024];
 static unsigned n;
 static unsigned char rev,bad;
@@ -175,7 +176,13 @@ int main(void){
   if(*(unsigned char*)0x6F7 != (unsigned char)"\xAF\xAD\xDC\xFC"[i%4])return 5;
   for(j=0;j<1024;++j)if(j!=0x2F7&&((unsigned char*)0x400)[j]!=0xA5)return 6;
  }
- activity_begin("Verifying...");if(phase_bad)return 7;
+ /* RD80STORE ($C018, ordinary RAM under sim65): the core draws with
+  * 80STORE on and the phase is written; a picture on the air (80STORE off)
+  * is the text page itself and nothing is written into it. */
+ *(unsigned char*)0xC018=0x80;phase_calls=0;
+ activity_begin("Verifying...");if(phase_bad||phase_calls!=2)return 7;
+ *(unsigned char*)0xC018=0x00;phase_calls=0;
+ activity_begin("Verifying...");if(phase_calls)return 30;
  for(i=0;i<sizeof(spec)/sizeof(*spec);++i){
   /* Place the input across an actual page boundary, as plugin constants can be. */
   char*s=boundary+255-((unsigned)boundary&255);strcpy(s,spec[i]);
@@ -265,6 +272,45 @@ static void reference(unsigned char x,const char*spec){
                 with self.subTest(cpu=cpu):
                     subprocess.run([shutil.which('cl65'), '-I', str(ROOT), '-t', target, '-C', str(p / 'sim.cfg'), '--cpu', cpu, '-O', '-o', str(p / 'test'), str(p / 'test.c'), str(p / 'display.s')], check=True)
                     subprocess.run([shutil.which('sim65'), str(p / 'test')], check=True, timeout=60)
+
+
+    def test_slideshow_shows_each_picture_about_ten_seconds(self):
+        # The real slide_getc under sim65 with no key: count the cycles
+        # until Right comes by itself, against the same program without the
+        # call. Ten seconds at 1.023 MHz, not the five it used to be.
+        prog = r'''
+#define KBD (*(volatile unsigned char*)0xC000)
+char cgetc(void){return 0;}
+void cclearxy(unsigned char x,unsigned char y,unsigned char n){(void)x;(void)y;(void)n;}
+void cputsxy(unsigned char x,unsigned char y,const char*t){(void)x;(void)y;(void)t;}
+void gotoxy(unsigned char x,unsigned char y){(void)x;(void)y;}
+unsigned char __fastcall__ revers(unsigned char r){return r;}
+void __fastcall__ cputc(char c){(void)c;}
+extern unsigned char slideshow;
+unsigned int slide_getc(void);
+int main(void){KBD=0;slideshow=0x81;
+#ifdef WAIT
+ if(slide_getc()!=21||slideshow!=0x81)return 1;
+#endif
+ return 0;}
+'''
+        with tempfile.TemporaryDirectory(prefix='a2fc-slide-') as tmp:
+            p = Path(tmp)
+            (p / 'test.c').write_text(prog)
+            (p / 'display.s').write_text((ROOT / 'src/display.s').read_text().replace('.segment "LC"', '.segment "CODE"'))
+            cfg = Path(shutil.which('cl65')).resolve().parents[1] / 'share/cc65/cfg/sim6502.cfg'
+            (p / 'sim.cfg').write_text(cfg.read_text().replace('start = $0200, size = $FDF0', 'start = $2000, size = $DFF0'))
+            for cpu, target in [('6502', 'sim6502'), ('65c02', 'sim65c02')]:
+                with self.subTest(cpu=cpu):
+                    cycles = []
+                    for define in ([], ['-DWAIT']):
+                        subprocess.run([shutil.which('cl65'), *define, '-t', target, '-C', str(p / 'sim.cfg'), '--cpu', cpu, '-O', '-o', str(p / 'test'), str(p / 'test.c'), str(p / 'display.s')], check=True)
+                        r = subprocess.run([shutil.which('sim65'), '-c', str(p / 'test')], capture_output=True, text=True, timeout=120)
+                        self.assertEqual(r.returncode, 0)
+                        cycles.append(int(re.search(r'(\d+) cycles', r.stdout + r.stderr).group(1)))
+                    seconds = (cycles[1] - cycles[0]) / 1_023_000
+                    self.assertGreater(seconds, 9.5)
+                    self.assertLess(seconds, 10.5)
 
 
 if __name__ == '__main__':

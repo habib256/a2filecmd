@@ -41,6 +41,16 @@ def stage_hd(tmp, files=None, blocks=4000, name='WORKHD', plugins=()):
     shutil.copytree(BUILD / 'vol', stage)
     for plg in plugins:
         shutil.copyfile(BUILD / (plg.lower() + '.PLG'), stage / 'A2FILE' / (plg.upper() + '.PLG#061B00'))
+        if plg.lower() == 'pt3' and (BUILD / 'PPT3.BIN').exists():
+            # PT3.PLG's GROUiK engine image goes with it (A2FILE/PPT3.BIN)
+            for old in (stage / 'A2FILE').glob('PPT3.BIN*'):
+                old.unlink()
+            shutil.copyfile(BUILD / 'PPT3.BIN', stage / 'A2FILE' / 'PPT3.BIN#060800')
+        if plg.lower() == 'visicalc':
+            # VISICALC.PLG's other phases, linked with it (sdk/visicalc.cfg)
+            for old in (stage / 'A2FILE').glob('VISICALC.BIN*'):
+                old.unlink()
+            shutil.copyfile(BUILD / 'visicalc.PLG.BIN', stage / 'A2FILE' / 'VISICALC.BIN#060000')
     for rel, data in (files or {}).items():
         path = stage / rel
         path.parent.mkdir(parents=True, exist_ok=True)

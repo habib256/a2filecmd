@@ -159,7 +159,7 @@ activity_chars:
 ; The key a picture viewer waits for, and the service table's cgetc
 ; (media.h). slideshow: 0 outside a picture viewer, where this is cgetc
 ; itself; 1 in one; $81 while its pictures follow one another: Right is
-; returned by itself after about five seconds at 1 MHz (7 x 65,536 turns
+; returned by itself after about ten seconds at 1 MHz (14 x 65,536 turns
 ; of 11 cycles) without a key. S starts or stops the slideshow; any other
 ; key stops it and is returned as read. Only the keyboard is read.
         .export _slide_getc, _slideshow
@@ -170,7 +170,7 @@ _slideshow: .res 1
 _slide_getc:
         bit _slideshow
         bpl slide_read
-        lda #7
+        lda #14
         jsr _key_wait
         bne slide_read
         lda #21                 ; KEY_RIGHT, X = 0
@@ -222,10 +222,16 @@ key_wait_key:
 ; Temporary phase on the information row. Result/error row 22 is preserved.
 ; The panels redraw row 21 when the operation returns. No disk or AUX above
 ; the normal text page is used; the conio helpers select their text bank.
+; The core always draws with 80STORE on; only a picture on the air (DGRVIEW's
+; lo-res or text screen, show_hgr) turns it off. Then the text page IS the
+; picture: "Loading tool..." or "Reading directory..." between two
+; neighbours would be written into it, so nothing is written.
         .export _activity_begin
         .import _cclearxy, _cputsxy
         .code
 _activity_begin:
+        bit $C018               ; RD80STORE
+        bpl activity_off
         pha
         txa
         pha

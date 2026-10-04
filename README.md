@@ -118,8 +118,9 @@ result before retrying or removing a disk.** Verification cannot make a
 physical metadata write atomic through a power cut.
 
 Some ProDOS tools need auxiliary memory and can clear **all files in /RAM**.
-They ask before using it; save those files elsewhere first. Music playback
-preserves /RAM. DOS3.3 has no auxiliary-memory requirement; once a disk write
+They ask before using it when /RAM holds files (an empty /RAM is used without
+a question); save those files elsewhere first. The PT3 player uses it too;
+the other music players preserve /RAM. DOS3.3 has no auxiliary-memory requirement; once a disk write
 starts, its keyboard cannot interrupt it.
 
 The guide includes a practical [incident recovery procedure](docs/MANUAL.md#recover-after-an-incident):

@@ -3,6 +3,7 @@
 ;
 ;   unsigned char __fastcall__ file_viewer(const struct Entry* e,
 ;                                          unsigned char pictures);
+;   void __fastcall__ open_entry(const struct A2fcApi* a);   (OPEN's entry)
 ;
 ; 0 means the probe could not read the file (an error, never a fallback);
 ; otherwise a viewer ID of viewer_ids.h. `pictures` is 0 for Return, 1 for
@@ -17,15 +18,18 @@
 ; The tables and the IDs stay in a2fc.c (fv_*), next to viewer_ids.h.
 ;
 ; Reads: the entry, the file's first 8 bytes into copy_buf (main RAM, by
-; fopen/fread: never a graphics or AUX bank). Writes nothing else.
+; fopen/fread: never a graphics or AUX bank). Writes nothing else but its
+; own state, kept in copy_buf too (from copy_buf + 64), and, for
+; open_entry, the viewer's name into input.
 ; Plain 6502 throughout: both editions assemble this file.
 
         .macpack longbranch             ; jne & co: a branch, or a jmp if far
-        .export _file_viewer
-        .import popax, pushax, _fopen, _fread, _ferror, _fclose
+        .export _file_viewer, _open_entry
+        .import popax, pushax, pusha0, _fopen, _fread, _ferror, _fclose
         .import _image_kind, _full, _copy_buf
+        .import _input, _selected, _media_names, _strcpy, _report_error
         .import _fv_ext, _fv_ids, _fv_types, _fv_tids, _image_viewers, _fv_v
-        .importzp ptr1
+        .importzp ptr1, tmp1, tmp2
 
 ; Entry fields (a2fc_plugin.h ABI, NAME_LEN 17).
 E_TYPE  = 17
@@ -44,26 +48,66 @@ V_RAW   = _fv_v+7
 V_UNWRAP= _fv_v+8
 N_TYPES = _fv_v+9                       ; entries in fv_types
 
+; The state lives as long as a classification: in copy_buf, past the
+; bytes the probe reads (it cost 17 bytes of the overlay itself).
+ST      = _copy_buf + 64
+e       = ST+0                          ; 2 bytes
+pics    = ST+2
+kind    = ST+3
+type    = ST+4
+auxl    = ST+5
+auxh    = ST+6
+len     = ST+7
+cand    = ST+8
+named   = ST+9
+music   = ST+10
+fh      = ST+11                         ; 2 bytes
+n       = ST+13
+bad     = ST+14
+idx     = ST+15
+at      = ST+17
+nxt     = ST+18
+; From file_viewer's start to the probe, ptr1 = e: nothing in between
+; calls C (by_suffix, binsize, printshop and the rules read it as it is).
+
         .segment "OPEN"
 
-; The state, in the overlay itself: it lives as long as a classification.
-e:      .res    2
-pics:   .res    1
-kind:   .res    1
-type:   .res    1
-auxl:   .res    1
-auxh:   .res    1
-len:    .res    1
-cand:   .res    1
-named:  .res    1
-music:  .res    1
-fh:     .res    2
-n:      .res    1
-bad:    .res    1
-idx:    .res    1
-k:      .res    1
-at:     .res    1
-nxt:    .res    1
+; void open_entry(const struct A2fcApi* a): the viewer of the selection,
+; its overlay's name into input; input stays "" for a directory, an empty
+; panel or a path too long, and after a probe error, which is reported.
+_open_entry:
+        sta     ptr1
+        stx     ptr1+1
+        lda     #0
+        sta     _input
+        lda     _selected               ; name[0]
+        beq     @r
+        lda     _selected+E_TYPE        ; not a directory
+        cmp     #$0F
+        beq     @r
+        lda     _full
+        beq     @r
+        lda     #<_selected
+        ldx     #>_selected
+        jsr     pushax                  ; (ptr1 kept)
+        ldy     #1                      ; a->arg: pictures
+        lda     (ptr1),y
+        jsr     _file_viewer
+        asl     a                       ; the ID x 2 (IDs < 128); 0: an error
+        beq     @err
+        pha
+        lda     #<_input
+        ldx     #>_input
+        jsr     pushax
+        pla
+        tay
+        lda     _media_names,y
+        ldx     _media_names+1,y
+        jmp     _strcpy
+@err:   lda     #<_selected
+        ldx     #>_selected
+        jmp     _report_error
+@r:     rts
 
 _file_viewer:
         sta     pics
@@ -103,7 +147,19 @@ _file_viewer:
         bne     @nc
         inc     cand
 @nc:    jsr     by_suffix
-        sta     named
+        cmp     V_FONT                  ; .SET / .FONT: a hi-res (HRCG) font
+        bne     @ns                     ; only for a BIN of 768 or 1,024
+        jsr     binsize                 ; bytes; otherwise no suffix
+        bcs     @nfn
+        sbc     #2                      ; carry clear: bits 8-15 - 3
+        cmp     #2
+        bcs     @nfn
+        lda     (ptr1),y                ; bits 0-7
+        bne     @nfn
+        lda     V_FONT
+        .byte   $2C                     ; BIT abs: skips the lda #0
+@nfn:   lda     #0
+@ns:    sta     named
         cmp     V_DUET                  ; the music the suffix names
         beq     @m
         bcc     @m
@@ -128,9 +184,10 @@ _file_viewer:
         beq     @same
         lda     pics
         cmp     #4
-        jne     hex
+        bne     @hx
         lda     cand
-        jeq     hex
+        bne     @same
+@hx:    jmp     hex
 @same:  lda     #0
         sta     pics
 
@@ -138,7 +195,7 @@ _file_viewer:
         cmp     #$07
         bne     @nf
         lda     V_FONT
-        jmp     ret
+        bne     @retm                   ; (never 0)
 @nf:    cmp     #$08                    ; LZ4FH: $08/$8066
         bne     @nl
         lda     auxl
@@ -148,29 +205,47 @@ _file_viewer:
         cmp     #$80
         bne     @nl
         lda     V_LZ
-        jmp     ret
+        bne     @retm                   ; (never 0)
 @nl:    jsr     printshop
-        bcc     @np
+        bcs     @np
         lda     V_PS
-        jmp     ret
+        bne     @retm                   ; (never 0)
 @np:    lda     pics
         bne     @nr
         lda     type
         cmp     #$FA
+        beq     @run
+        cmp     #$06                    ; a Take 1 movie MV.x: BIN $8029
+        bne     @nr                     ; once extracted, aux 0 in a DOS
+        lda     auxl                    ; 3.3 catalog
+        ldx     auxh
+        beq     @t1z
+        cpx     #$80
         bne     @nr
-        lda     V_RUN
-        jmp     ret
+        cmp     #$29
+        bne     @nr
+        beq     @t1n
+@t1z:   tay
+        bne     @nr
+@t1n:   ldy     #2
+@t1c:   lda     (ptr1),y
+        cmp     s_mv,y
+        bne     @nr
+        dey
+        bpl     @t1c
+@run:   lda     V_RUN
+@retm:  ldx     #0                      ; ret, for the rules above and below
+        rts
 @nr:    lda     V_DUET                  ; a suffix beyond the music
         cmp     named
         bcs     @nn
         lda     named
-        jmp     ret
+        bne     @retm                   ; (never 0)
 @nn:    lda     pics
         bne     @probe
         lda     music
         cmp     V_PT3
-        bcc     @probe
-        jmp     ret
+        bcs     @retm
 
 ; Probe only in main-RAM copy_buf, never in a graphics/AUX bank.
 @probe: lda     kind
@@ -179,7 +254,7 @@ _file_viewer:
         jsr     probe
         bcc     @read
         lda     #0                      ; unreadable: no viewer, an error
-        jmp     ret
+        beq     @retm                   ; always
 @read:  lda     cand                    ; a Duet song: 8 bytes, 1st and 4th set
         beq     @dgr
         lda     n
@@ -200,8 +275,8 @@ _file_viewer:
         bne     @arl
         dex
         bpl     @dg
-        lda     #5
-        jne     @set                    ; always
+        ldx     #5
+        bne     @dx                     ; always
 @arl:   lda     type                    ; Arlequin: $F8 and "gs" after its size
         cmp     #$F8
         bne     @rle
@@ -214,8 +289,8 @@ _file_viewer:
         lda     _copy_buf+3
         cmp     #'s'
         bne     @rle
-        lda     #6
-        bne     @set
+        ldx     #6
+        bne     @dx                     ; always
 @rle:   lda     n                       ; HGRR / DHRR version 1 headers
         cmp     #8
         bne     @doc
@@ -225,56 +300,166 @@ _file_viewer:
         ldx     #8
         jsr     cmp8
         bne     @doc
-@raw:   lda     #1
-        bne     @set
+@raw:   ldx     #1
+        bne     @dx                     ; always
 @doc:   lda     type                    ; Epistole `_`, Papyrus/HomeWord $FF:
         cmp     #$04                    ; OR $A0 makes both $FF (DEL and a
-        bne     @lores                  ; high-bit _ too, which no text starts
-        lda     _copy_buf               ; with). No test of n: an empty file
-        ora     #$A0                    ; can only show DOCVIEW's empty page.
-        cmp     #$FF
+        bne     @bsw                    ; high-bit _ too, which no text starts
+        ldx     n                       ; with). An empty file is TEXT's:
+        beq     @lores                  ; copy_buf[0] is then a stale byte (a
+        lda     _copy_buf               ; VisiCalc `>` VISICALC read there)
+        ora     #$A0
+        ldx     #9                      ; A VisiCalc worksheet's `>`, either
+        cmp     #$FF                    ; form, is $BE: kind 10 (VISICALC
+        beq     @dx                     ; checks the rest, and points to T)
+        inx
+        cmp     #$BE
         bne     @lores
+@dx:    txa
+        bne     @tos                    ; (to @set: too far for one branch)
+@bsw:   ldx     pics                    ; Return only: I keeps a high-bit
+        bne     @lores                  ; sprite or lo-res pixmap a picture
+        ldx     kind                    ; and a page-sized BIN (or .RLE) is
+        bne     @lores                  ; one (its top row may be all $80+):
+        cmp     #$06                    ; Bank Street Writer: BIN at $0840,
+        bne     @lores                  ; $63D0 or 0, high-bit text from its
+        lda     auxl                    ; first byte
+        ldx     auxh
+        beq     @bz
+        cpx     #$08
+        bne     @b63
+        cmp     #$40
+        beq     @bt
+        bne     @lores
+@b63:   cpx     #$63
+        bne     @lores
+        cmp     #$D0
+        bne     @lores
+        beq     @bt
+@bz:    tay
+        bne     @lores
+@bt:    ldx     n
+        beq     @lores
+@bl:    lda     _copy_buf-1,x
+        bpl     @lores
+        dex
+        bne     @bl
         lda     #9
-        bne     @set
+        bne     @tos                    ; (to @set)
 @lores: lda     kind                    ; I on a small unmarked BIN or FOT:
-        bne     @kinded                 ; a lo-res screen or pixmap
+        bne     @kd                 ; a lo-res screen or pixmap
         lda     pics
-        beq     @kinded
+        beq     @gm
         lda     type
         cmp     #$06
         beq     @small
         cmp     #$08
-        bne     @kinded
+        bne     @kd
 @small: jsr     eptr                    ; size 1 to 2,048
         ldy     #E_SIZE+3
         lda     (ptr1),y
         dey
         ora     (ptr1),y
-        bne     @kinded
+        bne     @kd
         dey
         lda     (ptr1),y                ; bits 8-15
         tax
         dey
         ora     (ptr1),y
-        beq     @kinded                 ; 0 bytes
+        beq     @kd                 ; 0 bytes
         cpx     #8
         bcc     @lo
-        bne     @kinded
+        bne     @kd
         lda     (ptr1),y                ; $08xx: $0800 only
-        bne     @kinded
+        bne     @kd
 @lo:    lda     #5
+@tos:   bne     @set                    ; always
+@kd:    jmp     @kinded                 ; (for the branches above: too far)
+
+; Return on a Graphics Magician picture (docs/GRAPHICS-MAGICIAN-FORMAT.md,
+; section 3): a BIN whose first command is $2x/$4x/$6x/$8x/$Ax and whose
+; commands starting in the bytes read are commands, their argument nibble
+; within its limit. A picture that ends in them (its end byte $00 before
+; the end of the bytes read; a short file must end) is held to rules 4
+; and 5: it draws (a command $Ax/$Cx/$Ex: the highest nibble seen is $A
+; or more) and, when its only drawing is lines, has a line start ($8x).
+; One that goes on past byte 8 must not open on its first three bytes
+; repeated at once (a command written twice in a row, or a run of the
+; same 1-byte command): filled tables, data and text do that ($80 x 8,
+; 80 FF 00 80 FF 00, spaces), no picture of the corpus or of Appendix B
+; does. Real programs start like pictures (LDY #0 / LDA abs,Y is A0 00
+; B9 00, a line then the end byte): on 10,594 DOS 3.3 B files, Return
+; sent 295 programs and data files and 131 pictures here before these
+; rules, 49 and the same 131 since. GMAGIC checks the whole file; kind 11.
+@gm:    lda     type
+        cmp     #$06
+        bne     @kinded
+        lda     _copy_buf               ; $20-$AF, an even high nibble
+        sec
+        sbc     #$20
+        cmp     #$90
+        bcs     @kinded
+        and     #$10
+        bne     @kinded
+        tax                             ; (0)
+        stx     tmp1                    ; the highest command nibble seen
+        stx     tmp2                    ; a line start seen
+@gl:    cpx     n
+        bcs     @ge
+        lda     _copy_buf,x
+        beq     @gy                     ; the end byte
+        pha
+        lsr     a
+        lsr     a
+        lsr     a
+        lsr     a
+        tay
+        pla
+        and     #$0F
+        cmp     gm_lim,y
+        bcs     @kinded
+        cpy     tmp1
+        bcc     @g1
+        sty     tmp1
+@g1:    cpy     #8
+        bne     @g2
+        sty     tmp2
+@g2:    lda     gm_lim,y                ; its length: limit 8 one byte,
+        and     #3                      ; 1 two, 2 three
+        tay
+@gi:    inx
+        dey
+        bpl     @gi
+        bmi     @gl                     ; always
+@ge:    lda     n                       ; all 8 read: as far as they go,
+        cmp     #8                      ; bytes 0-2 not repeated at once
+        bcc     @kinded
+        ldx     #2
+@gr:    lda     _copy_buf,x
+        cmp     _copy_buf+3,x
+        bne     @gk
+        dex
+        bpl     @gr
+        bmi     @kinded                 ; always
+@gy:    lda     tmp1                    ; the picture ends: it draws (rule
+        cmp     #$0A                    ; 5), and lines alone need a line
+        bcc     @kinded                 ; start (rule 4)
+        bne     @gk
+        lda     tmp2
+        beq     @kinded
+@gk:    lda     #11
 @set:   sta     kind
 
 @kinded:
         ldx     kind
         beq     @nokind
         lda     _image_viewers,x
-        jmp     ret
+        bne     ret                     ; (an ID, never 0)
 @nokind:
         lda     pics
         beq     @nopic
         lda     V_RAW                   ; I may explicitly try a raw file
-        jmp     ret
+        bne     ret                     ; (never 0)
 @nopic: lda     music
         bne     ret
         lda     type                    ; AppleSingle: $E0/$0001
@@ -286,7 +471,7 @@ _file_viewer:
         lda     auxh
         bne     @types
         lda     V_UNWRAP
-        jmp     ret
+        bne     ret                     ; (never 0)
 @types: ldx     N_TYPES                 ; the types that name a viewer alone
 @t:     dex
         bmi     hex
@@ -294,7 +479,7 @@ _file_viewer:
         cmp     type
         bne     @t
         lda     _fv_tids,x
-        jmp     ret
+        bne     ret                     ; (never 0)
 hex:    lda     V_HEX
 ret:    ldx     #0
         rts
@@ -306,76 +491,76 @@ eptr:   lda     e
         sta     ptr1+1
         rts
 
-; Carry set for Print Shop clip art: BIN, aux $4800/$5800/$6800/$7800,
-; 572 or 576 bytes.
+; Carry clear for Print Shop clip art: BIN, aux $4800/$5800/$6800/$7800,
+; 572 or 576 bytes; set otherwise.
 printshop:
-        lda     type
-        cmp     #$06
-        bne     @no
         lda     auxl
-        bne     @no
+        bne     nobin
         lda     auxh
         and     #$CF
         cmp     #$48
-        bne     @no
-        jsr     eptr
-        ldy     #E_SIZE+3
-        lda     (ptr1),y
-        dey
-        ora     (ptr1),y
-        bne     @no
-        dey
-        lda     (ptr1),y
+        bne     nobin
+        jsr     binsize
+        bcs     @r
         cmp     #$02
-        bne     @no
-        dey
+        bne     nobin
         lda     (ptr1),y
         cmp     #$3C                    ; 572
         beq     @yes
         cmp     #$40                    ; 576
-        bne     @no
-@yes:   sec
+        bne     nobin
+@yes:   clc
+@r:     rts
+
+; A BIN under 64 KB: carry clear, A = bits 8-15 of its size and Y =
+; E_SIZE (bits 0-7 at (ptr1),y; ptr1 = e already). Carry set otherwise.
+binsize:
+        lda     type
+        cmp     #$06
+        bne     nobin
+        ldy     #E_SIZE+3
+        lda     (ptr1),y
+        dey
+        ora     (ptr1),y
+        bne     nobin
+        dey
+        lda     (ptr1),y
+        dey
+        clc
         rts
-@no:    clc
+nobin:  sec
         rts
 
 ; The viewer the name's suffix gives (fv_ext/fv_ids), with something
-; before the suffix; 0 if none. ptr1 = e (the name is at offset 0).
+; before the suffix; 0 if none. ptr1 = e (the name is at offset 0). Each
+; suffix is compared from its last character back to its first, against
+; the name's end.
 by_suffix:
-        jsr     eptr
-        lda     #0
-        sta     idx
-        tax
+        ldx     #0
+        stx     idx
 @next:  lda     _fv_ext,x
         beq     @none                   ; the table's end
         stx     at
-        ldy     #0
-@k:     lda     _fv_ext,x               ; k = the suffix's length
-        beq     @kend
-        inx
-        iny
+@k:     inx                             ; to the suffix's 0
+        lda     _fv_ext,x
         bne     @k
-@kend:  sty     k
-        inx
         stx     nxt
-        lda     len                     ; the name must be longer
-        cmp     k
-        beq     @skip
-        bcc     @skip
-        sbc     k                       ; carry set
-        tay
-        ldx     at
-@c:     lda     _fv_ext,x
-        beq     @hit                    ; the whole suffix matched to the name's end
+        ldy     len
+@c:     dex
+        dey
+        bmi     @skip                   ; the name is shorter
+        lda     _fv_ext,x
         cmp     (ptr1),y
         bne     @skip
-        inx
-        iny
+        cpx     at
         bne     @c
-@hit:   ldx     idx
+        tya                             ; matched: something must come
+        beq     @skip                   ; before the suffix
+        ldx     idx
         lda     _fv_ids,x
         rts
 @skip:  ldx     nxt
+        inx
         inc     idx
         bne     @next                   ; always
 @none:  lda     #0
@@ -399,28 +584,22 @@ probe:  lda     #<_full
         ldx     #>_copy_buf
         jsr     pushax
         lda     #1
-        ldx     #0
-        jsr     pushax
+        jsr     pusha0
         lda     #8
-        ldx     #0
-        jsr     pushax
-        lda     fh
-        ldx     fh+1
+        jsr     pusha0
+        jsr     ldfh
         jsr     _fread
         sta     n
-        lda     fh
-        ldx     fh+1
-        jsr     _ferror
-        stx     bad
-        ora     bad
+        jsr     ldfh
+        jsr     _ferror                 ; 0, or _FERROR: A alone says it
         sta     bad
-        lda     fh
-        ldx     fh+1
-        jsr     _fclose
-        stx     k
-        ora     k
+        jsr     ldfh
+        jsr     _fclose                 ; 0, or -1 ($FF in A)
         ora     bad
         cmp     #1                      ; carry: something failed
+        rts
+ldfh:   lda     fh
+        ldx     fh+1
         rts
 
 ; Z set when copy_buf[0..7] equals s_rle+X (8 bytes).
@@ -435,6 +614,10 @@ cmp8:   ldy     #0
 @r:     rts
 
         .segment "OPENRO"
+; The argument nibble's limit + 1 by high nibble (0: no such command):
+; GMAGIC's own table (src/plugins/gmagic.s, lim).
+gm_lim: .byte   0, 2, 8, 1, 8, 1, 1, 0, 2, 0, 2, 0, 2, 0, 2, 0
 s_dgr:  .byte   "DGR"
+s_mv:   .byte   "MV."
 s_rb:   .asciiz "rb"
 s_rle:  .byte   "HGRR", 1, 0, 0, $20, "DHRR", 1, 0, 0, $40

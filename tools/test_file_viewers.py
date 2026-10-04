@@ -15,8 +15,7 @@ def section(start, end):
 
 
 IMAGE = section('static unsigned char page_size(', '/* Buffered reading:')
-TABLES = section('/* The tables of the classifier', 'void __fastcall__ open_entry')
-OPEN_ENTRY = section('void __fastcall__ open_entry', '#pragma rodata-name(pop)')
+TABLES = section('/* The tables of the classifier', "/* OPEN's entry point, open_entry")
 OPEN_VIEWER = section('static void open_viewer(', 'static void open_selected(void)')
 REFERENCE = (ROOT / 'tools/file_viewer_ref.c').read_text()
 
@@ -27,14 +26,15 @@ COMMON = r"""
 #include <stdint.h>
 #include "src/a2fc_plugin.h"
 #include "src/viewer_ids.h"
-static char input[64], chosen[80];
+char input[64];
+static char chosen[80];
 char full[512];
 unsigned char copy_buf[512];
-static struct Entry selected;
+struct Entry selected;
 static unsigned char fail_open;
 static unsigned char is_dir(const struct Entry* e) { return e->type == 0x0F; }
 static void overlay_run(const char*, unsigned char);
-static void report_error(const char* what) { (void)what; strcpy(chosen, "ERROR"); }
+void report_error(const char* what) { (void)what; strcpy(chosen, "ERROR"); }
 """ + IMAGE + r"""
 /* display.s, whose own test (test_display.py) runs the assembly. */
 unsigned char __fastcall__ named_kind(const struct Entry* e) {
@@ -46,7 +46,7 @@ unsigned char __fastcall__ named_kind(const struct Entry* e) {
 IO
 """ + TABLES + r"""
 CLASSIFIER
-""" + OPEN_ENTRY + OPEN_VIEWER + r"""
+""" + OPEN_VIEWER + r"""
 static void overlay_run(const char* name, unsigned char arg) {
     static struct A2fcApi api;
     if (!strcmp(name, "OPEN")) {
@@ -60,7 +60,7 @@ int main(int argc, char** argv) {
         unsigned char expected;
         for (high = 0; high < 3; ++high) for (size = 0; size < 65536UL; ++size) {
             value = size + (high == 1 ? 65536UL : high == 2 ? 0x80000000UL : 0);
-            expected = !high && (size == 8184 || size == 8192 || size == 16376 || size == 16384);
+            expected = !high && ((size >= 8184 && size <= 8199) || (size >= 16376 && size <= 16391));
             if (page_size(&value) != expected) return 1;
         }
         return 0;
@@ -70,6 +70,7 @@ int main(int argc, char** argv) {
     selected.size = strtoul(argv[4], 0, 0); fail_open = atoi(argv[6]);
     strcpy(full, argv[7]); strcpy(input, "RUN");
     memcpy(copy_buf, "DGR\1\x50\x30\1\0", 8); /* previous probe */
+    if (argc > 8) strcpy((char*)copy_buf, argv[8]);  /* or what a viewer left */
     open_viewer(atoi(argv[5]));
     printf("%u %s\n", image_kind(&selected), chosen);
     return 0;
@@ -94,6 +95,7 @@ HOST_CLASSIFIER = REFERENCE + r"""
 #undef ferror
 #undef fclose
 static unsigned char file_viewer(const struct Entry* e, unsigned char p) { return ref_file_viewer(e, p); }
+#define open_entry ref_open_entry
 """
 HOST = PREFIX + COMMON.replace('IO\n', HOST_IO).replace('CLASSIFIER\n', HOST_CLASSIFIER)
 # sim65: open.s calls _fopen & co directly; the harness's own definitions
@@ -120,7 +122,8 @@ SIM = r"""#include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 """ + COMMON.replace('IO\n', SIM_IO).replace(
-    'CLASSIFIER\n', 'unsigned char __fastcall__ file_viewer(const struct Entry*, unsigned char);   /* open.s */\n')
+    'CLASSIFIER\n', 'unsigned char __fastcall__ file_viewer(const struct Entry*, unsigned char);   /* open.s */\n'
+    'void __fastcall__ open_entry(const struct A2fcApi*);                       /* open.s */\n')
 
 
 class FileViewers(unittest.TestCase):
@@ -152,23 +155,27 @@ class FileViewers(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def answers(self, name, typ, aux, size, picture=0, fail=0, data=bytes(8)):
+    def answers(self, name, typ, aux, size, picture=0, fail=0, data=bytes(8), stale=None):
         """What each build answers: [kind, viewer] for the host reference
-        (6502, 65C02 defines) and the assembly under sim65 (both CPUs)."""
+        (6502, 65C02 defines) and the assembly under sim65 (both CPUs).
+        `stale`: the bytes copy_buf holds before the probe (a previous
+        probe's otherwise)."""
         fixture = self.root / 'picture'
         fixture.write_bytes(data)
         out = []
         for exe in self.exes:
             result = subprocess.check_output(exe + [name, str(typ), str(aux), str(size), str(picture),
-                                                    str(fail), str(fixture)], text=True, timeout=30)
+                                                    str(fail), str(fixture)] + ([stale] if stale else []),
+                                             text=True, timeout=30)
             result = result.strip().split(' ', 1)
             out.append((int(result[0]), result[1] if len(result) > 1 else ''))
             self.assertEqual(fixture.read_bytes(), data)
         return out
 
-    def route(self, name, typ, aux, size, expected, picture=0, fail=0, raw=False, data=bytes(8)):
-        with self.subTest(name=name, typ=typ, aux=aux, size=size, picture=picture, fail=fail):
-            for (kind, chosen), exe in zip(self.answers(name, typ, aux, size, picture, fail, data), self.exes):
+    def route(self, name, typ, aux, size, expected, picture=0, fail=0, raw=False, data=bytes(8), stale=None):
+        with self.subTest(name=name, typ=typ, aux=aux, size=size, picture=picture, fail=fail, stale=stale):
+            for (kind, chosen), exe in zip(self.answers(name, typ, aux, size, picture, fail, data, stale),
+                                           self.exes):
                 self.assertEqual(chosen, expected, exe[-1])
                 self.assertEqual(kind == 1, raw, 'the raw album must skip specialized formats')
 
@@ -180,16 +187,22 @@ class FileViewers(unittest.TestCase):
         rng = random.Random(1986)
         names = ['A', 'X.MB', 'SONG.PT3', 'T.ED', '.ED', 'P.FOTO1', 'P.FOTO2', 'MAC.MAC', 'S.AS',
                  'X.BSC', 'X.BSQ', 'S.SHAPE', 'A.QQ', 'D.ACU', 'P.BA3', 'M.SONG', 'M.', 'PH.CAT',
-                 'BN.SUN', 'PN.X', 'DOG.SHP', 'LONGNAMEXX.FOTO1', 'X.RLE', 'RLE', 'M.APPLE', 'EPISTOLE']
+                 'BN.SUN', 'PN.X', 'DOG.SHP', 'LONGNAMEXX.FOTO1', 'X.RLE', 'RLE', 'M.APPLE', 'EPISTOLE',
+                 'MV.SHUTTLE.DISC', 'MV.', 'MV', 'MW.X', 'NV.X', 'MVX', 'ROCKET.LOGO', '.LOGO',
+                 'A.LOGOX', 'INSPI.PICT', 'ASCII.SET', '.SET', 'GOTHIC.FONT', 'X.SETS', 'CHR.STS']
         types = [0x00, 0x04, 0x06, 0x07, 0x08, 0x09, 0x19, 0x1A, 0x1B, 0xC0, 0xD5, 0xE0, 0xF2, 0xF8,
                  0xFA, 0xFC, 0xFF, 0x0F]
         auxes = [0, 1, 0x0400, 0x1DF0, 0x2000, 0x4000, 0x4001, 0x4800, 0x5800, 0x7800, 0x4801, 0x8066,
-                 0x8400, 0xD0E7, 0xE001, 0xE002, 0x0801]
-        sizes = [0, 1, 8, 572, 576, 574, 1024, 2048, 2049, 2096, 8184, 8192, 8720, 16384, 16376,
+                 0x8400, 0xD0E7, 0xE001, 0xE002, 0x0801, 0x8029, 0x8028, 0x0029, 0x0840, 0x63D0]
+        sizes = [0, 1, 8, 572, 576, 574, 767, 768, 769, 1023, 1024, 1025, 768 + 65536, 2048, 2049, 2096, 8183, 8184, 8186, 8188, 8191, 8192, 8194, 8196, 8199, 8200,
+                 8720, 16384, 16376, 16386,
                  65536 + 572, 70000]
         datas = [bytes(8), b'DGR\1\x50\x30\1\0', b'DG', b'\0\0gsXXXX', b'HGRR\1\0\0\x20',
                  b'DHRR\1\0\0\x40', b'HGRR\1\0\0\x21', b'_MG10_MD', b'\xffabc', b'\x7f', b'',
-                 b'\1\2\3\4\5\6\7\x08', b'\1\0\0\0\5\6\7\x08', b'ab']
+                 b'\1\2\3\4\5\6\7\x08', b'\1\0\0\0\5\6\7\x08', b'ab',
+                 b'\x83\xc7\xe5\xf9\xf3\xe5\xf2\xf3', b'\xc1\xc2\x8d', b'\xc1\x41\xc3',
+                 bytes.fromhex('2280000AA1170A25'), bytes.fromhex('600FE00A0A00'), b'\x24\x80\x00',
+                 bytes.fromhex('2041102000'), b'\x24\x28\x00', b'\x20\x22\x24\x26']
         for case in range(300):
             args = (rng.choice(names), rng.choice(types), rng.choice(auxes), rng.choice(sizes),
                     rng.choice([0, 0, 1, 2, 3, 4]), rng.choice([0, 0, 0, 2, 3, 4]), rng.choice(datas))
@@ -221,6 +234,27 @@ class FileViewers(unittest.TestCase):
         self.route('AUTUMN.PT3', 0, 0, 4461, 'PT3')
         self.route('OTHER.BIN', 6, 0x2000, 576, 'HEX')
 
+    def test_hrcg_fonts_by_suffix_and_size(self):
+        """DOS Tool Kit character sets (.SET) and Beagle's copies (.FONT):
+        BIN files of 768 bytes (96 glyphs) or 1,024 (128) -- 244 + 116 of
+        them in a 1,892-disk Asimov sample, with no other file matching both
+        the suffix and the size. A .SET of another size (CommunityLink's
+        8,192-byte PIC.SET picture, a 1,028-byte plot) or type keeps its
+        usual viewer."""
+        for picture in (0, 1):
+            for name in ('ASCII.SET', 'GOTHIC.FONT'):
+                for aux in (0x8100, 0x4000, 0):
+                    for size in (768, 1024):
+                        self.route(name, 6, aux, size, 'FONTVIEW', picture)
+        self.route('PIC.SET', 6, 0x2000, 8192, 'IMAGE', raw=True)
+        self.route('PLOT.SET', 6, 0x4000, 1028, 'HEX')
+        self.route('ASCII.SET', 6, 0x8100, 769, 'HEX')
+        self.route('ASCII.SET', 6, 0x8100, 768 + 65536, 'HEX')
+        self.route('NOTES.SET', 4, 0, 768, 'TEXT')
+        self.route('.SET', 6, 0, 768, 'HEX')                  # nothing before the suffix
+        self.route('ASCII.STS', 6, 0x6100, 768, 'HEX')        # Graphics Magician's: not routed
+        self.route('ASCII', 6, 0x8100, 768, 'HEX')            # a plain 768-byte BIN stays HEX
+
     def test_newsroom_photos_and_banners(self):
         for picture in (0, 1):
             for name in ('PH.CAT', 'BN.SUN', 'PH.'):
@@ -249,6 +283,104 @@ class FileViewers(unittest.TestCase):
             self.route('LETTRE', 4, 0, len(data), 'TEXT', data=data)
         self.route('NOTTEXT', 6, 0, 13, 'HEX', data=b'_MG10_MD65_JD')
 
+    def test_visicalc_worksheets_go_to_visicalc(self):
+        # A /SS file starts with its last cell, `>B3:`; DOS 3.3 writes it
+        # with the high bit set. VISICALC checks the rest of the file.
+        self.route('BUDGET', 4, 0, 730, 'VISICALC', data=b'>D19:/F-"-\r')
+        self.route('BUDGET.VC', 4, 0, 730, 'VISICALC', data=bytes(c | 0x80 for c in b'>A1:5\r/W1'))
+        self.route('NOTES', 4, 0, 9, 'TEXT', data=b'A1:>B2\r')
+        self.route('WORKSHEET', 6, 0, 8, 'HEX', data=b'>A1:5\r/W')
+
+    def test_graphics_magician_pictures_go_to_gmagic(self):
+        # A BIN whose first commands are picture commands
+        # (docs/GRAPHICS-MAGICIAN-FORMAT.md, section 3); GMAGIC checks
+        # the whole file. Return only: I keeps its own rules.
+        h02 = bytes.fromhex('2280000AA1170A25A0001480001EA1171E00')
+        for aux in (0x4000, 0x6800, 0x6000, 0x1201, 0):
+            self.route('R12', 6, aux, len(h02), 'GMAGIC', data=h02[:8])
+        for data in (bytes.fromhex('600FE00A0A00'),             # G01's first: ends early
+                     bytes.fromhex('24800A0AA0C89600'),
+                     bytes.fromhex('A0001480000A00'),            # a line, then its start (rule 4)
+                     bytes.fromhex('8000A08000AA8000'),          # two line starts in a row
+                     bytes.fromhex('80004BA0324BA032'),          # the same line twice, not at once
+                     bytes.fromhex('A03468E0C7A42146'),          # R02: lines before the start
+                     bytes.fromhex('26A01E7746E00DB0'),          # R58
+                     bytes.fromhex('605CE0EC9F605B47'),          # pattern, fill, pattern, brush
+                     bytes.fromhex('80976780EC852323'),          # R31: a colour twice
+                     bytes.fromhex('2020800014A00014')):         # a colour twice, a line
+            self.route('PICTURE', 6, 0x4000, max(len(data), 9), 'GMAGIC', data=data[:8])
+        for data in (b'',                                       # nothing read
+                     b'\x00' + h02[:7],                          # the end byte first
+                     b'\xC0\x10\x10\x00',                         # a brush first
+                     b'\xE0\x10\x10\x00', b'\x10\x10\x10\x00', b'\x30A\x00', b'\x50A\x00',
+                     b'\x28\x00',                                 # colour 8
+                     b'\x24\x48\x00',                             # brush 8
+                     b'\x24\x61\x05\x00',                         # a pattern nibble
+                     b'\x24\x82\x00\x0A\x00',                     # X high part 2
+                     b'\x24\x70\x00', b'\x24\x90', b'\x24\xB1', b'\x24\xD0', b'\x24\xF0', b'\x24\x01',
+                     b'\x24\x80\x00',                             # a short file, no end
+                     b'\x26\x00', b'\x60\x05\x00',                  # draw nothing (rule 5)
+                     bytes.fromhex('204110200000'),              # colour, brush, text cursor
+                     bytes.fromhex('243041504100'),              # XOR text, text
+                     bytes.fromhex('8000BF6000') + b'\0\0\0',     # a line start alone
+                     bytes.fromhex('A1170A2000'),                # a line without its start (rule 4)
+                     bytes.fromhex('26A0001400'),
+                     # Programs and data that start like pictures, which
+                     # Return opened in GMAGIC (a refusal) instead of HEX:
+                     bytes.fromhex('A000B900B09900D0'),          # LDY #0, LDA abs,Y: a line, the end
+                     bytes.fromhex('A000A900853CA910'),          # LDY #0, LDA #0
+                     bytes.fromhex('8000000000000000'),          # a line start, the end
+                     bytes.fromhex('8080808080808080'),          # a table of $80: one start, again
+                     bytes.fromhex('A0A0A0A0A0A0A0A0'),
+                     bytes.fromhex('80FF0080FF0080FF'),          # 80 FF 00 repeated
+                     bytes.fromhex('2020202020202020'),          # spaces
+                     bytes.fromhex('2222222222222222'),
+                     bytes.fromhex('4040404040404040'),
+                     bytes.fromhex('2030142030142030'),          # three bytes repeated
+                     b'\x20\x22\x24\x26',
+                     b'\x20\x58\xFC\x20\x00\xBF\xC8\x03',            # JSR HOME, JSR MLI
+                     b'\x4C\x00\x40\x00', b'\xA9\x00\x8D\x00'):
+            self.route('PROGRAM', 6, 0x4000, max(len(data), 1), 'HEX', data=data)
+        # Not for other types, not for I, and a picture page wins.
+        self.route('R12', 4, 0, len(h02), 'TEXT', data=h02[:8])
+        self.route('R12', 0, 0, len(h02), 'HEX', data=h02[:8])
+        self.route('R12', 6, 0x4000, len(h02), 'DGRVIEW', picture=1, data=h02[:8])   # I: a lo-res pixmap
+        self.route('R12', 6, 0x2000, 8192, 'IMAGE', raw=True, data=h02[:8])
+        for fail in (2, 3, 4):
+            self.route('R12', 6, 0x4000, len(h02), 'ERROR', fail=fail, data=h02[:8])
+
+    def test_every_specified_picture_goes_to_gmagic(self):
+        # Appendix B of docs/GRAPHICS-MAGICIAN-FORMAT.md (every picture
+        # GMAGIC accepts, the random ones drawing lines before their first
+        # line start) and DEMO's GM.GROUP: the stricter probe of 0.9.5 must
+        # not lose one. Return is the only way to GMAGIC: a picture the
+        # probe misses only shows in hex.
+        import sys
+        sys.path.insert(0, str(ROOT / 'tools'))
+        import gmagic_ref
+        import mkdemo_viewers
+        pictures = dict(gmagic_ref.corpus(), DEMO=mkdemo_viewers.gmagic())
+        accepted = 0
+        for name, data in pictures.items():
+            try:
+                gmagic_ref.parts(data)
+            except gmagic_ref.Malformed:
+                continue                                # H01 and the empty random ones
+            accepted += 1
+            self.route('R12', 6, 0x4000, len(data), 'GMAGIC', data=data[:8])
+        self.assertGreaterEqual(accepted, 40)
+
+    def test_an_empty_text_file_ignores_stale_probe_bytes(self):
+        # VISICALC reads its worksheet into copy_buf, which OPEN's probe
+        # also reads into: an empty text file read nothing, and copy_buf[0]
+        # was still the worksheet's `>` ($BE in DOS 3.3 form), so Return
+        # sent the empty file to VISICALC (DOCVIEW after a Papyrus $FF or
+        # an Epistole `_`). It is TEXT's.
+        for stale in (b'\xbeA1:5\r/W1', b'>B3:', b'\xff\x01', b'_MG10'):
+            self.route('EMPTY', 4, 0, 0, 'TEXT', data=b'', stale=stale)
+        self.route('SHEET', 4, 0, 6, 'VISICALC', data=b'>A1:5\r', stale=b'\xbeA1:5\r/W1')
+        self.route('LETTER', 4, 0, 6, 'TEXT', data=b'Dear\r\n', stale=b'\xbeA1:5\r/W1')
+
     def test_fantavision_movies_go_to_run(self):
         # RUN hands them to FANTA.SYSTEM (test_launch.py).
         for picture in (0, 1):
@@ -256,6 +388,47 @@ class FileViewers(unittest.TestCase):
                 self.route('M.APPLE', 6, 0x8400, size, 'RUN', picture)
         for size in (512, 9217):
             self.route('M.APPLE', 6, 0x8400, size, 'HEX')
+
+    def test_bank_street_writer_documents_go_to_docview(self):
+        # BIN at $0840 or $63D0 (DOS 3.3 editions) or 0 (ProDOS ones),
+        # high-bit text from the first byte.
+        text = bytes(c | 0x80 for c in b'Geysers')
+        for aux in (0x0840, 0x63D0, 0):
+            self.route('JIMMY', 6, aux, 751, 'DOCVIEW', data=b'\x83' + text)
+            self.route('JIMMY', 6, aux, 3, 'DOCVIEW', data=b'\x89\xc1\x8d')
+        for aux, data in ((0x0840, b'\x83Geysers'), (0x2000, b'\x83' + text), (0, b'\x00' + text[:7]),
+                          (0x63D0, b'')):
+            self.assertNotIn('DOCVIEW', [v for _, v in self.answers('JIMMY', 6, aux, 8, 0, 0, data)])
+        # I asks for a picture: a small high-bit BIN at 0 (a sprite, a lo-res
+        # pixmap: bench/open_images.py's SPRITE, 48 bytes of $F7) stays one.
+        for aux in (0, 0x0840):
+            self.route('SPRITE', 6, aux, 48, 'DGRVIEW', picture=1, data=b'\xf7' * 8)
+        self.route('SPRITE', 6, 0, 48, 'DOCVIEW', data=b'\xf7' * 8)
+
+    def test_page_sized_pictures_are_not_bank_street_documents(self):
+        """A hi-res page saved as a BIN at 0 (or $0840, $63D0) whose top row
+        starts with eight bytes of $80 or more -- a white or palette-bit
+        black border -- is a picture for Return as it is for I and for
+        IMAGE's album. Before the fix, Return opened it in DOCVIEW on all
+        four builds while I and the album called it an image."""
+        for aux in (0, 0x0840, 0x63D0):
+            for size in (8184, 8192, 8194, 16376, 16384):
+                for data in (b'\x80' * 8, b'\xff' * 8, b'\xd5\xaa' * 4):
+                    self.route('PICTURE', 6, aux, size, 'IMAGE', raw=True, data=data)
+            self.route('PICTURE.RLE', 6, aux, 3000, 'IMAGE', raw=True, data=b'\xc8' * 8)
+        # A Bank Street document of any other size still goes to DOCVIEW.
+        self.route('JIMMY', 6, 0, 8183, 'DOCVIEW', data=b'\x80' * 8)
+        self.route('JIMMY', 6, 0, 8200, 'DOCVIEW', data=b'\x80' * 8)
+
+    def test_take1_movies_go_to_run(self):
+        # RUN hands them to TAKE1.SYSTEM (test_launch.py): BIN $8029 once
+        # extracted, aux 0 as a DOS 3.3 catalog shows them. Not for I.
+        for aux in (0x8029, 0):
+            self.route('MV.SHUTTLE.DISC', 6, aux, 85, 'RUN')
+            self.assertNotIn('RUN', [v for _, v in self.answers('MV.X', 6, aux, 85, 1)])
+        for name, typ, aux in (('MV.X', 6, 0x8028), ('MV.X', 6, 0x0029), ('MV.X', 4, 0),
+                               ('MW.X', 6, 0x8029), ('MVX', 6, 0x8029), ('SN.X', 6, 0)):
+            self.assertNotIn('RUN', [v for _, v in self.answers(name, typ, aux, 85)])
 
     def test_purple_pair_suffixes_and_name_boundaries(self):
         for picture in (0,1):
@@ -312,6 +485,22 @@ class FileViewers(unittest.TestCase):
             for size in (8184, 8192, 16376, 16384):
                 self.route('PICTURE', typ, 0x2000, size, 'IMAGE', raw=True)
             self.route('PICTURE.RLE', typ, 0, 321, 'IMAGE', raw=True)
+
+    def test_terrapin_logo_procedures_and_pictures(self):
+        # Terrapin Logo saves procedures as a B file at $2000 holding plain
+        # CR-ended text, NAME.LOGO, and SAVEPICT the page plus two bytes.
+        for typ in (4, 6):
+            self.route('ROCKET.LOGO', typ, 0x2000, 540, 'TEXT')
+        for name in ('.LOGO', 'A.LOGOX', 'LOGO'):
+            self.route(name, 6, 0x2000, 540, 'HEX')
+        for picture in (0, 1):
+            self.route('INSPI.PICT', 6, 0x2000, 8194, 'IMAGE', picture, raw=True)
+        # Every nearly-a-page size is a page (KoalaPad's re-saved 8,191 too);
+        # one byte beyond the range on either side is not.
+        for size in (8188, 8190, 8191, 8196, 8199, 16391):
+            self.route('PICTURE', 6, 0x2000, size, 'IMAGE', raw=True)
+        for size in (8183, 8200, 16375, 16392):
+            self.route('PICTURE', 6, 0x2000, size, 'HEX')
 
     def test_unrelated_binaries_and_unsupported_pictures_keep_hex(self):
         for typ, aux, size in ((6, 0x2000, 1024), (6, 0, 2048), (8, 0x8067, 9000),

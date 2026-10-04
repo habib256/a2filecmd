@@ -14,7 +14,7 @@
 # every time by tools/check_layout.py, which catches the two overflows that
 # ld65 lets through silently. See docs/MANUAL.md.
 
-A2FC_VERSION = 0.9.4
+A2FC_VERSION = 0.9.5
 VOLUME       = A2FC$(CPU)
 
 # The .2mg hard disk: another volume name, to coexist with the floppy.
@@ -127,6 +127,9 @@ XPLUGINS_SCRATCH = music bootblk find goto mdview wipe dgrview fixtypes
 # before $2000: they are linked with the small window, which makes ld65
 # enforce that boundary instead of leaving it to luck.
 XPLUGINS_HGR = purple extasie arlequin macpaint shapes packfot paint816 fontview printshop lz4fh newsroom
+# NRCLIP and GMAGIC draw there too, but their code also runs from $0C00
+# and $2000 (sdk/nrclip.cfg, sdk/gmagic.cfg, which set and check their
+# own limits).
 # DUET stages its song at $2400 (7 KB, the largest known Electric Duet
 # files are 5.5 KB): code and BSS are linked into $1B00-$23FF.
 XPLG = $(patsubst %,$(BUILD)/%.PLG,$(XPLUGINS))
@@ -190,17 +193,27 @@ $(CODE): $(SRC)/plugins/file_install.h $(SRC)/file_output.h $(SRC)/file_copy.h $
 # -- The service-table overlays ---------------------------------------------
 $(BUILD)/dosput.PLG: $(SRC)/plugins/doswrite.c
 
-$(BUILD)/%.PLG: $(SRC)/plugins/%.c $(wildcard $(SRC)/plugins/*.h) $(wildcard $(SRC)/plugins/*.s) $(wildcard $(SRC)/plugins/*.inc) $(wildcard $(SRC)/plugins/pt3lib/*) $(SRC)/a2fc_plugin.h sdk/plugin.cfg sdk/find.cfg sdk/pt3.cfg sdk/nibcopy.cfg Makefile | $(BUILD)
+$(BUILD)/%.PLG: $(SRC)/plugins/%.c $(wildcard $(SRC)/plugins/*.h) $(wildcard $(SRC)/plugins/*.s) $(wildcard $(SRC)/plugins/*.inc) $(wildcard $(SRC)/plugins/pt3lib/*) $(wildcard $(SRC)/plugins/ppt3/*) $(SRC)/a2fc_plugin.h sdk/plugin.cfg sdk/find.cfg sdk/pt3.cfg sdk/nibcopy.cfg sdk/nrclip.cfg sdk/visicalc.cfg sdk/gmagic.cfg Makefile | $(BUILD)
 	$(CC65BIN)cc65 -t $(TARGET) $(CCDEFS) -O -Oirs -Cl --codesize $(CODESIZE) -o $(BUILD)/$*.s $<
 	$(CC65BIN)ca65 -t $(TARGET) -o $(BUILD)/$*.o $(BUILD)/$*.s
 	@helper=; if [ -f $(SRC)/plugins/$*.s ]; then $(AS) -t $(TARGET) -o $(BUILD)/$*_svc.o $(SRC)/plugins/$*.s || exit; helper=$(BUILD)/$*_svc.o; fi; \
 	  if grep -qE 'PLUGIN_MAGIC, *OVERLAY_BIG' $<; then big=1; else big=0; fi; \
-	  $(CC65BIN)ld65 -C $(if $(filter find,$*),sdk/find.cfg,$(if $(filter pt3,$*),sdk/pt3.cfg,$(if $(filter nibcopy,$*),sdk/nibcopy.cfg,sdk/plugin.cfg))) -D __OVLSIZE__=$$( if [ $$big = 1 ]; then echo $(if $(filter $*,$(XPLUGINS_HGR)),0x0500,$(if $(filter $*,$(XPLUGINS_SCRATCH)),$(if $(filter find,$*),0x1600,0x1500),$(if $(filter docview,$*),0x2260,$(if $(filter volinfo blkview blkedit fixit repair,$*),0x249E,$(if $(filter duet,$*),0x0900,0x2500))))); elif [ "$*" = verify ]; then echo 0x04C2; else echo 0x0500; fi ) -m $(BUILD)/$*.map -Ln $(BUILD)/$*.lbl -o $@ $(BUILD)/$*.o $$helper $(CC65LIB) && \
+	  $(CC65BIN)ld65 -C $(if $(filter find,$*),sdk/find.cfg,$(if $(filter pt3,$*),sdk/pt3.cfg,$(if $(filter nibcopy,$*),sdk/nibcopy.cfg,$(if $(filter nrclip,$*),sdk/nrclip.cfg,$(if $(filter visicalc,$*),sdk/visicalc.cfg,$(if $(filter gmagic,$*),sdk/gmagic.cfg,sdk/plugin.cfg)))))) -D __OVLSIZE__=$$( if [ $$big = 1 ]; then echo $(if $(filter $*,$(XPLUGINS_HGR)),0x0500,$(if $(filter $*,$(XPLUGINS_SCRATCH)),$(if $(filter find,$*),0x1600,0x1500),$(if $(filter docview,$*),0x2260,$(if $(filter volinfo blkview blkedit fixit repair,$*),0x249E,$(if $(filter duet,$*),0x0900,0x2500))))); elif [ "$*" = verify ]; then echo 0x04C2; else echo 0x0500; fi ) -m $(BUILD)/$*.map -Ln $(BUILD)/$*.lbl -o $@ $(BUILD)/$*.o $$helper $(CC65LIB) && \
 	  limit=$$( [ $$big = 1 ] && echo $(if $(filter $*,$(XPLUGINS_HGR)),1280,$(if $(filter duet,$*),2304,9472)) || echo 1280 ) && \
 	  { test $$(wc -c < $@) -le $$limit || { echo "$@: $$(wc -c < $@) bytes, more than its $$limit-byte window"; rm -f $@; exit 1; }; } && \
 	  echo "$@: $$(wc -c < $@) bytes ($$( [ $$big = 1 ] && echo big || echo small ) overlay)"
 xplugins: $(XPLG)
 all: xplugins
+
+# GROUiK / French Touch's PT3 player, PT3.PLG's primary engine: the image
+# its driver copies to AUX $2000 (src/plugins/ppt3/), plain 6502 assembly,
+# the same bytes for both editions, staged as A2FILE/PPT3.BIN next to
+# PT3.PLG. Without it PT3.PLG plays everything with pt3_lib.
+PPT3 = $(BUILD)/PPT3.BIN
+$(PPT3): $(wildcard $(SRC)/plugins/ppt3/*.s) $(SRC)/plugins/ppt3/abi.inc $(SRC)/plugins/ppt3/engine.cfg | $(BUILD)
+	$(AS) -t apple2 --cpu 6502 -I $(SRC)/plugins/ppt3 -o $(BUILD)/ppt3_engine.o $(SRC)/plugins/ppt3/engine.s
+	$(CC65BIN)ld65 -C $(SRC)/plugins/ppt3/engine.cfg -m $(BUILD)/ppt3_engine.map -o $@ $(BUILD)/ppt3_engine.o
+all: $(PPT3)
 
 # The Fantavision player, a separate ProDOS interpreter (src/fanta/): plain
 # 6502 assembly, the same bytes for both editions, staged in A2FILE/ of the
@@ -287,8 +300,10 @@ benchpackages: $(CATALOG) $(XPLG)
 	@for role in $(PACKAGE_ROLES); do python3 $(TOOLS)/mkpackage.py $(BUILD) $(BUILD)/legacy/$$role.po --role $$role --cpu $(CPU) || exit; done
 
 $(PO800): STAGE = $(BUILD)/vol800
-$(PO800): $(STAGE_DEPS) $(XPLG) $(FANTA) $(TAKE1) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS | $(DIST)
+$(PO800): $(STAGE_DEPS) $(XPLG) $(PPT3) $(FANTA) $(TAKE1) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS | $(DIST)
 	$(call stage,$(PLUGINS),$(XPLUGINS))
+	cp $(PPT3) "$(STAGE)/A2FILE/PPT3.BIN#060800"
+	cp $(BUILD)/visicalc.PLG.BIN "$(STAGE)/A2FILE/VISICALC.BIN#060000"
 	cp $(FANTA) $(STAGE)/A2FILE/FANTA.SYSTEM.SYS
 	cp $(TAKE1) $(STAGE)/A2FILE/TAKE1.SYSTEM.SYS
 	cp $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS $(STAGE)/
@@ -297,12 +312,14 @@ $(PO800): $(STAGE_DEPS) $(XPLG) $(FANTA) $(TAKE1) $(DATA)/BASIC.SYSTEM.SYS $(DAT
 endif
 
 # XL: the complete edition for the selected CPU.
-$(TWOMG): $(STAGE_DEPS) $(XPLG) $(FANTA) $(TAKE1) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS $(DATA)/README.TXT \
+$(TWOMG): $(STAGE_DEPS) $(XPLG) $(PPT3) $(FANTA) $(TAKE1) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS $(DATA)/README.TXT \
        $(TOOLS)/mkdemo.py $(TOOLS)/mkdemo_viewers.py $(TOOLS)/stage_demo.py \
        $(wildcard $(TOOLS)/*_ref.py) $(TOOLS)/pt3_fixture.py $(TOOLS)/po22mg.py \
        $(TOOLS)/mkshk.py $(TOOLS)/mkbny.py $(TOOLS)/mkdos33.py $(wildcard $(DATA)/IMGHGR/*) \
        $(shell find $(DATA)/CP2 -type f) | $(DIST)
 	$(call stage,$(PLUGINS),$(XPLUGINS))
+	cp $(PPT3) "$(STAGE)/A2FILE/PPT3.BIN#060800"
+	cp $(BUILD)/visicalc.PLG.BIN "$(STAGE)/A2FILE/VISICALC.BIN#060000"
 	cp $(FANTA) $(STAGE)/A2FILE/FANTA.SYSTEM.SYS
 	cp $(TAKE1) $(STAGE)/A2FILE/TAKE1.SYSTEM.SYS
 	cp $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS $(STAGE)/
@@ -322,8 +339,11 @@ $(FULLPO): STAGE = $(BUILD)/benchvol
 # Archive benches build their own disposable boot fixtures (archive_support.py).
 # Both fixtures use the compact launcher and omit SEARCH to fit 140K.
 # Its UI bench adds SEARCH to a disposable fixture; both XLs keep it.
+# No bench on this floppy compares files (M): COMPARE is left out too (0.9.5),
+# so that A2FILE.CFG can still be saved -- a full floppy made RUN and Q ask
+# "Configuration warning ... anyway?" (bench/run.py, vdrive_printer.py).
 $(FULLPO): $(STAGE_DEPS) $(FLOPPY_SYSTEM) $(DATA)/BASIC.SYSTEM.SYS
-	$(call stage,$(filter-out UNSHRINK BINARY2 AWP SEARCH,$(PLUGINS)),)
+	$(call stage,$(filter-out UNSHRINK BINARY2 AWP SEARCH COMPARE,$(PLUGINS)),)
 	cp $(FLOPPY_SYSTEM) $(STAGE)/A2FILE.SYSTEM.SYS
 	cp $(DATA)/BASIC.SYSTEM.SYS $(STAGE)/
 	python3 $(TOOLS)/mkvolume.py $(STAGE) $(FULLPO) --volume A2FILECMD \
@@ -347,6 +367,7 @@ test: test-mini $(TAKE1)
 	python3 $(TOOLS)/test_media_transition.py
 	python3 $(TOOLS)/test_raw_transition.py
 	python3 $(TOOLS)/test_overlay_load.py
+	python3 $(TOOLS)/test_ram_empty.py
 	python3 $(TOOLS)/test_catalog_overlay.py
 	python3 $(TOOLS)/test_tree_walk.py
 	python3 $(TOOLS)/test_goto_safety.py
@@ -414,6 +435,7 @@ test: test-mini $(TAKE1)
 	python3 $(TOOLS)/test_distribution.py
 	python3 $(TOOLS)/test_release_notes.py
 	python3 $(TOOLS)/test_file_viewers.py
+	python3 $(TOOLS)/test_koala.py
 	python3 $(TOOLS)/test_demo_viewers.py
 	python3 $(TOOLS)/test_startup_screen.py
 	python3 $(TOOLS)/test_move.py
@@ -430,8 +452,13 @@ test: test-mini $(TAKE1)
 	python3 $(TOOLS)/test_pt3_clock.py
 	python3 $(TOOLS)/test_pt3_conv.py
 	python3 $(TOOLS)/test_pt3_volume.py
+	python3 $(TOOLS)/test_pt3_fixes.py
+	python3 $(TOOLS)/test_ppt3_port.py
+	python3 $(TOOLS)/test_ppt3_engine.py
+	python3 $(TOOLS)/test_ppt3_driver.py
 	python3 $(TOOLS)/test_sample_media.py
 	python3 $(TOOLS)/test_dgrview.py
+	python3 $(TOOLS)/test_textscreen.py
 	python3 $(TOOLS)/test_disasm.py
 	python3 $(TOOLS)/test_packfot.py
 	python3 $(TOOLS)/test_purple.py
@@ -443,6 +470,10 @@ test: test-mini $(TAKE1)
 	python3 $(TOOLS)/test_macpaint.py
 	python3 $(TOOLS)/newsroom_ref.py --selftest
 	python3 $(TOOLS)/test_newsroom.py
+	python3 $(TOOLS)/test_nrclip.py
+	python3 $(TOOLS)/gmagic_ref.py --selftest
+	python3 $(TOOLS)/test_gmagic.py
+	python3 $(TOOLS)/test_gmagic_writes.py
 	python3 $(TOOLS)/awdata_ref.py --selftest
 	python3 $(TOOLS)/test_awdata.py
 	python3 $(TOOLS)/dc42.py --selftest
@@ -463,6 +494,8 @@ test: test-mini $(TAKE1)
 	python3 $(TOOLS)/test_docview.py
 	python3 $(TOOLS)/test_docview_calc.py
 	python3 $(TOOLS)/test_docview_sim.py
+	python3 $(TOOLS)/visicalc_ref.py --selftest
+	python3 $(TOOLS)/test_visicalc.py
 	python3 $(TOOLS)/test_diskcmp.py
 	python3 $(TOOLS)/test_six_plugins.py
 	python3 $(TOOLS)/fantavision_ref.py --selftest

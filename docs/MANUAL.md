@@ -1,6 +1,6 @@
 # The A2 File Cmd manual
 
-**Version 0.9.4**. By Arnaud Verhille, GNU GPL v3.
+**Version 0.9.5**. By Arnaud Verhille, GNU GPL v3.
 
 ![A2 File Cmd ProDOS XL 0.9.4 in 80 columns: two panels captured in POM2](screenshots/prodos-panels-0.9.4.png)
 
@@ -28,7 +28,7 @@ selecting, reading, editing and verified copying. It uses an **Apple II+ with
 48 KB**, NMOS 6502, 40 columns and **two Disk II drives on the boot controller**.
 The following chapters extend this workflow with ProDOS folders and tools.
 
-Boot `A2FILECMD-DOS3.3-0.9.4.dsk`, or use **BRUN A2FC** from DOS 3.3. Both panels
+Boot `A2FILECMD-DOS3.3-0.9.5.dsk`, or use **BRUN A2FC** from DOS 3.3. Both panels
 start on the boot disk; each remembers drive, selection and scroll. Catalogs
 hold up to 105 files and show 19 rows. `?` opens help.
 
@@ -95,11 +95,11 @@ and recovery filenames do not apply to the DOS3.3 edition introduced first.
 
 | Image | Choose it for |
 |---|---|
-| `A2FILECMD-DOS3.3-0.9.4.dsk` | Standalone DOS 3.3 file manager for Apple II+ and two Disk II drives. |
-| `A2FILECMD-PRODOS-140K-0.9.4.dsk` | One 5¼-inch ProDOS disk with essential file operations and text editing; any IIe. |
-| `A2FILECMD-PRODOS-800K-0.9.4.po` | All ProDOS tools and BASIC runtimes, without the demonstration corpus; any IIe. |
-| `A2FILECMD-PRODOS-XL-0.9.4.2mg` | Complete 32 MB ProDOS edition with tools and demonstrations; any IIe. |
-| `A2FILECMD-PRODOS-XL-65C02-enhanced-0.9.4.2mg` | Complete XL for an enhanced IIe, //c or IIgs: MouseText and optional mouse support. |
+| `A2FILECMD-DOS3.3-0.9.5.dsk` | Standalone DOS 3.3 file manager for Apple II+ and two Disk II drives. |
+| `A2FILECMD-PRODOS-140K-0.9.5.dsk` | One 5¼-inch ProDOS disk with essential file operations and text editing; any IIe. |
+| `A2FILECMD-PRODOS-800K-0.9.5.po` | All ProDOS tools and BASIC runtimes, without the demonstration corpus; any IIe. |
+| `A2FILECMD-PRODOS-XL-0.9.5.2mg` | Complete 32 MB ProDOS edition with tools and demonstrations; any IIe. |
+| `A2FILECMD-PRODOS-XL-65C02-enhanced-0.9.5.2mg` | Complete XL for an enhanced IIe, //c or IIgs: MouseText and optional mouse support. |
 
 The choice is **enhanced or not**. The enhanced XL needs an enhanced IIe,
 a //c or a IIgs; every other ProDOS image runs on any IIe, enhanced or not.
@@ -113,7 +113,7 @@ XL uses `.2mg`. Renaming an extension does not convert an image. With all
 release images and the PDF in the same directory, check their downloads:
 
 ```sh
-sha256sum -c SHA256SUMS-0.9.4.txt
+sha256sum -c SHA256SUMS-0.9.5.txt
 ```
 
 ### Install and start
@@ -139,11 +139,15 @@ Use copies of valuable disks. Read each target name before confirming an
 operation. Keep space for both old and new versions during replacement.
 Do not remove a disk until the operation reports its result.
 
-Some tools use auxiliary memory and rebuild **/RAM empty**. A2FC asks before
-that use and explicitly warns that **ALL /RAM files will be lost**. Copy them
-elsewhere first; declining preserves them. This applies to affected picture
-viewers, ShrinkIt, disk-image operations, Disk II formatting, NIBCOPY and full
-large-volume checks. Ordinary text and music readers preserve /RAM.
+Some tools use auxiliary memory and rebuild **/RAM empty**. When /RAM holds
+files, A2FC asks before that use and explicitly warns that **ALL /RAM files
+will be lost**; an empty /RAM has nothing to lose and is used without a
+question. Copy the files elsewhere first; declining preserves them. This
+applies to affected picture viewers, the PT3 player (GROUiK's engine; a
+declined question plays with pt3_lib instead), large VisiCalc worksheets,
+ShrinkIt, disk-image operations, Disk II formatting, NIBCOPY and full
+large-volume checks. Ordinary text readers and the other music players
+preserve /RAM.
 
 <!-- pagebreak -->
 
@@ -285,9 +289,15 @@ a variable typed at print time, `#*X=]`) stays as written, in inverse.
 Headers (`_EN`) and footers (`_DB`, `%$` the page number) appear at each `_SP`
 page break and the footer again at the end; DOCVIEW does not repeat them at
 the printer's own page ends. It reads documents up to 64 KB and remembers 16
-pages back.
+pages back. Bank Street Writer documents (a BIN at $0840 or $63D0 from DOS 3.3,
+at 0 from ProDOS, high-bit text) open in DOCVIEW too, with Return: paragraphs
+wrapped, centred lines centred, tabs of four columns; the text ends at its
+first $00, the rest of the file being the program's leftovers. Extract them
+from a DOS 3.3 disk with **C** first.
 HEX uses **G** for a seven-digit offset and **R/E** for first/last page.
 
+Logo procedures open as text with Return: Apple Logo's (DOS 3.3 text files) as
+any text, Terrapin Logo's (`NAME.LOGO`, a BIN at $2000) by their suffix.
 T lists Applesoft, Integer BASIC and Business BASIC (`.BA3`) without running
 them. T/Return reads AppleWorks word-processing text, omitting layout commands.
 Return on an AppleWorks database or spreadsheet opens **AWDATA**: Space/Down
@@ -295,6 +305,27 @@ and B/Up page, Left/Right moves columns, R restarts, and F switches between a
 sheet and cell details. Database TAB shows categories 23–30. Limits are 2,688
 records or 882 spreadsheet rows; displayed formulas/results are the saved ones,
 not a recalculation. Formats, reports and window settings are omitted.
+
+Return on a VisiCalc worksheet (a `/SS` file: text whose first line is a
+cell such as `>B3:`; extract it from a DOS 3.3 disk with **C** first) opens
+**VISICALC**, which recalculates the sheet and shows it as VisiCalc does on
+loading it. A worksheet holds only what was typed, so the overlay computes
+every formula once, in the sheet's order (by columns or rows), with
+VisiCalc's own decimal arithmetic: twelve digits, truncated, operators from
+left to right (`2+3*4` is 20); a formula that refers to one not yet computed
+shows ERROR, as in VisiCalc until **!** was pressed. Cells appear in their
+columns with VisiCalc's formats (`/F$`, `/FI`, `/FL`, `/FR`, `/F*`, its
+general format and `>>>` overflow), the cursor cell in inverse, its name and
+contents on the first row. The arrows move the cursor, Space/Return and B go
+a screen down and up, `>` and `<` a screen of columns, R back to A1, Escape
+returns. Powers and `@SQRT`, `@LN`, `@SIN`... are computed by the Applesoft
+ROM, whose last digits may differ from VisiCalc's own. A sheet of up to about
+240 numbers and formulas fits in main memory; a larger one uses the auxiliary
+memory, which rebuilds /RAM afterwards and says so; A2 File Cmd asks first
+when /RAM holds files (No: the sheet is refused, /RAM untouched). Read only;
+VISICALC.BIN, beside the overlay, holds its other parts. Text that starts
+with `>` but is no worksheet is refused: **T** shows it as text. The format
+is described in [VisiCalc worksheets](VISICALC-FORMAT.md).
 
 ### Pictures: Return or I
 
@@ -307,7 +338,8 @@ Specialized viewers and media tools require **800K or XL**.
 |---|---|
 | Raw HGR / DHGR, HGRR / DHRR | IMAGE; raw pages or version 1 RLE. Dazzle Draw pictures are raw DHGR. |
 | Movie Maker | IMAGE; `.BKG` backgrounds are raw pages, `.SHP` shape sheets (BIN $1DF0, 8,720 bytes) a page after a 528-byte header. |
-| Lo-res / DGR | DGRVIEW; DGR signature or BIN/FOT with aux $0400. I can ask for a raw sprite width. |
+| KoalaPad (Micro-Illustrator) | IMAGE; `PICTR.*` are raw pages, BIN aux $4000, 8,184 bytes once copied from the DOS 3.3 data disk with **C**. C64/Atari Koala files are not Apple pictures: hex. |
+| Lo-res / DGR, text screens | DGRVIEW; DGR signature or BIN/FOT with aux $0400 (a saved screen page: lo-res picture or text, told apart by content). I can ask for a raw sprite width. |
 | Extasie / Arlequin | EXTASIE ($F2); ARLEQUIN ($F8 with its signature). |
 | MacPaint | MACPAINT; `.MAC`, optionally with a MacBinary header. |
 | Packed FOT / LZ4FH | PACKFOT ($08/$4000 or $4001); LZ4FH ($08/$8066). |
@@ -315,26 +347,78 @@ Specialized viewers and media tools require **800K or XL**.
 | Purplesoft | PURPLE; matching `.FOTO1` and `.FOTO2` in one directory. |
 | Print Shop | PRINTSHOP; 572/576-byte BIN clip art, aux $4800/$5800/$6800/$7800. |
 | The Newsroom | NEWSROOM; photos `PH.*` and banners `BN.*`, BIN aux $4000 (copied from DOS 3.3). |
-| MGTK or hi-res fonts | FONTVIEW; type $07, or select the tool for an untyped font. |
+| Graphics Magician (Penguin, 1982-1984) | GMAGIC; a BIN whose first bytes are picture commands (no header, no name convention), Return only. |
+| MGTK or hi-res fonts | FONTVIEW; type $07, a BIN of 768 or 1,024 bytes named `.SET` (DOS Tool Kit HRCG sets) or `.FONT` (Beagle's), or select the tool for an untyped font. |
 | Applesoft shapes | SHAPES; `.SHAPE` or choose the tool directly. |
 
-Raw HGR accepts **8,184/8,192 bytes**; DHGR accepts **16,376/16,384**, auxiliary
+Raw HGR accepts any size from **8,184 to 8,199 bytes** (a page eight bytes short,
+KoalaPad's re-saved 8,191, Terrapin Logo's 8,194); DHGR accepts **16,376 to
+16,391**, auxiliary
 plane first: the one-file layout Dazzle Draw saves (BIN, aux $2000, 16,384
 bytes), so its pictures and slide-show disks open as they are. Left/Right browses the previous/next file handled by the same
 viewer, including across directory windows. Right on the last one goes round
 to the first; Left on the first does nothing.
 **S** starts a slideshow in every picture viewer: the next picture comes by
-itself after about five seconds (at 1 MHz; faster on an accelerated machine),
+itself after about ten seconds (at 1 MHz; faster on an accelerated machine),
 round the folder without end. **S** again, or any other key, stops it; that
 key then acts as usual (Escape returns, an arrow moves). A picture alone in
 its folder is shown again. A picture that cannot be read ends the slideshow
 with its message.
+**Text screens.** A saved page of the screen (BIN at $0400, typically
+1,016 to 1,024 bytes; 976 when the last row was not saved; more than 1,024
+is read as 80 columns, auxiliary half first) is either a lo-res picture or a
+text screen: a title, crack or menu screen. DGRVIEW counts its visible bytes:
+a text screen has at least a quarter of spaces ($A0, inverse $20, $E0) and
+more spaces than "solid" bytes (two equal nibbles, the flat areas of a
+picture). On 77 real text screens and 45 real lo-res pictures from Asimov
+and French Touch, none was misread. The screen is shown by the Apple's own
+text mode: 40 columns in the primary set (flashing characters flash), 80
+in the alternate set (MouseText). **T** reads the same bytes the other way
+(text or lo-res), **A** switches the character set; neither writes the
+screen again. Only the 960 visible bytes of each half are written: the
+screen holes keep the cards' state, and 80 columns write AUX $0400-$07FF,
+the 80-column text page, which /RAM never uses. Two separate 1,023-byte
+halves of an 80-column screen (as some disks keep them) are shown one at a
+time in 40 columns. While Left/Right looks for the next picture, the
+activity cell may appear for a moment at the bottom right of a text screen.
+
 Loading shows the filename; Escape returns to the panels. Ordinary small BIN
 files open in hex with Return; I can treat a suitable one as a sprite.
 
-Viewers that need AUX ask **before** writing it and can rebuild /RAM empty.
+Viewers that need AUX ask **before** writing it when /RAM holds files, and rebuild /RAM empty afterwards; an empty /RAM is used without a question.
 Consent lasts only for that browsing session; leaving and reopening asks again.
-Malformed pictures are refused. LZ4FH, PRINTSHOP, NEWSROOM, FONTVIEW and SHAPES preserve
+**NRCLIP** (`!` menu, Images) turns a commercial Newsroom clip-art disk (the
+program's own and Clip Art Collections 1-3, which hold no files) into
+pictures. Open the disk in the active panel (a `.DSK`/`.DO`, a DOS-order
+`.2MG`, or the real floppy) and a ProDOS directory in the other one: each
+page is drawn on the hi-res screen, then saved there as a BIN $2000 of 8,192
+bytes (a raw HGR page) named after the page, the way DOS 3.3 names are
+copied (`MEN 1` gives `MEN.1`). A name already there is skipped, never
+overwritten; a damaged page is skipped; a failed write removes its file and
+stops; Escape stops between pages. The message line counts the pages saved,
+already there and damaged. The clip-art disk is only read, and /RAM is kept.
+
+**GMAGIC** draws The Graphics Magician's pictures (Penguin Software, 1982-1984,
+used by the adventure games of Penguin/Polarware: Transylvania, The Quest, Ring
+Quest...) the way the original routines do, on the visible hi-res page: lines,
+flood fills with the 108 patterns, brush stamps and, in the 1984 version, text.
+A picture is a list of drawing commands with no header: Return opens a BIN
+whose first bytes are such commands, and GMAGIC checks every picture of the
+file before drawing (a damaged one is refused). The 1982 and 1984 versions
+fill differently: a file is drawn as **V82** unless it uses commands only the
+1984 version has; **D** redraws it in the other version. A file may hold
+several pictures: **N** (or Space) shows the next one on a cleared page and
+comes back to the first after the last; **O** draws the next one over the
+picture shown (the rooms of The Quest and Ring Quest keep an open door or an
+object as such an overlay). Text is drawn with A2 File Cmd's own font
+(BOLD.SET), not Penguin's: only a few pictures of the tool's own disks have
+text, and they differ there. The Quest DR's pictures are 1984 ones that use
+no 1984-only command: press **D** for them. Recognition reads only the first
+bytes, so a program that happens to start like a picture is refused by
+GMAGIC: **H** shows any file in hex. Read only, /RAM kept; the format is
+described in [Graphics Magician pictures](GRAPHICS-MAGICIAN-FORMAT.md).
+
+Malformed pictures are refused. LZ4FH, PRINTSHOP, NEWSROOM, NRCLIP, GMAGIC, FONTVIEW and SHAPES preserve
 /RAM. Keep both Purplesoft companion files; extended EVE modes require compatible
 hardware. MACPAINT shows 560 × 192 of its 576 × 720 image; Up/Down pans by 96
 lines. SHAPES shows 24 shapes a page, Space/Down next and B/Up previous.
@@ -351,19 +435,39 @@ once round, stays two seconds, and the next movie of its folder follows (in
 directory order, the first after the last), until Escape. A movie refused
 during a slideshow shows its reason three seconds, then the next one plays;
 a key returns. A damaged tail is cut; a movie with no whole frame is
-refused with its reason. Main memory only: /RAM is untouched. Backdrop:
+refused with its reason. Ctrl-Reset returns to A2FC. Main memory only: /RAM is
+untouched. Backdrop:
 mark (Space) one hi-res picture in the movie's folder before Return;
 otherwise `NAME` beside `M.NAME`, or else a picture whose name begins with
 `NAME` (`CHECKERBOARD` for `M.CHECKER`; `NAME` of
 4 characters or more), is used. The speed and the slideshow are not kept
 once back in A2FC.
 
+Return on a Take 1 movie (`MV.*`, Baudville 1985) plays it in
+**TAKE1.SYSTEM** (800K and XL), which replaces A2FC while it plays and brings
+it back after. Take 1 movies live on DOS 3.3 disks: open the disk image
+(`.DSK`, `.DO`, DOS-order `.2MG`) or the real disk from **/**, then Return on
+the movie; its scenes, actors, backgrounds and fonts are read from the same
+disk, by name. A movie extracted with **C** into a ProDOS folder plays too, its
+files beside it under the names extraction gives them -- but ProDOS names
+keep 15 characters, and on some real disks several files shrink to one name
+(`BK.UNDERGROUND-1` to `-4`, `SN.HOPPY.WALK.ON1` to `ON3`...): only one can
+be extracted, and the movie then plays the wrong scene or is refused. Playing
+from the disk or its image is the faithful way. Ctrl-Reset during a movie
+returns to A2FC. It plays at the
+**original speed**, with its fades and speaker sounds; **Tab** switches to the
+accelerated speed and back, **Space** pauses, **Return** or a paddle button
+answers a scene that waits, **Escape** returns. The movie stays two seconds on
+its last frame and starts again. A missing or damaged file is refused with its
+name. Read-only, main memory only: /RAM is untouched. The command is limited
+to 46 characters: an image path of 41 characters at most.
+
 <!-- pagebreak -->
 
 ## Play music
 
-Music players are included on **800K and XL**, run in the foreground and preserve
-**/RAM**. **P** pauses/resumes, **Escape** stops, and Left/Right selects the
+Music players are included on **800K and XL** and run in the foreground.
+**P** pauses/resumes, **Escape** stops, and Left/Right selects the
 previous/next tune of the same type in the directory. A new track starts
 unpaused. A missing card or invalid data produces an error instead of playback.
 
@@ -372,12 +476,32 @@ unpaused. A missing card or invalid data produces an error instead of playback.
 TurboSound with six. **DUET:** up to 7,168 bytes, type $D5/$D0E7, `.ED`,
 or compatible BIN names beginning `M.`.
 
+PT3 has two players. A single module of 32 KB or less plays with **GROUiK /
+French Touch's player** (a 6502 translation of S.V. Bulba's ZX Spectrum
+player, `A2FILE/PPT3.BIN`), which keeps the whole module in **auxiliary
+memory**, where ProDOS keeps the /RAM disk. When /RAM holds files, A2FC first
+asks "ALL /RAM files will be LOST. Continue?" (once while leafing through a
+folder); an empty /RAM loses nothing and is not asked about. After playback
+/RAM is rebuilt empty and the message line says "/RAM rebuilt.". With this
+player the module is read twice, then **the source file is closed before the
+first note**: the disk may be removed while it plays. Answering **N**, a
+TurboSound pair, a larger module or a missing `PPT3.BIN` plays with **Vince
+Weaver's pt3_lib** instead, in main memory only: /RAM is preserved, and the
+source disk stays open, so leave it mounted. The fourth line of the player
+screen names the player in use. Both are tuned for the Mockingboard: every
+period written for the ZX Spectrum's 1.7734 MHz AY is converted to the
+Apple II's 1.0227 MHz clock, so tunes play at their written pitch (to the
+rounding of the period). The two players follow their own lineage of
+Bulba's code and can still differ on some modules: see
+`src/plugins/ppt3/README.md`.
+
 Mockingboard is detected automatically. A Mockingboard 4c on //c can hide its
 mouse firmware: A2FC then keeps keyboard navigation and disables mouse calls
 until that firmware is restored by reset. A plain //c without the card is
-unaffected. PT3 keeps its source disk open: leave it mounted. Slow reads and
-large dual modules can delay playback; 50 Hz is not guaranteed for every tune.
-Unsupported effects, invalid pointers and I/O errors stop the player.
+unaffected. MUSIC and DUET preserve /RAM. Slow reads and large dual modules
+can delay pt3_lib's playback; 50 Hz is not guaranteed for every tune.
+Unsupported effects, invalid pointers, runaway command streams and I/O errors
+stop either player with a message: neither reads outside the module.
 
 DUET uses the speaker when no Mockingboard is present. **1/2** switches
 speaker/card; **D** cycles speaker pulse width. Keys take effect at the next
@@ -415,6 +539,9 @@ A failed preference save asks whether to run anyway. The confirmation shows
 A2FC's full return command: from BASIC's `]` prompt, reinsert its disk and use
 that command, or `BYE` to the ProDOS selector. Shorten BAS paths over 46 characters
 if launch fails. Integer BASIC's runtime supports only a subset of DOS commands.
+Ctrl-Reset in a program A2FC started goes to the monitor's `*` prompt (memory
+and /RAM kept), unless the program sets its own reset: BASIC.SYSTEM returns to
+`]`, FANTA.SYSTEM and TAKE1.SYSTEM return to A2FC.
 
 <!-- pagebreak -->
 
@@ -467,7 +594,7 @@ copies disks. PO, DSK/DO and 2MG are supported. Choose the same source/target
 drive for exchanges. Each prompt identifies SOURCE or TARGET and slot/drive.
 Writes require **ERASE**, refuse the program disk and verify each block.
 **F** formats the named drive after ERASE; Escape cancels beforehand. Disk II
-formatting clears /RAM with consent and refuses to run from /RAM.
+formatting clears /RAM, asking first when it holds files, and refuses to run from /RAM.
 
 **NIBCOPY** copies standard Disk II tracks with one or two drives at normal
 1 MHz speed. Write-protect the source first. Accept AUX use only after saving
@@ -630,7 +757,11 @@ source notices and redistribution terms remain in the repository and LICENSE.
 - **Paul Lutus:** Electric Duet format and original player; **Alex Patalenski**
   and **Emil Dotchevski:** improved speaker player and its published listing.
 - **Cybernesto, electric-mock:** DUET's Mockingboard rendition;
-  **Vince Weaver, pt3_lib:** PT3 player work adapted by A2FC.
+  **Vince Weaver, pt3_lib:** PT3 player work adapted by A2FC (fallback).
+- **GROUiK / French Touch (2019):** the 6502 PT3 player A2FC plays first
+  (GPLv3, from the *One More Thing* demo sources); **S.V. Bulba:** the ZX
+  Spectrum Vortex Tracker II player it translates; **Ivan Roshin:** its note
+  and volume table generators.
 - **Andy McFadden, CiderPress II:** format notes and real reader test samples.
 - **NuLib / ShrinkIt references:** NuFX and Binary II specifications.
 - **David Schmidt, ADTPro:** disk-transfer and virtual-drive workflows.
@@ -657,7 +788,7 @@ reuses; `data/CP2/README.TXT` describes that corpus.
   `bench/README.md` describe development and test workflows.
 - **Bugs and source:** [A2 File Cmd on GitHub](https://github.com/habib256/a2filecmd).
 
-This is the guide for **0.9.4**. It describes supported behavior and
+This is the guide for **0.9.5**. It describes supported behavior and
 limits; it is not a claim that physical hardware qualification has finished.
 Keep original disks safe, use matching program/tools, and read each operation's
 result before starting the next one.
