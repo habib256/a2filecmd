@@ -13,8 +13,9 @@ C = r'''
 #include <errno.h>
 #define PATH_LEN 64
 #define NAME_LEN 17
-struct Entry { char name[16]; unsigned char type; unsigned int aux; unsigned long size; };
-struct Panel { char path[64]; unsigned char fs, count; struct Entry e[64]; unsigned char tags[64]; };
+struct Entry { char name[16]; unsigned char type; unsigned int aux; unsigned long size; unsigned int mdate; };
+struct Panel { char path[64]; unsigned char fs, count; struct Entry e[64]; unsigned char tags[64]; unsigned char img_len; unsigned int dir_key; };
+enum { FS_PRODOS, FS_IMG, FS_DOS33 };
 static struct Panel panels[2];
 static unsigned char tagged(const struct Panel* p, unsigned char i) { return p->tags[i]; }
 static unsigned char page_size(const unsigned long* s) { return *s == 8184 || *s == 8192; }
@@ -82,7 +83,10 @@ int main(int argc,char**argv){
    /* the snapshot is what RUN may trust; the table is garbage under it */
    ENTRY_SNAPSHOT[panels[0].count]=*x;memset(x,0xA5,sizeof*x);x->name[15]=0;panels[0].tags[panels[0].count++]=m;
    if(!end)break;t=end+1;}}
- strcpy(e.name,"PROGRAM");e.type=atoi(argv[3]);e.size=1;
+ strcpy(e.name,getenv("T1_NAME")?getenv("T1_NAME"):"PROGRAM");e.type=atoi(argv[3]);e.size=1;
+ /* A Take 1 movie's panel: its file system, image path length, unit, T/S. */
+ if(getenv("T1_FS")){panels[0].fs=atoi(getenv("T1_FS"));panels[0].img_len=atoi(getenv("T1_IMGLEN"));
+  panels[0].dir_key=atoi(getenv("T1_KEY"));e.mdate=atoi(getenv("T1_MDATE"));}
  /* The file on disk (aux, type) may differ from the panel's stale entry. */
  disk_aux=argc>5?atoi(argv[5]):0x2000;e.aux=argc>6?atoi(argv[6]):0x2000;disk_type=argc>7?atoi(argv[7]):e.type;
  strcpy(command,"OLD.COMMAND");run_selected(&e);
@@ -101,15 +105,16 @@ class Launch(unittest.TestCase):
         subprocess.run(['cc','-std=c99','-I',str(ROOT),str(cls.root/'test.c'),'-o',str(cls.exe)],check=True)
     @classmethod
     def tearDownClass(cls):cls.tmp.cleanup()
-    def run_case(self, fault=0, kind=250, path='/SOURCE/WORK', data=None, disk_aux=0x2000, panel_aux=0x2000, disk_type=None, cfg=None, panel=None):
+    def run_case(self, fault=0, kind=250, path='/SOURCE/WORK', data=None, disk_aux=0x2000, panel_aux=0x2000, disk_type=None, cfg=None, panel=None, env=None):
         if data is None:data=bytes.fromhex('4c0020eeee4100')+bytes(93)
-        for name in ('BASIC.SYSTEM','INTBASIC.SYSTEM','PROGRAM','FANTA.SYSTEM'):(self.root/name).write_bytes(data)
+        for name in ('BASIC.SYSTEM','INTBASIC.SYSTEM','PROGRAM','FANTA.SYSTEM','TAKE1.SYSTEM'):(self.root/name).write_bytes(data)
         args=[str(self.exe),str(self.root),str(fault),str(kind),path,str(disk_aux),str(panel_aux)]
         if disk_type is not None or cfg is not None:args.append(str(kind if disk_type is None else disk_type))
         if cfg is not None or panel is not None:args.append(cfg or '/BOOT/A2FILE/A2FILE.CFG')
         if panel is not None:args.append(panel)
-        out=subprocess.check_output(args,text=True).strip().split('|')
-        for name in ('BASIC.SYSTEM','INTBASIC.SYSTEM','PROGRAM','FANTA.SYSTEM'):self.assertEqual((self.root/name).read_bytes(),data)
+        import os
+        out=subprocess.check_output(args,text=True,env=dict(os.environ,**(env or {}))).strip().split('|')
+        for name in ('BASIC.SYSTEM','INTBASIC.SYSTEM','PROGRAM','FANTA.SYSTEM','TAKE1.SYSTEM'):self.assertEqual((self.root/name).read_bytes(),data)
         return out
     def test_both_runtimes_keep_paths_across_config_save(self):
         for kind,name in ((250,'INTBASIC.SYSTEM'),(252,'BASIC.SYSTEM')):
@@ -182,5 +187,30 @@ class Launch(unittest.TestCase):
         # 60 entries: the 51st lies where LaunchState overwrites the snapshot.
         many=';'.join('F%02d:100:0' % i for i in range(50))+';DECOR:8192:1;'+';'.join('G%02d:100:0' % i for i in range(9))
         self.assertEqual(self.run_case(panel=many,**movie)[2],'/SOURCE/WORK/PROGRAM,DECOR')
+
+    def test_take1_movie_commands(self):
+        # A Take 1 movie MV.x goes to TAKE1.SYSTEM from A2FC's home, with the
+        # command of docs/TAKE1-FORMAT.md: the extracted file's full path...
+        home=dict(kind=6,disk_type=255,cfg='/TOOLS/A2FILE/A2FILE.CFG')
+        out=self.run_case(path='/SOURCE/WORK',panel_aux=0x8029,env={'T1_NAME':'MV.SHUTTLE.DISC'},**home)
+        self.assertEqual(out,['1','/TOOLS/A2FILE/TAKE1.SYSTEM','/SOURCE/WORK/MV.SHUTTLE.DISC','0','1','/TOOLS',str(0x2000)])
+        # ...a DOS 3.3 image and the T/S of the movie's first list...
+        dos={'T1_NAME':'MV.SHUTTLE.DISC','T1_FS':'2','T1_IMGLEN':'16','T1_KEY':'0','T1_MDATE':str(0x1203)}
+        out=self.run_case(path='/DISKS/TAKE1.DSK',panel_aux=0,env=dos,**home)
+        self.assertEqual(out[:3],['1','/TOOLS/A2FILE/TAKE1.SYSTEM','/DISKS/TAKE1.DSK,1203'])
+        # ...or a real DOS 3.3 disk by its ProDOS unit.
+        out=self.run_case(path='/DOS 3.3',panel_aux=0,env=dict(dos,T1_IMGLEN='0',T1_KEY=str(0x60),T1_MDATE=str(0x0A0F)),**home)
+        self.assertEqual(out[:3],['1','/TOOLS/A2FILE/TAKE1.SYSTEM','%60,0A0F'])
+        # An image path past 41 characters would pass the thunk's 46: refused.
+        longimg='/'+'A'*15+'/'+'B'*15+'/'+'C'*10      # 43 characters
+        self.assertEqual(self.run_case(path=longimg,panel_aux=0,env=dict(dos,T1_IMGLEN=str(len(longimg))),**home)[0],'0')
+        # Inside a ProDOS image: nowhere TAKE1.SYSTEM can read from.
+        self.assertEqual(self.run_case(path='/DISKS/X.PO',panel_aux=0x8029,env=dict(dos,T1_FS='1'),**home)[0],'0')
+        # A player that fails its checks, or an unknown home: never launched.
+        self.assertEqual(self.run_case(path='/SOURCE/WORK',panel_aux=0x8029,env={'T1_NAME':'MV.X'},data=bytes(100),**home)[0],'0')
+        self.assertEqual(self.run_case(kind=6,disk_type=255,cfg='A2FILE.CFG',panel_aux=0x8029,env={'T1_NAME':'MV.X'})[0],'0')
+        # Not a movie: another aux type, or another name, takes the old way.
+        self.assertNotEqual(self.run_case(path='/SOURCE/WORK',panel_aux=0x8000,env={'T1_NAME':'MV.X'},**home)[1],'/TOOLS/A2FILE/TAKE1.SYSTEM')
+        self.assertNotEqual(self.run_case(path='/SOURCE/WORK',panel_aux=0x8029,env={'T1_NAME':'SN.X'},**home)[1],'/TOOLS/A2FILE/TAKE1.SYSTEM')
 
 if __name__=='__main__':unittest.main()
