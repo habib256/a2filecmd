@@ -58,6 +58,61 @@ follows his player: one AY tone per voice. A2FileCmd times it with the VIA
 instead of delay loops, and scales the periods to the speaker player.
 URL: [electric-mock repository](https://github.com/cybernesto/electric-mock)
 
+**GROUiK / French Touch — PT3 player for 6502 (GPL v3)**
+`PT3`'s primary player: "Vortex Tracker II v1.0 PT3 player for 6502", from
+the sources of the demo *One More Thing* (2019), translated by GROUiK from
+**S.V. Bulba**'s ZX Spectrum player, with **Ivan Roshin**'s note and volume
+table generators. `src/plugins/ppt3/original/ppt3.a` is the ACME source as
+published, with its licence; `src/plugins/ppt3/ppt3.s` is its ca65 port,
+byte-identical to it unless `PPT3_A2FC` is defined, and
+`src/plugins/ppt3/README.md` lists every A2FileCmd change (address guards,
+zero-page relocation, auxiliary-memory wrapper, no card access).
+URL: [S.V. Bulba's players](https://bulba.untergrund.net/main_e.htm) (cited in the original source)
+
+**Vince Weaver — pt3_lib (0BSD)**
+`PT3`'s fallback player, in main memory: TurboSound pairs, modules over
+32 KB, or when the auxiliary memory is declined. `src/plugins/pt3lib/`
+keeps the upstream sources and lists the A2FileCmd changes.
+URL: [pt3_lib](https://github.com/deater/dos33fsprogs/tree/master/music/pt3_lib)
+
+**Penguin Software (later Polarware) — The Graphics Magician**
+`GMAGIC` draws the picture files of The Graphics Magician (Penguin Software,
+1982-1984; Penguin became Polarware), a Penguin Software product. It is a
+clean-room implementation written from `docs/GRAPHICS-MAGICIAN-FORMAT.md`
+alone, by a writer who read no Penguin program, disk or disassembly; no
+Penguin code is copied. The 108 fill patterns and the eight brushes in
+`src/plugins/gmagic_tables.inc` are interoperability data, generated from
+the specification's Appendix A (observed on the screen); Penguin's font is
+not used: text is drawn with BOLD.SET, A2FileCmd's demo font (CiderPress
+II's STANDARD test font, bolded). The specification's study credits Andy
+McFadden's commented disassembly of PICDRAWH, which was its starting point.
+URL: [The Graphics Magician](https://graphicsmagician.com/) · [the format](GRAPHICS-MAGICIAN-FORMAT.md)
+
+**Baudville — Take 1 (1985)**
+`TAKE1.SYSTEM` plays Take 1 movies. It is a clean-room player written from
+`docs/TAKE1-FORMAT.md` alone; the specification comes from our own study of
+the format, checked frame by frame against the original under emulation. No
+Baudville code, movie or picture is copied or shipped: the tests and the
+bench use synthetic movies.
+URL: [the format](TAKE1-FORMAT.md)
+
+**Software Arts / VisiCorp — VisiCalc**
+`VISICALC` shows VisiCalc worksheets, recalculated the way VisiCalc does.
+The behaviour (file grammar, left-to-right arithmetic, decimal rounding,
+display formats) was observed on the original under emulation and written
+down in `docs/VISICALC-FORMAT.md`; `tools/visicalc_probes.json.gz` holds
+only observed outputs of test worksheets written for this purpose. No
+VisiCalc code is copied or shipped.
+URL: [the format](VISICALC-FORMAT.md)
+
+**Other formats read (no code from them)**
+Springboard's The Newsroom (photos, banners and the clip art disks that
+`NRCLIP` turns into pictures, `docs/NEWSROOM-FORMAT.md`), Bank Street
+Writer (Broderbund) documents in `DOCVIEW`, Terrapin Logo procedures and
+pictures, KoalaPad / Micro-Illustrator pictures (Koala Technologies, Island
+Graphics: raw hi-res pages), DOS Tool Kit and Beagle Bros HRCG fonts. These
+readers follow observed file layouts; no program code is copied.
+
 **Andy McFadden — CiderPress II**
 The format notes of CiderPress II guided the MacPaint and AppleWorks data
 base and spreadsheet readers, and its test files are the real samples the
@@ -91,6 +146,13 @@ The repository keeps attribution next to the affected implementation:
 - `src/plugins/duet.s` names the Electric Duet players it transcribes and
   what was changed (zero page, alignment, exits); `src/plugins/duet.c` names
   the Mockingboard rendition it follows.
+- `src/plugins/gmagic.s` and `tools/gmagic_ref.py` say they were written
+  from the Graphics Magician specification alone (clean room), and
+  `src/plugins/gmagic_tables.inc` that its tables come from its Appendix A.
+- `src/plugins/ppt3/README.md` and the header of `src/plugins/ppt3/ppt3.s`
+  credit GROUiK, S.V. Bulba and Ivan Roshin; `tools/test_ppt3_port.py`
+  proves the port equal to the original; `src/plugins/pt3lib/README.md`
+  credits Vince Weaver.
 
 The project does not copy Norton Commander, A2Command, ProDOS or ADTPro
 executables. Their interfaces, manuals and protocols are references or
@@ -135,6 +197,7 @@ For readers who want to compare the implementation with its references:
 - [zxtunes.com Macros archive](https://zxtunes.com/en/authors/macros)
 - [zxtunes.com Korund archive](https://zxtunes.com/en/authors/korund)
 - [Vince Weaver pt3_lib](https://github.com/deater/dos33fsprogs/tree/master/music/pt3_lib)
+- [Asimov spreadsheet disks](https://www.apple.asimov.net/images/productivity/spreadsheet/) (VisiCalc 1.37, 1.93, 2.08, Home and Office Companion: run under POM2 to observe VisiCalc for `docs/VISICALC-FORMAT.md`; not copied into the repository. VisiCalc is a trademark of its owners; no VisiCalc code is used)
 
 Historical archives may move or disappear; the repository copies the relevant attribution and
 source-path information so the record remains useful if a mirror changes.

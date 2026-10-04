@@ -1,6 +1,8 @@
 """Compare real assembly tables/AY tones with archived upstream full tables.
 Reference: deater/vmw-meter ay-3-8910/pt3/pt3_lib.c, fetched 2026-09-12.
-The reference JSON holds the published 96 periods, not generated seeds.
+The reference JSON holds the published 96 ZX periods, not generated seeds,
+and (2026-10-03) the Mockingboard periods both A2FC players must write:
+round(P x 1.0227/1.7734), for the AY on the Apple II's 1.0227 MHz clock.
 """
 import json
 import shutil
@@ -26,7 +28,7 @@ int main(void) {
   if(pt_frame()) return 3;
   pt_output(); want=ref[k][note];
 #ifdef CONVERTED
-  want=(want*9UL+8)/16;
+  want=mb[k][note];
 #endif
   for(i=0;i<3;++i) {
    got=pt_regs[2*i]|((unsigned)pt_regs[2*i+1]<<8);
@@ -42,8 +44,10 @@ int main(void) {
 class Frequency(unittest.TestCase):
  def test_all_tables_and_tones(self):
   data=json.loads((Path(__file__).with_name('pt3_frequency_reference.json')).read_text())
-  values=[data[k] for k in ('PT_33_34r','PT_34_35','ST','ASM_34r','ASM_34_35','REAL_34r','REAL_34_35')]
+  names=('PT_33_34r','PT_34_35','ST','ASM_34r','ASM_34_35','REAL_34r','REAL_34_35')
+  values=[data[k] for k in names]
   reference='static const unsigned ref[7][96]={'+','.join('{'+','.join(map(str,v))+'}' for v in values)+'};\n'
+  reference+='static const unsigned mb[7][96]={'+','.join('{'+','.join(map(str,data['mockingboard'][k]))+'}' for k in names)+'};\n'
   with tempfile.TemporaryDirectory(prefix='pt3-freq-') as directory:
    tmp=Path(directory)
    for cpu in ('sim6502','sim65c02'):
@@ -58,5 +62,19 @@ class Frequency(unittest.TestCase):
       self.assertEqual(r.returncode,0,r.stderr)
       r=subprocess.run(['sim65',str(tmp/'test')],capture_output=True,text=True,timeout=120)
       self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+
+ def test_mockingboard_reference_is_the_clock_ratio(self):
+  # Every stored Mockingboard period is the nearest to the ZX one x
+  # 1.0227/1.7734 (within the 11-bit multiplier), so the played pitch is
+  # the ZX table's own pitch to rounding: under 2.5 cents wherever the
+  # period is 290 or more (the five lower octaves).
+  import math
+  data=json.loads((Path(__file__).with_name('pt3_frequency_reference.json')).read_text())
+  k=data['clocks']['mockingboard_hz']/data['clocks']['zx_hz']
+  for name,zx in data.items():
+   if name in ('clocks','mockingboard'):continue
+   for p,m in zip(zx,data['mockingboard'][name]):
+    self.assertLessEqual(abs(m-p*k),0.62,(name,p))
+    if m>=290:self.assertLessEqual(abs(1200*math.log2(p*k/m)),2.5,(name,p))
 
 if __name__=='__main__':unittest.main()

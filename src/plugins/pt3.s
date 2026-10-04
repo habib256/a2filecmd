@@ -22,8 +22,16 @@ _pt_frames: .res 4
 .export _pt_misses
 _pt_misses: .res 2
 saved_sp: .res 1
+.if PT3_LOC = $3700
+; The plugin's own layout: $3FC0-$3FFF, past the second tables ($3E00-$3FBF)
+; and the GROUiK driver (PG ends below $3FC0), is free whichever player
+; runs; the pt3_lib zero-page copies live there, out of the code window.
+host_zp = $3FC0
+song_zp = $3FE0
+.else
 host_zp: .res 32
 song_zp: .res 32
+.endif
 _pt_regs: .res 14
 guard_y: .res 1
 guard_kind: .res 1
@@ -201,9 +209,11 @@ checked:
  rts
 .include "pt3lib/core.inc"
 .include "pt3lib/context.inc"
-; Padding keeps two full pages reclaimable on both native links.
-; The link assertion below rejects any future layout that breaks this.
-.res 62, $EA
+; Two whole pages of init code must stay reclaimable on both native links:
+; the init code is 709 bytes, so it may start up to 197 bytes before a page
+; boundary. No padding is needed since GROUiK's hook grew the C code (it
+; was 62 bytes of NOP); the link assertion below rejects any layout that
+; breaks this -- add padding here again if it fires.
 .include "pt3lib/init.inc"
 pt_init_code_end:
 pt_init_cache_start=(pt3_init_song+$FF)&$FF00
@@ -415,3 +425,11 @@ table_patches:
 table_patches_end:
 
 .include "pt3lib/cache.inc"
+
+;  ---- GROUiK's engine, PT3.PLG's primary player ------------------------
+; Its main-memory side (ppt3/hook.s: pg_call, pg_put, the driver) is linked
+; at $3B00. The sim65 harnesses of pt3_lib relocate PT3_LOC and test pt3_lib
+; alone: they leave it out (tools/test_ppt3_driver.py runs it).
+.if PT3_LOC = $3700
+.include "ppt3/hook.s"
+.endif

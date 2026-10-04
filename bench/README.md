@@ -316,6 +316,30 @@ sans en-tête avec I. Il contrôle les pixels décodés, le refus de perte de
 explicite à H et le parcours de l’album brut. Exécuter avec
 `A2FC_PRESET=iie_unenh`, puis `A2FC_IMG=A2FILECMD-full`.
 
+`koala.py` (port 6866) copie avec C deux images KoalaPad (`PICTR.*`, B $4000
+de 8 184 octets, dessinées par `tools/test_koala.py`) depuis une disquette de
+données Micro-Illustrator DOS 3.3, puis vérifie octet par octet l’affichage
+avec Entrée, I, Droite et S, le fichier C64 Koala ouvert en hexadécimal, et
+après arrêt les copies et la disquette source sur le disque. Mêmes deux
+éditions que `open_images.py`.
+
+`take1.py` (port 6873) lance TAKE1.SYSTEM depuis A2FC sous le vrai ProDOS :
+Entrée sur un film Take 1 de synthèse (`tools/take1_ref.py`) extrait dans
+un dossier, puis sur le même film dans une image DOS 3.3 `.DSK` (chemin et
+liste T/S), puis sur un film refusé ; les pages affichées doivent être des
+images de la référence, Échap (ou une touche après le refus) ramène A2FC et
+AUX reste intact. Éditions : `A2FC_PRESET=iie_unenh` (6502) puis
+`A2FC_BUILD=build A2FC_PRESET=iie`.
+
+`gmagic.py` (port 6867) ouvre avec Entrée des images Graphics Magician de
+synthèse (le groupe du DEMO, la pièce et son calque de l’annexe B, une image
+1984 avec du texte) et relit la page octet par octet contre
+`tools/gmagic_ref.py` : V82 par défaut, D en V84, N d’image en image du
+groupe, O pour le calque, Droite d’image en image du dossier (un programme
+sauté), S, Échap, AUX intact, un programme en hexadécimal, une image abîmée
+refusée avec son message, et après arrêt les fichiers inchangés. Fait partie
+de `plugins.py` : édition 6502 par défaut, 65C02 avec `A2FC_BUILD=build`.
+
 `sample_media.py` lit `~/src/pom2/hdv/GISTDATA.hdv` en lecture seule (ou
 `A2FC_SAMPLE_DISK`), puis copie DIP.CHIPS, BBROS.MINI, les deux programmes
 Integer BASIC et les 52 polices dans un volume jetable. Il compare les pages

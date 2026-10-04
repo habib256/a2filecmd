@@ -95,6 +95,19 @@ def check_cpu(cpu):
             assert directory['FANTA.SYSTEM'][16] == 0xFF, (path, 'FANTA.SYSTEM type')
             assert image.read(directory['FANTA.SYSTEM']) == (build / 'FANTA.SYSTEM.SYS').read_bytes(), \
                 (path, 'stale FANTA.SYSTEM')
+        # GROUiK's PT3 engine (src/plugins/ppt3/), PT3.PLG's primary player:
+        # wherever PT3.PLG is (800K and XL), the same bytes for both CPUs.
+        assert ('PPT3.BIN' in directory) == ('PT3.PLG' in plugins), (path, 'PPT3.BIN')
+        if 'PPT3.BIN' in directory:
+            entry = directory['PPT3.BIN']
+            assert entry[16] == 6 and int.from_bytes(entry[31:33], 'little') == 0x0800, (path, 'PPT3.BIN type')
+            assert image.read(entry) == (build / 'PPT3.BIN').read_bytes(), (path, 'stale PPT3.BIN')
+        # VISICALC.PLG's recalculating and showing phases, linked with it
+        # (sdk/visicalc.cfg): wherever the overlay is, from the same link.
+        assert ('VISICALC.BIN' in directory) == ('VISICALC.PLG' in plugins), (path, 'VISICALC.BIN')
+        if 'VISICALC.BIN' in directory:
+            assert image.read(directory['VISICALC.BIN']) == (build / 'visicalc.PLG.BIN').read_bytes(), \
+                (path, 'stale VISICALC.BIN')
         # The Take 1 player (src/take1/): 800K and XL, the same bytes.
         assert ('TAKE1.SYSTEM' in directory) == (role != '140K'), (path, 'TAKE1.SYSTEM')
         if role != '140K':

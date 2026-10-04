@@ -1,4 +1,5 @@
-/* docview.c -- read an Epistole, Papyrus or HomeWord document laid out as
+/* docview.c -- read an Epistole, Papyrus, HomeWord or Bank Street Writer
+ * document laid out as
  * it prints, page by page on a full screen. From Return on a document that
  * says what it is (a leading `_` command or `$FF` code), or the ! menu.
  *
@@ -17,6 +18,11 @@
  * high-bit ASCII, one $8D per paragraph, and codes between two $FF bytes:
  * $FF $06 $FF centres the next line, $FF $05 $FF starts a page, the
  * others (margins, outline points...) only concern the printer.
+ *
+ * Bank Street Writer (Broderbund) saves the same high-bit text in a BIN
+ * file ($0840 or $63D0 on DOS 3.3, 0 on ProDOS): $8D ends a paragraph,
+ * $83 at a line's start centres it, $89 is a tab (4 columns), and the text
+ * ends at the first $00 -- what follows is the buffer's leftovers.
  *
  * Both write French with the ISO 646-FR national characters: { e acute,
  * } e grave, | u grave, \ c cedilla, @ a grave, [ degree (n[ is "no"); Epistole types a
@@ -50,7 +56,7 @@ struct PluginHeader {
 #pragma rodata-name (push, "OVLHDR")
 const struct PluginHeader __plugin_header = {
     PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry, 0, 0, 0,
-    "Read Epistole, Papyrus and HomeWord documents"
+    "Read Epistole, Papyrus, HomeWord, Bank Street docs"
 };
 #pragma rodata-name (pop)
 
@@ -149,9 +155,9 @@ typedef char state_fits[0x3F80 - 0x3F40 + 1 - sizeof(struct State)];   /* below 
 static const char iso[] = "{e}e|u\\c@a[o";  /* ISO 646-FR pairs: code, plain letter ([ is a degree sign) */
 static const char vowels[] = "aeiou";      /* Papyrus $18-$1C */
 
-static const char m_pick[] = "Select a document to read.";
+static const char m_pick[] = "Select a document.";
 static const char m_open[] = "Open failed.";
-static const char m_big[]  = "Too long: DOCVIEW reads 64 KB at most.";
+static const char m_big[]  = "Over 64 KB: too long.";
 static const char m_page[] = "Page %u%s: Space/Down next, Up back, R start, A accents, ESC quits";
 static const char m_end[]  = " (end)";
 static const char m_err[]  = " (read error)";
@@ -487,7 +493,11 @@ static unsigned char render_line(void)
     pad();
     for (;;) {
         c = rd();
-        if (c < 0) { if (first) return 0; break; }
+        if (c <= 0) {                      /* $00: Bank Street Writer's end, read again */
+            if (first) return 0;
+            if (!c) unget();
+            break;
+        }
         first = 0;
         if (c == 13) { c2 = rd(); if (c2 != 10 && c2 >= 0) unget(); break; }
         if (c == 10) break;
@@ -503,6 +513,7 @@ static unsigned char render_line(void)
         if (papyrus) {
             if (c == 0xFF) { code(); continue; }
             if (c >= 0x18 && c <= 0x1C) { put_(raw ? '?' : vowels[c - 0x18]); continue; }
+            if (c == 3) { LAY.centre = 2; continue; }   /* Bank Street Writer: $83 centres the line */
         } else {
             if (c == '_' && epistole()) continue;
             if (c == '#') {                /* #NAME]: inverse, marks dropped; #: #* calculations */
@@ -558,7 +569,7 @@ static void render_page(const struct Start* st)
             return;
         }
     seek_(NEXT.off);                       /* a page that filled on the last line: the end too */
-    if (getc_() < 0) done |= 1;
+    if (rd() <= 0) done |= 1;
 }
 
 /* The kind, from the first bytes: mostly high-bit, a Papyrus document. */

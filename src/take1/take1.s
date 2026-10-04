@@ -10,10 +10,17 @@
 ; followed by a key, return to A2 File Cmd: A2FILE.SYSTEM is loaded again
 ; from the prefix (QUIT to ProDOS only if that fails).
 ;
+; Ctrl-Reset returns too: the reset vector is set to the way back (once
+; the bitmap is saved), not left on A2 File Cmd's code, which this program
+; overwrites. Before that, and once the return thunk runs (its I/O buffer
+; covers thunk_src), it is the monitor's OLDRST ($FF59).
+;
 ; Keys: Escape returns, Space pauses and resumes, Tab switches between the
-; original speed (the default: the frame waits, pauses and fade delays of
-; the original) and the accelerated one (none of them); Return and the
-; paddle buttons answer a wait. Other keys are ignored.
+; original speed (the default: each frame held for the original's
+; modelled time, the engine's own drawing time taken off -- t1_hold, see
+; engine.s -- with the original's pauses and fade delays) and the
+; accelerated one (none of them); Return and the paddle buttons answer a
+; wait. Other keys are ignored.
 ;
 ; The label t1_shown is the instant a frame becomes visible: right after
 ; the soft switch that shows it (an emulator may break there to capture
@@ -28,9 +35,9 @@
 ;
 ; Plain 6502: the same file serves both editions.
 
-        .import t1_play, t1_name, t1_err, t1_front, dstart
+        .import t1_play, t1_name, t1_err, t1_front, t1_hold, dstart, t1_txc3
         .export t1_show, t1_wait, t1_fc, t1_delay, t1_tick, t1_shown, path0
-        .export t1_mode := mode, t1_sound := sound
+        .export t1_mode := mode, t1_sound := sound, t1_back := back
         .import __HICODE_LOAD__, __HICODE_RUN__, __HICODE_SIZE__, __HIDATA_SIZE__
         .import __RODATA_LOAD__, __RODATA_RUN__, __RODATA_SIZE__
         .import __HIDATA_LOAD__, __HIDATA_RUN__, __LOADER_RUN__, __LOADER_SIZE__
@@ -38,6 +45,9 @@
         .import __CODE_LOAD__, __CODE_RUN__, __CODE_SIZE__
         .import __TIMED_LOAD__, __TIMED_RUN__, __TIMED_SIZE__
         .import __BSS_RUN__, __BSS_SIZE__
+        .import __LOWC_LOAD__, __LOWC_RUN__, __LOWC_SIZE__
+        .import __TXC5_LOAD__, __TXC5_RUN__, __TXC6_LOAD__, __TXC6_RUN__
+        .import __TXC7_LOAD__, __TXC7_RUN__
         .import __HIBSS_RUN__, __HIBSS_SIZE__
 
 MLI     = $BF00
@@ -57,6 +67,9 @@ SETAN3  = $C05F
 PB0     = $C061
 PB1     = $C062
 ROMIN   = $C082
+SOFTEV  = $03F2                 ; the reset vector, and its check byte
+PWREDUP = $03F4
+OLDRST  = $FF59                 ; the monitor's reset entry, in ROM
 PATHMAX = 64
 
         .zeropage
@@ -67,7 +80,6 @@ wn:     .res 2                  ; steps left to wait
 msgp:   .res 2
 fxp:    .res 2                  ; the sound's steps
 zflag:  .res 1                  ; copy: 1, zero: 0
-w4:     .res 1                  ; frame-wait steps, for the 18 cycles
 tcnt:   .res 1                  ; a sound's toggles and steps
 tpv:    .res 1
 
@@ -87,6 +99,12 @@ path0:  .byte   0               ; the launcher stores the command here
 start:  cld
         ldx     #$FF
         txs
+        lda     #<OLDRST                ; Ctrl-Reset: not into a previous
+        sta     SOFTEV                  ; run's back (savebm is cleared
+        lda     #>OLDRST                ; below) until the way back is
+        sta     SOFTEV+1                ; set
+        eor     #$A5
+        sta     PWREDUP
         lda     #<__TIMED_LOAD__        ; the program, to low memory (CODE
         sta     src                     ; follows TIMED)
         lda     #>__TIMED_LOAD__
@@ -109,6 +127,17 @@ start:  cld
         lda     #<(__HICODE_SIZE__ + __RODATA_SIZE__ + __HIDATA_SIZE__)
         ldx     #>(__HICODE_SIZE__ + __RODATA_SIZE__ + __HIDATA_SIZE__)
         jsr     copy
+        lda     #<__LOWC_LOAD__         ; the cold checks, to $0200 on
+        sta     src
+        lda     #>__LOWC_LOAD__
+        sta     src+1
+        lda     #<__LOWC_RUN__
+        sta     dst
+        lda     #>__LOWC_RUN__
+        sta     dst+1
+        lda     #<__LOWC_SIZE__
+        ldx     #>__LOWC_SIZE__
+        jsr     copy
         lda     #<__BSS_RUN__           ; variables to zero
         sta     dst
         lda     #>__BSS_RUN__
@@ -128,6 +157,12 @@ start:  cld
         sta     savebm,x
         dex
         bpl     :-
+        lda     #<back                  ; Ctrl-Reset: back to A2 File Cmd.
+        sta     SOFTEV                  ; A2FC left its own vector, $400C,
+        lda     #>back                  ; in hi-res page 2: a reset jumped
+        sta     SOFTEV+1                ; into the picture or the I/O buffer
+        eor     #$A5
+        sta     PWREDUP
         lda     #$E1
         sta     seed
         lda     #$AC
@@ -139,7 +174,7 @@ start:  cld
         jsr     dstart                  ; the command (dos.s)
         bcc     :+
         jmp     refuse
-:       ldx     #0                      ; mark the program's pages: $02-$03,
+:       ldx     #0                      ; mark the program's pages: $02-$07,
 :       lda     marks,x                 ; $08-$1F, $80-$BE
         tay
         jsr     mark
@@ -192,7 +227,7 @@ mark:   tya
         sta     BITMAP,y
         rts
 
-marks:  .byte   $02, $03
+marks:  .byte   $02, $03, $04, $05, $06, $07
         .repeat $18, i
         .byte   $08 + i
         .endrepeat
@@ -218,6 +253,17 @@ main:   jsr     clr1                    ; plain 40-column hi-res, page 1,
         sta     MIXCLR
         sta     LOWSCR
         sta     TXTCLR
+        ldx     #0                      ; then the engine's routines into
+:       lda     __TXC5_LOAD__,x         ; text page 1's rows (not shown now)
+        sta     __TXC5_RUN__,x
+        lda     __TXC6_LOAD__,x
+        sta     __TXC6_RUN__,x
+        lda     __TXC7_LOAD__,x
+        sta     __TXC7_RUN__,x
+        inx
+        cpx     #$78
+        bne     :-
+        jsr     t1_txc3
 @loop:  jsr     t1_play
         bcs     refuse
         lda     #30                     ; the end: two seconds, the keys read
@@ -284,13 +330,28 @@ refuse: pha
 ; In one page (TIMED starts one: take1.cfg), so that no branch crosses a
 ; page and the cycles are the same wherever the program is linked.
         .segment "TIMED"
-; The frame wait: A/X steps of 350 cycles, 18 more after every fourth.
+; After a frame shown (A/X: the original's frame wait n, not used here):
+; the original speed holds it t1_hold cycles (the engine's estimate of
+; what the original would still take), rounded to units of 256 cycles;
+; the accelerated speed does not wait.
 t1_wait:
-        sta     wn
-        stx     wn+1
         lda     mode
-        bne     @loop
+        bne     :+
         jmp     keys                    ; (accelerated: no wait)
+:       lda     t1_hold                 ; (t1_hold + 128) / 256
+        cmp     #$80
+        lda     t1_hold+1
+        adc     #0
+        sta     wn
+        lda     t1_hold+2
+        adc     #0
+        sta     wn+1
+        lda     t1_hold+3
+        adc     #0
+        beq     @loop
+        lda     #$FF                    ; (over 16 million cycles: clipped)
+        sta     wn
+        sta     wn+1
 @loop:  lda     wn                      ; 3
         ora     wn+1                    ; 3
         beq     @done                   ; 2
@@ -299,23 +360,17 @@ t1_wait:
         jsr     keys
         lda     mode
         beq     @done
-:       ldx     #61                     ; 2
-:       dex                             ; 61 * 5 - 1
+:       ldx     #44                     ; 2
+:       dex                             ; 44 * 5 - 1
         bne     :-
-        nop                             ; 2
+        nop                             ; 6
+        nop
+        nop
         lda     wn                      ; 3
         bne     :+                      ; 3
         dec     wn+1
 :       dec     wn                      ; 5
-        inc     w4                      ; 5
-        lda     w4                      ; 3
-        and     #3                      ; 2
-        bne     :++                     ; 3
-        ldx     #3                      ; the 18 more (with the bne: 2, 14,
-:       dex                             ; 3, - 1)
-        bne     :-
-        bit     wn
-:       jmp     @loop                   ; 3: 350 a step
+        jmp     @loop                   ; 3: 256 a unit
 @done:  rts
 
 ; D(A): (5 A^2 + 27 A + 26) / 2 cycles, A = 0 counting as 256.
@@ -578,7 +633,13 @@ back:   ldx     #$FF
         iny
         cpy     #thunk_len
         bne     :-
+        lda     #<OLDRST                ; the thunk's I/O buffer covers
+        sta     SOFTEV                  ; thunk_src ($BB00-$BEFF): a reset
+        stx     SOFTEV+1                ; from now on goes to the monitor,
+        lda     #>OLDRST ^ $A5          ; not to back (X = $FF = >OLDRST)
+        sta     PWREDUP
         jmp     $0300
+        .assert >OLDRST = $FF, error, "back stores X = $FF as >OLDRST"
 
 ; The text screen, 40 columns, cleared, the title on row 8.
 textscr:

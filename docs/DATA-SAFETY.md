@@ -92,8 +92,15 @@ La résistance des décodeurs aux fichiers malformés est
 mesurée par les campagnes de mutations décrites plus bas, pas prouvée :
 elles couvrent ce que leurs mutateurs savent produire.
 
-Les lecteurs MB1 et PT3 sont désormais des surcouches au premier plan :
-ils conservent leurs données en mémoire principale et préservent `/RAM`.
+Les lecteurs MB1 et PT3 sont désormais des surcouches au premier plan.
+MB1 garde ses données en mémoire principale et préserve `/RAM`. PT3 joue
+d'abord avec le lecteur de GROUiK, qui place le module en mémoire
+auxiliaire : rien n'y est écrit avant `aux_consent` (pas de question si
+`/RAM` est vide, sinon « ALL /RAM files will be LOST »), et dès la première
+écriture `/RAM` est reconstruit à la sortie et annoncé, quelle que soit
+l'issue. Chaque lecture du module par ce lecteur est bornée au module
+(`src/plugins/ppt3/README.md`). Sur refus, pt3_lib joue en mémoire
+principale seulement et `/RAM` est préservé.
 
 ## Validation et contraintes mémoire
 

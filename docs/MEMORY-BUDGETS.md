@@ -1,5 +1,38 @@
 # Consolidation : budgets mémoire
 
+## VISICALC : quatre morceaux et une table
+
+Tout en assembleur (`src/plugins/visicalc.s`, le C ne porte que l'en-tête
+et les décalages des services) : en C, la seule partie fichiers/écran
+faisait 6,4 Ko. Même ainsi, 9,4 Ko de code ne tiennent pas avec une table
+dans `$1B00-$3FFF` : `sdk/visicalc.cfg` coupe le code en une partie qui
+reste (`$1B00-$25FF`, en-tête, lecteur de fichier, accès à la table,
+nombres littéraux, chargeur de phases) et trois phases au même endroit
+(`$2600-$35FF`) : lecture (VCA, dans VISICALC.PLG), recalcul (VCB) et
+affichage (VCC), ces deux-là dans `A2FILE/VISICALC.BIN`, chacune marquée
+de l'identité du lien (VISICALC.BIN d'une autre construction est refusé).
+Libres, mêmes octets sur 6502 et 65C02 : partie fixe **137/140**, VCA
+2 905, VCB **19**, VCC 1 446 ; BSS `$3600-$3872`. Les tables fixes
+(débuts de rangée, ligne lue, colonnes) occupent `$0C00-$0FFF`, le second
+tampon ProDOS (un seul fichier ouvert à la fois) ; la sauvegarde de la page
+zéro pour la ROM, `copy_buf + 256`.
+
+La table (8 octets par valeur : la rangée, la valeur tassée) va de la fin
+de la BSS à `$3FFF` : **241 valeurs**. Au-delà, la mémoire auxiliaire
+`$4000-$BEFF` (4 064 valeurs), avec `aux_consent` (API 6 : pas de question
+si /RAM est vide), MACHID 128 Ko vérifié, puis `ram_format` et la note
+« /RAM rebuilt. » ; `leave`, qui appelle `ram_format`, est en tête du code,
+sous `$2000` que `ram_format` écrase. Les accès à la table passent tous par
+six petites routines qui basculent RAMRD/RAMWRT autour d'un seul accès,
+interruptions coupées ; celles de lecture sont recopiées en mémoire
+auxiliaire à la même adresse (le processeur y lit ses instructions tant que
+RAMRD est mis) ; en mémoire principale, leurs STA $C00x deviennent BIT.
+
+Cœur OPEN : la règle `>` (6 octets) et l'entrée d'`image_viewers` ont été
+payées par quatre `jmp ret` devenus `bne ret` (A n'y vaut jamais 0) : OPEN
+**4/9** octets libres (65C02/6502). Le nom « VISICALC » est en carte langage
+(MAIN n'avait pas ses 9 octets) : MAIN **8/420**, LC **37/28**.
+
 ## DOCVIEW : calculs, en-têtes et bas de page d'Epistole
 
 DOCVIEW quitte le groupe des surcouches à brouillon `$3000` : code et BSS
@@ -42,6 +75,15 @@ FANTA.SYSTEM (hors résident) : programme `$A400-$BEDD`, 34 octets libres
 sous `$BF00` ; `cmdbuf` (85 octets) en tête, sous `$BB00` que le tampon du
 thunk de retour recouvre ; LOW 52 octets libres ; page zéro jusqu'à `$D9`.
 Le chargeur (`LOADER`, `$2000-$2672`) porte la lecture du répertoire.
+
+## 4 octobre 2026 : écrans texte et polices HRCG
+
+OPEN : 63/68 → **15/20** octets (65C02/6502) pour la règle `.SET`/`.FONT`
++ BIN de 768/1 024 octets (suffixes dans `fv_ext`, test de taille partagé
+avec Print Shop par `binsize` dans `src/open.s`). DGRVIEW (fenêtre de
+5 376 octets jusqu'à `$3000`) : 2 999/3 058 → 3 753/3 844 octets avec la
+lecture texte, T/A et l'écriture des seuls octets visibles. MAIN et LC
+inchangés.
 
 ## Préparation 1.0 : l'audit des signes rend des octets
 
@@ -875,6 +917,23 @@ pour 6502. Relever les versions réellement utilisées plutôt que déduire leur
 version des commentaires du Makefile. Ce relevé local ne constitue pas un test
 sur émulateur ou matériel.
 
+## PT3 : le lecteur de GROUiK (3 octobre 2026)
+
+Moteur principal pour un module simple de 32 Ko au plus, en mémoire
+auxiliaire après `aux_consent` : AUX `$2000–$32CC` image `A2FILE/PPT3.BIN`
+(4 813 octets dont les 7 tables de notes ZX, mêmes octets pour les deux
+éditions), `$32CD–$3531` ses variables et tables, `$3B00–$3B25` le miroir du trampoline, `$4000–$BFFF`
+le module ; AUX `$0800–$1FFF` (bitmap et répertoire de `/RAM`) n'est jamais
+écrite. Dans PT3.PLG, le pilote (hook.s + driver.s) est lié à
+`$3B00–$3F3C` : le fichier porte la fenêtre et les pages d'en-tête en
+remplissage, 9 264 octets (limite 9 472). La fenêtre de code garde
+94 / 28 octets (65C02/6502) avant `$3700`, après la conversion exacte vers
+1,0227 MHz (`conv_mb`, 1181/2048) et les corrections de pt3_lib, grâce au
+déplacement de ses copies de page zéro en `$3FC0–$3FFF` (64 octets) ; les
+62 octets de NOP qui alignaient le code d'initialisation de pt3_lib ne
+servent plus. Le service
+`aux_consent` coûte 2 octets de MAIN résidente (reste 10 octets en 65C02).
+
 ## PT3 : grands modules et TurboSound
 
 Le lecteur accepte 65 535 octets, conteneur TurboSound compris, sans AUX.
@@ -911,7 +970,7 @@ sous la réserve de travail visée de 256 octets ; OPEN enhanced est presque
 plein. Les contrôles de disposition restent obligatoires.
 
 Les bancs PT3 vérifient le plancher de pile, la mémoire AUX hors écran texte
-et le volume source octet par octet sur des images jetables. Le lecteur
+(pour pt3_lib) et le volume source octet par octet sur des images jetables. Le lecteur
 Purplesoft vérifie ses deux plans, les sorties et le consentement par session
 sur les deux architectures. Ce sont des validations en émulation, pas des
 mesures sur matériel physique.

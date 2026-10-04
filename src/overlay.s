@@ -50,7 +50,7 @@ _a2fc_link_id:
         .segment "CATALOG"
         header 0, 0, "Internal catalog reader"
         .segment "OPEN"
-        header 0, _open_entry, "Internal file viewer selection"
+        header 0, _open_entry, ""             ; hidden: no line in the menu
         .segment "COPY"
         header 0, 0, "Internal file copy"
         .segment "IMAGE"

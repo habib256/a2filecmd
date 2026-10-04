@@ -24,6 +24,7 @@ import arlequin_ref
 import busbasic_ref
 import cpm_ref
 import fantavision_ref
+import gmagic_ref
 import mkdemo
 import pascal_ref
 import pt3_fixture
@@ -219,6 +220,35 @@ def printshop():
     return bytes(out)
 
 
+def gmagic():
+    """A Graphics Magician picture group (BIN $4000, as PICEDIT saves
+    groups): a house drawn here with lines, fills, brush stamps, then
+    Appendix B's palette (H04) and brushes (H05) of
+    docs/GRAPHICS-MAGICIAN-FORMAT.md. N steps through the three."""
+    P = gmagic_ref.P
+    s = bytearray(b'\x24')                                            # black lines
+    s += P(0x80, 0, 130) + P(0xA0, 279, 130)                           # the ground
+    s += P(0x80, 60, 130) + P(0xA0, 60, 80) + P(0xA0, 140, 80) + P(0xA0, 140, 130)   # walls
+    s += P(0x80, 50, 82) + P(0xA0, 100, 40) + P(0xA0, 150, 82) + P(0xA0, 50, 82)     # roof
+    s += P(0x80, 90, 130) + P(0xA0, 90, 100) + P(0xA0, 110, 100) + P(0xA0, 110, 130)  # door
+    s += P(0x80, 190, 130) + P(0xA0, 190, 95) + P(0x80, 196, 130) + P(0xA0, 196, 95)  # trunk
+    s += b'\x60\x46'                                                  # blue sky
+    for x, y in ((10, 100), (270, 100), (165, 120), (230, 120)):
+        s += P(0xE0, x, y)
+    s += b'\x60\x57' + P(0xE0, 10, 150)                                # green ground
+    s += b'\x60\x3C' + P(0xE0, 70, 90) + P(0xE0, 130, 120) + P(0xE0, 75, 125)   # orange walls
+    s += b'\x60\x65' + P(0xE0, 100, 60)                                # violet roof
+    s += b'\x60\x50' + P(0xE0, 100, 120)                               # black door
+    s += b'\x60\x57\x47'                                               # a spray of leaves
+    for x, y in ((180, 70), (195, 62), (205, 75), (185, 85), (200, 85), (178, 95), (208, 92), (190, 78)):
+        s += P(0xC0, x, y)
+    s += b'\x60\x3C\x45'                                               # the sun
+    for x, y in ((230, 15), (236, 15), (230, 21), (236, 21)):
+        s += P(0xC0, x, y)
+    hand = gmagic_ref.hand_made()
+    return bytes(s + b'\x00') + hand['H04-palette-108-cells'] + hand['H05-brushes-and-edges']
+
+
 def newsroom():
     """A Newsroom photo body: L, y1, y2, x1, x2, an empty clip history ended
     by $FF, then the bitmap (bit 0 left, 1 white): a sun over waves."""
@@ -334,6 +364,34 @@ def papyrus():
             + b'\xff\x05\xff' + hi(b'Page deux.') + b'\x8d')
 
 
+def visicalc():
+    """A VisiCalc worksheet (/SS file), written here: what VISICALC
+    recalculates -- formats, sums, a conditional, a square root on the ROM,
+    a bar graph, VisiCalc's decimal arithmetic (1/3*3 shows 1.) -- in the
+    order VisiCalc saves its cells, bottom right first."""
+    cells = {
+        'A1': '"A2 FILE C', 'B1': '"MD VISICA', 'C1': '"LC DEMO',
+        'A3': '"ITEM', 'B3': '/FR"JAN', 'C3': '/FR"FEB', 'D3': '/FR"TOTAL',
+        'A4': '"RENT', 'B4': '/F$650', 'C4': '/F$650', 'D4': '/F$@SUM(B4...C4)',
+        'A5': '"FOOD', 'B5': '/F$231.5', 'C5': '/F$198.25', 'D5': '/F$@SUM(B5...C5)',
+        'A6': '"PHONE', 'B6': '/F$32.1', 'C6': '/F$41', 'D6': '/F$+B6+C6',
+        'A8': '"TOTAL', 'B8': '/F$@SUM(B4...B6)', 'C8': '/F$@SUM(C4...C6)', 'D8': '/F$@SUM(D4...D6)',
+        'A9': '"AVERAGE', 'B9': '@AVERAGE(B4...B6)', 'C9': '@AVERAGE(C4...C6)',
+        'A10': '"SHARE %', 'B10': '/FI+B8/D8*100', 'C10': '/FI+C8/D8*100',
+        'A11': '"JAN MORE?', 'B11': '@IF(B8>C8,@TRUE,@FALSE)',
+        'A12': '"ROOT', 'B12': '@SQRT(D8)', 'A13': '"PHONE', 'B13': '/F*+B6/10',
+        'A14': '"1/3*3', 'B14': '1/3*3', 'A15': '"2+3*4', 'B15': '2+3*4',
+    }
+    for c in 'ABCD':
+        cells[c + '2'] = '/-='
+        cells[c + '7'] = '/--'
+    def key(name):
+        return (-int(name[1:]), -ord(name[0]))
+    lines = ['>%s:%s' % (n, cells[n]) for n in sorted(cells, key=key)]
+    lines += ['/W1', '/GOR', '/GRA', '/GC9', '/X>A1:>D8:']    # row by row: no ERROR
+    return hi('\r'.join(lines).encode('ascii') + b'\r')
+
+
 MARKDOWN = ('# A2 File Cmd\n\n'
             'MDVIEW (the ! menu) wraps text and shows **Markdown**:\n\n'
             '- headings\n- lists\n- code:\n\n'
@@ -375,6 +433,34 @@ def mgtk_font():
     return bytes([0, count - 1, 8]) + bytes([7] * count) + planes
 
 
+def text_screen():
+    """A title screen written here, saved as a BSAVE of the text page leaves
+    it (BIN $0400, 1,024 bytes, holes and all): DGRVIEW shows it as TEXT,
+    T as lo-res. Inverse and flashing lines included."""
+    lines = ['', '', '         A2 FILE CMD - DEMO', '', '   A TEXT SCREEN, SAVED FROM $0400',
+             '   AS A 1,024-BYTE BINARY FILE.', '', '   RETURN SHOWS IT AS TEXT;',
+             '   T READS THE SAME BYTES AS LO-RES,', '   A SWITCHES THE CHARACTER SET.']
+    page = bytearray(1024)
+    for r in range(24):
+        line = lines[r] if r < len(lines) else ''
+        at = (r & 7) * 128 + (r >> 3) * 40
+        page[at:at + 40] = bytes(ord(c) | 0x80 for c in line.ljust(40))
+    at = (12 & 7) * 128 + (12 >> 3) * 40 + 3
+    page[at:at + 7] = bytes(ord(c) & 0x3F for c in 'INVERSE')
+    at = (14 & 7) * 128 + (14 >> 3) * 40 + 3
+    page[at:at + 5] = bytes(ord(c) & 0x3F | 0x40 for c in 'FLASH')
+    return bytes(page)
+
+
+def hrcg_font():
+    """A hi-res character set in the DOS Tool Kit's layout (96 glyphs of
+    7 x 8 dots from the space, a byte a row, bit 0 the leftmost dot):
+    STANDARD's $20-$7F, the CiderPress II test font of FONTS.SHAPES, drawn bold here
+    (each dot doubled to its right, kept within the 7 dots)."""
+    std = (ROOT / 'data/CP2/GRAPHICS/STANDARD#070000').read_bytes()[0x20 * 8:0x80 * 8]  # its 128 glyphs start at $00
+    return bytes((b | (b << 1)) & 0x7F for b in std)
+
+
 # -- archives and disks -----------------------------------------------------------
 
 def sample_text():
@@ -404,9 +490,11 @@ def files():
             + paint816_pack(column_stream(main, True)) + PAINT816_TRAILER,
             'LORES.DGR#060000': dgr_single(),
             'DLORES.DGR#060000': dgr_double(),
+            'TITLE.SCREEN#060400': text_screen(),
             'LZ4FH#088066': lz4fh(hgr),
             'APPLE.CLIP#064800': printshop(),
             'PH.SUNSET#064000': newsroom(),
+            'GM.GROUP#064000': gmagic(),
             'ARLEQUIN#F80000': arlequin(aux, main),
             'CARD.FOTO1#062000': foto1,
             'CARD.FOTO2#062000': foto2,
@@ -423,6 +511,7 @@ def files():
         'DOCUMENTS': {
             'EPISTOLE#040000': EPISTOLE,
             'PAPYRUS#040000': papyrus(),
+            'BUDGET.VC#040000': visicalc(),
             'README.MD#040000': MARKDOWN,
             'NOTE.MW#060000': magic_window(),
         },
@@ -440,6 +529,7 @@ def files():
         },
         'FONTS.SHAPES': {
             'MGTK.FONT#070000': mgtk_font(),
+            'BOLD.SET#068100': hrcg_font(),
         },
     }
 

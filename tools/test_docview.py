@@ -17,6 +17,7 @@ import unittest
 from pathlib import Path
 from test_six_plugins import PREFIX, ROOT
 
+BSW = Path.home() / '.cache/a2fc/bsw'   # the study's Bank Street Writer documents
 HARNESS = PREFIX + r"""
 static long host_fail = -1;                 /* a read error from this offset on */
 static int host_err;
@@ -170,6 +171,41 @@ class Docview(unittest.TestCase):
         self.assertIn('Meme le plot beton a Paris.', rows)
         rule = rows.index('Page deux.') - 1
         self.assertEqual(set(rows[rule]), {'-'}, 'a page break shows as a rule')
+
+    def test_bank_street_writer(self):
+        # High-bit text like Papyrus: $83 at a line's start centres it, $89
+        # is a tab (4 columns), and the text ends at the first $00 -- what
+        # follows is the buffer's leftovers, never shown.
+        hi = lambda t: bytes(c | 0x80 for c in t)
+        doc = (b'\x83' + hi(b'Geysers') + b'\x8d' + b'\x89' + hi(b'Geysers are found in four places.') +
+               b'\x8d' + hi(b'The end.') + b'\x8d' + bytes(12) + b'\x1f\x0e\x1f\x0d' + hi(b'LEFTOVER\rJUNK'))
+        pages = self.pages(doc)
+        self.check_clean(pages)
+        rows = [r.rstrip() for pg in pages for r in pg['rows']]
+        self.assertEqual(rows[0].index('Geysers'), (79 - 7) // 2, 'centred')
+        self.assertEqual(rows[1].index('Geysers are'), 4, 'a tab of four columns')
+        self.assertIn('The end.', rows)
+        self.assertEqual(self.words(pages), 'Geysers Geysers are found in four places. The end.'.split())
+        # $00 in the middle of a line ends the document there.
+        pages = self.pages(hi(b'One two') + b'\x00' + hi(b'three\rfour'))
+        self.check_clean(pages)
+        self.assertEqual(self.words(pages), ['One', 'two'])
+        # Real documents, when the study's disks are here: every word before
+        # the first $00, in order, on one page each.
+        found = 0
+        for path in sorted(BSW.glob('*/*#B')) + sorted(BSW.glob('pox368/*#06*')):
+            data = path.read_bytes()
+            end = data.index(0) if 0 in data else len(data)
+            text = bytes(c & 0x7F for c in data[:end])
+            if any(c < 32 and c not in (3, 9, 13) for c in text):
+                continue
+            with self.subTest(file=path.name):
+                pages = self.pages(data)
+                self.check_clean(pages)
+                self.assertEqual(self.words(pages), text.decode('latin1').split())
+                found += 1
+        if BSW.exists():
+            self.assertGreater(found, 0)
 
     def test_every_word_once_across_pages(self):
         words = ['mot%d' % i for i in range(1500)]

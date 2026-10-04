@@ -21,6 +21,7 @@ import pt3_fixture  # noqa: E402
 import test_arlequin  # noqa: E402
 import test_docview  # noqa: E402
 import test_extasie  # noqa: E402
+import test_gmagic  # noqa: E402
 import test_fontview  # noqa: E402
 import test_intbasic  # noqa: E402
 import test_newsroom  # noqa: E402
@@ -95,6 +96,16 @@ class DemoViewers(unittest.TestCase):
             with self.subTest(cpu=cpu):
                 h.good(cpu, FILES['PICTURES']['PH.SUNSET#064000'])
 
+    def test_gmagic(self):
+        h = self.harness(test_gmagic.Gmagic)
+        data = FILES['PICTURES']['GM.GROUP#064000']
+        ref = test_gmagic.ref
+        for cpu in ('6502', '65c02'):
+            with self.subTest(cpu=cpu):
+                r = h.run_gm(cpu, data, 'NND')
+                self.assertEqual(r.pages, [ref.view(data, ref.V82, 0, 0), ref.view(data, ref.V82, 1, 1),
+                                           ref.view(data, ref.V82, 2, 2), ref.view(data, ref.V84, 2, 2)])
+
     def test_arlequin(self):
         h = self.harness(test_arlequin.Arlequin)
         data = FILES['PICTURES']['ARLEQUIN#F80000']
@@ -168,6 +179,21 @@ class DemoViewers(unittest.TestCase):
         h = self.harness(test_fontview.FontView)
         font = FILES['FONTS.SHAPES']['MGTK.FONT#070000']
         h.shows(font, test_fontview.mgtk_page(font))
+
+    def test_hrcg_font(self):
+        """BOLD.SET: a DOS Tool Kit character set (BIN, 768 bytes), shown
+        by FONTVIEW as a hi-res font."""
+        h = self.harness(test_fontview.FontView)
+        font = FILES['FONTS.SHAPES']['BOLD.SET#068100']
+        self.assertEqual(len(font), 768)
+        h.shows(font, test_fontview.raw_page(font), ftype=6)
+
+    def test_text_screen(self):
+        """TITLE.SCREEN: a text page, which DGRVIEW shows as text."""
+        h = self.harness(test_dgrview.DgrView)
+        shown, wide, note, aux, main = h.view(FILES['PICTURES']['TITLE.SCREEN#060400'], aux=0x0400)
+        self.assertEqual((shown, wide, h.state['text']), (1, 0, 1), note)
+        self.assertIn('Text screen, 40 columns', note)
 
     def test_pascal_and_cpm_disks(self):
         vol = pascal_ref.volume(FILES['DISKS']['PASCAL.PO#060000'])

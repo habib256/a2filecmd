@@ -346,12 +346,53 @@ class Session:
         self.p.raw(k if isinstance(k, bytes) else k.encode())
         time.sleep(pause)
 
-    def allow_aux(self):
+    def ram_header(self):
+        """Address in the auxiliary bank of /RAM's volume header (storage
+        type $F, name RAM), or None: ProDOS's /RAM keeps its blocks there."""
+        if getattr(self, '_ram_at', None):
+            return self._ram_at
+        aux = self.p.peek(0x0200, 0xBE00, 'aux')
+        # A directory key block (no previous block; the next one is 3, or 0
+        # for the one-block directory POM2's ProDOS gives /RAM) whose header
+        # has a volume directory's entry length $27 and 13 entries a block.
+        self._ram_at = None
+        for m in re.finditer(rb'\x00\x00[\x00\x03]\x00\xf3RAM', aux):
+            h = m.start() + 4
+            if aux[h + 0x1F:h + 0x21] == b'\x27\x0d':
+                self._ram_at = 0x0200 + h
+                break
+        return self._ram_at
+
+    def ram_files(self):
+        """/RAM's file count, as A2FC's ram_empty reads it; None: no /RAM."""
+        at = self.ram_header()
+        if at is None:
+            return None
+        lo, hi = self.p.peek(at + 0x21, 2, 'aux')
+        return lo | hi << 8
+
+    def ram_occupied(self, files=1):
+        """Make /RAM count `files` files, so that the next use of the
+        auxiliary bank asks first: only the header's count changes, which
+        is what A2FC looks at. Call it BEFORE the key that opens the tool."""
+        at = self.ram_header()
+        assert at is not None, '/RAM not found in the auxiliary bank'
+        self.p.poke(at + 0x21, bytes([files & 255, files >> 8]), 'aux')
+
+    def allow_aux(self, always=False):
         """Explicit consent for a scenario using only disposable RAM data.
 
-        Do not auto-accept this from wait/key: refusal tests must observe the
-        warning before any destructive memory use.
+        Since 2026-10-03 A2FC asks only when /RAM holds files (an empty /RAM
+        loses nothing): with an empty /RAM this checks that the warning does
+        NOT appear. `always`: a tool that asks whatever /RAM holds (FIXIT,
+        REPAIR). Do not auto-accept this from wait/key: refusal tests must
+        observe the warning before any destructive memory use, and make
+        /RAM non-empty first (ram_occupied).
         """
+        if not always and self.ram_files() == 0:
+            self.p.stable()
+            assert not self.has('ALL /RAM files will be LOST'), 'asked although /RAM is empty'
+            return
         self.wait(lambda: self.has('ALL /RAM files will be LOST'), 'AUX loss warning')
         self.key(b'Y')
 

@@ -20,10 +20,31 @@
 ; $2006 just before jumping (interpreters load at $2000). Without a call, the first byte stays
 ; zero and nothing is written. 46 characters at most: a full path
 ; "/VOL/DIR/NAME" almost always fits (see run_selected).
+;
+; The reset vector. A2FC's crt0 points it at its own _exit ($400C), which
+; the loaded program overwrites: Ctrl-Reset in FANTA.SYSTEM, TAKE1.SYSTEM
+; or a binary then ran whatever that program had put there (picture bytes,
+; an I/O buffer). So before the first byte is read, chain_load sets it to
+; $FF59 (the monitor's OLDRST, valid check byte $5A), the value ProDOS
+; itself leaves at boot. It lives in the ROM, which a reset always maps
+; in, so no program loaded in RAM can overwrite it: Ctrl-Reset in a
+; program that keeps it gives the monitor's "*" prompt, memory and the
+; /RAM disk untouched (a cold start, by contrast, would reformat /RAM).
+; A program that wants its own sets it, as ProDOS asks of a system
+; program: BASIC.SYSTEM does, and so do FANTA.SYSTEM and TAKE1.SYSTEM,
+; which come back to A2FC.
+;
+;   setsoftev: the reset vector to X (low) / A (high), its check byte
+;   computed (A changes); crt0.s calls it too.
 
         .export _chain_load, _chain_addr, _chain_size, _chain_command
+        .export setsoftev
         .import donelib
         .importzp ptr1
+
+SOFTEV  = $03F2                 ; the reset vector, then its check byte
+PWREDUP = $03F4
+OLDRST  = $FF59
 
         .segment "BSS"
 _chain_addr: .res 2
@@ -109,6 +130,9 @@ _chain_load:
         ; third F/ESC round trip, a crash into the monitor. ProDOS only
         ; has four of them.
         jsr donelib
+        ldx #<OLDRST            ; Ctrl-Reset: no longer into A2FC's code
+        lda #>OLDRST
+        jsr setsoftev
         pla
         sta ptr1+1
         pla
@@ -136,6 +160,13 @@ _chain_load:
         bne :-
 :       sty path
         jmp stub
+
+setsoftev:
+        stx SOFTEV
+        sta SOFTEV+1
+        eor #$A5
+        sta PWREDUP
+        rts
 
 ; Stores the name in the SOURCE thunk (RODATA, so in RAM and writable):
 ; the next chain_load carries it along with the rest of the thunk.

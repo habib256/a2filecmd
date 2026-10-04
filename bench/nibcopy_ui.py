@@ -26,6 +26,7 @@ def main(single=False):
         hd=scratch(tmp)
         with Pom2(hd,floppy=boot,floppy2=companion,port=6897) as p:
             s=Session(p);s.boot()
+            s.ram_occupied()
             before=p.peek(0x1000,0xB000,'aux')
             menu_run(s,p,'NIBCOPY',allow_aux=False)
             s.wait(lambda:s.has('ALL /RAM files will be LOST'),'AUX warning')

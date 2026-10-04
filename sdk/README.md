@@ -67,10 +67,10 @@ above code and BSS; keep those limits in sync with the assembly tables.
 From release 1.0, what an overlay compiled once depends on does not change:
 `struct Entry` (29 bytes), `struct Panel`, `struct DirEntry` and the overlay
 header `struct Overlay`, field for field; the first 54 services of
-`struct A2fcApi` (API version 5), in order; `PLUGIN_MAGIC`,
+`struct A2fcApi` (API version 5), then `aux_consent` (version 6), in order; `PLUGIN_MAGIC`,
 `MEDIA_PLUGIN_MAGIC`, the `OVERLAY_*` flags and windows, `MAX_ENTRIES`,
 `PATH_LEN`, `NAME_LEN`, `ROWS`, the `FS_*` values and `ENTRY_SNAPSHOT` at
-`$3000`. A new service is appended after `music_info` and raises
+`$3000`. A new service is appended after `aux_consent` and raises
 `A2FC_API_VERSION`; an overlay that needs it checks `api->version` first.
 The settings file `A2FILE.CFG` keeps its text layout as well.
 `tools/test_abi_freeze.py`, part of `make test`, fails on any other change.
@@ -105,3 +105,20 @@ cores refuse them instead of calling absent API fields. Ordinary `$A2FC`
 overlays remain supported and earlier API fields retain their offsets.
 The core coordinates the built-in music and specialized image viewers by
 name; it probes files read-only and preserves AUX consent before each load.
+
+### API 6: conditional AUX consent
+
+`aux_consent()` is the question `OVERLAY_AUX` asks before an overlay runs,
+for an overlay that only sometimes needs the auxiliary bank (PT3: GROUiK's
+engine when the module fits, pt3_lib otherwise). It answers 1 without a
+question when /RAM is on line and holds no file, or when the user already
+accepted while leafing through the same media folder; otherwise it asks
+"ALL /RAM files will be LOST. Continue?". Call it before the first AUX
+write; on 0, write nothing there and take your main-memory path. It
+overwrites `copy_buf` (it reads /RAM's directory block there): keep nothing
+you still need in it across the call. After any AUX write, call
+`ram_format()` and say so in `api->note` -- and know that `ram_format()`
+itself overwrites MAIN `$2000-$21FF` (the /RAM driver's FORMAT writes a
+block into the buffer it is given): no code or data you still need may lie
+there, or save it around the call (`src/plugins/ppt3/driver.s` does). Check
+`api->version >= 6` first.

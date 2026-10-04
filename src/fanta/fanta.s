@@ -8,6 +8,12 @@
 ; Cmd: A2FILE.SYSTEM is loaded again from the prefix, the way src/chain.s
 ; does it; QUIT to ProDOS only if that fails.
 ;
+; Ctrl-Reset returns too: once the bitmap is saved, the reset vector is
+; set to the way back. Until then it is the monitor's OLDRST ($FF59, in
+; ROM), set first thing: A2 File Cmd's chain thunk leaves that one, but the
+; way on (FANTA.SYSTEM loaded again) leaves the previous instance's `back`,
+; whose bitmap copy the start zeroes.
+;
 ; Keys while playing: Escape returns, Space pauses and resumes, Tab switches
 ; between the original speed (the default: each frame held until the
 ; original player's time for it has passed, fv_timing) and the accelerated
@@ -57,6 +63,9 @@ HISCR   = $C055
 HIRES   = $C057
 SETAN3  = $C05F
 ROMIN   = $C082
+SOFTEV  = $03F2                 ; the reset vector, then its check byte
+PWREDUP = $03F4
+OLDRST  = $FF59                 ; the monitor's reset entry, in ROM
 PATHMAX = 64
 
         .zeropage
@@ -79,6 +88,12 @@ path0:  .byte   0               ; the launcher stores the path here
 start:  cld
         ldx     #$FF
         txs
+        lda     #<OLDRST        ; Ctrl-Reset: not into the previous
+        sta     SOFTEV          ; instance's code (the way on) before
+        lda     #>OLDRST        ; savebm is filled again
+        sta     SOFTEV+1
+        eor     #$A5
+        sta     PWREDUP
         lda     #<__BSS_RUN__   ; variables to zero
         sta     dst
         lda     #>__BSS_RUN__
@@ -199,6 +214,9 @@ main:   ldx     #23             ; the bitmap as it is, given back on the
         sta     savebm,x
         dex
         bpl     :-
+        ldx     #<back          ; Ctrl-Reset: back to A2 File Cmd, the
+        lda     #>back          ; bitmap given back (A2FC's $400C is in
+        jsr     setsoftev       ; hi-res page 2 here)
         jsr     fload           ; the command, the movie, the backdrop
         bcc     :+              ; (fload.s, where the file was loaded)
         jmp     refuse
@@ -458,7 +476,18 @@ leave:  ldx     #$FF
         sta     t_open+1
         lda     #>t_fanta
         sta     t_open+2
-:       jmp     $0300
+:       ldx     #<OLDRST        ; the thunk's I/O buffer covers $BB00-$BEFF,
+        lda     #>OLDRST        ; thunk_src among it: a reset from now on
+        jsr     setsoftev       ; goes to the monitor, not to back
+        jmp     $0300
+
+; The reset vector to X (low) / A (high), with its check byte.
+setsoftev:
+        stx     SOFTEV
+        sta     SOFTEV+1
+        eor     #$A5
+        sta     PWREDUP
+        rts
 
 ; The text screen, 40 columns, cleared, the title on row 8.
 textscr:

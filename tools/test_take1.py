@@ -22,7 +22,16 @@
 Both processors (6502 and 65C02) for the engine and the loader. cc65 master
 (CC65_HEAD, default ~/opt/cc65-head) is needed; without it the tests skip.
 
-    test_take1.py
+    test_take1.py              the tests
+    test_take1.py --measure    the original speed: the player's frame time (the
+                               engine's own, plus the hold it computes) against
+                               the spec's model of the original's
+                               (take1_ref.realistic); the engine alone too
+    test_take1.py --micro      cycles a row of short codes (line art) and a
+                               snapshot's, against the spec's model
+    test_take1.py --calibrate [--write]
+                               fits OWN_BASE and OWN_* (engine.s) on the
+                               engine's own time per frame
 """
 import os
 import random
@@ -44,7 +53,8 @@ FILL_LOW, FILL_PAGES, FILL_SCENE = 0x5A, 0xEE, 0xA5
 
 GLUE = r'''
         .import t1_play, t1_name, t1_err, t1_front
-        .import t1_dest, t1_max, t1_len
+        .import t1_dest, t1_max, t1_len, t1_hold
+        .export _t1_hold := t1_hold
         .export _t1_name := t1_name
         .export _t1_err := t1_err, _t1_front := t1_front, _t1_dest := t1_dest
         .export _t1_max := t1_max, _t1_len := t1_len
@@ -92,7 +102,7 @@ HARNESS = r'''
 #include <string.h>
 #include <stdlib.h>
 extern unsigned char t1_name[24];
-extern unsigned char t1_err, t1_front;
+extern unsigned char t1_err, t1_front, t1_hold[4];
 extern unsigned char* t1_dest;
 extern unsigned int t1_max, t1_len;
 extern unsigned char ha, hx;
@@ -104,10 +114,21 @@ static void out(const void* p, unsigned n)
 {
     if (write(1, p, n) != (int)n) exit(20);
 }
+#ifdef MEASURE
+#include <sim65.h>
+static unsigned long e, x;                      /* cycle stamps, not pages */
+#define ENTER() (peripherals.counter.latch = 0, e = peripherals.counter.value32[0])
+#define LEAVE() do { out(&e, 4); peripherals.counter.latch = 0; \
+                     x = peripherals.counter.value32[0]; out(&x, 4); } while (0)
+#define page(hi)
+#else
+#define ENTER()
+#define LEAVE()
 static void page(unsigned char hi)
 {
     out((void*)(hi << 8), 0x2000);
 }
+#endif
 static const char hexd[] = "0123456789ABCDEF";
 static unsigned char rd(char kind)
 {
@@ -152,37 +173,48 @@ unsigned char h_mload(void)
 }
 void h_show(void)
 {
+    ENTER();
     rec[0] = 'S';
     rec[1] = ha;
     out(rec, 2);
     page(ha);
+    LEAVE();
 }
 void h_wait(void)
 {
+    ENTER();
     rec[0] = 'W';
     rec[1] = ha;
     rec[2] = hx;
     out(rec, 3);
+    out(t1_hold, 4);
+    LEAVE();
 }
 void h_fc(void)
 {
+    ENTER();
     rec[0] = 'F';
     rec[1] = ha;
     rec[2] = hx;
     out(rec, 3);
+    LEAVE();
 }
 void h_delay(void)
 {
+    ENTER();
     rec[0] = 'D';
     rec[1] = ha;
     out(rec, 2);
     page(t1_front);
+    LEAVE();
 }
 void h_tick(void)
 {
+    ENTER();
     rec[0] = 'K';
     out(rec, 1);
     page(t1_front);
+    LEAVE();
 }
 int main(void)
 {
@@ -208,15 +240,23 @@ def host_name(dosname):
 class Sim:
     """The engine harness built for one processor."""
 
-    def __init__(self, cpu, workdir):
+    def __init__(self, cpu, workdir, measure=False):
         self.dir = workdir
+        self.measure = measure
+        self.psize = 8 if measure else 0x2000           # (measure: 2 cycle stamps)
         env = dict(os.environ, CC65_HOME=str(HEAD / 'share/cc65'))
         target = 'sim65c02' if cpu == '65c02' else 'sim6502'
         cfg = (HEAD / f'share/cc65/cfg/{target}.cfg').read_text()
         cfg, k = re.subn(r'start = \$0200, size = \$FFC0 - \$0200 - __STACKSIZE__',
                          'start = $B000, size = $FFC0 - $B000 - __STACKSIZE__', cfg)
         assert k == 1, 'sim65 config changed'
-        cfg, k = re.subn(r'(\n\s*RODATA:[^\n]*\n)', r'\1    HICODE:   load = MAIN,   type = ro;\n', cfg)
+        cfg, k = re.subn(r'(\n\s*RODATA:[^\n]*\n)', r'\1    HICODE:   load = MAIN,   type = ro;\n'
+                         r'    LOWC:     load = MAIN,   type = ro;\n'
+                         r'    TXC3:     load = MAIN,   type = ro,  define = yes;\n'
+                         r'    TXC5:     load = MAIN,   type = ro;\n    TXC6:     load = MAIN,   type = ro;\n'
+                         r'    TXC7:     load = MAIN,   type = ro;\n'
+                         r'    TXT0:     load = MAIN,   type = bss;\n    TXT1:     load = MAIN,   type = bss;\n'
+                         r'    TXT2:     load = MAIN,   type = bss;\n    TXT3:     load = MAIN,   type = bss;\n', cfg)
         assert k == 1, 'sim65 config: no RODATA line'
         (workdir / f'{cpu}.cfg').write_text(cfg)
         (workdir / 'harness.c').write_text(HARNESS)
@@ -224,7 +264,7 @@ class Sim:
         self.exe = workdir / f'harness-{cpu}'
         subprocess.run([str(HEAD / 'bin/cl65'), '-t', target, '-C', str(workdir / f'{cpu}.cfg'),
                         '-O', '-Wl', '-D,__STACKSIZE__=0x0400', '-Ln', str(workdir / 'labels.lbl'),
-                        '-o', str(self.exe),
+                        '-o', str(self.exe)] + (['-DMEASURE'] if measure else []) + [
                         str(workdir / 'harness.c'), str(workdir / 'glue.s'),
                         str(ROOT / 'src/take1/engine.s')],
                        check=True, cwd=workdir, env=env)
@@ -247,20 +287,28 @@ class Sim:
         while True:
             k = o[pos]
             if k == ord('S'):
-                events.append(('show', 1 if o[pos + 1] == 0x20 else 2, o[pos + 2:pos + 2 + 0x2000]))
-                pos += 2 + 0x2000
+                events.append(('show', 1 if o[pos + 1] == 0x20 else 2, o[pos + 2:pos + 2 + self.psize]))
+                pos += 2 + self.psize
             elif k == ord('W'):
-                events.append(('wait', o[pos + 1] | o[pos + 2] << 8))
-                pos += 3
+                ev = ('wait', o[pos + 1] | o[pos + 2] << 8, struct.unpack_from('<I', o, pos + 3)[0])
+                pos += 7
+                if self.measure:
+                    ev += (o[pos:pos + 8],)
+                    pos += 8
+                events.append(ev)
             elif k == ord('F'):
-                events.append(('fc', o[pos + 1], o[pos + 2]))
+                ev = ('fc', o[pos + 1], o[pos + 2])
                 pos += 3
+                if self.measure:
+                    ev += (o[pos:pos + 8],)
+                    pos += 8
+                events.append(ev)
             elif k == ord('D'):
-                events.append(('delay', o[pos + 1], o[pos + 2:pos + 2 + 0x2000]))
-                pos += 2 + 0x2000
+                events.append(('delay', o[pos + 1], o[pos + 2:pos + 2 + self.psize]))
+                pos += 2 + self.psize
             elif k == ord('K'):
-                events.append(('tick', o[pos + 1:pos + 1 + 0x2000]))
-                pos += 1 + 0x2000
+                events.append(('tick', o[pos + 1:pos + 1 + self.psize]))
+                pos += 1 + self.psize
             elif k in (ord('L'), ord('M')):
                 name = o[pos + 2:pos + 2 + o[pos + 1]] if k == ord('L') else None
                 dest, mx = struct.unpack_from('<HH', o, pos + 25)
@@ -389,16 +437,39 @@ class Take1(unittest.TestCase):
                 self.compare(cpu, mv, files, '%s wide seed %d' % (cpu, seed))
         print('PASS take1: long runs and extensions match the reference, both processors')
 
+    def test_short_codes(self):
+        """The short-code rows of --micro (the quick fill, skip and literal
+        paths, split at every bit phase) at every phase, across both edges,
+        with and without wrap, both processors."""
+        rows = [r for n, r in micro_rows().items() if n != 'end only']
+        snaps = [bytes([12, 250, 0, 0, 0, 0, 0]) + r * 12 for r in rows]
+        # x16: every phase on the screen, off the left, against the right
+        places = [(280 + k, 160 + 9 * k, False) for k in range(7)]
+        places += [(262, 200, False), (520, 210, False), (275, 220, True), (540, 230, True)]
+        frames = []
+        for i in range(len(snaps)):
+            frames.append(b''.join(ref.obj(1 + i, x, y, wrap=w, end=(j == len(places) - 1))
+                                   for j, (x, y, w) in enumerate(places)))
+        files = {b'AC.U': ref.make_actor(snaps),
+                 b'SN.U': ref.make_scene(1, [(len(snaps), 'U')], frames)}
+        mv = ref.make_movie([('U', '< BLACK >', 1, 1)])
+        for cpu in ('6502', '65c02'):
+            res, refused = self.compare(cpu, mv, files, '%s short codes' % cpu)
+            self.assertIsNone(refused)
+            self.assertEqual(sum(1 for e in res['events'] if e[0] == 'show'), len(frames))
+        print('PASS take1: short fills, skips and literals at every bit phase, across both edges, '
+              'with and without wrap, match the reference, both processors')
+
     def test_crafted(self):
-        kinds = ('fades', 'seam', 'wide', 'many', 'text', 'plant')
+        kinds = ('fades', 'seam', 'wide', 'many', 'text', 'plant', 'bit6')
         for cpu in ('6502', '65c02'):
             for kind in kinds:
                 for seed in range(3 if cpu == '6502' else 1):
                     mv, files = ref.crafted(kind, seed)
                     res, refused = self.compare(cpu, mv, files, '%s %s %d' % (cpu, kind, seed))
                     self.assertIsNone(refused, (kind, seed))
-        print('PASS take1: every fade, wrap seams, wide snapshots, full lists, text, plants and '
-              'BLACK/UNCHANGED match the reference, both processors')
+        print('PASS take1: every fade, wrap seams, skips closing on bit 6, wide snapshots, full lists, '
+              'text, plants and BLACK/UNCHANGED match the reference, both processors')
 
     def refusals(self):
         """(label, movie, files, expected code, expected name)."""
@@ -1078,7 +1149,7 @@ class Loader(unittest.TestCase):
 # -- TAKE1.SYSTEM itself, end to end -------------------------------------------
 
 SGLUE = r"""
-        .export _go, _mli_stub_start, _mli_stub_end
+        .export _go, _mli_stub_start, _mli_stub_end, _do_reset
         .import _fake_mli, pusha
         .importzp ptr1
         .bss
@@ -1087,6 +1158,8 @@ mpl:    .res    1
 mph:    .res    1
         .code
 _go:    jmp     $2000                   ; the interpreter's start
+_do_reset:
+        jmp     ($03F2)                 ; Ctrl-Reset, a valid PWREDUP: the ROM's jump
 ; The MLI stub, copied to $BF00: jsr $BF00 / .byte cmd / .word params.
 _mli_stub_start:
         .org    $BF00
@@ -1131,6 +1204,9 @@ SHARNESS = r"""
 #include <stdlib.h>
 extern unsigned char mli_stub_start[], mli_stub_end[];
 void go(void);
+void do_reset(void);
+static unsigned char reset_mode, thunk_mode;
+static void dump(void);
 static char host[80], ohost[80];
 static int fd = -1;
 static long fsize;
@@ -1158,11 +1234,21 @@ unsigned char __fastcall__ fake_mli(unsigned char cmd, unsigned char* p)
     unsigned int req, i;
     unsigned char* buf;
     long mark;
-    if (++ncalls == escape_at) *(unsigned char*)0xC000 = 0x9B;     /* Escape */
+    if (++ncalls == escape_at) {
+        if (!reset_mode) *(unsigned char*)0xC000 = 0x9B;           /* Escape */
+        else {                                  /* Ctrl-Reset, in the middle of a call */
+            if (fd >= 0) close(fd);
+            fd = -1;
+            if (*(unsigned char*)0x3F4 != (*(unsigned char*)0x3F3 ^ 0xA5)) { out("B", 1); exit(0); }
+            do_reset();
+        }
+    }
     switch (cmd) {
     case 0xC8:                                  /* OPEN */
         buf = *(unsigned char**)(p + 1);
         logcall(cmd, (unsigned int)buf, *(unsigned int*)(p + 3));
+        if (thunk_mode && *(unsigned int*)(p + 3) == 0xBB00)
+            memset((void*)0xBB00, 0x02, 0x400);  /* ProDOS fills its I/O buffer */
         ++opens;
         if (opens == 3) memcpy(marked, (void*)0xBF58, 24);
         host[0] = 'f';
@@ -1182,6 +1268,17 @@ unsigned char __fastcall__ fake_mli(unsigned char cmd, unsigned char* p)
         buf = *(unsigned char**)(p + 2);
         req = p[4] | (p[5] << 8);
         logcall(cmd, (unsigned int)buf, req);
+        if (thunk_mode && (unsigned int)buf == 0x2000 && req == 0x9B00) {
+            /* Ctrl-Reset while the thunk reads A2FILE.SYSTEM */
+            thunk_mode = 0;
+            if (fd >= 0) close(fd);
+            fd = -1;
+            if (*(unsigned char*)0x3F4 == (*(unsigned char*)0x3F3 ^ 0xA5)) {
+                if (*(unsigned int*)0x3F2 == 0xFF59) { logcall(0x59, 0xFF59, 0); dump(); }
+                do_reset();
+            }
+            out("B", 1); exit(0);
+        }
         if (fd < 0 || p[1] != 1) return 0x43;
         n = read(fd, buf, req);
         if (n < 0) return 0x27;
@@ -1216,6 +1313,14 @@ unsigned char __fastcall__ fake_mli(unsigned char cmd, unsigned char* p)
         return 0;
     case 0x65:                                  /* QUIT: the end */
         logcall(cmd, 0, 0);
+        dump();
+    }
+    logcall(cmd, 0, 0);
+    return 0x01;
+}
+static void dump(void)
+{
+    {
         out("Q", 1);
         out(&nlog, 2);
         out(log, nlog);
@@ -1226,8 +1331,6 @@ unsigned char __fastcall__ fake_mli(unsigned char cmd, unsigned char* p)
         out((void*)0x0400, 0x400);
         exit(0);
     }
-    logcall(cmd, 0, 0);
-    return 0x01;
 }
 int main(int, char** argv)
 {
@@ -1237,6 +1340,11 @@ int main(int, char** argv)
     memcpy((void*)0xBF58, bitmap0, 24);
     memset((void*)0xC000, 0, 0x100);
     if (argv[2][0] == 'K') *(unsigned char*)0xC000 = 0x8D;      /* a key waiting */
+    reset_mode = argv[2][0] == 'R';
+    thunk_mode = argv[2][0] == 'T';
+    /* the reset vector A2 File Cmd leaves (its crt0's _exit, $400C), valid */
+    *(unsigned int*)0x3F2 = 0x400C;
+    *(unsigned char*)0x3F4 = 0x40 ^ 0xA5;
     escape_at = atoi(argv[3]);
     f = open("TAKE1.SYSTEM.SYS", O_RDONLY);
     if (f < 0) return 10;
@@ -1276,15 +1384,16 @@ class SysSim:
                         str(workdir / 'sharness.c'), str(workdir / 'sglue.s')],
                        check=True, cwd=workdir, env=env)
 
-    def run(self, command, files, escape_at, key=False):
+    def run(self, command, files, escape_at, key=False, reset=False, thunk=False):
         for old in self.dir.glob('f_*'):
             old.unlink()
         for path, data in files.items():
             name = path if path == 'unit.po' else 'f' + path.replace('/', '_')
             (self.dir / name).write_bytes(data)
         p = subprocess.run([str(HEAD / 'bin/sim65'), '-x', '4000000000', str(self.exe), command,
-                            'K' if key else '-', str(escape_at)], cwd=self.dir, capture_output=True,
-                           timeout=1200)
+                            'T' if thunk else 'R' if reset else 'K' if key else '-', str(escape_at)],
+                           cwd=self.dir,
+                           capture_output=True, timeout=1200)
         o = p.stdout
         if p.returncode != 0 or not o.startswith(b'Q'):
             raise AssertionError('sim65 exit %d: %r %s' % (p.returncode, o[:40], p.stderr[-300:]))
@@ -1350,7 +1459,7 @@ class System(unittest.TestCase):
         self.common(res, 'files')
         self.assertGreaterEqual(res['opens'], 24)          # played once, then again
         marked = res['marked']
-        for page in list(range(0x02, 0x04)) + list(range(0x08, 0x20)) + list(range(0x80, 0xBF)):
+        for page in list(range(0x02, 0x08)) + list(range(0x08, 0x20)) + list(range(0x80, 0xBF)):
             self.assertTrue(marked[page >> 3] & (0x80 >> (page & 7)), 'page $%02X marked' % page)
         for page in range(0x20, 0x80):
             self.assertFalse(marked[page >> 3] & (0x80 >> (page & 7)), 'page $%02X free' % page)
@@ -1367,6 +1476,41 @@ class System(unittest.TestCase):
         self.assertGreater(sum(1 for c, _, _ in res['calls'] if c == 0x80), 20)
         print('PASS take1: TAKE1.SYSTEM plays from files, an image and a disk, read-only, Escape gives '
               'the bitmap back and loads A2FILE.SYSTEM')
+
+    def test_reset_returns(self):
+        """Ctrl-Reset while a movie plays, in the middle of a read: the
+        program's reset vector brings A2FILE.SYSTEM back, bitmap given back.
+        Before 0.9.5 the vector was still A2 File Cmd's ($400C, its crt0's
+        _exit), in hi-res page 2 which the player fills with pictures and
+        its I/O buffer: a reset ran those bytes as code (here sim65 left
+        without the QUIT, or after a 4-billion-cycle hang)."""
+        mv, files = ref.crafted('plant', 0)
+        D = '/HD/T1/'
+        f = {D + ref.prodos_name(k).decode(): v for k, v in files.items()}
+        f[D + 'MV.PLANT'] = mv
+        allf = dict(files)
+        allf[b'MV.PLANT'] = mv
+        dsk, where = ref.make_dsk(allf)
+        ttss = ''.join(format(v, '02X') for v in where[b'MV.PLANT'])
+        for label, cmd, fl, at in (('files', D + 'MV.PLANT', f, 5), ('files', D + 'MV.PLANT', f, 60),
+                                   ('image', '/HD/T1/MOVIES.DSK,' + ttss, {'/HD/T1/MOVIES.DSK': dsk}, 90),
+                                   ('unit', chr(37) + '60,' + ttss, {'unit.po': to_po(dsk)}, 40)):
+            res = self.sim.run(cmd, fl, escape_at=at, reset=True)
+            self.common(res, 'reset: %s at call %d' % (label, at))
+        # Escape, then Ctrl-Reset while the thunk reads A2FILE.SYSTEM: its
+        # I/O buffer ($BB00-$BEFF) has covered thunk_src, so the vector must
+        # be the monitor's OLDRST, not back -- which copied that buffer to
+        # page 3 and ran it (before: sim65 died on its $02 bytes).
+        for label, cmd, fl, at in (('files', D + 'MV.PLANT', f, 60),
+                                   ('image', '/HD/T1/MOVIES.DSK,' + ttss, {'/HD/T1/MOVIES.DSK': dsk}, 90)):
+            res = self.sim.run(cmd, dict(fl, **{'A2FILE.SYSTEM': bytes(300)}), escape_at=at, thunk=True)
+            w = 'reset in the thunk: ' + label
+            self.assertEqual(res['calls'][-1], (0x59, 0xFF59, 0), w + ': vector at OLDRST')
+            self.assertEqual(res['calls'][-3][0], 0xC8, w)
+            self.assertEqual(res['calls'][-3][2], 0xBB00, w + ': the thunk\'s OPEN')
+            self.assertEqual(res['bitmap'], bytes([0xCF] + [0] * 22 + [0x01]), w + ': bitmap given back')
+        print('PASS take1: Ctrl-Reset while a movie plays gives the bitmap back and loads A2FILE.SYSTEM; '
+              'from the return thunk on it goes to OLDRST')
 
     def test_refused_message(self):
         mv, files = ref.crafted('plant', 0)
@@ -1395,8 +1539,9 @@ class System(unittest.TestCase):
 # -- the driver's timing --------------------------------------------------------
 
 TGLUE = r"""
-        .import t1_wait, t1_delay, t1_sound, t1_mode
+        .import t1_wait, t1_delay, t1_sound, t1_mode, t1_hold
         .export _call_wait, _call_delay, _call_sound, _t1_mode := t1_mode
+        .export _t1_hold := t1_hold
 _call_wait:                             ; (A/X = n)
         jmp     t1_wait
 _call_delay:
@@ -1411,6 +1556,7 @@ THARNESS = r"""
 #include <stdlib.h>
 #include <sim65.h>
 extern unsigned char t1_mode;
+extern unsigned long t1_hold;
 void __fastcall__ call_wait(unsigned n);
 void __fastcall__ call_delay(unsigned char a);
 void __fastcall__ call_sound(unsigned char t);
@@ -1431,8 +1577,9 @@ int main(int, char** argv)
     t1_mode = 1;
     c0 = cyc(); c1 = cyc(); out(c1 - c0);
     for (i = 0; i < 6; ++i) {
-        static const unsigned ns[6] = {0, 1, 4, 5, 100, 1020};
-        c0 = cyc(); call_wait(ns[i]); c1 = cyc(); out(c1 - c0);
+        static const unsigned long hs[6] = {0, 256, 1024, 1407, 25600, 256000};
+        t1_hold = hs[i];
+        c0 = cyc(); call_wait(0); c1 = cyc(); out(c1 - c0);
     }
     for (i = 0; i < 4; ++i) {
         static const unsigned char as[4] = {1, 30, 141, 0};
@@ -1476,6 +1623,15 @@ SEGMENTS {
     BSS:      load = MAIN,   type = bss, define = yes;
     HIBSS:    load = MAIN,   type = bss, define = yes;
     LOADER:   load = MAIN, run = LRUN, type = rw, define = yes;
+    LOWC:     load = MAIN,   type = ro,  define = yes;
+    TXC3:     load = MAIN,   type = ro,  define = yes;
+    TXC5:     load = MAIN,   type = ro,  define = yes;
+    TXC6:     load = MAIN,   type = ro,  define = yes;
+    TXC7:     load = MAIN,   type = ro,  define = yes;
+    TXT0:     load = MAIN,   type = bss;
+    TXT1:     load = MAIN,   type = bss;
+    TXT2:     load = MAIN,   type = bss;
+    TXT3:     load = MAIN,   type = bss;
 }
 FEATURES {
     CONDES: type = constructor, label = __CONSTRUCTOR_TABLE__, count = __CONSTRUCTOR_COUNT__,
@@ -1489,8 +1645,8 @@ FEATURES {
 
 
 class Timing(unittest.TestCase):
-    """The original speed: the frame wait (350 cycles a step, 18 more after
-    every fourth), D(a) and the sounds' steps, counted by sim65."""
+    """The original speed: the hold (t1_hold cycles, in units of 256), D(a)
+    and the sounds' steps, counted by sim65."""
 
     def test_timing(self):
         if not (HEAD / 'bin/sim65').exists():
@@ -1513,11 +1669,10 @@ class Timing(unittest.TestCase):
         over, waits, delays, sounds, fast = v[0], v[1:7], v[7:11], v[11:29], v[29:]
         waits = [x - over for x in waits]
         base = waits[0]                                 # the call and the checks
-        for n, got in zip((1, 4, 5, 100, 1020), waits[1:]):
-            extra = got - base - 350 * n                # 18 every fourth step (a running
-            fourth = extra // 18                        # count), 4 when wn's low byte is 0
-            self.assertIn(fourth, (n // 4, (n + 3) // 4), (n, extra))
-            self.assertLessEqual(abs(extra - 18 * fourth), 4 * (n // 256), (n, extra))
+        for h, got in zip((256, 1024, 1407, 25600, 256000), waits[1:]):
+            want = (h + 128) // 256 * 256           # units of 256 cycles, rounded
+            # (4 when wn's low byte is 0; 2: the harness's code may cross a page)
+            self.assertLessEqual(abs(got - base - want), 2 + 4 * (h // 65536), (h, got - base, want))
         def wait(a):
             return (5 * a * a + 27 * a + 26) // 2
         for a, got in zip((30, 141, 256), delays[1:]):          # from D(1): the call
@@ -1533,9 +1688,192 @@ class Timing(unittest.TestCase):
                                  (t, sounds[t] - over, want))
         self.assertLess(fast[0] - over, 400)                # accelerated: no wait
         self.assertLess(fast[1] - over, 400)
-        print('PASS take1: the frame wait is 350 cycles a step (+18 every fourth), D(a) the '
+        print('PASS take1: the hold is waited in units of 256 cycles, D(a) the '
               'monitor\'s formula, tones about 12 p + 9 cycles a toggle')
 
 
+def intervals(sim, movies):
+    """The frames of the movies, timed under sim65 (a Sim built with
+    measure=True): for each frame shown, from the one before, the engine's
+    own cycles (the hooks' time taken off: the cycle stamps at their entry
+    and exit), its work (take1_ref's counters, with n, the wait owed) and
+    the hold the engine computed before showing it. Frames after a scene's
+    loading, a fade or a $FC element are left out."""
+    out = []
+    for mv, files in movies:
+        res = sim.run(mv, files)
+        player = ref.Player(mv, ref.dict_loader(files))
+        list(player.play())
+        last = None             # the last show's exit stamp
+        hooks = 0               # the hooks' time since
+        hold = None
+        clean = False
+        k = -1
+        for e in res['events']:
+            if e[0] == 'show':
+                st = struct.unpack('<II', e[2])
+                k += 1
+                w = player.work_log[k]
+                if last is not None and clean and not w['first']:
+                    out.append({'work': w, 'own': st[0] - last - hooks, 'hold': hold})
+                last, hooks, clean = st[1], 0, True
+            elif e[0] in ('wait', 'fc'):
+                st = struct.unpack('<II', e[-1])
+                hooks += st[1] - st[0]
+                if e[0] == 'wait':
+                    hold = e[2]
+                else:
+                    clean = False
+            elif e[0] in ('delay', 'tick'):
+                clean = False
+        assert k + 1 == len(player.work_log)
+    return out
+
+
+def calibrate(write=False):
+    """Fits OWN_BASE and OWN_* (engine.s) on the engine's own time per frame:
+    least squares, relative, on movies shaped like real ones and on the
+    synthetic set. With --write, engine.s is updated."""
+    import statistics
+    from test_fantavision import lstsq
+    with tempfile.TemporaryDirectory(prefix='a2fc-take1c-') as tmp:
+        sim = Sim('6502', Path(tmp), measure=True)
+        movies = [ref.realistic(seed) for seed in range(20, 60)]
+        movies += [ref.synthetic(seed) for seed in range(40)]
+        data = intervals(sim, movies)
+    names = list(ref.COUNTERS)
+    rows = [[d['work'][k] for k in names] + [1] for d in data]
+    ys = [d['own'] for d in data]
+    coef = lstsq(rows, ys)
+    own = {k: round(c) for k, c in zip(names, coef[:-1])}
+    base = max(0, round(coef[-1])) + DRIVER
+    errs = [(base - DRIVER + sum(own[k] * d['work'][k] for k in names)) / d['own'] - 1 for d in data]
+    q = statistics.quantiles(errs, n=10)
+    print('take1 --calibrate (%d frames): OWN_BASE %d (+%d for the driver), %s; '
+          'relative error median %+.3f, p10 %+.3f, p90 %+.3f'
+          % (len(data), base, DRIVER, ', '.join('OWN_%s %d' % (k.upper(), own[k]) for k in names),
+             statistics.median(errs), q[0], q[-1]))
+    if write:
+        path = ROOT / 'src/take1/engine.s'
+        text = path.read_text()
+        text, nsub = re.subn(r'^OWN_BASE(\s*)=\s*-?\d+', r'OWN_BASE\g<1>= %d' % base, text, flags=re.M)
+        assert nsub == 1
+        for k in names:
+            text, nsub = re.subn(r'^OWN_%s(\s*)=\s*-?\d+' % k.upper(),
+                                 r'OWN_%s\g<1>= %d' % (k.upper(), own[k]), text, flags=re.M)
+            assert nsub == 1, k
+        path.write_text(text)
+        print('engine.s updated')
+
+
+def measure(seeds=range(8), cpu='6502'):
+    """The original speed, on movies shaped like real ones
+    (take1_ref.realistic): per frame, the player's total time -- the engine's
+    own cycles plus the hold it computed, waited by take1.s in units of 256
+    cycles -- against the target, the spec's model of the original's time
+    (model_cycles of the work, plus the exact frame wait owed). Also the
+    engine's own time against the model alone."""
+    import statistics
+    with tempfile.TemporaryDirectory(prefix='a2fc-take1m-') as tmp:
+        sim = Sim(cpu, Path(tmp), measure=True)
+        data = intervals(sim, [ref.realistic(seed) for seed in seeds])
+    eng, tot, owns, models = [], [], [], []
+    for d in data:
+        m = ref.model_cycles(d['work'])
+        target = m + ref.wait_cycles(d['work']['n'])
+        held = ((d['hold'] + 128) >> 8) * 256 + WAIT_OVERHEAD
+        eng.append(d['own'] / m)
+        tot.append((d['own'] + held) / target)
+        owns.append(d['own'])
+        models.append(m)
+    qe = statistics.quantiles(eng, n=10)
+    qt = statistics.quantiles(tot, n=10)
+    print('take1 --measure (%s, %d frames): engine %d cycles a frame (median), model %d; '
+          'engine/model median %.2f (p10 %.2f, p90 %.2f); with the hold, player/target '
+          'median %.3f (p10 %.3f, p90 %.3f)'
+          % (cpu, len(data), statistics.median(owns), statistics.median(models),
+             statistics.median(eng), qe[0], qe[-1], statistics.median(tot), qt[0], qt[-1]))
+    return statistics.median(tot)
+
+
+def micro_rows():
+    """Rows made of short codes, as line art is (take1 --micro): name, codes."""
+    import random as rnd
+    rng = rnd.Random(77)
+    rows = {}
+    # 1-7-dot fills and skips, alternating
+    r = bytearray()
+    for k in range(16):
+        n = 1 + k % 7
+        r += bytes([n if n < 7 else 0x08, rng.randrange(256)])
+        r.append(0x80 | (k * 3) % 7)
+    rows['fills 1-7, skips 0-6'] = bytes(r) + b'\x00'
+    # single literal bytes at every bit phase (a fill first sets the phase)
+    r = bytearray()
+    for k in range(14):
+        r += bytes([1 + k % 6, rng.randrange(256), 0xD7, rng.randrange(256)])
+    rows['literals at every phase'] = bytes(r) + b'\x07'
+    # line art: 1-6-dot fills and skips, single literals, at random
+    r = bytearray()
+    for k in range(24):
+        x = rng.random()
+        if x < 0.45:
+            r += bytes([rng.randrange(1, 7), rng.randrange(256)])
+        elif x < 0.8:
+            r.append(0x80 | rng.randrange(0, 6))
+        else:
+            r += bytes([0xD7, rng.randrange(256)])
+    rows['line art (mixed)'] = bytes(r) + b'\x00'
+    rows['end only'] = b'\x07'
+    return rows
+
+
+def micro():
+    """Cycles per row of short codes against the spec's model (140 a code,
+    55 a byte written), one 100-row sprite a frame; and per snapshot."""
+    import statistics
+    with tempfile.TemporaryDirectory(prefix='a2fc-take1u-') as tmp:
+        sim = Sim('6502', Path(tmp), measure=True)
+
+        def run(row, h=100, objects=1):
+            snap = bytes([h, 250, 0, 0, 0, 0, 0]) + row * h
+            files = {b'AC.U': ref.make_actor([snap])}
+            els = b''.join(ref.obj(1, 284 + 3 * k, 200 + k, end=(k == objects - 1))
+                           for k in range(objects))
+            files[b'SN.U'] = ref.make_scene(1, [(1, 'U')], [els] * 6)
+            d = intervals(sim, [(ref.make_movie([('U', '< BLACK >', 1, 1)]), files)])
+            return statistics.median(x['own'] for x in d), d[0]['work']
+
+        rows = micro_rows()
+        base, wb = run(rows['end only'])
+        for name, row in rows.items():
+            if name == 'end only':
+                continue
+            own, w = run(row)
+            per = (own - base) / 100
+            model = (ref.model_cycles(w) - ref.model_cycles(wb)) / 100
+            codes = (w['codes'] - wb['codes']) / 100
+            print('take1 --micro %-26s %3d codes a row: %6.0f cycles a row, model %6.0f '
+                  '(ratio %.2f; %.0f a code against %.0f)'
+                  % (name, codes, per, model, per / model, per / codes, model / codes))
+        one, w1 = run(rows['end only'], h=1, objects=1)
+        six, w6 = run(rows['end only'], h=1, objects=6)
+        print('take1 --micro a snapshot (1 row, $07): %.0f cycles, model %.0f'
+              % ((six - one) / 5, (ref.model_cycles(w6) - ref.model_cycles(w1)) / 5))
+
+
+DRIVER = 60             # the driver's own time a frame (t1_show, t1_wait's set-up), cycles
+WAIT_OVERHEAD = 40      # take1.s's wait: set-up and exit around its 256-cycle units
+
+
 if __name__ == '__main__':
+    if '--measure' in sys.argv:
+        measure()
+        sys.exit(0)
+    if '--micro' in sys.argv:
+        micro()
+        sys.exit(0)
+    if '--calibrate' in sys.argv:
+        calibrate(write='--write' in sys.argv)
+        sys.exit(0)
     unittest.main(verbosity=1)

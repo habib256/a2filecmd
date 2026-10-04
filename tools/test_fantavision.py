@@ -16,7 +16,9 @@ movie must leave the buffers untouched too, and the movie is never written.
                                       cost (OWN_* in engine.s and the ref)
 
 What the SYS program adds -- loading, keys, page flips, the return to
-A2 File Cmd -- is checked by bench/fantavision.py in POM2.
+A2 File Cmd -- is checked by bench/fantavision.py in POM2; the way back by
+Escape and by Ctrl-Reset also runs here, the built FANTA.SYSTEM from $2000
+to its QUIT (System).
 """
 import os
 import re
@@ -1055,6 +1057,285 @@ def calibrate():
     err = sorted(abs(sum(a * c for a, c in zip(r, coef)) - v) / v for r, v in zip(A, y))
     print('median error %.1f%%, 90%% within %.1f%%, max %.1f%%' %
           (100 * err[len(err) // 2], 100 * err[int(len(err) * 0.9)], 100 * err[-1]))
+
+
+# -- FANTA.SYSTEM itself, from $2000 to its QUIT ------------------------------
+
+SGLUE = r"""
+        .export _go, _mli_stub_start, _mli_stub_end, _do_reset
+        .import _fake_mli, pusha
+        .importzp ptr1
+        .bss
+mcmd:   .res    1
+mpl:    .res    1
+mph:    .res    1
+        .code
+_go:    jmp     $2000                   ; the interpreter's start
+_do_reset:
+        jmp     ($03F2)                 ; Ctrl-Reset, a valid PWREDUP: the ROM's jump
+; The MLI stub, copied to $BF00: jsr $BF00 / .byte cmd / .word params.
+_mli_stub_start:
+        .org    $BF00
+        pla
+        sta     ptr1
+        pla
+        sta     ptr1+1
+        ldy     #1
+        lda     (ptr1),y
+        sta     mcmd
+        iny
+        lda     (ptr1),y
+        sta     mpl
+        iny
+        lda     (ptr1),y
+        sta     mph
+        clc
+        lda     ptr1
+        adc     #3
+        tax
+        lda     ptr1+1
+        adc     #0
+        pha
+        txa
+        pha
+        lda     mcmd
+        jsr     pusha
+        lda     mpl
+        ldx     mph
+        jsr     _fake_mli
+        cmp     #1
+        rts
+        .reloc
+_mli_stub_end:
+"""
+
+SHARNESS = r"""
+#include <fcntl.h>
+#include <unistd.h>
+#include <string.h>
+#include <stdlib.h>
+extern unsigned char mli_stub_start[], mli_stub_end[];
+void go(void);
+void do_reset(void);
+static char host[80];
+static int fd = -1;
+static unsigned int size, ncalls, reset_at;
+static unsigned char scratch[256];
+static unsigned char log[600];
+static unsigned int nlog;
+static unsigned char first_vec[3];              /* at the first MLI call */
+static unsigned char back_vec[3];               /* at the way back's OPEN */
+static const unsigned char bitmap0[24] = {0xCF,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0x01};
+static void out(const void* p, unsigned n)
+{
+    if (write(1, p, n) != (int)n) exit(20);
+}
+static void logcall(unsigned char cmd, unsigned int a, unsigned int b)
+{
+    if (nlog + 5 > sizeof log) return;
+    log[nlog] = cmd;
+    memcpy(log + nlog + 1, &a, 2);
+    memcpy(log + nlog + 3, &b, 2);
+    nlog += 5;
+}
+unsigned char __fastcall__ fake_mli(unsigned char cmd, unsigned char* p)
+{
+    int n;
+    unsigned int req, i;
+    unsigned char* buf;
+    if (++ncalls == 1) memcpy(first_vec, (void*)0x3F2, 3);
+    if (ncalls == reset_at) {                   /* Ctrl-Reset, in the middle of a call */
+        if (fd >= 0) close(fd);
+        fd = -1;
+        if (*(unsigned char*)0x3F4 != (*(unsigned char*)0x3F3 ^ 0xA5)) { out("B", 1); exit(0); }
+        do_reset();
+    }
+    switch (cmd) {
+    case 0xC8:                                  /* OPEN */
+        buf = *(unsigned char**)(p + 1);
+        logcall(cmd, (unsigned int)buf, *(unsigned int*)(p + 3));
+        if (*(unsigned int*)(p + 3) == 0xBB00) memcpy(back_vec, (void*)0x3F2, 3);
+        host[0] = 'f';
+        for (i = 0; i < buf[0]; ++i) host[i + 1] = buf[i + 1] == '/' ? '_' : buf[i + 1];
+        host[buf[0] + 1] = 0;
+        if (fd >= 0) return 0x50;
+        fd = open(host, O_RDONLY);
+        if (fd < 0) return 0x46;
+        size = 0;
+        while ((n = read(fd, scratch, sizeof scratch)) > 0) size += n;
+        close(fd);
+        fd = open(host, O_RDONLY);
+        p[5] = 1;
+        return 0;
+    case 0xD1:                                  /* GET_EOF */
+        logcall(cmd, size, 0);
+        if (fd < 0) return 0x43;
+        p[2] = size & 255; p[3] = size >> 8; p[4] = 0;
+        return 0;
+    case 0xCA:                                  /* READ */
+        buf = *(unsigned char**)(p + 2);
+        req = p[4] | (p[5] << 8);
+        logcall(cmd, (unsigned int)buf, req);
+        if (fd < 0 || p[1] != 1) return 0x43;
+        n = read(fd, buf, req);
+        if (n < 0) return 0x27;
+        if (!n && req) return 0x4C;
+        p[6] = n & 255; p[7] = n >> 8;
+        return 0;
+    case 0xCC:                                  /* CLOSE */
+        logcall(cmd, p[1], 0);
+        if (fd >= 0) close(fd);
+        fd = -1;
+        return 0;
+    case 0x65:                                  /* QUIT: the end */
+        logcall(cmd, 0, 0);
+        out("Q", 1);
+        out(&nlog, 2);
+        out(log, nlog);
+        out(first_vec, 3);
+        out(back_vec, 3);
+        out((void*)0xBF58, 24);
+        out((void*)0x0300, 0xD0);
+        exit(0);
+    }
+    logcall(cmd, 0, 0);
+    return 0x01;
+}
+int main(int, char** argv)
+{
+    int f;
+    unsigned char n;
+    memcpy((void*)0xBF00, mli_stub_start, mli_stub_end - mli_stub_start);
+    memcpy((void*)0xBF58, bitmap0, 24);
+    memset((void*)0xC000, 0, 0x100);
+    if (argv[2][0] == 'K') *(unsigned char*)0xC000 = 0x9B;      /* Escape waiting */
+    reset_at = atoi(argv[3]);
+    /* the reset vector A2 File Cmd's crt0 sets (its _exit, $400C), valid:
+     * what FANTA.SYSTEM inherited before chain.s set $FF59 */
+    *(unsigned int*)0x3F2 = 0x400C;
+    *(unsigned char*)0x3F4 = 0x40 ^ 0xA5;
+    f = open("FANTA.SYSTEM.SYS", O_RDONLY);
+    if (f < 0) return 10;
+    if (read(f, (void*)0x2000, 0x9F00) <= 0) return 11;
+    close(f);
+    n = strlen(argv[1]);
+    *(unsigned char*)0x2006 = n;
+    memcpy((void*)0x2007, argv[1], n);
+    go();
+    return 12;
+}
+"""
+
+
+class SysSim:
+    """FANTA.SYSTEM.SYS as built, at $2000, with a fake MLI (6502)."""
+
+    def __init__(self, workdir, binary):
+        self.dir = workdir
+        env = dict(os.environ, CC65_HOME=str(HEAD / 'share/cc65'))
+        cfg = (HEAD / 'share/cc65/cfg/sim6502.cfg').read_text()
+        cfg, k = re.subn(r'start = \$0200, size = \$FFC0 - \$0200 - __STACKSIZE__',
+                         'start = $C100, size = $FFC0 - $C100 - __STACKSIZE__', cfg)
+        assert k == 1
+        (workdir / 'sys.cfg').write_text(cfg)
+        (workdir / 'sharness.c').write_text(SHARNESS)
+        (workdir / 'sglue.s').write_text(SGLUE)
+        # sim65 has one byte at $C000: the 80STORE-off store (sta $C000)
+        # would overwrite the key the harness puts there; it goes to $C0FF.
+        n = binary.count(bytes([0x8D, 0x00, 0xC0]))
+        assert n == 2, 'sta $C000: %d' % n
+        binary = binary.replace(bytes([0x8D, 0x00, 0xC0]), bytes([0x8D, 0xFF, 0xC0]))
+        (workdir / 'FANTA.SYSTEM.SYS').write_bytes(binary)
+        self.exe = workdir / 'sys'
+        subprocess.run([str(HEAD / 'bin/cl65'), '-t', 'sim6502', '-C', str(workdir / 'sys.cfg'),
+                        '-O', '-Wl', '-D,__STACKSIZE__=0x0400', '-o', str(self.exe),
+                        str(workdir / 'sharness.c'), str(workdir / 'sglue.s')],
+                       check=True, cwd=workdir, env=env)
+
+    def run(self, command, files, reset_at=0, key=False):
+        for old in self.dir.glob('f_*'):
+            old.unlink()
+        for path, data in files.items():
+            (self.dir / ('f' + path.replace('/', '_'))).write_bytes(data)
+        p = subprocess.run([str(HEAD / 'bin/sim65'), '-x', '400000000', str(self.exe), command,
+                            'K' if key else '-', str(reset_at)], cwd=self.dir,
+                           capture_output=True, timeout=600)
+        o = p.stdout
+        if p.returncode != 0 or not o.startswith(b'Q'):
+            raise AssertionError('sim65 exit %d: %r %s' % (p.returncode, o[:40], p.stderr[-300:]))
+        nlog = struct.unpack_from('<H', o, 1)[0]
+        log = o[3:3 + nlog]
+        pos = 3 + nlog
+        return {'calls': [struct.unpack_from('<BHH', log, i) for i in range(0, nlog, 5)],
+                'first_vec': o[pos:pos + 3], 'back_vec': o[pos + 3:pos + 6],
+                'bitmap': o[pos + 6:pos + 30], 'thunk': o[pos + 30:pos + 30 + 0xD0]}
+
+
+class System(unittest.TestCase):
+    """The built FANTA.SYSTEM, from $2000 to its QUIT, under sim65: the way
+    back, by Escape and by Ctrl-Reset."""
+
+    @classmethod
+    def setUpClass(cls):
+        if not (HEAD / 'bin/sim65').exists():
+            raise unittest.SkipTest('cc65 master (CC65_HEAD) is needed')
+        found = [ROOT / d / 'FANTA.SYSTEM.SYS' for d in ('build', 'build-6502')
+                 if (ROOT / d / 'FANTA.SYSTEM.SYS').exists()]
+        if not found:
+            raise unittest.SkipTest('FANTA.SYSTEM.SYS: run make first')
+        binary = max(found, key=lambda p: p.stat().st_mtime)     # (both editions: the same bytes)
+        cls.tmp = tempfile.TemporaryDirectory(prefix='a2fc-fantasys-')
+        cls.sim = SysSim(Path(cls.tmp.name), binary.read_bytes())
+        cls.files = {'/HD/FV/M.COUNT': ref.synthetic(11, frames=3, speed=2, count=1)}
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def common(self, res, label):
+        cmds = [c for c, _, _ in res['calls']]
+        self.assertTrue(set(cmds) <= {0xC8, 0xD1, 0xCA, 0xCC, 0x65}, (label, set(cmds)))
+        self.assertEqual(cmds[-1], 0x65, label)
+        # the way back: the thunk opened A2FILE.SYSTEM (missing here: QUIT)
+        opens = [(a, b) for c, a, b in res['calls'] if c == 0xC8]
+        self.assertEqual(opens[-1][1], 0xBB00, label)
+        self.assertIn(b'\x0dA2FILE.SYSTEM', res['thunk'], label)
+        self.assertEqual(res['bitmap'], bytes([0xCF] + [0] * 22 + [0x01]), label + ': the bitmap given back')
+        # once the program is set up, the vector is its way back (the
+        # program, at $A400, below the thunk's I/O buffer at $BB00)...
+        vec = res['first_vec'][0] | res['first_vec'][1] << 8
+        self.assertTrue(0xA400 <= vec < 0xBB00, '%s: $%04X' % (label, vec))
+        self.assertEqual(res['first_vec'][2], res['first_vec'][1] ^ 0xA5, label)
+        # ... and from the thunk on, whose I/O buffer covers the program's
+        # end, the monitor's OLDRST in ROM
+        self.assertEqual(res['back_vec'], bytes([0x59, 0xFF, 0x5A]), label)
+
+    def test_escape_returns(self):
+        res = self.sim.run('/HD/FV/M.COUNT', self.files, key=True)
+        self.common(res, 'Escape')
+        self.assertIn((0xCA, 0x8000, len(self.files['/HD/FV/M.COUNT'])),
+                      [(c, a, b) for c, a, b in res['calls']], 'the movie read at $8000')
+        print('PASS fantavision: Escape gives the bitmap back and loads A2FILE.SYSTEM, '
+              'the reset vector on OLDRST from the thunk on')
+
+    def test_reset_returns(self):
+        """Ctrl-Reset while the movie is read: the program's reset vector
+        brings A2FILE.SYSTEM back, bitmap given back. Before 0.9.5 the
+        vector was still A2 File Cmd's ($400C, its crt0's _exit), in hi-res
+        page 2, which the player draws into: a reset ran those bytes as
+        code (measured on the 0.9.4 program: sim65 ran out of its 400 million
+        cycles, at calls 1 and 3)."""
+        n = 0
+        while True:
+            n += 1
+            probe = self.sim.run('/HD/FV/M.COUNT', self.files, key=True)
+            if n > len(probe['calls']) - 3:      # every call before the way back
+                break
+            res = self.sim.run('/HD/FV/M.COUNT', self.files, reset_at=n)
+            self.common(res, 'reset at call %d' % n)
+        self.assertGreater(n, 3)
+        print('PASS fantavision: Ctrl-Reset while a movie is read gives the bitmap back and loads '
+              'A2FILE.SYSTEM')
 
 
 if __name__ == '__main__':

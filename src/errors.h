@@ -35,7 +35,7 @@ static const char* prodos_error(unsigned char e)
 
 static const char re_fmt1[] = "%s failed: %s.";
 static const char re_fmt2[] = "%s failed (ProDOS $%02X, errno %d).";
-static void report_error(const char* what)
+void report_error(const char* what)        /* not static: open.s calls it */
 {
     const char* why = prodos_error(_oserror);
     ++a2fc_errors;

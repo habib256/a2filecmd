@@ -83,6 +83,8 @@ const struct Header __plugin_header = {
 extern unsigned char host_main[1024], host_aux[1024], host_stage[2049];
 extern unsigned char host_bank;             /* 0 main, 1 auxiliary */
 extern unsigned char host_shown;            /* show() was reached */
+extern unsigned char host_text, host_alt;   /* how show() left the screen */
+extern unsigned char host_altchar;          /* RDALTCHAR, read and put back */
 #define STAGE host_stage
 #define PAGE  (host_bank ? host_aux : host_main)
 #else
@@ -91,11 +93,17 @@ extern unsigned char host_shown;            /* show() was reached */
 #endif
 #define WIDE  80
 #define TALL  48
+/* Text when at least a quarter of the visible bytes are blanks and blanks
+ * outnumber solid bytes (see looks_text). */
+#define TEXT_RULE(blank, solid, seen) ((blank) * 4 >= (seen) && (blank) > (solid))
 
 /* BSS: nothing zeroes it; everything below is written before it is read. */
 static const struct A2fcApi* A;
 static unsigned int len;                    /* what was read */
 static unsigned char wide;                  /* 1: double lo-res, 80 columns */
+static unsigned char page;                  /* 1: a saved page, which T reads both ways */
+static unsigned char text;                  /* 1: shown as text rather than lo-res */
+static unsigned char alt;                   /* 1: the alternate character set */
 
 static const char m_pick[] = "Select a lo-res picture or an a2dgrx pixmap.";
 static const char m_open[] = "Cannot open it.";
@@ -104,6 +112,7 @@ static const char m_ask[]  = "Pixmap width in pixels (2 hex digits, 01-50)";
 static const char m_hdr[]  = "Invalid or truncated DGR picture.";
 static const char m_wide[] = "Invalid sprite width or height.";
 static const char m_scr[]  = "Lo-res screen, %u x %u.";
+static const char m_txt[]  = "Text screen, %u columns. T: lo-res, A: character set.";
 static const char m_spr[]  = "a2dgrx pixmap, %u x %u.";
 
 /* The byte row `r` of the text page, 0 to 23: the Apple II's three thirds
@@ -124,19 +133,44 @@ static void bank(unsigned char aux)
 #else
     *(unsigned char*)0xC056 = 0;            /* lo-res: $2000 stays main */
     *(unsigned char*)0xC001 = 0;            /* 80STORE on */
-    *(unsigned char*)(aux ? 0xC055 : 0xC054) = 0;
+    /* if/else, not *(unsigned char*)(aux ? 0xC055 : 0xC054): cc65 master
+     * (the 6502 edition) compiles that cast as a store to address `aux`
+     * itself -- zero page $00/$01 -- and never touched PAGE2. */
+    if (aux) *(unsigned char*)0xC055 = 0;
+    else *(unsigned char*)0xC054 = 0;
 #endif
 }
 
-/* `n` bytes into one half of the text page, as they were saved -- holes
- * and all, because that is how a BSAVE of $400 comes back. A short file
- * simply leaves the bottom of the screen as clear() left it. */
+/* How many of the forty bytes of row `r` lie within the first `n` bytes of
+ * a page saved with its holes: 40, a part of a cut-short row, or none. */
+static unsigned char in_row(unsigned char r, unsigned int n)
+{
+    unsigned int at = row_of(r);
+    if (at >= n) return 0;
+    n -= at;
+    return n < 40 ? (unsigned char)n : 40;
+}
+
+/* `n` bytes of a page saved as a BSAVE of $400 brings it back, holes and
+ * all, into one half of the text page -- but only its 960 VISIBLE bytes.
+ * The eight-byte screen holes after each 120 belong to the cards and the
+ * firmware (the 80-column firmware's cursor, the mouse's position, MSLOT at
+ * $7F8): the file's leftovers there would be written over live state that
+ * nothing shows anyway. A short file simply leaves the bottom of the screen
+ * as clear() left it. Walked with pointers: cc65 miscompiles PAGE[i] with a
+ * 16-bit i on a page-aligned constant. */
 static void half(const unsigned char* src, unsigned char aux, unsigned int n)
 {
-    unsigned int i;
-    if (n > 1024) n = 1024;
+    unsigned char r, i, k;
+    unsigned char* d;
+    const unsigned char* s;
     bank(aux);
-    for (i = 0; i < n; ++i) PAGE[i] = src[i];
+    for (r = 0; r < 24; ++r) {
+        k = in_row(r, n);
+        d = PAGE + row_of(r);
+        s = src + row_of(r);
+        for (i = 0; i < k; ++i) d[i] = s[i];
+    }
     bank(0);
 }
 
@@ -155,14 +189,18 @@ static unsigned int rows_of(const unsigned char* src, unsigned char aux, unsigne
     return (unsigned int)lines * 40;
 }
 
-/* Both halves black. */
+/* Black, the visible bytes only (see half()): both halves for 80 columns,
+ * the main one alone for 40, whose screen never shows the other. */
 static void clear(void)
 {
-    unsigned int i;
-    unsigned char b;
-    for (b = 0; b < 2; ++b) {
+    unsigned char b = wide + 1, r, i;
+    unsigned char* d;
+    while (b--) {
         bank(b);
-        for (i = 0; i < 1024; ++i) PAGE[i] = 0;
+        for (r = 0; r < 24; ++r) {
+            d = PAGE + row_of(r);
+            for (i = 0; i < 40; ++i) d[i] = 0;
+        }
     }
     bank(0);
 }
@@ -182,11 +220,15 @@ static void plot(unsigned char x, unsigned char y, unsigned char c)
 
 /* The picture on the air. 80COL interleaves the two halves and AN3 selects
  * the double decoding; a 40-column screen wants neither. TXTCLR last, once
- * the page is armed. */
+ * the page is armed. A text page is the same bytes in the same places: only
+ * TXTSET and the character set differ, so T re-reads the screen without
+ * writing a byte of it. */
 static void show(void)
 {
 #ifdef PLUGIN_HOST
     host_shown = 1;
+    host_text = text;
+    host_alt = alt;
 #else
     *(unsigned char*)0xC000 = 0;            /* 80STORE off: the display is page 1 */
     if (wide) { *(unsigned char*)0xC00D = 0; *(unsigned char*)0xC05E = 0; }
@@ -194,7 +236,10 @@ static void show(void)
     *(unsigned char*)0xC056 = 0;            /* lo-res */
     *(unsigned char*)0xC054 = 0;            /* page 1 */
     *(unsigned char*)0xC052 = 0;            /* mixed off */
-    *(unsigned char*)0xC050 = 0;            /* graphics */
+    if (alt) *(unsigned char*)0xC00F = 0;   /* ALTCHAR (if/else: see bank()) */
+    else *(unsigned char*)0xC00E = 0;
+    if (text) *(unsigned char*)0xC051 = 0;  /* TXTSET */
+    else *(unsigned char*)0xC050 = 0;
 #endif
 }
 
@@ -223,12 +268,54 @@ static unsigned char pixmap(void)
     return 1;
 }
 
+/* A saved page that reads as TEXT rather than lo-res: the decision for the
+ * screens of aux $0400 / 1,024 / 2,048 bytes, whose metadata are the same
+ * for both (bmp2dhr's .SLO and a BSAVE of a title screen alike). Counted
+ * over the visible bytes of each half read:
+ *   blank  a space: $A0 normal, $20 inverse (screens written all in
+ *          inverse exist), $E0 (the II+ shows it as a space; a page-2
+ *          screen used it) -- in lo-res a black pixel over a grey, blue
+ *          or yellow one, pairs pictures seldom hold (not $60: Time
+ *          Lord's buildings are full of it);
+ *   solid  a byte whose two nibbles are equal -- two pixels of one colour
+ *          stacked, what every flat area of a picture is made of, and in
+ *          text only a few characters (@ Q " 3 inverse, * ; L ] n normal).
+ * Measured 2026-10-04 on 77 distinct real text screens (crack and title
+ * screens, BBS and user-group disks, ASCII art) and 45 real lo-res and
+ * double lo-res halves: no error. Texts have 33 % blanks or more, pictures
+ * 23 % at most (the four text rows of a mixed screen), and the solid bytes
+ * exceed the blanks by 27 points at least in every picture, while ASCII
+ * art drawn with ';' ($BB, solid) still has more blanks than solids.
+ * tools/textscreen_ref.py is the same rule; T turns a wrong guess round. */
+static unsigned char looks_text(void)
+{
+    unsigned int blank = 0, solid = 0, seen = 0, n, h;
+    unsigned char r, i, k, b;
+    const unsigned char* s;
+    h = wide ? len >> 1 : len;
+    for (n = 0; n <= wide; ++n) {
+        for (r = 0; r < 24; ++r) {
+            k = in_row(r, h);
+            s = STAGE + (n ? h : 0) + row_of(r);
+            seen += k;
+            for (i = 0; i < k; ++i) {
+                b = s[i];
+                if ((b & 0x3F) == 0x20 && b != 0x60) ++blank;
+                if ((b >> 4) == (b & 15)) ++solid;
+            }
+        }
+    }
+    return TEXT_RULE(blank, solid, seen);
+}
+
 void __fastcall__ plugin_entry(const struct A2fcApi* a)
 {
     const struct Entry* e = a->selected;
     FILE* in;
+    unsigned char k, c, was;
 
     A = a;
+    page = text = alt = 0;
     if (!e->name[0] || e->type == 0x0F || !a->full[0]) { a->strcpy(a->note, m_pick); return; }
     in = a->fopen(a->full, "rb");
     if (!in) { a->strcpy(a->note, m_open); return; }
@@ -256,21 +343,49 @@ void __fastcall__ plugin_entry(const struct A2fcApi* a)
         } else rows_of(STAGE + 8, 0, lines);
         a->sprintf(a->note, m_scr, (unsigned int)w, (unsigned int)h);
     } else if (e->aux == 0x0400 || len == 1024 || len == 2048) {
+        page = 1;
+        wide = len > 1024;
         clear();
-        if (len > 1024) {                    /* two halves: auxiliary one first */
-            wide = 1;
+        if (wide) {                          /* two halves: auxiliary one first */
             half(STAGE, 1, len >> 1);
             half(STAGE + (len >> 1), 0, len >> 1);
-        } else {                             /* forty columns, the main half */
-            wide = 0;
+        } else                               /* forty columns, the main half */
             half(STAGE, 0, len);
-        }
-        a->sprintf(a->note, m_scr, wide ? (unsigned int)WIDE : 40U, (unsigned int)TALL);
+        /* The enhanced IIe's 80-column firmware shows the alternate set
+         * (MouseText, no flashing); a 40-column screen is the II's own. */
+        if (looks_text()) text = 1, alt = wide;
     } else if (!pixmap()) {
         return;                              /* it said why */
     }
 
-    show();
-    a->media_wait();
+#ifdef PLUGIN_HOST
+    was = host_altchar;
+#else
+    was = *(unsigned char*)0xC01E;          /* RDALTCHAR: the panels' set, bit 7 */
+#endif
+    for (;;) {
+        if (page) {
+            if (text) a->sprintf(a->note, m_txt, wide ? (unsigned int)WIDE : 40U);
+            else a->sprintf(a->note, m_scr, wide ? (unsigned int)WIDE : 40U, (unsigned int)TALL);
+        }
+        show();
+        /* The core's cgetc is the slideshow's (S, and Right by itself);
+         * media_key ends on Escape or a neighbour, as media_wait does. */
+        for (;;) {
+            k = a->cgetc();
+            c = k & 0x5F;                   /* either case, Open-Apple or not */
+            if (page && c == 'T') { text ^= 1; break; }
+            if (text && c == 'A') { alt ^= 1; break; }
+            if (a->media_key(k)) goto done;
+        }
+    }
+done:
+    /* The panels' character set back: switch_to_text does not touch it. */
+#ifdef PLUGIN_HOST
+    host_altchar = was;
+#else
+    if (was & 0x80) *(unsigned char*)0xC00F = 0;
+    else *(unsigned char*)0xC00E = 0;
+#endif
     a->strcpy(a->reselect, e->name);
 }

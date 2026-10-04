@@ -1,4 +1,11 @@
-"""Real PT3 loader C: malformed headers, read/close failures, no hardware writes."""
+"""Real PT3 loader C: malformed headers, read/close failures, no hardware writes.
+
+The GROUiK hook (pg_setup/pg_call/pg_end, ppt3/driver.s) is stubbed here: the
+modes below drive pt3.c's side of it -- fallback to pt3_lib, GROUiK playing,
+a stop before playback, a guard trip mid-song -- and check that pt3_lib is
+not initialised under GROUiK, that the source is closed exactly once, and
+that /RAM is rebuilt (and said) once whenever AUX was written. The driver's
+own code runs under sim65 in tools/test_ppt3_driver.py."""
 import subprocess
 import tempfile
 import unittest
@@ -16,6 +23,7 @@ def module():
 
 HARNESS=PREFIX+r'''
 static int fault,started,stopped,reads,phase,misses,frame_calls,key_calls,opened,closed;
+static int gmode,gframes,inits,formats,setups,ends;
 static unsigned char *original;
 static unsigned char calls[2];
 static const unsigned char lengths[4][2]={{3,5},{5,3},{4,5},{5,4}};
@@ -43,9 +51,29 @@ unsigned char pt_victim(void){
 void pt_swap(void){}
 void __fastcall__ pt_play_tables(unsigned char*p){(void)p;}
 void __fastcall__ pt_tables(unsigned char* p){memset(p,0xA5,448);}
-unsigned char pt_init(void){return fault==4;}
+unsigned char pt_init(void){++inits;return fault==4;}
+/* GROUiK driver stubs: 0 declined/ineligible, 1 plays 3 frames then ends,
+ * 2 I/O stop after the AUX write, 3 INIT trip, 4 trip on the 2nd frame. */
+unsigned char pg_setup(void){
+ ++setups;
+ if(phase||!gmode)return 0;
+ aux=1;
+ if(gmode!=2){if(fcls(source))io_bad=1;source=0;}
+ if(gmode==2){io_bad=1;return 2;}
+ if(gmode==3){r=1;return 2;}
+ return 1;
+}
+unsigned char pg_call(unsigned char f){
+ if(f!=1||!phase)abort();
+ ++gframes;
+ if(gmode==4&&gframes==2)return 1;
+ return gframes==3?2:0;
+}
+static unsigned char ramfmt(void){++formats;return 1;}
+void pg_end(void){++ends;if(!aux)abort();if(ramfmt())strcat(A->note," /RAM rebuilt.");}
 unsigned char pt_frame(void){
  unsigned page,j,slot,want; ++frame_calls;
+ if(gmode==1||gmode==4)abort();
  if(pt_dual){
   if(fault>=16){if(calls[current]>=lengths[fault-16][current])abort();return ++calls[current]==lengths[fault-16][current]?2:0;}
   if(pt_end<202 || pt_base+(unsigned long)pt_end>file_length-16)abort();
@@ -81,6 +109,7 @@ int main(int argc,char**argv){
  static unsigned char buf[512];static char note[80],sel[80];FILE*ref;unsigned i;
  original=malloc(65537);ref=fopen(argv[1],"rb");fread(original,1,65537,ref);fclose(ref);
  api.version=4;api.media_key=mkey;api.music_info=info;fault=atoi(argv[2]);api.arg=atoi(argv[3]);strcpy(e.name,"TEST.PT3");e.size=1;
+ gmode=argc>4?atoi(argv[4]):0;
  api.full=argv[1];api.selected=&e;api.note=note;api.reselect=sel;api.copy_buf=buf;
  api.fopen=opn;api.fread=rd;api.fclose=cls;api.fseek=seekf;api.strcpy=strcpy;api.cgetc=key;
  api.clrscr=cls_screen;api.cputs=puts_screen;
@@ -96,9 +125,14 @@ int main(int argc,char**argv){
  }
  if(closed!=opened)abort();
  if(fault>=16 && memcmp(calls,lengths[fault-16],2))abort();
- if(started){for(i=0;i<448;++i)if(buf[i]!=0xA5)abort();if(strcmp(sel,"TEST.PT3"))abort();}
+ if(started){if(gmode!=1&&gmode!=4)for(i=0;i<448;++i)if(buf[i]!=0xA5)abort();if(strcmp(sel,"TEST.PT3"))abort();}
  if(fault==11 && (frame_calls!=1||key_calls!=3))abort();
  if((fault==12||fault==13)&&frame_calls)abort();
+ if(gmode && setups!=1 && api.arg && !fault)abort();
+ if((gmode==1||gmode==4) && inits)abort();      /* pt3_lib never initialised under GROUiK */
+ if(gmode==1 && gframes!=3)abort();
+ if(ends!=(setups&&gmode&&!fault?1:0))abort();   /* /RAM rebuilt once, iff AUX written */
+ if(formats!=ends)abort();
  printf("%d %d %s\n",started,stopped,note);free(original);return 0;
 }
 '''
@@ -114,12 +148,13 @@ class PT3(unittest.TestCase):
         subprocess.run(['cc','-std=c99','-Wno-unknown-pragmas','-I',str(ROOT),str(cls.p/'test.c'),'-o',str(cls.exe)],check=True,capture_output=True)
     @classmethod
     def tearDownClass(cls):cls.tmp.cleanup()
-    def run_data(self,data,good=False,fault=0,card=2,error=None):
+    def run_data(self,data,good=False,fault=0,card=2,error=None,gmode=0):
         p=self.p/'source';p.write_bytes(data)
-        out=subprocess.check_output([str(self.exe),str(p),str(fault),str(card)],text=True,timeout=5)
+        out=subprocess.check_output([str(self.exe),str(p),str(fault),str(card),str(gmode)],text=True,timeout=5)
         self.assertTrue(out.startswith('1 1 ' if good else '0 0 '),out)
         self.assertEqual(p.read_bytes(),data)
         if error:self.assertIn(error,out)
+        return out
     def test_valid_module_ignores_stale_panel_size(self):self.run_data(module(),True)
     def test_io_errors_and_no_card(self):
         for fault in (1,3,4):self.run_data(module(),fault=fault)
@@ -153,6 +188,22 @@ class PT3(unittest.TestCase):
         for pos in (len(valid)-16,len(valid)-12,len(valid)-10,len(valid)-6,len(first),len(first)+99):
             bad=bytearray(valid);bad[pos]=255;self.run_data(bad)
         bad=bytearray(valid);bad[-6:-4]=bytes(2);self.run_data(bad)
+    def test_grouik_hook(self):
+        b=module()
+        out=self.run_data(b,True,gmode=1)
+        self.assertIn('/RAM rebuilt.',out)
+        out=self.run_data(b,False,gmode=2,error='read/seek/close error')
+        self.assertIn('read/seek/close error. /RAM rebuilt.',out)
+        out=self.run_data(b,False,gmode=3,error='Invalid PT3. /RAM rebuilt.')
+        out=self.run_data(b,True,gmode=4,error='Invalid PT3. /RAM rebuilt.')
+        # declined or ineligible: pt3_lib plays, nothing rebuilt, nothing said
+        out=self.run_data(b,True,gmode=0)
+        self.assertNotIn('/RAM',out)
+        # never consulted for a TurboSound pair: pt3_lib only
+        first=module()+bytes(293);second=bytearray(module());second[13]=ord('7');second[99]=2
+        footer=b'PT3!'+len(first).to_bytes(2,'little')+b'PT3!'+len(second).to_bytes(2,'little')+b'02TS'
+        out=self.run_data(first+second+footer,True,gmode=0)
+        self.assertNotIn('/RAM',out)
     def test_header_and_order_bounds(self):
         for pos,value in ((0,0),(99,4),(100,0),(101,0),(101,255),(102,1),(103,255),(104,255),(201,1),(201,255),(202,0),(107,0),(169,0)):
             b=bytearray(module());b[pos]=value;self.run_data(bytes(b))

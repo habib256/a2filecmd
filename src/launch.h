@@ -1,7 +1,9 @@
 /* RUN owns this scratch after the panel/tag backup. ConfigState uses only
  * $3000-$33FF; launch paths survive save_config and shared path buffers.
  * Writes: configuration via its recoverable save, then MAIN program memory
- * and ProDOS prefix via chain_load. No AUX /RAM storage is borrowed here.
+ * and ProDOS prefix via chain_load, which also sets the reset vector to the
+ * monitor's OLDRST ($FF59): A2FC's own ($400C) would be the launched
+ * program's bytes. No AUX /RAM storage is borrowed here.
  * The launched program takes control and may perform its own disk writes.
  */
 struct LaunchState {
@@ -39,6 +41,14 @@ static const char run_fanta[] = "/A2FILE/FANTA.SYSTEM";
 static const char run_nohome[] = "A2FC's own directory is unknown.";
 static const char run_onebd[] = "Mark one hi-res picture as the backdrop.";
 static const char run_bdname[] = ",";
+/* Take 1 movies play in TAKE1.SYSTEM, given the movie's DOS 3.3 disk image
+ * and the track/sector of its first T/S list, a real DOS 3.3 disk by its
+ * ProDOS unit, or the extracted MV. file (docs/TAKE1-FORMAT.md). */
+static const char run_take1[] = "/A2FILE/TAKE1.SYSTEM";
+static const char run_t1mv[] = "MV.";
+static const char run_t1ts[] = ",%04X";
+static const char run_t1unit[] = "%%%02X,%04X";
+static const char run_t1where[] = "Take 1 plays from a folder, a DOS 3.3 disk or image.";
 
 /* 1 found, 0 genuinely absent, -1 lookup error. Never
  * reinterpret an unreadable runtime as a request to try another disk. */
@@ -113,10 +123,58 @@ static unsigned char launch_check(unsigned int* addr, unsigned char interpreter,
     return !bad;
 }
 
+/* An interpreter beside the overlays (FANTA.SYSTEM, TAKE1.SYSTEM), given
+ * LS->command, with the prefix on A2FC's own directory -- where it finds
+ * A2FILE.SYSTEM to come back. Read-only; no question: the way back is
+ * automatic. */
+static void launch_interp(const char* sys)
+{
+    unsigned int addr = 0x2000;
+    unsigned char addr_len = strlen(cfg_path);   /* "/VOL/.../A2FILE/A2FILE.CFG": 18 past the directory */
+    if (addr_len <= 18 || addr_len + 2 >= PATH_LEN) { message(run_nohome); return; }
+    if (strlen(LS->command) > 46) { too_long(); return; }
+    memcpy(other_full, cfg_path, addr_len - 18);
+    other_full[addr_len - 18] = 0;
+    strcpy(LS->runtime, other_full);
+    strcat(LS->runtime, sys);
+    if (!launch_check(&addr, 1, 0xFF)) return;
+    if (!save_config() && !confirm(run_cfgwarn)) return;
+    /* save_config may reuse other_full: the directory again, from the
+     * runtime path LaunchState keeps. */
+    memcpy(other_full, LS->runtime, addr_len - 18);
+    other_full[addr_len - 18] = 0;
+    if (chdir(other_full)) { report_error(run_prefix); return; }
+    chain_command(LS->command);
+    chain_addr = addr;
+    clrscr();
+    chain_load(LS->runtime);
+}
+
+/* A Take 1 movie (MV.x, BIN $8029 or aux 0 -- OPEN's rule): the command for
+ * TAKE1.SYSTEM, whatever the panel shows -- a DOS 3.3 image, a real DOS 3.3
+ * disk, or a ProDOS folder holding the extracted files. */
+static void run_take1_movie(const struct Entry* e)
+{
+    const struct Panel* pan = pan_at(active);
+    if (pan->fs == FS_DOS33) {
+        if (pan->img_len) {
+            if (pan->img_len > 41) { too_long(); return; }
+            memcpy(LS->command, pan->path, pan->img_len);
+            sprintf(LS->command + pan->img_len, run_t1ts, e->mdate);
+        } else sprintf(LS->command, run_t1unit, (unsigned char)pan->dir_key, e->mdate);
+    } else if (pan->fs || !pan->path[0]) { message(run_t1where); return; }
+    else if (!build_full(LS->command, pan, e)) { too_long(); return; }
+    launch_interp(run_take1);
+}
+
 static void run_selected(const struct Entry* e)
 {
     unsigned int addr;
     unsigned char bas, addr_len;
+    if (e->type == 0x06 && (e->aux == 0x8029 || !e->aux) && !strncmp(e->name, run_t1mv, 3)) {
+        run_take1_movie(e);
+        return;
+    }
     if (is_dir(e) || !pan_at(active)->path[0] || pan_at(active)->fs) { message(run_pick); return; }
     bas = e->type == 0xFA || e->type == 0xFC;
     if (!bas && e->type != 0xFF && e->type != 0x06) { message(run_types); return; }
@@ -160,21 +218,7 @@ static void run_selected(const struct Entry* e)
                 strcat(LS->command, LS->backdrop);
             }
         }
-        memcpy(other_full, cfg_path, addr_len - 18);
-        other_full[addr_len - 18] = 0;
-        strcpy(LS->runtime, other_full);
-        strcat(LS->runtime, run_fanta);
-        if (!launch_check(&addr, 1, 0xFF)) return;
-        if (!save_config() && !confirm(run_cfgwarn)) return;
-        /* save_config may reuse other_full: the directory again, from the
-         * runtime path LaunchState keeps. */
-        memcpy(other_full, LS->runtime, addr_len - 18);
-        other_full[addr_len - 18] = 0;
-        if (chdir(other_full)) { report_error(run_prefix); return; }
-        chain_command(LS->command);
-        chain_addr = addr;
-        clrscr();
-        chain_load(LS->runtime);
+        launch_interp(run_fanta);
         return;
     }
     if (bas) {

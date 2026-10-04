@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """MB1/PT3 on a //c with and without an MB4c, using disposable volumes.
 
+PT3 plays with GROUiK's engine (AUX) when the card is there; MB1, and PT3
+without a card, leave AUX byte for byte.
+
 python3 bench/build_pt3_trace.py
 POM2=/tmp/a2fc-pt3-trace A2FC_IMG=A2FILECMD-full python3 bench/mb4c.py
 POM2=/tmp/a2fc-pt3-trace A2FC_BUILD=build-6502 python3 bench/mb4c.py
@@ -39,6 +42,9 @@ def main():
                         p.rq('/speed', {'preset': '1x'}); s.key(RET)
                         if present:
                             s.wait(lambda: s.has(title), name + ' on MB4c', 30)
+                            if name.endswith('.PT3'):
+                                s.wait(lambda: s.has('Player: GROUiK/French Touch'),
+                                       name + ' GROUiK credit', 30)
                             s.wait(lambda: any(ay_snapshot(p, 'playing')[8:11]),
                                    name + ' audible AY registers', 5)
                             s.ok(name + ': MB4c detected at $C400, AY receives volume', True)
@@ -66,8 +72,16 @@ def main():
                         else:
                             s.wait(lambda: s.has('No Mockingboard.'), name + ' without card', 30)
                             s.ok(name + ': absent card refused, panels intact', s.has('Type  Aux'))
-                        s.ok(name + ': AUX storage preserved byte for byte',
-                             bytes(p.peek(0x1000, 0xB000, 'aux')) == before_aux)
+                        if present and name.endswith('.PT3'):
+                            # GROUiK's engine plays from AUX (/RAM empty: no
+                            # question) and rebuilds /RAM on the way out.
+                            # (/RAM was already empty: the count alone would pass
+                            # without GROUiK; the note proves pg_end rebuilt it)
+                            s.ok(name + ': GROUiK run leaves /RAM rebuilt and empty',
+                                 s.ram_files() == 0 and s.has('/RAM rebuilt.'))
+                        else:
+                            s.ok(name + ': AUX storage preserved byte for byte',
+                                 bytes(p.peek(0x1000, 0xB000, 'aux')) == before_aux)
                         s.ok(name + ': masked mouse ROM is never called',
                              s.value('mouse', 1) == (0 if present else before_mouse))
                         p.rq('/speed', {'cycles_per_frame': p.speed}); p.stable()

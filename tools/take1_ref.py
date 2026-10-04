@@ -26,7 +26,9 @@ What the specification leaves open, and how it is settled here
   leaves it ("flush") or at the row's end. A flush caused by a run, by the
   black dot before a skip, by an untouched stretch of a skip or by an end
   writes bit 7 from the palette register; the flush caused by the black
-  dot that ends a skip (it is then bit 6) keeps the byte's bit 7. A byte
+  dot that ends a skip (it is then bit 6) sets no bit 7 of its own: the
+  byte keeps the register's bit 7 if earlier dots of the row fell in it
+  (the spec, clarified), else the screen's. A byte
   that received no dot is not written, except by the two forced flushes of
   the spec ($07 end off bit 0, and the 280-dot return of a wrapped row).
 * P3 applies to the register-palette writes only: the byte written becomes
@@ -511,6 +513,44 @@ def fill_bit(B, j):
     return (B >> (3 + (j - 3) % 4)) & 1
 
 
+# The work of a frame, for the spec's model of the original's own time
+# (docs, Timing): row codes, screen bytes written, snapshots, text shape
+# bytes, bytes erased, full page copies; and, for the player's own cost
+# only: snapshot rows drawn, objects drawn or tried, and the whole bytes of
+# runs (stb: see Row.count_stb). Player.work_log keeps one per frame shown.
+WORK = dict(codes=0, bytes=0, snaps=0, shapes=0, erased=0, fulls=0, rows=0, objs=0, stb=0)
+MODEL = dict(codes=140, bytes=55, snaps=1700, shapes=280, erased=20, fulls=79000)
+COUNTERS = ('codes', 'bytes', 'snaps', 'shapes', 'erased', 'fulls', 'rows', 'objs', 'stb')
+
+
+def own_constants():
+    """OWN_BASE and OWN_* of engine.s: the player's own cost, fitted on its
+    code (test_take1.py --calibrate)."""
+    root = Path(__file__).resolve().parents[1]
+    text = (root / 'src/take1/engine.s').read_text()
+    got = {m[1].lower(): int(m[2]) for m in re.finditer(r'^OWN_(\w+)\s*=\s*(-?\d+)', text, re.M)}
+    return got.pop('base'), got
+
+
+OWN_BASE, OWN = own_constants()
+
+
+def model_cycles(w):
+    return sum(MODEL[k] * w[k] for k in MODEL)
+
+
+def hold_cycles(w, n):
+    """The original speed: the time to wait after a frame is shown, so that
+    it stays shown for the original's modelled time (erase and draw, plus
+    the exact frame wait of n steps), less the player's own estimated cost
+    for the same work; never negative. The counters are 16-bit, as the
+    engine keeps them."""
+    c = {k: w[k] & 0xFFFF for k in COUNTERS}
+    target = sum(MODEL[k] * c[k] for k in MODEL) + 350 * n + 18 * (n >> 2)
+    own = OWN_BASE + sum(OWN[k] * c[k] for k in COUNTERS)
+    return max(0, target - own)
+
+
 class Row:
     """One snapshot row drawn with the byte accumulator."""
 
@@ -536,9 +576,12 @@ class Row:
         if c is not None and (self.mask or forced):
             a = self.base + c
             v = (self.page[a] & ~self.mask & 0xFF) | self.data
-            if not keep:
+            # keep: the closing black dot of a skip on bit 6 sets no bit 7;
+            # earlier dots of the row in this byte gave it the register's
+            if not keep or self.mask & 0x3F:
                 v = (v & 0x7F) | self.reg
             self.page[a] = v
+            WORK['bytes'] += 1
         self.mask = self.data = 0
         self.ab = self.p // 7
 
@@ -558,16 +601,32 @@ class Row:
         for _ in range(n):
             self.step()
 
-    def run(self, n, B):
+    def run(self, n, B, lit=False):
+        if not lit:
+            self.count_stb(n)
         if self.wrap or self.p < 280:
             self.reg = B & 0x80
         for j in range(n):
             self.put(fill_bit(B, j))
             self.step()
 
+    def count_stb(self, n):
+        """The whole bytes of a run (all 7 dots from it) on the screen, which
+        the engine stores at once: counted (stb, the engine's own cost).
+        Without wrap, none past column 39 (the row goes no further)."""
+        p = self.p
+        ab = -(-p // 7)                 # the first byte starting at or after p
+        while 7 * ab + 7 <= p + n:
+            if ab >= 0:
+                if not self.wrap and ab >= 40:
+                    break
+                WORK['stb'] += 1
+            ab += 1
+
     def draw(self, codes):
         first = True
         for code in codes:
+            WORK['codes'] += 1
             k = code[0]
             if k == 'ext':
                 continue
@@ -585,7 +644,7 @@ class Row:
                 return self.reg
             if k == 'lit':
                 for B in code[1]:
-                    self.run(7, B)
+                    self.run(7, B, lit=True)
             elif k == 'fill':
                 self.run(7 * code[1] + code[2], code[3])
             else:
@@ -674,12 +733,14 @@ def draw_snapshot(page, snap, xl, f, yl):
     X, top, skip, rect = place(snap, xl, f, yl)
     if rect is None:
         return None
+    WORK['snaps'] += 1
     wrap = bool(f & 0x10)
     reg = P3_OR
     y = top
     for r in range(skip, snap.h):
         if not wrap and y > 191:
             break
+        WORK['rows'] += 1
         reg = Row(page, y, X, wrap, reg).draw(snap.rows[r])
         y += 1
         if wrap and y == 192:
@@ -702,6 +763,7 @@ def draw_text(page, shapes, string, xl, f, yl):
             num = 1
         for b in shapes[num]:
             nbytes += 1
+            WORK['shapes'] += 1
             vecs = [b & 7]
             b >>= 3
             if b:
@@ -764,6 +826,7 @@ class RectList:
         if self.full:
             dst[:] = src
             cost = FULL_COST
+            WORK['fulls'] += 1
         else:
             for col, width, top, height in self.rects:
                 for r in range(height):
@@ -771,6 +834,7 @@ class RectList:
                     for c in range(width):
                         dst[a + (col + c) % 40] = src[a + (col + c) % 40]
             cost = self.area
+            WORK['erased'] += self.area
         self.rects, self.area, self.full = [], 0, False
         return cost
 
@@ -1017,7 +1081,12 @@ def run_fade(num, src, dst):
 class Player:
     """The movie flow. play() yields events:
          ('show', page, bytes)   a frame shown (page 1 or 2)
-         ('wait', n)             the frame wait, n steps of 350 cycles
+         ('wait', n, hold)       the original speed's hold, in cycles: before
+                                 a frame is shown (hold_cycles: the work
+                                 since the last one, plus n, the frame wait
+                                 the last one owes), right after it when it
+                                 has a $FC element (wait_cycles(n) alone),
+                                 and at a scene's end
          ('fc', kind, t)         a $FC element after its frame
          ('fade', num)           a fade starts
          ('delay', a, bytes)     a D(a) of a fade, the shown page then
@@ -1031,6 +1100,9 @@ class Player:
         self.pages = {1: bytearray(PAGE), 2: bytearray(PAGE), 3: bytearray(PAGE)}
         self.front = 1
         self.lists = {1: RectList(), 2: RectList()}
+        self.work_log = []
+        for k in WORK:
+            WORK[k] = 0
 
     def load(self, name, room):
         return self.loader(name, room)
@@ -1060,6 +1132,7 @@ class Player:
     def draw(self, sc, page, obj):
         """Draws an object; (rect or None, cost)."""
         _, o, xl, f, yl = obj
+        WORK['objs'] += 1
         if f & 0x40:
             rect, nb = draw_text(page, sc.cs, sc.strings[o], xl, f, yl)
             return rect, 11 * nb
@@ -1074,6 +1147,7 @@ class Player:
         L[back].full = True
         cost = 0
         shown_any = False
+        owed = 0                # the frame wait n owed to the frame before
         for fi, frame in enumerate(sc.frames):
             back = 3 - self.front
             i = 0
@@ -1100,17 +1174,31 @@ class Player:
                 yield from run_fade(fade_in, P[back], P[self.front])
                 cost = min(cost + L[back].apply(P[back], P[3]), 65535)
             else:
+                # the original speed: before the frame is shown, the hold
+                # for the work since the last one, with the wait owed
+                work = dict(WORK, first=not shown_any, n=owed)
+                self.work_log.append(work)
+                yield ('wait', owed, hold_cycles(work, owed))
+                for k in WORK:
+                    WORK[k] = 0
                 self.front = back
                 back = 3 - back
                 yield ('show', self.front, bytes(P[self.front]))
-                yield ('wait', frame_wait(sc.speed, cost))
+                owed = frame_wait(sc.speed, cost)
                 cost = 0
                 if not shown_any:
                     L[back].full = True
                     shown_any = True
                 cost += L[back].apply(P[back], P[3])
+                if fc:                  # a $FC element: the wait first
+                    yield ('wait', owed, wait_cycles(owed))
+                    owed = 0
             if fc:
                 yield ('fc', fc[2] & 0x7F, fc[1])
+        # the scene's end: the last frame's wait, the work since it
+        yield ('wait', owed, hold_cycles(dict(WORK), owed))
+        for k in WORK:
+            WORK[k] = 0
         if fade_out > 1:
             back = 3 - self.front
             P[back][:] = bytes(PAGE)
@@ -1507,6 +1595,37 @@ def crafted(kind, seed=0):
     rng = random.Random(seed * 101 + len(kind))
     files = {}
     entries = []
+    if kind == 'bit6':
+        # skips whose closing black lands on bit 6, after a run or a black
+        # dot in that byte, on a background whose bit 7 alternates
+        snaps = []
+        for k in range(1, 6):
+            rows = []
+            for pal in (0x00, 0x80):
+                for lead in range(0, 6 - k + 1):
+                    n = 6 - lead - k        # the skip: closing black on dot 6
+                    row = bytearray()
+                    if lead:
+                        row.append(0x80 | (lead - 1))       # a lead skip first
+                    row += bytes([k, pal | rng.randrange(128), 0x80 | n,
+                                  1, (pal ^ 0x80) | rng.randrange(128), rng.choice([0, 7])])
+                    rows.append(bytes(row))
+            snaps.append(bytes([len(rows), 14, 0, 0, 0, 0, 0]) + b''.join(rows))
+        files[b'AC.B6'] = make_actor(snaps)
+        page = bytearray(PAGE)
+        for y in range(ROWS):
+            for c in range(40):
+                page[ROW[y] + c] = (0x80 if (c + y // 3) & 1 else 0) | rng.randrange(128)
+        files[b'BK.B6'] = encode_bk(page, rng)
+        frames = []
+        for f in range(6):
+            els = b''
+            for i in range(len(snaps)):
+                els += obj(i + 1, 280 + 7 * rng.randrange(38) + rng.choice([0, 0, 1, 3]),
+                           192 + rng.randrange(170), wrap=f % 2 == 1, end=i == len(snaps) - 1)
+            frames.append(els)
+        files[b'SN.B6'] = make_scene(20, [(len(snaps), 'B6')], frames)
+        return make_movie([('B6', 'B6', 1, 1)]), files
     if kind == 'fades':
         snaps = [rand_snapshot(rng, h=rng.randrange(5, 30)) for _ in range(3)]
         files[b'AC.F'] = make_actor(snaps)
@@ -1640,6 +1759,86 @@ def crafted(kind, seed=0):
     raise ValueError(kind)
 
 
+def count_codes(n, rng, skip):
+    """A skip or fill of n dots: extensions, then the code (bytes)."""
+    q, r = divmod(n, 7)
+    out = bytearray()
+    while q > 15:
+        e = min(25, q - 15)
+        out.append((e << 3) | 7)
+        q -= e
+    c = (q << 3) | r
+    if not skip and c == 0:
+        c = 1
+    out.append((0x80 | c) if skip else c)
+    return out
+
+
+def realistic(seed, scenes=2, frames=8):
+    """A movie shaped like real ones (heavy frames): several sprites a
+    frame, 30-120 rows high, 5-40 columns wide, rows of 1-6 codes, mostly
+    long fills and skips, some literals, a few texts; scene speeds as seen
+    (22-84). (movie, files)"""
+    rng = random.Random(9000 + seed)
+    files = {}
+    snaps = []
+    for i in range(6):
+        h = rng.randrange(30, 121)
+        cols = rng.randrange(5, 41)
+        w = 7 * cols
+        rows = []
+        for _ in range(h):
+            row = bytearray()
+            left = w
+            ncodes = rng.randrange(1, 6)
+            for k in range(ncodes):
+                if left <= 0:
+                    break
+                kind = rng.random()
+                if kind < 0.12 and left >= 7:
+                    nb = min(rng.randrange(1, 7), left // 7)
+                    row += bytes([((25 + nb) << 3) | 7]) + bytes(rng.randrange(256) for _ in range(nb))
+                    left -= 7 * nb
+                    continue
+                n = rng.randrange(1, left + 1) if k < ncodes - 1 else left
+                if kind < 0.45 and k:
+                    row += count_codes(max(n - 1, 0), rng, True)
+                else:
+                    row += count_codes(n, rng, False) + bytes([rng.randrange(256)])
+                left -= n
+            row.append(rng.choice([0x00, 0x00, 0x07]))
+            rows.append(bytes(row))
+        snaps.append(bytes([h, w & 255, 0, 0, w >> 8, 0, 0]) + b''.join(rows))
+    files[b'AC.HEAVY'] = make_actor(snaps)
+    shapes = [bytes(rng.randrange(1, 256) for _ in range(rng.randrange(2, 8))) for _ in range(64)]
+    files[b'CS.FONT'] = make_cs(shapes)
+    strings = [bytes(rng.randrange(0x41, 0x5B) for _ in range(rng.randrange(4, 12))) for _ in range(3)]
+    page = bytearray(PAGE)
+    for y in range(ROWS):
+        for c in range(40):
+            page[ROW[y] + c] = (y * 3 + c * 5) & 255
+    files[b'BK.STAGE'] = encode_bk(page, rng)
+    entries = []
+    for sc in range(scenes):
+        fr = []
+        for f in range(frames):
+            els = b''
+            n = rng.randrange(1, 5)
+            for k in range(n):
+                els += obj(rng.randrange(1, 7), rng.randrange(260, 520), rng.randrange(180, 330),
+                           wrap=False)
+            if rng.random() < 0.3:
+                els += obj(rng.randrange(1, 4), rng.randrange(280, 450), rng.randrange(200, 370),
+                           wrap=True, text=True)
+            els = bytearray(els)
+            els[-2] |= 0x80
+            fr.append(bytes(els))
+        speed = rng.choice([22, 30, 40, 50, 60, 84])      # (the speeds seen: 22-84)
+        files[b'SN.HEAVY%d' % sc] = make_scene(speed, [(6, 'HEAVY')], fr, strings, 'FONT')
+        entries.append(('HEAVY%d' % sc, 'STAGE' if sc == 0 else '< UNCHANGED >', 1, 1))
+    return make_movie(entries), files
+
+
 def events_of(movie, files, scene_max=None, limit=None):
     ev = []
     for e in Player(movie, dict_loader(files), scene_max).play():
@@ -1694,6 +1893,17 @@ def selftest():
     page[y0], page[y0 + 1] = 0xFF, 0x7F
     p, _ = draw1([[0x86, 0x01, 0x81, 0x07]], 280, 192, page=page)
     assert p[y0] == 0xBF and p[y0 + 1] == 0xFF, (hex(p[y0]), hex(p[y0 + 1]))
+    # A skip's closing black on bit 6 of a byte that earlier dots of the row
+    # reached: the byte keeps the bit 7 they gave it (the register's), not
+    # the screen's. Fill 3 (palette 1), skip 3: black 3, 4-5 kept, black 6.
+    page = bytearray(PAGE)
+    page[y0] = 0x7F
+    p, _ = draw1([[0x03, 0x87, 0x83, 0x01, 0x00, 0x07]], 280, 192, page=page)
+    assert p[y0] == 0xB7, hex(p[y0])
+    page = bytearray(PAGE)
+    page[y0] = 0xFF                           # palette 0 over a screen bit 7 of 1
+    p, _ = draw1([[0x03, 0x07, 0x83, 0x01, 0x80, 0x07]], 280, 192, page=page)
+    assert p[y0] == 0x37 and p[y0 + 1] == 0x80, (hex(p[y0]), hex(p[y0 + 1]))
     # Lead skip not at bit 6: its black dot takes the next run's palette.
     page = bytearray(PAGE)
     page[y0] = 0x7F

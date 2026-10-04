@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Foreground PT3 on a disposable disk: frame output, pause, exit and bad data."""
+"""Foreground PT3 on a disposable disk: frame output, pause, exit and bad data.
+
+GROUiK's engine is PT3.PLG's primary player (A2FILE/PPT3.BIN, auxiliary
+memory): with /RAM empty it plays without a question and says "/RAM
+rebuilt." on the way out; with a file in /RAM it asks first -- N plays the
+same module with pt3_lib, auxiliary memory untouched; Y plays it with
+GROUiK's engine. Both write the card through the same AY writer."""
 import re
 import sys
 import time
@@ -42,16 +48,20 @@ def main():
     bad=bytearray(raw);start=int.from_bytes(raw[table:table+2],'little')
     bad[start:start+300]=bytes([0x20])*300
     files['WORK/LOOP.PT3#000000']=bytes(bad)
-    bad=bytearray(raw);bad[start:start+3]=bytes([1,2,0x50])
+    # five deferred effects in one row: pt3_lib refuses a second one,
+    # GROUiK's engine a fifth (its 6502 stack holds them)
+    bad=bytearray(raw);bad[start:start+6]=bytes([9,9,9,9,9,0x50])
     files['WORK/EFFECTS.PT3#000000']=bytes(bad)
     files['WORK/WELCOME.MB#061000']=fanfare()
     addr=int(re.search(r'al ([0-9A-Fa-f]{6}) \._pt_regs',(BUILD/'pt3.lbl').read_text())[1],16)
     with tempfile.TemporaryDirectory(prefix='a2fc-pt3-native-') as tmp:
         with boot_hd(Path(tmp),files,port=6994,plugins=['pt3']) as (p,s):
             s.key(b'/');s.select('/WORKHD');s.key(RET);s.select('WORK');s.key(RET);p.stable()
-            s.select('AUTUMN.PT3');before=bytes(p.peek(0x1000,0xB000,'aux'))
+            s.select('AUTUMN.PT3')
             p.rq('/speed',{'preset':'1x'})
-            s.key(RET);s.wait(lambda:s.has('ProTracker 3 - AUTUMN.PT3'),'PT3 playback',30)
+            s.key(RET);s.allow_aux();s.wait(lambda:s.has('ProTracker 3 - AUTUMN.PT3'),'PT3 playback',30)
+            s.wait(lambda:s.has('Player: GROUiK/French Touch'),'GROUiK engine credited',30)
+            s.ok('empty /RAM: GROUiK plays without a question',True)
             values=[]
             for _ in range(20):
                 values.append(bytes(p.peek(addr,14)));time.sleep(.1)
@@ -66,12 +76,32 @@ def main():
             p.rq('/speed',{'preset':'max'})
             s.wait(lambda:s.has('Type  Aux'),'whole AUTUMN.PT3 finishes',60)
             s.ok('AUTUMN.PT3 plays through to its end',not s.has('Invalid PT3.'))
+            s.wait(lambda:s.has('/RAM rebuilt.'),'note after the natural end',10)
+            s.ok('GROUiK run rebuilds /RAM and says so',s.ram_files()==0)
+            ay=ay_snapshot(p,'ended');s.ok('Natural end silences the AY',ay[7]&63==63 and not any(ay[8:11]))
+            # /RAM holds a file: the question comes first; N = pt3_lib, AUX untouched
             p.stable();s.select('AUTUMN.PT3');p.rq('/speed',{'preset':'1x'})
-            s.key(RET);s.wait(lambda:s.has('ProTracker 3 - AUTUMN.PT3'),'second playback',30)
-            s.ok('PT3 preserves auxiliary RAM',bytes(p.peek(0x1000,0xB000,'aux'))==before)
-            s.key(ESC);s.wait(lambda:s.has('Type  Aux'),'panels after PT3',30)
+            s.ram_occupied();before=bytes(p.peek(0x800,0xB800,'aux'))
+            s.key(RET);s.wait(lambda:s.has('ALL /RAM files will be LOST'),'AUX question',30)
+            s.ok('/RAM in use: asked before any AUX write',bytes(p.peek(0x800,0xB800,'aux'))==before)
+            s.key(b'N');s.wait(lambda:s.has('Player: Vince Weaver'),'pt3_lib fallback',30)
+            values=[]
+            for _ in range(10):
+                values.append(bytes(p.peek(addr,14)));time.sleep(.1)
+            s.ok('declined: pt3_lib plays the module',len(set(values))>3)
+            s.key(ESC);s.wait(lambda:s.has('Type  Aux'),'panels after pt3_lib',30)
+            s.ok('declined: auxiliary RAM untouched',bytes(p.peek(0x800,0xB800,'aux'))==before)
+            s.ok('declined: nothing rebuilt, nothing said',not s.has('/RAM rebuilt.'))
             ay=ay_snapshot(p,'stopped');s.ok('Exit silences the AY',ay[7]&63==63 and not any(ay[8:11]))
             s.ok('Exit disables VIA interrupts',ay[16]&127==0)
+            # Y = GROUiK's engine; Escape mid-song still rebuilds /RAM
+            p.stable();s.select('AUTUMN.PT3');s.ram_occupied()
+            s.key(RET);s.allow_aux();s.wait(lambda:s.has('Player: GROUiK/French Touch'),'GROUiK after consent',30)
+            time.sleep(.5);s.ok('accepted: GROUiK plays',any(ay_snapshot(p,'grouik')[8:11]))
+            s.key(ESC);s.wait(lambda:s.has('Type  Aux'),'panels after GROUiK',30)
+            s.wait(lambda:s.has('/RAM rebuilt.'),'note after GROUiK',10)
+            s.ok('accepted: /RAM rebuilt and said',s.ram_files()==0)
+            ay=ay_snapshot(p,'stopped2');s.ok('Escape silences the AY',ay[7]&63==63 and not any(ay[8:11]))
             p.rq('/speed',{'preset':'max'});p.stable()
             s.select('BAD.PT3');s.key(RET)
             s.wait(lambda:s.has('Bad/large PT3'),'malformed module refused',30)
@@ -79,7 +109,8 @@ def main():
             for name in ('SAMPLE.PT3','PATTERN.PT3','LOOP.PT3','EFFECTS.PT3'):
                 s.select(name);s.key(RET)
                 s.wait(lambda:s.has('Invalid PT3.'),name+' rejected',30)
-                s.ok(name+' decoder guard returns safely',s.has('Type  Aux'))
+                s.ok(name+' engine guard returns safely',s.has('Type  Aux') and s.has('/RAM rebuilt.'))
+                ay=ay_snapshot(p,name);s.ok(name+' leaves the AY silent',ay[7]&63==63 and not any(ay[8:11]))
             s.select('WELCOME.MB');p.rq('/speed',{'preset':'1x'});s.key(RET)
             s.wait(lambda:s.has('MB1 - WELCOME.MB'),'MB1 regression',30)
             p.rq('/speed',{'preset':'max'});s.wait(lambda:s.has('Type  Aux'),'MB1 end',30)

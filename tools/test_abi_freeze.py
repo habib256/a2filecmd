@@ -42,6 +42,8 @@ API_V5 = ['version', 'arg', 'panels', 'active', 'full', 'other_full', 'input', '
           'cclearxy', 'clrscr', 'cgetc', 'memcpy', 'memset', 'strcpy', 'strcmp', 'strlen',
           'filetype', 'auxtype', 'reselect', 'note', 'selected', 'cfg_path', 'ram_format',
           'media_key', 'media_wait', 'music_info']
+# API v6 appended one service: the conditional AUX consent (PT3's GROUiK engine).
+API_V6 = API_V5 + ['aux_consent']
 
 CONSTANTS = {
     'MEDIA_PLUGIN_MAGIC': 0xA2FD, 'PLUGIN_MAGIC': 0xA2FC, 'OVERLAY_AUDIO': 0x04,
@@ -109,11 +111,14 @@ class AbiFreeze(unittest.TestCase):
         names = []
         for f in fields('A2fcApi'):
             names.append(f[3:] if f.startswith('fn ') else re.split(r'[ *]', f)[-1])
-        self.assertEqual(names[:len(API_V5)], API_V5)
+        self.assertEqual(names[:len(API_V6)], API_V6)
         version = int(re.search(r'#define A2FC_API_VERSION (\d+)', HEADER).group(1))
-        self.assertGreaterEqual(version, 5)
-        if len(names) > len(API_V5):
-            self.assertGreater(version, 5, 'new services need a new api->version')
+        self.assertGreaterEqual(version, 6)
+        if len(names) > len(API_V6):
+            self.assertGreater(version, 6, 'new services need a new api->version')
+        # the core fills the table in that order: the v6 slot is confirm_aux
+        core = (ROOT / 'src/a2fc.c').read_text()
+        self.assertIn('ram_format, media_key, media_wait, music_info, confirm_aux };', core)
 
     def test_constants_are_frozen(self):
         for name, value in CONSTANTS.items():

@@ -43,6 +43,8 @@ line of the source. The link refuses a file over its window:
 | big (`OVERLAY_BIG`) | `$1B00-$3FFF` | 9,472 bytes | the same, plus `$3000-$3FFF` (4 KB) **only if the ld65 map shows BSS ending under `$3000`** — the file size alone does not prove it, since BSS is not in the file |
 | DUET (its own case in the Makefile) | `$1B00-$23FF` | 2,304 bytes | `$2400-$3FFF` (7 KB) for the song |
 | DOCVIEW (its own case in the Makefile) | `$1B00-$3D5F` | 8,800 bytes | `$3D60-$3FFF` (672 bytes) |
+| NRCLIP (`sdk/nrclip.cfg`) | `$1B00-$1FFF` in place, a part copied to `$0C00-$0FFF` with the BSS, the entry run at `$2000` | 9,472 bytes | the hi-res page, once the entry is done; `$0C00` is the second ProDOS buffer, so never two files open |
+| GMAGIC (`sdk/gmagic.cfg`) | as NRCLIP (`GMLOW` and `GMBSS` at `$0C00`) | 9,472 bytes | `copy_buf` for tables, the note buffer as its read buffer until it returns, and the 112-byte heads of the main text page's 128-byte blocks (font, row patterns) once the hi-res screen is on -- never the screen holes or `$06F7` |
 
 The Makefile writes `build/name.map` (or `build-6502/name.map`) and checks
 code **and BSS** against the window. Add an overlay using `$3000` scratch
@@ -168,6 +170,13 @@ Read `struct A2fcApi` in `src/a2fc_plugin.h`; the useful parts:
   the core redraws only the message line, so call `api->read_panel(0)`,
   `api->read_panel(1)` and `api->draw_all()` yourself when you touched the
   disk.
+- **`api->ram_format()` overwrites MAIN `$2000-$21FF`**: the /RAM driver's
+  FORMAT writes a block into the buffer A2FC hands it. A big overlay whose
+  code runs through that range after the call drops to the monitor (PT3
+  did, on its way out, 2026-10-03); keep it clear or save it around the
+  call. **`api->aux_consent()` (API v6) overwrites `copy_buf`**: ram_empty
+  reads /RAM's directory block there. PT3 staged its engine's first chunk
+  in copy_buf across the question, and AUX received /RAM's directory.
 - **Renaming the boot volume** invalidates `api->cfg_path` (the core loads
   overlays by that absolute path); VOLNAME rewrites it in place.
 - **cc65 2.19 miscompiles `BUF[i]` with a 16-bit `i` when `BUF` is a
