@@ -14,7 +14,7 @@ from test_six_plugins import PREFIX, ROOT
 
 HARNESS = PREFIX + r'''
 unsigned char host_main[1024], host_aux[1024], host_stage[2049];
-unsigned char host_bank, host_shown;
+unsigned char host_bank, host_shown, host_text, host_alt, host_altchar;
 #include "src/plugins/dgrview.c"
 
 static char host_input[17];
@@ -24,7 +24,12 @@ static unsigned char prompt_ok = 1;
 
 static unsigned char mock_prompt(const char* label, const char* init, unsigned char hex)
 { (void)label; (void)init; (void)hex; return prompt_ok; }
-static char mock_cgetc(void) { return KEY_ESC; }
+/* The keys the viewer reads, then Escape; media_key ends on Escape only
+ * (no neighbour in these tests). */
+static const char* keys = "";
+static unsigned int key_reads;
+static char mock_cgetc(void) { ++key_reads; return *keys ? *keys++ : KEY_ESC; }
+static unsigned char mock_media_key(unsigned char k) { return (k & 127) == KEY_ESC; }
 
 int main(int argc, char** argv)
 {
@@ -37,6 +42,8 @@ int main(int argc, char** argv)
     if (argc > 4) host_sel.aux = (unsigned int)strtoul(argv[4], 0, 10);
     host_note[0] = 0;
     memset(host_stage, 0xA5, sizeof(host_stage)); /* stale previous file */
+    if (argc > 6) keys = argv[6];
+    host_altchar = 0x80;                     /* the panels' alternate set */
     if (argc > 5 && atoi(argv[5])) {
         for (i = 0; i < 1024; ++i) {
             host_aux[i] = (unsigned char)(i * 3 + 1);
@@ -50,9 +57,11 @@ int main(int argc, char** argv)
     api.fopen = fopen; api.fread = fread; api.fclose = fclose;
     api.strcpy = strcpy; api.sprintf = sprintf;
     api.version=4;api.media_wait=mock_cgetc;api.prompt = mock_prompt; api.cgetc = mock_cgetc;
+    api.media_key = mock_media_key;
 
     plugin_entry(&api);
-    printf("%u|%u|%s\n", host_shown, wide, host_note);
+    printf("%u|%u|%u|%u|%u|%u|%s\n", host_shown, wide, host_text, host_alt, host_altchar,
+           key_reads, host_note);
     for (i = 0; i < 1024; ++i) fputc(host_aux[i], stderr);
     for (i = 0; i < 1024; ++i) fputc(host_main[i], stderr);
     return 0;
@@ -63,6 +72,18 @@ int main(int argc, char** argv)
 def row_of(r):
     """The Apple II text-page offset of byte row r, 0..23."""
     return (r & 7) * 128 + (r >> 3) * 40
+
+
+HOLES = [o for o in range(1024) if o % 128 >= 120]   # the 64 screen-hole bytes
+
+
+def visible(page, n=1024):
+    """The visible bytes of a page among its first n, in page order."""
+    return bytes(page[o] for o in range(min(n, len(page), 1024)) if o % 128 < 120)
+
+
+SEED_AUX = bytes((i * 3 + 1) & 255 for i in range(1024))     # the harness's seeded banks
+SEED_MAIN = bytes((i * 5 + 2) & 255 for i in range(1024))
 
 
 class DgrView(unittest.TestCase):
@@ -80,33 +101,42 @@ class DgrView(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def view(self, data, ftype=6, width='--', aux=0, seeded=False):
+    def view(self, data, ftype=6, width='--', aux=0, seeded=False, keys=''):
+        """Runs the viewer on `data`; `keys` are read before Escape. The
+        display state show() left (text, character set), the RDALTCHAR put
+        back and the keys read land in self.state."""
         f = self.p / 'pic'
         f.write_bytes(data)
-        r = subprocess.run([str(self.exe), str(f), str(ftype), width, str(aux), str(int(seeded))],
+        r = subprocess.run([str(self.exe), str(f), str(ftype), width, str(aux), str(int(seeded)), keys],
                            capture_output=True, check=True)
         self.assertEqual(f.read_bytes(), data)
         self.assertEqual(len(r.stderr), 2048)
-        shown, wide, note = r.stdout.decode().strip().split('|', 2)
+        shown, wide, text, alt, altchar, reads, note = r.stdout.decode().strip().split('|', 6)
+        self.state = dict(text=int(text), alt=int(alt), altchar=int(altchar), reads=int(reads))
         return int(shown), int(wide), note, r.stderr[:1024], r.stderr[1024:2048]
 
     # -- whole screens ----------------------------------------------------
     def test_a_double_screen_fills_the_auxiliary_half_first(self):
         aux_half = bytes((i * 3) & 0xFF for i in range(1024))
         main_half = bytes((i * 5 + 1) & 0xFF for i in range(1024))
-        shown, wide, note, aux, main = self.view(aux_half + main_half)
+        shown, wide, note, aux, main = self.view(aux_half + main_half, seeded=True)
         self.assertEqual((shown, wide), (1, 1))
         self.assertIn('80 x 48', note)
-        self.assertEqual(aux, aux_half)
-        self.assertEqual(main, main_half)
+        self.assertEqual(visible(aux), visible(aux_half))
+        self.assertEqual(visible(main), visible(main_half))
+        # The screen holes hold the cards' and the firmware's state, not the
+        # file's leftovers: neither bank's is written.
+        self.assertEqual([aux[o] for o in HOLES], [SEED_AUX[o] for o in HOLES])
+        self.assertEqual([main[o] for o in HOLES], [SEED_MAIN[o] for o in HOLES])
 
     def test_a_single_screen_is_forty_columns_in_the_main_half(self):
         page = bytes((i * 7) & 0xFF for i in range(1024))
-        shown, wide, note, aux, main = self.view(page)
+        shown, wide, note, aux, main = self.view(page, seeded=True)
         self.assertEqual((shown, wide), (1, 0))
         self.assertIn('40 x 48', note)
-        self.assertEqual(main, page)
-        self.assertEqual(aux, bytes(1024))          # untouched: 80COL is off
+        self.assertEqual(visible(main), visible(page))
+        self.assertEqual([main[o] for o in HOLES], [SEED_MAIN[o] for o in HOLES])
+        self.assertEqual(aux, SEED_AUX)             # untouched: 80COL is off
 
     def test_too_big_is_refused(self):
         shown, _, note, _, _ = self.view(bytes(2049))
@@ -204,11 +234,13 @@ class DgrView(unittest.TestCase):
         """bmp2dhr writes .SLO at 962 bytes, not 1024: an equality test on the
         size would refuse the very files this is for."""
         page = bytes((i * 11 + 3) & 0xFF for i in range(962))
-        shown, wide, note, aux, main = self.view(page, aux=0x0400)
+        shown, wide, note, aux, main = self.view(page, aux=0x0400, seeded=True)
         self.assertEqual((shown, wide), (1, 0))
         self.assertIn('40 x 48', note)
-        self.assertEqual(main[:962], page)
-        self.assertEqual(main[962:], bytes(1024 - 962))     # the rest stays black
+        self.assertEqual(visible(main, 962), visible(page))
+        # the rest stays black, the holes as they were
+        self.assertEqual(visible(main)[len(visible(page)):], bytes(960 - len(visible(page))))
+        self.assertEqual([main[o] for o in HOLES], [SEED_MAIN[o] for o in HOLES])
 
     def test_a_double_file_of_an_odd_size_splits_in_two(self):
         """.DLO is 1,922 bytes: two halves of 961."""
@@ -216,8 +248,8 @@ class DgrView(unittest.TestCase):
         shown, wide, note, aux, main = self.view(d, aux=0x0400)
         self.assertEqual((shown, wide), (1, 1))
         self.assertIn('80 x 48', note)
-        self.assertEqual(aux[:961], d[:961])
-        self.assertEqual(main[:961], d[961:])
+        self.assertEqual(visible(aux, 961), visible(d[:961]))
+        self.assertEqual(visible(main, 961), visible(d[961:]))
 
     def test_the_proposed_header_says_what_the_file_is(self):
         """'DGR' 1, width, height, flags -- rows of forty bytes with no screen
@@ -302,6 +334,39 @@ class DgrView(unittest.TestCase):
                 self.assertEqual(shown, 0)
                 self.assertIn('Invalid sprite', note)
                 self.assert_seeded_banks(aux, main)
+
+    # -- text screens (2026-10-04) ------------------------------------------
+    def text_page(self, line=b'A TITLE SCREEN SAVED FROM $0400'):
+        page = bytearray([0xA0]) * 1024
+        page[row_of(2):row_of(2) + len(line)] = bytes(c | 0x80 for c in line)
+        return bytes(page)
+
+    def test_a_text_page_is_shown_as_text(self):
+        shown, wide, note, aux, main = self.view(self.text_page(), aux=0x0400, seeded=True)
+        self.assertEqual((shown, wide), (1, 0))
+        self.assertEqual((self.state['text'], self.state['alt']), (1, 0))   # the II's primary set
+        self.assertIn('Text screen, 40 columns', note)
+        self.assertEqual(visible(main), visible(self.text_page()))
+        self.assertEqual([main[o] for o in HOLES], [SEED_MAIN[o] for o in HOLES])
+        self.assertEqual(self.state['altchar'], 0x80)      # the panels' set put back
+
+    def test_eighty_columns_of_text_use_the_alternate_set(self):
+        self.view(self.text_page() * 2, aux=0x0400)
+        self.assertEqual((self.state['text'], self.state['alt']), (1, 1))
+
+    def test_t_turns_the_guess_round_and_a_switches_the_set(self):
+        _, _, note, _, _ = self.view(self.text_page(), aux=0x0400, keys='aT')
+        self.assertEqual((self.state['text'], self.state['alt'], self.state['reads']), (0, 1, 3))
+        self.assertIn('Lo-res screen', note)
+        _, _, note, _, _ = self.view(bytes([0x55]) * 1024, keys='at')   # A means nothing in lo-res
+        self.assertEqual((self.state['text'], self.state['alt']), (1, 0))
+        self.assertIn('Text screen', note)
+
+    def test_t_is_ignored_where_the_file_says_lo_res(self):
+        hdr = b'DGR\x01\x28\x30\x00\x00' + bytes([0xA0]) * 960
+        _, _, note, _, _ = self.view(hdr, keys='TA')
+        self.assertEqual(self.state['text'], 0)
+        self.assertIn('Lo-res screen, 40 x 48', note)
 
     def test_a_small_file_without_the_auxtype_is_still_a_pixmap(self):
         """The auxtype is what distinguishes a short screen from a sprite."""

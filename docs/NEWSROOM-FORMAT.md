@@ -71,6 +71,55 @@ The viewer refuses a file, before drawing anything, unless:
 - the file ends exactly after the bitmap (the directory's size is the
   file's), and no read or close fails.
 
+## Commercial clip-art disks
+
+Springboard's clip art — the disk that came with The Newsroom and the Clip
+Art Collections 1 to 3, two sides each — is not stored as files. Each side
+is a 35-track DOS 3.3-sized disk with a token VTOC (track 17 sector 0) whose
+catalog (track 17 sector 1) holds a short notice, and the rest of the disk
+is Springboard's own layout, read by sector (DOS 3.3 logical sector order):
+
+| Where | Content |
+| --- | --- |
+| Track 0 sector 0 | a boot sector that prints "THIS IS A NON BOOTING DATA DISK" |
+| Track 0 sector 1 … track 33 | the pieces, packed one after the other; track 17 sectors 0 and 1 are skipped |
+| Track 34 sectors 0–1 | the index: `SSI CLIP`, `$00`, the disk's name, `$00` (bit 7 set on every character); byte `$1A` the side number; byte `$1B` the number of pages `n`; from `$1C`, `n` page names, each ended by `$00` |
+| Track 34 sectors 6–15 | the location table |
+
+**Location table.** From byte 0 of sector 6: for each page in index order,
+its pieces as three bytes each — track, sector, offset in the sector of the
+piece's first byte — then `$FF` before the next page. A page has 1 to 17
+pieces. (Past the last page the sectors hold left-overs.)
+
+**A piece** is a rectangle of the page: four bytes, top row `y1`, bottom
+row `y2`, left dot `x1`, right dot `x2` (a page is 252 dots × 192 rows,
+`x2` ≤ 251, `y2` ≤ 191), then its bitmap. The bitmap is stored in vertical
+strips seven dots wide: strip `c` covers dots `x1 + 7c` to `x1 + 7c + 6`
+(cut at `x2`), there are `ceil((x2 − x1 + 1) / 7)` strips, and each strip
+gives one byte per row from `y1` to `y2`. A byte's bit 0 is the strip's
+leftmost dot, 1 white, bit 7 unused (`$80` stands for an empty byte, since
+`$00` is reserved). The strips, one after the other, form one stream of
+`(y2 − y1 + 1) × strips` bytes, compressed: `$00 n v` is `n` copies of `v`
+(`n` ≥ 4 on these disks; a run may continue into the next strip), any
+other byte is itself. How The Newsroom combines pieces that overlap is not
+established; A2 File Cmd draws a page's pieces in table order, each one's
+white dots added to the page (the pieces seen hardly overlap).
+
+The pieces are read across sector and track boundaries; a piece that ends
+exactly at the end of a sector may leave the next sector unused (the next
+piece then starts at offset 0 of the sector after).
+
+Established on 8 distinct sides (The Newsroom's disk, Collections 1–3),
+393 pages: every piece of seven sides decodes exactly from its table entry
+to the next one (2,335 of 2,339 pieces on the copies at hand; the four others
+come from a damaged copy, and two pages of Collection 3 side A are damaged
+on the only copy found). The layout was first suggested by Unison World's
+*Art Gallery to Newsroom Clip Art Conversion Program* (1988, on its *American
+History Art Gallery* disks), which writes such disks: its encoder shows the
+piece header, the seven-dot strips and the runs of four or more; the
+details above were then checked on Springboard's own disks. Unison's
+converter sets bit 7 on every data byte.
+
 ## How this was established
 
 The starting points were Ferg Brand's `NRTOGP`/`NRTONR` converters (1986,
@@ -100,5 +149,32 @@ sim65 on both processors, against the reference: synthetic pictures,
 malformed ones, stale sizes, read, error-flag and close failures, and the
 real disks when they are in `~/.cache/a2fc/newsroom`.
 
-Not yet: the text panels `PN.*` and page layouts `PG.*`, and the commercial
-clip-art disks, whose sheets are packed (index on track 34, "SSI CLIP").
+The NRCLIP overlay (`!` menu, Images; `src/plugins/nrclip.s`) recovers the
+pages of a commercial clip-art disk shown in the active panel — a DOS-order
+file image (`.DSK`, `.DO`, a `.2MG` of format 0 and 143,360 bytes) or a real
+floppy, read by `READ_BLOCK` — into the ProDOS directory of the other panel.
+It checks the index and the whole location table first (`clip_index`,
+`clip_table`), and refuses the disk if either fails. Then, for each page in
+index order, it draws the page on hi-res page 1, which the screen shows as it
+is built, exactly as `clip_page` does, and saves those 8,192 bytes as a BIN
+file of auxiliary type `$2000`, named from the page name the way the core
+names DOS 3.3 files (letters and digits upper case, anything else a period,
+15 characters, an `X` for a first character that is not a letter). The file
+is created exclusively: a name already there is counted and skipped; a page
+`clip_piece` refuses is counted as damaged and gets no file; a failed write
+or close removes the file just created and stops; a read error stops;
+Escape stops between pages. The message line gives the three counts. The
+disk is only read, the auxiliary memory is not used. Its code runs partly
+from `$0C00`, the ProDOS buffer of a second open file, so it never keeps
+two files open: the image is closed before each page is saved and reopened
+for the next. `tools/test_nrclip.py` runs the whole overlay under sim65 on
+both processors, every file and disk service answered by the test: synthetic
+disks in each form, the 12 real disk images at hand (391 of the 393 distinct
+pages saved, the two damaged pages of Collection 3 side A refused), and
+failed reads, seeks, creations, writes, closes and removals, a full disk,
+existing names, Escape, missing or damaged indexes and wrong panels.
+`bench/nrclip.py` runs it in the real program under POM2, on both
+editions: a real clip-art disk image opened from the hard disk, then another
+in drive 2 of the Disk II, every page read back from the destination volume.
+
+Not yet: the text panels `PN.*` and page layouts `PG.*`.
