@@ -1,7 +1,14 @@
-/* Foreground PT3 playback, all storage in main RAM. No file writes/AUX.
- * Keep each live header and 5-8 cached pages; decoder pointers are bounded
- * offsets within their own subfile. Read the complete source once before playback to establish its
- * actual length, then keep the read-only handle until stop/EOF/error. */
+/* Foreground PT3 playback. No file writes. Read the complete source once
+ * before playback to establish its actual length and validate its header.
+ *
+ * Primary engine: GROUiK / French Touch's player (ppt3/), for a single PT3
+ * of 32 KB at most, when api->aux_consent() allows the auxiliary bank: the
+ * engine (A2FILE/PPT3.BIN) and the whole module go to AUX, the source is
+ * closed, and /RAM is rebuilt on exit (ppt3/driver.s, linked at $3B00).
+ * Fallback, all storage in main RAM (TurboSound pairs, larger modules,
+ * consent declined, no engine file): Vince Weaver's pt3_lib, which keeps
+ * each live header and 5-8 cached pages, decoder pointers bounded offsets
+ * within their own subfile, and the read-only handle until stop/EOF/error. */
 #include <string.h>
 #include "../a2fc_plugin.h"
 void __fastcall__ plugin_entry(const struct A2fcApi*);
@@ -40,17 +47,22 @@ void pt_output(void);
 void pt_silence(void);
 void pt_mute(void);
 void pt_hw_stop(void);
-static const struct A2fcApi* A;
+const struct A2fcApi* A;
 #include "hgr_io.h"
 unsigned char pt_pages[256];
 extern unsigned char pt_slots[CACHE_COUNT], pt_next;
 unsigned char pt_victim(void);
-static unsigned char io_bad;
-static FILE* source;
-static unsigned int n, file_length, second_base;
+/* Shared with ppt3/driver.s (GROUiK's engine), hence not static. */
+unsigned char io_bad, r, aux;
+FILE* source;
+unsigned int n;
+static unsigned char gr;
+static unsigned int file_length, second_base;
 #define cache_limit pt_running
 static unsigned char current, ended[2];
 static unsigned char* header;
+unsigned char pg_setup(void), __fastcall__ pg_call(unsigned char);
+void pg_end(void);
 static unsigned char read_at(void* out, unsigned int offset, unsigned int count) {
  if(A->fseek(source,(long)offset,SEEK_SET) || frd(out,1,count,source)!=count || ferror(source)) {io_bad=1;return 0;}
  return 1;
@@ -93,9 +105,9 @@ static unsigned char valid(void) {
 }
 void __fastcall__ plugin_entry(const struct A2fcApi* a) {
  unsigned int count;
- unsigned char bad,paused,r,key;
+ unsigned char bad,paused,key;
 
- A=a;header=SONG;current=pt_chip=pt_dual=0;pt_base=0;ended[0]=ended[1]=0;
+ A=a;header=SONG;current=pt_chip=pt_dual=gr=aux=0;pt_base=0;ended[0]=ended[1]=0;
  if(!A->arg) {scpy(A->note,"No Mockingboard.");return;}
  source=fopn(A->full,"rb");if(!source){scpy(A->note,"Cannot open PT3.");return;}
  n=0;io_bad=r=0;
@@ -116,7 +128,7 @@ spun:
   if(A->cgetc()==27)goto done;
 #endif
   count=n<HEADER_SIZE?HEADER_SIZE-n:HEADER_SIZE;
-  count=frd(n<HEADER_SIZE?SONG+n:CACHE(0),1,count,source);
+  count=frd(n<HEADER_SIZE?SONG+n:SECOND,1,count,source);
   bad=ferror(source)!=0 || count>LIMIT-n;
   if(!bad)n+=count;
  } while(!bad && count);
@@ -127,9 +139,11 @@ spun:
  }
  file_length=second_base=n;
  /* A standard TurboSound footer gives exact, disjoint PT3 subfile lengths. */
- if(!read_at(CACHE(0),n-16,16))goto done;
- if(!memcmp(CACHE(0)+12,"02TS",4)) {
-  header=CACHE(0);
+ /* SECOND, not the cache pages: $3B00-$3FBF hold GROUiK's driver until
+  * the engine is chosen. The footer is consumed before SECOND is reused. */
+ if(!read_at(SECOND,n-16,16))goto done;
+ if(!memcmp(SECOND+12,"02TS",4)) {
+  header=SECOND;
   second_base=word(4);
   if(memcmp(header,"PT3!",4) || memcmp(header+6,"PT3!",4) ||
      second_base<202 || second_base>file_length-16 ||
@@ -140,6 +154,11 @@ spun:
   header=SECOND;if(!valid()){r=1;goto done;}
   pt_dual=1;
  }
+ /* The player screen first: GROUiK's AUX consent question, if any, and the
+  * second pass of its loader then happen there (pg_setup names the player). */
+ A->music_info(SONG);
+ if(!pt_dual && (gr=pg_setup())>1)goto done;
+ if(!gr) {
  memset(pt_pages,0,sizeof pt_pages);
  pt_pages[0]=HEADER_PAGE;pt_pages[1]=HEADER_PAGE+1;
  cache_limit=3;pt_next=0;
@@ -155,7 +174,7 @@ spun:
  if(SONG[101]<55) {pt_pages[1]=0;pt_cache_pages[cache_limit++]=0x38;}
  if(!pt_dual)pt_cache_pages[cache_limit++]=0x39;
  if(!pt_dual || SECOND[101]<55)pt_cache_pages[cache_limit++]=0x3A;
- A->music_info(SONG);
+ }
  pt_hw_start(A->arg);paused=0;
  for(;;) {
 #ifndef PLUGIN_HOST
@@ -171,7 +190,7 @@ spun:
   if(pt_tick() && !paused) {
    key=pt_dual;
    do {
-    r=pt_frame();if(r==1)goto stop;
+    r=gr?pg_call(1):pt_frame();if(r==1)goto stop;
     if(r==2) {ended[current]=1;pt_mute();}
     else pt_output();
     /* Once one module ends, keep the remaining context live: no swaps. */
@@ -186,7 +205,8 @@ stop:
  pt_hw_stop();
  scpy(A->reselect,A->selected->name);
 done:
- if(fcls(source))io_bad=1;
+ if(source && fcls(source))io_bad=1;
  if(r==1)scpy(A->note,"Invalid PT3.");
  if(io_bad)scpy(A->note,"PT3 read/seek/close error.");
+ if(aux)pg_end();
 }

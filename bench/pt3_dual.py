@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Standard 02TS, unaligned second module, two AYs, unequal durations and AUX."""
+"""Standard 02TS, unaligned second module, two AYs, unequal durations and AUX.
+
+TurboSound pairs always play with pt3_lib (no AUX); the single module the
+bench steps to plays with GROUiK's engine, so the AUX reference is taken
+after it."""
 import sys,time,re,tempfile
 from pathlib import Path
 from xplug import boot_hd,RET,ESC,ok_all
@@ -44,6 +48,8 @@ def main():
    s.key(b'P');s.ok('pause silences both chips',all(quiet(x) for x in snapshot(p)))
    s.key(b'P');s.key(b'\x15');s.wait(lambda:s.has('ProTracker 3 - B.SINGLE.PT3'),'next single',60)
    s.ok('next track leaves second chip silent',not any(snapshot(p)[1][8:11]))
+   s.wait(lambda:s.has('Player: GROUiK/French Touch'),'GROUiK credit',30)
+   s.ok('the single module plays with GROUiK\'s engine',True)
    s.key(b'\x08');s.wait(lambda:s.has('ProTracker 3 - A.DUAL.PT3') and s.has('ESC Back'),'dual restart',60)
    counter=int(re.search(r'al ([0-9A-Fa-f]{6}) \._pt_frames',(BUILD/'pt3.lbl').read_text())[1],16)
    s.wait(lambda:0<int.from_bytes(p.peek(counter+2,2),'little')<16,'dual timer started')
@@ -54,6 +60,10 @@ def main():
    guest=(p.rq('/status')['cpu']['cycles']-cycles)/1022727;elapsed=time.monotonic()-started
    s.wait(lambda:s.has('Type  Aux'),'both songs end',30)
    s.ok('natural end after both songs, no decoder/I/O error',not s.has('Invalid PT3.') and not s.has('error.'))
+   # B.SINGLE, a single module, played with GROUiK's engine (auxiliary
+   # memory, /RAM rebuilt); every TurboSound pair below is pt3_lib's, which
+   # must leave the auxiliary bank alone: the reference starts here.
+   before=p.peek(0x800,0xF800,'aux')
    miss_counter=int(re.search(r'al ([0-9A-Fa-f]{6}) \._pt_misses',(BUILD/'pt3.lbl').read_text())[1],16)
    print('CACHE MISSES',int.from_bytes(p.peek(miss_counter,2),'little'),flush=True)
    s.ok('sparse pair decodes all 97/289 frames',p.peek(counter,4)==bytes.fromhex('61002101'),'%.2f guest s / %.2f wall s (cache pressure)'%(guest,elapsed))

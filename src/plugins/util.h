@@ -3,11 +3,24 @@
 #include <stddef.h>
 #if defined(UTIL_FIXED_API) && !defined(PLUGIN_HOST)
 #define a (*(struct A2fcApi*)0x3F9E)
+#define UTIL_API_COPY offsetof(struct A2fcApi,ram_format)
+#elif !defined(PLUGIN_HOST)
+/* The copy stops before the v6 services (aux_consent and later): a util.h
+ * overlay does not use them, and its BSS keeps the size it had under v5.
+ * One that needs them reads them through the api pointer. */
+#define UTIL_API_COPY offsetof(struct A2fcApi,aux_consent)
+static unsigned char util_api[UTIL_API_COPY];
+#define a (*(struct A2fcApi*)util_api)
+#define UTIL_API_SYM util_api
 #else
 static struct A2fcApi a;
+#define UTIL_API_COPY sizeof a
+#endif
+#ifndef UTIL_API_SYM
+#define UTIL_API_SYM a
 #endif
 #ifdef UTIL_STUBS
-#define SERVICE_API a
+#define SERVICE_API UTIL_API_SYM
 #include "service_stubs.h"
 #endif
 #ifndef RF
@@ -20,13 +33,9 @@ static unsigned int rd16(const unsigned char* p) { return p[0] | ((unsigned int)
 static unsigned long rd24(const unsigned char* p) { return rd16(p) | ((unsigned long)p[2]<<16); }
 static void wr16(unsigned char* p, unsigned int v) { p[0]=v; p[1]=v>>8; }
 static void init(const struct A2fcApi* api) {
-#ifdef UTIL_FIXED_API
-    /* Up to cfg_path: at $3F9E the fields after it would land on the
-     * resident at $4000, and no util.h overlay reads them. */
-    api->memcpy(&a,api,offsetof(struct A2fcApi,ram_format));
-#else
-    api->memcpy(&a,api,sizeof a);
-#endif
+    /* UTIL_FIXED_API: up to cfg_path, at $3F9E the fields after it would
+     * land on the resident at $4000, and no util.h overlay reads them. */
+    api->memcpy(&a,api,UTIL_API_COPY);
     buf=a.copy_buf; cancelled=0;
     pan=a.panels+*a.active; other=a.panels+!(*a.active);
 }

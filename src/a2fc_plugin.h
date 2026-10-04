@@ -33,7 +33,7 @@
 
 #include <stdio.h>
 
-#define A2FC_API_VERSION 5
+#define A2FC_API_VERSION 6
 #define MEDIA_PLUGIN_MAGIC 0xA2FD /* requires v4 media services; older cores refuse it */
 #define PLUGIN_MAGIC 0xA2FC        /* the signature of a third-party overlay */
 #define OVERLAY_AUDIO 0x04         /* foreground audio: core supplies card slot in arg */
@@ -185,7 +185,10 @@ struct A2fcApi {
      * AUXILIARY bank -- a double hi-res page, an LZW dictionary -- destroys
      * the blocks /RAM keeps there: the volume is then inconsistent and the
      * next write to it returns anything at all. Call this afterwards and say
-     * so, the way the core does on return from a DHGR picture. */
+     * so, the way the core does on return from a DHGR picture.
+     * It overwrites MAIN $2000-$21FF (the /RAM driver's FORMAT writes a
+     * block into the buffer it is given): keep no code or data you still
+     * need there, or save it around the call (PT3 does, ppt3/driver.s). */
     unsigned char (*ram_format)(void);
     /* v4: foreground media. media_key returns 1 on Escape or an available
      * Left/Right neighbour; the caller must silence/clean up before return.
@@ -194,6 +197,15 @@ struct A2fcApi {
     unsigned char (*media_key)(unsigned char);
     char (*media_wait)(void);
     void (*music_info)(const unsigned char*);
+    /* v6: the AUX consent of OVERLAY_AUX, for an overlay that only SOMETIMES
+     * needs the auxiliary bank (PT3: GROUiK's engine, with pt3_lib as the
+     * fallback). Answers 1 without a question when /RAM is on line and holds
+     * no file, or when the user already accepted while leafing through this
+     * media folder; otherwise asks "ALL /RAM files will be LOST. Continue?"
+     * and answers 1 on yes. Call it BEFORE the first AUX write; on 0 write
+     * nothing there. After any AUX write, call ram_format and say so.
+     * It overwrites copy_buf (it reads /RAM's directory block there). */
+    unsigned char (*aux_consent)(void);
 };
 
 #endif /* A2FC_PLUGIN_H */

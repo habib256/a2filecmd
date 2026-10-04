@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Large generated PT3: 1x playback, cache misses, transport and preservation."""
+"""Large generated PT3: 1x playback, cache misses, transport and preservation.
+
+Modules over 32 KB play with pt3_lib (main memory only); the small one the
+bench steps to plays with GROUiK's engine (AUX), hence the AUX reference
+taken after it."""
 import re
 import sys
 import tempfile
@@ -64,8 +68,15 @@ def main():
             s.key(b'\x15')
             s.wait(lambda: s.has('ProTracker 3 - B.SMALL.PT3'), 'next track', 60)
             s.ok('Right closes the large file and opens the next track', True)
+            # B.SMALL, a single module under 32 KB, plays with GROUiK's engine
+            # in AUX; A.LARGE (64 KB) is pt3_lib's, which must leave AUX
+            # alone: the reference is taken once B.SMALL has rebuilt /RAM.
+            s.wait(lambda: s.has('Player: GROUiK/French Touch'), 'GROUiK for the small module', 30)
             s.key(b'\x08')
             s.wait(lambda: s.has('ProTracker 3 - A.LARGE.PT3'), 'previous track', 60)
+            s.wait(lambda: s.has('Player: Vince Weaver'), 'pt3_lib credit', 30)
+            s.ok('the 64 KB module plays with pt3_lib', True)
+            before = auxiliary(p)
             started = time.monotonic()
             s.wait(lambda: s.has('Type  Aux'), 'large track natural end at 1x', 30)
             elapsed = time.monotonic() - started

@@ -655,7 +655,10 @@ amp_slide_up:
 asu_signed:
 	bpl	done_amp_sliding	; skip if A>=15
 	inc	note_a+NOTE_AMPLITUDE_SLIDING,X	; a->amplitude_sliding++;
-	bne	done_amp_sliding_y
+	; A2FC: always taken (upstream "bne" fell into the slide-down code
+	; when the slide reached 0 from -1, skipped the TYA and left the
+	; amplitude at 0 for that tick)
+	jmp	done_amp_sliding_y
 
 amp_slide_down:
 	; if (a->amplitude_sliding > -15) {
@@ -759,11 +762,14 @@ envelope_slide:
 envelope_slide_up:
 	; j = ((b0>>1)&0xF) + a->envelope_sliding;
 	and	#$0f
-	clc
 
 envelope_slide_down:
 
 	; j = ((b0>>1)|0xF0) + a->envelope_sliding
+	; A2FC: CLC on both paths -- the BCS above left the carry set on the
+	; way down, and every negative offset came out one too small (-15
+	; for -16)
+	clc
 	adc	note_a+NOTE_ENVELOPE_SLIDING,X
 	sta	e_slide_amount_smc+1			; j
 
@@ -871,8 +877,11 @@ put_offon:
 .ifdef PT3_USE_ZERO_PAGE
 	sty	note_a+NOTE_ONOFF,X
 .else
-	lda	note_a+NOTE_ONOFF,X
-	tay
+	; A2FC: store the countdown (the upstream non-zero-page line was
+	; "lda note_a+NOTE_ONOFF,X / tay": the count never moved, and the
+	; on/off effect never cut the channel)
+	tya
+	sta	note_a+NOTE_ONOFF,X
 .endif
 
 done_onoff:
@@ -1764,16 +1773,13 @@ pt3_speed_smc:
 next_line:
 	sta	current_subframe_smc+1	; reset subframe to 0		; 4
 
+	; A2FC: no cut at 64 lines. Vortex Tracker patterns may be longer;
+	; a pattern ends where its channels end ($00, early_end), as in
+	; Bulba's players. The line never wraps to 0, which means "load the
+	; current pattern" at the top of pt3_make_frame: it stays at 255.
 	inc	current_line_smc+1	; and increment line		; 6
-	lda	current_line_smc+1					; 4
-
-	eor	#64			; always end at 64.		; 2
-	bne	do_frame		; is this always needed?	; 2/3
-
-next_pattern:
-	sta	current_line_smc+1	; reset line to 0		; 4
-
-	inc	current_pattern_smc+1	; increment pattern		; 6
+	bne	do_frame						; 2/3
+	dec	current_line_smc+1					; 6
 
 do_frame:
 	; AY-3-8910 register summary
@@ -1805,6 +1811,7 @@ do_frame:
 	sta	AY_REGISTERS+0          ; into R0                       ; 3
 
 	lda	note_a+NOTE_TONE_H	; Note A Period H		; 4
+	and	#$0F			; A2FC: the ZX AY's 12 bits, before scaling
 	sta	AY_REGISTERS+1		; into R1			; 3
 	lda	note_a+NOTE_TONE_L	; Note A Period L		; 4
 
@@ -1817,9 +1824,9 @@ convert_177_smc1:
 	bcc	no_scale_a						; 2/3
 .endif
 
-	; Convert from 1.77MHz to 1MHz: x9/16, ROUNDED (see conv916)
+	; Convert from 1.77MHz to the Mockingboard's clock (see conv_mb)
 	ldx	#0							; 2
-	jsr	conv916							; 6+?
+	jsr	conv_mb							; 6+?
 .endif
 
 no_scale_a:
@@ -1828,6 +1835,7 @@ no_scale_a:
 	sta	AY_REGISTERS+2		; into R2			; 3
 
 	lda	note_b+NOTE_TONE_H	; Note B Period H		; 4
+	and	#$0F			; A2FC: the ZX AY's 12 bits, before scaling
 	sta	AY_REGISTERS+3		; into R3			; 3
 	lda	note_b+NOTE_TONE_L	; Note B Period L		; 4
 
@@ -1840,9 +1848,9 @@ convert_177_smc2:
 	bcc	no_scale_b						; 2/3
 .endif
 
-	; Convert from 1.77MHz to 1MHz: x9/16, ROUNDED (see conv916)
+	; Convert from 1.77MHz to the Mockingboard's clock (see conv_mb)
 	ldx	#2							; 2
-	jsr	conv916							; 6+?
+	jsr	conv_mb							; 6+?
 .endif
 
 no_scale_b:
@@ -1850,6 +1858,7 @@ no_scale_b:
 	lda	note_c+NOTE_TONE_L	; Note C Period L		; 4
 	sta	AY_REGISTERS+4		; into R4			; 3
 	lda	note_c+NOTE_TONE_H	; Note C Period H		; 4
+	and	#$0F			; A2FC: the ZX AY's 12 bits, before scaling
 	sta	AY_REGISTERS+5		; into R5			; 3
 	lda	note_c+NOTE_TONE_L	; Note C Period L		; 4
 
@@ -1861,9 +1870,9 @@ convert_177_smc3:
 	bcc	no_scale_c						; 2/3
 .endif
 
-	; Convert from 1.77MHz to 1MHz: x9/16, ROUNDED (see conv916)
+	; Convert from 1.77MHz to the Mockingboard's clock (see conv_mb)
 	ldx	#4							; 2
-	jsr	conv916							; 6+?
+	jsr	conv_mb							; 6+?
 .endif
 
 no_scale_c:
@@ -1889,22 +1898,16 @@ convert_177_smc4:
 	bcc	no_scale_n						; 2/3
 .endif
 
-	; Convert from 1.77MHz to 1MHz by multiplying by 9/16
-
-	; first multiply by 8
-	asl								; 2
-	asl								; 2
-	asl								; 2
-
-	; add in original to get 9
-	adc	AY_REGISTERS+6						; 3
-
-	; divide by 16 to get proper value
-	ror								; 2
-	ror								; 2
-	ror								; 2
-	ror								; 2
-	and	#$1f							; 2
+	; A2FC: the same conversion as the tones (conv_mb), through GUARD
+	; ($6C-$6D, free while the frame is output): the noise generator
+	; divides the same clock, so its period scales by the same factor.
+	beq	no_scale_n		; 0 stays 0: spare the conversion
+	sta	GUARD
+	lda	#0
+	sta	GUARD+1
+	ldx	#<(GUARD-AY_REGISTERS)	; zero page,X wraps: AY_REGISTERS+X = GUARD
+	jsr	conv_mb
+	lda	GUARD
 .endif
 
 no_scale_n:
@@ -1929,6 +1932,13 @@ no_scale_n:
 	;======================================
 	; Envelope period
 	; result=period+add+slide (16-bits)
+	; A2FC: the add (samples' envelope offsets) is signed, as in Bulba's
+	; players; upstream added it as an unsigned byte (+256 when negative).
+	ldx	#0
+	lda	pt3_envelope_add_smc+1
+	bpl	:+
+	dex
+:	stx	pt3_envelope_ext_smc+1
 	clc								; 2
 pt3_envelope_period_l_smc:
 	lda	#$d1							; 2
@@ -1937,6 +1947,7 @@ pt3_envelope_add_smc:
 	tay								; 2
 pt3_envelope_period_h_smc:
 	lda	#$d1							; 2
+pt3_envelope_ext_smc:
 	adc	#0							; 2
 	tax								; 2
 
@@ -1960,9 +1971,13 @@ convert_177_smc5:
 	bcc	no_scale_e						; 2/3
 .endif
 
-	; Convert from 1.77MHz to 1MHz: x9/16, ROUNDED (see conv916)
+	; Convert from 1.77MHz to the Mockingboard's clock (see conv_mb);
+	; a period of 0 (no envelope used) stays 0: spare the conversion
+	lda	AY_REGISTERS+11
+	ora	AY_REGISTERS+12
+	beq	no_scale_e
 	ldx	#11							; 2
-	jsr	conv916							; 6+?
+	jsr	conv_mb							; 6+?
 .endif
 
 no_scale_e:
@@ -2015,54 +2030,59 @@ done_do_frame:
 
 .ifndef PT3_DISABLE_FREQ_CONVERSION
 	;===========================================================
-	; conv916: AY_REGISTERS+X (lo) / +X+1 (hi) *= 9/16, rounded
+	; conv_mb: AY_REGISTERS+X (lo) / +X+1 (hi) *= 1.0227/1.7734, rounded
 	;===========================================================
-	; The PT3 periods are for a 1.77MHz AY; the Mockingboard's runs at
-	; 1.023MHz, and 9/16 is the ratio the library uses for both.
-	;
-	; The inline copies this replaces computed P*8+P with ASL/ROL and
-	; shifted it right four times: the remainder was TRUNCATED, and the
-	; top bits of P*8 were lost. On a 12-bit tone period that is harmless.
-	; On the ENVELOPE period it is not: a buzz bass tunes the envelope to
-	; its note through a SMALL period (PT3 "AuTumn'99" uses 37-240), where
-	; losing up to 15/16 of a unit put the bass up to 69 cents sharp of the
-	; tone it doubles (EP 37 -> 20, not 20.8). And P*8 overflowed 16 bits
-	; for P >= 8192, while the copied AND #$0F cut any result >= 4096.
-	;
-	; Here, with no multiply to overflow:
-	;	round(9P/16) = (P>>1) + (P>>4) + ((P & 9) != 0)
-	; because 9P/16 = P/2 + P/16, and the two dropped fractions add up to
-	; (8*(P&1) + (P&15))/16, which reaches one half exactly when bit 0 or
-	; bit 3 of P is set. Exact for every 16-bit P (tools/test_pt3_conv.py
-	; runs this routine on all 65536). Worst buzz-bass error: 27 cents.
-	;
-	; Clobbers A, Y; X preserved.
-conv916:
-	lda	AY_REGISTERS,X						; 4
-	and	#$09							; 2
-	cmp	#$01			; C = round up (bit 0 or 3)	; 2
-	php								; 3
-	lda	AY_REGISTERS+1,X					; 4
-	lsr				; P>>1, high			; 2
-	tay								; 2
-	lda	AY_REGISTERS,X						; 4
-	ror				; P>>1, low			; 2
-	pha								; 3
-	lsr	AY_REGISTERS+1,X	; P>>4, in place		; 6
-	ror	AY_REGISTERS,X						; 6
-	lsr	AY_REGISTERS+1,X					; 6
-	ror	AY_REGISTERS,X						; 6
-	lsr	AY_REGISTERS+1,X					; 6
-	ror	AY_REGISTERS,X						; 6
-	lsr	AY_REGISTERS+1,X					; 6
-	ror	AY_REGISTERS,X						; 6
-	pla				; P>>1, low			; 4
-	plp				; C = round up			; 4
-	adc	AY_REGISTERS,X						; 4
-	sta	AY_REGISTERS,X						; 4
-	tya				; P>>1, high			; 2
-	adc	AY_REGISTERS+1,X					; 4
-	sta	AY_REGISTERS+1,X					; 4
+	; A2FC: PT3 periods are written for the ZX Spectrum 128's AY, clocked
+	; at 1.7734 MHz; the Mockingboard's AY runs on the Apple II's 1.0227
+	; MHz clock. The same pitch needs the period times 1.0227/1.7734 =
+	; 0.576689; here 1181/2048 = 0.576660 (0.09 cent flat), rounded to
+	; the nearest period: (P x 1181 + 1024) >> 11. The upstream 9/16
+	; played everything 43 cents sharp. 1181 = %10010011101: from its bit
+	; 0 up, add P (conv_add) where the bit is set, and shift the 17-bit sum
+	; right once per bit; the bit shifted out last (bit 10 of the product)
+	; is the rounding carry. About 290 cycles: TurboSound pairs convert
+	; twice per tick, and a 16-bit loop (590) cost them 50 Hz at 1x.
+	; Exact for every 16-bit P (tools/test_pt3_conv.py runs all 65536).
+	; Clobbers A and $6E-$6F (free decoder zero page); X and Y preserved.
+conv_mb:
+	lda	AY_REGISTERS+1,X	; bits 0 and 1: the sum is P, shifted twice
+	lsr
+	sta	$6F
+	lda	AY_REGISTERS,X
+	ror
+	lsr	$6F
+	ror
+	sta	$6E
+	jsr	conv_add		; bit 2
+	jsr	conv_add		; bit 3
+	jsr	conv_add		; bit 4
+	lsr	$6F			; bit 5
+	ror	$6E
+	lsr	$6F			; bit 6
+	ror	$6E
+	jsr	conv_add		; bit 7
+	lsr	$6F			; bit 8
+	ror	$6E
+	lsr	$6F			; bit 9
+	ror	$6E
+	jsr	conv_add		; bit 10: C = bit 10 of the product
+	lda	$6E
+	adc	#0
+	sta	AY_REGISTERS,X
+	lda	$6F
+	adc	#0
+	sta	AY_REGISTERS+1,X
+	rts
+conv_add:
+	clc
+	lda	$6E
+	adc	AY_REGISTERS,X
+	sta	$6E
+	lda	$6F
+	adc	AY_REGISTERS+1,X
+	ror				; the 17th bit comes in
+	sta	$6F
+	ror	$6E
 	rts								; 6
 .endif
 
