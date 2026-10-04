@@ -187,7 +187,7 @@ def main():
             s.key(b'Q')
             s.wait(lambda: AUXASK in s.rows()[22], 'la question de /RAM', 60)
             c0 = cycles(p)
-            s.allow_aux()
+            s.allow_aux(always=True)       # FIXIT asks whatever /RAM holds
             s.wait(lambda: s.has('ESC/RETURN back'), 'les constats du controle rapide', 600)
             quick = cycles(p) - c0
             p.stable()
@@ -256,7 +256,7 @@ def main():
 
             # 6. REPAIR
             start('REPAIR')
-            s.allow_aux()
+            s.allow_aux(always=True)
             s.wait(lambda: s.has(KEYS), 'l ecran de plan de REPAIR', 1200)
             p.stable()
             text = '\n'.join(s.rows())

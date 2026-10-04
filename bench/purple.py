@@ -40,7 +40,7 @@ def main():
   with boot_hd(tmp,files,port=6980,plugins=['purple'],chatmauve=os.environ.get('A2FC_RGB','eve')) as(p,s):
    disk=Path(p.hdv);original=disk.read_bytes()
    s.key(b'/');s.select('/WORKHD');s.key(RET);s.select('WORK');s.key(RET);p.stable()
-   s.select('G5.FOTO1');before=p.peek(0x800,0xF800,'aux');s.key(RET)
+   s.select('G5.FOTO1');s.ram_occupied();before=p.peek(0x800,0xF800,'aux');s.key(RET)
    s.wait(lambda:s.has('ALL /RAM files will be LOST'),'first consent');s.key(b'N');p.stable()
    s.ok('refusal preserves AUX before loading',p.peek(0x800,0xF800,'aux')==before)
    for name,(aux,main) in cases.items():
@@ -62,7 +62,7 @@ def main():
    s.ok('Right skips partner and keeps AUX consent',True)
    s.key(bytes([8]));s.wait(lambda:p.peek(0x2000,8192,'aux')==cases['G5'][0],'previous without consent',60)
    s.key(ESC);s.wait(lambda:s.has('Type  Aux'),'final panels');p.stable()
-   before=p.peek(0x800,0xF800,'aux');s.key(RET);s.wait(lambda:s.has('ALL /RAM files will be LOST'),'new session consent');s.key(b'N');p.stable()
+   s.ram_occupied();before=p.peek(0x800,0xF800,'aux');s.key(RET);s.wait(lambda:s.has('ALL /RAM files will be LOST'),'new session consent');s.key(b'N');p.stable()
    s.ok('new session asks again and refusal preserves AUX',p.peek(0x800,0xF800,'aux')==before)
   s.ok('source disk unchanged',disk.read_bytes()==original)
  return ok_all(s,'Purplesoft')

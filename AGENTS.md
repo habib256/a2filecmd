@@ -13,7 +13,10 @@ quelques octets économisés ne justifient jamais une perte de données.
   lire de la musique ou décompresser peut nécessiter sa reconstruction pour
   libérer de la place. Dans ce cas, avertir clairement que TOUS ses fichiers
   seront perdus et demander confirmation AVANT de toucher cette mémoire.
-  Un message après la destruction ne suffit pas.
+  Un message après la destruction ne suffit pas. Si `/RAM` est en ligne et
+  ne contient aucun fichier (en-tête de volume lu, compteur de fichiers à
+  zéro), il n'y a rien à perdre : ne pas poser la question (`ram_empty`).
+  Au moindre doute (pas de `/RAM`, erreur de lecture), demander.
 - Une erreur de lecture, de recherche, de métadonnées ou de fermeture n'est ni
   une fin de fichier normale, ni la preuve qu'un chemin est libre. En cas de
   doute, refuser l'écriture ou la suppression.

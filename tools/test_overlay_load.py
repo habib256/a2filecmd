@@ -42,6 +42,7 @@ static size_t read_code(void* p,size_t size,size_t n,FILE* f) {
 }
 static int close_code(FILE* f){++closes;fclose(f);return mode==4?-1:0;}
 static int confirm_aux(void){return 1;}
+static const char loading_tool[]="Loading tool...";
 static void snapshot_entries(void){}
 static void keep_tags(int save){saved+=save?1:-1;}
 static int read_panel(int p){++restored;memset(window+1280,0xEE,100);return 1;}
@@ -74,6 +75,33 @@ int main(int argc,char** argv) {
 '''
 
 class OverlayLoad(unittest.TestCase):
+ def test_an_empty_ram_disk_asks_nothing(self):
+  # confirm_aux, as written in a2fc.c: no question when ram_empty() says
+  # /RAM is on line and holds no file; otherwise the question, and a
+  # refusal is obeyed.
+  gate=source[source.index('static unsigned char media_aux_scope;'):source.index('/* A big overlay took the entry pool')]
+  gate=gate.replace('#pragma rodata-name(push, "LC")','').replace('#pragma rodata-name(pop)','')
+  code=r"""
+#include <stdio.h>
+#include <stdlib.h>
+static int empty,answer,asked;
+static unsigned char ram_empty(void){return empty;}
+static unsigned char confirm(const char* q){(void)q;++asked;return answer;}
+"""+gate+r"""
+int main(int argc,char** argv){int r;
+ empty=atoi(argv[1]);answer=atoi(argv[2]);media_aux_scope=atoi(argv[3]);
+ r=confirm_aux();printf("%d %d %d\n",r,asked,media_aux_scope);return 0;}
+"""
+  with tempfile.TemporaryDirectory(prefix='aux-gate-') as t:
+   p=Path(t);(p/'g.c').write_text(code)
+   subprocess.run(['cc','-std=c99',str(p/'g.c'),'-o',str(p/'g')],check=True)
+   run=lambda *a:subprocess.check_output([str(p/'g')]+[str(x) for x in a],text=True).split()
+   self.assertEqual(run(1,0,0),['1','0','0'])   # empty /RAM: no question, granted
+   self.assertEqual(run(1,0,1),['1','0','1'])
+   self.assertEqual(run(0,0,0),['0','1','0'])   # files there: asked, refused
+   self.assertEqual(run(0,1,1),['1','1','2'])   # asked, granted for the session
+   self.assertEqual(run(0,0,2),['1','0','2'])   # already granted this session
+
  def test_failed_menu_cannot_replay_a_previous_command(self):
   dispatch=source[source.index("        case '!':"):source.index("        case 'i': case 'I':")]
   harness=r'''

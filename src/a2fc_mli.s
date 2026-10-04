@@ -68,6 +68,14 @@ block:  .word   $0000
 ; reads the six bytes.
         .export _ram_format
 _ram_format:
+        jsr findram
+        bcc found
+        lda #0                  ; no /RAM on line
+        tax
+        rts
+
+; Carry clear and X = its DEVADR index, unit set, when a /RAM is on line.
+findram:
         ldy $BF31               ; DEVCNT: the number of units, minus one
 scan:   lda $BF32,y             ; DEVLST
         and #$F0
@@ -80,11 +88,12 @@ scan:   lda $BF32,y             ; DEVLST
         bne next
         lda $BF11,x
         cmp #$FF                ; $FF00: the /RAM driver
-        beq found
+        bne next
+        clc
+        rts
 next:   dey
         bpl scan
-        lda #0                  ; no /RAM on line
-        tax
+        sec
         rts
 found:  lda $BF10,x
         sta vec
@@ -123,7 +132,43 @@ found:  lda $BF10,x
 indirect:
         jmp (vec)
 vec:    .word 0
-unit:   .byte 0
+; An NMOS 6502 (the 6502 edition) reads JMP (vec)'s high byte from the
+; start of the same page when vec ends a page: the /RAM rebuild would jump
+; anywhere. Code above this word grew with ram_empty; keep it off $xxFF.
+.assert <vec <> $FF, lderror, "ram_format's JMP (vec) must not straddle a page (NMOS 6502)"
+rbparm: .byte 3                 ; ram_empty's READ_BLOCK: the unit found,
+unit:   .byte 0                 ; copy_buf, block 2
+        .word _copy_buf
+        .word 2
+
+; unsigned char ram_empty(void);
+;
+; 1 when ProDOS's /RAM is on line and holds no file: its volume directory
+; (block 2, read into copy_buf) is a volume header whose file count is 0.
+; Anything else -- no /RAM found (the auxiliary bank may serve another
+; driver), a read error, an unexpected header -- answers 0, and the user
+; is asked before the auxiliary bank is used, as before. Writes copy_buf,
+; which loading an overlay overwrites anyway.
+        .export _ram_empty
+        .import _copy_buf
+_ram_empty:
+        jsr findram
+        bcs no
+        jsr $BF00
+        .byte $80               ; READ_BLOCK
+        .word rbparm
+        bcs no
+        lda _copy_buf+4         ; storage type $F: a volume header
+        cmp #$F0
+        bcc no
+        lda _copy_buf+$25       ; its file count
+        ora _copy_buf+$26
+        bne no
+        lda #1
+        .byte $2C               ; BIT abs: skips the lda #0
+no:     lda #0
+        ldx #0
+        rts
 
 ; unsigned int __fastcall__ panel_hash(const struct Panel* pan);
 ;

@@ -29,6 +29,7 @@
 #endif
 
 unsigned char __fastcall__ mli_call(unsigned char cmd, void* parms);
+unsigned char ram_empty(void);        /* a2fc_mli.s: /RAM on line and without a file */
 unsigned char __fastcall__ format_driver_call(unsigned char unit, unsigned char cmd, unsigned char lc);
 extern unsigned int format_driver_blocks;
 unsigned char __fastcall__ diskii_begin(unsigned char slotdrive);
@@ -541,7 +542,7 @@ void __fastcall__ format_entry(const struct A2fcApi* api)
         }
         if (!ask_name()) continue;
         if (!confirm()) continue;
-        if (target->kind == KIND_DISKII &&
+        if (target->kind == KIND_DISKII && !ram_empty() &&
             !A->confirm("Formatting uses AUX: ALL /RAM files will be LOST. Continue?")) continue;
         /* The last look before the first write: the prompts left all the
          * time needed to switch disks, and the confirmation named this one.
