@@ -410,12 +410,14 @@ class Overlay(unittest.TestCase):
                 self.assertEqual(a[1][r], b[1][r], ('inverse', i, r))
         return shots
 
+    @unittest.skipUnless(ROM.exists(), 'calls the Applesoft ROM (^, @ functions): no ROM image (A2FC_ROM)')
     def test_demo_worksheet(self):
         shots = self.check(demo(), '\x0b\x0b\x08 B>R<')
         rows = shots[0][0]
         self.assertIn('1802.85', rows[9])
         self.assertTrue(rows[0].startswith('D8 /F$ (V) @SUM(D4...D6)'))
 
+    @unittest.skipUnless(ROM.exists(), 'calls the Applesoft ROM (^, @ functions): no ROM image (A2FC_ROM)')
     def test_order_and_references_ahead(self):
         cells = {'A1': '+B1', 'B1': '+C1', 'C1': '5', 'A2': '+A3', 'A3': '7', 'B2': '+A2*2',
                  'D4': '"HELLO', 'C3': '2+3*4', 'B3': '-2^2', 'A5': '@SUM(A1...A3)', 'B5': '+7'}
@@ -538,6 +540,7 @@ class Overlay(unittest.TestCase):
         self.assertEqual([rows[r][27:39] for r in range(2, 6)],
                          [' 4.815927874', '          30', ' 4.815927874', '          20'])
 
+    @unittest.skipUnless(ROM.exists(), 'calls the Applesoft ROM (^, @ functions): no ROM image (A2FC_ROM)')
     def test_what_visicalc_showed_at_the_edges(self):
         """Probe X1 (tools/visicalc_probes.json.gz), as VisiCalc 1.93 showed
         it: a literal out of range is an ERROR value (@ISERROR(1E99) is
