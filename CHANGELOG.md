@@ -5,6 +5,25 @@ downloads and installation.
 
 ## [Unreleased]
 
+## [0.9.5] - 2026-10-04
+
+New formats with a viewer:
+
+- VisiCalc worksheets, recalculated as VisiCalc shows them
+- The Graphics Magician pictures (Penguin Software)
+- Take 1 movies (Baudville)
+- Fantavision movies (Broderbund)
+- The Newsroom photos, banners and clip-art disks (Springboard)
+- Movie Maker backgrounds and shape sheets
+- Epistole, Papyrus and HomeWord documents, with Epistole's calculations
+- Bank Street Writer documents
+- Saved text screens, 40 and 80 columns
+- HRCG fonts (DOS Tool Kit `.SET`, Beagle Bros `.FONT`)
+- Terrapin Logo procedures and pictures
+- KoalaPad / Micro-Illustrator pictures
+
+## 0.9.5 in detail
+
 ### Fixed
 - FANTA.SYSTEM at the original speed: a frame the original player takes
   65,536 cycles or more longer to draw (large solids) froze the movie for
