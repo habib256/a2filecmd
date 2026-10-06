@@ -385,12 +385,20 @@ static unsigned char dir_open(const char* path)
     return 1;
 }
 
-static void dir_close(void)
+/* Returns dir_error: non-zero when a block could not be read, an entry
+ * was malformed or the close failed, so that the listing dir_next ended is
+ * not the whole directory. The service table declares it void (the ABI is
+ * frozen); a plugin that must tell a partial listing from a complete one
+ * reads the value all the same (FIND). */
+static unsigned char dir_close(void)
 {
     dir_skip_count = 0;
-    if (dir_img) { if (img_f && fclose(img_f)) dir_error = 1; img_f = 0; dir_img = 0; return; }
-    if (dir_fd >= 0 && close(dir_fd)) dir_error = 1;
-    dir_fd = -1;
+    if (dir_img) { if (img_f && fclose(img_f)) dir_error = 1; img_f = 0; dir_img = 0; }
+    else {
+        if (dir_fd >= 0 && close(dir_fd)) dir_error = 1;
+        dir_fd = -1;
+    }
+    return dir_error;
 }
 
 /* Loads the next directory block into copy_buf. For an image, we follow
@@ -5552,7 +5560,7 @@ static struct A2fcApi api = {
     A2FC_API_VERSION, 0,
     panels, &active, full, other_full, input, copy_buf, &dir_entry,
     message, confirm, prompt, progress_bar, keys_bar, bar_begin, draw_all, read_panel, report_error, wait_key,
-    build_full, dir_open, dir_next, dir_close, mli_call,
+    build_full, dir_open, dir_next, (void (*)(void))dir_close, mli_call,
     fopen, fread, fwrite, fclose, fseek, remove, cprintf, sprintf, cputs, cputc, gotoxy, revers, cclearxy, clrscr, slide_getc,
     memcpy, memset, strcpy, strcmp, strlen, &_filetype, &_auxtype, reselect, note, &selected, cfg_path,
     ram_format, media_key, media_wait, music_info, confirm_aux };

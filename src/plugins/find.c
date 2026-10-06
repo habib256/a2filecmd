@@ -96,7 +96,7 @@ static struct A2fcApi a;
 #define f_bar_begin (a.bar_begin)
 #define f_dir_open (a.dir_open)
 #define f_dir_next (a.dir_next)
-#define f_dir_close (a.dir_close)
+#define f_dir_close ((unsigned char (*)(void))a.dir_close)
 #define f_fopen (a.fopen)
 #define f_fread (a.fread)
 #define f_fclose (a.fclose)
@@ -120,7 +120,7 @@ void __fastcall__ f_keys_bar(unsigned char,const char*);
 void __fastcall__ f_bar_begin(void);
 unsigned char __fastcall__ f_dir_open(const char*);
 unsigned char __fastcall__ f_dir_next(void);
-void __fastcall__ f_dir_close(void);
+unsigned char __fastcall__ f_dir_close(void);   /* the resident's dir_error: the listing was cut short */
 FILE* __fastcall__ f_fopen(const char*,const char*);
 size_t __fastcall__ f_fread(void*,size_t,size_t,FILE*);
 int __fastcall__ f_fclose(FILE*);
@@ -413,7 +413,10 @@ static void fill_pool(void)
             if(pool_count==PMAX) { dir_skip=seen;f_dir_close();return; }
         }
     }
-    dir_active=0;f_dir_close();
+    dir_active=0;
+    /* A block that cannot be read or a damaged entry ends dir_next like the
+     * end of the directory: the search is then not complete, and says so. */
+    if(f_dir_close())cut=1;
 }
 
 /* Produce one next matching path, retaining the queue, directory position

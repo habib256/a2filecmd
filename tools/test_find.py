@@ -30,15 +30,17 @@ static unsigned char open_dir(const char* p) {
     strcpy(current,p);cursor=0;opened=1;memset(a.copy_buf,0xA5,512);
     return strcmp(p,"/V/BROKEN")!=0;
 }
+static int dir_bad;   /* the resident's dir_error: a block that could not be read ended the listing */
 static unsigned char next_dir(void) {
     while(cursor<count) {
         struct MockEntry* e=&entries[cursor++];
         if(strcmp(e->dir,current))continue;
+        if(!strcmp(e->name,"UNREADBLOCK")) { dir_bad=1;return 0; }   /* as dir_next: 0, like the end */
         strcpy(a.dir_entry->name,e->name);a.dir_entry->type=e->type;a.dir_entry->mdate=e->date;return 1;
     }
     return 0;
 }
-static void close_dir(void) { opened=0; }
+static unsigned char close_dir(void) { unsigned char bad=dir_bad;opened=0;dir_bad=0;return bad; }
 static FILE* open_file(const char* p,const char* mode) {
     int i,j;char full[81];FILE* f;
     if(opened)abort();
@@ -113,7 +115,7 @@ int main(int argc,char** argv) {
     }
     fclose(manifest);
     a.sprintf=sprintf;a.strcpy=strcpy;a.strlen=strlen;a.memcpy=memcpy;a.message=message_;
-    a.dir_open=open_dir;a.dir_next=next_dir;a.dir_close=close_dir;a.dir_entry=&de;
+    a.dir_open=open_dir;a.dir_next=next_dir;a.dir_close=(void(*)(void))close_dir;a.dir_entry=&de;
     a.fopen=open_file;a.fread=read_;a.fclose=close_;a.copy_buf=scratch;
     path=pbuf;dir=dbuf;strcpy(root,"/V");strcpy(QUEUE,root);
     text=atoi(argv[2]);strcpy(pat,text ? "NEEDLE ACROSS" : argv[3]);plen=strlen(pat);
@@ -231,6 +233,17 @@ class Find(unittest.TestCase):
         for entries,text in (([('/V','BROKEN',15,0)],0),([('/V','BAD',4,2)],1),([('/V','ERR',4,3)],1)):
             pages,paths,_=self.run_tree(entries,text)
             self.assertEqual(paths,[]);self.assertTrue(pages[-1][2])
+    def test_a_directory_cut_short_by_a_read_error_is_not_complete(self):
+        """A directory block that cannot be read ends the resident's dir_next
+        exactly like the end of the directory. Measured before the fix: the
+        entries after it never searched and the results marked complete
+        (cut = 0). dir_close now hands back the resident's dir_error."""
+        entries=[('/V','HALF',15,0),('/V','LAST',4,1),
+                 ('/V/HALF','ONE',4,1),('/V/HALF','UNREADBLOCK',4,1),('/V/HALF','TWO',4,1)]
+        pages,paths,_=self.run_tree(entries)
+        self.assertEqual(paths,['/V/LAST','/V/HALF/ONE']);self.assertTrue(pages[-1][2])
+        pages,paths,_=self.run_tree([('/V','HALF',15,0),('/V/HALF','ONE',4,1),('/V/HALF','TWO',4,1)])
+        self.assertEqual(paths,['/V/HALF/ONE','/V/HALF/TWO']);self.assertFalse(pages[-1][2])
     def test_read_error_is_not_an_end_of_file(self):
         """A text search over a file that fails after 100 bytes must say the
         search is incomplete, not "complete" with nothing found."""
