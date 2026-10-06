@@ -442,8 +442,8 @@ test: test-mini $(TAKE1)
 	python3 $(TOOLS)/test_file_viewers.py
 	python3 $(TOOLS)/test_koala.py
 	python3 $(TOOLS)/test_demo_viewers.py
-	python3 $(TOOLS)/test_startup_screen.py
 	python3 $(TOOLS)/test_mkdemo_take1.py
+	python3 $(TOOLS)/test_startup_screen.py
 	python3 $(TOOLS)/test_move.py
 	python3 $(TOOLS)/test_move_alloc.py
 	python3 $(TOOLS)/test_txtconv.py
@@ -496,6 +496,7 @@ test: test-mini $(TAKE1)
 	python3 $(TOOLS)/test_unsq.py
 	python3 $(TOOLS)/test_intbasic.py
 	python3 $(TOOLS)/test_find.py
+	python3 $(TOOLS)/test_text_viewer.py
 	python3 $(TOOLS)/test_mdview.py
 	python3 $(TOOLS)/test_docview.py
 	python3 $(TOOLS)/test_docview_calc.py

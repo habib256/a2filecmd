@@ -1384,6 +1384,8 @@ static void view_seek(long offset)
 #pragma rodata-name (push, "TEXTRO")
 static const char tx_status[] = "%-38.38s page %u%s";
 static const char tx_end[] = " (end)";
+static const char tx_bad[] = " (READ ERROR)";
+static const char tx_limit[] = " (page limit)";
 /* No " Back" after ESC, unlike the other bars: keys_bar lays this one down
  * from column 52, and the label made it 32 columns wide, ending at 83. The
  * four columns past 79 wrapped -- conio carried them round to the top left
@@ -1420,7 +1422,7 @@ static void view_text(const char* path)
             known = page + 2;
         }
         bar_begin();
-        cprintf(tx_status, path, page + 1, done ? tx_end : (const char*)"");
+        cprintf(tx_status, path, page + 1, done ? (ferror(vf) ? tx_bad : tx_end) : page + 1 < TEXT_PAGES ? (const char*)"" : tx_limit);
         keys_bar(52, tx_keys);
         key = cgetc();
         if (key == KEY_ESC || key == 'q' || key == 'Q') break;
@@ -1472,6 +1474,8 @@ void __fastcall__ text_entry(const struct A2fcApi* a)
 #pragma rodata-name (push, "BASLISTRO")
 static const char bl_status[] = "%-38.38s page %u%s";
 static const char bl_end[] = " (end)";
+static const char bl_bad[] = " (READ ERROR)";
+static const char bl_limit[] = " (page limit)";
 static const char bl_keys[] = "SPC Next,B Prev,R First,ESC";
 static const char bl_number[] = "%u ";
 
@@ -1594,7 +1598,7 @@ void __fastcall__ baslist_entry(const struct A2fcApi* a)
             known = page + 2;
         }
         bar_begin();
-        cprintf(bl_status, full, page + 1, done ? bl_end : (const char*)"");
+        cprintf(bl_status, full, page + 1, done ? (ferror(vf) ? bl_bad : bl_end) : page + 1 < TEXT_PAGES ? (const char*)"" : bl_limit);
         keys_bar(52, bl_keys);
         key = cgetc();
         if (key == KEY_ESC || key == 'q' || key == 'Q') break;
@@ -1625,6 +1629,8 @@ void __fastcall__ baslist_entry(const struct A2fcApi* a)
 #pragma rodata-name (push, "AWPRO")
 static const char aw_status[] = "%-38.38s page %u%s";
 static const char aw_end[] = " (end)";
+static const char aw_rderr[] = " (READ ERROR)";
+static const char aw_limit[] = " (page limit)";
 static const char aw_keys[] = "SPC Next,B Prev,R First,ESC";
 
 #pragma static-locals (push, off)
@@ -1684,7 +1690,7 @@ void __fastcall__ awp_entry(const struct A2fcApi* a)
             known = page + 2;
         }
         bar_begin();
-        cprintf(aw_status, full, page + 1, done ? aw_end : (const char*)"");
+        cprintf(aw_status, full, page + 1, done ? (ferror(vf) ? aw_rderr : aw_end) : page + 1 < TEXT_PAGES ? (const char*)"" : aw_limit);
         keys_bar(52, aw_keys);
         key = cgetc();
         if (key == KEY_ESC || key == 'q' || key == 'Q') break;
@@ -4544,6 +4550,7 @@ static const char us_notdir[]   = "Other panel must be a ProDOS folder.";
 static const char us_noram[]    = "/RAM shares AUX: use another disk.";
 static const char us_corrupt[]  = "Corrupt archive.";
 static const char us_done[]     = "%u file(s) extracted.";
+static const char us_skipped[]  = "%u file(s) extracted, %u part(s) skipped.";
 static const char us_path[]     = "%s/%s";
 static const char us_po[]       = ".PO";
 static const char us_create[]   = "Create";
@@ -4558,7 +4565,6 @@ static const unsigned char us_magic_record[] = { 0x4E, 0xF5, 0x46, 0xD8 };
 static unsigned char __fastcall__ us_on_ram(const char* path)
 {
     unsigned char parms[4], len, k;
-static const char us_skipped[]  = "%u file(s) extracted, %u part(s) skipped.";
     const unsigned char* rec = copy_buf;
     const char* slash = strchr(path + 1, '/');
     len = (unsigned char)((slash ? slash : path + strlen(path)) - path - 1);
@@ -4912,6 +4918,9 @@ void __fastcall__ unshrink_entry(const struct A2fcApi* a)
         /* A file type or an aux type ProDOS cannot hold (an HFS type, a
          * 32-bit aux type) is not truncated into one: its data is skipped. */
         US->oddtype = US->hdr[0x17] | US->hdr[0x18] | US->hdr[0x19] | US->hdr[0x1C] | US->hdr[0x1D];
+        /* Nor a plain file typed $0F: every panel takes that type for a
+         * folder and would walk the file's bytes as directory entries. */
+        if (US->hdr[0x16] == 0x0F) US->oddtype = 1;
         US->access = US->hdr[0x12];
         memcpy(US->when, US->hdr + 0x28, 8);
         /* The header CRC covers the attributes from their count, the name
@@ -4926,9 +4935,6 @@ void __fastcall__ unshrink_entry(const struct A2fcApi* a)
             us_hcrc(US->hdr, len);
             us_prodos_name((char*)US->hdr, len);
         }
-        /* Nor a plain file typed $0F: every panel takes that type for a
-         * folder and would walk the file's bytes as directory entries. */
-        if (US->hdr[0x16] == 0x0F) US->oddtype = 1;
         if (US->threads > 8) goto corrupt;
         if (!us_read(US->th, US->threads * 16)) goto corrupt;
         us_hcrc(US->th, US->threads * 16);
@@ -5631,6 +5637,7 @@ int main(void)
     if (key) { extern const char msg_vdrive[]; sprintf(question, msg_vdrive, key >> 4, key & 15); message(question); }
 #endif
     for (;;) {
+        aux_dirty = 0;           /* no viewer is running: Ctrl-Reset has no /RAM to rebuild */
         settle_panels();
         pan = pan_at(active);
         key = wait_key();
@@ -5656,7 +5663,6 @@ int main(void)
          * and the Apple IIe keyboard has no PgUp. RET opens, ESC goes up
          * to the parent -- the only two other ways of doing it stay
          * unchanged. */
-        aux_dirty = 0;           /* no viewer is running: Ctrl-Reset has no /RAM to rebuild */
         case '<': case '-': case KEY_LEFT: move_cursor(-ROWS); break;
         case '>': case '+': case KEY_RIGHT: move_cursor(ROWS); break;
         case '[': set_cursor(pan, 0); show_active(); break;
