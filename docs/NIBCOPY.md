@@ -92,6 +92,10 @@ A successful readback does not guarantee persistence across a power cut.
 
 ## Local results, 2026-09-13
 
+A dated record, kept as measured: sizes, hashes and test counts below are
+those of that day, not of the current build (current overlay sizes are in
+[MEMORY-BUDGETS.md](MEMORY-BUDGETS.md)).
+
 Working tree based on `6b43fec`, version `0.8.0` (unreleased changes):
 `make test` passes 475 tests in 58 suites, including the 20 NIBCOPY cases.
 Both architecture builds pass their unchanged resident/stack/BSS/overlay

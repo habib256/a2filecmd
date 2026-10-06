@@ -1,4 +1,4 @@
-# A2FC Mini DOS 3.3 — 0.9.1
+# A2FC Mini DOS 3.3
 
 A standalone edition for **Apple II+ 48 KB, NMOS 6502**, with two panels in
 40 columns, DOS 3.3 copying between two Disk II drives, and formatting
@@ -10,8 +10,9 @@ Written entirely in 6502 assembly; see [Speed](#speed) for what that buys.
 
 ![Two panels with inverse video and bottom shortcuts](mini-dos33.png)
 
-The disk image `dist/A2FILECMD-DOS3.3-0.9.1.dsk` boots through the Applesoft
-`HELLO` program, which centres `A2FILECMD`, `MINI DOS 3.3` and `V0.9.1` at
+The disk image `dist/A2FILECMD-DOS3.3-<version>.dsk` (the Mini shares
+`A2FC_VERSION` with the ProDOS editions) boots through the Applesoft
+`HELLO` program, which centres `A2FILECMD`, `MINI DOS 3.3` and `V<version>` at
 the top of the 40-column screen, `LOADING .... PLEASE WAIT ....` and
 `BE SURE CAPS LOCK IS DOWN` in the middle, in inverse video, in the words
 of the DOS 3.3 System Master (the keys are compared in upper case, all a
@@ -562,6 +563,8 @@ python3 bench/mini33_ops.py --pom2-root /path/to/pom2
 python3 bench/mini33_format.py --pom2-root /path/to/pom2
 python3 bench/mini33_time.py --pom2-root /path/to/pom2
 python3 bench/mini33_lend.py --pom2-root /path/to/pom2
+python3 bench/mini33_brun.py --pom2-root /path/to/pom2
+python3 bench/mini33_review.py --pom2-root /path/to/pom2
 ```
 
 The benches use disposable images and an NMOS CPU. The first checks panels,
@@ -579,7 +582,10 @@ each and boots the result into A2FC Mini. Contents and allocations are
 independently checked afterward, and the longest still screen must stay
 under three seconds. `mini33_time.py` reports the cycle costs in the table
 above; `mini33_lend.py` proves the lent RWTS JSRs change nothing but the
-screen.
+screen. `mini33_brun.py` checks Return's choice of view by content and
+runs a DOS binary with Return and B, from HELLO and from the DOS prompt;
+`mini33_review.py` replays earlier review fixes through the real UI and
+checks the file bytes.
 
 Physical Apple II+ validation of this edition's writes remains outstanding.
 The RWTS interface follows the [Apple DOS manual, chapter 9](https://manuals.plus/m/c08d8e894bc01bf74e7348df79c1e3b2360f43ada6e2b08e39f9686651575161).

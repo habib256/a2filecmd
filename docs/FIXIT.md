@@ -1,10 +1,12 @@
 # FIXIT : vérifier puis réparer un volume ProDOS
 
-Spécification de préparation, écrite avant la première ligne de code.
-[TODO.md](../TODO.md) place FIXIT **après** la preuve des pannes combinées,
-pas avant : « diagnostic sans écriture », puis « corrections seulement après
-un plan choisi, original conservé, chaque écriture vérifiée ». Ce document
-prépare ces deux chantiers ; il n'ouvre pas le travail.
+Spécification de préparation, écrite avant la première ligne de code, puis
+journal des deux chantiers : « diagnostic sans écriture », puis « corrections
+seulement après un plan choisi, original conservé, chaque écriture
+vérifiée ». Les deux sont **livrés** depuis le 16 septembre 2026 :
+`A2FILE/FIXIT.PLG` (lecture) et `A2FILE/REPAIR.PLG` (écriture). Les mesures
+datées qui suivent sont un historique ; les tailles actuelles des
+surcouches sont dans [MEMORY-BUDGETS.md](MEMORY-BUDGETS.md).
 
 Les offsets cités ont été relus sur `dist/A2FILECMD-6502-BOOT-0.8.7.po` et
 recoupés avec `src/plugins/volinfo.c`, `src/plugins/move.c`,
@@ -13,14 +15,14 @@ recoupés avec `src/plugins/volinfo.c`, `src/plugins/move.c`,
 ## 1. Périmètre et principes
 
 FIXIT est une **grande surcouche** `A2FILE/FIXIT.PLG`, catégorie DISKTOOLS
-(`config/packages.mk`). La disquette BOOT est pleine, un bloc libre : FIXIT
-n'y va pas. Le menu `!` range FIXIT sous « Disks » : la chaîne `mn_group3`
+(`config/packages.mk`), pas sur la disquette d'amorçage (elle n'avait plus
+qu'un bloc libre en septembre 2026). Le menu `!` range FIXIT sous « Disks » : la chaîne `mn_group3`
 de `src/a2fc.c` le nomme, avec REPAIR, depuis le 16 septembre 2026. Ces
 treize octets ne sortent pas du résident — `mn_group3` appartient à la
-surcouche MENU (`MENURO`) : MAIN est inchangé (361 octets libres en 65C02,
-790 en 6502) et la réserve de MENU passe de 1 846 à 1 833 octets (6502 :
-1 794 à 1 781). La catégorie tient alors vingt commandes, soit deux pages
-de dix-huit lignes.
+surcouche MENU (`MENURO`) : MAIN était inchangé (361 octets libres en 65C02,
+790 en 6502, ce jour-là) et la réserve de MENU passait de 1 846 à 1 833 octets (6502 :
+1 794 à 1 781). La catégorie tenait alors vingt commandes ; elle en tient
+vingt-sept aujourd'hui, toujours sur deux pages de dix-huit lignes.
 
 Le chantier WRITE est une **seconde** grande surcouche,
 `A2FILE/REPAIR.PLG` (`src/plugins/repair.c`), même catégorie et même
@@ -170,9 +172,10 @@ réparation par compteur.
 | 29 | `BM_RESERVED` | bloc 0, 1, 2 à 5 ou de bitmap marqué libre | réparable | non |
 | 30 | `BM_TAIL` | bit à 1 au-delà de `total_blocks` dans la dernière page | réparable | non |
 
-Les vingt-quatre premiers sont déjà les identifiants de `prodos_check.py` ;
-les six derniers sont propres à FIXIT et devront y être ajoutés pour que les
-deux listes restent identiques. VOLINFO réclame déjà silencieusement les blocs
+Les vingt-quatre premiers étaient déjà les identifiants de `prodos_check.py` ;
+les six derniers y ont été ajoutés, et les deux listes sont identiques
+(`CHECKS`). `IO_ERROR` et `HDR_NAME` demandent un appareil : l'oracle les
+nomme sans jamais les émettre (`DEVICE_ONLY`). VOLINFO réclame déjà silencieusement les blocs
 réservés, ce qui les empêche d'apparaître en blocs perdus ; il ne dit pas
 qu'ils étaient marqués libres.
 
@@ -289,9 +292,9 @@ d'Échap écrit ensuite `$C010` au lieu de le lire (cc65 supprimait la
 lecture, `tools/test_strobe.py`) : restent **1** octet sur les deux
 processeurs ; REPAIR 62 et 42.
 
-**Le débordement de la copie de table.** La table de services compte
+**Le débordement de la copie de table.** La table de services comptait
 106 octets depuis la version 3 de l'API (`ram_format`, puis les trois
-services média) : copiée entière à `$3F9E`, elle écrasait `$4000-$4007`, le
+services média), 108 depuis `aux_consent` (version 6) : copiée entière à `$3F9E`, elle écrasait `$4000-$4007`, le
 début du résident (le démarrage de crt0, qui ne s'exécute qu'au chargement
 — d'où l'absence de symptôme). FIXIT, REPAIR, VOLINFO et FIND ne copient
 plus que `offsetof(struct A2fcApi, ram_format)`, 98 octets ; le code ne
@@ -315,10 +318,9 @@ Ce qu'une passe retient :
   n'était pas nécessaire (mesures ci-dessous, et section 5).
 
 Au-delà de 16 occurrences, l'écran affiche le compteur et « more » : la
-réparation se décide par contrôle, pas par occurrence. Au-delà de 32 blocs à
-réécrire, le plan est **refusé** : `Plan full: %u blocks to rewrite, limit 32.
-Repair in several passes.` Un plan tronqué qui s'appliquerait à moitié n'est
-jamais proposé.
+réparation se décide par contrôle, pas par occurrence. Le plafond de 32
+blocs à réécrire et son refus `Plan full` sont tombés avec `plan[32]`
+(section 5) : ni l'un ni l'autre n'existe dans le code livré.
 
 Placement, tel qu'il est au bout de l'incrément 7 : **deux** tampons de 512
 octets, et lequel est lequel a coûté 197 octets de code à lui seul. `blk[512]`
@@ -461,17 +463,14 @@ pas. Sur une passe coupée, un autre contrôle peut donc n'afficher que son
 compteur, sous la ligne `more findings than the table holds`. Un rapport
 honnête sans bloc vaut mieux qu'un bloc sous un verdict qui le dément.
 
-Deux limites restent, faute de place, et sont ici pour mémoire :
+Deux limites restaient, faute de place :
 
 - un constat de l'arbre découvert **seulement** dans une fenêtre autre que
-  la première (`dfinding` ne retient que `base == 0`) pose `complete = 0`
-  sans s'inscrire : la passe se déclare incomplète sans nommer la cause.
-  Il faut pour cela un volume de plus de 4 096 blocs **et** un répertoire
-  référencé deux fois dont le bloc clé tombe hors de la première fenêtre ;
-  le verdict reste prudent, la liste seule est muette. Y remédier demande de
-  consulter `counts[]` dans `dfinding`, une vingtaine d'octets qui
-  n'existent pas ;
-- `stop()` lit `$C000` et n'acquitte que sur Échap, comme `volinfo.c` : une
+  la première (`dfinding` ne retenait que `base == 0`) posait `complete = 0`
+  sans s'inscrire. **Levée le 17 septembre 2026** : l'arbre n'est plus
+  parcouru par fenêtre et `dfinding` n'a plus de condition (« Un seul
+  parcours », plus haut) ;
+- toujours vraie : `stop()` lit `$C000` et n'acquitte que sur Échap, comme `volinfo.c` : une
   touche quelconque frappée pendant le parcours reste dans le verrou du
   clavier et **masque** l'Échap qui suivrait, jusqu'à ce que l'écran de
   constats la consomme. Elle n'est ni perdue ni prise pour un Échap.
@@ -840,7 +839,7 @@ liste des volumes ou chemin -> sélection -> en-tête -> parcours -> constats
   qu'`ON_LINE` a donné au lancement, et une disquette échangée se dénonce
   donc par un `HDR_NAME`.
 - **Touches absentes** : `P` plan et `F` réparer appartiennent au chantier
-  WRITE et n'apparaissent pas tant qu'il n'existe pas. `E` export n'entre pas
+  WRITE, donc à REPAIR (plus bas) ; FIXIT ne les montre jamais. `E` export n'entre pas
   dans la fenêtre (section 4, mesure du 16 septembre 2026, 1 136 octets
   contre 11 libres) : reporté à une surcouche séparée, et donc absent lui
   aussi de l'écran.
@@ -859,7 +858,6 @@ ON_LINE failed.
 Invalid volume header: nothing checked.
 Block 2 could not be read: nothing checked.
 Scanning... ESC cancels.
-Blocks %u..%u / %u
 Key: next / ESC: back
 more findings than the table holds
 %u findings.  R rescan  ESC/RETURN back
@@ -1141,8 +1139,8 @@ il écrit, relit, compare et dit `repaired`. L'oracle, lui, lit l'image.
 dépassement de fenêtre ; ne jamais relever un plafond pour faire passer une
 compilation. FIXIT est ajouté à `PACKAGE_DISKTOOLS` dans
 `config/packages.mk`, et `tools/check_images.py` vérifie le contenu exact des
-sept supports. `tools/test_release_notes.py` compte les surcouches livrées en
-dur (67 avec FIXIT) et `bench/menu.py` attend FIXIT et REPAIR sous
+supports publiés. `tools/test_release_notes.py` compte les surcouches livrées en
+dur (67 quand FIXIT est entré, 87 aujourd'hui) et `bench/menu.py` attend FIXIT et REPAIR sous
 « Disks », sur les deux pages de la catégorie.
 
 ## 8. Ordre des travaux
@@ -1218,9 +1216,9 @@ Chantier WRITE, dans la surcouche séparée `REPAIR.PLG` :
 9. construction et affichage du plan, aucune écriture avant le mot tapé.
    Oracle : le plan comparé aux constats de `tools/prodos_check.py`.
    **Fait le 16 septembre 2026** : l'écran de plan nomme les onze contrôles
-   réparables, les quatre de la bitmap avec leurs bits et leurs pages, les
-   sept de répertoire avec leur compte ; il n'y a pas de table de plan
-   (section 5). La touche `P` n'existe pas : le plan **est** l'écran.
+   réparables, les quatre de la bitmap avec leurs bits et leurs pages (colonne
+   retirée aux incréments 13 à 15), les sept de répertoire avec leur
+   compte ; il n'y a pas de table de plan (section 5). La touche `P` n'existe pas : le plan **est** l'écran.
 10. l'écriture vérifiée (original, écriture, relecture, comparaison,
     restauration) pour `BM_RESERVED` seul. Oracle : les trois injections
     d'échec. **Fait le 16 septembre 2026**, pour les quatre contrôles à la
@@ -1251,7 +1249,8 @@ Chantier WRITE, dans la surcouche séparée `REPAIR.PLG` :
     sous-répertoire (bloc porteur, rang + 1, 39), `DIR_CHAIN` sur les deux
     premiers octets du bloc de répertoire — le chaînage **avant** n'est
     jamais reconstruit. Les sept passent par une seule fonction, `fix()`,
-    qui refuse les fenêtres autres que la première, compte le bloc au lieu
+    qui refusait alors les fenêtres autres que la première (refus tombé avec
+    le parcours unique du 17 septembre 2026), compte le bloc au lieu
     de l'écrire pendant la passe de plan, et ne fait rien pendant la
     seconde. Les sept réparations ont coûté 709 octets à trouver dans une
     fenêtre qui en avait 38 : le journal des formes est en section 4.
@@ -1272,7 +1271,3 @@ Ce que le chantier WRITE tient déjà, et qui ne changera plus : aucune
 originaux en RAM principale seulement, et `tools/test_repair.py` qui
 enregistre chaque `WRITE_BLOCK` — bloc, octets, rang — puis relit l'image
 et compare les octets, jamais le seul message.
-
-Rappel pour finir : [TODO.md](../TODO.md) garde FIXIT fermé tant que la case
-« Pannes combinées » n'est pas cochée. Ce document est une préparation, pas
-une autorisation de commencer.
