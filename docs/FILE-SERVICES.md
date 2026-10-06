@@ -1,13 +1,32 @@
 # Contrats des services de fichiers
 
-Première extraction du chantier 1, le 13 septembre 2026 : `file_output.h`
-et `file_copy.h` sont inclus dans `a2fc.c`, à leur emplacement d'origine.
-Ce sont des modules internes, pas une nouvelle ABI ni une surcouche de service
-à charger depuis les plugins. La réservation des plugins commence à être
-unifiée ; COPY, EDIT, SYNC, TXTCONV, IMGCONV et GOTO partagent maintenant la transaction
-de renommage. BATCH, COPY, EDIT et les utilisateurs résidents de `new_output`
-partagent la réservation exclusive. Les autres politiques de création et
-de nettoyage restent à rapprocher.
+Les services sont des en-têtes compilés dans chaque appelant, pas une ABI
+ni une surcouche à charger : `src/file_output.h`, `src/file_copy.h`,
+`src/batch.h` et `src/config.h` sont inclus dans `a2fc.c` (résident et
+surcouches internes) ; `src/plugins/file_create.h`, `file_install.h`,
+`replace.h` et `util.h` dans les surcouches qui les demandent. Les sections
+datées plus bas gardent la trace de chaque incrément et de sa validation
+locale ; le journal du chantier 1 est en fin de document.
+
+### Qui utilise quoi (vérifié dans le code le 6 octobre 2026)
+
+| Service | Utilisateurs |
+|---|---|
+| `reserve_output` (`file_output.h`, résident) | COPY et V (`file_copy.h`), EDIT, BATCH (`batch.h`), préférences (`save_config`, `config.h`), BINARY2, DISKIMG R, IMGFS, DOSGET, UNSHRINK |
+| `copy_file` (`file_copy.h`, résident + COPY) | C et V, fichier par fichier, y compris dans une arborescence (`tree_walk.h`) |
+| `newfile` (`plugins/file_create.h`) | par `util.h` (`UTIL_CREATE`) : BLKVIEW, CPM, DISASM, DOSIMAGE, MKIMAGE, PASCAL, RESCUE, SCIIBIN, SYNC, UNDELETE, UNSQ, UNWRAP ; directement : GOTO (`$E3`), IMGCONV, MOVE, TXTCONV, VOLINFO |
+| `file_install` (`plugins/file_install.h`) | SYNC, GOTO ; `edit_install` (EDIT), `cfg_install` (`config.h`), variante `FI_STATE` de COPY ; via `replace_commit` : TXTCONV, IMGCONV, DOSIMAGE |
+| `replace_commit` / `replace_discard` (`plugins/replace.h`) | TXTCONV, IMGCONV, DOSIMAGE (`dosimage_io.h`) |
+| `discard` (`util.h`, `UTIL_DISCARD`) | CPM, MKIMAGE, PASCAL, RESCUE, SCIIBIN, UNDELETE, UNSQ, UNWRAP |
+
+Créations exclusives qui n'utilisent aucun de ces en-têtes : NRCLIP
+(`src/plugins/nrclip.s`, assembleur) construit son propre bloc CREATE, de
+la forme de `struct Create`, refuse `$47` et supprime le fichier créé après
+une écriture ou une fermeture échouée (`tools/test_nrclip.py`). Les
+nettoyages propres à COPY, EDIT (`edit_discard`), BATCH (`batch_discard`),
+préférences (`cfg_discard`), GOTO (`discard_temp`), VOLINFO, BLKVIEW,
+DISASM, DISKIMG, IMGFS, DOSGET, UNSHRINK et BINARY2 suivent la règle 3
+ci-dessous sans helper commun.
 
 ## Contrat unique — clos le 17 septembre 2026
 
@@ -35,7 +54,8 @@ attributs d'un fichier (résident et surcouches) les a vérifiées une à une :
    ne touche jamais `A2FC.BAK`).
 
 **Un seul CREATE.** `plugins/file_create.h` porte le seul bloc de paramètres
-CREATE des surcouches. IMGCONV, VOLINFO (export E) et MOVE (copie entre
+CREATE des surcouches en C (NRCLIP, écrit en assembleur et venu plus tard,
+a le sien, de même forme : voir le tableau plus haut). IMGCONV, VOLINFO (export E) et MOVE (copie entre
 volumes) avaient le leur ; GOTO passait par son bloc GET_FILE_INFO. Tous
 appellent `newfile`, avec leur tampon de chemin (`FC_PATH`/`FC_PREPARE`) ;
 GOTO garde ses droits `$E3` par `FC_ACCESS`. VOLINFO ne réécrit plus le
@@ -67,11 +87,21 @@ REPAIR, VOLINFO et FIND.
   MOVE sur un même volume, FORMAT, NIBCOPY) : chacune a sa confirmation, sa
   relecture et sa restauration propres, décrites avec l'outil ;
 - DOSWRITE sur un vrai disque DOS 3.3 (section plus bas) ;
-- les exports et journaux (DISASM, BLKVIEW X, VOLINFO E, RESCUE) : nouveau
-  fichier exclusif, publié sous son nom, sans relecture ; un échec garde le
-  fichier partiel et le dit (« partial file kept », « empty file remains ») ;
+- les écritures en place dans une image ou un volume non ProDOS (IMGPUT,
+  PASCALW, CPMW par `plugins/imageio.h`, ouverture `r+b` ou WRITE_BLOCK ;
+  DOS33W, DOSREPL par `dos33_fs.h`) : pas de création de fichier ProDOS,
+  leur ordre d'écriture et leurs contrôles sont propres à chaque format ;
+- les métadonnées seules (ATTR, DATE, FIXTYPES, RENAME, VOLNAME) :
+  GET_FILE_INFO puis SET_FILE_INFO ou RENAME, sans contenu écrit ;
+- les exports et journaux (DISASM, BLKVIEW X, VOLINFO E, RESCUE, NRCLIP) :
+  nouveau fichier exclusif, publié sous son nom, sans relecture ; un échec
+  garde le fichier partiel et le dit (« partial file kept », « empty file
+  remains »), sauf NRCLIP qui retire le fichier qu'il vient de créer ;
 - COPY et MOVE d'une arborescence créent les dossiers absents et entrent
-  dans ceux qui existent déjà, sans jamais les supprimer.
+  dans ceux qui existent déjà, sans jamais les supprimer ; un dossier n'est
+  jamais copié sur lui-même, dans l'un de ses descendants ni sur l'un de ses
+  ancêtres (`paths_nested`, `src/a2fc_mli.s`, appelé par `copy_one` ; voir
+  [DATA-SAFETY.md](DATA-SAFETY.md)).
 
 Aucune garantie de coupure d'alimentation : ProDOS n'offre pas de
 transaction sur plusieurs blocs.
@@ -98,7 +128,8 @@ le libellé courant `Overwrite/Skip/All/None?` de la confirmation.
 de lecture de l'en-tête ou du corps, une erreur de fermeture, un corps vide
 ou un fichier dépassant sa fenêtre. Un grand chargement peut écraser les
 tables des panneaux en RAM principale ; après échec, les panneaux sont
-relus et les marques restaurées. Le chargeur lit le disque sans l'écrire ;
+relus et les marques rendues à un panneau resté identique (`keep_tags`,
+voir [DATA-SAFETY.md](DATA-SAFETY.md)). Le chargeur lit le disque sans l'écrire ;
 la confirmation AUX précède toujours le code qui pourrait utiliser cette banque.
 Le résultat du menu est effacé avant son chargement : un échec ne peut pas
 réutiliser une ancienne commande de déplacement ou de plugin.
@@ -120,8 +151,9 @@ Une collision, un disque plein ou une erreur d'E/S ne donnent aucun droit
 sur le chemin. L'appelant borne le chemin et vérifie ensuite les écritures,
 fermetures et relectures ; ce service ne publie pas un remplacement.
 
-Le tampon Pascal est prêté par l'appelant : `pas` pour `util.h`, début de
-`T.copy_buf` pour TXTCONV. Il est écrasé pendant l'appel et ne doit contenir
+Le tampon Pascal est prêté par l'appelant (`FC_PATH`) : `pas` pour
+`util.h`, début de `T.copy_buf` pour TXTCONV et IMGCONV, `A->full` pour
+GOTO, `buf` pour VOLINFO, `scratch` pour MOVE. Il est écrasé pendant l'appel et ne doit contenir
 aucune donnée encore utile. La requête CREATE est entièrement réinitialisée,
 y compris après une erreur ou un changement fichier/répertoire. Elle utilise
 la table API de l'appelant, sans chargement de surcouche ni accès au stockage
@@ -144,8 +176,9 @@ n'a pas été exécutée.
 
 ## Installation commune : `file_install(tmp, target, backup, exists)`
 
-`plugins/file_install.h` porte la séquence de renommage de SYNC, GOTO et des
-deux conversions. L'appelant fournit des chemins distincts et bornés, un temporaire
+`plugins/file_install.h` porte la séquence de renommage de SYNC, GOTO, des
+deux conversions et de DOSIMAGE (par `replace.h`), d'EDIT (`edit_install`),
+des préférences (`cfg_install`) et de COPY (variante `FI_STATE`). L'appelant fournit des chemins distincts et bornés, un temporaire
 possédé, fermé et vérifié, et le résultat du contrôle de présence de la cible.
 Il contrôle les protections et le nom de sauvegarde ; le transport ProDOS
 refuse aussi tout renommage vers une entrée existante. Le service ne supprime
@@ -214,7 +247,7 @@ POM2, CI ou matérielle, ni d'exécution globale de `make test`.
 
 ## Publication et nettoyage des conversions
 
-`plugins/replace.h` est partagé par TXTCONV et IMGCONV. Avant
+`plugins/replace.h` est partagé par TXTCONV, IMGCONV et DOSIMAGE. Avant
 `replace_commit(tmp, target)`, l'appelant possède le temporaire, a fermé et
 relu son contenu, a borné les chemins et obtenu l'accord de remplacement.
 Le service peut renommer la cible en `A2FC.BAK`, installer le temporaire,
@@ -226,8 +259,13 @@ en plus les octets 256 et suivants au nom de sauvegarde.
 Les résultats de publication sont distincts : `REPLACE_FAILED` (0) signifie
 non installé, `REPLACE_DONE` (1) installé et sauvegarde supprimée,
 `REPLACE_BACKUP` (2) installé mais sauvegarde conservée, et
-`REPLACE_RESTORE_FAILED` (3) installation puis restauration échouées.
-Ce dernier état conserve l'original dans `A2FC.BAK` et le résultat dans le
+`REPLACE_RESTORE_FAILED` (3) installation puis restauration échouées, et
+`REPLACE_REFUSED` (4) un refus préalable sans aucun renommage (`A2FC.BAK`
+présent, cible verrouillée ou de stockage autre que 1 à 3, chemin trop
+long) : l'appelant peut alors retirer son temporaire. La cible doit exister
+et se lire : une erreur de GET_FILE_INFO sur elle rend `REPLACE_FAILED` et
+garde le temporaire, qui peut être la seule copie des données.
+L'état `REPLACE_RESTORE_FAILED` conserve l'original dans `A2FC.BAK` et le résultat dans le
 temporaire. Une collision pendant l'installation et la restauration ne permet
 pas d'écraser le nouveau fichier apparu à la cible. Un retour non nul n'est
 donc pas à lui seul une preuve d'installation.
@@ -251,7 +289,8 @@ et sans exécution de la suite globale `make test`.
 
 ## Réservation résidente : `reserve_output(path)`
 
-Le résident et BATCH partagent la réservation `open(O_CREAT | O_EXCL)` et
+Le résident et ses surcouches internes (BATCH, COPY, EDIT, BINARY2,
+DISKIMG, IMGFS, DOSGET, UNSHRINK, les préférences) partagent la réservation `open(O_CREAT | O_EXCL)` et
 la fermeture du descripteur. Le résultat sépare trois états : zéro ne donne
 aucune propriété sur le chemin ; `OUTPUT_RESERVED` (1) autorise la réouverture
 en écriture ; `OUTPUT_CLOSE_FAILED` (2) signifie fichier créé mais fermeture
@@ -278,24 +317,14 @@ la source et la destination précédente, restaurée ou conservée en sauvegarde
 Pas de nouvelle qualification POM2, CI ou matérielle ni de suite globale
 `make test` pour cet incrément.
 
-## Réservation exclusive : `reserve_output(path)`
-
-Le chemin désigne un nouveau fichier ProDOS. `reserve_output(path)` doit
-renvoyer `OUTPUT_RESERVED` avant toute ouverture `wb`. Une collision ou une
-erreur ne permet jamais de tronquer un fichier préexistant. Après
-réservation, la fermeture du descripteur est contrôlée ; seule l'entrée
-créée par cet appel peut être nettoyée, par l'appelant, qui garde la
-propriété. L'appelant ouvre lui-même le flux d'écriture et doit contrôler
-écriture, fermeture et relecture avant de considérer le résultat comme
-utilisable. Les type et aux-type sont ceux préparés par l'appelant. Depuis
-le 14 septembre 2026, plus aucun appelant ne passe par l'ancien enrobage
-`new_output` (ouverture et nettoyage automatiques) : IMGFS, son dernier
-utilisateur, réserve directement comme DOSGET ; l'enrobage est retiré.
-
-Le service est résident : il ne charge aucune surcouche. Il ne touche pas
-au stockage AUX de `/RAM`. Un échec de suppression après réservation peut
-laisser un fichier vide ; le prochain essai doit refaire une création
-exclusive.
+L'appelant ouvre lui-même le flux d'écriture et doit contrôler écriture,
+fermeture et relecture avant de considérer le résultat comme utilisable.
+Un échec de suppression après réservation peut laisser un fichier vide ; le
+prochain essai refait une création exclusive et ne peut pas le tronquer.
+Depuis le 14 septembre 2026, plus aucun appelant ne passe par l'ancien
+enrobage `new_output` (ouverture et nettoyage automatiques) : IMGFS, son
+dernier utilisateur, réserve directement comme DOSGET ; l'enrobage est
+retiré. La liste des appelants est dans le tableau du début.
 
 ## Sauvegarde de l'éditeur : réservation et nettoyage
 
@@ -393,9 +422,9 @@ renommage est identique à celle de la variante à paramètres des plugins.
 
 `CopyState` emprunte `text_starts` pendant l'opération : pagination texte et
 manifeste BATCH ne doivent pas vivre simultanément avec cette copie. Un
-contrôle de compilation borne la structure au tampon. Ses trois chemins
-portent la structure native à 204 octets dans les 320 disponibles, sans
-nouveau tampon global. `copy_buf` prête ses
+contrôle de compilation (`copy_state_fits`) borne la structure au tampon.
+Ses trois chemins portent la structure native à 205 octets dans les 320
+disponibles, sans nouveau tampon global. `copy_buf` prête ses
 512 octets au transfert, puis 256 octets à chaque flux de vérification.
 Les tables des panneaux et le pool de répertoire restent intacts. Les
 compteurs, métadonnées GFI, politique d'écrasement et indicateur d'annulation
@@ -412,9 +441,12 @@ BINARY2 lit `full` et crée exclusivement les fichiers normalisés dans le
 répertoire du panneau opposé. Aucune source n'est supprimée, aucun accès au
 stockage AUX du disque RAM. `reserve_output` conserve la propriété même si
 sa fermeture échoue ; seul `OUTPUT_RESERVED` permet la réouverture `wb`.
-La propriété est remise à zéro après fermeture réussie du fichier extrait.
-Un enregistrement suivant incomplet ne permet donc pas de supprimer le
-fichier précédent. Une collision de noms normalisés refuse le nouvel extrait.
+La propriété est remise à zéro une fois le fichier extrait fermé, relu et
+le remplissage lu. Un enregistrement suivant incomplet ne permet donc pas de
+supprimer le fichier précédent. Une collision de noms normalisés refuse le
+nouvel extrait. Un enregistrement de dossier (type `$0F` ou stockage `$0D`)
+ne crée rien : ses octets sont lus, et ses fichiers suivent comme
+enregistrements à part.
 
 En-tête attendu, contenu et remplissage de 128 octets sont lus exactement,
 avec contrôle des erreurs. Le remplissage est lu plutôt que sauté par seek,
@@ -425,7 +457,8 @@ fermés sont conservés et l'erreur est signalée. La suppression d'un extrait
 incomplet est limitée à l'entrée possédée ; son échec nomme le fichier retenu.
 Une nouvelle tentative ne peut pas le tronquer.
 
-Neuf tests exécutent le vrai C sur fichiers jetables : tailles limites,
+`tools/test_binary2_safety.py` (neuf tests à l'origine, douze aujourd'hui)
+exécute le vrai C sur fichiers jetables : tailles limites,
 troncatures, lectures/écritures/fermetures échouées, réservation, collisions,
 nettoyage échoué puis retry et conservation des enregistrements précédents.
 Le test est intégré à `make test`. Les deux liens et les sept images ProDOS
@@ -546,8 +579,8 @@ message nomme l'image conservée et prime sur l'erreur initiale. Une nouvelle
 tentative refuse cette entrée sans la tronquer. Une erreur de fermeture du
 flux source W est désormais signalée ; ce fichier reste intact.
 
-Le champ supplémentaire tient dans l'état à `$3E00` (200/512 octets), avec
-assertion de capacité. Aucun nouveau tampon ni accès AUX : les chemins,
+Le champ supplémentaire tient dans l'état à `$3E00` (223/512 octets en
+octobre 2026, assertion de capacité `diskimg_state_fits`). Aucun nouveau tampon ni accès AUX : les chemins,
 banques de staging, consentement préalable et reconstruction du disque RAM
 restent ceux de DISKIMG. Cette correction ne fournit pas encore la relecture
 complète des images créées. Les écritures sur périphérique conservent leur
@@ -577,7 +610,11 @@ sous-déborder le compteur d'entrée ; la fenêtre distingue les vrais octets lu
 du remplissage, et refuse une consommation nulle ou hors fenêtre renvoyée par
 le décodeur. Un en-tête d'attributs trop court est refusé avant utilisation.
 Échap arrête entre blocs ; les erreurs de flux de destination et les fermetures
-sont contrôlées avant succès. Une compression ignorée conserve son diagnostic.
+sont contrôlées avant succès. Une compression non prise en charge, une
+fourche de ressources ou un type que ProDOS ne peut porter ne sont pas
+extraits et sont comptés : « N file(s) extracted, M part(s) skipped. »
+(depuis octobre 2026 ; auparavant la fourche de ressources disparaissait
+sans un mot).
 
 Écritures : seulement les nouveaux fichiers du dossier cible, leur nettoyage,
 le tampon principal partagé et l'état `$3000` (borné à 512 octets), ainsi que
@@ -611,16 +648,18 @@ flux LZW malformés (15 septembre, `tools/test_unshrink_core.py`) et, le
   depuis la version 3 d'enregistrement, CRC de chaque fil sur les octets
   décodés, comme avant ;
 - un type de fichier au-delà de 8 bits ou un aux-type au-delà de 16
-  (types HFS, aux-types 32 bits) n'est pas tronqué : le fichier est sauté,
-  « Unsupported file skipped. » ; une image disque doit être faite de blocs
-  de 512 octets (champ de stockage) ;
+  (types HFS, aux-types 32 bits) n'est pas tronqué, et un fil de données
+  typé `$0F` (dossier) n'est pas créé comme fichier : le fichier est sauté
+  et compté dans « M part(s) skipped. » ; une image disque doit être faite
+  de blocs de 512 octets (champ de stockage) ;
 - une fois l'extrait relu, ses droits (lecture toujours gardée) et sa date
   de modification viennent de l'archive par GET/SET_FILE_INFO ; une année
   NuFX hors de 1940-2039 laisse la date de création. Un échec laisse le
   fichier vérifié et arrête : « NAME extracted; attributes not set. ».
 
-`tools/test_unshrink_safety.py` compte 30 tests (CRC faux à chaque endroit
-couvert, types, blocs, droits, dates limites, échec d'attributs) ;
+`tools/test_unshrink_safety.py` compte 33 tests (CRC faux à chaque endroit
+couvert, types dont `$0F`, blocs, droits, dates limites, échec d'attributs,
+parties sautées) ;
 `tools/fuzz_archives.py` recalcule les CRC après trois mutations sur quatre
 pour atteindre l'analyseur, garde des CRC faux pour le reste, et sa
 référence applique les mêmes règles. Aucune atomicité sur coupure n'est
@@ -674,7 +713,9 @@ outputs remain if the source close fails; a failed cleanup names the retained
 partial output. This is extraction, not move: the source is never deleted.
 Since 14 September 2026 the closed output is read back and compared, byte
 for byte, with the DOS sectors read a second time, and must end where the
-data ends. No power-loss atomicity is promised.
+data ends (`tools/test_dos_extract.py` runs the real DOSGET C against
+disposable files: exact lengths, read-back, failed cleanup, source close,
+cycles). No power-loss atomicity is promised.
 
 FIXTYPES reads content and writes only confirmed SET_FILE_INFO/RENAME calls.
 GET_FILE_INFO must succeed, the file must be writable, and metadata is checked
@@ -686,6 +727,7 @@ is reported; ProDOS cannot make a physical metadata write power-fail atomic.
 Neither operation writes AUX. Both consume the API v5 active-entry snapshot
 at $3000; DOSGET code ends below $2800, its visited-sector bitmap is at $2800,
 and its T/S list copy is at $2F00. FIXTYPES code and BSS end below $3000.
+FIXTYPES has no host test; `bench/fixtypes.py` drives it under POM2.
 
 ## Journal du chantier 1 (0.8.0 → 0.8.5)
 
@@ -696,7 +738,7 @@ ils ont cette forme.
 
 Premier incrément du 13 septembre : réservation exclusive et moteur COPY
 extraits dans `src/file_output.h` et `src/file_copy.h`, contrats de buffers
-et de chargement dans [FILE-SERVICES.md](FILE-SERVICES.md). Binaires
+et de chargement dans ce document. Binaires
 identiques sur les deux CPU ; contrôle de capacité de `CopyState` et deux
 séquences de pannes ajoutés au banc C. Le contrat unique, les migrations des
 plugins et le gain de marge COPY restent à faire : aucune case globale close.
