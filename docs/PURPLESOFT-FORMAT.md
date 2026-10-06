@@ -35,11 +35,14 @@ panel sizes: both reads require exactly 8 KB and a clean EOF/close.
 Bits are written as HR3:HR2:HR1. EVE's CPREG shadow writes are disabled
 before loading MAIN, so reading the source cannot implicitly overwrite AUX.
 The extended modes copy FOTO1 through ROM AUXMOVE, then load FOTO2 into MAIN.
+Modes 0–4 read FOTO1 only for its mode and signature: AUX is not written
+and `/RAM` is not rebuilt.
 Feline/Video-7's AN3 latch is also set for the ordinary COL140/BW560 cases;
 the extra EVE modes require EVE hardware/emulation for faithful rendering.
 
 The AUX-capable overlay receives consent before entry, shared only by its
-current browsing session. Reopening asks again. Any exit after AUXMOVE,
+current browsing session. Reopening asks again. No question is asked when
+`/RAM` holds no file. Any exit after AUXMOVE,
 including a failed second-plane read/close, rebuilds `/RAM`. Source files
 are opened read-only and never rewritten. The consent destroys all `/RAM`
 files; it does not make a picture stored on that same RAM volume safe to

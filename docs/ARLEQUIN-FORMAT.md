@@ -42,9 +42,14 @@ column 10, row 46). All eleven pictures consume their stream exactly.
 
 **In A2 File Cmd.** `tools/arlequin_ref.py` is the reference decoder and an
 encoder for synthetic pictures (the maker's pictures are not distributed
-here). The ARLEQUIN overlay centres a picture smaller than the screen on
-black, shows it in the card's mixed mode (as EXTASIE does), checks the whole
-stream before writing the auxiliary bank, and rebuilds `/RAM` afterwards.
+here). Return sends a `$F8` file to ARLEQUIN when bytes 2–3 are `gs`,
+whatever its auxiliary type; the overlay itself refuses any other file type
+and a header outside the limits above. Its use of the auxiliary memory is
+confirmed first, like every viewer that writes it (no question when `/RAM`
+holds no file). The overlay centres a picture smaller than the screen on
+black, on whole groups, shows it in the card's mixed mode (as EXTASIE does),
+checks the whole stream before writing the auxiliary bank, and rebuilds
+`/RAM` afterwards, also when that second pass fails.
 `tools/test_arlequin.py` runs the 6502 decoder under sim65 on both
 processors, with the maker's pictures when `/GISTDATA` is available;
 `bench/arlequin.py` runs the overlay under POM2 with a Féline card.
