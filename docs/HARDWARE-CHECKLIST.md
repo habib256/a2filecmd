@@ -60,7 +60,7 @@ cette fiche ne prescrit pas le transfert, seulement ce qu'on fait ensuite.
    puis `Tab` et vérifier que le nom est apparu, à la bonne taille.
 5. Retirer la disquette cible, tenter la même copie : le refus doit arriver
    **avant** toute écriture (protection en écriture, disquette absente).
-6. `Q` puis relancer A2FC depuis DOS (`BRUN` de son binaire) : les panneaux
+6. `Q`, `Y`, puis relancer A2FC depuis DOS (`BRUN` de son binaire) : les panneaux
    reviennent.
 
 **Noter** : la version affichée, chaque caractère faux, et pour la copie la
@@ -172,7 +172,8 @@ question, l'état de `/RAM` après un refus puis après un accord.
    *Entre deux images, l'écran ne porte que le nom en cours de chargement.*
 4. Amorcer ensuite la disquette 140K dans un Disk II, s'il y en a un :
    noter ce que fait le Disk II.
-5. `Q` : retour à ProDOS, préfixe conservé.
+5. `Q` puis `Y` : retour à ProDOS, préfixe placé sur le dossier du panneau
+   actif.
 
 **Noter** : la vitesse ressentie (le IIgs tourne plus vite), tout écran qui
 diffère du IIe, et l'état du Disk II.
