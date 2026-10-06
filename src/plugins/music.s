@@ -109,6 +109,10 @@ silent_chip:
  inx
  lda #0
  jmp mb_write
+; Silence, T1's interrupt flag cleared (the read of T1C-L), and the ACR
+; _mb_hw_start saved put back. Not the IER: it stays at $7F, every VIA
+; interrupt off, as _mb_hw_start left it -- its earlier value is not saved
+; (nothing in A2FC enables VIA interrupts).
 _mb_hw_stop:
  jsr _mb_silence
  ldy #$0E

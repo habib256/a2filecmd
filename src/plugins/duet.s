@@ -261,7 +261,10 @@ _ay_silence:
         ldx #9
         lda #0
         jmp _ay_write
-; void ay_stop(void): silence, then the VIA as it was
+; void ay_stop(void): silence, T1's interrupt flag cleared (the read of
+; T1C-L), and the ACR ay_start saved put back. Not the IER: it stays at
+; $7F, every VIA interrupt off, as ay_start left it -- its earlier value
+; is not saved (nothing in A2FC enables VIA interrupts).
 _ay_stop:
         jsr _ay_silence
         jsr ay_via

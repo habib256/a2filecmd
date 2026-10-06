@@ -339,6 +339,11 @@ mute_ay:
  inx
  lda #0
  jmp pt_write
+; Silence, then on the first VIA: T1's interrupt flag cleared (the read
+; of T1C-L) and the ACR _pt_hw_start saved put back. Not the IERs: both
+; VIAs' stay at $7F, every interrupt off, as _pt_hw_start left them --
+; their earlier values are not saved (nothing in A2FC enables VIA
+; interrupts).
 _pt_hw_stop:
  jsr _pt_silence
  ldy #$0E
