@@ -98,6 +98,12 @@ view from what the file holds:
 Bytes read as text when at most one in 16 is neither printable nor RETURN.
 T, H, G and B still force the text, hexadecimal or hi-res view, or BRUN.
 
+BRUN types the panel's name back to DOS, so a name DOS could not match from
+a typed line is refused (`CANNOT BRUN THIS NAME`): a comma, or any byte of
+the raw catalog name outside `$A0`–`$DF` -- inverse, flashing, control
+characters or lower case. A FLASH `A` shows as `A`; its command would have
+been `BRUN A`, which runs another file named `A`, if there is one.
+
 Since v0.4, horizontal arrows page through files and Tab switches panels.
 `/` replaces the old D for drive selection, and Ctrl-R replaces R for
 rereading. D is delete. Escape at the browser does nothing because

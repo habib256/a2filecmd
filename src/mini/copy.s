@@ -279,6 +279,7 @@ valid_data:
 slot_where:
         sta     s2
         txa
+        and     #$7F            ; bit 7: store_entry's untypable-name flag
         lsr     a
         lsr     a
         lsr     a

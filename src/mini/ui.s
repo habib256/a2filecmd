@@ -1649,8 +1649,11 @@ copy_entries_to_right:
 ; brun_file -- B, or RETURN on a binary that is not a picture. Carry set
 ; once Y was answered: brun_cmd then holds the command DOS runs after A2FC
 ; Mini has left (start.s), on the slot and the active panel's drive. A
-; name DOS could not read back from a typed line -- a comma, or a
-; character the catalog could not print (shown as ?) -- is refused.
+; name DOS could not read back from a typed line -- a comma, or a raw
+; byte outside $A0-$DF (inverse, flashing, control, lower case: the
+; panel's text OR $80 would be another name, which DOS would run or not
+; find) -- is refused. The command is the panel's text OR $80, which is
+; then the raw name byte for byte.
 ; ---------------------------------------------------------------------
 .ifdef SIM65
         .segment "CODE"
@@ -1700,10 +1703,11 @@ brun_file:
         lda     (ptr),y
         cmp     #','
         jeq     @bad
-        cmp     #'?'
-        jeq     @bad
         dey
         bpl     @scan
+        ldy     #ENT_CAT_SLOT   ; a raw byte the panel's text cannot give
+        lda     (ptr),y         ; back: DOS would look for another name
+        jmi     @bad
         PRINT   "BRUN "
         lda     br_idx
         jsr     print_name15
@@ -1773,7 +1777,7 @@ brun_file:
         sec
         rts
 @bad:
-        PRINT   "NAME HAS , OR ? - CANNOT BRUN"
+        PRINT   "CANNOT BRUN THIS NAME"
 @refused:
         jsr     keep_note
 @no:

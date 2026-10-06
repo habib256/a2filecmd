@@ -258,6 +258,10 @@ stage_ptr:
 ; store_entry -- copies one catalog entry into the active panel.
 ; Names keep DOS's 30 characters, stripped of the high bit; anything
 ; unprintable becomes '?' so a crafted name cannot redirect a path.
+; Bit 7 of ENT_CAT_SLOT (sector << 3 | slot needs bits 0-6) says the raw
+; name holds a byte outside $A0-$DF -- inverse, flashing, control or
+; lower case -- that the panel's text cannot give back: B refuses such a
+; name, whose command would name another file. slot_where drops the bit.
 ; ---------------------------------------------------------------------
 store_entry:
         lda     count
@@ -282,7 +286,16 @@ store_entry:
         adc     #3
         tax
         ldy     #0
+        sty     t2              ; bit 7: a byte outside $A0-$DF
 @char:
+        lda     buffer,x
+        sec
+        sbc     #$A0
+        cmp     #$40
+        bcc     @plain
+        lda     #$80
+        sta     t2
+@plain:
         lda     buffer,x
         jsr     sanitise
         sta     (ptr),y
@@ -302,6 +315,7 @@ store_entry:
         asl     a
         asl     a
         ora     t1
+        ora     t2
         sta     (ptr),y
         rts
 

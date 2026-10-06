@@ -962,6 +962,58 @@ class WriteTest(unittest.TestCase):
         self.assertEqual(self.mini.write_log, [])
         self.assertEqual(self.image(1), self.src)
 
+    def test_untypable_names_are_flagged_for_brun(self):
+        """Bit 7 of the slot byte: a raw name byte outside $A0-$DF.
+
+        Before: B built its DOS command from the panel's text OR $80, and
+        only refused ',' and '?'. A name whose raw bytes are FLASH or
+        inverse ($00-$7F) shows as plain letters: "A" in FLASH gave "BRUN
+        A", which DOS matched against ANOTHER file named "A" in normal
+        letters (and ran it), or FILE NOT FOUND. store_entry now flags
+        such a name and brun_file refuses it ("CANNOT BRUN THIS NAME"):
+        the flag is what B reads. The flagged slot must still be found
+        by delete, lock, rename and copy (slot_where drops the bit)."""
+        names = [('A', 0x04), ('A', 0x04), ('CTRL.X', 0x04), ('LOWER', 0x04),
+                 ('COMMA,NAME', 0x04), ('WHAT?', 0x04), ('UNDER_SCORE', 0x04), ('PLAIN', 0x04)]
+        src = bytearray(make_disk([(n, t, n.encode() * 20) for n, t in names]))
+        def slot(i):
+            return offset(17, 15 - i // 7) + 11 + (i % 7) * 35
+        src[slot(0) + 3] = ord('A') & 0x3F | 0x40      # FLASH A: shows "A"
+        src[slot(2) + 3 + 5] = 0x18                    # inverse X ($18)
+        for k in range(5):                             # lower case
+            src[slot(3) + 3 + k] |= 0x20
+        src[slot(6) + 3 + 5] = 0xDF                    # '_', the last plain byte
+        self.load(src=bytes(src))
+        self.assertEqual(self.mini.byte('count'), len(names))
+        flags = [self.mini.byte('ent_name', offset=i * 32 + 31) >> 7 for i in range(len(names))]
+        self.assertEqual(flags, [1, 0, 1, 1, 0, 0, 0, 0])
+        shown = [bytes(self.mini.peek('ent_name', 6, offset=i * 32)).rstrip() for i in (0, 1, 2)]
+        self.assertEqual(shown, [b'A', b'A', b'CTRL.?'], 'the two As look the same on the panel')
+        # the slot itself, flag dropped, is what every write goes back to
+        for i in range(len(names)):
+            self.assertEqual(self.mini.byte('ent_name', offset=i * 32 + 31) & 0x7F,
+                             (15 - i // 7) << 3 | i % 7)
+        # the flagged FLASH A is copied, locked and deleted as itself
+        self.assertEqual(self.mini.prepare(0, 2), OK)
+        self.assertEqual(self.mini.execute(), OK)
+        dst = self.image(2)
+        raws = [dst[offset(17, sec) + 11 + i * 35:offset(17, sec) + 11 + i * 35 + 35]
+                for sec in range(15, 0, -1) for i in range(7)]
+        copied = [r for r in raws if r[3:33] == src[slot(0) + 3:slot(0) + 33]]
+        self.assertEqual(len(copied), 1, 'the FLASH A, byte for byte')
+        self.assertEqual(copied[0][2], 0x04)
+        self.mini.poke('drive', bytes([1]))
+        self.assertEqual(self.mini.lock_prepare(0, 0), self.DEL_OK)
+        self.assertEqual(self.mini.lock_execute(), self.DEL_OK)
+        self.assertEqual(self.image(1)[slot(0) + 2], 0x84, 'the FLASH A locked, not the plain one')
+        self.assertEqual(self.image(1)[slot(1) + 2], 0x04)
+        self.load(src=bytes(src))
+        self.assertEqual(self.mini.delete_prepare(0), self.DEL_OK)
+        self.assertEqual(self.mini.delete_execute(), self.DEL_OK)
+        self.assertEqual(self.image(1)[slot(0)], 255, 'the FLASH A is the deleted one')
+        self.assertEqual(self.image(1)[slot(1):slot(1) + 35], bytes(src[slot(1):slot(1) + 35]))
+        self.assertEqual(read_files(self.image(1))['A']['data'][:2], b'AA')
+
     def test_rename_normalises_a_flash_name(self):
         # FLASH letters are $40-$5F: the panel shows FLASH, the disk does
         # not hold it. Typing the visible name is a real rename.
