@@ -85,22 +85,26 @@ class OverlayLoad(unittest.TestCase):
 #include <stdio.h>
 #include <stdlib.h>
 static int empty,answer,asked;
+static unsigned char aux_dirty;
 static unsigned char ram_empty(void){return empty;}
 static unsigned char confirm(const char* q){(void)q;++asked;return answer;}
 """+gate+r"""
 int main(int argc,char** argv){int r;
  empty=atoi(argv[1]);answer=atoi(argv[2]);media_aux_scope=atoi(argv[3]);
- r=confirm_aux();printf("%d %d %d\n",r,asked,media_aux_scope);return 0;}
+ r=confirm_aux();printf("%d %d %d %d\n",r,asked,media_aux_scope,aux_dirty);return 0;}
 """
   with tempfile.TemporaryDirectory(prefix='aux-gate-') as t:
    p=Path(t);(p/'g.c').write_text(code)
    subprocess.run(['cc','-std=c99',str(p/'g.c'),'-o',str(p/'g')],check=True)
    run=lambda *a:subprocess.check_output([str(p/'g')]+[str(x) for x in a],text=True).split()
-   self.assertEqual(run(1,0,0),['1','0','0'])   # empty /RAM: no question, granted
-   self.assertEqual(run(1,0,1),['1','0','1'])
-   self.assertEqual(run(0,0,0),['0','1','0'])   # files there: asked, refused
-   self.assertEqual(run(0,1,1),['1','1','2'])   # asked, granted for the session
-   self.assertEqual(run(0,0,2),['1','0','2'])   # already granted this session
+   # The last figure is aux_dirty: set whenever leave is given, so that
+   # Ctrl-Reset from inside the viewer rebuilds /RAM (crt0.s) instead of
+   # leaving it on line over overwritten blocks; never on a refusal.
+   self.assertEqual(run(1,0,0),['1','0','0','1'])   # empty /RAM: no question, granted
+   self.assertEqual(run(1,0,1),['1','0','1','1'])
+   self.assertEqual(run(0,0,0),['0','1','0','0'])   # files there: asked, refused
+   self.assertEqual(run(0,1,1),['1','1','2','1'])   # asked, granted for the session
+   self.assertEqual(run(0,0,2),['1','0','2','1'])   # already granted this session
 
  def test_failed_menu_cannot_replay_a_previous_command(self):
   dispatch=source[source.index("        case '!':"):source.index("        case 'i': case 'I':")]

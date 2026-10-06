@@ -11,6 +11,7 @@
         .export         __STARTUP__ : absolute = 1      ; Mark as startup
 
         .import         initlib, donelib
+        .import         _aux_dirty, _ram_format
         .import         setsoftev       ; chain.s
         .import         zerobss
 .ifndef CC65_MASTER
@@ -74,6 +75,13 @@ _exit:  ldx     #<exit
         ; Switch in ROM, in case it wasn't already switched in by a RESET.
         bit     $C082
 
+        ; Ctrl-Reset from inside a viewer that had leave to write the
+        ; auxiliary bank: /RAM is rebuilt empty, as it would have been on
+        ; the way out, instead of staying on line over overwritten blocks.
+        lda     _aux_dirty
+        beq     :+
+        jsr     _ram_format
+:
         ; Call the module destructors.
         jsr     donelib
 

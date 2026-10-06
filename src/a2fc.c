@@ -2123,7 +2123,8 @@ static const char img_dhgr_rle[] = "DHGR RLE";
 static const char* const IMG_NAMES[] = { img_none, img_hgr, img_dhgr, img_hgr_rle, img_dhgr_rle };
 static const unsigned long IMG_BYTES[] = { 0, 8192, 16384, 8192, 16384 };
 static unsigned char img_kind;
-static unsigned char aux_dirty;    /* an image wrote to AUX: /RAM must be rebuilt */
+unsigned char aux_dirty;           /* AUX is written, or a viewer has leave to write it: /RAM must be rebuilt.
+                                    * Not static: crt0.s rebuilds it when Ctrl-Reset quits from inside a viewer. */
 static const char* ram_note;
 #pragma rodata-name(push, "LC")
 static const char RAM_NOTE[] = "  /RAM was rebuilt empty.";
@@ -2267,9 +2268,14 @@ static unsigned char confirm_aux(void)
 {
     /* An empty /RAM has nothing to lose: no question (its blocks are
      * rebuilt empty afterwards, as for any use of the auxiliary bank). */
-    if (media_aux_scope == 2 || ram_empty()) return 1;
-    if (!confirm(aux_warning)) return 0;
-    if (media_aux_scope) media_aux_scope = 2;
+    if (media_aux_scope != 2 && !ram_empty()) {
+        if (!confirm(aux_warning)) return 0;
+        if (media_aux_scope) media_aux_scope = 2;
+    }
+    /* Until the viewer has returned (the main loop clears this): quitting
+     * by Ctrl-Reset from inside it used to leave /RAM on line with its
+     * directory intact over blocks the viewer had overwritten. */
+    aux_dirty = 1;
     return 1;
 }
 /* A big overlay took the entry pool and the marks with it: both panels are
@@ -5631,6 +5637,7 @@ int main(void)
          * and the Apple IIe keyboard has no PgUp. RET opens, ESC goes up
          * to the parent -- the only two other ways of doing it stay
          * unchanged. */
+        aux_dirty = 0;           /* no viewer is running: Ctrl-Reset has no /RAM to rebuild */
         case '<': case '-': case KEY_LEFT: move_cursor(-ROWS); break;
         case '>': case '+': case KEY_RIGHT: move_cursor(ROWS); break;
         case '[': set_cursor(pan, 0); show_active(); break;
