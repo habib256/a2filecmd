@@ -703,7 +703,11 @@ etc. must be concatenated in order. Partial output remains. Inspect the log and
 recovered contents: neither tool guarantees recovery of missing data.
 
 **WIPE F** checks allocation before zeroing free blocks; **W** destroys an entire
-volume after ERASE, excluding the running program's volume. **BOOTBLK** copies
+volume after ERASE, excluding the running program's volume. Both read the volume
+header before the question, which names the volume found there, and compare it
+again after the answer (F once more after its check): a disk changed meanwhile,
+or one that no longer reads, gets "Disk changed or unreadable" and nothing is
+written. A disk swapped once the writes have begun is not detected. **BOOTBLK** copies
 boot blocks after confirmation, with readback and RAM-only originals for attempted
 restoration. **BLKVIEW** reads blocks and can extract a range; **BLKEDIT**
 changes bytes of one block and writes it back after ERASE, then reads it back

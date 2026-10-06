@@ -23,13 +23,26 @@
  *
  * The bar moves every sixteen blocks and ESC stops the wipe where it is.
  *
+ * WHICH DISK. A unit number says where to write, not on what: the volume
+ * list may be stale, and a floppy can be changed while a question waits.
+ * So block 2 is read BEFORE the question and kept (HDR); it must be a
+ * volume directory header carrying the very name the question shows, or
+ * nothing is asked. AFTER the answer block 2 is read again and all 512
+ * bytes are compared; F does it once more after its walk of the tree,
+ * which is long and stops on a key. A difference or a read error writes
+ * nothing: "Disk changed or unreadable: /NAME. Nothing written." What this
+ * cannot see: a disk whose block 2 is byte for byte the same (a copy whose
+ * first directory block never changed), and a swap once the writes have
+ * begun -- the unit is not asked again between two blocks.
+ *
  * A BIG overlay, and for one reason: F needs two 512-byte buffers at the
  * same time -- the bitmap block being read and the block of zeros being
  * written -- and a small overlay has only api->copy_buf. Rather than
- * re-reading the bitmap between batches of free blocks, the two buffers
- * sit at $3000 and $3200, in the graphics page a big overlay owns and the
- * core rebuilds on return. The file stays well under the 5,376 bytes that
- * keep the code below $3000. Being big, it also gets its panels reread and
+ * re-reading the bitmap between batches of free blocks, the buffers sit
+ * at $3000, $3200 and $3400 (the header kept for the comparison), in the
+ * graphics page a big overlay owns and the core rebuilds on return. The
+ * file stays under the 5,376 bytes that keep code and BSS below $3000
+ * (the link fails otherwise). Being big, it also gets its panels reread and
  * redrawn by the core on return, so its last words go through api->note,
  * never api->message, and it must not call read_panel itself: that would
  * rebuild the entry tables over these very buffers. */
@@ -50,10 +63,11 @@ const struct PluginHeader __plugin_header = {
 };
 #pragma rodata-name (pop)
 
-/* The two blocks, in the page the core rebuilds on return. */
+/* The three blocks, in the page the core rebuilds on return. */
 #ifndef BM
 #define BM   ((unsigned char*)0x3000)      /* one bitmap block */
 #define ZERO ((unsigned char*)0x3200)      /* 512 zeros, written over and over */
+#define HDR  ((unsigned char*)0x3400)      /* block 2 as read before the question */
 #endif
 
 #ifndef KBD
@@ -83,6 +97,7 @@ static const char M_ERASE[]  = "Type ERASE to confirm";
 static const char M_WORD[]   = "ERASE";
 static const char M_BOOT[]   = "That volume holds the running program: choose another.";
 static const char M_CANCEL[] = "Nothing was written.";
+static const char M_CHANGED[] = "Disk changed or unreadable: %s. Nothing written.";
 static const char M_CHECK[]  = "Checking the allocation... ESC cancels";
 static const char M_DONE[]   = "%u blocks zeroed on %s%s";
 static const char M_STOP[]   = ", stopped by ESC";
@@ -106,6 +121,23 @@ static void __fastcall__ first_part(char* dst, const char* path)
     unsigned char k;
     for (k = 0; k < NAME_LEN - 1 && path[k] && (k == 0 || path[k] != '/'); ++k) dst[k] = path[k];
     dst[k] = 0;
+}
+
+/* The last words: the core writes api->note once the panels are back. */
+static void __fastcall__ say(const char* m)
+{
+    A->strcpy(A->note, m);
+}
+
+/* "/NAME" in NM, from a byte whose low nibble is the length of the name
+ * that follows it: a record of ON_LINE, or the header entry of a volume
+ * directory (block 2, offset 4). */
+static void __fastcall__ name_at(const unsigned char* p)
+{
+    unsigned char len = *p & 15;
+    NM[0] = '/';
+    A->memcpy(NM + 1, p + 1, len);
+    NM[len + 1] = 0;
 }
 
 /* A key waiting is taken; the strobe leaves its code readable; ESC stops. */
@@ -181,6 +213,29 @@ static unsigned int map_page;
 static unsigned int word(const unsigned char* p) { return p[0] | ((unsigned int)p[1] << 8); }
 static unsigned char read_at(unsigned int b, unsigned char* dst) {
     bp.block = b; bp.buf = dst; return !A->mli(0x80, &bp);
+}
+
+/* The refusal of a disk that is not the one the question named; 0. */
+static unsigned char changed(void)
+{
+    A->sprintf(A->note, M_CHANGED, VOL);
+    return 0;
+}
+
+/* Block 2 once more, into ZERO: 1 if it reads and is byte for byte the
+ * block the question was asked about (HDR). Otherwise the refusal is in the
+ * note and nothing may be written. Two half-blocks under one 8-bit index:
+ * cc65 has miscompiled CONST[i] with a 16-bit i on a page-aligned buffer. */
+static unsigned char same_disk(void)
+{
+    unsigned char i = 0;
+    if (!read_at(2, ZERO)) return changed();
+    do {
+        if (ZERO[i] != HDR[i]) return changed();
+        if ((ZERO + 256)[i] != (HDR + 256)[i]) return changed();
+        ++i;
+    } while (i);
+    return 1;
 }
 static unsigned char allocated(unsigned int b) {
     unsigned int page;
@@ -258,13 +313,13 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     const struct Panel* pan;
     const struct Entry* e;
     const unsigned char* p;
-    unsigned char b, len;
+    unsigned char b;
 
     A = api;
     buf = (char*)api->copy_buf;
     pan = api->panels;
     if (*api->active) ++pan;
-    if (pan->fs) { api->strcpy(api->note, M_NOTVOL); return; }
+    if (pan->fs) { say(M_NOTVOL); return; }
 
     /* The target volume and its unit: the selection in the volume list
      * (mdate holds the unit byte shifted right four, as read_volumes
@@ -274,7 +329,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         first_part(VOL, pan->path);
     } else {
         e = api->selected;
-        if (e->name[0] != '/' || !e->access) { api->strcpy(api->note, M_SELECT); return; }
+        if (e->name[0] != '/' || !e->access) { say(M_SELECT); return; }
         api->strcpy(VOL, e->name);
         unit = (unsigned char)e->mdate << 4;
     }
@@ -288,23 +343,26 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         p = (const unsigned char*)buf;
         for (b = 0; b < 16; ++b, p += 16) {
             if (!*p) break;
-            if ((len = *p & 15) == 0) continue;    /* a drive without a volume */
-            NM[0] = '/';
-            api->memcpy(NM + 1, p + 1, len);
-            NM[len + 1] = 0;
+            if (!(*p & 15)) continue;           /* a drive without a volume */
+            name_at(p);
             if (!unit && !api->strcmp(NM, VOL)) unit = *p & 0xF0;
             if (!api->strcmp(NM, BOOT)) boot = *p & 0xF0;
         }
     }
-    if (!unit) { api->strcpy(api->note, M_NOVOL); return; }
+    if (!unit) { say(M_NOVOL); return; }
 
-    /* The volume header: the bitmap and the size, from the disk itself. */
-    bp.n = 3; bp.unit = unit; bp.buf = BM; bp.block = 2;
-    if (api->mli(0x80, &bp)) { api->strcpy(api->note, M_READ); return; }
-    if ((BM[H_TYPE] & 0xF0) != 0xF0) { api->strcpy(api->note, M_NOTVOL); return; }
-    bitmap = BM[H_BITMAP] | ((unsigned int)BM[H_BITMAP + 1] << 8);
-    total  = BM[H_TOTAL]  | ((unsigned int)BM[H_TOTAL + 1] << 8);
-    if (!total) { api->strcpy(api->note, M_NOTVOL); return; }
+    /* The volume header, from the disk itself and kept in HDR: the bitmap,
+     * the size, and the name -- the question below names VOL, so the disk
+     * in the unit must be VOL now (a stale volume list, a floppy changed
+     * since ON_LINE), or nothing is asked. */
+    bp.n = 3; bp.unit = unit;
+    if (!read_at(2, HDR)) { say(M_READ); return; }
+    if ((HDR[H_TYPE] & 0xF0) != 0xF0) { say(M_NOTVOL); return; }
+    name_at(HDR + H_TYPE);
+    if (api->strcmp(NM, VOL)) { changed(); return; }
+    bitmap = word(HDR + H_BITMAP);
+    total  = word(HDR + H_TOTAL);
+    if (!total) { say(M_NOTVOL); return; }
 
     /* F or W, then the confirmation each deserves. */
     api->sprintf(buf, M_ASK, VOL);
@@ -317,30 +375,39 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
          * erasing before discovering a later bitmap page lies off-volume.
          * (total-1)>>12 is pages-1 without a 16-bit rounding overflow. */
         if (bitmap < 3 || bitmap >= total || ((total - 1) >> 12) >= total - bitmap) {
-            api->strcpy(api->note, "Invalid volume bitmap."); return;
+            say("Invalid volume bitmap."); return;
         }
         api->sprintf(buf, M_ASKF, VOL);
-        if (!api->confirm(buf)) { api->strcpy(api->note, M_CANCEL); return; }
+        if (!api->confirm(buf)) { say(M_CANCEL); return; }
     } else if (whole) {
-        if (unit == boot || !api->strcmp(VOL, BOOT)) { api->strcpy(api->note, M_BOOT); return; }
+        if (unit == boot || !api->strcmp(VOL, BOOT)) { say(M_BOOT); return; }
         api->gotoxy(0, 20);
         api->revers(1);
         api->cprintf(M_LOST, VOL);
         api->revers(0);
         if (!api->prompt(M_ERASE, 0, 0) || api->strcmp(api->input, M_WORD)) {
-            api->strcpy(api->note, M_CANCEL);
+            say(M_CANCEL);
             return;
         }
     } else {
-        api->strcpy(api->note, M_CANCEL);
+        say(M_CANCEL);
         return;
     }
 
-    /* Nothing is written before this walk of the whole tree has vouched
-     * for every free bit; it is long on a big volume, so it says so. */
-    if (!whole) api->message(M_CHECK);
-    if (!whole && !free_safe()) {
-        api->strcpy(api->note, "Free wipe refused: unreadable/unsafe allocation or cancelled."); return;
+    /* The answer is in, and it was given for the disk whose block 2 is in
+     * HDR: the unit must still hold that disk, or nothing is written. */
+    if (!same_disk()) return;
+    if (!whole) {
+        /* Nothing is written before this walk of the whole tree has vouched
+         * for every free bit; it is long on a big volume, so it says so.
+         * Long enough to change a disk, and it stops on a key: the disk it
+         * walked must be the one about to be written, so block 2 is
+         * compared once more, right before the first write. */
+        api->message(M_CHECK);
+        if (!free_safe()) {
+            say("Free wipe refused: unreadable/unsafe allocation or cancelled."); return;
+        }
+        if (!same_disk()) return;
     }
     api->memset(ZERO, 0, 512);
     done = 0;
