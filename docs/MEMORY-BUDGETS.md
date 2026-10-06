@@ -1,6 +1,145 @@
 # Consolidation : budgets mémoire
 
-## VISICALC : quatre morceaux et une table
+## État actuel (6 octobre 2026, commit c515044)
+
+Le seul tableau à jour de ce document. Relevé sur une construction neuve des
+deux éditions (`make ARCH=enh`, `make ARCH=6502`, puis `make mini`) :
+65C02 avec cc65 V2.18 (Homebrew), 6502 avec cc65 V2.19 Git e11fb5c
+(`~/opt/cc65-head`). Octets libres ; les zones se recouvrent, **rien ne
+s'additionne**. Les réserves du résident et de ses surcouches sont la
+ligne « reserves » que `tools/check_layout.py` imprime à chaque lien ; celles
+des surcouches à table de services sont calculées depuis leur `.map` :
+fin de la fenêtre moins fin du dernier segment (code, données et BSS).
+Tout ce qui suit cette section est un **journal**, globalement du plus
+récent au plus ancien : ses chiffres valent pour leur date. Pour le
+relevé suivant, relire la sortie du lien plutôt que recopier ce tableau.
+
+**Pourquoi ces plafonds.** `A2FILE.CODE` doit finir sous `$BEE0` : le
+lanceur garde sa pile C sous `$BF00` et charge le fichier jusqu'à sa fin,
+il lui faut ces 32 octets (`check_layout`). La carte langage exécute en
+banque 2 de `$D400` à `$DFFF`. La BSS basse tient dans `$1000-$1AFF`.
+Toutes les surcouches se chargent en `$1B00` : une petite s'arrête à
+`$1FFF` (1 280 octets, la page graphique commence en `$2000`) ; une grande
+(`OVERLAY_BIG`) va jusqu'à `$3FFF` (`__OVLSIZE__` `$2500`, 9 472 octets),
+moins ce qu'elle garde pour elle : brouillon `$3000-$3FFF` (groupe
+`XPLUGINS_SCRATCH` ; FIND à partir de `$3100`), `$3D60` pour DOCVIEW,
+`$3F9E` pour VOLINFO, BLKVIEW, BLKEDIT, FIXIT et REPAIR (leur copie de 98
+octets de la table de services), `$2400` pour DUET (la chanson), `$2000`
+pour le code des visionneuses HGR (`XPLUGINS_HGR`, la page qu'elles
+dessinent). VERIFY garde sa copie de la table à `$1FC2`. FIND, PT3,
+NIBCOPY, NRCLIP, VISICALC et GMAGIC ont leur propre `sdk/*.cfg`. Les
+plafonds des surcouches liées au résident sont dans `OVERLAYS` de
+`tools/check_layout.py` (la page graphique, ou ce que la surcouche y
+garde ; `--big BINARY2` porte BINARY2 à `$2800`). Aucun de ces contrôles ne
+doit être relâché pour faire passer un lien.
+
+| Zone : plafond et raison | 65C02 | 6502 |
+| --- | ---: | ---: |
+| MAIN — résident, jusqu’à `$BEE0` : le lanceur garde sa pile C à `$BF00` et charge `A2FILE.CODE` jusqu’à sa fin ; 32 octets de marge | 16 | 421 |
+| LC — carte langage, banque 2 `$D400-$DFFF`, derrière le code QUIT de ProDOS ; image de 3 Ko posée en `$1000` par le lanceur | 33 | 24 |
+| LOWRAM — BSS basse `$1000-$1AFF`, entre le tampon d’E/S ProDOS et la fenêtre des surcouches | 86 | 111 |
+| STACK GAP — entre la fin du code persistant (sans ONCE) et la pile C de 192 octets sous `$BF00` ; ne mesure pas la consommation de la pile | 33 | 627 |
+| FORMAT BSS — état de FORMAT jusqu’au tampon `$3E00` | 99 | 99 |
+
+| Surcouche liée au résident (`$1B00`, plafond) | 65C02 | 6502 |
+| --- | ---: | ---: |
+| BATCH (`$3000`) | 2 820 | 2 834 |
+| NAV (`$2000`) | 142 | 208 |
+| CATALOG (`$2000`) | 221 | 205 |
+| OPEN (`$2000`) | 11 | 11 |
+| COPY (`$2000`) | 13 | 10 |
+| FORMAT (`$3C00`) | 269 | 269 |
+| IMAGE (`$2000`) | 22 | 24 |
+| TEXT (`$2000`) | 49 | 19 |
+| HEX (`$2000`) | 74 | 67 |
+| DELETE (`$2000`) | 286 | 296 |
+| HELP (`$2000`) | 395 | 369 |
+| RUN (`$3000`) | 517 | 514 |
+| ATTR (`$2000`) | 153 | 150 |
+| EDIT (`$2C00`) | 30 | 16 |
+| MENU (`$2A00`) | 220 | 169 |
+| DISKIMG (`$3600`) | 68 | 20 |
+| IMGFS (`$2800`) | 1 315 | 1 327 |
+| DOSGET (`$2800`) | 1 217 | 1 213 |
+| UNSHRINK (`$3C00`) | 916 | 902 |
+| BASLIST (`$2800`) | 752 | 743 |
+| COMPARE (`$2000`) | 59 | 83 |
+| SEARCH (`$2000`) | 191 | 207 |
+| BINARY2 (`$2800`) | 981 | 1 001 |
+| AWP (`$2000`) | 144 | 121 |
+
+| Surcouche à table de services | Fenêtre (code + BSS) | Fichier 65C02 / 6502 | Libres 65C02 / 6502 |
+| --- | --- | ---: | ---: |
+| ARLEQUIN (big) | `$1B00-$1FFF` | 1 154 / 1 171 | 99 / 82 |
+| AWDATA (big) | `$1B00-$3FFF` | 8 034 / 8 181 | 160 / 13 |
+| BLKEDIT (big) | `$1B00-$3F9D` | 8 615 / 8 569 | 7 / 52 |
+| BLKVIEW (big) | `$1B00-$3F9D` | 9 017 / 8 996 | 6 / 27 |
+| BOOTBLK (big) | `$1B00-$2FFF` | 2 270 / 2 265 | 1 954 / 1 959 |
+| CPM (big) | `$1B00-$3FFF` | 8 114 / 8 075 | 250 / 288 |
+| CPMW (big) | `$1B00-$3FFF` | 8 483 / 8 438 | 70 / 114 |
+| CRC (small) | `$1B00-$1FFF` | 1 152 / 1 161 | 13 / 4 |
+| DATE (small) | `$1B00-$1FFF` | 1 227 / 1 228 | 8 / 7 |
+| DGRVIEW (big) | `$1B00-$2FFF` | 3 753 / 3 844 | 1 555 / 1 464 |
+| DISASM (big) | `$1B00-$3FFF` | 7 940 / 7 935 | 885 / 890 |
+| DISKCMP (big) | `$1B00-$3FFF` | 6 924 / 6 879 | 872 / 917 |
+| DOCVIEW (big) | `$1B00-$3D5F` | 8 408 / 8 442 | 40 / 6 |
+| DOS33W (big) | `$1B00-$3FFF` | 4 922 / 4 987 | 3 117 / 3 052 |
+| DOSIMAGE (big) | `$1B00-$3FFF` | 7 337 / 7 467 | 1 474 / 1 343 |
+| DOSPUT (big) | `$1B00-$3FFF` | 7 346 / 7 431 | 372 / 286 |
+| DOSREPL (big) | `$1B00-$3FFF` | 7 558 / 7 647 | 91 / 1 |
+| DOSWRITE (big) | `$1B00-$3FFF` | 7 303 / 7 377 | 427 / 352 |
+| DUET (big) | `$1B00-$23FF` | 2 193 / 2 193 | 81 / 80 |
+| EXTASIE (big) | `$1B00-$1FFF` | 1 201 / 1 227 | 64 / 38 |
+| FIND (big) | `$1B00-$30FF`, SETUP `$3100-$38FF` | 6 818 / 6 847 | 341 + 862 / 392 + 833 |
+| FIXIT (big) | `$1B00-$3F9D` | 7 822 / 7 822 | 3 / 3 |
+| FIXTYPES (big) | `$1B00-$2FFF` | 3 823 / 3 765 | 1 189 / 1 246 |
+| FONTVIEW (big) | `$1B00-$1FFF` | 1 121 / 1 127 | 133 / 126 |
+| GMAGIC (big) | `$1B00-$1FFF`, HGR `$2000-$3FFF`, LOW `$0C00-$0FFF` | 4 109 / 4 109 | 9 + 6 314 + 12 / 6 + 6 314 + 12 |
+| GOTO (big) | `$1B00-$2FFF` | 5 030 / 5 012 | 72 / 89 |
+| IDENT (big) | `$1B00-$3FFF` | 6 267 / 6 315 | 3 134 / 3 085 |
+| IMGCONV (big) | `$1B00-$3FFF` | 8 777 / 8 943 | 205 / 38 |
+| IMGPUT (big) | `$1B00-$3FFF` | 8 000 / 7 983 | 97 / 113 |
+| INTBASIC (big) | `$1B00-$3FFF` | 3 646 / 3 687 | 5 508 / 5 467 |
+| LZ4FH (big) | `$1B00-$1FFF` | 1 255 / 1 219 | 8 / 43 |
+| MACPAINT (big) | `$1B00-$1FFF` | 1 111 / 1 114 | 46 / 43 |
+| MDVIEW (big) | `$1B00-$2FFF` | 4 647 / 4 626 | 545 / 566 |
+| MKIMAGE (big) | `$1B00-$3FFF` | 4 019 / 4 097 | 5 157 / 5 079 |
+| MOVE (big) | `$1B00-$3FFF` | 8 382 / 8 393 | 285 / 273 |
+| MUSIC (big) | `$1B00-$2FFF` | 2 752 / 2 713 | 2 551 / 2 589 |
+| NEWSROOM (big) | `$1B00-$1FFF` | 948 / 954 | 250 / 243 |
+| NIBCOPY (big) | `$1B00-$3FFF` | 6 249 / 6 285 | 2 363 / 2 327 |
+| NRCLIP (big) | `$1B00-$1FFF`, HGR `$2000-$3FFF`, LOW `$0C00-$0FFF` | 2 681 / 2 681 | 85 + 7 583 + 101 / 82 + 7 583 + 101 |
+| PACKFOT (big) | `$1B00-$1FFF` | 1 218 / 1 249 | 43 / 12 |
+| PAINT816 (big) | `$1B00-$1FFF` | 1 204 / 1 215 | 48 / 37 |
+| PASCAL (big) | `$1B00-$3FFF` | 7 057 / 7 032 | 1 628 / 1 652 |
+| PASCALW (big) | `$1B00-$3FFF` | 8 444 / 8 393 | 71 / 121 |
+| PRINTSHOP (big) | `$1B00-$1FFF` | 1 000 / 1 022 | 265 / 242 |
+| PT3 (big) | `$1B00-$36FF`, PG `$3B00-$3FBF` | 9 264 / 9 264 | 86 + 131 / 20 + 131 |
+| PURPLE (big) | `$1B00-$1FFF` | 1 261 / 1 265 | 8 / 3 |
+| RENAME (small) | `$1B00-$1FFF` | 1 208 / 1 223 | 18 / 3 |
+| REPAIR (big) | `$1B00-$3F9D` | 7 842 / 7 862 | 50 / 30 |
+| RESCUE (big) | `$1B00-$3FFF` | 6 523 / 6 587 | 2 481 / 2 416 |
+| SCIIBIN (big) | `$1B00-$3FFF` | 6 254 / 6 251 | 327 / 330 |
+| SHAPES (big) | `$1B00-$1FFF` | 1 236 / 1 239 | 3 / 0 |
+| SYNC (big) | `$1B00-$3FFF` | 6 981 / 7 008 | 745 / 717 |
+| TAGPAT (small) | `$1B00-$1FFF` | 1 228 / 1 228 | 6 / 6 |
+| TREE (big) | `$1B00-$3FFF` | 4 942 / 4 963 | 3 399 / 3 378 |
+| TXTCONV (big) | `$1B00-$3FFF` | 6 096 / 6 134 | 2 782 / 2 743 |
+| UNDELETE (big) | `$1B00-$3FFF` | 6 934 / 6 938 | 25 / 21 |
+| UNSQ (big) | `$1B00-$3FFF` | 5 959 / 6 029 | 1 429 / 1 358 |
+| UNWRAP (big) | `$1B00-$3FFF` | 6 657 / 6 662 | 1 314 / 1 308 |
+| VERIFY (small) | `$1B00-$1FC1` | 1 114 / 1 129 | 55 / 40 |
+| VISICALC (big) | fixe `$1B00-$25FF`, phases `$2600-$35FF`, BSS `$3600-$3FFF` | 4 007 / 4 007 | 66 (VCB 16) / 63 (VCB 16) |
+| VOLINFO (big) | `$1B00-$3F9D` | 7 672 / 7 624 | 251 / 299 |
+| VOLNAME (small) | `$1B00-$1FFF` | 1 156 / 1 139 | 14 / 31 |
+| WIPE (big) | `$1B00-$2FFF` | 5 185 / 5 150 | 26 / 61 |
+
+Mini (`tools/check_mini_layout.py`) : résident jusqu'à `$95EC`, **20**
+octets libres sous DOS (`$9600`) ; zone basse 1 octet sous `$2000` ;
+moteur de formatage 459 octets en `$0200`, 5 octets sous les vecteurs DOS
+`$03D0`.
+
+## VISICALC : quatre morceaux et une table (4 octobre 2026)
 
 Tout en assembleur (`src/plugins/visicalc.s`, le C ne porte que l'en-tête
 et les décalages des services) : en C, la seule partie fichiers/écran
@@ -33,7 +172,7 @@ payées par quatre `jmp ret` devenus `bne ret` (A n'y vaut jamais 0) : OPEN
 **4/9** octets libres (65C02/6502). Le nom « VISICALC » est en carte langage
 (MAIN n'avait pas ses 9 octets) : MAIN **8/420**, LC **37/28**.
 
-## DOCVIEW : calculs, en-têtes et bas de page d'Epistole
+## DOCVIEW : calculs, en-têtes et bas de page d'Epistole (29 septembre 2026)
 
 DOCVIEW quitte le groupe des surcouches à brouillon `$3000` : code et BSS
 dans `$1B00-$3D5F` (`__OVLSIZE__` `$2260`, cas à part dans le Makefile),
@@ -50,14 +189,14 @@ d'arithmétique `long`), 16 pages d'historique au lieu de 64, le tampon de
 lecture de 2 Ko à 128 octets, `epistole()` par table. `--codesize` plus
 bas grossit le code (5074 → 6421 octets à 10) : ne pas y compter.
 
-## Page de titre : ni effacée, ni escamotée
+## Page de titre : ni effacée, ni escamotée (29 septembre 2026)
 
 MAIN **57/469** (93/503 avant) : `key_wait` (display.s), la boucle
 d'attente du diaporama devenue sous-programme, et son appel dans `main`
 (26 octets) ; le test de RD80VID/RD80STORE qui évite l'appel de
 `videomode` quand le lanceur a déjà mis le 80 colonnes (10 octets).
 
-## Diaporama des visionneuses et suite des films Fantavision
+## Diaporama des visionneuses et suite des films Fantavision (29 septembre 2026)
 
 Réserves au lien, 65C02/6502 : MAIN **93/503** (203/609 avant), écart
 avant la pile 121/720 (231/826), carte langage 62/53 et LOWRAM 91/116
@@ -85,7 +224,7 @@ avec Print Shop par `binsize` dans `src/open.s`). DGRVIEW (fenêtre de
 lecture texte, T/A et l'écriture des seuls octets visibles. MAIN et LC
 inchangés.
 
-## Préparation 1.0 : l'audit des signes rend des octets
+## Préparation 1.0 : l'audit des signes rend des octets (26 septembre 2026)
 
 Réserves au lien après `rm -rf build build-6502`, 65C02/6502 : MAIN
 **415/821** (413/805 avant), écart avant la pile 443/1038 (441/1022),
@@ -102,7 +241,7 @@ d'un mot. Le transtypage `(unsigned char)` des chiffres hexadécimaux de
 DISASM coûtait 2 octets dans les deux éditions : la ligne est annotée à la
 place.
 
-## Préparation 1.0 : les grands catalogues comptés, pas indexés
+## Préparation 1.0 : les grands catalogues comptés, pas indexés (26 septembre 2026)
 
 Réserves au lien après `rm -rf build build-6502`, 65C02/6502 : MAIN
 **413/805** (494/885 avant), carte langage 77/68, LOWRAM 82/107 et NAV
@@ -132,7 +271,7 @@ aucun état à invalider après un changement de disque ou une écriture. Les
 chiffres sont dans
 [les mesures](PERFORMANCE-0.9.2.md#pagination-des-grands-catalogues-10).
 
-## Préparation 1.0 : 412 octets rendus par `pan_at`
+## Préparation 1.0 : 412 octets rendus par `pan_at` (25 septembre 2026)
 
 L'objectif MAIN de 256 octets sur 65C02 est atteint. Réserves au lien
 après `rm -rf build build-6502`, 65C02/6502 : MAIN **494/885** (82/485
@@ -179,7 +318,7 @@ POOL_SIZE` que découpe `test_tree_walk.py`.
 paramètres coûte plus cher à l'appel ; ne l'essayer que si la réserve
 redescend, en mesurant au lien.
 
-## Mini : l'aperçu hexadécimal lisible payé par la page d'aide
+## Mini : l'aperçu hexadécimal lisible payé par la page d'aide (25 septembre 2026)
 
 L'aperçu hexadécimal passe de 16 lignes de 32 chiffres collés à huit
 octets espacés par ligne suivis de leurs caractères, en deux moitiés de
@@ -205,7 +344,7 @@ sous `$9600` (42 avant). LOW (1) et FORMAT (5) inchangés.
 Ce que cela ne change pas : l'écran d'aide, vérifié cellule par cellule
 dans `bench/mini33.py`, l'aperçu texte, aucune écriture disque.
 
-## Mini : le signe de vie dans les relectures RWTS
+## Mini : le signe de vie dans les relectures RWTS (25 septembre 2026)
 
 Le crochet de `format.s` (`fmt_hook`, `fmt_on`, `fmt_off`, `fmt_ticking`,
 `fm_sig`, 64 octets) laisse la place à un seul mécanisme dans `rwts.s`,
@@ -226,7 +365,7 @@ RWTS avec et sans prêt (retenue, code, octets lus) et les deux disquettes
 octet pour octet ; `bench/mini33_time.py` donne 25 275 341 cycles contre
 25 275 251, toujours 1,11 tour par secteur.
 
-## Mini : 92 octets rendus pour le signe de vie du formatage
+## Mini : 92 octets rendus pour le signe de vie du formatage (22 septembre 2026)
 
 Le crochet posé sur la boucle par piste de RWTS FORMAT (`fmt_hook`,
 `fmt_on`, `fmt_off`) faisait passer le résident 50 octets sous DOS. Trois
@@ -250,7 +389,7 @@ Ce que cela ne change pas : aucune écriture, aucun ordre d'écriture,
 aucun texte d'écran. `bench/mini33_time.py` donne 1,11 tour de disque par
 secteur avant comme après (25 274 290 contre 25 275 251 cycles au total).
 
-## Préparation 0.9.2 : progression visible
+## Préparation 0.9.2 : progression visible (22 septembre 2026)
 
 Réserves après les barres et les signes d'activité, 65C02/6502 : MAIN
 **82/485** (83/491 avant), carte langage **66/57** inchangée, LOWRAM
@@ -286,7 +425,7 @@ COPY reste à **13/10**. Aucun plafond ni contrôle de disposition modifié.
 L’objectif MAIN 65C02 de 256 octets reste ouvert. Le prototype de cache
 des informations de volume a été écarté pour son coût résident.
 
-## État au 20 septembre 2026 (0.9.1 publiée)
+## État au 20 septembre 2026 (0.9.1 publiée, historique)
 
 Réserves au lien, en octets, 65C02/6502 ; ce ne sont pas des sommes. Le
 tableau est celui que `tools/check_layout.py` imprime à chaque lien
@@ -724,7 +863,7 @@ réserves à chaque lien réussi, en complément des contrôles bloquants exista
 Les chiffres ci-dessous sont un point de départ, pas des constantes à recopier
 dans un futur rapport de qualification.
 
-## Mesures et objectifs du premier chantier
+## Mesures et objectifs du premier chantier (12 septembre 2026)
 
 Les réserves sont en octets. Les objectifs sont des seuils de travail proposés,
 pas des garanties déjà obtenues ni des plafonds assouplis.
@@ -774,7 +913,7 @@ séparément ne figurent pas dans ce relevé : leurs limites code/BSS et tampons
 restent imposées par leurs configurations de lien, à contrôler aussi lors des
 extractions. BINARY2 utilise ici sa grande fenêtre sur les deux architectures.
 
-## Premier gain : diagnostics résidents
+## Premier gain : diagnostics résidents (12 septembre 2026)
 
 Les diagnostics ProDOS sont extraits dans `src/errors.h`, toujours en carte
 langage. Une table de douze codes remplace le switch, et le diagnostic n'est
@@ -833,7 +972,7 @@ BOOT occupe les 280 blocs : l'échec de sauvegarde d'une nouvelle configuration
 y reste signalé avant de proposer de lancer quand même le programme. Les
 objectifs de réserve restent ouverts, particulièrement la carte langage.
 
-## Deuxième lot : affichage et saisie
+## Deuxième lot : affichage et saisie (12 septembre 2026)
 
 Le lot suivant part de `68c39f5`. Une table compacte remplace le `switch` des
 types de fichiers. Un seul en-tête sert aux trois tris ; l'étoile est ajoutée
@@ -885,7 +1024,7 @@ des sept supports passent. POM2 valide les 11 contrôles XL sur 6502. Le parcour
 récursive sur volumes jetables) mesure toujours 92 octets de pile utilisés
 sur 192. Cette mesure n'est pas une borne exhaustive pour tous les parcours.
 
-## Suite de la consolidation
+## Suite de la consolidation (12 septembre 2026)
 
 Poursuivre avec les contrats de buffers et les services de fichiers sûrs,
 en mesurant séparément le gain MAIN et carte langage. Déplacer un service dans
@@ -934,7 +1073,7 @@ déplacement de ses copies de page zéro en `$3FC0–$3FFF` (64 octets) ; les
 servent plus. Le service
 `aux_consent` coûte 2 octets de MAIN résidente (reste 10 octets en 65C02).
 
-## PT3 : grands modules et TurboSound
+## PT3 : grands modules et TurboSound (12 septembre 2026)
 
 Le lecteur accepte 65 535 octets, conteneur TurboSound compris, sans AUX.
 La fenêtre BIG reste `$1B00–$3FFF` et les bornes de lien sont conservées.
@@ -976,7 +1115,7 @@ sur les deux architectures. Ce sont des validations en émulation, pas des
 mesures sur matériel physique.
 
 
-## Consolidation du routage média
+## Consolidation du routage média (12 septembre 2026)
 
 La correction des transitions ajoute un écran `Loading <cible>` préparé dans
 MAIN/AUX `$0400–$07FF` dès la flèche, avant le nettoyage du lecteur. La relecture
