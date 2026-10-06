@@ -5399,7 +5399,7 @@ static void move_cursor(int delta)
      * (tools/test_move_cursor.py; tools/measure_paging.py pages back
      * through every window and reports a forward jump). */
     if (target < 0) {
-        if (pan->first) {
+        if (pan->first && !pan->fs) {
             pan->first -= WINDOW;
             pan->cursor = pan->top = 0;
             read_panel(active);
@@ -5410,7 +5410,10 @@ static void move_cursor(int delta)
         target = 0;
     }
     if ((unsigned int)target >= pan->count) {
-        if (pan->more) {
+        /* Not in a disk image: its reader always starts at the first entry
+         * (the header's "+" says there are more than the panel holds), and
+         * paging there showed the same entries again under a rising count. */
+        if (pan->more && !pan->fs) {
             pan->first += WINDOW;
             pan->cursor = pan->top = 0;
             read_panel(active);

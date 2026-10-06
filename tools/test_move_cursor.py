@@ -52,10 +52,10 @@ static void draw_info(void) {}
 ''' + section('static void set_cursor(', '/* Puts the active panel') + r'''
 static void land(unsigned char index) { landed = index; set_cursor(pan_at(active), index); }
 ''' + section('static void move_cursor(int delta)', 'static void swap_panels(void)') + r'''
-/* argv: total, first, cursor, delta. Prints first cursor landed. */
+/* argv: total, first, cursor, delta[, fs]. Prints first cursor landed. */
 int main(int argc, char** argv) {
     struct Panel* pan = pan_at(0);
-    (void)argc;
+    pan->fs = argc > 5 ? atoi(argv[5]) : 0;
     total = atoi(argv[1]);
     pan->first = atoi(argv[2]);
     read_panel(0);
@@ -80,6 +80,14 @@ CASES = [
     ((400, 278, 121, 18), (278, 121, 121)),    # the last window: the last entry
     ((400, 278, 3, -18), (139, 138, -1)),      # back from the last window
     ((400, 139, 60, -18), (139, 42, 42)),      # inside a window
+    # A disk image open as a folder (fs = 1): its reader always starts at the
+    # first entry, so there is no window to page to. Measured before the fix:
+    # Down at the end gave (139, 0, -1), the same entries reread under a
+    # header counting "139+", then "278+"...; Up at the top of an image
+    # entered from window 1 of its folder gave (0, 139, -1).
+    ((400, 0, 139, 1, 1), (0, 139, 139)),
+    ((400, 0, 130, 18, 1), (0, 139, 139)),
+    ((400, 139, 0, -1, 1), (139, 0, 0)),
 ]
 
 
