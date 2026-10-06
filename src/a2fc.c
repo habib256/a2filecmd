@@ -109,7 +109,7 @@ enum { ASK, OVERWRITE_ALL, SKIP_ALL };
 extern char _LOWBSS_RUN__[];
 extern char _LOWBSS_SIZE__[];
 #pragma bss-name (push, "LOWBSS")
-static struct Panel panels[2];
+struct Panel panels[2];             /* not static: keep_tags (a2fc_mli.s) reads it */
 static unsigned char active, sort_mode, over_policy;
 static unsigned char batch_snapshot;
 static unsigned int progress_done, progress_total, progress_skipped;
@@ -126,14 +126,15 @@ static unsigned char pointer;  /* the mouse has moved once: the pointer is shown
 #endif
 
 char full[PATH_LEN + NAME_LEN];           /* not static: open.s reads it */
-static char other_full[PATH_LEN + NAME_LEN];
+char other_full[PATH_LEN + NAME_LEN];     /* not static: paths_nested (a2fc_mli.s) */
+unsigned char paths_nested(void);
 static char cfg_path[PATH_LEN];
 char input[NAME_LEN];                    /* not static: open.s's open_entry writes it */
 static char question[64];
 unsigned char copy_buf[512];              /* not static: open.s probes into it */
 static unsigned char gfi[18];
 static unsigned char gfi_path[PATH_LEN + 1];
-static unsigned char picked[MAX_ENTRIES];
+unsigned char picked[MAX_ENTRIES];  /* not static: keep_tags (a2fc_mli.s) */
 static char album[2][NAME_LEN];    /* image viewer: the left and right neighbours */
 static char overlay_loaded[12];     /* the overlay in place in the $1B00 window, "" if none */
 /* in_overlay: an overlay's code may still be on the return stack, so the
@@ -567,17 +568,10 @@ unsigned char __fastcall__ tag_count(const struct Panel* pan);
 
 /* The tags of both panels, set aside in picked[] while an image, the help
  * or the editor overwrites the entry tables (save = 1), then given back
- * once the panels have been reread (save = 0). */
-static void keep_tags(unsigned char save)
-{
-    if (save) {
-        memcpy(picked, panels[0].tags, sizeof panels[0].tags);
-        memcpy(picked + sizeof panels[0].tags, panels[1].tags, sizeof panels[1].tags);
-    } else {
-        memcpy(panels[0].tags, picked, sizeof panels[0].tags);
-        memcpy(panels[1].tags, picked + sizeof panels[0].tags, sizeof panels[1].tags);
-    }
-}
+ * once the panels have been reread (save = 0) -- only to a panel that
+ * shows the same names at the same indexes (a2fc_mli.s, which reads these
+ * two sizes; tools/test_keep_tags.py). */
+void __fastcall__ keep_tags(unsigned char save);
 
 /* One entry line, exactly 38 characters (a shorter line would leave the
  * end of the previous line on screen), in inverse when the cursor is on
@@ -4059,12 +4053,12 @@ static unsigned char moved_tree_delete(void)
  * directory. Returns 1 if everything is copied. */
 static unsigned char copy_one(const struct Entry* e)
 {
-    struct Panel* dst = pan_at(!active);
-    unsigned char len;
-    if (!build_full(full, pan_at(active), e) || !build_full(other_full, dst, e)) { too_long(); return 0; }
+    if (!build_full(full, pan_at(active), e) || !build_full(other_full, pan_at(!active), e)) { too_long(); return 0; }
     if (!is_dir(e)) return copy_file(e->name, e->type, e->aux) != 0;
-    len = strlen(full);
-    if (!strncmp(dst->path, full, len) && (dst->path[len] == '/' || !dst->path[len])) {
+    /* Neither into itself nor onto one of its own ancestors: with /V/A/A
+     * copied to /V, its subdirectory /V/A/A/A is written into /V/A/A, the
+     * source, and a move then deleted what it had just copied there. */
+    if (paths_nested()) {
         { extern const char msg_intoself[]; message(msg_intoself); };
         return 0;
     }

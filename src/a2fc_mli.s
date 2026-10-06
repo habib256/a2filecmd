@@ -172,13 +172,16 @@ no:     lda #0
 
 ; unsigned int __fastcall__ panel_hash(const struct Panel* pan);
 ;
-; A panel's fingerprint: every byte of its entry table (count entries of
-; 29 bytes, at address e), folded into a word by rotation and addition,
-; plus the number of entries, the window (first, more) and the first
-; character of the path. The field offsets are those that a2fc.c checks
-; against the fields of struct Panel. In C, cc65 made 325 bytes of it;
-; here about a hundred. A full table (4,060 bytes) folds in a tenth of a
-; second, far less than a panel takes to redraw.
+; A panel's fingerprint, for its tags: they are bits by entry index, kept
+; aside while a big overlay covers the entry tables (keep_tags, a2fc.c) and
+; valid afterwards only if the same names are back at the same indexes. So
+; the word folds, by rotation and addition, the path and the entry count
+; (bytes 0-64 of struct Panel) and the name and type of every entry (bytes
+; 0-17 of its 29; add_entry pads a name with zeros). Another window of the
+; same directory holds other names. Sizes and dates are left out: a file
+; saved by the editor keeps its tag.
+; The field offsets are those tools/test_abi_freeze.py freezes. A full
+; table folds in about a tenth of a second.
         .export _panel_hash
         .importzp ptr1, ptr2, tmp1, tmp2, tmp3
         .segment "CODE"
@@ -191,46 +194,24 @@ _panel_hash:
         iny
         lda (ptr1),y
         sta ptr2+1
-        ldy #69                 ; first, high byte
-        lda (ptr1),y
+        lda #0
+        sta tmp2                ; h low
         sta tmp3                ; h high
-        dey
-        lda (ptr1),y            ; first, low byte
-        ldy #64                 ; count
-        clc
-        adc (ptr1),y
-        bcc :+
-        inc tmp3
-:       lda (ptr1),y
+        ldy #64                 ; count, then the path down to its first byte
+        lda (ptr1),y
         sta tmp1                ; entries remaining
-        ldy #67                 ; more
-        clc
-        adc (ptr1),y
-        bcc :+
-        inc tmp3
-:       ldy #0                  ; path[0]
-        clc
-        adc (ptr1),y
-        bcc :+
-        inc tmp3
-:       sta tmp2                ; h low
+:       lda (ptr1),y
+        jsr fold
+        dey
+        bpl :-
 entry:  lda tmp1
         beq done
         dec tmp1
-        ldy #0
-byte:   lda tmp3
-        cmp #$80                ; C = bit 15
-        rol tmp2
-        rol tmp3                ; h rotates by one bit
-        lda (ptr2),y
-        clc
-        adc tmp2
-        sta tmp2
-        bcc :+
-        inc tmp3
-:       iny
-        cpy #29
-        bne byte
+        ldy #17                 ; the type, then the name
+:       lda (ptr2),y
+        jsr fold
+        dey
+        bpl :-
         clc
         lda ptr2
         adc #29
@@ -241,6 +222,115 @@ byte:   lda tmp3
 done:   lda tmp2
         ldx tmp3
         rts
+fold:   pha                     ; h = rol(h) + A
+        lda tmp3
+        cmp #$80                ; C = bit 15
+        rol tmp2
+        rol tmp3
+        pla
+        clc
+        adc tmp2
+        sta tmp2
+        bcc :+
+        inc tmp3
+:       rts
+
+; unsigned char paths_nested(void);
+;
+; Non-zero when one of `full` and `other_full` is the other or lies inside
+; it: equal, or equal up to the end of one where the other goes on with a
+; '/'. copy_one refuses such a directory copy both ways (a2fc.c).
+        .export _paths_nested
+        .import _full, _other_full
+_paths_nested:
+        ldy #$FF
+pnext:  iny
+        lda _full,y
+        beq pend                ; `full` ends here
+        cmp _other_full,y
+        beq pnext
+        ldx _other_full,y       ; they part: nested if other_full ends
+        bne pno                 ; where full goes on with a '/'
+pslash: cmp #'/'
+        beq pyes
+pno:    lda #0
+        tax
+        rts
+pend:   lda _other_full,y       ; equal, or other_full goes on with a '/'
+        bne pslash
+pyes:   ldx #0
+        lda #1
+        rts
+
+; void __fastcall__ keep_tags(unsigned char save);
+;
+; The tags of both panels, set aside in picked[] while an image, the help
+; or the editor overwrites the entry tables (save = 1), then given back
+; once the panels have been reread (save = 0) -- to a panel that shows the
+; same names at the same indexes, and only to that one. A tag is a bit by
+; index: after an overlay that added a file (MOVE, an extraction), changed
+; the directory (GOTO, FIND) or stepped to another window of a large
+; folder (Left/Right in a viewer), the old bits would mark other files,
+; and D asks for tagged files by their number, not by their names. Such a
+; panel comes back untagged: read_panel has emptied its tags. panel_hash
+; is a 16-bit fingerprint: one changed panel in 65,536 passes for
+; unchanged (tools/test_keep_tags.py).
+        .export _keep_tags
+        .import _panels, _picked
+        .importzp ptr3, tmp4
+PANEL_SIZE = 98                 ; sizeof(struct Panel): test_keep_tags.py checks all three
+TAGS       = 76                 ; offsetof(struct Panel, tags)
+TAG_BYTES  = 18                 ; sizeof panels[0].tags
+        .segment "LOWBSS"
+tag_print:      .res 4          ; low bytes of both panels, then high bytes
+        .segment "CODE"
+_keep_tags:
+        sta tmp4                ; panel_hash leaves tmp4 and ptr3 alone
+        ldx #1
+kpanel: stx ptr3
+        ldy pan_lo,x
+        lda pan_hi,x
+        tax
+        tya
+        jsr _panel_hash         ; ptr1 stays on the panel
+        ldy ptr3
+        pha
+        lda tmp4
+        beq kgive
+        pla
+        sta tag_print,y
+        txa
+        sta tag_print+2,y
+        ldx kept_at,y
+        ldy #TAGS
+ksave:  lda (ptr1),y
+        sta _picked,x
+        inx
+        iny
+        cpy #TAGS+TAG_BYTES
+        bne ksave
+        beq knext               ; always taken
+kgive:  pla
+        cmp tag_print,y
+        bne knext
+        txa
+        cmp tag_print+2,y
+        bne knext
+        ldx kept_at,y
+        ldy #TAGS
+kback:  lda _picked,x
+        sta (ptr1),y
+        inx
+        iny
+        cpy #TAGS+TAG_BYTES
+        bne kback
+knext:  ldx ptr3
+        dex
+        bpl kpanel
+        rts
+pan_lo:  .byte <_panels, <(_panels+PANEL_SIZE)
+pan_hi:  .byte >_panels, >(_panels+PANEL_SIZE)
+kept_at: .byte 0, TAG_BYTES
 
 ; unsigned char __fastcall__ dir_count_block(const unsigned char* entries);
 ;

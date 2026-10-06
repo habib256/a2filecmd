@@ -3,8 +3,9 @@
  * number, the one in hand); a directory entry lists its contents right
  * after the current level's and pushes a frame, a finished level pops its
  * frame and its "/name" from the paths. Refuses, without a message in
- * WALK_COUNT, a tree that overflows the pool, the path or TREE_DEPTH:
- * 0xFFFF, before any write for the callers that count first. Otherwise
+ * WALK_COUNT, a tree that overflows the pool, TREE_DEPTH or, with any of
+ * its directories or files, the path: 0xFFFF, before any write for the
+ * callers that count first. Otherwise
  * WALK_COUNT returns the number of files (directories excluded); WALK_COPY
  * copies the contents of `full` into `other_full`, which exists,
  * subdirectories included (one already present is filled in, not
@@ -46,15 +47,16 @@ static unsigned int walk_tree(unsigned char mode)
         }
         m = pool + lv_base[d] + i;
         dir = m->type == 0x0F;
-        if (mode == WALK_COUNT) {
-            if (!dir) { ++files; ++lv_i[d]; continue; }
-        } else {
+        if (mode != WALK_COUNT) {
             if (mode == WALK_DELETE) progress_bar(m->name, progress_done, progress_total);
             if (abort_key()) return 0;
         }
+        /* A file's path is checked by the count too: the delete that
+         * follows it used to remove the entries before a file whose path
+         * does not fit, then stop on it, the tree half erased. */
         if (!push_paths(m->name)) {
             if (mode != WALK_COUNT) too_long();
-            return dir ? 0xFFFF : 0;
+            return 0xFFFF;
         }
         if (dir) {                                /* its entries follow this level's in the pool */
             if (d + 1 >= TREE_DEPTH) goto unreadable;
@@ -66,7 +68,8 @@ static unsigned int walk_tree(unsigned char mode)
             if (mode == WALK_DELETE) progress_total += i;
             continue;
         }
-        if (mode == WALK_COPY) { if (!copy_file(m->name, m->type, m->aux)) return 0; }
+        if (mode == WALK_COUNT) ++files;
+        else if (mode == WALK_COPY) { if (!copy_file(m->name, m->type, m->aux)) return 0; }
         else if (remove(full)) { report_error("Delete"); return 0; }
         else { ++a2fc_ops; ++progress_done; }
         pop_paths();
