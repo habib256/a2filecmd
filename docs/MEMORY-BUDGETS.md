@@ -176,9 +176,18 @@ payées par quatre `jmp ret` devenus `bne ret` (A n'y vaut jamais 0) : OPEN
 
 DOCVIEW quitte le groupe des surcouches à brouillon `$3000` : code et BSS
 dans `$1B00-$3D5F` (`__OVLSIZE__` `$2260`, cas à part dans le Makefile),
-brouillon `$3D60-$3FFF` (table des pages 16 × 13, copie de la table de
-services 112 octets, ligne et attributs, état, tampon de lecture 128
-octets). Libres sous `$3D60` : **39** (6502) / **77** (65C02). La copie
+brouillon `$3D60-$3FFF` (table des pages 16 × 14, copie de la table de
+services 112 octets, ligne et attributs, état, tampon de lecture 112
+octets). Libres sous `$3D60` : **51** (6502) / **59** (65C02) ; 6 / 40
+avant les corrections du 2026-10-06, qui ont pourtant ajouté du code
+(garde de rangée dans `emit`, blocs `_DB`/`_EN` sans récursion, numéro de
+page sur trois chiffres) : le centrage calculé en octets (`emit`, −25
+sur 6502) et les deux lettres de `show_def` passées en un entier au lieu
+d'une chaîne (la fonction ne grossit que de 4 octets avec ses trois
+chiffres, et `asrax1` et `ldptr1sp` quittent le lien : 22 octets) ont
+payé. Le saut de
+page en attente a son octet dans `struct Layout` (10 octets, 14 par début
+de page) : les 16 octets de la table viennent du tampon de lecture. La copie
 de la page zéro `$50-$FF` pendant un calcul (176 octets), l'état des
 variables au début de la page (144) et le champ lu (64) vivent dans le
 `copy_buf` de la table de services.

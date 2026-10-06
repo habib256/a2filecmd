@@ -508,18 +508,18 @@ number: lda     #0
         bcc     @eend
         sbc     #'0'
         sta     tmp1
-        lda     tmp2                    ; tmp2 = tmp2 * 10 + digit
+        lda     tmp2                    ; 40 or more with this digit: past
+        cmp     #4                      ; 1E38, which the ROM refuses anyway.
+        bcs     @big                    ; Tested BEFORE the multiplication,
+        asl                             ; whose 8 bits wrapped (E260 was E4)
         asl
-        asl
-        adc     tmp2
-        asl
+        adc     tmp2                    ; tmp2 = tmp2 * 10 + digit, 39 at
+        asl                             ; most: no carry anywhere
         adc     tmp1
         sta     tmp2
-        cmp     #40                     ; past 1E38: the ROM refuses it anyway
-        bcc     :+
-        jmp     @err
-:       jsr     adv
-        jmp     @edig
+        jsr     adv                     ; (keeps the carry)
+        bcc     @edig                   ; always
+@big:   jmp     @err
 @eend:  lda     tmp2
         dex
         beq     :+

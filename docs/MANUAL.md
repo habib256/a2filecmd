@@ -302,13 +302,16 @@ mail-merge variables. French ISO 646-FR accents show unaccented; **A** shows
 them as stored, for a French character set. Epistole's calculations are
 computed as Epistole prints them, on the Applesoft ROM's arithmetic: `#:X=…]`
 sets a variable, `#:?…]` shows a value with `_ND` decimals (2 by default), a
-decimal comma, its comma on the `_TD` tab, and no minus sign when there are
+decimal comma, its comma on the `_TD` tab (a tab beyond the right margin: the
+number starts the next row), and no minus sign when there are
 decimals, as Epistole prints it. What cannot be computed (a division by zero,
-a variable typed at print time, `#*X=]`) stays as written, in inverse.
+a number beyond 1E38, a variable typed at print time, `#*X=]`) stays as
+written, in inverse.
 Headers (`_EN`) and footers (`_DB`, `%$` the page number) appear at each `_SP`
 page break and the footer again at the end; DOCVIEW does not repeat them at
-the printer's own page ends. It reads documents up to 64 KB and remembers 16
-pages back. Bank Street Writer documents (a BIN at $0840 or $63D0 from DOS 3.3,
+the printer's own page ends. Page numbers go to 255: the pages of a longer
+document all read 255 from there. It reads documents up to 64 KB and remembers
+16 pages back. Bank Street Writer documents (a BIN at $0840 or $63D0 from DOS 3.3,
 at 0 from ProDOS, high-bit text) open in DOCVIEW too, with Return: paragraphs
 wrapped, centred lines centred, tabs of four columns; the text ends at its
 first $00, the rest of the file being the program's leftovers. Extract them

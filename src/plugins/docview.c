@@ -37,9 +37,9 @@
  * the page, and the layout state at that line -- so that a page is always
  * rendered by replaying its first line. Read-only; a big overlay, code and
  * BSS in $1B00-$3D5F, whose scratch is $3D60-$3FFF: the page table (at
- * $3D60), the copy of the service table ($3E30: a call through it costs
- * half of one through api->), the row and its attributes ($3EA0, $3EF0),
- * the state ($3F40), the read buffer (128 bytes at $3F80). A read error
+ * $3D60), the copy of the service table ($3E40: a call through it costs
+ * half of one through api->), the row and its attributes ($3EB0, $3F00),
+ * the state ($3F50), the read buffer (112 bytes at $3F90). A read error
  * ends the page and says so: it is never shown as the end of the document.
  * Offsets are 16 bits: the programs kept their documents in memory, and a
  * file over 64 KB is refused. */
@@ -70,14 +70,16 @@ const struct PluginHeader __plugin_header = {
 #define VNAME     6                        /* the characters of a name that count */
 #define MAXND     8                        /* decimals at most */
 #define DEFAULT_ND 2                       /* decimals before any _ND */
-#define VBUFSZ    128
+#define VBUFSZ    112
 
 /* The layout state a line starts with: margins, indent, bold, for a
- * calculated number its decimals (_ND) and decimal tab (_TD), and the
- * printed page's number, bit 7 set when a page break is due before the
- * next text (so that a line replayed at a screen page's top redoes it). */
-struct Layout { unsigned char lm, rm, mi, ma, inv, centre, nd, td, pg; };
-#define PG_BREAK 0x80
+ * calculated number its decimals (_ND) and decimal tab (_TD), the printed
+ * page's number (1 to 255, where it stays: MAXPG), and whether a page
+ * break is due before the next text (so that a line replayed at a screen
+ * page's top redoes it) -- a byte of its own: as bit 7 of the number, page
+ * 128 was a break nobody asked for. */
+struct Layout { unsigned char lm, rm, mi, ma, inv, centre, nd, td, pg, brk; };
+#define MAXPG 255
 struct Start { unsigned int off, skip; struct Layout lay; };   /* 64 KB at most: offsets in 16 bits */
 
 #ifdef PLUGIN_HOST                         /* tools/test_docview.py runs this file on the host */
@@ -92,19 +94,20 @@ static unsigned char host_vbuf[VBUFSZ];
 static struct A2fcApi a;                   /* the service table, copied */
 #else
 /* The scratch, $3D60-$3FFF: the code and BSS end under it (Makefile). */
-#define STARTS ((struct Start*)0x3D60)     /* the page table: $3D60-$3E2F */
-typedef char starts_fit[0x3E30 - 0x3D60 + 1 - MAXPAGES * sizeof(struct Start)];
-#define a      (*(struct A2fcApi*)0x3E30)  /* the service table, copied: $3E30-$3E9F */
+#define STARTS ((struct Start*)0x3D60)     /* the page table: $3D60-$3E3F */
+typedef char starts_fit[0x3E40 - 0x3D60 + 1 - MAXPAGES * sizeof(struct Start)];
+#define a      (*(struct A2fcApi*)0x3E40)  /* the service table, copied: $3E40-$3EAF */
 typedef char api_copy_fits[0x70 + 1 - sizeof(struct A2fcApi)];
-#define RB     ((char*)0x3EA0)             /* the row being built, 80 */
-#define RA     ((unsigned char*)0x3EF0)    /* its inverse flags, 80 */
-#define VBUF   ((unsigned char*)0x3F80)    /* the read buffer: $3F80-$3FFF */
+#define RB     ((char*)0x3EB0)             /* the row being built, 80 */
+#define RA     ((unsigned char*)0x3F00)    /* its inverse flags, 80 */
+#define VBUF   ((unsigned char*)0x3F90)    /* the read buffer: $3F90-$3FFF */
+typedef char vbuf_fits[0x4000 - 0x3F90 + 1 - VBUFSZ];
 /* libc's ferror links errno and fmisc, 90 bytes: _FILE::f_flags (offset 1,
  * asminc/_file.inc) and its _FERROR bit, as FIND reads them. */
 #define ferror(f) (((unsigned char*)(f))[1] & 0x04)
 #endif
 
-/* The state, in the scratch at $3F40. Nothing zeroes it; everything is
+/* The state, in the scratch at $3F50. Nothing zeroes it; everything is
  * written before it is read. */
 struct State {
     struct Start next;                     /* where the next page starts */
@@ -131,8 +134,8 @@ struct State {
 static struct State host_state;
 #define ST host_state
 #else
-#define ST (*(struct State*)0x3F40)
-typedef char state_fits[0x3F80 - 0x3F40 + 1 - sizeof(struct State)];   /* below VBUF */
+#define ST (*(struct State*)0x3F50)
+typedef char state_fits[0x3F90 - 0x3F50 + 1 - sizeof(struct State)];   /* below VBUF */
 #endif
 #define NEXT         ST.next
 #define LAY          ST.lay
@@ -219,20 +222,25 @@ static void pad(void)
 /* The row RB[0..rc) goes to the screen (or is skipped, at the top of a
  * page), centred between the margins when asked; inverse runs switch the
  * video mode as they go. When the page is full, the next page starts in
- * this very line, after its rows so far. */
+ * this very line, after its rows so far -- and nothing more is written,
+ * whatever the caller goes on sending (a field of 60 characters between
+ * narrow margins, a footer of one long line): a row past the last is
+ * dropped here, to be shown by the replay at the next page's top. Row 24
+ * and beyond are no screen rows: writing there went into the peripheral
+ * cards' screen holes. */
 static void emit(void)
 {
     unsigned char i, x, now = 0;
     ++rows_done;
     if (skip_rows) --skip_rows;
-    else {
+    else if (row <= LASTROW) {
         i = 0;
         x = 0;
         if (LAY.centre || LINE_LAY.centre) {
-            i = left;                      /* the text alone, as much room either side */
-            x = rc - left;
-            /* sign-ok: only when rm > left + x, so the difference is 1..79 */
-            x = LAY.rm > left + x ? left + ((LAY.rm - left - x) >> 1) : left;
+            i = x = left;                  /* the text alone, as much room either side: */
+            /* half of what the row leaves under the right margin, on eight
+             * bits (only when rm > rc: the difference is 1..79) */
+            if (LAY.rm > rc) x += (unsigned char)(LAY.rm - rc) >> 1;
         }
         a.gotoxy(x, row);
         for (; i < rc; ++i) {
@@ -288,7 +296,6 @@ static unsigned char plain(unsigned char c)
 static void rule(void)
 {
     unsigned char i = LAY.rm > WIDTH ? WIDTH : LAY.rm;
-    if (row > LASTROW) return;
     while (rc < i) { RB[rc] = '-'; RA[rc] = 0; ++rc; }
     emit();
 }
@@ -296,6 +303,7 @@ static void rule(void)
 /* An Epistole command, after its `_`: two letters and a number. Returns 0
  * when the `_` was no command (then it is a character). */
 static const char cmds[] = "MGMDMIMACEPCCLJDTDIGIDSGISSPNDDBEN";
+static unsigned char inblock = 0;          /* in DATA: nothing zeroes the BSS */
 static unsigned char epistole(void)
 {
     int c;
@@ -330,11 +338,20 @@ static unsigned char epistole(void)
                                                        /* from the margin; text stays */
     case 9: case 10: LAY.inv = 1; break;               /* IG ID: bold, wide on */
     case 11: case 12: LAY.inv = 0; break;              /* SG IS: off */
-    case 13: LAY.pg |= PG_BREAK; break;                /* SP: a new page */
+    case 13: LAY.brk = 1; break;                       /* SP: a new page */
     case 14: LAY.nd = n > MAXND ? MAXND : n; break;    /* ND: decimals */
     case 15: case 16:                      /* DB, EN: a footer, a header, shown at the */
-        for (endmark = 0; !endmark && (c = rd()) >= 0; )   /* page ends (show_def); */
-            if (c == '_' && !epistole()) unget();          /* here, the row it leaves */
+        /* page ends (show_def); here, the row it leaves. Its commands are
+         * taken as they come, but a _DB or _EN among them opens nothing:
+         * the block open goes on to the one __XX that ended them all
+         * anyway. Each used to call this function again, two bytes of the
+         * processor's stack a level -- 130 of them in a row wrapped page 1
+         * over the return addresses. Two levels at most now. */
+        if (inblock) break;
+        inblock = 1;
+        for (endmark = 0; !endmark && (c = rd()) >= 0; )
+            if (c == '_' && !epistole()) unget();
+        inblock = 0;
     }
     return 1;
 }
@@ -402,8 +419,15 @@ static void calc_field(char kind)
     if (calc_eval(++p)) {
         p = calc_format(LAY.nd);
         for (n = 0; p[n] && p[n] != ','; ++n) ;
-        if (LAY.td > n)                    /* its comma at the tab's column */
-            for (n = left + LAY.td - 1 - n; rc < n && rc < WIDTH; ) put_(' ');
+        /* Its comma at the tab's column -- or, when the tab lies beyond
+         * the right margin, at the next row's left edge: put_ wraps a
+         * blank at the margin and the row starts again at `left`, where
+         * padding on towards a column never reached had no end. */
+        if (LAY.td > n)
+            for (n = left + LAY.td - 1 - n; rc < n; ) {
+                put_(' ');
+                if (rc == left) break;
+            }
         for (; *p; ++p) put_(*p);
         return;
     }
@@ -440,35 +464,43 @@ static void code(void)
     int c = rd();
     unsigned char n = 0;
     if (c == 6) LAY.centre = 2;
-    if (c == 5) LAY.pg |= PG_BREAK;
+    if (c == 5) LAY.brk = 1;
     while (c >= 0 && c != 0xFF && ++n < 16) c = rd();
 }
 
-/* The footer ("DB", from _DB) or the header ("EN", from _EN) written before
+/* The footer (DEF_DB, from _DB) or the header (DEF_EN, from _EN) written before
  * `back`, laid out here: Epistole prints the footer at the foot of every
  * page and the header at the top of every page but the first, %$ the
  * page's number. A viewer shows them where it sees a page end: at an _SP
  * break, and the footer at the end of the document. The definition is
  * looked for from the start of the file each time: nothing is kept. */
-static void show_def(const char* kk)
+#define DEF_DB ('D' | 'B' << 8)            /* the two letters, the first in the low byte */
+#define DEF_EN ('E' | 'N' << 8)
+static void show_def(unsigned int kk)
 {
     static struct Layout keep;
     unsigned int back = tell_();
-    unsigned char c, n;
+    unsigned char c, n, h;
     keep = LAY;
     seek_(0);
     while (tell_() < back && (c = rd()) != 0xFF)
-        if (c == '_' && (rd() & 0xDF) == kk[0] && (rd() & 0xDF) == kk[1]) {
+        if (c == '_' && (unsigned char)(rd() & 0xDF) == (unsigned char)kk
+            && (unsigned char)(rd() & 0xDF) == (unsigned char)(kk >> 8)) {
             /* its lines, to its __XX or the screen page's end: the line
              * replayed at the next page's top skips what was shown */
             for (endmark = 0; !endmark && row <= LASTROW; ) {
                 pad();
                 while ((c = rd()) != 13 && c != 0xFF && !endmark) {
                     if (c == '_' && epistole()) continue;
-                    if (c == '%' && rd() == '$') {   /* the page number, 1 to 99 */
-                        for (n = LAY.pg & 0x7F, c = '0'; n >= 10; n -= 10) ++c;
-                        if (c > '0') put_(c);
-                        c = '0' + n;
+                    if (c == '%' && rd() == '$') {   /* the page number, 1 to 255: */
+                        n = LAY.pg;                  /* its hundreds, its tens (h: 100, */
+                        h = 100;                     /* then 10), from the first that */
+                        do {                         /* counts, then its units */
+                            for (c = '0'; n >= h; n -= h) ++c;
+                            if (LAY.pg >= h) put_(c);
+                            h -= 90;
+                        } while (h == 10);
+                        c = n | '0';
                     }
                     put_(plain(c));
                 }
@@ -502,12 +534,13 @@ static unsigned char render_line(void)
         if (c == 13) { c2 = rd(); if (c2 != 10 && c2 >= 0) unget(); break; }
         if (c == 10) break;
         if (row > LASTROW) return 1;       /* the page filled: next is set, the line is replayed there */
-        if (LAY.pg & PG_BREAK) {           /* the footer, the break, the header */
+        if (LAY.brk) {                     /* the footer, the break, the header */
             if (rc > left) emit();
-            show_def("DB");
+            show_def(DEF_DB);
             rule();
-            LAY.pg = (LAY.pg & 0x7F) + 1;
-            show_def("EN");
+            LAY.brk = 0;
+            if (LAY.pg != MAXPG) ++LAY.pg; /* past 255 pages the number stays at 255 */
+            show_def(DEF_EN);
             if (row > LASTROW) return 1;
         }
         if (papyrus) {
@@ -564,7 +597,7 @@ static void render_page(const struct Start* st)
     while (row <= LASTROW)
         if (!render_line()) {
             done |= 1;
-            show_def("DB");
+            show_def(DEF_DB);
             if (row > LASTROW) done &= 2;  /* the footer goes on over the page */
             return;
         }

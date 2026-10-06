@@ -263,6 +263,50 @@ class Docview(unittest.TestCase):
         self.assertEqual(words, ['T%d' % i for i in range(19)] + ['F%d' % i for i in range(8)] +
                          ['-' * 79, 'END'] + ['F%d' % i for i in range(8)])
 
+    def test_no_row_past_the_page(self):
+        # emit() left it to its callers to stop at row 21, and two did not:
+        # a field shown as written (63 characters in one go) between narrow
+        # margins, begun on the last row, went on over rows 22 to 26, and a
+        # footer of one 3,000-character line over 38 rows -- past row 23
+        # conio writes into the screen holes -- while the next page skipped
+        # what had never been shown. (tools/test_docview_sim.py holds the
+        # cc65 build to the same, with the measured before-state.)
+        field = b'1+' * 28 + b'1/0'
+        for lines in range(15, 21):
+            with self.subTest(lines=lines):
+                pages = self.pages(b'_MD10\r' + b'l\r' * lines + b'#:?' + field + b']\rFIN\r')
+                self.check_clean(pages)
+                rows = [r.rstrip() for pg in pages for r in pg['rows'] if r.strip()]
+                self.assertEqual(''.join(rows), 'l' * lines + field.decode() + 'FIN')
+        foot = b'F' * 3000
+        pages = self.pages(b'_DB\r' + foot + b'\r__BA\rTEXTE\r')
+        self.check_clean(pages)
+        self.assertEqual(len(pages), 2)
+        self.assertEqual(''.join(self.words(pages)), 'TEXTE' + foot.decode())
+        # ... and at a page break, header included.
+        pages = self.pages(b'_DB\r' + foot + b'\r__BA\r_EN\rTETE\r__EA\rT1\r_SP\rT2\r')
+        self.check_clean(pages)
+        self.assertEqual(''.join(self.words(pages)),
+                         'T1' + foot.decode() + '-' * 79 + 'TETET2' + foot.decode())
+
+    def test_blocks_inside_blocks_and_page_numbers(self):
+        # A _DB or _EN inside a block opens nothing (130 of them used to be
+        # 130 calls deep on the 6502's 256-byte stack: test_docview_sim.py):
+        # the block open goes on to the one __XX.
+        for cmd in (b'_DB', b'_EN', b'_DB_EN'):
+            pages = self.pages(b'AVANT\r' + cmd * 130 + b'pied\r__BA\rAPRES\r')
+            self.check_clean(pages)
+            self.assertEqual(self.words(pages), ['AVANT', 'APRES'])
+        # %$ had two digits and shared its byte with the pending break:
+        # page 100 read ":0", and page 128 was a break nobody asked for.
+        # Three digits now, and 255 from there on.
+        pages = self.pages(b'_DB PAGE %$\r__BA\r' + b'x_SP\r' * 262)
+        self.check_clean(pages)
+        words = self.words(pages)
+        self.assertEqual([w for w in words if w.isdigit()],
+                         [str(n) for n in range(1, 256)] + ['255'] * 7)
+        self.assertEqual(sum(set(w) == {'-'} for w in words), 261, 'one rule a break')
+
     def test_a_read_error_is_not_the_end(self):
         # A block that cannot be read: the page stops there and says
         # "read error"; before, it said "(end)" as if the document were whole.
