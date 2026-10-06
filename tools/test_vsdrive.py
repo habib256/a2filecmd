@@ -180,6 +180,16 @@ int main(void){
  vsdrive_uninstall();
  PEEK(0xBF98)=0;
  PEEK(0xC0A1)=0xFC;                      /* communications mode, 19,200 bps */
+ /* A SmartPort unit in slot 1 (DEVLST $1B and $9B: a low nibble that is not
+  * 0) and /RAM ($BF): their slots are taken. Compared as whole bytes with
+  * $10 and $90, slot 1 passed for free -- measured before the fix: 0x21,
+  * and the two DEVADR entries of the SmartPort drives given to VDrive. */
+ DEVADR[1]=0x1111;DEVADR[9]=0x2222;
+ PEEK(0xBF31)=3;PEEK(0xBF32)=0x60;PEEK(0xBF33)=0x1B;PEEK(0xBF34)=0x9B;PEEK(0xBF35)=0xBF;
+ if(vsdrive_install()!=0x22)return 40;   /* serial slot 2, volumes in slot 2 */
+ if(DEVADR[1]!=0x1111||DEVADR[9]!=0x2222)return 41;
+ vsdrive_uninstall();
+ if(PEEK(0xBF31)!=3||PEEK(0xBF33)!=0x1B||PEEK(0xBF34)!=0x9B||PEEK(0xBF35)!=0xBF)return 42;
  mli_cmds=0;
  DEVADR[1]=0x1111;DEVADR[9]=0x2222;      /* slot 1: drive 1, drive 2 */
  PEEK(0xBF31)=0;PEEK(0xBF32)=0x60;

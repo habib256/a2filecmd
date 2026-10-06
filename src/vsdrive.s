@@ -380,12 +380,11 @@ ins_slot:
         sta     vs_dev2
         ldy     DEVCNT
 ins_dev:
-        lda     DEVLST,y
-        cmp     vs_dev1
-        beq     ins_slot
-        cmp     vs_dev2
-        beq     ins_slot
-        dey
+        lda     DEVLST,y                ; DSSSIIII: the slot alone. A Disk II
+        and     #$70                    ; has IIII = 0, but a SmartPort or a
+        cmp     vs_dev1                 ; ProFile unit does not, nor /RAM
+        beq     ins_slot                ; ($BF): compared whole, their slot
+        dey                             ; passed for free and was taken over
         bpl     ins_dev
         ; The slot is free: DEVADR (both drives), DEVLST, the thunk.
         lda     #<THUNK
