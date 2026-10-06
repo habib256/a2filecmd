@@ -316,7 +316,7 @@ endif
 
 # XL: the complete edition for the selected CPU.
 $(TWOMG): $(STAGE_DEPS) $(XPLG) $(PPT3) $(FANTA) $(TAKE1) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS $(DATA)/README.TXT \
-       $(TOOLS)/mkdemo.py $(TOOLS)/mkdemo_viewers.py $(TOOLS)/stage_demo.py \
+       $(TOOLS)/mkdemo.py $(TOOLS)/mkdemo_viewers.py $(TOOLS)/mkdemo_take1.py $(TOOLS)/stage_demo.py \
        $(wildcard $(TOOLS)/*_ref.py) $(TOOLS)/pt3_fixture.py $(TOOLS)/po22mg.py \
        $(TOOLS)/mkshk.py $(TOOLS)/mkbny.py $(TOOLS)/mkdos33.py $(wildcard $(DATA)/IMGHGR/*) \
        $(shell find $(DATA)/CP2 -type f) | $(DIST)
@@ -442,6 +442,7 @@ test: test-mini $(TAKE1)
 	python3 $(TOOLS)/test_koala.py
 	python3 $(TOOLS)/test_demo_viewers.py
 	python3 $(TOOLS)/test_startup_screen.py
+	python3 $(TOOLS)/test_mkdemo_take1.py
 	python3 $(TOOLS)/test_move.py
 	python3 $(TOOLS)/test_move_alloc.py
 	python3 $(TOOLS)/test_txtconv.py

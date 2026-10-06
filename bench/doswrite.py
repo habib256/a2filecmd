@@ -59,7 +59,7 @@ def main():
    s.key(b'Y');s.wait(lambda:s.has('Copied to DOS 3.3; source kept.'),'verified physical copy',120)
    s.ok('AUX RAM disk storage preserved',aux==p.peek(0x1000,0xB000,'aux'))
    s.key(b'C');s.wait(lambda:s.has('Copy refused:'),'collision refused',60)
-   for path,name in ((('..','PICTURES'),'HGR.RLE'),(('..',),'README')):
+   for path,name in ((('..','PICTURES','CARDS'),'HGR.RLE'),(('..','..'),'README')):
     into(*path);s.select(name);s.key(b'C')
     s.wait(lambda:s.has('Copy '+name+' to DOS 3.3 S'+dos_slot+',D2?'),'copy '+name,60)
     s.key(b'Y');s.wait(lambda:s.has('Copied to DOS 3.3; source kept.'),'verified '+name,120)
@@ -80,7 +80,7 @@ def main():
   expected=len(payload).to_bytes(2,'little')+payload
   s.ok('Applesoft program and DOS length prefix exact',result['HELLO']['type']==2 and result['HELLO']['data']==expected+bytes((-len(expected))%256))
   for name,kind in (('HGR.RLE',4),('README',0)):
-   e=find({'HGR.RLE':'DEMO/PICTURES/HGR.RLE','README':'DEMO/README'}[name])
+   e=find({'HGR.RLE':'DEMO/PICTURES/CARDS/HGR.RLE','README':'DEMO/README'}[name])
    expected=im.read(e)
    if kind==4:expected=e[31:33]+len(expected).to_bytes(2,'little')+expected
    s.ok(name+' has exact DOS type, prefix and payload',result[name]['type']==kind and result[name]['data']==expected+bytes((-len(expected))%256))

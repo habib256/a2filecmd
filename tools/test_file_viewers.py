@@ -352,7 +352,7 @@ class FileViewers(unittest.TestCase):
     def test_every_specified_picture_goes_to_gmagic(self):
         # Appendix B of docs/GRAPHICS-MAGICIAN-FORMAT.md (every picture
         # GMAGIC accepts, the random ones drawing lines before their first
-        # line start) and DEMO's GM.GROUP: the stricter probe of 0.9.5 must
+        # line start) and DEMO's HOUSE.GMAGIC: the stricter probe of 0.9.5 must
         # not lose one. Return is the only way to GMAGIC: a picture the
         # probe misses only shows in hex.
         import sys

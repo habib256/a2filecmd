@@ -55,8 +55,8 @@ def main():
             ok('la racine ne porte plus IMGHGR', 'IMGHGR' not in names_left, names_left[:8])
             s.key(TAB); s.select('PICTURES', 40); s.key(RET)
             s.wait(lambda: s.has(volume + '/DEMO/PICTURES'), 'PICTURES'); p.stable()
-            ok('PICTURES porte les mires, le MacPaint et l album',
-               all(s.has(n) for n in ('ALBUM/', 'DHGR.RAW', 'HGR.RLE', 'ESCHERWATER.MAC')), s.rows()[2][40:70])
+            ok('PICTURES porte l album, les mires et le MacPaint',
+               all(s.has(n) for n in ('ALBUM/', 'CARDS/', 'ESCHERWATER.MAC')), s.rows()[2][40:70])
             s.select('ALBUM', 40); s.key(RET); s.wait(lambda: s.has('/PICTURES/ALBUM'), 'ALBUM'); p.stable()
             imgs = [r[40:56].split(' ')[0] for r in s.rows()[2:20] if r[40:56].strip() and not r[40:].startswith('..')]
             ok('neuf pages HGR de POM1, aux noms ProDOS anglais', len(imgs) == 9 and 'TIGER' in imgs and 'VILLAGE' in imgs and 'LIZARD' in imgs, imgs)
@@ -65,6 +65,9 @@ def main():
             ok('une page HGR de la collection s affiche', s.value('view', 1) == 1)
             s.key(ESC); s.wait(lambda: s.value('view', 1) == 0, 'retour'); p.stable()
             s.select('..', 40); s.key(RET); s.wait(lambda: s.has('ESCHERWATER'), 'PICTURES'); p.stable()
+            s.select('CARDS', 40); s.key(RET); s.wait(lambda: s.has('/PICTURES/CARDS'), 'CARDS'); p.stable()
+            ok('CARDS porte les deux mires dans chaque format',
+               all(s.has(n) for n in ('DHGR.RAW', 'HGR.RLE', 'EXTASIE', 'PURPLE.FOTO1')), s.rows()[2][40:70])
             s.select('DHGR.RAW', 40); s.key(RET); s.allow_aux()
             s.wait(lambda: s.value('view', 1) == 1, 'image DHGR brute', 40); time.sleep(1)
             ok('la page DHGR brute s affiche', s.value('view', 1) == 1)
@@ -73,9 +76,9 @@ def main():
             s.key(ESC); s.wait(lambda: s.value('view', 1) == 0, 'retour'); p.stable()
             s.select('..', 40); s.key(RET); s.wait(lambda: s.has('FONTS.SHAPES/'), 'DEMO'); p.stable()
             s.select('DISKS', 40); s.key(RET); s.wait(lambda: s.has(volume + '/DEMO/DISKS'), 'DISKS'); p.stable()
-            s.select('TINY.2MG', 40); s.key(RET)
-            s.wait(lambda: s.has('HELLO ') and s.has('INSIDE/'), 'ouvrir le .2MG', 30); p.stable()
-            ok('le .2MG s ouvre comme un dossier', s.has('HELLO ') and s.has('INSIDE/'),
+            s.select('TINY.PO', 40); s.key(RET)
+            s.wait(lambda: s.has('HELLO ') and s.has('INSIDE/'), 'ouvrir le .PO', 30); p.stable()
+            ok('le .PO s ouvre comme un dossier', s.has('HELLO ') and s.has('INSIDE/'),
                s.rows()[0][40:70])
             s.key(ESC); s.wait(lambda: s.has(volume + '/DEMO/DISKS'), 'sortir'); p.stable()
             s.select('DISK800.DC', 40); s.key(RET)

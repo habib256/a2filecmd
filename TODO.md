@@ -236,8 +236,8 @@ de côté pour l'instant (voir « Plus tard »).
   lents : SHUTTLE DISCOVERY 1,71, ERIC II 1,35 (dessin au trait), mémoire
   quasi pleine (14 octets libres en CODE, 0 en page zéro). Banc POM2
   `bench/take1.py` fait (2026-10-04, deux éditions ; Ctrl-Reset rend la main
-  à A2FC). Reste : un film de démonstration synthétique pour `DEMO/`, mesure sur
-  vraie machine. Limites : un film sur deux disquettes n'est pas géré
+  à A2FC). Film de démonstration synthétique : `DEMO/MOVIES/TAKE1.DSK`
+  (`tools/mkdemo_take1.py`, 2026-10-06). Reste : mesure sur vraie machine. Limites : un film sur deux disquettes n'est pas géré
   (aucun vu) ; la forme extraite échoue sur 5 films sur 15 (TIPS, ACTORS, BUSINESS,
   SNIPER III, Deluxe MOVIE) : les noms DOS tronqués à 15 caractères y
   collisionnent, ces films ne se jouent que depuis leur disquette ; le bruit des explosions n'est pas celui de l'original (il
@@ -471,7 +471,7 @@ de côté pour l'instant (voir « Plus tard »).
    erreurs de lecture, clés, texte), `tools/test_gmagic_writes.py` (le
    PLG 6502 livré dans `tools/mos6502.py`, chaque écriture contrôlée,
    annexe B en SHA), routage dans `tools/test_file_viewers.py`, groupe du
-   DEMO (`GM.GROUP`), `bench/gmagic.py` (port 6867) 20/20 sur les deux
+   DEMO (`HOUSE.GMAGIC`), `bench/gmagic.py` (port 6867) 20/20 sur les deux
    éditions. Pages pour l'oracle : `tools/gmagic_pages.py PICS OUT`.
    Reste : comparer les pages de GMAGIC avec l'oracle privé sur les 398
    images réelles (`tools/gmagic_pages.py` puis

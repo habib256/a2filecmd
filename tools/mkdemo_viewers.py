@@ -6,10 +6,11 @@
 files() returns {folder: {host name: bytes}}; tools/stage_demo.py puts
 them in DEMO and tools/test_file_viewers.py requires that the real
 classifier sends each viewer at least one DEMO file. Nothing is borrowed
-but one thing: the MGTK font is STANDARD (CiderPress II's test font, already
-in FONTS.SHAPES) laid out the MGTK way. The pictures are mkdemo.py's two
-colour cards encoded in each format, so a wrong decoding shows at once; the
-movies, the tune and the documents are written here.
+but one thing: STANDARD (CiderPress II's test font, already in
+FONTS.SHAPES) gives its letters to the MGTK, .SET and .FONT fonts and to
+the Newsroom banner. PICTURES/CARDS holds mkdemo.py's two colour cards
+encoded in each format, so a wrong decoding shows at once; the other
+pictures, the movies, the tune and the documents are written here.
 
 The encoders are the simplest legal ones, not the original programs' own
 choices. Each format's reference decoder (tools/*_ref.py, or the one in its
@@ -461,6 +462,240 @@ def hrcg_font():
     return bytes((b | (b << 1)) & 0x7F for b in std)
 
 
+# -- the formats of 0.9.5 ---------------------------------------------------------
+
+def standard_font():
+    """STANDARD's 128 glyphs of 7 x 8 dots from $00, a byte a row, bit 0 the
+    leftmost dot (bit 7 set on some rows: not a dot)."""
+    return (ROOT / 'data/CP2/GRAPHICS/STANDARD#070000').read_bytes()
+
+
+def dot(page, x, y):
+    page[addr(y) + x // 7] |= 1 << (x % 7)
+
+
+def line(page, x0, y0, x1, y1):
+    n = max(abs(x1 - x0), abs(y1 - y0), 1)
+    for k in range(int(n) + 1):
+        dot(page, int(round(x0 + (x1 - x0) * k / n)), int(round(y0 + (y1 - y0) * k / n)))
+
+
+def bank_street():
+    """A Bank Street Writer document (BIN $0840, as DOS 3.3 saved it): high-
+    bit text, $8D ends a paragraph, $83 centres its line, $89 is a tab, and
+    the text ends at its first $00."""
+    return (b'\x83' + hi(b'BANK STREET WRITER') + b'\x8d\x8d'
+            + b'\x89' + hi(b'A Bank Street Writer document: a BIN file at $0840 of high-bit '
+                           b'text, ended by its first zero byte.') + b'\x8d'
+            + b'\x89' + hi(b'Return opens it in DOCVIEW, laid out as printed.') + b'\x8d\x00')
+
+
+LOGO = (b'; A TERRAPIN LOGO PROCEDURES FILE: A BIN AT\r'
+        b'; $2000 OF PLAIN TEXT. RETURN SHOWS IT AS TEXT.\r\r'
+        b'TO SQUARE :SIZE\r REPEAT 4 [FORWARD :SIZE RIGHT 90]\rEND\r\r'
+        b'TO FLOWER\r REPEAT 12 [SQUARE 60 RIGHT 30]\rEND\r\r')
+
+
+def logo_picture():
+    """What FLOWER (LOGO above) draws, the turtle at the centre heading up,
+    saved as Terrapin Logo's SAVEPICT does: the hi-res page and two bytes
+    more, 8,194 bytes. IMAGE shows the page."""
+    page = bytearray(8192)
+    heading = 0
+    for _ in range(12):
+        x, y = 140.0, 96.0
+        for _ in range(4):
+            nx = x + 60 * math.sin(math.radians(heading))
+            ny = y - 60 * math.cos(math.radians(heading))
+            line(page, x, y, nx, ny)
+            x, y, heading = nx, ny, heading + 90
+        heading += 30
+    return bytes(page) + b'\x00\x01'
+
+
+def koala_picture():
+    """A KoalaPad picture as Micro-Illustrator saves it (BSAVE PICTR.name,
+    A$4000,L$1FF8), copied to ProDOS: BIN $4000, the 8,184 bytes of a hi-res
+    page without its last screen hole. A striped balloon over green hills.
+    Colour: violet and blue dots on even columns, green and orange on odd
+    ones; a byte takes the palette (blue, orange) most of its dots ask for."""
+    def colour(x, y):
+        if ((x - 140) / 46.0) ** 2 + ((y - 62) / 52.0) ** 2 < 1:
+            return 'OVW'[(x - 94) // 16 % 3]
+        if 126 <= x <= 154 and 138 <= y <= 152:
+            return 'O'
+        if 104 < y < 138 and abs(abs(x - 140) - (138 - y) * 0.38 - 2) < 1:
+            return 'W'                                      # the ropes
+        return 'G' if y > 160 + 10 * math.sin(x / 30.0) else 'B'
+    page = bytearray(8192)
+    for y in range(ROWS):
+        for c in range(COLS):
+            cs = [colour(c * 7 + k, y) for k in range(7)]
+            b = 0x80 if sum(k in 'OB' for k in cs) > sum(k in 'VG' for k in cs) else 0
+            for k, col in enumerate(cs):
+                x = c * 7 + k
+                if col == 'W' or (col in 'VB' and x % 2 == 0) or (col in 'GO' and x % 2):
+                    b |= 1 << k
+            page[addr(y) + c] = b
+    return bytes(page[:8184])
+
+
+def italic_font():
+    """A Beagle Bros .FONT: the DOS Tool Kit's layout (BIN, 768 bytes, 96
+    glyphs of 7 x 8 dots from the space, a byte a row, bit 0 left) with
+    another name. STANDARD's $20-$7F slanted here: rows 0-2 a dot right,
+    rows 6-7 a dot left (one dot of the 96 glyphs falls off)."""
+    std = standard_font()[0x20 * 8:0x80 * 8]
+    return bytes((b << 1) & 0x7F if i % 8 < 3 else (b & 0x7F) >> (i % 8 >= 6)
+                 for i, b in enumerate(std))
+
+
+def wide_text_screen():
+    """An 80-column text screen saved as BIN $0400: 2,048 bytes, the
+    auxiliary half (even columns) first. A MouseText window -- underscores
+    above, $5A and $5F at the sides, $4C below -- with the apples $40 and
+    $41 in its title, and lower case."""
+    grid = [[0xA0] * 80 for _ in range(24)]
+
+    def put(r, c, text):
+        for i, ch in enumerate(text):
+            grid[r][c + i] = ord(ch) | 0x80
+    put(2, 5, '_' * 70)
+    for r in range(3, 20):
+        grid[r][4], grid[r][75] = 0x5A, 0x5F
+    for c in range(5, 75):
+        grid[20][c] = 0x4C
+    grid[4][30], grid[4][31] = 0x40, 0x41
+    put(4, 33, 'A2 File Cmd - 80 columns')
+    lines = ['An 80-column text screen: 2,048 bytes saved from $0400,',
+             'the auxiliary half first, as a BIN file.', '',
+             'Return shows it in 80 columns, with MouseText in the alternate',
+             'character set; T reads the same bytes as double lo-res,',
+             'A switches the character set.']
+    for i, text in enumerate(lines):
+        put(7 + i, 8, text)
+    halves = [bytearray(1024), bytearray(1024)]
+    for r in range(24):
+        at = (r & 7) * 128 + (r >> 3) * 40
+        for c in range(80):
+            halves[c & 1][at + c // 2] = grid[r][c]
+    return bytes(halves[0] + halves[1])
+
+
+def newsroom_banner():
+    """A Newsroom banner BN.*: the photo's layout (newsroom() above), in the
+    frame of every banner of the corpus, dots 7-246 and rows 43-122 (35
+    bytes by 80 rows), black ink on white paper: DEMO NEWS in STANDARD's
+    letters three times their size between two rules, two lines below."""
+    wb, h, x1, y1 = 35, 80, 7, 43
+    bitmap = bytearray([0x7F]) * (wb * h)
+    font = standard_font()
+
+    def ink(x, y):
+        bitmap[y * wb + x // 7] &= ~(1 << (x % 7))
+
+    def text(s, y0, k=1):
+        x0 = (wb * 7 - 7 * k * len(s)) // 2
+        for i, ch in enumerate(s):
+            for r in range(8):
+                for b in range(7):
+                    if font[ord(ch) * 8 + r] >> b & 1:
+                        for d in range(k * k):
+                            ink(x0 + (7 * i + b) * k + d % k, y0 + r * k + d // k)
+    for y in (3, 4, 38, 39):
+        for x in range(6, wb * 7 - 6):
+            ink(x, y)
+    text('DEMO NEWS', 9, 3)
+    text('A2 FILE CMD - A NEWSROOM BANNER', 48)
+    text('RETURN OPENS IT IN NEWSROOM', 62)
+    L = len(bitmap)
+    return bytes([L & 255, L >> 8, y1, y1 + h - 1, x1, 246, 0, 0xFF]) + bytes(bitmap)
+
+
+def clip_shapes():
+    """The pages of clip_disk(): {name: [(y1, x1, h, w, white(x, y))]}, five
+    small drawings, (x, y) within the piece."""
+    def house(x, y):
+        roof = y < 28 and abs(x - 35) <= y * 35 // 27
+        walls = 27 <= y and 5 <= x <= 64 and (x in (5, 64) or y == 59)
+        door = 40 <= y and 28 <= x <= 41 and (x in (28, 41) or y == 40)
+        window = 33 <= y <= 43 and 46 <= x <= 58 and (x in (46, 52, 58) or y in (33, 38, 43))
+        return roof or walls or door or window
+
+    def tree(x, y):
+        return (x - 20) ** 2 + (y - 18) ** 2 < 18 ** 2 or (17 <= x <= 22 and y >= 34)
+
+    def sun(x, y):
+        r, a = math.hypot(x - 20, y - 20), math.atan2(y - 20, x - 20)
+        return r < 10 or (13 < r < 20 and math.cos(8 * a) > 0.8)
+
+    def moon(x, y):
+        return (x - 20) ** 2 + (y - 20) ** 2 < 400 and (x - 29) ** 2 + (y - 15) ** 2 >= 300
+
+    def star(x, y):
+        r, a = math.hypot(x - 15, y - 15), math.atan2(y - 15, x - 15) + math.pi / 2
+        return r < 15 * (0.45 + 0.55 * abs(math.cos(2.5 * a)) ** 3)
+    return {'HOUSE': [(100, 40, 60, 70, house), (100, 130, 60, 40, tree), (20, 180, 40, 40, sun)],
+            'NIGHT': [(40, 60, 40, 40, moon), (70, 150, 31, 31, star)]}
+
+
+def clip_piece(y1, x1, h, w, white):
+    """A clip-art piece: y1, y2, x1, x2, then its 7-dot strips one after
+    the other, a byte a row (bit 0 left, $80 an empty byte), runs of four
+    or more written $00 n v."""
+    raw = bytes(sum(1 << k for k in range(7) if 7 * c + k < w and white(7 * c + k, y)) or 0x80
+                for c in range((w + 6) // 7) for y in range(h))
+    out, i = bytearray([y1, y1 + h - 1, x1, x1 + w - 1]), 0
+    while i < len(raw):
+        n = 1
+        while i + n < len(raw) and raw[i + n] == raw[i] and n < 255:
+            n += 1
+        if n >= 4:
+            out += bytes([0, n, raw[i]])
+        else:
+            out += raw[i:i + n]
+        i += n
+    return bytes(out)
+
+
+def clip_disk():
+    """A Newsroom clip-art disk (docs/NEWSROOM-FORMAT.md), a DOS-order .DSK
+    for NRCLIP: the pieces from track 0 sector 1 on (the VTOC and catalog
+    sectors skipped), the SSI CLIP index on track 34 sectors 0-1, the
+    location table from sector 6. As on Springboard's disks, a token VTOC
+    (no free sector) and a catalog of notice lines whose T/S lists point
+    off the disk (track 36), so that the disk opens in a panel."""
+    disk = bytearray(143360)
+
+    def sector(t, s):
+        return (t * 16 + s) * 256
+    order = [(t, s) for t in range(34) for s in range(16) if (t, s) not in ((0, 0), (17, 0), (17, 1))]
+    data, table = bytearray(), bytearray()
+    pages = clip_shapes()
+    for pieces in pages.values():
+        for p in pieces:
+            t, s = order[len(data) // 256]
+            table += bytes([t, s, len(data) % 256])
+            data += clip_piece(*p)
+        table.append(0xFF)
+    for n, b in enumerate(data):
+        t, s = order[n // 256]
+        disk[sector(t, s) + n % 256] = b
+    index = b'SSI CLIP\0A2 FILE CMD DEMO\0'
+    index = bytes(c | 0x80 if c else 0 for c in index).ljust(0x1A, b'\0') + bytes([1, len(pages)])
+    index += b''.join(hi(name.encode()) + b'\0' for name in pages)
+    disk[sector(34, 0):sector(34, 0) + len(index)] = index
+    disk[sector(34, 6):sector(34, 6) + len(table)] = table
+    vtoc = sector(17, 0)
+    disk[vtoc:vtoc + 4] = bytes([4, 17, 1, 3])
+    disk[vtoc + 0x27], disk[vtoc + 0x34], disk[vtoc + 0x35], disk[vtoc + 0x37] = 0x7A, 35, 16, 1
+    for i, text in enumerate(('NEWSROOM CLIP ART: A2FC DEMO', 'COPY ITS PAGES WITH NRCLIP')):
+        e = sector(17, 1) + 0x0B + i * 0x23
+        disk[e:e + 3] = bytes([0x24, 0xFF, 0x08])
+        disk[e + 3:e + 33] = hi(text.ljust(30).encode())
+    return bytes(disk)
+
+
 # -- archives and disks -----------------------------------------------------------
 
 def sample_text():
@@ -481,24 +716,29 @@ def files():
     foto1, foto2 = purple(aux, main)
     sample = sample_text()
     return {
-        'PICTURES': {
+        # the two colour cards in every picture format: the name is the format
+        'PICTURES/CARDS': {
             'EXTASIE#F20000': extasie(aux, main),
             'PACKFOT#084000': packbytes(hgr),
-            'PACKFOT.D#084001': packbytes(aux) + packbytes(main),
-            'PAINT816#06E001': paint816_pack(column_stream(hgr, True)) + PAINT816_TRAILER,
-            'PAINT816.D#06E002': bytes(8) + paint816_pack(column_stream(aux, True))
+            'PAINT816#06E002': bytes(8) + paint816_pack(column_stream(aux, True))
             + paint816_pack(column_stream(main, True)) + PAINT816_TRAILER,
             'LORES.DGR#060000': dgr_single(),
             'DLORES.DGR#060000': dgr_double(),
-            'TITLE.SCREEN#060400': text_screen(),
             'LZ4FH#088066': lz4fh(hgr),
-            'APPLE.CLIP#064800': printshop(),
-            'PH.SUNSET#064000': newsroom(),
-            'GM.GROUP#064000': gmagic(),
             'ARLEQUIN#F80000': arlequin(aux, main),
-            'CARD.FOTO1#062000': foto1,
-            'CARD.FOTO2#062000': foto2,
-            'CARD.SHP#061DF0': bytes(528) + hgr,
+            'PURPLE.FOTO1#062000': foto1,
+            'PURPLE.FOTO2#062000': foto2,
+            'MOVIEMAKER.SHP#061DF0': bytes(528) + hgr,
+        },
+        'PICTURES': {
+            'TITLE.SCREEN#060400': text_screen(),
+            'WIDE.SCREEN#060400': wide_text_screen(),
+            'APPLE.PRINTSHOP#064800': printshop(),
+            'PH.SUNSET#064000': newsroom(),
+            'BN.DEMO.NEWS#064000': newsroom_banner(),
+            'HOUSE.GMAGIC#064000': gmagic(),
+            'PICTR.BALLOON#064000': koala_picture(),
+            'FLOWER.PICT#062000': logo_picture(),
         },
         'MOVIES': {
             'M.BOUNCE#068400': bounce(),
@@ -509,15 +749,17 @@ def files():
             'DEMO.PT3#000000': pt3(),
         },
         'DOCUMENTS': {
-            'EPISTOLE#040000': EPISTOLE,
-            'PAPYRUS#040000': papyrus(),
+            'LETTRE.EPISTOLE#040000': EPISTOLE,
+            'NOTE.PAPYRUS#040000': papyrus(),
             'BUDGET.VC#040000': visicalc(),
             'README.MD#040000': MARKDOWN,
             'NOTE.MW#060000': magic_window(),
+            'MEMO.BANKSTREET#060840': bank_street(),
         },
         'PROGRAMS': {
-            'LEDGER.BA3#090000': business_basic(),
+            'HELLO.BA3#090000': business_basic(),
             'HELLO.INT#FA0000': integer_basic(),
+            'FLOWER.LOGO#062000': LOGO,
         },
         'ARCHIVES': {
             'SAMPLE.QQ#000000': squeeze_ref.squeeze(sample, b'SAMPLE.TXT'),
@@ -526,10 +768,12 @@ def files():
         'DISKS': {
             'PASCAL.PO#060000': pascal_disk(),
             'CPM.PO#060000': cpm_disk(),
+            'CLIPART.DSK#060000': clip_disk(),
         },
         'FONTS.SHAPES': {
             'MGTK.FONT#070000': mgtk_font(),
             'BOLD.SET#068100': hrcg_font(),
+            'ITALIC.FONT#064000': italic_font(),
         },
     }
 

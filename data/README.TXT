@@ -1,90 +1,102 @@
 A2 FILE CMD - free software, GNU GPL v3, by Arnaud VERHILLE
 
-This DEMO folder holds at least one example of everything A2 File Cmd
-can open, for every viewer, one folder per kind of file. Press RETURN on
-a file to open it by type, or force a viewer: T text, H bytes, I picture.
-ESC comes back. In any picture, S starts a slideshow.
+This DEMO folder holds one example of everything A2 File Cmd can open,
+one folder per kind of file. Press RETURN on a file to open it by type,
+or force a viewer: T text, H bytes, I picture. ESC comes back. In any
+picture, LEFT and RIGHT step through the folder and S starts a slideshow.
+
+A name says what the file is and, after the period, its format; a few
+keep the name their program wants (PH. and BN. for The Newsroom, M. for
+Fantavision, PICTR. for the KoalaPad).
 
 DOCUMENTS
-  SAMPLE       a text: T reads it page by page, E edits it
-  LETTER       an AppleWorks word processor document
-  PRESIDENTS   an AppleWorks data base
-  MATH.QUIZ    an AppleWorks spreadsheet
-  EPISTOLE     an Epistole letter, laid out as printed (DOCVIEW)
-  PAPYRUS      a Papyrus / HomeWord document (DOCVIEW)
-  BUDGET.VC    a VisiCalc worksheet, recalculated as VisiCalc shows it
-  README.MD    Markdown: ! then MDVIEW
-  NOTE.MW      a Magic Window document: ! then MDVIEW
+  SAMPLE           a text: T reads it page by page, E edits it
+  LETTER           an AppleWorks word processor document
+  PRESIDENTS       an AppleWorks data base
+  MATH.QUIZ        an AppleWorks spreadsheet
+  BUDGET.VC        a VisiCalc worksheet, recalculated as VisiCalc shows it
+  LETTRE.EPISTOLE  an Epistole letter, laid out as printed
+  NOTE.PAPYRUS     a Papyrus / HomeWord document
+  MEMO.BANKSTREET  a Bank Street Writer document
+  README.MD        Markdown: ! then MDVIEW
+  NOTE.MW          a Magic Window document: ! then MDVIEW
 
 PICTURES
-  HGR.RAW      a raw HGR page, 8192 bytes: the six colours in bands
-  HGR.RLE      the same card, RLE compressed (HGRR stream)
-  DHGR.RAW     a raw DHGR page, 16384 bytes: the sixteen colours
-  DHGR.RLE     the same card, RLE compressed (DHRR stream)
   ESCHERWATER.MAC  a MacPaint picture, scrolled with UP and DOWN
-  EXTASIE      the DHGR card as an Extasie picture ($F2)
-  ARLEQUIN     the same as an Arlequin picture ($F8)
-  PACKFOT      the HGR card packed (PackBytes FOT); PACKFOT.D the DHGR
-  PAINT816     the HGR card as 816/Paint saves it; PAINT816.D the DHGR
-  LZ4FH        the HGR card, LZ4FH compressed
-  CARD.FOTO1/2 the DHGR card as a Purplesoft pair: either one opens it
-  CARD.SHP     the HGR card as a Movie Maker shape sheet
-  LORES.DGR    the sixteen lo-res colours; DLORES.DGR in double lo-res
-  TITLE.SCREEN a saved text screen: T switches text / lo-res
-  APPLE.CLIP   a Print Shop graphic
-  PH.SUNSET    a Newsroom photo
-  GM.GROUP     Graphics Magician pictures, drawn line by line: N next,
-               O next over this one, D the 1984 drawing
-  ALBUM/       nine HGR pages from POM1. In a picture, LEFT and RIGHT
-               step through the folder, S shows it as a slideshow.
-  The DHGR pictures use AUX memory: when /RAM holds files A2 File Cmd
-  asks first, since /RAM is then rebuilt empty.
+  APPLE.PRINTSHOP  a Print Shop graphic
+  PH.SUNSET        a Newsroom photo
+  BN.DEMO.NEWS     a Newsroom banner
+  HOUSE.GMAGIC     Graphics Magician pictures, drawn line by line: N next,
+                   O next over this one, D the 1984 drawing
+  PICTR.BALLOON    a KoalaPad / Micro-Illustrator picture
+  FLOWER.PICT      a Terrapin Logo picture: what PROGRAMS/FLOWER.LOGO draws
+  TITLE.SCREEN     a saved text screen: T switches text / lo-res
+  WIDE.SCREEN      an 80-column text screen with MouseText
+  ALBUM/           nine HGR pages from POM1, to leaf through
+  CARDS/           two colour test cards, one file per picture format: a
+                   wrong colour shows at once. The name is the format.
+    HGR.RLE        the six hi-res colours in bands, RLE packed (HGRR)
+    PACKFOT        the same card packed (PackBytes FOT)
+    LZ4FH          the same, LZ4FH compressed
+    MOVIEMAKER.SHP the same as a Movie Maker shape sheet
+    DHGR.RAW       the sixteen double hi-res colours, a raw 16384-byte page
+    EXTASIE        the same card as an Extasie picture ($F2)
+    ARLEQUIN       the same as an Arlequin picture ($F8)
+    PAINT816       the same as 816/Paint saves it
+    PURPLE.FOTO1/2 the same as a Purplesoft pair: either one opens it
+    LORES.DGR      the sixteen lo-res colours; DLORES.DGR in double lo-res
+  The double hi-res pictures use AUX memory: when /RAM holds files
+  A2 File Cmd asks first, since /RAM is then rebuilt empty.
 
-MOVIES         Fantavision movies, played by FANTA.SYSTEM: TAB speed,
-               SPACE pause, S slideshow, ESC back
-  M.BOUNCE     a looping movie on its own background colour
-  M.CURTAIN    a movie over its backdrop CURTAIN, a hi-res picture
+MOVIES             TAB speed, SPACE pause, ESC back
+  M.BOUNCE         a Fantavision movie (FANTA.SYSTEM), looping on its own
+                   background colour; S plays the folder as a slideshow
+  M.CURTAIN        a Fantavision movie over its backdrop CURTAIN, a hi-res
+                   picture
+  TAKE1.DSK        a Take 1 movie on its DOS 3.3 disk: RETURN opens the
+                   disk, RETURN on MV.DEMO plays it (TAKE1.SYSTEM)
 
 MUSIC
-  WELCOME.MB   a three-voice Mockingboard tune: RETURN plays it, P pauses
-  CANON.ED     an Electric Duet canon, for the speaker or a Mockingboard
-  DEMO.PT3     a ProTracker 3 module for the Mockingboard
+  WELCOME.MB       a three-voice Mockingboard tune: RETURN plays, P pauses
+  CANON.ED         an Electric Duet canon, for the speaker or a Mockingboard
+  DEMO.PT3         a ProTracker 3 module for the Mockingboard
 
-ARCHIVES       press ! and pick the extractor: the files go to the
-               other panel
-  SAMPLE.SHK   a ShrinkIt archive of SAMPLE and HELLO
-  SAMPLE.BNY   the same two files in a Binary II archive
-  SHRINKIT.BSC ShrinkIt itself, posted in BinSCII
-  HELLO.AS     an AppleSingle file
-  SAMPLE.QQ    SAMPLE squeezed; SAMPLE.ACU in an ACU archive
+ARCHIVES           press ! and pick the extractor: the files go to the
+                   other panel
+  SAMPLE.SHK       a ShrinkIt archive of SAMPLE and HELLO
+  SAMPLE.BNY       the same two files in a Binary II archive
+  SAMPLE.QQ        SAMPLE squeezed; SAMPLE.ACU in an ACU archive
+  SHRINKIT.BSC     ShrinkIt itself, posted in BinSCII
+  HELLO.AS         an AppleSingle file
 
-DISKS          RETURN opens an image as a folder, C copies a file out
-  TINY.PO      a small ProDOS disk image
-  TINY.2MG     the same image with a 2IMG header
-  DISK800.DC   an 800K ProDOS volume in a DiskCopy 4.2 image
-  DOS33.DSK    a DOS 3.3 disk: RETURN shows its catalog
-  PASCAL.PO    an Apple Pascal volume: ! then PASCAL
-  CPM.PO       a CP/M disk: ! then CPM
+DISKS              RETURN opens an image as a folder, C copies a file out
+  TINY.PO          a small ProDOS disk image
+  DISK800.DC       an 800K ProDOS volume in a DiskCopy 4.2 image
+  DOS33.DSK        a DOS 3.3 disk: RETURN shows its catalog
+  PASCAL.PO        an Apple Pascal volume: ! then PASCAL
+  CPM.PO           a CP/M disk: ! then CPM
+  CLIPART.DSK      a Newsroom clip-art disk: open it, then ! NRCLIP saves
+                   its two pages as pictures in the other panel
 
 PROGRAMS
-  HELLO        an Applesoft program: RETURN or X runs it, T lists it
-  HELLO.INT    an Integer BASIC program: T lists it
-  LEDGER.BA3   an Apple /// Business BASIC program: T lists it
+  HELLO            an Applesoft program: RETURN or X runs it, T lists it
+  HELLO.INT        an Integer BASIC program: T lists it
+  HELLO.BA3        an Apple /// Business BASIC program: T lists it
+  FLOWER.LOGO      Terrapin Logo procedures, shown as text
 
 FONTS.SHAPES
-  STANDARD     a hi-res 7 x 8 font
-  MGTK.FONT    the same letters as a MouseGraphics (MGTK) font
-  BOLD.SET     STANDARD in bold, as a DOS Tool Kit .SET font
+  STANDARD         a hi-res 7 x 8 font
+  MGTK.FONT        the same letters as a MouseGraphics (MGTK) font
+  BOLD.SET         STANDARD in bold, as a DOS Tool Kit .SET font
+  ITALIC.FONT      STANDARD in italics, as a Beagle Bros .FONT
   BBROS.F.STENCIL, SC.SHIP2.SHAPE, DATSTNES.SHAPE1: Applesoft shape tables
 
-Where they come from: SAMPLE, LETTER, the colour cards, the tunes, the
-archives of SAMPLE and HELLO and the disk images are generated by
-tools/mkdemo.py; every picture format, the movies, DEMO.PT3, the
-documents, the BASIC programs, the squeezed archives, the Pascal and
-CP/M disks, BUDGET.VC, TITLE.SCREEN and GM.GROUP by
-tools/mkdemo_viewers.py. MGTK.FONT is STANDARD laid out the MGTK way,
-BOLD.SET is STANDARD made bold. The album is Arnaud VERHILLE's, from POM1. PRESIDENTS,
-MATH.QUIZ, ESCHERWATER.MAC, SHRINKIT.BSC, HELLO.AS, STANDARD and the
-three shape tables come from the test data of CiderPress II by Andy
-McFadden (github.com/fadden/CiderPress2); SHRINKIT.BSC was posted to
-comp.binaries.apple2 by its authors.
+Where they come from: everything is generated by tools/mkdemo.py,
+tools/mkdemo_viewers.py and tools/mkdemo_take1.py, nothing copied, with
+these exceptions. The
+album is Arnaud VERHILLE's, from POM1. PRESIDENTS, MATH.QUIZ,
+ESCHERWATER.MAC, SHRINKIT.BSC, HELLO.AS, STANDARD and the three shape
+tables come from the test data of CiderPress II by Andy McFadden
+(github.com/fadden/CiderPress2); SHRINKIT.BSC was posted to
+comp.binaries.apple2 by its authors. MGTK.FONT, BOLD.SET, ITALIC.FONT
+and the banner's letters are drawn from STANDARD.
