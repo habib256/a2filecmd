@@ -12,11 +12,22 @@ from pathlib import Path
 from test_six_plugins import PREFIX, ROOT
 
 HARNESS = PREFIX + r"""
+static long host_fail = -1;                 /* a read error from this offset on */
+static int host_err;
+#define ferror(f) (host_err)
 #include "src/plugins/mdview.c"
 static FILE* host;
 static unsigned char hx, hy, bad;
 static char screen[24][81];
-static size_t rd_(void* p, size_t z, size_t n, FILE* f) { return fread(p, z, n, host); }
+static size_t rd_(void* p, size_t z, size_t n, FILE* f)
+{
+    long at = ftell(host);
+    if (host_fail >= 0 && at + (long)n > host_fail) {
+        if (at >= host_fail) { host_err = 1; return 0; }
+        n = host_fail - at;               /* what comes before the bad block */
+    }
+    return fread(p, z, n, host);
+}
 static int seek__(FILE* f, long off, int whence) { return fseek(host, off, whence); }
 static void xy_(unsigned char x, unsigned char y) { hx = x; hy = y; }
 static void puts__(const char* s)
@@ -36,6 +47,7 @@ int main(int argc, char** argv)
     a.memset = memset; a.memcpy = memcpy; a.selected = &sel;
     a.strlen = strlen; a.strcmp = strcmp;
     if (argc > 2) strcpy(sel.name, argv[2]);
+    if (argc > 3) host_fail = atol(argv[3]);
     vf = host; vbase = 0; vlen = vpos = 0;
     st.off = sniff(); st.skip = 0; st.fence = 0;
     for (page = 0; page < 200; ++page) {
@@ -66,11 +78,11 @@ class Mdview(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def pages(self, data, name=''):
+    def pages(self, data, name='', fail=None):
         f = self.p / 'in.txt'
         f.write_bytes(data)
-        out = subprocess.check_output([str(self.exe), str(f)] + ([name] if name else []),
-                                      text=True, timeout=10)
+        args = [name or '-'] + ([str(fail)] if fail is not None else []) if name or fail is not None else []
+        out = subprocess.check_output([str(self.exe), str(f)] + args, text=True, timeout=10)
         pages = []
         for line in out.splitlines():
             if line.startswith('PAGE '):
@@ -82,6 +94,29 @@ class Mdview(unittest.TestCase):
 
     def words(self, pages):
         return ' '.join(' '.join(p['rows']) for p in pages).split()
+
+    def test_a_read_error_is_not_the_end(self):
+        """A block that cannot be read: the page stops there, done = 2.
+
+        Before: getc_ took fread's 0 for the end of the file without
+        ferror(), so the page said "(end)" as if the text were whole."""
+        text = ''.join('line %d of the text, long enough to fill rows\n' % i for i in range(300)).encode()
+        whole = self.pages(text)
+        self.assertEqual([p['done'] for p in whole], [0] * (len(whole) - 1) + [1])
+        for fail in (0, 700, 2048, 2049, 5000, len(text) - 20):
+            with self.subTest(fail=fail):
+                pages = self.pages(text, fail=fail)
+                self.assertEqual(pages[-1]['done'], 2, 'the error is reported')
+                self.assertTrue(all(p['done'] == 0 for p in pages[:-1]), 'only on the page it hit')
+                self.assertFalse([p for p in pages if p['bad']])
+                shown = self.words(pages)
+                ref = self.words(whole)[:len(shown)]
+                if shown:
+                    self.assertEqual(shown[:-1], ref[:-1], 'what was read is right')
+                    self.assertTrue(ref[-1].startswith(shown[-1]))
+                self.assertLess(len(shown), len(self.words(whole)))
+        # the end of the file itself is still the end
+        self.assertEqual(self.pages(text, fail=len(text) + 1)[-1]['done'], 1)
 
     def test_a_magic_window_document_skips_its_header(self):
         text = 'Dear reader,\rthis is a Magic Window letter.\r'

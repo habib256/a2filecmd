@@ -19,8 +19,9 @@
  * by replaying its first line from its start. Space/Down go forward
  * (the next start is known once a page has been rendered), Up goes back,
  * R restarts at page 1; Escape leaves. Forward reading is unlimited;
- * Up stops at the oldest retained page. Being a big overlay, the core redraws the panels on
- * return.
+ * Up stops at the oldest retained page. A read error stops the page where
+ * it hit and the status says "(read error)", never "(end)". Being a big
+ * overlay, the core redraws the panels on return.
  *
  * A big overlay under 5,376 bytes: $3000-$3FFF is its scratch memory --
  * the page table (64 x 12 at $3000), the row being built ($3300) and the
@@ -64,6 +65,9 @@ static unsigned char host_vbuf[VBUFSZ];
 #define STARTS ((struct Start*)0x3000)     /* 64 x 12 = 768: $3000-$32FF */
 #define RB     ((char*)0x3300)             /* the row being built, 80: $3300-$337F */
 #define VBUF   ((unsigned char*)0x3800)    /* the read buffer: $3800-$3FFF */
+/* libc's ferror links errno and fmisc, 90 bytes: _FILE::f_flags (offset 1,
+ * asminc/_file.inc) and its _FERROR bit, as DOCVIEW and FIND read them. */
+#define ferror(f) (((unsigned char*)(f))[1] & 0x04)
 #endif
 
 /* BSS: nothing zeroes it; everything below is written before it is read. */
@@ -79,7 +83,7 @@ static unsigned char row;                 /* the screen row being written */
 /* One ProDOS logical line can wrap far beyond 255 or even 65535 rows. */
 static unsigned long skip, rows_done;
 static unsigned char inv, indent, rc;      /* inverse (a heading); the hanging indent; the row's length */
-static unsigned char done;                 /* the end of the file was reached on this page */
+static unsigned char done;                 /* on this page: 1 the end of the file, 2 a read error */
 
 /* Latin-1 $C0-$DF to ASCII; $E0-$FF the same, lower-cased. */
 static const char latin[] = "AAAAAAACEEEEIIIIDNOOOOO?OUUUUY?y";
@@ -88,6 +92,7 @@ static const char m_pick[] = "Select a text file to read.";
 static const char m_open[] = "Open failed.";
 static const char m_page[] = "Page %lu%s: Space/Down next, Up back, R start, ESC quits";
 static const char m_end[]  = " (end)";
+static const char m_err[]  = " (read error)";
 static const char m_nil[]  = "";
 
 /* -- reading ------------------------------------------------------------- */
@@ -98,7 +103,10 @@ static int getc_(void)
         vbase += vlen;
         vpos = 0;
         vlen = a.fread(VBUF, 1, VBUFSZ, vf);
-        if (!vlen) return -1;
+        if (!vlen) {                       /* the end -- or an error, never taken for it */
+            if (ferror(vf)) done = 2;
+            return -1;
+        }
     }
     return VBUF[vpos++];
 }
@@ -299,9 +307,9 @@ static void render_page(const struct Start* st)
     row = ROW1;
     done = 0;
     while (row <= LASTROW)
-        if (!render_line()) { done = 1; return; }
+        if (!render_line()) { if (!done) done = 1; return; }
     seek_(next.off);                       /* a page that filled on the last line: the end too */
-    if (getc_() < 0) done = 1;
+    if (getc_() < 0 && !done) done = 1;
 }
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api)
@@ -329,7 +337,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         a.revers(0);
         render_page(STARTS + ((head + page) & (MAXPAGES - 1)));
         a.gotoxy(0, 22);
-        a.cprintf(m_page, first + page, done ? m_end : m_nil);
+        a.cprintf(m_page, first + page, done == 2 ? m_err : done ? m_end : m_nil);
         k = a.cgetc();
         if (k == KEY_ESC || k == 'q' || k == 'Q') break;
         if ((k == ' ' || k == KEY_RETURN || k == KEY_RIGHT || k == KEY_DOWN) && !done) {
