@@ -13,6 +13,9 @@
  * in the directory, in order; a file after them that is not one of them
  * ends the search.
  *
+ * The name in a chunk's header is made a legal ProDOS name, never a path
+ * (as UNWRAP and UNSQ do); one with no letter is refused.
+ *
  * The file follows the one contract of the file services: created
  * exclusively (an existing name is refused, never replaced), written,
  * closed, and read back -- each chunk's data against its CRC -- and removed
@@ -153,8 +156,8 @@ static unsigned long le24(const unsigned char* p)
 /* One chunk, the signature line just read. 1 when it went. */
 static unsigned char chunk(void)
 {
-    unsigned char i, n;
-    unsigned int seglen, left, k;
+    unsigned char i, n, c, j;
+    unsigned int seglen, left, k, sum0, sent;
     why = "BinSCII damaged";
     /* the alphabet */
     if (!next_line() || llen < 64) return 0;
@@ -167,8 +170,19 @@ static unsigned char chunk(void)
     if (!next_line() || llen < 52) return 0;
     n = line[0] - 0x40;
     if (n < 1 || n > 15) return 0;
-    RF(memcpy)(fname, line + 1, n);
-    fname[n] = 0;
+    /* a legal ProDOS name, never a path: upper case, anything but letters,
+     * digits and periods a period, leading non-letters dropped */
+    j = 0;
+    for (i = 1; i <= n; ++i) {
+        c = line[i];
+        if ((unsigned char)(c - 'a') < 26) c -= 32;
+        if ((unsigned char)(c - 'A') >= 26 && (unsigned char)(c - '0') >= 10) c = '.';
+        if (!j && (unsigned char)(c - 'A') >= 26) continue;
+        fname[j] = c;
+        ++j;
+    }
+    fname[j] = 0;
+    if (!j) return 0;
     if (!unpack(16, 36)) return 0;
     RF(memcpy)(attrs, bytes, 27);
     if (crc_small(attrs, 24) != (attrs[24] | (unsigned int)attrs[25] << 8)) return 0;
@@ -194,18 +208,27 @@ static unsigned char chunk(void)
         why = more ? "Parts missing" : "Parts of another file";
         return 0;
     }
-    /* the data: whole lines of 48 bytes, the CRC over all of them */
+    /* the data: whole lines of 48 bytes, the CRC over all of them; the
+     * text's covers the last line's padding as sent, the one kept for the
+     * read-back zeros there (what read_back pads with) */
     bs_sum = 0;
     for (left = seglen; left; left -= k) {
         if (!next_line() || llen < 64 || !unpack(0, 64)) return 0;
-        bs_crc(bytes);
         k = left > 48 ? 48 : left;
+        sum0 = bs_sum;
+        bs_crc(bytes);
+        sent = bs_sum;
+        if (k < 48) {
+            for (j = (unsigned char)k; j < 48; ++j) bytes[j] = 0;
+            bs_sum = sum0;
+            bs_crc(bytes);
+        }
         if (RF(fwrite)(bytes, 1, k, out) != k) { why = "Write"; return 0; }
         if (!(++lines & 15)) a.progress_bar(name, written + seglen - left + k, total);
         if (stop()) { why = "Stopped"; return 0; }
     }
     if (!next_line() || llen < 4 || !unpack(0, 4)) return 0;
-    if (bs_sum != (bytes[0] | (unsigned int)bytes[1] << 8)) return 0;
+    if (sent != (bytes[0] | (unsigned int)bytes[1] << 8)) return 0;
     crcs[segs] = bs_sum;
     lens[segs++] = seglen;
     written += seglen;

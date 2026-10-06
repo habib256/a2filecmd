@@ -19,7 +19,8 @@ ProDOS file as text, in chunks of 12,288 bytes. Each chunk is:
 Four characters make three bytes: with v0..v3 their alphabet indexes,
     b1 = v3 << 2 | v2 >> 4, b2 = (v2 & 15) << 4 | v1 >> 2, b3 = (v1 & 3) << 6 | v0.
 Lines end with CR, LF or CRLF; blanks around them and the high bit are
-ignored, and text between chunks is skipped.
+ignored, and text between chunks is skipped. The name is made a legal
+ProDOS name (prodos_name) before it is used or compared.
 
 decode(texts) takes the parts in order and returns (name, access, type,
 aux, data), or raises Bad: SCIIBIN writes the chunks in the order it meets
@@ -99,6 +100,22 @@ def chunks(text):
         yield name, attrs, bytes(data[:seglen])
 
 
+def prodos_name(raw):
+    """The name SCIIBIN creates: upper case, anything but letters, digits
+    and periods a period, leading non-letters dropped, 15 at most (the
+    header holds 15); Bad when no letter is left."""
+    out = ''
+    for c in raw.upper():
+        if not ('A' <= c <= 'Z' or '0' <= c <= '9' or c == '.'):
+            c = '.'
+        if not out and not 'A' <= c <= 'Z':
+            continue
+        out += c
+    if not out:
+        raise Bad('no usable name')
+    return out[:15]
+
+
 def decode(texts):
     """texts[0] is the selected file, the rest the files after it in the
     directory: they are read while the file is not complete, and the first
@@ -109,6 +126,7 @@ def decode(texts):
     for k, text in enumerate(texts):
         found = False
         for n, attrs, data in chunks(text):
+            n = prodos_name(n)
             found = True
             if name is None:
                 name, total = n, int.from_bytes(attrs[0:3], 'little')
@@ -129,8 +147,9 @@ def decode(texts):
     raise Bad('parts missing')
 
 
-def encode(name, data, access=0xC3, ftype=6, aux=0, alphabet=ALPHABET, eol=b'\r'):
-    """The BinSCII text of one file (tests); several chunks when it is big."""
+def encode(name, data, access=0xC3, ftype=6, aux=0, alphabet=ALPHABET, eol=b'\r', pad=0):
+    """The BinSCII text of one file (tests); several chunks when it is big.
+    pad: the byte that fills each chunk's last line (the real posts: 0)."""
     out = bytearray(b'Some notes before the file' + eol)
     enc = {i: c for i, c in enumerate(alphabet)}
 
@@ -150,7 +169,7 @@ def encode(name, data, access=0xC3, ftype=6, aux=0, alphabet=ALPHABET, eol=b'\r'
         attrs[10] = 1
         attrs[21:24] = len(seg).to_bytes(3, 'little')
         attrs[24:26] = crc16(attrs[:24]).to_bytes(2, 'little')
-        padded = seg + bytes(-len(seg) % 48)
+        padded = seg + bytes([pad]) * (-len(seg) % 48)
         out += (SIGNATURE + '\n' + alphabet + '\n').encode().replace(b'\n', eol)
         out += bytes([0x40 + len(name)]) + name.encode().ljust(15) + pack(bytes(attrs)).encode() + eol
         for i in range(0, len(padded), 48):

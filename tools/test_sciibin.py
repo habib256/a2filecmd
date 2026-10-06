@@ -134,11 +134,13 @@ class Sciibin(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def run_sb(self, files, selected, fault=0, existing=()):
+    def run_sb(self, files, selected, fault=0, existing=(), subdirs=()):
         """files: [(name, bytes)] in directory order; the ones after `selected` are its successors."""
         case = Path(tempfile.mkdtemp(dir=self.root))
         (case / 'S').mkdir()
         (case / 'D').mkdir()
+        for d in subdirs:
+            (case / 'D' / d).mkdir()
         for n, data in files:
             (case / 'S' / n).write_bytes(data)
         for e in existing:
@@ -152,7 +154,9 @@ class Sciibin(unittest.TestCase):
         created = [l.split()[1:] for l in lines if l.startswith('CREATE ')]
         removed = [l.split()[1] for l in lines if l.startswith('REMOVE ')]
         self.bars = [int(v) for l in lines if l.startswith('BARS ') for v in l.split()[1:]]
-        made = {p.name: p.read_bytes() for p in (case / 'D').iterdir()}
+        made = {p.name: p.read_bytes() for p in (case / 'D').iterdir() if p.is_file()}
+        self.sub_files = sorted(str(p.relative_to(case / 'D')) for d in subdirs
+                                for p in (case / 'D' / d).rglob('*'))
         return note, created, removed, made
 
     def check(self, files, selected):
@@ -239,6 +243,62 @@ class Sciibin(unittest.TestCase):
         self.assertEqual((note, list(made)), ('Cleanup failed: the incomplete file stays.', ['DOC']))
         note, created, removed, made = self.run_sb([('D.BSC', text)], 'D.BSC', existing=['DOC'])
         self.assertEqual((note, made), ('DOC exists or cannot be created.', {'DOC': b'old'}))
+
+    def test_names_made_legal(self):
+        """The name in a chunk header becomes a legal ProDOS name.
+
+        Before: the header's 1-15 characters were memcpy'd and joined to
+        the destination as they were: a header named "SUB/EVIL" created
+        DEST/SUB/EVIL (a file in a subfolder of the destination, never
+        confirmed), "evil name" a name ProDOS would refuse. Now: upper
+        case, anything but letters, digits and periods a period, leading
+        non-letters dropped, as UNWRAP and UNSQ do; no letter at all is
+        refused before anything is created."""
+        data = b'hello world' * 10
+        for raw, legal in (('SUB/EVIL', 'SUB.EVIL'), ('evil name', 'EVIL.NAME'), ('../X', 'X'),
+                           ('1st:file', 'ST.FILE'), ('A' * 15, 'A' * 15), ('Ok.Name.2', 'OK.NAME.2')):
+            with self.subTest(raw=raw):
+                note, created, removed, made = self.run_sb([('X.BSC', ref.encode(raw, data))], 'X.BSC',
+                                                           subdirs=['SUB'])
+                self.assertEqual(created, [[legal, '06', '0000']], note)
+                self.assertEqual(made, {legal: data})
+                self.assertEqual(self.sub_files, [])
+                self.assertEqual(ref.decode([ref.encode(raw, data)])[0], legal)
+        for raw in ('123', '/', '..', '#$%'):
+            with self.subTest(raw=raw):
+                note, created, removed, made = self.run_sb([('X.BSC', ref.encode(raw, data))], 'X.BSC',
+                                                           subdirs=['SUB'])
+                self.assertEqual((created, made, self.sub_files), ([], {}, []), note)
+                self.assertEqual(note, 'BinSCII damaged')
+                self.assertRaises(ref.Bad, ref.decode, [ref.encode(raw, data)])
+        # the parts of one file are matched on the name made legal
+        big = bytes(range(256)) * 60
+        parts = self.split(ref.encode('two parts', big))
+        note = self.check([('P.%02d' % i, p) for i, p in enumerate(parts)], 'P.00')
+        self.assertEqual(note, 'TWO.PARTS: 15360 bytes, $06/$0000, 2 chunks.')
+
+    def test_padding_as_sent(self):
+        """A last line padded with non-zero bytes decodes and is kept.
+
+        Before: the decode checked the data CRC over the padding as sent,
+        but the read-back recomputed it over zeros, so a file from an
+        encoder that pads with anything else was written, then removed
+        with "Read-back". (The real posts at hand pad with zeros.) The
+        read-back now compares with the CRC of the zero-padded bytes."""
+        for size in (1, 47, 49, 12288 + 5, 30000):
+            rng = random.Random(size)
+            data = bytes(rng.randrange(256) for _ in range(size))
+            with self.subTest(size=size):
+                for pad in (0, 0xFF, 0x41):
+                    note = self.check([('P.BSC', ref.encode('PADDED', data, pad=pad))], 'P.BSC')
+                    self.assertTrue(note.startswith('PADDED: %d bytes' % size), note)
+        # the CRC line still guards the padding as sent
+        text = ref.encode('PADDED', b'abc', pad=0xFF)
+        good = ref.encode('PADDED', b'abc', pad=0xFE)
+        lines = text.split(b'\r')
+        lines[-3] = good.split(b'\r')[-3]          # the CRC of another padding
+        note, created, removed, made = self.run_sb([('P.BSC', b'\r'.join(lines))], 'P.BSC')
+        self.assertEqual(made, {}, note)
 
     def test_real_posts(self):
         v = cp2_samples.volume()
