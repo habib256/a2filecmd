@@ -63,6 +63,8 @@ what A2 File Cmd checks, and it ignores the history otherwise.
 
 The viewer refuses a file, before drawing anything, unless:
 
+- it is a BIN file (`$06`): the auxiliary type and the name are Return's
+  and I's test, not the viewer's;
 - `y1 ≤ y2`, at most 192 rows, and `x1 ≤ x2` (a row is then 37 bytes at most);
 - `L = width × height`;
 - the file is under 64 KB and holds at least the frame, the history's count
@@ -88,8 +90,8 @@ is Springboard's own layout, read by sector (DOS 3.3 logical sector order):
 
 **Location table.** From byte 0 of sector 6: for each page in index order,
 its pieces as three bytes each — track, sector, offset in the sector of the
-piece's first byte — then `$FF` before the next page. A page has 1 to 17
-pieces. (Past the last page the sectors hold left-overs.)
+piece's first byte — then `$FF` before the next page. A page has 1 to 30
+pieces on the disks at hand; A2 File Cmd sets no limit. (Past the last page the sectors hold left-overs.)
 
 **A piece** is a rectangle of the page: four bytes, top row `y1`, bottom
 row `y2`, left dot `x1`, right dot `x2` (a page is 252 dots × 192 rows,
@@ -101,9 +103,11 @@ leftmost dot, 1 white, bit 7 unused (`$80` stands for an empty byte, since
 `$00` is reserved). The strips, one after the other, form one stream of
 `(y2 − y1 + 1) × strips` bytes, compressed: `$00 n v` is `n` copies of `v`
 (`n` ≥ 4 on these disks; a run may continue into the next strip), any
-other byte is itself. How The Newsroom combines pieces that overlap is not
-established; A2 File Cmd draws a page's pieces in table order, each one's
-white dots added to the page (the pieces seen hardly overlap).
+other byte is itself. A2 File Cmd takes a run with `n` or `v` zero, or one
+that goes past the piece's last byte, for a damaged piece. How The Newsroom
+combines pieces that overlap is not established; A2 File Cmd draws a page's
+pieces in table order, each one's white dots added to the page (the pieces
+seen hardly overlap), the page's dot 0 at dot 14 of the hi-res screen.
 
 The pieces are read across sector and track boundaries; a piece that ends
 exactly at the end of a sector may leave the next sector unused (the next
@@ -140,7 +144,9 @@ above. They are not redistributed here.
 
 `tools/newsroom_ref.py` is the reference: the checks, the page the viewer
 draws, a generator of synthetic pictures, and a reader of the DOS 3.3 disks
-(`--png OUTDIR DISK...` writes the pictures out). The NEWSROOM overlay
+(`--png OUTDIR DISK...` writes the pictures out); for the clip-art disks,
+`clip_index`, `clip_table`, `clip_piece`, `clip_page`, a generator of
+synthetic disks and `--clip-png OUTDIR DISK...`. The NEWSROOM overlay
 (`src/plugins/newsroom.s`) centres the picture on a black hi-res page, in
 the main bank only: it writes neither the disk nor the auxiliary memory, so
 `/RAM` is untouched. Left and Right go to the neighbouring Newsroom picture
@@ -158,11 +164,14 @@ It checks the index and the whole location table first (`clip_index`,
 index order, it draws the page on hi-res page 1, which the screen shows as it
 is built, exactly as `clip_page` does, and saves those 8,192 bytes as a BIN
 file of auxiliary type `$2000`, named from the page name the way the core
-names DOS 3.3 files (letters and digits upper case, anything else a period,
-15 characters, an `X` for a first character that is not a letter). The file
-is created exclusively: a name already there is counted and skipped; a page
-`clip_piece` refuses is counted as damaged and gets no file; a failed write
-or close removes the file just created and stops; a read error stops;
+names DOS 3.3 files (trailing blanks dropped, letters and digits upper
+case, anything else a period, 15 characters, an `X` for a first character
+that is not a letter). The file is created exclusively: a name already
+there is counted and skipped, any other creation error stops; a page
+`clip_piece` refuses is counted as damaged and gets no file; a failed open,
+write or close removes the file just created and stops (a removal that
+fails too is reported, with the name of the file left incomplete); a read
+error, the image's close included, stops;
 Escape stops between pages. The message line gives the three counts. The
 disk is only read, the auxiliary memory is not used. Its code runs partly
 from `$0C00`, the ProDOS buffer of a second open file, so it never keeps
