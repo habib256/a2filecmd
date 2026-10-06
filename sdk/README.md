@@ -24,7 +24,9 @@ once survive later versions of the program.
      third-party overlay and refuses a `.PLG` from another build of the program;
    - a **flags** byte — `0` for a small overlay (`$1B00-$1FFF`, 1,280 bytes),
      `OVERLAY_BIG` for a big one, which also takes the graphics page
-     `$2000-$3FFF` (then raise `RAM` to `$2500` in the `.cfg`);
+     `$2000-$3FFF` (then link with `-D __OVLSIZE__=$2500`, the symbol
+     [`plugin.cfg`](plugin.cfg) sizes `RAM` with; the core sets the tags
+     aside and rereads both panels when a big overlay returns);
    - add `OVERLAY_AUX` when the overlay uses auxiliary memory belonging to
      the ProDOS RAM disk: the core requires explicit consent before entry,
      including a cached overlay. `OVERLAY_BIG` alone does not authorize AUX
@@ -33,29 +35,40 @@ once survive later versions of the program.
      This hardware-only probe preserves AUX. The overlay must silence its
      output and disable its timer interrupt before returning;
    - the **address of the entry point**;
-   - three reserved bytes, then a one-line **description**, shown in the menu
-     (65 characters at most: the menu row uses all 80 columns).
+   - three reserved bytes, then a one-line **description**, shown in the menu,
+     which displays its first 51 characters (`struct MenuItem` in
+     `src/a2fc.c`; the 65 of the header's comment is the column width).
 2. **The entry point** `void __fastcall__ plugin_entry(const struct A2fcApi*)`.
    The core calls it on the selection. `api->panels[*api->active]` is the
    active panel, `api->selected` the entry under the cursor (copied out of the
    tables, `name[0] == 0` if the panel is empty), `api->full` its complete
    ProDOS path, `api->arg` the key that called (`0` from the menu).
 3. **The calls into the table**: `api->message`, `api->confirm`, `api->prompt`,
-   `api->fopen`/`fread`/`fwrite`, `api->dir_open`/`dir_next`, `api->mli`, and
-   the usual C functions (`sprintf`, `memcpy`, `strcpy`...). The complete list
-   is in `struct A2fcApi`.
+   `api->fopen`/`fread`/`fwrite`, `api->dir_open`/`dir_next`/`dir_close`,
+   `api->mli`, and the usual C functions (`sprintf`, `memcpy`, `strcpy`...).
+   The complete list is in `struct A2fcApi`.
+
+   `dir_next` returns 0 at the end of the directory **and** when a block
+   cannot be read or an entry is malformed. To tell the two apart, read the
+   value `dir_close` leaves in A: non-zero means the listing was cut short.
+   The table declares `dir_close` as `void` (the ABI is frozen), so declare
+   your own pointer type to read it, as FIND does:
+   `((unsigned char (*)(void))api->dir_close)()`. Cores before 0.9.6 leave
+   an unrelated value there.
 
 ## Building
 
     ./sdk/build.sh sdk/hello.c HELLO   # -> build/HELLO.PLG
 
-`build.sh` compiles the C for the cc65 `apple2enh` target (the same as A2FC:
-the zero-page addresses and the C stack coincide), then links it with `ld65`
+`build.sh` compiles the C for the cc65 `apple2enh` target (the 65C02
+edition's: the zero-page addresses and the C stack coincide), then links it with `ld65`
 on [`plugin.cfg`](plugin.cfg) and the `apple2enh` library — **without** crt0:
 an overlay is not a program, it is called inside the cc65 context that A2FC
 already holds. The result is a raw BIN to be placed under `A2FILE/HELLO.PLG`
 (ProDOS type `$06`, address `$1B00`), next to `A2FILE.CODE`. From the root of
-the repository, `make example` does the same thing.
+the repository, `make example` does the same thing. `build.sh` has no 6502
+switch: for the 6502 edition compile with `-t apple2` and link with
+`apple2.lib`, as `bench/plugin.py` does for that build.
 
 The main Makefile also discovers `src/plugins/NAME.c`. A matching `NAME.s`
 is assembled and linked as an optional helper (see VERIFY and VOLINFO's
@@ -66,8 +79,8 @@ above code and BSS; keep those limits in sync with the assembly tables.
 
 From release 1.0, what an overlay compiled once depends on does not change:
 `struct Entry` (29 bytes), `struct Panel`, `struct DirEntry` and the overlay
-header `struct Overlay`, field for field; the first 54 services of
-`struct A2fcApi` (API version 5), then `aux_consent` (version 6), in order; `PLUGIN_MAGIC`,
+header `struct Overlay`, field for field; the first 54 fields of
+`struct A2fcApi` (`version`, `arg` and 52 pointers: API version 5), then `aux_consent` (version 6), in order; `PLUGIN_MAGIC`,
 `MEDIA_PLUGIN_MAGIC`, the `OVERLAY_*` flags and windows, `MAX_ENTRIES`,
 `PATH_LEN`, `NAME_LEN`, `ROWS`, the `FS_*` values and `ENTRY_SNAPSHOT` at
 `$3000`. A new service is appended after `aux_consent` and raises
@@ -122,3 +135,8 @@ itself overwrites MAIN `$2000-$21FF` (the /RAM driver's FORMAT writes a
 block into the buffer it is given): no code or data you still need may lie
 there, or save it around the call (`src/plugins/ppt3/driver.s` does). Check
 `api->version >= 6` first.
+
+Either way of asking (`OVERLAY_AUX` or `aux_consent()`) also tells the core
+that AUX may be damaged until the overlay returns: a Ctrl-Reset meanwhile
+makes the program's exit rebuild /RAM (`aux_dirty`, `src/crt0.s`). An
+overlay that asks its own question instead does not get that.

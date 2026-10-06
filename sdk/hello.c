@@ -28,7 +28,7 @@ struct PluginHeader {
     unsigned char flags;
     void __fastcall__ (*entry)(const struct A2fcApi*);
     unsigned char r0, r1, r2;
-    char desc[66];      /* the menu reads 65 at most */
+    char desc[66];      /* the menu shows the first 51 characters */
 };
 
 #pragma rodata-name (push, "OVLHDR")
