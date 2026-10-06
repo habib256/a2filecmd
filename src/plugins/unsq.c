@@ -7,8 +7,10 @@
  * file names what it holds and ends its header with a checksum of it; a
  * .QQ taken out of a Binary II archive by BINARY2 keeps its ProDOS type,
  * which the result gets. An ACU archive is a list of records, each stored
- * or squeezed, with its type and plain length; directories are skipped and
- * partial paths flattened to their last name.
+ * or squeezed, with its type and plain length; directories are skipped,
+ * so is a plain record typed $0F (counted, named in the note: the panels
+ * would walk it as a folder), and partial paths flattened to their last
+ * name.
  *
  * Every file follows the one contract of the file services: created only
  * under a free name (a taken one is skipped and counted), written, closed,
@@ -56,7 +58,7 @@ static unsigned long ocount;
 static unsigned char hdr[0x36];
 static char name[16];
 static char dest[PATH_LEN + 1];
-static unsigned char type, bad, made, skipped, checked, kept;
+static unsigned char type, bad, made, skipped, checked, kept, folder;
 static unsigned int aux;
 
 /* -- reading ------------------------------------------------------------- */
@@ -286,7 +288,13 @@ static unsigned char acu(void)
         dlen = le32(hdr + 0x12);
         fork = tell() + rlen;
         seek(fork);
-        if (hdr[0x20] == 0x0D) { seek(fork + dlen); continue; }
+        /* A directory record is skipped; a file typed $0F too, counted:
+         * the panels would walk it as a folder. */
+        if (hdr[0x20] == 0x0D || hdr[0x18] == 0x0F) {
+            if (hdr[0x20] != 0x0D) { ++skipped; folder = 1; }
+            seek(fork + dlen);
+            continue;
+        }
         if (hdr[1] != 0 && hdr[1] != 3) return 0;
         set_name(raw, (unsigned char)nlen);
         type = hdr[0x18];
@@ -315,7 +323,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         note("Other panel: open a ProDOS directory.");
         return;
     }
-    base = have = at = eof = bad = made = skipped = kept = 0;
+    base = have = at = eof = bad = made = skipped = kept = folder = 0;
     limit = 0xFFFFFFFFUL;
     if (grab(hdr, 2) && hdr[0] == 0x76 && hdr[1] == 0xFF) {
         ok = standalone();
@@ -329,6 +337,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     RF(fclose)(in);
     if (kept) return;
     if (!ok && !bad && !made && !skipped) { note("Damaged archive: nothing extracted."); return; }
-    a.sprintf(a.note, "%u extracted, %u skipped (name taken)%s", made, skipped,
+    a.sprintf(a.note, "%u extracted, %u skipped (name taken%s)%s", made, skipped,
+              folder ? " or type $0F" : "",
               ok ? "." : cancelled ? "; stopped." : "; damaged, stopped.");
 }

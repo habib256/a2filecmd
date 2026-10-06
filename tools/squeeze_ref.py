@@ -139,8 +139,8 @@ def unsqueeze(data, wrapper):
             i += rlen
             fork = data[i:i + dlen]
             i += dlen
-            if storage == 0x0D:
-                continue
+            if storage == 0x0D or ftype == 0x0F:
+                continue                # a directory, or a file typed as one
             if dmethod == 3:
                 body, used = decode_stream(fork, 0)
             elif dmethod == 0:

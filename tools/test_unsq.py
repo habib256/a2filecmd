@@ -176,6 +176,30 @@ class Unsq(unittest.TestCase):
             with self.subTest(i=i):
                 self.check('A%d.ACU' % i, ref.make_acu(files), typ=0xE0, aux=0x8001)
 
+    def test_type_0f_record_skipped(self):
+        """An ACU record typed $0F that is not a directory record is skipped.
+
+        Before: only storage type $0D was skipped, so a record with file
+        type $0F and storage type 1 went to newfile(dest, $0F, ...):
+        `CREATE FAKEDIR 0F 0000`, note `1 extracted` -- a plain file
+        typed as a folder, which the panels then walk as directory
+        entries. BINARY2, SCIIBIN and UNWRAP refuse $0F; so does UNSQ now,
+        counted with the skipped files and named in the note."""
+        for squeezed in (False, True):
+            with self.subTest(squeezed=squeezed):
+                acu = ref.make_acu([(b'FAKEDIR', 0x0F, 0, b'\0' * 600, squeezed, False),
+                                    (b'REAL', 4, 0x1234, b'kept\r' * 50, squeezed, False)])
+                self.assertEqual([f[0] for f in ref.unsqueeze(acu, 'X')], ['REAL'])
+                note, created, removed, made = self.run_unsq('X.ACU', acu, typ=0xE0, aux=0x8001)
+                self.assertEqual(created, [['REAL', '04', '1234']], note)
+                self.assertEqual(made, {'REAL': b'kept\r' * 50})
+                self.assertEqual(removed, [])
+                self.assertEqual(note, '1 extracted, 1 skipped (name taken or type $0F).')
+        acu = ref.make_acu([(b'ONLY', 0x0F, 0, b'x' * 10, False, False)])
+        note, created, removed, made = self.run_unsq('X.ACU', acu, typ=0xE0, aux=0x8001)
+        self.assertEqual((created, made), ([], {}), note)
+        self.assertEqual(note, '0 extracted, 1 skipped (name taken or type $0F).')
+
     def test_real_files(self):
         found = 0
         bqy = cp2_samples.path('bny/SAMPLE.BQY')
