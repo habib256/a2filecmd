@@ -5,14 +5,21 @@ import unittest
 from pathlib import Path
 from test_six_plugins import PREFIX, ROOT
 
+# Four three-block disks (boot blocks 0-1, the volume directory's block 2)
+# in a file: 0 BOOT, the volume booted from; 1 TARGET; 2 OTHER, another
+# volume; 3 a TARGET twin, the same volume header byte for byte but other
+# entries and other boot blocks. Unit $60 holds disk `src`, unit $D0 disk
+# `tgt`; argv[7] "XY" puts disk X in $D0 and Y in $60 while the question
+# is on the screen ("--": no swap).
 HARNESS = PREFIX + r'''
 static unsigned char original[1024], replacement[1024];
 #define ORIGINAL original
 #define REPLACEMENT replacement
 #include "src/plugins/bootblk.c"
-static unsigned char disks[2][1536];
+static unsigned char disks[4][1536];
 static unsigned int calls, writes, fail1, fail2;
-static int mode, consent, same;
+static int mode, consent, same, tgt = 1, src = 0;
+static const char* swap;
 static unsigned char mock(unsigned char cmd, void* p) {
     struct Blk* io = p;
     unsigned char *disk;
@@ -25,12 +32,13 @@ static unsigned char mock(unsigned char cmd, void* p) {
         return 0;
     }
     ++calls;
-    if ((cmd != 0x80 && cmd != 0x81) || io->block > 1) abort();
+    if ((cmd != 0x80 && cmd != 0x81) || io->block > 2) abort();
     if (io->unit != 0x60 && io->unit != 0xD0) abort();
-    disk = disks[io->unit == 0xD0] + io->block * 512;
+    disk = disks[io->unit == 0xD0 ? tgt : src] + io->block * 512;
     fault = calls == fail1 || calls == fail2;
     if (cmd == 0x81) {
         if (io->unit != 0xD0) abort(); /* never write the source */
+        if (io->block > 1) abort();    /* nor the volume directory */
         ++writes;
     }
     if (fault && mode == 0) return 0x27;
@@ -43,7 +51,12 @@ static unsigned char mock(unsigned char cmd, void* p) {
     }
     return 0;
 }
-static unsigned char confirm(const char* s) { (void)s; return consent; }
+static unsigned char confirm(const char* s) {
+    (void)s;
+    if (swap[0] != '-') tgt = swap[0] - '0';
+    if (swap[1] != '-') src = swap[1] - '0';
+    return consent;
+}
 int main(int argc, char** argv) {
     static struct A2fcApi api;
     static struct Panel panels[2];
@@ -51,13 +64,12 @@ int main(int argc, char** argv) {
     static unsigned char active, copy[512];
     static char note[80];
     FILE* f;
-    unsigned int i;
     fail1 = atoi(argv[1]); fail2 = atoi(argv[2]); mode = atoi(argv[3]);
     consent = atoi(argv[4]); same = atoi(argv[5]);
-    for (i = 0; i < 1536; ++i) {
-        disks[0][i] = (i * 17 + i / 512) & 255;
-        disks[1][i] = (i * 7 + 93 + i / 512) & 255;
-    }
+    f = fopen(argv[6], "rb");
+    if (!f || fread(disks, 1, sizeof disks, f) != sizeof disks) abort();
+    fclose(f);
+    swap = argv[7]; tgt = atoi(argv[8]);
     strcpy(selected.name, same ? "/BOOT" : "/TARGET");
     selected.mdate = same ? 6 : 13;
     api.panels = panels; api.active = &active; api.selected = &selected;
@@ -71,7 +83,27 @@ int main(int argc, char** argv) {
 '''
 
 
+def disk(seed, name, header_from=None):
+    """Three blocks; block 2 a ProDOS volume header named `name`."""
+    data = bytearray((i * (2 * seed + 7) + 93 * seed + i // 512) & 255 for i in range(1536))
+    h = data[1024:]
+    h[0:4] = bytes([0, 0, 3, 0])
+    h[4] = 0xF0 | len(name)
+    h[5:20] = name.encode().ljust(15, b'\0')
+    h[35], h[36] = 39, 13
+    h[39:41] = (6).to_bytes(2, 'little')
+    h[41:43] = (280).to_bytes(2, 'little')
+    data[1024:] = h
+    if header_from is not None:
+        data[1024:1024 + 43] = header_from[1024:1024 + 43]
+    return bytes(data)
+
+
 class BootBlocks(unittest.TestCase):
+    # The four reads of block 2 (target, source before the question; target,
+    # source after) come first: block I/O call 5 is the first boot block read.
+    ID = 4
+
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory(prefix='bootblk-faults-')
@@ -81,42 +113,51 @@ class BootBlocks(unittest.TestCase):
         cls.exe = cls.root / 'test'
         subprocess.run(['cc', '-std=c99', '-Wno-unknown-pragmas', '-I', str(ROOT),
                         str(source), '-o', str(cls.exe)], check=True, capture_output=True)
-        cls.source = bytes((i * 17 + i // 512) & 255 for i in range(1536))
-        cls.target = bytes((i * 7 + 93 + i // 512) & 255 for i in range(1536))
+        cls.source = disk(1, 'BOOT')
+        cls.target = disk(2, 'TARGET')
+        cls.other = disk(3, 'OTHER')
+        cls.twin = disk(4, 'TARGET', header_from=cls.target)
 
     @classmethod
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def run_case(self, fail=0, second=0, mode=0, consent=1, same=0):
+    def run_all(self, fail=0, second=0, mode=0, consent=1, same=0, swap='--', tgt=1):
         path = self.root / 'result.bin'
+        path.write_bytes(self.source + self.target + self.other + self.twin)
         result = subprocess.check_output([str(self.exe), str(fail), str(second),
-                  str(mode), str(consent), str(same), str(path)], text=True)
+                  str(mode), str(consent), str(same), str(path), swap, str(tgt)], text=True)
         counts, note = result.split('\n', 1)
         calls, writes = map(int, counts.split())
         data = path.read_bytes()
-        self.assertEqual(data[:1536], self.source, 'source must remain untouched')
-        self.assertEqual(data[2560:], self.target[1024:], 'no filesystem block writes')
-        return calls, writes, note, data[1536:]
+        disks = [data[i * 1536:(i + 1) * 1536] for i in range(4)]
+        self.assertEqual(disks[0], self.source, 'source must remain untouched')
+        return calls, writes, note, disks
+
+    def run_case(self, fail=0, second=0, mode=0, consent=1, same=0):
+        calls, writes, note, disks = self.run_all(fail, second, mode, consent, same)
+        self.assertEqual(disks[1][1024:], self.target[1024:], 'no filesystem block writes')
+        self.assertEqual(disks[2:], [self.other, self.twin])
+        return calls, writes, note, disks[1]
 
     def test_success_verifies_both_blocks(self):
         calls, writes, note, target = self.run_case()
-        self.assertEqual((calls, writes), (8, 2))
+        self.assertEqual((calls, writes), (self.ID + 8, 2))
         self.assertEqual(target, self.source[:1024] + self.target[1024:])
         self.assertIn('rewritten from', note)
 
     def test_all_preflight_read_failures_write_nothing(self):
         for mode in (0, 1):
-            for fail in range(1, 5):
+            for fail in range(1, self.ID + 5):
                 with self.subTest(mode=mode, fail=fail):
                     calls, writes, note, target = self.run_case(fail, mode=mode)
                     self.assertEqual(writes, 0)
                     self.assertEqual(target, self.target)
-                    self.assertIn('nothing written', note)
+                    self.assertIn('othing written', note)
 
     def test_install_errors_before_and_after_io_restore_both_originals(self):
         for mode in (0, 1, 2):
-            for fail in range(5, 9):
+            for fail in range(self.ID + 5, self.ID + 9):
                 with self.subTest(mode=mode, fail=fail):
                     calls, writes, note, target = self.run_case(fail, mode=mode)
                     self.assertEqual(target, self.target)
@@ -124,13 +165,14 @@ class BootBlocks(unittest.TestCase):
                     self.assertGreaterEqual(writes, 3)
 
     def test_failed_restore_reports_incomplete_and_still_attempts_other_block(self):
-        # Failure on second installation write (call 7), then each rollback I/O.
+        # Failure on second installation write, then each rollback I/O.
         for mode in (0, 1, 2):
             for offset in range(4):
-                start = 9 if mode == 2 else 8
+                start = self.ID + (9 if mode == 2 else 8)
                 second = start + offset
                 with self.subTest(mode=mode, second=second):
-                    calls, writes, note, target = self.run_case(8 if mode == 2 else 7, second, mode)
+                    calls, writes, note, target = self.run_case(
+                        self.ID + (8 if mode == 2 else 7), second, mode)
                     self.assertIn('BOOT RESTORE FAILED', note)
                     self.assertEqual(writes, 4, 'both restoration writes must be attempted')
                     if offset < 2:
@@ -138,9 +180,10 @@ class BootBlocks(unittest.TestCase):
                     else:
                         self.assertEqual(target[:512], self.target[:512])
 
-    def test_declining_does_not_read_or_write_blocks(self):
+    def test_declining_does_not_write_blocks(self):
+        """Only the two block-2 reads that identify the volumes happen."""
         calls, writes, note, target = self.run_case(consent=0)
-        self.assertEqual((calls, writes), (0, 0))
+        self.assertEqual((calls, writes), (2, 0))
         self.assertEqual(target, self.target)
 
     def test_source_volume_is_refused(self):
@@ -148,6 +191,61 @@ class BootBlocks(unittest.TestCase):
         self.assertEqual((calls, writes), (0, 0))
         self.assertIn('volume booted from', note)
         self.assertEqual(target, self.target)
+
+
+class SwappedDisk(unittest.TestCase):
+    """The boot blocks go to the disk the question named, or nowhere.
+
+    Before the fix (measured 2026-10-06 on 535682e with this harness, the
+    disk in unit $D0 changed while the question was on the screen): with
+    OTHER swapped in, OTHER's blocks 0 and 1 became BOOT's, 8 calls, 2
+    writes, note 'Boot blocks of /TARGET rewritten from /BOOT'; the same
+    with the TARGET twin (same volume header, other entries), and with a
+    volume-list entry whose unit held OTHER from the start (the name was
+    never checked against the unit). A source swapped during the question
+    gave TARGET the boot blocks of OTHER.
+
+    The identity is block 2 whole, all 512 bytes compared exactly: read
+    before the question (where its volume name must also be the one the
+    question gives) and again after it, before the first boot block read."""
+
+    run_all = BootBlocks.run_all
+
+    @classmethod
+    def setUpClass(cls):
+        BootBlocks.setUpClass.__func__(cls)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def assert_untouched(self, disks, note):
+        self.assertEqual(disks, [self.source, self.target, self.other, self.twin])
+        self.assertIn('Nothing written', note)
+
+    def test_another_volume_swapped_in_during_the_question(self):
+        calls, writes, note, disks = self.run_all(swap='2-')
+        self.assertEqual(writes, 0)
+        self.assert_untouched(disks, note)
+        self.assertIn('/TARGET', note)
+
+    def test_the_same_name_with_other_contents(self):
+        calls, writes, note, disks = self.run_all(swap='3-')
+        self.assertEqual(writes, 0)
+        self.assert_untouched(disks, note)
+
+    def test_the_source_swapped_during_the_question(self):
+        calls, writes, note, disks = self.run_all(swap='-2')
+        self.assertEqual(writes, 0)
+        self.assert_untouched(disks, note)
+        self.assertIn('/BOOT', note)
+
+    def test_a_stale_volume_list_entry_is_refused_before_the_question(self):
+        """The selected /TARGET's unit holds OTHER: never asked, never written."""
+        calls, writes, note, disks = self.run_all(tgt=2)
+        self.assertEqual((calls, writes), (2, 0))
+        self.assertEqual(disks, [self.source, self.target, self.other, self.twin])
+        self.assertIn('not on line', note)
 
 
 if __name__ == '__main__':

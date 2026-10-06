@@ -18,6 +18,14 @@
  * that reports success and keeps its old contents (a driver that lies about
  * write protection, a failing sector) is a failure here, not a success.
  *
+ * A raw write goes to whatever disk is in the drive when it happens. After
+ * ERASE, block 2 is read again and its 32-bit signature compared with the
+ * one taken when the disk was opened (same_disk): a floppy changed while
+ * the block was being edited, or during the prompt, is not written, and the
+ * edit stays in the buffer until the right disk is back. A copy whose block
+ * 2 is identical byte for byte cannot be told apart, and a swap between
+ * that check and the write itself cannot be excluded on this hardware.
+ *
  * The volume A2FC is running from is refused outright. ProDOS holds
  * directory blocks of an open volume in its own buffers, so a block written
  * underneath it is liable to be written back over from that cache; and the
@@ -92,7 +100,10 @@ static unsigned char page;              /* 0 or 1: which half of it is on screen
 static unsigned char cur;               /* the cursor, 0-255 within that half */
 static unsigned char dirty;             /* the buffer and the disk disagree */
 static unsigned char loaded;            /* copy_buf holds a block at all */
-static unsigned char check[512];        /* the readback */
+static unsigned char check[512];        /* the readback; block 2 for the identity */
+#define high (check + 256)               /* its second half, indexed by a byte */
+static unsigned char s, t, u, v;        /* the signature of block 2 in the drive */
+static unsigned char is, it, iu, iv;    /* and of the disk opened */
 
 static const char m_pick[]  = "Select a ProDOS volume or a .PO/.DSK/.2MG image.";
 static const char m_open[]  = "Invalid or unreadable image.";
@@ -106,6 +117,8 @@ static const char m_wfail[] = "Write failed: the block is unchanged or half writ
 static const char m_rfail[] = "Written, but it cannot be read back to be checked.";
 static const char m_diff[]  = "READBACK DIFFERS: the disk did not take the block.";
 static const char m_done[]  = "Block %u written and read back identical. Any key.      ";
+static const char m_warn[]  = " BLOCK %u OF %s WILL BE OVERWRITTEN. ";
+static const char m_swap[]  = " BLOCK %u NOT WRITTEN: NOT %s AS OPENED, OR UNREADABLE. ";
 static const char m_erase[] = "Type ERASE to write it";
 static const char m_word[]  = "ERASE";
 static const char m_lost[]  = "This block was changed and not written. Discard?";
@@ -176,28 +189,96 @@ static unsigned char boot_volume(void)
     return (!source.path[i] || source.path[i] == '/') && a.cfg_path[i] == '/';
 }
 
+/* 1 when `check` holds the 512 bytes of `buf`. A byte index on both
+ * halves: cc65 miscompiles a 16-bit index into a page-aligned array. */
+static unsigned char same_block(void)
+{
+    unsigned char i = 0;
+    do {
+        if (buf[i] != check[i]) return 0;
+        if (buf[i + 256] != high[i]) return 0;
+        ++i;
+    } while (i);
+    return 1;
+}
+
+/* The identity of the disk. Raw writes go to whatever disk the drive
+ * holds at the moment, and the ERASE prompt left all the time needed to
+ * change it. Block 2 is read into `check` and signed: two pairs of 8-bit
+ * running sums, one pair per half (s, and t the sum of the s's, which also
+ * sees where a byte changed): the volume header (name, dates, size, file
+ * count) and the first directory entries. One changed byte always moves s;
+ * several escape only if all four sums collide. The whole block would be
+ * exact, but 512 more bytes do not fit in this overlay. 1: read.
+ * The sums index by a byte: cc65 miscompiles a 16-bit index into a
+ * page-aligned array. */
+static unsigned char sign(void)
+{
+    unsigned char i = 0;
+    if (!source_read(&source, 2, check)) return 0;
+    s = t = u = v = 0;
+    do {
+        s += check[i]; t += s;
+        u += high[i]; v += u;
+        ++i;
+    } while (i);
+    return 1;
+}
+
+/* Block 2 of the disk in the drive becomes the identity. 1: read. */
+static unsigned char remember(void)
+{
+    if (!sign()) return 0;
+    is = s; it = t; iu = u; iv = v;
+    return 1;
+}
+
+/* Is the disk in the drive the one opened? An unreadable block 2 is a
+ * refusal, not a pass. When block 2 itself is being written, finding it
+ * already equal to the edit (a previous W got that far) also passes:
+ * writing the same bytes again changes nothing on any disk. */
+static unsigned char same_disk(void)
+{
+    if (!sign()) return 0;
+    if (block == 2 && same_block()) return 1;
+    if (s != is) return 0;
+    if (t != it) return 0;
+    if (u != iu) return 0;
+    if (v != iv) return 0;
+    return 1;
+}
+
+/* Row 20, in inverse: the warning, or why nothing was written. */
+static void banner(const char* f)
+{
+    v_gotoxy(0, 20);
+    v_revers(1);
+    v_cprintf(f, block, source.path);
+    v_revers(0);
+}
+
 /* W: the block back to the disk, once, with everything that guards it. */
 static void write_block(void)
 {
-    unsigned int i;
     if (!dirty) { v_message(m_none); v_cgetc(); return; }
     if (boot_volume()) { v_message(m_boot); v_cgetc(); return; }
     if (!source.unit && image_readonly) { v_message(m_ro); v_cgetc(); return; }
-    v_gotoxy(0, 20);
-    v_revers(1);
-    v_cprintf(" BLOCK %u OF %s WILL BE OVERWRITTEN. ", block, source.path);
-    v_revers(0);
+    banner(m_warn);
     if (!v_prompt(m_erase, NULL, 0) || v_strcmp(a.input, m_word)) {
         v_message(m_stop); v_cgetc(); return;
     }
+    /* The last look before the write; the edit stays in `buf`, dirty, for
+     * a W once the right disk is back. */
+    if (!same_disk()) { banner(m_swap); v_cgetc(); return; }
     if (!source_write(&source, block, buf)) { v_message(m_wfail); v_cgetc(); return; }
     /* Read back into `check`, never over the buffer we just wrote: if the
      * readback fails the edit is still there to try again. */
     if (!source_read(&source, block, check)) {
         v_message(m_rfail); v_cgetc(); return;
     }
-    for (i = 0; i < 512 && buf[i] == check[i]; ++i) ;
-    if (i < 512) { v_message(m_diff); v_cgetc(); return; }
+    if (!same_block()) { v_message(m_diff); v_cgetc(); return; }
+    /* Block 2 now holds the edit: it is the identity from here on. */
+    if (block == 2) remember();
     dirty = 0;
     v_gotoxy(0, 22);                    /* over the key bar; draw() puts it back */
     v_cprintf(m_done, block);
@@ -260,7 +341,10 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         /* Reread ONLY when the block changes: rereading every time round
          * would throw away what the cursor has just changed. */
         if (!loaded || block != shown) {
-            if (!source_read(&source, block, buf)) { note(m_read); break; }
+            /* The first time round, block 2 too: the identity W checks
+             * before it writes, read the same way whatever the disk holds
+             * (a DOS 3.3 image has a block 2, only not a volume header). */
+            if ((!loaded && !remember()) || !source_read(&source, block, buf)) { note(m_read); break; }
             shown = block; loaded = 1; dirty = 0; cur = 0; hi = 0x10;
         }
         draw();

@@ -8,6 +8,15 @@
  * at $3400-$37FF. Code and BSS are linked below $3000. copy_buf is reserved
  * for verification. Messages survive the core's panel reload via api->note.
  * The native service/volume-name stubs below keep the original 6502 ABI.
+ *
+ * Raw block writes go to whatever disk the drive holds when they happen.
+ * Before the question, block 2 of both volumes is read and must carry the
+ * name the question gives (a volume-list entry can be stale); after it,
+ * block 2 is read again and must be the same 512 bytes, or nothing is read
+ * or written: a disk changed during the question never gets boot blocks it
+ * was not named for, nor the target boot blocks from another source. A
+ * twin whose block 2 is identical byte for byte cannot be told apart, and
+ * a swap between that last look and the writes cannot be excluded.
  */
 #include <stddef.h>
 #include "../a2fc_plugin.h"
@@ -38,6 +47,9 @@ static const char m_nf[]   = "Volume not on line.";
 static const char m_read[] = "Boot blocks unreadable: nothing written.";
 static const char m_restored[] = "Boot write failed; both original blocks restored and verified.";
 static const char m_failed[] = "BOOT RESTORE FAILED: target may not boot. Recover before retrying.";
+static const char m_id[]   = "Volume header unreadable: nothing written.";
+static const char c_1[]    = "Disk changed or unreadable: ";
+static const char c_2[]    = ". Nothing written.";
 #ifndef ORIGINAL
 #define ORIGINAL ((unsigned char*)0x3000)
 #define REPLACEMENT ((unsigned char*)0x3400)
@@ -60,6 +72,7 @@ static char LINE[72];                       /* the question, then the last word 
 static unsigned char blen;                  /* what LINE holds */
 static unsigned char inpath;                /* the panel is inside a volume */
 static unsigned char tunit, sunit, b, failed;
+static unsigned char ID[1024];              /* block 2 of the target, then of the source */
 static struct Blk blk = { 3, 0, 0, 0 };     /* DATA: set once, loaded with the file */
 static struct Onl onl = { 2, 0, 0 };
 
@@ -217,6 +230,44 @@ static unsigned char write_checked(unsigned char* bytes)
     return 1;
 }
 
+/* Block 2 of `unit` into `to`. 1: read. */
+static unsigned char block2(unsigned char unit, unsigned char* to)
+{
+    blk.block = 2;
+    blk.unit = unit;
+    blk.buf = to;
+    if (mli(0x80, &blk)) return 0;
+    return 1;
+}
+
+/* Is `h` a ProDOS volume header named `name` ("/NAME")? */
+static unsigned char named(const unsigned char* h, const char* name)
+{
+    unsigned char n, i;
+    if ((h[4] & 0xF0) != 0xF0) return 0;
+    n = h[4] & 15;
+    for (i = 0; i < n; ++i) if (h[5 + i] != (unsigned char)name[i + 1]) return 0;
+    if (name[n + 1]) return 0;
+    return 1;
+}
+
+/* Is block 2 of `unit` still the 512 bytes of `id`? Unreadable: no. */
+static unsigned char still(unsigned char unit, const unsigned char* id)
+{
+    unsigned int i;
+    if (!block2(unit, BUF)) return 0;
+    for (i = 0; i < 512; ++i) if (BUF[i] != id[i]) return 0;
+    return 1;
+}
+
+/* The note when the disk named `name` is no longer the one asked about. */
+static void changed(const char* name)
+{
+    blen = 0;
+    cat(c_1); cat(name); cat(c_2);
+    msg(LINE);
+}
+
 void __fastcall__ plugin_entry(const struct A2fcApi* api)
 {
     A = api;
@@ -247,9 +298,18 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     if (!sunit || !tunit) { msg(m_nf); return; }
     if (sunit == tunit) { msg(m_same); return; }
 
+    /* What the question will name, as the drives hold it now. */
+    if (!block2(tunit, ID) || !block2(sunit, ID + 512)) { msg(m_id); return; }
+    if (!named(ID, TGT) || !named(ID + 512, SRC)) { msg(m_nf); return; }
+
     blen = 0;
     cat(a_1); cat(TGT); cat(a_2); cat(SRC); cat(a_3);
     if (!ask(LINE)) return;
+
+    /* The last look before the first read of a boot block: the question
+     * left all the time needed to change disks. */
+    if (!still(tunit, ID)) { changed(TGT); return; }
+    if (!still(sunit, ID + 512)) { changed(SRC); return; }
 
     /* Preflight: no target write until all four reads succeeded. */
     for (b = 0; b < 2; ++b) {
