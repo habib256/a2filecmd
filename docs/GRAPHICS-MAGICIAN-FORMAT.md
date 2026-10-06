@@ -262,9 +262,12 @@ top-left at (c, p, Y), top-right at (c+1, p, Y), bottom-left at
 (c, p, Y+8), bottom-right at (c+1, p, Y+8), where c = X div 7, p = X mod 7.
 It therefore touches byte columns c to c+2 and rows Y to Y+15, drawn in
 that order (top-left, top-right, bottom-left, bottom-right). Nothing is
-clipped: a brush stamped at X ≥ 266 writes byte columns 40-41, which are
-the first bytes of the row 64 lines below (or of the next row group), and
-one at Y ≥ 177 reaches rows 192-206 (section 11). The real pictures do
+clipped: the cell of a brush stamped at X ≥ 266 covers byte columns
+40-41, which are the first bytes of the row 64 lines below (or of the next
+row group), and that of one at Y ≥ 177 rows 192-206 (section 11). Since a
+byte whose part is zero is untouched, the brushes of Appendix A actually
+write there from X ≥ 267 (pixel X+13 of brush 5) and Y ≥ 178 (row 14 of
+brushes 5 and 7), down to row 205 at most. The real pictures do
 both (725 edge stamps in the corpus), and the expected output contains
 those wrapped pixels.
 
@@ -425,7 +428,7 @@ brushes are integrated as interoperability data: they are given in
 **Appendix A**, in a form of my own (the row patterns are numbered in
 order of first use by the palette, not as the original stores them; the
 brushes are drawn as pictures), checked by rebuilding the tables from the
-text of this document and rendering the 398 real pictures and the 144
+text of this document and rendering the 398 real pictures and the 152
 expected pages of Appendix B: all identical. **The font is not
 integrated**: a viewer draws text with an A2FC 7 × 8 font (section 8).
 Since no real picture uses text, every known picture stays byte-identical.
@@ -494,8 +497,9 @@ that no write ever leaves the page.
 2. **Refuse** before drawing anything when the first picture does not
    parse strictly (section 3, rule 3) or contains any case of the
    section 11 table. Never write outside page 1.
-3. **Dialect**: V84 if the picture uses $1x, $3x or $5x; otherwise **V82
-   by default**, and a key redraws the picture in the other dialect (the
+3. **Dialect**: V84 if a picture of the file uses $1x, $3x or $5x (the
+   key then does nothing); otherwise **V82 by default**, and a key (D in
+   A2FC) redraws the picture in the other dialect (the
    original routines give different pixels for most pictures, section 2).
    V82 means the PICDRAWF behaviour shipped with the games, including
    rows 192 and beyond addressed as in section 11 (PICDRAW gives the same
@@ -510,8 +514,9 @@ that no write ever leaves the page.
    to back, each ended by $00, then possibly leftover bytes. Show the
    first; browse the next ones (each on a cleared page for picture groups;
    for room files with overlays, the overlays drawn over part 0, without
-   clearing). Stop at the first part that does not parse; ignore the
-   rest of the file.
+   clearing). Every part is held to rules 2-5 of section 3, not only the
+   first; stop at the first part that fails them (A2FC also stops after
+   255 parts); ignore the rest of the file.
 6. **Text** (V84 only) with the A2FC substitute font: not byte-identical.
 7. **Timing**: the original takes 0.3 to 8.9 million cycles per real
    picture (median 2.4 million, about 2.4 s at 1 MHz), drawing on the
@@ -521,6 +526,51 @@ that no write ever leaves the page.
 8. **Self-check** with Appendix B; the maintainer can also compare
    against the original routines on the 398 real pictures (private
    oracle).
+
+## 18. A2FC's viewer (GMAGIC)
+
+The overlay `src/plugins/gmagic.s` (header in `gmagic.c`, tables generated
+into `gmagic_tables.inc` and `gmagic_text.inc` by
+`tools/gmagic_ref.py --includes`) was written from this document alone;
+`tools/gmagic_ref.py` is the in-tree reference written from the same
+text (the private one of section 1 stays outside). What it does beyond, or
+short of, section 17:
+
+- **Routing.** Return opens GMAGIC (kind 11 of `src/open.s`, mirrored by
+  `tools/file_viewer_ref.c`) on a BIN whose first 8 bytes look like a
+  picture: first command $2x-$Ax with an even nibble, every command
+  starting in those bytes a known one with its argument nibble in range;
+  a picture that ends within them must obey rules 4 and 5; one that goes
+  on must not repeat its first three bytes at once (bytes 3-5), which
+  rejects tables, data and text. Arguments are not checked there: the
+  overlay checks the whole file.
+- **Checks.** The file type must be BIN ($06); every part is checked
+  before anything is drawn; a read error at any byte, even after the
+  first picture, or a failed rewind refuses the whole file. Every refusal
+  gives the one note "Not a whole Graphics Magician picture, or I/O
+  error."
+- **Keys.** N or the space bar: the next part on a cleared page (after
+  the last, the first again); O: the next part drawn over the page (a
+  room and its overlays; the viewer cannot tell a group from a room file,
+  the reader chooses); D: the same view redrawn in the other dialect (not
+  for a V84 file); Left, Right, S (slideshow) and Escape are the core's.
+- **Only V82 (PICDRAWF) and V84.** The V82E pen start and PICDRAW's row
+  addressing below the screen (section 11) are not implemented by the
+  viewer.
+- **Text** past the right edge: a character whose byte column would be
+  above 40 (cursor X ≥ 287) is not drawn, the cursor still advances.
+  The substitute font is BOLD.SET (CiderPress II's STANDARD font, each
+  dot doubled to its right).
+- **Memory.** Read-only, main bank only: it writes hi-res page 1, the
+  112-byte heads of the main text page's 128-byte blocks (font and row
+  patterns), its own $0C00 area and buffers the core lends it; never
+  auxiliary memory, never a disk.
+- **Tests.** `tools/test_gmagic.py` runs the overlay under sim65 on both
+  processors against every page of Appendix B, the malformed cases of
+  section 11, read errors and the keys; `tools/test_gmagic_writes.py`
+  runs the shipped 6502 GMAGIC.PLG in an interpreter that records every
+  write; `tools/gmagic_pages.py` writes the overlay's pages for a
+  comparison with the private oracle.
 
 
 ## Appendix A. Pattern and brush data
