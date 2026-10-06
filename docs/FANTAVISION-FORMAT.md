@@ -144,6 +144,8 @@ the pattern; the others of the byte keep what was there.
 3. At each step an object's points move in a straight line from their
    position in key `k` towards key `k+1`, the same fraction of the way for
    every point: after `t` steps, `P = Pk + (Pk+1 − Pk) · t / S`, rounded.
+   A2 File Cmd's player draws the in-between frames with key `k`'s kind,
+   mode, colour and animation, and treats an object of no points as absent.
 4. Different point counts: when key `k+1` has more points, the existing
    points are shared out evenly so that there are as many (some start on
    the same spot and separate); when it has fewer, several points of key
@@ -153,8 +155,9 @@ the pattern; the others of the byte keep what was there.
    An object absent from key `k` appears at key `k+1`.
 6. Play count (header byte 1): with a count `c`, the movie plays through
    `c` times and stops on its last frame, without the wrap to frame 0. With
-   byte 1 zero it loops until stopped. A movie of a single frame is just
-   shown.
+   byte 1 zero it loops until stopped (A2 File Cmd's player loops whenever
+   the low nibble is 0, whatever the high one). A movie of a single frame
+   is just shown.
 
 There is no fixed frame rate: the original runs each step as fast as it
 can draw it, so a movie of big solid shapes plays more slowly than one of
@@ -237,7 +240,7 @@ movie's path.
   movie (≤ 9 KB) and the engine above; no auxiliary memory, so `/RAM` is
   untouched. Nothing is ever written to a disk.
 - Keys: Escape stops and returns, Space pauses and resumes, S starts or
-  stops the slideshow.
+  stops the slideshow. Ctrl-Reset returns too.
 - The end: a movie always starts again. A counted movie stays two seconds
   on its last frame, then plays from the start: in place, or, with a
   backdrop (Background objects are drawn into it), read again from the
@@ -249,11 +252,14 @@ movie's path.
   pass over the directory, as the movie is loaded, finds it. Any error
   reading the directory (anything but its clean end) and there is no next
   movie: the same one plays again. A movie refused during a slideshow shows
-  its reason three seconds, then the next one; a key returns.
+  its reason three seconds, then the next one (if there is no other movie,
+  it waits for a key); a key returns.
 - Accelerated: the original spends 11,000 to 128,000 cycles a frame, most
   of it redrawing and erasing whole shapes. This player aims to be clearly
-  faster on the same 1 MHz machine: erase only the rows and byte columns
-  an object covered (its bounding box, restored from the background copy),
+  faster on the same 1 MHz machine: erase, row by row, only the byte
+  columns the normal objects covered on that row, from the first to the
+  last, restored from the background copy (a Trace or Lightning version
+  under them is lost with it),
   fill spans a byte at a time from tables (row addresses, edge masks,
   colour bytes), a scan-line fill with an active edge list, and 8.8
   fixed-point steps added, never recomputed.
@@ -264,8 +270,11 @@ movie's path.
   the original takes" computed on the frame's own segments and edges. The
   player knows its own cost per frame (the same kind of count, calibrated
   on itself) and waits for the difference; a frame it cannot draw faster
-  than the original is simply not delayed.
-- Return to A2 File Cmd by loading `A2FILE.SYSTEM` again. The next movie,
+  than the original is simply not delayed. The first frame counted after
+  Tab, whose frame before was not counted, takes its own normal objects as
+  the segments erased.
+- Return to A2 File Cmd by loading `A2FILE.SYSTEM` again (from the prefix;
+  QUIT to ProDOS if it cannot be read). The next movie,
   or the same one read again, is played by `A2FILE/FANTA.SYSTEM` loaded
   anew (from the prefix, A2 File Cmd's directory) with its own command;
   if that fails, `A2FILE.SYSTEM` as for a return.
