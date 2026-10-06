@@ -53,6 +53,7 @@
 #define UTIL_WRITE
 #define IMAGEIO_WRITE
 #define IMAGEIO_NODEVICE
+#define IMAGEIO_ONE
 
 #include "util.h"
 #include <string.h>

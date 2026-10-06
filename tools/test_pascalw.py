@@ -11,6 +11,7 @@ failure anywhere before the count write must leave a volume that reads
 exactly as it did, with the files put in before it intact.
 """
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -308,6 +309,24 @@ class PascalW(unittest.TestCase):
         self.assertIn('No room', note)
         self.assertEqual(self.img.read_bytes(), self.original)
 
+    def test_a_write_protected_2mg_is_refused_untouched(self):
+        """Bit 31 of the 2IMG flags (header byte 19, $80) says the disk is
+        write protected. Measured before image_open looked at it: "1 put",
+        and the volume inside changed."""
+        image = bytearray(to_2mg(self.original))
+        image[0x13] |= 0x80
+        self.img = self.dir / 'VOL.2MG'
+        self.img.write_bytes(bytes(image))
+        self.give('HELLO', b'x' * 600)
+        writes, note = self.run_op()
+        self.assertIn('read-only', note)
+        self.assertEqual(writes, 0, note)
+        self.assertEqual(self.img.read_bytes(), bytes(image))
+        image[0x13] &= 0x7F                        # the same container, unlocked
+        self.img.write_bytes(bytes(image))
+        writes, note = self.run_op()
+        self.assertIn('1 put', note)
+
     def test_the_image_itself_is_never_copied_into_itself(self):
         (self.src / 'VOL.PO').write_bytes(self.img.read_bytes())
         out = subprocess.check_output(
@@ -333,6 +352,92 @@ class PascalW(unittest.TestCase):
                     else:
                         self.assertEqual(names, ['ALREADY'])
                     self.assertEqual(self.contents('ALREADY'), KEEP[2])
+
+
+HEAD = Path(os.environ.get('CC65_HEAD', str(Path.home() / 'opt/cc65-head')))
+SOURCE = (ROOT / 'src/plugins/pascalw.c').read_text()
+
+
+def room_source():
+    """A program around the shipped room test, lifted out of pascalw.c as it
+    is written."""
+    i = SOURCE.index('static unsigned char fits(unsigned int blocks)')
+    return ROOM % SOURCE[i:SOURCE.index('\n}\n', i) + 3]
+
+
+ROOM = r'''
+#include <stdio.h>
+#include <stdlib.h>
+static unsigned int tail, vblocks;
+%s
+/* The test it replaced, kept to show what the machine makes of it. */
+static unsigned char sum_refuses(unsigned int blocks) { return tail + blocks > vblocks; }
+int main(int argc, char** argv) {
+    unsigned int blocks;
+    (void)argc;
+    tail = (unsigned int)atol(argv[1]);
+    blocks = (unsigned int)atol(argv[2]);
+    vblocks = (unsigned int)atol(argv[3]);
+    printf("%%u %%u\n", fits(blocks), sum_refuses(blocks));
+    return 0;
+}
+'''
+
+# (tail, blocks, vblocks) -> does it fit
+ROOM_CASES = [
+    ((6, 1, 280), 1), ((6, 274, 280), 1), ((6, 275, 280), 0),
+    ((279, 1, 280), 1), ((280, 1, 280), 0), ((280, 0, 280), 1),
+    ((65530, 5, 65535), 1), ((65530, 6, 65535), 0),
+    # the sums that pass 65,535 and come back small
+    ((65530, 10, 65535), 0), ((65000, 600, 65000), 0), ((65535, 1, 65535), 0),
+    ((40000, 32768, 65535), 0), ((32768, 32768, 65535), 0), ((1, 65535, 65535), 0),
+]
+
+
+def toolchains():
+    found = []
+    if shutil.which('cl65') and shutil.which('sim65'):
+        found.append(('sim65c02', shutil.which('cl65'), shutil.which('sim65'), {}))
+    if (HEAD / 'bin/cl65').exists():
+        found.append(('sim6502', str(HEAD / 'bin/cl65'), str(HEAD / 'bin/sim65'),
+                      {'CC65_HOME': str(HEAD / 'share/cc65')}))
+    return found
+
+
+class RoomOnTheMachine(unittest.TestCase):
+    """`tail + blocks > vblocks` is sixteen bits wide where it runs.
+
+    The host harness above builds PASCALW with clang, whose unsigned is 32
+    bits: there the sum never wraps and the old test was right. Compiled by
+    cc65 it wraps -- measured under sim65: a tail of 65,530 and 10 blocks
+    make 4, not more than 65,535, so the room was "there" and the data loop
+    wrote from the tail onwards until source_write refused block 65,535
+    (the last block an image can have is 65,534, which is also why the
+    wrap never reached blocks 0 to 5). This runs the shipped fits(), as
+    each edition's compiler builds it."""
+
+    def test_the_room_is_counted_without_wrapping(self):
+        chains = toolchains()
+        if not chains:
+            self.skipTest('no cc65 toolchain')
+        with tempfile.TemporaryDirectory(prefix='pascalw-room-') as d:
+            p = Path(d)
+            (p / 'room.c').write_text(room_source())
+            for cpu, cl65, sim65, env in chains:
+                env = {**os.environ, **env}
+                exe = p / f'room-{cpu}'
+                subprocess.run([cl65, '-t', cpu, '-O', '-Oirs', '-Cl', '-o', str(exe),
+                                str(p / 'room.c')], check=True, env=env, capture_output=True)
+                wrapped = 0
+                for args, expected in ROOM_CASES:
+                    with self.subTest(cpu=cpu, case=args):
+                        out = subprocess.check_output([sim65, str(exe), *map(str, args)],
+                                                      text=True, env=env, timeout=10)
+                        fits, sum_refuses = (int(w) for w in out.split())
+                        self.assertEqual(fits, expected)
+                        wrapped += sum_refuses == fits      # the old test, saying yes to a no
+                # the trap is real on this compiler: the sum accepted what does not fit
+                self.assertGreaterEqual(wrapped, 5, cpu)
 
 
 if __name__ == '__main__':

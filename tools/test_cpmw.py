@@ -18,6 +18,7 @@ import unittest
 from pathlib import Path
 
 import cpm_ref
+from po22mg import to_2mg
 from po2dsk import to_dsk
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -255,6 +256,28 @@ class CpmW(unittest.TestCase):
         self.assertEqual(cpm_ref.contents(raw, e, v['skew'])[:330], b'new bytes\r\n' * 30)
 
     # -- what must not ------------------------------------------------------
+
+    def test_a_write_protected_2mg_is_refused_untouched(self):
+        """Bit 31 of the 2IMG flags (header byte 19, $80) says the disk is
+        write protected. Measured before image_open looked at it: "1 put",
+        and the volume inside changed."""
+        image = bytearray(to_2mg(self.original))
+        image[0x13] |= 0x80
+        self.img = self.dir / 'VOL.2MG'
+        self.img.write_bytes(bytes(image))
+        self.give('NEW.TXT', b'new bytes\r\n' * 30)
+        writes, note = self.run_op()
+        self.assertIn('read-only', note)
+        self.assertEqual(writes, 0, note)
+        self.assertEqual(self.img.read_bytes(), bytes(image))
+        image[0x13] &= 0x7F                        # the same container, unlocked
+        self.img.write_bytes(bytes(image))
+        writes, note = self.run_op()
+        self.assertIn('1 put', note)
+        raw = self.img.read_bytes()[64:]
+        v = cpm_ref.volume(raw)
+        e = next(f for f in v['files'] if f['name'] == 'NEW.TXT')
+        self.assertEqual(cpm_ref.contents(raw, e, v['skew'])[:330], b'new bytes\r\n' * 30)
 
     def test_a_name_already_there_is_skipped(self):
         self.give('KEEP.TXT', b'completely different bytes\r\n')

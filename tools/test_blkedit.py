@@ -255,13 +255,17 @@ class BlkEdit(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def edit(self, data, kind, block, lie=0, writefail=-1, locked=False):
+    def edit(self, data, kind, block, lie=0, writefail=-1, locked=False, protect=False):
         """Flip every bit of one block through source_write; give back the
         verdict and the whole image, decoded back to plain block order."""
         path = self.p / 'image'
         if path.exists():
             path.chmod(0o644)
-        path.write_bytes(encode(data, kind))
+        raw = bytearray(encode(data, kind))
+        if protect:
+            raw[0x13] |= 0x80                  # 2IMG flags, bit 31: write protected
+        path.write_bytes(bytes(raw))
+        self.stored = bytes(raw)
         if locked:
             path.chmod(stat.S_IRUSR | stat.S_IRGRP)
         try:
@@ -327,6 +331,25 @@ class BlkEdit(unittest.TestCase):
                 verdict, image = self.edit(data, kind, 5, locked=True)
                 self.assertEqual(verdict, 'writefail rb readable')
                 self.assertEqual(image, data)
+
+    def test_a_write_protected_2mg_is_never_written(self):
+        """The container's own write protection is bit 31 of its flags, the
+        top bit of header byte 19. Measured before image_open looked at it:
+        the file opened for update, the block was written and read back --
+        "identical r+b" -- on a disk whose owner had said not to. The file
+        still opens r+b (ProDOS would let it); every write is refused, the
+        block still reads, and not one byte of the file moves, the header
+        included."""
+        data = bytes(range(256)) * 64
+        for block in (0, 5, 31):
+            with self.subTest(block=block):
+                verdict, image = self.edit(data, 2, block, protect=True)
+                self.assertEqual(verdict, 'writefail r+b readable')
+                self.assertEqual(image, data)
+                self.assertEqual((self.p / 'image').read_bytes(), self.stored)
+        # the other bits of that byte are not a lock
+        verdict, image = self.edit(data, 2, 5)
+        self.assertEqual(verdict, 'identical r+b')
 
     def test_a_block_past_the_end_is_refused(self):
         data = bytes(range(256)) * 4                       # two blocks

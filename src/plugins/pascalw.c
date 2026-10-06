@@ -48,6 +48,7 @@
 #define UTIL_WRITE
 #define IMAGEIO_WRITE
 #define IMAGEIO_NODEVICE
+#define IMAGEIO_ONE
 
 #include "util.h"
 #include <string.h>
@@ -114,6 +115,20 @@ static unsigned char find_tail(void)
     if (!entry_at(count)) return 0;
     tail = word(ent + 2);
     return tail <= vblocks;
+}
+
+/* Do `blocks` more blocks fit between the last file and the end of the
+ * volume? Written as a subtraction, which cannot wrap -- find_tail() has
+ * made sure tail <= vblocks. The sum it replaces, tail + blocks > vblocks,
+ * is sixteen bits wide on the machine: measured under sim65, a tail of
+ * 65,530 and a file of 10 blocks came to 4, which is not more than 65,535,
+ * and the room was "there". The data loop then wrote from the tail on,
+ * outside the volume, until source_write refused block 65,535. clang's
+ * 32-bit unsigned never showed it, which is why tools/test_pascalw.py
+ * runs this one function through both cc65 compilers. */
+static unsigned char fits(unsigned int blocks)
+{
+    return blocks <= vblocks - tail;
 }
 
 /* Is `pname` already one of the volume's files? */
@@ -250,7 +265,7 @@ static unsigned char one(const char* name, unsigned char type, unsigned long siz
     used = (unsigned int)(size & 511);
     if (!used) used = 512;
     if (count >= MAX_FILES) { note("The volume directory is full."); return 0; }
-    if (tail + blocks > vblocks) { note("No room after the last file."); return 0; }
+    if (!fits(blocks)) { note("No room after the last file."); return 0; }
 
     if (!join(source_path, other->path, name)) { ++skipped; return 1; }
     src_file = RF(fopen)(source_path, "rb");
