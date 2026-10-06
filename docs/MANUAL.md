@@ -39,6 +39,7 @@ hold up to 105 files and show 19 rows. `?` opens help.
 | Return or 2; T/H/G; B | Open; force text/hex/hi-res; confirm BRUN. |
 | Space; Ctrl-T/N; * | Tag one; all/none; invert tags. |
 | C or 3; N/E; D/R/L | Copy; new/edit text; delete/rename/lock. |
+| F | Format the active drive (not the boot one) with DOS copied from the boot disk. |
 | Ctrl-R or 5; = | Reread both panels; same disk opposite. |
 | ? or 6; Q or 7; Escape | Help; confirm quit; leave preview/help/editor. |
 
@@ -71,8 +72,9 @@ Return identifies text, hi-res or a binary program from content and DOS headers;
 a program asks `BRUN NAME?`. T/H previews only the first 256 stored bytes; G
 shows the first 8 KB as hi-res. The hex preview shows eight bytes a row with
 their characters, one half of the sector at a time: Left/Right (or -/+, </>)
-switch between bytes 00-7F and 80-FF. A valid 8 KB BIN load at $2000/$4000 is a picture;
-unsupported or unsafe program headers fall back to hex. BRUN leaves A2FC.
+switch between bytes 00-7F and 80-FF. A valid 8 KB BIN load at $2000/$4000 is
+a picture; unsupported or unsafe program headers fall back to hex. BRUN leaves
+A2FC.
 
 Only standard 35-track, 16-sector DOS 3.3 is supported. Sparse/inconsistent
 chains, reserved-track data, 13-sector, 40-track and protected formats are
@@ -128,9 +130,10 @@ attributes, text editing, text/hex readers, comparison, formatting, verification
 and ProDOS image extraction. Advanced disk tools, DOS extraction, archives,
 media players and BASIC runtimes require **800K or XL**. Their menus list the
 available tools without asking for category disks. Both complete editions
-include all 84 overlays; only XL includes `DEMO/`: at least one example of every
-kind of file A2 File Cmd opens, for every viewer, in DOCUMENTS, PICTURES (with
-an HGR album), MOVIES (Fantavision), MUSIC, ARCHIVES, DISKS, PROGRAMS and
+include all 87 overlays; only XL includes `DEMO/`: one example of every kind
+of file A2 File Cmd opens, in DOCUMENTS, PICTURES (an HGR album, and in
+CARDS two colour cards in every picture format), MOVIES (Fantavision, and a
+Take 1 movie on its DOS 3.3 disk), MUSIC, ARCHIVES, DISKS, PROGRAMS and
 FONTS.SHAPES, and a README saying what is where.
 
 ### Before working
@@ -147,7 +150,8 @@ applies to affected picture viewers, the PT3 player (GROUiK's engine; a
 declined question plays with pt3_lib instead), large VisiCalc worksheets,
 ShrinkIt, disk-image operations, Disk II formatting, NIBCOPY and full
 large-volume checks. Ordinary text readers and the other music players
-preserve /RAM.
+preserve /RAM. Ctrl-Reset quits A2FC to ProDOS; pressed inside a tool that
+had leave to use auxiliary memory, it also rebuilds /RAM empty on the way out.
 
 <!-- pagebreak -->
 
@@ -159,11 +163,11 @@ shows the sort order. Messages and progress appear below the panels.
 
 | Keys | Action |
 |---|---|
-| Up/Down; Left/Right or < / > | Move one entry; move one page. [ / ] goes to first/last. |
+| Up/Down; Left/Right, < / > or - / + | Move one entry; move one page. [ / ] goes to first/last. |
 | Return / Escape / / | Open; parent directory; list volumes. Return asks before running a program. |
 | TAB / = / Ctrl-R | Other panel; same directory opposite; reread both panels. |
 | Space / * / Ctrl-T / Ctrl-N | Tag one; invert tags; tag all; clear tags. |
-| S / M / ' then initial | Change sort; tag size/date differences; jump to a name. |
+| S / M / ' then initial | Next sort (name, size, type); tag files missing opposite or of another size/date; jump to a name. |
 | C / V / D | Copy; move; delete. Use tags, or the cursor when none are tagged. |
 | R / K / A / L | Rename; new directory; type/auxtype; lock/unlock. |
 | T / H / I / E / X | Text; hex; picture; edit; run after confirmation. |
@@ -171,9 +175,15 @@ shows the sort order. Messages and progress appear below the panels.
 | 1 … 0 | Activate the corresponding bottom key-bar button. |
 
 Names start with a letter, then letters, digits or periods, up to 15 characters.
-Directories can be tagged; `..` cannot. Returning to a parent selects the child
-you left if it still exists. Large directories use unsorted windows in disk
-order; continue through the window edge to reach later entries.
+Directories can be tagged; `..` cannot. A tool or viewer that takes over the
+screen gives the tags back only to a panel that returns with the same entries;
+a panel whose contents changed meanwhile comes back untagged. Returning to a
+parent selects the child you left if it still exists. A directory of more than
+139 entries is read in unsorted windows of 139, in disk order (the header
+gives the window's first entry, then `+ disk order`); continue through the
+window edge to reach later entries. A larger folder inside a disk image shows
+only its first entries, in disk order, and is not paged: the rest are out of
+reach there.
 
 Enhanced mouse support lets you select a row, click it again to open, click
 a path to go up, a header to sort or a key-bar button to act. Prompts, viewers
@@ -188,17 +198,22 @@ active side; a failed preference save lets you cancel quitting.
    **A** overwrites all and **N** overwrites none. Check the destination first.
 3. Wait for **Copying** and **Verifying**, then read the result. Move removes
    a source only after its copy is verified. Existing directories are filled
-   in; copying into the source or its descendants is refused.
+   in; a directory is never copied into itself, into one of its descendants
+   or onto one of its ancestors.
 
 Copy preserves type and auxtype. Replacements retain the old target during
 verification. **Escape** interrupts; completed work remains. If cleanup fails,
-a temporary can remain: use the recovery procedure before retrying. Deep trees
-may be refused; process smaller subdirectories rather than bypassing the limit.
+a temporary can remain: use the recovery procedure before retrying. A source
+tree that is too deep, or holds a path longer than 63 characters, is
+refused whole before its first file is copied or deleted; process smaller
+subdirectories rather than bypassing the limit.
 
 **! → Files → MOVE** can relocate a single entry within a volume without
-copying its data blocks. A marked batch first reserves `A2MOVE.LST`, refuses
-marked directories and stops on error or Escape. Cross-volume copies are
-verified before source deletion. Keep any retained work list for review.
+copying its data blocks. A marked batch, directories included, first reserves
+`A2MOVE.LST` and stops on error or Escape. A directory bound for another
+volume is copied, verified and only then deleted, as with V; cross-volume
+copies are verified before source deletion. Keep any retained work list for
+review.
 
 **E** edits up to **5,104 bytes**, with CR line endings; loading strips the
 high bit and long lines do not wrap. On a directory or `..`, E creates text.
@@ -206,7 +221,8 @@ Arrows move; Delete/Ctrl-D erase left/right; Ctrl-A/E goes to line start/end;
 Ctrl-P/N changes page; Ctrl-T/B goes to text start/end. Return splits a line;
 Tab inserts four spaces. Escape opens **S** save, **X** save/exit, **Q** abandon
 (confirm changes), or Escape to continue. Saving preserves type/auxtype and
-uses verified `A2FC.EDIT` plus `A2FC.ED.BAK`; existing recovery files block saving.
+uses verified `A2FC.EDIT` plus `A2FC.ED.BAK`; existing recovery files block
+saving.
 
 <!-- pagebreak -->
 
@@ -271,9 +287,12 @@ cases are documented in [Data safety](DATA-SAFETY.md).
 
 ### Text and documents
 
-**T** reads text; **H** shows offsets, bytes and characters. Space/Return/Down
-advances; B/Up goes back; Escape returns. TEXT clips lines at 80 columns and
-remembers 96 page starts; **R** restarts it. Use **MDVIEW** for wrapped text
+**T** reads text; **H** shows offsets, bytes and characters. Space/Return/
+Right/Down advances; B/Left/Up goes back; Escape returns. TEXT breaks long lines
+at column 80 and remembers 80 page starts; **R** restarts it. The status line
+of TEXT, the BASIC lister and the AppleWorks reader says `(end)` at the end of
+the file, `(READ ERROR)` when a read failed, and `(page limit)` on the
+eightieth page of a file that goes on. Use **MDVIEW** for word-wrapped text
 and Markdown, with 64 previous pages and no forward limit. It also reads
 extracted Magic Window `.MW` documents. Teach extended files are unsupported.
 Return on an Epistole document (text opening on a `_` command) or a Papyrus or
@@ -353,11 +372,11 @@ Specialized viewers and media tools require **800K or XL**.
 
 Raw HGR accepts any size from **8,184 to 8,199 bytes** (a page eight bytes short,
 KoalaPad's re-saved 8,191, Terrapin Logo's 8,194); DHGR accepts **16,376 to
-16,391**, auxiliary
-plane first: the one-file layout Dazzle Draw saves (BIN, aux $2000, 16,384
-bytes), so its pictures and slide-show disks open as they are. Left/Right browses the previous/next file handled by the same
-viewer, including across directory windows. Right on the last one goes round
-to the first; Left on the first does nothing.
+16,391**, auxiliary plane first: the one-file layout Dazzle Draw saves (BIN,
+aux $2000, 16,384 bytes), so its pictures and slide-show disks open as they
+are. Left/Right browses the previous/next file handled by the same viewer,
+including across directory windows (not inside a disk image). Right on the
+last one goes round to the first; Left on the first does nothing.
 **S** starts a slideshow in every picture viewer: the next picture comes by
 itself after about ten seconds (at 1 MHz; faster on an accelerated machine),
 round the folder without end. **S** again, or any other key, stops it; that
@@ -383,10 +402,10 @@ time in 40 columns. While Left/Right looks for the next picture, the
 activity cell may appear for a moment at the bottom right of a text screen.
 
 Loading shows the filename; Escape returns to the panels. Ordinary small BIN
-files open in hex with Return; I can treat a suitable one as a sprite.
+files open in hex with Return; I can treat a suitable one as a sprite. A
+viewer's consent to use AUX (see [Before working](#before-working)) lasts only
+for that browsing session; leaving and reopening asks again.
 
-Viewers that need AUX ask **before** writing it when /RAM holds files, and rebuild /RAM empty afterwards; an empty /RAM is used without a question.
-Consent lasts only for that browsing session; leaving and reopening asks again.
 **NRCLIP** (`!` menu, Images) turns a commercial Newsroom clip-art disk (the
 program's own and Clip Art Collections 1-3, which hold no files) into
 pictures. Open the disk in the active panel (a `.DSK`/`.DO`, a DOS-order
@@ -418,30 +437,29 @@ bytes, so a program that happens to start like a picture is refused by
 GMAGIC: **H** shows any file in hex. Read only, /RAM kept; the format is
 described in [Graphics Magician pictures](GRAPHICS-MAGICIAN-FORMAT.md).
 
-Malformed pictures are refused. LZ4FH, PRINTSHOP, NEWSROOM, NRCLIP, GMAGIC, FONTVIEW and SHAPES preserve
-/RAM. Keep both Purplesoft companion files; extended EVE modes require compatible
-hardware. MACPAINT shows 560 × 192 of its 576 × 720 image; Up/Down pans by 96
-lines. SHAPES shows 24 shapes a page, Space/Down next and B/Up previous.
+Malformed pictures are refused. LZ4FH, PRINTSHOP, NEWSROOM, NRCLIP, GMAGIC,
+FONTVIEW and SHAPES preserve /RAM. Keep both Purplesoft companion files;
+extended EVE modes require compatible hardware. MACPAINT shows 560 × 192 of
+its 576 × 720 image; Up/Down pans by 96 lines. SHAPES shows 24 shapes a page,
+Space/Down next and B/Up previous.
 
-Return on a Fantavision movie (`M.*`, BIN $8400) plays it in **FANTA.SYSTEM**
-(800K and XL), which replaces A2FC while it plays and brings it back after.
-It plays at the **original speed** (each frame held as long as Fantavision
-itself takes to draw it on a 1 MHz Apple II). **Tab** switches to the
-accelerated speed and back, **Space** pauses, **1**-**9** slow the
-accelerated speed down, **0** removes the delay, **Escape** returns. A movie
-always starts again: a counted one stays two seconds on its last frame, then
+Return on a Fantavision movie (a BIN at $8400 of 513 to 9,216 bytes, usually
+named `M.*`) plays it in **FANTA.SYSTEM** (800K and XL), which replaces A2FC
+while it plays and brings it back after. It plays at the **original speed**
+(each frame held as long as Fantavision itself takes to draw it on a 1 MHz
+Apple II). **Tab** switches to the accelerated speed and back, **Space**
+pauses, **1**-**9** slow the accelerated speed down, **0** removes the delay,
+**Escape** returns. A movie always starts again: a counted one stays two seconds on its last frame, then
 plays from the start. **S** starts or stops the slideshow: each movie plays
 once round, stays two seconds, and the next movie of its folder follows (in
 directory order, the first after the last), until Escape. A movie refused
 during a slideshow shows its reason three seconds, then the next one plays;
 a key returns. A damaged tail is cut; a movie with no whole frame is
 refused with its reason. Ctrl-Reset returns to A2FC. Main memory only: /RAM is
-untouched. Backdrop:
-mark (Space) one hi-res picture in the movie's folder before Return;
-otherwise `NAME` beside `M.NAME`, or else a picture whose name begins with
-`NAME` (`CHECKERBOARD` for `M.CHECKER`; `NAME` of
-4 characters or more), is used. The speed and the slideshow are not kept
-once back in A2FC.
+untouched. Backdrop: mark (Space) one hi-res picture in the movie's folder
+before Return; otherwise `NAME` beside `M.NAME`, or else a picture whose name
+begins with `NAME` (`CHECKERBOARD` for `M.CHECKER`; `NAME` of 4 characters or
+more), is used. The speed and the slideshow are not kept once back in A2FC.
 
 Return on a Take 1 movie (`MV.*`, Baudville 1985) plays it in
 **TAKE1.SYSTEM** (800K and XL), which replaces A2FC while it plays and brings
@@ -454,13 +472,13 @@ keep 15 characters, and on some real disks several files shrink to one name
 (`BK.UNDERGROUND-1` to `-4`, `SN.HOPPY.WALK.ON1` to `ON3`...): only one can
 be extracted, and the movie then plays the wrong scene or is refused. Playing
 from the disk or its image is the faithful way. Ctrl-Reset during a movie
-returns to A2FC. It plays at the
-**original speed**, with its fades and speaker sounds; **Tab** switches to the
-accelerated speed and back, **Space** pauses, **Return** or a paddle button
-answers a scene that waits, **Escape** returns. The movie stays two seconds on
-its last frame and starts again. A missing or damaged file is refused with its
-name. Read-only, main memory only: /RAM is untouched. The command is limited
-to 46 characters: an image path of 41 characters at most.
+returns to A2FC. It plays at the **original speed**, with its fades and
+speaker sounds; **Tab** switches to the accelerated speed and back, **Space**
+pauses, **Return** or a paddle button answers a scene that waits, **Escape**
+returns. The movie stays two seconds on its last frame and starts again. A
+missing or damaged file is refused with its name. Read-only, main memory only:
+/RAM is untouched. The command is limited to 46 characters: an image path of
+41 characters at most.
 
 <!-- pagebreak -->
 
@@ -513,16 +531,21 @@ review old extracted DUET files without changing their content.
 ### Extract into the other panel
 
 Open the destination first, select the archive and choose its tool in **!**.
-Return also recognizes common archive suffixes. Existing names are not replaced.
+Return also starts SCIIBIN on `.BSC/.BSQ`, UNSQ on `.QQ/.ACU` and UNWRAP on
+`.AS` or an AppleSingle file (type $E0, aux $0001); ShrinkIt and Binary II
+archives and MacBinary files go through **!**. Existing names are not replaced.
 
-**UNSHRINK:** `.SHK`, stored/LZW1/LZW2 data and disk images; unsupported
-members and resource forks are skipped and reported. **BINARY2:** `.BNY/.BQY`,
+**UNSHRINK:** `.SHK`, stored/LZW1/LZW2 data and disk images. Resource forks,
+unsupported compressions and members of a type ProDOS cannot hold (a folder
+type $0F carrying data) are skipped, and the result says so: "N file(s)
+extracted, M part(s) skipped." **BINARY2:** `.BNY/.BQY`,
 whose compressed members may need another extraction. **SCIIBIN:** `.BSC/.BSQ`
 with ordered parts and CRC checks. **UNSQ:** `.QQ/.ACU`, directories skipped
 and paths flattened. **UNWRAP:** AppleSingle/MacBinary data forks, with omitted
 resource forks reported.
 
-ShrinkIt requires permission to clear /RAM and refuses it as the destination.
+ShrinkIt uses auxiliary memory, asking first when /RAM holds files, and refuses
+/RAM as the destination.
 Escape cancels between blocks. Outputs are read back; errors stop the operation.
 Cleanup removes only the current new output, where possible; earlier completed
 files remain. A retained partial file is reported and blocks retry under that
@@ -551,7 +574,9 @@ and /RAM kept), unless the program sets its own reset: BASIC.SYSTEM returns to
 
 Return opens supported ProDOS or DOS 3.3 images as folders: PO, DSK/DO, 2MG
 and supported DiskCopy 4.2 containers. HFS is not supported. Escape at the root
-leaves the image. **C** extracts the selection or tags to the other panel.
+leaves the image. **C** extracts the selection or tags to the other panel. An
+image is read-only: R, K, A, L, D, X, E, W, T, H, I and M answer "Read-only
+disk image"; extract a file with C to read it.
 ProDOS extraction supports seedling/sapling files up to 128 KB; enter each
 subdirectory separately. Existing targets are refused; incomplete outputs are
 removed where possible and failed cleanup is reported.
@@ -594,7 +619,8 @@ copies disks. PO, DSK/DO and 2MG are supported. Choose the same source/target
 drive for exchanges. Each prompt identifies SOURCE or TARGET and slot/drive.
 Writes require **ERASE**, refuse the program disk and verify each block.
 **F** formats the named drive after ERASE; Escape cancels beforehand. Disk II
-formatting clears /RAM, asking first when it holds files, and refuses to run from /RAM.
+formatting clears /RAM, asking first when it holds files, and refuses to run
+from /RAM.
 
 **NIBCOPY** copies standard Disk II tracks with one or two drives at normal
 1 MHz speed. Write-protect the source first. Accept AUX use only after saving
@@ -607,7 +633,13 @@ half-track and weak-bit formats are unsupported; this is not a flux copier.
 **PASCAL** and **CPM** extract supported images into the other panel without
 modifying the source. Names are adapted to ProDOS; existing targets are skipped.
 Pascal text retains its header/padding. CP/M data is rounded to 128-byte records;
-text ends at $1A. Unsupported directory layouts are refused. Use **IMGCONV**
+text ends at $1A. Unsupported directory layouts are refused. **PASCALW** and
+**CPMW** do the reverse: every file of the other panel's ProDOS directory goes
+into the selected Pascal or CP/M image, a name already there being skipped.
+PASCALW writes only after the last block in use (Krunch a volume whose free
+space is all between files); CPMW takes files up to 16 KB and refuses an empty
+volume, whose sector order it cannot establish. **DISKCMP** compares two
+volumes or images block by block, read only. Use **IMGCONV**
 for container conversion, not extension changes. No physical-write operation
 promises rollback through a power failure.
 
@@ -627,7 +659,8 @@ especially partial scans, skipped files and failed cleanup.
   calculate CRC-32; read files or volume blocks and report errors.
 - **TAGPAT / SEARCH / FIND:** tag by pattern; search current-directory text;
   search a volume by name or contents (`"` prefix). FIND: TAB filters, N pages,
-  Return jumps and V shows text matches.
+  Return jumps and V shows text matches; a directory it could not read ends
+  the results with "some paths skipped" instead of "complete".
 - **GOTO:** P opens a path; A adds a favourite, D + digit removes, M + two
   digits reorders, 1–9 jumps.
 - **RENAME / DATE / TXTCONV:** batch names; modification dates; CR/LF/CRLF,
@@ -672,7 +705,9 @@ recovered contents: neither tool guarantees recovery of missing data.
 **WIPE F** checks allocation before zeroing free blocks; **W** destroys an entire
 volume after ERASE, excluding the running program's volume. **BOOTBLK** copies
 boot blocks after confirmation, with readback and RAM-only originals for attempted
-restoration. **BLKVIEW** reads blocks and can extract a range; **DISASM** reads
+restoration. **BLKVIEW** reads blocks and can extract a range; **BLKEDIT**
+changes bytes of one block and writes it back after ERASE, then reads it back
+(never on the running program's volume); **DISASM** reads
 6502/65C02 instructions and exports text. Their exports can remain partial after
 an error. None of these tools should be tried first on an irreplaceable disk.
 
@@ -687,10 +722,9 @@ starts again at zero. Every long tool shows a bar or, where none fits, turns
 a `/` `\` mark at the end of the line above the messages (DOS3.3: the last
 cell of the key bar, which also turns inside DOS's own long calls: the
 format, and the retries on a diskette that was never formatted). A drive
-change or a head recalibration can still hold it for a second or so. Do
-not remove media just
-because a counter has stopped; record the screen and wait for a result or a
-safe cancellation point.
+change or a head recalibration can still hold it for a second or so. Do not
+remove media just because a counter has stopped; record the screen and wait
+for a result or a safe cancellation point.
 
 Escape cancels where the active tool permits it. Completed work remains and
 partial output may require recovery. A result that reports skipped, unsupported,
@@ -701,7 +735,7 @@ message before retrying or cleaning up.
 |---|---|
 | Startup refusal | Choose the matching CPU/ROM edition; ProDOS needs 128 KB and 80 columns. |
 | Missing/stale tool | Use 800K/XL and matching program/plugins. |
-| Old catalog or a large directory | Ctrl-R rereads; cross window edges beyond 139 entries. Large windows use disk order. |
+| Old catalog or a large directory | Ctrl-R rereads; cross window edges beyond 139 entries. Large windows use disk order; inside an image only the first entries show. |
 | Deep traversal refused | Work on smaller subdirectories; an incomplete tree must not be deleted. |
 | Temporary/backup blocks retry | Preserve candidates and follow incident recovery. |
 | Run or image opening fails | Check paths, runtime, type and actual container; renaming extensions does not convert. |
@@ -728,11 +762,12 @@ Set the card that talks to the VDrive host to communications mode. A //c has
 no switches, so nothing tells a printer on its modem port from a modem:
 port 2 is always taken when present, and a printer plugged there receives
 VDrive's packets. Keep printers off the //c's modem port while A2FC runs.
-Use ADTPro's virtual-drive
-server, `veserver.py` or `surl-server`. The status line identifies the serial
-interface and assigned drives; browse and copy as with local volumes. The host
-supplies date/time during reads. A disconnected server produces an I/O error;
-it is not an empty or absent file. The driver is removed on quit or program launch.
+Use ADTPro's virtual-drive server, `veserver.py` or `surl-server`. The two
+volumes take the first slot with no unit of its own in the ProDOS device list;
+the status line identifies the serial interface and that slot. Browse and copy
+as with local volumes. The host supplies date/time during reads. A
+disconnected server produces an I/O error; it is not an empty or absent file.
+The driver is removed on quit or program launch.
 
 For reproducible failures, note the A2FC version/edition, machine, disk type,
 full paths, exact message and actions. Keep a disk image before any repair.
