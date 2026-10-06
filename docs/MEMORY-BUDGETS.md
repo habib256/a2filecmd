@@ -566,6 +566,8 @@ cc65 (1 292 octets pour 84 appels), et sortir du résident la liste des
 volumes (`read_volumes` + `ask_disk`, ~720 octets) dans une petite
 surcouche, comme CATALOG l'a fait — au prix d'un bloc de la disquette BOOT.
 
+6 octobre 2026 : REPAIR n'écrit plus que là où un pointeur abîmé ne peut pas expliquer ce qu'il voit (docs/FIXIT.md §5, « Ce que REPAIR refuse de croire ») ; les trois règles ont été payées par la fusion des deux boucles de l'écran de plan et la chute du masque `on`. Réserves au lien : REPAIR **61** octets en 65C02 (50 avant), **36** en 6502 (30 avant) ; FIXIT 3 et 3, inchangé à l'octet du masque `ENT_ACCESS` près. Le journal des formes est dans docs/FIXIT.md §4.
+
 17 septembre 2026 : FIXIT et REPAIR gardent leurs réclamations en AUX au-delà de 4 096 blocs (`src/plugins/fixit_bits.inc`) et ne parcourent l'arbre qu'une fois ; FIXIT gagne le contrôle rapide. Réserves au lien, après l'acquittement d'Échap par écriture de `$C010` : FIXIT **1** octet sur les deux processeurs, REPAIR 62 (42). Le journal des formes est dans docs/FIXIT.md §4, « Un seul parcours ». VOLINFO et FIND ne copient plus que 98 octets de la table de services : même taille.
 
 16 septembre 2026 : `mn_group3` nomme FIXIT et REPAIR (catégorie « Disks ») ; ces chaînes vivent dans la surcouche MENU, dont la réserve passe de 1 846 à 1 833 octets en 65C02 (1 794 à 1 781 en 6502), MAIN inchangé (361 et 790 au lien du jour).

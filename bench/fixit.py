@@ -98,6 +98,11 @@ def make_po(tmp, name):
                    check=True, capture_output=True)
     data = bytearray(po.read_bytes())
     corrupt_prodos.add_extended_file(data, 'EXT')
+    # Un fichier cache a la maniere de GS/OS : le bit 2 de l'acces, que le
+    # masque $1C prenait pour un bit reserve jusqu'au 6 octobre 2026. Le
+    # volume est sain, FIXIT ne doit rien en dire.
+    hidden = corrupt_prodos.Inventory(bytes(data)).entries[0]
+    data[hidden.offset + 0x1E] |= 0x04
     po.write_bytes(bytes(data))
     return po
 

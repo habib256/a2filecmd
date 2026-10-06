@@ -720,6 +720,37 @@ class Fixit(unittest.TestCase):
         self.assertEqual(path.read_bytes(), data, 'the audit must never write')
         return json.loads(out)
 
+    def test_the_gsos_invisible_bit_is_not_a_fault(self):
+        """Bit 2 of the access byte is the GS/OS "invisible" bit: A2FC itself
+        preserves it (src/a2fc.c, docs/FILE-SERVICES.md) and a healthy GS/OS
+        volume carries it. Until 6 October 2026 the mask was $1C and FIXIT
+        answered `1 findings, nothing written: FIXIT only reads.`
+        ({'ENT_ACCESS': 1}) for such a volume. Bits 4 and 3, which nothing
+        ever sets, are still named, one finding an entry."""
+        inv = corrupt_prodos.Inventory(self.clean)
+        first, second = inv.entries[0], inv.first(prodos_check.SUBDIR)
+        data = bytearray(self.clean)
+        data[first.offset + 0x1E] |= 0x04
+        data[second.offset + 0x1E] |= 0x04
+        data = bytes(data)
+        self.assertEqual(prodos_check.check(data).findings, [], 'the oracle')
+        r = self.run_fixit(data)
+        self.assertEqual(r['counts'], {}, r)
+        self.assertEqual(r['note'], M_CLEAN)
+        for bit in (0x08, 0x10):
+            with self.subTest(bit=bit):
+                data = bytearray(self.clean)
+                data[first.offset + 0x1E] |= bit | 0x04
+                data = bytes(data)
+                result = prodos_check.check(data)
+                self.assertEqual([(f.id, f.block, f.slot) for f in result.findings],
+                                 [('ENT_ACCESS', first.block, first.slot)])
+                r = self.run_fixit(data)
+                self.assertEqual(only_compared(r['counts']),
+                                 only_compared(oracle_counts(result.findings)))
+                self.assertEqual(first_samples(r['samples']),
+                                 first_findings(result.findings))
+
     @property
     def volname(self):
         """The name block 2 gives itself, which ON_LINE answers with too."""

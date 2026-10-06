@@ -35,9 +35,9 @@ class HardwareMedia(unittest.TestCase):
     def test_it_writes_what_the_checklist_names(self):
         self.assertEqual(self.code, 0)
         for name in ('HW-CLEAN.po', 'HW-CLEAN.dsk', 'HW-BROKEN.po', 'HW-BROKEN.dsk',
-                     'HW-DOS33.dsk', 'EXPECTED.json'):
+                     'HW-HIDDEN.po', 'HW-HIDDEN.dsk', 'HW-DOS33.dsk', 'EXPECTED.json'):
             self.assertTrue((self.out / name).exists(), name)
-        for name in ('HW-CLEAN.dsk', 'HW-BROKEN.dsk', 'HW-DOS33.dsk'):
+        for name in ('HW-CLEAN.dsk', 'HW-BROKEN.dsk', 'HW-HIDDEN.dsk', 'HW-DOS33.dsk'):
             self.assertEqual((self.out / name).stat().st_size, 143360, name)
 
     def test_the_clean_volume_is_clean(self):
@@ -53,7 +53,25 @@ class HardwareMedia(unittest.TestCase):
         for f in result.findings:
             counts[f.id] = counts.get(f.id, 0) + 1
         self.assertEqual(counts, expected)
-        self.assertEqual(sorted(expected), ['BM_LOST', 'DIR_EOF', 'DIR_PARENT', 'FILE_COUNT'])
+        self.assertEqual(sorted(expected),
+                         ['BM_USED_FREE', 'DIR_EOF', 'DIR_PARENT', 'FILE_COUNT'])
+        self.assertNotIn('BM_LOST', expected,
+                         'REPAIR gives no block back beside another fault')
+
+    def test_the_hidden_file_is_one_nibble_away_from_the_clean_volume(self):
+        """HW-HIDDEN is what REPAIR must refuse: the clean volume with the
+        storage nibble of one entry zeroed, and nothing else."""
+        clean = (self.out / 'HW-CLEAN.po').read_bytes()
+        hidden = (self.out / 'HW-HIDDEN.po').read_bytes()
+        moved = [i for i in range(len(clean)) if clean[i] != hidden[i]]
+        self.assertEqual(len(moved), 1)
+        self.assertEqual(hidden[moved[0]] >> 4, 0)
+        self.assertEqual(hidden[moved[0]] & 15, clean[moved[0]] & 15, 'the name stays')
+        expected = json.loads((self.out / 'EXPECTED.json').read_text())['HW-HIDDEN']
+        self.assertEqual(sorted(expected), ['BM_LOST', 'FILE_COUNT'])
+        source = (ROOT / 'src/plugins/fixit_walk.h').read_text()
+        self.assertIn(hw_media.REFUSAL, source, 'the refusal the checklist quotes')
+        self.assertIn(hw_media.REFUSAL, (ROOT / 'docs/HARDWARE-CHECKLIST.md').read_text())
 
     def test_the_dos_disk_holds_its_three_files(self):
         data = (self.out / 'HW-DOS33.dsk').read_bytes()

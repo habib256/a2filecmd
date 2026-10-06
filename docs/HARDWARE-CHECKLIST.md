@@ -18,6 +18,7 @@ python3 tools/hw_media.py --out dist/hw --big    # plus le volume de 20 000 bloc
 |---|---|
 | `HW-CLEAN.dsk` | volume ProDOS de 280 blocs, sain : FIXIT ne doit rien trouver |
 | `HW-BROKEN.dsk` | le même, cassé en quatre endroits que REPAIR sait remettre |
+| `HW-HIDDEN.dsk` | le même, **un quartet** abîmé : un fichier qui a seulement l'air effacé. REPAIR doit refuser et ne rien écrire |
 | `HW-DOS33.dsk` | disquette DOS 3.3 : GREETINGS (texte), BINARY, HELLO |
 | `HW-BIG.po` | volume de 20 000 blocs cassé au-delà de la première page de bitmap |
 
@@ -98,8 +99,8 @@ résultat de la comparaison d'octets.
 
 ## 3. FIXIT et REPAIR sur une disquette réellement abîmée
 
-**Préparer** : `800K` ou XL gravée, `HW-CLEAN.dsk` et `HW-BROKEN.dsk`
-gravées, `dist/hw/EXPECTED.json` ouvert à côté.
+**Préparer** : `800K` ou XL gravée, `HW-CLEAN.dsk`, `HW-BROKEN.dsk` et
+`HW-HIDDEN.dsk` gravées, `dist/hw/EXPECTED.json` ouvert à côté.
 
 **Taper et voir**
 
@@ -110,7 +111,7 @@ gravées, `dist/hw/EXPECTED.json` ouvert à côté.
    Mac avant de conclure.*
 2. Insérer `HW-BROKEN`. **FIXIT** de nouveau : quatre constats, un par
    ligne, avec leur compteur et leur premier bloc —
-   `FILE_COUNT`, `DIR_EOF`, `DIR_PARENT`, `BM_LOST`.
+   `FILE_COUNT`, `DIR_EOF`, `DIR_PARENT`, `BM_USED_FREE`.
    *Les noms et les nombres sont ceux d'`EXPECTED.json`.*
 3. `R` : le même parcours rend exactement les mêmes lignes.
 4. `!` → Disks → **REPAIR** sur la même disquette. Le plan annonce
@@ -121,9 +122,20 @@ gravées, `dist/hw/EXPECTED.json` ouvert à côté.
 7. Relire la disquette sur le Mac : `python3 tools/prodos_check.py` la
    déclare saine, et seuls les blocs que REPAIR a nommés ont changé
    (comparer avec `dist/hw/HW-BROKEN.po`).
+8. Insérer `HW-HIDDEN` : le fichier `B` n'apparaît plus dans le panneau, un
+   seul quartet de son entrée est à zéro. **FIXIT** : `FILE_COUNT` et
+   `BM_LOST` (les blocs de `B`, que la bitmap garde).
+9. **REPAIR** sur la même disquette. Résultat attendu, **sans** écran de
+   plan et **sans** question :
+   `Lost blocks may hold a damaged file: nothing written. See FIXIT.`
+   *Jusqu'au 6 octobre 2026 REPAIR baissait le compteur, rendait les blocs
+   du fichier et disait `repaired`. Un plan proposé ici est une régression
+   de sûreté : ne pas taper `FIX`.*
+10. Relire la disquette sur le Mac : **octet pour octet** `dist/hw/HW-HIDDEN.po`.
 
 **Noter** : les quatre lignes de FIXIT telles qu'elles s'affichent, le
-nombre de blocs du plan, et le verdict final.
+nombre de blocs du plan, le verdict final, et le message du refus de
+l'étape 9.
 
 ---
 
@@ -144,7 +156,7 @@ copier **avant** un fichier reconnaissable.
 3. La question `/RAM` arrive ensuite : répondre **N** une première fois.
    *Attendu : « Scan cancelled », et le fichier de `/RAM` toujours là.*
 4. Recommencer, répondre **Y** : le parcours va jusqu'au bout et nomme
-   `FILE_COUNT` et `BM_LOST` (voir `EXPECTED.json`). `/RAM` est alors
+   `FILE_COUNT` et `BM_USED_FREE` (voir `EXPECTED.json`). `/RAM` est alors
    annoncé refait à neuf.
 5. **REPAIR** : plan de 2 corrections, `F`, `FIX`, verdict `repaired`.
 6. Refaire la même séance sur un **//c**.

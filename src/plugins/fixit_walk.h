@@ -99,7 +99,6 @@ static const unsigned char REPCHK[] = {
     CHK_FILE_COUNT, CHK_DIR_BLOCKS, CHK_FILE_BLOCKS, CHK_DIR_EOF,
     CHK_DIR_PARENT, CHK_ENT_HEADER_PTR, CHK_DIR_CHAIN
 };
-static const unsigned char BIT[] = { 1, 2, 4, 8 };
 enum {
     REP_BM_USED_FREE, REP_BM_RESERVED, REP_BM_TAIL, REP_BM_LOST,
     REP_FILE_COUNT, REP_DIR_BLOCKS, REP_FILE_BLOCKS, REP_DIR_EOF,
@@ -184,7 +183,8 @@ static const char M_L2[]      = "%s  %u  block %u slot %u\r\n";
 static const char M_BOOTVOL[] = "That volume holds the running program: repair it from another boot.";
 static const char M_NOPLAN[]  = "Scan incomplete: no repair.";
 static const char M_XLINK[]   = "Cross-linked blocks: copy both files to another volume before any repair.";
-static const char M_PARTIAL[] = "Broken entries: lost blocks kept.";
+/* Lost blocks beside anything else wrong: the whole plan is refused. */
+static const char M_KEPT[]    = "Lost blocks may hold a damaged file: nothing written. See FIXIT.";
 /* The refusal M_DIRLATER stood here until increments 13 to 15: the seven
  * directory repairs are applied now, so there is nothing left to defer. */
 static const char M_NOTHING[] = "Nothing written.";
@@ -192,12 +192,12 @@ static const char M_CHANGED[] = "Disk changed: nothing written.";
 static const char M_ASK[]     = "Type FIX to confirm";
 static const char M_WORD[]    = "FIX";
 static const char M_WRITING[] = "Repairing...\r\n";
-static const char M_PLANLN[]  = "Plan: %u corrections over %u blocks. Nothing written yet.\r\n";
+/* The foot of the plan screen: the total, and the only keys there are. */
+static const char M_PLANLN[]  = "\r\nPlan: %u corrections over %u blocks. Nothing written yet.\r\n\r\nF fix  ESC back";
 static const char M_DONE[]    = "Applied %u of %u blocks; rescan clean: repaired.";
 static const char M_LEFT[]    = "Applied %u of %u blocks; rescan still reports %u findings.";
 static const char M_NOREST[]  = "Block %u not restored: recover this volume before using it.";
 static const char M_LINE[]    = "%s  %u\r\n";
-static const char M_RKEYS[]   = "\r\nF fix  ESC back";
 #endif
 
 /* BSS: nothing zeroes it, every field is written before it is read. */
@@ -303,13 +303,15 @@ static unsigned char rootdone;
  * one v_memset empties them: cc65 addresses zz[k] with a constant k exactly
  * as it addresses a scalar, and six separate stores cost far more. */
 static unsigned int zz[6];
-#define pgused  zz[0]               /* pages the plan rewrites, with and */
-#define pgany   zz[1]               /* without the freeing of BM_LOST */
+#define tree    zz[0]               /* what the walk of the tree found */
+#define pgany   zz[1]               /* bitmap pages the plan rewrites */
 #define applied zz[2]               /* blocks written and read back */
 #define dblocks zz[3]               /* blocks the directory writes cost */
 #define corr    zz[4]               /* corrections the plan proposes */
 #define blocks  zz[5]               /* and the writes they will cost */
-static unsigned char mode, on, hurt;  /* 1 a write failed, 2 unrestored */
+/* `freeing`: the plan gives the lost blocks back. `hurt`: 1 a write failed,
+ * 2 a block could not be put back. */
+static unsigned char mode, freeing, hurt;
 /* The few bytes a directory correction writes. Five is the longest one,
  * the +$13..$17 of a subdirectory entry (blocks used and eof, which are
  * contiguous). Putting them in is a SWAP: nv[] comes back holding what the
@@ -529,8 +531,10 @@ static void fix(unsigned int b, unsigned char* p, unsigned char n)
     if (mode != MD_APPLY) { if (!mode) inc(&dblocks); return; }
     /* Escape, a read error, or a block that could not be put back: the
      * walk stops after the correction in hand, never inside one, and a
-     * second correction on a block already in blk must not slip past. */
-    if (stop()) return;
+     * second correction on a block already in blk must not slip past. A
+     * walk that has been cut writes nothing more either: the plan pass was
+     * complete, so this one no longer sees the disk the plan was built on. */
+    if (stop() || !complete) return;
     if (cached != b) {                  /* walking a file may have taken blk */
         if (!readblock(b, dirbuf)) return;
         cached = b;
@@ -874,6 +878,17 @@ static void voldir_shape(void)
 }
 #endif
 
+/* The walk goes no further down this directory: the finding, the pass
+ * marked incomplete, the frame popped, and on with the loop of walk() --
+ * the `continue` is in the macro. For REPAIR a cut walk is a refusal of the
+ * whole plan, and its four more reasons to cut share one function. */
+#ifdef REPAIR
+static void cut(unsigned char id) { finding(id); complete = 0; --depth; }
+#define CUT(id, b) { cut(id); continue; }
+#else
+#define CUT(id, b) { nfinding(id, b); complete = 0; --depth; continue; }
+#endif
+
 static void walk(void)
 {
     struct Frame* f;
@@ -896,34 +911,67 @@ static void walk(void)
             /* A block entered for the first time. A chain longer than the
              * volume itself can only be a loop: the claims name it first,
              * this is the bound that holds whatever they say. */
-            if (!budget) {
-                nfinding(CHK_DIR_LOOP, f->block); complete = 0;
-                --depth; continue;
-            }
+            if (!budget) CUT(CHK_DIR_LOOP, f->block);
             --budget; ++f->nblk;
             claim(f->block);
 #ifndef REPAIR
             if (depth == 1) rootchain(f->block);
 #endif
-            /* A wrong back-pointer is reported and the walk goes on: the
+            /* A wrong back-pointer is reported and FIXIT's walk goes on: the
              * forward chain is what holds the directory together. */
             if (word(dirbuf) != f->prev) {
+#ifdef REPAIR
+                /* REPAIR WRITES INTO THE BLOCKS IT WALKS, so it enters a
+                 * block as a directory only on evidence that it is one. A
+                 * damaged pointer -- a subdirectory key, a forward link --
+                 * leads into a block that belongs to something else, and
+                 * every "repair" written there, like every block the real
+                 * directory no longer reaches and the bitmap would give
+                 * back, is the user's data. The volume directory is held to
+                 * its place (below, where its link is followed), so there
+                 * only the back-pointer can be wrong, and it is rebuilt.
+                 * Anywhere else a back-pointer that disagrees says the link
+                 * that led here may be the damaged one: the walk is cut,
+                 * and a cut walk repairs nothing. The forward chain is
+                 * never invented. */
+                if (depth > 1) CUT(CHK_DIR_CHAIN, f->block);
+#endif
                 nfinding(CHK_DIR_CHAIN, f->block);
 #ifdef REPAIR
-                /* Only the back-pointer is ever rebuilt: the forward chain
-                 * is what holds the directory together and is never
-                 * invented. */
                 nu.w = f->prev; fix(f->block, dirbuf, 2);
 #endif
             }
             if (f->block == f->first) {
-                if (depth > 1) subheader(f);
-                else f->expected = word(dirbuf + H_FILES);
+                if (depth > 1) {
+#ifdef REPAIR
+                    /* The key block of a subdirectory carries its header:
+                     * $E, 39 bytes an entry, 13 a block. Anything else is
+                     * not a directory REPAIR may count, patch or free
+                     * around -- FIXIT names it DIR_HEADER and walks on. */
+                    if ((dirbuf[4] & 0xF0) != 0xE0 || dirbuf[35] != 39
+                            || dirbuf[36] != 13)
+                        CUT(CHK_DIR_HEADER, f->block);
+#endif
+                    subheader(f);
+                } else f->expected = word(dirbuf + H_FILES);
                 f->slot = 1;                        /* slot 0 is the header */
             }
         }
         if (f->slot == 13) {
             next = word(dirbuf + 2);
+#ifdef REPAIR
+            /* The volume directory is the blocks from 2 up to the bitmap,
+             * in order -- 2, 3, 4, 5 on every volume ProDOS formats, block
+             * 2 alone on /RAM -- and its links are held to that: one that
+             * leads anywhere else, or stops early, is not followed, and the
+             * entries behind it are not given up for lost. `cached` is
+             * this block: the walk has it in hand. */
+            if (depth == 1) {
+                key = cached + 1;                   /* the link there must be */
+                if (key == bitmap) key = 0;
+                if (next != key) CUT(CHK_VOLDIR_SIZE, f->block);
+            }
+#endif
             if (next) {
                 kind = CHK_DIR_CHAIN;
                 if (claimed(next)) kind = CHK_DIR_LOOP;
@@ -931,9 +979,7 @@ static void walk(void)
                     f->prev = f->block; f->block = next; f->slot = 0;
                     continue;
                 }
-                nfinding(kind, f->block);
-                complete = 0;
-                --depth; continue;                  /* the chain is cut here */
+                CUT(kind, f->block);                /* the chain is cut here */
             }
             /* The chain ended where it should: its counters are meaningful. */
 #ifndef REPAIR
@@ -970,13 +1016,25 @@ static void walk(void)
 #endif
         }
 #ifndef REPAIR
-        if (entry[0x1E] & 0x1C) efinding(CHK_ENT_ACCESS);
+        /* Bits 4 and 3 only: bit 2 is the GS/OS "invisible" bit, which a
+         * healthy volume carries and A2FC itself preserves. */
+        if (entry[0x1E] & 0x18) efinding(CHK_ENT_ACCESS);
 #endif
         key = word(entry + 17);
         if (kind == 13) {
             if (key < 2 || key >= total) efinding(CHK_ENT_KEY);
             else enter(key);
-        } else file();
+        } else {
+#ifdef REPAIR
+            /* File type $0F is a directory and storage type $D is one too:
+             * an entry that is the first without the second may be a
+             * subdirectory whose storage nibble was damaged. It then reads
+             * as a flawless one-block file, and everything below it as
+             * lost blocks. Named, so that nothing is given back. */
+            if (entry[16] == 0x0F) efinding(CHK_ENT_STORAGE);
+#endif
+            file();
+        }
     }
 #ifndef REPAIR
     voldir_shape();
@@ -985,16 +1043,19 @@ static void walk(void)
 
 #ifdef REPAIR
 /* May a lost block be given back to the bitmap? Section 5: only when the
- * pass is complete, no block is cross-linked and no entry was abandoned
- * half walked -- the blocks nobody claims may be the tail of the broken
- * entry, which RESCUE and UNDELETE can still read. Asked once when the
+ * pass is complete and the tree it walked has NOTHING wrong -- no finding
+ * of any kind -- and claims no block the bitmap calls free. A block nobody
+ * claims is lost only if every pointer can be believed: a key or an index
+ * pointer that moved, a storage type that changed, an entry that merely
+ * looks deleted, a directory link cut short all leave the user's blocks
+ * unclaimed, and what gives them away is a counter that no longer agrees
+ * or a claim on a block that was never allocated. RESCUE and UNDELETE can
+ * still read those blocks while the bitmap keeps them. Asked once when the
  * plan is built, and again at every page of the apply pass: the disk may
  * have changed, and a second walk that no longer agrees writes nothing. */
 static unsigned char freeing_ok(void)
 {
-    return complete && !counts[CHK_XLINK] && !counts[CHK_ENT_KEY]
-        && !counts[CHK_ENT_STORAGE] && !counts[CHK_IDX_RANGE]
-        && !counts[CHK_FORK_STORAGE];
+    return complete && !tree && !counts[CHK_BM_USED_FREE];
 }
 
 /* One bitmap page against the claims of the walk -- the same loop for the
@@ -1013,7 +1074,7 @@ static unsigned char bitmap_page(void)
 
     /* A walk that did not finish knows nothing about what is free, and a
      * second walk that no longer allows freeing writes nothing either. */
-    if (mode == MD_APPLY && (!complete || ((on & 8) && !freeing_ok()))) return 0;
+    if (mode == MD_APPLY && (!complete || (freeing && !freeing_ok()))) return 0;
     hit = 0; changed = 0; n = 0;
     for (i = 0; i < 512; ++i) {
         fb = blk[i]; nb = fb;
@@ -1031,9 +1092,9 @@ static unsigned char bitmap_page(void)
                 } else if (!resv && !sb && complete) id = REP_BM_LOST;
             }
             if (id != 255) {
-                hit |= BIT[id];
+                hit = 1;
                 if (mode != MD_APPLY) bfinding(REPCHK[id], base + n);
-                else if (on & BIT[id]) { nb ^= mask; changed = 1; }
+                else if (id != REP_BM_LOST || freeing) { nb ^= mask; changed = 1; }
             }
             ++n;
         }
@@ -1049,7 +1110,6 @@ static unsigned char bitmap_page(void)
         if (verified(b, seen)) { inc(&applied); return 1; }
         return restored(b, blk);
     }
-    if (hit & 7) inc(&pgused);
     if (hit) inc(&pgany);
     return 1;
 }
@@ -1073,6 +1133,8 @@ static void audit(void)
     walk();
 #ifndef REPAIR
     if (quick) return;
+#else
+    tree = found;                       /* the bitmap's own come after */
 #endif
     do {
         span = total - base; if (span > 4096) span = 4096;

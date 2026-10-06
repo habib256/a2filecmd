@@ -11,13 +11,17 @@ oracle `tools/prodos_check.py`.
 
     python3 tools/fuzz_prodos.py --count 2000 --seed 1 --out build/fuzz-prodos
 
-Seven invariants, each of which saves the image, the seed, the JSON of every
+Eight invariants, each of which saves the image, the seed, the JSON of every
 run and a one-line reason into `--out` when it fails:
 
 1. **no crash, no hang** -- FIXIT, REPAIR's plan, REPAIR's `FIX` and the
    oracle all terminate cleanly, under ASan and UBSan;
 2. **differential** -- FIXIT's counters and `complete` are the oracle's, and
-   REPAIR's plan pass agrees with FIXIT on the identifiers REPAIR carries.
+   REPAIR's plan pass agrees with FIXIT on the identifiers REPAIR carries
+   whenever REPAIR finishes its walk. REPAIR cuts its walk where FIXIT
+   walks on -- a subdirectory key block that is no header, a subdirectory
+   back-pointer that disagrees, a volume directory that is not where the
+   header puts it -- and every such cut must be one of those three.
    The divergences that are a property of the two designs, not a fault, are
    in `ALLOWED` below with the line of docs/FIXIT.md that documents each, and
    the summary counts how often each fired;
@@ -41,6 +45,13 @@ run and a one-line reason into `--out` when it fails:
    ends as the original with a subset of the corrections in it), no block
    the uninjected run never wrote has moved, and `not restored` leaves the
    volume as it was.
+
+8. **nothing owned is given away** -- no block the tree of the HEALTHY seed
+   owned, and the bitmap called used before the repair, is free after it.
+   A mutation damages what points at a file, never the file: a repair that
+   frees such a block has taken a damaged pointer's word against the user's
+   data. (Added 6 October 2026, after three defects no other invariant saw:
+   a freed block changes no byte of any file a reader can still reach.)
 
 Only throwaway images are touched: every seed is built here, in a temporary
 directory, and every run works on its own copy.
@@ -190,6 +201,7 @@ class Walk(prodos_check.Checker):
         self.claims = {}
         self.files = {}                 # (block, slot) -> (path, storage, key, eof)
         self.depth_of = {}              # (block, slot) -> the nesting level
+        self.dirtyped = 0               # files whose file type is $0F
 
     def claim(self, b, path):
         self.claims[b] = self.claims.get(b, 0) + 1
@@ -205,6 +217,10 @@ class Walk(prodos_check.Checker):
     def entry(self, e, block, slot, dirpath, dirkey, depth):
         storage = e[0] >> 4
         self.depth_of[(block, slot)] = depth
+        # REPAIR's own check, on every live entry that is not a directory:
+        # an unknown storage type typed $0F is named twice there.
+        if storage != prodos_check.SUBDIR and e[0x10] == 0x0F:
+            self.dirtyped += 1
         if storage in (prodos_check.SEEDLING, prodos_check.SAPLING,
                        prodos_check.TREE, prodos_check.EXTENDED):
             raw = e[1:1 + (e[0] & 15)]
@@ -395,6 +411,9 @@ class SeedMap:
                 break
         self.meta_blocks = sorted(set(self.dir_blocks) | set(self.index_blocks)
                                   | set(self.ext_keys) | set(self.bitmap_pages))
+        # Every block the healthy tree owns: what invariant 8 forbids REPAIR
+        # to hand back to the bitmap, whatever the mutation made of the tree.
+        self.owned = sorted(set(w.claims) - w.bitmap_pages - {0, 1})
 
 
 def build_seeds(work):
@@ -709,6 +728,15 @@ ALLOWED = {
     # read the last block it declares. Both then walk with the same total,
     # so this is the only counter that differs.
     'HDR_TOTAL_SHORT': 'header total below the image size: the oracle alone calls it HDR_TOTAL',
+    # docs/FIXIT.md section 5, "Ce que REPAIR refuse de croire": REPAIR
+    # writes into the blocks it walks, so it does not enter one as a
+    # directory without evidence. Where FIXIT names DIR_HEADER, DIR_CHAIN or
+    # VOLDIR_SIZE and walks on, REPAIR's walk is cut and its pass incomplete.
+    'REPAIR_CUT': 'REPAIR cuts its walk at a block FIXIT only names',
+    # Same section: a file whose file type is $0F may be a subdirectory
+    # whose storage nibble was damaged. REPAIR alone counts it, as
+    # ENT_STORAGE, so that no block is given back beside it.
+    'DIR_TYPE': 'a file typed $0F: REPAIR alone names it',
 }
 
 
@@ -753,8 +781,24 @@ class Case:
         self.failures.append((invariant, reason))
 
 
-def differential(case, fx, rp, data, oracle):
-    """Invariant 2: FIXIT is the oracle, and REPAIR's plan is FIXIT."""
+def repair_cuts(w, oracle):
+    """Does this volume carry one of REPAIR's three reasons to cut a walk
+    FIXIT finishes? Judged on the oracle's walk alone."""
+    if not oracle.complete:
+        return False
+    if w.bitmap_ok and w.root_chain != list(range(2, w.bitmap)):
+        return True                     # the volume directory is not 2..bitmap-1
+    for f in oracle.findings:
+        if f.id == 'DIR_HEADER':
+            return True
+        if f.id == 'DIR_CHAIN' and f.path != w.volume:
+            return True                 # a back-pointer, in a subdirectory
+    return False
+
+
+def differential(case, fx, rp, data, oracle, w):
+    """Invariant 2: FIXIT is the oracle, and REPAIR's plan is FIXIT -- until
+    REPAIR cuts its walk, which it may only do for a documented reason."""
     oracle_counts = {k: v for k, v in Counter(f.id for f in oracle.findings).items()
                      if k not in prodos_check.DEVICE_ONLY}
     fixit_counts = {k: v for k, v in fx['counts'].items()
@@ -778,13 +822,30 @@ def differential(case, fx, rp, data, oracle):
                   % (fx['complete'], oracle.complete))
     if rp['note'] in NO_WALK or rp['failed']:
         return
+    cut = repair_cuts(w, oracle)
+    if not rp['complete']:
+        # A cut walk refuses the whole plan (invariant 3 holds it to writing
+        # nothing); its counters stop where it stopped and compare to none.
+        if fx['complete']:
+            if cut:
+                case.fired.append('REPAIR_CUT')
+            else:
+                case.fail('2-differential', 'REPAIR cut a walk FIXIT finished, '
+                          'for none of its three reasons: %s' % rp['counts'])
+        return
+    if not fx['complete']:
+        case.fail('2-differential', 'complete: FIXIT 0, REPAIR 1')
+        return
+    if cut:
+        case.fail('2-differential', 'REPAIR finished a walk it must cut: %s'
+                  % sorted(oracle_ids(oracle)))
     kept_fx = {k: v for k, v in fx['counts'].items() if k not in DROPPED}
     kept_rp = {k: v for k, v in rp['counts'].items() if k not in DROPPED}
+    if w.dirtyped:
+        kept_fx['ENT_STORAGE'] = kept_fx.get('ENT_STORAGE', 0) + w.dirtyped
+        case.fired.append('DIR_TYPE')
     if kept_fx != kept_rp:
         case.fail('2-differential', 'REPAIR plan %s vs FIXIT %s' % (kept_rp, kept_fx))
-    if fx['complete'] != rp['complete']:
-        case.fail('2-differential', 'complete: FIXIT %d, REPAIR %d'
-                  % (fx['complete'], rp['complete']))
 
 
 def check_writes(case, writes, before, after, w):
@@ -822,11 +883,30 @@ def check_files(case, before, after, w):
                       % (v[0], n, len(want[k]), len(got[k])))
 
 
+def check_freed(case, seed, before, after):
+    """Invariant 8: no block the healthy seed owned is given back.
+
+    The seed is healthy, so every block its tree claims holds a file's or a
+    directory's bytes, and a mutation only damages what POINTS at them. A
+    repair that frees one has taken a damaged pointer's word against the
+    user's data: the three defects of 6 October 2026 all ended that way, and
+    said `repaired`. The bitmap is read where the SEED keeps it -- a mutated
+    header may point elsewhere.
+    """
+    base = seed.bitmap * BLOCK
+    freed = [b for b in seed.owned
+             if not before[base + (b >> 3)] & (0x80 >> (b & 7))
+             and after[base + (b >> 3)] & (0x80 >> (b & 7))]
+    if freed:
+        case.fail('8-freed', '%u block(s) the healthy volume owned were freed: %s'
+                  % (len(freed), freed[:8]))
+
+
 def oracle_ids(result):
     return {f.id for f in result.findings if f.id not in prodos_check.DEVICE_ONLY}
 
 
-def monotone(case, before_ids, after_result, note, allow):
+def monotone(case, before_ids, after_result, note, allow, after_image):
     """Invariant 6: nothing new, and the verdict is the truth."""
     after_ids = oracle_ids(after_result)
     new = after_ids - before_ids - allow
@@ -841,6 +921,7 @@ def monotone(case, before_ids, after_result, note, allow):
         claimed = int(note.split('still reports')[1].split()[0])
         counted = sum(1 for f in after_result.findings
                       if f.id not in prodos_check.DEVICE_ONLY and f.id not in DROPPED)
+        counted += walked(after_image)[0].dirtyped      # REPAIR alone names those
         if claimed != counted and not allow:
             case.fail('6-monotone', 'note says %u findings, the oracle counts %u'
                       % (claimed, counted))
@@ -925,7 +1006,7 @@ def one_case(index, seeds, exes, timeout, out, inject_share, bug):
                 case.fail('3-refusal', 'the plan screen wrote %u block(s)'
                           % plan['nwrite'])
 
-            differential(case, fx, plan, data, oracle)
+            differential(case, fx, plan, data, oracle, w)
 
             # (3) REPAIR with the word FIX.
             path = work / 'fix.po'
@@ -942,7 +1023,7 @@ def one_case(index, seeds, exes, timeout, out, inject_share, bug):
             refused = (fix['note'] in NO_WALK
                        or fix['note'] in (test_repair.M_CLEAN, test_repair.M_NOPLAN,
                                           test_repair.M_CANCEL, test_repair.M_IOERR,
-                                          test_repair.M_XLINK, test_repair.M_PARTIAL,
+                                          test_repair.M_XLINK, test_repair.M_KEPT,
                                           test_repair.M_BOOTVOL, test_repair.M_CHANGED,
                                           test_repair.M_NOTHING)
                        or not fix['corr'])
@@ -952,6 +1033,7 @@ def one_case(index, seeds, exes, timeout, out, inject_share, bug):
                               % (fix['note'], fix['nwrite']))
             check_writes(case, fix['writes'], data, after, w)
             check_files(case, data, after, w)
+            check_freed(case, seed, data, after)
 
             allow = set()
             _, fired, _ok = allowance(data, oracle,
@@ -960,7 +1042,7 @@ def one_case(index, seeds, exes, timeout, out, inject_share, bug):
             if 'HDR_TOTAL_SHORT' in fired:
                 allow.add('HDR_TOTAL')
             after_result = prodos_check.check(after)
-            monotone(case, case.ids, after_result, fix['note'], allow)
+            monotone(case, case.ids, after_result, fix['note'], allow, after)
 
             # (4) a second REPAIR over the repaired volume writes nothing.
             if fix['nwrite'] and not bug:

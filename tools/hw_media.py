@@ -14,6 +14,8 @@ The result, next to docs/HARDWARE-CHECKLIST.md:
 
     HW-CLEAN.dsk    a healthy 280-block ProDOS volume: FIXIT must say nothing
     HW-BROKEN.dsk   the same volume, broken in four places REPAIR can fix
+    HW-HIDDEN.dsk   the same volume with ONE damaged nibble: a file that
+                    merely looks deleted. REPAIR must refuse and write nothing
     HW-DOS33.dsk    a DOS 3.3 disk with three files, for DOSWRITE and DOSGET
     HW-BIG.po       (--big) a 20,000-block volume broken past the first
                     bitmap page, for the FIXIT/REPAIR pass in auxiliary memory
@@ -34,13 +36,18 @@ import prodos_check                                            # noqa: E402
 import mkdos33                                                 # noqa: E402
 
 VOLUME = 'HWTEST'
+# What REPAIR answers on HW-HIDDEN (M_KEPT in src/plugins/fixit_walk.h).
+REFUSAL = 'Lost blocks may hold a damaged file: nothing written. See FIXIT.'
 BLOCKS = 280
 # The same four faults bench/repair.py plays: a count, an eof, a parent and a
-# lost block -- one of each family REPAIR knows how to put right.
-BROKEN = ['file_count_high', 'dir_eof_wrong', 'parent_wrong', 'bitmap_lost']
-# On a volume of more than 4,096 blocks the claims live in auxiliary memory:
-# a fault in a far subdirectory and one in the fourth bitmap page prove it.
-BROKEN_BIG = ['file_count_high', 'bitmap_lost']
+# file block the bitmap calls free -- one of each family REPAIR knows how to
+# put right in ONE plan. A lost block is not among them since 6 October 2026:
+# beside a wrong count REPAIR gives nothing back (docs/FIXIT.md section 5).
+BROKEN = ['file_count_high', 'dir_eof_wrong', 'parent_wrong', 'bitmap_free_used']
+# On a volume of more than 4,096 blocks the claims live in auxiliary memory.
+BROKEN_BIG = ['file_count_high', 'bitmap_free_used']
+# The file whose storage nibble HW-HIDDEN zeroes: its name and key stay.
+HIDDEN = 'B'
 
 
 def make_volume(stage, out, blocks=BLOCKS, volume=VOLUME):
@@ -73,6 +80,29 @@ def break_volume(clean, names, out):
     counts = {}
     for f in read_back.findings:
         counts[f.id] = counts.get(f.id, 0) + 1
+    return counts
+
+
+def hide_entry(clean, out, name=HIDDEN):
+    """One damaged nibble: the entry of `name` reads as a free slot.
+
+    Its blocks stay allocated and nothing claims them any more, and the
+    header still counts the file: FIXIT says FILE_COUNT and BM_LOST, and
+    REPAIR must refuse the whole plan -- until 6 October 2026 it lowered the
+    count and gave the file's blocks back.
+    """
+    data = bytearray(clean.read_bytes())
+    inv = corrupt_prodos.Inventory(bytes(data))
+    ref = next(r for r in inv.entries if r.path.endswith('/' + name))
+    data[ref.offset] &= 0x0F
+    out.write_bytes(bytes(data))
+    result = prodos_check.check(bytes(data))
+    counts = {}
+    for f in result.findings:
+        counts[f.id] = counts.get(f.id, 0) + 1
+    if (set(counts) != {'FILE_COUNT', 'BM_LOST'} or counts['BM_LOST'] != len(ref.blocks)
+            or not result.complete):
+        raise SystemExit('HW-HIDDEN is not the fixture it claims to be: %s' % counts)
     return counts
 
 
@@ -117,6 +147,9 @@ def main():
         po2dsk(args.out / 'HW-BROKEN.po', args.out / 'HW-BROKEN.dsk')
         report['HW-BROKEN'] = counts
 
+        report['HW-HIDDEN'] = hide_entry(clean, args.out / 'HW-HIDDEN.po')
+        po2dsk(args.out / 'HW-HIDDEN.po', args.out / 'HW-HIDDEN.dsk')
+
         dos33(args.out / 'HW-DOS33.dsk')
 
         if args.big:
@@ -136,7 +169,10 @@ def main():
         print('%s: FIXIT must report' % image)
         for ident, n in sorted(counts.items()):
             print('  %-20s %d' % (ident, n))
-        print('  REPAIR plan: %d corrections' % sum(counts.values()))
+        if image == 'HW-HIDDEN':
+            print('  REPAIR must refuse: "%s"' % REFUSAL)
+        else:
+            print('  REPAIR plan: %d corrections' % sum(counts.values()))
     return 0
 
 

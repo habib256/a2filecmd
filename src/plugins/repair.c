@@ -30,9 +30,31 @@
  * several is written once per correction -- grouping them would ask for a
  * patch list this window cannot hold (docs/FIXIT.md sections 4 and 5).
  *
- * Six of FIXIT's thirty checks are not carried here, because REPAIR repairs
- * none of them and the window is full: ENT_NAME, ENT_ACCESS, FILE_EOF,
- * HDR_NAME, VOLDIR_SIZE and DIR_HEADER (docs/FIXIT.md sections 4 and 5).
+ * WHAT REPAIR REFUSES TO BELIEVE (6 October 2026). It writes only where what
+ * it sees cannot be the work of ONE damaged pointer that still leaves the
+ * user's data on the disk. Three rules hold that, in fixit_walk.h and below:
+ *
+ *   - a block is entered as a directory only on evidence that it is one: a
+ *     subdirectory key block must carry a header ($E, 39, 13), a block
+ *     reached through a forward link must point back where it was reached
+ *     from, and the volume directory must be the blocks from 2 to the bitmap,
+ *     in order. Anything else cuts the walk, and a cut walk repairs nothing;
+ *   - lost blocks are given back only when the tree has NOTHING wrong and
+ *     claims no block the bitmap calls free. Beside any other finding of the
+ *     tree they are what a damaged key, index, link, storage type or entry
+ *     no longer reaches, and the whole plan is refused: not a block freed,
+ *     and not a counter "repaired" either, since the counter is the evidence;
+ *   - a file whose file type is $0F is named: it may be a subdirectory whose
+ *     storage nibble went.
+ *
+ * Until then REPAIR took the pointer's word, freed the file and said
+ * `rescan clean: repaired.` -- tools/test_repair.py, section (j), holds
+ * eighteen shapes of that, and tools/fuzz_prodos.py its invariant 8.
+ *
+ * Four of FIXIT's thirty checks are not carried here, because REPAIR repairs
+ * none of them and they say nothing about a pointer: ENT_NAME, ENT_ACCESS,
+ * FILE_EOF and HDR_NAME (docs/FIXIT.md sections 4 and 5). DIR_HEADER and
+ * VOLDIR_SIZE are carried as refusals.
  *
  * A volume of more than 4 096 blocks keeps its claims in the auxiliary bank
  * (src/plugins/fixit_bits.inc): REPAIR asks once whether the /RAM files may
@@ -63,9 +85,6 @@ const struct PluginHeader __plugin_header = {
 #define REPAIR 1
 #include "fixit_walk.h"
 
-static const char CRLF[] = "\r\n";
-static void line(const char* t) { v_cputs(t); v_cputs(CRLF); }
-
 /* Is this still the disk the plan was built on? Block 2 has just been read
  * again: its whole header entry -- name, type, size, bitmap, counts, dates --
  * must be the thirty-nine bytes the plan pass copied into hdr[]. A floppy
@@ -81,31 +100,6 @@ static unsigned char same_header(void)
     return 1;
 }
 
-/* The plan, with nothing written yet: one line per check with the number of
- * corrections it carries, then what the plan refuses and why. The summary
- * line already holds the total and the number of blocks the plan will
- * write, so the per-check page count the bitmap lines used to print went
- * with the seven directory repairs (docs/FIXIT.md section 4). The plan
- * always fits one screen -- eleven checks at most -- so an unknown key has
- * nothing to redraw. */
-static void plan_screen(void)
-{
-    unsigned char k;
-    unsigned int n;
-
-    title();
-    v_cprintf(M_PLANLN, corr, blocks);
-    for (k = 0; k < REP_COUNT; ++k) {
-        n = counts[REPCHK[k]];
-        if (n && (k > 3 || (on & BIT[k])))
-            v_cprintf(M_LINE, chkname(k), n);
-    }
-    /* What the plan refuses, and why, said on the screen that offers it. A
-     * cross-linked volume never gets here: it is refused whole, above. */
-    if (counts[CHK_BM_LOST] && !(on & 8)) line(M_PARTIAL);
-    v_cputs(M_RKEYS);
-}
-
 /* Select, plan, confirm, write, walk again. */
 static void repair_main(void)
 {
@@ -119,7 +113,7 @@ static void repair_main(void)
     if (isboot) { note(M_BOOTVOL); return; }
 
     mode = MD_PLAN;
-    hurt = 0; on = 0;
+    hurt = 0; freeing = 0;
     v_memset(zz, 0, sizeof zz);
     state = scan();
     if (state == 3) { note(M_NOTHING); return; }
@@ -141,21 +135,35 @@ static void repair_main(void)
      * tell which claimant owns the block, and the message already says what
      * to do -- copy both files to another volume BEFORE any repair. */
     if (counts[CHK_XLINK]) { note(M_XLINK); return; }
-    /* The three bitmap corrections that only mark a block used are always
-     * allowed; giving a lost block back has its own condition. */
-    on = 7;
-    if (freeing_ok()) on |= 8;
+    /* LOST BLOCKS BESIDE ANYTHING THE TREE GETS WRONG ARE NOT LOST: they
+     * are what a damaged pointer no longer reaches. A file whose key or
+     * index pointer moved, whose storage type changed, whose entry merely
+     * looks deleted, a directory whose link was cut short -- each leaves the
+     * user's blocks unclaimed, and all that tells it from an interrupted
+     * save is a counter that disagrees or a claim on a block the bitmap
+     * never allocated. Giving the blocks back destroys the file; "fixing"
+     * the counter destroys the evidence, and the next run would then free
+     * them. So such a volume is refused WHOLE: not a block is freed and not
+     * a counter is touched. The three bitmap corrections that only mark a
+     * block used ride with any plan that is offered. */
+    freeing = freeing_ok();
+    if (!freeing && counts[CHK_BM_LOST]) { note(M_KEPT); return; }
+
+    /* The plan, with nothing written yet: one line per check with the number
+     * of corrections it carries, then the total and the number of blocks the
+     * plan will write. It always fits one screen -- eleven checks at most --
+     * so an unknown key has nothing to redraw. Every line shown is applied:
+     * a plan that would leave lost blocks behind was refused whole, above.
+     * The lines are printed as they are summed, one loop for both. */
+    title();
     for (k = 0; k < REP_COUNT; ++k) {
         n = counts[REPCHK[k]];
-        if (k > 3 || (on & BIT[k])) corr += n;
+        if (n) { v_cprintf(M_LINE, chkname(k), n); corr += n; }
     }
-    blocks = ((on & 8) ? pgany : pgused) + dblocks;
-    if (!corr) {
-        note(counts[CHK_BM_LOST] ? M_PARTIAL : M_CLEAN);
-        return;
-    }
-
-    plan_screen();
+    /* Nothing REPAIR can write: clean, or only what it never repairs. */
+    if (!corr) { note(found ? M_NOTHING : M_CLEAN); return; }
+    blocks = pgany + dblocks;
+    v_cprintf(M_PLANLN, corr, blocks);
     for (;;) {
         k = v_cgetc();
         if (k == KEY_ESC || k == KEY_RETURN) { note(M_NOTHING); return; }

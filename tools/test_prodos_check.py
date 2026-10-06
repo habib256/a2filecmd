@@ -46,6 +46,8 @@ def entry(kind=1, name=b'A', key=7, blocks=1, eof=1, header=2):
     word(e, 0x13, blocks)
     e[0x15:0x18] = eof.to_bytes(3, 'little')
     e[0x1E] = 0xE3
+    if kind == 0xD:
+        e[0x10] = 0x0F                       # a directory is file type DIR
     word(e, 0x25, header)
     return e
 
@@ -111,6 +113,23 @@ class CleanFixture(unittest.TestCase):
         result = pc.check(self.clean)
         self.assertEqual(pc.to_json(result.findings), [])
         self.assertTrue(result.complete)
+
+    def test_the_gsos_invisible_bit_is_not_a_reserved_bit(self):
+        """Bit 2 of the access byte is GS/OS's "invisible": until 6 October
+        2026 the mask was $1C and a healthy GS/OS volume answered ENT_ACCESS
+        for every hidden file. Bits 4 and 3 are still reserved."""
+        self.assertEqual(pc.ACCESS_RESERVED, 0x18)
+        ref = cp.Inventory(self.clean).entries[0]
+        for access, expect in ((0x04, []), (0xE7, []), (0x08, ['ENT_ACCESS']),
+                               (0x10, ['ENT_ACCESS']), (0x1C, ['ENT_ACCESS'])):
+            with self.subTest(access=hex(access)):
+                data = bytearray(self.clean)
+                data[ref.offset + 0x1E] = access
+                found = pc.check(bytes(data)).findings
+                self.assertEqual([f.id for f in found], expect)
+                if found:
+                    self.assertEqual((found[0].block, found[0].slot, found[0].found),
+                                     (ref.block, ref.slot, access))
 
     def test_fixture_has_every_storage_type(self):
         kinds = {r.storage for r in cp.Inventory(self.clean).entries}

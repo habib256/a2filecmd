@@ -62,7 +62,9 @@ VOLUME_DIR = 2
 VOLUME_DIR_BLOCKS = (2, 3, 4, 5)  # fixed by ProDOS: it cannot grow
 MIN_BLOCKS = 6                    # blocks 0-1 boot, 2-5 the volume directory
 MAX_DEPTH = 16                    # ProDOS nesting limit, as in volinfo.c
-ACCESS_RESERVED = 0x1C            # bits 4..2 of the access byte, always zero
+ACCESS_RESERVED = 0x18            # bits 4 and 3 of the access byte, always zero;
+                                  # bit 2 is the GS/OS "invisible" bit, which a
+                                  # healthy volume carries (docs/FILE-SERVICES.md)
 
 SEEDLING, SAPLING, TREE, EXTENDED, SUBDIR = 1, 2, 3, 5, 0xD
 FILE_STORAGE = (SEEDLING, SAPLING, TREE, EXTENDED, SUBDIR)

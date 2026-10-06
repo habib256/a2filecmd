@@ -411,9 +411,12 @@ def voldir_size(data, inv):
 
 
 def bad_access(data, inv):
-    """A file entry has a reserved bit set in its access byte."""
+    """A file entry has a reserved bit set in its access byte.
+
+    Bit 3: bit 2 is the GS/OS "invisible" bit, which is no fault at all.
+    """
     ref = inv.first(pc.SEEDLING)
-    data[ref.offset + 0x1E] |= 0x04
+    data[ref.offset + 0x1E] |= 0x08
     return Expect([Finding('ENT_ACCESS', ref.block, ref.slot, None,
                            data[ref.offset + 0x1E], ref.path)])
 

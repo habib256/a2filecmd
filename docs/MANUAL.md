@@ -698,9 +698,13 @@ blocks, Q checks directories only; F performs a full scan requiring AUX consent.
 A quick clean verdict is not a full allocation check. It does not check DOS disks.
 
 **REPAIR** shows a plan and requires **F**, then **FIX**, before writing. It
-refuses the program volume, cross-links and uncertain scans; some damaged files
-also prevent freeing unclaimed blocks. Writes are read back, restoration is
-attempted on error, and the volume is rescanned. Backups are only in RAM:
+refuses the program volume, cross-links and uncertain scans. Unclaimed blocks
+are given back only when nothing else is wrong with the directory tree: beside
+any other fault they may belong to a file a damaged pointer no longer reaches,
+and REPAIR then writes nothing at all (`See FIXIT`). A subdirectory whose key
+block is no directory header, or a volume directory that is not blocks 2 to 5,
+stops the scan. Writes are read back, restoration is attempted on error, and
+the volume is rescanned. Backups are only in RAM:
 interruption can leave a partially applied plan. Large scans can take minutes.
 
 **UNDELETE** recovers validated deleted files to another volume without changing

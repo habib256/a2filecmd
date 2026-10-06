@@ -138,6 +138,26 @@ class Seeds(unittest.TestCase):
             self.assertEqual(bytes(a[0]), bytes(b[0]))
             self.assertEqual(a[1], b[1])
 
+    def test_invariant_eight_sees_an_owned_block_given_back(self):
+        """The invariant that saw the three defects of 6 October 2026, held
+        to catching one: a block the healthy seed owns, allocated before and
+        free after, is a failure; the untouched image and a block that was
+        free already are not."""
+        seed = self.seeds['fixture1600']
+        case = fuzz_prodos.Case(0, seed.name, 'none', seed.data)
+        fuzz_prodos.check_freed(case, seed, seed.data, seed.data)
+        self.assertEqual(case.failures, [])
+        after = bytearray(seed.data)
+        b = seed.data_blocks[0]
+        self.assertIn(b, seed.owned)
+        after[seed.bitmap * prodos_check.BLOCK + (b >> 3)] |= 0x80 >> (b & 7)
+        fuzz_prodos.check_freed(case, seed, seed.data, bytes(after))
+        self.assertEqual([f[0] for f in case.failures], ['8-freed'], case.failures)
+        self.assertIn(str(b), case.failures[0][1])
+        case = fuzz_prodos.Case(0, seed.name, 'none', seed.data)
+        fuzz_prodos.check_freed(case, seed, bytes(after), bytes(after))
+        self.assertEqual(case.failures, [], 'free before the repair: not its doing')
+
     def test_every_allowance_names_the_document_that_carries_it(self):
         doc = (ROOT / 'docs/FIXIT.md').read_text()
         source = FUZZ.read_text()

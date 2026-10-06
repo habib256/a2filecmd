@@ -97,9 +97,9 @@ Entrée de fichier ou de sous-répertoire : `+$00` type de stockage et longueur
 du nom (`$0` = entrée libre), `+$10` `file_type`, `+$11..$12` `key_pointer`
 (`word(entry+17)` dans `volinfo.c`), `+$13..$14` `blocks_used`
 (`word(entry+19)`), `+$15..$17` `eof` sur trois octets poids faible d'abord,
-`+$1E` `access` (bit 7 destruction, 6 renommage, 5 sauvegarde, 1 et 0 écriture
-et lecture), `+$25..$26` `header_pointer`, le **bloc clé** du répertoire qui la
-contient.
+`+$1E` `access` (bit 7 destruction, 6 renommage, 5 sauvegarde, 2 « invisible »
+de GS/OS, 1 et 0 écriture et lecture), `+$25..$26` `header_pointer`, le
+**bloc clé** du répertoire qui la contient.
 
 Bloc de répertoire : `+$00..$01` bloc précédent, `+$02..$03` bloc suivant,
 puis 13 entrées de 39 octets à partir de `+$04` (4 + 13 × 39 = 511).
@@ -146,7 +146,7 @@ réparation par compteur.
 | 3 | `HDR_PER_BLOCK` | en-tête `+$20` ≠ 13 | refus | oui |
 | 4 | `HDR_BITMAP` | `+$23` hors `[3, total[`, ou pages débordant le volume | refus | oui |
 | 5 | `HDR_TOTAL` | `+$25` nul, < 6, ou dernier bloc illisible ; l'oracle hôte compare à la taille de l'image | refus | partiel |
-| 6 | `DIR_CHAIN` | bloc de répertoire `+$00` ≠ bloc précédent, ou `+$02` hors plage | réparable (`prev` seul) | oui (`bad`) |
+| 6 | `DIR_CHAIN` | bloc de répertoire `+$00` ≠ bloc précédent, ou `+$02` hors plage | réparable (`prev` seul, répertoire de volume seul) | oui (`bad`) |
 | 7 | `DIR_LOOP` | bloc clé ou chaînage déjà visité | refus | oui (`bad`) |
 | 8 | `DIR_HEADER` | en-tête de sous-répertoire : `$E`, 39, 13 | refus | oui (`bad`) |
 | 9 | `DIR_PARENT` | en-tête `+$23`, `+$25`, `+$26` contre l'entrée réelle | réparable | non |
@@ -168,7 +168,7 @@ réparation par compteur.
 | 25 | `IO_ERROR` | échec `READ_BLOCK` `$80` | refus, pose `complete = 0` | oui (`failed`) |
 | 26 | `HDR_NAME` | nom du bloc 2 contre celui d'`ON_LINE` | info | non |
 | 27 | `VOLDIR_SIZE` | chaîne du répertoire de volume ≠ blocs 2, 3, 4, 5 | irréparable sans perte | non |
-| 28 | `ENT_ACCESS` | `+$1E` bits 4 à 2 non nuls | info | non |
+| 28 | `ENT_ACCESS` | `+$1E` bit 4 ou 3 non nul (masque `$18`) | info | non |
 | 29 | `BM_RESERVED` | bloc 0, 1, 2 à 5 ou de bitmap marqué libre | réparable | non |
 | 30 | `BM_TAIL` | bit à 1 au-delà de `total_blocks` dans la dernière page | réparable | non |
 
@@ -178,6 +178,13 @@ les six derniers y ont été ajoutés, et les deux listes sont identiques
 nomme sans jamais les émettre (`DEVICE_ONLY`). VOLINFO réclame déjà silencieusement les blocs
 réservés, ce qui les empêche d'apparaître en blocs perdus ; il ne dit pas
 qu'ils étaient marqués libres.
+
+`ENT_ACCESS` a porté le masque `$1C` jusqu'au 6 octobre 2026 : le bit 2 est
+le bit « invisible » de GS/OS, qu'A2FC lui-même conserve
+([FILE-SERVICES.md](FILE-SERVICES.md)), et FIXIT accusait donc d'un constat
+chaque fichier caché d'un volume GS/OS sain. Le masque est `$18` dans le
+parcours comme dans `tools/prodos_check.py` ; `build/fixit.PLG` et
+`build-6502/fixit.PLG` ne diffèrent de ceux d'avant que de cet octet.
 
 Règle de complétude, identique à celle de `prodos_check.py`, à deux niveaux :
 
@@ -196,8 +203,8 @@ Règle de complétude, identique à celle de `prodos_check.py`, à deux niveaux 
   émis pour elle (la cause est signalée, pas l'arithmétique qui en découle),
   la passe reste complète et `BM_LOST` est signalé pour les blocs orphelins.
   Ces blocs sont peut-être la queue du fichier cassé : le diagnostic les
-  nomme, mais le chantier WRITE refuse de les libérer tant qu'une entrée
-  partielle ou un `XLINK` subsiste (section 5).
+  nomme, mais le chantier WRITE refuse de les libérer tant que l'arbre porte
+  le moindre constat (section 5, « Ce que REPAIR refuse de croire »).
 
 ## 4. Mémoire et données
 
@@ -575,6 +582,57 @@ correction**, chaque écriture relue et comparée, chacune portant déjà celles
 d'avant (`blk` garde les rustines posées). La seule paire qui partage une
 écriture est `DIR_BLOCKS` avec `DIR_EOF`, cinq octets contigus d'une entrée.
 
+### Ce que REPAIR refuse de croire : ce qui a été mesuré (6 octobre 2026)
+
+Les trois règles de la section 5 (« Ce que REPAIR refuse de croire ») sont
+entrées dans une fenêtre qui avait **50 octets** en 65C02 et **30** en 6502
+(mesure du jour, avant la première ligne). Écrites sans précaution — trois
+`goto` vers le chemin de coupure de `walk()`, le compteur de l'arbre, les
+deux refus — elles tenaient de justesse ; le contrôle du type `$0F`, trouvé
+ensuite par la campagne, n'entrait plus en 6502. Ce qui a payé n'est pas dans
+les règles mais dans ce qu'elles rendent **inutile** : un plan n'est plus
+jamais proposé « sauf les blocs perdus », donc tout ce qui servait à le dire
+est tombé. Chaque ligne est la source livrée **avec cette seule forme
+changée**, mesurée au lien sur les deux processeurs ; « libre » est ce qui
+reste alors sous `$3F9D` :
+
+| Forme | Effet (65C02 / 6502) | Libre | Gardée |
+| --- | --- | ---: | --- |
+| la source livrée | — | 61 / 36 | **oui** |
+| `fix()` sans `\|\| !complete` (une passe d'application coupée écrivait encore) | −8 / −8 | 69 / 44 | non : obligatoire |
+| pas de contrôle `$E`, 39, 13 du bloc clé d'un sous-répertoire | −31 / −31 | 92 / 67 | non : obligatoire |
+| le même par `(dirbuf[4] >> 4) != 14` au lieu de `& 0xF0` | +2 / +2 | 59 / 34 | non |
+| un chaînage arrière faux **reconstruit** dans un sous-répertoire au lieu d'une coupure | −15 / −15 | 76 / 51 | non : obligatoire |
+| le répertoire de volume non tenu à `2..bitmap−1` | −63 / −64 | 124 / 100 | non : obligatoire |
+| la même règle lisant `f->block` par le pointeur de cadre au lieu de `cached` | +3 / +3 | 58 / 33 | non |
+| la même en une comparaison (`key = next`, ou `bitmap` en fin de chaîne ; `key != cached + 1`) | +1 / +17 | 60 / 19 | non : cc65 master l'empile et appelle `tosicmp` |
+| pas de contrôle du type de fichier `$0F` | −23 / −28 | 84 / 64 | non : obligatoire |
+| `freeing_ok()` sans `!tree`, ou sans `BM_USED_FREE` | −8 / −8 chacun | 69 / 44 | non : obligatoire |
+| les blocs perdus gardés mais le reste du plan appliqué (pas de refus entier) | −20 / −20 | 81 / 56 | non : la correction détruit l'indice |
+| le message de 33 caractères de la 0.9.5 au lieu des 64 de `M_KEPT` | −31 / −31 | 92 / 67 | non : un refus qui ne dit pas quoi faire |
+| `!corr` répondant `consistent` même quand un constat tient | −15 / −15 | 76 / 51 | non : c'était faux |
+| `CUT()` épelé à ses cinq sites au lieu de la fonction `cut()` | +13 / +19 | 48 / 17 | non |
+| `CUT()` en `kind = id; goto cut;` vers une étiquette posée dans un `if (0)` en tête de boucle | 0 / −7 | 61 / 43 | non : sept octets contre une étiquette dans du code mort ; et les trois `goto` **en avant** du premier jet coûtaient en plus un mot mort de RODATA chacun |
+| les lignes du plan et leur total en **deux** boucles | +34 / +37 | 27 / −1 | non : c'est la fusion qui a payé |
+
+Ce qui a été **échangé**, et qui se voit : la ligne `Plan: N corrections
+over M blocks. Nothing written yet.` est passée **sous** les lignes de
+contrôle, pour être imprimée par la boucle qui les additionne ; elle porte
+aussi la ligne de touches, une chaîne et un appel de moins. La ligne `Broken
+entries: lost blocks kept.` de l'écran de plan a disparu avec son cas —
+`line()`, `CRLF` et le compteur `pgused` aussi — et le masque `on` à quatre
+bits, sa table `BIT[4]` et ses deux recherches indexées sont devenus un
+octet, `freeing`. `freeing_ok()` est passé de six tests à trois.
+
+Mesure au lien, 65C02 : CODE 6 681, RODATA 1 079, BSS 1 479 (fin `$3F60`),
+fichier 7 834 octets, **61 octets libres** sous `$3F9D` (50 avant) ; 6502 :
+CODE 6 706, RODATA 1 079, BSS 1 479 (fin `$3F79`), fichier 7 859 octets,
+**36 libres** (30 avant). FIXIT fait 7 822 octets et garde **3** octets sur
+les deux processeurs ; ses deux fichiers ne diffèrent de ceux d'avant que de
+l'octet du masque `ENT_ACCESS` (`$1C` devenu `$18`, section 3) : tout le
+reste du parcours partagé est sous `#ifdef REPAIR`, la macro `CUT()` rendant
+à FIXIT le texte qu'il compilait.
+
 Les risques et les recours, dans
 l'ordre :
 
@@ -610,6 +668,10 @@ Trois passes, et la mémoire n'en garde aucune liste :
    `repaired` que si la passe revient **sans aucun constat** — pas même un
    que REPAIR n'a jamais proposé de réparer. Sinon il compte ce qui reste.
 
+**Tout ce qui suit dans cette section date du 16 septembre 2026, sauf la
+sous-section « Ce que REPAIR refuse de croire » (6 octobre 2026), qui
+restreint ce qu'il écrit : la lire d'abord.**
+
 Cinq décisions que la préparation laissait ouvertes, et pourquoi :
 
 - **Il n'y a pas de table de plan.** La table `plan[32]` de la section 4 ne
@@ -626,7 +688,9 @@ Cinq décisions que la préparation laissait ouvertes, et pourquoi :
   « plusieurs passes », puisque la deuxième buterait sur le même plafond.
 - **Les onze corrections sont appliquées.** La bitmap (incréments 10 à 12)
   et les sept corrections de répertoire (13 et 14). Il n'y a plus de refus
-  `Directory repairs: next increment.`
+  `Directory repairs: next increment.` Depuis le 6 octobre 2026 un même plan
+  porte soit `BM_LOST`, soit des corrections de l'arbre ou `BM_USED_FREE`,
+  jamais les deux.
 - **Les tampons.** Il y a deux zones de 512 octets dans cette fenêtre et pas
   une troisième : `blk`, où le parcours lit chaque bloc de répertoire, et
   `buf` (`api->copy_buf`). `seen`, la bitmap des blocs atteints de la
@@ -677,12 +741,147 @@ Cinq décisions que la préparation laissait ouvertes, et pourquoi :
 
 **Ce que REPAIR ne contrôle pas**, faute de place, et qu'il ne répare de
 toute façon jamais (section 5, « refus explicites ») : `ENT_NAME`,
-`ENT_ACCESS`, `FILE_EOF`, `HDR_NAME`, `VOLDIR_SIZE` et `DIR_HEADER`. FIXIT
-les nomme tous les six ; REPAIR ne les voit pas, et dira donc d'un volume
-qui ne porte que ceux-là qu'il n'a rien à réparer. `tools/test_repair.py`
-tient cette liste (`DROPPED`) et vérifie qu'elle est écrite ici.
+`ENT_ACCESS`, `FILE_EOF` et `HDR_NAME`. FIXIT les nomme tous les quatre ;
+REPAIR ne les voit pas, et dira donc d'un volume qui ne porte que ceux-là
+qu'il n'a rien à réparer. `tools/test_repair.py` tient cette liste
+(`DROPPED`) et vérifie qu'elle est écrite ici. `VOLDIR_SIZE` et `DIR_HEADER`
+en faisaient partie jusqu'au 6 octobre 2026 : REPAIR ne les répare toujours
+pas, mais il **refuse** désormais sur l'un comme sur l'autre (ci-dessous).
 REPAIR n'affiche pas non plus la ligne `Blocks %u..%u / %u` du parcours :
 elle coûtait 85 octets qui n'existaient pas.
+
+### Ce que REPAIR refuse de croire (6 octobre 2026)
+
+Une relecture du 6 octobre 2026, qui a fait tourner le vrai C dans le
+harnais hôte, a trouvé trois défauts de la même famille. Dans les trois,
+REPAIR finissait par `rescan clean: repaired.` **après avoir détruit des
+données** :
+
+- **D1.** La clé du sous-répertoire `/CHECKVOL/SUB` (27) changée en 29, le
+  bloc d'index de son propre fichier `NEST2`. REPAIR parcourait le bloc 29
+  comme un répertoire, y écrivait un `DIR_CHAIN` et un `DIR_PARENT` (blocs
+  écrits `[29, 29, 6]`, le bloc 29 changé aux offsets 0, 1, 39, 41 et 42),
+  puis libérait les blocs 27, 28, 30 et 31 : le vrai répertoire et ses
+  fichiers.
+- **D2.** Le chaînage avant du bloc 2 changé en un bloc libre (322) :
+  `Plan: 298 corrections over 3 blocks`, le chaînage arrière « réparé »
+  **dans le bloc étranger**, le `FILE_COUNT` baissé, et 295 blocs libérés —
+  tout ce que nomment les entrées du bloc 3.
+- **D3.** Le quartet de stockage de `/CHECKVOL/TREE` (284 blocs) mis à zéro,
+  nom et clé intacts : l'entrée a l'air effacée, le `FILE_COUNT` est baissé
+  pour s'accorder, 287 blocs libérés.
+
+Le défaut n'est dans aucun des trois : il est dans ce que REPAIR **croyait**.
+Il tenait pour vrai tout pointeur dans la plage, et pour perdu tout bloc que
+l'arbre ainsi lu n'atteignait pas. La règle, depuis :
+
+> REPAIR n'écrit que là où ce qu'il voit ne peut pas être l'effet d'**un**
+> pointeur abîmé qui laisse encore les données de l'utilisateur sur le
+> disque. Au moindre doute il refuse, dit pourquoi, et n'écrit rien.
+
+Trois règles la tiennent, toutes sous `#ifdef REPAIR` — FIXIT lit, il peut
+continuer à tout parcourir et à tout nommer.
+
+**1. Un bloc n'est parcouru comme un répertoire que sur preuve.** REPAIR
+écrit dans les blocs qu'il parcourt ; il n'y entre donc pas sur la foi du
+pointeur qui y mène :
+
+- le bloc clé d'un sous-répertoire doit porter son en-tête, `$E`, 39, 13 —
+  le `DIR_HEADER` que REPAIR ne contrôlait pas ;
+- un bloc atteint par un chaînage avant doit désigner en arrière le bloc
+  d'où l'on vient, et le bloc clé d'un sous-répertoire n'a pas de bloc
+  précédent. Un chaînage arrière faux ne dit pas lequel des deux liens est
+  le bon : dans un sous-répertoire il n'est donc **plus reconstruit** ;
+- le répertoire de volume est tenu à sa place, que l'en-tête donne : les
+  blocs de 2 à `bit_map_pointer − 1`, dans l'ordre (2, 3, 4, 5 sur tout
+  volume que ProDOS formate, le bloc 2 seul sur `/RAM`). Un chaînage avant
+  qui mène ailleurs ou s'arrête plus tôt n'est pas suivi. Ses blocs étant
+  connus par leur place, son chaînage **arrière** reste réparable : c'est le
+  seul `DIR_CHAIN` que REPAIR écrit encore.
+
+Dans les trois cas le parcours est **coupé** (`complete = 0`) : le plan
+entier est refusé, `Scan incomplete: no repair.`, et `fix()` n'écrit plus
+rien dans une passe d'application qui se découvre coupée — le disque n'est
+plus celui du plan, même si le bloc 2 n'a pas bougé.
+
+**2. Un bloc que personne ne réclame n'est perdu que si l'arbre n'a rien
+d'autre à se reprocher.** `freeing_ok()` demande une passe complète, **aucun
+constat de l'arbre**, quel qu'il soit, et aucun `BM_USED_FREE`. Une clé ou un
+pointeur d'index déplacé, un type de stockage changé, une entrée qui a l'air
+effacée, un chaînage coupé court laissent tous des blocs sans réclamant, et
+ce qui les distingue d'une sauvegarde interrompue est un compteur qui ne
+tombe plus juste (`FILE_COUNT`, `FILE_BLOCKS`, `DIR_BLOCKS`), une entrée
+partielle, ou une réclamation sur un bloc que la bitmap n'a jamais alloué.
+À côté de l'un de ces indices, **le plan entier est refusé** :
+`Lost blocks may hold a damaged file: nothing written. See FIXIT.` Pas
+seulement la libération : « réparer » le compteur détruirait l'indice, et
+la passe suivante libérerait. `BM_RESERVED` et `BM_TAIL`, qui ne tiennent
+qu'à la bitmap et ne passent par aucun pointeur, voyagent avec `BM_LOST`.
+
+**3. Un fichier de type `$0F` est nommé.** Un sous-répertoire d'un bloc dont
+le quartet de stockage passe de `$D` à 1 est, champ pour champ, un fichier
+d'un bloc de 512 octets : FIXIT et l'oracle n'y voient que des blocs perdus.
+Il reste son type de fichier. REPAIR compte donc `ENT_STORAGE` pour toute
+entrée de type `$0F` qui n'est pas de stockage `$D`, ce qui suffit à la
+règle 2. (Trouvé par l'invariant 8 de la campagne, section 7.)
+
+**Les voisins, décidés un par un.** `tools/test_repair.py` porte chacun
+comme un montage (`DAMAGE`), avec dans la docstring du test ce que REPAIR en
+faisait **avant**, mesuré par le même harnais sur la source d'avant. Tous
+finissaient `repaired.` ; tous sont refusés sans une écriture :
+
+| Un pointeur abîmé | Avant le 6 octobre 2026 | Refus |
+| --- | --- | --- |
+| clé de sous-répertoire → bloc d'index d'un fichier (D1) | écrit `[29, 29, 6]`, 4 blocs libérés | coupure (règle 1) |
+| clé de sous-répertoire → bloc libre vide | écrit `[322, 6]`, 5 blocs libérés | coupure, `DIR_HEADER` |
+| chaînage du répertoire de volume → bloc libre (D2) | écrit `[322, 2, 6]`, 295 blocs libérés | coupure, `VOLDIR_SIZE` |
+| le même chaînage mis à zéro | écrit `[2, 6]`, 295 blocs libérés | coupure, `VOLDIR_SIZE` |
+| chaînage d'un sous-répertoire de deux blocs → bloc libre | écrit `[62, 8, 6]`, 21 blocs libérés | coupure, `DIR_CHAIN` |
+| le même mis à zéro | écrit `[8, 2, 6]`, 21 blocs libérés | règle 2 |
+| le même → une **ancienne copie** du bloc, laissée dans l'espace libre | écrit `[8, 6]`, 20 blocs libérés | règle 2 (`FILE_COUNT`, `BM_USED_FREE`) |
+| quartet de stockage d'un fichier à zéro (D3) | écrit `[2, 6]`, 287 blocs libérés | règle 2 (`FILE_COUNT`) |
+| le même sur un sous-répertoire | écrit `[2, 6]`, 5 blocs libérés | règle 2 |
+| clé d'un fichier d'un bloc → bloc libre | écrit `[6]`, le vrai bloc libéré | règle 2 (`BM_USED_FREE`) |
+| clé d'un arbrisseau → bloc libre | écrit `[2, 6]`, 9 blocs libérés | règle 2 (`FILE_BLOCKS`) |
+| bloc d'index remis à zéro, ou un seul de ses pointeurs | écrit `[2, 6]`, 8 blocs libérés (1) | règle 2 (`FILE_BLOCKS`) |
+| pointeur d'un index maître → bloc libre | écrit `[3, 6]`, 29 blocs libérés | règle 2 |
+| clé d'une fourche de fichier étendu → bloc libre | écrit `[6]`, le bloc de la fourche libéré | règle 2 (`BM_USED_FREE`) |
+| stockage 2 lu comme 1, 3 lu comme 2 | écrit `[2, 6]` / `[3, 6]`, 8 et 284 blocs libérés | règle 2 (`FILE_BLOCKS`) |
+| stockage `$D` lu comme 1 | écrit `[6]`, 4 blocs libérés | règles 3 et 2 |
+| longueur d'entrée ou entrées par bloc d'un en-tête de sous-répertoire | `consistent` — sans perte, mais un plan bâti sur un répertoire que ProDOS lit autrement | coupure, `DIR_HEADER` |
+
+**Ce que ces règles coûtent**, et qui est assumé :
+
+- un `DIR_CHAIN` arrière dans un **sous-répertoire** n'est plus réparé : le
+  volume entier est refusé (`Scan incomplete`). ProDOS ne suit pas ce lien ;
+  le volume se lit, FIXIT le nomme ;
+- un volume qui porte des blocs perdus **et** autre chose dans l'arbre, ou
+  un `BM_USED_FREE`, n'est plus réparé du tout, ni en une passe ni en deux.
+  C'est le cas d'une bitmap entièrement périmée (blocs alloués depuis marqués
+  libres, blocs libérés depuis marqués occupés) : REPAIR la reconstruisait
+  d'un geste. Rien dans l'arbre ne la distingue d'une clé de fichier d'un
+  bloc déplacée sur un bloc libre, et dans ce second cas reconstruire libère
+  le vrai bloc du fichier. Le refus laisse le volume lisible et le message
+  renvoie à FIXIT ; la conduite sûre est de copier les fichiers ailleurs ;
+- un fichier ordinaire dont le type a été mis à `$0F` (`SET_FILE_INFO` le
+  permet) est compté comme un constat : REPAIR n'en dira jamais `repaired`.
+
+**Ce que ces règles ne voient pas**, dit honnêtement :
+
+- un pointeur déplacé sur un bloc que la bitmap dit **déjà occupé** et que
+  personne ne réclame (un bloc déjà perdu) : un bloc perdu en remplace un
+  autre, l'arbre est sans reproche, aucun bloc libre n'est réclamé. REPAIR
+  libère alors le vrai bloc ;
+- une entrée dont le quartet de stockage est à zéro **et** dont le
+  répertoire compte déjà un fichier de moins — deux fautes, ou une
+  suppression interrompue entre l'entrée et la bitmap. C'est exactement
+  l'état que laisse un `DESTROY` coupé, et c'est celui que REPAIR existe
+  pour réparer : il libère ;
+- un volume dont le répertoire n'est pas aux blocs 2 à `bit_map_pointer − 1`
+  n'est jamais réparé, même sain par ailleurs. Aucun formateur connu n'en
+  produit, mais la règle est une convention, pas une loi de ProDOS ;
+- une coupure de courant pendant une écriture physique : rien de ceci n'y
+  change quoi que ce soit (section 1, « Pas d'atomicité »).
 
 Une correction est la réécriture d'un seul bloc. Aucune correction ne suppose
 qu'une autre a réussi. Les valeurs écrites viennent toutes du parcours, jamais
@@ -693,13 +892,13 @@ d'une supposition.
 | `BM_RESERVED` | dans `bitmap + (b>>12)`, `octet[(b&4095)>>3] &= ~(0x80 >> (b&7))` |
 | `BM_USED_FREE` | même opération, pour chaque bloc référencé marqué libre |
 | `BM_TAIL` | mêmes bits mis à 0 pour tout bloc ≥ `total_blocks` |
-| `BM_LOST` | `octet |= 0x80 >> (b&7)`, seulement si la passe est complète et sans entrée partielle ni `XLINK` |
+| `BM_LOST` | `octet |= 0x80 >> (b&7)`, seulement si la passe est complète, l'arbre sans aucun constat et sans `BM_USED_FREE` |
 | `FILE_COUNT` | en-tête du répertoire, `+$21..$22` = entrées comptées |
 | `DIR_BLOCKS`, `FILE_BLOCKS` | entrée chez le parent, `+$13..$14` = blocs atteints |
 | `DIR_EOF` | **répertoires seulement**, `+$15..$17` = `blocks_used × 512` |
 | `DIR_PARENT` | en-tête du sous-répertoire, `+$23..$24` = bloc porteur, `+$25` = rang + 1, `+$26` = 39 |
 | `ENT_HEADER_PTR` | entrée, `+$25..$26` = bloc clé du répertoire qui la porte |
-| `DIR_CHAIN` | `+$00..$01` = bloc précédent réel ; le chaînage **avant** fait foi et n'est jamais reconstruit |
+| `DIR_CHAIN` | **répertoire de volume seulement** : `+$00..$01` = bloc précédent réel ; le chaînage **avant** n'est jamais reconstruit, et ailleurs un chaînage arrière faux coupe le parcours |
 
 Les onze sont appliquées depuis les incréments 13 à 15. `DIR_BLOCKS` et
 `DIR_EOF` partagent une rustine de cinq octets, `+$13..$17` : les deux
@@ -726,10 +925,14 @@ Refus explicites :
   fichier, entrée d'origine conservée en RAM et réécrite si la troncature
   échoue. Tant qu'une de ces entrées partielles subsiste, `BM_LOST` est
   refusé : les blocs perdus sont peut-être ceux que l'entrée n'atteint plus,
-  et RESCUE ou UNDELETE peuvent encore les lire.
+  et RESCUE ou UNDELETE peuvent encore les lire. Depuis le 6 octobre 2026
+  c'est vrai de **tout** constat de l'arbre, et le refus porte alors sur le
+  plan entier (« Ce que REPAIR refuse de croire », règle 2).
 - `DIR_LOOP`, `DIR_DEPTH`, `VOLDIR_SIZE`, `ENT_STORAGE`, `DIR_HEADER`,
   `FORK_STORAGE`, `ENT_NAME`, `FILE_EOF`, `ENT_ACCESS`. Réparer voudrait dire
   inventer, ou toucher ce que ProDOS tolère. Jamais dans un plan.
+  `DIR_HEADER`, `VOLDIR_SIZE` et un `DIR_CHAIN` de sous-répertoire coupent le
+  parcours de REPAIR : le plan entier est refusé (règle 1).
 - `HDR_*`, `IO_ERROR`. Le plan entier est refusé.
 
 Ordre des écritures, **tel que la préparation l'annonçait** — ce qui est
@@ -888,9 +1091,13 @@ donc aucune pagination et aucune touche pour redessiner : `F` répare,
 Échap ou Entrée sortent, toute autre touche est ignorée. Une ligne par
 contrôle, `%s  %u` : son nom et le nombre de corrections. La colonne
 « bits / pages » des quatre contrôles de bitmap est tombée avec les
-incréments 13 à 15 (section 4) ; la ligne de résumé porte déjà le total des
-corrections et le nombre de blocs que le plan écrira. Suivent les refus qui
-s'appliquent, puis la ligne de touches.
+incréments 13 à 15 (section 4). Suit la ligne de résumé, qui porte le total
+des corrections et le nombre de blocs que le plan écrira, puis la ligne de
+touches. Depuis le 6 octobre 2026 la ligne de résumé est **sous** les lignes
+de contrôle (elle est imprimée par la boucle qui les additionne, section 4)
+et l'écran ne porte plus aucun refus : **tout ce qu'il montre est
+appliqué**. Un plan qui devrait laisser des blocs perdus est refusé avant
+lui.
 
 Les messages de REPAIR, que `tools/test_repair.py` recopie :
 
@@ -902,7 +1109,7 @@ F fix  ESC back
 Type FIX to confirm
 Repairing...
 Cross-linked blocks: copy both files to another volume before any repair.
-Broken entries: lost blocks kept.
+Lost blocks may hold a damaged file: nothing written. See FIXIT.
 That volume holds the running program: repair it from another boot.
 Scan incomplete: no repair.
 Disk changed: nothing written.
@@ -911,6 +1118,11 @@ Applied %u of %u blocks; rescan clean: repaired.
 Applied %u of %u blocks; rescan still reports %u findings.
 Block %u not restored: recover this volume before using it.
 ```
+
+`Nothing written.` est aussi ce que répond un volume dont REPAIR ne sait
+rien réparer mais qui porte un constat (une entrée partielle sans bloc perdu,
+un fichier de type `$0F`) : jusqu'au 6 octobre 2026 il répondait
+`This volume is consistent`, ce qui était faux.
 
 Les refus partagés avec FIXIT gardent leurs libellés : `Select a real
 ProDOS volume.`, `Volume not on line.`, `ON_LINE failed.`, `Invalid volume
@@ -972,7 +1184,19 @@ Injections obligatoires du harnais WRITE :
 | échec de la restauration | note `Block %u not restored`, plus aucune écriture |
 | Échap pendant le plan | arrêt après la correction en cours, compte exact |
 | disque changé entre le plan et `F` | refus avant toute écriture |
+| un bloc de répertoire qui change sous la question, le bloc 2 intact (`late=`) | la passe d'application est coupée là, plus aucune écriture |
 | volume du programme | refus avant la question |
+
+**Un pointeur abîmé** (`DAMAGE`, section (j) de `tools/test_repair.py`,
+6 octobre 2026) : dix-huit montages, un pointeur, un lien, un quartet ou un
+bloc d'index chacun, sur la fixture et sur un volume dont un sous-répertoire
+tient sur deux blocs. Pour chacun : pas un `WRITE_BLOCK`, l'image identique
+octet pour octet, aucun plan proposé, aucun mot demandé, et chaque bloc que
+le volume **sain** donnait aux entrées cachées toujours alloué. Un test tient
+les montages à ce qu'ils prétendent (l'oracle y voit une passe complète et
+des blocs perdus, la forme que REPAIR libérait). Chaque garde a été retirée
+une à une de la source pour vérifier que la suite passe au rouge : huit
+gardes, huit suites rouges.
 
 **Banc POM2** `bench/fixit.py`, port 6849, sur `bench/xplug.py` : volumes
 jetables de `mkvolume.py` corrompus par `corrupt_prodos.py`, jamais un disque
@@ -981,12 +1205,17 @@ de résumé compte zéro constat ; une disquette cassée en dix-sept endroits
 remplit la page, chaque identifiant y porte le compteur, le bloc et le rang
 de l'oracle, `R` refait le parcours et rend les mêmes lignes, et les deux
 disquettes sont relues octet pour octet. Chantier WRITE : un
-volume à bitmap fausse se répare puis revient propre ; un volume cassé dans
+volume à bitmap fausse (`bitmap_lost`, `bitmap_reserved_free`,
+`bitmap_tail_set`) se répare puis revient propre ; un volume cassé dans
 le **répertoire** et dans la bitmap (`file_count_high`, `dir_eof_wrong`,
-`parent_wrong`, `bitmap_lost`) montre les quatre contrôles au plan, les
+`parent_wrong`, `bitmap_free_used`) montre les quatre contrôles au plan, les
 applique sur `F` puis FIX, et revient propre sur l'hôte avec les seuls blocs
 que l'oracle nomme modifiés ; un volume à blocs partagés est refusé ; Échap
-à la question ne change pas un octet. POM2 ne
+à la question ne change pas un octet ; et cinq disquettes à **un pointeur
+abîmé** (D1, D2, D3, une clé de fichier déplacée, un sous-répertoire lu
+comme un fichier) sont refusées sans plan et relues octet pour octet — c'est
+là que le code de cc65 est jugé, le harnais hôte le compilant avec clang.
+POM2 ne
 réécrit jamais le `.hdv` d'amorçage : le volume contrôlé est la disquette du
 lecteur 2 (`boot_hd(..., floppy2=po)`), relue sur l'hôte par
 `tools/prodos_read.py`. Les deux processeurs.
@@ -1033,7 +1262,7 @@ fois. Les blocs de **données** des fichiers ne sont touchés que dans une
 petite part des cas, marquée comme telle : ce sont eux la charge utile dont
 l'invariant 5 contrôle l'intégrité.
 
-**Sept invariants.** Chaque échec garde l'image, le numéro de cas, le JSON
+**Huit invariants.** Chaque échec garde l'image, le numéro de cas, le JSON
 de chaque exécution et une ligne de motif dans `--out` :
 
 1. **ni plantage ni blocage** : FIXIT, le plan de REPAIR, REPAIR avec `FIX`
@@ -1041,7 +1270,9 @@ de chaque exécution et une ligne de motif dans `--out` :
    est un échec ASan, un délai dépassé est un blocage ;
 2. **différentiel** : les compteurs de FIXIT et son `complete` sont ceux de
    l'oracle, et la passe de plan de REPAIR est d'accord avec FIXIT sur les
-   identifiants qu'elle porte ;
+   identifiants qu'elle porte, chaque fois qu'elle va au bout de son
+   parcours ; quand elle le coupe là où FIXIT continue, ce doit être pour
+   l'une de ses trois raisons (section 5), jugée sur le parcours de l'oracle ;
 3. **un refus n'écrit rien** : pas un `WRITE_BLOCK`, et l'image est
    identique octet pour octet ;
 4. **les écritures restent dans le plan** : tout bloc écrit est une page de
@@ -1062,7 +1293,14 @@ de chaque exécution et une ligne de motif dans `--out` :
    a réussi n'arrête pas le parcours (section 5), donc l'image finit en
    l'original portant un **sous-ensemble** des corrections ; aucun bloc
    qu'aucune écriture n'a nommé n'a bougé ; et `not restored` laisse le
-   volume tel qu'il était.
+   volume tel qu'il était ;
+8. **rien de ce qui appartient n'est rendu** (6 octobre 2026) : aucun bloc
+   que l'arbre de la graine **saine** possédait, et que la bitmap disait
+   occupé avant la réparation, n'est libre après. Une mutation abîme ce qui
+   désigne un fichier, jamais le fichier : une réparation qui libère un tel
+   bloc a cru un pointeur abîmé contre les données. Aucun des sept premiers
+   ne voyait les trois défauts du jour — un bloc libéré ne change pas un
+   octet d'un fichier qu'un lecteur atteint encore.
 
 **Divergences admises**, avec la ligne qui les documente, comptées et
 affichées, jamais cachées :
@@ -1072,6 +1310,14 @@ affichées, jamais cachées :
   à la taille du fichier, et rien du tout pour le parcours, qui sait lire le
   dernier bloc annoncé. Les deux marchent ensuite avec le même total : c'est
   le seul compteur qui diffère ;
+- `REPAIR_CUT` (section 5, « Ce que REPAIR refuse de croire », règle 1) :
+  REPAIR coupe son parcours à un bloc que FIXIT se contente de nommer
+  (`DIR_HEADER`, un `DIR_CHAIN` de sous-répertoire, un répertoire de volume
+  qui n'est pas aux blocs 2 à `bit_map_pointer − 1`). Sa passe est alors
+  incomplète quand celle de FIXIT est complète, et ses compteurs s'arrêtent
+  où il s'est arrêté ;
+- `DIR_TYPE` (même section, règle 3) : un fichier de type `$0F`, que REPAIR
+  seul compte, en `ENT_STORAGE` ;
 - `WINDOW_LOOP`, **retirée le 17 septembre 2026** : les réclamations
   couvrent désormais tout le volume (section 4, « Un seul parcours ») et le
   parcours voit ce que voit l'oracle ; sans elle, deux campagnes de
@@ -1111,7 +1357,21 @@ campagnes, du plus fréquent au plus rare : `BM_LOST` 2 677, `FILE_BLOCKS`
 `HDR_ENTRY_LEN` 226, `FORK_STORAGE` 177, `VOLDIR_SIZE` 177, `BM_RESERVED`
 133, `HDR_PER_BLOCK` 113, `DIR_DEPTH` 101.
 
-**Ce qu'elle a trouvé**, une faute, et c'en était une de sûreté : l'invariant
+**La passe du 6 octobre 2026**, après les trois défauts trouvés à la main.
+L'invariant 8 a d'abord été ajouté **sans rien corriger** : sur 4 000 cas
+(`--seed 21`) la source d'avant en échouait **40** — des mutations d'une clé
+d'entrée (12), d'un type de stockage (15), d'un chaînage de répertoire, d'un
+pointeur d'index, d'une clé de fourche, d'octets de métadonnées — soit un
+volume sur cent où REPAIR libérait un bloc que le volume sain possédait, et
+disait `repaired`. Après les règles 1 et 2 il en restait 3, tous le même :
+un sous-répertoire d'un bloc dont le stockage `$D` devenait 1 — la règle 3
+vient de là. Puis trois campagnes de 5 000 cas (`--seed 11`, `12`, `13`),
+**15 000 images** : zéro échec sur les huit invariants, 28/28 identifiants
+couverts, et REPAIR écrit encore dans près d'un cas sur trois (1 574 des
+5 000 de la première ; la source d'avant écrivait dans 1 483 des 4 000 de
+`--seed 21`, la nouvelle dans 1 264).
+
+**Ce qu'elle avait trouvé le 16 septembre**, une faute, et c'en était une de sûreté : l'invariant
 5 a vu `/CHECKVOL/A` perdre deux octets. Sa clé désignait le **bloc 2**, et
 l'en-tête du volume comptait un fichier de trop : REPAIR appliquait le
 `FILE_COUNT` dans le bloc que le fichier tenait pour ses données. Même dégât
@@ -1186,7 +1446,8 @@ Chantier Read, chaque incrément lie et se teste seul :
    **Fait le 16 septembre 2026** : un nom ProDOS est de 1 à 15 caractères,
    une lettre d'abord, puis lettres, chiffres ou `.` — vérifié sur l'en-tête
    du volume (bloc 2, rang 0), sur l'en-tête de chaque sous-répertoire et sur
-   chaque entrée ; `ENT_ACCESS` est le `+$1E` masqué par `$1C`.
+   chaque entrée ; `ENT_ACCESS` est le `+$1E` masqué par `$1C` (`$18`
+   depuis le 6 octobre 2026 : le bit 2 est l'« invisible » de GS/OS).
 7. `BM_USED_FREE`, `BM_LOST`, `BM_RESERVED`, `BM_TAIL` sur les fenêtres de
    4 096 blocs, avec la règle de complétude. Oracle : montage de 65 535 blocs.
    **Fait le 16 septembre 2026** : `BM_TAIL` nomme chaque bit encore levé
@@ -1233,7 +1494,9 @@ Chantier WRITE, dans la surcouche séparée `REPAIR.PLG` :
 12. `BM_LOST` derrière la condition de passe complète. Oracle : les refus.
     **Fait le 16 septembre 2026** : `freeing_ok()` est demandé au plan
     **et** de nouveau à chaque page de la passe d'application, et une passe
-    d'application incomplète n'écrit rien.
+    d'application incomplète n'écrit rien. **Durci le 6 octobre 2026** : il
+    demande un arbre sans aucun constat et aucun `BM_USED_FREE`, et son
+    refus est celui du plan entier (section 5).
 13. `FILE_COUNT`, `DIR_BLOCKS`, `FILE_BLOCKS`, `DIR_EOF` : à écrire là où le
     parcours calcule leur valeur, comme les pages de bitmap le sont déjà.
     **Fait le 16 septembre 2026.** `FILE_COUNT` est écrit à la fin de la
@@ -1248,9 +1511,11 @@ Chantier WRITE, dans la surcouche séparée `REPAIR.PLG` :
     `DIR_PARENT` sur les quatre octets `+$27..$2A` de l'en-tête du
     sous-répertoire (bloc porteur, rang + 1, 39), `DIR_CHAIN` sur les deux
     premiers octets du bloc de répertoire — le chaînage **avant** n'est
-    jamais reconstruit. Les sept passent par une seule fonction, `fix()`,
-    qui refusait alors les fenêtres autres que la première (refus tombé avec
-    le parcours unique du 17 septembre 2026), compte le bloc au lieu
+    jamais reconstruit, et depuis le 6 octobre 2026 le chaînage arrière ne
+    l'est plus que dans le répertoire de volume (section 5). Les sept passent
+    par une seule fonction, `fix()`, qui refusait alors les fenêtres autres
+    que la première (refus tombé avec le parcours unique du 17 septembre
+    2026), compte le bloc au lieu
     de l'écrire pendant la passe de plan, et ne fait rien pendant la
     seconde. Les sept réparations ont coûté 709 octets à trouver dans une
     fenêtre qui en avait 38 : le journal des formes est en section 4.

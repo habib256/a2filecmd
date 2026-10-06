@@ -14,7 +14,16 @@ Where tools/test_fixit.py aborts on a write, this harness injects failures:
   * the read back after the n-th write answers altered bytes;
   * the write that puts the original back fails too;
   * block 2 no longer says what it said when the plan was built;
+  * a directory block that no longer reads the same once the word is typed;
   * Escape, or a wrong word, at the FIX question.
+
+The last section holds REPAIR to the rule the three defects of 6 October 2026
+broke: it writes only where what it sees cannot be the work of one damaged
+pointer. Each of those tests damages a pointer, a link, a storage type or a
+counter of a healthy volume, says in its docstring what REPAIR did to it
+before the fix -- measured, with the same harness on the old source -- and
+asserts that not one block is written, not one byte of the image moves, and
+every block the healthy volume owned is still allocated.
 
 The two oracles of tools/test_fixit.py are used again: tools/corrupt_prodos.py
 declares what a corruption must produce, tools/prodos_check.py reads it back
@@ -48,7 +57,7 @@ M_IOERR = 'Read error: this volume was not fully checked.'
 M_NOPLAN = 'Scan incomplete: no repair.'
 M_BOOTVOL = 'That volume holds the running program: repair it from another boot.'
 M_XLINK = 'Cross-linked blocks: copy both files to another volume before any repair.'
-M_PARTIAL = 'Broken entries: lost blocks kept.'
+M_KEPT = 'Lost blocks may hold a damaged file: nothing written. See FIXIT.'
 M_NOTHING = 'Nothing written.'
 M_CHANGED = 'Disk changed: nothing written.'
 M_ASK = 'Type FIX to confirm'
@@ -64,15 +73,23 @@ M_AUXASK = 'ALL /RAM files will be LOST. Continue?'
 BITMAP_IDS = ('BM_USED_FREE', 'BM_RESERVED', 'BM_TAIL', 'BM_LOST')
 DIR_IDS = ('FILE_COUNT', 'DIR_BLOCKS', 'FILE_BLOCKS', 'DIR_EOF',
            'DIR_PARENT', 'ENT_HEADER_PTR', 'DIR_CHAIN')
-# Every corruption of tools/corrupt_prodos.py that REPAIR can undo whole.
-REPAIRABLE = ('bitmap_free_used', 'bitmap_lost', 'bitmap_reserved_free',
+# Every corruption of tools/corrupt_prodos.py that REPAIR can undo whole, and
+# that it undoes TOGETHER: none of them leaves a block unclaimed. A lost
+# block (`bitmap_lost`) is given back only on a volume whose tree has nothing
+# else wrong and claims no block the bitmap calls free -- beside any of the
+# seven directory faults below, or beside `bitmap_free_used`, it is refused
+# with the whole plan (docs/FIXIT.md section 5).
+REPAIRABLE = ('bitmap_free_used', 'bitmap_reserved_free',
               'bitmap_tail_set', 'file_count_high', 'blocks_used_wrong',
               'dir_blocks_wrong', 'dir_eof_wrong', 'header_ptr_wrong',
               'parent_wrong', 'chain_broken')
 # The checks REPAIR deliberately does not carry: it repairs none of them and
 # FIXIT names them all (docs/FIXIT.md section 4, the forms measured).
-DROPPED = ('ENT_NAME', 'ENT_ACCESS', 'FILE_EOF', 'HDR_NAME', 'VOLDIR_SIZE',
-           'DIR_HEADER')
+# DIR_HEADER and VOLDIR_SIZE left this list on 6 October 2026: REPAIR still
+# repairs neither, but it now REFUSES on both -- a subdirectory key block
+# that is no header, a volume directory that is not where the header puts
+# it, cut the walk, and a cut walk writes nothing.
+DROPPED = ('ENT_NAME', 'ENT_ACCESS', 'FILE_EOF', 'HDR_NAME')
 
 HARNESS = r'''
 #define __fastcall__
@@ -100,6 +117,11 @@ static char volname[17];
  * rank after which the read back answers altered bytes, `changed` a block 2
  * that stops agreeing once the question has been asked. */
 static int errwrite, failall, badread, changed;
+/* A directory block that changes while the question is on the screen, block
+ * 2 staying what it was: once the word is typed, byte `late_off` of block
+ * `late_block` reads `late_val`. The guard on block 2 cannot see it; the
+ * apply pass has to. */
+static unsigned int late_block, late_off, late_val;
 static const char* answer = "FIX";  /* what prompt() types, "" = Escape */
 static int prompted;
 /* A volume of more than 4 096 blocks: the answer to the question on the
@@ -160,6 +182,8 @@ static unsigned char mock_mli(unsigned char cmd, void* p) {
             b->buf[0] ^= 0xFF;
         /* A floppy swapped while the question was on the screen. */
         if (changed && prompted && b->block == 2) b->buf[5] = 'Z';
+        if (late_block && prompted && b->block == late_block)
+            b->buf[late_off] = (unsigned char)late_val;
         return 0;
     }
 }
@@ -213,7 +237,7 @@ static void poison_bss(void) {
     granted = aux = 0xAA;
     complete = failed = cancelled = 0xAA;
     depth = partial = curslot = unit = isboot = 0xAA;
-    mode = on = hurt = 0xAA;
+    mode = freeing = hurt = 0xAA;
     found = curblock = total = bitmap = pages = base = span = 0xAAAA;
     budget = cached = fileblocks = 0xAAAA;
     entry = 0; buf = 0;
@@ -271,6 +295,8 @@ int main(int argc, char** argv) {
         else if (opt(argv[i], "failall", &v)) failall = atoi(v);
         else if (opt(argv[i], "badread", &v)) badread = atoi(v);
         else if (opt(argv[i], "changed", &v)) changed = atoi(v);
+        else if (opt(argv[i], "late", &v))
+            sscanf(v, "%u:%u:%u", &late_block, &late_off, &late_val);
         else if (opt(argv[i], "poison", &v)) poison = atoi(v);
         else if (opt(argv[i], "after", &v)) other = v;
         else if (opt(argv[i], "consent", &v)) consent = atoi(v);
@@ -328,10 +354,10 @@ int main(int argc, char** argv) {
 
     printf("{\"complete\":%u,\"failed\":%u,\"reads\":%d,\"unit\":%u,"
            "\"isboot\":%u,\"found\":%u,\"keys\":%d,\"applied\":%u,"
-           "\"corr\":%u,\"blocks\":%u,\"dblocks\":%u,\"on\":%u,\"hurt\":%u,"
+           "\"corr\":%u,\"blocks\":%u,\"dblocks\":%u,\"freeing\":%u,\"hurt\":%u,"
            "\"prompted\":%d,\"confirms\":%d,\"rams\":%d,\"note\":\"%s\",\"counts\":{",
            complete, failed, reads, unit, isboot, found, keyn, applied,
-           corr, blocks, dblocks, on, hurt, prompted, confirms, rams, note);
+           corr, blocks, dblocks, freeing, hurt, prompted, confirms, rams, note);
     for (i = 0, first = 1; i < CHK_COUNT; ++i) {
         if (!counts[i]) continue;
         printf("%s\"%d\":%u", first ? "" : ",", i, counts[i]);
@@ -431,6 +457,222 @@ def bitmap_range(data):
     return range(bitmap, bitmap + (total + 4095) // 4096)
 
 
+# -- one damaged pointer ------------------------------------------------------
+# The damage of the last section of this suite: each function breaks ONE
+# thing in a healthy image -- a key, a link, a storage nibble, an index
+# block -- the way a bad sector or a stray write does, and returns the
+# entries of the HEALTHY volume whose blocks the damage leaves unreached.
+# REPAIR must then write nothing, and those blocks must stay allocated.
+# The functions are at module level so that the before-state quoted in each
+# test's docstring can be measured again: run them through this harness
+# built on the source of the commit before the fix.
+def is_free(data, block):
+    bitmap = int.from_bytes(data[2 * BLOCK + 4 + 0x23:2 * BLOCK + 4 + 0x25], 'little')
+    return bool(data[bitmap * BLOCK + (block >> 3)] & (0x80 >> (block & 7)))
+
+
+def named(inv, name):
+    """The entry whose path ends with `name`, and everything below it."""
+    ref = next(r for r in inv.entries if r.path.endswith('/' + name))
+    return ref, [r for r in inv.entries
+                 if r.path == ref.path or r.path.startswith(ref.path + '/')]
+
+
+def owned(refs):
+    """Every block the healthy entries `refs` own."""
+    return sorted({b for r in refs for b in r.blocks})
+
+
+def past_block_two(inv):
+    """The root entries block 2 does not hold, and everything below them."""
+    roots = [r.path for r in inv.entries if r.dirkey == 2 and r.block != 2]
+    return [r for r in inv.entries
+            if any(r.path == x or r.path.startswith(x + '/') for x in roots)]
+
+
+def a_free_block(data, inv, above=40):
+    """The lowest free block past `above`: it holds whatever was there."""
+    return next(b for b in range(above, inv.total) if is_free(data, b))
+
+
+def dmg_sub_key_at_a_file_block(data, inv):
+    """D1: the key of /SUB now names the index block of its own file NEST2."""
+    sub, below = named(inv, 'SUB')
+    nest2, _ = named(inv, 'NEST2')
+    corrupt_prodos.put_word(data, sub.offset + 0x11, nest2.key)
+    return below
+
+
+def dmg_sub_key_at_an_empty_block(data, inv):
+    """D1, the header check alone: the key of /SUB names a free block of
+    zeros, whose back-pointer (0) is the one a key block has."""
+    sub, below = named(inv, 'SUB')
+    empty = a_free_block(data, inv)
+    assert bytes(data[empty * BLOCK:(empty + 1) * BLOCK]) == bytes(BLOCK)
+    corrupt_prodos.put_word(data, sub.offset + 0x11, empty)
+    return below
+
+
+def dmg_root_link_to_a_free_block(data, inv):
+    """D2: block 2 is followed by a free block instead of block 3."""
+    corrupt_prodos.put_word(data, 2 * BLOCK + 2, a_free_block(data, inv))
+    return past_block_two(inv)
+
+
+def dmg_root_link_zeroed(data, inv):
+    """The volume directory stops after block 2."""
+    corrupt_prodos.put_word(data, 2 * BLOCK + 2, 0)
+    return past_block_two(inv)
+
+
+def dmg_entry_looks_deleted(data, inv):
+    """D3: the storage nibble of /TREE is zero, its name and key intact."""
+    ref, below = named(inv, 'TREE')
+    data[ref.offset] &= 0x0F
+    return below
+
+
+def dmg_directory_looks_deleted(data, inv):
+    """The storage nibble of the subdirectory /SUB is zero."""
+    ref, below = named(inv, 'SUB')
+    data[ref.offset] &= 0x0F
+    return below
+
+
+def dmg_seedling_key_moved(data, inv):
+    """The key of the seedling /A names a free block."""
+    ref, below = named(inv, 'A')
+    corrupt_prodos.put_word(data, ref.offset + 0x11, a_free_block(data, inv))
+    return below
+
+
+def dmg_sapling_key_moved(data, inv):
+    """The key of the sapling /SAP names a free block, which reads as an
+    index block that points nowhere."""
+    ref, below = named(inv, 'SAP')
+    corrupt_prodos.put_word(data, ref.offset + 0x11, a_free_block(data, inv))
+    return below
+
+
+def dmg_index_block_zeroed(data, inv):
+    """The index block of the sapling /SAP reads as zeros."""
+    ref, below = named(inv, 'SAP')
+    data[ref.key * BLOCK:(ref.key + 1) * BLOCK] = bytes(BLOCK)
+    return below
+
+
+def dmg_index_pointer_zeroed(data, inv):
+    """One pointer of the index block of /SAP is zero: a hole where a block
+    was."""
+    ref, below = named(inv, 'SAP')
+    corrupt_prodos.index_pointer(data, ref.key, 3, 0)
+    return below
+
+
+def dmg_master_index_pointer_moved(data, inv):
+    """The second pointer of the master index of /TREE names a free block."""
+    ref, below = named(inv, 'TREE')
+    corrupt_prodos.index_pointer(data, ref.key, 1, a_free_block(data, inv))
+    return below
+
+
+def dmg_sapling_reads_as_a_seedling(data, inv):
+    """The storage nibble of /SAP went from 2 to 1."""
+    ref, below = named(inv, 'SAP')
+    data[ref.offset] = 0x10 | (data[ref.offset] & 15)
+    return below
+
+
+def dmg_tree_reads_as_a_sapling(data, inv):
+    """The storage nibble of /TREE went from 3 to 2."""
+    ref, below = named(inv, 'TREE')
+    data[ref.offset] = 0x20 | (data[ref.offset] & 15)
+    return below
+
+
+def dmg_directory_reads_as_a_seedling(data, inv):
+    """The storage nibble of /SUB went from $D to 1: a one-block directory
+    is, field for field, a one-block file of 512 bytes."""
+    ref, below = named(inv, 'SUB')
+    data[ref.offset] = 0x10 | (data[ref.offset] & 15)
+    return below
+
+
+def dmg_fork_key_moved(data, inv):
+    """The data fork of the extended file /EXT names a free block."""
+    ref, below = named(inv, 'EXT')
+    corrupt_prodos.put_word(data, ref.key * BLOCK + 1, a_free_block(data, inv))
+    return below
+
+
+def dmg_subdirectory_link_to_a_free_block(data, inv):
+    """The first block of the two-block directory /WIDE is followed by a
+    free block instead of its second."""
+    ref, below = named(inv, 'WIDE')
+    corrupt_prodos.put_word(data, ref.chain[0] * BLOCK + 2, a_free_block(data, inv))
+    return [r for r in below if r.block == ref.chain[1]] + [ref]
+
+
+def dmg_subdirectory_link_zeroed(data, inv):
+    """The two-block directory /WIDE stops after its first block."""
+    ref, below = named(inv, 'WIDE')
+    corrupt_prodos.put_word(data, ref.chain[0] * BLOCK + 2, 0)
+    return [r for r in below if r.block == ref.chain[1]] + [ref]
+
+
+def dmg_subdirectory_link_to_a_stale_copy(data, inv):
+    """The first block of /WIDE is followed by a free block that holds an
+    old copy of its second block -- same back-pointer, same entries but for
+    the last seven, which the copy predates."""
+    ref, below = named(inv, 'WIDE')
+    stale = a_free_block(data, inv)
+    second = ref.chain[1]
+    data[stale * BLOCK:(stale + 1) * BLOCK] = data[second * BLOCK:(second + 1) * BLOCK]
+    gone = [r for r in below if r.block == second][-7:]
+    for r in gone:
+        off = stale * BLOCK + 4 + r.slot * ENTRY_LEN
+        data[off:off + ENTRY_LEN] = bytes(ENTRY_LEN)
+    corrupt_prodos.put_word(data, ref.chain[0] * BLOCK + 2, stale)
+    return gone + [ref]
+
+
+DAMAGE = {f.__name__[4:]: f for f in (
+    dmg_sub_key_at_a_file_block, dmg_sub_key_at_an_empty_block,
+    dmg_root_link_to_a_free_block,
+    dmg_root_link_zeroed, dmg_entry_looks_deleted, dmg_directory_looks_deleted,
+    dmg_seedling_key_moved, dmg_sapling_key_moved, dmg_index_block_zeroed,
+    dmg_index_pointer_zeroed, dmg_master_index_pointer_moved,
+    dmg_sapling_reads_as_a_seedling, dmg_tree_reads_as_a_sapling,
+    dmg_directory_reads_as_a_seedling, dmg_fork_key_moved,
+    dmg_subdirectory_link_to_a_free_block, dmg_subdirectory_link_zeroed,
+    dmg_subdirectory_link_to_a_stale_copy)}
+# The ones that need a directory of more than one block.
+WIDE_DAMAGE = ('subdirectory_link_to_a_free_block', 'subdirectory_link_zeroed',
+               'subdirectory_link_to_a_stale_copy')
+
+
+def make_wide(work):
+    """A 280-block volume whose directory /WIDE spans two blocks."""
+    stage = Path(work) / 'wide-stage'
+    (stage / 'WIDE').mkdir(parents=True, exist_ok=True)
+    (stage / 'TOP.TXT').write_bytes(b'top\r' * 10)
+    for i in range(20):
+        (stage / 'WIDE' / ('F%02d.TXT' % i)).write_bytes(
+            (b'%02d wide\r' % i) * (40 + 70 * (i % 3)))
+    image = Path(work) / 'wide.po'
+    subprocess.run([sys.executable, str(ROOT / 'tools/mkvolume.py'), str(stage),
+                    str(image), '--volume', 'WIDEVOL', '--blocks', '280'],
+                   check=True, capture_output=True)
+    return image.read_bytes()
+
+
+def damaged(clean, name):
+    """(the damaged image, the healthy entries whose blocks are at stake)."""
+    data = bytearray(clean)
+    stake = DAMAGE[name](data, corrupt_prodos.Inventory(bytes(clean)))
+    return bytes(data), stake
+
+
 class Repair(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -442,6 +684,7 @@ class Repair(unittest.TestCase):
         subprocess.run(['cc', '-std=c99', '-Wno-unknown-pragmas', '-I', str(ROOT),
                         str(source), '-o', str(cls.exe)], check=True, capture_output=True)
         cls.clean = corrupt_prodos.make_fixture(cls.work).read_bytes()
+        cls.wide = make_wide(cls.work)
 
     @classmethod
     def tearDownClass(cls):
@@ -550,14 +793,28 @@ class Repair(unittest.TestCase):
     def test_a_bit_set_past_the_last_block_of_the_volume(self):
         self.check_bitmap_repair('bitmap_tail_set', 'BM_TAIL')
 
-    def test_two_bitmap_faults_are_one_write_of_one_page(self):
-        data, result = self.corrupted('bitmap_lost', 'bitmap_free_used',
-                                      'bitmap_reserved_free')
+    def test_three_bitmap_faults_are_one_write_of_one_page(self):
+        data, result = self.corrupted('bitmap_free_used', 'bitmap_reserved_free',
+                                      'bitmap_tail_set')
         r, after = self.fix(data)
         self.assertEqual(r['nwrite'], 1, 'one page, written once with all of it')
         self.assertEqual(r['applied'], 1)
         self.assertEqual(r['note'], M_DONE % (1, 1), r)
         self.assertEqual(prodos_check.check(after).findings, [])
+        self.assertEqual(after, corrected(data, result.findings))
+
+    def test_lost_blocks_ride_with_the_bitmap_s_own_faults(self):
+        """A reserved block marked free and a bit past the end are the
+        bitmap's own business: no pointer is involved, so they are no reason
+        to doubt that an unclaimed block is lost."""
+        data, result = self.corrupted('bitmap_lost', 'bitmap_reserved_free',
+                                      'bitmap_tail_set')
+        r, after = self.fix(data)
+        self.assertEqual(r['freeing'], 1)
+        self.assertEqual(r['nwrite'], 1, r)
+        self.assertEqual(r['note'], M_DONE % (1, 1), r)
+        self.assertEqual(prodos_check.check(after).findings, [])
+        self.assertEqual(after, corrected(data, result.findings))
 
     # -- (c) what a plan refuses ---------------------------------------------
     def test_a_cross_link_refuses_the_freeing_and_writes_nothing(self):
@@ -567,7 +824,7 @@ class Repair(unittest.TestCase):
         r, after = self.fix(data)
         self.assertNoWrite(r, data, after)
         self.assertEqual(r['note'], M_XLINK)
-        self.assertEqual(r['on'] & 8, 0, 'BM_LOST is off')
+        self.assertEqual(r['freeing'], 0, 'BM_LOST is off')
         self.assertEqual(r['corr'], 0, 'nothing is left to repair')
         self.assertNotIn('Plan:', r['screen'], 'no plan is even offered')
 
@@ -577,8 +834,9 @@ class Repair(unittest.TestCase):
         self.assertIn('BM_LOST', {f.id for f in result.findings})
         r, after = self.fix(data)
         self.assertNoWrite(r, data, after)
-        self.assertEqual(r['on'] & 8, 0, 'BM_LOST is off')
-        self.assertEqual(r['note'], M_PARTIAL)
+        self.assertEqual(r['freeing'], 0, 'BM_LOST is off')
+        self.assertEqual(r['note'], M_KEPT)
+        self.assertNotIn('Plan:', r['screen'], 'no plan is even offered')
 
     def test_a_cross_link_beside_a_bitmap_fault_writes_nothing_either(self):
         """A cross-link refuses the whole plan, the bitmap page included."""
@@ -587,7 +845,7 @@ class Repair(unittest.TestCase):
         self.assertNoWrite(r, data, after)
         self.assertEqual(r['note'], M_XLINK)
         self.assertEqual(r['corr'], 0, 'nothing is offered')
-        self.assertEqual(r['on'] & 8, 0)
+        self.assertEqual(r['freeing'], 0)
         self.assertNotIn('Plan:', r['screen'], 'no plan is even offered')
         self.assertEqual(prodos_check.to_json(prodos_check.check(after).findings),
                          prodos_check.to_json(result.findings))
@@ -756,21 +1014,44 @@ class Repair(unittest.TestCase):
         self.check_dir_repair('chain_broken', 'DIR_CHAIN')
 
     def test_a_directory_fault_beside_a_bitmap_one_repairs_both(self):
-        data, result = self.corrupted('bitmap_lost', 'file_count_high')
+        data, result = self.corrupted('bitmap_free_used', 'file_count_high')
         r, after = self.run_repair(data)
         lines = self.plan_lines(r)
-        self.assertIn('BM_LOST', lines, 'the plan shows both')
+        self.assertIn('BM_USED_FREE', lines, 'the plan shows both')
         self.assertIn('FILE_COUNT', lines)
         r, after = self.fix(data)
         self.assertEqual(prodos_check.check(after).findings, [])
         self.assertEqual(after, corrected(data, result.findings))
         self.assertEqual(r['note'], M_DONE % (2, 2), r)
 
+    def test_a_lost_block_beside_a_directory_fault_refuses_both(self):
+        """`two_faults` of tools/corrupt_prodos.py: a lost block and a
+        header that counts one file too many. Until 6 October 2026 REPAIR
+        lowered the count and gave the block back, `Applied 2 of 2 blocks;
+        rescan clean: repaired.` -- and that pair is exactly what an entry
+        that merely looks deleted leaves behind (test_an_entry_that_merely_
+        looks_deleted_keeps_its_blocks). Nothing tells the two apart, so
+        neither is touched."""
+        data, result = self.corrupted('two_faults')
+        self.assertEqual(sorted(f.id for f in result.findings),
+                         ['BM_LOST', 'FILE_COUNT'])
+        r, after = self.fix(data)
+        self.assertNoWrite(r, data, after)
+        self.assertEqual(r['note'], M_KEPT)
+        self.assertEqual(r['freeing'], 0)
+        self.assertNotIn('Plan:', r['screen'], 'no plan is even offered')
+        self.assertEqual(r['prompted'], 0, 'and no word is asked for')
+
     def test_every_repairable_fault_at_once(self):
-        """All eleven together: one run, and the second pass finds nothing."""
+        """All ten that can share a plan: one run, and the second pass finds
+        nothing. The eleventh, BM_LOST, is given back only when the tree has
+        nothing wrong (test_a_lost_block_beside_a_directory_fault_refuses_
+        both)."""
         data, result = self.corrupted(*REPAIRABLE)
         for id in BITMAP_IDS + DIR_IDS:
-            self.assertIn(id, {f.id for f in result.findings}, id)
+            if id != 'BM_LOST':
+                self.assertIn(id, {f.id for f in result.findings}, id)
+        self.assertNotIn('BM_LOST', {f.id for f in result.findings})
         r, after = self.fix(data)
         self.assertTrue(all(w['ok'] for w in r['writes']), r)
         self.assertEqual(prodos_check.check(after).findings, [], 'a clean volume')
@@ -929,7 +1210,7 @@ class Repair(unittest.TestCase):
         self.assertNoWrite(r, data, after)
         self.assertEqual(r['note'], M_XLINK)
         self.assertEqual(r['corr'], 0, 'nothing is offered')
-        self.assertEqual(r['on'] & 8, 0, 'BM_LOST is off')
+        self.assertEqual(r['freeing'], 0, 'BM_LOST is off')
         self.assertNotIn('Plan:', r['screen'], 'no plan is even offered')
         self.assertEqual(prodos_check.to_json(prodos_check.check(after).findings),
                          prodos_check.to_json(result.findings))
@@ -985,6 +1266,13 @@ class Repair(unittest.TestCase):
             self.assertNoWrite(r, data, after)
             self.assertEqual(r['note'], M_CLEAN, (name, r))
         self.assertIn('#ifndef REPAIR', source)
+        # The two that left the list are refusals now, not repairs.
+        for name, id in (('voldir_size', 'VOLDIR_SIZE'),):
+            data, result = self.corrupted(name)
+            r, after = self.fix(data)
+            self.assertNoWrite(r, data, after)
+            self.assertEqual(r['note'], M_NOPLAN, (name, r))
+            self.assertEqual(r['counts'], {id: 1}, r)
 
     # -- (h) the program's own volume ----------------------------------------
     def test_the_program_volume_is_refused_before_any_read(self):
@@ -1068,7 +1356,7 @@ class Repair(unittest.TestCase):
         source = ((ROOT / 'src/plugins/repair.c').read_text()
                   + (ROOT / 'src/plugins/fixit_walk.h').read_text())
         for message in (M_NOTVOL, M_NOVOL, M_BADHDR, M_NOREAD, M_CLEAN, M_CANCEL,
-                        M_IOERR, M_NOPLAN, M_BOOTVOL, M_XLINK, M_PARTIAL,
+                        M_IOERR, M_NOPLAN, M_BOOTVOL, M_XLINK, M_KEPT,
                         M_NOTHING, M_CHANGED, M_ASK, M_PLANLN,
                         M_DONE, M_LEFT, M_NOREST, M_RKEYS, M_AUXASK):
             self.assertLessEqual(len(message % ((65535,) * message.count('%u'))
@@ -1094,16 +1382,44 @@ class Repair(unittest.TestCase):
 
     # -- more than 4 096 blocks: the claims in the auxiliary bank ------------
     def big_volume(self):
-        """8 193 blocks: a lost block in the second bitmap page, a seedling in
-        the third, and a root that counts five files for one."""
+        """8 193 blocks: a seedling in the second bitmap page that the bitmap
+        calls free, and a root that counts five files for one."""
+        d = fixture(8193, [entry(1, b'A', key=8100)])
+        word(d, 1061, 5)                                 # FILE_COUNT
+        data = bytes(d)
+        self.assertEqual({f.id for f in prodos_check.check(data).findings},
+                         {'BM_USED_FREE', 'FILE_COUNT'}, 'the fixture')
+        return data
+
+    def test_a_big_volume_gets_its_lost_block_back(self):
+        """The claims of the auxiliary bank say what is lost: block 5000, in
+        the second bitmap page, and nothing else is wrong."""
+        d = fixture(8193, [entry(1, b'A', key=8100)])
+        allocated(d, 8100)
+        allocated(d, 5000)                               # lost
+        data = bytes(d)
+        found = prodos_check.check(data).findings
+        self.assertEqual([f.id for f in found], ['BM_LOST'], 'the fixture')
+        r, image = self.fix(data)
+        self.assertEqual(r['note'], M_DONE % (1, 1), r)
+        self.assertEqual([w['block'] for w in r['writes']], [7], r)
+        self.assertEqual(image, corrected(data, found))
+        self.assertEqual((r['confirms'], r['rams']), (1, 1), r)
+
+    def test_a_big_volume_keeps_a_lost_block_beside_a_wrong_count(self):
+        """The fixture test_a_big_volume_is_repaired_in_three_walks used
+        until 6 October 2026: block 5000 lost and a root that counts five
+        files for one. Four entries are missing for that header, and the
+        block nobody claims may be one of theirs."""
         d = fixture(8193, [entry(1, b'A', key=8100)])
         allocated(d, 8100)
         allocated(d, 5000)                               # lost
         word(d, 1061, 5)                                 # FILE_COUNT
         data = bytes(d)
-        self.assertEqual({f.id for f in prodos_check.check(data).findings},
-                         {'BM_LOST', 'FILE_COUNT'}, 'the fixture')
-        return data
+        r, image = self.fix(data)
+        self.assertEqual(r['note'], M_KEPT, r)
+        self.assertEqual((image, r['nwrite']), (data, 0))
+        self.assertEqual((r['confirms'], r['rams']), (1, 1), r)
 
     def test_a_big_volume_is_repaired_in_three_walks(self):
         data = self.big_volume()
@@ -1142,6 +1458,350 @@ class Repair(unittest.TestCase):
     def test_a_poisoned_bss_repairs_a_big_volume_the_same(self):
         data = self.big_volume()
         self.assertEqual(self.fix(data, poison=1), self.fix(data))
+
+
+    # -- (j) one damaged pointer must not cost a file -------------------------
+    # The three defects of 6 October 2026 and their siblings. Until that day
+    # every one of these ended `rescan clean: repaired.` -- the before-state
+    # in each docstring was measured with this harness on the source of the
+    # commit before the fix (535682e).
+    def refused(self, name, note, counts=None):
+        """REPAIR over one damaged pointer: the plan alone, then F and FIX.
+
+        Not one WRITE_BLOCK, not one byte of the image moved, no plan
+        offered and no word asked for -- and every block the HEALTHY volume
+        gave the entries the damage hides is still allocated and still holds
+        the bytes it held.
+        """
+        seed = self.wide if name in WIDE_DAMAGE else self.clean
+        data, stake = damaged(seed, name)
+        blocks = owned(stake)
+        self.assertTrue(blocks, name + ': the damage must put blocks at stake')
+        self.assertEqual([b for b in blocks if is_free(data, b)], [],
+                         name + ': they are allocated before REPAIR runs')
+        # the blocks the damage itself rewrote: a pointer, an index block
+        broken = {i // BLOCK for i in range(len(seed)) if seed[i] != data[i]}
+        for kw in ({}, {'keys': 'F', 'answer': 'FIX'}):
+            r, after = self.run_repair(data, **kw)
+            self.assertEqual(r['nwrite'], 0, (name, r['note'], r['writes']))
+            self.assertEqual(r['writes'], [], name)
+            self.assertEqual(after, data, name + ': not one byte of the image moves')
+            self.assertEqual(r['note'], note, name)
+            self.assertNotIn('Plan:', r['screen'], name + ': no plan is offered')
+            self.assertEqual(r['prompted'], 0, name + ': and no word is asked for')
+            self.assertEqual([b for b in blocks if is_free(after, b)], [],
+                             name + ': every block at stake is still allocated')
+            for b in sorted(set(blocks) - broken):
+                self.assertEqual(after[b * BLOCK:(b + 1) * BLOCK],
+                                 seed[b * BLOCK:(b + 1) * BLOCK],
+                                 (name, b, 'the bytes the healthy volume had'))
+            if counts is not None:
+                self.assertEqual(r['counts'], counts, name)
+        return r
+
+    def test_a_subdirectory_key_that_names_a_file_block_writes_nothing(self):
+        """D1. The key of /CHECKVOL/SUB, 27, changed to 29: the index block
+        of its own file NEST2.
+
+        Before: REPAIR walked block 29 as a directory, `Plan: 6 corrections
+        over 3 blocks` (BM_LOST 4, DIR_PARENT 1, DIR_CHAIN 1), wrote blocks
+        [29, 29, 6] -- block 29 changed at offsets 0, 1, 39, 41 and 42, so
+        NEST2 lost both its data pointers and gained three false ones --
+        freed blocks 27, 28, 30 and 31 (the real directory and its files),
+        and said `Applied 3 of 3 blocks; rescan clean: repaired.`
+        """
+        self.refused('sub_key_at_a_file_block', M_NOPLAN, {'DIR_CHAIN': 1})
+
+    def test_a_subdirectory_key_that_names_an_empty_block_writes_nothing(self):
+        """D1 again, the header check itself: the key of /CHECKVOL/SUB names
+        a free block of zeros, whose back-pointer (0) is the one a key block
+        has. Only $E, 39 and 13 say it is no directory.
+
+        Before: `Plan: 7 corrections over 2 blocks` (BM_USED_FREE 1, BM_LOST
+        5, DIR_PARENT 1), wrote the four bytes of a parent pointer into the
+        free block 322, marked it used, freed blocks 27 to 31 (the directory
+        and its two files), `Applied 2 of 2 blocks; rescan clean: repaired.`
+        """
+        self.refused('sub_key_at_an_empty_block', M_NOPLAN,
+                     {'DIR_HEADER': 1, 'BM_USED_FREE': 1})
+
+    def test_a_subdirectory_header_that_is_not_one_cuts_the_walk(self):
+        """$E, 39 bytes an entry, 13 a block: ProDOS reads a directory with
+        the header's own numbers, REPAIR walked it with 39 and 13 whatever
+        the header said. Before: `This volume is consistent: nothing to
+        repair.` for all three -- no loss, but a plan built on a directory
+        ProDOS reads differently. Now a refusal, with FIXIT's name for it.
+        """
+        inv = corrupt_prodos.Inventory(self.clean)
+        sub, _ = named(inv, 'SUB')
+        head = sub.key * BLOCK + 4
+        for offset, value in ((0, 0xD3), (0x1F, 40), (0x20, 12)):
+            with self.subTest(offset=offset, value=value):
+                data = bytearray(self.clean)
+                data[head + offset] = value
+                data = bytes(data)
+                self.assertIn('DIR_HEADER',
+                              {f.id for f in prodos_check.check(data).findings})
+                r, after = self.fix(data)
+                self.assertNoWrite(r, data, after)
+                self.assertEqual(r['note'], M_NOPLAN)
+                self.assertEqual(r['counts'], {'DIR_HEADER': 1}, r)
+
+    def test_a_volume_directory_link_that_leads_elsewhere_writes_nothing(self):
+        """D2. The next pointer of block 2 (+2) set to the free block 322.
+
+        Before: `Plan: 298 corrections over 3 blocks` (BM_USED_FREE 1,
+        BM_LOST 295, FILE_COUNT 1, DIR_CHAIN 1); wrote [322, 2, 6] -- a
+        back-pointer into the foreign block, the file count lowered in block
+        2 -- and freed 295 blocks, 27 to 321: /SUB with its two files, the
+        284-block /TREE and /EXT, every entry of block 3. `Applied 3 of 3
+        blocks; rescan clean: repaired.`
+        """
+        self.refused('root_link_to_a_free_block', M_NOPLAN, {'VOLDIR_SIZE': 1})
+
+    def test_a_volume_directory_that_stops_early_writes_nothing(self):
+        """The same link zeroed: the volume directory ends after block 2.
+
+        Before: `Plan: 296 corrections over 2 blocks`, wrote [2, 6], freed
+        the same 295 blocks, `Applied 2 of 2 blocks; rescan clean:
+        repaired.`
+        """
+        self.refused('root_link_zeroed', M_NOPLAN, {'VOLDIR_SIZE': 1})
+
+    def test_a_subdirectory_link_that_leads_elsewhere_writes_nothing(self):
+        """D2 in a subdirectory: /WIDEVOL/WIDE holds twenty files over
+        blocks 8 and 9, and the next pointer of block 8 names the free block
+        62.
+
+        Before: `Plan: 24 corrections over 3 blocks`; wrote [62, 8, 6] --
+        the back-pointer into the foreign block, the directory's count
+        lowered from 20 to 12 -- and freed 21 blocks, 9 to 61: the second
+        directory block and the eight files it names. `Applied 3 of 3
+        blocks; rescan clean: repaired.`
+        """
+        self.refused('subdirectory_link_to_a_free_block', M_NOPLAN)
+
+    def test_a_subdirectory_that_stops_early_writes_nothing(self):
+        """The same link zeroed. The chain ends where a chain may end, so
+        nothing cuts the walk: what refuses is the rule on lost blocks.
+
+        Before: `Plan: 24 corrections over 3 blocks` (FILE_COUNT, DIR_BLOCKS
+        and DIR_EOF "repaired" downward in blocks 8 and 2), wrote [8, 2, 6],
+        freed the same 21 blocks, `rescan clean: repaired.`
+        """
+        self.refused('subdirectory_link_zeroed', M_KEPT,
+                     {'FILE_COUNT': 1, 'DIR_BLOCKS': 1, 'DIR_EOF': 1, 'BM_LOST': 21})
+
+    def test_a_subdirectory_link_to_an_old_copy_of_the_block_writes_nothing(self):
+        """The link leads to a free block that IS a directory block of this
+        directory -- an old copy, right back-pointer, every entry pointing
+        home -- but older than the last seven files. Nothing structural
+        gives it away; the count and the bitmap do.
+
+        Before: `Plan: 22 corrections over 2 blocks`, the count lowered,
+        20 blocks freed (the current block and the seven files only it
+        names), `Applied 2 of 2 blocks; rescan clean: repaired.`
+        """
+        self.refused('subdirectory_link_to_a_stale_copy', M_KEPT,
+                     {'FILE_COUNT': 1, 'BM_USED_FREE': 1, 'BM_LOST': 20})
+
+    def test_an_entry_that_merely_looks_deleted_keeps_its_blocks(self):
+        """D3. The storage nibble of /CHECKVOL/TREE (284 blocks of data, 287
+        with its indexes) set to 0, name and key intact: the slot reads as
+        free.
+
+        Before: `Plan: 288 corrections over 2 blocks` (BM_LOST 287,
+        FILE_COUNT 1); the header's count lowered to match, wrote [2, 6],
+        287 blocks freed, `Applied 2 of 2 blocks; rescan clean: repaired.`
+        -- and with the count agreeing again, nothing was left to say the
+        file had not been deleted on purpose.
+        """
+        self.refused('entry_looks_deleted', M_KEPT,
+                     {'FILE_COUNT': 1, 'BM_LOST': 287})
+
+    def test_a_directory_that_merely_looks_deleted_keeps_its_files(self):
+        """The same nibble on the subdirectory /CHECKVOL/SUB. Before: [2, 6]
+        written, the directory and its two files freed (5 blocks),
+        `repaired.`"""
+        self.refused('directory_looks_deleted', M_KEPT,
+                     {'FILE_COUNT': 1, 'BM_LOST': 5})
+
+    def test_a_file_key_that_moved_keeps_the_block_it_left(self):
+        """The key of the seedling /CHECKVOL/A, 7, names the free block 322.
+        The entry is flawless -- one block, as it says -- so the tree has
+        nothing to report: the only trace is a claim on a block the bitmap
+        never allocated, beside a block nobody claims.
+
+        Before: `Plan: 2 corrections over 1 blocks` (BM_USED_FREE 1, BM_LOST
+        1), wrote [6]: the stray block marked used, the file's real block 7
+        freed, `Applied 1 of 1 blocks; rescan clean: repaired.`
+        """
+        self.refused('seedling_key_moved', M_KEPT,
+                     {'BM_USED_FREE': 1, 'BM_LOST': 1})
+
+    def test_an_index_key_that_moved_keeps_the_file_it_left(self):
+        """The key of the sapling /CHECKVOL/SAP names a free block, which
+        reads as an index block with no pointer in it.
+
+        Before: `Plan: 11 corrections over 2 blocks`; the entry's block
+        count rewritten from 9 to 1, wrote [2, 6], the index block and its
+        eight data blocks freed (18 to 26), `rescan clean: repaired.`
+        """
+        self.refused('sapling_key_moved', M_KEPT,
+                     {'FILE_BLOCKS': 1, 'BM_USED_FREE': 1, 'BM_LOST': 9})
+
+    def test_an_index_block_that_reads_as_zeros_keeps_its_data(self):
+        """The index block of /CHECKVOL/SAP zeroed: eight pointers gone.
+
+        Before: `Plan: 9 corrections over 2 blocks`; the block count
+        rewritten from 9 to 1, wrote [2, 6], the eight data blocks freed (19
+        to 26), `rescan clean: repaired.` One zeroed pointer is the same in
+        small: [2, 6], one data block freed.
+        """
+        self.refused('index_block_zeroed', M_KEPT,
+                     {'FILE_BLOCKS': 1, 'BM_LOST': 8})
+        self.refused('index_pointer_zeroed', M_KEPT,
+                     {'FILE_BLOCKS': 1, 'BM_LOST': 1})
+
+    def test_a_master_index_pointer_that_moved_keeps_the_branch(self):
+        """The second pointer of the master index of /CHECKVOL/TREE names a
+        free block. Before: the block count rewritten, wrote [3, 6], 29
+        blocks freed (the second index block and the 28 data blocks under
+        it), `rescan clean: repaired.`"""
+        self.refused('master_index_pointer_moved', M_KEPT,
+                     {'FILE_BLOCKS': 1, 'BM_USED_FREE': 1, 'BM_LOST': 29})
+
+    def test_a_fork_key_that_moved_keeps_the_fork(self):
+        """The data fork of the extended file /CHECKVOL/EXT names a free
+        block. Before: wrote [6], the fork's real block 320 freed,
+        `Applied 1 of 1 blocks; rescan clean: repaired.`"""
+        self.refused('fork_key_moved', M_KEPT, {'BM_USED_FREE': 1, 'BM_LOST': 1})
+
+    def test_a_storage_type_that_shrank_keeps_what_it_no_longer_reaches(self):
+        """A sapling read as a seedling, a tree read as a sapling: the key
+        block is claimed as what it is not and everything under it is
+        unclaimed.
+
+        Before, /CHECKVOL/SAP as a seedling: block count rewritten from 9 to
+        1, wrote [2, 6], 8 data blocks freed. /CHECKVOL/TREE as a sapling:
+        wrote [3, 6], 284 blocks freed. Both `rescan clean: repaired.`
+        """
+        self.refused('sapling_reads_as_a_seedling', M_KEPT,
+                     {'FILE_BLOCKS': 1, 'BM_LOST': 8})
+        self.refused('tree_reads_as_a_sapling', M_KEPT,
+                     {'FILE_BLOCKS': 1, 'BM_LOST': 284})
+
+    def test_a_directory_that_reads_as_a_file_keeps_its_files(self):
+        """The storage nibble of /CHECKVOL/SUB from $D to 1. A one-block
+        directory is, field for field, a seedling of 512 bytes: one block
+        used, eof 512, a key in range. FIXIT and the host oracle see lost
+        blocks and nothing else. What is left to say it was a directory is
+        its file type, $0F -- found by tools/fuzz_prodos.py, invariant 8.
+
+        Before: `Plan: 4 corrections over 1 blocks` (BM_LOST 4), wrote [6],
+        the two files of the directory freed (28 to 31), `Applied 1 of 1
+        blocks; rescan clean: repaired.`
+        """
+        self.refused('directory_reads_as_a_seedling', M_KEPT,
+                     {'ENT_STORAGE': 1, 'BM_LOST': 4})
+
+    def test_a_file_typed_as_a_directory_is_named_and_never_repaired(self):
+        """File type $0F on a plain file, nothing else wrong: REPAIR names it
+        (it may be a directory whose storage nibble went) and has nothing to
+        write. With something to repair beside it the plan is applied, and
+        the verdict counts what is left instead of saying `repaired`."""
+        inv = corrupt_prodos.Inventory(self.clean)
+        ref, _ = named(inv, 'A')
+        data = bytearray(self.clean)
+        data[ref.offset + 0x10] = 0x0F
+        self.assertEqual(prodos_check.check(bytes(data)).findings, [],
+                         'the oracle has no name for it')
+        r, after = self.fix(bytes(data))
+        self.assertNoWrite(r, bytes(data), after)
+        self.assertEqual(r['counts'], {'ENT_STORAGE': 1})
+        self.assertEqual(r['note'], M_NOTHING, 'not "consistent": a finding stands')
+
+        corrupt_prodos.apply(data, ['bitmap_free_used'])
+        r, after = self.fix(bytes(data))
+        self.assertEqual(r['note'], M_LEFT % (1, 1, 1), r)
+        self.assertEqual([f.id for f in prodos_check.check(after).findings], [])
+
+    def test_a_subdirectory_back_pointer_is_no_longer_rebuilt(self):
+        """What the fix costs. The back-pointer of the second block of
+        /WIDEVOL/WIDE is wrong and its forward chain is intact: until
+        6 October 2026 REPAIR rewrote the two bytes (`Applied 1 of 1
+        blocks; rescan clean: repaired.`). Nothing tells that block from one
+        a damaged forward link leads into, so it is not entered and nothing
+        is written. In the volume directory, whose blocks are known by their
+        place, the back-pointer is still rebuilt
+        (test_a_directory_block_whose_back_pointer_is_wrong)."""
+        inv = corrupt_prodos.Inventory(self.wide)
+        wide, _ = named(inv, 'WIDE')
+        data = bytearray(self.wide)
+        corrupt_prodos.put_word(data, wide.chain[1] * BLOCK, 0xFFFF)
+        data = bytes(data)
+        self.assertEqual([f.id for f in prodos_check.check(data).findings],
+                         ['DIR_CHAIN'])
+        r, after = self.fix(data)
+        self.assertNoWrite(r, data, after)
+        self.assertEqual(r['note'], M_NOPLAN)
+
+    def test_every_damage_of_this_section_is_one_the_old_repair_called_repaired(self):
+        """The scenarios are held to what they claim: each leaves the oracle
+        a COMPLETE walk with lost blocks -- the shape the old REPAIR freed --
+        and each is refused now. A scenario that stopped producing lost
+        blocks would be testing nothing."""
+        for name in DAMAGE:
+            with self.subTest(damage=name):
+                seed = self.wide if name in WIDE_DAMAGE else self.clean
+                data, stake = damaged(seed, name)
+                result = prodos_check.check(data)
+                self.assertTrue(result.complete, name)
+                lost = {f.block for f in result.findings if f.id == 'BM_LOST'}
+                self.assertTrue(lost, name)
+                self.assertTrue(lost <= set(owned(stake)),
+                                (name, sorted(lost - set(owned(stake)))))
+                r, after = self.fix(data)
+                self.assertEqual((r['nwrite'], after), (0, data), name)
+                self.assertIn(r['note'], (M_KEPT, M_NOPLAN), name)
+
+    def test_a_directory_that_changes_under_the_question_stops_the_writes(self):
+        """The plan was built on a volume whose root counts one file too
+        many -- one write, in block 2, made at the END of the walk. While the
+        question is on the screen the key block of /SUB stops reading as a
+        directory header (block 2 itself is unchanged, so the disk-changed
+        guard has nothing to see). The apply pass meets it first, is cut
+        there, and must not go on to write a count it computed from a walk
+        it could not finish."""
+        data, _ = self.corrupted('file_count_high')
+        inv = corrupt_prodos.Inventory(self.clean)
+        sub, _ = named(inv, 'SUB')
+        r, after = self.fix(data)
+        self.assertEqual([w['block'] for w in r['writes']], [2], 'the control run')
+        r, after = self.fix(data, late='%d:%d:%d' % (sub.key, 4, 0x03))
+        self.assertEqual(r['prompted'], 1, 'the plan was offered and accepted')
+        self.assertNoWrite(r, data, after)
+        self.assertEqual(r['applied'], 0)
+        self.assertTrue(r['note'].startswith('Applied 0 of 1 blocks; rescan still'),
+                        r['note'])
+
+    def test_lost_blocks_alone_are_still_given_back(self):
+        """The repair the rule keeps: a volume where the ONLY thing wrong is
+        blocks nobody claims -- an interrupted save -- gets them back, every
+        one, in one write of the bitmap page."""
+        data = bytearray(self.clean)
+        inv = corrupt_prodos.Inventory(self.clean)
+        for _ in range(40):
+            corrupt_prodos.bitmap_lost(data, inv)
+        data = bytes(data)
+        found = prodos_check.check(data).findings
+        self.assertEqual({f.id for f in found}, {'BM_LOST'})
+        self.assertEqual(len(found), 40)
+        r, after = self.fix(data)
+        self.assertEqual(r['freeing'], 1)
+        self.assertEqual(r['note'], M_DONE % (1, 1), r)
+        self.assertEqual(after, corrected(data, found))
+        self.assertEqual(prodos_check.check(after).findings, [])
 
 
 if __name__ == '__main__':

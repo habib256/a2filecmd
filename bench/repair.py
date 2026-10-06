@@ -7,10 +7,11 @@
 Increments 9 a 15 de docs/FIXIT.md section 8. Le banc amorce un disque dur
 jetable portant le REPAIR de CETTE construction, avec une disquette jetable
 en lecteur 2 (`tools/mkvolume.py`, jamais un disque personnel), et fait
-quatre passages, chacun sur sa propre disquette.
+neuf passages, chacun sur sa propre disquette.
 
 Passage 1, une disquette dont SEULE la bitmap est fausse
-(`bitmap_lost` + `bitmap_free_used` + `bitmap_reserved_free`) :
+(`bitmap_lost` + `bitmap_reserved_free` + `bitmap_tail_set` : un bloc que
+personne ne reclame, et deux fautes qui ne tiennent qu'a la bitmap) :
 
 1. l'ecran de plan nomme chaque controle de l'oracle avec son compteur, et
    la ligne « Plan: N corrections over M blocks. Nothing written yet. » ;
@@ -21,7 +22,7 @@ Passage 1, une disquette dont SEULE la bitmap est fausse
    bloc de bitmap.
 
 Passage 2, une disquette cassee dans le REPERTOIRE et dans la bitmap
-(`file_count_high` + `dir_eof_wrong` + `parent_wrong` + `bitmap_lost`) :
+(`file_count_high` + `dir_eof_wrong` + `parent_wrong` + `bitmap_free_used`) :
 les quatre controles sont au plan, `F` puis FIX les applique, le verdict
 dit « repaired », et sur l'hote la disquette est saine et les seuls blocs
 qui ont bouge sont ceux que l'oracle nomme.
@@ -32,6 +33,18 @@ celle d'avant l'amorcage.
 
 Passage 4, la disquette du passage 1 de nouveau cassee : Echap a la
 question FIX, et la disquette ne bouge pas d'un octet.
+
+Passages 5 a 9, UN pointeur abime par disquette (les montages `DAMAGE` de
+`tools/test_repair.py`, les trois defauts du 6 octobre 2026 et deux de leurs
+voisins) : la cle d'un sous-dossier qui designe le bloc d'index d'un de ses
+fichiers, le chainage du repertoire de volume qui mene a un bloc libre, une
+entree dont le quartet de stockage est a zero, la cle d'un fichier d'un bloc
+deplacee sur un bloc libre, un sous-dossier dont le quartet de stockage dit
+« fichier ». Chacun rendait « rescan clean: repaired » apres avoir libere
+les blocs du fichier ; chacun est maintenant refuse avant le plan, par le
+message que le montage attend, et la disquette est octet pour octet celle
+d'avant l'amorcage. C'est le code de cc65 qui est juge ici, sur les deux
+processeurs : le harnais hote le compile avec clang.
 
 POM2 ne reecrit jamais le .hdv d'amorcage dans son fichier : la preuve sur
 l'hote se fait sur la disquette du lecteur 2, ecrite a l'arret de
@@ -48,17 +61,20 @@ from xplug import boot_hd, menu_run, ok_all, wait_note, RET, ESC
 from pom2 import ROOT
 import corrupt_prodos
 import prodos_check
+import test_repair
 
 PORT = 6850
 BLOCKS = 280
 VOLUME = 'FIXVOL'
 # Trois casses de la bitmap et rien d'autre : le plan les corrige toutes
-# les trois, en une page ecrite une fois.
-BITMAP = ['bitmap_lost', 'bitmap_free_used', 'bitmap_reserved_free']
+# les trois, en une page ecrite une fois. Un bloc perdu n'est rendu que si
+# l'arbre n'a rien d'autre a se reprocher et ne reclame aucun bloc libre :
+# il voyage donc avec les deux fautes qui ne tiennent qu'a la bitmap.
+BITMAP = ['bitmap_lost', 'bitmap_reserved_free', 'bitmap_tail_set']
 # Le repertoire et la bitmap ensemble : un compteur de fichiers, l'eof d'un
 # sous-dossier, l'en-tete d'un sous-dossier qui nomme le mauvais rang chez
-# son parent, et un bloc que personne ne reclame.
-MIXED = ['file_count_high', 'dir_eof_wrong', 'parent_wrong', 'bitmap_lost']
+# son parent, et un bloc de fichier que la bitmap dit libre.
+MIXED = ['file_count_high', 'dir_eof_wrong', 'parent_wrong', 'bitmap_free_used']
 # Les lignes de src/plugins/repair.c que l'ecran doit montrer.
 PLAN = 'Plan: %u corrections over %u blocks. Nothing written yet.'
 KEYS = 'F fix  ESC back'
@@ -66,6 +82,15 @@ ASK = 'Type FIX to confirm'
 XLINK = 'Cross-linked blocks: copy both files to another volume before any repair.'
 DONE = 'Applied %u of %u blocks; rescan clean: repaired.'
 NOTHING = 'Nothing written.'
+KEPT = 'Lost blocks may hold a damaged file: nothing written. See FIXIT.'
+NOPLAN = 'Scan incomplete: no repair.'
+# Un pointeur abime par disquette, et le refus attendu (tools/test_repair.py
+# tient les memes sur l'hote, avec l'etat d'avant le correctif).
+POINTERS = (('sub_key_at_a_file_block', NOPLAN),
+            ('root_link_to_a_free_block', NOPLAN),
+            ('entry_looks_deleted', KEPT),
+            ('seedling_key_moved', KEPT),
+            ('directory_reads_as_a_seedling', KEPT))
 
 
 def make_po(tmp, name):
@@ -74,8 +99,15 @@ def make_po(tmp, name):
     stage.mkdir()
     (stage / 'A.TXT').write_bytes(b'alpha\r' * 40)
     (stage / 'B.TXT').write_bytes(b'beta\r' * 400)
+    # Les noms que les montages DAMAGE de tools/test_repair.py visent, et
+    # assez d'entrees pour que le repertoire de volume deborde du bloc 2 :
+    # un chainage abime y cache alors de vrais fichiers.
+    (stage / 'TREE.BIN').write_bytes(bytes(range(256)) * 9)
+    for i in range(10):
+        (stage / ('ZZ%d.TXT' % i)).write_bytes(b'tail %d\r' % i * 30)
     (stage / 'SUB').mkdir()
     (stage / 'SUB' / 'NEST.TXT').write_bytes(b'nested\r' * 10)
+    (stage / 'SUB' / 'NEST2.TXT').write_bytes(b'deeper\r' * 100)
     po = tmp / (name + '.po')
     subprocess.run([sys.executable, str(ROOT / 'tools/mkvolume.py'), str(stage), str(po),
                     '--volume', VOLUME, '--blocks', str(BLOCKS)],
@@ -206,8 +238,9 @@ def repaired(tmp, po, expect, writes, label='apres la reparation'):
     return session(tmp, po, checks)
 
 
-def refused(tmp, po, label, escape):
-    """Un plan refuse : le bloc partage, ou Echap a la question."""
+def refused(tmp, po, label, escape, expect=XLINK):
+    """Un plan refuse : le bloc partage, un pointeur abime, ou Echap a la
+    question. `expect` est le message du refus."""
     def checks(p, s, back, volume_list):
         volume_list()
         s.select('/' + VOLUME)
@@ -222,9 +255,11 @@ def refused(tmp, po, label, escape):
             s.ok(label + ' : le verdict dit que rien n a ete ecrit',
                  note == NOTHING, note)
         else:
+            # Aucune touche n'est envoyee : un ecran de plan attendrait la
+            # sienne et la note n'arriverait jamais (wait_note leve alors).
             note = wait_note(s, p)
-            s.ok(label + ' : le refus nomme les blocs partages',
-                 note == XLINK, note)
+            s.ok(label + ' : le refus et son motif, sans plan ni question',
+                 note == expect, note)
         back(label)
     return session(tmp, po, checks)
 
@@ -238,15 +273,25 @@ def main():
 
         bad, expect = break_it(tmp, po, BITMAP, 'BITMAP')
         bad_before = bad.read_bytes()
-        assert set(expect) <= {'BM_LOST', 'BM_USED_FREE', 'BM_RESERVED'}, expect
-        assert len(expect) == 3, expect
+        assert set(expect) == {'BM_LOST', 'BM_RESERVED', 'BM_TAIL'}, expect
         mixed, mexpect = break_it(tmp, po, MIXED, 'MIXED')
         mixed_before = mixed.read_bytes()
-        assert set(mexpect) == {'FILE_COUNT', 'DIR_EOF', 'DIR_PARENT', 'BM_LOST'}, mexpect
+        assert set(mexpect) == {'FILE_COUNT', 'DIR_EOF', 'DIR_PARENT',
+                                'BM_USED_FREE'}, mexpect
         # les blocs que l'oracle nomme : les trois corrections de repertoire
         # et l'unique page de bitmap
         mblocks = {f.block for f in prodos_check.check(mixed_before).findings
-                   if f.id != 'BM_LOST'} | bitmap_blocks(mixed_before)
+                   if not f.id.startswith('BM_')} | bitmap_blocks(mixed_before)
+        # un pointeur abime par disquette : l'oracle y voit des blocs perdus
+        # dans une passe complete, la forme que REPAIR liberait
+        pointers = []
+        for name, note in POINTERS:
+            data, stake = test_repair.damaged(po.read_bytes(), name)
+            result = prodos_check.check(data)
+            assert result.complete and any(f.id == 'BM_LOST' for f in result.findings), name
+            target = tmp / (name.upper()[:12] + '.po')
+            target.write_bytes(data)
+            pointers.append((name, note, target, data))
         shared, _ = break_it(tmp, po, ['crosslink'], 'SHARED')
         shared_before = shared.read_bytes()
         keep, _ = break_it(tmp, po, BITMAP, 'KEEP')
@@ -283,7 +328,16 @@ def main():
               after == keep_before,
               [i for i, (a, b) in enumerate(zip(after, keep_before)) if a != b][:4])
 
-        for other in (s1, s2, s3):
+        others = [s1, s2, s3]
+        for name, note, target, data in pointers:
+            sp = refused(tmp, target, name, escape=False, expect=note)
+            after = target.read_bytes()
+            sp.ok(name + ' : la disquette est intacte, octet pour octet',
+                  after == data,
+                  [i for i, (a, b) in enumerate(zip(after, data)) if a != b][:4])
+            others.append(sp)
+
+        for other in others:
             s.checks.extend(other.checks)
     return ok_all(s, 'repair')
 

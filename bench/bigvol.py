@@ -11,8 +11,11 @@ page de bitmap. Le banc amorce un disque dur jetable et place en S5,D2
 (`pom2_playtest --hd2`) un volume de 20 000 blocs, cinq pages de bitmap,
 construit par `tools/mkvolume.py` puis casse sur l'hote en deux endroits
 que l'oracle `tools/prodos_check.py` nomme : un sous-dossier, loin dans le
-volume, qui compte mal ses fichiers (FILE_COUNT), et un bloc de la
-quatrieme page marque occupe que personne ne reclame (BM_LOST).
+volume, qui compte mal ses fichiers (FILE_COUNT), et un bloc de fichier de
+la quatrieme page que la bitmap dit libre (BM_USED_FREE). Jusqu'au
+6 octobre 2026 la seconde casse etait un bloc perdu : REPAIR ne rend plus
+un bloc que personne ne reclame a cote d'un compteur faux (docs/FIXIT.md
+section 5), et `tools/test_repair.py` tient ce refus sur un grand volume.
 
 Une seule session POM2 :
 
@@ -24,7 +27,7 @@ Une seule session POM2 :
 3. Q, puis Y : le controle rapide, titre « - QUICK », ne nomme que
    FILE_COUNT, au bloc et au rang de l'oracle ;
 4. R repose la question de la profondeur mais pas celle de /RAM ; F : le
-   controle complet nomme FILE_COUNT et BM_LOST au bloc de l'oracle, et
+   controle complet nomme FILE_COUNT et BM_USED_FREE au bloc de l'oracle, et
    prend plus de cycles que le rapide ;
 5. Echap : le verdict compte deux constats, resident et pile C preserves,
    /RAM toujours en ligne ; puis un controle complet coupe par Echap garde
@@ -36,7 +39,7 @@ Une seule session POM2 :
 
 Sur l'hote, a l'arret de POM2 : le volume est sain pour l'oracle et les
 seuls blocs modifies sont la cle du sous-dossier et la page de bitmap du
-bloc perdu. Les cycles des deux controles sont affiches : sur un vrai IIe,
+bloc marque libre. Les cycles des deux controles sont affiches : sur un vrai IIe,
 un million de cycles font une seconde.
 """
 import subprocess
@@ -55,7 +58,6 @@ import prodos_check
 PORT = 6851
 BLOCKS = 20000
 VOLUME = 'BIGVOL'
-LOST = 13000                     # dans la quatrieme page de bitmap
 MODES = 'Q quick (directories)  F full  ESC back'
 AUXASK = 'ALL /RAM files will be LOST. Continue?'
 SUMMARY = '%u findings.  R rescan  ESC/RETURN back'
@@ -74,8 +76,8 @@ def make_big(tmp):
     """Le volume de 20 000 blocs, sain, puis casse ; rend (image, attendu)."""
     stage = tmp / 'stage-big'
     (stage / 'SUB').mkdir(parents=True)
-    # Un gros fichier d'abord : tout ce qui suit tombe dans la deuxieme page.
-    (stage / 'BIG.BIN').write_bytes(bytes(range(256)) * 12000)
+    # Un gros fichier d'abord : tout ce qui suit tombe dans la quatrieme page.
+    (stage / 'BIG.BIN').write_bytes(bytes(range(256)) * 24700)
     for i in range(20):
         (stage / 'SUB' / ('F%02d.TXT' % i)).write_bytes(b'line %d\r' % i * (i * 40 + 1))
     (stage / 'C.TXT').write_bytes(b'last\r' * 100)
@@ -91,18 +93,20 @@ def make_big(tmp):
     # FILE_COUNT : l'en-tete du sous-dossier annonce trois fichiers de trop
     at = sub * 512 + 4 + 0x21
     data[at:at + 2] = (int.from_bytes(data[at:at + 2], 'little') + 3).to_bytes(2, 'little')
-    # BM_LOST : un bloc libre marque occupe
-    page = inv.bitmap + (LOST >> 12)
-    byte = page * 512 + ((LOST & 4095) >> 3)
-    assert data[byte] & (0x80 >> (LOST & 7)), 'le bloc perdu doit etre libre'
-    data[byte] &= ~(0x80 >> (LOST & 7))
+    # BM_USED_FREE : le bloc du dernier fichier, que la bitmap dit libre
+    used = inv.entries[-1].key
+    assert used >> 12 == 3, ('le bloc doit vivre dans la quatrieme page', used)
+    page = inv.bitmap + (used >> 12)
+    byte = page * 512 + ((used & 4095) >> 3)
+    assert not data[byte] & (0x80 >> (used & 7)), 'le bloc doit etre occupe'
+    data[byte] |= 0x80 >> (used & 7)
     po.write_bytes(bytes(data))
     result = prodos_check.check(bytes(data))
     expect = {}
     for f in result.findings:
         expect.setdefault(f.id, [0, f.block, f.slot])
         expect[f.id][0] += 1
-    assert set(expect) == {'FILE_COUNT', 'BM_LOST'}, expect
+    assert set(expect) == {'FILE_COUNT', 'BM_USED_FREE'}, expect
     assert result.complete
     return po, expect, {sub, page}
 
@@ -201,7 +205,8 @@ def main():
             count, block, slot = expect['FILE_COUNT']
             s.ok('rapide : FILE_COUNT au bloc de l oracle',
                  got is not None and got[1:4] == [str(count), 'block', str(block)], text)
-            s.ok('rapide : aucun bloc lu, pas de BM_LOST', line_of(rows, 'BM_LOST') is None, text)
+            s.ok('rapide : aucun bloc lu, pas de BM_USED_FREE',
+                 line_of(rows, 'BM_USED_FREE') is None, text)
             s.ok('rapide : un constat', SUMMARY % 1 in text, text)
 
             # 4. R, puis le controle complet
