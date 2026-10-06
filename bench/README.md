@@ -6,7 +6,8 @@ livre pour cela : les adresses des variables observees viennent de la table de
 symboles du lien (`build/a2fc.lbl`), et l'ecran est lu la ou l'Apple II le
 range, en `$400-$7FF`.
 
-Les bancs disquette utilisent l’image interne `dist/A2FILECMD-PRODOS-140K-0.9.1.po`.
+Les bancs disquette utilisent l’image interne `dist/A2FILECMD-PRODOS-140K-<version>.po`
+(`<version>` est `A2FC_VERSION` du Makefile, `bench/pom2.py`).
 La conversion DSK publiée conserve les mêmes blocs ProDOS ; les `.po` ne sont
 pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 
@@ -15,7 +16,7 @@ pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 | `smoke.py` | la disquette publiee demarre-t-elle sur les panneaux ? |
 | `awp.py` | un document AppleWorks (3.0 puis 2.x) se lit page par page, ligne pour ligne ce que tools/mkawp.py a ecrit |
 | `subdir.py` | A2FILE.SYSTEM et A2FILE/ copies dans /HD/APPS d'un disque dur, lances de BASIC par `-APPS/A2FILE.SYSTEM` : surcouches, aide, formateur et retour se trouvent depuis ce dossier |
-| `vdrive.py` | deux volumes par la ligne serie (VDrive) : le serveur `vsdrive_server.py` sert un .po au pont TCP de la Super Serial Card de POM2 (`pom2_playtest --ssc PORT`, 6 controles). La version Uthernet II (`pom2_playtest --uthernet`, `Pom2(uthernet=True)`) attend son pilote, voir le TODO |
+| `vdrive.py` | deux volumes par la ligne serie (VDrive) : le serveur `vsdrive_server.py` sert un .po au pont TCP de la Super Serial Card de POM2 (`pom2_playtest --ssc PORT`, 6 controles). La version Uthernet II (`pom2_playtest --uthernet`, `Pom2(uthernet=True)`) attend son pilote : aucun code d'A2FC ne s'en sert encore |
 | `vdrive_printer.py` | VDrive ne touche jamais l'imprimante : une SSC imprimante en slot 1 (port 1 du //c) journalise chaque acces a ses registres (`pom2_playtest --printer-ssc LOG`, `Pom2(printer_log=...)`), sur le preset courant et le //c, seule puis a cote d'un VDrive en slot 2 ; puis une SSC en mode imprimante en slot 2 (`--printer-slot 2`, commutateurs lus, aucune ecriture ni acces au 6551), seule puis avec l'hote VDrive en slot 4 (`--ssc-slot 4`) -- sautes avec un message sans POM2 a commutateurs (19 controles, 10 sans) |
 | `data_safety.py` | copies et déplacements vérifiés, deux sauvegardes successives, avertissement RAM avant écriture et comparaison des octets AUX après refus ; volumes jetables |
 | `sequences.py` | les enchainements entre outils, etat et octets relus apres la sortie : image HGR puis musique puis copie de deux fichiers marques ; ESC pendant une copie de 300 Ko puis la meme copie au bout puis V vers un autre dossier ; disquette remplacee en lecteur 2 sous un panneau ouvert, volumes relus, copie depuis chacune. Deux CPU sur la disquette de banc. |
@@ -58,13 +59,29 @@ pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 | `mini33_write.py` | the same edition's real DOS writes on disposable images: cancel, hardware write protection, a copy that stays on the panels, a refused collision, then DOS BLOAD and SAVE over the result |
 | `mini33_ops.py` | tags, hi-res viewer, exclusive TXT create, catalog-first delete, and a tagged two-file copy, on disposable images |
 | `mini33_format.py` | F on disposable images: refused on the boot drive, cancelled, refused on a write-protected disk, then a real RWTS format with DOS copied from the boot disk, every shipped file copied onto it, and the result booted into A2FC Mini; then the same from a zero-filled image and from a never formatted diskette (POM2's `insertBlankDisk`, no address fields; `--no-fresh` skips it), watching the progress bar. Every Mini bench reads the boot disk's file count from the image (`MINI_FILES`), so a dist disk holding more than the four built files still passes |
+| `mini33_brun.py` | RETURN opens a file by its content (hi-res, text, hex) and RETURN or B BRUNs a DOS binary from drive 2, from A2FC Mini and from the DOS prompt |
+| `mini33_review.py` | review fixes through the real UI, on temporary images, file bytes checked |
 | `mini33_time.py` | what the disk paths cost in cycles, since a missed sector is a whole 200 000-cycle revolution: catalog reads and a 48-sector copy, with the copy's writing phase broken down per RWTS call (reads, writes, read-backs, drive switches, revolutions per data sector; `--max-rev-per-sector` turns that last one into a failure). Read-only on the catalog paths |
 | `mini33_lend.py` | the two RWTS JSRs that `rwts.s` lends to the activity cell (`$BDC4` during a READ, `$BED6` during a FORMAT): the same session -- a never formatted diskette read, formatted, then filled -- run with the JSRs lent and with the lending refused (the signature spoiled in memory, as another DOS would); every RWTS call must return the same carry, code and bytes, both diskettes must come out byte for byte identical, no WRITE may run with a site lent, no resident code outside `rwts.s` may run with one lent, and after Q DOS must catalog both disks with the resident overwritten |
+| `blkedit.py` | BLKEDIT sur une image en lecteur 2 : l'octet edite relu sur l'hote, rien d'autre ne bouge, une image verrouillee s'ouvre et refuse W sans rien ecrire |
+| `bootblk.py` | BOOTBLK : les blocs 0 et 1 d'une disquette jetable en lecteur 2, barbouilles avant l'amorcage, recopies depuis le volume du programme |
+| `move.py` | MOVE deplace une entree sans recopier ses blocs, y compris vers un repertoire plein qui doit gagner un bloc ; VOLINFO juge le volume |
+| `move_bitmap.py` | l'ecriture brute du bitmap par MOVE face a l'allocation de ProDOS 8 : aucun bloc donne deux fois |
+| `intbasic.py` | INTBASIC liste un programme Integer BASIC ($FA), l'ecran compare au listing rebati depuis la regle du format |
+| `physical.py` | un vrai DOS 3.3 en lecteur 2 des l'amorcage (`--disk2`) : reconnu a sa VTOC, liste comme volume, sa ligne tient dans le panneau |
+| `nibcopy.py` | le transport NIBCOPY (C et 6502) sur des images DOS jetables |
+| `nibcopy_ui.py` | NIBCOPY depuis le DISKTOOLS des anciennes categories : refus AUX, puis copie complete, source protegee en ecriture sur l'hote |
+| `recovery.py` | la ligne d'aide, le guide RECOVER livre, puis une recuperation sur volume jetable (voir plus bas) |
+| `plugin.py` | l'exemple du SDK (`sdk/`) construit hors de l'arbre avec seulement `a2fc_plugin.h` et lance depuis la categorie Other, sur chaque CPU |
+| `textscreen.py` | DGRVIEW montre une page texte (40 et 80 colonnes, inverse, clignotant, MouseText), comparee pixel pour pixel au rendu de la ROM de caracteres |
+| `extasie.py` | EXTASIE : les images `$F2` de Purplesoft en mode MIXTE de la carte Le Chat Mauve, la geometrie colonne par colonne |
+| `fantavision.py` | FANTA.SYSTEM derriere un lanceur de substitution : chaque film joue jusqu'a sa derniere image, retour au lanceur |
+| `chain_reset.py` | Ctrl-Reset dans un programme lance par A2FC (src/chain.s) ramene A2FC au lieu de sauter dans les octets du programme |
 | `pom2.py` | le pilote d'emulateur commun |
 
 ## Les deux editions
 
-`dist/A2FILECMD-PRODOS-140K-0.9.1.po` est l'**edition disquette**, construite en 6502
+`dist/A2FILECMD-PRODOS-140K-<version>.po` est l'**edition disquette**, construite en 6502
 (`build-6502/`) avec le gestionnaire et les outils disque seulement : c'est
 elle que les bancs amorcent par defaut, et sa table de symboles est prise
 dans `build-6502/` sans rien dire. `run.py` y saute la section souris, et les
@@ -131,11 +148,6 @@ Les scénarios sur BOOT plein répondent explicitement à l'avertissement de
 configuration non sauvegardée. `bench/mb4c.py` couvre aussi la fin naturelle
 des deux lecteurs, sans touche, avec restauration des panneaux et silence AY.
 
-Limite de validation : la dernière étape de `extras.py` (relancement manuel
-d'A2FC après le programme Applesoft avec `HOME`) peut finir en `SYNTAX ERROR`
-dans POM2 //e non amélioré. Le lancement depuis DEVTOOLS passe, mais le banc
-complet reste en échec ; voir le suivi LAUNCHER dans `TODO.md`.
-
 Il faut [POM2](https://github.com/habib256/pom2) construit sans interface
 graphique, avec son serveur de commande (`--ai-control`) et une option
 `--mouse` qui branche une AppleMouse II (HLE AppleWin) en slot 4 -- c'est
@@ -144,9 +156,10 @@ graphique, avec son serveur de commande (`--ai-control`) et une option
 la bibliotheque de l'emulateur (`POM2_ROOT`, par defaut `~/src/pom2`) :
 
 ```sh
-make disk
-POM2=/chemin/vers/pom2_headless python3 bench/run.py --out /tmp/bench
-POM2=/chemin/vers/pom2_headless python3 bench/memory.py
+make disk && make benchfloppy ARCH=enh
+make pom2host
+A2FC_IMG=A2FILECMD-full python3 bench/run.py --out /tmp/bench
+POM2=/chemin/vers/pom2_playtest python3 bench/memory.py
 ```
 
 Sans la variable `POM2`, les bancs cherchent `build/pom2_playtest` et
@@ -168,7 +181,7 @@ donne un Apple //c (ROM 32 Ko) : son lecteur integre est le Disk II du slot
 6, donc `--boot 6` amorce la disquette comme sur le //e, et le disque dur est
 une unite SmartPort sur le port arriere, servie par le firmware du //c en
 slot 5 (pas de carte, pas de Mockingboard). Les deux presets amorcent
-`dist/A2FILECMD-PRODOS-140K-0.9.1.po` jusqu'aux panneaux. `Pom2(..., floppy2=...)` met une
+`dist/A2FILECMD-PRODOS-140K-<version>.po` jusqu'aux panneaux. `Pom2(..., floppy2=...)` met une
 seconde disquette dans le lecteur 2 du meme Disk II des l'amorcage
 (`pom2_playtest --disk2`) : un vrai DOS 3.3 dans un lecteur, sans passer par
 `/disk` -- ce que le banc des disques physiques attendait.
@@ -182,7 +195,8 @@ construit avant le 17 septembre 2026 refuse l'option : `make pom2host`.
 
 La table de `bench/all.py` porte **chaque** banc avec la machine et l'image
 qu'il demande. C'est elle que rejoue la qualification d'une version, et c'est
-elle que joue la CI, groupe par groupe :
+elle que joue la CI, groupe par groupe (`boot core dos safety session xl
+plugins readers archives media cards mini`) :
 
 ```sh
 make qualify                      # disques, disquettes de banc, puis tout
@@ -195,7 +209,7 @@ python3 bench/all.py --only fixit repair --jobs 2
 cycles par seconde se privent l'un l'autre, et les bancs qui comptent le
 temps réel (une copie nibble, une copie interrompue par Échap) expirent
 alors sans que rien ne soit cassé. `make qualify` joue la table un banc à
-la fois.
+la fois (`BENCH_JOBS=1` par défaut dans le Makefile).
 
 Les scénarios qui passent temporairement en vitesse musicale `1x` doivent
 restaurer ensuite `p.speed` avec `cycles_per_frame`, plutôt que le préréglage
@@ -237,11 +251,15 @@ sont verifies partout, la session complete la ou l'Apple II existe. Le
 travail appelle `bench/all.py --group ...` : les etapes portent les groupes
 de la table, pas une copie des commandes.
 
-## Les quinze nouvelles surcouches
+## Les surcouches à table de services : `bench/plugins.py`
 
 `bench/plugins.py` exécute les bancs des surcouches à table de services --
-les quinze d'origine plus `fixit.py` et `repair.py` --, avec un journal par
-outil. Chaque banc construit son disque dur de travail et y ajoute
+la liste `BENCHES` de ce fichier, 39 bancs (quinze à l'origine) --, avec un
+journal par outil. Ceux que ce document ne decrit pas ailleurs -- `date.py`,
+`docview.py`, `fanta_a2fc.py`, `imgconv.py`, `moviemaker.py`, `newsroom.py`,
+`nrclip.py`, `progress.py`, `rename.py`, `tagpat.py`, `txtconv.py`,
+`verify.py`, `visicalc.py`, `volname.py`, `wipe.py` -- disent ce qu'ils
+controlent dans leur en-tete. Chaque banc construit son disque dur de travail et y ajoute
 explicitement sa surcouche ; ceux qui écrivent vérifient ensuite la
 disquette du lecteur 2 sur l'hôte. Ces volumes sont des fixtures, pas les
 images publiées. Chacun **relit le dernier mot** de son outil : la ligne 22
@@ -272,22 +290,13 @@ l’arrêt par ESC et la conservation des marques. Il compare les résultats ave
 les limites 255/256 et 511/512/513 octets, et les fichiers marqués.
 
 La disquette `benchfloppy` garde les dix-neuf surcouches du noyau et
-BASIC.SYSTEM pour les anciens bancs ; les quinze nouvelles ne tiennent pas
-toutes dessus et se testent avec `plugins.py` sur disque dur.
+BASIC.SYSTEM pour les anciens bancs (la liste `PLUGINS` du Makefile moins
+UNSHRINK, BINARY2, AWP, SEARCH et COMPARE) ; les surcouches à table de
+services n'y sont pas et se testent avec `plugins.py` sur disque dur.
 
-Validation du 2026-09-09 : les quinze bancs passent sur IIe non enhanced
+Validation du 2026-09-09 : les quinze bancs d'alors passent sur IIe non enhanced
 (6502) et IIe enhanced (65C02), **239 contrôles par processeur**. Les
 contrôles d’amorçage des deux images publiées passent également.
-
-`A2FC_PRESET=iie_unenh python3 bench/extras.py` amorce la disquette publiée
-avec son complément : surcouche native, surcouche à table de services, menu
-commun, renommage du volume, absence du disque, choix explicite du lecteur,
-échanges sur un seul lecteur et retour au disque du fichier, annulation
-après chargement d'une grande surcouche, puis BASIC.SYSTEM du complément.
-
-Validation du complément (2026-09-09) : 19 contrôles POM2 et le contrôle
-des images passent sur IIe non enhanced ; les 72 contrôles de la session
-complète 65C02 et les 23 tests hors émulateur passent également.
 
 `bench/format.py` vérifie la surcouche FORMAT depuis le BOOT publié :
 protection du volume du programme, annulations sans écriture, disquette
@@ -407,8 +416,8 @@ panel: both reread it from inside an overlay, so the CATALOG read is deferred
 and settled by the main loop; the catalog must be back and the image intact.
 The same is done from a ProDOS image opened as a folder and from one of its
 subdirectories, and Escape must still land on the directory left. In `run.py`
-the final `-A2FILE.SYSTEM` relaunch from BASIC.SYSTEM is an isolated scenario:
-it prints an `OPEN (chantier 10)` line instead of aborting the session's verdict. `tree_safety.py`
+the final `-A2FILE.SYSTEM` relaunch from BASIC.SYSTEM is an ordinary check of
+the session. `tree_safety.py`
 reproduces the 20-level recursion case: copy and delete must refuse with the
 stack canary and the whole disk intact; a three-level copy must still preserve
 all source and destination bytes. Run both with each `A2FC_BUILD`/`A2FC_PRESET`

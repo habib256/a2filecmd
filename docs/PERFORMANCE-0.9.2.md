@@ -44,8 +44,9 @@ distribution statistique d’essais matériels.
 ## Validation et coûts
 
 Les deux builds passent les contrôles de disposition sans relever les
-plafonds. MAIN enhanced reste serré : 83 octets libres, objectif 256 encore
-ouvert. Voir [les budgets](MEMORY-BUDGETS.md).
+plafonds. MAIN enhanced restait serré : 83 octets libres à cette date,
+objectif 256 alors ouvert. Les réserves actuelles sont dans
+[les budgets](MEMORY-BUDGETS.md).
 
 La campagne ciblée couvre démarrage, panneaux, grands catalogues, erreurs
 de lecture, opérations, mémoire et chargement : 22/22 scénarios POM2.
@@ -110,7 +111,9 @@ A2FC_BUILD=build python3 tools/measure_paging.py --out /tmp/p65c02.json
 
 ## Reproduire
 
-Conserver ensemble l’image et le fichier `.lbl` de chaque version :
+Conserver ensemble l’image et le fichier `.lbl` de chaque version. Le nom
+ci-dessous est celui de la 0.9.2 ; depuis la 0.9.4, la disquette s'appelle
+`dist/A2FILECMD-PRODOS-140K-<version>.po` (`tools/distribution.py`) :
 
 ```sh
 python3 tools/measure_startup.py \
