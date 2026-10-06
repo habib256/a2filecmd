@@ -10,7 +10,8 @@
 41,6,ESC,Parent directory
 1,7,/,List of volumes
 41,7,=,Same directory in other panel
-1,8,',Jump to the next name starting with the key pressed next
+1,8,',Then a key: jump to that initial
+41,8,Q,Quit to ProDOS (asks first)
 1,9,~Editor: ^A/^E Line start/end  ^P/^N Page  ^T/^B Top/bottom  ^D Delete
 1,10,#FILES
 1,11,SPC,Tag / untag: C V D use tags
@@ -28,7 +29,7 @@
 1,17,E,Edit a text (on a dir: new file)
 41,17,I,View as image: HGR/DHGR, raw/RLE
 1,18,RET,Open image, music or document
-41,18,F,Format a disk (asks twice)
+41,18,F,Format a disk (type ERASE)
 1,19,W,Disk images: write, read, copy
 41,19,!,Overlay menu (^R rereads panels)
 1,20,~RET on a .PO/.DSK/.2MG (ProDOS or DOS 3.3) opens it; C extracts
