@@ -31,8 +31,19 @@
  * The spacing is the interpreter's own: LIST puts a space before a keyword
  * that begins with a letter and after one that ends with a letter, and none
  * around the punctuation and the operators. That is what makes ": GR : PRINT
- * : INPUT" out of bytes that hold no space at all. */
+ * : INPUT" out of bytes that hold no space at all.
+ *
+ * Paging: the starts of the last 64 pages seen are kept in a ring, as
+ * MDVIEW does, so Space goes on to the end of any program and B goes back
+ * up to 63 pages. A read error stops the page where it hit and the status
+ * says "(read error)", never "(end)". */
 #include "util.h"
+
+#ifndef PLUGIN_HOST
+/* libc's ferror links errno and fmisc, 90 bytes: _FILE::f_flags (offset 1,
+ * asminc/_file.inc) and its _FERROR bit, as DOCVIEW and FIND read them. */
+#define ferror(f) (((unsigned char*)(f))[1] & 0x04)
+#endif
 
 void __fastcall__ plugin_entry(const struct A2fcApi*);
 
@@ -60,14 +71,17 @@ static const char INT_TOK[] =
 
 static const char st_line[] = "%-38.38s page %u%s";
 static const char st_end[] = " (end)";
+/* the path shorter: the keys bar starts at column 52 */
+static const char st_err[] = "%-29.29s page %u (read error)";
 static const char st_keys[] = "SPC Next,B Prev,R First,ESC";
 static const char st_num[] = "%u";
 static const char m_bad[] = "Not an Integer BASIC program ($FA).";
 static const char m_open[] = "Cannot open it.";
 static const char m_cut[] = "Program ends in the middle of a line.";
+static const char m_err[] = "Read error: the listing stops there.";
 
 #define LINES 22                        /* rows 0 to 21; 22 and 23 are the bars */
-#define PAGES 40
+#define PAGES 64                        /* a ring: a power of two */
 
 static FILE* f;
 /* File offsets are 24-bit in ProDOS: 16 bits wrapped past 64K. */
@@ -77,7 +91,8 @@ static unsigned char row, col;
 static unsigned char space;             /* the last character written was a space */
 static unsigned char alnum;             /* ... a letter or a digit */
 static unsigned char clipped;           /* a character fell below the last row */
-static unsigned long starts[PAGES];     /* where each page seen so far begins */
+static unsigned long starts[PAGES];     /* where the last pages seen begin, a ring */
+static unsigned char rderr;             /* a read failed (not the end of the file) */
 
 /* 255 bytes at a time, not 256: `have` and `at` are bytes, and 256 does not
  * fit in one -- cast down, a full read comes back as zero and reads as the
@@ -87,7 +102,10 @@ static int getb(void)
     if (at == have) {
         have = (unsigned char)a.fread(buf, 1, 255, f);
         at = 0;
-        if (!have) return -1;
+        if (!have) {                    /* the end -- or an error, never taken for it */
+            if (ferror(f)) rderr = 1;
+            return -1;
+        }
     }
     ++fpos;
     return buf[at++];
@@ -211,18 +229,26 @@ static unsigned char line(void)
     return 1;
 }
 
-static unsigned char page, known;
+/* page: the page shown, counted from the oldest kept (in ring slot head,
+ * page number `first`); known: how many are kept; next: where the page
+ * after the one shown starts. */
+static unsigned char page, known, head;
+static unsigned int first;
+static unsigned long next;
+#define START(p) starts[(unsigned char)(head + (p)) & (PAGES - 1)]
 
-/* Page `page` on the screen, from starts[page]. Returns what the last line()
- * returned: 1 the page is full, 0 the end of the program, 2 a cut record.
- * Separate from plugin_entry so that the host harness runs THIS. */
+/* Page `page` on the screen, from its start. Returns what the last line()
+ * returned: 1 the page is full, 0 the end of the program, 2 a cut record,
+ * 3 a read error. Separate from plugin_entry so that the host harness runs
+ * THIS. */
 static unsigned char listpage(void)
 {
-    unsigned long last;
+    unsigned long last, from;
     unsigned char r;
-    seek(starts[page]);
+    from = START(page);
+    seek(from);
     a.clrscr();
-    row = col = 0; space = 1; clipped = 0;
+    row = col = 0; space = 1; clipped = 0; rderr = 0;
     a.gotoxy(0, 0);
     do { last = fpos; r = line(); } while (r == 1 && row < LINES);
     /* The offset the next page starts from is a line boundary: a page is
@@ -230,18 +256,26 @@ static unsigned char listpage(void)
      * stopped reading -- or the start of the last line when its tail ran
      * off the bottom, unless that line began the page (it then has the
      * whole screen and there is nowhere else to show it). */
-    if (clipped && last != starts[page]) { r = 1; fpos = last; }
-    if (r == 1 && page + 1 < PAGES && known == page + 1) {
-        starts[page + 1] = fpos;
-        known = page + 2;
-    }
+    if (clipped && last != from) { r = 1; fpos = last; }
+    if (rderr) r = 3;
+    next = fpos;
     return r;
+}
+
+/* Space: the next page, its start recorded; past PAGES pages the oldest
+ * kept is dropped. */
+static void forward(void)
+{
+    if (page + 1 < known) { ++page; return; }
+    if (known < PAGES) { ++known; ++page; }
+    else { head = (head + 1) & (PAGES - 1); ++first; }
+    START(page) = next;
 }
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api)
 {
     const struct Entry* e;
-    unsigned char done, cut = 0, r;
+    unsigned char done, ready = 0, last = 0, r;
     char key;
 
     init(api);
@@ -249,22 +283,23 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     if (e->type != 0xFA || pan->fs) { note(m_bad); return; }
     f = a.fopen(a.full, "rb");
     if (!f) { note(m_open); return; }
-    starts[0] = 0; page = 0; known = 1;
     for (;;) {
+        if (!ready) { starts[0] = 0; page = head = 0; known = 1; first = 1; ready = 1; }
         r = listpage();
         done = r != 1;
-        if (done) cut = r == 2;
+        if (done) last = r;
         a.bar_begin();
-        a.cprintf(st_line, a.full, page + 1, done ? st_end : (const char*)"");
+        a.cprintf(r == 3 ? st_err : st_line, a.full, first + page, done ? st_end : (const char*)"");
         a.keys_bar(52, st_keys);
         key = a.cgetc();
         if (key == KEY_ESC || key == 'q' || key == 'Q') break;
-        if (key == 'r' || key == 'R') page = 0;
-        if ((key == ' ' || key == KEY_RETURN || key == KEY_RIGHT || key == KEY_DOWN)
-            && !done && page + 1 < known) ++page;
+        if (key == 'r' || key == 'R') ready = 0;
+        if ((key == ' ' || key == KEY_RETURN || key == KEY_RIGHT || key == KEY_DOWN) && !done)
+            forward();
         if ((key == 'b' || key == 'B' || key == KEY_LEFT || key == KEY_UP) && page) --page;
     }
     a.fclose(f);
     a.strcpy(a.reselect, e->name);
-    if (cut) note(m_cut);
+    if (last == 2) note(m_cut);
+    if (last == 3) note(m_err);
 }

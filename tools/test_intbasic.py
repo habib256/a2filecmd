@@ -14,7 +14,19 @@ from pathlib import Path
 from test_six_plugins import PREFIX, ROOT
 
 HARNESS = PREFIX + r"""
+static long host_fail = -1;                 /* a read error from this offset on */
+static int host_err;
+#define ferror(f) (host_err)
 #include "src/plugins/intbasic.c"
+static size_t rd_(void* p, size_t z, size_t n, FILE* h)
+{
+    long at = ftell(h);
+    if (host_fail >= 0 && at + (long)n > host_fail) {
+        if (at >= host_fail) { host_err = 1; return 0; }
+        n = host_fail - at;               /* what comes before the bad block */
+    }
+    return fread(p, z, n, h);
+}
 static char screen[LINES][81];
 static unsigned char hrow, hcol;
 static void xy_(unsigned char x, unsigned char y) { hcol = x; hrow = y; }
@@ -25,32 +37,45 @@ static void clear_(void)
     for (r = 0; r < LINES; ++r) { for (c = 0; c < 80; ++c) screen[r][c] = ' '; screen[r][80] = 0; }
     hrow = hcol = 0;
 }
-/* argv[2]: page through listpage() from that offset, as Space does. */
-static void pages(unsigned long from)
+static void show(int r)
 {
-    int r, n, c;
-    starts[0] = from; page = 0; known = 1;
+    int n, c;
+    printf("PAGE %d %ld %u\n", r, r == 1 ? (long)next : -1L, first + page);
+    for (n = 0; n < LINES; ++n) {
+        c = 79;
+        while (c >= 0 && screen[n][c] == ' ') --c;
+        screen[n][c + 1] = 0;
+        printf("|%s\n", screen[n]);
+    }
+}
+/* argv[2]: page through listpage() from that offset, as Space does
+ * (forward()); argv[3] "back": then back to the oldest page kept, as B
+ * does; argv[4]: a read error from that offset on. */
+static void pages(unsigned long from, int back)
+{
+    int r;
+    starts[0] = from; page = head = 0; known = 1; first = 1;
     for (;;) {
         r = listpage();
-        printf("PAGE %d %ld\n", r, known == page + 2 ? (long)starts[page + 1] : -1L);
-        for (n = 0; n < LINES; ++n) {
-            c = 79;
-            while (c >= 0 && screen[n][c] == ' ') --c;
-            screen[n][c + 1] = 0;
-            printf("|%s\n", screen[n]);
-        }
-        if (r != 1 || page + 1 >= known) break;
-        ++page;
+        show(r);
+        if (r != 1) break;
+        forward();
+    }
+    if (!back) return;
+    while (page) {
+        --page;
+        show(listpage());
     }
 }
 int main(int argc, char** argv)
 {
     static unsigned char data[512];
     int r = 1, rows;
-    a.sprintf = sprintf; a.fread = fread; a.fseek = fseek;
+    a.sprintf = sprintf; a.fread = rd_; a.fseek = fseek;
     a.cputc = putc_; a.gotoxy = xy_; a.clrscr = clear_; buf = data;
     f = fopen(argv[1], "rb");
-    if (argc > 2) { pages(strtoul(argv[2], 0, 10)); return 0; }
+    if (argc > 4) host_fail = atol(argv[4]);
+    if (argc > 2) { pages(strtoul(argv[2], 0, 10), argc > 3 && !strcmp(argv[3], "back")); return 0; }
     clear_();
     seek(0);
     row = col = 0; space = 1;
@@ -290,21 +315,22 @@ class IntBasic(unittest.TestCase):
         self.assertEqual(lines, [])
 
     # -- pages -------------------------------------------------------------
-    def run_pages(self, data, start=0):
+    def run_pages(self, data, start=0, back=False, fail=None, numbers=False):
         f = self.p / 'in.bin'
         f.write_bytes(data)
-        out = subprocess.check_output([str(self.exe), str(f), str(start)], text=True, timeout=20)
+        args = [str(start), 'back' if back else '-'] + ([str(fail)] if fail is not None else [])
+        out = subprocess.check_output([str(self.exe), str(f)] + args, text=True, timeout=60)
         pages = []
         for l in out.splitlines():
             if l.startswith('PAGE '):
-                _, r, nxt = l.split()
-                pages.append((int(r), int(nxt), []))
+                _, r, nxt, num = l.split()
+                pages.append((int(r), int(nxt), [], int(num)))
             else:
                 pages[-1][2].append(l[1:])
-        for _, _, rows in pages:
+        for _, _, rows, _ in pages:
             while rows and not rows[-1]:
                 rows.pop()
-        return pages
+        return pages if numbers else [p[:3] for p in pages]
 
     def test_a_long_line_at_the_bottom_is_shown_whole_on_the_next_page(self):
         """The tail of a line wrapped past row 21 used to be skipped: the
@@ -337,6 +363,46 @@ class IntBasic(unittest.TestCase):
         self.assertEqual(rows[0], '13201 TEXT')
         self.assertEqual(rows[21], '13222 TEXT')
         self.assertEqual(nxt, 66110)
+
+    def test_past_the_old_page_limit(self):
+        """A listing of 91 pages goes to its end, and B goes back 63.
+
+        Before: starts[] held 40 pages and the 41st was never recorded: at
+        page 40 Space did nothing and "(end)" never showed -- the rest of
+        the program could not be listed, and nothing said so. Now the
+        starts are a ring of 64, as in MDVIEW."""
+        p = prog([(i + 1, bytes([0x4B])) for i in range(2000)])
+        want = paged(listing(p))
+        self.assertEqual(len(want), 91)
+        pages = self.run_pages(p, back=True, numbers=True)
+        fwd, back = pages[:91], pages[91:]
+        self.assertEqual([rows for _, _, rows, _ in fwd], want)
+        self.assertEqual([n for _, _, _, n in fwd], list(range(1, 92)))
+        self.assertEqual([r for r, _, _, _ in fwd], [1] * 90 + [0])
+        self.assertEqual(fwd[-1][2][-1], '2000 TEXT')
+        # back: pages 90 down to 28, the oldest of the 64 kept
+        self.assertEqual([n for _, _, _, n in back], list(range(90, 27, -1)))
+        self.assertEqual([rows for _, _, rows, _ in back], want[89:26:-1])
+
+    def test_a_read_error_is_not_the_end(self):
+        """A block that cannot be read: the page stops there with r = 3.
+
+        Before: getb took fread's 0 for the end of the file without
+        ferror(): the listing ended with "(end)" (or "ends in the middle
+        of a line") as if the program were whole."""
+        p = prog([(i + 1, bytes([0x5D]) + chars('LINE %d' % i)) for i in range(300)])
+        whole = self.run_pages(p)
+        self.assertEqual(whole[-1][0], 0)
+        for fail in (0, 3, 254, 255, 600, 2000, len(p) - 1):
+            with self.subTest(fail=fail):
+                pages = self.run_pages(p, fail=fail)
+                self.assertEqual(pages[-1][0], 3)
+                self.assertTrue(all(r == 1 for r, _, _ in pages[:-1]))
+                shown = [l for _, _, rows in pages for l in rows]
+                ref = [l for _, _, rows in whole for l in rows]
+                self.assertEqual(shown[:-1], ref[:max(len(shown) - 1, 0)])
+                self.assertLess(len(shown), len(ref) + (fail == len(p) - 1))
+        self.assertEqual(self.run_pages(p, fail=len(p) + 1)[-1][0], 0)
 
     # -- the real thing ----------------------------------------------------
     def test_the_first_lines_of_breakout(self):
