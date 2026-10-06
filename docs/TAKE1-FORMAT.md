@@ -48,7 +48,8 @@ each character (a movie sets it, a scene does not): compare them on the low
 seven bits, after removing trailing spaces.
 
 All the files of a movie are on one disk. (Take 1 allows a second data
-disk; no movie seen uses one.)
+disk; no movie seen uses one, and A2 File Cmd's player does not implement
+it: it reads every file from the movie's own disk, image or directory.)
 
 ## Movie (`MV.`)
 
@@ -251,14 +252,16 @@ The rows are drawn top to bottom. Within a row a **cursor** starts on dot
 
 - **fill** and **literal** write their dots (opaque: a 0 dot is black) and
   advance the cursor by their length;
-- **skip** of `n`: if the skip is the row's first code, `n` dots are left
-  untouched (transparent) and the next dot is made black — the cursor moves
-  `n + 1`. Otherwise (anything came before it in the row) the dot under the
+- **skip** of `n`: if the skip is the row's first code (extensions do not
+  count), `n` dots are left untouched (transparent) and the next dot is
+  made black — the cursor moves `n + 1`. Otherwise (a skip, fill or
+  literal came before it in the row) the dot under the
   cursor is made black, the next `n − 1` dots are left untouched and the dot
   after them is made black — the cursor moves `n + 1`; a skip of 0 then
   blackens the single dot under the cursor and moves 1;
-- **end `$00`**: if any code came before it in the row, the dot under the
-  cursor is made black; an empty row draws nothing;
+- **end `$00`**: if a skip, fill or literal came before it in the row, the
+  dot under the cursor is made black; an empty row (nothing or only
+  extensions before the `$00`) draws nothing;
 - **end `$07`**: no dot is changed (see the palette rules).
 
 So a snapshot is outlined, left and right, by black dots (the editor's
@@ -296,7 +299,8 @@ bit 7 is set as follows.
 - A byte rewritten while the register is `P3` (before any fill or literal of
   the snapshot was drawn) gets bit 7 cleared and bits 0 and 1 set, whatever
   its dots. (This happens in one actor seen, whose first row is an empty
-  `$07` row.)
+  `$07` row.) The closing black dot of a skip that keeps the screen's bit 7
+  (above) is not affected.
 
 ## Text
 
@@ -419,7 +423,7 @@ down to 1 by steps of 2, `$AA` at the column then `$D5` at the one before
 | 9 | stripes from the centre: stripe 95, stripe 96; then for k = 0 to 95: copy row 96+k, stripe row 97+k (if < 192); copy row 95−k, stripe row 94−k (if ≥ 0) |
 | 10 | see below |
 | 11 | see below |
-| 12 | interlace: rows alternately from the top (0, 1, 2…) and from the bottom (191, 190, …), starting with row 0: the first row copies columns 39, 37 … 1, the second (191) columns 38, 36 … 0, the third (1) columns 39, 37 … 1, and so on alternating; `D(24)` after each row; it ends after row 191 has been copied from the top side (384 rows in all) |
+| 12 | interlace: rows alternately from the top (0, 1, 2…) and from the bottom (191, 190, …), starting with row 0: the first row copies columns 39, 37 … 1, the second (191) columns 38, 36 … 0, the third (1) columns 39, 37 … 1, and so on alternating; `D(24)` after each row; 384 rows in all, every row from both sides: the last two are row 191 from the top side, then row 0 from the bottom side |
 | 13 | centre out by twos: rows 96, 94, 98, 92, 100, … (as fade 8 with steps of 2, `D(45)` after each), then 97, 95, 99, 93, 101, … the same way |
 | 14 | see below |
 | 15 | see below |
@@ -461,9 +465,10 @@ to six bytes of column y going up from row x (copy (x, y); stop if `x = 0`;
 **Fade 15**: a checkerboard of strips 8 bytes wide, in two passes. A
 *strip* (x, y) copies row x at columns y, y−1 … y−7, then y−16 … y−23, then
 y−32 … y−39, stopping below column 0 (8 bytes copied, 8 skipped). Pass with
-start column `y0` (39, then 31): for `g` = 0 to 31, for `k` = 0 to 5: strip
-(g + 32k, y0 when k is even, y0 xor 56 when k is odd), then `D(25)`. After
-each pass, `D(48)`. (Rows g, g+32, … g+160: the whole screen; the second
+start column `y0` (39, then 31): for `g` = 0 to 31: for `k` = 0 to 5,
+strip (g + 32k, y0 when k is even, y0 xor 56 when k is odd); then `D(25)`
+(once per `g`, after its six strips). After each pass, `D(48)`. (Rows g,
+g+32, … g+160: the whole screen; the second
 pass fills the squares the first one left.)
 
 **Fades 16 and 17** move 8-row blocks. Copying block (a ← b, page) copies,
@@ -557,32 +562,45 @@ The player refuses, with a message naming the file, anything it cannot
 draw exactly as above:
 
 - a movie whose length is not `1 + 42 n` with `n ≥ 1`, or a fade outside
-  1–17;
+  1–17; a movie whose length has changed when it is read again (it is read
+  again at each scene);
 - a missing file (the message names the DOS name);
+- a file that cannot be read: an I/O error, a damaged catalog or T/S chain,
+  a file running short;
 - a background that does not decode exactly;
 - a scene shorter than `$103` bytes, whose frames start outside it, whose
-  strings or elements run past its end, that has no end marker, more than
-  10 actors, a snapshot number above the sum of the counts, a string
-  number of 0 or above `s`, a text element without a character set or
-  outside the screen as described in Text;
-- an actor whose snapshot offset, header or rows run past its end, or a
-  snapshot number above its own count;
-- a character set whose offsets or shapes run past its end;
-- data that does not fit in the memory the player gives it.
+  strings or elements run past its end, that has no end marker, an element
+  `$00`, more than 10 actors, a snapshot number above the sum of the
+  counts, a string number of 0 or above `s`, a text element without a
+  character set or outside the screen as described in Text;
+- an actor file that is empty, whose snapshot offset, header or rows run
+  past its end (only the snapshots 1 to min(`count`, `n`) are checked),
+  with a skip or fill of more than 127 groups of 7 dots (extensions
+  included), or a snapshot number above its own count;
+- a character set without shapes (`N` = 0), or whose offsets or shapes run
+  past its end;
+- data that does not fit in the memory the player gives it: 12,288 bytes
+  for the movie, the same for a scene with its actors and character set,
+  8,192 for a background.
 
 ## The player in A2 File Cmd (design)
 
 **TAKE1.SYSTEM**, a ProDOS interpreter like FANTA.SYSTEM (header `JMP`,
 `$EE $EE`, buffer length, path buffer at `$2006`), on the 800K and XL disks
 next to FANTA.SYSTEM. A2 File Cmd launches it with the prefix set to its own
-directory (where `A2FILE.SYSTEM` is, to come back) and one of three command
-forms (46 characters at most):
+directory (where `A2FILE.SYSTEM` is, to come back) when Return is pressed
+on a binary file (aux type `$8029` once extracted, 0 in a DOS 3.3 catalog)
+whose name starts with `MV.`, and one of three command forms (46
+characters at most; an image path over 41 characters is refused):
 
 - `/PATH/TO/IMAGE.DSK,TTSS` — the movie is a file of a DOS 3.3 disk image;
   `TT`, `SS` (hexadecimal) are the track and sector of its first
   track/sector list. The image is a `.DSK`/`.DO` file (DOS order, sector
   `(T, S)` at offset `(16 T + S) × 256`) or a `.2MG` in DOS order (the same
-  from the offset at header bytes `$18`–`$1B`; byte `$0C` must be 0).
+  from the offset at header bytes `$18`–`$1B`; the header must start with
+  `2IMG`, byte `$0C` must be 0 and the offset under 16 MB). Only a name
+  ending in `.2MG` is read as a `.2MG`; any other image is taken as DOS
+  order.
 - `%UU,TTSS` — the movie is on a real DOS 3.3 disk in the drive whose
   ProDOS unit number is `UU` (hexadecimal); sector `(T, S)` is half of
   block `8 T + (H >> 1)`, the upper half when `H & 1`, where
@@ -608,15 +626,20 @@ In a disk, files are found by name in the DOS 3.3 catalog (VTOC at track
 links to the next at bytes 1, 2 and holds seven 35-byte entries from byte
 11: track and sector of the first T/S list, type, name in 30 characters with
 bit 7 set, sector count; an entry starting `$FF` is deleted, `$00` ends the
-catalog). A file's data are the sectors listed by its T/S lists (each list:
+catalog; the first entry whose name matches is taken, its type is not
+checked). A file's data are the sectors listed by its T/S lists (each list:
 next list at bytes 1, 2, then up to 122 track/sector pairs from byte 12; a
 pair 0, 0 is a hole of zeros), and a binary file starts with its address and
 length. The number of sectors read is bounded (a file of more than 140 KB,
 or a catalog or T/S chain longer than the disk, is damaged).
 
 **Memory**: main memory only — auxiliary memory, and so `/RAM`, is not
-touched. The three pages, the scene, its actors and character set (10.5 KB
-at most in the movies seen) and the program fit below the ProDOS buffers.
+touched. The three pages, the scene, its actors and character set (12 KB
+given, 10.5 KB at most in the movies seen) and the program fit below the
+ProDOS global page (`$BF00`); while files are read, between scenes, the
+ProDOS I/O buffer goes in the hi-res page not shown. The pages the program
+keeps are marked in ProDOS's system bitmap while it runs, and the bitmap is
+put back as it was before A2 File Cmd is loaded again.
 
 **Original speed**: each frame stays shown for the time the original would
 keep it: the modelled time of the original's own erase and draw (Timing:
