@@ -592,8 +592,12 @@ rdsecc: inc     cnt
         sec
         rts
 
-; Sector (X, Y) to secp. C = 1: A = E_READ.
+; Sector (X, Y) to secp. C = 1: A = E_READ. T < 35 and S < 16 on both
+; paths: in an image, track 35 would be the .2MG's trailer or bytes past
+; the 140K, read as data.
 rdsec:  cpy     #16
+        bcs     @bad0
+        cpx     #35
         bcs     @bad0
         lda     mode
         bne     @unit
@@ -628,9 +632,7 @@ rdsec:  cpy     #16
         sta     secp
         rts
 @bad0:  jmp     @bad
-@unit:  cpx     #35                     ; block 8 T + (H >> 1), half H & 1
-        bcs     @bad
-        lda     htab,y
+@unit:  lda     htab,y                  ; block 8 T + (H >> 1), half H & 1
         sta     t0dos
         lsr
         sta     rblkp+4

@@ -1216,7 +1216,7 @@ class DosImage:
         self.data, self.base = data, base
 
     def sector(self, t, s):
-        if s > 15:
+        if s > 15 or t > 34:
             raise IOError('sector')
         a = self.base + (16 * t + s) * 256
         if a + 256 > len(self.data):

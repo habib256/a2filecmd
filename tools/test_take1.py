@@ -1037,10 +1037,39 @@ class Loader(unittest.TestCase):
         bad[0:4] = b'2IMH'
         self.check('/V/F.2MG,' + ttss, {'/V/F.2MG': bytes(bad)}, [], expect_start=ref.E_READ)
         self.check('/V/MISSING.2MG,' + ttss, {}, [], expect_start=ref.E_NOTFOUND)
+        self.check_track_35(img2)
         # a .DSK named like a 2MG is not read as one: only .2MG is
         self.check('/V/F.DSK,' + ttss, {'/V/F.DSK': self.dsk}, ops[:2], loader=self.image_loader(self.dsk),
                    cpus=('6502',))
         print('PASS take1: DOS 3.3 images (.DSK, .2MG): the movie by its T/S list, files by name')
+
+    def check_track_35(self, img2):
+        """A T/S pair past track 34 in an image is damage, never data.
+
+        Before: rdsec checked only S < 16 on the image path (the unit path
+        also checked T < 35), so a pair at track 35 of a .2MG with a
+        trailer (its comment, its creator data) made SET_MARK land in that
+        trailer, and its bytes came back as the movie or file data, code
+        0. A .DSK followed by bytes (a 40-track image) did the same."""
+        t, s = self.where[b'MV.FILM']
+        ttss = '%02X%02X' % (t, s)
+        name = b'AC.BIG ONE'
+        tb, sb = self.where[name]
+        trailer = bytes(range(256)) * 32                 # 8 KB: tracks 35-36 of the image
+        a = (16 * tb + sb) * 256
+        for label, image, base in (('2MG', img2, 64), ('DSK', self.dsk, 0)):
+            img = bytearray(image + trailer)
+            for t2, s2 in ((35, 0), (36, 15), (0xFF, 0)):
+                img[base + a + 12 + 2 * 3:base + a + 14 + 2 * 3] = bytes([t2, s2])
+                path = '/V/F.' + label
+                self.check(path + ',' + ttss, {path: bytes(img)}, [('M', 0x3000), ('L', name, 0x3000)],
+                           expect=[(0, self.movie), (ref.E_READ, None)])
+                self.assertRaises(ref.Refused, self.image_loader(bytes(img), base), name, 0x3000)
+        # the movie's own T/S list past track 34: refused too
+        img = bytearray(img2 + trailer)
+        img[64 + (16 * t + s) * 256 + 12:64 + (16 * t + s) * 256 + 14] = bytes([35, 1])
+        self.check('/V/F.2MG,' + ttss, {'/V/F.2MG': bytes(img)}, [('M', 0x3000)],
+                   expect=[(ref.E_READ, None)])
 
     def test_unit(self):
         t, s = self.where[b'MV.FILM']
