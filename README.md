@@ -37,8 +37,8 @@ It comes in two programs that share one idea:
 | You want to… | ProDOS gives you… |
 |---|---|
 | **Organize a disk** | Copy and move directory trees, tags, sorting, attributes, file comparison and a text editor. |
-| **Open old files** | Text, hex, BASIC listings, AppleWorks documents and sheets; extract ShrinkIt, Binary II and other classic archives. |
-| **Browse a collection** | HGR/DHGR and specialist picture viewers, fonts and shapes. Arrow through an album without returning to the panels. |
+| **Open old files** | Text, hex, BASIC listings, AppleWorks documents and sheets, VisiCalc worksheets, Epistole, Papyrus and Bank Street Writer documents; extract ShrinkIt, Binary II and other classic archives. |
+| **Browse a collection** | HGR/DHGR and specialist picture viewers, fonts and shapes, Fantavision and Take 1 movies. Arrow through an album without returning to the panels. |
 | **Listen** | Mockingboard MB1/PT3 playback, including Mockingboard 4c on //c; Electric Duet also plays through the speaker. |
 | **Work with disks** | Browse images as folders, extract files, create and convert images, transfer DOS files, compare, format and check volumes. |
 
@@ -118,10 +118,9 @@ result before retrying or removing a disk.** Verification cannot make a
 physical metadata write atomic through a power cut.
 
 Some ProDOS tools need auxiliary memory and can clear **all files in /RAM**.
-They ask before using it when /RAM holds files (an empty /RAM is used without
-a question); save those files elsewhere first. The PT3 player uses it too;
-the other music players preserve /RAM. DOS3.3 has no auxiliary-memory requirement; once a disk write
-starts, its keyboard cannot interrupt it.
+They ask before using it when /RAM holds files; save those files elsewhere
+first. DOS3.3 has no auxiliary-memory requirement; once a disk write starts,
+its keyboard cannot interrupt it.
 
 The guide includes a practical [incident recovery procedure](docs/MANUAL.md#recover-after-an-incident):
 identify the temporary or backup, preserve a disk image, and recover from a
