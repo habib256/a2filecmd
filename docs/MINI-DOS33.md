@@ -235,8 +235,13 @@ per file up to available disk capacity. Sparse, noncanonical, inconsistent chain
 or file data on track 0 or the catalog track are refused. Tracks 1 and 2 hold
 DOS on an ordinary disk, whose VTOC keeps all 32 of their sectors allocated,
 and a chain pointing into them is refused there; on a disk formatted without
-DOS, whose VTOC frees some of them, files may live on those tracks and copies
-are written there, exactly as DOS itself files data. When all 32 are
+DOS, whose VTOC frees some of them, files may live on those tracks, as DOS
+itself files data there, and such files are read, copied and deleted like any
+other. A copy never allocates there itself: the destination's sectors are
+reserved from track 3 up, the catalog track excepted, so the free sectors of
+tracks 1–2 of a disk without DOS are not used, and a copy that would only fit
+with them ends `DISK OR CATALOG FULL` (the Mini shows no free count; the
+VTOC's, as other tools report it, includes them). When all 32 are
 allocated, the boot sector decides, read once per file walked: a DOS 3.3 boot
 sector means DOS lives there and a chain into it is refused; a disk without
 DOS whose tracks 1–2 filled up keeps every file valid, deletable and
