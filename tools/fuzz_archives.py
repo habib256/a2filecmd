@@ -805,7 +805,7 @@ def us_reference(data, existing):
             v3 = hdr[8] >= 3 or hdr[9]
             # A file type or aux type beyond 8 and 16 bits: that file is
             # skipped, never truncated into a ProDOS one.
-            oddtype = hdr[0x17] | hdr[0x18] | hdr[0x19] | hdr[0x1C] | hdr[0x1D]
+            oddtype = hdr[0x17] | hdr[0x18] | hdr[0x19] | hdr[0x1C] | hdr[0x1D] | (hdr[0x16] == 0x0F)
             if u16(hdr, 0x0C):
                 narrow()                # total_threads
             namelen = u16(hdr, attrib - 2)
@@ -837,7 +837,7 @@ def us_reference(data, existing):
                     r.skip(ceof - n)
                 elif klass == 2 and kind in (0, 1):
                     if fmt not in (0, 2, 3) or (storage != 512 if kind == 1 else oddtype):
-                        unsupported += 1        # "Unsupported file skipped"
+                        unsupported += 1        # counted: "... N part(s) skipped."
                         r.skip(ceof)
                         continue
                     if not have_name:
@@ -854,6 +854,8 @@ def us_reference(data, existing):
                     files.append((out_name, body))
                     r.skip(rem)                 # the rest of the thread
                 else:
+                    if klass == 2:              # a resource fork: left out, and said
+                        unsupported += 1
                     r.skip(ceof)
     except Cut as e:
         whole, why = False, str(e)
@@ -861,12 +863,14 @@ def us_reference(data, existing):
 
 
 def us_verdict(note, expect):
-    """A thread the driver cannot decompress leaves "Unsupported file skipped."
-    in `note`, and the final count is only printed when `note` is still empty
-    (src/a2fc.c, `unshrink_entry`): such an archive has no success message."""
-    if expect.whole and not expect.extra:
-        return '%u file(s) extracted.' % len(expect.files)
-    return None
+    """The final count, with the parts left out when there are any: a thread
+    the driver cannot decompress, a type ProDOS cannot hold, a resource fork
+    (src/a2fc.c, `unshrink_entry`)."""
+    if not expect.whole:
+        return None
+    if expect.extra:
+        return '%u file(s) extracted, %u part(s) skipped.' % (len(expect.files), expect.extra)
+    return '%u file(s) extracted.' % len(expect.files)
 
 
 # ===========================================================================
@@ -1660,7 +1664,7 @@ def core_run(exe, work, fmt, stream, size, timeout):
 # ===========================================================================
 SUCCESS = {
     'binary2': r'^\d+ file\(s\) extracted, \d+ folder\(s\) skipped\.$',
-    'unshrink': r'^\d+ file\(s\) extracted\.$',
+    'unshrink': r'^\d+ file\(s\) extracted(\.|, \d+ part\(s\) skipped\.)$',
     'imgfs': r'^\d+ files? extracted(\.|, \d+ not supported \(tree/fork\)\.)$',
     'dos33': r'^\d+ files? extracted\.$',
 }

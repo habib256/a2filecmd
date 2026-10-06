@@ -405,15 +405,47 @@ class UnshrinkSafety(unittest.TestCase):
             with self.subTest(**kw):
                 self.src.write_bytes(archive(record('DATA', self.payload, **kw)))
                 out = self.run_extract()
-                self.assertIn('Unsupported file skipped', out)
+                self.assertIn('0 file(s) extracted, 1 part(s) skipped', out)
                 self.assertIn('opens=0', out)
                 self.assertEqual(list(self.dst.iterdir()), [])
+
+    def test_a_plain_file_typed_as_a_folder_is_skipped(self):
+        """A record of file type $0F with a data thread. Measured before the
+        fix: `CREATE ./out/FAKEDIR type=0F`, "1 file(s) extracted." -- a plain
+        file every panel then takes for a folder (is_dir is type == $0F) and
+        walks as directory entries."""
+        self.src.write_bytes(archive(record('FAKEDIR', self.payload, ftype=0x0F)))
+        out = self.run_extract()
+        self.assertIn('0 file(s) extracted, 1 part(s) skipped', out)
+        self.assertIn('opens=0', out)
+        self.assertEqual(list(self.dst.iterdir()), [])
+
+    def test_a_resource_fork_left_out_is_said(self):
+        """A GS/OS extended file: a data thread and a resource fork (class 2,
+        kind 2). Measured before the fix: "1 file(s) extracted." and nothing
+        else, while only the data fork had been written."""
+        self.src.write_bytes(archive(record('APP', self.payload,
+                                            extra=[thread(b'R' * 700, klass=2, kind=2)])))
+        out = self.run_extract()
+        self.assertIn('1 file(s) extracted, 1 part(s) skipped', out)
+        self.assertEqual((self.dst / 'APP').read_bytes(), self.payload)
+
+    def test_a_skipped_member_keeps_the_count_of_the_others(self):
+        """Measured before the fix: "Unsupported file skipped." alone, the
+        two files extracted around it uncounted."""
+        self.src.write_bytes(archive(record('ONE', self.payload),
+                                     record('ODD', self.payload, ftype=0x1006),
+                                     record('TWO', self.payload[::-1])))
+        out = self.run_extract()
+        self.assertIn('2 file(s) extracted, 1 part(s) skipped', out)
+        self.assertEqual(sorted(p.name for p in self.dst.iterdir()), ['ONE', 'TWO'])
+        self.assertEqual((self.dst / 'TWO').read_bytes(), self.payload[::-1])
 
     def test_a_disk_image_must_be_512_byte_blocks(self):
         data = bytes(range(256))*4
         self.src.write_bytes(archive(record('DISK', data, kind=1, auxtype=4, eof=0, storage=256)))
         out = self.run_extract()
-        self.assertIn('Unsupported file skipped', out)
+        self.assertIn('0 file(s) extracted, 1 part(s) skipped', out)
         self.assertEqual(list(self.dst.iterdir()), [])
 
     def test_access_and_modification_date_are_set_after_the_read_back(self):
@@ -489,7 +521,7 @@ class UnshrinkSafety(unittest.TestCase):
             self.src.write_bytes(archive(record('DATA', self.payload,
                                                 extra=[thread(b'comment', klass=klass, fmt=fmt)])))
             out = self.run_extract()
-            self.assertIn('Unsupported file skipped' if klass==2 else '1 file(s) extracted', out)
+            self.assertIn('1 file(s) extracted, 1 part(s) skipped' if klass==2 else '1 file(s) extracted.', out)
             self.assertEqual((self.dst/'DATA').read_bytes(), self.payload)
             (self.dst/'DATA').unlink()
 

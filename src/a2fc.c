@@ -4494,7 +4494,7 @@ struct UsState {
     FILE* in;
     FILE* out;
     unsigned int records, threads, attrib, filetype, auxtype, storage;
-    unsigned int win_len, win_pos, n_done, name_len;
+    unsigned int win_len, win_pos, n_done, name_len, skipped;
     unsigned long teof, ceof, rem_in, rem_out, total, done;
     unsigned char fmt, klass, kind, sep, disk;
     unsigned char v3, thcrc, crcbad, ch, cl, cx, oddtype, access;
@@ -4535,7 +4535,6 @@ static const char us_notarch[]  = "Not a ShrinkIt (NuFX) archive.";
 static const char us_notdir[]   = "Other panel must be a ProDOS folder.";
 static const char us_noram[]    = "/RAM shares AUX: use another disk.";
 static const char us_corrupt[]  = "Corrupt archive.";
-static const char us_unsupp[]   = "Unsupported file skipped.";
 static const char us_done[]     = "%u file(s) extracted.";
 static const char us_path[]     = "%s/%s";
 static const char us_po[]       = ".PO";
@@ -4551,6 +4550,7 @@ static const unsigned char us_magic_record[] = { 0x4E, 0xF5, 0x46, 0xD8 };
 static unsigned char __fastcall__ us_on_ram(const char* path)
 {
     unsigned char parms[4], len, k;
+static const char us_skipped[]  = "%u file(s) extracted, %u part(s) skipped.";
     const unsigned char* rec = copy_buf;
     const char* slash = strchr(path + 1, '/');
     len = (unsigned char)((slash ? slash : path + strlen(path)) - path - 1);
@@ -4875,7 +4875,7 @@ void __fastcall__ unshrink_entry(const struct A2fcApi* a)
     aux_copy(0x1F00, 0x1F00, 1);
     note[0] = 0;
     progress_abort = 0;
-    US->n_done = 0;
+    US->n_done = US->skipped = 0;
     US->in = fopen(full, us_rb);
     if (!US->in) { report_error(us_extract); goto out; }
     if (!us_read(US->hdr, 48)) goto corrupt;
@@ -4918,6 +4918,9 @@ void __fastcall__ unshrink_entry(const struct A2fcApi* a)
             us_hcrc(US->hdr, len);
             us_prodos_name((char*)US->hdr, len);
         }
+        /* Nor a plain file typed $0F: every panel takes that type for a
+         * folder and would walk the file's bytes as directory entries. */
+        if (US->hdr[0x16] == 0x0F) US->oddtype = 1;
         if (US->threads > 8) goto corrupt;
         if (!us_read(US->th, US->threads * 16)) goto corrupt;
         us_hcrc(US->th, US->threads * 16);
@@ -4941,7 +4944,7 @@ void __fastcall__ unshrink_entry(const struct A2fcApi* a)
                  * needs a ProDOS type. */
                 if ((US->fmt != 0 && US->fmt != 2 && US->fmt != 3)
                         || (US->kind ? US->storage != 512 : US->oddtype)) {
-                    strcpy(note, us_unsupp);
+                    ++US->skipped;
                     if (!us_skip(US->ceof)) goto corrupt;
                     continue;
                 }
@@ -4949,7 +4952,12 @@ void __fastcall__ unshrink_entry(const struct A2fcApi* a)
                 if (!US->name_len) us_prodos_name(us_create, 6);   /* no name: "CREATE" */
                 if (!us_extract_thread()) goto close_in;
             } else {
-                if (!us_skip(US->ceof)) goto corrupt;        /* resource fork, comment */
+                /* A comment or a control thread is no part of the file; a
+                 * resource fork (or any other data thread) is, and leaving
+                 * it out is said: "N file(s) extracted" alone would let
+                 * the archive be deleted as fully extracted. */
+                if (US->klass == 2) ++US->skipped;
+                if (!us_skip(US->ceof)) goto corrupt;
             }
         }
     }
@@ -4962,7 +4970,7 @@ corrupt:
 close_in:
     /* Preserve the first failure, especially the name of retained output. */
     if (fclose(US->in) && !note[0]) strcpy(note, us_extract_failed);
-    if (!note[0]) sprintf(note, us_done, US->n_done);
+    if (!note[0]) sprintf(note, US->skipped ? us_skipped : us_done, US->n_done, US->skipped);
 out:
     if (ram_format()) strcat(note, " /RAM rebuilt empty.");
     strcpy(reselect, selected.name);
