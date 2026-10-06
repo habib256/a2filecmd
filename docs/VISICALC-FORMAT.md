@@ -144,6 +144,34 @@ does anything built on it:
 A sheet saved by VisiCalc in that state shows those ERRORs when loaded:
 it is what the user saw, until `!` recalculated again.
 
+### In A2 File Cmd: how long it takes, and Escape
+
+The overlay keeps the values only; a formula is read again from the file
+when its turn comes, and computed in VisiCalc's decimal arithmetic at
+1 MHz: a division takes about 18 ms, an `@NPV` over 120 cells 3.7 s. The
+length of the recalculation is therefore the file's: a 31 KB sheet whose
+120 formulas each add thirteen such `@NPV` takes an hour and a half. A
+file out of VisiCalc's order (a cell line after the settings) is read
+whole for every formula.
+
+**Escape stops it**, while the file is read as well as during the
+recalculation: the keyboard is looked at before every read of the file,
+every column or row, every operand of a formula and every cell of a range
+-- never further apart than one operation or one function of the ROM, a
+tenth of a second. The overlay then closes the file and returns to the
+panels with `Stopped.` (and ` /RAM rebuilt.` when the table was in the
+auxiliary memory, which is rebuilt as after any other end). Only Escape is
+taken: any other key stays where the keyboard holds it and is read once
+the sheet shows, as a key typed ahead.
+
+### Limits
+
+| Limit | What is said |
+|---|---|
+| 64 KB of file, lines of 255 characters (a longer formula is ERROR) | `Not a VisiCalc worksheet` for the size |
+| 241 values (numbers and formulas; labels do not count) in main memory, 4,064 with the auxiliary memory (a 128 KB machine; a question first when /RAM holds files) | `Sheet too big: N values, room for M.` -- M is 4,064 when the auxiliary memory could have been used and would not hold the sheet either, 241 without it or when it was refused |
+| 255 value lines in one column (a column has 254 cells: only a file that repeats its cells passes it) | `Sheet too big: over 255 values in one column.` |
+
 ## The display
 
 A cell has its column's width w. **A label** takes all w characters, from

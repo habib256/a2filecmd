@@ -1665,6 +1665,8 @@ find:   lda     #0
 
 ; -- walking the formula ----------------------------------------------------------
 
+; peek, Escape asked for first (tick): every operand starts with it.
+ppeek:  jsr     poll
 peek:   ldy     #0
         lda     (ptr2),y
         rts
@@ -1925,7 +1927,7 @@ operand:
 :       jsr     opnd
         dec     depth
         rts
-opnd:   jsr     peek
+opnd:   jsr     ppeek
         cmp     #'-'
         bne     @plus
         jsr     adv
@@ -2680,7 +2682,9 @@ range:  jsr     ref
 @bad:   jmp     abort
 
 ; The next cell of the range into refc/refr: C clear; C set at its end.
-rnext:  lda     itr
+; (Escape is asked for at each: tick.)
+rnext:  jsr     poll
+        lda     itr
         cmp     rr2
         bcc     @row
         lda     itc                     ; the row range's next column
@@ -3282,6 +3286,7 @@ key:    .res    1
 entsp:  .res    1
 apiver: .res    1
 auxed:  .res    1                       ; the table is in the auxiliary bank
+roomaux: .res   1                       ; a table refused: 1 for the auxiliary bank's room
 spinok: .res    1                       ; 1 while reading and recalculating
 ecol:   .res    1
 erow:   .res    1
@@ -3477,18 +3482,47 @@ rdline: lda     #0
         sta     ln,x
         rts
 
-; The resident's activity cell turns, / and \ (spin.h).
+; The resident's activity cell turns, / and \ (spin.h), and Escape stops
+; the reading or the recalculation, whose length is the file's to decide
+; (13 @NPV over 120 cells in each of 120 cells: an hour and a half at
+; 1 MHz, and no key was read before the sheet showed). The keyboard is
+; asked here -- at every read of the file, column or row -- and, since one
+; formula can walk thousands of cells, at every operand (ppeek) and every
+; cell of a range (rnext): never further apart than one operation, one
+; function of the ROM.
+;
+; Only Escape is taken, its strobe cleared by a store. Any other key stays
+; in the keyboard register, as it always did while the sheet was computed:
+; the sheet's first cgetc gets it (a Space typed ahead pages once).
+;
+; Leaving from here goes through `leave`, as every refusal does: S as
+; plugin_entry found it, the file closed, /RAM rebuilt if the table was in
+; the auxiliary bank. Nothing else is held at these places: the ROM bridge
+; (romgo: the language card off, the zero page $50-$FF aside, ONERR, the
+; interrupts off) and the bank switches (trd1...) are closed again before
+; they return, and call nothing that comes here; no argument is on the C
+; stack (tools/test_visicalc.py, Escape, holds all of that).
 .ifndef VC_TICK
 VC_TICK = $06F7                         ; row 21, column 79 (spin.h)
 .endif
+KBD     = $C000                         ; bit 7: a key is waiting
+KBDSTRB = $C010
 tick:   lda     spinok                  ; not over a sheet on the screen
-        beq     @r
+        beq     tickr
         lda     #$AF
         cmp     VC_TICK
         bne     :+
         lda     #$DC
 :       sta     VC_TICK
-@r:     rts
+poll:   lda     KBD
+        cmp     #$9B                    ; Escape, waiting
+        bne     tickr
+        sta     KBDSTRB                 ; taken
+        jsr     close
+        lda     #<m_stop
+        ldx     #>m_stop
+        jmp     leave
+tickr:  rts
 
 ; A cell line in ln (`>B3:/F$...`): its column and row in lc, lr, where its
 ; contents start in contp, past the formats, the last of which in cfmt
@@ -3855,34 +3889,45 @@ here:   lda     fpos
 ; -- the table ------------------------------------------------------------------------
 
 ; The table after the overlay: column after column, counts into pointers.
-; C set when it does not fit.
-table:  lda     nvals+1                 ; 8 bytes a value: 8,191 at most
-        cmp     #$20
-        bcs     @no
-        ldx     #62                     ; 256 or more in a column: out of
+; C set when it does not fit (toobig says so; roomaux: against which bank).
+; A column of 256 values or more leaves from here with its own words: it
+; was refused as "N values, room for M", M the main bank's room -- which
+; is not what stopped it (the auxiliary bank holds 4,064), and under the
+; tests' larger table was more than N.
+table:  ldx     #62                     ; 256 or more in a column: out of
 @chk:   lda     colphi,x                ; order and repeated, never
-        bne     @no                     ; VisiCalc's
+        bne     @col                    ; VisiCalc's
         dex
         bpl     @chk
+        lda     #0
+        sta     roomaux
+        lda     nvals+1                 ; 8 bytes a value: 8,191 at most
+        cmp     #$20                    ; (fits counts in 16 bits)
+        bcs     @aux
         lda     #<(__BSS_RUN__ + __BSS_SIZE__)
         ldx     #>(__BSS_RUN__ + __BSS_SIZE__)
         ldy     #>VC_TOP
         jsr     fits
         bcc     @main
-        lda     $BF98                   ; the auxiliary bank: a 128 KB machine
+@aux:   lda     $BF98                   ; the auxiliary bank: a 128 KB machine
         and     #$30                    ; (ProDOS MACHID), API 6 (its
         cmp     #$30                    ; consent), room
         bne     @no
         lda     apiver
         cmp     #6
         bcc     @no
+        inc     roomaux                 ; too big now means: for that bank
+        lda     nvals+1
+        cmp     #$20
+        bcs     @no
         lda     #<AUXLOW
         ldx     #>AUXLOW
         ldy     #>AUXTOP
         jsr     fits
         bcs     @no
-        jsr     J_AUXOK                 ; no question if /RAM is empty
-        tax
+        dec     roomaux                 ; it fits there: refused, what is
+        jsr     J_AUXOK                 ; left is the main bank (no question
+        tax                             ; if /RAM is empty)
         beq     @no
         inc     auxed
         jsr     taux
@@ -3891,8 +3936,73 @@ table:  lda     nvals+1                 ; 8 bytes a value: 8,191 at most
         jmp     place
 @no:    sec
         rts
-AUXLOW  = $4000                         ; the auxiliary bank's $4000-$BEFF
-AUXTOP  = $BF00
+@col:   jsr     close
+        lda     #<m_col
+        ldx     #>m_col
+        jmp     leave
+.ifndef VC_AUXLOW
+VC_AUXLOW = $4000                       ; the auxiliary bank's $4000-$BEFF
+VC_AUXTOP = $BF00                       ; (the tests have no such bank)
+.endif
+AUXLOW  = VC_AUXLOW
+AUXTOP  = VC_AUXTOP
+
+; "Sheet too big: N values, room for M." and out. M is the room of the bank
+; the table could have gone to: the auxiliary one on a machine that has it
+; (it said the main bank's 241 there too, for a sheet of 5,000 values that
+; 4,064 would not hold either), the main one otherwise, or when the
+; auxiliary bank fitted and was refused. Here, with the reading phase: the
+; part that stays has no room for it.
+toobig: jsr     close
+        ldy     #0
+@bm:    lda     m_big,y
+        sta     _vc_out,y
+        beq     @bn
+        iny
+        bne     @bm
+@bn:    lda     nvals
+        ldx     nvals+1
+        jsr     udec
+        ldx     #0
+@b2:    lda     m_big2,x
+        sta     _vc_out,y
+        beq     @b3
+        inx
+        iny
+        bne     @b2
+@b3:    lda     roomaux
+        beq     @mroom
+        lda     #<((AUXTOP - AUXLOW) / 8)
+        ldx     #>((AUXTOP - AUXLOW) / 8)
+        jmp     @room
+@mroom: lda     #<VC_TOP                ; (VC_TOP - the BSS's end) / 8:
+        sec                             ; the main bank's room (colplo
+        sbc     #<(__BSS_RUN__ + __BSS_SIZE__)  ; holds counts here)
+        sta     tmp1
+        lda     #>VC_TOP
+        sbc     #>(__BSS_RUN__ + __BSS_SIZE__)
+        bcs     :+
+        lda     #0                      ; (none)
+        sta     tmp1
+:       lsr     a
+        ror     tmp1
+        lsr     a
+        ror     tmp1
+        lsr     a
+        ror     tmp1
+        tax
+        lda     tmp1
+@room:  jsr     udec
+        lda     #'.'
+        sta     _vc_out,y
+        lda     #0
+        sta     _vc_out+1,y
+        lda     #<_vc_out
+        ldx     #>_vc_out
+        jmp     leave
+m_big:  .asciiz "Sheet too big: "
+m_big2: .asciiz " values, room for "
+m_col:  .asciiz "Sheet too big: over 255 values in one column."
 
 ; C clear when nvals entries fit from A/X up to page Y; the start in ptr1.
 fits:   sta     ptr1
@@ -4875,48 +4985,7 @@ main:   lda     fullp                   ; nothing to open: no path
         ldx     #>_vc_out
         jmp     leave
 @r:     rts
-@big:   jsr     close                   ; "Sheet too big: N values, M fit."
-        ldy     #0
-@bm:    lda     m_big,y
-        sta     _vc_out,y
-        beq     @bn
-        iny
-        bne     @bm
-@bn:    lda     nvals
-        ldx     nvals+1
-        jsr     udec
-        ldx     #0
-@b2:    lda     m_big2,x
-        sta     _vc_out,y
-        beq     @b3
-        inx
-        iny
-        bne     @b2
-@b3:    lda     #<VC_TOP                ; (VC_TOP - the BSS's end) / 8:
-        sec                             ; the main bank's room (colplo
-        sbc     #<(__BSS_RUN__ + __BSS_SIZE__)  ; holds counts here)
-        sta     tmp1
-        lda     #>VC_TOP
-        sbc     #>(__BSS_RUN__ + __BSS_SIZE__)
-        bcs     :+
-        lda     #0                      ; (none)
-        sta     tmp1
-:       lsr     a
-        ror     tmp1
-        lsr     a
-        ror     tmp1
-        lsr     a
-        ror     tmp1
-        tax
-        lda     tmp1
-        jsr     udec
-        lda     #'.'
-        sta     _vc_out,y
-        lda     #0
-        sta     _vc_out+1,y
-        lda     #<_vc_out
-        ldx     #>_vc_out
-        jmp     leave
+@big:   jmp     toobig                  ; (with the reading phase, still there)
 @bad:   jsr     close
         lda     cut
         beq     notvc
@@ -5236,5 +5305,4 @@ m_not:  .asciiz "Not a VisiCalc worksheet (T shows it as text)."
 m_cut:  .asciiz "Read error."
 m_close: .asciiz "Close error."
 m_ram:  .asciiz " /RAM rebuilt."
-m_big:  .asciiz "Sheet too big: "
-m_big2: .asciiz " values, room for "
+m_stop: .asciiz "Stopped."

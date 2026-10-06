@@ -340,10 +340,15 @@ columns with VisiCalc's formats (`/F$`, `/FI`, `/FL`, `/FR`, `/F*`, its
 general format and `>>>` overflow), the cursor cell in inverse, its name and
 contents on the first row. The arrows move the cursor, Space/Return and B go
 a screen down and up, `>` and `<` a screen of columns, R back to A1, Escape
-returns. Powers and `@SQRT`, `@LN`, `@SIN`... are computed by the Applesoft
+returns. A large sheet takes time to read and recalculate -- minutes when
+hundreds of formulas each add up a long range -- while the activity cell
+turns: **Escape** stops it there and returns to the panels (`Stopped.`). No
+other key is read meanwhile; one typed then is taken when the sheet shows.
+Powers and `@SQRT`, `@LN`, `@SIN`... are computed by the Applesoft
 ROM, whose last digits may differ from VisiCalc's own. A sheet of up to about
-240 numbers and formulas fits in main memory; a larger one uses the auxiliary
-memory, which rebuilds /RAM afterwards and says so; A2 File Cmd asks first
+240 numbers and formulas fits in main memory; a larger one, up to 4,064, uses
+the auxiliary memory, which rebuilds /RAM afterwards and says so (also after
+Escape); A2 File Cmd asks first
 when /RAM holds files (No: the sheet is refused, /RAM untouched). Read only;
 VISICALC.BIN, beside the overlay, holds its other parts. Text that starts
 with `>` but is no worksheet is refused: **T** shows it as text. The format

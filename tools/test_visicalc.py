@@ -22,6 +22,9 @@ reference against VisiCalc itself.
   past the value stack, references off the sheet, no settings line, bytes
   with the high bit, garbage. None may hang (sim65's cycle limit), each
   must end on the reference's screen or its refusal.
+- Escape while the worksheet is read and recalculated (class Escape): the
+  key put in the keyboard register by the harness at a chosen read of the
+  file, the cycles counted from there to the return (sim65's counter).
 - The phases built by make share their link's identity.
 
 cc65 master (CC65_HEAD, ~/opt/cc65-head) builds and runs these: the sim65
@@ -90,10 +93,10 @@ def sim_cfg(cpu, path, keep='$0100'):
     path.write_text(t)
 
 
-def build(tmp, harness, name, top='$9800', flat=True, keep='$0100'):
+def build(tmp, harness, name, top='$9800', flat=True, keep='$0100', defs=()):
     """The harness and visicalc.s (VC_FLAT, unless `flat` is false), for
-    both processors. Copies under other names: cl65 writes a .s beside a
-    .c."""
+    both processors; `defs`: more symbols for visicalc.s. Copies under
+    other names: cl65 writes a .s beside a .c."""
     d = Path(tmp)
     shutil.copyfile(ROOT / 'src/a2fc_plugin.h', d / 'a2fc_plugin.h')
     (d / 'p').mkdir(exist_ok=True)
@@ -107,6 +110,7 @@ def build(tmp, harness, name, top='$9800', flat=True, keep='$0100'):
         obj = d / ('%s_%s.o' % (name, cpu))
         subprocess.run([tool('ca65'), '-t', cpu, '-D', 'VC_LOW=$B000', '-D', 'VC_TOP=' + top,
                         '-D', 'VC_TICK=$B3FF', *(['-D', 'VC_FLAT'] if flat else []),
+                        *[x for s in defs for x in ('-D', s)],
                         '-o', str(obj), str(d / 'vc_core.s')],
                        check=True, env=env(), capture_output=True)
         exe = d / ('%s-%s' % (name, cpu))
@@ -319,6 +323,7 @@ int main(int argc, char** argv)
     keys = argv[1];
     e.size = atol(argv[2]);
     strcpy(e.name, "SHEET");
+    *(unsigned char*)0xC000 = 0;          /* the keyboard: no key waiting */
     api.version = 6; api.copy_buf = copy_buf; api.full = full; api.selected = &e; api.note = note;
     api.fopen = opn; api.fread = rd; api.fclose = cls; api.fseek = sk; api.cfg_path = cfg;
     api.cputs = ps; api.gotoxy = xy; api.revers = rev; api.clrscr = clr; api.cgetc = key;
@@ -576,6 +581,21 @@ class Overlay(unittest.TestCase):
         # the main bank's room: none here (it said 512, from column A's count)
         self.assertEqual(note, 'Sheet too big: 21 values, room for 0.')
 
+    def test_a_column_of_256_values_says_so(self):
+        """Column A's 254 cells, nine of them typed again: 263 value lines
+        in one column, more than a column's count holds. Before: refused
+        as `Sheet too big: 263 values, room for 2193.` (here; 241 on the
+        machine, where 4,064 fit with the auxiliary bank) -- a room larger
+        than the count it refuses."""
+        data = b''.join(b'>A%d:%d\r' % (r, r) for r in range(254, 0, -1)) + \
+            b''.join(b'>A%d:1\r' % r for r in range(1, 10)) + b'/X>A1:>A1:\r'
+        shots, note = self.machine(data)
+        self.assertEqual(shots, [])
+        self.assertEqual(note, 'Sheet too big: over 255 values in one column.')
+        # 255 in a column are a sheet like another (the reference's too).
+        data = b''.join(b'>A%d:%d\r' % (r, r) for r in range(254, 0, -1)) + b'>A7:1\r/X>A1:>A1:\r'
+        self.check(data)
+
     def test_private_worksheets(self):
         samples = PRIVATE / 'samples'
         if not samples.is_dir():
@@ -709,6 +729,297 @@ class PhaseClose(unittest.TestCase):
                             self.assertEqual(note, '')
                             self.assertEqual(closes, 5)
                             self.assertGreaterEqual(len(o) - 80 - len(tail), 3840, 'a screen')
+
+
+# Escape while the worksheet is read and recalculated. The harness puts a
+# key in the keyboard register ($C000) inside its Nth fread -- the overlay
+# has just asked the keyboard, in tick, before that read -- and counts the
+# processor's cycles from there to the return. It also counts what the
+# overlay must leave as it found it: the files (opened, closed), the
+# processor's stack and cc65's, the zero page $50-$FF the ROM bridge puts
+# aside, and what `leave` owes when the table was in the auxiliary bank
+# (ram_format, once). Arguments: keys, size, the read (0: never), the key,
+# aux_consent's answer, ProDOS's MACHID.
+ESCAPE = SCREENS.replace(
+    '#include "a2fc_plugin.h"',
+    '''#include <sim65.h>
+#include "a2fc_plugin.h"
+static unsigned int reads, esc_at;
+static unsigned char esc_key, fmts, asked, consent, opens, closes;
+static unsigned long t0, t1;
+static unsigned long now(void)
+{
+    peripherals.counter.select = COUNTER_SELECT_CLOCKCYCLE_COUNTER;
+    peripherals.counter.latch = 0;
+    return peripherals.counter.value32[0];
+}''').replace(
+    'static FILE* opn(const char* p, const char* m) { return fopen(p, m); }',
+    'static FILE* opn(const char* p, const char* m) { ++opens; return fopen(p, m); }').replace(
+    'static size_t rd(void* p, size_t s, size_t n, FILE* f) { return fread(p, s, n, f); }',
+    '''static size_t rd(void* p, size_t s, size_t n, FILE* f)
+{
+    if (++reads == esc_at) { *(unsigned char*)0xC000 = esc_key; t0 = now(); }
+    return fread(p, s, n, f);
+}''').replace(
+    'static int cls(FILE* f) { return fclose(f); }',
+    'static int cls(FILE* f) { ++closes; return fclose(f); }').replace(
+    'static unsigned char rfmt(void) { return 1; }',
+    'static unsigned char rfmt(void) { ++fmts; return 1; }').replace(
+    'static unsigned char nope(void) { return 0; }',
+    'static unsigned char nope(void) { ++asked; return consent; }').replace(
+    '    static unsigned char copy_buf[512];\n    int in;',
+    '''    static unsigned char copy_buf[512];
+    static unsigned char zp[0xB0], s0, s1, same;
+    static unsigned int c0, c1;
+    int in;''').replace(
+    '    keys = argv[1];',
+    '''    keys = argv[1];
+    esc_at = atoi(argv[3]); esc_key = atoi(argv[4]); consent = atoi(argv[5]);
+    *(unsigned char*)0xBF98 = atoi(argv[6]);
+    *(unsigned char*)0xC010 = 0;''').replace(
+    '    plugin_entry(&api);\n',
+    '''    memcpy(zp, (void*)0x50, sizeof zp);
+    __asm__("tsx"); __asm__("stx %v", s0);
+    __asm__("lda c_sp"); __asm__("sta %v", c0); __asm__("lda c_sp+1"); __asm__("sta %v+1", c0);
+    plugin_entry(&api);
+    __asm__("tsx"); __asm__("stx %v", s1);
+    __asm__("lda c_sp"); __asm__("sta %v", c1); __asm__("lda c_sp+1"); __asm__("sta %v+1", c1);
+    t1 = now();
+    same = !memcmp(zp, (void*)0x50, sizeof zp);
+''').replace(
+    '    fwrite(note, 1, 80, stdout);',
+    '''    fwrite(note, 1, 80, stdout);
+    printf("%u %lu %u %u %u %u %u %u %u %u %u", reads, t0 ? t1 - t0 : 0, *(unsigned char*)0xC000,
+           *(unsigned char*)0xC010, fmts, asked, opens, closes, same, s0 == s1, c0 == c1);''')
+assert ESCAPE.count('esc_at') == 3 and ESCAPE.count('++fmts') == 1 and ESCAPE.count('++asked') == 1
+assert ESCAPE.count('++opens') == 1 and ESCAPE.count('++closes') == 1 and 'c0 == c1' in ESCAPE
+assert ESCAPE.count('t1 = now()') == 1 and ESCAPE.count('0xBF98') == 1
+
+ESC = 0x9B                                  # Escape, waiting
+FIELDS = ('reads', 'cycles', 'kbd', 'strobe', 'fmts', 'asked', 'opens', 'closes', 'zp', 's', 'csp')
+
+
+def slow_sheet(order='/GOC', n=120, k=13):
+    '''The reviewer's vc_slow: n numbers, and n formulas of k @NPV over them
+    (13 fill a line): 5,788,076,613 cycles to recalculate on the 6502
+    (5,862,959,837 on the 65C02), an hour and a half at 1 MHz.'''
+    cells = {'A%d' % r: str(r) for r in range(1, n + 1)}
+    cells.update({'B%d' % r: '+'.join(['@NPV(.1,A1...A%d)' % n] * k) for r in range(1, n + 1)})
+    return sheet(cells, ('/W1', order, '/GRA', '/GC9', '/X>A1:>A1:'), high=False)
+
+
+@unittest.skipUnless(have_head(), 'cc65 master (CC65_HEAD) not installed')
+class Escape(unittest.TestCase):
+    '''Escape stops the reading and the recalculation.
+
+    Before: the recalculation read no key at all -- tick only turned the
+    activity cell -- and its length was the file's to decide. The
+    reviewer's 31 KB sheet (slow_sheet) held the machine for 5.8 thousand
+    million cycles, an hour and a half at 1 MHz, Escape or not: with
+    Escape waiting from the first formula on, sim65 gave up at its limit
+    of 400 million cycles, on both processors.
+
+    Now Escape is asked for at every read of the file, every column or
+    row, every operand of a formula and every cell of a range, and leaves
+    through `leave`. Measured here, from the key (put in the register at
+    a read of the file, the only place the harness has a hand) to the
+    return to the core: 3,200 to 36,400 cycles, held under BOUND -- the
+    rest of that read, the next look at the keyboard, the close and the
+    note. Between two looks there is at most one operation or one
+    function of the ROM: 17,600 cycles for a division, about 75,000 for a
+    ROM function with its conversions (whole formulas timed), a tenth of
+    a second at 1 MHz. Only Escape is taken; any other key stays in the
+    keyboard register for the sheet's first cgetc, as before.'''
+    BOUND = 60000                           # 0.06 s at 1 MHz
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory(prefix='a2fc-visicalc-esc-')
+        cls.dir = Path(cls.tmp.name)
+        cls.exe = build(cls.tmp.name, ESCAPE, 'esc')
+        # The table in the "auxiliary bank": no room in the main one, and
+        # 512 values at $A000-$AFFF, above the harness (sim65 has one bank:
+        # the soft switches are memory, the accesses are the same).
+        cls.aux = build(cls.tmp.name, ESCAPE, 'escaux', top='$1000',
+                        defs=('VC_AUXLOW=$A000', 'VC_AUXTOP=$B000'))
+        if ROM.exists():
+            (cls.dir / 'rom.bin').write_bytes(ROM.read_bytes()[-0x3000:][:0x2800])
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def run_esc(self, data, at, key=ESC, consent=0, machid=0, exe=None, keys='', limit=400000000):
+        '''(screens shown, note, the harness's counts), the same on both
+        processors but for the cycles (the largest is kept).'''
+        (self.dir / 'sheet.txt').write_bytes(data)
+        got = {}
+        for cpu, path in (exe or self.exe).items():
+            p = subprocess.run([tool('sim65'), '-x', str(limit), str(path), keys, str(len(data)),
+                                str(at), str(key), str(consent), str(machid)],
+                               cwd=self.dir, capture_output=True, env=env(), timeout=1200)
+            self.assertEqual(p.returncode, 0, (cpu, p.returncode, p.stderr[-300:]))
+            self.assertEqual((self.dir / 'sheet.txt').read_bytes(), data, 'the file is only read')
+            o = p.stdout
+            tail = o[o.rindex(b'\0') + 1:]
+            f = dict(zip(FIELDS, map(int, tail.split())))
+            note = o[-80 - len(tail):-len(tail)].split(b'\0')[0].decode('latin-1')
+            got[cpu] = ((len(o) - 80 - len(tail)) // 3840, note, f)
+            # Whatever happened, the core gets its machine back.
+            self.assertEqual(f['opens'], f['closes'], (cpu, 'a file left open'))
+            self.assertEqual((f['zp'], f['s'], f['csp']), (1, 1, 1),
+                             (cpu, 'the zero page $50-$FF, S, the C stack'))
+        a, b = got['sim6502'], got['sim65c02']
+        cyc = max(a[2].pop('cycles'), b[2].pop('cycles'))
+        self.assertEqual(a, b)
+        return a[0], a[1], dict(a[2], cycles=cyc)
+
+    def passes(self, data):
+        '''The reads of the two passes over the file, and one more: the
+        first formula's own line.'''
+        return 2 * (len(data) // 255 + 2) + 1
+
+    def stopped(self, got, bound, aux=False):
+        shots, note, f = got
+        self.assertEqual(note, 'Stopped. /RAM rebuilt.' if aux else 'Stopped.')
+        self.assertEqual(shots, 0, 'no sheet shown')
+        self.assertEqual((f['kbd'], f['strobe']), (ESC, ESC), 'the strobe cleared by a store')
+        self.assertEqual(f['fmts'], 1 if aux else 0, 'ram_format')
+        self.assertLessEqual(f['cycles'], bound)
+        self.assertGreater(f['cycles'], 0)
+        if os.environ.get('A2FC_SHOW'):
+            print('  %s: %d cycles from the key to the return (bound %d)' % (self.id().split('.')[-1], f['cycles'], bound))
+
+    def test_escape_in_the_recalculation(self):
+        for order in ('/GOC', '/GOR'):
+            # in the first formula of the slow sheet and in its third (each
+            # takes 45 million cycles); deep in a lighter one
+            for data, more in ((slow_sheet(order), (0, 2)), (slow_sheet(order, k=1), (30, 100))):
+                first = self.passes(data)
+                for at in (first + m for m in more):
+                    with self.subTest(order=order, at=at):
+                        got = self.run_esc(data, at)
+                        self.stopped(got, self.BOUND)
+                        self.assertEqual(got[2]['reads'], at, 'stopped before another read')
+
+    def test_escape_while_the_file_is_read(self):
+        data = slow_sheet()
+        for at in (1, 2, len(data) // 255, len(data) // 255 + 5, self.passes(data) - 3):
+            with self.subTest(at=at):
+                self.stopped(self.run_esc(data, at), self.BOUND)
+
+    def test_escape_with_the_table_in_the_auxiliary_bank(self):
+        '''`leave` rebuilds /RAM and says so, once; before the table is
+        there -- in the first pass, or when the bank was refused -- there is
+        nothing to rebuild.'''
+        data = slow_sheet()
+        first = self.passes(data)
+        for at in (first, first + 2):
+            got = self.run_esc(data, at, consent=1, machid=0xB3, exe=self.aux)
+            self.stopped(got, self.BOUND, aux=True)
+            self.assertEqual(got[2]['asked'], 1)
+        got = self.run_esc(data, 3, consent=1, machid=0xB3, exe=self.aux)
+        self.stopped(got, self.BOUND)
+        self.assertEqual(got[2]['asked'], 0, 'stopped before the question')
+        # The whole of it there, undisturbed: the sheet, and /RAM rebuilt.
+        quick = sheet({'A1': '5', 'B1': '+A1*2', 'C1': '@SUM(A1...B1)'}, high=False)
+        shots, note, f = self.run_esc(quick, 0, consent=1, machid=0xB3, exe=self.aux)
+        self.assertEqual((shots, note, f['fmts'], f['asked']), (1, ' /RAM rebuilt.', 1, 1))
+
+    def test_escape_in_a_formula_without_a_range(self):
+        '''A line of 255 characters with no range in it: 124 divisions.
+        Asked only at the reads of the file, the keyboard waited for the
+        whole formula -- 2,188,848 cycles measured with the key put in at
+        the read that completes A2's line (it takes two). Asked at every
+        operand: 3,174.'''
+        cells = {'A1': '7', 'A2': '+A1' + '/3' * 124, 'A3': '+A1' + '/3' * 124, 'A4': '+A2'}
+        data = sheet(cells, high=False)
+        self.stopped(self.run_esc(data, self.passes(data) + 1), self.BOUND)
+
+    def test_escape_out_of_order(self):
+        '''One cell line after the settings: the whole file is read again
+        for every formula, and asked at every read.'''
+        cells = {'%s%d' % (c, r): '+A1+1' for c in 'BCD' for r in range(1, 81)}
+        cells['A1'] = '5'
+        data = sheet(cells, high=False) + b'>A2:7\r'
+        first = self.passes(data)
+        for at in (first, first + 7, first + 500):
+            with self.subTest(at=at):
+                self.stopped(self.run_esc(data, at), self.BOUND)
+
+    @unittest.skipUnless(ROM.exists(), 'calls the Applesoft ROM (^, @ functions): no ROM image (A2FC_ROM)')
+    def test_escape_after_the_rom_was_called(self):
+        '''The ROM bridge closed again: the zero page $50-$FF as the core
+        had it (run_esc compares the 176 bytes), after formulas that went
+        through it -- one of them refused by the ROM, through ONERR.'''
+        cells = {'A%d' % r: f for r, f in enumerate(
+            ['@SQRT(2)', '2^.5', '@LN(-1)', '@SIN(1)+@EXP(1000)', '@SQRT(A1)^3'] * 8, 1)}
+        cells['B1'] = '@NPV(.1,A1...A40)'
+        data = sheet(cells, high=False)
+        first = self.passes(data)
+        for at in (first + 3, first + 20, first + 40):
+            with self.subTest(at=at):
+                self.stopped(self.run_esc(data, at), self.BOUND)
+
+    def test_only_escape_is_taken(self):
+        '''A key typed while the sheet is computed is not read here: it
+        stays in the keyboard register, strobe and all, for the sheet's
+        first cgetc -- as it did before Escape was looked for. An Escape
+        already taken (bit 7 clear) is no key.'''
+        data = slow_sheet(n=12, k=2)
+        first = self.passes(data)
+        whole = self.run_esc(data, 0)
+        self.assertEqual((whole[0], whole[1]), (1, ''))
+        for key in (0xA0, 0x8D, 0xD1, 0x1B, 0x83, 0x9A, 0x9C):
+            for at in (2, first, first + 5):
+                with self.subTest(key=key, at=at):
+                    shots, note, f = self.run_esc(data, at, key=key)
+                    self.assertEqual((shots, note), (1, ''), 'the sheet shows')
+                    self.assertEqual((f['kbd'], f['strobe']), (key, 0), 'the key and its strobe untouched')
+                    self.assertEqual(f['reads'], whole[2]['reads'])
+
+    def test_nothing_between_the_rom_bridge_and_the_keyboard(self):
+        '''What leaving from tick may assume, read in the source: the ROM
+        bridge (the language card off, the zero page aside, interrupts
+        off), the bank switches of the table and the decimal arithmetic
+        call nothing that asks the keyboard or reads the file.'''
+        src = (ROOT / 'src/plugins/visicalc.s').read_text()
+        asks = re.compile(r'\b(jsr|jmp|j[a-z]{2})\s+(tick|poll|ppeek|rdline|rnext|nextcell|seekto|leave|evaluate|expr|operand)\b')
+        rom = src[src.index('\nromrun: '):src.index('; == the overlay')]
+        self.assertGreater(rom.count('jsr'), 30)
+        self.assertEqual(asks.findall(rom), [])
+        bank = src[src.index('\ntblock:'):src.index('TBLOCK  = * - tblock')]
+        self.assertEqual(bank.count('php'), 6)
+        self.assertEqual(re.findall(r'\b(jsr|jmp)\b', bank), [])
+        # sed ... cld, php/sei ... plp: no call out in between
+        for m in re.finditer(r'\n\s+sed\b', src):
+            end = src.index('plp', m.start())
+            self.assertEqual(asks.findall(src[m.start():end]), [], src[m.start():m.start() + 60])
+        # and the places that ask: the file's reads, the columns and rows
+        # of the recalculation; every operand, every cell of a range
+        self.assertEqual(len(re.findall(r'\bjsr\s+tick\b', src)), 3)
+        self.assertEqual(len(re.findall(r'\bjsr\s+poll\b', src)), 2)
+        self.assertEqual(len(re.findall(r'\bjsr\s+ppeek\b', src)), 1)
+
+    def test_too_big_for_the_auxiliary_bank(self):
+        '''The room named is the bank's the table could have gone to.
+        Before: always the main bank's (241 on the machine), also for a
+        sheet the auxiliary bank's 4,064 would not hold.'''
+        cells = {'%s%d' % (c, r): '1' for c in 'ABC' for r in range(1, 201)}
+        data = sheet(cells, high=False)
+        for consent, machid, note in ((1, 0xB3, 'Sheet too big: 600 values, room for 512.'),
+                                      (0, 0xB3, 'Sheet too big: 600 values, room for 512.'),
+                                      (1, 0x83, 'Sheet too big: 600 values, room for 0.')):
+            with self.subTest(consent=consent, machid=machid):
+                shots, got, f = self.run_esc(data, 0, consent=consent, machid=machid, exe=self.aux)
+                self.assertEqual((shots, got, f['fmts'], f['asked']), (0, note, 0, 0))
+        # It fits there and the user says no: the main bank is what is left.
+        data = sheet({k: v for k, v in cells.items() if k[0] != 'C'}, high=False)
+        shots, got, f = self.run_esc(data, 0, consent=0, machid=0xB3, exe=self.aux)
+        self.assertEqual((shots, got, f['fmts'], f['asked']),
+                         (0, 'Sheet too big: 400 values, room for 0.', 0, 1))
+        shots, got, f = self.run_esc(data, 0, consent=1, machid=0xB3, exe=self.aux)
+        self.assertEqual((shots, got, f['fmts'], f['asked']), (1, ' /RAM rebuilt.', 1, 1))
 
 
 class Phases(unittest.TestCase):

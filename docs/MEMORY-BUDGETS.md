@@ -150,8 +150,13 @@ nombres littéraux, chargeur de phases) et trois phases au même endroit
 (`$2600-$35FF`) : lecture (VCA, dans VISICALC.PLG), recalcul (VCB) et
 affichage (VCC), ces deux-là dans `A2FILE/VISICALC.BIN`, chacune marquée
 de l'identité du lien (VISICALC.BIN d'une autre construction est refusé).
-Libres, mêmes octets sur 6502 et 65C02 : partie fixe **137/140**, VCA
-2 905, VCB **19**, VCC 1 446 ; BSS `$3600-$3872`. Les tables fixes
+Libres (mesurés sur les cartes du lien, 6502/65C02) : partie fixe
+**151/154**, VCA 2 696, VCB **13**, VCC 1 428 ; BSS `$3600-$3873`. Avant
+Échap pendant le recalcul (2026-10-06) : 63/66, 2 905, 16, 1 428. Échap
+coûte 23 octets de partie fixe (`poll`, `ppeek`), « Stopped. » 9, et 3 de
+VCB (`jsr poll` dans `rnext`) ; ils sont payés, et au-delà, par le message
+« Sheet too big » et ses chaînes, passés de la partie fixe à VCA (la phase
+de lecture est encore là quand la table est refusée). Les tables fixes
 (débuts de rangée, ligne lue, colonnes) occupent `$0C00-$0FFF`, le second
 tampon ProDOS (un seul fichier ouvert à la fois) ; la sauvegarde de la page
 zéro pour la ROM, `copy_buf + 256`.

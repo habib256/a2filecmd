@@ -15,11 +15,20 @@ feuille large rangee par colonnes avec ses ERROR de reference en avant, une
 racine carree et des puissances sur la ROM) ; un texte qui commence par `>`
 sans etre une feuille est refuse avec une note qui renvoie a T. Les feuilles
 de ~/.cache/a2fc/visicalc/samples sont ajoutees quand elles sont la (elles ne
-sont pas publiees)."""
+sont pas publiees).
+
+Echap pendant le recalcul : une feuille dont le recalcul dure une heure et
+demie (120 formules de treize @NPV sur 120 cellules), ouverte, puis Echap
+des que la cellule d'activite tourne -- « Stopped. », les panneaux, le
+dossier toujours la (la touche est consommee : elle ne remonte pas au
+dossier parent) ; la meme avec la table en memoire auxiliaire, « Stopped.
+/RAM rebuilt. » et /RAM relisible ; et une autre touche tapee pendant le
+calcul, qui attend la feuille."""
 import os
 import re
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -64,6 +73,15 @@ def sheets():
     return out
 
 
+def slow(n, k):
+    """n numbers and n formulas of k @NPV over them: with 120 and 13, an hour
+    and a half of recalculation at 1 MHz (tools/test_visicalc.py)."""
+    lines = ['>B%d:%s' % (r, '+'.join(['@NPV(.1,A1...A%d)' % n] * k)) for r in range(n, 0, -1)]
+    lines += ['>A%d:%d' % (r, r) for r in range(n, 0, -1)]
+    lines.sort(key=lambda l: -int(re.match(r'>[AB](\d+)', l)[1]))      # VisiCalc's order: rows down
+    return '\r'.join(lines + ['/W1', '/GOC', '/GRA', '/GC9', '/X>A1:>A1:']).encode() + b'\r'
+
+
 def main_room():
     """The values the main bank holds: $4000 - the BSS's end, 8 bytes each
     (the note said 2,047 before, from column A's count)."""
@@ -84,6 +102,9 @@ def expected(data, keys):
 def main():
     files = {'WORK/%s#040000' % n: d for n, d in sheets().items()}
     files['WORK/QUOTE#040000'] = b'> a quoted line\rnot a worksheet\r'
+    files['WORK/SLOW#040000'] = slow(120, 13)
+    files['WORK/SLOWAUX#040000'] = slow(150, 13)
+    files['WORK/AHEAD#040000'] = slow(30, 1)
     # The way from a DOS 3.3 disk: C extracts the T file, Return opens it.
     files['WORK/VCDISK.DSK#000000'] = mkdos33.build([('VCSHEET', 0x00, mkdemo_viewers.visicalc() + b'\0')])
     keys = {'BUDGET': '', 'WIDE': '\x15\x15\x15\x15\x15\x15\x15\x15\x15\x15 \x0a\x0bB>R<',
@@ -125,6 +146,40 @@ def main():
                 if name == 'WIDE':
                     s.ok('WIDE used the auxiliary bank: /RAM rebuilt, said so', s.has('/RAM rebuilt'))
                     s.ok('/RAM empty again, readable', s.ram_files() == 0)
+            # Escape while the sheet is computed. The activity cell (row
+            # 21, column 79) turning says the overlay is at work.
+            spin = lambda: s.rows()[21][79] in '/\\'
+            s.select('SLOW'); s.key(RET)
+            s.wait(spin, 'the slow sheet being read', 120)
+            time.sleep(1.5)                 # reading still, or recalculating: either stops
+            s.ok('the slow sheet is still being computed', spin() and '<> Cols' not in s.rows()[23])
+            s.key(ESC)
+            s.wait(lambda: s.has('Stopped.'), 'Escape stops the recalculation', 60)
+            s.wait(lambda: s.has('Type  Aux'), 'panels restored', 60); p.stable()
+            s.ok('Escape stopped it: the panels, the note', s.has('Stopped.') and not s.has('/RAM rebuilt'))
+            s.ok('Escape was taken: still in the folder', s.has('SLOWAUX') and s.has('BUDGET'))
+            s.select('SLOWAUX'); s.key(RET)
+            s.allow_aux()                   # /RAM empty: no question (checked)
+            s.wait(spin, 'the larger slow sheet being read', 120)
+            time.sleep(4)                   # the table is in the auxiliary bank
+            s.ok('the larger sheet is still being computed', spin() and '<> Cols' not in s.rows()[23])
+            s.key(ESC)
+            s.wait(lambda: s.has('Stopped. /RAM rebuilt.'), 'Escape with the table in AUX', 60)
+            s.wait(lambda: s.has('Type  Aux'), 'panels restored', 60); p.stable()
+            s.ok('Escape with the table in AUX: /RAM rebuilt, said so', s.has('Stopped. /RAM rebuilt.'))
+            s.ok('/RAM empty again, readable, still in the folder', s.ram_files() == 0 and s.has('SLOWAUX'))
+            # Another key typed meanwhile is not read there: it waits for
+            # the sheet, whose first screen it pages.
+            data = files['WORK/AHEAD#040000']
+            s.select('AHEAD'); s.key(RET)
+            s.wait(spin, 'the third sheet being read', 120)
+            s.key(b' ')
+            s.wait(lambda: '<> Cols' in s.rows()[23], 'the sheet typed ahead of', 600)
+            p.stable()
+            got, want = s.rows()[:22], expected(data, ' ')[1][:22]
+            s.ok('a Space typed during the recalculation pages the sheet once',
+                 [r.rstrip() for r in got] == [r.rstrip() for r in want])
+            s.key(ESC); s.wait(lambda: s.has('Type  Aux'), 'panels restored', 60); p.stable()
             s.select('QUOTE'); s.key(RET)
             s.wait(lambda: s.has('Not a VisiCalc worksheet'), 'refusal of a quoted text', 60)
             s.ok('a text starting with > is refused, T suggested', s.has('T shows it as text'))
