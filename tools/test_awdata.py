@@ -31,6 +31,9 @@ HOST = PREFIX + r'''
 #include <stdarg.h>
 char aw_num[17];
 void aw_fout(const unsigned char* d);
+static long host_fail = -1;                 /* a read error from this offset on */
+static int host_err;
+#define ferror(f) (host_err)
 #include "src/plugins/awdata.c"
 static FILE* host;
 static unsigned char hx, hy;
@@ -55,7 +58,15 @@ void aw_fout(const unsigned char* d)
     }
     sprintf(aw_num, "<%02X%02X%02X%02X%02X>", p[0], p[1], p[2], p[3], p[4]);
 }
-static size_t rd_(void* p, size_t z, size_t n, FILE* f) { return fread(p, z, n, host); }
+static size_t rd_(void* p, size_t z, size_t n, FILE* f)
+{
+    long at = ftell(host);
+    if (host_fail >= 0 && at + (long)n > host_fail) {
+        if (at >= host_fail) { host_err = 1; return 0; }
+        n = host_fail - at;               /* what comes before the bad block */
+    }
+    return fread(p, z, n, host);
+}
 static int seek_(FILE* f, long off, int whence) { return fseek(host, off, whence); }
 static FILE* open_(const char* name, const char* mode) { return host; }
 static int close_(FILE* f) { return 0; }
@@ -102,6 +113,7 @@ int main(int argc, char** argv)
     strcpy(sel.name, "SAMPLE");
     strcpy(full, "/V/SAMPLE");
     script = argv[3];
+    if (argc > 4) host_fail = atol(argv[4]);
     api.fread = rd_; api.fseek = seek_; api.fopen = open_; api.fclose = close_;
     api.gotoxy = xy_; api.cputs = puts_host; api.cprintf = printf_; api.clrscr = clr_;
     api.bar_begin = bar_; api.keys_bar = keys_; api.cgetc = getc_; api.strcpy = strcpy_;
@@ -304,11 +316,11 @@ class AwData(unittest.TestCase):
         ref.FOUT = ref.fout
         cls.tmp.cleanup()
 
-    def run_host(self, data, typ, keys):
+    def run_host(self, data, typ, keys, fail=None):
         f = self.dir / 'in.bin'
         f.write_bytes(data)
-        out = subprocess.run([str(self.exe), str(f), typ, keys], capture_output=True,
-                             timeout=30)
+        out = subprocess.run([str(self.exe), str(f), typ, keys] + ([str(fail)] if fail is not None else []),
+                             capture_output=True, timeout=30)
         self.assertEqual(out.returncode, 0, out.stderr)
         screens, note = [], None
         for line in out.stdout.decode('latin-1').splitlines():
@@ -416,6 +428,38 @@ class AwData(unittest.TestCase):
                 continue
             self.assertEqual(got, note)
             self.assertEqual(screens, [])
+
+    def test_a_read_error_is_not_the_end(self):
+        """A block that cannot be read is said on the bar, not "(cut)"/"(end)".
+
+        Before: getb took fread's 0 for the end of the file without
+        ferror(): a data base whose records could not all be read showed
+        "record 1 of N (cut)", as if the file itself were short, and a
+        sheet "(cut)" or "(end)" on its last page."""
+        rng = random.Random(6)
+        db = make_db(rng, 5, 60)
+        names, recs, _ = ref.db_records(db)
+        for fail in (1024, 1536, len(db) - 10):
+            with self.subTest(db=fail):
+                screens, note = self.run_host(db, '19', ' ' * 70, fail=fail)
+                bars = [bar for _, bar in screens]
+                self.assertTrue(all(b.endswith(' (read error)') for b in bars), bars[:2])
+                self.assertFalse([b for b in bars if '(cut)' in b or '(end)' in b])
+                n = int(bars[0].split(' of ')[1].split()[0])
+                self.assertLessEqual(n, len(recs))
+        screens, note = self.run_host(db, '19', ' ' * 70, fail=len(db) + 1)
+        self.assertFalse([bar for _, bar in screens if 'read error' in bar])
+        ss = make_ss(rng, 30)
+        want = ss_screens(ss)
+        for fail in (700, 1100, len(ss) - 5):
+            with self.subTest(ss=fail):
+                screens, note = self.run_host(ss, '1B', ' ' * (len(want) + 2), fail=fail)
+                last = screens[-1][1]
+                self.assertTrue(last.endswith(' (read error)'), last)
+                self.assertNotIn('(cut)', last)
+                self.assertNotIn('(end)', last)
+        screens, note = self.run_host(ss, '1B', ' ' * (len(want) + 2), fail=len(ss) + 1)
+        self.assertTrue(screens[-1][1].endswith(' (end)'), screens[-1][1])
 
     def test_asm_conversion_under_sim65(self):
         rng = random.Random(6)

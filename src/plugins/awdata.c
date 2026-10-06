@@ -30,6 +30,8 @@
  * 64th record, or each page -- are 16-bit offsets, which is what an
  * AppleWorks document can reach; going back replays from the nearest one. A
  * data base reaches its first 2,688 records, a sheet its first 882 rows.
+ * A read error is never taken for the end of the file: the bar then says
+ * "(read error)", not "(cut)" or "(end)".
  *
  * A big overlay: its tables sit after the code, below $4000. Being a big
  * overlay, the core redraws the panels on return. */
@@ -51,6 +53,12 @@ const struct PluginHeader __plugin_header = {
 #pragma rodata-name (pop)
 
 #pragma static-locals (on)
+
+#ifndef PLUGIN_HOST
+/* libc's ferror links errno and fmisc, 90 bytes: _FILE::f_flags (offset 1,
+ * asminc/_file.inc) and its _FERROR bit, as DOCVIEW and FIND read them. */
+#define ferror(f) (((unsigned char*)(f))[1] & 0x04)
+#endif
 
 #define LINES     22                    /* text rows 0-21; 22 is the message, 23 the bar */
 #define WIDTH     79
@@ -104,7 +112,7 @@ static unsigned char getb(void)
         base += have;
         have = a.fread(rbuf, 1, RBSZ, f);
         at = 0;
-        if (!have) { eof = 1; return 0; }
+        if (!have) { eof = 1; return 0; }   /* or an error: ferror(f) says it */
     }
     return rbuf[at++];
 }
@@ -578,6 +586,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     unsigned int k = 0, known = 1, last;
     unsigned long off;
     unsigned char grid;
+    struct Mark* mk;
     char key;
     a = *api;
     rbuf = a.copy_buf;
@@ -616,13 +625,16 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     for (;;) {
         if (type == 0x19) db_show(k);
         else {
-            done = ss_show(marks + k, marks + k + 1);
+            mk = marks + k;
+            done = ss_show(mk, mk + 1);
             if (!done && known == k + 1 && known < MAXMARKS) ++known;
         }
         a.bar_begin();
-        a.cprintf("%s  %s %u", e->name, type == 0x19 ? "record" : "page", k + 1);
-        if (type == 0x19) a.cprintf(" of %u%s", nrecs, cut ? " (cut)" : "");
-        else if (done) a.cputs(cut ? " (cut)" : " (end)");
+        /* one call: a sheet's format leaves nrecs unused */
+        a.cprintf(type == 0x19 ? "%s  record %u of %u" : "%s  page %u", e->name, k + 1, nrecs);
+        /* the stream's error flag stays set (fseek clears only the end's) */
+        if (ferror(f)) a.cputs(" (read error)");
+        else if (type == 0x19 ? cut : done) a.cputs(cut ? " (cut)" : " (end)");
         a.keys_bar(44, type == 0x19 ? k_db : formulas ? k_sf : k_ss);
         key = a.cgetc();
         /* In the grid the horizontal arrows and <> walk the columns: what a
