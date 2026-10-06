@@ -17,9 +17,11 @@ Références utilisées pour une implémentation propre aux contraintes d'A2FC :
 - [Print Shop, notes CiderPress II](https://github.com/fadden/CiderPress2/blob/main/FileConv/Gfx/PrintShop-notes.md) : bitmap monochrome 88 × 52, bit de poids fort à gauche, agrandissement 2 × 3.
 - [Lecture des polices MGTK dans Apple II Desktop](https://github.com/a2stuff/a2d/blob/main/bin/dump_font.pl) : en-tête de trois octets, largeurs puis plans rangés par ligne, colonne de sept pixels et caractère.
 
-`tools/test_sample_media.py` exécute les entrées C avec des données valides,
-tronquées et malformées ainsi que des erreurs d'ouverture, lecture et fermeture.
-Ses rendus hôtes servent de référence ; `bench/sample_media.py` contrôle aussi
+`tools/test_sample_media.py` exécute les entrées C de PRINTSHOP et LZ4FH avec
+des données valides, tronquées et malformées ainsi que des erreurs
+d'ouverture, lecture et fermeture ; FONTVIEW, désormais tout en assembleur,
+est exercé sous sim65 par `tools/test_fontview.py`. Leurs rendus hôtes
+servent de référence ; `bench/sample_media.py` contrôle aussi
 les vrais rendus assembleur dans POM2, pour chaque fichier du corpus.
 La validation matérielle signalée avant ces ajouts ne les couvre pas encore.
 
@@ -30,8 +32,12 @@ par le lecteur amélioré d'Alex Patalenski. Voir le manuel, « Electric Duet »
 PT3 est disponible pour `AUTUMN.PT3` (restauré dans `/SAMPLE.MEDIA`) et pour
 le corpus ZX Spectrum dans [`media/pt3/MUSIC/`](../media/pt3/MUSIC/) : trois
 voix Mockingboard, lecture au premier plan, pause/reprise et arrêt à la fin
-du morceau ou par Escape. Le module et les tables restent en mémoire
-principale. La détection matérielle n'installe pas le lecteur AUX de MB1.
+du morceau ou par Escape. Depuis le 2026-10-03, un module seul de 32 Ko au
+plus est joué par le lecteur de GROUiK, moteur et module en mémoire
+auxiliaire (accord demandé si /RAM contient des fichiers, /RAM reconstruit
+ensuite) ; pt3_lib, en mémoire principale, joue le reste
+([`ppt3/README.md`](../src/plugins/ppt3/README.md)). La détection
+matérielle n'installe pas le lecteur AUX de MB1.
 Les limites de taille et de commandes du lecteur sont détaillées dans le
 manuel et dans [`pt3lib/README.md`](../src/plugins/pt3lib/README.md).
 Le volume ProDOS `media/pt3/A2FC-PT3.po` garde les huit fichiers de départ
