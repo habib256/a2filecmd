@@ -599,8 +599,16 @@ sector data. Leave through **/** before opening a changed disk again.
 **IMGPUT:** open a ProDOS image opposite a selected source and press C, or
 choose **! → Disks → IMGPUT**. It copies only the cursor file, ignoring tags;
 V refuses. The image needs a free directory slot and enough free blocks.
-Files above 128 KB and directory growth are unsupported. Data is verified
-before allocation metadata is installed; interrupted writes can reserve space.
+Files above 128 KB and directory growth are unsupported. The source is read
+once to count it — the length copied is what the file holds, not what the
+panel showed — then, after the question, the whole image is checked: every
+block its directories and files name must be marked used in its bitmap, or
+nothing is written (**Image damaged: nothing written. Run FIXIT.**). That
+check reads every directory and index block of the image: a second or two on
+a floppy image, a minute or more on a large one (about 90 seconds at 1 MHz for
+16 MB holding 765 files); the activity cell turns and ESC stops it. A `.2MG`
+whose header says write protected is refused. Data is verified before
+allocation metadata is installed; interrupted writes can reserve space.
 
 **DOSWRITE:** with a real DOS disk opposite, C confirms source name, slot and
 drive. TXT/BIN/BAS/INT up to 65,535 bytes are supported, one cursor file; existing
