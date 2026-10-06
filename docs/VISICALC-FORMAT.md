@@ -13,7 +13,8 @@ showed for them are in `tools/visicalc_probes.json.gz`).
 
 A text file: DOS 3.3 `T` (high bit set on every byte, CR line ends, the
 text ends at the first zero byte), or a ProDOS `TXT` once copied — A2 File
-Cmd reads both, the high bit dropped. It is not a picture of the sheet but
+Cmd reads both, the high bit dropped (it also takes LF as a line end). It
+is not a picture of the sheet but
 the **keystrokes that rebuild it**: VisiCalc loads it by typing it.
 
 ```
@@ -59,12 +60,15 @@ row of titles of a VisiCalc 2 worksheet stays under its `>A1:/GCC..`).
 | `/W1` | one window (`/WH`, `/WV` would split it) |
 | `/GOC`, `/GOR` | recalculation order: by columns, by rows |
 | `/GRA`, `/GRM` | automatic or manual recalculation (the load recalculates either way, see below) |
-| `/GCn` | the column width, `n` characters |
+| `/GCn` | the column width, `n` characters (A2 File Cmd takes 3 to 77, and `/GCCn` 1 to 77; another value is ignored) |
 | `/GF?` | the default format, the letters of `/F` |
 | `/X>A1:>B3:` | the window's top left corner, then the cursor (`/X!` or `/X-` may precede: a flag VisiCalc shows top right, of no consequence for the values) |
 | `/XH15`, `/XV12`, `;` | a split window at row 15 or column 12; `;` passes to the second window, whose own `/GC`, `/GF`, `/X`, `/TV`... follow |
 
 A2 File Cmd shows window 1: the settings written before the first `;`.
+It also reads cells out of VisiCalc's order, or after the settings, and a
+cell given twice keeps its last line. It refuses a file that has no cell,
+or a line that is neither a cell line nor a command starting with `/`.
 
 ## Numbers
 
@@ -203,6 +207,10 @@ less than 1 or a negative number.
   Advanced VisiCalc's own formats (`/F-`, decimals `/F2`...) are not
   interpreted (the cell keeps the default format).
 - **DIF** files (`/S#`, the Data Interchange Format) are not read.
+- A formula nested 24 operands deep, or that puts aside more values than
+  the overlay's stack holds (144 bytes: 9 a value, 17 a list function's
+  state), is
+  ERROR; VisiCalc's own limits were not measured.
 
 ## Versions and samples
 
@@ -217,5 +225,6 @@ cell by cell, and compared with the reference: 27,045 cells of 67 real
 worksheets (the Home and Office Companion disks, VisiCalc's own sample
 disks) match but for the two kinds of difference above, and so do the
 7,000 cells of the probe sheets. Those disks are not redistributable and
-stay private; the probe sheets and the demonstration worksheet (`DEMO`)
-are our own.
+stay private; the probe sheets and the demonstration worksheet
+(`DEMO/DOCUMENTS/BUDGET.VC`, written by `tools/mkdemo_viewers.py`) are
+our own.
