@@ -3,7 +3,7 @@
 `INTBASIC.SYSTEM.SYS` is the unmodified 7,395-byte runtime extracted from
 the official [a2stuff/intbasic v0.9 release](https://github.com/a2stuff/intbasic/releases/tag/v0.9),
 asset `intbasic_system.po`, root file `INTBASIC.SYSTEM` (ProDOS type `$FF`).
-It is distributed on A2FC DEVTOOLS and both XL images, alongside BASIC.SYSTEM.
+It is distributed on the 800K image and both XL images, alongside BASIC.SYSTEM.
 The `.SYS` suffix in this repository supplies the file type during packaging;
 the resulting ProDOS filename is `INTBASIC.SYSTEM`.
 

@@ -23,6 +23,7 @@ first, and with Vince Weaver's pt3_lib (`../pt3lib/`) when it cannot.
 | `ppt3.s` | The ca65 port of `ppt3.a`. Without `PPT3_A2FC` it assembles to exactly the bytes ACME makes of the original (`tools/test_ppt3_port.py`). Every A2FC change sits behind `PPT3_A2FC` or is a label added on an existing operand. Grouik's comments are kept as he wrote them. |
 | `engine.s`, `engine.cfg` | The A2FC wrapper: header and entry, zero-page swap, read guards, push limit, ROUT's conversion without the card. Builds `A2FILE/PPT3.BIN`, the same bytes for both editions. |
 | `abi.inc` | The addresses both halves agree on (assembled into both). |
+| `notes.inc` | The ZX note tables INIT copies (see "Pitch for the Mockingboard"). |
 | `hook.s`, `driver.s` | The main-memory half, linked into `PT3.PLG` at `$3B00` (sdk/pt3.cfg): the trampoline, the AUX copy, the loader and consent logic. |
 
 ## How it runs
