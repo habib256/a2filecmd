@@ -175,11 +175,18 @@ no:     lda #0
 ; A panel's fingerprint, for its tags: they are bits by entry index, kept
 ; aside while a big overlay covers the entry tables (keep_tags, a2fc.c) and
 ; valid afterwards only if the same names are back at the same indexes. So
-; the word folds, by rotation and addition, the path and the entry count
-; (bytes 0-64 of struct Panel) and the name and type of every entry (bytes
-; 0-17 of its 29; add_entry pads a name with zeros). Another window of the
-; same directory holds other names. Sizes and dates are left out: a file
-; saved by the editor keeps its tag.
+; the word folds the path and the entry count (bytes 0-64 of struct Panel)
+; and the name and type of every entry (bytes 0-17 of its 29; add_entry
+; pads a name with zeros): h = rol16(h), then high ^= b, then low +=
+; high (eight bits, no carry: the same 20 bytes as the old fold). Another
+; window of the same directory holds other names. Sizes and dates are left
+; out: a file saved by the editor keeps its tag.
+; The exclusive-or is what makes the fold non-linear. With rotation and
+; addition alone, a byte's weight depended only on its distance modulo 16
+; from the end: two entries 8 apart exchanged (18 bytes each, a rotation
+; by 144 = 9 x 16), or "AB" turned into "CA" (2B + A = 2A + C), left the
+; word unchanged, and a tag then marked another file (bug hunt 2,
+; tools/test_keep_tags.py plays both cases and random permutations).
 ; The field offsets are those tools/test_abi_freeze.py freezes. A full
 ; table folds in about a tenth of a second.
         .export _panel_hash
@@ -222,18 +229,18 @@ entry:  lda tmp1
 done:   lda tmp2
         ldx tmp3
         rts
-fold:   pha                     ; h = rol(h) + A
+fold:   tax                     ; X = the byte (free in both loops above)
         lda tmp3
         cmp #$80                ; C = bit 15
-        rol tmp2
+        rol tmp2                ; h = rol(h)
         rol tmp3
-        pla
+        txa
+        eor tmp3                ; high ^= byte
+        sta tmp3
         clc
-        adc tmp2
+        adc tmp2                ; low += high, no carry out
         sta tmp2
-        bcc :+
-        inc tmp3
-:       rts
+        rts
 
 ; unsigned char paths_nested(void);
 ;
@@ -273,10 +280,15 @@ pyes:   ldx #0
 ; folder (Left/Right in a viewer), the old bits would mark other files,
 ; and D asks for tagged files by their number, not by their names. Such a
 ; panel comes back untagged: read_panel has emptied its tags. panel_hash
-; is a 16-bit fingerprint: one changed panel in 65,536 passes for
-; unchanged (tools/test_keep_tags.py). A caller whose tables are covered
-; by its own overlay points the panel at the names its bits refer to
-; first (the batch, at its snapshot).
+; is a 16-bit fingerprint: a changed panel passes for unchanged about once
+; in 65,536 for an arbitrary change (tools/test_keep_tags.py measures the
+; rate on random edits); it is a probability, not a proof, and a table
+; that D reads should still be looked at. A caller whose tables are
+; covered by its own overlay points the panel at the names its bits refer
+; to first (the batch, at its snapshot). A save is taken once per media
+; session (overlay_run): an album that steps to another window of a large
+; folder and back must find the bits of the window they were set in, not
+; an empty set re-saved under the other window's fingerprint.
         .export _keep_tags
         .import _panels, _picked
         .importzp ptr3, tmp4

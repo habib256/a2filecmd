@@ -25,7 +25,7 @@ static unsigned char window[OVERLAY_LARGE],copy_buf[512];
 #define OVL ((struct Overlay*)window)
 static uint16_t a2fc_link_id=0xABCD;
 static char overlay_loaded[17],other_full[81],full[81],cfg_path[81],question[81];static unsigned char in_overlay;
-static unsigned char batch_snapshot,companion_unit;
+static unsigned char batch_snapshot,companion_unit,media_request;
 static int mode,reads,closes,error,restored,draws,saved,opens;
 static FILE* open_overlay(const char* name,int ask) {
  FILE* f=tmpfile();unsigned i,n=mode==5?8:mode==6?OVERLAY_LARGE+1:mode==8?OVERLAY_SMALL:mode==9?OVERLAY_LARGE:2000;

@@ -1,7 +1,8 @@
 /* Foreground media coordination. MAIN only; directory/file probes are read-only.
  * AUX consent lasts only for the current overlay_run browsing session. */
 #include "viewer_ids.h"
-static unsigned char media_request;
+/* media_request (the arrow a viewer pressed, or 0) is declared with
+ * media_aux_scope in a2fc.c: load_overlay reads it before this file. */
 static unsigned char media_kind;      /* the media overlay running, or 0 */
 static unsigned int media_first[2];
 unsigned char __fastcall__ file_viewer(const struct Entry*, unsigned char);   /* open.s */
@@ -28,11 +29,17 @@ static unsigned char media_prepare(unsigned char kind)
     unsigned char viewer, ok=1, wrap=0;
     const struct Entry* e;
     album[0][0]=album[1][0]=0;
-    media_request=0;
     /* overlay_run calls us only for a recognized media ID. */
     if (pan->fs || !pan->path[0]) return 1;
     if (!pan->count || !overlay("OPEN")) return 0;
-    keep_tags(1);
+    /* The tags are set aside once per session, on the way in. On the way to
+     * a neighbour (media_request still holds the arrow) the panel may sit
+     * on another window of a large folder: saving again there would keep
+     * an empty set under that window's fingerprint, and Left back to the
+     * first window found nothing to give back (bug hunt 2). The bits and
+     * the fingerprint of the window they were set in are kept until the
+     * album is over; keep_tags(0) below gives them back only on it. */
+    if(!media_request) keep_tags(1);
     if(kind==V_PURPLE) {
         strcpy(selected.name,pan->e[cursor].name);
         selected.name[strlen(selected.name)-1]='1';

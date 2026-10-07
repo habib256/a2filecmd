@@ -87,11 +87,10 @@ static void dir_fail(void);
 #endif
 #define WINDOW (MAX_ENTRIES - 1)   /* disk entries per window: ".." on top of them */
 
-/* The fingerprint of what a panel shows (a2fc_mli.s, in LOWEXE): count,
- * window, path or its absence, and every byte of the entry table.
- * It tells whether a reread changed the screen, far more cheaply than
- * redrawing it. The assembler reads the panel through the offsets noted
- * next to the fields of struct Panel: moving them means updating it. */
+/* The fingerprint keep_tags takes of a panel (a2fc_mli.s): path, count,
+ * and the name and type of every entry. The assembler reads the panel
+ * through the offsets noted next to the fields of struct Panel: moving
+ * them means updating it. */
 unsigned int __fastcall__ panel_hash(const struct Panel* pan);
 
 enum { SORT_NAME, SORT_SIZE, SORT_TYPE, SORT_MODES };
@@ -2282,6 +2281,10 @@ static FILE* open_overlay(const char* name, unsigned char ask)
  * Only foreground viewers inherit this scope; every exit clears it. No AUX
  * write or /RAM reconstruction happens in this gate itself. */
 static unsigned char media_aux_scope;
+/* The arrow a media viewer pressed (media.h), 0 otherwise: while it stands,
+ * overlay_run is on its way to a neighbour and the session's tags stay
+ * set aside as they were saved on the way in. */
+static unsigned char media_request;
 #pragma rodata-name(push, "LC")
 static const char aux_warning[] = "Uses AUX memory: ALL /RAM files will be LOST. Continue?";
 static const char loading_tool[] = "Loading tool...";
@@ -2335,7 +2338,9 @@ static unsigned char load_overlay(const char* name, unsigned char any)
                 fclose(f); return 0;
             }
             big = OVL->flags & OVERLAY_BIG;
-            if (big && !batch_snapshot) { keep_tags(1); snapshot_entries(); }
+            /* not on the way to an album's neighbour: the session's save
+             * stands (media_prepare) */
+            if (big && !batch_snapshot && !media_request) { keep_tags(1); snapshot_entries(); }
             /* A short payload may be normal; an I/O error or bytes beyond
              * its window must never become executable, cached code. */
             if (fread(OVERLAY_WINDOW + 8, 1, (big ? OVERLAY_LARGE : OVERLAY_SMALL) - 8, f)
@@ -2433,6 +2438,7 @@ again:
     else selected.name[0] = 0;
     }
     if (!load_overlay(name, 1)) goto media_done;
+    media_request = 0;           /* the viewer sets it anew with an arrow */
     /* A big overlay has already set the tags aside and covered the entry
      * table as it loaded (load_overlay): even without an entry point, the
      * panels must be reread, otherwise the screen keeps the upper half of
@@ -2488,7 +2494,10 @@ again:
         goto again;
     }
 media_done:
-    media_aux_scope = 0;
+    /* No arrow left pending for the next session, which must set its tags
+     * aside on the way in (media_prepare, load_overlay): one that broke
+     * off on its way to a neighbour still had it. */
+    media_aux_scope = media_request = 0;
 }
 
 #pragma code-name (push, "LC")
@@ -3080,15 +3089,17 @@ void __fastcall__ edit_entry(const struct A2fcApi* a)
     if (is_dir(e)) {
         if (!prompt(ed_newtitle, NULL, 0)) return;
         if (strlen(pan->path) + 1 + strlen(input) >= PATH_LEN) { extern const char msg_toolong[]; strcpy(note, msg_toolong); return; }
-        sprintf(full, "%s/%s", pan->path, input);
+        sprintf(full, fmt_path, pan->path, input);
         if (exists(full)) { strcpy(note, ed_exists); return; }
         fresh = 1;
     } else if (!build_full(full, pan, e)) { extern const char msg_toolong[]; strcpy(note, msg_toolong); return; }
     else if (e->size > (unsigned long)EDIT_MAX) { strcpy(note, ed_toobig); return; }
     strcpy(reselect, fresh ? input : e->name);
-    /* The tags are sorted indexes: a new file shifts them, so they are
-     * forgotten in that case. */
-    if (edit_file(fresh, fresh ? 0x04 : e->type, fresh ? 0 : e->aux) == 1 && fresh) memset(picked, 0, sizeof picked);
+    /* The tags are bits by index: a new file shifts them, and keep_tags
+     * gives none back to a panel whose names moved (its fingerprint
+     * changed). Wiping picked[] here instead used to take the OTHER
+     * panel's tags with them: its fingerprint still matched. */
+    edit_file(fresh, fresh ? 0x04 : e->type, fresh ? 0 : e->aux);
 }
 #pragma rodata-name (pop)
 #pragma code-name (pop)

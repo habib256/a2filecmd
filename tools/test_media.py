@@ -35,6 +35,7 @@ static unsigned char read_panel(unsigned char p){
 }
 static unsigned char build_full(char*out,const struct Panel*p,const struct Entry*e){strcpy(out,e->name);return 1;}
 static unsigned int ticks;static void activity_tick(void){++ticks;}
+static unsigned char media_request;   /* a2fc.c declares it above load_overlay */
 #include "src/media.h"
 unsigned char slideshow;char slide_getc(void){return cgetc();}   /* display.s */
 unsigned char file_viewer(const struct Entry*e,unsigned char pic){   /* open.s in the program */
@@ -50,7 +51,9 @@ int main(int argc,char**argv){
   read_panel(0);panels[0].cursor=2;panels[0].tags[0]=5;media_prepare(1);
   if(strcmp(album[0],"A.MB")||strcmp(album[1],"D.MB")||panels[0].cursor!=2||panels[0].tags[0]!=5)return 1;
   if(!media_key(KEY_LEFT)||media_request!=KEY_LEFT)return 2;
-  panels[0].cursor=0;media_prepare(1);if(media_key(KEY_LEFT)||media_request)return 3;
+  /* overlay_run clears the arrow once the neighbour's viewer is loaded
+   * (media_prepare no longer does: it tells a session's first pass) */
+  media_request=0;panels[0].cursor=0;media_prepare(1);if(media_key(KEY_LEFT)||media_request)return 3;
  }else if(atoi(argv[1])==2){
   total=300;for(i=0;i<300;++i)sprintf(all[i].name,"F%03u.PT3",i);
   strcpy(all[0].name,"A.MB");strcpy(all[299].name,"Z.MB");read_panel(0);panels[0].cursor=0;media_prepare(1);
@@ -95,6 +98,19 @@ int main(int argc,char**argv){
    * panel is put back as it was. */
   failure=2;panels[0].first=278;
   if(media_prepare(1)||album[1][0]||panels[0].first!=278||panels[0].cursor!=21||panels[0].tags[2]!=0x40)return 37;
+ }else if(atoi(argv[1])==11){
+  /* Bug hunt 2 (bench/probe_album_window_tags.py): on the way to a neighbour
+   * in another window (media_request holds the arrow), media_prepare saved
+   * the tags again -- an empty set under the other window's fingerprint --
+   * and Left back to the first window found none to give back. The save of
+   * the session's first pass stands. */
+  total=4;strcpy(all[0].name,"A.MB");strcpy(all[1].name,"B.PT3");strcpy(all[2].name,"C.MB");strcpy(all[3].name,"D.MB");
+  read_panel(0);panels[0].cursor=2;panels[0].tags[0]=5;media_request=0;
+  if(!media_prepare(1)||tags[0]!=5)return 40;
+  media_request=KEY_RIGHT;memset(panels[0].tags,0,18);panels[0].cursor=3;
+  if(!media_prepare(1)||tags[0]!=5)return 41;      /* not re-saved over the session's bits */
+  media_request=0;memset(panels[0].tags,0,18);panels[0].tags[0]=2;
+  if(!media_prepare(1)||tags[0]!=2)return 42;      /* a new session saves again */
  }else if(atoi(argv[1])==7){
   total=4;strcpy(all[0].name,"A.MB");strcpy(all[1].name,"BAD.MB");strcpy(all[2].name,"C.MB");
   read_panel(0);panels[0].cursor=0;failure=4;
@@ -153,5 +169,6 @@ class Media(unittest.TestCase):
  def test_window_crossing_and_read_failure(self):subprocess.run([str(self.exe),'2'],check=True)
  def test_parent_search_across_windows_and_errors(self):subprocess.run([str(self.exe),'4'],check=True)
  def test_shrunk_directory_cannot_restore_invalid_cursor(self):subprocess.run([str(self.exe),'5'],check=True)
+ def test_album_neighbour_keeps_session_tags(self):subprocess.run([str(self.exe),'11'],check=True)
  def test_credits_fixed_fields_and_controls(self):subprocess.run([str(self.exe),'3'],check=True)
 if __name__=='__main__':unittest.main()
