@@ -68,7 +68,7 @@ char full[PATH_LEN + NAME_LEN], other_full[PATH_LEN + NAME_LEN];
 void __fastcall__ keep_tags(unsigned char save);
 unsigned int __fastcall__ panel_hash(const struct Panel* pan);
 unsigned char paths_nested(void);
-static struct Entry table[2][MAX_ENTRIES];
+static struct Entry table[2][MAX_ENTRIES], snapshot[MAX_ENTRIES];
 
 static void put(unsigned char p, const char* name, unsigned char type)
 {   /* add_entry: the name padded with zeros */
@@ -144,6 +144,14 @@ int main(void)
 
     start(); start(); keep_tags(0);                         /* saved twice, as a batch does: still back */
     if (!tagged(1, 2) || !tagged(1, 3)) return 70;
+
+    /* The batch: its overlay covers the tables; it re-tags by name against
+     * its snapshot and points the panel at that snapshot for the save. */
+    start(); memcpy(snapshot, table[1], sizeof snapshot); memset(table, 0xEE, sizeof table);
+    tag(1, 3); panels[1].e = snapshot; keep_tags(1); panels[1].e = table[1];
+    memset(panels[1].tags, 0, sizeof panels[1].tags); memcpy(table[1], snapshot, sizeof snapshot);
+    keep_tags(0);
+    if (!tagged(1, 3) || tagged(1, 2)) return 71;
 
     /* a full table: the last entry and the last tag byte are reached */
     memset(panels, 0, sizeof panels);

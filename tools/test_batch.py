@@ -19,7 +19,7 @@ C=r'''
 #define NAME_LEN 17
 #define MAX_ENTRIES 140
 struct Entry{char name[17];unsigned char type,access;unsigned int aux,blocks;unsigned long size;unsigned int mdate;};
-struct Panel{char path[64];unsigned char count,fs,tags[18];};
+struct Panel{char path[64];unsigned char count,fs,tags[18];struct Entry* e;};
 struct A2fcApi{unsigned char arg;};
 struct MoveBatch{char list[64],source[64],target[64],reason[80];unsigned char count,index,owned,ready;};
 static struct MoveBatch state;
@@ -81,7 +81,7 @@ static int bremove(const char*p){if(eq("remove")||eq("reserve_close_remove")||eq
 int main(int argc,char**argv){
  struct A2fcApi api;unsigned int i,n;char dst[81];FILE*f;
  fault=argv[3];active=argc>4?atoi(argv[4]):0;
- strcpy(panels[active].path,argv[1]);strcpy(panels[!active].path,argv[2]);panels[active].count=3;
+ strcpy(panels[active].path,argv[1]);strcpy(panels[!active].path,argv[2]);panels[active].count=3;panels[0].e=panels[1].e=entries;
  for(i=0;i<3;++i){entries[i].name[0]='A'+i;entries[i].type=4;entries[i].access=0xC3;entries[i].size=4;}
  set_tag(&panels[active],0,1);set_tag(&panels[active],2,1);
  if(eq("dirs")){entries[1].type=15;set_tag(&panels[active],1,1);}   /* B is a directory, marked too */

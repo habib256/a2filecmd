@@ -74,6 +74,7 @@ def main():
             solid, rows, colours = solid_bands(urllib.request.urlopen(p.base + '/screen.ppm').read())
             ok('en bandes unies, quinze couleurs', solid == rows and colours >= 15, (solid, rows, colours))
             s.key(ESC); s.wait(lambda: s.value('view', 1) == 0, 'retour'); p.stable()
+            s.select('..', 40); s.key(RET); s.wait(lambda: s.has('ESCHERWATER'), 'PICTURES'); p.stable()
             s.select('..', 40); s.key(RET); s.wait(lambda: s.has('FONTS.SHAPES/'), 'DEMO'); p.stable()
             s.select('DISKS', 40); s.key(RET); s.wait(lambda: s.has(volume + '/DEMO/DISKS'), 'DISKS'); p.stable()
             s.select('TINY.PO', 40); s.key(RET)

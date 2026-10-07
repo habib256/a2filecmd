@@ -274,7 +274,9 @@ pyes:   ldx #0
 ; and D asks for tagged files by their number, not by their names. Such a
 ; panel comes back untagged: read_panel has emptied its tags. panel_hash
 ; is a 16-bit fingerprint: one changed panel in 65,536 passes for
-; unchanged (tools/test_keep_tags.py).
+; unchanged (tools/test_keep_tags.py). A caller whose tables are covered
+; by its own overlay points the panel at the names its bits refer to
+; first (the batch, at its snapshot).
         .export _keep_tags
         .import _panels, _picked
         .importzp ptr3, tmp4
@@ -282,6 +284,7 @@ PANEL_SIZE = 98                 ; sizeof(struct Panel): test_keep_tags.py checks
 TAGS       = 76                 ; offsetof(struct Panel, tags)
 TAG_BYTES  = 18                 ; sizeof panels[0].tags
         .segment "LOWBSS"
+        .export tag_print       ; the benches read it
 tag_print:      .res 4          ; low bytes of both panels, then high bytes
         .segment "CODE"
 _keep_tags:

@@ -3142,10 +3142,10 @@ static void view_help(void)
     a2file_file(help_file);
     f = fopen(other_full, "rb");
     if (!f) { { extern const char msg_nohelp[]; message(msg_nohelp); }; return; }
+    keep_tags(1);                /* before the text covers the entry tables: their fingerprint is taken here */
     n = fread(HELP_BUF, 1, 0x1FF0, f);
     fclose(f);
     HELP_BUF[n] = 0;
-    keep_tags(1);
     a2fc_view = 4;
     clrscr();
     hs = HELP_BUF;

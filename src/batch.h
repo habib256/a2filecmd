@@ -153,7 +153,11 @@ static void batch_finish(void)
         if (!bad && fread(copy_buf, 1, 1, f)) bad = 1;
         if (!batch_close(f, bad)) bad = 1;
     }
-    keep_tags(1); /* overlay_run restores these exact-name marks after rereading */
+    /* overlay_run restores these exact-name marks after rereading -- to a
+     * panel whose fingerprint matches the one taken here. The tables under
+     * this overlay are its own code by now: the names the marks were set
+     * against are the snapshot's, so the fingerprint is taken over it. */
+    { struct Entry* e = pan->e; pan->e = BATCH_ENTRIES; keep_tags(1); pan->e = e; }
     sprintf(note, bt_s7, MB->index, MB->count, MB->reason);
     if (bad) strcpy(note, batch_kept);
     else batch_discard();
