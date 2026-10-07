@@ -130,7 +130,12 @@ coûte 10 à 20 octets, à écrire dans `open.s` **et** dans
 plein (3 / 0). Les nouvelles surcouches vont sur 800K et XL, pas sur la
 140K.
 
-Méthode, avant d'ajouter des formats un par un :
+- [ ] **Choisir les prochains formats à partir de fichiers réels.** Recenser
+  un corpus, classer les inconnus par fréquence, puis améliorer IDENT avec
+  des signatures externes. Cela donnera une priorité mesurée aux lecteurs
+  de la 1.1.
+
+Méthode pour réaliser ce choix, avant d'ajouter des formats un par un :
 - [ ] **Recensement** (`tools/corpus_survey.py`) : parcourir Asimov et les
   collections archive.org, passer chaque fichier dans une copie Python des
   règles d'identification d'A2FC, publier le taux de couverture et la
