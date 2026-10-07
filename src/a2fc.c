@@ -269,8 +269,11 @@ static unsigned char dir_img;        /* dir_next reads from an image */
 static unsigned char dos_unit;
 /* A logical DOS 3.3 sector (T, S) to a ProDOS half-block, on the same
  * disk: the inverse of the SECTORS table of po2dsk.py. Value = block within
- * the track (T x 8 + value >> 1) and half (value & 1). */
-static const unsigned char DOS_TS[16] = { 0, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 15 };
+ * the track (T x 8 + value >> 1) and half (value & 1). The permutation is
+ * its own inverse: the same 16 bytes as IMG_SECT, which it reuses. */
+#ifndef DOS_TS
+#define DOS_TS IMG_SECT
+#endif
 
 /* The disk image suffixes, and what each one says: DI_PO ProDOS order,
  * DI_DSK DOS 3.3 order, DI_2MG a 2IMG header, DI_DC a DiskCopy 4.2
@@ -1113,11 +1116,13 @@ static void select_name(struct Panel* pan, const char* name)
 
 /* Full path of the entry: "/VOL/DIR/NAME", or "/VOL" from the volume
  * list. Returns 0 if the result would exceed the 64 ProDOS characters. */
+/* named, so that DISKIMG shares it (S_SLASH) instead of a copy */
+static const char fmt_path[] = "%s/%s";
 static unsigned char build_full(char* out, const struct Panel* pan, const struct Entry* e)
 {
     if (!pan->path[0]) { strcpy(out, e->name); return 1; }
     if (strlen(pan->path) + 1 + strlen(e->name) >= PATH_LEN) return 0;
-    sprintf(out, "%s/%s", pan->path, e->name);
+    sprintf(out, fmt_path, pan->path, e->name);
     return 1;
 }
 
@@ -3242,7 +3247,7 @@ static const char S_NAME[] = "Image name, without suffix";
 static const char S_LONG[] = "Name too long.";
 static const char S_ORDER[] = "\1P ProDOS order (.PO) or D DOS 3.3 order (.DSK)?";
 static const char S_DOT[] = "%s.%s";
-static const char S_SLASH[] = "%s/%s";
+#define S_SLASH fmt_path         /* the resident's, build_full's */
 static const char S_DSK[] = "DSK";
 static const char S_PO[] = "PO";
 static const char S_CLEANUP[] = "Cleanup failed: %s retained.";
@@ -3300,7 +3305,9 @@ typedef char diskimg_state_fits[0x200 - sizeof(struct DiskImg) + 1];
 
 /* ProDOS block b of a track occupies two physical sectors (low half then
  * high half): these, in pairs, as in po2dsk.py. */
-static const unsigned char DSK_SECTORS[16] = { 0x0, 0xE, 0xD, 0xC, 0xB, 0xA, 0x9, 0x8, 0x7, 0x6, 0x5, 0x4, 0x3, 0x2, 0x1, 0xF };
+#ifndef DSK_SECTORS
+#define DSK_SECTORS IMG_SECT    /* the resident's table: the same 16 bytes */
+#endif
 
 /* "slot s drive d" of the unit, in input. */
 static const char* di_where(unsigned char unit)
@@ -5174,7 +5181,7 @@ static void rename_selected(const struct Entry* e)
     if (!prompt(at_name, e->name, 0)) return;
     if (!build_full(full, pan_at(active), e)) { too_long(); return; }
     if (strlen(pan_at(active)->path) + 1 + strlen(input) >= PATH_LEN) { too_long(); return; }
-    sprintf(other_full, "%s/%s", pan_at(active)->path, input);
+    sprintf(other_full, fmt_path, pan_at(active)->path, input);
     if (rename(full, other_full)) { report_error("Rename"); return; }
     ++a2fc_ops;
     read_panel(active);
@@ -5188,7 +5195,7 @@ static void make_directory(void)
     if (!pan->path[0]) { message(at_novol); return; }
     if (!prompt(at_dir, NULL, 0)) return;
     if (strlen(pan->path) + 1 + strlen(input) >= PATH_LEN) { too_long(); return; }
-    sprintf(full, "%s/%s", pan->path, input);
+    sprintf(full, fmt_path, pan->path, input);
     if (mkdir(full)) { report_error("Mkdir"); return; }
     ++a2fc_ops;
     refresh_both();

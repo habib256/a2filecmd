@@ -44,7 +44,7 @@ static int seek_stream(FILE*f,long o,int w){return mode==6?-1:fseek(f,o,w);}
 #define remove discard
 #define fwrite write_data
 #define fseek seek_stream
-'''+(ROOT/'src/file_output.h').read_text()+section('static const char S_TITLEFMT[]','#define DI_BLOCK')+section('static const unsigned char DSK_SECTORS','/* "slot s drive d"')+section('static unsigned char di_xfer(', '/* Staging block i:')+section('static const char* di_error(', 'void __fastcall__ diskimg_entry(')+r'''
+'''+(ROOT/'src/file_output.h').read_text()+section('static const char S_TITLEFMT[]','#define DI_BLOCK')+'static const unsigned char IMG_SECT[16] = { 0x0, 0xE, 0xD, 0xC, 0xB, 0xA, 0x9, 0x8, 0x7, 0x6, 0x5, 0x4, 0x3, 0x2, 0x1, 0xF };\n'+section('#ifndef DSK_SECTORS','/* "slot s drive d"')+section('static unsigned char di_xfer(', '/* Staging block i:')+section('static const char* di_error(', 'void __fastcall__ diskimg_entry(')+r'''
 #undef fopen
 #undef fclose
 int main(int argc,char**argv){

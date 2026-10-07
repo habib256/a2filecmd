@@ -96,7 +96,7 @@ static void progress_bar(const char* s, unsigned long d, unsigned long t) {
 static unsigned char prompt(const char* l, const char* i, unsigned char h) {
     (void)l; (void)i; (void)h; strcpy(input, "WIDGET"); return 1;
 }
-''' + section('static unsigned char build_full(', 'static const char read_path_error[]') \
+''' + section('static const char fmt_path[]', 'static const char read_path_error[]') \
   + section('static const char cmp_pick[]', '#pragma static-locals (pop)') + SEARCH + r'''
 int main(int argc, char** argv) {
     struct A2fcApi api;
