@@ -126,7 +126,8 @@ static int drive;                    /* the disk in the drive */
 static unsigned char bad2;           /* its block 2 does not read */
 static const char* script;
 static char input[18], notes[80], full[90], said[65536];
-static unsigned int writes;
+static unsigned int writes, reads;
+static int twin;                     /* ON_LINE lists the drive's volume twice */
 static void events(void) {
     while (*script == '@') {
         drive = script[1] == 'E' ? 0 : script[1] - 'A';
@@ -142,9 +143,11 @@ static unsigned char mock(unsigned char cmd, void* p) {
         memset(o->buffer, 0, 256);
         o->buffer[0] = 0x60 | (h[4] & 15);
         memcpy(o->buffer + 1, h + 5, h[4] & 15);
+        if (twin) { o->buffer[16] = 0xE0 | (h[4] & 15); memcpy(o->buffer + 17, h + 5, h[4] & 15); }
         return 0;
     }
     if (b->unit != 0x60 || b->block >= NB) return 0x27;
+    if (cmd == 0x80) ++reads;
     if (cmd == 0x80) {
         if (bad2 && b->block == 2) return 0x27;
         memcpy(b->buffer, disks[drive] + b->block * 512, 512);
@@ -190,16 +193,95 @@ int main(int argc, char** argv)
     script = argv[2];
     strcpy(selected.name, "/DISKA");
     selected.mdate = 6;
+    /* argv[3]: "path" opens /DISKA from a panel path, "twin" too with a
+     * second /DISKA on line (unit $E0). Otherwise the volume-list row. */
+    if (argc > 3) { strcpy(panels[0].path, "/DISKA"); twin = !strcmp(argv[3], "twin"); }
     api.panels = panels; api.active = &active; api.selected = &selected;
     api.copy_buf = copy; api.note = notes; api.input = input; api.full = full;
     api.cfg_path = "/BOOT/A2FILE/A2FILE.CFG";
     api.memcpy = memcpy; api.strcpy = strcpy; api.strcmp = strcmp; api.strlen = strlen;
-    api.mli = mock; api.cgetc = key; api.prompt = ask; api.confirm = yes;
+    api.mli = mock; api.cgetc = key; api.prompt = ask; api.confirm = yes; api.sprintf = sprintf;
     api.message = say; api.cprintf = out; api.cputs = puts_; api.cputc = putc_;
     api.gotoxy = xy; api.revers = rev; api.clrscr = cls;
     plugin_entry(&api);
     f = fopen(argv[1], "wb"); fwrite(disks, 1, sizeof disks, f); fclose(f);
     printf("%u writes\n%s\n%s", writes, notes, said);
+    return 0;
+}
+'''
+
+# The whole overlay on an IMAGE FILE (the panel inside /H, the image
+# selected), through the real image_open: argv the host image, its name,
+# the key script ('!' is ESC; the ERASE prompt answers ERASE).
+IMAGE = PREFIX + r'''
+#include <stdarg.h>
+static void mock_clearerr(FILE*);
+#define clearerr mock_clearerr
+#include "src/plugins/blkedit.c"
+#undef clearerr
+static unsigned char errflag;
+static const char* host_image;
+static const char* script;
+static struct DirEntry entry;
+static unsigned char listed;
+static char input[18], notes[80], full[90], said[8192];
+static void mock_clearerr(FILE* f) { (void)f; errflag = 0; }
+static FILE* open_image(const char* path, const char* mode) { (void)path; return fopen(host_image, mode); }
+static size_t read_data(void* p, size_t s, size_t n, FILE* f) {
+    size_t r; if (errflag) return 0; r = fread(p, s, n, f); if (r != n) errflag = 1; return r;
+}
+static size_t write_data(const void* p, size_t s, size_t n, FILE* f) {
+    size_t r; if (errflag) return 0; r = fwrite(p, s, n, f); if (r != n) errflag = 1; return r;
+}
+static unsigned char dir_open(const char* path) { (void)path; listed = 0; return 1; }
+static unsigned char dir_next(void) { return !listed++; }
+static void dir_close(void) {}
+static void say(const char* s) {
+    if (strlen(said) + strlen(s) + 2 < sizeof said) { strcat(said, s); strcat(said, "\n"); }
+}
+static char key(void) { char c = *script ? *script++ : '!'; return c == '!' ? KEY_ESC : c; }
+static unsigned char ask(const char* q, const char* d, unsigned char n) {
+    (void)q; (void)d; (void)n; strcpy(input, "ERASE"); return 1;
+}
+static unsigned char yes(const char* q) { (void)q; return 1; }
+static int out(const char* f, ...) {
+    char line[256]; va_list ap;
+    if (!strcmp(f, "%02X") || !strcmp(f, "%02X ") || !strcmp(f, "%03X  ")) return 0;
+    va_start(ap, f); vsnprintf(line, sizeof line, f, ap); va_end(ap);
+    say(line); return 0;
+}
+static void puts_(const char* s) { (void)s; }
+static void putc_(char c) { (void)c; }
+static void xy(unsigned char x, unsigned char y) { (void)x; (void)y; }
+static unsigned char rev(unsigned char r) { (void)r; return 0; }
+static void cls(void) {}
+static unsigned char nomli(unsigned char cmd, void* p) { (void)cmd; (void)p; abort(); }
+int main(int argc, char** argv)
+{
+    static struct A2fcApi api;
+    static struct Panel panels[2];
+    static struct Entry selected;
+    static unsigned char active, copy[512];
+    FILE* f;
+    (void)argc;
+    host_image = argv[1];
+    f = fopen(argv[1], "rb"); fseek(f, 0, SEEK_END); entry.size = ftell(f); fclose(f);
+    strcpy(entry.name, argv[2]); strcpy(selected.name, argv[2]); selected.access = 0xC3;
+    script = argv[3];
+    strcpy(panels[0].path, "/H"); sprintf(full, "/H/%s", argv[2]);
+    api.panels = panels; api.active = &active; api.selected = &selected;
+    api.copy_buf = copy; api.note = notes; api.input = input; api.full = full;
+    api.cfg_path = "/BOOT/A2FILE/A2FILE.CFG";
+    api.memcpy = memcpy; api.strcpy = strcpy; api.strcmp = strcmp; api.strlen = strlen;
+    api.mli = nomli; api.cgetc = key; api.prompt = ask; api.confirm = yes;
+    api.message = say; api.cprintf = out; api.cputs = puts_; api.cputc = putc_;
+    api.gotoxy = xy; api.revers = rev; api.clrscr = cls;
+    api.fread = read_data; api.fwrite = write_data; api.fseek = fseek;
+    api.fopen = open_image; api.fclose = fclose;
+    api.dir_open = dir_open; api.dir_next = dir_next; api.dir_close = dir_close;
+    api.dir_entry = &entry;
+    plugin_entry(&api);
+    printf("%s\n%s", notes, said);
     return 0;
 }
 '''
@@ -356,6 +438,62 @@ class BlkEdit(unittest.TestCase):
         self.assertEqual(self.edit(data, 0, 2)[0], 'readfail r+b')
 
 
+class SmallImage(unittest.TestCase):
+    """An image of one or two blocks has no block 2.
+
+    Before (bk/mk.py, 2026-10-07): the identity read block 2 on the first
+    pass, failed, and BLKEDIT closed with "Block read failed." on a 1- or
+    2-block .PO -- a regression of the wrong-disk guard, since image_open
+    accepts any count from 1. Now block 0 is the identity of such an image,
+    and the edit lands."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory(prefix='blkedit-small-')
+        cls.p = Path(cls.tmp.name)
+        (cls.p / 'img.c').write_text(IMAGE)
+        cls.exe = cls.p / 'img'
+        subprocess.run(['cc', '-std=c99', '-Wno-unknown-pragmas', '-I', str(ROOT),
+                        str(cls.p / 'img.c'), '-o', str(cls.exe)],
+                       check=True, capture_output=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def run_image(self, data, script, name='IMAGE.PO'):
+        path = self.p / name
+        path.write_bytes(data)
+        out = subprocess.check_output([str(self.exe), str(path), name, script], text=True)
+        return out, path.read_bytes()
+
+    def test_one_and_two_block_images_open_and_take_an_edit(self):
+        for n in (1, 2):
+            for block, script in ((0, 'ABWx!'), (n - 1, 'N' * (n - 1) + 'ABWx!')):
+                with self.subTest(blocks=n, block=block):
+                    data = bytes((i * 7 + n) & 255 for i in range(512 * n))
+                    out, after = self.run_image(data, script)
+                    self.assertNotIn('Block read failed', out)
+                    self.assertIn('Block %u written and read back identical' % block, out)
+                    want = bytearray(data); want[block * 512] = 0xAB
+                    self.assertEqual(after, bytes(want))
+
+    def test_block_0_of_a_small_image_written_twice(self):
+        """Block 0 is the identity there: writing it renews it, as block 2
+        does on a bigger disk."""
+        data = bytes(512)
+        out, after = self.run_image(data, 'ABWxCDWx!')
+        self.assertEqual(out.count('read back identical'), 2)
+        self.assertEqual(after[:2], bytes([0xAB, 0xCD]))
+        self.assertEqual(after[2:], data[2:])
+
+    def test_a_three_block_image_still_signs_block_2(self):
+        data = bytes((i * 3) & 255 for i in range(1536))
+        out, after = self.run_image(data, 'NNABWx!')
+        self.assertIn('Block 2 written and read back identical', out)
+        self.assertEqual(after[1024], 0xAB)
+
+
 def volume(name, seed, header_from=None, block2_from=None):
     """A sixteen-block ProDOS volume whose every byte depends on `seed`.
     `header_from` keeps another volume's block 2 bytes 0-42 (links and the
@@ -390,14 +528,11 @@ class WrongDisk(unittest.TestCase):
     through all the same. Writing block 2 (script NNABWxCDW@B) put disk
     A's edited volume header over disk B's: B was renamed DISKA.
 
-    The identity is block 2 as read when the disk was opened, all 512
-    bytes signed by two pairs of 8-bit running sums (one pair per half:
-    the sum, and the sum of the sums, which sees positions) -- 32 bits,
-    because an exact copy of block 2 does not fit in what is left of this
-    overlay. A single changed byte always moves the plain sum; several
-    changed bytes escape only if all four sums collide. A copy whose block
-    2 is identical byte for byte cannot be told apart at all
-    (test_an_exact_copy_of_block_2_is_not_detected)."""
+    The identity is block 2 as read when the disk was opened, its CRC-32
+    (since 2026-10-07; before, two pairs of 8-bit running sums that the
+    shapes of test_signature_collisions_of_the_running_sums_are_refused
+    went through). A copy whose block 2 is identical byte for byte cannot
+    be told apart at all (test_an_exact_copy_of_block_2_is_not_detected)."""
 
     A = volume('DISKA', 1)
     B = volume('DISKB', 2)
@@ -505,6 +640,75 @@ class WrongDisk(unittest.TestCase):
         self.assertEqual(disks[0], self.edited(self.A, 2))
         self.assertEqual(disks[1:], [self.B, self.C, self.D])
 
+    def run_disks(self, disks, script, *mode):
+        path = self.p / 'disks'
+        path.write_bytes(b''.join(disks))
+        out = subprocess.check_output([str(self.exe), str(path), script] + list(mode), text=True)
+        raw = path.read_bytes()
+        return int(out.split()[0]), out, [raw[i * 8192:(i + 1) * 8192] for i in range(4)]
+
+    @staticmethod
+    def with_block2(disk, b2):
+        d = bytearray(disk)
+        d[1024:1536] = b2
+        return bytes(d)
+
+    def collision_shapes(self):
+        """Block 2 of disk A, then a disk that differs from it only in its
+        block 2, in each way the former signature (two pairs of 8-bit running
+        sums per half) could not see -- bug-hunt probe bk/coll.py."""
+        a2 = bytearray(self.A[1024:1536])
+        shapes = []
+        c = bytearray(a2); c[100] ^= 0x80; c[102] ^= 0x80
+        shapes.append(('bit 7 of two bytes an even distance apart', a2, c))
+        i = 60
+        while (a2[i] - a2[i + 128]) % 2 or a2[i] == a2[i + 128]:
+            i += 1
+        c = bytearray(a2); c[i], c[i + 128] = c[i + 128], c[i]
+        shapes.append(('two bytes 128 apart swapped', a2, c))
+        base = bytearray(a2); e1, e3 = 4 + 39, 4 + 39 * 3
+        base[e3 + 38] = (base[e3 + 38] + sum(base[e1:e1 + 39]) - sum(base[e3:e3 + 39])) & 255
+        c = bytearray(base); c[e1:e1 + 39], c[e3:e3 + 39] = base[e3:e3 + 39], base[e1:e1 + 39]
+        shapes.append(('entries 1 and 3 of equal byte sums swapped', base, c))
+        return shapes
+
+    @staticmethod
+    def old_signature(b2):
+        s = t = u = v = 0
+        for i in range(256):
+            s = (s + b2[i]) & 255; t = (t + s) & 255
+            u = (u + b2[256 + i]) & 255; v = (v + u) & 255
+        return s, t, u, v
+
+    def test_signature_collisions_of_the_running_sums_are_refused(self):
+        """Before: each of these disks, swapped in at the ERASE prompt,
+        passed the 32-bit running-sum identity and received disk A's block 5
+        (1 write, "read back identical"). The CRC-32 tells every one apart."""
+        for name, a2, c2 in self.collision_shapes():
+            with self.subTest(name):
+                self.assertNotEqual(a2, c2)
+                self.assertEqual(self.old_signature(a2), self.old_signature(c2))
+                a, c = self.with_block2(self.A, a2), self.with_block2(self.C, c2)
+                writes, out, disks = self.run_disks([a, self.B, c, self.D], 'NNNNNABW@Cx!')
+                self.assertEqual(writes, 0, out)
+                self.assertEqual(disks, [a, self.B, c, self.D])
+                self.assertIn('NOT WRITTEN: NOT /DISKA AS OPENED', out)
+
+    def test_a_panel_path_on_one_volume_is_written(self):
+        writes, out, disks = self.run_disks([self.A, self.B, self.C, self.D], 'NNNNNABWx!', 'path')
+        self.assertEqual(writes, 1)
+        self.assertEqual(disks[0], self.edited(self.A, 5))
+
+    def test_two_volumes_of_the_name_refuse_a_panel_path(self):
+        """Before: two drives named /DISKA, the panel inside /DISKA: unit_of
+        took the first ON_LINE record while ProDOS resolved the panel's path
+        to either. Now refused before any block is read; a volume-list row,
+        opened by its unit, still works (test_the_opened_disk_is_written_when_it_stays)."""
+        writes, out, disks = self.run_disks([self.A, self.B, self.C, self.D], 'NNNNNABWx!', 'twin')
+        self.assertEqual(writes, 0)
+        self.assertEqual(disks, [self.A, self.B, self.C, self.D])
+        self.assertEqual(out.splitlines()[1], 'Two volumes named /DISKA: pick it in the volume list.')
+
     def test_an_exact_copy_of_block_2_is_not_detected(self):
         """The limit, measured: disk D has disk A's block 2 byte for byte
         and other blocks elsewhere. Nothing read from block 2 can tell
@@ -515,6 +719,68 @@ class WrongDisk(unittest.TestCase):
         want = bytearray(self.D)
         want[2560:3072] = self.edited(self.A, 5)[2560:3072]
         self.assertEqual(disks[3], bytes(want))
+
+
+CRC_SIM = r'''
+#include <stdio.h>
+extern unsigned char crc[4];
+void __fastcall__ crc512(const unsigned char* p);
+static unsigned char block[512];
+int main(void)
+{
+    FILE* f = fopen("block.bin", "rb");
+    if (!f || fread(block, 1, 512, f) != 512) return 9;
+    fclose(f);
+    crc512(block);
+    printf("%02X%02X%02X%02X\n", crc[3], crc[2], crc[1], crc[0]);
+    return 0;
+}
+'''
+
+
+class Crc512Native(unittest.TestCase):
+    """crc512 of blkedit.s, the identity W compares, assembled by each
+    edition's ca65 and run under sim65 on its processor: zlib's CRC-32 of
+    the block without the final inversion (the host tests use the C twin
+    under PLUGIN_HOST)."""
+
+    @classmethod
+    def setUpClass(cls):
+        from test_wipe import toolchains
+        chains = toolchains()
+        if not chains:
+            raise unittest.SkipTest('no cc65 toolchain')
+        cls.tmp = tempfile.TemporaryDirectory(prefix='blkedit-crc-')
+        d = cls.dir = Path(cls.tmp.name)
+        (d / 'harness.c').write_text(CRC_SIM)
+        (d / 'crc.s').write_text((ROOT / 'src/plugins/blkedit.s').read_text())
+        cls.exe = {}
+        for cpu, cl65, sim65, env, cfgdir in chains:
+            exe = d / f'crc-{cpu}'
+            env = {**os.environ, **env}
+            subprocess.run([cl65, '-t', cpu, '-O', '-o', str(exe), str(d / 'harness.c'), str(d / 'crc.s')],
+                           check=True, cwd=d, env=env, capture_output=True)
+            cls.exe[cpu] = (sim65, exe, env)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_matches_zlib(self):
+        import random
+        import zlib
+        rng = random.Random(7)
+        blocks = [bytes(512), b'\xff' * 512, bytes(range(256)) * 2, volume('DISKA', 1)[1024:1536]]
+        blocks += [bytes(rng.randrange(256) for _ in range(512)) for _ in range(4)]
+        for data in blocks:
+            want = '%08X' % (zlib.crc32(data) ^ 0xFFFFFFFF)
+            (self.dir / 'block.bin').write_bytes(data)
+            for cpu, (sim65, exe, env) in self.exe.items():
+                with self.subTest(cpu=cpu, data=data[:4].hex()):
+                    out = subprocess.run([sim65, str(exe)], cwd=self.dir, env=env,
+                                         capture_output=True, text=True, timeout=120)
+                    self.assertEqual(out.returncode, 0, out.stderr)
+                    self.assertEqual(out.stdout.strip(), want)
 
 
 class BootVolumeGuard(unittest.TestCase):

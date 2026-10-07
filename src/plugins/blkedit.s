@@ -26,3 +26,53 @@ _v_prompt: jmp ($3FB2)
 _v_strcpy: jmp ($3FEE)
 .export _v_strcmp
 _v_strcmp: jmp ($3FF0)
+
+; crc512(p): the CRC-32 of the 512 bytes at p into _crc, low byte first --
+; reflected, polynomial $EDB88320, initial value $FFFFFFFF, no final
+; inversion (zlib's crc32 of the block, xor $FFFFFFFF). Bit by bit: about
+; 0.2 s at 1 MHz, three times per W at most; a table would be 1 KB.
+.importzp ptr1, tmp1
+.export _crc512, _crc
+.segment "BSS"
+_crc: .res 4
+.segment "CODE"
+_crc512:
+        sta ptr1
+        stx ptr1+1
+        lda #$FF
+        sta _crc
+        sta _crc+1
+        sta _crc+2
+        sta _crc+3
+        ldx #2                  ; two pages
+        ldy #0
+@byte:  lda (ptr1),y
+        eor _crc
+        sta _crc
+        lda #8
+        sta tmp1
+@bit:   lsr _crc+3
+        ror _crc+2
+        ror _crc+1
+        ror _crc
+        bcc @next
+        lda _crc+3
+        eor #$ED
+        sta _crc+3
+        lda _crc+2
+        eor #$B8
+        sta _crc+2
+        lda _crc+1
+        eor #$83
+        sta _crc+1
+        lda _crc
+        eor #$20
+        sta _crc
+@next:  dec tmp1
+        bne @bit
+        iny
+        bne @byte
+        inc ptr1+1
+        dex
+        bne @byte
+        rts

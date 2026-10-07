@@ -19,11 +19,13 @@
  * write protection, a failing sector) is a failure here, not a success.
  *
  * A raw write goes to whatever disk is in the drive when it happens. After
- * ERASE, block 2 is read again and its 32-bit signature compared with the
- * one taken when the disk was opened (same_disk): a floppy changed while
- * the block was being edited, or during the prompt, is not written, and the
- * edit stays in the buffer until the right disk is back. A copy whose block
- * 2 is identical byte for byte cannot be told apart, and a swap between
+ * ERASE, block 2 is read again and its CRC-32 compared with the one taken
+ * when the disk was opened (same_disk): a floppy changed while the block
+ * was being edited, or during the prompt, is not written, and the edit
+ * stays in the buffer until the right disk is back. An image of one or two
+ * blocks has no block 2: its block 0 is the identity. A copy whose block 2
+ * is identical byte for byte cannot be told apart, nor -- one chance in
+ * 2^32 -- one whose block 2 differs and has the same CRC; and a swap between
  * that check and the write itself cannot be excluded on this hardware.
  *
  * The volume A2FC is running from is refused outright. ProDOS holds
@@ -46,6 +48,7 @@
  * of the core's. */
 #define UTIL_FIXED_API
 #define UTIL_VOLUME
+#define UTIL_TWIN
 #define UTIL_WRITE
 #define IMAGEIO_WRITE
 #include "util.h"
@@ -102,8 +105,8 @@ static unsigned char dirty;             /* the buffer and the disk disagree */
 static unsigned char loaded;            /* copy_buf holds a block at all */
 static unsigned char check[512];        /* the readback; block 2 for the identity */
 #define high (check + 256)               /* its second half, indexed by a byte */
-static unsigned char s, t, u, v;        /* the signature of block 2 in the drive */
-static unsigned char is, it, iu, iv;    /* and of the disk opened */
+static unsigned char idblk;             /* the identity block: 2, or 0 below 3 blocks */
+static unsigned char ident[4];          /* the CRC-32 of that block on the disk opened */
 
 static const char m_pick[]  = "Select a ProDOS volume or a .PO/.DSK/.2MG image.";
 static const char m_open[]  = "Invalid or unreadable image.";
@@ -204,47 +207,63 @@ static unsigned char same_block(void)
 
 /* The identity of the disk. Raw writes go to whatever disk the drive
  * holds at the moment, and the ERASE prompt left all the time needed to
- * change it. Block 2 is read into `check` and signed: two pairs of 8-bit
- * running sums, one pair per half (s, and t the sum of the s's, which also
- * sees where a byte changed): the volume header (name, dates, size, file
- * count) and the first directory entries. One changed byte always moves s;
- * several escape only if all four sums collide. The whole block would be
- * exact, but 512 more bytes do not fit in this overlay. 1: read.
- * The sums index by a byte: cc65 miscompiles a 16-bit index into a
- * page-aligned array. */
+ * change it. Block 2 (the volume header: name, dates, size, file count,
+ * and the first directory entries) is read into `check` and its CRC-32
+ * (reflected, polynomial $EDB88320, no final inversion) left in `crc`.
+ * Every error of 32 bits or fewer, every byte swap and every pair of flipped
+ * bits in the block changes it; it replaced two pairs of 8-bit running sums
+ * that bit 7 flipped in two bytes an even distance apart, two bytes 128
+ * apart swapped, or two directory entries of equal byte sums swapped all
+ * left unchanged. The whole block, kept, would be exact, but 512 more bytes
+ * do not fit beside `check`. crc512 is assembly in blkedit.s (a C loop over
+ * a 32-bit value is a library call per bit in cc65). 1: read. */
+#ifdef PLUGIN_HOST
+static unsigned char crc[4];
+static void crc512(const unsigned char* p)
+{
+    unsigned long c = 0xFFFFFFFFUL;
+    unsigned int i;
+    unsigned char k;
+    for (i = 0; i < 512; ++i) {
+        c ^= p[i];
+        for (k = 0; k < 8; ++k) c = c & 1 ? (c >> 1) ^ 0xEDB88320UL : c >> 1;
+    }
+    for (k = 0; k < 4; ++k) crc[k] = (unsigned char)(c >> (8 * k));
+}
+#else
+extern unsigned char crc[4];
+void __fastcall__ crc512(const unsigned char* p);
+#endif
 static unsigned char sign(void)
 {
-    unsigned char i = 0;
-    if (!source_read(&source, 2, check)) return 0;
-    s = t = u = v = 0;
-    do {
-        s += check[i]; t += s;
-        u += high[i]; v += u;
-        ++i;
-    } while (i);
+    if (!source_read(&source, idblk, check)) return 0;
+    crc512(check);
     return 1;
 }
 
-/* Block 2 of the disk in the drive becomes the identity. 1: read. */
+/* The identity block of the disk in the drive becomes the identity: block
+ * 2, or block 0 of an image of one or two blocks, which has no block 2 (it
+ * was read all the same, and such an image no longer opened). 1: read. */
 static unsigned char remember(void)
 {
+    idblk = source.blocks > 2 ? 2 : 0;
     if (!sign()) return 0;
-    is = s; it = t; iu = u; iv = v;
+    ident[0] = crc[0]; ident[1] = crc[1]; ident[2] = crc[2]; ident[3] = crc[3];
     return 1;
 }
 
-/* Is the disk in the drive the one opened? An unreadable block 2 is a
- * refusal, not a pass. When block 2 itself is being written, finding it
- * already equal to the edit (a previous W got that far) also passes:
+/* Is the disk in the drive the one opened? An unreadable identity block is
+ * a refusal, not a pass. When that block itself is being written, finding
+ * it already equal to the edit (a previous W got that far) also passes:
  * writing the same bytes again changes nothing on any disk. */
 static unsigned char same_disk(void)
 {
     if (!sign()) return 0;
-    if (block == 2 && same_block()) return 1;
-    if (s != is) return 0;
-    if (t != it) return 0;
-    if (u != iu) return 0;
-    if (v != iv) return 0;
+    if (block == idblk && same_block()) return 1;
+    if (crc[0] != ident[0]) return 0;
+    if (crc[1] != ident[1]) return 0;
+    if (crc[2] != ident[2]) return 0;
+    if (crc[3] != ident[3]) return 0;
     return 1;
 }
 
@@ -277,8 +296,8 @@ static void write_block(void)
         v_message(m_rfail); v_cgetc(); return;
     }
     if (!same_block()) { v_message(m_diff); v_cgetc(); return; }
-    /* Block 2 now holds the edit: it is the identity from here on. */
-    if (block == 2) remember();
+    /* The identity block now holds the edit: the identity from here on. */
+    if (block == idblk) remember();
     dirty = 0;
     v_gotoxy(0, 22);                    /* over the key bar; draw() puts it back */
     v_cprintf(m_done, block);
@@ -334,16 +353,18 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     } else {
         v_strcpy(source.path, pan->path[0] ? pan->path : a.selected->name);
         unit = pan->path[0] ? 0 : (unsigned char)(a.selected->mdate << 4);
-        if (source.path[0] != '/' || !volume_open(&source, unit)) { note(m_vol); return; }
+        /* unit_of's own note stays: two volumes of that name on line. */
+        if (source.path[0] != '/' || !volume_open(&source, unit)) { if (!*a.note) note(m_vol); return; }
     }
 
     for (;;) {
         /* Reread ONLY when the block changes: rereading every time round
          * would throw away what the cursor has just changed. */
         if (!loaded || block != shown) {
-            /* The first time round, block 2 too: the identity W checks
-             * before it writes, read the same way whatever the disk holds
-             * (a DOS 3.3 image has a block 2, only not a volume header). */
+            /* The first time round, block 2 too (block 0 below three
+             * blocks): the identity W checks before it writes, read the
+             * same way whatever the disk holds (a DOS 3.3 image has a block
+             * 2, only not a volume header). */
             if ((!loaded && !remember()) || !source_read(&source, block, buf)) { note(m_read); break; }
             shown = block; loaded = 1; dirty = 0; cur = 0; hi = 0x10;
         }
