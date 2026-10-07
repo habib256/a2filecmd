@@ -28,13 +28,17 @@ def main():
     with tempfile.TemporaryDirectory(prefix='a2fc-find-') as tmp:
         tmp = Path(tmp)
         floppy = tmp / 'A2FILECMD.po'
-        # The general 140K bench fixture no longer carries SEARCH. Build a
-        # disposable edition for this test, replacing the unused BASLIST.
+        # The general 140K bench fixture carries neither SEARCH nor, since
+        # 0.9.5 (the floppy was full), COMPARE: this test failed on its
+        # first menu from then on. Build a disposable edition for it,
+        # replacing the unused BASLIST and EDIT.
         build = ROOT / os.environ.get('A2FC_BUILD', 'build')
         boot = tmp / 'boot'
         shutil.copytree(build / 'benchvol', boot)
-        (boot / 'A2FILE/BASLIST.PLG#061B00').unlink()
-        shutil.copyfile(build / 'A2FILE.CODE.BIN.SEARCH', boot / 'A2FILE/SEARCH.PLG#061B00')
+        for unused in ('BASLIST', 'EDIT'):
+            (boot / ('A2FILE/%s.PLG#061B00' % unused)).unlink()
+        for tool in ('SEARCH', 'COMPARE'):
+            shutil.copyfile(build / ('A2FILE.CODE.BIN.' + tool), boot / ('A2FILE/%s.PLG#061B00' % tool))
         subprocess.run([sys.executable, str(ROOT / 'tools/mkvolume.py'),
                         str(boot), str(floppy), '--volume', 'A2FILECMD',
                         '--boot', str(ROOT / 'data/prodos_boot.tmpl'), '--blocks', '280'], check=True)

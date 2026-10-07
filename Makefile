@@ -342,7 +342,7 @@ $(FULLPO): STAGE = $(BUILD)/benchvol
 # Archive benches build their own disposable boot fixtures (archive_support.py).
 # Both fixtures use the compact launcher and omit SEARCH to fit 140K.
 # Its UI bench adds SEARCH to a disposable fixture; both XLs keep it.
-# No bench on this floppy compares files (M): COMPARE is left out too (0.9.5),
+# COMPARE is left out too (0.9.5; bench/find.py stages its own floppy with it),
 # so that A2FILE.CFG can still be saved -- a full floppy made RUN and Q ask
 # "Configuration warning ... anyway?" (bench/run.py, vdrive_printer.py).
 $(FULLPO): $(STAGE_DEPS) $(FLOPPY_SYSTEM) $(DATA)/BASIC.SYSTEM.SYS
