@@ -68,25 +68,57 @@ measurement or qualification of an accelerator.
 
 ## Safety and reproducible checks
 
-The source must remain physically write-protected. Target slot/drive and loss
-of all files, including locked files, are shown before writing; single-drive
-mode confirms every target exchange. Hardware protection is checked again in
-the writer. There is no rollback: a failed or interrupted copy leaves an
-incomplete target and reports only the number of verified tracks. All 35
-source tracks are not preflighted before the first write.
+The source must remain physically write-protected. Before the first write
+the confirmation names the target's slot, drive and ProDOS volume (ON_LINE:
+`/NAME`, or `(no ProDOS volume)` for a DOS 3.3, Pascal or blank disk) and
+the loss of all files, including locked files. A target holding the volume
+A2 File Cmd runs from (the volume of `cfg_path`) is refused before any
+write: `Target holds A2 File Cmd's volume; nothing written`. Single-drive
+mode asks for the target disk, names it the same way and confirms at every
+exchange. Hardware protection is checked again in the writer.
 
-- `python3 tools/test_nibcopy.py`: real C workflow, 20 host tests, source/target
+What is rechecked, and what is not:
+
+- Before every write after the first, in both modes, the target must still
+  hold the track written and verified just before: the previous track is
+  captured again and each of its sixteen encoded address and data fields
+  must fold to the value recorded during that track's verification. A disk
+  swapped in since then -- in drive 2 during a two-drive copy, or the wrong
+  disk at a single-drive exchange -- stops the copy with `Target changed;
+  nothing written on this track`. The walk skips `parse()`'s full GCR and
+  checksum validation; it cost 9.6% more emulated cycles for a full
+  two-drive copy under POM2 (1,992 M to 2,183 M cycles).
+- Not detected: a disk whose previous track is identical, field for field,
+  to the one just written (another copy of the same source, or two disks
+  whose track holds the same encoded sectors, such as untouched tracks of
+  two disks formatted alike). The source itself matches, but it is
+  write-protected and refused by the protection test.
+- The cfg_path refusal applies before the first write only: once track 0
+  is copied, the target carries the source's name, which is the program's
+  volume when the boot disk itself is copied.
+- The ON_LINE name is read once per confirmation, not before every track.
+
+There is no rollback: a failed or interrupted copy leaves an incomplete
+target and reports only the number of verified tracks. All 35 source tracks
+are not preflighted before the first write.
+
+- `python3 tools/test_nibcopy.py`: real C workflow, 27 host tests, source/target
   byte preservation, valid-checksum corruption, read/write/verification errors,
-  source identity through physical protection, cancellation and malformed fields.
+  source identity through physical protection, cancellation and malformed fields;
+  the target's name in the confirmation, the program's volume refused, a disk
+  swapped in drive 2 after three tracks, a wrong disk at a single-drive
+  exchange and a target differing by one data nibble all left unwritten.
 - `python3 bench/nibcopy.py --pom2-root /path/to/pom2`: production toolchains,
   real C/assembly and ROM AUXMOVE on both CPU variants. Disposable DSK images
   and 50000-cell WOZ tracks at 300 RPM exercise different source/target data,
   complete encoded comparisons, sector bytes, write protection, stuck-latch
   timeout, interrupt state, stack/main/AUX sentinels and destructive RAM cleanup.
 - `A2FC_PRESET=iie_unenh python3 bench/nibcopy_ui.py`: published DISKTOOLS,
-  AUX refusal, target confirmation, BOOT removed during the full 35-track copy,
-  and exact source/target image comparison after ejection; a single-drive
-  exchange copies one track, cancels before the next, and checks untouched tracks.
+  AUX refusal, target confirmation naming its volume, BOOT removed during the
+  full 35-track copy, and exact source/target image comparison after ejection;
+  a single-drive exchange copies one track, cancels before the next, and checks
+  untouched tracks; a copy of BOOT in the target drive is refused and left
+  byte for byte intact.
 
 A successful readback does not guarantee persistence across a power cut.
 

@@ -107,15 +107,23 @@ static unsigned char parse(unsigned char which) {
  }
  return 1;
 }
+/* The identity of the last track compared equal (folds): one fold per sector
+ * of its encoded address and data fields. Kept in prints after the
+ * verification of a write: the track now on the target (same_target). */
+static unsigned int folds[16],prints[16];
 static unsigned char equal(void) {
  unsigned char s,j,k,x;
- unsigned int i;
+ unsigned int i,f;
  for(k=0;k<16 && tracks[1].order[k]!=tracks[0].order[0];++k);
  if(k==16)return 0;
  for(j=0;j<16;++j)if(tracks[0].order[j]!=tracks[1].order[(j+k)&15])return 0;
- for(s=0;s<16;++s)for(i=0;i<363;++i) {
-  bank=0x40;x=get(i<14?tracks[0].addr[s]+i:tracks[0].data[s]+i-14);
-  bank=0x60;if(x!=get(i<14?tracks[1].addr[s]+i:tracks[1].data[s]+i-14))return 0;
+ for(s=0;s<16;++s) {
+  for(f=i=0;i<363;++i) {
+   bank=0x40;x=get(i<14?tracks[0].addr[s]+i:tracks[0].data[s]+i-14);
+   bank=0x60;if(x!=get(i<14?tracks[1].addr[s]+i:tracks[1].data[s]+i-14))return 0;
+   f=((f<<1)|(f>>15))+x;
+  }
+  folds[s]=f;
  }
  return 1;
 }
@@ -158,6 +166,45 @@ static unsigned char controller(unsigned char slot) {
  return r[1]==0x20 && r[3]==0 && r[5]==3 && r[0xFF]==0;
 #endif
 }
+/* What equal() folds into prints, for one sector found by same_target. */
+static unsigned int fold(unsigned int addr,unsigned int data) {
+ unsigned int i,f=0;
+ for(i=0;i<14;++i)f=((f<<1)|(f>>15))+get(addr+i);
+ for(i=0;i<349;++i)f=((f<<1)|(f>>15))+get(data+i);
+ return f;
+}
+/* Is the disk now captured in bank $60 still the target, i.e. does it hold,
+ * on track nb_track, the sixteen fields recorded in prints? One walk of the
+ * capture, without parse()'s GCR table search and checksums: a full copy
+ * costs 9.6% more cycles (POM2). Anything not found where expected -- a read
+ * error included -- answers 0. */
+static unsigned char same_target(void) {
+ unsigned char n,s,tr;unsigned int addr;
+ bank=0x60;cached[0]=cached[1]=0;pos=0;
+ while(pos<1024 && !(get(pos)==0xD5 && get(pos+1)==0xAA && get(pos+2)==0x96))++pos;
+ for(n=0;n<16;++n) {
+  if(!prologue(0x96))return 0;
+  addr=pos-3;four();tr=four();s=four();four();
+  if(tr!=nb_track || s>=16 || !epilogue() || !prologue(0xAD))return 0;
+  if(fold(addr,pos-3)!=prints[s])return 0;
+  pos+=346;                             /* past the 343 nibbles and the epilogue */
+ }
+ return 1;
+}
+/* The target's ProDOS volume, through ON_LINE: "/NAME", or a placeholder.
+ * 1 when it is the volume A2 File Cmd runs from (cfg_path "/NAME/..."). */
+static char tname[19];
+static unsigned char target_name(unsigned char unit) {
+ static struct { unsigned char n,unit; unsigned char* buffer; } ol;
+ static unsigned char online[16];
+ unsigned char n,i;
+ ol.n=2;ol.unit=unit;ol.buffer=online;
+ n=a.mli(0xC5,&ol)?0:online[0]&15;
+ if(!n){a.strcpy(tname,"(no ProDOS volume)");return 0;}
+ tname[0]='/';a.memcpy(tname+1,online+1,n);tname[n+1]=0;
+ for(i=0;i<=n && a.cfg_path[i]==tname[i];++i);
+ return i>n && a.cfg_path[i]=='/';
+}
 static unsigned char key(const char* text) {
  unsigned char k;
  a.message(text);
@@ -199,16 +246,28 @@ unsigned char __fastcall__ nb_run(const struct A2fcApi* api) {
   if(!capture(0)||!capture(1)||!equal()){status="Source read/format/instability error";goto motor;}
   nb_end();build();
   /* Reconfirm the exact drive before its first write and EACH single-drive
-   * exchange. Hardware protection is checked again inside the write loop. */
+   * exchange, naming the volume ON_LINE finds there: the disk must be in
+   * the drive first. Never the volume A2 File Cmd runs from. Hardware
+   * protection is checked again inside the write loop. */
   if(single || !done) {
-   a.sprintf(a.other_full,"Erase TARGET S%u,D%u ALL files? Insert target; Y confirms",slot,(target>>7)+1);
+   if(single && !key("\1Insert TARGET disk. RETURN ready, ESC cancels"))goto end;
+   if(target_name(target) && !done){status="Target holds A2 File Cmd's volume; nothing written";goto end;}
+   a.sprintf(a.other_full,"Erase TARGET S%u,D%u %s ALL files? Y confirms",slot,(target>>7)+1,tname);
    if(!a.confirm(a.other_full))goto end;
   }
   if(stop())goto end;
   nb_begin(target);
   if(nb_protected()){status="Target protected; nothing written on this track";goto motor;}
+  /* Still the same target? It must hold the track written and verified
+   * just before, field for field (prints): a disk swapped since then --
+   * in either mode -- is not written. */
+  if(done) {
+   --nb_track;nb_bank=0x60;r=!nb_read() && same_target();++nb_track;
+   if(!r){status="Target changed; nothing written on this track";goto motor;}
+  }
   r=nb_write();
   if(r || !capture(1) || !equal()){status="WRITE/VERIFY FAILED; target incomplete";goto motor;}
+  a.memcpy(prints,folds,sizeof prints);
   nb_end();++done;
  }
  status="Copy verified";

@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Real NIBCOPY C workflow with disposable nibble tracks and injected faults."""
+"""Real NIBCOPY C workflow with disposable nibble tracks and injected faults.
+
+Modes 15-18 (second bug hunt): the target's ON_LINE name is shown in the
+confirmation, the volume A2 File Cmd runs from is refused as a target, and
+a target swapped after a verified track -- two drives (16) or a wrong disk
+at a single-drive exchange (17) -- is not written. On 0b64a8c
+(release-0.9.6) the confirmation named only slot and drive, mode 15 wrote
+35 tracks over the program's volume, and modes 16/17 wrote the other disk.
+"""
 import ctypes as C
 from pathlib import Path
 import subprocess
@@ -16,14 +24,26 @@ HARNESS=r'''
 char *nb_note,nb_ram_note[48];
 unsigned int nb_address;
 unsigned char *nb_buffer,nb_track,nb_bank;
-unsigned char aux[65536],disks[2][35][8192],before[2][35][8192];
-int reads,writes,confirms,formatted,begins,ends,mode,drive,keys,which_disk;
-char message[256],result[80],scratch[512],other_full[81];
+unsigned char aux[65536],disks[2][35][8192],before[2][35][8192],alt[35][8192];
+int reads,writes,confirms,formatted,begins,ends,mode,drive,keys,which_disk,mlis;
+char message[256],result[80],scratch[512],other_full[81],asked[100];
 static struct Panel panels[2];static unsigned char active;
-static unsigned char confirm(const char* s) {++confirms;which_disk=mode==11?0:1;return mode!=1;}
+static unsigned char confirm(const char* s) {
+ ++confirms;strcpy(asked,s);which_disk=mode==11?0:1;
+ if(mode==17 && confirms==2)memcpy(disks[1],alt,sizeof alt);   /* a wrong disk inserted */
+ return mode!=1;
+}
+struct Ol { unsigned char n,unit; unsigned char* buffer; };
+static unsigned char mli(unsigned char cmd,void* p) {
+ struct Ol* o=p;const char* name=mode==15?"BOOT":"DISPOSABLE";
+ ++mlis;
+ if(cmd!=0xC5 || o->n!=2 || o->unit!=0xE0+(mode==10||mode==11||mode==17?-0x80:0))abort();
+ if(mode==18)return 0x52;
+ o->buffer[0]=o->unit|strlen(name);memcpy(o->buffer+1,name,strlen(name));return 0;
+}
 static char keymock(void) {
  static const char k[]={ '6','1','2',13 };
- if(keys<4) {char c=k[keys++];return (mode==10 || mode==11) && keys==3?'1':c;}
+ if(keys<4) {char c=k[keys++];return (mode==10 || mode==11 || mode==17) && keys==3?'1':c;}
  which_disk=0;return 13;
 }
 static void msg(const char* s){strcpy(message,s);}
@@ -32,7 +52,14 @@ static int print(const char* s,...){return 0;}
 static void puts_mock(const char* s){}
 static void progress(const char* s,unsigned long n,unsigned long total){if(mode==9 && n==1)cancelled=1;}
 static unsigned char ram(void){++formatted;return mode!=14;}
-void nb_begin(unsigned char u){drive=(u>>7)&1;if(mode==10 || mode==11)drive=which_disk;++begins;}
+void nb_begin(unsigned char u){
+ drive=(u>>7)&1;if(mode==10 || mode==11 || mode==17)drive=which_disk;++begins;
+ if(mode==16 && drive==1 && writes==3)memcpy(disks[1],alt,sizeof alt);   /* swapped during the copy */
+ if(mode==19 && drive==1 && writes==3) {   /* a disk differing by one data nibble of track 2 */
+  unsigned int o=377*5+23+100;
+  disks[1][2][o]=disks[1][2][o+6032]=disks[1][2][o]==gcr[9]?gcr[10]:gcr[9];
+ }
+}
 void nb_end(void){++ends;}
 unsigned char nb_protected(void){return mode==2?0:mode==3?128:drive==0?128:0;}
 void nb_fetch(void){memcpy(nb_buffer,aux+nb_address,256);}
@@ -66,24 +93,26 @@ void plugin_entry(const struct A2fcApi* api){if(nb_run(api) && !api->ram_format(
 void reset(void){
  struct A2fcApi api;
  memcpy(before,disks,sizeof disks);memset(&api,0,sizeof api);
- memset(aux,0xA5,sizeof aux);reads=writes=confirms=formatted=begins=ends=keys=which_disk=0;
+ memset(aux,0xA5,sizeof aux);reads=writes=confirms=formatted=begins=ends=keys=which_disk=mlis=0;asked[0]=0;
  api.memcpy=memcpy;api.strcpy=strcpy;api.copy_buf=(unsigned char*)scratch;api.panels=panels;api.active=&active;
  api.note=result;api.other_full=other_full;api.cgetc=keymock;api.message=msg;api.confirm=confirm;
  api.clrscr=nothing;api.cprintf=print;api.cputs=puts_mock;api.progress_bar=progress;api.sprintf=sprintf;api.ram_format=ram;
+ api.mli=mli;api.cfg_path="/BOOT/A2FILE/A2FILE.CFG";api.strcpy=strcpy;api.memcpy=memcpy;
  plugin_entry(&api);
 }
 int source_same(void){return !memcmp(before[0],disks[0],sizeof disks[0]);}
 int target_same(void){return !memcmp(before[1],disks[1],sizeof disks[1]);}
+int alt_same(void){return !memcmp(alt,disks[1],sizeof alt);}
 '''
 GCR=bytes([0x96,0x97,0x9A,0x9B,0x9D,0x9E,0x9F,0xA6,0xA7,0xAB,0xAC,0xAD,0xAE,0xAF,0xB2,0xB3,0xB4,0xB5,0xB6,0xB7,0xB9,0xBA,0xBB,0xBC,0xBD,0xBE,0xBF,0xCB,0xCD,0xCE,0xCF,0xD3,0xD6,0xD7,0xD9,0xDA,0xDB,0xDC,0xDD,0xDE,0xDF,0xE5,0xE6,0xE7,0xE9,0xEA,0xEB,0xEC,0xED,0xEE,0xEF,0xF2,0xF3,0xF4,0xF5,0xF6,0xF7,0xF9,0xFA,0xFB,0xFC,0xFD,0xFE,0xFF])
 def four(v):return bytes([(v>>1)|0xAA,v|0xAA])
-def track(t):
+def track(t,seed=0):
     raw=bytearray()
     for s in range(16):
         raw+=b'\xff'*16+b'\xd5\xaa\x96'+b''.join(four(v) for v in (254,t,s,254^t^s))+b'\xde\xaa\xeb'+b'\xff'*6+b'\xd5\xaa\xad'
         checksum=0
         for i in range(342):
-            v=(i+s+t)%64;checksum^=v;raw.append(GCR[v])
+            v=(i+s+t+seed)%64;checksum^=v;raw.append(GCR[v])
         raw+=bytes([GCR[checksum]])+b'\xde\xaa\xeb'
     return (raw*2)[:8192]
 class Nibcopy(unittest.TestCase):
@@ -93,6 +122,7 @@ class Nibcopy(unittest.TestCase):
         (p/'host.c').write_text(HARNESS)
         subprocess.run(['cc','-shared','-fPIC','-Wno-unknown-pragmas','-I'+str(ROOT),str(p/'host.c'),'-o',str(p/'host.so')],check=True)
         cls.lib=C.CDLL(str(p/'host.so'));cls.disks=(C.c_ubyte*(2*35*8192)).in_dll(cls.lib,'disks')
+        (C.c_ubyte*(35*8192)).in_dll(cls.lib,'alt')[:]=b''.join(track(t,7) for t in range(35))
     @classmethod
     def tearDownClass(cls):cls.tmp.cleanup()
     def setUp(self):
@@ -153,4 +183,30 @@ class Nibcopy(unittest.TestCase):
                 self.assertEqual(self.val('writes'),0);self.assertTrue(self.lib.target_same())
     def test_missing_sector(self):
         self.disks[:8192]=(track(0)[:385]*22)[:8192];self.run_copy();self.assertEqual(self.val('writes'),0);self.assertTrue(self.lib.target_same())
+    def asked(self):return bytes((C.c_char*100).in_dll(self.lib,'asked')).split(b'\0')[0]
+    def test_target_volume_is_named(self):
+        """Before: "Erase TARGET S6,D2 ALL files?" -- slot and drive only."""
+        self.run_copy();self.assertEqual(self.asked(),b'Erase TARGET S6,D2 /DISPOSABLE ALL files? Y confirms')
+    def test_target_without_prodos_volume(self):
+        self.assertIn(b'Copy verified',self.run_copy(18))
+        self.assertEqual(self.asked(),b'Erase TARGET S6,D2 (no ProDOS volume) ALL files? Y confirms')
+    def test_program_volume_is_refused(self):
+        """Before: the volume in cfg_path was erased like any other target."""
+        self.assertEqual(self.run_copy(15),b"Target holds A2 File Cmd's volume; nothing written; 0/35 tracks verified.")
+        self.assertEqual(self.val('writes'),0);self.assertEqual(self.val('confirms'),0);self.assertTrue(self.lib.target_same())
+    def test_two_drive_swap_is_not_written(self):
+        """Before: confirmed once at track 0, a disk swapped in drive 2 after
+        three tracks received the 32 others."""
+        self.assertEqual(self.run_copy(16),b'Target changed; nothing written on this track; 3/35 tracks verified.')
+        self.assertEqual(self.val('writes'),3);self.assertTrue(self.lib.alt_same())
+    def test_one_nibble_of_the_previous_track_counts(self):
+        self.assertEqual(self.run_copy(19),b'Target changed; nothing written on this track; 3/35 tracks verified.')
+        self.assertEqual(self.val('writes'),3)
+    def test_single_drive_wrong_disk_is_not_written(self):
+        """Before: any disk inserted and confirmed at an exchange was written."""
+        self.assertEqual(self.run_copy(17),b'Target changed; nothing written on this track; 1/35 tracks verified.')
+        self.assertEqual(self.val('writes'),1);self.assertTrue(self.lib.alt_same())
+    def test_single_drive_names_target_each_exchange(self):
+        self.assertIn(b'Copy verified',self.run_copy(10))
+        self.assertEqual(self.val('mlis'),35);self.assertEqual(self.asked(),b'Erase TARGET S6,D1 /DISPOSABLE ALL files? Y confirms')
 if __name__=='__main__':unittest.main()

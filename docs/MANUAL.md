@@ -647,9 +647,13 @@ volume header only, and the message says which.
 
 **NIBCOPY** copies standard Disk II tracks with one or two drives at normal
 1 MHz speed. Write-protect the source first. Accept AUX use only after saving
-/RAM, then confirm destruction of **all target files, including locked files**.
-Single-drive mode requires target confirmation after every exchange. Each source
-track is read twice and the written track verified; Escape stops between tracks.
+/RAM, then confirm destruction of **all target files, including locked files**:
+the confirmation names the target's ProDOS volume, and the program's own volume
+is refused. Single-drive mode requires target confirmation after every exchange.
+Each source track is read twice and the written track verified; before each
+later write the target must still hold the previous track, or the copy stops
+(see [NIBCOPY.md](NIBCOPY.md) for what this does not catch). Escape stops
+between tracks.
 An incomplete target is not a valid backup. Nonstandard/protected, 13-sector,
 half-track and weak-bit formats are unsupported; this is not a flux copier.
 
