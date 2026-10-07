@@ -37,9 +37,12 @@
  * blocks written to were free, referenced by nothing (4 proved it) and stay
  * free, and the directory never heard of them. A cut between 6 and 7 loses
  * their space and nothing else; FIXIT finds them, and the message
- * says so rather than calling the work done. None of this is atomic and
- * none of it pretends to be: ProDOS offers no such promise, and no more do
- * we.
+ * ("Bitmap written, entry unverified") says so rather than calling the
+ * work done.
+ * ESC is one such cut that is ours to refuse: it is asked about while the
+ * source is counted, during the walk and before each data block, and not
+ * once from 6 on. None of this is atomic and none of it pretends to be:
+ * ProDOS offers no such promise, and no more do we.
  *
  * What it does not do yet, and says so instead of guessing: a file that
  * needs a tree (above 128 KB), a directory with no free slot (extending the
@@ -54,9 +57,12 @@
  * (84 directory blocks, 582 index blocks), some 135,000 cycles a block; a
  * floppy image is a second or two. A file under ProDOS cannot exceed
  * 16 MB, so neither can an image. The bitmap is consulted one page at a
- * time, and a volume whose files are scattered across pages rereads them:
- * that case is slower still and was not measured. The activity cell turns
- * at every block and ESC stops the walk with nothing written.
+ * time; the pointers of an index block are checked a page at a time too,
+ * so a file scattered over the volume costs one page read a page, not one
+ * a pointer. The activity cell turns at every block and ESC stops the walk
+ * with nothing written. A walk that completes without meeting the panel's
+ * directory says "Image changed", not "damaged": the directory was
+ * deleted since the panel read it, and the image is sound.
  */
 #define UTIL_STUBS
 #define IMAGEIO_WRITE
@@ -109,14 +115,17 @@ static unsigned char bm_dirty;
 static unsigned char* bm_at;            /* the byte of bits[] holding a block's bit, */
 static unsigned char bm_mask;           /* and the bit: set by bm_find */
 static unsigned int scan;               /* next block the walk will consider */
-/* The first block a file may ever have. Below it lie the boot blocks, the
- * four of the volume directory and the bitmap itself -- and a bitmap that
- * calls any of them free is not a reason to write there. ProDOS trusts the
- * bitmap and would; an image with a damaged one is exactly what FIXIT is
- * for, and handing it a file on top of its own directory destroys the
- * volume outright. Measured: without this, a bitmap marking blocks 1 to 6
- * free made IMGPUT write the file over the directory and the bitmap, and
- * the volume did not read back at all. */
+/* The first block a file may ever have: past the bitmap's last page.
+ * Below it lie the boot blocks, the four of the volume directory and the
+ * bitmap itself -- and a bitmap that calls any of them free is not a
+ * reason to write there. ProDOS trusts the bitmap and would; an image with
+ * a damaged one is exactly what FIXIT is for, and handing it a file on top
+ * of its own directory destroys the volume outright. Measured: without
+ * this, a bitmap marking blocks 1 to 6 free made IMGPUT write the file
+ * over the directory and the bitmap, and the volume did not read back at
+ * all. The walk (image_sound) refuses the same bitmap before any write,
+ * and a bitmap pointer of 3, 4 or 5 with it, so the floor is the bitmap's
+ * end and no longer at least 6. */
 static unsigned int floor_block;
 static unsigned int dir_first, dir_blk; /* chain head (the header) and the slot's block */
 static unsigned int dir_at;             /* the free slot's offset in that block */
@@ -137,10 +146,16 @@ static const char m_failed[]="Write failed; image unchanged.";
 static const char m_source[]="Cannot read the source.";
 static const char m_room[]="Not enough free blocks.";
 static const char m_damaged[]="Image damaged: nothing written. Run FIXIT.";
+static const char m_changed[]="Image changed; nothing done.";
 
 /* ---- writing a block and reading it back ------------------------------ */
+/* No ESC here: the data loop asks before each block while nothing is
+ * published yet, and from the bitmap on the writes are not to be
+ * interrupted -- measured, with stop() here: ESC between the bitmap and
+ * the entry wrote the one and not the other, three blocks lost, and the
+ * note said "Copied". */
 static unsigned char put_verified(unsigned int b,const unsigned char* in,unsigned char* tmp) {
- if(stop() || !source_write(&src,b,in) || !source_read(&src,b,tmp))return 0;
+ if(!source_write(&src,b,in) || !source_read(&src,b,tmp))return 0;
  return !memcmp(tmp,in,512);
 }
 
@@ -237,11 +252,24 @@ static unsigned char marked_used(unsigned int b) {
 static unsigned char claims_used(unsigned int b) {
  return b>1 && (b<bm_first || b>=bm_end) && marked_used(b);
 }
-/* A block the walk reads: a sign of life first, and ESC stops it. */
+/* A block the walk reads: a sign of life first, ESC stops it, and each
+ * read is one off the walk's budget (prodos_claims.h: as many as the
+ * volume has blocks, so a chain that loops ends -- measured before, a
+ * looping chain was stopped only after re-walking every entry of every
+ * block it held, for hours). */
+static unsigned int claims_budget;
 static unsigned char claims_read(unsigned int b,unsigned char* to) {
  spin();
- return !stop() && claims_used(b) && source_read(&src,b,to);
+ return !stop() && --claims_budget && claims_used(b) && source_read(&src,b,to);
 }
+/* A block a file may name is neither of the two directory blocks about to
+ * be written: the one with the free slot and the one with the header.
+ * Measured without this: a data pointer of a file in SUB equal to SUB's
+ * key block (a cross-link FIXIT reports as XLINK) passed the walk, the
+ * entry went into SUB and the file's bytes read back changed. A file
+ * pointing at any other directory block is not touched by this write and
+ * not caught by this walk, which has no map. */
+#define CLAIMS_FILE(b) ((b)!=dir_first && (b)!=dir_blk)
 #define CLAIMS_DIR dirb
 #define CLAIMS_IDX idx
 #define CLAIMS_WORD rd16
@@ -252,8 +280,10 @@ static unsigned char claims_read(unsigned int b,unsigned char* to) {
  * bitmap's own pages too: only then is a free bit a free block. */
 static unsigned char image_sound(void) {
  unsigned int b;
- if(!marked_used(0) || !marked_used(1))return 0;
- for(b=bm_first;b<bm_end;++b)if(!marked_used(b))return 0;
+ for(b=0;b<bm_end;++b) {                         /* 0, 1, then the bitmap's pages */
+  if(b==2)b=bm_first;
+  if(!marked_used(b))return 0;
+ }
  return claims_walk();
 }
 
@@ -319,9 +349,11 @@ static void count_up(void) {
  * A bitmap pointer of 3, 4 or 5 passes here and not for long: those are
  * blocks of the standard volume directory, and the walk refuses a
  * directory block that is one of the bitmap's pages. Whatever page of the
- * bitmap was in hand is forgotten: copy_buf may have been used since. */
+ * bitmap was in hand is forgotten: copy_buf may have been used since --
+ * and nothing is owed to the image (the BSS is not zeroed: this is where
+ * the bitmap's state starts, before anything looks at it). */
 static unsigned char header_ok(void) {
- bm_page=NOPAGE;
+ bm_page=NOPAGE;bm_dirty=0;
  if(!source_read(&src,2,dirb) || (dirb[4]>>4)!=15)return 0;
  /* A volume header is not a file entry: its bitmap pointer, total and
   * file count sit at 0x23, 0x25 and 0x21, where a file keeps its auxtype,
@@ -332,7 +364,6 @@ static unsigned char header_ok(void) {
  if(bm_end>vol_blocks-bm_first)return 0;
  bm_end+=bm_first;
  floor_block=bm_end;
- if(floor_block<6)floor_block=6;
  return floor_block<vol_blocks;
 }
 
@@ -377,7 +408,7 @@ static const char* put(void) {
  /* Name taken, no free slot, not a directory, or unreadable: one refusal,
   * because all four mean the same to the caller -- the entry cannot be
   * made here. */
- if(dir_survey()!=1)return "No room for that name in this directory.";
+ if(dir_survey()!=1)return "No room for that name here.";
 
  /* Type, aux, access and date come from the entry the panel already read:
   * a GET_FILE_INFO would say the same and cost its path buffer. The times
@@ -399,9 +430,14 @@ static const char* put(void) {
   * again rather than trust what it said before -- and this time ask it
   * everything: no block is chosen until every block the image names has
   * been found marked used. Long on a big image, so it says so. */
- if(!header_ok() || dir_survey()!=1)return "Image changed; nothing done.";
+ if(!header_ok() || dir_survey()!=1)return m_changed;
  RF(message)("Checking the image... ESC stops");
  if(!image_sound())return cancelled?m_stopped:m_damaged;
+ /* The walk completed and the image is sound, but the panel's key was
+  * not met as a live directory: a directory deleted since the panel read
+  * it (its key block keeps its header, so dir_survey took it). Nothing
+  * is wrong with the image, and the note used to say there was. */
+ if(!claims_met)return m_changed;
  if(!reserve())return m_room;
 
  source=RF(fopen)(a.full,"rb");
@@ -415,23 +451,26 @@ static const char* put(void) {
   * counted. */
  bm_page=NOPAGE;
  for(i=0;i<data_blocks;++i) {
-  /* up to 256 blocks, each written then read back */
+  /* up to 256 blocks, each written then read back; ESC is asked about
+   * here and nowhere later */
   a.progress_bar(a.selected->name,i,data_blocks);
+  if(stop())return m_stopped;
   b=key;
   if(data_blocks>1)b=chosen((unsigned char)i);
   RF(memset)(buf,0,512);
   m=512;
   if(i+1==data_blocks)m=last;
   if(m && RF(fread)(buf,1,m,source)!=m)break;
-  if(!put_verified(b,buf,dirb))return cancelled?m_stopped:m_failed;
+  if(!put_verified(b,buf,dirb))return m_failed;
  }
  if(i<data_blocks || RF(fread)(dirb,1,1,source) || ferror(source))
-  return "Source changed; nothing added to the image.";
+  return "Source changed; nothing added.";
  if(data_blocks>1 && !put_verified(key,idx,dirb))return m_failed;
 
- /* From here the blocks are ours. A cut now costs their space, no more,
-  * and the message says so instead of calling the work done. */
- bm_page=NOPAGE;bm_dirty=0;
+ /* From here the blocks are ours and nothing stops the writes, ESC
+  * included. A cut now costs their space, no more, and the message says
+  * so instead of calling the work done. */
+ bm_page=NOPAGE;                                 /* copy_buf carried the data */
  if(!claim() || !bm_flush())return "Bitmap write failed; run FIXIT.";
 
  /* One directory block, one write: the entry and, when it lives there,
@@ -454,14 +493,14 @@ static const char* put(void) {
   }
  }
  if(n)return "Copied into the image; source kept.";
- return "Copied; entry unfinished: run FIXIT.";
+ return "Bitmap written, entry unverified: run FIXIT.";
 }
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api) {
  unsigned char n;
  const char* m;
 
- init(api);source=NULL;bm_page=NOPAGE;bm_dirty=0;src.file=0;
+ init(api);source=NULL;                          /* image_open and header_ok set the rest */
  if(pan->fs || !a.full[0] || !a.selected->name[0] || a.selected->type==0x0F ||
     other->fs!=FS_IMG || !other->img_len) {
   note("ProDOS file here, ProDOS image opposite.");return;

@@ -240,13 +240,18 @@ def file_count(data, key=2):
     return word(data, key * 512 + 4 + 0x21)
 
 
+def bit_at(data, b):
+    """The byte of the bitmap holding block b's bit: page b >> 12 of it."""
+    return (bitmap_at(data) + (b >> 12)) * 512 + ((b & 0xFFF) >> 3)
+
+
 def is_free(data, b):
-    return bool(data[bitmap_at(data) * 512 + (b >> 3)] & (0x80 >> (b & 7)))
+    return bool(data[bit_at(data, b)] & (0x80 >> (b & 7)))
 
 
 def set_free(data, b, free=True):
-    """Marks block b in the bitmap of a bytearray image (under 4,096 blocks)."""
-    at = bitmap_at(data) * 512 + (b >> 3)
+    """Marks block b in the bitmap of a bytearray image."""
+    at = bit_at(data, b)
     if free:
         data[at] |= 0x80 >> (b & 7)
     else:
@@ -554,20 +559,32 @@ class ImgPut(Harness):
 
     def test_a_failure_after_the_bitmap_never_leaves_a_dangling_entry(self):
         """From the bitmap write on, space can be lost -- but an entry must
-        never name blocks the bitmap still calls free."""
+        never name blocks the bitmap still calls free. And the note never
+        says "Copied" unless the entry's write read back right: a
+        directory write that fails after the bitmap's (here write 5, the
+        4th being the bitmap) says what was written and what FIXIT is
+        for -- before, it said "Copied; entry unfinished"."""
         for mode in (2, 3, 4):
             for at in range(4, 8):
                 with self.subTest(mode=mode, at=at):
                     self.img.write_bytes(self.original)
                     writes, note = self.run_op(mode=mode, at=at)
-                    e = self.entry()
-                    if e is None:
-                        continue                   # nothing claims anything
                     d = self.img.read_bytes()
-                    key = int.from_bytes(e[0x11:0x13], 'little')
-                    self.assertFalse(is_free(d, key),
-                                     'the entry names a block the bitmap calls free')
-                    self.assertIn('Copied', note)
+                    e = self.entry()
+                    if e is not None:
+                        key = int.from_bytes(e[0x11:0x13], 'little')
+                        self.assertFalse(is_free(d, key),
+                                         'the entry names a block the bitmap calls free')
+                    if at == 4:                    # the bitmap write itself failed
+                        self.assertIn('Bitmap write failed', note)
+                        self.assertIsNone(e)
+                    elif at == 5:                  # the directory write, after the bitmap
+                        self.assertNotIn('Copied', note)
+                        self.assertIn('Bitmap written, entry unverified: run FIXIT', note)
+                    else:                          # no 6th write here: the slot is in block 2
+                        self.assertIn('Copied into the image', note)
+                        self.assertIsNotNone(e)
+                        self.assertEqual(findings(d), [])
 
 
 class TheSourceIsCounted(Harness):
@@ -639,9 +656,8 @@ class TheSourceIsCounted(Harness):
         self.assertEqual(len(self.asked), 1)
 
 
-class TheImageIsWalked(Harness):
-    """No free bit is believed until every block the image names has been
-    found marked used (src/plugins/prodos_claims.h)."""
+class Orchard(Harness):
+    """The orchard as the fixture, and what its tests say about it."""
 
     def fixture(self):
         return orchard()
@@ -659,6 +675,11 @@ class TheImageIsWalked(Harness):
         note = self.refused('Image damaged: nothing written', **kw)
         self.assertEqual(len(self.asked), 1)
         return note
+
+
+class TheImageIsWalked(Orchard):
+    """No free bit is believed until every block the image names has been
+    found marked used (src/plugins/prodos_claims.h)."""
 
     def test_a_sound_image_takes_the_file_and_stays_sound(self):
         """Seedling, sapling, tree, extended file, three directories deep:
@@ -857,8 +878,13 @@ class TheImageIsWalked(Harness):
             with self.subTest(case=what):
                 self.damaged(poke)
                 self.refused_after_the_question()
-                # the walk ends: a loop is not followed for ever
-                self.assertLess(self.reads, 4000)
+                # the walk ends: a loop is not followed for ever. Every
+                # block it reads is one off a budget of the volume's 800
+                # blocks (before, only chain links and subdirectories
+                # were, and a loop re-walked every entry of every block in
+                # it: 3,500 reads here); dir_survey follows the looping
+                # chain for 255 links twice before that.
+                self.assertLess(self.reads, 800 + 2 * 255 + 20)
 
     def test_directories_nested_too_deep_are_refused_not_overrun(self):
         """Sixteen directories deep, the volume's included, is the limit
@@ -987,7 +1013,10 @@ class TheImageIsWalked(Harness):
         file's. Measured before: "Copied", the entry written into the dead
         directory's block, where nothing looks, and the three blocks of the
         file lost. The walk never meets that block as a directory, so
-        nothing is written."""
+        nothing is written -- and since the walk completed and found the
+        image sound, the note says the image changed, not that it is
+        damaged (it said "Image damaged ... Run FIXIT." until the second
+        bug hunt, of a clean deletion)."""
         d = bytearray(self.original)
         deep = key_of(find(self.original, 'DEEP', self.sub()))
         leaf = key_of(find(self.original, 'LEAF', deep))
@@ -1001,6 +1030,13 @@ class TheImageIsWalked(Harness):
         set_free(d, leaf)
         self.img.write_bytes(bytes(d))
         self.assertEqual(findings(d), [])                    # a clean deletion
+        note = self.refused('Image changed; nothing done.', key=deep)
+        self.assertNotIn('damaged', note)
+        self.assertEqual(len(self.asked), 1)
+        # The same stale key on an image that IS damaged elsewhere: the
+        # damage is what the note says, since nothing may be written anyway.
+        set_free(d, key_of(find(self.original, 'OTHER.TXT')))
+        self.img.write_bytes(bytes(d))
         self.refused_after_the_question(key=deep)
 
     # -- the image while the question waits ---------------------------------
@@ -1050,6 +1086,159 @@ class TheImageIsWalked(Harness):
         expected[key >> 3] &= ~(0x80 >> (key & 7)) & 0xFF
         self.assertEqual(d[bm:bm + 512], bytes(expected))    # only the other party's bit
         self.assertEqual(d[2 * 512:6 * 512], self.original[2 * 512:6 * 512])
+
+
+class EscapeAtEveryInstant(Harness):
+    """ESC at each read of the image in turn: either nothing a reader of
+    the volume can see has moved, or the file is in it whole. Measured
+    before (second bug hunt): put_verified asked about ESC before every
+    write, the bitmap's and the directory's included -- ESC during the
+    read of the directory block just before its write wrote the bitmap and
+    not the entry, three blocks lost (BM_LOST 7, 8, 9), and the note said
+    "Copied; entry unfinished: run FIXIT.". ESC is now asked about before
+    each data block and not once from the bitmap on."""
+
+    def test_escape_at_every_read_stops_clean_or_commits_whole(self):
+        writes, note = self.run_op()
+        self.assertIn('Copied into the image', note)
+        total, done = self.reads, self.img.read_bytes()
+        self.assertGreater(total, 15)
+        outcomes = set()
+        for n in range(1, total + 1):
+            with self.subTest(read=n):
+                self.img.write_bytes(self.original)
+                writes, note = self.run_op(ESC_AT=n)
+                d = self.img.read_bytes()
+                self.assertNotIn('FIXIT', note)
+                self.assertEqual(findings(d), [])
+                if 'Copied' in note:
+                    outcomes.add('copied')
+                    self.assertEqual(d, done, 'a completed copy is the same copy')
+                else:
+                    outcomes.add('stopped')
+                    self.assertIn('Stopped; image unchanged', note)
+                    self.assertIsNone(self.entry())
+                    # the bitmap, the directory and every used block as they
+                    # were; blocks that were free may hold bytes of the
+                    # attempt and are still free
+                    for b in range(280):
+                        if not is_free(self.original, b):
+                            self.assertEqual(d[b * 512:(b + 1) * 512], self.original[b * 512:(b + 1) * 512],
+                                             'block %d changed' % b)
+        self.assertEqual(outcomes, {'copied', 'stopped'})
+
+
+class ScatteredSapling(Harness):
+    """A 16,384-block volume (four bitmap pages) holding one sapling whose
+    256 pointers alternate between bitmap page 0 and page 3. Measured
+    before (second bug hunt): 280 reads of the image for the operation --
+    the walk loaded a bitmap page for every pointer of the index block,
+    256 page reads, 35 seconds at 1 MHz with no sign of life and no ESC
+    between them. The pointers are checked a page at a time now."""
+
+    def fixture(self):
+        d = bytearray(make_image(16384, 'BIG', {'A#040000': b'x' * 10}))
+        free0 = [b for b in range(100, 4000) if is_free(d, b)]
+        free3 = [b for b in range(12300, 16300) if is_free(d, b)]
+        key = free0.pop(0)
+        ptrs = [free0.pop(0) if i % 2 == 0 else free3.pop(0) for i in range(256)]
+        for b in [key] + ptrs:
+            set_free(d, b, False)
+        for i, b in enumerate(ptrs):
+            d[key * 512 + i] = b & 255
+            d[key * 512 + 256 + i] = b >> 8
+        e = bytearray(find(d, 'A'))
+        e[0] = 0x20 | 4
+        e[1:5] = b'FRAG'
+        e[0x11:0x13] = key.to_bytes(2, 'little')
+        e[0x13:0x15] = (257).to_bytes(2, 'little')
+        e[0x15:0x18] = (256 * 512).to_bytes(3, 'little')
+        at = 2 * 512 + 4 + 2 * 39
+        assert d[at] >> 4 == 0
+        d[at:at + 39] = e
+        d[2 * 512 + 4 + 0x21] += 1
+        assert findings(d) == [], findings(d)
+        return bytes(d)
+
+    def test_a_page_is_loaded_once_a_page_not_once_a_pointer(self):
+        writes, note = self.run_op()
+        self.assertIn('Copied into the image', note)
+        # the header twice, four directory blocks twice, the index block,
+        # a bitmap page a page: a few dozen reads, not three hundred
+        self.assertLess(self.reads, 40)
+        d = self.img.read_bytes()
+        self.assertEqual(findings(d), [])
+        self.assertEqual(Image(d).read(self.entry()), self.payload)
+        # and a pointer marked free on the far page is still refused
+        frag = Image(self.original).block(key_of(find(self.original, 'FRAG')))
+        far = frag[255] | frag[511] << 8
+        self.assertGreater(far, 12288)
+        dd = bytearray(self.original)
+        set_free(dd, far)
+        self.img.write_bytes(bytes(dd))
+        self.refused('Image damaged: nothing written')
+
+
+class CrossLinkIntoDirectory(Orchard):
+    """A file whose index names a directory block. Measured before (second
+    bug hunt): KEEP.TXT's second data pointer set to SUB's key block --
+    tools/prodos_check.py says XLINK -- and the file bound for SUB: the
+    walk passed, the entry and SUB's file count were written INTO SUB's
+    key block, and KEEP.TXT's bytes read back changed ("Copied into the
+    image; source kept."). A file may not name either block IMGPUT is
+    about to write."""
+
+    def crosslinked(self):
+        d = bytearray(self.original)
+        sub = self.sub()
+        k = key_of(find(self.original, 'KEEP.TXT', sub))
+        victim = d[k * 512 + 1] | d[k * 512 + 257] << 8
+        d[k * 512 + 1] = sub & 255
+        d[k * 512 + 257] = sub >> 8
+        set_free(d, victim)
+        self.img.write_bytes(bytes(d))
+        self.assertEqual(findings(d), [('XLINK', sub)])
+        return bytes(d)
+
+    def test_a_file_naming_the_directory_being_written_is_refused(self):
+        d = self.crosslinked()
+        sub = self.sub()
+        keep = Image(d).read(find(d, 'KEEP.TXT', sub))
+        self.refused_after_the_question(key=sub)
+        self.assertEqual(Image(self.img.read_bytes()).read(find(d, 'KEEP.TXT', sub)), keep)
+        # the same with the pointer at the block holding the free slot of a
+        # directory whose header is elsewhere: the volume directory's
+        # second block, every slot of its first taken
+        d = bytearray(self.original)
+        for slot in range(1, 13):
+            at = 2 * 512 + 4 + slot * 39
+            if not d[at] >> 4:
+                d[at] = 0x10 | 1
+                d[at + 1] = ord('A') + slot
+                d[at + 0x11:at + 0x13] = key_of(find(self.original, 'OTHER.TXT')).to_bytes(2, 'little')
+                d[at + 0x13:at + 0x15] = (1).to_bytes(2, 'little')
+                d[at + 0x25:at + 0x27] = (2).to_bytes(2, 'little')
+        k = key_of(find(self.original, 'KEEP.TXT', sub))
+        d[k * 512 + 1] = 3
+        d[k * 512 + 257] = 0
+        self.img.write_bytes(bytes(d))
+        self.refused_after_the_question()
+
+    def test_a_cross_link_elsewhere_is_not_this_writes_concern(self):
+        """Bound for the root, the same image takes the file: SUB is not
+        written to and KEEP.TXT keeps its bytes, cross-link and all. The
+        walk has no map of the volume's directory blocks, so a file
+        pointing at one it does not write is not caught -- the limit this
+        protection stops at."""
+        d = self.crosslinked()
+        sub = self.sub()
+        keep = Image(d).read(find(d, 'KEEP.TXT', sub))
+        writes, note = self.run_op()
+        self.assertIn('Copied into the image', note)
+        after = self.img.read_bytes()
+        self.assertEqual(Image(after).read(find(after, 'KEEP.TXT', sub)), keep)
+        self.assertEqual(after[sub * 512:(sub + 1) * 512], d[sub * 512:(sub + 1) * 512])
+        self.assertEqual(Image(after).read(self.entry()), self.payload)
 
 
 class WriteProtected(Harness):
