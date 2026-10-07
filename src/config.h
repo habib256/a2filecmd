@@ -74,7 +74,17 @@ static unsigned char cfg_parse(unsigned char apply)
         i = 0;
         for (p = 0; p < 2; ++p) {
             start = i;
-            while (bytes[i] != '\r') ++i;
+            /* ProDOS upshifts a pathname and ignores a trailing slash: a
+             * hand-edited "/workhd/dir/" names the same directory as the
+             * other panel's "/WORKHD/DIR", which target_check compares
+             * byte for byte -- and V then moved the only copy of a file
+             * onto itself and deleted it (bug hunt 2). The panels hold
+             * the spelling ProDOS gives back. */
+            while (bytes[i] != '\r') {
+                if (bytes[i] >= 'a' && bytes[i] <= 'z') bytes[i] -= 32;
+                ++i;
+            }
+            if (i > start + 1 && bytes[i - 1] == '/') bytes[i - 1] = 0;
             bytes[i++] = 0; strcpy(pan_at(p)->path, bytes + start);
         }
     }

@@ -82,6 +82,7 @@ int main(int argc,char** argv) {
     api.strcpy=strcpy;api.strlen=strlen;api.mli=file_call;
     sprintf(cfg,"%s/GOTO.CFG",argv[1]);sprintf(temp,"%s/GOTO.TMP",argv[1]);sprintf(backup,"%s/GOTO.BAK",argv[1]);
     loaded=load();
+    if(argc>3){unsigned char i;printf("%u",loaded);for(i=0;i<count;++i)printf("|%s",slot(i));printf("\n");return 0;}
     if(loaded){count=2;strcpy(slot(0),"/V/NEW");strcpy(slot(1),"/V/SECOND");save(NONE);}
     printf("%u|%s\n",loaded,N);return 0;
 }
@@ -131,6 +132,17 @@ class GotoSafety(unittest.TestCase):
                 self.assertEqual({f.name:f.read_bytes() for f in p.iterdir()},before)
             return result
 
+    def test_favourites_are_upshifted(self):
+        """Bug hunt 2: a favourite spelt /workhd/dir put the panel on a path
+        target_check compared byte for byte with /WORKHD/DIR in the other
+        panel: V then deleted the only copy of the file it moved. ProDOS
+        upshifts a path; valid_path does too, the file left as it was."""
+        with tempfile.TemporaryDirectory(prefix='g-', dir='/tmp') as folder:
+            p = Path(folder); cfg = p/'GOTO.CFG'
+            cfg.write_bytes(b'/workhd/dir\r/V/Keep.2\r')
+            out = subprocess.check_output([self.exe, p, '0', 'show'], text=True).strip()
+            self.assertEqual(out, '1|/WORKHD/DIR|/V/KEEP.2')
+            self.assertEqual(cfg.read_bytes(), b'/workhd/dir\r/V/Keep.2\r')
     def test_complete_verified_save(self): self.run_case()
     def test_missing_configuration_can_be_created(self): self.run_case(missing=True)
     def test_failed_load_never_becomes_an_empty_list(self):

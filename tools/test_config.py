@@ -131,6 +131,17 @@ class Config(unittest.TestCase):
  def test_valid_config_and_empty_volume_panels(self):
   for value,want in ((OLD,'/OLD/LEFT|/OLD/RIGHT|0|0|'),(b'\r\rS2A1\r','||2|1|')):
    out,files=self.run_case(old=value,load=True);self.assertTrue(out.startswith(want),out);self.assertEqual(files,{'A2FILE.CFG':value})
+ def test_paths_are_upshifted_without_trailing_slash(self):
+  """Bug hunt 2 (bench/hunt2_case.py): A2FILE.CFG with /workhd/dir in one
+  panel and /WORKHD/DIR in the other -- the same directory to ProDOS, two
+  to target_check's byte compare -- and V of a file deleted its only copy.
+  The panels now hold the spelling ProDOS gives back; the file is not
+  rewritten by loading it."""
+  for value,want in ((b'/workhd/dir\r/WORKHD/DIR\rS0A0\r','/WORKHD/DIR|/WORKHD/DIR|0|0|'),
+                     (b'/WorkHD/Dir.1/\r/v/\rS1A1\r','/WORKHD/DIR.1|/V|1|1|'),
+                     (b'/\r\rS0A0\r','/||0|0|')):
+   with self.subTest(value=value):
+    out,files=self.run_case(old=value,load=True);self.assertTrue(out.startswith(want),out);self.assertEqual(files,{'A2FILE.CFG':value})
  def test_malformed_existing_config_is_not_replaced(self):
   out,files=self.run_case(old=b'personal bytes');self.assertTrue(out.startswith('0|'));self.assertEqual(files,{'A2FILE.CFG':b'personal bytes'})
 if __name__=='__main__':unittest.main()

@@ -182,8 +182,11 @@ static char* __fastcall__ slot(unsigned char i)
 
 /* A favourite is an absolute ProDOS path.  Check its component boundaries
  * before presenting it: otherwise a malformed line could be shown as a
- * favourite and only fail much later when the user tries to jump. */
-static unsigned char valid_path(const char* p)
+ * favourite and only fail much later when the user tries to jump. Letters
+ * are upshifted in place: ProDOS does, and a panel put on "/workhd/dir"
+ * would pass for another directory than "/WORKHD/DIR" in the other panel
+ * when V compares the two (bug hunt 2). */
+static unsigned char valid_path(char* p)
 {
     unsigned char n = 0;
     if (*p++ != '/') return 0;
@@ -193,6 +196,7 @@ static unsigned char valid_path(const char* p)
             if (!n) return 0;           /* empty component */
             n = 0;
         } else {
+            if (*p >= 'a' && *p <= 'z') *p -= 32;
             if (*p < ' ' || *p >= 127 || n == 15) return 0;
             ++n;
         }
