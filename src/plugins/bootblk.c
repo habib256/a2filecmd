@@ -9,6 +9,10 @@
  * for verification. Messages survive the core's panel reload via api->note.
  * The native service/volume-name stubs below keep the original 6502 ABI.
  *
+ * A path names a volume, not a drive: a target given by the panel's path,
+ * or the volume booted from, whose name two drives carry is refused (the
+ * volume list opens a target by its unit).
+ *
  * Raw block writes go to whatever disk the drive holds when they happen.
  * Before the question, block 2 of both volumes is read and must carry the
  * name the question gives (a volume-list entry can be stale); after it,
@@ -50,6 +54,8 @@ static const char m_failed[] = "BOOT RESTORE FAILED: target may not boot. Recove
 static const char m_id[]   = "Volume header unreadable: nothing written.";
 static const char c_1[]    = "Disk changed or unreadable: ";
 static const char c_2[]    = ". Nothing written.";
+static const char t_1[]    = "Two volumes named ";
+static const char t_2[]    = ": pick it in the volume list.";
 #ifndef ORIGINAL
 #define ORIGINAL ((unsigned char*)0x3000)
 #define REPLACEMENT ((unsigned char*)0x3400)
@@ -146,7 +152,9 @@ static void __fastcall__ vol_of(const char* p)
 }
 
 /* The unit (DSSS0000) of the volume named "/NAME" in the ON_LINE list left
- * in BUF, or 0 -- never a valid unit, slot 0 being the machine itself. */
+ * in BUF, or 0 -- never a valid unit, slot 0 being the machine itself --
+ * or 1, never a unit either, when two drives carry the name: ProDOS would
+ * resolve a path to one of them, and the first record may be the other. */
 static unsigned char __fastcall__ find_unit(const char* name)
 {
     asm("sta ptr2");
@@ -155,6 +163,8 @@ static unsigned char __fastcall__ find_unit(const char* name)
     asm("sta ptr1");
     asm("lda %v+1", BUF);
     asm("sta ptr1+1");
+    asm("lda #0");
+    asm("sta tmp3");                /* the unit found so far: none */
     asm("ldx #16");                 /* sixteen entries at most */
     asm("stx tmp2");
     asm("fu1: ldy #0");
@@ -172,10 +182,12 @@ static unsigned char __fastcall__ find_unit(const char* name)
     asm("bne fu2");
     asm("lda (ptr2),y");            /* "/NAME" must end there too */
     asm("bne fu4");
+    asm("lda tmp3");
+    asm("bne fu8");                 /* the name a second time */
     asm("ldy #0");
     asm("lda (ptr1),y");
     asm("and #$F0");
-    asm("bne fu7");                 /* always: a unit is never 0 */
+    asm("sta tmp3");                /* never 0; the scan goes on */
     asm("fu4: lda ptr1");           /* the next entry, sixteen bytes on */
     asm("clc");
     asm("adc #16");
@@ -184,8 +196,11 @@ static unsigned char __fastcall__ find_unit(const char* name)
     asm("inc ptr1+1");
     asm("fu5: dec tmp2");
     asm("bne fu1");
-    asm("fu6: lda #0");
-    asm("fu7: ldx #0");
+    asm("beq fu6");                 /* always */
+    asm("fu8: lda #1");
+    asm("sta tmp3");
+    asm("fu6: lda tmp3");           /* the end of the list, or two of the name */
+    asm("ldx #0");
 }
 #pragma warn (unused-param, pop)
 #pragma optimize (pop)
@@ -206,13 +221,15 @@ static void vol_of(const char* p) {
 }
 static unsigned char find_unit(const char* name) {
     unsigned int i;
-    unsigned char n;
+    unsigned char n, u = 0;
     for (i = 0; i < 256 && BUF[i]; i += 16) {
         n = BUF[i] & 15;
-        if (n && strlen(name) == n + 1 && !memcmp(BUF + i + 1, name + 1, n))
-            return BUF[i] & 0xF0;
+        if (n && strlen(name) == n + 1 && !memcmp(BUF + i + 1, name + 1, n)) {
+            if (u) return 1;
+            u = BUF[i] & 0xF0;
+        }
     }
-    return 0;
+    return u;
 }
 #endif
 
@@ -268,6 +285,16 @@ static void changed(const char* name)
     msg(LINE);
 }
 
+/* The note when two drives carry `name`: "Two volumes named /X" and the
+ * way out, `tail` -- the volume list for the target, opened by unit; none
+ * for the volume booted from, which is only known by its name. */
+static void twin(const char* name, const char* tail)
+{
+    blen = 0;
+    cat(t_1); cat(name); cat(tail);
+    msg(LINE);
+}
+
 void __fastcall__ plugin_entry(const struct A2fcApi* api)
 {
     A = api;
@@ -295,6 +322,8 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     if (mli(0xC5, &onl)) { msg(m_read); return; }
     sunit = find_unit(SRC);
     tunit = inpath ? find_unit(TGT) : (unsigned char)(sel->mdate << 4);
+    if (tunit == 1) { twin(TGT, t_2); return; }
+    if (sunit == 1) { twin(SRC, c_2); return; }
     if (!sunit || !tunit) { msg(m_nf); return; }
     if (sunit == tunit) { msg(m_same); return; }
 

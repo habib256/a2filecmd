@@ -20,6 +20,7 @@ static unsigned char disks[4][1536];
 static unsigned int calls, writes, fail1, fail2;
 static int mode, consent, same, tgt = 1, src = 0;
 static const char* swap;
+static char twins = '-';             /* 'T': a second TARGET on line, 'B': a second BOOT */
 static unsigned char mock(unsigned char cmd, void* p) {
     struct Blk* io = p;
     unsigned char *disk;
@@ -29,6 +30,8 @@ static unsigned char mock(unsigned char cmd, void* p) {
         memset(o->buf, 0, 256);
         o->buf[0] = 0x64; memcpy(o->buf + 1, "BOOT", 4);
         o->buf[16] = 0xD6; memcpy(o->buf + 17, "TARGET", 6);
+        if (twins == 'T') { o->buf[32] = 0xE6; memcpy(o->buf + 33, "TARGET", 6); }
+        if (twins == 'B') { o->buf[32] = 0xE4; memcpy(o->buf + 33, "BOOT", 4); }
         return 0;
     }
     ++calls;
@@ -70,6 +73,9 @@ int main(int argc, char** argv) {
     if (!f || fread(disks, 1, sizeof disks, f) != sizeof disks) abort();
     fclose(f);
     swap = argv[7]; tgt = atoi(argv[8]);
+    /* argv[9]: the twins; argv[10]: a panel path instead of the volume list */
+    if (argc > 9) twins = argv[9][0];
+    if (argc > 10 && strcmp(argv[10], "-")) strcpy(panels[0].path, argv[10]);
     strcpy(selected.name, same ? "/BOOT" : "/TARGET");
     selected.mdate = same ? 6 : 13;
     api.panels = panels; api.active = &active; api.selected = &selected;
@@ -122,11 +128,13 @@ class BootBlocks(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def run_all(self, fail=0, second=0, mode=0, consent=1, same=0, swap='--', tgt=1):
+    def run_all(self, fail=0, second=0, mode=0, consent=1, same=0, swap='--', tgt=1,
+                twins='-', panel='-'):
         path = self.root / 'result.bin'
         path.write_bytes(self.source + self.target + self.other + self.twin)
         result = subprocess.check_output([str(self.exe), str(fail), str(second),
-                  str(mode), str(consent), str(same), str(path), swap, str(tgt)], text=True)
+                  str(mode), str(consent), str(same), str(path), swap, str(tgt),
+                  twins, panel], text=True)
         counts, note = result.split('\n', 1)
         calls, writes = map(int, counts.split())
         data = path.read_bytes()
@@ -246,6 +254,134 @@ class SwappedDisk(unittest.TestCase):
         self.assertEqual((calls, writes), (2, 0))
         self.assertEqual(disks, [self.source, self.target, self.other, self.twin])
         self.assertIn('not on line', note)
+
+
+class TwoVolumesOfOneName(unittest.TestCase):
+    """A path names a volume, not a drive. Before: find_unit took the first
+    ON_LINE record with the name while ProDOS resolved the panel's path to
+    either drive -- the WIPE data loss of the bug hunt, through the same
+    lookup. Now refused before any block is read; a volume-list row, opened
+    by its unit, is not concerned."""
+
+    run_all = BootBlocks.run_all
+
+    @classmethod
+    def setUpClass(cls):
+        BootBlocks.setUpClass.__func__(cls)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_a_panel_path_on_one_target_is_written(self):
+        calls, writes, note, disks = self.run_all(panel='/TARGET/SUB')
+        self.assertEqual(writes, 2)
+        self.assertEqual(disks[1][:1024], self.source[:1024])
+
+    def test_two_targets_of_one_name_refuse_a_panel_path(self):
+        calls, writes, note, disks = self.run_all(twins='T', panel='/TARGET/SUB')
+        self.assertEqual((calls, writes), (0, 0))
+        self.assertEqual(note.strip(), 'Two volumes named /TARGET: pick it in the volume list.')
+        self.assertEqual(disks, [self.source, self.target, self.other, self.twin])
+
+    def test_two_targets_of_one_name_a_volume_list_row_still_works(self):
+        calls, writes, note, disks = self.run_all(twins='T')
+        self.assertEqual(writes, 2)
+        self.assertEqual(disks[1][:1024], self.source[:1024])
+
+    def test_two_volumes_named_like_the_boot_volume_refuse(self):
+        """The source is only known by its name (cfg_path): two drives with
+        it, and the boot blocks could come from either."""
+        for panel in ('-', '/TARGET'):
+            with self.subTest(panel=panel):
+                calls, writes, note, disks = self.run_all(twins='B', panel=panel)
+                self.assertEqual((calls, writes), (0, 0))
+                self.assertEqual(note.strip(), 'Two volumes named /BOOT. Nothing written.')
+                self.assertEqual(disks, [self.source, self.target, self.other, self.twin])
+
+
+# find_unit as each edition's cc65 compiles it -- assembly in the overlay,
+# a C twin under PLUGIN_HOST -- under sim65. argv: the ON_LINE table (256
+# bytes as hex), the name. Output: the unit, in hex.
+SIM_HARNESS = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "p/bootblk_c.c"
+static unsigned char table[256];
+int main(int argc, char** argv)
+{
+    unsigned int i, x;
+    (void)argc;
+    for (i = 0; i < 256; ++i) { sscanf(argv[1] + 2 * i, "%2x", &x); table[i] = x; }
+    BUF = table;
+    printf("%02X\n", find_unit(argv[2]));
+    return 0;
+}
+'''
+
+
+class FindUnitCc65(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        import os, re, shutil
+        from test_wipe import toolchains
+        chains = toolchains()
+        if not chains:
+            raise unittest.SkipTest('no cc65 toolchain')
+        cls.tmp = tempfile.TemporaryDirectory(prefix='bootblk-cc65-')
+        d = cls.dir = Path(cls.tmp.name)
+        (d / 'harness.c').write_text(SIM_HARNESS)
+        (d / 'p').mkdir()
+        shutil.copyfile(ROOT / 'src/plugins/bootblk.c', d / 'p/bootblk_c.c')
+        shutil.copyfile(ROOT / 'src/a2fc_plugin.h', d / 'a2fc_plugin.h')
+        cls.exe = {}
+        for cpu, cl65, sim65, env, cfgdir in chains:
+            cfg = (cfgdir / f'{cpu}.cfg').read_text()
+            cfg = cfg.replace('    RODATA:', '    OVLHDR:   load = MAIN, type = ro;\n    RODATA:', 1)
+            (d / f'{cpu}.cfg').write_text(cfg)
+            exe = d / f'find-{cpu}'
+            env = {**os.environ, **env}
+            subprocess.run([cl65, '-t', cpu, '-C', str(d / f'{cpu}.cfg'), '-O', '-Oirs', '-Cl',
+                            '-o', str(exe), str(d / 'harness.c')], check=True, cwd=d, env=env,
+                           capture_output=True)
+            cls.exe[cpu] = (sim65, exe, env)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def find(self, records, name, stale=()):
+        t = bytearray(256)
+        for i, (b, n) in enumerate(records):
+            t[16 * i] = b; t[16 * i + 1:16 * i + 1 + len(n)] = n
+        for i, (b, n) in enumerate(stale, len(records) + 1):
+            t[16 * i] = b; t[16 * i + 1:16 * i + 1 + len(n)] = n
+        got = set()
+        for cpu, (sim65, exe, env) in self.exe.items():
+            p = subprocess.run([sim65, str(exe), t.hex(), name], cwd=self.dir, env=env,
+                               capture_output=True, text=True, timeout=60)
+            self.assertEqual(p.returncode, 0, (cpu, p.stderr))
+            got.add(int(p.stdout.strip(), 16))
+        self.assertEqual(len(got), 1, 'the two compilers disagree')
+        return got.pop()
+
+    def test_one_volume(self):
+        recs = [(0x64, b'BOOT'), (0xD6, b'TARGET'), (0x52, b'TA')]
+        self.assertEqual(self.find(recs, '/TARGET'), 0xD0)
+        self.assertEqual(self.find(recs, '/BOOT'), 0x60)
+        self.assertEqual(self.find(recs, '/TA'), 0x50)
+        self.assertEqual(self.find(recs, '/TARGE'), 0)
+        self.assertEqual(self.find(recs, '/TARGETS'), 0)
+
+    def test_two_volumes_of_one_name(self):
+        recs = [(0x64, b'BOOT'), (0xD6, b'TARGET'), (0x80, b''), (0xE6, b'TARGET')]
+        self.assertEqual(self.find(recs, '/TARGET'), 1)
+        self.assertEqual(self.find(recs, '/BOOT'), 0x60)
+
+    def test_a_record_past_the_terminator_is_not_a_volume(self):
+        self.assertEqual(self.find([(0x64, b'BOOT')], '/TARGET', stale=[(0xD6, b'TARGET')]), 0)
+        self.assertEqual(self.find([(0x64, b'BOOT')], '/BOOT', stale=[(0xE4, b'BOOT')]), 0x60)
 
 
 if __name__ == '__main__':
