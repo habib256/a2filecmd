@@ -51,6 +51,7 @@ static long poke_at = -1;
 static unsigned char poke_xor;
 static const char* swap_with;
 static unsigned int fail_read = 0xFFFF;         /* this block's next read fails, once */
+static unsigned char twin;                      /* a second drive carries the volume's name */
 
 struct Blk { unsigned char n, unit; unsigned char* buffer; unsigned int block; };
 struct Onl { unsigned char n, unit; unsigned char* buffer; };
@@ -85,6 +86,7 @@ static unsigned char mock_mli(unsigned char cmd, void* p)
         memset(o->buffer, 0, 256);
         o->buffer[0] = 0x60 | vollen;
         memcpy(o->buffer + 1, volname, vollen);
+        if (twin) { o->buffer[16] = 0xE0 | vollen; memcpy(o->buffer + 17, volname, vollen); }
         return 0;
     }
     return 0x01;
@@ -175,6 +177,7 @@ int main(int argc, char** argv)
     if (argc > 15) poke_xor = atoi(argv[15]);
     if (argc > 16 && strcmp(argv[16], "-")) swap_with = argv[16];
     if (argc > 17) fail_read = atoi(argv[17]);
+    if (argc > 18) twin = atoi(argv[18]);
     host_note[0] = 0;
     host_active = 0;
 
@@ -575,6 +578,29 @@ class Move(unittest.TestCase):
         return subprocess.check_output(
             [str(self.exe), str(self.p / 'vol.po'), 'MOVE', src, dst, name,
              str(confirm), str(ftype), str(size), str(corrupt), str(io_fault)], text=True).strip()
+
+    def test_two_volumes_of_one_name_get_no_raw_write(self):
+        """Before: with a second drive named /MOVE on line, unit_of took the
+        first ON_LINE record for both panels, called them one volume, and the
+        directory entries were moved by raw writes on that unit, whichever
+        /MOVE ProDOS showed in the panels. Now unit_of refuses the name and
+        MOVE falls back to the copy across volumes, which goes through
+        ProDOS paths only: not one block of the image is written."""
+        img = self.volume()
+        before = img.read_bytes()
+        note = subprocess.check_output(
+            [str(self.exe), str(img), 'MOVE', '/MOVE/SRC', '/MOVE/DST', 'HELLO', '1', '4',
+             '1536', '-1', '0', '0', '0', '/NOWHERE/A2FILE/A2FILE.CFG', '-1', '0', '-', '65535', '1'],
+            text=True).strip()
+        # the copy fallback, which here finds no host file /MOVE/SRC/HELLO
+        self.assertEqual(note, 'Copy failed: HELLO was NOT removed.')
+        self.assertEqual(img.read_bytes(), before)
+        # the same call with one /MOVE on line moves the entry
+        note = subprocess.check_output(
+            [str(self.exe), str(img), 'MOVE', '/MOVE/SRC', '/MOVE/DST', 'HELLO', '1', '4',
+             '1536', '-1', '0', '0', '0', '/NOWHERE/A2FILE/A2FILE.CFG', '-1', '0', '-', '65535', '0'],
+            text=True).strip()
+        self.assertIn('HELLO moved:', note)
 
     def test_a_file_changes_directory_without_moving_a_block(self):
         img = self.volume()

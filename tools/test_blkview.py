@@ -30,6 +30,51 @@ int main(int argc,char**argv) {
     fclose(source.file);
 }
 '''
+# extract()'s guard for a device source: the destination volume must be on
+# line on another unit. argv: the ON_LINE layout -- "other" (D at $70),
+# "same" (D at $60, the source's unit), "twin" (D at $70 and at $E0),
+# "none" (no D).
+GUARD=PREFIX+r'''
+#include "src/plugins/blkview.c"
+static const char* layout;static char said[256];
+static unsigned char mli(unsigned char cmd,void* p) {
+    struct Online* o=p;if(cmd!=0xC5)abort();
+    memset(o->buffer,0,256);o->buffer[0]=0x61;o->buffer[1]='S';
+    if(!strcmp(layout,"other")||!strcmp(layout,"twin")){o->buffer[16]=0x71;o->buffer[17]='D';}
+    if(!strcmp(layout,"same")){o->buffer[16]=0x61;o->buffer[17]='D';}
+    if(!strcmp(layout,"twin")){o->buffer[32]=0xE1;o->buffer[33]='D';}
+    return 0;
+}
+static void msg(const char* s){strcat(said,s);strcat(said,"|");}
+static char key(void){return 27;}
+static unsigned char ask(const char* q,const char* d,unsigned char n){(void)d;(void)n;msg(q);return 0;}
+int main(int argc,char** argv) {
+    static struct Panel panels[2];static unsigned char scratch[512];static char note[80];
+    (void)argc;layout=argv[1];
+    a.mli=mli;a.message=msg;a.cgetc=key;a.prompt=ask;a.note=note;a.sprintf=sprintf;buf=scratch;
+    other=panels+1;strcpy(other->path,"/D/OUT");source.unit=0x60;
+    extract();puts(said);return 0;
+}
+'''
+class ExtractGuard(unittest.TestCase):
+    """Before: the guard was source.unit==unit_of(destination); unit_of
+    answering 0 (two volumes named /D on line, so ProDOS may write the copy
+    onto either, the source included) let the extraction go on. Now 0 is
+    a refusal too."""
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp=tempfile.TemporaryDirectory(prefix='blkview-guard-');cls.p=Path(cls.tmp.name)
+        (cls.p/'guard.c').write_text(GUARD);cls.exe=cls.p/'guard'
+        subprocess.run(['cc','-std=c99','-Wno-unknown-pragmas','-I',str(ROOT),str(cls.p/'guard.c'),'-o',str(cls.exe)],check=True,capture_output=True)
+    @classmethod
+    def tearDownClass(cls):cls.tmp.cleanup()
+    def said(self,layout):return subprocess.check_output([str(self.exe),layout],text=True).strip()
+    def test_another_unit_goes_on_to_the_count(self):
+        self.assertEqual(self.said('other'),'Block count (4 hex digits, max 7FFF)|')
+    def test_the_source_unit_two_names_or_none_are_refused(self):
+        for layout in ('same','twin','none'):
+            with self.subTest(layout=layout):
+                self.assertEqual(self.said(layout),'Choose another destination volume.|')
 class Blkview(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

@@ -86,17 +86,36 @@ struct Block { unsigned char n,unit; unsigned char* buffer; unsigned int block; 
 struct Online { unsigned char n,unit; unsigned char* buffer; };
 static struct Block bio;
 static struct Online online;
+/* The unit (DSSS0000) of the volume that starts `path`, from ON_LINE on
+ * unit 0; `requested`, when not 0, keeps only that unit's record. 0: not
+ * on line, or not one volume. The table ends at the first record whose
+ * byte 0 is zero: what lies after it is stale copy_buf, not a drive. Two
+ * records with the name: ProDOS resolves the path to one of them and the
+ * caller would read or write the other by unit, so the answer is 0 and the
+ * note says why (a volume-list row is opened by its unit, which works). */
 static unsigned char unit_of(const char* path,unsigned char requested) {
-    unsigned int i; unsigned char n,j;
-    for(n=1;path[n] && path[n]!='/';++n) if(n==16)return 0;
+    static unsigned char *p,n,j,u,k;
+    for(n=1;(j=path[n])!=0 && j!='/';++n) if(n==16)return 0;
     online.n=2;online.unit=0;online.buffer=buf;
     if(RF(mli)(0xC5,&online))return 0;
-    for(i=0;i<256;i+=16) {
-        if((buf[i]&15)!=n-1 || (requested && (buf[i]&0xF0)!=requested))continue;
-        for(j=1;j<n && path[j]==buf[i+j];++j);
-        if(j==n)return buf[i]&0xF0;
-    }
-    return 0;
+    u=0;p=buf;k=16;
+    do {
+        if(!(j=*p))break;
+        if((unsigned char)((j&15)+1)==n && (!requested || (j&0xF0)==requested)) {
+            for(j=1;j<n && path[j]==p[j];++j);
+            if(j==n) {
+                if(u) {
+#ifdef UTIL_TWIN
+                    RF(sprintf)(a.note,"Two volumes named %.*s: pick it in the volume list.",n,path);
+#endif
+                    return 0;
+                }
+                u=*p&0xF0;
+            }
+        }
+        p+=16;
+    } while(--k);
+    return u;
 }
 static unsigned char readblk(unsigned char unit,unsigned int b,unsigned char* out) {
     bio.n=3;bio.unit=unit;bio.buffer=out;bio.block=b;return RF(mli)(0x80,&bio);

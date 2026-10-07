@@ -208,6 +208,7 @@ int main(int argc,char** argv) {
 UNDELETE_ROOT=PREFIX+r'''
 #include "src/plugins/undelete.c"
 static FILE* diskfile;static const char* dirfile;static char keypress;static unsigned int used;
+static const char* table="";     /* argv[6]: "twin", "phantom", "" */
 static unsigned char mli(unsigned char cmd,void* p) {
     if(cmd==0x80) {
         struct Block* b=p;
@@ -221,7 +222,13 @@ static unsigned char mli(unsigned char cmd,void* p) {
     }
     if(cmd==0xC5) {
         struct Online* o=p;memset(o->buffer,0,256);
-        o->buffer[0]=0x61;o->buffer[1]='V';o->buffer[16]=0x73;memcpy(o->buffer+17,"tmp",3);return 0;
+        o->buffer[0]=0x61;o->buffer[1]='V';o->buffer[16]=0x73;memcpy(o->buffer+17,"tmp",3);
+        /* twin: a second drive named V; phantom: V only past the zero
+         * terminator, in what a former ON_LINE left in copy_buf */
+        if(!strcmp(table,"twin")){o->buffer[32]=0xE1;o->buffer[33]='V';}
+        if(!strcmp(table,"phantom")){o->buffer[0]=0x73;memcpy(o->buffer+1,"tmp",3);o->buffer[16]=0;
+            o->buffer[32]=0x61;o->buffer[33]='V';}
+        return 0;
     }
     if(cmd==0xC0) {
         struct Create* c=p;char path[81];FILE* f;
@@ -242,6 +249,9 @@ int main(int argc,char** argv) {
     static unsigned char active,scratch[512];static char note[80];
     diskfile=fopen(argv[1],"rb");dirfile=argv[2];used=atoi(argv[3]);keypress=argv[4][0];
     strcpy(panels[0].path,"/V");strcpy(panels[1].path,argv[5]);
+    if(argc>6)table=argv[6];
+    /* argv[7] "list": the volume-list row /V, unit $60, instead of a path */
+    if(argc>7){panels[0].path[0]=0;strcpy(selected.name,"/V");selected.mdate=6;}
     api.panels=panels;api.active=&active;api.selected=&selected;api.note=note;api.copy_buf=scratch;
     api.mli=mli;api.fopen=open_file;api.fread=fread;api.fwrite=fwrite;api.fseek=fseek;api.fclose=fclose;
     api.remove=remove;api.memcpy=memcpy;api.memset=memset;api.strcpy=strcpy;api.strlen=strlen;
@@ -250,6 +260,64 @@ int main(int argc,char** argv) {
     plugin_entry(&api);puts(note);fclose(diskfile);return 0;
 }
 '''
+
+UNIT_OF=PREFIX+r'''
+#define UTIL_VOLUME
+#define UTIL_TWIN
+#include "src/plugins/util.h"
+static unsigned char table[512];
+static unsigned char mli(unsigned char cmd,void* p) {
+    struct Online* o=p;
+    if(cmd!=0xC5 || o->n!=2 || o->unit)abort();
+    memcpy(o->buffer,table,256);     /* ON_LINE writes 256 bytes; the rest is stale */
+    return 0;
+}
+int main(int argc,char** argv) {
+    static unsigned char scratch[512];static char note[80];unsigned int i;
+    for(i=0;i<512;++i){unsigned int x;sscanf(argv[1]+2*i,"%2x",&x);table[i]=x;}
+    memcpy(scratch,table,512);       /* copy_buf as a former ON_LINE left it */
+    a.mli=mli;a.note=note;a.sprintf=sprintf;buf=scratch;
+    i=unit_of(argv[2],(unsigned char)strtoul(argv[3],0,16));
+    printf("%02X\n%s\n",i,note);return 0;
+}
+'''
+
+RESCUE_ENTRY=PREFIX+r'''
+#include "src/plugins/rescue.c"
+static unsigned char twin;
+static unsigned char mli(unsigned char cmd,void* p) {
+    struct Online* o=p;
+    if(cmd!=0xC5)abort();            /* no block is read, nothing is created */
+    memset(o->buffer,0,256);
+    o->buffer[0]=0x61;o->buffer[1]='V';o->buffer[16]=0x71;o->buffer[17]='D';
+    if(twin){o->buffer[32]=0xE1;o->buffer[33]='V';}
+    return 0;
+}
+static char key(void){return 'V';}
+static void quiet(const char* s){(void)s;}
+int main(int argc,char** argv) {
+    static struct A2fcApi api;static struct Panel panels[2];static struct Entry selected;
+    static unsigned char active,scratch[512];static char note[80],full[80];
+    twin=argc>1;
+    strcpy(panels[0].path,"/V/SUB");strcpy(panels[1].path,"/D");
+    api.panels=panels;api.active=&active;api.selected=&selected;api.note=note;api.copy_buf=scratch;
+    api.full=full;api.mli=mli;api.memcpy=memcpy;api.strcpy=strcpy;api.strlen=strlen;api.sprintf=sprintf;
+    api.message=quiet;api.cgetc=key;
+    plugin_entry(&api);puts(note);return 0;
+}
+'''
+
+def online(*records, stale=()):
+    """An ON_LINE table: (byte 0, name) records from offset 0, then a zero
+    terminator, then `stale` records after it (copy_buf left by an older
+    call), the whole 512 bytes of copy_buf as hex."""
+    t=bytearray(512)
+    for i,(b,name) in enumerate(records):
+        t[16*i]=b;t[16*i+1:16*i+1+len(name)]=name
+    for i,(b,name) in enumerate(stale,len(records)+1):
+        t[16*i]=b;t[16*i+1:16*i+1+len(name)]=name
+    return t.hex()
+
 
 def root_volume(deleted=(), total=280):
     """/V with a FOUR-block root (2-5), its bitmap at 6, one live file whose
@@ -280,7 +348,8 @@ class SixPlugins(unittest.TestCase):
         cls.temp=tempfile.TemporaryDirectory(prefix='six-',dir='/tmp');cls.root=Path(cls.temp.name)
         cls.exe={}
         for name,text in [('undelete',UNDELETE),('mkimage',MKIMAGE),('sync',SYNC),('rescue',RESCUE),
-                          ('rescue_file',RESCUE_FILE),('undelete_root',UNDELETE_ROOT)]:
+                          ('rescue_file',RESCUE_FILE),('undelete_root',UNDELETE_ROOT),
+                          ('unit_of',UNIT_OF),('rescue_entry',RESCUE_ENTRY)]:
             source=cls.root/(name+'.c');source.write_text(text);exe=cls.root/name
             subprocess.run(['cc','-std=c11','-Wno-unknown-pragmas','-I',str(ROOT),str(source),'-o',str(exe)],check=True)
             cls.exe[name]=exe
@@ -353,11 +422,11 @@ class SixPlugins(unittest.TestCase):
         self.assertEqual(out[0],'dir /V/D');self.assertEqual(out[1],'1 1234 /V/D/DATA')
         out=subprocess.check_output([str(self.exe['rescue_file']),'size','/V/D/NONE'],text=True).split('\n')
         self.assertEqual(out[1],'0 99 /V/D/NONE')
-    def undelete_root(self,deleted,key):
+    def undelete_root(self,deleted,key,*mode):
         image,used,directory=root_volume(deleted)
         img=self.root/'root.po';img.write_bytes(image);dirs=self.root/'root.dir';dirs.write_bytes(directory)
         out=self.root/'recovered';shutil.rmtree(out,ignore_errors=True);out.mkdir()
-        note=subprocess.check_output([str(self.exe['undelete_root']),str(img),str(dirs),str(used),key,str(out)],
+        note=subprocess.check_output([str(self.exe['undelete_root']),str(img),str(dirs),str(used),key,str(out)]+list(mode),
                                      text=True,timeout=20).strip()
         self.assertEqual(img.read_bytes(),image,'the source volume was written')
         return note,out
@@ -369,6 +438,54 @@ class SixPlugins(unittest.TestCase):
         note,out=self.undelete_root([(5,12,b'LAST',20,1,5,b'hello')],'r')
         self.assertIn('Recovered LAST',note)
         self.assertEqual((out/'LAST').read_bytes(),b'hello')
+    def unit_of(self,table,path,requested=0):
+        out=subprocess.check_output([str(self.exe['unit_of']),table,path,'%X'%requested],text=True).split('\n')
+        return int(out[0],16),out[1]
+    def test_unit_of_finds_one_volume(self):
+        t=online((0x61,b'V'),(0x72,b'DD'),(0xE4,b'LONG'))
+        self.assertEqual(self.unit_of(t,'/DD/SUB/FILE'),(0x70,''))
+        self.assertEqual(self.unit_of(t,'/LONG'),(0xE0,''))
+        self.assertEqual(self.unit_of(t,'/LON'),(0,''))
+        self.assertEqual(self.unit_of(t,'/V',0x60),(0x60,''))
+        self.assertEqual(self.unit_of(t,'/V',0x70),(0,''))
+    def test_unit_of_stops_at_the_terminator(self):
+        """Before: the scan ran over all sixteen records, past the zero
+        byte that ends the table, and a record left there by an older call
+        (stale copy_buf) passed for a volume on line: here /V at unit $E0."""
+        t=online((0x72,b'DD'),stale=[(0xE1,b'V')])
+        self.assertEqual(self.unit_of(t,'/V'),(0,''))
+        self.assertEqual(self.unit_of(t,'/V',0xE0),(0,''))
+    def test_unit_of_refuses_two_volumes_of_one_name(self):
+        """Before: the first record named V won (unit $50) while ProDOS could
+        resolve /V to the other drive -- the WIPE/MOVE data loss of the bug
+        hunt. Now 0 and the note says why; a requested unit (a volume-list
+        row) still finds its own drive."""
+        t=online((0x51,b'V'),(0x72,b'DD'),(0xE1,b'V'))
+        self.assertEqual(self.unit_of(t,'/V/SUB'),(0,'Two volumes named /V: pick it in the volume list.'))
+        self.assertEqual(self.unit_of(t,'/V',0xE0),(0xE0,''))
+        self.assertEqual(self.unit_of(t,'/V',0x50),(0x50,''))
+        self.assertEqual(self.unit_of(t,'/DD'),(0x70,''))
+    def test_rescue_refuses_two_volumes_of_one_name(self):
+        """V (whole volume) from a panel inside /V with two drives named V:
+        refused before any block is read, with the twin note."""
+        out=subprocess.check_output([str(self.exe['rescue_entry']),'twin'],text=True).strip()
+        self.assertEqual(out,'Two volumes named /V: pick it in the volume list.')
+    def test_undelete_refuses_two_volumes_of_one_name(self):
+        """The directory is read through ProDOS by its path, the blocks by
+        unit: with two drives named V they could be two disks. Refused from a
+        path and from a volume-list row alike (before: the row's unit was
+        read whatever ProDOS made of /V); nothing written, nothing recovered."""
+        for mode in (('twin',),('twin','list')):
+            with self.subTest(mode=mode):
+                note,out=self.undelete_root([(5,12,b'LAST',20,1,5,b'hello')],'r',*mode)
+                self.assertEqual(note,'UNDELETE destination must be on another online volume.')
+                self.assertFalse((out/'LAST').exists())
+        note,out=self.undelete_root([(5,12,b'LAST',20,1,5,b'hello')],'r','','list')
+        self.assertIn('Recovered LAST',note)
+    def test_undelete_ignores_a_record_past_the_terminator(self):
+        note,out=self.undelete_root([(5,12,b'LAST',20,1,5,b'hello')],'r','phantom')
+        self.assertEqual(note,'UNDELETE destination must be on another online volume.')
+        self.assertFalse((out/'LAST').exists())
     def test_undelete_recovers_a_deleted_empty_file(self):
         note,out=self.undelete_root([(3,4,b'EMPTY',20,1,0,b'')],'r')
         self.assertIn('Recovered EMPTY',note)

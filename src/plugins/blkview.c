@@ -150,7 +150,10 @@ static void extract(void)
     unsigned char r;
     FILE* out;
     if(other->fs || !other->path[0]) { v_message("Open destination in other panel."); v_cgetc(); return; }
-    if(source.unit && source.unit==unit_of(other->path,0)) { v_message("Choose another destination volume.");v_cgetc();return; }
+    /* A device source: the destination must be on line on another unit.
+     * unit_of answers 0 for two volumes of the destination's name too, and
+     * that is a refusal: ProDOS could write the copy onto the source. */
+    if(source.unit && ((r=unit_of(other->path,0))==0 || r==source.unit)) { v_message("Choose another destination volume.");v_cgetc();return; }
     if(!v_prompt("Block count (4 hex digits, max 7FFF)",NULL,4))return;
     count=number(a.input,4);
     if(!count || count>32767U || count>source.blocks-block) { v_message("Invalid block range."); v_cgetc(); return; }

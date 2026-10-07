@@ -104,7 +104,12 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
         do{if(stop()||b==info.blocks||a.fread(db,1,512,f)!=512){a.fclose(f);note("Directory read failed.");return;}++b;}while(rd16(db+2));
         a.fclose(f);blocks=b;
     }
-    unit=unit_of(dir,pan->path[0]?0:(unsigned char)(a.selected->mdate<<4));dunit=unit_of(other->path,0);
+    /* The directory is read through ProDOS by its path, the blocks by unit:
+     * both must be the one volume. By name always -- unit_of refuses a name
+     * two drives carry, which ProDOS would resolve to either -- and a
+     * volume-list row must be that very unit. */
+    unit=unit_of(dir,0);if(!pan->path[0] && unit!=(unsigned char)(a.selected->mdate<<4))unit=0;
+    dunit=unit_of(other->path,0);
     if(!unit||!dunit||unit==dunit){note("UNDELETE destination must be on another online volume.");return;}
     if(readblk(unit,2,buf)||(buf[4]>>4)!=15){note("Cannot read volume header.");return;}
     total=rd16(buf+41);bitmap=rd16(buf+39);

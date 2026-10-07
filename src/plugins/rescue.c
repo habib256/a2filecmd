@@ -1,6 +1,7 @@
 /* Best-effort extraction to another volume. Missing 512-byte chunks are
  * zero filled and listed in a companion log. Source is never written. */
 #define UTIL_VOLUME
+#define UTIL_TWIN
 #define UTIL_CREATE
 #define UTIL_DISCARD
 #define UTIL_INFO
@@ -66,7 +67,8 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
     if(source[0]!='/' || (!disk && (!pan->path[0] || a.selected->type==15))){note("Select a source file or volume.");return;}
     unit=unit_of(source,disk&&!pan->path[0]?(unsigned char)(a.selected->mdate<<4):0);
     dunit=unit_of(other->path,0);
-    if(!unit || !dunit || unit==dunit){note("Destination must be on another online volume.");return;}
+    /* unit_of's own note stays when it found two volumes of one name. */
+    if(!unit || !dunit || unit==dunit){if(!*a.note)note("Destination must be on another online volume.");return;}
     if(disk) {if(readblk(unit,2,buf)||(buf[4]>>4)!=15){note("Cannot determine ProDOS volume size.");return;}size=(unsigned long)rd16(buf+41)*512;}
     else {if(getinfo(source)||info.storage>3){note("Extended/unsupported files cannot be rescued in file mode.");return;}
         if(!fresh_size()){note("Cannot read the file's directory entry.");return;}}
