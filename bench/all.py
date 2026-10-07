@@ -146,6 +146,8 @@ step('overlay_load', 'reject', 'safety', {}, needs=('host', 'boot', 'dos-host'))
 step('batch_missing', 'restore', 'safety', {})
 step('move_bitmap', 'alloc', 'safety', {})
 step('album_tags', 'window', 'safety', {})
+step('diskimg_single', '6502', 'safety', UNENH)
+step('diskimg_single', 'enh', 'safety', FULL, needs=('host', 'boot', 'full-enh'))
 step('case_paths', 'cfg', 'safety', {})
 
 # -- A whole session, and what chains after it -------------------------------

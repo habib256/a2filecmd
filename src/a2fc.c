@@ -3251,12 +3251,13 @@ void __fastcall__ help_entry(const struct A2fcApi* a)
  * SmartPort's (/RAM is excluded): the target floppy must already be formatted (F
  * does it), nothing here writes a track.
  *
- * The staging area of one pass: three blocks in the main bank ($3600-$3BFF,
+ * The staging area of one pass: three blocks in the main bank ($3700-$3CFF,
  * above the overlay's code), and for the single-drive copy eighty more
  * blocks in the auxiliary bank, $2000-$BFFF, where /RAM lives -- which is
  * therefore rebuilt from scratch afterwards, as after a DHGR image. A
  * 280-block floppy is thus copied in four passes. The overlay's variables
- * live at $3E00, outside the low RAM. */
+ * live at $3F00, outside the low RAM: the state fits one page, which gave
+ * the code a page more (bug hunt 3's checks before the mark). */
 #pragma code-name (push, "DISKIMG")
 #pragma rodata-name (push, "DISKIMGRO")
 
@@ -3319,12 +3320,12 @@ static const char S_E_SWITCH[] = "disk switched";
 static const char S_E_CODE[] = "ProDOS error $%02X";
 static const char S_RAM[] = "  /RAM was rebuilt empty.";
 
-#define DI_BLOCK ((unsigned char*)0x3C00)   /* the block for MLI calls */
-#define DI_MAIN ((unsigned char*)0x3600)    /* three staging blocks */
+#define DI_BLOCK ((unsigned char*)0x3D00)   /* the block for MLI calls */
+#define DI_MAIN ((unsigned char*)0x3700)    /* three staging blocks */
 #define DI_MAIN_BLOCKS 3
 #define DI_AUX 0x2000                       /* eighty more in AUX */
 #define DI_AUX_BLOCKS 80
-#define DI ((struct DiskImg*)0x3E00)
+#define DI ((struct DiskImg*)0x3F00)
 
 enum { SIDE_DEVICE, SIDE_PO, SIDE_DSK, SIDE_2MG };
 struct Side { unsigned char kind, unit; FILE* f; unsigned long base; };
@@ -3346,7 +3347,7 @@ struct DiskImg {
     char source[NAME_LEN];
 };
 
-typedef char diskimg_state_fits[0x200 - sizeof(struct DiskImg) + 1];
+typedef char diskimg_state_fits[0x100 - sizeof(struct DiskImg) + 1];
 
 /* ProDOS block b of a track occupies two physical sectors (low half then
  * high half): these, in pairs, as in po2dsk.py. */
@@ -3371,7 +3372,7 @@ static unsigned char di_xfer(struct Side* s, unsigned int block, unsigned char w
     unsigned long off;
     if (s->kind == SIDE_DEVICE) {
         p[0] = 3; p[1] = s->unit;
-        p[2] = 0x00; p[3] = 0x3C;
+        p[2] = 0x00; p[3] = 0x3D;   /* DI_BLOCK */
         p[4] = (unsigned char)block; p[5] = (unsigned char)(block >> 8);
         return mli_call(write ? 0x81 : 0x80, p);
     }
@@ -3428,11 +3429,14 @@ static unsigned char di_ask(void)
         if (cgetc() == KEY_ESC) return 0xFF;
 read:
         if ((DI->sr = di_xfer(&DI->src, 2, 0))) return DI->sr;
-        if (DI->want > 7) { memcpy(copy_buf, DI_BLOCK, 512); DI->want = 2; continue; }
+        if (DI->want == 8) { memcpy(copy_buf, DI_BLOCK, 512); DI->want = 2; continue; }
         /* a SOURCE wants anything but the mark, a TARGET the mark, the
-         * first TARGET (2, even) anything but the source's block 2 */
+         * first TARGET (2, even) anything but the source's block 2, the
+         * check before the mark (9, odd, no prompt) the target's block 2
+         * exactly as it was accepted */
         if (DI->want < 2) memset(copy_buf, DI_MARK, 512);
         if (!memcmp(copy_buf, DI_BLOCK, 512) == (DI->want & 1)) return 0;
+        if (DI->want > 7) return 0x2E;
         DI->wrong = S_WRONG;
     }
 }
@@ -3470,6 +3474,15 @@ static unsigned char di_copy(unsigned char swap)
     progress_done = 0;
     if (DI->dst.kind != SIDE_DEVICE && (r = di_presize(&DI->dst, total))) return r;
     if (swap) {
+        /* DI_BLOCK still holds the target's block 2 as di_ask accepted it
+         * (nothing in between uses $3C00). The ERASE prompt waits as long
+         * as the user likes: a disk swapped in meanwhile -- the source put
+         * back, a stranger -- used to receive the mark on its volume
+         * directory (bug hunt 3). Block 2 is read again just before the
+         * mark and must still be the accepted target's, byte for byte. */
+        memcpy(copy_buf, DI_BLOCK, 512);
+        DI->want = 9;
+        if ((r = di_ask())) return r;
         memset(DI_BLOCK, DI_MARK, 512);
         if ((r = di_xfer(&DI->dst, 2, 1))) return r;
     }
@@ -3547,6 +3560,23 @@ static void di_scan(void)
         }
         ++DI->ndev;
     }
+}
+
+/* One drive: the target goes in first, so that the warning names the disk
+ * really erased (the list saw the source). di_ask keeps the source's block
+ * 2 and refuses to see it again -- provided the drive still holds the
+ * source the list showed: a target inserted after the list, before that
+ * first read, gave its own block 2 as the source's, then the source was
+ * accepted as the target (bug hunt 3). The list is read again and must
+ * still name the source; two disks of the same name (or both without a
+ * ProDOS volume) are not told apart here. Returns 0, the ProDOS error, $2E
+ * (the disk changed) or $FF (Escape). */
+static unsigned char di_first_target(const struct Dev* d)
+{
+    di_scan();
+    if (strcmp(d->name, DI->source)) return 0x2E;
+    DI->want = 8;
+    return di_ask();
 }
 
 static void di_title(const char* sub)
@@ -3673,7 +3703,7 @@ void __fastcall__ diskimg_entry(const struct A2fcApi* a)
     unsigned char r = 0, image = pan->count && pan->path[0] && !is_dir(e);
     char key;
     (void)a;
-    /* The block buffers live in the graphics page ($3600-$3DFF): a picture
+    /* The block buffers live in the graphics page ($3700-$3EFF): a picture
      * viewed earlier may have left HIRES armed, with 80STORE then routing
      * $2000-$3FFF to the AUX bank -- READ_BLOCK would read the wrong place.
      * We switch HIRES off (text itself keeps 80STORE for its even columns)
@@ -3738,12 +3768,7 @@ void __fastcall__ diskimg_entry(const struct A2fcApi* a)
         src->unit = from->unit;
         dst->unit = to->unit;
         if (from == to) {
-            /* One drive: the target goes in first, so that the warning
-             * names the disk really erased (the list saw the source).
-             * di_ask keeps the source's block 2 and refuses to see it
-             * again. */
-            DI->want = 8;
-            if (di_ask()) goto out;
+            if ((r = di_first_target(to))) goto out;
             di_scan();
             if (to->inuse) { strcpy(note, S_HOLDS); goto out; }
         }
@@ -4561,8 +4586,8 @@ void __fastcall__ dosget_entry(const struct A2fcApi* a)
  * closer to $BF00, where the launcher keeps its C stack (31 bytes of
  * literal were enough to freeze the boot). A named array follows the
  * UNSHRINKRO segment, in the overlay's file. Likewise, the bulky state
- * lives in a structure at a fixed address, $3E00 (DISKIMG's, never loaded
- * at the same time), outside LOWBSS (full) and the C stack (192 bytes);
+ * lives in a structure at a fixed address, $3E00 (inside DISKIMG's block
+ * buffer, never loaded at the same time), outside LOWBSS (full) and the C stack (192 bytes);
  * true locals go on the C stack (static-locals off). The block of the
  * output read back sits at $3C00, just below; the code may reach $3BFF. */
 

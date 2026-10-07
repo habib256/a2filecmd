@@ -20,7 +20,7 @@ def section(start, end):
     return SOURCE[a:SOURCE.index(end, a)]
 
 
-SCAN = section('#ifndef DI_SLOTROM', 'static void di_title(')
+SCAN = section('#ifndef DI_SLOTROM', '/* One drive: the target goes in first')
 SCAN = SCAN.replace('*(unsigned char*)0xBF31', 'devcnt')
 SCAN = SCAN.replace('((unsigned char*)0xBF32)', 'devlst')
 SCAN = SCAN.replace('((unsigned int*)0xBF10)', 'devadr')
