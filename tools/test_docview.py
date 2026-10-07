@@ -307,6 +307,45 @@ class Docview(unittest.TestCase):
                          [str(n) for n in range(1, 256)] + ['255'] * 7)
         self.assertEqual(sum(set(w) == {'-'} for w in words), 261, 'one rule a break')
 
+    def test_an_underscore_inside_a_block_that_is_no_command(self):
+        # Given back twice -- by epistole() and by the block loop -- and
+        # read for ever: these three documents froze DOCVIEW (here, the
+        # harness's 10-second timeout). As the last byte of the 112-byte
+        # read buffer, the second unget wrapped vpos to $FFFF and the 111
+        # bytes after it were never shown.
+        pages = self.pages(b'_DB Tel_: 01 %$\r__BA\rHELLO\r')
+        self.check_clean(pages)
+        self.assertEqual(self.words(pages), ['HELLO', 'Tel_:', '01', '1'])
+        pages = self.pages(b'_DB_\r__BA\r')
+        self.check_clean(pages)
+        self.assertEqual(self.words(pages), ['_'])
+        pages = self.pages(b'_EN\r_ titre\r__XX\r')
+        self.check_clean(pages)
+        self.assertEqual(self.words(pages), [])
+        doc = b'_DB ' + b'x' * 107 + b'_\r__BA\r' + b'y' * 111 + b'\rHELLO\r'
+        self.assertEqual(doc.index(b'_\r'), 111, 'the _ is the last byte of the first buffer')
+        pages = self.pages(doc)
+        self.check_clean(pages)
+        self.assertEqual(''.join(self.words(pages)), 'y' * 111 + 'HELLO' + 'x' * 107 + '_')
+
+    def test_a_definition_keeps_its_commands_to_itself(self):
+        # The commands of a _DB or _EN block are the footer's or the
+        # header's, obeyed when it is shown (show_def) and undone after.
+        # Before: `_CE_MG30` in a footer centred the body at margin 30,
+        # `_SP` in a header broke page 1 before its first line, and a `%`
+        # not followed by `$` swallowed the byte after it: `50%` then CR
+        # then `F2` read `50%F2` on one row.
+        pages = self.pages(b'_DB\r_CE_MG30 PAGE %$\r__BA\rbody text\rmore\r')
+        self.check_clean(pages)
+        rows = [r.rstrip() for pg in pages for r in pg['rows'] if r.strip()]
+        self.assertEqual(rows, ['body text', 'more', ' ' * 51 + 'PAGE 1'])
+        pages = self.pages(b'_EN\r_SP\r__EA\rbody\r')
+        self.check_clean(pages)
+        self.assertEqual([r.strip() for pg in pages for r in pg['rows'] if r.strip()], ['body'])
+        pages = self.pages(b'_DB 50%\rF2\r__BA\rbody\r')
+        self.check_clean(pages)
+        self.assertEqual([r.rstrip() for pg in pages for r in pg['rows'] if r.strip()], ['body', ' 50%', 'F2'])
+
     def test_a_read_error_is_not_the_end(self):
         # A block that cannot be read: the page stops there and says
         # "read error"; before, it said "(end)" as if the document were whole.

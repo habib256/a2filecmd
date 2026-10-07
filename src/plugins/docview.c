@@ -303,7 +303,6 @@ static void rule(void)
 /* An Epistole command, after its `_`: two letters and a number. Returns 0
  * when the `_` was no command (then it is a character). */
 static const char cmds[] = "MGMDMIMACEPCCLJDTDIGIDSGISSPNDDBEN";
-static unsigned char inblock = 0;          /* in DATA: nothing zeroes the BSS */
 static unsigned char epistole(void)
 {
     int c;
@@ -311,6 +310,7 @@ static unsigned char epistole(void)
     unsigned int n = 0;
     c = rd();
     if (c == '_') {                        /* __BA, __EA: a block ends; glossary marks */
+    ends:
         for (n = 0; n < 2 && (c = rd()) >= 'A' && c <= 'Z'; ++n) ;
         if (n < 2 && c >= 0) unget();
         endmark = 1;
@@ -341,17 +341,21 @@ static unsigned char epistole(void)
     case 13: LAY.brk = 1; break;                       /* SP: a new page */
     case 14: LAY.nd = n > MAXND ? MAXND : n; break;    /* ND: decimals */
     case 15: case 16:                      /* DB, EN: a footer, a header, shown at the */
-        /* page ends (show_def); here, the row it leaves. Its commands are
-         * taken as they come, but a _DB or _EN among them opens nothing:
-         * the block open goes on to the one __XX that ended them all
-         * anyway. Each used to call this function again, two bytes of the
-         * processor's stack a level -- 130 of them in a row wrapped page 1
-         * over the return addresses. Two levels at most now. */
-        if (inblock) break;
-        inblock = 1;
-        for (endmark = 0; !endmark && (c = rd()) >= 0; )
-            if (c == '_' && !epistole()) unget();
-        inblock = 0;
+        /* page ends (show_def); here, the row it leaves. The definition is
+         * skipped to its __XX and nothing in it is obeyed: its commands
+         * are the header's or the footer's, laid out by show_def when
+         * they are shown and undone after. Before, they were taken as
+         * they came -- a _CE_MG30 in a footer centred the body at margin
+         * 30, an _SP in a header broke page 1 -- and each was a call of
+         * this function (130 _DB in a row wrapped page 1 over the return
+         * addresses; then two levels at most); a `_` that was no command
+         * was given back twice, once by the call and once here, and read
+         * for ever -- or, as the last byte of the buffer, moved vpos to
+         * $FFFF and skipped the 111 bytes after it. */
+        for (;;) {
+            while ((c = rd()) != '_') if (c < 0) return 1;
+            if (rd() == '_') goto ends;    /* __XX, whatever letters: the end */
+        }
     }
     return 1;
 }
@@ -437,7 +441,12 @@ static void calc_field(char kind)
 }
 
 /* The variables as they are at off, a line's start: the assignments before
- * it, from scan_off on -- or from the start of the file. */
+ * it, from scan_off on -- or from the start of the file. A header or a
+ * footer is passed over as render_line passes it: an assignment inside
+ * one is not the body's (before, it was run here and nowhere else, and a
+ * value shown after the block was not the one shown before it). The
+ * commands epistole() obeys on the way change LAY, which render_page sets
+ * from the page's start right after; no page starts inside a block. */
 static void calc_to(unsigned int off)
 {
     int c;
@@ -445,6 +454,7 @@ static void calc_to(unsigned int off)
     a.memcpy(calc_vars, vscan, NVARS * 12);
     seek_(scan_off);
     while (tell_() < off && (c = rd()) >= 0) {
+        if (c == '_') { epistole(); continue; }
         if (c != '#') continue;
         c = rd();
         if (c == ':' || c == '*') {
@@ -492,15 +502,21 @@ static void show_def(unsigned int kk)
                 pad();
                 while ((c = rd()) != 13 && c != 0xFF && !endmark) {
                     if (c == '_' && epistole()) continue;
-                    if (c == '%' && rd() == '$') {   /* the page number, 1 to 255: */
-                        n = LAY.pg;                  /* its hundreds, its tens (h: 100, */
-                        h = 100;                     /* then 10), from the first that */
-                        do {                         /* counts, then its units */
-                            for (c = '0'; n >= h; n -= h) ++c;
-                            if (LAY.pg >= h) put_(c);
-                            h -= 90;
-                        } while (h == 10);
-                        c = n | '0';
+                    if (c == '%') {
+                        c = rd();
+                        if (c != '$') {              /* a % of its own: the byte after it */
+                            if (c != 0xFF) unget();  /* is the line's (`50%` then CR) */
+                            c = '%';
+                        } else {                     /* %$, the page number, 1 to 255: */
+                            n = LAY.pg;              /* its hundreds, its tens (h: 100, */
+                            h = 100;                 /* then 10), from the first that */
+                            do {                     /* counts, then its units */
+                                for (c = '0'; n >= h; n -= h) ++c;
+                                if (LAY.pg >= h) put_(c);
+                                h -= 90;
+                            } while (h == 10);
+                            c = n | '0';
+                        }
                     }
                     put_(plain(c));
                 }
@@ -510,6 +526,7 @@ static void show_def(unsigned int kk)
             break;
         }
     LAY = keep;
+    pad();                                 /* the row's edge is the body's again, not the block's */
     seek_(back);
 }
 

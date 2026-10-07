@@ -302,12 +302,61 @@ class DocviewSim(unittest.TestCase):
         self.assertEqual([r for r in rows if r], ['TEXTE'])
         self.assertEqual([r for r in self.text(b'TEXTE\r' + b'_DB_EN' * 200) if r], ['TEXTE'])
         self.assertLessEqual(self.depth, 24)
-        # What a single level did is unchanged: one __XX ends the block,
-        # and the commands inside it are taken as they come.
+        # What a single level did is unchanged: one __XX ends the block.
         rows = self.text(b'A\r_DB\rF1 %$\r_EN\rF2\r__BA\rB\r__EA\rC\r')
         self.assertEqual([r for r in rows if r], ['A', 'B', 'C', 'F1 1'])
+        # The commands inside it are the footer's, not the body's: _MG5 in
+        # the footer used to move B and C to column 5 (this test said so).
         rows = self.text(b'A\r_DB\rF1\r_MG5\r__BA\rB\r_EN\rH\r__EA\rC\r_SP\rD\r')
-        self.assertEqual([r for r in rows if r][:3], ['A', '     B', '     C'])
+        self.assertEqual([r for r in rows if r], ['A', 'B', 'C', 'F1', '-' * 79, 'H', 'D', 'F1'])
+        # Nor does the margin a header sets stay with the rule under the
+        # footer or the body's line after the header (before: C, the rule,
+        # and `D suite` all at column 20).
+        rows = self.text(b'A\r_EN\r_MG20 H\r__EA\rC\r_SP\rD suite\r')
+        self.assertEqual([r for r in rows if r], ['A', 'C', '-' * 79, ' ' * 20 + 'H', 'D suite'])
+
+    def test_an_underscore_inside_a_block_that_is_no_command(self):
+        """A `_` followed by no command letter inside a _DB or _EN block was
+        given back twice -- once by epistole(), once by the block loop that
+        called it -- and read for ever: `_DB Tel_: 01 %$`, `_DB_` or
+        `_EN\\r_ titre` froze DOCVIEW on both processors (before: sim65's
+        cycle limit, 300 million cycles, on each). As the last byte of the
+        112-byte read buffer, the second unget moved vpos to $FFFF and the
+        111 bytes after it were never shown (before: the y's and HELLO
+        missing). The block is now scanned for its __XX and nothing else."""
+        rows = self.text(b'_DB Tel_: 01 %$\r__BA\rHELLO\r')
+        self.assertEqual([r for r in rows if r], ['HELLO', ' Tel_: 01 1'])
+        self.assertEqual([r for r in self.text(b'_DB_\r__BA\r') if r], ['_'])
+        self.assertEqual([r for r in self.text(b'_EN\r_ titre\r__XX\r') if r], [])
+        doc = b'_DB ' + b'x' * 107 + b'_\r__BA\r' + b'y' * 111 + b'\rHELLO\r'
+        self.assertEqual(doc.index(b'_\r'), 111, 'the _ is the last byte of the first buffer')
+        rows = [r for r in self.text(doc) if r]
+        self.assertEqual(rows, ['y' * 79, 'y' * 32, 'HELLO', ' ' + 'x' * 78, 'x' * 29 + '_'])
+
+    def test_a_definition_keeps_its_commands_and_values_to_itself(self):
+        """What a _DB or _EN block holds is the footer's or the header's,
+        laid out when it is shown and undone after (show_def). Before, the
+        commands were obeyed where the block was written: `_CE_MG30` in a
+        footer centred the whole body at margin 30 (`body text` at column
+        50), `_SP` in a header broke page 1 before its first line, with the
+        rule on row 1; a `%` not followed by `$` swallowed the byte after
+        it (`50%` then CR then `F2` read `50%F2` on one row); and an
+        assignment inside a block was run by calc_to at the next page's
+        start while render_line skipped it: X read 0,00 on page 1 and 5,00
+        on page 2."""
+        rows = self.text(b'_DB\r_CE_MG30 PAGE %$\r__BA\rbody text\rmore\r')
+        self.assertEqual([r for r in rows if r], ['body text', 'more', ' ' * 51 + 'PAGE 1'])
+        rows = self.text(b'_EN\r_SP\r__EA\rbody\r')
+        self.assertEqual([r for r in rows if r], ['body'])
+        rows = self.text(b'_DB 50%\rF2\r__BA\rbody\r')
+        self.assertEqual([r for r in rows if r], ['body', ' 50%', 'F2'])
+        doc = b'_DB #:X=5]F\r__BA\rA #:?X]\r' + b'L\r' * 25 + b'B #:?X]\r'
+        rows = [r for r in self.text(doc, keys=' ') if r and r != 'L']
+        self.assertEqual(rows, ['A 0,00', 'B 0,00', ' #:X=5]F'])
+        # An assignment before the block, and one after it, still count.
+        doc = b'#:X=1]\r_DB #:X=5]F\r__BA\rA #:?X]\r' + b'L\r' * 25 + b'#:X=X+1]B #:?X]\r'
+        rows = [r for r in self.text(doc, keys=' ') if r and r != 'L']
+        self.assertEqual(rows, ['A 1,00', 'B 2,00', ' #:X=5]F'])
 
     def test_decimal_tab_beyond_the_right_margin(self):
         """`_MD30_TD40` then `Total #:?1]`: the blanks towards the tab's
