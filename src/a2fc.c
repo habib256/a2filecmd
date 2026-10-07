@@ -2359,9 +2359,14 @@ static unsigned char load_overlay(const char* name, unsigned char any)
                 fclose(f); return 0;
             }
             big = OVL->flags & OVERLAY_BIG;
-            /* not on the way to an album's neighbour: the session's save
-             * stands (media_prepare) */
-            if (big && !batch_snapshot && !media_request) { keep_tags(1); snapshot_entries(); }
+            /* Every big overlay receives ENTRY_SNAPSHOT (API v5), an
+             * album's neighbour too; only the tags are not saved again on
+             * the way to a neighbour: the session's save stands
+             * (media_prepare). */
+            if (big && !batch_snapshot) {
+                if (!media_request) keep_tags(1);
+                snapshot_entries();
+            }
             /* A short payload may be normal; an I/O error or bytes beyond
              * its window must never become executable, cached code. */
             if (fread(OVERLAY_WINDOW + 8, 1, (big ? OVERLAY_LARGE : OVERLAY_SMALL) - 8, f)

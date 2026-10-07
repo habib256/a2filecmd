@@ -27,7 +27,7 @@ static unsigned char window[OVERLAY_LARGE],copy_buf[512];
 static uint16_t a2fc_link_id=0xABCD;
 static char overlay_loaded[17],other_full[81],full[81],cfg_path[81],question[81];static unsigned char in_overlay;
 static unsigned char batch_snapshot,companion_unit,media_request;
-static int mode,reads,closes,error,restored,draws,saved,opens;
+static int mode,reads,closes,error,restored,draws,saved,opens,snaps;
 static FILE* open_overlay(const char* name,int ask) {
  FILE* f=tmpfile();unsigned i,n=mode==5?8:mode==6?OVERLAY_LARGE+1:mode==8?OVERLAY_SMALL:mode==9?OVERLAY_LARGE:2000;
  unsigned char header[8]={0xCD,0xAB,OVERLAY_BIG,0,0,0,0,0};
@@ -44,7 +44,7 @@ static size_t read_code(void* p,size_t size,size_t n,FILE* f) {
 static int close_code(FILE* f){++closes;fclose(f);return mode==4?-1:0;}
 static int confirm_aux(void){return 1;}
 static const char loading_tool[]="Loading tool...";
-static void snapshot_entries(void){}
+static void snapshot_entries(void){++snaps;}
 static void keep_tags(int save){saved+=save?1:-1;}
 static int read_panel(int p){++restored;memset(window+1280,0xEE,100);return 1;}
 static void draw_all(void){++draws;}
@@ -202,6 +202,26 @@ int main(void){unsigned side,n,k;unsigned char original[4060];
    p=Path(d);(p/'test.c').write_text(c)
    subprocess.run(['cc','-std=c99','-fsanitize=address,undefined',str(p/'test.c'),'-o',str(p/'test')],check=True,capture_output=True)
    subprocess.run([str(p/'test')],check=True)
+
+ def test_album_neighbour_gets_the_snapshot_but_keeps_the_tags(self):
+  # API v5 (a2fc_plugin.h): a big overlay receives ENTRY_SNAPSHOT. On the
+  # way to an album's neighbour (media_request) the tags stay as the
+  # session saved them, but the snapshot is taken all the same (bug hunt 3:
+  # both were skipped). BATCH keeps its own snapshot (batch_snapshot).
+  main=r'''
+int main(int argc,char** argv) {
+ media_request=atoi(argv[1]);batch_snapshot=atoi(argv[2]);
+ if(!load_overlay("DOSPUT",1))return 9;
+ printf("%d %d\n",snaps,saved);return 0;
+}
+'''
+  with tempfile.TemporaryDirectory(prefix='overlay-snap-') as d:
+   p=Path(d);(p/'test.c').write_text(C+loader+main)
+   subprocess.run(['cc','-std=c99',str(p/'test.c'),'-o',str(p/'test')],check=True,capture_output=True)
+   run=lambda *a:subprocess.check_output([str(p/'test')]+[str(x) for x in a],text=True).split()
+   self.assertEqual(run(0,0),['1','1'])      # a big overlay: tags saved, snapshot
+   self.assertEqual(run(9,0),['1','0'])      # a neighbour (Right): snapshot, tags kept
+   self.assertEqual(run(9,1),['0','0'])      # inside BATCH: its own snapshot
 
  def test_stream_failures_never_cache_code_and_restore_panels(self):
   with tempfile.TemporaryDirectory(prefix='overlay-load-') as d:
