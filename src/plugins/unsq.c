@@ -173,7 +173,7 @@ static unsigned char unsqueeze(void)
             continue;
         }
         if (last < 0) return 0;
-        while (--k) putb((unsigned char)last);
+        while (--k != 0) putb((unsigned char)last);
     }
 }
 

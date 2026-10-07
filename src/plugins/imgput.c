@@ -260,7 +260,7 @@ static unsigned char claims_used(unsigned int b) {
 static unsigned int claims_budget;
 static unsigned char claims_read(unsigned int b,unsigned char* to) {
  spin();
- return !stop() && --claims_budget && claims_used(b) && source_read(&src,b,to);
+ return !stop() && --claims_budget != 0 && claims_used(b) && source_read(&src,b,to);
 }
 /* A block a file may name is neither of the two directory blocks about to
  * be written: the one with the free slot and the one with the header.
