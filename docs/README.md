@@ -34,6 +34,7 @@ dans `history/`.
 
 | Rapport | Objet |
 | --- | --- |
+| [QUALIFICATION-0.9.6.md](QUALIFICATION-0.9.6.md) | Qualification du candidat 0.9.6 |
 | [QUALIFICATION-0.9.5.md](QUALIFICATION-0.9.5.md) | Qualification de la 0.9.5 |
 | [QUALIFICATION-0.9.4.md](QUALIFICATION-0.9.4.md) | Qualification de la 0.9.4 |
 | [QUALIFICATION-0.9.3.md](QUALIFICATION-0.9.3.md) | Qualification de la 0.9.3 |

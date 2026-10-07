@@ -7,7 +7,8 @@ préparation (branche `release-0.9.6`). Mini et ProDOS, même numéro ;
 Ce qui est fait vit dans le CHANGELOG et les rapports
 [0.9.1](docs/QUALIFICATION-0.9.1.md), [0.9.2](docs/QUALIFICATION-0.9.2.md),
 [0.9.3](docs/QUALIFICATION-0.9.3.md), [0.9.4](docs/QUALIFICATION-0.9.4.md),
-[0.9.5](docs/QUALIFICATION-0.9.5.md) ; ce fichier ne garde que la suite.
+[0.9.5](docs/QUALIFICATION-0.9.5.md),
+[0.9.6](docs/QUALIFICATION-0.9.6.md) (candidat) ; ce fichier ne garde que la suite.
 
 Préserver les données prime ([AGENTS.md](AGENTS.md)). Ne pas relever
 les plafonds ([MEMORY-BUDGETS.md](docs/MEMORY-BUDGETS.md)). Une étape
@@ -78,7 +79,7 @@ Chaque étape suppose la précédente fermée. Un défaut trouvé aux étapes
    - [x] MAIN 65C02 : 494 octets libres en 0.9.4 (82 avant), 6502 : 885 ;
      `pan_at(p)` remplace les 90 `panels[p]` à indice variable, que cc65
      multipliait par 98. Depuis, les formats de la 0.9.5 les ont repris :
-     **16 / 421** octets libres (65C02 / 6502) le 6 octobre 2026
+     **9 / 389** octets libres (65C02 / 6502) le 7 octobre 2026
      (`check_layout.py`, branche `release-0.9.6`).
    - [x] VDrive ne lit ni n'écrit plus jamais le slot 1 (IIe et //c).
      Reproduit avant correction : un IIe dont la seule SSC était en slot 1
@@ -95,7 +96,7 @@ Chaque étape suppose la précédente fermée. Un défaut trouvé aux étapes
      le 6551 ; le //c (MACHID) garde son port 2. `vdrive_printer` 19/19 et
      `vdrive` 13/13 sur les deux CPU ; l'ancien pilote écrivait 106 fois
      sur une imprimante en slot 2. Coût : 16 octets de carte langage (62
-     libres en 65C02, 53 en 6502 à l'époque ; 33 / 24 le 6 octobre 2026). Limites : le IIgs n'est pas testé
+     libres en 65C02, 53 en 6502 à l'époque ; 13 / 11 le 7 octobre 2026). Limites : le IIgs n'est pas testé
      (POM2 ne l'émule pas) ; une imprimante sur le port modem du //c.
 3. **Retour visuel.**
    - [ ] Vérifier que la progression 0.9.3 couvre les pauses à 1 MHz
@@ -119,14 +120,14 @@ jetables pour les essais destructifs ; deux CPU.
 
 ## 1.1 — formats
 
-Seulement s'il reste des octets. Relevé du 6 octobre 2026 (65C02 / 6502,
+Seulement s'il reste des octets. Relevé du 7 octobre 2026 (65C02 / 6502,
 `check_layout.py` et cartes de `make`) : OPEN 11 / 11 octets libres (168 /
 173 quand son classifieur est passé en assembleur, `src/open.s`, le 26
 septembre ; les formats de la 0.9.5 les ont pris) ; une règle de routage
 coûte 10 à 20 octets, à écrire dans `open.s` **et** dans
-`tools/file_viewer_ref.c`. Le résident 65C02 a 16 octets libres
+`tools/file_viewer_ref.c`. Le résident 65C02 a 9 octets libres
 (objectif 256) : tout nouveau format vit dans une surcouche. DOCVIEW a
-40 / 6 octets dans sa fenêtre agrandie, UNSHRINK 916 / 902, SHAPES est
+42 / 41 octets dans sa fenêtre agrandie, UNSHRINK 901 / 888, SHAPES est
 plein (3 / 0). Les nouvelles surcouches vont sur 800K et XL, pas sur la
 140K.
 

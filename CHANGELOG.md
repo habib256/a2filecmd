@@ -5,11 +5,28 @@ downloads and installation.
 
 ## [Unreleased]
 
-No new format. Two bug hunts of the whole program, nine then six
-reviewers, and their corrections; the demonstration folder tidied; the
-documentation brought back in line with the code.
+## [0.9.6](https://github.com/habib256/a2filecmd/releases/tag/v0.9.6) — 2026-10-07
 
-## Unreleased in detail
+A data-safety and reliability update, with no new format. Two bug hunts
+of the whole program, nine then six reviewers, and their corrections.
+
+- Damaged images and ambiguous volume identities are refused before writing;
+  REPAIR asks `FREE` before reclaiming lost blocks.
+- Copy, move, delete and editor checks protect against stale sizes, long
+  paths, destination collisions and tags restored onto different files.
+- Questions discard keys typed ahead; auxiliary-memory viewers rebuild
+  /RAM after Ctrl-Reset.
+- VDrive receives at 115,200 bps within the byte budget; readers and the
+  Mini handle more errors without losing state.
+- Demonstrations and documentation now match the shipped behavior.
+
+Automated qualification and remaining limits: [qualification report](https://github.com/habib256/a2filecmd/blob/v0.9.6/docs/QUALIFICATION-0.9.6.md).
+Physical hardware testing remains pending; a power cut during a physical
+write is not covered by an atomicity guarantee.
+
+[Full changelog](https://github.com/habib256/a2filecmd/blob/v0.9.6/CHANGELOG.md#096-in-detail).
+
+## 0.9.6 in detail
 
 ### Fixed: data safety
 
@@ -158,6 +175,21 @@ documentation brought back in line with the code.
 - BLKEDIT's disk identity is the CRC-32 of block 2 (running sums missed
   swapped bytes); a 1- or 2-block image is identified by its block 0.
 
+### Fixed: final regression checks
+
+- The one-drive DISKIMG copy reads the accepted target's block 2 again
+  after the ERASE answer, immediately before writing its mark. A source or
+  another disk inserted at that question gets `Failed: disk switched.`
+  and nothing written. The first TARGET prompt also checks that the volume
+  list still names the selected source before retaining its identity.
+  Disks with identical identity blocks, two disks of the same name at the
+  first prompt, and swaps after writes begin remain outside this check.
+- An album restores the saved entry window when navigating to a neighbour;
+  tags survive crossing a large folder's windows and returning.
+- A question clears the keyboard strobe once before its first key, rather
+  than discarding a reply while polling. The panel fingerprint rotates
+  its low byte so two-byte name changes no longer cancel.
+
 ### Fixed, the second hunt
 
 - DOCVIEW froze on an `_` that is no command inside a header or footer
@@ -219,9 +251,9 @@ documentation brought back in line with the code.
 
 ### Room
 
-- MAIN 65C02/6502: 12/392 bytes free (11/420 in 0.9.5), LC 21/19.
+- MAIN 65C02/6502: 9/389 bytes free (11/420 in 0.9.5), LC 13/11.
   REPAIR 77/13, FIXIT 276/243, IMGPUT 28/75, WIPE 50/79, DOCVIEW 42/41,
-  DISKIMG 51/4, VISICALC's fixed part 156/153 (65C02/6502); the Mini 3
+  DISKIMG 206/161, VISICALC's fixed part 156/153 (65C02/6502); the Mini 3
   bytes under DOS. docs/MEMORY-BUDGETS.md has the full table.
 
 ## [0.9.5] - 2026-10-04

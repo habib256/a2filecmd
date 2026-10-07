@@ -13,10 +13,10 @@ From the essentials of DOS3.3 to a complete ProDOS workspace.
 
 **[Download](https://github.com/habib256/a2filecmd/releases/latest) · [Read the guide](docs/MANUAL.md) · [PDF guide](docs/A2FILECMD-MANUAL-EN.pdf)**
 
-![A2 File Cmd ProDOS XL in 80 columns: the volume root on the left, the DEMO folder on the right](docs/screenshots/prodos-panels-0.9.4.png)
+![A2 File Cmd ProDOS XL in 80 columns: the volume root on the left, the DEMO folder on the right](docs/screenshots/prodos-panels-0.9.6.png)
 
 *ProDOS XL in 80 columns on an enhanced Apple IIe, captured in POM2 at the
-screen's proportions ([how](tools/capture_panels.py), [source image](docs/screenshots/prodos-panels-0.9.4.json)).*
+screen's proportions ([how](tools/capture_panels.py), [source image](docs/screenshots/prodos-panels-0.9.6.json)).*
 
 </div>
 
@@ -47,6 +47,8 @@ The [guide](docs/MANUAL.md) lists the supported formats and each tool's limits.
 ## Choose your disk
 
 **[0.9.5 is the published release](https://github.com/habib256/a2filecmd/releases/tag/v0.9.5).**
+The 0.9.6 candidate is prepared on `release-0.9.6`; see its
+[qualification report](docs/QUALIFICATION-0.9.6.md).
 No build is needed to use the release downloads.
 
 | Your setup | Download from 0.9.5 |

@@ -1,6 +1,6 @@
 # Consolidation : budgets mémoire
 
-## État actuel (7 octobre 2026, commit aa1a820)
+## État actuel (7 octobre 2026, sources b4cd129, candidat 0.9.6)
 
 Le seul tableau à jour de ce document. Relevé sur une construction neuve des
 deux éditions (`make ARCH=enh`, `make ARCH=6502`, puis `make mini`) :
@@ -35,10 +35,10 @@ doit être relâché pour faire passer un lien.
 
 | Zone : plafond et raison | 65C02 | 6502 |
 | --- | ---: | ---: |
-| MAIN — résident, jusqu’à `$BEE0` : le lanceur garde sa pile C à `$BF00` et charge `A2FILE.CODE` jusqu’à sa fin ; 32 octets de marge | 12 | 392 |
-| LC — carte langage, banque 2 `$D400-$DFFF`, derrière le code QUIT de ProDOS ; image de 3 Ko posée en `$1000` par le lanceur | 21 | 19 |
+| MAIN — résident, jusqu’à `$BEE0` : le lanceur garde sa pile C à `$BF00` et charge `A2FILE.CODE` jusqu’à sa fin ; 32 octets de marge | 9 | 389 |
+| LC — carte langage, banque 2 `$D400-$DFFF`, derrière le code QUIT de ProDOS ; image de 3 Ko posée en `$1000` par le lanceur | 13 | 11 |
 | LOWRAM — BSS basse `$1000-$1AFF`, entre le tampon d’E/S ProDOS et la fenêtre des surcouches | 84 | 109 |
-| STACK GAP — entre la fin du code persistant (sans ONCE) et la pile C de 192 octets sous `$BF00` ; ne mesure pas la consommation de la pile | 29 | 598 |
+| STACK GAP — entre la fin du code persistant (sans ONCE) et la pile C de 192 octets sous `$BF00` ; ne mesure pas la consommation de la pile | 26 | 595 |
 | FORMAT BSS — état de FORMAT jusqu’au tampon `$3E00` | 98 | 98 |
 
 | Surcouche liée au résident (`$1B00`, plafond) | 65C02 | 6502 |
@@ -58,7 +58,7 @@ doit être relâché pour faire passer un lien.
 | ATTR (`$2000`) | 153 | 150 |
 | EDIT (`$2C00`) | 53 | 36 |
 | MENU (`$2A00`) | 203 | 152 |
-| DISKIMG (`$3600`) | 51 | 4 |
+| DISKIMG (`$3700`) | 206 | 161 |
 | IMGFS (`$2800`) | 1 315 | 1 327 |
 | DOSGET (`$2800`) | 1 217 | 1 213 |
 | UNSHRINK (`$3C00`) | 901 | 888 |
@@ -67,6 +67,12 @@ doit être relâché pour faire passer un lien.
 | SEARCH (`$2000`) | 191 | 207 |
 | BINARY2 (`$2800`) | 953 | 973 |
 | AWP (`$2000`) | 144 | 121 |
+
+DISKIMG : le dernier correctif (`b4cd129`) a déplacé ses trois blocs de
+transfert en `$3700-$3CFF`, le bloc d’identité en `$3D00-$3EFF` et son
+état, désormais limité à une page, en `$3F00-$3FFF`. Sa fenêtre de code
+finit donc à `$3700` au lieu de `$3600` ; le lien et `check_layout.py`
+contrôlent cette limite avant les tampons, sans chevauchement.
 
 | Surcouche à table de services | Fenêtre (code + BSS) | Fichier 65C02 / 6502 | Libres 65C02 / 6502 |
 | --- | --- | ---: | ---: |

@@ -1,0 +1,9 @@
+{
+  "version": "0.9.6",
+  "date": "2026-10-07",
+  "emulator": "POM2 pom2_playtest, disposable copy; no file operation",
+  "image": "A2FILECMD-PRODOS-XL-65C02-enhanced-0.9.6.2mg",
+  "sha256": "d8a58c2560f52a36571956b8f0cde445c1f0bb0b8943c375f35a9f58e6e49b63",
+  "preset": "iie",
+  "size": "560x384, each 80-column scan line doubled"
+}
