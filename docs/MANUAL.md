@@ -717,18 +717,31 @@ volume, without a boot program, up to 32,767 blocks.
 
 **FIXIT only reads.** It reports ProDOS directory/allocation faults and refuses
 incomplete scans rather than declaring lost blocks. For volumes above 4,096
-blocks, Q checks directories only; F performs a full scan requiring AUX consent.
-A quick clean verdict is not a full allocation check. It does not check DOS disks.
+blocks, Q checks directories only; F performs a full scan, which uses AUX: if
+/RAM holds files you are asked first (an empty /RAM is not asked about), and
+/RAM is rebuilt empty afterwards, or after a Ctrl-Reset during the scan.
+A quick clean verdict is not a full allocation check. It does not check DOS
+disks. When two drives carry the same volume name, open it from the volume
+list (`Two volumes named /X: pick it in the volume list.`).
 
 **REPAIR** shows a plan and requires **F**, then **FIX**, before writing. It
-refuses the program volume, cross-links and uncertain scans. Unclaimed blocks
-are given back only when nothing else is wrong with the directory tree: beside
-any other fault they may belong to a file a damaged pointer no longer reaches,
-and REPAIR then writes nothing at all (`See FIXIT`). A subdirectory whose key
-block is no directory header, or a volume directory that is not blocks 2 to 5,
-stops the scan. Writes are read back, restoration is attempted on error, and
-the volume is rescanned. Backups are only in RAM:
-interruption can leave a partially applied plan. Large scans can take minutes.
+refuses the program volume, cross-links and uncertain scans. Unclaimed (lost)
+blocks are given back only when nothing else is wrong with the directory tree:
+beside any other fault they may belong to a file a damaged pointer no longer
+reaches, and REPAIR then writes nothing at all (`See FIXIT`). If the tree
+claims blocks the bitmap calls free, REPAIR says so: copy the files to another
+volume and write nothing to this one, because the next allocation can land on
+a file. Even alone, lost blocks are listed by number on the plan screen and
+need a second word, **FREE**, before **FIX**: a file pointer moved onto a block
+that was already lost looks exactly like this. If any file is missing or short,
+copy what still reads before freeing anything. A directory REPAIR cannot trust
+(a key block that is no directory header, a volume directory out of the place
+its header gives, a wrong back link in a subdirectory) stops it with `Directory
+not trusted`. Writes are read back, restoration is attempted on error, and the
+volume is rescanned. Backups are only in RAM: interruption can leave a
+partially applied plan. Large scans can take minutes. REPAIR cannot see a
+volume header whose block count was lowered: it then clears the bitmap bits
+past the new end.
 
 **UNDELETE** recovers validated deleted files to another volume without changing
 the source. Reused/ambiguous allocation, deleted directories and resource forks

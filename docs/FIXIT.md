@@ -112,8 +112,12 @@ Invariants appliqués tels quels :
 - bitmap : **bit à 1 = libre**, bit à 0 = utilisé ; le bit de poids fort d'un
   octet est le bloc le plus bas ; un bloc de bitmap couvre 4 096 blocs ; la
   bitmap occupe `((total-1)/4096)+1` blocs consécutifs ;
-- blocs 0 et 1 amorçage, 2 à 5 répertoire de volume (taille fixe), puis les
-  blocs de bitmap : tous marqués utilisés ;
+- blocs 0 et 1 amorçage, puis le répertoire de volume de 2 à
+  `bit_map_pointer − 1` (2 à 5 sur tout volume que formate ProDOS, le bloc 2
+  seul sur `/RAM`), puis les blocs de bitmap : tous marqués utilisés. Jusqu'au
+  7 octobre 2026 le parcours **et** l'oracle tenaient le répertoire aux blocs
+  2 à 5 quoi que dise l'en-tête : un `/RAM` sain se lisait `VOLDIR_SIZE` plus
+  `BM_RESERVED`, et REPAIR marquait son bloc 4 occupé ;
 - `file_count` compte les entrées de type de stockage non nul, en-tête exclu,
   sur toute la chaîne du répertoire ;
 - `blocks_used` d'un répertoire est porté par son entrée chez son parent, et
@@ -167,9 +171,9 @@ réparation par compteur.
 | 24 | `BM_LOST` | bit à 0, aucune référence | réparable sous condition | oui (`lost`) |
 | 25 | `IO_ERROR` | échec `READ_BLOCK` `$80` | refus, pose `complete = 0` | oui (`failed`) |
 | 26 | `HDR_NAME` | nom du bloc 2 contre celui d'`ON_LINE` | info | non |
-| 27 | `VOLDIR_SIZE` | chaîne du répertoire de volume ≠ blocs 2, 3, 4, 5 | irréparable sans perte | non |
+| 27 | `VOLDIR_SIZE` | chaîne du répertoire de volume ≠ blocs 2 à `bit_map_pointer − 1` | irréparable sans perte | non |
 | 28 | `ENT_ACCESS` | `+$1E` bit 4 ou 3 non nul (masque `$18`) | info | non |
-| 29 | `BM_RESERVED` | bloc 0, 1, 2 à 5 ou de bitmap marqué libre | réparable | non |
+| 29 | `BM_RESERVED` | bloc 0, 1, de répertoire de volume ou de bitmap marqué libre | réparable | non |
 | 30 | `BM_TAIL` | bit à 1 au-delà de `total_blocks` dans la dernière page | réparable | non |
 
 Les vingt-quatre premiers étaient déjà les identifiants de `prodos_check.py` ;
@@ -256,10 +260,17 @@ l'image de mesure (65 535 blocs, 58 458 occupés, 690 fichiers), 16 × 907 =
   `claim` et `claimed` passent de 251 à 65 octets ; la divergence
   `WINDOW_LOOP` du banc de mutations disparaît (section 7).
 - La mémoire AUX porte le disque /RAM (AGENTS.md) : **avant** la première
-  écriture, la question du cœur, « ALL /RAM files will be LOST. Continue? »,
-  par `api->confirm`, une fois par exécution de la surcouche. À la sortie,
-  si elle a été acceptée, `api->ram_format()` reconstruit /RAM vide, par le
-  pointeur reçu et non par la copie de la table. Un volume en **S3,D2**
+  écriture, le consentement du cœur, `api->aux_consent()` (API v6), une fois
+  par exécution de la surcouche : il ne pose « ALL /RAM files will be LOST.
+  Continue? » que si /RAM porte des fichiers (`ram_empty`), et il lève
+  `aux_dirty`, que le chemin Ctrl-Reset de crt0 lit pour reconstruire /RAM.
+  Jusqu'au 7 octobre 2026 FIXIT et REPAIR posaient leur propre question par
+  `api->confirm` : ils demandaient même devant un /RAM vide, et un Ctrl-Reset
+  au milieu du parcours d'un volume de plus de 4 096 blocs laissait /RAM en
+  ligne sur des blocs écrasés (mesuré sous POM2, section 5, « Deuxième
+  chasse »). À la sortie, si le consentement a été donné,
+  `api->ram_format()` reconstruit /RAM vide, par le pointeur reçu
+  (`api_full`) et non par la copie de la table. Un volume en **S3,D2**
   (`unit` `$B0`) n'est jamais contrôlé ainsi : c'est la place de /RAM, et
   celle d'un disque RAM plus grand logé en AUX, dont les blocs seraient
   écrasés pendant qu'on les lit.
@@ -800,7 +811,8 @@ pointeur qui y mène :
   seul `DIR_CHAIN` que REPAIR écrit encore.
 
 Dans les trois cas le parcours est **coupé** (`complete = 0`) : le plan
-entier est refusé, `Scan incomplete: no repair.`, et `fix()` n'écrit plus
+entier est refusé, `Directory not trusted: nothing written. See FIXIT.`
+(`Scan incomplete: no repair.` jusqu'au 7 octobre 2026), et `fix()` n'écrit plus
 rien dans une passe d'application qui se découvre coupée — le disque n'est
 plus celui du plan, même si le bloc 2 n'a pas bougé.
 
@@ -870,8 +882,23 @@ finissaient `repaired.` ; tous sont refusés sans une écriture :
 
 - un pointeur déplacé sur un bloc que la bitmap dit **déjà occupé** et que
   personne ne réclame (un bloc déjà perdu) : un bloc perdu en remplace un
-  autre, l'arbre est sans reproche, aucun bloc libre n'est réclamé. REPAIR
-  libère alors le vrai bloc ;
+  autre, l'arbre est sans reproche, aucun bloc libre n'est réclamé. C'est
+  prouvé pour trois sortes de pointeurs : la **clé d'un fichier d'un bloc**,
+  une **entrée d'un bloc d'index** d'arbrisseau et la **clé d'une fourche**
+  de fichier étendu (`tools/test_repair.py`,
+  `test_a_pointer_onto_a_lost_block_is_named_and_asks_its_own_word`).
+  L'oracle n'y voit qu'un `BM_LOST`. Depuis le 7 octobre 2026 REPAIR ne
+  libère plus en silence : l'écran de plan nomme chaque bloc perdu, et un
+  second mot, `FREE`, est demandé avant `FIX` (« Deuxième chasse »). Si
+  l'utilisateur tape les deux, le vrai bloc est libéré : la limite demeure,
+  elle est dite ;
+- un **total de l'en-tête abaissé** (1 600 devenu 1 500) : REPAIR ne voit
+  pas `HDR_TOTAL` (il faut la taille du support, que seul l'oracle hôte
+  connaît), prend les bits au-delà du nouveau total pour un `BM_TAIL` et les
+  efface. Le rétrécissement devient alors permanent. Comparer au nombre de
+  blocs de l'appareil (`STATUS` du pilote) demanderait un appel de service
+  et sa glu, que la fenêtre de REPAIR ne porte pas (16 octets libres en
+  6502) ;
 - une entrée dont le quartet de stockage est à zéro **et** dont le
   répertoire compte déjà un fichier de moins — deux fautes, ou une
   suppression interrompue entre l'entrée et la bitmap. C'est exactement
@@ -879,9 +906,88 @@ finissaient `repaired.` ; tous sont refusés sans une écriture :
   pour réparer : il libère ;
 - un volume dont le répertoire n'est pas aux blocs 2 à `bit_map_pointer − 1`
   n'est jamais réparé, même sain par ailleurs. Aucun formateur connu n'en
-  produit, mais la règle est une convention, pas une loi de ProDOS ;
+  produit, mais la règle est une convention, pas une loi de ProDOS. FIXIT et
+  l'oracle suivent la même règle depuis le 7 octobre 2026 (`VOLDIR_SIZE`,
+  `BM_RESERVED`) ;
 - une coupure de courant pendant une écriture physique : rien de ceci n'y
   change quoi que ce soit (section 1, « Pas d'atomicité »).
+
+### Deuxième chasse (7 octobre 2026)
+
+Une seconde relecture, sondes rejouées sur le vrai C (harnais hôtes) et sous
+POM2, a trouvé huit défauts. Chaque « avant » est mesuré sur la source de
+`0b64a8c` ; chaque correction a son test de régression.
+
+1. **Un pointeur sur un bloc déjà perdu** (perte de données). Clé d'un
+   fichier d'un bloc, entrée d'index d'arbrisseau, clé de fourche : avant,
+   `F`, `FIX`, `rescan clean: repaired.` et le vrai bloc libéré. Rien dans
+   le parcours ne distingue ce cas d'une suppression interrompue (l'option
+   « ce bloc ressemble à des données » ne se prouve pas). Retenu : un second
+   mot. La passe de plan imprime, après `Scanning...`, `Lost blocks:` puis
+   le numéro de chaque bloc perdu qu'elle rencontre (78 au plus, puis `...` ;
+   la ligne `BM_LOST` du plan porte le compte), et un plan qui libère demande
+   `Type FREE to give them back` **avant** `Type FIX to confirm`. Échap ou un
+   autre mot : rien n'est écrit. Les premiers octets des blocs ne sont pas
+   montrés : il faudrait relire chaque bloc et en décider une description,
+   ce que la fenêtre ne porte pas. Un bloc perdu seul reste récupérable par
+   les deux mots.
+2. **/RAM.** Le consentement passe par `api->aux_consent()` (section 4,
+   « Un seul parcours ») : pas de question devant un /RAM vide, et
+   `aux_dirty` levé, que le chemin Ctrl-Reset de crt0 lit. La reconstruction
+   **anticipée** de /RAM juste après le consentement n'est **pas** faite :
+   `ram_format` écrit un bloc dans `$2000-$21FF` principal, au milieu du code
+   de la surcouche chargée à `$1B00` ; la sauvegarder autour de l'appel
+   demanderait 512 octets que la fenêtre n'a pas. Un Ctrl-Reset qui
+   sauterait `aux_dirty` laisserait donc encore /RAM corrompu. Le
+   `ram_format` final reste.
+3. **Refus sans issue.** Des blocs perdus à côté d'un `BM_USED_FREE` (bitmap
+   périmée après une coupure) répondent désormais `Used blocks marked free:
+   copy the files off this volume, write nothing to it.` : la prochaine
+   allocation de ProDOS peut tomber sur le fichier. Les coupures du parcours
+   de REPAIR (`DIR_HEADER`, `VOLDIR_SIZE`, un chaînage arrière faux, une
+   boucle, la profondeur) répondaient `Scan incomplete: no repair.`, qui se
+   lit comme une erreur de lecture : `Directory not trusted: nothing
+   written. See FIXIT.` Une erreur de lecture dit toujours `Read error`.
+4. **`DIR_EOF` seul à côté de blocs perdus** était refusé en bloc. Exempté :
+   l'eof d'une entrée de sous-répertoire n'est lu par rien qui décide des
+   blocs atteints, et un pointeur déplacé sur une vieille copie de bloc
+   change le compte de blocs (`DIR_BLOCKS`) ou les entrées voisines, jamais
+   l'eof seul. `freeing_ok()` compare `tree` à `counts[CHK_DIR_EOF]`.
+5. **Un volume en forme de `/RAM`** (répertoire au bloc 2 seul, bitmap au
+   bloc 3) : `reserved()` suit `bit_map_pointer` (`b < bitmap ||
+   b − bitmap < pages`), FIXIT juge `VOLDIR_SIZE` contre 2 à
+   `bit_map_pointer − 1`, et `tools/prodos_check.py` aussi
+   (`volume_dir_blocks()`). Avant : `VOLDIR_SIZE` + `BM_RESERVED` dans
+   FIXIT, le bloc 4 marqué occupé par REPAIR ; maintenant `consistent` des
+   trois côtés.
+6. **Total de l'en-tête abaissé** : non corrigé, limite dite plus haut
+   (« Ce que ces règles ne voient pas »).
+7. **La table `ON_LINE` lue au-delà de son zéro.** ProDOS écrit ses
+   enregistrements puis un octet nul ; le reste de `copy_buf` garde ce qu'il
+   avait. Un enregistrement fantôme nommant le volume donnait `This volume is
+   consistent` pour un volume hors ligne. La boucle s'arrête au premier octet
+   nul, comme `wipe.c` : `Volume not on line.`
+8. **Deux volumes du même nom en ligne.** Avec un chemin de panneau, le
+   premier enregistrement gagnait : REPAIR pouvait écrire sur le lecteur que
+   le panneau ne montre pas. En mode chemin, deux enregistrements au nom de
+   la cible sont refusés : `Two volumes named /X: pick it in the volume
+   list.` (le libellé de WIPE). Depuis la liste des volumes l'unité
+   sélectionnée tranche, comme avant.
+
+**Place.** FIXIT avait 3 octets, REPAIR 61 (65C02) et 36 (6502). Ce qui a
+payé, mesuré au lien : `first_part` en assembleur
+(`src/plugins/fixit_asm.inc`) ; pour REPAIR la comparaison de 512 octets et
+celle de l'en-tête, et l'échange des rustines, en assembleur (`samebytes`,
+`swap`) ; la recherche dans la pile de `enter()` supprimée (une clé de
+répertoire empilée est déjà réclamée : −60 octets) ; FIXIT qui ne cherche
+plus le volume du programme (il ne fait que lire : `boot`, `isboot` et deux
+`strcmp` passent sous `#ifdef REPAIR`) ; la page de bitmap tenue par un
+compteur `page` au lieu de `bitmap + (base >> 12)` ; les onze noms de REPAIR
+en table de pointeurs ; `v_confirm` et `M_AUXASK` retirés. Mesure au lien,
+65C02 : FIXIT 7 566 octets, **276 libres** ; REPAIR 7 817 octets, **80
+libres**. 6502 : FIXIT 7 599, **243 libres** ; REPAIR 7 881, **16 libres**.
+FIXIT ne garde donc plus l'empreinte d'avant : l'oracle « octet pour octet »
+de la section 4 ne vaut que pour un passage sans changement de comportement.
 
 Une correction est la réécriture d'un seul bloc. Aucune correction ne suppose
 qu'une autre a réussi. Les valeurs écrites viennent toutes du parcours, jamais
@@ -892,7 +998,7 @@ d'une supposition.
 | `BM_RESERVED` | dans `bitmap + (b>>12)`, `octet[(b&4095)>>3] &= ~(0x80 >> (b&7))` |
 | `BM_USED_FREE` | même opération, pour chaque bloc référencé marqué libre |
 | `BM_TAIL` | mêmes bits mis à 0 pour tout bloc ≥ `total_blocks` |
-| `BM_LOST` | `octet |= 0x80 >> (b&7)`, seulement si la passe est complète, l'arbre sans aucun constat et sans `BM_USED_FREE` |
+| `BM_LOST` | `octet |= 0x80 >> (b&7)`, seulement si la passe est complète, l'arbre sans aucun constat autre que `DIR_EOF`, sans `BM_USED_FREE`, et après le mot `FREE` |
 | `FILE_COUNT` | en-tête du répertoire, `+$21..$22` = entrées comptées |
 | `DIR_BLOCKS`, `FILE_BLOCKS` | entrée chez le parent, `+$13..$14` = blocs atteints |
 | `DIR_EOF` | **répertoires seulement**, `+$15..$17` = `blocks_used × 512` |
@@ -1069,6 +1175,7 @@ This volume is consistent: nothing to repair.
 Scan incomplete: lost blocks unconfirmed, freeing refused.
 Scan cancelled: no plan from an incomplete scan.
 Read error: this volume was not fully checked.
+Two volumes named %s: pick it in the volume list.
 ```
 
 Le verdict, écrit dans `api->note` à la sortie, prend le premier de ces cas
@@ -1106,12 +1213,16 @@ REPAIR %s
 Plan: %u corrections over %u blocks. Nothing written yet.
 %s  %u
 F fix  ESC back
+Scanning... ESC cancels.
+Lost blocks: %u %u ... (78 numbers at most, then ...)
+Type FREE to give them back
 Type FIX to confirm
 Repairing...
 Cross-linked blocks: copy both files to another volume before any repair.
 Lost blocks may hold a damaged file: nothing written. See FIXIT.
+Used blocks marked free: copy the files off this volume, write nothing to it.
 That volume holds the running program: repair it from another boot.
-Scan incomplete: no repair.
+Directory not trusted: nothing written. See FIXIT.
 Disk changed: nothing written.
 Nothing written.
 Applied %u of %u blocks; rescan clean: repaired.
@@ -1125,7 +1236,8 @@ un fichier de type `$0F`) : jusqu'au 6 octobre 2026 il répondait
 `This volume is consistent`, ce qui était faux.
 
 Les refus partagés avec FIXIT gardent leurs libellés : `Select a real
-ProDOS volume.`, `Volume not on line.`, `ON_LINE failed.`, `Invalid volume
+ProDOS volume.`, `Volume not on line.`, `Two volumes named %s: pick it in the
+volume list.`, `ON_LINE failed.`, `Invalid volume
 header: nothing checked.`, `Block 2 could not be read: nothing checked.`,
 `This volume is consistent: nothing to repair.`, `Scan cancelled: no plan
 from an incomplete scan.` et `Read error: this volume was not fully
