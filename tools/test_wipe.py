@@ -29,7 +29,7 @@ static unsigned char bitmap_buffer[512], zero_buffer[512], header_buffer[512], k
 /* disk: what the unit holds now; other: what a swap puts there instead. */
 static FILE *disk, *other;
 static unsigned int writes, reads_after, swap_read, swapped, fail2;
-static unsigned char answered, swap_answer, online, key_typed, yes = 1;
+static unsigned char answered, swap_answer, online, key_typed, yes = 1, twin;
 static const char* typed = "ERASE";
 static char input[17], shown[1024];
 static void swap(void) { if (other) { disk = other; other = 0; swapped = 1; } }
@@ -42,6 +42,8 @@ static unsigned char mock_mli(unsigned char cmd, void* p) {
         memset(r, 0, 256);
         if (fseek(disk, 1028, SEEK_SET) || fread(h, 1, 16, disk) != 16) return 0x27;
         r[0] = 0x60 | (h[0] & 15); memcpy(r + 1, h + 1, 15);
+        /* twin=1: a second drive, S6,D2, carries the same name */
+        if (twin) { r[16] = 0xE0 | (h[0] & 15); memcpy(r + 17, h + 1, 15); }
         return 0;
     }
     if (cmd != 0x80 && cmd != 0x81) return 1;
@@ -88,6 +90,7 @@ int main(int argc, char** argv) {
         else if (!strncmp(argv[i], "no=", 3)) yes = 0;
         else if (!strncmp(argv[i], "name=", 5)) strcpy(selected.name, v);
         else if (!strncmp(argv[i], "path=", 5)) { strcpy(panels[0].path, v); online = 1; }
+        else if (!strncmp(argv[i], "twin=", 5)) { twin = 1; online = 1; }
         else return 2;
     }
     api.panels = panels; api.active = &active; api.selected = &selected;
@@ -312,6 +315,30 @@ class Wipe(unittest.TestCase):
                 self.assert_nothing_written(r, other)
                 self.assertEqual(r['shown'].strip(), '')    # refused before any question
 
+    TWIN = 'Two volumes named /WIPE: pick it in the volume list.'
+
+    def test_two_volumes_of_one_name_refuse_a_panel_path(self):
+        """Before (bench/hunt2_dupvol.py on POM2): two drives named /TWIN,
+        the panel inside the 280-block one; W asked about it ("of 280 blocks
+        free") and zeroed the 1600-block one, the first ON_LINE record with
+        the name. Here the first record is the unit itself, and nothing at
+        all is read or written: the name is refused whichever record comes
+        first."""
+        for key in 'WF':
+            with self.subTest(key=key):
+                data = self.clean(free=range(10, 14), files=1)
+                r = self.run_disks(key, data, None, 'path=/WIPE/SUB', 'twin=1')
+                self.assert_nothing_written(r, data, note=self.TWIN)
+                self.assertEqual(r['shown'].strip(), '', 'nothing asked')
+
+    def test_two_volumes_of_one_name_a_volume_list_row_still_wipes(self):
+        """A row of the volume list carries its unit: the twin is not asked
+        about and the wipe goes to that unit."""
+        data = self.clean(free=range(10, 14), files=1)
+        r = self.run_disks('W', data, None, 'twin=1')
+        self.assertEqual(r['writes'], 280)
+        self.assertEqual(r['a'], bytes(len(data)))
+
     def test_name_of_another_length_is_another_volume(self):
         for name in (b'WIP', b'WIPED', b'WIPE.2'):
             with self.subTest(name=name):
@@ -424,13 +451,20 @@ SIM_HARNESS = r'''
 void __fastcall__ plugin_entry(const struct A2fcApi*);
 struct Bp { unsigned char n, unit; unsigned char* buf; unsigned int block; };
 static unsigned char disks[2][16 * 512];
-static unsigned char cur, answered, swap_answer, key_typed;
+static unsigned char cur, answered, swap_answer, key_typed, twin, bypath;
 static unsigned int writes, reads_after, swap_read, fail2;
 static char input[17], note[80];
 static void answer(void) { answered = 1; if (swap_answer) cur = 1; }
 static unsigned char mli(unsigned char cmd, void* p)
 {
     struct Bp* b = p;
+    if (cmd == 0xC5 && (bypath || twin)) {   /* the unit's volume, twice with 't' */
+        unsigned char* r = ((struct Bp*)p)->buf; unsigned char* h = disks[cur] + 1028;
+        memset(r, 0, 256);
+        r[0] = 0x60 | (h[0] & 15); memcpy(r + 1, h + 1, 15);
+        if (twin) { r[16] = 0xE0 | (h[0] & 15); memcpy(r + 17, h + 1, 15); }
+        return 0;
+    }
     if (cmd != 0x80 && cmd != 0x81) return 0x27;
     if (b->n != 3 || b->unit != 0x60 || b->block >= 16) return 0x28;
     if (cmd == 0x80) {
@@ -469,6 +503,8 @@ int main(int argc, char** argv)
     key_typed = argv[1][0];
     if (strchr(argv[2], 's')) swap_answer = 1;
     if (strchr(argv[2], 'o')) cur = 1;
+    if (strchr(argv[2], 't')) twin = 1;
+    if (strchr(argv[2], 'p')) { bypath = 1; strcpy(panels[0].path, "/WIPE"); }
     swap_read = atoi(argv[3]);
     fail2 = atoi(argv[4]);
     strcpy(selected.name, "/WIPE"); selected.access = 1; selected.mdate = 6;
@@ -594,6 +630,15 @@ class WipeCc65(unittest.TestCase):
         for at in range(1, reads):          # the last read is the wipe's own bitmap page
             with self.subTest(read=at):
                 self.assert_untouched(self.both('F', a, b, '-', at), a, b)
+
+    def test_two_volumes_of_one_name_refuse_a_panel_path(self):
+        a = self.small(free=range(10, 14), files=1)
+        b = self.small(name=b'OTHR', fill=0x5A)
+        for key in 'WF':
+            with self.subTest(key=key):
+                self.assert_untouched(self.both(key, a, b, 'pt'), a, b, Wipe.TWIN)
+        after = self.both('W', a, b, 'p')
+        self.assertEqual(after[:3], (bytes(self.SIZE), b, 16))
 
     def test_stale_list_entry_and_unreadable_block_2(self):
         a = self.small(free=range(10, 14), files=1)

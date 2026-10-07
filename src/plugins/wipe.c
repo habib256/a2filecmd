@@ -3,7 +3,9 @@
  * From the ! menu, on a ProDOS volume: the selected entry when the active
  * panel is the volume list ("/VOL", its unit in mdate), or the volume of
  * the active panel's path, whose unit is found with ON_LINE ($C5) on unit
- * 0. An image or a DOS 3.3 disk opened as a directory is refused.
+ * 0 -- refused when two drives carry that name ("Two volumes named /VOL:
+ * pick it in the volume list."). An image or a DOS 3.3 disk opened as a
+ * directory is refused.
  *
  * Then one key:
  *
@@ -98,6 +100,7 @@ static const char M_WORD[]   = "ERASE";
 static const char M_BOOT[]   = "That volume holds the running program: choose another.";
 static const char M_CANCEL[] = "Nothing was written.";
 static const char M_CHANGED[] = "Disk changed or unreadable: %s. Nothing written.";
+static const char M_TWIN[]   = "Two volumes named %s: pick it in the volume list.";
 static const char M_CHECK[]  = "Checking the allocation... ESC cancels";
 static const char M_DONE[]   = "%u blocks zeroed on %s%s";
 static const char M_STOP[]   = ", stopped by ESC";
@@ -112,7 +115,7 @@ static char BOOT[NAME_LEN + 1];     /* "/BOOTVOLUME", from cfg_path */
 static char NM[NAME_LEN + 1];       /* one name of the ON_LINE table */
 static char* buf;                   /* api->copy_buf: ON_LINE, then the lines */
 static const char* tail;
-static unsigned char unit, boot, err, key, whole;
+static unsigned char unit, boot, err, key, whole, byname;
 static unsigned int total, bitmap, done, blk;
 
 /* "/VOL": the first component of a ProDOS path. */
@@ -336,16 +339,25 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     first_part(BOOT, api->cfg_path);
 
     /* One ON_LINE on unit 0 serves twice: the unit of the target when the
-     * panel gave a path only, and the unit the program booted from. */
+     * panel gave a path only, and the unit the program booted from. A path
+     * names a volume, not a drive: when two drives carry the name, ProDOS
+     * resolves the path to one of them and the first record may be the
+     * other -- measured on POM2, W zeroed a 1600-block /TWIN while the
+     * question showed the 280-block one. So a name found twice is refused;
+     * a volume-list row carries its unit and is not concerned. */
     boot = 0;
+    byname = !unit;
     ol.n = 2; ol.unit = 0; ol.buf = buf;
     if (!api->mli(0xC5, &ol)) {
         p = (const unsigned char*)buf;
         for (b = 0; b < 16; ++b, p += 16) {
-            if (!*p) break;
+            if (!*p) break;                     /* the end of the table */
             if (!(*p & 15)) continue;           /* a drive without a volume */
             name_at(p);
-            if (!unit && !api->strcmp(NM, VOL)) unit = *p & 0xF0;
+            if (byname && !api->strcmp(NM, VOL)) {
+                if (unit) { api->sprintf(api->note, M_TWIN, VOL); return; }
+                unit = *p & 0xF0;
+            }
             if (!api->strcmp(NM, BOOT)) boot = *p & 0xF0;
         }
     }
