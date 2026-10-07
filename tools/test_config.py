@@ -81,6 +81,9 @@ static int crem(const char* p){
 #define remove crem
 #define CONFIG_STATE (&host_config)
 static struct ConfigState host_config;
+#define HOST_HAS_GFI
+#define HOST_CREATE_FAULT (isfault("create_close"))
+#include "tools/host_reserve.h"
 #include "src/file_output.h"
 #include "src/config.h"
 int main(int argc,char** argv){

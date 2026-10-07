@@ -67,7 +67,7 @@ static int remove_file(const char* p){++removes;return fault==8?-1:remove(p);}
 #define ferror error_file
 #define fclose close_file
 #define remove remove_file
-'''+(ROOT/'src/file_output.h').read_text()+DRIVER+r'''
+'''+'#define HOST_CREATE_FAULT (fault==2)\n#include "' + str(ROOT / 'tools/host_reserve.h') + '"\n' + (ROOT/'src/file_output.h').read_text()+DRIVER+r'''
 int main(int argc,char** argv){
  unsigned i,n=atoi(argv[2]),k;unsigned long size=strtoul(argv[3],0,10);fault=atoi(argv[4]);int hole=atoi(argv[5]),storage=argc>6?atoi(argv[6]):0;
  strcpy(panels[1].path,argv[1]);strcpy(panels[0].path,"/X/IMG.PO/DIR");panels[0].img_len=9;panels[0].count=n;

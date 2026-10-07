@@ -177,7 +177,7 @@ static int seek_file(FILE* f,long o,int w){if(fault==22)return -1;return fseek(f
 #define fclose close_file
 #define remove remove_file
 #define fseek seek_file
-''' + (ROOT/'src/file_output.h').read_text() + DRIVER + r'''
+''' + '#define HOST_HAS_GFI\n#define HOST_CREATE_FAULT (fault==2)\n#include "' + str(ROOT / 'tools/host_reserve.h') + '"\n' + (ROOT/'src/file_output.h').read_text() + DRIVER + r'''
 int main(int argc,char** argv){
     strcpy(full,argv[1]);strcpy(panels[0].path,"/SOURCE");
     fault=atoi(argv[3]);
@@ -291,13 +291,14 @@ class UnshrinkSafety(unittest.TestCase):
                 out = self.run_extract(fault)
                 self.assertIn('failed', out)
                 self.assertFalse((self.dst/'DATA').exists())
-                self.assertIn('removes=0' if fault==1 else 'removes=1', out)
+                # fault 2: a failed CREATE (once a failed close of the reservation)
+                self.assertIn('removes=0' if fault in (1, 2) else 'removes=1', out)
 
     def test_cleanup_failure_and_retry_preserve_exact_bytes(self):
-        for fault in (2, 3, 4, 5, 6, 12, 13, 18):
+        for fault in (3, 4, 5, 6, 12, 13, 18):     # 2, a failed CREATE, leaves nothing
             with self.subTest(fault=fault):
                 self.assertIn('Cleanup failed: DATA retained', self.run_extract(fault, True))
-                expected = b'' if fault in (2, 3, 4, 12) else self.payload[:256] if fault==5 else self.payload
+                expected = b'' if fault in (3, 4, 12) else self.payload[:256] if fault==5 else self.payload
                 self.assertEqual((self.dst/'DATA').read_bytes(), expected)
                 self.assertIn('Create failed', self.run_extract())
                 self.assertEqual((self.dst/'DATA').read_bytes(), expected)

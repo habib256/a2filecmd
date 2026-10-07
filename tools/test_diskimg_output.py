@@ -17,7 +17,7 @@ C=r'''
 struct Side {unsigned char kind,unit;FILE* f;unsigned long base;};
 static struct {struct Side src,dst;unsigned char output_owned,checking,parms[6];unsigned int checkblock;} state;
 #define DI (&state)
-static unsigned char imageblock[512];
+static unsigned char imageblock[512],_filetype;static unsigned int _auxtype;
 #define DI_BLOCK imageblock
 static char full[256],note[100],reselect[17],input[100];
 static int mode,cleanup_bad,removes,closed,opened;
@@ -44,7 +44,7 @@ static int seek_stream(FILE*f,long o,int w){return mode==6?-1:fseek(f,o,w);}
 #define remove discard
 #define fwrite write_data
 #define fseek seek_stream
-'''+(ROOT/'src/file_output.h').read_text()+section('static const char S_TITLEFMT[]','#define DI_BLOCK')+'static const unsigned char IMG_SECT[16] = { 0x0, 0xE, 0xD, 0xC, 0xB, 0xA, 0x9, 0x8, 0x7, 0x6, 0x5, 0x4, 0x3, 0x2, 0x1, 0xF };\n'+section('#ifndef DSK_SECTORS','/* "slot s drive d"')+section('static unsigned char di_xfer(', '/* Staging block i:')+section('static const char* di_error(', 'void __fastcall__ diskimg_entry(')+r'''
+'''+'#define HOST_CREATE_FAULT (mode==2)\n#include "' + str(ROOT / 'tools/host_reserve.h') + '"\n' + (ROOT/'src/file_output.h').read_text()+section('static const char S_TITLEFMT[]','#define DI_BLOCK')+'static const unsigned char IMG_SECT[16] = { 0x0, 0xE, 0xD, 0xC, 0xB, 0xA, 0x9, 0x8, 0x7, 0x6, 0x5, 0x4, 0x3, 0x2, 0x1, 0xF };\n'+section('#ifndef DSK_SECTORS','/* "slot s drive d"')+section('static unsigned char di_xfer(', '/* Staging block i:')+section('static const char* di_error(', 'void __fastcall__ diskimg_entry(')+r'''
 #undef fopen
 #undef fclose
 int main(int argc,char**argv){
@@ -90,9 +90,10 @@ class DiskOutput(unittest.TestCase):
   for mode in (1,2,3,4,5,6,7):
    with self.subTest(mode=mode):
     out=self.run_op(mode);self.assertIn('Failed:',out);self.assertFalse(self.target.exists())
-    self.assertEqual(int(out.split()[0]),0 if mode==1 else 1)
+    # mode 2: a failed CREATE (once a failed close of the reservation): nothing owned
+    self.assertEqual(int(out.split()[0]),0 if mode in (1,2) else 1)
  def test_cleanup_failure_keeps_bytes_and_names_file(self):
-  for mode in (2,3,4,5,6,7):
+  for mode in (3,4,5,6,7):     # 2, a failed CREATE, leaves nothing to clean
    with self.subTest(mode=mode):
     out=self.run_op(mode,True);self.assertIn('Cleanup failed: IMAGE.PO retained.',out)
     expected=bytes(range(256))*(2 if mode==5 else 1) if mode in (4,5) else b''

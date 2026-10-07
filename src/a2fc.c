@@ -185,19 +185,14 @@ typedef char pool_fits[MAX_ENTRIES * sizeof(struct Entry) - POOL_SIZE * sizeof(s
 /* MLI: GET_FILE_INFO and SET_FILE_INFO                                    */
 /* ---------------------------------------------------------------------- */
 
+#include "file_output.h"
+
 /* Fills gfi[] for `path` (full ProDOS name). Returns 0 on error. */
 static unsigned char file_info(const char* path)
 {
-    unsigned char len = strlen(path);
-    gfi_path[0] = len;
-    memcpy(gfi_path + 1, path, len);
-    gfi[0] = 0x0A;
-    gfi[1] = (unsigned char)((unsigned)gfi_path & 0xFF);
-    gfi[2] = (unsigned char)((unsigned)gfi_path >> 8);
+    gfi_prepare(path, 0x0A);
     return mli_gfi(gfi) == 0;
 }
-
-#include "file_output.h"
 
 /* Rewrites access, type and auxtype from gfi[]: SET_FILE_INFO shares the
  * layout of GET_FILE_INFO for its first seven parameters. */

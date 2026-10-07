@@ -74,7 +74,7 @@ static int remove_file(const char* p){++removes;return fault==8?-1:remove(p);}
 #define ferror error_file
 #define fclose close_file
 #define remove remove_file
-'''+(ROOT/'src/file_output.h').read_text()+TYPE+DRIVER+r'''
+'''+'#define HOST_CREATE_FAULT (fault==2)\n#include "' + str(ROOT / 'tools/host_reserve.h') + '"\n' + (ROOT/'src/file_output.h').read_text()+TYPE+DRIVER+r'''
 int main(int argc,char** argv){
  unsigned i,len=atoi(argv[3]),skip,type=atoi(argv[2]);fault=atoi(argv[4]);
  if(argc>5){printf("%u\n",dos33_type(atoi(argv[5])));return 0;}

@@ -178,7 +178,7 @@ static int remove_file(const char* p) {
 #define fseek seek_file
 #define rename rename_file
 #define remove remove_file
-''' + (ROOT / 'src/file_output.h').read_text() + (ROOT / 'src/file_copy.h').read_text() + section('static const char ed_safety_0', '/* E: edits the file') + r'''
+''' + '#define HOST_HAS_GFI\n#define HOST_CREATE_FAULT (fault==18 || fault==19)\n#include "' + str(ROOT / 'tools/host_reserve.h') + '"\n' + (ROOT / 'src/file_output.h').read_text() + (ROOT / 'src/file_copy.h').read_text() + section('static const char ed_safety_0', '/* E: edits the file') + r'''
 #undef fopen
 #undef fread
 #undef fclose
@@ -316,17 +316,21 @@ class FileSafety(unittest.TestCase):
         self.assertEqual(self.dst.read_bytes(),self.previous)
         self.assertFalse((self.p/'A2FC.BAK').exists())
 
-    def test_reservation_close_and_cleanup_failure_preserve_original(self):
+    def test_failed_reservation_leaves_no_temporary_and_next_copy_works(self):
+        """Bug hunt 2: reserve_output was cc65's open(O_CREAT|O_EXCL), CREATE
+        then OPEN; an OPEN failure left a 0-byte A2FC.COPY and every later copy
+        into the directory was refused "Failed; source kept."
+        (tools/hunt2/probe_reserve_leftover.py). It is one MLI CREATE now:
+        a failed one (fault 19) creates nothing, and the next copy succeeds."""
         result,note=self.run_op(fault=19)
         self.assertEqual(result,0)
-        self.assertIn('Cleanup failed',note)
         self.assertEqual(self.src.read_bytes(),self.original)
         self.assertEqual(self.dst.read_bytes(),self.previous)
-        self.assertEqual((self.p/'A2FC.COPY').read_bytes(),b'')
+        self.assertFalse((self.p/'A2FC.COPY').exists())
         self.assertFalse((self.p/'A2FC.BAK').exists())
-        self.assertEqual(self.run_op()[0],0)
-        self.assertEqual(self.dst.read_bytes(),self.previous)
-        self.assertEqual((self.p/'A2FC.COPY').read_bytes(),b'')
+        self.assertEqual(self.run_op()[0],1)
+        self.assertEqual(self.dst.read_bytes(),self.original)
+        self.assertFalse((self.p/'A2FC.COPY').exists())
         self.assertEqual(self.src.read_bytes(),self.original)
 
     def test_failed_exclusive_create_restores_previous_destination(self):
@@ -465,14 +469,14 @@ class FileSafety(unittest.TestCase):
                 self.assertEqual(self.src.read_bytes(),self.original)
 
     def test_editor_cleanup_failures_report_recovery_and_keep_original(self):
-        for fault in (19,21,22,25,28,29,30,31,32):
+        for fault in (21,22,25,28,29,30,31,32):   # 19: a failed CREATE, nothing to recover
             with self.subTest(fault=fault):
                 result,out=self.run_op('edit',fault)
                 self.assertEqual(result,0)
                 self.assertIn('recover A2FC.EDIT / A2FC.ED.BAK',out)
                 self.assertEqual(self.src.read_bytes(),self.original)
                 temp=self.p/'A2FC.EDIT'
-                expected=b'' if fault in (19,21,25) else b'N'*len(self.original)
+                expected=b'' if fault in (21,25) else b'N'*len(self.original)
                 self.assertEqual(temp.read_bytes(),expected)
                 self.assertFalse((self.p/'A2FC.ED.BAK').exists())
                 # A subsequent save must not truncate or remove recovery data.
@@ -482,7 +486,7 @@ class FileSafety(unittest.TestCase):
                 temp.unlink()
 
     def test_editor_reservation_failures_and_late_collision(self):
-        for fault in (18,20,11):
+        for fault in (18,19,20,11):
             with self.subTest(fault=fault):
                 self.assertEqual(self.run_op('edit',fault)[0],0)
                 self.assertEqual(self.src.read_bytes(),self.original)

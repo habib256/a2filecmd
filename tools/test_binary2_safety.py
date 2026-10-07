@@ -79,7 +79,7 @@ static void progress_bar(const char* s,unsigned long d,unsigned long t) {
 #define ferror error_file
 #define fclose close_file
 #define remove remove_file
-''' + (ROOT / 'src/file_output.h').read_text() + SOURCE[START:END] + r'''
+''' + '#define HOST_CREATE_FAULT (fault==2)\n#include "' + str(ROOT / 'tools/host_reserve.h') + '"\n' + (ROOT / 'src/file_output.h').read_text() + SOURCE[START:END] + r'''
 int main(int argc,char**argv) {
     strcpy(full,argv[1]);strcpy(panels[1].path,argv[2]);strcpy(selected.name,"TEST.BNY");
     fault=atoi(argv[3]);cleanup_bad=atoi(argv[4]);binary2_entry(NULL);
@@ -165,14 +165,16 @@ class Binary2Safety(unittest.TestCase):
                 out = self.run_extract(fault)
                 self.assertIn('failed', out)
                 self.assertFalse((self.dst/'DATA').exists())
-                self.assertIn('removes=0' if fault==1 else 'removes=1', out)
+                # fault 2: a failed CREATE (once a failed close of the reservation)
+                # creates nothing, so nothing is removed
+                self.assertIn('removes=0' if fault in (1, 2) else 'removes=1', out)
 
     def test_failed_cleanup_names_retained_file_and_retry_preserves_bytes(self):
-        for fault in (2, 3, 4, 5, 6, 10, 11):
+        for fault in (3, 4, 5, 6, 10, 11):     # 2, a failed CREATE, leaves nothing
             with self.subTest(fault=fault):
                 self.assertIn('Cleanup failed: DATA retained', self.run_extract(fault, True))
                 target = self.dst/'DATA'
-                expected = b'' if fault in (2,3,4) else self.payload[:256] if fault==5 else self.payload[:512] if fault==10 else self.payload
+                expected = b'' if fault in (3,4) else self.payload[:256] if fault==5 else self.payload[:512] if fault==10 else self.payload
                 self.assertEqual(target.read_bytes(), expected)
                 self.assertIn('Create failed', self.run_extract())
                 self.assertEqual(target.read_bytes(), expected)
