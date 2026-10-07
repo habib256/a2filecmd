@@ -43,6 +43,10 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
         dst.path[0]='/';a.strcpy(dst.path+1,a.input);
         request=pan->path[0]?0:(unsigned char)(a.selected->mdate<<4);
         ok=volume_open(&src,request);
+        /* Two drives with that name: unit_of refuses a path it cannot tie
+         * to one drive. A comparison only reads, and it is symmetrical: take
+         * the first drive of the name, the other is found below. */
+        if(!ok && !request)for(j=0x10;j && !ok;j+=0x10)ok=volume_open(&src,j);
         if(single && ok) {
             for(i=1;src.path[i] && src.path[i]!='/';++i);src.path[i]=0;
             if((src.unit&0x70)!=0x60 || !a.strcmp(src.path,dst.path))goto invalid;
@@ -54,7 +58,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
             /* An original and its backup may share one name: the first unit
              * with it may be the source itself, so take another unit with
              * that name, or refuse -- a volume is never compared with itself. */
-            if(dst.unit==src.unit)for(ok=0,j=0x10;j && !ok;j+=0x10)if(j!=src.unit)ok=volume_open(&dst,j);
+            if(!ok || dst.unit==src.unit)for(ok=0,j=0x10;j && !ok;j+=0x10)if(j!=src.unit)ok=volume_open(&dst,j);
         }
     }
     if(!ok)goto invalid;
