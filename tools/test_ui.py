@@ -42,12 +42,19 @@ static void cprintf(const char* format,...) {
  * question) waits in $C000 until the strobe at $C010 is stored to. */
 static volatile unsigned char c010 = 0xFF;
 static char ahead;
+/* burst: each key typed arrives while the previous one is being handled,
+ * i.e. during the redraw of the row (two keys back to back). */
+static unsigned char burst;
 static char cgetc(void) {
     unsigned int i;
-    if (ahead) { char k = ahead; ahead = 0; if (c010 == 0xFF) return k; }
+    char k;
+    if (ahead) { k = ahead; ahead = 0; if (c010 == 0xFF) goto got; }
     assert(!inverse);assert(line[0]);
     for(i=0;line[i];++i)assert(styles[i]);
-    ++waits;assert(*keys);return *keys++;
+    ++waits;assert(*keys);k = *keys++;
+got:
+    if (burst && *keys) { ahead = *keys++; c010 = 0xFF; }
+    return k;
 }
 '''
         code+=section('static void message(', '#pragma code-name (pop)')
@@ -74,6 +81,15 @@ int main(void) {
     keys="\33";assert(!prompt("Name","NOTE",0));assert(!line[0]);
     keys="0f\r";assert(prompt("Type",0,2));assert(!strcmp(input,"0F"));
     keys="f\r";assert(!prompt("Type",0,2));assert(!inverse);
+    /* Bug hunt 3: the strobe was cleared at every redraw of the row, so a
+     * key typed while the previous one was being echoed was lost (names,
+     * hex, the ERASE of a wipe). Once before the first key, never after;
+     * a key typed ahead of the question is still dropped. */
+    burst=1;
+    ahead='Y';c010=0xFF;keys="ab\r";assert(prompt("Name",0,0));assert(!strcmp(input,"AB"));assert(!*keys);
+    keys="erase\r";assert(prompt("Type ERASE, then RETURN",0,0));assert(!strcmp(input,"ERASE"));
+    keys="c0de\r";assert(prompt("Address",0,4));assert(!strcmp(input,"C0DE"));
+    burst=0;
     assert(menu_category("TEXT")==0);assert(menu_category("FONTVIEW")==1);
     assert(menu_category("PT3")==2);assert(menu_category("VOLINFO")==3);
     assert(menu_category("INTBASIC")==4);assert(menu_category("DATE")==5);

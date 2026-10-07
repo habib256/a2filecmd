@@ -37,7 +37,12 @@ C = r'''
 char input[NAME_LEN];
 static const unsigned char* keys;
 static unsigned char cleared, guard;
-static void question_begin(void) {}
+/* The keyboard latch: a key waiting in $C000 until the strobe is stored.
+ * In a burst, each key arrives while the previous one is being handled --
+ * during the redraw of the row (two keys back to back). */
+static unsigned char latch, burst, strobes;
+static void question_begin(void) { latch = 0; ++strobes; }
+static void open_row22(void) {}
 static void cputs_(const char* s) { (void)s; }
 #define cputs cputs_
 static void cputc_(char c) { (void)c; }
@@ -45,7 +50,13 @@ static void cputc_(char c) { (void)c; }
 static unsigned char revers_(unsigned char on) { (void)on; return 0; }
 #define revers revers_
 /* The scripted keys; Return once they run out, so that no case loops. */
-static char cgetc_(void) { return *keys ? (char)*keys++ : KEY_RETURN; }
+static char cgetc_(void) {
+    char k;
+    if (latch) { k = (char)latch; latch = 0; }
+    else k = *keys ? (char)*keys++ : KEY_RETURN;
+    if (burst && *keys) latch = *keys++;
+    return k;
+}
 #define cgetc cgetc_
 static void clear_row(unsigned char row) { if (row == 22) ++cleared; }
 ''' + section('static unsigned char prompt(const char* label', 'unsigned int __fastcall__ hex_value') + r'''
@@ -58,8 +69,10 @@ static void run(unsigned char hex, const char* initial, unsigned char n) {
     keys = script;
     cleared = 0;
     guard = 0xA5;
+    strobes = 0;
+    if (burst) latch = 'Q';     /* typed before the question: dropped */
     r = prompt("L", initial, hex);
-    printf("%u %u %s|%u\n", r, cleared, input, guard);
+    printf("%u %u %s|%u\n", r, cleared + strobes - 1, input, guard);
 }
 /* argv: hex initial key... ; "all" as the first argument runs the sweep:
  * for each mode and starting text, every key 1-255 then Return. */
@@ -67,6 +80,7 @@ int main(int argc, char** argv) {
     static const unsigned char modes[] = { 0, 2, 4 };
     static const char* const starts[] = { 0, "A", "AB", "ABCDEFGHIJKLMNO", "1F", "C0DE" };
     unsigned char m, s, k;
+    if (argc > 1 && !strcmp(argv[1], "burst")) { burst = 1; --argc; ++argv; }
     if (argc > 1 && !strcmp(argv[1], "all")) {
         for (m = 0; m < 3; ++m)
             for (s = 0; s < 6; ++s)
@@ -137,6 +151,15 @@ SCRIPTS = [
 ]
 
 
+BURSTS = [
+    (0, None, [ord(c) for c in 'ERASE']),
+    (0, None, [ord(c) for c in 'FIX']),
+    (0, None, [ord(c) for c in 'free']),
+    (0, None, [ord(c) for c in 'longname.1']),
+    (4, None, [ord(c) for c in 'c0de']),
+]
+
+
 def toolchains():
     found = []
     if shutil.which('cl65') and shutil.which('sim65'):
@@ -175,6 +198,15 @@ class Prompt(unittest.TestCase):
                     with self.subTest(cpu=cpu, case=(hex_, initial, keys)):
                         out = subprocess.check_output(
                             [sim65, str(exe), str(hex_), initial or '-', *map(str, keys)],
+                            text=True, env=env, timeout=10)
+                        self.assertEqual(out.strip(), expected_line(hex_, initial, keys))
+                # Bug hunt 3: two keys back to back. The strobe was cleared
+                # at each redraw of the row and erased the key typed during
+                # it: once before the first key now, never inside the loop.
+                for hex_, initial, keys in SCRIPTS + BURSTS:
+                    with self.subTest(cpu=cpu, case=('burst', hex_, initial, keys)):
+                        out = subprocess.check_output(
+                            [sim65, str(exe), 'burst', str(hex_), initial or '-', *map(str, keys)],
                             text=True, env=env, timeout=10)
                         self.assertEqual(out.strip(), expected_line(hex_, initial, keys))
 

@@ -1263,8 +1263,13 @@ static unsigned char prompt(const char* label, const char* initial, unsigned cha
     char key;
     if (initial) { strcpy(input, initial); len = strlen(input); }
     else input[0] = 0;
+    /* The strobe once, before the first key: cleared at every redraw, it
+     * erased a key typed while the row was being redrawn, and fast typing
+     * lost letters (bug hunt 3). */
+    question_begin();
     for (;;) {
-        question_begin();
+        open_row22();
+        revers(1);
         cputs(label);
         cputs(": ");
         if (hex) cputc('$');
