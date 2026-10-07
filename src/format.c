@@ -30,6 +30,13 @@
 
 unsigned char __fastcall__ mli_call(unsigned char cmd, void* parms);
 unsigned char ram_empty(void);        /* a2fc_mli.s: /RAM on line and without a file */
+unsigned int __fastcall__ block_fold(unsigned int sig);   /* format_mli.s: rotate left, add, for each byte of BLOCK */
+/* format_mli.s: the unit (DSSS0000) other than skip holding the volume named
+ * at name -- a name ended by '/' or by its zero -- 0 if none, $FF if ON_LINE
+ * failed. One ON_LINE call (into BLOCK) answers for every unit of DEVLST:
+ * the list on screen keeps only nine of them, while ProDOS appends /RAM
+ * last and VDrive adds two more. */
+unsigned char __fastcall__ online_unit(const char* name, unsigned char skip);
 unsigned char __fastcall__ format_driver_call(unsigned char unit, unsigned char cmd, unsigned char lc);
 extern unsigned int format_driver_blocks;
 unsigned char __fastcall__ diskii_begin(unsigned char slotdrive);
@@ -84,7 +91,9 @@ static const char fm_format_target[] = "Slot %u, drive %u, %s -> /%s";
 static const char fm_wait_text[] = "Please wait ...";
 static const char fm_track_format[] = "Track %2u of 35 ";
 static const char fm_structures_text[] = "Writing boot blocks, directory and bitmap ...";
-static const char fm_verified_text[] = "Read back and verified.";
+static const char fm_verified_text[] = "Boot block and header read back.";
+static const char fm_all_read_text[] = "All 280 blocks read back.";
+static const char fm_name_taken[] = "That name is on line: choose another.";
 static const char fm_in_use_error[] = " That disk holds the running program: cannot be formatted. ";
 static const char fm_unknown_size[] = " No disk, or its size is unknown: nothing to format. ";
 static const char fm_failed_hint[] = "The disk may be unusable until formatted again.";
@@ -104,11 +113,11 @@ struct Dev {
     unsigned char unit, kind, inuse, valid;
     char name[16];              /* the current volume, without the slash */
     unsigned int blocks;
-    unsigned int sig;           /* block 2: its checksum or read error (identify) */
+    unsigned int sig;           /* blocks read raw: their checksums or read errors (identify) */
 };
 static struct Dev devs[9];
 static unsigned char ndev;
-static unsigned char boot_unit;
+static unsigned char boot_unit;      /* 0: not on line; low nibble set: unknown */
 static char volname[16];
 static struct Dev* target;
 static const struct A2fcApi* A;
@@ -260,6 +269,8 @@ static void scan_devices(void)
 {
     unsigned char i, n = DEVCNT + 1;
     ndev = 0;
+    /* The volume the program runs from, wherever it sits in DEVLST. */
+    boot_unit = A->cfg_path[0] == '/' ? online_unit(A->cfg_path + 1, 0) : 0;
     for (i = 0; i < n && ndev < 9; ++i) {
         activity_tick();                    /* an empty drive is a second or more */
         devs[ndev].unit = DEVLST[i] & 0xF0;
@@ -309,27 +320,37 @@ static unsigned char read_block(unsigned char unit, unsigned int block)
     return mli_call(0x80, parms);
 }
 
-/* The chosen disk, identified: probe, plus block 2 read raw -- a checksum
- * of its 512 bytes, or its read error. Two floppies carrying the same
- * volume name and size still differ there (their directory entries). Only
+/* The blocks identify reads: block 2 alone for a ProDOS volume (two floppies
+ * of the same name and size still differ in their directory entries).
+ * Without one, block 2 can be part of a DOS 3.3 image identical on half the
+ * disks INITed by one DOS: then the CP/M directory (track 3) and the whole
+ * DOS 3.3 track 17 (VTOC and catalog) as well. */
+static const unsigned char id_blocks[] = { 2, 24, 25, 26, 27, 136, 137, 138, 139, 140, 141, 142, 143 };
+
+/* The chosen disk, identified: probe, plus the blocks above read raw and
+ * folded into one checksum. A block that fails folds as zeros plus its
+ * error code, never what the failed read left: a disk that reads the first
+ * time and fails the second differs, an unreadable one stays itself. Only
  * the target gets it: reading every drive of the list twice would be slow
  * on empty Disk II drives. */
 static void identify(struct Dev* d)
 {
-    unsigned int i, sig;
-    unsigned char r;
+    unsigned int sig = 0;
+    unsigned char r, k, n;
     probe(d);
-    memset(BLOCK, 0, 512);
-    r = read_block(d->unit, 2);
-    sig = 0xFF00 | r;
-    if (!r) for (sig = i = 0; i < 512; ++i) sig = ((sig << 1) | (sig >> 15)) + BLOCK[i];
+    n = d->valid ? 1 : sizeof id_blocks;
+    for (k = 0; k < n; ++k) {
+        activity_tick();
+        if ((r = read_block(d->unit, id_blocks[k])) != 0) memset(BLOCK, 0, 512);
+        sig = block_fold(sig) + r;
+    }
     d->sig = sig;
 }
 
 /* Why the disk d must not be formatted, or NULL. */
 static const char* refusal(const struct Dev* d)
 {
-    if (d->inuse || (d->kind == KIND_DISKII && boot_unit && DEVADR[boot_unit >> 4] == 0xFF00)) return fm_in_use_error;
+    if (d->inuse || (boot_unit & 0x0F) || (d->kind == KIND_DISKII && boot_unit && DEVADR[boot_unit >> 4] == 0xFF00)) return fm_in_use_error;
     if (d->blocks < 7 + bitmap_size(d->blocks)) return fm_unknown_size;
     return NULL;
 }
@@ -360,13 +381,12 @@ static unsigned char write_structures(struct Dev* d)
     BLOCK[4] = 0xF0 | len;
     memcpy(BLOCK + 5, volname, len);
     memcpy(BLOCK + 0x1C, (void*)0xBF90, 4);   /* creation date and time */
-    BLOCK[0x20] = 0;                          /* ProDOS version 1.0 */
-    BLOCK[0x21] = 0;
+    /* $20-$21: ProDOS version 1.0, left zero */
     BLOCK[0x22] = 0xC3;                       /* access: everything allowed */
     BLOCK[0x23] = 0x27;                       /* 39 bytes per entry */
     BLOCK[0x24] = 0x0D;                       /* 13 entries per block */
-    BLOCK[0x25] = 0; BLOCK[0x26] = 0;         /* no files */
-    BLOCK[0x27] = 6; BLOCK[0x28] = 0;         /* the bitmap starts at block 6 */
+    /* $25-$26: no files, left zero */
+    BLOCK[0x27] = 6;                          /* the bitmap starts at block 6 */
     BLOCK[0x29] = (unsigned char)(total & 0xFF);
     BLOCK[0x2A] = (unsigned char)(total >> 8);
     if ((r = write_block(d->unit, 2))) return r;
@@ -390,6 +410,13 @@ static unsigned char write_structures(struct Dev* d)
     memset(BLOCK, 0, 512);
     if ((r = read_block(d->unit, 2))) return r;
     if (BLOCK[4] != (0xF0 | len) || memcmp(BLOCK + 5, volname, len)) return 0x27;
+    /* A freshly written floppy: every block must read back, its sector
+     * checksums good; a weak track shows now, not under the first file. */
+    if (d->kind == KIND_DISKII)
+        for (b = 0; b < 280; ++b) {
+            activity_tick();
+            if ((r = read_block(d->unit, b))) return r;
+        }
     return 0;
 }
 
@@ -416,7 +443,15 @@ static unsigned char ask_name(void)
         cprintf(fm_name_format, volname);
         key = cgetc();
         if (key == 27) return 0;
-        if (key == 13) { if (!len) strcpy(volname, fm_default_name); return 1; }
+        if (key == 13) {
+            if (!len) strcpy(volname, fm_default_name);
+            /* ProDOS cannot tell two /X apart: refuse a name already on
+             * line on another unit (ON_LINE failing refuses as well). */
+            if (!online_unit(volname, target->unit)) return 1;
+            gotoxy(1, 10);
+            cputs(fm_name_taken);
+            continue;
+        }
         if (key == 8 || key == 127) { if (len) volname[--len] = 0; continue; }
         if (key >= 'a' && key <= 'z') key -= 32;
         if (len >= 15) continue;
@@ -485,12 +520,16 @@ static unsigned char do_format(void)
             r = diskii_track(t);
         }
         diskii_end();
-        /* The physical writer borrowed auxiliary RAM to preserve resident
-         * code. Rebuild /RAM before anything can read its old allocation. */
-        {
-            unsigned char i, e;
-            for (i = 0; i < ndev; ++i) if (devs[i].kind == KIND_RAM) {
-                e = format_driver_call(devs[i].unit, 3, 1);
+        /* Each diskii_track call borrowed auxiliary RAM to preserve resident
+         * code (diskii_begin refuses a protected floppy before any). Rebuild
+         * /RAM before anything can read its old allocation: found by its
+         * driver over the whole DEVLST, where it usually comes last. */
+        if (t) {
+            unsigned char i, e, u;
+            for (i = 0; i <= DEVCNT; ++i) {
+                u = DEVLST[i] & 0xF0;
+                if (DEVADR[u >> 4] != 0xFF00) continue;
+                e = format_driver_call(u, 3, 1);
                 if (e && !r) r = e;
                 if (!e) ram_cleared = 1;
             }
@@ -508,7 +547,7 @@ static unsigned char do_format(void)
     r = write_structures(target);
     if (r) return r;
     gotoxy(1, 6);
-    cputs(fm_verified_text);
+    cputs(target->kind == KIND_DISKII ? fm_all_read_text : fm_verified_text);
     return 0;
 }
 
@@ -546,8 +585,8 @@ void __fastcall__ format_entry(const struct A2fcApi* api)
             !A->confirm("Formatting uses AUX: ALL /RAM files will be LOST. Continue?")) continue;
         /* The last look before the first write: the prompts left all the
          * time needed to switch disks, and the confirmation named this one.
-         * Anything different -- name, size, block 2, in use -- writes
-         * nothing. */
+         * Anything different -- name, size, the blocks identify folds (13
+         * of them without a ProDOS volume), in use -- writes nothing. */
         now.unit = target->unit;
         identify(&now);
         if (memcmp(&now, target, sizeof now) || refusal(&now)) {

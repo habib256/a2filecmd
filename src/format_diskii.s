@@ -20,7 +20,8 @@
 ;
 ;   unsigned char __fastcall__ diskii_begin(unsigned char slotdrive);
 ;       slotdrive: $60 for slot 6 drive 1, $E0 for drive 2.
-;       Motor on, head on track 0, track image built. Returns 0.
+;       Motor on, head on track 0. Returns 0, or $2B for a write-protected
+;       floppy. Writes nothing to AUX: only diskii_track borrows it.
 ;   unsigned char __fastcall__ diskii_track(unsigned char track);
 ;       Computes the address fields, positions the head, writes the track.
 ;       Returns 0 or a ProDOS error code.
@@ -72,6 +73,55 @@ LTable: .byte $02,$04,$06,$00   ; phases inward
 
         .segment "FORMAT"
 
+; -- Trans: write the track image to the disk ----------------------------
+; The loop is calibrated to the cycle: it must fit within one page. It
+; comes first in this module, 64-byte aligned, and stays shorter than 64
+; bytes up to MStore+12: it cannot cross a page, wherever the C code before
+; it ends (the assertions below prove it at link time). A page alignment
+; here cost up to 255 bytes of padding, twice. Returns C=1 and A=$2B if the
+; floppy is write-protected.
+        .align 64
+Trans:
+        lda #$00
+        ldx #$65
+        sta Buffer
+        stx Buffer+1
+        ldy #$32
+        ldx SlotF
+        sec
+        lda DiskWR,x
+        lda ModeRD,x
+        bmi LWRprot
+        lda #$FF
+        sta ModeWR,x
+        cmp DiskRD,x
+        nop
+        jmp LSync2
+LSync1: eor #$80
+        nop
+        nop
+        jmp MStore
+LSync2: pha
+        pla
+LSync3: lda (Buffer),y
+        cmp #$80
+        bcc LSync1
+        nop
+MStore: sta DiskWR,x
+        cmp DiskRD,x
+        iny
+        bne LSync2
+        inc Buffer+1
+        bpl LSync3              ; up to $8000
+        lda ModeRD,x
+        lda DiskRD,x
+        clc
+        rts
+LWRprot:
+        lda #$2B
+        sec
+        rts
+
 ; -- diskii_begin ----------------------------------------------------------
 _diskii_begin:
         sta Slot
@@ -86,8 +136,6 @@ _diskii_begin:
         lda DiskON,x            ; motor
         lda ModeRD,x
         lda DiskRD,x
-        ; the write protection is read in Trans, with all phases off:
-        ; phase 1 still energized would make it look write-protected
         lda #$23                ; assume the head is on track 35
         sta TRKcur
         lda #$00
@@ -98,8 +146,19 @@ _diskii_begin:
         lda Step2,x
         lda Step4,x
         lda Step6,x
+        ; The write protection, read with all phases off (phase 1 still
+        ; energized would make it look write-protected), BEFORE any track:
+        ; diskii_track saves the resident into AUX, over /RAM, and a
+        ; protected floppy must not cost the /RAM files for nothing. Trans
+        ; reads it again before writing.
+        lda DiskWR,x            ; Q6 on
+        lda ModeRD,x            ; Q7 off: bit 7 = write protected
+        asl a                   ; into the carry
+        lda DiskRD,x            ; Q6 off: back to reading
         lda #0
-        ldx #0
+        bcc :+
+        lda #$2B                ; write protected
+:       ldx #0
         rts
 
 ; -- diskii_track ---------------------------------------------------------
@@ -301,51 +360,6 @@ Wait20: pha
         pla
         tax
         pla
-        rts
-
-; -- Trans: write the track image to the disk ----------------------------
-; The loop is calibrated to the cycle: it must fit within one page, hence
-; the alignment. Returns C=1 and A=$2B if the floppy is write-protected.
-        .align 256
-Trans:
-        lda #$00
-        ldx #$65
-        sta Buffer
-        stx Buffer+1
-        ldy #$32
-        ldx SlotF
-        sec
-        lda DiskWR,x
-        lda ModeRD,x
-        bmi LWRprot
-        lda #$FF
-        sta ModeWR,x
-        cmp DiskRD,x
-        nop
-        jmp LSync2
-LSync1: eor #$80
-        nop
-        nop
-        jmp MStore
-LSync2: pha
-        pla
-LSync3: lda (Buffer),y
-        cmp #$80
-        bcc LSync1
-        nop
-MStore: sta DiskWR,x
-        cmp DiskRD,x
-        iny
-        bne LSync2
-        inc Buffer+1
-        bpl LSync3              ; up to $8000
-        lda ModeRD,x
-        lda DiskRD,x
-        clc
-        rts
-LWRprot:
-        lda #$2B
-        sec
         rts
 
 ; A taken branch must never add a page-crossing cycle to the write loop.

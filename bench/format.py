@@ -120,18 +120,26 @@ def main():
             p.insert(1, str(target))
             s.ok('le disque confirme puis retire est intact', target.read_bytes() == before)
 
-            # A locked 2IMG exercises the early Disk II write-error path.
+            # A locked 2IMG exercises the early Disk II write-error path:
+            # diskii_begin reads the write protection before any track, so
+            # the auxiliary bank -- /RAM, here holding a file -- is untouched.
             locked = tmp / 'LOCKED.2mg'
             data = bytearray(to_2mg(before)); data[19] |= 0x80
             locked.write_bytes(data)
             p.insert(1, str(locked))
+            s.ram_occupied()
+            aux_before = p.peek(0x1000, 0xB000, 'aux')
             open_format()
             choose('/OLDVOL'); s.wait(lambda: s.has('New volume name'), 'nom disque verrouille')
             s.type('LOCKTEST'); s.key(RET); s.wait(lambda: s.has('final confirmation'), 'confirmation')
             s.type('ERASE'); s.key(RET); s.allow_aux()
             s.wait(lambda: s.has('Failed:') or s.has('Done:'), 'refus ecriture', 60); p.stable()
             s.ok('la protection physique renvoie une erreur explicite', s.has('write protected') and s.has('$2B'))
+            s.ok('une disquette protegee ne touche pas AUX (/RAM et ses fichiers)',
+                 p.peek(0x1000, 0xB000, 'aux') == aux_before)
             back()
+            s.ok('/RAM n est pas reconstruit pour rien', not s.has('/RAM was rebuilt'))
+            s.ram_occupied(0)
             s.ok('le resident est aussi restaure apres une erreur', p.peek(0x6500, 0x1C00) == resident)
             p.eject(1)
             s.ok('le disque protege est intact', locked.read_bytes() == data)
@@ -147,11 +155,16 @@ def main():
 
             open_format(menu=True)
             choose('/OLDVOL'); s.wait(lambda: s.has('New volume name'), 'nom')
+            s.type('WORKHD'); s.key(RET)
+            s.wait(lambda: s.has('That name is on line'), 'nom deja en ligne', 40)
+            s.ok('le nom d un volume en ligne est refuse', not s.has('final confirmation'))
+            for _ in range(6): s.key(b'\x08')
             s.type('NEWVOL'); s.key(RET); s.wait(lambda: s.has('final confirmation'), 'confirmation')
             s.type('ERASE'); s.key(RET); s.allow_aux()
             s.wait(lambda: s.has('Done: /NEWVOL') or s.has('Failed:'), 'formatage physique', 120)
             p.stable()
             s.ok('les 35 pistes sont formatees puis relues', s.has('Done: /NEWVOL, 280 blocks, 273 free.'), '\n'.join(s.rows()[5:10]))
+            s.ok('les 280 blocs sont relus', s.has('All 280 blocks read back.'))
             back()
             s.ok('le tampon de piste n a pas altere le resident', p.peek(0x6500, 0x1C00) == resident)
             s.ok('la remise a zero de RAM est annoncee', s.has('/RAM was rebuilt empty.'))

@@ -12,7 +12,7 @@ ses 38 colonnes : en 0.6 elle en faisait 42 et debordait sur le separateur
 (a gauche) ou passait a la ligne suivante, colonnes 0-1 (a droite) : les
 carres blancs corriges en 0.6.1."""
 
-import shutil, sys, tempfile
+import os, shutil, sys, tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -49,7 +49,7 @@ def main():
                                        ('MASTER.CREATE', 0x84, b'\x00' * 2304)]))
         ok('la disquette DOS 3.3 fait 35 pistes', dos.stat().st_size == 143360, dos.stat().st_size)
 
-        with Pom2(scratch_volume(tmp), floppy=floppy, port=6691, floppy2=dos) as p:
+        with Pom2(scratch_volume(tmp), floppy=floppy, port=6691 + int(os.environ.get('A2FC_PORT_OFFSET', '0')), floppy2=dos) as p:
             s = Session(p)
             s.boot()
             s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes'); p.stable()

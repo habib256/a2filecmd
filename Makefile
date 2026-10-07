@@ -385,6 +385,8 @@ test: test-mini $(TAKE1)
 	python3 $(TOOLS)/test_imgfs_safety.py
 	python3 $(TOOLS)/test_dos_extract.py
 	python3 $(TOOLS)/test_format_repair.py
+	python3 $(TOOLS)/test_format.py
+	python3 $(TOOLS)/test_format_asm.py
 	python3 $(TOOLS)/test_doswrite.py
 	python3 $(TOOLS)/test_dos33w.py
 	python3 $(TOOLS)/test_dosrepl.py

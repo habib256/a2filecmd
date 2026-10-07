@@ -634,9 +634,16 @@ recovery files; the source file is never deleted.
 copies disks. PO, DSK/DO and 2MG are supported. Choose the same source/target
 drive for exchanges. Each prompt identifies SOURCE or TARGET and slot/drive.
 Writes require **ERASE**, refuse the program disk and verify each block.
-**F** formats the named drive after ERASE; Escape cancels beforehand. Disk II
-formatting clears /RAM, asking first when it holds files, and refuses to run
-from /RAM.
+**F** formats the named drive after ERASE; Escape cancels beforehand. The
+volume the program runs from is refused, wherever ProDOS lists it, and so
+is a new name already on line (two volumes of one name cannot be told
+apart). The disk is identified again just before the first write -- name,
+size and, without a ProDOS volume, the DOS 3.3 catalog track and the CP/M
+directory -- and a changed disk is left alone. Disk II formatting clears
+/RAM, asking first when it holds files, and refuses to run from /RAM; a
+write-protected floppy fails before AUX is used, /RAM intact. A Disk II format
+then reads all 280 blocks back; other devices read back their boot block and
+volume header only, and the message says which.
 
 **NIBCOPY** copies standard Disk II tracks with one or two drives at normal
 1 MHz speed. Write-protect the source first. Accept AUX use only after saving
