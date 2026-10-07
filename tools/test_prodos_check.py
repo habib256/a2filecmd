@@ -257,6 +257,28 @@ class HandMade(unittest.TestCase):
                          [('BM_RESERVED', 5, None, None),
                           ('VOLDIR_SIZE', 4, 4, 3)])
 
+    def test_the_directory_s_place_is_what_the_header_says(self):
+        """Bug hunt 2, finding 5: ProDOS's /RAM has its volume directory in
+        block 2 alone and its bitmap in block 3. Until then this oracle, like
+        the walker, held every volume directory to blocks 2 to 5 and read a
+        healthy /RAM as VOLDIR_SIZE plus BM_RESERVED on block 4. The shape
+        and the reserved set now follow the header's bitmap pointer; a chain
+        that runs on past that place is the shape fault."""
+        from test_repair import ram_shaped
+        data = ram_shaped()
+        self.assertEqual(pc.check(data).findings, [])
+        d = bytearray(data)
+        d[2 * BLOCK + 2] = 4                         # chained on to block 4
+        d[4 * BLOCK] = 2
+        d[3 * BLOCK] &= ~0x08                        # block 4 allocated (bitmap at 3)
+        self.assertEqual([(f.id, f.block, f.expected, f.found) for f in
+                          pc.check(bytes(d)).findings],
+                         [('VOLDIR_SIZE', 4, 1, 2)])
+        d = bytearray(data)
+        d[3 * BLOCK] |= 0x20                         # the directory, block 2, marked free
+        self.assertEqual([(f.id, f.block) for f in pc.check(bytes(d)).findings],
+                         [('BM_RESERVED', 2)])
+
     def test_a_reserved_block_is_never_a_used_free_block(self):
         d = self.image()
         for b in (0, 1, 2, 3, 4, 5, BITMAP):

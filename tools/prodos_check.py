@@ -37,8 +37,13 @@ Conventions that keep the report readable, and that the C walker mirrors:
     volume directory: a volume directory that grew a fifth, well-formed block
     yields VOLDIR_SIZE alone, and a chain cut short by a bad `next` yields
     DIR_CHAIN alone -- the blocks the walk never saw are not a shape.
-  * blocks 0, 1, 2 to 5 and the bitmap blocks are reserved: marked free they
-    are BM_RESERVED, never BM_USED_FREE, and never BM_LOST.
+  * blocks 0 and 1, the volume directory -- the blocks from 2 up to the
+    bitmap, where the header puts it: 2 to 5 on every volume ProDOS formats,
+    block 2 alone on /RAM -- and the bitmap blocks are reserved: marked free
+    they are BM_RESERVED, never BM_USED_FREE, and never BM_LOST. VOLDIR_SIZE
+    judges the chain against the same shape (bug hunt 2, finding 5: until
+    then both held the directory to blocks 2 to 5, and a healthy /RAM read
+    as two findings).
   * a directory key or a chain pointer that names a block the walk has
     already reached -- another directory, a boot block, a block a file
     claims -- is DIR_LOOP, not a longer chain: read on as a directory, file
@@ -59,7 +64,7 @@ BLOCK = 512
 ENTRY_LEN = 39
 ENTRIES_PER_BLOCK = 13
 VOLUME_DIR = 2
-VOLUME_DIR_BLOCKS = (2, 3, 4, 5)  # fixed by ProDOS: it cannot grow
+VOLUME_DIR_BLOCKS = (2, 3, 4, 5)  # on every volume ProDOS formats; see volume_dir_blocks()
 MIN_BLOCKS = 6                    # blocks 0-1 boot, 2-5 the volume directory
 MAX_DEPTH = 16                    # ProDOS nesting limit, as in volinfo.c
 ACCESS_RESERVED = 0x18            # bits 4 and 3 of the access byte, always zero;
@@ -157,6 +162,12 @@ class Checker:
         self.volume_files = 0
         self.root_chain = []
         self.root_cut = False
+
+    def volume_dir_blocks(self):
+        """The blocks the volume directory must occupy: 2 up to the bitmap,
+        as the header places it; the four of ProDOS's formatter when the
+        header cannot be believed."""
+        return tuple(range(2, self.bitmap)) if self.bitmap_ok else VOLUME_DIR_BLOCKS
 
     # -- primitives ---------------------------------------------------------
     def readable(self, n):
@@ -391,34 +402,37 @@ class Checker:
         return reached, partial
 
     def volume_dir_shape(self):
-        """The volume directory is blocks 2, 3, 4 and 5, in that order.
+        """The volume directory is the blocks from 2 up to the bitmap, in
+        that order (volume_dir_blocks).
 
         The finding names the first block that does not belong to that shape:
-        the block found where another was expected, or the fifth block of a
-        chain that is too long, with `expected` then the length ProDOS fixes
-        and `found` the length this volume has. A chain the walk could not
-        follow to its end says nothing about the shape, so it says nothing.
+        the block found where another was expected, or the first block of a
+        chain that runs past its place, with `expected` then the length the
+        header gives and `found` the length this volume has. A chain the walk
+        could not follow to its end says nothing about the shape, so it says
+        nothing.
         """
         chain = self.root_chain
         if self.root_cut or not chain:
             return
-        for i, expected in enumerate(VOLUME_DIR_BLOCKS):
+        shape = self.volume_dir_blocks()
+        for i, expected in enumerate(shape):
             if i >= len(chain):
-                self.add('VOLDIR_SIZE', chain[-1], None, len(VOLUME_DIR_BLOCKS),
+                self.add('VOLDIR_SIZE', chain[-1], None, len(shape),
                          len(chain), self.volume)
                 return
             if chain[i] != expected:
                 self.add('VOLDIR_SIZE', chain[i], None, expected, chain[i], self.volume)
                 return
-        if len(chain) > len(VOLUME_DIR_BLOCKS):
-            self.add('VOLDIR_SIZE', chain[len(VOLUME_DIR_BLOCKS)], None,
-                     len(VOLUME_DIR_BLOCKS), len(chain), self.volume)
+        if len(chain) > len(shape):
+            self.add('VOLDIR_SIZE', chain[len(shape)], None,
+                     len(shape), len(chain), self.volume)
 
     # -- the allocation bitmap ---------------------------------------------
     def bitmap_check(self):
         if not self.bitmap_ok:
             return
-        reserved = set(VOLUME_DIR_BLOCKS) | {0, 1}
+        reserved = set(self.volume_dir_blocks()) | {0, 1}
         reserved |= set(range(self.bitmap, self.bitmap + self.bitmap_blocks))
         bits = self.d[self.bitmap * BLOCK:(self.bitmap + self.bitmap_blocks) * BLOCK]
         for b in range(self.total):
