@@ -107,9 +107,10 @@ documentation brought back in line with the code.
   room when that is what did not suffice.
 - TAKE1.SYSTEM: a T/S pair past track 34 in a .DSK/.2MG movie is a read
   error, no longer bytes of the 2MG trailer decoded as data.
-- Mini: B refuses a name whose raw catalog bytes are not all plain
-  characters ($A0-$DF): a FLASH or inverse name could run another file of
-  the same visible name.
+- Mini: B refuses a name DOS could not read back from a typed line -- a
+  comma, or a raw catalog byte below $A0 or equal to $FF: a FLASH or
+  inverse name could run another file of the same visible name. Lower-case
+  names ($E0-$FE) still run.
 
 ### Fixed: data safety, the second hunt
 
@@ -154,8 +155,8 @@ documentation brought back in line with the code.
   bitmap page at a time (11.4 to 4.2 million cycles on a scattered sapling).
 - The Mini keeps an unsaved text after a failed or declined save and goes
   back to the editor; its second half used to be overwritten by the catalog.
-- BLKEDIT's disk identity is the CRC-32 of block 2 (the running sums missed
-  swapped bytes); 1- and 2-block images open again.
+- BLKEDIT's disk identity is the CRC-32 of block 2 (running sums missed
+  swapped bytes); a 1- or 2-block image is identified by its block 0.
 
 ### Fixed, the second hunt
 
@@ -164,8 +165,9 @@ documentation brought back in line with the code.
   longer change the body.
 - VDrive's receive loop ran at 100 cycles a byte, more than the 88.6 a byte
   takes at 115,200 bps: a real serial port overran and VDrive could not
-  mount. It runs from page 3 at 33 cycles a byte; late replies are drained.
-  Not yet tried on real hardware.
+  mount. It runs from page 3 at 33 cycles a byte; late replies are drained;
+  the serial port is set up only once a slot is free ("VDrive: no free
+  slot." when none is). Not yet tried on real hardware.
 - Tags survive leaving an album's first window of a large folder and
   coming back; E on a new file no longer clears the other panel's tags.
 - VISICALC says "Close error." when CLOSE fails; UNSQ counts past 255;
@@ -173,8 +175,7 @@ documentation brought back in line with the code.
   error; BINARY2 skips phantom and squeezed records; the `!` menu describes
   the media overlays; a Fantavision backdrop must be 8,192 or 8,184 bytes;
   TREE counts forked files; VOLINFO's F and E leave the audit's figures
-  alone; plugins' key waits ignore mouse clicks; the Mini runs lower-case
-  names with B again.
+  alone; plugins' key waits ignore mouse clicks.
 
 ### Fixed
 
@@ -219,9 +220,9 @@ documentation brought back in line with the code.
 ### Room
 
 - MAIN 65C02/6502: 12/392 bytes free (11/420 in 0.9.5), LC 21/19.
-  REPAIR 77/13, FIXIT 276/243, IMGPUT 28/75, WIPE 51/80, DOCVIEW 42/41,
-  VISICALC's fixed part 156/153 (65C02/6502). docs/MEMORY-BUDGETS.md has
-  the full table.
+  REPAIR 77/13, FIXIT 276/243, IMGPUT 28/75, WIPE 50/79, DOCVIEW 42/41,
+  DISKIMG 51/4, VISICALC's fixed part 156/153 (65C02/6502); the Mini 3
+  bytes under DOS. docs/MEMORY-BUDGETS.md has the full table.
 
 ## [0.9.5] - 2026-10-04
 
