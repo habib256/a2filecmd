@@ -897,7 +897,7 @@ finissaient `repaired.` ; tous sont refusés sans une écriture :
   connaît), prend les bits au-delà du nouveau total pour un `BM_TAIL` et les
   efface. Le rétrécissement devient alors permanent. Comparer au nombre de
   blocs de l'appareil (`STATUS` du pilote) demanderait un appel de service
-  et sa glu, que la fenêtre de REPAIR ne porte pas (16 octets libres en
+  et sa glu, que la fenêtre de REPAIR ne porte pas (13 octets libres en
   6502) ;
 - une entrée dont le quartet de stockage est à zéro **et** dont le
   répertoire compte déjà un fichier de moins — deux fautes, ou une
@@ -984,10 +984,28 @@ plus le volume du programme (il ne fait que lire : `boot`, `isboot` et deux
 `strcmp` passent sous `#ifdef REPAIR`) ; la page de bitmap tenue par un
 compteur `page` au lieu de `bitmap + (base >> 12)` ; les onze noms de REPAIR
 en table de pointeurs ; `v_confirm` et `M_AUXASK` retirés. Mesure au lien,
-65C02 : FIXIT 7 566 octets, **276 libres** ; REPAIR 7 817 octets, **80
-libres**. 6502 : FIXIT 7 599, **243 libres** ; REPAIR 7 881, **16 libres**.
-FIXIT ne garde donc plus l'empreinte d'avant : l'oracle « octet pour octet »
-de la section 4 ne vaut que pour un passage sans changement de comportement.
+65C02 : FIXIT 7 566 octets, **276 libres** ; REPAIR 7 820 octets, **77
+libres**. 6502 : FIXIT 7 599, **243 libres** ; REPAIR 7 884, **13
+libres**. FIXIT ne garde donc plus l'empreinte d'avant : l'oracle « octet
+pour octet » de la section 4 ne vaut que pour un passage sans changement de
+comportement.
+
+**Ce que les harnais hôtes ne voyaient pas.** Le premier `swap` gardait son
+compte dans Y à travers `popax`, qui charge Y : la boucle échangeait 256
+octets. Les harnais hôtes compilent la version C (`FIXIT_HOST`) et
+passaient ; `bench/repair.py` l'a pris sous POM2 (un `BRK` après `FIX` sur
+le plan de répertoire). `tools/test_fixit_bits.py` fait désormais tourner
+`first_part`, `samebytes` et `swap` sous sim65 sur les deux processeurs, et
+passe au rouge (22 échecs) sur le `swap` fautif.
+
+**Rejoué sous POM2** (`A2FC_PORT_OFFSET=2200`, les deux éditions) :
+`bench/fixit.py` 88/88, `bench/repair.py` 61/61, `bench/bigvol.py` 36/36 ;
+deux volumes `/TWIN` (disque S5,D2 et disquette S6,D1), le premier ouvert
+depuis la liste puis FIXIT et REPAIR depuis le chemin : les deux refusent,
+images intactes ; la sonde Ctrl-Reset de la chasse (trois fichiers sur
+/RAM, FIXIT complet sur 20 000 blocs, reset pendant le parcours) : avant,
+l'en-tête de /RAM comptait toujours 3 fichiers sur 15 blocs écrasés ;
+après, /RAM est reconstruite vide (0 fichier).
 
 Une correction est la réécriture d'un seul bloc. Aucune correction ne suppose
 qu'une autre a réussi. Les valeurs écrites viennent toutes du parcours, jamais
