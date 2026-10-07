@@ -34,6 +34,9 @@
 extern void set_boot_prefix(void);
 
 #define CODE_ADDR   0x4000
+/* The read stops here: the loader's C stack lives between this and $BF00
+ * (the ceiling check_layout.py holds A2FILE.CODE under). */
+#define CODE_END    ((unsigned char*)0xBEE0)
 #define CHUNK       8192
 #define LC_STAGE    0x1000
 #define LC_BYTES    0x0C00      /* the language card image */
@@ -138,11 +141,21 @@ int main(void)
         return 1;
     }
     if (fread((void*)LC_STAGE, 1, STAGE_BYTES, f) != STAGE_BYTES) goto truncated;
-    /* Never beyond $BEFF: the ProDOS global page is at $BF00. */
-    while (dst < (unsigned char*)0xBF00 && (n = fread(dst, 1, (unsigned char*)0xBF00 - dst < CHUNK ? (unsigned char*)0xBF00 - dst : CHUNK, f)) > 0) dst += n;
+    /* Never beyond $BEDF: this loader's own C stack sits at $BF00 (the
+     * ProDOS global page) and reaches down to CODE_END; A2FILE.CODE ends
+     * at or under it (tools/check_layout.py). A cap at $BF00 let an
+     * oversized file overwrite the frame of the fread reading it. */
+    while (dst < CODE_END && (n = fread(dst, 1, CODE_END - dst < CHUNK ? CODE_END - dst : CHUNK, f)) > 0) dst += n;
+    /* An image that ends exactly at CODE_END has not met its end yet: one
+     * more byte is asked for, into a byte of its own, and must not come.
+     * After the end (or an error) this read makes _oserror say so again. */
+    {
+        static unsigned char spare;
+        if (fread(&spare, 1, 1, f)) goto truncated;
+    }
     /* Jump only into the whole file: the reads must have stopped at its
      * end (GET_EOF bytes read), not on a read error -- a bad sector stops
-     * fread short as well -- nor at $BF00 with bytes left over. The last
+     * fread short as well -- nor at CODE_END with bytes left over. The last
      * ProDOS READ tells: cc65's read leaves _oserror at $4C (end of file)
      * only when it ran into the end; a full read leaves 0, a failed one its
      * error, and after an error fread no longer calls READ. (feof/ferror

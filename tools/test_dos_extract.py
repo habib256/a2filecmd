@@ -95,6 +95,10 @@ int main(int argc,char** argv){
  if(fault==22){for(i=2;i<8;++i){sectors[16][12+i*2]=0;sectors[16][13+i*2]=0;}
   sectors[16][1]=1;sectors[16][2]=5;sectors[21][12]=2;sectors[21][13]=2;} /* data again in the next T/S list */
  if(fault==23){sectors[16][12]=0;sectors[16][13]=0;} /* the first sector is a hole */
+ if(fault==24){for(i=2;i<8;++i){sectors[16][12+i*2]=0;sectors[16][13+i*2]=0;}   /* seven T/S lists: */
+  sectors[16][1]=1;sectors[16][2]=5;                                         /* 16 -> 21 -> ... -> 26 */
+  for(i=21;i<26;++i){sectors[i][1]=1;sectors[i][2]=i-16+1;}
+  sectors[26][12]=2;sectors[26][13]=2;}                                      /* data in the seventh */
  dos_extract();
  printf("%u %u %u %d %d %d %d %s\n",a2fc_ops,_filetype,_auxtype,removes,writes,
         bar_calls,bar_bad,note);return 0;
@@ -158,6 +162,14 @@ class DosExtract(unittest.TestCase):
   out,data=self.run_case(4,fault=21);self.assertTrue(out.startswith('1 4 0 '),out);self.assertEqual(data,pat[:1536])
   out,data=self.run_case(4,fault=22);self.assertTrue(out.startswith('1 4 0 '),out)
   self.assertEqual(data,pat[:512]+bytes(120*256)+pat[512:768])
+ def test_a_chain_of_more_than_five_lists_is_read(self):
+  """Bug hunt 2: d3_pass refused a T/S chain past 5 lists (610 sector
+  positions), a legitimate sparse text file among them; DOS_SEEN, which
+  refuses any sector read twice, already bounds the walk. Seven lists here,
+  the last one holding data again after five lists of holes."""
+  pat=bytes((i*17+3)&255 for i in range(2048))
+  out,data=self.run_case(4,fault=24);self.assertTrue(out.startswith('1 4 0 '),out)
+  self.assertEqual(data,pat[:512]+bytes((120+5*122)*256)+pat[512:768])
  def test_a_sized_file_cannot_start_with_a_hole(self):
   for typ in (6,250,252):
    out,data=self.run_case(typ,fault=23);self.assertTrue(out.startswith('0 '),out);self.assertIsNone(data)

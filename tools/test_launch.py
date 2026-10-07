@@ -18,7 +18,6 @@ struct Panel { char path[64]; unsigned char fs, count; struct Entry e[64]; unsig
 enum { FS_PRODOS, FS_IMG, FS_DOS33 };
 static struct Panel panels[2];
 static unsigned char tagged(const struct Panel* p, unsigned char i) { return p->tags[i]; }
-static unsigned char page_size(const unsigned long* s) { return *s == 8184 || *s == 8192; }
 /* As in memory: the entry snapshot at $3000 and LaunchState at $3400 over it. */
 static unsigned char mem[0x1000];
 #define ENTRY_SNAPSHOT ((struct Entry*)mem)
@@ -178,6 +177,13 @@ class Launch(unittest.TestCase):
         # an 8,184-byte save counts; a marked text does not
         self.assertEqual(self.run_case(panel='PIC:8184:1',**movie)[2],'/SOURCE/WORK/PROGRAM,PIC')
         self.assertEqual(self.run_case(panel='NOTE:100:1;PIC:8192:0',**movie)[2],'/SOURCE/WORK/PROGRAM')
+        # Bug hunt 2: the viewers' page_size also takes "nearly a page"
+        # (8,185-8,199, 16,376-16,391); FANTA.SYSTEM's read takes 8,192 or
+        # 8,184 only, and named such a file to a player that refused it.
+        for size in (8183, 8185, 8191, 8194, 8199, 16384, 16380):
+            with self.subTest(size=size):
+                self.assertEqual(self.run_case(panel='PIC:%d:1' % size,**movie)[2],'/SOURCE/WORK/PROGRAM')
+        self.assertEqual(self.run_case(panel='A:8191:1;B:8192:1',**movie)[2],'/SOURCE/WORK/PROGRAM,B')
         # two marked pictures: which one? Nothing is launched.
         self.assertEqual(self.run_case(panel='A:8192:1;B:8192:1',**movie)[0],'0')
         # the name would pass the thunk's 46 characters: refused, never cut

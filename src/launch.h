@@ -50,6 +50,16 @@ static const char run_t1ts[] = ",%04X";
 static const char run_t1unit[] = "%%%02X,%04X";
 static const char run_t1where[] = "Take 1 plays from a folder, a DOS 3.3 disk or image.";
 
+/* Exactly the two hi-res page sizes FANTA.SYSTEM's bread takes, 8,192 or
+ * 8,184 bytes, as two words (a long compare costs a routine). The viewers'
+ * page_size also takes the "nearly a page" sizes (8,185-8,199, 16,376-
+ * 16,391), which the player would refuse at the backdrop's read. */
+static unsigned char backdrop_size(const unsigned long* size)
+{
+    const uint16_t* w = (const uint16_t*)size;
+    return !w[1] && (w[0] == 8192 || w[0] == 8184);
+}
+
 /* 1 found, 0 genuinely absent, -1 lookup error. Never
  * reinterpret an unreadable runtime as a request to try another disk. */
 static signed char runtime_probe(const char* path)
@@ -187,7 +197,7 @@ static void run_selected(const struct Entry* e)
         unsigned char i, bd = 0xFF;
         if (named_kind(e) == 8)
             for (i = 0; i < pan->count; ++i)
-                if (tagged(pan, i) && page_size(&ENTRY_SNAPSHOT[i].size)) {
+                if (tagged(pan, i) && backdrop_size(&ENTRY_SNAPSHOT[i].size)) {
                     if (bd != 0xFF) { message(run_onebd); return; }
                     bd = i;
                 }

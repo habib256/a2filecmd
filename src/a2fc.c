@@ -1376,6 +1376,9 @@ static int view_getc(void)
 
 static void view_seek(long offset)
 {
+    /* cc65's fseek clears the end flag only: after a READ ERROR every
+     * page sought later came back empty, the error flag still set */
+    clearerr(vf);
     fseek(vf, offset, SEEK_SET);
     vbase = offset;
     vlen = vpos = 0;
@@ -1909,7 +1912,9 @@ static const char b2_pick[]  = "Select a Binary II archive.";
 static const char b2_notdir[] = "Other panel must be a ProDOS folder.";
 static const char b2_bad[]   = "Not a Binary II archive.";
 static const char b2_path[]  = "%s/%s";
-static const char b2_done[]  = "%u file(s) extracted, %u folder(s) skipped.";
+/* 62 characters at most with three-digit counts (a record counts the files
+ * to follow in a byte): `question` holds 63. */
+static const char b2_done[]  = "%u file(s) extracted, %u skipped (folder/phantom/squeezed).";
 
 /* A ProDOS name out of the one in the archive: letters, digits and
  * periods, a letter first, 15 at most. */
@@ -1968,12 +1973,16 @@ void __fastcall__ binary2_entry(const struct A2fcApi* a)
         /* the bar's "n/m": this record among the ones the header says follow */
         progress_done = done;
         progress_total = done + 1 + copy_buf[0x7F];
-        if (copy_buf[4] == 0x0F || copy_buf[7] == 0x0D) {
+        if (copy_buf[4] == 0x0F || copy_buf[7] == 0x0D || copy_buf[0x7C] || (copy_buf[0x7D] & 0x80)) {
             /* A folder record (type $0F or storage type $0D): extracted as a
              * plain file it could be neither opened nor deleted here. Nothing
              * is created; its data and padding are read, not sought, so a
              * truncated archive still fails. Its files follow as their own
-             * records, named by their last component. */
+             * records, named by their last component.
+             * Likewise a phantom record (+$7C non-zero: the specification
+             * says an unpacker must not save it) and a squeezed one (+$7D
+             * bit 7: its data is a Huffman stream, not the file; UNSQ reads
+             * it), both written out as plain files before bug hunt 2. */
             for (eof += pad; eof; eof -= n) {
                 n = eof > 512 ? 512 : (unsigned int)eof;
                 if (fread(copy_buf, 1, n, in) != n || ferror(in)) goto failed;
@@ -3870,7 +3879,8 @@ void __fastcall__ menu_entry(const struct A2fcApi* a)
         len = fread(copy_buf, 1, 80, f);
         fclose(f);
         copy_buf[8 + 51] = 0;
-        if (len < 9 || (hdr->signature != a2fc_link_id && hdr->signature != PLUGIN_MAGIC)) strcpy(m[i].desc, mn_stale);
+        /* the three signatures load_overlay accepts from the menu */
+        if (len < 9 || (hdr->signature != a2fc_link_id && hdr->signature != PLUGIN_MAGIC && hdr->signature != MEDIA_PLUGIN_MAGIC)) strcpy(m[i].desc, mn_stale);
         else if (!hdr->entry) strcpy(m[i].desc, mn_noentry);
         else strcpy(m[i].desc, hdr->desc);
     }
@@ -4410,7 +4420,12 @@ static unsigned char d3_pass(const struct Entry* e, unsigned char verify)
     memset(DOS_SEEN, 0, 70);
     d3_sectors = 0;
     while (tslt) {
-        if (++lists > 5 || !d3_read(tslt, tsls)) return 0;
+        /* A list covers 122 sector positions, holes included: a sparse
+         * random-access text file chains more than the 5 lists once
+         * allowed here. DOS_SEEN already refuses a sector read twice, so
+         * the chain is bounded by the disk's 560 sectors anyway; 70 lists
+         * is simply a cap a looping chain cannot reach first. */
+        if (++lists > 70 || !d3_read(tslt, tsls)) return 0;
         tslt = copy_buf[1]; tsls = copy_buf[2];
         if ((!tslt && tsls) || tslt >= 35 || tsls >= 16) return 0;
         memcpy(tsbuf, copy_buf + 0x0C, 244);
@@ -5018,8 +5033,10 @@ void __fastcall__ unshrink_entry(const struct A2fcApi* a)
                 /* A comment or a control thread is no part of the file; a
                  * resource fork (or any other data thread) is, and leaving
                  * it out is said: "N file(s) extracted" alone would let
-                 * the archive be deleted as fully extracted. */
-                if (US->klass == 2) ++US->skipped;
+                 * the archive be deleted as fully extracted. An empty one
+                 * (teof 0, as GS/OS archivers write for a file that has no
+                 * resource fork) holds nothing to lose and is not counted. */
+                if (US->klass == 2 && US->teof) ++US->skipped;
                 if (!us_skip(US->ceof)) goto corrupt;
             }
         }
@@ -5612,10 +5629,15 @@ static struct Entry* file_at_cursor(void)
 /* The service table: what a third party's overlay receives at its entry
  * point (a2fc_plugin.h). The program's own overlays do not need it, they
  * are linked with it. */
+/* The wait_key slot takes cgetc, not the main loop's wait_key: a click
+ * there went to click(), which swapped the panels or landed the cursor
+ * while a plugin (DOS33W, CRC) was mid-way, and drew over copy_buf. The
+ * entry stays where it is (tools/test_abi_freeze.py); keys are what a
+ * plugin asked for. */
 static struct A2fcApi api = {
     A2FC_API_VERSION, 0,
     panels, &active, full, other_full, input, copy_buf, &dir_entry,
-    message, confirm, prompt, progress_bar, keys_bar, bar_begin, draw_all, read_panel, report_error, wait_key,
+    message, confirm, prompt, progress_bar, keys_bar, bar_begin, draw_all, read_panel, report_error, cgetc,
     build_full, dir_open, dir_next, (void (*)(void))dir_close, mli_call,
     fopen, fread, fwrite, fclose, fseek, remove, cprintf, sprintf, cputs, cputc, gotoxy, revers, cclearxy, clrscr, slide_getc,
     memcpy, memset, strcpy, strcmp, strlen, &_filetype, &_auxtype, reselect, note, &selected, cfg_path,

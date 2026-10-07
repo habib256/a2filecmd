@@ -46,10 +46,13 @@ static void draw_all(void) {}
 static void cprintf(const char* f, ...) { va_list a; va_start(a, f); vprintf(f, a); va_end(a); putchar('\n'); }
 static char cgetc(void) { return *keys ? *keys++ : KEY_ESC; }
 /* A device that fails at byte fail_at: the bytes before it are served, then
- * nothing and the stream's error indicator, as cc65's fread leaves it. */
+ * nothing and the stream's error indicator, as cc65's fread leaves it --
+ * and, as cc65's fread (libsrc/common/fread.s), nothing at all while that
+ * indicator stays set: only clearerr lowers it, fseek does not. */
 static size_t read_(void* p, size_t s, size_t n, FILE* f)
 {
     size_t got;
+    if (read_failed) return 0;      /* cc65's fread: nothing while the error flag is set */
     if (fail_at >= 0 && served + (long)n > fail_at) n = fail_at > served ? fail_at - served : 0;
     got = n ? fread(p, s, n, f) : 0;
     if (fail_at >= 0 && served + (long)got >= fail_at) read_failed = 1;
@@ -60,6 +63,7 @@ static int seek_(FILE* f, long o, int w) { served = o; return fseek(f, o, w); }
 #define fread read_
 #define fseek seek_
 #define ferror(f) read_failed
+#define clearerr(f) (read_failed = 0)
 VIEWER
 int main(int argc, char** argv)
 {
@@ -112,6 +116,16 @@ class TextViewer(unittest.TestCase):
         self.assertFalse(any('(end)' in g for g in got), got)
         # an error in the very first block: nothing to show, and it is said
         self.assertEqual(self.pages(data, '', fail_at=0), ['1 (READ ERROR)'])
+
+    def test_pages_read_before_an_error_can_be_read_again(self):
+        """Bug hunt 2: cc65's fseek clears the end flag only. After a READ
+        ERROR, every page sought later -- B to the page before, R to the
+        first -- came back empty with "(READ ERROR)", though those bytes had
+        been read once. view_seek clears the error flag."""
+        data = b''.join(b'LINE %03d\r' % i for i in range(200))         # 9 bytes a line
+        got = self.pages(data, '    BR', fail_at=600)
+        self.assertEqual(got[-3], '4 (READ ERROR)', got)              # the error is said
+        self.assertEqual(got[-2:], ['3', '1'], got)                       # B, then R: whole pages again
 
     def test_the_page_limit_is_said(self):
         data = b''.join(b'L%04d\r' % i for i in range(22 * 100))        # a hundred pages

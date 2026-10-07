@@ -228,7 +228,7 @@ class Binary2Safety(unittest.TestCase):
         self.src.write_bytes(folder('SUB') + record('SUB/DATA', self.payload, True)
                              + folder('SUB/DEEP', bytes(range(39))) + record('SUB/DEEP/END', b'end'))
         out = self.run_extract()
-        self.assertIn('2 file(s) extracted, 2 folder(s) skipped', out)
+        self.assertIn('2 file(s) extracted, 2 skipped (folder/phantom/squeezed)', out)
         self.assertEqual(sorted(x.name for x in self.dst.iterdir()), ['DATA', 'END'])
         self.assertEqual((self.dst/'DATA').read_bytes(), self.payload)
         self.assertEqual((self.dst/'END').read_bytes(), b'end')
@@ -238,7 +238,7 @@ class Binary2Safety(unittest.TestCase):
         for filetype, storage in ((0x0F, 1), (6, 0x0D)):
             with self.subTest(filetype=filetype, storage=storage):
                 self.src.write_bytes(folder('DIR', b'x' * 600, True, filetype, storage) + record('LAST', b'end'))
-                self.assertIn('1 file(s) extracted, 1 folder(s) skipped', self.run_extract())
+                self.assertIn('1 file(s) extracted, 1 skipped (folder/phantom/squeezed)', self.run_extract())
                 self.assertEqual(sorted(x.name for x in self.dst.iterdir()), ['LAST'])
                 (self.dst/'LAST').unlink()
         # A folder record cut short (data or padding) is a failure, never success.
@@ -250,6 +250,34 @@ class Binary2Safety(unittest.TestCase):
                 self.assertIn('Extract failed', out)
                 self.assertIn('removes=0', out)
                 self.assertEqual(list(self.dst.iterdir()), [])
+
+    def test_phantom_and_squeezed_records_are_skipped(self):
+        """Bug hunt 2 (tools/hunt2/probe_binary2_phantom.py): a phantom record
+        (+$7C non-zero, which the Binary II specification says an unpacker
+        must not save) was extracted as PHANTOM, 21 bytes of comment, and a
+        squeezed record (+$7D bit 7) as SQUEEZED, its Huffman stream written
+        as plain data: "4 file(s) extracted". Both are skipped and counted,
+        the files around them extracted intact."""
+        def rec(name, data, more, **at):
+            r = bytearray(record(name, data, more))
+            for off, v in at.items():
+                r[int(off[1:], 16)] = v
+            return bytes(r)
+        self.src.write_bytes(rec('REAL', b'real\r' * 10, True)
+                             + rec('PHANTOM', b'phantom comment block', True, x7C=1)
+                             + rec('SQUEEZED', b'\x76\xff' + b'?' * 300, True, x7D=0x80)
+                             + rec('LAST', b'end', False))
+        out = self.run_extract()
+        self.assertIn('2 file(s) extracted, 2 skipped (folder/phantom/squeezed)', out)
+        self.assertEqual(sorted(x.name for x in self.dst.iterdir()), ['LAST', 'REAL'])
+        self.assertEqual((self.dst/'REAL').read_bytes(), b'real\r' * 10)
+        self.assertEqual((self.dst/'LAST').read_bytes(), b'end')
+        for x in self.dst.iterdir():
+            x.unlink()
+        # a skipped record cut short is still a failure, never a success
+        self.src.write_bytes(rec('PHANTOM', b'x' * 300, True, x7C=1)[:128 + 100])
+        self.assertIn('Extract failed', self.run_extract())
+        self.assertEqual(list(self.dst.iterdir()), [])
 
     def test_sanitized_name_collision_keeps_first_record(self):
         self.src.write_bytes(record('A-B', b'first', True) + record('A?B', b'second'))

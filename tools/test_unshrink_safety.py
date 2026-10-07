@@ -431,6 +431,21 @@ class UnshrinkSafety(unittest.TestCase):
         self.assertIn('1 file(s) extracted, 1 part(s) skipped', out)
         self.assertEqual((self.dst / 'APP').read_bytes(), self.payload)
 
+    def test_an_empty_resource_fork_is_not_a_skipped_part(self):
+        """Bug hunt 2: a resource fork thread whose uncompressed length is 0
+        (GS/OS archivers write one for a file without resource fork) was
+        counted, "1 file(s) extracted, 1 part(s) skipped", for nothing left
+        out. A compressed length that is not 0 is still read past."""
+        for ceof in (0, 16):
+            with self.subTest(ceof=ceof):
+                self.src.write_bytes(archive(record('APP', self.payload,
+                                                    extra=[thread(b'\0' * ceof, klass=2, kind=2, eof=0)])))
+                out = self.run_extract()
+                self.assertIn('1 file(s) extracted.', out)
+                self.assertNotIn('skipped', out)
+                self.assertEqual((self.dst / 'APP').read_bytes(), self.payload)
+                (self.dst / 'APP').unlink()
+
     def test_a_skipped_member_keeps_the_count_of_the_others(self):
         """Measured before the fix: "Unsupported file skipped." alone, the
         two files extracted around it uncounted."""

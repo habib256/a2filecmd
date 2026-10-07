@@ -1,4 +1,5 @@
 """Execute the resident loader with disposable code and failed stream I/O."""
+import re
 import subprocess
 import tempfile
 import unittest
@@ -131,6 +132,48 @@ int main(void){
 }
 '''
   with tempfile.TemporaryDirectory(prefix='overlay-menu-') as d:
+   p=Path(d);(p/'test.c').write_text(harness)
+   subprocess.run(['cc','-std=c99',str(p/'test.c'),'-o',str(p/'test')],check=True,capture_output=True)
+   self.assertEqual(subprocess.run([str(p/'test')]).returncode,0)
+
+ def test_plugins_wait_key_takes_no_click(self):
+  """Bug hunt 2: the service table's wait_key was the main loop's, which
+  hands a mouse click to click(): during DOS33W or CRC a click swapped the
+  panels or landed the cursor and drew over copy_buf. The slot (frozen by
+  tools/test_abi_freeze.py) now holds cgetc: keys only."""
+  table=source[source.index('static struct A2fcApi api = {'):]
+  table=table[:table.index('};')]
+  names=[n.strip() for n in table.split('{',1)[1].replace('\n',' ').split(',')]
+  self.assertEqual(names[names.index('report_error')+1],'cgetc')
+
+ def test_menu_describes_every_overlay_the_loader_accepts(self):
+  """Bug hunt 2 (bench/hunt2_menu.py): the ! menu wrote "(other A2FC
+  build)" for every MEDIA_PLUGIN_MAGIC overlay (MUSIC, PURPLE...), which
+  load_overlay runs from that very menu. The real description line of
+  menu_entry, on the host, for the four signatures."""
+  menu=source[source.index('void __fastcall__ menu_entry('):]
+  line=next(l for l in menu.splitlines() if 'strcpy(m[i].desc, mn_stale)' in l)
+  loader_ok=re.search(r'OVL->signature == a2fc_link_id \|\| \(any && \(([^)]*)\)\)', loader).group(1)
+  harness=r'''
+#include <string.h>
+#define PLUGIN_MAGIC 0xA2FC
+#define MEDIA_PLUGIN_MAGIC 0xA2FD
+struct Overlay { unsigned int signature; };
+static const char mn_stale[]="stale";
+struct Item { char desc[16]; } m[1];
+static unsigned int a2fc_link_id=0x4321;
+int main(void){
+ static const unsigned int sigs[4]={0x4321,PLUGIN_MAGIC,MEDIA_PLUGIN_MAGIC,0x1234};
+ unsigned char i=0,k,len=80;struct Overlay h,*hdr=&h,o,*OVL=&o;unsigned char any=1;
+ for(k=0;k<4;++k){
+  strcpy(m[0].desc,"ok");h.signature=o.signature=sigs[k];
+'''+line+r'''
+  if((strcmp(m[0].desc,"stale")==0)!=!(OVL->signature==a2fc_link_id||(any&&('''+loader_ok+r''')))) return 1+k;
+ }
+ return 0;
+}
+'''
+  with tempfile.TemporaryDirectory(prefix='overlay-menu-desc-') as d:
    p=Path(d);(p/'test.c').write_text(harness)
    subprocess.run(['cc','-std=c99',str(p/'test.c'),'-o',str(p/'test')],check=True,capture_output=True)
    self.assertEqual(subprocess.run([str(p/'test')]).returncode,0)

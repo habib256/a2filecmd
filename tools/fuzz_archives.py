@@ -374,7 +374,10 @@ def b2_reference(data, existing):
     """The Binary II reader of the format: 128-byte headers, `eof` bytes of
     data, zero padding to the next multiple of 128, "files to follow" in the
     last byte. A record whose type is $0F or whose storage type is $0D is a
-    folder: it is skipped, and its data and padding must still be there.
+    folder: it is skipped, and its data and padding must still be there. So
+    is a phantom record (+$7C non-zero: the specification says an unpacker
+    must not save it) and a squeezed one (+$7D bit 7: a Huffman stream, for
+    UNSQ), since bug hunt 2.
     """
     r = Reader(data)
     files, folders, more = [], 0, True
@@ -387,7 +390,7 @@ def b2_reference(data, existing):
             eof = u24(h, 0x14)
             pad = (-eof) % HDR
             more = h[0x7F] != 0
-            if h[4] == 0x0F or h[7] == 0x0D:
+            if h[4] == 0x0F or h[7] == 0x0D or h[0x7C] or h[0x7D] & 0x80:
                 r.skip(eof + pad)
                 folders += 1
                 continue
@@ -406,8 +409,8 @@ def b2_reference(data, existing):
 def b2_verdict(note, expect):
     """The message BINARY2 must print for this input."""
     if expect.whole:
-        return '%u file(s) extracted, %u folder(s) skipped.' % (len(expect.files),
-                                                                expect.extra)
+        return '%u file(s) extracted, %u skipped (folder/phantom/squeezed).' % (len(expect.files),
+                                                                                expect.extra)
     return None                   # any of the failure messages; never a success
 
 
@@ -1663,7 +1666,7 @@ def core_run(exe, work, fmt, stream, size, timeout):
 # the campaign
 # ===========================================================================
 SUCCESS = {
-    'binary2': r'^\d+ file\(s\) extracted, \d+ folder\(s\) skipped\.$',
+    'binary2': r'^\d+ file\(s\) extracted, \d+ skipped \(folder/phantom/squeezed\)\.$',
     'unshrink': r'^\d+ file\(s\) extracted(\.|, \d+ part\(s\) skipped\.)$',
     'imgfs': r'^\d+ files? extracted(\.|, \d+ not supported \(tree/fork\)\.)$',
     'dos33': r'^\d+ files? extracted\.$',

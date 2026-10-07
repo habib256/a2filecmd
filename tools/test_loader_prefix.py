@@ -97,7 +97,14 @@ class LoaderImage(unittest.TestCase):
           ('short language-card stage',stage[:0x800],0,1),
           ('read error on the third chunk',stage+body,4,1),
           ('read error on the language-card stage',stage+body,1,1),
-          ('image past $BEFF',stage+b'\x60'+bytes(0x7F00),0,1)]
+          ('image past $BEFF',stage+b'\x60'+bytes(0x7F00),0,1),
+          # Bug hunt 2: the read was capped at $BF00, where the loader's own
+          # C stack lives; an image ending between $BEE0 and $BEFF was read
+          # over the frame of the fread loading it. The cap is $BEE0, the
+          # ceiling tools/check_layout.py holds A2FILE.CODE to.
+          ('image ending at $BEDF',stage+b'\x60'+bytes(0x7EDF),0,0),
+          ('image ending at $BEE0',stage+b'\x60'+bytes(0x7EE0),0,1),
+          ('image ending at $BEFF',stage+b'\x60'+bytes(0x7EFF),0,1)]
    for tgt in ('sim6502','sim65c02'):
     subprocess.run([shutil.which('cl65'),'-t',tgt,'-C',str(p/'test.cfg'),'-O','-o',str(p/'loader'),str(p/'test.c')],check=True)
     for label,data,fault,want in cases:
