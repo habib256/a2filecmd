@@ -17,10 +17,16 @@ typedef char launch_config_separate[0x400 - sizeof(struct ConfigState)];
 #endif
 #define LS LAUNCH_STATE
 extern unsigned int chain_size;
+/* Two of RUN's messages live in the resident language card, two in the
+ * overlay (RUNRO, like the rest): RUN.PLG holds 5,117 bytes, three short
+ * of an eleventh block on the floppies, and the card gave the other 31 to
+ * the VDrive receive loop. */
 #pragma rodata-name(push, "LC")
 static const char run_pick[] = "Select a ProDOS program.";
-static const char run_types[] = "SYS, BIN, BAS or INT only.";
+static const char run_prefix[] = "Prefix";
 #pragma rodata-name(pop)
+static const char run_types[] = "SYS, BIN, BAS or INT only.";
+static const char run_err[] = "Run";
 static const char run_bad[] = "Invalid program/runtime.";
 static const char run_ask[] = "Run %s? No return to A2FC.";
 /* The way back, spelt out: BASIC.SYSTEM keeps the prefix on the program's
@@ -30,10 +36,6 @@ static const char run_ask[] = "Run %s? No return to A2FC.";
 static const char run_back[] = "Run %s? Back: -%s/A2FILE.SYSTEM";
 static const char run_basic[] = "/BASIC.SYSTEM";
 static const char run_integer[] = "/INTBASIC.SYSTEM";
-#pragma rodata-name(push, "LC")
-static const char run_err[] = "Run";
-static const char run_prefix[] = "Prefix";
-#pragma rodata-name(pop)
 static const char run_cfgwarn[] = "Configuration warning. Run anyway?";
 /* Fantavision movies play in FANTA.SYSTEM, beside the overlays; it comes
  * back by the A2FILE.SYSTEM of the prefix it was started with. */

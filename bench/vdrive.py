@@ -111,6 +111,11 @@ def main():
                 ok("sans hote, la liste des volumes revient quand meme", s.has('[Volumes]') and s.has('/SCRATCH'))
                 # Q : le destructeur retire les deux unites et rend DEVADR
                 s.key(b'Q'); s.wait(lambda: s.has('Quit to ProDOS?'), 'Q'); s.key(b'Y')
+                # A full BOOT (the 65C02 bench floppy, A2FC_IMG=A2FILECMD-full)
+                # cannot save A2FILE.CFG: the warning is answered, as launch.py does.
+                s.wait(lambda: s.has('Configuration warning.') or not s.has('Type  Aux     Size'),
+                       'sortie ou avertissement', 30)
+                if s.has('Configuration warning.'): s.key(b'Y')
                 s.wait(lambda: not s.has('Type  Aux     Size'), 'sortie', 30); time.sleep(1)
                 ok('en quittant, les deux unites quittent DEVLST (le destructeur)',
                    p.peek(0xBF31, 1)[0] == devcnt - 2, (devcnt, p.peek(0xBF31, 1)[0]))

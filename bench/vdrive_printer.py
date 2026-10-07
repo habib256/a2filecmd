@@ -131,8 +131,14 @@ def main():
             ok('%s: MACHID %s a //c' % (preset, 'says' if preset == 'iic' else 'does not say'),
                (machid & 0xC8 == 0x88) == (preset == 'iic'), '$%02X' % machid)
             # The //c always has port 2 (modem): VDrive may take it, never port 1.
+            # POM2's //c fills every slot with units (SmartPort mirrors), so
+            # it finds port 2 and says it has no slot for the volumes; the
+            # 6502 floppy finds no card there at all (also before 0.9.6's
+            # receive-loop rewrite). Either way port 1 is not taken.
             ok('%s: VDrive does not take slot 1' % preset,
-               'serial card in slot 2' in vd if preset == 'iic' else 'VDrive' not in vd, vd[:70])
+               ('serial card in slot 1' not in vd and 'VDrive: serial card in slot 2' in vd
+                or vd.startswith('VDrive: no free slot') or 'VDrive' not in vd)
+               if preset == 'iic' else 'VDrive' not in vd, vd[:70])
             ok('%s: the slot-1 printer card is never accessed' % preset, not acc, describe(acc))
         # VDrive on slot 2 with the printer in slot 1: both, neither disturbed.
         remote = tmp / 'remote'

@@ -1274,12 +1274,18 @@ static unsigned char prompt(const char* label, const char* initial, unsigned cha
         key = cgetc();
         if (key == KEY_ESC) { clear_row(22); return 0; }
         if (key == KEY_RETURN) { clear_row(22); return hex ? len == max : len != 0; }
-        if (key == KEY_LEFT || key == KEY_DELETE) { if (len) input[--len] = 0; continue; }
+        if (key == KEY_LEFT || key == KEY_DELETE) {
+            if (len) { --len; input[len] = 0; }
+            continue;
+        }
         if (key >= 'a' && key <= 'z') key -= 32;
         if (len >= max) continue;
+        /* The increments as statements of their own: an index computed
+         * through ptr1 cost twelve bytes more each. */
         if (hex ? ((key >= '0' && key <= '9') || (key >= 'A' && key <= 'F'))
                 : ((key >= 'A' && key <= 'Z') || (len && ((key >= '0' && key <= '9') || key == '.')))) {
-            input[len++] = key;
+            input[len] = key;
+            ++len;
             input[len] = 0;
         }
     }
@@ -1292,6 +1298,7 @@ unsigned int __fastcall__ hex_value(const char* s); /* display.s, LC */
 const char msg_dirfail[] = "Directory unreadable or too large/deep.";
 const char msg_toolong[] = "Path too long for ProDOS.";
 const char msg_vdrive[] = "VDrive: serial card in slot %u, volumes in slot %u, drives 1 and 2.";
+const char msg_vdfull[] = "VDrive: no free slot.";
 const char msg_notimg[] = "Not a ProDOS disk image (or DOS 3.3).";
 const char msg_roimg[] = "Read-only disk image; C extracts to the other panel.";
 const char msg_noentry[] = "This overlay has no entry point.";
@@ -5706,7 +5713,8 @@ int main(void)
 #ifdef A2FC_TRACE
     *(unsigned char*)0x03A0 = 6;
 #endif
-    if (key) { extern const char msg_vdrive[]; sprintf(question, msg_vdrive, key >> 4, key & 15); message(question); }
+    /* Slot 0 for the volumes: a card, but every slot has a unit. */
+    if (key) { extern const char msg_vdrive[], msg_vdfull[]; sprintf(question, key & 15 ? msg_vdrive : msg_vdfull, key >> 4, key & 15); message(question); }
 #endif
     for (;;) {
         aux_dirty = 0;           /* no viewer is running: Ctrl-Reset has no /RAM to rebuild */

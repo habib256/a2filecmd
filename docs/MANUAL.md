@@ -830,10 +830,22 @@ port 2 is always taken when present, and a printer plugged there receives
 VDrive's packets. Keep printers off the //c's modem port while A2FC runs.
 Use ADTPro's virtual-drive server, `veserver.py` or `surl-server`. The two
 volumes take the first slot with no unit of its own in the ProDOS device list;
-the status line identifies the serial interface and that slot. Browse and copy
-as with local volumes. The host supplies date/time during reads. A
+the status line identifies the serial interface and that slot. When every slot
+already has a unit (a //c or a IIe whose SmartPort fills them), nothing is
+installed and the status line says `VDrive: no free slot.`; nothing is
+installed either when ProDOS has no room left for an interrupt handler. Browse
+and copy as with local volumes. The host supplies date/time during reads. A
 disconnected server produces an I/O error; it is not an empty or absent file.
-The driver is removed on quit or program launch.
+A reply that comes too late is drained before the next block, so one slow
+answer costs one I/O error, not every call after it. After a failed read the
+buffer holds whatever had arrived, as with a disk drive; ProDOS treats it as
+undefined. The driver is removed on quit or program launch.
+
+The 6551 of a Super Serial Card or a //c holds one received byte: at 115,200
+bps a byte arrives every 88 cycles, and VDrive's receive loop takes 33 cycles a
+byte plus 19 to see the next (measured in the simulator, both editions). VDrive
+has run in the POM2 emulator only, whose serial card buffers 4 KB: it has
+**not** yet been tried on a real Super Serial Card or //c port.
 
 For reproducible failures, note the A2FC version/edition, machine, disk type,
 full paths, exact message and actions. Keep a disk image before any repair.
