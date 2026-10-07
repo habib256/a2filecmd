@@ -46,11 +46,17 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
             f->pos=f->bytes=f->files=0;f->len=a.strlen(path);
             if(!line())break;a.cprintf("%s/",path);
         }else {
-            if((raw[0]>>4)>3){partial=1;continue;}
+            /* Seedling, sapling, tree, and 5: a forked (GS/OS extended)
+             * file, a file like any other with the size its entry gives,
+             * as the panels show it -- its forks are not opened. It used to
+             * be taken for an unreadable directory: every GS/OS volume
+             * ended INCOMPLETE. Anything else is not known to be a file. */
+            r=raw[0]>>4;
+            if(r>3 && r!=5){partial=1;continue;}
             size=rd24(raw+21);f->bytes+=size;++f->files;
             if(!line())break;
             for(i=0;i<depth*2;++i)a.cputc(' ');
-            a.cprintf("%s  %lu bytes",name,size);
+            a.cprintf(r==5?"%s  %lu bytes (forked)":"%s  %lu bytes",name,size);
         }
     }
     if(cancelled)note("TREE cancelled; totals incomplete.");

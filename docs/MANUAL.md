@@ -691,6 +691,8 @@ GOTO paths are at most 63 characters. DATE accepts `DDMMYYYYHHMM`, 1940–2039;
 creation dates remain unchanged. SYNC preserves destination-only and newer
 files, refuses overlapping trees and stops if replacement/recovery fails. An
 unknown source date does not authorize replacement. Keep `A2FC.SYNC/A2FC.BAK`.
+TREE counts a forked (GS/OS extended) file as a file, with the size its
+directory entry gives, as the panels show it; its forks are not opened.
 
 ### Volumes and recovery
 
