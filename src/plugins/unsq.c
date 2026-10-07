@@ -58,7 +58,9 @@ static unsigned long ocount;
 static unsigned char hdr[0x36];
 static char name[16];
 static char dest[PATH_LEN + 1];
-static unsigned char type, bad, made, skipped, checked, kept, folder;
+static unsigned char type, bad, checked, kept, folder;
+/* Counts of files, 16 bits: an ACU archive holds up to 65,535 records. */
+static unsigned int made, skipped;
 static unsigned int aux;
 
 /* -- reading ------------------------------------------------------------- */

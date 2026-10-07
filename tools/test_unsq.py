@@ -200,6 +200,33 @@ class Unsq(unittest.TestCase):
         self.assertEqual((created, made), ([], {}), note)
         self.assertEqual(note, '0 extracted, 1 skipped (name taken or type $0F).')
 
+    def test_counts_past_255(self):
+        """The counts of the note are 16 bits, like ACU's record count.
+
+        Before: `made` and `skipped` were unsigned char -- 300 records
+        said "44 extracted", 256 said "0 extracted", and a damaged record
+        after 256 good files said "Damaged archive: nothing extracted."
+        although 256 files had been written."""
+        files = [(b'F%d' % i, 4, i, b'r%d\r' % i, i % 2 == 0, False) for i in range(300)]
+        acu = ref.make_acu(files)
+        note, created, removed, made = self.run_unsq('X.ACU', acu, typ=0xE0, aux=0x8001)
+        self.assertEqual(note, '300 extracted, 0 skipped (name taken).')
+        self.assertEqual(made, {'F%d' % i: b'r%d\r' % i for i in range(300)})
+        self.assertEqual(len(created), 300)
+        # 260 taken names: the skipped count goes past 255 too
+        note, created, removed, made = self.run_unsq('X.ACU', acu, typ=0xE0, aux=0x8001,
+                                                     existing=['F%d' % i for i in range(260)])
+        self.assertEqual(note, '40 extracted, 260 skipped (name taken).')
+        self.assertEqual(made['F0'], b'old')
+        self.assertEqual(made['F299'], b'r299\r')
+        # 256 good files, then a record cut short: the good ones stay, the
+        # cut one is removed, the note counts what was written
+        acu = ref.make_acu(files[:257])
+        note, created, removed, made = self.run_unsq('X.ACU', acu[:-2], typ=0xE0, aux=0x8001)
+        self.assertEqual(note, '256 extracted, 0 skipped (name taken); damaged, stopped.')
+        self.assertEqual(made, {'F%d' % i: b'r%d\r' % i for i in range(256)})
+        self.assertEqual(removed, ['F256'])
+
     def test_real_files(self):
         found = 0
         bqy = cp2_samples.path('bny/SAMPLE.BQY')
