@@ -411,6 +411,7 @@ test: test-mini $(TAKE1)
 	python3 $(TOOLS)/test_prodos_read.py
 	python3 $(TOOLS)/test_mkdemo.py
 	python3 $(TOOLS)/test_volinfo.py
+	python3 $(TOOLS)/test_volinfo_export.py
 	python3 $(TOOLS)/test_prodos_check.py
 	python3 $(TOOLS)/test_fixit.py
 	python3 $(TOOLS)/test_repair.py

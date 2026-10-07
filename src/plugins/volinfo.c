@@ -96,6 +96,11 @@ static char volume[17];
 
 static unsigned int word(const unsigned char* p) { return p[0] | ((unsigned int)p[1] << 8); }
 static void inc(unsigned int* n) { if (*n != 65535U) ++*n; }
+/* A structure the audit cannot trust: counted once, in the first window.
+ * A listing (F, or the file part of E) walks one file again and must leave
+ * the audit's figures alone: before, every F press raised "Invalid
+ * structure/pointers" by the file's bad pointers. */
+static void flaw(void) { if (listing) return; incomplete = 1; if (!base) inc(&bad); }
 static unsigned char stop(void)
 {
 #ifndef VOLINFO_HOST
@@ -121,7 +126,7 @@ static unsigned char readblock(unsigned int b, unsigned char* dst)
 spun:
     asm("sta $06F7");
 #endif
-    if (b >= total) { if (!base) inc(&bad); incomplete = 1; return 0; }
+    if (b >= total) { flaw(); return 0; }
     if (dst == buf) cached = 65535U;
     io.block = b; io.buf = dst;
     if (v_mli(0x80, &io)) { failed = 1; return 0; }
@@ -151,7 +156,7 @@ static unsigned char claim(unsigned int b)
     unsigned int n;
     unsigned char mask;
     if (listing) { listed(b); return b < total; }
-    if (b >= total) { if (!base) inc(&bad); incomplete = 1; return 0; }
+    if (b >= total) { flaw(); return 0; }
     if (b < base || b - base >= span) return 1;
     n = b - base; mask = 0x80 >> (n & 7); n >>= 3;
     if (seen[n] & mask) { inc(&shared); return 0; }
@@ -178,7 +183,7 @@ static void fork(unsigned char kind, unsigned int key)
     unsigned int i;
     lastdata = 0;
     if (!key) {
-        if (kind > 3) { incomplete = 1; if (!base) inc(&bad); }
+        if (kind > 3) flaw();
         return;
     }
     if (kind == 1) data(key);
@@ -188,16 +193,14 @@ static void fork(unsigned char kind, unsigned int key)
         if (!readblock(key, master)) return;
         for (i = 0; i < 256 && !stop(); ++i)
             indexblock(master[i] | ((unsigned int)master[i+256] << 8));
-    } else { incomplete = 1; if (!base) inc(&bad); }
+    } else flaw();
 }
 static void file(void)
 {
     unsigned int key;
     unsigned char kind;
     kind = entry[0] >> 4; key = word(entry+17);
-    if (!key && (entry[21] || entry[22] || entry[23])) {
-        incomplete = 1; if (!base) inc(&bad);
-    }
+    if (!key && (entry[21] || entry[22] || entry[23])) flaw();
     fileblocks = 0; frag = 0;
     if (kind == 5) {
         role = 'E'; claim(key); inc(&fileblocks);
@@ -215,9 +218,9 @@ static void file(void)
 static unsigned char enter(unsigned int key)
 {
     unsigned char i;
-    if (!key || depth == 16) { incomplete = 1; if (!base) inc(&bad); return 0; }
+    if (!key || depth == 16) { flaw(); return 0; }
     for (i = 0; i < depth; ++i)
-        if (stack[i].first == key) { incomplete = 1; if (!base) inc(&bad); return 0; }
+        if (stack[i].first == key) { flaw(); return 0; }
     stack[depth].block = stack[depth].first = key;
     stack[depth].prev = stack[depth].count = stack[depth].expected = 0;
     stack[depth].blocks = 0;
@@ -239,13 +242,13 @@ static void walk(void)
         }
         if (!f->slot) {
             if (!budget || !claim(f->block) || word(dirbuf) != f->prev) {
-                incomplete = 1; if (!base) inc(&bad); --depth; continue;
+                flaw(); --depth; continue;
             }
             --budget; ++f->blocks;
             if (f->block == f->first) {
                 kind = dirbuf[4] >> 4;
                 if (kind != (depth == 1 ? 15 : 14) || dirbuf[35] != 39 || dirbuf[36] != 13) {
-                    incomplete = 1; if (!base) inc(&bad); --depth; continue;
+                    flaw(); --depth; continue;
                 }
                 f->expected = word(dirbuf+37); f->slot = 1;
             }
@@ -345,15 +348,33 @@ static unsigned char selected_file(void)
     if (v_fclose(f) || (!found && !cancelled)) failed = 1;
     return found;
 }
+/* F and E walk one file again once the audit is done. Their read errors,
+ * their ESC and the report's write errors are theirs: the audit's flags are
+ * set aside and put back, so a full destination disk no longer marks the
+ * audit "Scan incomplete" nor disables F and M for the rest of the visit. */
+static unsigned char kept_failed, kept_cancelled;
+static void list_begin(void)
+{
+    kept_failed = failed; kept_cancelled = cancelled;
+    failed = cancelled = 0; listing = 1;
+}
+static unsigned char list_end(void)
+{
+    unsigned char r = failed | cancelled;
+    failed = kept_failed; cancelled = kept_cancelled; listing = 0;
+    return r;
+}
 static void file_list(void)
 {
-    if (!selected_file()) { v_message("Select a file."); return; }
-    listing = 1; row = 0;
-    v_clrscr(); v_cputs("FILE BLOCKS: D Data  I Index  M Master  E Extended\r\n");
-    file(); listing = 0;
-    v_message(failed ? "Block read failed." : "End of block list. Key to return.");
-    if (!cancelled) v_cgetc();
-    cancelled = 0;
+    list_begin();
+    if (selected_file()) {
+        row = 0;
+        v_clrscr(); v_cputs("FILE BLOCKS: D Data  I Index  M Master  E Extended\r\n");
+        file();
+        v_message(failed ? "Block read failed." : "End of block list. Key to return.");
+        if (!cancelled) v_cgetc();
+    } else v_message("Select a file.");
+    list_end();
 }
 /* The report describes the scan above, before the new report is allocated. */
 static void summary(void)
@@ -399,14 +420,13 @@ static void export_report(void)
     summary(); n = v_strlen((char*)buf);
     reporterror = v_fwrite(buf, 1, n, reportfile) != n;
     if (!reporterror && !failed && !cancelled) {
+      list_begin();
       if (selected_file()) {
         n = v_sprintf(A->other_full, "FILE %s: D data I index M master E extended\r\n", A->selected->name);
         if (v_fwrite(A->other_full, 1, n, reportfile) != n) reporterror = 1;
-        else {
-            listing = 1; file(); listing = 0;
-        }
+        else file();
       }
-      if (failed || cancelled) reporterror = 1;
+      if (list_end()) reporterror = 1;
     }
     if (!reporterror && v_fwrite("END REPORT\r\n", 1, 12, reportfile) != 12) reporterror = 1;
     if (v_fclose(reportfile)) reporterror = 1;
@@ -420,7 +440,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     struct Panel* pan;
     const char* path;
     unsigned int i;
-    unsigned char len, u;
+    unsigned char len, u, j;
     listing = 0; reportfile = 0;
 #ifdef VOLINFO_HOST
     A = api;
@@ -438,14 +458,19 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     volume[len] = 0;
     onl.n = 2; onl.unit = 0; onl.buf = buf;
     if (v_mli(0xC5, &onl)) { v_message("VOLINFO: ON_LINE failed."); return; }
+    /* The table ends at the first zero byte 0: past it lies stale copy_buf,
+     * not a drive. Equal volume names on two drives: a volume-list row
+     * keeps its own unit; a path is refused, since ProDOS resolves it to
+     * one of them and F and E read the selected file through it. */
     u = 0;
-    for (i = 0; i < 256; i += 16) {
-        /* Equal volume names on two drives: honor the selected unit. */
+    for (i = 0; i < 256 && buf[i]; i += 16) {
         if (!pan->path[0] && (buf[i] & 0xF0) != (unsigned char)(A->selected->mdate << 4)) continue;
         if ((buf[i] & 15) != len-1) continue;
-        for (u = 1; u < len && buf[i+u] == volume[u]; ++u) ;
-        if (u == len) { u = buf[i] & 0xF0; break; }
-        u = 0;
+        for (j = 1; j < len && buf[i+j] == volume[j]; ++j) ;
+        if (j == len) {
+            if (u) { v_sprintf(A->note, "Two volumes named %s: pick it in the volume list.", volume); return; }
+            u = buf[i] & 0xF0;
+        }
     }
     if (!u) { v_message("Volume not on line."); return; }
     io.n = 3; io.unit = u; total = 65535U; base = failed = cancelled = incomplete = 0;
