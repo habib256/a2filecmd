@@ -20,7 +20,8 @@
  * (the next start is known once a page has been rendered), Up goes back,
  * R restarts at page 1; Escape leaves. Forward reading is unlimited;
  * Up stops at the oldest retained page. A read error stops the page where
- * it hit and the status says "(read error)", never "(end)". Being a big
+ * it hit and the status says "(read error)", never "(end)"; any page drawn
+ * again (R, Up, a key) reads again, the error flag cleared. Being a big
  * overlay, the core redraws the panels on return.
  *
  * A big overlay under 5,376 bytes: $3000-$3FFF is its scratch memory --
@@ -68,6 +69,13 @@ static unsigned char host_vbuf[VBUFSZ];
 /* libc's ferror links errno and fmisc, 90 bytes: _FILE::f_flags (offset 1,
  * asminc/_file.inc) and its _FERROR bit, as DOCVIEW and FIND read them. */
 #define ferror(f) (((unsigned char*)(f))[1] & 0x04)
+/* fread refuses every read once _FERROR is set, and fseek clears only
+ * _FEOF/_FPUSHBACK: a page the user asks for again clears it, so one
+ * transient error does not blank the rest of the file. */
+#define clear_err(f) (((unsigned char*)(f))[1] &= ~0x04)
+#endif
+#ifndef clear_err
+#define clear_err(f) clearerr(f)
 #endif
 
 /* BSS: nothing zeroes it; everything below is written before it is read. */
@@ -301,6 +309,7 @@ static unsigned char render_line(void)
 
 static void render_page(const struct Start* st)
 {
+    clear_err(vf);                         /* an earlier page's error: read again */
     seek_(st->off);
     skip = st->skip;
     fence = st->fence;

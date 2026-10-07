@@ -31,7 +31,9 @@
  * AppleWorks document can reach; going back replays from the nearest one. A
  * data base reaches its first 2,688 records, a sheet its first 882 rows.
  * A read error is never taken for the end of the file: the bar then says
- * "(read error)", not "(cut)" or "(end)".
+ * "(read error)", not "(cut)" or "(end)". Each screen drawn again (R, B, a
+ * key) reads again, the error flag cleared; an error in the walk that
+ * counts the records stays on every bar, the count being short.
  *
  * A big overlay: its tables sit after the code, below $4000. Being a big
  * overlay, the core redraws the panels on return. */
@@ -58,6 +60,13 @@ const struct PluginHeader __plugin_header = {
 /* libc's ferror links errno and fmisc, 90 bytes: _FILE::f_flags (offset 1,
  * asminc/_file.inc) and its _FERROR bit, as DOCVIEW and FIND read them. */
 #define ferror(f) (((unsigned char*)(f))[1] & 0x04)
+/* fread refuses every read once _FERROR is set, and fseek clears only
+ * _FEOF/_FPUSHBACK: a page the user asks for again clears it, so one
+ * transient error does not blank the rest of the file. */
+#define clear_err(f) (((unsigned char*)(f))[1] &= ~0x04)
+#endif
+#ifndef clear_err
+#define clear_err(f) clearerr(f)
 #endif
 
 #define LINES     22                    /* text rows 0-21; 22 is the message, 23 the bar */
@@ -575,6 +584,7 @@ static void scroll(unsigned char right)
 
 /* -- the entry --------------------------------------------------------------- */
 
+static const char m_rderr[] = "Read error.";
 static const char k_db[] = "SPC Next,B Prev,R First,TAB More,ESC";
 static const char k_ss[] = "SPC Page,B Back,<> Cols,F Cells,ESC";
 static const char k_sf[] = "SPC Page,B Back,F Grid,ESC";
@@ -587,42 +597,49 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     unsigned long off;
     unsigned char grid;
     struct Mark* mk;
+    const char* msg;
     char key;
     a = *api;
     rbuf = a.copy_buf;
     size = e->size;
-    if ((type != 0x19 && type != 0x1B) || !api->full[0] || !(f = a.fopen(api->full, "rb"))) {
-        a.strcpy(a.note, "Not an AppleWorks data base or sheet.");
-        return;
-    }
+    msg = "Not an AppleWorks data base or sheet.";
+    if ((type != 0x19 && type != 0x1B) || !api->full[0] || !(f = a.fopen(api->full, "rb")))
+        goto say;
     base = have = at = pos = eof = cat0 = 0;
+    nrecs = 0;                          /* BSS: a failed seek skips the walk */
     if (type == 0x19) {
+        msg = "Not an AppleWorks data base.";
         off = db_open();
-        if (off && seek(off)) db_walk();
-        if (!off || !nrecs) {
-            a.fclose(f);
-            a.strcpy(a.note, off ? "No record." : "Not an AppleWorks data base.");
-            return;
+        if (off) {
+            msg = "No record.";
+            if (seek(off)) db_walk();   /* nrecs stays 0 without the walk */
         }
+        /* An error in the header or the walk: the count is short, every
+         * bar says so (the loop clears the flag before each screen). */
+        if (ferror(f)) { cut = 2; msg = m_rderr; }
+        if (!nrecs) goto refuse;
     } else {
-        if (size < 302) {
-            a.fclose(f);
-            a.strcpy(a.note, "Not an AppleWorks spreadsheet.");
-            return;
-        }
+        msg = "Not an AppleWorks spreadsheet.";
+        if (size < 302) goto refuse;
         /* The header is the first read: 127 column widths at bytes 4-130,
          * and at 242 the version byte that says whether the rows start at
          * 300 or 302. A column of no width would stack its cell on the next
-         * one, so it is shown at the default nine. */
+         * one, so it is shown at the default nine. Unread, they are not
+         * guessed at. */
         getb();
-        for (k = 0; k < COLS; ++k) cw[k] = rbuf[4 + k] ? rbuf[4 + k] : 9;
+        msg = m_rderr;
+        if (ferror(f)) goto refuse;
+        for (grid = 0; grid < COLS; ++grid) {   /* a byte index: smaller */
+            done = rbuf[4 + grid];
+            cw[grid] = done ? done : 9;
+        }                               /* done: set by ss_show before it is read */
         marks[0].off = rbuf[242] ? 302 : 300;
         marks[0].skip = 0;
-        k = 0;
         vcol = 0;
         formulas = 0;
     }
     for (;;) {
+        clear_err(f);                   /* an earlier screen's error: read again */
         if (type == 0x19) db_show(k);
         else {
             mk = marks + k;
@@ -632,8 +649,8 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         a.bar_begin();
         /* one call: a sheet's format leaves nrecs unused */
         a.cprintf(type == 0x19 ? "%s  record %u of %u" : "%s  page %u", e->name, k + 1, nrecs);
-        /* the stream's error flag stays set (fseek clears only the end's) */
-        if (ferror(f)) a.cputs(" (read error)");
+        /* this screen's error, or the walk's (cut 2) */
+        if (ferror(f) || cut == 2) a.cputs(" (read error)");
         else if (type == 0x19 ? cut : done) a.cputs(cut ? " (cut)" : " (end)");
         a.keys_bar(44, type == 0x19 ? k_db : formulas ? k_sf : k_ss);
         key = a.cgetc();
@@ -658,5 +675,9 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         }
         if (key == KEY_TAB && ncats > LINES) cat0 = cat0 ? 0 : LINES;
     }
+    msg = 0;
+refuse:
     a.fclose(f);
+say:
+    if (msg) a.strcpy(a.note, msg);
 }

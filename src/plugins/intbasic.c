@@ -36,13 +36,21 @@
  * Paging: the starts of the last 64 pages seen are kept in a ring, as
  * MDVIEW does, so Space goes on to the end of any program and B goes back
  * up to 63 pages. A read error stops the page where it hit and the status
- * says "(read error)", never "(end)". */
+ * says "(read error)", never "(end)"; any page drawn again (R, B, a key)
+ * reads again, the error flag cleared. */
 #include "util.h"
 
 #ifndef PLUGIN_HOST
 /* libc's ferror links errno and fmisc, 90 bytes: _FILE::f_flags (offset 1,
  * asminc/_file.inc) and its _FERROR bit, as DOCVIEW and FIND read them. */
 #define ferror(f) (((unsigned char*)(f))[1] & 0x04)
+/* fread refuses every read once _FERROR is set, and fseek clears only
+ * _FEOF/_FPUSHBACK: a page the user asks for again clears it, so one
+ * transient error does not blank the rest of the file. */
+#define clear_err(f) (((unsigned char*)(f))[1] &= ~0x04)
+#endif
+#ifndef clear_err
+#define clear_err(f) clearerr(f)
 #endif
 
 void __fastcall__ plugin_entry(const struct A2fcApi*);
@@ -246,6 +254,7 @@ static unsigned char listpage(void)
     unsigned long last, from;
     unsigned char r;
     from = START(page);
+    clear_err(f);                       /* an earlier page's error: read again */
     seek(from);
     a.clrscr();
     row = col = 0; space = 1; clipped = 0; rderr = 0;

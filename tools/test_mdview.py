@@ -13,8 +13,10 @@ from test_six_plugins import PREFIX, ROOT
 
 HARNESS = PREFIX + r"""
 static long host_fail = -1;                 /* a read error from this offset on */
-static int host_err;
+static long host_once = -1;                 /* this read call fails, once */
+static int host_err, host_reads;
 #define ferror(f) (host_err)
+#define clear_err(f) (host_err = 0)
 #include "src/plugins/mdview.c"
 static FILE* host;
 static unsigned char hx, hy, bad;
@@ -22,6 +24,8 @@ static char screen[24][81];
 static size_t rd_(void* p, size_t z, size_t n, FILE* f)
 {
     long at = ftell(host);
+    if (host_err) return 0;                 /* cc65's fread, once _FERROR is set */
+    if (++host_reads == host_once) { host_err = 1; return 0; }
     if (host_fail >= 0 && at + (long)n > host_fail) {
         if (at >= host_fail) { host_err = 1; return 0; }
         n = host_fail - at;               /* what comes before the bad block */
@@ -39,8 +43,8 @@ static unsigned char rev_(unsigned char r) { return 0; }
 int main(int argc, char** argv)
 {
     static struct Entry sel;
-    struct Start st;
-    int page, r;
+    struct Start st, first;
+    int page, r, pass;
     host = fopen(argv[1], "rb");
     fseek(host, 0, SEEK_END); sel.size = ftell(host); rewind(host);
     a.fread = rd_; a.fseek = seek__; a.gotoxy = xy_; a.cputs = puts__; a.revers = rev_;
@@ -48,15 +52,21 @@ int main(int argc, char** argv)
     a.strlen = strlen; a.strcmp = strcmp;
     if (argc > 2) strcpy(sel.name, argv[2]);
     if (argc > 3) host_fail = atol(argv[3]);
+    if (argc > 4) host_once = atol(argv[4]);
     vf = host; vbase = 0; vlen = vpos = 0;
-    st.off = sniff(); st.skip = 0; st.fence = 0;
-    for (page = 0; page < 200; ++page) {
-        memset(screen, 0, sizeof screen); bad = 0;
-        render_page(&st);
-        printf("PAGE %d %u %u\n", page, done, bad);
-        for (r = ROW1; r <= LASTROW; ++r) printf("|%s\n", screen[r]);
-        if (done) break;
-        st = next;
+    first.off = sniff(); first.skip = 0; first.fence = 0;
+    /* with a failing read: after the page it hit, R -- page 1 again */
+    for (pass = 0; pass < (host_once >= 0 ? 2 : 1); ++pass) {
+        if (pass) printf("AGAIN\n");
+        st = first;
+        for (page = 0; page < 200; ++page) {
+            memset(screen, 0, sizeof screen); bad = 0;
+            render_page(&st);
+            printf("PAGE %d %u %u\n", page, done, bad);
+            for (r = ROW1; r <= LASTROW; ++r) printf("|%s\n", screen[r]);
+            if (done) break;
+            st = next;
+        }
     }
     return 0;
 }
@@ -78,14 +88,18 @@ class Mdview(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def pages(self, data, name='', fail=None):
+    def pages(self, data, name='', fail=None, once=None):
         f = self.p / 'in.txt'
         f.write_bytes(data)
         args = [name or '-'] + ([str(fail)] if fail is not None else []) if name or fail is not None else []
+        if once is not None:
+            args = [name or '-', '-1', str(once)]
         out = subprocess.check_output([str(self.exe), str(f)] + args, text=True, timeout=10)
         pages = []
         for line in out.splitlines():
-            if line.startswith('PAGE '):
+            if line == 'AGAIN':
+                self.first_pass, pages = pages, []
+            elif line.startswith('PAGE '):
                 _, _, done, bad = line.split()
                 pages.append({'done': int(done), 'bad': int(bad), 'rows': []})
             else:
@@ -117,6 +131,24 @@ class Mdview(unittest.TestCase):
                 self.assertLess(len(shown), len(self.words(whole)))
         # the end of the file itself is still the end
         self.assertEqual(self.pages(text, fail=len(text) + 1)[-1]['done'], 1)
+
+    def test_r_after_a_read_error_reads_again(self):
+        """One read fails, once: its page says "(read error)", then R shows
+        every page again.
+
+        Before: cc65's fread refuses every read once _FERROR is set and
+        fseek clears only _FEOF/_FPUSHBACK, so R (and Up) drew empty
+        pages with "(read error)" until the viewer was left."""
+        text = ''.join('line %d of the text, long enough to fill rows\n' % i for i in range(300)).encode()
+        whole = self.pages(text)
+        for once in (2, 3, 5):              # read 1 is sniff's; each read is 2 KB
+            with self.subTest(once=once):
+                again = self.pages(text, once=once)
+                self.assertEqual(self.first_pass[-1]['done'], 2, 'the page it hit says so')
+                self.assertTrue(all(p['done'] == 0 for p in self.first_pass[:-1]))
+                self.assertLess(len(self.words(self.first_pass)), len(self.words(whole)))
+                self.assertEqual([(p['done'], p['rows']) for p in again],
+                                 [(p['done'], p['rows']) for p in whole])
 
     def test_a_magic_window_document_skips_its_header(self):
         text = 'Dear reader,\rthis is a Magic Window letter.\r'

@@ -15,12 +15,16 @@ from test_six_plugins import PREFIX, ROOT
 
 HARNESS = PREFIX + r"""
 static long host_fail = -1;                 /* a read error from this offset on */
-static int host_err;
+static long host_once = -1;                 /* this read call fails, once */
+static int host_err, host_reads;
 #define ferror(f) (host_err)
+#define clear_err(f) (host_err = 0)
 #include "src/plugins/intbasic.c"
 static size_t rd_(void* p, size_t z, size_t n, FILE* h)
 {
     long at = ftell(h);
+    if (host_err) return 0;                 /* cc65's fread, once _FERROR is set */
+    if (++host_reads == host_once) { host_err = 1; return 0; }
     if (host_fail >= 0 && at + (long)n > host_fail) {
         if (at >= host_fail) { host_err = 1; return 0; }
         n = host_fail - at;               /* what comes before the bad block */
@@ -50,16 +54,24 @@ static void show(int r)
 }
 /* argv[2]: page through listpage() from that offset, as Space does
  * (forward()); argv[3] "back": then back to the oldest page kept, as B
- * does; argv[4]: a read error from that offset on. */
+ * does; argv[4]: a read error from that offset on; argv[5]: that read
+ * call fails once -- then B (the page before, if any) and R (every page
+ * again from the first). */
 static void pages(unsigned long from, int back)
 {
-    int r;
-    starts[0] = from; page = head = 0; known = 1; first = 1;
-    for (;;) {
-        r = listpage();
-        show(r);
-        if (r != 1) break;
-        forward();
+    int r, pass;
+    for (pass = 0; pass < (host_once >= 0 ? 2 : 1); ++pass) {
+        if (pass) {
+            if (page) { --page; printf("BACK\n"); show(listpage()); }
+            printf("AGAIN\n");
+        }
+        starts[0] = from; page = head = 0; known = 1; first = 1;
+        for (;;) {
+            r = listpage();
+            show(r);
+            if (r != 1) break;
+            forward();
+        }
     }
     if (!back) return;
     while (page) {
@@ -75,6 +87,7 @@ int main(int argc, char** argv)
     a.cputc = putc_; a.gotoxy = xy_; a.clrscr = clear_; buf = data;
     f = fopen(argv[1], "rb");
     if (argc > 4) host_fail = atol(argv[4]);
+    if (argc > 5) host_once = atol(argv[5]);
     if (argc > 2) { pages(strtoul(argv[2], 0, 10), argc > 3 && !strcmp(argv[3], "back")); return 0; }
     clear_();
     seek(0);
@@ -315,14 +328,20 @@ class IntBasic(unittest.TestCase):
         self.assertEqual(lines, [])
 
     # -- pages -------------------------------------------------------------
-    def run_pages(self, data, start=0, back=False, fail=None, numbers=False):
+    def run_pages(self, data, start=0, back=False, fail=None, numbers=False, once=None):
         f = self.p / 'in.bin'
         f.write_bytes(data)
         args = [str(start), 'back' if back else '-'] + ([str(fail)] if fail is not None else [])
+        if once is not None:
+            args = [str(start), '-', '-1', str(once)]
         out = subprocess.check_output([str(self.exe), str(f)] + args, text=True, timeout=60)
         pages = []
+        self.passes = []
         for l in out.splitlines():
-            if l.startswith('PAGE '):
+            if l in ('BACK', 'AGAIN'):
+                self.passes.append([p[:3] for p in pages])
+                pages = []
+            elif l.startswith('PAGE '):
                 _, r, nxt, num = l.split()
                 pages.append((int(r), int(nxt), [], int(num)))
             else:
@@ -403,6 +422,25 @@ class IntBasic(unittest.TestCase):
                 self.assertEqual(shown[:-1], ref[:max(len(shown) - 1, 0)])
                 self.assertLess(len(shown), len(ref) + (fail == len(p) - 1))
         self.assertEqual(self.run_pages(p, fail=len(p) + 1)[-1][0], 0)
+
+    def test_r_and_b_after_a_read_error_read_again(self):
+        """One read fails, once: its page says so (r = 3), then B shows the
+        page before and R every page again.
+
+        Before: cc65's fread refuses every read once _FERROR is set and
+        fseek clears only _FEOF/_FPUSHBACK, so B and R drew empty pages
+        with "(read error)" until the viewer was left."""
+        p = prog([(i + 1, bytes([0x5D]) + chars('LINE %d' % i)) for i in range(300)])
+        whole = self.run_pages(p)
+        for once in (1, 2, 9, 12):          # 255-byte reads
+            with self.subTest(once=once):
+                again = self.run_pages(p, once=once)
+                hit = self.passes[0]
+                self.assertEqual(hit[-1][0], 3, 'the page it hit says so')
+                self.assertTrue(all(r == 1 for r, _, _ in hit[:-1]))
+                if len(hit) > 1:
+                    self.assertEqual(self.passes[1], [whole[len(hit) - 2]], 'B')
+                self.assertEqual(again, whole, 'R')
 
     # -- the real thing ----------------------------------------------------
     def test_the_first_lines_of_breakout(self):

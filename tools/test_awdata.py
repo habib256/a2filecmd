@@ -32,8 +32,10 @@ HOST = PREFIX + r'''
 char aw_num[17];
 void aw_fout(const unsigned char* d);
 static long host_fail = -1;                 /* a read error from this offset on */
-static int host_err;
+static long host_once = -1;                 /* this read call fails, once */
+static int host_err, host_reads;
 #define ferror(f) (host_err)
+#define clear_err(f) (host_err = 0)
 #include "src/plugins/awdata.c"
 static FILE* host;
 static unsigned char hx, hy;
@@ -61,6 +63,8 @@ void aw_fout(const unsigned char* d)
 static size_t rd_(void* p, size_t z, size_t n, FILE* f)
 {
     long at = ftell(host);
+    if (host_err) return 0;                 /* cc65's fread, once _FERROR is set */
+    if (++host_reads == host_once) { host_err = 1; return 0; }
     if (host_fail >= 0 && at + (long)n > host_fail) {
         if (at >= host_fail) { host_err = 1; return 0; }
         n = host_fail - at;               /* what comes before the bad block */
@@ -114,6 +118,7 @@ int main(int argc, char** argv)
     strcpy(full, "/V/SAMPLE");
     script = argv[3];
     if (argc > 4) host_fail = atol(argv[4]);
+    if (argc > 5) host_once = atol(argv[5]);
     api.fread = rd_; api.fseek = seek_; api.fopen = open_; api.fclose = close_;
     api.gotoxy = xy_; api.cputs = puts_host; api.cprintf = printf_; api.clrscr = clr_;
     api.bar_begin = bar_; api.keys_bar = keys_; api.cgetc = getc_; api.strcpy = strcpy_;
@@ -316,10 +321,13 @@ class AwData(unittest.TestCase):
         ref.FOUT = ref.fout
         cls.tmp.cleanup()
 
-    def run_host(self, data, typ, keys, fail=None):
+    def run_host(self, data, typ, keys, fail=None, once=None):
         f = self.dir / 'in.bin'
         f.write_bytes(data)
-        out = subprocess.run([str(self.exe), str(f), typ, keys] + ([str(fail)] if fail is not None else []),
+        args = [str(fail)] if fail is not None else []
+        if once is not None:
+            args = ['-1', str(once)]
+        out = subprocess.run([str(self.exe), str(f), typ, keys] + args,
                              capture_output=True, timeout=30)
         self.assertEqual(out.returncode, 0, out.stderr)
         screens, note = [], None
@@ -460,6 +468,52 @@ class AwData(unittest.TestCase):
                 self.assertNotIn('(end)', last)
         screens, note = self.run_host(ss, '1B', ' ' * (len(want) + 2), fail=len(ss) + 1)
         self.assertTrue(screens[-1][1].endswith(' (end)'), screens[-1][1])
+
+    def test_r_after_a_read_error_reads_again(self):
+        """One read fails, once: the screen it hit says "(read error)"; the
+        next screens, R and B among them, are whole. In a data base only
+        that screen differs; a sheet takes the page it hit for its last,
+        so Space then draws that page again, whole. An error in the walk
+        that counts a data base's records stays on every bar instead:
+        that count is short.
+
+        Before: cc65's fread refuses every read once _FERROR is set and
+        fseek clears only _FEOF/_FPUSHBACK, so every screen after the
+        error was empty with "(read error)" until the viewer was left."""
+        rng = random.Random(7)
+        cases = (('19', make_db(rng, 5, 60), ' ' * 12 + 'R' + ' ' * 5 + 'BB'),
+                 ('1B', make_ss(rng, 120), ' ' * 4 + 'R' + ' ' * 3 + 'B'))
+        for typ, data, keys in cases:
+            clean, _ = self.run_host(data, typ, keys)
+            walked = hit = refused = 0
+            for once in range(1, len(data) // 512 + 30):
+                with self.subTest(typ=typ, once=once):
+                    screens, note = self.run_host(data, typ, keys, once=once)
+                    if not screens:             # the header or the walk: refused
+                        self.assertEqual(note, 'Read error.')
+                        refused += 1
+                        continue
+                    self.assertEqual(len(screens), len(clean))
+                    bars = [bar for _, bar in screens]
+                    if typ == '19' and all(b.endswith(' (read error)') for b in bars):
+                        walked += 1             # the walk's error: every bar says it
+                        continue
+                    diff = [i for i in range(len(clean)) if screens[i] != clean[i]]
+                    if not diff:
+                        continue                # past the last read of the run
+                    hit += 1
+                    i = diff[0]
+                    self.assertTrue(bars[i].endswith(' (read error)'), bars[i])
+                    self.assertNotIn('read error', clean[i][1])
+                    if typ == '19':
+                        self.assertEqual(diff, [i], bars)
+                    for s in screens[i + 1:]:
+                        self.assertIn(s, clean, 'whole after the error')
+                    r = keys.index('R') + 1     # the screen R draws: the first
+                    self.assertEqual(screens[r], clean[0] if r > i else screens[r])
+            self.assertGreater(refused, 0, typ)
+            self.assertGreater(walked if typ == '19' else 1, 0, typ)
+            self.assertGreater(hit, 1, typ)
 
     def test_asm_conversion_under_sim65(self):
         rng = random.Random(6)
