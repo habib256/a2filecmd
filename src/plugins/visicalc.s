@@ -3518,7 +3518,7 @@ poll:   lda     KBD
         cmp     #$9B                    ; Escape, waiting
         bne     tickr
         sta     KBDSTRB                 ; taken
-        jsr     close
+        jsr     closeck
         lda     #<m_stop
         ldx     #>m_stop
         jmp     leave
@@ -3936,7 +3936,7 @@ table:  ldx     #62                     ; 256 or more in a column: out of
         jmp     place
 @no:    sec
         rts
-@col:   jsr     close
+@col:   jsr     closeck
         lda     #<m_col
         ldx     #>m_col
         jmp     leave
@@ -3953,7 +3953,7 @@ AUXTOP  = VC_AUXTOP
 ; 4,064 would not hold either), the main one otherwise, or when the
 ; auxiliary bank fitted and was refused. Here, with the reading phase: the
 ; part that stays has no room for it.
-toobig: jsr     close
+toobig: jsr     closeck
         ldy     #0
 @bm:    lda     m_big,y
         sta     _vc_out,y
@@ -4978,7 +4978,7 @@ main:   lda     fullp                   ; nothing to open: no path
         lda     #0
         sta     spinok
         jsr     ui
-        jsr     close
+        jsr     closeck
         lda     #0
         sta     _vc_out
         lda     #<_vc_out
@@ -4986,7 +4986,7 @@ main:   lda     fullp                   ; nothing to open: no path
         jmp     leave
 @r:     rts
 @big:   jmp     toobig                  ; (with the reading phase, still there)
-@bad:   jsr     close
+@bad:   jsr     closeck
         lda     cut
         beq     notvc
         lda     #<m_cut
@@ -4999,6 +4999,22 @@ notvc:  lda     #<m_not
 close:  lda     fh
         ldx     fh+1
         jmp     J_FCLOSE
+; The same, and out through `leave` with "Close error." when ProDOS
+; refuses: it returns only when the file closed. Every close before a
+; note goes through here -- the normal end, Escape (poll), a sheet too
+; big, a file that is no worksheet. Before, those took CLOSE's answer for
+; granted and said "Stopped." or nothing over a file still open on $0800
+; (the next overlay's fopen would get $0C00, where this one keeps tables).
+closeck:
+        jsr     close
+        tax
+        bne     shutno                  ; (0, or -1)
+        rts
+shutno: lda     #<m_close               ; a CLOSE failed
+        ldx     #>m_close
+        jsr     leave
+        sec
+        rts
 
 ; Phase A (0: recalculating, 1: showing) from VISICALC.BIN, beside the
 ; overlay, into the swap area: the worksheet closed meanwhile (one file
@@ -5012,15 +5028,8 @@ close:  lda     fh
 phase:  clc                             ; tests: every phase in place
         rts
 .else
-shutno: lda     #<m_close               ; a CLOSE failed
-        ldx     #>m_close
-        jsr     leave
-        sec
-        rts
 phase:  sta     key
-        jsr     close
-        tax
-        bne     shutno                  ; (0, or -1)
+        jsr     closeck
         lda     cfgp                    ; the directory of A2FILE.CFG
         sta     ptr1
         lda     cfgp+1
@@ -5080,16 +5089,14 @@ phase:  sta     key
         lda     SWAPAT+1
         cmp     #>VC_ID
         bne     @shut
-        jsr     close
-        tax
-        jne     shutno
+        jsr     closeck
         lda     fullp                   ; the worksheet again
         ldx     fullp+1
         jsr     open
         beq     @rf
         clc
         rts
-@shut:  jsr     close
+@shut:  jsr     closeck
 @fail:  lda     #<m_bin
         ldx     #>m_bin
         jsr     leave

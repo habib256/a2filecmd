@@ -710,7 +710,7 @@ class PhaseClose(unittest.TestCase):
             exes = build(tmp, CLOSE, 'vcc', flat=False, keep='$8500')
             data = sheet({'A1': '5', 'B1': '+A1*2'})
             (Path(tmp) / 'sheet.txt').write_bytes(data)
-            for fail in (1, 2, 3, 4, 0):
+            for fail in (1, 2, 3, 4, 5, 0):
                 for cpu, exe in exes.items():
                     p = subprocess.run([tool('sim65'), '-x', '400000000', str(exe), '', str(len(data)),
                                         str(fail)], cwd=tmp, capture_output=True, env=env(), timeout=600)
@@ -722,6 +722,9 @@ class PhaseClose(unittest.TestCase):
                     note = o[-80 - len(tail):-len(tail)].split(b'\0')[0].decode('latin-1')
                     with self.subTest(cpu=cpu, fail=fail):
                         if fail:
+                            # the fifth is the normal end's, after the sheet
+                            # was shown: it said nothing of a refused CLOSE
+                            # until the second bug hunt
                             self.assertEqual(note, 'Close error.')
                             self.assertEqual(late, 0, 'an fopen after a failed close')
                             self.assertEqual(closes, fail)
@@ -745,7 +748,7 @@ ESCAPE = SCREENS.replace(
     '''#include <sim65.h>
 #include "a2fc_plugin.h"
 static unsigned int reads, esc_at;
-static unsigned char esc_key, fmts, asked, consent, opens, closes;
+static unsigned char esc_key, fmts, asked, consent, opens, closes, closefail;
 static unsigned long t0, t1;
 static unsigned long now(void)
 {
@@ -762,7 +765,11 @@ static unsigned long now(void)
     return fread(p, s, n, f);
 }''').replace(
     'static int cls(FILE* f) { return fclose(f); }',
-    'static int cls(FILE* f) { ++closes; return fclose(f); }').replace(
+    '''static int cls(FILE* f)
+{
+    ++closes;                           /* closefail: ProDOS refused (the file is let go here) */
+    return fclose(f) || closefail ? EOF : 0;
+}''').replace(
     'static unsigned char rfmt(void) { return 1; }',
     'static unsigned char rfmt(void) { ++fmts; return 1; }').replace(
     'static unsigned char nope(void) { return 0; }',
@@ -776,6 +783,7 @@ static unsigned long now(void)
     '''    keys = argv[1];
     esc_at = atoi(argv[3]); esc_key = atoi(argv[4]); consent = atoi(argv[5]);
     *(unsigned char*)0xBF98 = atoi(argv[6]);
+    closefail = atoi(argv[7]);
     *(unsigned char*)0xC010 = 0;''').replace(
     '    plugin_entry(&api);\n',
     '''    memcpy(zp, (void*)0x50, sizeof zp);
@@ -793,6 +801,7 @@ static unsigned long now(void)
            *(unsigned char*)0xC010, fmts, asked, opens, closes, same, s0 == s1, c0 == c1);''')
 assert ESCAPE.count('esc_at') == 3 and ESCAPE.count('++fmts') == 1 and ESCAPE.count('++asked') == 1
 assert ESCAPE.count('++opens') == 1 and ESCAPE.count('++closes') == 1 and 'c0 == c1' in ESCAPE
+assert ESCAPE.count('closefail') == 4
 assert ESCAPE.count('t1 = now()') == 1 and ESCAPE.count('0xBF98') == 1
 
 ESC = 0x9B                                  # Escape, waiting
@@ -849,14 +858,15 @@ class Escape(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def run_esc(self, data, at, key=ESC, consent=0, machid=0, exe=None, keys='', limit=400000000):
+    def run_esc(self, data, at, key=ESC, consent=0, machid=0, exe=None, keys='', limit=400000000,
+                closefail=0):
         '''(screens shown, note, the harness's counts), the same on both
         processors but for the cycles (the largest is kept).'''
         (self.dir / 'sheet.txt').write_bytes(data)
         got = {}
         for cpu, path in (exe or self.exe).items():
             p = subprocess.run([tool('sim65'), '-x', str(limit), str(path), keys, str(len(data)),
-                                str(at), str(key), str(consent), str(machid)],
+                                str(at), str(key), str(consent), str(machid), str(closefail)],
                                cwd=self.dir, capture_output=True, env=env(), timeout=1200)
             self.assertEqual(p.returncode, 0, (cpu, p.returncode, p.stderr[-300:]))
             self.assertEqual((self.dir / 'sheet.txt').read_bytes(), data, 'the file is only read')
@@ -901,6 +911,32 @@ class Escape(unittest.TestCase):
                         got = self.run_esc(data, at)
                         self.stopped(got, self.BOUND)
                         self.assertEqual(got[2]['reads'], at, 'stopped before another read')
+
+    def test_a_close_refused_is_said(self):
+        '''CLOSE's answer was taken for granted at every exit but the
+        phase changes: Escape said "Stopped." and the sheet's end nothing,
+        a sheet too big or no worksheet its own note, over a file ProDOS
+        had kept open on $0800. Each says "Close error." now; everything
+        else is left as it was found (run_esc checks).'''
+        data = slow_sheet('/GOC', k=1)
+        got = self.run_esc(data, self.passes(data) + 30, closefail=1)
+        self.assertEqual(got[1], 'Close error.')
+        self.assertEqual(got[0], 0, 'no sheet shown')
+        self.assertEqual((got[2]['kbd'], got[2]['strobe']), (ESC, ESC), 'Escape was taken')
+        # the normal end: the sheet shown, Escape typed, the close refused
+        got = self.run_esc(sheet({'A1': '5'}), 0, closefail=1)
+        self.assertEqual((got[0], got[1]), (1, 'Close error.'))
+        # a file that is no worksheet, and one cut short
+        got = self.run_esc(b'hello\r', 0, closefail=1)
+        self.assertEqual((got[0], got[1]), (0, 'Close error.'))
+        got = self.run_esc(b'hello\r', 0)
+        self.assertEqual((got[0], got[1]), (0, 'Not a VisiCalc worksheet (T shows it as text).'))
+        # too big for the main bank, no auxiliary one (machid 0)
+        big = sheet({'A%d' % r: str(r) for r in range(1, 250)})
+        got = self.run_esc(big, 0, exe=self.aux, closefail=1)
+        self.assertEqual((got[0], got[1]), (0, 'Close error.'))
+        got = self.run_esc(big, 0, exe=self.aux)
+        self.assertTrue(got[1].startswith('Sheet too big: 249 values'), got[1])
 
     def test_escape_while_the_file_is_read(self):
         data = slow_sheet()
