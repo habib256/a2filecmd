@@ -62,7 +62,10 @@ the source is neither written nor deleted. There is no single-drive copy by
 swapping disks.
 
 N/E uses the same exclusive writer. E accepts at most **8 KB** and refuses larger
-files rather than truncating them. It always saves to a new name. R refuses an
+files rather than truncating them. It always saves to a new name. A save that
+does not land (name taken, write-protected or full disk, read error, N or
+Escape at the question) keeps the text and returns to the editor: Ctrl-S tries
+again, and only Escape then N Abandon gives the text up. R refuses an
 existing name or locked file. D skips locked files; L toggles the cursor's lock,
 or unlocks a tagged set if any member is locked, otherwise locks the set.
 
@@ -145,7 +148,8 @@ Do not remove a disk until the operation reports its result.
 Some tools use auxiliary memory and rebuild **/RAM empty**. When /RAM holds
 files, A2FC asks before that use and explicitly warns that **ALL /RAM files
 will be lost**; an empty /RAM has nothing to lose and is used without a
-question. Copy the files elsewhere first; declining preserves them. This
+question. Copy the files elsewhere first; declining preserves them. A key typed
+before a question appears is dropped, never taken as its answer. This
 applies to affected picture viewers, the PT3 player (GROUiK's engine; a
 declined question plays with pt3_lib instead), large VisiCalc worksheets,
 ShrinkIt, disk-image operations, Disk II formatting, NIBCOPY and full
@@ -182,7 +186,7 @@ parent selects the child you left if it still exists. A directory of more than
 139 entries is read in unsorted windows of 139, in disk order (the header
 gives the window's first entry, then `+ disk order`); continue through the
 window edge to reach later entries. A larger folder inside a disk image shows
-only its first entries, in disk order, and is not paged: the rest are out of
+only its first 139 entries, in disk order, and is not paged: the rest are out of
 reach there.
 
 Enhanced mouse support lets you select a row, click it again to open, click
@@ -199,7 +203,10 @@ active side; a failed preference save lets you cancel quitting.
 3. Wait for **Copying** and **Verifying**, then read the result. Move removes
    a source only after its copy is verified. Existing directories are filled
    in; a directory is never copied into itself, into one of its descendants
-   or onto one of its ancestors.
+   or onto one of its ancestors. With both panels on one directory, C and V
+   refuse: "Both panels show the same directory." Paths from GOTO and
+   A2FILE.CFG are kept in capitals, as ProDOS reads them, so `/workhd/dir`
+   and `/WORKHD/DIR` are one directory.
 
 Copy preserves type and auxtype. Replacements retain the old target during
 verification. **Escape** interrupts; completed work remains. If cleanup fails,
@@ -215,7 +222,10 @@ volume is copied, verified and only then deleted, as with V; cross-volume
 copies are verified before source deletion. Keep any retained work list for
 review.
 
-**E** edits up to **5,104 bytes**, with CR line endings; loading strips the
+**E** edits up to **5,104 bytes**, with CR line endings; a larger file is
+refused (`Too big for the editor (5 KB).`), never cut short, and so is one
+that grew since the panel read its size (`Open failed.`: press Ctrl-R and
+try again). Loading strips the
 high bit and long lines do not wrap. On a directory or `..`, E creates text.
 Arrows move; Delete/Ctrl-D erase left/right; Ctrl-A/E goes to line start/end;
 Ctrl-P/N changes page; Ctrl-T/B goes to text start/end. Return splits a line;
@@ -728,7 +738,8 @@ list (`Two volumes named /X: pick it in the volume list.`).
 refuses the program volume, cross-links and uncertain scans. Unclaimed (lost)
 blocks are given back only when nothing else is wrong with the directory tree:
 beside any other fault they may belong to a file a damaged pointer no longer
-reaches, and REPAIR then writes nothing at all (`See FIXIT`). If the tree
+reaches, and REPAIR then writes nothing at all (`Lost blocks may hold a damaged file:
+nothing written. See FIXIT.`). If the tree
 claims blocks the bitmap calls free, REPAIR says so: copy the files to another
 volume and write nothing to this one, because the next allocation can land on
 a file. Even alone, lost blocks are listed by number on the plan screen and
@@ -754,9 +765,11 @@ recovered contents: neither tool guarantees recovery of missing data.
 volume after ERASE, excluding the running program's volume. Both read the volume
 header before the question, which names the volume found there, and compare it
 again after the answer (F once more after its check): a disk changed meanwhile,
-or one that no longer reads, gets "Disk changed or unreadable" and nothing is
-written. A disk swapped once the writes have begun is not detected. **BOOTBLK** copies
-boot blocks after confirmation, with readback and RAM-only originals for attempted
+or one that no longer reads, gets "Disk changed or unreadable: /NAME. Nothing
+written." A disk swapped once the writes have begun is not detected.
+**BOOTBLK** checks the volume names on the disks before its question and
+compares block 2 of target and source again after it (same message), then
+copies boot blocks, with readback and RAM-only originals for attempted
 restoration. **BLKVIEW** reads blocks and can extract a range; **BLKEDIT**
 changes bytes of one block and writes it back after ERASE, then reads it back
 (never on the running program's volume, and not on a disk whose block 2 no
@@ -768,7 +781,7 @@ an error. None of these tools should be tried first on an irreplaceable disk.
 **Two volumes with one name.** A path names a volume, not a drive: when two
 drives on line carry the same volume name, ProDOS opens a path on one of
 them, which may not be the one a tool would write by its drive. WIPE,
-BOOTBLK, BLKEDIT, RESCUE and VOLINFO then refuse a volume given by the
+BOOTBLK, BLKEDIT, RESCUE, VOLINFO, FIXIT and REPAIR then refuse a volume given by the
 panel's path: "Two volumes named /X: pick it in the volume list." A row of
 the volume list is opened by its drive and still works. BLKVIEW and
 UNDELETE refuse with their usual message (UNDELETE from the volume list
