@@ -4057,7 +4057,8 @@ static void pop_name(char* path)
 #pragma rodata-name (push, "DELETERO")
 static unsigned char delete_tree(void)
 {
-    if (walk_tree(WALK_COUNT) == 0xFFFF) { dir_fail(); return 0; }
+    other_full[0] = 0;           /* the count walks it too; a delete has no destination */
+    if (walk_tree(WALK_COUNT) == 0xFFFF) return 0;   /* walk_tree said why */
     return walk_tree(WALK_DELETE) == 1;
 }
 
@@ -4097,9 +4098,17 @@ static unsigned char moved_tree_delete(void)
 
 /* Copies the entry into the other panel's directory: a file, or a whole
  * directory. Returns 1 if everything is copied. */
+/* `full` and `other_full` for entry e of the active panel: its source and
+ * its destination in the other one. 0, said, when either does not fit. */
+static unsigned char both_paths(const struct Entry* e)
+{
+    if (build_full(full, pan_at(active), e) && build_full(other_full, pan_at(!active), e)) return 1;
+    too_long();
+    return 0;
+}
 static unsigned char copy_one(const struct Entry* e)
 {
-    if (!build_full(full, pan_at(active), e) || !build_full(other_full, pan_at(!active), e)) { too_long(); return 0; }
+    if (!both_paths(e)) return 0;
     if (!is_dir(e)) return copy_file(e->name, e->type, e->aux) != 0;
     /* Neither into itself nor onto one of its own ancestors: with /V/A/A
      * copied to /V, its subdirectory /V/A/A/A is written into /V/A/A, the
@@ -5072,9 +5081,10 @@ static void copy_or_move(unsigned char move)
         const struct Entry* e = &pan->e[picked[i]];
         if (is_up(e)) continue;
         if (!is_dir(e)) { ++progress_total; continue; }
-        if (!build_full(full, pan, e)) { too_long(); refresh_both(); return; }   /* the pool has overwritten the other panel */
+        /* both paths: the count checks the destination's length too */
+        if (!both_paths(e)) { refresh_both(); return; }   /* the pool has overwritten the other panel */
         sub = walk_tree(WALK_COUNT);
-        if (sub == 0xFFFF) { dir_fail(); refresh_both(); return; }
+        if (sub == 0xFFFF) { refresh_both(); return; }   /* walk_tree said why */
         progress_total += sub;
     }
     for (i = 0; i < n; ++i) {

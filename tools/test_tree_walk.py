@@ -67,7 +67,7 @@ static void progress_bar(const char* name,unsigned long a,unsigned long b){++bar
 #include "src/tree_walk.h"
 #define walk_count() walk_tree(WALK_COUNT)
 #define walk_copy() walk_tree(WALK_COPY)
-static unsigned char delete_tree(void){if(walk_tree(WALK_COUNT)==0xFFFF){dir_fail();return 0;}return walk_tree(WALK_DELETE)==1;}
+''' + section('static unsigned char delete_tree(void)', '/* The source of a moved directory') + r'''
 static void deep(unsigned levels){ /* /V/T/A/A/... with a file at the bottom */
  char path[80];unsigned k;add("/V",1);add("/V/T",1);add("/D",1);add("/D/T",1);strcpy(path,"/V/T");
  for(k=0;k<levels;++k){strcat(path,"/A");add(path,1);}
@@ -83,8 +83,8 @@ int main(int argc,char** argv){
  pool=(struct Mini*)table;strcpy(full,"/V/T");strcpy(other_full,"/D/T");
  if(s==1){ bushy();r=walk_count();if(r!=7||strcmp(full,"/V/T")||strcmp(other_full,"/D/T")||errors||toolongs||dirfails)return 1;return 0; }
  if(s==2){ deep(29);r=walk_count();if(r!=1||strcmp(full,"/V/T"))return 1;   /* a 64-character file path, walked */
-  fs_n=0;strcpy(full,"/V/T");strcpy(other_full,"/D/T");deep(30);r=walk_count();if(r!=0xFFFF||dirfails||toolongs)return 3;   /* the deepest directory is 64 characters, its file's path 66: the count refuses the tree, silently, before anything is copied or erased */
-  fs_n=0;strcpy(full,"/V/T");strcpy(other_full,"/D/T");deep(31);r=walk_count();if(r!=0xFFFF||dirfails||toolongs)return 2;  /* one more: the path bound, silently */
+  fs_n=0;strcpy(full,"/V/T");strcpy(other_full,"/D/T");deep(30);r=walk_count();if(r!=0xFFFF||dirfails||toolongs!=1)return 3;   /* the deepest directory is 64 characters, its file's path 66: the count refuses the tree before anything is copied or erased, and says "Path too long" (bug hunt 2: it said nothing, its callers "Directory unreadable or too large/deep.") */
+  fs_n=0;strcpy(full,"/V/T");strcpy(other_full,"/D/T");toolongs=0;deep(31);r=walk_count();if(r!=0xFFFF||dirfails||toolongs!=1)return 2;  /* one more: the path bound */
   return 0; }
  if(s==3){ unsigned k;char n[PATH_LEN];add("/V",1);add("/V/T",1);for(k=0;k<200;++k){sprintf(n,"/V/T/F%03u",k);add(n,0);}
   add("/V/T/S",1);for(k=0;k<20;++k){sprintf(n,"/V/T/S/G%02u",k);add(n,0);}
@@ -92,8 +92,8 @@ int main(int argc,char** argv){
   fs_n=0;strcpy(full,"/V/T");strcpy(other_full,"/D/T");add("/V",1);add("/V/T",1);for(k=0;k<212;++k){sprintf(n,"/V/T/F%03u",k);add(n,0);}
   r=walk_count();if(r!=212)return 2;        /* 212 entries at one level fit */
   return 0; }
- if(s==4){ bushy();strcpy(unreadable,"/V/T/S/Q");r=walk_count();if(r!=0xFFFF||dirfails)return 1;
-  r=walk_copy();if(r!=0xFFFF||dirfails!=1||copies>3)return 2;   /* copy stops where the walk cannot go on */
+ if(s==4){ bushy();strcpy(unreadable,"/V/T/S/Q");r=walk_count();if(r!=0xFFFF||dirfails!=1)return 1;   /* the count says why itself now */
+  r=walk_copy();if(r!=0xFFFF||dirfails!=2||copies>3)return 2;   /* copy stops where the walk cannot go on */
   return 0; }
  if(s==5){ bushy();add("/D/T/S",1);r=walk_copy();
   if(r!=1||copies!=7||mkdirs!=2||strcmp(full,"/V/T")||strcmp(other_full,"/D/T"))return 1;   /* S exists: filled in, not recreated; Q and E made */
@@ -128,8 +128,25 @@ int main(int argc,char** argv){
   add("/V/T/DEEPDIRECTORY01/DEEPDIRECTORY02/DEEPDIRECTORY03",1);
   add("/V/T/DEEPDIRECTORY01/DEEPDIRECTORY02/DEEPDIRECTORY03/LASTFILE.TXT",0);
   r=delete_tree();
-  if(r!=0||dirfails!=1||toolongs||removes||rmdirs||alive()!=fs_n)return 1;   /* refused by the count: nothing erased */
+  if(r!=0||dirfails||toolongs!=1||removes||rmdirs||alive()!=fs_n)return 1;   /* refused by the count: nothing erased, "Path too long" said */
   if(find("/V/T/FIRST")<0||find("/V/T/SECOND")<0)return 2;
+  return 0; }
+ if(s==12){ /* Bug hunt 2 (tools/probe_tree_walk_dest.py): the count walked the
+  * source paths only. Source /V/T, short; destination 50 characters deep.
+  * Measured before the fix: count=3, then copy=65535 copies=2 toolongs=1 --
+  * AFILE and BFILE copied, LONGFILENAME15 "Path too long", a partial copy. */
+  strcpy(other_full,"/DESTINATION01/DESTINATION02/DESTINATION03/DESTXX/T");
+  add("/V",1);add("/V/T",1);add("/V/T/AFILE",0);add("/V/T/BFILE",0);add("/V/T/LONGFILENAME15",0);
+  add("/DESTINATION01",1);add("/DESTINATION01/DESTINATION02",1);add("/DESTINATION01/DESTINATION02/DESTINATION03",1);
+  add("/DESTINATION01/DESTINATION02/DESTINATION03/DESTXX",1);add(other_full,1);
+  r=walk_count();
+  if(r!=0xFFFF||toolongs!=1||dirfails||copies)return 1;   /* refused before the first byte */
+  /* (a refused walk leaves the paths where it stopped: every caller gives up) */
+  if(strcmp(other_full,"/DESTINATION01/DESTINATION02/DESTINATION03/DESTXX/T"))return 2;
+  /* the same tree into a shallow destination: counted, all three */
+  fs_n=0;toolongs=0;strcpy(full,"/V/T");strcpy(other_full,"/D/T");
+  add("/V",1);add("/V/T",1);add("/D",1);add("/D/T",1);add("/V/T/AFILE",0);add("/V/T/BFILE",0);add("/V/T/LONGFILENAME15",0);
+  r=walk_count();if(r!=3||toolongs||strcmp(other_full,"/D/T"))return 3;
   return 0; }
  return 9;
 }
@@ -142,7 +159,7 @@ class TreeWalk(unittest.TestCase):
             p = Path(d)
             (p / 'test.c').write_text(HARNESS)
             subprocess.run(['cc', '-std=c99', '-fsanitize=address,undefined', '-I', str(ROOT), str(p / 'test.c'), '-o', str(p / 'test')], check=True, capture_output=True)
-            for scenario in range(1, 12):
+            for scenario in range(1, 13):
                 self.assertEqual(subprocess.run([str(p / 'test'), str(scenario)]).returncode, 0, 'scenario %d' % scenario)
 
     def test_a_directory_is_not_moved_onto_its_own_ancestor(self):

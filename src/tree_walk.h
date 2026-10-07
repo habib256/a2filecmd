@@ -2,26 +2,34 @@
  * being visited is lv_base/lv_n/lv_i[d] (its entries in the pool, their
  * number, the one in hand); a directory entry lists its contents right
  * after the current level's and pushes a frame, a finished level pops its
- * frame and its "/name" from the paths. Refuses, without a message in
- * WALK_COUNT, a tree that overflows the pool, TREE_DEPTH or, with any of
- * its directories or files, the path: 0xFFFF, before any write for the
- * callers that count first. Otherwise
+ * frame and its "/name" from the paths. Refuses, with its message in every
+ * mode (the unreadable or too large tree, the path that does not fit), a
+ * tree that overflows the pool, TREE_DEPTH or, with any of its directories
+ * or files, the path: 0xFFFF, before any write for the callers that count
+ * first. Otherwise
  * WALK_COUNT returns the number of files (directories excluded); WALK_COPY
  * copies the contents of `full` into `other_full`, which exists,
  * subdirectories included (one already present is filled in, not
  * recreated); WALK_DELETE removes each file, then the directory, and adds
  * every level's entries to progress_total as it is discovered. These two
- * return 1, or 0 once an error has been reported or Escape pressed. */
+ * return 1, or 0 once an error has been reported or Escape pressed.
+ *
+ * The count walks `other_full` along with `full`: before a copy it holds
+ * the destination directory, and a deeper one used to pass the count
+ * (source paths only) and stop the copy on the first file whose TARGET
+ * path did not fit, the files before it copied (bug hunt 2). A count
+ * before a delete has nothing to copy to: delete_tree empties other_full
+ * first, so the pushes cost nothing there. */
 enum { WALK_COUNT, WALK_COPY, WALK_DELETE };
 static unsigned char walk_mode;
 static unsigned char push_paths(const char* name)
 {
-    return push_name(full, name) && (walk_mode != WALK_COPY || push_name(other_full, name));
+    return push_name(full, name) && (walk_mode == WALK_DELETE || push_name(other_full, name));
 }
 static void pop_paths(void)
 {
     pop_name(full);
-    if (walk_mode == WALK_COPY) pop_name(other_full);
+    if (walk_mode != WALK_DELETE) pop_name(other_full);
 }
 static unsigned int walk_tree(unsigned char mode)
 {
@@ -55,7 +63,7 @@ static unsigned int walk_tree(unsigned char mode)
          * follows it used to remove the entries before a file whose path
          * does not fit, then stop on it, the tree half erased. */
         if (!push_paths(m->name)) {
-            if (mode != WALK_COUNT) too_long();
+            too_long();
             return 0xFFFF;
         }
         if (dir) {                                /* its entries follow this level's in the pool */
@@ -77,6 +85,6 @@ static unsigned int walk_tree(unsigned char mode)
     }
     return mode == WALK_COUNT ? files : 1;
 unreadable:
-    if (mode != WALK_COUNT) dir_fail();
+    dir_fail();
     return 0xFFFF;
 }
