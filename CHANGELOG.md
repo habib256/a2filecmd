@@ -5,6 +5,158 @@ downloads and installation.
 
 ## [Unreleased]
 
+No new format. A bug hunt of the whole program by nine reviewers, its
+corrections, the demonstration folder tidied, and the documentation brought
+back in line with the code.
+
+## Unreleased in detail
+
+### Fixed: data safety
+
+- REPAIR no longer takes a damaged pointer's word. A subdirectory key that
+  named a file's index block was walked as a directory, "repaired", and the
+  real directory freed; a volume-directory link into a free block had its
+  back-pointer written there and every entry past it freed (295 blocks); an
+  entry whose storage nibble read as deleted had its count lowered and its
+  blocks freed -- all three ended with `rescan clean: repaired.` REPAIR now
+  enters a block as a directory only on evidence (header `$E/39/13`, a
+  matching back-pointer, the volume directory at blocks 2 to bitmap-1),
+  gives lost blocks back only when nothing else is wrong with the tree and
+  no file block is marked free, and otherwise writes nothing: `Lost blocks
+  may hold a damaged file: nothing written. See FIXIT.` Fourteen sibling
+  shapes (moved keys, zeroed index blocks, changed storage types, cut links,
+  fork keys) follow the same rules; 20,000 fuzz cases hold the new invariant
+  "no block the healthy volume owned is freed". A wrong back-pointer inside a
+  subdirectory, and a bitmap with both lost and wrongly-free blocks, are now
+  refused instead of rebuilt (`docs/FIXIT.md` section 5).
+- FIXIT and `tools/prodos_check.py` no longer report `ENT_ACCESS` for the
+  GS/OS "invisible" bit (bit 2): bits 4 and 3 only.
+- IMGPUT no longer trusts the image's bitmap: before any block is chosen,
+  every block the image's directories and files name must be marked used
+  (`src/plugins/prodos_claims.h` walks chains, key, index and master blocks,
+  both forks of extended files, and refuses loops, bad pointers, unknown
+  storage types, unreadable blocks and a depth over 16). An image that fails
+  gets nothing written: `Image damaged: nothing written. Run FIXIT.` Before, a
+  referenced data block marked free was given to the new file, and the key
+  block of the directory being added to, marked free, was overwritten.
+- IMGPUT reads and counts the source before its question; the entry's length
+  is what the file holds, not the panel's size (a stale size gave an EOF of
+  0, 600 or 1,000 for 512, 1,024 or 900 real bytes). Blocks are chosen after
+  the question from the bitmap as it then reads; a bit already clear is
+  refused; the destination key must read as the head of a live directory (an
+  entry used to be planted inside a file's data block).
+- IMGPUT, PASCALW, CPMW and BLKEDIT refuse a .2MG whose header flags say
+  write protected (bit 31). PASCALW's room test `tail + blocks > vblocks`
+  wrapped at 16 bits on the machine; it is `blocks <= vblocks - tail`.
+- BLKEDIT, BOOTBLK and WIPE no longer write to a disk swapped in after it
+  was chosen. BLKEDIT signs block 2 at open and again after ERASE and keeps
+  the edit until the right disk is back; BOOTBLK checks the volume names on
+  the disks before its question and compares block 2 of target and source
+  byte for byte after it; WIPE keeps block 2 as read before the question,
+  requires the name the question shows, reads it again after the answer and,
+  for F, once more right before the first write. A difference or a read
+  error writes nothing: `Disk changed or unreadable: /NAME. Nothing
+  written.` Measured before: W with another disk at the ERASE prompt zeroed
+  all 280 blocks of that disk. Not covered: a disk whose block 2 is
+  byte-identical, and a swap once the writes have begun.
+- Tags no longer come back on other files. A tag is a bit by entry index,
+  set aside while a big overlay covers the entry tables and given back
+  afterwards -- unconditionally until now: after MOVE dropped a file into
+  the other panel, GOTO or FIND changed the directory, an extraction or the
+  editor created a file, or Left/Right in a viewer crossed the 139-entry
+  window of a large folder, the old bits marked other files, and D asks for
+  tagged files by their number. A panel gets its tags back only when it
+  shows the same names and types at the same indexes under the same path (a
+  16-bit fingerprint: one changed panel in 65,536 passes for unchanged);
+  otherwise it comes back untagged.
+- V or C on a directory no longer writes into the source tree. Only a target
+  inside the source was refused; with the directory A of /V/A moved to /V,
+  the subdirectory /V/A/A/A was copied into /V/A/A -- the source -- and the
+  move then deleted what it had just copied there. A directory is refused
+  both ways, into itself and onto one of its own ancestors.
+- D no longer leaves a tree half deleted. The count before a delete checked
+  the paths of directories only; a file whose path does not fit stopped the
+  delete after the entries before it were gone. The count checks every
+  file's path and the tree is refused whole, before anything is erased.
+- Ctrl-Reset from inside a viewer that writes the auxiliary bank (DHGR
+  pictures, ARLEQUIN, EXTASIE, PACKFOT, MACPAINT, PURPLE, UNSHRINK...) now
+  rebuilds /RAM empty on the way out, as a normal return does. It used to
+  quit with /RAM on line, its directory intact over overwritten blocks.
+- VDrive no longer takes over the slot of a SmartPort or ProFile unit: it
+  compared whole DEVLST bytes, and only a Disk II has a low nibble of 0.
+- UNSHRINK and UNSQ refuse a record typed $0F with a data thread: it created
+  a plain file every panel takes for a folder. UNSHRINK says what it leaves
+  out: `N file(s) extracted, M part(s) skipped.` for a resource fork, an
+  unsupported compression or a type ProDOS cannot hold, where a resource
+  fork was dropped silently and one unsupported member replaced the count.
+- SCIIBIN makes the name in a BinSCII header a legal ProDOS name (it joined
+  `SUB/EVIL` to the destination and wrote into the subfolder). A last line
+  padded with non-zero bytes no longer makes the read-back remove a good
+  file.
+- DOCVIEW: a `_DB` or `_EN` inside a block no longer recurses (130 of them
+  wrapped the processor stack: wild execution); a decimal tab beyond the
+  right margin no longer hangs, and nothing is written past row 21 any more
+  (a long field or footer went into the screen holes where the slot firmware
+  keeps its state); an exponent past 1E38 is refused instead of a wrong
+  number; `%$` page numbers go to 255 (100 read `:0`, 128 forced a break).
+- VISICALC: Escape stops the reading and the recalculation (`Stopped.`,
+  /RAM rebuilt if used); a worksheet of nested `@NPV` ranges took an hour
+  and a half at 1 MHz with no way out. `Sheet too big` says `over 255
+  values in one column` for repeated cells, and names the auxiliary bank's
+  room when that is what did not suffice.
+- TAKE1.SYSTEM: a T/S pair past track 34 in a .DSK/.2MG movie is a read
+  error, no longer bytes of the 2MG trailer decoded as data.
+- Mini: B refuses a name whose raw catalog bytes are not all plain
+  characters ($A0-$DF): a FLASH or inverse name could run another file of
+  the same visible name.
+
+### Fixed
+
+- A folder of more than 139 entries inside a disk image: Down past the last
+  entry reread the same entries under a rising `139+`, `278+` header. An
+  image folder shows its first 139 entries and is not paged.
+- FIND said "complete" after a directory block it could not read; it says
+  "some paths skipped". MDVIEW, INTBASIC and AWDATA show a read error as
+  such, no longer as the end of the file; the text viewers (T, the BASIC
+  lister, the AppleWorks reader) show `(READ ERROR)` and, at their eightieth
+  page, `(page limit)`. INTBASIC pages a listing of any length (it stopped
+  at page 40).
+- `make BOTH_EDITIONS=1 disk` no longer recurses forever.
+
+### DEMO, tidied
+
+- One file per format: HGR.RAW (the album shows raw pages), DHGR.RLE,
+  PACKFOT.D, the hi-res 816/Paint twin and TINY.2MG left the folder.
+- PICTURES/CARDS holds the two colour cards in every picture format, the
+  name being the format; elsewhere a name says what the file is, then its
+  format: LETTRE.EPISTOLE, NOTE.PAPYRUS, HOUSE.GMAGIC, APPLE.PRINTSHOP,
+  HELLO.BA3, PURPLE.FOTO1/2, MOVIEMAKER.SHP.
+- A file for the 0.9.5 formats that had none, all generated:
+  MEMO.BANKSTREET, FLOWER.LOGO and FLOWER.PICT (Terrapin Logo),
+  PICTR.BALLOON (KoalaPad), ITALIC.FONT (Beagle Bros), WIDE.SCREEN (80
+  columns, MouseText), BN.DEMO.NEWS, DISKS/CLIPART.DSK for NRCLIP, and
+  MOVIES/TAKE1.DSK, a Take 1 movie on its DOS 3.3 disk.
+
+### Documentation
+
+- Three passes over every document against the code: the manual (87
+  overlays, 80 text pages, the archive suffixes Return opens, MOVE's marked
+  directories, BLKEDIT, PASCALW, CPMW, DISKCMP, the Mini's F key), the help
+  page (Q, F says ERASE), DATA-SAFETY (the copy through A2FC.COPY, every
+  write path named), FILE-SERVICES (who uses which helper), MEMORY-BUDGETS
+  (one current table of every reserve, the ceilings explained), FIXIT, the
+  SDK (`dir_close` hands back the directory-error flag; 51-character menu
+  line; every overlay and window listed), the format specifications, CREDITS
+  (the system software on the disks, NufxLib behind UNSHRINK, Fantavision),
+  the roadmap.
+
+### Room
+
+- MAIN 65C02/6502: 16/421 bytes free (11/420 before); keep_tags is assembly
+  now, smaller than the C it replaces. REPAIR 61/36, FIXIT 3/3, IMGPUT
+  121/157, PASCALW 1358/1351, CPMW 1352/1389, BLKEDIT 7/52, WIPE 152/181,
+  DOCVIEW 51/59, VISICALC's fixed part 151/154 (65C02/6502).
+
 ## [0.9.5] - 2026-10-04
 
 New formats with a viewer:
