@@ -93,11 +93,13 @@ const struct PluginHeader __plugin_header = {
  * costs less than spelling three fields out and catches more. */
 static unsigned char same_header(void)
 {
-    unsigned char i;
+    return samebytes(blk + H_STORAGE, hdr, HDRLEN);
+}
 
-    for (i = 0; i < HDRLEN; ++i)
-        if (blk[H_STORAGE + i] != hdr[i]) return 0;
-    return 1;
+/* The word that confirms: typed whole, Escape or anything else refuses. */
+static unsigned char typed(const char* ask, const char* w)
+{
+    return v_prompt(ask, 0, 0) && !v_strcmp(A->input, w);
 }
 
 /* Select, plan, confirm, write, walk again. */
@@ -113,7 +115,7 @@ static void repair_main(void)
     if (isboot) { note(M_BOOTVOL); return; }
 
     mode = MD_PLAN;
-    hurt = 0; freeing = 0;
+    hurt = 0; freeing = 0; listed = 0;
     v_memset(zz, 0, sizeof zz);
     state = scan();
     if (state == 3) { note(M_NOTHING); return; }
@@ -147,15 +149,22 @@ static void repair_main(void)
      * a counter is touched. The three bitmap corrections that only mark a
      * block used ride with any plan that is offered. */
     freeing = freeing_ok();
-    if (!freeing && counts[CHK_BM_LOST]) { note(M_KEPT); return; }
+    if (!freeing && counts[CHK_BM_LOST]) {
+        /* A claim on a block the bitmap calls free is the one case with a
+         * live danger: ProDOS's next allocation may land on that file. */
+        note(counts[CHK_BM_USED_FREE] ? M_STALE : M_KEPT);
+        return;
+    }
 
     /* The plan, with nothing written yet: one line per check with the number
      * of corrections it carries, then the total and the number of blocks the
-     * plan will write. It always fits one screen -- eleven checks at most --
-     * so an unknown key has nothing to redraw. Every line shown is applied:
-     * a plan that would leave lost blocks behind was refused whole, above.
-     * The lines are printed as they are summed, one loop for both. */
-    title();
+     * plan will write. It is printed under the scan screen, where the plan
+     * pass has named the lost blocks it met (bitmap_page): title, scan line,
+     * six rows of block numbers at most, eleven checks at most, the foot --
+     * one screen, so an unknown key has nothing to redraw. Every line shown
+     * is applied: a plan that would leave lost blocks behind was refused
+     * whole, above. The lines are printed as they are summed, one loop. */
+    v_cputs(M_CRLF);
     for (k = 0; k < REP_COUNT; ++k) {
         n = counts[REPCHK[k]];
         if (n) { v_cprintf(M_LINE, chkname(k), n); corr += n; }
@@ -169,7 +178,15 @@ static void repair_main(void)
         if (k == KEY_ESC || k == KEY_RETURN) { note(M_NOTHING); return; }
         if (k == 'f' || k == 'F') break;
     }
-    if (!v_prompt(M_ASK, 0, 0) || v_strcmp(A->input, M_WORD)) {
+    /* GIVING LOST BLOCKS BACK IS THE ONE CORRECTION THAT CAN DESTROY A
+     * FILE, and the walk cannot prove it will not: a seedling key, a
+     * sapling index entry or a fork key moved onto a block that was
+     * already lost leaves a tree without a fault, no claim on a free
+     * block, and one lost block in place of another -- the file's own,
+     * which REPAIR would free (bug hunt 2, finding 1). So a plan that
+     * frees asks a second, separate confirmation, its own word, under the
+     * screen that names the blocks by number, before the word of the plan. */
+    if ((freeing && !typed(M_ASKFREE, M_FREE)) || !typed(M_ASK, M_WORD)) {
         note(M_NOTHING); return;
     }
     if (!readblock(2, blk) || !same_header()) { note(M_CHANGED); return; }

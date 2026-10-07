@@ -54,19 +54,22 @@ M_NOREAD = 'Block 2 could not be read: nothing checked.'
 M_CLEAN = 'This volume is consistent: nothing to repair.'
 M_CANCEL = 'Scan cancelled: no plan from an incomplete scan.'
 M_IOERR = 'Read error: this volume was not fully checked.'
-M_NOPLAN = 'Scan incomplete: no repair.'
+M_NOPLAN = 'Directory not trusted: nothing written. See FIXIT.'
 M_BOOTVOL = 'That volume holds the running program: repair it from another boot.'
 M_XLINK = 'Cross-linked blocks: copy both files to another volume before any repair.'
 M_KEPT = 'Lost blocks may hold a damaged file: nothing written. See FIXIT.'
+M_STALE = 'Used blocks marked free: copy the files off this volume, write nothing to it.'
 M_NOTHING = 'Nothing written.'
 M_CHANGED = 'Disk changed: nothing written.'
 M_ASK = 'Type FIX to confirm'
+M_ASKFREE = 'Type FREE to give them back'
+M_LOSTLN = 'Lost blocks: '
 M_PLANLN = 'Plan: %u corrections over %u blocks. Nothing written yet.'
 M_DONE = 'Applied %u of %u blocks; rescan clean: repaired.'
 M_LEFT = 'Applied %u of %u blocks; rescan still reports %u findings.'
 M_NOREST = 'Block %u not restored: recover this volume before using it.'
 M_RKEYS = 'F fix  ESC back'
-M_AUXASK = 'ALL /RAM files will be LOST. Continue?'
+M_TWIN = 'Two volumes named %s: pick it in the volume list.'
 
 # The eleven corrections REPAIR applies: four in the bitmap, seven in the
 # directory tree.
@@ -110,6 +113,10 @@ static unsigned int reject = 65535U;
 static int reads;
 static int online = 1;
 static int poison;
+/* ON_LINE as ProDOS 8 writes it -- the records it has, then one zero byte --
+ * over a copy_buf that still holds a record naming the panel's volume past
+ * that zero (bug hunt 2, finding 7). */
+static int phantom;
 static char volname[17];
 
 /* The injections. `errwrite` is the rank of the write that fails, `failall`
@@ -122,13 +129,14 @@ static int errwrite, failall, badread, changed;
  * `late_block` reads `late_val`. The guard on block 2 cannot see it; the
  * apply pass has to. */
 static unsigned int late_block, late_off, late_val;
-static const char* answer = "FIX";  /* what prompt() types, "" = Escape */
-static int prompted;
-/* A volume of more than 4 096 blocks: the answer to the question on the
- * /RAM files, how often it was asked, how often /RAM was rebuilt. */
+static const char* answer = "FIX";  /* what prompt() types at the FIX question, "" = Escape */
+static const char* freeword = "FREE"; /* and at the FREE question of a plan that frees */
+static int prompted, freeasked;
+/* A volume of more than 4 096 blocks: the answer of the core's aux_consent
+ * (the question on the /RAM files, or none when /RAM is empty), how often
+ * it was called, how often /RAM was rebuilt. */
 static int consent = 1, confirms, rams;
-static unsigned char mock_confirm(const char* q) {
-    (void)q;
+static unsigned char mock_aux_consent(void) {
     ++confirms;
     return (unsigned char)consent;
 }
@@ -148,7 +156,12 @@ static unsigned char mock_mli(unsigned char cmd, void* p) {
     if (cmd == 0xC5) {
         struct Onl* o = p;
         const char* name = online ? volname : "OTHER";
-        memset(o->buf, 0, 256);
+        if (phantom) {
+            memset(o->buf, 0xEE, 256);          /* what the buffer held before */
+            o->buf[48] = TARGET_UNIT | (unsigned char)strlen(volname);
+            memcpy(o->buf + 49, volname, strlen(volname));
+            o->buf[32] = 0;                     /* ProDOS: the terminator, nothing more */
+        } else memset(o->buf, 0, 256);
         o->buf[0] = TARGET_UNIT | (unsigned char)strlen(name);
         memcpy(o->buf + 1, name, strlen(name));
         o->buf[16] = BOOT_UNIT | 6;             /* the program's own volume */
@@ -211,11 +224,13 @@ static int cap_printf(const char* f, ...) {
 static char inputbuf[17];
 static unsigned char cap_prompt(const char* label, const char* initial,
                                 unsigned char hex) {
+    const char* word = answer;
     (void)initial; (void)hex;
     cap_puts(label); cap_puts("\r\n");
-    prompted = 1;
-    if (!answer[0]) return 0;                   /* Escape */
-    strcpy(inputbuf, answer);
+    if (strstr(label, "FREE")) { freeasked = 1; word = freeword; }
+    else prompted = 1;
+    if (!word[0]) return 0;                     /* Escape */
+    strcpy(inputbuf, word);
     return 1;
 }
 
@@ -233,6 +248,7 @@ static void poison_bss(void) {
     memset(&onl, 0xAA, sizeof onl);
     memset(zz, 0xAA, sizeof zz);        /* the plan counters, hdr is in stack */
     memset(nv, 0xAA, sizeof nv);
+    listed = 0xAA;
     memset(auxbits, 0xAA, sizeof auxbits);
     granted = aux = 0xAA;
     complete = failed = cancelled = 0xAA;
@@ -291,6 +307,7 @@ int main(int argc, char** argv) {
         else if (opt(argv[i], "reject", &v)) reject = (unsigned int)atoi(v);
         else if (opt(argv[i], "keys", &v)) keys = v;
         else if (opt(argv[i], "answer", &v)) answer = v;
+        else if (opt(argv[i], "free", &v)) freeword = v;
         else if (opt(argv[i], "errwrite", &v)) errwrite = atoi(v);
         else if (opt(argv[i], "failall", &v)) failall = atoi(v);
         else if (opt(argv[i], "badread", &v)) badread = atoi(v);
@@ -298,6 +315,7 @@ int main(int argc, char** argv) {
         else if (opt(argv[i], "late", &v))
             sscanf(v, "%u:%u:%u", &late_block, &late_off, &late_val);
         else if (opt(argv[i], "poison", &v)) poison = atoi(v);
+        else if (opt(argv[i], "phantom", &v)) phantom = atoi(v);
         else if (opt(argv[i], "after", &v)) other = v;
         else if (opt(argv[i], "consent", &v)) consent = atoi(v);
         else if (opt(argv[i], "unit", &v)) TARGET_UNIT = (unsigned char)strtol(v, 0, 16);
@@ -321,7 +339,7 @@ int main(int argc, char** argv) {
     api.prompt = cap_prompt; api.input = inputbuf;
     api.panels = panels; api.active = &active; api.selected = &selected;
     api.copy_buf = scratch; api.note = note;
-    api.confirm = mock_confirm; api.ram_format = mock_ram_format;
+    api.aux_consent = mock_aux_consent; api.ram_format = mock_ram_format;
     api.cfg_path = "/BOOTVL/A2FILE/A2FILE.CFG";
 
     for (;;) {
@@ -349,15 +367,15 @@ int main(int argc, char** argv) {
         memcpy(volname, head + 5, i);
         volname[i] = 0;
         screenn = 0; keyi = 0; keyn = 0; reads = 0; nwrite = 0; prompted = 0;
-        confirms = 0; rams = 0;
+        freeasked = 0; confirms = 0; rams = 0;
     }
 
     printf("{\"complete\":%u,\"failed\":%u,\"reads\":%d,\"unit\":%u,"
            "\"isboot\":%u,\"found\":%u,\"keys\":%d,\"applied\":%u,"
            "\"corr\":%u,\"blocks\":%u,\"dblocks\":%u,\"freeing\":%u,\"hurt\":%u,"
-           "\"prompted\":%d,\"confirms\":%d,\"rams\":%d,\"note\":\"%s\",\"counts\":{",
+           "\"prompted\":%d,\"freeasked\":%d,\"confirms\":%d,\"rams\":%d,\"note\":\"%s\",\"counts\":{",
            complete, failed, reads, unit, isboot, found, keyn, applied,
-           corr, blocks, dblocks, freeing, hurt, prompted, confirms, rams, note);
+           corr, blocks, dblocks, freeing, hurt, prompted, freeasked, confirms, rams, note);
     for (i = 0, first = 1; i < CHK_COUNT; ++i) {
         if (!counts[i]) continue;
         printf("%s\"%d\":%u", first ? "" : ",", i, counts[i]);
@@ -1275,19 +1293,42 @@ class Repair(unittest.TestCase):
             self.assertEqual(r['counts'], {id: 1}, r)
 
     # -- (h) the program's own volume ----------------------------------------
-    def test_the_program_volume_is_refused_before_any_read(self):
+    def boot_named(self):
+        """The fixture renamed /BOOTVL: the mock's ON_LINE table then holds
+        two volumes of that name, the target on S6,D2 and the program's own
+        on S5,D1."""
         data = bytearray(self.clean)
         name = b'BOOTVL'
         offset = 2 * BLOCK + 4
         data[offset] = 0xF0 | len(name)
         data[offset + 1:offset + 1 + len(name)] = name
         corrupt_prodos.apply(data, ['bitmap_lost'])
-        data = bytes(data)
-        r, after = self.fix(data)
+        return bytes(data)
+
+    def test_the_program_volume_is_refused_before_any_read(self):
+        """Picked from the volume list by its unit, the volume whose name is
+        the program's is refused by name before a block is read."""
+        data = self.boot_named()
+        r, after = self.fix(data, mode='vlist')
         self.assertNoWrite(r, data, after)
         self.assertEqual(r['isboot'], 1)
         self.assertEqual(r['note'], M_BOOTVOL)
         self.assertEqual(r['reads'], 0, 'refused before a single block is read')
+
+    def test_two_volumes_of_one_name_are_refused_from_a_path(self):
+        """Bug hunt 2, finding 8: a panel path names a volume that two drives
+        carry. Until then the first ON_LINE record won, and REPAIR could
+        write to the drive the panel was not showing. Measured on the source
+        of before with this mock: unit $E0 taken, isboot 1. Now the twins are
+        refused by name, before the boot check and before any read; from the
+        volume list the selected unit decides, and the second record no
+        longer has a say (test_the_program_volume_is_refused_before_any_read)."""
+        data = self.boot_named()
+        r, after = self.fix(data)
+        self.assertNoWrite(r, data, after)
+        self.assertEqual(r['note'], M_TWIN % '/BOOTVL')
+        self.assertEqual(r['reads'], 0)
+        self.assertEqual(r['prompted'], 0)
 
     # -- the refusals of the selection ---------------------------------------
     def test_an_image_or_dos33_panel_is_refused_without_reading(self):
@@ -1356,11 +1397,13 @@ class Repair(unittest.TestCase):
         source = ((ROOT / 'src/plugins/repair.c').read_text()
                   + (ROOT / 'src/plugins/fixit_walk.h').read_text())
         for message in (M_NOTVOL, M_NOVOL, M_BADHDR, M_NOREAD, M_CLEAN, M_CANCEL,
-                        M_IOERR, M_NOPLAN, M_BOOTVOL, M_XLINK, M_KEPT,
-                        M_NOTHING, M_CHANGED, M_ASK, M_PLANLN,
-                        M_DONE, M_LEFT, M_NOREST, M_RKEYS, M_AUXASK):
-            self.assertLessEqual(len(message % ((65535,) * message.count('%u'))
-                                     if '%u' in message else message), 79, message)
+                        M_IOERR, M_NOPLAN, M_BOOTVOL, M_XLINK, M_KEPT, M_STALE,
+                        M_NOTHING, M_CHANGED, M_ASK, M_ASKFREE, M_PLANLN,
+                        M_DONE, M_LEFT, M_NOREST, M_RKEYS, M_TWIN):
+            text = message
+            if '%u' in message: text = message % ((65535,) * message.count('%u'))
+            if '%s' in message: text = message % '/ABCDEFGHIJKLMNO'
+            self.assertLessEqual(len(text), 79, message)
             self.assertIn(message, source, message)
 
     def test_the_overlay_writes_through_one_function_only(self):
@@ -1378,7 +1421,7 @@ class Repair(unittest.TestCase):
         # The one write elsewhere: /RAM rebuilt empty once the user agreed to
         # lose it for the claims of a big volume (test_a_big_volume_*).
         self.assertEqual(source.count('ram_format()'), 1)
-        self.assertIn('if (granted) api->ram_format();', source)
+        self.assertIn('if (granted) api_full->ram_format();', source)
 
     # -- more than 4 096 blocks: the claims in the auxiliary bank ------------
     def big_volume(self):
@@ -1602,7 +1645,7 @@ class Repair(unittest.TestCase):
         20 blocks freed (the current block and the seven files only it
         names), `Applied 2 of 2 blocks; rescan clean: repaired.`
         """
-        self.refused('subdirectory_link_to_a_stale_copy', M_KEPT,
+        self.refused('subdirectory_link_to_a_stale_copy', M_STALE,
                      {'FILE_COUNT': 1, 'BM_USED_FREE': 1, 'BM_LOST': 20})
 
     def test_an_entry_that_merely_looks_deleted_keeps_its_blocks(self):
@@ -1636,7 +1679,7 @@ class Repair(unittest.TestCase):
         1), wrote [6]: the stray block marked used, the file's real block 7
         freed, `Applied 1 of 1 blocks; rescan clean: repaired.`
         """
-        self.refused('seedling_key_moved', M_KEPT,
+        self.refused('seedling_key_moved', M_STALE,
                      {'BM_USED_FREE': 1, 'BM_LOST': 1})
 
     def test_an_index_key_that_moved_keeps_the_file_it_left(self):
@@ -1647,7 +1690,7 @@ class Repair(unittest.TestCase):
         count rewritten from 9 to 1, wrote [2, 6], the index block and its
         eight data blocks freed (18 to 26), `rescan clean: repaired.`
         """
-        self.refused('sapling_key_moved', M_KEPT,
+        self.refused('sapling_key_moved', M_STALE,
                      {'FILE_BLOCKS': 1, 'BM_USED_FREE': 1, 'BM_LOST': 9})
 
     def test_an_index_block_that_reads_as_zeros_keeps_its_data(self):
@@ -1668,14 +1711,14 @@ class Repair(unittest.TestCase):
         free block. Before: the block count rewritten, wrote [3, 6], 29
         blocks freed (the second index block and the 28 data blocks under
         it), `rescan clean: repaired.`"""
-        self.refused('master_index_pointer_moved', M_KEPT,
+        self.refused('master_index_pointer_moved', M_STALE,
                      {'FILE_BLOCKS': 1, 'BM_USED_FREE': 1, 'BM_LOST': 29})
 
     def test_a_fork_key_that_moved_keeps_the_fork(self):
         """The data fork of the extended file /CHECKVOL/EXT names a free
         block. Before: wrote [6], the fork's real block 320 freed,
         `Applied 1 of 1 blocks; rescan clean: repaired.`"""
-        self.refused('fork_key_moved', M_KEPT, {'BM_USED_FREE': 1, 'BM_LOST': 1})
+        self.refused('fork_key_moved', M_STALE, {'BM_USED_FREE': 1, 'BM_LOST': 1})
 
     def test_a_storage_type_that_shrank_keeps_what_it_no_longer_reaches(self):
         """A sapling read as a seedling, a tree read as a sapling: the key
@@ -1763,7 +1806,7 @@ class Repair(unittest.TestCase):
                                 (name, sorted(lost - set(owned(stake)))))
                 r, after = self.fix(data)
                 self.assertEqual((r['nwrite'], after), (0, data), name)
-                self.assertIn(r['note'], (M_KEPT, M_NOPLAN), name)
+                self.assertIn(r['note'], (M_KEPT, M_STALE, M_NOPLAN), name)
 
     def test_a_directory_that_changes_under_the_question_stops_the_writes(self):
         """The plan was built on a volume whose root counts one file too
@@ -1802,6 +1845,246 @@ class Repair(unittest.TestCase):
         self.assertEqual(r['note'], M_DONE % (1, 1), r)
         self.assertEqual(after, corrected(data, found))
         self.assertEqual(prodos_check.check(after).findings, [])
+
+    # -- (k) bug hunt 2: what a lost block may still be, and the rest --------
+    def lost_listed(self, r):
+        """The block numbers the plan pass printed after `Lost blocks: `."""
+        screen = r['screen']
+        self.assertIn(M_LOSTLN, screen)
+        tail = screen.split(M_LOSTLN, 1)[1].split('\r\n', 1)[0]
+        return tail.split()
+
+    def onto_a_lost_block(self, kind):
+        """A pointer of the healthy fixture moved onto a block that was
+        ALREADY lost (allocated, claimed by nothing): the tree stays without a
+        fault and claims no free block, and the file's own block is now the
+        one nobody claims. `kind`: the seedling key of A, the fourth
+        pointer of the sapling SAP's index block, or the data fork key of the
+        extended file EXT. Returns (image, the block the file loses)."""
+        inv = corrupt_prodos.Inventory(self.clean)
+        data = bytearray(self.clean)
+        lost = next(b for b in range(40, inv.total) if is_free(data, b))
+        corrupt_prodos.set_free(data, inv, lost, False)
+        if kind == 'seedling':
+            ref, _ = named(inv, 'A')
+            corrupt_prodos.put_word(data, ref.offset + 0x11, lost)
+            victim = ref.key
+        elif kind == 'index':
+            ref, _ = named(inv, 'SAP')
+            victim = ref.blocks[4]
+            corrupt_prodos.index_pointer(data, ref.key, 3, lost)
+        else:
+            ref, _ = named(inv, 'EXT')
+            victim = int.from_bytes(data[ref.key * BLOCK + 1:ref.key * BLOCK + 3], 'little')
+            corrupt_prodos.put_word(data, ref.key * BLOCK + 1, lost)
+        data = bytes(data)
+        found = prodos_check.check(data)
+        self.assertTrue(found.complete)
+        self.assertEqual([(f.id, f.block) for f in found.findings], [('BM_LOST', victim)])
+        return data, victim
+
+    def test_a_pointer_onto_a_lost_block_is_named_and_asks_its_own_word(self):
+        """Bug hunt 2, finding 1. Before (this harness, the source of
+        0b64a8c): F, FIX, `Applied 1 of 1 blocks; rescan clean: repaired.`,
+        the file's own block freed, for all three pointer kinds -- the oracle
+        sees BM_LOST alone, and nothing in the walk can see more. Now the plan
+        pass prints the lost block by number and the word FREE is asked
+        before FIX; Escape there writes nothing. With both words the block
+        is still given back: that residue is documented, not hidden."""
+        for kind in ('seedling', 'index', 'fork'):
+            with self.subTest(kind=kind):
+                data, victim = self.onto_a_lost_block(kind)
+                r, after = self.fix(data, free='')
+                self.assertEqual(self.lost_listed(r), [str(victim)], r['screen'])
+                self.assertEqual((r['freeasked'], r['prompted']), (1, 0),
+                                 'FREE is asked first; Escape there never reaches FIX')
+                self.assertEqual(r['note'], M_NOTHING)
+                self.assertNoWrite(r, data, after)
+                self.assertFalse(is_free(after, victim))
+                r, after = self.fix(data, free='FREX')
+                self.assertNoWrite(r, data, after)
+                r, after = self.fix(data)
+                self.assertEqual((r['freeasked'], r['prompted']), (1, 1))
+                self.assertEqual(r['note'], M_DONE % (1, 1), r)
+                self.assertTrue(is_free(after, victim), 'the documented residue')
+
+    def test_a_plain_lost_block_is_given_back_through_the_second_word(self):
+        """An interrupted delete: one block allocated and claimed by nothing.
+        The plan pass names it, FREE then FIX give it back; Escape at either
+        word writes nothing."""
+        inv = corrupt_prodos.Inventory(self.clean)
+        data = bytearray(self.clean)
+        lost = next(b for b in range(40, inv.total) if is_free(data, b))
+        corrupt_prodos.set_free(data, inv, lost, False)
+        data = bytes(data)
+        r, after = self.fix(data, free='')
+        self.assertEqual(self.lost_listed(r), [str(lost)])
+        self.assertNoWrite(r, data, after)
+        self.assertEqual(r['note'], M_NOTHING)
+        r, after = self.fix(data, answer='')
+        self.assertEqual((r['freeasked'], r['prompted']), (1, 1))
+        self.assertNoWrite(r, data, after)
+        r, after = self.fix(data)
+        self.assertEqual(r['note'], M_DONE % (1, 1), r)
+        self.assertTrue(is_free(after, lost))
+        self.assertEqual(prodos_check.check(after).findings, [])
+
+    def test_a_plan_without_lost_blocks_asks_one_word_only(self):
+        data, _ = self.corrupted('file_count_high')
+        r, after = self.fix(data)
+        self.assertEqual((r['freeasked'], r['prompted']), (0, 1))
+        self.assertEqual(self.lost_listed(r), [], 'the label alone, no number')
+        self.assertEqual(r['note'], M_DONE % (1, 1), r)
+
+    def test_the_list_of_lost_blocks_stops_at_what_the_screen_holds(self):
+        """Seventy-eight numbers at most, then `...`: the plan line BM_LOST
+        carries the count."""
+        data = bytearray(self.clean)
+        inv = corrupt_prodos.Inventory(self.clean)
+        for _ in range(90):
+            corrupt_prodos.bitmap_lost(data, inv)
+        data = bytes(data)
+        lost = sorted(f.block for f in prodos_check.check(data).findings)
+        self.assertEqual(len(lost), 90)
+        r, after = self.fix(data, free='')
+        listed = self.lost_listed(r)
+        self.assertEqual(listed[-1], '...')
+        self.assertEqual([int(b) for b in listed[:-1]], lost[:78])
+        self.assertEqual(self.plan_lines(r)['BM_LOST'], 90)
+        self.assertNoWrite(r, data, after)
+
+    def test_lost_blocks_beside_a_stale_bitmap_name_the_live_danger(self):
+        """Bug hunt 2, finding 3. A bitmap stale after a crash: one block
+        freed since (lost) and the key of /CHECKVOL/B allocated since (marked
+        free). Before: refused with M_KEPT, which sent the user to FIXIT and
+        said nothing of the next allocation landing on B. Now the refusal
+        says what to do; still not a byte written."""
+        inv = corrupt_prodos.Inventory(self.clean)
+        ref, _ = named(inv, 'B')
+        data = bytearray(self.clean)
+        lost = next(b for b in range(40, inv.total) if is_free(data, b))
+        corrupt_prodos.set_free(data, inv, lost, False)
+        corrupt_prodos.set_free(data, inv, ref.key, True)
+        data = bytes(data)
+        self.assertEqual({f.id for f in prodos_check.check(data).findings},
+                         {'BM_LOST', 'BM_USED_FREE'})
+        r, after = self.fix(data)
+        self.assertEqual(r['note'], M_STALE)
+        self.assertEqual((r['freeasked'], r['prompted']), (0, 0))
+        self.assertNoWrite(r, data, after)
+
+    def test_a_cut_of_the_walk_is_not_called_incomplete(self):
+        """Bug hunt 2, finding 3: the key block of /SUB with a back-pointer
+        of 5 -- REPAIR cuts its walk there (section 5, rule 1). Before the
+        note was `Scan incomplete: no repair.`, which reads as a read error;
+        a read error still says so."""
+        inv = corrupt_prodos.Inventory(self.clean)
+        sub, _ = named(inv, 'SUB')
+        data = bytearray(self.clean)
+        corrupt_prodos.put_word(data, sub.key * BLOCK, 5)
+        data = bytes(data)
+        r, after = self.fix(data)
+        self.assertEqual(r['note'], M_NOPLAN)
+        self.assertNoWrite(r, data, after)
+        r, after = self.fix(data, reject=sub.key)
+        self.assertEqual(r['note'], M_IOERR)
+        self.assertNoWrite(r, data, after)
+
+    def test_a_wrong_directory_eof_alone_does_not_hold_the_lost_blocks(self):
+        """Bug hunt 2, finding 4. The eof of the entry /SUB and one lost
+        block: the eof is read by nothing that decides which blocks the walk
+        reaches, and no moved pointer changes it alone, so the plan is
+        offered -- the eof rewritten, the block given back after FREE and
+        FIX. Before: refused whole with M_KEPT."""
+        inv = corrupt_prodos.Inventory(self.clean)
+        sub, _ = named(inv, 'SUB')
+        data = bytearray(self.clean)
+        lost = next(b for b in range(40, inv.total) if is_free(data, b))
+        corrupt_prodos.set_free(data, inv, lost, False)
+        data[sub.offset + 0x15] = 1
+        data = bytes(data)
+        found = prodos_check.check(data).findings
+        self.assertEqual(sorted(f.id for f in found), ['BM_LOST', 'DIR_EOF'])
+        r, after = self.fix(data)
+        self.assertEqual(r['note'], M_DONE % (2, 2), r)
+        self.assertEqual(self.lost_listed(r), [str(lost)])
+        self.assertEqual(after, corrected(data, found))
+        self.assertEqual(prodos_check.check(after).findings, [])
+        # beside a DIR_BLOCKS as well, the lost block holds the plan
+        data = bytearray(data)
+        corrupt_prodos.put_word(data, sub.offset + 0x13, 9)
+        data = bytes(data)
+        r, after = self.fix(data)
+        self.assertEqual(r['note'], M_KEPT)
+        self.assertNoWrite(r, data, after)
+
+    def test_a_ram_shaped_volume_is_consistent(self):
+        """Bug hunt 2, finding 5: a volume whose directory is block 2 alone,
+        the bitmap at 3, 127 blocks -- /RAM as ProDOS makes it, one file at
+        block 5. Before: BM_RESERVED on block 4, which REPAIR marked used."""
+        data = ram_shaped()
+        self.assertEqual(prodos_check.check(data).findings, [])
+        r, after = self.fix(data)
+        self.assertEqual(r['note'], M_CLEAN, r)
+        self.assertNoWrite(r, data, after)
+        self.assertTrue(is_free(after, 4))
+
+    def test_the_online_table_ends_at_its_zero_byte(self):
+        """Bug hunt 2, finding 7: the volume is NOT on line (its drive holds
+        /OTHER), and copy_buf still holds, past ProDOS's terminator, a stale
+        record naming it. Before: unit $E0 taken, 16 reads, `This volume is
+        consistent`. Now: `Volume not on line.`, nothing read."""
+        r, after = self.fix(self.clean, mode='offline', phantom=1)
+        self.assertEqual(r['note'], M_NOVOL)
+        self.assertEqual((r['unit'], r['reads']), (0, 0))
+        self.assertNoWrite(r, self.clean, after)
+
+    def test_the_ram_files_are_asked_for_through_the_core(self):
+        """Bug hunt 2, finding 2: the consent comes from api->aux_consent --
+        no question of REPAIR's own, so an empty /RAM asks nothing and the
+        core's aux_dirty is set for a Ctrl-Reset in the middle of the scan --
+        once per run, before the first claim goes to the auxiliary bank."""
+        source = ((ROOT / 'src/plugins/repair.c').read_text()
+                  + (ROOT / 'src/plugins/fixit_walk.h').read_text())
+        self.assertNotIn('confirm(', source)
+        self.assertNotIn('/RAM files will be LOST', source)
+        self.assertEqual(source.count('aux_consent()'), 1)
+        data = self.big_volume()
+        r, image = self.fix(data, consent=0)
+        self.assertEqual((r['confirms'], r['rams'], r['nwrite'], r['reads']), (1, 0, 0, 2), r)
+        self.assertEqual(image, data)
+
+
+def ram_shaped():
+    """A 127-block volume shaped like ProDOS's /RAM: the volume directory
+    is block 2 alone, the bitmap block 3, one seedling FILE at block 5 and
+    block 4 free."""
+    n = 127
+    d = bytearray(n * BLOCK)
+    h = 2 * BLOCK
+    d[h + 4] = 0xF3
+    d[h + 5:h + 8] = b'RAM'
+    d[h + 4 + 0x1E] = 0xC3
+    d[h + 4 + 0x1F] = ENTRY_LEN
+    d[h + 4 + 0x20] = 13
+    d[h + 4 + 0x21] = 1                      # one file
+    d[h + 4 + 0x23] = 3                      # the bitmap
+    d[h + 4 + 0x25] = n                      # total blocks
+    e = h + 4 + ENTRY_LEN
+    d[e] = 0x14
+    d[e + 1:e + 5] = b'FILE'
+    d[e + 0x10] = 6
+    d[e + 0x11] = 5                          # key
+    d[e + 0x13] = 1                          # blocks used
+    d[e + 0x15] = 10                         # eof
+    d[e + 0x1E] = 0xE3
+    d[e + 0x25] = 2                          # header pointer
+    d[5 * BLOCK:5 * BLOCK + 10] = b'0123456789'
+    bm = 3 * BLOCK
+    for b in range(n):
+        if b not in (0, 1, 2, 3, 5):
+            d[bm + (b >> 3)] |= 0x80 >> (b & 7)
+    return bytes(d)
 
 
 if __name__ == '__main__':

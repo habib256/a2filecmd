@@ -91,7 +91,8 @@ M_UNSURE = 'Scan incomplete: lost blocks unconfirmed, freeing refused.'
 M_IOERR = 'Read error: this volume was not fully checked.'
 M_CANCEL = 'Scan cancelled: no plan from an incomplete scan.'
 M_QCLEAN = 'Directories consistent (quick check).'
-M_AUXASK = 'ALL /RAM files will be LOST. Continue?'
+# Two ON_LINE records with the panel's volume name, in path mode (bug hunt 2).
+M_TWIN = 'Two volumes named %s: pick it in the volume list.'
 # The summary line of the findings screen, and the paging prompt. No P and
 # no F: those keys belong to the WRITE chantier (docs/FIXIT.md section 6).
 M_KEYS = '%u findings.  R rescan  ESC/RETURN back'
@@ -126,6 +127,10 @@ static unsigned int reject = 65535U;
 static int reads;
 static int online = 1;
 static int poison;
+/* ON_LINE as ProDOS 8 writes it -- the records it has, then one zero byte --
+ * over a copy_buf that still holds a record naming the panel's volume past
+ * that zero (bug hunt 2, finding 7). */
+static int phantom;
 static char volname[17];
 /* A volume of more than 4 096 blocks: the depths FIXIT is given, one per
  * question (Q, F, or Escape; the last one repeats), and the answer to the
@@ -141,7 +146,12 @@ static unsigned char mock_mli(unsigned char cmd, void* p) {
     if (cmd == 0xC5) {
         struct Onl* o = p;
         const char* name = online ? volname : "OTHER";
-        memset(o->buf, 0, 256);
+        if (phantom) {
+            memset(o->buf, 0xEE, 256);          /* what the buffer held before */
+            o->buf[48] = TARGET_UNIT | (unsigned char)strlen(volname);
+            memcpy(o->buf + 49, volname, strlen(volname));
+            o->buf[32] = 0;                     /* ProDOS: the terminator, nothing more */
+        } else memset(o->buf, 0, 256);
         o->buf[0] = TARGET_UNIT | (unsigned char)strlen(name);
         memcpy(o->buf + 1, name, strlen(name));
         o->buf[16] = BOOT_UNIT | 6;             /* the program's own volume */
@@ -171,10 +181,11 @@ static void cap_puts(const char* s) {
     if (screenn + n < sizeof screen) { memcpy(screen + screenn, s, n); screenn += n; }
 }
 static void cap_clrscr(void) { cap_puts("\f"); }
-/* The two services a volume of more than 4 096 blocks calls. The question
- * lands on line 22 in the core, not on the overlay's screen. */
-static unsigned char mock_confirm(const char* q) {
-    (void)q;
+/* The two services a volume of more than 4 096 blocks calls: the core's
+ * aux_consent (its question lands on line 22 in the core, not on the
+ * overlay's screen, and it asks nothing when /RAM is empty), and the /RAM
+ * rebuild on the way out. */
+static unsigned char mock_aux_consent(void) {
     ++confirms;
     return (unsigned char)consent;
 }
@@ -204,15 +215,14 @@ static void poison_bss(void) {
     memset(stack, 0xAA, sizeof stack);
     memset(forks, 0xAA, sizeof forks);
     memset(volume, 0xAA, sizeof volume);
-    memset(boot, 0xAA, sizeof boot);
     memset(nm, 0xAA, sizeof nm);
     memset(&io, 0xAA, sizeof io);
     memset(&onl, 0xAA, sizeof onl);
     nsample = overflow = complete = failed = cancelled = 0xAA;
-    depth = partial = row = curslot = unit = isboot = 0xAA;
+    depth = partial = row = curslot = unit = 0xAA;
     found = curblock = total = bitmap = pages = base = span = 0xAAAA;
     budget = cached = fileblocks = 0xAAAA;
-    rootbad = rootfifth = rootlen = rootlast = 0xAAAA;
+    rootbad = rootlen = rootlast = 0xAAAA;
     rootdone = 0xAA;
     entry = 0; buf = 0;                 /* a premature read faults, not drifts */
 }
@@ -283,6 +293,7 @@ int main(int argc, char** argv) {
     if (argc > 8 && argv[8][0]) level = argv[8];
     if (argc > 9 && argv[9][0]) consent = atoi(argv[9]);
     if (argc > 10 && argv[10][0]) TARGET_UNIT = (unsigned char)strtol(argv[10], 0, 16);
+    if (argc > 11 && argv[11][0]) phantom = 1;
 
     /* The volume name ON_LINE answers with, straight from block 2 -- not
      * through mock_mli, so it does not count as a read of the overlay. */
@@ -297,7 +308,7 @@ int main(int argc, char** argv) {
     api.gotoxy = noop_gotoxy; api.cgetc = key_script; api.sprintf = sprintf;
     api.panels = panels; api.active = &active; api.selected = &selected;
     api.copy_buf = scratch; api.note = note;
-    api.confirm = mock_confirm; api.ram_format = mock_ram_format;
+    api.aux_consent = mock_aux_consent; api.ram_format = mock_ram_format;
     api.cfg_path = "/BOOTVL/A2FILE/A2FILE.CFG";
 
     /* One session, one or two volumes: the second run of plugin_entry finds
@@ -332,9 +343,9 @@ int main(int argc, char** argv) {
     }
 
     printf("{\"complete\":%u,\"overflow\":%u,\"failed\":%u,\"reads\":%d,"
-           "\"unit\":%u,\"isboot\":%u,\"found\":%u,\"keys\":%d,\"note\":\"%s\","
+           "\"unit\":%u,\"found\":%u,\"keys\":%d,\"note\":\"%s\","
            "\"levels\":%d,\"confirms\":%d,\"rams\":%d,\"counts\":{",
-           complete, overflow, failed, reads, unit, isboot, found, keyn, note,
+           complete, overflow, failed, reads, unit, found, keyn, note,
            levels, confirms, rams);
     for (i = 0, first = 1; i < CHK_COUNT; ++i) {
         if (!counts[i]) continue;
@@ -679,7 +690,8 @@ class Fixit(unittest.TestCase):
         cls.tmp.cleanup()
 
     def run_fixit(self, data, mode='run', reject=None, keys='', swap=None,
-                  after=None, poison=False, level='F', consent=True, unit=None):
+                  after=None, poison=False, level='F', consent=True, unit=None,
+                  phantom=False):
         """FIXIT over `data`; the image must come back byte for byte.
 
         `keys` is what the findings screen reads, Escape once it runs out;
@@ -691,7 +703,9 @@ class Fixit(unittest.TestCase):
         `level` answers the depth questions of a volume of more than 4 096
         blocks, one letter each (F, Q or Escape, the last one repeating),
         `consent` the question on the /RAM files,
-        `unit` the unit ON_LINE gives the volume, in hex (E0 by default).
+        `unit` the unit ON_LINE gives the volume, in hex (E0 by default),
+        `phantom` leaves a stale record naming the volume in copy_buf past
+        the zero byte that ends ON_LINE's table.
         """
         path = self.work / 'disk.po'
         path.write_bytes(data)
@@ -706,7 +720,7 @@ class Fixit(unittest.TestCase):
             images.append((other, extra))
             args.append(str(other))
         args.append('X' if poison else '')
-        args += [level, '1' if consent else '0', unit or '']
+        args += [level, '1' if consent else '0', unit or '', 'X' if phantom else '']
         out = subprocess.check_output(args, timeout=300)
         for where, expected in images:
             self.assertEqual(where.read_bytes(), expected, 'FIXIT must never write')
@@ -787,7 +801,6 @@ class Fixit(unittest.TestCase):
         self.assertEqual(r['overflow'], 0)
         self.assertEqual(r['note'], M_CLEAN)
         self.assertEqual(r['unit'], 0xE0)
-        self.assertEqual(r['isboot'], 0)
 
     def test_volume_of_a_subdirectory_path_is_the_one_checked(self):
         r = self.run_fixit(self.clean, 'subdir')
@@ -956,17 +969,80 @@ class Fixit(unittest.TestCase):
         self.assertEqual(r['counts'], {'IO_ERROR': 1}, r)
         self.assertEqual(r['complete'], 0)
 
-    # -- the program's own volume -------------------------------------------
-    def test_the_program_volume_is_recognised_for_the_write_chantier(self):
-        """Reading it is allowed; the flag is what the WRITE chantier needs."""
+    # -- the program's own volume, and a name two drives carry ---------------
+    def test_the_program_volume_is_read_like_any_other(self):
+        """FIXIT only reads, so the program's own volume is checked like any
+        other (REPAIR looks it up and refuses it, tools/test_repair.py).
+        Picked from the volume list: the mock's table carries two volumes of
+        that name once the fixture is renamed, and the selected unit decides."""
+        data = bytearray(self.clean)
+        name = b'BOOTVL'
+        offset = 2 * BLOCK + 4
+        data[offset] = 0xF0 | len(name)
+        data[offset + 1:offset + 1 + len(name)] = name
+        r = self.run_fixit(bytes(data), 'vlist')
+        self.assertEqual(r['unit'], 0xE0)
+        self.assertEqual(r['note'], M_CLEAN)
+
+    def test_the_online_table_ends_at_its_zero_byte(self):
+        """Bug hunt 2, finding 7: the volume is NOT on line (its drive holds
+        /OTHER), and copy_buf still holds, past ProDOS's terminator, a stale
+        record naming it. Before: unit $E0 taken, 16 reads, `This volume is
+        consistent`. Now: `Volume not on line.`, nothing read."""
+        r = self.run_fixit(self.clean, 'offline', phantom=True)
+        self.assertEqual(r['note'], M_NOVOL)
+        self.assertEqual((r['unit'], r['reads']), (0, 0))
+
+    def test_a_ram_shaped_volume_is_consistent(self):
+        """Bug hunt 2, finding 5: a volume whose directory is block 2 alone,
+        the bitmap at 3, 127 blocks -- /RAM as ProDOS makes it. Before:
+        VOLDIR_SIZE on block 2 and BM_RESERVED on block 4, from a walker (and
+        an oracle) that held the directory to blocks 2 to 5 whatever the
+        header said; the oracle agreed, so no test saw it."""
+        from test_repair import ram_shaped
+        data = ram_shaped()
+        self.assertEqual(prodos_check.check(data).findings, [])
+        r = self.run_fixit(data)
+        self.assertEqual(r['counts'], {}, r)
+        self.assertEqual(r['note'], M_CLEAN)
+        # the same volume, its directory chained on to block 4: the shape
+        # finding names the block found past the directory's place
+        d = bytearray(data)
+        d[2 * BLOCK + 2] = 4
+        d[4 * BLOCK + 0] = 2
+        d[3 * BLOCK + 0] &= ~0x08                     # block 4 allocated
+        result = prodos_check.check(bytes(d))
+        self.assertEqual([(f.id, f.block) for f in result.findings], [('VOLDIR_SIZE', 4)])
+        r = self.run_fixit(bytes(d))
+        self.assertEqual(r['counts'], {'VOLDIR_SIZE': 1}, r)
+        self.assertEqual([s for s in r['samples'] if s['id'] == 'VOLDIR_SIZE'][0]['block'], 4)
+
+    def test_the_ram_files_are_asked_for_through_the_core(self):
+        """Bug hunt 2, finding 2: the consent comes from api->aux_consent --
+        no question of FIXIT's own, so an empty /RAM asks nothing and the
+        core's aux_dirty is set for a Ctrl-Reset in the middle of the scan.
+        Once per run, before the first claim goes to the auxiliary bank
+        (test_keeping_the_ram_files_reads_nothing_more)."""
+        source = fixit_source()
+        self.assertNotIn('confirm(', source)
+        self.assertNotIn('/RAM files will be LOST', source)
+        self.assertEqual(source.count('aux_consent()'), 1)
+
+    def test_two_volumes_of_one_name_are_refused_from_a_path(self):
+        """Bug hunt 2, finding 8: a panel path names a volume that two drives
+        carry (here the renamed fixture on S6,D2 and the program's own on
+        S5,D1). Before: the first ON_LINE record won (unit $E0, 16 reads,
+        `This volume is consistent`), a report about whichever drive came
+        first in the table. Now: refused by name, no block read."""
         data = bytearray(self.clean)
         name = b'BOOTVL'
         offset = 2 * BLOCK + 4
         data[offset] = 0xF0 | len(name)
         data[offset + 1:offset + 1 + len(name)] = name
         r = self.run_fixit(bytes(data))
-        self.assertEqual(r['isboot'], 1, r)
-        self.assertEqual(r['note'], M_CLEAN)
+        self.assertEqual(r['note'], M_TWIN % '/BOOTVL')
+        self.assertEqual(r['reads'], 0)
+        self.assertEqual(r['keys'], 0, 'no screen, no key asked for')
 
     # -- increment 8: the findings screen, its keys and R --------------------
     def test_the_screen_is_the_one_section_six_describes(self):
@@ -1376,8 +1452,9 @@ class Fixit(unittest.TestCase):
     def test_messages_stay_inside_the_message_line(self):
         for message in (M_NOTVOL, M_NOVOL, M_BADHDR, M_NOREAD, M_CLEAN, M_FOUND,
                         M_UNSURE, M_IOERR, M_CANCEL, M_KEYS, M_MORE, M_QCLEAN,
-                        M_AUXASK):
-            self.assertLessEqual(len(message), 79, message)
+                        M_TWIN):
+            self.assertLessEqual(len(message % '/ABCDEFGHIJKLMNO' if '%s' in message
+                                     else message), 79, message)
             self.assertIn(message, fixit_source())
 
 

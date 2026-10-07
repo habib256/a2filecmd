@@ -15,10 +15,15 @@ struct Frame {
 
 #ifdef FIXIT_HOST
 static const struct A2fcApi* A;
+#define api_full A
 #else
 /* The service table, copied once to this fixed even address: the direct
- * stubs of fixit.s jump through it without cc65 glue. */
+ * stubs of fixit.s jump through it without cc65 glue. The copy stops at
+ * ram_format (the bytes after it would land on the resident at $4000), so
+ * the two services beyond -- ram_format and aux_consent -- are reached
+ * through the table the core handed in, kept here. */
 #define A ((const struct A2fcApi*)0x3F9E)
+static const struct A2fcApi* api_full;
 #endif
 
 #ifdef FIXIT_HOST
@@ -33,7 +38,6 @@ static const struct A2fcApi* A;
 #define v_memset (A->memset)
 #define v_strcpy (A->strcpy)
 #define v_strcmp (A->strcmp)
-#define v_confirm (A->confirm)
 #ifdef REPAIR
 #define v_prompt (A->prompt)
 #endif
@@ -49,7 +53,6 @@ void* __fastcall__ v_memcpy(void*, const void*, size_t);
 void* __fastcall__ v_memset(void*, int, size_t);
 char* __fastcall__ v_strcpy(char*, const char*);
 int __fastcall__ v_strcmp(const char*, const char*);
-unsigned char __fastcall__ v_confirm(const char*);
 #ifdef REPAIR
 unsigned char __fastcall__ v_prompt(const char*, const char*, unsigned char);
 #endif
@@ -87,11 +90,15 @@ static const char CHKNAMES[] =
     "BM_RESERVED\0BM_TAIL";
 #else
 /* REPAIR names only what it can repair: eleven identifiers instead of
- * thirty, in the order of the plan screen and of the write phase. */
-static const char CHKNAMES[] =
-    "BM_USED_FREE\0BM_RESERVED\0BM_TAIL\0BM_LOST\0"
-    "FILE_COUNT\0DIR_BLOCKS\0FILE_BLOCKS\0DIR_EOF\0"
-    "DIR_PARENT\0ENT_HEADER_PTR\0DIR_CHAIN";
+ * thirty, in the order of the plan screen and of the write phase. A table
+ * of pointers, where FIXIT walks a packed string: twenty-two bytes of
+ * RODATA against the sixty-seven of the walker, for one call site. */
+static const char* const CHKNAMES[] = {
+    "BM_USED_FREE", "BM_RESERVED", "BM_TAIL", "BM_LOST",
+    "FILE_COUNT", "DIR_BLOCKS", "FILE_BLOCKS", "DIR_EOF",
+    "DIR_PARENT", "ENT_HEADER_PTR", "DIR_CHAIN"
+};
+#define chkname(i) CHKNAMES[i]
 /* The check each of them counts, so the plan screen and the second pass
  * read the same counters the walker fills. */
 static const unsigned char REPCHK[] = {
@@ -106,8 +113,13 @@ enum {
 };
 /* 0 build the plan, 1 apply it, 2 the mandatory second pass. */
 enum { MD_PLAN, MD_APPLY, MD_RESCAN };
+/* How many lost blocks the plan pass names on the screen: thirteen a row
+ * of eighty columns, six rows between the scan line and the eleven plan
+ * lines, their foot and the question. */
+#define LIST_MAX 78
 #endif
 
+#ifndef REPAIR
 /* The name of check `i`, walked from the packed string. */
 static const char* chkname(unsigned char i)
 {
@@ -118,6 +130,7 @@ static const char* chkname(unsigned char i)
     }
     return p;
 }
+#endif
 
 
 #ifndef REPAIR
@@ -131,7 +144,6 @@ static const char* chkname(unsigned char i)
 #endif
 #define NO_SLOT_BIT 0x80
 #define MAX_DEPTH 16                /* ProDOS nesting limit, as in volinfo.c */
-#define VOLDIR_BLOCKS 4             /* blocks 2, 3, 4 and 5, fixed by ProDOS */
 #ifndef REPAIR
 struct Sample { unsigned char id; unsigned int block; unsigned char slot; };
 #endif
@@ -156,8 +168,9 @@ static const char M_UNSURE[]  = "Scan incomplete: lost blocks unconfirmed, freei
 #endif
 static const char M_CANCEL[]  = "Scan cancelled: no plan from an incomplete scan.";
 static const char M_IOERR[]   = "Read error: this volume was not fully checked.";
-/* The loss the core names for the pictures (aux_warning in a2fc.c). */
-static const char M_AUXASK[]  = "ALL /RAM files will be LOST. Continue?";
+/* Two ON_LINE records carry the panel's volume name: a path names neither
+ * drive, and the volume list opens a row by its unit (wipe.c says the same). */
+static const char M_TWIN[]    = "Two volumes named %s: pick it in the volume list.";
 #ifndef REPAIR
 static const char M_QCLEAN[]  = "Directories consistent (quick check).";
 static const char M_MODES[]   = "Q quick (directories)  F full  ESC back";
@@ -170,7 +183,14 @@ static const char M_TITLE[]   = "FIXIT %s - READ ONLY%s\r\n\r\n";
 #else
 static const char M_TITLE[]   = "REPAIR %s\r\n\r\n";
 #endif
+#ifndef REPAIR
 static const char M_SCAN[]    = "Scanning... ESC cancels.\r\n";
+#else
+/* REPAIR's plan pass prints the lost blocks it meets after this line, the
+ * first LIST_MAX by number then "...": the screen the word FREE is asked
+ * on. A plan without lost blocks leaves the label alone. */
+static const char M_SCAN[]    = "Scanning... ESC cancels.\r\nLost blocks: ";
+#endif
 #ifndef REPAIR
 static const char M_OVER[]    = "more findings than the table holds\r\n";
 /* The summary line of the findings screen. P and F belong to the WRITE
@@ -181,23 +201,38 @@ static const char M_L1[]      = "%s  %u  block %u\r\n";
 static const char M_L2[]      = "%s  %u  block %u slot %u\r\n";
 #else
 static const char M_BOOTVOL[] = "That volume holds the running program: repair it from another boot.";
-static const char M_NOPLAN[]  = "Scan incomplete: no repair.";
+/* A walk REPAIR cut on its own evidence (a loop, the depth, a key block
+ * that is no header, a volume directory out of its place, a back-pointer
+ * that disagrees): not a read error, so it does not say "incomplete". */
+static const char M_NOPLAN[]  = "Directory not trusted: nothing written. See FIXIT.";
 static const char M_XLINK[]   = "Cross-linked blocks: copy both files to another volume before any repair.";
 /* Lost blocks beside anything else wrong: the whole plan is refused. */
 static const char M_KEPT[]    = "Lost blocks may hold a damaged file: nothing written. See FIXIT.";
+/* The same refusal when the tree claims blocks the bitmap calls free: the
+ * next allocation ProDOS makes can land on a file, so the user is told the
+ * live danger and the one safe move (bug hunt 2, finding 3). */
+static const char M_STALE[]   = "Used blocks marked free: copy the files off this volume, write nothing to it.";
 /* The refusal M_DIRLATER stood here until increments 13 to 15: the seven
  * directory repairs are applied now, so there is nothing left to defer. */
 static const char M_NOTHING[] = "Nothing written.";
 static const char M_CHANGED[] = "Disk changed: nothing written.";
 static const char M_ASK[]     = "Type FIX to confirm";
 static const char M_WORD[]    = "FIX";
+/* The second, separate confirmation of a plan that gives lost blocks back,
+ * asked under the screen that names them (bug hunt 2, finding 1): the plan
+ * pass prints each lost block as it meets it, the first LIST_MAX of them. */
+static const char M_NUM[]     = "%u ";
+static const char M_ASKFREE[] = "Type FREE to give them back";
+static const char M_FREE[]    = "FREE";
 static const char M_WRITING[] = "Repairing...\r\n";
+#define M_DOTS (M_WRITING + 9)      /* "...", ending the list of lost blocks */
 /* The foot of the plan screen: the total, and the only keys there are. */
 static const char M_PLANLN[]  = "\r\nPlan: %u corrections over %u blocks. Nothing written yet.\r\n\r\nF fix  ESC back";
 static const char M_DONE[]    = "Applied %u of %u blocks; rescan clean: repaired.";
 static const char M_LEFT[]    = "Applied %u of %u blocks; rescan still reports %u findings.";
 static const char M_NOREST[]  = "Block %u not restored: recover this volume before using it.";
 static const char M_LINE[]    = "%s  %u\r\n";
+#define M_CRLF (M_LINE + 6)         /* the "\r\n" of the line above */
 #endif
 
 /* BSS: nothing zeroes it, every field is written before it is read. */
@@ -217,18 +252,22 @@ static unsigned char complete, failed, cancelled;
 static unsigned int curblock;
 static unsigned char curslot;
 static unsigned char* buf;          /* api->copy_buf: see the two buffers below */
-static unsigned int total, bitmap, pages, base, span;
+/* `page`: the bitmap block of the page being compared, bitmap + base / 4096. */
+static unsigned int total, bitmap, pages, base, span, page;
 static char volume[NAME_LEN];       /* "/TARGET" */
-static char boot[NAME_LEN];         /* "/BOOTVOLUME", from cfg_path */
 #ifdef REPAIR
+/* "/BOOTVOLUME", from cfg_path: the volume the program runs from, which
+ * REPAIR refuses to write. FIXIT only reads and does not look it up. */
+static char boot[NAME_LEN];
 /* One name of the ON_LINE table, built and thrown away before the first
  * block is read: blk is free at that moment and costs no BSS of its own.
  * FIXIT keeps a real buffer, its HDR_NAME check needs one during the walk. */
 #define nm ((char*)blk)
+static unsigned char isboot;
 #else
 static char nm[NAME_LEN];           /* one name of the ON_LINE table */
 #endif
-static unsigned char unit, isboot;
+static unsigned char unit;
 /* The walker of increment 2: the claim bitmap, the block buffer, the
  * directory stack, the entry being read and the two mini-entries of an
  * extended file, eight bytes each (a type, a key, a length and an eof).
@@ -284,15 +323,14 @@ static unsigned char depth, partial;
 static unsigned char row;
 #endif
 static unsigned int budget, cached, fileblocks;
-/* The shape of the volume directory: it is blocks 2, 3, 4, 5 and nothing
- * else. Rather than the first five blocks, the chain keeps what the shape
- * can be judged from -- the first block found where another was expected,
- * the fifth block of a chain that is too long, the last block and the
- * length -- and the shape is judged once the chain has ended where it
- * should: a chain the walk could not follow to its end says nothing
- * about a shape. */
+/* The shape of the volume directory: the blocks from 2 up to the bitmap
+ * and nothing else. Rather than the blocks themselves, the chain keeps what
+ * the shape can be judged from -- the first block found where another was
+ * expected, the last block and the length -- and the shape is judged once
+ * the chain has ended where it should: a chain the walk could not follow
+ * to its end says nothing about a shape. */
 #ifndef REPAIR
-static unsigned int rootbad, rootfifth, rootlen, rootlast;
+static unsigned int rootbad, rootlen, rootlast;
 static unsigned char rootdone;
 #endif
 #ifdef REPAIR
@@ -310,13 +348,14 @@ static unsigned int zz[6];
 #define corr    zz[4]               /* corrections the plan proposes */
 #define blocks  zz[5]               /* and the writes they will cost */
 /* `freeing`: the plan gives the lost blocks back. `hurt`: 1 a write failed,
- * 2 a block could not be put back. */
-static unsigned char mode, freeing, hurt;
+ * 2 a block could not be put back. `listed`: lost blocks the plan pass has
+ * printed, stopped one past LIST_MAX (a byte: the compare is a byte). */
+static unsigned char mode, freeing, hurt, listed;
 /* The few bytes a directory correction writes. Five is the longest one,
  * the +$13..$17 of a subdirectory entry (blocks used and eof, which are
  * contiguous). Putting them in is a SWAP: nv[] comes back holding what the
  * block had, so running the same swap again is the restore. */
-static union { unsigned int w; unsigned char b[5]; } nu;
+union { unsigned int w; unsigned char b[5]; } nu;  /* not static: swap() in fixit_asm.inc */
 #define nv nu.b
 /* The volume header entry as the plan read it: the guard of section 5
  * compares block 2 against these thirty-nine bytes before the first write.
@@ -442,6 +481,38 @@ static void hfinding(unsigned char id, unsigned int b) { finding(id, b, 0); }
 static void efinding(unsigned char id) { finding(id, curblock, curslot); }
 #endif
 
+/* "/VOL": the first component of a ProDOS path. Assembly on the Apple II
+ * (src/plugins/fixit_asm.inc, with REPAIR's samebytes and swap): cc65 wrote
+ * 110 bytes for this loop, 100 for the comparison and 70 for the swap,
+ * where thirty, forty-five and twenty do. */
+#ifdef FIXIT_HOST
+static void first_part(char* dst, const char* path)
+{
+    unsigned char k;
+    for (k = 0; k < NAME_LEN - 1 && path[k] && (k == 0 || path[k] != '/'); ++k) dst[k] = path[k];
+    dst[k] = 0;
+}
+#ifdef REPAIR
+static unsigned char samebytes(const unsigned char* a, const unsigned char* b, unsigned int n)
+{
+    unsigned int i;
+    for (i = 0; i < n; ++i) if (a[i] != b[i]) return 0;
+    return 1;
+}
+static void swap(unsigned char* p, unsigned char n)
+{
+    unsigned char i, c;
+    for (i = 0; i < n; ++i) { c = p[i]; p[i] = nv[i]; nv[i] = c; }
+}
+#endif
+#else
+void __fastcall__ first_part(char* dst, const char* path);
+#ifdef REPAIR
+unsigned char __fastcall__ samebytes(const unsigned char* a, const unsigned char* b, unsigned int n);
+void __fastcall__ swap(unsigned char* p, unsigned char n);
+#endif
+#endif
+
 /* READ_BLOCK, the only MLI call that ever touches the volume's data. A
  * failure is IO_ERROR and leaves the pass incomplete. */
 static unsigned char readblock(unsigned int b, unsigned char* dst)
@@ -496,13 +567,11 @@ spun:
  * make. */
 static unsigned char verified(unsigned int b, unsigned char* w)
 {
-    unsigned int i;
     io.block = b; io.buf = w;
     if (v_mli(0x81, &io)) return 0;
     io.block = b; io.buf = buf;
     if (v_mli(0x80, &io)) return 0;
-    for (i = 0; i < 512; ++i) if (buf[i] != w[i]) return 0;
-    return 1;
+    return samebytes(buf, w, 512);
 }
 
 /* The write failed, the read back failed or the bytes differ: `w` holds the
@@ -526,8 +595,6 @@ static unsigned char restored(unsigned int b, unsigned char* w)
  * stays valid across the reread: blk does not move. */
 static void fix(unsigned int b, unsigned char* p, unsigned char n)
 {
-    unsigned char i, c;
-
     if (mode != MD_APPLY) { if (!mode) inc(&dblocks); return; }
     /* Escape, a read error, or a block that could not be put back: the
      * walk stops after the correction in hand, never inside one, and a
@@ -539,16 +606,16 @@ static void fix(unsigned int b, unsigned char* p, unsigned char n)
         if (!readblock(b, dirbuf)) return;
         cached = b;
     }
-    for (i = 0; i < n; ++i) { c = p[i]; p[i] = nv[i]; nv[i] = c; }
+    swap(p, n);
     if (verified(b, blk)) { inc(&applied); return; }
-    for (i = 0; i < n; ++i) { c = p[i]; p[i] = nv[i]; nv[i] = c; }
+    swap(p, n);
     restored(b, blk);
 }
 #endif
 
 /* What a pass must not inherit from the one before it, and nothing more:
  * `total`, `bitmap` and `pages` are written by header() before anything
- * reads them, `base` and `span` by audit() before the bitmap pages. Ten
+ * reads them, `base`, `page` and `span` by audit() before the bitmap pages. Ten
  * dead stores paid for the BM_LOST retraction of scan() (docs/FIXIT.md
  * section 4); tools/test_fixit.py fills the whole BSS with $AA before every
  * run to hold that claim. */
@@ -559,14 +626,6 @@ static void reset(void)
     nsample = 0; overflow = 0;
 #endif
     complete = 1; failed = 0; cancelled = 0;
-}
-
-/* "/VOL": the first component of a ProDOS path. */
-static void first_part(char* dst, const char* path)
-{
-    unsigned char k;
-    for (k = 0; k < NAME_LEN - 1 && path[k] && (k == 0 || path[k] != '/'); ++k) dst[k] = path[k];
-    dst[k] = 0;
 }
 
 /* The volume header of block 2, already read into blk. Returns 0 when a
@@ -617,12 +676,14 @@ static unsigned char header(void)
 
 /* -- the walk ------------------------------------------------------------ */
 
-/* Blocks 0, 1, 2 to 5 and the bitmap pages belong to ProDOS whatever the
- * directory tree says: marked free they are BM_RESERVED, never
- * BM_USED_FREE, and never BM_LOST. */
+/* Blocks 0 and 1 (boot), 2 up to the bitmap (the volume directory, where
+ * the header puts it: 2 to 5 on every volume ProDOS formats, block 2 alone
+ * on /RAM) and the bitmap pages belong to ProDOS whatever the directory
+ * tree says: marked free they are BM_RESERVED, never BM_USED_FREE, and
+ * never BM_LOST. The second test cannot wrap: b is at least `bitmap` there. */
 static unsigned char reserved(unsigned int b)
 {
-    return b < 2 + VOLDIR_BLOCKS || (b >= bitmap && b - bitmap < pages);
+    return b < bitmap || b - bitmap < pages;
 }
 
 /* Was b already reached? The walk uses it as the oracle uses its set of
@@ -745,18 +806,20 @@ static void file(void)
 }
 
 /* Push one directory. The key is in range already. One refusal path for
- * the three ways a directory cannot be entered: cc65 would repeat the
- * whole body of each. */
+ * the two ways a directory cannot be entered: cc65 would repeat the whole
+ * body of each. A key that names a directory already on the stack is a
+ * block the walk has claimed -- every frame's key block is claimed before
+ * its first entry is read -- so the claims alone tell a loop, as in the
+ * oracle (the stack was also searched until bug hunt 2: sixty dead bytes). */
 static unsigned char enter(unsigned int key)
 {
     struct Frame* f;
-    unsigned char i, id;
+    unsigned char id;
 
     id = CHK_DIR_DEPTH;
     if (depth != MAX_DEPTH) {
         id = CHK_DIR_LOOP;
-        for (i = 0; i < depth; ++i) if (stack[i].first == key) break;
-        if (i == depth && !claimed(key)) {
+        if (!claimed(key)) {
             f = &stack[depth];
 #ifdef REPAIR
             /* One memset where six stores stood: sixty bytes of REPAIR's
@@ -856,25 +919,27 @@ static void subdir_entry(struct Frame* f)
 }
 
 #ifndef REPAIR
-/* One more block of the volume directory chain. */
+/* One more block of the volume directory chain. The block expected at this
+ * rank is 2 + rank, and it lies below the bitmap: a block that is not, or
+ * one at a rank the directory does not have, is the first bad one. */
 static void rootchain(unsigned int b)
 {
-    if (rootlen < VOLDIR_BLOCKS) {
-        if (!rootbad && b != 2 + rootlen) rootbad = b;
-    } else if (rootlen == VOLDIR_BLOCKS) rootfifth = b;
+    if (!rootbad && (b != 2 + rootlen || b >= bitmap)) rootbad = b;
     rootlast = b; ++rootlen;
 }
 
-/* The chain of the volume directory is blocks 2, 3, 4 and 5, in that order.
- * The finding names the first block that does not belong to that shape: the
- * block found where another was expected, or the fifth block of a chain that
- * is too long. One finding at most, and none from a chain that was cut. */
+/* The chain of the volume directory is the blocks from 2 up to the bitmap,
+ * in that order -- 2, 3, 4, 5 on every volume ProDOS formats, block 2 alone
+ * on /RAM (tools/prodos_check.py judges the same shape). The finding names
+ * the first block that does not belong to it: the block found where another
+ * was expected, the first block of a chain that runs past its place, or
+ * the last block of one that stops short. One finding at most, and none
+ * from a chain that was cut. */
 static void voldir_shape(void)
 {
     if (!rootdone) return;
     if (rootbad) nfinding(CHK_VOLDIR_SIZE, rootbad);
-    else if (rootlen < VOLDIR_BLOCKS) nfinding(CHK_VOLDIR_SIZE, rootlast);
-    else if (rootlen > VOLDIR_BLOCKS) nfinding(CHK_VOLDIR_SIZE, rootfifth);
+    else if (rootlen < bitmap - 2) nfinding(CHK_VOLDIR_SIZE, rootlast);
 }
 #endif
 
@@ -1052,10 +1117,16 @@ static void walk(void)
  * or a claim on a block that was never allocated. RESCUE and UNDELETE can
  * still read those blocks while the bitmap keeps them. Asked once when the
  * plan is built, and again at every page of the apply pass: the disk may
- * have changed, and a second walk that no longer agrees writes nothing. */
+ * have changed, and a second walk that no longer agrees writes nothing.
+ *
+ * DIR_EOF is the one finding of the tree that is let through: the eof of a
+ * subdirectory entry is read by nothing that decides which blocks the walk
+ * reaches, and a pointer moved onto a stale copy of a directory block
+ * changes the block count beside it (DIR_BLOCKS) or the entries around it,
+ * never the eof alone (bug hunt 2, finding 4). */
 static unsigned char freeing_ok(void)
 {
-    return complete && !tree && !counts[CHK_BM_USED_FREE];
+    return complete && tree == counts[CHK_DIR_EOF] && !counts[CHK_BM_USED_FREE];
 }
 
 /* One bitmap page against the claims of the walk -- the same loop for the
@@ -1093,8 +1164,19 @@ static unsigned char bitmap_page(void)
             }
             if (id != 255) {
                 hit = 1;
-                if (mode != MD_APPLY) bfinding(REPCHK[id], base + n);
-                else if (id != REP_BM_LOST || freeing) { nb ^= mask; changed = 1; }
+                if (mode != MD_APPLY) {
+                    bfinding(REPCHK[id], base + n);
+                    /* The plan pass names the lost blocks on the screen as
+                     * it meets them, after the scan line and above the plan
+                     * that follows: the screen the FREE word is asked on.
+                     * The first LIST_MAX by number, then "..." once (the
+                     * plan line BM_LOST carries the count). One call site:
+                     * a format without a conversion ignores the argument. */
+                    if (!mode && id == REP_BM_LOST && listed <= LIST_MAX) {
+                        v_cprintf(listed < LIST_MAX ? M_NUM : M_DOTS, base + n);
+                        ++listed;
+                    }
+                } else if (id != REP_BM_LOST || freeing) { nb ^= mask; changed = 1; }
             }
             ++n;
         }
@@ -1106,7 +1188,7 @@ static unsigned char bitmap_page(void)
         /* The page is built in buf, blk still holds it as the disk has it,
          * and seen is dead now that the page is derived: the readback goes
          * there and the restore is a write of blk. */
-        b = bitmap + (base >> 12);
+        b = page;
         if (verified(b, seen)) { inc(&applied); return 1; }
         return restored(b, blk);
     }
@@ -1125,7 +1207,7 @@ static void audit(void)
     unsigned char mask, resv, fb, sb;
 #endif
 
-    base = 0;
+    base = 0; page = bitmap;
     v_memset(seen, 0, 512);
     if (aux) bit_init();
     claim(0); claim(1);
@@ -1138,7 +1220,7 @@ static void audit(void)
 #endif
     do {
         span = total - base; if (span > 4096) span = 4096;
-        if (stop() || !readblock(bitmap + (base >> 12), blk)) return;
+        if (stop() || !readblock(page, blk)) return;
 #ifdef REPAIR
         if (!bitmap_page()) return;
 #else
@@ -1168,7 +1250,7 @@ static void audit(void)
         }
 #endif
         if (total - base <= 4096) break;
-        base += 4096;
+        base += 4096; ++page;
     } while (!stop());
 }
 
@@ -1237,8 +1319,14 @@ static unsigned char findings_screen(void)
 
 /* A volume the auxiliary bank has to serve. FIXIT asks at every pass how
  * deep to look, Q or F, so that R can follow a quick check with a full one;
- * the question on the /RAM files comes once per run of the overlay. 0:
- * Escape, or the /RAM files kept. */
+ * the consent on the /RAM files comes once per run of the overlay, through
+ * the core's aux_consent: no question when /RAM holds no file, and the
+ * core's aux_dirty is set, so a Ctrl-Reset in the middle of the scan
+ * rebuilds /RAM instead of leaving it on line over overwritten blocks
+ * (bug hunt 2, finding 2). The early rebuild that would make even a reset
+ * skipping that flag harmless is not made here: ram_format writes a block
+ * at MAIN $2000-$21FF, inside this overlay's own code. 0: Escape, or the
+ * /RAM files kept. */
 static unsigned char bigvol(void)
 {
 #ifndef REPAIR
@@ -1259,7 +1347,7 @@ static unsigned char bigvol(void)
         if (k == 'Q') { quick = 1; break; }
     }
 #endif
-    if (!granted) granted = v_confirm(M_AUXASK);
+    if (!granted) granted = api_full->aux_consent();
     return granted;
 }
 
@@ -1312,14 +1400,18 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     struct Panel* pan;
     const char* path;
     unsigned char* e;
-    unsigned char i, len, bootunit;
+    unsigned char i, len, u, twin;
+#ifdef REPAIR
+    unsigned char bootunit;
+#endif
 
 #ifdef FIXIT_HOST
     A = api;
 #else
     /* Up to cfg_path: the fields after it would land on the resident at
-     * $4000, and are read through `api`. */
+     * $4000, and are read through api_full. */
     api->memcpy((void*)A, api, offsetof(struct A2fcApi, ram_format));
+    api_full = api;
 #endif
     buf = A->copy_buf;
     granted = 0;
@@ -1333,35 +1425,55 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     volume[1] = 0;
     if (!pan->fs && *path == '/') first_part(volume, path);
     if (!volume[1]) { note(M_NOTVOL); return; }
+#ifdef REPAIR
     first_part(boot, A->cfg_path);
+#endif
 
     /* One ON_LINE on unit 0 serves twice: the unit of the target when the
-     * panel gave a path only, and the unit the program booted from. */
+     * panel gave a path only, and the unit the program booted from. ProDOS
+     * writes one record per device and a zero byte after the last one;
+     * what copy_buf held before stays beyond it, so the table ends at that
+     * zero, as in wipe.c (bug hunt 2, finding 7). */
     onl.n = 2; onl.unit = 0; onl.buf = buf;
     if (v_mli(0xC5, &onl)) { note(M_ONLINE); return; }
-    unit = 0; bootunit = 0;
+    unit = 0; twin = 0;
+#ifdef REPAIR
+    bootunit = 0;
+#endif
     e = buf;
     for (i = 0; i < 16; ++i) {
-        len = *e & 15;
+        u = *e;                             /* unit and name length; 0 ends the table */
+        if (!u) break;
+        len = u & 15;
+        u &= 0xF0;
         if (len) {                          /* else a drive without a volume */
             nm[0] = '/';
             v_memcpy(nm + 1, e + 1, len);
             nm[len + 1] = 0;
-            if (!bootunit && !v_strcmp(nm, boot)) bootunit = *e & 0xF0;
-            if (!unit && !v_strcmp(nm, volume)) {
-                /* Equal names on two drives: honor the selected unit. */
-                if (pan->path[0]
-                        || (*e & 0xF0) == (unsigned char)(A->selected->mdate << 4))
-                    unit = *e & 0xF0;
+#ifdef REPAIR
+            if (!bootunit && !v_strcmp(nm, boot)) bootunit = u;
+#endif
+            if (!v_strcmp(nm, volume)) {
+                /* Equal names on two drives. From the volume list the
+                 * selected unit says which; a path says neither, and the
+                 * panel may be showing the other drive: refused below
+                 * (bug hunt 2, finding 8). */
+                if (pan->path[0]) {
+                    if (unit) twin = 1;
+                    unit = u;
+                } else if (u == (unsigned char)(A->selected->mdate << 4))
+                    unit = u;
             }
         }
         e += 16;
     }
     if (!unit) { note(M_NOVOL); return; }
-    /* Remembered by name AND by unit for the WRITE chantier, which refuses
-     * to repair the volume the running program is read from. Reading it is
-     * allowed: this increment only reads. */
-    isboot = (bootunit && bootunit == unit) || !v_strcmp(volume, boot);
+    if (twin) { v_sprintf(A->note, M_TWIN, volume); return; }
+#ifdef REPAIR
+    /* Remembered by name AND by unit: REPAIR refuses to repair the volume
+     * the running program is read from. FIXIT reads it like any other. */
+    isboot = bootunit == unit || !v_strcmp(volume, boot);  /* unit is not 0 here */
+#endif
 
     io.n = 3; io.unit = unit;
 #ifndef REPAIR
@@ -1381,7 +1493,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
 #endif
     /* The auxiliary bank was written: /RAM is rebuilt empty, as the core
      * does on return from a picture, or its next write returns anything. */
-    if (granted) api->ram_format();
+    if (granted) api_full->ram_format();
     /* A big overlay: the core rereads both panels, redraws and writes the
      * note. No read_panel, no draw_all, and nothing written to the disk. */
 }

@@ -179,5 +179,159 @@ class FixitBits(unittest.TestCase):
         self.assertNotIn('sta     RDAUX', before, 'no RAMRD outside the mirror')
 
 
+# -- src/plugins/fixit_asm.inc: first_part, and REPAIR's samebytes and swap --
+# The host harnesses of tools/test_fixit.py and test_repair.py compile the C
+# versions (FIXIT_HOST); the Apple II runs these. Bug hunt 2 wrote them for
+# their size, and the first swap kept its count in Y across popax, which
+# loads Y: the loop then swapped 256 bytes. bench/repair.py caught it under
+# POM2 (a BRK after FIX on the directory plan); this harness now runs the
+# real assembly with a guard band around every buffer, on both processors.
+ASM_HARNESS = r'''
+#include <fcntl.h>
+#include <unistd.h>
+#include <string.h>
+union { unsigned int w; unsigned char b[5]; } nu;
+static unsigned char guard_a[8];
+unsigned char nu_after[8];
+void __fastcall__ first_part(char* dst, const char* path);
+unsigned char __fastcall__ samebytes(const unsigned char* a, const unsigned char* b, unsigned int n);
+void __fastcall__ swap(unsigned char* p, unsigned char n);
+static unsigned char a[600], b[600], blk[64];
+static char path[80], dst[40];
+static unsigned char hdr[4], r[2];
+int main(void)
+{
+    int in;
+    unsigned int n, off, i;
+    unsigned char k, x;
+    in = open("asm.bin", O_RDONLY);
+    if (in < 0) return 10;
+    while (read(in, hdr, 4) == 4) {
+        k = hdr[0];
+        n = hdr[1] | ((unsigned int)hdr[2] << 8);
+        off = hdr[3];
+        if (k == 'P') {                         /* first_part: path of n bytes */
+            memset(path, 0, sizeof path);
+            if (read(in, path, n) != (int)n) return 11;
+            memset(dst, 0xEE, sizeof dst);
+            first_part(dst + 4, path);
+            if (write(1, dst, sizeof dst) != sizeof dst) return 12;
+        } else if (k == 'C') {                  /* samebytes over n, a differing byte at off-1 */
+            for (i = 0; i < sizeof a; ++i) a[i] = b[i] = (unsigned char)(i * 7);
+            if (off) b[4 + off - 1 + (n > 255 ? 256 : 0)] ^= 1;
+            r[0] = samebytes(a + 4, b + 4, n);
+            r[1] = 0;
+            if (write(1, r, 2) != 2) return 13;
+        } else if (k == 'S') {                  /* swap n bytes at blk+off */
+            for (i = 0; i < sizeof blk; ++i) blk[i] = (unsigned char)(0x80 + i);
+            for (i = 0; i < 5; ++i) nu.b[i] = (unsigned char)(0x10 + i);
+            memset(guard_a, 0x77, sizeof guard_a);
+            swap(blk + off, (unsigned char)n);
+            if (write(1, blk, sizeof blk) != sizeof blk) return 14;
+            if (write(1, nu.b, 5) != 5) return 15;
+            if (write(1, guard_a, sizeof guard_a) != sizeof guard_a) return 16;
+        } else return 17;
+        (void)x;
+    }
+    return 0;
+}
+'''
+
+ASM_INC = '''
+REPAIR_ASM = 1
+        .include "fixit_asm.inc"
+'''
+
+
+class FixitAsm(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory(prefix='a2fc-fixit-asm-')
+        cls.dir = Path(cls.tmp.name)
+        shutil.copyfile(ROOT / 'src/plugins/fixit_asm.inc', cls.dir / 'fixit_asm.inc')
+        (cls.dir / 'asm.s').write_text(ASM_INC)
+        (cls.dir / 'harness.c').write_text(ASM_HARNESS)
+        cls.programs = {}
+        for cpu in ('6502', '65c02'):
+            exe = cls.dir / f'asm-{cpu}'
+            subprocess.run(['cl65', '-t', 'sim6502' if cpu == '6502' else 'sim65c02', '-O',
+                            '-o', str(exe), str(cls.dir / 'harness.c'), str(cls.dir / 'asm.s')],
+                           check=True, cwd=cls.dir)
+            cls.programs[cpu] = exe
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def run_asm(self, cpu, data):
+        (self.dir / 'asm.bin').write_bytes(data)
+        out = subprocess.run(['sim65', str(self.programs[cpu])], cwd=self.dir,
+                             capture_output=True, timeout=120)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        return out.stdout
+
+    def test_first_part_is_the_c_loop(self):
+        def model(p):
+            out = ''
+            for k, c in enumerate(p[:16]):
+                if k and c == '/':
+                    break
+                out += c
+            return out
+        paths = ['/VOL', '/VOL/SUB/FILE', '/', '', 'X', 'NOSLASH/X',
+                 '/ABCDEFGHIJKLMNOPQRS/T', '/ABCDEFGHIJKLMNO', '/ABCDEFGHIJKLMNOP/X', '//X']
+        data = b''.join(bytes([ord('P'), len(p), 0, 0]) + p.encode() for p in paths)
+        for cpu in self.programs:
+            out = self.run_asm(cpu, data)
+            for i, p in enumerate(paths):
+                with self.subTest(cpu=cpu, path=p):
+                    got = out[40 * i:40 * (i + 1)]
+                    want = model(p).encode()
+                    self.assertEqual(got[:4], b'\xee' * 4, 'nothing before dst')
+                    self.assertEqual(got[4:4 + len(want) + 1], want + b'\0')
+                    self.assertEqual(got[4 + len(want) + 1:], b'\xee' * (35 - len(want)),
+                                     'nothing after the terminator')
+
+    def test_samebytes_counts_n_and_finds_any_difference(self):
+        cases = []
+        for n in (0, 1, 2, 39, 255, 256, 257, 512):
+            cases.append((n, 0, 1))                       # equal
+            if n:
+                cases.append((n, 1, 0))                   # first byte differs
+                if n <= 255:
+                    cases.append((n, n, 0))               # last byte differs
+                if n < 255:
+                    cases.append((n, n + 1, 1))           # one past the end: not compared
+        # a difference in the second page: off is the byte inside page 2
+        cases += [(512, 1, 0), (512, 255, 0), (300, 44, 0), (300, 45, 1)]
+        data = b''.join(bytes([ord('C'), n & 255, n >> 8, off]) for n, off, _ in cases)
+        for cpu in self.programs:
+            out = self.run_asm(cpu, data)
+            for i, (n, off, want) in enumerate(cases):
+                # where the harness plants the difference: inside page 2 for
+                # n > 255, so the same `off` byte reaches the second page
+                pos = off - 1 + (256 if n > 255 else 0)
+                want = 0 if off and pos < n else 1
+                with self.subTest(cpu=cpu, n=n, off=off):
+                    self.assertEqual((out[2 * i], out[2 * i + 1]), (want, 0))
+
+    def test_swap_exchanges_n_bytes_and_nothing_else(self):
+        cases = [(n, off) for n in (1, 2, 4, 5) for off in (0, 3, 20)]
+        data = b''.join(bytes([ord('S'), n, 0, off]) for n, off in cases)
+        for cpu in self.programs:
+            out = self.run_asm(cpu, data)
+            step = 64 + 5 + 8
+            for i, (n, off) in enumerate(cases):
+                with self.subTest(cpu=cpu, n=n, off=off):
+                    got = out[step * i:step * (i + 1)]
+                    blk = bytearray(0x80 + j for j in range(64))
+                    nu = bytearray(0x10 + j for j in range(5))
+                    for j in range(n):
+                        blk[off + j], nu[j] = nu[j], blk[off + j]
+                    self.assertEqual(got[:64], bytes(blk), 'blk')
+                    self.assertEqual(got[64:69], bytes(nu), 'nu')
+                    self.assertEqual(got[69:], b'\x77' * 8, 'the guard next to nu')
+
+
 if __name__ == '__main__':
     unittest.main()

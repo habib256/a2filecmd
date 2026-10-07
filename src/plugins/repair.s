@@ -22,8 +22,8 @@ _v_memset: jmp ($3FEC)
 _v_strcpy: jmp ($3FEE)
 .export _v_strcmp
 _v_strcmp: jmp ($3FF0)
-.export _v_confirm
-_v_confirm: jmp ($3FB0)
 .include "fixit_bits.inc"
+REPAIR_ASM = 1
+.include "fixit_asm.inc"
 .export _v_prompt
 _v_prompt: jmp ($3FB2)
