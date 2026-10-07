@@ -52,7 +52,7 @@ KEEP = b'this one was there first\r' * 20
 THIRD = b'this one came in with the C key\r' * 3
 DONE = ('Copied', 'No room', 'Not enough', 'Not a ProDOS', 'ProDOS file here',
         'Image is read-only', 'Image changed', 'Image damaged', 'Stopped', 'Source changed',
-        'Cannot', 'Bitmap write', 'Write failed', 'Too big')
+        'Cannot', 'Bitmap writ', 'Write failed', 'Too big')
 
 
 def cycles(p):
@@ -104,9 +104,11 @@ def main():
     locked = bytearray(to_2mg(target))
     locked[0x13] |= 0x80                    # drapeaux 2IMG, bit 31 : protege en ecriture
     locked = bytes(locked)
+    frag = fixtures.scattered(8192)             # deux pages de bitmap, un sapling a cheval
     files = {'IMG/TARGET.PO#060000': target,
              'IMG/ORCHARD.PO#060000': orchard,
              'IMG/DAMAGED.PO#060000': damaged,
+             'IMG/FRAG.PO#060000': frag,
              'IMG/LOCKED.2MG#060000': locked,
              'IMG/ORDER.DSK#060000': to_dsk(target),
              'IMG/HEADER.2MG#060000': to_2mg(target),
@@ -116,7 +118,7 @@ def main():
 
     with tempfile.TemporaryDirectory(prefix='a2fc-imgput-') as tmp:
         tmp = Path(tmp)
-        with boot_hd(tmp, files, port=PORT, blocks=6000, plugins=['imgput']) as (p, s):
+        with boot_hd(tmp, files, port=PORT, blocks=16000, plugins=['imgput']) as (p, s):
             def open_panel(x, *names):
                 if s.cursor_row(x) is None:
                     s.key(b'\t')
@@ -189,7 +191,7 @@ def main():
             # 3. Le meme nom une seconde fois : refuse.
             asked, line = run('HELLO.TXT', b'Y')
             s.ok('un nom deja dans l image est refuse',
-                 line == 'No room for that name in this directory.', line)
+                 line == 'No room for that name here.', line)
             saved = catalog(Path(p.hdv), 'IMG')['TARGET.PO'][2]
 
             # 4. Un second fichier, a cote du premier.
@@ -218,6 +220,18 @@ def main():
             s.ok('un volume a arbre, fichier etendu et sous-dossiers recoit le fichier',
                  line == 'Copied into the image; source kept.', line)
             print('cycles : parcours et copie dans le verger %d' % run.cycles, flush=True)
+
+            # 6b. Un sapling dont les 256 pointeurs alternent entre deux pages
+            #     du bitmap (4 096 blocs) : le parcours chargeait une page par
+            #     pointeur, 256 lectures sans signe de vie ; une page par page
+            #     maintenant (cycles mesures avant/apres : voir le commit).
+            mount('FRAG.PO', 'FRAG')
+            asked, line = run('HELLO.TXT', b'Y')
+            s.ok('un sapling disperse sur deux pages du bitmap recoit le fichier',
+                 line == 'Copied into the image; source kept.', line)
+            print('cycles : parcours et copie, sapling sur deux pages %d' % run.cycles, flush=True)
+            s.ok('le parcours du sapling disperse ne recharge pas une page par pointeur',
+                 run.cycles < 8000000, run.cycles)
 
             # 7. Dans un sous-dossier de l'image.
             if s.cursor_row(40) is None:

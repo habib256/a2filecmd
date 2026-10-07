@@ -1128,6 +1128,37 @@ class EscapeAtEveryInstant(Harness):
         self.assertEqual(outcomes, {'copied', 'stopped'})
 
 
+def scattered(blocks=16384):
+    """A volume of several bitmap pages holding one sapling, FRAG, whose 256
+    pointers alternate between the first bitmap page and the last (by
+    hand: mkvolume.py allocates in order). bench/imgput.py times it on
+    the machine."""
+    d = bytearray(make_image(blocks, 'BIG', {'A#040000': b'x' * 10}))
+    last = (blocks - 1) >> 12
+    assert last >= 1
+    free0 = [b for b in range(100, 4000) if is_free(d, b)]
+    free3 = [b for b in range(last * 4096 + 12, blocks - 84) if is_free(d, b)]
+    key = free0.pop(0)
+    ptrs = [free0.pop(0) if i % 2 == 0 else free3.pop(0) for i in range(256)]
+    for b in [key] + ptrs:
+        set_free(d, b, False)
+    for i, b in enumerate(ptrs):
+        d[key * 512 + i] = b & 255
+        d[key * 512 + 256 + i] = b >> 8
+    e = bytearray(find(d, 'A'))
+    e[0] = 0x20 | 4
+    e[1:5] = b'FRAG'
+    e[0x11:0x13] = key.to_bytes(2, 'little')
+    e[0x13:0x15] = (257).to_bytes(2, 'little')
+    e[0x15:0x18] = (256 * 512).to_bytes(3, 'little')
+    at = 2 * 512 + 4 + 2 * 39
+    assert d[at] >> 4 == 0
+    d[at:at + 39] = e
+    d[2 * 512 + 4 + 0x21] += 1
+    assert findings(d) == [], findings(d)
+    return bytes(d)
+
+
 class ScatteredSapling(Harness):
     """A 16,384-block volume (four bitmap pages) holding one sapling whose
     256 pointers alternate between bitmap page 0 and page 3. Measured
@@ -1137,28 +1168,7 @@ class ScatteredSapling(Harness):
     between them. The pointers are checked a page at a time now."""
 
     def fixture(self):
-        d = bytearray(make_image(16384, 'BIG', {'A#040000': b'x' * 10}))
-        free0 = [b for b in range(100, 4000) if is_free(d, b)]
-        free3 = [b for b in range(12300, 16300) if is_free(d, b)]
-        key = free0.pop(0)
-        ptrs = [free0.pop(0) if i % 2 == 0 else free3.pop(0) for i in range(256)]
-        for b in [key] + ptrs:
-            set_free(d, b, False)
-        for i, b in enumerate(ptrs):
-            d[key * 512 + i] = b & 255
-            d[key * 512 + 256 + i] = b >> 8
-        e = bytearray(find(d, 'A'))
-        e[0] = 0x20 | 4
-        e[1:5] = b'FRAG'
-        e[0x11:0x13] = key.to_bytes(2, 'little')
-        e[0x13:0x15] = (257).to_bytes(2, 'little')
-        e[0x15:0x18] = (256 * 512).to_bytes(3, 'little')
-        at = 2 * 512 + 4 + 2 * 39
-        assert d[at] >> 4 == 0
-        d[at:at + 39] = e
-        d[2 * 512 + 4 + 0x21] += 1
-        assert findings(d) == [], findings(d)
-        return bytes(d)
+        return scattered()
 
     def test_a_page_is_loaded_once_a_page_not_once_a_pointer(self):
         writes, note = self.run_op()
