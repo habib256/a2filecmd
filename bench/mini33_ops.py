@@ -17,12 +17,15 @@ a = p.parse_args()
 original = a.disk.read_bytes()
 MINI_ENV = dict(os.environ, MINI_FILES=str(len(read_files(original))))   # the boot disk's file count, for the screen checks
 picture = bytes((0x55, 0x2A) * 4096)
+# 5,000 bytes of DOS text (bit 7 set): longer than the 4 KB a reread of
+# the catalog stages over the second half of the working area
+LONG = bytes(c | 0x80 for c in b''.join(b'LINE %04d ABCDEFGHIJKLMNOP\r' % i for i in range(200)))[:5000]
 with tempfile.TemporaryDirectory(prefix='mini33-ops-') as tmp:
     d = Path(tmp)
     boot = d / 'boot.dsk'
     other = d / 'other.dsk'
     boot.write_bytes(original)
-    other_image = make_disk([('PIC', 4, picture), ('KEEP.DST', 0, b'SAFE')])
+    other_image = make_disk([('PIC', 4, picture), ('KEEP.DST', 0, b'SAFE'), ('LONG', 0, LONG)])
     other.write_bytes(other_image)
     subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++17', '-O2',
                     *['-I' + str(a.pom2_root / s) for s in ('src', 'include', 'build/generated')],
@@ -43,5 +46,8 @@ with tempfile.TemporaryDirectory(prefix='mini33-ops-') as tmp:
     assert after_other['HELLO']['data'] == boot_files['HELLO']['data']
     assert after_other['README']['data'] == boot_files['README']['data']
     assert 'A2FC' not in after_other
+    long2 = after_other['LONG2']['data']
+    assert long2[:5001] == b'\xd8' + LONG and not any(long2[5001:]), 'LONG2 is X then LONG, every byte'
+    assert after_other['LONG']['data'][:5000] == LONG
     assert a.disk.read_bytes() == original
-    print('PASS: protected drive refused; picture untouched; NOTE created then deleted; NOTE2 saved under a second name; tagged HELLO+README copied; master unchanged')
+    print('PASS: protected drive refused; picture untouched; NOTE created then deleted; NOTE2 saved under a second name; tagged HELLO+README copied; a refused save keeps a 5 KB text and lands after; master unchanged')

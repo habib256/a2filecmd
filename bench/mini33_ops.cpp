@@ -116,8 +116,34 @@ int main(int argc,char** argv) {
         if(s.find("COPIED")!=std::string::npos) break;
     }
     wait("COPIED"); settle();
-    keys("\t"); expect(m,"4 FILES");            // drive 2: PIC, KEEP.DST and the two copies
+    keys("\t"); expect(m,"5 FILES");            // drive 2: PIC, KEEP.DST, LONG and the two copies
     expect(m,"HELLO"); expect(m,"README"); expect(m,"PIC");
+    // A failed save keeps the text. LONG (5,000 bytes: past the 4 KB a
+    // catalog reread stages over the working area) is edited -- an X
+    // typed in front -- and saved as LONG2 on drive 2. N at the prompt,
+    // then a write-protected disk: each time the editor comes back on the
+    // same text (before the fix: the panels, the text gone, its second
+    // half overwritten by the reread). Escape at the name: the editor.
+    // Then the tab is lifted and the save lands, every byte (mini33_ops.py
+    // compares). Last, Escape then N abandons a text, as the bar says.
+    keys("[KK");                                          // PIC, KEEP.DST, LONG: catalog order
+    keys("E"); wait("LEAVE"); expect(m,"LINE 0000");
+    keys("X\x13"); wait("NEW: ");
+    keys("\x1b"); wait("LEAVE"); expect(m,"XLINE 0000");    // Escape at the name: the editor
+    keys("\x13"); wait("NEW: ");
+    keys("LONG2\r"); wait("CREATE TEXT FILE");
+    keys("N"); wait("LEAVE"); expect(m,"XLINE 0000");        // N at the prompt: the editor
+    d->setDriveHostWriteProtected(1,true);
+    keys("\x13"); wait("NEW: "); keys("LONG2\r"); wait("CREATE TEXT FILE");
+    keys("Y"); wait("DISK IS WRITE PROTECTED");
+    keys(" "); wait("LEAVE"); expect(m,"XLINE 0000");        // refused: the editor, same text
+    d->setDriveHostWriteProtected(1,false);
+    keys("\x13"); wait("NEW: "); keys("LONG2\r"); wait("CREATE TEXT FILE");
+    keys("Y"); wait("COPIED"); settle();
+    expect(m,"LONG2"); expect(m,"6 FILES");
+    keys("[KK"); keys("E"); wait("LEAVE");                   // LONG again
+    keys("\x1b"); wait("SAVE THIS TEXT?");
+    keys("N"); wait("6 FILES"); absent(m,"LEAVE");           // abandoned, nothing written
     assert(d->flushPendingWrites());
     puts("PASS: tags/HGR/create/delete/batch copy on disposable disks");
 }

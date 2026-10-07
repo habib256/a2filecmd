@@ -162,9 +162,15 @@ Letters are letters: I, J, K and L are typed, not moves.
 
 New text files (N) and editor saves (E) use the same exclusive-create engine
 with the working area as the source: one new name, never an overwrite. A
-name that already exists is not the end of the text: the footer asks
-`EXISTS:` for another name, as long as needed; Escape there gives the text
-up.
+save that does not land is not the end of the text: a name that already
+exists makes the footer ask `EXISTS:` for another name; a write-protected
+or full disk, a read error or a write that did not verify shows its
+message, and the next key brings the editor back on the same text; so do
+N or Escape at the `CREATE TEXT FILE` question and Escape at the name.
+From the editor, Ctrl-S tries again (another name, another disk) and
+Escape then `N Abandon` is the one way to give the text up. The panels are
+reread only once the text is saved or abandoned: a catalog reread stages
+over the second half of the working area, where the text is.
 E loads a text file of at most 32 data sectors (8 KB), edits it in RAM, then
 asks for a **new** name. A larger file is refused rather than saved truncated.
 A full 8 KB of non-zero bytes is refused too: the editor keeps a NUL after

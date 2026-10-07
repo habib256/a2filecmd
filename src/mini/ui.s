@@ -86,6 +86,9 @@ brun_go:        .res 1          ; 1: page 3 holds the BRUN stub, start.s jumps t
 br_idx:         .res 1          ; brun_file locals
 br_last:        .res 1
 br_i:           .res 1
+ed_keep:        .res 1          ; 1: a text is in the working area and its save
+                                ; is under way -- result_done goes back to the
+                                ; editor instead of rereading over it
 ; the result line kept for the next draw shares the write engines'
 ; catalog_before: that is written during an operation, this one at its
 ; end and read at the next draw, with only reads in between
@@ -2101,12 +2104,7 @@ edit_file:
         jcs     @big            ; the NUL, and the last byte would be cut
         jsr     edit_text
         jcc     @out
-        lda     #0
-        sta     ask_kind
-        jsr     ask_name
-        bcc     @out
-        jsr     name_to_cs
-        jmp     save_new
+        jmp     named           ; Escape at the name: the editor again
 @fail:
         jsr     foot_zone
         lda     hg_status
@@ -2125,17 +2123,42 @@ edit_file:
         rts
 
 name_to_cs:
-        ldy     #0
+        ldy     #NAME_LEN-1
 @copy:
         lda     name_buf,y
         sta     cs_name,y
-        iny
-        cpy     #NAME_LEN
-        bcc     @copy
+        dey
+        bpl     @copy
         lda     #TYPE_TEXT
         sta     cs_type
         rts
 
+; back_edit -- the editor again, on the text still in the working area;
+; `named` is its Ctrl-S: a new name (Escape: the editor again), then the
+; disk. Abandoned (Escape, N), the panel is reread as after any
+; operation: a write that failed may have changed the disk.
+back_edit:
+        lda     #0
+        sta     ed_keep
+        jsr     edit_text
+        bcc     abandon_edit
+named:
+        lda     #0
+        sta     ask_kind
+        jsr     ask_name
+        bcc     back_edit
+        jsr     name_to_cs
+        jmp     save_new
+abandon_edit:
+        jmp     result_done
+
+; save_new -- the text is in the working area, its name in cs_name. Until
+; it is on the disk the text is never given up: a refusal (the name
+; exists, the disk is protected or full, a read error, a write that did
+; not verify), N or Escape at the prompt all lead back to the editor,
+; where Ctrl-S tries again -- another name, another disk -- and Escape
+; then N is the one way to abandon it. The panel is reread only then:
+; rereading a catalog stages it over the second half of the text.
 save_new:
         jsr     sectors_from_len
         jsr     clear
@@ -2143,15 +2166,17 @@ save_new:
         jsr     at_left
         PRINT   "CHECKING DISK..."
         jsr     present
+        lda     #1
+        sta     ed_keep
         jsr     create_prepare
         sta     cf_status
         beq     @planned
-        cmp     #COPY_EXISTS    ; the text is still in the working area:
-        jne     copy_report     ; ask for another name rather than lose it
+        cmp     #COPY_EXISTS    ; another name, without a message first
+        jne     cf_show         ; the message, then back_edit (result_done)
         lda     #2
         sta     ask_kind
         jsr     ask_name
-        bcc     @out            ; Escape gives the text up
+        bcc     back_edit       ; Escape: the editor, not the bin
         jsr     name_to_cs
         jmp     save_new
 @planned:
@@ -2182,8 +2207,7 @@ save_new:
         jsr     confirm
         bcs     @go
         jsr     copy_cancel
-@out:
-        rts
+        jmp     back_edit
 @go:
         jsr     clear
         ldy     #2
@@ -2192,37 +2216,26 @@ save_new:
         jsr     present
         jsr     create_execute
         sta     cf_status
-        jmp     copy_report
-
-sectors_from_len:
-        lda     edit_len
-        sta     data_count
-        lda     edit_len+1
-        sta     data_count+1
-        lda     data_count
-        ora     data_count+1
-        bne     @round
-        lda     #1
-        sta     data_count
-        lda     #0
-        sta     data_count+1
-        rts
-@round:
-        lda     data_count
-        beq     @even
-        inc     data_count+1
-        lda     #0
-        sta     data_count
-@even:
-        lda     data_count+1
-        sta     data_count
-        lda     #0
-        sta     data_count+1
-        rts
-
-; copy_report -- same messages as a disk-to-disk copy, then reread
-copy_report:
+        bne     @said           ; the text stays: the message, then the editor
+        sta     ed_keep         ; saved: the reread may take the working area
+@said:
         jmp     cf_show
+
+; sectors_from_len -- the 256-byte sectors the text takes: its pages,
+; one more for a partial one. The editor never saves an empty text, so
+; the count is at least 1 (create_prepare would make it so anyway).
+sectors_from_len:
+        ldx     #0
+        stx     data_count+1
+        lda     edit_len
+        beq     @whole
+        inx
+@whole:
+        txa
+        clc
+        adc     edit_len+1
+        sta     data_count
+        rts
 
 ; ---------------------------------------------------------------------
 ; delete_file -- tagged files, or the cursor when nothing is tagged.
@@ -2431,6 +2444,11 @@ keep_note:
 result_done:
         jsr     keep_note
         jsr     present
+        lda     ed_keep         ; a text waits in the working area: back
+        beq     @reread         ; to the editor once the message is read,
+        jsr     key             ; the reread would stage a catalog over it
+        jmp     back_edit
+@reread:
         ldx     #0
         jsr     tags_clear
         ldx     #1
