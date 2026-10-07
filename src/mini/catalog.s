@@ -200,9 +200,11 @@ catalog:
         sta     cat_i
 @entry:
         ldx     cat_off
-        lda     buffer,x
-        beq     @skip           ; never used
-        cmp     #$FF
+        lda     buffer,x        ; never used: skipped, and the walk goes on.
+        beq     @skip           ; DOS 3.3 stops at the first one (CATALOG
+        cmp     #$FF            ; and its lookups, POM2): a file after it is
+                                ; shown here so that C can rescue it
+                                ; (docs/MINI-DOS33.md)
         beq     @skip           ; deleted
         lda     buffer+1,x
         tax
@@ -259,9 +261,11 @@ stage_ptr:
 ; Names keep DOS's 30 characters, stripped of the high bit; anything
 ; unprintable becomes '?' so a crafted name cannot redirect a path.
 ; Bit 7 of ENT_CAT_SLOT (sector << 3 | slot needs bits 0-6) says the raw
-; name holds a byte outside $A0-$DF -- inverse, flashing, control or
-; lower case -- that the panel's text cannot give back: B refuses such a
-; name, whose command would name another file. slot_where drops the bit.
+; name holds a byte the panel's text cannot give back -- below $A0
+; (inverse, flashing, control) or $FF: B refuses such a name, whose
+; command would name another file. Lower case ($E0-$FE) is not flagged:
+; the panel keeps it as $60-$7E, the command ORs $80 back, and DOS 3.3
+; runs that name (POM2, second bug hunt). slot_where drops the bit.
 ; ---------------------------------------------------------------------
 store_entry:
         lda     count
@@ -286,12 +290,12 @@ store_entry:
         adc     #3
         tax
         ldy     #0
-        sty     t2              ; bit 7: a byte outside $A0-$DF
+        sty     t2              ; bit 7: a byte below $A0, or $FF
 @char:
         lda     buffer,x
         sec
-        sbc     #$A0
-        cmp     #$40
+        sbc     #$A0            ; $A0-$FE -> $00-$5E: given back exactly
+        cmp     #$5F
         bcc     @plain
         lda     #$80
         sta     t2

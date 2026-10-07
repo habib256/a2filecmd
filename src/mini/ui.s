@@ -1653,10 +1653,11 @@ copy_entries_to_right:
 ; once Y was answered: brun_cmd then holds the command DOS runs after A2FC
 ; Mini has left (start.s), on the slot and the active panel's drive. A
 ; name DOS could not read back from a typed line -- a comma, or a raw
-; byte outside $A0-$DF (inverse, flashing, control, lower case: the
-; panel's text OR $80 would be another name, which DOS would run or not
-; find) -- is refused. The command is the panel's text OR $80, which is
-; then the raw name byte for byte.
+; byte below $A0 or $FF (inverse, flashing, control, rubout: the panel's
+; text OR $80 would be another name, which DOS would run or not find) --
+; is refused. The command is the panel's text OR $80, which is then the
+; raw name byte for byte -- lower case ($E0-$FE) included, which DOS 3.3
+; runs.
 ; ---------------------------------------------------------------------
 .ifdef SIM65
         .segment "CODE"

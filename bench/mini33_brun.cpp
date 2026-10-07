@@ -60,19 +60,19 @@ int main(int argc,char** argv) {
     keys("N"); run(cpu,20000000);
     if(m.data()[6]!=0) fail("N runs nothing");
     // RETURN reads the first sector: the header and the bytes pick the view.
-    auto back=[&]() { keys("\x1b"); wait("8 FILES"); };
+    auto back=[&]() { keys("\x1b"); wait("9 FILES"); };
     keys("K"); keys("\r"); // PIC2: BSAVEd at $2000, 8 KB, header skipped
     for(int n=0;n<400 && m.data()[0x2000]!=0x11;++n) run(cpu,1000000);
     if(m.data()[0x2000]!=0x11 || m.data()[0x2001]!=0x22) fail("RETURN on a BSAVEd picture shows it");
     if(screen(m).find("BRUN PIC2")!=std::string::npos) fail("no BRUN prompt for PIC2");
-    keys(" "); wait("8 FILES");
+    keys(" "); wait("9 FILES");
     keys("K"); keys("\r"); wait("THIS BINARY HOLDS TEXT"); // after its header
     if(screen(m).find("SECOND LINE")==std::string::npos) fail("NOTE.BIN in the text viewer");
     back();
     keys("K"); keys("\r"); wait("00: 00 C0 08 00"); back();   // ROMPATCH cannot run
     keys("K"); keys("\r"); wait("00: 00 03 08 00"); back();   // PAGE3 would load over DOS's page 3
     keys("K"); keys("\r"); wait("BRUN BIGGAME");           // 33 sectors, yet a program
-    keys("N"); wait("8 FILES");
+    keys("N"); wait("9 FILES");
     if(m.data()[6]!=0) fail("N runs nothing on BIGGAME");
     keys("K"); keys("\r"); wait("00: 01 02 03 04"); back();   // JUNK: a T file that is not text
     keys("["); keys("K");                                    // back on GAME
@@ -85,6 +85,19 @@ int main(int argc,char** argv) {
     keys("\t/"); wait("GAME"); keys("K"); keys("B"); wait("BRUN GAME"); keys("Y");
     if(!ran(2)) fail("B then Y runs GAME (A2FC Mini started from the DOS prompt)");
     wait("]");
+    // B on `game`, raw lower case, the last entry (]): DOS runs that name,
+    // so B must too -- not CANNOT BRUN THIS NAME, and not GAME.
+    if(m.data()[8]!=0) fail("$08 starts at zero");
+    keys("BRUN A2FC,D1\r"); wait("FILES");
+    keys("\t/"); wait("JUNK"); keys("]");
+    keys("B"); wait("BRUN GAME");      // a II+ shows lower case in upper case:
+                                       // only $08 against $06 tells them apart
+    if(screen(m).find("CANNOT")!=std::string::npos) fail("B refuses a lower-case name");
+    keys("Y");
+    for(int n=0;n<800 && !(m.data()[8]==1 && m.data()[7]==0xA5);++n) run(cpu,1000000);
+    if(m.data()[8]!=1 || m.data()[7]!=0xA5) fail("B then Y runs game, the lower-case file");
+    if(m.data()[6]!=2) fail("B on game ran GAME instead");
+    wait("]");
     assert(d->flushPendingWrites());
-    puts("PASS: RETURN picks hi-res, text, hex or BRUN by content; RETURN and B BRUN a binary from HELLO and from the DOS prompt");
+    puts("PASS: RETURN picks hi-res, text, hex or BRUN by content; RETURN and B BRUN a binary from HELLO and from the DOS prompt; B runs a raw lower-case name");
 }

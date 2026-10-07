@@ -82,6 +82,15 @@ read. Neither state is ever half shown: the panel is then empty. Return, T,
 H and G read whatever a file's chain points at, catalog or DOS tracks
 included; only C and D refuse such a chain, since they would write.
 
+A panel lists every live entry of the catalog, also after a never-used
+slot (track byte `$00`). DOS 3.3 stops there: measured in POM2, a disk
+holding `A`, a never-used slot, then `B` shows only `A` in `CATALOG`, and
+`RUN B` says `FILE NOT FOUND`. The Mini keeps listing on purpose: such a
+file still holds its sectors, and C can copy it to a disk where DOS sees
+it. B and Return on it hand DOS a name it will not find (`FILE NOT FOUND`
+after the Mini has left); a new file takes the first free slot, the
+never-used one included, which makes the files after it visible to DOS.
+
 Return reads the file's first data sector, writes nothing, and picks the
 view from what the file holds:
 
@@ -100,9 +109,11 @@ T, H, G and B still force the text, hexadecimal or hi-res view, or BRUN.
 
 BRUN types the panel's name back to DOS, so a name DOS could not match from
 a typed line is refused (`CANNOT BRUN THIS NAME`): a comma, or any byte of
-the raw catalog name outside `$A0`–`$DF` -- inverse, flashing, control
-characters or lower case. A FLASH `A` shows as `A`; its command would have
-been `BRUN A`, which runs another file named `A`, if there is one.
+the raw catalog name below `$A0` -- inverse, flashing, control characters --
+or `$FF`. A FLASH `A` shows as `A`; its command would have been `BRUN A`,
+which runs another file named `A`, if there is one. Lower case (`$E0`–`$FE`)
+is run: the command gives those bytes back exactly, and DOS 3.3 runs such a
+name (checked in POM2, `bench/mini33_brun.py`).
 
 Since v0.4, horizontal arrows page through files and Tab switches panels.
 `/` replaces the old D for drive selection, and Ctrl-R replaces R for

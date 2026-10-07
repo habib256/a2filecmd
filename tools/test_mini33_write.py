@@ -963,7 +963,7 @@ class WriteTest(unittest.TestCase):
         self.assertEqual(self.image(1), self.src)
 
     def test_untypable_names_are_flagged_for_brun(self):
-        """Bit 7 of the slot byte: a raw name byte outside $A0-$DF.
+        """Bit 7 of the slot byte: a raw name byte below $A0, or $FF.
 
         Before: B built its DOS command from the panel's text OR $80, and
         only refused ',' and '?'. A name whose raw bytes are FLASH or
@@ -972,9 +972,18 @@ class WriteTest(unittest.TestCase):
         letters (and ran it), or FILE NOT FOUND. store_entry now flags
         such a name and brun_file refuses it ("CANNOT BRUN THIS NAME"):
         the flag is what B reads. The flagged slot must still be found
-        by delete, lock, rename and copy (slot_where drops the bit)."""
+        by delete, lock, rename and copy (slot_where drops the bit).
+
+        Lower case ($E0-$FE) is NOT flagged: the panel keeps it as
+        $60-$7E and the command ORs $80 back, the raw bytes exactly, and
+        DOS 3.3 runs that name (proven on POM2 by the second hunt; the
+        Mini's B runs it in bench/mini33_brun.py). The first version of the
+        flag (206d436) took $A0-$DF as the only plain range and refused
+        lower case, which 0.9.5 ran: measured before the fix, LOWER was
+        flagged. $FF ('?' on the panel, $FF back as $BF) still is."""
         names = [('A', 0x04), ('A', 0x04), ('CTRL.X', 0x04), ('LOWER', 0x04),
-                 ('COMMA,NAME', 0x04), ('WHAT?', 0x04), ('UNDER_SCORE', 0x04), ('PLAIN', 0x04)]
+                 ('COMMA,NAME', 0x04), ('WHAT?', 0x04), ('UNDER_SCORE', 0x04), ('PLAIN', 0x04),
+                 ('RUB.OUT', 0x04)]
         src = bytearray(make_disk([(n, t, n.encode() * 20) for n, t in names]))
         def slot(i):
             return offset(17, 15 - i // 7) + 11 + (i % 7) * 35
@@ -982,11 +991,15 @@ class WriteTest(unittest.TestCase):
         src[slot(2) + 3 + 5] = 0x18                    # inverse X ($18)
         for k in range(5):                             # lower case
             src[slot(3) + 3 + k] |= 0x20
-        src[slot(6) + 3 + 5] = 0xDF                    # '_', the last plain byte
+        src[slot(6) + 3 + 5] = 0xDF                    # '_'
+        src[slot(8) + 3 + 3] = 0xFF                    # $FF: shows '?', cannot come back
         self.load(src=bytes(src))
         self.assertEqual(self.mini.byte('count'), len(names))
         flags = [self.mini.byte('ent_name', offset=i * 32 + 31) >> 7 for i in range(len(names))]
-        self.assertEqual(flags, [1, 0, 1, 1, 0, 0, 0, 0])
+        self.assertEqual(flags, [1, 0, 1, 0, 0, 0, 0, 0, 1])
+        lower = bytes(self.mini.peek('ent_name', 5, offset=3 * 32))
+        self.assertEqual(bytes(c | 0x80 for c in lower), bytes(src[slot(3) + 3:slot(3) + 8]),
+                         'the panel text OR $80 is the raw lower-case name')
         shown = [bytes(self.mini.peek('ent_name', 6, offset=i * 32)).rstrip() for i in (0, 1, 2)]
         self.assertEqual(shown, [b'A', b'A', b'CTRL.?'], 'the two As look the same on the panel')
         # the slot itself, flag dropped, is what every write goes back to
