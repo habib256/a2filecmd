@@ -5,9 +5,9 @@ downloads and installation.
 
 ## [Unreleased]
 
-No new format. A bug hunt of the whole program by nine reviewers, its
-corrections, the demonstration folder tidied, and the documentation brought
-back in line with the code.
+No new format. Two bug hunts of the whole program, nine then six
+reviewers, and their corrections; the demonstration folder tidied; the
+documentation brought back in line with the code.
 
 ## Unreleased in detail
 
@@ -67,7 +67,8 @@ back in line with the code.
   window of a large folder, the old bits marked other files, and D asks for
   tagged files by their number. A panel gets its tags back only when it
   shows the same names and types at the same indexes under the same path (a
-  16-bit fingerprint: one changed panel in 65,536 passes for unchanged);
+  16-bit fingerprint, made non-linear by the second hunt: swapping two
+  entries eight places apart, or "AB" becoming "CA", passed the first one);
   otherwise it comes back untagged.
 - V or C on a directory no longer writes into the source tree. Only a target
   inside the source was refused; with the directory A of /V/A moved to /V,
@@ -109,6 +110,71 @@ back in line with the code.
 - Mini: B refuses a name whose raw catalog bytes are not all plain
   characters ($A0-$DF): a FLASH or inverse name could run another file of
   the same visible name.
+
+### Fixed: data safety, the second hunt
+
+- A key typed during a long phase (VISICALC's read, IMGPUT's walk) no
+  longer answers the next question: every row-22 question clears the
+  keyboard strobe first. A Y typed ahead answered the /RAM question before
+  it was shown and /RAM was rebuilt empty.
+- A2FILE.CFG and GOTO paths are upshifted and lose a trailing slash:
+  "/workhd/dir" and "/WORKHD/DIR" in the two panels let V move a file onto
+  itself and then delete the only copy. V now says "Both panels show the
+  same directory."
+- Two volumes of one name on line: WIPE W on the panel showing a floppy
+  /TWIN zeroed the 1600-block /TWIN of the other drive. WIPE, BOOTBLK,
+  BLKEDIT, RESCUE, VOLINFO, FIXIT and REPAIR refuse a path whose volume name
+  two drives carry ("Two volumes named /X: pick it in the volume list."),
+  BLKVIEW and UNDELETE refuse it too, MOVE copies through ProDOS instead of
+  moving entries. ON_LINE tables end at their zero byte.
+- FORMAT rebuilds /RAM and finds the volume it runs from over the whole
+  device list, not the nine units it shows (with eleven units and /RAM last,
+  a Disk II format left /RAM's old directory over overwritten blocks); tells
+  two DOS 3.3 or CP/M floppies apart by their catalog tracks before the
+  first write; tests the write protection before borrowing the auxiliary
+  bank; reads all 280 blocks back; refuses a name already on line.
+- NIBCOPY names the target's volume in its confirmation, refuses the
+  volume A2 File Cmd runs from, and stops before writing to a target that
+  no longer holds the track it has just verified.
+- REPAIR lists the lost blocks it would give back and asks a second word,
+  FREE, before FIX: a file pointer moved onto an already-lost block looks
+  exactly like an interrupted delete. FIXIT and REPAIR take the /RAM
+  consent through the core (no question when /RAM is empty; Ctrl-Reset
+  mid-scan rebuilds /RAM, seen on POM2). Lost blocks beside blocks in use
+  marked free say to copy the files off and write nothing.
+- The editor refuses a file longer than its stale panel size instead of
+  truncating it to 5,104 bytes on save. A directory copy is counted against
+  the destination paths too. The one-drive DISKIMG copy refuses the source
+  at the first TARGET prompt instead of writing its mark there. Output
+  reservation is a single CREATE: a failed OPEN no longer leaves an empty
+  A2FC.COPY that blocks every later copy.
+- IMGPUT no longer honours Escape between the bitmap and the entry, refuses
+  a file pointing at the directory it writes, says "Image changed" for a
+  directory deleted since the panel read it, and checks an index block a
+  bitmap page at a time (11.4 to 4.2 million cycles on a scattered sapling).
+- The Mini keeps an unsaved text after a failed or declined save and goes
+  back to the editor; its second half used to be overwritten by the catalog.
+- BLKEDIT's disk identity is the CRC-32 of block 2 (the running sums missed
+  swapped bytes); 1- and 2-block images open again.
+
+### Fixed, the second hunt
+
+- DOCVIEW froze on an `_` that is no command inside a header or footer
+  block (since 0.9.5); a block is skipped to its `__XX` and its commands no
+  longer change the body.
+- VDrive's receive loop ran at 100 cycles a byte, more than the 88.6 a byte
+  takes at 115,200 bps: a real serial port overran and VDrive could not
+  mount. It runs from page 3 at 33 cycles a byte; late replies are drained.
+  Not yet tried on real hardware.
+- Tags survive leaving an album's first window of a large folder and
+  coming back; E on a new file no longer clears the other panel's tags.
+- VISICALC says "Close error." when CLOSE fails; UNSQ counts past 255;
+  MDVIEW, INTBASIC, AWDATA and the text viewers read again after a read
+  error; BINARY2 skips phantom and squeezed records; the `!` menu describes
+  the media overlays; a Fantavision backdrop must be 8,192 or 8,184 bytes;
+  TREE counts forked files; VOLINFO's F and E leave the audit's figures
+  alone; plugins' key waits ignore mouse clicks; the Mini runs lower-case
+  names with B again.
 
 ### Fixed
 
@@ -152,10 +218,10 @@ back in line with the code.
 
 ### Room
 
-- MAIN 65C02/6502: 16/421 bytes free (11/420 before); keep_tags is assembly
-  now, smaller than the C it replaces. REPAIR 61/36, FIXIT 3/3, IMGPUT
-  121/157, PASCALW 1358/1351, CPMW 1352/1389, BLKEDIT 7/52, WIPE 152/181,
-  DOCVIEW 51/59, VISICALC's fixed part 151/154 (65C02/6502).
+- MAIN 65C02/6502: 12/392 bytes free (11/420 in 0.9.5), LC 21/19.
+  REPAIR 77/13, FIXIT 276/243, IMGPUT 28/75, WIPE 51/80, DOCVIEW 42/41,
+  VISICALC's fixed part 156/153 (65C02/6502). docs/MEMORY-BUDGETS.md has
+  the full table.
 
 ## [0.9.5] - 2026-10-04
 
