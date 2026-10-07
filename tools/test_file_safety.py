@@ -571,4 +571,58 @@ class FileSafety(unittest.TestCase):
                 self.assertEqual(self.src.read_bytes(),self.original)
                 saved.unlink()
 
+EDIT_LOAD_MAIN = r'''
+static unsigned char load(unsigned char fresh) {
+    FILE* f; unsigned char* p;
+LOAD_BLOCK
+    return 1;
+}
+#undef fopen
+#undef fread
+#undef fclose
+int main(int argc,char**argv){
+    unsigned char r;
+    strcpy(full,argv[1]); selected.size=strtoul(argv[2],0,10);
+    r=load(0);
+    printf("%u %u\n",r,elen);
+    if(r!=1)return 0;
+    EDIT_BUF[0]='X'; edirty=1; etype=4; eaux=0;
+    printf("%u\n",edit_save());
+    return 0;
+}
+'''
+
+
+class EditorLoad(unittest.TestCase):
+    """The real load block of edit_file, then the real edit_save, on a file
+    longer than the panel says. Bug hunt 2 (tools/hunt2/probe_edit_stale.py):
+    with a stale panel size of exactly EDIT_MAX (5,104) and 6,000 bytes on
+    disk, the load read 5,104 bytes, took them for the whole file, and the
+    first save cut the file to 5,104 bytes ("TAIL LOST"). The load reads one
+    byte more and refuses."""
+    def test_stale_size_never_truncates(self):
+        body = SOURCE[SOURCE.index('static unsigned char edit_file('):]
+        load = body[body.index('    if (!fresh) {'):body.index('    a2fc_view = 5;')]
+        h = HARNESS[:HARNESS.index('#undef fopen')]
+        h = h.replace('#define EDIT_BUF edit_buf', '#define EDIT_BUF edit_buf\n#define EDIT_MAX 0x13F0\n'
+                      'static const char ed_openf[]="open failed";static char note[80];\n'
+                      'struct { unsigned long size; } selected;', 1)
+        h += EDIT_LOAD_MAIN.replace('LOAD_BLOCK', load)
+        with tempfile.TemporaryDirectory(prefix='edit-load-', dir='/tmp') as d:
+            d = Path(d)
+            (d / 'p.c').write_text(h)
+            subprocess.run(['cc', '-std=c99', '-Wno-unknown-pragmas', '-w', '-I', str(ROOT / 'src'),
+                            str(d / 'p.c'), '-o', str(d / 'p')], check=True)
+            for size, panel, loads in ((6000, 5104, False), (5104, 5104, True), (5105, 5104, False), (100, 100, True)):
+                with self.subTest(size=size, panel=panel):
+                    f = d / 'TEXT'
+                    data = bytes(65 + i % 26 for i in range(size))
+                    f.write_bytes(data)
+                    out = subprocess.check_output([d / 'p', f, str(panel)], text=True).split()
+                    self.assertEqual(out[0], '1' if loads else '255', out)
+                    after = f.read_bytes()
+                    self.assertEqual(len(after), size)
+                    self.assertEqual(after, (b'X' + data[1:]) if loads else data)
+
+
 if __name__ == '__main__': unittest.main()

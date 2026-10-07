@@ -3008,7 +3008,12 @@ static unsigned char edit_file(unsigned char fresh, unsigned char type, unsigned
     if (!fresh) {
         f = fopen(full, "rb");
         if (!f) { strcpy(note, ed_openf); return 0xFF; }
-        elen = fread(EDIT_BUF, 1, EDIT_MAX, f);   /* the size is checked by the caller */
+        /* One byte more than the editor holds ($3FF0, the last of the
+         * graphics page, is nobody's): a file longer than the panel's
+         * stale EDIT_MAX then reads EDIT_MAX + 1 and is refused instead of
+         * being cut to 5,104 bytes by the save (bug hunt 2). The caller
+         * refused a panel size above EDIT_MAX. */
+        elen = fread(EDIT_BUF, 1, EDIT_MAX + 1, f);
         if (ferror(f) || elen != selected.size) {
             fclose(f); strcpy(note, ed_openf); return 0xFF;
         }
