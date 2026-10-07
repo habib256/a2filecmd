@@ -27,6 +27,14 @@ renames and permutations are played on the real assembly, the assembly is
 checked against the Python model hash_model(), and the model's collision
 rate is measured on random edits (the 16-bit rate is about 1 in 65,536).
 
+Bug hunt 3: that fold still cancelled two edits two bytes apart in one
+name, +4 then +1 ("PIC.00" become "PIG.10"): 21 collisions in the 90,531
+two-byte edits of PIC.00-PIC.02 among PIC.00-PIC.19, where 1.4 are
+expected. Now low = rol8(low + high). The 21 are played on the assembly
+(each one checked to collide under the bug-hunt-2 fold first), and the
+model is measured on that set and on every two-byte edit within three
+positions of a few names.
+
 paths_nested. copy_one refused a directory copied INTO itself, not ONTO an
 ancestor: with /V/A/A copied to /V, the target /V/A exists and the
 subdirectory /V/A/A/A is written into /V/A/A, the source; the move then
@@ -63,10 +71,68 @@ PAIRS = [
 
 
 def fold(h, b):
-    """The fold of a2fc_mli.s: h = rol16(h); high ^= b; low += high (no carry)."""
+    """The fold of a2fc_mli.s: h = rol16(h); high ^= b; low = rol8(low + high)."""
+    h = ((h << 1) | (h >> 15)) & 0xFFFF
+    hi = (h >> 8) ^ b
+    lo = ((h & 0xFF) + hi) & 0xFF
+    return hi << 8 | ((lo << 1) | (lo >> 7)) & 0xFF
+
+
+def fold_hunt2(h, b):
+    """The bug-hunt-2 fold, without the rotation of low: the reference the
+    structured cases were found with."""
     h = ((h << 1) | (h >> 15)) & 0xFFFF
     hi = (h >> 8) ^ b
     return hi << 8 | ((h & 0xFF) + hi) & 0xFF
+
+
+def entry_bytes(name, typ):
+    return name.encode().ljust(17, b'\0') + bytes([typ])
+
+
+def two_byte_edits(f, names, which, p1s, positions, gap, first, second):
+    """Every edit of two bytes of one name (indexes `which`, p1 < p1s, p1 <
+    p2 < positions, p2 - p1 <= gap), first byte from `first`, second from
+    `second`: (count, [(index, new name) that collide under fold f]).
+    Each fold step is a bijection of h for a given byte, so two tables
+    that differ in one entry collide iff h is equal right after it."""
+    h = 0
+    head = b'/V/B'.ljust(64, b'\0') + bytes([len(names)])
+    for b in reversed(head):
+        h = f(h, b)
+    starts = []
+    for name, typ in names:
+        starts.append(h)
+        for b in reversed(entry_bytes(name, typ)):
+            h = f(h, b)
+    total, found = 0, []
+    for i in which:
+        raw = entry_bytes(*names[i])
+        def after(r, h=starts[i]):
+            for b in reversed(r):
+                h = f(h, b)
+            return h
+        base = after(raw)
+        for p1 in range(p1s):
+            for p2 in range(p1 + 1, min(positions, p1 + gap + 1)):
+                for a in first:
+                    for b in second:
+                        r = bytearray(raw); r[p1] = a; r[p2] = b
+                        if r == raw:
+                            continue
+                        total += 1
+                        if after(bytes(r)) == base:
+                            found.append((i, bytes(r[:17]).rstrip(b'\0').decode('latin-1')))
+    return total, found
+
+
+PICS = [('PIC.%02d' % k, 6) for k in range(20)]
+
+
+def hunt3_set(f):
+    """The reviewer's set: two bytes of PIC.00-PIC.02, p1 < 6, p2 < 8,
+    first A-Z, second 0-Z (probe_hash_structured.py)."""
+    return two_byte_edits(f, PICS, range(3), 6, 8, 8, range(0x41, 0x5B), range(0x30, 0x5B))
 
 
 def hash_model(path, names):
@@ -116,6 +182,18 @@ def random_cases(seed=1966, count=120):
             continue        # a true 16-bit collision of the model: not what this case tests
         cases.append((names, after, i))
     return cases
+
+
+def c_structured():
+    """Bug hunt 3: the renames of one of PIC.00-PIC.19 that the bug-hunt-2
+    fold could not tell apart, as { index, new name, hash after } (the
+    table itself is built in C: twenty-two copies overflowed sim65)."""
+    rows = []
+    for i, name in hunt3_set(fold_hunt2)[1]:
+        after = list(PICS)
+        after[i] = (name, 6)
+        rows.append('{ %u, "%s", 0x%04X }' % (i, name, hash_model('/V/B', after)))
+    return ',\n'.join(rows)
 
 
 def c_cases():
@@ -179,6 +257,16 @@ static void start(void)
 struct Pair { const char* full; const char* other; unsigned char nested; };
 struct Case { const char* before; const char* after; unsigned char tagged; unsigned int hash; };
 static const struct Case cases[] = { RANDOM_CASES };
+struct Rename { unsigned char tagged; const char* name; unsigned int hash; };
+static const struct Rename renames[] = { STRUCTURED };
+static void pics(void)
+{   /* panel 1 on /V/B: PIC.00 to PIC.19, all of type 6 */
+    char n[7] = "PIC.00";
+    unsigned char k;
+    memset(panels, 0, sizeof panels); panels[0].e = table[0]; panels[1].e = table[1];
+    strcpy(panels[1].path, "/V/B");
+    for (k = 0; k < 20; ++k) { n[4] = '0' + k / 10; n[5] = '0' + k % 10; put(1, n, 6); }
+}
 static void fill(const char* s)
 {   /* panel 1 on /V/B from "NAME<type>NAME<type>..." */
     char name[NAME_LEN];
@@ -284,6 +372,17 @@ int main(void)
         if (any(1)) return 93;
     }
 
+    /* Bug hunt 3: two bytes two apart in one name, +4 then +1 ("PIC.00"
+     * become "PIG.10"), kept the bug-hunt-2 fingerprint */
+    for (i = 0; i < sizeof renames / sizeof renames[0]; ++i) {
+        pics();
+        tag(1, renames[i].tagged); keep_tags(1); reread();
+        strcpy(panels[1].e[renames[i].tagged].name, renames[i].name);
+        if (panel_hash(&panels[1]) != renames[i].hash) return 94;   /* the model is the assembly */
+        keep_tags(0);
+        if (any(1)) return 95;
+    }
+
     for (i = 0; i < sizeof pairs / sizeof pairs[0]; ++i) {
         strcpy(full, pairs[i].full); strcpy(other_full, pairs[i].other);
         if ((paths_nested() != 0) != pairs[i].nested) return 100 + i;
@@ -331,6 +430,38 @@ class KeepTags(unittest.TestCase):
         self.assertLessEqual(collisions, 3, '%d collisions in %d trials' % (collisions, trials))
 
 
+    def test_two_byte_edits_in_one_name(self):
+        """Bug hunt 3: two edits two bytes apart in one name, +4 then +1,
+        cancelled out under the bug-hunt-2 fold ("PIC.00" -> "PIG.10")."""
+        total, old = hunt3_set(fold_hunt2)
+        self.assertEqual(total, 90531)
+        # the reviewer measured 21 under /V/D (probe_hash_structured.py);
+        # under /V/B, the path the assembly test uses, 22
+        self.assertEqual(len(old), 22)
+        self.assertIn((0, 'PIG.10'), old)
+        self.assertNotIn(True, ['\0' in n for _, n in old])   # 22 real names
+        new = hunt3_set(fold)[1]
+        # 1.4 expected at random; the three left all put a byte after the
+        # name's terminating zero, which add_entry never writes
+        self.assertLessEqual(len(new), 3, new)
+        self.assertEqual([n for _, n in new if '\0' not in n], [])
+        # every two-byte edit within three positions inside a few names,
+        # from the start states their table gives: the bug-hunt-2 fold
+        # collided far above chance there
+        names = [('PIC.%02d' % k, 6) for k in range(0, 20, 4)] + [('NOTES.TXT', 4), ('A2FILE.CODE', 6)]
+        chars = range(0x2E, 0x5B)
+        def wide(f):
+            total, found = 0, []
+            for k, (name, _) in enumerate(names):
+                t, c = two_byte_edits(f, names, [k], len(name) - 1, len(name), 3, chars, chars)
+                total += t
+                found += c
+            return total, found
+        total, found = wide(fold_hunt2)
+        self.assertEqual(total, 218592)                 # 3.3 collisions expected at random
+        self.assertEqual(len(found), 68)
+        self.assertEqual(wide(fold)[1], [])
+
     def test_model_and_table_agree(self):
         for full, other, want in PAIRS:
             self.assertEqual(nested(full, other), want, (full, other))
@@ -358,7 +489,8 @@ class KeepTags(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='keep-tags-') as tmp:
             p = Path(tmp)
             (p / 'tags.s').write_text('        .setcpu "6502"\n' + asm)
-            (p / 'h.c').write_text(HARNESS.replace('PAIRS', pairs).replace('RANDOM_CASES', c_cases()))
+            (p / 'h.c').write_text(HARNESS.replace('PAIRS', pairs).replace('RANDOM_CASES', c_cases())
+                                    .replace('STRUCTURED', c_structured()))
             for target in ('sim6502', 'sim65c02'):
                 exe = p / ('t_' + target)
                 subprocess.run(['cl65', '-t', target, '-O', '-I', str(ROOT / 'src'), '-o', str(exe),

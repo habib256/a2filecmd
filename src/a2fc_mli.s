@@ -177,16 +177,22 @@ no:     lda #0
 ; valid afterwards only if the same names are back at the same indexes. So
 ; the word folds the path and the entry count (bytes 0-64 of struct Panel)
 ; and the name and type of every entry (bytes 0-17 of its 29; add_entry
-; pads a name with zeros): h = rol16(h), then high ^= b, then low +=
-; high (eight bits, no carry: the same 20 bytes as the old fold). Another
-; window of the same directory holds other names. Sizes and dates are left
-; out: a file saved by the editor keeps its tag.
+; pads a name with zeros): h = rol16(h), then high ^= b, then low =
+; rol8(low + high) (eight bits, no carry). Another window of the same
+; directory holds other names. Sizes and dates are left out: a file saved
+; by the editor keeps its tag.
 ; The exclusive-or is what makes the fold non-linear. With rotation and
 ; addition alone, a byte's weight depended only on its distance modulo 16
 ; from the end: two entries 8 apart exchanged (18 bytes each, a rotation
 ; by 144 = 9 x 16), or "AB" turned into "CA" (2B + A = 2A + C), left the
 ; word unchanged, and a tag then marked another file (bug hunt 2,
 ; tools/test_keep_tags.py plays both cases and random permutations).
+; Without the final rotation (bug hunt 3), two edits two bytes apart in one
+; name, +4 then +1 ("PIC.00" become "PIG.10"), still cancelled out: 21
+; collisions in the 90,531 two-byte edits of three names where 1.4 are
+; expected. The rotation (3 bytes) leaves none in that set, nor in any
+; two-byte edit within three positions, and each step stays a bijection
+; of h for a given byte.
 ; The field offsets are those tools/test_abi_freeze.py freezes. A full
 ; table folds in about a tenth of a second.
         .export _panel_hash
@@ -239,6 +245,8 @@ fold:   tax                     ; X = the byte (free in both loops above)
         sta tmp3
         clc
         adc tmp2                ; low += high, no carry out
+        cmp #$80                ; then low = rol8(low): C = bit 7
+        rol a
         sta tmp2
         rts
 
