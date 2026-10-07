@@ -221,18 +221,6 @@ def main():
                  line == 'Copied into the image; source kept.', line)
             print('cycles : parcours et copie dans le verger %d' % run.cycles, flush=True)
 
-            # 6b. Un sapling dont les 256 pointeurs alternent entre deux pages
-            #     du bitmap (4 096 blocs) : le parcours chargeait une page par
-            #     pointeur, 256 lectures sans signe de vie ; une page par page
-            #     maintenant (cycles mesures avant/apres : voir le commit).
-            mount('FRAG.PO', 'FRAG')
-            asked, line = run('HELLO.TXT', b'Y')
-            s.ok('un sapling disperse sur deux pages du bitmap recoit le fichier',
-                 line == 'Copied into the image; source kept.', line)
-            print('cycles : parcours et copie, sapling sur deux pages %d' % run.cycles, flush=True)
-            s.ok('le parcours du sapling disperse ne recharge pas une page par pointeur',
-                 run.cycles < 8000000, run.cycles)
-
             # 7. Dans un sous-dossier de l'image.
             if s.cursor_row(40) is None:
                 s.key(b'\t')
@@ -241,6 +229,19 @@ def main():
             asked, line = run('THIRD.TXT', b'Y')
             s.ok('un fichier entre dans un sous-dossier de l image',
                  line == 'Copied into the image; source kept.', line)
+
+            # 7b. Un sapling dont les 256 pointeurs alternent entre deux pages
+            #     du bitmap (4 096 blocs) : le parcours chargeait une page par
+            #     pointeur, 256 lectures sans signe de vie ; une page par page
+            #     maintenant. Mesure (65C02) : 11,4 millions de cycles avant,
+            #     3,8 a 4,2 millions apres.
+            mount('FRAG.PO', 'FRAG')
+            asked, line = run('HELLO.TXT', b'Y')
+            s.ok('un sapling disperse sur deux pages du bitmap recoit le fichier',
+                 line == 'Copied into the image; source kept.', line)
+            print('cycles : parcours et copie, sapling sur deux pages %d' % run.cycles, flush=True)
+            s.ok('le parcours du sapling disperse ne recharge pas une page par pointeur',
+                 run.cycles < 8000000, run.cycles)
 
             # 8. Le meme volume, un bloc de donnees marque libre : rien n'est ecrit.
             mount('DAMAGED.PO', 'BIG.BIN')
