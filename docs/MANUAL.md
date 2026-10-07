@@ -698,7 +698,9 @@ directory entry gives, as the panels show it; its forks are not opened.
 
 **VOLINFO** audits space, allocation and fragmentation: M bitmap, F file blocks,
 E export, N/P pages. Partial counts are unconfirmed; only a complete export ends
-with `END REPORT`. **VOLNAME** renames a volume and updates affected paths;
+with `END REPORT`. F and E leave the audit's figures as they are: a read error
+or a full destination while listing a file spoils that listing or report, not
+the audit. **VOLNAME** renames a volume and updates affected paths;
 a name already online is refused. **MKIMAGE** creates an empty PO/2MG data
 volume, without a boot program, up to 32,767 blocks.
 
@@ -733,9 +735,23 @@ written. A disk swapped once the writes have begun is not detected. **BOOTBLK** 
 boot blocks after confirmation, with readback and RAM-only originals for attempted
 restoration. **BLKVIEW** reads blocks and can extract a range; **BLKEDIT**
 changes bytes of one block and writes it back after ERASE, then reads it back
-(never on the running program's volume); **DISASM** reads
+(never on the running program's volume, and not on a disk whose block 2 no
+longer has the CRC-32 it had when opened; an image of one or two blocks is
+checked on its block 0); **DISASM** reads
 6502/65C02 instructions and exports text. Their exports can remain partial after
 an error. None of these tools should be tried first on an irreplaceable disk.
+
+**Two volumes with one name.** A path names a volume, not a drive: when two
+drives on line carry the same volume name, ProDOS opens a path on one of
+them, which may not be the one a tool would write by its drive. WIPE,
+BOOTBLK, BLKEDIT, RESCUE and VOLINFO then refuse a volume given by the
+panel's path: "Two volumes named /X: pick it in the volume list." A row of
+the volume list is opened by its drive and still works. BLKVIEW and
+UNDELETE refuse with their usual message (UNDELETE from the volume list
+too, since it reads the directory through its path); BOOTBLK refuses when
+the volume it was started from has a twin; MOVE copies and verifies through
+ProDOS instead of moving entries in place. Rename one of the two (VOLNAME)
+to work by path again.
 
 <!-- pagebreak -->
 
