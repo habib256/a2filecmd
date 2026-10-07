@@ -1,6 +1,6 @@
 # Consolidation : budgets mémoire
 
-## État actuel (6 octobre 2026, commit c515044)
+## État actuel (7 octobre 2026, commit aa1a820)
 
 Le seul tableau à jour de ce document. Relevé sur une construction neuve des
 deux éditions (`make ARCH=enh`, `make ARCH=6502`, puis `make mini`) :
@@ -35,107 +35,107 @@ doit être relâché pour faire passer un lien.
 
 | Zone : plafond et raison | 65C02 | 6502 |
 | --- | ---: | ---: |
-| MAIN — résident, jusqu’à `$BEE0` : le lanceur garde sa pile C à `$BF00` et charge `A2FILE.CODE` jusqu’à sa fin ; 32 octets de marge | 16 | 421 |
-| LC — carte langage, banque 2 `$D400-$DFFF`, derrière le code QUIT de ProDOS ; image de 3 Ko posée en `$1000` par le lanceur | 33 | 24 |
-| LOWRAM — BSS basse `$1000-$1AFF`, entre le tampon d’E/S ProDOS et la fenêtre des surcouches | 86 | 111 |
-| STACK GAP — entre la fin du code persistant (sans ONCE) et la pile C de 192 octets sous `$BF00` ; ne mesure pas la consommation de la pile | 33 | 627 |
-| FORMAT BSS — état de FORMAT jusqu’au tampon `$3E00` | 99 | 99 |
+| MAIN — résident, jusqu’à `$BEE0` : le lanceur garde sa pile C à `$BF00` et charge `A2FILE.CODE` jusqu’à sa fin ; 32 octets de marge | 12 | 392 |
+| LC — carte langage, banque 2 `$D400-$DFFF`, derrière le code QUIT de ProDOS ; image de 3 Ko posée en `$1000` par le lanceur | 21 | 19 |
+| LOWRAM — BSS basse `$1000-$1AFF`, entre le tampon d’E/S ProDOS et la fenêtre des surcouches | 84 | 109 |
+| STACK GAP — entre la fin du code persistant (sans ONCE) et la pile C de 192 octets sous `$BF00` ; ne mesure pas la consommation de la pile | 29 | 598 |
+| FORMAT BSS — état de FORMAT jusqu’au tampon `$3E00` | 98 | 98 |
 
 | Surcouche liée au résident (`$1B00`, plafond) | 65C02 | 6502 |
 | --- | ---: | ---: |
-| BATCH (`$3000`) | 2 820 | 2 834 |
+| BATCH (`$3000`) | 2 759 | 2 773 |
 | NAV (`$2000`) | 142 | 208 |
 | CATALOG (`$2000`) | 221 | 205 |
 | OPEN (`$2000`) | 11 | 11 |
 | COPY (`$2000`) | 13 | 10 |
-| FORMAT (`$3C00`) | 269 | 269 |
+| FORMAT (`$3C00`) | 49 | 49 |
 | IMAGE (`$2000`) | 22 | 24 |
 | TEXT (`$2000`) | 49 | 19 |
 | HEX (`$2000`) | 74 | 67 |
-| DELETE (`$2000`) | 286 | 296 |
-| HELP (`$2000`) | 395 | 369 |
-| RUN (`$3000`) | 517 | 514 |
+| DELETE (`$2000`) | 287 | 297 |
+| HELP (`$2000`) | 394 | 369 |
+| RUN (`$3000`) | 259 | 260 |
 | ATTR (`$2000`) | 153 | 150 |
-| EDIT (`$2C00`) | 30 | 16 |
-| MENU (`$2A00`) | 220 | 169 |
-| DISKIMG (`$3600`) | 68 | 20 |
+| EDIT (`$2C00`) | 53 | 36 |
+| MENU (`$2A00`) | 203 | 152 |
+| DISKIMG (`$3600`) | 51 | 4 |
 | IMGFS (`$2800`) | 1 315 | 1 327 |
 | DOSGET (`$2800`) | 1 217 | 1 213 |
-| UNSHRINK (`$3C00`) | 916 | 902 |
+| UNSHRINK (`$3C00`) | 901 | 888 |
 | BASLIST (`$2800`) | 752 | 743 |
 | COMPARE (`$2000`) | 59 | 83 |
 | SEARCH (`$2000`) | 191 | 207 |
-| BINARY2 (`$2800`) | 981 | 1 001 |
+| BINARY2 (`$2800`) | 953 | 973 |
 | AWP (`$2000`) | 144 | 121 |
 
 | Surcouche à table de services | Fenêtre (code + BSS) | Fichier 65C02 / 6502 | Libres 65C02 / 6502 |
 | --- | --- | ---: | ---: |
 | ARLEQUIN (big) | `$1B00-$1FFF` | 1 154 / 1 171 | 99 / 82 |
-| AWDATA (big) | `$1B00-$3FFF` | 8 034 / 8 181 | 160 / 13 |
-| BLKEDIT (big) | `$1B00-$3F9D` | 8 615 / 8 569 | 7 / 52 |
-| BLKVIEW (big) | `$1B00-$3F9D` | 9 017 / 8 996 | 6 / 27 |
-| BOOTBLK (big) | `$1B00-$2FFF` | 2 270 / 2 265 | 1 954 / 1 959 |
-| CPM (big) | `$1B00-$3FFF` | 8 114 / 8 075 | 250 / 288 |
-| CPMW (big) | `$1B00-$3FFF` | 8 483 / 8 438 | 70 / 114 |
+| AWDATA (big) | `$1B00-$3FFF` | 7 985 / 8 164 | 205 / 26 |
+| BLKEDIT (big) | `$1B00-$3F9D` | 8 261 / 8 228 | 359 / 391 |
+| BLKVIEW (big) | `$1B00-$3F9D` | 8 990 / 8 978 | 31 / 43 |
+| BOOTBLK (big) | `$1B00-$2FFF` | 2 415 / 2 412 | 1 809 / 1 812 |
+| CPM (big) | `$1B00-$3FFF` | 8 076 / 8 046 | 286 / 315 |
+| CPMW (big) | `$1B00-$3FFF` | 7 280 / 7 242 | 1 352 / 1 389 |
 | CRC (small) | `$1B00-$1FFF` | 1 152 / 1 161 | 13 / 4 |
 | DATE (small) | `$1B00-$1FFF` | 1 227 / 1 228 | 8 / 7 |
 | DGRVIEW (big) | `$1B00-$2FFF` | 3 753 / 3 844 | 1 555 / 1 464 |
 | DISASM (big) | `$1B00-$3FFF` | 7 940 / 7 935 | 885 / 890 |
-| DISKCMP (big) | `$1B00-$3FFF` | 6 924 / 6 879 | 872 / 917 |
-| DOCVIEW (big) | `$1B00-$3D5F` | 8 408 / 8 442 | 40 / 6 |
+| DISKCMP (big) | `$1B00-$3FFF` | 6 940 / 6 905 | 854 / 889 |
+| DOCVIEW (big) | `$1B00-$3D5F` | 8 404 / 8 405 | 42 / 41 |
 | DOS33W (big) | `$1B00-$3FFF` | 4 922 / 4 987 | 3 117 / 3 052 |
 | DOSIMAGE (big) | `$1B00-$3FFF` | 7 337 / 7 467 | 1 474 / 1 343 |
 | DOSPUT (big) | `$1B00-$3FFF` | 7 346 / 7 431 | 372 / 286 |
-| DOSREPL (big) | `$1B00-$3FFF` | 7 558 / 7 647 | 91 / 1 |
-| DOSWRITE (big) | `$1B00-$3FFF` | 7 303 / 7 377 | 427 / 352 |
+| DOSREPL (big) | `$1B00-$3FFF` | 7 520 / 7 618 | 127 / 28 |
+| DOSWRITE (big) | `$1B00-$3FFF` | 7 265 / 7 348 | 463 / 379 |
 | DUET (big) | `$1B00-$23FF` | 2 193 / 2 193 | 81 / 80 |
 | EXTASIE (big) | `$1B00-$1FFF` | 1 201 / 1 227 | 64 / 38 |
 | FIND (big) | `$1B00-$30FF`, SETUP `$3100-$38FF` | 6 818 / 6 847 | 341 + 862 / 392 + 833 |
-| FIXIT (big) | `$1B00-$3F9D` | 7 822 / 7 822 | 3 / 3 |
+| FIXIT (big) | `$1B00-$3F9D` | 7 566 / 7 599 | 276 / 243 |
 | FIXTYPES (big) | `$1B00-$2FFF` | 3 823 / 3 765 | 1 189 / 1 246 |
 | FONTVIEW (big) | `$1B00-$1FFF` | 1 121 / 1 127 | 133 / 126 |
 | GMAGIC (big) | `$1B00-$1FFF`, HGR `$2000-$3FFF`, LOW `$0C00-$0FFF` | 4 109 / 4 109 | 9 + 6 314 + 12 / 6 + 6 314 + 12 |
-| GOTO (big) | `$1B00-$2FFF` | 5 030 / 5 012 | 72 / 89 |
+| GOTO (big) | `$1B00-$2FFF` | 5 073 / 5 046 | 29 / 55 |
 | IDENT (big) | `$1B00-$3FFF` | 6 267 / 6 315 | 3 134 / 3 085 |
 | IMGCONV (big) | `$1B00-$3FFF` | 8 777 / 8 943 | 205 / 38 |
-| IMGPUT (big) | `$1B00-$3FFF` | 8 000 / 7 983 | 97 / 113 |
-| INTBASIC (big) | `$1B00-$3FFF` | 3 646 / 3 687 | 5 508 / 5 467 |
+| IMGPUT (big) | `$1B00-$3FFF` | 8 025 / 7 977 | 28 / 75 |
+| INTBASIC (big) | `$1B00-$3FFF` | 3 863 / 3 906 | 5 182 / 5 139 |
 | LZ4FH (big) | `$1B00-$1FFF` | 1 255 / 1 219 | 8 / 43 |
 | MACPAINT (big) | `$1B00-$1FFF` | 1 111 / 1 114 | 46 / 43 |
-| MDVIEW (big) | `$1B00-$2FFF` | 4 647 / 4 626 | 545 / 566 |
+| MDVIEW (big) | `$1B00-$2FFF` | 4 729 / 4 707 | 463 / 485 |
 | MKIMAGE (big) | `$1B00-$3FFF` | 4 019 / 4 097 | 5 157 / 5 079 |
-| MOVE (big) | `$1B00-$3FFF` | 8 382 / 8 393 | 285 / 273 |
+| MOVE (big) | `$1B00-$3FFF` | 8 344 / 8 364 | 321 / 300 |
 | MUSIC (big) | `$1B00-$2FFF` | 2 752 / 2 713 | 2 551 / 2 589 |
 | NEWSROOM (big) | `$1B00-$1FFF` | 948 / 954 | 250 / 243 |
-| NIBCOPY (big) | `$1B00-$3FFF` | 6 249 / 6 285 | 2 363 / 2 327 |
+| NIBCOPY (big) | `$1B00-$3FFF` | 7 443 / 7 474 | 1 053 / 1 022 |
 | NRCLIP (big) | `$1B00-$1FFF`, HGR `$2000-$3FFF`, LOW `$0C00-$0FFF` | 2 681 / 2 681 | 85 + 7 583 + 101 / 82 + 7 583 + 101 |
 | PACKFOT (big) | `$1B00-$1FFF` | 1 218 / 1 249 | 43 / 12 |
 | PAINT816 (big) | `$1B00-$1FFF` | 1 204 / 1 215 | 48 / 37 |
-| PASCAL (big) | `$1B00-$3FFF` | 7 057 / 7 032 | 1 628 / 1 652 |
-| PASCALW (big) | `$1B00-$3FFF` | 8 444 / 8 393 | 71 / 121 |
+| PASCAL (big) | `$1B00-$3FFF` | 7 019 / 7 003 | 1 664 / 1 679 |
+| PASCALW (big) | `$1B00-$3FFF` | 7 236 / 7 242 | 1 358 / 1 351 |
 | PRINTSHOP (big) | `$1B00-$1FFF` | 1 000 / 1 022 | 265 / 242 |
 | PT3 (big) | `$1B00-$36FF`, PG `$3B00-$3FBF` | 9 264 / 9 264 | 86 + 131 / 20 + 131 |
 | PURPLE (big) | `$1B00-$1FFF` | 1 261 / 1 265 | 8 / 3 |
 | RENAME (small) | `$1B00-$1FFF` | 1 208 / 1 223 | 18 / 3 |
-| REPAIR (big) | `$1B00-$3F9D` | 7 842 / 7 862 | 50 / 30 |
-| RESCUE (big) | `$1B00-$3FFF` | 6 523 / 6 587 | 2 481 / 2 416 |
-| SCIIBIN (big) | `$1B00-$3FFF` | 6 254 / 6 251 | 327 / 330 |
+| REPAIR (big) | `$1B00-$3F9D` | 7 820 / 7 884 | 77 / 13 |
+| RESCUE (big) | `$1B00-$3FFF` | 6 607 / 6 682 | 2 395 / 2 319 |
+| SCIIBIN (big) | `$1B00-$3FFF` | 6 415 / 6 417 | 160 / 158 |
 | SHAPES (big) | `$1B00-$1FFF` | 1 236 / 1 239 | 3 / 0 |
 | SYNC (big) | `$1B00-$3FFF` | 6 981 / 7 008 | 745 / 717 |
 | TAGPAT (small) | `$1B00-$1FFF` | 1 228 / 1 228 | 6 / 6 |
-| TREE (big) | `$1B00-$3FFF` | 4 942 / 4 963 | 3 399 / 3 378 |
+| TREE (big) | `$1B00-$3FFF` | 4 979 / 5 002 | 3 362 / 3 339 |
 | TXTCONV (big) | `$1B00-$3FFF` | 6 096 / 6 134 | 2 782 / 2 743 |
-| UNDELETE (big) | `$1B00-$3FFF` | 6 934 / 6 938 | 25 / 21 |
-| UNSQ (big) | `$1B00-$3FFF` | 5 959 / 6 029 | 1 429 / 1 358 |
+| UNDELETE (big) | `$1B00-$3FFF` | 6 909 / 6 924 | 48 / 33 |
+| UNSQ (big) | `$1B00-$3FFF` | 6 056 / 6 127 | 1 329 / 1 257 |
 | UNWRAP (big) | `$1B00-$3FFF` | 6 657 / 6 662 | 1 314 / 1 308 |
 | VERIFY (small) | `$1B00-$1FC1` | 1 114 / 1 129 | 55 / 40 |
-| VISICALC (big) | fixe `$1B00-$25FF`, phases `$2600-$35FF`, BSS `$3600-$3FFF` | 4 007 / 4 007 | 66 (VCB 16) / 63 (VCB 16) |
-| VOLINFO (big) | `$1B00-$3F9D` | 7 672 / 7 624 | 251 / 299 |
+| VISICALC (big) | fixe `$1B00-$25FF`, phases `$2600-$35FF`, BSS `$3600-$3FFF` | 4 216 / 4 216 | 156 (VCB 13) / 153 (VCB 13) |
+| VOLINFO (big) | `$1B00-$3F9D` | 7 711 / 7 653 | 208 / 266 |
 | VOLNAME (small) | `$1B00-$1FFF` | 1 156 / 1 139 | 14 / 31 |
-| WIPE (big) | `$1B00-$2FFF` | 5 185 / 5 150 | 26 / 61 |
+| WIPE (big) | `$1B00-$2FFF` | 5 159 / 5 130 | 50 / 79 |
 
-Mini (`tools/check_mini_layout.py`) : résident jusqu'à `$95EC`, **20**
-octets libres sous DOS (`$9600`) ; zone basse 1 octet sous `$2000` ;
+Mini (`tools/check_mini_layout.py`) : résident jusqu'à `$95FD`, **3**
+octets libres sous DOS (`$9600`) ; zone basse 5 octets sous `$2000` ;
 moteur de formatage 459 octets en `$0200`, 5 octets sous les vecteurs DOS
 `$03D0`.
 
