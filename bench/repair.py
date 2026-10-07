@@ -79,17 +79,22 @@ MIXED = ['file_count_high', 'dir_eof_wrong', 'parent_wrong', 'bitmap_free_used']
 PLAN = 'Plan: %u corrections over %u blocks. Nothing written yet.'
 KEYS = 'F fix  ESC back'
 ASK = 'Type FIX to confirm'
+# The second word of a plan that gives lost blocks back (bug hunt 2): asked
+# BEFORE the FIX question, under the plan screen that lists the blocks.
+ASKFREE = 'Type FREE to give them back'
+LOSTLN = 'Lost blocks: '
 XLINK = 'Cross-linked blocks: copy both files to another volume before any repair.'
 DONE = 'Applied %u of %u blocks; rescan clean: repaired.'
 NOTHING = 'Nothing written.'
 KEPT = 'Lost blocks may hold a damaged file: nothing written. See FIXIT.'
-NOPLAN = 'Scan incomplete: no repair.'
+STALE = 'Used blocks marked free: copy the files off this volume, write nothing to it.'
+NOPLAN = 'Directory not trusted: nothing written. See FIXIT.'
 # Un pointeur abime par disquette, et le refus attendu (tools/test_repair.py
 # tient les memes sur l'hote, avec l'etat d'avant le correctif).
 POINTERS = (('sub_key_at_a_file_block', NOPLAN),
             ('root_link_to_a_free_block', NOPLAN),
             ('entry_looks_deleted', KEPT),
-            ('seedling_key_moved', KEPT),
+            ('seedling_key_moved', STALE),
             ('directory_reads_as_a_seedling', KEPT))
 
 
@@ -224,9 +229,18 @@ def repaired(tmp, po, expect, writes, label='apres la reparation'):
              KEYS in text and not any(k in text for k in ('R rescan', 'P plan')),
              text)
         s.ok('rien n est ecrit avant la question', 'Nothing written yet.' in text)
+        if 'BM_LOST' in expect:
+            listed = text.split(LOSTLN, 1)[1].split('\n', 1)[0].split() if LOSTLN in text else []
+            s.ok('les blocs perdus sont nommes sur l ecran de plan',
+                 len(listed) == expect['BM_LOST'] and all(b.isdigit() for b in listed), text)
 
-        # F, puis le mot en entier
+        # F, le mot FREE si le plan rend des blocs perdus, puis FIX en entier
         s.key(b'F')
+        if 'BM_LOST' in expect:
+            s.wait(lambda: ASKFREE in s.rows()[22], 'la question FREE', 60)
+            p.stable()
+            s.type('FREE')
+            s.key(RET)
         s.wait(lambda: ASK in s.rows()[22], 'la question FIX', 60)
         p.stable()
         s.type('FIX')
@@ -246,9 +260,10 @@ def refused(tmp, po, label, escape, expect=XLINK):
         s.select('/' + VOLUME)
         menu_run(s, p, 'REPAIR')
         if escape:
+            # the volume carries lost blocks: the first question is FREE
             wait_plan(s, p)
             s.key(b'F')
-            s.wait(lambda: ASK in s.rows()[22], 'la question FIX', 60)
+            s.wait(lambda: ASKFREE in s.rows()[22], 'la question FREE', 60)
             p.stable()
             s.key(ESC)
             note = wait_note(s, p)

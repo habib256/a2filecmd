@@ -22,8 +22,10 @@ Une seule session POM2 :
 1. FIXIT pose la question de la profondeur, « Q quick (directories)  F full
    ESC back » ; Echap rend la main sans rien lire de plus, la memoire AUX
    intacte, et le verdict dit « Scan cancelled » ;
-2. Q, puis N a la question « ALL /RAM files will be LOST. Continue? » :
-   rien n'est parcouru, la memoire AUX est intacte, meme verdict ;
+2. /RAM est rendue occupee (son compteur de fichiers), Q, puis N a la
+   question « ALL /RAM files will be LOST. Continue? », posee par le coeur
+   (aux_consent) : rien n'est parcouru, la memoire AUX est intacte, meme
+   verdict. Un /RAM vide ne pose pas la question (bug hunt 2) ;
 3. Q, puis Y : le controle rapide, titre « - QUICK », ne nomme que
    FILE_COUNT, au bloc et au rang de l'oracle ;
 4. R repose la question de la profondeur mais pas celle de /RAM ; F : le
@@ -33,7 +35,7 @@ Une seule session POM2 :
    /RAM toujours en ligne ; puis un controle complet coupe par Echap garde
    son ecran de constats (la touche ne fuit plus, `tools/test_strobe.py`)
    et se dit annule ;
-6. REPAIR : la question de /RAM est reposee (autre surcouche), le plan
+6. REPAIR : /RAM, reconstruite vide par FIXIT, ne pose plus la question, le plan
    compte deux corrections sur deux blocs, F puis FIX, « rescan clean:
    repaired ».
 
@@ -170,7 +172,9 @@ def main():
             s.ok('Echap : la memoire AUX est intacte',
                  p.peek(0x4000, len(PATTERN), bank='aux') == PATTERN)
 
-            # 2. N a la question de /RAM
+            # 2. N a la question de /RAM, posee parce que /RAM porte un fichier
+            if ram:
+                s.ram_occupied()
             start('FIXIT')
             s.wait(lambda: s.has(MODES), 'la question de la profondeur', 60)
             p.stable()
@@ -191,7 +195,7 @@ def main():
             s.key(b'Q')
             s.wait(lambda: AUXASK in s.rows()[22], 'la question de /RAM', 60)
             c0 = cycles(p)
-            s.allow_aux(always=True)       # FIXIT asks whatever /RAM holds
+            s.allow_aux()                  # /RAM still counts its file: asked
             s.wait(lambda: s.has('ESC/RETURN back'), 'les constats du controle rapide', 600)
             quick = cycles(p) - c0
             p.stable()
@@ -242,6 +246,8 @@ def main():
 
             # 5b. Echap pendant le parcours : l'ecran des constats reste. La
             # touche suit le Y dans la file du clavier, le parcours la lit.
+            if ram:
+                s.ram_occupied()           # FIXIT rebuilt it empty: ask again
             start('FIXIT')
             s.wait(lambda: s.has(MODES), 'la question de la profondeur', 60)
             p.stable()
@@ -261,7 +267,7 @@ def main():
 
             # 6. REPAIR
             start('REPAIR')
-            s.allow_aux(always=True)
+            s.allow_aux()                  # /RAM is empty: no question
             s.wait(lambda: s.has(KEYS), 'l ecran de plan de REPAIR', 1200)
             p.stable()
             text = '\n'.join(s.rows())
