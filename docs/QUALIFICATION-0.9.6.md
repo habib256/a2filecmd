@@ -1,7 +1,7 @@
-# Qualification du candidat 0.9.6
+# Qualification de la version 0.9.6
 
 Date : 7 octobre 2026. Branche `release-0.9.6`, sources natives au commit
-`b4cd129`. **Préparation de release ; publication et tag non effectués.**
+`b4cd129`. Qualification terminée avant publication du tag `v0.9.6`.
 La recette sur matériel physique reste à faire
 ([HARDWARE-CHECKLIST.md](HARDWARE-CHECKLIST.md)).
 
@@ -72,7 +72,7 @@ identiques à cette construction et passent `check_images.py`. Ce constat
 justifie de vérifier les empreintes après les essais, même si les bancs
 et le contrôle des fichiers livrés passent.
 
-## Empreintes du candidat
+## Empreintes de la construction locale
 
 Le manifeste `dist/SHA256SUMS-0.9.6.txt` couvre les cinq images et le PDF :
 
@@ -105,5 +105,6 @@ Le paquet local `dist/release-0.9.6/` contient les cinq images, le PDF,
 `SHA256SUMS-0.9.6.txt` et `RELEASE_NOTES.md` comme description. Les huit
 fichiers sont ceux du candidat, sans anciennes images de `dist/`. Le workflow `.github/workflows/ci.yml`
 reconstruit les images et publie lors du push du tag `v0.9.6` ; ne le pousser
-qu’après qualification terminée. Le README garde les téléchargements de
-la 0.9.5 publiée tant que la 0.9.6 est un candidat.
+qu’après qualification terminée. Les téléchargements du README ciblent
+la 0.9.6. Les empreintes jointes à la release sont celles de la construction
+CI publiée ; celles ci-dessus identifient la construction locale qualifiée.

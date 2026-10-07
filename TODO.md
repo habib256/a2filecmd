@@ -1,14 +1,13 @@
 # A2 File Cmd — feuille de route
 
-[0.9.5](https://github.com/habib256/a2filecmd/releases/tag/v0.9.5)
-([CHANGELOG](CHANGELOG.md)), publiée le 4 octobre 2026 ; la 0.9.6 est en
-préparation (branche `release-0.9.6`). Mini et ProDOS, même numéro ;
+[0.9.6](https://github.com/habib256/a2filecmd/releases/tag/v0.9.6)
+([CHANGELOG](CHANGELOG.md)), publiée le 7 octobre 2026. Mini et ProDOS, même numéro ;
 `make mini` ne partage pas `src/a2fc.c`.
 Ce qui est fait vit dans le CHANGELOG et les rapports
 [0.9.1](docs/QUALIFICATION-0.9.1.md), [0.9.2](docs/QUALIFICATION-0.9.2.md),
 [0.9.3](docs/QUALIFICATION-0.9.3.md), [0.9.4](docs/QUALIFICATION-0.9.4.md),
 [0.9.5](docs/QUALIFICATION-0.9.5.md),
-[0.9.6](docs/QUALIFICATION-0.9.6.md) (candidat) ; ce fichier ne garde que la suite.
+[0.9.6](docs/QUALIFICATION-0.9.6.md) ; ce fichier ne garde que la suite.
 
 Préserver les données prime ([AGENTS.md](AGENTS.md)). Ne pas relever
 les plafonds ([MEMORY-BUDGETS.md](docs/MEMORY-BUDGETS.md)). Une étape

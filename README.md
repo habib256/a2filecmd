@@ -46,18 +46,17 @@ The [guide](docs/MANUAL.md) lists the supported formats and each tool's limits.
 
 ## Choose your disk
 
-**[0.9.5 is the published release](https://github.com/habib256/a2filecmd/releases/tag/v0.9.5).**
-The 0.9.6 candidate is prepared on `release-0.9.6`; see its
-[qualification report](docs/QUALIFICATION-0.9.6.md).
+**[0.9.6 is the published release](https://github.com/habib256/a2filecmd/releases/tag/v0.9.6).**
+See the [qualification report](docs/QUALIFICATION-0.9.6.md) for checks and remaining limits.
 No build is needed to use the release downloads.
 
-| Your setup | Download from 0.9.5 |
+| Your setup | Download from 0.9.6 |
 |---|---|
-| **ProDOS · hard disk or emulator, any IIe** | [XL — complete with demonstrations](https://github.com/habib256/a2filecmd/releases/download/v0.9.5/A2FILECMD-PRODOS-XL-0.9.5.2mg) |
-| **ProDOS · enhanced IIe, //c or IIgs** | [XL enhanced — MouseText, optional mouse](https://github.com/habib256/a2filecmd/releases/download/v0.9.5/A2FILECMD-PRODOS-XL-65C02-enhanced-0.9.5.2mg) |
-| **ProDOS · all tools without sample media** | [800K — complete](https://github.com/habib256/a2filecmd/releases/download/v0.9.5/A2FILECMD-PRODOS-800K-0.9.5.po) |
-| **ProDOS · one 5¼-inch program disk** | [140K — essentials](https://github.com/habib256/a2filecmd/releases/download/v0.9.5/A2FILECMD-PRODOS-140K-0.9.5.dsk) |
-| **Apple II+ · 48 KB · two Disk II drives** | [DOS3.3 — standalone 40-column edition](https://github.com/habib256/a2filecmd/releases/download/v0.9.5/A2FILECMD-DOS3.3-0.9.5.dsk) |
+| **ProDOS · hard disk or emulator, any IIe** | [XL — complete with demonstrations](https://github.com/habib256/a2filecmd/releases/download/v0.9.6/A2FILECMD-PRODOS-XL-0.9.6.2mg) |
+| **ProDOS · enhanced IIe, //c or IIgs** | [XL enhanced — MouseText, optional mouse](https://github.com/habib256/a2filecmd/releases/download/v0.9.6/A2FILECMD-PRODOS-XL-65C02-enhanced-0.9.6.2mg) |
+| **ProDOS · all tools without sample media** | [800K — complete](https://github.com/habib256/a2filecmd/releases/download/v0.9.6/A2FILECMD-PRODOS-800K-0.9.6.po) |
+| **ProDOS · one 5¼-inch program disk** | [140K — essentials](https://github.com/habib256/a2filecmd/releases/download/v0.9.6/A2FILECMD-PRODOS-140K-0.9.6.dsk) |
+| **Apple II+ · 48 KB · two Disk II drives** | [DOS3.3 — standalone 40-column edition](https://github.com/habib256/a2filecmd/releases/download/v0.9.6/A2FILECMD-DOS3.3-0.9.6.dsk) |
 
 - Every ProDOS edition needs **128 KB and 80 columns**.
 - **Enhanced or not** is the only choice: the enhanced XL is for an enhanced
