@@ -1230,10 +1230,18 @@ static void enter_dir(struct Panel* pan, const struct Entry* e)
 #pragma code-name (push, "LC")
 #pragma rodata-name (push, "LC")
 
+/* Every question on row 22 starts here (confirm, prompt, disk_question,
+ * di_ask, may_overwrite). The keyboard strobe is cleared on the way in: a
+ * key typed during the long phase before the question -- a Y while
+ * VISICALC read its sheet or IMGPUT walked its image -- used to sit in
+ * $C000 and answer "ALL /RAM files will be LOST. Continue?" before it was
+ * even shown (bug hunt 2, replayed on POM2). A store, not a read: cc65
+ * drops a read whose value is discarded (tools/test_strobe.py). */
 static void question_begin(void)
 {
     open_row22();
     revers(1);
+    *(volatile unsigned char*)0xC010 = 0;
 }
 
 static unsigned char confirm(const char* text)

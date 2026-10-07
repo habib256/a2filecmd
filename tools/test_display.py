@@ -238,7 +238,10 @@ class Display(unittest.TestCase):
                  section(source, 'static unsigned char is_up(', 'unsigned char __fastcall__ tag_count('),
                  section(source, 'static void draw_entry(', '/* The separator line'),
                  section(source, 'static void draw_info(', 'static void draw_all('),
-                 section(source, 'static void question_begin(', 'unsigned int __fastcall__ hex_value('),
+                 # the keyboard strobe store, on the host: a variable (test_ui.py models it)
+                 'static volatile unsigned char c010;\n' +
+                 section(source, 'static void question_begin(', 'unsigned int __fastcall__ hex_value(')
+                 .replace('*(volatile unsigned char*)0xC010 = 0;', 'c010 = 0;'),
                  section(source, '\nconst char a2fc_header[]', 'const char MAIN_KEYS[]'),
                  'const char msg_parent[]="Parent directory";\n']
         with tempfile.TemporaryDirectory(prefix='a2fc-display-') as tmp:
