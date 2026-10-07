@@ -67,6 +67,8 @@ pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 | `bootblk.py` | BOOTBLK : les blocs 0 et 1 d'une disquette jetable en lecteur 2, barbouilles avant l'amorcage, recopies depuis le volume du programme |
 | `move.py` | MOVE deplace une entree sans recopier ses blocs, y compris vers un repertoire plein qui doit gagner un bloc ; VOLINFO juge le volume |
 | `move_bitmap.py` | l'ecriture brute du bitmap par MOVE face a l'allocation de ProDOS 8 : aucun bloc donne deux fois |
+| `album_tags.py` | les marques d'un grand dossier (150 entrees) a travers un album qui passe dans la deuxieme fenetre de 139 entrees puis revient : rendues sur leur fenetre, comme dans un album qui reste dans la premiere |
+| `case_paths.py` | A2FILE.CFG met les deux panneaux sur le meme dossier ecrit en minuscules et en majuscules (puis avec une barre finale) : les panneaux montrent l'orthographe de ProDOS, V refuse « Both panels show the same directory. » et le fichier reste intact sur le disque |
 | `intbasic.py` | INTBASIC liste un programme Integer BASIC ($FA), l'ecran compare au listing rebati depuis la regle du format |
 | `physical.py` | un vrai DOS 3.3 en lecteur 2 des l'amorcage (`--disk2`) : reconnu a sa VTOC, liste comme volume, sa ligne tient dans le panneau |
 | `nibcopy.py` | le transport NIBCOPY (C et 6502) sur des images DOS jetables |

@@ -168,6 +168,22 @@ def main():
             s.wait(lambda: s.has('Type  Aux'), 'panels restored', 60); p.stable()
             s.ok('Escape with the table in AUX: /RAM rebuilt, said so', s.has('Stopped. /RAM rebuilt.'))
             s.ok('/RAM empty again, readable, still in the folder', s.ram_files() == 0 and s.has('SLOWAUX'))
+            # A Y typed while the sheet is read, before the /RAM question
+            # exists, must not answer it (bug hunt 2: it did, and /RAM's
+            # files were lost unasked). The question shows and waits.
+            s.ram_occupied(1)
+            s.select('SLOWAUX'); s.key(RET)
+            s.wait(spin, 'the larger sheet being read again', 120)
+            s.key(b'Y')
+            s.wait(lambda: s.has('ALL /RAM files will be LOST'), 'the AUX question after a Y typed ahead', 120)
+            time.sleep(3)
+            s.ok('a Y typed ahead does not answer the /RAM question',
+                 s.has('ALL /RAM files will be LOST') and s.ram_files() == 1)
+            s.key(b'N')
+            s.wait(lambda: s.has('Sheet too big'), 'the refusal after the question', 60)
+            s.wait(lambda: s.has('Type  Aux'), 'panels restored', 60); p.stable()
+            s.ok('refused after the type-ahead: /RAM untouched', s.ram_files() == 1)
+            s.ram_occupied(0)
             # Another key typed meanwhile is not read there: it waits for
             # the sheet, whose first screen it pages.
             data = files['WORK/AHEAD#040000']

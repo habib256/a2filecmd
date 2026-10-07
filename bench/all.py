@@ -145,6 +145,8 @@ step('paging_swap', 'enh', 'safety', ENH_BUILD)
 step('overlay_load', 'reject', 'safety', {}, needs=('host', 'boot', 'dos-host'))
 step('batch_missing', 'restore', 'safety', {})
 step('move_bitmap', 'alloc', 'safety', {})
+step('album_tags', 'window', 'safety', {})
+step('case_paths', 'cfg', 'safety', {})
 
 # -- A whole session, and what chains after it -------------------------------
 step('run', 'enh', 'session', FULL, needs=('host', 'boot', 'full-enh'))
