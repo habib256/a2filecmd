@@ -27,6 +27,9 @@ int main(void){
  for(i=0;i<strlen(good);++i){strcpy(CF->read,good);CF->size=i;if(cfg_parse(1))return 2;}
  if(strcmp(panels[0].path,"/LEFT")||strcmp(panels[1].path,"/RIGHT"))return 3;
  strcpy(CF->read,"\\r\\rS0A0\\r");CF->size=7;if(!cfg_parse(1)||panels[0].path[0]||panels[1].path[0])return 4;
+ /* bug hunt 2: upshifted, a trailing slash dropped, as both compilers build it */
+ strcpy(CF->read,"/workhd/Dir.1/\\r/v\\rS0A0\\r");CF->size=strlen(CF->read);
+ if(!cfg_parse(1)||strcmp(panels[0].path,"/WORKHD/DIR.1")||strcmp(panels[1].path,"/V"))return 5;
  return 0;
 }
 '''

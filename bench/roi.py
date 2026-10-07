@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Preferences, NAV and marked MOVE, only on disposable volumes."""
+import os
 import subprocess
 import sys
 import tempfile
@@ -111,7 +112,7 @@ def main():
             s.ok(f'moved directory left S{i}',gone)
         s.ok('preexisting list bytes preserved',data(image,'D4/A2MOVE.LST')==b'personal manifest name\r')
         for i in range(1,10):s.ok('unmarked bytes S'+str(i),data(image,f'S{i}/B')==b'untagged original\r')
-        with Pom2(tmp/'WORKHD.hdv',floppy2=disk,port=6893) as p:
+        with Pom2(tmp/'WORKHD.hdv',floppy2=disk,port=6893+int(os.environ.get('A2FC_PORT_OFFSET','0'))) as p:
             s2=Session(p);s2.boot();p.stable()
             s.ok('verified configuration loads on restart',s2.rows()[0].startswith('/WORKHD/S9') and s2.rows()[0][40:].startswith('/TARGET/DST9'))
         return ok_all(s,'configuration and batch MOVE')
