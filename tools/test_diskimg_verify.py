@@ -91,6 +91,12 @@ int main(int argc,char**argv) {
     memcpy(original,disks[0],sizeof original);
     DI->total=280; DI->dst.kind=mode==4 ? 1 : 0;
     DI->src.unit=0x60; DI->dst.unit=atoi(argv[2]) ? 0x60 : 0xE0;
+    if (mode == 10) {                /* diskimg_entry's single-drive prologue: the */
+        inserted = 0;                 /* source is in the drive at the first TARGET */
+        DI->want = 8;                 /* prompt, before the mark exists */
+        result = di_ask();
+        if (!result) result = di_copy(1);
+    } else
     result=di_copy(atoi(argv[2]));
     if(memcmp(disks[0],original,sizeof original))source_intact=0;
     if(memcmp(disks[1],original,sizeof original))copied=0;
@@ -144,4 +150,17 @@ class Diskimg(unittest.TestCase):
         self.assertEqual(self.run_copy(7,1,'S'),[39,1,0,0,0,1,0,1,0,0])
     def test_protected_target_stops_at_the_mark(self):
         self.assertEqual(self.run_copy(8,1,'ST'),[43,1,0,0,0,0,0,1,0,0])
+    def test_first_target_prompt_refuses_the_source(self):
+        """Bug hunt 2: at "Insert TARGET" before the mark, di_ask(8) returned
+        on any key, and the mark (512 x $A5 on block 2) went onto whatever
+        was in the drive: the source left there, or a fixed unit picked as
+        both source and target, lost its volume directory. The source's
+        block 2 is read first; the prompt asks again while it is seen."""
+        # the source left in (S) twice, then the target: the copy goes on
+        self.assertEqual(self.run_copy(10,1,'SST'+'ST'*4),[0,281,280,0,30,11,2,1,1,0])
+        # a unit that never changes (the source again and again), then Escape:
+        # nothing written anywhere
+        self.assertEqual(self.run_copy(10,1,'SSE'),[255,0,0,0,0,3,2,1,0,0])
+        # the target at once: no WRONG DISK
+        self.assertEqual(self.run_copy(10,1,'T'+'ST'*4),[0,281,280,0,30,9,0,1,1,0])
 if __name__=='__main__': unittest.main()

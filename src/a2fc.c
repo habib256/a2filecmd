@@ -3380,22 +3380,33 @@ static void di_stage(unsigned char i, unsigned char put)
  * write onto the source (nor onto another disk) nor read the target as
  * the source. */
 #define DI_MARK 0xA5
-/* Asks for the SOURCE (want = 0) or the TARGET (want = 1) and asks again
- * while the disk inserted is the wrong one; another `want` only asks.
+/* Asks for the SOURCE (DI->want = 0) or the TARGET (1) and asks again
+ * while the disk inserted is the wrong one. want = 8 is the first TARGET
+ * prompt, before the mark exists: the source still in the drive, its
+ * block 2 is read first into copy_buf (want becomes 2), and the disk
+ * inserted is the wrong one while it shows that same block -- the source
+ * left in the drive, or a fixed unit picked for both sides, used to
+ * receive the mark on its own volume directory (bug hunt 2). A target
+ * whose block 2 equals the source's byte for byte is not told apart
+ * (WIPE's limit): Escape, then copy with two drives.
+ * The caller sets DI->want: no parameter for cc65 to push and pop.
  * Returns 0, the ProDOS error, or $FF on Escape. */
-static unsigned char __fastcall__ di_ask(unsigned char want)
+static unsigned char di_ask(void)
 {
-    DI->want = want;
     DI->wrong = S_EMPTY;
+    if (DI->want > 7) goto read;
     for (;;) {
         question_begin();
         cprintf(S_INSERT, DI->wrong, DI->want ? S_TARGET : S_SOURCE, DI->source, di_where(DI->src.unit));
         revers(0);
         if (cgetc() == KEY_ESC) return 0xFF;
-        if (DI->want > 1) return 0;
+read:
         if ((DI->sr = di_xfer(&DI->src, 2, 0))) return DI->sr;
-        memset(copy_buf, DI_MARK, 512);
-        if (!memcmp(copy_buf, DI_BLOCK, 512) == DI->want) return 0;
+        if (DI->want > 7) { memcpy(copy_buf, DI_BLOCK, 512); DI->want = 2; continue; }
+        /* a SOURCE wants anything but the mark, a TARGET the mark, the
+         * first TARGET (2, even) anything but the source's block 2 */
+        if (DI->want < 2) memset(copy_buf, DI_MARK, 512);
+        if (!memcmp(copy_buf, DI_BLOCK, 512) == (DI->want & 1)) return 0;
         DI->wrong = S_WRONG;
     }
 }
@@ -3439,13 +3450,13 @@ static unsigned char di_copy(unsigned char swap)
     while ((left = total - done) != 0) {
         n = left < per ? (unsigned char)left : per;
         DI->first = swap ? left - n : done;
-        if (swap && (r = di_ask(0))) return r;
+        if (swap && (DI->want = 0, r = di_ask())) return r;
         for (i = 0; i < n; ++i) {
             if ((r = di_xfer(&DI->src, DI->first + i, 0))) return r;
             di_stage(i, 1);
             progress_bar(S_READING, done + i + 1, total);
         }
-        if (swap && (r = di_ask(1))) return r;
+        if (swap && (DI->want = 1, r = di_ask())) return r;
         for (i = 0; i < n; ++i) {
             di_stage(i, 0);
             if ((r = di_xfer(&DI->dst, DI->first + i, 1))) return r;
@@ -3702,8 +3713,11 @@ void __fastcall__ diskimg_entry(const struct A2fcApi* a)
         dst->unit = to->unit;
         if (from == to) {
             /* One drive: the target goes in first, so that the warning
-             * names the disk really erased (the list saw the source). */
-            if (di_ask(8)) goto out;
+             * names the disk really erased (the list saw the source).
+             * di_ask keeps the source's block 2 and refuses to see it
+             * again. */
+            DI->want = 8;
+            if (di_ask()) goto out;
             di_scan();
             if (to->inuse) { strcpy(note, S_HOLDS); goto out; }
         }
