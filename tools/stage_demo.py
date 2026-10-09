@@ -35,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mkdemo
 import mkdemo_take1
 import mkdemo_viewers
+import mcs_ref
 
 DATA = Path(__file__).resolve().parents[1] / 'data'
 
@@ -93,6 +94,9 @@ def stage(demo):
             if (demo / folder / name).exists():
                 raise SystemExit(f'{folder}/{name} placed twice')
             (demo / folder / name).write_bytes(data)
+    # TXT metadata keeps Return from executing an unrecognized binary tune.
+    # This is an explicit !/MCS demonstration, not an editor .OBJ score.
+    (demo / 'MUSIC' / 'DEMO.MCS#040000').write_bytes(mcs_ref.fixture())
     shutil.copyfile(DATA / 'README.TXT', demo / 'README.TXT')
     return demo
 

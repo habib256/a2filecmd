@@ -120,7 +120,7 @@ CCDEFS =
 endif
 # These overlays reserve $3000-$3FFF for scratch (FIND: $3100-$3FFF): code AND BSS must
 # stop before their scratch area. ld65 enforces that boundary at link time.
-XPLUGINS_SCRATCH = music bootblk find goto mdview wipe dgrview fixtypes
+XPLUGINS_SCRATCH = music mcs bootblk find goto mdview wipe dgrview fixtypes
 # DOCVIEW: code and BSS in $1B00-$3D5F (its calculator), scratch $3D60-$3FFF.
 # These decode a picture into the graphics page, so they are big (the core
 # sets the tags aside and rereads the panels) but their CODE must still stop
@@ -247,7 +247,7 @@ HDV = $(BUILD)/A2FILECMD-XL.hdv
 TWOMG = $(DIST)/A2FILECMD-PRODOS-XL-$(if $(filter 65C02,$(CPU)),65C02-enhanced-,)$(A2FC_VERSION).2mg
 PO800 = $(DIST)/A2FILECMD-PRODOS-800K-$(A2FC_VERSION).po
 FULLPO = $(BUILD)/A2FILECMD-full.po
-STAGE_DEPS = $(SYSTEM) $(CODE) $(DATA)/A2FILE.HELP.TXT $(DATA)/RECOVER.TXT $(DATA)/PRODOS.SYS \
+STAGE_DEPS = $(SYSTEM) $(CODE) $(DATA)/A2FILE.HELP.TXT $(DATA)/RECOVER.TXT $(DATA)/PRODOS.SYS $(wildcard $(DATA)/licenses/*) \
        $(DATA)/prodos_boot.tmpl $(TOOLS)/mkvolume.py
 
 # BOTH_EDITIONS= in the sub-makes: given on the command line
@@ -273,6 +273,7 @@ define stage
 	for p in $(1); do cp $(CODE).$$p "$(STAGE)/A2FILE/$$p.PLG#061B00"; done
 	for p in $(2); do cp $(BUILD)/$$p.PLG "$(STAGE)/A2FILE/$$(echo $$p | tr a-z A-Z).PLG#061B00"; done
 	cp $(DATA)/A2FILE.HELP.TXT $(STAGE)/A2FILE/A2FILE.HELP.TXT
+	@if test -n "$(filter mcs,$(2))"; then mkdir -p $(STAGE)/LICENSES; cp $(DATA)/licenses/* $(STAGE)/LICENSES/; fi
 endef
 
 # BOOT: the universal 6502 floppy.
@@ -456,6 +457,9 @@ test: test-mini $(TAKE1)
 	python3 $(TOOLS)/test_wipe.py
 	python3 $(TOOLS)/test_music.py
 	python3 $(TOOLS)/test_duet.py
+	python3 $(TOOLS)/test_mcs.py
+	python3 $(TOOLS)/test_retrotext.py
+	python3 $(TOOLS)/test_fontrix.py
 	python3 $(TOOLS)/test_pt3.py
 	python3 $(TOOLS)/test_pt3_frequency.py
 	python3 $(TOOLS)/test_pt3_dual.py

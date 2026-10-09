@@ -1,5 +1,16 @@
 # Sécurité des données d’A2FC
 
+Les nouveaux lecteurs `MCS`, `PASTEXT`, `SCASM`, `MERLIN`, `LISAV2`,
+`GUTTEXT`, `TEACHTXT` et `FONTRIX` ne créent, ne remplacent et ne suppriment
+aucun fichier. Ils utilisent MAIN et l'écran texte ; aucun accès à AUX ni
+reconstruction de `/RAM`. MCS écrit en outre les deux AY et le VIA de la
+carte, après lecture, validation et fermeture réussies. Les tests injectent
+les erreurs d'ouverture, de lecture, de recherche et de fermeture selon
+les services utilisés, vérifient les octets source et exécutent le vrai C
+sur les deux CPU. Les bancs POM2 utilisent des images jetables et contrôlent
+AUX et le bas de pile. Les limites fonctionnelles sont dans
+[MCS](MCS-FORMAT.md) et [les lecteurs](LEGACY-READERS.md).
+
 La conservation des données est une exigence centrale. Les instructions
 obligatoires pour les IA et les contributeurs se trouvent dans
 [AGENTS.md](../AGENTS.md). Cette revue du 11 septembre 2026 porte sur les

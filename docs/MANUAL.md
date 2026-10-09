@@ -133,7 +133,7 @@ attributes, text editing, text/hex readers, comparison, formatting, verification
 and ProDOS image extraction. Advanced disk tools, DOS extraction, archives,
 media players and BASIC runtimes require **800K or XL**. Their menus list the
 available tools without asking for category disks. Both complete editions
-include all 87 overlays; only XL includes `DEMO/`: one example of every kind
+include all 95 overlays; only XL includes `DEMO/`: one example of every kind
 of file A2 File Cmd opens, in DOCUMENTS, PICTURES (an HGR album, and in
 CARDS two colour cards in every picture format), MOVIES (Fantavision, and a
 Take 1 movie on its DOS 3.3 disk), MUSIC, ARCHIVES, DISKS, PROGRAMS and
@@ -868,6 +868,12 @@ last chapter. Automated emulator tests do not replace trials on physical drives.
 <!-- pagebreak -->
 
 ## Credits and further reading
+
+Additional readers launched from `!` are described in
+[Legacy readers](LEGACY-READERS.md). This includes Music Construction Set
+Mockingboard exports: select the export, choose Music then MCS. P/Space
+pauses, R restarts, +/- adjusts tempo, Escape returns. The editor's `.OBJ`
+scores are not implemented; see [MCS format](MCS-FORMAT.md).
 
 A2 File Cmd is **GNU GPL v3** software by **Arnaud Verhille**. Its two-panel
 interface draws inspiration from A2Command and Norton Commander. Code provenance,

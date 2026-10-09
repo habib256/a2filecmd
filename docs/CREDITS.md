@@ -60,6 +60,23 @@ follows his player: one AY tone per voice. A2FileCmd times it with the VIA
 instead of delay loops, and scales the periods to the speaker player.
 URL: [electric-mock repository](https://github.com/cybernesto/electric-mock)
 
+**Will Harvey / Cybernesto — Music Construction Set player (MIT)**
+`src/plugins/mcs.c` follows the published `MUSIC SOURCE` sequencer and
+note table preserved in Cybernesto's mcs-player. A2FC adds strict export
+validation, foreground controls and a polled driver; no original executable
+or commercial song is distributed. The MIT notice is preserved in
+`data/licenses/MCSPLAYER.TXT`; see [MCS format](MCS-FORMAT.md).
+URL: [mcs-player](https://github.com/cybernesto/mcs-player)
+
+**faddenSoft / CiderPress II — additional format rules (Apache 2.0)**
+The legacy text readers and Fontrix preview follow CiderPress II's format
+notes and converters. The LISA v2 mnemonic table is adapted interoperability
+data. Fontrix reverse engineering is credited to Mark Long. A2FC implements
+streaming C, validation, paging and a text glyph preview; source notices and
+the Apache license are in `data/licenses/`. See
+[Legacy readers](LEGACY-READERS.md) for supported subsets.
+URL: [CiderPress II](https://github.com/fadden/CiderPress2)
+
 **GROUiK / French Touch — PT3 player for 6502 (GPL v3)**
 `PT3`'s primary player: "Vortex Tracker II v1.0 PT3 player for 6502", from
 the sources of the demo *One More Thing* (2019), translated by GROUiK from
