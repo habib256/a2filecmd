@@ -61,6 +61,9 @@ MUSIC
   WELCOME.MB       a three-voice Mockingboard tune: RETURN plays, P pauses
   CANON.ED         an Electric Duet canon, for the speaker or a Mockingboard
   DEMO.PT3         a ProTracker 3 module for the Mockingboard
+  DEMO.MCS         a generated Music Construction Set Mockingboard export:
+                   ! then MCS; P/SPACE pause, R restart, +/- tempo, ESC back
+                   Editor .OBJ scores are a different, unsupported format.
 
 ARCHIVES           the extracted files go to the other panel
   SAMPLE.SHK       a ShrinkIt archive of SAMPLE and HELLO: ! then UNSHRINK

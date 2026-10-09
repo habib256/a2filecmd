@@ -1,0 +1,23 @@
+A2 File Cmd additional format readers
+
+Music Construction Set player:
+Sequencer and note periods follow Will Harvey's published MUSIC SOURCE
+and Cybernesto's mcs-player, revision
+118279b8e73e023d11fe861bfc3dde539acbd94b.
+Copyright (c) 2017 cybernesto. MIT license: MCSPLAYER.TXT.
+https://github.com/cybernesto/mcs-player
+A2FC changes: C foreground sequencer, validation, file I/O, controls,
+polled VIA driver and hardware restoration; no original binary bundled.
+
+Legacy text readers and Fontrix:
+Format rules and LISA v2 mnemonic table follow CiderPress II,
+Copyright 2023 faddenSoft, Apache License 2.0: CIDERPRESS2.txt.
+https://github.com/fadden/CiderPress2
+Reference revision: 7a055a200e31f752f3a92bb9fe6ae6f67cd55534.
+Fontrix format reverse engineering: Mark Long.
+A2FC changes: streaming C readers, validation before display,
+MAIN-only text previews, simplified MacRoman and regression harnesses.
+
+The original works have been adapted for A2 File Cmd. No endorsement
+by the original authors is implied. These licenses apply to the credited
+material; the surrounding A2 File Cmd code remains GPL v3.

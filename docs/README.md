@@ -16,6 +16,8 @@ dans `history/`.
 | [MEMORY-BUDGETS.md](MEMORY-BUDGETS.md) | Réserves par zone mémoire, objectifs et journal de la consolidation | FR |
 | [NIBCOPY.md](NIBCOPY.md) | Copie nibble de Disk II : ce qui est conservé, régénéré et vérifié | EN |
 | [SAMPLE-MEDIA.md](SAMPLE-MEDIA.md) | Prise en charge du corpus `SAMPLE.MEDIA` (polices MGTK, LZ4FH, Print Shop, Integer BASIC) | FR |
+| [MCS-FORMAT.md](MCS-FORMAT.md) | Exports Music Construction Set, lecteur Mockingboard et limites `.OBJ` | EN |
+| [LEGACY-READERS.md](LEGACY-READERS.md) | Lecteurs Pascal, S-C, Merlin, LISA v2, Gutenberg, Teach et Fontrix | EN |
 | [screenshots/](screenshots/) | Captures des deux panneaux | — |
 
 ## Formats de fichiers

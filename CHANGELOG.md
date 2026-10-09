@@ -5,6 +5,17 @@ downloads and installation.
 
 ## [Unreleased]
 
+- Add a foreground Music Construction Set player for 2304-byte Mockingboard
+  exports, with pause, restart and tempo controls. Editor `.OBJ` score
+  conversion is still pending. No AUX memory or source-file writes.
+- Add explicit `!` readers for Apple Pascal text, S-C Assembler, Merlin,
+  LISA v2, extracted Gutenberg text and Teach data forks, plus a monochrome
+  text-screen Fontrix glyph preview. LISA v3–v5, Teach styles and Gutenberg
+  filesystem/font handling remain unsupported.
+- Add production-C tests on both CPU targets, real-file reference checks,
+  disposable POM2 benches, a generated MCS demonstration and source notices.
+  WOZ and Pinball support are excluded from this work.
+
 ## [0.9.6](https://github.com/habib256/a2filecmd/releases/tag/v0.9.6) — 2026-10-07
 
 A data-safety and reliability update, with no new format. Two bug hunts

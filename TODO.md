@@ -246,32 +246,47 @@ la spécification de chaque format. Ne restent ici que les suites.
 
 ### À faire, par ordre
 
-1. [ ] **Textes Apple Pascal** (`TEXT` des volumes Pascal : en-tête de
+1. [x] **Textes Apple Pascal** (`PASTEXT`, lancement par `!`, deux CPU ;
+   `TEXT` des volumes Pascal : en-tête de
    1 Ko, blancs compressés par DLE + compte). A2FC lit les volumes Pascal
    mais montre ces fichiers bruts. Gain rapide, fréquent sur les disques
-   Pascal ; référence : CiderPress II `ApplePascal_Text.cs`.
+   Pascal ; référence : CiderPress II `ApplePascal_Text.cs`. Lecture native
+   avec indentation DLE, pages et validation complète. Le choix automatique
+   depuis le navigateur Pascal reste à raccorder.
 2. [ ] **Sources tokenisées S-C Assembler et LISA** : illisibles
    aujourd'hui dans TEXT (jetons), fréquentes sur les disques de
    développeurs. Lister à la manière de BASLIST ; références : CiderPress II
    `SCAsm.cs`, `LisaAsm.cs` et leurs notes.
+   `SCASM` et `LISAV2` sont implémentés par `!`, avec tests du vrai C sur
+   les deux CPU. Restent LISA v3/v4/v5 et leur table de symboles.
 3. [ ] **Apple Writer** (commandes `.LM`, `.RM`, `.CJ`… en début de ligne)
    dans DOCVIEW, et **Merlin** (sources à bit haut, colonnes étiquette /
    opcode / opérande / commentaire ; CiderPress II `MerlinAsm.cs`). Tous deux
    déjà lisibles dans TEXT : c'est du confort, après 1 et 2. DOCVIEW n'a
    que quelques octets : Merlin irait plutôt dans une surcouche à part.
+   `MERLIN` est implémenté par `!` ; Apple Writer reste à faire.
 4. [ ] **Bordures Print Shop / Print Shop Companion** (BIN, 144 ou
    148 octets, 12 × 12). Disposition des octets à établir avec Print Shop
    sous POM2, puis spécification publiée dans `docs/`. Se greffe sur
    PRINTSHOP. Échantillons : 77 bordures du disque « Gordon's Print Shop
    Borders » (Asimov `productivity/graphics/printshop/`).
-5. [ ] **Polices Fontrix** : sortie de « Écarté » : CiderPress II a
+5. [x] **Polices Fontrix** : `FONTRIX`, aperçu monochrome sur écran texte
+   par `!`, testé sur 21 polices réelles et les deux CPU. Les caractères de
+   plus de 20 lignes combinent deux lignes ; pas de rendu HGR à taille réelle.
+   Sortie de « Écarté » : CiderPress II a
    maintenant un convertisseur et des notes (`FontrixFont.cs`,
    `Fontrix-notes.md`). Se greffe sur FONTVIEW ou une petite surcouche.
-6. [ ] **Music Construction Set** : le morceau compilé `.OBJ` sur
-   Mockingboard, flux déduit du source officiel du lecteur (`MUSIC
+6. [ ] **Music Construction Set** : convertir les partitions de l'éditeur
+   `.OBJ` pour le Mockingboard ; exports déduits du source officiel (`MUSIC
    SOURCE`, et [mcs-player](https://github.com/cybernesto/mcs-player),
-   MIT) ; en-tête à confirmer. Réutilise l'infrastructure de DUET.
-7. [ ] **Images WOZ ouvertes comme un dossier** (IMGFS) : c'est le
+   MIT). Les partitions et les exports sont deux formats distincts.
+   Priorité utilisateur : `MCS` lit maintenant les exports Mockingboard
+   de 2304 octets, identiques au lecteur d'origine sur dix morceaux réels,
+   validés sous sim65 et POM2 sur les deux CPU. Les `.OBJ` étudiés sont
+   des listes de notation distinctes : leur conversion reste à faire.
+   Voir `docs/MCS-FORMAT.md`.
+7. Exclu par demande utilisateur : **images WOZ ouvertes comme un dossier**
+   (IMGFS). Aucun support WOZ ajouté. Étude initiale : c'est le
    format des archives actuelles (Applesauce, archive.org). Décoder les
    pistes brutes 5,25" (6-et-2) pour lire les blocs ou secteurs. Valeur
    élevée, effort réel ; parcourir plus que visualiser.
@@ -283,7 +298,10 @@ la spécification de chaque format. Ne restent ici que les suites.
    `PG.*` (compris en partie), à faire.
 10. [ ] **Gutenberg** (traitement de texte) : CiderPress II
    `GutenbergWP.cs` et ses notes. Fréquence à mesurer.
-11. [ ] **Pinball Construction Set, tables `.PB`** (B, `$4000`, 4 à
+   `GUTTEXT` lit le texte déjà extrait par `!` ; le système de fichiers
+   Gutenberg et ses polices externes restent à implémenter.
+11. Exclu par demande utilisateur : **Pinball Construction Set, tables `.PB`**
+   (B, `$4000`, 4 à
    10 secteurs : logique, réglages, objets, image hi-res compressée par
    plages de zéros). Montrer le nom et l'image de la table, décompressée
    par la routine `DECOMPRESS` du source publié par Bill Budge
