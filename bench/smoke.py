@@ -1,9 +1,9 @@
-"""Le banc minimal : la disquette publiee demarre-t-elle sur les panneaux ?
+"""Le banc minimal : la fixture interne demarre-t-elle sur les panneaux ?
 
     python3 bench/smoke.py
 
 C'est le controle qui garde tout le reste honnete : il part de
-dist/A2FILECMD-PRODOS-140K.po tel qu'il sera telecharge, l'amorce comme une vraie
+build-6502/legacy/BOOT.po tel qu'il sera telecharge, l'amorce comme une vraie
 disquette en slot 6, et regarde ce que l'Apple IIe affiche.
 """
 import shutil
@@ -43,7 +43,7 @@ def main():
             s.ok('la page de titre nomme l edition (6502 FLOPPY ou 65C02 FLOPPY)',
                  ('65C02 FLOPPY' if FULL else '6502 FLOPPY') in title,
                  title.strip()[:60])
-            s.ok('la disquette publiee demarre sur les panneaux',
+            s.ok('la fixture interne demarre sur les panneaux',
                  s.has('/A2FC' + ('65C02' if FULL else '6502')), s.rows()[0][:40])
             s.ok('la barre de statut porte le nom et la version',
                  s.has('A2 FILE CMD ' + VERSION), s.rows()[20][:60].strip())

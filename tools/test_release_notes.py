@@ -48,8 +48,9 @@ class ReleaseNotes(unittest.TestCase):
         # written down on purpose, so adding an overlay is a line to change (83 with NEWSROOM, 84 with DOCVIEW, 85 with NRCLIP, 86 with VISICALC, 87 with GMAGIC).
         # 95 with MCS, PASTEXT, SCASM, MERLIN, LISAV2, GUTTEXT,
         # TEACHTXT and FONTRIX (9 October 2026).
-        self.assertIn('XL includes all 95 overlays', result)
-        self.assertIn('A2FILECMD-PRODOS-140K-%s.dsk' % notes.build_version(), result)
+        # Includes DOSVIEW, DOSMCS and its two internal stages.
+        self.assertIn('XL includes all 106 overlays', result)
+        self.assertNotIn('A2FILECMD-PRODOS-140K-', result)
         self.assertNotIn('{overlays}', result)
 
     def render_fixture(self, ref):
@@ -65,12 +66,12 @@ class ReleaseNotes(unittest.TestCase):
 
     def test_empty_unreleased_keeps_current_asset_version_on_branch(self):
         result = self.render_fixture('main')
-        self.assertIn('A2FILECMD-PRODOS-140K-0.8.0.dsk', result)
-        self.assertNotIn('140K-0.7.5.dsk', result)
+        self.assertIn('A2FILECMD-PRODOS-800K-0.8.0.po', result)
+        self.assertNotIn('800K-0.7.5.po', result)
 
     def test_historical_notes_can_still_be_generated_explicitly(self):
         result = self.render_fixture('v0.7.5')
-        self.assertIn('A2FILECMD-PRODOS-140K-0.7.5.dsk', result)
+        self.assertIn('A2FILECMD-PRODOS-800K-0.7.5.po', result)
         self.assertIn('Old changes.', result)
 
 

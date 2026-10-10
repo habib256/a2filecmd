@@ -16,7 +16,12 @@ def section(start, end):
 
 IMAGE = section('static unsigned char page_size(', '/* Buffered reading:')
 TABLES = section('/* The tables of the classifier', "/* OPEN's entry point, open_entry")
-OPEN_VIEWER = section('static void open_viewer(', 'static void open_selected(void)')
+# OPEN remains the resident neighbour classifier. IDENT dispatch is covered
+# separately by test_fs_keys and the native automatic-reader benches.
+OPEN_VIEWER = """static void open_viewer(unsigned char pictures) {
+ input[0]=0;overlay_run("OPEN",pictures);if(input[0])overlay_run(input,0);
+}
+"""
 REFERENCE = (ROOT / 'tools/file_viewer_ref.c').read_text()
 
 # The same program twice: on the host with the C reference of the classifier

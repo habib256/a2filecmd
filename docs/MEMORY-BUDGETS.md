@@ -1231,3 +1231,99 @@ il est distribué sur FILES/XL, sans agrandir les disquettes de 280 blocs.
 Le banc formats passe 13 contrôles par CPU, dont le garde de pile, AUX intact
 et la comparaison intégrale des fichiers sur une disquette jetable relue
 après flush. FIXTYPES passe également 17 contrôles par CPU.
+
+## 9 octobre 2026 — visionneuses DOS et import MCS
+
+Le routage des touches DOS 3.3 réside en assembleur dans MAIN, avec les
+petites tables en carte langage. Les contrôles de disposition restent
+actifs et la pile C conserve 192 octets. Les marges suivantes ne sont pas
+additionnables.
+
+| Réserve en octets | 65C02 | 6502 |
+| --- | ---: | ---: |
+| MAIN | 1 | 382 |
+| Carte langage | 3 | 1 |
+| LOWRAM avec BSS | 84 | 109 |
+| Espace avant pile C | 18 | 588 |
+| DOSVIEW code + BSS avant `$4000` | 65 | 56 |
+| MCS code + BSS avant `$3680` | 422 | 304 |
+| DOSMCS code/données avant `$3700` | 210 | 191 |
+| DOSMCS handoff + BSS avant `$1000` | 26 | 25 |
+| MCSIMPORT code/données avant `$3700` | 369 | 249 |
+| MCSIMPORT handoff + BSS avant `$1000` | 71 | 70 |
+| MCSPLAY code + BSS avant `$3700` | 4501 | 4466 |
+| DOSINT code + BSS avant `$4000` | 301 | 307 |
+| DOSBAS code + BSS avant `$4000` | 397 | 402 |
+
+DOSVIEW occupe 7523/7532 octets de fichier et 1884 octets de BSS.
+Son chargeur HGR et son état se terminent à `$1DFC` : une assertion de lien
+impose leur maintien sous `$2000`. Une fois le catalogue et les listes
+T/S validés, leur mémoire sert aux positions des pages texte ou aux
+quelques pointeurs lo-res, ce qui évite un nouveau tampon. Le chargeur
+ne rappelle aucun code ou auxiliaire cc65 recouvert par la page HGR.
+MCS occupe 6278/6395 octets de fichier et 340/341 octets de BSS. Son tampon
+de musique de 2304 octets passe à `$3680-$3F7F` : la limite de lien spécifique
+`__OVLSIZE__=$1B80` protège ce tampon, y compris contre la croissance du BSS.
+Ces lecteurs utilisent MAIN ; aucun tampon AUX ni fichier temporaire.
+
+DOSMCS occupe 6958/6977 octets de fichier et 623/624 de BSS. Il valide
+les cartes des deux fichiers, puis conserve les pointeurs/tailles dans
+64 octets de `other_full` (81 octets disponibles). MCSIMPORT occupe
+6799/6919 octets de fichier et 578/579 de BSS ; MCSPLAY 2584/2619 et 83.
+Le résultat canonique est MAIN `$3700-$3FFF`, protégé par la limite
+`__OVLSIZE__=$1C00` des trois étapes. La carte accepte 13 secteurs par
+partition et limite toujours les exports à 10 : aucune allocation excessive
+n'est tronquée.
+
+DOSMCS/MCSIMPORT placent leur BSS après le handoff `$0C00-$0D76`, dans
+la réserve du second FILE ProDOS. Le lien refuse un dépassement de `$1000`.
+Les services de répertoire sont fermés et jamais deux FILEs ne restent
+ouverts : l'unique source/étape utilise le buffer `$0800`. Le C revient
+avant copie du handoff ; celui-ci n'exécute aucun auxiliaire du code
+recouvert et ferme l'étape avant son saut. Taille scellée, EOF, erreurs,
+version/CPU et adresse d'entrée sont contrôlés. Aucun changement d'ABI.
+
+DOSINT occupe 8012/8006 octets de fichier et 1159 de BSS. Les 257 mots
+maximaux de carte T/S restent sous `$4000`, et les métadonnées retirées
+hébergent l'anneau de 64 positions de page. `copy_buf` sert au secteur
+courant ; aucun tampon AUX, temporaire ou second FILE ProDOS. L'EOF de
+65535 octets et son préfixe traversent correctement la limite de 64K dans
+les tests C compilés pour les deux CPU.
+
+DOSBAS réemploie le même lecteur et l'anneau : 7912/7907 octets de fichier
+et 1163 de BSS, sous `$4000` avec 397/402 octets de réserve. La table des
+107 mots-clés Applesoft est partagée au niveau source avec BASLIST et
+reste dans le segment propre à chaque surcouche. Les wrappers DOSINT,
+DOSBAS et MCSPLAY dépendent explicitement des fichiers C inclus afin que
+la validation porte sur les objets reconstruits.
+
+## 10 octobre 2026 — IDENT et Newsroom
+
+Mesures du lien final (65C02 / 6502), sans diminuer les contrôles : MAIN
+9 / 397, LC 3 / 1, LOWRAM 84 / 109, espace avant pile C 26 / 603 octets.
+Ces marges ne sont pas additionnables. Les courts messages résidents ont été
+raccourcis pour conserver le repli OPEN/DOSVIEW des installations incomplètes.
+La 140K ProDOS est retirée de la distribution ; BOOT est une fixture interne.
+
+| Surcouche | Fichier 65C02 / 6502 | BSS | Libre sous $4000, 65C02 / 6502 |
+| --- | ---: | ---: | ---: |
+| DOSVIEW | 7521 / 7530 | 1884 | 67 / 58 |
+| DOSNEWS | 6632 / 6606 | 1014 | 1826 / 1852 |
+| NEWSPAN | 6539 / 6551 | 1149 | 1784 / 1772 |
+| NEWSPAGE | 6617 / 6626 | 1228 | 1627 / 1618 |
+| IDENT | 8836 / 9003 | 120 | 516 / 349 |
+| IDREAD | 6509 / 6622 | 1610 | 1353 / 1240 |
+| IDFORMATS | 7485 / 7651 | 69 | 1918 / 1752 |
+| SCASM | 6492 / 6482 | 1391 | 1589 / 1599 |
+
+DOSNEWS garde tout son rendu/état sous $1E7A, protégé par l'assertion $2000.
+Le C revient avant que HGR recouvre sa zone ; le chargeur n'appelle aucun
+auxiliaire recouvert, ferme la source avant affichage et ne touche pas AUX.
+
+Les trois phases IDENT se chargent à $1B00 avec une limite de $4000. Leur
+handoff relocalisé est borné par le lien à $0C00-$0DFF et laisse intact
+l'échantillon de 512 octets à $0E00-$0FFF. Ils empruntent le buffer d'un
+second FILE ProDOS ; les répertoires sont fermés et un seul FILE reste
+ouvert, à $0800. Le handoff vérifie longueur scellée, EOF, erreurs de lecture
+et fermeture, CPU et entrée avant de sauter. Les tests exécutent les trois
+chargeurs natifs sur les deux CPU et contrôlent chaque octet conservé.

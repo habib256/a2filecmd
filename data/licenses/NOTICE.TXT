@@ -7,7 +7,9 @@ and Cybernesto's mcs-player, revision
 Copyright (c) 2017 cybernesto. MIT license: MCSPLAYER.TXT.
 https://github.com/cybernesto/mcs-player
 A2FC changes: C foreground sequencer, validation, file I/O, controls,
-polled VIA driver and hardware restoration; no original binary bundled.
+polled VIA driver and hardware restoration; direct DOSMCS read-only source
+access and MCSIMPORT/MCSPLAY stages share the same sequencer and score
+conversion. No original binary bundled.
 
 Legacy text readers and Fontrix:
 Format rules and LISA v2 mnemonic table follow CiderPress II,

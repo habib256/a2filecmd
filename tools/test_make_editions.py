@@ -34,6 +34,18 @@ class Editions(unittest.TestCase):
                 self.assertEqual([c.split()[1:] for c in calls],
                                  [['ARCH=6502', 'BOTH_EDITIONS=', 'disk'], ['ARCH=enh', 'BOTH_EDITIONS=', 'disk']])
 
+    def test_included_c_rebuilds_its_native_wrapper(self):
+        for source,wrapper in (('intbasic','dosint'),('intbasic','dosbas'),('mcs','mcsplay')):
+            out=subprocess.check_output(['make','-n','ARCH=6502','-W','src/plugins/'+source+'.c',
+                                         'build-6502/'+wrapper+'.PLG'],cwd=ROOT,text=True)
+            self.assertIn('-o build-6502/'+wrapper+'.s src/plugins/'+wrapper+'.c',out)
+
+    def test_shared_applesoft_table_rebuilds_both_readers(self):
+        out=subprocess.check_output(['make','-n','ARCH=6502','-W','src/plugins/applesoft_tokens.h',
+                                     'all','build-6502/dosbas.PLG'],cwd=ROOT,text=True)
+        self.assertIn('src/a2fc.c src/format.c',out)
+        self.assertIn('-o build-6502/dosbas.s src/plugins/dosbas.c',out)
+
     def test_one_edition_does_not_recurse(self):
         for arch in ('6502', 'enh'):
             with self.subTest(arch=arch):

@@ -96,12 +96,11 @@ documents, pictures, music and disk tools. It needs an **Apple IIe, //c or IIgs
 with 128 KB and 80 columns**. This is a separate program: its commands, plugins
 and recovery filenames do not apply to the DOS3.3 edition introduced first.
 
-### Five self-contained images
+### Four self-contained images
 
 | Image | Choose it for |
 |---|---|
 | `A2FILECMD-DOS3.3-0.9.6.dsk` | Standalone DOS 3.3 file manager for Apple II+ and two Disk II drives. |
-| `A2FILECMD-PRODOS-140K-0.9.6.dsk` | One 5¼-inch ProDOS disk with essential file operations and text editing; any IIe. |
 | `A2FILECMD-PRODOS-800K-0.9.6.po` | All ProDOS tools and BASIC runtimes, without the demonstration corpus; any IIe. |
 | `A2FILECMD-PRODOS-XL-0.9.6.2mg` | Complete 32 MB ProDOS edition with tools and demonstrations; any IIe. |
 | `A2FILECMD-PRODOS-XL-65C02-enhanced-0.9.6.2mg` | Complete XL for an enhanced IIe, //c or IIgs: MouseText and optional mouse support. |
@@ -113,7 +112,7 @@ the launcher checks machine, processor and memory before starting, so a
 hand-modified machine is refused rather than crashed. Mouse hardware is
 optional.
 
-140K and DOS3.3 use DOS-sector-order `.dsk`; 800K uses ProDOS-order `.po`.
+DOS3.3 uses DOS-sector-order `.dsk`; 800K uses ProDOS-order `.po`.
 XL uses `.2mg`. Renaming an extension does not convert an image. With all
 release images and the PDF in the same directory, check their downloads:
 
@@ -128,12 +127,7 @@ When installing elsewhere, keep `A2FILE.SYSTEM` beside the complete `A2FILE/`
 directory and copy `RECOVER` too. Keep the program and its native plugins
 from the same build and CPU edition; do not mix them.
 
-The 140K disk provides navigation, tags, copy/move/delete, rename and
-attributes, text editing, text/hex readers, comparison, formatting, verification
-and ProDOS image extraction. Advanced disk tools, DOS extraction, archives,
-media players and BASIC runtimes require **800K or XL**. Their menus list the
-available tools without asking for category disks. Both complete editions
-include all 95 overlays; only XL includes `DEMO/`: one example of every kind
+The 800K and XL editions include all 106 overlays; only XL includes `DEMO/`: one example of every kind
 of file A2 File Cmd opens, in DOCUMENTS, PICTURES (an HGR album, and in
 CARDS two colour cards in every picture format), MOVIES (Fantavision, and a
 Take 1 movie on its DOS 3.3 disk), MUSIC, ARCHIVES, DISKS, PROGRAMS and
@@ -168,7 +162,7 @@ shows the sort order. Messages and progress appear below the panels.
 | Keys | Action |
 |---|---|
 | Up/Down; Left/Right, < / > or - / + | Move one entry; move one page. [ / ] goes to first/last. |
-| Return / Escape / / | Open; parent directory; list volumes. Return asks before running a program. |
+| Return / Escape / / | Open; parent directory; list volumes. Return detects and opens the appropriate reader; X launches programs with confirmation. |
 | TAB / = / Ctrl-R | Other panel; same directory opposite; reread both panels. |
 | Space / * / Ctrl-T / Ctrl-N | Tag one; invert tags; tag all; clear tags. |
 | S / M / ' then initial | Next sort (name, size, type); tag files missing opposite or of another size/date; jump to a name. |
@@ -593,8 +587,9 @@ and /RAM kept), unless the program sets its own reset: BASIC.SYSTEM returns to
 Return opens supported ProDOS or DOS 3.3 images as folders: PO, DSK/DO, 2MG
 and supported DiskCopy 4.2 containers. HFS is not supported. Escape at the root
 leaves the image. **C** extracts the selection or tags to the other panel. An
-image is read-only: R, K, A, L, D, X, E, W, T, H, I and M answer "Read-only
-disk image"; extract a file with C to read it.
+image is read-only: R, K, A, L, D, X, E, W and M are refused. DOS 3.3
+panels now support direct T/H/I and Return as described below. ProDOS
+image files still need extraction with C before viewing.
 ProDOS extraction supports seedling/sapling files up to 128 KB; enter each
 subdirectory separately. Existing targets are refused; incomplete outputs are
 removed where possible and failed cleanup is reported.
@@ -603,6 +598,33 @@ A physical DOS 3.3 disk appears in **/** with slot/drive. C extracts to ProDOS
 on 800K/XL. BIN/BAS/INT headers and sector padding are removed according to the
 header's exact length; BIN retains its load address, BAS uses $0801. TXT keeps
 sector data. Leave through **/** before opening a changed disk again.
+
+On real DOS 3.3 disks and DOS-order DSK/DO/2IMG files, T reads text and H
+reads hex directly; I displays raw BIN pages: $0400 with exactly 1024 bytes
+in 40-column lo-res, or $2000/$4000 with 8192/8184 bytes in HGR.
+Return chooses text for TXT, graphics for those picture subsets and hex
+otherwise. Space pages forward, B back, R restarts and
+Escape returns. No temporary, writable destination or AUX memory is used.
+DOSVIEW is included in all ProDOS editions, 800K and XL. Compressed/DHGR
+pictures and other format readers still need extraction.
+For DOS Integer BASIC (`$FA`), use **! → Programming → DOSINT**; for
+Applesoft (`$FC`), choose **DOSBAS** (800K/XL):
+Space/B/R page, go back or restart; Escape exits. It reads directly, without
+execution, a temporary or AUX. Malformed records, source errors and a line
+longer than an entire screen page are reported. See
+[direct DOS viewers](DOS-VIEWERS.md) for bounds and qualification.
+
+For DOS S-C Assembler sources saved as type I (`$FA`), choose
+**! → Programming → SCASM**: Space advances and Escape exits. A full
+validation and successful close precede display; no extraction or AUX.
+
+For Music Construction Set exports or editor scores on those DOS disks/images,
+select the BIN export, main score or `.OBJ` and choose **! → Music → DOSMCS** (800K/XL). It reads the complete
+2304-byte export before playback, with no extraction, temporary or AUX.
+P/Space pauses, R restarts, +/- adjusts tempo and Escape returns. Paired
+editor scores are read directly using full DOS names; both files are required.
+The internal MCSIMPORT/MCSPLAY stages ship beside DOSMCS;
+see [MCS format](MCS-FORMAT.md) for bounds.
 
 ### Add or replace files
 
@@ -871,9 +893,11 @@ last chapter. Automated emulator tests do not replace trials on physical drives.
 
 Additional readers launched from `!` are described in
 [Legacy readers](LEGACY-READERS.md). This includes Music Construction Set
-Mockingboard exports: select the export, choose Music then MCS. P/Space
-pauses, R restarts, +/- adjusts tempo, Escape returns. The editor's `.OBJ`
-scores are not implemented; see [MCS format](MCS-FORMAT.md).
+Mockingboard exports and paired editor scores: select the export or either
+file of a `NAME` + `NAME.OBJ` pair, choose Music then MCS. P/Space pauses,
+R restarts, +/- adjusts tempo, Escape returns. Both score files must be
+in the same ProDOS directory; see [MCS format](MCS-FORMAT.md) for naming
+and compatibility limits.
 
 A2 File Cmd is **GNU GPL v3** software by **Arnaud Verhille**. Its two-panel
 interface draws inspiration from A2Command and Norton Commander. Code provenance,
@@ -924,3 +948,13 @@ This is the guide for **0.9.6**. It describes supported behavior and
 limits; it is not a claim that physical hardware qualification has finished.
 Keep original disks safe, use matching program/tools, and read each operation's
 result before starting the next one.
+
+### Direct Newsroom panels and layouts
+
+Return/I use IDENT on both ProDOS and DOS 3.3. PN. files (BIN $4000) open
+NEWSPAN: recovered text and embedded photo references. PG. files (BIN $98A5)
+open NEWSPAGE: letter/legal format, banner choice, page name and component
+slots. Original fonts, placed photos and complete newspaper-page assembly
+remain unsupported. PH./BN. retain their bitmap viewer; DOS originals use
+DOSNEWS. The source and AUX remain untouched. Space advances, Escape exits.
+Epistole/DOCVIEW and Extasie remain ProDOS readers, never DOS 3.3 readers.

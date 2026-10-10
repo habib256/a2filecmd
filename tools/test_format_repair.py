@@ -42,17 +42,23 @@ int main(int argc,char**argv){
 }
 '''
 IDENT=COMMON+r'''
+unsigned char host_id_sample[512];
 #include "src/plugins/ident.c"
 #undef ferror
 static int close_file(FILE* f){int r=fclose(f);return fault==2?-1:r;}
 static int seek_file(FILE* f,long p,int how){return fault==3?-1:fseek(f,p,how);}
 int main(int argc,char** argv){
- struct A2fcApi api={0};struct Panel panels[2]={0};struct Entry ent={0};unsigned char active=0,buf[512];char note[80],reselect[17];
+ struct A2fcApi api={0};struct Panel panels[2]={0};struct Entry ent={0};unsigned char active=0,buf[512];char note[80]={0},reselect[17],input[17]={0},context[81]={0};
  fault=atoi(argv[5]);strcpy(ent.name,argv[2]);ent.type=atoi(argv[3]);ent.aux=atoi(argv[4]);
  {FILE* f=fopen(argv[1],"rb");fseek(f,0,SEEK_END);ent.size=ftell(f);fclose(f);}
  strcpy(panels[0].path,"/FIXTURE");api.panels=panels;api.active=&active;api.selected=&ent;api.full=argv[1];api.copy_buf=buf;api.note=note;api.reselect=reselect;
  api.fopen=fopen;api.fread=fread;api.fclose=close_file;api.fseek=seek_file;api.strcpy=strcpy;api.sprintf=sprintf;api.memset=memset;
- plugin_entry(&api);puts(note);return 0;
+ api.input=input;api.other_full=context;if(argc>6)api.arg=atoi(argv[6]);
+ if(argc>7 && atoi(argv[7])){
+  FILE* source=fopen(argv[1],"rb");unsigned int got=fread(host_id_sample,1,512,source);fclose(source);
+  panels[0].fs=FS_DOS33;id_context(&api,got,ent.size,ent.aux,ent.type);
+ }
+ plugin_entry(&api);puts(api.arg?input:note);return 0;
 }
 '''
 # cc65's two-word view of a 32-bit size is emulated without host long/word widths.
@@ -65,14 +71,15 @@ class Formats(unittest.TestCase):
   cls.tmp=tempfile.TemporaryDirectory(prefix='formats-',dir='/tmp');cls.root=Path(cls.tmp.name);cls.exes={}
   for name,c in [('fix',FIX),('ident',IDENT)]:
    p=cls.root/(name+'.c');p.write_text(c);exe=cls.root/name
-   r=subprocess.run(['cc','-std=c99','-Wno-unknown-pragmas','-Wno-incompatible-function-pointer-types','-fsanitize=address,undefined','-I',str(ROOT),str(p),'-o',str(exe)],capture_output=True,text=True)
+   r=subprocess.run(['cc','-std=c99','-Wno-unknown-pragmas','-Wno-incompatible-function-pointer-types','-fsanitize=address,undefined','-I',str(ROOT),'-I',str(ROOT/'src/plugins'),str(p),'-o',str(exe)],capture_output=True,text=True)
    if r.returncode:raise RuntimeError(r.stderr)
    cls.exes[name]=exe
  @classmethod
  def tearDownClass(cls):cls.tmp.cleanup()
- def call(self,tool,data=SONG,name='M.SONG',fault=0,typ=6,aux=0):
+ def call(self,tool,data=SONG,name='M.SONG',fault=0,typ=6,aux=0,arg=0,dos=False):
   p=self.root/'input';p.write_bytes(data)
   args=[str(self.exes[tool]),str(p),name]+([str(fault)] if tool=='fix' else [str(typ),str(aux),str(fault)])
+  if tool=='ident':args += [str(arg),str(int(dos))]
   out=subprocess.check_output(args,text=True);self.assertEqual(p.read_bytes(),data);return out
  def test_duet_repair_preserves_name_contents_dates_access(self):
   for padding in (b'',bytes(234),bytes(range(255))):
@@ -98,4 +105,20 @@ class Formats(unittest.TestCase):
   cases=[('FONT',7,0,b'x','font'),('A.FOTO1',6,0,b'x','Purplesoft'),('A',8,0x8066,b'x','LZ4FH'),('A',6,0x5800,bytes(572),'Print Shop'),('A',6,0x400,bytes(1024),'Lo-res'),('A',6,0,b'DGR','DGR pixmap'),('A.PT3',6,0,b'x','PT3'),('A',6,0,b'ProTracker 3.7','PT3'),('A.MD',4,0,b'hello','Markdown'),('A',8,0x4001,bytes(8192),'Packed double'),('A',6,0xE001,bytes(8192),'816/Paint'),('A',0xF2,0,bytes(8192),'Extasie'),('A',8,0x2000,bytes(16384),'DHGR'),('A',6,0,b'MB1','Mockingboard'),('A.NIB',6,0,bytes(232960),'nibble'),('A.HDV',6,0,bytes(1028)+b'\xF1'+bytes(1019),'ProDOS block')]
   for name,typ,aux,data,label in cases:
    with self.subTest(name=name,typ=typ,aux=aux):self.assertIn(label,self.call('ident',data,name,typ=typ,aux=aux))
+ def test_automatic_routing_has_explicit_dos_eligibility(self):
+  from test_newsdoc import panel,page
+  cases=[('PN.PANEL',6,0x4000,panel(),'NEWSPAN','NEWSPAN'),('PG.PAGE',6,0x98a5,page(),'NEWSPAGE','NEWSPAGE'),
+         ('PH.PHOTO',6,0x4000,bytes(128),'NEWSROOM','DOSNEWS'),('SOURCE',0xfa,0,bytes((5,10,0,65,0)),'SCASM','SCASM'),
+         ('BASIC',0xfc,0,b'abc','BASLIST','DOSBAS'),('INTEGER',0xfa,0,b'abc','INTBASIC','DOSINT'),
+         ('LETTER',4,0,b'_Epistole text','DOCVIEW','DOSVIEW'),('PHOTO',0xf2,0,bytes(20),'EXTASIE',None),
+         ('LETTER',4,0,b'ordinary text','TEXT','DOSVIEW'),('CODE',6,0x2000,b'\x4c\0\x20'+bytes(20),'DISASM','DOSVIEW'),
+         ('FONT',7,0,b'abc','FONTVIEW',None),('PACK',8,0x4000,b'abc','PACKFOT',None),
+         ('FOO',6,0xE001,b'abc','PAINT816','DOSVIEW'),('MOVIE',6,0x8400,bytes(600),'RUN','DOSVIEW'),
+         ('MAGIC',6,0,b'\x80\x10\x10\xa0\x20\x20\0','GMAGIC','DOSVIEW')]
+  for name,typ,aux,data,pro,dosreader in cases:
+   for key in (ord('O'),ord('I'),13):
+    with self.subTest(name=name,key=key):
+     self.assertEqual(self.call('ident',data,name,typ=typ,aux=aux,arg=key).strip(),pro)
+     if dosreader:self.assertEqual(self.call('ident',data,name,typ=typ,aux=aux,arg=key,dos=True).strip(),dosreader)
+  for fault in (1,2,3):self.assertEqual(self.call('ident',b'abc','TEXT',typ=4,arg=13,fault=fault).strip(),'')
 if __name__=='__main__':unittest.main()

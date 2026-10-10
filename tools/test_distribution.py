@@ -15,13 +15,14 @@ import release_assets
 
 
 class Distribution(unittest.TestCase):
-    def test_five_explicit_images(self):
+    def test_four_explicit_images(self):
         self.assertEqual(dist.image_names('1.0.0'), [
             'A2FILECMD-PRODOS-XL-1.0.0.2mg', 'A2FILECMD-PRODOS-XL-65C02-enhanced-1.0.0.2mg',
-            'A2FILECMD-DOS3.3-1.0.0.dsk', 'A2FILECMD-PRODOS-800K-1.0.0.po', 'A2FILECMD-PRODOS-140K-1.0.0.dsk'])
+            'A2FILECMD-DOS3.3-1.0.0.dsk', 'A2FILECMD-PRODOS-800K-1.0.0.po'])
         with self.assertRaises(ValueError): dist.image_name('FILES')
+        with self.assertRaises(ValueError): dist.image_name('140K')
 
-    def test_essential_operations_are_self_contained(self):
+    def test_internal_boot_inventory_is_separate_from_releases(self):
         essential, complete = dist.inventories()
         self.assertTrue({'BATCH', 'NAV', 'CATALOG', 'OPEN', 'COPY', 'DELETE', 'MOVE',
                          'EDIT', 'ATTR', 'RUN', 'MENU', 'HELP', 'TEXT', 'HEX', 'COMPARE',
@@ -29,7 +30,7 @@ class Distribution(unittest.TestCase):
         self.assertTrue(essential < complete)
         self.assertNotIn('DISKIMG', essential)
 
-    def test_release_uploads_exactly_the_five_image_patterns(self):
+    def test_release_uploads_exactly_the_four_image_patterns(self):
         workflow = (dist.ROOT / '.github/workflows/ci.yml').read_text()
         patterns = set(re.findall(r'^\s+(dist/A2FILECMD-\S+\.(?:dsk|po|2mg))$', workflow, re.M))
         # [0-9].* : a version opens with a digit and a period, so the 6502 XL's pattern

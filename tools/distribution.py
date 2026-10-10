@@ -1,4 +1,4 @@
-"""Names and inventories of the five published images (no legacy companions)."""
+"""Names and inventories of the four published images (no legacy companions)."""
 from pathlib import Path
 import re
 
@@ -10,14 +10,14 @@ RUNTIMES = ('BASIC.SYSTEM', 'INTBASIC.SYSTEM')
 
 def image_name(role, version=VERSION):
     suffix = '2mg' if role in ('XL', 'XL-65C02-enhanced') else 'po' if role == '800K' else 'dsk'
-    if role not in ('XL', 'XL-65C02-enhanced', 'DOS3.3', '800K', '140K'):
+    if role not in ('XL', 'XL-65C02-enhanced', 'DOS3.3', '800K'):
         raise ValueError('unknown image role: ' + role)
     system = '' if role == 'DOS3.3' else 'PRODOS-'   # the file names say which system boots
     return f'A2FILECMD-{system}{role}-{version}.{suffix}'
 
 
 def image_names(version=VERSION):
-    return [image_name(role, version) for role in ('XL', 'XL-65C02-enhanced', 'DOS3.3', '800K', '140K')]
+    return [image_name(role, version) for role in ('XL', 'XL-65C02-enhanced', 'DOS3.3', '800K')]
 
 
 def xl_name(cpu):
@@ -27,11 +27,11 @@ def xl_name(cpu):
 def inventories():
     native = re.search(r'^PLUGINS = (.+)$', MAKEFILE, re.M)[1].split()
     plugins = [p.stem for p in (ROOT / 'src/plugins').glob('*.c')]
-    boot = set(re.search(r'^PLUGINS_FLOPPY = (.+)$', MAKEFILE, re.M)[1].split())
-    boot.update(re.search(r'^XPLUGINS_FLOPPY = \$\(filter ([^,]+),', MAKEFILE, re.M)[1].upper().split())
+    boot = set(re.search(r'^BENCH_BOOT_NATIVE = (.+)$', MAKEFILE, re.M)[1].split())
+    boot.update(re.search(r'^BENCH_BOOT_PLUGINS = \$\(filter ([^,]+),', MAKEFILE, re.M)[1].upper().split())
     complete = set(native) | {p.upper() for p in plugins}
     if not boot <= complete:
-        raise ValueError('unknown essential overlays: ' + str(boot - complete))
+        raise ValueError('unknown regression fixture overlays: ' + str(boot - complete))
     return boot, complete
 
 

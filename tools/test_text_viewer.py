@@ -17,7 +17,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = (ROOT / 'src/a2fc.c').read_text()
+SOURCE = (ROOT / 'src/a2fc.c').read_text().replace('#include "plugins/applesoft_tokens.h"', (ROOT / 'src/plugins/applesoft_tokens.h').read_text())
 
 HARNESS = r'''
 #include <stdarg.h>

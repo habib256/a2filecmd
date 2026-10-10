@@ -7,13 +7,16 @@ memory, `/RAM` reconstruction, or execution of file contents.
 | Plugin | Input and implemented output | Limits |
 | --- | --- | --- |
 | PASTEXT | Apple Pascal TEXT, 1 KB editor header and independent 1 KB chunks, DLE indentation | Text only; extracted file, not a Pascal disk |
-| SCASM | S-C Assembler length-prefixed tokenized lines, line numbers, spaces and repeated characters | Complete records required |
+| SCASM | S-C Assembler length-prefixed tokenized lines, line numbers, spaces and repeated characters | ProDOS and direct DOS type I; complete records required; validation/close before display |
 | MERLIN | High-bit Merlin / ED-ASM text, aligned label/opcode/operand/comment columns | Source listing only |
 | LISAV2 | LISA version 2 length-prefixed source, mnemonic table, labels and comments | Versions 3–5 and their symbol tables are not implemented |
 | GUTTEXT | Extracted Gutenberg text, high-bit ASCII and line breaks | Custom filesystem extraction is not implemented; external font glyphs show `?` |
 | TEACHTXT | Teach data fork, line breaks and simplified MacRoman text | Resource-fork styles, fonts, rulers and layout are not implemented |
 | FONTRIX | Fontrix glyphs, one at a time, as monochrome marks on the text screen | Up to 94 glyphs, height 32, width 32; heights over 20 combine pairs of rows |
-| MCS | Music Construction Set two-staff Mockingboard exports | See [MCS format](MCS-FORMAT.md); editor `.OBJ` is not supported |
+| MCS | Music Construction Set two-staff Mockingboard exports and paired editor scores | See [MCS format](MCS-FORMAT.md); main file + `.OBJ` required for scores |
+| DOSMCS | Direct Music Construction Set exports/editor pairs on DOS 3.3 disks/DSK/DO/2IMG | BIN payload of 2304 bytes; no temporary or AUX; main/`.OBJ` pairs validated using full DOS names |
+| DOSINT | Direct DOS 3.3 Integer BASIC listing | Real disks/DSK/DO/2IMG; exact DOS EOF, 64-page ring, no temporary or AUX; malformed/oversized lines refused |
+| DOSBAS | Direct DOS 3.3 Applesoft listing | Real disks/DSK/DO/2IMG; $0801 links and exact EOF checked; literal strings/DATA/REM, 64-page ring, no temporary or AUX |
 
 Text readers validate a complete pass and successful close before showing
 the first page, then reopen for display. Space, Down or Return advances;

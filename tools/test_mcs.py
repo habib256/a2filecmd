@@ -275,10 +275,12 @@ class Hardware(unittest.TestCase):
             for addr, value in old.items():
                 self.assertEqual(c.m[addr], value, (build, hex(addr)))
             allowed = lambda a: (0x80 <= a < 0x9a or 0x100 <= a < 0x200 or
-                                 0x1b00 <= a < 0x3000 or 0xc400 <= a < 0xc490)
+                                 0x1b00 <= a < 0x3680 or 0xc400 <= a < 0xc490)
             self.assertTrue(all(allowed(a) for a in c.writes),
                             [hex(a) for a in c.writes if not allowed(a)])
-            for start, end in ((0, 0x80), (0x3000, 0xc000), (0xc000, 0xc100), (0xd000, 0x10000)):
+            bss_end=labels['__BSS_RUN__']+labels['__BSS_SIZE__']
+            self.assertLessEqual(bss_end,0x3680)
+            for start, end in ((0, 0x80), (0x3680, 0xc000), (0xc000, 0xc100), (0xd000, 0x10000)):
                 self.assertEqual(bytes(c.m[start:end]), before[start:end])
 
 

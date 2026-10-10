@@ -134,10 +134,10 @@ The Makefile writes `build/name.map` (or `build-6502/name.map`) and checks
 code **and BSS** against the window. Add an overlay using `$3000` scratch
 to `XPLUGINS_SCRATCH`; VERIFY has a separate `$1FC2` ceiling for its table.
 
-The disk copies are `A2FILE/NAME.PLG` (upper case). The 140K boot floppy
-carries only the ones named in `XPLUGINS_FLOPPY` (Makefile: MOVE and
-VERIFY); the 800K `.po` and the two XL `.2mg` carry them all, and
-`config/packages.mk` gives each its `!` menu category disk. The current
+The disk copies are `A2FILE/NAME.PLG` (upper case). The 800K `.po` and
+the two XL `.2mg` carry every overlay; `config/packages.mk` assigns their
+`!` menu categories. The compact BOOT disk is an internal regression fixture,
+built with `make ARCH=6502 benchboot`, not a published ProDOS edition. The current
 size of each and its room in its window are in
 [`docs/MEMORY-BUDGETS.md`](../../docs/MEMORY-BUDGETS.md).
 
@@ -148,6 +148,9 @@ size of each and its room in its window are in
   (`name[0] == 0` if the panel is empty), `api->full` its complete ProDOS
   path (`""` if it does not fit in 80 characters), `api->panels[*api->active]`
   the active panel, `api->other_full` the same path in the other panel.
+- Automatic Return/I dispatch passes `api->arg == 13` to the detected reader.
+  Audio readers receive the confirmed hardware slot through the normal audio
+  preparation instead. DOSVIEW uses 13 to bypass its manual choice menu.
 - After a **big** overlay returns, the core re-reads and redraws both panels,
   reselects `api->reselect` (a name) in the active panel if set, and writes
   `api->note` (79 characters) on the message line. The entry tables are covered while a big overlay runs: it must use

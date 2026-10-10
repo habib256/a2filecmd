@@ -4,7 +4,7 @@
     release_notes.py 0.6.8 > dist/RELEASE_NOTES.md
 
 Prend la section "## [0.6.8]" du CHANGELOG (ou "## Unreleased" si le numero
-n'y est pas encore), et y ajoute les cinq images autonomes."""
+n'y est pas encore), et y ajoute les quatre images autonomes."""
 import re
 import sys
 from distribution import ROOT, inventories
@@ -18,20 +18,18 @@ FILES = """
 | `A2FILECMD-PRODOS-XL-65C02-enhanced-{version}.2mg` | Complete 32 MB image for an enhanced IIe, //c or IIgs: MouseText, optional mouse |
 | `A2FILECMD-DOS3.3-{version}.dsk` | Standalone DOS 3.3 edition for Apple II+ 48 KB, 40 columns, two drives |
 | `A2FILECMD-PRODOS-800K-{version}.po` | Bootable 800 KB ProDOS image, 6502, all tools and BASIC runtimes, no demo corpus |
-| `A2FILECMD-PRODOS-140K-{version}.dsk` | Bootable 5.25-inch ProDOS disk, 6502, essential file operations, text editor, text/hex readers, format and verify |
 
 The English user guide is included as `A2FILECMD-MANUAL-EN-{version}.pdf`.
 
 XL includes all {overlays} overlays, BASIC.SYSTEM, INTBASIC.SYSTEM and a DEMO
 folder sorted by kind of file. The 800K edition has the same tools without the demonstration
-corpus. The 140K edition is self-contained; its menu lists available tools,
-without asking for the former FILES/MEDIA/DISKTOOLS/DEVTOOLS disks.
+corpus. Both editions are self-contained; their menus list available tools.
 All ProDOS editions need 128 KB and 80 columns. The choice is enhanced or
 not: the enhanced XL is for an enhanced IIe, a //c or a IIgs; every other
 ProDOS image runs on any IIe. Mini is a separate DOS 3.3 program for the 48 KB Apple II+.
 
 Boot an image and press **?** for help. `sha256sum -c SHA256SUMS-{version}.txt`
-checks the five images and manual. ProDOS images carry ProDOS 8 2.4.3.
+checks the four images and manual. ProDOS images carry ProDOS 8 2.4.3.
 XL and 800K include BASIC.SYSTEM (John Brooks' free distribution; Apple's
 software) and INTBASIC.SYSTEM v0.9 by Joshua Bell
 (<https://github.com/a2stuff/intbasic>).

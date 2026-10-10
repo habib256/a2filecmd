@@ -57,7 +57,7 @@ got:
     return k;
 }
 '''
-        code+=section('static void message(', '#pragma code-name (pop)')
+        code+=section('void message(', '#pragma code-name (pop)')
         q=section('static void question_begin(', 'unsigned int __fastcall__ hex_value(')
         assert q.count('*(volatile unsigned char*)0xC010 = 0;')==1
         code+=q.replace('*(volatile unsigned char*)0xC010 = 0;','c010 = 0;')

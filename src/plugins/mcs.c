@@ -1,7 +1,7 @@
 /* mcs.c -- Music Construction Set exported two-staff songs, Mockingboard.
- * Read/close/validate BEFORE card writes. Only MAIN $3000-$38FF, overlay
+ * Read/close/validate BEFORE card writes. Only MAIN $3680-$3F7F, overlay
  * BSS and the two AY/VIA chips are written: no AUX, files or IRQ vectors.
- * The editor's .OBJ notation lists are NOT this format. See MCS-FORMAT.md.
+ * Editor scores are imported from their main/.OBJ pair. See MCS-FORMAT.md.
  * Sequencer and note periods follow Will Harvey's published MUSIC SOURCE
  * and Cybernesto's MIT mcs-player, Copyright (c) 2017 cybernesto
  * (data/licenses/NOTICE.TXT). Modified for A2FC: validation, C foreground
@@ -10,10 +10,26 @@
 #include "../a2fc_plugin.h"
 void __fastcall__ plugin_entry(const struct A2fcApi*);
 struct Header {unsigned int signature;unsigned char flags;
- void __fastcall__ (*entry)(const struct A2fcApi*);unsigned char r[3];char desc[57];};
+ void __fastcall__ (*entry)(const struct A2fcApi*);unsigned char r[3];
+#ifdef MCS_DOS
+ char desc[42];
+#else
+ char desc[57];
+#endif
+};
 #pragma rodata-name(push,"OVLHDR")
 const struct Header __plugin_header={MEDIA_PLUGIN_MAGIC, OVERLAY_BIG | OVERLAY_AUDIO,
- plugin_entry,{0,0,0},"Play Music Construction Set exports on Mockingboard"};
+#ifdef MCS_DOS
+ plugin_entry,{0,0,
+#ifdef A2FC_6502
+ 1
+#else
+ 129
+#endif
+ },"MCS internal two-staff sequencer"};
+#else
+ plugin_entry,{0,0,0},"Play MCS editor scores/exports on Mockingboard"};
+#endif
 #pragma rodata-name(pop)
 #define STAFF_SIZE 1152
 #define LIMIT (2*STAFF_SIZE)
@@ -21,7 +37,11 @@ const struct Header __plugin_header={MEDIA_PLUGIN_MAGIC, OVERLAY_BIG | OVERLAY_A
 extern unsigned char host_song[LIMIT];
 #define SONG_BUFFER host_song
 #else
-#define SONG_BUFFER ((unsigned char*)0x3000)
+#ifdef MCS_DOS
+#define SONG_BUFFER ((unsigned char*)0x3700)
+#else
+#define SONG_BUFFER ((unsigned char*)0x3680)
+#endif
 #endif
 /* A runtime pointer avoids cc65's page-aligned constant-pointer shortcut
  * that can leave ptr1's low byte stale in valid(). */
@@ -34,6 +54,17 @@ void mc_hw_stop(void);
 extern unsigned char mc_regs[28];
 static const struct A2fcApi* A;
 #include "hgr_io.h"
+#ifndef PLUGIN_HOST
+#pragma optimize(push,off)
+#pragma warn(unused-param,push,off)
+static void __fastcall__ mc_clear(unsigned int unused) STUB(clrscr)
+static void __fastcall__ mc_text(const char* s) STUB(cputs)
+#pragma warn(unused-param,pop)
+#pragma optimize(pop)
+#else
+#define mc_clear(u) A->clrscr()
+#define mc_text A->cputs
+#endif
 static unsigned int pos[2],end[2];
 static unsigned char voice[6],count[2],tied[2];
 static unsigned char tempo,tc,dc;
@@ -51,22 +82,12 @@ static const unsigned int notes[64]={
 /* Fixed-size exported buffer, with a complete terminator in each staff.
  * Ignore unused buffer contents AFTER that terminator (real exports retain
  * old notes there). No unterminated chord, zero duration or table overrun. */
-static unsigned char valid(void) {
- unsigned char s,d,chain,seen;
- unsigned int p,base;
- for(s=0;s<2;++s){
-  base=s?STAFF_SIZE:0;chain=seen=0;
-  for(p=base;p<base+STAFF_SIZE;p+=2){
-   d=SONG[p+1];
-   if(!(SONG[p]>>1)&&!d){if(chain||!seen)return 0;break;}
-   if(SONG[p]>=128 || !(d&63))return 0;
-   chain=d&128;seen=1;
-  }
-  if(p==base+STAFF_SIZE)return 0;
-  end[s]=p;
- }
- return 1;
-}
+#include "mcs_valid.h"
+#if defined(MCS_PRELOADED)
+/* DOSMCS has validated/closed its input and handed off MAIN $3700. */
+#else
+#include "mcs_score.h"
+#endif
 static void plug(unsigned char v,unsigned char amp){
  unsigned char b,r;
  b=v<3?0:14;r=v%3;
@@ -117,22 +138,40 @@ static unsigned char frame(void){
  return 0;
 }
 void __fastcall__ plugin_entry(const struct A2fcApi* a){
- FILE* f;
- unsigned int n;
  unsigned char bad,key,paused;
+#ifndef MCS_DOS
+ FILE* f;unsigned int n;
+#endif
  A=a;SONG=SONG_BUFFER;
  if(!A->arg || A->arg>7 || A->arg==3){scpy(A->note,"No Mockingboard.");return;}
+#if defined(MCS_PRELOADED)
+ bad=!valid();
+#else
  if(!A->full[0] || !A->selected->name[0] || A->selected->type==15){
-  scpy(A->note,"Select an exported MCS song.");return;}
- f=fopn(A->full,"rb");if(!f){scpy(A->note,"Cannot open MCS song.");return;}
- n=frd(SONG,1,LIMIT,f);bad=ferror(f)!=0;
- if(frd(A->copy_buf,1,1,f)||ferror(f))bad=1;
- if(fcls(f))bad=1;
- if(bad || n!=LIMIT || !valid()){
-  scpy(A->note,"Bad MCS export/I/O (editor .OBJ not supported).");return;}
+  scpy(A->note,"Select an MCS score or export.");return;}
+ n=strlen(A->full);if(n>=sizeof ms_path){scpy(A->note,"MCS path too long.");return;}
+ strcpy(ms_path,A->full);
+ if(n>4&&!strcmp(ms_path+n-4,".OBJ"))ms_path[n-4]=0;
+ f=fopn(ms_path,"rb");if(!f){scpy(A->note,"Cannot open MCS song.");return;}
+ n=frd(A->copy_buf,1,256,f);bad=ferror(f)!=0;
+ if(!bad&&n==256&&!A->copy_buf[0]&&!A->copy_buf[1])bad=!ms_score(f);
+ else {
+  memcpy(SONG,A->copy_buf,n);n+=frd(SONG+n,1,LIMIT-n,f);
+  if(ferror(f)||frd(A->copy_buf,1,1,f)||ferror(f))bad=1;
+  if(fcls(f))bad=1;
+  if(n!=LIMIT||!valid())bad=1;
+ }
+#endif
+ if(bad){scpy(A->note,
+#ifdef MCS_DOS
+ "Bad DOS MCS export or source I/O error."
+#else
+ "Bad MCS score/export, missing .OBJ or I/O error."
+#endif
+ );return;}
  reset();tempo=4;paused=0;
- A->clrscr();A->cputs("Music Construction Set - ");A->cputs(A->selected->name);
- A->cputs("\r\n\r\nMockingboard / exported two-staff song\r\nP/Space Pause/resume  R Restart  +/- Tempo  ESC Back\r\n");
+ mc_clear(0);mc_text("Music Construction Set - ");mc_text(A->selected->name);
+ mc_text("\r\n\r\nMockingboard / two-staff song\r\nP/Space Pause/resume  R Restart  +/- Tempo  ESC Back\r\n");
  mc_hw_start(A->arg);mc_output();
  for(;;){
 #ifndef PLUGIN_HOST

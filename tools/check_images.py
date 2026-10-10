@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the five published images against their matching builds."""
+"""Check the four published images against their matching builds."""
 from pathlib import Path
 import re
 
@@ -49,7 +49,7 @@ def check_cpu(cpu):
     expected.update({p.stem.upper() + '.PLG': (build / (p.stem + '.PLG')).read_bytes()
                      for p in (ROOT / 'src/plugins').glob('*.c')})
     essential, complete = inventories()
-    for role in (('140K', '800K', 'XL') if cpu == '6502' else ('XL-65C02-enhanced',)):
+    for role in (('800K', 'XL') if cpu == '6502' else ('XL-65C02-enhanced',)):
         path = ROOT / 'dist' / image_name(role)
         raw = path.read_bytes()
         xl = role.startswith('XL')
@@ -58,9 +58,6 @@ def check_cpu(cpu):
             assert len(raw) == 64 + blocks * 512 and raw[:4] == b'2IMG', path
             assert int.from_bytes(raw[24:28], 'little') == 64, path
             data = raw[64:]
-        elif role == '140K':
-            data = path.with_suffix('.po').read_bytes()
-            assert raw == to_dsk(data), path
         else:
             data = raw
         assert len(data) == blocks * 512, path
@@ -72,7 +69,7 @@ def check_cpu(cpu):
         directory = entries(image, key)
         check_config_room(image, directory, key, path)
         plugins = {name for name in directory if name.endswith('.PLG')}
-        required = essential if role == '140K' else complete
+        required = complete
         assert plugins == {name + '.PLG' for name in required}, (path, plugins ^ {n + '.PLG' for n in required})
         assert 'EXTRAS.CAT' not in directory, (path, 'obsolete companion catalog')
         assert 'FORMAT.SYS' not in directory, path
@@ -82,16 +79,16 @@ def check_cpu(cpu):
             entry = directory[name]
             assert entry[16] == 6 and int.from_bytes(entry[31:33], 'little') == 0x1B00, (path, name)
             assert image.read(entry) == expected[name], (path, name, 'wrong CPU or stale overlay')
-        launcher = 'A2FILE.FLOPPY.SYS' if role == '140K' else 'A2FILE.SYSTEM.SYS'
+        launcher = 'A2FILE.SYSTEM.SYS'
         program = image.read(root['A2FILE.SYSTEM'])
         check_launch_version(program)
         assert program == (build / launcher).read_bytes(), path
-        title = cpu + (' FLOPPY EDITION' if role == '140K' else ' COMPLETE EDITION')
+        title = cpu + ' COMPLETE EDITION'
         assert title.encode('ascii') in program, (path, 'wrong launch screen')
         assert image.read(directory['A2FILE.CODE']) == (build / 'A2FILE.CODE.BIN').read_bytes(), path
         # The Fantavision player (src/fanta/): 800K and XL, the same bytes.
-        assert ('FANTA.SYSTEM' in directory) == (role != '140K'), (path, 'FANTA.SYSTEM')
-        if role != '140K':
+        assert ('FANTA.SYSTEM' in directory) == (True), (path, 'FANTA.SYSTEM')
+        if True:
             assert directory['FANTA.SYSTEM'][16] == 0xFF, (path, 'FANTA.SYSTEM type')
             assert image.read(directory['FANTA.SYSTEM']) == (build / 'FANTA.SYSTEM.SYS').read_bytes(), \
                 (path, 'stale FANTA.SYSTEM')
@@ -109,14 +106,14 @@ def check_cpu(cpu):
             assert image.read(directory['VISICALC.BIN']) == (build / 'visicalc.PLG.BIN').read_bytes(), \
                 (path, 'stale VISICALC.BIN')
         # The Take 1 player (src/take1/): 800K and XL, the same bytes.
-        assert ('TAKE1.SYSTEM' in directory) == (role != '140K'), (path, 'TAKE1.SYSTEM')
-        if role != '140K':
+        assert ('TAKE1.SYSTEM' in directory) == (True), (path, 'TAKE1.SYSTEM')
+        if True:
             assert directory['TAKE1.SYSTEM'][16] == 0xFF, (path, 'TAKE1.SYSTEM type')
             assert image.read(directory['TAKE1.SYSTEM']) == (build / 'TAKE1.SYSTEM.SYS').read_bytes(), \
                 (path, 'stale TAKE1.SYSTEM')
         assert image.read(root['PRODOS']) == (ROOT / 'data/PRODOS.SYS').read_bytes(), path
         for runtime in RUNTIMES:
-            assert (runtime in root) == (role != '140K'), (path, runtime)
+            assert (runtime in root) == (True), (path, runtime)
             if runtime in root:
                 assert root[runtime][16] == 0xFF, (path, runtime)
                 assert image.read(root[runtime]) == (ROOT / ('data/' + runtime + '.SYS')).read_bytes(), (path, runtime)

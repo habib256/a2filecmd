@@ -102,7 +102,7 @@ Chaque étape suppose la précédente fermée. Un défaut trouvé aux étapes
      (catalogue, copie, vérification, chargement), puis fermer cette ligne.
 4. **Qualification (1.0-rc).**
    - [ ] `make test`, `make qualify`, `tools/check_images.py` sur les
-     cinq images, les deux CPU.
+     quatre images, les deux CPU.
 5. **Recette matérielle (1.0-rc2 si besoin).**
    - [ ] [HARDWARE-CHECKLIST.md](docs/HARDWARE-CHECKLIST.md) sur machine
      réelle : IIe enhanced, //c, 6502.
@@ -119,6 +119,20 @@ jetables pour les essais destructifs ; deux CPU.
 
 ## 1.1 — formats
 
+Lecture directe DOS 3.3 : T/H forcent DOSVIEW ; I et Retour passent par IDENT, livré dans
+les éditions ProDOS complètes (800K et XL). Texte, hex, lo-res brut
+$0400 et HGR brut $2000/$4000 (8192/8184 octets) sont pris en charge.
+DOSINT et DOSBAS listent directement Integer BASIC et Applesoft via le menu Programmation.
+PN. récupère le texte et les références photos ; PG. expose les mises en page
+et composants NEWSROOM. Restent leur rendu typographique/assemblage complet,
+les compressions/DHGR,
+adaptation des autres lecteurs, images ProDOS et recette physique ; voir
+[DOS-VIEWERS.md](docs/DOS-VIEWERS.md). Music Construction Set importe
+maintenant les paires fichier principal + `.OBJ` sur ProDOS. DOSMCS lit
+directement les exports de 2304 octets et les paires éditeur depuis les
+disques DOS réels et DSK/DO/2IMG. Restent les réglages stockés de MCS,
+les variantes non reconnues et les autres formats audio.
+
 Seulement s'il reste des octets. Relevé du 7 octobre 2026 (65C02 / 6502,
 `check_layout.py` et cartes de `make`) : OPEN 11 / 11 octets libres (168 /
 173 quand son classifieur est passé en assembleur, `src/open.s`, le 26
@@ -127,8 +141,8 @@ coûte 10 à 20 octets, à écrire dans `open.s` **et** dans
 `tools/file_viewer_ref.c`. Le résident 65C02 a 9 octets libres
 (objectif 256) : tout nouveau format vit dans une surcouche. DOCVIEW a
 42 / 41 octets dans sa fenêtre agrandie, UNSHRINK 901 / 888, SHAPES est
-plein (3 / 0). Les nouvelles surcouches vont sur 800K et XL, pas sur la
-140K.
+plein (3 / 0). Les nouvelles surcouches vont sur 800K et XL ; l’édition ProDOS
+140K est retirée de la distribution.
 
 - [ ] **Choisir les prochains formats à partir de fichiers réels.** Recenser
   un corpus, classer les inconnus par fréquence, puis améliorer IDENT avec
@@ -276,14 +290,17 @@ la spécification de chaque format. Ne restent ici que les suites.
    Sortie de « Écarté » : CiderPress II a
    maintenant un convertisseur et des notes (`FontrixFont.cs`,
    `Fontrix-notes.md`). Se greffe sur FONTVIEW ou une petite surcouche.
-6. [ ] **Music Construction Set** : convertir les partitions de l'éditeur
+6. [x] **Music Construction Set** : convertir les partitions de l'éditeur
    `.OBJ` pour le Mockingboard ; exports déduits du source officiel (`MUSIC
    SOURCE`, et [mcs-player](https://github.com/cybernesto/mcs-player),
    MIT). Les partitions et les exports sont deux formats distincts.
    Priorité utilisateur : `MCS` lit maintenant les exports Mockingboard
    de 2304 octets, identiques au lecteur d'origine sur dix morceaux réels,
-   validés sous sim65 et POM2 sur les deux CPU. Les `.OBJ` étudiés sont
-   des listes de notation distinctes : leur conversion reste à faire.
+   validés sous sim65 et POM2 sur les deux CPU. L'import des paires
+   partition principale + `.OBJ` est implémenté en lecture seule, avec
+   contrôle des deux fichiers avant le son. Restent les réglages stockés
+   de l'éditeur et les autres variantes. DOSMCS lit maintenant exports et
+   paires éditeur directement depuis les disques DOS 3.3 réels et images.
    Voir `docs/MCS-FORMAT.md`.
 7. Exclu par demande utilisateur : **images WOZ ouvertes comme un dossier**
    (IMGFS). Aucun support WOZ ajouté. Étude initiale : c'est le

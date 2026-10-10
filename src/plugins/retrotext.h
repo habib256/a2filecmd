@@ -7,6 +7,9 @@
  * Copyright 2023 faddenSoft (Apache-2.0; data/licenses/NOTICE.TXT).
  * Modified for A2FC: streaming C, two-pass validation and text paging. */
 #include "../a2fc_plugin.h"
+#ifdef RT_DOS
+#include <string.h>
+#endif
 void __fastcall__ plugin_entry(const struct A2fcApi*);
 struct RtHeader {unsigned int signature;unsigned char flags;
  void __fastcall__ (*entry)(const struct A2fcApi*);unsigned char r[3];char desc[52];};
@@ -15,6 +18,21 @@ struct RtHeader {unsigned int signature;unsigned char flags;
 #endif
 static struct A2fcApi rt_api;
 static FILE* rt_file;
+#ifdef RT_DOS
+/* S-C sources saved as DOS Integer BASIC have a two-byte exact EOF.
+ * Sources stay read-only; the two validation/display passes reopen them. */
+static unsigned char rt_dos;
+#define A (&rt_api)
+#define DS_SECTORS 257
+#define DS_NO_SEEK
+#define DS_DATA_BUFFER rt_api.copy_buf
+#define DS_MLI rt_api.mli
+#define DS_SEEK rt_api.fseek
+#define frd rt_api.fread
+#define fopn rt_api.fopen
+#define fcls rt_api.fclose
+#include "dos_source.h"
+#endif
 static unsigned int rt_pos,rt_len;
 static unsigned long rt_off;
 static unsigned char rt_bad,rt_render,rt_cancel,rt_row,rt_col;
@@ -24,6 +42,11 @@ static unsigned char rt_line[255];
 static void rt_invalid(void){if(!rt_bad)rt_bad=2;}
 
 static int rt_get(void){
+#ifdef RT_DOS
+ if(rt_dos){
+  int c=ds_get();if(ds_bad)rt_bad=1;if(c>=0)++rt_off;return c;
+ }
+#endif
  if(rt_pos==rt_len){
   rt_pos=0;rt_len=rt_api.fread(rt_api.copy_buf,1,512,rt_file);
   if(ferror(rt_file)){rt_bad=1;return -1;}
@@ -51,7 +74,9 @@ static void rt_put(unsigned char c){
 static void rt_spaces(unsigned char n){while(n-- && !rt_cancel)rt_put(' ');}
 #endif
 
-#if RT_FORMAT == 1
+#if RT_FORMAT == 7 || RT_FORMAT == 8
+#include "newsdoc_decode.h"
+#elif RT_FORMAT == 1
 /* Pascal: editor header followed by independent 1K chunks. NUL padding
  * consumes the remainder of a chunk; DLE+32+count only at a line start.
  * A final partial chunk is allowed, but a DLE count may not cross one. */
@@ -242,6 +267,22 @@ static void rt_decode(void){
 
 static unsigned char rt_pass(unsigned char render){
  rt_bad=rt_cancel=0;rt_off=0;rt_pos=rt_len=0;rt_row=1;rt_col=0;rt_render=render;
+#ifdef RT_DOS
+ if(rt_dos){
+  dv_file=NULL;
+  if(!dv_open(&rt_api.panels[*rt_api.active]) || !ds_open(rt_api.selected) ||
+#if RT_FORMAT == 7
+     ds_kind!=4 || ds_aux!=0x4000U){
+#elif RT_FORMAT == 8
+     ds_kind!=4 || ds_aux!=0x98A5U){
+#else
+     ds_kind!=1){
+#endif
+   dv_close();rt_bad=1;return 0;
+  }
+  rt_decode();if(!dv_close())rt_bad=1;return !rt_bad;
+ }
+#endif
  rt_file=rt_api.fopen(rt_api.full,"rb");
  if(!rt_file){rt_bad=1;return 0;}
  rt_decode();
@@ -250,7 +291,23 @@ static unsigned char rt_pass(unsigned char render){
 }
 void __fastcall__ plugin_entry(const struct A2fcApi* a){
  rt_api=*a;
- if(!a->full[0] || !a->selected->name[0] || a->selected->type==15){
+#ifdef RT_DOS
+ rt_dos=a->panels!=NULL && a->active!=NULL && a->panels[*a->active].fs==FS_DOS33;
+ if(rt_dos && a->selected->type!=
+#if RT_FORMAT == 7 || RT_FORMAT == 8
+    6
+#else
+    0xFA
+#endif
+    ){a->strcpy(a->note,"Incorrect DOS file type.");return;}
+#endif
+ if(
+#ifdef RT_DOS
+    (!rt_dos && !a->full[0]) ||
+#else
+    !a->full[0] ||
+#endif
+    !a->selected->name[0] || a->selected->type==15){
   a->strcpy(a->note,"Select a file.");return;}
  if(!rt_pass(0)){a->strcpy(a->note,rt_bad==1?"Read/open/close error.":"Malformed " RT_LABEL " file.");return;}
  a->clrscr();

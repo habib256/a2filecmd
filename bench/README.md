@@ -6,7 +6,7 @@ livre pour cela : les adresses des variables observees viennent de la table de
 symboles du lien (`build/a2fc.lbl`), et l'ecran est lu la ou l'Apple II le
 range, en `$400-$7FF`.
 
-Les bancs disquette utilisent l’image interne `dist/A2FILECMD-PRODOS-140K-<version>.po`
+Les bancs disquette utilisent l’image interne `build-6502/legacy/BOOT.po`
 (`<version>` est `A2FC_VERSION` du Makefile, `bench/pom2.py`).
 La conversion DSK publiée conserve les mêmes blocs ProDOS ; les `.po` ne sont
 pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
@@ -84,7 +84,7 @@ pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 
 ## Les deux editions
 
-`dist/A2FILECMD-PRODOS-140K-<version>.po` est l'**edition disquette**, construite en 6502
+`build-6502/legacy/BOOT.po` est l'**edition disquette**, construite en 6502
 (`build-6502/`) avec le gestionnaire et les outils disque seulement : c'est
 elle que les bancs amorcent par defaut, et sa table de symboles est prise
 dans `build-6502/` sans rien dire. `run.py` y saute la section souris, et les
@@ -109,11 +109,11 @@ la XL publiée de ce processeur (la 6502 sur le IIe non enhanced, sans
 souris) : POM2 ne prend qu’un disque dur, donc le volume XL est rebâti
 avec les fichiers de travail à sa racine, après avoir vérifié qu’il
 redonne sans eux le `.2mg` publié octet à octet.
-`extras.py` vérifie la 140K essentielle et la 800K complète : amorçage,
+`extras.py` vérifie la fixture compacte BOOT et la 800K complète : amorçage,
 menu exact, éditeur local et refus immédiat d'un outil absent. La 800K est
 amorcée comme périphérique de blocs, sans simuler un lecteur 3½ physique.
 Les deux passent sur IIe enhanced et non enhanced avec le code 6502.
-`check_images.py` relit les cinq images et compare leurs fichiers aux builds.
+`check_images.py` relit les quatre images et compare leurs fichiers aux builds.
 Les anciennes catégories ne sont fabriquées que dans `build-6502/legacy/`
 par `make benchpackages ARCH=6502`, pour les tests de chargement optionnel.
 
@@ -159,7 +159,7 @@ graphique, avec son serveur de commande (`--ai-control`) et une option
 la bibliotheque de l'emulateur (`POM2_ROOT`, par defaut `~/src/pom2`) :
 
 ```sh
-make disk && make benchfloppy ARCH=enh
+make disk benchboot ARCH=6502 && make benchfloppy ARCH=enh
 make pom2host
 A2FC_IMG=A2FILECMD-full python3 bench/run.py --out /tmp/bench
 POM2=/chemin/vers/pom2_playtest python3 bench/memory.py
@@ -184,7 +184,7 @@ donne un Apple //c (ROM 32 Ko) : son lecteur integre est le Disk II du slot
 6, donc `--boot 6` amorce la disquette comme sur le //e, et le disque dur est
 une unite SmartPort sur le port arriere, servie par le firmware du //c en
 slot 5 (pas de carte, pas de Mockingboard). Les deux presets amorcent
-`dist/A2FILECMD-PRODOS-140K-<version>.po` jusqu'aux panneaux. `Pom2(..., floppy2=...)` met une
+`build-6502/legacy/BOOT.po` jusqu'aux panneaux. `Pom2(..., floppy2=...)` met une
 seconde disquette dans le lecteur 2 du meme Disk II des l'amorcage
 (`pom2_playtest --disk2`) : un vrai DOS 3.3 dans un lecteur, sans passer par
 `/disk` -- ce que le banc des disques physiques attendait.
@@ -274,7 +274,7 @@ la ligne 22 porte quelque chose, `xplug.note_blank` qu'elle soit rendue vide
 quand l'outil abandonne sans rien dire.
 
 ```sh
-make disk
+make disk benchboot ARCH=6502
 make xplugins ARCH=6502
 A2FC_PRESET=iie_unenh python3 bench/plugins.py --jobs 3 --out /tmp/plugins-6502
 A2FC_BUILD=build python3 bench/plugins.py --jobs 3 --out /tmp/plugins-enh
@@ -482,7 +482,7 @@ sur copies jetables des images XL : trois allers-retours volumes/catalogue,
 refus de confirmation, copies BAS/BIN/TXT, collision, protection physique,
 conservation des autres fichiers, du volume source et d'AUX. Exécuter
 `A2FC_PRESET=iie_unenh python3 bench/doswrite.py` puis
-`A2FC_IMG=A2FILECMD-full python3 bench/doswrite.py` après `make disk`.
+`A2FC_IMG=A2FILECMD-full python3 bench/doswrite.py` après `make disk benchboot ARCH=6502`.
 
 
 ### ProDOS vers DOS 3.3 : disquettes et images
