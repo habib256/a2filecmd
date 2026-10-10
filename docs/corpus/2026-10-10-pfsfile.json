@@ -1,0 +1,61 @@
+{
+  "date": "2026-10-10",
+  "reader": "PFSFILE",
+  "scope": "ProDOS type $16 aux $0001 A2CD00 profile, active records with form labels; no report or old custom filesystem decoding.",
+  "unique_real_documents": [
+    {
+      "source": "images/productivity/integrated/pfs/PFS_REPORT_hr.dsk",
+      "name": "/STAFF.PFS",
+      "bytes": 16384,
+      "sha256": "ecac5197e8d501754e93b218c0aeb69864e55d9229ee919cdf6d741368e04795",
+      "active_records": 8,
+      "form_labels": 11
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Plan.po",
+      "name": "/COSTFILE.PFS",
+      "bytes": 24576,
+      "sha256": "9a2ea1904f1a22debf511409c3c31f64acb493b70d0e82cbd90fbcdcaa7f6942",
+      "active_records": 41,
+      "form_labels": 7
+    }
+  ],
+  "host_tests": 8,
+  "sim65_cpus": [
+    "6502",
+    "65c02"
+  ],
+  "native": {
+    "6502": {
+      "passed": 14,
+      "total": 14,
+      "source_volume_preserved": true,
+      "aux_ram_preserved": true,
+      "stack_floor_preserved": true,
+      "plugin_sha256": "5be2c5801d862d93cc02aaa28012ed1af6eb1a021e605213688fc25364043902",
+      "distribution_binaries_match": true
+    },
+    "65c02": {
+      "passed": 14,
+      "total": 14,
+      "source_volume_preserved": true,
+      "aux_ram_preserved": true,
+      "stack_floor_preserved": true,
+      "plugin_sha256": "d31cc0edf146221d12d5494b4c39d4120282f570e053f902b5adcb5159847396",
+      "distribution_binaries_match": true
+    }
+  },
+  "original_comparison": {
+    "date": "2026-10-10",
+    "scope": "Nine literal values/labels from first COSTFILE record only; no full typography or all-record comparison. Input adapter redirects one MAIN Open-Apple read for one Return, then restores it.",
+    "labels_compared": 9,
+    "document_sha256": "9a2ea1904f1a22debf511409c3c31f64acb493b70d0e82cbd90fbcdcaa7f6942",
+    "source_documents_preserved": true
+  },
+  "limitations": [
+    "Maximum physical file 256 KiB; maximum assembled form or record 1008 bytes (8 cells).",
+    "At most 32 form labels, coordinates x < 80 and y < 128.",
+    "Only reachable form and active-record structures validated; indexes and free lists remain opaque.",
+    "Original comparison covers nine strings in first COSTFILE record, not all 49 records or typography."
+  ]
+}

@@ -1,0 +1,91 @@
+{
+  "date": "2026-10-10",
+  "reader": "PFSWRITE",
+  "scope": "ProDOS type $16 aux $0002, paged plain text with visible controls; page/printer settings opaque. No exhaustive comparison with the original editor.",
+  "unique_real_documents": [
+    {
+      "source": "images/productivity/integrated/pfs/PFS Write v28-APR-86 (4am crack).zip",
+      "member": "PFS Write v28-APR-86 (4am crack)/PFS Write v28-APR-86 (4am crack) side A - program.dsk",
+      "name": "/NILSSON",
+      "bytes": 2100,
+      "sha256": "d1ef97f1d97ed41eacdf62cbbbda57f8c99d95090224694c3eee052940e6062b"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Write v28-APR-86 (4am crack).zip",
+      "member": "PFS Write v28-APR-86 (4am crack)/PFS Write v28-APR-86 (4am crack) side B - dictionary.dsk",
+      "name": "/HOUSE.PFS",
+      "bytes": 1926,
+      "sha256": "83b8f9d1f8448e3575495b1790ed7a9b7fffa2b246abd4182e35eae44c6fff25"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Write v28-APR-86 (4am crack).zip",
+      "member": "PFS Write v28-APR-86 (4am crack)/PFS Write v28-APR-86 (4am crack) side B - dictionary.dsk",
+      "name": "/NAME.PFS",
+      "bytes": 1188,
+      "sha256": "72dbee0094768e94f7d9eea2d5526bac59bae9c9e2d885795ec56f8cc5f843d1"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Write v28-APR-86 (4am crack).zip",
+      "member": "PFS Write v28-APR-86 (4am crack)/PFS Write v28-APR-86 (4am crack) side B - dictionary.dsk",
+      "name": "/ANNUAL.PFS",
+      "bytes": 3967,
+      "sha256": "839c324beb6c9d9f3a2236e6eb1888a40296b61af720727e4cd6e9fca541a934"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Write v28-APR-86 (4am crack).zip",
+      "member": "PFS Write v28-APR-86 (4am crack)/PFS Write v28-APR-86 (4am crack) side B - dictionary.dsk",
+      "name": "/FLYER.PFS",
+      "bytes": 1909,
+      "sha256": "aca33e957f3123e86addce1e678adb14eeced084697406fedd111d073ecfc1aa"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Write v28-APR-86 (4am crack).zip",
+      "member": "PFS Write v28-APR-86 (4am crack)/PFS Write v28-APR-86 (4am crack) side B - dictionary.dsk",
+      "name": "/MEMO.PFS",
+      "bytes": 1696,
+      "sha256": "be5dcbf28722d45c7c4cc9ec715623fae70a65846becb2138c358e3761ed4c0d"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Write v28-APR-86 (4am crack).zip",
+      "member": "PFS Write v28-APR-86 (4am crack)/PFS Write v28-APR-86 (4am crack) side B - dictionary.dsk",
+      "name": "/LETTER.PFS",
+      "bytes": 1681,
+      "sha256": "e56e21ac6aea47261973e42abcd05086303fd9a5791296debc06aebeebce2afa"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Write v28-APR-86 (4am crack).zip",
+      "member": "PFS Write v28-APR-86 (4am crack)/PFS Write v28-APR-86 (4am crack) side B - dictionary.dsk",
+      "name": "/EXTRA.PFS",
+      "bytes": 1145,
+      "sha256": "a6a89fc817e54e2693831c09dbaa2f4a4c458f2c1460bfb7d2dcc16fe6e663ed"
+    }
+  ],
+  "host_tests": 7,
+  "sim65_cpus": [
+    "6502",
+    "65c02"
+  ],
+  "native": {
+    "6502": {
+      "passed": 18,
+      "total": 18,
+      "source_volume_preserved": true,
+      "aux_ram_preserved": true,
+      "stack_floor_preserved": true,
+      "plugin_sha256": "12b87baece6e6b4aa295fd833b85970b5fabd63344ae3da11a328792ef58317d"
+    },
+    "65c02": {
+      "passed": 18,
+      "total": 18,
+      "source_volume_preserved": true,
+      "aux_ram_preserved": true,
+      "stack_floor_preserved": true,
+      "plugin_sha256": "4667c212ff2cc6409c459070aa2837367afa277f3fc64f9f17c51ba9261698cb"
+    }
+  },
+  "limitations": [
+    "Maximum body 64511 bytes.",
+    "Formatting, database merges, File/Report/Plan and custom old data disks are not decoded.",
+    "Only the qualified body framing and controls are supported; page settings are not validated."
+  ]
+}

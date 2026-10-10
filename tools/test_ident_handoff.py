@@ -6,7 +6,7 @@ class IdentHandoff(Handoff):
  def setUpClass(cls):
   cls.builds=[]
   for arch,d in (('enh','build'),('6502','build-6502')):
-   names=('ident','idread','idformats')
+   names=('ident','idread','idformats','idv1')
    subprocess.run(['make','ARCH='+arch]+[d+'/'+n+'.PLG' for n in names],cwd=ROOT,check=True,capture_output=True)
    for n in names:
     l={m[2]:int(m[1],16) for m in re.finditer(r'al ([0-9A-Fa-f]{6}) \.([^\s]+)',(ROOT/d/(n+'.lbl')).read_text())}

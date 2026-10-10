@@ -1,0 +1,33 @@
+{
+  "date": "2026-10-10",
+  "reader": "LISAV4",
+  "cpus": [
+    "6502 NMOS",
+    "65C02"
+  ],
+  "native_checks_per_cpu": 13,
+  "source_volume_and_aux_preserved": true,
+  "stack_floor_preserved": true,
+  "symbol_table_limit": 2816,
+  "sources": [
+    {
+      "name": "DETOKEN.A",
+      "type": 250,
+      "aux": 20705,
+      "length": 14752,
+      "symbols": 134,
+      "symbol_bytes": 1344,
+      "sha256": "5d20330403f2e1e93fe3662ca9bac4d9b9ac1098d6b3523b753908d213d6e934"
+    },
+    {
+      "name": "MNEMONICS.A",
+      "type": 250,
+      "aux": 20705,
+      "length": 20569,
+      "symbols": 315,
+      "symbol_bytes": 2185,
+      "sha256": "d41683905e13ebfc97127e950bd61c6a718e7d060e348988096208ad11ed4394"
+    }
+  ],
+  "limits": "No exhaustive original LISA 8/16 screen oracle; unknown dialects and larger symbol tables refused."
+}

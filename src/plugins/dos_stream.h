@@ -53,7 +53,7 @@ static void ds_name(const unsigned char* p,char* out){
 }
 static unsigned char ds_open(const struct Entry* selected){
  unsigned char t,s,j,found=0,ct,cs;
-#ifndef DS_BINARY_ONLY
+#if !defined(DS_BINARY_ONLY) && !defined(DS_RANDOM_TEXT)
  unsigned char k;
 #endif
  unsigned int start,last=0,pair,i;
@@ -82,6 +82,9 @@ static unsigned char ds_open(const struct Entry* selected){
 #ifdef DS_BINARY_ONLY
    if(ds_kind!=4||selected->type!=6)goto bad;
 #else
+#ifdef DS_RANDOM_TEXT
+   if(ds_kind!=0||selected->type!=4)goto bad;
+#else
 #ifdef DS_OTHER_TYPES
    if(ds_kind && (ds_kind&(unsigned char)(ds_kind-1)))goto bad;
 #else
@@ -90,14 +93,27 @@ static unsigned char ds_open(const struct Entry* selected){
    k=ds_kind==0?4:ds_kind==4?6:ds_kind==1?0xFA:ds_kind==2?0xFC:0;
    if(k!=selected->type)goto bad;
 #endif
+#endif
   }
   t=ct;s=cs;
  }
  if(found!=1)goto bad;
+#ifdef DS_RANDOM_TEXT
+ /* Only the record inspector accepts skipped T/S ranges. All other users
+  * retain their existing strict sequential-chain contract. */
+ if(ds_kind!=0)goto bad;
+ memset(ds_map,0,sizeof ds_slots);
+#endif
  t=selected->mdate>>8;s=selected->mdate;start=0;
  while(t){
   if(!ds_claim(t,s)||!sector_read(t,s,ds_ts))goto bad;
+#ifdef DS_RANDOM_TEXT
+  i=ds_word(ds_ts+5);
+  if(i<start || i>=DS_SECTORS || i%122)goto bad;
+  start=i;
+#else
   if(ds_word(ds_ts+5)!=start || start>=DS_SECTORS)goto bad;
+#endif
   ct=ds_ts[1];cs=ds_ts[2];if((!ct&&cs)||(ct&&!ds_pair(ct,cs)))goto bad;
   for(j=0;j<122;++j){
    t=ds_ts[12+(unsigned int)j*2];s=ds_ts[13+(unsigned int)j*2];
@@ -112,9 +128,14 @@ static unsigned char ds_open(const struct Entry* selected){
 #ifdef DS_BINARY_ONLY
  ds_prefix=4;
 #else
+#ifdef DS_RANDOM_TEXT
+ ds_prefix=0;
+#else
  ds_prefix=ds_kind==4?4:ds_kind==1||ds_kind==2?2:0;
 #endif
+#endif
  ds_length=(DS_POSITION)ds_count*256U;
+#ifndef DS_RANDOM_TEXT
  if(ds_prefix){
   if(!ds_count||!ds_map[0]||!sector_read(ds_map[0]>>8,ds_map[0],ds_data))goto bad;
 #ifdef DS_BINARY_ONLY
@@ -129,6 +150,7 @@ static unsigned char ds_open(const struct Entry* selected){
 #endif
   ds_cache=0;
  }
+#endif
  return 1;
 bad:ds_bad=1;return 0;
 }

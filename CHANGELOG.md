@@ -5,6 +5,62 @@ downloads and installation.
 
 ## [Unreleased]
 
+- Add the seven readers selected for 1.0: WORDPERF, MOUSEWR, BSFILER,
+  MULTPLAN, MVMOVIE, DGMAGI and PCSVW, with IDENT routing and both CPUs.
+  MVM is a 40×48 opaque frame preview; PCS is static with library outlines.
+  Graphics use AUX only after consent, reject /RAM sources and reconstruct
+  /RAM after use. Profiles, corpus and packaging limits: [V1-FORMATS](docs/V1-FORMATS.md).
+
+
+- Add PFSPLAN for ProDOS PFS:Plan B00 sheets: row/column labels, exact
+  stored decimal values and row/column formulas without recalculation.
+  Validate all physical data before display using MAIN-only buffers.
+
+- Add PFSFILE for ProDOS PFS:File A2CD00 databases: form labels and active
+  record chains, multiline fields, complete read/seek/close preflight and
+  MAIN-only buffers. Qualify 49 records from two real databases on both CPUs.
+
+- Add PFSWRITE for ProDOS PFS:Write documents ($16/$0002): paged text
+  with visible controls, complete body/EOF validation and read-only MAIN
+  buffers. Qualify eight real documents on both CPUs; keep File/Plan separate.
+
+- Add LISAV4 for LISA 8/16 v4/v5 INT sources: variable symbols, macros,
+  24/32-bit numbers, address modes and file tab stops. Read-only MAIN
+  buffers, complete validation/close before display, automatic Return
+  routing and both CPU editions. Symbol table is bounded to 2816 bytes.
+
+- Add DOSREC for fixed-length DOS text records, with explicit record length,
+  hexadecimal/ASCII pages and holes distinct from allocated NUL bytes.
+  Validate and close read-only sources before display; no AUX writes.
+- Extend PSBORDER/PSFONT to ProDOS $F5 aux $2000/$1000, including automatic
+  routing and 95 font entries. Compare 77 borders and 36 fonts with paired
+  BIN sources; validate both architectures and malformed data.
+
+- Add MAGWIN for Magic Window BIN plain-text previews, including DOS 3.3,
+  and LISAV3 for ProDOS LISA v3 packed symbols/mnemonics/operands. Validate
+  complete source before display, preserve MAIN/AUX boundaries and source
+  bytes. Show Magic Window printer codes as caret notation; refuse the known
+  incompatible ANIX.EQUATES dialect and malformed token references.
+
+- Add PSBORDER and PSFONT for original Print Shop BIN borders and fonts,
+  including direct DOS 3.3 viewing. Validate complete input/pointer bounds
+  before preview; read-only MAIN buffers preserve AUX and source volumes.
+  Qualify 77 borders and 36 fonts; paired ProDOS $F5 variants are now supported.
+
+- Add MULTISCR for MultiScribe TXT/WPF plain-text documents and APPLEWR
+  for Apple Writer margins, paragraph indents and alignment, including direct
+  DOS 3.3 reading. Read-only MAIN buffers, complete validation before display;
+  unknown Apple Writer commands stay visible and are never executed.
+- Census the local Apple II corpus with the actual C IDENT classifier;
+  publish a prioritized register of 51 missing or partial format families.
+
+- Mini: Return and B open Pinball Construction Set `*.PB` tables in hex
+  instead of offering BRUN on data. Case-insensitive suffix matching;
+  ordinary programs and `.PBX` still run. Regression bench on both CPU cores.
+- Qualify three real Dazzle Draw pictures against the original DD.PICLOADER:
+  both graphics banks and rendered screens identical through Return and I,
+  14/14 checks per CPU, including AUX refusal and unchanged source volumes.
+
 - Integrate direct text, hex, raw 40-column lo-res and HGR readers for real
   DOS 3.3 drives and DOS-order images through T/H/I and Return. Ship
   DOSVIEW in the complete ProDOS editions. No extraction, temporary

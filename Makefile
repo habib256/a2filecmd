@@ -191,19 +191,20 @@ $(CODE): $(SRC)/plugins/applesoft_tokens.h $(SRC)/plugins/file_install.h $(SRC)/
 	@python3 $(TOOLS)/check_layout.py --lbl $(BUILD)/a2fc.lbl --bin $@ $(LAYOUT_BIG)
 
 # -- The service-table overlays ---------------------------------------------
+
 $(BUILD)/dosput.PLG: $(SRC)/plugins/doswrite.c
 $(BUILD)/dosbas.PLG $(BUILD)/dosint.PLG: $(SRC)/plugins/intbasic.c
 $(BUILD)/mcsplay.PLG: $(SRC)/plugins/mcs.c
 
-$(BUILD)/%.PLG: $(SRC)/plugins/%.c $(wildcard $(SRC)/plugins/*.h) $(wildcard $(SRC)/plugins/*.s) $(wildcard $(SRC)/plugins/*.inc) $(wildcard $(SRC)/plugins/pt3lib/*) $(wildcard $(SRC)/plugins/ppt3/*) $(SRC)/a2fc_plugin.h sdk/plugin.cfg sdk/find.cfg sdk/pt3.cfg sdk/nibcopy.cfg sdk/nrclip.cfg sdk/visicalc.cfg sdk/gmagic.cfg sdk/dosmcs.cfg sdk/ident.cfg $(TOOLS)/seal_mcs_stage.py Makefile | $(BUILD)
+$(BUILD)/%.PLG: $(SRC)/plugins/%.c $(wildcard $(SRC)/plugins/*.h) $(wildcard $(SRC)/plugins/*.s) $(wildcard $(SRC)/plugins/*.inc) $(wildcard $(SRC)/plugins/pt3lib/*) $(wildcard $(SRC)/plugins/ppt3/*) $(SRC)/a2fc_plugin.h sdk/plugin.cfg sdk/find.cfg sdk/pt3.cfg sdk/nibcopy.cfg sdk/nrclip.cfg sdk/visicalc.cfg sdk/gmagic.cfg sdk/dosmcs.cfg sdk/ident.cfg sdk/v1gfx.cfg $(TOOLS)/seal_mcs_stage.py Makefile | $(BUILD)
 	$(CC65BIN)cc65 -t $(TARGET) $(CCDEFS) -O -Oirs -Cl --codesize $(CODESIZE) -o $(BUILD)/$*.s $<
 	$(CC65BIN)ca65 -t $(TARGET) -o $(BUILD)/$*.o $(BUILD)/$*.s
 	@helper=; if [ -f $(SRC)/plugins/$*.s ]; then $(AS) -t $(TARGET) -o $(BUILD)/$*_svc.o $(SRC)/plugins/$*.s || exit; helper=$(BUILD)/$*_svc.o; fi; \
-	  if grep -qE 'PLUGIN_MAGIC, *OVERLAY_BIG' $<; then big=1; else big=0; fi; \
-	  $(CC65BIN)ld65 -C $(if $(filter find,$*),sdk/find.cfg,$(if $(filter pt3,$*),sdk/pt3.cfg,$(if $(filter nibcopy,$*),sdk/nibcopy.cfg,$(if $(filter nrclip,$*),sdk/nrclip.cfg,$(if $(filter visicalc,$*),sdk/visicalc.cfg,$(if $(filter gmagic,$*),sdk/gmagic.cfg,$(if $(filter dosmcs mcsimport,$*),sdk/dosmcs.cfg,$(if $(filter ident idread idformats,$*),sdk/ident.cfg,sdk/plugin.cfg)))))))) -D __OVLSIZE__=$$( if [ $$big = 1 ]; then echo $(if $(filter $*,$(XPLUGINS_HGR)),0x0500,$(if $(filter $*,$(XPLUGINS_SCRATCH)),$(if $(filter find,$*),0x1600,0x1500),$(if $(filter mcs,$*),0x1B80,$(if $(filter dosmcs mcsimport mcsplay,$*),0x1C00,$(if $(filter docview,$*),0x2260,$(if $(filter volinfo blkview blkedit fixit repair,$*),0x249E,$(if $(filter duet,$*),0x0900,$(if $(filter ident idread idformats,$*),0x2500,0x2500)))))))); elif [ "$*" = verify ]; then echo 0x04C2; else echo 0x0500; fi ) -m $(BUILD)/$*.map -Ln $(BUILD)/$*.lbl -o $@ $(BUILD)/$*.o $$helper $(CC65LIB) && \
+	  if grep -qE 'PLUGIN_MAGIC, *OVERLAY_BIG' $< || [ "$*" = dgmagi ] || [ "$*" = pcsvw ]; then big=1; else big=0; fi; \
+	  $(CC65BIN)ld65 -C $(if $(filter find,$*),sdk/find.cfg,$(if $(filter pt3,$*),sdk/pt3.cfg,$(if $(filter nibcopy,$*),sdk/nibcopy.cfg,$(if $(filter nrclip,$*),sdk/nrclip.cfg,$(if $(filter visicalc,$*),sdk/visicalc.cfg,$(if $(filter gmagic,$*),sdk/gmagic.cfg,$(if $(filter dosmcs mcsimport,$*),sdk/dosmcs.cfg,$(if $(filter dgmagi pcsvw,$*),sdk/v1gfx.cfg,$(if $(filter ident idread idformats idv1,$*),sdk/ident.cfg,sdk/plugin.cfg))))))))) -D __OVLSIZE__=$$( if [ $$big = 1 ]; then echo $(if $(filter $*,$(XPLUGINS_HGR)),0x0500,$(if $(filter $*,$(XPLUGINS_SCRATCH)),$(if $(filter find,$*),0x1600,0x1500),$(if $(filter mcs,$*),0x1B80,$(if $(filter dosmcs mcsimport mcsplay,$*),0x1C00,$(if $(filter docview,$*),0x2260,$(if $(filter volinfo blkview blkedit fixit repair,$*),0x249E,$(if $(filter duet,$*),0x0900,$(if $(filter ident idread idformats idv1,$*),0x2500,0x2500)))))))); elif [ "$*" = verify ]; then echo 0x04C2; else echo 0x0500; fi ) -m $(BUILD)/$*.map -Ln $(BUILD)/$*.lbl -o $@ $(BUILD)/$*.o $$helper $(CC65LIB) && \
 	  limit=$$( [ $$big = 1 ] && echo $(if $(filter $*,$(XPLUGINS_HGR)),1280,$(if $(filter duet,$*),2304,9472)) || echo 1280 ) && \
 	  { test $$(wc -c < $@) -le $$limit || { echo "$@: $$(wc -c < $@) bytes, more than its $$limit-byte window"; rm -f $@; exit 1; }; } && \
-	  if [ "$*" = ident ] || [ "$*" = idread ] || [ "$*" = idformats ]; then python3 $(TOOLS)/seal_mcs_stage.py $@ $(BUILD)/$*.lbl 0x4000 1 || exit; fi && \
+	  if [ "$*" = ident ] || [ "$*" = idread ] || [ "$*" = idformats ] || [ "$*" = idv1 ]; then python3 $(TOOLS)/seal_mcs_stage.py $@ $(BUILD)/$*.lbl 0x4000 1 || exit; fi && \
 	  if [ "$*" = mcsimport ] || [ "$*" = mcsplay ]; then python3 $(TOOLS)/seal_mcs_stage.py $@ $(BUILD)/$*.lbl || exit; fi && \
 	  echo "$@: $$(wc -c < $@) bytes ($$( [ $$big = 1 ] && echo big || echo small ) overlay)"
 xplugins: $(XPLG)
@@ -315,7 +316,7 @@ $(PO800): $(STAGE_DEPS) $(XPLG) $(PPT3) $(FANTA) $(TAKE1) $(DATA)/BASIC.SYSTEM.S
 	cp $(TAKE1) $(STAGE)/A2FILE/TAKE1.SYSTEM.SYS
 	cp $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS $(STAGE)/
 	cp $(DATA)/RECOVER.TXT $(STAGE)/
-	python3 $(TOOLS)/mkvolume.py $(STAGE) $@ --volume A28006502 --a2fc-layout --boot $(DATA)/prodos_boot.tmpl --blocks 1600
+	python3 $(TOOLS)/mkvolume.py $(STAGE) $@ --volume A28006502 --a2fc-layout --sparse --boot $(DATA)/prodos_boot.tmpl --blocks 1600
 endif
 
 # XL: the complete edition for the selected CPU.
@@ -360,6 +361,7 @@ $(FULLPO): $(STAGE_DEPS) $(FLOPPY_SYSTEM) $(DATA)/BASIC.SYSTEM.SYS
 test: test-mini $(TAKE1)
 	python3 $(TOOLS)/test_fs_keys.py
 	python3 $(TOOLS)/test_dos_stream.py
+	python3 $(TOOLS)/test_dos_records.py
 	python3 $(TOOLS)/test_dos_hgr.py
 	python3 $(TOOLS)/test_dos_news.py
 	python3 $(TOOLS)/test_loader_prefix.py
@@ -470,6 +472,17 @@ test: test-mini $(TAKE1)
 	python3 $(TOOLS)/test_mcs_handoff.py
 	python3 $(TOOLS)/test_ident_handoff.py
 	python3 $(TOOLS)/test_retrotext.py
+	python3 $(TOOLS)/test_mkvolume_sparse.py
+	python3 $(TOOLS)/test_v1text.py
+	python3 $(TOOLS)/test_v1media.py
+	python3 $(TOOLS)/test_worddocs.py
+	python3 $(TOOLS)/test_nexttext.py
+	python3 $(TOOLS)/test_lisa4.py
+	python3 $(TOOLS)/test_pfswrite.py
+	python3 $(TOOLS)/test_pfsfile.py
+	python3 $(TOOLS)/test_pfsplan.py
+	python3 $(TOOLS)/test_printshop_extras.py
+	python3 $(TOOLS)/test_corpus_read.py
 	python3 $(TOOLS)/test_fontrix.py
 	python3 $(TOOLS)/test_pt3.py
 	python3 $(TOOLS)/test_pt3_frequency.py

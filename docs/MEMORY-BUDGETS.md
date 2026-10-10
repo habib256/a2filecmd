@@ -140,8 +140,9 @@ contrôlent cette limite avant les tampons, sans chevauchement.
 | VOLNAME (small) | `$1B00-$1FFF` | 1 156 / 1 139 | 14 / 31 |
 | WIPE (big) | `$1B00-$2FFF` | 5 159 / 5 130 | 50 / 79 |
 
-Mini (`tools/check_mini_layout.py`) : résident jusqu'à `$95FD`, **3**
-octets libres sous DOS (`$9600`) ; zone basse 5 octets sous `$2000` ;
+Mini (`tools/check_mini_layout.py`, correction PCS du 10 octobre 2026) :
+résident jusqu'à `$9600` exclus, **0** octet libre sous DOS ; zone basse
+jusqu'à `$2000` exclus, **0** octet libre ;
 moteur de formatage 459 octets en `$0200`, 5 octets sous les vecteurs DOS
 `$03D0`.
 
@@ -1313,7 +1314,7 @@ La 140K ProDOS est retirée de la distribution ; BOOT est une fixture interne.
 | NEWSPAGE | 6617 / 6626 | 1228 | 1627 / 1618 |
 | IDENT | 8836 / 9003 | 120 | 516 / 349 |
 | IDREAD | 6509 / 6622 | 1610 | 1353 / 1240 |
-| IDFORMATS | 7485 / 7651 | 69 | 1918 / 1752 |
+| IDFORMATS | 9133 / 9390 | 69 | 270 / 13 |
 | SCASM | 6492 / 6482 | 1391 | 1589 / 1599 |
 
 DOSNEWS garde tout son rendu/état sous $1E7A, protégé par l'assertion $2000.
@@ -1327,3 +1328,132 @@ second FILE ProDOS ; les répertoires sont fermés et un seul FILE reste
 ouvert, à $0800. Le handoff vérifie longueur scellée, EOF, erreurs de lecture
 et fermeture, CPU et entrée avant de sauter. Les tests exécutent les trois
 chargeurs natifs sur les deux CPU et contrôlent chaque octet conservé.
+
+MultiScribe/Apple Writer (2026-10-10), sans AUX ni espace de travail HGR :
+
+| Surcouche | Fichier 65C02 / 6502 | BSS | Libre sous $4000, 65C02 / 6502 |
+| --- | ---: | ---: | ---: |
+| MULTISCR | 2358 / 2388 | 147 | 6967 / 6937 |
+| APPLEWR | 7289 / 7474 | 1382 | 801 / 616 |
+
+MENU conserve 58/7 octets ; MAIN, LC, LOWRAM et pile inchangés. Les deux
+builds complets et les contrôles de disposition passent.
+
+Print Shop BIN (2026-10-10), MAIN uniquement :
+
+| Surcouche | Fichier 65C02 / 6502 | BSS | Libre sous $4000, 65C02 / 6502 |
+| --- | ---: | ---: | ---: |
+| PSBORDER | 6436 / 6437 | 1270 | 1766 / 1765 |
+| PSFONT | 7303 / 7476 | 1780 | 389 / 216 |
+
+MAIN, LC, LOWRAM et pile restent aux marges ci-dessus. Les descriptions
+courtes du MENU compensent les deux nouvelles entrées ; aucun plafond levé.
+
+Magic Window / LISA v3 (2026-10-10), MAIN uniquement :
+
+| Surcouche | Fichier 65C02 / 6502 | BSS | Libre sous $4000, 65C02 / 6502 |
+| --- | ---: | ---: | ---: |
+| MAGWIN | 6085 / 6075 | 1119 | 2268 / 2278 |
+| LISAV3 | 4896 / 5023 | 3372 | 1204 / 1077 |
+
+LISAV3 garde 3072 octets de symboles compactés et un seul enregistrement
+borné à 126 octets ; aucune allocation en AUX. Le MENU garde 58/7 octets
+après raccourcissement de ses descriptions. MAIN, LC, LOWRAM et pile
+inchangés ; aucun contrôle désactivé. IDFORMATS 6502 ne garde que 13 octets :
+la prochaine extension exigera de récupérer de la place ou de scinder ce code.
+
+
+DOSREC et Print Shop ProDOS $F5 (2026-10-10), MAIN uniquement :
+
+| Surcouche | Fichier 65C02 / 6502 | BSS | Libre sous $4000, 65C02 / 6502 |
+| --- | ---: | ---: | ---: |
+| DOSREC | 7400 / 7387 | 1967 | 105 / 118 |
+| PSBORDER | 6730 / 6709 | 1003 | 1739 / 1760 |
+| PSFONT | 7583 / 7748 | 1546 | 343 / 178 |
+| IDFORMATS | 9076 / 9335 | 69 | 327 / 68 |
+
+Le tableau DOS des lecteurs Print Shop est borné à 65 secteurs : assez pour
+le maximum accepté de 16 KiB plus l’en-tête BIN. DOSREC conserve 560 entrées
+et 288 octets de page avec un bitmap de trous. Les descriptions IDENT
+raccourcies signalent les candidatures par `?`. MENU garde 54/3 octets ;
+MAIN 9/397, LC 3/1, LOWRAM 84/109 et écart de pile 26/603 inchangés.
+Aucun plafond relevé ni contrôle désactivé.
+
+
+LISA 8/16 v4/v5 (2026-10-10), MAIN uniquement :
+
+| Surcouche | Fichier 65C02 / 6502 | BSS | Libre sous $4000, 65C02 / 6502 |
+| --- | ---: | ---: | ---: |
+| LISAV4 | 6036 / 6301 | 3133 | 303 / 38 |
+| IDENT | 9098 / 9294 | 120 | 254 / 58 |
+| IDFORMATS | 9097 / 9356 | 69 | 306 / 47 |
+
+LISAV4 conserve 2816 octets de symboles encodés ; leurs références sur
+16 bits sont retrouvées dans cette table sans tableau d’offsets ni AUX.
+La règle de candidature LISA 8/16 est dans IDENT, puis sa route dans
+IDFORMATS : chaque phase reste bornée par son lien et son handoff scellé.
+MENU garde 52/1 octets. MAIN 9/397, LC 3/1, LOWRAM 84/109 et écart de pile
+26/603 inchangés. Builds complets et contrôles de disposition réussis.
+
+
+PFS:Write (2026-10-10), buffers MAIN, aucune reconstruction AUX /RAM :
+
+| Surcouche | Fichier 65C02 / 6502 | BSS | Libre sous $4000, 65C02 / 6502 |
+| --- | ---: | ---: | ---: |
+| PFSWRITE | 2048 / 2101 | 135 | 7289 / 7236 |
+| IDENT | 9113 / 9305 | 120 | 239 / 47 |
+| IDFORMATS | 9120 / 9379 | 69 | 283 / 24 |
+
+PFSWRITE utilise `copy_buf` pour lire 512 octets à la fois. Aucun tableau
+de document entier ni allocation AUX. La candidature $16/$0002 est dans
+IDENT, sa route dans IDFORMATS. Des descriptions IDENT/MENU sont
+raccourcies pour respecter les plafonds existants ; MENU garde 59/8 octets.
+MAIN 9/397, LC 3/1, LOWRAM 84/109 et écart de pile 26/603 inchangés.
+Les deux builds complets et leurs contrôles de disposition passent.
+
+
+PFS:File (2026-10-10), buffers MAIN et lecture seule :
+
+| Surcouche | Fichier 65C02 / 6502 | BSS | Libre sous $4000, 65C02 / 6502 |
+| --- | ---: | ---: | ---: |
+| PFSFILE | 4832 / 4838 | 2589 | 2051 / 2045 |
+| IDENT | 9148 / 9340 | 120 | 204 / 12 |
+| IDFORMATS | 9141 / 9400 | 69 | 262 / 3 |
+
+PFSFILE garde deux buffers de 1024 octets pour le formulaire et la fiche,
+un bitmap de 256 octets pour l’appartenance des cellules et 32 offsets de
+libellés. Le chargement accepte huit cellules (1008 octets utiles) au plus ;
+les zones libres/index restent opaques. Aucun buffer AUX ou reconstruction
+RAM. Le routage File reste partagé entre IDENT et IDFORMATS ; descriptions
+et catégories sont raccourcies sans relever les plafonds. MENU garde 60/9
+octets. MAIN 9/397, LC 3/1, LOWRAM 84/109 et écart de pile 26/603 restent
+inchangés. Les deux builds complets, les gardes de disposition et les bancs
+natifs passent ; la réserve IDFORMATS 6502 reste très faible (3 octets).
+
+
+PFS:Plan B00 (2026-10-10), MAIN et lecture seule :
+
+| Surcouche | Fichier 65C02 / 6502 | BSS | Libre sous $4000, 65C02 / 6502 |
+| --- | ---: | ---: | ---: |
+| PFSPLAN | 4897 / 4972 | 1345 | 3230 / 3155 |
+| IDENT | 9134 / 9326 | 120 | 218 / 26 |
+| IDFORMATS | 9123 / 9382 | 69 | 280 / 21 |
+
+Deux blocs de 512 octets stockent les libellés, plus les offsets bornés
+(32 lignes, 16 colonnes) ; les cellules restent lues en flux. La candidature
+Plan est dans IDENT, la route dans IDFORMATS. Les descriptions visibles
+sont raccourcies pour respecter les plafonds existants. MENU garde 52/1
+octets (65C02/6502). MAIN 9/397, LC 3/1, LOWRAM 84/109 et écart de pile
+26/603 restent inchangés. Les deux builds et les gardes de disposition
+passent sans relever les limites ; les réserves MENU/IDENT/IDFORMATS 6502
+restent faibles.
+
+## Lecteurs 1.0
+
+IDV1 ajoute un relais MAIN-only, scellé comme les autres étapes IDENT, sans
+modifier les plafonds. WORDPERF/MOUSEWR/BSFILER/MULTPLAN utilisent le lecteur
+texte MAIN. MVMOVIE conserve un aperçu lores de 1920 octets en BSS MAIN et
+n’alloue pas AUX. DGMAGI/PCSVW ont une queue $1B00–$1C9F et une phase C
+$1CA0–$3FFF ; la queue engage le bitmap seulement après retour du C. AUX
+$4000–$7FFF est réservé après consentement, puis /RAM est reconstruit.
+Les limites sont imposées par sdk/v1gfx.cfg et les deux linkers natifs.

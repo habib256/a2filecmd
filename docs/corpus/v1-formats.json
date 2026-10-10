@@ -1,0 +1,677 @@
+{
+  "scope": "read-only qualification; Multiplan sheets authored by original v1.06; no copyrighted source files redistributed",
+  "files": [
+    {
+      "reader": "WORDPERF",
+      "file": "WordPerfect Learn Disk__ADDRSF.LRN#A00000",
+      "bytes": 295,
+      "sha256": "09f2f9a4a82923965844ca974623f65376e0f5dd203e369ea2bb1091a92853fa"
+    },
+    {
+      "reader": "WORDPERF",
+      "file": "WordPerfect Learn Disk__CAMPS.LRN#A00000",
+      "bytes": 755,
+      "sha256": "7bca33ad69b7e5348a6095dc068becb13d6fc6a108712daeb9ff1be4a1e242bd"
+    },
+    {
+      "reader": "WORDPERF",
+      "file": "WordPerfect Learn Disk__GRAPH.LRN#A00000",
+      "bytes": 1565,
+      "sha256": "84064d8b17891595ecdf9131815128c6d652ad66dc0467236d79b5fad46c78eb"
+    },
+    {
+      "reader": "WORDPERF",
+      "file": "WordPerfect Learn Disk__LETTER.LRN#A00000",
+      "bytes": 522,
+      "sha256": "47e9d0a35d3242b196b7a29cae538ede316f703348401309d76cb61c2f7c383f"
+    },
+    {
+      "reader": "WORDPERF",
+      "file": "WordPerfect Learn Disk__LETTER1.LRN#A00000",
+      "bytes": 545,
+      "sha256": "0bfb6eb6f3a332bec622ad7ba4eedc215ee2d355295e3d893f352c5c9d5d10bb"
+    },
+    {
+      "reader": "WORDPERF",
+      "file": "WordPerfect Learn Disk__LETTER2.LRN#A00000",
+      "bytes": 551,
+      "sha256": "189a6b5515fefe4bf832856b534d21a491370994a99236348b29dbcea9581c7c"
+    },
+    {
+      "reader": "WORDPERF",
+      "file": "WordPerfect Learn Disk__NOTICE.LRN#A00000",
+      "bytes": 522,
+      "sha256": "b48418a697893802dfab7c4f767b617731f7499b0eab5cb16576aa126558edec"
+    },
+    {
+      "reader": "WORDPERF",
+      "file": "WordPerfect Learn Disk__PERMITS.LRN#A00000",
+      "bytes": 2785,
+      "sha256": "ce7703b55759322502fc65e0f7ad2a655f7fc5f15f7c52b5b755ab49d423eb41"
+    },
+    {
+      "reader": "WORDPERF",
+      "file": "WordPerfect Learn Disk__PERMITS2.LRN#A00000",
+      "bytes": 491,
+      "sha256": "54aa15b3fd85588a9cf123575a280eb34b301aa5ab30886aee356f89e93ff530"
+    },
+    {
+      "reader": "WORDPERF",
+      "file": "WordPerfect Learn Disk__PERMITS3.LRN#A00000",
+      "bytes": 345,
+      "sha256": "8650ba05584a5b2c0cabb41c8597b757b20934dc60a51e0e1809585c0c7f69be"
+    },
+    {
+      "reader": "WORDPERF",
+      "file": "WordPerfect Learn Disk__REPORT.LRN#A00000",
+      "bytes": 3282,
+      "sha256": "4e656c3a47e8a823c70dad43ae44e8b192c39eccf91ffb1a415a9189f4d25f5e"
+    },
+    {
+      "reader": "WORDPERF",
+      "file": "WordPerfect Learn Disk__TREES.LRN#A00000",
+      "bytes": 1354,
+      "sha256": "b059131276b06fd0bf5546881b207daaf78e9a40624e57077e312d5f00718cca"
+    },
+    {
+      "reader": "WORDPERF",
+      "file": "WordPerfect Speller Utility for the IIe and IIc__INSTALL.HELP#A00000",
+      "bytes": 20550,
+      "sha256": "3c5085a5033c48c0ccb975ae67b860b99c02e80e55f870a064203b3b541816f1"
+    },
+    {
+      "reader": "WORDPERF",
+      "file": "WordPerfect Work Disk__FONT.TEST#A00000",
+      "bytes": 2754,
+      "sha256": "6b3dbf37fbe178b527aad6d67fc6944fcd91216e0165e2a500815a6f9a9e6c23"
+    },
+    {
+      "reader": "WORDPERF",
+      "file": "WordPerfect Work Disk__PRINTER.HELP#A00000",
+      "bytes": 7173,
+      "sha256": "5c0bc9d5fae7484ffa5a69a717830184a3d372abbf57c123c7c4adefb750a49e"
+    },
+    {
+      "reader": "WORDPERF",
+      "file": "WordPerfect Work Disk__PRINTER.TEST#A00000",
+      "bytes": 3174,
+      "sha256": "3a996672e2b334d80a5785d417e5f02572525bb95199c1c72b81e26066b546b5"
+    },
+    {
+      "reader": "WORDPERF",
+      "file": "WordPerfect Work Disk__PS.TEST#A00000",
+      "bytes": 1227,
+      "sha256": "9f95dd1fd6bcfec1044ce0763ecd01847316c3f5d34cf1986e9de21e7e8b45cd"
+    },
+    {
+      "reader": "WORDPERF",
+      "file": "WordPerfect Work Disk__READ.ME#A00000",
+      "bytes": 3941,
+      "sha256": "dae8675b027fc0a54ab902a078b75d461e078e3f70ee7ffc1443be63f23d838d"
+    },
+    {
+      "reader": "WORDPERF",
+      "file": "WordPerfect Work Disk__WP.TXT.TMP#A00000",
+      "bytes": 445,
+      "sha256": "0f9f1507bd99178c6d7305bfd1660436dc7364d0707046a91a31918a36166b3d"
+    },
+    {
+      "reader": "WORDPERF",
+      "file": "Wordperfect - Speller (Rev1.0)__INSTALL.HELP#A00000",
+      "bytes": 21363,
+      "sha256": "002250af3c9ad2570757865d2902ce0f40fb82f21b360148f2a6e0de81c75441"
+    },
+    {
+      "reader": "WORDPERF",
+      "file": "Workperfect - Fonts__FONT.TEST#A00000",
+      "bytes": 2757,
+      "sha256": "8f1e83fe4e737b58907fdbdb4199d97609725ef6b266ec1e4611bd9a461ef636"
+    },
+    {
+      "reader": "WORDPERF",
+      "file": "Workperfect - Fonts__PRINTER.HELP#A00000",
+      "bytes": 7643,
+      "sha256": "e171b9efe1647f59bdb3f24908d9483dfd373a0834c97bde5e317be1f964a064"
+    },
+    {
+      "reader": "WORDPERF",
+      "file": "Workperfect - Fonts__PRINTER.TEST#A00000",
+      "bytes": 2207,
+      "sha256": "05bbaa8f90d5480158563e841783fbdf266d5c364316e4f4091c7415b65bd3c5"
+    },
+    {
+      "reader": "WORDPERF",
+      "file": "Workperfect - Fonts__PS.TEST#A00000",
+      "bytes": 1270,
+      "sha256": "eef82f848d48e445ce4b0a8863817f0c0b279327ef4ce3a6b6bdfb7d8c4f4111"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite V1.5.7__BOZO#F10000",
+      "bytes": 1052,
+      "sha256": "018c399a0e986cd2eb0a9c97cbc3206ca87526b6cdcea967ccbee40b8e83a362"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite V1.5.7__GUIDO#F10000",
+      "bytes": 1292,
+      "sha256": "ac70f703556ff41f9b524842da361a0ed6cf98772b70655def07e1d0d53c0f1d"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite V1.5.7__PIGGIES#F10000",
+      "bytes": 1412,
+      "sha256": "7178431d28b05b2102478128e011b84e4148b923dc92b70a69b2cea41a7ec4a7"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite V1.5.7__PRESTON#F10000",
+      "bytes": 2012,
+      "sha256": "dc761bceb96ba690eebd7a4330c35ec886e5ba332249af8dd250a517fbc771b5"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite V1.5.7__PRINTER.TEST#F10000",
+      "bytes": 2432,
+      "sha256": "05aac6910eab36972f66f3bb1d0669ef8a2ddd8874f19c105bd81ae6408c37c3"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite V1.5.7__SPACE#F10000",
+      "bytes": 5312,
+      "sha256": "65c8f01435713f5962c4b1154662ebfcbea8b6883b9553d19b9a6fd285562665"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite V1.5.7__USTES#F10000",
+      "bytes": 1712,
+      "sha256": "baeefeff0447a8107992542fd409c32b1d1ecac2601cbdafa100d984ed002279"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_ADDRESSES#F10000",
+      "bytes": 1472,
+      "sha256": "27dd126270ce2342f3151a17a4a605005bfe0caab7de2f08af8b3acb62235ec0"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_APPLE.FONT.TEST#F10000",
+      "bytes": 7597,
+      "sha256": "2cf357006b06fbfeed06a99013249f1776547596b5af8c23ca50ded5ec5e248c"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_CITOH.FONT.TEST#F10000",
+      "bytes": 7597,
+      "sha256": "d19a970ea3b431aebd9e98bda82d980f21e35484d14b4dd12b47919a4ef84191"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_DELETE.ME#F10000",
+      "bytes": 632,
+      "sha256": "21e2d83652f5451dd012b61649870ed0fad5a830715f35f8ec08a725c237db20"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_EPSON.FONT.TEST#F10000",
+      "bytes": 7597,
+      "sha256": "d595f66ecaa2c573b434b3c49da9bdff8361e497a3158c4a103714fdb617ef0c"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_FILE.1#F10000",
+      "bytes": 632,
+      "sha256": "4c94b00d898a4e940cc56f89af2d8e24fdc3213922239359220ed6a6663981b1"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_FILE.2#F10000",
+      "bytes": 572,
+      "sha256": "b56b2c0e0946ba8982b51aca9cc48713f5c3a3e26abe32a90be1b16926faf968"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_FILE.3#F10000",
+      "bytes": 1352,
+      "sha256": "cf401d6c9d3d416f5d002bb31d546f5311ce2c456868833f30dc3420da2f590a"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_FILE.4#F10000",
+      "bytes": 1052,
+      "sha256": "908b7972ffd768b11b81fa7fde071bb846db36e17467a2fc7648c82a2fbe28ec"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_FILE.5#F10000",
+      "bytes": 632,
+      "sha256": "f015c34a63768689a7ff2a43a4975b23b3b0aa6124be543d189345d7bfaf5aeb"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_FILE.6#F10000",
+      "bytes": 632,
+      "sha256": "bfa01305848e5a580cbd2e0705e72d03b1e1e55651371d338e030cbade1ac167"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_FILE.7#F10000",
+      "bytes": 1232,
+      "sha256": "1b9591dcb306539795159236e81d4ddb33f59119d8a911d0b981ebcf37c84590"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_FORM.1#F10000",
+      "bytes": 1352,
+      "sha256": "6392e1593b4f401fced5b5bb30fa08c42a80960e8db96d5f4773bc2f119252ea"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_FORM.2#F10000",
+      "bytes": 1352,
+      "sha256": "dab54313f14fac3d80b459a6b6cf2ceaf97262f0762ea0f2c3f37dc987212375"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_FORM.3#F10000",
+      "bytes": 1472,
+      "sha256": "6747ff7efebb1c56ece45a0b9fc0100f0d038dd0177ab7d03c218b747e9e7d90"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_FORM.4#F10000",
+      "bytes": 1352,
+      "sha256": "9381bdeb16e64e98228a7ade8e3e1c757e316cbf041ea6dd6ff3aeafd2c28db2"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_FORM.5#F10000",
+      "bytes": 1292,
+      "sha256": "c085d847c39c796f03924e9991fe1c3e5de076d68582977f9ddfe7768a956f00"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_GUIDO#F10000",
+      "bytes": 1292,
+      "sha256": "eec6690fffffe0e3f8ed1baa1bd1250ec03b1da48c8e00477249a98b536186de"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_GUIDO.INVOICE#F10000",
+      "bytes": 1652,
+      "sha256": "7578a6fe23623862ca9baedfa8eddf1d8e9328e8912b385440da876055e51c92"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_MISSTAKKES#F10000",
+      "bytes": 3032,
+      "sha256": "c4bce383f7fd938d3c3aca7395a636e2b57ab399b3d20dd5d96624b7caf07fe5"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_MOM#F10000",
+      "bytes": 1172,
+      "sha256": "6e734554a971d59c423c9efaeeabb0398db649dd06cca9565cbacc39ac7effe5"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_NOTEPAD#F10000",
+      "bytes": 1052,
+      "sha256": "54b56e3034a24f78d21081648fc8f4e0f58df8d803b80f408f48b373b3ed2814"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_PIGGIES#F10000",
+      "bytes": 1412,
+      "sha256": "b5fbfb1d8c0be3c7f89e9ec66c0d16c11307cff676279e8e5a601b016f0d5ff6"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_PLAN.AHEAD#F10000",
+      "bytes": 3272,
+      "sha256": "d341451dfeba9f8ee09c41fbb8b4a010c07047d4e7d4c4c665c29a94b8aab83e"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_PRESTON#F10000",
+      "bytes": 1952,
+      "sha256": "f77e0bee74cb2249edc3bc3c635916710527ac3a1e8e28597ace2f66482740e6"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_PRINT.TEST#F10000",
+      "bytes": 3452,
+      "sha256": "a0feaefd9b348cdd099fe99692ebcdb178f7deb42517403b1b68a8b54483306c"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_SPACE#F10000",
+      "bytes": 4772,
+      "sha256": "abb59b95d337e65179bec8d764bb9a180454b01ebd6cb2c059c6cad1d2779e80"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_SPECIALS#F10000",
+      "bytes": 1052,
+      "sha256": "5b780e8e899b28570ecd5e2c5817477422003136278efcd26af42c1d85295b7f"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_THESIS#F10000",
+      "bytes": 6632,
+      "sha256": "3588064020effeaa500a8e719a3df652324e01d8ced6310ee31faebcbf198aca"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_TIPS#F10000",
+      "bytes": 39272,
+      "sha256": "2c3b83823aca9ea898bd5084bd9aa286ac8d4804edc0f91d6d958e3f0b5118c4"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "MouseWrite__SAMPLES_USTICE#F10000",
+      "bytes": 2192,
+      "sha256": "5e380baf4a9cbbc388f529f69afcb9a52a02884757c17ee4ae73aa56687df535"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "mousewrite_alt__BOZO#F10000",
+      "bytes": 1052,
+      "sha256": "f6decf6701e3c3da4f854db096401422f9b652fd92ab79804681cb7fa0f95d7e"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "mousewrite_alt__SPACE#F10000",
+      "bytes": 4772,
+      "sha256": "51f482ce3ec1e2cc04b88ad8387c2b92f271c3893e691a06454161d1c3bb6dfc"
+    },
+    {
+      "reader": "MOUSEWR",
+      "file": "mousewrite_alt__USTES#F10000",
+      "bytes": 1712,
+      "sha256": "87a62b0bf7edbd66ebfa6d84adf6e5a69f45d88bd612c842e1621aeacfc10878"
+    },
+    {
+      "reader": "BSFILER",
+      "file": "Animal Life Database (Bank Street Filer) (no boot)__ANIMALS#06D3C2",
+      "bytes": 21312,
+      "sha256": "2dc2950e004564b686ed86918e797453e6837719580720cad455be0c43dce48c"
+    },
+    {
+      "reader": "BSFILER",
+      "file": "Animal Life Database (Bank Street Filer) (no boot)__BOOKS#06D3C2",
+      "bytes": 10076,
+      "sha256": "3753f4058cc82ca4e23b6cee1d6b2692e7b499ad708650802c78ba41236dbcf2"
+    },
+    {
+      "reader": "BSFILER",
+      "file": "Animal Life Database (Bank Street Filer) (no boot)__COLD#06D3C2",
+      "bytes": 10884,
+      "sha256": "f261b5f652ff7e3970804d625d78344e8096955d360f9e79a4b59130e8faa44f"
+    },
+    {
+      "reader": "BSFILER",
+      "file": "Animal Life Database (Bank Street Filer) (no boot)__GLOSSARY#06D3C2",
+      "bytes": 11086,
+      "sha256": "d0de5ca0d4612e9efdb5f936d864e103062ee57d21e83d0852ca8a9846e52108"
+    },
+    {
+      "reader": "BSFILER",
+      "file": "Animal Life Database (Bank Street Filer) (no boot)__LAB#06D3C2",
+      "bytes": 1857,
+      "sha256": "1178f2cd6b0ddcb8a850a5d1018694970a4fa1ec69823fa558a115cfa498b28a"
+    },
+    {
+      "reader": "BSFILER",
+      "file": "Animal Life Database (Bank Street Filer) (no boot)__PETS#06D3C2",
+      "bytes": 9570,
+      "sha256": "1106b056a3fc82d854278e262b174fe6a69ff6f8b12e232ac607269b6e0dea0c"
+    },
+    {
+      "reader": "BSFILER",
+      "file": "Animal Life Database (Bank Street Filer) (no boot)__WARM#06D3C2",
+      "bytes": 10667,
+      "sha256": "45a719be667d43fe7be0ca2d282ca09d0eced634df55f24e1559ed22f63deaa8"
+    },
+    {
+      "reader": "BSFILER",
+      "file": "Endangered Species Database for Bank Street Filer (no boot)__BOOKS#06D3C2",
+      "bytes": 9803,
+      "sha256": "49bab2739ffd6f3a607f51148929f25b5637e02e59b3beeb5ec372dbc992e9f7"
+    },
+    {
+      "reader": "BSFILER",
+      "file": "Endangered Species Database for Bank Street Filer (no boot)__CRITICAL#06D3C2",
+      "bytes": 11374,
+      "sha256": "cd5e676371b80c2c1d731e9049ad76875cde36c8fe8407d12e74eb545dfa9996"
+    },
+    {
+      "reader": "BSFILER",
+      "file": "Endangered Species Database for Bank Street Filer (no boot)__EXTINCT#06D3C2",
+      "bytes": 11388,
+      "sha256": "288306fb9d96999ed31598433365ca206d12f3a18f22474dc007a36e75c3acb4"
+    },
+    {
+      "reader": "BSFILER",
+      "file": "Endangered Species Database for Bank Street Filer (no boot)__GLOSSARY#06D3C2",
+      "bytes": 10819,
+      "sha256": "71ef5cc5ae021ea47d78e4f840141f04402924e36032fdf2450a5608e0a293c1"
+    },
+    {
+      "reader": "BSFILER",
+      "file": "Endangered Species Database for Bank Street Filer (no boot)__LOCAL#06D3C2",
+      "bytes": 286,
+      "sha256": "128ade439ce71e87a5f7da1a4ea28e9ecc008c7ef88dadd369f33a1ddf5862f6"
+    },
+    {
+      "reader": "BSFILER",
+      "file": "Endangered Species Database for Bank Street Filer (no boot)__MAMMALS#06D3C2",
+      "bytes": 11349,
+      "sha256": "0dc5f78de2fc042173bcbca5b76abc375a539d28e89e51bdbc3119fb4fbe90b1"
+    },
+    {
+      "reader": "BSFILER",
+      "file": "North America Database for Bank Street Filer (no boot)__ATLAS#06D3C2",
+      "bytes": 9628,
+      "sha256": "d50d4419f4a01b4feecb367cbabf615a1294122fa572da525f3452c6556ebb04"
+    },
+    {
+      "reader": "BSFILER",
+      "file": "North America Database for Bank Street Filer (no boot)__BOOKS#06D3C2",
+      "bytes": 6933,
+      "sha256": "b4f5f07991c54d6f8e111162966e4e78735b2f2d3a56eb2ce45207340a7e93ca"
+    },
+    {
+      "reader": "BSFILER",
+      "file": "North America Database for Bank Street Filer (no boot)__CANADA 2#06D3C2",
+      "bytes": 7405,
+      "sha256": "8a2f1623f96959a6b6da693e82d6e00eb37f1ba973bf9b89d015e9435bbfe64e"
+    },
+    {
+      "reader": "BSFILER",
+      "file": "North America Database for Bank Street Filer (no boot)__CANADA#06D3C2",
+      "bytes": 7397,
+      "sha256": "00f7966830e69e3feada951ab5aa2c83f91f55f0f3528bdf2fdeb82394832c3d"
+    },
+    {
+      "reader": "BSFILER",
+      "file": "North America Database for Bank Street Filer (no boot)__FOOD#06D3C2",
+      "bytes": 11050,
+      "sha256": "4a57dba5157cf75ffffec155f18112e8220987e09e6429b171a864630705a327"
+    },
+    {
+      "reader": "BSFILER",
+      "file": "North America Database for Bank Street Filer (no boot)__GLOSSARY#06D3C2",
+      "bytes": 7107,
+      "sha256": "1549bf056b095eae5baffa31395935d0f4cbd6d47dedd2a4c0ec95790dc192cf"
+    },
+    {
+      "reader": "BSFILER",
+      "file": "North America Database for Bank Street Filer (no boot)__NEWS#06D3C2",
+      "bytes": 244,
+      "sha256": "ff203665bcd44c914622a63dfed651501fba9311538a9f50a2ffa14be53d1612"
+    },
+    {
+      "reader": "MULTPLAN",
+      "file": "MP_EMPTY.bin",
+      "bytes": 768,
+      "sha256": "1a2d03b7c9acc94e01ff8f74fd482e2cc3a4cfc0a9c07aebed8f15fd6c03f02e"
+    },
+    {
+      "reader": "MULTPLAN",
+      "file": "MP_FORMULA.bin",
+      "bytes": 768,
+      "sha256": "61d0214fea50d444e921593601c1669733301221f9bce5b5c70bf4983128b146"
+    },
+    {
+      "reader": "MULTPLAN",
+      "file": "MP_GRID.bin",
+      "bytes": 768,
+      "sha256": "b0acf9bcfabb101d5d90b5d415888271b9d72df4c3886487e73bba9079b168a0"
+    },
+    {
+      "reader": "MULTPLAN",
+      "file": "MP_LABEL.bin",
+      "bytes": 768,
+      "sha256": "720b9a421dd1b4859c7b14966fcb92b01417f75f0a0bba51f82efc0df2ad5917"
+    },
+    {
+      "reader": "MULTPLAN",
+      "file": "MP_MULTI.bin",
+      "bytes": 768,
+      "sha256": "19cb2e428f821d49c33d3a5d38b03173d8364606c5f136f7507db24ab09b60a9"
+    },
+    {
+      "reader": "MULTPLAN",
+      "file": "MP_NUMBER.bin",
+      "bytes": 768,
+      "sha256": "06a02666cf6da199383ec7d2702f7e3d89dbbad7b5764da704258e4475afc277"
+    },
+    {
+      "reader": "MULTPLAN",
+      "file": "MP_SAMPLE.bin",
+      "bytes": 768,
+      "sha256": "51b0e86a38157357f5355abf5afaea096cea3fba4ee7d37359033b14965a9d6d"
+    },
+    {
+      "reader": "PCSVW",
+      "file": "DEMO1.PB#064000",
+      "bytes": 677,
+      "sha256": "4cbec4197c87a19a09cc3feb1a483a384ab351a554506634915e3dc3d51e58cd"
+    },
+    {
+      "reader": "PCSVW",
+      "file": "DEMO2.PB#064000",
+      "bytes": 1537,
+      "sha256": "88e59390f0765288b114e8609e29644917d8d7090ceebde23b0a8862cb2a24b7"
+    },
+    {
+      "reader": "PCSVW",
+      "file": "DEMO3.PB#064000",
+      "bytes": 2015,
+      "sha256": "2e7f04d9ae8e4d1e31770b488a726d72b46a240b383a85b5be0a858177fda6f4"
+    },
+    {
+      "reader": "PCSVW",
+      "file": "DEMO4.PB#064000",
+      "bytes": 2205,
+      "sha256": "768c3ac095fa9399480d1864ede29fde4ab54013463ced7598649d4fb462d2d7"
+    },
+    {
+      "reader": "PCSVW",
+      "file": "DEMO5.PB#064000",
+      "bytes": 2250,
+      "sha256": "5c5b2d003c78025f6e16aafe49387319204bb76ebfb2763c3476886292892686"
+    },
+    {
+      "reader": "PCSVW",
+      "file": "NEW.PB#064000",
+      "bytes": 141,
+      "sha256": "422c9130a8824ca7139725a2c6b1f6136c12f746209de4a98e03e13aafbcd3d3"
+    },
+    {
+      "reader": "MVMOVIE",
+      "file": "315s2_BIRD.MVM.bin",
+      "bytes": 19403,
+      "sha256": "a192a648a67dcbafe9d7e13b8bcf8c1a788099fe293c1c39fbd96ecf21dd7b43"
+    },
+    {
+      "reader": "MVMOVIE",
+      "file": "315s2_BUNNY.MVM.bin",
+      "bytes": 17742,
+      "sha256": "8653f60d10b13bd7ce3dcfc2c280e4bad99ccd1cd442f5e2aec7fb61b79a4b13"
+    },
+    {
+      "reader": "MVMOVIE",
+      "file": "315s2_DOG.MVM.bin",
+      "bytes": 9330,
+      "sha256": "fce8cfaa587cc7c51c4f15af45270f424d6f2786b47704994b6047097f58fffb"
+    },
+    {
+      "reader": "MVMOVIE",
+      "file": "315s2_MAGIC1.MVM.bin",
+      "bytes": 17552,
+      "sha256": "7d865b0d95deaa4d67c13629b367f2c7b3bc5909bb8af77b9c36bff7250590f0"
+    },
+    {
+      "reader": "MVMOVIE",
+      "file": "315s2_SNEAK.MVM.bin",
+      "bytes": 16972,
+      "sha256": "3ab3c8761d083e8c8ab73d9e55e5c6be40888c956c4854f2caea3b49c74d55b8"
+    },
+    {
+      "reader": "MVMOVIE",
+      "file": "315s2_SPACEOUT.MVM.bin",
+      "bytes": 17134,
+      "sha256": "d10021a300a56a0684f5885d833af0283d6f28960e573db624fdefbb9d44d9e2"
+    },
+    {
+      "reader": "MVMOVIE",
+      "file": "eaB_DOGGY.MVM.bin",
+      "bytes": 18504,
+      "sha256": "09eb084b9f5a4562e1675d2ea69d5458f94344df0e13a4fa229690639920ec93"
+    },
+    {
+      "reader": "MVMOVIE",
+      "file": "eaB_DRAGON.MVM.bin",
+      "bytes": 17088,
+      "sha256": "bd789a9a9516ee01927ed64f05630abe66d7eb857793099cf99ac5f276bb2c4c"
+    },
+    {
+      "reader": "MVMOVIE",
+      "file": "eaB_FAMILY.MVM.bin",
+      "bytes": 19418,
+      "sha256": "39bf65fa319c64e30f976fcc8e470c8e1041872e06607cb280f6b7219cad6cb8"
+    },
+    {
+      "reader": "MVMOVIE",
+      "file": "eaB_FARM.MVM.bin",
+      "bytes": 18830,
+      "sha256": "74cfd5fdf0a316d96a763d6d1fd92a4fc1c4fedba4e329474b59a1c359a40059"
+    },
+    {
+      "reader": "MVMOVIE",
+      "file": "eaB_HALLWEEN.MVM.bin",
+      "bytes": 21352,
+      "sha256": "db8989027462e2efb87474e1b7015f0855b5e90e4bd6c496cdc0f256d9e76d56"
+    },
+    {
+      "reader": "MVMOVIE",
+      "file": "ips1_R.MVM.bin",
+      "bytes": 16483,
+      "sha256": "c6d1ef0ea5139dc9244149b7ae5903cda25ee59968b2f63bcb53154e1a19c0d1"
+    },
+    {
+      "reader": "MVMOVIE",
+      "file": "ips2_DOG.MVM.bin",
+      "bytes": 9330,
+      "sha256": "861aadc37a5c78e6772e34cbf5479c432ba43102d84e22abd16822319069a3d9"
+    },
+    {
+      "reader": "DGMAGI",
+      "file": "PAL560.DPC#B4000",
+      "bytes": 1821,
+      "sha256": "071b9b6794838b9073ed7732915474c271acfe8ede4a11b8529c04db56584ef5"
+    }
+  ]
+}

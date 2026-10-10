@@ -7,7 +7,7 @@ static void id_finish(const struct A2fcApi* a,const struct Entry* e,const char* 
    else if(!strcmp(reader,"INTBASIC"))reader="DOSINT";
    else if(!strcmp(reader,"MCS"))reader="DOSMCS";
    else if(!strcmp(reader,"NEWSROOM"))reader="DOSNEWS";
-   else if(strcmp(reader,"SCASM") && strcmp(reader,"NEWSPAN") && strcmp(reader,"NEWSPAGE"))reader="DOSVIEW";
+   else if(strcmp(reader,"MAGWIN") && strcmp(reader,"PSBORDER") && strcmp(reader,"PSFONT") && strcmp(reader,"APPLEWR") && strcmp(reader,"SCASM") && strcmp(reader,"NEWSPAN") && strcmp(reader,"NEWSPAGE"))reader="DOSVIEW";
   }
   a->strcpy(a->input,reader);return;
  }

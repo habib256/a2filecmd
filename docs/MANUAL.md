@@ -77,7 +77,8 @@ shows the first 8 KB as hi-res. The hex preview shows eight bytes a row with
 their characters, one half of the sector at a time: Left/Right (or -/+, </>)
 switch between bytes 00-7F and 80-FF. A valid 8 KB BIN load at $2000/$4000 is
 a picture; unsupported or unsafe program headers fall back to hex. BRUN leaves
-A2FC.
+A2FC. Pinball Construction Set `*.PB` tables open in hexadecimal with
+Return or B; they are data even when their DOS header looks executable.
 
 Only standard 35-track, 16-sector DOS 3.3 is supported. Sparse/inconsistent
 chains, reserved-track data, 13-sector, 40-track and protected formats are
@@ -127,7 +128,7 @@ When installing elsewhere, keep `A2FILE.SYSTEM` beside the complete `A2FILE/`
 directory and copy `RECOVER` too. Keep the program and its native plugins
 from the same build and CPU edition; do not mix them.
 
-The 800K and XL editions include all 106 overlays; only XL includes `DEMO/`: one example of every kind
+The 800K and XL editions include all overlays; only XL includes `DEMO/`: one example of every kind
 of file A2 File Cmd opens, in DOCUMENTS, PICTURES (an HGR album, and in
 CARDS two colour cards in every picture format), MOVIES (Fantavision, and a
 Take 1 movie on its DOS 3.3 disk), MUSIC, ARCHIVES, DISKS, PROGRAMS and
@@ -376,7 +377,7 @@ Specialized viewers and media tools require **800K or XL**.
 | Packed FOT / LZ4FH | PACKFOT ($08/$4000 or $4001); LZ4FH ($08/$8066). |
 | Packed 816/Paint | PAINT816; BIN with aux $E001 or $E002. |
 | Purplesoft | PURPLE; matching `.FOTO1` and `.FOTO2` in one directory. |
-| Print Shop | PRINTSHOP; 572/576-byte BIN clip art, aux $4800/$5800/$6800/$7800. |
+| Print Shop | PRINTSHOP: 572/576-byte BIN clip art. PSBORDER: 144/148-byte BIN borders, aux $4800/$5800/$6800/$7800. PSFONT: BIN fonts, aux $6000/$5FF4; ProDOS $F5 borders/fonts aux $2000/$1000. |
 | The Newsroom | NEWSROOM; photos `PH.*` and banners `BN.*`, BIN aux $4000 (copied from DOS 3.3). |
 | Graphics Magician (Penguin, 1982-1984) | GMAGIC; a BIN whose first bytes are picture commands (no header, no name convention), Return only. |
 | MGTK or hi-res fonts | FONTVIEW; type $07, a BIN of 768 or 1,024 bytes named `.SET` (DOS Tool Kit HRCG sets) or `.FONT` (Beagle's), or select the tool for an untyped font. |
@@ -386,7 +387,9 @@ Raw HGR accepts any size from **8,184 to 8,199 bytes** (a page eight bytes short
 KoalaPad's re-saved 8,191, Terrapin Logo's 8,194); DHGR accepts **16,376 to
 16,391**, auxiliary plane first: the one-file layout Dazzle Draw saves (BIN,
 aux $2000, 16,384 bytes), so its pictures and slide-show disks open as they
-are. Left/Right browses the previous/next file handled by the same viewer,
+are. Three real pictures match the original `DD.PICLOADER` byte for byte
+and in rendered screen output on both CPUs ([qualification](DAZZLE-DRAW-QUALIFICATION.md)).
+Left/Right browses the previous/next file handled by the same viewer,
 including across directory windows (not inside a disk image). Right on the
 last one goes round to the first; Left on the first does nothing.
 **S** starts a slideshow in every picture viewer: the next picture comes by
@@ -958,3 +961,125 @@ slots. Original fonts, placed photos and complete newspaper-page assembly
 remain unsupported. PH./BN. retain their bitmap viewer; DOS originals use
 DOSNEWS. The source and AUX remain untouched. Space advances, Escape exits.
 Epistole/DOCVIEW and Extasie remain ProDOS readers, never DOS 3.3 readers.
+
+### MultiScribe and Apple Writer
+
+**MULTISCR** reads the recognized MultiScribe TXT/WPF variants as paged
+plain text. Fonts, styles and ruler records are validated; original
+proportional typography is not reproduced. **APPLEWR** reads Apple Writer
+text in ProDOS and directly on DOS 3.3 disks/images. It supports `.LM`,
+`.RM`, `.PM`, `.CJ`, `.LJ`, `.RJ`, and approximates `.FJ` as left alignment
+and `.FF` as a blank separator. Width is limited to 79 screen columns;
+unsupported or out-of-range commands stay visible. It never executes WPL,
+includes or mail merge. Both use MAIN only and preserve `/RAM`. Space/Down
+advances a page, Escape returns. Return automatically chooses these readers
+for their recognized header/initial layout-command candidates; `!` allows
+explicit selection. See [format limits](WORD-PROCESSORS.md).
+
+### Print Shop borders and fonts
+
+**PSBORDER** previews the three stored 24×14 border patterns. It does not
+assemble a frame or apply the four-byte option prefix. **PSFONT** previews
+individual glyphs: Left/Right or Space changes the glyph, Up/Down scrolls
+its rows, Escape returns. Space and the external `@` placeholder have no
+bitmap preview. Both accept original BIN files directly in ProDOS or DOS
+3.3, validate complete input and use MAIN only. Return recognizes `BORD.*`
+and `FONT.*` candidates with matching metadata; use `!` for other names.
+ProDOS `$F5` aux $2000 borders (264 bytes) and aux $1000 fonts
+(95 entries) are also supported; frame assembly and masks remain uninterpreted.
+See [format and qualification](PRINTSHOP-FORMAT.md).
+
+### Magic Window and LISA v3
+
+**MAGWIN** reads original Magic Window BIN documents after their 256-byte
+header, in DOS 3.3 or ProDOS. High ASCII becomes readable text; printer
+controls stay visible as `^A`, `^[`, etc. The header/footer and printed
+styles are not rendered. Return recognizes `.MW` candidates with a matching
+header; `!` also permits other names. Limits: 48 KiB, validated before display.
+
+**LISAV3** lists standard ProDOS LISA v3 sources (INT, aux $1000–$3FFF),
+with up to 512 packed labels, instructions, operands, macros and comments.
+Lengths, line boundaries, strings and symbol references are checked before
+display. The known incompatible `ANIX.EQUATES` dialect and LISA v4/v5 are
+refused. Space/Down advances a page; Escape returns. Both use MAIN only and
+preserve `/RAM`. [Qualification and remaining limits](NEXT-TEXT-FORMATS.md).
+
+
+### DOS fixed-record text (DOSREC)
+
+Select a DOS 3.3 text file and launch **DOSREC** through `!` → Files.
+Enter the record length in decimal (1–4096); an empty Return selects 256.
+DOS does not store this length or an exact text EOF. The displayed extent
+ends at the highest allocated sector and includes sector padding.
+
+N/P select the next/previous record; Space/B page within a record; R returns
+to record zero; L changes the length; ESC returns. Offsets are hexadecimal.
+`--` marks an unallocated sector (`~` in ASCII), while `00` is an allocated
+NUL byte. Control bytes appear as dots, high-bit text is shown as ASCII.
+See [DOS-RECORDS.md](DOS-RECORDS.md) for validation and format limits.
+Skipped T/S ranges are accepted only by this inspector; logical positions
+are bounded to 560 sectors. Sources and `/RAM` are preserved.
+
+Print Shop ProDOS $F5 aux $2000 borders (264 bytes) and aux $1000 fonts
+(95 entries) use PSBORDER/PSFONT automatically with the BORD./FONT. names.
+The border preview shows three motifs; frame assembly and masks remain
+uninterpreted. Space and the external `@` graphic have no displayed bitmap.
+
+
+### LISA 8/16 v4/v5 (LISAV4)
+
+Return recognizes ProDOS INT sources with aux $4000–$5FFF and a plausible
+LISA 8/16 header. Use `!` → Development → LISAV4 to choose the reader
+manually. It lists variable-length symbols, macros, 24/32-bit numbers,
+address modes and comments, using the tab stops saved in the file.
+Space/Down advances a page; ESC returns. Numeric 32-bit decimals are unsigned.
+
+The complete source is validated and closed before display. Sources and
+`/RAM` are preserved. The symbol table is limited to 2816 bytes and the
+file to 65535 bytes; malformed or unsupported tokens are refused.
+See [LISA v4/v5 qualification and limits](LISA4-FORMAT.md).
+
+
+### PFS:Write documents (PFSWRITE)
+
+Return opens qualified ProDOS PFS:Write documents (type $16, aux $0002).
+Use `!` → Files → PFSWRITE for manual selection. Space/Down/Return advance,
+ESC returns. The reader skips page/printer settings, shows plain text and
+exposes embedded controls as `^A`, `^I`, `^L`… Formatting and database
+merges are not interpreted. File/Plan data and PFS program modules are
+refused. Complete body/EOF checks and a successful close precede display;
+source files and AUX /RAM remain intact. Maximum body: 64,511 bytes.
+See [format, corpus and limitations](PFS-WRITE.md).
+
+
+### PFS:File databases (PFSFILE)
+
+Return opens ProDOS $16/$0001 A2CD00 databases, or use `!` → Files → PFSFILE.
+The viewer lists active records with form labels and multiline values.
+Space/Down/Return advance; ESC returns. It validates the complete file I/O
+and all reachable form/record chains before displaying content. Sources
+and AUX /RAM are preserved. Limits: 256 KiB, eight cells per form/record,
+32 form labels. Reports and older custom disk formats remain unsupported.
+See [structure and qualification](PFS-FILE.md).
+
+### PFS:Plan spreadsheets (PFSPLAN)
+
+Return opens ProDOS $16/$0004 B00 sheets, or use `!` → Files → PFSPLAN.
+The viewer lists row and primary column labels with stored decimal values;
+blank cells remain visible and formula results are marked. Row/column
+formulas are listed separately without evaluation or recalculation.
+Space/Down/Return advance; ESC returns. Full validation and successful
+close precede display; sources and AUX /RAM are preserved. Limits: 32 rows,
+16 columns and 512-byte label/formula blocks. Group headings, print formats,
+per-cell formulas and other profiles remain unsupported.
+See [structure and qualification](PFS-PLAN.md).
+
+### Formats selected for 1.0
+
+WORDPERF, MOUSEWR, BSFILER and MULTPLAN display text, database records and
+stored worksheet values. MVMOVIE gives a 40×48 colour frame preview; DGMAGI
+draws DHGR .DPC pictures with a substitute font; PCSVW gives a static .PB
+preview with library outlines. Graphics may erase all files on /RAM only
+after confirmation, and reject source files located there. See
+[V1-FORMATS](V1-FORMATS.md) for supported versions, extraction requirements
+and outstanding 800K packaging. These readers do not execute document code.

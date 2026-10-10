@@ -158,6 +158,7 @@ static const char* text(void)
 
 #ifdef PLUGIN_HOST
 #include "id_formats.h"
+#include "id_v1.h"
 #endif
 #ifdef PLUGIN_HOST
 #include "id_routes.h"
@@ -166,31 +167,38 @@ static const char* identify(void)
 {
     unsigned char t = e->type, i;
     if (!n) return "Empty file";
-    if (t == 7) return "MGTK / DeskTop font";
-    if (suffix(e->name,".FOTO1") || suffix(e->name,".FOTO2")) return "Purplesoft picture pair";
-    if (t == 8 && e->aux == 0x8066) return "LZ4FH compressed hi-res picture (FOT)";
+    if(!id_dos && t==0x16){
+     if(e->aux==1 && n>=22 && !memcmp(b+16,"A2CD00",6))return "PFS:File?";
+     if(e->aux==2 && n>=10 && sz.l==1024UL+word(b+8))return "PFS:Write?";
+     if(e->aux==4 && n>=34 && !memcmp(b+24,"Plan  \003B00",10))return "PFS:Plan?";
+    }
+ if(!id_dos && e->type==250 && e->aux>=0x4000 && e->aux<0x6000 && n>=16 && word(b+2)>=16 && word(b+2)<sz.l && b[6]>0 && b[6]<128 && b[7]>=2 && b[7]<128 && b[8]>=3 && b[8]<128)return "LISA 8/16?";
+
+    if (t == 7) return "MGTK font";
+    if (suffix(e->name,".FOTO1") || suffix(e->name,".FOTO2")) return "Purplesoft pair";
+    if (t == 8 && e->aux == 0x8066) return "LZ4FH HGR";
     if (t == 6 && (e->aux & 0xCFFF) == 0x4800 && (sz.l == 572 || sz.l == 576))
-        return "Print Shop monochrome clip art";
-    if ((t==6 || t==8) && e->aux==0x400 && sz.l<=2048) return "Lo-res / double lo-res picture";
-    if (n>=3 && !memcmp(b,"DGR",3)) return "DGR pixmap / lo-res picture";
+        return "Print Shop clip art";
+    if ((t==6 || t==8) && e->aux==0x400 && sz.l<=2048) return "Lo-res / double lo-res";
+    if (n>=3 && !memcmp(b,"DGR",3)) return "DGR pixmap";
     if (suffix(e->name,".PT3") || (n>=14 && (!memcmp(b,"ProTracker 3.",13) || !memcmp(b,"Vortex Tracker",14))))
-        return "ProTracker 3 music (PT3)";
+        return "ProTracker 3 music";
     if ((t==0xD5 && e->aux==0xD0E7) || suffix(e->name,".ED") || (t==6 && e->name[0]=='M' && e->name[1]=='.')) {
         unsigned char result;
-        if(id_dos)return "Electric Duet candidate (direct reader unavailable)";
+        if(id_dos)return "Electric Duet? (no DOS reader)";
         if (id_seek(f,0,SEEK_SET)) { io_failed=1; return ""; }
         result=duet_probe(f,b);
         if (result==2) io_failed=1;
-        return result==1 ? "Electric Duet compatible song" : "Invalid/unrecognized Electric Duet candidate";
+        return result==1 ? "Electric Duet compatible song" : "Invalid Electric Duet?";
     }
     if (suffix(e->name,".MD")) return "Markdown text";
-    if (magic("NuFile") || magic("NuFX")) return "ShrinkIt archive (NuFX)";
+    if (magic("NuFile") || magic("NuFX")) return "ShrinkIt (NuFX)";
     if (magic("\x0A\x47\x4C") && b[18] == 2) return "Binary II archive";
     if (magic("2IMG")) return "2IMG disk image";
-    if (suffix(e->name,".NIB") && sz.l == 232960L) return "Disk II nibble image (NIB)";
+    if (suffix(e->name,".NIB") && sz.l == 232960L) return "Disk II nibble image";
     if (!id_dos && (suffix(e->name,".PO") || suffix(e->name,".HDV")) && sz.l != 143360L) {
         if (sz.l >= 1536 && prodos_at(1024)) return "ProDOS block image";
-        return "Unrecognized block image candidate";
+        return "Unknown block image";
     }
     if (!id_dos && SZ[1] == 2 && SZ[0] == 0x3000) {          /* 143,360 bytes: a 5.25 image */
         if (prodos_at(1024)) return s_image;
@@ -199,11 +207,11 @@ static const char* identify(void)
         if (prodos_at(2816)) return "ProDOS disk image, 140K, DOS order";   /* block 2 = sector 11 */
         return "Disk image, 140K";
     }
-    if (t == 0x1A) return "AppleWorks word processor";
-    if (t == 0x19) return "AppleWorks data base";
+    if (t == 0x1A) return "AppleWorks word";
+    if (t == 0x19) return "AppleWorks data";
     if (t == 0x1B) return "AppleWorks spreadsheet";
-    if (t == 0xFC || applesoft()) return "Applesoft BASIC program";
-    if (t == 0xFA) return "Integer BASIC program";
+    if (t == 0xFC || applesoft()) return "Applesoft BASIC";
+    if (t == 0xFA) return "Integer BASIC";
     if (magic("HGRR")) return "HGR picture, RLE";
     if (magic("DHRR")) return "DHGR picture, RLE";
     /* A FOT is raw or packed, and the auxtype is what says so: $4000 a
@@ -212,31 +220,31 @@ static const char* identify(void)
      * of a raw page. Saying only "FOT" sent the reader to a viewer that
      * would refuse three quarters of them. */
     if (t == 0x08) {
-        if (e->aux == 0x4000) return "Packed hi-res picture (FOT)";
-        if (e->aux == 0x4001) return "Packed double hi-res picture (FOT)";
-        if (e->aux == 0x8066) return "LZ4FH compressed hi-res picture (FOT)";
+        if (e->aux == 0x4000) return "Packed HGR";
+        if (e->aux == 0x4001) return "Packed DHGR";
+        if (e->aux == 0x8066) return "LZ4FH HGR";
     }
     /* Extasie writes its pictures under a type of their own, $F2, and opens
      * them with their own length: a double hi-res page, compressed, for the
      * Le Chat Mauve card (EXTASIE reads them). */
     if (!id_dos && t == 0xF2)
         return SZ[0] == (unsigned long)(unsigned int)(b[0] | (b[1] << 8))
-            ? "Extasie picture (Chat Mauve), packed" : "Extasie picture (Chat Mauve)";
+            ? "Extasie (Chat Mauve), packed" : "Extasie (Chat Mauve)";
     /* 816/Paint saves packed by default, as a $06 with an auxtype of its
      * own: $E001 a hi-res page, $E002 a double hi-res one (PAINT816 reads
      * both). Their size is whatever the packing came to, so nothing above
      * claims them and the reader would have called them binary. */
     if (t == 6 && (e->aux == 0xE001 || e->aux == 0xE002))
-        return e->aux == 0xE001 ? "816/Paint packed hi-res picture"
-                                : "816/Paint packed double hi-res picture";
+        return e->aux == 0xE001 ? "816/Paint packed HGR"
+                                : "816/Paint packed DHGR";
     if (!SZ[1]) {
-        if (SZ[0] == 16384) return "DHGR picture, 16K (two planes)";
+        if (SZ[0] == 16384) return "DHGR picture, 16K";
         if (SZ[0] == 8192 || (SZ[0] >= 8184 && SZ[0] < 8192 && t == 6 && e->aux == 0x2000))
             return "HGR picture, 8K";
     }
     if (t == 8) return "Hi-res picture (FOT), raw";
     if (magic("MB1")) return "Mockingboard music (MB1)";
-    if (t == 0xFF) return "ProDOS system program, 6502 code";
+    if (t == 0xFF) return "ProDOS system program";
     if (t == 6 && e->aux)
         for (i = 0; i < 8; ++i) {
             t = b[i];
@@ -282,7 +290,7 @@ unsigned char __fastcall__ md_entrypoint(const struct A2fcApi* api)
         if(io_failed)goto failed;
         id_context(api,n,sz.l,e->aux,e->type);
 extra_stage:
-        if(id_open_stage(api,"IDFORMATS.PLG"))return 1;
+        if(id_open_stage(api,"IDV1.PLG"))return 1;
         goto failed;
     }
     what=identify();
@@ -298,7 +306,7 @@ extra_stage:
         n=frd(b,1,512,f);if(ferror(f))io_failed=1;
         if(n<512)A->memset(b+n,0,512-n);
     }
-    what=extra();if(!what)what=identify();
+    what=extra_v1();if(!what)what=extra();if(!what)what=identify();
 #endif
 #ifdef PLUGIN_HOST
     if(!reader)route(what);

@@ -1,0 +1,18 @@
+{
+  "date": "2026-10-10",
+  "paired_border_files": 77,
+  "border_pixels": 77616,
+  "paired_font_files": 36,
+  "common_internal_font_glyphs": 2052,
+  "common_font_pixels": 616651,
+  "pixel_differences": 0,
+  "oracle": "Actual C-loaded glyph buffers and rendered borders compared with paired BIN readers; original DOS screen qualification is separately limited to border columns 1-23 and glyph A.",
+  "f5_entries": 95,
+  "limits": "No assembled frames, mask/options interpretation, composed text or direct ProDOS application screen oracle.",
+  "cpus": [
+    "6502 NMOS",
+    "65C02"
+  ],
+  "native_checks_per_cpu": 14,
+  "native_sources_and_aux_preserved": true
+}

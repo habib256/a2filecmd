@@ -8,10 +8,11 @@ from pathlib import Path
 from take1_ref import DosImage
 
 
-def dos_files(data):
+def dos_files(data, bank_street_geometry=False):
     disk = DosImage(data)
     v = disk.sector(17, 0)
-    if v[0x34:0x38] != bytes([35, 16, 0, 1]):
+    geometry = v[0x34:0x38]
+    if geometry != bytes([35, 16, 0, 1]) and not (bank_street_geometry and geometry == bytes([35, 16, 1, 0])):
         raise ValueError('unsupported DOS geometry')
     t, s = v[1:3]
     seen = set()
@@ -25,7 +26,7 @@ def dos_files(data):
                 continue
             name = bytes(c & 127 for c in e[3:33]).decode('ascii').rstrip()
             tt, ss = e[:2]
-            blocks, visited = [], set()
+            blocks, visited, physical = [], set(), 0
             while tt or ss:
                 if (tt, ss) in visited:
                     raise ValueError('cyclic DOS T/S list')
@@ -35,6 +36,7 @@ def dos_files(data):
                     raise ValueError('non-sequential DOS T/S list')
                 for k in range(122):
                     a, b = ts[12 + k*2:14 + k*2]
+                    if a or b:physical=len(blocks)+1
                     blocks.append(disk.sector(a, b) if a or b else bytes(256))
                 tt, ss = ts[1:3]
             body = b''.join(blocks)
@@ -51,6 +53,11 @@ def dos_files(data):
                     raise ValueError('short DOS BASIC/source')
                 body, prodos, aux = body[2:2 + size], 0xfa if kind == 1 else 0xfc, 0
             elif kind == 0x40:
+                if body[:8] == bytes.fromhex('08E70000D6100100'):
+                    # Multiplan R has no LISA header. Preserve the allocation,
+                    # including padding; use the last physical T/S pointer.
+                    yield name, 0xf4, 0, body[:physical*256]
+                    continue
                 # Alternate B / LISA v2 has its own four-byte header.
                 size = int.from_bytes(body[2:4], 'little') + 5
                 if len(body) < size:

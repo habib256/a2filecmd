@@ -74,7 +74,25 @@ static void rt_put(unsigned char c){
 static void rt_spaces(unsigned char n){while(n-- && !rt_cancel)rt_put(' ');}
 #endif
 
-#if RT_FORMAT == 7 || RT_FORMAT == 8
+#if RT_FORMAT == 20
+#include "multplan_decode.h"
+#elif RT_FORMAT == 19
+#include "bsfiler_decode.h"
+#elif RT_FORMAT == 17 || RT_FORMAT == 18
+#include "v1word_decode.h"
+#elif RT_FORMAT == 16
+#include "pfsplan_decode.h"
+#elif RT_FORMAT == 15
+#include "pfsfile_decode.h"
+#elif RT_FORMAT == 14
+#include "pfswrite_decode.h"
+#elif RT_FORMAT == 13
+#include "lisa4_decode.h"
+#elif RT_FORMAT == 11 || RT_FORMAT == 12
+#include "nexttext_decode.h"
+#elif RT_FORMAT == 9 || RT_FORMAT == 10
+#include "worddoc_decode.h"
+#elif RT_FORMAT == 7 || RT_FORMAT == 8
 #include "newsdoc_decode.h"
 #elif RT_FORMAT == 1
 /* Pascal: editor header followed by independent 1K chunks. NUL padding
@@ -271,7 +289,11 @@ static unsigned char rt_pass(unsigned char render){
  if(rt_dos){
   dv_file=NULL;
   if(!dv_open(&rt_api.panels[*rt_api.active]) || !ds_open(rt_api.selected) ||
-#if RT_FORMAT == 7
+#if RT_FORMAT == 10
+     ds_kind!=0){
+#elif RT_FORMAT == 11
+     ds_kind!=4){
+#elif RT_FORMAT == 7
      ds_kind!=4 || ds_aux!=0x4000U){
 #elif RT_FORMAT == 8
      ds_kind!=4 || ds_aux!=0x98A5U){
@@ -294,7 +316,9 @@ void __fastcall__ plugin_entry(const struct A2fcApi* a){
 #ifdef RT_DOS
  rt_dos=a->panels!=NULL && a->active!=NULL && a->panels[*a->active].fs==FS_DOS33;
  if(rt_dos && a->selected->type!=
-#if RT_FORMAT == 7 || RT_FORMAT == 8
+#if RT_FORMAT == 10
+    4
+#elif RT_FORMAT == 7 || RT_FORMAT == 8 || RT_FORMAT == 11
     6
 #else
     0xFA

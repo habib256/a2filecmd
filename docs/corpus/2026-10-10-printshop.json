@@ -1,0 +1,17 @@
+{
+  "date": "2026-10-10",
+  "original": "Print Shop Companion",
+  "border_files": 77,
+  "border_pixels_compared": 74382,
+  "font_files": 36,
+  "font_glyph": "A only",
+  "font_pixels_compared": 10348,
+  "pixel_differences": 0,
+  "original_memory_sources_preserved": true,
+  "native_checks_per_cpu": 10,
+  "cpus": [
+    "65C02",
+    "6502 NMOS"
+  ],
+  "scope": "BIN only; stored border column 24 and other font glyphs not qualified against original screen"
+}

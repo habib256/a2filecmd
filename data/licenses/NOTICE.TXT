@@ -12,10 +12,10 @@ access and MCSIMPORT/MCSPLAY stages share the same sequencer and score
 conversion. No original binary bundled.
 
 Legacy text readers and Fontrix:
-Format rules and LISA v2 mnemonic table follow CiderPress II,
+Format rules, Magic Window and LISA v2/v3/v4/v5 mnemonic tables follow CiderPress II,
 Copyright 2023 faddenSoft, Apache License 2.0: CIDERPRESS2.txt.
 https://github.com/fadden/CiderPress2
-Reference revision: 7a055a200e31f752f3a92bb9fe6ae6f67cd55534.
+Legacy readers reference revision: 7a055a200e31f752f3a92bb9fe6ae6f67cd55534.
 Fontrix format reverse engineering: Mark Long.
 A2FC changes: streaming C readers, validation before display,
 MAIN-only text previews, simplified MacRoman and regression harnesses.

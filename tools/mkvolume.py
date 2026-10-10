@@ -78,11 +78,12 @@ def prodos_name(host):
 
 
 class Volume:
-    def __init__(self, name, blocks, boot, date, a2fc_layout=False):
+    def __init__(self, name, blocks, boot, date, a2fc_layout=False, sparse=False):
         if not re.fullmatch(r'[A-Z][A-Z0-9.]{0,14}', name):
             raise SystemExit(f'/{name} : nom de volume ProDOS invalide')
         self.name, self.blocks, self.date = name, blocks, date
         self.a2fc_layout = a2fc_layout
+        self.sparse = sparse
         self.image = bytearray(blocks * BLOCK)
         self.image[:len(boot)] = boot
         self.next_free = BITMAP + self.bitmap_blocks()
@@ -126,9 +127,11 @@ class Volume:
             key = self.alloc()
             self.block(key)[:len(data)] = data
             return 1, key, 1
+        first_free = self.next_free
         chunks = [data[i:i + BLOCK] for i in range(0, len(data), BLOCK)]
         if len(chunks) <= 256:
-            return 2, self.write_index(chunks), 1 + len(chunks)
+            key = self.write_index(chunks)
+            return 2, key, self.next_free - first_free
         # un arbre : l'index maitre pointe des index d'arbrisseaux de 256 blocs
         if len(chunks) > 256 * 256:
             raise SystemExit('fichier de plus de 16 Mo : ProDOS ne sait pas')
@@ -137,14 +140,17 @@ class Volume:
             index = self.write_index(chunks[i:i + 256])
             self.block(master)[i // 256] = index & 0xFF
             self.block(master)[256 + i // 256] = index >> 8
-        return 3, master, 1 + (len(chunks) + 255) // 256 + len(chunks)
+        return 3, master, self.next_free - first_free
 
     def write_index(self, chunks):
         """Un index d'arbrisseau (256 blocs au plus) et ses blocs ; rend l'index."""
         index = self.alloc()
-        blocks = [self.alloc() for _ in chunks]
+        # ProDOS zero index pointers read as zero-filled holes. This is only
+        # used for new build images, never to modify an existing volume.
+        blocks = [0 if self.sparse and not any(chunk) else self.alloc() for chunk in chunks]
         for i, (b, chunk) in enumerate(zip(blocks, chunks)):
-            self.block(b)[:len(chunk)] = chunk
+            if b:
+                self.block(b)[:len(chunk)] = chunk
             self.block(index)[i] = b & 0xFF
             self.block(index)[256 + i] = b >> 8
         return index
@@ -252,6 +258,7 @@ def main():
     ap.add_argument('--boot', type=Path, help="l'amorce ProDOS (2 blocs)")
     ap.add_argument('--blocks', type=int, default=280, help='taille du volume (280 = 5,25 pouces)')
     ap.add_argument('--a2fc-layout', action='store_true', help='group boot files and frequently used A2FC overlays')
+    ap.add_argument('--sparse', action='store_true', help='use ProDOS holes for zero-filled data blocks')
     ap.add_argument('--date', type=prodos_date, default=prodos_date('2026-09-07T12:00'),
                     help='date portee par les entrees (fixe : construction reproductible)')
     args = ap.parse_args()
@@ -259,7 +266,7 @@ def main():
     boot = args.boot.read_bytes() if args.boot else b''
     if args.boot and len(boot) < 2 * BLOCK:
         boot = boot + bytes(2 * BLOCK - len(boot))
-    vol = Volume(args.volume, args.blocks, boot[:2 * BLOCK], args.date, args.a2fc_layout)
+    vol = Volume(args.volume, args.blocks, boot[:2 * BLOCK], args.date, args.a2fc_layout, args.sparse)
     count = vol.build(args.stage)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_bytes(bytes(vol.image))

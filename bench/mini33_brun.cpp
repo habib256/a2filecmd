@@ -28,7 +28,7 @@ int main(int argc,char** argv) {
     assert(d->loadBootRom(std::string(argv[1])+"/roms/disk2.rom"));
     assert(d->insertDisk(0,argv[2])); assert(d->insertDisk(1,argv[3]));
     d->setWriteBackEnabled(true); m.slotBus().plug(6,std::move(card));
-    M6502 cpu(&m); m.setCpu(&cpu); cpu.setCpuMode(M6502::CpuMode::NMOS);
+    M6502 cpu(&m); m.setCpu(&cpu); cpu.setCpuMode(getenv("MINI_CMOS") ? M6502::CpuMode::CMOS : M6502::CpuMode::NMOS);
     m.clearRam(); m.resetSoftSwitches(); m.slotBus().reset(); cpu.hardReset();
     cpu.setProgramCounter(0xc600);
     auto fail=[&](const char* what) {
@@ -60,21 +60,33 @@ int main(int argc,char** argv) {
     keys("N"); run(cpu,20000000);
     if(m.data()[6]!=0) fail("N runs nothing");
     // RETURN reads the first sector: the header and the bytes pick the view.
-    auto back=[&]() { keys("\x1b"); wait("9 FILES"); };
+    auto back=[&]() { keys("\x1b"); wait("12 FILES"); };
     keys("K"); keys("\r"); // PIC2: BSAVEd at $2000, 8 KB, header skipped
     for(int n=0;n<400 && m.data()[0x2000]!=0x11;++n) run(cpu,1000000);
     if(m.data()[0x2000]!=0x11 || m.data()[0x2001]!=0x22) fail("RETURN on a BSAVEd picture shows it");
     if(screen(m).find("BRUN PIC2")!=std::string::npos) fail("no BRUN prompt for PIC2");
-    keys(" "); wait("9 FILES");
+    keys(" "); wait("12 FILES");
     keys("K"); keys("\r"); wait("THIS BINARY HOLDS TEXT"); // after its header
     if(screen(m).find("SECOND LINE")==std::string::npos) fail("NOTE.BIN in the text viewer");
     back();
     keys("K"); keys("\r"); wait("00: 00 C0 08 00"); back();   // ROMPATCH cannot run
     keys("K"); keys("\r"); wait("00: 00 03 08 00"); back();   // PAGE3 would load over DOS's page 3
     keys("K"); keys("\r"); wait("BRUN BIGGAME");           // 33 sectors, yet a program
-    keys("N"); wait("9 FILES");
+    keys("N"); wait("12 FILES");
     if(m.data()[6]!=0) fail("N runs nothing on BIGGAME");
     keys("K"); keys("\r"); wait("00: 01 02 03 04"); back();   // JUNK: a T file that is not text
+    // PCS tables stay data through Return and explicit B, including lower
+    // case and a picture-sized header; a longer suffix is still a program.
+    for(int table=0;table<2;++table) {
+        keys("K");
+        for(const char* command : {"\r", "B"}) {
+            keys(command); wait("00: 00 40");
+            if(screen(m).find("BRUN ")!=std::string::npos) fail("PCS table offers BRUN");
+            if(m.data()[6]!=0) fail("PCS table ran code");
+            back();
+        }
+    }
+    keys("K"); keys("\r"); wait("BRUN TABLE.PBX"); keys("N");
     keys("["); keys("K");                                    // back on GAME
     // Y: A2FC Mini leaves and DOS runs GAME from drive 2.
     keys("\r"); wait("BRUN GAME"); keys("Y");
@@ -99,5 +111,5 @@ int main(int argc,char** argv) {
     if(m.data()[6]!=2) fail("B on game ran GAME instead");
     wait("]");
     assert(d->flushPendingWrites());
-    puts("PASS: RETURN picks hi-res, text, hex or BRUN by content; RETURN and B BRUN a binary from HELLO and from the DOS prompt; B runs a raw lower-case name");
+    puts("PASS: PCS tables never BRUN; RETURN picks hi-res, text, hex or BRUN by content; RETURN and B BRUN a binary from HELLO and from the DOS prompt; B runs a raw lower-case name");
 }

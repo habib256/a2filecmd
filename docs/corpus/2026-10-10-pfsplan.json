@@ -1,0 +1,94 @@
+{
+  "date": "2026-10-10",
+  "reader": "PFSPLAN",
+  "scope": "ProDOS $16/$0004 Plan B00 profile; primary labels, stored decimal values, row/column formulas. No recalculation or writes.",
+  "unique_real_documents": [
+    {
+      "source": "images/productivity/integrated/pfs/PFS Plan.po",
+      "name": "/CASH.PFS",
+      "bytes": 4608,
+      "sha256": "d48aad5701f0fdba53a4d5a51ee02006336c97befc2582fd3a9dde499abfb508",
+      "rows": 16,
+      "columns": 5
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Plan.po",
+      "name": "/PRODCOST.PFS",
+      "bytes": 4608,
+      "sha256": "ff1b657a2f065938a7425622f6c933248083b52f098a2b6a93c135d19fea4a33",
+      "rows": 9,
+      "columns": 5
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Plan.po",
+      "name": "/SALES.PFS",
+      "bytes": 4608,
+      "sha256": "4fe078c8dddf4efb795cebc80f847e88ece63df2349e1f0bc9c579205bb79a5e",
+      "rows": 10,
+      "columns": 4
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Plan.po",
+      "name": "/COSTS.PFS",
+      "bytes": 4608,
+      "sha256": "5cb8e1c3e6da085c2e9902912b04fd71dc927daadea5bd7cfa84e2a4bb6ad6b3",
+      "rows": 8,
+      "columns": 7
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Plan.po",
+      "name": "/BLANK.PFS",
+      "bytes": 4608,
+      "sha256": "f7b51453fb629ce6ced8d575333b2d15d55d1b7718f6fa754128610acccf2c1d",
+      "rows": 8,
+      "columns": 7
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Plan.po",
+      "name": "/NEWCOSTS.PFS",
+      "bytes": 5120,
+      "sha256": "62eb01d116d3a0aad42bd683ea54ca3de677d43d2d952c6c3f2188f4d5c48190",
+      "rows": 16,
+      "columns": 7
+    }
+  ],
+  "host_tests": 7,
+  "sim65_cpus": [
+    "6502",
+    "65c02"
+  ],
+  "native": {
+    "6502": {
+      "passed": 17,
+      "total": 17,
+      "source_volume_preserved": true,
+      "aux_ram_preserved": true,
+      "stack_floor_preserved": true,
+      "plugin_sha256": "c0931547493335e4988f5dddc9ad642daf3150d49d6cc3890b89c23318c22546",
+      "distribution_binaries_match": true
+    },
+    "65c02": {
+      "passed": 17,
+      "total": 17,
+      "source_volume_preserved": true,
+      "aux_ram_preserved": true,
+      "stack_floor_preserved": true,
+      "plugin_sha256": "abc1f3d0b78cba66baee09923d6286c962cbff0cfb1b9a1af82d15f8b308c73f",
+      "distribution_binaries_match": true
+    }
+  },
+  "original_comparison": {
+    "date": "2026-10-10",
+    "scope": "COSTS rows 2 through 8, columns 1 through 6; 42 literal stored numeric values and visible labels. No all-sheet or typography comparison. Normal original keyboard input, no code adapter.",
+    "numeric_cells_compared": 42,
+    "all_six_source_sheets_preserved": true,
+    "document_sha256": "5cb8e1c3e6da085c2e9902912b04fd71dc927daadea5bd7cfa84e2a4bb6ad6b3"
+  },
+  "limitations": [
+    "32 rows, 16 columns; 512-byte row/column label and formula sections.",
+    "ASCII text and qualified numeric states; decimal point position 0 to 10.",
+    "Shared group headings, display/print formats and mathematical formula semantics not reproduced.",
+    "Nonempty per-cell formula area, other signatures and numeric states refused.",
+    "Original comparison covers 42 visible COSTS values only, not all sheets or typography."
+  ]
+}

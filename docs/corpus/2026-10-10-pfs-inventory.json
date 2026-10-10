@@ -1,0 +1,678 @@
+{
+  "date": "2026-10-10",
+  "scope": "Separate downloaded PFS corpus; excluded from the fixed 1907-source general census. Metadata candidates only, not full validation.",
+  "sources": [
+    {
+      "path": "images/productivity/integrated/pfs/PFS & PFS REPORTS.zip",
+      "bytes": 62953,
+      "sha256": "441c829898b2a9945f97cd9fc4e60ac6b33fbdd4769911ade9e3e2119e48a62b"
+    },
+    {
+      "path": "images/productivity/integrated/pfs/PFS (Personal Filing System) (1982 B-01) (write protect).dsk",
+      "bytes": 143360,
+      "sha256": "bbde3633abf050e1c3220f89c536afe7da51d7a55b19b071ecff20199f6dbd79"
+    },
+    {
+      "path": "images/productivity/integrated/pfs/PFS File & Report.po",
+      "bytes": 819200,
+      "sha256": "5408b44a57c0e5aeb25d82b2d87b32c7c109fa8d1978f9c14f7b5d2192c62dce"
+    },
+    {
+      "path": "images/productivity/integrated/pfs/PFS File vA.00 (4am crack).zip",
+      "bytes": 73301,
+      "sha256": "287eebbebaf58ef0458c5a67e42d9091ffb7cca6f4262441a1858cd552573221"
+    },
+    {
+      "path": "images/productivity/integrated/pfs/PFS Plan.po",
+      "bytes": 819200,
+      "sha256": "54b6a56ec68bc92727002f0d34c4f48bf9a1c219519524491def737e00c3c4d4"
+    },
+    {
+      "path": "images/productivity/integrated/pfs/PFS Report vB.02 (4am crack).zip",
+      "bytes": 41209,
+      "sha256": "5cefa517de0011ebb07b10ead61049e94add303a7f7311c612e844b92f529ec0"
+    },
+    {
+      "path": "images/productivity/integrated/pfs/PFS Write v28-APR-86 (4am crack).zip",
+      "bytes": 184059,
+      "sha256": "4d46ec199a0a28b9f4bb16e845e8d23fc41066028ecbe283cf4151f46a740a70"
+    },
+    {
+      "path": "images/productivity/integrated/pfs/PFS Write.po",
+      "bytes": 819200,
+      "sha256": "7aea499cfd5f870ab231477f17998b3d670c48e8a3e28cb7fdf0318fd26c4b5b"
+    },
+    {
+      "path": "images/productivity/integrated/pfs/PFS vA.02 (4am crack).zip",
+      "bytes": 40924,
+      "sha256": "6805309b5f4f94e0be9ce19bc0e341cc501d11a563a9bcd09189606897444e28"
+    },
+    {
+      "path": "images/productivity/integrated/pfs/PFS vB.00 (4am crack).zip",
+      "bytes": 42940,
+      "sha256": "42dfdccae759f8827a9b2328e6d623754bb07693a1deee3d59bedca8b1c309a1"
+    },
+    {
+      "path": "images/productivity/integrated/pfs/PFS_ACCESS_TRIAL_SIZE.dsk",
+      "bytes": 143360,
+      "sha256": "ea74f5dd62dfc0270edbde71abd53ebb7c7be08510092efcc2c0c5ea10f284ef"
+    },
+    {
+      "path": "images/productivity/integrated/pfs/PFS_CONVERT_hr.dsk",
+      "bytes": 143360,
+      "sha256": "9f1f0e974ae178ad219393d9d13fc186e55dc38418a292e3c75e8c0d9e7aadeb"
+    },
+    {
+      "path": "images/productivity/integrated/pfs/PFS_FILE_PRODOS_hr.dsk",
+      "bytes": 143360,
+      "sha256": "7e4877640b20db5fecb6af8f4b990991ae9e0b8bacbf0ddc17b72186a7b0fd78"
+    },
+    {
+      "path": "images/productivity/integrated/pfs/PFS_GRAPH.dsk",
+      "bytes": 143360,
+      "sha256": "516252e481fd82bc7aa87259192ec155891683efe6cb6c5e29faabef0176dd17"
+    },
+    {
+      "path": "images/productivity/integrated/pfs/PFS_REPORT_hr.dsk",
+      "bytes": 143360,
+      "sha256": "9454be8437ea4cadd9a3948bc8392d670b2c94b114d264aef59d35d549686340"
+    },
+    {
+      "path": "images/productivity/integrated/pfs/PFS_RESCUE.dsk",
+      "bytes": 143360,
+      "sha256": "6d712559c853ca32b9ca6e6dd6ad5668985de4022297bd7912d92e353314b4a3"
+    },
+    {
+      "path": "images/productivity/integrated/pfs/PFS_SAMPLER.dsk",
+      "bytes": 143360,
+      "sha256": "a333699a198210664b1b87bf33bcad3aaf34df29e585980e9cd2b6cd5c8a92af"
+    },
+    {
+      "path": "images/productivity/integrated/pfs/PFS_SORT_WORK_hr.dsk",
+      "bytes": 143360,
+      "sha256": "3ebb22ef32042af329133ba5d82234c25225ab9a7b926299569c5f194169c8c6"
+    },
+    {
+      "path": "images/productivity/integrated/pfs/PFS_WRITE.dsk",
+      "bytes": 143360,
+      "sha256": "be7a884d33e682375f9d271d4b658c0a8b33cb909b24b036a2be237970ac0df6"
+    },
+    {
+      "path": "images/productivity/integrated/pfs/Scholastic PFS File.dsk",
+      "bytes": 143360,
+      "sha256": "e22b8f82e3fe468fd37df1d4e453592a9efa79f36531d68d8f397d319cfa38b9"
+    },
+    {
+      "path": "images/productivity/integrated/pfs/Scholastic PFS Write disk 1.dsk",
+      "bytes": 143360,
+      "sha256": "cb73301785144d0a268c07bedb5c541ed66b143dd34e8ffa739b1030ab1b6df7"
+    },
+    {
+      "path": "images/productivity/integrated/pfs/Scholastic PFS Write disk 2.dsk",
+      "bytes": 143360,
+      "sha256": "b55d7e930f8ee283cdef3643692d57ceccd6c1c20678f9c08d836dfea39911a2"
+    },
+    {
+      "path": "images/productivity/integrated/pfs/spc_pfsfile_pfsreport_cracked.po",
+      "bytes": 819200,
+      "sha256": "b2d8ffcfd8b00c38413218416b9cbd61962a40f9f489a686817fa94aecacc65e"
+    },
+    {
+      "path": "images/productivity/integrated/pfs/spc_pfsplan_cracked.po",
+      "bytes": 819200,
+      "sha256": "560055f946f205b8a9f1ed97db2c49817ca1aecd44b42d34a7c4c3ad1453e5a0"
+    },
+    {
+      "path": "images/productivity/word_processing/PFS Write Dictionary.dsk",
+      "bytes": 143360,
+      "sha256": "b55d7e930f8ee283cdef3643692d57ceccd6c1c20678f9c08d836dfea39911a2"
+    },
+    {
+      "path": "images/productivity/word_processing/PFS Write.dsk",
+      "bytes": 143360,
+      "sha256": "ef2d84ce96186aab4df5eee39693685666d785009ccf1a8ec007ae5ee953d3f9"
+    },
+    {
+      "path": "images/productivity/word_processing/PFSCONVERT.SHK",
+      "bytes": 47265,
+      "sha256": "51643241c600a0f7084714c3bd6f58e468d8bcf34af48471660621633fbf9e7b"
+    },
+    {
+      "path": "images/productivity/word_processing/PFS_Write_2c.zip",
+      "bytes": 70191,
+      "sha256": "178cc216b44e5ee2a6b8a4a6dffabc27ccf34307823871f121eb27c296ad2418"
+    }
+  ],
+  "parsed_unique_images": 17,
+  "duplicate_images": 1,
+  "errors": [
+    {
+      "source": "images/productivity/integrated/pfs/PFS (Personal Filing System) (1982 B-01) (write protect).dsk",
+      "member": "PFS (Personal Filing System) (1982 B-01) (write protect).dsk",
+      "reason": "unsupported filesystem/container"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS File vA.00 (4am crack).zip",
+      "member": "PFS File vA.00 (4am crack)/PFS File vA.00 (4am crack).dsk",
+      "reason": "unsupported filesystem/container"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Report vB.02 (4am crack).zip",
+      "member": "PFS Report vB.02 (4am crack)/PFS Report vB.02 (4am crack).dsk",
+      "reason": "unsupported filesystem/container"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS vA.02 (4am crack).zip",
+      "member": "PFS vA.02 (4am crack)/PFS vA.02 (4am crack).dsk",
+      "reason": "unsupported filesystem/container"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS vB.00 (4am crack).zip",
+      "member": "PFS vB.00 (4am crack)/PFS vB.00 (4am crack).dsk",
+      "reason": "unsupported filesystem/container"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS_ACCESS_TRIAL_SIZE.dsk",
+      "member": "PFS_ACCESS_TRIAL_SIZE.dsk",
+      "reason": "unsupported filesystem/container"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS_GRAPH.dsk",
+      "member": "PFS_GRAPH.dsk",
+      "reason": "block outside image"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS_SAMPLER.dsk",
+      "member": "PFS_SAMPLER.dsk",
+      "reason": "unsupported filesystem/container"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS_SORT_WORK_hr.dsk",
+      "member": "PFS_SORT_WORK_hr.dsk",
+      "reason": "unsupported filesystem/container"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS_WRITE.dsk",
+      "member": "PFS_WRITE.dsk",
+      "reason": "unsupported filesystem/container"
+    }
+  ],
+  "by_aux": {
+    "1": {
+      "occurrences": 3,
+      "unique_contents": 2
+    },
+    "2": {
+      "occurrences": 27,
+      "unique_contents": 8
+    },
+    "4": {
+      "occurrences": 12,
+      "unique_contents": 6
+    }
+  },
+  "documents": [
+    {
+      "source": "images/productivity/integrated/pfs/PFS Plan.po",
+      "member": "PFS Plan.po",
+      "filesystem": "prodos",
+      "name": "/CASH.PFS",
+      "type": 22,
+      "aux": 4,
+      "length": 4608,
+      "sha256": "d48aad5701f0fdba53a4d5a51ee02006336c97befc2582fd3a9dde499abfb508",
+      "header16": "10000500000007001500010030000500"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Plan.po",
+      "member": "PFS Plan.po",
+      "filesystem": "prodos",
+      "name": "/COSTFILE.PFS",
+      "type": 22,
+      "aux": 1,
+      "length": 24576,
+      "sha256": "9a2ea1904f1a22debf511409c3c31f64acb493b70d0e82cbd90fbcdcaa7f6942",
+      "header16": "7f007f0001002900a5007e002d00a300"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Plan.po",
+      "member": "PFS Plan.po",
+      "filesystem": "prodos",
+      "name": "/PRODCOST.PFS",
+      "type": 22,
+      "aux": 4,
+      "length": 4608,
+      "sha256": "ff1b657a2f065938a7425622f6c933248083b52f098a2b6a93c135d19fea4a33",
+      "header16": "09000500000007001500010030000200"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Plan.po",
+      "member": "PFS Plan.po",
+      "filesystem": "prodos",
+      "name": "/SALES.PFS",
+      "type": 22,
+      "aux": 4,
+      "length": 4608,
+      "sha256": "4fe078c8dddf4efb795cebc80f847e88ece63df2349e1f0bc9c579205bb79a5e",
+      "header16": "0a000400000007001300020030000500"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Plan.po",
+      "member": "PFS Plan.po",
+      "filesystem": "prodos",
+      "name": "/COSTS.PFS",
+      "type": 22,
+      "aux": 4,
+      "length": 4608,
+      "sha256": "5cb8e1c3e6da085c2e9902912b04fd71dc927daadea5bd7cfa84e2a4bb6ad6b3",
+      "header16": "08000700000007001900010030000800"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Plan.po",
+      "member": "PFS Plan.po",
+      "filesystem": "prodos",
+      "name": "/BLANK.PFS",
+      "type": 22,
+      "aux": 4,
+      "length": 4608,
+      "sha256": "f7b51453fb629ce6ced8d575333b2d15d55d1b7718f6fa754128610acccf2c1d",
+      "header16": "08000700000007001900010030000800"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Plan.po",
+      "member": "PFS Plan.po",
+      "filesystem": "prodos",
+      "name": "/NEWCOSTS.PFS",
+      "type": 22,
+      "aux": 4,
+      "length": 5120,
+      "sha256": "62eb01d116d3a0aad42bd683ea54ca3de677d43d2d952c6c3f2188f4d5c48190",
+      "header16": "10000700000007001900010030000800"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Write v28-APR-86 (4am crack).zip",
+      "member": "PFS Write v28-APR-86 (4am crack)/PFS Write v28-APR-86 (4am crack) side A - program.dsk",
+      "filesystem": "prodos",
+      "name": "/NILSSON",
+      "type": 22,
+      "aux": 2,
+      "length": 2100,
+      "sha256": "d1ef97f1d97ed41eacdf62cbbbda57f8c99d95090224694c3eee052940e6062b",
+      "header16": "420006000600230034040a0046000100"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Write v28-APR-86 (4am crack).zip",
+      "member": "PFS Write v28-APR-86 (4am crack)/PFS Write v28-APR-86 (4am crack) side B - dictionary.dsk",
+      "filesystem": "prodos",
+      "name": "/HOUSE.PFS",
+      "type": 22,
+      "aux": 2,
+      "length": 1926,
+      "sha256": "83b8f9d1f8448e3575495b1790ed7a9b7fffa2b246abd4182e35eae44c6fff25",
+      "header16": "420006000600240086030a0046000100"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Write v28-APR-86 (4am crack).zip",
+      "member": "PFS Write v28-APR-86 (4am crack)/PFS Write v28-APR-86 (4am crack) side B - dictionary.dsk",
+      "filesystem": "prodos",
+      "name": "/NAME.PFS",
+      "type": 22,
+      "aux": 2,
+      "length": 1188,
+      "sha256": "72dbee0094768e94f7d9eea2d5526bac59bae9c9e2d885795ec56f8cc5f843d1",
+      "header16": "4200060006000300a4000a0046000100"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Write v28-APR-86 (4am crack).zip",
+      "member": "PFS Write v28-APR-86 (4am crack)/PFS Write v28-APR-86 (4am crack) side B - dictionary.dsk",
+      "filesystem": "prodos",
+      "name": "/ANNUAL.PFS",
+      "type": 22,
+      "aux": 2,
+      "length": 3967,
+      "sha256": "839c324beb6c9d9f3a2236e6eb1888a40296b61af720727e4cd6e9fca541a934",
+      "header16": "420006000600c1007f0b0a0046000300"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Write v28-APR-86 (4am crack).zip",
+      "member": "PFS Write v28-APR-86 (4am crack)/PFS Write v28-APR-86 (4am crack) side B - dictionary.dsk",
+      "filesystem": "prodos",
+      "name": "/FLYER.PFS",
+      "type": 22,
+      "aux": 2,
+      "length": 1909,
+      "sha256": "aca33e957f3123e86addce1e678adb14eeced084697406fedd111d073ecfc1aa",
+      "header16": "420006000600150075030a0046000100"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Write v28-APR-86 (4am crack).zip",
+      "member": "PFS Write v28-APR-86 (4am crack)/PFS Write v28-APR-86 (4am crack) side B - dictionary.dsk",
+      "filesystem": "prodos",
+      "name": "/MEMO.PFS",
+      "type": 22,
+      "aux": 2,
+      "length": 1696,
+      "sha256": "be5dcbf28722d45c7c4cc9ec715623fae70a65846becb2138c358e3761ed4c0d",
+      "header16": "4200060006001300a0020a0046000200"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Write v28-APR-86 (4am crack).zip",
+      "member": "PFS Write v28-APR-86 (4am crack)/PFS Write v28-APR-86 (4am crack) side B - dictionary.dsk",
+      "filesystem": "prodos",
+      "name": "/LETTER.PFS",
+      "type": 22,
+      "aux": 2,
+      "length": 1681,
+      "sha256": "e56e21ac6aea47261973e42abcd05086303fd9a5791296debc06aebeebce2afa",
+      "header16": "420006000600200091020a0046000100"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Write v28-APR-86 (4am crack).zip",
+      "member": "PFS Write v28-APR-86 (4am crack)/PFS Write v28-APR-86 (4am crack) side B - dictionary.dsk",
+      "filesystem": "prodos",
+      "name": "/EXTRA.PFS",
+      "type": 22,
+      "aux": 2,
+      "length": 1145,
+      "sha256": "a6a89fc817e54e2693831c09dbaa2f4a4c458f2c1460bfb7d2dcc16fe6e663ed",
+      "header16": "420006000600020079000a0046000100"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Write.po",
+      "member": "PFS Write.po",
+      "filesystem": "prodos",
+      "name": "/NAME.PFS",
+      "type": 22,
+      "aux": 2,
+      "length": 1188,
+      "sha256": "72dbee0094768e94f7d9eea2d5526bac59bae9c9e2d885795ec56f8cc5f843d1",
+      "header16": "4200060006000300a4000a0046000100"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Write.po",
+      "member": "PFS Write.po",
+      "filesystem": "prodos",
+      "name": "/ANNUAL.PFS",
+      "type": 22,
+      "aux": 2,
+      "length": 3967,
+      "sha256": "839c324beb6c9d9f3a2236e6eb1888a40296b61af720727e4cd6e9fca541a934",
+      "header16": "420006000600c1007f0b0a0046000300"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Write.po",
+      "member": "PFS Write.po",
+      "filesystem": "prodos",
+      "name": "/FLYER.PFS",
+      "type": 22,
+      "aux": 2,
+      "length": 1909,
+      "sha256": "aca33e957f3123e86addce1e678adb14eeced084697406fedd111d073ecfc1aa",
+      "header16": "420006000600150075030a0046000100"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Write.po",
+      "member": "PFS Write.po",
+      "filesystem": "prodos",
+      "name": "/MEMO.PFS",
+      "type": 22,
+      "aux": 2,
+      "length": 1696,
+      "sha256": "be5dcbf28722d45c7c4cc9ec715623fae70a65846becb2138c358e3761ed4c0d",
+      "header16": "4200060006001300a0020a0046000200"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Write.po",
+      "member": "PFS Write.po",
+      "filesystem": "prodos",
+      "name": "/LETTER.PFS",
+      "type": 22,
+      "aux": 2,
+      "length": 1681,
+      "sha256": "e56e21ac6aea47261973e42abcd05086303fd9a5791296debc06aebeebce2afa",
+      "header16": "420006000600200091020a0046000100"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS Write.po",
+      "member": "PFS Write.po",
+      "filesystem": "prodos",
+      "name": "/EXTRA.PFS",
+      "type": 22,
+      "aux": 2,
+      "length": 1145,
+      "sha256": "a6a89fc817e54e2693831c09dbaa2f4a4c458f2c1460bfb7d2dcc16fe6e663ed",
+      "header16": "420006000600020079000a0046000100"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/PFS_REPORT_hr.dsk",
+      "member": "PFS_REPORT_hr.dsk",
+      "filesystem": "prodos",
+      "name": "/STAFF.PFS",
+      "type": 22,
+      "aux": 1,
+      "length": 16384,
+      "sha256": "ecac5197e8d501754e93b218c0aeb69864e55d9229ee919cdf6d741368e04795",
+      "header16": "7f007f00010008006f007d002d006c00"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/Scholastic PFS Write disk 2.dsk",
+      "member": "Scholastic PFS Write disk 2.dsk",
+      "filesystem": "prodos",
+      "name": "/HOUSE.PFS",
+      "type": 22,
+      "aux": 2,
+      "length": 1926,
+      "sha256": "83b8f9d1f8448e3575495b1790ed7a9b7fffa2b246abd4182e35eae44c6fff25",
+      "header16": "420006000600240086030a0046000100"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/Scholastic PFS Write disk 2.dsk",
+      "member": "Scholastic PFS Write disk 2.dsk",
+      "filesystem": "prodos",
+      "name": "/NAME.PFS",
+      "type": 22,
+      "aux": 2,
+      "length": 1188,
+      "sha256": "72dbee0094768e94f7d9eea2d5526bac59bae9c9e2d885795ec56f8cc5f843d1",
+      "header16": "4200060006000300a4000a0046000100"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/Scholastic PFS Write disk 2.dsk",
+      "member": "Scholastic PFS Write disk 2.dsk",
+      "filesystem": "prodos",
+      "name": "/ANNUAL.PFS",
+      "type": 22,
+      "aux": 2,
+      "length": 3967,
+      "sha256": "839c324beb6c9d9f3a2236e6eb1888a40296b61af720727e4cd6e9fca541a934",
+      "header16": "420006000600c1007f0b0a0046000300"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/Scholastic PFS Write disk 2.dsk",
+      "member": "Scholastic PFS Write disk 2.dsk",
+      "filesystem": "prodos",
+      "name": "/FLYER.PFS",
+      "type": 22,
+      "aux": 2,
+      "length": 1909,
+      "sha256": "aca33e957f3123e86addce1e678adb14eeced084697406fedd111d073ecfc1aa",
+      "header16": "420006000600150075030a0046000100"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/Scholastic PFS Write disk 2.dsk",
+      "member": "Scholastic PFS Write disk 2.dsk",
+      "filesystem": "prodos",
+      "name": "/MEMO.PFS",
+      "type": 22,
+      "aux": 2,
+      "length": 1696,
+      "sha256": "be5dcbf28722d45c7c4cc9ec715623fae70a65846becb2138c358e3761ed4c0d",
+      "header16": "4200060006001300a0020a0046000200"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/Scholastic PFS Write disk 2.dsk",
+      "member": "Scholastic PFS Write disk 2.dsk",
+      "filesystem": "prodos",
+      "name": "/LETTER.PFS",
+      "type": 22,
+      "aux": 2,
+      "length": 1681,
+      "sha256": "e56e21ac6aea47261973e42abcd05086303fd9a5791296debc06aebeebce2afa",
+      "header16": "420006000600200091020a0046000100"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/Scholastic PFS Write disk 2.dsk",
+      "member": "Scholastic PFS Write disk 2.dsk",
+      "filesystem": "prodos",
+      "name": "/EXTRA.PFS",
+      "type": 22,
+      "aux": 2,
+      "length": 1145,
+      "sha256": "a6a89fc817e54e2693831c09dbaa2f4a4c458f2c1460bfb7d2dcc16fe6e663ed",
+      "header16": "420006000600020079000a0046000100"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/spc_pfsplan_cracked.po",
+      "member": "spc_pfsplan_cracked.po",
+      "filesystem": "prodos",
+      "name": "/CASH.PFS",
+      "type": 22,
+      "aux": 4,
+      "length": 4608,
+      "sha256": "d48aad5701f0fdba53a4d5a51ee02006336c97befc2582fd3a9dde499abfb508",
+      "header16": "10000500000007001500010030000500"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/spc_pfsplan_cracked.po",
+      "member": "spc_pfsplan_cracked.po",
+      "filesystem": "prodos",
+      "name": "/COSTFILE.PFS",
+      "type": 22,
+      "aux": 1,
+      "length": 24576,
+      "sha256": "9a2ea1904f1a22debf511409c3c31f64acb493b70d0e82cbd90fbcdcaa7f6942",
+      "header16": "7f007f0001002900a5007e002d00a300"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/spc_pfsplan_cracked.po",
+      "member": "spc_pfsplan_cracked.po",
+      "filesystem": "prodos",
+      "name": "/PRODCOST.PFS",
+      "type": 22,
+      "aux": 4,
+      "length": 4608,
+      "sha256": "ff1b657a2f065938a7425622f6c933248083b52f098a2b6a93c135d19fea4a33",
+      "header16": "09000500000007001500010030000200"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/spc_pfsplan_cracked.po",
+      "member": "spc_pfsplan_cracked.po",
+      "filesystem": "prodos",
+      "name": "/SALES.PFS",
+      "type": 22,
+      "aux": 4,
+      "length": 4608,
+      "sha256": "4fe078c8dddf4efb795cebc80f847e88ece63df2349e1f0bc9c579205bb79a5e",
+      "header16": "0a000400000007001300020030000500"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/spc_pfsplan_cracked.po",
+      "member": "spc_pfsplan_cracked.po",
+      "filesystem": "prodos",
+      "name": "/COSTS.PFS",
+      "type": 22,
+      "aux": 4,
+      "length": 4608,
+      "sha256": "5cb8e1c3e6da085c2e9902912b04fd71dc927daadea5bd7cfa84e2a4bb6ad6b3",
+      "header16": "08000700000007001900010030000800"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/spc_pfsplan_cracked.po",
+      "member": "spc_pfsplan_cracked.po",
+      "filesystem": "prodos",
+      "name": "/BLANK.PFS",
+      "type": 22,
+      "aux": 4,
+      "length": 4608,
+      "sha256": "f7b51453fb629ce6ced8d575333b2d15d55d1b7718f6fa754128610acccf2c1d",
+      "header16": "08000700000007001900010030000800"
+    },
+    {
+      "source": "images/productivity/integrated/pfs/spc_pfsplan_cracked.po",
+      "member": "spc_pfsplan_cracked.po",
+      "filesystem": "prodos",
+      "name": "/NEWCOSTS.PFS",
+      "type": 22,
+      "aux": 4,
+      "length": 5120,
+      "sha256": "62eb01d116d3a0aad42bd683ea54ca3de677d43d2d952c6c3f2188f4d5c48190",
+      "header16": "10000700000007001900010030000800"
+    },
+    {
+      "source": "images/productivity/word_processing/PFS_Write_2c.zip",
+      "member": "PFSWRI2C.DSK",
+      "filesystem": "prodos",
+      "name": "/NAME.PFS",
+      "type": 22,
+      "aux": 2,
+      "length": 1188,
+      "sha256": "72dbee0094768e94f7d9eea2d5526bac59bae9c9e2d885795ec56f8cc5f843d1",
+      "header16": "4200060006000300a4000a0046000100"
+    },
+    {
+      "source": "images/productivity/word_processing/PFS_Write_2c.zip",
+      "member": "PFSWRI2C.DSK",
+      "filesystem": "prodos",
+      "name": "/ANNUAL.PFS",
+      "type": 22,
+      "aux": 2,
+      "length": 3967,
+      "sha256": "839c324beb6c9d9f3a2236e6eb1888a40296b61af720727e4cd6e9fca541a934",
+      "header16": "420006000600c1007f0b0a0046000300"
+    },
+    {
+      "source": "images/productivity/word_processing/PFS_Write_2c.zip",
+      "member": "PFSWRI2C.DSK",
+      "filesystem": "prodos",
+      "name": "/FLYER.PFS",
+      "type": 22,
+      "aux": 2,
+      "length": 1909,
+      "sha256": "aca33e957f3123e86addce1e678adb14eeced084697406fedd111d073ecfc1aa",
+      "header16": "420006000600150075030a0046000100"
+    },
+    {
+      "source": "images/productivity/word_processing/PFS_Write_2c.zip",
+      "member": "PFSWRI2C.DSK",
+      "filesystem": "prodos",
+      "name": "/MEMO.PFS",
+      "type": 22,
+      "aux": 2,
+      "length": 1696,
+      "sha256": "be5dcbf28722d45c7c4cc9ec715623fae70a65846becb2138c358e3761ed4c0d",
+      "header16": "4200060006001300a0020a0046000200"
+    },
+    {
+      "source": "images/productivity/word_processing/PFS_Write_2c.zip",
+      "member": "PFSWRI2C.DSK",
+      "filesystem": "prodos",
+      "name": "/LETTER.PFS",
+      "type": 22,
+      "aux": 2,
+      "length": 1681,
+      "sha256": "e56e21ac6aea47261973e42abcd05086303fd9a5791296debc06aebeebce2afa",
+      "header16": "420006000600200091020a0046000100"
+    },
+    {
+      "source": "images/productivity/word_processing/PFS_Write_2c.zip",
+      "member": "PFSWRI2C.DSK",
+      "filesystem": "prodos",
+      "name": "/EXTRA.PFS",
+      "type": 22,
+      "aux": 2,
+      "length": 1145,
+      "sha256": "a6a89fc817e54e2693831c09dbaa2f4a4c458f2c1460bfb7d2dcc16fe6e663ed",
+      "header16": "420006000600020079000a0046000100"
+    }
+  ]
+}

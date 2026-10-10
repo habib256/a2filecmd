@@ -3812,22 +3812,22 @@ static const char mn_cat7[] = "Other";
 static const char* const mn_categories[] = {
     mn_cat0, mn_cat1, mn_cat2, mn_cat3, mn_cat4, mn_cat5, mn_cat6, mn_cat7
 };
-static const char mn_what0[] = "Read, edit, search, move";
-static const char mn_what1[] = "HGR, DHGR, lo-res, fonts, packed";
-static const char mn_what2[] = "MB1, ProTracker 3, Electric Duet";
-static const char mn_what3[] = "Images, format, blocks, copies, rescue";
-static const char mn_what4[] = "BASIC listings, disassembly, CRC, IDENT";
-static const char mn_what5[] = "Help, clock";
-static const char mn_what6[] = "Archives and wrappers";
-static const char mn_what7[] = "Unsorted";
+static const char mn_what0[] = "Text, files";
+static const char mn_what1[] = "Images";
+static const char mn_what2[] = "Music";
+static const char mn_what3[] = "Disks, rescue";
+static const char mn_what4[] = "Code, IDENT";
+static const char mn_what5[] = "Help";
+static const char mn_what6[] = "Archives";
+static const char mn_what7[] = "Other";
 static const char* const mn_whats[] = {
     mn_what0, mn_what1, mn_what2, mn_what3, mn_what4, mn_what5, mn_what6, mn_what7
 };
-static const char mn_group0[] = "|TEXT|HEX|EDIT|SEARCH|FIND|FIXTYPES|GOTO|MDVIEW|DOCVIEW|NEWSPAN|NEWSPAGE|RENAME|SYNC|MOVE|TREE|DELETE|ATTR|TXTCONV|TAGPAT|COMPARE|AWP|AWDATA|VISICALC|GUTTEXT|TEACHTXT|";
-static const char mn_group1[] = "|IMAGE|DGRVIEW|EXTASIE|ARLEQUIN|MACPAINT|SHAPES|PACKFOT|PAINT816|PURPLE|LZ4FH|PRINTSHOP|NEWSROOM|DOSNEWS|NRCLIP|GMAGIC|FONTVIEW|FONTRIX|";
+static const char mn_group0[] = "|TEXT|HEX|EDIT|SEARCH|FIND|FIXTYPES|GOTO|MDVIEW|DOCVIEW|NEWSPAN|NEWSPAGE|RENAME|SYNC|MOVE|TREE|DELETE|ATTR|TXTCONV|TAGPAT|COMPARE|AWP|AWDATA|VISICALC|GUTTEXT|TEACHTXT|APPLEWR|MULTISCR|MAGWIN|DOSREC|PFSWRITE|PFSFILE|PFSPLAN|WORDPERF|MOUSEWR|BSFILER|MULTPLAN|";
+static const char mn_group1[] = "|MVMOVIE|DGMAGI|PCSVW|IMAGE|DGRVIEW|EXTASIE|ARLEQUIN|MACPAINT|SHAPES|PACKFOT|PAINT816|PURPLE|LZ4FH|PRINTSHOP|NEWSROOM|DOSNEWS|NRCLIP|GMAGIC|FONTVIEW|FONTRIX|PSBORDER|PSFONT|";
 static const char mn_group2[] = "|MUSIC|PT3|DUET|MCS|DOSMCS|";
 static const char mn_group3[] = "|FORMAT|DISKIMG|IMGFS|IMGPUT|DOSGET|DOSWRITE|DOS33W|DOSREPL|PASCAL|PASCALW|CPM|CPMW|BOOTBLK|BLKVIEW|BLKEDIT|DISKCMP|NIBCOPY|IMGCONV|MKIMAGE|RESCUE|UNDELETE|VOLNAME|VOLINFO|FIXIT|REPAIR|WIPE|VERIFY|";
-static const char mn_group4[] = "|BASLIST|DISASM|INTBASIC|DOSINT|DOSBAS|RUN|CRC|IDENT|PASTEXT|SCASM|MERLIN|LISAV2|";
+static const char mn_group4[] = "|BASLIST|DISASM|INTBASIC|DOSINT|DOSBAS|RUN|CRC|IDENT|PASTEXT|SCASM|MERLIN|LISAV2|LISAV3|LISAV4|";
 static const char mn_group5[] = "|HELP|DATE|";
 static const char mn_group6[] = "|BINARY2|UNSHRINK|UNWRAP|SCIIBIN|UNSQ|";
 static const char* const mn_groups[] = {

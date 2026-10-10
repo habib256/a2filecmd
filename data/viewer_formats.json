@@ -1,0 +1,656 @@
+[
+  {
+    "format": "Bordures Print Shop / Print Shop Companion",
+    "category": "graphisme",
+    "priority": 1,
+    "status": "partiel",
+    "public_inventory_entries": 131,
+    "evidence_paths": [
+      "images/misc/3d0g_knight_collection/108a - print shop graphics - side 1.dsk",
+      "images/misc/3d0g_knight_collection/108b - print shop graphics - side 2.dsk",
+      "images/misc/3d0g_knight_collection/112a - print shop.dsk"
+    ],
+    "remaining": "PSBORDER lit BIN 144/148 et ProDOS $F5 aux $2000 (264 octets), trois motifs 24×14. Restent assemblage, options et masques."
+  },
+  {
+    "format": "Polices Print Shop / Companion",
+    "category": "polices",
+    "priority": 1,
+    "status": "partiel",
+    "public_inventory_entries": 131,
+    "evidence_paths": [
+      "images/misc/3d0g_knight_collection/108a - print shop graphics - side 1.dsk",
+      "images/misc/3d0g_knight_collection/108b - print shop graphics - side 2.dsk",
+      "images/misc/3d0g_knight_collection/112a - print shop.dsk"
+    ],
+    "remaining": "PSFONT lit BIN aux $6000/$5FF4 et ProDOS $F5 aux $1000 (95 entrées), avec défilement. Reste le texte composé."
+  },
+  {
+    "format": "Magic Window / Magic Window II",
+    "category": "texte",
+    "priority": 1,
+    "status": "partiel",
+    "public_inventory_entries": 4,
+    "evidence_paths": [
+      "images/productivity/word_processing/miscwps_magicwindow_supertextii_letterperfect.dsk",
+      "images/productivity/word_processing/magic_window/magic.window.ii.dsk",
+      "images/productivity/word_processing/magic_window/magicwindowiie.dsk"
+    ],
+    "remaining": "MAGWIN lit BIN .MW en texte paginé, directement en DOS. Restent typographie, en-têtes/pieds et versions non qualifiées."
+  },
+  {
+    "format": "LISA v3",
+    "category": "développement",
+    "priority": 1,
+    "status": "partiel",
+    "public_inventory_entries": 14,
+    "evidence_paths": [
+      "images/disk_utils/cracking/the_saltine/copy programs and lisa.dsk",
+      "images/disk_utils/cracking/the_saltine/lisa assembler a.dsk",
+      "images/disk_utils/cracking/the_saltine/lisa assembler b.dsk"
+    ],
+    "remaining": "LISAV3 lit symboles et jetons standard, jusqu’à 512 symboles. Restent dialectes ANIX et comparaison complète au rendu original."
+  },
+  {
+    "format": "LISA v4/v5 (LISA 8/16)",
+    "category": "développement",
+    "priority": 2,
+    "status": "partiel",
+    "public_inventory_entries": 14,
+    "evidence_paths": [
+      "images/disk_utils/cracking/the_saltine/copy programs and lisa.dsk",
+      "images/disk_utils/cracking/the_saltine/lisa assembler a.dsk",
+      "images/disk_utils/cracking/the_saltine/lisa assembler b.dsk"
+    ],
+    "remaining": "LISAV4 lit LISA 8/16 INT aux $4000–$5FFF : symboles, macros, nombres 24/32 bits, adressage et commentaires. Table de symboles limitée à 2816 octets. Restent variantes non qualifiées et comparaison complète au logiciel original."
+  },
+  {
+    "format": "Fichiers texte DOS à accès aléatoire",
+    "category": "données",
+    "priority": 1,
+    "status": "partiel",
+    "public_inventory_entries": 988,
+    "evidence_paths": [
+      "images/disk_utils/apple file text file utilities.dsk",
+      "images/disk_utils/dsk2file_2.0.do",
+      "images/disk_utils/file selector.zip"
+    ],
+    "remaining": "DOSREC inspecte les enregistrements de longueur choisie, NUL et trous (--), directement en DOS/DSK/2MG. Restent schémas de champs ; EOF exact et longueur absents du format, espace logique limité à 560 secteurs."
+  },
+  {
+    "format": "WordPerfect Apple II",
+    "category": "texte",
+    "priority": 2,
+    "status": "partiel",
+    "public_inventory_entries": 11,
+    "evidence_paths": [
+      "images/games/collections/woz-a-day/wordperfect iigs (woz-a-day collection).zip",
+      "images/productivity/word_processing/wordperfect/wordperfect - spell - dictionary.dsk",
+      "images/productivity/word_processing/wordperfect/wordperfect - speller (rev1.0).dsk"
+    ],
+    "remaining": "WORDPERF : texte ProDOS $A0/$0000, contrôles connus et notes ; mise en page, autres familles et commandes multioctets inconnues restent hors profil.",
+    "qualification": "docs/V1-FORMATS.md"
+  },
+  {
+    "format": "PFS:Write",
+    "category": "texte",
+    "priority": 2,
+    "status": "partiel",
+    "public_inventory_entries": 8,
+    "evidence_paths": [
+      "images/productivity/word_processing/pfs write.dsk",
+      "images/productivity/word_processing/pfs write dictionary.dsk",
+      "images/productivity/word_processing/pfs_write_2c.zip"
+    ],
+    "remaining": "PFSWRITE lit les documents ProDOS $16 aux $0002 du profil qualifié : texte paginé et contrôles visibles. Huit contenus distincts testés. Restent mise en forme, fusion de données et variantes anciennes."
+  },
+  {
+    "format": "PFS:File / PFS:Report",
+    "category": "base de données",
+    "priority": 2,
+    "status": "partiel",
+    "public_inventory_entries": 6,
+    "evidence_paths": [
+      "images/productivity/integrated/pfs/pfs & pfs reports.zip",
+      "images/productivity/integrated/pfs/pfs file & report.po",
+      "images/productivity/integrated/pfs/pfs file va.00 (4am crack).zip"
+    ],
+    "remaining": "PFSFILE lit le formulaire et les fiches actives ProDOS $16/$0001 A2CD00 : 49 fiches de deux bases qualifiées. Restent rapports, anciens disques propres au logiciel et variantes ; limite 256 KiB, 8 cellules par fiche/formulaire, 32 noms de champs."
+  },
+  {
+    "format": "PFS:Plan",
+    "category": "tableur",
+    "priority": 2,
+    "status": "partiel",
+    "public_inventory_entries": 2,
+    "evidence_paths": [
+      "images/productivity/integrated/pfs/PFS Plan.po",
+      "images/productivity/integrated/pfs/spc_pfsplan_cracked.po"
+    ],
+    "remaining": "PFSPLAN lit les six feuilles ProDOS $16/$0004 B00 : libellés principaux, valeurs enregistrées et formules de lignes/colonnes, sans recalcul. Restent titres de groupes, formats, formules propres aux cellules et autres profils ; 32 lignes, 16 colonnes."
+  },
+  {
+    "format": "Quick File / Quick File II",
+    "category": "base de données",
+    "priority": 2,
+    "status": "à étudier",
+    "public_inventory_entries": 6,
+    "evidence_paths": [
+      "images/productivity/database/quick file data disk.dsk",
+      "images/productivity/database/quick file ii.dsk",
+      "images/productivity/database/quick file ii program - 680-0183-a.dsk"
+    ],
+    "remaining": "Format exact et documents de données à établir."
+  },
+  {
+    "format": "Bank Street Filer",
+    "category": "base de données",
+    "priority": 2,
+    "status": "partiel",
+    "public_inventory_entries": 3,
+    "evidence_paths": [
+      "images/productivity/database/animal life database (bank street filer) (no boot).dsk",
+      "images/productivity/database/endangered species database for bank street filer (no boot).dsk",
+      "images/productivity/database/north america database for bank street filer (no boot).dsk"
+    ],
+    "remaining": "BSFILER : bases AFILER 1.0 extraites en BIN, champs, nombres et dates ; précision flottante limitée à trois décimales, formules identifiées sans exécution.",
+    "qualification": "docs/V1-FORMATS.md"
+  },
+  {
+    "format": "DB Master",
+    "category": "base de données",
+    "priority": 2,
+    "status": "à étudier",
+    "public_inventory_entries": 3,
+    "evidence_paths": [
+      "images/productivity/database/db master.v2d",
+      "images/productivity/database/db master.zip",
+      "images/games/collections/woz-a-day/db master professional rev. 9402 800k (woz-a-day collection).zip"
+    ],
+    "remaining": "Format exact et documents de données à établir."
+  },
+  {
+    "format": "VisiFile / VisiDex",
+    "category": "base de données",
+    "priority": 2,
+    "status": "à étudier",
+    "public_inventory_entries": 6,
+    "evidence_paths": [
+      "images/productivity/database/visifile 1.0 data disk.dsk",
+      "images/productivity/database/visifile 1.0 program disk.dsk",
+      "images/productivity/integrated/visidex.nib"
+    ],
+    "remaining": "Format exact et documents de données à établir."
+  },
+  {
+    "format": "Microsoft Multiplan",
+    "category": "tableur",
+    "priority": 2,
+    "status": "partiel",
+    "public_inventory_entries": 5,
+    "evidence_paths": [
+      "images/educational/ati_training/ati training power for multiplan (4am crack).zip",
+      "images/productivity/spreadsheet/microsoft_multiplan_boot.dsk",
+      "images/productivity/spreadsheet/microsoft_multiplan_boot_fixed.dsk"
+    ],
+    "remaining": "MULTPLAN : sauvegardes normales v1.06 extraites intactes en ProDOS $F4 ; cellules et valeurs BCD, tokens de formules. Pas de recalcul, de format Symbolic ni de DOS R direct.",
+    "qualification": "docs/V1-FORMATS.md"
+  },
+  {
+    "format": "SuperCalc / SuperCalc 3a",
+    "category": "tableur",
+    "priority": 2,
+    "status": "à étudier",
+    "public_inventory_entries": 5,
+    "evidence_paths": [
+      "images/educational/ati_training/ati training power for supercalc (4am crack).zip",
+      "images/productivity/spreadsheet/supercalc3a.po",
+      "images/productivity/spreadsheet/supercalc3a v1.1 disk 1 - program.dsk"
+    ],
+    "remaining": "Distinguer les éditions Apple II natives des éditions CP/M ; formats à confirmer."
+  },
+  {
+    "format": "Magic Slate",
+    "category": "texte",
+    "priority": 2,
+    "status": "à étudier",
+    "public_inventory_entries": 29,
+    "evidence_paths": [
+      "images/productivity/word_processing/magic_slate/magicslate.dsk",
+      "images/productivity/word_processing/magic_slate/magic slate 20 v1.3 (4am crack).zip",
+      "images/productivity/word_processing/magic_slate/magic slate 20 v1.4 (4am crack).zip"
+    ],
+    "remaining": "Format exact et documents de données à établir."
+  },
+  {
+    "format": "MouseWrite",
+    "category": "texte",
+    "priority": 2,
+    "status": "partiel",
+    "public_inventory_entries": 10,
+    "evidence_paths": [
+      "images/productivity/word_processing/mousewrite/mousewrite - art pack 3.0.dsk",
+      "images/productivity/word_processing/mousewrite/mousewrite - art pack 3.1.dsk",
+      "images/productivity/word_processing/mousewrite/mousewrite - art pack 3.2.dsk"
+    ],
+    "remaining": "MOUSEWR : texte ProDOS $F1/$0000, en-têtes MW 1/4/5, largeur de ligne du fichier ; polices et dessin non reproduits.",
+    "qualification": "docs/V1-FORMATS.md"
+  },
+  {
+    "format": "Zardax",
+    "category": "texte",
+    "priority": 2,
+    "status": "à étudier",
+    "public_inventory_entries": 8,
+    "evidence_paths": [
+      "images/games/collections/san_inc_dos/zardax v5.2 (san inc crack).dsk",
+      "images/productivity/word_processing/zardax/zardax.zip",
+      "images/productivity/word_processing/zardax/zardax 6.0 (alternate).dsk"
+    ],
+    "remaining": "Format exact et documents de données à établir."
+  },
+  {
+    "format": "Screen Writer / Screenwriter II",
+    "category": "texte",
+    "priority": 2,
+    "status": "à étudier",
+    "public_inventory_entries": 3,
+    "evidence_paths": [
+      "images/productivity/word_processing/screen writer 2.0 (4am and san inc crack).zip",
+      "images/productivity/word_processing/screenwriter v2.0 (on-line systems 1982).dsk",
+      "images/productivity/word_processing/screenwriter][e.dsk"
+    ],
+    "remaining": "Format exact et documents de données à établir."
+  },
+  {
+    "format": "Super-Text / Super-Text II",
+    "category": "texte",
+    "priority": 2,
+    "status": "à étudier",
+    "public_inventory_entries": 6,
+    "evidence_paths": [
+      "images/productivity/word_processing/miscwps_magicwindow_supertextii_letterperfect.dsk",
+      "images/productivity/word_processing/super-text ii (4am crack).zip",
+      "images/productivity/word_processing/super-text ii form letter module (4am crack).zip"
+    ],
+    "remaining": "Format exact et documents de données à établir."
+  },
+  {
+    "format": "EasyWriter / EasyWriter II",
+    "category": "texte",
+    "priority": 2,
+    "status": "à étudier",
+    "public_inventory_entries": 6,
+    "evidence_paths": [
+      "images/productivity/word_processing/easywriter/easywriter (alt).nib",
+      "images/productivity/word_processing/easywriter/easywriter (cap'n software - john draper - 1979) - formatted disk.dsk",
+      "images/productivity/word_processing/easywriter/easywriter (cap'n software - john draper - 1979) - program.dsk"
+    ],
+    "remaining": "Format exact et documents de données à établir."
+  },
+  {
+    "format": "Letter Perfect",
+    "category": "texte",
+    "priority": 2,
+    "status": "à étudier",
+    "public_inventory_entries": 1,
+    "evidence_paths": [
+      "images/productivity/word_processing/miscwps_magicwindow_supertextii_letterperfect.dsk"
+    ],
+    "remaining": "Format exact et documents de données à établir."
+  },
+  {
+    "format": "Pie Writer / Apple Pie",
+    "category": "texte",
+    "priority": 3,
+    "status": "à étudier",
+    "public_inventory_entries": 5,
+    "evidence_paths": [
+      "images/productivity/word_processing/applepie v1.0.dsk",
+      "images/productivity/word_processing/piewriter.dsk",
+      "images/productivity/word_processing/pie writer.dsk"
+    ],
+    "remaining": "Format exact et documents de données à établir."
+  },
+  {
+    "format": "SpeedScript",
+    "category": "texte",
+    "priority": 3,
+    "status": "à étudier",
+    "public_inventory_entries": 1,
+    "evidence_paths": [
+      "images/productivity/word_processing/speed script 3.0.dsk"
+    ],
+    "remaining": "Format exact et documents de données à établir."
+  },
+  {
+    "format": "Cut & Paste",
+    "category": "texte",
+    "priority": 3,
+    "status": "à étudier",
+    "public_inventory_entries": 2,
+    "evidence_paths": [
+      "images/productivity/word_processing/cut and paste (4am and san inc crack).zip",
+      "images/productivity/word_processing/cut and paste word processor - 1983 - electronic arts.dsk"
+    ],
+    "remaining": "Format exact et documents de données à établir."
+  },
+  {
+    "format": "Paperclip",
+    "category": "texte",
+    "priority": 3,
+    "status": "à étudier",
+    "public_inventory_entries": 1,
+    "evidence_paths": [
+      "images/productivity/word_processing/paperclip.dsk"
+    ],
+    "remaining": "Format exact et documents de données à établir."
+  },
+  {
+    "format": "Word Juggler",
+    "category": "texte",
+    "priority": 3,
+    "status": "à étudier",
+    "public_inventory_entries": 4,
+    "evidence_paths": [
+      "images/productivity/word_processing/wordjuggleriie.dsk",
+      "images/productivity/word_processing/wordjuggler iie v2.9 (quark).po",
+      "images/productivity/word_processing/wordjuggler_2.6_german.dsk"
+    ],
+    "remaining": "Format exact et documents de données à établir."
+  },
+  {
+    "format": "Bard’s Apprentice / WordBench",
+    "category": "texte",
+    "priority": 3,
+    "status": "à étudier",
+    "public_inventory_entries": 20,
+    "evidence_paths": [
+      "images/productivity/word_processing/bard_apprentice/the bard's pro-am apple iie-c writing system disk 1 side a.dsk",
+      "images/productivity/word_processing/bard_apprentice/the bard's pro-am apple iie-c writing system disk 1 side b.dsk",
+      "images/productivity/word_processing/bard_apprentice/the bard's pro-am apple iie-c writing system disk 2 side a.dsk"
+    ],
+    "remaining": "Format exact et documents de données à établir."
+  },
+  {
+    "format": "FredWriter / FreeWriter / MECC Writer",
+    "category": "texte",
+    "priority": 3,
+    "status": "à étudier",
+    "public_inventory_entries": 10,
+    "evidence_paths": [
+      "images/educational/mecc/meccwriter and speller v1.2.nib",
+      "images/productivity/word_processing/fredwriter 3.10.dsk",
+      "images/productivity/word_processing/freewriter (alt).dsk"
+    ],
+    "remaining": "Format exact et documents de données à établir."
+  },
+  {
+    "format": "Desktop Plan / FlashCalc / MagicCalc",
+    "category": "tableur",
+    "priority": 3,
+    "status": "à étudier",
+    "public_inventory_entries": 6,
+    "evidence_paths": [
+      "images/productivity/misc/desktop plan ii.dsk",
+      "images/productivity/spreadsheet/desktop-plan-ii-0272-19850325-39690944 (personal software).dsk",
+      "images/productivity/spreadsheet/desktop-plan-ii-8226-19810328-3970144 (personal software).dsk"
+    ],
+    "remaining": "Format exact et documents de données à établir."
+  },
+  {
+    "format": "GeoCalc / Practicalc / VIP Professional",
+    "category": "tableur",
+    "priority": 3,
+    "status": "à étudier",
+    "public_inventory_entries": 17,
+    "evidence_paths": [
+      "images/educational/practicalcii.dsk",
+      "images/productivity/spreadsheet/geocalc disk 1 (8-bit).2mg",
+      "images/productivity/spreadsheet/geocalc disk 2 (8-bit).2mg"
+    ],
+    "remaining": "Format exact et documents de données à établir."
+  },
+  {
+    "format": "DBF dBase II (CP/M)",
+    "category": "base de données",
+    "priority": 2,
+    "status": "à étudier",
+    "public_inventory_entries": 5,
+    "evidence_paths": [
+      "images/educational/ati_training/ati training power for dbase ii volume 1 (4am crack).zip",
+      "images/educational/ati_training/ati training power for dbase ii volume 2 (4am crack).zip",
+      "images/productivity/database/dbaseiitutorial.zip"
+    ],
+    "remaining": "Table de champs, enregistrements et marques de suppression ; nécessite le navigateur CP/M, pas l’exécution Z80."
+  },
+  {
+    "format": "WordStar (CP/M)",
+    "category": "texte",
+    "priority": 3,
+    "status": "à étudier",
+    "public_inventory_entries": 2,
+    "evidence_paths": [
+      "images/educational/ati_training/ati training power for wordstar volume 1 (4am crack).zip",
+      "images/educational/ati_training/ati training power for wordstar volume 2 (4am crack).zip"
+    ],
+    "remaining": "Texte avec bits hauts et commandes ; lecteur possible sur 6502 après extraction CP/M."
+  },
+  {
+    "format": "Movie Maker .MVM",
+    "category": "animation",
+    "priority": 2,
+    "status": "partiel",
+    "public_inventory_entries": 7,
+    "evidence_paths": [
+      "images/productivity/graphics/movie_maker/movie maker (4am and san inc crack).zip",
+      "images/productivity/graphics/movie_maker/moviemaker1.dsk",
+      "images/productivity/graphics/movie_maker/moviemaker2.dsk"
+    ],
+    "remaining": "MVMOVIE : films de profil 01/02/03/06/05/00/07, images couleur 40×48 au clavier ; rectangles opaques, sans cadence originale ni masque transparent. Code embarqué refusé.",
+    "qualification": "docs/V1-FORMATS.md"
+  },
+  {
+    "format": "Graphics Magician .DPC",
+    "category": "graphisme",
+    "priority": 2,
+    "status": "partiel",
+    "public_inventory_entries": 17,
+    "evidence_paths": [
+      "images/misc/3d0g_knight_collection/082a - graphics magician.dsk",
+      "images/games/collections/woz-a-day/the graphics magician (woz-a-day collection).zip",
+      "images/games/collections/woz-a-day/the graphics magician v1982-10 (woz-a-day collection).zip"
+    ],
+    "remaining": "DGMAGI : DHGR 560 points, dessins/pinceaux/remplissage/palettes ; police de remplacement. Mode de ligne transitoire 7 non qualifié et refusé.",
+    "qualification": "docs/V1-FORMATS.md"
+  },
+  {
+    "format": "Graphics Magician dialectes Comprehend",
+    "category": "graphisme",
+    "priority": 3,
+    "status": "partiel",
+    "public_inventory_entries": 31,
+    "evidence_paths": [
+      "images/misc/3d0g_knight_collection/197a - transylvania ii - the crimson crown - side 1.dsk",
+      "images/misc/3d0g_knight_collection/197b - transylvania ii - the crimson crown - side 2.dsk",
+      "images/games/adventure/coveted_mirror/covetedmirrora(comprehend).dsk"
+    ],
+    "remaining": "Formats de jeux et stockage propre ; ne pas les assimiler aux dessins V82/V84."
+  },
+  {
+    "format": "The New Print Shop / projets de publication",
+    "category": "publication",
+    "priority": 2,
+    "status": "à étudier",
+    "public_inventory_entries": 28,
+    "evidence_paths": [
+      "images/games/collections/woz-a-day/the new print shop (woz-a-day collection).zip",
+      "images/games/collections/woz-a-day/the new print shop 800k (woz-a-day collection).zip",
+      "images/productivity/graphics/new_print_shop/the new print shop data disk 1 side a.nib"
+    ],
+    "remaining": "Type $F5 insuffisant : ce type sert aussi à des commandes et accessoires. Requiert de vrais projets."
+  },
+  {
+    "format": "Printographer / Printmaster / Printing Press",
+    "category": "publication",
+    "priority": 3,
+    "status": "à étudier",
+    "public_inventory_entries": 9,
+    "evidence_paths": [
+      "images/productivity/graphics/misc/printing press express side a.dsk",
+      "images/productivity/graphics/misc/printing press express side b.dsk",
+      "images/productivity/graphics/misc/printmaster plus - side a.dsk"
+    ],
+    "remaining": "Clip art, polices et projets à distinguer ; présence du programme ne prouve pas celle de documents."
+  },
+  {
+    "format": "Pinball Construction Set .PB",
+    "category": "jeu / données",
+    "priority": 3,
+    "status": "partiel",
+    "public_inventory_entries": 39,
+    "evidence_paths": [
+      "images/educational/phonics pinball (4am crack).zip",
+      "images/games/action/ball_blaster_pinball.dsk",
+      "images/games/action/beyond pinball v1.1 (4am crack).zip"
+    ],
+    "remaining": "PCSVW : aperçu statique du décor, polygones et contours des objets LIB ; physique, scripts et sprites originaux non exécutés.",
+    "qualification": "docs/V1-FORMATS.md"
+  },
+  {
+    "format": "Music Printer / SongWriter",
+    "category": "musique",
+    "priority": 3,
+    "status": "à étudier",
+    "public_inventory_entries": 3,
+    "evidence_paths": [
+      "images/educational/songwriter.dsk",
+      "images/misc/3d0g_knight_collection/049b - songwriter.dsk",
+      "images/disk_utils/cracking/the_saltine/music printer.dsk"
+    ],
+    "remaining": "Notes et portées / écoute ; formats sans rapport démontré avec MCS."
+  },
+  {
+    "format": "Partitions Music Construction Set : variantes",
+    "category": "musique",
+    "priority": 2,
+    "status": "partiel",
+    "public_inventory_entries": 14,
+    "evidence_paths": [
+      "images/sound/leslie cheung kwok wing's music-a modified and protected 'music construction set'.zip",
+      "images/sound/music construction set (4am and san inc crack).zip",
+      "images/sound/music construction set (c) 1984 with mouse and mockingboard support.nib"
+    ],
+    "remaining": "MCS/DOSMCS lisent exports et paires documentées ; réglages de l’éditeur et variantes non qualifiées restent ouverts."
+  },
+  {
+    "format": "Codefiles UCSD Pascal",
+    "category": "développement",
+    "priority": 3,
+    "status": "à étudier",
+    "public_inventory_entries": 121,
+    "evidence_paths": [
+      "images/sound/don't ask - sam pascal.dsk",
+      "images/misc/3d0g_knight_collection/241a - pascal - side 1.dsk",
+      "images/misc/3d0g_knight_collection/241b - pascal - side 2.dsk"
+    ],
+    "remaining": "Sommaire des segments, procédures et références ; différent des textes déjà lus par PASTEXT."
+  },
+  {
+    "format": "Objets relocatables / bibliothèques 6502",
+    "category": "développement",
+    "priority": 3,
+    "status": "à étudier",
+    "public_inventory_entries": 180,
+    "evidence_paths": [
+      "images/misc/3d0g_knight_collection/038a - basic assembler.dsk",
+      "images/misc/3d0g_knight_collection/082b - mecc assembler.dsk",
+      "images/misc/3d0g_knight_collection/277a - merlin assembler - disk 1.dsk"
+    ],
+    "remaining": "Lister symboles et sections après identification du dialecte ; désassembler brut ne suffit pas."
+  },
+  {
+    "format": "AppleWorks GS : traitement de texte",
+    "category": "IIgs",
+    "priority": 4,
+    "status": "hors priorité 8 bits",
+    "public_inventory_entries": 0,
+    "evidence_paths": [],
+    "remaining": "Format distinct d’AppleWorks classique ; convertisseur public disponible."
+  },
+  {
+    "format": "AppleWorks GS : tableur / base de données",
+    "category": "IIgs",
+    "priority": 4,
+    "status": "hors priorité 8 bits",
+    "public_inventory_entries": 0,
+    "evidence_paths": [],
+    "remaining": "Schémas, cellules et données ; pas pris en charge par AWDATA classique."
+  },
+  {
+    "format": "SHR / APF / Paintworks / DreamGrafix / 3200 couleurs",
+    "category": "IIgs",
+    "priority": 4,
+    "status": "hors priorité 8 bits",
+    "public_inventory_entries": 4,
+    "evidence_paths": [
+      "images/misc/erotica/1988 - muff diver - paintworks gold x-rated movies volume 1.po",
+      "images/games/collections/woz-a-day/dreamgrafix iigs (woz-a-day collection).zip",
+      "images/games/collections/woz-a-day/paintworks gold iigs (woz-a-day collection).zip"
+    ],
+    "remaining": "Aperçu réduit possible, avec limites de palette/résolution à définir ; formats documentés."
+  },
+  {
+    "format": "Animations Paintworks / SHR",
+    "category": "IIgs",
+    "priority": 4,
+    "status": "hors priorité 8 bits",
+    "public_inventory_entries": 3,
+    "evidence_paths": [
+      "images/misc/erotica/1988 - muff diver - paintworks gold x-rated movies volume 1.po",
+      "images/games/collections/woz-a-day/paintworks gold iigs (woz-a-day collection).zip",
+      "images/games/collections/woz-a-day/paintworks plus iigs (woz-a-day collection).zip"
+    ],
+    "remaining": "Format exact et documents de données à établir."
+  },
+  {
+    "format": "Polices QuickDraw II et icônes Finder",
+    "category": "IIgs",
+    "priority": 4,
+    "status": "hors priorité 8 bits",
+    "public_inventory_entries": 59,
+    "evidence_paths": [
+      "images/communications/delightful_dial_fonts.dsk",
+      "images/misc/scholastic hyperscreen v2.0 d2s2 fonts borders sound (1990).dsk",
+      "images/misc/3d0g_knight_collection/121a - cleverly curved fonts.dsk"
+    ],
+    "remaining": "Types $C8/$CA ; aperçu des glyphes et masques, distinct de FONTVIEW."
+  },
+  {
+    "format": "Print Shop GS : bordures, polices, clip art",
+    "category": "IIgs",
+    "priority": 4,
+    "status": "hors priorité 8 bits",
+    "public_inventory_entries": 0,
+    "evidence_paths": [],
+    "remaining": "Aux $C31x/$C32x : graphiques monochromes et couleur, différents du Print Shop original."
+  },
+  {
+    "format": "Ensoniq / ASIF / SoundSmith",
+    "category": "IIgs",
+    "priority": 4,
+    "status": "hors priorité 8 bits",
+    "public_inventory_entries": 0,
+    "evidence_paths": [],
+    "remaining": "Échantillons, instruments et séquences ; lecteur 8 bits éventuel avec rendu adapté."
+  },
+  {
+    "format": "OMF et ressources GS/OS",
+    "category": "IIgs",
+    "priority": 4,
+    "status": "hors priorité 8 bits",
+    "public_inventory_entries": 0,
+    "evidence_paths": [],
+    "remaining": "Afficher sections/symboles et index des ressources ; ne pas exécuter les objets."
+  }
+]
