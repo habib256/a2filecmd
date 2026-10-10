@@ -39,7 +39,7 @@ def stage_hd(tmp, files=None, blocks=4000, name='WORKHD', plugins=()):
     posees sous A2FILE/NOM.PLG) et `files`, en un .hdv de `blocks` blocs."""
     stage = Path(tmp) / 'hdstage'
     shutil.copytree(BUILD / 'vol', stage)
-    for plg in dict.fromkeys((*plugins,'ident','idread','idformats')):
+    for plg in dict.fromkeys((*plugins,'ident','idread','idformats','idv1')):
         shutil.copyfile(BUILD / (plg.lower() + '.PLG'), stage / 'A2FILE' / (plg.upper() + '.PLG#061B00'))
         if plg.lower() == 'pt3' and (BUILD / 'PPT3.BIN').exists():
             # PT3.PLG's GROUiK engine image goes with it (A2FILE/PPT3.BIN)

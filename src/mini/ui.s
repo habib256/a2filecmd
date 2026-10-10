@@ -85,7 +85,6 @@ have_note:      .res 1          ; last operation result, drawn on row 22 until t
 brun_go:        .res 1          ; 1: page 3 holds the BRUN stub, start.s jumps there
 br_idx:         .res 1          ; brun_file locals
 br_last:        .res 1
-br_i:           .res 1
 ed_keep:        .res 1          ; 1: a text is in the working area and its save
                                 ; is under way -- result_done goes back to the
                                 ; editor instead of rereading over it
@@ -112,8 +111,15 @@ print_byte:
         sta     num+1
         jmp     number
 
-; print_name -- A = array index, writes its 30 DOS characters
+; print_name / print_name15 -- A = array index, 30 / 15 DOS characters.
+; put uses ptr; keep the name in w0 and the limit in t2.
 print_name:
+        ldx     #NAME_LEN
+        bne     print_name_n
+print_name15:
+        ldx     #15
+print_name_n:
+        stx     t2
         jsr     ent_ptr
         lda     ptr
         sta     w0
@@ -126,7 +132,7 @@ print_name:
         jsr     put
         ldy     t1
         iny
-        cpy     #NAME_LEN
+        cpy     t2
         bcc     @char
         rts
 
@@ -1679,13 +1685,56 @@ result_kept:
         ldx     #1
         jmp     tags_clear
 
+; A PCS table is data, even when its DOS binary header could be executed.
+; Carry set for a .PB suffix (case insensitive), ignoring catalog padding.
+; Y = entry index, preserved for smart_open. br_last keeps the trimmed
+; final character for brun_file; no file content or disk write is needed.
+is_pinball:
+        tya
+        pha
+        jsr     ent_ptr
+        ldy     #NAME_LEN-1
+@trim:
+        lda     (ptr),y
+        cmp     #' '
+        bne     @suffix
+        dey
+        bpl     @trim
+        sty     br_last
+@no:
+        clc
+        bcc     @done
+@suffix:
+        sty     br_last
+        cpy     #2
+        bcc     @no
+        ldx     #2
+@match:
+        lda     (ptr),y
+        ora     #$20            ; fold letters; the dot stays a dot
+        cmp     pinball_suffix,x
+        bne     @no
+        dey
+        dex
+        bpl     @match
+        sec
+@done:
+        pla
+        tay
+        rts
+
 brun_file:
         jsr     activate
-        jsr     foot_zone
         lda     selected
         jsr     ent_index
         sta     br_idx
         tay
+        jsr     is_pinball
+        bcc     @program
+        jmp     smart_open      ; B must not bypass the table guard
+@program:
+        jsr     foot_zone
+        ldy     br_idx
         lda     ent_type,y
         and     #$7F
         cmp     #TYPE_BINARY
@@ -1695,14 +1744,8 @@ brun_file:
 @binary:
         lda     br_idx
         jsr     ent_ptr         ; the 30 name characters, as the panel shows them
-        ldy     #NAME_LEN
-@trim:
-        dey
-        jmi     @bad            ; all spaces
-        lda     (ptr),y
-        cmp     #' '
-        beq     @trim
-        sty     br_last
+        ldy     br_last         ; is_pinball already trimmed this name
+        jmi     @bad
 @scan:
         lda     (ptr),y
         cmp     #','
@@ -1719,7 +1762,7 @@ brun_file:
         lda     #0
         sta     inverse
         jsr     confirm
-        jcc     @no
+        bcc     @no
         ldx     #BRUN_STUB_LEN-1 ; the stub, then the command after it
 @stub:
         lda     brun_stub,x
@@ -1734,48 +1777,34 @@ brun_file:
         inx
         bne     @head
 @name:
-        stx     br_i
         lda     br_idx
         jsr     ent_ptr         ; again: the prompt used ptr
         ldy     #0
 @char:
         lda     (ptr),y
         ora     #$80
-        ldx     br_i
         sta     BRUN_TEXT,x
-        inc     br_i
+        inx
         cpy     br_last
         beq     @tail
         iny
         bne     @char
 @tail:
-        ldx     br_i
-        lda     #','|$80
+        ldy     #0
+@tailchar:
+        lda     brun_tail,y
         sta     BRUN_TEXT,x
         inx
-        lda     #'S'|$80
-        sta     BRUN_TEXT,x
-        inx
+        iny
+        cpy     #8
+        bcc     @tailchar
         lda     slot
         ora     #'0'|$80
-        sta     BRUN_TEXT,x
-        inx
-        lda     #','|$80
-        sta     BRUN_TEXT,x
-        inx
-        lda     #'D'|$80
-        sta     BRUN_TEXT,x
-        inx
+        sta     BRUN_TEXT-6,x
         ldy     active
         lda     pan_drive,y
         ora     #'0'|$80
-        sta     BRUN_TEXT,x
-        inx
-        lda     #$8D
-        sta     BRUN_TEXT,x
-        inx
-        lda     #0
-        sta     BRUN_TEXT,x
+        sta     BRUN_TEXT-3,x
         lda     #1
         sta     brun_go
         sec
@@ -1807,7 +1836,12 @@ brun_stub:
 BRUN_STUB_LEN   = * - brun_stub
 BRUN_TEXT       = BRUN_PAGE + BRUN_STUB_LEN
         .assert BRUN_TEXT + 48 <= DOS_WARM, error, "BRUN stub and command reach the DOS vectors"
-; the start of the command, high ASCII as DOS reads a typed line
+; Constant suffix and DOS command pieces stay outside the full low code.
+        .segment "RODATA"
+pinball_suffix:
+        .byte   ".pb"
+brun_tail:
+        .byte   ','|$80, 'S'|$80, '0'|$80, ','|$80, 'D'|$80, '0'|$80, $8D, 0
 brun_head:
         .byte   $8D, $84, 'B'|$80, 'R'|$80, 'U'|$80, 'N'|$80, ' '|$80, 0
         .segment "CODE"
@@ -1869,6 +1903,8 @@ smart_open:
 @nottext:
         cmp     #TYPE_BINARY
         bne     @hex
+        jsr     is_pinball
+        bcs     @hex
         clc                     ; data sectors the header asks for:
         lda     buffer+2        ; (length + 4 + 255) / 256
         adc     #$03
@@ -2360,26 +2396,6 @@ foot_zone:
 at_left:
         ldx     #0
         jmp     at
-
-; print_name15 -- A = array index: the first 15 name characters, for the
-; DELETE / LOCK / UNLOCK prompts. put builds its own screen pointer in
-; ptr, so the name is read through ptr2 or only its first letter shows.
-print_name15:
-        jsr     ent_ptr
-        lda     ptr
-        sta     ptr2
-        lda     ptr+1
-        sta     ptr2+1
-        ldy     #0
-@ch:
-        sty     t1
-        lda     (ptr2),y
-        jsr     put
-        ldy     t1
-        iny
-        cpy     #15
-        bcc     @ch
-        rts
 
 one_delete:
         jsr     delete_prepare

@@ -71,6 +71,14 @@ FIXTURES = {
     'dos-host-s5': Fixture([Path('/tmp/a2fc-slot5')],
                            [sys.executable, str(BENCH / 'build_dos_host.py'), '--slot', '5']),
     'pt3-host': Fixture([Path('/tmp/a2fc-pt3-trace')], [sys.executable, str(BENCH / 'build_pt3_trace.py')]),
+    'printshop': Fixture([Path(os.environ.get('A2FC_PRINTSHOP_CORPUS','/tmp/a2fc-printshop-corpus'))/"images/productivity/graphics/printshop/Gordon's Print Shop Borders (Big Red Computer Club) (Side 1).dsk", Path(os.environ.get('A2FC_PRINTSHOP_CORPUS','/tmp/a2fc-printshop-corpus'))/'images/productivity/graphics/printshop/Print Shop Compatible Fonts - Volume H89 (Big Red Computer Club) (Side 1).dsk', Path(os.environ.get('A2FC_PRINTSHOP_CORPUS','/tmp/a2fc-printshop-corpus'))/"images/productivity/graphics/printshop/Gordon's Print Shop Borders (Big Red Computer Club) (Side 2).dsk", Path(os.environ.get('A2FC_PRINTSHOP_CORPUS','/tmp/a2fc-printshop-corpus'))/'images/productivity/graphics/printshop/Print Shop Compatible Fonts - Volume H89 (Big Red Computer Club) (Side 2).dsk'], None),
+    'pfswrite': Fixture([Path(os.environ.get('A2FC_PFS_CORPUS','/tmp/a2fc-pfs-corpus'))/'sources.json'], None),
+    'printshop-original': Fixture([Path(os.environ.get('A2FC_PRINTSHOP_CORPUS','/tmp/a2fc-printshop-corpus'))/'images/productivity/graphics/printshop/PrintShop.Companion.dsk'], None),
+    'lisa4': Fixture([Path.home()/'.cache/a2fc/cp2/test-files.po'], None),
+    'nexttext': Fixture([Path(os.environ.get('A2FC_NEXT_CORPUS','/tmp/a2fc-next-corpus'))/'images/productivity/word_processing/magic_window/MagicWindowIIe.DSK', Path.home()/'.cache/a2fc/cp2/test-files.po'], None),
+    'wordpro': Fixture([Path(os.environ.get('A2FC_WORDPRO_CORPUS','/tmp/a2fc-wordpro-corpus'))/'extracted/Multiscribe disk 2__PHOENIX', Path(os.environ.get('A2FC_WORDPRO_CORPUS','/tmp/a2fc-wordpro-corpus'))/'extracted/MultiScribe Data Disk__FONT.SAMPLES', Path(os.environ.get('A2FC_WORDPRO_CORPUS','/tmp/a2fc-wordpro-corpus'))/'extracted/APPLE_WRITER_DOS33__ENCOMIUM1'], None),
+    'dazzle': Fixture([Path.home() / '.cache/a2fc/dazzle/132_DAZZLE_DRAW_SLIDE_SHOW.dsk'], None),
+    'v1viewers': Fixture([Path(os.environ.get('A2FC_V1_CORPUS','/tmp/a2fc-v1-corpus'))/'extracted/MP_GRID.bin', Path(os.environ.get('A2FC_V1_CORPUS','/tmp/a2fc-v1-corpus'))/'pal-original.raw'], None),
     'sample': Fixture([SAMPLE_DISK], None),              # the media corpus, not in the repository
     'mini': Fixture([ROOT / ('dist/A2FILECMD-DOS3.3-%s.dsk' % VERSION)], ['make', 'mini-disk']),   # the .dsk name carries MINI_VERSION
     'pom2-src': Fixture([POM2_ROOT / 'build/libpom2_core.a'], None),
@@ -109,6 +117,8 @@ step('format', '6502', 'core', UNENH)
 step('format', 'enh', 'core', FULL, needs=('host', 'boot', 'full-enh'))
 step('open_images', '6502', 'core', UNENH)
 step('open_images', 'enh', 'core', FULL, needs=('host', 'boot', 'full-enh'))
+step('dazzledraw', '6502', 'media', FULL_6502, needs=('host', 'boot', 'full-6502', 'dazzle'))
+step('dazzledraw', 'enh', 'media', FULL, needs=('host', 'boot', 'full-enh', 'dazzle'))
 step('koala', '6502', 'core', UNENH)
 step('koala', 'enh', 'core', FULL, needs=('host', 'boot', 'full-enh'))
 step('bootblk', '6502', 'core', UNENH)
@@ -210,6 +220,28 @@ step('dosscasm', '6502', 'readers', {**PT3_HOST, **SIX_BUILD}, needs=('host', 'b
 step('dosscasm', '65c02', 'readers', {**PT3_HOST, **ENH_BUILD}, needs=('host', 'boot', 'pt3-host'))
 step('dosview', '6502', 'readers', {**PT3_HOST, **SIX_BUILD}, needs=('host', 'boot', 'pt3-host'))
 step('dosview', '65c02', 'readers', {**PT3_HOST, **ENH_BUILD}, needs=('host', 'boot', 'pt3-host'))
+step('worddocs', '6502', 'readers', SIX_BUILD, needs=('host','boot','wordpro'))
+step('worddocs', '65c02', 'readers', ENH_BUILD, needs=('host','boot','wordpro'))
+step('pfsplan_original', 'oracle', 'readers', ENH_BUILD, needs=('host','boot','pfswrite'))
+step('v1viewers','6502','readers',SIX_BUILD,needs=('host','plg-6502','v1viewers'))
+step('v1viewers','65c02','readers',ENH_BUILD,needs=('host','plg-enh','v1viewers'))
+step('pfsplan', '6502', 'readers', SIX_BUILD, needs=('host','boot','pfswrite'))
+step('pfsplan', '65c02', 'readers', ENH_BUILD, needs=('host','boot','pfswrite'))
+step('pfsfile_original', 'oracle', 'readers', ENH_BUILD, needs=('host','boot','pfswrite'))
+step('pfsfile', '6502', 'readers', SIX_BUILD, needs=('host','boot','pfswrite'))
+step('pfsfile', '65c02', 'readers', ENH_BUILD, needs=('host','boot','pfswrite'))
+step('pfswrite', '6502', 'readers', SIX_BUILD, needs=('host','boot','pfswrite'))
+step('pfswrite', '65c02', 'readers', ENH_BUILD, needs=('host','boot','pfswrite'))
+step('magic_original', 'oracle', 'readers', ENH_BUILD, needs=('host','boot','nexttext'))
+step('printshop_original', 'oracle', 'readers', ENH_BUILD, needs=('host','boot','printshop','printshop-original'))
+step('lisa4', '6502', 'readers', SIX_BUILD, needs=('host','boot','lisa4'))
+step('lisa4', '65c02', 'readers', ENH_BUILD, needs=('host','boot','lisa4'))
+step('nexttext', '6502', 'readers', SIX_BUILD, needs=('host','boot','nexttext'))
+step('nexttext', '65c02', 'readers', ENH_BUILD, needs=('host','boot','nexttext'))
+step('dos_records', '6502', 'readers', SIX_BUILD, needs=('host','boot'))
+step('dos_records', '65c02', 'readers', ENH_BUILD, needs=('host','boot'))
+step('printshop_extras', '6502', 'readers', SIX_BUILD, needs=('host','boot','printshop'))
+step('printshop_extras', '65c02', 'readers', ENH_BUILD, needs=('host','boot','printshop'))
 step('retrotext', '6502', 'readers', SIX_BUILD)
 step('retrotext', '65c02', 'readers', ENH_BUILD)
 step('pt3', 'player', 'media', PT3_HOST, needs=('host', 'boot', 'sample', 'pt3-host'))

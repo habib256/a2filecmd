@@ -47,7 +47,7 @@ m[40]=m[41]=0;
 #ifdef PLUGIN_HOST
  return 1;
 #else
- if(id_open_stage(a,"IDFORMATS.PLG"))return 1;
+ if(id_open_stage(a,"IDV1.PLG"))return 1;
 #endif
 bad:
  dv_close();m[40]=m[41]=0;a->strcpy(a->note,"DOS identification source/stage I/O or structure error.");return 0;

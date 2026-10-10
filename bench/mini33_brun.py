@@ -9,7 +9,9 @@ started by HELLO and once from the DOS prompt, and proves each run by
 counting in $06 (and writing $5A to $07). Last, B on `game`, a name
 in raw lower case ($E0-$FE, which DOS 3.3 runs): it must run that file
 -- counting in $08, $A5 in $07 -- and not refuse it (0.9.6 before the
-fix: CANNOT BRUN THIS NAME) nor run GAME. Temporary images only."""
+fix: CANNOT BRUN THIS NAME) nor run GAME. Return and B on uppercase or
+lowercase .PB tables always open hex, even with a picture-sized header;
+.PBX still runs. Both CPU cores, temporary images only."""
 import argparse
 import os
 import subprocess
@@ -47,6 +49,9 @@ with tempfile.TemporaryDirectory(prefix='mini33-brun-') as tmp:
         ('PAGE3', 4, bsave(0x0300, bytes(range(8)))),
         ('BIGGAME', 4, bsave(0x0800, bytes((0xA9, 0x00, 0x85, 0x06, 0x60)) * 1637 + bytes(3))),
         ('JUNK', 0, bytes(range(1, 32)) * 8),
+        ('TABLE.PB', 4, bsave(0x4000, bytes((0, 0, 0, 0x60)) * 256)),
+        ('lower.pb', 4, bsave(0x4000, bytes(8192))),
+        ('TABLE.PBX', 4, game),
         ('game', 4, game_lower)])                 # make_disk ORs $80: raw $E7 $E1 $ED $E5
     other.write_bytes(other_image)
     subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++17', '-O2',
@@ -54,8 +59,15 @@ with tempfile.TemporaryDirectory(prefix='mini33-brun-') as tmp:
                     str(ROOT / 'bench/mini33_brun.cpp'),
                     str(a.pom2_root / 'build/libpom2_core_test.a'),
                     '-o', str(d / 'bench')], check=True)
-    subprocess.run([str(d / 'bench'), str(a.pom2_root), str(boot), str(other)],
-                   env=MINI_ENV, check=True, timeout=300)
+    for cpu in ('6502', '65c02'):
+        env = dict(MINI_ENV)
+        if cpu == '65c02':
+            env['MINI_CMOS'] = '1'
+        else:
+            env.pop('MINI_CMOS', None)
+        print('Testing Mini on ' + cpu, flush=True)
+        subprocess.run([str(d / 'bench'), str(a.pom2_root), str(boot), str(other)],
+                       env=env, check=True, timeout=300)
     assert other.read_bytes() == other_image, 'the program disk was written'
     assert a.disk.read_bytes() == original
     print('PASS: RETURN picks hi-res, text, hex or BRUN by content; RETURN and B BRUN a binary from HELLO and from the DOS prompt; B runs a raw lower-case name')

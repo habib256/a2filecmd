@@ -1,0 +1,361 @@
+{
+  "raw_sources": 1878,
+  "indexed_containers": 2253,
+  "indexed_file_occurrences": 48831,
+  "indexed_errors": 35,
+  "indexed_filesystems": {
+    "dos": 1329,
+    "prodos": 498,
+    "nufx": 78,
+    "?": 348
+  },
+  "indexed_types": {
+    "dos:A": 8504,
+    "dos:I": 1358,
+    "dos:T": 6318,
+    "dos:B": 14225,
+    "prodos:$06": 6190,
+    "prodos:$FF": 1137,
+    "prodos:$04": 5175,
+    "prodos:$FC": 2314,
+    "prodos:$A6": 3,
+    "dos:?43": 1,
+    "dos:?44": 1,
+    "dos:a": 20,
+    "prodos:$1A": 259,
+    "prodos:$FD": 152,
+    "prodos:$05": 8,
+    "prodos:$B0": 190,
+    "prodos:$00": 251,
+    "prodos:$C9": 259,
+    "prodos:$B3": 36,
+    "dos:S": 401,
+    "prodos:$FA": 77,
+    "dos:?7F": 13,
+    "prodos:$F5": 61,
+    "prodos:$CA": 41,
+    "prodos:$F1": 72,
+    "prodos:$42": 2,
+    "prodos:$C8": 113,
+    "prodos:$C0": 43,
+    "prodos:$F6": 11,
+    "dos:b": 337,
+    "prodos:$E0": 74,
+    "dos:?7C": 1,
+    "prodos:$64": 8,
+    "prodos:$4C": 8,
+    "prodos:$BA": 43,
+    "prodos:$F0": 76,
+    "prodos:$2B": 28,
+    "prodos:$50": 6,
+    "prodos:$C1": 74,
+    "prodos:$FE": 7,
+    "prodos:$B9": 48,
+    "prodos:$59": 2,
+    "prodos:$19": 60,
+    "prodos:$15": 9,
+    "prodos:$5A": 11,
+    "prodos:$F2": 257,
+    "prodos:$F3": 3,
+    "dos:R": 59,
+    "prodos:$DF": 2,
+    "prodos:$F8": 58,
+    "prodos:$F4": 14,
+    "prodos:$B6": 9,
+    "dos:?58": 3,
+    "dos:?50": 2,
+    "dos:?09": 2,
+    "prodos:$80": 1,
+    "prodos:$82": 1,
+    "prodos:$81": 1,
+    "prodos:$86": 1,
+    "prodos:$85": 1,
+    "prodos:$8C": 1,
+    "prodos:$8B": 1,
+    "dos:?70": 4,
+    "dos:?28": 1,
+    "dos:?3B": 1,
+    "dos:?4B": 1,
+    "dos:?4D": 1,
+    "dos:?19": 1,
+    "dos:?51": 1,
+    "dos:?49": 1,
+    "prodos:$0C": 8,
+    "prodos:$B5": 10,
+    "prodos:$F7": 32,
+    "prodos:$F9": 4,
+    "prodos:$BD": 2,
+    "prodos:$BB": 12,
+    "prodos:$BC": 1,
+    "prodos:$B7": 2,
+    "prodos:$B8": 49,
+    "dos:?07": 1,
+    "prodos:$1B": 165,
+    "prodos:$30": 6,
+    "prodos:$E2": 1,
+    "prodos:$88": 1,
+    "dos:?03": 1,
+    "prodos:$07": 40,
+    "prodos:$0B": 1,
+    "prodos:$A2": 1,
+    "prodos:$A0": 5,
+    "prodos:$A1": 1,
+    "prodos:$A3": 1,
+    "prodos:$A4": 3,
+    "prodos:$B2": 1,
+    "prodos:$B1": 6,
+    "prodos:$09": 1,
+    "prodos:$20": 3,
+    "prodos:$2C": 18,
+    "dos:?4C": 1
+  },
+  "parsed_unique_images": 1501,
+  "duplicate_images": 113,
+  "classified_file_occurrences": 37777,
+  "unique_content_metadata": 27408,
+  "scan_failures": 641,
+  "scan_filesystems": {
+    "dos": 24138,
+    "prodos": 13639
+  },
+  "reader_candidates": [
+    {
+      "reader": "DOSVIEW",
+      "status": "generic",
+      "occurrences": 16247,
+      "unique": 12328
+    },
+    {
+      "reader": "DOSBAS",
+      "status": "candidate",
+      "occurrences": 6615,
+      "unique": 5292
+    },
+    {
+      "reader": "HEX",
+      "status": "generic",
+      "occurrences": 4434,
+      "unique": 2682
+    },
+    {
+      "reader": "TEXT",
+      "status": "generic",
+      "occurrences": 2628,
+      "unique": 1242
+    },
+    {
+      "reader": "BASLIST",
+      "status": "candidate",
+      "occurrences": 1732,
+      "unique": 1534
+    },
+    {
+      "reader": "DISASM",
+      "status": "generic",
+      "occurrences": 1484,
+      "unique": 1142
+    },
+    {
+      "reader": "DOSINT",
+      "status": "candidate",
+      "occurrences": 1024,
+      "unique": 817
+    },
+    {
+      "reader": "DISASM",
+      "status": "candidate",
+      "occurrences": 954,
+      "unique": 459
+    },
+    {
+      "reader": "MERLIN",
+      "status": "candidate",
+      "occurrences": 894,
+      "unique": 461
+    },
+    {
+      "reader": "IMAGE",
+      "status": "candidate",
+      "occurrences": 269,
+      "unique": 207
+    },
+    {
+      "reader": "EXTASIE",
+      "status": "candidate",
+      "occurrences": 230,
+      "unique": 207
+    },
+    {
+      "reader": "FONTVIEW",
+      "status": "candidate",
+      "occurrences": 224,
+      "unique": 101
+    },
+    {
+      "reader": "AWP",
+      "status": "candidate",
+      "occurrences": 223,
+      "unique": 218
+    },
+    {
+      "reader": "AWDATA",
+      "status": "candidate",
+      "occurrences": 223,
+      "unique": 191
+    },
+    {
+      "reader": "SCASM",
+      "status": "candidate",
+      "occurrences": 108,
+      "unique": 100
+    },
+    {
+      "reader": "FONTRIX",
+      "status": "candidate",
+      "occurrences": 90,
+      "unique": 90
+    },
+    {
+      "reader": "PRINTSHOP",
+      "status": "candidate",
+      "occurrences": 86,
+      "unique": 81
+    },
+    {
+      "reader": "DOSMCS",
+      "status": "candidate",
+      "occurrences": 74,
+      "unique": 43
+    },
+    {
+      "reader": "INTBASIC",
+      "status": "candidate",
+      "occurrences": 47,
+      "unique": 42
+    },
+    {
+      "reader": "PASTEXT",
+      "status": "candidate",
+      "occurrences": 40,
+      "unique": 26
+    },
+    {
+      "reader": "PSBORDER",
+      "status": "candidate",
+      "occurrences": 25,
+      "unique": 25
+    },
+    {
+      "reader": "DOSNEWS",
+      "status": "candidate",
+      "occurrences": 22,
+      "unique": 22
+    },
+    {
+      "reader": "NEWSPAN",
+      "status": "candidate",
+      "occurrences": 15,
+      "unique": 15
+    },
+    {
+      "reader": "MACPAINT",
+      "status": "candidate",
+      "occurrences": 13,
+      "unique": 12
+    },
+    {
+      "reader": "MULTISCR",
+      "status": "candidate",
+      "occurrences": 13,
+      "unique": 13
+    },
+    {
+      "reader": "MAGWIN",
+      "status": "candidate",
+      "occurrences": 12,
+      "unique": 12
+    },
+    {
+      "reader": "MCS",
+      "status": "candidate",
+      "occurrences": 8,
+      "unique": 4
+    },
+    {
+      "reader": "LISAV2",
+      "status": "candidate",
+      "occurrences": 7,
+      "unique": 7
+    },
+    {
+      "reader": "GMAGIC",
+      "status": "candidate",
+      "occurrences": 6,
+      "unique": 6
+    },
+    {
+      "reader": "NEWSPAGE",
+      "status": "candidate",
+      "occurrences": 5,
+      "unique": 5
+    },
+    {
+      "reader": "RUN",
+      "status": "candidate",
+      "occurrences": 5,
+      "unique": 4
+    },
+    {
+      "reader": "APPLEWR",
+      "status": "candidate",
+      "occurrences": 4,
+      "unique": 4
+    },
+    {
+      "reader": "DGRVIEW",
+      "status": "candidate",
+      "occurrences": 4,
+      "unique": 4
+    },
+    {
+      "reader": "DUET",
+      "status": "candidate",
+      "occurrences": 4,
+      "unique": 4
+    },
+    {
+      "reader": "DOCVIEW",
+      "status": "candidate",
+      "occurrences": 3,
+      "unique": 3
+    },
+    {
+      "reader": "SCIIBIN",
+      "status": "candidate",
+      "occurrences": 2,
+      "unique": 2
+    },
+    {
+      "reader": "MDVIEW",
+      "status": "candidate",
+      "occurrences": 1,
+      "unique": 1
+    },
+    {
+      "reader": "PAINT816",
+      "status": "candidate",
+      "occurrences": 1,
+      "unique": 1
+    },
+    {
+      "reader": "PT3",
+      "status": "candidate",
+      "occurrences": 1,
+      "unique": 1
+    }
+  ],
+  "extra_sources": 29,
+  "total_scanned_sources": 1907,
+  "method": "Actual host C IDENT candidates, bounded DOS/ProDOS readers; not full reader validation.",
+  "indexed_input_sha256": "9285036b3b10256313a431462821572d89a4629e8a0c468842b1209fda906d8f"
+}

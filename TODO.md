@@ -15,9 +15,10 @@ se ferme avec un oracle hôte et un banc POM2.
 
 ## Deux trains
 
-- **1.0** : la 0.9.3 durcie. Aucune fonctionnalité nouvelle, aucun
-  overlay plein retouché sauf pour corriger un défaut.
-- **1.1** : les formats et le reste, une fois la 1.0 publiée.
+- **1.0** : durcissement et sept formats demandés : WordPerfect, MouseWrite,
+  Bank Street Filer, Multiplan, Movie Maker, Graphics Magician DHGR et aperçu PCS.
+  Profils et limites : [V1-FORMATS](docs/V1-FORMATS.md).
+- **1.1** : autres formats et extensions des profils, après la 1.0.
 
 ## Publiées
 
@@ -29,6 +30,12 @@ se ferme avec un oracle hôte et un banc POM2.
   [qualification](docs/QUALIFICATION-0.9.5.md).
 
 ## 1.0 — chemin critique
+
+- [x] Implémenter les sept lecteurs retenus, avec refus des variantes non couvertes.
+- [ ] Rétablir la distribution complète 800 Ko : dépassement actuel ; ZX02 mesuré à 44,2 % de gain sur les overlays, chargeur sûr restant à intégrer et qualifier.
+- [ ] Mesurer les temps de démarrage et chargement compressés sur Disk II/800 Ko, sur les deux CPU.
+- [ ] Étudier une édition 140 Ko réduite : socle estimé à 204/280 blocs après compression, avant nouveau chargeur ; sélectionner les outils et prévoir les compléments.
+
 
 Chaque étape suppose la précédente fermée. Un défaut trouvé aux étapes
 4 ou 5 renvoie à l'étape 2, puis à une nouvelle RC.
@@ -58,17 +65,21 @@ Chaque étape suppose la précédente fermée. Un défaut trouvé aux étapes
      (arbre syntaxique clang, règles vérifiées sur les deux compilateurs).
    - [x] CI : clang est présent sur l'image Ubuntu (`test_sign_compare`
      analyse le code en CI, 4 tests, aucun sauté).
-   - [ ] Mini : Retour sur une table Pinball Construction Set (`*.PB`, B
-     chargé en `$4000`) propose `BRUN`, et le BRUN finit dans le moniteur
-     (`BRK` en `$4002`, vu sous POM2). Pas de perte de données, mais un
-     piège : ouvrir un `*.PB` en hexadécimal, ne jamais proposer BRUN.
+   - [x] Mini : Retour et B sur une table Pinball Construction Set `*.PB`
+     ouvrent l'hexadécimal, sans BRUN ; suffixe insensible à la casse,
+     `.PBX` reste exécutable. `mini33_brun` sur les deux CPU ; 108 tests
+     hôte, bancs panneaux et copie vérifiée. LOW et MAIN pleins, contrôles
+     de disposition conservés.
    - [ ] Manuel : un jeu autonome PCS (« Make Game » : un seul fichier B,
      `$177D`, `$7783` octets, `JMP` en tête) se lance déjà par Retour/B
      dans le Mini et par X sous ProDOS (copié en BIN `$06`, aux `$177D`) ;
      vérifié sous POM2 par les trois chemins. Il faut un joystick.
-   - [ ] Une vraie image Dazzle Draw dans un banc (oracle : `DD.PICLOADER`
-     sous POM2) : le manuel l'affirme d'après le code, pas encore d'après
-     l'écran.
+   - [x] Dazzle Draw : MONARCH, ROOM et SCREEN.SHOE du corpus réel,
+     comparés au `DD.PICLOADER` original sous POM2 : les 16 384 octets
+     des deux banques et le rendu de l'écran identiques, par Retour et I.
+     `bench/dazzledraw.py` : 14/14 sur chaque CPU ; refus `/RAM` intact,
+     sources et volumes jetables conservés octet pour octet. Corpus local
+     requis, empreintes dans [le rapport](docs/DAZZLE-DRAW-QUALIFICATION.md).
    - [ ] `make pom2host` a produit une fois un hôte qui plantait au
      démarrage (« mutex lock failed ») pendant que POM2 travaillait sur
      `work/printer-detection` ; un build suivant fonctionnait. Revérifier
@@ -201,8 +212,9 @@ la spécification de chaque format. Ne restent ici que les suites.
   DOCVIEW montre -3 ; Papyrus, `$18`/`$1A`/`$1C` = â/î/û seulement supposés,
   autres codes à confirmer sur plus de documents ; Bank Street Writer, à
   vérifier contre l'affichage de BSW sous POM2, `$8E` jamais vu.
-  **MultiScribe** : aucune spécification trouvée ; très répandu en France,
-  à rechercher avant tout travail.
+  **MultiScribe** : `MULTISCR` lit les variantes TXT/WPF reconnues en texte
+  paginé, styles/règles contrôlés ; fontes proportionnelles et autres variantes
+  restent à qualifier. Voir [format](docs/WORD-PROCESSORS.md).
 - [x] **Fantavision** (Brøderbund) : `FANTA.SYSTEM`, salle blanche,
   [spécification](docs/FANTAVISION-FORMAT.md). Reste : pleins
   auto-sécants à 1,7× en vitesse accélérée (il faudrait ~1,5 Ko de plus :
@@ -271,19 +283,26 @@ la spécification de chaque format. Ne restent ici que les suites.
    aujourd'hui dans TEXT (jetons), fréquentes sur les disques de
    développeurs. Lister à la manière de BASLIST ; références : CiderPress II
    `SCAsm.cs`, `LisaAsm.cs` et leurs notes.
-   `SCASM` et `LISAV2` sont implémentés par `!`, avec tests du vrai C sur
-   les deux CPU. Restent LISA v3/v4/v5 et leur table de symboles.
-3. [ ] **Apple Writer** (commandes `.LM`, `.RM`, `.CJ`… en début de ligne)
+   `SCASM`, `LISAV2` et `LISAV3` sont implémentés avec tests du vrai C et
+   bancs natifs sur les deux CPU. LISAV3 lit la table de 512 symboles et
+   les opérandes standard ; ANIX.EQUATES est refusé. `LISAV4` lit maintenant
+   les sources LISA 8/16 v4/v5. Restent variantes non qualifiées et
+   qualification complète du rendu original. [Détails](docs/NEXT-TEXT-FORMATS.md).
+3. [x] **Apple Writer** (commandes `.LM`, `.RM`, `.CJ`… en début de ligne)
    dans DOCVIEW, et **Merlin** (sources à bit haut, colonnes étiquette /
    opcode / opérande / commentaire ; CiderPress II `MerlinAsm.cs`). Tous deux
    déjà lisibles dans TEXT : c'est du confort, après 1 et 2. DOCVIEW n'a
    que quelques octets : Merlin irait plutôt dans une surcouche à part.
-   `MERLIN` est implémenté par `!` ; Apple Writer reste à faire.
-4. [ ] **Bordures Print Shop / Print Shop Companion** (BIN, 144 ou
-   148 octets, 12 × 12). Disposition des octets à établir avec Print Shop
-   sous POM2, puis spécification publiée dans `docs/`. Se greffe sur
-   PRINTSHOP. Échantillons : 77 bordures du disque « Gordon's Print Shop
-   Borders » (Asimov `productivity/graphics/printshop/`).
+   `MERLIN` et `APPLEWR` sont implémentés par `!` ; Apple Writer lit les
+   marges, retrait et alignement, directement en DOS 3.3 et ProDOS.
+   Justification complète et paramètres imprimante restent à faire.
+4. [x] **Bordures et polices Print Shop / Companion BIN** : `PSBORDER`
+   affiche les trois motifs 24×14 des BIN 144/148 octets ; `PSFONT` permet
+   de parcourir les glyphes et leurs lignes. DOS 3.3 et ProDOS, sans AUX.
+   77 bordures et 36 polices, comparaison avec l'original et banc natif
+   10/10 par CPU. [Spécification et limites](docs/PRINTSHOP-FORMAT.md).
+   ProDOS `$F5` aux $2000/$1000 est maintenant pris en charge.
+   Restent assemblage/options/masques et texte composé.
 5. [x] **Polices Fontrix** : `FONTRIX`, aperçu monochrome sur écran texte
    par `!`, testé sur 21 polices réelles et les deux CPU. Les caractères de
    plus de 20 lignes combinent deux lignes ; pas de rendu HGR à taille réelle.
@@ -403,3 +422,38 @@ les deux, pas de 3½) ; XMODEM, ADTPro blocs, TFTP ; PASSWORD ;
 
 - Hors de portée : NuFX 5 en 16 bits, Squeeze NuFX, a2dgrx.
 - Sans documents ni spécification trouvés : The New Print Shop (`$F5`).
+
+## Recensement des lecteurs (2026-10-10)
+
+[51 familles et variantes à couvrir](docs/FORMATS-A-COUVRIR.md), avec priorités,
+état réel des lecteurs et disponibilité dans l’inventaire public ;
+[recensement mesuré du corpus](docs/CORPUS-CENSUS.md). Les candidats IDENT
+ne sont pas comptés comme des fichiers entièrement validés par leur lecteur.
+
+Magic Window : `MAGWIN` implémenté en lecture seule, DOS 3.3 et ProDOS,
+avec contrôles imprimante visibles (`^A`, `^[`…), en-tête omis, texte paginé.
+Six documents réels testés, banc natif 10/10 sur chaque CPU. Restent le rendu
+imprimé, l'en-tête/pied de page et les variantes non qualifiées.
+
+
+Texte DOS à accès aléatoire : `DOSREC` implémenté en lecture seule,
+avec longueur d’enregistrement choisie (1–4096), navigation, octets NUL
+et trous distincts. NUL ne termine jamais le fichier ; la limite affichée
+est le dernier secteur alloué, pas un EOF exact. DSK, 2MG et Disk II ;
+560 secteurs logiques au maximum. Schémas de champs métier restent ouverts.
+[Usage, qualification et limites](docs/DOS-RECORDS.md).
+
+PFS:Write : `PFSWRITE` lit en ProDOS les documents $16 aux $0002, texte
+paginé et contrôles visibles. Huit contenus réels qualifiés ; restent
+mise en forme, fusion File et variantes anciennes. Deux contenus File et
+six contenus Plan distincts sont repérés pour la suite.
+[Structure et inventaire séparé](docs/PFS-WRITE.md).
+
+PFS:File : `PFSFILE` lit en ProDOS A2CD00 le formulaire et les fiches
+actives ; 49 fiches de STAFF/COSTFILE qualifiées. Restent rapports,
+anciennes éditions et autres signatures. [Limites](docs/PFS-FILE.md).
+
+PFS:Plan : `PFSPLAN` lit les six feuilles B00 ProDOS $16/$0004 en lecture
+seule : libellés principaux, valeurs enregistrées et formules de lignes/colonnes.
+Restent formats, titres de groupes, formules de cellules et autres profils.
+[Limites](docs/PFS-PLAN.md).

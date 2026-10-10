@@ -95,6 +95,8 @@ Return reads the file's first data sector, writes nothing, and picks the
 view from what the file holds:
 
 - **T**: the text viewer, or hexadecimal when the bytes are not text.
+- **B named `*.PB`** (case insensitive): hexadecimal with Return or B.
+  Pinball Construction Set tables are data, not runnable programs.
 - **B** whose DOS header (load address and length) matches the file's size:
   an 8 KB load at `$2000` or `$4000` opens in the hi-res viewer; an empty
   file, a load below `$0800` or one reaching DOS's buffers at `$9600`
@@ -105,7 +107,8 @@ view from what the file holds:
 - **A, I, S, R**: hexadecimal.
 
 Bytes read as text when at most one in 16 is neither printable nor RETURN.
-T, H, G and B still force the text, hexadecimal or hi-res view, or BRUN.
+T, H, G and B still force the text, hexadecimal or hi-res view, or BRUN
+(except B on a `*.PB` table, which opens hexadecimal).
 
 BRUN types the panel's name back to DOS, so a name DOS could not match from
 a typed line is refused (`CANNOT BRUN THIS NAME`): a comma, or any byte of

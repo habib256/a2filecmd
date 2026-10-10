@@ -55,11 +55,12 @@ pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 | `mdview.py` | Markdown, repliement, CRLF/bit haut, document de 67 pages, historique circulaire de 64 pages, ligne de 22 Ko sans saut (280 lignes écran), UTF-8 majoritaire/BOM/caractère coupé à 2 Ko, blocs de code, retour et reprise par R |
 | `tree.py` | parcours de la racine XL jusqu’au résultat complet, totaux exacts comparés à l’image et pile préservée |
 | `memory.py` | le creux maximal de la pile C, mesure en faisant travailler le programme |
+| `dazzledraw.py` | MONARCH, ROOM et SCREEN.SHOE du corpus Dazzle Draw local : DD.PICLOADER original sous Applesoft/POM2, les 16 384 octets des banques et le rendu écran comparés à A2FC par Retour et I ; refus RAM avant toute modification, sources et volumes inchangés, 14/14 sur chaque CPU ; `--corpus` et `--out` ; corpus absent = échec en qualification stricte |
 | `mini33.py` | the Apple II+ 48 KB DOS 3.3 edition on an NMOS core: panels, pagination, long names, preview, malformed and missing disks, quit and relaunch, and changed-character-only screen writes through watchpoints |
 | `mini33_write.py` | the same edition's real DOS writes on disposable images: cancel, hardware write protection, a copy that stays on the panels, a refused collision, then DOS BLOAD and SAVE over the result |
 | `mini33_ops.py` | tags, hi-res viewer, exclusive TXT create, catalog-first delete, and a tagged two-file copy, on disposable images |
 | `mini33_format.py` | F on disposable images: refused on the boot drive, cancelled, refused on a write-protected disk, then a real RWTS format with DOS copied from the boot disk, every shipped file copied onto it, and the result booted into A2FC Mini; then the same from a zero-filled image and from a never formatted diskette (POM2's `insertBlankDisk`, no address fields; `--no-fresh` skips it), watching the progress bar. Every Mini bench reads the boot disk's file count from the image (`MINI_FILES`), so a dist disk holding more than the four built files still passes |
-| `mini33_brun.py` | RETURN opens a file by its content (hi-res, text, hex) and RETURN or B BRUNs a DOS binary from drive 2, from A2FC Mini and from the DOS prompt |
+| `mini33_brun.py` | RETURN opens by content; uppercase/lowercase PCS `.PB` tables stay in hex through Return and B, including picture-sized headers, while `.PBX` and normal programs still BRUN from drive 2, from HELLO and the DOS prompt; both CPU cores, unchanged disks |
 | `mini33_review.py` | review fixes through the real UI, on temporary images, file bytes checked |
 | `mini33_time.py` | what the disk paths cost in cycles, since a missed sector is a whole 200 000-cycle revolution: catalog reads and a 48-sector copy, with the copy's writing phase broken down per RWTS call (reads, writes, read-backs, drive switches, revolutions per data sector; `--max-rev-per-sector` turns that last one into a failure). Read-only on the catalog paths |
 | `mini33_lend.py` | the two RWTS JSRs that `rwts.s` lends to the activity cell (`$BDC4` during a READ, `$BED6` during a FORMAT): the same session -- a never formatted diskette read, formatted, then filled -- run with the JSRs lent and with the lending refused (the signature spoiled in memory, as another DOS would); every RWTS call must return the same carry, code and bytes, both diskettes must come out byte for byte identical, no WRITE may run with a site lent, no resident code outside `rwts.s` may run with one lent, and after Q DOS must catalog both disks with the resident overwritten |
@@ -540,3 +541,68 @@ the old backup and an unrelated destination file.
 
 For startup and panel cycle measurements, see
 [the 0.9.2 methodology](../docs/PERFORMANCE-0.9.2.md).
+
+`worddocs.py` qualifies MultiScribe and Apple Writer on disposable volumes,
+including automatic Return, direct DOS reading, paging, malformed records,
+source bytes, AUX and stack preservation (10/10 per CPU). Set
+`A2FC_WORDPRO_CORPUS` to the directory containing the downloaded `extracted/`
+fixtures; the qualification bench fails when these fixtures are absent.
+`tools/test_worddocs.py` runs the actual C on the host and both sim65 CPUs;
+its real-corpus portion skips explicitly when samples are unavailable.
+
+`printshop_extras.py` qualifies PSBORDER/PSFONT on ProDOS and DOS 3.3,
+including automatic Return, navigation, malformed pointers, source bytes,
+AUX and stack floor: 10/10 on each CPU. Requires the public border/font
+fixtures under `A2FC_PRINTSHOP_CORPUS` (default `/tmp/a2fc-printshop-corpus`);
+`bench/all.py` reports missing fixtures rather than silently skipping.
+`tools/test_printshop_extras.py` runs actual C on the host and both sim65
+CPUs: 113 real files, bounds, stale sizes and injected open/read/close/seek
+errors. `printshop_original.py` compares the 77 borders and the 'A' glyph
+of all 36 fonts to original Print Shop Companion HGR on disposable copies.
+
+`nexttext.py` qualifies MAGWIN/LISAV3 on disposable ProDOS and DOS images:
+10/10 per CPU, automatic Return, 512-symbol paging, malformed references,
+AUX, stack floor and source files unchanged. Requires `A2FC_NEXT_CORPUS`
+(default `/tmp/a2fc-next-corpus`) and local CiderPress `cp2/test-files.po`;
+missing mandatory fixtures are reported by `bench/all.py`.
+`tools/test_nexttext.py` executes the actual C on the host and both sim65
+CPUs, including six real Magic Window documents, two standard LISA v3
+sources and explicit refusal of ANIX.EQUATES. Truncations, both symbol
+index banks, numeric/string tokens, I/O faults and stale sizes are covered.
+
+
+`dos_records.py` qualifie DOSREC sur Disk II, DSK et 2MG jetables : longueur
+choisie, NUL, trous, navigation, AUX, garde de pile et volume conservés.
+`printshop_extras.py` couvre aussi les variantes ProDOS $F5 (bordures/polices),
+routage automatique et navigation vers les minuscules. Les bancs passent
+avec `A2FC_BUILD=build-6502 A2FC_PRESET=iie_unenh` ou
+`A2FC_BUILD=build A2FC_PRESET=iie`.
+
+
+`lisa4.py` qualifies LISA 8/16 v4/v5 on both CPUs, using the public
+`CODE/LISA/DETOKEN.A` and `MNEMONICS.A` from the CiderPress test volume.
+It checks Return/manual routing, 16-bit symbol references, 24/32-bit
+numbers, malformed symbols, AUX, stack floor and the whole synced source
+volume. Host regression: `python3 tools/test_lisa4.py`.
+
+`pfswrite.py` qualifies eight unique public ProDOS PFS:Write documents on
+both CPUs: automatic/manual selection, different page settings, paging,
+malformed files, AUX, stack floor and whole synced source volume.
+Host/sim65 regression: `python3 tools/test_pfswrite.py`. Fixtures live under
+`A2FC_PFS_CORPUS` (default `/tmp/a2fc-pfs-corpus`); they are not redistributed.
+
+`pfsfile.py` qualifies ProDOS PFS:File forms and active record chains on
+both CPUs, with named/multiline values, paging, malformed links, AUX, stack
+and whole-volume preservation. `test_pfsfile.py` executes host/sim65 C.
+`pfsfile_original.py` compares nine literal values/labels of COSTFILE’s
+first record against original PFS:File, with a documented Open-Apple input
+adapter only; it does not qualify all records or typography.
+
+`pfsplan.py` qualifie les six feuilles B00 sur les deux CPU : valeurs,
+pagination, refus sans sortie partielle, AUX, pile et volume synchronisé.
+`pfsplan_original.py` compare 42 valeurs visibles de COSTS et leurs libellés
+au logiciel original, sans adaptation du clavier ni comparaison exhaustive.
+
+`v1viewers.py` qualifies the seven 1.0 readers on disposable ProDOS HDs,
+including AUX consent, both graphics planes, stack canary and complete HD
+preservation. Local inputs and profiles: [V1-FORMATS](../docs/V1-FORMATS.md).

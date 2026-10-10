@@ -1,0 +1,19 @@
+{
+  "date": "2026-10-10",
+  "original": "Magic Window //e",
+  "document": "PRINTER TEST.MW",
+  "source_sha256": "185ef9440e97aaa3324e562c258d9079f5844b839e412eb9a658510865bb794b",
+  "literal_labels_compared": 10,
+  "sources_preserved": true,
+  "scope": "Literal labels only, no typography/pixel equivalence; control bytes shown as caret notation by A2FC.",
+  "native_checks_per_cpu": 10,
+  "cpus": [
+    "6502 NMOS",
+    "65C02"
+  ],
+  "real_magic_documents_tested": 6,
+  "real_standard_lisa_sources_tested": 2,
+  "known_anix_dialect_refused": true,
+  "lisa_original_full_listing_comparison": "pending",
+  "cp2_volume_sha256": "6fd7492974182072ff97ff4ce15846df61ba29008175adcef2d04b39ceb98a3b"
+}

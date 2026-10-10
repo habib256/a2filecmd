@@ -1,6 +1,7 @@
 struct Route {const char* label;const char* view;};
 static const struct Route routes[]={
- {"MGTK","FONTVIEW"},{"Purplesoft","PURPLE"},{"LZ4FH","LZ4FH"},
+ {"PFS:Write","PFSWRITE"},{"PFS:File","PFSFILE"},{"PFS:Plan","PFSPLAN"},
+ {"LISA 8/16","LISAV4"},{"MGTK","FONTVIEW"},{"Purplesoft","PURPLE"},{"LZ4FH","LZ4FH"},
  {"Print Shop","PRINTSHOP"},{"Lo-res","DGRVIEW"},{"DGR pixmap","DGRVIEW"},
  {"ProTracker","PT3"},{"Electric Duet compatible","DUET"},{"Markdown","MDVIEW"},
  {"Applesoft","BASLIST"},{"Integer BASIC","INTBASIC"},{"HGR picture","IMAGE"},

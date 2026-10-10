@@ -1,0 +1,22 @@
+{
+  "date": "2026-10-10",
+  "cpus": [
+    "6502 NMOS",
+    "65C02"
+  ],
+  "native_checks_per_cpu": 14,
+  "backends": [
+    "Disk II drive 2",
+    "DOS-order DSK",
+    "DOS-order 2MG"
+  ],
+  "fixtures": "Disposable sparse text containing allocated NUL, missing sector, and allocated bytes after hole.",
+  "sources_whole_synced_volumes_preserved": true,
+  "aux_1000_bfff_preserved": true,
+  "stack_floor_preserved": true,
+  "limitations": [
+    "Record length entered by user; exact text EOF unknown.",
+    "560 logical sectors maximum; ascending T/S offsets in multiples of 122.",
+    "Generic record inspector, no application field schema."
+  ]
+}
