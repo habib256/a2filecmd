@@ -60,12 +60,23 @@ struct Header { unsigned int signature; unsigned char flags;
     char desc[40]; };
 #pragma rodata-name (push, "OVLHDR")
 const struct Header __plugin_header = { PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry,
-    {0,0,0}, "List an Integer BASIC program ($FA)" };
+    {0,0,0},
+#ifdef APPLESOFT_DOS
+    "Direct DOS 3.3 Applesoft listing"
+#elif defined(INTEGER_DOS)
+    "Direct DOS 3.3 Integer BASIC listing"
+#else
+    "List an Integer BASIC program ($FA)"
+#endif
+    };
 #pragma rodata-name (pop)
 
 /* The 128 tokens, separated by zeros, in value order. A NAMED array and not
  * a set of literals: cc65 gathers literals differently, and this way the
  * table follows the overlay's own segment. */
+#ifdef APPLESOFT_DOS
+#include "applesoft_tokens.h"
+#else
 static const char INT_TOK[] =
     "HIMEM:\0\0_\0:\0LOAD\0SAVE\0CON\0RUN\0RUN\0DEL\0,\0NEW\0CLR\0AUTO\0,\0MAN\0"
     "HIMEM:\0LOMEM:\0+\0-\0*\0/\0=\0#\0>=\0>\0<=\0<>\0<\0AND\0OR\0MOD\0"
@@ -77,13 +88,23 @@ static const char INT_TOK[] =
     ",\0AT\0VLIN\0,\0AT\0VTAB\0=\0=\0)\0)\0LIST\0,\0LIST\0POP\0"
     "NODSP\0NODSP\0NOTRACE\0DSP\0DSP\0TRACE\0PR#\0IN#";
 
+#endif
+
 static const char st_line[] = "%-38.38s page %u%s";
 static const char st_end[] = " (end)";
+#ifdef INTEGER_DOS
+static const char st_malformed[] = " (malformed)";
+static const char st_long[] = " (line too long)";
+#endif
 /* the path shorter: the keys bar starts at column 52 */
 static const char st_err[] = "%-29.29s page %u (read error)";
 static const char st_keys[] = "SPC Next,B Prev,R First,ESC";
 static const char st_num[] = "%u";
+#ifdef APPLESOFT_DOS
+static const char m_bad[] = "Not an Applesoft program ($FC).";
+#else
 static const char m_bad[] = "Not an Integer BASIC program ($FA).";
+#endif
 static const char m_open[] = "Cannot open it.";
 static const char m_cut[] = "Program ends in the middle of a line.";
 static const char m_err[] = "Read error: the listing stops there.";
@@ -91,7 +112,23 @@ static const char m_err[] = "Read error: the listing stops there.";
 #define LINES 22                        /* rows 0 to 21; 22 and 23 are the bars */
 #define PAGES 64                        /* a ring: a power of two */
 
+#ifdef INTEGER_DOS
+/* BIN/BASIC's 16-bit EOF needs at most 257 logical sectors. Reject any
+ * larger allocation, never truncate a chain. Metadata is retired once
+ * its map is validated, and the paging ring reuses that space. */
+#define A (&a)
+#define DS_SECTORS 257
+#define DS_DATA_BUFFER buf
+#define DS_MLI a.mli
+#define DS_SEEK a.fseek
+#define frd a.fread
+#define fopn a.fopen
+#define fcls a.fclose
+#include "dos_source.h"
+#define starts ds_metadata.pages
+#else
 static FILE* f;
+#endif
 /* File offsets are 24-bit in ProDOS: 16 bits wrapped past 64K. */
 static unsigned long fpos;              /* the offset of the next byte read */
 static unsigned char have, at;
@@ -99,7 +136,9 @@ static unsigned char row, col;
 static unsigned char space;             /* the last character written was a space */
 static unsigned char alnum;             /* ... a letter or a digit */
 static unsigned char clipped;           /* a character fell below the last row */
+#ifndef INTEGER_DOS
 static unsigned long starts[PAGES];     /* where the last pages seen begin, a ring */
+#endif
 static unsigned char rderr;             /* a read failed (not the end of the file) */
 
 /* 255 bytes at a time, not 256: `have` and `at` are bytes, and 256 does not
@@ -107,6 +146,9 @@ static unsigned char rderr;             /* a read failed (not the end of the fil
  * end of the file. -1 is the end. */
 static int getb(void)
 {
+#ifdef INTEGER_DOS
+    int c=ds_get();if(ds_bad)rderr=1;if(c>=0)++fpos;return c;
+#else
     if (at == have) {
         have = (unsigned char)a.fread(buf, 1, 255, f);
         at = 0;
@@ -117,11 +159,16 @@ static int getb(void)
     }
     ++fpos;
     return buf[at++];
+#endif
 }
 
 static void seek(unsigned long off)
 {
+#ifdef INTEGER_DOS
+    if(!ds_seek(off))rderr=1;
+#else
     a.fseek(f, (long)off, SEEK_SET);
+#endif
     fpos = off;
     have = at = 0;
 }
@@ -155,7 +202,11 @@ static unsigned char letter(char c) { return (c >= 'A' && c <= 'Z') || (c >= 'a'
 /* A token, with the interpreter's spacing around it. */
 static void token(unsigned char n)
 {
+#ifdef APPLESOFT_DOS
+    const char* s = BAS_TOK;
+#else
     const char* s = INT_TOK;
+#endif
     const char* e;
 
     while (n--) { while (*s) ++s; ++s; }
@@ -181,6 +232,40 @@ static void number(unsigned int v)
  * rather than listed as if it were whole. */
 static unsigned char line(void)
 {
+#ifdef APPLESOFT_DOS
+    int lo, hi, c;
+    unsigned int link, v;
+    unsigned char quoted=0, literal=0;
+
+    lo=getb();hi=getb();
+    if(lo<0 || hi<0)return 2;
+    link=(unsigned int)lo|((unsigned int)hi<<8);
+    if(!link)return fpos==ds_length ? 0 : 2;
+    lo=getb();hi=getb();
+    if(lo<0 || hi<0)return 2;
+    v=(unsigned int)lo|((unsigned int)hi<<8);
+    number(v);put(' ');space=1;
+    for(;;){
+        c=getb();if(c<0)return 2;
+        if(!c)break;
+        /* LIST keeps strings, REM and DATA literal. DATA ends at a colon
+         * outside quotes. Quotes may end at EOL, as Applesoft permits. */
+        if(c=='"' && literal!=2)quoted=!quoted;
+        if(c==':' && !quoted && literal==1)literal=0;
+        if(c>=0x80 && !quoted && !literal){
+            if(c>0xEA)return 2;
+            token((unsigned char)(c-0x80));
+            if(c==0x83)literal=1;
+            if(c==0xB2)literal=2;
+        }else{
+            c&=0x7F;put((char)(c>=32 && c<127 ? c : '.'));
+        }
+    }
+    /* Follow file order, never pointers from the program. Check the
+     * conventional $0801 links with a wide addition before narrowing. */
+    if(fpos+0x0801UL>0xFFFFUL || link!=(unsigned int)(fpos+0x0801UL))return 2;
+    put(13);return 1;
+#else
     int len, c, n;
     unsigned int v;
 
@@ -198,7 +283,15 @@ static unsigned char line(void)
     while (len-- > 0) {
         c = getb();
         if (c < 0) return 2;
-        if (c == 0x01) break;           /* the end of the line */
+        if (c == 0x01) {
+#ifdef INTEGER_DOS
+            if(len)return 2;
+#endif
+            break;
+        }           /* the end of the line */
+#ifdef INTEGER_DOS
+        if (c == 0x29) return 2; /* closing quote without an opening quote */
+#endif
         if (c == 0x28 || c == 0x29) {   /* a string, characters throughout */
             put('"');
             while (len-- > 0) {
@@ -207,6 +300,9 @@ static unsigned char line(void)
                 if (c == 0x29) break;
                 put((char)(c & 0x7F));
             }
+#ifdef INTEGER_DOS
+            if(c!=0x29)return 2;
+#endif
             put('"');
             alnum = 0;
         } else if (c == 0x5D) {         /* REM, characters to the end of the line */
@@ -219,6 +315,9 @@ static unsigned char line(void)
             }
             break;
         } else if (c >= 0xB0 && c <= 0xB9 && !alnum) {
+#ifdef INTEGER_DOS
+            if(len<3)return 2; /* two constant bytes and the line terminator */
+#endif
             v = (unsigned int)getb();   /* a constant: its value is the next two */
             c = getb();
             if (c < 0) return 2;
@@ -233,8 +332,12 @@ static unsigned char line(void)
             token((unsigned char)c);
         }
     }
+#ifdef INTEGER_DOS
+    if(len || c!=1)return 2;
+#endif
     put(13);
     return 1;
+#endif
 }
 
 /* page: the page shown, counted from the oldest kept (in ring slot head,
@@ -254,10 +357,14 @@ static unsigned char listpage(void)
     unsigned long last, from;
     unsigned char r;
     from = START(page);
+    rderr=0;
+#ifndef INTEGER_DOS
     clear_err(f);                       /* an earlier page's error: read again */
+#endif
     seek(from);
     a.clrscr();
-    row = col = 0; space = 1; clipped = 0; rderr = 0;
+    row = col = 0; space = 1; clipped = 0;
+    if(rderr){next=from;return 3;}
     a.gotoxy(0, 0);
     do { last = fpos; r = line(); } while (r == 1 && row < LINES);
     /* The offset the next page starts from is a line boundary: a page is
@@ -265,6 +372,9 @@ static unsigned char listpage(void)
      * stopped reading -- or the start of the last line when its tail ran
      * off the bottom, unless that line began the page (it then has the
      * whole screen and there is nowhere else to show it). */
+#ifdef INTEGER_DOS
+    if(clipped && last==from)r=4; /* never report a clipped long line as complete */
+#endif
     if (clipped && last != from) { r = 1; fpos = last; }
     if (rderr) r = 3;
     next = fpos;
@@ -289,16 +399,48 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
 
     init(api);
     e = a.selected;
+#ifdef INTEGER_DOS
+    dv_file=NULL;
+#ifdef APPLESOFT_DOS
+    if (e->type != 0xFC || pan->fs!=FS_DOS33
+#else
+    if (e->type != 0xFA || pan->fs!=FS_DOS33
+#endif
+        || !e->name[0]) { note(m_bad); return; }
+    if (!dv_open(pan) || !ds_open(e) || ds_kind!=
+#ifdef APPLESOFT_DOS
+        2
+#else
+        1
+#endif
+        ) {
+        dv_close();note("DOS BASIC source read/structure error.");return;
+    }
+#else
     if (e->type != 0xFA || pan->fs) { note(m_bad); return; }
     f = a.fopen(a.full, "rb");
     if (!f) { note(m_open); return; }
+#endif
     for (;;) {
         if (!ready) { starts[0] = 0; page = head = 0; known = 1; first = 1; ready = 1; }
         r = listpage();
         done = r != 1;
         if (done) last = r;
         a.bar_begin();
-        a.cprintf(r == 3 ? st_err : st_line, a.full, first + page, done ? st_end : (const char*)"");
+#ifdef INTEGER_DOS
+        a.gotoxy(0,22); /* keep status above the key bar */
+#endif
+        a.cprintf(r == 3 ? st_err : st_line,
+#ifdef INTEGER_DOS
+            e->name,
+#else
+            a.full,
+#endif
+            first + page, done ?
+#ifdef INTEGER_DOS
+            r==2 ? st_malformed : r==4 ? st_long :
+#endif
+            st_end : (const char*)"");
         a.keys_bar(52, st_keys);
         key = a.cgetc();
         if (key == KEY_ESC || key == 'q' || key == 'Q') break;
@@ -307,8 +449,15 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
             forward();
         if ((key == 'b' || key == 'B' || key == KEY_LEFT || key == KEY_UP) && page) --page;
     }
+#ifdef INTEGER_DOS
+    if(!dv_close()){note("DOS BASIC source close error.");return;}
+#else
     a.fclose(f);
+#endif
     a.strcpy(a.reselect, e->name);
     if (last == 2) note(m_cut);
     if (last == 3) note(m_err);
+#ifdef INTEGER_DOS
+    if(last==4)note("Line listing exceeds one screen page.");
+#endif
 }

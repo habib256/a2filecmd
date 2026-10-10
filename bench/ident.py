@@ -148,7 +148,7 @@ def main():
             s.select('WORK'); p.stable()
             menu_run(s, p, 'IDENT')
             s.wait(lambda: s.has('Select a file'), 'le refus du dossier', 20); p.stable()
-            s.ok('refuse un dossier', s.rows()[22].strip() == 'Select a file in a ProDOS directory.',
+            s.ok('refuse un dossier', s.rows()[22].strip() == 'Select a file in ProDOS or DOS 3.3.',
                  s.rows()[22].strip())
 
             # 2. Each specimen in WORK.

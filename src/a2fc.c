@@ -109,7 +109,8 @@ extern char _LOWBSS_RUN__[];
 extern char _LOWBSS_SIZE__[];
 #pragma bss-name (push, "LOWBSS")
 struct Panel panels[2];             /* not static: keep_tags (a2fc_mli.s) reads it */
-static unsigned char active, sort_mode, over_policy;
+unsigned char active;           /* fs_keys.s reads the active panel */
+static unsigned char sort_mode, over_policy;
 static unsigned char batch_snapshot;
 static unsigned int progress_done, progress_total, progress_skipped;
 static unsigned char progress_abort;   /* ESC during an operation: we stop at the current file */
@@ -144,7 +145,7 @@ static unsigned char read_dos33_overlay(struct Panel* pan);
 static unsigned char read_image_dir_overlay(struct Panel* pan);
 static char reselect[NAME_LEN];    /* on return from a big overlay: the name to reselect */
 struct Entry selected;             /* (not static: open.s reads it) the entry under the cursor, copied before a big overlay overwrites the table */
-static char note[80];              /* ... and the message to write on line 22 */
+char note[80];                     /* resident dispatcher also checks source errors */
 static long text_starts[80];   /* known page starts */
 /* MOVE manifest state survives all overlays in the idle text-viewer buffer. */
 struct MoveBatch {
@@ -486,7 +487,7 @@ static void open_row22(void)
 }
 
 #pragma code-name (push, "LC")
-static void message(const char* text)
+void message(const char* text)
 {
     revers(0);
     clear_row(22);
@@ -1041,7 +1042,7 @@ static unsigned char read_panel(unsigned char p)
     struct Panel* pan = pan_at(p);
     struct Entry* e;
     unsigned char ok = 1;
-    activity_begin("Reading directory...");
+    activity_begin("Reading");
     if (pan->fs) {
         if (read_image_panel(pan)) goto placed;
         /* The volume list starts from an empty table: ON_LINE only appends,
@@ -1305,7 +1306,7 @@ const char msg_toolong[] = "Path too long for ProDOS.";
 const char msg_vdrive[] = "VDrive: serial card in slot %u, volumes in slot %u, drives 1 and 2.";
 const char msg_vdfull[] = "VDrive: no free slot.";
 const char msg_notimg[] = "Not a ProDOS disk image (or DOS 3.3).";
-const char msg_roimg[] = "Read-only disk image; C extracts to the other panel.";
+const char msg_roimg[] = "Read-only disk.";
 const char msg_noentry[] = "This overlay has no entry point.";
 const char msg_parent[] = "Parent directory";
 const char msg_samedir[] = "Both panels show the same directory.";
@@ -1508,16 +1509,7 @@ static const char bl_number[] = "%u ";
  * (main window full), a named array follows the overlay's segment --
  * BASLISTRO, which makes BASLIST a big overlay (1.4 KB): the language card,
  * full, could no longer host it. */
-static const char BAS_TOK[] =
-    "END\0FOR\0NEXT\0DATA\0INPUT\0DEL\0DIM\0READ\0GR\0TEXT\0PR#\0IN#\0CALL\0"
-    "PLOT\0HLIN\0VLIN\0HGR2\0HGR\0HCOLOR=\0HPLOT\0DRAW\0XDRAW\0HTAB\0HOME\0"
-    "ROT=\0SCALE=\0SHLOAD\0TRACE\0NOTRACE\0NORMAL\0INVERSE\0FLASH\0COLOR=\0"
-    "POP\0VTAB\0HIMEM:\0LOMEM:\0ONERR\0RESUME\0RECALL\0STORE\0SPEED=\0LET\0"
-    "GOTO\0RUN\0IF\0RESTORE\0&\0GOSUB\0RETURN\0REM\0STOP\0ON\0WAIT\0LOAD\0"
-    "SAVE\0DEF\0POKE\0PRINT\0CONT\0LIST\0CLEAR\0GET\0NEW\0TAB(\0TO\0FN\0SPC(\0"
-    "THEN\0AT\0NOT\0STEP\0+\0-\0*\0/\0^\0AND\0OR\0>\0=\0<\0SGN\0INT\0ABS\0USR\0"
-    "FRE\0SCRN(\0PDL\0POS\0SQR\0RND\0LOG\0EXP\0COS\0SIN\0TAN\0ATN\0PEEK\0LEN\0"
-    "STR$\0VAL\0ASC\0CHR$\0LEFT$\0RIGHT$\0MID$";
+#include "plugins/applesoft_tokens.h"
 
 /* Business BASIC's (the Apple ///'s, BA3 $09): $80-$FF, and after $FF an
  * extended set from $80, CiderPress II's tables (BusinessBASIC.cs). An
@@ -2398,7 +2390,7 @@ static unsigned char load_overlay(const char* name, unsigned char any)
     }
     if (!ok) {
         open_row22();
-        cprintf("A2FILE/%s.PLG is missing or stale on this volume.", name);
+    cprintf("A2FILE/%s.PLG missing or stale.", name);
     }
     return ok;
 }
@@ -2444,7 +2436,7 @@ static struct A2fcApi api;
 static void select_name(struct Panel* pan, const char* name);
 static unsigned char __fastcall__ prepare_audio(unsigned char arg);
 #include "media.h"
-static void overlay_run(const char* name, unsigned char arg)
+void overlay_run(const char* name, unsigned char arg)
 {
     struct Panel* pan = pan_at(active);
     unsigned char big, media=media_type(name), dir, gr, first=1;
@@ -2828,7 +2820,7 @@ static const char ed_savekeys[] = "S Save,X Save and exit,Q Quit without saving,
 static const char ed_status[]  = " %-30.30s  Line %u  Col %u  %u/%u bytes %s";
 static const char ed_openf[]   = "Open failed.";
 static const char ed_buffull[] = "Buffer full.";
-static const char ed_nodir[]   = "Open a directory first.";
+static const char ed_nodir[]   = "Open a directory.";
 static const char ed_exists[]  = "File exists.";
 static const char ed_toobig[]  = "Too big for the editor (5 KB).";
 static const char ed_convert[] = "Save converted text?";
@@ -3802,7 +3794,7 @@ static const char mn_catalog_path[] = "/A2FILE/EXTRAS.CAT";
 static const char mn_dir[] = "/A2FILE";
 static const char mn_suffix[] = ".PLG";
 /* Routing overlays the core loads by itself: never a menu command. */
-static const char mn_hidden[] = "|MENU|COPY|OPEN|NAV|BATCH|CATALOG|DOSIMAGE|DOSPUT|";
+static const char mn_hidden[] = "|MCSIMPORT|MCSPLAY|IDREAD|IDFORMATS|MENU|COPY|OPEN|NAV|BATCH|CATALOG|DOSIMAGE|DOSPUT|";
 static const char mn_bad[] = "(unreadable)";
 static const char mn_stale[] = "(other A2FC build)";
 static const char mn_noentry[] = "(no entry point)";
@@ -3831,11 +3823,11 @@ static const char mn_what7[] = "Unsorted";
 static const char* const mn_whats[] = {
     mn_what0, mn_what1, mn_what2, mn_what3, mn_what4, mn_what5, mn_what6, mn_what7
 };
-static const char mn_group0[] = "|TEXT|HEX|EDIT|SEARCH|FIND|FIXTYPES|GOTO|MDVIEW|DOCVIEW|RENAME|SYNC|MOVE|TREE|DELETE|ATTR|TXTCONV|TAGPAT|COMPARE|AWP|AWDATA|VISICALC|GUTTEXT|TEACHTXT|";
-static const char mn_group1[] = "|IMAGE|DGRVIEW|EXTASIE|ARLEQUIN|MACPAINT|SHAPES|PACKFOT|PAINT816|PURPLE|LZ4FH|PRINTSHOP|NEWSROOM|NRCLIP|GMAGIC|FONTVIEW|FONTRIX|";
-static const char mn_group2[] = "|MUSIC|PT3|DUET|MCS|";
+static const char mn_group0[] = "|TEXT|HEX|EDIT|SEARCH|FIND|FIXTYPES|GOTO|MDVIEW|DOCVIEW|NEWSPAN|NEWSPAGE|RENAME|SYNC|MOVE|TREE|DELETE|ATTR|TXTCONV|TAGPAT|COMPARE|AWP|AWDATA|VISICALC|GUTTEXT|TEACHTXT|";
+static const char mn_group1[] = "|IMAGE|DGRVIEW|EXTASIE|ARLEQUIN|MACPAINT|SHAPES|PACKFOT|PAINT816|PURPLE|LZ4FH|PRINTSHOP|NEWSROOM|DOSNEWS|NRCLIP|GMAGIC|FONTVIEW|FONTRIX|";
+static const char mn_group2[] = "|MUSIC|PT3|DUET|MCS|DOSMCS|";
 static const char mn_group3[] = "|FORMAT|DISKIMG|IMGFS|IMGPUT|DOSGET|DOSWRITE|DOS33W|DOSREPL|PASCAL|PASCALW|CPM|CPMW|BOOTBLK|BLKVIEW|BLKEDIT|DISKCMP|NIBCOPY|IMGCONV|MKIMAGE|RESCUE|UNDELETE|VOLNAME|VOLINFO|FIXIT|REPAIR|WIPE|VERIFY|";
-static const char mn_group4[] = "|BASLIST|DISASM|INTBASIC|RUN|CRC|IDENT|PASTEXT|SCASM|MERLIN|LISAV2|";
+static const char mn_group4[] = "|BASLIST|DISASM|INTBASIC|DOSINT|DOSBAS|RUN|CRC|IDENT|PASTEXT|SCASM|MERLIN|LISAV2|";
 static const char mn_group5[] = "|HELP|DATE|";
 static const char mn_group6[] = "|BINARY2|UNSHRINK|UNWRAP|SCIIBIN|UNSQ|";
 static const char* const mn_groups[] = {
@@ -4191,7 +4183,7 @@ static unsigned char copy_one(const struct Entry* e)
 }
 
 static const char msg_treekept[] = "Tree not verified; source kept.";
-const char batch_cancel[] = "Cancelled; remaining sources kept.";
+const char batch_cancel[] = "Cancelled; sources kept.";
 /* A directory record of a marked move whose target is another volume: no
  * entry can point across, so it gets exactly what V does for one directory
  * -- the cursor put on it, no other mark, then copy_or_move: the tree
@@ -4232,9 +4224,9 @@ static unsigned char pick_targets(void)
 static unsigned char target_check(void)
 {
     struct Panel* dst = pan_at(!active);
-    if (!pan_at(active)->path[0]) { message("Open a directory first."); return 0; }
+    if (!pan_at(active)->path[0]) { message("Open a directory."); return 0; }
     if (dst->fs) { { extern const char msg_otherro[]; message(msg_otherro); }; return 0; }
-    if (!dst->path[0]) { message("Open a directory in the other panel."); return 0; }
+    if (!dst->path[0]) { message("Open other directory."); return 0; }
     if (!strcmp(dst->path, pan_at(active)->path)) { { extern const char msg_samedir[]; message(msg_samedir); }; return 0; }
     return 1;
 }
@@ -5148,7 +5140,7 @@ static void copy_or_move(unsigned char move)
     progress_skipped = 0;
     progress_abort = 0;
     over_policy = ASK;
-    activity_begin("Counting files...");
+    activity_begin("Counting files");
     if (move) memset(pan->tags, 0, sizeof pan->tags);   /* the tags are in picked: the entries are about to move */
     for (i = 0; i < n; ++i) {
         const struct Entry* e = &pan->e[picked[i]];
@@ -5200,7 +5192,7 @@ static void copy_or_move(unsigned char move)
 #ifdef A2FC_6502
 #pragma rodata-name(push, "RODATA")
 #endif
-static const char dl_nothing[] = "Nothing to delete here.";
+static const char dl_nothing[] = "Nothing to delete.";
 #ifdef A2FC_6502
 #pragma rodata-name(pop)
 #endif
@@ -5427,12 +5419,9 @@ const unsigned char fv_v[] = { V_HEX, V_FONT, V_LZ, V_PS, V_RUN, V_DUET, V_PT3, 
  * ref_open_entry): the viewer's overlay name into input. */
 #pragma rodata-name(pop)
 #pragma code-name(pop)
-static void open_viewer(unsigned char pictures)
-{
-    input[0] = 0;
-    overlay_run("OPEN", pictures);
-    if (input[0]) overlay_run(input, 0);
-}
+/* Resident dispatcher returns from IDENT before loading its chosen reader. */
+void __fastcall__ identify_viewer(unsigned char key);
+#define open_viewer identify_viewer
 
 static void open_selected(void)
 {
@@ -5453,7 +5442,7 @@ static void open_selected(void)
     if (is_dir(e)) { if (overlay("NAV")) enter_dir(pan, e); show_active(); return; }
     if (open_image(pan, e)) return;
     if (!build_full(full, pan, e)) { too_long(); return; }
-    open_viewer(0);
+    open_viewer('O');
 }
 
 /* ---------------------------------------------------------------------- */
@@ -5685,6 +5674,7 @@ static struct A2fcApi api = {
     memcpy, memset, strcpy, strcmp, strlen, &_filetype, &_auxtype, reselect, note, &selected, cfg_path,
     ram_format, media_key, media_wait, music_info, confirm_aux };
 
+unsigned char __fastcall__ fs_key(unsigned char key);
 int main(void)
 {
     char key;
@@ -5758,18 +5748,10 @@ int main(void)
         key = wait_key();
         if (key >= '0' && key <= '9') key = bar_nth(key == '0' ? 9 : key - '1');
         if (key != KEY_ESC && key != 'q' && key != 'Q') clear_row(22);
-        /* An image opened as a directory is read-only: only navigation,
-         * tagging, C/V (extract) and the formatter act; the commands that
-         * would write or that need a real path are refused with a clear
-         * message. */
-        /* `| 0x20` and not `& 0xDF`: strchr answers the terminator for a
-         * zero key, and click() returns zero for a click it has already
-         * acted on -- which used to be refused as a write to a read-only
-         * image. Lower case leaves 0 mapped to ' ', outside the list. */
-        if (pan->fs && strchr("rkaldxewthim", key | 0x20)) {
-            { extern const char msg_roimg[]; message(msg_roimg); };
-            continue;
-        }
+        /* fs_keys.s keeps the foreign-FS write/execute guard and routes
+         * DOS T/H/I/Return to a read-only stream. Other keys, including
+         * zero after a mouse action and '-' paging, retain their meaning. */
+        if (fs_key(key)) continue;
         switch (key) {
         case KEY_UP: move_cursor(-1); break;
         case KEY_DOWN: move_cursor(1); break;
@@ -5843,7 +5825,7 @@ int main(void)
             break;
         case 'i': case 'I':
             if (pan->count && !is_dir(&pan->e[pan->cursor]) && pan->path[0]) {
-                open_viewer(1);
+                open_viewer('I');
             }
             break;
         case '?': if (overlay("HELP")) view_help(); break;

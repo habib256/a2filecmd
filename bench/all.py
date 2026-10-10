@@ -57,7 +57,7 @@ PT3_HOST = {'POM2': '/tmp/a2fc-pt3-trace'}
 Fixture = namedtuple('Fixture', 'paths build')
 FIXTURES = {
     'host': Fixture([ROOT / 'build/pom2_playtest'], ['make', 'pom2host']),
-    'boot': Fixture([ROOT / ('dist/A2FILECMD-PRODOS-140K-%s.po' % VERSION)], ['make', 'disk']),
+    'boot': Fixture([ROOT / 'build-6502/legacy/BOOT.po'], ['make', 'ARCH=6502', 'benchboot']),
     'categories': Fixture([ROOT / ('build-6502/legacy/%s.po' % name)
                            for name in ('FILES', 'MEDIA', 'DISKTOOLS', 'DEVTOOLS')], ['make', 'benchpackages', 'ARCH=6502']),
     '800k': Fixture([ROOT / ('dist/A2FILECMD-PRODOS-800K-%s.po' % VERSION)], ['make', 'disk']),
@@ -128,7 +128,7 @@ step('nibcopy_ui', '6502', 'dos', UNENH, needs=('host', 'boot', 'categories'))
 step('purple', 'grload', 'dos', {})
 
 # -- What must never lose a byte ---------------------------------------------
-step('data_safety', '6502', 'safety', {**UNENH, 'A2FC_IMG': 'A2FILECMD-PRODOS-140K'})
+step('data_safety', '6502', 'safety', {**UNENH, 'A2FC_IMG': 'BOOT'})
 step('data_safety', 'enh', 'safety', FULL, needs=('host', 'boot', 'full-enh'))
 step('recovery', '6502', 'safety', SIX_BUILD)
 step('recovery', 'enh', 'safety', ENH_BUILD)
@@ -198,6 +198,18 @@ step('music', 'mockingboard', 'media', PT3_HOST, needs=('host', 'boot', 'pt3-hos
 step('duet', 'speaker', 'media', {}, needs=('host', 'boot', 'sample'))
 step('mcs', 'mockingboard', 'media', PT3_HOST, needs=('host', 'boot', 'pt3-host'))
 step('mcs', '65c02', 'media', {**PT3_HOST, **ENH_BUILD}, needs=('host', 'boot', 'pt3-host'))
+step('dosmcs', '6502', 'media', {**PT3_HOST, **SIX_BUILD}, needs=('host', 'boot', 'pt3-host'))
+step('dosmcs', '65c02', 'media', {**PT3_HOST, **ENH_BUILD}, needs=('host', 'boot', 'pt3-host'))
+step('dosint', '6502', 'readers', {**PT3_HOST, **SIX_BUILD}, needs=('host', 'boot', 'pt3-host'))
+step('dosint', '65c02', 'readers', {**PT3_HOST, **ENH_BUILD}, needs=('host', 'boot', 'pt3-host'))
+step('dosbas', '6502', 'readers', {**PT3_HOST, **SIX_BUILD}, needs=('host', 'boot', 'pt3-host'))
+step('dosbas', '65c02', 'readers', {**PT3_HOST, **ENH_BUILD}, needs=('host', 'boot', 'pt3-host'))
+step('newsdoc', '6502', 'readers', {**PT3_HOST, **SIX_BUILD}, needs=('host', 'boot', 'pt3-host'))
+step('newsdoc', '65c02', 'readers', {**PT3_HOST, **ENH_BUILD}, needs=('host', 'boot', 'pt3-host'))
+step('dosscasm', '6502', 'readers', {**PT3_HOST, **SIX_BUILD}, needs=('host', 'boot', 'pt3-host'))
+step('dosscasm', '65c02', 'readers', {**PT3_HOST, **ENH_BUILD}, needs=('host', 'boot', 'pt3-host'))
+step('dosview', '6502', 'readers', {**PT3_HOST, **SIX_BUILD}, needs=('host', 'boot', 'pt3-host'))
+step('dosview', '65c02', 'readers', {**PT3_HOST, **ENH_BUILD}, needs=('host', 'boot', 'pt3-host'))
 step('retrotext', '6502', 'readers', SIX_BUILD)
 step('retrotext', '65c02', 'readers', ENH_BUILD)
 step('pt3', 'player', 'media', PT3_HOST, needs=('host', 'boot', 'sample', 'pt3-host'))
@@ -286,7 +298,7 @@ def stale():
         made = resident.stat().st_mtime
         images = list((ROOT / build).glob('*.po'))          # the bench floppies
         cpu = '6502' if build.endswith('6502') else '65C02'
-        names = (['A2FILECMD-PRODOS-140K-%s.po' % VERSION, 'A2FILECMD-PRODOS-800K-%s.po' % VERSION,
+        names = (['A2FILECMD-PRODOS-800K-%s.po' % VERSION,
                   'A2FILECMD-PRODOS-XL-%s.2mg' % VERSION] if cpu == '6502' else
                  ['A2FILECMD-PRODOS-XL-65C02-enhanced-%s.2mg' % VERSION])
         images += [ROOT / 'dist' / name for name in names if (ROOT / 'dist' / name).exists()]

@@ -1,52 +1,14 @@
-/* ident.c -- say what the selected file is from its content, like file(1).
- *
- * From the ! menu, on the entry under the cursor (a file in a ProDOS
- * directory: a directory, the volume list, a disk image or a DOS 3.3 disk
- * are refused). The first 512 bytes are read into api->copy_buf and one
- * line goes on the message line, "NAME (12345 bytes): what it is", the
- * tests in this order:
- *
- *   ShrinkIt        "NuFile" or "NuFX" at 0 (high bits ignored: the real
- *                   signatures alternate them, $4E $F5 $46 $E9 $6C $E5)
- *   Binary II       $0A $47 $4C at 0 and $02 at 18
- *   2IMG            "2IMG" at 0
- *   140K image      143,360 bytes: ProDOS if block 2 carries a volume
- *                   directory header (storage type $F), DOS 3.3 if the VTOC
- *                   at track 17 says so, a ProDOS volume in DOS order
- *                   (block 2 at sector 11), else just "disk image"
- *   AppleWorks      type $1A word processor, $19 data base, $1B spreadsheet
- *   Applesoft       type $FC, or tokenised: the first line's link points
- *                   just past its terminating zero from $0801, its number
- *                   is 63999 at most and it holds a token ($80 and up)
- *   Integer BASIC   type $FA
- *   RLE pictures    "HGRR" / "DHRR" at 0 (the .RLE flow of the demo)
- *   DHGR / HGR      16,384 bytes; 8,192 bytes, or 8,184..8,192 as a BIN at $2000
- *   FOT             type $08: raw, or packed ($4000, $4001) or LZ4FH
- *                   ($8066) by its auxtype
- *   816/Paint       type $06 with auxtype $E001 or $E002: a packed hi-res
- *                   or double hi-res page
- *   Extasie         type $F2, opening on its own length: a packed double
- *                   hi-res page for the Le Chat Mauve card
- *   Mockingboard    "MB1" at 0
- *   6502 code       type $FF, or a BIN with an auxtype and a JMP, JSR or
- *                   LDA# ($4C $20 $A9) among the first eight bytes
- *   text            every byte, high bit off, is printable, CR, LF or TAB:
- *                   "Text[ (UTF-8)], CR|LF|CRLF|mixed ends[, high bit
- *                   set|clear|mixed], N lines in M B[, tabs]" -- UTF-8 when
- *                   the sample has valid two-, three- or four-byte sequences
- *   otherwise       "Binary data"
- *
- * A big overlay, for want of room: the twenty-odd descriptions alone
- * come to some 700 bytes, and cc65's code for the byte scan, the chain
- * of tests and the eight calls through the table to 1,900 more -- a
- * variant stripped to the bare list above still linked at 2,400 bytes,
- * nearly twice the small window. Being big, the core clears the screen and
- * redraws the panels on return: the line goes through api->note (79
- * characters, cut here so that nothing spills), and api->reselect keeps
- * the cursor on the file. Only api->selected (a copy) and the panel's
- * path and fs are read: the entry table under $2000 is covered. */
+/* IDENT: read-only content identification and automatic reader routing,
+ * ProDOS and DOS 3.3. IDREAD samples DOS allocation; IDFORMATS handles
+ * extended rules and the shared routing table. A closed-source relay keeps
+ * each stage inside the guarded overlay window. No AUX or temporary files. */
 #include "../a2fc_plugin.h"
 #include <string.h>
+#include "id_stage.h"
+#include "id_context.h"
+#ifdef PLUGIN_HOST
+#include "id_finish.h"
+#endif
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api);
 
@@ -57,19 +19,34 @@ struct PluginHeader {
 };
 #pragma rodata-name (push, "OVLHDR")
 const struct PluginHeader __plugin_header = {
-    PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry, 0, 0, 0,
+    MEDIA_PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry, 0, 0, ID_CPU_TAG,
     "Say what a file is from its content, like file(1)"
 };
 #pragma rodata-name (pop)
 
 /* BSS: nothing zeroes it; every one of these is written before it is read. */
 static const struct A2fcApi* A;
+#include "hgr_io.h"
+#ifndef PLUGIN_HOST
+#define ferror(f) (((unsigned char*)(f))[1]&4)
+#pragma optimize(push,off)
+#pragma warn(unused-param,push,off)
+static int __fastcall__ id_seek(FILE* f,long p,int w) STUB(fseek)
+#pragma warn(unused-param,pop)
+#pragma optimize(pop)
+#else
+#define id_seek A->fseek
+#endif
 static const struct Entry* e;
+static struct Entry actual;
+static unsigned char id_dos;
+static const char* reader;
 static unsigned char* b;            /* api->copy_buf: the first 512 bytes, then the message */
 static unsigned int n;              /* how many were read */
 static FILE* f;
 static unsigned char io_failed;
-#define DP_READ A->fread
+#define DP_READ frd
+#define DP_ERROR(f) ferror(f)
 #include "../duet_probe.h"
 static unsigned char suffix(const char* name, const char* end)
 {
@@ -85,7 +62,6 @@ static union { unsigned long l; unsigned int w[2]; } sz;
 
 static const char* const ends_name[8] = { "no", "CR", "LF", "mixed", "CRLF", "mixed", "mixed", "mixed" };
 static const char m_text[] = "Text%s, %s ends%s, %u lines in %u B%s";
-static const char m_line[] = "%s (%lu bytes): %s";
 static const char s_image[] = "ProDOS disk image, 140K";
 
 /* `m` at the start of the file, the high bits ignored. */
@@ -103,7 +79,7 @@ static unsigned char magic(const char* m)
  * volume directory header stands at their byte 4 (storage type $F). */
 static unsigned char prodos_at(long pos)
 {
-    if (A->fseek(f, pos, SEEK_SET) || A->fread(b, 1, 512, f) != 512 || ferror(f)) { io_failed = 1; return 0; }
+    if (id_seek(f, pos, SEEK_SET) || frd(b, 1, 512, f) != 512 || ferror(f)) { io_failed = 1; return 0; }
     return b[4] >> 4 == 0xF;
 }
 
@@ -180,6 +156,12 @@ static const char* text(void)
     return (const char*)b + 256;
 }
 
+#ifdef PLUGIN_HOST
+#include "id_formats.h"
+#endif
+#ifdef PLUGIN_HOST
+#include "id_routes.h"
+#endif
 static const char* identify(void)
 {
     unsigned char t = e->type, i;
@@ -195,7 +177,8 @@ static const char* identify(void)
         return "ProTracker 3 music (PT3)";
     if ((t==0xD5 && e->aux==0xD0E7) || suffix(e->name,".ED") || (t==6 && e->name[0]=='M' && e->name[1]=='.')) {
         unsigned char result;
-        if (A->fseek(f,0,SEEK_SET)) { io_failed=1; return ""; }
+        if(id_dos)return "Electric Duet candidate (direct reader unavailable)";
+        if (id_seek(f,0,SEEK_SET)) { io_failed=1; return ""; }
         result=duet_probe(f,b);
         if (result==2) io_failed=1;
         return result==1 ? "Electric Duet compatible song" : "Invalid/unrecognized Electric Duet candidate";
@@ -205,11 +188,11 @@ static const char* identify(void)
     if (magic("\x0A\x47\x4C") && b[18] == 2) return "Binary II archive";
     if (magic("2IMG")) return "2IMG disk image";
     if (suffix(e->name,".NIB") && sz.l == 232960L) return "Disk II nibble image (NIB)";
-    if ((suffix(e->name,".PO") || suffix(e->name,".HDV")) && sz.l != 143360L) {
+    if (!id_dos && (suffix(e->name,".PO") || suffix(e->name,".HDV")) && sz.l != 143360L) {
         if (sz.l >= 1536 && prodos_at(1024)) return "ProDOS block image";
         return "Unrecognized block image candidate";
     }
-    if (SZ[1] == 2 && SZ[0] == 0x3000) {          /* 143,360 bytes: a 5.25 image */
+    if (!id_dos && SZ[1] == 2 && SZ[0] == 0x3000) {          /* 143,360 bytes: a 5.25 image */
         if (prodos_at(1024)) return s_image;
         prodos_at(69632L);                        /* the VTOC, DOS order: track 17 sector 0 */
         if (b[1] == 17 && b[3] == 3) return "DOS 3.3 disk image, 140K";
@@ -236,7 +219,7 @@ static const char* identify(void)
     /* Extasie writes its pictures under a type of their own, $F2, and opens
      * them with their own length: a double hi-res page, compressed, for the
      * Le Chat Mauve card (EXTASIE reads them). */
-    if (t == 0xF2)
+    if (!id_dos && t == 0xF2)
         return SZ[0] == (unsigned long)(unsigned int)(b[0] | (b[1] << 8))
             ? "Extasie picture (Chat Mauve), packed" : "Extasie picture (Chat Mauve)";
     /* 816/Paint saves packed by default, as a $06 with an auxtype of its
@@ -262,31 +245,81 @@ static const char* identify(void)
     return text();
 }
 
-void __fastcall__ plugin_entry(const struct A2fcApi* api)
+unsigned char __fastcall__ md_entrypoint(const struct A2fcApi* api)
 {
-    const struct Panel* pan = api->panels;
-    const char* what;
-    A = api;
-    e = api->selected;
-    b = api->copy_buf;
-    sz.l = e->size;
-    if (*api->active) ++pan;
-    if (!e->name[0] || e->type == 0x0F || !pan->path[0] || pan->fs) {
-        A->strcpy(A->note, "Select a file in a ProDOS directory.");
-        return;
+    const struct Panel* pan=api->panels+*api->active;
+    const char* what;unsigned char automatic;unsigned char* m=(unsigned char*)api->other_full;
+    A=api;e=api->selected;b=api->copy_buf;sz.l=e->size;reader=NULL;io_failed=0;f=NULL;
+    automatic=api->arg=='O'||api->arg=='I'||api->arg==13;
+    if(automatic)api->input[0]=0;
+    id_dos=pan->fs==FS_DOS33;
+    if(!e->name[0] || e->type==15 || !pan->path[0] || (pan->fs && !id_dos)){
+        scpy(A->note,"Select a file in ProDOS or DOS 3.3.");return 0;
     }
-    A->strcpy(A->reselect, e->name);              /* the cursor stays on it after the redraw */
-    f = A->fopen(A->full, "rb");
-    if (!f) { A->strcpy(A->note, "Cannot open it."); return; }
-    io_failed = 0;
-    n = A->fread(b, 1, 512, f);
-    if (ferror(f)) io_failed = 1;
-    if (n < 512) A->memset(b + n, 0, 512 - n);    /* no magic read out of the last call's bytes */
-    what = identify();
-    if (ferror(f)) io_failed = 1;
-    if (A->fclose(f)) io_failed = 1;
-    if (io_failed) { A->strcpy(A->note,"Cannot identify: read/seek/close error."); return; }
-    A->sprintf((char*)b, m_line, e->name, e->size, what);
-    b[79] = 0;                                    /* one line of note: nothing spills */
-    A->strcpy(A->note, (char*)b);                 /* written by the core after its redraw */
+    scpy(A->reselect,e->name);
+#ifndef PLUGIN_HOST
+    A->dir_close();
+    if(id_restore(api,&actual,&n)){
+        e=&actual;sz.l=e->size;b=ID_SAMPLE;
+        if(m[42]!=1)goto extra_stage;
+        m[40]=m[41]=0;
+        if(!id_dos){
+            if(!A->build_full(A->full,pan,A->selected))goto failed;
+            f=fopn(A->full,"rb");if(!f)goto failed;
+        }
+    }else if(id_dos){
+        if(id_open_stage(api,"IDREAD.PLG"))return 1;
+        goto failed;
+    }else{
+        f=fopn(A->full,"rb");if(!f)goto failed;
+        n=frd(b,1,512,f);if(ferror(f))io_failed=1;
+        if(n<512)A->memset(b+n,0,512-n);
+        memcpy(ID_SAMPLE,b,512);
+        {unsigned int got=n;unsigned long total=n;
+         while(got && !io_failed){got=frd(b,1,512,f);total+=got;if(ferror(f))io_failed=1;}
+         actual=*e;actual.size=total;e=&actual;sz.l=total;}
+        if(fcls(f))io_failed=1;f=NULL;
+        if(io_failed)goto failed;
+        id_context(api,n,sz.l,e->aux,e->type);
+extra_stage:
+        if(id_open_stage(api,"IDFORMATS.PLG"))return 1;
+        goto failed;
+    }
+    what=identify();
+#else
+    if(id_dos){
+        if(!id_restore(api,&actual,&n))goto failed;
+        e=&actual;sz.l=e->size;b=ID_SAMPLE;m[40]=m[41]=0;
+    }else{
+        f=fopn(A->full,"rb");if(!f)goto failed;
+        if(id_seek(f,0,SEEK_END))io_failed=1;
+        {long size=ftell(f);if(size<0)io_failed=1;else {actual=*e;actual.size=(unsigned long)size;e=&actual;sz.l=e->size;}}
+        if(id_seek(f,0,SEEK_SET))io_failed=1;
+        n=frd(b,1,512,f);if(ferror(f))io_failed=1;
+        if(n<512)A->memset(b+n,0,512-n);
+    }
+    what=extra();if(!what)what=identify();
+#endif
+#ifdef PLUGIN_HOST
+    if(!reader)route(what);
+#endif
+    if(f){if(ferror(f))io_failed=1;if(fcls(f))io_failed=1;f=NULL;}
+    if(io_failed)goto failed;
+#ifdef PLUGIN_HOST
+    id_finish(api,e,what,reader,id_dos);return 0;
+#else
+    /* The old literal belongs to this overlay. Preserve a bounded label
+     * before handing classification/routing to the format stage. */
+    {unsigned char j=0;while(j<127 && what[j]){ID_SAMPLE[j]=what[j];++j;}ID_SAMPLE[j]=0;}
+    id_context(api,n,sz.l,e->aux,e->type);m[42]=2;
+    if(id_open_stage(api,"IDFORMATS.PLG"))return 1;
+    goto failed;
+#endif
+failed:
+    if(m)m[40]=m[41]=0;
+    if(f)fcls(f);
+    scpy(A->note,"Cannot identify: read/seek/close/stage error.");return 0;
 }
+#ifdef PLUGIN_HOST
+void __fastcall__ plugin_entry(const struct A2fcApi* api){md_entrypoint(api);}
+#endif

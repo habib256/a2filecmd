@@ -32,7 +32,7 @@
 41,18,F,Format a disk (type ERASE)
 1,19,W,Disk images: write, read, copy
 41,19,!,Overlay menu (^R rereads panels)
-1,20,~RET on a .PO/.DSK/.2MG (ProDOS or DOS 3.3) opens it; C extracts
+1,20,~RET opens disk images; DOS: T text, H hex, I image, C extracts
 1,21,#VIEWERS
 30,21,~1-0: activate a key-bar button
 1,22,RET,Open

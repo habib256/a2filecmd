@@ -11,6 +11,45 @@ sur les deux CPU. Les bancs POM2 utilisent des images jetables et contrôlent
 AUX et le bas de pile. Les limites fonctionnelles sont dans
 [MCS](MCS-FORMAT.md) et [les lecteurs](LEGACY-READERS.md).
 
+L'import MCS des partitions jumelées valide et ferme le fichier principal
+et son compagnon `.OBJ` avant tout accès sonore. Il ne crée aucun fichier
+de conversion ; le résultat tient en MAIN `$3680-$3F7F`, avec code et BSS
+bornés sous `$3680` par le lien. Un compagnon absent, une lecture ou une
+fermeture en erreur refusent la lecture sonore. DOSVIEW lit directement les
+secteurs DOS 3.3 sans écriture sur le disque ni emploi d'AUX ; ses chemins
+texte, hexadécimal, lo-res et HGR sont décrits dans [DOS-VIEWERS](DOS-VIEWERS.md).
+Pour HGR, le chargeur et son état sont liés sous `$2000` avec une assertion
+obligatoire : le code recouvert par les pixels n'est plus exécuté. Seule
+la page graphique MAIN est remplie ; une erreur de lecture ou de fermeture
+laisse l'affichage texte actif et provoque le retour aux panneaux.
+
+DOSMCS partage le flux DOS en lecture seule et le séquenceur MCS. Exports
+et paires éditeur sont entièrement vérifiés avant le son. Les cartes T/S
+sont bornées à dix secteurs pour les exports, treize pour les partitions ;
+aucune chaîne trop grande n'est tronquée. Les noms DOS complets identifient
+les compagnons ; doublons, absences et allocations partagées sont refusés.
+Le tampon audio est MAIN `$3700-$3FFF`, protégé par le lien sous `$3700`.
+Les étapes DOSMCS/MCSIMPORT empruntent MAIN `$0C00-$0FFF` pour BSS et
+chargeur, après fermeture des services de répertoire. Un seul FILE ProDOS
+est ouvert à la fois : sa réserve est `$0800`, jamais le second buffer
+emprunté. Chaque source est fermée avant l'ouverture de l'étape suivante.
+Le chargeur quitte le code importeur avant de le recouvrir, contrôle taille
+scellée, EOF, indicateur d'erreur, fermeture, version/CPU et adresse d'entrée.
+Aucune écriture AUX, source ou fichier temporaire. Les tests comparent les
+trames AY et les sources, injectent les erreurs d'E/S et contrôlent les deux
+piles et les limites de lien sur les deux CPU.
+
+DOSINT et DOSBAS utilisent le même flux DOS, sans exécution de BASIC. Code et BSS sont
+liés sous `$4000` ; les positions des 64 pages réemploient les métadonnées
+après validation. Seuls MAIN, `copy_buf` et le texte écran sont écrits.
+Le préfixe DOS fixe l'EOF exact ; la carte accepte au plus 257 secteurs,
+jusqu'au payload de 65535 octets avec son préfixe. Les lectures/recherches
+et fermetures en erreur sont signalées ; aucun EOF normal n'est inventé.
+Les lignes malformées ou trop grandes pour une page entière sont refusées.
+DOSBAS valide les liens Applesoft depuis `$0801` par addition large et
+le pointeur final à l’EOF exact, sans déréférencer les adresses stockées.
+AUX et les octets complets des sources sont vérifiés dans les bancs jetables.
+
 La conservation des données est une exigence centrale. Les instructions
 obligatoires pour les IA et les contributeurs se trouvent dans
 [AGENTS.md](../AGENTS.md). Cette revue du 11 septembre 2026 porte sur les
@@ -291,3 +330,13 @@ atomicité en cas de coupure n’est promise. La carte mémoire, les timings, le
 formats acceptés et les tests (`tools/test_nibcopy.py`, `bench/nibcopy.py`)
 sont dans [NIBCOPY.md](NIBCOPY.md) ; ces essais ne valent pas qualification
 des lecteurs physiques ni des accélérateurs.
+
+IDENT/IDREAD/IDFORMATS and the Newsroom readers are read-only. The stage
+handoff closes its FILE before entry and preserves the sample in the retired
+second FILE buffer; no two FILEs overlap that reserve. A reported source or
+stage error leaves input empty and blocks the legacy fallback. PN./PG. decode
+text/structure only, validate a whole pass before display, and report failed
+second reads/closes. Native Newsroom photo rendering compares all HGR bytes;
+its code/state stays below the graphics page. Both architectures retain
+strict layout guards; protected disposable Disk II/image benches compare the
+whole source volume, AUX and stack after automatic viewer dispatch.

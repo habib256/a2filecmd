@@ -4,7 +4,7 @@ import subprocess, tempfile, unittest
 from pathlib import Path
 from test_media import C, ROOT
 source=(ROOT/'src/a2fc.c').read_text()
-run=source[source.index('static void overlay_run('):source.index('\n#pragma code-name (push, "LC")',source.index('static void overlay_run('))]
+run=source[source.index('void overlay_run('):source.index('\n#pragma code-name (push, "LC")',source.index('void overlay_run('))]
 base=C[:C.index('int main(int argc,char**argv){')]
 base=base.replace('#include "src/a2fc_plugin.h"','struct A2fcApi;\n#include "src/a2fc_plugin.h"')
 base=base.replace('unsigned int i;struct Panel*pan=&panels[p];','unsigned int i;struct Panel*pan=&panels[p];if(p)return 1;')

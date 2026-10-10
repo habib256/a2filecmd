@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hash only this release's five images and manual, never stale dist contents."""
+"""Hash only this release's four images and manual, never stale dist contents."""
 import hashlib
 from distribution import ROOT, VERSION, image_names
 

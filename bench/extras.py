@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Published 140K essentials and complete 800K: boot, menus and missing tools."""
+"""Internal compact BOOT fixture and complete 800K: boot, menus and missing tools."""
 import re
 import shutil
 import sys
@@ -28,7 +28,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='a2fc-distribution-') as directory:
         tmp = Path(directory)
         floppy = tmp / 'essential.po'
-        shutil.copyfile(ROOT / 'dist' / image_name('140K').replace('.dsk', '.po'), floppy)
+        shutil.copyfile(ROOT / 'build-6502/legacy/BOOT.po', floppy)
         with Pom2(scratch(tmp), floppy=floppy, port=6830) as p:
             s = Session(p); s.boot()
             check_menu(s, p, essential)

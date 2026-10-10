@@ -10,8 +10,8 @@ two picture kinds.
 | --- | --- | --- | --- |
 | `PH.` | A photo: a rectangle cut from the clip art and edited | B | `$4000` |
 | `BN.` | A banner, the newsletter's heading | B | `$4000` |
-| `PN.` | A text panel (not read yet) | B | `$4000` |
-| `PG.` | A page layout (not read yet) | B | `$98A5` |
+| `PN.` | A text panel (NEWSPAN) | B | `$4000` |
+| `PG.` | A page layout (NEWSPAGE) | B | `$98A5` |
 
 Copied to ProDOS (A2 File Cmd's `C` from a DOS 3.3 disk, CiderPress, ADTPro),
 a photo or a banner becomes a BIN file (`$06`) with auxiliary type `$4000`.
@@ -186,4 +186,35 @@ existing names, Escape, missing or damaged indexes and wrong panels.
 editions: a real clip-art disk image opened from the hard disk, then another
 in drive 2 of the Disk II, every page read back from the destination volume.
 
-Not yet: the text panels `PN.*` and page layouts `PG.*`.
+## Text panels PN. and page layouts PG.
+
+PN. uses the BIN $4000 payload. The first two bytes are the little-endian
+text length; bytes 2 and 3 are preserved editor options (observed 0..2 and
+0..1); bytes 4 and 5 are editor state, not text. Byte 6 counts photos n.
+From byte 7: n stacking/order bytes, n four-byte rectangles, n eight-byte
+high-bit photo names. Text begins at 7 + 13*n and spans the declared length.
+There is no extra trailing data. The $7F/$FF text sentinel is not a glyph;
+other text is printable seven-bit ASCII or CR, with bit 7 carrying original
+styling. NEWSPAN lists the PH. references and restores monospaced text,
+without synthesizing fonts or placing neighbouring photo bitmaps.
+
+PG. is exactly 99 bytes, BIN $98A5. Byte 0 selects 0..3: letter with banner,
+letter without banner, legal with banner, legal without banner. Ten
+fixed-width eight-byte component names start at byte 1; the eight-byte page
+name starts at 81. Ten one-byte size codes follow at 89. Active components
+number 7 + layout: the first is BN. for the two banner layouts; all other
+active slots name PN. panels. Full eight-character names need no NUL.
+NEWSPAGE displays these slots and codes in stored order. Assembling and
+rendering the newspaper from its neighbours remains future work.
+
+The offsets and bounds match all 78 distinct PN. and 22 distinct PG. files
+in the local DOS corpus. The original MD2 routine at $60AD computes the text
+pointer from $4006 as $4007 + 13*n; the PRNT routine at $1843 uses 7 + the
+layout byte to count components and selects the banner for odd counts.
+The files/program are not redistributed. Test fixtures are synthetic.
+
+Both decoders read and successfully close a complete validation pass before
+display, reopen the source for rendering, and report second-pass failures.
+They support original DOS drives/images and BIN copies on ProDOS, use MAIN
+only, and preserve source bytes and AUX. No extraction or neighbouring-file
+creation is involved.

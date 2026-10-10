@@ -5,9 +5,44 @@ downloads and installation.
 
 ## [Unreleased]
 
+- Integrate direct text, hex, raw 40-column lo-res and HGR readers for real
+  DOS 3.3 drives and DOS-order images through T/H/I and Return. Ship
+  DOSVIEW in the complete ProDOS editions. No extraction, temporary
+  files or AUX storage; write/execute guards remain. HGR accepts raw BIN
+  pages loaded at $2000/$4000, 8192 or 8184 bytes, through a handoff linked
+  below $2000. Compressed/DHGR pictures and other readers
+  still require extraction; physical hardware qualification is pending.
+
+- Centralize automatic Return/I routing through IDENT on ProDOS and DOS
+  3.3, with private IDREAD/IDFORMATS stages that close their source files before
+  handing off. Known format rules
+  choose eligible readers; candidates still validate in the reader. Epistole
+  and Extasie remain ProDOS-only. Unknown formats retain generic inspection.
+- Add direct Newsroom PH./BN. photos/banners on DOS drives and images; decode
+  PN. text/photo references and PG. layout/component records on DOS and ProDOS.
+  PN./PG. are text/structure views; original fonts and assembled page rendering
+  remain unsupported. All readers preserve sources and AUX.
+- Withdraw the ProDOS 140K edition from builds, CI downloads, release
+  inventories and the current v0.9.6 assets. Retain only an internal compact
+  BOOT regression fixture. Public images are DOS3.3, 800K and the two XLs.
 - Add a foreground Music Construction Set player for 2304-byte Mockingboard
-  exports, with pause, restart and tempo controls. Editor `.OBJ` score
-  conversion is still pending. No AUX memory or source-file writes.
+  exports and paired Apple II editor scores (`NAME` + `NAME.OBJ`), with
+  pause, restart and tempo controls. Both score files validate and close
+  before sound starts. Stored editor instruments/tempo remain unsupported.
+  Add DOSMCS in the Music menu
+  for direct exports and paired editor scores from real DOS 3.3 drives
+  and DOS-order images. Full DOS names identify companions; separate
+  import/play stages preserve the memory bounds and refuse incomplete,
+  incompatible or unclosed stage files before execution. No AUX
+  memory, temporary or source-file writes.
+- Add DOSINT and DOSBAS for direct Integer BASIC and Applesoft listings from real DOS 3.3 drives
+  and DOS-order images, using the existing decoder and a 64-page ring.
+  No execution, extraction or AUX; source errors and malformed/oversized
+  lines are reported. Applesoft links from $0801 and exact EOF are checked;
+  strings, DATA and REM remain literal. Included C sources now rebuild their wrapper overlays.
+- Extend SCASM to read attested DOS 3.3 type-I sources directly, with
+  two validation/display passes and exact 65535-byte EOF. Sources and AUX
+  remain intact; a wide stream offset avoids the DOS-prefix wrap at 64K.
 - Add explicit `!` readers for Apple Pascal text, S-C Assembler, Merlin,
   LISA v2, extracted Gutenberg text and Teach data forks, plus a monochrome
   text-screen Fontrix glyph preview. LISA v3–v5, Teach styles and Gutenberg

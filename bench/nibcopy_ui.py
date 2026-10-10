@@ -22,7 +22,7 @@ def refuse_program_volume():
     with tempfile.TemporaryDirectory(prefix='nibcopy-boot-') as tmp:
         tmp=Path(tmp)
         boot=tmp/'boot.po';companion=tmp/'tools.po'
-        shutil.copyfile(ROOT/f'dist/A2FILECMD-PRODOS-140K-{VERSION}.po',boot)
+        shutil.copyfile(ROOT/'build-6502/legacy/BOOT.po',boot)
         shutil.copyfile(ROOT/'build-6502/legacy/DISKTOOLS.po',companion)
         original_boot=boot.read_bytes()
         source=tmp/'source.dsk';source.write_bytes(build([('SOURCE',0,bytes(range(256))*20)]));source.chmod(0o444)
@@ -47,7 +47,7 @@ def main(single=False):
         tmp=Path(tmp)
         boot=tmp/'boot.po';companion=tmp/'tools.po'
         for target,role in ((boot,'BOOT'),(companion,'DISKTOOLS')):
-            shutil.copyfile((ROOT/f'dist/A2FILECMD-PRODOS-140K-{VERSION}.po' if role == 'BOOT' else ROOT/f'build-6502/legacy/{role}.po'),target)
+            shutil.copyfile((ROOT/'build-6502/legacy/BOOT.po' if role == 'BOOT' else ROOT/f'build-6502/legacy/{role}.po'),target)
         original_boot=boot.read_bytes();original_tools=companion.read_bytes()
         source=tmp/'source.dsk';target=tmp/'target.dsk'
         original=build([('SOURCE',0,bytes(range(256))*20)])

@@ -1,7 +1,7 @@
 # A2 File Cmd -- two-panel ProDOS file manager, Apple IIe.
 #
 #   make            the launcher, resident and overlays, in build/ or build-6502/
-#   make disk       140K essentials, 800K complete, Mini, XL 6502 and
+#   make disk       800K complete, Mini, XL 6502 and
 #                   XL 65C02-enhanced. ARCH=enh builds only its XL.
 #   make benchfloppy  build/A2FILECMD-full.po: a 65C02 floppy with the core
 #                   overlay, for the benches only -- never shipped
@@ -37,7 +37,6 @@ CLDEFS = --asm-define A2_6502 --asm-define CC65_MASTER -DA2FC_6502 -DA2FC_NOMOUS
 MOUSEOBJ =
 # The edition and the processor, in the file name.
 CPU = 6502
-IMG = A2FILECMD-PRODOS-140K
 BUILD_SUFFIX = -6502
 BIN2SIZE = 0x0D00
 LAYOUT_BIG = --big BINARY2
@@ -49,7 +48,6 @@ CLDEFS = -DA2FC_BIG_BINARY2
 MOUSEOBJ = $(BUILD)/mouse.o
 # The processor precedes the disk role for alphabetical grouping.
 CPU = 65C02
-IMG = A2FILECMD-PRODOS-140K
 BUILD_SUFFIX =
 BIN2SIZE = 0x0D00
 LAYOUT_BIG = --big BINARY2
@@ -96,10 +94,10 @@ CODE   = $(BUILD)/A2FILE.CODE.BIN
 # two segments in its file: NAME (code) then NAMERO (strings). See
 # src/a2fc_plugin.h for the header and the service table.
 PLUGINS = BATCH NAV CATALOG OPEN COPY FORMAT IMAGE TEXT HEX DELETE HELP EDIT RUN ATTR MENU DISKIMG IMGFS DOSGET UNSHRINK BASLIST COMPARE SEARCH BINARY2 AWP
-# Essential 140K: file operations, editor, readers, format and verify.
+# Historical compact BOOT fixture, never distributed.
 # No catalog advertises missing tools; IMGFS also extracts mounted images.
 # COMPARE provides sorting and panel comparison; MOVE handles marked moves.
-PLUGINS_FLOPPY = BATCH NAV CATALOG OPEN COPY FORMAT HELP TEXT HEX DELETE RUN ATTR MENU IMGFS COMPARE EDIT
+BENCH_BOOT_NATIVE = BATCH NAV CATALOG OPEN COPY FORMAT HELP TEXT HEX DELETE RUN ATTR MENU IMGFS COMPARE EDIT
 # The service-table overlays: src/plugins/NAME.c, each compiled and linked
 # on its own like a third party's (sdk/plugin.cfg, no crt0, nothing of
 # A2FILE.CODE), because the resident is full -- they reach the program only
@@ -107,8 +105,8 @@ PLUGINS_FLOPPY = BATCH NAV CATALOG OPEN COPY FORMAT HELP TEXT HEX DELETE RUN ATT
 # A header written `PLUGIN_MAGIC, OVERLAY_BIG,` (one line) is linked as a big
 # overlay ($1B00-$3FFF); `PLUGIN_MAGIC, 0,` as a small one.
 XPLUGINS = $(sort $(basename $(notdir $(wildcard $(SRC)/plugins/*.c))))
-# The ones that also go on the floppy edition (tools/check_images.py keeps BOOT's free blocks).
-XPLUGINS_FLOPPY = $(filter move verify,$(XPLUGINS))
+# Overlays in the historical compact BOOT regression fixture.
+BENCH_BOOT_PLUGINS = $(filter dosview move verify,$(XPLUGINS))
 # The cc65 target library for the plugin link: the one of the machine's cc65
 # for apple2enh, the one of cc65 master for apple2.
 ifeq ($(ARCH),6502)
@@ -120,7 +118,10 @@ CCDEFS =
 endif
 # These overlays reserve $3000-$3FFF for scratch (FIND: $3100-$3FFF): code AND BSS must
 # stop before their scratch area. ld65 enforces that boundary at link time.
-XPLUGINS_SCRATCH = music mcs bootblk find goto mdview wipe dgrview fixtypes
+XPLUGINS_SCRATCH = music bootblk find goto mdview wipe dgrview fixtypes
+# MCS: code+BSS below $3680, normalized song at $3680-$3F7F.
+# DOSMCS/MCSIMPORT: code below $3700, BSS/handoff at $0C00-$0FFF, one FILE.
+# MCSPLAY: code+BSS below $3700. Canonical song at $3700-$3FFF.
 # DOCVIEW: code and BSS in $1B00-$3D5F (its calculator), scratch $3D60-$3FFF.
 # These decode a picture into the graphics page, so they are big (the core
 # sets the tags aside and rereads the panels) but their CODE must still stop
@@ -133,20 +134,19 @@ XPLUGINS_HGR = purple extasie arlequin macpaint shapes packfot paint816 fontview
 # DUET stages its song at $2400 (7 KB, the largest known Electric Duet
 # files are 5.5 KB): code and BSS are linked into $1B00-$23FF.
 XPLG = $(patsubst %,$(BUILD)/%.PLG,$(XPLUGINS))
-XPLG_FLOPPY = $(patsubst %,$(BUILD)/%.PLG,$(XPLUGINS_FLOPPY))
+BENCH_BOOT_OVERLAYS = $(patsubst %,$(BUILD)/%.PLG,$(BENCH_BOOT_PLUGINS))
 SYSTEM = $(BUILD)/A2FILE.SYSTEM.SYS
 FLOPPY_SYSTEM = $(BUILD)/A2FILE.FLOPPY.SYS
-PO     = $(DIST)/$(IMG)-$(A2FC_VERSION).po
-DSK    = $(DIST)/$(IMG)-$(A2FC_VERSION).dsk
+PO     = $(BUILD)/legacy/BOOT.po
 include config/packages.mk
 CATALOG = $(BUILD)/EXTRAS.CAT
 
-OBJS = $(BUILD)/crt0.o $(BUILD)/overlay.o $(BUILD)/open.o $(BUILD)/unshrink.o $(VDRIVEOBJ) $(BUILD)/a2fc_mli.o $(BUILD)/chain.o \
+OBJS = $(BUILD)/crt0.o $(BUILD)/overlay.o $(BUILD)/open.o $(BUILD)/fs_keys.o $(BUILD)/unshrink.o $(VDRIVEOBJ) $(BUILD)/a2fc_mli.o $(BUILD)/chain.o \
        $(BUILD)/mb_probe.o $(BUILD)/memory_swap.o $(BUILD)/mli_safe.o $(MOUSEOBJ) $(BUILD)/format_diskii.o $(BUILD)/format_mli.o
 
 .DELETE_ON_ERROR:
 
-.PHONY: all disk benchpackages benchfloppy xplugins test bench qualify example clean pom2host
+.PHONY: all disk benchboot benchpackages benchfloppy xplugins test bench qualify example clean pom2host
 all: $(SYSTEM) $(CODE)
 
 $(BUILD) $(DIST):
@@ -181,26 +181,30 @@ $(SYSTEM) $(FLOPPY_SYSTEM): $(BUILD)/crt0_loader.o $(BUILD)/loader_mli.o Makefil
 	  -o $@ $(BUILD)/crt0_loader.o $(BUILD)/loader_mli.o \
 	  $(BUILD)/$(if $(filter $(FLOPPY_SYSTEM),$@),launcher_floppy,launcher).o $(IOBUF)
 
-$(CODE): $(SRC)/plugins/file_install.h $(SRC)/file_output.h $(SRC)/file_copy.h $(SRC)/tree_walk.h $(SRC)/display_types.h $(SRC)/launch.h $(SRC)/errors.h $(SRC)/media.h $(SRC)/viewer_ids.h $(SRC)/duet_probe.h $(SRC)/batch.h $(SRC)/config.h $(SRC)/format.c $(SRC)/a2fc.c $(SRC)/a2fc.cfg $(SRC)/a2fc_plugin.h $(SRC)/music.h $(SRC)/memory_swap.h $(BUILD)/display.o $(OBJS) Makefile | $(BUILD)
+$(CODE): $(SRC)/plugins/applesoft_tokens.h $(SRC)/plugins/file_install.h $(SRC)/file_output.h $(SRC)/file_copy.h $(SRC)/tree_walk.h $(SRC)/display_types.h $(SRC)/launch.h $(SRC)/errors.h $(SRC)/media.h $(SRC)/viewer_ids.h $(SRC)/duet_probe.h $(SRC)/batch.h $(SRC)/config.h $(SRC)/format.c $(SRC)/a2fc.c $(SRC)/a2fc.cfg $(SRC)/a2fc_plugin.h $(SRC)/music.h $(SRC)/memory_swap.h $(BUILD)/display.o $(OBJS) Makefile | $(BUILD)
 	$(CL) $(CFLAGS) -D 'A2FC_VERSION="$(A2FC_VERSION)"' -C $(SRC)/a2fc.cfg \
 	  -Wl -D,__EXEHDR__=0 -Wl -D,__HIMEM__=$(HIMEM) -Wl -D,__STACKSIZE__=$(A2FC_STACK) -Wl -D,__BIN2SIZE__=$(BIN2SIZE) \
 	  -Wl -m,$(BUILD)/a2fc.map -Wl -Ln,$(BUILD)/a2fc.lbl \
-	  -o $@ $(BUILD)/crt0.o $(BUILD)/overlay.o $(BUILD)/open.o $(BUILD)/unshrink.o $(VDRIVEOBJ) $(SRC)/a2fc.c $(SRC)/format.c $(BUILD)/format_diskii.o $(BUILD)/format_mli.o $(BUILD)/a2fc_mli.o \
+	  -o $@ $(BUILD)/crt0.o $(BUILD)/overlay.o $(BUILD)/open.o $(BUILD)/fs_keys.o $(BUILD)/unshrink.o $(VDRIVEOBJ) $(SRC)/a2fc.c $(SRC)/format.c $(BUILD)/format_diskii.o $(BUILD)/format_mli.o $(BUILD)/a2fc_mli.o \
 	  $(BUILD)/display.o $(BUILD)/chain.o $(BUILD)/mb_probe.o $(BUILD)/memory_swap.o $(BUILD)/mli_safe.o \
 	  $(MOUSEOBJ) $(IOBUF)
 	@python3 $(TOOLS)/check_layout.py --lbl $(BUILD)/a2fc.lbl --bin $@ $(LAYOUT_BIG)
 
 # -- The service-table overlays ---------------------------------------------
 $(BUILD)/dosput.PLG: $(SRC)/plugins/doswrite.c
+$(BUILD)/dosbas.PLG $(BUILD)/dosint.PLG: $(SRC)/plugins/intbasic.c
+$(BUILD)/mcsplay.PLG: $(SRC)/plugins/mcs.c
 
-$(BUILD)/%.PLG: $(SRC)/plugins/%.c $(wildcard $(SRC)/plugins/*.h) $(wildcard $(SRC)/plugins/*.s) $(wildcard $(SRC)/plugins/*.inc) $(wildcard $(SRC)/plugins/pt3lib/*) $(wildcard $(SRC)/plugins/ppt3/*) $(SRC)/a2fc_plugin.h sdk/plugin.cfg sdk/find.cfg sdk/pt3.cfg sdk/nibcopy.cfg sdk/nrclip.cfg sdk/visicalc.cfg sdk/gmagic.cfg Makefile | $(BUILD)
+$(BUILD)/%.PLG: $(SRC)/plugins/%.c $(wildcard $(SRC)/plugins/*.h) $(wildcard $(SRC)/plugins/*.s) $(wildcard $(SRC)/plugins/*.inc) $(wildcard $(SRC)/plugins/pt3lib/*) $(wildcard $(SRC)/plugins/ppt3/*) $(SRC)/a2fc_plugin.h sdk/plugin.cfg sdk/find.cfg sdk/pt3.cfg sdk/nibcopy.cfg sdk/nrclip.cfg sdk/visicalc.cfg sdk/gmagic.cfg sdk/dosmcs.cfg sdk/ident.cfg $(TOOLS)/seal_mcs_stage.py Makefile | $(BUILD)
 	$(CC65BIN)cc65 -t $(TARGET) $(CCDEFS) -O -Oirs -Cl --codesize $(CODESIZE) -o $(BUILD)/$*.s $<
 	$(CC65BIN)ca65 -t $(TARGET) -o $(BUILD)/$*.o $(BUILD)/$*.s
 	@helper=; if [ -f $(SRC)/plugins/$*.s ]; then $(AS) -t $(TARGET) -o $(BUILD)/$*_svc.o $(SRC)/plugins/$*.s || exit; helper=$(BUILD)/$*_svc.o; fi; \
 	  if grep -qE 'PLUGIN_MAGIC, *OVERLAY_BIG' $<; then big=1; else big=0; fi; \
-	  $(CC65BIN)ld65 -C $(if $(filter find,$*),sdk/find.cfg,$(if $(filter pt3,$*),sdk/pt3.cfg,$(if $(filter nibcopy,$*),sdk/nibcopy.cfg,$(if $(filter nrclip,$*),sdk/nrclip.cfg,$(if $(filter visicalc,$*),sdk/visicalc.cfg,$(if $(filter gmagic,$*),sdk/gmagic.cfg,sdk/plugin.cfg)))))) -D __OVLSIZE__=$$( if [ $$big = 1 ]; then echo $(if $(filter $*,$(XPLUGINS_HGR)),0x0500,$(if $(filter $*,$(XPLUGINS_SCRATCH)),$(if $(filter find,$*),0x1600,0x1500),$(if $(filter docview,$*),0x2260,$(if $(filter volinfo blkview blkedit fixit repair,$*),0x249E,$(if $(filter duet,$*),0x0900,0x2500))))); elif [ "$*" = verify ]; then echo 0x04C2; else echo 0x0500; fi ) -m $(BUILD)/$*.map -Ln $(BUILD)/$*.lbl -o $@ $(BUILD)/$*.o $$helper $(CC65LIB) && \
+	  $(CC65BIN)ld65 -C $(if $(filter find,$*),sdk/find.cfg,$(if $(filter pt3,$*),sdk/pt3.cfg,$(if $(filter nibcopy,$*),sdk/nibcopy.cfg,$(if $(filter nrclip,$*),sdk/nrclip.cfg,$(if $(filter visicalc,$*),sdk/visicalc.cfg,$(if $(filter gmagic,$*),sdk/gmagic.cfg,$(if $(filter dosmcs mcsimport,$*),sdk/dosmcs.cfg,$(if $(filter ident idread idformats,$*),sdk/ident.cfg,sdk/plugin.cfg)))))))) -D __OVLSIZE__=$$( if [ $$big = 1 ]; then echo $(if $(filter $*,$(XPLUGINS_HGR)),0x0500,$(if $(filter $*,$(XPLUGINS_SCRATCH)),$(if $(filter find,$*),0x1600,0x1500),$(if $(filter mcs,$*),0x1B80,$(if $(filter dosmcs mcsimport mcsplay,$*),0x1C00,$(if $(filter docview,$*),0x2260,$(if $(filter volinfo blkview blkedit fixit repair,$*),0x249E,$(if $(filter duet,$*),0x0900,$(if $(filter ident idread idformats,$*),0x2500,0x2500)))))))); elif [ "$*" = verify ]; then echo 0x04C2; else echo 0x0500; fi ) -m $(BUILD)/$*.map -Ln $(BUILD)/$*.lbl -o $@ $(BUILD)/$*.o $$helper $(CC65LIB) && \
 	  limit=$$( [ $$big = 1 ] && echo $(if $(filter $*,$(XPLUGINS_HGR)),1280,$(if $(filter duet,$*),2304,9472)) || echo 1280 ) && \
 	  { test $$(wc -c < $@) -le $$limit || { echo "$@: $$(wc -c < $@) bytes, more than its $$limit-byte window"; rm -f $@; exit 1; }; } && \
+	  if [ "$*" = ident ] || [ "$*" = idread ] || [ "$*" = idformats ]; then python3 $(TOOLS)/seal_mcs_stage.py $@ $(BUILD)/$*.lbl 0x4000 1 || exit; fi && \
+	  if [ "$*" = mcsimport ] || [ "$*" = mcsplay ]; then python3 $(TOOLS)/seal_mcs_stage.py $@ $(BUILD)/$*.lbl || exit; fi && \
 	  echo "$@: $$(wc -c < $@) bytes ($$( [ $$big = 1 ] && echo big || echo small ) overlay)"
 xplugins: $(XPLG)
 all: xplugins
@@ -240,7 +244,7 @@ $(TAKE1): $(SRC)/take1/take1.s $(SRC)/take1/dos.s $(SRC)/take1/engine.s $(SRC)/t
 all: $(TAKE1)
 
 # -- Published disks --------------------------------------------------------
-# 140K is self-contained with essential tools; 800K has all tools.
+# 800K has all tools; there is no published ProDOS 140K edition.
 # XL contains the same complete toolset plus the demo corpus.
 STAGE = $(BUILD)/vol
 HDV = $(BUILD)/A2FILECMD-XL.hdv
@@ -258,7 +262,7 @@ disk:
 	$(MAKE) ARCH=6502 BOTH_EDITIONS= disk
 	$(MAKE) ARCH=enh BOTH_EDITIONS= disk
 else ifeq ($(ARCH),6502)
-disk: $(PO) $(DSK) $(PO800) $(TWOMG) mini-disk
+disk: $(PO800) $(TWOMG) mini-disk
 else
 disk: $(TWOMG)
 endif
@@ -273,14 +277,15 @@ define stage
 	for p in $(1); do cp $(CODE).$$p "$(STAGE)/A2FILE/$$p.PLG#061B00"; done
 	for p in $(2); do cp $(BUILD)/$$p.PLG "$(STAGE)/A2FILE/$$(echo $$p | tr a-z A-Z).PLG#061B00"; done
 	cp $(DATA)/A2FILE.HELP.TXT $(STAGE)/A2FILE/A2FILE.HELP.TXT
-	@if test -n "$(filter mcs,$(2))"; then mkdir -p $(STAGE)/LICENSES; cp $(DATA)/licenses/* $(STAGE)/LICENSES/; fi
+	@if test -n "$(filter mcs dosmcs,$(2))"; then mkdir -p $(STAGE)/LICENSES; cp $(DATA)/licenses/* $(STAGE)/LICENSES/; fi
 endef
 
-# BOOT: the universal 6502 floppy.
+# Internal BOOT fixture for historical floppy and disk-swap regressions.
 ifeq ($(ARCH),6502)
-$(PO): STAGE = $(BUILD)/floppy
-$(PO): $(FLOPPY_SYSTEM) $(STAGE_DEPS) $(XPLG_FLOPPY) $(TOOLS)/po2dsk.py | $(DIST)
-	$(call stage,$(PLUGINS_FLOPPY),$(XPLUGINS_FLOPPY))
+benchboot: $(PO)
+$(PO): STAGE = $(BUILD)/legacy/boot-stage
+$(PO): $(FLOPPY_SYSTEM) $(STAGE_DEPS) $(BENCH_BOOT_OVERLAYS) $(TOOLS)/po2dsk.py | $(DIST)
+	$(call stage,$(BENCH_BOOT_NATIVE),$(BENCH_BOOT_PLUGINS))
 	cp $(FLOPPY_SYSTEM) $(STAGE)/A2FILE.SYSTEM.SYS
 	cp $(DATA)/RECOVER.TXT $(STAGE)/
 	python3 $(TOOLS)/mkvolume.py $(STAGE) $(PO) --volume $(VOLUME) \
@@ -288,8 +293,6 @@ $(PO): $(FLOPPY_SYSTEM) $(STAGE_DEPS) $(XPLG_FLOPPY) $(TOOLS)/po2dsk.py | $(DIST
 	@python3 $(TOOLS)/prodos_read.py $(PO) | head -1
 	@echo "==> $(PO): the boot floppy ($(CPU))"
 
-$(DSK): $(PO) $(TOOLS)/po2dsk.py
-	python3 $(TOOLS)/po2dsk.py $< $@
 
 endif
 
@@ -355,6 +358,10 @@ $(FULLPO): $(STAGE_DEPS) $(FLOPPY_SYSTEM) $(DATA)/BASIC.SYSTEM.SYS
 	@echo "==> $(FULLPO): the bench floppy, core overlays ($(ARCH))"
 
 test: test-mini $(TAKE1)
+	python3 $(TOOLS)/test_fs_keys.py
+	python3 $(TOOLS)/test_dos_stream.py
+	python3 $(TOOLS)/test_dos_hgr.py
+	python3 $(TOOLS)/test_dos_news.py
 	python3 $(TOOLS)/test_loader_prefix.py
 	python3 $(TOOLS)/test_machine_check.py
 	python3 $(TOOLS)/test_chain.py
@@ -458,6 +465,10 @@ test: test-mini $(TAKE1)
 	python3 $(TOOLS)/test_music.py
 	python3 $(TOOLS)/test_duet.py
 	python3 $(TOOLS)/test_mcs.py
+	python3 $(TOOLS)/test_mcs_score.py
+	python3 $(TOOLS)/test_dosmcs.py
+	python3 $(TOOLS)/test_mcs_handoff.py
+	python3 $(TOOLS)/test_ident_handoff.py
 	python3 $(TOOLS)/test_retrotext.py
 	python3 $(TOOLS)/test_fontrix.py
 	python3 $(TOOLS)/test_pt3.py
@@ -504,6 +515,10 @@ test: test-mini $(TAKE1)
 	python3 $(TOOLS)/squeeze_ref.py --selftest
 	python3 $(TOOLS)/test_unsq.py
 	python3 $(TOOLS)/test_intbasic.py
+	python3 $(TOOLS)/test_dosint.py
+	python3 $(TOOLS)/test_dosbas.py
+	python3 $(TOOLS)/test_dosscasm.py
+	python3 $(TOOLS)/test_newsdoc.py
 	python3 $(TOOLS)/test_find.py
 	python3 $(TOOLS)/test_text_viewer.py
 	python3 $(TOOLS)/test_mdview.py
