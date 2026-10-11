@@ -15,7 +15,7 @@ static int read_status(FILE*);
 #define ferror read_status
 #include "src/plugins/goto.c"
 #undef ferror
-static int fault, opens, closes;
+static int fault, opens, closes, renames;
 static FILE* failed_read;
 static int read_status(FILE* f) { return f==failed_read || ferror(f); }
 static FILE* open_file(const char* p,const char* mode) {
@@ -45,6 +45,7 @@ static unsigned char file_call(unsigned char cmd,void* unused) {
     char from[81],to[81];struct stat st;FILE* f;
     (void)unused;
     if(cmd==0xC2) {
+        ++renames;
         decode(from,ren.from);decode(to,ren.to);
         if((fault==17 || fault==18) && strstr(from,"GOTO.TMP"))return 0x27;
         if(fault==18 && strstr(from,"GOTO.BAK"))return 0x27;
@@ -58,10 +59,21 @@ static unsigned char file_call(unsigned char cmd,void* unused) {
     }
     decode(from,info.path);
     if(cmd==0xC4) {
+        int late=strstr(from,"GOTO.CFG") && closes>=3;
         if(fault==2 || (fault==22 && strstr(from,"GOTO.BAK")) ||
-           (fault==23 && strstr(from,"GOTO.CFG")))return 0x27;
+           (fault==23 && strstr(from,"GOTO.CFG")) ||
+           (late && fault==31))return 0x27;
+        if(late && fault==35)return 0x46;
         memset(info.fields,0,15);info.fields[0]=fault==24?0x81:0xE3;
         info.fields[4]=fault==25?0:fault==26?13:1;
+        if(late) {
+            if(fault==30)info.fields[0]=0xC1;
+            if(fault==32)info.fields[4]=5;
+            if(fault==33)info.fields[4]=13;
+            if(fault==34)info.fields[0]=0x83;
+            if(fault==36)info.fields[0]=0x43;
+            if(fault==37)info.fields[4]=0;
+        }
         return stat(from,&st)?(errno==ENOENT?0x46:0x27):0;
     }
     if(cmd==0xC0){f=fopen(from,"wx");if(!f)return errno==EEXIST?0x47:0x27;return fclose(f)?0x27:0;}
@@ -84,17 +96,20 @@ int main(int argc,char** argv) {
     loaded=load();
     if(argc>3){unsigned char i;printf("%u",loaded);for(i=0;i<count;++i)printf("|%s",slot(i));printf("\n");return 0;}
     if(loaded){count=2;strcpy(slot(0),"/V/NEW");strcpy(slot(1),"/V/SECOND");save(NONE);}
+    if(fault>=30 && fault<=37 && (renames || closes!=3))abort();
     printf("%u|%s\n",loaded,N);return 0;
 }
 '''
 
 
 class GotoSafety(unittest.TestCase):
+    stem = 'GOTO'
+    harness = HARNESS
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory(prefix='goto-test-', dir='/tmp')
         cls.root = Path(cls.tmp.name)
-        c = cls.root / 'test.c'; c.write_text(HARNESS)
+        c = cls.root / 'test.c'; c.write_text(cls.harness)
         cls.exe = cls.root / 'test'
         subprocess.run(['cc', '-std=c99', '-Wno-unknown-pragmas', '-I', str(ROOT),
                         str(c), '-o', str(cls.exe)], check=True, capture_output=True)
@@ -104,8 +119,9 @@ class GotoSafety(unittest.TestCase):
         cls.tmp.cleanup()
 
     def run_case(self, fault=0, reserved=None, missing=False):
+        if reserved: reserved = reserved.replace('GOTO', self.stem)
         with tempfile.TemporaryDirectory(prefix='g-', dir='/tmp') as folder:
-            p = Path(folder); cfg=p/'GOTO.CFG'; tmp=p/'GOTO.TMP'; bak=p/'GOTO.BAK'
+            p = Path(folder); cfg=p/(self.stem+'.CFG'); tmp=p/(self.stem+'.TMP'); bak=p/(self.stem+'.BAK')
             old=b'/V/OLD\r/V/KEEP\r'; new=b'/V/NEW\r/V/SECOND\r'
             if not missing: cfg.write_bytes(old)
             if reserved: (p/reserved).write_bytes(b'previous recovery')
@@ -119,14 +135,14 @@ class GotoSafety(unittest.TestCase):
             else:
                 self.assertEqual(cfg.read_bytes(),new if success else old)
                 if reserved: self.assertEqual((p/reserved).read_bytes(),b'previous recovery')
-                if fault in (17,21,27,29):self.assertEqual(tmp.read_bytes(),new)
+                if fault in (17,21,27,29) or 30<=fault<=37:self.assertEqual(tmp.read_bytes(),new)
                 elif fault==20:self.assertEqual(tmp.read_bytes(),new[:len(new)//2])
-                elif reserved!='GOTO.TMP': self.assertFalse(tmp.exists())
+                elif reserved!=self.stem+'.TMP': self.assertFalse(tmp.exists())
                 if fault==19: self.assertEqual(bak.read_bytes(),old)
                 elif fault==29:self.assertEqual(bak.read_bytes(),b'late arrival')
-                elif reserved!='GOTO.BAK': self.assertFalse(bak.exists())
-            if fault in (17,18,20,21,27,28,29):
-                self.assertIn('GOTO.TMP kept',result)
+                elif reserved!=self.stem+'.BAK': self.assertFalse(bak.exists())
+            if fault in (17,18,20,21,27,28,29) or 30<=fault<=37:
+                self.assertIn(self.stem+'.TMP kept',result)
                 before={f.name:f.read_bytes() for f in p.iterdir()}
                 subprocess.check_output([self.exe,p,'0'],text=True)
                 self.assertEqual({f.name:f.read_bytes() for f in p.iterdir()},before)
@@ -138,7 +154,7 @@ class GotoSafety(unittest.TestCase):
         panel: V then deleted the only copy of the file it moved. ProDOS
         upshifts a path; valid_path does too, the file left as it was."""
         with tempfile.TemporaryDirectory(prefix='g-', dir='/tmp') as folder:
-            p = Path(folder); cfg = p/'GOTO.CFG'
+            p = Path(folder); cfg = p/(self.stem+'.CFG')
             cfg.write_bytes(b'/workhd/dir\r/V/Keep.2\r')
             out = subprocess.check_output([self.exe, p, '0', 'show'], text=True).strip()
             self.assertEqual(out, '1|/WORKHD/DIR|/V/KEEP.2')
@@ -160,6 +176,10 @@ class GotoSafety(unittest.TestCase):
 
     def test_destination_metadata_and_protections_refuse_before_create(self):
         for fault in (23,24,25,26):
+            with self.subTest(fault=fault):self.run_case(fault)
+
+    def test_destination_changes_after_readback_keep_original_and_verified_temp(self):
+        for fault in range(30,38):
             with self.subTest(fault=fault):self.run_case(fault)
 
     def test_combined_failure_and_cleanup_failure_preserves_bytes_on_retry(self):

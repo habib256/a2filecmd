@@ -70,19 +70,29 @@ static unsigned int hit_count;
 /* The panel's name is not the disk's: say which file in the words the user
  * can check, the panel line and the drive. */
 static char question[64];
+/* The exact catalog entry the question was decided on. Reading it writes
+ * only this main-memory snapshot; no AUX is used. Its name is DOS's full
+ * 30 bytes, not the shortened/sanitized panel name. */
+static unsigned char original_entry[35];
 
 /* The catalog entry as it is on the disk right now, or 0: re-read, its link
- * still the one the panel showed, still unlocked. Every write goes through
- * this, after the question and after a second audit. */
+ * still the one the panel showed, still unlocked, and every entry byte
+ * unchanged since the first audit. Every write goes through this, after
+ * the question and after a second audit. */
 static unsigned char* entry_now(void) {
  unsigned char* e;
  if(!audit() || !hit_cat)return 0;
  if(!read_sector(272+hit_cat,cat))return 0;
  e=cat+11+hit_slot*35;
- if(e[0]!=want_track || e[1]!=want_sector || (e[2]&0x80))return 0;
+ if(e[0]!=want_track || e[1]!=want_sector || (e[2]&0x80) ||
+    memcmp(e,original_entry,35))return 0;
  return e;
 }
 
+/* 0 refuses before writing, 1 succeeds, 2 has a verified catalog change
+ * but a failed bitmap write, 3 cannot establish the catalog's outcome.
+ * Physical errors may have committed bytes: never claim they wrote none,
+ * and never retry them. Only the confirmed catalog/bitmap are targeted. */
 static unsigned char do_delete(void) {
  unsigned char* e=entry_now();
  if(!e)return 0;
@@ -90,13 +100,12 @@ static unsigned char do_delete(void) {
   * byte of the name, which is where UNDELETE reads it back from. That byte
   * is the thirtieth character of the name: DOS overwrites it too. */
  e[32]=e[0];e[0]=0xFF;
- if(!write_sector(272+hit_cat,cat))return 0;
+ if(!write_sector(272+hit_cat,cat))return 3;
  /* The entry is gone from the catalog: only now may its sectors go back to
   * the bitmap, and only its own, walked from the chain audit() validated. */
  free_victim();
- /* 2: the file is deleted and its sectors are still marked in use. Saying
-  * "nothing deleted" here would be false, and saying "deleted" would hide
-  * the lost space; FIXIT is what finds sectors no entry claims. */
+ /* The bitmap may have been partially written despite failure: its exact
+  * state is unknown, so do not claim that all sectors remain allocated. */
  return write_sector(272,vtoc)?1:2;
 }
 
@@ -104,7 +113,7 @@ static unsigned char do_rename(void) {
  unsigned char* e=entry_now();
  if(!e || name_taken)return 0;
  RF(memcpy)(e+3,name,30);
- return write_sector(272+hit_cat,cat);
+ return write_sector(272+hit_cat,cat)?1:3;
 }
 
 /* The typed name into `name`, DOS style: high bit set, $A0 to the end. 0
@@ -146,6 +155,8 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
  a.memset(name,0xA0,30);
  if(!audit()){note(s_consistency);return;}
  if(!hit_cat){note("That file is no longer in the catalog.");return;}
+ if(!read_sector(272+hit_cat,cat)){note(s_consistency);return;}
+ RF(memcpy)(original_entry,cat+11+hit_slot*35,35);
 
  a.bar_begin();
  a.keys_bar(0,"D Delete,R Rename,ESC Back");
@@ -160,8 +171,9 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
   if(!RF(confirm)(question))return;
   n=do_delete();
   if(!n){note("Nothing deleted; the disk is unchanged.");return;}
+  if(n==3){note("Delete uncertain: catalog write failed. Check disk before retry.");return;}
   note(n==1?"Deleted from the DOS 3.3 disk."
-          :"Deleted, but its sectors stay in use: run FIXIT.");
+          :"Deleted; bitmap write failed. Check disk with FIXIT.");
   return;
  }
  if(key=='R') {
@@ -170,7 +182,9 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
   if(name_taken){note("That name is already on the DOS 3.3 disk.");return;}
   a.sprintf(question,"Rename %s to %s?",a.selected->name,a.input);
   if(!RF(confirm)(question))return;
-  if(!do_rename()){note("Not renamed; the disk is unchanged.");return;}
+  n=do_rename();
+  if(!n){note("Not renamed; the disk is unchanged.");return;}
+  if(n==3){note("Rename uncertain: catalog write failed. Check disk before retry.");return;}
   note("Renamed on the DOS 3.3 disk.");
  }
 }

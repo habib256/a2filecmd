@@ -17,13 +17,14 @@ FILES = """
 | `A2FILECMD-PRODOS-XL-{version}.2mg` | Complete bootable 32 MB image, 6502, with demonstration files |
 | `A2FILECMD-PRODOS-XL-65C02-enhanced-{version}.2mg` | Complete 32 MB image for an enhanced IIe, //c or IIgs: MouseText, optional mouse |
 | `A2FILECMD-DOS3.3-{version}.dsk` | Standalone DOS 3.3 edition for Apple II+ 48 KB, 40 columns, two drives |
-| `A2FILECMD-PRODOS-800K-{version}.po` | Bootable 800 KB ProDOS image, 6502, all tools and BASIC runtimes, no demo corpus |
+| `A2FILECMD-PRODOS-800K-{version}.po` | Bootable 800 KB ProDOS image, 6502, selected tools and BASIC runtimes, no demo corpus |
 
 The English user guide is included as `A2FILECMD-MANUAL-EN-{version}.pdf`.
 
 XL includes all {overlays} overlays, BASIC.SYSTEM, INTBASIC.SYSTEM and a DEMO
-folder sorted by kind of file. The 800K edition has the same tools without the demonstration
-corpus. Both editions are self-contained; their menus list available tools.
+folder sorted by kind of file. The 800K edition has the practical selection in
+`config/800k.mk`, without the demonstration corpus and with space left for files.
+Both editions are self-contained; their menus list available tools.
 All ProDOS editions need 128 KB and 80 columns. The choice is enhanced or
 not: the enhanced XL is for an enhanced IIe, a //c or a IIgs; every other
 ProDOS image runs on any IIe. Mini is a separate DOS 3.3 program for the 48 KB Apple II+.

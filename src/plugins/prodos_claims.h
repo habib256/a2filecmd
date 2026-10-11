@@ -67,6 +67,10 @@
  *       walk that completes without meeting it says 1 all the same -- the
  *       volume is sound, the caller's key is stale -- and the caller tells
  *       the two apart.
+ *   CLAIMS_DIRECTORY(e,b) (optional)
+ *       inspect a live directory entry before following its key b. A
+ *       caller may record the target's access flags without another walk.
+ *       Must not write the disk or alter the walk's scratch buffers.
  *
  * What it does not prove: that no two files share a block (except with a
  * directory block the walk is in or was told of), that the counts and
@@ -216,6 +220,9 @@ static unsigned char claims_walk(void)
         b = CLAIMS_WORD(e + 0x11);
         if (kind == 13) {
             if (depth == CLAIMS_DEPTH - 1) return 0;
+#ifdef CLAIMS_DIRECTORY
+            CLAIMS_DIRECTORY(e, b);
+#endif
             claims_bl[depth] = (unsigned char)claims_blk;
             claims_bh[depth] = (unsigned char)(claims_blk >> 8);
             claims_ol[depth] = (unsigned char)off;

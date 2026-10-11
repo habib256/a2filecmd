@@ -24,8 +24,8 @@ from test_imgconv_safety import HARNESS as SAFETY  # noqa: E402
 from test_six_plugins import ROOT  # noqa: E402
 
 HOST = SAFETY.replace(
-    'plugin_entry(&api);puts(note);return 0;',
-    'plugin_entry(&api);printf("%s\\n%02X %04X\\n",note,type,aux);return 0;')
+    'puts(note);return 0;',
+    'printf("%s\\n%02X %04X\\n",note,type,aux);return 0;')
 
 SIM = r'''
 #include <fcntl.h>

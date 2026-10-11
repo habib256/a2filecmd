@@ -14,11 +14,16 @@ struct CopyState {
 /* Fail the build if the borrowed pagination storage becomes too small. */
 typedef char copy_state_fits[sizeof text_starts - sizeof(struct CopyState) + 1];
 
-static const char copy_tempname[] = "A2FC.COPY";
 static void __fastcall__ copy_progress(unsigned long checked);
 static const char copy_overwrite[] = "%s: Overwrite/Skip/All/None? ";
+static unsigned char copy_replaceable(void)
+{
+    return (gfi[3] & 0xC2) == 0xC2 && (unsigned char)(gfi[7] - 1) < 3;
+}
+
 #pragma code-name(push, "COPY")
 #pragma rodata-name(push, "COPYRO")
+static const char copy_tempname[] = "A2FC.COPY";
 static void __fastcall__ copy_progress(unsigned long checked)
 {
     progress_bar(CP->name, checked, CP->size);
@@ -52,7 +57,7 @@ static unsigned char copy_stage(void)
         if (gfi[4] == 15 || !may_overwrite(CP->name)) {
             ++progress_skipped; ++progress_done; return 2;
         }
-        if ((gfi[3] & 0xC2) != 0xC2) return 0;
+        if (!copy_replaceable()) return 0;
         CP->had_old = 1;
     } else if (_oserror != 0x46) return 0;
     strcpy(CP->temp, CP->target);
@@ -120,22 +125,22 @@ static void copy_check(void)
 #define FI_STATE CP
 #include "plugins/file_install.h"
 
-static const char copy_backup_kept[] = "Check A2FC.COPY / A2FC.BAK; source kept. ? help.";
+static const char copy_backup_kept[] = "Check A2FC.COPY/A2FC.BAK; source kept.";
 static unsigned char copy_finish(void)
 {
-    unsigned char installed;
     if (!CP->ok) {
         /* Do not restore over an output whose deletion failed. */
         if (CP->owned && remove(CP->temp)) message("Cleanup failed; check target.");
         else if (!progress_abort) message(CP->bak ? copy_backup_kept : (const char*)"Failed; source kept.");
         return 0;
     }
-    installed = FILE_INSTALL_FAILED;
-    /* Checked again: the name may have appeared since. A new target sets
-     * no old entry aside and never touches A2FC.BAK. */
-    if (!CP->had_old || (!exists(CP->backup) && _oserror == 0x46)) installed = file_install();
-    if (installed != FILE_INSTALLED) { message(copy_backup_kept); return 0; }
-    if (CP->had_old && remove(CP->backup)) {
+    /* RENAME can move a write-locked entry. Recheck the current target
+     * after closing and verifying both streams; keep the verified TMP on
+     * refusal. Only TMP has been written, with no source or AUX writes.
+     * A new target never moves an old entry or touches A2FC.BAK. */
+    if ((CP->had_old && (!exists(CP->target) || !copy_replaceable() ||
+                        exists(CP->backup) || _oserror != 0x46)) ||
+        file_install() != FILE_INSTALLED || (CP->had_old && remove(CP->backup))) {
         message(copy_backup_kept); return 0;
     }
     ++a2fc_ops; ++progress_done;

@@ -16,13 +16,21 @@ static FILE *in,*out,*logfile;
 static unsigned char unit,disk,part;
 static unsigned long size,offset;
 static unsigned int bad,retried;
+/* Only owned recovery files are written; the source is always read-only.
+ * A failed close must not be converted into a successful recovery. Drop
+ * the handle even on failure, so cleanup never closes it a second time. */
+static unsigned char close_input(void) {
+    unsigned char ok;
+    if(!in)return 1;
+    ok=!a.fclose(in);in=0;return ok;
+}
 /* The resident has two ProDOS I/O buffers. Release the input before
  * opening the log; read_chunk reopens it at the saved offset. */
 static unsigned char logline(const char* text) {
     unsigned int length;unsigned char ok;
-    if(in){a.fclose(in);in=0;}
+    if(!close_input())return 0;
     logfile=a.fopen(logpath,"ab");if(!logfile)return 0;
-    length=a.strlen(text);ok=a.fwrite(text,1,length,logfile)==length;
+    length=a.strlen(text);ok=a.fwrite(text,1,length,logfile)==length && !ferror(logfile);
     if(a.fclose(logfile))ok=0;logfile=0;return ok;
 }
 /* The bar's label: 15 characters show, the escape key among them. */
@@ -38,7 +46,7 @@ static unsigned char read_chunk(unsigned int n,unsigned int block) {
         /* cc65's fread refuses a stream whose error flag is set and fseek
          * clears only EOF: without this, one failure fails all 29 retries. */
         if(in)clearerr(in);
-        ok=disk?!readblk(unit,block,buf):(in!=0 && !a.fseek(in,offset,SEEK_SET)&&a.fread(buf,1,n,in)==n);
+        ok=disk?!readblk(unit,block,buf):(in!=0 && !a.fseek(in,offset,SEEK_SET)&&a.fread(buf,1,n,in)==n && !ferror(in));
     }
     if(t>1)++retried;
     if(!ok)a.memset(buf,0,n);
@@ -53,7 +61,9 @@ static unsigned char fresh_size(void) {
     source[i]=0;
     if(a.dir_open(source)) {
         while(a.dir_next())if(!a.strcmp(a.dir_entry->name,source+i+1)){size=a.dir_entry->size;found=1;break;}
-        a.dir_close();
+        /* The frozen API declares void, but the resident returns read
+         * and close errors here. A matching entry alone is insufficient. */
+        if(((unsigned char (*)(void))a.dir_close)())found=0;
     }
     source[i]='/';return found;
 }
@@ -69,8 +79,12 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
     dunit=unit_of(other->path,0);
     /* unit_of's own note stays when it found two volumes of one name. */
     if(!unit || !dunit || unit==dunit){if(!*a.note)note("Destination must be on another online volume.");return;}
-    if(disk) {if(readblk(unit,2,buf)||(buf[4]>>4)!=15){note("Cannot determine ProDOS volume size.");return;}size=(unsigned long)rd16(buf+41)*512;}
-    else {if(getinfo(source)||info.storage>3){note("Extended/unsupported files cannot be rescued in file mode.");return;}
+    /* The declared extent must at least include the header we just read
+     * at block 2. Refuse an impossible extent before creating any output. */
+    if(disk) {if(readblk(unit,2,buf)||(buf[4]>>4)!=15||(n=rd16(buf+41))<3){note("Cannot determine ProDOS volume size.");return;}size=(unsigned long)n*512;}
+    /* Refuse invalid storage and denied reads before creating the owned
+     * log/output. Failed opens must not turn a protected file into zeros. */
+    else {if(getinfo(source)||info.storage<1||info.storage>3||!(info.access&1)){note("Source must be a readable standard file.");return;}
         if(!fresh_size()){note("Cannot read the file's directory entry.");return;}}
     if(!a.prompt("Recovery base name (up to 8 characters)","RESCUED",0))return;
     if(a.strlen(a.input)>8){note("Name too long.");return;}a.strcpy(base,a.input);
@@ -93,16 +107,33 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
             ++bad;a.sprintf(a.other_full,"ZERO block %u, offset %lu, bytes %u\r",block,offset,n);
             if(!logline(a.other_full))goto fail;
         }
-        if(a.fwrite(buf,1,n,out)!=n)goto fail;offset+=n;
+        if(a.fwrite(buf,1,n,out)!=n || ferror(out))goto fail;offset+=n;
         if(disk && (offset%8192000UL)==0) {if(a.fclose(out)){out=0;goto fail;}out=0;}
     }while(offset<size);
     if(out){if(a.fclose(out)){out=0;goto fail;}out=0;}
-    if(in){a.fclose(in);in=0;}
+    /* The directory size was read before the question. A file that grew
+     * must not be called completely recovered after copying its prefix.
+     * Missing chunks already logged are intentional; clear their stream
+     * error before a separate clean-EOF probe, including an empty file.
+     * Only our closed partial output and owned log have been written. */
+    if(!disk) {
+        if(!in)in=a.fopen(source,"rb");
+        if(!in)goto fail;
+        clearerr(in);
+        if(a.fseek(in,size,SEEK_SET) || a.fread(buf,1,1,in) || ferror(in))goto fail;
+    }
+    /* ESC during the final read or either close must not validate COMPLETE.
+     * Preserve recovered bytes and record an incomplete outcome instead. */
+    if(!close_input() || stop())goto fail;
     a.sprintf(a.other_full,"COMPLETE %lu bytes, %u zero-filled chunks, %u retried.\r",size,bad,retried);
-    if(!logline(a.other_full))goto fail;
+    /* The journal write/close can also receive ESC. An INCOMPLETE record
+     * supersedes any COMPLETE bytes already written; no output is erased. */
+    if(!logline(a.other_full) || stop())goto fail;
     a.sprintf(a.note,"\1RESCUE: %lu bytes, %u missing chunks; see %s.LOG.",size,bad,base);return;
 fail:
-    if(in){a.fclose(in);in=0;}if(out){a.fclose(out);out=0;}
-    logline("INCOMPLETE: cancelled/read-open/write error. Keep partial output.\r");
+    close_input();if(out){a.fclose(out);out=0;}
+    if(!logline("INCOMPLETE: cancelled, source changed, or I/O error. Keep partial output.\r")) {
+        note("RESCUE incomplete; log update failed. Keep partial output.");return;
+    }
     a.sprintf(a.note,"RESCUE incomplete at %lu bytes (part %u); see log.",offset,part);
 }

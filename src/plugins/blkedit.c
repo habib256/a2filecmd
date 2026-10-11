@@ -51,8 +51,19 @@
 #define UTIL_TWIN
 #define UTIL_WRITE
 #define IMAGEIO_WRITE
+#define IMAGEIO_CHECK_CLOSE
+#define IMAGEIO_CHECK_ACCESS
 #include "util.h"
 #include "imageio.h"
+
+/* Check each image transfer before the next block clears its stream flag.
+ * Raw devices use the MLI status without a FILE. Writes remain confined
+ * to the confirmed block; only MAIN buffers are used, never AUX/RAM. */
+static unsigned char checked_rw(struct Source* s,unsigned int b,unsigned char* p)
+{
+    return source_rw(s,b,p) && (s->unit || !ferror(s->file));
+}
+#define source_rw checked_rw
 
 #ifdef PLUGIN_HOST
 #define v_cprintf (a.cprintf)
@@ -113,7 +124,7 @@ static const char m_open[]  = "Invalid or unreadable image.";
 static const char m_vol[]   = "Cannot open that ProDOS volume.";
 static const char m_read[]  = "Block read failed.";
 static const char m_boot[]  = "That volume holds the running program: refused.";
-static const char m_ro[]    = "The image is locked or read-only: nothing written.";
+static const char m_ro[]    = "Volume or image is read-only: nothing written.";
 static const char m_none[]  = "Nothing changed yet. The hex digits edit a byte.";
 static const char m_stop[]  = "Nothing was written.";
 static const char m_wfail[] = "Write failed: the block is unchanged or half written.";
@@ -289,6 +300,11 @@ static void write_block(void)
     /* The last look before the write; the edit stays in `buf`, dirty, for
      * a W once the right disk is back. */
     if (!same_disk()) { banner(m_swap); v_cgetc(); return; }
+    /* Raw WRITE_BLOCK bypasses ProDOS access checks. same_disk just read
+     * the on-disk volume header into check: use its current write bit,
+     * even when the edited block is that header and would unlock it.
+     * Image files retain their file/container guards above. No AUX. */
+    if (source.unit && !(check[34] & 2)) { v_message(m_ro); v_cgetc(); return; }
     if (!source_write(&source, block, buf)) { v_message(m_wfail); v_cgetc(); return; }
     /* Read back into `check`, never over the buffer we just wrote: if the
      * readback fails the edit is still there to try again. */
@@ -297,7 +313,9 @@ static void write_block(void)
     }
     if (!same_block()) { v_message(m_diff); v_cgetc(); return; }
     /* The identity block now holds the edit: the identity from here on. */
-    if (block == idblk) remember();
+    if (block == idblk && !remember()) {
+        v_message(m_rfail); v_cgetc(); return;
+    }
     dirty = 0;
     v_gotoxy(0, 22);                    /* over the key bar; draw() puts it back */
     v_cprintf(m_done, block);
@@ -347,9 +365,9 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         if (!a.full[0]) { note(m_pick); return; }
         v_strcpy(source.path, a.full);
         if (!image_open(&source)) { note(m_open); return; }
-        /* ProDOS OPENs a locked file for update and refuses only the WRITE:
-         * say so before the ERASE prompt, from the entry's write bit. */
-        if (!(a.selected->access & 0x02)) image_readonly = 1;
+        /* The 2MG header precedes the checked block path. */
+        if (ferror(source.file)) { source_close(&source); note(m_open); return; }
+        /* image_open uses the fresh catalogue access bits, not the panel. */
     } else {
         v_strcpy(source.path, pan->path[0] ? pan->path : a.selected->name);
         unit = pan->path[0] ? 0 : (unsigned char)(a.selected->mdate << 4);

@@ -108,6 +108,11 @@ static void cfg_discard(void)
 #include "plugins/file_install.h"
 #undef file_install
 
+static unsigned char cfg_replaceable(void)
+{
+    return (gfi[3] & 0xC3) == 0xC3 && gfi[4] == 0x04 && gfi[7] >= 1 && gfi[7] <= 3;
+}
+
 static unsigned char save_config(void)
 {
     FILE* f;
@@ -118,7 +123,7 @@ static unsigned char save_config(void)
     if (file_info(CF->backup) || _oserror != 0x46) { strcpy(note, cfg_recovery); return 0; }
     old = file_info(cfg_path);
     if (!old && _oserror != 0x46) return 0;
-    if (old && ((gfi[3] & 0xC3) != 0xC3 || gfi[4] != 0x04 || gfi[7] < 1 || gfi[7] > 3 ||
+    if (old && (!cfg_replaceable() ||
                 !cfg_read(cfg_path) || !cfg_parse(0))) return 0;
     if (strlen(panels[0].path) >= PATH_LEN || strlen(panels[1].path) >= PATH_LEN) return 0;
     n = sprintf(CF->text, cfg_format, panels[0].path, panels[1].path, sort_mode, active);
@@ -135,6 +140,12 @@ static unsigned char save_config(void)
     if (ferror(f)) bad = 1;
     if (fclose(f)) bad = 1;
     if (bad || !cfg_verify(CF->temp, n)) { cfg_discard(); return 0; }
+    /* RENAME may move a write-locked entry. Recheck the current target
+     * before moving it aside; a failed lookup grants no permission.
+     * Only our verified TMP has been written: retain it on refusal. */
+    if (old && (!file_info(cfg_path) || !cfg_replaceable())) {
+        strcpy(note, cfg_recovery); return 0;
+    }
     /* A failed or ambiguous rename keeps TMP, BAK and any new CFG. */
     if (cfg_install(CF->temp, cfg_path, CF->backup, old) != FILE_INSTALLED) {
         strcpy(note, cfg_recovery); return 0;

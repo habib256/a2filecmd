@@ -36,6 +36,7 @@ static unsigned char read_panel(unsigned char p){
 static unsigned char build_full(char*out,const struct Panel*p,const struct Entry*e){strcpy(out,e->name);return 1;}
 static unsigned int ticks;static void activity_tick(void){++ticks;}
 static unsigned char media_request;   /* a2fc.c declares it above load_overlay */
+static const char loading_tool[]="Loading ";
 #include "src/media.h"
 unsigned char slideshow;char slide_getc(void){return cgetc();}   /* display.s */
 unsigned char file_viewer(const struct Entry*e,unsigned char pic){   /* open.s in the program */

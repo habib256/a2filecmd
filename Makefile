@@ -105,8 +105,10 @@ BENCH_BOOT_NATIVE = BATCH NAV CATALOG OPEN COPY FORMAT HELP TEXT HEX DELETE RUN 
 # A header written `PLUGIN_MAGIC, OVERLAY_BIG,` (one line) is linked as a big
 # overlay ($1B00-$3FFF); `PLUGIN_MAGIC, 0,` as a small one.
 XPLUGINS = $(sort $(basename $(notdir $(wildcard $(SRC)/plugins/*.c))))
+include config/800k.mk
+XPLG800 = $(patsubst %,$(BUILD)/%.PLG,$(XPLUGINS800))
 # Overlays in the historical compact BOOT regression fixture.
-BENCH_BOOT_PLUGINS = $(filter dosview move verify,$(XPLUGINS))
+BENCH_BOOT_PLUGINS = $(filter dosview move movecopy verify,$(XPLUGINS))
 # The cc65 target library for the plugin link: the one of the machine's cc65
 # for apple2enh, the one of cc65 master for apple2.
 ifeq ($(ARCH),6502)
@@ -118,7 +120,7 @@ CCDEFS =
 endif
 # These overlays reserve $3000-$3FFF for scratch (FIND: $3100-$3FFF): code AND BSS must
 # stop before their scratch area. ld65 enforces that boundary at link time.
-XPLUGINS_SCRATCH = music bootblk find goto mdview wipe dgrview fixtypes
+XPLUGINS_SCRATCH = music bootblk find goto favrun mdview wipe dgrview fixtypes
 # MCS: code+BSS below $3680, normalized song at $3680-$3F7F.
 # DOSMCS/MCSIMPORT: code below $3700, BSS/handoff at $0C00-$0FFF, one FILE.
 # MCSPLAY: code+BSS below $3700. Canonical song at $3700-$3FFF.
@@ -149,6 +151,18 @@ OBJS = $(BUILD)/crt0.o $(BUILD)/overlay.o $(BUILD)/open.o $(BUILD)/fs_keys.o $(B
 .PHONY: all disk benchboot benchpackages benchfloppy xplugins test bench qualify example clean pom2host
 all: $(SYSTEM) $(CODE)
 
+# Isolated experiment: ordinary images and the overlay ABI stay unchanged.
+# ZX02=/path/to/dmsc/zx02/zx02 is an explicit external build dependency.
+ZX02 ?= zx02
+$(BUILD)/zxlauncher.o: $(SRC)/zxloader.c $(SRC)/zx02_stream.h Makefile | $(BUILD)
+	$(CC65BIN)cc65 -t $(TARGET) $(CCDEFS) -DA2FC_ZX02_ASM -O -Oirs -Cl --codesize $(CODESIZE) -o $(BUILD)/zxlauncher.s $<
+	$(AS) -t $(TARGET) $(ASDEFS) -o $@ $(BUILD)/zxlauncher.s
+
+$(BUILD)/zx02_decode.o: $(SRC)/zx02_crc.inc
+$(BUILD)/ZXFILE.SYSTEM.SYS: $(BUILD)/zxlauncher.o $(BUILD)/zx02_decode.o $(BUILD)/crt0_loader.o $(BUILD)/loader_mli.o $(SRC)/zxloader.cfg
+	$(CL) $(CFLAGS) -C $(SRC)/zxloader.cfg -Wl -D,__EXEHDR__=0 \
+	  -Wl -m,$(BUILD)/zxloader.map -Wl -Ln,$(BUILD)/zxloader.lbl \
+	  -o $@ $(BUILD)/crt0_loader.o $(BUILD)/loader_mli.o $(BUILD)/zxlauncher.o $(BUILD)/zx02_decode.o $(IOBUF)
 $(BUILD) $(DIST):
 	@mkdir -p $@
 
@@ -193,6 +207,7 @@ $(CODE): $(SRC)/plugins/applesoft_tokens.h $(SRC)/plugins/file_install.h $(SRC)/
 # -- The service-table overlays ---------------------------------------------
 
 $(BUILD)/dosput.PLG: $(SRC)/plugins/doswrite.c
+$(BUILD)/favrun.PLG: $(SRC)/plugins/goto.c
 $(BUILD)/dosbas.PLG $(BUILD)/dosint.PLG: $(SRC)/plugins/intbasic.c
 $(BUILD)/mcsplay.PLG: $(SRC)/plugins/mcs.c
 
@@ -245,8 +260,8 @@ $(TAKE1): $(SRC)/take1/take1.s $(SRC)/take1/dos.s $(SRC)/take1/engine.s $(SRC)/t
 all: $(TAKE1)
 
 # -- Published disks --------------------------------------------------------
-# 800K has all tools; there is no published ProDOS 140K edition.
-# XL contains the same complete toolset plus the demo corpus.
+# 800K has the practical selection in config/800k.mk; no ProDOS 140K edition.
+# XL contains every tool plus the demo corpus.
 STAGE = $(BUILD)/vol
 HDV = $(BUILD)/A2FILECMD-XL.hdv
 TWOMG = $(DIST)/A2FILECMD-PRODOS-XL-$(if $(filter 65C02,$(CPU)),65C02-enhanced-,)$(A2FC_VERSION).2mg
@@ -281,6 +296,35 @@ define stage
 	@if test -n "$(filter mcs dosmcs,$(2))"; then mkdir -p $(STAGE)/LICENSES; cp $(DATA)/licenses/* $(STAGE)/LICENSES/; fi
 endef
 
+.PHONY: zx02-800
+zx02-800: STAGE = $(BUILD)/zx02-stage
+zx02-800: $(STAGE_DEPS) $(XPLG) $(PPT3) $(FANTA) $(TAKE1) $(BUILD)/ZXFILE.SYSTEM.SYS $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS
+	$(call stage,$(PLUGINS),$(XPLUGINS))
+	cp $(BUILD)/ZXFILE.SYSTEM.SYS $(STAGE)/A2FILE.SYSTEM.SYS
+	python3 $(TOOLS)/zx02_image.py $(CODE) $(STAGE)/A2FILE/ZXFILE.CODE.BIN --zx02 $(ZX02) --cpu $(CPU)
+	mv $(STAGE)/A2FILE/ZXFILE.CODE.BIN $(STAGE)/A2FILE/A2FILE.CODE.BIN
+	cp $(PPT3) "$(STAGE)/A2FILE/PPT3.BIN#060800"
+	cp $(BUILD)/visicalc.PLG.BIN "$(STAGE)/A2FILE/VISICALC.BIN#060000"
+	cp $(FANTA) $(STAGE)/A2FILE/FANTA.SYSTEM.SYS
+	cp $(TAKE1) $(STAGE)/A2FILE/TAKE1.SYSTEM.SYS
+	cp $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS $(STAGE)/
+	cp $(DATA)/RECOVER.TXT $(STAGE)/
+	python3 $(TOOLS)/mkvolume.py $(STAGE) $(BUILD)/A2FC-ZX02-800.po --volume ZX$(CPU) --a2fc-layout --sparse --boot $(DATA)/prodos_boot.tmpl --blocks 1600
+
+.PHONY: zx02-140
+zx02-140: STAGE = $(BUILD)/zx02-140-stage
+zx02-140: $(STAGE_DEPS) $(BENCH_BOOT_OVERLAYS) $(BUILD)/ZXFILE.SYSTEM.SYS
+	$(call stage,$(BENCH_BOOT_NATIVE),$(BENCH_BOOT_PLUGINS))
+	cp $(BUILD)/ZXFILE.SYSTEM.SYS $(STAGE)/A2FILE.SYSTEM.SYS
+	python3 $(TOOLS)/zx02_image.py $(CODE) $(STAGE)/A2FILE/ZXFILE.CODE.BIN --zx02 $(ZX02) --cpu $(CPU)
+	mv $(STAGE)/A2FILE/ZXFILE.CODE.BIN $(STAGE)/A2FILE/A2FILE.CODE.BIN
+	cp $(DATA)/RECOVER.TXT $(STAGE)/
+	python3 $(TOOLS)/mkvolume.py $(STAGE) $(BUILD)/A2FC-ZX02-140.po --volume ZX$(CPU) --a2fc-layout --sparse --boot $(DATA)/prodos_boot.tmpl --blocks 280
+
+.PHONY: test-zx02
+test-zx02:
+	ZX02=$(ZX02) python3 $(TOOLS)/test_zx02_boot.py
+
 # Internal BOOT fixture for historical floppy and disk-swap regressions.
 ifeq ($(ARCH),6502)
 benchboot: $(PO)
@@ -308,8 +352,8 @@ benchpackages: $(CATALOG) $(XPLG)
 	@for role in $(PACKAGE_ROLES); do python3 $(TOOLS)/mkpackage.py $(BUILD) $(BUILD)/legacy/$$role.po --role $$role --cpu $(CPU) || exit; done
 
 $(PO800): STAGE = $(BUILD)/vol800
-$(PO800): $(STAGE_DEPS) $(XPLG) $(PPT3) $(FANTA) $(TAKE1) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS | $(DIST)
-	$(call stage,$(PLUGINS),$(XPLUGINS))
+$(PO800): $(STAGE_DEPS) $(XPLG800) config/800k.mk $(TOOLS)/check_800k.py $(TOOLS)/distribution.py $(TOOLS)/prodos_check.py $(TOOLS)/prodos_read.py $(PPT3) $(FANTA) $(TAKE1) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS | $(DIST)
+	$(call stage,$(PLUGINS800),$(XPLUGINS800))
 	cp $(PPT3) "$(STAGE)/A2FILE/PPT3.BIN#060800"
 	cp $(BUILD)/visicalc.PLG.BIN "$(STAGE)/A2FILE/VISICALC.BIN#060000"
 	cp $(FANTA) $(STAGE)/A2FILE/FANTA.SYSTEM.SYS
@@ -317,6 +361,7 @@ $(PO800): $(STAGE_DEPS) $(XPLG) $(PPT3) $(FANTA) $(TAKE1) $(DATA)/BASIC.SYSTEM.S
 	cp $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS $(STAGE)/
 	cp $(DATA)/RECOVER.TXT $(STAGE)/
 	python3 $(TOOLS)/mkvolume.py $(STAGE) $@ --volume A28006502 --a2fc-layout --sparse --boot $(DATA)/prodos_boot.tmpl --blocks 1600
+	python3 $(TOOLS)/check_800k.py $@ $(BUILD)
 endif
 
 # XL: the complete edition for the selected CPU.
@@ -365,6 +410,7 @@ test: test-mini $(TAKE1)
 	python3 $(TOOLS)/test_dos_hgr.py
 	python3 $(TOOLS)/test_dos_news.py
 	python3 $(TOOLS)/test_loader_prefix.py
+	ZX02=$(ZX02) python3 $(TOOLS)/test_zx02_boot.py
 	python3 $(TOOLS)/test_machine_check.py
 	python3 $(TOOLS)/test_chain.py
 	python3 $(TOOLS)/test_vsdrive.py
@@ -373,6 +419,7 @@ test: test-mini $(TAKE1)
 	python3 $(TOOLS)/test_display.py
 	python3 $(TOOLS)/test_config.py
 	python3 $(TOOLS)/test_config_native.py
+	python3 $(TOOLS)/test_mkimage.py
 	python3 $(TOOLS)/test_abi_freeze.py
 	python3 $(TOOLS)/test_batch.py
 	python3 $(TOOLS)/test_ui.py
@@ -385,6 +432,7 @@ test: test-mini $(TAKE1)
 	python3 $(TOOLS)/test_catalog_overlay.py
 	python3 $(TOOLS)/test_tree_walk.py
 	python3 $(TOOLS)/test_goto_safety.py
+	python3 $(TOOLS)/test_favrun.py
 	python3 $(TOOLS)/test_file_safety.py
 	python3 $(TOOLS)/test_binary2_safety.py
 	python3 $(TOOLS)/test_compare_search.py
@@ -403,6 +451,8 @@ test: test-mini $(TAKE1)
 	python3 $(TOOLS)/test_imgput.py
 	python3 $(TOOLS)/pascal_ref.py --selftest
 	python3 $(TOOLS)/test_pascal.py
+	python3 $(TOOLS)/test_smalldos.py
+	python3 $(TOOLS)/test_800k.py
 	python3 $(TOOLS)/test_pascalw.py
 	python3 $(TOOLS)/cpm_ref.py --selftest
 	python3 $(TOOLS)/test_cpm.py
@@ -424,6 +474,7 @@ test: test-mini $(TAKE1)
 	python3 $(TOOLS)/test_prodos_read.py
 	python3 $(TOOLS)/test_mkdemo.py
 	python3 $(TOOLS)/test_volinfo.py
+	python3 $(TOOLS)/test_volname.py
 	python3 $(TOOLS)/test_volinfo_export.py
 	python3 $(TOOLS)/test_tree.py
 	python3 $(TOOLS)/test_prodos_check.py
@@ -542,6 +593,7 @@ test: test-mini $(TAKE1)
 	python3 $(TOOLS)/test_visicalc.py
 	python3 $(TOOLS)/test_diskcmp.py
 	python3 $(TOOLS)/test_six_plugins.py
+	python3 $(TOOLS)/test_rescue.py
 	python3 $(TOOLS)/fantavision_ref.py --selftest
 	python3 $(TOOLS)/test_fantavision.py
 	python3 $(TOOLS)/test_fanta_wait.py

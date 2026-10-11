@@ -1,4 +1,7 @@
 /* Normalized 512-byte reads, from a ProDOS device or common image containers. */
+#if defined(IMAGEIO_REQUIRE_WRITE) && (!defined(IMAGEIO_ONE) || !defined(IMAGEIO_WRITE))
+#error IMAGEIO_REQUIRE_WRITE requires IMAGEIO_ONE and IMAGEIO_WRITE
+#endif
 struct Source { FILE* file; unsigned char unit,kind; unsigned int blocks; unsigned long base; char path[PATH_LEN]; };
 static const unsigned char sectors[16]={0,14,13,12,11,10,9,8,7,6,5,4,3,2,1,15};
 static unsigned long image_size;
@@ -40,10 +43,30 @@ static unsigned char size_of1(void) {
     if(!i)return 0;
     src.path[i]=0;
     if(a.dir_open(src.path)) {
-        while(!found && a.dir_next())if(!IMG(strcmp)(a.dir_entry->name,src.path+i+1)) {
-            image_size=a.dir_entry->size;found=1;
+        while(a.dir_next())if(!IMG(strcmp)(a.dir_entry->name,src.path+i+1)) {
+            image_size=a.dir_entry->size;
+#ifdef IMAGEIO_REQUIRE_WRITE
+            /* File-only importers refuse before opening an image. */
+            found=a.dir_entry->access&2;
+#else
+            found=1;
+#endif
+#ifdef IMAGEIO_CHECK_ACCESS
+            /* Fresh permissions, rather than the panel's stale snapshot.
+             * ProDOS accepts OPEN on a locked file but refuses WRITE. */
+            image_readonly=!(a.dir_entry->access&2);
+#endif
+            /* Stop at this entry even when its permissions forbid writing. */
+            break;
         }
+#ifdef IMAGEIO_CHECK_CLOSE
+        /* The resident returns listing/close errors through the frozen
+         * void API. A length found before that error cannot authorize an
+         * write. Extractors and importers opt in without growing others. */
+        if(((unsigned char (*)(void))a.dir_close)())found=0;
+#else
         a.dir_close();
+#endif
     }
     src.path[i]='/';
     return found;
@@ -56,7 +79,17 @@ static unsigned char size_of(const char* path) {
     if(!i)return 0;IMG(strcpy)(name,dir+i+1);dir[i]=0;
     if(!a.dir_open(dir))return 0;
     while(a.dir_next())if(!IMG(strcmp)(a.dir_entry->name,name)) {
-        image_size=a.dir_entry->size;a.dir_close();return 1;
+        image_size=a.dir_entry->size;
+#ifdef IMAGEIO_CHECK_ACCESS
+        image_readonly=!(a.dir_entry->access&2);
+#endif
+#ifdef IMAGEIO_CHECK_CLOSE
+        /* A directory error invalidates this metadata before opening the
+         * image. Extractors must not CREATE outputs from an uncertain size. */
+        return !((unsigned char (*)(void))a.dir_close)();
+#else
+        a.dir_close();return 1;
+#endif
     }
     a.dir_close();return 0;
 }
@@ -76,18 +109,34 @@ static unsigned char image_open1(void) {
 static unsigned char image_open(struct Source* s) {
 #endif
     unsigned char n;unsigned long count;
-    SRC(file)=0;SRC(unit)=0;SRC(base)=0;SRC(kind)=0;
+    SRC(file)=0;
+#ifndef IMAGEIO_NODEVICE
+    SRC(unit)=0;
+#endif
+    /* kind is assigned below before any image data is read. */
+    SRC(base)=0;
+#ifdef IMAGEIO_CHECK_ACCESS
+    image_readonly=0;
+#endif
     if(!size_of(SRC(path)))return 0;
     n=image_kind(SRC(path));if(!n)return 0;SRC(kind)=n-1;
 #ifdef IMAGEIO_WRITE
+#ifdef IMAGEIO_CHECK_ACCESS
+    SRC(file)=IMG(fopen)(SRC(path),image_readonly?"rb":"r+b");
+#else
     image_readonly=0;SRC(file)=IMG(fopen)(SRC(path),"r+b");
+#endif
     if(!SRC(file)){image_readonly=1;SRC(file)=IMG(fopen)(SRC(path),"rb");}
 #else
     SRC(file)=IMG(fopen)(SRC(path),"rb");
 #endif
     if(!SRC(file))return 0;
     if(SRC(kind)==2) {
-        if(IMG(fread)(buf,1,64,SRC(file))!=64 || rd16(buf)!=0x4932 || rd16(buf+2)!=0x474D ||
+        if(IMG(fread)(buf,1,64,SRC(file))!=64 ||
+#ifdef IMAGEIO_CHECK_STREAM
+           ferror(SRC(file)) ||
+#endif
+           rd16(buf)!=0x4932 || rd16(buf+2)!=0x474D ||
            rd16(buf+8)<64 || rd16(buf+12)!=1 || rd16(buf+14) || rd16(buf+22) ||
            rd16(buf+26) || rd16(buf+24)<64)goto fail;
         SRC(base)=rd16(buf+24);SRC(blocks)=rd16(buf+20);
@@ -110,6 +159,7 @@ fail:IMG(fclose)(SRC(file));SRC(file)=0;return 0;
 }
 #ifndef IMAGEIO_NODEVICE
 static unsigned char volume_open(struct Source* s,unsigned char requested) {
+    (void)s; /* IMAGEIO_ONE uses the shared source directly. */
     SRC(file)=0;SRC(unit)=unit_of(SRC(path),requested);
     if(!SRC(unit) || readblk(SRC(unit),2,buf) || (buf[4]>>4)!=15)return 0;
     SRC(blocks)=rd16(buf+41);return SRC(blocks)>=3;
@@ -158,6 +208,11 @@ static unsigned char source_rw(struct Source* s,unsigned int b,unsigned char* p)
         if(source_put)got=IMG(fwrite)(p,1,n,SRC(file));
         else got=IMG(fread)(p,1,n,SRC(file));
         if(got!=n)return 0;
+#ifdef IMAGEIO_CHECK_STREAM
+        /* Check before another transfer clears or replaces the flag.
+         * IMGPUT opts in; no other overlay's layout changes. */
+        if(ferror(SRC(file)))return 0;
+#endif
         p+=256;
     }
     return 1;
@@ -165,6 +220,7 @@ static unsigned char source_rw(struct Source* s,unsigned int b,unsigned char* p)
 #else
 static unsigned char source_read(struct Source* s,unsigned int b,unsigned char* out) {
     unsigned char half;unsigned long off;
+    (void)s; /* IMAGEIO_ONE uses the shared source directly. */
     if(b>=SRC(blocks))return 0;
 #ifndef IMAGEIO_NODEVICE
     if(SRC(unit))return !readblk(SRC(unit),b,out);

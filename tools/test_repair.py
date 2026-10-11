@@ -802,6 +802,28 @@ class Repair(unittest.TestCase):
     def test_a_block_a_file_uses_and_the_bitmap_calls_free(self):
         self.check_bitmap_repair('bitmap_free_used', 'BM_USED_FREE')
 
+    def test_volume_write_protection_blocks_raw_repairs(self):
+        for fault in ('bitmap_reserved_free', 'file_count_high'):
+            for access in (0xC1, 0xC0, 0x41, 0x01, 0):
+                with self.subTest(fault=fault, access=access):
+                    data, _ = self.corrupted(fault)
+                    data = bytearray(data)
+                    data[2 * BLOCK + 0x22] = access
+                    data = bytes(data)
+                    r, after = self.fix(data)
+                    self.assertNoWrite(r, data, after)
+                    self.assertEqual(r['note'], 'Volume write protected.')
+                    self.assertEqual(r['prompted'], 0)
+
+    def test_volume_protected_during_confirmation_blocks_raw_repairs(self):
+        for fault in ('bitmap_reserved_free', 'file_count_high'):
+            with self.subTest(fault=fault):
+                data, _ = self.corrupted(fault)
+                r, after = self.fix(data, late='2:34:193')
+                self.assertNoWrite(r, data, after)
+                self.assertEqual(r['note'], M_CHANGED)
+                self.assertEqual(r['prompted'], 1)
+
     def test_a_block_nobody_claims_and_the_bitmap_calls_used(self):
         self.check_bitmap_repair('bitmap_lost', 'BM_LOST')
 
@@ -1428,6 +1450,7 @@ class Repair(unittest.TestCase):
         """8 193 blocks: a seedling in the second bitmap page that the bitmap
         calls free, and a root that counts five files for one."""
         d = fixture(8193, [entry(1, b'A', key=8100)])
+        d[2 * BLOCK + 0x22] = 0xC3  # explicitly permit raw repair writes
         word(d, 1061, 5)                                 # FILE_COUNT
         data = bytes(d)
         self.assertEqual({f.id for f in prodos_check.check(data).findings},
@@ -1438,6 +1461,7 @@ class Repair(unittest.TestCase):
         """The claims of the auxiliary bank say what is lost: block 5000, in
         the second bitmap page, and nothing else is wrong."""
         d = fixture(8193, [entry(1, b'A', key=8100)])
+        d[2 * BLOCK + 0x22] = 0xC3
         allocated(d, 8100)
         allocated(d, 5000)                               # lost
         data = bytes(d)
@@ -1455,6 +1479,7 @@ class Repair(unittest.TestCase):
         files for one. Four entries are missing for that header, and the
         block nobody claims may be one of theirs."""
         d = fixture(8193, [entry(1, b'A', key=8100)])
+        d[2 * BLOCK + 0x22] = 0xC3
         allocated(d, 8100)
         allocated(d, 5000)                               # lost
         word(d, 1061, 5)                                 # FILE_COUNT

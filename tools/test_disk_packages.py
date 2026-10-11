@@ -23,6 +23,8 @@ class Distribution(unittest.TestCase):
         self.assertEqual(locations['DOSINT'], 'DEVTOOLS')
         self.assertEqual(locations['DOSBAS'], 'DEVTOOLS')
         self.assertEqual(locations['IDREAD'], 'DEVTOOLS')
+        self.assertEqual(locations['FAVRUN'], 'DEVTOOLS')
+        self.assertEqual(locations['SMALLDOS'], 'DEVTOOLS')
         self.assertEqual(locations['DOSWRITE'], 'FILES')
         self.assertEqual(locations['BOOTBLK'], 'DISKTOOLS')
         self.assertEqual(locations['NIBCOPY'], 'DISKTOOLS')

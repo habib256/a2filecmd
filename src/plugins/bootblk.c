@@ -52,6 +52,7 @@ static const char m_read[] = "Boot blocks unreadable: nothing written.";
 static const char m_restored[] = "Boot write failed; both original blocks restored and verified.";
 static const char m_failed[] = "BOOT RESTORE FAILED: target may not boot. Recover before retrying.";
 static const char m_id[]   = "Volume header unreadable: nothing written.";
+static const char m_locked[] = "Volume is write protected. Nothing written.";
 static const char c_1[]    = "Disk changed or unreadable: ";
 static const char c_2[]    = ". Nothing written.";
 static const char t_1[]    = "Two volumes named ";
@@ -330,6 +331,10 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     /* What the question will name, as the drives hold it now. */
     if (!block2(tunit, ID) || !block2(sunit, ID + 512)) { msg(m_id); return; }
     if (!named(ID, TGT) || !named(ID + 512, SRC)) { msg(m_nf); return; }
+    /* WRITE_BLOCK bypasses ProDOS's file access checks. Use the volume's
+     * freshly read access byte, never the stale volume-list entry. The
+     * post-confirmation identity check also covers a changed protection. */
+    if (!(ID[34] & 0x02)) { msg(m_locked); return; }
 
     blen = 0;
     cat(a_1); cat(TGT); cat(a_2); cat(SRC); cat(a_3);

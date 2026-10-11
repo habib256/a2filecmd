@@ -99,10 +99,10 @@ class Formats(unittest.TestCase):
   out=self.call('fix',b'hello',name='HELLO.BIN');self.assertTrue(out.startswith('6 4660 '));self.assertEqual(out.split()[5],'0')
  def test_ident_duet_and_invalid_candidates(self):
   self.assertIn('Electric Duet compatible',self.call('ident'))
-  self.assertIn('Invalid/unrecognized',self.call('ident',SONG[:-1]))
+  self.assertIn('Invalid Electric Duet?',self.call('ident',SONG[:-1]))
   for fault in (1,2,3):self.assertIn('error',self.call('ident',fault=fault))
  def test_ident_supported_format_families(self):
-  cases=[('FONT',7,0,b'x','font'),('A.FOTO1',6,0,b'x','Purplesoft'),('A',8,0x8066,b'x','LZ4FH'),('A',6,0x5800,bytes(572),'Print Shop'),('A',6,0x400,bytes(1024),'Lo-res'),('A',6,0,b'DGR','DGR pixmap'),('A.PT3',6,0,b'x','PT3'),('A',6,0,b'ProTracker 3.7','PT3'),('A.MD',4,0,b'hello','Markdown'),('A',8,0x4001,bytes(8192),'Packed double'),('A',6,0xE001,bytes(8192),'816/Paint'),('A',0xF2,0,bytes(8192),'Extasie'),('A',8,0x2000,bytes(16384),'DHGR'),('A',6,0,b'MB1','Mockingboard'),('A.NIB',6,0,bytes(232960),'nibble'),('A.HDV',6,0,bytes(1028)+b'\xF1'+bytes(1019),'ProDOS block')]
+  cases=[('FONT',7,0,b'x','font'),('A.FOTO1',6,0,b'x','Purplesoft'),('A',8,0x8066,b'x','LZ4FH'),('A',6,0x5800,bytes(572),'Print Shop'),('A',6,0x400,bytes(1024),'Lo-res'),('A',6,0,b'DGR','DGR pixmap'),('A.PT3',6,0,b'x','PT3'),('A',6,0,b'ProTracker 3.7','ProTracker 3 music'),('A.MD',4,0,b'hello','Markdown'),('A',8,0x4001,bytes(8192),'Packed DHGR'),('A',6,0xE001,bytes(8192),'816/Paint'),('A',0xF2,0,bytes(8192),'Extasie'),('A',8,0x2000,bytes(16384),'DHGR'),('A',6,0,b'MB1','Mockingboard'),('A.NIB',6,0,bytes(232960),'nibble'),('A.HDV',6,0,bytes(1028)+b'\xF1'+bytes(1019),'ProDOS block')]
   for name,typ,aux,data,label in cases:
    with self.subTest(name=name,typ=typ,aux=aux):self.assertIn(label,self.call('ident',data,name,typ=typ,aux=aux))
  def test_automatic_routing_has_explicit_dos_eligibility(self):

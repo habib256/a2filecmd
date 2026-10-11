@@ -62,7 +62,8 @@ static void gotoxy(int x,int y){}
 MAIN = r'''
 int main(int argc,char** argv) {
  int ok;mode=atoi(argv[1]);memset(window,0xEE,sizeof window);
- ok=load_overlay("DOSPUT",1);
+ ok=load_overlay("DOSPUT",argc > 2 ? atoi(argv[2]) : 1);
+ if(!mode && (snaps!=(argc > 2 && atoi(argv[2])==3 ? 0 : 1) || saved!=snaps))return 6;
  if(!mode || mode==8 || mode==9) {
   if(!ok || strcmp(overlay_loaded,"DOSPUT") || closes!=1)return 1;
   if(!load_overlay("DOSPUT",1) || opens!=1)return 2;
@@ -227,6 +228,8 @@ int main(int argc,char** argv) {
   with tempfile.TemporaryDirectory(prefix='overlay-load-') as d:
    p=Path(d);(p/'test.c').write_text(C+loader+MAIN)
    subprocess.run(['cc','-std=c99',str(p/'test.c'),'-o',str(p/'test')],check=True,capture_output=True)
+   result=subprocess.run([str(p/'test'),'0','3'],capture_output=True)
+   self.assertEqual(result.returncode,0,result.stderr)
    for mode in range(11):
     with self.subTest(mode=mode):
      result=subprocess.run([str(p/'test'),str(mode)],capture_output=True)

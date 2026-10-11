@@ -10,13 +10,16 @@ HARNESS = PREFIX + r'''
 #include <assert.h>
 #include <errno.h>
 static int read_status(FILE*);
+static unsigned char keyboard,strobe;
+#define KBD (&keyboard)
+#define STROBE (&strobe)
 #define ferror read_status
 #include "src/plugins/txtconv.c"
 #undef ferror
 static FILE* failed_read;
 static int read_status(FILE* f) { return f == failed_read || ferror(f); }
 static unsigned char fault;
-static unsigned int opens, closes;
+static unsigned int opens, closes, renames;
 static char operation;
 static unsigned char inplace_answer, overwrite_answer, questions;
 static unsigned long fail_at;
@@ -38,17 +41,20 @@ static int close_file(FILE* f) {
     int r;++closes;
     if(fault==11 && closes==2)fputc('X',f);
     r=fclose(f);
-    return fault==7 || (fault==20 && closes==2) || (fault==16 && closes==4) || (fault==17 && closes==3) ? -1 : r;
+    if((fault==32 && closes==3) || (fault>=33 && fault<=35 && closes==4))keyboard=KEY_ESC|0x80;
+    return fault==7 || (fault==20 && closes==2) || (fault==16 && closes==4) || (fault==17 && closes==3) || (fault==35 && closes==4) ? -1 : r;
 }
 static int remove_file(const char* p) {
     if (fault>=20 && fault<=22) return -1;
     if (fault==23 && strstr(p,"A2FC.BAK")) return -1;
+    if (fault==34) return -1;
     return remove(p);
 }
 static void message(const char* s) { (void)s; }
 static void progress(const char* s, unsigned long d, unsigned long t)
 { (void)s; (void)d; (void)t; if (fault == 12 || fault == 22 || (fault == 13 && checking)) fail = 1; }
 static size_t read_file(void* p, size_t size, size_t count, FILE* f) {
+    if(fault==31 && checking && f==out && count==1)keyboard=KEY_ESC|0x80;
     if (fault == 15 && checking && f == out) { failed_read = f; return 0; }
     if (fault == 1 && (unsigned long)ftell(f) >= fail_at) { failed_read = f; return 0; }
     if (fault == 2 && (unsigned long)ftell(f) >= fail_at) count /= 2;
@@ -66,6 +72,10 @@ static unsigned char mli(unsigned char cmd, void* p) {
         if (!f) return errno == ENOENT ? 0x46 : 0x27;
         fclose(f); memset(i->result,0,15); i->result[0]=0xC3; i->result[4]=1;
         if (fault == 25 && !strstr(from, "A2FC.BAK")) i->result[0] = 0x01;  /* locked */
+        if (fault >= 26 && fault <= 30 && !strstr(from, "A2FC.BAK")) {
+            static const unsigned char storage[] = {0,4,5,13,15};
+            i->result[4] = storage[fault-26];
+        }
         return 0;
     }
     if (cmd == 0xC0) {
@@ -83,6 +93,7 @@ static unsigned char mli(unsigned char cmd, void* p) {
         return fclose(f) ? 0x27 : 0;
     }
     if (cmd != 0xC2) return 1;
+    ++renames;
     {
         struct RenamePath { unsigned char n; unsigned char *old,*newpath; };
         struct RenamePath* r=p;
@@ -124,7 +135,9 @@ int main(int argc, char** argv) {
     api.cgetc = key; api.confirm = yes; api.message = message; api.progress_bar = progress;
     memset(&create, 0xA5, sizeof create); /* overlays do not clear BSS */
     plugin_entry(&api);
+    if (fault >= 26 && fault <= 30 && renames) abort();
     puts(note);
+    fprintf(stderr,"STATE %u %u %u\n",opens,closes,renames);
     return 0;
 }
 '''
@@ -148,11 +161,49 @@ class Txtconv(unittest.TestCase):
     def convert(self, payload, fault=0, fail_at=0, cached_size=None, name='TEXT', mode='H', inplace=True, overwrite=False):
         source = self.root / name
         source.write_bytes(payload)
-        result = subprocess.check_output(
+        result = subprocess.run(
             [str(self.exe), str(self.root), name,
              str(len(payload) if cached_size is None else cached_size),
-             str(fault), str(fail_at), mode, str(int(inplace)), str(int(overwrite))], text=True).strip()
-        return result, source.read_bytes()
+             str(fault), str(fail_at), mode, str(int(inplace)), str(int(overwrite))],
+            text=True,capture_output=True,check=True)
+        self.state=tuple(map(int,result.stderr.split()[1:]))
+        return result.stdout.strip(), source.read_bytes()
+
+    def test_late_cancel_preserves_originals_before_any_rename(self):
+        dest=self.root/'D'/'TEXT';dest.parent.mkdir(exist_ok=True)
+        keep=self.root/'KEEP';keep.write_bytes(b'unrelated bytes')
+        self.addCleanup(keep.unlink,missing_ok=True)
+        self.addCleanup(dest.unlink,missing_ok=True)
+        for parent in (self.root,dest.parent):
+            for filename in ('TXTCONV.TMP','A2FC.BAK'):
+                self.addCleanup((parent/filename).unlink,missing_ok=True)
+        for action in ('inplace','overwrite','new'):
+            for size in (0,256,800):
+                for fault in range(31,36):
+                    with self.subTest(action=action,size=size,fault=fault):
+                        for parent in (self.root,dest.parent):
+                            for filename in ('TXTCONV.TMP','A2FC.BAK'):
+                                (parent/filename).unlink(missing_ok=True)
+                        dest.unlink(missing_ok=True)
+                        if action!='new':dest.write_bytes(b'old destination')
+                        payload=b'\xC1'*size
+                        note,data=self.convert(payload,fault=fault,inplace=action=='inplace',overwrite=action=='overwrite')
+                        self.assertEqual(data,payload)
+                        self.assertNotIn('Converted',note)
+                        self.assertEqual(self.state,(4,4,0))
+                        owned=(self.root if action=='inplace' else dest.parent)/'TXTCONV.TMP' if action!='new' else dest
+                        if fault==34:
+                            self.assertIn('Cleanup failed',note)
+                            self.assertEqual(owned.read_bytes(),b'A'*size)
+                            retry,kept=self.convert(payload,inplace=action=='inplace',overwrite=action=='overwrite')
+                            self.assertNotIn('Converted',retry)
+                            self.assertEqual(kept,payload)
+                            self.assertEqual(owned.read_bytes(),b'A'*size)
+                        else:self.assertFalse(owned.exists())
+                        if action!='new':self.assertEqual(dest.read_bytes(),b'old destination')
+                        self.assertEqual(keep.read_bytes(),b'unrelated bytes')
+                        for parent in (self.root,dest.parent):
+                            self.assertFalse((parent/'A2FC.BAK').exists())
 
     def test_unreadable_destination_still_requires_overwrite_confirmation(self):
         dest = self.root / 'D' / 'TEXT'
@@ -335,6 +386,22 @@ class Txtconv(unittest.TestCase):
                 self.assertIn('Converted', note)
                 self.assertEqual(data, b'A' * size)
                 self.assertFalse((self.root / 'TXTCONV.TMP').exists())
+
+    def test_invalid_target_storage_preserves_both_originals_without_renames(self):
+        dest = self.root/'D'/'TEXT'; dest.parent.mkdir(exist_ok=True)
+        self.addCleanup(dest.unlink, missing_ok=True)
+        for inplace in (True, False):
+            for fault in range(26,31):
+                with self.subTest(inplace=inplace, storage_fault=fault):
+                    dest.write_bytes(b'old destination')
+                    note, data = self.convert(b'\xC1'*400, fault=fault,
+                                              inplace=inplace, overwrite=True)
+                    self.assertIn('nothing changed', note)
+                    self.assertEqual(data, b'\xC1'*400)
+                    self.assertEqual(dest.read_bytes(), b'old destination')
+                    for parent in (self.root, dest.parent):
+                        self.assertFalse((parent/'TXTCONV.TMP').exists())
+                        self.assertFalse((parent/'A2FC.BAK').exists())
 
     def test_readback_corruption_failure_and_cancellation_preserve_originals(self):
         for inplace in (False, True):

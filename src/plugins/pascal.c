@@ -32,6 +32,7 @@
 #define UTIL_CREATE
 #define UTIL_DISCARD
 #define UTIL_VOLUME
+#define IMAGEIO_CHECK_CLOSE
 
 #include "util.h"
 #include "imageio.h"
@@ -53,6 +54,14 @@ const struct PluginHeader __plugin_header = {
 
 #pragma static-locals (on)
 
+/* This extractor reads file images only. A full byte count does not
+ * validate a flagged source stream, in directory reads or either pass.
+ * No source/AUX writes; one() cleans only its exclusive current output. */
+static unsigned char pascal_read(struct Source* s,unsigned int b,unsigned char* out)
+{
+    return source_read(s,b,out) && !ferror(s->file);
+}
+#define source_read pascal_read
 #include "pascal_fs.h"
 
 static char name[16], dest[PATH_LEN + 1];
@@ -108,7 +117,9 @@ static unsigned char copy_file(unsigned int first, unsigned int last,
         if (stop()) return 0;
     }
     if (verify && RF(fread)(back, 1, 1, out)) return 0;   /* it must end there */
-    return 1;
+    /* EOF requires a clean stream, including after full-count reads.
+     * Only this run's new output is cleaned by one(); no AUX writes. */
+    return !ferror(out);
 }
 
 /* One file created, filled, closed and read back. 0 stops the extraction. */
@@ -120,18 +131,31 @@ static unsigned char one(unsigned char i)
     if (!entry_at(i)) { bad = 1; return 0; }
     first = word(ent); last = word(ent + 2); used = word(ent + 22);
     set_name(ent + 7, ent[6]);
-    if (!name[0] || !join(dest, other->path, name) ||
-        newfile(dest, prodos_type(ent[4] & 15), 0, 1)) {
+    if (!name[0] || !join(dest, other->path, name)) {
+        /* An unrepresentable path is not a duplicate filename. No CREATE
+         * took place, so preserve every destination and stop. */
+        bad = 1;
+        return 0;
+    }
+    ok = newfile(dest, prodos_type(ent[4] & 15), 0, 1);
+    /* Only duplicate filename is a skip. Failed CREATE grants no ownership:
+     * never open or clean this destination on other errors. */
+    if (ok) {
+        if (ok != 0x47) { bad = 1; return 0; }
         ++skipped;
         return 1;
     }
     out = RF(fopen)(dest, "wb");
     ok = out != 0 && copy_file(first, last, used, out, 0);
     if (out && RF(fclose)(out)) ok = 0;
+    /* Closing can take time: poll ESC before read-back and before counting
+     * success. Only this exclusive output is cleaned; source/AUX untouched. */
+    if (stop()) ok = 0;
     if (ok) {
         out = RF(fopen)(dest, "rb");
         ok = out != 0 && copy_file(first, last, used, out, 1);
         if (out && RF(fclose)(out)) ok = 0;
+        if (stop()) ok = 0;
     }
     if (!ok) {
         bad = 1;
@@ -165,7 +189,15 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     }
     for (i = 1; i <= count; ++i)
         if (!one(i)) break;
-    source_close(&src);
+    /* image_open owns this read-only stream. A final read/close error
+     * must not announce complete success, even for an empty directory.
+     * Close once and retain verified outputs; source/AUX stay untouched. */
+    if (ferror(src.file)) bad = 1;
+    if (RF(fclose)(src.file)) bad = 1;
+    src.file = 0;
+    /* ESC can arrive during the final close, even with no outputs. These
+     * files are already verified: retain them and report the stop. */
+    if (stop()) bad = 1;
     if (kept) return;                    /* discard()'s note is the last word */
     a.sprintf(a.note, "%u extracted, %u skipped (name taken)%s", made, skipped,
               bad ? (cancelled ? "; stopped." : "; failed, stopped.") : ".");

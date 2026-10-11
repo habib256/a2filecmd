@@ -29,7 +29,7 @@ static unsigned char bitmap_buffer[512], zero_buffer[512], header_buffer[512], k
 /* disk: what the unit holds now; other: what a swap puts there instead. */
 static FILE *disk, *other;
 static unsigned int writes, reads_after, swap_read, swapped, fail2;
-static unsigned char answered, swap_answer, online, key_typed, yes = 1, twin;
+static unsigned char answered, swap_answer, online = 1, key_typed, yes = 1, twin;
 static const char* typed = "ERASE";
 static char input[17], shown[1024];
 static void swap(void) { if (other) { disk = other; other = 0; swapped = 1; } }
@@ -91,6 +91,7 @@ int main(int argc, char** argv) {
         else if (!strncmp(argv[i], "name=", 5)) strcpy(selected.name, v);
         else if (!strncmp(argv[i], "path=", 5)) { strcpy(panels[0].path, v); online = 1; }
         else if (!strncmp(argv[i], "twin=", 5)) { twin = 1; online = 1; }
+        else if (!strncmp(argv[i], "online=", 7)) online = atoi(v);
         else return 2;
     }
     api.panels = panels; api.active = &active; api.selected = &selected;
@@ -133,6 +134,7 @@ class Wipe(unittest.TestCase):
         data[1024:1536] = bytes(512)
         data[1028] = 0xF0 | len(name)
         data[1029:1029 + len(name)] = name
+        data[1024 + 34] = 0xC3
         data[1059:1061] = bytes([39,13])
         data[1024 + 0x27:1024 + 0x29] = bitmap.to_bytes(2, 'little')
         data[1024 + 0x29:1024 + 0x2B] = total.to_bytes(2, 'little')
@@ -218,6 +220,46 @@ class Wipe(unittest.TestCase):
         r = self.run_disks('F', data, None, 'path=/WIPE/SUB')
         self.assertEqual(r['a'], self.zeroed(data, range(30, 40)))
         self.assertEqual(r['note'], '10 blocks zeroed on /WIPE')
+
+    def test_write_protected_volume_refuses_both_modes_before_questions(self):
+        for key in 'WF':
+            for access in (0, 1, 0xC1, 0xE1):
+                for options in ((), ('path=/WIPE/SUB',)):
+                    with self.subTest(key=key, access=access, options=options):
+                        data = self.clean(free=range(30, 40), files=2)
+                        data[1024 + 34] = access
+                        r = self.run_disks(key, data, None, *options)
+                        self.assert_nothing_written(r, data,
+                            note='Volume write protected.')
+                        self.assertEqual(r['shown'].strip(), '')
+
+    def test_online_failure_refuses_both_modes_before_questions(self):
+        for key in 'WF':
+            for options in ((), ('path=/WIPE/SUB',)):
+                with self.subTest(key=key, options=options):
+                    data = self.clean(free=range(30, 40), files=2)
+                    r = self.run_disks(key, data, None, *options, 'online=0')
+                    self.assert_nothing_written(r, data, note='Volume lookup failed.')
+                    self.assertEqual(r['shown'].strip(), '')
+
+    def test_write_permission_without_rename_or_destroy_allows_wipe(self):
+        for key in 'WF':
+            with self.subTest(key=key):
+                data = self.clean(free=range(30, 40), files=2)
+                data[1024 + 34] = 3
+                r = self.run_disks(key, data)
+                expected = bytes(len(data)) if key == 'W' else self.zeroed(data, range(30, 40))
+                self.assertEqual(r['a'], expected)
+                self.assertEqual(r['writes'], 280 if key == 'W' else 10)
+
+    def test_volume_locked_during_confirmation_writes_nothing(self):
+        data = self.clean(free=range(30, 40), files=2)
+        locked = bytearray(data)
+        locked[1024 + 34] &= ~2
+        for key in 'WF':
+            with self.subTest(key=key):
+                r = self.run_disks(key, data, locked, 'swap=answer')
+                self.assert_nothing_written(r, data, locked)
 
     # -- the confirmations --------------------------------------------------
     def test_whole_wipe_needs_the_word_erase(self):
@@ -451,15 +493,16 @@ SIM_HARNESS = r'''
 void __fastcall__ plugin_entry(const struct A2fcApi*);
 struct Bp { unsigned char n, unit; unsigned char* buf; unsigned int block; };
 static unsigned char disks[2][16 * 512];
-static unsigned char cur, answered, swap_answer, key_typed, twin, bypath;
+static unsigned char cur, answered, swap_answer, key_typed, twin, bypath, fail_online;
 static unsigned int writes, reads_after, swap_read, fail2;
 static char input[17], note[80];
 static void answer(void) { answered = 1; if (swap_answer) cur = 1; }
 static unsigned char mli(unsigned char cmd, void* p)
 {
     struct Bp* b = p;
-    if (cmd == 0xC5 && (bypath || twin)) {   /* the unit's volume, twice with 't' */
+    if (cmd == 0xC5) {   /* the unit's volume, twice with 't' */
         unsigned char* r = ((struct Bp*)p)->buf; unsigned char* h = disks[cur] + 1028;
+        if (fail_online) return 0x27;
         memset(r, 0, 256);
         r[0] = 0x60 | (h[0] & 15); memcpy(r + 1, h + 1, 15);
         if (twin) { r[16] = 0xE0 | (h[0] & 15); memcpy(r + 17, h + 1, 15); }
@@ -504,6 +547,7 @@ int main(int argc, char** argv)
     if (strchr(argv[2], 's')) swap_answer = 1;
     if (strchr(argv[2], 'o')) cur = 1;
     if (strchr(argv[2], 't')) twin = 1;
+    if (strchr(argv[2], 'e')) fail_online = 1;
     if (strchr(argv[2], 'p')) { bypath = 1; strcpy(panels[0].path, "/WIPE"); }
     swap_read = atoi(argv[3]);
     fail2 = atoi(argv[4]);
@@ -606,6 +650,36 @@ class WipeCc65(unittest.TestCase):
         after = self.both('F', a, b)
         self.assertEqual(after[:3], (bytes(Wipe.zeroed(a, range(10, 14))), b, 4))
         self.assertEqual(after[4], '4 blocks zeroed on /WIPE')
+
+    def test_write_protected_volume_refuses_both_modes(self):
+        b = self.small(name=b'OTHR', fill=0x5A)
+        for key in 'WF':
+            for access in (0, 1, 0xC1, 0xE1):
+                for flags in ('-', 'p'):
+                    with self.subTest(key=key, access=access, flags=flags):
+                        a = bytearray(self.small(free=range(10, 14), files=1))
+                        a[1024 + 34] = access
+                        a = bytes(a)
+                        self.assert_untouched(self.both(key, a, b, flags), a, b,
+                            'Volume write protected.')
+
+    def test_online_failure_refuses_both_modes(self):
+        a = self.small(free=range(10, 14), files=1)
+        b = self.small(name=b'OTHR', fill=0x5A)
+        for key in 'WF':
+            for flags in ('e', 'pe'):
+                with self.subTest(key=key, flags=flags):
+                    self.assert_untouched(self.both(key, a, b, flags), a, b,
+                        'Volume lookup failed.')
+
+    def test_volume_locked_during_confirmation_writes_nothing(self):
+        a = self.small(free=range(10, 14), files=1)
+        locked = bytearray(a)
+        locked[1024 + 34] &= ~2
+        locked = bytes(locked)
+        for key in 'WF':
+            with self.subTest(key=key):
+                self.assert_untouched(self.both(key, a, locked, 's'), a, locked)
 
     def test_one_byte_of_block_2_is_another_disk(self):
         # The twin at its worst: block 2 differs by ONE byte -- the first,

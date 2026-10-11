@@ -13,7 +13,7 @@
  * to tell one order from another, and writing through the wrong one would
  * put the file where CP/M will never look for it.
  *
- * The order per file is the one whose interruption costs nothing:
+ * The data stays unreferenced until the directory entry is published:
  *
  *   1. The data blocks, written into blocks no live entry claims. Nothing
  *      in the directory names them, so the volume does not know they
@@ -24,10 +24,11 @@
  *   2. The directory entry, one 32-byte slot in one sector, one write.
  *      That write is the instant the file exists.
  *
- * A cut before 2 leaves the volume exactly as it was: the blocks written to
- * were free and stay free. There is no bitmap in CP/M -- what is in use is
- * whatever the live entries claim -- so an entry is the only thing that
- * makes a block belong to anyone.
+ * A reported write/verification failure restores the complete shared block
+ * from its saved bytes, then verifies restoration. A failed restoration
+ * asks the user to check the volume. Physical writes and restoration are
+ * not atomic on a power cut: the neighbouring half can be damaged. There
+ * is no bitmap in CP/M; only a live entry claims the new data blocks.
  *
  * **One extent, so 16 KB at most, and the reason is the window.** A longer
  * file needs one directory entry per 16 KB. The danger is not the order:
@@ -54,10 +55,22 @@
 #define IMAGEIO_WRITE
 #define IMAGEIO_NODEVICE
 #define IMAGEIO_ONE
+#define IMAGEIO_CHECK_CLOSE
+#define IMAGEIO_CHECK_ACCESS
 
 #include "util.h"
 #include <string.h>
 #include "imageio.h"
+/* Check full-count errors before the next block clears them. Latch I/O
+ * failures so skew selection never retries after an unreadable directory.
+ * Restoration still uses the same checked reader/writer; MAIN only. */
+static unsigned char image_error;
+static unsigned char cpm_rw(unsigned int b,unsigned char* p)
+{
+    if (!source_rw(b,p) || ferror(src.file)) { image_error = 1; return 0; }
+    return 1;
+}
+#define source_rw cpm_rw
 #include "cpm_fs.h"
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api);
@@ -84,6 +97,9 @@ const struct PluginHeader __plugin_header = {
  * and compared from there. A buffer of its own cost eleven bytes and a
  * copy, and the window had none to spare. */
 static unsigned char newent[ENTRY];
+/* Preserve both CP/M halves: a failed physical write can damage an entry
+ * or allocated neighbour outside the sector being changed. MAIN only. */
+static unsigned char undo[512], uncertain;
 #define cname (newent + 1)
 static unsigned char put, skipped, stopped;
 static unsigned int nth;
@@ -104,12 +120,18 @@ static unsigned char cpm_write(unsigned int logical, const unsigned char* in,
     k = (p == 0 || p == 15) ? p : 15 - p;
     blk = (RESERVED + (logical >> 4)) * 8 + (k >> 1);
     if (!source_read(&src, blk, buf)) return 0;
+    RF(memcpy)(undo, buf, 512);
     ours = buf + ((k & 1) ? 256 : 0);
     mate = buf + ((k & 1) ? 0 : 256);
     RF(memcpy)(twin, mate, 256);
     RF(memcpy)(ours, in, 256);
-    if (!source_write(&src, blk, buf) || !source_read(&src, blk, buf)) return 0;
-    return !memcmp(ours, in, 256) && !memcmp(mate, twin, 256);
+    if (source_write(&src, blk, buf) && source_read(&src, blk, buf) &&
+        !memcmp(ours, in, 256) && !memcmp(mate, twin, 256)) return 1;
+    /* Keep the complete saved block until restoration is read back. A
+     * failed restoration must never be reported as an intact volume. */
+    if (!source_write(&src, blk, undo) || !source_read(&src, blk, buf) ||
+        memcmp(buf, undo, 512)) uncertain = 1;
+    return 0;
 }
 
 /* A CP/M name into `cname`: what precedes the last period is the name
@@ -138,7 +160,7 @@ static unsigned char cpm_name(const char* s)
     return 1;
 }
 
-/* One pass over the directory: 1 when the name is already there, 0 with
+/* One pass over the directory: 2 on read error, 1 when the name is there, 0 with
  * `slot` on the first free entry (0xFF when the directory is full). Two
  * passes -- one for the name, one for the slot -- read the same sixty-four
  * entries twice and cost the window forty bytes it did not have. */
@@ -150,7 +172,7 @@ static unsigned char survey(void)
     slot = 0xFF;
     for (i = 0; i < ENTRIES; ++i) {
         e = entry_at(i);
-        if (!e) return 1;                       /* unreadable: treat as taken */
+        if (!e) return 2;                       /* neither free nor taken */
         if (!live(e)) { if (slot == 0xFF) slot = i; continue; }
         for (j = 0; j < 11; ++j) if ((e[1 + j] & 127) != cname[j]) break;
         if (j == 11) return 1;
@@ -178,7 +200,9 @@ static unsigned char one(const char* name, unsigned long size)
      * skipped files included -- `name` is the same buffer for every one */
     a.progress_bar(name, 0, 1);
     if (!size || size > MAX_BYTES || !cpm_name(name)) { ++skipped; return 1; }
-    if (survey()) { ++skipped; return 1; }
+    i = survey();
+    if (i == 2) { note("Cannot read the CP/M directory."); return 0; }
+    if (i) { ++skipped; return 1; }
     if (slot == 0xFF) { note("No room left in the volume."); return 0; }
     blocks = (unsigned char)((size + 1023) >> 10);
     records = (unsigned int)((size + 127) >> 7);
@@ -196,19 +220,27 @@ static unsigned char one(const char* name, unsigned long size)
         for (l = 0; l < 4; ++l) {
             n = left > 256 ? 256 : left;
             a.memset(sec, 0x1A, 256);           /* CP/M pads with EOF */
-            if (n && RF(fread)(sec, 1, n, src_file) != n) {
+            if (n && (RF(fread)(sec, 1, n, src_file) != n || ferror(src_file))) {
                 note("Cannot read a file opposite."); goto bad;
             }
             if (stop()) { note("Write failed; the volume is whole."); goto bad; }
             /* the directory cache is idle here: it is the twin buffer */
             if (!cpm_write((unsigned int)b * 4 + l, sec, dsec)) {
-                note("Write failed; the volume is whole."); goto bad;
+                note(uncertain ? "Write failed; check the volume."
+                               : "Write failed; the volume is whole."); goto bad;
             }
             left -= n;
         }
         a.progress_bar(name, i + 1, blocks);
     }
-    RF(fclose)(src_file); src_file = 0;
+    /* A stale panel size must not publish a prefix. Only clean EOF and a
+     * successful close validate the source; tail data stays unreferenced. */
+    if (RF(fread)(sec, 1, 1, src_file) || ferror(src_file)) {
+        note("Cannot read a file opposite."); goto bad;
+    }
+    i = RF(fclose)(src_file) != 0; src_file = 0;
+    if (i) { note("Cannot read a file opposite."); return 0; }
+    if (stop()) { note("Stopped; the volume is whole."); return 0; }
     dsec_at = 0xFF;                             /* it was the twin buffer */
 
     /* Nothing above is visible: no entry names those blocks. The slot is
@@ -218,7 +250,8 @@ static unsigned char one(const char* name, unsigned long size)
         RF(memcpy)(e, newent, ENTRY);
       if (!cpm_write(slot >> 3, dsec, sec)) {
           dsec_at = 0xFF;
-          note("Entry not written; the volume is whole.");
+          note(uncertain ? "Entry write failed; check the volume."
+                         : "Entry not written; the volume is whole.");
           return 0;
       }
     }
@@ -231,8 +264,9 @@ bad:
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api)
 {
+    unsigned char finished = 0;
     init(api);
-    put = skipped = stopped = 0; src_file = 0; src.file = 0;
+    put = skipped = stopped = uncertain = image_error = 0; src_file = 0; src.file = 0;
     if (pan->fs || !a.full[0] || !a.selected->name[0] || a.selected->type == 0x0F) {
         note("Disk image here, ProDOS folder opposite.");
         return;
@@ -243,10 +277,14 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     }
     RF(strcpy)(src.path, a.full);
     if (!image_open(&src)) { note("Not a disk image this can open."); return; }
+    /* The 2MG header is read outside the checked block path. */
+    if (ferror(src.file)) { note("Not a disk image this can open."); goto done; }
     if (image_readonly) { note("The image is read-only."); goto done; }
     if (src.blocks < (RESERVED + 32) * 8) { note("Not a CP/M volume this can read."); goto done; }
-    for (skew = 0; skew < SKEWS; ++skew)
+    for (skew = 0; skew < SKEWS; ++skew) {
         if (plausible()) break;
+        if (image_error) { note("Cannot read the CP/M directory."); goto done; }
+    }
     if (skew == SKEWS) { note("Not a CP/M volume this can read."); goto done; }
 
     a.sprintf(a.note, "Put the files opposite into %s?", a.selected->name);
@@ -262,7 +300,12 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         unsigned int k;
         if (!a.dir_open(other->path)) { note("Cannot read the other panel."); goto done; }
         for (k = 0; k <= nth; ++k) if (!a.dir_next()) break;
-        a.dir_close();
+        /* The resident returns dir_error even though the frozen API types
+         * this service void (as FIND already handles). An unreadable or
+         * unclosed listing is not EOF and cannot authorize this import. */
+        if (((unsigned char (*)(void))a.dir_close)()) {
+            note("Cannot read the other panel."); goto done;
+        }
         if (k <= nth) break;
         if (a.dir_entry->type == 0x0F) continue;
         if (!join(source_path, other->path, a.dir_entry->name) ||
@@ -270,8 +313,17 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         if (!one(a.dir_entry->name, a.dir_entry->size)) { stopped = 1; break; }
     }
     if (stopped) goto done;
+    finished = 1;
     a.sprintf(a.note, "%u put, %u skipped (name taken or unusable).", put, skipped);
 done:
     if (src_file) RF(fclose)(src_file);
-    source_close(&src);
+    /* Published files stay recoverable. A failed final close is uncertainty,
+     * not permission to undo imports; report it and close exactly once. */
+    if (RF(fclose)(src.file)) {
+        src.file = 0;
+        note("Image close failed; check the volume.");
+        return;
+    }
+    src.file = 0;
+    if (finished && stop()) note("Stopped; imported files kept.");
 }

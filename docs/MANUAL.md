@@ -102,7 +102,7 @@ and recovery filenames do not apply to the DOS3.3 edition introduced first.
 | Image | Choose it for |
 |---|---|
 | `A2FILECMD-DOS3.3-0.9.6.dsk` | Standalone DOS 3.3 file manager for Apple II+ and two Disk II drives. |
-| `A2FILECMD-PRODOS-800K-0.9.6.po` | All ProDOS tools and BASIC runtimes, without the demonstration corpus; any IIe. |
+| `A2FILECMD-PRODOS-800K-0.9.6.po` | Selected practical tools, BASIC runtimes and free space for files; any IIe. |
 | `A2FILECMD-PRODOS-XL-0.9.6.2mg` | Complete 32 MB ProDOS edition with tools and demonstrations; any IIe. |
 | `A2FILECMD-PRODOS-XL-65C02-enhanced-0.9.6.2mg` | Complete XL for an enhanced IIe, //c or IIgs: MouseText and optional mouse support. |
 
@@ -128,7 +128,15 @@ When installing elsewhere, keep `A2FILE.SYSTEM` beside the complete `A2FILE/`
 directory and copy `RECOVER` too. Keep the program and its native plugins
 from the same build and CPU edition; do not mix them.
 
-The 800K and XL editions include all overlays; only XL includes `DEMO/`: one example of every kind
+The 800K edition includes 94 overlays selected for everyday file management,
+disk imaging, recovery, archives and common documents, pictures and music.
+It includes SMALLDOS, Pascal/CPM readers and writers, BASIC/assembly readers,
+AppleWorks, Apple Writer, PFS File/Plan, VisiCalc, HGR/DGR, MacPaint, Print Shop
+and the music players, plus both BASIC runtimes and the movie players.
+The explicit inventory is in `config/800k.mk`. The current image leaves
+278 blocks (139 KiB) free; builds require at least 160 free blocks.
+XL retains all tools, including niche document, graphics and source formats.
+Only XL includes `DEMO/`: one example of every kind
 of file A2 File Cmd opens, in DOCUMENTS, PICTURES (an HGR album, and in
 CARDS two colour cards in every picture format), MOVIES (Fantavision, and a
 Take 1 movie on its DOS 3.3 disk), MUSIC, ARCHIVES, DISKS, PROGRAMS and
@@ -364,7 +372,7 @@ is described in [VisiCalc worksheets](VISICALC-FORMAT.md).
 Return and I select the same recognized picture formats on both CPU editions.
 Explicit packed types take priority; signatures identify DGR and HGRR/DHRR.
 An identification read/close error stops opening. **H** explicitly selects hex.
-Specialized viewers and media tools require **800K or XL**.
+800K includes the common picture readers; specialized formats require **XL**.
 
 | Picture or font | Identification / tool |
 |---|---|
@@ -694,6 +702,18 @@ half-track and weak-bit formats are unsupported; this is not a flux copier.
 
 **PASCAL** and **CPM** extract supported images into the other panel without
 modifying the source. Names are adapted to ProDOS; existing targets are skipped.
+**SMALLDOS** (Disks menu) extracts Wilderness catalogues from raw 35-track
+`.DSK/.DO` images in DOS order or `.PO` images in ProDOS order. Select the
+image with a ProDOS destination folder opposite. Both reversed game tracks
+and normal demo tracks are supported. All allocated sectors, including
+padding, are kept because the catalogue records no exact byte length.
+Type A becomes Applesoft `$FC/$0801`; type B becomes binary `$06/$0000`
+because its load address is unknown. Names are adapted to ProDOS, collisions
+are skipped, and every output is closed and compared with the source before
+being counted. Escape stops extraction; files already verified are retained.
+An incomplete current output is removed, or its failed cleanup is reported.
+JOURNEY has no catalogue and is refused. WOZ/flux images and SMALLDOS writing
+are unsupported; the source image and auxiliary memory are never written.
 Pascal text retains its header/padding. CP/M data is rounded to 128-byte records;
 text ends at $1A. Unsupported directory layouts are refused. **PASCALW** and
 **CPMW** do the reverse: every file of the other panel's ProDOS directory goes
@@ -725,6 +745,13 @@ especially partial scans, skipped files and failed cleanup.
   the results with "some paths skipped" instead of "complete".
 - **GOTO:** P opens a path; A adds a favourite, D + digit removes, M + two
   digits reorders, 1–9 jumps.
+- **FAVRUN** (Programming menu): select a SYS, BIN, BAS or INT file and use
+  A to save its absolute path. 1–9 launches a favourite through RUN, with
+  the usual confirmation; D + digit removes it, M + two digits reorders.
+  Up to nine paths (63 characters each) live in `A2FILE/FAVRUN.CFG` next to
+  the settings file. Missing or unreadable programs are refused. Saving
+  uses exclusive `FAVRUN.TMP` and recoverable `FAVRUN.BAK`; a leftover must
+  be reviewed before saving again. Power loss during replacement is not atomic.
 - **RENAME / DATE / TXTCONV:** batch names; modification dates; CR/LF/CRLF,
   high-bit, tabs or UTF-8 accent conversion. Conflicting names are preserved.
 - **IDENT / FIXTYPES:** identify formats; confirm attribute changes individually.
@@ -748,7 +775,10 @@ with `END REPORT`. F and E leave the audit's figures as they are: a read error
 or a full destination while listing a file spoils that listing or report, not
 the audit. **VOLNAME** renames a volume and updates affected paths;
 a name already online is refused. **MKIMAGE** creates an empty PO/2MG data
-volume, without a boot program, up to 32,767 blocks.
+volume, without a boot program, up to 32,767 blocks. It closes and reads back
+the whole image before reporting success; ESC also cancels during verification.
+Failed outputs are removed when possible; a cleanup failure identifies the
+incomplete file retained on disk.
 
 **FIXIT only reads.** It reports ProDOS directory/allocation faults and refuses
 incomplete scans rather than declaring lost blocks. For volumes above 4,096
@@ -838,7 +868,7 @@ message before retrying or cleaning up.
 | Symptom | Action |
 |---|---|
 | Startup refusal | Choose the matching CPU/ROM edition; ProDOS needs 128 KB and 80 columns. |
-| Missing/stale tool | Use 800K/XL and matching program/plugins. |
+| Missing/stale tool | Use XL for tools omitted from 800K; keep matching program/plugins. |
 | Old catalog or a large directory | Ctrl-R rereads; cross window edges beyond 139 entries. Large windows use disk order; inside an image only the first entries show. |
 | Deep traversal refused | Work on smaller subdirectories; an incomplete tree must not be deleted. |
 | Temporary/backup blocks retry | Preserve candidates and follow incident recovery. |

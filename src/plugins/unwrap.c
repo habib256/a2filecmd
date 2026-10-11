@@ -49,7 +49,7 @@ const struct PluginHeader __plugin_header = {
 static FILE* in;
 static FILE* out;
 static unsigned long size, off, len, rsrc;
-static unsigned char type, typed;       /* $80 a data fork; 2 a ProDOS type, 1 a Mac one */
+static unsigned char type, typed;       /* $80 data; $40 ProDOS; $20 resources; $10 name; $08 Finder seen; 2 ProDOS type, 1 Mac */
 static unsigned int aux;
 static char name[16];
 static char dest[PATH_LEN + 1];
@@ -127,28 +127,64 @@ static unsigned char prodos_home(void)
 static unsigned char apple_single(void)
 {
     unsigned int n, i;
-    unsigned long id, at, l;
+    unsigned long id, at, l, end;
     unsigned char v1 = hdr[5] == 1;
     if (be32(hdr) != 0x00051600UL || (hdr[5] != 1 && hdr[5] != 2) || hdr[4] | hdr[6] | hdr[7])
         return 0;
     n = be16(hdr + 24);
+    /* Payload follows the complete descriptor table. Header bytes must
+     * never become extracted data or metadata; no output exists yet.
+     * Empty entries contain no bytes, so an offset of zero is harmless. */
+    end = 26 + 12UL * n;
+    if (end > size) return 0;
     for (i = 0; i < n; ++i) {
         if (!grab(26 + 12UL * i, 12)) return 0;
         id = be32(blk);
         at = be32(blk + 4);
         l = be32(blk + 8);
-        if (at > size || l > size - at) return 0;
-        if (id == 1) { off = at; len = l; typed |= 0x80; }
-        else if (id == 2) rsrc = l;
-        else if (id == 3 && l) {
-            if (!grab(at, l > 63 ? 63 : (unsigned int)l)) return 0;
-            set_name(blk, l > 63 ? 63 : (unsigned char)l);
+        if ((l && at < end) || at > size || l > size - at) return 0;
+        /* ProDOS metadata must contain its type/aux; a short entry is not
+         * absent metadata. Duplicates are ambiguous. Refuse before CREATE
+         * instead of substituting or silently replacing the type/aux. */
+        if (id == 11) {
+            if (l < 8 || (typed & 0x40)) return 0;
+            typed |= 0x40;
+        }
+        /* Finder type/creator must be complete and unambiguous even when
+         * a ProDOS entry takes precedence. Validate before any CREATE. */
+        if (id == 9) {
+            if (l < 8 || (typed & 8)) return 0;
+            typed |= 8;
+        }
+        if (id == 1) {
+            /* Two data forks are ambiguous, including empty ones. Do not
+             * silently replace the first descriptor and verify only the
+             * second. Refuse before CREATE: source/AUX and preexisting
+             * destinations remain untouched; only MAIN parser state changes. */
+            if (typed & 0x80) return 0;
+            off = at; len = l; typed |= 0x80;
+        }
+        else if (id == 2) {
+            /* A later empty resource descriptor must not hide the warning
+             * that resources are omitted. Ambiguous forks fail pre-CREATE. */
+            if (typed & 0x20) return 0;
+            rsrc = l; typed |= 0x20;
+        }
+        else if (id == 3) {
+            /* Do not silently change the destination on a second name,
+             * including empty ones. MAIN state only; no CREATE or AUX. */
+            if (typed & 0x10) return 0;
+            typed |= 0x10;
+            if (l) {
+                if (!grab(at, l > 63 ? 63 : (unsigned int)l)) return 0;
+                set_name(blk, l > 63 ? 63 : (unsigned char)l);
+            }
         } else if (id == 11 && l >= 8) {
             if (!grab(at, 8)) return 0;
-            type = blk[3]; aux = be16(blk + 6); typed = (typed & 0x80) | 2;
+            type = blk[3]; aux = be16(blk + 6); typed = (typed & 0xF8) | 2;
         } else if (id == 7 && v1 && l >= 16 && prodos_home()) {
             if (!grab(at, 16)) return 0;
-            type = blk[11]; aux = be16(blk + 14); typed = (typed & 0x80) | 2;
+            type = blk[11]; aux = be16(blk + 14); typed = (typed & 0xF8) | 2;
         } else if (id == 9 && l >= 8 && !(typed & 2)) {
             if (!grab(at, 8)) return 0;
             mac_type(blk);
@@ -171,15 +207,28 @@ static unsigned int crc16(void)
 
 static unsigned char mac_binary(void)
 {
-    unsigned char i;
+    unsigned char i, padding;
+    unsigned long available;
     if (hdr[0] || !hdr[1] || hdr[1] > 63 || hdr[74] || hdr[82]) return 0;
     if (crc16() != be16(hdr + 124)) {
         for (i = 99; i < 128; ++i) if (hdr[i]) return 0;   /* MacBinary I: all zero */
     }
     len = be32(hdr + 83);
     rsrc = be32(hdr + 87);
-    if (len > size - 128) return 0;
-    off = 128;
+    /* The optional secondary header follows the main header, rounded to
+     * 128 bytes. Widen before adding: 65535 + 127 wraps a 16-bit uint.
+     * Validate before CREATE; source, old destinations and AUX stay intact. */
+    off = 128UL + (((unsigned long)be16(hdr + 120) + 127) & ~127UL);
+    if (off > size || len > size - off) return 0;
+    /* Ignoring resources is not proof that their declared bytes exist.
+     * Subtract checked data bounds before testing alignment/resources:
+     * a malicious 32-bit length must not wrap into an apparent fit.
+     * No final resource padding is required. Refuse before CREATE. */
+    if (rsrc) {
+        available = size - off - len;
+        padding = (128 - (len & 127)) & 127;
+        if (padding > available || rsrc > available - padding) return 0;
+    }
     set_name(hdr + 2, hdr[1]);
     mac_type(hdr + 65);
     typed |= 0x80;
@@ -191,7 +240,7 @@ static unsigned char pass(unsigned char check)
 {
     unsigned long left = len;
     unsigned int n, i;
-    if (RF(fseek)(in, off, SEEK_SET)) return 0;
+    if (stop() || RF(fseek)(in, off, SEEK_SET)) return 0;
     while (left) {
         n = left > 512 ? 512 : (unsigned int)left;
         if (RF(fread)(blk, 1, n, in) != n) return 0;
@@ -203,7 +252,10 @@ static unsigned char pass(unsigned char check)
         a.progress_bar(name, len - left, len);
         if (stop()) return 0;
     }
-    return !check || RF(fread)(cmp, 1, 1, out) == 0;
+    /* Zero bytes from the trailing probe prove EOF only without a read
+     * error. Check both streams even when their requested counts matched. */
+    if (check && RF(fread)(cmp, 1, 1, out)) return 0;
+    return !ferror(in) && (!check || !ferror(out));
 }
 
 static const char m_pick[] = "Not an AppleSingle or MacBinary file.";
@@ -213,8 +265,8 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
 {
     const struct Entry* e = api->selected;
     unsigned char ok, k;
+    unsigned int n;
     init(api);
-    size = e->size;
     name[0] = 0;
     typed = 0;
     type = 0;
@@ -224,12 +276,28 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         note(m_pick);
         return;
     }
+    /* Panel sizes can be stale. Count the source through the resident's
+     * streams (overlay-local ftell has a separate descriptor table).
+     * No output exists yet; a read/seek error must not validate offsets. */
+    size = 0;
+    while ((n = RF(fread)(blk, 1, sizeof blk, in)) != 0) {
+        size += n;
+        if (size > 0xFFFFFFUL || stop()) break;
+    }
+    if (ferror(in) || size > 0xFFFFFFUL || cancelled || RF(fseek)(in, 0, SEEK_SET)) {
+        RF(fclose)(in);
+        note(m_pick);
+        return;
+    }
     ok = RF(fread)(hdr, 1, 128, in);
     if (ok >= 26) {
         if (ok < 128) RF(memset)(hdr + ok, 0xFF, 128 - ok);     /* too short for MacBinary */
-        ok = apple_single() || (!(typed & 0x80) && ok == 128 && mac_binary());
+        /* A recognized AppleSingle signature selects its parser even if
+         * damaged: falling back could bypass its bounds checks via the
+         * permissive MacBinary I header. No output exists at this point. */
+        ok = be32(hdr) == 0x00051600UL ? apple_single() : (ok == 128 && mac_binary());
     } else ok = 0;
-    if (!ok || !(typed & 0x80) || type == 0x0F || len > 0xFFFFFFUL) {
+    if (!ok || ferror(in) || !(typed & 0x80) || type == 0x0F || len > 0xFFFFFFUL) {
         RF(fclose)(in);
         note(m_pick);
         return;
@@ -258,7 +326,10 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
             if (out && RF(fclose)(out)) ok = 0;
         }
     }
-    RF(fclose)(in);
+    /* Final closes can take time. An ESC received there also interrupts
+     * an empty fork, which never reaches the block-loop cancellation poll.
+     * Only the exclusively created output is cleaned; source/AUX unchanged. */
+    if (RF(fclose)(in) || stop()) ok = 0;
     if (!ok) {
         if (discard(dest))
             a.sprintf(a.note, cancelled ? "Stopped: %s removed." : "Extraction failed: %s removed.", name);

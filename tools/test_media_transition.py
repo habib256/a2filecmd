@@ -18,11 +18,34 @@ static char reselect[17],note[80],overlay_loaded[17];static unsigned char in_ove
 static unsigned char mode,calls,draws,switches;
 static const char* target;
 const char msg_noentry[]="Missing entry";
+static const char move_copy_plugin[]="MOVECOPY";
 /* What the last copy left: a plugin's bar must not read "8/3". */
 static unsigned int progress_done=7,progress_total=3;
+static unsigned char ran;
+static void run_selected(const struct Entry* e){
+ if(strcmp(e->name,"APP") || e->type!=0xFF || e->aux!=0x2000 || panels[0].count)abort();
+ ++ran;strcpy(note,"Cancelled");
+}
+static unsigned char save_config(void){return 1;}
+void run_entry(const struct A2fcApi* a);
 static void entry(const struct A2fcApi* a){
  unsigned char key;
  ++calls;if(calls>2)abort();
+ if(mode>=12){
+  if(calls==1){
+   strcpy(selected.name,"APP");selected.type=0xFF;selected.aux=0x2000;
+   strcpy(panels[0].path,"/WORK/TOOLS");panels[0].count=0;
+   note[0]=7;note[1]=0;memset(entries,0xA5,sizeof entries);
+  }else run_entry(a);
+  return;
+ }
+ if(mode>=9){
+  if(strcmp(selected.name,"SOURCE") || strcmp(full,mode==10?"/TEST/SOURCE":"SOURCE") ||
+     a->arg!=(mode==10?'B':0))abort();
+  if(calls==1){note[0]=3;note[1]=0;memset(entries,0xA5,sizeof entries);}
+  else {strcpy(reselect,"SOURCE");strcpy(note,"Copied");}
+  return;
+ }
  if(progress_done!=0 || progress_total!=1)abort();
  progress_done=5;progress_total=2;     /* and a neighbour starts from 1/1 again */
  if(calls==2 && (strcmp(selected.name,target)||strcmp(full,target)))abort();
@@ -40,11 +63,21 @@ static void entry(const struct A2fcApi* a){
 static struct Overlay header;
 #define OVL (&header)
 static unsigned char load_overlay(const char* n,unsigned char any){
+ if(mode>=12 && !strcmp(n,"RUN")){
+  if(any!=3 || in_overlay || calls!=1 || strcmp(selected.name,"APP") || panels[0].count)abort();
+  if(mode==13)return 0;
+ }
+ if(mode>=9 && !strcmp(n,"MOVECOPY")){
+  if(any!=3 || in_overlay || calls!=1 || strcmp(selected.name,"SOURCE") ||
+     strcmp(full,mode==10?"/TEST/SOURCE":"SOURCE"))abort();
+  if(mode==11)return 0;
+ }
  header.flags=mode==7?0:OVERLAY_BIG;header.entry=entry;return 1;
 }
 static unsigned char prepare_audio(unsigned char a){return a;}
 static void switch_to_text(void){
  ++switches;
+ if(mode>=9)return;
  if(mode==8 && calls==1)abort();   /* graphics stay on until the neighbour is drawn */
  if(mode!=2 && mode!=3 && mode!=4 && mode!=5 && mode!=8){
   if(strcmp(reselect,target))abort();
@@ -53,6 +86,7 @@ static void switch_to_text(void){
 }
 static void draw_all(void){
  ++draws;
+ if(mode>=9)return;
  if(mode!=2 && mode!=3 && mode!=4 && mode!=5 && strcmp(entries[panels[0].cursor].name,target))abort();
 }
 static void message(const char* s){(void)s;}
@@ -61,6 +95,20 @@ main=r'''
 int main(int argc,char**argv){
  unsigned i;mode=atoi(argv[1]);
  panels[0].e=entries;strcpy(panels[0].path,"/TEST");
+ if(mode>=9){
+  total=1;strcpy(all[0].name,"SOURCE");read_panel(0);
+  selected=all[0];strcpy(full,"/TEST/SOURCE");batch_snapshot=mode==10;
+  api.selected=&selected;
+  overlay_run(mode>=12?"FAVRUN":"MOVE",mode==10?'B':0);
+  if(mode>=12){
+   if(calls!=(mode==13?1:2) || ran!=(mode==13?0:1) || draws!=1 || in_overlay ||
+      (mode==13?note[0]!=0:strcmp(note,"Cancelled")))return 9;
+   return 0;
+  }
+  if(calls!=(mode==11?1:2) || draws!=1 || in_overlay ||
+     batch_snapshot!=(mode==10) || (mode==11?note[0]!=0:strcmp(note,"Copied")))return 8;
+  return 0;
+ }
  total=(mode==0 || mode==7 || mode==8)?3:300;
  for(i=0;i<total;++i)sprintf(all[i].name,"F%03u.PT3",i);
  strcpy(all[0].name,mode==8?"A.GR":"A.MB");strcpy(all[total-1].name,mode==8?"B.GR":"B.MB");
@@ -79,10 +127,11 @@ int main(int argc,char**argv){
 class Transition(unittest.TestCase):
  def test_real_overlay_return_order_and_failures(self):
   with tempfile.TemporaryDirectory(prefix='media-transition-') as d:
-   p=Path(d);(p/'test.c').write_text(base+harness+run+main)
+   dispatch=source[source.index('void __fastcall__ run_entry('):source.index('\n#pragma rodata-name (pop)',source.index('void __fastcall__ run_entry('))]
+   p=Path(d);(p/'test.c').write_text(base+harness+run+dispatch+main)
    r=subprocess.run(['cc','-std=c99','-I',str(ROOT),str(p/'test.c'),'-o',str(p/'test')],capture_output=True,text=True)
    self.assertEqual(r.returncode,0,r.stderr)
-   for mode in range(9):
+   for mode in range(14):
     with self.subTest(mode=mode):
      r=subprocess.run([str(p/'test'),str(mode)],capture_output=True,text=True,timeout=5)
      self.assertEqual(r.returncode,0,r.stdout+r.stderr)

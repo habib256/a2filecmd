@@ -5,6 +5,8 @@ import unittest
 from pathlib import Path
 from test_six_plugins import PREFIX, ROOT
 from po2dsk import to_dsk
+from po22mg import to_2mg
+from dc42 import wrap as to_dc
 
 HARNESS=PREFIX+r'''
 #include <errno.h>
@@ -19,7 +21,8 @@ static int read_status(FILE*);
 #undef ferror
 static FILE* failed_read;
 static int read_status(FILE* f) { return f == failed_read || ferror(f); }
-static int fault,opened,opens,closes;
+static int fault,opened,opens,closes,renames;
+static unsigned int confirm_calls,verify_halves;
 static FILE *verify_source,*verify_target;
 static FILE* writing;
 static unsigned char mli(unsigned char cmd,void* params) {
@@ -32,6 +35,10 @@ static unsigned char mli(unsigned char cmd,void* params) {
         if(fault==1)return 0x27;
         if(stat(old,&st))return errno==ENOENT?0x46:0x27;
         memset(replace_ip.result,0,15);replace_ip.result[0]=0xC3;replace_ip.result[4]=1;
+        if(!strstr(old,"A2FC.BAK") && fault>=30 && fault<=36) {
+            static const unsigned char storage[]={0,4,5,13,15,2,3};
+            replace_ip.result[4]=storage[fault-30];
+        }
         if(fault==29 && !strstr(old,"A2FC.BAK"))replace_ip.result[0]=0x01; /* locked */
         return 0;
     }
@@ -40,6 +47,7 @@ static unsigned char mli(unsigned char cmd,void* params) {
         f=fopen(old,"wx");if(!f)return 0x47;fclose(f);return 0;
     }
     if(cmd==0xC2) {
+        ++renames;
         p=replace_rn.newpath;memcpy(newpath,p+1,p[0]);newpath[p[0]]=0;
         if(fault==28 && strstr(old,"IMGCONV.TMP")) {
             f=fopen(newpath,"wx");if(!f)abort();fputs("new arrival",f);fclose(f);return 0x47;
@@ -58,13 +66,20 @@ static FILE* open_file(const char* path,const char* mode) {
     if(!strcmp(mode,"wb")){writing=f;opened=1;}return f;
 }
 static size_t read_file(void* p,size_t s,size_t n,FILE* f) {
+    size_t got;
+    if(fault==39 && f==verify_target && n==1)keyboard=0x9B;
     if(fault==3 && ftell(f)>=512)return 0;
     if(fault==10)failed_read=f;
     if(n==1 && ((fault==15 && f==verify_source) || (fault==16 && f==verify_target))) {
         failed_read=f;return 0;
     }
     if(fault==17 && f==verify_target && n>1)return fread(p,s,n-1,f);
-    return fread(p,s,n,f);
+    got=fread(p,s,n,f);
+    if(f==verify_target && n==256){
+        ++verify_halves;
+        if((fault==42 && verify_halves==1) || (fault==43 && verify_halves==2))((unsigned char*)p)[255]^=1;
+    }
+    return got;
 }
 static size_t write_file(const void* p,size_t s,size_t n,FILE* f) {
     unsigned char damaged[512];
@@ -77,9 +92,11 @@ static size_t write_file(const void* p,size_t s,size_t n,FILE* f) {
 static int close_file(FILE* f) {
     int w=opened && f==writing,r;
     if(fault==20 && w)fputc('X',f);
+    if((fault==37 && f==verify_source) ||
+       ((fault==38 || fault==40 || fault==41) && f==verify_target))keyboard=0x9B;
     r=fclose(f);++closes;if(w)opened=0;
     return (((fault==5 || fault==25) && w) || (fault==9 && !w) ||
-            (fault==18 && closes==3) || (fault==19 && closes==4))?-1:r;
+            (fault==18 && closes==3) || ((fault==19 || fault==41) && closes==4))?-1:r;
 }
 static char choice='2';
 static unsigned int seeks;
@@ -90,9 +107,9 @@ static int seek_file(FILE* f,long off,int origin) {
     if((fault==11 && seeks==1) || (fault==12 && seeks==2))return -1;
     return fseek(f,off,origin);
 }
-static unsigned char yes(const char* p){return 1;}
+static unsigned char yes(const char* p){++confirm_calls;return 1;}
 static int remove_file(const char* p) {
-    if(fault>=24 && fault<=26)return -1;
+    if((fault>=24 && fault<=26) || fault==40)return -1;
     if(fault==27 && strstr(p,"A2FC.BAK"))return -1;
     return remove(p);
 }
@@ -112,7 +129,10 @@ int main(int argc,char**argv) {
     api.memcpy=memcpy;api.memset=memset;api.strcpy=strcpy;api.strcmp=strcmp;api.strlen=strlen;api.sprintf=sprintf;
     api.fopen=open_file;api.fclose=close_file;api.fread=read_file;api.fwrite=write_file;api.fseek=seek_file;
     api.mli=mli;api.remove=remove_file;api.cgetc=choose;api.confirm=yes;api.message=message;api.progress_bar=progress;
-    plugin_entry(&api);puts(note);return 0;
+    plugin_entry(&api);
+    if(fault>=30 && fault<=34 && renames)abort();
+    fprintf(stderr,"STATE %d %d %d %u\n",opens,closes,renames,confirm_calls);
+    puts(note);return 0;
 }
 '''
 
@@ -134,15 +154,75 @@ class ImgconvSafety(unittest.TestCase):
         self.assertEqual(self.src.read_bytes(), self.data)
         self.assertEqual(self.dst.read_bytes(), b'old image')
         self.assertFalse((self.d/'IMGCONV.TMP').exists())
+    def test_invalid_destination_storage_never_renames_original(self):
+        for fault in range(30,35):
+            with self.subTest(storage_fault=fault):
+                self.dst.write_bytes(b'old image')
+                self.assertNotIn(' -> ',self.convert(fault))
+                self.assertEqual(self.dst.read_bytes(),b'old image')
+                self.assertFalse((self.d/'IMGCONV.TMP').exists())
+                self.assertFalse((self.d/'A2FC.BAK').exists())
+    def test_sapling_and_tree_destinations_can_be_replaced(self):
+        for fault in (35,36):
+            with self.subTest(storage_fault=fault):
+                self.dst.write_bytes(b'old image')
+                self.assertIn(' -> ',self.convert(fault))
+                self.assertEqual(self.dst.read_bytes(),to_2mg(self.data))
+                self.assertFalse((self.d/'IMGCONV.TMP').exists())
+                self.assertFalse((self.d/'A2FC.BAK').exists())
     def test_stream_error_with_full_count_preserves_both_originals(self):
         self.convert(10)
         self.assertEqual(self.src.read_bytes(), self.data)
         self.assertEqual(self.dst.read_bytes(), b'old image')
         self.assertFalse((self.d/'IMGCONV.TMP').exists())
     def convert(self,fault=0,choice='2',cached_size=None):
-        note=subprocess.check_output([self.exe,self.s,self.d,str(fault),choice,
-                                      self.src.name,str(len(self.data) if cached_size is None else cached_size)],text=True)
-        self.assertEqual(self.src.read_bytes(),self.data);return note
+        run=subprocess.run([self.exe,self.s,self.d,str(fault),choice,
+                            self.src.name,str(len(self.data) if cached_size is None else cached_size)],
+                           text=True,capture_output=True,check=True)
+        self.state=tuple(map(int,next(l for l in run.stderr.splitlines() if l.startswith('STATE ')).split()[1:]))
+        self.assertEqual(self.src.read_bytes(),self.data);return run.stdout
+
+    def test_late_verification_cancel_never_installs_the_replacement(self):
+        raw=bytes((i*7+i//256)&255 for i in range(8192))
+        # The disk helper expects a full 140K image; retain two full tracks.
+        dsk=lambda data:to_dsk(data+bytes(143360-len(data)))[:len(data)]
+        for source,wrap,choice,suffix in (('INPUT.PO',bytes,'2','2MG'),
+                                          ('INPUT.PO',bytes,'D','DSK'),
+                                          ('INPUT.DSK',dsk,'P','PO'),
+                                          ('INPUT.2MG',to_2mg,'P','PO'),
+                                          ('INPUT.PO',bytes,'C','DC'),
+                                          ('INPUT.DC',to_dc,'P','PO')):
+            content=bytes((i*7+i//256)&255 for i in range(409600)) if suffix=='DC' or source.endswith('.DC') else raw
+            for fault in (37,38,39,40,41):
+                with self.subTest(source=source,choice=choice,fault=fault):
+                    self.src=self.s/source;self.data=wrap(content);self.src.write_bytes(self.data)
+                    self.dst=self.d/('INPUT.'+suffix);self.dst.write_bytes(b'old image')
+                    tmp=self.d/'IMGCONV.TMP'
+                    if tmp.exists():tmp.unlink()
+                    backup=self.d/'A2FC.BAK'
+                    if backup.exists():backup.unlink()
+                    note=self.convert(fault,choice)
+                    self.assertNotIn(' -> ',note)
+                    self.assertEqual(self.dst.read_bytes(),b'old image')
+                    self.assertFalse((self.d/'A2FC.BAK').exists())
+                    self.assertEqual(self.state,(4,4,0,1))
+                    if fault==40:
+                        self.assertIn('Cleanup failed',note)
+                        expected=to_2mg(content) if suffix=='2MG' else dsk(content) if suffix=='DSK' else to_dc(content,b'INPUT.DC') if suffix=='DC' else content
+                        self.assertEqual(tmp.read_bytes(),expected)
+                    else:
+                        self.assertFalse(tmp.exists())
+                        self.assertIn('Verify',note)
+
+    def test_verification_checks_byte_255_of_both_halves(self):
+        for fault in (42,43):
+            with self.subTest(fault=fault):
+                note=self.convert(fault)
+                self.assertIn('Verify',note)
+                self.assertEqual(self.dst.read_bytes(),b'old image')
+                self.assertFalse((self.d/'IMGCONV.TMP').exists())
+                self.assertFalse((self.d/'A2FC.BAK').exists())
+                self.assertEqual(self.state,(4,4,0,1))
     def dsk_source(self, padded=False):
         raw = b''.join(bytes([i]) * 256 for i in range(32))
         if padded:
@@ -198,6 +278,38 @@ class ImgconvSafety(unittest.TestCase):
     def test_success_replaces_only_after_complete_conversion(self):
         self.assertIn(' -> ',self.convert())
         self.assertEqual(self.dst.read_bytes()[64:],self.data)
+    def test_inconsistent_2mg_data_length_preserves_source_and_destination(self):
+        raw = self.data
+        self.src = self.s / 'INPUT.2MG'
+        self.dst = self.d / 'INPUT.PO'
+        self.dst.write_bytes(b'old image')
+        for blocks, length in ((8, len(raw)), (16, 0), (16, 512),
+                               (16, len(raw) - 1), (16, len(raw) + 1),
+                               (16, 0xFFFFFFFF), (16, 0x01000000)):
+            with self.subTest(blocks=blocks, length=length):
+                data = bytearray(to_2mg(raw))
+                data[20:24] = blocks.to_bytes(4, 'little')
+                data[28:32] = length.to_bytes(4, 'little')
+                self.data = bytes(data)
+                self.src.write_bytes(self.data)
+                self.dst.write_bytes(b'old image')
+                note = self.convert(choice='P')
+                self.assertEqual(self.dst.read_bytes(), b'old image', note)
+                self.assertEqual(note.strip(), 'Not a ProDOS-order 2IMG file.')
+                self.assertFalse((self.d / 'IMGCONV.TMP').exists())
+                self.assertFalse((self.d / 'A2FC.BAK').exists())
+
+    def test_valid_2mg_padding_and_trailer_preserve_all_declared_data(self):
+        raw = self.data
+        self.src = self.s / 'INPUT.2MG'
+        self.dst = self.d / 'INPUT.PO'
+        header = bytearray(to_2mg(raw)[:64])
+        header[24:28] = (128).to_bytes(4, 'little')
+        self.data = bytes(header) + bytes(64) + raw + b'trailing metadata'
+        self.src.write_bytes(self.data)
+        self.dst.write_bytes(b'old image')
+        self.assertIn(' -> ', self.convert(choice='P'))
+        self.assertEqual(self.dst.read_bytes(), raw)
     def test_failures_preserve_old_image(self):
         for fault in (1,3,4,5,8):
             with self.subTest(fault=fault):

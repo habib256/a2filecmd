@@ -65,12 +65,16 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api);
 struct PluginHeader {
     unsigned int signature; unsigned char flags;
     void __fastcall__ (*entry)(const struct A2fcApi*);
-    unsigned char r0, r1, r2; char desc[52];
+    unsigned char r0, r1, r2; char desc[22];
 };
 #pragma rodata-name (push, "OVLHDR")
 const struct PluginHeader __plugin_header = {
     PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry, 0, 0, 0,
-    "Favourite directories: jump in two keys, add, del"
+#ifdef FAVRUN
+    "Favourite programs"
+#else
+    "Favourite directories"
+#endif
 };
 #pragma rodata-name (pop)
 
@@ -84,19 +88,37 @@ const struct PluginHeader __plugin_header = {
 #define NONE    0xFF                    /* save(): no slot left out */
 #define TAIL(s) (sizeof (s) - 1)        /* where the path goes after a heading */
 
-static const char f_name[] = "GOTO.CFG";
-static const char f_rb[]   = "rb";
-static const char f_wb[]   = "wb";
-static const char m_title[] = "GOTO -- favourite directories";
+#ifdef FAVRUN
+#define FAV_CFG "FAVRUN.CFG"
+#define FAV_TMP "FAVRUN.TMP"
+#define FAV_BAK "FAVRUN.BAK"
+#ifndef CURRENT
+#define CURRENT ((char*)0x3300)         /* outside LIST and TEXT */
+#endif
+static const char m_title[] = "FAVRUN -- programs";
+static const char m_keys[] = "1-9 Run,A Add,M Move,D Delete,ESC Back";
+static const char m_none[] = "No programs yet: A adds selected file";
+static const char m_dir[] = "Select SYS, BIN, BAS or INT.";
+#else
+#define FAV_CFG "GOTO.CFG"
+#define FAV_TMP "GOTO.TMP"
+#define FAV_BAK "GOTO.BAK"
+static const char m_title[] = "GOTO -- favourites";
 static const char m_keys[]  = "1-9 Go,P Path,A Add,M Move,D Delete,ESC Back";
 static const char m_none[]  = "No favourites yet: A adds this directory";
 static const char m_dir[]   = "Not a ProDOS directory: nothing to add.";
-static const char m_room[]  = "The list is full: nine favourites.";
+#endif
+static const char f_name[] = FAV_CFG;
+static const char f_rb[]   = "rb";
+static const char f_wb[]   = "wb";
+static const char m_room[]  = "Full list: nine favourites.";
 static const char m_dup[]   = "Already in the list.";
+#ifndef FAVRUN
 static const char m_gone[]  = "Gone: ";
-static const char m_which[] = "\1Delete which one? 1-9";
-static const char m_err[]   = "GOTO.CFG cannot be written.";
 static const char m_jump[]  = "Jumped to ";
+#endif
+static const char m_which[] = "\1Delete which one? 1-9";
+static const char m_err[]   = FAV_CFG " cannot be written.";
 static const char m_add[]   = "Added ";
 static const char m_del[]   = "Removed ";
 static char num[] = "1 ";               /* DATA: the row number, rewritten in place */
@@ -142,8 +164,10 @@ static void __fastcall__ at(unsigned char x, unsigned int y) STUB(gotoxy)
 static void __fastcall__ put(const char* s) STUB(cputs)
 static void __fastcall__ kbar(unsigned char x, const char* spec) STUB(keys_bar)
 static char __fastcall__ getkey(unsigned int unused) STUB(cgetc)
+#ifndef FAVRUN
 static unsigned char __fastcall__ dopen(const char* path) STUB(dir_open)
 static void __fastcall__ dclose(unsigned int unused) STUB(dir_close)
+#endif
 static char* __fastcall__ scpy(char* d, const char* s) STUB(strcpy)
 static int __fastcall__ scmp(const char* a, const char* b) STUB(strcmp)
 static unsigned char __fastcall__ slen(const char* s) STUB(strlen)
@@ -197,6 +221,10 @@ static unsigned char valid_path(char* p)
             n = 0;
         } else {
             if (*p >= 'a' && *p <= 'z') *p -= 32;
+#ifdef FAVRUN
+            if ((!n && (*p<'A' || *p>'Z')) ||
+                !((*p>='A' && *p<='Z') || (*p>='0' && *p<='9') || *p=='.'))return 0;
+#endif
             if (*p < ' ' || *p >= 127 || n == 15) return 0;
             ++n;
         }
@@ -251,6 +279,15 @@ static unsigned char fileop(unsigned char cmd,const char* path)
     info.n=cmd==0xC4 ? 10 : 1;
     return mli(cmd,&info);
 }
+/* Replacement needs write, rename and destroy permission on a standard file.
+ * Reuse this check after readback: the initial metadata may be stale then. */
+static unsigned char cfg_info(void)
+{
+    unsigned char i=fileop(0xC4,cfg);
+    if(!i && ((info.fields[0]&0xC2)!=0xC2 || info.fields[4]<1 || info.fields[4]>3))
+        i=0x27;
+    return i;
+}
 /* The shared exclusive CREATE, with GOTO's own $E3 (backup bit set). */
 #define RF(n) n
 #define FC_PATH ((unsigned char*)A->full)
@@ -267,7 +304,7 @@ static unsigned char rename_file(const char* from,const char* to)
 #include "file_install.h"
 static void discard_temp(void)
 {
-    scpy(N,fileop(0xC1,temp) ? (const char*)"Save failed; GOTO.TMP kept." : m_err);
+    scpy(N,fileop(0xC1,temp) ? (const char*)"Save failed; " FAV_TMP " kept." : m_err);
 }
 
 /* The serialized text stays in TEXT while the closed temporary is read
@@ -308,15 +345,14 @@ static void save(unsigned char dead)
     }
     /* Never truncate either recovery file. Existing ones require review. */
     i=fileop(0xC4,backup);
-    if(i!=0x46) { scpy(N,i ? m_err : (const char*)"GOTO.BAK exists; check saved files.");return; }
-    i=fileop(0xC4,cfg);
+    if(i!=0x46) { scpy(N,i ? m_err : (const char*)FAV_BAK " exists; check saved files.");return; }
+    i=cfg_info();
     exists=!i;
-    if((i && i!=0x46) || (exists &&
-       ((info.fields[0]&0xC2)!=0xC2 || info.fields[4]<1 || info.fields[4]>3))) {
+    if(i && i!=0x46) {
         scpy(N,m_err);return;
     }
     i=newfile(temp,0x04,0,1);
-    if(i) { scpy(N,i==0x47 ? (const char*)"GOTO.TMP exists; check saved files." : m_err);return; }
+    if(i) { scpy(N,i==0x47 ? (const char*)FAV_TMP " exists; check saved files." : m_err);return; }
     *A->filetype=0x04;*A->auxtype=0;
     fh=fopn(temp,f_wb);
     if(!fh) { discard_temp();return; }
@@ -324,14 +360,15 @@ static void save(unsigned char dead)
     if(ferror(fh))i=1;
     if(fcls(fh) || i) { discard_temp();return; }
     if(!verify_saved(p-TEXT)) { discard_temp();return; }
-    /* The old list remains intact until the new file has closed cleanly. */
-    i=file_install(temp,cfg,backup,exists);
+    /* Keep both files if the old list became unavailable or protected. */
+    i=FILE_INSTALL_FAILED;
+    if(!exists || !cfg_info())i=file_install(temp,cfg,backup,exists);
     if(i!=FILE_INSTALLED) {
         scpy(N,i==FILE_RESTORE_FAILED ?
-            (const char*)"Save failed; restore GOTO.BAK. GOTO.TMP kept." :
-            (const char*)"Install failed; GOTO.TMP kept.");return;
+            (const char*)"Save failed; restore " FAV_BAK ". " FAV_TMP " kept." :
+            (const char*)"Install failed; " FAV_TMP " kept.");return;
     }
-    if(exists && fileop(0xC1,backup))scpy(N,"Saved; GOTO.BAK kept.");
+    if(exists && fileop(0xC1,backup))scpy(N,"Saved; " FAV_BAK " kept.");
 }
 
 /* The whole screen: the title, one numbered row per favourite, the keys. */
@@ -352,6 +389,7 @@ static void draw(void)
 }
 
 /* TEXT is no longer needed once load() has parsed the favourites. */
+#ifndef FAVRUN
 static unsigned char path_input(void)
 {
     unsigned char len=0,k;
@@ -381,6 +419,30 @@ static void jump(const char* p)
         scpy(scpy(N,m_jump)+TAIL(m_jump),p);
     }
 }
+#else
+static unsigned char program_info(const char* path)
+{
+    unsigned char t;
+    if(fileop(0xC4,path) || !(info.fields[0]&1) || info.fields[4]<1 || info.fields[4]>3)return 0;
+    t=info.fields[1];
+    return t==0xFF || t==6 || t==0xFC || t==0xFA;
+}
+static void jump(const char* p)
+{
+    unsigned char i;
+    scpy(TEXT,p);i=slen(TEXT);
+    while(i && TEXT[i]!='/')--i;
+    if(i<2 || !TEXT[i+1] || !program_info(TEXT)) {scpy(N,m_dir);return;}
+    scpy(A->selected->name,TEXT+i+1);
+    A->selected->type=info.fields[1];
+    A->selected->aux=info.fields[2]|((unsigned int)info.fields[3]<<8);
+    TEXT[i]=0;scpy(P->path,TEXT);
+    P->first=P->cursor=P->count=0;P->fs=FS_PRODOS;
+    /* RUN receives the exact resident entry. No cursor or stale snapshot
+     * is used: count=0 also excludes unrelated movie backdrop marks. */
+    N[0]=7;N[1]=0;
+}
+#endif
 
 /* Move a favourite to its final numbered position, preserving the order
  * of all the others. TEXT holds one path until the shift is complete;
@@ -409,22 +471,28 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     N = api->note;
     P = api->panels;
     if (*api->active) ++P;
+#ifdef FAVRUN
+    scpy(CURRENT,api->full);
+#endif
 
     /* "/VOL/A2FILE/A2FILE.CFG" -> "/VOL/A2FILE/GOTO.CFG" */
     scpy(cfg, api->cfg_path);
     i = slen(cfg);
     while (i && cfg[i] != '/') --i;
+    if(!i || i+sizeof(FAV_CFG)>=PATH_LEN) {scpy(N,m_err);return;}
     scpy(cfg + i + 1, f_name);
-    scpy(temp,cfg);scpy(temp+i+1,"GOTO.TMP");
-    scpy(backup,cfg);scpy(backup+i+1,"GOTO.BAK");
+    scpy(temp,cfg);scpy(temp+i+1,FAV_TMP);
+    scpy(backup,cfg);scpy(backup+i+1,FAV_BAK);
 
-    if (!load()) { scpy(N,"Invalid GOTO.CFG: read error, size or paths. No changes."); return; }
+    if (!load()) { scpy(N,"Invalid " FAV_CFG ": read error, size or paths. No changes."); return; }
     draw();
     /* One key. Bit 5 is set on every digit, so `| 0x20` lower-cases the
      * letters and leaves 1-9 alone; and since count <= 9, i < count can
      * only be true for a digit key. */
     k = getkey(0) | 0x20;
+#ifndef FAVRUN
     if(k=='p') { if(path_input())jump(TEXT);return; }
+#endif
     if(k=='m' && count) { move_favourite();return; }
     if (count && k == 'd') {
         msg(m_which);
@@ -440,8 +508,13 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
             save(i);
         } else jump(p);
     } else if (!del && k == 'a') {
+#ifdef FAVRUN
+        p=CURRENT;
+        if(P->fs || !*p || !valid_path(p) || !program_info(p))scpy(N,m_dir);
+#else
         p = P->path;
         if (!*p || P->fs) scpy(N, m_dir);
+#endif
         else if (count == MAXFAV) scpy(N, m_room);
         else {
             for (i = 0; i < count; ++i)

@@ -248,7 +248,7 @@ def main():
             asked, line = run('HELLO.TXT', b'Y')
             s.ok('la question est posee avant le parcours', asked, line)
             s.ok('un bitmap qui dit libre un bloc reference est refuse',
-                 line == 'Image damaged: nothing written. Run FIXIT.', line)
+                 line == 'Image damaged. Run FIXIT.', line)
 
             # 9. Un .2MG protege en ecriture.
             mount('LOCKED.2MG', 'KEEP.TXT')

@@ -4,8 +4,22 @@
 #define UTIL_FIXED_API
 #define UTIL_CREATE
 #define UTIL_VOLUME
+/* The viewer has one source, image or device. Reuse its path during the
+ * size lookup instead of keeping two extra path copies below the API. */
+#define IMAGEIO_ONE
+#define IMAGEIO_CHECK_CLOSE
+#define source src
 #include "util.h"
 #include "imageio.h"
+
+/* Full byte counts do not validate a flagged image stream. Device reads
+ * use the MLI status and have no FILE. Only MAIN buffers change here;
+ * extraction writes its exclusively created output, never source/AUX. */
+static unsigned char checked_read(struct Source* s,unsigned int b,unsigned char* out)
+{
+    return source_read(s,b,out) && (s->unit || !ferror(s->file));
+}
+#define source_read checked_read
 
 #ifdef PLUGIN_HOST
 #define v_cprintf (a.cprintf)
@@ -46,15 +60,14 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api);
 struct PluginHeader {
     unsigned int signature; unsigned char flags;
     void __fastcall__ (*entry)(const struct A2fcApi*);
-    unsigned char reserved[3]; char desc[52];
+    unsigned char reserved[3]; char desc[24];
 };
 #pragma rodata-name (push, "OVLHDR")
 const struct PluginHeader __plugin_header = {
     PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry, {0,0,0},
-    "Read-only blocks: hex, directories and indexes"
+    "Blocks: hex/dir/index"
 };
 #pragma rodata-name (pop)
-static struct Source source;
 static unsigned int block;
 static unsigned char page, mode;
 
@@ -133,6 +146,7 @@ static void search(unsigned char fresh)
     }
 }
 /* Extract whole blocks in normalized order. A partial file remains on errors.
+ * Only the exclusively created output is written; no AUX memory is touched.
  * One image stream plus one output stream fits ProDOS's two I/O buffers. */
 static unsigned char extract_blocks(FILE* out,unsigned int count)
 {
@@ -140,7 +154,7 @@ static unsigned char extract_blocks(FILE* out,unsigned int count)
     for(i=0;i<count;++i) {
         if(busy())return 3;
         if(!source_read(&source,block+i,buf))return 2;
-        if(v_fwrite(buf,1,512,out)!=512)return 1;
+        if(v_fwrite(buf,1,512,out)!=512 || ferror(out))return 1;
     }
     return 0;
 }
@@ -162,7 +176,7 @@ static void extract(void)
     if(newfile(a.other_full,6,0,1)) { v_message("Cannot create file (name in use?)."); v_cgetc(); return; }
     *a.filetype=6;*a.auxtype=0;
     out=v_fopen(a.other_full,"wb");
-    if(!out) { v_message("Cannot open output; empty file remains."); v_cgetc(); return; }
+    if(!out) { v_message("Open failed; empty file kept."); v_cgetc(); return; }
     cancelled=0;v_message("Extracting... ESC cancels");
     r=extract_blocks(out,count);
     if(v_fclose(out))r=1;
@@ -188,7 +202,7 @@ static void directory(void)
     unsigned char i,n,kind;
     unsigned char* e;
     char name[16];
-    v_cputs("Interpret as ProDOS directory: previous/next blocks ");
+    v_cputs("ProDOS directory: previous/next ");
     v_cprintf("%u/%u\r\n",rd16(buf),rd16(buf+2));
     v_cputs(" #  Name             Kind Type   Key Blocks      EOF\r\n");
     for(i=0;i<13;++i) {
@@ -205,7 +219,7 @@ static void index_view(void)
 {
     unsigned char r,c;
     unsigned int i,b;
-    v_cprintf("Interpret as ProDOS index: entries %u..%u (0 = hole)\r\n",(unsigned int)page*32,(unsigned int)page*32+31);
+    v_cprintf("ProDOS index: %u..%u (0 = hole)\r\n",(unsigned int)page*32,(unsigned int)page*32+31);
     for(r=0;r<16;++r) {
         for(c=0;c<2;++c) {
             i=(unsigned int)page*32+r+(unsigned int)c*16;
@@ -220,7 +234,7 @@ static void jump(void)
     unsigned int b;
     if(!v_prompt("Block number (4 hex digits)",NULL,4))return;
     b=number(a.input,4);
-    if(b>=source.blocks) { v_message("Block outside this disk/image."); v_cgetc(); return; }
+    if(b>=source.blocks) { v_message("Block outside source."); v_cgetc(); return; }
     block=b; page=0;
 }
 void __fastcall__ plugin_entry(const struct A2fcApi* api)
@@ -255,5 +269,8 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         if(key=='X')extract();
         if(key=='H' || key=='D' || key=='I') { mode=key; page=0; }
     } while(1);
-    source_close(&source);
+    /* The source is read-only. Keep extracted outputs, but report an
+     * uncertain close; device sessions have no stream to close. No AUX. */
+    if(source.file && v_fclose(source.file))note("BLKVIEW: source close failed.");
+    source.file=0;
 }

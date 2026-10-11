@@ -22,6 +22,7 @@ C = r'''
 #include <unistd.h>
 void prep(const struct A2fcApi*);
 void put(const struct A2fcApi*);
+void cancel_image(void);
 static struct A2fcApi api;
 static struct Panel panels[2];
 static struct Entry selected;
@@ -30,6 +31,8 @@ static char full[81],other_full[81],input[17],note[100],reselect[64];
 static int mode,at,reads,writes,closes,seeks,renames,phase;
 static FILE* error_file;
 static FILE* original_read;
+static FILE *prep_original,*prep_clone,*finish_original;
+static int prep_verifying;
 static int damaged;
 int image_error(FILE* f){return f==error_file || ferror(f);}
 struct Info {unsigned char n;unsigned char* path;unsigned char access,type;unsigned int aux;unsigned char storage;unsigned int blocks,md,mt,cd,ct;};
@@ -49,14 +52,20 @@ static unsigned char mli(unsigned char cmd,void* p){
  if(mode==17 && phase==3 && ends(name,"A2FC.BAK")){unsigned char* q=(unsigned char*)p+offsetof(struct Info,access);memset(q,0,15);q[0]=0xC3;q[4]=1;return 0;}
  f=fopen(name,"rb");if(!f)return 0x46;fclose(f);
  /* replace_info returns packed 15 bytes rather than a native Info. */
- if(ends(name,"A2FC.BAK") || phase==3){unsigned char* q=(unsigned char*)p+offsetof(struct Info,access);memset(q,0,15);q[0]=0xC3;q[4]=1;}
+ if(ends(name,"A2FC.BAK") || phase==3){unsigned char* q=(unsigned char*)p+offsetof(struct Info,access);memset(q,0,15);q[0]=0xC3;q[4]=1;
+  if(phase==3 && !ends(name,"A2FC.BAK") && mode>=18 && mode<=22){static const unsigned char storage[]={0,4,5,13,15};q[4]=storage[mode-18];}}
  else {i->access=mode==10?1:0xC3;i->storage=1;i->aux=0x2000;i->type=6;}
  return 0;
 }
 static FILE* op(const char* p,const char* m){
  if(mode==13 && phase==3 && !strcmp(p,panels[1].path))return NULL;
  if(strchr(m,'w') && !ends(p,"A2FC.DOS"))abort();
- {FILE* f=fopen(p,m);if(phase==2 && !strcmp(p,panels[1].path))original_read=f;return f;}
+ {FILE* f=fopen(p,m);
+  if(phase==2 && !strcmp(p,panels[1].path))original_read=f;
+  if(phase==1 && ends(p,"A2FC.DOS") && !strcmp(m,"rb")){prep_verifying=1;prep_clone=f;}
+  if(phase==1 && !strcmp(p,panels[1].path) && !strcmp(m,"rb"))prep_original=f;
+  if(phase==3 && !strcmp(p,panels[1].path) && !strcmp(m,"rb"))finish_original=f;
+  return f;}
 }
 static size_t rd(void* p,size_t s,size_t n,FILE* f){++reads;if((mode==1 && reads==at) || (mode==16 && phase==2 && f==original_read && ftell(f)>=at)){error_file=f;return 0;}return fread(p,s,n,f);}
 static size_t wr(const void* p,size_t s,size_t n,FILE* f){++writes;if(mode==2 && writes==at){error_file=f;fwrite(p,s,n/2,f);return n/2;}{
@@ -65,9 +74,13 @@ static size_t wr(const void* p,size_t s,size_t n,FILE* f){++writes;if(mode==2 &&
   fseek(f,at,SEEK_SET);value=fgetc(f);fseek(f,at,SEEK_SET);fputc(value^1,f);fseek(f,mark,SEEK_SET);}
  return got;
 }}
-static int cl(FILE* f){int r=fclose(f);++closes;return mode==3 && closes==at?-1:r;}
+static int cl(FILE* f){int bad=0;
+ if(phase==1 && prep_verifying && ((mode==23 && f==prep_original) ||
+     (mode>=24 && mode<=26 && f==prep_clone))){cancel_image();bad=mode==26;}
+ if(phase==3 && f==finish_original && mode>=27 && mode<=29){cancel_image();bad=mode==29;}
+ int r=fclose(f);++closes;return bad || (mode==3 && closes==at)?-1:r;}
 static int sk(FILE* f,long at_,int w){++seeks;if(mode==4 && seeks==at)return -1;return fseek(f,at_,w);}
-static int rm(const char* p){if(mode==5)return -1;return remove(p);}
+static int rm(const char* p){if(mode==5 || mode==25 || mode==28)return -1;return remove(p);}
 static unsigned char cf(const char* p){
  if(mode==15){FILE* changed=fopen(panels[1].path,"r+b");fseek(changed,at,SEEK_SET);fputc(0x80,changed);fclose(changed);}
  return mode!=11;
@@ -104,8 +117,14 @@ class DosImage(unittest.TestCase):
   (p/'h.c').write_text(C);objs=[]
   for stem,entry in [('dosimage','prep'),('dosput','put')]:
    obj=p/(stem+'.o');objs.append(str(obj))
+   source=ROOT/'src/plugins'/f'{stem}.c'
+   if stem=='dosimage':
+    # Include the shipped C unchanged; expose only its cancellation latch
+    # so close mocks can simulate ESC in this translation unit.
+    source=p/'image.c'
+    source.write_text('#include "'+str(ROOT/'src/plugins/dosimage.c')+'"\nvoid cancel_image(void){cancelled=1;}\n')
    subprocess.run(['cc','-std=c99','-Wno-unknown-pragmas','-D_FORTIFY_SOURCE=0','-DPLUGIN_HOST','-D__fastcall__=',
-    '-Dferror=image_error','-Dplugin_entry='+entry,'-D__plugin_header='+stem+'_header','-I',str(ROOT),'-c',str(ROOT/'src/plugins'/f'{stem}.c'),'-o',str(obj)],check=True,capture_output=True)
+    '-Dferror=image_error','-Dplugin_entry='+entry,'-D__plugin_header='+stem+'_header','-I',str(ROOT),'-c',str(source),'-o',str(obj)],check=True,capture_output=True)
   cls.exe=p/'test'
   subprocess.run(['cc','-std=c99','-I',str(ROOT),str(p/'h.c'),*objs,'-o',str(cls.exe)],check=True,capture_output=True)
  @classmethod
@@ -170,6 +189,15 @@ class DosImage(unittest.TestCase):
  def test_restore_failure_and_retained_backup(self):
   _,out=self.run_op(7);self.assertIn('recovery',out);self.assert_original_recoverable()
   self.assertTrue((self.p/'A2FC.DOS').exists())
+ def test_invalid_storage_at_install_preserves_original_without_renames(self):
+  for mode in range(18,23):
+   with self.subTest(storage_mode=mode):
+    counts,out=self.run_op(mode)
+    self.assertEqual(counts[4],0)
+    self.assertNotIn('Copied to DOS 3.3 image',out)
+    self.assertEqual(self.disk.read_bytes(),self.original)
+    self.assertFalse((self.p/'A2FC.DOS').exists())
+    self.assertFalse((self.p/'A2FC.BAK').exists())
  def test_backup_cleanup_failure_keeps_verified_copy_and_original(self):
   _,out=self.run_op(5);self.assertIn('old image retained',out)
   self.assertEqual((self.p/'A2FC.BAK').read_bytes(),self.original)
@@ -247,6 +275,40 @@ int main(void) {
   self.disk.write_bytes(build([('KEEP',0x80,b'original')]))
   _,out=self.run_op();self.assertIn('Copied to DOS 3.3 image',out)
   self.assertIn('NEW',read_files(self.disk.read_bytes()))
+ def test_cancel_during_final_closes_never_installs_image(self):
+  sentinel=self.p/'PREVIOUS';sentinel.write_bytes(b'previous recovery bytes')
+  for suffix,trailer in (('DSK',b''),('DO',b''),('2MG',b''),('2MG',b'container comment')):
+   self.disk=self.p/('D.'+suffix)
+   before=(self.container() if suffix=='2MG' else self.original)+trailer
+   self.disk.write_bytes(before)
+   _,out=self.run_op();self.assertIn('Copied to DOS 3.3 image',out)
+   imported=self.disk.read_bytes()
+   for mode in range(23,30):
+    with self.subTest(suffix=suffix,trailer=trailer,mode=mode):
+     for filename in ('A2FC.DOS','A2FC.BAK'):(self.p/filename).unlink(missing_ok=True)
+     self.disk.write_bytes(before)
+     counts,out=self.run_op(mode)
+     self.assertEqual(counts[4],0)
+     self.assertNotIn('Copied to DOS 3.3 image',out)
+     self.assertEqual(self.disk.read_bytes(),before)
+     self.assertEqual(sentinel.read_bytes(),b'previous recovery bytes')
+     self.assertFalse((self.p/'A2FC.BAK').exists())
+     temp=self.p/'A2FC.DOS'
+     if mode>=27:
+      self.assertIn('A2FC.DOS retained',out)
+      self.assertEqual(temp.read_bytes(),imported)
+     elif mode==25:
+      self.assertIn('Cleanup failed',out)
+      self.assertEqual(temp.read_bytes(),before)
+     else:
+      self.assertFalse(temp.exists())
+     if temp.exists():
+      kept=temp.read_bytes()
+      retry,out=self.run_op()
+      self.assertEqual(retry[4],0)
+      self.assertEqual(self.disk.read_bytes(),before)
+      self.assertEqual(temp.read_bytes(),kept)
+   (self.p/'A2FC.DOS').unlink(missing_ok=True)
  def test_malformed_catalog_end_and_ts_offsets_preserve_image(self):
   before=make_disk([('KEEP',0x80,b'K'*32000)])
   for at,value in ((48*256+5,1),(49*256+5,0),((17*16+1)*256+1,17)):

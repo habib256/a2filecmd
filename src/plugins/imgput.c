@@ -66,11 +66,17 @@
  */
 #define UTIL_STUBS
 #define IMAGEIO_WRITE
+#define IMAGEIO_CHECK_CLOSE
+#define IMAGEIO_CHECK_STREAM
+/* An importer never needs to open a file image whose write bit is clear. */
+#define IMAGEIO_REQUIRE_WRITE
 /* Only ever a file: no device path, and with it no unit_of, readblk or
  * writeblk compiled in for branches this overlay can never take. */
 #define IMAGEIO_NODEVICE
 /* One image, `src`, which imageio.h then declares and addresses directly. */
 #define IMAGEIO_ONE
+/* No device/media/RAM services: selected is the last API field used. */
+#define UTIL_API_END cfg_path
 
 #include "util.h"
 #include "imageio.h"
@@ -80,12 +86,13 @@
 void __fastcall__ plugin_entry(const struct A2fcApi*);
 
 struct Header { unsigned int magic; unsigned char flags;
- void __fastcall__ (*entry)(const struct A2fcApi*); unsigned char r[3]; char desc[52]; };
+ void __fastcall__ (*entry)(const struct A2fcApi*); unsigned char r[3];
+ char desc[sizeof("ProDOS copy")]; };
 #ifndef PLUGIN_HOST
 #pragma rodata-name(push,"OVLHDR")
 #endif
 const struct Header __plugin_header={PLUGIN_MAGIC,OVERLAY_BIG,plugin_entry,{0,0,0},
- "ProDOS image: copy the selected file into it"};
+ "ProDOS copy"};
 #ifndef PLUGIN_HOST
 #pragma rodata-name(pop)
 #endif
@@ -135,18 +142,24 @@ static unsigned int dir_at;             /* the free slot's offset in that block 
 static unsigned int data_blocks, last, needed;
 /* The entry being built. The name goes straight into it and is compared
  * from there. */
-static unsigned char ent[0x27], namelen;
-#define newname (ent+1)
+/* Once the sapling index has been written and claimed, idx is scratch.
+ * Build the entry there, then copy it into dirb before read-back uses idx.
+ * Keep the name in the resident's stable selected-entry snapshot meanwhile. */
+#define ent idx
+/* File-only image I/O neither reads nor resets the unused device unit.
+ * Keep the name length in that byte rather than add another BSS byte. */
+#define namelen src.unit
+#define newname (a.selected->name)
 static unsigned int key;
 
 #define NOPAGE 0xFFFF
 
-static const char m_stopped[]="Stopped; image unchanged.";
-static const char m_failed[]="Write failed; image unchanged.";
+static const char m_stopped[]="Stopped.";
+static const char m_failed[]="Write failed.";
 static const char m_source[]="Cannot read the source.";
 static const char m_room[]="Not enough free blocks.";
-static const char m_damaged[]="Image damaged: nothing written. Run FIXIT.";
-static const char m_changed[]="Image changed; nothing done.";
+static const char m_damaged[]="Image damaged. Run FIXIT.";
+static const char m_changed[]="Image changed.";
 
 /* ---- writing a block and reading it back ------------------------------ */
 /* No ESC here: the data loop asks before each block while nothing is
@@ -275,6 +288,12 @@ static unsigned char claims_read(unsigned int b,unsigned char* to) {
 #define CLAIMS_WORD rd16
 #define CLAIMS_BLOCKS vol_blocks
 #define CLAIMS_TARGET dir_first
+/* A directory has access flags in its parent entry as well as its own
+ * header. Inspect only our destination; read-only ancestors stay readable.
+ * image_open initialized image_readonly; no writes precede this walk. */
+#define CLAIMS_DIRECTORY(e,b) do { \
+ if((b)==dir_first && !((e)[0x1E]&2))image_readonly=1; \
+} while(0)
 #include "prodos_claims.h"
 /* Everything the image names is marked used, the boot blocks and the
  * bitmap's own pages too: only then is a free bit a free block. */
@@ -300,13 +319,21 @@ static unsigned char image_sound(void) {
  * INTO that file's data -- there is no directory here to add to. */
 static unsigned char dir_survey(void) {
  unsigned int block=other->dir_key;
+ unsigned int previous=0;
  unsigned char guard,*p;
  dir_first=block;dir_blk=0;
  for(guard=0;block && guard<255;++guard) {
-  if(!source_read(&src,block,dirb))return 0;
+  /* A forward pointer alone does not establish directory ownership. */
+  if(!source_read(&src,block,dirb) || rd16(dirb)!=previous)return 0;
   p=dirb+4;
   if(!guard) {
-   if(*p<0xE0 || rd16(dirb) || dirb[0x23]!=0x27 || dirb[0x24]!=13)return 0;
+   if(*p<0xE0 || dirb[0x23]!=0x27 || dirb[0x24]!=13)return 0;
+   /* The directory's own access flags govern the entry/count writes;
+    * raw image I/O must enforce them before allocating any data block. */
+   if(!(dirb[0x22]&2))return 0;
+   /* count_up must never wrap and erase the directory's count evidence.
+    * This survey runs before the question and again before any write. */
+   if(rd16(dirb+0x25)==0xFFFF)return 0;
    p+=0x27;             /* the header of the first block is not a file */
   }
   for(;p!=dirb+4+13*0x27;p+=0x27) {
@@ -314,18 +341,22 @@ static unsigned char dir_survey(void) {
     if(!dir_blk) { dir_blk=block;dir_at=p-dirb; }
    } else if((*p&0x0F)==namelen && !memcmp(p+1,newname,namelen))return 2;
   }
-  block=rd16(dirb+2);
+  previous=block;block=rd16(dirb+2);
  }
- if(!dir_blk)return 3;
+ /* Hitting the scan bound with a linked tail is not end of directory:
+  * it cannot establish that the name is absent, even with a free slot. */
+ if(block || !dir_blk)return 3;
  return 1;
 }
 
 /* ---- the entry -------------------------------------------------------- */
-/* Into ent, where the name already is. The length is three bytes: the low
+/* Into the now idle index buffer. The length is three bytes: the low
  * one is the low byte of `last` -- 512 times anything ends in a zero byte
  * -- and the other two are the count of 256-byte pages. */
 static void fill_entry(void) {
  const struct Entry* e=a.selected;
+ RF(memset)(ent,0,0x27);
+ RF(memcpy)(ent+1,e->name,namelen);
  ent[0]=(data_blocks>1?0x20:0x10)|namelen;    /* sapling or seedling */
  ent[0x10]=e->type;
  wr16(ent+0x11,key);
@@ -404,11 +435,14 @@ static const char* put(void) {
 
  /* It must read as a ProDOS volume, and its bitmap must lie inside it. */
  if(!header_ok())return "Not a ProDOS image.";
+ /* Raw image writes bypass the enclosed volume's ProDOS access flags.
+  * The bitmap and directory may be changed only with write-enable set. */
+ if(!(dirb[0x22]&2))return "Image is read-only.";
 
  /* Name taken, no free slot, not a directory, or unreadable: one refusal,
   * because all four mean the same to the caller -- the entry cannot be
   * made here. */
- if(dir_survey()!=1)return "No room for that name here.";
+ if(dir_survey()!=1)return "Cannot add file here.";
 
  /* Type, aux, access and date come from the entry the panel already read:
   * a GET_FILE_INFO would say the same and cost its path buffer. The times
@@ -430,9 +464,10 @@ static const char* put(void) {
   * again rather than trust what it said before -- and this time ask it
   * everything: no block is chosen until every block the image names has
   * been found marked used. Long on a big image, so it says so. */
- if(!header_ok() || dir_survey()!=1)return m_changed;
+ if(!header_ok() || !(dirb[0x22]&2) || dir_survey()!=1)return m_changed;
  RF(message)("Checking the image... ESC stops");
  if(!image_sound())return cancelled?m_stopped:m_damaged;
+ if(image_readonly)return "Image is read-only.";
  /* The walk completed and the image is sound, but the panel's key was
   * not met as a live directory: a directory deleted since the panel read
   * it (its key block keeps its header, so dir_survey took it). Nothing
@@ -464,7 +499,12 @@ static const char* put(void) {
   if(!put_verified(b,buf,dirb))return m_failed;
  }
  if(i<data_blocks || RF(fread)(dirb,1,1,source) || ferror(source))
-  return "Source changed; nothing added.";
+  return "Source changed.";
+ /* A failed source close is an I/O failure too. Do not claim the free
+  * blocks or publish the entry until the input has closed successfully.
+  * Only unallocated image blocks have been written so far; no AUX use. */
+ n=RF(fclose)(source);source=NULL;
+ if(n)return m_source;
  if(data_blocks>1 && !put_verified(key,idx,dirb))return m_failed;
 
  /* From here the blocks are ours and nothing stops the writes, ESC
@@ -493,7 +533,7 @@ static const char* put(void) {
   }
  }
  if(n)return "Copied into the image; source kept.";
- return "Bitmap written, entry unverified: run FIXIT.";
+ return "Bitmap written; run FIXIT.";
 }
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api) {
@@ -507,15 +547,14 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
  }
  namelen=RF(strlen)(a.selected->name);
  if(!namelen || namelen>15) { note("Bad name.");return; }
- RF(memset)(ent,0,0x27);
- RF(memcpy)(newname,a.selected->name,namelen);
 
  /* The image, by the path the other panel is mounted on. */
  n=other->img_len;
  RF(memcpy)(src.path,other->path,n);src.path[n]=0;
  if(!image_open(&src)) { note("Cannot open the image.");return; }
  m=put();
- if(m)note(m);
  if(source)RF(fclose)(source);
- source_close(&src);
+ /* put() has finished using the image; a close error invalidates success. */
+ if(RF(fclose)(src.file))m="Close failed.";
+ if(m)note(m);
 }

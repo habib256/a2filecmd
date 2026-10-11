@@ -46,6 +46,18 @@ static char final_path[PATH_LEN];
 /* GET_FILE_INFO writes fifteen result bytes after the Pascal-path pointer. */
 static struct { unsigned char count; unsigned char* path; unsigned char result[15]; } ip;
 
+#ifndef KBD
+#define KBD ((volatile unsigned char*)0xC000)
+#define STROBE ((volatile unsigned char*)0xC010)
+#endif
+static void poll_cancel(void)
+{
+    if (*KBD == (KEY_ESC | 0x80)) {
+        *STROBE = 0;
+        fail = 1;
+    }
+}
+
 /* Latin-1 $C0-$DF to ASCII; $E0-$FF the same, lower-cased. */
 static const char latin[] = "AAAAAAACEEEEIIIIDNOOOOO?OUUUUY?y";
 
@@ -214,12 +226,7 @@ convert_pass:
     prev = 0; col = 0; pend = 0; fail = 0;
     for (;;) {
         T.progress_bar(e->name, nin, e->size);
-#ifndef PLUGIN_HOST
-        if (*(volatile unsigned char*)0xC000 == (KEY_ESC | 0x80)) {
-            *(volatile unsigned char*)0xC010 = 0;
-            fail = 1;
-        }
-#endif
+        poll_cancel();
         if (fail) break;
         n = T.fread(T.copy_buf, 1, 256, in);
         nin += n;
@@ -235,6 +242,9 @@ convert_pass:
     if (ferror(out)) fail = 1;
     if (T.fclose(in)) fail = 1;
     if (T.fclose(out)) fail = 1;
+    /* Neither original may move after an ESC received by the last read
+     * or close. Only this run's exclusively created output is discarded. */
+    poll_cancel();
     if (fail) goto errrm;
     if (!checking) {
         /* Re-run the deterministic conversion against the closed output.

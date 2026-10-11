@@ -18,6 +18,7 @@ static unsigned char original[1024], replacement[1024];
 #include "src/plugins/bootblk.c"
 static unsigned char disks[4][1536];
 static unsigned int calls, writes, fail1, fail2;
+static unsigned int questions;
 static int mode, consent, same, tgt = 1, src = 0;
 static const char* swap;
 static char twins = '-';             /* 'T': a second TARGET on line, 'B': a second BOOT */
@@ -56,7 +57,9 @@ static unsigned char mock(unsigned char cmd, void* p) {
 }
 static unsigned char confirm(const char* s) {
     (void)s;
-    if (swap[0] != '-') tgt = swap[0] - '0';
+    ++questions;
+    if (swap[0] == 'P') disks[tgt][1024 + 34] &= ~2;
+    else if (swap[0] != '-') tgt = swap[0] - '0';
     if (swap[1] != '-') src = swap[1] - '0';
     return consent;
 }
@@ -84,6 +87,7 @@ int main(int argc, char** argv) {
     plugin_entry(&api);
     f = fopen(argv[6], "wb"); fwrite(disks, 1, sizeof disks, f); fclose(f);
     printf("%u %u\n%s\n", calls, writes, note);
+    fprintf(stderr, "questions=%u\n", questions);
     return 0;
 }
 '''
@@ -96,6 +100,7 @@ def disk(seed, name, header_from=None):
     h[0:4] = bytes([0, 0, 3, 0])
     h[4] = 0xF0 | len(name)
     h[5:20] = name.encode().ljust(15, b'\0')
+    h[34] = 0xC3
     h[35], h[36] = 39, 13
     h[39:41] = (6).to_bytes(2, 'little')
     h[41:43] = (280).to_bytes(2, 'little')
@@ -129,13 +134,17 @@ class BootBlocks(unittest.TestCase):
         cls.tmp.cleanup()
 
     def run_all(self, fail=0, second=0, mode=0, consent=1, same=0, swap='--', tgt=1,
-                twins='-', panel='-'):
+                twins='-', panel='-', target_access=None):
         path = self.root / 'result.bin'
-        path.write_bytes(self.source + self.target + self.other + self.twin)
-        result = subprocess.check_output([str(self.exe), str(fail), str(second),
+        target = bytearray(self.target)
+        if target_access is not None:
+            target[1024 + 34] = target_access
+        path.write_bytes(self.source + target + self.other + self.twin)
+        result = subprocess.run([str(self.exe), str(fail), str(second),
                   str(mode), str(consent), str(same), str(path), swap, str(tgt),
-                  twins, panel], text=True)
-        counts, note = result.split('\n', 1)
+                  twins, panel], text=True, capture_output=True, check=True)
+        self.questions = int(result.stderr.strip().split('=')[1])
+        counts, note = result.stdout.split('\n', 1)
         calls, writes = map(int, counts.split())
         data = path.read_bytes()
         disks = [data[i * 1536:(i + 1) * 1536] for i in range(4)]
@@ -153,6 +162,34 @@ class BootBlocks(unittest.TestCase):
         self.assertEqual((calls, writes), (self.ID + 8, 2))
         self.assertEqual(target, self.source[:1024] + self.target[1024:])
         self.assertIn('rewritten from', note)
+
+    def test_volume_write_protection_refuses_before_confirmation(self):
+        for access in (0, 1, 0xC1, 0xE1):
+            for panel in ('-', '/TARGET/SUB'):
+                with self.subTest(access=access, panel=panel):
+                    calls, writes, note, disks = self.run_all(
+                        panel=panel, target_access=access)
+                    expected = bytearray(self.target)
+                    expected[1024 + 34] = access
+                    self.assertEqual(disks, [self.source, bytes(expected), self.other, self.twin])
+                    self.assertEqual(calls, 2, 'no boot block may be read')
+                    self.assertEqual(writes, 0)
+                    self.assertEqual(self.questions, 0)
+                    self.assertIn('write protected', note)
+
+    def test_volume_write_permission_does_not_require_rename_or_destroy(self):
+        calls, writes, note, disks = self.run_all(target_access=3)
+        self.assertEqual(writes, 2)
+        self.assertEqual(disks[1][:1024], self.source[:1024])
+
+    def test_volume_locked_during_confirmation_preserves_boot_blocks(self):
+        calls, writes, note, disks = self.run_all(swap='P-')
+        expected = bytearray(self.target)
+        expected[1024 + 34] &= ~2
+        self.assertEqual(disks, [self.source, bytes(expected), self.other, self.twin])
+        self.assertEqual(writes, 0)
+        self.assertEqual(self.questions, 1)
+        self.assertIn('Nothing written', note)
 
     def test_all_preflight_read_failures_write_nothing(self):
         for mode in (0, 1):

@@ -72,12 +72,12 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api);
 struct PluginHeader {
     unsigned int signature; unsigned char flags;
     void __fastcall__ (*entry)(const struct A2fcApi*);
-    unsigned char reserved[3]; char desc[63];
+    unsigned char reserved[3]; char desc[32];
 };
 #pragma rodata-name (push, "OVLHDR")
 const struct PluginHeader __plugin_header = {
     PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry, {0,0,0},
-    "Repair a ProDOS volume: plan, type FIX, every write read back"
+    "Repair ProDOS: plan, FIX, verify"
 };
 #pragma rodata-name (pop)
 
@@ -128,6 +128,10 @@ static void repair_main(void)
     /* The header entry as the plan saw it, for the guard below: block 2 is
      * read again because the walk left the last bitmap page in blk. */
     if (!readblock(2, blk)) { note(M_NOREAD); return; }
+    /* WRITE_BLOCK bypasses ProDOS access checks. The volume header's
+     * write-enable bit must permit every directory/bitmap correction.
+     * same_header() checks it again after the confirmation. */
+    if (!(blk[0x22] & 2)) { note("Volume write protected."); return; }
     v_memcpy(hdr, blk + H_STORAGE, HDRLEN);
 
     /* A cross-linked volume is refused WHOLE, not just its freeing. A block

@@ -70,21 +70,45 @@ def apple_single(data):
         return None
     v1 = data[5] == 1
     n = struct.unpack('>H', data[24:26])[0]
+    end = 26 + 12 * n
+    if end > len(data):
+        return 'broken'
     name, typed, fork, rsrc = '', 0, None, 0
+    prodos_seen = False
+    resources_seen = False
+    name_seen = False
+    finder_seen = False
     ptype = paux = 0
     for i in range(n):
         o = 26 + 12 * i
         if o + 12 > len(data):
             return 'broken'
         eid, at, ln = struct.unpack('>III', data[o:o + 12])
-        if at > len(data) or ln > len(data) - at:
+        if (ln and at < end) or at > len(data) or ln > len(data) - at:
             return 'broken'
+        if eid == 11:
+            if ln < 8 or prodos_seen:
+                return 'broken'
+            prodos_seen = True
+        if eid == 9:
+            if ln < 8 or finder_seen:
+                return 'broken'
+            finder_seen = True
         if eid == 1:
+            if fork is not None:
+                return 'broken'
             fork = data[at:at + ln]
         elif eid == 2:
+            if resources_seen:
+                return 'broken'
+            resources_seen = True
             rsrc = ln
-        elif eid == 3 and ln:
-            name = prodos_name(data[at:at + min(ln, 63)])
+        elif eid == 3:
+            if name_seen:
+                return 'broken'
+            name_seen = True
+            if ln:
+                name = prodos_name(data[at:at + min(ln, 63)])
         elif eid == 11 and ln >= 8:
             ptype, paux, typed = data[at + 3], data[at + 6] << 8 | data[at + 7], 2
         elif eid == 7 and v1 and ln >= 16 and data[8:14] == b'ProDOS':
@@ -104,16 +128,21 @@ def mac_binary(data):
     if crc16(h[:124]) != struct.unpack('>H', h[124:126])[0] and any(h[99:128]):
         return None
     ln, rsrc = struct.unpack('>II', h[83:91])
-    if ln > len(data) - 128:
+    secondary = struct.unpack('>H', h[120:122])[0]
+    off = 128 + ((secondary + 127) // 128) * 128
+    if off > len(data) or ln > len(data) - off:
         return None
+    if rsrc:
+        available=len(data)-off-ln
+        padding=(-ln)&127
+        if padding>available or rsrc>available-padding:
+            return None
     t, a = hfs_type(h[65:73])
-    return prodos_name(h[2:2 + h[1]]), t, a, data[128:128 + ln], rsrc
+    return prodos_name(h[2:2 + h[1]]), t, a, data[off:off + ln], rsrc
 
 
 def unwrap(data, wrapper):
-    r = apple_single(data)
-    if r is None:
-        r = mac_binary(data)
+    r = apple_single(data) if data[:4] == b'\x00\x05\x16\x00' else mac_binary(data)
     if r is None or r == 'broken':
         return None
     name, t, a, fork, rsrc = r
@@ -140,18 +169,24 @@ def make_as(entries, version=2, home=b''):
     return head + table + body
 
 
-def make_mb(name, mtype, fork, rsrc=b'', version=2):
+def make_mb(name, mtype, fork, rsrc=b'', version=2, secondary=b''):
     h = bytearray(128)
     h[1] = len(name)
     h[2:2 + len(name)] = name
     h[65:73] = mtype
     h[83:87] = len(fork).to_bytes(4, 'big')
     h[87:91] = len(rsrc).to_bytes(4, 'big')
+    if secondary:
+        if version<2:
+            raise ValueError('secondary header requires MacBinary II or III')
+        h[120:122]=len(secondary).to_bytes(2,'big')
     if version >= 2:
         h[122], h[123] = 0x81, 0x81
+        if version>=3:
+            h[102:106]=b'mBIN';h[122]=0x82
         h[124:126] = crc16(bytes(h[:124])).to_bytes(2, 'big')
     pad = lambda b: b + bytes(-len(b) % 128)
-    return bytes(h) + pad(fork) + pad(rsrc)
+    return bytes(h) + pad(secondary) + pad(fork) + pad(rsrc)
 
 
 def selftest():
