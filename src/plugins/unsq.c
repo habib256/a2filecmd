@@ -46,6 +46,7 @@ const struct PluginHeader __plugin_header = {
 static FILE* in;
 static FILE* out;
 static unsigned long base, limit;       /* the file offset of buf[0]; where the stream must end */
+static unsigned long source_size;       /* current stream length, not the panel's cached size */
 static unsigned int have, at;
 static unsigned char eof;
 static short nodes[MAXNODES * 2];      /* 16 bits, signed, on the host too */
@@ -73,7 +74,7 @@ static unsigned char getb(void)
         base += have;
         have = RF(fread)(buf, 1, 512, in);
         at = 0;
-        if (!have) { eof = 1; return 0; }
+        if (!have || ferror(in)) { eof = 1; return 0; }
     }
     if (base + at >= limit) { eof = 1; return 0; }
     return buf[at++];
@@ -85,11 +86,12 @@ static unsigned int get16(void)
     return lo | ((unsigned int)getb() << 8);
 }
 
-static void seek(unsigned long off)
+static unsigned char seek(unsigned long off)
 {
-    if (RF(fseek)(in, off, SEEK_SET)) eof = 1;
+    if (RF(fseek)(in, off, SEEK_SET)) { eof = 1; return 0; }
     base = off;
     have = at = 0;
+    return 1;
 }
 
 static unsigned char grab(unsigned char* p, unsigned int n)
@@ -119,7 +121,7 @@ static void putb(unsigned char c)
     if (olen == sizeof obuf) flush();
     if (!(ocount & 1023)) {
         /* measured on the archive: a .QQ does not say how long it grows */
-        a.progress_bar(name, tell(), a.selected->size);
+        a.progress_bar(name, tell(), source_size);
         if (stop()) bad = 1;
     }
 }
@@ -190,18 +192,24 @@ static unsigned char copy(unsigned long n)
 /* The file just written, read back: its length and the sum of its bytes. */
 static unsigned char read_back(void)
 {
-    FILE* f = RF(fopen)(dest, "rb");
+    FILE* f;
     unsigned long n = 0;
     unsigned short s = 0;
     unsigned int k, i;
-    if (!f) return 0;
+    /* An interrupted verification is incomplete, even on its final block.
+     * The caller cleans only the current exclusively created output. */
+    if (stop() || !(f = RF(fopen)(dest, "rb"))) return 0;
     while ((k = RF(fread)(obuf, 1, sizeof obuf, f)) != 0) {
         for (i = 0; i < k; ++i) s += obuf[i];
         n += k;
         a.progress_bar(name, n, ocount);
+        if (stop()) break;
     }
-    k = ferror(f);
+    k = ferror(f) || cancelled;
     if (RF(fclose)(f)) k = 1;
+    /* Closing may take time: ESC there still interrupts verification.
+     * one() cleans only its exclusive current output; source/AUX untouched. */
+    if (stop()) k = 1;
     return !k && n == ocount && s == osum;
 }
 
@@ -211,7 +219,17 @@ static unsigned char read_back(void)
 static unsigned char one(unsigned char squeezed, unsigned long n, unsigned long want, unsigned int check)
 {
     unsigned char ok;
-    if (!name[0] || !join(dest, other->path, name) || newfile(dest, type, aux, 1)) {
+    if (!name[0] || !join(dest, other->path, name)) {
+        /* A name/path failure is not a collision. No output is owned:
+         * stop before CREATE and preserve prior files, source and AUX. */
+        bad = 3;
+        return 0;
+    }
+    ok = newfile(dest, type, aux, 1);
+    if (ok) {
+        /* Failed CREATE grants no ownership. Only a duplicate is a skip;
+         * other errors stop before opening or cleaning this destination. */
+        if (ok != 0x47) { bad = 2; return 0; }
         ++skipped;
         return 1;
     }
@@ -288,13 +306,19 @@ static unsigned char acu(void)
         if (nlen > sizeof raw || !grab(raw, nlen)) return 0;
         rlen = le32(hdr + 0x0E);
         dlen = le32(hdr + 0x12);
-        fork = tell() + rlen;
-        seek(fork);
+        /* Subtract before adding: untrusted 32-bit lengths may wrap on
+         * cc65, and SEEK_SET beyond EOF may succeed. Validate even records
+         * that will be skipped, before creating any output for this record. */
+        fork = tell();
+        if (fork > source_size || rlen > source_size - fork) return 0;
+        fork += rlen;
+        if (dlen > source_size - fork) return 0;
+        if (!seek(fork)) return 0;
         /* A directory record is skipped; a file typed $0F too, counted:
          * the panels would walk it as a folder. */
         if (hdr[0x20] == 0x0D || hdr[0x18] == 0x0F) {
             if (hdr[0x20] != 0x0D) { ++skipped; folder = 1; }
-            seek(fork + dlen);
+            if (!seek(fork + dlen)) return 0;
             continue;
         }
         if (hdr[1] != 0 && hdr[1] != 3) return 0;
@@ -304,17 +328,16 @@ static unsigned char acu(void)
         limit = fork + dlen;
         checked = 0;                    /* ACU's data CRCs cannot be trusted */
         if (!one(hdr[1] == 3, dlen, le32(hdr + 0x26), 0)) return 0;
-        limit = 0xFFFFFFFFUL;
+        limit = source_size;
         if (tell() > fork + dlen) return 0;
-        seek(fork + dlen);
-        if (eof) return 0;
+        if (!seek(fork + dlen) || eof) return 0;
     }
     return 1;
 }
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api)
 {
-    unsigned char ok = 0;
+    unsigned char ok = 0, io_bad;
     init(api);
     if (!a.selected->name[0] || a.selected->type == 0x0F || !a.full[0] || !(in = RF(fopen)(a.full, "rb"))) {
         note("Not a SQueezed file or an ACU archive.");
@@ -325,21 +348,52 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         note("Other panel: open a ProDOS directory.");
         return;
     }
+    /* The archive can have changed since the panel was read. No offsets
+     * or fork lengths are trusted until its current length is available. */
+    /* Only service-table streams share the resident's open-file state;
+     * overlay-local ftell would use a different cc65 descriptor table.
+     * Count actual reads instead and reject an error, not just short EOF. */
+    source_size = 0;
+    while ((have = RF(fread)(buf, 1, 512, in)) != 0) {
+        source_size += have;
+        if (source_size > 0xFFFFFFUL || stop()) break;
+    }
+    if (ferror(in) || source_size > 0xFFFFFFUL || cancelled ||
+        RF(fseek)(in, 0, SEEK_SET)) {
+        RF(fclose)(in);
+        note("Archive size unreadable: nothing extracted.");
+        return;
+    }
     base = have = at = eof = bad = made = skipped = kept = folder = 0;
-    limit = 0xFFFFFFFFUL;
+    limit = source_size;
     if (grab(hdr, 2) && hdr[0] == 0x76 && hdr[1] == 0xFF) {
         ok = standalone();
     } else if (grab(hdr + 2, 18) && hdr[4] == 'f' && hdr[5] == 'Z' && hdr[6] == 'i' && hdr[7] == 'n' && hdr[8] == 'k') {
         ok = acu();
     } else {
+        io_bad = ferror(in) != 0;
         RF(fclose)(in);
-        note("Not a SQueezed file or an ACU archive.");
+        note(io_bad ? "Archive I/O error: nothing extracted." : "Not a SQueezed file or an ACU archive.");
         return;
     }
-    RF(fclose)(in);
+    /* The source is read-only; only exclusively created outputs were
+     * written, closed and read back. Do not turn a source read/close error
+     * into complete success or delete those already verified outputs.
+     * No AUX is used. Always close, even when the stream has an error. */
+    io_bad = ferror(in) != 0;
+    if (RF(fclose)(in)) io_bad = 1;
+    /* ESC may arrive during the final close, even with no files extracted.
+     * Verified outputs remain owned by the user; no cleanup or AUX writes. */
+    if (stop()) ok = 0;
     if (kept) return;
-    if (!ok && !bad && !made && !skipped) { note("Damaged archive: nothing extracted."); return; }
+    if (io_bad) {
+        a.sprintf(a.note, "%u extracted, %u skipped; archive I/O error, stopped.", made, skipped);
+        return;
+    }
+    if (!ok && !bad && !made && !skipped && !cancelled) { note("Damaged archive: nothing extracted."); return; }
     a.sprintf(a.note, "%u extracted, %u skipped (name taken%s)%s", made, skipped,
               folder ? " or type $0F" : "",
-              ok ? "." : cancelled ? "; stopped." : "; damaged, stopped.");
+              ok ? "." : cancelled ? "; stopped." : bad == 2 ?
+              "; create failed, stopped." : bad == 3 ?
+              "; name/path invalid, stopped." : "; damaged, stopped.");
 }

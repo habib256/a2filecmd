@@ -17,14 +17,15 @@ PREFIX = r'''
 #define H_BITMAP 0x23
 #define H_TOTAL 0x25
 static unsigned char storage[8192], buf[512];
-static unsigned int total_blocks, reads, writes;
+static unsigned int total_blocks, bitmap_block = 6, reads, writes;
 static unsigned int rd16(const unsigned char* p) {
     return p[0] | ((unsigned int)p[1] << 8);
 }
 static unsigned char rd(unsigned int b) {
     if (b == 2) {
         memset(buf, 0, 512);
-        buf[4 + H_BITMAP] = 6;
+        buf[4 + H_BITMAP] = bitmap_block;
+        buf[5 + H_BITMAP] = bitmap_block >> 8;
         buf[4 + H_TOTAL] = total_blocks;
         buf[5 + H_TOTAL] = total_blocks >> 8;
         return 1;
@@ -47,13 +48,14 @@ int main(int argc, char** argv) {
     unsigned int result, free_block;
     total_blocks = (unsigned int)strtoul(argv[1], 0, 10);
     free_block = (unsigned int)strtoul(argv[2], 0, 10);
+    if (argc > 3) bitmap_block = (unsigned int)strtoul(argv[3], 0, 10);
     /* Padding bits outside the volume are free: they must be ignored. */
     for (b = total_blocks; b < 65536UL; ++b)
         storage[b >> 3] |= 0x80 >> (b & 7);
-    if (free_block) storage[free_block >> 3] |= 0x80 >> (free_block & 7);
+    if (free_block || argc > 4) storage[free_block >> 3] |= 0x80 >> (free_block & 7);
     result = alloc_block();
     printf("%u %u %u %u\n", result, reads, writes,
-           free_block ? !!(storage[free_block >> 3] & (0x80 >> (free_block & 7))) : 0);
+           free_block || argc > 4 ? !!(storage[free_block >> 3] & (0x80 >> (free_block & 7))) : 0);
     return 0;
 }
 '''
@@ -92,6 +94,24 @@ class MoveAllocator(unittest.TestCase):
                                                          text=True, timeout=15)
                         self.assertEqual(list(map(int, result.split())),
                                          [free, (total + 4095) // 4096, int(free != 0), 0])
+
+    def test_reserved_block_marked_free_is_not_allocated_or_written(self):
+        for cpu, command in self.commands.items():
+            for total, block in ((280, 0), (280, 1), (280, 2), (280, 5),
+                                 (280, 6), (5000, 7), (65535, 21)):
+                with self.subTest(cpu=cpu, total=total, block=block):
+                    result = subprocess.check_output(command + [str(total), str(block), '6', 'set'],
+                                                     text=True, timeout=15)
+                    self.assertEqual(list(map(int, result.split())), [0, 1, 0, 1])
+
+    def test_invalid_bitmap_bounds_refuse_before_bitmap_io(self):
+        for cpu, command in self.commands.items():
+            for total, bitmap in ((280, 0), (280, 1), (280, 2), (280, 5),
+                                  (280, 280), (280, 65535), (5000, 4999), (6, 6)):
+                with self.subTest(cpu=cpu, total=total, bitmap=bitmap):
+                    result = subprocess.check_output(command + [str(total), '0', str(bitmap)],
+                                                     text=True, timeout=15)
+                    self.assertEqual(list(map(int, result.split())), [0, 0, 0, 0])
 
 
 if __name__ == '__main__':

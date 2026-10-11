@@ -45,7 +45,13 @@ C = r'''
 #undef strcpy
 #undef sprintf
 struct A2fcApi;
+static int h_error(FILE*);
+static void h_clear(FILE*);
+#define ferror h_error
+#define clearerr h_clear
 #include "src/plugins/imgput.c"
+#undef ferror
+#undef clearerr
 #ifndef SPIN_H                  /* an IMGPUT from before it gave signs of life */
 static unsigned long spins;
 #endif
@@ -59,7 +65,10 @@ static char img_path[280];
 static int mode, fail_at, writes;
 static long img_size;
 static FILE *img_file, *src_file;
-static int img_reads, src_reads, src_opens;
+static int img_reads, src_reads, src_opens, src_closes;
+static FILE* flagged;
+static int h_error(FILE* f){return f==flagged || ferror(f);}
+static void h_clear(FILE* f){if(f==flagged)flagged=NULL;clearerr(f);}
 
 static long env_long(const char* name, long missing) {
     const char* v = getenv(name);
@@ -100,9 +109,19 @@ static FILE* h_fopen(const char* p, const char* m) {
     return f;
 }
 static int h_fclose(FILE* f) {
-    if (f == img_file) img_file = NULL;
-    if (f == src_file) src_file = NULL;
-    return fclose(f);
+    int failed = 0, result;
+    if (f == img_file) {
+        img_file = NULL;
+        fprintf(stderr, "IMAGE-CLOSE\n");
+        failed = env_long("IMG_FAIL_CLOSE", 0);
+    }
+    if (f == src_file) {
+        src_file = NULL;
+        failed = ++src_closes == env_long("SRC_FAIL_CLOSE", 0);
+    }
+    result = fclose(f);
+    if(f==flagged)flagged=NULL;
+    return failed ? EOF : result;
 }
 /* BAD_BLOCK: that block of a .PO cannot be read. ESC_AT: the user presses
  * ESC as the nth block of the image is read. SRC_FAIL_READ: the nth read of
@@ -110,6 +129,7 @@ static int h_fclose(FILE* f) {
 static size_t h_fread(void* p, size_t s, size_t n, FILE* f) {
     if (f == img_file) {
         ++img_reads;
+        if(mode==6 && img_reads==fail_at)flagged=f;
         if (env_long("ESC_AT", 0) == img_reads) cancelled = 1;
         if (env_long("BAD_BLOCK", -1) * 512 == ftell(f)) return 0;
     }
@@ -127,6 +147,7 @@ static size_t h_fread(void* p, size_t s, size_t n, FILE* f) {
 static size_t h_fwrite(const void* p, size_t s, size_t n, FILE* f) {
     const char* v = getenv("POKE_AT_WRITE");
     ++writes;
+    if(mode==7 && writes==fail_at)flagged=f;
     if (v && atoi(v) == writes) poke(strchr(v, ';') + 1);
     if (mode == 2 && writes == fail_at) return 0;
     if (mode == 3 && writes == fail_at) { fwrite(p, 1, 128, f); fflush(f); return 0; }
@@ -157,9 +178,10 @@ static unsigned char h_dir_next(void) {
     if (dir_step++) return 0;
     strcpy(de.name, slash ? slash + 1 : img_path);
     de.size = img_size; de.type = 6; de.key = 0;
+    de.access = env_long("IMG_ACCESS", 0xC3);
     return 1;
 }
-static void h_dir_close(void) {}
+static unsigned char h_dir_close(void) { return mode==5?fail_at:0; }
 
 int main(int argc, char** argv) {
     struct A2fcApi api; FILE* f;
@@ -190,7 +212,7 @@ int main(int argc, char** argv) {
     api.full = full_path; api.copy_buf = scratch;
     api.note = note_text; api.reselect = reselect_text;
     api.dir_entry = &de;
-    api.dir_open = h_dir_open; api.dir_next = h_dir_next; api.dir_close = h_dir_close;
+    api.dir_open = h_dir_open; api.dir_next = h_dir_next; api.dir_close = (void (*)(void))h_dir_close;
     api.memcpy = memcpy; api.memset = memset; api.strcpy = strcpy;
     api.strcmp = strcmp; api.strlen = strlen; api.sprintf = sprintf;
     api.fopen = h_fopen; api.fread = h_fread; api.fwrite = h_fwrite;
@@ -380,6 +402,7 @@ class Harness(unittest.TestCase):
         self.messages = [l[4:] for l in err if l.startswith('MSG ')]
         self.spins = next(int(l.split()[1]) for l in err if l.startswith('SPIN '))
         self.reads = next(int(l.split()[1]) for l in err if l.startswith('READS '))
+        self.image_closes = err.count('IMAGE-CLOSE')
         if source_kept:
             self.assertEqual(self.src.read_bytes(), self.payload)    # never touched
         n, _, note = out.partition(' ')
@@ -400,6 +423,94 @@ class Harness(unittest.TestCase):
 
 
 class ImgPut(Harness):
+    def test_image_file_write_protection_refuses_before_open_or_question(self):
+        original = make_image(files={'KEEP.TXT#040000': KEEP, 'OTHER.COM#060000': OTHER})
+        for suffix, wrap in (('.PO', bytes), ('.2MG', to_2mg), ('.DSK', to_dsk)):
+            for access in (0, 0x01, 0x41, 0xC1, 0xE1):
+                with self.subTest(suffix=suffix, access=access):
+                    path = self.dir / ('LOCK' + suffix)
+                    image = wrap(original); path.write_bytes(image)
+                    writes, note = self.run_op(img=path, IMG_ACCESS=access)
+                    self.assertEqual(writes, 0)
+                    self.assertEqual(path.read_bytes(), image)
+                    self.assertEqual(self.asked, [])
+                    self.assertEqual(self.image_closes, 0)
+                    self.assertEqual(note, 'Cannot open the image.')
+            with self.subTest(suffix=suffix, writable=True):
+                path.write_bytes(wrap(original))
+                writes, note = self.run_op(img=path, IMG_ACCESS=0xC3)
+                self.assertIn('Copied into the image', note)
+                data = path.read_bytes()
+                normalized = to_dsk(data) if suffix == '.DSK' else (
+                    data[64:] if suffix == '.2MG' else data)
+                entry = find(normalized, 'HELLO')
+                self.assertIsNotNone(entry)
+                self.assertEqual(Image(normalized).read(entry), self.payload)
+                for name in ('KEEP.TXT', 'OTHER.COM'):
+                    before = find(original, name)
+                    self.assertEqual(find(normalized, name), before)
+                    self.assertEqual(Image(normalized).read(before), Image(original).read(before))
+
+    def test_image_close_error_never_reports_success_or_removes_files(self):
+        original = make_image(files={'KEEP.TXT#040000': KEEP, 'OTHER.COM#060000': OTHER})
+        for suffix, wrap in (('.PO', bytes), ('.2MG', to_2mg), ('.DSK', to_dsk)):
+            for scenario in ('copied', 'declined', 'source_error'):
+                with self.subTest(suffix=suffix, scenario=scenario):
+                    path = self.dir / ('CLOSE' + suffix)
+                    path.write_bytes(wrap(original))
+                    writes, note = self.run_op(
+                        img=path, mode=1 if scenario == 'declined' else 0,
+                        IMG_FAIL_CLOSE=1, SRC_FAIL_CLOSE=1 if scenario == 'source_error' else 0)
+                    self.assertIn('Close failed', note)
+                    self.assertNotIn('Copied into the image', note)
+                    self.assertEqual(self.image_closes, 1)
+                    data = path.read_bytes()
+                    normalized = to_dsk(data) if suffix == '.DSK' else (
+                        data[64:] if suffix == '.2MG' else data)
+                    for name in ('KEEP.TXT', 'OTHER.COM'):
+                        before = find(original, name)
+                        self.assertEqual(find(normalized, name), before)
+                        self.assertEqual(Image(normalized).read(before), Image(original).read(before))
+                    if scenario == 'copied':
+                        entry = find(normalized, 'HELLO')
+                        self.assertIsNotNone(entry)
+                        self.assertEqual(Image(normalized).read(entry), self.payload)
+                    else:
+                        self.assertEqual(writes, 0)
+                        self.assertEqual(data, wrap(original))
+
+    def test_full_count_image_errors_never_report_a_successful_copy(self):
+        self.original=make_image(files={'KEEP.TXT#040000':KEEP,'OTHER.COM#060000':OTHER})
+        for suffix,wrap in (('.PO',bytes),('.2MG',to_2mg),('.DSK',to_dsk)):
+            path=self.dir/('FLAGS'+suffix);original=wrap(self.original)
+            path.write_bytes(original);writes,note=self.run_op(img=path)
+            self.assertIn('Copied into the image',note)
+            reads=self.reads
+            for mode,count in ((6,reads),(7,writes)):
+                for at in range(1,count+1):
+                    with self.subTest(suffix=suffix,mode=mode,at=at):
+                        path.write_bytes(original)
+                        n,note=self.run_op(mode=mode,at=at,img=path)
+                        self.assertNotIn('Copied into the image',note)
+                        normalized=to_dsk(path.read_bytes()) if suffix=='.DSK' else (
+                            path.read_bytes()[64:] if suffix=='.2MG' else path.read_bytes())
+                        for name in ('KEEP.TXT','OTHER.COM'):
+                            before=find(self.original,name);after=find(normalized,name)
+                            self.assertEqual(after,before)
+                            self.assertIsNotNone(before)
+                            self.assertEqual(Image(normalized).read(after),Image(self.original).read(before))
+    def test_image_metadata_close_error_refuses_before_any_write(self):
+        for suffix,wrap in (('.PO',bytes),('.2MG',to_2mg),('.DSK',to_dsk)):
+            for error in (1,27):
+                with self.subTest(suffix=suffix,error=error):
+                    path=self.dir/('META'+suffix)
+                    original=wrap(self.original);path.write_bytes(original)
+                    writes,note=self.run_op(mode=5,at=error,img=path)
+                    self.assertEqual(writes,0)
+                    self.assertEqual(path.read_bytes(),original)
+                    self.assertEqual(self.asked,[])
+                    self.assertEqual(note,'Cannot open the image.')
+
     # -- what must happen ---------------------------------------------------
 
     def test_the_copy_moves_a_bar(self):
@@ -522,7 +633,7 @@ class ImgPut(Harness):
 
     def test_a_name_already_there_is_refused(self):
         self.run_op(name='TAKEN')
-        self.refused('No room for that name', name='TAKEN')
+        self.refused('Cannot add file here', name='TAKEN')
 
     def test_the_wrong_panels_are_refused(self):
         self.refused('ProDOS image opposite', wrong=1)
@@ -580,7 +691,7 @@ class ImgPut(Harness):
                         self.assertIsNone(e)
                     elif at == 5:                  # the directory write, after the bitmap
                         self.assertNotIn('Copied', note)
-                        self.assertIn('Bitmap written, entry unverified: run FIXIT', note)
+                        self.assertIn('Bitmap written; run FIXIT', note)
                     else:                          # no 6th write here: the slot is in block 2
                         self.assertIn('Copied into the image', note)
                         self.assertIsNotNone(e)
@@ -655,6 +766,22 @@ class TheSourceIsCounted(Harness):
         self.refused('Cannot read the source', SRC_NO_OPEN=2)
         self.assertEqual(len(self.asked), 1)
 
+    def test_source_close_errors_never_publish_the_copy(self):
+        for size in (0, 100, 780, 131072):
+            for close in (1, 2):
+                with self.subTest(size=size, close=close):
+                    self.img.write_bytes(self.original)
+                    self.payload = bytes((i * 7 + 1) & 255 for i in range(size))
+                    self.src.write_bytes(self.payload)
+                    writes, note = self.run_op(SRC_FAIL_CLOSE=close)
+                    self.assertIn('Cannot read the source', note)
+                    self.unchanged_but_for_free_blocks(note)
+                    if close == 1:
+                        self.assertEqual(writes, 0)
+                        self.assertEqual(self.asked, [])
+                    else:
+                        self.assertEqual(len(self.asked), 1)
+
 
 class Orchard(Harness):
     """The orchard as the fixture, and what its tests say about it."""
@@ -672,7 +799,7 @@ class Orchard(Harness):
         return key_of(find(self.original, 'SUB'))
 
     def refused_after_the_question(self, **kw):
-        note = self.refused('Image damaged: nothing written', **kw)
+        note = self.refused('Image damaged.', **kw)
         self.assertEqual(len(self.asked), 1)
         return note
 
@@ -680,6 +807,183 @@ class Orchard(Harness):
 class TheImageIsWalked(Orchard):
     """No free bit is believed until every block the image names has been
     found marked used (src/plugins/prodos_claims.h)."""
+
+    def sub_parent_access(self):
+        for slot in range(1, 13):
+            at = 2 * 512 + 4 + slot * 39
+            if self.original[at] == 0xD3 and self.original[at + 1:at + 4] == b'SUB':
+                return at + 0x1E
+        self.fail('SUB entry missing')
+
+    def test_parent_entry_write_protection_blocks_insertion(self):
+        for access in (0xC1, 0xC0, 0x41, 0x01, 0):
+            with self.subTest(access=access):
+                d = bytearray(self.original)
+                d[self.sub_parent_access()] = access
+                self.img.write_bytes(d)
+                writes, note = self.run_op(key=self.sub())
+                self.assertEqual(writes, 0, note)
+                self.assertIn('read-only', note)
+                self.assertEqual(self.img.read_bytes(), d)
+
+    def test_parent_entry_protected_at_confirmation_blocks_insertion(self):
+        at = self.sub_parent_access()
+        d = bytearray(self.original)
+        d[at] &= ~2
+        writes, note = self.run_op(key=self.sub(), POKE_AT_CONFIRM='%d:fd:00' % at)
+        self.assertEqual(writes, 0, note)
+        self.assertIn('read-only', note)
+        self.assertEqual(self.img.read_bytes(), d)
+
+    def test_writable_child_of_protected_ancestor_can_receive_file(self):
+        d = bytearray(self.original)
+        d[self.sub_parent_access()] &= ~2
+        key = self.sub()
+        d[key * 512 + 0x22] &= ~2
+        self.img.write_bytes(d)
+        deep = key_of(find(d, 'DEEP', key))
+        writes, note = self.run_op(key=deep)
+        self.assertIn('Copied', note)
+        after = self.img.read_bytes()
+        self.assertEqual(after[key * 512:(key + 1) * 512], d[key * 512:(key + 1) * 512])
+        self.assertEqual(after[2 * 512:3 * 512], d[2 * 512:3 * 512])
+        self.assertEqual(Image(after).read(self.entry(key=deep)), self.payload)
+
+    def long_directory(self, blocks, collision=False):
+        """Extend SUB using only free blocks; optionally put HELLO at its tail."""
+        d = bytearray(self.original)
+        key = self.sub()
+        free = [b for b in range(len(d) // 512) if is_free(d, b)]
+        chain = [key] + free[:blocks - 1]
+        for i, b in enumerate(chain):
+            if i:
+                d[b * 512:(b + 1) * 512] = bytes(512)
+                set_free(d, b, False)
+            d[b * 512:b * 512 + 2] = (chain[i - 1] if i else 0).to_bytes(2, 'little')
+            d[b * 512 + 2:b * 512 + 4] = (chain[i + 1] if i + 1 < blocks else 0).to_bytes(2, 'little')
+        for slot in range(1, 13):
+            at = 2 * 512 + 4 + slot * 39
+            if d[at] == 0xD3 and d[at + 1:at + 4] == b'SUB':
+                d[at + 0x13:at + 0x15] = blocks.to_bytes(2, 'little')
+                d[at + 0x15:at + 0x18] = (blocks * 512).to_bytes(3, 'little')
+                break
+        else:
+            self.fail('SUB entry missing')
+        if collision:
+            data_block = free[blocks - 1]
+            set_free(d, data_block, False)
+            d[data_block * 512:data_block * 512 + 3] = b'old'
+            e = bytearray(find(self.original, 'OTHER.TXT'))
+            e[0] = 0x15
+            e[1:16] = b'HELLO' + bytes(10)
+            e[0x11:0x13] = data_block.to_bytes(2, 'little')
+            e[0x15:0x18] = (3).to_bytes(3, 'little')
+            e[0x25:0x27] = key.to_bytes(2, 'little')
+            at = chain[-1] * 512 + 4
+            d[at:at + 39] = e
+            at = key * 512 + 0x25
+            d[at:at + 2] = (file_count(d, key) + 1).to_bytes(2, 'little')
+        self.assertEqual(findings(d), [])
+        self.img.write_bytes(d)
+        return bytes(d), key
+
+    def test_a_name_in_an_unread_directory_tail_is_never_duplicated(self):
+        d, key = self.long_directory(256, collision=True)
+        writes, note = self.run_op(key=key)
+        self.assertEqual(writes, 0, note)
+        self.assertNotIn('Copied', note)
+        self.assertEqual(self.img.read_bytes(), d)
+        self.assertEqual(self.asked, [])
+
+    def test_a_complete_directory_at_the_survey_limit_can_be_written(self):
+        d, key = self.long_directory(255)
+        writes, note = self.run_op(key=key)
+        self.assertIn('Copied', note)
+        after = self.img.read_bytes()
+        self.assertEqual(Image(after).read(self.entry(key=key)), self.payload)
+        self.assertEqual(findings(after), [])
+
+    def test_destination_chain_backward_links_are_validated(self):
+        for destination in ('root', 'subdirectory'):
+            for previous in (0, 0xFFFF, 1):
+                with self.subTest(destination=destination, previous=previous):
+                    if destination == 'root':
+                        d, key, tail = self.original, 2, 3
+                    else:
+                        d, key = self.long_directory(2)
+                        tail = word(d, key * 512 + 2)
+                    d = bytearray(d)
+                    d[tail * 512:tail * 512 + 2] = previous.to_bytes(2, 'little')
+                    self.img.write_bytes(d)
+                    writes, note = self.run_op(key=key)
+                    self.assertEqual(writes, 0, note)
+                    self.assertNotIn('Copied', note)
+                    self.assertEqual(self.img.read_bytes(), d)
+                    self.assertEqual(self.asked, [])
+
+    def test_backward_link_changed_at_confirmation_refuses_writes(self):
+        for destination in ('root', 'subdirectory'):
+            with self.subTest(destination=destination):
+                if destination == 'root':
+                    d, key, tail = self.original, 2, 3
+                    self.img.write_bytes(d)
+                else:
+                    d, key = self.long_directory(2)
+                    tail = word(d, key * 512 + 2)
+                d = bytearray(d)
+                d[tail * 512:tail * 512 + 2] = bytes(2)
+                writes, note = self.run_op(key=key, POKE_AT_CONFIRM='%d:00:00,%d:00:00' % (tail * 512, tail * 512 + 1))
+                self.assertEqual(writes, 0, note)
+                self.assertNotIn('Copied', note)
+                self.assertEqual(self.img.read_bytes(), d)
+                self.assertEqual(len(self.asked), 1)
+
+
+    def test_subdirectory_header_write_protection_is_respected(self):
+        key = self.sub()
+        for access in (0xC1, 0xC0, 0x41, 0x01, 0):
+            with self.subTest(access=access):
+                d = bytearray(self.original)
+                d[key * 512 + 0x22] = access
+                self.img.write_bytes(d)
+                writes, note = self.run_op(key=key)
+                self.assertEqual(writes, 0, note)
+                self.assertNotIn('Copied', note)
+                self.assertEqual(self.img.read_bytes(), d)
+                self.assertEqual(self.asked, [])
+
+    def test_subdirectory_protected_during_confirmation_refuses_writes(self):
+        key = self.sub()
+        at = key * 512 + 0x22
+        d = bytearray(self.original)
+        d[at] &= ~2
+        writes, note = self.run_op(key=key, POKE_AT_CONFIRM='%d:fd:00' % at)
+        self.assertEqual(writes, 0, note)
+        self.assertNotIn('Copied', note)
+        self.assertEqual(self.img.read_bytes(), d)
+        self.assertEqual(len(self.asked), 1)
+
+    def test_saturated_directory_file_count_is_never_incremented(self):
+        for key in (2, self.sub()):
+            with self.subTest(key=key):
+                d = bytearray(self.original)
+                d[key * 512 + 0x25:key * 512 + 0x27] = b'\xff\xff'
+                self.img.write_bytes(d)
+                self.refused('Cannot add file here', key=key)
+                self.assertEqual(self.asked, [])
+
+    def test_directory_count_saturated_during_confirmation_refuses_writes(self):
+        for key in (2, self.sub()):
+            with self.subTest(key=key):
+                self.img.write_bytes(self.original)
+                at = key * 512 + 0x25
+                d = bytearray(self.original)
+                d[at:at + 2] = b'\xff\xff'
+                writes, note = self.run_op(key=key, POKE_AT_CONFIRM='%d:00:ff,%d:00:ff' % (at, at + 1))
+                self.assertEqual(writes, 0, note)
+                self.assertNotIn('Copied', note)
+                self.assertEqual(self.img.read_bytes(), d)
+                self.assertEqual(len(self.asked), 1)
 
     def test_a_sound_image_takes_the_file_and_stays_sound(self):
         """Seedling, sapling, tree, extended file, three directories deep:
@@ -877,7 +1181,13 @@ class TheImageIsWalked(Orchard):
         for what, poke in cases.items():
             with self.subTest(case=what):
                 self.damaged(poke)
-                self.refused_after_the_question()
+                if what == 'the volume directory chain loops':
+                    # The initial bounded name survey now refuses its
+                    # unread tail before asking or entering the full walk.
+                    self.refused('Cannot add file here.')
+                    self.assertEqual(self.asked, [])
+                else:
+                    self.refused_after_the_question()
                 # the walk ends: a loop is not followed for ever. Every
                 # block it reads is one off a budget of the volume's 800
                 # blocks (before, only chain links and subdirectories
@@ -921,7 +1231,7 @@ class TheImageIsWalked(Orchard):
         # file bound for a subdirectory (bound for the root, it is read
         # before the question, and that is a refusal of its own)
         self.refused_after_the_question(BAD_BLOCK=3, key=self.sub())
-        self.refused('No room for that name', BAD_BLOCK=3)
+        self.refused('Cannot add file here', BAD_BLOCK=3)
         self.assertEqual(self.asked, [])
         # the bitmap is read before the question: no room can be counted
         self.refused('Not enough free blocks', BAD_BLOCK=bitmap_at(self.original))
@@ -932,7 +1242,7 @@ class TheImageIsWalked(Orchard):
         # six reads come before the question; the walk starts after two more
         for nth in (9, 12, 20):
             with self.subTest(nth=nth):
-                self.refused('Stopped; image unchanged', ESC_AT=nth)
+                self.refused('Stopped.', ESC_AT=nth)
                 self.assertEqual(len(self.asked), 1)
 
     def test_a_bitmap_pointer_inside_the_volume_directory(self):
@@ -997,14 +1307,14 @@ class TheImageIsWalked(Orchard):
         victim = d[index0 * 512 + 9] | d[index0 * 512 + 265] << 8
         d[victim * 512:(victim + 1) * 512] = bytes(512)
         self.img.write_bytes(bytes(d))
-        self.refused('No room for that name', key=victim)
+        self.refused('Cannot add file here', key=victim)
         self.assertEqual(self.asked, [])
         # a continuation block of a real directory is not a head either
-        self.refused('No room for that name', key=3)
+        self.refused('Cannot add file here', key=3)
         # nor is a seedling's block, an index block or the bitmap
         for key in (key_of(find(self.original, 'OTHER.TXT')), big, bitmap_at(self.original), 0, 799, 800):
             with self.subTest(key=key):
-                self.refused('No room for that name', key=key)
+                self.refused('Cannot add file here', key=key)
 
     def test_a_directory_deleted_since_the_panel_read_it(self):
         """ProDOS deletes a directory by clearing its entry and freeing its
@@ -1030,7 +1340,7 @@ class TheImageIsWalked(Orchard):
         set_free(d, leaf)
         self.img.write_bytes(bytes(d))
         self.assertEqual(findings(d), [])                    # a clean deletion
-        note = self.refused('Image changed; nothing done.', key=deep)
+        note = self.refused('Image changed.', key=deep)
         self.assertNotIn('damaged', note)
         self.assertEqual(len(self.asked), 1)
         # The same stale key on an image that IS damaged elsewhere: the
@@ -1116,7 +1426,7 @@ class EscapeAtEveryInstant(Harness):
                     self.assertEqual(d, done, 'a completed copy is the same copy')
                 else:
                     outcomes.add('stopped')
-                    self.assertIn('Stopped; image unchanged', note)
+                    self.assertIn('Stopped.', note)
                     self.assertIsNone(self.entry())
                     # the bitmap, the directory and every used block as they
                     # were; blocks that were free may hold bytes of the
@@ -1186,7 +1496,7 @@ class ScatteredSapling(Harness):
         dd = bytearray(self.original)
         set_free(dd, far)
         self.img.write_bytes(bytes(dd))
-        self.refused('Image damaged: nothing written')
+        self.refused('Image damaged.')
 
 
 class CrossLinkIntoDirectory(Orchard):
@@ -1252,6 +1562,26 @@ class CrossLinkIntoDirectory(Orchard):
 
 
 class WriteProtected(Harness):
+    def test_prodos_volume_write_protection_is_respected(self):
+        for container in ('PO', '2MG'):
+            self.img = self.dir / ('DISK.' + container)
+            for access in (0xC1, 0xC0, 0x41, 0x01, 0):
+                with self.subTest(container=container, access=access):
+                    d = bytearray(self.original)
+                    d[2 * 512 + 0x22] = access
+                    self.img.write_bytes(to_2mg(bytes(d)) if container == '2MG' else d)
+                    self.refused('Image is read-only')
+                    self.assertEqual(self.asked, [])
+
+    def test_volume_protected_during_confirmation_is_not_written(self):
+        d = bytearray(self.original)
+        d[2 * 512 + 0x22] &= ~2
+        writes, note = self.run_op(POKE_AT_CONFIRM='%d:fd:00' % (2 * 512 + 0x22))
+        self.assertEqual(writes, 0, note)
+        self.assertNotIn('Copied', note)
+        self.assertEqual(self.img.read_bytes(), d)
+        self.assertEqual(len(self.asked), 1)
+
     def test_a_write_protected_2mg_is_refused_untouched(self):
         """Measured before: bit 31 of the 2IMG flags (header byte 19, $80)
         set, and the file went in all the same -- "Copied into the image;

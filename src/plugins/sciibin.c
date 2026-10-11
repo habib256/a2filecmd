@@ -33,12 +33,12 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api);
 struct PluginHeader {
     unsigned int signature; unsigned char flags;
     void __fastcall__ (*entry)(const struct A2fcApi*);
-    unsigned char r0, r1, r2; char desc[52];
+    unsigned char r0, r1, r2; char desc[22];
 };
 #pragma rodata-name (push, "OVLHDR")
 const struct PluginHeader __plugin_header = {
     PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry, 0, 0, 0,
-    "BinSCII: decode .BSC/.BSQ text, and its next parts"
+    "BinSCII: decode parts"
 };
 #pragma rodata-name (pop)
 
@@ -79,7 +79,8 @@ static unsigned int have, at;
 static unsigned char eof, was_cr;
 static char line[81];                   /* the line read, blanks and high bits off */
 static unsigned char llen;
-static unsigned char table[256];        /* alphabet index + 1, 0 outside it */
+/* next_line strips bit 7 before every alphabet lookup. */
+static unsigned char table[128];        /* alphabet index + 1, 0 outside it */
 static unsigned char bytes[48];
 static unsigned char attrs[27];
 static char fname[16], name[16];
@@ -161,7 +162,7 @@ static unsigned char chunk(void)
     why = "BinSCII damaged";
     /* the alphabet */
     if (!next_line() || llen < 64) return 0;
-    a.memset(table, 0, 256);
+    a.memset(table, 0, sizeof table);
     for (i = 0; i < 64; ++i) {
         if (table[(unsigned char)line[i]]) return 0;
         table[(unsigned char)line[i]] = i + 1;
@@ -204,7 +205,11 @@ static unsigned char chunk(void)
         created = 1;
         out = RF(fopen)(path, "wb");
         if (!out) { why = "Open"; return 0; }
-    } else if (RF(strcmp)(fname, name) || le24(attrs) != total) {
+    } else if (RF(strcmp)(fname, name) || le24(attrs) != total ||
+               attrs[7] != type || (attrs[8] | (unsigned int)attrs[9] << 8) != aux) {
+        /* A matching name/length does not identify incompatible metadata
+         * as another part. Refuse before appending its bytes. Only our
+         * exclusive output is cleaned; sources, old files and AUX stay intact. */
         why = more ? "Parts missing" : "Parts of another file";
         return 0;
     }
@@ -246,33 +251,41 @@ static unsigned char read_back(void)
         bs_sum = 0;
         for (left = lens[s]; left; left -= k) {
             k = left > 48 ? 48 : left;
-            n = RF(fread)(bytes, 1, k, f);
-            if (n != k) { RF(fclose)(f); return 0; }
+            if (stop() || RF(fread)(bytes, 1, k, f) != k) goto failed;
             if (k < 48) a.memset(bytes + k, 0, 48 - k);
             bs_crc(bytes);
             done += k;
             if (!(++lines & 15)) a.progress_bar(name, done, written);
         }
-        if (bs_sum != crcs[s]) { RF(fclose)(f); return 0; }
+        if (bs_sum != crcs[s]) goto failed;
     }
-    n = RF(fread)(bytes, 1, 1, f);
-    return !RF(fclose)(f) && !n;
+    /* ESC during the last progress update still interrupts verification.
+     * Only this run's exclusive output is cleaned by the caller. */
+    n = stop() || RF(fread)(bytes, 1, 1, f) != 0 || ferror(f);
+    if (RF(fclose)(f)) n = 1;
+    /* Closing can take time too: ESC must not turn into decoded success. */
+    return !n && !stop();
+failed:
+    RF(fclose)(f);
+    return 0;
 }
 
 /* The selected file's name, then those of the files after it in the
  * directory, into parts. */
-static void list_parts(const char* first)
+static unsigned char list_parts(const char* first)
 {
     unsigned char seen = 0;
     const struct DirEntry* de = a.dir_entry;
     RF(strcpy)(parts, first);
     nparts = 1;
-    if (!a.dir_open(pan->path)) return;
+    if (!a.dir_open(pan->path)) return 0;
     while (nparts < MAXPARTS && a.dir_next()) {
         if (!seen) { seen = !RF(strcmp)(de->name, first); continue; }
         if (de->type != 0x0F) RF(strcpy)(parts + 16 * nparts++, de->name);
     }
-    a.dir_close();
+    /* The resident returns listing/close errors through the frozen void
+     * API. Always close, even when the selected entry was not found. */
+    return !((unsigned char (*)(void))a.dir_close)() && seen;
 }
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api)
@@ -284,7 +297,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         return;
     }
     if (!other->path[0] || other->fs) { note("Other panel: open a ProDOS directory."); return; }
-    list_parts(a.selected->name);
+    if (!list_parts(a.selected->name)) { note("Directory unreadable."); return; }
     bs_init();
     created = 0;
     written = 0;
@@ -306,6 +319,9 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
                 found = 1;
             }
         }
+        /* CRCs do not excuse a stream error, even after full-count reads.
+         * Only our new output is written or cleaned, never sources or AUX. */
+        if (ferror(in)) { why = "Read"; ok = 0; }
         if (RF(fclose)(in)) ok = 0;
         if (!created && ok) break;          /* the selected file holds no BinSCII */
         if (more && !found) break;          /* not a part: the parts end here */
@@ -315,7 +331,10 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         if (why) note(why);
         return;
     }
-    if (out && RF(fclose)(out)) { why = "Close"; ok = 0; }
+    if (out) {
+        if (ferror(out)) { why = "Write"; ok = 0; }
+        if (RF(fclose)(out)) { why = "Close"; ok = 0; }
+    }
     if (ok && !read_back()) { why = "Read-back"; ok = 0; }
     if (!ok) {
         if (!discard(path)) return;

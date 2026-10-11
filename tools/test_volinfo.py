@@ -9,12 +9,17 @@ ROOT = Path(__file__).resolve().parents[1]
 HARNESS = r'''
 #define __fastcall__
 #define VOLINFO_HOST
+#include <stdio.h>
+#define ferror mock_ferror
+static int mock_ferror(FILE*);
 #include "src/plugins/volinfo.c"
 #include <stdlib.h>
 static FILE* disk;
 static unsigned int reject;
 static unsigned char selection_mode, listing_mode, named_mode, path_mode, press_mode, export_mode;
 static int layout, failat, writes, reads;
+static FILE* errored;
+static int mock_ferror(FILE* f) { return f == errored; }
 static char line[81], msgbuf[128], notebuf[128], inbuf[80], outfull[256];
 static unsigned char scratch[512];
 static unsigned char mock_mli(unsigned char cmd, void* p) {
@@ -74,6 +79,7 @@ static unsigned char take_default(const char* q, const char* d, unsigned char h)
 /* Disk full on the report's destination at write number failat. */
 static size_t full_disk(const void* p, size_t s, size_t n, FILE* f) {
     if (++writes == failat) { fwrite(p, s, n / 2, f); return 0; }
+    if (writes == -failat) errored = f; /* full count with an error flag */
     return fwrite(p, s, n, f);
 }
 int main(int argc, char** argv) {
@@ -347,6 +353,29 @@ class Volinfo(unittest.TestCase):
         r = self.run_mode(d, 'export', 'exp', '0')
         self.assertEqual(r['message'], 'Report saved in other panel.')
         self.assertTrue((out/'VOLINFO.TXT').read_bytes().endswith(b'D     5 ($0005)\r\nEND REPORT\r\n'))
+
+    def test_export_stream_error_preserves_audit_and_source(self):
+        d = fixture(entries=[entry(2, 4, 2, 1024)])
+        ptr(d, 4, 0, 5); allocated(d, 4); allocated(d, 5)
+        out = self.work/'stream-exp'; out.mkdir(exist_ok=True)
+        report = out/'VOLINFO.TXT'
+        self.run_mode(d, 'export', 'stream-exp', '0')
+        complete = report.read_bytes()
+        header_end = complete.index(b'FILE ')
+        lines = complete[header_end:].splitlines(keepends=True)
+        chunks = [complete[:header_end], *lines]
+        self.assertEqual(len(chunks), 5)
+        for at in range(1, 6):
+            with self.subTest(write=at):
+                report = out/'VOLINFO.TXT'
+                if report.exists(): report.unlink()
+                r = self.run_mode(d, 'export', 'stream-exp', str(-at))
+                self.assertEqual(r['message'], 'Partial report (error/cancelled).')
+                self.assertEqual((r['failed'], r['cancelled'], r['incomplete']), (0, 0, 0))
+                data = report.read_bytes()
+                self.assertEqual(data, b''.join(chunks[:at]))
+                self.assertIn(b'Scan complete.', data)
+                if at < 5: self.assertNotIn(b'END REPORT', data)
 
     def test_seedling(self):
         d = fixture(entries=[entry()]); allocated(d, 4)

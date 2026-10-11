@@ -49,10 +49,20 @@
 #define IMAGEIO_WRITE
 #define IMAGEIO_NODEVICE
 #define IMAGEIO_ONE
+#define IMAGEIO_CHECK_CLOSE
+#define IMAGEIO_CHECK_ACCESS
 
 #include "util.h"
 #include <string.h>
 #include "imageio.h"
+/* Full byte counts do not validate a flagged image stream. Check each
+ * block before a later source_rw clears the flag, including restoration.
+ * Data/catalogue writes stay in the confirmed image; no source/AUX writes. */
+static unsigned char pascal_rw(unsigned int b,unsigned char* p)
+{
+    return source_rw(b,p) && !ferror(src.file);
+}
+#define source_rw pascal_rw
 #include "pascal_fs.h"
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api);
@@ -95,6 +105,21 @@ static unsigned char put, skipped, stopped;
 static unsigned int nth;
 static FILE* src_file;
 
+/* ProDOS resolves ASCII path letters without case. Only the confirmed
+ * image may be written; skip that same file under either panel spelling.
+ * This comparison uses MAIN only and does not change source files or AUX. */
+static unsigned char same_image(const char* left, const char* right)
+{
+    unsigned char l, r;
+    do {
+        l = *left++; r = *right++;
+        if (l >= 'a' && l <= 'z') l -= 32;
+        if (r >= 'a' && r <= 'z') r -= 32;
+        if (l != r) return 0;
+    } while (l);
+    return 1;
+}
+
 /* The UCSD kind for a ProDOS type: the exact inverse of what pascal.c
  * gives, so a file taken out and put back keeps its kind. */
 static unsigned char ucsd_kind(unsigned char type)
@@ -131,12 +156,12 @@ static unsigned char fits(unsigned int blocks)
     return blocks <= vblocks - tail;
 }
 
-/* Is `pname` already one of the volume's files? */
+/* 0: name free; 1: present; 2: unreadable. An error proves neither. */
 static unsigned char name_taken(void)
 {
     unsigned char i, k;
     for (i = 1; i <= count; ++i) {
-        if (!entry_at(i)) return 1;             /* unreadable: treat as taken */
+        if (!entry_at(i)) return 2;
         if (ent[6] != pnamelen) continue;
         for (k = 0; k < pnamelen; ++k) {
             unsigned char c = ent[7 + k];
@@ -259,7 +284,9 @@ static unsigned char one(const char* name, unsigned char type, unsigned long siz
     if (!pnamelen || pnamelen > 15 || !size) { ++skipped; return 1; }
     a.memset(newent, 0, ENTRY);
     RF(memcpy)(newent + 7, name, pnamelen);
-    if (name_taken()) { ++skipped; return 1; }
+    i = name_taken();
+    if (i == 2) { note("Cannot read the Pascal directory."); return 0; }
+    if (i) { ++skipped; return 1; }
 
     blocks = (unsigned int)((size + 511) >> 9);
     used = (unsigned int)(size & 511);
@@ -274,13 +301,22 @@ static unsigned char one(const char* name, unsigned char type, unsigned long siz
     for (b = 0; b < blocks; ++b) {
         n = (b + 1 == blocks) ? used : 512;
         a.memset(buf, 0, 512);
-        if (RF(fread)(buf, 1, n, src_file) != n) { note("Cannot read a file opposite."); goto bad; }
+        if (RF(fread)(buf, 1, n, src_file) != n || ferror(src_file)) {
+            note("Cannot read a file opposite."); goto bad;
+        }
         if (stop()) { note("Stopped; the volume is whole."); goto bad; }
         if (!source_write(&src, first + b, buf) || !source_read(&src, first + b, work) ||
             memcmp(buf, work, 512)) { note("Write failed; the volume is whole."); goto bad; }
         a.progress_bar(name, b + 1, blocks);
     }
-    RF(fclose)(src_file); src_file = 0;
+    /* The panel size can be stale: only clean EOF proves the whole source
+     * was copied. Keep written tail blocks invisible until close succeeds. */
+    if (RF(fread)(buf, 1, 1, src_file) || ferror(src_file)) {
+        note("Cannot read a file opposite."); goto bad;
+    }
+    i = RF(fclose)(src_file) != 0; src_file = 0;
+    if (i) { note("Cannot read a file opposite."); return 0; }
+    if (stop()) { note("Stopped; the volume is whole."); return 0; }
     /* Nothing above this line is visible to a reader: the blocks are past
      * the last file and the entry does not exist yet. */
     i = commit(first, first + blocks, used, ucsd_kind(type));
@@ -299,6 +335,7 @@ bad:
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api)
 {
+    unsigned char finished = 0;
     init(api);
     put = skipped = stopped = 0; src_file = 0; src.file = 0;
     if (pan->fs || !a.full[0] || !a.selected->name[0] || a.selected->type == 0x0F) {
@@ -311,6 +348,8 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     }
     RF(strcpy)(src.path, a.full);
     if (!image_open(&src)) { note("Not a disk image this can open."); return; }
+    /* image_open reads a 2MG header outside the checked block reader. */
+    if (ferror(src.file)) { note("Not a disk image this can open."); goto done; }
     if (image_readonly) { note("The image is read-only."); goto done; }
     if (!read_dir() || !find_tail()) { note("Not an Apple Pascal volume."); goto done; }
 
@@ -327,16 +366,30 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         unsigned int k;
         if (!a.dir_open(other->path)) { note("Cannot read the other panel."); goto done; }
         for (k = 0; k <= nth; ++k) if (!a.dir_next()) break;
-        a.dir_close();
+        /* The resident returns dir_error even though the frozen API types
+         * this service void (as FIND already handles). An unreadable or
+         * unclosed listing is not EOF and cannot authorize this import. */
+        if (((unsigned char (*)(void))a.dir_close)()) {
+            note("Cannot read the other panel."); goto done;
+        }
         if (k <= nth) break;                                  /* past the end */
         if (a.dir_entry->type == 0x0F) continue;              /* a directory */
         if (!join(source_path, other->path, a.dir_entry->name) ||
-            !a.strcmp(source_path, a.full)) { ++skipped; continue; }   /* the image itself */
+            same_image(source_path, a.full)) { ++skipped; continue; }   /* the image itself */
         if (!one(a.dir_entry->name, a.dir_entry->type, a.dir_entry->size)) { stopped = 1; break; }
     }
     if (stopped) goto done;
+    finished = 1;
     a.sprintf(a.note, "%u put, %u skipped (name taken or empty).", put, skipped);
 done:
     if (src_file) RF(fclose)(src_file);
-    source_close(&src);
+    /* Published entries remain recoverable: do not undo imports because
+     * the final close fails. Report uncertainty, and always close once. */
+    if (RF(fclose)(src.file)) {
+        src.file = 0;
+        note("Image close failed; check the volume.");
+        return;
+    }
+    src.file = 0;
+    if (finished && stop()) note("Stopped; imported files kept.");
 }

@@ -1303,11 +1303,11 @@ unsigned int __fastcall__ hex_value(const char* s); /* display.s, LC */
 
 const char msg_dirfail[] = "Directory unreadable or too large/deep.";
 const char msg_toolong[] = "Path too long for ProDOS.";
-const char msg_vdrive[] = "VDrive: serial card in slot %u, volumes in slot %u, drives 1 and 2.";
+const char msg_vdrive[] = "VDrive: serial %u, volumes %u, drives 1/2.";
 const char msg_vdfull[] = "VDrive: no free slot.";
 const char msg_notimg[] = "Not a ProDOS disk image (or DOS 3.3).";
 const char msg_roimg[] = "Read-only disk.";
-const char msg_noentry[] = "This overlay has no entry point.";
+const char msg_noentry[] = "No tool entry point.";
 const char msg_parent[] = "Parent directory";
 const char msg_samedir[] = "Both panels show the same directory.";
 const char msg_otherro[] = "The other panel is a read-only disk image.";
@@ -2289,7 +2289,8 @@ static FILE* open_overlay(const char* name, unsigned char ask)
  * from another build is refused, like a missing file, and the message line
  * says so. A big overlay (OVERLAY_BIG) also takes the graphics page: the
  * tags are set aside before overwriting it, and overlay_run rereads the
- * panels on return. Returns 0 if nothing is loaded. */
+ * panels on return. any=3 is a private handoff preserving the previous
+ * overlay's snapshot and saved tags. Returns 0 if nothing is loaded. */
 /* 0 outside media, 1 awaiting consent, 2 accepted for this browsing session.
  * Only foreground viewers inherit this scope; every exit clears it. No AUX
  * write or /RAM reconstruction happens in this gate itself. */
@@ -2300,7 +2301,9 @@ static unsigned char media_aux_scope;
 static unsigned char media_request;
 #pragma rodata-name(push, "LC")
 static const char aux_warning[] = "Uses AUX memory: ALL /RAM files will be LOST. Continue?";
-static const char loading_tool[] = "Loading tool...";
+static const char loading_tool[] = "Loading ";
+static const char move_copy_plugin[] = "MOVECOPY";
+static const char invalid_tool[] = "A2FILE/%s.PLG not valid.";
 #pragma rodata-name(pop)
 static unsigned char confirm_aux(void)
 {
@@ -2355,7 +2358,7 @@ static unsigned char load_overlay(const char* name, unsigned char any)
              * album's neighbour too; only the tags are not saved again on
              * the way to a neighbour: the session's save stands
              * (media_prepare). */
-            if (big && !batch_snapshot) {
+            if (big && !batch_snapshot && any != 3) {
                 if (!media_request) keep_tags(1);
                 snapshot_entries();
             }
@@ -2390,7 +2393,7 @@ static unsigned char load_overlay(const char* name, unsigned char any)
     }
     if (!ok) {
         open_row22();
-    cprintf("A2FILE/%s.PLG missing or stale.", name);
+    cprintf(invalid_tool, name);
     }
     return ok;
 }
@@ -2466,7 +2469,6 @@ again:
     big = OVL->flags & OVERLAY_BIG;
     api.arg = prepare_audio(arg);
     reselect[0] = 0;
-    note[0] = 0;
     /* The panels leave the screen as a picture viewer opens, not when the
      * picture lights up: the first decoding used to happen behind them,
      * while every later one of the album got a screen of its own. Only the
@@ -2477,9 +2479,20 @@ again:
      * the last copy or delete left its own ("4/3") */
     progress_done = 0;
     progress_total = 1;
+run_entry:
+    note[0] = 0;
     if (OVL->entry) OVL->entry(&api);
     else { extern const char msg_noentry[]; strcpy(note, msg_noentry); }
-    in_overlay = 0;              /* its code has returned: the window is free again */
+    /* MOVE hands a file across volumes to a separate overlay so its raw
+     * allocator can afford a complete read-only bitmap/claims check.
+     * Preserve selected/full/arg until this service returns. */
+    in_overlay = 0;              /* returned code may now be replaced */
+    if ((note[0] & 0xFB) == 3) { /* requests 3 (MOVE) and 7 (FAVRUN) */
+        /* Preserve the resident target and saved tags across the handoff.
+         * FAVRUN supplies a fresh selected entry, not a cursor index. */
+        if (load_overlay(note[0]==3 ? move_copy_plugin : (const char*)"RUN", 3)) goto run_entry;
+        note[0] = 0;
+    }
     if(media && media_request) {
         dir=media_request==KEY_RIGHT;
         pan->first=media_first[dir];
@@ -2995,7 +3008,11 @@ static unsigned char edit_save(void)
     }
     if (!ok) { edit_discard(ed_safety_1); return 0; }
     old = exists(full);
-    if ((old && (efresh || (gfi[3] & 0xC2) != 0xC2)) || (!old && _oserror != 0x46)) {
+    /* Only a standard data file may be replaced by this single-fork save.
+     * An extended entry would lose its resource fork when BAK is removed.
+     * Writes so far are confined to our own verified EDIT_TMP, never AUX. */
+    if ((old && (efresh || (gfi[3] & 0xC2) != 0xC2 ||
+                 (unsigned char)(gfi[7] - 1) >= 3)) || (!old && _oserror != 0x46)) {
         edit_discard(ed_safety_2); return 0;
     }
     ok = edit_install(EDIT_TMP, full, EDIT_BAK, old);
@@ -3794,7 +3811,7 @@ static const char mn_catalog_path[] = "/A2FILE/EXTRAS.CAT";
 static const char mn_dir[] = "/A2FILE";
 static const char mn_suffix[] = ".PLG";
 /* Routing overlays the core loads by itself: never a menu command. */
-static const char mn_hidden[] = "|MCSIMPORT|MCSPLAY|IDREAD|IDFORMATS|MENU|COPY|OPEN|NAV|BATCH|CATALOG|DOSIMAGE|DOSPUT|";
+static const char mn_hidden[] = "|MOVECOPY|MCSIMPORT|MCSPLAY|IDREAD|IDFORMATS|MENU|COPY|OPEN|NAV|BATCH|CATALOG|DOSIMAGE|DOSPUT|";
 static const char mn_bad[] = "(unreadable)";
 static const char mn_stale[] = "(other A2FC build)";
 static const char mn_noentry[] = "(no entry point)";
@@ -3816,7 +3833,7 @@ static const char mn_what0[] = "Text, files";
 static const char mn_what1[] = "Images";
 static const char mn_what2[] = "Music";
 static const char mn_what3[] = "Disks, rescue";
-static const char mn_what4[] = "Code, IDENT";
+static const char mn_what4[] = "Code";
 static const char mn_what5[] = "Help";
 static const char mn_what6[] = "Archives";
 static const char mn_what7[] = "Other";
@@ -3826,8 +3843,8 @@ static const char* const mn_whats[] = {
 static const char mn_group0[] = "|TEXT|HEX|EDIT|SEARCH|FIND|FIXTYPES|GOTO|MDVIEW|DOCVIEW|NEWSPAN|NEWSPAGE|RENAME|SYNC|MOVE|TREE|DELETE|ATTR|TXTCONV|TAGPAT|COMPARE|AWP|AWDATA|VISICALC|GUTTEXT|TEACHTXT|APPLEWR|MULTISCR|MAGWIN|DOSREC|PFSWRITE|PFSFILE|PFSPLAN|WORDPERF|MOUSEWR|BSFILER|MULTPLAN|";
 static const char mn_group1[] = "|MVMOVIE|DGMAGI|PCSVW|IMAGE|DGRVIEW|EXTASIE|ARLEQUIN|MACPAINT|SHAPES|PACKFOT|PAINT816|PURPLE|LZ4FH|PRINTSHOP|NEWSROOM|DOSNEWS|NRCLIP|GMAGIC|FONTVIEW|FONTRIX|PSBORDER|PSFONT|";
 static const char mn_group2[] = "|MUSIC|PT3|DUET|MCS|DOSMCS|";
-static const char mn_group3[] = "|FORMAT|DISKIMG|IMGFS|IMGPUT|DOSGET|DOSWRITE|DOS33W|DOSREPL|PASCAL|PASCALW|CPM|CPMW|BOOTBLK|BLKVIEW|BLKEDIT|DISKCMP|NIBCOPY|IMGCONV|MKIMAGE|RESCUE|UNDELETE|VOLNAME|VOLINFO|FIXIT|REPAIR|WIPE|VERIFY|";
-static const char mn_group4[] = "|BASLIST|DISASM|INTBASIC|DOSINT|DOSBAS|RUN|CRC|IDENT|PASTEXT|SCASM|MERLIN|LISAV2|LISAV3|LISAV4|";
+static const char mn_group3[] = "|FORMAT|DISKIMG|IMGFS|IMGPUT|DOSGET|DOSWRITE|DOS33W|DOSREPL|PASCAL|PASCALW|CPM|CPMW|SMALLDOS|BOOTBLK|BLKVIEW|BLKEDIT|DISKCMP|NIBCOPY|IMGCONV|MKIMAGE|RESCUE|UNDELETE|VOLNAME|VOLINFO|FIXIT|REPAIR|WIPE|VERIFY|";
+static const char mn_group4[] = "|FAVRUN|BASLIST|DISASM|INTBASIC|DOSINT|DOSBAS|RUN|CRC|IDENT|PASTEXT|SCASM|MERLIN|LISAV2|LISAV3|LISAV4|";
 static const char mn_group5[] = "|HELP|DATE|";
 static const char mn_group6[] = "|BINARY2|UNSHRINK|UNWRAP|SCIIBIN|UNSQ|";
 static const char* const mn_groups[] = {
@@ -3854,7 +3871,7 @@ static unsigned char menu_category(const char* name)
 
 static const char mn_count[] = "%2u/%-2u";
 static const char mn_titlefmt[] = "%-79.79s";
-static const char mn_nodir[]   = "Program directory unknown.";
+static const char mn_nodir[]   = "No program folder.";
 
 /* The row uses the whole 80 columns: two of margin, twelve for the name
  * (a .PLG name is eleven characters at most), the rest for the description. */
@@ -4266,7 +4283,9 @@ static unsigned char im_owned;
  * in the directory `block` of the open image -- never guessed from the
  * size: a seedling may be sparse beyond its only block. A key block
  * belongs to one file of the volume; the entry must also still carry the
- * snapshot's size. Returns the type (1 seedling, 2 sapling, 3 tree, 5
+ * snapshot's name, type, auxiliary type and size. A reused key with the
+ * same EOF must not export another file under the stale selected name.
+ * Returns the type (1 seedling, 2 sapling, 3 tree, 5
  * extended), 0 on a read error or when no entry matches. The directory
  * blocks go through IM_IDX; 255 blocks at most, so a cycle ends. */
 static unsigned char img_storage(const struct Entry* e, unsigned int block)
@@ -4277,7 +4296,9 @@ static unsigned char img_storage(const struct Entry* e, unsigned int block)
         if (!img_read_block(block, IM_IDX)) return 0;
         for (k = 0, p = IM_IDX + 4; k < 13; ++k, p += 0x27) {
             t = *p >> 4;
-            if (t && t < 0x0D && !memcmp(p + 0x11, &e->mdate, 2) && !memcmp(p + 0x15, &e->size, 3))
+            if (t && t < 0x0D && !memcmp(p + 0x11, &e->mdate, 2) && !memcmp(p + 0x15, &e->size, 3) &&
+                (*p & 15) == strlen(e->name) && !memcmp(p + 1, e->name, *p & 15) &&
+                p[0x10] == e->type && !memcmp(p + 0x1F, &e->aux, 2))
                 return t;
         }
         block = IM_IDX[2] | ((unsigned int)IM_IDX[3] << 8);
@@ -5350,10 +5371,8 @@ void __fastcall__ attr_entry(const struct A2fcApi* a)
 
 void __fastcall__ run_entry(const struct A2fcApi* a)
 {
-    struct Panel* pan = pan_at(active);
-    (void)a;
     if (a->arg == 'S') { api.arg = save_config(); return; }
-    if (pan->count) run_selected(a->selected);
+    if (a->selected->name[0]) run_selected(a->selected);
 }
 #pragma rodata-name (pop)
 #pragma code-name (pop)

@@ -63,7 +63,11 @@ static unsigned char read_dir(void)
         if (c <= 32 || c >= 127 || c == '$' || c == '=' || c == '?' || c == ',') return 0;
     }
     vblocks = word(ent + 14);
-    if (word(ent + 16) > MAX_FILES || !vblocks || vblocks > src.blocks) return 0;
+    /* Even an empty volume must contain both boot blocks and the directory.
+     * Otherwise the writer's vblocks - tail can wrap and admit data beyond
+     * the declared volume. Reject before any destination write. */
+    if (word(ent + 16) > MAX_FILES || vblocks < DIR_BLOCK + DIR_BLOCKS ||
+        vblocks > src.blocks) return 0;
     count = (unsigned char)word(ent + 16);
     for (i = 1; i <= count; ++i) {
         if (!entry_at(i)) return 0;

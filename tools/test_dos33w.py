@@ -62,6 +62,7 @@ static unsigned char mli(unsigned char cmd, void* p) {
  }
  if(cmd==0x81){
   fflush(disk);
+  if(mode==14 && writes==fail_at)return 0x27; /* committed, but reports failure */
   if(mode==6 && writes==fail_at){
    long at=((long)(b->block/8)*16+dos_order[(b->block%8)*2])*256;
    fseek(disk,at,SEEK_SET); h=fgetc(disk);
@@ -70,7 +71,21 @@ static unsigned char mli(unsigned char cmd, void* p) {
  }
  return 0;
 }
-static unsigned char do_confirm(const char* s) { (void)s; return mode!=7; }
+static unsigned char do_confirm(const char* s) {
+ unsigned char sector[256];unsigned int catno,i;long at;
+ (void)s;
+ if(mode==11 || mode==12 || mode==13) {
+  for(catno=1;catno<16;++catno) {
+   at=(17L*16+catno)*256;fseek(disk,at,SEEK_SET);fread(sector,1,256,disk);
+   for(i=11;i<256-34;i+=35)if(sector[i]==(sel.mdate>>8) && sector[i+1]==(sel.mdate&255)) {
+    fseek(disk,at+i+(mode==12?2:mode==13?32:3),SEEK_SET);
+    fputc(mode==12?0:('X'|0x80),disk);fflush(disk);return 1;
+   }
+  }
+  abort();
+ }
+ return mode!=7;
+}
 static unsigned char do_prompt(const char* label,const char* init,unsigned char n) {
  (void)label; (void)init; (void)n;
  if(mode==8) return 0;                     /* ESC on the name */
@@ -218,6 +233,22 @@ class Dos33W(unittest.TestCase):
             self.assertEqual(writes, 0, note)
             self.assert_untouched()
 
+    def test_changed_catalog_entry_during_confirmation_is_not_modified(self):
+        entry=self.before['GONE']['entry']
+        for mode in (11,12,13):
+            for key in ('D','R'):
+                with self.subTest(mode=mode,key=key):
+                    self.disk.write_bytes(self.original)
+                    expected=bytearray(self.original)
+                    for sector in range(1,16):
+                        for slot in range(7):
+                            at=offset(17,sector)+11+35*slot
+                            if expected[at:at+2]==entry[:2]:
+                                expected[at+(2 if mode==12 else 32 if mode==13 else 3)]=0 if mode==12 else 0xD8
+                    writes,note=self.run_op(key=key,mode=mode)
+                    self.assertEqual(writes,0,note)
+                    self.assertEqual(self.disk.read_bytes(),expected)
+
     def test_escaping_the_new_name_writes_nothing(self):
         writes, _ = self.run_op(key='R', mode=8)
         self.assertEqual(writes, 0)
@@ -281,19 +312,59 @@ class Dos33W(unittest.TestCase):
             self.assert_untouched()
 
     def test_a_failed_write_never_claims_the_file_is_gone(self):
-        """The catalog sector is written first: if it fails, nothing moved.
-        If the bitmap write fails after it, the file IS gone and the note
-        says the sectors stay in use -- never 'nothing deleted'."""
-        for mode in (4, 5, 6):
+        """A failed physical write has unknown effects. The catalog must be
+        verified before the bitmap is touched; neither failure proves that
+        the disk is unchanged or that all sectors still stay allocated."""
+        for mode in (4, 5, 6, 14):
             for at in (1, 2):
                 self.disk.write_bytes(self.original)
                 writes, note = self.run_op(mode=mode, at=at)
                 after = read_files(self.disk.read_bytes()) if at == 2 else None
                 if at == 1:
-                    self.assertIn('Nothing deleted', note, (mode, note))
+                    self.assertIn('uncertain', note, (mode, note))
+                    self.assertNotIn('unchanged',note)
+                    self.assertEqual(writes,1)
                 else:
                     self.assertNotIn('Nothing deleted', note, (mode, note))
                     self.assertNotIn('GONE', after, (mode, note))
+                    self.assertIn('bitmap write failed',note)
+                    self.assertNotIn('stay in use',note)
+                    if mode==14:
+                        vtoc=self.disk.read_bytes()[offset(17,0):offset(17,0)+256]
+                        for track,sector in self.before['GONE']['blocks']+self.before['GONE']['lists']:
+                            self.assertTrue(vtoc[0x38+track*4+(sector<8)]&(1<<(sector&7)))
+
+    def test_failed_rename_write_reports_uncertainty_and_preserves_payloads(self):
+        for mode in (4,5,6):
+            with self.subTest(mode=mode):
+                self.disk.write_bytes(self.original)
+                writes,note=self.run_op(key='R',mode=mode,at=1)
+                disk=self.disk.read_bytes()
+                self.assertEqual(writes,1)
+                self.assertIn('uncertain',note)
+                self.assertNotIn('unchanged',note)
+                self.assertEqual(disk[offset(17,0):offset(17,0)+256],self.original[offset(17,0):offset(17,0)+256])
+                for name in self.before:
+                    for track,sector in self.before[name]['blocks']+self.before[name]['lists']:
+                        at=offset(track,sector)
+                        self.assertEqual(disk[at:at+256],self.original[at:at+256])
+
+    def test_committed_catalog_write_error_reports_uncertainty_without_retry(self):
+        for key in ('D','R'):
+            with self.subTest(key=key):
+                self.disk.write_bytes(self.original)
+                writes,note=self.run_op(key=key,mode=14,at=1)
+                disk=self.disk.read_bytes();after=read_files(disk)
+                self.assertEqual(writes,1)
+                self.assertNotIn('GONE',after)
+                if key=='R':self.assertEqual(after['NEUF']['data'],self.before['GONE']['data'])
+                self.assertEqual(disk[offset(17,0):offset(17,0)+256],self.original[offset(17,0):offset(17,0)+256])
+                for name in self.before:
+                    for track,sector in self.before[name]['blocks']+self.before[name]['lists']:
+                        at=offset(track,sector)
+                        self.assertEqual(disk[at:at+256],self.original[at:at+256])
+                self.assertIn('uncertain',note)
+                self.assertNotIn('unchanged',note)
 
 
 if __name__ == '__main__':

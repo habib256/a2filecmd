@@ -105,7 +105,7 @@ static unsigned char media_prepare(unsigned char kind)
  * card had the smaller reserve of the two, and both callers reach here. */
 static void loading_screen(const char* name)
 {
-    prepare_text();clrscr();cputs("Loading ");cputs(name);
+    prepare_text();clrscr();cputs(loading_tool);cputs(name);
 }
 
 #pragma code-name(push, "LC")

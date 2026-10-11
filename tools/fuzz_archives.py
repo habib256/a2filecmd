@@ -1007,11 +1007,13 @@ def im_panel(data, dir_key=2):
 
 def im_storage(data, e, dir_key):
     """`img_storage` in src/a2fc.c: the storage type is read from the entry of
-    the open image whose key block and size are the snapshot's, never guessed
+    the open image whose identity and metadata match the snapshot, never guessed
     from the size. 255 directory blocks at most, so a cycle ends."""
     block, guard = dir_key, 0
     wkey = e.key.to_bytes(2, 'little')
     wsize = e.size.to_bytes(3, 'little')
+    wname = e.name.encode('latin-1')
+    waux = e.aux.to_bytes(2, 'little')
     while block and guard < 255:
         buf = im_block(data, block)
         if buf is None:
@@ -1019,7 +1021,9 @@ def im_storage(data, e, dir_key):
         for k in range(13):
             p = buf[4 + k * ENTRY_LEN:]
             t = p[0] >> 4
-            if t and t < 0x0D and p[0x11:0x13] == wkey and p[0x15:0x18] == wsize:
+            if (t and t < 0x0D and p[0x11:0x13] == wkey and p[0x15:0x18] == wsize
+                    and p[0] & 15 == len(wname) and p[1:1+len(wname)] == wname
+                    and p[0x10] == e.type and p[0x1F:0x21] == waux):
                 return t
         block = buf[2] | (buf[3] << 8)
         guard += 1

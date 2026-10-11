@@ -46,6 +46,10 @@ static FILE* open_path(const char*p,const char*m){
 }
 static unsigned char file_info(const char*p){
  FILE*f;if(fault==1){_oserror=0x27;return 0;}
+ if(strstr(p,"/PROGRAM") && strncmp(p,"/TOOLS/",7)){
+  if(fault==14 || fault==15){_oserror=fault==14?0x46:0x27;return 0;}
+  gfi[3]=fault==16?0:0xC3;gfi[4]=disk_type;gfi[7]=fault==17?0:fault==18?5:1;return 1;
+ }
  if(strncmp(p,"/TOOLS/",7)){_oserror=0x46;return 0;}
  f=open_path(p,"rb");if(!f){_oserror=0x46;return 0;}fclose(f);
  gfi[3]=fault==2?0:0xC3;gfi[4]=fault==3?6:strstr(p,"PROGRAM")?disk_type:255;gfi[7]=fault==4?5:1;
@@ -138,6 +142,16 @@ class Launch(unittest.TestCase):
         path='/SOURCE/'+('A'*14+'/')*3
         out=self.run_case(path=path.rstrip('/'))
         self.assertEqual(out[0],'1');self.assertEqual(out[2],'PROGRAM');self.assertEqual(out[5],path.rstrip('/'))
+    def test_basic_source_is_checked_before_runtime_lookup_or_save(self):
+        for kind in (250,252):
+            for fault in (14,15,16,17,18):
+                with self.subTest(kind=kind,fault=fault):
+                    out=self.run_case(kind=kind,fault=fault)
+                    self.assertEqual((out[0],out[3],out[4]),('0','0','0'))
+            for disk_type in (6,255,4,250 if kind==252 else 252):
+                with self.subTest(kind=kind,disk_type=disk_type):
+                    out=self.run_case(kind=kind,disk_type=disk_type)
+                    self.assertEqual((out[0],out[3],out[4]),('0','0','0'))
     def test_errors_and_cancel_never_launch(self):
         for fault in (1,2,3,4,5,7,8,9,10,11,12,13):
             with self.subTest(fault=fault):self.assertEqual(self.run_case(fault=fault)[0],'0')

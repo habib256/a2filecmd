@@ -7,18 +7,48 @@ from pathlib import Path
 from test_six_plugins import PREFIX, ROOT
 
 HARNESS = PREFIX + r'''
+static int error_(FILE*);
+#define ferror error_
 #include "src/plugins/disasm.c"
+#undef ferror
+static FILE* errored;
+static int error_(FILE* f){return f==errored || ferror(f);}
 static int seekfail;
 static int writes,writefail,cancelafter;
+static int closefault,creates;
+static FILE* output;
+static char export_path[80],export_name[16]="OUT.TXT";
+static unsigned char prompt_(const char* p,const char* d,unsigned char n){strcpy(a.input,"OUT.TXT");return 1;}
+static unsigned char create_(unsigned char cmd,void* q){
+    struct Create* c=q;char path[80];FILE* f;
+    if(cmd!=0xC0)abort();++creates;
+    memcpy(path,c->path+1,c->path[0]);path[c->path[0]]=0;
+    f=fopen(path,"wx");if(!f)return 0x47;fclose(f);return 0;
+}
+static int close_(FILE* f){
+    int r=fclose(f);
+    if(f==output){if(closefault>=2)cancelled=1;if(closefault==1 || closefault==3)return EOF;}
+    return r;
+}
+static FILE* open_(const char* p,const char* m){output=fopen(p,m);return output;}
+static char key_(void){return 0;}
+static void message_(const char* p){}
 static long readfail;
-static int seek_(FILE* f,long o,int w) { return seekfail ? -1 : fseek(f,o,w); }
+static int seek_(FILE* f,long o,int w) {
+    if(readfail==-4 && o==(long)size && w==SEEK_SET)return -1;
+    return seekfail==1 ? -1 : fseek(f,o,w);
+}
 static size_t read_(void* p,size_t s,size_t n,FILE* f) {
+    if(readfail==-2 || seekfail==2)errored=f;
+    if(n==1 && ftell(f)==(long)size && readfail==-3){errored=f;return 0;}
+    if(n==1 && ftell(f)==(long)size && readfail==-5)cancelled=1;
     return readfail>=0 && ftell(f)>=readfail ? 0 : fread(p,s,n,f);
 }
 static size_t write_(const void* p,size_t s,size_t n,FILE* f) {
     ++writes;
     if(cancelafter && writes>=cancelafter)cancelled=1;
-    if(writefail && writes>=writefail)return 0;
+    if(writefail>0 && writes>=writefail)return 0;
+    if(writefail==-2 || (writefail==-3 && writes>=4))errored=f;
     return fwrite(p,s,n,f);
 }
 static void clear_(void) {}
@@ -29,18 +59,30 @@ int main(int argc,char** argv) {
     struct Entry entry;
     a.sprintf=sprintf;a.strcpy=strcpy;a.strlen=strlen;
     cpu=atoi(argv[1]);
-    if(!strcmp(argv[2],"export")) {
+    if(!strcmp(argv[2],"export") || !strcmp(argv[2],"ui-export")) {
         FILE* out;
         a.fseek=seek_;a.fread=read_;a.fwrite=write_;a.full="/SOURCE/CODE";buf=data;
         a.progress_bar=bar_;a.input="OUT.TXT";
         file=fopen(argv[3],"rb");size=strtoul(argv[4],0,10);offset=strtoul(argv[5],0,10);
         origin=strtoul(argv[6],0,16);readfail=atol(argv[7]);writefail=atoi(argv[8]);cancelafter=atoi(argv[9]);
+        if(!strcmp(argv[2],"ui-export")) {
+            struct Panel destination;char directory[80];
+            unsigned char filetype;unsigned int auxtype;
+            strcpy(directory,argv[10]);*strrchr(directory,'/')=0;
+            memset(&destination,0,sizeof destination);strcpy(destination.path,directory);other=&destination;
+            a.input=export_name;a.other_full=export_path;a.memcpy=memcpy;
+            a.filetype=&filetype;a.auxtype=&auxtype;
+            a.prompt=prompt_;a.mli=create_;a.fopen=open_;a.fclose=close_;
+            a.message=message_;a.cgetc=key_;a.gotoxy=xy_;a.cprintf=printf;
+            closefault=atoi(argv[11]);export();fclose(file);
+            printf("\nUI %s\nCREATES %d\n",export_status?export_status:"none",creates);return 0;
+        }
         out=fopen(argv[10],"wb");n=export_text(out);fclose(out);fclose(file);
         printf("%u %lu\n",n,offset);return 0;
     }
     if(!strcmp(argv[2],"page")) {
         a.clrscr=clear_;a.cprintf=printf;a.cputs=(void(*)(const char*))puts;a.gotoxy=xy_;
-        a.fseek=seek_;a.fread=fread;a.selected=&entry;strcpy(entry.name,"TEST");buf=data;
+        a.fseek=seek_;a.fread=read_;readfail=-1;a.selected=&entry;strcpy(entry.name,"TEST");buf=data;
         file=fopen(argv[3],"rb");size=strtoul(argv[4],0,10);offset=strtoul(argv[5],0,10);
         origin=strtoul(argv[6],0,16);seekfail=atoi(argv[7]);render();
         printf("RESULT %lu %u\n",following,failed);fclose(file);return 0;
@@ -54,7 +96,7 @@ int main(int argc,char** argv) {
 class Disasm(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp=tempfile.TemporaryDirectory(prefix='disasm-');cls.p=Path(cls.tmp.name)
+        cls.tmp=tempfile.TemporaryDirectory(prefix='disasm-',dir='/tmp');cls.p=Path(cls.tmp.name)
         (cls.p/'test.c').write_text(HARNESS);cls.exe=cls.p/'test'
         subprocess.run(['cc','-std=c99','-Wno-unknown-pragmas','-I',str(ROOT),str(cls.p/'test.c'),'-o',str(cls.exe)],check=True,capture_output=True)
     @classmethod
@@ -155,8 +197,105 @@ class Disasm(unittest.TestCase):
                 status,text=self.export(b'\xEA'*200,**kw)
                 self.assertEqual(status,expected);self.assertNotIn(b'END DISASM',text)
                 self.assertTrue(text.startswith(b'; DISASM /SOURCE/CODE\r\n'))
+    def test_stale_small_size_never_announces_a_complete_export(self):
+        for cpu in (0,1):
+            for cached in (0,1,57,200):
+                for extra in (1,16):
+                    for offset in (0,cached):
+                        with self.subTest(cpu=cpu,cached=cached,extra=extra,offset=offset):
+                            status,text=self.export(b'\xEA'*(cached+extra),cpu=cpu,
+                                                    size=cached,offset=offset)
+                            self.assertEqual(status,2)
+                            self.assertNotIn(b'END DISASM',text)
+                            rows=[row for row in text.splitlines() if not row.startswith(b';')]
+                            self.assertEqual(len(rows),cached-offset)
+
+    def test_final_source_probe_errors_and_cancel_keep_export_incomplete(self):
+        for cpu in (0,1):
+            for size in (0,1,57,200):
+                data=b'\xEA'*size
+                status,healthy=self.export(data,cpu=cpu)
+                self.assertEqual(status,0)
+                for readfail in (-3,-4,-5):
+                    with self.subTest(cpu=cpu,size=size,readfail=readfail):
+                        status,text=self.export(data,cpu=cpu,readfail=readfail)
+                        self.assertEqual(status,3 if readfail==-5 else 2)
+                        self.assertEqual(text,healthy.removesuffix(b'; END DISASM\r\n'))
+
+    def test_source_growth_in_export_interface_preserves_existing_files(self):
+        for cpu in (0,1):
+            for cached in (0,1,57,200):
+                data=b'\xEA'*(cached+1)
+                status,healthy=self.export(data[:cached],cpu=cpu)
+                self.assertEqual(status,0)
+                for collision in (False,True):
+                    with self.subTest(cpu=cpu,cached=cached,collision=collision):
+                        with tempfile.TemporaryDirectory(prefix='ui-',dir=self.p) as tmp:
+                            case=Path(tmp);source=case/'SOURCE';target=case/'OUT.TXT'
+                            source.write_bytes(data);(case/'KEEP').write_bytes(b'old')
+                            if collision:target.write_bytes(b'previous export')
+                            args=[self.exe,str(cpu),'ui-export',source,str(cached),'0','2000',
+                                  '-1','0','0',target,'0']
+                            run=subprocess.run(args,text=True,capture_output=True,check=True)
+                            self.assertEqual(source.read_bytes(),data)
+                            self.assertEqual((case/'KEEP').read_bytes(),b'old')
+                            self.assertEqual(target.read_bytes(),b'previous export' if collision else
+                                             healthy.removesuffix(b'; END DISASM\r\n'))
+                            self.assertIn('UI '+('none' if collision else
+                                                 'Export incomplete; partial file kept.'),run.stdout)
+                            self.assertEqual({p.name for p in case.iterdir()},{'SOURCE','OUT.TXT','KEEP'})
+
     def test_export_empty_file(self):
         status,text=self.export(b'')
         self.assertEqual(status,0);self.assertTrue(text.endswith(b'; END DISASM\r\n'))
+
+    def test_cancel_on_final_export_write_refuses_success(self):
+        for cpu in (0,1):
+            for size in (0,1,57,200):
+                with self.subTest(cpu=cpu,size=size):
+                    data=b'\xEA'*size
+                    status,healthy=self.export(data,cpu=cpu)
+                    self.assertEqual(status,0)
+                    status,text=self.export(data,cpu=cpu,cancelafter=size+3)
+                    self.assertEqual(status,3)
+                    self.assertEqual(text,healthy)
+
+    def test_export_close_faults_and_collisions_preserve_bytes(self):
+        for cpu in (0,1):
+            for size in (0,1,57,200):
+                data=b'\xEA'*size
+                status,healthy=self.export(data,cpu=cpu)
+                self.assertEqual(status,0)
+                for closefault in (0,1,2,3,4):
+                    with self.subTest(cpu=cpu,size=size,closefault=closefault):
+                        with tempfile.TemporaryDirectory(prefix='ui-',dir=self.p) as tmp:
+                            case=Path(tmp);source=case/'SOURCE';target=case/'OUT.TXT'
+                            source.write_bytes(data);(case/'KEEP').write_bytes(b'old')
+                            if closefault==4:target.write_bytes(b'previous export')
+                            args=[self.exe,str(cpu),'ui-export',source,str(size),'0','2000',
+                                  '-1','0','0',target,str(closefault)]
+                            run=subprocess.run(args,text=True,capture_output=True,check=True)
+                            self.assertEqual(source.read_bytes(),data)
+                            self.assertEqual((case/'KEEP').read_bytes(),b'old')
+                            self.assertEqual(target.read_bytes(),b'previous export' if closefault==4 else healthy)
+                            expected=('none' if closefault==4 else
+                                      'Export cancelled; partial file kept.' if closefault>=2 else
+                                      'Export incomplete; partial file kept.' if closefault==1 else
+                                      'Disassembly exported to other panel.')
+                            self.assertIn('UI '+expected,run.stdout)
+                            self.assertEqual({p.name for p in case.iterdir()},{'SOURCE','OUT.TXT','KEEP'})
+    def test_full_read_count_with_stream_error_is_an_incomplete_page(self):
+        text=self.page(b'\xEA'*100,seekfail=2)
+        self.assertIn('Read error: incomplete page.',text)
+        self.assertIn('RESULT 19 1',text)
+        self.assertNotIn('End of file.',text)
+    def test_full_io_counts_with_errors_never_complete_export(self):
+        for cpu in (0,1):
+            for kwargs,status in (({'readfail':-2},2),({'writefail':-2},1),({'writefail':-3},1)):
+                with self.subTest(cpu=cpu,kwargs=kwargs):
+                    result,text=self.export(b'\xEA'*200,cpu=cpu,**kwargs)
+                    self.assertEqual(result,status)
+                    self.assertNotIn(b'END DISASM',text)
+                    self.assertTrue(text.startswith(b'; DISASM /SOURCE/CODE\r\n'))
 
 if __name__=='__main__': unittest.main()

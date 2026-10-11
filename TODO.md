@@ -33,8 +33,11 @@ se ferme avec un oracle hôte et un banc POM2.
 
 - [x] Implémenter les sept lecteurs retenus, avec refus des variantes non couvertes.
 - [ ] Rétablir la distribution complète 800 Ko : dépassement actuel ; ZX02 mesuré à 44,2 % de gain sur les overlays, chargeur sûr restant à intégrer et qualifier.
-- [ ] Mesurer les temps de démarrage et chargement compressés sur Disk II/800 Ko, sur les deux CPU.
-- [ ] Étudier une édition 140 Ko réduite : socle estimé à 204/280 blocs après compression, avant nouveau chargeur ; sélectionner les outils et prévoir les compléments.
+  - [x] Essai isolé du programme principal ZX02 : 800 Ko complète avec 27/34 blocs libres (6502/65C02), socle 140 Ko avec 34 blocs libres ; contrôles d'E/S, bornes, CRC et préservation AUX. Voir `docs/ZX02-EXPERIMENT.md`.
+  - [x] Décodeur assembleur borné, CRC et erreurs d’E/S conservés ; Disk II POM2 à 1 MHz : surcoût de 3,85/3,44 s (6502/65C02), Sony 800 Ko : +2,06 s ; 18 mesures avec AUX et volumes préservés (`docs/ZX02-TIMINGS.json`).
+  - [ ] Intégrer le lanceur compressé dans les distributions habituelles après qualification sur matériel réel.
+- [ ] Mesurer les temps sur Disk II/800 Ko physiques, sur les deux CPU ; Disk II et Sony 800 Ko déjà mesurés par les contrôleurs POM2 à 1 MHz.
+- [ ] Étudier une édition 140 Ko réduite : socle construit à 246/280 blocs avec décodeur assembleur et CRC ; sélectionner les outils et prévoir les compléments.
 
 
 Chaque étape suppose la précédente fermée. Un défaut trouvé aux étapes

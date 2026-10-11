@@ -92,7 +92,7 @@ static const char suffixes[] = ".PO\0.HDV\0.DSK\0.DO\0.2MG\0.DC\0.DC42\0.IMAGE\0
 static const unsigned char kinds[] = { K_PO, K_PO, K_DSK, K_DSK, K_2MG, K_DC, K_DC, K_DC, K_DC };
 
 static const char m_pick[]   = "Select a disk image (.PO .DSK .2MG .DC...).";
-static const char m_keys[]   = "\1Convert to P) .PO, D) .DSK, 2) .2MG, C) DiskCopy, ESC";
+static const char m_keys[]   = "\1To P) PO D) DSK 2) 2MG C) DiskCopy ESC";
 static const char m_same[]   = "Image already in that format.";
 static const char m_other[]  = "Other panel: same directory or not ProDOS.";
 static const char m_blocks[] = "Partial 512-byte block.";
@@ -246,8 +246,7 @@ static unsigned char header_matches(unsigned char len)
 }
 static unsigned char verify_output(const char* path)
 {
-    unsigned char bad = 0, half, sector;
-    unsigned int i;
+    unsigned char bad = 0, half, sector, i;
     long off;
     in = RF(fopen)(T.full, "rb");
     out = RF(fopen)(path, "rb");
@@ -274,7 +273,12 @@ static unsigned char verify_output(const char* path)
                 bad = 1;
                 break;
             }
-            for (i = 0; i < 256; ++i) if (check[i] != buf[(half << 8) + i]) { bad = 1; break; }
+            /* All 256 bytes, including index 255; wrapping the byte index
+             * replaces the larger 16-bit counter without losing a byte. */
+            i = 0;
+            do {
+                if (check[i] != buf[(half << 8) + i]) { bad = 1; break; }
+            } while (++i);
         }
     }
     /* 2MG source trailers are permitted; raw source tails are not. The
@@ -283,6 +287,9 @@ static unsigned char verify_output(const char* path)
                  RF(fread)(check, 1, 1, out))) bad = 1;
     if (in) { if (ferror(in)) bad = 1; if (RF(fclose)(in)) bad = 1; }
     if (out) { if (ferror(out)) bad = 1; if (RF(fclose)(out)) bad = 1; }
+    /* A late ESC must refuse installation while the original is intact.
+     * Only our temporary/output may be cleaned by the caller; no AUX. */
+    if (*KBD == (KEY_ESC | 0x80)) { *STROBE = 0; bad = 1; }
     return !bad;
 }
 
@@ -341,6 +348,10 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
             || (TRACK[0x0D] | TRACK[0x0E] | TRACK[0x0F] | TRACK[0x16] | TRACK[0x17]))
             goto bad2mg;
         blocks = TRACK[0x14] | ((unsigned int)TRACK[0x15] << 8);
+        /* Both fields describe the same data fork. Trusting the block
+         * count alone could publish a truncated image and replace an old
+         * destination while silently ignoring its declared data length. */
+        if (*(uint32_t*)(TRACK + 0x1C) != ((unsigned long)blocks << 9)) goto bad2mg;
         sbase = *(uint32_t*)(TRACK + 0x18);
         /* Subtract only after bounding the offset, so a malicious range
          * cannot wrap. Refuse before opening or removing the destination. */

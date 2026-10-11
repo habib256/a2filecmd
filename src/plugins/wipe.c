@@ -85,14 +85,16 @@ struct Ol { unsigned char n, unit; void* buf; };
 /* The volume header, at block 2: storage type $F in the high nibble of
  * the header entry, the bitmap pointer and the total at these offsets. */
 #define H_TYPE   0x04
+#define H_ACCESS 0x22
 #define H_BITMAP 0x27
 #define H_TOTAL  0x29
 
 static const char M_NOTVOL[] = "Not a ProDOS volume.";
 static const char M_SELECT[] = "Select a ProDOS volume.";
-static const char M_NOVOL[]  = "That volume is not online.";
 static const char M_READ[]   = "The volume directory cannot be read.";
-static const char M_ASK[]    = "\1Wipe %s: F) the free blocks, W) the WHOLE volume, ESC quits";
+static const char M_ONLINE[] = "Volume lookup failed.";
+static const char M_LOCKED[] = "Volume write protected.";
+static const char M_ASK[]    = "\1Wipe %s: F) free blocks, W) WHOLE volume, ESC quits";
 static const char M_ASKF[]   = "Zero every free block of %s?";
 static const char M_LOST[]   = " EVERYTHING on %s WILL BE LOST. ";
 static const char M_ERASE[]  = "Type ERASE to confirm";
@@ -348,20 +350,21 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     boot = 0;
     byname = !unit;
     ol.n = 2; ol.unit = 0; ol.buf = buf;
-    if (!api->mli(0xC5, &ol)) {
-        p = (const unsigned char*)buf;
-        for (b = 0; b < 16; ++b, p += 16) {
-            if (!*p) break;                     /* the end of the table */
-            if (!(*p & 15)) continue;           /* a drive without a volume */
-            name_at(p);
-            if (byname && !api->strcmp(NM, VOL)) {
-                if (unit) { api->sprintf(api->note, M_TWIN, VOL); return; }
-                unit = *p & 0xF0;
-            }
-            if (!api->strcmp(NM, BOOT)) boot = *p & 0xF0;
+    /* Even a volume-list unit is not enough after a failed lookup: the
+     * boot unit and online identities have not been established. */
+    if (api->mli(0xC5, &ol)) { say(M_ONLINE); return; }
+    p = (const unsigned char*)buf;
+    for (b = 0; b < 16; ++b, p += 16) {
+        if (!*p) break;                     /* the end of the table */
+        if (!(*p & 15)) continue;           /* a drive without a volume */
+        name_at(p);
+        if (byname && !api->strcmp(NM, VOL)) {
+            if (unit) { api->sprintf(api->note, M_TWIN, VOL); return; }
+            unit = *p & 0xF0;
         }
+        if (!api->strcmp(NM, BOOT)) boot = *p & 0xF0;
     }
-    if (!unit) { say(M_NOVOL); return; }
+    if (!unit) { say(M_ONLINE); return; }
 
     /* The volume header, from the disk itself and kept in HDR: the bitmap,
      * the size, and the name -- the question below names VOL, so the disk
@@ -372,6 +375,10 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     if ((HDR[H_TYPE] & 0xF0) != 0xF0) { say(M_NOTVOL); return; }
     name_at(HDR + H_TYPE);
     if (api->strcmp(NM, VOL)) { changed(); return; }
+    /* Raw WRITE_BLOCK bypasses the volume's ProDOS access flags. Read
+     * the current write bit, not the panel's cached access. same_disk()
+     * will also refuse a protection change during the confirmation. */
+    if (!(HDR[H_ACCESS] & 0x02)) { say(M_LOCKED); return; }
     bitmap = word(HDR + H_BITMAP);
     total  = word(HDR + H_TOTAL);
     if (!total) { say(M_NOTVOL); return; }

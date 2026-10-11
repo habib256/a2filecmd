@@ -35,5 +35,20 @@ def inventories():
     return boot, complete
 
 
+def floppy_inventory():
+    """Explicit practical 800K selection; XL alone grows with plugin sources."""
+    config = (ROOT / 'config/800k.mk').read_text()
+    native = re.search(r'^PLUGINS = (.+)$', MAKEFILE, re.M)[1].split()
+    if not re.search(r'^PLUGINS800 = \$\(PLUGINS\)$', config, re.M):
+        raise ValueError('800K must retain the native routing overlays')
+    plugins = re.search(r'^XPLUGINS800 = (.+)$', config, re.M)[1].split()
+    if len(plugins) != len(set(plugins)):
+        raise ValueError('duplicate 800K overlay')
+    selected = set(native) | {name.upper() for name in plugins}
+    if not selected <= inventories()[1]:
+        raise ValueError('unknown 800K overlays')
+    return selected
+
+
 if __name__ == '__main__':
     print('\n'.join(image_names()))

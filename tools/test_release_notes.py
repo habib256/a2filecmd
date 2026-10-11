@@ -49,7 +49,8 @@ class ReleaseNotes(unittest.TestCase):
         # 95 with MCS, PASTEXT, SCASM, MERLIN, LISAV2, GUTTEXT,
         # TEACHTXT and FONTRIX (9 October 2026).
         # Includes DOSVIEW, DOSMCS and its two internal stages.
-        self.assertIn('XL includes all 106 overlays', result)
+        # 128 with the current viewers, FAVRUN, SMALLDOS and MOVECOPY.
+        self.assertIn('XL includes all 128 overlays', result)
         self.assertNotIn('A2FILECMD-PRODOS-140K-', result)
         self.assertNotIn('{overlays}', result)
 

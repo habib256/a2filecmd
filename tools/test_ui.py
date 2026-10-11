@@ -93,6 +93,8 @@ int main(void) {
     assert(menu_category("TEXT")==0);assert(menu_category("FONTVIEW")==1);
     assert(menu_category("PT3")==2);assert(menu_category("VOLINFO")==3);
     assert(menu_category("INTBASIC")==4);assert(menu_category("DATE")==5);
+    assert(menu_category("FAVRUN")==4);
+    assert(menu_category("SMALLDOS")==3);
     assert(menu_category("UNSHRINK")==6);assert(menu_category("HELLO")==7);
     assert(menu_category("VIEW")==7);assert(menu_category("TEXTMORE")==7);
     return 0;

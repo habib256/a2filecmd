@@ -133,7 +133,8 @@ def decode(texts):
                 access, ftype, aux, storage = attrs[6], attrs[7], attrs[8] | attrs[9] << 8, attrs[10]
                 if storage in (5, 0x0D) or ftype == 0x0F:
                     raise Bad('not a plain file')
-            elif n != name or int.from_bytes(attrs[0:3], 'little') != total:
+            elif (n != name or int.from_bytes(attrs[0:3], 'little') != total or
+                  attrs[7] != ftype or (attrs[8] | attrs[9] << 8) != aux):
                 raise Bad('parts missing' if k else 'chunks of another file')
             if int.from_bytes(attrs[3:6], 'little') != len(out):
                 raise Bad('parts out of order or missing')

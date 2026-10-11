@@ -90,7 +90,7 @@ def volume(image, order='po'):
     if not all(32 < ord(c) < 127 and c not in '$=?,' for c in name):
         return None
     blocks, count = struct.unpack_from('<HH', d, 14)
-    if not blocks or count > MAX_ENTRIES or blocks * 512 > len(image):
+    if blocks < DIR_BLOCK + DIR_BLOCKS or count > MAX_ENTRIES or blocks * 512 > len(image):
         return None
     files = []
     for i in range(1, count + 1):

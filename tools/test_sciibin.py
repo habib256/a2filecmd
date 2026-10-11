@@ -22,11 +22,20 @@ import cp2_samples  # noqa: E402
 from test_six_plugins import PREFIX, ROOT  # noqa: E402
 
 HARNESS = PREFIX + r'''
+static int error_(FILE*);
+#define ferror error_
 #include "src/plugins/sciibin.c"
+#undef ferror
+static FILE *errored,*verifying,*reading;
+static int error_(FILE* f){return f==errored || ferror(f);}
 static int fault, writes, argn;
+static unsigned int verify_closes;
+static unsigned long verify_end;
 static char** args;
 static struct DirEntry dirent;
 static int dir_i;
+static unsigned int opens,dir_closes;
+static unsigned char directory_error;
 static unsigned char mli_(unsigned char cmd, void* params)
 {
     char p[80];
@@ -43,35 +52,61 @@ static unsigned char mli_(unsigned char cmd, void* params)
 static FILE* writing;
 static FILE* open_(const char* p, const char* m)
 {
+    ++opens;
     FILE* f = fopen(p, m);
     if (!strcmp(m, "wb")) writing = f;
+    else if(!strcmp(p,path))verifying=f;
+    else reading=f;
     return f;
 }
 static size_t write_(const void* p, size_t s, size_t n, FILE* f)
 {
     if ((fault == 1 || fault == 4) && ++writes == 3) return n - 1;
     if (fault == 2 && ++writes == 3) { unsigned char c[64]; memcpy(c, p, n); c[0] ^= 1; return fwrite(c, s, n, f); }
+    if(fault==5)errored=f;
     return fwrite(p, s, n, f);
 }
 static int close_(FILE* f)
 {
     if (fault == 3 && f == writing) fputc('!', f);
-    return fclose(f);
+    {
+        int bad=((fault==9 || fault==19) && f==verifying) || (fault==10 && f==reading) || (fault==11 && f==writing);
+        if(f==verifying){++verify_closes;verify_end=ftell(f);}
+        if(f==verifying && fault>=17 && fault<=19)cancelled=1;
+        if(fault==15 && f==writing)cancelled=1;
+        int r=fclose(f);if(f==errored)errored=NULL;
+        if(f==writing)writing=NULL;if(f==verifying)verifying=NULL;if(f==reading)reading=NULL;
+        return bad?-1:r;
+    }
 }
-static int remove_(const char* p) { printf("REMOVE %s\n", strrchr(p, '/') + 1); return fault == 4 ? -1 : remove(p); }
-static size_t read_(void* p, size_t s, size_t n, FILE* f) { return fread(p, s, n, f); }
+static int remove_(const char* p) { printf("REMOVE %s\n", strrchr(p, '/') + 1); return fault == 4 || fault==12 || fault==16 || fault==18 ? -1 : remove(p); }
+static size_t read_(void* p, size_t s, size_t n, FILE* f) {
+ if(f==verifying){
+  if((fault==7 || fault==12) && n==1 && (unsigned long)ftell(f)>=written){errored=f;return 0;}
+  if(fault==6 && (unsigned long)ftell(f)<written)errored=f;
+ }
+ if(fault==8 && f==reading)errored=f;
+ return fread(p, s, n, f);
+}
 static int seek_(FILE* f, long o, int w) { return fseek(f, o, w); }
 static unsigned long bars, overflows;
-static void bar_(const char* n, unsigned long d, unsigned long t) { ++bars; if (d > t || !*n) ++overflows; }
-static unsigned char dopen_(const char* p) { dir_i = 5; return 1; }
+static void bar_(const char* n, unsigned long d, unsigned long t) {
+    ++bars; if (d > t || !*n) ++overflows;
+    if(verifying && (fault==13 || fault==16 || (fault==14 && d==t)))cancelled=1;
+}
+static unsigned char dopen_(const char* p) { dir_i = 5; return fault!=20; }
 static unsigned char dnext_(void)
 {
+    if((fault==21 && dir_i==5) || (fault==22 && dir_i==6) || (fault==23 && dir_i==7)){
+        directory_error=0x27;return 0;
+    }
+    if(fault==26 && dir_i<argn && !strcmp(args[dir_i],args[3]))++dir_i;
     if (dir_i >= argn) return 0;
     strcpy(dirent.name, args[dir_i++]);
     dirent.type = 4;
     return 1;
 }
-static void dclose_(void) { }
+static unsigned char dclose_(void) { ++dir_closes;return fault==24?0x27:fault==25?1:directory_error; }
 int main(int argc, char** argv)
 {
     static struct A2fcApi api;
@@ -91,10 +126,12 @@ int main(int argc, char** argv)
     api.memcpy = memcpy; api.memset = memset; api.strcpy = strcpy; api.strlen = strlen;
     api.strcmp = strcmp; api.sprintf = sprintf; api.fopen = open_; api.fread = read_;
     api.fwrite = write_; api.fseek = seek_; api.fclose = close_; api.remove = remove_;
-    api.mli = mli_; api.dir_open = dopen_; api.dir_next = dnext_; api.dir_close = dclose_;
+    api.mli = mli_; api.dir_open = dopen_; api.dir_next = dnext_; api.dir_close = (void (*)(void))dclose_;
     api.progress_bar = bar_;
     plugin_entry(&api);
     printf("BARS %lu %lu\n", bars, overflows);
+    printf("CHECK %u %lu\n",verify_closes,verify_end);
+    printf("LIST %u %u\n",opens,dir_closes);
     printf("NOTE %s\n", note);
     return 0;
 }
@@ -149,11 +186,14 @@ class Sciibin(unittest.TestCase):
         out = subprocess.run([str(self.exe), str(case / 'S'), str(case / 'D'), selected,
                               str(fault)] + names, capture_output=True, text=True, timeout=120)
         self.assertEqual(out.returncode, 0, out.stderr)
+        for n,data in files:self.assertEqual((case/'S'/n).read_bytes(),data)
         lines = out.stdout.splitlines()
         note = [l[5:] for l in lines if l.startswith('NOTE ')][0]
         created = [l.split()[1:] for l in lines if l.startswith('CREATE ')]
         removed = [l.split()[1] for l in lines if l.startswith('REMOVE ')]
         self.bars = [int(v) for l in lines if l.startswith('BARS ') for v in l.split()[1:]]
+        self.verification = [int(v) for l in lines if l.startswith('CHECK ') for v in l.split()[1:]]
+        self.list_state = [int(v) for l in lines if l.startswith('LIST ') for v in l.split()[1:]]
         made = {p.name: p.read_bytes() for p in (case / 'D').iterdir() if p.is_file()}
         self.sub_files = sorted(str(p.relative_to(case / 'D')) for d in subdirs
                                 for p in (case / 'D' / d).rglob('*'))
@@ -173,6 +213,72 @@ class Sciibin(unittest.TestCase):
         self.assertEqual(note, '%s: %d bytes, $%02X/$%04X, %d chunks.' % (
             name, len(data), t, a, (len(data) + ref.SEGMENT - 1) // ref.SEGMENT))
         return note
+
+    def test_stream_errors_and_closes_never_validate_decoded_output(self):
+        for size in (1,2560):
+            payload=bytes(i&255 for i in range(size))
+            text=ref.encode('DOC',payload)
+            for fault in range(5,13):
+                with self.subTest(size=size,fault=fault):
+                    note,created,removed,made=self.run_sb([('D.BSC',text)],'D.BSC',fault,existing=('KEEP',))
+                    self.assertEqual(created,[['DOC','06','0000']])
+                    self.assertEqual(removed,['DOC'])
+                    self.assertEqual(made,{'KEEP':b'old',**({'DOC':payload} if fault==12 else {})})
+                    self.assertIn('Cleanup failed' if fault==12 else 'removed',note)
+
+    def test_uncertain_directory_list_refuses_before_open_or_create(self):
+        for size in (48,ref.SEGMENT+48):
+            payload=bytes(i&255 for i in range(size))
+            parts=self.split(ref.encode('DOC',payload))
+            files=[('P.%02d'%i,p) for i,p in enumerate(parts)]+[('LAST',b'other text')]
+            for fault in range(20,27):
+                with self.subTest(size=size,fault=fault):
+                    note,created,removed,made=self.run_sb(files,'P.00',fault,existing=('KEEP',))
+                    self.assertEqual(created,[])
+                    self.assertEqual(removed,[])
+                    self.assertEqual(made,{'KEEP':b'old'})
+                    self.assertEqual(self.list_state,[0,0 if fault==20 else 1])
+                    self.assertEqual(note,'Directory unreadable.')
+
+    def test_normalized_alphabet_accepts_del_and_high_bit_input(self):
+        payload=bytes(range(256))*100
+        for alphabet in (ref.ALPHABET,ref.ALPHABET[:-1]+'\x7f'):
+            text=ref.encode('DOC',payload,alphabet=alphabet)
+            for high in (False,True):
+                with self.subTest(del_char=alphabet.endswith('\x7f'),high=high):
+                    encoded=bytes(c|0x80 for c in text) if high else text
+                    # The reference splits CR/LF before stripping bit 7;
+                    # the shipped C also supports high-bit line endings.
+                    note,created,removed,made=self.run_sb([('D.BSC',encoded)],'D.BSC')
+                    self.assertEqual(made,{'DOC':payload})
+                    self.assertEqual(created,[['DOC','06','0000']])
+                    self.assertEqual(removed,[])
+                    self.assertEqual(note,'DOC: 25600 bytes, $06/$0000, 3 chunks.')
+
+    def test_cancelled_verification_never_reports_a_decoded_file(self):
+        for fault in (13,14,15,16):
+            payload=bytes(i&255 for i in range(1 if fault==15 else 1536))
+            with self.subTest(fault=fault):
+                note,created,removed,made=self.run_sb([('D.BSC',ref.encode('DOC',payload))],'D.BSC',fault,existing=('KEEP',))
+                self.assertEqual(created,[['DOC','06','0000']])
+                self.assertEqual(removed,['DOC'])
+                self.assertEqual(made,{'KEEP':b'old',**({'DOC':payload} if fault==16 else {})})
+                self.assertIn('Cleanup failed' if fault==16 else 'removed',note)
+                self.assertEqual(self.verification,[1,0 if fault==15 else (1536 if fault==14 else 768)])
+
+    def test_cancel_during_final_verification_close_cleans_only_owned_output(self):
+        for size in (1,1536,ref.SEGMENT+48):
+            payload=bytes(i&255 for i in range(size))
+            for fault in (17,18,19):
+                with self.subTest(size=size,fault=fault):
+                    note,created,removed,made=self.run_sb(
+                        [('D.BSC',ref.encode('DOC',payload))],'D.BSC',fault,existing=('KEEP',))
+                    self.assertEqual(created,[['DOC','06','0000']])
+                    self.assertEqual(removed,['DOC'])
+                    self.assertEqual(made,{'KEEP':b'old',**({'DOC':payload} if fault==18 else {})})
+                    self.assertIn('Cleanup failed' if fault==18 else 'removed',note)
+                    self.assertNotIn(' chunks.',note)
+                    self.assertEqual(self.verification,[1,size])
 
     def split(self, text):
         parts = text.split(b'FiLeStArTfIlEsTaRt')
@@ -198,6 +304,39 @@ class Sciibin(unittest.TestCase):
                     self.assertTrue(note.startswith('Parts out of order') or note.endswith('removed.'), note)
                     note = self.check([files[0], ('NOTE', b'text'), *files[1:]], 'P.00')
                     self.assertEqual(note, 'Parts missing: PROG.NAME removed.')
+
+    def test_conflicting_chunk_types_refuse_before_appending_data(self):
+        for tail in (1,49,ref.SEGMENT):
+            payload=b'A'*ref.SEGMENT+b'B'*tail
+            original=self.split(ref.encode('DOC',payload,ftype=6,aux=0x2000))
+            for ftype,aux in ((4,0x2000),(6,0x2001),(6,0x2100),(0x0F,0x2000)):
+                changed=self.split(ref.encode('DOC',payload,ftype=ftype,aux=aux))
+                for multipart in (False,True):
+                    for fault in (0,18):
+                        with self.subTest(tail=tail,ftype=ftype,aux=aux,multipart=multipart,fault=fault):
+                            texts=[original[0],changed[1]]
+                            self.assertRaises(ref.Bad,ref.decode,texts)
+                            files=([('P.00',texts[0]),('P.01',texts[1])] if multipart else
+                                   [('P.00',b''.join(texts))])
+                            note,created,removed,made=self.run_sb(files,'P.00',fault,existing=('KEEP',))
+                            self.assertEqual(created,[['DOC','06','2000']])
+                            self.assertEqual(removed,['DOC'])
+                            self.assertEqual(made,{'KEEP':b'old',**({'DOC':payload[:ref.SEGMENT]} if fault else {})})
+                            self.assertIn('Cleanup failed' if fault else 'removed',note)
+
+    def test_matching_chunk_types_preserve_all_bytes(self):
+        for ftype,aux in ((6,0x2000),(0xFF,0xFFFF),(0xB3,0xDB07)):
+            for tail in (1,49,ref.SEGMENT):
+                payload=b'A'*ref.SEGMENT+b'B'*tail
+                text=ref.encode('DOC',payload,ftype=ftype,aux=aux)
+                for multipart in (False,True):
+                    with self.subTest(ftype=ftype,aux=aux,tail=tail,multipart=multipart):
+                        files=([('P.%02d'%i,part) for i,part in enumerate(self.split(text))]
+                               if multipart else [('P.00',text)])
+                        note,created,removed,made=self.run_sb(files,'P.00',existing=('KEEP',))
+                        self.assertEqual(created,[['DOC',f'{ftype:02X}',f'{aux:04X}']])
+                        self.assertEqual((removed,made),([],{'KEEP':b'old','DOC':payload}))
+                        self.assertEqual(note,f'DOC: {len(payload)} bytes, ${ftype:02X}/${aux:04X}, 2 chunks.')
 
     def test_progress(self):
         # About 15 ms a line at 1 MHz: a 40,000-byte file is 834 lines to

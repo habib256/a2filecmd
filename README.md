@@ -54,7 +54,7 @@ No build is needed to use the release downloads.
 |---|---|
 | **ProDOS · hard disk or emulator, any IIe** | [XL — complete with demonstrations](https://github.com/habib256/a2filecmd/releases/download/v0.9.6/A2FILECMD-PRODOS-XL-0.9.6.2mg) |
 | **ProDOS · enhanced IIe, //c or IIgs** | [XL enhanced — MouseText, optional mouse](https://github.com/habib256/a2filecmd/releases/download/v0.9.6/A2FILECMD-PRODOS-XL-65C02-enhanced-0.9.6.2mg) |
-| **ProDOS · all tools without sample media** | [800K — complete](https://github.com/habib256/a2filecmd/releases/download/v0.9.6/A2FILECMD-PRODOS-800K-0.9.6.po) |
+| **ProDOS · practical tools on a floppy** | [800K — selected tools](https://github.com/habib256/a2filecmd/releases/download/v0.9.6/A2FILECMD-PRODOS-800K-0.9.6.po) |
 | **Apple II+ · 48 KB · two Disk II drives** | [DOS3.3 — standalone 40-column edition](https://github.com/habib256/a2filecmd/releases/download/v0.9.6/A2FILECMD-DOS3.3-0.9.6.dsk) |
 
 - Every ProDOS edition needs **128 KB and 80 columns**.
@@ -62,7 +62,8 @@ No build is needed to use the release downloads.
   IIe, a //c or a IIgs, and adds MouseText and the optional mouse. Every other
   ProDOS image runs on any IIe, enhanced or not. Mouse and Mockingboard are
   optional.
-- 800K and XL carry every tool. Each disk is self-contained.
+- 800K carries a [practical selection](config/800k.mk), with space left for files;
+  XL carries every tool. Each disk is self-contained.
 - DOS3.3 is DOS-order `.dsk`, 800K is ProDOS-order `.po`, XL is
   `.2mg`. Changing the extension does not convert a disk.
 - To install ProDOS elsewhere, keep `A2FILE.SYSTEM` and its complete `A2FILE/`

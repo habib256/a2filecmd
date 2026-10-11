@@ -111,38 +111,37 @@ static unsigned int sum1, sum2, asked1, asked2;
 static unsigned int hit_blk;            /* where locate/free_slot found it */
 static unsigned char hit_slot;
 static const struct Entry* sel;         /* api->selected */
-static unsigned char ent[ENTRY_LEN];    /* the entry being carried across */
-static unsigned char scratch[512];      /* the readback */
+#ifdef PLUGIN_HOST
+static unsigned char ent[ENTRY_LEN];
+#else
+#define ent ((unsigned char*)0x0E00) /* saved entry, beside scratch at $0C00 */
+#endif
+/* MOVE opens no files: cross-volume copying belongs to MOVECOPY. The
+ * loader has closed its file before entry, so the second ProDOS I/O
+ * buffer is available for names, confirmation text, the saved entry and
+ * raw readback. scratch occupies $0C00-$0DFF; ent occupies $0E00-$0E26.
+ * The first buffer ($0800) remains separate for the bitmap check. */
+#ifdef PLUGIN_HOST
+static unsigned char scratch[512];
+#else
+#define scratch ((unsigned char*)0x0C00)
+#endif
 /* Lookups finish before ent carries the moved entry or scratch is used for
  * write verification. Reuse those buffers for the two lookup names. */
 #define seek ((char*)ent)
 #define found ((char*)scratch)
-/* The resident provides a destination path buffer outside this overlay. */
-#define target a.other_full
-/* The shared exclusive CREATE, its Pascal path in the readback buffer,
- * which is free until copying starts. */
-#define FC_PATH scratch
-#define FC_PREPARE(p) (scratch[0] = RF(strlen)(p), RF(strcpy)((char*)scratch + 1, p))
-#include "file_create.h"
-
 static const char m_dirs[]  = "ProDOS directories in both panels.";
 static const char m_same[]  = "Both panels: same directory.";
 static const char m_btree[] = "\2";   /* a tree across volumes: the core walks it itself, marked or not */
-static const char m_here[]  = "%s is already in the other panel.";
-static const char m_cask[]  = "Another volume: copy %s there and remove it here?";
-static const char m_cbad[]  = "Copy failed: %s was NOT removed.";
-static const char m_vbad[]  = "Copy differs: %s was NOT removed.";
-static const char m_kept[]  = "%s NOT removed; its partial copy stays there too.";
-static const char m_del[]   = "%s copied, but not removed here.";
-static const char m_cok[]   = "%s copied to the other volume and removed here.";
 static const char m_prog[]  = "Cannot move the program's A2FILE files.";
 static const char m_pick[]  = "Select an entry to move.";
 static const char m_locked[] = "Source is locked.";
+static const char m_readonly[] = "Write protected.";
 static const char m_self[]  = "Cannot move inside itself.";
 static const char m_walk[]  = "The directories cannot be walked.";
 static const char m_taken[] = "Other panel already has %s.";
 static const char m_gone[]  = "%s is no longer here.";
-static const char m_full[]  = "Volume directory full: cannot grow.";
+static const char m_full[]  = "Root full: cannot grow.";
 static const char m_grew[]  = "Move %s into %s? Its directory must grow a block.";
 static const char m_nogrow[] = "Target directory could not be made longer.";
 static const char m_changed[] = "Disk changed: nothing written.";
@@ -181,23 +180,36 @@ static void name_of(unsigned char k)
 /* Walk the directory whose key block is `key` looking for `seek`. 1: found,
  * the block that holds it is left in copy_buf and hit_blk / hit_slot say
  * where it is; 0: not there; 2: a block could not be read or the chain does not end
- * -- never proof that the name is free. Storage types 14 and 15 are
- * headers, never entries. */
+ * -- never proof that the name is free. Finding a name does not finish
+ * the scan: check the whole chain and reject ambiguous duplicate names.
+ * Storage types 14 and 15 are headers, never entries. */
 static unsigned char locate(unsigned int key)
 {
-    unsigned int b = key, n = 0;
-    unsigned char k, kind;
+    unsigned int b = key, n = 0, previous = 0;
+    unsigned char k, kind, matched = 0;
     while (b) {
         if (++n > dirmax || stop() || !rd(b)) return 2;
+        if (rd16(buf) != previous) return 2;
+        /* A cached path and a parent entry do not validate this block.
+         * Refuse an invalid key header before interpreting fixed-size
+         * records, reserving a slot, or rewriting either directory. */
+        if (n == 1 && (
+            (buf[4] >> 4) != (key == 2 ? 15 : 14) ||
+            buf[0x23] != ENTRY_LEN || buf[0x24] != PER_BLOCK)) return 2;
         for (k = 0; k < PER_BLOCK; ++k) {
             kind = buf[4 + (unsigned int)k * ENTRY_LEN] >> 4;
             if (!kind || kind >= 14) continue;
             name_of(k);
-            if (!RF(strcmp)(found, seek)) { hit_blk = b; hit_slot = k; return 1; }
+            if (!RF(strcmp)(found, seek)) {
+                if (matched) return 2;
+                matched = 1; hit_blk = b; hit_slot = k;
+            }
         }
+        previous = b;
         b = rd16(buf + 2);
     }
-    return 0;
+    if (matched && !rd(hit_blk)) return 2;
+    return matched;
 }
 
 /* The first free entry of that directory, a deleted one included. Entry 0
@@ -205,35 +217,89 @@ static unsigned char locate(unsigned int key)
  * directory is full, 2: unreadable or endless, as for locate. */
 static unsigned char free_slot(unsigned int key)
 {
-    unsigned int b = key, n = 0;
+    unsigned int b = key, n = 0, previous = 0;
     unsigned char k, first = 1;
     while (b) {
         if (++n > dirmax || !rd(b)) return 2;
+        if (rd16(buf) != previous) return 2;
         for (k = first; k < PER_BLOCK; ++k)
             if (!(buf[4 + (unsigned int)k * ENTRY_LEN] >> 4)) { hit_blk = b; hit_slot = k; return 1; }
         first = 0;
+        previous = b;
         b = rd16(buf + 2);
     }
     return 0;
 }
 
+/* No files are open in this raw branch. The first ProDOS file I/O buffer
+ * is disposable after the overlay loader closes; never use auxiliary RAM. */
+#ifdef PLUGIN_HOST
+static unsigned char claims_bitmap[512];
+#else
+#define claims_bitmap ((unsigned char*)0x0800)
+#endif
+static unsigned int claims_total, claims_map, claims_end, claims_page, claims_budget;
+static unsigned char claims_used(unsigned int b)
+{
+    unsigned int page;
+    if (b < 2 || b >= claims_total || (b >= claims_map && b <= claims_end)) return 0;
+    page = claims_map + (b >> 12);
+    if (page != claims_page) {
+        if (readblk(unit, page, claims_bitmap)) return 0;
+        claims_page = page;
+    }
+    return !(claims_bitmap[(b & 4095) >> 3] & (0x80 >> (b & 7)));
+}
+static unsigned char claims_read(unsigned int b, unsigned char* to)
+{
+    a.progress_bar(sel->name, claims_total - claims_budget, claims_total);
+    return !stop() && claims_budget-- && claims_used(b) && !readblk(unit, b, to);
+}
+#define CLAIMS_DIR buf
+#define CLAIMS_IDX scratch
+#define CLAIMS_WORD rd16
+#define CLAIMS_BLOCKS claims_total
+#define CLAIMS_TARGET dstkey
+#include "prodos_claims.h"
+static unsigned char allocation_sound(void)
+{
+    unsigned char i;
+    if (!rd(2)) return 0;
+    claims_total = rd16(buf + 4 + H_TOTAL);
+    claims_map = rd16(buf + 4 + H_BITMAP);
+    if (claims_total <= 6 || claims_map < 6 || claims_map >= claims_total ||
+        ((claims_total - 1) >> 12) >= claims_total - claims_map) return 0;
+    claims_end = claims_map + ((claims_total - 1) >> 12);
+    claims_page = 0xFFFF;
+    /* Boot and fixed root blocks are reserved even when unreferenced. */
+    if (readblk(unit, claims_map, claims_bitmap)) return 0;
+    for (i = 0; i < 6; ++i) if (claims_bitmap[0] & (0x80 >> i)) return 0;
+    return claims_walk() && claims_met;
+}
+
 /* The first free block of the volume, marked used. The bitmap is one bit a
- * block, SET meaning free, 4,096 blocks to a bitmap block; blocks 0 to 5 are
- * already spoken for, so a plain first-fit scan never offers them. Taken
+ * block, SET meaning free, 4,096 blocks to a bitmap block. Even a damaged
+ * bitmap must never offer blocks 0 to 5 or its own pages. Taken
  * before anything points at it: a crash then leaks a block, which VOLINFO
  * reports and FIXIT will mend, where the other order would leave a directory
  * pointing at a block the volume thinks is free. */
 static unsigned int alloc_block(void)
 {
-    unsigned int total, bitmap, base, i;
+    unsigned int total, bitmap, end, base, i;
 
     if (!rd(2)) return 0;
     bitmap = rd16(buf + 4 + H_BITMAP);
     total = rd16(buf + 4 + H_TOTAL);
+    /* Bound the whole map before reading any allocation bits. Subtract
+     * before adding so a malformed pointer cannot wrap at 16 bits. */
+    if (total <= 6 || bitmap < 6 || bitmap >= total ||
+        ((total - 1) >> 12) >= total - bitmap) return 0;
+    end = bitmap + ((total - 1) >> 12);
     for (base = 0; base < total; base += 4096) {
         if (!rd(bitmap + base / 4096)) return 0;
         for (i = 0; i < 4096 && base + i < total; ++i)
             if (buf[i >> 3] & (0x80 >> (i & 7))) {
+                if (base + i < 6 || (base + i >= bitmap && base + i <= end)) return 0;
                 buf[i >> 3] &= ~(0x80 >> (i & 7));
                 if (!wr(bitmap + base / 4096)) return 0;
                 return base + i;
@@ -251,11 +317,12 @@ static unsigned int alloc_block(void)
  * before asking.
  *
  * The block is allocated first, then filled, then linked, then accounted
- * for. Interrupted anywhere in there the volume stays readable: at worst a
- * block is lost, never a directory cut in two. */
+ * for. A failure can leave an allocated block or outdated parent size;
+ * the caller keeps the source if growth fails. Physical block writes are
+ * not atomic: a power cut can also damage a link being rewritten. */
 static unsigned char grow_dir(unsigned int key)
 {
-    unsigned int last, next, nb, pblk, n = 0;
+    unsigned int last, next, nb, pblk, blocks, n = 0;
     unsigned char* p;
     unsigned char pslot;
 
@@ -271,6 +338,12 @@ static unsigned char grow_dir(unsigned int key)
     if (!rd(pblk)) return 0;
     p = buf + 4 + (unsigned int)pslot * ENTRY_LEN;
     if ((p[0] >> 4) != 13 || rd16(p + 0x11) != key) return 0;
+    /* The parent entry determines the directory length exposed by ProDOS.
+     * A stale or malformed size must not hide the newly linked block, wrap
+     * its counters, or be used as the basis of an increment. */
+    blocks = rd16(p + E_BLOCKS);
+    if (!blocks || blocks >= DIR_MAX ||
+        rd24(p + E_EOF) != ((unsigned long)blocks << 9)) return 0;
     if (!rd(key)) return 0;
 
     last = key;                                 /* the end of the chain */
@@ -278,10 +351,12 @@ static unsigned char grow_dir(unsigned int key)
         next = rd16(buf + 2);
         if (!next) break;
         if (++n >= dirmax) return 0;            /* a chain that loops */
+        if (!rd(next) || rd16(buf) != last) return 0;
         last = next;
-        if (!rd(last)) return 0;
     }
+    if (blocks != n + 1) return 0;
 
+    if (!allocation_sound()) return 0;
     nb = alloc_block();
     if (!nb) return 0;
 
@@ -321,6 +396,9 @@ static unsigned int key_of(const char* path)
         /* A cached panel path does not guarantee this entry is still a
          * directory. Never walk a file's data/index blocks as directory records. */
         if ((entry[0] >> 4) != 13) return 0;
+        /* Only the final component is about to be written. Ancestors
+         * traversed for lookup need not grant directory write access. */
+        if ((!path[i] || !path[i + 1]) && !(entry[30] & 0x02)) return 0;
         b = rd16(entry + 0x11);                  /* the directory's key block */
         if (!b) return 0;
     }
@@ -368,12 +446,23 @@ static const char* examine(void)
 
     sum1 = sum2 = 0;
     if (!rd(2) || (buf[4] >> 4) != 15) return m_walk;
+    /* WRITE_BLOCK bypasses ProDOS access checks. Both directory entries,
+     * their counts and any growth bitmap belong to this volume. Check its
+     * fresh header before asking, and again after the user answers. */
+    if (!(buf[0x22] & 0x02)) return m_readonly;
     dirmax = rd16(buf + 4 + H_TOTAL);
     if (dirmax > DIR_MAX) dirmax = DIR_MAX;
 
     srckey = key_of(pan->path);
     dstkey = key_of(other->path);
     if (!srckey || !dstkey || srckey == dstkey) return m_walk;
+    /* Parent entries and key headers both carry directory access. Refuse
+     * either protected copy, including inconsistent metadata, before any
+     * raw entry/count update or destination bitmap allocation. */
+    if (!rd(srckey)) return m_walk;
+    if (!(buf[0x22] & 0x02)) return m_readonly;
+    if (!rd(dstkey)) return m_walk;
+    if (!(buf[0x22] & 0x02)) return m_readonly;
 
     RF(strcpy)(seek, sel->name);
     k = locate(dstkey);
@@ -395,6 +484,7 @@ static const char* examine(void)
     if (plan.isdir && (!rd(plan.subkey) || (buf[4] >> 4) != 14 ||
         rd16(buf + 4 + H_PARENT) != plan.sblk || buf[4 + H_PARENTNUM] != plan.sslot + 1 ||
         buf[4 + H_PARENTLEN] != ENTRY_LEN)) return m_walk;
+    if (plan.isdir && (!(ent[30] & 0x02) || !(buf[0x22] & 0x02))) return m_readonly;
     /* A target with no free entry is grown by a block -- but only after the
      * user has said yes, and never the volume directory, whose four blocks
      * are fixed and which has no entry of its own to rewrite. */
@@ -405,70 +495,6 @@ static const char* examine(void)
     return 0;
 }
 
-/* No entry can point from one volume to another, so across volumes a move
- * is a copy followed by a removal. The copy is verified against the original
- * BEFORE the original goes: the whole point of a move is that the file still
- * exists afterwards. `buf` reads the source, `scratch` the copy. */
-static void copy_across(const struct Entry* e)
-{
-    FILE *in, *out;
-    unsigned long left, done = 0;
-    unsigned int n, i;
-    unsigned char bad = 0, err, check;
-    const char* m = m_cbad;
-
-    if (e->type == 0x0F) { note(m_btree); return; }
-    if (!join(target, other->path, e->name)) { note(m_walk); return; }
-
-    a.sprintf((char*)scratch, m_cask, e->name);
-    if (a.arg != 'B' && !RF(confirm)((char*)scratch)) { note(""); return; }
-
-    /* CREATE must grant us a new entry before fopen("wb") or failure
-     * cleanup can touch this path. */
-    err = newfile(target, e->type, e->aux, 1);
-    if (err) {
-        a.sprintf(a.note, err == 0x47 ? m_here : m_cbad, e->name);
-        return;
-    }
-    *a.filetype = e->type;
-    *a.auxtype = e->aux;
-    /* Two passes over the same loop: the copy, then both files read back
-     * and compared BEFORE the original is touched. The bar restarts at 0
-     * for the check, which is as long as the copy. */
-    for (check = 0; check < 2; ++check) {
-        if (check) m = m_vbad;
-        in = RF(fopen)(a.full, "rb");
-        out = RF(fopen)(target, check ? "rb" : "wb");
-        if (!in || !out) bad = 1;
-        for (left = e->size, done = 0; left && !bad; left -= n) {
-            a.progress_bar(e->name, done, e->size);
-            n = left > 512 ? 512 : (unsigned int)left;
-            if (stop() || RF(fread)(buf, 1, n, in) != n) bad = 1;
-            else if (!check) { if (RF(fwrite)(buf, 1, n, out) != n) bad = 1; }
-            else if (RF(fread)(scratch, 1, n, out) != n) bad = 1;
-            else for (i = 0; i < n; ++i) if (buf[i] != scratch[i]) { bad = 1; break; }
-            done += n;
-        }
-        /* The panel's size can be stale. Matching that prefix is not enough:
-         * deleting a longer source would silently discard its remaining bytes.
-         * Both streams must end at the size we copied, including empty files. */
-        if (check && !bad && (RF(fread)(buf, 1, 1, in) || RF(fread)(scratch, 1, 1, out))) bad = 1;
-        /* A zero-byte probe is EOF only if neither stream has an I/O error.
-         * Keep the source until both verification handles have closed too. */
-        if (in) { if (ferror(in)) bad = 1; if (RF(fclose)(in)) bad = 1; }
-        if (out) { if (ferror(out)) bad = 1; if (RF(fclose)(out)) bad = 1; }
-        if (bad) goto drop;
-    }
-
-    if (RF(remove)(a.full)) { a.sprintf(a.note, m_del, e->name); return; }
-    RF(strcpy)(a.reselect, e->name);
-    a.sprintf(a.note, m_cok, e->name);
-    return;
-drop:
-    /* Only the entry newly created above is removed. If it stays, the note
-     * says so: a retry's exclusive CREATE refuses it, nothing overwrites it. */
-    a.sprintf(a.note, RF(remove)(target) ? m_kept : m, e->name);
-}
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api)
 {
@@ -492,7 +518,11 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     /* The same volume, compared by UNIT: two names can be the same drive.
      * Anything else has to be copied -- no entry points across a volume. */
     unit = unit_of(pan->path, 0);
-    if (!unit || unit != unit_of(other->path, 0)) { copy_across(sel); return; }
+    if (!unit || unit != unit_of(other->path, 0)) {
+        if (sel->type == 0x0F) note(m_btree);
+        else note("\3"); /* resident loads MOVECOPY before refreshing panels */
+        return;
+    }
 
     why = examine();
     if (!why && a.arg != 'B') {
@@ -513,15 +543,18 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     }
     if (why) { a.sprintf(a.note, why, sel->name); return; }
 
-    if (!plan.room) {
-        if (!grow_dir(dstkey) || free_slot(dstkey) != 1) { note(m_nogrow); return; }
-        plan.dblk = hit_blk; plan.dslot = hit_slot;
-    }
-
     if (!rd(srckey)) { note(m_walk); return; }
     src_count = rd16(buf + 4 + H_COUNT);
     if (!rd(dstkey)) { note(m_walk); return; }
     dst_count = rd16(buf + 4 + H_COUNT);
+    /* Raw writes must not wrap the live-entry counters. Check before even
+     * growing the destination: that already writes its bitmap and links. */
+    if (!src_count || dst_count == 0xFFFF) { note(m_walk); return; }
+
+    if (!plan.room) {
+        if (!grow_dir(dstkey) || free_slot(dstkey) != 1) { note(m_nogrow); return; }
+        plan.dblk = hit_blk; plan.dslot = hit_slot;
+    }
 
     /* 1. The entry into the target directory, its header pointer put right.
      *    This one first: interrupted after it, the file is in two places,

@@ -234,6 +234,13 @@ static void run_selected(const struct Entry* e)
         return;
     }
     if (bas) {
+        /* The interpreter is a separate file: checking it does not validate
+         * the BASIC source from a stale panel. Refuse before runtime lookup
+         * (which may ask for another disk), configuration writes or handoff. */
+        if (!file_info(LS->command)) { report_error(run_err); return; }
+        if (gfi[7] < 1 || gfi[7] > 3 || !(gfi[3] & 1) || gfi[4] != e->type) {
+            message(run_bad); return;
+        }
         if (!basic_path(e->type == 0xFA ? run_integer : run_basic)) return;
         /* Long absolute paths use the source directory as prefix. */
         if (strlen(LS->command) > 46) strcpy(LS->command, e->name);

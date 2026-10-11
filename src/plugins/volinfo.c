@@ -132,6 +132,12 @@ spun:
     if (v_mli(0x80, &io)) { failed = 1; return 0; }
     return 1;
 }
+/* Only this export's exclusively created report is written; no source or
+ * auxiliary memory writes. A full byte count does not clear a stream error. */
+static unsigned char report_write(const void* p, unsigned int n)
+{
+    return v_fwrite(p, 1, n, reportfile) == n && !ferror(reportfile);
+}
 /* Listing is streamed: no size limit and no extra block table in RAM. */
 static void listed(unsigned int b)
 {
@@ -140,7 +146,7 @@ static void listed(unsigned int b)
     n = v_sprintf(A->other_full, "%c %5u ($%04X)%s\r\n", role, b, b,
                    b >= total ? " INVALID" : "");
     if (reportfile) {
-        if (v_fwrite(A->other_full, 1, n, reportfile) != n) { reporterror = 1; cancelled = 1; }
+        if (!report_write(A->other_full, n)) { reporterror = 1; cancelled = 1; }
     } else {
         v_cputs(A->other_full);
         if (++row == 18) {
@@ -345,8 +351,11 @@ static unsigned char selected_file(void)
             if (!v_strcmp((char*)entry+1, A->selected->name)) { found = 1; break; }
         }
     }
+    /* A matching entry cannot validate a full-count read with an error.
+     * Never list its blocks after a failed read or directory close. */
+    if (ferror(f)) failed = 1;
     if (v_fclose(f) || (!found && !cancelled)) failed = 1;
-    return found;
+    return found && !failed;
 }
 /* F and E walk one file again once the audit is done. Their read errors,
  * their ESC and the report's write errors are theirs: the audit's flags are
@@ -418,17 +427,17 @@ static void export_report(void)
         v_cgetc(); return;
     }
     summary(); n = v_strlen((char*)buf);
-    reporterror = v_fwrite(buf, 1, n, reportfile) != n;
+    reporterror = !report_write(buf, n);
     if (!reporterror && !failed && !cancelled) {
       list_begin();
       if (selected_file()) {
         n = v_sprintf(A->other_full, "FILE %s: D data I index M master E extended\r\n", A->selected->name);
-        if (v_fwrite(A->other_full, 1, n, reportfile) != n) reporterror = 1;
+        if (!report_write(A->other_full, n)) reporterror = 1;
         else file();
       }
       if (list_end()) reporterror = 1;
     }
-    if (!reporterror && v_fwrite("END REPORT\r\n", 1, 12, reportfile) != 12) reporterror = 1;
+    if (!reporterror && !report_write("END REPORT\r\n", 12)) reporterror = 1;
     if (v_fclose(reportfile)) reporterror = 1;
     reportfile = 0;
     v_message(reporterror ? "Partial report (error/cancelled)." : "Report saved in other panel.");

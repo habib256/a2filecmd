@@ -35,6 +35,16 @@ static unsigned char rename_file(const char* from,const char* to) {
 static void recovery_note(const char* message) {
     recovery=1;note(message);
 }
+/* Raw catalog timestamps must have valid field ranges before they can
+ * authorize a replacement or become output metadata. Zero date is unknown.
+ * This check performs no writes; owned output is created only afterwards. */
+static unsigned char timestamp_valid(unsigned int date,unsigned int time) {
+    unsigned char month;
+    if((time>>8)>23 || (time&255)>59)return 0;
+    if(!date)return 1;
+    month=(date>>5)&15;
+    return (date&31)!=0 && month && month<=12;
+}
 /* Convert ProDOS's 1940..2039 year convention before comparing dates. */
 static unsigned char newer(unsigned int sd,unsigned int st,unsigned int dd,unsigned int dt) {
     unsigned int sy,dy;
@@ -75,6 +85,17 @@ static unsigned char copy_file(unsigned char exists) {
     if(!error && (RF(fread)(buf,1,1,in) || RF(fread)(check,1,1,out)))error=1;
     if(ferror(in) || ferror(out))error=1;
     if(RF(fclose)(in))error=1;if(RF(fclose)(out))error=1;if(error)goto fail;
+    /* RENAME can move a write-locked file whose rename bit is still set.
+     * Replacing its name would bypass that protection. Check the current
+     * entry immediately before moving it aside; an unreadable entry is
+     * never permission. Keep the verified copy on any such refusal. Only
+     * owned tmp was written so far, with no AUX or source modifications. */
+    if(exists && (getinfo(target) || info.storage<1 || info.storage>3 ||
+                  (info.access&0xC2)!=0xC2 ||
+                  !timestamp_valid(info.mdate,info.mtime))) {
+        recovery_note("SYNC stopped: target invalid/protected; A2FC.SYNC kept.");
+        return 0;
+    }
     error=file_install(tmp,target,bak,exists);
     if(error!=FILE_INSTALLED) {
         recovery_note(error==FILE_RESTORE_FAILED ?
@@ -117,16 +138,21 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
         if(!r){if(!depth)break;--depth;sdir[frames[depth].slen]=ddir[frames[depth].dlen]=0;continue;}
         rawname(name);
         if(!RF(strcmp)(name,"A2FC.SYNC") || !RF(strcmp)(name,"A2FC.BAK")){++skipped;continue;}
+        if(!timestamp_valid(rd16(raw+24),rd16(raw+26)) ||
+           !timestamp_valid(rd16(raw+33),rd16(raw+35))){++errors;continue;}
         if(!join(source,sdir,name)||!join(target,ddir,name)){++errors;continue;}
         r=getinfo(target);exists=r==0;
         if(r && r!=0x46){++errors;continue;}
+        /* An invalid destination date cannot establish that the source is
+         * newer. Refuse before any output; recheck before backup/rename. */
+        if(exists && !timestamp_valid(info.mdate,info.mtime)){++errors;continue;}
         if((raw[0]>>4)==13) {
             if(depth==15 || (exists && info.storage!=13) || (!exists && newfile(target,15,0,13)) ||
                !dir_begin(source,&frames[depth+1].blocks)){++errors;continue;}
             ++depth;RF(strcpy)(sdir,source);RF(strcpy)(ddir,target);
             frames[depth].slen=RF(strlen)(sdir);frames[depth].dlen=RF(strlen)(ddir);frames[depth].pos=0;continue;
         }
-        if((raw[0]>>4)>3 || (exists && (info.storage>3 || (info.access&0xC0)!=0xC0))){++errors;continue;}
+        if((raw[0]>>4)>3 || (exists && (info.storage<1 || info.storage>3 || (info.access&0xC2)!=0xC2))){++errors;continue;}
         if(exists && !newer(rd16(raw+33),rd16(raw+35),info.mdate,info.mtime)){++skipped;continue;}
         meta.access=raw[30];meta.type=raw[16];meta.aux=rd16(raw+31);meta.storage=raw[0]>>4;
         meta.blocks=rd16(raw+19);meta.mdate=rd16(raw+33);meta.mtime=rd16(raw+35);

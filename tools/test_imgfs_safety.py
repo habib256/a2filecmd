@@ -79,6 +79,13 @@ int main(int argc,char** argv){
  for(i=0;i<n;++i){unsigned char* d=blocks[290]+4+(i+1)*0x27;unsigned long eof=size+(storage==8);
   d[0]=((storage&&storage!=8)?storage:size<=512?1:size<=131072?2:3)<<4|4;memcpy(d+1,entries[i].name,4);
   d[0x11]=entries[i].mdate;d[0x12]=entries[i].mdate>>8;d[0x15]=eof;d[0x16]=eof>>8;d[0x17]=eof>>16;
+  d[0x10]=entries[i].type;d[0x1F]=entries[i].aux;d[0x20]=entries[i].aux>>8;
+  if(fault==19){d[0]=(d[0]&0xF0)|7;memcpy(d+1,"RENAMED",7);}
+  if(fault==20)memcpy(d+1,"OUTX",4);   /* same key, length and EOF, another file */
+  if(fault==21)d[0x10]=6;
+  if(fault==22)d[0x1F]^=1;
+  if(fault==23){d[0]=(d[0]&0xF0)|5;memcpy(d+1,"OUT00",5);}
+  if(fault==24)d[0]&=0xF0;           /* active storage, invalid empty name */
   if(storage==9)d[0]=0;}                     /* 9: no entry (deleted since the snapshot) */
  for(i=0;i<n&&size<=131072;++i){          /* a tree file has no blocks to prepare: it is refused */
   unsigned long need=(size+511)>>9;
@@ -161,4 +168,12 @@ class ImgfsExtract(unittest.TestCase):
    with self.subTest(storage=st):
     out,data,_=self.run_case(600,storage=st);self.assertIsNone(data);self.assertIn('Extract failed; 0 complete.',out)
     self.assertIn(' 0 0 0 ',out)
+ def test_stale_entry_identity_is_refused_before_output_creation(self):
+  for size in (0,512,600):
+   for fault in range(19,25):
+    with self.subTest(size=size,fault=fault):
+     out,data,files=self.run_case(size=size,fault=fault)
+     self.assertIsNone(data);self.assertEqual(files,{})
+     self.assertTrue(out.startswith('0 0 0 0 0 0 '),out)
+     self.assertIn('Extract failed; 0 complete.',out)
 if __name__=='__main__':unittest.main()

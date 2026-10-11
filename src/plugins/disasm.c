@@ -103,14 +103,16 @@ static unsigned int read_page(unsigned long pos)
     want=size-pos>LINES*3 ? LINES*3 : (unsigned int)(size-pos);
     if(a.fseek(file,(long)pos,SEEK_SET)) { failed=1;return 0; }
     got=want ? a.fread(buf,1,want,file) : 0;
-    if(got!=want)failed=1;
+    if(got!=want || ferror(file))failed=1;
     return got;
 }
 
 static unsigned char write_record(FILE* out)
 {
     unsigned int n=a.strlen(record);
-    return a.fwrite(record,1,n,out)==n;
+    /* A full count cannot excuse a stream error. Only the exclusively
+     * created export is written; sources and AUX /RAM stay untouched. */
+    return a.fwrite(record,1,n,out)==n && !ferror(out);
 }
 
 /* Two open streams fit the resident's two I/O buffers. Read 57 bytes and
@@ -139,8 +141,18 @@ static unsigned char export_text(FILE* out)
         }
         pos+=used;
     }
+    if(stop())return 3;
+    /* Panel sizes can be stale. A complete export requires clean EOF at
+     * the expected size, even for an empty source or an export from EOF.
+     * Only our exclusive TXT and MAIN buffers change; source/AUX stay intact.
+     * Preserve a partial export on any seek/read error or extra byte. */
+    if(a.fseek(file,(long)size,SEEK_SET) || a.fread(buf,1,1,file) || ferror(file))return 2;
+    if(stop())return 3;
     a.strcpy(record,"; END DISASM\r\n");
-    return write_record(out) ? 0 : 1;
+    if(!write_record(out))return 1;
+    /* ESC during the final write still cancels. Only the exclusively
+     * created export was written; its bytes, source and AUX are preserved. */
+    return stop() ? 3 : 0;
 }
 
 static void export(void)
@@ -159,6 +171,9 @@ static void export(void)
     cancelled=0;a.gotoxy(0,21);a.cprintf("%-79s","Exporting... ESC cancels");
     result=export_text(out);
     if(a.fclose(out))result=1;
+    /* A close can take time: poll before publishing success. Keep the
+     * export on cancellation just as for other incomplete exports. */
+    if(stop())result=3;
     export_status=result==3 ? "Export cancelled; partial file kept." :
         result ? "Export incomplete; partial file kept." : "Disassembly exported to other panel.";
 }

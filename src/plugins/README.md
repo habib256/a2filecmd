@@ -69,6 +69,7 @@ menu. Every overlay is on the 800K and XL images.
 | REPAIR | Disks | big |  | Repair a ProDOS volume: plan, type FIX, every write read back |
 | RESCUE | Disks | big |  | Recover file/disk data with retries and a log |
 | SCIIBIN | Archives | big |  | BinSCII: decode .BSC/.BSQ text, and its next parts |
+| SMALLDOS | Disks | big |  | SMALLDOS: extract contiguous files (Wilderness) |
 | SHAPES | Images | big |  | Applesoft shape tables, 24 a page |
 | SYNC | Files | big |  | Copy missing or newer files to the other panel |
 | TAGPAT | Files | small |  | Tag files by pattern (= ?), type, size or date |

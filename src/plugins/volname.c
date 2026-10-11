@@ -1,4 +1,4 @@
-/* volname.c -- rename a ProDOS volume. A small service-table overlay.
+/* volname.c -- rename a ProDOS volume. A service-table overlay.
  *
  * From the ! menu. The volume is the selected entry when the active panel
  * is the volume list, otherwise the volume of the active panel's path (its
@@ -19,7 +19,7 @@
  * rewrite the ! menu itself would be lost after renaming the boot volume
  * -- and the prefix is set to the root of the renamed volume.
  *
- * Written for size (1,280 bytes). A call through the table costs cc65
+ * Calls through the table cost cc65
  * some 35 bytes each time (load the table, push the slot, jmpvec), so the
  * services used here are reached through stubs: a plain fastcall function
  * whose body puts the slot's offset in Y and jumps to one trampoline,
@@ -39,11 +39,11 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api);
 struct PluginHeader {
     unsigned int signature; unsigned char flags;
     void __fastcall__ (*entry)(const struct A2fcApi*);
-    unsigned char r0, r1, r2; char desc[52];
+    unsigned char r0, r1, r2; char desc[16];
 };
 #pragma rodata-name (push, "OVLHDR")
 const struct PluginHeader __plugin_header = {
-    PLUGIN_MAGIC, 0, plugin_entry, 0, 0, 0,
+    PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry, 0, 0, 0,
     "Rename a volume"
 };
 #pragma rodata-name (pop)
@@ -70,7 +70,7 @@ static const struct A2fcApi* A;
 static unsigned char OLD[NAME_LEN + 1];     /* Pascal "/OLD", zero-terminated too */
 static unsigned char NEW[NAME_LEN + 1];     /* Pascal "/NEW", zero-terminated too */
 static unsigned char n;                     /* OLD[0] */
-static unsigned char c;
+static unsigned char c;                    /* after name extraction: 0 checks paths, 1 rewrites */
 static unsigned char* PFX;                  /* api->copy_buf: the prefix as it was, Pascal (64 at most) */
 static char TMP[PATH_LEN];                  /* the tail of a path being rewritten; the name being cut */
 static struct Rn rn = { 2, OLD, NEW };      /* DATA: set once, loaded with the file */
@@ -112,8 +112,8 @@ static unsigned char __fastcall__ slen(const char* s) STUB(strlen)
 static unsigned char __fastcall__ set_prefix(const unsigned char* p) { pfx.path = (unsigned char*)p; return mli(0xC6, &pfx); }
 static unsigned char rename_volume(void) { return mli(0xC2, &rn); }
 
-/* If `path` starts with "/OLD" (whole component), rewrites it in place with
- * "/NEW" (if the result fits PATH_LEN); returns 1 if it did. Plain 6502:
+/* If `path` starts with "/OLD" (whole component), checks or rewrites it
+ * with "/NEW": 0 unrelated, 1 fits, 2 too long. Plain 6502:
  * the tail goes through TMP, then "/NEW" and the tail are laid down. */
 #pragma optimize (push, off)
 #pragma warn (unused-param, push, off)
@@ -143,7 +143,9 @@ static unsigned char __fastcall__ fix(char* path)
     asm("clc");
     asm("adc %v", NEW);
     asm("cmp #%b", PATH_LEN);
-    asm("bcs fxno");
+    asm("bcs fxlong");
+    asm("lda %v", c);
+    asm("beq fx8");                 /* preflight: no path bytes or panel state change */
     asm("ldy #0");
     asm("fx5: lda %v+1,y", NEW);
     asm("beq fx6");
@@ -160,6 +162,8 @@ static unsigned char __fastcall__ fix(char* path)
     asm("fx8: lda #1");
     asm("bne fx9");                 /* always: both ends fall into the epilogue, which drops the argument */
     asm("fxno: lda #0");
+    asm("beq fx9");
+    asm("fxlong: lda #2");
     asm("fx9: ldx #0");
 }
 #pragma warn (unused-param, pop)
@@ -202,21 +206,30 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     scpy((char*)NEW + 2, api->input);
     NEW[0] = slen((char*)NEW + 1);
 
+    /* Refuse before any prefix or disk change if even one path would stay
+     * under the old name. In particular cfg_path must still find overlays.
+     * Scratch TMP is separate from the saved prefix; no AUX is touched. */
+    c = 0;
+    if (fix(api->panels[0].path) == 2 || fix(api->panels[1].path) == 2 ||
+        fix((char*)api->cfg_path) == 2) { msg("Path too long."); return; }
+    c = 1;
+
     /* The prefix, kept in case of failure; then the rename, retried
      * without a prefix if ProDOS refuses. */
     pfx.path = PFX;
-    mli(0xC7, &pfx);
+    /* Do not change the prefix or volume without a restorable prefix.
+     * GET_PREFIX failure leaves copy_buf holding unrelated scratch data. */
+    if (mli(0xC7, &pfx)) { report_error(m_fail); return; }
     /* ProDOS renames a volume to the name of another volume on line, and
      * two volumes then answer to one path. SET_PREFIX finds no volume
      * ($45) only when "/NEW" is free; anything else refuses, the prefix
      * put back. */
     if (set_prefix(NEW) != 0x45) { msg(m_used); goto restore; }
     if (rename_volume()) {
-        set_prefix(&nopfx);
-        if (rename_volume()) {
+        if (set_prefix(&nopfx) || rename_volume()) {
             report_error(m_fail);
 restore:
-            set_prefix(PFX);
+            if (set_prefix(PFX)) report_error(m_fail);
             return;
         }
     }
@@ -228,11 +241,14 @@ restore:
     fix_panel(api->panels);
     fix_panel(api->panels + 1);
     fix((char*)api->cfg_path);
-    set_prefix(NEW);
 
     scpy(done + DONE_NAME, (char*)NEW + 1);
     read_panel(0);
     read_panel(1);
     draw_all(0);
-    msg(done);
+    /* Report this last MLI error after the panel reads, which may change
+     * ProDOS's error byte. The volume and its absolute paths already moved;
+     * never rename it again or announce complete success on prefix failure. */
+    if (set_prefix(NEW)) report_error(m_fail);
+    else msg(done);
 }

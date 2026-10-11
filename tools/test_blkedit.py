@@ -55,7 +55,7 @@ static size_t write_data(const void* p, size_t s, size_t n, FILE* f) {
 }
 static unsigned char dir_open(const char* path) { (void)path; listed = 0; return 1; }
 static unsigned char dir_next(void) { return !listed++; }
-static void dir_close(void) {}
+static unsigned char dir_close(void) { return 0; }
 int main(int argc, char** argv)
 {
     static unsigned char scratch[512];
@@ -65,12 +65,12 @@ int main(int argc, char** argv)
     host_image = argv[1];
     a.fread = read_data; a.fwrite = write_data; a.fseek = fseek;
     a.fopen = open_image; a.fclose = fclose;
-    a.dir_open = dir_open; a.dir_next = dir_next; a.dir_close = dir_close;
+    a.dir_open = dir_open; a.dir_next = dir_next; a.dir_close = (void (*)(void))dir_close;
     a.dir_entry = &entry;
     a.strcpy = strcpy; a.strcmp = strcmp; a.strlen = strlen;
     buf = scratch;
     f = fopen(argv[1], "rb"); fseek(f, 0, SEEK_END); entry.size = ftell(f); fclose(f);
-    strcpy(entry.name, argv[2]);
+    strcpy(entry.name, argv[2]); entry.access = 0xC3;
     sprintf(source.path, "/H/%s", argv[2]);
     block = atoi(argv[3]);
     lie = atoi(argv[4]);
@@ -130,6 +130,7 @@ static unsigned int writes, reads;
 static int twin;                     /* ON_LINE lists the drive's volume twice */
 static void events(void) {
     while (*script == '@') {
+        if(script[1]=='R') { disks[drive][1024+34]&=~2;script+=2;continue; }
         drive = script[1] == 'E' ? 0 : script[1] - 'A';
         bad2 = script[1] == 'E';
         script += 2;
@@ -216,34 +217,44 @@ int main(int argc, char** argv)
 IMAGE = PREFIX + r'''
 #include <stdarg.h>
 static void mock_clearerr(FILE*);
+static int mock_error(FILE*);
 #define clearerr mock_clearerr
+#define ferror mock_error
 #include "src/plugins/blkedit.c"
 #undef clearerr
+#undef ferror
 static unsigned char errflag;
+static unsigned int reads,writes,lost_prompts;
+static int error_mode,fail_at;
+static int mock_error(FILE* f){return errflag || ferror(f);}
 static const char* host_image;
 static const char* script;
 static struct DirEntry entry;
 static unsigned char listed;
 static char input[18], notes[80], full[90], said[8192];
 static void mock_clearerr(FILE* f) { (void)f; errflag = 0; }
-static FILE* open_image(const char* path, const char* mode) { (void)path; return fopen(host_image, mode); }
+static FILE* open_image(const char* path, const char* mode) {
+    (void)path; fprintf(stderr,"OPEN %s\n",mode); return fopen(host_image, mode);
+}
 static size_t read_data(void* p, size_t s, size_t n, FILE* f) {
-    size_t r; if (errflag) return 0; r = fread(p, s, n, f); if (r != n) errflag = 1; return r;
+    size_t r; ++reads; if (errflag) return 0; r = fread(p, s, n, f);
+    if (r != n || (error_mode==1 && reads==fail_at)) errflag = 1; return r;
 }
 static size_t write_data(const void* p, size_t s, size_t n, FILE* f) {
-    size_t r; if (errflag) return 0; r = fwrite(p, s, n, f); if (r != n) errflag = 1; return r;
+    size_t r; ++writes; if (errflag) return 0; r = fwrite(p, s, n, f);
+    if (r != n || (error_mode==2 && writes==fail_at)) errflag = 1; return r;
 }
 static unsigned char dir_open(const char* path) { (void)path; listed = 0; return 1; }
 static unsigned char dir_next(void) { return !listed++; }
-static void dir_close(void) {}
+static unsigned char dir_close(void) { return error_mode==3?fail_at:0; }
 static void say(const char* s) {
     if (strlen(said) + strlen(s) + 2 < sizeof said) { strcat(said, s); strcat(said, "\n"); }
 }
 static char key(void) { char c = *script ? *script++ : '!'; return c == '!' ? KEY_ESC : c; }
 static unsigned char ask(const char* q, const char* d, unsigned char n) {
-    (void)q; (void)d; (void)n; strcpy(input, "ERASE"); return 1;
+    (void)q; (void)d; (void)n; fprintf(stderr,"ERASE\n"); strcpy(input, "ERASE"); return 1;
 }
-static unsigned char yes(const char* q) { (void)q; return 1; }
+static unsigned char yes(const char* q) { if(!strcmp(q,m_lost))++lost_prompts;return 1; }
 static int out(const char* f, ...) {
     char line[256]; va_list ap;
     if (!strcmp(f, "%02X") || !strcmp(f, "%02X ") || !strcmp(f, "%03X  ")) return 0;
@@ -265,8 +276,11 @@ int main(int argc, char** argv)
     FILE* f;
     (void)argc;
     host_image = argv[1];
+    if(argc>5){error_mode=atoi(argv[4]);fail_at=atoi(argv[5]);}
     f = fopen(argv[1], "rb"); fseek(f, 0, SEEK_END); entry.size = ftell(f); fclose(f);
     strcpy(entry.name, argv[2]); strcpy(selected.name, argv[2]); selected.access = 0xC3;
+    entry.access = argc>6 ? atoi(argv[6]) : 0xC3;
+    if(argc>7)selected.access=atoi(argv[7]);
     script = argv[3];
     strcpy(panels[0].path, "/H"); sprintf(full, "/H/%s", argv[2]);
     api.panels = panels; api.active = &active; api.selected = &selected;
@@ -278,9 +292,10 @@ int main(int argc, char** argv)
     api.gotoxy = xy; api.revers = rev; api.clrscr = cls;
     api.fread = read_data; api.fwrite = write_data; api.fseek = fseek;
     api.fopen = open_image; api.fclose = fclose;
-    api.dir_open = dir_open; api.dir_next = dir_next; api.dir_close = dir_close;
+    api.dir_open = dir_open; api.dir_next = dir_next; api.dir_close = (void (*)(void))dir_close;
     api.dir_entry = &entry;
     plugin_entry(&api);
+    fprintf(stderr,"STATE %u %u %u\n",reads,writes,lost_prompts);
     printf("%s\n%s", notes, said);
     return 0;
 }
@@ -461,11 +476,76 @@ class SmallImage(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def run_image(self, data, script, name='IMAGE.PO'):
+    def run_image(self, data, script, name='IMAGE.PO', mode=0, at=1,
+                  access=0xC3, panel_access=0xC3):
         path = self.p / name
         path.write_bytes(data)
-        out = subprocess.check_output([str(self.exe), str(path), name, script], text=True)
-        return out, path.read_bytes()
+        run = subprocess.run([str(self.exe), str(path), name, script,str(mode),str(at),
+                              str(access), str(panel_access)],
+                             text=True,capture_output=True,check=True)
+        lines=run.stderr.splitlines()
+        self.state=tuple(map(int,next(l for l in lines if l.startswith('STATE ')).split()[1:]))
+        self.open_modes=[l.split()[1] for l in lines if l.startswith('OPEN ')]
+        self.erase_prompts=lines.count('ERASE')
+        return run.stdout, path.read_bytes()
+
+    def test_fresh_image_permissions_override_the_panel_snapshot(self):
+        data=bytes((i*7+i//512)&255 for i in range(4096))
+        for kind in (0,1,2):
+            for access in (0,0x01,0x41,0xC1,0xE1):
+                with self.subTest(kind=kind,access=access):
+                    original=encode(data,kind)
+                    out,after=self.run_image(original,'ABWx!',NAMES[kind],access=access)
+                    self.assertEqual(after,original)
+                    self.assertEqual(self.state[1],0)
+                    self.assertEqual(self.erase_prompts,0)
+                    self.assertEqual(self.open_modes,['rb'])
+                    self.assertNotIn('written and read back identical',out)
+            with self.subTest(kind=kind,unlocked=True):
+                original=encode(data,kind)
+                out,after=self.run_image(original,'ABWx!',NAMES[kind],panel_access=0xC1)
+                edited=bytearray(data);edited[0]=0xAB
+                self.assertEqual(after,encode(edited,kind))
+                self.assertIn('written and read back identical',out)
+                self.assertEqual(self.erase_prompts,1)
+                self.assertEqual(self.open_modes,['r+b'])
+
+    def test_full_count_image_errors_never_report_a_verified_write(self):
+        data=bytes((i*7+i//512)&255 for i in range(4096))
+        edited=bytearray(data);edited[0]=0xAB
+        for kind,last_read,before_write in ((0,4,3),(1,8,6),(2,5,4)):
+            for mode in (1,2):
+                limit=last_read if mode==1 else (2 if kind==1 else 1)
+                for at in range(1,limit+1):
+                    with self.subTest(kind=kind,mode=mode,at=at):
+                        raw=encode(data,kind)
+                        out,after=self.run_image(raw,'ABWx!',NAMES[kind],mode,at)
+                        self.assertNotIn('written and read back identical',out)
+                        changed=mode==2 or at>before_write
+                        self.assertEqual(after,encode(edited,kind) if changed else raw)
+                        if not changed:self.assertEqual(self.state[1],0)
+                        if changed:self.assertEqual(self.state[2],1)
+
+    def test_metadata_close_error_refuses_before_image_reads_or_writes(self):
+        data=bytes((i*7+i//512)&255 for i in range(4096))
+        for kind in (0,1,2):
+            for error in (1,27):
+                with self.subTest(kind=kind,error=error):
+                    original=encode(data,kind)
+                    out,after=self.run_image(original,'ABWx!',NAMES[kind],3,error)
+                    self.assertEqual(after,original)
+                    self.assertEqual(self.state,(0,0,0))
+                    self.assertIn('Invalid or unreadable image.',out)
+
+    def test_identity_refresh_error_keeps_the_edit_dirty(self):
+        data=bytes((i*7+i//512)&255 for i in range(4096))
+        edited=bytearray(data);edited[1024]=0xAB
+        for kind,at in ((0,7),(1,13),(1,14),(2,8)):
+            with self.subTest(kind=kind,at=at):
+                out,after=self.run_image(encode(data,kind),'NNABWx!',NAMES[kind],1,at)
+                self.assertNotIn('written and read back identical',out)
+                self.assertEqual(after,encode(edited,kind))
+                self.assertEqual(self.state[2],1)
 
     def test_one_and_two_block_images_open_and_take_an_edit(self):
         for n in (1, 2):
@@ -504,6 +584,7 @@ def volume(name, seed, header_from=None, block2_from=None):
     h[0:4] = bytes([0, 0, 3, 0])
     h[4] = 0xF0 | len(name)
     h[5:5 + 15] = name.encode().ljust(15, b'\0')
+    h[34] = 0xC3                    # explicitly writable volume
     h[35], h[36] = 39, 13
     h[39:41] = (6).to_bytes(2, 'little')
     h[41:43] = (16).to_bytes(2, 'little')
@@ -553,13 +634,39 @@ class WrongDisk(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def run_script(self, script):
+    def run_script(self, script, access=None):
         path = self.p / 'disks'
-        path.write_bytes(self.A + self.B + self.C + self.D)
+        first=bytearray(self.A)
+        if access is not None:first[1024+34]=access
+        path.write_bytes(first + self.B + self.C + self.D)
         out = subprocess.check_output([str(self.exe), str(path), script], text=True)
         raw = path.read_bytes()
         disks = [raw[i * 8192:(i + 1) * 8192] for i in range(4)]
         return int(out.split()[0]), out, disks
+
+    def test_raw_writes_respect_volume_write_protection(self):
+        for access in (0,0xC1,0xE1):
+            for block in (0,2,5):
+                with self.subTest(access=access,block=block):
+                    writes,out,disks=self.run_script('N'*block+'ABWx!',access=access)
+                    before=bytearray(self.A);before[1024+34]=access
+                    self.assertEqual(writes,0)
+                    self.assertIn('read-only',out)
+                    self.assertEqual(disks,[bytes(before),self.B,self.C,self.D])
+
+    def test_volume_locked_during_confirmation_is_never_written(self):
+        writes,out,disks=self.run_script('NNNNNABW@Rx!')
+        expected=bytearray(self.A);expected[1024+34]&=~2
+        self.assertEqual(writes,0)
+        self.assertEqual(disks,[bytes(expected),self.B,self.C,self.D])
+
+    def test_editing_the_write_bit_cannot_unlock_a_protected_volume(self):
+        script='NN'+'\x15'*34+'C3Wx!'  # cursor on volume access, propose enabling writes
+        writes,out,disks=self.run_script(script,access=0xC1)
+        before=bytearray(self.A);before[1024+34]=0xC1
+        self.assertEqual(writes,0)
+        self.assertIn('read-only',out)
+        self.assertEqual(disks,[bytes(before),self.B,self.C,self.D])
 
     @staticmethod
     def edited(disk, block, byte=0xAB):

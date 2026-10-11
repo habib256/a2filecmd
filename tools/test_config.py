@@ -27,7 +27,19 @@ static unsigned char file_info(const char* p){
  struct stat st;memset(gfi,0,sizeof gfi);
  if((strstr(p,".BAK") && isfault("bak_stat")) || (strstr(p,".CFG") && isfault("old_stat"))) {_oserror=0x27;return 0;}
  if(stat(p,&st)){_oserror=errno==ENOENT?0x46:0x27;return 0;}
- gfi[7]=1;gfi[3]=isfault("locked")?1:0xC3;gfi[4]=S_ISDIR(st.st_mode)?15:4;_oserror=0;return 1;
+ gfi[7]=1;gfi[3]=isfault("locked")?1:0xC3;gfi[4]=S_ISDIR(st.st_mode)?15:4;
+ if(strstr(p,".CFG") && phase==3){
+  if(isfault("late_stat") || isfault("late_missing")){_oserror=isfault("late_missing")?0x46:0x27;return 0;}
+  if(isfault("late_read"))gfi[3]&=~1;
+  if(isfault("late_write"))gfi[3]&=~2;
+  if(isfault("late_rename"))gfi[3]&=~0x40;
+  if(isfault("late_destroy"))gfi[3]&=~0x80;
+  if(isfault("late_type"))gfi[4]=6;
+  if(isfault("late_storage0"))gfi[7]=0;
+  if(isfault("late_storage5"))gfi[7]=5;
+  if(isfault("late_storage13"))gfi[7]=13;
+ }
+ _oserror=0;return 1;
 }
 static FILE* cfopen(const char* p,const char* m){
  phase=strstr(p,".TMP")?(!strcmp(m,"wb")?2:3):(installed?4:1);
@@ -123,6 +135,13 @@ class Config(unittest.TestCase):
   for name in ('A2FILE.TMP','A2FILE.BAK'):
    out,files=self.run_case(extra={name:b'personal bytes'})
    self.assertTrue(out.startswith('0|'));self.assertEqual(files,{'A2FILE.CFG':OLD,name:b'personal bytes'})
+ def test_late_target_changes_keep_original_and_verified_temp(self):
+  for fault in ('late_stat','late_missing','late_read','late_write','late_rename','late_destroy','late_type','late_storage0','late_storage5','late_storage13'):
+   with self.subTest(fault=fault):
+    out,files=self.run_case(fault)
+    self.assertTrue(out.startswith('0|'),out)
+    self.assertEqual(files,{'A2FILE.CFG':OLD,'A2FILE.TMP':NEW})
+    self.assertIn('A2FILE.BAK',out)
  def test_load_is_all_or_nothing(self):
   for bad in (b'',b'/OK\r',b'/OK\r/BAD\rS0A2\r',b'/'+b'X'*64+b'\r/B\rS0A0\r',OLD+b'extra',OLD.replace(b'S0',b'S9')):
    out,files=self.run_case(old=bad,load=True);self.assertTrue(out.startswith('/NEW/LEFT|/NEW/RIGHT|1|1|'),out);self.assertEqual(files,{'A2FILE.CFG':bad})

@@ -8,7 +8,13 @@
 /* The copy stops before the v6 services (aux_consent and later): a util.h
  * overlay does not use them, and its BSS keeps the size it had under v5.
  * One that needs them reads them through the api pointer. */
+#ifdef UTIL_API_END
+/* A caller that uses only an earlier ABI prefix may omit the unused tail.
+ * Field offsets remain identical for the shared service stubs. */
+#define UTIL_API_COPY offsetof(struct A2fcApi,UTIL_API_END)
+#else
 #define UTIL_API_COPY offsetof(struct A2fcApi,aux_consent)
+#endif
 static unsigned char util_api[UTIL_API_COPY];
 #define a (*(struct A2fcApi*)util_api)
 #define UTIL_API_SYM util_api

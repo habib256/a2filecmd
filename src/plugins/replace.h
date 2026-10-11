@@ -51,7 +51,8 @@ static unsigned char replace_commit(const char* tmp, const char* target)
     /* The target first: if it cannot be read, tmp may be the only copy of
      * the data left, so that is a failure that keeps it, not a refusal. */
     if (replace_info(target)) return REPLACE_FAILED;
-    if ((replace_ip.result[0] & 0xC2) != 0xC2 || replace_ip.result[4] > 3) return REPLACE_REFUSED;
+    if ((replace_ip.result[0] & 0xC2) != 0xC2 ||
+        replace_ip.result[4] < 1 || replace_ip.result[4] > 3) return REPLACE_REFUSED;
     RF(memcpy)(replace_backup, target, i + 1);
     RF(strcpy)(replace_backup + i + 1, "A2FC.BAK");
     if (replace_info(replace_backup) != 0x46) return REPLACE_REFUSED;

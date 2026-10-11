@@ -8,17 +8,24 @@
 #include "util.h"
 #include "spin.h"
 void __fastcall__ plugin_entry(const struct A2fcApi*);
-struct Header {unsigned int magic;unsigned char flags;void __fastcall__ (*entry)(const struct A2fcApi*);unsigned char r[3];char desc[52];};
+struct Header {unsigned int magic;unsigned char flags;void __fastcall__ (*entry)(const struct A2fcApi*);unsigned char r[3];char desc[22];};
 #pragma rodata-name(push,"OVLHDR")
-const struct Header __plugin_header={PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry,{0,0,0},"Recover deleted ProDOS files to another volume"};
+const struct Header __plugin_header={PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry,{0,0,0},"Recover deleted files"};
 #pragma rodata-name(pop)
 static unsigned char seen[512],bits[512],idx[512],master[512],e[39];
 #define db buf
 static char dir[PATH_LEN],dest[PATH_LEN],name[16];
-static unsigned char unit,kind,invalid,writing,swapped;
+static unsigned char unit,kind,invalid,writing,swapped,unreadable;
 static unsigned int total,bitmap,base,refs,key,need,logical;
 static unsigned long size,written;
 static FILE* out;
+/* A failed read cannot disambiguate index halves. Source is read only;
+ * latch failures until both interpretations have been checked. */
+static unsigned char layout_read(unsigned int b,unsigned char* p) {
+    unsigned char err=readblk(unit,b,p);
+    if(err)unreadable=1;
+    return err;
+}
 static void touch(unsigned int b) {
     unsigned int n;unsigned char mask;
     if(b<bitmap+(total-1)/4096+1 || b>=total){invalid=1;return;}
@@ -33,10 +40,13 @@ static void data(unsigned int b) {
     ++logical;if(b)touch(b);
     if(!writing || invalid)return;
     if(!(logical&7))a.progress_bar(name,written,size);   /* logical 1 draws it */
+    if(stop()){invalid=1;return;}
     n=size-written>512?512:(unsigned int)(size-written);
-    if(b){if(readblk(unit,b,buf)){invalid=1;return;}}
+    if(b){if(layout_read(b,buf)){invalid=1;return;}}
     else a.memset(buf,0,512);
-    if(a.fwrite(buf,1,n,out)!=n)invalid=1;written+=n;
+    /* Only this run's exclusive output is written; a full count alone
+     * cannot establish recovery success. Source and AUX stay untouched. */
+    if(a.fwrite(buf,1,n,out)!=n || ferror(out))invalid=1;written+=n;
 }
 /* DESTROY swaps index halves: https://prodos8.com/docs/technote/23/
  * Normalize in RAM; never rewrite a freed source index. */
@@ -47,7 +57,7 @@ static void unflip(unsigned char* p) {
 static void indexblock(unsigned int b) {
     unsigned int i;
     spin();   /* a tree file is up to 128 index blocks, checked twice */
-    if(b){touch(b);if(invalid||readblk(unit,b,idx)){invalid=1;return;}}
+    if(b){touch(b);if(invalid||layout_read(b,idx)){invalid=1;return;}}
     else a.memset(idx,0,512);
     unflip(idx);
     for(i=0;i<256 && !invalid;++i)data(idx[i]|((unsigned int)idx[i+256]<<8));
@@ -60,7 +70,7 @@ static void walk(void) {
     else if(!key)invalid=1;
     else if(kind==2)indexblock(key);
     else {
-        touch(key);if(invalid||readblk(unit,key,master)){invalid=1;return;}
+        touch(key);if(invalid||layout_read(key,master)){invalid=1;return;}
         unflip(master);
         for(i=0;i<256 && !invalid;++i) {
             b=master[i]|((unsigned int)master[i+256]<<8);
@@ -75,7 +85,7 @@ static unsigned char validate_layout(void) {
     kind=size<=512?1:(size<=131072UL?2:3);invalid=writing=0;base=0;
     if(e[16]==15 || !key || !rd16(e+19))return 0;
     do {
-        if(stop()||readblk(unit,bitmap+base/4096,bits))return 0;
+        if(stop()||layout_read(bitmap+base/4096,bits))return 0;
         a.memset(seen,0,512);walk();if(invalid)return 0;
         if(total-base<=4096)break;base+=4096;
     }while(1);
@@ -83,26 +93,27 @@ static unsigned char validate_layout(void) {
 }
 static unsigned char valid(void) {
     unsigned char normal,reversed;
-    swapped=0;normal=validate_layout();
+    unreadable=swapped=0;normal=validate_layout();
+    if(unreadable)return 0;
     if(kind==1)return normal;
     swapped=1;reversed=validate_layout();
-    if(normal==reversed)return 0; /* no interpretation, or ambiguous */
+    if(unreadable || normal==reversed)return 0; /* no interpretation, or ambiguous */
     swapped=reversed;return 1;
 }
 void __fastcall__ plugin_entry(const struct A2fcApi* api) {
     FILE* f;unsigned int blocks,b;unsigned char slot,n,k,eligible,dunit;
     init(api);out=0;
-    if(pan->fs || other->fs || !other->path[0]){note("Open a recovery directory on another ProDOS volume.");return;}
+    if(pan->fs || other->fs || !other->path[0]){note("Open recovery on another ProDOS volume.");return;}
     a.strcpy(dir,pan->path[0]?pan->path:a.selected->name);
-    if(dir[0]!='/' || getinfo(dir) || (info.storage!=13 && info.storage!=15)){note("Select a ProDOS source directory.");return;}
+    if(dir[0]!='/' || getinfo(dir) || (info.storage!=13 && info.storage!=15)){note("Select ProDOS source directory.");return;}
     blocks=info.blocks;
     if(info.storage==15) {
         /* On a volume GET_FILE_INFO counts every block in use, not the root
          * directory's: count the root's linked blocks, bounded by that. */
         f=a.fopen(dir,"rb");if(!f){note("Cannot read source directory.");return;}
         b=0;
-        do{if(stop()||b==info.blocks||a.fread(db,1,512,f)!=512){a.fclose(f);note("Directory read failed.");return;}++b;}while(rd16(db+2));
-        a.fclose(f);blocks=b;
+        do{if(stop()||b==info.blocks||a.fread(db,1,512,f)!=512||ferror(f)){a.fclose(f);note("Directory read failed.");return;}++b;}while(rd16(db+2));
+        if(a.fclose(f)){note("Directory read failed.");return;}blocks=b;
     }
     /* The directory is read through ProDOS by its path, the blocks by unit:
      * both must be the one volume. By name always -- unit_of refuses a name
@@ -110,7 +121,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
      * volume-list row must be that very unit. */
     unit=unit_of(dir,0);if(!pan->path[0] && unit!=(unsigned char)(a.selected->mdate<<4))unit=0;
     dunit=unit_of(other->path,0);
-    if(!unit||!dunit||unit==dunit){note("UNDELETE destination must be on another online volume.");return;}
+    if(!unit||!dunit||unit==dunit){note("Use another online destination volume.");return;}
     if(readblk(unit,2,buf)||(buf[4]>>4)!=15){note("Cannot read volume header.");return;}
     total=rd16(buf+41);bitmap=rd16(buf+39);
     if(total<7 || bitmap<3 || bitmap>=total || (total-1)/4096+1>total-bitmap){note("Invalid volume bitmap.");return;}
@@ -118,30 +129,35 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
         for(slot=b?0:1;slot<13 && !stop();++slot) {
         spin();   /* each slot reopens the directory: seconds between candidates */
         f=a.fopen(dir,"rb");if(!f){note("Cannot read source directory.");return;}
-        if(a.fseek(f,(unsigned long)b*512,SEEK_SET)||a.fread(db,1,512,f)!=512){a.fclose(f);note("Directory read failed.");return;}a.fclose(f);
+        if(a.fseek(f,(unsigned long)b*512,SEEK_SET)||a.fread(db,1,512,f)!=512||ferror(f)){a.fclose(f);note("Directory read failed.");return;}
+        if(a.fclose(f)){note("Directory read failed.");return;}
             a.memcpy(e,db+4+39*slot,39);
             if(e[0]>>4 || e[1]<'A' || e[1]>'Z')continue;
-            n=e[0]&15;
-            if(!n)for(n=0;n<15 && ((e[n+1]>='A'&&e[n+1]<='Z') || (e[n+1]>='0'&&e[n+1]<='9') || e[n+1]=='.');++n);
-            if(!n)continue;a.memcpy(name,e+1,n);name[n]=0;
+            /* A retained name length does not validate its bytes. Require
+             * one ProDOS path component; retain prefix inference only when
+             * DESTROY cleared the length. No output exists at this point. */
+            for(n=0;n<15 && ((e[n+1]>='A'&&e[n+1]<='Z') || (e[n+1]>='0'&&e[n+1]<='9') || e[n+1]=='.');++n);
+            if(!n || (e[0]&15)>n)continue;
+            if(e[0]&15)n=e[0]&15;
+            a.memcpy(name,e+1,n);name[n]=0;
             eligible=valid();if(cancelled)break;
-            a.clrscr();a.cprintf("UNDELETE - SOURCE READ ONLY\r\n%s/%s\r\n%lu bytes, %u retained blocks\r\n",dir,name,rd24(e+21),rd16(e+19));
-            a.cputs(eligible?"Candidate: all referenced blocks are free.\r\n":"REFUSED: reused, ambiguous or inconsistent blocks.\r\n");
-            a.cprintf("Recover into: %s\r\n",other->path);
-            a.cputs("N Next  R Recover candidate  ESC Back");
+            a.clrscr();a.cprintf("UNDELETE - READ ONLY\r\n%s/%s\r\n%lu bytes, %u blocks\r\n",dir,name,rd24(e+21),rd16(e+19));
+            a.cputs(eligible?"Candidate: referenced blocks free.\r\n":"REFUSED: reused/ambiguous/invalid blocks.\r\n");
+            a.cprintf("Into: %s\r\n",other->path);
+            a.cputs("N Next  R Recover  ESC Back");
             do{k=a.cgetc();}while(k!='n'&&k!='N'&&k!='r'&&k!='R'&&k!=KEY_ESC);
-            if(k==KEY_ESC){note("UNDELETE finished; source unchanged.");return;}
+            if(k==KEY_ESC){note("Finished; source unchanged.");return;}
             if((k=='r'||k=='R') && eligible) {
-                if(!a.confirm("Recover this candidate to the other volume?"))continue;
-                if(!valid()){a.message("Candidate is no longer recoverable.");continue;}
-                if(!join(dest,other->path,name)||newfile(dest,e[16],rd16(e+31),1)){a.message("Cannot create destination (existing name?).");continue;}
-                out=a.fopen(dest,"wb");if(!out){if(!discard(dest))return;a.message("Cannot open recovery file.");continue;}
+                if(!a.confirm("Recover to other volume?"))continue;
+                if(!valid()){a.message("Candidate no longer safe.");continue;}
+                if(!join(dest,other->path,name)||newfile(dest,e[16],rd16(e+31),1)){a.message("Cannot create output (name in use?).");continue;}
+                out=a.fopen(dest,"wb");if(!out){if(!discard(dest))return;a.message("Cannot open output.");continue;}
                 invalid=0;writing=1;walk();writing=0;
-                if(a.fclose(out))invalid=1;out=0;
-                if(invalid){if(!discard(dest))return;a.message("Recovery failed; incomplete destination removed.");}
-                else {a.sprintf(a.note,"Recovered %s to other volume; source unchanged.",name);return;}
+                if(a.fclose(out)||stop())invalid=1;out=0;
+                if(invalid){if(!discard(dest))return;a.message("Recovery failed; partial output removed.");}
+                else {a.sprintf(a.note,"Recovered %s; source unchanged.",name);return;}
             }
         }
     }
-    note(cancelled?"UNDELETE cancelled; source unchanged.":"No more deleted entries; source unchanged.");
+    note(cancelled?"Cancelled; source unchanged.":"No more deleted entries.");
 }

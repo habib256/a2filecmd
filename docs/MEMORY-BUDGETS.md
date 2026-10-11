@@ -146,6 +146,2328 @@ jusqu'à `$2000` exclus, **0** octet libre ;
 moteur de formatage 459 octets en `$0200`, 5 octets sous les vecteurs DOS
 `$03D0`.
 
+## Favoris de programmes FAVRUN (10 octobre 2026)
+
+FAVRUN partage le lecteur et la sauvegarde récupérable de GOTO. Code et
+BSS restent sous `$3000` ; neuf chemins à `$3000`, chemin sélectionné à
+`$3300`, sérialisation à `$3400`. Aucun accès AUX. Le retour demande RUN
+avec une entrée explicite conservée dans le résident : aucun indice du
+panneau ni appel imbriqué à une surcouche. RUN accepte cette entrée même
+quand le panneau n'a plus de table, et conserve ses contrôles habituels.
+
+Relevé des deux liens : FAVRUN 5 088 / 5 051 octets (65C02 / 6502),
+code + BSS jusqu'à `$2FF2` / `$2FCE` inclus, donc 13 / 49 octets libres.
+GOTO finit à `$2FFB` / `$2FE3` inclus (4 / 28 libres). Le résident a
+4 / 389 octets de réserve MAIN, 13 / 11 en LC, 86 / 111 en LOWRAM ;
+écart sous la pile C réservée 21 / 595, sans mesure de sa consommation.
+RUN laisse 271 / 270 octets avant `$3000`, MENU 57 / 6 avant `$2A00`.
+La chaîne « Loading » est partagée en LC pour conserver les plafonds.
+Les contrôles du lieur et `check_layout.py` restent actifs.
+
+Contrôle du fichier source BASIC dans RUN (10 octobre 2026) : la nouvelle
+lecture des métadonnées précède la recherche de l'interpréteur et toute
+sauvegarde. RUN atteint 5 178 / 5 164 octets, soit 198 / 212 octets libres
+avant `$3000` (65C02 / 6502). Aucun nouveau buffer, accès AUX ou changement
+des réserves du résident. Les deux builds et leurs gardes passent.
+
+Sauvegarde de configuration, contrôle tardif du fichier remplacé
+(10 octobre 2026) : les métadonnées d'A2FILE.CFG sont relues avant son
+renommage. Le même contrôle de protections/type/stockage sert aux deux
+étapes. RUN atteint 5 224 / 5 210 octets, soit 152 / 166 octets libres
+avant `$3000` (65C02 / 6502). Aucun buffer supplémentaire ni accès AUX ;
+réserves du résident inchangées, deux builds et gardes validés.
+
+Copie principale, contrôles de destination (10 octobre 2026) : la même
+validation des protections et du stockage standard (1–3) sert avant la
+création du temporaire et avant le remplacement. La constante A2FC.COPY
+rejoint COPYRO ; le chemin d'erreur de publication est partagé et son
+message raccourci pour conserver les plafonds. COPY mesure 1 272 / 1 275
+octets, soit 8 / 5 octets libres sous `$2000` (65C02 / 6502). MAIN garde
+2 / 389 octets, LC 13 / 11, LOWRAM 87 / 112 ; écart sous la pile réservée
+19 / 595, sans mesure de consommation. Aucun buffer ou accès AUX ajouté.
+Les deux builds et leurs gardes passent sans relever les limites.
+
+Éditeur, protection des fichiers étendus (10 octobre 2026) : le contrôle
+avant remplacement refuse tout stockage hors 1–3, notamment un fichier
+à fourche de ressources. EDIT atteint 4 303 / 4 320 octets, soit 49 / 32
+octets libres avant `$2C00` (65C02 / 6502). Aucun buffer supplémentaire
+ni accès AUX ; réserves du résident inchangées. Les deux builds et leurs
+gardes passent. Le banc hôte fait suivre une fourche simulée lors des
+renommages et destructions et vérifie ses octets conservés sur refus.
+
+Extraction IMGFS, identité de l'entrée (10 octobre 2026) : la recherche
+compare aussi le nom, le type et l'auxiliaire du panneau avant toute
+réservation de sortie. IMGFS atteint 2 168 / 2 150 octets, soit 1 160 /
+1 178 octets libres avant `$2800` (65C02 / 6502). Aucun buffer ou accès
+AUX ajouté ; réserves du résident inchangées, deux builds et gardes
+validés. Les 18 cas d'entrée périmée passent ; 100 cas de fuzz vérifient
+595 sorties contre la référence, sans divergence.
+
+Extraction CP/M et Pascal, erreurs de relecture (10 octobre 2026) : la
+sonde EOF n'est acceptée que si le flux de sortie reste sans erreur.
+CPM mesure 8 085 / 8 051 octets, BSS jusqu'à `$3EEA` / `$3EC9` inclus,
+soit 277 / 310 octets libres sous `$4000` (65C02 / 6502). PASCAL mesure
+7 028 / 7 008 octets, BSS jusqu'à `$3988` / `$3975` inclus, soit
+1 655 / 1 674 octets libres. Aucun buffer ou accès AUX ajouté. Deux builds
+et contrôles de disposition validés ; douze cas d'erreur vérifient les
+octets conservés, y compris les sorties précédentes et un nettoyage refusé.
+
+MKIMAGE, relecture du résultat (10 octobre 2026) : un buffer MAIN de
+512 octets compare le fichier fermé à l'en-tête et aux blocs reconstruits,
+avec contrôle du flux, de l'EOF et de la fermeture. MKIMAGE mesure
+4 675 / 4 773 octets, BSS jusqu'à `$306D` / `$30D0` inclus, soit
+3 986 / 3 887 octets libres sous `$4000` (65C02 / 6502). Aucun accès AUX
+ni changement des réserves du résident. Les deux builds et leurs gardes
+passent ; le banc couvre PO/2MG, plusieurs bitmaps, corruptions, erreurs
+de flux, annulation, collisions et nettoyage refusé.
+
+SCIIBIN, erreurs de flux (10 octobre 2026) : les flux source, destination
+et relecture sont contrôlés avant fermeture ; la sonde EOF exige aussi
+un flux sans erreur. La description d'en-tête passe à 22 octets pour
+conserver les plafonds. SCIIBIN mesure 6 552 / 6 566 octets, BSS jusqu'à
+`$3FEA` / `$3FF9` inclus, soit 21 / 6 octets libres sous `$4000`
+(65C02 / 6502). Aucun buffer ni accès AUX ajouté, résident inchangé.
+Les deux builds et gardes passent ; seize cas vérifient les erreurs de
+flux/fermeture et les octets conservés en cas de nettoyage refusé.
+
+DISASM, erreurs malgré un compte complet (10 octobre 2026) : le lecteur
+de page et l'écrivain d'export contrôlent aussi l'état du flux. DISASM
+mesure 8 056 / 8 058 octets, BSS jusqu'à `$3D00` / `$3D03` inclus,
+soit 767 / 764 octets libres sous `$4000` (65C02 / 6502). Aucun nouveau
+buffer ni accès AUX ; résident inchangé. Les deux builds et leurs gardes
+passent. Sept cas de régression vérifient le refus d'export complet et
+la conservation de la source, en plus de l'oracle assembleur des opcodes.
+
+VOLINFO, erreurs de flux dans les rapports (10 octobre 2026) : toutes
+les écritures vérifient le compte et `ferror`, avant la fermeture contrôlée.
+Une erreur arrête le rapport sans altérer les résultats de l’audit.
+VOLINFO mesure 7 773 / 7 726 octets, BSS jusqu’à `$3F0D` / `$3EDF`
+inclus, soit 144 / 190 octets libres sous la table à `$3F9E`
+(65C02 / 6502). Aucun buffer ni accès AUX ajouté, résident inchangé.
+Les deux builds et gardes passent ; sept cas injectent un compte complet
+avec erreur et vérifient les octets conservés du rapport et du volume.
+
+BLKVIEW, erreur de flux en extraction (11 octobre 2026) : chaque bloc
+écrit exige le compte complet et un flux sans erreur. Le fichier partiel
+reste disponible ; aucun accès AUX ni écriture source n’est ajouté.
+La description d’en-tête et quelques libellés sont raccourcis pour garder
+les plafonds. BLKVIEW mesure 9 004 / 8 997 octets, BSS jusqu’à `$3F8E` /
+`$3F88` inclus, soit 15 / 21 octets libres sous la table à `$3F9E`
+(65C02 / 6502). Résident inchangé ; les deux builds et gardes passent.
+Neuf cas injectent une erreur avec compte complet sur le premier, deuxième
+ou dernier bloc extrait en PO, DO et 2MG, et contrôlent les octets du
+fichier partiel ainsi que la conservation intégrale de l’image source.
+
+DISKCMP, verdict et erreurs de flux (11 octobre 2026) : les lectures
+d’images exigent un flux sans erreur, même avec un compte complet.
+Les deux fermetures sont exécutées et contrôlées ; une erreur interdit
+un verdict complet. DISKCMP mesure 7 181 / 7 154 octets, BSS jusqu’à
+`$3D9D` / `$3D83` inclus, soit 610 / 636 octets libres sous `$4000`
+(65C02 / 6502). Aucun tampon ni accès AUX ajouté, résident inchangé.
+Les deux builds et gardes passent. Douze cas sur les deux images,
+identiques ou différentes, injectent une erreur au premier/dernier bloc
+ou à la fermeture, contrôlent les octets conservés et exigent la
+fermeture des deux flux même après échec.
+
+DISKCMP, taille périmée des images brutes (11 octobre 2026) : avant
+un verdict complet, une sonde à la fin attendue des images PO/DO exige
+un EOF réel sans erreur. Les données annexes des conteneurs 2MG restent
+acceptées : la comparaison porte sur leur disque déclaré. DISKCMP mesure
+7 457 / 7 425 octets, BSS jusqu’à `$3EB1` / `$3E92` inclus, soit
+334 / 365 octets libres sous `$4000` (65C02 / 6502). Aucun tampon
+ni accès AUX ajouté, résident inchangé. Les deux builds et gardes passent.
+Douze cas de taille périmée sur PO/DO et quatre erreurs de sonde
+(lecture/recherche) contrôlent les octets conservés ; des cas valides DO
+et 2MG avec données annexes distinctes complètent les régressions.
+
+DISKCMP, ne pas sauter un volume en erreur (11 octobre 2026) :
+la recherche parmi des volumes homonymes s’arrête dès qu’une unité
+est identifiée, même si son en-tête est illisible ou invalide. Elle
+ne remplace plus ce disque par un autre pour obtenir un verdict.
+DISKCMP mesure 7 482 / 7 450 octets, BSS jusqu’à `$3ECA` / `$3EAB`
+inclus, soit 309 / 340 octets libres sous `$4000` (65C02 / 6502).
+Aucun tampon ni accès AUX ajouté, résident inchangé ; les deux builds
+et gardes passent. Huit cas sur la source ou la destination vérifient
+les erreurs persistantes/transitoires, le type d’en-tête et la taille
+invalide, l’absence de lecture du disque suivant et les octets conservés.
+
+DISKCMP, validation après échange en lecteur unique (11 octobre 2026) :
+chaque disque déjà ouvert est relu au bloc 2 avant la reprise. Un
+en-tête invalide, une taille différente ou une erreur de lecture arrête
+la comparaison avec un verdict incomplet. Le premier montage destination
+reste suivi de son ouverture normale, sans taille BSS non initialisée.
+DISKCMP mesure 7 662 / 7 630 octets, BSS jusqu’à `$3F7F` / `$3F60`
+inclus, soit 128 / 159 octets libres sous `$4000` (65C02 / 6502).
+Aucun tampon ni accès AUX ajouté, résident inchangé ; les deux builds
+et gardes passent. Six cas sur source/destination vérifient l’arrêt
+avant la reprise des blocs ; un échange valide et deux annulations
+complètent les tests, qui contrôlent les octets conservés. Le nom et
+la taille ne distinguent pas deux disques différents de même nom/taille.
+
+DIRSCAN, erreurs de flux avant exposition des entrées (11 octobre 2026) :
+le comptage des blocs racine et le chargement du cache contrôlent `ferror`
+malgré un compte complet. Les entrées du bloc en erreur ne sont ni
+mises en cache ni utilisées par SYNC pour remplacer des fichiers.
+SYNC mesure 7 181 / 7 206 octets, BSS jusqu’à `$3DDF` / `$3DF9`
+inclus, soit 544 / 518 octets libres sous `$4000` (65C02 / 6502).
+TREE mesure 5 159 / 5 185 octets, BSS jusqu’à `$3394` / `$33AF`
+inclus, soit 3 179 / 3 152 octets libres sous `$4000`. Aucun tampon
+ni accès AUX ajouté, résident inchangé ; les deux builds et gardes passent.
+Six cas d’itération et un cas exécutant SYNC vérifient les erreurs de flux,
+les octets conservés et l’absence de temporaires ou de remplacements.
+
+SYNC, champs de dates source malformés (11 octobre 2026) : les plages
+des dates de création/modification et des heures sont contrôlées avant
+toute création ou tout remplacement. Les dates nulles restent inconnues ;
+ce contrôle de champs ne valide pas toutes les combinaisons calendaires
+(par exemple le nombre de jours de février). SYNC mesure 7 346 /
+7 378 octets, BSS jusqu’à `$3E85` / `$3EA6` inclus, soit 378 /
+345 octets libres sous `$4000` (65C02 / 6502). Aucun tampon ni accès
+AUX ajouté, résident inchangé ; les deux builds et gardes passent.
+Quatorze cas avec cible existante ou absente contrôlent les octets
+conservés, l’absence de temporaires et les erreurs de mois/jour/heure/
+minute ; un cas valide au 31 décembre à 23:59 complète les régressions.
+
+SYNC, date destination invalide (11 octobre 2026) : les champs de
+modification destination sont validés avant de décider que la source
+est plus récente et de nouveau après vérification de la copie, avant
+le premier renommage. Un refus tardif conserve l’original et la copie
+vérifiée A2FC.SYNC, sans toucher à une sauvegarde. SYNC mesure 7 407 /
+7 436 octets, BSS jusqu’à `$3EC2` / `$3EE0` inclus, soit 317 /
+287 octets libres sous `$4000` (65C02 / 6502). Aucun tampon ni accès
+AUX ajouté, résident inchangé ; les deux builds et gardes passent.
+Dix cas injectent des champs de mois/jour/heure/minute invalides au
+départ ou au contrôle final et vérifient les octets des originaux,
+de la source et, au refus tardif, de la copie conservée.
+
+RESCUE, comptes complets avec erreur de flux (11 octobre 2026) :
+les lectures de fichier contrôlent `ferror` pour déclencher les retries
+et, après épuisement, la mise à zéro journalisée. Les écritures du
+fichier récupéré et du journal contrôlent aussi le flux avant fermeture.
+RESCUE mesure 6 836 / 6 904 octets, BSS jusqu’à `$378A` / `$37CF`
+inclus, soit 2 165 / 2 096 octets libres sous `$4000` (65C02 / 6502).
+Aucun tampon ni accès AUX ajouté, résident inchangé ; les deux builds
+et gardes passent. Dix-sept cas contrôlent retries, zéros journalisés,
+les octets partiels et la source intacte. Si l’écriture de COMPLETE
+retourne un compte complet avec erreur, cette ligne peut être présente ;
+le résultat reste incomplet et une ligne INCOMPLETE est tentée ensuite.
+Une panne persistante du journal peut empêcher cette dernière écriture.
+
+UNDELETE, erreurs malgré un compte complet (11 octobre 2026) :
+les deux lectures de répertoire et chaque écriture de récupération
+contrôlent `ferror`. Un bloc de métadonnées en erreur n’autorise aucune
+création ; une écriture en erreur refuse le succès et ne nettoie que
+l’output créé. En cas de nettoyage refusé, les octets partiels restent
+disponibles. Description et libellés sont raccourcis pour garder les
+plafonds. UNDELETE mesure 6 925 / 6 946 octets, BSS jusqu’à `$3FE1` /
+`$3FF7` inclus, soit 30 / 8 octets libres sous `$4000` (65C02 / 6502).
+Aucun tampon ni accès AUX ajouté, résident inchangé ; les deux builds
+et gardes passent. Dix cas vérifient les erreurs de répertoire/écriture,
+les octets conservés après nettoyage refusé et la source intacte.
+
+UNDELETE, noms déclarés malformés (11 octobre 2026) : tous les
+caractères de la longueur conservée doivent appartenir à un composant
+ProDOS valide. L’inférence d’un préfixe valide reste réservée aux entrées
+dont DESTROY a effacé la longueur. Un nom avec slash, NUL ou caractère
+invalide est refusé avant CREATE ; deux libellés sont raccourcis pour
+conserver les plafonds. UNDELETE mesure 6 929 / 6 952 octets, BSS
+jusqu’à `$3FE5` / `$3FFD` inclus, soit 26 / 2 octets libres sous
+`$4000` (65C02 / 6502). Aucun tampon ni accès AUX ajouté, résident
+inchangé ; les deux builds et gardes passent. Huit noms invalides
+n’atteignent jamais CREATE, les octets source et du sous-dossier restent
+intacts ; huit cas valides vérifient aussi les longueurs inférées.
+
+UNDELETE, erreurs de lecture et index ambigus (11 octobre 2026) :
+une erreur de lecture du bitmap, d’un index ou d’un index maître est
+mémorisée pendant la validation ; elle ne peut plus sélectionner l’autre
+interprétation des moitiés d’index. La récupération est refusée avant
+CREATE. Trois libellés sont raccourcis pour conserver les plafonds.
+UNDELETE mesure 6 927 / 6 942 octets, BSS jusqu’à `$3FE5` / `$3FF5`
+inclus, soit 26 / 10 octets libres sous `$4000` (65C02 / 6502).
+Aucun accès AUX ni écriture source ajouté, résident inchangé ; les deux
+builds et gardes passent. Huit injections dans les deux interprétations,
+sur fichiers à index simple ou maître, vérifient zéro CREATE et les
+octets source conservés sur des images jetables. Les 64 tests des six
+plugins et les 15 tests des gardes passent.
+
+RESCUE, stockage et permission de lecture (11 octobre 2026) : le mode
+fichier exige désormais un stockage standard 1 à 3 et le bit d’accès
+lecture avant de créer le journal ou la sortie. Un stockage nul ou une
+lecture interdite ne peut plus produire une récupération annoncée comme
+complète, éventuellement remplie de zéros après des ouvertures refusées.
+Le libellé de refus est raccourci. RESCUE mesure 6 827 / 6 895 octets,
+BSS jusqu’à `$3781` / `$37C6` inclus, soit 2 174 / 2 105 octets libres
+sous `$4000` (65C02 / 6502). Aucun tampon ni accès AUX ajouté, résident
+inchangé ; les deux builds et gardes passent. Le vrai point d’entrée C
+est testé sur 33 combinaisons de métadonnées et tailles : refus sans
+création, octets source et fichier existant conservés, récupération exacte
+des stockages 1 à 3 avec permission de lecture seule. Les 9 tests RESCUE,
+64 tests des six plugins et 15 tests des gardes passent.
+
+RESCUE, étendue brute impossible (11 octobre 2026) : une taille de
+volume déclarée de 0, 1 ou 2 blocs omettrait l’en-tête lu au bloc 2.
+Ces tailles sont refusées avant CREATE, au lieu d’annoncer COMPLETE
+pour une image vide ou tronquée. Ce contrôle de cohérence ne prouve
+pas la géométrie physique du support ni la validité complète du système
+de fichiers endommagé. RESCUE mesure 6 847 / 6 914 octets, BSS jusqu’à
+`$3795` / `$37D9` inclus, soit 2 154 / 2 086 octets libres sous `$4000`
+(65C02 / 6502). Aucun tampon ni accès AUX ajouté, résident inchangé ;
+les deux builds et gardes passent. Huit cas exécutent le vrai point
+d’entrée C sur des images jetables : tailles impossibles, lecture
+d’en-tête refusée, mauvais stockage et copies exactes de 3, 7 et 280
+blocs. Les octets source et du fichier existant sont conservés ; les
+10 tests RESCUE, 64 tests des six plugins et 15 tests des gardes passent.
+
+UNWRAP, taille de panneau périmée (11 octobre 2026) : la longueur du
+wrapper est mesurée par les lectures réelles du flux avant de valider les
+offsets AppleSingle et MacBinary. Une taille périmée ne peut plus accepter
+un fork vide au-delà de la fin réelle ni refuser un wrapper valide. Une
+erreur de lecture, de retour au début ou une annulation arrête avant CREATE.
+Cela ajoute une lecture complète du wrapper ; aucun tampon ni accès AUX
+ajouté. UNWRAP mesure 7 010 / 7 000 octets, BSS jusqu’à `$3C40` / `$3C37`
+inclus, soit 959 / 968 octets libres sous `$4000` (65C02 / 6502).
+Résident inchangé ; les deux builds et gardes passent. Les 23 nouveaux
+cas exécutent le vrai C sur des fichiers jetables et contrôlent les octets
+source et existants, les sorties exactes et le refus avant création.
+Les 13 tests UNWRAP et 15 tests des gardes passent. La mesure préalable
+ne garantit pas que le support ne changera pas pendant les lectures suivantes.
+
+UNSQ, annulation pendant la vérification (11 octobre 2026) : la
+relecture contrôle ESC avant son ouverture et après chaque bloc, y
+compris le dernier. Un fichier dont la vérification a été interrompue
+n’est plus compté comme extrait ; seul ce fichier créé exclusivement
+est nettoyé, les sorties précédemment vérifiées sont conservées. Aucun
+tampon ni accès AUX ajouté, résident inchangé. UNSQ mesure 6 894 /
+6 970 octets, BSS jusqu’à `$3E19` / `$3E66` inclus, soit 486 / 409
+octets libres sous `$4000` (65C02 / 6502). Les deux builds et gardes
+passent. Quatre injections exécutent le vrai C sur une archive jetable :
+annulation au premier et dernier bloc, avant une vérification vide, et
+échec de nettoyage conservant tous les octets du fichier en cours. Les
+tests contrôlent aussi l’arrêt des lectures, la fermeture de vérification
+et les octets source/existants/précédemment vérifiés. Les 16 tests UNSQ
+et 15 tests des gardes passent.
+
+SCIIBIN, annulation pendant la vérification (11 octobre 2026) : ESC
+est contrôlé avant chaque lecture de 48 octets et avant la sonde EOF,
+y compris après le dernier affichage de progression. Une vérification
+interrompue échoue et nettoie uniquement la sortie créée exclusivement ;
+les sources et AUX restent intactes. Les branches d’échec de lecture et
+de CRC partagent leur fermeture, ce qui économise du code sans changer
+les contrôles. SCIIBIN mesure 6 524 / 6 540 octets, BSS jusqu’à `$3FCE`
+/ `$3FDF` inclus, soit 49 / 32 octets libres sous `$4000` (65C02 / 6502).
+Résident et tampons inchangés ; les deux builds et gardes passent. Quatre
+injections exécutent le vrai C sur des fichiers jetables : annulation au
+premier et dernier affichage de vérification, avant la première lecture,
+et nettoyage refusé conservant exactement la sortie. Les tests contrôlent
+aussi la fermeture unique, la position d’arrêt et les octets des sources
+et fichiers existants. Les 10 tests SCIIBIN (dont les CRC sous sim65 pour
+les deux processeurs) et 15 tests des gardes passent.
+
+UNWRAP, annulation pendant les fermetures finales (11 octobre 2026) :
+ESC est contrôlé avant chaque passe et après la fermeture finale du
+flux source, avant d’annoncer la réussite. Un fork vide ne peut plus
+éviter tous les contrôles d’annulation, et une annulation reçue pendant
+la fermeture de la relecture ou de la source arrête aussi l’extraction.
+Seule la sortie créée exclusivement est nettoyée ; aucun tampon ni
+accès AUX ajouté, résident inchangé. UNWRAP mesure 7 022 / 7 015 octets,
+BSS jusqu’à `$3C4C` / `$3C46` inclus, soit 947 / 953 octets libres sous
+`$4000` (65C02 / 6502). Les deux builds et gardes passent. Seize cas
+exécutent le vrai C sur des wrappers AppleSingle et MacBinary jetables,
+avec fork vide ou non vide, annulation aux trois fermetures et nettoyage
+refusé. Les sources et fichiers existants restent identiques ; le
+nettoyage refusé conserve exactement les octets de la sortie. Les
+14 tests UNWRAP et 15 tests des gardes passent.
+
+UNWRAP, données AppleSingle dans l’en-tête (11 octobre 2026) : la
+table entière des descripteurs doit tenir dans le flux source, et toute
+entrée non vide doit commencer après cette table. Des octets d’en-tête
+ne peuvent plus être extraits comme fork ni interprétés comme nom ou
+métadonnées. Les entrées vides à offset zéro restent acceptées. Ce
+contrôle suit la disposition en-tête/descripteurs/données décrite dans
+[RFC 1740, annexe A](https://www.rfc-editor.org/rfc/rfc1740.html#appendix-A).
+La référence Python applique aussi ce contrôle. UNWRAP mesure 7 160 /
+7 153 octets, BSS jusqu’à `$3CDA` / `$3CD4` inclus, soit 805 / 811
+octets libres sous `$4000` (65C02 / 6502). Aucun tampon ni accès AUX
+ajouté, résident inchangé ; les deux builds et gardes passent. Les 48
+cas malformés des versions 1 et 2, pour six types d’entrées dont un ID
+privé, sont refusés avant CREATE. Six cas valides contrôlent les entrées
+vides et la frontière exacte de table. Le vrai C est exécuté sur des
+fichiers jetables, dont les octets source et existants restent conservés.
+Les 16 tests UNWRAP et 15 tests des gardes passent. Les chevauchements
+entre deux zones de données ne sont pas contrôlés par cette correction.
+
+UNWRAP, repli de format après rejet AppleSingle (11 octobre 2026) :
+la signature AppleSingle choisit exclusivement son parseur. Un en-tête
+rejeté ne peut plus contourner les contrôles d’offset/table/version par
+une seconde interprétation MacBinary I. La référence Python suit aussi
+ce choix. Aucun tampon ni accès AUX ajouté, résident inchangé ; seuls
+les fichiers de sortie créés exclusivement peuvent être écrits/nettoyés.
+UNWRAP mesure 7 178 / 7 174 octets, BSS jusqu’à `$3CEC` / `$3CE9`
+inclus, soit 787 / 790 octets libres sous `$4000` (65C02 / 6502).
+Les deux builds et gardes passent. Seize en-têtes jetables satisfaisant
+les contrôles MacBinary I mais portant la signature AppleSingle sont
+refusés avant CREATE : chevauchement d’en-tête, version invalide, offset
+hors fichier ou table tronquée, avec sorties vides/non vides. Les six
+cas MacBinary I/II/III valides restent extraits exactement. Le vrai C
+contrôle aussi les octets source et existants conservés ; les 18 tests
+UNWRAP et 15 tests des gardes passent.
+
+CPM, lecture de répertoire pendant la mesure (11 octobre 2026) : une
+erreur de lecture dans measure() marque l’extraction en échec, et le
+parcours s’arrête avant de traiter le fichier comme vide. Elle ne peut
+plus augmenter le compteur des fichiers ignorés puis annoncer une
+extraction terminée. Les sorties précédemment vérifiées sont conservées ;
+image source et AUX restent intactes. Aucun tampon ajouté, résident
+inchangé. CPM mesure 8 099 / 8 064 octets, BSS jusqu’à `$3EF8` / `$3ED6`
+inclus, soit 263 / 297 octets libres sous `$4000` (65C02 / 6502).
+Les deux builds et gardes passent. Quatorze erreurs de lecture exécutent
+le vrai C sur une image jetable, pendant la mesure du premier fichier
+ou après une première sortie vérifiée. Les octets source/existants et
+de la sortie conservée sont contrôlés, sans création pour le fichier
+illisible. Un vrai fichier à zéro enregistrement reste ignoré sans
+erreur. Les 12 tests CPM et 15 tests des gardes passent.
+
+CPM, erreur du flux source à la fin (11 octobre 2026) : après le
+parcours, l’extracteur contrôle ferror() et le résultat de fermeture
+du fichier image avant d’annoncer une extraction terminée. Le flux
+est fermé une seule fois même s’il porte déjà une erreur, puis son
+pointeur est effacé. Les sorties déjà vérifiées restent conservées ;
+source et AUX ne sont pas écrits. Aucun tampon ajouté, résident
+inchangé. CPM mesure 8 138 / 8 105 octets, BSS jusqu’à `$3F1F` /
+`$3EFF` inclus, soit 224 / 256 octets libres sous `$4000` (65C02 /
+6502). Les deux builds et gardes passent. Quatre injections exécutent
+le vrai C sur les deux ordres de secteurs d’images jetables : échec
+de fermeture source et indicateur d’erreur tardif. Elles contrôlent
+la fermeture unique, les octets source/existants et chaque sortie
+vérifiée conservée exactement. Les 13 tests CPM et 15 tests des
+gardes passent.
+
+PASCAL, erreur du flux source à la fin (11 octobre 2026) : après le
+parcours, ferror() et le résultat de fermeture du fichier image sont
+contrôlés avant l’annonce de réussite, y compris pour un répertoire
+vide. Le flux est fermé une seule fois même s’il porte une erreur,
+puis son pointeur est effacé. Les sorties déjà vérifiées restent
+conservées ; source et AUX ne sont pas écrits. Aucun tampon ajouté,
+résident inchangé. PASCAL mesure 7 067 / 7 049 octets, BSS jusqu’à
+`$39AF` / `$399E` inclus, soit 1 616 / 1 633 octets libres sous `$4000`
+(65C02 / 6502). Les deux builds et gardes passent. Quatre cas exécutent
+le vrai C sur des images jetables : fermeture source refusée après les
+copies, indicateur d’erreur tardif, fermeture refusée d’une image vide,
+et image vide sans erreur. Ils contrôlent la fermeture unique, les
+octets source/existants et chaque sortie vérifiée conservée exactement.
+Les 10 tests PASCAL et 15 tests des gardes passent.
+
+PASCAL, erreurs source malgré un compte complet (11 octobre 2026) :
+les lectures normalisées propres à l’extracteur contrôlent maintenant
+ferror() avant de valider une entrée de répertoire ou un bloc de données.
+Une lecture signalée en erreur ne peut plus conserver la sortie comme
+vérifiée malgré un compte complet. Le lecteur partagé imageio et le
+writer Pascal restent inchangés ; seuls les appels de cet extracteur
+utilisent ce contrôle. Aucun tampon ni accès AUX ajouté, résident
+inchangé. PASCAL mesure 7 119 / 7 103 octets, BSS jusqu’à `$39E3` /
+`$39D4` inclus, soit 1 564 / 1 579 octets libres sous `$4000` (65C02 /
+6502). Les deux builds et gardes passent. Neuf injections exécutent le
+vrai C sur une image jetable, en répertoire, avant CREATE, pendant la
+copie et pendant la dernière vérification, avec nettoyage refusé aussi.
+Elles contrôlent le nombre de CREATE, la fermeture source unique et les
+octets source/existants/précédemment vérifiés conservés ; un nettoyage
+refusé garde exactement les octets du fichier en cours. Les 11 tests
+PASCAL et 15 tests des gardes passent.
+
+CPM, erreurs source malgré un compte complet (11 octobre 2026) : les
+lectures normalisées propres à l’extracteur contrôlent ferror() avant
+d’accepter les secteurs du répertoire ou des données. Une lecture
+signalée en erreur arrête le parcours ou la copie, y compris pendant
+la vérification du dernier fichier. Seule la sortie exclusivement créée
+pour le fichier en cours est nettoyée ; les sorties déjà vérifiées restent
+conservées. Le lecteur partagé imageio et CPMW restent inchangés. Aucun
+tampon ni accès AUX ajouté, résident inchangé. CPM mesure 8 190 / 8 159
+octets, BSS jusqu’à `$3F53` / `$3F35` inclus, soit 172 / 202 octets libres
+sous `$4000` (65C02 / 6502). Les deux builds et gardes passent. Dix-neuf
+injections exécutent le vrai C sur une image jetable : validation du
+répertoire, lecture initiale, mesure avant CREATE, copie et dernière
+vérification, avec nettoyage refusé aussi. Elles contrôlent les CREATE,
+la fermeture source unique et les octets source/existants/précédemment
+vérifiés conservés ; un nettoyage refusé conserve exactement la sortie
+en cours et signale l’échec. Les 14 tests CPM et 15 tests des gardes
+passent. Ces contrôles ne garantissent pas l’atomicité d’une écriture
+physique en cas de coupure.
+
+CPM, annulation pendant les fermetures de sortie (11 octobre 2026) :
+ESC est contrôlé après la fermeture de l’écriture et après celle de la
+relecture. Une annulation empêche désormais de commencer la vérification
+ou de compter le fichier en cours comme extrait. Seule sa sortie créée
+exclusivement est nettoyée ; les fichiers précédemment vérifiés restent
+conservés. Source et AUX ne sont pas écrits, aucun tampon ajouté,
+résident inchangé. CPM mesure 8 208 / 8 181 octets, BSS jusqu’à `$3F65` /
+`$3F4B` inclus, soit 154 / 180 octets libres sous `$4000` (65C02 / 6502).
+Les deux builds et gardes passent. Huit cas exécutent le vrai C sur une
+image jetable : ESC à chacune des deux fermetures, sur le premier et le
+dernier fichier, avec nettoyage réussi ou refusé. Ils contrôlent les
+octets source/existants/précédemment vérifiés, le nombre de CREATE,
+la fermeture source unique et l’absence de relecture après une annulation
+à la fermeture d’écriture. Le nettoyage refusé conserve exactement la
+sortie et signale son échec. Les 15 tests CPM et 15 tests des gardes passent.
+Cette correction ne garantit pas l’atomicité des écritures physiques.
+
+PASCAL, annulation pendant les fermetures de sortie (11 octobre 2026) :
+ESC est contrôlé après la fermeture d’écriture et après celle de la
+relecture. L’annulation empêche désormais de lancer la vérification ou
+de compter le fichier en cours comme extrait. Seule sa sortie créée
+exclusivement est nettoyée ; les fichiers précédemment vérifiés restent
+conservés. Source et AUX ne sont pas écrits, aucun tampon ajouté,
+résident inchangé. PASCAL mesure 7 137 / 7 125 octets, BSS jusqu’à `$39F5` /
+`$39EA` inclus, soit 1 546 / 1 557 octets libres sous `$4000` (65C02 / 6502).
+Les deux builds et gardes passent. Huit cas exécutent le vrai C sur une
+image jetable : ESC à chacune des deux fermetures, sur le premier et le
+dernier fichier, avec nettoyage réussi ou refusé. Ils contrôlent les
+octets source/existants/précédemment vérifiés, les CREATE, la fermeture
+source unique et l’absence de relecture après une annulation pendant la
+fermeture d’écriture. Un nettoyage refusé conserve exactement la sortie
+en cours et signale l’échec. Les 12 tests PASCAL et 15 tests des gardes
+passent. Cette correction ne garantit pas l’atomicité des écritures
+physiques en cas de coupure.
+
+UNSQ, annulation pendant la fermeture de vérification (11 octobre 2026) :
+la relecture contrôle ESC après sa fermeture, avant de valider longueur
+et somme. L’annulation ne peut plus compter le fichier courant comme
+extrait ni démarrer le suivant. Seule sa sortie créée exclusivement est
+nettoyée ; les sorties précédemment vérifiées restent conservées.
+Source et AUX ne sont pas écrits, aucun tampon ajouté, résident inchangé.
+UNSQ mesure 6 910 / 6 986 octets, BSS jusqu’à `$3E29` / `$3E76` inclus,
+soit 470 / 393 octets libres sous `$4000` (65C02 / 6502). Les deux builds
+et gardes passent. Quatre cas exécutent le vrai C sur des archives ACU
+jetables de trois fichiers : annulation à la fermeture de la vérification
+du deuxième fichier, vide ou de 1 536 octets, avec nettoyage réussi ou
+refusé. Ils contrôlent les octets source/existants/précédemment vérifiés,
+la fermeture unique de la vérification, l’absence de CREATE du troisième
+fichier et le retrait du deuxième. Un nettoyage refusé conserve exactement
+ses octets et signale l’échec. Les 17 tests UNSQ et 15 tests des gardes
+passent. Cette correction ne garantit pas l’atomicité des écritures
+physiques en cas de coupure.
+
+SMALLDOS, extraction Wilderness (11 octobre 2026) : nouvel overlay autonome
+en lecture seule, menu Disks, pour les images brutes 35 pistes `.DSK/.DO`
+en ordre DOS ou `.PO` en ordre ProDOS. Le catalogue entier (20 entrées de
+32 octets) est lu et validé avant CREATE ; la longueur réelle de l’image
+est mesurée sans utiliser la taille du panneau. Le secteur DOS est `15-s` ;
+les pistes sont normales pour la démo ou `34-t` pour le jeu. Les sorties
+conservent tous les octets des secteurs alloués : ni EOF exact ni adresse
+de chargement binaire ne sont connus. Types A/B : `$FC/$0801`, `$06/$0000`.
+Chaque sortie est créée exclusivement, écrite, fermée, puis comparée
+secteur par secteur avec la source relue, EOF et erreurs de flux compris.
+ESC est contrôlé dans les parcours et après les fermetures. Le nettoyage
+vise uniquement la sortie courante ; un refus est annoncé et les sorties
+précédemment vérifiées sont conservées. Aucun accès AUX ni écriture source.
+
+SMALLDOS mesure 4 406 / 4 448 octets, BSS jusqu’à `$30F4` / `$311F` inclus,
+soit 3 851 / 3 808 octets libres sous `$4000` (65C02 / 6502). Le catalogue
+occupant 640 octets et le tampon de comparaison 256 octets vivent en MAIN.
+L’ajout du nom de menu et le raccourcissement de son message de dossier
+absent augmentent MENU d’un octet : 3 784 / 3 835, réserves 56 / 5 octets.
+Réserves résident inchangées : MAIN 2 / 389, LC 13 / 11, LOWRAM 87 / 112,
+écart pile 19 / 595. Aucune limite de disposition n’a été relâchée.
+
+Les 12 tests SMALLDOS exécutent le vrai C sur des images jetables : les
+deux sens de pistes et ordres de secteurs, les 20 entrées, collisions,
+catalogues malformés, tailles invalides, lectures courtes ou signalées en
+erreur malgré un compte complet, recherches, écritures, ouvertures,
+fermetures, annulations et nettoyage refusé. Les octets source/existants
+et conservés sont comparés intégralement. Les images locales SIERRA (20
+fichiers) et WILDERNESS_DEMO (10) sont copiées en fixtures, relues en ordre
+DOS et converties en ordre ProDOS ; JOURNEY sans catalogue est refusé.
+Ces fixtures réelles sont facultatives hors du poste, les fixtures
+synthétiques restent autonomes. Les tests UI (1), inventaire historique
+(4), distribution (7), éditions (4) et gardes (15) passent aussi.
+
+Les deux builds et images XL passent ; SMALLDOS.PLG extrait des deux XL
+est identique au binaire compilé. La fabrication 800K reste impossible
+dans l’état du dépôt : 1 634 blocs nécessaires sans SMALLDOS, 1 644 avec,
+pour 1 600 disponibles. Aucune suppression d’outil ou modification du
+format 800K n’a été faite pour contourner cette limite. La source n’est
+pas modifiée et une coupure peut laisser une sortie ProDOS incomplète :
+aucune atomicité d’écriture physique n’est promise.
+
+800K, sélection pratique (11 octobre 2026) : la liste explicite de
+`config/800k.mk` conserve les 24 overlays natifs et 70 overlays de service,
+dont SMALLDOS, la gestion des fichiers, les outils disque/récupération,
+les archives, les lecteurs BASIC/assembleur et les lecteurs courants.
+Les helpers DOSIMAGE/DOSPUT, MOVECOPY, MCSIMPORT/MCSPLAY et IDREAD/IDFORMATS/
+IDV1 sont conservés avec leurs commandes. BASIC.SYSTEM, INTBASIC.SYSTEM,
+PPT3.BIN, VISICALC.BIN, FANTA.SYSTEM et TAKE1.SYSTEM restent présents.
+Les 34 outils plus spécialisés restent disponibles dans les deux XL,
+dont l’inventaire complet de 128 overlays a été contrôlé après génération.
+
+La nouvelle image 800K utilise 1 322 blocs sur 1 600 et conserve 278 blocs
+libres (139 KiB), contre 1 644 blocs nécessaires avec tous les overlays.
+`check_800k.py` vérifie après fabrication la géométrie, l’inventaire exact,
+les helpers et les octets des exécutables/overlays par rapport au build.
+Il exige au moins 160 blocs libres (80 KiB), sans changer la capacité du
+volume. Aucune modification native ni relaxation des limites mémoire.
+Les réserves MAIN/LC/LOWRAM/pile et MENU restent celles du build SMALLDOS.
+
+Les cinq tests 800K passent : politique de sélection et dépendances,
+noms inconnus/doublons, image générée, quatre helpers/overlays manquants
+et octets SMALLDOS altérés. Les corruptions portent uniquement sur des
+copies jetables ; les octets de l’image source et des fixtures sont
+contrôlés inchangés après refus. Distribution (7), éditions (4), anciens
+inventaires (4) et gardes mémoire (15) passent aussi, soit 35 tests.
+`make disk` termine pour les éditions 6502, 65C02 et Mini ; les deux
+dispositions natives restent valides. La sélection 800K corrige le
+dépassement documenté ci-dessus sans retirer d’outil des XL.
+
+800K, carte d’allocation incohérente (11 octobre 2026) : l’audit comparait
+les fichiers au build et comptait l’espace libre sans vérifier les blocs
+réellement utilisés. Un bloc occupé marqué libre passait ces contrôles,
+alors qu’une écriture ultérieure pourrait écraser le programme. L’audit
+exécute désormais le vérificateur ProDOS en lecture seule avant de suivre
+les répertoires ou de valider l’inventaire et l’espace disponible. Tout
+parcours incomplet ou toute incohérence refuse l’image ; aucune réparation
+automatique ni écriture n’est effectuée par le contrôle. Les dépendances
+Make incluent les lecteurs/vérificateurs employés par cet audit.
+
+Quatre régressions modifient uniquement des copies jetables du bitmap :
+bloc d’amorce, bloc de répertoire, bloc d’index et bloc de données d’un
+overlay marqués libres. Les octets du fichier sont toujours identiques,
+mais les quatre images sont désormais refusées. Les fixtures et l’image
+source restent inchangées après contrôle. Les six tests 800K, 65 tests du
+vérificateur ProDOS et 15 tests de disposition passent, soit 86 tests.
+`make disk` et les dispositions 6502/65C02 passent. L’image saine conserve
+94 overlays et 278 blocs libres (139 KiB). Aucun code natif, accès AUX ou
+budget mémoire modifié ; aucune atomicité d’écriture physique ajoutée.
+
+800K, métadonnées de chargement (11 octobre 2026) : des octets identiques
+au build ne suffisaient pas à garantir qu’un programme était chargeable.
+L’audit acceptait un SYS d’un autre type, un helper d’adresse auxiliaire
+incorrecte ou un fichier privé de lecture. Il contrôle désormais pour
+chaque fichier requis le stockage standard, l’accès en lecture, le type
+SYS/BIN/TXT attendu et l’auxiliaire déclaré par le staging : `$1B00` pour
+les overlays, `$0800` pour PPT3.BIN, zéro pour les autres fichiers requis.
+Les protections contre l’écriture restent acceptées. Le contrôle lit
+uniquement l’image et les fichiers du build ; aucune réparation ou
+modification de l’image par l’audit, aucun accès AUX, aucun code natif changé.
+
+Vingt et une injections sur des copies jetables couvrent type, auxiliaire
+et accès en lecture du lanceur, de BASIC.SYSTEM, de SMALLDOS.PLG, de
+PPT3.BIN, de VISICALC.BIN, de FANTA.SYSTEM et de l’aide. Elles sont toutes
+refusées après correction ; les octets de l’image source et des fixtures
+restent inchangés. Un cas positif conserve une protection en écriture
+sur SMALLDOS.PLG et reste accepté sans modification. Les huit tests 800K,
+sept tests distribution et quinze tests des gardes passent, soit 30 tests.
+`make disk` passe et la validation 6502/65C02 reste valide, avec les mêmes
+réserves mémoire. L’image saine conserve 94 overlays et 139 KiB libres.
+Ce contrôle de fabrication n’ajoute pas d’atomicité aux écritures physiques.
+
+SMALLDOS : erreurs de création (11 octobre 2026). Seule la collision de
+nom ProDOS `$47` est désormais ignorée ; une erreur d’E/S, un disque plein
+ou un accès refusé arrête l’extraction et signale l’échec. La destination
+refusée n’est ni ouverte ni supprimée. Les sorties déjà fermées et vérifiées
+restent intactes, comme l’image source et les fichiers préexistants.
+Aucune écriture brute ou AUX : seuls les nouveaux fichiers ProDOS réservés
+par CREATE sont écrits. Les essais utilisent uniquement des images jetables.
+
+Neuf cas de régression exécutent le vrai C avec CREATE refusé au premier,
+deuxième ou dernier fichier pour les erreurs `$27`, `$48` et `$4E` ; ils
+échouaient tous avant correction. Les 13 tests SMALLDOS contrôlent les
+octets conservés, les collisions et la fermeture de la source. Les 15 tests
+des gardes de disposition et les builds complets 65C02/6502 passent.
+SMALLDOS mesure 4 421 / 4 463 octets, BSS jusqu’à `$3103` / `$312E` inclus,
+soit 3 836 / 3 793 octets libres sous `$4000`. Les réserves résidentes et
+MENU restent inchangées ; aucun plafond n’est relevé. L’arrêt sur CREATE
+ne fournit pas d’atomicité face à une coupure pendant une écriture physique.
+
+PASCAL et CP/M : erreurs de création (11 octobre 2026). Les extracteurs
+ignoraient toutes les erreurs de CREATE comme un nom déjà pris. Seul `$47`
+est désormais une collision ; `$27` (E/S), `$48` (disque plein), `$4E`
+(accès refusé) et les autres erreurs arrêtent l’extraction avec un bilan
+d’échec. Le chemin refusé n’est ni ouvert ni supprimé. Les seules écritures
+concernent les nouvelles sorties ProDOS créées exclusivement ; les images
+sources sont en lecture seule, sans écriture brute ni allocation AUX/RAM.
+
+Les dix-huit cas de régression, au premier, deuxième et dernier fichier,
+échouaient avant correction. Ils exécutent le vrai C et contrôlent tous
+les octets des sorties vérifiées et du fichier préexistant, l’arrêt des
+CREATE suivants et la fermeture unique de la source. Les 12 tests Pascal,
+15 CP/M, 13 SMALLDOS (harness partagé) et 15 gardes de disposition passent.
+Les builds complets 65C02/6502 et leurs contrôles de disposition passent.
+
+| Surcouche | Fichier 65C02 / 6502 | BSS fin incluse 65C02 / 6502 | Libre sous `$4000` |
+| --- | ---: | ---: | ---: |
+| CP/M | 8 234 / 8 207 | `$3F7F` / `$3F65` | 128 / 154 |
+| PASCAL | 7 163 / 7 151 | `$3A0F` / `$3A04` | 1 520 / 1 531 |
+
+Les réserves résidentes et MENU restent inchangées ; aucun plafond n’est
+relevé. Les fixtures sont jetables. Ces contrôles ne rendent pas une
+écriture physique atomique en cas de coupure.
+
+PASCAL et CP/M : chemins de sortie trop longs (11 octobre 2026). Un
+échec de construction du chemin était compté comme une collision de nom,
+puis l’extraction continuait avec un bilan de réussite. Il arrête désormais
+l’opération avec un bilan d’échec, avant CREATE pour ce fichier. Les seules
+écritures restent celles des nouvelles sorties ProDOS réservées exclusivement ;
+les sources, les fichiers préexistants et AUX/RAM restent intacts.
+
+Sept cas exécutent le vrai C dans des arborescences jetables dont chaque
+composant respecte la limite ProDOS : cinq refus reproduisaient le défaut,
+deux cas positifs acceptent un chemin final de 63 caractères. Le refus après
+une première sortie Pascal vérifiée conserve tous ses octets ; aucun CREATE
+suivant n’est tenté. Les tests comparent tous les fichiers, le compteur de
+CREATE et la fermeture unique de la source. Les 13 tests Pascal, 16 CP/M,
+13 SMALLDOS (harness partagé) et 15 gardes passent, ainsi que les builds
+complets et contrôles de disposition 65C02/6502.
+
+| Surcouche | Fichier 65C02 / 6502 | BSS fin incluse 65C02 / 6502 | Libre sous `$4000` |
+| --- | ---: | ---: | ---: |
+| CP/M | 8 238 / 8 212 | `$3F83` / `$3F6A` | 124 / 149 |
+| PASCAL | 7 167 / 7 156 | `$3A13` / `$3A09` | 1 516 / 1 526 |
+
+Les réserves résidentes et MENU restent inchangées ; aucun plafond n’est
+relevé. La correction n’apporte pas d’atomicité en cas de coupure pendant
+une écriture physique.
+
+PASCAL et CP/M : Échap pendant la fermeture finale (11 octobre 2026).
+Les extracteurs ne vérifiaient plus le clavier après la fermeture de
+l’image source et pouvaient annoncer une réussite malgré une annulation.
+Une dernière vérification signale désormais l’arrêt. Les sorties déjà
+fermées et vérifiées restent conservées ; aucune suppression supplémentaire
+n’est ajoutée. Les seules écritures restent celles des nouvelles sorties
+ProDOS créées exclusivement, sans écriture de l’image source ou d’AUX/RAM.
+
+Huit cas exécutent le vrai C sur des images jetables : annulation pendant
+la fermeture finale, avec ou sans erreur de fermeture, sur quatre sorties
+et sur un volume Pascal vide ou une entrée CP/M sans enregistrements.
+Quatre cas échouaient avant correction. Tous contrôlent les octets des
+sorties et du fichier préexistant, le compteur de CREATE et une fermeture
+unique de la source. Les 14 tests Pascal, 17 CP/M, 13 SMALLDOS (harness
+partagé), 15 gardes de disposition et les builds complets 65C02/6502 passent.
+
+| Surcouche | Fichier 65C02 / 6502 | BSS fin incluse 65C02 / 6502 | Libre sous `$4000` |
+| --- | ---: | ---: | ---: |
+| CP/M | 8 249 / 8 223 | `$3F8E` / `$3F75` | 113 / 138 |
+| PASCAL | 7 178 / 7 167 | `$3A1E` / `$3A14` | 1 505 / 1 515 |
+
+Les contrôles de disposition natifs passent sans changement des réserves
+résidentes ou MENU ni relèvement des plafonds. La correction ne garantit
+pas d’atomicité face à une coupure pendant une écriture physique.
+
+PASCAL/PASCALW : volume plus petit que son catalogue (11 octobre 2026).
+Le lecteur partagé acceptait un volume vide déclarant 1 à 5 blocs, alors
+que les deux blocs de démarrage et les quatre de catalogue exigent au
+moins six blocs. Dans PASCALW, `vblocks - tail` sous-débordait et autorisait
+des écritures à partir du bloc 6, hors du volume déclaré mais dans le
+conteneur. Le contrôle partagé refuse désormais ces métadonnées avant
+toute création de sortie ou écriture du conteneur. L’oracle Python impose
+la même borne minimale.
+
+PASCAL ne peut écrire que ses nouvelles sorties ProDOS créées exclusivement.
+PASCALW peut écrire les blocs de données et de catalogue de l’image ciblée,
+jamais ses sources ProDOS. Aucun accès AUX/RAM n’est ajouté. Les fixtures
+sont jetables ; les tests comparent tous les octets du conteneur et des
+sources après refus, ainsi que le compteur d’écritures.
+
+Dix cas reproduisaient le défaut (1 à 5 blocs, dans les deux sens). Les
+tests couvrent aussi zéro bloc, six blocs sans place pour une sortie, et
+sept blocs avec un fichier tenant exactement dans l’unique bloc de données.
+Ce dernier conserve tous les octets au-delà du volume déclaré. Les 15 tests
+PASCAL, 17 PASCALW (dont les contrôles de capacité natifs), 13 SMALLDOS
+(harness partagé), 15 gardes de disposition et l’autotest de l’oracle passent.
+Les builds complets 65C02/6502 et leurs contrôles de disposition passent.
+
+| Surcouche | Fichier 65C02 / 6502 | BSS fin incluse 65C02 / 6502 | Libre sous `$4000` |
+| --- | ---: | ---: | ---: |
+| PASCAL | 7 184 / 7 173 | `$3A24` / `$3A1A` | 1 499 / 1 509 |
+| PASCALW | 7 242 / 7 248 | `$3AB7` / `$3ABE` | 1 352 / 1 345 |
+
+Les réserves résidentes et MENU sont inchangées ; aucun plafond n’est
+relevé. Le refus avant écriture ne rend pas atomiques les écritures d’un
+volume valide face à une coupure physique.
+
+PASCALW : contrôler la source avant publication (11 octobre 2026). Une
+lecture au compte complet mais portant une erreur, un échec de fermeture,
+Échap pendant cette fermeture ou une taille de panneau sous-estimée
+pouvaient laisser publier une copie incomplète dans le catalogue Pascal.
+Chaque lecture vérifie désormais `ferror`, puis une sonde d’EOF propre
+confirme la longueur réelle. La fermeture doit réussir et une dernière
+vérification d’Échap précède le commit du catalogue.
+
+PASCALW écrit les blocs de données libres en fin de volume, puis les blocs
+du catalogue de l’image confirmée. Les sources ProDOS sont en lecture
+seule ; aucun accès AUX/RAM. En cas de refus avant commit, les données
+déjà écrites dans la fin libre peuvent rester physiquement présentes, mais
+aucune nouvelle entrée ne les référence. Le catalogue et les fichiers
+préexistants restent identiques. Une source n’est fermée qu’une fois.
+
+Sept cas exécutent le vrai C sur une image jetable : lectures complètes
+avec erreur au premier/deuxième bloc, erreur lors de la sonde EOF, échec
+de fermeture, annulation pendant la fermeture et tailles périmées inférieure
+ou supérieure à la taille réelle. Six reproduisaient le défaut ; le cas de
+taille surestimée vérifie aussi le refus déjà présent. Ils contrôlent les
+octets du catalogue, du fichier Pascal préexistant et de toutes les sources,
+l’absence d’entrée publiée et la fermeture unique. Les 18 tests PASCALW,
+15 PASCAL et 15 gardes de disposition passent, ainsi que les builds complets
+et contrôles de disposition 65C02/6502.
+
+PASCALW mesure 7 359 / 7 364 octets, BSS jusqu’à `$3B2C` / `$3B32` inclus,
+soit 1 235 / 1 229 octets libres sous `$4000`. Les réserves résidentes et
+MENU sont inchangées ; aucun plafond n’est relevé. Le commit du catalogue
+reste une écriture physique sans garantie d’atomicité face à une coupure.
+
+PASCALW : erreurs au compte complet dans l’image (11 octobre 2026).
+Le lecteur/écrivain de blocs pouvait rendre succès sur un compte complet
+portant une erreur de flux, puis effacer cette erreur au bloc suivant.
+Un contrôle local à PASCALW vérifie désormais `ferror` après chaque bloc,
+y compris pendant la restauration du catalogue. L’en-tête 2MG, lu hors
+de ce chemin, est aussi contrôlé avant toute écriture. Les autres overlays
+et le lecteur partagé `imageio.h` restent inchangés.
+
+L’opération peut écrire les blocs libres de données et le catalogue de
+l’image confirmée ; les sources ProDOS restent en lecture seule, sans
+accès AUX/RAM. Après un échec de publication, la restauration tente de
+remettre les octets sauvegardés. Si elle ne peut pas être vérifiée, le
+message demande de contrôler le volume au lieu de le déclarer intact.
+Les écritures physiques et leur restauration ne sont pas atomiques face
+à une coupure ; des données non référencées peuvent rester en fin libre.
+
+Dix-huit cas sur images jetables exécutent le vrai C : validation initiale
+et après confirmation, vérification des données, sauvegarde du catalogue,
+publication, erreurs persistantes pendant restauration, en-tête 2MG et
+les deux moitiés d’un bloc DOS. Quinze cas et l’en-tête 2MG ont été observés
+en échec avant leurs corrections. Le mock reproduit aussi `clearerr` entre
+blocs. Les tests comparent les octets du catalogue et du fichier Pascal
+préexistant, toutes les sources et l’absence de publication ; les refus
+avant écriture conservent l’intégralité du conteneur.
+
+Les 20 tests PASCALW, 15 PASCAL et 15 gardes de disposition passent, ainsi
+que les builds complets et contrôles natifs 65C02/6502. PASCALW mesure
+7 431 / 7 438 octets, BSS jusqu’à `$3B74` / `$3B7C` inclus, soit 1 163 /
+1 155 octets libres sous `$4000`. Les réserves résidentes et MENU restent
+inchangées ; aucun plafond n’est relevé.
+
+PASCALW : distinguer un nom pris d’un catalogue illisible (11 octobre 2026).
+La recherche de noms retournait « présent » lorsqu’une entrée ne pouvait
+pas être lue ; l’import comptait alors une collision et poursuivait avec un
+bilan de réussite. Elle distingue maintenant nom libre, nom présent et
+erreur. Cette dernière arrête l’import avec un message de lecture du
+catalogue, avant l’ouverture de la source et toute écriture de ce fichier.
+
+L’opération peut écrire les blocs libres et le catalogue de l’image ciblée,
+mais la recherche corrigée n’écrit rien. Les sources ProDOS restent en
+lecture seule et aucun accès AUX/RAM n’est ajouté. Huit cas exécutent le
+vrai C sur des images jetables : lecture courte ou compte complet signalé
+en erreur, premier nom recherché et chacune des deux parties de l’entrée
+19 qui traverse une limite de bloc. Tous échouaient avant correction.
+Une seconde source vérifie que l’import ne continue pas après le refus.
+Les tests contrôlent zéro écriture, zéro fermeture de source (aucune n’est
+ouverte), tous les octets du conteneur et de toutes les sources. Les vraies
+collisions restent ignorées et sont couvertes par les tests existants.
+
+Les 21 tests PASCALW, 15 PASCAL et 15 gardes de disposition passent, ainsi
+que les builds complets et contrôles natifs 65C02/6502. PASCALW mesure
+7 485 / 7 491 octets, BSS jusqu’à `$3BAA` / `$3BB1` inclus, soit 1 109 /
+1 102 octets libres sous `$4000`. Les réserves résidentes et MENU restent
+inchangées ; aucun plafond n’est relevé. Les écritures physiques d’un
+import valide ne deviennent pas atomiques face à une coupure.
+
+PASCALW : contrôler la fermeture finale de l’image (11 octobre 2026).
+La fermeture de l’image ignorait son résultat et l’annulation pendant
+cette fermeture. Après un import publié, le bilan pouvait donc rester une
+réussite malgré un échec de CLOSE. La fermeture est désormais contrôlée,
+effectuée une seule fois, puis le pointeur est invalidé. Son échec demande
+de contrôler le volume, y compris après un refus antérieur de lecture.
+Une annulation après un import terminé est signalée en conservant les
+fichiers publiés. Un diagnostic antérieur n’est pas masqué par Échap.
+
+Les écritures restent celles des blocs libres et du catalogue de l’image
+confirmée ; cette correction n’ajoute aucune écriture ni restauration
+après publication. Les sources ProDOS et AUX/RAM sont inchangés. Un échec
+de CLOSE n’autorise pas à effacer un fichier publié et ne prouve pas que
+toutes les écritures ont atteint le support physique.
+
+Huit cas exécutent le vrai C sur une image jetable : échec de fermeture,
+annulation ou les deux, avec et sans source ; échec de fermeture après une
+erreur de lecture de source ou de recherche dans le catalogue. Tous
+échouaient avant correction. Les tests contrôlent les octets des anciens
+et nouveaux fichiers publiés, toutes les sources, une fermeture unique
+de l’image et des sources ouvertes. Sans publication, le conteneur entier
+est comparé lorsque rien n’a été écrit.
+
+Les 22 tests PASCALW, 15 PASCAL et 15 gardes de disposition passent, ainsi
+que les builds complets et contrôles natifs 65C02/6502. PASCALW mesure
+7 578 / 7 585 octets, BSS jusqu’à `$3C08` / `$3C10` inclus, soit 1 015 /
+1 007 octets libres sous `$4000`. Les réserves résidentes et MENU restent
+inchangées ; aucun plafond n’est relevé. Ces contrôles ne garantissent pas
+l’atomicité des écritures physiques face à une coupure.
+
+PASCALW/CPMW : ne pas importer après un parcours incomplet du dossier
+source (11 octobre 2026). Les deux imports ignoraient le statut de
+`dir_close` : une lecture interrompue ressemblait à la fin normale du
+dossier, et un échec de fermeture après sélection d’une entrée autorisait
+quand même son import. Ils contrôlent désormais le statut renvoyé par le
+résident avant d’interpréter EOF ou d’ouvrir la source sélectionnée. Le
+message signale que le panneau opposé ne peut pas être lu.
+
+L’API figée déclare `dir_close` en `void`, mais le résident renvoie bien
+`dir_error` ; la lecture du résultat reprend la convention déjà employée
+par FIND, sans changer l’ABI. Un test sim65 compile l’appel des overlays
+avec chaque compilateur 65C02/6502 et vérifie les statuts 0, 1 et `$27`.
+
+Douze cas exécutent le vrai C des imports sur des images jetables : erreur
+de lecture ou de fermeture au premier passage, après un fichier importé
+et au parcours final. Tous échouaient avant correction. Les tests comparent
+chaque fichier du volume avec ses octets attendus, toutes les sources et
+l’arrêt des passages suivants. Avant le premier import, tout le conteneur
+reste identique. Les fichiers déjà publiés ne sont pas effacés ; les seules
+écritures restent les blocs libres et le catalogue de l’image confirmée.
+Aucune écriture de source ProDOS ni aucun accès AUX/RAM n’est ajouté.
+
+Les 24 tests PASCALW, 13 CPMW et 15 gardes de disposition passent, ainsi
+que les builds complets et contrôles natifs 65C02/6502.
+
+| Surcouche | Fichier 65C02 / 6502 | BSS fin incluse 65C02 / 6502 | Libre sous `$4000` |
+| --- | ---: | ---: | ---: |
+| PASCALW | 7 593 / 7 600 | `$3C17` / `$3C1F` | 1 000 / 992 |
+| CPMW | 7 295 / 7 257 | `$3AC6` / `$3AA1` | 1 337 / 1 374 |
+
+Les réserves résidentes et MENU restent inchangées ; aucun plafond n’est
+relevé. L’arrêt sur une erreur de parcours ne rend pas atomiques les
+écritures physiques déjà effectuées face à une coupure.
+
+CPMW : contrôler la source avant publication (11 octobre 2026). L’import
+CP/M pouvait publier un fichier malgré une lecture au compte complet
+portant une erreur, un échec de fermeture, Échap pendant cette fermeture
+ou une taille de panneau sous-estimée. Les lectures vérifient désormais
+`ferror`, une sonde d’EOF propre confirme la longueur réelle, puis la
+fermeture et l’annulation sont contrôlées avant l’écriture de l’entrée.
+
+CPMW peut écrire les blocs libres de données et le catalogue de l’image
+confirmée. Les sources ProDOS sont en lecture seule et AUX/RAM reste
+inchangé. Avant publication, un refus laisse les octets déjà écrits dans
+les blocs libres non référencés ; le catalogue et les fichiers préexistants
+restent intacts. La source est fermée une seule fois.
+
+Sept cas exécutent le vrai C sur une image jetable : erreur au compte
+complet du premier/quatrième secteur, erreur de sonde EOF, échec de
+fermeture, annulation à la fermeture et tailles périmées inférieure ou
+supérieure à la taille réelle. Six reproduisaient le défaut ; la taille
+surestimée contrôle le refus déjà présent. Les tests comparent l’intégralité
+du catalogue, tous les fichiers préexistants et toutes les sources, et
+vérifient l’absence de publication et la fermeture unique. Une erreur
+au premier secteur conserve aussi le conteneur entier sans écriture.
+
+Les 14 tests CPMW, 17 CP/M et 15 gardes de disposition passent, ainsi que
+les builds complets et contrôles natifs 65C02/6502. CPMW mesure 7 439 /
+7 400 octets, BSS jusqu’à `$3B56` / `$3B30` inclus, soit 1 193 / 1 231
+octets libres sous `$4000`. Les réserves résidentes et MENU restent
+inchangées ; aucun plafond n’est relevé. La publication reste une écriture
+physique sans garantie d’atomicité face à une coupure.
+
+CPMW : distinguer une collision d’une recherche illisible (11 octobre 2026).
+Le parcours des noms renvoyait « présent » sur une erreur de lecture ou de
+positionnement. Le fichier était compté comme ignoré, puis l’import pouvait
+continuer et annoncer une réussite. La recherche distingue désormais nom
+libre, nom présent et erreur ; cette dernière arrête l’import avec un
+diagnostic du catalogue CP/M, avant toute ouverture de la source concernée.
+
+L’opération peut écrire les blocs libres et le catalogue de l’image
+confirmée, mais la recherche n’écrit rien. Les sources ProDOS restent en
+lecture seule et aucun accès AUX/RAM n’est ajouté. Seize cas exécutent le
+vrai C sur une image jetable : lecture courte ou échec de seek dans chacun
+des huit secteurs du catalogue, après les validations initiale et après
+confirmation. Tous échouaient avant correction. Une seconde source vérifie
+que le refus n’est pas suivi d’un nouvel import. Chaque cas contrôle zéro
+écriture, l’arrêt au premier passage, aucune source ouverte et tous les
+octets du conteneur et des sources. Les vraies collisions restent couvertes
+par les tests existants et conservent leurs octets.
+
+Les 15 tests CPMW, 17 CP/M et 15 gardes de disposition passent, ainsi que
+les builds complets et contrôles natifs 65C02/6502. CPMW mesure 7 491 /
+7 451 octets, BSS jusqu’à `$3B8A` / `$3B63` inclus, soit 1 141 / 1 180
+octets libres sous `$4000`. Les réserves résidentes et MENU restent
+inchangées ; aucun plafond n’est relevé. Le refus avant écriture ne rend
+pas atomiques les écritures physiques d’un import valide face à une coupure.
+
+CPMW : contrôler la fermeture finale de l’image (11 octobre 2026).
+L’import ignorait le résultat de CLOSE et Échap pendant cette fermeture,
+ce qui pouvait laisser un bilan de réussite après un échec. La fermeture
+est désormais contrôlée et effectuée une fois, puis le pointeur est
+invalidé. Un échec demande de contrôler le volume, même après un refus de
+lecture de source ou du catalogue. Une annulation après un parcours terminé
+est signalée ; les diagnostics antérieurs ne sont pas masqués par Échap.
+
+Les écritures restent les blocs libres et le catalogue de l’image
+confirmée. Cette correction n’ajoute ni écriture ni suppression après
+publication : les fichiers déjà publiés restent récupérables. Les sources
+ProDOS restent en lecture seule, sans accès AUX/RAM. Un CLOSE en échec ne
+prouve pas que les écritures ont toutes atteint le support physique.
+
+Huit cas exécutent le vrai C sur une image jetable : échec de fermeture,
+annulation ou les deux avec/sans source, puis échec de fermeture après une
+erreur de source ou de recherche de nom. Tous échouaient avant correction.
+Les tests contrôlent les octets de chaque fichier ancien et nouveau publié,
+toutes les sources et la fermeture unique de chaque flux ouvert. Les cas
+sans écriture comparent aussi le conteneur entier.
+
+Les 16 tests CPMW, 17 CP/M et 15 gardes de disposition passent, ainsi que
+les builds complets et contrôles natifs 65C02/6502. CPMW mesure 7 584 /
+7 545 octets, BSS jusqu’à `$3BE8` / `$3BC2` inclus, soit 1 047 / 1 085
+octets libres sous `$4000`. Les réserves résidentes et MENU restent
+inchangées ; aucun plafond n’est relevé. Ces contrôles ne rendent pas
+atomiques les écritures physiques face à une coupure.
+
+CPMW : restaurer le bloc partagé après une écriture en échec (11 octobre
+2026). Une écriture partielle ou corrompue du catalogue pouvait endommager
+une entrée existante, tandis que le message affirmait le volume intact.
+Chaque modification de secteur sauvegarde désormais les 512 octets du
+bloc ProDOS partagé avant écriture. Un échec d’écriture ou de vérification
+restaure ce bloc entier et relit les 512 octets. Si cette restauration
+échoue ou ne peut être vérifiée, le diagnostic demande de contrôler le
+volume, pour les données comme pour le catalogue.
+
+Les écritures possibles restent dans les blocs libres et le catalogue de
+l’image confirmée, avec une restauration du même bloc en cas d’échec.
+La sauvegarde de 512 octets est en BSS MAIN, jamais AUX/RAM. Les sources
+ProDOS restent en lecture seule. Restaurer uniquement l’entrée ou le
+secteur concerné ne protégerait pas les autres entrées et le secteur voisin.
+Cette sauvegarde en mémoire ne protège pas d’une coupure pendant l’écriture
+physique ou la restauration ; les commentaires précédents promettant une
+préservation sur coupure ont été corrigés.
+
+Vingt-deux cas exécutent le vrai C sur des images jetables : 15 erreurs
+d’écriture nulle, partielle ou corrompue aux quatre secteurs de données et
+au catalogue, quatre restaurations en échec ou illisibles, puis trois
+publications corrompues en 2MG/DOS (chaque moitié du bloc DOS). Douze cas
+avaient échoué avant correction. Les tests capturent les octets physiques
+du bloc avant l’écriture fautive, comparent les 512 octets restaurés,
+l’intégralité du catalogue, tous les fichiers préexistants et toutes les
+sources. Une restauration non vérifiable ne déclare jamais le volume intact.
+
+Les 19 tests CPMW, 17 CP/M et 15 gardes de disposition passent, ainsi que
+les builds complets et contrôles natifs 65C02/6502. CPMW mesure 7 787 /
+7 752 octets, BSS jusqu’à `$3EB4` / `$3E92` inclus, soit 331 / 365 octets
+libres sous `$4000`. Les réserves résidentes et MENU restent inchangées ;
+aucun plafond n’est relevé.
+
+CPMW : erreurs au compte complet dans l’image (11 octobre 2026).
+Les blocs lus ou écrits au compte complet étaient acceptés malgré une
+erreur du flux, puis le bloc suivant effaçait l’indicateur. Un contrôle
+local à CPMW vérifie désormais chaque résultat avant cet effacement, y
+compris pendant la restauration. Une erreur d’E/S est aussi mémorisée :
+la sélection de l’ordre des secteurs s’arrête au lieu d’essayer le candidat
+suivant après une lecture invalide. L’en-tête 2MG, lu hors du chemin de
+blocs, est vérifié avant toute écriture. `imageio.h` et les autres overlays
+restent inchangés.
+
+Les écritures possibles restent les blocs libres et le catalogue de
+l’image confirmée, plus la restauration du même bloc après échec. Les
+sources ProDOS sont en lecture seule, sans accès AUX/RAM. Une restauration
+en erreur ne permet plus de déclarer le volume intact. La sauvegarde MAIN
+ne rend pas atomiques les écritures physiques face à une coupure.
+
+Quarante-cinq cas exécutent le vrai C sur des images jetables : 35 lectures
+de validation, recherche, sauvegarde et vérification ; cinq écritures ;
+deux erreurs persistantes pendant restauration ; l’en-tête 2MG et chaque
+moitié d’un bloc DOS. Les 42 premiers cas échouaient avant correction.
+Le mock reproduit `clearerr` entre blocs. Tous les cas comparent les octets
+du catalogue, des fichiers préexistants et de toutes les sources, et
+l’absence de publication. Les refus avant écriture conservent le conteneur
+entier ; une restauration non vérifiable demande de contrôler le volume.
+
+Les 21 tests CPMW, 17 CP/M et 15 gardes de disposition passent, ainsi que
+les builds complets et contrôles natifs 65C02/6502. CPMW mesure 7 886 /
+7 853 octets, BSS jusqu’à `$3F18` / `$3EF8` inclus, soit 231 / 263 octets
+libres sous `$4000`. Les réserves résidentes et MENU restent inchangées ;
+aucun plafond n’est relevé.
+
+PASCALW : reconnaître l’image sous une autre casse (11 octobre 2026).
+
+La comparaison sensible à la casse entre le chemin source et le chemin de
+l’image pouvait manquer leur identité, alors que ProDOS ignore la casse.
+L’image était alors traitée comme un fichier à importer et sa taille faisait
+échouer l’opération avec « No room after the last file. », interrompant les
+autres imports. Une comparaison ASCII locale ignore maintenant la casse et
+compte l’image comme ignorée. Les écritures restent dans l’image confirmée,
+sans modification des sources ni utilisation de la mémoire auxiliaire.
+
+Quatre cas exécutent le vrai C avec des chemins de dossier entièrement ou
+partiellement en majuscules : image seule inchangée, puis image avec un
+fichier distinct dont l’import doit aboutir. Les fichiers existants, les
+octets importés et la source sont contrôlés. Ces quatre cas échouaient avant
+la correction. Les 26 tests PASCALW, 15 tests Pascal et 15 gardes de
+disposition passent ; les deux builds et leurs contrôles mémoire passent.
+PASCALW mesure 7 674 / 7 667 octets (65C02 / 6502), avec fin de BSS à
+`$3C6A / $3C64`, soit 917 / 923 octets libres dans la fenêtre. Le résident
+reste inchangé. Les distributions sont reconstruites et le contrôle 800K
+est exécuté. Ce correctif ne change pas les limites des écritures physiques
+interrompues et ne prétend pas les rendre atomiques.
+
+PASCALW / CPMW : fermeture du dossier de l’image (11 octobre 2026).
+
+La recherche de la taille de l’image dans `imageio.h` retenait l’entrée
+trouvée sans vérifier l’erreur renvoyée à la fermeture du dossier. Les
+imports Pascal et CP/M pouvaient donc ouvrir puis modifier l’image après
+une erreur de lecture ou de fermeture de ces métadonnées. Ils activent
+désormais `IMAGEIO_CHECK_CLOSE` : une erreur invalide la taille trouvée et
+arrête l’import avant l’ouverture de l’image. Le retour réel du résident
+est récupéré à travers l’API historique typée `void`, comme pour les
+énumérations source. Les autres overlays gardent leur code inchangé.
+
+Douze cas du vrai C injectent deux statuts d’erreur sur les conteneurs PO,
+2MG et DSK des deux imports. Ils échouaient tous avant la correction :
+l’import effectuait des écritures malgré l’erreur. Ils contrôlent maintenant
+l’absence d’ouverture et d’écriture de l’image, le conteneur complet
+inchangé et les octets des sources. Le cast du retour est aussi exécuté
+sous sim65 avec les deux compilateurs et les valeurs 0, 1 et `$27`.
+Les écritures possibles restent dans l’image confirmée ; les sources sont
+en lecture seule et aucune mémoire auxiliaire n’est utilisée. Le correctif
+n’apporte aucune atomicité aux écritures physiques interrompues.
+
+Les 27 tests PASCALW, 22 CPMW, 15 Pascal, 17 CP/M et 15 gardes de disposition
+passent, ainsi que les deux builds et contrôles de mémoire. PASCALW mesure
+7 680 / 7 675 octets (65C02 / 6502), BSS jusqu’à `$3C70 / $3C6C` inclus,
+soit 911 / 915 octets libres. CPMW mesure 7 892 / 7 861 octets, BSS jusqu’à
+`$3F1E / $3F00`, soit 225 / 255 octets libres. Le résident et les plafonds
+restent inchangés. Les distributions sont reconstruites et les huit tests
+800K sont exécutés sur des images jetables.
+
+PASCALW / CPMW : droits ProDOS de l’image (11 octobre 2026).
+
+Les deux imports ouvraient l’image en mise à jour sans vérifier son bit
+ProDOS d’écriture. ProDOS autorise cette ouverture puis refuse WRITE :
+le fichier restait protégé, mais l’import commençait inutilement et
+annonçait un échec d’écriture, voire de restauration pour CP/M, au lieu
+d’identifier la protection. `IMAGEIO_CHECK_ACCESS` fait retenir les droits
+de l’entrée fraîchement relue pour la taille, sans se fier au panneau.
+L’image protégée est ouverte en lecture seule et l’import affiche
+« The image is read-only. » avant lecture des sources ou écriture. Le
+contrôle de fermeture du dossier reste obligatoire ; le verrou du
+conteneur 2MG et le repli après échec d’ouverture sont conservés.
+
+Trente cas du vrai C couvrent cinq droits sans bit d’écriture, les formats
+PO/2MG/DSK et les deux imports. Le mock reproduit le refus WRITE de ProDOS
+et compte séparément les ouvertures en mise à jour. Les essais avant
+correction montrent les tentatives d’écriture et les diagnostics erronés.
+Après correction, les conteneurs complets et les sources restent inchangés,
+sans tentative d’ouverture en mise à jour ni d’écriture. Six cas vérifient
+que le droit d’écriture suffit sans le droit de destruction, avec un
+panneau périmé indiquant l’inverse : les nouveaux octets et tous les fichiers
+préexistants sont vérifiés. Les seuls fichiers susceptibles d’être écrits
+restent les images confirmées ; aucun accès AUX/RAM n’est ajouté. Ce refus
+précoce ne rend pas les écritures physiques atomiques face à une coupure.
+
+Les 29 tests PASCALW, 24 CPMW, 15 Pascal, 17 CP/M et 15 gardes de disposition
+passent avec les builds et contrôles natifs des deux architectures.
+PASCALW mesure 7 713 / 7 707 octets (65C02 / 6502), BSS jusqu’à
+`$3C91 / $3C8C` inclus, soit 878 / 883 octets libres. CPMW mesure
+7 925 / 7 893 octets, BSS jusqu’à `$3F3F / $3F20`, soit 192 / 223 octets
+libres. Le résident et les autres overlays conservent leur code. Les
+distributions sont reconstruites et les huit tests 800K passent.
+
+CP/M : arrêter la sélection des secteurs après une erreur d’E/S
+(11 octobre 2026).
+
+Le lecteur CP/M traitait un échec de lecture de bloc comme un catalogue
+incompatible avec l’ordre de secteurs essayé. Il continuait avec le
+candidat suivant : une lecture courte ou une recherche échouée pouvait
+être suivie d’une extraction complète, malgré l’erreur initiale. Le wrapper
+de lecture mémorise désormais l’échec dans l’indicateur `bad` existant et
+la recherche s’arrête immédiatement, avant tout CREATE. Un catalogue
+lisible mais incompatible permet toujours d’essayer l’ordre suivant.
+
+Six cas du vrai C injectent une lecture courte, un compte complet avec
+erreur du flux ou une recherche échouée, sur chacun des deux premiers
+blocs de validation d’une image à secteurs déjà réordonnés. Ils échouaient
+tous avant correction : quatre créaient les fichiers après l’erreur,
+les deux autres tentaient encore une lecture sous un autre ordre. Les
+tests contrôlent maintenant le nombre exact de lectures et de recherches,
+zéro CREATE, une seule fermeture et les octets de l’image et du fichier
+préexistant dans la destination. Les extractions normales restent vérifiées
+pour les deux ordres. L’image est en lecture seule, seuls les fichiers
+exclusivement créés dans le dossier opposé peuvent être écrits lors d’une
+extraction validée. Aucun accès AUX/RAM n’est ajouté.
+
+Les 18 tests CP/M, 24 CPMW et 15 gardes de disposition passent avec les
+builds et contrôles natifs 65C02/6502. CP/M mesure 8 264 / 8 235 octets,
+BSS jusqu’à `$3F9D / $3F81` inclus, soit 98 / 126 octets libres sous
+`$4000`. L’indicateur réutilisé n’ajoute pas de BSS. Le résident et les
+plafonds restent inchangés ; les distributions sont reconstruites et les
+huit tests 800K passent.
+
+Pascal / CP/M : métadonnées de l’image avant extraction (11 octobre 2026).
+
+Les extracteurs utilisaient la variante générale de `size_of`, qui retenait
+la taille trouvée sans vérifier le statut de fermeture du dossier contenant
+l’image. Une erreur de lecture ou de fermeture des métadonnées pouvait
+donc être suivie de créations et d’une extraction déclarée réussie. Ils
+activent maintenant `IMAGEIO_CHECK_CLOSE`, étendu à cette variante : le
+statut réel du résident est récupéré à travers l’API historique typée
+`void`, et une erreur refuse l’ouverture de l’image avant tout CREATE.
+Les autres consommateurs de la variante générale gardent leur code.
+
+Six cas du vrai C injectent deux statuts d’erreur, pour Pascal et chacun
+des deux ordres CP/M. Tous échouaient avant correction avec quatre CREATE.
+Ils vérifient désormais zéro CREATE, zéro ouverture de l’image refermée,
+la conservation du conteneur entier et les octets d’un fichier préexistant
+dans la destination. Les tests CP/M comptent aussi zéro lecture de l’image.
+Le cast du retour reste contrôlé sous sim65 pour les deux architectures
+par la suite PASCALW. Les images sont uniquement lues ; lors d’une
+extraction autorisée, seuls les fichiers exclusivement créés dans le dossier
+opposé sont écrits et nettoyés. Aucun accès AUX/RAM n’est ajouté.
+
+Les 16 tests Pascal, 19 CP/M, 29 PASCALW, 24 CPMW et 15 gardes de disposition
+passent, ainsi que les deux builds et contrôles natifs. Pascal mesure
+7 183 / 7 174 octets (65C02 / 6502), BSS jusqu’à `$3A23 / $3A1B` inclus,
+soit 1 500 / 1 508 octets libres. CP/M mesure 8 263 / 8 236 octets,
+BSS jusqu’à `$3F9C / $3F82`, soit 99 / 125 octets libres. Le résident,
+les importeurs et les plafonds restent inchangés. Les distributions sont
+reconstruites et les huit tests 800K passent.
+
+CP/M : attributs distincts entre les extents (11 octobre 2026).
+
+La mesure du fichier et la recherche de ses extents comparaient les onze
+octets bruts du nom, alors que leur bit 7 porte des attributs. Deux extents
+du même fichier avec un attribut différent étaient donc séparés : la
+première partie était extraite comme un fichier complet, et la suivante
+pouvait être ignorée comme un nom déjà pris. Le fichier extrait était
+tronqué sans diagnostic d’échec. Une comparaison locale masque maintenant
+le bit 7 pour les deux recherches ; le contrôle du numéro utilisateur et
+les caractères du nom restent distinctifs.
+
+Douze cas du vrai C changent un seul attribut (lecture seule, système ou
+archive) dans le premier ou le second extent d’un fichier de plus de
+16 KiB, pour chacun des deux ordres de secteurs. Tous échouaient avant la
+correction. Ils comparent l’ensemble des fichiers extraits, octet par octet,
+avec l’oracle qui regroupe déjà les noms sans les bits d’attributs ; ils
+contrôlent aussi les quatre créations, l’absence de faux doublon et les
+octets du fichier préexistant dans la destination. L’image entière reste
+inchangée. Les tests existants continuent de vérifier les noms distincts,
+les erreurs d’E/S et la suppression des seuls fichiers créés par l’opération.
+Seuls ces nouveaux fichiers ProDOS sont écrits ; aucun accès AUX/RAM
+n’est ajouté.
+
+Les 20 tests CP/M, 24 CPMW et 15 gardes de disposition passent avec les
+builds et contrôles natifs 65C02/6502. CP/M mesure 8 327 / 8 282 octets,
+BSS jusqu’à `$3FDD / $3FB1` inclus, soit 34 / 78 octets libres sous
+`$4000`. Le résident et les plafonds restent inchangés. Les distributions
+sont reconstruites et les huit tests 800K passent.
+
+BLKVIEW : erreurs de flux au compte complet (11 octobre 2026).
+
+Les lectures normalisées du visualiseur acceptaient un compte complet
+malgré une erreur du flux source. Une recherche pouvait annoncer un
+résultat et une extraction copier les blocs puis annoncer un succès.
+Un wrapper local vérifie désormais `ferror` avant d’utiliser un bloc de
+l’image, dans l’affichage, la recherche et l’extraction. Les périphériques
+n’ont pas de `FILE` : leur statut MLI suffit et aucun `ferror(NULL)` n’est
+appelé. L’image et le périphérique restent en lecture seule ; seuls les
+blocs précédemment validés peuvent être conservés dans la sortie créée
+exclusivement. L’erreur est signalée comme extraction incomplète. Aucun
+accès AUX/RAM n’est ajouté.
+
+Pour tenir sous l’API fixe, BLKVIEW utilise désormais `IMAGEIO_ONE` pour
+son unique source, image ou périphérique : la recherche de taille réutilise
+son chemin au lieu de conserver les deux copies de la variante générale.
+Les gardes de disposition restent actives. Dix-huit cas du vrai C injectent
+une erreur avec compte complet dans les trois premiers appels de lecture,
+pour PO, DSK et 2MG, en recherche et en extraction. Tous échouaient avant
+correction. Ils vérifient l’arrêt et les octets exacts du préfixe conservé,
+sans copier le bloc en erreur, ainsi que le conteneur entier inchangé.
+Trois cas supplémentaires ouvrent réellement les images par `image_open`
+et contrôlent des secteurs distincts en ordre normalisé ; deux cas lisent
+un périphérique sans flux fichier, avec succès ou erreur MLI.
+
+Les 17 tests BLKVIEW, 33 BLKEDIT et 15 gardes de disposition passent avec
+les builds et contrôles natifs 65C02/6502. BLKVIEW mesure 8 698 / 8 746
+octets, BSS jusqu’à `$3E0D / $3E3E` inclus, soit 400 / 351 octets libres
+avant l’API fixe à `$3F9E`. Le résident, BLKEDIT et les plafonds restent
+inchangés. Les distributions sont reconstruites et les huit tests 800K
+passent sur des images jetables.
+
+BLKEDIT : compte complet et erreurs de flux (11 octobre 2026).
+
+L’éditeur pouvait accepter une lecture ou une écriture d’image au compte
+complet malgré une erreur du flux, ensuite effacée au bloc suivant par
+`clearerr`. Le bloc pouvait être déclaré écrit et vérifié, même si son
+identité, l’écriture ou la relecture n’avaient pas été validées. Un wrapper
+local contrôle maintenant chaque transfert avant cet effacement. Les
+périphériques continuent d’utiliser le statut MLI sans `FILE`. L’en-tête
+2MG, lu hors des blocs, est contrôlé avant la première lecture normalisée.
+Une autre erreur était ignorée après écriture du bloc d’identité : l’échec
+de son renouvellement est maintenant signalé, sans effacer le statut dirty.
+
+Vingt et un cas du vrai C injectent des erreurs au compte complet dans
+l’en-tête, l’identité, le bloc édité, le contrôle avant écriture, l’écriture
+et la relecture, pour PO, DSK et 2MG. Seize annonçaient un succès avant
+correction ; les cinq autres contrôlent les refus déjà obtenus lorsqu’une
+première moitié DSK bloquait la seconde. Quatre cas supplémentaires
+reproduisent l’erreur ignorée pendant le renouvellement de l’identité.
+Les tests comparent le conteneur entier, vérifient zéro écriture avant une
+lecture validée et, après une écriture non entièrement validée, le maintien
+de l’avertissement de perte de l’édition au départ. Le mock reproduit
+`clearerr` entre blocs et le refus d’un flux en erreur par cc65.
+
+La seule écriture possible reste le bloc explicitement confirmé par ERASE,
+dans l’image ou le périphérique sélectionné. L’édition et la relecture
+utilisent MAIN ; aucun accès AUX/RAM n’est ajouté. Une erreur après
+écriture ne restaure pas automatiquement l’ancien bloc : les écritures
+brutes demeurent destructrices et ne sont pas atomiques face à une coupure.
+
+Les 35 tests BLKEDIT, 17 BLKVIEW et 15 gardes de disposition passent avec
+les builds et contrôles natifs 65C02/6502. BLKEDIT mesure 8 402 / 8 363
+octets, BSS jusqu’à `$3EC3 / $3E9D` inclus, soit 218 / 256 octets libres
+avant l’API fixe à `$3F9E`. Le résident et les plafonds restent inchangés.
+Les distributions sont reconstruites et les huit tests 800K passent.
+
+BLKEDIT / IMGPUT : fermeture du dossier contenant l’image
+(11 octobre 2026).
+
+Ces deux chemins d’écriture retenaient encore la taille de l’image après
+une erreur de lecture ou de fermeture du dossier qui la contient. Le
+contrôle existant `IMAGEIO_CHECK_CLOSE` est désormais activé : une erreur
+invalide les métadonnées avant l’ouverture du fichier image. BLKEDIT refuse
+de commencer l’édition et IMGPUT refuse avant sa demande de confirmation.
+Les autres chemins et les gardes du catalogue ProDOS restent inchangés.
+
+Douze cas du vrai C injectent les statuts 1 et `$1B` à la fermeture du
+dossier, pour PO, DSK et 2MG dans les deux overlays. Tous modifiaient
+l’image avant correction. Ils vérifient maintenant le conteneur complet
+inchangé et zéro écriture ; BLKEDIT vérifie aussi zéro lecture d’image et
+aucun avertissement de perte d’édition, IMGPUT l’absence de confirmation
+et les octets de la source conservés. Les images d’essai sont jetables.
+
+BLKEDIT ne peut écrire que le bloc choisi après ERASE ; IMGPUT peut écrire
+les blocs libres, les index, la bitmap et le catalogue de l’image confirmée.
+Ce refus arrive avant ces écritures. Les sources restent en lecture seule,
+sans accès AUX/RAM. Il ne change pas les limites des écritures physiques
+interrompues ni leur absence d’atomicité.
+
+Les 36 tests BLKEDIT, 59 IMGPUT, 17 BLKVIEW et 15 gardes de disposition
+passent avec les builds et contrôles natifs 65C02/6502. BLKEDIT mesure
+8 401 / 8 364 octets, BSS jusqu’à `$3EC2 / $3E9E` inclus, soit 219 / 255
+octets libres avant l’API fixe à `$3F9E`. IMGPUT mesure 8 059 / 8 027
+octets, BSS jusqu’à `$3FFD / $3FDE`, soit 2 / 33 octets libres sous `$4000`.
+Le résident et les plafonds restent inchangés ; aucun garde n’est désactivé.
+Les distributions sont reconstruites et les huit tests 800K passent.
+
+IMGPUT : erreurs au compte complet dans l’image (11 octobre 2026).
+
+Une lecture ou une écriture d’image au compte complet pouvait porter une
+erreur du flux sans être refusée. Le bloc suivant effaçait cette erreur
+avec `clearerr`, et IMGPUT pouvait annoncer « Copied into the image ».
+`IMAGEIO_CHECK_STREAM` vérifie désormais chaque transfert avant le suivant,
+y compris chaque moitié DSK, ainsi que l’en-tête 2MG avant la première
+lecture normalisée. Cette option ne change aucun autre overlay.
+
+Pour financer les contrôles, l’entrée ProDOS de 39 octets est construite
+dans `idx` après écriture et attribution de l’index sapling : à cet instant
+son contenu mémoire n’est plus nécessaire. Le nom reste dans le snapshot
+résident de l’entrée sélectionnée pendant les recherches ; l’entrée est
+copiée dans `dirb` avant que la vérification réutilise `idx`. Les contrôles
+de disposition restent actifs et le résident n’est pas modifié.
+
+La régression injecte une erreur avec compte complet à chacun des 117
+points de lecture/écriture d’une copie normale, pour PO, DSK et 2MG, avec
+deux fichiers préexistants. Sans le contrôle, les 117 cas annoncent une
+copie réussie ; avec lui, aucun ne l’annonce. Chaque cas compare les
+entrées et les octets des deux anciens fichiers, ainsi que la source
+ProDOS entière. Les tests existants vérifient aussi l’allocation, les
+index, les collisions, les catalogues malformés et les erreurs partielles.
+Le mock reproduit l’effacement de l’erreur entre blocs. Les seules
+écritures restent les blocs libres, l’index, la bitmap et le catalogue de
+l’image confirmée, sans accès AUX/RAM. Une erreur tardive peut laisser des
+blocs attribués ou une entrée déjà publiée : le diagnostic demande de
+contrôler l’image. Le correctif ne rend pas ces écritures atomiques.
+
+Les 60 tests IMGPUT, 36 BLKEDIT et 15 gardes de disposition passent avec
+les builds et contrôles natifs 65C02/6502. IMGPUT mesure 8 094 / 8 066
+octets, BSS jusqu’à `$3FF9 / $3FDE` inclus, soit 6 / 33 octets libres
+sous `$4000`. Les plafonds restent inchangés ; les distributions sont
+reconstruites et les huit tests 800K passent sur des images jetables.
+
+IMGPUT : fermeture finale de l’image (11 octobre 2026).
+
+Le résultat était affiché avant la fermeture de l’image, dont le statut
+était ignoré. Une erreur de fermeture pouvait donc laisser « Copied into
+the image » comme résultat. IMGPUT ferme désormais l’image avant de publier
+le résultat et remplace celui-ci par « Close failed. » si la fermeture
+échoue. La fermeture est unique ; `image_open` réinitialise le pointeur au
+prochain appel. Le résident et la mémoire auxiliaire ne sont pas modifiés.
+
+La régression exécute le vrai C sur neuf cas PO/DSK/2MG : copie complète,
+confirmation refusée et erreur de fermeture de la source avant écriture.
+Les neuf cas échouaient avant correction. Chaque cas compare la source
+entière et les entrées et données de deux fichiers préexistants. Après une
+copie complète, le fichier importé reste présent avec ses octets exacts ;
+dans les deux refus, l’image entière reste identique. Une fermeture en
+erreur rend la persistance incertaine : ce diagnostic ne garantit ni
+restauration de l’image ni atomicité des écritures physiques.
+
+Les 61 tests IMGPUT et 15 gardes de disposition passent. Les builds et
+contrôles natifs 65C02/6502 passent avec IMGPUT à 8 096 / 8 067 octets,
+BSS jusqu’à `$3FFB / $3FDF` inclus : 4 / 32 octets libres sous `$4000`,
+sans modification des plafonds. Les distributions sont reconstruites et
+les huit tests 800K passent sur des images jetables.
+
+BLKEDIT : permissions fraîches de l’image (11 octobre 2026).
+
+BLKEDIT utilisait le bit d’écriture du snapshot du panneau après ouverture
+de l’image. Une image verrouillée depuis la lecture du panneau était donc
+ouverte pour mise à jour et atteignait ERASE puis une tentative d’écriture ;
+ProDOS peut accepter OPEN et ne refuser que WRITE. Inversement, une image
+déverrouillée restait refusée. L’éditeur active `IMAGEIO_CHECK_ACCESS`, et
+la forme générale de `size_of` relève maintenant les permissions fraîches
+dans le même catalogue que la taille. L’image protégée s’ouvre avec `rb`,
+et le contrôle périmé du panneau est supprimé. Une erreur de fermeture du
+catalogue invalide toujours ces métadonnées. Les autres overlays conservent
+leurs branches conditionnelles ; les protections du conteneur 2MG restent
+prises en compte après celles du fichier.
+
+Le vrai C reproduisait 18 échecs sur PO/DSK/2MG : cinq valeurs d’accès sans
+écriture face à un panneau autorisant l’écriture, puis une image autorisée
+face à un panneau verrouillé. Les régressions comparent l’image entière,
+le nombre d’écritures, le mode d’ouverture et la présence du prompt ERASE.
+Les images protégées restent identiques, sans WRITE ni prompt ERASE ; les
+images déverrouillées ne changent que l’octet confirmé du bloc édité. Le
+mock de fermeture du premier harness renvoie aussi explicitement le statut
+réel attendu par le résident, au lieu d’appeler une fonction void par un
+type retournant un octet.
+
+Les 37 tests BLKEDIT, 29 PASCALW, 24 CPMW, 61 IMGPUT et 15 gardes de
+disposition passent. Les builds et contrôles natifs 65C02/6502 passent :
+BLKEDIT mesure 8 407 / 8 367 octets, BSS jusqu’à `$3EC8 / $3EA1` inclus,
+soit 213 / 252 octets libres avant l’API fixe à `$3F9E`. Les seules
+écritures restent celles du bloc confirmé, sans accès AUX/RAM ; elles ne
+deviennent pas atomiques. Les plafonds sont inchangés. Les distributions
+sont reconstruites et les huit tests 800K passent sur des images jetables.
+
+BLKVIEW : fermeture du catalogue de l’image (11 octobre 2026).
+
+Le lecteur relevait la taille de l’image dans son catalogue, mais ignorait
+le statut de fermeture de ce catalogue. Une erreur de parcours ou de
+fermeture pouvait donc laisser des métadonnées incertaines autoriser
+l’ouverture puis l’extraction. BLKVIEW active maintenant
+`IMAGEIO_CHECK_CLOSE` : ces erreurs invalident la taille avant l’ouverture
+du flux et avant toute demande ou création de fichier de destination.
+Le diagnostic reste « Invalid or unreadable image. ».
+
+Un nouveau harness exécute `plugin_entry`, la navigation et l’extraction
+du vrai C. Les 12 cas d’erreur combinent PO/DSK/2MG, les statuts 1 et 27,
+et une destination absente ou déjà présente. Tous poursuivaient jusqu’à
+une tentative de CREATE avant correction ; désormais aucun n’ouvre
+l’image, ne la lit, ne pose la question d’extraction ni ne tente CREATE.
+Chaque cas compare l’image entière et les fichiers préexistants ; aucune
+destination absente n’est créée. Trois témoins sans erreur vérifient aussi
+les 512 octets extraits en ordre normalisé. Le mock du harness d’ouverture
+renvoie désormais explicitement zéro pour une fermeture réussie, comme
+le résident derrière le type void figé de l’API.
+
+Les 19 tests BLKVIEW et 15 gardes de disposition passent, ainsi que les
+builds et contrôles natifs 65C02/6502. BLKVIEW mesure 8 707 / 8 757 octets,
+BSS jusqu’à `$3E16 / $3E49` inclus, soit 391 / 340 octets libres avant
+l’API fixe à `$3F9E`. Le résident et les plafonds ne changent pas. Les
+seules écritures possibles restent celles d’une destination créée
+exclusivement par l’extraction ; aucune écriture de l’image source ou
+d’AUX/RAM n’est introduite. Les distributions sont reconstruites et les
+huit tests 800K passent sur des images jetables. Une extraction interrompue
+peut toujours conserver son fichier partiel ; ce contrôle ne rend pas
+les écritures physiques atomiques.
+
+BLKVIEW : fermeture finale de la source (11 octobre 2026).
+
+La sortie du lecteur utilisait `source_close`, qui ignorait le statut
+de fermeture du flux de l’image. Une erreur restait donc silencieuse après
+consultation ou extraction. BLKVIEW ferme désormais ce flux une seule fois,
+contrôle le statut et publie « BLKVIEW: source close failed. » en cas
+d’erreur. Les fichiers déjà extraits sont conservés ; aucune restauration
+ni suppression n’est ajoutée. Le pointeur est remis à zéro, et une session
+sur périphérique, sans FILE, ne tente aucune fermeture.
+
+Le harness de `plugin_entry` injecte l’erreur finale dans neuf cas
+PO/DSK/2MG, après consultation seule, extraction ou collision de nom.
+Tous avaient un diagnostic vide avant correction. Chaque cas compare
+l’image entière, un fichier témoin et, selon le cas, la destination
+préexistante ou les 512 octets extraits. Une destination absente reste
+absente après simple consultation. Le compteur vérifie une fermeture
+unique. Un témoin supplémentaire parcourt le vrai chemin périphérique
+avec deux READ_BLOCK MLI, sans ouvrir ni fermer de flux de fichier.
+
+Les 21 tests BLKVIEW et 15 gardes de disposition passent, ainsi que les
+builds et contrôles natifs 65C02/6502. BLKVIEW mesure 8 720 / 8 769 octets,
+BSS jusqu’à `$3E23 / $3E55` inclus : 378 / 328 octets libres avant l’API
+fixe à `$3F9E`. Le résident et les plafonds restent inchangés. Les seules
+écritures demeurent celles de la destination exclusivement créée pour
+l’extraction, sans modification de la source ou d’AUX/RAM. Le diagnostic
+ne promet aucune atomicité des écritures physiques. Les distributions
+sont reconstruites et les huit tests 800K passent sur des images jetables.
+
+IMGPUT : protection du fichier contenant l’image (11 octobre 2026).
+
+IMGPUT contrôlait les protections du volume contenu, de son répertoire
+destination et du conteneur 2MG, mais pas celles du fichier image lui-même.
+ProDOS peut accepter OPEN pour mise à jour sur un fichier verrouillé et
+ne refuser que WRITE. L’importeur active désormais `IMAGEIO_REQUIRE_WRITE`
+dans la recherche de taille : un bit d’écriture absent invalide l’ouverture
+avant le flux, la confirmation et toute écriture. Le diagnostic est
+« Cannot open the image. ». L’option exige à la compilation la forme
+`IMAGEIO_ONE` d’un écrivain. La recherche s’arrête à l’entrée trouvée,
+même si ses permissions interdisent l’écriture ; une erreur de fermeture
+du catalogue continue d’invalider le résultat.
+
+Les 15 cas d’erreur combinent PO/DSK/2MG avec cinq valeurs d’accès sans
+écriture. Avant correction, les copies atteignaient les écritures ; après,
+aucune image n’est ouverte, aucune confirmation n’est demandée, et l’image
+entière et la source restent identiques. Trois témoins autorisés extraient
+les octets importés avec l’oracle ProDOS et comparent aussi les entrées et
+les données de deux fichiers préexistants.
+
+Pour conserver les gardes mémoire, `image_open` n’initialise plus le numéro
+de périphérique quand `IMAGEIO_NODEVICE` exclut tous ses usages. Le type
+de l’image est affecté après reconnaissance de l’extension, avant toute
+lecture, au lieu d’être initialisé deux fois. La recherche de catalogue
+utilise un break après correspondance plutôt qu’un test du drapeau à
+chaque itération. IMGPUT stocke la longueur du nom dans l’octet `src.unit`
+ainsi inutilisé et préservé par l’ouverture file-only ; son BSS perd un
+octet sans modifier les buffers ni leur durée de vie. Aucun changement
+du résident, des plafonds ou d’AUX/RAM n’est introduit.
+
+Les 62 tests IMGPUT, 29 PASCALW, 24 CPMW, 21 BLKVIEW, 37 BLKEDIT,
+16 PASCAL, 20 CPM et 15 gardes de disposition passent avec les builds
+et contrôles natifs 65C02/6502. IMGPUT mesure 8 101 / 8 073 octets,
+BSS jusqu’à `$3FFF / $3FE4` inclus : **0 / 27 octets libres** sous
+`$4000`. L’overlay 65C02 remplit exactement son espace ; tout ajout devra
+libérer de la place et repasser les contrôles. Les écritures restent celles
+des blocs libres, de l’index, de la bitmap et du catalogue de l’image
+confirmée, sans garantie d’atomicité physique. Les distributions sont
+reconstruites et les huit tests 800K passent sur des images jetables.
+
+SCIIBIN : annulation pendant la fermeture de vérification (11 octobre 2026).
+
+`read_back` contrôlait ESC avant les lectures et après la dernière mise à
+jour de progression, puis fermait le flux sans recontrôler l’annulation.
+ESC arrivé pendant cette fermeture pouvait donc laisser un diagnostic de
+décodage réussi. La fonction contrôle désormais `stop()` après une
+fermeture réussie avant de valider le résultat. Une fermeture en erreur
+reste un échec ; aucun second CLOSE n’est ajouté. Le nettoyage existant
+reste limité au fichier créé exclusivement par cette opération.
+
+La régression exécute le vrai C avec trois tailles, dont un décodage sur
+plusieurs segments, et trois variantes : ESC seul à la fermeture finale,
+ESC avec suppression refusée, ESC avec fermeture en erreur. Six des neuf
+cas annonçaient une réussite avant correction ; les trois autres étaient
+déjà refusés grâce au statut de fermeture. Les neuf cas vérifient une
+fermeture unique au bout de tous les octets, la tentative de nettoyage de
+la seule sortie créée, les sources complètes et un fichier préexistant.
+Quand la suppression échoue, la sortie entière reste présente avec ses
+octets exacts et le diagnostic de nettoyage en erreur.
+
+Les 11 tests SCIIBIN, dont le calcul CRC sous sim65 pour les deux
+architectures, et les 15 gardes de disposition passent. Les builds et
+contrôles natifs 65C02/6502 passent avec SCIIBIN à 6 532 / 6 552 octets,
+BSS jusqu’à `$3FD6 / $3FEB` inclus : 41 / 20 octets libres sous `$4000`.
+Le résident et les plafonds ne changent pas. Aucune écriture des sources,
+des destinations préexistantes ou d’AUX/RAM n’est ajoutée. Le correctif
+ne rend pas les écritures physiques atomiques. Les distributions sont
+reconstruites et les huit tests 800K passent sur des images jetables.
+
+UNSQ : erreurs de création distinctes des doublons (11 octobre 2026).
+
+`one` traitait toute erreur de CREATE comme un nom déjà pris, incrémentait
+le compteur de fichiers ignorés et poursuivait l’archive. Un disque plein,
+un accès refusé ou une erreur d’E/S pouvait donc laisser « name taken »
+et autoriser d’autres créations après une erreur. Le code distingue
+désormais le seul doublon `$47` : les autres statuts arrêtent l’extraction
+avant toute ouverture ou suppression de la destination en erreur. `bad=2`
+identifie ce refus pour publier « create failed, stopped. » ; il ne
+diagnostique pas une archive endommagée. Les fichiers déjà vérifiés restent
+présents. Les règles de filtrage des noms non représentables et des types
+non pris en charge ne changent pas.
+
+Les 12 injections exécutent le vrai C sur un SQueezed autonome et une
+archive ACU, au premier fichier ou après un fichier déjà vérifié. Elles
+couvrent les statuts `$27/$48/$4E` et une destination créée entre-temps
+avant un retour CREATE en erreur. Avant correction, ces cas étaient ignorés
+et l’archive pouvait continuer ; après, le compteur d’appels CREATE
+s’arrête exactement au refus. Les sources entières, le fichier témoin,
+la première sortie vérifiée et les octets de la destination apparue sont
+comparés ; aucune suppression n’est tentée et aucun fichier suivant
+n’est créé. Un témoin de vraies collisions vérifie que l’extraction
+continue pour l’entrée libre et préserve tous les anciens fichiers.
+
+Les 19 tests UNSQ et 15 gardes de disposition passent, ainsi que les
+builds et contrôles natifs 65C02/6502. UNSQ mesure 6 983 / 7 060 octets,
+BSS jusqu’à `$3E72 / $3EC0` inclus, soit 397 / 319 octets libres sous
+`$4000`. Aucun buffer, résident, plafond ou accès AUX/RAM n’est ajouté.
+Les seules écritures restent celles des fichiers créés exclusivement
+par l’extraction ; un CREATE en erreur ne donne aucun droit de nettoyage
+sur sa cible. Le correctif ne garantit pas l’atomicité des écritures
+physiques. Les distributions sont reconstruites et les huit tests 800K
+passent sur des images jetables.
+
+UNSQ : annulation pendant la fermeture finale de l’archive (11 octobre 2026).
+
+La fermeture finale du flux source était contrôlée pour les erreurs d’E/S,
+mais pas pour ESC arrivé pendant cet appel. Une extraction complète ou une
+archive vide pouvait donc garder un résultat de réussite malgré une
+annulation. UNSQ appelle maintenant `stop()` après cette fermeture et
+invalide le résultat complet. Le diagnostic d’archive endommagée sans
+sortie exclut explicitement une annulation : une archive vide interrompue
+reste « stopped ». Une erreur d’E/S garde son diagnostic prioritaire.
+Les fichiers déjà vérifiés restent conservés, sans nouvelle suppression,
+seconde fermeture ou écriture de la source et d’AUX/RAM.
+
+Les dix injections exécutent le vrai C : SQueezed autonome, ACU avec deux
+sorties dont une vide, ACU vide, nom déjà pris et type `$0F` ignoré, chacun
+avec ESC seul ou ESC et fermeture en erreur. Les cinq cas avec ESC seul
+annonçaient encore une réussite avant correction ; les autres étaient
+déjà refusés grâce au statut d’E/S. Les régressions comparent les octets
+de l’archive source, des fichiers déjà extraits et des destinations
+préexistantes, vérifient une fermeture source unique et l’absence de
+toute tentative de suppression.
+
+Les 20 tests UNSQ et 15 gardes de disposition passent avec les builds et
+contrôles natifs 65C02/6502. UNSQ mesure 6 997 / 7 076 octets, BSS jusqu’à
+`$3E80 / $3ED0` inclus, soit 383 / 303 octets libres sous `$4000`. Le
+résident, les buffers et les plafonds restent inchangés. Les écritures
+physiques des sorties ne deviennent pas atomiques. Les distributions
+sont reconstruites et les huit tests 800K passent sur des images jetables.
+
+SCIIBIN : liste de parties incertaine (11 octobre 2026).
+
+`list_parts` gardait le fichier sélectionné comme première partie même
+quand l’ouverture du catalogue échouait, quand sa lecture s’interrompait
+ou quand sa fermeture signalait une erreur. Elle ignorait également
+l’absence de l’entrée sélectionnée dans le catalogue frais. Le décodage
+pouvait donc commencer et créer une sortie avec une liste incertaine.
+La fonction retourne désormais un statut : ouverture réussie, entrée
+sélectionnée retrouvée et fermeture sans erreur de lecture ni de CLOSE.
+Le statut renvoyé par le résident est lu à travers le type void figé de
+l’API. La fermeture reste unique et obligatoire après une ouverture,
+même quand l’entrée sélectionnée n’a pas été rencontrée. Un refus publie
+« Directory unreadable. » avant toute ouverture de source ou création.
+
+Les 14 injections exécutent le vrai C sur un décodage en une partie et
+un décodage en plusieurs parties : ouverture refusée, lecture interrompue
+avant ou après l’entrée sélectionnée ou après la partie suivante, deux
+statuts de fermeture et sélection absente du catalogue. Les 14 cas
+créaient une sortie avant correction ; aucun ne commence maintenant
+le décodage. Les sources et fichiers préexistants sont comparés en entier,
+aucune création ou suppression n’a lieu, et les compteurs vérifient zéro
+ou une fermeture de catalogue selon que l’ouverture a échoué ou réussi.
+
+Pour conserver les plafonds, la table d’alphabet passe de 256 à 128 octets,
+avec un effacement utilisant `sizeof table`. Toutes ses lectures et
+écritures indexent `line`, dont `next_line` supprime systématiquement le
+bit 7 avant stockage. La table CRC à 256 entrées reste entière. Quatre
+témoins décodent trois segments avec l’alphabet normal ou DEL à l’index
+127, avec ou sans bit haut sur tous les caractères et fins de ligne.
+Les octets décodés sont comparés au payload entier ; l’oracle Python ne
+sert pas pour les fins de ligne à bit haut, qu’il coupe avant normalisation.
+
+Les 13 tests SCIIBIN, les 29 PASCALW comprenant le contrôle du statut de
+fermeture via l’API sous sim65 pour les deux processeurs, et les 15 gardes
+de disposition passent. Les builds et contrôles natifs 65C02/6502 passent :
+SCIIBIN mesure 6 583 / 6 601 octets, BSS jusqu’à `$3F89 / $3F9C` inclus,
+soit 118 / 99 octets libres sous `$4000`. Le résident et les plafonds ne
+changent pas ; aucun accès AUX/RAM n’est ajouté. Les seules écritures et
+nettoyages possibles restent ceux de la sortie exclusivement créée par
+le décodage, sans garantie d’atomicité physique. Les distributions sont
+reconstruites et les huit tests 800K passent sur des images jetables.
+
+IMGCONV : annulation après la dernière lecture de vérification (11 octobre 2026).
+
+La vérification contrôlait ESC avant chaque bloc, mais pas après la sonde
+EOF et les fermetures finales des deux flux. ESC pendant ces étapes
+pouvait donc laisser installer la conversion à la place de l’ancienne
+destination. `verify_output` contrôle maintenant le clavier après les
+deux fermetures, acquitte ESC et invalide le résultat avant tout renommage.
+Le chemin d’échec existant nettoie uniquement le temporaire créé par
+l’opération ; la source et l’ancienne destination restent intactes. Une
+erreur de nettoyage conserve le temporaire vérifié et son diagnostic.
+
+Les 30 injections exécutent le vrai C sur PO vers 2MG, PO vers DSK,
+DSK vers PO, 2MG vers PO, PO vers DiskCopy et DiskCopy vers PO. Elles
+couvrent ESC à la fermeture de chaque flux de vérification, à la sonde
+EOF de la destination, ESC avec nettoyage refusé et ESC avec fermeture
+en erreur. Avec le contrôle final retiré d’une copie temporaire du C,
+24 cas installent la conversion malgré ESC ; les six erreurs de fermeture
+étaient déjà refusées. Avec le contrôle, les 30 cas ferment les quatre
+flux ouverts, ne font aucun renommage, ne créent aucune sauvegarde et
+préservent la source et l’ancienne destination octet pour octet. Les
+temporaires retenus sont comparés entièrement à une conversion indépendante,
+y compris les en-têtes et sommes DiskCopy. Les secteurs des fixtures
+diffèrent pour rendre une mauvaise permutation visible.
+
+Pour financer le contrôle sous les plafonds, l’index de comparaison de
+demi-bloc passe à un octet, parcouru par un do/while jusqu’à son retour
+à zéro : les 256 octets, dont l’index 255, sont toujours contrôlés. Deux
+régressions injectent une corruption dans le dernier octet de chaque
+demi-bloc de la lecture de vérification et vérifient le refus d’installation.
+Le compteur perd aussi un octet de BSS, sans réduire le tampon de 256
+octets ni la quantité de données vérifiée. Aucun accès AUX/RAM n’est ajouté.
+
+Les 25 tests IMGCONV et 15 gardes de disposition passent avec les builds
+et contrôles natifs 65C02/6502. IMGCONV mesure 8 798 / 8 964 octets,
+BSS jusqu’à `$3F46 / $3FED` inclus, soit 185 / 18 octets libres sous
+`$4000`. Le résident et les plafonds restent inchangés. Les distributions
+sont reconstruites et les huit tests 800K passent sur des images jetables.
+La protection de l’original pendant cette annulation ne rend pas les
+écritures physiques ou les renommages ProDOS atomiques lors d’une coupure.
+
+## MKIMAGE : annulation après la dernière fermeture (11 octobre 2026)
+
+Une annulation arrivée à la lecture de l’EOF de vérification ou pendant
+la fermeture finale pouvait être ignorée et l’image annoncée comme créée.
+MKIMAGE contrôle désormais ESC après cette fermeture, avant de décider
+du succès. Seule l’image réservée par création exclusive est supprimée ;
+si sa suppression échoue, elle reste en place avec le diagnostic de
+nettoyage. Les écritures concernent ce fichier et les tampons MAIN,
+sans accès AUX ni modification de `/RAM`.
+
+Le vrai point d’entrée C est testé avec 16 scénarios : PO et 2MG, 140K
+et 800K, annulation à l’EOF, à la fermeture, fermeture en erreur ou
+nettoyage en erreur. Douze annonçaient une création avant la correction.
+Les fichiers retenus après un échec de nettoyage sont comparés entièrement
+au résultat normal et une nouvelle tentative doit préserver leurs octets.
+Chaque scénario contrôle aussi une collision avec un fichier préexistant.
+
+Les six tests MKIMAGE, les 64 tests des overlays partagés et les 15 gardes
+de disposition passent. Builds et contrôles natifs 65C02/6502 valides :
+MKIMAGE mesure 4 684 / 4 784 octets, BSS jusqu’à `$3076 / $30DB`
+inclus, soit 3 977 / 3 876 octets libres sous `$4000`. Le résident et
+les plafonds restent inchangés. Distributions reconstruites et huit tests
+800K validés sur les images de distribution. Ce contrôle ne garantit pas
+le nettoyage du fichier lors d’une coupure pendant une écriture physique.
+
+## TXTCONV : annulation avant le remplacement (11 octobre 2026)
+
+ESC reçu pendant la lecture finale de vérification ou l’une des deux
+fermetures pouvait laisser renommer l’original puis annoncer le succès.
+Le contrôle clavier est désormais partagé entre la boucle de conversion
+et la sortie après les deux fermetures, avant toute installation. Une
+annulation nettoie uniquement le fichier créé exclusivement par cette
+opération. Source, ancienne destination et sauvegardes préexistantes
+restent intactes ; les tampons utilisés sont en MAIN, sans accès AUX/RAM.
+
+Le vrai point d’entrée C couvre 45 scénarios : conversion sur place,
+remplacement dans l’autre panneau ou nouvelle destination, textes de
+0, 256 et 800 octets, ESC au contrôle d’EOF, à la fermeture source ou
+destination, avec erreur de fermeture ou de nettoyage. Avant correction,
+36 scénarios remplaçaient l’original ou annonçaient un succès. Après
+correction, les quatre flux sont fermés et aucun renommage ne commence.
+Les octets des deux originaux et d’un fichier tiers sont contrôlés ; les
+résultats conservés après un nettoyage en erreur sont comparés entièrement
+à la conversion attendue puis protégés lors d’une nouvelle tentative.
+
+Les 26 tests TXTCONV et 15 gardes de disposition passent. Builds et
+contrôles natifs 65C02/6502 valides : TXTCONV mesure 6 105 / 6 143
+octets, BSS jusqu’à `$352A / $3551` inclus, soit 2 773 / 2 734 octets
+libres sous `$4000`. Le résident et les plafonds restent inchangés.
+Distributions reconstruites et huit tests 800K validés. Les renommages
+et écritures ProDOS restent non atomiques en cas de coupure physique.
+
+## RESCUE : taille refusée si le catalogue est en erreur (11 octobre 2026)
+
+La recherche de taille courante trouvait l’entrée sélectionnée mais ignorait
+le statut renvoyé par la fermeture du catalogue. Une erreur de lecture
+différée ou de fermeture pouvait donc valider cette taille et déclencher
+la création du journal et de la récupération. RESCUE lit désormais ce
+statut via le retour octet du résident, malgré la déclaration void de
+l’API figée, et refuse avant toute création ou confirmation en cas d’erreur.
+La source reste en lecture seule ; seuls les fichiers exclusivement créés
+de récupération et de journal sont normalement écrits, avec des tampons
+MAIN. Aucun accès AUX/RAM n’est ajouté.
+
+Le vrai point d’entrée C couvre 36 scénarios de catalogue : ouverture
+impossible, erreur de lecture, entrée absente, fermetures en erreur `$27`
+ou `$01`, et erreur différée malgré une entrée renvoyée. Sources de
+0, 100 et 1 600 octets, avec ou sans anciens fichiers de récupération.
+Avant correction, 18 scénarios continuaient au-delà de la recherche.
+Après correction, aucun flux fichier n’est ouvert, aucun CREATE ni aucune
+confirmation n’est appelé ; le catalogue ouvert est fermé exactement une
+fois. Tous les fichiers préexistants sont comparés octet pour octet.
+
+Les 11 tests RESCUE, 29 tests PASCALW (dont le retour natif de l’API figée
+sur les deux processeurs) et 15 gardes de disposition passent. Builds et
+contrôles natifs 65C02/6502 valides : RESCUE mesure 6 853 / 6 925 octets,
+BSS jusqu’à `$379B / $37E4` inclus, soit 2 148 / 2 075 octets libres
+sous `$4000`. Le résident et les plafonds restent inchangés. Distributions
+reconstruites et huit tests 800K validés. La récupération reste une copie
+au mieux avec journal des manques, sans garantie d’atomicité physique.
+
+## RESCUE : annulation pendant la clôture et statut du journal (11 octobre 2026)
+
+ESC reçu pendant la dernière lecture, la fermeture de la sortie ou de la
+source, ou l’écriture/fermeture du journal pouvait être ignoré et annoncer
+une récupération complète. RESCUE contrôle désormais ESC après la fermeture
+source, avant la ligne COMPLETE, puis après la clôture de cette ligne.
+En cas d’annulation tardive, les octets récupérés restent en place et une
+ligne INCOMPLETE termine le journal. Si cette ligne ne peut pas être ajoutée,
+l’interface annonce explicitement « log update failed » : une ancienne
+ligne COMPLETE peut alors rester la dernière sur disque. Le code ne promet
+pas une correction du journal qu’une erreur d’I/O empêche d’écrire.
+
+Le vrai point d’entrée C couvre 75 scénarios de fin de récupération :
+sources fichiers de 0, 1, 512 et 1 600 octets et volumes jetables de
+3, 7 et 280 blocs ; ESC à l’EOF, à la fermeture source/sortie, pendant
+l’écriture COMPLETE ou à sa fermeture, avec erreurs de flux/fermeture
+combinées. Le journal INCOMPLETE est aussi soumis à un échec d’ouverture,
+une erreur après écriture complète ou un échec de fermeture. Avant les
+contrôles, 29 scénarios annonçaient le succès malgré ESC ; les 21 cas de
+journal non fiable ne signalaient pas l’échec de sa mise à jour.
+Les tests contrôlent intégralement les octets de la récupération, de la
+source, d’un fichier tiers et d’une récupération antérieure, ainsi que la
+fermeture de chaque flux ouvert. Aucun fichier récupéré n’est supprimé.
+Les écritures concernent uniquement les fichiers de sortie/journal créés
+exclusivement par cette opération et les tampons MAIN, sans accès AUX/RAM.
+
+Les 12 tests RESCUE et 15 gardes de disposition passent. Builds et contrôles
+natifs 65C02/6502 valides : RESCUE mesure 6 940 / 7 012 octets, BSS
+jusqu’à `$37F2 / $383B` inclus, soit 2 061 / 1 988 octets libres sous
+`$4000`. Le résident et les plafonds restent inchangés. Distributions
+reconstruites et huit tests 800K validés. Une coupure pendant l’écriture
+physique peut toujours interrompre le fichier ou le journal.
+
+## VOLINFO : entrée de catalogue refusée sur erreur du flux (11 octobre 2026)
+
+La recherche de l’entrée sélectionnée vérifiait la fermeture mais pas
+ferror après les lectures. Une lecture de 512 octets signalée en erreur
+pouvait donc fournir une entrée utilisée pour la liste des blocs et un
+rapport annoncé comme enregistré. Une fermeture en erreur marquait bien
+le rapport partiel mais retournait encore l’entrée trouvée, dont l’en-tête
+FILE pouvait être écrit. La recherche vérifie désormais l’indicateur de
+flux avant fermeture et ne retourne aucune entrée après une erreur.
+Le résumé d’audit déjà écrit reste disponible dans le rapport partiel,
+sans liste issue de cette entrée ni marqueur END REPORT.
+
+Le vrai export C couvre 15 scénarios de catalogue : entrée en positions
+1, 6 et 12, erreur après lecture complète, lecture courte, zéro octet
+en erreur, fermeture en erreur ou ouverture impossible. Six cas utilisaient
+encore l’entrée avant correction, dont trois annonçaient un rapport sauvé.
+Les mêmes 15 scénarios avec un rapport préexistant vérifient son identité
+octet pour octet, sans ouverture tronquante ni lecture du catalogue.
+Trois contrôles sains conservent la liste complète et END REPORT. Les
+catalogues sources et un fichier tiers sont comparés intégralement.
+Seul le rapport créé exclusivement est écrit, ainsi que les tampons MAIN ;
+aucune écriture de volume source ni aucun accès AUX/RAM n’est ajouté.
+
+Les neuf tests d’export, 30 tests d’audit VOLINFO et 15 gardes de disposition
+passent. Builds et contrôles natifs 65C02/6502 valides : VOLINFO mesure
+7 807 / 7 762 octets, BSS jusqu’à `$3F2F / $3F03` inclus, soit 110 / 154
+octets libres avant sa table d’API fixe à `$3F9E`. Le résident et les
+plafonds restent inchangés. Distributions reconstruites et huit tests 800K
+validés. Un rapport partiel est conservé ; une coupure physique pendant
+l’écriture peut toujours interrompre ou altérer ce fichier de sortie.
+
+## DOSIMAGE : annulation aux fermetures des deux phases (11 octobre 2026)
+
+ESC reçu pendant une fermeture après vérification de la copie préparatoire,
+ou pendant la fermeture de l’original après son contrôle CRC final, pouvait
+être ignoré et laisser commencer les renommages. DOSIMAGE contrôle désormais
+ESC après les deux fermetures de préparation et après la fermeture du
+contrôle final. La copie préparatoire appartient encore à cette phase :
+elle est nettoyée, ou retenue si sa suppression échoue. La copie contenant
+déjà le fichier importé est conservée à l’annulation de l’installation,
+avec le diagnostic A2FC.DOS retained. Aucun renommage ne commence.
+
+Le vrai C de DOSIMAGE et DOSPUT est testé avec 28 scénarios : DSK, DO,
+2MG et 2MG avec commentaire, annulation pendant la fermeture source ou
+temporaire de préparation, ou celle de l’original avant installation,
+avec échecs combinés de fermeture ou de nettoyage. Un wrapper de test
+inclut le C livré sans le modifier et expose uniquement son indicateur
+d’annulation aux mocks de fermeture. Avant correction, 20 scénarios
+commençaient encore les renommages. Après correction, original, source
+importée et fichier tiers restent identiques octet pour octet ; aucune
+sauvegarde n’est créée. Les copies retenues sont comparées entièrement à
+l’image originale ou au résultat sain de l’import, y compris le conteneur
+et son commentaire, puis protégées lors d’une nouvelle tentative.
+
+Les 18 tests DOSIMAGE, 15 tests du moteur DOSWRITE et 15 gardes de
+disposition passent, avec CRC sous sim65 sur les deux processeurs.
+Builds et contrôles natifs 65C02/6502 valides : DOSIMAGE mesure
+7 357 / 7 491 octets, BSS jusqu’à `$3A51 / $3AD8` inclus, soit
+1 454 / 1 319 octets libres sous `$4000`. Le résident et les plafonds
+restent inchangés. Distributions reconstruites et huit tests 800K validés.
+Les écritures concernent la copie réservée exclusivement et les tampons
+MAIN ; aucune écriture AUX/RAM n’est ajoutée. Les renommages ProDOS
+restent non atomiques lors d’une coupure physique.
+
+## MOVECOPY : préserver le type et l’adresse auxiliaire de la source (11 octobre 2026)
+
+MOVE entre volumes relisait les métadonnées de la source avant copie et
+avant suppression, mais ne vérifiait que le stockage et la protection.
+La destination étant créée avec le type/aux du panneau, un panneau périmé
+ou une modification de ces attributs pendant la copie pouvait laisser
+supprimer une source dont les métadonnées n’étaient pas préservées. La
+vérification complète des octets ne suffit pas à conserver, par exemple,
+le type BIN et son adresse de chargement.
+
+Le contrôle partagé compare désormais aussi type et aux avec l’entrée du
+panneau. Une incohérence initiale refuse avant CREATE ; une incohérence
+après copie et relecture conserve les deux fichiers sans effacer la copie
+vérifiée. Seule la destination créée exclusivement est écrite ; la source
+ne peut être supprimée qu’après toutes les vérifications. Les tampons
+restent en MAIN, sans accès AUX/RAM ni écriture brute supplémentaire.
+
+Le vrai C de MOVE/MOVECOPY couvre 24 régressions : type périmé, aux périmé
+(les deux octets ou chaque octet isolément), type ou aux changé après
+vérification, avec fichiers de 0, 1, 512 et 1 600 octets. Avant correction,
+tous supprimaient la source. Après correction, les octets de la source et
+d’un fichier tiers restent intacts ; aucune création n’a lieu au refus
+initial et la copie vérifiée reste intégrale au refus final. Six contrôles
+sains vérifient les arguments CREATE pour BIN `$06/$2000` et GS/OS
+`$B3/$FFFF`, ainsi que les octets déplacés et la suppression autorisée.
+
+Les 66 tests MOVE et 15 gardes de disposition passent. Builds et contrôles
+natifs 65C02/6502 valides : MOVECOPY mesure 3 055 / 3 042 octets, BSS
+jusqu’à `$29D9 / $29CD` inclus, soit 5 670 / 5 682 octets libres sous
+`$4000`. Le résident et les plafonds restent inchangés. Distributions
+reconstruites et huit tests 800K validés. Cette revalidation n’assure pas
+une atomicité de la copie/suppression ni une protection contre une coupure
+pendant les écritures physiques ProDOS.
+
+## DISKCMP : refuser les tailles et en-têtes lus en erreur (11 octobre 2026)
+
+DISKCMP utilisait imageio sans ses contrôles de fermeture du catalogue et
+d’erreur du flux à la lecture de l’en-tête 2MG. Une taille trouvée malgré
+une erreur du catalogue pouvait donc servir à annoncer des images
+identiques. Un en-tête renvoyé intégralement avec ferror pouvait être
+accepté et suivi de lectures du contenu sur ce flux déjà en erreur.
+DISKCMP active désormais IMAGEIO_CHECK_CLOSE et IMAGEIO_CHECK_STREAM.
+L’ouverture échoue avant d’utiliser ces métadonnées douteuses, et chaque
+image déjà ouverte est fermée. La comparaison reste entièrement en
+lecture seule ; seules ses structures et ses tampons MAIN sont modifiés,
+sans écriture d’image, de volume ou de mémoire AUX/RAM.
+
+Le vrai point d’entrée C couvre 30 scénarios de catalogue sur PO, DO et
+2MG : erreur de fermeture `$27` ou `$01`, erreur différée malgré une
+entrée renvoyée, ouverture impossible ou erreur de parcours, chaque fois
+sur la source puis la destination. Avant correction, les 18 scénarios
+avec entrée trouvée concluaient « Identical ». Deux régressions ajoutent
+une erreur après lecture complète de l’en-tête 2MG sur chaque côté :
+avant correction, le mock interrompait une lecture ultérieure du flux
+déjà en erreur. Après correction, aucun bloc de contenu n’est lu après
+ces refus ; le nombre exact d’ouvertures, fermetures de catalogue et
+lectures d’en-tête est contrôlé. Les octets des deux images et d’un
+fichier tiers restent identiques. Les contrôles sains et les tests de
+comparaison physique, de disquettes échangées et de conteneurs avec
+commentaires continuent de passer.
+
+Les 16 tests DISKCMP, 29 tests PASCALW (dont le retour natif octet de
+l’API void figée sur les deux processeurs) et 15 gardes de disposition
+passent. Builds et contrôles natifs 65C02/6502 valides : DISKCMP mesure
+7 666 / 7 640 octets, BSS jusqu’à `$3F83 / $3F6A` inclus, soit 124 / 149
+octets libres sous `$4000`. Le résident et les plafonds restent inchangés.
+Distributions reconstruites et huit tests 800K validés.
+
+## CPM : conserver les fichiers de zéro octet à l’extraction (11 octobre 2026)
+
+Une entrée CP/M valide sans enregistrement ni bloc de données était
+ignorée après sa mesure, et comptée « skipped (name taken) » même lorsque
+son nom était libre. L’extraction omettait donc ce fichier. La branche
+de saut est supprimée : one() réserve son nom par CREATE exclusif,
+ferme le flux d’écriture, rouvre le résultat vide et contrôle l’EOF,
+ferror, les fermetures et ESC comme pour un fichier non vide. L’échec
+de mesure est toujours contrôlé avant one() et ne devient pas un fichier
+vide valide. Seuls les outputs créés par cette extraction et les tampons
+MAIN sont écrits ; image source et mémoire AUX/RAM restent inchangées.
+
+Le vrai C est testé avec une entrée zéro-record suivie d’un fichier normal,
+ainsi que 44 scénarios sur les deux ordres de secteurs : extraction saine,
+collision, CREATE refusé/I/O/disque plein/protection, erreur de fermeture,
+erreur d’EOF de vérification, annulation aux fermetures et échec de
+nettoyage. Les collisions conservent les octets préexistants ; les erreurs
+de CREATE ne donnent aucun droit de nettoyage. Les résultats vides retenus
+après échec de nettoyage sont vérifiés puis protégés lors d’une nouvelle
+tentative, qui extrait seulement le fichier suivant. L’image source et
+un fichier tiers sont contrôlés intégralement. Les tests d’annulation à
+la fermeture finale de l’image vérifient désormais la conservation du
+fichier vide déjà créé et vérifié, au lieu de son omission.
+
+Les 21 tests CP/M et 15 gardes de disposition passent. Builds et contrôles
+natifs 65C02/6502 valides : CPM mesure 8 284 / 8 243 octets, BSS jusqu’à
+`$3FB2 / $3F8A` inclus, soit 77 / 117 octets libres sous `$4000`.
+La suppression du saut réduit le code sans réduire les contrôles
+d’I/O ni augmenter les tampons. Le résident et les plafonds restent
+inchangés. Distributions reconstruites et huit tests 800K validés. Une
+coupure physique pendant CREATE ou une fermeture reste susceptible de
+laisser un résultat incomplet ; aucune atomicité ProDOS n’est promise.
+
+## CP/M : refuser les extents ambigus avant CREATE
+
+Deux entrées du même utilisateur et du même nom pouvaient revendiquer le même
+numéro d'extent, avec des blocs distincts : `measure` les marquait toutes comme
+traitées, puis `extent_at` ne lisait que la première. La vérification relisait
+le même choix et pouvait annoncer un fichier complet en omettant l'autre entrée.
+`measure` réutilise désormais le bitmap MAIN de détection du skew pour refuser
+les doublons et les numéros hors des 64 entrées possibles, avant toute création.
+Les attributs du nom restent exclus de l'identité. Image source, fichiers
+préexistants et mémoire AUX ne sont pas écrits ; seuls les nouveaux fichiers
+exclusivement créés par l'extraction normale peuvent être écrits ou nettoyés.
+
+L'extracteur utilise `IMAGEIO_NODEVICE` : il ouvre uniquement des fichiers images,
+et n'embarque plus la branche inutilisée de lecture d'un périphérique brut.
+Les overlays CP/M mesurent 8024/7967 octets (65C02/6502), BSS jusqu'à
+`$3EA8`/`$3E70`, soit 343/399 octets libres avant `$4000`.
+Les contrôles mémoire restent actifs.
+
+Régression : huit cas de doublons échouaient avant correction. Le vrai C passe
+désormais 23 tests CP/M, dont 48 nouveaux scénarios : doublons avec/sans collision,
+attributs, entrée déplacée jusqu'au dernier slot, numéros 64/256/8191 et extents
+valides désordonnés. Les tests comparent les octets de l'image, des fichiers
+préexistants et des extractions valides, et exigent zéro CREATE pour les catalogues
+ambigus. Les deux builds, leurs contrôles de disposition et les 15 tests des
+gardes mémoire passent. Les distributions sont reconstruites et leurs huit tests
+800K passent. Ces contrôles ne promettent pas d'atomicité lors d'une coupure
+pendant une écriture physique ProDOS.
+
+## CP/M : respecter les compteurs de records et les blocs requis
+
+L'extraction ignorait RC dans les extents précédant le dernier et sautait les
+allocations nulles. Avec une allocation manquante dans le préfixe requis et un
+bloc supplémentaire plus loin, elle pouvait produire et vérifier des octets
+décalés ; avec un extent précédent partiel, elle pouvait copier des octets que
+son catalogue ne déclarait pas. `measure` vérifie désormais, avant CREATE, la
+présence de chaque bloc couvrant RC et l'égalité entre la somme des RC et la
+longueur calculée. Avec les identités uniques déjà contrôlées, cette égalité
+impose une suite complète d'extents antérieurs à 128 records.
+
+Seuls les buffers MAIN et les marqueurs de catalogue sont modifiés par ces
+contrôles. Image source, fichiers préexistants et AUX restent intacts ; la
+création exclusive et le nettoyage des seuls nouveaux fichiers restent ceux
+de l'extracteur. Les blocs réservés au-delà du préfixe requis, les fichiers
+vides et l'extent terminal vide restent acceptés.
+
+Seize scénarios reproduisaient l'absence de refus avant correction. Les 25 tests
+du vrai C passent, avec 40 nouveaux scénarios : 20 catalogues incohérents dans
+les deux skews, avec/sans collision, et 20 extractions valides aux limites des
+blocs et des extents. Chaque cas compare les octets conservés ou extraits.
+Les deux builds et leurs contrôles de disposition passent, ainsi que les
+15 tests des gardes mémoire. CP/M : 8168/8165 octets (65C02/6502), BSS jusqu'à
+`$3F3B`/`$3F39`, 196/198 octets libres avant `$4000` sans désactiver de garde.
+Les distributions sont reconstruites et les huit tests 800K passent. Une
+coupure pendant l'écriture physique ProDOS reste hors de toute garantie
+d'atomicité.
+
+## UNWRAP : refuser deux descriptions de la data fork AppleSingle
+
+Le parseur AppleSingle remplaçait silencieusement `off` et `len` lorsqu'une
+seconde entrée d'identifiant 1 apparaissait. L'extraction puis sa vérification
+ne portaient que sur cette dernière entrée, sans signaler l'autre description
+des données. Il refuse désormais le doublon avec le bit de présence déjà
+conservé dans `typed`, même pour une data fork vide ou après des métadonnées
+ProDOS. La référence Python refuse le même cas.
+
+Le refus précède CREATE : seuls les buffers et l'état du parseur en MAIN
+changent ; source, destinations préexistantes et AUX restent intacts.
+Le chemin normal conserve la création exclusive et le nettoyage des seuls
+nouveaux fichiers. Aucun buffer ni bit de présence supplémentaire n'est ajouté.
+
+Les 48 nouveaux scénarios de doublons échouaient avant correction. Les 20
+tests du vrai C passent, incluant ces 48 cas (versions 1/2, données vides,
+identiques ou différentes, métadonnées intercalées, collisions) et 18 cas
+valides vérifiant les octets et les types avec des métadonnées désordonnées.
+Les auto-tests de la référence, les deux builds, leurs contrôles de disposition
+et les 15 tests des gardes mémoire passent. UNWRAP mesure 7189/7193 octets
+(65C02/6502), BSS jusqu'à `$3CF7`/`$3CFC`, soit 776/771 octets libres avant
+`$4000`. Les distributions sont reconstruites et les huit tests 800K passent.
+La correction ne fournit pas d'atomicité lors d'une coupure pendant une
+écriture physique ProDOS.
+
+## UNSQ : ne pas transformer un nom/path invalide en collision
+
+`one` comptait un nom vide après normalisation ou un chemin refusé par `join`
+comme un fichier existant, puis continuait l'archive. Une entrée inexploitable
+pouvait donc disparaître derrière une réussite et le compteur « name taken ».
+Le refus arrête désormais l'extraction avant CREATE avec « name/path invalid,
+stopped », sans incrémenter les collisions. Les vrais noms pris restent des
+skips ; les enregistrements répertoire/type `$0F` conservent leur traitement.
+
+Le contrôle touche uniquement l'état MAIN. Il n'a encore créé aucun fichier
+pour cette entrée et ne tente aucun nettoyage ; les extractions précédentes,
+destinations préexistantes, source et AUX sont conservées. Le chemin valide
+garde sa création exclusive et ses contrôles d'écriture/fermeture/relecture.
+
+Les 22 tests du vrai C passent, avec 30 nouveaux scénarios : noms ACU vides,
+sans lettre ou terminant par un séparateur, stockés/squeezés, avant/après une
+extraction valide ; chemins résultants de 63/64/65 caractères pour QQ et ACU,
+avec/sans collision préexistante. Les tests comparent les octets conservés et
+extraits, les appels CREATE et l'absence de suppression. Le seuil existant
+de `join` reste inchangé : la longueur résultante doit être inférieure à 64.
+Les deux builds, leurs contrôles de disposition et les 15 tests des gardes
+mémoire passent. UNSQ mesure 7037/7117 octets (65C02/6502), BSS jusqu'à
+`$3EA8`/`$3EF9`, soit 343/262 octets libres avant `$4000`.
+Les distributions sont reconstruites et les huit tests 800K passent.
+Une coupure pendant l'écriture physique ProDOS reste hors de toute garantie
+d'atomicité.
+
+## BinSCII : vérifier type et auxiliaire de chaque fragment
+
+Après le premier chunk, SCIIBIN vérifiait le nom et la longueur totale, mais
+ignorait son type ProDOS et son auxiliaire. Deux fragments portant le même nom
+et la même longueur, avec des CRC valides mais des métadonnées incompatibles,
+pouvaient être assemblés et annoncés comme un fichier décodé. Chaque chunk
+suivant doit désormais répéter le type et l'auxiliaire du premier ; le refus
+précède l'ajout de ses données. La référence Python applique la même règle.
+
+L'opération écrit uniquement son nouveau fichier ProDOS créé exclusivement et
+l'état MAIN. Elle ne modifie ni les parties sources, ni les destinations
+préexistantes, ni AUX. Sur erreur, seul son fichier est nettoyé ; si la suppression
+échoue, le préfixe déjà écrit est conservé et le diagnostic de nettoyage reste
+visible. Aucun buffer supplémentaire n'est introduit.
+
+Les 48 nouveaux scénarios négatifs échouaient avant correction. Les 15 tests
+du vrai C passent, incluant ces 48 cas (type, auxiliaire bas/haut, type répertoire,
+chunks dans un seul fichier ou plusieurs, tailles 1/49/12288 du dernier chunk,
+nettoyage réussi/refusé) et 18 cas valides BIN/PSYS/PS16. Les octets sources,
+préexistants et conservés sont comparés ; un nettoyage refusé garde exactement
+le premier chunk de 12288 octets. Les auto-tests de référence, CRC sous sim65,
+deux builds, contrôles de disposition et 15 tests des gardes mémoire passent.
+SCIIBIN : 6610/6628 octets (65C02/6502), BSS jusqu'à `$3FA4`/`$3FB7`, soit
+91/72 octets libres avant `$4000`, sans désactiver de garde. Les distributions
+sont reconstruites et leurs huit tests 800K passent. La correction ne fournit
+pas d'atomicité lors d'une coupure pendant l'écriture physique ProDOS.
+
+## DISASM : annulation pendant la dernière écriture ou fermeture d'export
+
+`export_text` renvoyait une réussite après l'écriture du marqueur END sans
+relire ESC ; `export` publiait ensuite sa réussite après fermeture sans ce
+contrôle. Une annulation reçue pendant l'un de ces appels était ignorée.
+Le décodeur teste désormais ESC avant/après END, puis après fermeture avant
+de choisir le message. Une erreur de fermeture sans annulation continue de
+signaler un export incomplet ; une annulation signale le fichier conservé.
+
+Seul le TXT créé exclusivement et l'état MAIN sont écrits. Aucun fichier
+préexistant ni source, aucun volume brut ni AUX ne sont modifiés ; l'export
+est conservé comme pour les autres interruptions. END peut déjà figurer dans
+les octets conservés si ESC arrive pendant son écriture ou la fermeture :
+le résultat d'interface reste alors annulé.
+
+Les 24 scénarios d'annulation tardive échouent avec le code antérieur dans
+une copie temporaire de contrôle. Les 17 tests du vrai C passent, dont 48
+nouveaux scénarios : dernière écriture, fermeture normale/en erreur/annulée,
+annulation avec erreur de fermeture et collision de nom, sur deux CPU et
+tailles 0/1/57/200. Le vrai `export` est exécuté ; les octets conservés sont
+comparés à l'export normal, avec contrôle de la source et d'un fichier témoin.
+Les deux builds, contrôles de disposition et les 15 tests des gardes mémoire
+passent. DISASM : 8089/8079 octets (65C02/6502), BSS jusqu'à `$3D21`/`$3D18`,
+734/743 octets libres avant `$4000`. Les distributions sont reconstruites et
+leurs huit tests 800K passent. Une coupure pendant l'écriture physique ProDOS
+reste hors de toute garantie d'atomicité.
+
+## DISASM : EOF réel avant de terminer un export
+
+L'export utilisait la taille du panneau et écrivait END dès que ce nombre
+d'octets avait été désassemblé. Une source agrandie depuis la lecture du
+panneau, y compris une taille affichée à zéro, pouvait donc produire un export
+de préfixe annoncé complet. Après ses lignes, `export_text` recherche désormais
+la taille attendue dans la source et exige une lecture d'un octet donnant zéro
+sans erreur de flux. Toute donnée supplémentaire ou erreur de recherche/lecture
+refuse END et la réussite. ESC est contrôlé avant et après cette sonde.
+
+Seul le nouveau TXT créé exclusivement et l'état MAIN sont écrits ; source,
+destinations préexistantes et AUX restent intacts. Le texte partiel est conservé
+et l'interface signale l'export incomplet. La taille du panneau ne fait donc
+plus office de preuve de fin de fichier ; la navigation garde son fonctionnement.
+
+Cinquante-six cas de régression échouaient avant correction. Les 20 tests du
+vrai C passent avec 72 nouveaux scénarios : tailles périmées 0/1/57/200,
+source prolongée de 1/16 octets, export depuis zéro ou la taille attendue,
+erreurs et ESC pendant la sonde finale, puis appel du vrai `export` avec/sans
+collision. Ils contrôlent les octets de la source, du fichier témoin, de l'ancien
+export et du préfixe conservé, ainsi que l'absence de END en cas d'échec.
+Les deux builds, contrôles de disposition et 15 tests des gardes mémoire
+passent. DISASM : 8251/8235 octets (65C02/6502), BSS jusqu'à `$3DC3`/`$3DB4`,
+572/587 octets libres avant `$4000`. Les distributions sont reconstruites et
+leurs huit tests 800K passent. Ce contrôle ne garantit pas l'atomicité d'une
+écriture physique ProDOS ni l'absence de modification externe après la sonde.
+
+## UNWRAP : position réelle des données après un en-tête secondaire MacBinary
+
+Le parseur MacBinary supposait que les données commençaient à l'octet 128.
+Un en-tête secondaire déclaré à `+$78` doit pourtant être sauté, arrondi à
+128 octets ([notes CiderPress II](https://ciderpress2.com/formatdoc/MacBinary-notes.html)).
+Avec un CRC d'en-tête valide, UNWRAP extrayait ainsi des octets de cet en-tête
+et les vérifiait à la même mauvaise position. Il calcule désormais le début
+réel en arithmétique 32 bits avant arrondi, puis contrôle ce début et la longueur
+par soustraction dans la taille réellement lue. La référence Python et ses
+fixtures prennent aussi en compte l'en-tête secondaire ; la fixture III porte
+sa signature `mBIN` et son numéro `$82`.
+
+Le parseur écrit uniquement son état MAIN et refuse les limites invalides avant
+CREATE. Source, destinations préexistantes et AUX restent intacts. Une extraction
+valide garde sa création exclusive, ses contrôles de fermeture et la comparaison
+des octets ; seul son nouveau fichier peut être nettoyé sur erreur.
+
+Soixante-quatre cas échouaient avant correction. Les 23 tests du vrai C passent,
+dont 78 nouveaux scénarios sur les versions II/III : en-têtes de 1/127/128/129/
+65535 octets, données vides/courtes/700 octets, troncature de l'en-tête, de son
+alignement ou des données, avec/sans collision. Les octets extraits, les anciens
+fichiers et la source sont comparés. Trente scénarios supplémentaires exécutent
+les fonctions de parsing/CRC réelles compilées pour 6502 et 65C02 sous sim65,
+notamment `65535 + 127`, qui doit être élargi avant addition.
+Les auto-tests de référence, deux builds, contrôles de disposition et 15 tests
+des gardes mémoire passent. UNWRAP : 7294/7293 octets (65C02/6502), BSS jusqu'à
+`$3D60` sur les deux, 671 octets libres avant `$4000`. Les distributions sont
+reconstruites et leurs huit tests 800K passent. La correction ne fournit pas
+d'atomicité lors d'une coupure pendant l'écriture physique ProDOS.
+
+## UNWRAP : contrôler aussi les bornes des ressources MacBinary
+
+Le parseur validait la data fork mais ne contrôlait pas la présence des ressources
+annoncées. Une archive amputée de cette partie, ou déclarant une longueur de
+ressources `$FFFFFF`/`$FFFFFFFF`, pouvait être extraite et annoncée comme valide
+avec « Resource fork left out ». Il exige désormais, lorsque des ressources sont
+déclarées, que leur début aligné et leur longueur tiennent dans la taille réellement
+lue. Les calculs soustraient les bornes déjà vérifiées avant de comparer : une
+longueur 32 bits hostile ne peut pas contourner le contrôle par débordement.
+Le bourrage final des ressources n'est pas exigé. La référence Python suit le
+même contrôle.
+
+Le refus intervient dans le parseur avant CREATE ; seuls l'état et les buffers
+MAIN changent. Source, fichiers préexistants et AUX restent intacts. Le chemin
+valide écrit exclusivement son nouveau fichier et garde ses contrôles de
+fermeture/relecture et de nettoyage des seuls fichiers créés par cette opération.
+
+Les 108 cas négatifs échouaient avant correction. Les 26 tests du vrai C passent,
+avec 168 nouveaux scénarios hôtes (108 refus, 60 extractions valides) : versions
+I/II/III, data fork de 0/1/127/128/129/513 octets, ressources tronquées, collisions,
+longueurs extrêmes, ressources non bourrées et en-tête secondaire présent/absent.
+Les fichiers sources et préexistants ainsi que les données extraites sont comparés.
+Cinquante scénarios supplémentaires exécutent les fonctions réelles du parseur
+et du CRC sous sim65 sur les deux CPU ; le contrôle natif couvre désormais 80 cas.
+Les auto-tests de référence, deux builds, contrôles de disposition et 15 tests des
+gardes mémoire passent. UNWRAP : 7560/7561 octets (65C02/6502), BSS jusqu'à
+`$3E6F`/`$3E71`, 400/398 octets libres avant `$4000`. Les distributions sont
+reconstruites et leurs huit tests 800K passent. Une coupure pendant l'écriture
+physique ProDOS reste hors de toute garantie d'atomicité.
+
+## UNWRAP : refuser les métadonnées ProDOS AppleSingle dupliquées
+
+Une seconde entrée ID 11 remplaçait silencieusement le type et le type
+auxiliaire de la première, y compris un type répertoire qui aurait dû
+empêcher l'extraction. Le parseur refuse désormais ce doublon avant CREATE,
+même si la première entrée est vide ou trop courte. Un bit du statut garde
+la présence de l'entrée à travers la lecture des métadonnées ID 7 ; les
+entrées uniques ID 7/11 et Finder restent compatibles. Le changement écrit
+uniquement l'état du parseur en MAIN : source en lecture, aucune écriture
+AUX ou disque avant validation, destinations préexistantes conservées.
+
+`tools/test_unwrap.py` exécute le vrai C sur fichiers temporaires jetables :
+72 scénarios de doublon (versions 1/2, type/aux divergents ou identiques,
+entrée vide/courte, type répertoire, Finder/ID 7 intercalé, collision) et
+18 cas valides avec ID 7, ID 11 et Finder. Les 72 premiers échouaient avant
+correction ; les 28 tests passent après correction. Source, destinations
+préexistantes, octets extraits et métadonnées sont contrôlés. L'oracle
+Python refuse les mêmes doublons.
+
+Builds et gardes mémoire inchangés validés sur les deux architectures :
+UNWRAP **7608/7614 octets** (65C02/6502), fin de BSS **$3E9F/$3EA6**,
+soit **352/345 octets** disponibles sous $4000. Les 15 tests de garde de
+disposition passent. Les distributions sont reconstruites et contrôlées
+par les 8 tests du disque 800K. Cette validation n'ajoute aucune garantie
+d'atomicité en cas de coupure pendant une écriture physique.
+
+## UNWRAP : ne pas ignorer une entrée ProDOS AppleSingle incomplète
+
+Une entrée ID 11 de moins de huit octets était ignorée comme si elle
+n'existait pas. L'extraction pouvait alors annoncer un succès avec le type
+Finder, ou le type par défaut, malgré des métadonnées ProDOS illisibles.
+Le parseur et l'oracle Python refusent désormais cette entrée avant CREATE.
+La correction n'écrit que l'état MAIN ; source en lecture, aucune écriture
+AUX, destinations existantes conservées. Les métadonnées complètes et leur
+priorité sur Finder restent acceptées.
+
+Les 96 scénarios de refus échouaient avant correction : versions 1/2,
+longueurs 0 à 7, data fork vide/1/513 octets, avec ou sans collision.
+Les 18 scénarios valides vérifient les entrées de 8/9/32 octets, le type
+$06, l'auxiliaire $2000 et tous les octets extraits. Le vrai C est exécuté
+sur des fichiers temporaires jetables ; source et fichiers préexistants
+sont comparés. Les 30 tests UNWRAP, l'auto-test de référence et les 15 tests
+des gardes mémoire passent.
+
+Les deux builds et contrôles de disposition passent sans relâcher les
+limites : UNWRAP **7638/7644 octets** (65C02/6502), BSS jusqu'à
+**$3EBD/$3EC4**, **322/315 octets** libres sous $4000. Distributions
+reconstruites, contrôlées par les 8 tests du disque 800K. Les contrôles
+n'ajoutent aucune atomicité lors d'une coupure pendant l'écriture physique.
+
+## UNWRAP : ne pas masquer les ressources AppleSingle par un doublon
+
+Une seconde entrée ID 2 remplaçait la longueur des ressources de la
+première. Si elle était vide, l'extraction de la data fork annonçait un
+succès sans « Resource fork left out », malgré les ressources omises.
+Les descriptions de ressources dupliquées sont désormais refusées avant
+CREATE, même vides ou identiques. Le bit de présence est conservé lors de
+la lecture des métadonnées ProDOS ID 7/11 ; l'oracle Python suit ce refus.
+La correction écrit uniquement l'état MAIN, source en lecture, aucune
+écriture AUX, destinations préexistantes conservées.
+
+Les 72 scénarios négatifs échouaient avant correction : versions 1/2,
+paires de ressources vides/non vides/identiques/différentes, ID 7/11
+intercalés, avec ou sans collision. Les 18 cas valides vérifient l'ordre
+des métadonnées, les ressources vides ou de 1/513 octets, le message
+d'omission, les métadonnées et tous les octets extraits. Le vrai C tourne
+sur fichiers temporaires jetables ; sources et destinations préexistantes
+sont comparées. Les 32 tests UNWRAP, l'auto-test de référence et les
+15 tests des gardes de disposition passent.
+
+Les deux builds et contrôles mémoire passent sans changer les limites :
+UNWRAP **7654/7671 octets** (65C02/6502), BSS jusqu'à **$3ECD/$3EDF**,
+**306/288 octets** libres sous $4000. Distributions reconstruites et
+contrôlées par les 8 tests du disque 800K. Aucune garantie d'atomicité
+n'est ajoutée pour une coupure pendant l'écriture physique ProDOS.
+
+## UNWRAP : refuser plusieurs noms AppleSingle
+
+Une seconde entrée ID 3 remplaçait silencieusement le nom de destination
+issu de la première, ou le vidait pour revenir au nom de l'archive.
+Le parseur refuse désormais plusieurs entrées de nom avant CREATE, même
+vides ou identiques. Le bit de présence est conservé à travers les
+métadonnées ProDOS ID 7/11 ; l'oracle Python applique le même refus.
+Seul l'état MAIN est modifié, source en lecture, aucune écriture AUX et
+aucune création ou suppression lors du refus.
+
+Les 72 scénarios négatifs échouaient avant correction : versions 1/2,
+noms distincts/inversés/identiques/vides, métadonnées ID 7/11 intercalées,
+avec ou sans collisions sur les noms possibles. Les 18 cas valides
+vérifient un nom unique, sa normalisation et le repli sur le nom de
+l'archive si cette unique entrée est vide. Le vrai C est exécuté sur des
+fichiers temporaires jetables ; source, destinations préexistantes et
+octets extraits sont comparés, ainsi que type/aux et avertissement de
+ressources omises. Les 34 tests UNWRAP, l'auto-test de référence et les
+15 tests des gardes de disposition passent.
+
+Les deux builds et contrôles mémoire passent sans changement des limites :
+UNWRAP **7673/7693 octets** (65C02/6502), BSS jusqu'à **$3EE0/$3EF5**,
+**287/266 octets** libres sous $4000. Distributions reconstruites et
+contrôlées par les 8 tests du disque 800K. Les contrôles ne garantissent
+pas l'atomicité lors d'une coupure pendant l'écriture physique ProDOS.
+
+## UNWRAP : refuser le type Finder incomplet ou dupliqué
+
+Plusieurs entrées ID 9 pouvaient remplacer silencieusement le type Finder
+utilisé pour l'extraction ; une entrée de moins de huit octets était
+ignorée malgré son type/créateur incomplet. Le parseur refuse ces entrées
+avant CREATE, y compris lorsqu'une entrée ProDOS prend priorité. Le bit
+de présence survit aux métadonnées ID 7/11 ; l'oracle Python applique les
+mêmes contrôles. Seul l'état MAIN change : source en lecture, aucune
+écriture AUX, aucune création ou suppression lors du refus.
+
+Les 136 scénarios négatifs échouaient avant correction : 72 doublons
+(versions 1/2, types divergents/identiques, type répertoire, entrées
+vides/courtes, métadonnées intercalées, collisions), et 64 entrées uniques
+de 0 à 7 octets avec/sans ProDOS et collision. Les 24 cas valides vérifient
+TEXT, un type/aux 'pdos', un type Mac sans correspondance, les ordres
+Finder/ProDOS et leur priorité. Le vrai C tourne sur fichiers temporaires
+jetables ; sources, destinations existantes, octets extraits et type/aux
+sont comparés. Les 37 tests UNWRAP, l'auto-test de référence et les
+15 tests des gardes de disposition passent.
+
+Les deux builds et contrôles mémoire passent sans changer les limites :
+UNWRAP **7751/7776 octets** (65C02/6502), BSS jusqu'à **$3F2E/$3F48**,
+**209/183 octets** libres sous $4000. Distributions reconstruites et
+contrôlées par les 8 tests du disque 800K. Aucune atomicité supplémentaire
+n'est garantie en cas de coupure pendant l'écriture physique ProDOS.
+
 ## VISICALC : quatre morceaux et une table (4 octobre 2026)
 
 Tout en assembleur (`src/plugins/visicalc.s`, le C ne porte que l'en-tête

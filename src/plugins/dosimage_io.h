@@ -33,7 +33,10 @@ static unsigned char image_unchanged(void) {
  while(n==256 && total<=0xFFFFFFUL && !stop());
  ok=!ferror(source) && !cancelled && total==rd24((unsigned char*)a.input+9) &&
     image_crc==(rd16((unsigned char*)a.input+5)|((unsigned long)rd16((unsigned char*)a.input+7)<<16));
- if(RF(fclose)(source))ok=0;source=NULL;return ok;
+ if(RF(fclose)(source))ok=0;source=NULL;
+ /* ESC received during this final close must forbid replacement. */
+ if(stop())ok=0;
+ return ok;
 }
 static void image_cleanup(void) {
  if(!image_close())note("Image close failed; original kept.");
@@ -93,6 +96,9 @@ clone_bad:
  }while(n==256);
  if(RF(fclose)(source))ok=0;source=NULL;
  if(!image_close())ok=0;
+ /* Refuse the hand-off to DOSPUT after cancellation in either close.
+  * The temporary still belongs to this phase and can be cleaned safely. */
+ if(stop())ok=0;
  if(!ok)goto bad;
  a.input[1]=image_base;a.input[2]=image_base>>8;a.input[3]=image_base>>16;
  wr16((unsigned char*)a.input+5,image_crc);wr16((unsigned char*)a.input+7,image_crc>>16);

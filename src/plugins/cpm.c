@@ -32,6 +32,9 @@
 #define UTIL_CREATE
 #define UTIL_DISCARD
 #define UTIL_VOLUME
+#define IMAGEIO_CHECK_CLOSE
+/* This extractor opens files only; omit the unused raw-device reader. */
+#define IMAGEIO_NODEVICE
 
 #include "util.h"
 #include "imageio.h"
@@ -53,11 +56,26 @@ const struct PluginHeader __plugin_header = {
 
 #pragma static-locals (on)
 
+static unsigned char bad;
+
+/* A full block count does not erase a source stream error. This reader
+ * touches only MAIN buffers; source and AUX stay unchanged. Its caller
+ * cleans only the destination it exclusively created for this file. */
+static unsigned char cpm_read(struct Source* s, unsigned int b, unsigned char* out)
+{
+    if (source_read(s, b, out) && !ferror(s->file)) return 1;
+    /* An I/O failure cannot disprove this skew or authorize another one.
+     * Only MAIN changes; no image/AUX writes. During skew detection no
+     * destination exists yet. */
+    bad = 1;
+    return 0;
+}
+#define source_read cpm_read
 #include "cpm_fs.h"
 
 static unsigned char done[ENTRIES / 8]; /* entries already extracted */
 static char name[16], dest[PATH_LEN + 1];
-static unsigned char made, skipped, kept, bad;
+static unsigned char made, skipped, kept;
 static unsigned long fsize;
 
 /* A ProDOS name from a CP/M one: NAME.TYP, upper case, anything else a
@@ -80,6 +98,17 @@ static void set_name(const unsigned char* e)
     name[k] = 0;
 }
 
+/* Bit 7 is an attribute, not part of an extent's file identity. Compare
+ * only name characters, keeping the user check in each caller. MAIN only;
+ * the image/AUX stay unchanged and outputs remain exclusively created. */
+static unsigned char name_diff(const unsigned char* left, const unsigned char* right)
+{
+    unsigned char j;
+    for (j = 0; j < 11; ++j)
+        if ((left[j] ^ right[j]) & 127) return 1;
+    return 0;
+}
+
 /* The entry of `ext` for the file entry `first` names, or 0. */
 static unsigned char* extent_at(const unsigned char* first, unsigned int ext)
 {
@@ -88,7 +117,7 @@ static unsigned char* extent_at(const unsigned char* first, unsigned int ext)
     for (i = 0; i < ENTRIES; ++i) {
         e = entry_at(i);
         if (!e) return 0;
-        if (!live(e) || e[0] != user || memcmp(e + 1, want, 11)) continue;
+        if (!live(e) || e[0] != user || name_diff(e + 1, want)) continue;
         if (extent_of(e) == ext) return e;
     }
     return 0;
@@ -98,17 +127,45 @@ static unsigned char* extent_at(const unsigned char* first, unsigned int ext)
 static unsigned long measure(const unsigned char* first)
 {
     unsigned char i, user = first[0], want[11], *e;
-    unsigned int ext, high = 0;
-    unsigned char rc = 0;
+    unsigned char ext, high = 0, rc = 0, slot, bit, blocks;
+    unsigned int records = 0;
     memcpy(want, first + 1, 11);
+    /* Skew detection is finished: reuse its MAIN allocation bitmap for
+     * extent identities. An ambiguous file must fail before CREATE; the
+     * image, existing destinations and AUX remain untouched. */
+    a.memset(claimed, 0, sizeof claimed);
     for (i = 0; i < ENTRIES; ++i) {
         e = entry_at(i);
-        if (!e) return 0;
-        if (!live(e) || e[0] != user || memcmp(e + 1, want, 11)) continue;
+        /* A failed directory read is not a zero-record file. Only main
+         * buffers/done bits change here; source and AUX stay untouched. */
+        if (!e) { bad = 1; return 0; }
+        if (!live(e) || e[0] != user || name_diff(e + 1, want)) continue;
         done[i >> 3] |= 1 << (i & 7);
-        ext = extent_of(e);
+        /* There are only 64 directory entries. A complete file cannot
+         * reach extent 64, nor claim the same extent twice. */
+        if (extent_of(e) >= ENTRIES) { bad = 1; return 0; }
+        ext = (unsigned char)extent_of(e);
+        slot = ext >> 3;
+        bit = 1 << (ext & 7);
+        if (claimed[slot] & bit) {
+            bad = 1;
+            return 0;
+        }
+        claimed[slot] |= bit;
+        /* A missing required allocation is not padding: copy_file would
+         * otherwise skip the hole and substitute a later block. Validate
+         * the record prefix before owning any output. MAIN only. */
+        blocks = (e[15] + 7) >> 3;
+        while (blocks) {
+            if (!e[15 + blocks]) { bad = 1; return 0; }
+            --blocks;
+        }
+        records += e[15];
         if (ext >= high) { high = ext; rc = e[15]; }
     }
+    /* Unique extents plus this equality require every earlier extent to
+     * exist and contain all 128 records; no undeclared bytes are copied. */
+    if (records != (unsigned int)high * 128 + rc) { bad = 1; return 0; }
     return ((unsigned long)high * 128 + rc) * 128;
 }
 
@@ -142,10 +199,13 @@ static unsigned char copy_file(const unsigned char* first, FILE* out, unsigned c
             if (stop()) return 0;
         }
         ++ext;
-        if (ext > 256) return 0;         /* a file cannot have that many */
+        /* measure bounded every extent; a missing one fails extent_at. */
     }
     if (verify && RF(fread)(buf, 1, 1, out)) return 0;
-    return 1;
+    /* A zero-byte EOF probe or a full read count does not clear a stream
+     * error. Never count an unreadable output as verified. No AUX writes;
+     * the caller cleans only the destination it exclusively created. */
+    return !ferror(out);
 }
 
 /* One file created, filled, closed and read back. 0 stops the extraction. */
@@ -154,17 +214,31 @@ static unsigned char one(const unsigned char* first)
     FILE* out;
     unsigned char ok;
     set_name(first);
-    if (!name[0] || !join(dest, other->path, name) || newfile(dest, 0, 0, 1)) {
+    if (!name[0] || !join(dest, other->path, name)) {
+        /* An unrepresentable path is not a duplicate filename. No CREATE
+         * took place, so preserve every destination and stop. */
+        bad = 1;
+        return 0;
+    }
+    ok = newfile(dest, 0, 0, 1);
+    /* Only duplicate filename is a skip. Failed CREATE grants no ownership:
+     * never open or clean this destination on other errors. */
+    if (ok) {
+        if (ok != 0x47) { bad = 1; return 0; }
         ++skipped;
         return 1;
     }
     out = RF(fopen)(dest, "wb");
     ok = out != 0 && copy_file(first, out, 0);
     if (out && RF(fclose)(out)) ok = 0;
+    /* Closing can take time: poll ESC before read-back and before counting
+     * success. Only this exclusive output is cleaned; source/AUX untouched. */
+    if (stop()) ok = 0;
     if (ok) {
         out = RF(fopen)(dest, "rb");
         ok = out != 0 && copy_file(first, out, 1);
         if (out && RF(fclose)(out)) ok = 0;
+        if (stop()) ok = 0;
     }
     if (!ok) {
         bad = 1;
@@ -197,8 +271,8 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         return;
     }
     for (skew = 0; skew < SKEWS; ++skew)
-        if (plausible()) break;
-    if (skew == SKEWS) {
+        if (plausible() || bad) break;
+    if (skew == SKEWS || bad) {
         source_close(&src);
         note("Not a CP/M volume this can read.");
         return;
@@ -210,10 +284,20 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         /* entry_at's cache moves under the scans below: keep our own copy. */
         memcpy(saved, e, ENTRY);
         fsize = measure(saved);
-        if (!fsize) { ++skipped; continue; }   /* an extent with no records */
+        if (bad) break;
+        /* A valid zero-record file still owns its name. CREATE and the
+         * empty-output EOF/close checks apply just as for nonempty files. */
         if (!one(saved)) break;
     }
-    source_close(&src);
+    /* image_open owns a read-only file stream here. Do not let its final
+     * read/close error become complete success; retain verified outputs.
+     * Always close once, even when the stream already carries an error. */
+    if (ferror(src.file)) bad = 1;
+    if (RF(fclose)(src.file)) bad = 1;
+    src.file = 0;
+    /* ESC can arrive during the final close, even with no outputs. These
+     * files are already verified: retain them and report the stop. */
+    if (stop()) bad = 1;
     if (kept) return;
     a.sprintf(a.note, "%u extracted, %u skipped (name taken)%s", made, skipped,
               bad ? (cancelled ? "; stopped." : "; failed, stopped.") : ".");

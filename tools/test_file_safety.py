@@ -65,7 +65,22 @@ static unsigned char file_info(const char* path) {
     strcpy(checked_path,path);
     if(fault==7 || (fault==30 && !strcmp(path,full))) {_oserror=0x27;return 0;}
     if(stat(path,&st)) {_oserror=errno==ENOENT?0x46:0x27;return 0;}
-    gfi[3]=(fault==15 || fault==31)?1:0xC3;gfi[4]=S_ISDIR(st.st_mode)?15:6;_oserror=0;return 1;
+    gfi[3]=(fault==15 || fault==31)?1:0xC3;gfi[4]=S_ISDIR(st.st_mode)?15:6;gfi[7]=1;
+    if(copy_mode==2 && !strcmp(path,old_path) && fault>=60 && fault<=65) {
+        static const unsigned char storage[]={0,4,5,13,15,255};
+        gfi[7]=storage[fault-60];
+    }
+    if(copy_mode==1 && !strcmp(path,old_path)) {
+        if(fault>=50 && fault<=52)gfi[7]=fault==50?0:fault==51?5:13;
+        if(copy_closes==4) {
+            if(fault==40 || fault==41){_oserror=fault==40?0x27:0x46;return 0;}
+            if(fault==42)gfi[3]&=~2;
+            if(fault==43)gfi[3]&=~0x40;
+            if(fault==44)gfi[3]&=~0x80;
+            if(fault>=45 && fault<=47)gfi[7]=fault==45?0:fault==46?5:13;
+        }
+    }
+    _oserror=0;return 1;
 }
 static unsigned char exists(const char* p) {return file_info(p);}
 static unsigned char mli_call(unsigned char cmd,void* params) {
@@ -145,7 +160,7 @@ static int close_file(FILE* f) {
 }
 static int seek_file(FILE* f,long p,int origin) {return fault==5?-1:fseek(f,p,origin);}
 static int rename_file(const char* from,const char* to) {
-    struct stat st;++rename_calls;
+    struct stat st;int r;++rename_calls;
     if(copy_mode && !strcmp(from,old_path) && copy_closes!=(copy_mode==2?2:4))abort();
     if((fault==19 || (fault>=21 && fault<=25)) && strstr(from,"A2FC.BAK"))abort();
     if((fault==8 && strstr(from,"A2FC.EDIT")) || (fault==9 && (strstr(from,"A2FC.BAK") || strstr(from,"A2FC.COPY"))))return -1;
@@ -163,12 +178,25 @@ static int rename_file(const char* from,const char* to) {
     }
     if(fault==36 && strstr(to,"A2FC.ED.BAK"))return -1;
     if(!stat(to,&st))return -1;
-    return rename(from,to);
+    r=rename(from,to);
+    /* Host sidecar models the extended file's resource fork: it follows
+     * its entry on RENAME, and DESTROY removes both forks. */
+    if(!r && copy_mode==2) {
+        char a[128],b[128];snprintf(a,sizeof a,"%s.RSRC",from);snprintf(b,sizeof b,"%s.RSRC",to);
+        if(!access(a,F_OK) && rename(a,b))abort();
+    }
+    return r;
 }
 static int remove_file(const char* p) {
+    int r;
     if(fault==19 || fault==38 || (fault>=21 && fault<=25) || (fault>=28 && fault<=32))return -1;
     if(fault==10 && (strstr(p,"A2FC.BAK")||strstr(p,"A2FC.ED.BAK")))return -1;
-    return remove(p);
+    r=remove(p);
+    if(!r && copy_mode==2) {
+        char fork[128];snprintf(fork,sizeof fork,"%s.RSRC",p);
+        if(!access(fork,F_OK) && remove(fork))abort();
+    }
+    return r;
 }
 #define fopen open_file
 #define fread read_file
@@ -281,6 +309,27 @@ class FileSafety(unittest.TestCase):
                 self.assertEqual(self.run_op(fault=fault)[0], 0)
                 self.assertEqual(self.src.read_bytes(), self.original)
                 self.assertEqual(self.dst.read_bytes(), self.previous)
+
+    def test_late_destination_metadata_refuses_publication(self):
+        for fault in range(40,48):
+            with self.subTest(fault=fault):
+                (self.p/'A2FC.COPY').unlink(missing_ok=True)
+                result,out=self.run_op(fault=fault)
+                self.assertEqual(result,0)
+                self.assertEqual(self.src.read_bytes(),self.original)
+                self.assertEqual(self.dst.read_bytes(),self.previous)
+                self.assertEqual((self.p/'A2FC.COPY').read_bytes(),self.original)
+                self.assertFalse((self.p/'A2FC.BAK').exists())
+                self.assertIn('A2FC.COPY',out)
+
+    def test_unsupported_destination_storage_is_never_replaced(self):
+        for fault in range(50,53):
+            with self.subTest(fault=fault):
+                self.assertEqual(self.run_op(fault=fault)[0],0)
+                self.assertEqual(self.src.read_bytes(),self.original)
+                self.assertEqual(self.dst.read_bytes(),self.previous)
+                self.assertFalse((self.p/'A2FC.COPY').exists())
+                self.assertFalse((self.p/'A2FC.BAK').exists())
 
     def test_failed_restore_keeps_recoverable_backup(self):
         self.assertEqual(self.run_op(fault=9)[0], 0)
@@ -459,6 +508,20 @@ class FileSafety(unittest.TestCase):
     def test_editor_save_verifies_and_installs(self):
         self.assertEqual(self.run_op('edit')[0],1)
         self.assertEqual(self.src.read_bytes(),b'N'*len(self.original))
+
+    def test_editor_refuses_nonstandard_storage_without_replacing_original(self):
+        resource=Path(str(self.src)+'.RSRC');resource.write_bytes(b'resource fork bytes')
+        for fault in range(60,66):
+            with self.subTest(fault=fault):
+                result,out=self.run_op('edit',fault)
+                self.assertEqual(result,0)
+                self.assertEqual(out.split()[1],'1')
+                self.assertIn('Save refused',out)
+                self.assertEqual(self.src.read_bytes(),self.original)
+                self.assertEqual(self.dst.read_bytes(),self.previous)
+                self.assertEqual(resource.read_bytes(),b'resource fork bytes')
+                self.assertFalse((self.p/'A2FC.EDIT').exists())
+                self.assertFalse((self.p/'A2FC.ED.BAK').exists())
 
     def test_editor_errors_keep_original_and_dirty_buffer(self):
         for fault in (2,3,4,7,12,13,15):

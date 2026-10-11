@@ -61,8 +61,20 @@ static FILE* sync_open(const char* p, const char* m) {
         data[4]=0xE1;data[35]=39;data[36]=13;
         for(i=0;i<2;++i) {
             e=data+43+39*i;e[0]=0x24+i;memcpy(e+1,i?"DATA2":"DATA",4+i);
+            if(mode==34 && !i){e[0]=0x29;memcpy(e+1,"../VICTIM",9);}
             e[16]=6;e[19]=5;e[21]=0x40;e[22]=6;e[30]=0xE3;
             e[33]=33;e[34]=52;
+            if(mode==36)e[33]=1; /* month zero, date present */
+            if(mode==37){e[33]=0xA1;e[34]=53;} /* month 13 */
+            if(mode==38)e[33]=32; /* day zero */
+            if(mode==39)e[36]=24; /* modification hour */
+            if(mode==40)e[35]=60; /* modification minute */
+            if(mode==41){e[24]=32;e[25]=52;} /* creation day zero */
+            if(mode==42)e[27]=24; /* creation hour */
+            if(mode==43){ /* Dec 31, 23:59; creation and modification */
+                e[24]=e[33]=0x9F;e[25]=e[34]=53;
+                e[26]=e[35]=59;e[27]=e[36]=23;
+            }
         }
         catalog=tmpfile();if(!catalog)abort();
         fwrite(data,1,512,catalog);rewind(catalog);return catalog;
@@ -76,11 +88,13 @@ static size_t sync_read(void* p,size_t z,size_t n,FILE* f) {
     if(n==1 && ((mode==6 && f==verify_source) || (mode==7 && f==verify_target))) {
         read_error=f;return 0;
     }
-    return fread(p,z,n,f);
+    {size_t got=fread(p,z,n,f);
+    if(mode==35 && f==catalog)read_error=f;
+    return got;}
 }
 static int sync_close(FILE* f) {
     int r=fclose(f);
-    if(f==catalog){catalog=NULL;return r;}
+    if(f==catalog){catalog=NULL;read_error=NULL;return r;}
     ++closes;
     return ((mode>=8 && mode<=11 && closes==mode-7) || (mode==16 && closes==2)) ? EOF : r;
 }
@@ -95,9 +109,22 @@ static unsigned char mock(unsigned char cmd,void* p) {
     if(cmd==0xC0){pp=((struct Create*)p)->path;memcpy(oldpath,pp+1,pp[0]);oldpath[pp[0]]=0;
         f=fopen(oldpath,"wx");if(!f)return 0x47;fclose(f);return 0;}
     if(cmd==0xC4){pp=((struct Info*)p)->path;memcpy(oldpath,pp+1,pp[0]);oldpath[pp[0]]=0;
+        struct Info* ip=p;ip->access=0xE3;ip->storage=2;ip->mdate=ip->mtime=0;
+        if(!strcmp(oldpath,target)) {
+            if(mode==19 || (mode==20 && closes>=4))ip->access=0xC1;
+            if(mode==21 && closes>=4)return 0x27;
+            if(mode==22 && closes>=4)ip->storage=5;
+            if(mode==23 && closes>=4)ip->access=0x83;
+            if((mode>=44 && mode<=48) || (mode>=49 && mode<=53 && closes>=4)) {
+                unsigned int bad=mode<=48 ? mode-44:mode-49;
+                if(bad==0)ip->mdate=0x3201; /* month zero */
+                if(bad==1)ip->mdate=0x33A1; /* month 13 */
+                if(bad==2)ip->mdate=0x3220; /* day zero */
+                if(bad==3)ip->mtime=0x1800; /* hour 24 */
+                if(bad==4)ip->mtime=60; /* minute 60 */
+            }
+        }
         if(tree) {
-            struct Info* ip=p;
-            ip->access=0xE3;ip->storage=2;ip->mdate=ip->mtime=0;
             if(!strcmp(oldpath,sdir)){ip->storage=13;ip->blocks=1;return 0;}
         }
         f=fopen(oldpath,"rb");if(!f)return 0x46;fclose(f);return 0;}
@@ -206,12 +233,33 @@ int main(int argc,char** argv) {
 '''
 
 UNDELETE_ROOT=PREFIX+r'''
+static int undelete_error(FILE*);
+#define ferror undelete_error
 #include "src/plugins/undelete.c"
 static FILE* diskfile;static const char* dirfile;static char keypress;static unsigned int used;
 static const char* table="";     /* argv[6]: "twin", "phantom", "" */
+static FILE* directory_file;static unsigned int directory_closes,fail_close;
+static unsigned char cancel_write,cancel_bar,cancel_close;
+static unsigned int write_calls,fail_write,read_calls,fail_read;
+static unsigned char keep_partial,show_creates;
+static unsigned int creates,index_reads,bitmap_reads;
+static unsigned char layout_fault;
+static FILE* undelete_errored;
+static int undelete_error(FILE* f){return f==undelete_errored;}
+static size_t read_directory(void* p,size_t s,size_t n,FILE* f){
+    size_t got=fread(p,s,n,f);
+    if(f==directory_file && ++read_calls==fail_read)undelete_errored=f;
+    return got;
+}
+static int remove_recovery(const char* p){return keep_partial ? -1:remove(p);}
 static unsigned char mli(unsigned char cmd,void* p) {
     if(cmd==0x80) {
         struct Block* b=p;
+        if(layout_fault && b->block==(layout_fault<=2 ? 20:6)) {
+            unsigned int at=layout_fault<=2 ? ++index_reads:++bitmap_reads;
+            unsigned char phase=(layout_fault-1)&1;
+            if(at==1+phase || at==3+phase)return 0x27;
+        }
         if(fseek(diskfile,(long)b->block*512,SEEK_SET))return 0x27;
         return fread(b->buffer,1,512,diskfile)==512?0:0x27;
     }
@@ -231,6 +279,7 @@ static unsigned char mli(unsigned char cmd,void* p) {
         return 0;
     }
     if(cmd==0xC0) {
+        ++creates;
         struct Create* c=p;char path[81];FILE* f;
         memcpy(path,c->path+1,c->path[0]);path[c->path[0]]=0;
         f=fopen(path,"wx");if(!f)return 0x47;fclose(f);return 0;
@@ -238,7 +287,25 @@ static unsigned char mli(unsigned char cmd,void* p) {
     abort();                        /* nothing may write to the source */
 }
 /* The volume directory read as a file: its linked blocks, end to end. */
-static FILE* open_file(const char* path,const char* mode){return fopen(strcmp(path,"/V")?path:dirfile,mode);}
+static FILE* open_file(const char* path,const char* mode){
+    FILE* f=fopen(strcmp(path,"/V")?path:dirfile,mode);
+    if(!strcmp(path,"/V"))directory_file=f;return f;
+}
+static int close_file(FILE* f){
+    unsigned char directory=f==directory_file;int result=fclose(f);
+    if(f==undelete_errored)undelete_errored=0;
+    if(directory){directory_file=0;if(++directory_closes==fail_close)return EOF;}
+    else if(cancel_close)cancelled=1;
+    return result;
+}
+static size_t write_file(const void* p,size_t size,size_t count,FILE* f){
+    size_t result=fwrite(p,size,count,f);
+    if(++write_calls==fail_write)undelete_errored=f;
+    if(cancel_write)cancelled=1;return result;
+}
+static void recovery_bar(const char* s,unsigned long done,unsigned long all){
+    (void)s;(void)done;(void)all;if(cancel_bar)cancelled=1;
+}
 static char getkey(void){return keypress;}
 static unsigned char yes(const char* s){(void)s;return 1;}
 static void quiet(const char* s){(void)s;}
@@ -251,13 +318,29 @@ int main(int argc,char** argv) {
     strcpy(panels[0].path,"/V");strcpy(panels[1].path,argv[5]);
     if(argc>6)table=argv[6];
     /* argv[7] "list": the volume-list row /V, unit $60, instead of a path */
-    if(argc>7){panels[0].path[0]=0;strcpy(selected.name,"/V");selected.mdate=6;}
+    for(int i=7;i<argc;++i){
+        if(!strcmp(argv[i],"list")){panels[0].path[0]=0;strcpy(selected.name,"/V");selected.mdate=6;}
+        else if(!strncmp(argv[i],"close=",6))fail_close=atoi(argv[i]+6);
+        else if(!strncmp(argv[i],"write=",6))fail_write=atoi(argv[i]+6);
+        else if(!strncmp(argv[i],"read=",5))fail_read=atoi(argv[i]+5);
+        else if(!strcmp(argv[i],"keep-partial"))keep_partial=1;
+        else if(!strcmp(argv[i],"create-count"))show_creates=1;
+        else if(!strncmp(argv[i],"layout-fault=",13))layout_fault=atoi(argv[i]+13);
+        else if(!strcmp(argv[i],"cancel-write"))cancel_write=1;
+        else if(!strcmp(argv[i],"cancel-bar"))cancel_bar=1;
+        else if(!strcmp(argv[i],"cancel-close"))cancel_close=1;
+    }
     api.panels=panels;api.active=&active;api.selected=&selected;api.note=note;api.copy_buf=scratch;
-    api.mli=mli;api.fopen=open_file;api.fread=fread;api.fwrite=fwrite;api.fseek=fseek;api.fclose=fclose;
-    api.remove=remove;api.memcpy=memcpy;api.memset=memset;api.strcpy=strcpy;api.strlen=strlen;
+    api.mli=mli;api.fopen=open_file;api.fread=read_directory;api.fwrite=write_file;api.fseek=fseek;api.fclose=close_file;
+    api.progress_bar=recovery_bar;
+    api.remove=remove_recovery;api.memcpy=memcpy;api.memset=memset;api.strcpy=strcpy;api.strlen=strlen;
     api.sprintf=sprintf;api.cgetc=getkey;api.confirm=yes;api.message=quiet;api.cputs=quiet;
     api.cprintf=noprint;api.clrscr=nothing;
-    plugin_entry(&api);puts(note);fclose(diskfile);return 0;
+    plugin_entry(&api);puts(note);fclose(diskfile);
+    if(show_creates)printf("%u\n",creates);
+    if(cancel_bar && write_calls!=7)return 31;
+    if(cancel_write && write_calls!=1)return 32;
+    return 0;
 }
 '''
 
@@ -424,12 +507,87 @@ class SixPlugins(unittest.TestCase):
         self.assertEqual(out[1],'0 99 /V/D/NONE')
     def undelete_root(self,deleted,key,*mode):
         image,used,directory=root_volume(deleted)
+        if 'zero-name-length' in mode:
+            image=bytearray(image)
+            for block,slot,*_ in deleted:image[block*512+4+39*slot]=0
+            directory=b''.join(image[b*512:(b+1)*512] for b in (2,3,4,5))
         img=self.root/'root.po';img.write_bytes(image);dirs=self.root/'root.dir';dirs.write_bytes(directory)
         out=self.root/'recovered';shutil.rmtree(out,ignore_errors=True);out.mkdir()
+        if 'nested-output' in mode:
+            (out/'A').mkdir();(out/'A'/'KEEP').write_bytes(b'preserve nested bytes')
         note=subprocess.check_output([str(self.exe['undelete_root']),str(img),str(dirs),str(used),key,str(out)]+list(mode),
                                      text=True,timeout=20).strip()
         self.assertEqual(img.read_bytes(),image,'the source volume was written')
+        self.assertEqual(dirs.read_bytes(),directory,'the source directory was written')
         return note,out
+    def test_undelete_refuses_directory_close_errors(self):
+        for block,slot,name,close in [(2,1,b'EARLY',1),(2,1,b'EARLY',2),(5,12,b'LAST',52)]:
+            with self.subTest(block=block,slot=slot,close=close):
+                note,out=self.undelete_root([(block,slot,name,20,1,5,b'hello')],'r','','close=%d'%close)
+                self.assertIn('Directory read failed',note)
+                self.assertEqual(list(out.iterdir()),[],'untrusted metadata created a recovery file')
+    def test_undelete_full_count_directory_errors_refuse_recovery(self):
+        for block,slot,name,at in ((2,1,b'EARLY',1),(2,1,b'EARLY',4),
+                                   (2,1,b'EARLY',5),(5,12,b'LAST',55)):
+            with self.subTest(read=at):
+                note,out=self.undelete_root([(block,slot,name,20,1,5,b'hello')],
+                                            'r','','read=%d'%at)
+                self.assertIn('Directory read failed',note)
+                self.assertEqual(list(out.iterdir()),[])
+
+    def test_undelete_full_count_write_errors_preserve_source_and_owned_partial(self):
+        payload=b''.join(bytes([b])*512 for b in range(8))
+        index=bytearray(512)
+        for b in range(8):index[b]=21+b
+        deleted=[(3,4,b'DATA',20,9,len(payload),index+payload)]
+        for at in (1,4,8):
+            for keep in (False,True):
+                with self.subTest(write=at,cleanup_failed=keep):
+                    modes=['','write=%d'%at]
+                    if keep:modes.append('keep-partial')
+                    note,out=self.undelete_root(deleted,'r',*modes)
+                    self.assertNotIn('Recovered',note)
+                    if keep:
+                        self.assertIn('Cleanup failed',note)
+                        self.assertEqual((out/'DATA').read_bytes(),payload[:at*512])
+                    else:self.assertEqual(list(out.iterdir()),[])
+
+    def test_undelete_invalid_declared_names_never_reach_create(self):
+        names=(b'A/B',b'A/../../V01',b'A\0B',b'A B',b'A\\B',b'A\x80',b'A\x1B',b'Ab')
+        for name in names:
+            with self.subTest(name=name):
+                note,out=self.undelete_root([(3,4,name,20,1,5,b'hello')],
+                    'r','','nested-output','create-count')
+                self.assertNotIn('Recovered',note)
+                self.assertEqual(note.splitlines()[-1],'0')
+                self.assertEqual((out/'A'/'KEEP').read_bytes(),b'preserve nested bytes')
+                self.assertEqual(sorted(str(p.relative_to(out)) for p in out.rglob('*') if p.is_file()),['A/KEEP'])
+                self.assertFalse((self.root/'V01').exists())
+
+    def test_undelete_valid_names_and_inferred_lengths_still_recover(self):
+        for name in (b'A',b'A.9',b'ABCDEFGHIJKLMNO',b'A23456789.12345'):
+            for inferred in (False,True):
+                with self.subTest(name=name,inferred=inferred):
+                    modes=['']
+                    if inferred:modes.append('zero-name-length')
+                    note,out=self.undelete_root([(3,4,name,20,1,5,b'hello')],'r',*modes)
+                    self.assertIn('Recovered',note)
+                    self.assertEqual((out/name.decode()).read_bytes(),b'hello')
+
+    def test_undelete_layout_io_errors_do_not_select_an_ambiguous_index(self):
+        index=bytearray(512);index[0]=index[256]=1 # $0101 is unchanged by half swap
+        data=bytes(range(256))*2
+        for size,last in ((1024,data),(131073,bytes(512))):
+            # Sapling index, or tree master with an all-hole child index.
+            stored=index+bytes((257-21)*512)+last
+            deleted=[(3,4,b'DATA',20,2,size,stored)]
+            for fault in range(1,5):
+                with self.subTest(size=size,fault=fault):
+                    note,out=self.undelete_root(deleted,'r','','create-count','layout-fault=%d'%fault)
+                    self.assertNotIn('Recovered',note)
+                    self.assertEqual(note.splitlines()[-1],'0')
+                    self.assertEqual(list(out.iterdir()),[])
+
     def test_undelete_walks_a_volume_root_by_its_own_blocks(self):
         """GET_FILE_INFO on a volume counts its used blocks, not the root's
         four: the walk must stop at the end of the chain, not fail past it."""
@@ -478,18 +636,39 @@ class SixPlugins(unittest.TestCase):
         for mode in (('twin',),('twin','list')):
             with self.subTest(mode=mode):
                 note,out=self.undelete_root([(5,12,b'LAST',20,1,5,b'hello')],'r',*mode)
-                self.assertEqual(note,'UNDELETE destination must be on another online volume.')
+                self.assertEqual(note,'Use another online destination volume.')
                 self.assertFalse((out/'LAST').exists())
         note,out=self.undelete_root([(5,12,b'LAST',20,1,5,b'hello')],'r','','list')
         self.assertIn('Recovered LAST',note)
     def test_undelete_ignores_a_record_past_the_terminator(self):
         note,out=self.undelete_root([(5,12,b'LAST',20,1,5,b'hello')],'r','phantom')
-        self.assertEqual(note,'UNDELETE destination must be on another online volume.')
+        self.assertEqual(note,'Use another online destination volume.')
         self.assertFalse((out/'LAST').exists())
     def test_undelete_recovers_a_deleted_empty_file(self):
         note,out=self.undelete_root([(3,4,b'EMPTY',20,1,0,b'')],'r')
         self.assertIn('Recovered EMPTY',note)
         self.assertEqual((out/'EMPTY').read_bytes(),b'')
+    def test_undelete_cancel_during_seedling_write_is_not_success(self):
+        for mode in ('cancel-write','cancel-close'):
+            with self.subTest(mode=mode):
+                note,out=self.undelete_root([(3,4,b'DATA',20,1,5,b'hello')],'r','',mode)
+                self.assertNotIn('Recovered',note)
+                self.assertIn('cancelled',note.lower())
+                self.assertEqual(list(out.iterdir()),[])
+    def test_undelete_cancel_during_sapling_recovery_removes_owned_output(self):
+        index=bytearray(512)
+        for i in range(8):index[i]=21+i
+        payload=bytes(range(256))*16
+        for mode in ('','cancel-bar','cancel-write','cancel-close'):
+            with self.subTest(mode=mode):
+                note,out=self.undelete_root([(3,4,b'DATA',20,9,len(payload),index+payload)],'r','',mode)
+                if mode:
+                    self.assertNotIn('Recovered',note)
+                    self.assertIn('cancelled',note.lower())
+                    self.assertEqual(list(out.iterdir()),[])
+                else:
+                    self.assertIn('Recovered DATA',note)
+                    self.assertEqual((out/'DATA').read_bytes(),payload)
     def test_undelete_empty_file_whose_key_block_is_reused_is_refused(self):
         note,out=self.undelete_root([(3,4,b'EMPTY',10,1,0,b'')],'r')   # block 10 belongs to LIVE
         self.assertNotIn('Recovered',note)
@@ -512,14 +691,14 @@ class SixPlugins(unittest.TestCase):
             output=subprocess.check_output([str(self.exe['sync']),str(s),str(d),str(mode),
                                         str(cached_size)]).splitlines()
             ok=output[0]==b'1'
-            self.assertEqual(output[1], b'1' if mode in (2,4,12,13,14,15,16,17,18) and not reserved else b'0')
+            self.assertEqual(output[1], b'1' if mode in (2,4,12,13,14,15,16,17,18,19,20,21,22,23) and not reserved else b'0')
             self.assertEqual((s/'DATA').read_bytes(),replacement)
             if mode==12:self.assertFalse((d/'DATA').exists())
             elif mode==18:self.assertEqual((d/'DATA').read_bytes(),b'late arrival')
             else:self.assertEqual((d/'DATA').read_bytes(),replacement if ok else original)
             if reserved:self.assertEqual((d/reserved).read_bytes(),b'preexisting')
             else:
-                if mode in (2,12,14,16,18):self.assertEqual((d/'A2FC.SYNC').read_bytes(),replacement)
+                if mode in (2,12,14,16,18,19,20,21,22,23):self.assertEqual((d/'A2FC.SYNC').read_bytes(),replacement)
                 elif mode in (15,17):self.assertEqual((d/'A2FC.SYNC').read_bytes(),b'')
                 else:self.assertFalse((d/'A2FC.SYNC').exists())
                 if mode in (4,12,13,18):self.assertEqual((d/'A2FC.BAK').read_bytes(),original)
@@ -528,6 +707,106 @@ class SixPlugins(unittest.TestCase):
             if mode in (12,18):self.assertIn(b'restore failed',output[2])
             return ok
     def test_sync_verified_replace(self):self.assertTrue(self.sync(0))
+    def test_sync_rechecks_destination_protection_before_replacing(self):
+        for mode in (19,20,21,22,23):
+            with self.subTest(mode=mode):self.assertFalse(self.sync(mode))
+    def test_sync_tree_skips_write_locked_targets_before_creating_output(self):
+        with tempfile.TemporaryDirectory(prefix='sync-lock-',dir='/tmp') as t:
+            root=Path(t);s=root/'S';d=root/'D';s.mkdir();d.mkdir()
+            payload=bytes(range(200))*8;original=b'write-locked original'
+            for name in ('DATA','DATA2'):
+                (s/name).write_bytes(payload);(d/name).write_bytes(original)
+            run=subprocess.run([str(self.exe['sync']),str(s),str(d),'19','1600','tree'],
+                               capture_output=True,text=True,check=True)
+            self.assertIn('0 copied',run.stdout)
+            for name in ('DATA','DATA2'):
+                self.assertEqual((s/name).read_bytes(),payload)
+                self.assertEqual((d/name).read_bytes(),original)
+            self.assertEqual(sorted(p.name for p in d.iterdir()),['DATA','DATA2'])
+    def test_sync_directory_stream_error_preserves_existing_files(self):
+        with tempfile.TemporaryDirectory(prefix='sync-dir-error-',dir='/tmp') as t:
+            root=Path(t);s=root/'S';d=root/'D';s.mkdir();d.mkdir()
+            payload=bytes(range(200))*8;original=b'original must survive'
+            for name in ('DATA','DATA2'):
+                (s/name).write_bytes(payload);(d/name).write_bytes(original)
+            run=subprocess.run([str(self.exe['sync']),str(s),str(d),'35','1600','tree'],
+                               capture_output=True,text=True,check=True)
+            self.assertIn('0 copied',run.stdout)
+            self.assertIn('1 errors',run.stdout)
+            for name in ('DATA','DATA2'):
+                self.assertEqual((s/name).read_bytes(),payload)
+                self.assertEqual((d/name).read_bytes(),original)
+            self.assertEqual(sorted(p.name for p in d.iterdir()),['DATA','DATA2'])
+
+    def test_sync_malformed_dates_do_not_create_or_replace_files(self):
+        for mode in range(36,43):
+            for exists in (False,True):
+                with self.subTest(mode=mode,exists=exists):
+                    with tempfile.TemporaryDirectory(prefix='sync-date-',dir='/tmp') as t:
+                        root=Path(t);s=root/'S';d=root/'D';s.mkdir();d.mkdir()
+                        payload=bytes(range(200))*8;original=b'original date safety'
+                        for name in ('DATA','DATA2'):
+                            (s/name).write_bytes(payload)
+                            if exists:(d/name).write_bytes(original)
+                        run=subprocess.run([str(self.exe['sync']),str(s),str(d),str(mode),'1600','tree'],
+                                           capture_output=True,text=True,check=True)
+                        self.assertIn('0 copied',run.stdout)
+                        self.assertIn('2 errors',run.stdout)
+                        for name in ('DATA','DATA2'):
+                            self.assertEqual((s/name).read_bytes(),payload)
+                            if exists:self.assertEqual((d/name).read_bytes(),original)
+                        self.assertEqual(sorted(p.name for p in d.iterdir()),['DATA','DATA2'] if exists else [])
+
+    def test_sync_invalid_destination_dates_preserve_originals(self):
+        for mode in range(44,54):
+            with self.subTest(mode=mode):
+                with tempfile.TemporaryDirectory(prefix='sync-dest-date-',dir='/tmp') as t:
+                    root=Path(t);s=root/'S';d=root/'D';s.mkdir();d.mkdir()
+                    payload=bytes(range(200))*8;original=b'original destination date'
+                    for name in ('DATA','DATA2'):
+                        (s/name).write_bytes(payload);(d/name).write_bytes(original)
+                    run=subprocess.run([str(self.exe['sync']),str(s),str(d),str(mode),'1600','tree'],
+                                       capture_output=True,text=True,check=True)
+                    for name in ('DATA','DATA2'):
+                        self.assertEqual((s/name).read_bytes(),payload)
+                        self.assertEqual((d/name).read_bytes(),original)
+                    if mode<49:
+                        self.assertIn('0 copied',run.stdout)
+                        self.assertIn('2 errors',run.stdout)
+                        expected=['DATA','DATA2']
+                    else:
+                        self.assertIn('SYNC stopped:',run.stdout)
+                        self.assertEqual((d/'A2FC.SYNC').read_bytes(),payload)
+                        expected=['A2FC.SYNC','DATA','DATA2']
+                    self.assertEqual(sorted(p.name for p in d.iterdir()),expected)
+
+    def test_sync_valid_timestamp_limits_still_replace_files(self):
+        with tempfile.TemporaryDirectory(prefix='sync-date-ok-',dir='/tmp') as t:
+            root=Path(t);s=root/'S';d=root/'D';s.mkdir();d.mkdir()
+            payload=bytes(range(200))*8
+            for name in ('DATA','DATA2'):
+                (s/name).write_bytes(payload);(d/name).write_bytes(b'older original')
+            run=subprocess.run([str(self.exe['sync']),str(s),str(d),'43','1600','tree'],
+                               capture_output=True,text=True,check=True)
+            self.assertIn('2 copied',run.stdout)
+            self.assertIn('0 errors',run.stdout)
+            for name in ('DATA','DATA2'):
+                self.assertEqual((s/name).read_bytes(),payload)
+                self.assertEqual((d/name).read_bytes(),payload)
+            self.assertEqual(sorted(p.name for p in d.iterdir()),['DATA','DATA2'])
+
+    def test_sync_malformed_entry_cannot_overwrite_outside_destination(self):
+        with tempfile.TemporaryDirectory(prefix='names-',dir='/tmp') as t:
+            root=Path(t);s=root/'A'/'S';d=root/'B'/'D';s.mkdir(parents=True);d.mkdir(parents=True)
+            payload=bytes(range(200))*8;original=b'outside destination: keep these bytes'
+            (s.parent/'VICTIM').write_bytes(payload);(d.parent/'VICTIM').write_bytes(original)
+            run=subprocess.run([str(self.exe['sync']),str(s),str(d),'34','1600','tree'],
+                               capture_output=True,text=True,check=True)
+            self.assertEqual((d.parent/'VICTIM').read_bytes(),original)
+            self.assertEqual((s.parent/'VICTIM').read_bytes(),payload)
+            self.assertIn('0 copied',run.stdout)
+            self.assertEqual(list(s.iterdir()),[])
+            self.assertEqual(list(d.iterdir()),[])
     def test_sync_bar_covers_copy_and_check(self):
         # 1,600 bytes, 256 at a time: seven steps of copy, then seven of the
         # read-back, which restarts the bar at 0 instead of leaving it full.
