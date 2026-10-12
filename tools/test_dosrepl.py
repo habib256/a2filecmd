@@ -34,11 +34,17 @@ static unsigned char scratch[512], active;
 static char note_text[120], full_path[128];
 static char prodos_path[] = "/V/NEW";
 static int mode, reads, writes, fail_at, srctype;
+static unsigned int protection_checks;
+static unsigned char cancel_on_read;
 static unsigned char target_unit = 0xE0;
 static const unsigned char dos_order[16]={0,14,13,12,11,10,9,8,7,6,5,4,3,2,1,15};
 
 void dw_mainbank(void) {}
-unsigned char dw_protected(unsigned char u) { return mode==1 ? 1 : mode==2 ? 0x80 : 0; }
+unsigned char dw_protected(unsigned char u) {
+ ++protection_checks;
+ if((mode==13 || mode==14) && protection_checks==fail_at)cancel_on_read=1;
+ return mode==1 ? 1 : mode==2 ? 0x80 : 0;
+}
 
 /* mode 3: the nth read fails. 4: the nth write fails. 5: the nth write is
  * half done then fails. 6: the nth write reads back different. */
@@ -68,6 +74,7 @@ static unsigned char mli(unsigned char cmd, void* p) {
    fseek(disk,at,SEEK_SET); fputc(h^1,disk); fflush(disk);
   }
  }
+ if(cmd==0x80 && cancel_on_read){cancel_on_read=0;cancelled=1;if(mode==14)return 0x27;}
  return 0;
 }
 static unsigned char do_confirm(const char* s) { (void)s; return mode!=7; }
@@ -159,6 +166,27 @@ class DosRepl(unittest.TestCase):
         vtoc = self.disk.read_bytes()[offset(17, 0):offset(17, 0) + 256]
         for t, s in self.before['NEW']['blocks'] + self.before['NEW']['lists']:
             self.assertTrue(vtoc[0x38 + t * 4 + (s < 8)] & (1 << (s & 7)), (t, s))
+
+    def test_esc_during_read_modify_write_preserves_the_old_catalogue(self):
+        for typ in (4,6,0xFC):
+            for size in (0,1,513):
+                self.payload=bytes(i&255 for i in range(size))
+                self.src.write_bytes(self.payload)
+                self.disk.write_bytes(self.original)
+                total,note=self.run_op(typ=typ)
+                self.assertIn('Replaced',note)
+                # Initial protection check is 1. The last raw write frees
+                # old sectors, after the catalogue has already switched.
+                # Cancel every earlier read-modify-write through the switch.
+                for check in range(2,total+1):
+                    for mode in (13,14):
+                        with self.subTest(typ=typ,size=size,check=check,mode=mode):
+                            self.disk.write_bytes(self.original)
+                            writes,note=self.run_op(mode,check,typ=typ)
+                            self.assert_old_file_intact()
+                            self.assertEqual(writes,check-2)
+                            self.assertNotIn('Replaced',note)
+                            if check==2:self.assertEqual(self.disk.read_bytes(),self.original)
 
     def test_a_binary_keeps_its_address_and_length_header(self):
         writes, note = self.run_op(typ=6)

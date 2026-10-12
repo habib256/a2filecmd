@@ -56,6 +56,8 @@ static FILE* source_stream;
 static FILE* image_stream;
 static FILE* flagged;
 static int source_reads,source_closes,image_reads,image_closes;
+static unsigned char confirmed;
+static unsigned int confirmed_reads, publish_reads;
 static int h_error(FILE* f){return f==flagged || ferror(f);}
 static void h_clear(FILE* f){if(f==flagged)flagged=NULL;clearerr(f);}
 static FILE* h_open(const char* p,const char* m){
@@ -69,6 +71,15 @@ static size_t h_read(void* p,size_t s,size_t n,FILE* f){
     size_t result=fread(p,s,n,f);
     if(f==image_stream){
         ++image_reads;
+        if((mode==39 || mode==40) && source_closes && ++publish_reads==fail_at){
+            flagged=f;if(mode==40)return 0;
+        }
+        if(mode==37 && source_closes && ++publish_reads==fail_at)cancelled=1;
+        if(mode==36 && confirmed && ++confirmed_reads==(src.kind==1?5:3)){
+            /* Only the last entry's reread differs from read_dir. The
+             * image stays unchanged until the actual writer touches it. */
+            unsigned char* bytes=p;bytes[28]=fail_at;bytes[29]=fail_at>>8;
+        }
         if(mode==15 && image_reads==fail_at)return 0;
         if(((mode==11 || mode==20) && image_reads==fail_at) ||
            (mode==13 && image_reads>=fail_at))flagged=f;
@@ -80,6 +91,41 @@ static size_t h_read(void* p,size_t s,size_t n,FILE* f){
     }
     return result;
 }
+/* Simulate another writer using ordinary host I/O on a disposable image.
+ * Leave the imported tail blocks alone; ARRIVED lives at block 279. */
+static void arrive(void){
+    unsigned char image[143424], entry[26]={0};
+    FILE* external=fopen(img_path,"r+b");
+    size_t size=fread(image,1,sizeof image,external);
+    unsigned int k;unsigned long logical,physical;
+    entry[0]=279&255;entry[1]=279>>8;entry[2]=280&255;entry[3]=280>>8;
+    entry[4]=5;entry[6]=7;memcpy(entry+7,"ARRIVED",7);entry[22]=1;
+    for(k=0;k<29;++k){
+        unsigned char value;
+        if(k<26){logical=1024+(count+1)*26+k;value=entry[k];}
+        else if(k==26){logical=1040;value=count+1;}
+        else if(k==27){logical=1041;value=0;}
+        else{logical=279UL*512;value=0xA7;}
+        physical=src.kind==1?(logical/4096)*4096+(unsigned long)sectors[(logical%4096)/256]*256+logical%256:src.base+logical;
+        image[physical]=value;
+    }
+    rewind(external);fwrite(image,1,size,external);fclose(external);
+    fseek(image_stream,0,SEEK_END); /* discard any buffered old directory */
+}
+static void change_volume_header(void){
+    unsigned char image[143424];FILE* external=fopen(img_path,"r+b");
+    size_t size=fread(image,1,sizeof image,external);
+    unsigned int field=fail_at<2 || fail_at==6?14:fail_at==2?0:fail_at<5?2:4;
+    unsigned int value=fail_at==0?tail:fail_at==1?281:fail_at==2 || fail_at==5?1:fail_at==3?5:fail_at==4?7:280;
+    unsigned char i;unsigned long logical,physical;
+    for(i=0;i<2;++i){
+        logical=1024+field+i;
+        physical=src.kind==1?(logical/4096)*4096+(unsigned long)sectors[(logical%4096)/256]*256+logical%256:src.base+logical;
+        image[physical]=(unsigned char)(value>>(8*i));
+    }
+    rewind(external);fwrite(image,1,size,external);fclose(external);
+    fseek(image_stream,0,SEEK_END);
+}
 static int h_close(FILE* f){
     int failed=0,result;
     if(f==image_stream){
@@ -89,6 +135,8 @@ static int h_close(FILE* f){
     }
     if(f==source_stream){
         ++source_closes;
+        if(mode==38)arrive();
+        if(mode==41)change_volume_header();
         if(mode==7)failed=1;
         if(mode==8)cancelled=1;
         source_stream=NULL;
@@ -112,7 +160,7 @@ static size_t h_fwrite(const void* p, size_t s, size_t n, FILE* f) {
     }
     return fwrite(p, s, n, f);
 }
-static unsigned char h_confirm(const char* s) { (void)s; return mode != 1; }
+static unsigned char h_confirm(const char* s) { (void)s;confirmed=1;return mode != 1; }
 static void h_message(const char* s) { (void)s; }
 static void h_progress(const char* s, unsigned long a, unsigned long b)
 { fprintf(stderr, "BAR %s %lu %lu\n", s, a, b); }
@@ -274,6 +322,165 @@ class PascalW(unittest.TestCase):
         return pascal_ref.contents(self.img.read_bytes(), e)
 
     # -- what must happen ---------------------------------------------------
+
+    def test_changed_volume_geometry_refuses_catalogue_publication(self):
+        for count in (0,1,18,19):
+            old=[('OLD%02d'%i,5,bytes([i+1])*520) for i in range(count)]
+            po=pascal_ref.make('MYVOL',old)
+            tail=6+count*2
+            for fmt,wrap,unwrap in (('PO',bytes,bytes),('DO',to_dsk,to_dsk),('2MG',to_2mg,lambda d:d[64:])):
+                self.img=self.dir/('VOL.'+fmt)
+                for size in (1,1500):
+                    for p in self.src.iterdir():p.unlink()
+                    self.files={};self.give('NEWFILE',bytes(i%251 for i in range(size)))
+                    sources={p.name:p.read_bytes() for p in self.src.iterdir()}
+                    for mutation,(field,value) in enumerate(((14,tail),(14,281),(0,1),(2,5),(2,7),(4,1),(14,280))):
+                        with self.subTest(count=count,fmt=fmt,size=size,mutation=mutation):
+                            expected=bytearray(po);expected[1024+field:1026+field]=value.to_bytes(2,'little')
+                            self.img.write_bytes(wrap(po))
+                            writes,note=self.run_op(41,mutation)
+                            raw=unwrap(self.img.read_bytes())
+                            if mutation<6:
+                                self.assertEqual(raw[1024:3072],expected[1024:3072])
+                                self.assertEqual(writes,((size+511)//512)*(2 if fmt=='DO' else 1))
+                                self.assertNotIn('1 put',note)
+                                # Read old extents from the original valid catalogue even
+                                # when the external mutation makes its header malformed.
+                                for entry,file in zip(pascal_ref.volume(po)['files'],old):
+                                    self.assertEqual(pascal_ref.contents(raw,entry),file[2])
+                            else:
+                                volume=pascal_ref.volume(raw)
+                                self.assertIn('1 put',note)
+                                self.assertEqual(pascal_ref.contents(raw,volume['files'][-1]),sources['NEWFILE'])
+                                for entry,file in zip(volume['files'],old):self.assertEqual(pascal_ref.contents(raw,entry),file[2])
+                            self.assertEqual({p.name:p.read_bytes() for p in self.src.iterdir()},sources)
+
+    def test_new_catalogue_entry_is_not_overwritten_at_publication(self):
+        for count in (0,1,18,19):
+            old=[('OLD%02d'%i,5,bytes([i+1])*520) for i in range(count)]
+            po=pascal_ref.make('MYVOL',old)
+            expected=bytearray(po)
+            entry=bytearray(26)
+            entry[:6]=bytes((23,1,24,1,5,0))
+            entry[6:14]=b'\x07ARRIVED';entry[22]=1
+            expected[1024+(count+1)*26:1024+(count+2)*26]=entry
+            expected[1040:1042]=bytes((count+1,0));expected[279*512]=0xA7
+            for fmt in ('PO','DO','2MG'):
+                self.img=self.dir/('VOL.'+fmt)
+                image=to_dsk(po) if fmt=='DO' else to_2mg(po) if fmt=='2MG' else po
+                for size in (1,1500):
+                    with self.subTest(count=count,format=fmt,size=size):
+                        for p in self.src.iterdir():p.unlink()
+                        self.files={};self.give('NEWFILE',bytes(i%251 for i in range(size)))
+                        source_bytes={p.name:p.read_bytes() for p in self.src.iterdir()}
+                        self.img.write_bytes(image)
+                        writes,note=self.run_op(38)
+                        decoded=self.img.read_bytes()
+                        if fmt=='DO':decoded=to_dsk(decoded)
+                        elif fmt=='2MG':decoded=decoded[64:]
+                        self.assertEqual(decoded[1024:3072],expected[1024:3072])
+                        volume=pascal_ref.volume(decoded)
+                        self.assertEqual([e['name'] for e in volume['files']],[f[0] for f in old]+['ARRIVED'])
+                        for e,f in zip(volume['files'],old):
+                            self.assertEqual(pascal_ref.contents(decoded,e),f[2])
+                        self.assertEqual(pascal_ref.contents(decoded,volume['files'][-1]),b'\xA7')
+                        self.assertEqual(writes,((size+511)//512)*(2 if fmt=='DO' else 1))
+                        self.assertNotIn('1 put',note)
+                        self.assertEqual({p.name:p.read_bytes() for p in self.src.iterdir()},source_bytes)
+
+    def test_publication_header_errors_refuse_before_catalogue_writes(self):
+        for count in (0,1,18,19):
+            old=[('OLD%02d'%i,5,bytes([i+1])*520) for i in range(count)]
+            po=pascal_ref.make('MYVOL',old)
+            for fmt in ('PO','DO','2MG'):
+                self.img=self.dir/('VOL.'+fmt)
+                image=to_dsk(po) if fmt=='DO' else to_2mg(po) if fmt=='2MG' else po
+                halves=2 if fmt=='DO' else 1
+                for size in (1,1500):
+                    for p in self.src.iterdir():p.unlink()
+                    self.files={};self.give('NEWFILE',bytes(i%251 for i in range(size)))
+                    source_bytes={p.name:p.read_bytes() for p in self.src.iterdir()}
+                    for mode in (39,40):
+                        for half in range(halves):
+                            with self.subTest(count=count,format=fmt,size=size,mode=mode,half=half):
+                                self.img.write_bytes(image)
+                                writes,note=self.run_op(mode,half+1)
+                                decoded=self.img.read_bytes()
+                                if fmt=='DO':decoded=to_dsk(decoded)
+                                elif fmt=='2MG':decoded=decoded[64:]
+                                self.assertEqual(decoded[1024:3072],po[1024:3072])
+                                volume=pascal_ref.volume(decoded)
+                                for e,f in zip(volume['files'],old):
+                                    self.assertEqual(pascal_ref.contents(decoded,e),f[2])
+                                self.assertEqual(writes,halves*((size+511)//512))
+                                self.assertNotIn('1 put',note)
+                                self.assertEqual({p.name:p.read_bytes() for p in self.src.iterdir()},source_bytes)
+
+    def test_cancel_during_catalogue_reads_never_publishes(self):
+        for count in (1,18,19):
+            old=[('OLD%02d'%i,5,bytes([i+1])*520) for i in range(count)]
+            po=pascal_ref.make('MYVOL',old)
+            for fmt in ('PO','DO','2MG'):
+                self.img=self.dir/('VOL.'+fmt)
+                image=to_dsk(po) if fmt=='DO' else to_2mg(po) if fmt=='2MG' else po
+                halves=2 if fmt=='DO' else 1
+                patches=2 if count in (18,19) else 1
+                guard=1 if count in (18,19) else 0
+                for size in (1,1500):
+                    for p in self.src.iterdir():p.unlink()
+                    self.files={};self.give('NEWFILE',bytes(i%251 for i in range(size)))
+                    source_bytes={p.name:p.read_bytes() for p in self.src.iterdir()}
+                    for phase in range(patches+guard):
+                        patch=max(0,phase-guard)
+                        read_base=0 if phase==0 else (1+2*(phase-1))*halves if guard else phase*2*halves
+                        for half in range(halves):
+                            with self.subTest(count=count,format=fmt,size=size,patch=patch,half=half):
+                                self.img.write_bytes(image)
+                                writes,note=self.run_op(37,read_base+half+1)
+                                decoded=self.img.read_bytes()
+                                if fmt=='DO':decoded=to_dsk(decoded)
+                                elif fmt=='2MG':decoded=decoded[64:]
+                                volume=pascal_ref.volume(decoded)
+                                self.assertEqual([e['name'] for e in volume['files']],[f[0] for f in old])
+                                self.assertEqual(decoded[1024:1024+(count+1)*26],po[1024:1024+(count+1)*26])
+                                for entry,file in zip(volume['files'],old):
+                                    self.assertEqual(pascal_ref.contents(decoded,entry),file[2])
+                                self.assertEqual(writes,halves*((size+511)//512+patch))
+                                self.assertEqual(note,'Stopped; the volume is whole.')
+                                self.assertEqual({p.name:p.read_bytes() for p in self.src.iterdir()},source_bytes)
+
+    def test_changed_last_file_bound_refuses_before_any_image_write(self):
+        for fmt in ('PO','DO','2MG'):
+            self.img=self.dir/('VOL.'+fmt)
+            for size in (1,1500):
+                for p in self.src.iterdir():p.unlink()
+                self.files={};self.give('NEWFILE',bytes(i%251 for i in range(size)))
+                source_bytes={p.name:p.read_bytes() for p in self.src.iterdir()}
+                po=pascal_ref.make('MYVOL',[KEEP])
+                last=pascal_ref.volume(po)['files'][-1]['last']
+                image=to_dsk(po) if fmt=='DO' else to_2mg(po) if fmt=='2MG' else po
+                for tail in (0,1,2,5,6,last-1,last+1,281):
+                    with self.subTest(format=fmt,size=size,tail=tail):
+                        self.img.write_bytes(image)
+                        writes,note=self.run_op(36,tail)
+                        self.assertEqual(self.img.read_bytes(),image)
+                        self.assertEqual(writes,0)
+                        self.assertEqual(note,'Image changed; nothing done.')
+                        self.assertEqual({p.name:p.read_bytes() for p in self.src.iterdir()},source_bytes)
+                self.img.write_bytes(image)
+                writes,note=self.run_op(36,last)
+                self.assertIn('1 put',note)
+                self.assertGreater(writes,0)
+                decoded=self.img.read_bytes()
+                if fmt=='DO':
+                    decoded=to_dsk(decoded)
+                elif fmt=='2MG':decoded=decoded[64:]
+                volume=pascal_ref.volume(decoded)
+                old=next(e for e in volume['files'] if e['name']==KEEP[0])
+                self.assertEqual(pascal_ref.contents(decoded,old),KEEP[2])
+                new=next(e for e in volume['files'] if e['name']=='NEWFILE')
+                self.assertEqual(pascal_ref.contents(decoded,new),self.files['NEWFILE'])
+                self.assertEqual({p.name:p.read_bytes() for p in self.src.iterdir()},source_bytes)
 
     def test_every_file_shows_its_name_then_its_blocks(self):
         # `name` is one buffer for every file: 0 redraws it, so the bar

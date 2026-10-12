@@ -28,6 +28,8 @@ static int error_(FILE*);
 #include "src/plugins/unwrap.c"
 #undef ferror
 static int fault, writes, reads_out, extracting;
+static unsigned int create_calls, parser_reads;
+static unsigned long output_bytes;
 static FILE *reading_back, *source, *read_error;
 static int error_(FILE* f) { return f == read_error || ferror(f); }
 static unsigned char mli_(unsigned char cmd, void* params)
@@ -36,6 +38,7 @@ static unsigned char mli_(unsigned char cmd, void* params)
     FILE* f;
     unsigned char* pas = create.path;
     if (cmd != 0xC0) abort();
+    ++create_calls;
     memcpy(p, pas + 1, pas[0]); p[pas[0]] = 0;
     if (fault == 1) return 0x27;
     f = fopen(p, "wx");
@@ -58,11 +61,12 @@ static FILE* open_(const char* p, const char* m)
 }
 static size_t write_(const void* p, size_t s, size_t n, FILE* f)
 {
+    output_bytes+=s*n;
     if ((fault == 2 || fault == 5) && ++writes == 2) return n - 1;
     if (fault == 3) { unsigned char c[512]; memcpy(c, p, n); c[n - 1] ^= 1; return fwrite(c, s, n, f); }
     return fwrite(p, s, n, f);
 }
-static int remove_(const char* p) { printf("REMOVE %s\n", strrchr(p, '/') + 1); return fault == 5 || fault == 15 || fault == 16 || fault == 25 ? -1 : remove(p); }
+static int remove_(const char* p) { printf("REMOVE %s\n", strrchr(p, '/') + 1); return fault == 5 || fault == 15 || fault == 16 || fault == 25 || (fault>=35 && fault<=38) ? -1 : remove(p); }
 static int close_(FILE* f)
 {
     int fail = ((fault == 8 || fault == 16) && f == source) ||
@@ -77,6 +81,13 @@ static int close_(FILE* f)
     return fail ? EOF : r;
 }
 static size_t read_(void* p, size_t s, size_t n, FILE* f) {
+    if(fault>=31 && fault<=38 && f==source && writing) {
+        unsigned char mode=(fault-31)%4;
+        unsigned long pos=ftell(f);
+        if((!(mode&1) && pos==off) || ((mode&1) && pos+n==off+len)) {
+            if(mode<2)read_error=f;else cancelled=1;
+        }
+    }
     if(f==source && !extracting && n==512) {
         if(fault==17){read_error=f;return 0;}
         if(fault==18 && ftell(f)>=512)read_error=f;
@@ -84,6 +95,13 @@ static size_t read_(void* p, size_t s, size_t n, FILE* f) {
         if(fault==21)cancelled=1;
     }
     if(f==source && n==128)extracting=1;
+    if(f==source && extracting) {
+        if(n!=128)++parser_reads;
+        if((fault==26 && n==128) || (fault==27 && n==12) ||
+           (fault==28 && n==8) ||
+           (fault==29 && n==12 && (unsigned long)ftell(f)==26+12UL*(be16(hdr+24)-1)))cancelled=1;
+        if(fault==30 && n==12){cancelled=1;return fread(p,s,n-1,f);}
+    }
     if ((fault == 7 || fault == 15) && f == reading_back && n == 1 &&
         (unsigned long)ftell(f) == len) { read_error = f; return 0; }
     if (fault == 11 && f == source && extracting && n == 512) { read_error = f; return fread(p, s, n - 1, f); }
@@ -122,6 +140,8 @@ int main(int argc, char** argv)
     api.progress_bar = bar_;
     plugin_entry(&api);
     printf("BARS %lu %lu\n", bars, overflows);
+    printf("CALLS %u %u\n",create_calls,parser_reads);
+    printf("WRITTEN %lu\n",output_bytes);
     printf("NOTE %s\n", note);
     return 0;
 }
@@ -159,6 +179,8 @@ class Unwrap(unittest.TestCase):
         created = [l.split()[1:] for l in lines if l.startswith('CREATE ')]
         removed = [l.split()[1] for l in lines if l.startswith('REMOVE ')]
         self.bars = [int(v) for l in lines if l.startswith('BARS ') for v in l.split()[1:]]
+        self.creates,self.parser_reads=map(int,next(l[6:] for l in lines if l.startswith('CALLS ')).split())
+        self.output_bytes=int(next(l[8:] for l in lines if l.startswith('WRITTEN ')))
         files = {p.name: p.read_bytes() for p in (case / 'D').iterdir()}
         self.assertEqual((case / 'S' / name).read_bytes(), data, 'the source is untouched')
         return note, created, removed, files
@@ -325,6 +347,51 @@ class Unwrap(unittest.TestCase):
                         self.assertEqual(removed,['DOC'])
                         self.assertEqual(files,{'KEEP':b'old',**({'DOC':fork} if fault==25 else {})})
                         self.assertIn('Cleanup failed' if fault==25 else 'Stopped',note)
+
+    def test_cancel_during_header_or_metadata_never_creates_output(self):
+        for fmt in ('as1','as2','mb1','mb2','mb3'):
+            for fork in (b'',b'A',b'B'*513):
+                for fault in ((26,27,28,29,30) if fmt.startswith('as') else (26,)):
+                    for collision in (False,True):
+                        with self.subTest(fmt=fmt,size=len(fork),fault=fault,collision=collision):
+                            if fmt.startswith('as'):
+                                data=ref.make_as([(3,b'Doc'),(11,b'\x00\xc3\x00\x06\x00\x00\x20\x00'),
+                                                 (1,fork),(2,b'resource')],version=int(fmt[-1]))
+                            else:data=ref.make_mb(b'Doc',b'TEXTttxt',fork,version=int(fmt[-1]))
+                            existing=['KEEP','DOC'] if collision else ['KEEP']
+                            note,created,removed,files=self.run_unwrap('X.AS',data,fault=fault,existing=existing)
+                            self.assertEqual(self.creates,0)
+                            self.assertEqual((created,removed,files),
+                                             ([],[],{name:b'old' for name in existing}))
+                            self.assertEqual(note,'Stopped: nothing extracted.')
+
+    def test_faulted_source_block_is_never_written(self):
+        for fmt in ('as1','as2','mb1','mb2','mb3'):
+            for size in (1,513,1536):
+                fork=bytes(i&255 for i in range(size))
+                data=(ref.make_as([(3,b'Doc'),(1,fork)],version=int(fmt[-1])) if fmt.startswith('as')
+                      else ref.make_mb(b'Doc',b'TEXTttxt',fork,version=int(fmt[-1])))
+                for fault in range(31,39):
+                    with self.subTest(fmt=fmt,size=size,fault=fault):
+                        prefix=((size-1)//512)*512 if (fault-31)%2 else 0
+                        note,created,removed,files=self.run_unwrap('X.AS',data,fault=fault,existing=['KEEP'])
+                        self.assertEqual(self.output_bytes,prefix)
+                        self.assertEqual(len(created),1)
+                        self.assertEqual(removed,['DOC'])
+                        self.assertEqual(files,{'KEEP':b'old',**({'DOC':fork[:prefix]} if fault>=35 else {})})
+                        self.assertIn('Cleanup failed' if fault>=35 else 'removed',note)
+
+    def test_cancel_stops_large_applesingle_catalogue_immediately(self):
+        for version in (1,2):
+            for count in (1000,65535):
+                with self.subTest(version=version,count=count):
+                    entries=[(3,b'Doc')]+[(4,b'')]*(count-2)+[(1,b'payload')]
+                    data=ref.make_as(entries,version=version)
+                    note,created,removed,files=self.run_unwrap('X.AS',data,fault=27,existing=['KEEP'])
+                    self.assertEqual(self.parser_reads,1)
+                    self.assertEqual(self.creates,0)
+                    self.assertEqual((created,removed,files),([],[],{'KEEP':b'old'}))
+                    self.assertEqual(note,'Stopped: nothing extracted.')
 
     def test_applesingle_payload_must_not_overlap_its_header_table(self):
         for version in (1,2):
@@ -556,6 +623,105 @@ class Unwrap(unittest.TestCase):
                             self.assertEqual((removed,files),([],{'KEEP':b'old','DOC':fork}))
                             self.assertEqual(note,f'DOC: 700 bytes, ${typ:02X}/${aux:04X}. Resource fork left out.')
                             self.assertEqual(ref.unwrap(data,'X.AS')[1:4],(typ,aux,fork))
+
+    def test_duplicate_legacy_prodos_metadata_refuses_before_create(self):
+        legacy=bytes(8)+bytes([0,0xE3,0,6,0,0,0x20,0])
+        prodos=(11,b'\x00\xc3\x00\x06\x00\x00\x20\x00')
+        pairs=((legacy,legacy),(legacy,legacy[:11]+b'\x04'+legacy[12:]),
+               (legacy,legacy[:14]+b'\x20\x01'),(b'',legacy),(legacy[:15],legacy),
+               (legacy[:11]+b'\x0f'+legacy[12:],legacy))
+        for first,last in pairs:
+            for between in ([],[(9,b'TEXTttxt')],[prodos]):
+                for collision in (False,True):
+                    with self.subTest(first=first,last=last,between=between,collision=collision):
+                        data=ref.make_as([(3,b'Doc'),(7,first)]+between+
+                                         [(1,b'payload'*100),(7,last)],version=1,home=b'ProDOS')
+                        existing=['KEEP','DOC'] if collision else ['KEEP']
+                        note,created,removed,files=self.run_unwrap('X.AS',data,existing=existing)
+                        self.assertEqual((created,removed,files),
+                                         ([],[],{name:b'old' for name in existing}))
+                        self.assertEqual(note,'Not an AppleSingle or MacBinary file.')
+                        self.assertIsNone(ref.unwrap(data,'X.AS'))
+
+    def test_short_legacy_prodos_metadata_refuses_before_create(self):
+        legacy=bytes(8)+bytes([0,0xE3,0,6,0,0,0x20,0])
+        for length in range(16):
+            for collision in (False,True):
+                with self.subTest(length=length,collision=collision):
+                    data=ref.make_as([(3,b'Doc'),(9,b'TEXTttxt'),(7,legacy[:length]),
+                                     (1,b'payload'*100)],version=1,home=b'ProDOS')
+                    existing=['KEEP','DOC'] if collision else ['KEEP']
+                    note,created,removed,files=self.run_unwrap('X.AS',data,existing=existing)
+                    self.assertEqual((created,removed,files),
+                                     ([],[],{name:b'old' for name in existing}))
+                    self.assertEqual(note,'Not an AppleSingle or MacBinary file.')
+                    self.assertIsNone(ref.unwrap(data,'X.AS'))
+
+    def test_legacy_metadata_versions_homes_and_complete_entries(self):
+        legacy=bytes(8)+bytes([0,0xE3,0,6,0,0,0x20,0])
+        for version,home in ((1,b'ProDOS'),(1,b'Macintosh'),(2,b'ProDOS')):
+            for length in (16,17,32):
+                for position in (0,3):
+                    for fork in (b'',b'A'):
+                        with self.subTest(version=version,home=home,length=length,
+                                          position=position,size=len(fork)):
+                            entries=[(3,b'Doc'),(9,b'TEXTttxt'),(1,fork)]
+                            entries.insert(position,(7,legacy.ljust(length,b'\0')))
+                            data=ref.make_as(entries,version=version,home=home)
+                            typ,aux=(6,0x2000) if version==1 and home==b'ProDOS' else (4,0)
+                            note,created,removed,files=self.run_unwrap('X.AS',data,existing=['KEEP'])
+                            self.assertEqual(created,[['DOC',f'{typ:02X}',f'{aux:04X}']])
+                            self.assertEqual((removed,files),([],{'KEEP':b'old','DOC':fork}))
+                            self.assertEqual(ref.unwrap(data,'X.AS')[1:4],(typ,aux,fork))
+
+        # ID 7 has no ProDOS meaning in another home system or in version 2.
+        # Even short/repeated foreign entries must not acquire that meaning.
+        for version,home in ((1,b'Macintosh'),(2,b'ProDOS'),(2,b'Macintosh')):
+            for length in (0,15,16,32):
+                for repeated in (False,True):
+                    with self.subTest(version=version,home=home,length=length,repeated=repeated):
+                        entries=[(3,b'Doc'),(9,b'TEXTttxt'),(7,legacy.ljust(length,b'\0')[:length]),
+                                 (1,b'payload')]
+                        if repeated:entries.append((7,b''))
+                        data=ref.make_as(entries,version=version,home=home)
+                        note,created,removed,files=self.run_unwrap('X.AS',data,existing=['KEEP'])
+                        self.assertEqual(created,[['DOC','04','0000']])
+                        self.assertEqual((removed,files),([],{'KEEP':b'old','DOC':b'payload'}))
+                        self.assertEqual(ref.unwrap(data,'X.AS')[1:4],(4,0,b'payload'))
+
+    def test_zero_applesingle_entry_id_refuses_before_create(self):
+        for version in (1,2):
+            for payload in (b'',b'X',b'X'*513):
+                for position in (0,2,4):
+                    for collision in (False,True):
+                        with self.subTest(version=version,size=len(payload),position=position,
+                                          collision=collision):
+                            entries=[(3,b'Doc'),(11,b'\x00\xc3\x00\x06\x00\x00\x20\x00'),
+                                     (9,b'TEXTttxt'),(1,b'payload'*100)]
+                            entries.insert(position,(0,payload))
+                            data=ref.make_as(entries,version=version)
+                            existing=['KEEP','DOC'] if collision else ['KEEP']
+                            note,created,removed,files=self.run_unwrap('X.AS',data,existing=existing)
+                            self.assertEqual((created,removed,files),
+                                             ([],[],{name:b'old' for name in existing}))
+                            self.assertEqual(note,'Not an AppleSingle or MacBinary file.')
+                            self.assertIsNone(ref.unwrap(data,'X.AS'))
+
+    def test_unknown_nonzero_applesingle_entries_remain_opaque(self):
+        for version in (1,2):
+            for eid in (4,6,10,12,13,14,15,0x7FFFFFFF,0x80000000,0xFFFFFFFF):
+                for payload in (b'',b'opaque!!!'):
+                    for position in (0,4):
+                        with self.subTest(version=version,eid=eid,size=len(payload),position=position):
+                            fork=b'payload'*100
+                            entries=[(3,b'Doc'),(11,b'\x00\xc3\x00\x06\x00\x00\x20\x00'),
+                                     (9,b'TEXTttxt'),(1,fork)]
+                            entries.insert(position,(eid,payload))
+                            data=ref.make_as(entries,version=version)
+                            note,created,removed,files=self.run_unwrap('X.AS',data,existing=['KEEP'])
+                            self.assertEqual(created,[['DOC','06','2000']])
+                            self.assertEqual((removed,files),([],{'KEEP':b'old','DOC':fork}))
+                            self.assertEqual(ref.unwrap(data,'X.AS')[1:4],(6,0x2000,fork))
 
     def test_unique_applesingle_data_fork_survives_metadata_order(self):
         for version in (1,2):

@@ -91,9 +91,14 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
     a.sprintf(a.full,"%s.LOG",base);if(!join(logpath,other->path,a.full)){note("Path too long.");return;}
     a.clrscr();a.cprintf("RESCUE\r\nSOURCE: %s\r\nDESTINATION: %s\r\n",source,other->path);
     if(!a.confirm("Recover with 30 read attempts; log and zero-fill unreadable chunks?"))return;
+    if(stop()){note("Rescue stopped; nothing created.");return;}
     if(newfile(logpath,4,0,1)){note("Cannot create recovery log (existing name?).");return;}
     if(!logline(disk?"RESCUE raw disk: concatenate .P01, .P02... in order.\r":"RESCUE file: .REC contains recovered bytes.\r"))goto fail;
     do {
+        /* ESC during the initial journal close or the preceding part
+         * close must stop before CREATE. Keep the owned log/partial data;
+         * source files, existing destinations and AUX stay untouched. */
+        if(stop())goto fail;
         if(!out) {
             ++part;a.sprintf(a.full,disk?"%s.P%02u":"%s.REC",base,part);
             if(!join(path,other->path,a.full) || newfile(path,disk?6:a.selected->type,disk?0:a.selected->aux,1))goto fail;
@@ -107,6 +112,10 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
             ++bad;a.sprintf(a.other_full,"ZERO block %u, offset %lu, bytes %u\r",block,offset,n);
             if(!logline(a.other_full))goto fail;
         }
+        /* Closing the source or writing/closing a ZERO journal record
+         * can deliver ESC. Stop before writing its zero-filled chunk;
+         * only our owned recovery files and log have been touched. */
+        if(stop())goto fail;
         if(a.fwrite(buf,1,n,out)!=n || ferror(out))goto fail;offset+=n;
         if(disk && (offset%8192000UL)==0) {if(a.fclose(out)){out=0;goto fail;}out=0;}
     }while(offset<size);
@@ -125,6 +134,10 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
     /* ESC during the final read or either close must not validate COMPLETE.
      * Preserve recovered bytes and record an incomplete outcome instead. */
     if(!close_input() || stop())goto fail;
+    /* SEEK beyond EOF cannot prove that a source has not shrunk. Re-read
+     * its directory metadata before COMPLETE; uncertainty or ESC keeps
+     * our partial recovery/log, never modifying the source or AUX. */
+    if(!disk && (!fresh_size() || size!=offset || stop()))goto fail;
     a.sprintf(a.other_full,"COMPLETE %lu bytes, %u zero-filled chunks, %u retried.\r",size,bad,retried);
     /* The journal write/close can also receive ESC. An INCOMPLETE record
      * supersedes any COMPLETE bytes already written; no output is erased. */

@@ -101,7 +101,10 @@ static unsigned char pass(const unsigned char* e,FILE* out,unsigned char verify)
     unsigned char j;
     if(stop())return 0;
     for(j=0;j<e[1];++j) {
-        if(!sector(start+j))return 0;
+        /* ESC can arrive during the sector read. Stop before writing its
+         * bytes or starting read-back; only our exclusive output is owned.
+         * The image and AUX remain untouched. */
+        if(!sector(start+j) || stop())return 0;
         if(verify) {
             if(RF(fread)(back,1,256,out)!=256 || ferror(out) || memcmp(back,buf,256))return 0;
         } else if(RF(fwrite)(buf,1,256,out)!=256 || ferror(out))return 0;

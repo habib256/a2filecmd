@@ -29,12 +29,13 @@ static int error_(FILE*);
 static FILE *errored,*verifying,*reading;
 static int error_(FILE* f){return f==errored || ferror(f);}
 static int fault, writes, argn;
+static unsigned long output_bytes;
 static unsigned int verify_closes;
 static unsigned long verify_end;
 static char** args;
 static struct DirEntry dirent;
 static int dir_i;
-static unsigned int opens,dir_closes;
+static unsigned int opens,dir_closes,create_calls;
 static unsigned char directory_error;
 static unsigned char mli_(unsigned char cmd, void* params)
 {
@@ -42,6 +43,7 @@ static unsigned char mli_(unsigned char cmd, void* params)
     FILE* f;
     unsigned char* pas = create.path;
     if (cmd != 0xC0) abort();
+    ++create_calls;
     memcpy(p, pas + 1, pas[0]); p[pas[0]] = 0;
     f = fopen(p, "wx");
     if (!f) return 0x47;
@@ -61,6 +63,7 @@ static FILE* open_(const char* p, const char* m)
 }
 static size_t write_(const void* p, size_t s, size_t n, FILE* f)
 {
+    output_bytes+=s*n;
     if ((fault == 1 || fault == 4) && ++writes == 3) return n - 1;
     if (fault == 2 && ++writes == 3) { unsigned char c[64]; memcpy(c, p, n); c[0] ^= 1; return fwrite(c, s, n, f); }
     if(fault==5)errored=f;
@@ -79,13 +82,22 @@ static int close_(FILE* f)
         return bad?-1:r;
     }
 }
-static int remove_(const char* p) { printf("REMOVE %s\n", strrchr(p, '/') + 1); return fault == 4 || fault==12 || fault==16 || fault==18 ? -1 : remove(p); }
+static int remove_(const char* p) { printf("REMOVE %s\n", strrchr(p, '/') + 1); return fault == 4 || fault==12 || fault==16 || fault==18 || fault==29 || fault==31 || fault==33 || fault==38 || fault==40 || fault==42 ? -1 : remove(p); }
 static size_t read_(void* p, size_t s, size_t n, FILE* f) {
+ if(f==reading && created && fault>=37 && fault<=45){
+  unsigned char refill=fault>=43?fault-42:(fault-37)/2+1;
+  if((unsigned long)ftell(f)==512UL*refill){errored=f;if(fault>=43)return fread(p,s,n-1,f);}
+ }
+ if(f==reading && created && fault>=28 && fault<=36){
+  unsigned char refill=fault>=34?fault-33:(fault-28)/2+1;
+  if((unsigned long)ftell(f)==512UL*refill){cancelled=1;if(fault>=34)errored=f;}
+ }
  if(f==verifying){
   if((fault==7 || fault==12) && n==1 && (unsigned long)ftell(f)>=written){errored=f;return 0;}
   if(fault==6 && (unsigned long)ftell(f)<written)errored=f;
  }
  if(fault==8 && f==reading)errored=f;
+ if(fault==27 && f==reading)cancelled=1;
  return fread(p, s, n, f);
 }
 static int seek_(FILE* f, long o, int w) { return fseek(f, o, w); }
@@ -132,6 +144,8 @@ int main(int argc, char** argv)
     printf("BARS %lu %lu\n", bars, overflows);
     printf("CHECK %u %lu\n",verify_closes,verify_end);
     printf("LIST %u %u\n",opens,dir_closes);
+    printf("CALLS %u\n",create_calls);
+    printf("WRITTEN %lu\n",output_bytes);
     printf("NOTE %s\n", note);
     return 0;
 }
@@ -193,7 +207,9 @@ class Sciibin(unittest.TestCase):
         removed = [l.split()[1] for l in lines if l.startswith('REMOVE ')]
         self.bars = [int(v) for l in lines if l.startswith('BARS ') for v in l.split()[1:]]
         self.verification = [int(v) for l in lines if l.startswith('CHECK ') for v in l.split()[1:]]
+        self.output_bytes=int(next(l[8:] for l in lines if l.startswith('WRITTEN ')))
         self.list_state = [int(v) for l in lines if l.startswith('LIST ') for v in l.split()[1:]]
+        self.create_calls = [int(l.split()[1]) for l in lines if l.startswith('CALLS ')][0]
         made = {p.name: p.read_bytes() for p in (case / 'D').iterdir() if p.is_file()}
         self.sub_files = sorted(str(p.relative_to(case / 'D')) for d in subdirs
                                 for p in (case / 'D' / d).rglob('*'))
@@ -218,13 +234,97 @@ class Sciibin(unittest.TestCase):
         for size in (1,2560):
             payload=bytes(i&255 for i in range(size))
             text=ref.encode('DOC',payload)
-            for fault in range(5,13):
+            for fault in (5,6,7,9,10,11,12):
                 with self.subTest(size=size,fault=fault):
                     note,created,removed,made=self.run_sb([('D.BSC',text)],'D.BSC',fault,existing=('KEEP',))
                     self.assertEqual(created,[['DOC','06','0000']])
                     self.assertEqual(removed,['DOC'])
                     self.assertEqual(made,{'KEEP':b'old',**({'DOC':payload} if fault==12 else {})})
                     self.assertIn('Cleanup failed' if fault==12 else 'removed',note)
+
+    def test_cancel_during_data_refill_precedes_appending_decoded_bytes(self):
+        for size in (768,1536,ref.SEGMENT+48):
+            payload=bytes(i&255 for i in range(size))
+            encoded=ref.encode('DOC',payload)
+            for fault in range(28,37):
+                refill=fault-33 if fault>=34 else (fault-28)//2+1
+                if size==768 and refill==3:continue
+                prefix=position=0
+                for i,line in enumerate(encoded.split(b'\r')):
+                    position+=len(line)+1
+                    if position>refill*512:break
+                    if i>=4 and len(line)==64:prefix+=48
+                with self.subTest(size=size,fault=fault,refill=refill):
+                    note,created,removed,made=self.run_sb([('D.BSC',encoded)],'D.BSC',fault,existing=('KEEP',))
+                    self.assertEqual(self.output_bytes,prefix)
+                    self.assertEqual(created,[['DOC','06','0000']])
+                    self.assertEqual(removed,['DOC'])
+                    kept=fault in (29,31,33)
+                    self.assertEqual(made,{'KEEP':b'old',**({'DOC':payload[:prefix]} if kept else {})})
+                    self.assertIn('Cleanup failed' if kept else 'removed',note)
+
+    def test_data_refill_error_refuses_its_bytes_before_decoding(self):
+        for size in (768,1536,ref.SEGMENT+48):
+            payload=bytes(i&255 for i in range(size))
+            encoded=ref.encode('DOC',payload)
+            for fault in range(37,46):
+                refill=fault-42 if fault>=43 else (fault-37)//2+1
+                if size==768 and refill==3:continue
+                prefix=position=0
+                for i,line in enumerate(encoded.split(b'\r')):
+                    position+=len(line)+1
+                    if position>refill*512:break
+                    if i>=4 and len(line)==64:prefix+=48
+                with self.subTest(size=size,fault=fault,refill=refill):
+                    note,created,removed,made=self.run_sb([('D.BSC',encoded)],'D.BSC',fault,existing=('KEEP',))
+                    self.assertEqual(self.output_bytes,prefix)
+                    self.assertEqual(created,[['DOC','06','0000']])
+                    self.assertEqual(removed,['DOC'])
+                    kept=fault in (38,40,42)
+                    self.assertEqual(made,{'KEEP':b'old',**({'DOC':payload[:prefix]} if kept else {})})
+                    self.assertIn('Cleanup failed' if kept else 'Read:',note)
+
+    def test_chunks_cannot_exceed_declared_total_before_create_or_append(self):
+        for size in (2,48,513):
+            payload=bytes(i&255 for i in range(size))
+            for total in set((0,size-1)):
+                text=ref.encode('DOC',payload,total_size=total)
+                for collision in (False,True):
+                    with self.subTest(size=size,total=total,collision=collision):
+                        old={'KEEP':b'old',**({'DOC':b'old'} if collision else {})}
+                        note,created,removed,made=self.run_sb([('D.BSC',text)],'D.BSC',existing=tuple(old))
+                        self.assertEqual(self.create_calls,0)
+                        self.assertEqual(self.output_bytes,0)
+                        self.assertEqual((created,removed,made),([],[],old))
+                        self.assertEqual(note,'BinSCII damaged')
+        for tail in (2,49,ref.SEGMENT):
+            payload=b'A'*ref.SEGMENT+b'B'*tail
+            text=ref.encode('DOC',payload,total_size=len(payload)-1)
+            for multipart in (False,True):
+                for fault in (0,18):
+                    with self.subTest(tail=tail,multipart=multipart,fault=fault):
+                        files=([('P.%02d'%i,part) for i,part in enumerate(self.split(text))]
+                               if multipart else [('P.00',text)])
+                        note,created,removed,made=self.run_sb(files,'P.00',fault,existing=('KEEP',))
+                        self.assertEqual(self.output_bytes,ref.SEGMENT)
+                        self.assertEqual(created,[['DOC','06','0000']])
+                        self.assertEqual(removed,['DOC'])
+                        self.assertEqual(made,{'KEEP':b'old',**({'DOC':payload[:ref.SEGMENT]} if fault else {})})
+                        self.assertIn('Cleanup failed' if fault else 'removed',note)
+
+    def test_bad_header_read_or_cancel_refuses_before_create(self):
+        for size in (1,48,ref.SEGMENT+48):
+            text=ref.encode('DOC',bytes(i&255 for i in range(size)))
+            for fault in (8,27):
+                for collision in (False,True):
+                    with self.subTest(size=size,fault=fault,collision=collision):
+                        old={'KEEP':b'old',**({'DOC':b'old'} if collision else {})}
+                        note,created,removed,made=self.run_sb([('D.BSC',text)],'D.BSC',fault,existing=tuple(old))
+                        self.assertEqual(self.create_calls,0)
+                        self.assertEqual(created,[])
+                        self.assertEqual(removed,[])
+                        self.assertEqual(made,old)
+                        self.assertEqual(note,'Read' if fault==8 else 'Stopped')
 
     def test_uncertain_directory_list_refuses_before_open_or_create(self):
         for size in (48,ref.SEGMENT+48):
@@ -323,6 +423,41 @@ class Sciibin(unittest.TestCase):
                             self.assertEqual(removed,['DOC'])
                             self.assertEqual(made,{'KEEP':b'old',**({'DOC':payload[:ref.SEGMENT]} if fault else {})})
                             self.assertIn('Cleanup failed' if fault else 'removed',note)
+
+    def test_later_non_plain_chunks_refuse_before_appending_data(self):
+        for tail in (1,49,ref.SEGMENT):
+            payload=b'A'*ref.SEGMENT+b'B'*tail
+            original=self.split(ref.encode('DOC',payload))
+            for storage in (5,0x0D):
+                changed=self.split(ref.encode('DOC',payload,storage=storage))
+                for multipart in (False,True):
+                    for fault in (0,18):
+                        with self.subTest(tail=tail,storage=storage,multipart=multipart,fault=fault):
+                            texts=[original[0],changed[1]]
+                            self.assertRaises(ref.Bad,ref.decode,texts)
+                            files=([('P.00',texts[0]),('P.01',texts[1])] if multipart else
+                                   [('P.00',b''.join(texts))])
+                            note,created,removed,made=self.run_sb(files,'P.00',fault,existing=('KEEP',))
+                            self.assertEqual(created,[['DOC','06','0000']])
+                            self.assertEqual(removed,['DOC'])
+                            self.assertEqual(made,{'KEEP':b'old',**({'DOC':payload[:ref.SEGMENT]} if fault else {})})
+                            self.assertIn('Cleanup failed' if fault else 'removed',note)
+
+    def test_later_plain_storage_types_preserve_all_bytes(self):
+        for tail in (1,49,ref.SEGMENT):
+            payload=b'A'*ref.SEGMENT+b'B'*tail
+            original=self.split(ref.encode('DOC',payload))
+            for storage in (1,2,3):
+                changed=self.split(ref.encode('DOC',payload,storage=storage))
+                for multipart in (False,True):
+                    with self.subTest(tail=tail,storage=storage,multipart=multipart):
+                        texts=[original[0],changed[1]]
+                        files=([('P.00',texts[0]),('P.01',texts[1])] if multipart else
+                               [('P.00',b''.join(texts))])
+                        note,created,removed,made=self.run_sb(files,'P.00',existing=('KEEP',))
+                        self.assertEqual(created,[['DOC','06','0000']])
+                        self.assertEqual((removed,made),([],{'KEEP':b'old','DOC':payload}))
+                        self.assertEqual(note,f'DOC: {len(payload)} bytes, $06/$0000, 2 chunks.')
 
     def test_matching_chunk_types_preserve_all_bytes(self):
         for ftype,aux in ((6,0x2000),(0xFF,0xFFFF),(0xB3,0xDB07)):

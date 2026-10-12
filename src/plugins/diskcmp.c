@@ -120,6 +120,9 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
     if(!compare_end(&src) || !compare_end(&dst)) {
         note("Image size/read error; comparison incomplete.");goto done;
     }
+    /* ESC during the last block or EOF probe is still an interruption.
+     * Comparison only reads sources and MAIN; disks and AUX stay intact. */
+    if(stop())goto cancelled;
     if(diff)a.sprintf(a.note,"%u differing blocks; first at %u.",diff,first);
     else a.sprintf(a.note,"Identical: %u blocks compared.",src.blocks);
     goto done;
@@ -130,4 +133,7 @@ invalid:note("Cannot compare: select valid volumes or .PO/.DSK/.2MG images.");
 done:ok=compare_close(&src);
     if(!compare_close(&dst))ok=0;
     if(!ok)note("Stream error; comparison incomplete.");
+    /* Closing may take time too. Always close both sources, then refuse
+     * any complete verdict if ESC arrived during either close. */
+    else if(stop())note("Comparison cancelled; no complete verdict.");
 }

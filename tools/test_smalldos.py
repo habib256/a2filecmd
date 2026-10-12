@@ -17,16 +17,6 @@ HARNESS = HARNESS.replace('if(mode==4 && creates==fail_at) return 0x27;',
 HARNESS = HARNESS.replace('f=fopen(path,"rb"); if(f){fclose(f);return 0x47;} /* the name is taken */\n f=fopen(path,"wb");',
                           'fprintf(stderr,"TYPE %u %u\\n",c->type,c->aux);\n f=fopen(path,"wx");')
 HARNESS = HARNESS.replace('if(!f) return 0x27;', 'if(!f) return errno==EEXIST?0x47:0x27;')
-HARNESS = HARNESS.replace('if(!strcmp(p,"/I/VOL.PO"))','if(!strncmp(p,"/I/",3))')
-HARNESS = HARNESS.replace('strcpy(full_,"/I/VOL.PO");','strcpy(full_,"/I/");strcat(full_,argc>5?argv[5]:"VOL.DSK");')
-HARNESS = HARNESS.replace('strcpy(sel.name,"VOL.PO");','strcpy(sel.name,argc>5?argv[5]:"VOL.DSK");')
-HARNESS = HARNESS.replace('return fread(p,s,n,f);', '''
- if(mode==25 && f==image_file && reads==fail_at)cancelled=1;
- {size_t result=fread(p,s,n,f);
-  if(mode==21 && f==verify_file && creates==fail_at && n>1)((unsigned char*)p)[0]^=1;
-  return result;
- }
-''')
 HARNESS = HARNESS.replace('return fwrite(p,s,n,f);','if(mode==26)errored=f;return fwrite(p,s,n,f);')
 HARNESS = HARNESS.replace('joinpath(path,p);f=fopen(path,m);', '''
  if(creates==fail_at && ((mode==27 && !strcmp(m,"wb")) || (mode==28 && !strcmp(m,"rb"))))return NULL;
@@ -38,6 +28,38 @@ static void progress_(const char* n,unsigned long d,unsigned long t){
  if(creates==fail_at && ((mode==23 && verify_file) || (mode==24 && !verify_file)))cancelled=1;
 ''')
 HARNESS = HARNESS.replace('api.fseek=fseek;','api.fseek=seek_;')
+
+# Keep the SMALLDOS reader independent of Pascal catalogue fault hooks.
+# The shared service setup can evolve without importing Pascal globals.
+read_start=HARNESS.index('static size_t read_(')
+read_end=HARNESS.index('static size_t write_(',read_start)
+HARNESS=HARNESS[:read_start]+r'''static size_t read_(void* p,size_t s,size_t n,FILE* f){
+ size_t result;
+ ++reads;if(mode==2 && reads==fail_at)return 0;
+ if(f==image_file && ((mode==14 && reads==fail_at) ||
+    ((mode==15 || mode==16) && verify_file && creates==fail_at)))errored=f;
+ if(f==verify_file && creates==fail_at){
+  if((mode==9 || mode==11) && n==1){errored=f;return 0;}
+  if(mode==10 && n>1)errored=f;
+ }
+ result=fread(p,s,n,f);
+ if(mode==25 && f==image_file && reads==fail_at)cancelled=1;
+ if(mode==21 && f==verify_file && creates==fail_at && n>1)((unsigned char*)p)[0]^=1;
+ if((mode==40 || mode==41 || mode==42) && f==image_file && creates==1 && n==256 && ++data_reads==fail_at){
+  cancelled=1;if(mode==41)errored=f;
+ }
+ return result;
+}
+'''+HARNESS[read_end:]
+HARNESS=HARNESS.replace('static int mode, reads, fail_at, creates, catalogue_reads;',
+                        'static int mode, reads, fail_at, creates, catalogue_reads, data_reads, writes;')
+HARNESS=HARNESS.replace(" strcpy(sel.name,strrchr(imagepath,'/')+1);",
+                        ' strcpy(sel.name,argc>5?argv[5]:"VOL.DSK");')
+HARNESS=HARNESS.replace('static size_t write_(const void* p,size_t s,size_t n,FILE* f){','static size_t write_(const void* p,size_t s,size_t n,FILE* f){++writes;')
+HARNESS=HARNESS.replace('static int remove_(const char* p){','static int remove_(const char* p){if(mode==42)return -1;')
+HARNESS=HARNESS.replace(' fprintf(stderr,"CREATES %d\\n",creates);',
+                        ' fprintf(stderr,"CREATES %d\\n",creates);fprintf(stderr,"WRITES %d\\n",writes);')
+
 
 FILES=[('MENU','A',b'\x08\x08\x0a\0\x80\0\0\0'),
        ('TOPO','B',bytes(range(256))*80),
@@ -67,11 +89,31 @@ class SmallDos(unittest.TestCase):
             trace=result.stderr.splitlines()
             self.creates=int(next(l.split()[1] for l in trace if l.startswith('CREATES ')))
             self.closes=int(next(l.split()[1] for l in trace if l.startswith('SOURCE-CLOSE ')))
+            self.writes=int(next(l.split()[1] for l in trace if l.startswith('WRITES ')))
             self.types=[tuple(map(int,l.split()[1:])) for l in trace if l.startswith('TYPE ')]
             return result.stdout.strip(),{f.name:f.read_bytes() for f in out.iterdir()}
 
     def expected(self,data,order='dos'):
         return {e['output']:e['data'] for e in ref.volume(data,order)['files']}
+
+    def test_cancel_during_sector_read_prevents_the_next_output_write(self):
+        for size in (1,513,4097):
+            payload=bytes(i%251 for i in range(size))
+            sectors=(size+255)//256
+            for flip in (False,True):
+                for order in ('dos','prodos'):
+                    data=ref.make([('TARGET','B',payload)],flip=flip,order=order)
+                    padded=self.expected(data,order)['TARGET']
+                    for mode in (40,41,42):
+                        for at in range(1,sectors+1):
+                            with self.subTest(size=size,flip=flip,order=order,mode=mode,at=at):
+                                note,files=self.run_image(data,mode,at,order)
+                                expected={'KEEP':b'existing bytes'}
+                                if mode==42:expected['TARGET']=padded[:256*(at-1)]
+                                self.assertEqual(files,expected)
+                                self.assertEqual(self.writes,at-1)
+                                self.assertEqual(self.creates,1);self.assertEqual(self.closes,1)
+                                self.assertIn('Cleanup failed' if mode==42 else 'stopped',note)
 
     def test_both_track_directions_and_sector_orders(self):
         for flip in (False,True):

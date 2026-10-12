@@ -140,6 +140,10 @@ static unsigned long measure(const unsigned char* first)
          * buffers/done bits change here; source and AUX stay untouched. */
         if (!e) { bad = 1; return 0; }
         if (!live(e) || e[0] != user || name_diff(e + 1, want)) continue;
+        /* A fresh entry can differ from skew validation. Bound RC before
+         * using it to index the sixteen allocation bytes. MAIN only;
+         * no destination is owned and source/AUX remain untouched. */
+        if (e[15] > 128) { bad = 1; return 0; }
         done[i >> 3] |= 1 << (i & 7);
         /* There are only 64 directory entries. A complete file cannot
          * reach extent 64, nor claim the same extent twice. */
@@ -157,7 +161,9 @@ static unsigned long measure(const unsigned char* first)
          * the record prefix before owning any output. MAIN only. */
         blocks = (e[15] + 7) >> 3;
         while (blocks) {
-            if (!e[15 + blocks]) { bad = 1; return 0; }
+            if (e[15 + blocks] < DIR_BLOCKS || e[15 + blocks] >= BLOCKS) {
+                bad = 1; return 0;
+            }
             --blocks;
         }
         records += e[15];
@@ -165,7 +171,12 @@ static unsigned long measure(const unsigned char* first)
     }
     /* Unique extents plus this equality require every earlier extent to
      * exist and contain all 128 records; no undeclared bytes are copied. */
-    if (records != (unsigned int)high * 128 + rc) { bad = 1; return 0; }
+    /* No matching entry also sums to zero. Require extent zero even for
+     * an empty file: a vanished identity cannot authorize CREATE. Only
+     * MAIN scan state changed; sources, destinations and AUX are intact. */
+    if (!(claimed[0] & 1) || records != (unsigned int)high * 128 + rc) {
+        bad = 1; return 0;
+    }
     return ((unsigned long)high * 128 + rc) * 128;
 }
 
@@ -179,9 +190,16 @@ static unsigned char copy_file(const unsigned char* first, FILE* out, unsigned c
     while (left) {
         e = extent_at(first, ext);
         if (!e) return 0;
+        /* A fresh extent must still declare the records measured earlier.
+         * Otherwise copying fsize can read past its EOF or verify a prefix.
+         * Only our owned output is cleaned; image/AUX remain untouched. */
+        if (e[15] != (unsigned char)(left > 16384UL ? 128 : ((unsigned int)left >> 7))) return 0;
         for (j = 16; j < 32 && left; ++j) {
             b = e[j];
-            if (!b) continue;
+            /* extent_at may reread the directory after measurement.
+             * Refuse holes, directory blocks and out-of-volume blocks
+             * before writing their bytes to our exclusive output. */
+            if (b < DIR_BLOCKS || b >= BLOCKS) return 0;
             /* Every kilobyte, from 0: a pass starts with a fresh bar, the
              * read-back included, whatever the file before this one. */
             a.progress_bar(name, fsize - left, fsize);
@@ -213,6 +231,10 @@ static unsigned char one(const unsigned char* first)
 {
     FILE* out;
     unsigned char ok;
+    /* Directory scans can deliver ESC before this call. Do not CREATE,
+     * even for an empty file or a taken name. Earlier verified outputs
+     * remain intact; image/AUX are never written by this extraction. */
+    if (stop()) { bad = 1; return 0; }
     set_name(first);
     if (!name[0] || !join(dest, other->path, name)) {
         /* An unrepresentable path is not a duplicate filename. No CREATE

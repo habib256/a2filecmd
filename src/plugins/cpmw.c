@@ -104,6 +104,7 @@ static unsigned char undo[512], uncertain;
 static unsigned char put, skipped, stopped;
 static unsigned int nth;
 static FILE* src_file;
+static unsigned char slot;
 #define source_path a.other_full
 
 /* One 256-byte CP/M sector written back where cpm_sector would read it,
@@ -123,8 +124,22 @@ static unsigned char cpm_write(unsigned int logical, const unsigned char* in,
     RF(memcpy)(undo, buf, 512);
     ours = buf + ((k & 1) ? 256 : 0);
     mate = buf + ((k & 1) ? 0 : 256);
+    /* Publication rereads this shared block once more. The selected slot
+     * must still be free in those actual bytes, before replacing them. */
+    if (in == dsec) {
+        k = (slot & 7) * ENTRY;
+        if (ours[k] != 0xE5) return 0;
+        /* The cache predates this read: keep every freshly read neighbour
+         * and replace only our free slot. Writes stay in the confirmed
+         * image; neither source files nor AUX are modified. */
+        RF(memcpy)(dsec, ours, 256);
+        RF(memcpy)(dsec + k, newent, ENTRY);
+    }
     RF(memcpy)(twin, mate, 256);
     RF(memcpy)(ours, in, 256);
+    /* ESC received by the preceding read must not start a physical write.
+     * Only MAIN buffers changed; no restoration is needed before WRITE. */
+    if (stop()) return 0;
     if (source_write(&src, blk, buf) && source_read(&src, blk, buf) &&
         !memcmp(ours, in, 256) && !memcmp(mate, twin, 256)) return 1;
     /* Keep the complete saved block until restoration is read back. A
@@ -164,7 +179,6 @@ static unsigned char cpm_name(const char* s)
  * `slot` on the first free entry (0xFF when the directory is full). Two
  * passes -- one for the name, one for the slot -- read the same sixty-four
  * entries twice and cost the window forty bytes it did not have. */
-static unsigned char slot;
 static unsigned char survey(void)
 {
     unsigned char i, j;
@@ -247,6 +261,12 @@ static unsigned char one(const char* name, unsigned long size)
      * one write, and it is the instant the file exists. */
     { unsigned char* e = entry_at(slot);
       if (!e) { note("Cannot read the directory."); return 0; }
+      /* The slot was chosen before data writes. A fresh live entry is
+       * owned by someone else, even if our data copy succeeded. Refuse
+       * before publishing; image data remains unreferenced, sources/AUX
+       * untouched. ESC during this directory read also precedes WRITE. */
+      if (live(e)) { note("Directory changed; stopped."); return 0; }
+      if (stop()) { note("Stopped; the volume is whole."); return 0; }
         RF(memcpy)(e, newent, ENTRY);
       if (!cpm_write(slot >> 3, dsec, sec)) {
           dsec_at = 0xFF;

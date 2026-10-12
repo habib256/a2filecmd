@@ -2468,6 +2468,1217 @@ UNWRAP **7751/7776 octets** (65C02/6502), BSS jusqu'à **$3F2E/$3F48**,
 contrôlées par les 8 tests du disque 800K. Aucune atomicité supplémentaire
 n'est garantie en cas de coupure pendant l'écriture physique ProDOS.
 
+## UNWRAP : vérifier les anciennes métadonnées ProDOS AppleSingle v1
+
+L'entrée ID 7 d'un AppleSingle v1 de système d'origine ProDOS pouvait
+être ignorée si elle était trop courte, ou être remplacée par une seconde
+entrée, donnant un succès avec un type/aux de remplacement. Elle doit
+désormais contenir les seize octets lus et être unique avant CREATE.
+Le bit de présence survit à l'entrée ID 11. La référence Python suit ces
+contrôles. Seuls les buffers et l'état MAIN changent ; source en lecture,
+aucune écriture AUX, aucune destination créée ou supprimée lors du refus.
+
+Les 68 scénarios négatifs échouaient avant correction : 36 doublons
+(type/aux divergents ou identiques, type répertoire, entrée vide/courte,
+Finder/ID 11 intercalé et collision) et 32 entrées uniques de 0 à 15 octets
+avec/sans collision. Les 60 cas valides vérifient les entrées complètes,
+leurs positions, la data fork vide ou non vide et les systèmes/versions
+où ID 7 n'est pas une métadonnée ProDOS : ces derniers continuent à ignorer
+les entrées étrangères courtes ou répétées. Le vrai C est exécuté sur
+fichiers temporaires jetables ; source, destinations existantes, type/aux
+et octets extraits sont comparés. Les 40 tests UNWRAP, l'auto-test de
+référence et les 15 tests des gardes de disposition passent.
+
+Les deux builds et contrôles mémoire passent sans modifier les limites :
+UNWRAP **7762/7787 octets** (65C02/6502), BSS jusqu'à **$3F39/$3F53**,
+**198/172 octets** libres sous $4000. Distributions reconstruites et
+contrôlées par les 8 tests du disque 800K. Les contrôles n'offrent aucune
+atomicité supplémentaire lors d'une coupure pendant l'écriture ProDOS.
+
+## UNWRAP : refuser l'identifiant d'entrée AppleSingle zéro
+
+Le parseur ignorait un descripteur ID 0 comme une extension inconnue et
+pouvait annoncer une extraction valide. La spécification Apple interdit
+explicitement cet identifiant (chapitre 2, Entry descriptors, page 6 de la
+[note AppleSingle/AppleDouble](https://nulib.com/library/AppleSingle_AppleDouble.pdf)).
+Il est désormais refusé avant CREATE, même pour une entrée vide. Les
+identifiants non nuls inconnus restent opaques. Seul l'état MAIN change :
+source en lecture, aucune écriture AUX, aucune destination créée ou
+supprimée lors du refus. L'oracle Python applique le même contrôle.
+
+Les 36 scénarios négatifs échouaient avant correction : versions 1/2,
+entrée vide/1/513 octets, trois positions dans la table, avec/sans collision.
+Les 80 cas valides vérifient dix identifiants opaques, y compris les bornes
+$7FFFFFFF/$80000000/$FFFFFFFF, des entrées vides ou non vides et leurs
+positions. Le vrai C est exécuté sur fichiers temporaires jetables ; les
+sources, destinations préexistantes, métadonnées et octets extraits sont
+comparés. Les 42 tests UNWRAP, l'auto-test de référence et les 15 tests des
+gardes de disposition passent.
+
+Les deux builds et contrôles mémoire passent sans changer les limites :
+UNWRAP **7803/7828 octets** (65C02/6502), BSS jusqu'à **$3F62/$3F7C**,
+**157/131 octets** libres sous $4000. Distributions reconstruites et
+contrôlées par les 8 tests du disque 800K. Aucune atomicité supplémentaire
+n'est garantie lors d'une coupure pendant l'écriture physique ProDOS.
+
+## UNWRAP : annuler la lecture du catalogue avant CREATE
+
+Un ESC arrivé pendant la lecture de l'en-tête ou du catalogue pouvait
+laisser le parseur poursuivre tous les descripteurs, puis créer un fichier
+avant que la copie constate l'annulation. Le nettoyage devenait nécessaire
+alors qu'aucune extraction n'avait été demandée après ESC ; s'il échouait,
+un fichier vide restait. `grab()` vérifie désormais l'annulation avant la
+lecture suivante, et l'entrée du plugin la vérifie après le parseur, avant
+la création. Le message devient « Stopped: nothing extracted. ». Seul le
+flux source en lecture est fermé ; aucun fichier créé/supprimé, aucune
+écriture AUX, seuls l'état et les buffers MAIN changent.
+
+Les 82 scénarios ciblés échouaient avant correction. Le vrai C exécute
+78 annulations à l'en-tête, au premier/dernier descripteur, aux métadonnées
+ou avec une lecture courte : AppleSingle v1/v2, MacBinary I/II/III, forks
+vides/1/513 octets et collisions. Quatre catalogues de 1000/65535 entrées
+vérifient qu'ESC au premier descripteur ne lit aucun descripteur suivant.
+Le banc compte tous les appels CREATE, même refusés : aucun lors de ces
+annulations. Les sources et destinations préexistantes sont comparées sur
+fichiers temporaires jetables. Les 44 tests UNWRAP et les 15 tests des
+gardes de disposition passent.
+
+Les deux builds et contrôles mémoire passent sans relâcher les limites :
+UNWRAP **7854/7880 octets** (65C02/6502), BSS jusqu'à **$3F95/$3FB0**,
+**106/79 octets** libres sous $4000. Distributions reconstruites et
+contrôlées par les 8 tests du disque 800K. Une coupure pendant une écriture
+physique ProDOS reste hors de toute garantie d'atomicité.
+
+## SCIIBIN : refus avant CREATE sur lecture douteuse ou ESC (11 octobre 2026)
+
+Un en-tête BinSCII complet pouvait être extrait d'un tampon obtenu par une
+lecture ayant signalé une erreur ; ESC durant cette lecture pouvait aussi
+rester sans effet jusqu'à la première écriture des données. Dans les deux
+cas, CREATE intervenait avant le refus et le nettoyage. SCIIBIN contrôle
+désormais l'annulation et l'état du flux après la validation de l'en-tête,
+avant toute création ou ajout de données d'un morceau.
+
+La source reste ouverte en lecture seule. Seule la destination réservée par
+création exclusive peut être écrite et nettoyée ; aucun fichier préexistant,
+volume brut ou banque auxiliaire n'est modifié. Les échecs de lecture tardifs,
+de fermeture et de vérification restent couverts par les contrôles existants.
+Cette correction ne rend pas les écritures ProDOS atomiques en cas de coupure.
+
+Le vrai point d'entrée C est exécuté sur des fichiers jetables : 12 nouveaux
+scénarios croisent erreur de lecture à compte complet ou ESC, trois tailles
+et présence ou absence d'une collision. Tous échouaient avant la correction.
+Ils contrôlent zéro appel CREATE et REMOVE, les octets des sources et les
+fichiers déjà présents. Les 16 tests SCIIBIN et les 15 tests des gardes de
+disposition passent, ainsi que les builds et contrôles mémoire des deux
+architectures. SCIIBIN mesure 6659/6677 octets (65C02/6502), avec BSS finissant
+à `$3FD5`/`$3FE8`, soit 42/23 octets libres avant `$4000`. Aucun contrôle de
+disposition n'a été désactivé.
+
+## UNSQ : ESC avant la création d'un membre (11 octobre 2026)
+
+UNSQ contrôlait l'annulation pendant la mesure initiale, la décompression
+et la vérification, mais pas entre la lecture d'un en-tête et CREATE. ESC
+pendant la relecture d'un en-tête `.QQ`/ACU ou une recherche entre deux
+membres pouvait donc créer un fichier, ensuite supprimé, ou compter une
+collision comme un fichier ignoré. Le contrôle au début de `one()` refuse
+désormais ces opérations avant CREATE, même pour un membre vide.
+
+La source est ouverte en lecture seule ; seule une sortie effectivement
+réservée par création exclusive peut être écrite et nettoyée. L'annulation
+ne touche aucun fichier préexistant ni membre précédemment vérifié. Aucun
+volume brut ou mémoire auxiliaire n'est écrit. Les contrôles d'erreurs de
+lecture, d'écriture, de fermeture et de nettoyage restent en place ; aucune
+atomicité physique en cas de coupure n'est promise.
+
+Le vrai point d'entrée C est testé sur des fichiers jetables : 24 nouveaux
+scénarios croisent deux formats, trois tailles (dont zéro), deux moments
+d'annulation et une collision éventuelle ; quatre autres annulent entre
+deux membres ACU, stockés ou comprimés. Tous les 28 scénarios échouaient
+avant la correction. Les tests vérifient le nombre d'appels CREATE, aucune
+suppression, une fermeture de la source et les octets conservés, y compris
+le premier membre déjà extrait. Les 24 tests UNSQ et les 15 tests des gardes
+passent. Builds et contrôles de disposition valides sur les deux processeurs,
+sans désactivation des limites : UNSQ 7047/7127 octets (65C02/6502), BSS fin
+`$3EB2`/`$3F03`, réserves 333/252 octets avant `$4000`.
+
+## PASCAL : revalider les entrées relues avant CREATE (11 octobre 2026)
+
+Le catalogue était validé par `read_dir()`, puis chaque entrée relue pour
+l'extraction sans revalider ses champs. Une relecture différente pouvait
+donner une taille de dernier bloc supérieure au tampon de 512 octets,
+conduire à une écriture lisant au-delà de ce tampon, ou extraire des blocs
+du catalogue ou d'un fichier précédent. Les champs de l'entrée effectivement
+utilisée sont désormais contrôlés avant CREATE : longueur du nom, début,
+fin et taille du dernier bloc. La fin de l'entrée précédente est conservée,
+y compris pour un fichier ignoré à cause d'une collision, afin de refuser
+les chevauchements apparus lors de la relecture.
+
+L'image source reste ouverte en lecture seule. Seuls les fichiers réservés
+par création exclusive peuvent être écrits et nettoyés ; les originaux,
+collisions et fichiers précédemment vérifiés sont conservés. Aucun volume
+brut ni mémoire auxiliaire n'est écrit. Ces contrôles ne fournissent pas une
+photographie atomique d'une image modifiée simultanément, ni une atomicité
+physique des écritures ProDOS en cas de coupure.
+
+Le vrai C reçoit des octets modifiés uniquement lors de la relecture d'une
+entrée, après validation du catalogue, sur une image jetable dont les octets
+restent inchangés. Les 58 scénarios couvrent noms de taille zéro ou 16,
+dernier bloc de taille zéro, 513 ou 1024, bornes inversées ou hors volume,
+chevauchements, premier ou deuxième fichier, et collisions sur le fichier
+courant ou précédent. Sans le nouveau contrôle, 43 assertions échouent ;
+les autres vérifient les refus déjà assurés. Avec la correction, les 17 tests
+PASCAL et 15 tests des gardes passent, ainsi que les builds et contrôles
+mémoire 65C02/6502. PASCAL mesure 7286/7278 octets, BSS fin `$3A8C`/`$3A85`,
+soit 1395/1402 octets libres avant `$4000`. Les contrôles de disposition
+restent activés ; les distributions sont reconstruites et contrôlées.
+
+## CPM : allocations relues après validation du skew (11 octobre 2026)
+
+La détection du skew valide les entrées, mais des secteurs de catalogue sont
+relus pendant le calcul de taille et la copie. Une allocation différente
+pouvait pointer vers un bloc du catalogue : ses octets étaient copiés et
+vérifiés comme données du fichier. Un trou dans les allocations relues
+pouvait aussi être remplacé par un bloc déclaré plus loin. Le calcul de
+taille refuse maintenant les allocations nécessaires hors de `[2,128[` et
+un RC supérieur à 128, avant d'indexer les seize allocations de l'entrée.
+La copie recontrôle les blocs effectivement utilisés, avant toute écriture,
+même lorsque leur secteur de catalogue a changé depuis le calcul de taille.
+
+L'image reste ouverte en lecture seule ; seules les sorties réservées par
+création exclusive sont écrites et nettoyées. Les collisions, les originaux
+et les fichiers déjà vérifiés restent conservés. Aucun volume brut ou banque
+auxiliaire n'est écrit. Ces bornes ne fournissent pas une photographie
+atomique d'une image modifiée simultanément, ni une atomicité physique des
+écritures ProDOS en cas de coupure.
+
+Le vrai C est exécuté sur des fichiers jetables avec 32 scénarios : deux
+skews, mutations après validation ou après mesure, allocations zéro (avec
+un bloc disponible après le trou), 1, 128 et 255, RC 129 et 255, collisions
+avant CREATE. Les mutations sont injectées dans la réponse de lecture ;
+l'image conserve ses octets. Sans les nouveaux contrôles, 24 assertions
+échouent ; les huit autres contrôlent des refus déjà assurés. Tous passent
+après correction, avec zéro écriture de données pour le fichier refusé,
+aucun CREATE avant un refus de mesure, nettoyage du seul fichier réservé
+pour les refus de copie, conservation des octets existants et fermeture de
+la source. Les 26 tests CPM, 15 tests des gardes et huit tests 800K passent.
+Builds et limites mémoire validés sur 65C02/6502, sans désactiver de garde :
+CPM 8241/8247 octets, BSS fin `$3F84`/`$3F8B`, réserves 123/116 octets avant
+`$4000`. Distributions reconstruites et contrôlées.
+
+## DOS 3.3 : ESC après la lecture précédant l'écriture brute (11 octobre 2026)
+
+La routine partagée `write_sector()` contrôlait ESC avant la protection et
+la lecture du bloc de 512 octets contenant le secteur DOS à modifier. Une
+annulation arrivée durant cette lecture pouvait encore laisser passer une
+écriture, notamment le basculement du catalogue de DOSREPL vers le nouveau
+fichier. Le contrôle est désormais répété immédiatement avant `writeblk()`,
+après préparation du bloc dans MAIN. DOSWRITE, DOSREPL et DOS33W bénéficient
+du même contrôle. La branche image n'est pas modifiée.
+
+Les seules écritures possibles concernent le disque DOS précisément ciblé
+et confirmé par l'interface : bitmap, données, listes et catalogue selon
+l'opération. La source ProDOS reste en lecture seule. Le secteur voisin
+reste conservé par le read-modify-write existant ; aucune mémoire auxiliaire
+n'est utilisée. L'annulation ne restaure pas les réservations déjà écrites
+et ne peut interrompre sans risque une écriture physique déjà commencée.
+Aucune atomicité en cas de coupure n'est promise.
+
+Le vrai point d'entrée DOSREPL C est exécuté sur des disquettes jetables.
+82 nouveaux scénarios croisent TXT/BIN/BAS, sources de 0/1/513 octets,
+chaque lecture précédant une écriture jusqu'au basculement du catalogue,
+ESC seul ou accompagné d'une erreur de lecture. Avant correction, les 41
+cas ESC seul échouent, dont ceux qui remplacent encore les octets de l'ancien
+fichier malgré l'annulation ; les erreurs MLI étaient déjà refusées. Tous
+passent après correction. Les tests contrôlent les octets de l'ancien
+fichier et du voisin, la source inchangée et l'absence d'écriture après le
+point annulé. Pour la première écriture, toute l'image doit rester identique.
+
+11 tests DOSREPL, 15 DOSWRITE, 17 DOS33W, 15 tests des gardes et huit tests
+800K passent. Builds et dispositions mémoire validés sur 65C02/6502, avec
+gardes actives. DOSREPL mesure 7526/7624 octets, BSS fin `$3F86`/`$3FE9`, soit
+121/22 octets libres avant `$4000`. DOSWRITE conserve 457/373 octets et DOS33W
+2786/2725 octets. Distributions reconstruites et contrôlées.
+
+## DISKCMP : pas de verdict complet après ESC tardif (11 octobre 2026)
+
+DISKCMP contrôlait ESC au début de chaque groupe de blocs, mais pas après
+la dernière lecture, les sondes EOF ou la fermeture des images. Une
+annulation à ces endroits pouvait donc laisser affiché `Identical` ou le
+nombre définitif de blocs différents. Un contrôle précède maintenant le
+verdict, et un autre le refuse après fermeture des deux sources. Les
+erreurs de fermeture restent prioritaires et signalent une comparaison
+incomplète, même accompagnées d'ESC.
+
+L'opération reste strictement en lecture seule : seules les sources et les
+tampons MAIN sont lus ou mis à jour ; aucun fichier, volume ou banque AUX
+n'est écrit. Les deux images sont fermées, y compris après annulation. La
+comparaison ne fournit pas une photographie atomique de sources modifiées
+simultanément.
+
+Le vrai point d'entrée C est testé sur des images et volumes jetables.
+48 nouveaux scénarios couvrent PO/DO/2MG, volumes sur deux lecteurs, données
+identiques ou différentes, ESC sur la dernière lecture de chaque source,
+chaque sonde EOF et chaque fermeture, avec ou sans erreur de fermeture.
+Avant correction, 36 cas laissaient un verdict complet ; les 12 autres
+vérifient les erreurs de fermeture déjà traitées. Tous passent après
+correction, avec contrôle des octets inchangés et fermeture des deux images.
+Les 17 tests DISKCMP, 15 tests des gardes et huit tests 800K passent.
+Builds et limites mémoire validés sur les deux processeurs, gardes actives :
+DISKCMP 7686/7661 octets (65C02/6502), BSS fin `$3F97`/`$3F7F`, réserves
+104/128 octets avant `$4000`. Distributions reconstruites et contrôlées.
+
+## RESCUE : taille finale du fichier avant COMPLETE (11 octobre 2026)
+
+La sonde EOF à la taille annoncée détectait une source agrandie, mais pas
+une source raccourcie pendant la confirmation : un SEEK au-delà d'EOF peut
+réussir, et les lectures manquantes sont volontairement remplacées par des
+zéros lors d'une récupération. RESCUE pouvait donc journaliser COMPLETE à
+l'ancienne taille. Après fermeture de la source, sa taille est désormais
+relue dans le catalogue et comparée au nombre d'octets récupérés avant
+COMPLETE. Une taille différente, introuvable, une erreur de lecture ou de
+fermeture du catalogue, ou ESC pendant ce contrôle conduit à INCOMPLETE.
+La branche récupération de volume brut n'est pas modifiée.
+
+Seuls les fichiers de récupération et leur journal, réservés par création
+exclusive, sont écrits. La source reste en lecture seule ; aucune banque
+auxiliaire ni volume brut n'est écrit. Les octets déjà récupérés, les
+fichiers préexistants et le journal sont conservés sur refus. Ce contrôle
+de longueur ne détecte pas une modification de contenu à taille identique
+et n'offre pas une photographie atomique de la source ni une atomicité
+physique des écritures ProDOS en cas de coupure.
+
+Le vrai point d'entrée C est testé sur des fichiers jetables avec 23
+nouveaux scénarios : quatre tailles dont zéro, réduction du fichier pendant
+la confirmation (pour les tailles non nulles), erreur de recherche ou de
+fermeture du catalogue final, ouverture impossible, nom absent et ESC à la
+fermeture du catalogue. Les 15 premiers scénarios reproduisaient le faux
+COMPLETE avant correction ; les autres couvrent les limites ajoutées.
+Les tests contrôlent les octets récupérés (y compris les zéros attendus),
+ceux des fichiers préexistants et de la source, l'absence de COMPLETE, le
+dernier enregistrement INCOMPLETE et zéro flux laissé ouvert.
+Les 13 tests RESCUE, 15 tests des gardes et huit tests 800K passent.
+Builds et dispositions valides, sans désactiver de garde : RESCUE 7014/7086
+octets (65C02/6502), BSS fin `$383C`/`$3885`, réserves 1987/1914 octets avant
+`$4000`. Distributions reconstruites et contrôlées.
+
+## PASCALW : borne d'allocation relue après validation (11 octobre 2026)
+
+`read_dir()` valide toutes les entrées puis `find_tail()` relit la dernière
+pour choisir le premier bloc de l'import. Cette seconde lecture ne devait
+pas changer sa borne : un dernier bloc plus petit pouvait envoyer les
+écritures sur le démarrage, le catalogue ou les données d'un fichier déjà
+présent. Le dernier bloc de l'entrée validée, que `read_dir()` laisse dans
+`ent`, est désormais conservé et comparé à la relecture. Toute différence
+refuse avant une écriture, y compris après la confirmation de l'utilisateur.
+
+Seule l'image confirmée peut recevoir des écritures de données puis de
+catalogue, avec les contrôles et restaurations existants. Les sources
+ProDOS restent ouvertes en lecture seule et aucune mémoire auxiliaire ou
+volume brut n'est écrit. Ce contrôle ne fournit pas une photographie
+atomique d'une image modifiée simultanément ; les écritures physiques et
+restaurations ProDOS ne sont pas atomiques en cas de coupure.
+
+Le vrai C est exécuté sur des images jetables PO, DO et 2MG. 48 scénarios
+font varier la borne uniquement dans la réponse de relecture, après la
+validation qui suit la confirmation : huit bornes différentes et deux
+tailles de source. Avant correction, 42 cas écrivaient malgré la différence ;
+les six bornes hors volume étaient déjà refusées. Tous sont désormais
+refusés sans écriture, avec image et sources intégralement inchangées.
+Six contrôles avec borne identique importent correctement et vérifient les
+octets de l'ancien et du nouveau fichier. Les 30 tests PASCALW, 15 tests des
+gardes et huit tests 800K passent. Builds et dispositions valides, gardes
+actives : PASCALW 7742/7737 octets (65C02/6502), BSS fin `$3CB0`/`$3CAC`,
+réserves 847/851 octets avant `$4000`. Distributions reconstruites et contrôlées.
+
+## CPMW : entrée libre jusqu'à la publication (11 octobre 2026)
+
+CPMW choisissait une entrée libre avant les écritures de données, puis la
+relisait avant publication sans contrôler qu'elle était encore libre. Un
+fichier apparu entre-temps pouvait perdre son entrée. La relecture vérifie
+désormais le marqueur libre `$E5`, et le contrôle est répété dans les octets
+du bloc partagé relu par `cpm_write()` avant de remplacer le secteur. ESC
+est contrôlé après la relecture d'entrée et après la lecture du bloc partagé,
+avant toute écriture physique. Une annulation ou une entrée occupée à ces
+points ne déclenche pas de restauration d'un bloc qui n'a pas été écrit.
+
+Seule l'image confirmée peut recevoir les données encore non référencées
+et l'entrée publiée. Les sources ProDOS restent en lecture seule ; aucune
+mémoire auxiliaire ni volume brut n'est écrit. Un refus laisse les blocs de
+données non référencés et préserve le catalogue, le fichier arrivé et les
+fichiers existants. Le secteur voisin reste protégé par les contrôles et
+restaurations du bloc complet. Un changement entre la dernière lecture et
+l'écriture reste possible ; ni les écritures physiques ni leur restauration
+ne sont atomiques en cas de coupure.
+
+Le vrai point d'entrée C est testé sur des images jetables PO, DSK et 2MG.
+30 scénarios croisent deux tailles de source et une arrivée d'entrée vide
+dans les utilisateurs 0 ou 15, ESC lors des deux lectures précédant la
+publication, ou une réponse de dernière lecture indiquant un emplacement
+occupé. Les 18 scénarios initiaux reproduisaient l'écrasement/publication
+avant correction ; six scénarios supplémentaires reproduisaient encore
+l'écriture après ESC pendant le read-modify-write. Les six derniers couvrent
+la vérification dans le bloc réellement lu pour cette écriture.
+Tous passent, avec catalogue complet conservé (hormis l'arrivée injectée),
+octets des fichiers existants et des sources inchangés, entrée arrivée
+conservée, aucun nouveau fichier publié et aucune écriture de catalogue.
+Les 25 tests CPMW, 15 tests des gardes et huit tests 800K passent. Builds et
+dispositions valides, gardes actives : CPMW 8036/8009 octets (65C02/6502), BSS
+fin `$3FAE`/`$3F94`, réserves 81/107 octets avant `$4000`. Distributions
+reconstruites et contrôlées.
+
+## PASCALW : ESC pendant la lecture du catalogue (11 octobre 2026)
+
+Le dernier contrôle d'annulation de `one()` précédait `commit()`. Un ESC
+arrivé pendant une lecture de bloc dans `patch()` laissait donc écrire
+l'entrée et relever le compteur de fichiers. Le contrôle suit maintenant
+chaque lecture, avant toute modification du bloc et avant son écriture.
+Cela couvre l'entrée à cheval sur deux blocs et la publication du compteur
+séparée de l'entrée. La restauration après une écriture défectueuse reste
+obligatoire même après ESC. L'interface signale l'annulation.
+
+Seule l'image confirmée est écrite : les données déjà copiées et d'éventuels
+fragments d'entrée restent hors du catalogue actif. Les fichiers sources
+sont uniquement lus ; aucune mémoire auxiliaire n'est utilisée. Cette
+correction ne fournit pas d'atomicité en cas de coupure pendant une écriture
+physique.
+
+Le vrai C est exercé sur des images jetables PO, DOS et 2MG, avec 1, 18 et
+19 fichiers existants, deux tailles de source et une annulation à chaque
+lecture physique précédant une écriture du catalogue : 40 scénarios. Ils
+contrôlent le nombre exact d'écritures, tous les octets des anciens fichiers,
+le catalogue actif inchangé et les sources inchangées. Les 31 tests PASCALW,
+15 tests des gardes et 8 tests des distributions passent. Les deux builds
+et leurs gardes restent actifs : PASCALW 7766/7762 octets (65C02/6502), BSS
+fin `$3CC8`/`$3CC5`, marges de 823/826 octets avant `$4000`. Les distributions
+sont reconstruites et contrôlées.
+
+## PASCALW : compteur frais avant publication (11 octobre 2026)
+
+Après la copie et la fermeture de la source, `commit()` utilisait encore
+le compteur validé avant la copie. Une entrée ajoutée entre-temps pouvait
+être écrasée à l'index `count+1`, puis le compteur réécrit avec la valeur
+périmée. Le bloc du compteur est maintenant relu et comparé avant la
+première écriture d'une entrée séparée ou à cheval sur deux blocs ;
+`patch()` compare aussi le compteur dans le bloc effectivement publié.
+Toute différence ou erreur de lecture refuse la publication. Le compteur
+est comparé sur ses deux octets.
+
+L'opération écrit uniquement l'image confirmée ; sources en lecture seule,
+aucun accès à la mémoire auxiliaire. Les blocs de données déjà copiés restent
+hors du catalogue actif. Cette vérification détecte un compteur modifié aux
+lectures contrôlées : elle n'est pas un verrou contre un autre écrivain
+concurrent et ne garantit pas l'atomicité d'une écriture physique interrompue.
+
+Le vrai code C est testé sur des images jetables PO, DOS et 2MG, avec 0, 1,
+18 ou 19 entrées existantes et deux tailles de source. Une écriture externe
+à la fermeture de la source ajoute réellement ARRIVED dans la place prévue
+pour l'import : 24 scénarios vérifient son entrée et son contenu, l'ensemble
+du catalogue, les octets des anciens fichiers et les sources. Les 64
+scénarios de lectures courtes ou signalant une erreur refusent toute écriture
+de catalogue. Les tests d'ESC ont été adaptés à la lecture supplémentaire :
+56 scénarios vérifient chaque lecture précédant une écriture du catalogue.
+Les 33 tests PASCALW, 15 gardes et 8 contrôles de distribution passent.
+Les deux builds gardent leurs contrôles actifs : PASCALW 7863/7864 octets
+(65C02/6502), BSS fin `$3D29`/`$3D2B`, marges de 726/724 octets avant `$4000`.
+Les distributions sont reconstruites et contrôlées.
+
+## CPMW : voisins frais dans le secteur publié (11 octobre 2026)
+
+`entry_at()` chargeait le secteur du catalogue dans `dsec`, puis
+`cpm_write()` relisait le bloc partagé avant l'écriture. Le contrôle du
+slot empêchait d'écraser une entrée devenue occupée, mais la copie des
+256 octets de `dsec` effaçait une modification d'une autre entrée survenue
+entre ces deux lectures. Le vrai C reproduisait cette perte dans 84 cas.
+
+Lors de la publication, `cpm_write()` vérifie toujours que son slot est
+libre, reconstruit `dsec` depuis le secteur fraîchement lu et y place
+uniquement `newent`. Le reste du secteur et la moitié voisine du bloc
+physique sont préservés. La sauvegarde de restauration contient elle aussi
+ces octets frais. Les écritures concernent uniquement l'image confirmée,
+avec sources en lecture seule et aucun accès AUX. Cela ne fournit pas de
+verrou contre un écrivain concurrent ni d'atomicité sur coupure physique.
+
+Les 252 scénarios de régression exécutent le C sur des images jetables :
+deux ordres CP/M, trois conteneurs PO/DOS/2MG, deux tailles de source,
+sept slots voisins et trois résultats de publication (réussite, écriture
+partielle, corruption suivie de restauration). Une modification externe
+réelle intervient avant la dernière lecture du bloc. Les contrôles portent
+sur les entrées modifiées, le catalogue entier, les octets des anciens
+fichiers, le nouvel import ou son absence après restauration et les sources.
+Les 26 tests CPMW, 15 gardes et 8 contrôles de distribution passent. Les deux
+builds gardent leurs contrôles actifs : CPMW 8090/8059 octets (65C02/6502),
+BSS fin `$3FE4`/`$3FC6`, marges de 27/57 octets avant `$4000`. Les distributions
+sont reconstruites et contrôlées.
+
+## PASCAL : annulation avant CREATE (11 octobre 2026)
+
+`one()` relisait l'entrée du catalogue, puis créait sa sortie sans vérifier
+ESC avant CREATE. Une annulation pendant cette relecture entraînait donc
+une création suivie de nettoyage, ou une tentative CREATE sur un nom déjà
+pris. Les 88 scénarios d'annulation seule reproduisaient cette écriture
+inutile. Le contrôle suit maintenant `entry_at()`, avant le traitement des
+métadonnées et avant toute création. Les sorties déjà vérifiées restent
+conservées ; l'image est uniquement lue et aucune mémoire AUX n'est touchée.
+
+Le vrai C est testé sur des images jetables PO, DOS et 2MG de 19 fichiers,
+avec deux tailles de contenu et ESC à chaque lecture physique de la
+première, deuxième et dix-neuvième entrée (cette dernière est à cheval sur
+deux blocs). Les collisions sur la cible ou sur une sortie précédente
+sont incluses. Les 176 scénarios couvrent l'annulation seule et accompagnée
+d'une erreur de lecture : nombre de CREATE strictement limité aux entrées
+antérieures, tous les octets des sorties conservées et de l'image contrôlés,
+source fermée une fois. Le banc choisit désormais le format d'image depuis
+son nom pour exécuter réellement les trois lecteurs.
+
+Les 18 tests PASCAL, 15 gardes et 8 contrôles de distribution passent.
+Les builds restent soumis aux gardes : PASCAL 7295/7286 octets (65C02/6502),
+BSS fin `$3A95`/`$3A8D`, marges de 1386/1394 octets avant `$4000`.
+Les distributions sont reconstruites et contrôlées.
+
+## CPM : annulation des scans avant CREATE (11 octobre 2026)
+
+Les lectures de catalogue effectuées avant `one()` pouvaient recevoir ESC,
+mais cette fonction créait sa sortie sans consulter l'annulation. Le
+premier contrôle arrivait pendant la copie, après CREATE et éventuellement
+une écriture ; un nom déjà pris était aussi sondé par CREATE malgré ESC.
+Les 192 cas d'annulation seule reproduisaient une tentative CREATE en trop.
+Le contrôle ouvre maintenant `one()` : aucune création pour le fichier
+courant, même vide ou déjà présent. Les sorties antérieures vérifiées sont
+conservées. L'image source est uniquement lue et la mémoire AUX est intacte.
+
+Les 384 scénarios exécutent le vrai C sur des images jetables : deux ordres
+CP/M, trois conteneurs PO/DOS/2MG, fichier cible vide, d'un octet ou de
+17000 octets (plusieurs extents), trois positions dans l'extraction,
+collisions sur la cible ou un fichier antérieur, annulation seule ou avec
+erreur de lecture et les deux lectures physiques DOS. Ils vérifient le
+nombre exact de CREATE, tous les octets des sorties conservées et de
+l'image source, ainsi que la fermeture unique de la source. Le banc choisit
+le lecteur depuis le nom du conteneur et compte les sorties vérifiées ou
+ignorées pour injecter ESC avant le bon fichier.
+
+Les 27 tests CPM, 15 gardes et 8 contrôles de distribution passent. Les deux
+builds gardent leurs contrôles actifs : CPM 8258/8264 octets (65C02/6502),
+BSS fin `$3F95`/`$3F9C`, marges de 106/99 octets avant `$4000`.
+Les distributions sont reconstruites et contrôlées.
+
+## RESCUE : ESC avant création du journal ou d'une partie (11 octobre 2026)
+
+RESCUE consultait ESC après la création d'une partie. Une annulation reçue
+pendant la fermeture du journal initial pouvait donc créer une sortie vide
+ou tenter CREATE sur un fichier déjà présent. De même, un ESC arrivé avant
+la création du journal, ou à la fermeture d'une partie brute de 8192000
+octets, ne bloquait pas la création suivante. Le contrôle précède désormais
+le premier CREATE et chaque ouverture de partie ; le contrôle après
+l'ouverture est aussi conservé pour les annulations pendant CREATE/OPEN.
+
+Les seules écritures autorisées concernent les sorties exclusivement
+créées et le journal possédé par RESCUE. L'annulation avant le premier CREATE
+ne crée rien ; ensuite le journal reçoit INCOMPLETE et les parties déjà
+écrites sont conservées. Sources et fichiers préexistants restent intacts,
+aucun accès AUX n'est introduit.
+
+Le vrai C est exercé dans 34 nouveaux scénarios sur données jetables :
+fichiers de 0, 1 et 1600 octets, volumes bruts de 3 et 280 blocs, ESC avant
+le journal ou à sa fermeture (avec ou sans erreur), collisions sur la sortie,
+puis quatre annulations à la fermeture de la première partie de 8192000
+octets (avec ou sans erreur et collision sur P02). Les contrôles vérifient
+le nombre exact de CREATE, tous les octets des sources et sorties conservées,
+l'absence de nouvelle sortie, INCOMPLETE dans le journal et les fermetures
+sans fuite. Les 20 cas d'annulation initiale sans erreur reproduisaient le
+CREATE supplémentaire avant correction.
+
+Les 15 tests RESCUE, 15 gardes et 8 contrôles de distribution passent. Les
+deux builds gardent leurs contrôles actifs : RESCUE 7074/7146 octets
+(65C02/6502), BSS fin `$3878`/`$38C1`, marges de 1927/1854 octets avant
+`$4000`. Les distributions sont reconstruites et contrôlées.
+
+## PASCALW : géométrie fraîche avant publication (11 octobre 2026)
+
+La publication vérifiait le compteur frais mais conservait la taille de
+volume validée avant la copie. Un en-tête modifié sans changer ce compteur
+pouvait donc recevoir une nouvelle entrée dont les blocs dépassaient la
+nouvelle limite, ou une entrée dans un catalogue devenu malformé.
+`same_volume()` vérifie désormais les mots de début, fin et type de
+l'entrée de volume, ainsi que sa taille et son compteur. Cette vérification
+utilise les mêmes lectures déjà effectuées avant les écritures : avant une
+entrée séparée ou partagée entre deux blocs, et dans le bloc portant le
+compteur au moment de publier. Toute différence refuse la publication.
+
+Seule l'image confirmée peut être écrite ; les blocs de données antérieurs
+restent non référencés après refus. Sources en lecture seule, aucun accès
+AUX. Il ne s'agit pas d'un verrou contre les modifications concurrentes,
+et aucune atomicité sur coupure physique n'est promise.
+
+Le vrai C reproduisait les 144 scénarios de refus avant correction. Les
+images jetables PO, DOS et 2MG contiennent 0, 1, 18 ou 19 fichiers, les
+sources ont 1 ou 1500 octets. Une écriture externe réelle à la fermeture de
+la source réduit la limite à la fin du dernier fichier, dépasse la taille
+du conteneur ou modifie les mots de structure de l'en-tête. Les tests
+contrôlent le catalogue entier préservé après cette mutation, les octets
+des anciens fichiers et des sources et l'absence d'écriture de publication.
+Les 24 témoins dont l'en-tête reste identique vérifient aussi les octets de
+l'import réussi. Les 34 tests PASCALW, 15 gardes et 8 contrôles de distribution
+passent. Les builds gardent leurs contrôles actifs : PASCALW 7921/7922 octets
+(65C02/6502), BSS fin `$3D63`/`$3D65`, marges de 668/666 octets avant `$4000`.
+Les distributions sont reconstruites et contrôlées.
+
+## CPM : une entrée disparue n'est pas un fichier vide (11 octobre 2026)
+
+`measure()` validait la somme des records contre l'extent terminal, mais
+une identité sans aucune entrée correspondante donnait aussi zéro des
+deux côtés. Si une relecture du catalogue perdait l'entrée sauvegardée
+par l'appelant, l'extraction pouvait donc créer et vérifier une sortie vide,
+ou compter une collision, malgré l'absence de fichier mesurable. Le bitmap
+des extents doit maintenant contenir le bit zéro avant d'autoriser CREATE,
+même pour un fichier vide. Aucune mémoire supplémentaire n'est nécessaire.
+Seules les sorties exclusivement créées peuvent être écrites ; images et
+fichiers préexistants restent intacts et aucun accès AUX n'est introduit.
+
+Les 96 cas de refus reproduisaient le CREATE supplémentaire dans le vrai C.
+Le banc utilise neuf fichiers pour obliger `measure()` à relire le secteur
+de l'entrée cible après avoir sauvegardé son identité. Il simule alors une
+entrée supprimée, renommée, passée à un autre utilisateur ou effacée. Deux
+tailles (0 et 1500 octets), deux ordres CP/M, trois conteneurs PO/DOS/2MG et
+les collisions sur la sortie sont couverts. Les octets de toutes les huit
+sorties antérieures, des fichiers préexistants et de l'image sont contrôlés,
+avec aucun CREATE pour la cible et une fermeture unique de la source.
+Les 24 témoins sans mutation vérifient aussi l'extraction correcte du fichier
+vide ou non vide, ou la préservation du nom déjà pris.
+
+Les 28 tests CPM, 15 gardes et 8 contrôles de distribution passent. Les deux
+builds gardent leurs contrôles actifs : CPM 8284/8274 octets (65C02/6502),
+BSS fin `$3FAF`/`$3FA6`, marges de 80/89 octets avant `$4000`.
+Les distributions sont reconstruites et contrôlées.
+
+## CPM : records relus cohérents avec la taille mesurée (11 octobre 2026)
+
+`copy_file()` relisait les extents, mais utilisait exclusivement `fsize`
+pour déterminer le nombre d'octets à copier. Un compteur de records modifié
+après `measure()` était ignoré : la copie pouvait lire au-delà du nouvel
+EOF ou accepter un préfixe comme complet. Le compteur frais de chaque
+extent doit maintenant correspondre au reste mesuré : 128 records pour
+un extent complet, puis le nombre exact de records du dernier extent.
+Le reste est un multiple de 128 ; la conversion en entier 16 bits intervient
+uniquement lorsqu'il ne dépasse pas 16384, et le compteur attendu tient
+sur un octet. Seule la sortie possédée est nettoyée en cas d'échec ; l'image,
+les fichiers préexistants et AUX restent intacts.
+
+Le vrai C reproduisait les 132 cas incohérents avant correction. Les données
+jetables de 1, 1536 ou 17000 octets couvrent deux ordres CP/M et trois
+conteneurs PO/DOS/2MG. Les compteurs 0, 1, 127, 128, 129 et 255 sont fournis
+uniquement lors de la relecture après CREATE, dans le premier ou dernier
+extent. Les tests vérifient l'absence de sortie acceptée, les octets du
+fichier préexistant et de l'image, la fermeture unique, et l'arrêt avant
+les écritures de l'extent incohérent (64 écritures antérieures uniquement
+pour le second extent). Les 24 témoins aux compteurs inchangés vérifient
+les octets complets du fichier extrait.
+
+Les 29 tests CPM, 15 gardes et 8 contrôles de distribution passent. Les deux
+builds gardent leurs contrôles actifs : CPM 8364/8358 octets (65C02/6502),
+BSS fin `$3FFF`/`$3FFA`, marges de 0/5 octets avant `$4000`. La fenêtre
+65C02 est entièrement occupée : toute extension devra libérer de la place
+sans désactiver les gardes. Les distributions sont reconstruites et contrôlées.
+
+## SMALLDOS : ESC pendant une lecture de secteur (11 octobre 2026)
+
+`pass()` vérifiait ESC après l'écriture et avant la lecture suivante, mais
+un ESC reçu pendant `sector()` laissait encore écrire les 256 octets lus.
+Le contrôle suit maintenant chaque lecture, avant WRITE ou la lecture de
+vérification. Seule la sortie exclusivement créée peut être nettoyée ; si
+son nettoyage échoue, le message conserve cette information et les octets
+partiels restent récupérables. L'image source, les fichiers préexistants
+et AUX ne sont jamais modifiés.
+
+Le banc SMALLDOS héritait du lecteur de test Pascal ; ses nouveaux hooks
+spécifiques au catalogue rendaient ce banc incompatible. Son lecteur est
+maintenant remplacé explicitement par les hooks SMALLDOS, et le nom court
+fourni au programme est conservé pour choisir le bon ordre de secteurs.
+Les hooks de corruption, annulation de lecture et erreurs complètes sont
+actifs de nouveau. Les anciens remplacements de corps devenus inopérants
+ont été retirés.
+
+Les 168 cas d'annulation sans erreur de lecture reproduisaient l'écriture
+supplémentaire avant correction. Les 252 scénarios passent : deux directions
+de pistes, ordres DOS/ProDOS, fichiers de 1, 513 ou 4097 octets, annulation
+pendant chacune de leurs lectures de secteur, seule ou avec erreur de
+lecture ou échec de suppression de la sortie possédée. Ils vérifient le
+nombre exact d'écritures, tous les octets du préfixe conservé en cas de
+nettoyage impossible, les fichiers préexistants, l'image inchangée et sa
+fermeture unique.
+
+Les 14 tests SMALLDOS, 18 tests Pascal, 15 gardes et 8 contrôles de
+distribution passent. Les deux builds gardent leurs contrôles actifs :
+SMALLDOS 4430/4473 octets (65C02/6502), BSS fin `$310C`/`$3138`, marges de
+3827/3783 octets avant `$4000`. Les distributions sont reconstruites et
+contrôlées.
+
+## UNSQ : vérification octet par octet après une seconde décompression (11 octobre 2026)
+
+La relecture de sortie comparait seulement sa longueur et sa somme 16 bits.
+Une permutation de deux octets conservait ces deux valeurs et était annoncée
+comme vérifiée, même après une véritable écriture corrompue. Les 18 nouveaux
+cas de permutation à l'écriture (avec nettoyage réussi ou impossible)
+reproduisaient cette acceptation avant correction.
+
+`read_back()` revient maintenant au début du flux du fichier courant et
+le décode une seconde fois. `putb()` compare alors chaque octet attendu avec
+la sortie relue par blocs de 512 octets dans le tampon `obuf` existant.
+Les octets restant dans ce tampon et la sonde EOF détectent une sortie
+plus longue ; les lectures courtes, erreurs, annulations et fermetures
+empêchent la validation. Les records ACU suivants sont repris à leur
+position normale. La seconde décompression ajoute du calcul mais les
+lectures ProDOS restent groupées, sans appel de lecture par octet.
+
+La sortie est exclusivement créée et seule cette sortie peut être nettoyée.
+Une suppression impossible laisse les octets corrompus récupérables et le
+message de nettoyage prime. Les archives, les destinations préexistantes
+et AUX ne sont pas modifiés. Aucun tampon de données supplémentaire n'est
+alloué : après le repositionnement, la variable du décalage sert au nombre
+d'octets pour la barre de vérification. Les deux builds passent les gardes
+sans les désactiver ; une première version dépassait d'un octet en 6502
+et a été corrigée par cette réutilisation, pas par un relâchement de limite.
+
+Les 36 nouveaux scénarios couvrent QQ, ACU stocké et ACU comprimé, avec
+2, 513 ou 2000 octets, permutation à l'écriture, permutation dans la réponse
+de relecture, permutation avec nettoyage impossible et témoins sains.
+Ils contrôlent les octets des archives et destinations préexistantes,
+l'absence de sortie acceptée, les octets exacts conservés après nettoyage
+impossible et la fermeture unique de la source. Les anciens tests de
+progression, EOF, fermeture et annulation passent également ; l'injection
+entre deux records ACU distingue désormais le repositionnement de
+vérification du repositionnement vers le record suivant.
+
+Les 25 tests UNSQ, 15 gardes et 8 contrôles de distribution passent.
+UNSQ mesure 7300/7380 octets (65C02/6502), BSS fin `$3FAB`/`$3FFC`, marges de
+84/3 octets avant `$4000`. Les distributions sont reconstruites et contrôlées.
+
+## SCIIBIN : fichiers ordinaires dans chaque morceau (11 octobre 2026)
+
+Le contrôle des métadonnées refusait les fichiers étendus (stockage 5)
+et les répertoires (stockage `$0D`) uniquement dans le premier morceau.
+Un morceau suivant de même nom, type, auxiliaire et longueur pouvait
+ainsi être ajouté et annoncé comme décodé malgré ces métadonnées non prises
+en charge. Le contrôle est maintenant effectué pour chaque en-tête avant
+CREATE ou ajout de données. Les types de stockage ordinaires 1, 2 et 3
+restent acceptés ; aucun besoin de mémoire auxiliaire n'est introduit.
+
+Les 24 nouveaux cas négatifs échouaient avant correction. Ils couvrent
+deux stockages interdits, trois longueurs de dernier morceau, une archive
+unique ou deux fichiers et un nettoyage réussi ou impossible. Dans ce
+dernier cas, le vrai code C conserve exactement le premier morceau de
+12288 octets, sans ajouter les données incompatibles. Les sources et le
+fichier préexistant KEEP sont comparés octet par octet. Les 18 témoins
+avec stockage ordinaire contrôlent la sortie complète. La référence Python
+applique également la restriction à chaque morceau.
+
+Les 18 tests SCIIBIN, 15 tests de gardes et 8 contrôles de distribution
+passent. Les builds 65C02/6502 et les contrôles de disposition passent :
+SCIIBIN reste à 6659/6677 octets, BSS fin `$3FD5`/`$3FE8`, marges de
+42/23 octets avant `$4000`. Les distributions sont reconstruites.
+
+## UNWRAP : lecture validée avant écriture d'un bloc (11 octobre 2026)
+
+La copie de la fourche de données écrivait chaque bloc dès que fread
+renvoyait le compte demandé. Une erreur signalée avec ce compte, ou ESC
+pendant la lecture, n'était contrôlée qu'après l'écriture. L'opération
+échouait finalement, mais si le nettoyage était impossible, la sortie
+conservait aussi ce bloc douteux ou interrompu.
+
+`pass()` contrôle maintenant l'indicateur d'erreur et l'annulation juste
+après la lecture source, avant toute écriture de ce bloc. Seule la sortie
+exclusivement créée peut être écrite ou nettoyée. Les sources, les fichiers
+préexistants et AUX restent intacts ; les tampons restent dans MAIN.
+Une suppression impossible conserve uniquement le préfixe précédemment
+copié et donne toujours le message de nettoyage impossible.
+
+Les 120 nouveaux scénarios échouaient avant correction. Le vrai code C
+est exécuté pour AppleSingle 1/2 et MacBinary 1/2/3, avec des fourches de
+1, 513 ou 1536 octets. Les fautes couvrent une erreur à compte complet ou
+ESC sur le premier ou dernier bloc, avec nettoyage réussi ou impossible.
+Les tests contrôlent le nombre d'octets transmis à fwrite, le préfixe exact
+conservé, les octets de la source et du fichier préexistant KEEP, ainsi que
+le nettoyage limité à DOC. Les anciens contrôles d'extraction passent.
+
+Les 45 tests UNWRAP, 15 tests de gardes et 8 contrôles de distribution
+passent. Les builds et dispositions 65C02/6502 sont validés sans relâcher
+les limites : UNWRAP mesure 7875/7905 octets, BSS fin `$3FAA`/`$3FC9`,
+marges de 85/54 octets avant `$4000`. Les distributions sont reconstruites.
+
+## PASCAL : ESC après lecture, avant écriture du bloc (11 octobre 2026)
+
+L'extracteur contrôlait ESC après l'écriture de chaque bloc. Une annulation
+reçue pendant la lecture de l'image pouvait donc encore écrire ce bloc
+dans la sortie exclusivement créée. L'opération échouait ensuite, mais
+un nettoyage impossible laissait aussi ces octets interrompus.
+
+`copy_file()` contrôle maintenant ESC immédiatement après `source_read()`,
+avant l'écriture ou la relecture de la sortie. Le contrôle existant des
+erreurs de lecture à compte complet reste actif. Seules les sorties
+exclusivement créées sont écrites ou nettoyées ; l'image, les destinations
+préexistantes et AUX restent intacts. Aucune allocation supplémentaire.
+
+Les 120 nouveaux scénarios exécutent le vrai C sur des images PO, DOS et
+2MG contenant un fichier de 1, 513 ou 1536 octets. Chaque lecture physique
+de données est interrompue : pour DOS, chaque demi-bloc est couvert.
+Les modes comprennent ESC, ESC avec nettoyage impossible, ESC avec erreur
+de lecture et erreurs sans ESC avec ou sans nettoyage possible. Avant
+correction, les 48 cas d'ESC sans erreur écrivaient un bloc supplémentaire ;
+les 72 témoins d'erreur étaient déjà refusés. Tous passent maintenant avec
+contrôle du nombre d'écritures, du préfixe exact conservé, de KEEP, des
+octets de l'image et de sa fermeture unique.
+
+Les 19 tests PASCAL, 14 tests SMALLDOS utilisant le même harnais, 15 gardes
+et 8 contrôles de distribution passent. Builds et dispositions 65C02/6502
+validés : PASCAL mesure 7306/7296 octets, BSS fin `$3AA0`/`$3A97`, marges
+de 1375/1384 octets avant `$4000`. Les distributions sont reconstruites.
+
+## MKIMAGE : annulation avant CREATE et première écriture (11 octobre 2026)
+
+Une annulation reçue à la fin du prompt de nom n'était contrôlée qu'à la
+première barre de progression : CREATE et OPEN avaient déjà eu lieu.
+Pour 2MG, l'en-tête de 64 octets était même écrit avant ce contrôle, y
+compris après ESC pendant CREATE ou OPEN. Un nettoyage impossible laissait
+alors cet en-tête malgré l'annulation avant toute écriture souhaitée.
+
+MKIMAGE contrôle maintenant ESC avant CREATE, puis après OPEN et avant
+l'en-tête 2MG ou le premier bloc. Avant CREATE, aucune destination n'est
+possédée ni nettoyée. Après une création exclusive, seule cette sortie
+est fermée et nettoyée ; un nettoyage impossible conserve un fichier vide
+avec le message correspondant. Les destinations préexistantes et AUX
+restent intacts, sans nouveau tampon.
+
+Les 120 scénarios supplémentaires exécutent le vrai C pour PO et 2MG,
+les six tailles proposées, ESC au prompt, à CREATE ou à OPEN, nettoyage
+réussi ou impossible et collision avec des octets préexistants. Les 48
+cas fautifs échouaient avant correction ; les 72 autres étaient déjà
+refusés sans écriture. Les tests contrôlent CREATE, OPEN, WRITE et CLOSE,
+les octets préexistants et le fichier vide retenu après nettoyage impossible.
+
+Les 7 tests MKIMAGE, 15 gardes et 8 contrôles de distribution passent.
+Builds et dispositions 65C02/6502 validés : MKIMAGE mesure 4734/4834 octets,
+BSS fin `$30A8`/`$310D`, marges de 3927/3826 octets avant `$4000`.
+Les distributions sont reconstruites et contrôlées.
+
+## MOVE : ESC pendant les métadonnées avant CREATE ou suppression (11 octobre 2026)
+
+Le déplacement entre volumes contrôlait ESC avant le dernier appel de
+GET_FILE_INFO, puis supprimait immédiatement la source si ses métadonnées
+étaient valides. ESC reçu pendant cet appel n'était donc pas pris en compte :
+la source était supprimée malgré l'annulation. Le premier contrôle des
+métadonnées pouvait également autoriser CREATE après réception d'ESC.
+
+`copy_across()` contrôle maintenant ESC après chaque `standard_source()` :
+avant CREATE au début et avant REMOVE après vérification. Dans le second
+cas, la source et la copie fermée, vérifiée octet par octet, sont toutes
+deux conservées. Au début, aucune destination n'est créée ou nettoyée.
+L'opération écrit uniquement sa destination exclusive, supprime la source
+uniquement après les contrôles complets et n'utilise pas AUX.
+
+Les 24 nouveaux scénarios exécutent le vrai C avec des fichiers de 0, 1,
+513 ou 1536 octets, ESC pendant le premier ou le dernier GET_FILE_INFO,
+réponse correcte ou erreur, et collision initiale. Avant correction,
+les 8 cas du premier contrôle réussi tentaient CREATE ; les 4 du dernier
+contrôle réussi supprimaient la source. Les 12 témoins d'erreur étaient
+déjà refusés. Tous passent avec contrôle des octets de la source, de la
+copie vérifiée ou de la destination préexistante, et absence de CREATE
+après l'annulation initiale.
+
+Les 67 tests MOVE, 15 gardes et 8 contrôles de distribution passent.
+Builds et dispositions 65C02/6502 validés : MOVECOPY mesure 3067/3054 octets,
+BSS fin `$29E5`/`$29D9`, marges de 5658/5670 octets avant `$4000`.
+Les distributions sont reconstruites et contrôlées.
+
+## MOVE : taille source relue après fermeture de la vérification (11 octobre 2026)
+
+GET_FILE_INFO ne fournit pas l'EOF du fichier. Le dernier contrôle du
+déplacement vérifiait type, auxiliaire, stockage et protection, mais une
+source qui grandissait après fermeture des deux flux de vérification
+était encore supprimée. La destination conservait uniquement l'ancien
+contenu : les octets ajoutés étaient perdus. Une source raccourcie passait
+également ce dernier contrôle.
+
+`same_source_size()` relit maintenant l'entrée dans le catalogue source
+avant REMOVE et exige la taille exacte vérifiée. Une entrée absente, une
+ouverture ou fermeture de catalogue en erreur et ESC interdisent la
+suppression. Source et copie vérifiée restent présentes. Le tampon scratch
+de relecture, devenu libre après fermeture des flux, contient le chemin
+parent ; le catalogue utilise le tampon résident buf. Aucun nouveau tampon
+ni accès AUX, aucune écriture source avant sa suppression autorisée.
+
+Les 27 nouveaux scénarios exécutent le vrai C avec 0, 1, 513 ou 1536
+octets : ajout réel de TAIL ou raccourcissement réel après vérification,
+entrée absente, erreur d'ouverture, erreur de fermeture après entrée trouvée,
+ESC pendant la lecture et témoin normal. Les sept mutations réelles de
+taille supprimaient la source avant correction. Les tests vérifient les
+octets exacts de la source modifiée et de la copie originale, le refus de
+suppression, le bon chemin parent et les ouvertures/fermetures du catalogue.
+Les anciens tests de métadonnées, protections et annulation restent valides.
+
+Les 68 tests MOVE, 15 gardes et 8 contrôles de distribution passent.
+Builds et dispositions 65C02/6502 validés : MOVECOPY mesure 3397/3390 octets,
+BSS fin `$2B31`/`$2B2B`, marges de 5326/5332 octets avant `$4000`.
+Les distributions sont reconstruites. Ce contrôle n'est pas un verrou :
+une modification concurrente après la dernière lecture, ou à taille égale,
+n'est pas exclue ; ProDOS ne fournit pas de suppression conditionnelle
+atomique ni de garantie contre une coupure pendant une écriture physique.
+
+## SCIIBIN : ESC pendant le texte avant ajout des octets (11 octobre 2026)
+
+Le décodeur contrôlait ESC après l'ajout de chaque ligne de données.
+Une annulation reçue pendant un remplissage du tampon texte de 512 octets
+laissait donc encore ajouter la ligne décodée de 48 octets avant l'échec.
+Si le nettoyage était impossible, le fichier retenu comprenait ces octets
+ajoutés après l'annulation.
+
+`chunk()` contrôle maintenant ESC avant fwrite, tout en conservant le
+contrôle après l'écriture et la barre de progression. Seule la sortie
+exclusivement créée peut être écrite ou nettoyée. Les sources, le fichier
+préexistant KEEP et AUX restent intacts ; aucun nouveau tampon.
+
+Les 24 nouveaux scénarios exécutent le vrai C pour des fichiers de 768,
+1536 ou 12336 octets, aux trois premiers remplissages de données possibles.
+Ils couvrent ESC seul, ESC avec nettoyage impossible et ESC avec lecture
+à compte complet signalée en erreur. Tous échouaient avant correction
+avec exactement 48 octets supplémentaires transmis à fwrite. Les tests
+comparent le nombre d'octets écrits, le préfixe exact conservé lorsque
+le nettoyage échoue et les octets des sources et destinations préexistantes.
+
+Les 19 tests SCIIBIN, 15 gardes et 8 contrôles de distribution passent.
+Builds et dispositions 65C02/6502 validés sans désactiver les limites :
+SCIIBIN mesure 6679/6697 octets, BSS fin `$3FE9`/`$3FFC`, marges de
+22/3 octets avant `$4000`. Les distributions sont reconstruites et contrôlées.
+
+## SCIIBIN : refus immédiat d'un tampon texte en erreur (11 octobre 2026)
+
+Le lecteur de lignes utilisait les octets d'un remplissage en erreur
+tant que fread renvoyait un compte non nul. Le contrôle après l'en-tête
+protégeait CREATE, et celui avant fermeture refusait finalement le fichier,
+mais entre ces deux contrôles le décodeur pouvait écrire des données
+douteuses. Un nettoyage impossible conservait ces octets supplémentaires.
+
+`next_line()` refuse maintenant chaque remplissage dès que ferror est
+signalé, à compte complet comme à compte court, avant d'utiliser ses octets.
+Le contrôle ancien après l'en-tête est devenu redondant et supprimé ; le
+contrôle final conserve le diagnostic Read. L'indicateur EOF, seulement
+écrit et jamais lu, est également supprimé. Sources, destinations
+préexistantes et AUX restent intacts ; seule la sortie exclusive peut
+être écrite ou nettoyée, sans nouveau tampon.
+
+Les 24 nouveaux scénarios exécutent le vrai C sur des fichiers de 768,
+1536 et 12336 octets, aux trois premiers remplissages de données possibles.
+Ils couvrent erreur à compte complet, erreur avec nettoyage impossible et
+lecture courte signalée en erreur. Tous écrivaient trop d'octets avant
+correction. Les tests vérifient le nombre d'octets transmis à fwrite, le
+préfixe exact conservé après échec de nettoyage et les octets de la source
+et de KEEP. Les anciens contrôles d'ESC, en-tête et CRC passent également.
+
+Les 20 tests SCIIBIN, 15 gardes et 8 contrôles de distribution passent.
+Builds et dispositions 65C02/6502 validés : SCIIBIN mesure 6658/6676 octets,
+BSS fin `$3FD3`/`$3FE6`, marges de 44/25 octets avant `$4000`.
+La première version dépassait la limite 6502 de six octets ; le déplacement
+du contrôle et la suppression de l'état inutilisé ont résolu ce dépassement,
+sans désactiver aucune garde. Les distributions sont reconstruites et contrôlées.
+
+## SCIIBIN : morceau borné par la longueur totale (11 octobre 2026)
+
+Le décodeur validait la longueur de chaque morceau, mais pas sa place
+dans la longueur totale annoncée. Un premier morceau trop long pouvait
+créer et remplir un fichier avant refus final ; un dernier morceau pouvait
+ajouter tous ses octets au-delà de cette limite. En cas de nettoyage
+impossible, ces octets superflus restaient dans la sortie incomplète.
+
+`chunk()` exige maintenant `written + seglen <= le24(attrs)` avant CREATE
+ou ajout. La somme est élargie à 32 bits et le nombre maximal de morceaux
+borne les octets accumulés à 3 Mio, sans risque de débordement. Un premier
+morceau incohérent ne possède aucune sortie ; un morceau ultérieur refusé
+ne permet de nettoyer que le fichier exclusivement créé par l'opération.
+Sources, destinations préexistantes et AUX restent intacts.
+
+Les 24 nouveaux scénarios échouaient avant correction : premiers morceaux
+de 2, 48 ou 513 octets, total zéro ou inférieur d'un octet, avec ou sans
+collision ; derniers morceaux de 2, 49 ou 12288 octets dépassant le total
+d'un octet, en fichier unique ou deux parties, avec nettoyage réussi ou
+impossible. Le vrai C est exécuté et les octets écrits, ceux des sources,
+KEEP et les destinations préexistantes sont contrôlés. Un nettoyage
+impossible conserve exactement le premier morceau de 12288 octets.
+La référence Python applique également la borne avant ajout.
+
+Le contrôle dépassait initialement la fenêtre native de 12/31 octets.
+SCIIBIN utilise maintenant les relais `service_stubs.h` déjà employés par
+les autres overlays : les appels à la même table de services coûtent moins
+de code, sans nouveau tampon ni modification du protocole. Les gardes
+restent actives. Les 21 tests SCIIBIN (CRC sous sim65 sur les deux CPU),
+15 gardes et 8 contrôles de distribution passent. Builds et dispositions
+65C02/6502 validés : SCIIBIN mesure 6087/6098 octets, BSS fin `$3D98`/`$3DA4`,
+marges de 615/603 octets avant `$4000`. Les distributions sont reconstruites.
+
+## UNSQ : longueur ACU contrôlée avant création et pendant le décodage (11 octobre 2026)
+
+Les entrées ACU stockées étaient créées et entièrement écrites avant de
+comparer leur taille à la longueur déclarée. Les entrées compressées
+pouvaient également dépasser cette longueur avant refus et nettoyage.
+De plus, une longueur ACU `$FFFFFFFF` devenait la sentinelle « longueur
+inconnue » réservée aux fichiers .QQ : le contrôle final était contourné.
+
+`acu()` refuse désormais une longueur supérieure à l'EOF ProDOS de
+24 bits avant CREATE, même avec une collision. `one()` refuse une entrée
+stockée dont la taille du fork diffère de la longueur annoncée avant
+CREATE. Pour une entrée compressée, `putb()` refuse le premier octet
+au-delà de la longueur déclarée, y compris au milieu d'une répétition
+RLE et lors de la seconde décompression de vérification. Le tampon final
+ne contient donc que des octets compris dans cette limite. Le contrôle
+final de longueur reste nécessaire pour une sortie trop courte.
+
+Seules les sorties exclusivement créées peuvent être écrites ou nettoyées.
+Les sources, les noms préexistants, les extractions antérieures vérifiées
+et AUX restent intacts. Un échec de nettoyage conserve la sortie partielle
+et son diagnostic ; aucune atomicité en cas de coupure n'est ajoutée.
+
+Les 92 nouveaux scénarios exécutent le vrai C : 72 refus avant création
+sur des fichiers de 1, 513 et 1536 octets, avec tailles contradictoires,
+tailles `$1000000`/`$FFFFFFFF`, collisions et extraction antérieure ;
+20 dépassements compressés par RLE, avec longueur zéro ou inférieure
+d'un octet, extraction antérieure et nettoyage réussi ou impossible.
+82 scénarios échouaient avant correction ; les dix nettoyages réussis
+contrôlaient déjà la suppression. Les octets des sources, de KEEP, des
+noms pris et des sorties antérieures sont vérifiés. En cas de nettoyage
+impossible, le fichier conservé contient exactement le préfixe annoncé.
+
+UNSQ utilise les relais `service_stubs.h` existants pour conserver de la
+marge native, sans nouveau tampon ni changement de table de services.
+Les 27 tests UNSQ, 15 gardes et 8 contrôles de distribution passent.
+Builds et dispositions 65C02/6502 validés : UNSQ mesure 6819/6900 octets,
+BSS fin `$3DCE`/`$3E20`, marges de 561/479 octets avant `$4000`.
+Les distributions sont reconstruites et contrôlées.
+
+## UNSQ : lecture interrompue sans octet fictif (11 octobre 2026)
+
+La copie des entrées ACU stockées appelait `putb(getb())` avant de tester
+l'état de lecture. Si le remplissage du tampon échouait, `getb()` renvoyait
+zéro et positionnait EOF, mais cet octet fictif était ajouté à la sortie,
+puis écrit par le flush final. En cas de nettoyage impossible, le fichier
+partiel contenait un octet qui ne provenait pas de la source. Une annulation
+pendant fread n'était pas contrôlée avant de consommer le nouveau tampon ;
+le bloc reçu pouvait donc être écrit avant la détection d'ESC.
+
+`getb()` contrôle maintenant les erreurs et ESC immédiatement après fread,
+même avec un compte d'octets complet. `copy()` contrôle EOF et l'état
+d'erreur avant `putb()`, puis contrôle aussi l'échec d'écriture. L'annulation
+d'un en-tête passe par la fermeture et le diagnostic communs, afin de
+conserver le message « stopped » au lieu de déclarer le format inconnu.
+Seuls les fichiers exclusivement créés restent susceptibles d'être écrits
+ou nettoyés ; sources, noms préexistants, sorties vérifiées et AUX ne sont
+pas écrits. Les octets déjà décodés correctement restent dans le préfixe
+partiel si son nettoyage échoue ; aucune atomicité physique n'est promise.
+
+Les 48 nouveaux scénarios échouaient avant correction : sorties de 1,
+513 et 1536 octets, chaque lecture de données, ESC seul, erreur avec
+compte complet, ESC et erreur, lecture courte en erreur, chacun avec
+nettoyage réussi ou impossible. Le vrai C est exécuté : le nombre d'octets
+transmis à fwrite doit être exactement celui du préfixe lu avant le bloc
+refusé. Le fichier conservé doit contenir ce même préfixe, sans octet zéro
+ajouté. Les octets de la source et de KEEP ainsi que la fermeture unique
+de la source sont également vérifiés. Les anciens tests de collision,
+annulation d'en-tête, décompression et vérification passent.
+
+Les 28 tests UNSQ, 15 gardes et 8 contrôles de distribution passent.
+Builds et dispositions 65C02/6502 validés : UNSQ mesure 6847/6928 octets,
+BSS fin `$3DEB`/`$3E3D`, marges de 532/450 octets avant `$4000`.
+Les distributions sont reconstruites et contrôlées.
+
+## TXTCONV : refuser le bloc interrompu et arrêter les écritures en échec (11 octobre 2026)
+
+La conversion traitait le tampon reçu avant de consulter ferror ou une
+annulation arrivée pendant fread. Même une lecture signalée en erreur
+avec un compte complet était convertie et écrite avant le refus final.
+Après une erreur d'écriture, la boucle convertissait également le reste
+du tampon : avec 256 tabulations, une première écriture refusée pouvait
+être suivie de sept écritures supplémentaires. Le flush final pouvait
+encore écrire des octets en attente ou un '?' synthétisé pour un UTF-8
+interrompu. Ces sorties n'étaient pas installées, mais restaient sur disque
+en cas de nettoyage impossible.
+
+La passe contrôle désormais ESC et ferror immédiatement après fread,
+avant consommation du tampon. La boucle de conversion s'arrête dès que
+fail est positionné. La fin de séquence UTF-8 et le flush final ne sont
+exécutés que pour une passe sans erreur. Les contrôles de fermeture,
+vérification, protections, installation avec sauvegarde et nettoyage
+restent en place. Seule la sortie exclusivement créée est écrite ou
+supprimée ; les deux originaux, les fichiers préexistants et AUX restent
+intacts. Le temporaire conservé après échec de nettoyage ne contient que
+les blocs de sortie écrits avant le bloc refusé. Aucune atomicité en cas
+de coupure physique n'est promise.
+
+Les 434 nouveaux scénarios échouaient avant correction : 432 lectures
+interrompues avec sources de 1, 257 et 768 octets, chaque bloc d'entrée,
+modes H, T et A, conversion en place, remplacement confirmé ou nouvelle
+destination, ESC, erreur avec compte complet, ESC avec erreur et lecture
+courte en erreur, chacun avec nettoyage réussi ou impossible. Le mode A
+coupe une séquence UTF-8 à la frontière de 256 octets. Deux autres cas
+refusent la première écriture d'une conversion de 256 tabulations, avec
+ou sans échec de nettoyage : aucun second fwrite n'est autorisé.
+Le vrai C est exécuté ; les compteurs d'écriture et de fermeture, l'absence
+de renommage, les octets des originaux, de KEEP et du temporaire conservé
+sont vérifiés.
+
+Les 28 tests TXTCONV, 15 gardes et 8 contrôles de distribution passent.
+Builds et dispositions 65C02/6502 validés : TXTCONV mesure 6164/6202 octets,
+BSS fin `$3565`/`$358C`, marges de 2714/2675 octets avant `$4000`.
+Les distributions sont reconstruites et contrôlées.
+
+## IMGCONV : refuser une lecture interrompue avant l'écriture du bloc (11 octobre 2026)
+
+Les lecteurs de blocs et de secteurs contrôlaient le compte de fread,
+mais pas une erreur signalée avec un compte complet ni ESC arrivé
+pendant cette lecture. Le bloc reçu pouvait être écrit, et la conversion
+continuait jusqu'au contrôle périodique d'ESC ou à la fermeture finale.
+La sortie n'était pas installée, mais un nettoyage impossible conservait
+ces blocs supplémentaires. Pour une sortie DSK, le défaut concernait
+chaque secteur de 256 octets ; pour une source DSK, chaque moitié lue
+devait être validée avant de publier son bloc de 512 octets.
+
+`read_source()` partage maintenant les lectures exactes des en-têtes,
+blocs et secteurs : compte attendu, absence de ferror et absence d'ESC
+avant retour réussi. Un ESC sans erreur de lecture est acquitté avant
+refus. Les deux moitiés DSK sont contrôlées séparément. Les anciens
+contrôles de fermeture, checksum DiskCopy, comparaison de tous les octets,
+EOF, protections et installation avec sauvegarde restent actifs. Seule
+la sortie exclusivement créée peut être écrite ou nettoyée ; sources,
+destinations préexistantes, KEEP et AUX restent intacts. Le préfixe conservé
+après échec de nettoyage ne contient aucun octet du bloc refusé ; aucune
+atomicité en cas de coupure physique n'est promise.
+
+Les 192 nouveaux scénarios exécutent le vrai C sur PO vers 2MG, PO vers
+DSK, DSK vers PO, 2MG vers PO, PO vers DiskCopy et DiskCopy vers PO.
+Les lectures ciblées sont la première, la deuxième, la troisième et la
+dernière, avec ESC, erreur à compte complet, ESC avec erreur et lecture
+courte en erreur, chaque fois avec nettoyage réussi ou impossible.
+144 scénarios échouaient avant correction ; les 48 lectures courtes
+étaient déjà refusées. Les tests vérifient le nombre d'octets transmis
+à fwrite, le préfixe exact du temporaire conservé, les octets de la source,
+de l'ancienne destination et de KEEP, les fermetures et l'absence de
+renommage. Le checksum de l'en-tête DiskCopy partiel reste zéro, car la
+conversion interrompue ne doit pas exécuter sa mise à jour finale.
+
+Les 26 tests IMGCONV de préservation, 6 tests du lecteur, 15 gardes et
+8 contrôles de distribution passent. Builds et dispositions 65C02/6502
+validés : IMGCONV mesure 8764/8930 octets, BSS fin `$3F24`/`$3FCB`,
+marges de 219/52 octets avant `$4000`. La mise en commun des lectures
+réduit le code de 34 octets sur chaque architecture ; aucune garde n'est
+désactivée. Les distributions sont reconstruites et contrôlées.
+
+## MKIMAGE : ESC reçu pendant une écriture arrête avant le bloc suivant (11 octobre 2026)
+
+La création ne contrôlait ESC que tous les 32 blocs, à l'affichage de
+progression. Si fwrite livrait une annulation entre deux de ces contrôles,
+jusqu'à 31 blocs supplémentaires étaient écrits avant arrêt. Une annulation
+pendant le dernier bloc lançait également la passe de vérification avant
+refus. L'image n'était pas annoncée complète, mais ces octets supplémentaires
+restaient en cas de nettoyage impossible.
+
+L'écriture de l'en-tête 2MG et celle de chaque bloc contrôlent maintenant
+stop immédiatement après le compte et ferror. L'opération ferme alors
+la sortie et ne peut nettoyer que l'image exclusivement créée. Les noms
+préexistants et AUX restent intacts. Une annulation reçue par fwrite peut
+survenir après l'écriture physique de ce bloc : il est conservé dans le
+préfixe partiel si le nettoyage échoue, mais aucun bloc suivant n'est
+écrit. Il ne s'agit pas d'une garantie d'atomicité en cas de coupure.
+
+Les 240 nouveaux scénarios exécutent le vrai C : six tailles de 280 à
+32767 blocs, PO et 2MG, écritures ciblées 1, 2, 32, 33 et dernière,
+ESC seul ou avec erreur d'écriture, chacun avec nettoyage réussi ou
+impossible. 84 scénarios échouaient avant correction ; 156 contrôlaient
+des erreurs déjà refusées ou une annulation à la frontière de progression.
+Les compteurs exigent une seule ouverture/fermeture, exactement le nombre
+d'écritures atteint avant annulation et aucune ouverture de vérification.
+Le préfixe conservé est comparé octet par octet à l'image créée normalement,
+avec l'en-tête et les bitmaps. Chaque préfixe conservé est ensuite soumis
+à une reprise : CREATE refuse la collision sans ouverture ni écriture,
+et tous les octets restent identiques.
+
+Les 8 tests MKIMAGE, 15 gardes et 8 contrôles de distribution passent.
+Builds et dispositions 65C02/6502 validés : MKIMAGE mesure 4749/4847 octets,
+BSS fin `$30B7`/`$311A`, marges de 3912/3813 octets avant `$4000`.
+Les distributions sont reconstruites et contrôlées.
+
+## RESCUE : annulation du journal ZERO avant écriture du bloc manquant (11 octobre 2026)
+
+Après trente échecs de lecture, RESCUE remplit le tampon de zéros et
+journalise le bloc manquant. `logline()` ferme éventuellement la source,
+puis ouvre, écrit et ferme le journal. Si l'une de ces étapes livrait ESC
+sans erreur d'E/S, son retour restait réussi et le bloc rempli de zéros
+était encore écrit avant l'arrêt à l'itération suivante. Le fichier partiel
+contenait donc un bloc supplémentaire après annulation et offset avançait.
+
+La boucle contrôle maintenant stop après les lectures et l'éventuelle
+ligne ZERO, immédiatement avant fwrite. Les annulations pendant la
+fermeture de source ou l'écriture/fermeture du journal refusent ce bloc.
+Les fichiers de récupération déjà créés sont conservés avec leur préfixe
+antérieur ; le journal peut contenir ZERO puis se termine par INCOMPLETE.
+Seuls les fichiers de récupération et le journal exclusivement créés sont
+écrits. La source, les noms préexistants et AUX restent intacts. L'opération
+de secours n'offre pas d'atomicité en cas de coupure physique.
+
+Les 80 nouveaux scénarios exécutent le vrai C sur des fichiers de 1, 513
+et 1536 octets et des volumes bruts jetables de 3 et 8 blocs, chaque bloc
+étant rendu illisible pendant les trente tentatives. Ils injectent ESC
+pendant l'écriture ou la fermeture du journal ZERO, seuls ou accompagnés
+d'une erreur, et pour les fichiers pendant la fermeture de source avec
+ou sans erreur. 40 scénarios échouaient avant correction ; les 40 autres
+contrôlaient des erreurs de journal ou fermeture déjà refusées. Les tests
+exigent exactement trente tentatives, aucun octet de récupération écrit
+après le préfixe antérieur, les octets exacts de la source, de KEEP et du
+fichier partiel, le diagnostic INCOMPLETE à l'ancien offset et la fermeture
+de tous les flux. Les tests de secours normal et de zéro-fill volontaire
+sans annulation passent également.
+
+Les 16 tests RESCUE, 15 gardes et 8 contrôles de distribution passent.
+Builds et dispositions 65C02/6502 validés : RESCUE mesure 7085/7157 octets,
+BSS fin `$3883`/`$38CC`, marges de 1916/1843 octets avant `$4000`.
+Les distributions sont reconstruites et contrôlées.
+
+## TXTCONV : erreur à compte complet ou ESC dans l'E/S de sortie (12 octobre 2026)
+
+`flush()` refusait un compte court ou une différence lors de la
+vérification, mais ne contrôlait ni ferror ni ESC immédiatement après
+l'E/S de sortie. Une écriture renvoyant tous les octets avec erreur
+pouvait donc être suivie d'autres écritures avant le contrôle final.
+Une annulation pendant la conversion d'un tampon expansif, notamment
+des tabulations, pouvait également laisser passer plusieurs blocs.
+La vérification avait le même défaut d'arrêt sur une lecture identique
+signalée en erreur ou annulée. Le refus final protégeait les originaux,
+mais les écritures supplémentaires restaient si le nettoyage échouait.
+
+La fonction contrôle maintenant ferror(out) et ESC après chaque E/S
+effective. La boucle de conversion et le flush final respectent déjà
+fail : aucun bloc suivant ni lecture de vérification supplémentaire
+n'est donc engagé après le premier échec. Les originaux, les sauvegardes
+préexistantes et AUX ne sont pas écrits ; seule la sortie exclusivement
+créée reste nettoyable. Un bloc peut avoir été écrit physiquement avant
+qu'ESC ou l'erreur ne soit signalé : il reste dans la sortie conservée
+si le nettoyage échoue. Aucune atomicité physique n'est promise.
+
+Les 240 nouveaux scénarios exécutent le vrai C. Les 216 cas d'écriture
+couvrent H sur 256/513 octets, T sur 256 tabulations, D sur 256 CR,
+les blocs 1, 2 et dernier lorsque distincts, conversion en place,
+remplacement confirmé et nouvelle destination. ESC, erreur à compte
+complet, ESC avec erreur et écriture courte en erreur sont combinés
+avec nettoyage réussi ou impossible. Les compteurs interdisent toute
+écriture après le bloc ciblé, et la sortie conservée est comparée
+octet par octet, y compris le dernier bloc court. Les 24 cas de
+vérification ciblent H et T, y compris la dernière lecture d'un octet,
+avec les mêmes quatre événements et un compteur de lectures. Tous
+exigent des fermetures équilibrées, aucun renommage et la préservation
+des octets de la source, de l'ancienne destination et de KEEP selon le
+cas. 74 scénarios échouaient avant correction ; les 166 autres sont
+des contrôles d'arrêts déjà détectés aux limites de tampon ou en cas
+de compte court.
+
+Les 30 tests TXTCONV, 15 gardes et 8 contrôles de distribution passent.
+Builds et dispositions 65C02/6502 validés : TXTCONV mesure 6133/6225 octets,
+BSS fin `$3546`/`$35A3`, marges de 2745/2652 octets avant `$4000`.
+Les distributions sont reconstruites et contrôlées.
+
 ## VISICALC : quatre morceaux et une table (4 octobre 2026)
 
 Tout en assembleur (`src/plugins/visicalc.s`, le C ne porte que l'en-tête

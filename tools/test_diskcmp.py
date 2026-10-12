@@ -42,14 +42,23 @@ static size_t read_(void* p,size_t s,size_t n,FILE* f){
        (fault==5 && f==images[0] && at==279*512L) ||
        (fault==6 && f==images[1] && at==279*512L)))errored=f;
     if(n==1 && ((fault==7 && f==images[0]) || (fault==8 && f==images[1])))errored=f;
+    if((fault==33 && f==images[0]) || (fault==34 && f==images[1])){
+        long last=!strcmp(format,"DO")?280*512L-256:279*512L+(!strcmp(format,"2MG")?64:0);
+        if(at==last && n==(!strcmp(format,"DO")?256:512))cancelled=1;
+    }
+    if(n==1 && ((fault==35 && f==images[0]) || (fault==36 && f==images[1])))cancelled=1;
     return got;
 }
 static int close_(FILE* f){
-    int fail=(fault==1 && f==images[0]) || (fault==2 && f==images[1]);
+    int fail=(fault==1 && f==images[0]) || (fault==2 && f==images[1]) ||
+             (fault==39 && f==images[0]) || (fault==40 && f==images[1]);
     int r;
     if(f==images[0])closed|=1;
     if(f==images[1])closed|=2;
-    r=fclose(f);return fail ? -1:r;
+    r=fclose(f);
+    if(((fault==37 || fault==39) && f==images[0]) ||
+       ((fault==38 || fault==40) && f==images[1]))cancelled=1;
+    return fail ? -1:r;
 }
 static int seek_(FILE* f,long off,int origin){
     if(off==280*512L && ((fault==9 && f==images[0]) ||
@@ -103,6 +112,7 @@ static unsigned char mock_mli(unsigned char cmd, void* p)
     if(i==5 && b->block==2 && (fault==11 || (fault==12 && reads[i]==1)))return 0x27;
     if (fseek(disks[i], (long)b->block * 512, SEEK_SET)) return 0x27;
     if(fread(b->buffer,1,512,disks[i])!=512)return 0x27;
+    if(b->block==279 && ((fault==41 && i==6) || (fault==42 && i==14)))cancelled=1;
     if(single_mode && b->block==2 && swaps>=(i==6 ? 2:3)) {
         if((fault==13 && i==6) || (fault==14 && i==14))b->buffer[41]=25; /* 281 */
         if((fault==15 && i==6) || (fault==16 && i==14))b->buffer[4]=0xE1;
@@ -260,6 +270,31 @@ class Diskcmp(unittest.TestCase):
         note,_=self.run_cmp('images','d6.PO',0,'dE.PO',
                             {0x6:volume(),0xE:volume()})
         self.assertEqual(note,'Identical: 280 blocks compared.')
+
+    def test_late_cancel_never_produces_a_complete_verdict(self):
+        header=bytearray(64);header[:4]=b'2IMG'
+        header[8:10]=(64).to_bytes(2,'little');header[12:16]=(1).to_bytes(4,'little')
+        header[20:24]=(280).to_bytes(4,'little');header[24:28]=(64).to_bytes(4,'little')
+        header[28:32]=(280*512).to_bytes(4,'little')
+        for mark in (0,1):
+            for fmt in ('PO','DO','2MG'):
+                disks={6:volume(),14:volume(mark=mark)}
+                if fmt=='2MG':disks={u:bytes(header)+data+bytes(64) for u,data in disks.items()}
+                healthy,_=self.run_cmp('images','d6.'+fmt,0,'dE.'+fmt,disks)
+                self.assertIn('differing blocks' if mark else 'Identical',healthy)
+                faults=(33,34,37,38,39,40)+( () if fmt=='2MG' else (35,36))
+                for fault in faults:
+                    with self.subTest(format=fmt,mark=mark,fault=fault):
+                        note,_=self.run_cmp('images','d6.'+fmt,0,'dE.'+fmt,disks,fault)
+                        self.assertNotIn('Identical',note)
+                        self.assertNotIn('differing blocks',note)
+                        self.assertEqual(self.io_state[2:4],(2,3))
+                        self.assertEqual(note,'Stream error; comparison incomplete.' if fault in (39,40)
+                                         else 'Comparison cancelled; no complete verdict.')
+            for fault in (41,42):
+                with self.subTest(format='volumes',mark=mark,fault=fault):
+                    note,_=self.run_cmp('/V','FILE',0,'V',{6:volume(),14:volume(mark=mark)},fault)
+                    self.assertEqual(note,'Comparison cancelled; no complete verdict.')
 
     def test_directory_errors_cannot_validate_image_sizes(self):
         header=bytearray(64);header[:4]=b'2IMG'

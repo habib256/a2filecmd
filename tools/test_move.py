@@ -14,6 +14,7 @@ from prodos_read import Image
 
 HARNESS = PREFIX + r'''
 #include <errno.h>
+#include <unistd.h>
 int mock_ferror(FILE*);
 void move_copy_entry(const struct A2fcApi*);
 void cancel_copy(void);
@@ -72,6 +73,10 @@ static unsigned char mock_mli(unsigned char cmd, void* p)
     if (cmd == 0xC4) {
         struct Gfi* info=p;
         ++metadata_queries;
+        if(((io_fault==42 || io_fault==44) && metadata_queries==1) ||
+           ((io_fault==43 || io_fault==45) && metadata_queries==2)) {
+            cancel_copy();if(io_fault>=44)return 0x27;
+        }
         if(io_fault==25 || (io_fault==27 && metadata_queries>1))return 0x27;
         if(io_fault==33)return 0x46;
         info->access=0xC3;info->type=4;info->aux=0;info->storage=1;
@@ -88,6 +93,12 @@ static unsigned char mock_mli(unsigned char cmd, void* p)
         if(io_fault==37)info->aux=0x0100;
         if(io_fault==40){info->type=6;info->aux=0x2000;}
         if(io_fault==41){info->type=0xB3;info->aux=0xFFFF;}
+        if((io_fault==46 || io_fault==47) && metadata_queries==2){
+            char path[81];FILE* changed;
+            memcpy(path,info->path+1,info->path[0]);path[info->path[0]]=0;
+            if(io_fault==46){changed=fopen(path,"ab");if(!changed)abort();fwrite("TAIL",1,4,changed);fclose(changed);}
+            else {long length;changed=fopen(path,"rb");if(!changed)abort();fseek(changed,0,SEEK_END);length=ftell(changed);fclose(changed);if(truncate(path,length/2))abort();}
+        }
         return 0;
     }
     if (cmd == 0xC0) {                          /* exclusive CREATE */
@@ -184,6 +195,22 @@ static unsigned char host_active;
 static struct Entry host_sel;
 static char host_full[81], host_target[81], host_note[80], host_reselect[17];
 static unsigned char host_buf[512];
+static struct DirEntry host_dir_entry;
+static unsigned int dir_opens_,dir_closes_;
+static unsigned char dir_seen_;
+static unsigned char mock_dir_open(const char* path){
+    if(strcmp(path,host_panels[0].path))abort();
+    ++dir_opens_;dir_seen_=0;return io_fault!=50;
+}
+static unsigned char mock_dir_next(void){
+    FILE* f;
+    if(dir_seen_++ || io_fault==48)return 0;
+    strcpy(host_dir_entry.name,host_sel.name);
+    f=fopen(host_full,"rb");if(!f)abort();fseek(f,0,SEEK_END);host_dir_entry.size=ftell(f);fclose(f);
+    if(io_fault==51)cancel_copy();
+    return 1;
+}
+static unsigned char mock_dir_close(void){++dir_closes_;return io_fault==49?0x27:0;}
 
 int main(int argc, char** argv)
 {
@@ -224,6 +251,8 @@ int main(int argc, char** argv)
     api.progress_bar = mock_bar;
     api.fopen = mock_fopen; api.fread = mock_fread; api.fwrite = mock_fwrite;
     api.fclose = mock_fclose; api.remove = remove;
+    api.dir_entry=&host_dir_entry;api.dir_open=mock_dir_open;api.dir_next=mock_dir_next;
+    api.dir_close=(void (*)(void))mock_dir_close;
     api.filetype = &host_type; api.auxtype = &host_aux;
     api.memcpy = memcpy; api.memset = memset;
     api.strcpy = strcpy; api.strcmp = strcmp; api.strlen = strlen;
@@ -232,6 +261,7 @@ int main(int argc, char** argv)
 
     plugin_entry(&api);
     if (host_note[0] == 3) move_copy_entry(&api);
+    if(io_fault>=46 && io_fault<=53)fprintf(stderr,"DIR %u %u\n",dir_opens_,dir_closes_);
     printf("%s\n", host_note);
     fclose(disk);
     return 0;
@@ -1332,6 +1362,42 @@ class CopyAcrossVolumes(unittest.TestCase):
                     self.assertEqual(Path('/tmp/mv/d/HELLO').read_bytes(),payload)
                     self.assertEqual(Path('/tmp/mv/d/KEEP').read_bytes(),b'unrelated bytes')
                     self.assertEqual(self.copy_trace,'CREATE 4 0\n')
+
+    def test_cancel_during_metadata_precedes_create_or_source_removal(self):
+        for size in (0,1,513,1536):
+            for fault in (42,43,44,45):
+                for collision in ((False,True) if fault in (42,44) else (False,)):
+                    with self.subTest(size=size,fault=fault,collision=collision):
+                        payload=self.fixture(bytes(i&255 for i in range(size)))
+                        dest=Path('/tmp/mv/d/HELLO')
+                        if collision:dest.write_bytes(b'old destination')
+                        note=self.run_copy('/tmp/mv/s','/tmp/mv/d','HELLO',io_fault=fault)
+                        self.assertEqual(Path('/tmp/mv/s/HELLO').read_bytes(),payload)
+                        self.assertIn('not removed',note.lower())
+                        if fault in (42,44):
+                            self.assertNotIn('CREATE ',self.copy_trace)
+                            if collision:self.assertEqual(dest.read_bytes(),b'old destination')
+                            else:self.assertFalse(dest.exists())
+                        else:
+                            self.assertEqual(dest.read_bytes(),payload)
+
+    def test_final_source_size_or_directory_uncertainty_prevents_removal(self):
+        for size in (0,1,513,1536):
+            for fault in (46,47,48,49,50,51,53):
+                if fault==47 and not size:continue
+                with self.subTest(size=size,fault=fault):
+                    payload=self.fixture(bytes(i&255 for i in range(size)))
+                    note=self.run_copy('/tmp/mv/s','/tmp/mv/d','HELLO',io_fault=fault)
+                    self.assertEqual(Path('/tmp/mv/d/HELLO').read_bytes(),payload)
+                    source=Path('/tmp/mv/s/HELLO')
+                    if fault==53:
+                        self.assertFalse(source.exists())
+                        self.assertIn('copied to the other volume and removed',note)
+                    else:
+                        expected=payload+b'TAIL' if fault==46 else payload[:size//2] if fault==47 else payload
+                        self.assertEqual(source.read_bytes(),expected)
+                        self.assertIn('not removed',note)
+                    self.assertIn('DIR 1 '+('0' if fault==50 else '1'),self.copy_trace)
 
     def test_matching_nondefault_type_and_aux_are_preserved(self):
         for fault,ftype,aux in ((40,6,0x2000),(41,0xB3,0xFFFF)):

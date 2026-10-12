@@ -128,16 +128,18 @@ def decode(texts):
         for n, attrs, data in chunks(text):
             n = prodos_name(n)
             found = True
+            if attrs[10] in (5, 0x0D) or attrs[7] == 0x0F:
+                raise Bad('not a plain file')
             if name is None:
                 name, total = n, int.from_bytes(attrs[0:3], 'little')
-                access, ftype, aux, storage = attrs[6], attrs[7], attrs[8] | attrs[9] << 8, attrs[10]
-                if storage in (5, 0x0D) or ftype == 0x0F:
-                    raise Bad('not a plain file')
+                access, ftype, aux = attrs[6], attrs[7], attrs[8] | attrs[9] << 8
             elif (n != name or int.from_bytes(attrs[0:3], 'little') != total or
                   attrs[7] != ftype or (attrs[8] | attrs[9] << 8) != aux):
                 raise Bad('parts missing' if k else 'chunks of another file')
             if int.from_bytes(attrs[3:6], 'little') != len(out):
                 raise Bad('parts out of order or missing')
+            if len(out) + len(data) > total:
+                raise Bad('chunk exceeds total length')
             out += data
             if len(out) == total:
                 return name, access, ftype, aux, bytes(out)
@@ -148,7 +150,7 @@ def decode(texts):
     raise Bad('parts missing')
 
 
-def encode(name, data, access=0xC3, ftype=6, aux=0, alphabet=ALPHABET, eol=b'\r', pad=0):
+def encode(name, data, access=0xC3, ftype=6, aux=0, alphabet=ALPHABET, eol=b'\r', pad=0, storage=1, total_size=None):
     """The BinSCII text of one file (tests); several chunks when it is big.
     pad: the byte that fills each chunk's last line (the real posts: 0)."""
     out = bytearray(b'Some notes before the file' + eol)
@@ -163,11 +165,11 @@ def encode(name, data, access=0xC3, ftype=6, aux=0, alphabet=ALPHABET, eol=b'\r'
     for off in range(0, max(len(data), 1), SEGMENT):
         seg = data[off:off + SEGMENT]
         attrs = bytearray(27)
-        attrs[0:3] = len(data).to_bytes(3, 'little')
+        attrs[0:3] = (len(data) if total_size is None else total_size).to_bytes(3, 'little')
         attrs[3:6] = off.to_bytes(3, 'little')
         attrs[6], attrs[7] = access, ftype
         attrs[8:10] = aux.to_bytes(2, 'little')
-        attrs[10] = 1
+        attrs[10] = storage
         attrs[21:24] = len(seg).to_bytes(3, 'little')
         attrs[24:26] = crc16(attrs[:24]).to_bytes(2, 'little')
         padded = seg + bytes([pad]) * (-len(seg) % 48)

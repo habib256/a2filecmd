@@ -54,6 +54,7 @@ static FILE* source_stream;
 static FILE* image_stream;
 static FILE* flagged;
 static int source_reads,source_closes,image_reads,image_seeks,image_closes;
+static unsigned int publish_reads, publish_writes;
 static int h_error(FILE* f){return f==flagged || ferror(f);}
 static void h_clear(FILE* f){if(f==flagged)flagged=NULL;clearerr(f);}
 static FILE* h_open(const char* p,const char* m){
@@ -63,8 +64,35 @@ static FILE* h_open(const char* p,const char* m){
     else if(f)image_stream=f;
     return f;
 }
+/* A neighbour changes after entry_at(), before the final shared-block
+ * reread. Ordinary host I/O touches only this disposable image. */
+static void change_neighbour(void){
+    long position=ftell(image_stream);
+    unsigned char entry[32],physical=SKEW[skew][slot>>3],k;
+    unsigned int block;unsigned long off;FILE* external;
+    k=physical==0 || physical==15?physical:15-physical;
+    block=RESERVED*8+(k>>1);
+    off=src.kind==1?(unsigned long)(block>>3)*4096+256UL*sectors[(block&7)*2+(k&1)]
+                   :src.base+512UL*block+256UL*(k&1);
+    off+=32UL*fail_at;
+    external=fopen(img_path,"r+b");if(!external || fseek(external,off,SEEK_SET) || fread(entry,1,32,external)!=32)abort();
+    if(entry[0]==0xE5){memset(entry,0,32);memcpy(entry+1,"ARRIVE0 TXT",11);entry[7]='0'+fail_at;}
+    entry[0]=15;
+    if(fseek(external,off,SEEK_SET) || fwrite(entry,1,32,external)!=32 || fclose(external))abort();
+    fseek(image_stream,0,SEEK_END);fseek(image_stream,position,SEEK_SET);
+}
 static size_t h_read(void* p,size_t s,size_t n,FILE* f){
+    if((mode==38 || mode==39 || mode==40) && f==image_stream && source_closes &&
+       ++publish_reads==(src.kind==1?3:2))change_neighbour();
     size_t result=fread(p,s,n,f);
+    if(mode==35 && f==image_stream && source_closes)cancelled=1;
+    if(mode==36 && f==image_stream && source_closes &&
+       ++publish_reads==(src.kind==1?3:2))cancelled=1;
+    if(mode==37 && f==image_stream && source_closes &&
+       ++publish_reads==(src.kind==1?3:2)){
+        unsigned char* bytes=(unsigned char*)p+32*(slot&7);
+        memset(bytes,0,32);memcpy(bytes+1,"ARRIVED TXT",11);
+    }
     if(f==image_stream && (mode==28 || mode==30)){
         ++image_reads;
         if((mode==28 && image_reads==fail_at) || (mode==30 && image_reads>=fail_at))flagged=f;
@@ -91,6 +119,19 @@ static int h_close(FILE* f){
     }
     if(f==source_stream){
         ++source_closes;
+        if(mode==34){
+            unsigned char arrival[32],physical=SKEW[skew][slot>>3],k;
+            unsigned int block;unsigned long off;FILE* external;
+            k=physical==0 || physical==15?physical:15-physical;
+            block=RESERVED*8+(k>>1);
+            off=src.kind==1?(unsigned long)(block>>3)*4096+256UL*sectors[(block&7)*2+(k&1)]
+                           :src.base+512UL*block+256UL*(k&1);
+            off+=32UL*(slot&7);
+            memset(arrival,0,32);arrival[0]=fail_at;
+            memset(arrival+1,' ',11);memcpy(arrival+1,"ARRIVED",7);memcpy(arrival+9,"TXT",3);
+            external=fopen(img_path,"r+b");if(!external || fseek(external,off,SEEK_SET) || fwrite(arrival,1,32,external)!=32 || fclose(external))abort();
+            fseek(image_stream,0,SEEK_END); /* discard the old host read buffer */
+        }
         if(mode==7)failed=1;
         if(mode==8)cancelled=1;
         source_stream=NULL;
@@ -103,6 +144,11 @@ static int h_close(FILE* f){
  * comes back different. */
 static size_t h_fwrite(const void* p, size_t s, size_t n, FILE* f) {
     ++writes;
+    if((mode==39 || mode==40) && source_closes && ++publish_writes==1){
+        if(mode==39){fwrite(p,1,128,f);fflush(f);return 0;}
+        unsigned char damaged[512];memcpy(damaged,p,s*n);damaged[0]^=0xFF;
+        return fwrite(damaged,s,n,f);
+    }
     if(mode==33 && !(fail_at&2))return 0; /* ProDOS rejects WRITE, not OPEN. */
     if((mode==29 && writes==fail_at) || (mode==31 && writes>=fail_at))flagged=f;
     if((mode==2 || mode==3 || mode==4 || mode==26 || mode==27) && writes==fail_at){
@@ -273,6 +319,90 @@ class CpmW(unittest.TestCase):
         return cpm_ref.contents(raw, e, v['skew'])
 
     # -- what must happen ---------------------------------------------------
+
+    def test_publication_preserves_fresh_neighbour_entries(self):
+        for skew in cpm_ref.SKEWS:
+            po=cpm_ref.make(WAS_THERE,skew=skew)
+            before_volume=cpm_ref.volume(po)
+            for suffix,wrap,unwrap in (('.PO',bytes,bytes),('.DSK',to_dsk,to_dsk),
+                                       ('.2MG',to_2mg,lambda d:d[64:])):
+                self.img=self.dir/('VOL'+suffix)
+                for size in (1,1500):
+                    for p in self.src.iterdir():p.unlink()
+                    self.files={};self.give('NEWFILE',bytes(i%251 for i in range(size)))
+                    sources={p.name:p.read_bytes() for p in self.src.iterdir()}
+                    for neighbour in (0,1,3,4,5,6,7):
+                        for mode in (38,39,40):
+                            with self.subTest(skew=skew,format=suffix,size=size,neighbour=neighbour,mode=mode):
+                                self.img.write_bytes(wrap(po))
+                                writes,note=self.run_op(mode,neighbour)
+                                raw=unwrap(self.img.read_bytes());volume=cpm_ref.volume(raw)
+                                offset=cpm_ref.sector_offset(3,cpm_ref.SKEWS[skew][0])+32*neighbour
+                                expected=bytearray(po[offset:offset+32])
+                                if expected[0]==0xE5:
+                                    expected=bytearray(32);expected[1:12]=b'ARRIVE0 TXT';expected[7]=ord('0')+neighbour
+                                expected[0]=15
+                                self.assertEqual(raw[offset:offset+32],expected)
+                                if mode==38:
+                                    new=next(e for e in volume['files'] if e['name']=='NEWFILE')
+                                    self.assertEqual(cpm_ref.contents(raw,new,skew),sources['NEWFILE'].ljust(((size+127)//128)*128,b'\x1A'))
+                                else:
+                                    self.assertNotIn('NEWFILE',{e['name'] for e in volume['files']})
+                                for name,_ in WAS_THERE:
+                                    entry=next(e for e in volume['files'] if e['name']==name)
+                                    old=next(e for e in before_volume['files'] if e['name']==name)
+                                    self.assertEqual(cpm_ref.contents(raw,entry,skew),cpm_ref.contents(po,old,skew))
+                                for logical in range(8):
+                                    base=cpm_ref.sector_offset(3,cpm_ref.SKEWS[skew][logical])
+                                    expect=bytearray(po[base:base+256])
+                                    if logical==0:
+                                        expect[neighbour*32:(neighbour+1)*32]=expected
+                                        if mode==38:expect[64:96]=raw[base+64:base+96]
+                                    self.assertEqual(raw[base:base+256],expect)
+                                if mode==38:self.assertIn('1 put',note)
+                                else:self.assertEqual(note,'Entry not written; the volume is whole.')
+                                self.assertEqual({p.name:p.read_bytes() for p in self.src.iterdir()},sources)
+
+    def test_publish_refuses_an_occupied_slot_or_late_cancel(self):
+        for suffix,wrap,unwrap in (('.PO',bytes,bytes),('.DSK',to_dsk,to_dsk),
+                                   ('.2MG',to_2mg,lambda d:d[64:])):
+            self.img=self.dir/('VOL'+suffix)
+            for size in (1,1500):
+                for p in self.src.iterdir():p.unlink()
+                self.files={};self.give('NEWFILE',bytes(i%251 for i in range(size)))
+                sources={p.name:p.read_bytes() for p in self.src.iterdir()}
+                for mode,user in ((34,0),(34,15),(35,0),(36,0),(37,0)):
+                    with self.subTest(format=suffix,size=size,mode=mode,user=user):
+                        self.img.write_bytes(wrap(self.original))
+                        writes,note=self.run_op(mode,user)
+                        raw=unwrap(self.img.read_bytes());v=cpm_ref.volume(raw)
+                        names={e['name'] for e in v['files']}
+                        self.assertNotIn('NEWFILE',names)
+                        old_volume=cpm_ref.volume(self.original)
+                        for old_name,old_data in WAS_THERE:
+                            entry=next(e for e in v['files'] if e['name']==old_name)
+                            old_entry=next(e for e in old_volume['files'] if e['name']==old_name)
+                            self.assertEqual(cpm_ref.contents(raw,entry,v['skew']),
+                                             cpm_ref.contents(self.original,old_entry,old_volume['skew']))
+                        if mode==34:
+                            arrival=next(e for e in v['files'] if e['name']=='ARRIVED.TXT')
+                            self.assertEqual(arrival['user'],user)
+                            self.assertEqual(cpm_ref.contents(raw,arrival,v['skew']),b'')
+                        else:
+                            self.assertEqual(names,{n for n,_ in WAS_THERE})
+                        expected=bytearray(self.original)
+                        if mode==34:
+                            arrival_bytes=bytearray(32);arrival_bytes[0]=user
+                            arrival_bytes[1:12]=b'ARRIVED TXT'
+                            offset=cpm_ref.sector_offset(3,cpm_ref.SKEWS['apple'][0])+32*len(WAS_THERE)
+                            expected[offset:offset+32]=arrival_bytes
+                        for logical in range(8):
+                            offset=cpm_ref.sector_offset(3,cpm_ref.SKEWS['apple'][logical])
+                            self.assertEqual(raw[offset:offset+256],expected[offset:offset+256])
+                        self.assertEqual(writes,4*((size+1023)//1024)*(2 if suffix=='.DSK' else 1))
+                        self.assertEqual(note,'Directory changed; stopped.' if mode==34 else
+                                         'Entry not written; the volume is whole.' if mode in (36,37) else 'Stopped; the volume is whole.')
+                        self.assertEqual({p.name:p.read_bytes() for p in self.src.iterdir()},sources)
 
     def test_every_file_shows_its_name_then_its_blocks(self):
         # `name` is one buffer for every file: 0 redraws it, so the bar
