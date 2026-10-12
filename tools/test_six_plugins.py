@@ -273,13 +273,15 @@ static unsigned char dnext(void){
     if(listed==2)return 0;
     strcpy(dirent.name,names[listed]);dirent.size=sizes[listed];++listed;return 1;
 }
-static void dclose(void){}
+static unsigned char close_error;
+static unsigned char dclose(void){return close_error;}
 static void rbar(const char* s,unsigned long d,unsigned long t){(void)s;(void)d;(void)t;}
 int main(int argc,char** argv) {
     unsigned char scratch[512],r;
     buf=scratch;a.progress_bar=rbar;a.fopen=mock_open;a.fread=mock_read;a.fseek=fseek;a.fclose=fclose;a.memset=memset;
-    a.strlen=strlen;a.strcmp=strcmp;a.dir_open=dopen;a.dir_next=dnext;a.dir_close=dclose;a.dir_entry=&dirent;
+    a.strlen=strlen;a.strcmp=strcmp;a.dir_open=dopen;a.dir_next=dnext;a.dir_close=(void (*)(void))dclose;a.dir_entry=&dirent;
     if(!strcmp(argv[1],"size")){
+        close_error=argc>3;
         strcpy(source,argv[2]);size=99;r=fresh_size();printf("%u %lu %s\n",r,size,source);return 0;
     }
     disk=0;in=0;strcpy(source,argv[1]);failures=atoi(argv[2]);offset=520;memset(buf,0xA5,512);
@@ -624,6 +626,9 @@ class SixPlugins(unittest.TestCase):
         self.assertEqual(out[0],'dir /V/D');self.assertEqual(out[1],'1 1234 /V/D/DATA')
         out=subprocess.check_output([str(self.exe['rescue_file']),'size','/V/D/NONE'],text=True).split('\n')
         self.assertEqual(out[1],'0 99 /V/D/NONE')
+    def test_rescue_file_size_refuses_a_directory_close_error(self):
+        out=subprocess.check_output([str(self.exe['rescue_file']),'size','/V/D/DATA','close-error'],text=True).split('\n')
+        self.assertEqual(out[1],'0 1234 /V/D/DATA')
     def undelete_root(self,deleted,key,*mode):
         image,used,directory=root_volume(deleted)
         if 'zero-name-length' in mode:
