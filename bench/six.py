@@ -68,9 +68,9 @@ def main():
             s.select('GONE.TXT',40);s.key(b'D');p.stable();s.key(b'Y');p.stable()
             # A new recovery directory avoids the name copied by SYNC.
             s.key(b'\t');s.key(b'K');p.stable();s.type('RECOVER');s.key(RET);p.stable();s.select('RECOVER');s.key(RET);p.stable();s.key(b'\t')
-            menu_run(s,p,'UNDELETE');done('UNDELETE - SOURCE');s.ok('candidat libre',s.has('Candidate: all referenced blocks are free.'),'\n'.join(s.rows()))
+            menu_run(s,p,'UNDELETE');done('UNDELETE - READ ONLY');s.ok('candidat libre',s.has('Candidate: referenced blocks free.'),'\n'.join(s.rows()))
             s.ok('UNDELETE retrouve le fichier efface et valide ses blocs',s.has('GONE.TXT'))
-            s.key(b'R');done('Recover this candidate');s.key(b'Y');done('Recovered GONE.TXT')
+            s.key(b'R');done('Recover to other volume?');s.key(b'Y');done('Recovered GONE.TXT')
             s.select('NEW.TXT',40);menu_run(s,p,'RESCUE');done('RESCUE: F');s.key(b'F');done('Recovery base name');s.key(b'\x7f'*7);s.type('SALVAGE');s.key(RET)
             done('Recover with 30');s.key(b'Y');s.wait(lambda:s.has('RESCUE:') or s.has('RESCUE incomplete'),'rescue result',120);p.stable()
             if s.has('RESCUE incomplete'):

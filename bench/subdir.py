@@ -35,7 +35,7 @@ def main():
         shutil.copyfile(ROOT / 'data/BASIC.SYSTEM.SYS', stage / 'BASIC.SYSTEM.SYS')
         hdv = tmp / 'HD.hdv'                 # amorcable : les deux blocs d'amorce ProDOS
         subprocess.run([sys.executable, str(ROOT / 'tools/mkvolume.py'), str(stage), str(hdv),
-                        '--volume', 'HD', '--blocks', '1600',
+                        '--volume', 'HD', '--blocks', '4000',
                         '--boot', str(ROOT / 'data/prodos_boot.tmpl')], check=True, capture_output=True)
 
         with Pom2(hdv, port=6722) as p:

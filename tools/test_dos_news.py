@@ -26,13 +26,15 @@ class Preflight(unittest.TestCase):
     out,counts,_=self.run_disk(self.disk(b),typ=6,image=image);self.assertEqual(out,bytes(c&127 for c in parse(b)[2]))
     for fault in list(range(1,counts[1]+1))+([1001,1002,1003,1004] if image else []):
      out,_,_=self.run_disk(self.disk(b),typ=6,image=image,fault=fault,good=False);self.assertEqual(out,b'')
- def test_malformed_and_original_ph_bn_corpus(self):
+ def test_malformed_newsroom(self):
   b=make(random.Random(9),3,5)
   for bad in [b[:i] for i in range(len(b))]+[b[:2]+bytes((8,7))+b[4:],b[:4]+bytes((9,8))+b[6:],b[:6]+b'X'+b[7:]]:
    try:parse(bad)
    except ValueError:self.run_disk(self.disk(bad),typ=6,good=False)
+ def test_original_ph_bn_corpus(self):
   from legacy_corpus import dos_files
   root=Path.home()/'.cache/a2fc/newsroom/ia';seen=set()
+  if not root.exists():self.skipTest('external Newsroom corpus not installed: '+str(root))
   for p in root.glob('*'):
    try:files=list(dos_files(p.read_bytes()))
    except (ValueError,OSError):continue
