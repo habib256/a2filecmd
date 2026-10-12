@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-from xplug import boot_hd, RET, ESC, ok_all
+from xplug import boot_hd, menu_run, RET, ESC, ok_all
 from test_extasie import BASTILLE, unrle, page_of, COLS, ROWS
 from test_paint816 import LADDER_PACKED, ladder_stream, page_left_to_right
 
@@ -90,11 +90,11 @@ def main():
                     s.ok(name + ' uses DGRVIEW ' + repr(key), True)
                     s.key(ESC); s.wait(lambda: s.has('Type  Aux'), 'panels after lo-res', 30); p.stable()
 
-            s.select('SPRITE'); s.key(b'I')
+            s.select('SPRITE'); menu_run(s, p, 'DGRVIEW')
             s.wait(lambda: s.has('Pixmap width'), 'sprite width', 30)
             s.key(b'01' + RET)
             s.wait(lambda: bytes(p.peek(0x413, 1)) == b'\x77', 'sprite pixels', 30)
-            s.ok('I opens an unmarked sprite and asks only its width', True)
+            s.ok('explicit DGRVIEW opens an unmarked sprite and asks only its width', True)
             s.key(ESC); s.wait(lambda: s.has('Type  Aux'), 'panels after sprite', 30); p.stable()
 
             s.select('UNKNOWN'); s.key(RET)

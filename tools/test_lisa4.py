@@ -29,6 +29,8 @@ class Lisa4(unittest.TestCase):
     def tearDownClass(cls):cls.tmp.cleanup()
     def check(self,data,**kw):return self.run_file('lisav4',data,aux=kw.pop('aux',0x50e1),**kw)
     def test_real_files(self):
+        if not (Path.home()/'.cache/a2fc/cp2/test-files.po').exists():
+            self.skipTest('external LISA corpus not installed')
         found=list(real_lisa4());self.assertEqual(len(found),2)
         for n,a,d in found:
             rows,_,_=self.check(d,filename=n,aux=a);self.assertTrue(any(rows))

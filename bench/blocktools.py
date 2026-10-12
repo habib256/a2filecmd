@@ -65,7 +65,7 @@ def main():
             s.key(b'G');s.wait(lambda:s.has('Block number'),'jump');s.type('0002');s.key(RET);p.stable()
             s.key(b'D');p.stable();s.ok('directory header decoded',s.has('HEADER entries=0'),'\n'.join(s.rows()))
             s.key(b'I');p.stable();s.key(b' ');p.stable()
-            s.ok('index pagination covers next 32 pointers',s.has('entries 32..63'))
+            s.ok('index pagination covers next 32 pointers',s.has('ProDOS index: 32..63'))
             s.key(b'H');s.key(b' ');p.stable();s.ok('second 256-byte half',s.has('Page 2') and s.has('100  '))
             s.key(b'N');p.stable();s.ok('next block',s.has('Block 3 ($0003)'))
             s.key(b'P');p.stable();s.ok('previous block',s.has('Block 2 ($0002)'))
