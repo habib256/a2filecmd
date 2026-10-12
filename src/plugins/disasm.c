@@ -160,15 +160,20 @@ static void export(void)
     FILE* out;
     unsigned char result;
     if(other->fs || !other->path[0]) { a.message("Open destination in other panel.");a.cgetc();return; }
+    cancelled=0;
     a.sprintf(record,"Export from $%06lX: new TXT file",offset);
     if(!a.prompt(record,"DISASM.TXT",0))return;
+    /* Only a fresh export clears old ESC state. Poll before exclusive
+     * CREATE; keep any cancellation received during CREATE/open latched.
+     * The new TXT is the only write target; source and AUX stay intact. */
+    if(stop()) { export_status="Export cancelled; nothing created.";return; }
     if(!join(a.other_full,other->path,a.input)) { a.message("Path too long.");a.cgetc();return; }
     if(newfile(a.other_full,4,0,1)) { a.message("Cannot create file (name in use?).");a.cgetc();return; }
     *a.filetype=4;*a.auxtype=0;
     out=a.fopen(a.other_full,"wb");
     if(!out) { a.message("Cannot open output; empty file remains.");a.cgetc();return; }
     /* the bar takes row 22: the hint goes on the status row */
-    cancelled=0;a.gotoxy(0,21);a.cprintf("%-79s","Exporting... ESC cancels");
+    a.gotoxy(0,21);a.cprintf("%-79s","Exporting... ESC cancels");
     result=export_text(out);
     if(a.fclose(out))result=1;
     /* A close can take time: poll before publishing success. Keep the

@@ -32,6 +32,8 @@
 #define UTIL_CREATE
 #define UTIL_DISCARD
 #define UTIL_VOLUME
+/* No configuration or media/AUX service is used; copy through selected. */
+#define UTIL_API_END cfg_path
 #define IMAGEIO_CHECK_CLOSE
 /* This extractor opens files only; omit the unused raw-device reader. */
 #define IMAGEIO_NODEVICE
@@ -205,7 +207,9 @@ static unsigned char copy_file(const unsigned char* first, FILE* out, unsigned c
             a.progress_bar(name, fsize - left, fsize);
             for (l = 0; l < 4 && left; ++l) {
                 unsigned int n = left > 256 ? 256 : (unsigned int)left;
-                if (!cpm_sector((unsigned int)b * 4 + l, sec)) return 0;
+                /* A successful source read may receive ESC. Refuse before
+                 * writing this sector or reading back our exclusive output. */
+                if (!cpm_sector((unsigned int)b * 4 + l, sec) || stop()) return 0;
                 /* `buf` held the ProDOS block cpm_sector copied out of; it
                  * is free from here, and a sector's worth of read-back has
                  * to live somewhere. */
@@ -213,8 +217,8 @@ static unsigned char copy_file(const unsigned char* first, FILE* out, unsigned c
                     if (RF(fread)(buf, 1, n, out) != n || memcmp(buf, sec, n)) return 0;
                 } else if (RF(fwrite)(sec, 1, n, out) != n || ferror(out)) return 0;
                 left -= n;
+                if (stop()) return 0;
             }
-            if (stop()) return 0;
         }
         ++ext;
         /* measure bounded every extent; a missing one fails extent_at. */

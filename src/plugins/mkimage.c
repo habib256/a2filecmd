@@ -40,7 +40,9 @@ static void makeblock(void) {
     }
 }
 static unsigned char matches(unsigned int n) {
-    return a.fread(check,1,n,out)==n && !ferror(out) && !memcmp(check,buf,n);
+    /* ESC can arrive during a full-count read. Stop before another read
+     * of our exclusive image; only MAIN buffers are involved. */
+    return a.fread(check,1,n,out)==n && !ferror(out) && !stop() && !memcmp(check,buf,n);
 }
 static unsigned char verify_image(void) {
     unsigned char ok=0;

@@ -27,12 +27,14 @@ static FILE *verify_source,*verify_target;
 static FILE* writing;
 static unsigned int data_reads,fail_read;
 static unsigned long output_bytes;
+static unsigned int write_calls,verify_reads,reads_after_fault,verify_faulted,creates,removes;
 static unsigned char mli(unsigned char cmd,void* params) {
     char old[80],newpath[80];FILE* f;
     struct Param {unsigned char n;unsigned char* path;};
     unsigned char* p=((struct Param*)params)->path;
     memcpy(old,p+1,p[0]);old[p[0]]=0;
     if(cmd==0xC4) {
+        if(fault==68 || fault==69)keyboard=0x9B;
         struct stat st;
         if(fault==1)return 0x27;
         if(stat(old,&st))return errno==ENOENT?0x46:0x27;
@@ -45,6 +47,8 @@ static unsigned char mli(unsigned char cmd,void* params) {
         return 0;
     }
     if(cmd==0xC0) {
+        ++creates;
+        if(fault==72 || fault==73)keyboard=0x9B;
         if(fault==2){f=fopen(old,"wb");fputs("new arrival",f);fclose(f);}
         f=fopen(old,"wx");if(!f)return 0x47;fclose(f);return 0;
     }
@@ -65,10 +69,19 @@ static FILE* open_file(const char* path,const char* mode) {
     FILE* f;
     ++opens;if(fault==21 && opens==4)return NULL;
     f=fopen(path,mode);if(opens==3)verify_source=f;if(opens==4)verify_target=f;
-    if(!strcmp(mode,"wb")){writing=f;opened=1;}return f;
+    if(!strcmp(mode,"wb")){writing=f;opened=1;if(fault==74 || fault==75)keyboard=0x9B;}return f;
 }
 static size_t read_file(void* p,size_t s,size_t n,FILE* f) {
     size_t got;
+    if(verify_faulted)++reads_after_fault;
+    if(f==verify_target && n>1 && ++verify_reads==fail_read && fault>=60 && fault<=67) {
+        unsigned char event=(fault-60)%4;
+        verify_faulted=1;
+        got=fread(p,s,event==3 ? n-1 : n,f);
+        if(event==0 || event==2)keyboard=0x9B;
+        if(event!=0)failed_read=f;
+        return got;
+    }
     unsigned char injected=fault>=44 && fault<=51 && opened && f!=writing && ++data_reads==fail_read;
     if(fault==39 && f==verify_target && n==1)keyboard=0x9B;
     if(fault==3 && ftell(f)>=512)return 0;
@@ -90,12 +103,19 @@ static size_t read_file(void* p,size_t s,size_t n,FILE* f) {
 }
 static size_t write_file(const void* p,size_t s,size_t n,FILE* f) {
     unsigned char damaged[512];
+    size_t got;
+    unsigned char injected=fault>=52 && fault<=59 && ++write_calls==fail_read;
     output_bytes+=s*n;
     if(fault==4 || fault==24)return 0;
     if(fault==13 || (fault==14 && ftell(f)>=64)) {
         memcpy(damaged,p,n);damaged[0]^=1;return fwrite(damaged,s,n,f);
     }
-    return fwrite(p,s,n,f);
+    got=fwrite(p,s,injected && (fault-52)%4==3 && n ? n-1 : n,f);
+    if(injected){
+        if((fault-52)%4==0 || (fault-52)%4==2)keyboard=0x9B;
+        if((fault-52)%4!=0)failed_read=f;
+    }
+    return got;
 }
 static int close_file(FILE* f) {
     int w=opened && f==writing,r;
@@ -115,10 +135,14 @@ static int seek_file(FILE* f,long off,int origin) {
     if((fault==11 && seeks==1) || (fault==12 && seeks==2))return -1;
     return fseek(f,off,origin);
 }
-static unsigned char yes(const char* p){++confirm_calls;return 1;}
+static unsigned char yes(const char* p){++confirm_calls;if(fault==70 || fault==71)keyboard=0x9B;return 1;}
 static int remove_file(const char* p) {
+    ++removes;
+    if(fault>=68 && fault<=75 && (fault&1))return -1;
     if((fault>=24 && fault<=26) || fault==40)return -1;
     if(fault>=48 && fault<=51)return -1;
+    if(fault>=56 && fault<=59)return -1;
+    if(fault>=64 && fault<=67)return -1;
     if(fault==27 && strstr(p,"A2FC.BAK"))return -1;
     return remove(p);
 }
@@ -143,6 +167,9 @@ int main(int argc,char**argv) {
     if(fault>=30 && fault<=34 && renames)abort();
     fprintf(stderr,"STATE %d %d %d %u\n",opens,closes,renames,confirm_calls);
     fprintf(stderr,"OUTPUT-BYTES %lu\n",output_bytes);
+    fprintf(stderr,"WRITE-CALLS %u\n",write_calls);
+    fprintf(stderr,"VERIFY-READS %u %u\n",verify_reads,reads_after_fault);
+    fprintf(stderr,"OWNED %u %u\n",creates,removes);
     puts(note);return 0;
 }
 '''
@@ -192,7 +219,123 @@ class ImgconvSafety(unittest.TestCase):
                            text=True,capture_output=True,check=True)
         self.state=tuple(map(int,next(l for l in run.stderr.splitlines() if l.startswith('STATE ')).split()[1:]))
         self.output_bytes=int(next(l for l in run.stderr.splitlines() if l.startswith('OUTPUT-BYTES ')).split()[1])
+        self.write_calls=int(next(l for l in run.stderr.splitlines() if l.startswith('WRITE-CALLS ')).split()[1])
+        self.verify_reads,self.reads_after_fault=map(int,next(l for l in run.stderr.splitlines() if l.startswith('VERIFY-READS ')).split()[1:])
+        self.creates,self.removes=map(int,next(l for l in run.stderr.splitlines() if l.startswith("OWNED ")).split()[1:])
         self.assertEqual(self.src.read_bytes(),self.data);return run.stdout
+
+    def test_output_error_or_cancel_never_starts_another_write(self):
+        dsk=lambda data:to_dsk(data+bytes(143360-len(data)))[:len(data)]
+        keep=self.d/'KEEP';keep.write_bytes(b'unrelated bytes')
+        for source,wrap,choice,suffix in (('INPUT.PO',bytes,'2','2MG'),
+                                          ('INPUT.PO',bytes,'D','DSK'),
+                                          ('INPUT.DSK',dsk,'P','PO'),
+                                          ('INPUT.2MG',to_2mg,'P','PO'),
+                                          ('INPUT.PO',bytes,'C','DC'),
+                                          ('INPUT.DC',to_dc,'P','PO')):
+            content=bytes((i*7+i//256)&255 for i in range(409600 if suffix=='DC' or source.endswith('.DC') else 8192))
+            self.src=self.s/source;self.data=wrap(content);self.src.write_bytes(self.data)
+            self.dst=self.d/('INPUT.'+suffix)
+            expected=to_2mg(content) if suffix=='2MG' else dsk(content) if suffix=='DSK' else to_dc(content,b'INPUT.DC') if suffix=='DC' else content
+            initial=expected[:72]+bytes(4)+expected[76:] if suffix=='DC' else expected
+            header=64 if suffix=='2MG' else 84 if suffix=='DC' else 0
+            unit=256 if suffix=='DSK' else 512
+            sequence=([(0,header)] if header else [])+[(header+i,unit) for i in range(0,len(content),unit)]
+            if suffix=='DC':sequence.append((72,4))
+            targets={1,2,3,len(sequence)}
+            if suffix=='DC':targets.add(len(sequence)-1)
+            for target in sorted(targets):
+                for fault in range(52,60):
+                    with self.subTest(source=source,choice=choice,target=target,fault=fault):
+                        prefix=bytearray()
+                        for index,(offset,n) in enumerate(sequence[:target],1):
+                            piece=(expected if suffix=='DC' and index==len(sequence) else initial)[offset:offset+n]
+                            if index==target and (fault-52)%4==3:piece=piece[:-1]
+                            prefix[offset:offset+len(piece)]=piece
+                        self.dst.write_bytes(b'old image')
+                        tmp=self.d/'IMGCONV.TMP';tmp.unlink(missing_ok=True)
+                        backup=self.d/'A2FC.BAK';backup.unlink(missing_ok=True)
+                        note=self.convert(fault,choice,fail_read=target)
+                        self.assertEqual(self.state,(2,2,0,1),note)
+                        self.assertEqual(self.write_calls,target,note)
+                        self.assertEqual(self.output_bytes,sum(n for _,n in sequence[:target]),note)
+                        self.assertEqual(self.dst.read_bytes(),b'old image')
+                        self.assertEqual(keep.read_bytes(),b'unrelated bytes')
+                        self.assertFalse(backup.exists())
+                        self.assertNotIn(' -> ',note)
+                        if fault>=56:
+                            self.assertIn('Cleanup failed',note)
+                            self.assertEqual(tmp.read_bytes(),prefix)
+                        else:self.assertFalse(tmp.exists())
+
+    def test_cancel_before_create_or_first_write_preserves_all_bytes(self):
+        dsk=lambda data:to_dsk(data+bytes(143360-len(data)))[:len(data)]
+        keep=self.d/'KEEP';keep.write_bytes(b'unrelated bytes')
+        for source,wrap,choice,suffix in (('INPUT.PO',bytes,'2','2MG'),
+                                          ('INPUT.PO',bytes,'D','DSK'),
+                                          ('INPUT.DSK',dsk,'P','PO'),
+                                          ('INPUT.2MG',to_2mg,'P','PO'),
+                                          ('INPUT.PO',bytes,'C','DC'),
+                                          ('INPUT.DC',to_dc,'P','PO')):
+            content=bytes((i*7+i//256)&255 for i in range(409600 if suffix=='DC' or source.endswith('.DC') else 8192))
+            self.src=self.s/source;self.data=wrap(content);self.src.write_bytes(self.data)
+            self.dst=self.d/('INPUT.'+suffix)
+            for replacing in (False,True):
+                for fault in range(68,76):
+                    if not replacing and fault in (70,71):continue
+                    with self.subTest(source=source,choice=choice,replacing=replacing,fault=fault):
+                        self.dst.unlink(missing_ok=True)
+                        if replacing:self.dst.write_bytes(b'old image')
+                        tmp=self.d/'IMGCONV.TMP';tmp.unlink(missing_ok=True)
+                        backup=self.d/'A2FC.BAK';backup.unlink(missing_ok=True)
+                        note=self.convert(fault,choice)
+                        self.assertNotIn(' -> ',note)
+                        self.assertEqual(keep.read_bytes(),b'unrelated bytes')
+                        self.assertFalse(backup.exists())
+                        if replacing:self.assertEqual(self.dst.read_bytes(),b'old image')
+                        self.assertEqual(self.output_bytes,0)
+                        owned=fault>=72
+                        self.assertEqual(self.creates,int(owned))
+                        self.assertEqual(self.removes,int(owned))
+                        self.assertEqual(self.state,(2 if owned else 1,2 if owned else 1,0,int(replacing)))
+                        output=tmp if replacing else self.dst
+                        if owned and fault&1:
+                            self.assertIn('Cleanup failed',note)
+                            self.assertEqual(output.read_bytes(),b'')
+                        else:self.assertFalse(output.exists())
+
+    def test_output_verify_fault_stops_before_any_later_read(self):
+        dsk=lambda data:to_dsk(data+bytes(143360-len(data)))[:len(data)]
+        keep=self.d/'KEEP';keep.write_bytes(b'unrelated bytes')
+        for source,wrap,choice,suffix in (('INPUT.PO',bytes,'2','2MG'),
+                                          ('INPUT.PO',bytes,'D','DSK'),
+                                          ('INPUT.DSK',dsk,'P','PO'),
+                                          ('INPUT.2MG',to_2mg,'P','PO'),
+                                          ('INPUT.PO',bytes,'C','DC'),
+                                          ('INPUT.DC',to_dc,'P','PO')):
+            content=bytes((i*7+i//256)&255 for i in range(409600 if suffix=='DC' or source.endswith('.DC') else 8192))
+            self.src=self.s/source;self.data=wrap(content);self.src.write_bytes(self.data)
+            self.dst=self.d/('INPUT.'+suffix)
+            expected=to_2mg(content) if suffix=='2MG' else dsk(content) if suffix=='DSK' else to_dc(content,b'INPUT.DC') if suffix=='DC' else content
+            count=len(content)//256+int(suffix in ('2MG','DC'))
+            for target in sorted({1,2,(count+1)//2,count}):
+                for fault in range(60,68):
+                    with self.subTest(source=source,choice=choice,target=target,fault=fault):
+                        self.dst.write_bytes(b'old image')
+                        tmp=self.d/'IMGCONV.TMP';tmp.unlink(missing_ok=True)
+                        backup=self.d/'A2FC.BAK';backup.unlink(missing_ok=True)
+                        note=self.convert(fault,choice,fail_read=target)
+                        self.assertEqual(self.state,(4,4,0,1),note)
+                        self.assertEqual(self.dst.read_bytes(),b'old image')
+                        self.assertEqual(keep.read_bytes(),b'unrelated bytes')
+                        self.assertFalse(backup.exists())
+                        self.assertNotIn(' -> ',note)
+                        if fault>=64:
+                            self.assertIn('Cleanup failed',note)
+                            self.assertEqual(tmp.read_bytes(),expected)
+                        else:self.assertFalse(tmp.exists())
+                        self.assertEqual(self.verify_reads,target)
+                        self.assertEqual(self.reads_after_fault,0)
 
     def test_failed_data_reads_never_write_the_refused_block(self):
         dsk=lambda data:to_dsk(data+bytes(143360-len(data)))[:len(data)]
@@ -374,14 +517,14 @@ class ImgconvSafety(unittest.TestCase):
 
     def test_combined_failure_and_cleanup_failure_preserves_output(self):
         tmp = self.d / 'IMGCONV.TMP'
-        for fault in (24, 25, 26):
+        for fault in (24, 25, 73):
             with self.subTest(fault=fault):
                 note = self.convert(fault)
                 self.assertIn('Cleanup failed', note)
                 self.assertNotIn('removed', note)
                 self.assertEqual(self.dst.read_bytes(), b'old image')
                 saved = tmp.read_bytes()
-                if fault == 24:
+                if fault in (24,73):
                     self.assertEqual(saved, b'')
                 else:
                     self.assertEqual(saved[:4], b'2IMG')
@@ -391,13 +534,13 @@ class ImgconvSafety(unittest.TestCase):
                 self.assertEqual(self.dst.read_bytes(), b'old image')
                 tmp.unlink()
 
-    def test_cancel_cleanup_failure_at_new_destination(self):
+    def test_initial_cancel_needs_no_creation_or_cleanup_at_new_destination(self):
         self.dst.unlink()
         note = self.convert(26)
-        self.assertIn('Cleanup failed', note)
+        self.assertNotIn('Cleanup failed', note)
         self.assertNotIn('removed', note)
-        self.assertEqual(self.dst.read_bytes()[:4], b'2IMG')
-        self.assertEqual(len(self.dst.read_bytes()), 64)
+        self.assertFalse(self.dst.exists())
+        self.assertEqual((self.creates,self.removes,self.output_bytes),(0,0,0))
 
     def test_install_collision_preserves_arrival_and_both_recovery_files(self):
         self.assertIn('Restore failed', self.convert(28))

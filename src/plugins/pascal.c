@@ -112,7 +112,9 @@ static unsigned char copy_file(unsigned int first, unsigned int last,
         if (verify) {
             for (k = 0; k < n; k += part) {
                 part = n - k > 256 ? 256 : n - k;
-                if (RF(fread)(back, 1, part, out) != part ||
+                /* Stop at this read even when its count matched. Only
+                 * our exclusive output is read; image and AUX stay intact. */
+                if (RF(fread)(back, 1, part, out) != part || ferror(out) || stop() ||
                     memcmp(back, buf + k, part)) return 0;
             }
         } else if (RF(fwrite)(buf, 1, n, out) != n || ferror(out)) return 0;

@@ -29,6 +29,7 @@ static int error_(FILE*);
 #undef ferror
 static int fault, writes, reads_out, extracting;
 static unsigned int create_calls, parser_reads;
+static unsigned int write_target, verify_opens, verify_target, verify_probes;
 static unsigned long output_bytes;
 static FILE *reading_back, *source, *read_error;
 static int error_(FILE* f) { return f == read_error || ferror(f); }
@@ -54,7 +55,7 @@ static FILE* open_(const char* p, const char* m)
     if (!strcmp(m, "wb")) writing = f;
     if (fault == 4 && !strcmp(m, "rb") && strstr(p, "/D/")) { if (f) fclose(f); return NULL; }
     if (!strcmp(m, "rb")) {
-        if (strstr(p, "/D/")) reading_back = f;
+        if (strstr(p, "/D/")) { reading_back = f; ++verify_opens; }
         else source = f;
     }
     return f;
@@ -62,11 +63,15 @@ static FILE* open_(const char* p, const char* m)
 static size_t write_(const void* p, size_t s, size_t n, FILE* f)
 {
     output_bytes+=s*n;
+    if(fault>=39 && fault<=42 && ++writes==write_target){
+        if(fault==40 || fault==42)return fwrite(p,s,n-1,f);
+        read_error=f;
+    }
     if ((fault == 2 || fault == 5) && ++writes == 2) return n - 1;
     if (fault == 3) { unsigned char c[512]; memcpy(c, p, n); c[n - 1] ^= 1; return fwrite(c, s, n, f); }
     return fwrite(p, s, n, f);
 }
-static int remove_(const char* p) { printf("REMOVE %s\n", strrchr(p, '/') + 1); return fault == 5 || fault == 15 || fault == 16 || fault == 25 || (fault>=35 && fault<=38) ? -1 : remove(p); }
+static int remove_(const char* p) { printf("REMOVE %s\n", strrchr(p, '/') + 1); return fault == 5 || fault == 15 || fault == 16 || fault == 25 || (fault>=35 && fault<=38) || fault==41 || fault==42 || (fault>=43 && fault<=50 && !(fault&1)) ? -1 : remove(p); }
 static int close_(FILE* f)
 {
     int fail = ((fault == 8 || fault == 16) && f == source) ||
@@ -81,6 +86,15 @@ static int close_(FILE* f)
     return fail ? EOF : r;
 }
 static size_t read_(void* p, size_t s, size_t n, FILE* f) {
+    if(f==reading_back) {
+        if((unsigned long)ftell(f)==len)++verify_probes;
+        else if(++reads_out==verify_target && fault>=43 && fault<=50) {
+            unsigned char event=(fault-43)/2;
+            if(event!=1)read_error=f;
+            if(event==1 || event==2)cancelled=1;
+            if(event==3)return fread(p,s,n-1,f);
+        }
+    }
     if(fault>=31 && fault<=38 && f==source && writing) {
         unsigned char mode=(fault-31)%4;
         unsigned long pos=ftell(f);
@@ -129,6 +143,8 @@ int main(int argc, char** argv)
     strcpy(sel.name, argv[3]);
     sel.type = strtol(argv[4], 0, 16);
     fault = atoi(argv[5]);
+    if(fault>=2000){verify_target=(fault-2000)/8;fault=43+(fault-2000)%8;}
+    else if(fault>=1000){write_target=(fault-1000)/4;fault=39+(fault-1000)%4;}
     sprintf(full, "%s/%s", argv[1], argv[3]);
     s = fopen(full, "rb"); fseek(s, 0, SEEK_END); sel.size = ftell(s); fclose(s);
     if(argc>6)sel.size=strtoul(argv[6],0,10);
@@ -142,6 +158,8 @@ int main(int argc, char** argv)
     printf("BARS %lu %lu\n", bars, overflows);
     printf("CALLS %u %u\n",create_calls,parser_reads);
     printf("WRITTEN %lu\n",output_bytes);
+    printf("OUTPUT %d %u\n",writes,verify_opens);
+    printf("VERIFY %d %u\n",reads_out,verify_probes);
     printf("NOTE %s\n", note);
     return 0;
 }
@@ -181,6 +199,8 @@ class Unwrap(unittest.TestCase):
         self.bars = [int(v) for l in lines if l.startswith('BARS ') for v in l.split()[1:]]
         self.creates,self.parser_reads=map(int,next(l[6:] for l in lines if l.startswith('CALLS ')).split())
         self.output_bytes=int(next(l[8:] for l in lines if l.startswith('WRITTEN ')))
+        self.write_calls,self.verify_opens=map(int,next(l[7:] for l in lines if l.startswith('OUTPUT ')).split())
+        self.verify_reads,self.verify_probes=map(int,next(l[7:] for l in lines if l.startswith('VERIFY ')).split())
         files = {p.name: p.read_bytes() for p in (case / 'D').iterdir()}
         self.assertEqual((case / 'S' / name).read_bytes(), data, 'the source is untouched')
         return note, created, removed, files
@@ -380,6 +400,50 @@ class Unwrap(unittest.TestCase):
                         self.assertEqual(removed,['DOC'])
                         self.assertEqual(files,{'KEEP':b'old',**({'DOC':fork[:prefix]} if fault>=35 else {})})
                         self.assertIn('Cleanup failed' if fault>=35 else 'removed',note)
+
+    def test_output_error_stops_before_later_blocks_or_verification(self):
+        for fmt in ('as1','as2','mb1','mb2','mb3'):
+            for size in (1,513,2560):
+                fork=bytes(i&255 for i in range(size))
+                data=(ref.make_as([(3,b'Doc'),(1,fork)],version=int(fmt[-1])) if fmt.startswith('as')
+                      else ref.make_mb(b'Doc',b'TEXTttxt',fork,version=int(fmt[-1])))
+                count=(size+511)//512
+                for target in sorted({1,min(2,count),(count+1)//2,count}):
+                    for mode in range(4):
+                        with self.subTest(fmt=fmt,size=size,target=target,mode=mode):
+                            note,created,removed,files=self.run_unwrap(
+                                'X.AS',data,fault=1000+4*target+mode,existing=['KEEP'])
+                            self.assertEqual(len(created),1)
+                            self.assertEqual(removed,['DOC'])
+                            self.assertEqual(self.write_calls,target)
+                            self.assertEqual(self.output_bytes,min(512*target,size))
+                            self.assertEqual(self.verify_opens,0)
+                            prefix=min(512*target,size)-(mode%2)
+                            self.assertEqual(files,{'KEEP':b'old',**({'DOC':fork[:prefix]} if mode>=2 else {})})
+                            self.assertIn('Cleanup failed' if mode>=2 else 'removed',note)
+
+    def test_verify_read_fault_stops_before_comparison_or_later_io(self):
+        for fmt in ('as1','as2','mb1','mb2','mb3'):
+            for size in (1,513,1536,4097):
+                fork=bytes(i&255 for i in range(size))
+                data=(ref.make_as([(3,b'Doc'),(1,fork)],version=int(fmt[-1])) if fmt.startswith('as')
+                      else ref.make_mb(b'Doc',b'TEXTttxt',fork,version=int(fmt[-1])))
+                count=(size+511)//512
+                for target in sorted({1,(count+1)//2,count}):
+                    for event in range(4):
+                        for keep in (False,True):
+                            with self.subTest(fmt=fmt,size=size,target=target,event=event,keep=keep):
+                                note,created,removed,files=self.run_unwrap('X.AS',data,
+                                    fault=2000+8*target+2*event+int(keep),existing=['KEEP'])
+                                self.assertEqual(len(created),1)
+                                self.assertEqual(removed,['DOC'])
+                                self.assertEqual(files,{'KEEP':b'old',**({'DOC':fork} if keep else {})})
+                                self.assertIn('Cleanup failed' if keep else 'removed',note)
+                                self.assertEqual(self.output_bytes,size)
+                                self.assertEqual(self.verify_opens,1)
+                                self.assertEqual(self.verify_reads,target)
+                                self.assertEqual(self.verify_probes,0)
+                                self.assertEqual(self.bars,[count+target-1,0])
 
     def test_cancel_stops_large_applesingle_catalogue_immediately(self):
         for version in (1,2):

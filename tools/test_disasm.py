@@ -15,22 +15,22 @@ static FILE* errored;
 static int error_(FILE* f){return f==errored || ferror(f);}
 static int seekfail;
 static int writes,writefail,cancelafter;
-static int closefault,creates;
+static int closefault,creates,startfault,opens;
 static FILE* output;
 static char export_path[80],export_name[16]="OUT.TXT";
-static unsigned char prompt_(const char* p,const char* d,unsigned char n){strcpy(a.input,"OUT.TXT");return 1;}
+static unsigned char prompt_(const char* p,const char* d,unsigned char n){strcpy(a.input,"OUT.TXT");if(startfault==1)cancelled=1;return 1;}
 static unsigned char create_(unsigned char cmd,void* q){
     struct Create* c=q;char path[80];FILE* f;
     if(cmd!=0xC0)abort();++creates;
     memcpy(path,c->path+1,c->path[0]);path[c->path[0]]=0;
-    f=fopen(path,"wx");if(!f)return 0x47;fclose(f);return 0;
+    f=fopen(path,"wx");if(!f)return 0x47;fclose(f);if(startfault==2)cancelled=1;return 0;
 }
 static int close_(FILE* f){
     int r=fclose(f);
     if(f==output){if(closefault>=2)cancelled=1;if(closefault==1 || closefault==3)return EOF;}
     return r;
 }
-static FILE* open_(const char* p,const char* m){output=fopen(p,m);return output;}
+static FILE* open_(const char* p,const char* m){++opens;output=fopen(p,m);if(startfault==3)cancelled=1;return output;}
 static char key_(void){return 0;}
 static void message_(const char* p){}
 static long readfail;
@@ -74,8 +74,10 @@ int main(int argc,char** argv) {
             a.filetype=&filetype;a.auxtype=&auxtype;
             a.prompt=prompt_;a.mli=create_;a.fopen=open_;a.fclose=close_;
             a.message=message_;a.cgetc=key_;a.gotoxy=xy_;a.cprintf=printf;
-            closefault=atoi(argv[11]);export();fclose(file);
-            printf("\nUI %s\nCREATES %d\n",export_status?export_status:"none",creates);return 0;
+            closefault=atoi(argv[11]);startfault=argc>12 ? atoi(argv[12]) : 0;
+            if(startfault==4)cancelled=1;export();fclose(file);
+            printf("\nUI %s\nCREATES %d\n",export_status?export_status:"none",creates);
+            printf("OPENS %d\nWRITES %d\n",opens,writes);return 0;
         }
         out=fopen(argv[10],"wb");n=export_text(out);fclose(out);fclose(file);
         printf("%u %lu\n",n,offset);return 0;
@@ -284,6 +286,39 @@ class Disasm(unittest.TestCase):
                                       'Disassembly exported to other panel.')
                             self.assertIn('UI '+expected,run.stdout)
                             self.assertEqual({p.name for p in case.iterdir()},{'SOURCE','OUT.TXT','KEEP'})
+    def test_export_start_cancellation_and_retry_preserve_bytes(self):
+        for cpu in (0,1):
+            for size in (0,1,200):
+                data=b'\xEA'*size
+                status,healthy=self.export(data,cpu=cpu)
+                self.assertEqual(status,0)
+                for event in (1,2,3,4):
+                    for collision in (False,True):
+                        with self.subTest(cpu=cpu,size=size,event=event,collision=collision):
+                            with tempfile.TemporaryDirectory(prefix='ui-',dir=self.p) as tmp:
+                                case=Path(tmp);source=case/'SOURCE';target=case/'OUT.TXT'
+                                source.write_bytes(data);(case/'KEEP').write_bytes(b'old')
+                                if collision:target.write_bytes(b'previous export')
+                                args=[self.exe,str(cpu),'ui-export',source,str(size),'0','2000',
+                                      '-1','0','0',target,'0',str(event)]
+                                run=subprocess.run(args,text=True,capture_output=True,check=True)
+                                self.assertEqual(source.read_bytes(),data)
+                                self.assertEqual((case/'KEEP').read_bytes(),b'old')
+                                self.assertIn('CREATES '+str(int(event!=1)),run.stdout)
+                                self.assertIn('OPENS '+str(int(event!=1 and not collision)),run.stdout)
+                                expected=('Export cancelled; nothing created.' if event==1 else
+                                          'none' if collision else
+                                          'Disassembly exported to other panel.' if event==4 else
+                                          'Export cancelled; partial file kept.')
+                                self.assertIn('UI '+expected,run.stdout)
+                                if collision:self.assertEqual(target.read_bytes(),b'previous export')
+                                elif event==1:self.assertFalse(target.exists())
+                                else:self.assertEqual(target.read_bytes(),healthy if event==4 else b'')
+                                if event!=4 or collision:self.assertIn('WRITES 0',run.stdout)
+                                names={'SOURCE','KEEP'}
+                                if collision or event!=1:names.add('OUT.TXT')
+                                self.assertEqual({p.name for p in case.iterdir()},names)
+
     def test_full_read_count_with_stream_error_is_an_incomplete_page(self):
         text=self.page(b'\xEA'*100,seekfail=2)
         self.assertIn('Read error: incomplete page.',text)

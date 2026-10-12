@@ -57,26 +57,31 @@ static unsigned char newer(unsigned int sd,unsigned int st,unsigned int dd,unsig
 static unsigned char copy_file(unsigned char exists) {
     FILE *in,*out;unsigned long left;unsigned int n,i;unsigned char error;
     if(!join(tmp,ddir,"A2FC.SYNC") || !join(bak,ddir,"A2FC.BAK"))return 0;
-    /* Reserved siblings are never overwritten or removed unless we own them. */
-    if(getinfo(bak)!=0x46 || newfile(tmp,meta.type,meta.aux,1))return 0;
+    /* Refuse ESC before any CREATE, including ESC received while probing
+     * the reserved backup. Preexisting siblings and AUX remain untouched. */
+    if(stop() || getinfo(bak)!=0x46 || stop() || newfile(tmp,meta.type,meta.aux,1))return 0;
     in=RF(fopen)(source,"rb");out=RF(fopen)(tmp,"wb");
     if(!in || !out){if(in)RF(fclose)(in);if(out)RF(fclose)(out);goto fail;}
     left=size;error=0;
     while(left && !error) {
         n=left>sizeof check?sizeof check:(unsigned int)left;
         a.progress_bar(name,size-left,size);   /* the copy, then the check: 0 redraws */
-        if(stop() || RF(fread)(buf,1,n,in)!=n || RF(fwrite)(buf,1,n,out)!=n)error=1;
+        /* A complete count does not excuse an error or ESC during I/O.
+         * Refuse suspect source bytes before touching our exclusive tmp. */
+        if(stop() || RF(fread)(buf,1,n,in)!=n || ferror(in) || stop() ||
+           RF(fwrite)(buf,1,n,out)!=n || ferror(out) || stop())error=1;
         left-=n;
     }
     if(ferror(in) || ferror(out))error=1;
-    if(RF(fclose)(in))error=1;if(RF(fclose)(out))error=1;if(error)goto fail;
+    if(RF(fclose)(in))error=1;if(RF(fclose)(out))error=1;if(error || stop())goto fail;
     in=RF(fopen)(source,"rb");out=RF(fopen)(tmp,"rb");
     if(!in || !out){if(in)RF(fclose)(in);if(out)RF(fclose)(out);goto fail;}
     left=size;
     while(left && !error) {
         n=left>sizeof check?sizeof check:(unsigned int)left;
         a.progress_bar(name,size-left,size);
-        if(stop() || RF(fread)(buf,1,n,in)!=n || RF(fread)(check,1,n,out)!=n)error=1;
+        if(stop() || RF(fread)(buf,1,n,in)!=n || ferror(in) || stop() ||
+           RF(fread)(check,1,n,out)!=n || ferror(out) || stop())error=1;
         else for(i=0;i<n;++i)if(buf[i]!=check[i]){error=1;break;}
         left-=n;
     }
@@ -84,18 +89,25 @@ static unsigned char copy_file(unsigned char exists) {
      * extra output bytes must not replace the destination and its backup. */
     if(!error && (RF(fread)(buf,1,1,in) || RF(fread)(check,1,1,out)))error=1;
     if(ferror(in) || ferror(out))error=1;
-    if(RF(fclose)(in))error=1;if(RF(fclose)(out))error=1;if(error)goto fail;
+    if(RF(fclose)(in))error=1;if(RF(fclose)(out))error=1;if(error || stop())goto fail;
     /* RENAME can move a write-locked file whose rename bit is still set.
      * Replacing its name would bypass that protection. Check the current
      * entry immediately before moving it aside; an unreadable entry is
-     * never permission. Keep the verified copy on any such refusal. Only
+     * never permission. Its current timestamp must still be older than
+     * the source: a destination now as new or newer must survive.
+     * Keep the verified copy on any such refusal. Only
      * owned tmp was written so far, with no AUX or source modifications. */
     if(exists && (getinfo(target) || info.storage<1 || info.storage>3 ||
                   (info.access&0xC2)!=0xC2 ||
-                  !timestamp_valid(info.mdate,info.mtime))) {
-        recovery_note("SYNC stopped: target invalid/protected; A2FC.SYNC kept.");
+                  !timestamp_valid(info.mdate,info.mtime) ||
+                  !newer(meta.mdate,meta.mtime,info.mdate,info.mtime))) {
+        recovery_note("SYNC stopped: target changed/protected; A2FC.SYNC kept.");
         return 0;
     }
+    /* Closes and the fresh target check can receive ESC. Until the first
+     * rename, cancellation may discard only our exclusive temporary;
+     * sources, the original destination and AUX remain untouched. */
+    if(stop())goto fail;
     error=file_install(tmp,target,bak,exists);
     if(error!=FILE_INSTALLED) {
         recovery_note(error==FILE_RESTORE_FAILED ?
@@ -134,6 +146,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
     for(;;) {
         spin();   /* an up-to-date tree is compared entry by entry, silently */
         if(stop())break;f=&frames[depth];r=dir_next(sdir,f->blocks,&f->pos);
+        if(stop())break;
         if(r==2){++errors;r=0;}
         if(!r){if(!depth)break;--depth;sdir[frames[depth].slen]=ddir[frames[depth].dlen]=0;continue;}
         rawname(name);
@@ -142,6 +155,9 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
            !timestamp_valid(rd16(raw+33),rd16(raw+35))){++errors;continue;}
         if(!join(source,sdir,name)||!join(target,ddir,name)){++errors;continue;}
         r=getinfo(target);exists=r==0;
+        /* Catalog and metadata reads can receive ESC while succeeding.
+         * Stop before creating either a destination directory or a copy. */
+        if(stop())break;
         if(r && r!=0x46){++errors;continue;}
         /* An invalid destination date cannot establish that the source is
          * newer. Refuse before any output; recheck before backup/rename. */

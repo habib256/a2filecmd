@@ -36,6 +36,8 @@ static unsigned int source_closes;
 static int extracting;
 static unsigned int data_reads;
 static unsigned long output_bytes;
+static unsigned int output_calls,cancel_refills,cancel_injected,writes_after_cancel;
+static unsigned long bytes_before_cancel;
 static int error_(FILE* f) { return f == read_error || ferror(f); }
 static unsigned char mli_(unsigned char cmd, void* params)
 {
@@ -67,6 +69,9 @@ static FILE* open_(const char* p, const char* m)
 }
 static size_t write_(const void* p, size_t s, size_t n, FILE* f)
 {
+    size_t result;
+    if(cancel_injected)++writes_after_cancel;
+    unsigned char injected=fault>=40 && fault<=47 && ++output_calls==create_at;
     output_bytes += s*n;
     if ((fault == 1 || fault == 4) && ++writes == 2) return n - 1;
     if((fault==28 || fault==30) && ++writes==1){
@@ -79,7 +84,12 @@ static size_t write_(const void* p, size_t s, size_t n, FILE* f)
         memcpy(c, p, n); c[0] ^= 1;
         return fwrite(c, s, n, f);
     }
-    return fwrite(p, s, n, f);
+    result=fwrite(p,s,injected && (fault-40)%4==3 && n ? n-1 : n,f);
+    if(injected){
+        if((fault-40)%4==0 || (fault-40)%4==2)cancelled=1;
+        if((fault-40)%4!=0)read_error=f;
+    }
+    return result;
 }
 static int close_(FILE* f)
 {
@@ -102,7 +112,7 @@ static int close_(FILE* f)
     }
     return result;
 }
-static int remove_(const char* p) { printf("REMOVE %s\n", strrchr(p, '/') + 1); return fault == 4 || fault==16 || fault==18 || fault==30 || fault==31 || (fault>=36 && fault<=39) ? -1 : remove(p); }
+static int remove_(const char* p) { printf("REMOVE %s\n", strrchr(p, '/') + 1); return fault == 4 || fault==16 || fault==18 || fault==30 || fault==31 || (fault>=36 && fault<=39) || (fault>=44 && fault<=47) || fault==49 ? -1 : remove(p); }
 static size_t read_(void* p, size_t s, size_t n, FILE* f) {
     size_t result;
     if(f==verifying && verifications==2)++verify_reads;
@@ -111,6 +121,9 @@ static size_t read_(void* p, size_t s, size_t n, FILE* f) {
     if (fault == 8) cancelled = 1;
     int data_fault = fault>=32 && fault<=39 && f==source_stream && writing && ++data_reads==create_at;
     result=fread(p, s, (fault == 9 || (data_fault && (fault-32)%4==3)) && n ? n - 1 : n, f);
+    if((fault==48 || fault==49) && f==source_stream && writing && ++cancel_refills==create_at){
+        bytes_before_cancel=output_bytes;cancel_injected=1;cancelled=1;
+    }
     if(data_fault){
         if((fault-32)%4==0 || (fault-32)%4==2)cancelled=1;
         if((fault-32)%4!=0)read_error=f;
@@ -168,6 +181,8 @@ int main(int argc, char** argv)
     printf("ATTEMPTS %u\n",create_calls);
     printf("SOURCE-CLOSE %u\n",source_closes);
     printf("OUTPUT-BYTES %lu\n",output_bytes);
+    printf("OUTPUT-CALLS %u\n",output_calls);
+    printf("CANCEL-WRITES %u %lu %u\n",cancel_injected,bytes_before_cancel,writes_after_cancel);
     printf("NOTE %s\n", note);
     return 0;
 }
@@ -234,6 +249,8 @@ class Unsq(unittest.TestCase):
         self.create_calls = next(int(l.split()[1]) for l in lines if l.startswith('ATTEMPTS '))
         self.source_closes = next(int(l.split()[1]) for l in lines if l.startswith('SOURCE-CLOSE '))
         self.output_bytes = next(int(l.split()[1]) for l in lines if l.startswith('OUTPUT-BYTES '))
+        self.output_calls = next(int(l.split()[1]) for l in lines if l.startswith('OUTPUT-CALLS '))
+        self.cancel_injected,self.bytes_before_cancel,self.writes_after_cancel=map(int,next(l for l in lines if l.startswith('CANCEL-WRITES ')).split()[1:])
         made = {p.name: p.read_bytes() for p in destination.iterdir()}
         self.assertEqual((case / 'S' / name).read_bytes(), data, 'source must remain untouched')
         return note, created, removed, made
@@ -246,6 +263,77 @@ class Unsq(unittest.TestCase):
         self.assertEqual(created, want_created, note)
         self.assertEqual(made, {n: b for n, _, _, b in files})
         self.assertEqual(note, '%d extracted, 0 skipped (name taken).' % len(files))
+
+    def test_long_qq_paths_use_the_complete_last_component(self):
+        payload=bytes(i%251 for i in range(513))
+        for length in (64,65,511,512,1024):
+            for separator in (b'/',b':'):
+                for leaf in (b'DOC',b'1'*80+b'DOC',b''):
+                    raw=b'P'*length+separator+leaf
+                    archive=ref.squeeze(payload,raw)
+                    target=ref.unsqueeze(archive,'ARCH.QQ')[0][0]
+                    for collision in (False,True):
+                        with self.subTest(length=length,separator=separator,leaf=leaf,collision=collision):
+                            old={'KEEP':b'old','P'*15:b'old'}
+                            if collision:old[target]=b'old'
+                            note,created,removed,made=self.run_unsq('ARCH.QQ',archive,existing=tuple(old))
+                            self.assertEqual(made,old if collision else {**old,target:payload},note)
+                            self.assertEqual([c[0] for c in created],[] if collision else [target],note)
+                            self.assertEqual(removed,[],note)
+                            self.assertEqual(note,'%d extracted, %d skipped (name taken).'%(not collision,collision))
+
+    def test_failed_output_stops_inside_rle_and_before_final_flush(self):
+        for kind in ('QQ-rle','QQ-literal','stored','ACU-rle','ACU-literal'):
+            for size in (513,2000):
+                payload=b'A'*size if kind.endswith('rle') else bytes(i%251 for i in range(size))
+                filename='X.QQ' if kind.startswith('QQ') else 'X.ACU'
+                archive=ref.squeeze(payload,b'DOC') if kind.startswith('QQ') else ref.make_acu([(b'DOC',4,0,payload,kind!='stored',False)])
+                for target in sorted({1,2,(size+511)//512}):
+                    for fault in range(40,48):
+                        with self.subTest(kind=kind,size=size,target=target,fault=fault):
+                            length=min(target*512,size)
+                            prefix=payload[:length-int((fault-40)%4==3)]
+                            note,created,removed,made=self.run_unsq(filename,archive,fault=fault,create_at=target,existing=('KEEP',))
+                            expected={'KEEP':b'old'}
+                            if fault>=44:expected['DOC']=prefix
+                            self.assertEqual(made,expected,note)
+                            self.assertEqual(self.output_calls,target,note)
+                            self.assertEqual(self.output_bytes,length,note)
+                            self.assertEqual(self.verification,[0,0],note)
+                            self.assertEqual(self.source_closes,1)
+                            self.assertEqual([c[0] for c in created],['DOC'],note)
+                            self.assertEqual(removed,['DOC'],note)
+                            self.assertIn('Cleanup failed' if fault>=44 else 'stopped',note)
+
+    def test_cancelled_source_refill_never_flushes_pending_output(self):
+        for kind in ('QQ','QQ-RLE','stored','squeezed','squeezed-RLE'):
+            for size in (513,1536,4097):
+                payload=(b'A'*size if kind.endswith('RLE') else
+                         bytes((i*73+i//13)&255 for i in range(size)))
+                filename='X.QQ' if kind.startswith('QQ') else 'X.ACU'
+                archive=(ref.squeeze(payload,b'DOC') if kind.startswith('QQ') else
+                         ref.make_acu([(b'DOC',4,0,payload,kind!='stored',False)]))
+                for target in (1,2,3,4,5,8,16):
+                    for fault in (48,49):
+                        with self.subTest(kind=kind,size=size,target=target,fault=fault):
+                            note,created,removed,made=self.run_unsq(filename,archive,
+                                fault=fault,create_at=target,existing=('KEEP',))
+                            self.assertEqual([c[0] for c in created],['DOC'])
+                            self.assertEqual(self.source_closes,1)
+                            expected={'KEEP':b'old'}
+                            if self.cancel_injected:
+                                self.assertEqual(removed,['DOC'])
+                                if fault==49:
+                                    expected['DOC']=payload[:self.bytes_before_cancel]
+                                    self.assertIn('Cleanup failed',note)
+                                else:self.assertIn('stopped',note)
+                                self.assertEqual(self.output_bytes,self.bytes_before_cancel)
+                                self.assertEqual(self.writes_after_cancel,0)
+                            else:
+                                self.assertEqual(removed,[])
+                                expected['DOC']=payload
+                                self.assertIn('1 extracted',note)
+                            self.assertEqual(made,expected)
 
     def test_stored_acu_failed_refill_never_writes_an_unread_byte(self):
         for size in (1,513,1536):

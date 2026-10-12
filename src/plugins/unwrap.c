@@ -252,9 +252,11 @@ static unsigned char pass(unsigned char check)
          * writing this block to our exclusive output; only MAIN is used. */
         if (RF(fread)(blk, 1, n, in) != n || ferror(in) || stop()) return 0;
         if (check) {
-            if (RF(fread)(cmp, 1, n, out) != n) return 0;
+            /* Refuse a doubtful read before comparing or advancing progress.
+             * Only our exclusive output is read/cleaned; no AUX is used. */
+            if (RF(fread)(cmp, 1, n, out) != n || ferror(out) || stop()) return 0;
             for (i = 0; i < n; ++i) if (cmp[i] != blk[i]) return 0;
-        } else if (RF(fwrite)(blk, 1, n, out) != n) return 0;
+        } else if (RF(fwrite)(blk, 1, n, out) != n || ferror(out)) return 0;
         left -= n;
         a.progress_bar(name, len - left, len);
         if (stop()) return 0;
