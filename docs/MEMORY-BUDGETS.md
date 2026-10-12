@@ -4362,6 +4362,36 @@ UNSQ mesure 6827/6903 octets, BSS fin `$3D95`/`$3DE2`, soit
 618/541 octets disponibles avant `$4000`. Tous les contrôles de disposition
 restent actifs. Aucune atomicité physique en cas de coupure n'est promise.
 
+## SMALLDOS : ESC avant comparaison et progression de vérification (12 octobre 2026)
+
+ESC reçu pendant la relecture d'un secteur de sortie était contrôlé après
+memcmp et la progression. Le contrôle intervient maintenant immédiatement
+après fread et ferror, avant comparaison et affichage. Le refus final
+existait déjà : cette correction évite de traiter un secteur dont la
+relecture vient d'être annulée.
+
+Seul le fichier créé exclusivement est écrit, relu et nettoyé en cas
+d'échec. L'image source, les fichiers préexistants et la mémoire auxiliaire
+restent intacts. Si le nettoyage échoue, tous les octets de la sortie
+complète sont conservés avec le message de nettoyage impossible ; aucune
+réussite n'est annoncée pour ce fichier.
+
+Les 224 nouveaux scénarios exécutent le vrai code C : sources de 1, 513
+ou 4097 octets avec leur remplissage de secteur, deux sens de pistes,
+ordres DOS/ProDOS, première, médiane ou dernière lecture de vérification,
+ESC, erreur avec compte complet, les deux ou compte court avec erreur,
+nettoyage réussi ou impossible. Avant correction, 56 échouaient et 168
+servaient de contrôles. Les tests comptent les relectures, comparaisons
+et progressions après le défaut, vérifient créations, écritures et fermeture
+de la source, et comparent tous les octets de l'image, des fichiers
+préexistants et de la sortie éventuellement conservée.
+
+Les 15 tests SMALLDOS, les 15 tests de gardes et les 8 contrôles de distribution
+800K après reconstruction passent. Builds et dispositions 65C02/6502 validés :
+SMALLDOS mesure 4436/4479 octets, BSS fin `$3112`/`$313E`, soit
+3821/3777 octets disponibles avant `$4000`. Tous les contrôles de disposition
+restent actifs. Aucune atomicité physique en cas de coupure n'est promise.
+
 ## VISICALC : quatre morceaux et une table (4 octobre 2026)
 
 Tout en assembleur (`src/plugins/visicalc.s`, le C ne porte que l'en-tête
