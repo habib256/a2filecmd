@@ -25,6 +25,8 @@ static int fault,opened,opens,closes,renames;
 static unsigned int confirm_calls,verify_halves;
 static FILE *verify_source,*verify_target;
 static FILE* writing;
+static unsigned int data_reads,fail_read;
+static unsigned long output_bytes;
 static unsigned char mli(unsigned char cmd,void* params) {
     char old[80],newpath[80];FILE* f;
     struct Param {unsigned char n;unsigned char* path;};
@@ -67,6 +69,7 @@ static FILE* open_file(const char* path,const char* mode) {
 }
 static size_t read_file(void* p,size_t s,size_t n,FILE* f) {
     size_t got;
+    unsigned char injected=fault>=44 && fault<=51 && opened && f!=writing && ++data_reads==fail_read;
     if(fault==39 && f==verify_target && n==1)keyboard=0x9B;
     if(fault==3 && ftell(f)>=512)return 0;
     if(fault==10)failed_read=f;
@@ -74,7 +77,11 @@ static size_t read_file(void* p,size_t s,size_t n,FILE* f) {
         failed_read=f;return 0;
     }
     if(fault==17 && f==verify_target && n>1)return fread(p,s,n-1,f);
-    got=fread(p,s,n,f);
+    got=fread(p,s,injected && (fault-44)%4==3 && n ? n-1 : n,f);
+    if(injected){
+        if((fault-44)%4==0 || (fault-44)%4==2)keyboard=0x9B;
+        if((fault-44)%4!=0)failed_read=f;
+    }
     if(f==verify_target && n==256){
         ++verify_halves;
         if((fault==42 && verify_halves==1) || (fault==43 && verify_halves==2))((unsigned char*)p)[255]^=1;
@@ -83,6 +90,7 @@ static size_t read_file(void* p,size_t s,size_t n,FILE* f) {
 }
 static size_t write_file(const void* p,size_t s,size_t n,FILE* f) {
     unsigned char damaged[512];
+    output_bytes+=s*n;
     if(fault==4 || fault==24)return 0;
     if(fault==13 || (fault==14 && ftell(f)>=64)) {
         memcpy(damaged,p,n);damaged[0]^=1;return fwrite(damaged,s,n,f);
@@ -110,6 +118,7 @@ static int seek_file(FILE* f,long off,int origin) {
 static unsigned char yes(const char* p){++confirm_calls;return 1;}
 static int remove_file(const char* p) {
     if((fault>=24 && fault<=26) || fault==40)return -1;
+    if(fault>=48 && fault<=51)return -1;
     if(fault==27 && strstr(p,"A2FC.BAK"))return -1;
     return remove(p);
 }
@@ -124,6 +133,7 @@ int main(int argc,char**argv) {
     e.size=argc>6?strtoul(argv[6],0,10):8192;e.type=6;
     if(argc>4)choice=argv[4][0];sbase=0x12345678UL; /* stale overlay BSS */
     fault=atoi(argv[3]);if(fault==8 || fault==26)keyboard=0x9B;
+    fail_read=argc>7?atoi(argv[7]):1;
     api.panels=panels;api.active=&active;api.selected=&e;api.full=source;api.other_full=dest;
     api.copy_buf=copy;api.note=note;api.reselect=reselect;api.filetype=&type;api.auxtype=&aux;
     api.memcpy=memcpy;api.memset=memset;api.strcpy=strcpy;api.strcmp=strcmp;api.strlen=strlen;api.sprintf=sprintf;
@@ -132,6 +142,7 @@ int main(int argc,char**argv) {
     plugin_entry(&api);
     if(fault>=30 && fault<=34 && renames)abort();
     fprintf(stderr,"STATE %d %d %d %u\n",opens,closes,renames,confirm_calls);
+    fprintf(stderr,"OUTPUT-BYTES %lu\n",output_bytes);
     puts(note);return 0;
 }
 '''
@@ -175,12 +186,49 @@ class ImgconvSafety(unittest.TestCase):
         self.assertEqual(self.src.read_bytes(), self.data)
         self.assertEqual(self.dst.read_bytes(), b'old image')
         self.assertFalse((self.d/'IMGCONV.TMP').exists())
-    def convert(self,fault=0,choice='2',cached_size=None):
+    def convert(self,fault=0,choice='2',cached_size=None,fail_read=1):
         run=subprocess.run([self.exe,self.s,self.d,str(fault),choice,
-                            self.src.name,str(len(self.data) if cached_size is None else cached_size)],
+                            self.src.name,str(len(self.data) if cached_size is None else cached_size),str(fail_read)],
                            text=True,capture_output=True,check=True)
         self.state=tuple(map(int,next(l for l in run.stderr.splitlines() if l.startswith('STATE ')).split()[1:]))
+        self.output_bytes=int(next(l for l in run.stderr.splitlines() if l.startswith('OUTPUT-BYTES ')).split()[1])
         self.assertEqual(self.src.read_bytes(),self.data);return run.stdout
+
+    def test_failed_data_reads_never_write_the_refused_block(self):
+        dsk=lambda data:to_dsk(data+bytes(143360-len(data)))[:len(data)]
+        keep=self.d/'KEEP';keep.write_bytes(b'unrelated bytes')
+        for source,wrap,choice,suffix in (('INPUT.PO',bytes,'2','2MG'),
+                                          ('INPUT.PO',bytes,'D','DSK'),
+                                          ('INPUT.DSK',dsk,'P','PO'),
+                                          ('INPUT.2MG',to_2mg,'P','PO'),
+                                          ('INPUT.PO',bytes,'C','DC'),
+                                          ('INPUT.DC',to_dc,'P','PO')):
+            content=bytes((i*7+i//256)&255 for i in range(409600 if suffix=='DC' or source.endswith('.DC') else 8192))
+            self.src=self.s/source;self.data=wrap(content);self.src.write_bytes(self.data)
+            self.dst=self.d/('INPUT.'+suffix)
+            expected=to_2mg(content) if suffix=='2MG' else dsk(content) if suffix=='DSK' else to_dc(content,b'INPUT.DC') if suffix=='DC' else content
+            if suffix=='DC':expected=expected[:72]+bytes(4)+expected[76:]
+            header=64 if suffix=='2MG' else 84 if suffix=='DC' else 0
+            total=len(content)//(256 if suffix=='DSK' or source.endswith('.DSK') else 512)
+            for refill in (1,2,3,total):
+                length=(refill-1)*256 if suffix=='DSK' else (refill-1)//2*512 if source.endswith('.DSK') else (refill-1)*512
+                prefix=expected[:header+length]
+                for fault in range(44,52):
+                    with self.subTest(source=source,choice=choice,refill=refill,fault=fault):
+                        self.dst.write_bytes(b'old image')
+                        tmp=self.d/'IMGCONV.TMP';tmp.unlink(missing_ok=True)
+                        backup=self.d/'A2FC.BAK';backup.unlink(missing_ok=True)
+                        note=self.convert(fault,choice,fail_read=refill)
+                        self.assertEqual(self.state,(2,2,0,1),note)
+                        self.assertEqual(self.output_bytes,len(prefix),note)
+                        self.assertEqual(self.dst.read_bytes(),b'old image')
+                        self.assertEqual(keep.read_bytes(),b'unrelated bytes')
+                        self.assertFalse(backup.exists())
+                        self.assertNotIn(' -> ',note)
+                        if fault>=48:
+                            self.assertIn('Cleanup failed',note)
+                            self.assertEqual(tmp.read_bytes(),prefix)
+                        else:self.assertFalse(tmp.exists())
 
     def test_late_verification_cancel_never_installs_the_replacement(self):
         raw=bytes((i*7+i//256)&255 for i in range(8192))

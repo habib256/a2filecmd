@@ -22,6 +22,27 @@ static unsigned char standard_source(const struct Entry* e)
     return !getinfo(a.full) && info.storage >= 1 && info.storage <= 3 &&
         (info.access & 0x80) && info.type == e->type && info.aux == e->aux;
 }
+/* Verification handles are closed. Re-read the source's actual directory
+ * size before removal: GET_FILE_INFO does not include its EOF. scratch
+ * is idle here; the directory reader borrows buf, never AUX or the source. */
+static unsigned char same_source_size(const struct Entry* e)
+{
+    unsigned char n = RF(strlen)(a.full), found = 0;
+    RF(strcpy)((char*)scratch, a.full);
+    while (n && scratch[n] != '/') --n;
+    if (!n) return 0;
+    scratch[n] = 0;
+    if (!a.dir_open((char*)scratch)) return 0;
+    while (a.dir_next()) {
+        if (!RF(strcmp)(a.dir_entry->name, e->name)) {
+            found = a.dir_entry->size == e->size;
+            break;
+        }
+    }
+    /* A found entry cannot excuse a failed listing/close. */
+    if (((unsigned char (*)(void))a.dir_close)()) found = 0;
+    return found;
+}
 /* No entry can point from one volume to another, so across volumes a move
  * is a copy followed by a removal. The copy is verified against the original
  * BEFORE the original goes: the whole point of a move is that the file still
@@ -40,7 +61,7 @@ static void copy_across(const struct Entry* e)
     a.sprintf((char*)scratch, m_cask, e->name);
     if (a.arg != 'B' && !RF(confirm)((char*)scratch)) { note(""); return; }
 
-    if (!standard_source(e)) { a.sprintf(a.note, m_cbad, e->name); return; }
+    if (!standard_source(e) || stop()) { a.sprintf(a.note, m_cbad, e->name); return; }
 
     /* CREATE must grant us a new entry before fopen("wb") or failure
      * cleanup can touch this path. */
@@ -84,7 +105,9 @@ static void copy_across(const struct Entry* e)
      * source is now forked, protected, unreadable, its type/aux changed,
      * or cancellation arrived. Verified bytes alone do not preserve a
      * program's type or load address; the destination uses the panel's. */
-    if (stop() || !standard_source(e) || RF(remove)(a.full)) { a.sprintf(a.note, m_del, e->name); return; }
+    /* GET_FILE_INFO can deliver ESC too. Poll again before deleting the
+     * source; preserve it and the closed verified copy on cancellation. */
+    if (stop() || !standard_source(e) || !same_source_size(e) || stop() || RF(remove)(a.full)) { a.sprintf(a.note, m_del, e->name); return; }
     RF(strcpy)(a.reselect, e->name);
     a.sprintf(a.note, m_cok, e->name);
     return;

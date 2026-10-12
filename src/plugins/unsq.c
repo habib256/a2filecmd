@@ -14,10 +14,11 @@
  *
  * Every file follows the one contract of the file services: created only
  * under a free name (a taken one is skipped and counted), written, closed,
- * read back against the sum of its bytes and its length, and removed if
+ * read back byte for byte against a second decode, and removed if
  * anything fails -- a damaged stream stops the extraction.
  *
  * A big overlay: the core rereads the panels on return. */
+#define UTIL_STUBS
 #define UTIL_CREATE
 #define UTIL_DISCARD
 #include "util.h"
@@ -53,9 +54,13 @@ static short nodes[MAXNODES * 2];      /* 16 bits, signed, on the host too */
 static unsigned int nnodes;
 static unsigned char bits, bpos;
 static unsigned char obuf[512];
-static unsigned int olen;
+static unsigned int olen, verify_have;
 static unsigned short osum;             /* the sum of the bytes written, 16 bits */
+static unsigned char comparing;
+/* Source restart offset; after rewinding, the verification byte count. */
+static unsigned long restart;
 static unsigned long ocount;
+static unsigned long expected;          /* ACU's maximum output length */
 static unsigned char hdr[0x36];
 static char name[16];
 static char dest[PATH_LEN + 1];
@@ -74,7 +79,9 @@ static unsigned char getb(void)
         base += have;
         have = RF(fread)(buf, 1, 512, in);
         at = 0;
-        if (!have || ferror(in)) { eof = 1; return 0; }
+        /* A successful byte count does not override an I/O error or ESC
+         * delivered by the read. Do not decode any of this refill. */
+        if (!have || ferror(in) || stop()) { eof = 1; return 0; }
     }
     if (base + at >= limit) { eof = 1; return 0; }
     return buf[at++];
@@ -115,10 +122,29 @@ static void flush(void)
 
 static void putb(unsigned char c)
 {
+    /* Refuse the first excess byte, including inside an RLE run. Only
+     * the exclusively created output is writable; no source/AUX writes. */
+    if (ocount >= expected) { bad = 1; return; }
     osum += c;
     ++ocount;
-    obuf[olen++] = c;
-    if (olen == sizeof obuf) flush();
+    if (comparing) {
+        /* Only read our closed exclusive output. A sum cannot detect
+         * permuted bytes; compare against the source decoded again.
+         * No source or AUX writes, and cleanup still owns only dest. */
+        if (olen == verify_have) {
+            verify_have = RF(fread)(obuf, 1, sizeof obuf, out); olen = 0;
+            if (!verify_have || ferror(out)) { bad = 1; return; }
+        }
+        if (obuf[olen++] != c) bad = 1;
+        if (!(ocount & 511)) {
+            a.progress_bar(name, ocount, restart);
+            if (stop()) bad = 1;
+        }
+        return;
+    } else {
+        obuf[olen++] = c;
+        if (olen == sizeof obuf) flush();
+    }
     if (!(ocount & 1023)) {
         /* measured on the archive: a .QQ does not say how long it grows */
         a.progress_bar(name, tell(), source_size);
@@ -182,35 +208,32 @@ static unsigned char unsqueeze(void)
 /* n stored bytes into out. */
 static unsigned char copy(unsigned long n)
 {
+    unsigned char c;
     while (n--) {
-        putb(getb());
+        c = getb();
         if (eof || bad) return 0;
+        putb(c);
+        if (bad) return 0;
     }
     return 1;
 }
 
-/* The file just written, read back: its length and the sum of its bytes. */
-static unsigned char read_back(void)
+/* Read back against the same source decoded a second time. */
+static unsigned char read_back(unsigned char squeezed, unsigned long n)
 {
-    FILE* f;
-    unsigned long n = 0;
-    unsigned short s = 0;
-    unsigned int k, i;
-    /* An interrupted verification is incomplete, even on its final block.
-     * The caller cleans only the current exclusively created output. */
-    if (stop() || !(f = RF(fopen)(dest, "rb"))) return 0;
-    while ((k = RF(fread)(obuf, 1, sizeof obuf, f)) != 0) {
-        for (i = 0; i < k; ++i) s += obuf[i];
-        n += k;
-        a.progress_bar(name, n, ocount);
-        if (stop()) break;
-    }
-    k = ferror(f) || cancelled;
-    if (RF(fclose)(f)) k = 1;
-    /* Closing may take time: ESC there still interrupts verification.
-     * one() cleans only its exclusive current output; source/AUX untouched. */
-    if (stop()) k = 1;
-    return !k && n == ocount && s == osum;
+    unsigned char ok;
+    if (stop() || ferror(in) || !seek(restart) ||
+        !(out = RF(fopen)(dest, "rb"))) return 0;
+    comparing = 1;
+    restart = ocount;
+    olen = verify_have = osum = 0; ocount = 0; eof = 0;
+    ok = squeezed ? unsqueeze() : copy(n);
+    if (bad || ferror(in) || olen != verify_have || RF(fread)(obuf, 1, 1, out) || ferror(out)) ok = 0;
+    if (ok && !bad) a.progress_bar(name, ocount, ocount);
+    if (RF(fclose)(out)) ok = 0;
+    comparing = 0;
+    if (stop()) ok = 0;
+    return ok;
 }
 
 /* One file: created under name, filled by squeezed (1) or stored bytes
@@ -219,6 +242,13 @@ static unsigned char read_back(void)
 static unsigned char one(unsigned char squeezed, unsigned long n, unsigned long want, unsigned int check)
 {
     unsigned char ok;
+    /* ESC during header reads or seeks must precede CREATE, including a
+     * colliding name or an empty file. Previously verified outputs stay;
+     * no current output is owned, and source/AUX remain read-only. */
+    if (stop()) return 0;
+    /* A stored fork's exact output size is already known. Reject a
+     * contradiction before CREATE, even if its name is taken. */
+    if (!squeezed && n != want) return 0;
     if (!name[0] || !join(dest, other->path, name)) {
         /* A name/path failure is not a collision. No output is owned:
          * stop before CREATE and preserve prior files, source and AUX. */
@@ -233,6 +263,7 @@ static unsigned char one(unsigned char squeezed, unsigned long n, unsigned long 
         ++skipped;
         return 1;
     }
+    restart = tell(); comparing = 0; expected = want;
     out = RF(fopen)(dest, "wb");
     olen = osum = 0;
     ocount = 0;
@@ -244,7 +275,7 @@ static unsigned char one(unsigned char squeezed, unsigned long n, unsigned long 
     }
     if (ok && (bad || (want != 0xFFFFFFFFUL && ocount != want) || (checked && osum != check)))
         ok = 0;
-    if (ok && !read_back()) ok = 0;
+    if (ok && !read_back(squeezed, n)) ok = 0;
     if (!ok) {
         bad = 1;
         kept = !discard(dest);          /* its note, then, is the last word */
@@ -322,6 +353,9 @@ static unsigned char acu(void)
             continue;
         }
         if (hdr[1] != 0 && hdr[1] != 3) return 0;
+        /* ProDOS EOF is 24 bits. In particular, an ACU length of $FFFFFFFF
+         * must not become the standalone .QQ's unknown-length sentinel. */
+        if (le32(hdr + 0x26) > 0xFFFFFFUL) return 0;
         set_name(raw, (unsigned char)nlen);
         type = hdr[0x18];
         aux = hdr[0x1A] | ((unsigned int)hdr[0x1B] << 8);
@@ -370,7 +404,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         ok = standalone();
     } else if (grab(hdr + 2, 18) && hdr[4] == 'f' && hdr[5] == 'Z' && hdr[6] == 'i' && hdr[7] == 'n' && hdr[8] == 'k') {
         ok = acu();
-    } else {
+    } else if (!cancelled) {
         io_bad = ferror(in) != 0;
         RF(fclose)(in);
         note(io_bad ? "Archive I/O error: nothing extracted." : "Not a SQueezed file or an ACU archive.");

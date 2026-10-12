@@ -68,16 +68,23 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
     if(a.strlen(a.input)>11) {note("Name too long.");return;}
     a.strcpy(name,a.input);a.sprintf(a.full,"%s%s",name,two?".2MG":".PO");
     if(!join(path,pan->path,a.full)) {note("Path too long.");return;}
+    /* A completed prompt can still deliver ESC. No output is owned yet. */
+    if(stop()) {note("Stopped: nothing created.");return;}
     if(newfile(path,6,0,1)) {note("Cannot create image: name exists or disk unavailable.");return;}
     *a.filetype=6;*a.auxtype=0;out=a.fopen(path,"wb");
     if(!out) {if(discard(path))note("Cannot open new image.");return;}
+    /* CREATE/OPEN may deliver ESC too: before the 2MG header or blocks.
+     * Cleanup owns only this exclusive file; no AUX memory is touched. */
+    if(stop())goto fail;
     if(two) {
-        makeheader();if(a.fwrite(buf,1,64,out)!=64 || ferror(out))goto fail;
+        makeheader();if(a.fwrite(buf,1,64,out)!=64 || ferror(out) || stop())goto fail;
     }
     maps=(blocks+4095U)/4096;
     for(b=0;b<blocks;++b) {
         if(!(b&31)) {a.progress_bar("New image (ESC)",b,blocks);if(stop())goto fail;}
-        makeblock();if(a.fwrite(buf,1,512,out)!=512 || ferror(out))goto fail;
+        /* An ESC delivered by fwrite must stop before another block or
+         * the verification pass. Only this exclusive image is owned. */
+        makeblock();if(a.fwrite(buf,1,512,out)!=512 || ferror(out) || stop())goto fail;
     }
     if(a.fclose(out))goto closedfail;
     if(!verify_image())goto closedfail;

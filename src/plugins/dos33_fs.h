@@ -73,7 +73,10 @@ static unsigned char write_sector(unsigned int s,const unsigned char* in) {
  ours=buf+((code&1)?256:0);twin=buf+((code&1)?0:256);
  RF(memcpy)(verify,twin,256);
  RF(memcpy)(ours,in,256);
- if(writeblk(unit,block,buf) || readblk(unit,block,buf))return 0;
+ /* ESC may arrive during the read/protection check above. Poll again
+  * before the raw write, including a catalogue switch. Only MAIN buffers
+  * have changed so far; the disk and AUX remain untouched at this point. */
+ if(stop() || writeblk(unit,block,buf) || readblk(unit,block,buf))return 0;
  return !memcmp(ours,in,256) && !memcmp(twin,verify,256);
 #endif
 }

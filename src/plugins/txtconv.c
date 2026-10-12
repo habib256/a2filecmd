@@ -80,6 +80,11 @@ static void flush(void)
         if (checking) {
             if (T.fread(check, 1, olen, out) != olen || memcmp(check, obuf, olen)) fail = 1;
         } else if (T.fwrite(obuf, 1, olen, out) != olen) fail = 1;
+        /* A full byte count can still carry an error or ESC. Stop this
+         * pass before another output block or verification read; only
+         * the exclusively created output is writable, never AUX. */
+        if (ferror(out)) fail = 1;
+        poll_cancel();
     }
     nout += olen;
     olen = 0;
@@ -229,12 +234,22 @@ convert_pass:
         poll_cancel();
         if (fail) break;
         n = T.fread(T.copy_buf, 1, 256, in);
+        /* A byte count does not make an errored or cancelled refill safe.
+         * Only our exclusive output is writable; neither original nor AUX
+         * is touched. Refuse this whole refill before converting it. */
+        poll_cancel();
+        if (ferror(in)) { fail = 1; what = "Read"; }
+        if (fail) break;
         nin += n;
-        for (p = T.copy_buf, i = n; i; --i) { convert(*p); ++p; }
+        for (p = T.copy_buf, i = n; i && !fail; --i) { convert(*p); ++p; }
         if (n < 256 || fail) break;
     }
-    if (mode == 'A' && pend) put('?');             /* incomplete sequence at EOF */
-    flush();
+    /* Finish only a clean pass. A failed write must not cause another
+     * write, and interrupted input must not acquire a synthetic '?'. */
+    if (!fail) {
+        if (mode == 'A' && pend) put('?');         /* incomplete sequence at EOF */
+        if (!fail) flush();
+    }
     /* A stale size can coincide with an interrupted read. Check the stream
      * error as well as the count before replacing either original. */
     if (ferror(in) || nin != e->size) { fail = 1; what = "Read"; }

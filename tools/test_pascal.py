@@ -12,6 +12,8 @@ import unittest
 from pathlib import Path
 
 import pascal_ref as P
+from po2dsk import to_dsk
+from po22mg import to_2mg
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -41,7 +43,8 @@ static struct Entry sel;
 static struct DirEntry de;
 static unsigned char scratch[512], active_;
 static char note_text[120], full_[80];
-static int mode, reads, fail_at, creates;
+static int mode, reads, fail_at, creates, catalogue_reads;
+static unsigned int data_reads_, written_;
 static char outdir[256], imagepath[256];
 
 /* The destination directory is a real one: CREATE, and the writes that
@@ -65,11 +68,13 @@ static unsigned char mli_(unsigned char cmd,void* q){
 }
 static FILE* open_(const char* p,const char* m){
  char path[300];FILE* f;
- if(!strcmp(p,"/I/VOL.PO")){image_file=fopen(imagepath,m);return image_file;}
+ if(!strcmp(p,full_)){image_file=fopen(imagepath,m);return image_file;}
  joinpath(path,p);f=fopen(path,m);verify_file=!strcmp(m,"rb")?f:NULL;return f;
 }
-static int remove_(const char* p){char path[300];joinpath(path,p);if((mode==11 || mode==16 || mode==18 || mode==20) && creates==fail_at)return -1;return remove(path);}
+static int remove_(const char* p){char path[300];joinpath(path,p);if(mode==51 || mode==54)return -1;if((mode==11 || mode==16 || mode==18 || mode==20) && creates==fail_at)return -1;return remove(path);}
 static size_t read_(void* p,size_t s,size_t n,FILE* f){
+ long position=ftell(f);
+ size_t result;
  ++reads; if(mode==2 && reads==fail_at) return 0;
  if(f==image_file && ((mode==14 && reads==fail_at) ||
     ((mode==15 || mode==16) && verify_file && creates==fail_at)))errored=f;
@@ -77,9 +82,46 @@ static size_t read_(void* p,size_t s,size_t n,FILE* f){
   if((mode==9 || mode==11) && n==1){errored=f;return 0;}
   if(mode==10 && n>1)errored=f; /* full count, error flag set */
  }
- return fread(p,s,n,f);
+ result=fread(p,s,n,f);
+ if(mode>=50 && mode<=54 && f==image_file && creates==1 && !verify_file && ++data_reads_==fail_at){
+  if(mode<=52)cancelled=1;
+  if(mode>=52)errored=f;
+ }
+ if((mode==37 || mode==38) && f==image_file && n>=256){
+  unsigned long logical=position;
+  if(src.kind==1){
+   unsigned char physical=(position%4096)/256,j;
+   for(j=0;j<16 && sectors[j]!=physical;++j);
+   logical=(position/4096)*4096+256UL*j;
+  }else logical-=src.base;
+  if(logical>=1024 && logical<3072 && ++catalogue_reads==fail_at){
+   cancelled=1;if(mode==38)errored=f;
+  }
+ }
+
+ /* The validation pass saw the original catalogue. Only the later
+  * per-file re-read supplies altered bytes; the disk itself stays intact. */
+ if(f==image_file && position==1024 && result==512 &&
+    ((mode==35 && reads==count+2) || (mode==36 && creates==1))){
+  unsigned char* e=(unsigned char*)p+(mode==35?26:52);
+  unsigned int value;
+  switch(fail_at){
+   case 0:e[6]=0;break;
+   case 1:e[6]=16;break;
+   case 2:e[22]=e[23]=0;break;
+   case 3:e[22]=1;e[23]=2;break; /* 513 bytes exceed the block buffer */
+   case 4:e[22]=0;e[23]=4;break;
+   case 5:e[0]=5;e[1]=0;break; /* boot/directory overlap */
+   case 6:e[2]=e[0];e[3]=e[1];break;
+   case 7:value=vblocks+1;e[2]=value;e[3]=value>>8;break;
+   case 8:e[0]=e[2];e[1]=e[3];break;
+   case 9:e[0]=6;e[1]=0;break; /* overlaps the first verified file */
+  }
+ }
+ return result;
 }
 static size_t write_(const void* p,size_t s,size_t n,FILE* f){
+ ++written_;
  if(mode==3 && --fail_at==0) return 0;
  return fwrite(p,s,n,f);
 }
@@ -102,7 +144,7 @@ static unsigned char dir_open_(const char* p){(void)p;listing=0;return 1;}
 static unsigned char dir_next_(void){
  FILE* f; long n;
  if(listing++) return 0;
- strcpy(de.name,"VOL.PO");
+ strcpy(de.name,sel.name);
  f=fopen(imagepath,"rb"); fseek(f,0,SEEK_END); n=ftell(f); fclose(f);
  de.size=(unsigned long)n; de.type=6; return 1;
 }
@@ -112,8 +154,8 @@ int main(int argc,char** argv){
  struct A2fcApi api; memset(&api,0,sizeof api);
  strcpy(imagepath,argv[1]); strcpy(outdir,argv[2]);
  mode=atoi(argv[3]); fail_at=atoi(argv[4]);
- strcpy(full_,"/I/VOL.PO");   /* a ProDOS path: size_of has 64 bytes for it */
- strcpy(sel.name,"VOL.PO");
+ strcpy(sel.name,strrchr(imagepath,'/')+1);
+ sprintf(full_,"/I/%s",sel.name); /* short ProDOS path for size_of */
  sel.type=6;
  strcpy(panels_[0].path,"/IMG"); strcpy(panels_[1].path,"/OUT");
  if(mode==6) panels_[0].fs=FS_IMG;          /* the wrong panel */
@@ -131,6 +173,7 @@ int main(int argc,char** argv){
  plugin_entry(&api);
  fprintf(stderr,"SOURCE-CLOSE %u\n",image_closes);
  fprintf(stderr,"CREATES %d\n",creates);
+ fprintf(stderr,"DATA-WRITES %u\n",written_);
  printf("%s\n",note_text);
  return 0;
 }
@@ -192,6 +235,79 @@ class Pascal(unittest.TestCase):
             name = entry['name'].replace('-', '.')
             got = (self.out / name).read_bytes()
             self.assertEqual(got, P.contents(self.data, entry), name)
+
+    def test_cancel_during_entry_reread_refuses_before_create(self):
+        for size in (1,513):
+            files=[('F%02d'%i,5,bytes([i])*size) for i in range(1,20)]
+            po=P.make('MYVOL',files)
+            for fmt,wrap in (('PO',bytes),('DSK',to_dsk),('2MG',to_2mg)):
+                halves=2 if fmt=='DSK' else 1
+                self.image=self.dir/('VOL.'+fmt);self.data=wrap(po)
+                for target in (1,2,19):
+                    entry_reads=2 if target==19 else 1
+                    before=target-1
+                    for half in range(entry_reads*halves):
+                        for collision in ((False,True) if target==1 else (False,True,'previous')):
+                            for mode in (37,38):
+                                with self.subTest(size=size,fmt=fmt,target=target,half=half,collision=collision,mode=mode):
+                                    for p in self.out.iterdir():p.unlink()
+                                    expected={'KEEP':b'original bytes'}
+                                    if collision=='previous':expected['F01']=b'original prior file'
+                                    elif collision:expected['F%02d'%target]=b'original target file'
+                                    for name,data in expected.items():(self.out/name).write_bytes(data)
+                                    for name,_,data in files[:before]:expected.setdefault(name,data)
+                                    self.image.write_bytes(self.data)
+                                    # Volume + all validated entries, then the earlier rereads.
+                                    at=halves*(21+before+(target*26)//512)+half+1
+                                    note=self.run_op(mode,at)
+                                    self.assertEqual(self.creates,before)
+                                    self.assertEqual({p.name:p.read_bytes() for p in self.out.iterdir()},expected)
+                                    self.assertEqual(self.image_closes,1)
+                                    self.assertTrue(note.endswith('; stopped.'),note)
+
+    def test_fault_during_data_read_refuses_before_writing_block(self):
+        for size in (1,513,1536):
+            payload=bytes(i&255 for i in range(size))
+            po=P.make('MYVOL',[('TARGET',5,payload)])
+            for fmt,wrap in (('PO',bytes),('DSK',to_dsk),('2MG',to_2mg)):
+                halves=2 if fmt=='DSK' else 1
+                self.image=self.dir/('VOL.'+fmt);self.data=wrap(po)
+                for at in range(1,((size+511)//512)*halves+1):
+                    for mode in range(50,55):
+                        with self.subTest(size=size,fmt=fmt,at=at,mode=mode):
+                            for p in self.out.iterdir():p.unlink()
+                            (self.out/'KEEP').write_bytes(b'original bytes')
+                            self.image.write_bytes(self.data)
+                            note=self.run_op(mode,at)
+                            prefix=((at-1)//halves)*512
+                            writes=int(next(l.split()[1] for l in self.trace if l.startswith('DATA-WRITES ')))
+                            self.assertEqual(writes,prefix//512)
+                            expected={'KEEP':b'original bytes'}
+                            if mode in (51,54):expected['TARGET']=payload[:prefix]
+                            self.assertEqual({p.name:p.read_bytes() for p in self.out.iterdir()},expected)
+                            self.assertEqual(self.creates,1)
+                            self.assertEqual(self.image_closes,1)
+                            self.assertIn('Cleanup failed' if mode in (51,54) else 'stopped',note)
+
+    def test_reloaded_catalogue_entries_are_checked_before_create(self):
+        for mode in (35,36):
+            for mutation in range(9 if mode==35 else 10):
+                for collision in ((False,True) if mode==35 else (False,True,'previous')):
+                    with self.subTest(mode=mode,mutation=mutation,collision=collision):
+                        for p in self.out.iterdir():p.unlink()
+                        target='HELLO.TEXT' if mode==35 else 'SYSTEM.APPLE'
+                        expected={'KEEP':b'original bytes'}
+                        if collision=='previous':expected['HELLO.TEXT']=b'original bytes'
+                        elif collision:expected[target]=b'original bytes'
+                        for name,data in expected.items():(self.out/name).write_bytes(data)
+                        note=self.run_op(mode,mutation)
+                        made=1 if mode==36 and collision!='previous' else 0
+                        skipped=1 if collision=='previous' else 0
+                        if made:expected['HELLO.TEXT']=FILES[0][2]
+                        self.assertEqual(self.creates,0 if mode==35 else 1)
+                        self.assertEqual({p.name:p.read_bytes() for p in self.out.iterdir()},expected)
+                        self.assertEqual(self.image_closes,1)
+                        self.assertEqual(note,f'{made} extracted, {skipped} skipped (name taken); failed, stopped.')
 
     def test_the_directory_read_is_announced_and_each_pass_fills_its_bar(self):
         note = self.run_op()

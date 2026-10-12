@@ -14,6 +14,8 @@ import unittest
 from pathlib import Path
 
 import cpm_ref as P
+from po2dsk import to_dsk
+from po22mg import to_2mg
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -43,8 +45,10 @@ static struct Entry sel;
 static struct DirEntry de;
 static unsigned char scratch[512], active_;
 static char note_text[120], full_[80];
-static int mode, reads, fail_at, creates,image_reads,image_seeks;
+static int mode, reads, fail_at, creates,image_reads,image_seeks,output_writes;
 static char outdir[256], imagepath[256];
+static unsigned int completed, pending_reads;
+static unsigned char measuring_target;
 
 /* The destination directory is a real one: CREATE, and the writes that
  * follow, work on files under it. */
@@ -61,17 +65,25 @@ static unsigned char mli_(unsigned char cmd,void* q){
  ++creates;
  if(mode==4 && creates==fail_at) return 0x27;      /* CREATE refused */
  if(creates==fail_at && (mode==29 || mode==30))return mode==29?0x48:0x4E;
- f=fopen(path,"rb"); if(f){fclose(f);return 0x47;} /* the name is taken */
+ f=fopen(path,"rb"); if(f){fclose(f);++completed;return 0x47;} /* the name is taken */
  f=fopen(path,"wb"); if(!f) return 0x27; fclose(f);
  return 0;
 }
 static FILE* open_(const char* p,const char* m){
  char path[300];FILE* f;
- if(!strcmp(p,"/I/VOL.PO")){image_file=fopen(imagepath,m);return image_file;}
+ if(!strcmp(p,full_)){image_file=fopen(imagepath,m);return image_file;}
  joinpath(path,p);f=fopen(path,m);verify_file=!strcmp(m,"rb")?f:NULL;return f;
 }
 static int remove_(const char* p){char path[300];joinpath(path,p);if((mode==11 || mode==16 || mode==18 || mode==20) && creates==fail_at)return -1;return remove(path);}
+static unsigned long directory_offset(unsigned char logical){
+ unsigned char physical=SKEW[skew][logical],k=physical==0 || physical==15?physical:15-physical;
+ unsigned int block=RESERVED*8+(k>>1);
+ return src.kind==1?(unsigned long)(block>>3)*4096+256UL*sectors[(block&7)*2+(k&1)]
+                   :src.base+512UL*block+256UL*(k&1);
+}
 static size_t read_(void* p,size_t s,size_t n,FILE* f){
+ long position=ftell(f);
+ size_t result;
  if(f==image_file)++image_reads;
  ++reads; if(mode==2 && reads==fail_at) return 0;
  if(f==image_file && ((mode==14 && reads==fail_at) ||
@@ -80,13 +92,53 @@ static size_t read_(void* p,size_t s,size_t n,FILE* f){
   if((mode==9 || mode==11) && n==1){errored=f;return 0;}
   if(mode==10 && n>1)errored=f; /* full count, error flag set */
  }
- return fread(p,s,n,f);
+ result=fread(p,s,n,f);
+ if((mode==41 || mode==42) && f==image_file && creates==1 && completed==0 && dsec_at==7){
+  unsigned long offset=directory_offset(0)+(mode==42?32:0)+15;
+  if(position<=(long)offset && position+(long)(s*result)>(long)offset)
+   ((unsigned char*)p)[offset-position]=fail_at;
+ }
+
+ if(mode==40 && f==image_file && creates==8 && completed==8){
+  unsigned long offset=directory_offset(0);
+  if(position<=(long)offset && position+(long)(s*result)>(long)offset && dsec_at==1)measuring_target=1;
+  offset=directory_offset(1);
+  if(measuring_target && position<=(long)offset && position+(long)(s*result)>(long)offset){
+   unsigned char* e=(unsigned char*)p+(offset-position);
+   if(fail_at==0)e[0]=0xE5;
+   if(fail_at==1)e[1]='Z';
+   if(fail_at==2)e[0]=15;
+   if(fail_at==3)memset(e,0,32);
+  }
+ }
+
+ if((mode==38 || mode==39) && f==image_file && completed==fail_at/2 &&
+    creates==fail_at/2 && (fail_at/2 || dsec_at==7) &&
+    ++pending_reads==(fail_at%2)+1){
+  cancelled=1;if(mode==39)errored=f;
+ }
+
+ /* Supply different bytes only after skew validation. No image write. */
+ if(f==image_file && position==12288 && result==512 && dsec_at==7 &&
+    ((mode==36 && creates==0) || (mode==37 && creates==1))){
+  unsigned char* e=(unsigned char*)p;
+  if(fail_at<4){
+   if(!fail_at)e[17]=e[16]; /* hole followed by a usable block */
+   e[16]=fail_at==0?0:fail_at==1?1:fail_at==2?128:255;
+  }
+  else{
+   memset(e+16,2,32);
+   e[15]=fail_at==4?129:255;
+  }
+ }
+ return result;
 }
 static int seek_(FILE* f,long off,int whence){
  if(f==image_file && ++image_seeks==fail_at && mode==34)return -1;
  return fseek(f,off,whence);
 }
 static size_t write_(const void* p,size_t s,size_t n,FILE* f){
+ ++output_writes;
  if(mode==3 && --fail_at==0) return 0;
  return fwrite(p,s,n,f);
 }
@@ -98,6 +150,7 @@ static int close_(FILE* f){
      ((mode==19 || mode==20) && f!=verify_file)))cancelled=1;
  if(mode==13 && f==verify_file && creates==4)errored=image_file;
  if(f==image_file){++image_closes;image_file=NULL;}
+ if(f==verify_file)++completed;
  r=fclose(f);if(f==errored)errored=NULL;return failed?-1:r;
 }
 static void progress_(const char* n,unsigned long d,unsigned long t){fprintf(stderr,"BAR %s %lu %lu\n",n,d,t);}
@@ -109,7 +162,7 @@ static unsigned char dir_open_(const char* p){(void)p;listing=0;return 1;}
 static unsigned char dir_next_(void){
  FILE* f; long n;
  if(listing++) return 0;
- strcpy(de.name,"VOL.PO");
+ strcpy(de.name,sel.name);
  f=fopen(imagepath,"rb"); fseek(f,0,SEEK_END); n=ftell(f); fclose(f);
  de.size=(unsigned long)n; de.type=6; return 1;
 }
@@ -119,8 +172,8 @@ int main(int argc,char** argv){
  struct A2fcApi api; memset(&api,0,sizeof api);
  strcpy(imagepath,argv[1]); strcpy(outdir,argv[2]);
  mode=atoi(argv[3]); fail_at=atoi(argv[4]);
- strcpy(full_,"/I/VOL.PO");   /* a ProDOS path: size_of has 64 bytes for it */
- strcpy(sel.name,"VOL.PO");
+ strcpy(sel.name,strrchr(imagepath,'/')+1);
+ sprintf(full_,"/I/%s",sel.name);
  sel.type=6;
  strcpy(panels_[0].path,"/IMG"); strcpy(panels_[1].path,"/OUT");
  if(mode==6) panels_[0].fs=FS_IMG;          /* the wrong panel */
@@ -140,6 +193,7 @@ int main(int argc,char** argv){
  fprintf(stderr,"CREATES %d\n",creates);
  fprintf(stderr,"IMAGE-READS %d\n",image_reads);
  fprintf(stderr,"IMAGE-SEEKS %d\n",image_seeks);
+ fprintf(stderr,"OUTPUT-WRITES %d\n",output_writes);
  printf("%s\n",note_text);
  return 0;
 }
@@ -190,6 +244,7 @@ class Cpm(unittest.TestCase):
         self.creates=[int(l.split()[1]) for l in run.stderr.splitlines() if l.startswith('CREATES ')][0]
         self.image_reads=[int(l.split()[1]) for l in run.stderr.splitlines() if l.startswith('IMAGE-READS ')][0]
         self.image_seeks=[int(l.split()[1]) for l in run.stderr.splitlines() if l.startswith('IMAGE-SEEKS ')][0]
+        self.output_writes=[int(l.split()[1]) for l in run.stderr.splitlines() if l.startswith('OUTPUT-WRITES ')][0]
         # read only: the image never changes, whatever happened
         self.assertEqual(self.image.read_bytes(), self.data)
         return note
@@ -198,6 +253,107 @@ class Cpm(unittest.TestCase):
         return sorted(p.name for p in self.out.iterdir())
 
     # -- what must happen ---------------------------------------------------
+
+    def test_changed_record_counts_never_verify_stale_size(self):
+        for size in (1,1536,17000):
+            payload=bytes(i%251 for i in range(size))
+            for mode in ((41,42) if size>16384 else (41,)):
+                expected_rc=128 if mode==41 and size>16384 else ((size-16384 if mode==42 else size)+127)//128
+                for skew in P.SKEWS:
+                    po=P.make([('TARGET',payload)],skew=skew)
+                    volume=P.volume(po);entry=volume['files'][0]
+                    expected_bytes=P.contents(po,entry,skew)
+                    for fmt,wrap in (('PO',bytes),('DSK',to_dsk),('2MG',to_2mg)):
+                        self.image=self.dir/('VOL.'+fmt);self.data=wrap(po)
+                        for rc in sorted({0,1,127,128,129,255,expected_rc}):
+                            with self.subTest(size=size,mode=mode,skew=skew,fmt=fmt,rc=rc):
+                                for p in self.out.iterdir():p.unlink()
+                                (self.out/'KEEP').write_bytes(b'existing destination bytes')
+                                self.image.write_bytes(self.data)
+                                note=self.run_op(mode,rc)
+                                self.assertEqual(self.creates,1)
+                                self.assertEqual(self.image_closes,1)
+                                self.assertEqual((self.out/'KEEP').read_bytes(),b'existing destination bytes')
+                                if rc==expected_rc:
+                                    self.assertEqual((self.out/'TARGET').read_bytes(),expected_bytes)
+                                    self.assertEqual(note,'1 extracted, 0 skipped (name taken).')
+                                else:
+                                    self.assertEqual(self.extracted(),['KEEP'])
+                                    self.assertEqual(self.output_writes,64 if mode==42 else 0)
+                                    self.assertEqual(note,'0 extracted, 0 skipped (name taken); failed, stopped.')
+
+    def test_missing_extent_zero_never_becomes_a_successful_empty_file(self):
+        for size in (0,1500):
+            files=[('F%02d'%i,bytes([i])*130) for i in range(8)]+[('TARGET',bytes(i%251 for i in range(size)))]
+            for skew in P.SKEWS:
+                po=P.make(files,skew=skew);volume=P.volume(po)
+                contents={e['name']:P.contents(po,e,skew) for e in volume['files']}
+                for fmt,wrap in (('PO',bytes),('DSK',to_dsk),('2MG',to_2mg)):
+                    self.image=self.dir/('VOL.'+fmt);self.data=wrap(po)
+                    for collision in (False,True):
+                        for mutation in range(5):
+                            with self.subTest(size=size,skew=skew,fmt=fmt,collision=collision,mutation=mutation):
+                                for p in self.out.iterdir():p.unlink()
+                                expected={'KEEP':b'original bytes'}
+                                if collision:expected['TARGET']=b'original target bytes'
+                                for name,data in expected.items():(self.out/name).write_bytes(data)
+                                expected.update({name:contents[name] for name,_ in files[:8]})
+                                self.image.write_bytes(self.data)
+                                note=self.run_op(40,mutation)
+                                if mutation<4:
+                                    self.assertEqual(self.creates,8)
+                                    self.assertIn('; failed, stopped.',note)
+                                else:
+                                    self.assertEqual(self.creates,9)
+                                    if not collision:expected['TARGET']=contents['TARGET']
+                                    self.assertNotIn('stopped',note)
+                                self.assertEqual({p.name:p.read_bytes() for p in self.out.iterdir()},expected)
+                                self.assertEqual(self.image_closes,1)
+
+    def test_cancel_before_create_preserves_earlier_outputs(self):
+        for size in (0,1,17000):
+            files=[('FIRST.TXT',b'first file'),('TARGET',bytes(i%251 for i in range(size))),('LATER',b'last file')]
+            for skew in P.SKEWS:
+                po=P.make(files,skew=skew)
+                volume=P.volume(po)
+                contents={e['name']:P.contents(po,e,skew) for e in volume['files']}
+                for fmt,wrap in (('PO',bytes),('DSK',to_dsk),('2MG',to_2mg)):
+                    self.image=self.dir/('VOL.'+fmt);self.data=wrap(po)
+                    for target in range(3):
+                        for collision in ((False,True) if target==0 else (False,True,'previous')):
+                            for half in range(2 if fmt=='DSK' else 1):
+                                for mode in (38,39):
+                                    with self.subTest(size=size,skew=skew,fmt=fmt,target=target,collision=collision,half=half,mode=mode):
+                                        for p in self.out.iterdir():p.unlink()
+                                        expected={'KEEP':b'original bytes'}
+                                        if collision=='previous':expected[files[0][0]]=b'original previous file'
+                                        elif collision:expected[files[target][0]]=b'original target file'
+                                        for name,data in expected.items():(self.out/name).write_bytes(data)
+                                        for name,_ in files[:target]:expected.setdefault(name,contents[name])
+                                        self.image.write_bytes(self.data)
+                                        note=self.run_op(mode,target*2+half)
+                                        self.assertEqual(self.creates,target)
+                                        self.assertEqual({p.name:p.read_bytes() for p in self.out.iterdir()},expected)
+                                        self.assertEqual(self.image_closes,1)
+                                        self.assertTrue(note.endswith('; stopped.'),note)
+
+    def test_reloaded_allocations_are_bounded_before_create_or_write(self):
+        for skew in P.SKEWS:
+            for mode in (36,37):
+                for mutation in range(6 if mode==36 else 4):
+                    for collision in ((False,True) if mode==36 else (False,)):
+                        with self.subTest(skew=skew,mode=mode,mutation=mutation,collision=collision):
+                            for p in self.out.iterdir():p.unlink()
+                            self.build(skew)
+                            old={'KEEP':b'original bytes'}
+                            if collision:old['HELLO.TXT']=b'original bytes'
+                            for name,data in old.items():(self.out/name).write_bytes(data)
+                            note=self.run_op(mode,mutation)
+                            self.assertEqual(self.creates,0 if mode==36 else 1)
+                            self.assertEqual(self.output_writes,0)
+                            self.assertEqual({p.name:p.read_bytes() for p in self.out.iterdir()},old)
+                            self.assertEqual(self.image_closes,1)
+                            self.assertEqual(note,'0 extracted, 0 skipped (name taken); failed, stopped.')
 
     def test_every_file_redraws_its_bar_for_both_passes(self):
         # A kilobyte at a time from 0, once for the copy and once for the

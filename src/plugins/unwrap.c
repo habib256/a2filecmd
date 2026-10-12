@@ -49,7 +49,7 @@ const struct PluginHeader __plugin_header = {
 static FILE* in;
 static FILE* out;
 static unsigned long size, off, len, rsrc;
-static unsigned char type, typed;       /* $80 data; $40 ProDOS; $20 resources; $10 name; $08 Finder seen; 2 ProDOS type, 1 Mac */
+static unsigned char type, typed;       /* $80 data; $40 ProDOS; $20 resources; $10 name; $08 Finder; $04 legacy seen; 2 ProDOS type, 1 Mac */
 static unsigned int aux;
 static char name[16];
 static char dest[PATH_LEN + 1];
@@ -65,7 +65,7 @@ static unsigned int be16(const unsigned char* p) { return ((unsigned int)p[0] <<
 /* n bytes at `at` of the input into blk; 1 when they all came. */
 static unsigned char grab(unsigned long at, unsigned int n)
 {
-    return !RF(fseek)(in, at, SEEK_SET) && RF(fread)(blk, 1, n, in) == n;
+    return !stop() && !RF(fseek)(in, at, SEEK_SET) && RF(fread)(blk, 1, n, in) == n;
 }
 
 /* A ProDOS name from n bytes of a Mac or Unix name: upper case, anything
@@ -142,7 +142,9 @@ static unsigned char apple_single(void)
         id = be32(blk);
         at = be32(blk + 4);
         l = be32(blk + 8);
-        if ((l && at < end) || at > size || l > size - at) return 0;
+        /* ID zero is invalid, not an unknown extension to ignore. Refuse
+         * in MAIN before CREATE; source, old destinations and AUX intact. */
+        if (!id || (l && at < end) || at > size || l > size - at) return 0;
         /* ProDOS metadata must contain its type/aux; a short entry is not
          * absent metadata. Duplicates are ambiguous. Refuse before CREATE
          * instead of substituting or silently replacing the type/aux. */
@@ -181,10 +183,13 @@ static unsigned char apple_single(void)
             }
         } else if (id == 11 && l >= 8) {
             if (!grab(at, 8)) return 0;
-            type = blk[3]; aux = be16(blk + 6); typed = (typed & 0xF8) | 2;
-        } else if (id == 7 && v1 && l >= 16 && prodos_home()) {
+            type = blk[3]; aux = be16(blk + 6); typed = (typed & 0xFC) | 2;
+        } else if (id == 7 && v1 && prodos_home()) {
+            /* Legacy ProDOS type/aux must be readable and unambiguous.
+             * Refuse before CREATE; only MAIN state changes, never AUX. */
+            if (l < 16 || (typed & 4)) return 0;
             if (!grab(at, 16)) return 0;
-            type = blk[11]; aux = be16(blk + 14); typed = (typed & 0xF8) | 2;
+            type = blk[11]; aux = be16(blk + 14); typed = (typed & 0xFC) | 6;
         } else if (id == 9 && l >= 8 && !(typed & 2)) {
             if (!grab(at, 8)) return 0;
             mac_type(blk);
@@ -243,7 +248,9 @@ static unsigned char pass(unsigned char check)
     if (stop() || RF(fseek)(in, off, SEEK_SET)) return 0;
     while (left) {
         n = left > 512 ? 512 : (unsigned int)left;
-        if (RF(fread)(blk, 1, n, in) != n) return 0;
+        /* A full-count read can still fail or receive ESC. Refuse before
+         * writing this block to our exclusive output; only MAIN is used. */
+        if (RF(fread)(blk, 1, n, in) != n || ferror(in) || stop()) return 0;
         if (check) {
             if (RF(fread)(cmp, 1, n, out) != n) return 0;
             for (i = 0; i < n; ++i) if (cmp[i] != blk[i]) return 0;
@@ -260,6 +267,7 @@ static unsigned char pass(unsigned char check)
 
 static const char m_pick[] = "Not an AppleSingle or MacBinary file.";
 static const char m_other[] = "Other panel: open a ProDOS directory.";
+static const char m_stopped[] = "Stopped: nothing extracted.";
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api)
 {
@@ -297,9 +305,11 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
          * permissive MacBinary I header. No output exists at this point. */
         ok = be32(hdr) == 0x00051600UL ? apple_single() : (ok == 128 && mac_binary());
     } else ok = 0;
-    if (!ok || ferror(in) || !(typed & 0x80) || type == 0x0F || len > 0xFFFFFFUL) {
+    /* ESC during header/table reads must stop before owning an output,
+     * including empty forks. Only the read-only source is closed here. */
+    if (stop() || !ok || ferror(in) || !(typed & 0x80) || type == 0x0F || len > 0xFFFFFFUL) {
         RF(fclose)(in);
-        note(m_pick);
+        note(cancelled ? m_stopped : m_pick);
         return;
     }
     if (!name[0]) {                     /* the wrapper's name, less its suffix */

@@ -34,6 +34,8 @@ static unsigned int verifications,outputs;
 static unsigned int verify_reads,verify_closes;
 static unsigned int source_closes;
 static int extracting;
+static unsigned int data_reads;
+static unsigned long output_bytes;
 static int error_(FILE* f) { return f == read_error || ferror(f); }
 static unsigned char mli_(unsigned char cmd, void* params)
 {
@@ -65,7 +67,13 @@ static FILE* open_(const char* p, const char* m)
 }
 static size_t write_(const void* p, size_t s, size_t n, FILE* f)
 {
+    output_bytes += s*n;
     if ((fault == 1 || fault == 4) && ++writes == 2) return n - 1;
+    if((fault==28 || fault==30) && ++writes==1){
+        unsigned char changed[512];memcpy(changed,p,n);
+        if(n>=2){unsigned char tmp=changed[0];changed[0]=changed[1];changed[1]=tmp;}
+        return fwrite(changed,s,n,f);
+    }
     if (fault == 3 && ++writes == 1) {  /* a byte lands wrong: only the read-back sees it */
         unsigned char c[512];
         memcpy(c, p, n); c[0] ^= 1;
@@ -94,21 +102,32 @@ static int close_(FILE* f)
     }
     return result;
 }
-static int remove_(const char* p) { printf("REMOVE %s\n", strrchr(p, '/') + 1); return fault == 4 || fault==16 || fault==18 ? -1 : remove(p); }
+static int remove_(const char* p) { printf("REMOVE %s\n", strrchr(p, '/') + 1); return fault == 4 || fault==16 || fault==18 || fault==30 || fault==31 || (fault>=36 && fault<=39) ? -1 : remove(p); }
 static size_t read_(void* p, size_t s, size_t n, FILE* f) {
     size_t result;
     if(f==verifying && verifications==2)++verify_reads;
     long position=ftell(f);
     if (fault == 6 || fault == 9) read_error = f;
     if (fault == 8) cancelled = 1;
-    result=fread(p, s, fault == 9 && n ? n - 1 : n, f);
+    int data_fault = fault>=32 && fault<=39 && f==source_stream && writing && ++data_reads==create_at;
+    result=fread(p, s, (fault == 9 || (data_fault && (fault-32)%4==3)) && n ? n - 1 : n, f);
+    if(data_fault){
+        if((fault-32)%4==0 || (fault-32)%4==2)cancelled=1;
+        if((fault-32)%4!=0)read_error=f;
+    }
+    if(fault==29 && f==verifying && !position && result>=2){
+        unsigned char* bytes=p;unsigned char tmp=bytes[0];bytes[0]=bytes[1];bytes[1]=tmp;
+    }
     if((fault==10 || (fault==12 && position>=512)) && f==source_stream && extracting)read_error=f;
+    if(fault==26 && f==source_stream && extracting)cancelled=1;
     return result;
 }
 static int seek_(FILE* f, long o, int w) {
     if (fault == 5 && w == SEEK_SET && o) return -1;
     if (fault == 7 && w == SEEK_SET && !o) return -1;
     if(f==source_stream && w==SEEK_SET && !o)extracting=1;
+    if(f==source_stream && w==SEEK_SET &&
+       ((fault==25 && !o) || (fault==27 && o && outputs==1 && verifications==1)))cancelled=1;
     return fseek(f, o, w);
 }
 static unsigned long bars, overflows;
@@ -148,6 +167,7 @@ int main(int argc, char** argv)
     printf("CHECK %u %u\n",verify_reads,verify_closes);
     printf("ATTEMPTS %u\n",create_calls);
     printf("SOURCE-CLOSE %u\n",source_closes);
+    printf("OUTPUT-BYTES %lu\n",output_bytes);
     printf("NOTE %s\n", note);
     return 0;
 }
@@ -213,6 +233,7 @@ class Unsq(unittest.TestCase):
         self.verification = [int(v) for l in lines if l.startswith('CHECK ') for v in l.split()[1:]]
         self.create_calls = next(int(l.split()[1]) for l in lines if l.startswith('ATTEMPTS '))
         self.source_closes = next(int(l.split()[1]) for l in lines if l.startswith('SOURCE-CLOSE '))
+        self.output_bytes = next(int(l.split()[1]) for l in lines if l.startswith('OUTPUT-BYTES '))
         made = {p.name: p.read_bytes() for p in destination.iterdir()}
         self.assertEqual((case / 'S' / name).read_bytes(), data, 'source must remain untouched')
         return note, created, removed, made
@@ -226,6 +247,94 @@ class Unsq(unittest.TestCase):
         self.assertEqual(made, {n: b for n, _, _, b in files})
         self.assertEqual(note, '%d extracted, 0 skipped (name taken).' % len(files))
 
+    def test_stored_acu_failed_refill_never_writes_an_unread_byte(self):
+        for size in (1,513,1536):
+            payload=bytes((i%250)+1 for i in range(size))
+            archive=ref.make_acu([(b'DOC',4,0,payload,False,False)])
+            for refill in range(1,(size+511)//512+1):
+                for fault in range(32,40):
+                    with self.subTest(size=size,refill=refill,fault=fault):
+                        prefix=payload[:(refill-1)*512]
+                        note,created,removed,made=self.run_unsq('X.ACU',archive,fault=fault,create_at=refill,existing=('KEEP',))
+                        expected={'KEEP':b'old'}
+                        if fault>=36:expected['DOC']=prefix
+                        self.assertEqual(made,expected,note)
+                        self.assertEqual(self.output_bytes,len(prefix),note)
+                        self.assertEqual([c[0] for c in created],['DOC'],note)
+                        self.assertEqual(removed,['DOC'],note)
+                        self.assertEqual(self.source_closes,1)
+                        self.assertIn('Cleanup failed' if fault>=36 else 'stopped',note)
+
+    def test_acu_impossible_lengths_are_refused_before_create(self):
+        for size in (1,513,1536):
+            payload=bytes(i%251 for i in range(size))
+            for squeezed in (False,True):
+                lengths=(0,size+1,0x1000000,0xFFFFFFFF) if not squeezed else (0x1000000,0xFFFFFFFF)
+                for declared in lengths:
+                    for prior in (False,True):
+                        for collision in (False,True):
+                            with self.subTest(size=size,squeezed=squeezed,declared=declared,prior=prior,collision=collision):
+                                entries=[(b'FIRST',4,0,b'verified',False,False)] if prior else []
+                                prefix=ref.make_acu(entries)
+                                data=bytearray(ref.make_acu(entries+[(b'DOC',4,0,payload,squeezed,False)]))
+                                record=len(prefix)
+                                data[record+0x26:record+0x2A]=struct.pack('<I',declared)
+                                with self.assertRaises(ref.Bad):ref.unsqueeze(bytes(data),'X.ACU')
+                                note,created,removed,made=self.run_unsq('X.ACU',bytes(data),existing=('KEEP','DOC') if collision else ('KEEP',))
+                                expected={'KEEP':b'old'}
+                                if prior:expected['FIRST']=b'verified'
+                                if collision:expected['DOC']=b'old'
+                                self.assertEqual(made,expected,note)
+                                self.assertEqual(self.create_calls,int(prior),note)
+                                self.assertEqual([c[0] for c in created],['FIRST'] if prior else [],note)
+                                self.assertEqual(removed,[],note)
+                                self.assertNotIn('name taken).',note)
+
+    def test_acu_squeezed_output_cannot_exceed_declared_length(self):
+        for size in (1,513,1536):
+            # Includes long RLE runs, so the bound must apply inside a run.
+            payload=b'A'*size
+            for declared in sorted({0,size-1}):
+                for prior in (False,True):
+                    for fault in (0,31):
+                        with self.subTest(size=size,declared=declared,prior=prior,fault=fault):
+                            entries=[(b'FIRST',4,0,b'verified',False,False)] if prior else []
+                            record=len(ref.make_acu(entries))
+                            data=bytearray(ref.make_acu(entries+[(b'DOC',4,0,payload,True,False)]))
+                            data[record+0x26:record+0x2A]=struct.pack('<I',declared)
+                            note,created,removed,made=self.run_unsq('X.ACU',bytes(data),fault=fault,existing=('KEEP',))
+                            expected={'KEEP':b'old'}
+                            if prior:expected['FIRST']=b'verified'
+                            if fault:expected['DOC']=payload[:declared]
+                            self.assertEqual(made,expected,note)
+                            self.assertEqual([c[0] for c in created],(['FIRST'] if prior else [])+['DOC'],note)
+                            self.assertEqual(removed,['DOC'],note)
+                            self.assertIn('Cleanup failed' if fault else 'damaged',note)
+
+    def test_same_sum_corruption_is_not_accepted_as_verified(self):
+        for size in (2,513,2000):
+            payload=bytes(i%251 for i in range(size))
+            for kind in ('QQ','stored','squeezed'):
+                name='X.QQ' if kind=='QQ' else 'X.ACU'
+                archive=ref.squeeze(payload,b'DOC') if kind=='QQ' else ref.make_acu([(b'DOC',4,0,payload,kind=='squeezed',False)])
+                for fault in (0,28,29,30):
+                    with self.subTest(size=size,kind=kind,fault=fault):
+                        note,created,removed,made=self.run_unsq(name,archive,fault=fault,existing=('KEEP',))
+                        self.assertEqual(made['KEEP'],b'old')
+                        self.assertEqual(self.source_closes,1)
+                        if not fault:
+                            self.assertEqual(made['DOC'],payload)
+                            self.assertEqual(removed,[])
+                            self.assertIn('1 extracted',note)
+                        elif fault in (28,29):
+                            self.assertEqual(made,{'KEEP':b'old'})
+                            self.assertEqual(removed,['DOC'])
+                            self.assertIn('damaged, stopped',note)
+                        else:
+                            self.assertEqual(made['DOC'],payload[1:2]+payload[:1]+payload[2:])
+                            self.assertEqual(removed,['DOC'])
+                            self.assertIn('Cleanup failed',note)
+
     def test_squeezed_files(self):
         rng = random.Random(1)
         for i in range(30):
@@ -236,6 +345,39 @@ class Unsq(unittest.TestCase):
             with self.subTest(i=i):
                 self.check('F%d.QQ' % i, ref.squeeze(data, name), typ=rng.choice([4, 6]),
                            aux=rng.randrange(0x10000))
+
+    def test_cancelled_header_never_creates_or_skips_a_destination(self):
+        for payload in (b'',b'A',bytes(range(256))*3):
+            for filename,data in (
+                    ('X.QQ',ref.squeeze(payload,b'DOC')),
+                    ('X.ACU',ref.make_acu([(b'DOC',4,0,payload,False,False)]))):
+                for fault in (25,26):
+                    for collision in (False,True):
+                        with self.subTest(filename=filename,size=len(payload),fault=fault,collision=collision):
+                            old={'KEEP':b'old',**({'DOC':b'old'} if collision else {})}
+                            note,created,removed,made=self.run_unsq(filename,data,fault=fault,existing=tuple(old))
+                            self.assertEqual(self.create_calls,0)
+                            self.assertEqual(created,[])
+                            self.assertEqual(removed,[])
+                            self.assertEqual(made,old)
+                            self.assertEqual(self.source_closes,1)
+                            self.assertEqual(note,'0 extracted, 0 skipped (name taken); stopped.')
+
+    def test_cancel_between_acu_records_preserves_verified_outputs(self):
+        first=b'verified first file'
+        for squeezed in (False,True):
+            archive=ref.make_acu([(b'FIRST',4,0,first,False,False),
+                                  (b'SECOND',4,0,b'second data',squeezed,False)])
+            for collision in (False,True):
+                with self.subTest(squeezed=squeezed,collision=collision):
+                    old={'KEEP':b'old',**({'SECOND':b'old'} if collision else {})}
+                    note,created,removed,made=self.run_unsq('X.ACU',archive,fault=27,existing=tuple(old))
+                    self.assertEqual(self.create_calls,1)
+                    self.assertEqual(created,[['FIRST','04','0000']])
+                    self.assertEqual(removed,[])
+                    self.assertEqual(made,{'FIRST':first,**old})
+                    self.assertEqual(self.source_closes,1)
+                    self.assertEqual(note,'1 extracted, 0 skipped (name taken); stopped.')
 
     def test_create_errors_stop_without_owning_or_removing_the_failed_target(self):
         payload=b'verified first file'

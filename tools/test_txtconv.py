@@ -23,6 +23,9 @@ static unsigned int opens, closes, renames;
 static char operation;
 static unsigned char inplace_answer, overwrite_answer, questions;
 static unsigned long fail_at;
+static unsigned long output_bytes;
+static unsigned int write_calls;
+static unsigned int verify_calls;
 static char key(void) { return operation; }
 static unsigned char yes(const char* s) { (void)s; return questions++ ? overwrite_answer : inplace_answer; }
 static FILE* open_file(const char* path, const char* mode) {
@@ -33,9 +36,19 @@ static FILE* open_file(const char* path, const char* mode) {
 }
 static size_t write_file(const void* p,size_t sz,size_t n,FILE* f) {
     unsigned char damaged[256];
+    size_t result;
+    unsigned char injected;
+    ++write_calls;output_bytes+=sz*n;
+    injected=fault>=46 && fault<=53 && write_calls==fail_at;
+    if((fault==44 || fault==45) && write_calls==1)return 0;
     if(fault==6 || fault==21)return 0;
     if(fault==10) { memcpy(damaged,p,n);damaged[0]^=1;return fwrite(damaged,sz,n,f); }
-    return fwrite(p,sz,n,f);
+    result=fwrite(p,sz,injected && (fault-46)%4==3 && n ? n-1 : n,f);
+    if(injected){
+        if((fault-46)%4==0 || (fault-46)%4==2)keyboard=KEY_ESC|0x80;
+        if((fault-46)%4!=0)failed_read=f;
+    }
+    return result;
 }
 static int close_file(FILE* f) {
     int r;++closes;
@@ -48,17 +61,31 @@ static int remove_file(const char* p) {
     if (fault>=20 && fault<=22) return -1;
     if (fault==23 && strstr(p,"A2FC.BAK")) return -1;
     if (fault==34) return -1;
+    if ((fault>=40 && fault<=43) || fault==45) return -1;
+    if(fault>=50 && fault<=53)return -1;
     return remove(p);
 }
 static void message(const char* s) { (void)s; }
 static void progress(const char* s, unsigned long d, unsigned long t)
 { (void)s; (void)d; (void)t; if (fault == 12 || fault == 22 || (fault == 13 && checking)) fail = 1; }
 static size_t read_file(void* p, size_t size, size_t count, FILE* f) {
+    size_t result;
+    unsigned char injected=fault>=36 && fault<=43 && !checking && f!=out && (unsigned long)ftell(f)==fail_at;
+    unsigned char verify_injected=fault>=54 && fault<=57 && checking && f==out && olen && count==olen && ++verify_calls==fail_at;
     if(fault==31 && checking && f==out && count==1)keyboard=KEY_ESC|0x80;
     if (fault == 15 && checking && f == out) { failed_read = f; return 0; }
     if (fault == 1 && (unsigned long)ftell(f) >= fail_at) { failed_read = f; return 0; }
     if (fault == 2 && (unsigned long)ftell(f) >= fail_at) count /= 2;
-    return fread(p, size, count, f);
+    result=fread(p,size,((injected && (fault-36)%4==3) || (verify_injected && (fault-54)%4==3)) && count ? count-1 : count,f);
+    if(injected){
+        if((fault-36)%4==0 || (fault-36)%4==2)keyboard=KEY_ESC|0x80;
+        if((fault-36)%4!=0)failed_read=f;
+    }
+    if(verify_injected){
+        if((fault-54)%4==0 || (fault-54)%4==2)keyboard=KEY_ESC|0x80;
+        if((fault-54)%4!=0)failed_read=f;
+    }
+    return result;
 }
 static unsigned char mli(unsigned char cmd, void* p) {
     char from[128], to[128];
@@ -138,6 +165,8 @@ int main(int argc, char** argv) {
     if (fault >= 26 && fault <= 30 && renames) abort();
     puts(note);
     fprintf(stderr,"STATE %u %u %u\n",opens,closes,renames);
+    fprintf(stderr,"WRITES %lu %u\n",output_bytes,write_calls);
+    fprintf(stderr,"VERIFY %u\n",verify_calls);
     return 0;
 }
 '''
@@ -166,8 +195,107 @@ class Txtconv(unittest.TestCase):
              str(len(payload) if cached_size is None else cached_size),
              str(fault), str(fail_at), mode, str(int(inplace)), str(int(overwrite))],
             text=True,capture_output=True,check=True)
-        self.state=tuple(map(int,result.stderr.split()[1:]))
+        lines=result.stderr.splitlines()
+        self.state=tuple(map(int,lines[0].split()[1:]))
+        self.output_bytes,self.write_calls=map(int,lines[1].split()[1:])
+        self.verify_calls=int(lines[2].split()[1])
         return result.stdout.strip(), source.read_bytes()
+
+    def test_output_io_stops_on_full_count_error_or_cancel(self):
+        dest=self.root/'D'/'TEXT';dest.parent.mkdir(exist_ok=True)
+        keep=self.root/'KEEP';keep.write_bytes(b'unrelated bytes')
+        paths=[dest,keep]+[parent/name for parent in (self.root,dest.parent) for name in ('TXTCONV.TMP','A2FC.BAK')]
+        for path in paths:self.addCleanup(path.unlink,missing_ok=True)
+        for action in ('inplace','overwrite','new'):
+            for mode,payload,expected in (('H',b'\xC1'*256,b'A'*256),('H',b'\xC1'*513,b'A'*513),('T',b'\t'*256,b' '*2048),('D',b'\r'*256,b'\r\n'*256)):
+                total=(len(expected)+255)//256
+                for target in sorted({1,2,total} & set(range(1,total+1))):
+                    for fault in range(46,54):
+                        with self.subTest(action=action,mode=mode,size=len(payload),target=target,fault=fault):
+                            for path in paths:
+                                if path!=keep:path.unlink(missing_ok=True)
+                            if action!='new':dest.write_bytes(b'old destination')
+                            note,data=self.convert(payload,fault=fault,fail_at=target,mode=mode,inplace=action=='inplace',overwrite=action=='overwrite')
+                            length=min(target*256,len(expected))
+                            prefix=expected[:length-int((fault-46)%4==3)]
+                            self.assertEqual(data,payload)
+                            self.assertEqual(self.state,(2,2,0),note)
+                            self.assertEqual(self.write_calls,target,note)
+                            self.assertEqual(self.output_bytes,length,note)
+                            owned=(self.root if action=='inplace' else dest.parent)/'TXTCONV.TMP' if action!='new' else dest
+                            if fault>=50:
+                                self.assertIn('Cleanup failed',note)
+                                self.assertEqual(owned.read_bytes(),prefix)
+                            else:self.assertFalse(owned.exists())
+                            if action!='new':self.assertEqual(dest.read_bytes(),b'old destination')
+                            self.assertEqual(keep.read_bytes(),b'unrelated bytes')
+                            self.assertNotIn('Converted',note)
+
+    def test_verification_stops_on_full_count_error_or_cancel(self):
+        temp=self.root/'TXTCONV.TMP'
+        self.addCleanup(temp.unlink,missing_ok=True)
+        for mode,payload in (('H',b'\xC1'*513),('T',b'\t'*256)):
+            total=3 if mode=='H' else 8
+            for target in (1,2,total):
+                for fault in range(54,58):
+                    with self.subTest(mode=mode,target=target,fault=fault):
+                        temp.unlink(missing_ok=True)
+                        note,data=self.convert(payload,fault=fault,fail_at=target,mode=mode)
+                        self.assertEqual(data,payload)
+                        self.assertEqual(self.state,(4,4,0),note)
+                        self.assertEqual(self.verify_calls,target,note)
+                        self.assertEqual(self.write_calls,total,note)
+                        self.assertFalse(temp.exists())
+                        self.assertNotIn('Converted',note)
+
+    def test_failed_refills_never_convert_or_write_the_received_bytes(self):
+        dest=self.root/'D'/'TEXT';dest.parent.mkdir(exist_ok=True)
+        keep=self.root/'KEEP';keep.write_bytes(b'unrelated bytes')
+        paths=[dest,keep]+[parent/name for parent in (self.root,dest.parent) for name in ('TXTCONV.TMP','A2FC.BAK')]
+        for path in paths:self.addCleanup(path.unlink,missing_ok=True)
+        for action in ('inplace','overwrite','new'):
+            for mode in ('H','T','A'):
+                for size in (1,257,768):
+                    payload=b'\xC1'*size if mode=='H' else b'\t'*size if mode=='T' else (b'A'*255+b'\xC3\xA9'+b'B'*768)[:size]
+                    for offset in range(0,size,256):
+                        converted=b'A'*offset if mode=='H' else b' '*8*offset if mode=='T' else b'A'*min(offset,255)+(b'e'+b'B'*(offset-257) if offset>=257 else b'')
+                        # A failed pass never flushes its pending output or
+                        # synthesizes a '?' for an interrupted UTF-8 sequence.
+                        prefix=converted[:len(converted)//256*256]
+                        for fault in range(36,44):
+                            with self.subTest(action=action,mode=mode,size=size,offset=offset,fault=fault):
+                                for path in paths:
+                                    if path!=keep:path.unlink(missing_ok=True)
+                                if action!='new':dest.write_bytes(b'old destination')
+                                note,data=self.convert(payload,fault=fault,fail_at=offset,mode=mode,inplace=action=='inplace',overwrite=action=='overwrite')
+                                self.assertEqual(data,payload)
+                                self.assertEqual(self.state,(2,2,0),note)
+                                self.assertEqual(self.output_bytes,len(prefix),note)
+                                owned=(self.root if action=='inplace' else dest.parent)/'TXTCONV.TMP' if action!='new' else dest
+                                if fault>=40:
+                                    self.assertIn('Cleanup failed',note)
+                                    self.assertEqual(owned.read_bytes(),prefix)
+                                else:self.assertFalse(owned.exists())
+                                if action!='new':self.assertEqual(dest.read_bytes(),b'old destination')
+                                self.assertEqual(keep.read_bytes(),b'unrelated bytes')
+                                self.assertNotIn('Converted',note)
+
+    def test_expanding_conversion_stops_after_the_first_failed_write(self):
+        temp=self.root/'TXTCONV.TMP'
+        self.addCleanup(temp.unlink,missing_ok=True)
+        for fault in (44,45):
+            with self.subTest(fault=fault):
+                temp.unlink(missing_ok=True)
+                payload=b'\t'*256
+                note,data=self.convert(payload,fault=fault,mode='T')
+                self.assertEqual(data,payload)
+                self.assertEqual(self.state,(2,2,0),note)
+                self.assertEqual(self.write_calls,1,note)
+                self.assertEqual(self.output_bytes,256,note)
+                if fault==45:
+                    self.assertIn('Cleanup failed',note)
+                    self.assertEqual(temp.read_bytes(),b'')
+                else:self.assertFalse(temp.exists())
 
     def test_late_cancel_preserves_originals_before_any_rename(self):
         dest=self.root/'D'/'TEXT';dest.parent.mkdir(exist_ok=True)

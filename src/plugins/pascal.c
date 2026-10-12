@@ -69,6 +69,7 @@ static char name[16], dest[PATH_LEN + 1];
  * path of sixty-five bytes, and a block is five hundred and twelve. */
 static unsigned char back[256];
 static unsigned char made, skipped, kept, bad;
+static unsigned int previous_end;
 
 /* The ProDOS type each UCSD kind becomes. ProDOS has one for code, text and
  * data; the rest arrive untyped, which is what they are to it. */
@@ -105,7 +106,9 @@ static unsigned char copy_file(unsigned int first, unsigned int last,
     unsigned int b, n, k, part;
     for (b = first; b < last; ++b) {
         n = (b + 1 == last) ? used : 512;
-        if (!source_read(&src, b, buf)) return 0;
+        /* ESC received during the read must stop before writing this
+         * block or reading the output back. Image and AUX stay intact. */
+        if (!source_read(&src, b, buf) || stop()) return 0;
         if (verify) {
             for (k = 0; k < n; k += part) {
                 part = n - k > 256 ? 256 : n - k;
@@ -128,8 +131,21 @@ static unsigned char one(unsigned char i)
     FILE* out;
     unsigned char ok;
     unsigned int first, last, used;
-    if (!entry_at(i)) { bad = 1; return 0; }
+    /* ESC can arrive while the entry is reread. Refuse before CREATE,
+     * even for a taken name; retain earlier verified outputs. The image
+     * remains read-only and no AUX memory is touched. */
+    if (!entry_at(i) || stop()) { bad = 1; return 0; }
     first = word(ent); last = word(ent + 2); used = word(ent + 22);
+    /* This is a fresh directory read, not the bytes read_dir validated.
+     * Refuse changed bounds before CREATE or any access beyond buf[512].
+     * Skipped files also reserve their ranges; prior verified files stay.
+     * Only exclusive outputs can be written; image/AUX remain untouched. */
+    if (!ent[6] || ent[6] > 15 || first < previous_end ||
+        last <= first || last > vblocks || !used || used > 512) {
+        bad = 1;
+        return 0;
+    }
+    previous_end = last;
     set_name(ent + 7, ent[6]);
     if (!name[0] || !join(dest, other->path, name)) {
         /* An unrepresentable path is not a duplicate filename. No CREATE
@@ -171,6 +187,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     unsigned char i;
     init(api);
     made = skipped = kept = bad = 0;
+    previous_end = DIR_BLOCK + DIR_BLOCKS;
     if (pan->fs || !a.full[0] || !a.selected->name[0] || a.selected->type == 0x0F) {
         note("Select a disk image; ProDOS folder opposite.");
         return;

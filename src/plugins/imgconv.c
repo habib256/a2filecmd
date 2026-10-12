@@ -174,6 +174,16 @@ static void make_dc_header(void)
     TRACK[0x52] = 1;
 }
 
+/* Refuse an errored or cancelled source read before its bytes can be
+ * written. The source and AUX are read-only; only our exclusive output
+ * may be written or cleaned. Shared by headers, blocks and DSK halves. */
+static unsigned char read_source(void* p, unsigned int len)
+{
+    if (RF(fread)(p, 1, len, in) != len || ferror(in)) return 0;
+    if (*KBD == (KEY_ESC | 0x80)) { *STROBE = 0; return 0; }
+    return 1;
+}
+
 /* Reads ProDOS block `n` of the source into buf. A .PO, a .HDV and the
  * data of a .2MG are read straight through (the loop walks them in order);
  * a .DSK is seeked sector by sector. */
@@ -182,13 +192,13 @@ static unsigned char read_block(void)
     unsigned char i;
     long off;
     if (skind != K_DSK)
-        return RF(fread)(buf, 1, 512, in) == 512;
+        return read_source(buf, 512);
     i = (unsigned char)(n & 7) << 1;
     off = (long)(n >> 3) << 12;          /* raw DSK data always starts at zero */
     if (RF(fseek)(in, off + ((long)SECT[i] << 8), SEEK_SET)) return 0;
-    if (RF(fread)(buf, 1, 256, in) != 256) return 0;
+    if (!read_source(buf, 256)) return 0;
     if (RF(fseek)(in, off + ((long)SECT[i + 1] << 8), SEEK_SET)) return 0;
-    return RF(fread)(buf + 256, 1, 256, in) == 256;
+    return read_source(buf + 256, 256);
 }
 
 /* Write sequential destination bytes. PO/2MG consume the block already
@@ -206,7 +216,7 @@ static unsigned char write_block(void)
     for (half = 0; half < 2; ++half) {
         for (i = 0; SECT[i] != sector + half; ++i) {}
         if (RF(fseek)(in, off + ((long)i << 8), SEEK_SET) ||
-            RF(fread)(buf, 1, 256, in) != 256 ||
+            !read_source(buf, 256) ||
             RF(fwrite)(buf, 1, 256, out) != 256) return 0;
     }
     return 1;
@@ -341,7 +351,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     if (skind == K_2MG) {
         /* The track page is idle while reading the header. Its fixed
          * address also keeps these field checks small on the 6502. */
-        if (RF(fread)(TRACK, 1, 64, in) != 64 || TRACK[0] != '2' || TRACK[1] != 'I'
+        if (!read_source(TRACK, 64) || TRACK[0] != '2' || TRACK[1] != 'I'
             || TRACK[2] != 'M' || TRACK[3] != 'G' || TRACK[0x0C] != 1
             /* Both fields are 32-bit. Only format 1 and a block count
              * representable by our 16-bit loop are supported. */
@@ -365,7 +375,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     } else if (skind == K_DC) {
         /* A name of 63 at most, $0100 at +82, and whole blocks, fewer than
          * 65,536 of them, within the file; tags may follow. */
-        if (RF(fread)(TRACK, 1, 84, in) != 84 || TRACK[0] > 63 || TRACK[0x52] != 1
+        if (!read_source(TRACK, 84) || TRACK[0] > 63 || TRACK[0x52] != 1
             || TRACK[0x53] || TRACK[0x40] || TRACK[0x43] || (TRACK[0x42] & 1)) {
             what = m_dc;
             goto badsource;

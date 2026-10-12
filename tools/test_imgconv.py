@@ -9,7 +9,10 @@ from po2dsk import SECTORS
 
 HARNESS = PREFIX + r'''
 static unsigned char host_track[4096];
+static unsigned char keyboard,strobe;
 #define TRACK host_track
+#define KBD (&keyboard)
+#define STROBE (&strobe)
 #include "src/plugins/imgconv.c"
 static unsigned int calls, fail_seek;
 static int seek_file(FILE* f, long offset, int origin) {

@@ -20,9 +20,11 @@ static const char *input_path, *destination;
 static char mapped[256], input[17], note_text[80], full[81], other_full[81];
 static FILE* source_stream;
 static unsigned int mode, source_closes, attempts, step;
-static unsigned int file_opens,creates,questions,dir_closes;
+static unsigned int file_opens,creates,questions,dir_closes,dir_opens;
 static unsigned int file_closes,live_streams;
 static unsigned char complete_log;
+static unsigned char zero_log,failed_chunk;
+static unsigned long fail_at,output_bytes;
 static unsigned char directory_error;
 static unsigned char disk_mode;
 static unsigned long actual_size;
@@ -43,14 +45,17 @@ static FILE* open_file(const char* p,const char* m) {
 static int close_file(FILE* f) {
     unsigned char failed=0;
     ++file_closes;if(!live_streams)abort();--live_streams;
-    if(f==out && (mode==33 || mode==37)){cancelled=1;failed=mode==37;}
-    if(f==logfile && complete_log && (mode==36 || mode==39 || mode>=41)){cancelled=1;failed=mode==39;}
+    if(f==logfile && file_closes==1 && (mode==50 || mode==52)){cancelled=1;failed=mode==52;}
+    if(f==out && (mode==33 || mode==37 || mode==53 || mode==54)){cancelled=1;failed=mode==37 || mode==54;}
+    if(f==logfile && complete_log && (mode==36 || mode==39 || (mode>=41 && mode<=43))){cancelled=1;failed=mode==39;}
     if(f==logfile && mode==43 && !complete_log && cancelled)failed=1;
+    if(f==logfile && zero_log && (mode==56 || mode==58)){cancelled=1;failed=mode==58;}
     if(f==source_stream) {
         source_stream=0;
         ++source_closes;
         failed=(mode==1 || mode==2) && source_closes==1;
         if(mode==34 || mode==38){cancelled=1;failed=mode==38;}
+        if(failed_chunk && (mode==59 || mode==60)){cancelled=1;failed=mode==60;}
     }
     if(f==errored)errored=0;
     if(fclose(f))return EOF;
@@ -64,6 +69,7 @@ static size_t read_file(void* p,size_t s,size_t n,FILE* f) {
         return 0;
     }
     {long at=ftell(f);size_t got=fread(p,s,n,f);
+    if(mode>=55 && mode<=60 && f==source_stream && (unsigned long)at==fail_at && (unsigned long)at<actual_size){errored=f;failed_chunk=1;++attempts;}
     if(f==source_stream && n>1 && !at &&
        ((mode==6 && ++attempts==1) || mode==7 || mode==12))errored=f;
     return got;}
@@ -72,11 +78,14 @@ static size_t write_file(const void* p,size_t s,size_t n,FILE* f){
     long at=ftell(f);size_t got=fwrite(p,s,n,f);
     if(f==logfile){
         complete_log=n>=9 && !memcmp(p,"COMPLETE ",9);
+        zero_log=n>=5 && !memcmp(p,"ZERO ",5);
+        if(zero_log && (mode==55 || mode==57)){cancelled=1;if(mode==57)errored=f;}
         if(mode==42 && n>=11 && !memcmp(p,"INCOMPLETE:",11))errored=f;
         if(complete_log && (mode==35 || mode==40)){
             cancelled=1;if(mode==40)errored=f;
         }
     }
+    if(f==out)output_bytes+=s*n;
     if((f==out && ((mode==8 && !at) || (mode==9 && at+n==actual_size))) ||
        (f==logfile && ((mode==10 && !at) ||
         (mode==11 && n>=9 && !memcmp(p,"COMPLETE ",9)) ||
@@ -89,6 +98,7 @@ static unsigned char mock_mli(unsigned char cmd,void* p) {
         struct Block* b=p;size_t n;
         if(!disk_mode || b->unit!=0x60)abort();
         if(mode==24)return 0x27;
+        if(mode>=55 && mode<=58 && out && (unsigned long)b->block*512==fail_at){++attempts;return 0x27;}
         f=fopen(input_path,"rb");if(!f)return 0x27;
         if(fseek(f,(unsigned long)b->block*512,SEEK_SET)){fclose(f);return 0x27;}
         n=fread(b->buffer,1,512,f);fclose(f);return n==512?0:0x27;
@@ -112,20 +122,28 @@ static unsigned char mock_mli(unsigned char cmd,void* p) {
     }
     abort();
 }
-static unsigned char open_dir(const char* p){(void)p;step=0;return mode!=26;}
+static unsigned char open_dir(const char* p){(void)p;++dir_opens;step=0;return mode!=26 && !(mode==47 && dir_opens==2);}
 static unsigned char next_entry(void){
     if(mode==27){directory_error=0x27;return 0;}
     if(step++)return 0;
-    if(mode==31)directory_error=0x27;
-    strcpy(directory_entry.name,mode==28?"OTHER":"DATA");directory_entry.size=actual_size;return 1;
+    if(mode==31 || (mode==45 && dir_opens==2))directory_error=0x27;
+    strcpy(directory_entry.name,mode==28 || (mode==48 && dir_opens==2)?"OTHER":"DATA");
+    {FILE* f=fopen(input_path,"rb");fseek(f,0,SEEK_END);directory_entry.size=ftell(f);fclose(f);}
+    return 1;
 }
-static unsigned char close_dir(void){++dir_closes;return mode==29?0x27:mode==30?1:directory_error;}
+static unsigned char close_dir(void){++dir_closes;if(mode==49 && dir_opens==2)cancelled=1;return mode==29 || (mode==46 && dir_opens==2)?0x27:mode==30?1:directory_error;}
 static char choose(void){return disk_mode?'V':'F';}
 static void show(const char* s){(void)s;}
 static unsigned char yes(const char* s){
     ++questions;
+    if(mode==51)cancelled=1;
     FILE* f;(void)s;
     if(mode==3){f=fopen(input_path,"ab");fputs("added tail",f);fclose(f);}
+    if(mode==44){
+        unsigned char* bytes=malloc(actual_size?actual_size:1);
+        f=fopen(input_path,"rb");if(fread(bytes,1,actual_size,f)!=actual_size)abort();fclose(f);
+        f=fopen(input_path,"wb");fwrite(bytes,1,actual_size/2,f);fclose(f);free(bytes);
+    }
     return 1;
 }
 static unsigned char prompt(const char* s,const char* initial,unsigned char hex)
@@ -137,7 +155,7 @@ int main(int argc,char** argv) {
     static struct A2fcApi api;static struct Panel panels[2];static struct Entry selected;
     static unsigned char active,scratch[512];FILE* f;
     (void)argc;input_path=argv[1];destination=argv[2];mode=atoi(argv[3]);
-    disk_mode=argc>4;
+    disk_mode=argc>4 && !strcmp(argv[4],"disk");fail_at=argc>5?strtoul(argv[5],0,10):0;
     f=fopen(input_path,"rb");if(!f)return 2;
     fseek(f,0,SEEK_END);actual_size=ftell(f);fclose(f);
     strcpy(panels[0].path,"/V");strcpy(panels[1].path,"/D");
@@ -151,6 +169,7 @@ int main(int argc,char** argv) {
     api.dir_open=open_dir;api.dir_next=next_entry;api.dir_close=(void (*)(void))close_dir;
     api.fopen=open_file;api.fclose=close_file;api.fread=read_file;api.fwrite=write_file;api.fseek=fseek;
     plugin_entry(&api);puts(note_text);
+    if(mode>=55)fprintf(stderr,"DATA %lu %u\n",output_bytes,attempts);
     if(mode>=26)fprintf(stderr,"STATE %u %u %u %u\n",file_opens,creates,questions,dir_closes);
     if(mode>=32)fprintf(stderr,"STREAMS %u %u %u\n",file_opens,file_closes,live_streams);
     return 0;
@@ -204,10 +223,107 @@ class RescueClose(unittest.TestCase):
                 self.assertIn(b'COMPLETE ', log)
                 self.assertEqual(recovered, bytes(512) + payload[512:] if mode == 5 else payload)
 
+    def test_cancel_during_zero_journal_never_writes_the_zero_filled_chunk(self):
+        for disk,sizes in ((False,(1,513,1536)),(True,(1536,4096))):
+            for size in sizes:
+                payload=bytearray((i%250)+1 for i in range(size))
+                if disk:payload[1028]=0xF1;payload[1065:1067]=(size//512).to_bytes(2,'little')
+                for offset in range(0,size,512):
+                    for mode in range(55,59 if disk else 61):
+                        with self.subTest(disk=disk,size=size,offset=offset,mode=mode), tempfile.TemporaryDirectory(prefix='rescue-zero-cancel-') as directory:
+                            folder=Path(directory);source=folder/'DATA';source.write_bytes(payload)
+                            keep=folder/'KEEP';keep.write_bytes(b'existing destination bytes')
+                            run=subprocess.run([self.exe,source,folder,str(mode),'disk' if disk else 'file',str(offset)],text=True,capture_output=True,check=True,timeout=10)
+                            self.assertEqual(source.read_bytes(),payload)
+                            self.assertEqual(keep.read_bytes(),b'existing destination bytes')
+                            recovered=folder/('RECOVER.P01' if disk else 'RECOVER.REC')
+                            self.assertEqual(recovered.read_bytes(),payload[:offset],run.stdout)
+                            data=next(l for l in run.stderr.splitlines() if l.startswith('DATA ')).split()
+                            self.assertEqual(tuple(map(int,data[1:])),(offset,30),run.stdout)
+                            log=(folder/'RECOVER.LOG').read_bytes()
+                            self.assertNotIn(b'COMPLETE ',log)
+                            self.assertTrue(log.endswith(b'INCOMPLETE: cancelled, source changed, or I/O error. Keep partial output.\r'))
+                            if mode!=60:self.assertIn(('ZERO block %d, offset %d, bytes %d\r'%(offset//512,offset,min(512,size-offset))).encode(),log)
+                            self.assertIn('incomplete at %d bytes'%offset,run.stdout)
+                            streams=next(l for l in run.stderr.splitlines() if l.startswith('STREAMS ')).split()
+                            self.assertEqual(streams[1],streams[2]);self.assertEqual(streams[3],'0')
+
+    def test_cancel_before_output_create_preserves_destinations(self):
+        for disk,size in ((False,0),(False,1),(False,1600),(True,3*512),(True,280*512)):
+            for mode in (50,51,52):
+                for collision in (False,True):
+                    with self.subTest(disk=disk,size=size,mode=mode,collision=collision), tempfile.TemporaryDirectory(prefix='rescue-precreate-') as directory:
+                        folder=Path(directory);source=folder/'DATA';sentinel=folder/'KEEP'
+                        payload=bytearray(i%251 for i in range(size))
+                        if disk:payload[1028]=0xF1;payload[1065:1067]=(size//512).to_bytes(2,'little')
+                        source.write_bytes(payload);sentinel.write_bytes(b'existing destination bytes')
+                        output=folder/('RECOVER.P01' if disk else 'RECOVER.REC')
+                        if collision:output.write_bytes(b'existing recovered bytes')
+                        args=[self.exe,source,folder,str(mode)]+(['disk'] if disk else [])
+                        run=subprocess.run(args,text=True,capture_output=True,check=True,timeout=10)
+                        self.assertEqual(source.read_bytes(),payload)
+                        self.assertEqual(sentinel.read_bytes(),b'existing destination bytes')
+                        state=next(l for l in run.stderr.splitlines() if l.startswith('STATE ')).split()
+                        self.assertEqual(int(state[2]),0 if mode==51 else 1)
+                        if collision:self.assertEqual(output.read_bytes(),b'existing recovered bytes')
+                        else:self.assertFalse(output.exists())
+                        log=folder/'RECOVER.LOG'
+                        if mode==51:
+                            self.assertFalse(log.exists())
+                            self.assertIn('stopped',run.stdout.lower())
+                        else:
+                            self.assertIn(b'INCOMPLETE:',log.read_bytes())
+                            self.assertNotIn(b'COMPLETE ',log.read_bytes())
+                        streams=next(l for l in run.stderr.splitlines() if l.startswith('STREAMS ')).split()
+                        self.assertEqual(streams[1],streams[2]);self.assertEqual(streams[3],'0')
+
+    def test_cancel_at_raw_part_close_never_creates_next_part(self):
+        size=8192000+512
+        payload=bytearray((bytes(range(256))*((size+255)//256))[:size])
+        payload[1028]=0xF1;payload[1065:1067]=(size//512).to_bytes(2,'little')
+        for mode in (53,54):
+            for collision in (False,True):
+                with self.subTest(mode=mode,collision=collision), tempfile.TemporaryDirectory(prefix='rescue-part-cancel-') as directory:
+                    folder=Path(directory);source=folder/'DATA';source.write_bytes(payload)
+                    next_part=folder/'RECOVER.P02'
+                    if collision:next_part.write_bytes(b'existing second part')
+                    run=subprocess.run([self.exe,source,folder,str(mode),'disk'],text=True,capture_output=True,check=True,timeout=10)
+                    state=next(l for l in run.stderr.splitlines() if l.startswith('STATE ')).split()
+                    self.assertEqual(int(state[2]),2)
+                    self.assertEqual(source.read_bytes(),payload)
+                    self.assertEqual((folder/'RECOVER.P01').read_bytes(),payload[:8192000])
+                    if collision:self.assertEqual(next_part.read_bytes(),b'existing second part')
+                    else:self.assertFalse(next_part.exists())
+                    self.assertIn(b'INCOMPLETE:',(folder/'RECOVER.LOG').read_bytes())
+                    self.assertNotIn(b'COMPLETE ',(folder/'RECOVER.LOG').read_bytes())
+                    self.assertIn('8192000',run.stdout)
+                    streams=next(l for l in run.stderr.splitlines() if l.startswith('STREAMS ')).split()
+                    self.assertEqual(streams[1],streams[2]);self.assertEqual(streams[3],'0')
+
     def test_full_count_read_errors_are_retried_and_logged(self):
         for mode in (6,7):
             for size in (100,1600):
                 with self.subTest(mode=mode,size=size):self.run_case(mode,size)
+
+    def test_shrinking_or_uncertain_source_size_never_logs_complete(self):
+        for size in (0,1,100,1600):
+            for mode in range(44,50):
+                if not size and mode==44:continue
+                with self.subTest(size=size,mode=mode), tempfile.TemporaryDirectory(prefix='rescue-final-size-') as directory:
+                    folder=Path(directory);source=folder/'DATA'
+                    payload=bytes(i%251 for i in range(size));source.write_bytes(payload)
+                    sentinel=folder/'KEEP';sentinel.write_bytes(b'original destination bytes')
+                    run=subprocess.run([self.exe,source,folder,str(mode)],text=True,capture_output=True,check=True,timeout=10)
+                    self.assertIn('incomplete',run.stdout)
+                    self.assertNotIn(b'COMPLETE ',(folder/'RECOVER.LOG').read_bytes())
+                    self.assertTrue((folder/'RECOVER.LOG').read_bytes().endswith(b'INCOMPLETE: cancelled, source changed, or I/O error. Keep partial output.\r'))
+                    self.assertEqual(source.read_bytes(),payload[:size//2] if mode==44 else payload)
+                    good=(size//2//512)*512 if mode==44 else size
+                    self.assertEqual((folder/'RECOVER.REC').read_bytes(),payload[:good]+bytes(size-good))
+                    self.assertEqual(sentinel.read_bytes(),b'original destination bytes')
+                    streams=next(line for line in run.stderr.splitlines() if line.startswith('STREAMS '))
+                    opens,closes,live=map(int,streams.split()[1:])
+                    self.assertEqual(opens,closes);self.assertEqual(live,0)
 
     def test_source_metadata_must_allow_standard_file_reads(self):
         for mode in range(13,24):

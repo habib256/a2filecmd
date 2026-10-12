@@ -24,6 +24,7 @@
  * A big overlay: the core rereads the panels on return. The names of the
  * following files are listed before any is read: the directory reader and
  * the file reader share the core's 512-byte buffer. */
+#define UTIL_STUBS
 #define UTIL_CREATE
 #define UTIL_DISCARD
 #include "util.h"
@@ -76,7 +77,7 @@ extern unsigned int bs_sum;
 static FILE* in;
 static FILE* out;
 static unsigned int have, at;
-static unsigned char eof, was_cr;
+static unsigned char was_cr;
 static char line[81];                   /* the line read, blanks and high bits off */
 static unsigned char llen;
 /* next_line strips bit 7 before every alphabet lookup. */
@@ -105,7 +106,10 @@ static unsigned char next_line(void)
         if (at == have) {
             have = RF(fread)(buf, 1, 512, in);
             at = 0;
-            if (!have) { eof = 1; line[llen] = 0; return started; }
+            /* Do not decode bytes from a flagged refill, even when the
+             * requested count was returned. Source and AUX stay intact. */
+            if (ferror(in)) return 0;
+            if (!have) { line[llen] = 0; return started; }
         }
         c = buf[at++] & 0x7F;
         if (c == 10 && was_cr) { was_cr = 0; continue; }
@@ -190,11 +194,19 @@ static unsigned char chunk(void)
     seglen = (unsigned int)le24(attrs + 21);
     if (!seglen || seglen > SEGMENT || attrs[23]) return 0;
     if (le24(attrs + 3) != written || segs == MAXSEGS) { why = "Parts out of order or missing"; return 0; }
+    /* MAXSEGS bounds written below 3 MB: this widened sum cannot wrap.
+     * Refuse an oversized chunk before CREATE or appending its bytes. */
+    if (written + seglen > le24(attrs)) return 0;
+    /* next_line checked each refill's stream error. Poll ESC before CREATE
+     * or appending to our exclusive output. Sources, existing destination
+     * files and auxiliary memory remain untouched. */
+    if (stop()) { why = "Stopped"; return 0; }
+    /* Every chunk must describe a plain file, including later parts. */
+    if (attrs[7] == 0x0F || attrs[10] == 5 || attrs[10] == 0x0D) { why = "Not a plain file"; return 0; }
     if (!created) {
         total = le24(attrs);
         type = attrs[7];
         aux = attrs[8] | (unsigned int)attrs[9] << 8;
-        if (type == 0x0F || attrs[10] == 5 || attrs[10] == 0x0D) { why = "Not a plain file"; return 0; }
         RF(strcpy)(name, fname);
         if (!join(path, other->path, name)) { why = "Path too long"; return 0; }
         if (newfile(path, type, aux, 1)) {
@@ -228,6 +240,9 @@ static unsigned char chunk(void)
             bs_sum = sum0;
             bs_crc(bytes);
         }
+        /* A refill can receive ESC while returning a complete text line.
+         * Refuse before appending its bytes to our exclusive output. */
+        if (stop()) { why = "Stopped"; return 0; }
         if (RF(fwrite)(bytes, 1, k, out) != k) { why = "Write"; return 0; }
         if (!(++lines & 15)) a.progress_bar(name, written + seglen - left + k, total);
         if (stop()) { why = "Stopped"; return 0; }
@@ -311,7 +326,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
             ok = 0;
             break;
         }
-        have = at = eof = was_cr = 0;
+        have = at = was_cr = 0;
         found = 0;
         while (ok && (!created || written != total) && next_line()) {
             if (llen == 18 && !RF(strcmp)(line, "FiLeStArTfIlEsTaRt")) {

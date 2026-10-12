@@ -135,11 +135,16 @@ static unsigned char ucsd_kind(unsigned char type)
  * order, so the last one ends last. */
 static unsigned char find_tail(void)
 {
+    unsigned int validated_end;
     tail = DIR_BLOCK + DIR_BLOCKS;
     if (!count) return 1;
+    /* read_dir leaves the last validated entry in ent. Its reread must
+     * not move the allocation boundary onto live data or the directory.
+     * Refuse before any image write; sources and AUX remain untouched. */
+    validated_end = word(ent + 2);
     if (!entry_at(count)) return 0;
     tail = word(ent + 2);
-    return tail <= vblocks;
+    return tail == validated_end && tail <= vblocks;
 }
 
 /* Do `blocks` more blocks fit between the last file and the end of the
@@ -199,6 +204,16 @@ static unsigned char put_block(unsigned int b)
            !memcmp(work, buf, 512);
 }
 
+/* The fresh volume header must still describe the directory and extent
+ * validated before copying. A matching count alone is insufficient.
+ * MAIN only: refuse publication, leaving sources and AUX untouched. */
+static unsigned char same_volume(void)
+{
+    return !word(work) && word(work + 2) == DIR_BLOCK + DIR_BLOCKS &&
+           !word(work + 4) && word(work + 14) == vblocks &&
+           word(work + 16) == count;
+}
+
 /* Patch n bytes of block b at `at`, optionally raising the file count, and
  * read it back. A write that lands WRONG has already destroyed what was
  * there, so the old bytes go back and the block is written again: claiming
@@ -208,7 +223,11 @@ static unsigned char patch(unsigned int b, unsigned int at,
                            const unsigned char* from, unsigned char n,
                            unsigned char with_count)
 {
-    if (!source_read(&src, b, work)) return 0;
+    /* A read can deliver ESC after one()'s last poll. Stop before each
+     * catalogue write, including a split entry and the final count. Only
+     * unreferenced tail data/entry bytes may have been written so far. */
+    if (!source_read(&src, b, work) || stop()) return 0;
+    if (with_count && !same_volume()) return 0;
     RF(memcpy)(undo, work + at, n);
     undo[ENTRY] = work[16];
     undo[ENTRY + 1] = work[17];
@@ -254,6 +273,14 @@ static unsigned char commit(unsigned int first, unsigned int last,
     newent[25] = dhi;
     part = 512 - k;
     if (part > ENTRY) part = ENTRY;
+    /* A changed count makes our reserved index a potentially live entry.
+     * Check the header before touching a separate block or split entry;
+     * patch() checks it again in the actual count-bearing block. Writes
+     * stay in the confirmed image, with no source or AUX modification. */
+    if (blk != DIR_BLOCK || part < ENTRY) {
+        if (!source_read(&src, DIR_BLOCK, work) || stop() ||
+            !same_volume()) return 0;
+    }
     if (part < ENTRY) {                         /* the tail of the entry, first */
         r = patch(blk + 1, 0, newent + part, (unsigned char)(ENTRY - part), 0);
         if (r != 1) return r;
@@ -322,7 +349,8 @@ static unsigned char one(const char* name, unsigned char type, unsigned long siz
     i = commit(first, first + blocks, used, ucsd_kind(type));
     if (i != 1) {
         note(i == 2 ? "Directory write failed; check the volume."
-                    : "Write failed; the volume is whole.");
+                    : stop() ? "Stopped; the volume is whole."
+                             : "Write failed; the volume is whole.");
         return 0;
     }
     tail = first + blocks;

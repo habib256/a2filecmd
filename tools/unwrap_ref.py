@@ -78,13 +78,14 @@ def apple_single(data):
     resources_seen = False
     name_seen = False
     finder_seen = False
+    legacy_seen = False
     ptype = paux = 0
     for i in range(n):
         o = 26 + 12 * i
         if o + 12 > len(data):
             return 'broken'
         eid, at, ln = struct.unpack('>III', data[o:o + 12])
-        if (ln and at < end) or at > len(data) or ln > len(data) - at:
+        if not eid or (ln and at < end) or at > len(data) or ln > len(data) - at:
             return 'broken'
         if eid == 11:
             if ln < 8 or prodos_seen:
@@ -111,7 +112,10 @@ def apple_single(data):
                 name = prodos_name(data[at:at + min(ln, 63)])
         elif eid == 11 and ln >= 8:
             ptype, paux, typed = data[at + 3], data[at + 6] << 8 | data[at + 7], 2
-        elif eid == 7 and v1 and ln >= 16 and data[8:14] == b'ProDOS':
+        elif eid == 7 and v1 and data[8:14] == b'ProDOS':
+            if ln < 16 or legacy_seen:
+                return 'broken'
+            legacy_seen = True
             ptype, paux, typed = data[at + 11], data[at + 14] << 8 | data[at + 15], 2
         elif eid == 9 and ln >= 8 and typed != 2:
             ptype, paux = hfs_type(data[at:at + 8])
