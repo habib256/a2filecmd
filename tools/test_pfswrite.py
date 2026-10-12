@@ -2,6 +2,7 @@
 import ctypes,hashlib,os,shutil,subprocess,tempfile,unittest
 from pathlib import Path
 from test_retrotext import HARNESS,ROOT
+CORPUS = Path(os.environ.get('A2FC_PFS_CORPUS','/tmp/a2fc-pfs-corpus'))
 H=HARNESS.replace('e.size=strtoul(argv[4],0,10);','e.size=strtoul(argv[4],0,10);e.type=atoi(argv[5]);e.aux=atoi(argv[6]);').replace('if(fault==1)return NULL;','if(fault==1 || (fault==7 && opens==2))return NULL;').replace('(fault==5 && opens==2)','(fault==5 && opens==2)||(fault==6 && reads==5)')
 
 def pfs(text=b'Hello\r'):
@@ -9,7 +10,7 @@ def pfs(text=b'Hello\r'):
 
 def originals():
     from corpus_read import images,files
-    root=Path(os.environ.get('A2FC_PFS_CORPUS','/tmp/a2fc-pfs-corpus'));seen=set()
+    root=CORPUS;seen=set()
     for p in sorted((root/'images').rglob('*')):
         if not p.is_file() or p.suffix.lower() not in ('.dsk','.po','.zip'):continue
         for member,data in images(p):
@@ -38,6 +39,7 @@ class PfsWrite(unittest.TestCase):
         rows,_,_=self.run_file(pfs(b'Hello\r\xc1\x81\xe2\x81\r\x09X\x0cY\x80\r'))
         self.assertEqual([r for r in rows if r],['Hello','A^Ab^A','^IX^LY^@'])
     def test_real_documents(self):
+        if not CORPUS.exists():self.skipTest('local PFS corpus not installed')
         docs=list(originals());self.assertEqual(len(docs),8)
         for _,_,n,d in docs:
             rows,_,_=self.run_file(d);self.assertTrue(any(rows),n)

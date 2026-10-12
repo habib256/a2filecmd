@@ -2,6 +2,7 @@
 import ctypes,hashlib,os,shutil,subprocess,tempfile,unittest
 from pathlib import Path
 from test_retrotext import HARNESS,ROOT
+from test_pfswrite import CORPUS
 H=HARNESS.replace('e.size=strtoul(argv[4],0,10);','e.size=strtoul(argv[4],0,10);e.type=atoi(argv[5]);e.aux=atoi(argv[6]);').replace('api.fopen=opn;','api.fseek=seek_;api.fopen=opn;').replace('if(fault==1)return NULL;','if(fault==1 || (fault==7 && opens==2))return NULL;').replace('int main(int argc,char**argv){',r'''
 static int seeks;
 static int seek_(FILE* f,long o,int w){++seeks;if(fault==6 || (fault==8 && seeks==3))return -1;return fseek(f,o,w);}
@@ -30,7 +31,8 @@ def database(values=None,labels=None):
 
 def real_files():
     from corpus_read import files
-    root=Path(os.environ.get('A2FC_PFS_CORPUS','/tmp/a2fc-pfs-corpus'))/'images/productivity/integrated/pfs'
+    if not CORPUS.exists():return
+    root=CORPUS/'images/productivity/integrated/pfs'
     for path in (root/'PFS_REPORT_hr.dsk',root/'PFS Plan.po'):
         _,entries=files(path.read_bytes())
         for n,t,a,d in entries:
@@ -61,6 +63,7 @@ class PfsFile(unittest.TestCase):
         d=database([[(6,0,b'A'*120+b'\x015Street\x01?City'),(8,2,b'$10.00'),(1,5,b'Other\x02')]])
         rows,_,_=self.run_file(d);text='\n'.join(rows);self.assertIn('  Street',text);self.assertIn('  City',text);self.assertIn('[1,5] Other^B',text)
     def test_real_records_literal_fields_and_order(self):
+        if not CORPUS.exists():self.skipTest('local PFS corpus not installed')
         originals=list(real_files());self.assertEqual(len(originals),2)
         for n,d in originals:
             rows,_,_=self.run_file(d);headers=[r for r in rows if r.startswith('Record ')]
@@ -94,7 +97,8 @@ class PfsFile(unittest.TestCase):
             src=self.p/'source';src.write_bytes(d);r=subprocess.run([str(self.exe),str(src),str(fault),'','0','22','1'],check=True,capture_output=True,text=True);self.assertIn('error',r.stderr);self.assertEqual(src.read_bytes(),d)
         for size in (0,1,999999):self.run_file(d,size=size)
         for typ,aux in ((6,1),(22,2),(22,4),(22,22)):self.run_file(d,typ=typ,aux=aux,refused=True)
-        rows,counts,_=self.run_file(next(d for n,d in real_files() if n=='/COSTFILE.PFS'),keys='E');self.assertTrue(any(rows));self.assertEqual(counts,(2,2))
+        d=next(d for n,d in real_files() if n=='/COSTFILE.PFS') if CORPUS.exists() else database([[(6,0,b'Alice')]]*30)
+        rows,counts,_=self.run_file(d,keys='E');self.assertTrue(any(rows));self.assertEqual(counts,(2,2))
     def test_actual_identifier_routes_file_only(self):
         from corpus_census import C_SOURCE
         source=self.p/'ident.c';source.write_text(C_SOURCE);libpath=self.p/'ident.so'

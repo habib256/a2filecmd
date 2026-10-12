@@ -2,11 +2,12 @@
 import ctypes,os,shutil,subprocess,tempfile,unittest
 from pathlib import Path
 from test_retrotext import ROOT
-from test_pfswrite import H
+from test_pfswrite import H,CORPUS
 
 def originals():
  from corpus_read import files
- root=Path(os.environ.get('A2FC_PFS_CORPUS','/tmp/a2fc-pfs-corpus'))/'images/productivity/integrated/pfs/PFS Plan.po'
+ if not CORPUS.exists():return []
+ root=CORPUS/'images/productivity/integrated/pfs/PFS Plan.po'
  return [(n,d) for n,t,a,d in files(root.read_bytes())[1] if t==22 and a==4]
 
 def sheet():
@@ -27,6 +28,7 @@ class PfsPlan(unittest.TestCase):
         else:self.assertEqual(note,'',r.stderr)
         return rows,(int(op),int(cl)),note
     def test_real_sheets(self):
+        if not CORPUS.exists():self.skipTest('local PFS corpus not installed')
         docs=originals();self.assertEqual(len(docs),6)
         for n,d in docs:
             rows,_,_=self.run_file(d);self.assertTrue(any(rows),n)
@@ -53,7 +55,7 @@ class PfsPlan(unittest.TestCase):
         for value in (b'\xa0\x01\0\0\0\0',b'\xa0'+bytes(4)+b'\x20',bytes(6),b'\x12'+bytes(4)+b'\x20'):
             d=bytearray(good);d[2048:2054]=value;self.run_file(bytes(d),refused=True)
     def test_io_stale_metadata_cancel(self):
-        d=dict(originals())['/COSTS.PFS']
+        d=dict(originals())['/COSTS.PFS'] if CORPUS.exists() else sheet()
         for fault in range(1,8):
             src=self.p/'source';src.write_bytes(d);r=subprocess.run([str(self.exe),str(src),str(fault),'','0','22','4'],check=True,capture_output=True,text=True);self.assertIn('error',r.stderr);self.assertEqual(src.read_bytes(),d)
             if fault in (1,2,3,6,7):self.assertNotIn('|R1',r.stdout)
