@@ -45,12 +45,12 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api);
 struct PluginHeader {
     unsigned int signature; unsigned char flags;
     void __fastcall__ (*entry)(const struct A2fcApi*);
-    unsigned char r0, r1, r2; char desc[52];
+    unsigned char r0, r1, r2; char desc[28];
 };
 #pragma rodata-name (push, "OVLHDR")
 const struct PluginHeader __plugin_header = {
     PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry, 0, 0, 0,
-    "AppleWorks data bases and spreadsheets ($19, $1B)"
+    "AppleWorks bases / sheets"
 };
 #pragma rodata-name (pop)
 
@@ -585,9 +585,9 @@ static void scroll(unsigned char right)
 /* -- the entry --------------------------------------------------------------- */
 
 static const char m_rderr[] = "Read error.";
-static const char k_db[] = "SPC Next,B Prev,R First,TAB More,ESC";
-static const char k_ss[] = "SPC Page,B Back,<> Cols,F Cells,ESC";
-static const char k_sf[] = "SPC Page,B Back,F Grid,ESC";
+static const char k_db[] = "SPC Next,B Prev,R/L Ends,TAB More,ESC";
+static const char k_ss[] = "SPC/B Page,L Known,<> Cols,F,ESC";
+static const char k_sf[] = "SPC/B Page,L Known,F Grid,ESC";
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api)
 {
@@ -661,6 +661,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         last = type == 0x19 ? nrecs : known;
         if (key == KEY_ESC || (key | 0x20) == 'q') break;
         if ((key | 0x20) == 'r') { k = 0; vcol = 0; }
+        if ((key | 0x20) == 'l') k = last - 1; /* furthest indexed page/record */
         if ((key == ' ' || key == KEY_RETURN || key == KEY_DOWN
              || (!grid && key == KEY_RIGHT)) && k + 1 < last) ++k;
         if (((key | 0x20) == 'b' || key == KEY_UP

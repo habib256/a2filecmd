@@ -80,6 +80,8 @@ def main():
         'WORK/PLAIN.BIN#062000': bytes(8192),
     }
     real = samples()
+    files['WORK/IMPORT#060000']=window
+    files['WORK/BADIMPORT#060000']=window[:-1]
     for name, data in real.items():
         files['WORK/%s#F80385' % name] = data
     pictures = [('FULL', full), ('WINDOW', window)] + sorted(real.items())
@@ -93,11 +95,33 @@ def main():
             s.select('WORK'); s.key(RET)
             s.wait(lambda: s.has('/WORKHD/WORK'), 'WORK'); p.stable()
 
+            if '--imports-only' in sys.argv:
+                volume=Path(p.hdv).read_bytes();floor=s.sym['__HIMEM__']-s.sym['__STACKSIZE__'];p.poke(floor,b'\xa5'*8)
+                want_aux,want_main=ref.screen(window)
+                for key in (RET,b'I'):
+                    s.select('IMPORT');s.ram_occupied();before=p.peek(0x0800,0xb800,'aux');s.key(key)
+                    s.wait(lambda:s.has('ALL /RAM files will be LOST'),'Arlequin BIN consent',60)
+                    s.ok('Arlequin BIN waits before AUX write '+repr(key),p.peek(0x0800,0xb800,'aux')==before)
+                    s.key(b'N');p.stable();s.ok('Arlequin BIN refusal preserves RAM '+repr(key),p.peek(0x0800,0xb800,'aux')==before)
+                    s.select('IMPORT');s.key(key);s.allow_aux()
+                    s.wait(lambda:p.peek(0x2000,8192)==want_main and p.peek(0x2000,8192,'aux')==want_aux,'Arlequin BIN exact planes',90)
+                    s.ok('Arlequin BIN MAIN pixels '+repr(key),p.peek(0x2000,8192)==want_main)
+                    s.ok('Arlequin BIN AUX pixels '+repr(key),p.peek(0x2000,8192,'aux')==want_aux)
+                    s.key(ESC);s.wait(lambda:s.has('! More'),'Arlequin BIN exit',60)
+                    s.ok('Arlequin BIN rebuilds empty RAM '+repr(key),s.ram_files()==0)
+                    before=p.peek(0x0800,0xb800,'aux');s.select('BADIMPORT');s.key(key)
+                    s.wait(lambda:s.has('Picture truncated.'),'Arlequin BIN truncated stream',60)
+                    s.ok('Arlequin BIN truncation rejected '+repr(key),True)
+                    s.ok('Arlequin BIN malformed input preserves AUX '+repr(key),p.peek(0x0800,0xb800,'aux')==before)
+                s.ok('Arlequin BIN stack floor preserved',p.peek(floor,8)==b'\xa5'*8)
+                p.sync_disks();s.ok('Arlequin BIN source volume preserved',Path(p.hdv).read_bytes()==volume)
+                return ok_all(s,'arlequin imports')
+
             # 1. Les refus : ni $F8, ni signature, ni flux entier -- et AUX
             #    (ou vit /RAM) intacte apres chacun.
             aux_before = bytes(p.peek(0x0800, 0xB800, 'aux'))
-            for name, want in (('PLAIN.BIN', 'Not an Arlequin $F8 picture.'),
-                               ('NOTGS', 'Not an Arlequin $F8 picture.'),
+            for name, want in (('PLAIN.BIN', 'Not an Arlequin picture.'),
+                               ('NOTGS', 'Not an Arlequin picture.'),
                                ('CUT', 'Picture truncated.')):
                 s.select(name, 0); p.stable()
                 menu_run(s, p, 'ARLEQUIN')

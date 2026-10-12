@@ -6,6 +6,7 @@ arithmetic. These tests pin that arithmetic against the Apple II layout: the
 three thirds of eight rows $80 apart, the even columns in the auxiliary
 bank, the low nibble above the high one.
 """
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -13,9 +14,16 @@ from pathlib import Path
 from test_six_plugins import PREFIX, ROOT
 
 HARNESS = PREFIX + r'''
-unsigned char host_main[1024], host_aux[1024], host_stage[2049];
+unsigned char host_main[1024], host_aux[1024], host_stage[3841];
 unsigned char host_bank, host_shown, host_text, host_alt, host_altchar;
+static unsigned char fault;
+static int mock_error(FILE* f){return fault==2 || fault==4 || ferror(f);}
+#define ferror mock_error
 #include "src/plugins/dgrview.c"
+#undef ferror
+static FILE* mock_open(const char* p,const char* m){if(strcmp(m,"rb"))abort();return fault==1?NULL:fopen(p,m);}
+static size_t mock_read(void* p,size_t z,size_t n,FILE* f){size_t got=fread(p,z,n,f);return fault==4?got/2:got;}
+static int mock_close(FILE* f){return fclose(f) || fault==3?EOF:0;}
 
 static char host_input[17];
 static char host_note[80], host_reselect[17];
@@ -43,6 +51,7 @@ int main(int argc, char** argv)
     host_note[0] = 0;
     memset(host_stage, 0xA5, sizeof(host_stage)); /* stale previous file */
     if (argc > 6) keys = argv[6];
+    if (argc > 7) fault=atoi(argv[7]);
     host_altchar = 0x80;                     /* the panels' alternate set */
     if (argc > 5 && atoi(argv[5])) {
         for (i = 0; i < 1024; ++i) {
@@ -54,7 +63,7 @@ int main(int argc, char** argv)
     api.selected = &host_sel;
     api.full = argv[1];
     api.note = host_note; api.reselect = host_reselect; api.input = host_input;
-    api.fopen = fopen; api.fread = fread; api.fclose = fclose;
+    api.fopen = mock_open; api.fread = mock_read; api.fclose = mock_close;
     api.strcpy = strcpy; api.sprintf = sprintf;
     api.version=4;api.media_wait=mock_cgetc;api.prompt = mock_prompt; api.cgetc = mock_cgetc;
     api.media_key = mock_media_key;
@@ -96,18 +105,19 @@ class DgrView(unittest.TestCase):
         subprocess.run(['cc', '-std=c99', '-Wno-unknown-pragmas', '-I', str(ROOT),
                         str(cls.p / 'test.c'), '-o', str(cls.exe)],
                        check=True, capture_output=True)
+        cls.command=[str(cls.exe)]
 
     @classmethod
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def view(self, data, ftype=6, width='--', aux=0, seeded=False, keys=''):
+    def view(self, data, ftype=6, width='--', aux=0, seeded=False, keys='', fault=0):
         """Runs the viewer on `data`; `keys` are read before Escape. The
         display state show() left (text, character set), the RDALTCHAR put
         back and the keys read land in self.state."""
         f = self.p / 'pic'
         f.write_bytes(data)
-        r = subprocess.run([str(self.exe), str(f), str(ftype), width, str(aux), str(int(seeded)), keys],
+        r = subprocess.run(self.command+[str(f), str(ftype), width, str(aux), str(int(seeded)), keys,str(fault)],
                            capture_output=True, check=True)
         self.assertEqual(f.read_bytes(), data)
         self.assertEqual(len(r.stderr), 2048)
@@ -139,14 +149,14 @@ class DgrView(unittest.TestCase):
         self.assertEqual(aux, SEED_AUX)             # untouched: 80COL is off
 
     def test_too_big_is_refused(self):
-        shown, _, note, _, _ = self.view(bytes(2049))
+        shown, _, note, _, _ = self.view(bytes(3841))
         self.assertEqual(shown, 0)
-        self.assertIn('Over 2048', note)
+        self.assertIn('3840', note)
 
     def test_an_empty_file_is_refused(self):
         shown, _, note, _, _ = self.view(b'')
         self.assertEqual(shown, 0)
-        self.assertIn('Over 2048', note)
+        self.assertIn('Empty', note)
 
     def test_a_directory_is_refused(self):
         shown, _, note, _, _ = self.view(bytes(1024), ftype=0x0F)
@@ -191,25 +201,219 @@ class DgrView(unittest.TestCase):
         self.assertEqual(self.pixel(aux, main, x0 + 1, y0 + 1), 8)
         self.assertNotEqual(x0 & 1, (x0 + 1) & 1)    # the two really differ in bank
 
+    def test_zoom_pixels_masks_bounds_holes_and_reset(self):
+        for w,h in ((4,2),(20,12),(21,12),(40,24),(41,24),(80,48),(1,1)):
+            data=bytes((0xF0 if (x+y)%3 else 0)|((x+y)%15+1) for y in range(h) for x in range(w))
+            for keys in ('','Z','ZZ','ZZZ','zzzz'):
+                scale=1
+                for key in keys:
+                    nxt=scale*2;scale=nxt if nxt<=4 and w*nxt<=80 and h*nxt<=48 else 1
+                shown,_,note,aux,main=self.view(data,width=f'{w:02X}',seeded=True,keys=keys)
+                self.assertEqual(shown,1);self.assertIn(f'x{scale}. Z:',note)
+                x0=(80-w*scale)//2;y0=(48-h*scale)//2
+                for y in range(48):
+                    for x in range(80):
+                        want=0
+                        if x0<=x<x0+w*scale and y0<=y<y0+h*scale:
+                            b=data[((y-y0)//scale)*w+(x-x0)//scale];want=b&15 if b&0xF0 else 0
+                        self.assertEqual(self.pixel(aux,main,x,y),want)
+                self.assertEqual(bytes(aux[o] for o in HOLES),bytes(SEED_AUX[o] for o in HOLES))
+                self.assertEqual(bytes(main[o] for o in HOLES),bytes(SEED_MAIN[o] for o in HOLES))
+        # Z belongs to pixmaps; DGR headers and saved pages retain their modes.
+        for data,meta in ((b'DGR\1\x28\x30\0\0'+bytes([0x55])*960,0),(bytes([0x55])*1024,0x400)):
+            before=self.view(data,aux=meta,seeded=True)
+            self.assertEqual(self.view(data,aux=meta,seeded=True,keys='ZZZ'),before)
+
+    def test_checkerboard_transparency_black_zoom_toggle_and_holes(self):
+        for w,h in ((1,1),(4,2),(20,12),(80,48)):
+            data=bytes((0xF0 if (x+y)%3 else 0)|((x+3*y)%16) for y in range(h) for x in range(w))
+            for keys in ('C','cZ','CZCZ','CZZ','CC','ZCCZ','CZZZC'):
+                scale=1;check=False
+                for key in keys.upper():
+                    if key=='C':check=not check
+                    else:
+                        nxt=scale*2;scale=nxt if nxt<=4 and w*nxt<=80 and h*nxt<=48 else 1
+                shown,_,note,aux,main=self.view(data,width=f'{w:02X}',seeded=True,keys=keys)
+                self.assertEqual(shown,1);self.assertIn('C: grid',note)
+                x0=(80-w*scale)//2;y0=(48-h*scale)//2
+                for y in range(48):
+                    for x in range(80):
+                        want=(15 if ((x//4+y//4)%2) else 5) if check else 0
+                        if x0<=x<x0+w*scale and y0<=y<y0+h*scale:
+                            b=data[((y-y0)//scale)*w+(x-x0)//scale]
+                            if b&0xF0:want=b&15
+                        self.assertEqual(self.pixel(aux,main,x,y),want)
+                for page,seed in ((aux,SEED_AUX),(main,SEED_MAIN)):
+                    self.assertEqual(bytes(page[o] for o in HOLES),bytes(seed[o] for o in HOLES))
+        for data,meta in ((b'DGR\1\x28\x30\0\0'+bytes([0x55])*960,0),(bytes([0x55])*1024,0x400)):
+            self.assertEqual(self.view(data,aux=meta,seeded=True,keys='CZC'),self.view(data,aux=meta,seeded=True))
+
+    def test_mask_preview_zoom_background_restoration_and_holes(self):
+        for w,h in ((1,1),(4,2),(20,12),(80,48)):
+            # Every high-nibble value is exercised; low nibbles include black.
+            data=bytes(((i%16)<<4)|((i*7+3)%16) for i in range(w*h))
+            for keys in ('M','mZ','CM','CMZZ','CMZZM','MCMM','MM','MZMC','MCMZZM'):
+                scale=1;check=mask=False
+                for key in keys.upper():
+                    if key=='C':check=not check
+                    elif key=='M':mask=not mask
+                    else:
+                        nxt=scale*2;scale=nxt if nxt<=4 and w*nxt<=80 and h*nxt<=48 else 1
+                shown,_,note,aux,main=self.view(data,width=f'{w:02X}',seeded=True,keys=keys)
+                self.assertEqual(shown,1);self.assertIn('M: mask',note)
+                x0=(80-w*scale)//2;y0=(48-h*scale)//2
+                for y in range(48):
+                    for x in range(80):
+                        want=(15 if (x//4+y//4)%2 else 5) if check and not mask else 0
+                        if x0<=x<x0+w*scale and y0<=y<y0+h*scale:
+                            b=data[((y-y0)//scale)*w+(x-x0)//scale]
+                            if b&0xF0:want=15 if mask else b&15
+                        self.assertEqual(self.pixel(aux,main,x,y),want)
+                for page,seed in ((aux,SEED_AUX),(main,SEED_MAIN)):
+                    self.assertEqual(bytes(page[o] for o in HOLES),bytes(seed[o] for o in HOLES))
+        for data,meta in ((b'DGR\1\x28\x30\0\0'+bytes([0x55])*960,0),(bytes([0x55])*1024,0x400)):
+            self.assertEqual(self.view(data,aux=meta,seeded=True,keys='MCZM'),self.view(data,aux=meta,seeded=True))
+
+    def test_sprite_mirrors_colors_masks_zoom_holes_and_restore(self):
+        for w,h in ((1,1),(5,3),(20,12),(80,48)):
+            data=bytes(((i%16)<<4)|((i*7+3)%16) for i in range(w*h))
+            for keys in ('H','v','HV','HHVV','HZ','VZZ','CHVMZ','CHVZZM','MHHCCVV','hvzmcHV'):
+                scale=1;check=mask=hflip=vflip=False
+                for key in keys.upper():
+                    if key=='C':check=not check
+                    elif key=='M':mask=not mask
+                    elif key=='H':hflip=not hflip
+                    elif key=='V':vflip=not vflip
+                    else:
+                        nxt=scale*2;scale=nxt if nxt<=4 and w*nxt<=80 and h*nxt<=48 else 1
+                shown,_,note,aux,main=self.view(data,width=f'{w:02X}',seeded=True,keys=keys)
+                self.assertEqual(shown,1);self.assertIn('H/V: flip',note)
+                self.assertLess(len(note),80)
+                x0=(80-w*scale)//2;y0=(48-h*scale)//2
+                for y in range(48):
+                    for x in range(80):
+                        want=(15 if (x//4+y//4)%2 else 5) if check and not mask else 0
+                        if x0<=x<x0+w*scale and y0<=y<y0+h*scale:
+                            sx=(x-x0)//scale;sy=(y-y0)//scale
+                            if hflip:sx=w-1-sx
+                            if vflip:sy=h-1-sy
+                            b=data[sy*w+sx]
+                            if b&0xF0:want=15 if mask else b&15
+                        self.assertEqual(self.pixel(aux,main,x,y),want)
+                for page,seed in ((aux,SEED_AUX),(main,SEED_MAIN)):
+                    self.assertEqual(bytes(page[o] for o in HOLES),bytes(seed[o] for o in HOLES))
+        for data,meta in ((b'DGR\1\x28\x30\0\0'+bytes([0x55])*960,0),(bytes([0x55])*1024,0x400)):
+            self.assertEqual(self.view(data,aux=meta,seeded=True,keys='HV'),self.view(data,aux=meta,seeded=True))
+
+    def test_rotation_pixels_zoom_mirrors_masks_bounds_and_reset(self):
+        for w,h in ((1,1),(5,3),(20,12),(40,24),(48,1),(49,1),(80,48)):
+            data=bytes(((i%16)<<4)|((i*7+3)%16) for i in range(w*h))
+            for keys in ('O','oo','OOO','OOOO','ZO','ZZO','OF','OZ','OH','HO',
+                         'VO','OV','CHVMZO','OOHOVMZC','CHVMZOR','OOOOF'):
+                rows=[list(data[y*w:(y+1)*w]) for y in range(h)]
+                scale=1;check=mask=False
+                for key in keys.upper():
+                    dw,dh=len(rows[0]),len(rows)
+                    if key=='O':
+                        if dw>48:continue
+                        rows=[list(row) for row in zip(*rows[::-1])]
+                        while len(rows[0])*scale>80 or len(rows)*scale>48:scale//=2
+                    elif key=='H':rows=[row[::-1] for row in rows]
+                    elif key=='V':rows=rows[::-1]
+                    elif key=='C':check=not check
+                    elif key=='M':mask=not mask
+                    elif key=='R':
+                        rows=[list(data[y*w:(y+1)*w]) for y in range(h)]
+                        scale=1;check=mask=False
+                    elif key=='Z':
+                        nxt=scale*2
+                        scale=nxt if nxt<=4 and dw*nxt<=80 and dh*nxt<=48 else 1
+                    elif key=='F':
+                        scale=4
+                        while dw*scale>80 or dh*scale>48:scale//=2
+                dw,dh=len(rows[0]),len(rows)
+                shown,_,note,aux,main=self.view(data,width=f'{w:02X}',seeded=True,keys=keys)
+                self.assertEqual(shown,1);self.assertIn('O: turn',note)
+                self.assertIn(f'{dw} x {dh} x{scale}. Z:',note);self.assertLess(len(note),80)
+                x0=(80-dw*scale)//2;y0=(48-dh*scale)//2
+                for y in range(48):
+                    for x in range(80):
+                        want=(15 if (x//4+y//4)%2 else 5) if check and not mask else 0
+                        if x0<=x<x0+dw*scale and y0<=y<y0+dh*scale:
+                            b=rows[(y-y0)//scale][(x-x0)//scale]
+                            if b&0xF0:want=15 if mask else b&15
+                        self.assertEqual(self.pixel(aux,main,x,y),want,(w,h,keys,x,y))
+                for page,seed in ((aux,SEED_AUX),(main,SEED_MAIN)):
+                    self.assertEqual(bytes(page[o] for o in HOLES),bytes(seed[o] for o in HOLES))
+
+    def test_rotation_refusal_and_other_formats_preserve_display(self):
+        for w,h in ((49,1),(80,48)):
+            data=bytes((i*7+0xF0)&255 for i in range(w*h))
+            for prefix in ('','F','CHVM'):
+                self.assertEqual(self.view(data,width=f'{w:02X}',seeded=True,keys=prefix+'Oooo'),
+                                 self.view(data,width=f'{w:02X}',seeded=True,keys=prefix))
+        for data,meta in ((b'DGR\1\x28\x30\0\0'+bytes([0x55])*960,0),
+                          (bytes([0x55])*1024,0x400),(self.text_page(),0x400)):
+            self.assertEqual(self.view(data,aux=meta,seeded=True,keys='Oo'),self.view(data,aux=meta,seeded=True))
+
+    def test_fit_selects_maximum_zoom_and_preserves_options(self):
+        for w,h,steps in ((1,1,2),(20,12,2),(21,12,1),(20,13,1),(40,24,1),
+                          (41,24,0),(40,25,0),(80,48,0)):
+            data=bytes(((i%16)<<4)|((i*7+3)%16) for i in range(w*h))
+            for prefix in ('','C','M','CHV','CHVM'):
+                expected=self.view(data,width=f'{w:02X}',seeded=True,keys=prefix+'Z'*steps)
+                for keys in (prefix+'F',prefix+'ff',prefix+'ZF',prefix+'ZZf'):
+                    self.assertEqual(self.view(data,width=f'{w:02X}',seeded=True,keys=keys),expected)
+                self.assertIn('F: fit',expected[2]);self.assertLess(len(expected[2]),80)
+                # Z wraps to x1 after fit; R clears the retained options.
+                self.assertEqual(self.view(data,width=f'{w:02X}',seeded=True,keys=prefix+'FZ'),
+                                 self.view(data,width=f'{w:02X}',seeded=True,keys=prefix))
+                self.assertEqual(self.view(data,width=f'{w:02X}',seeded=True,keys=prefix+'FR'),
+                                 self.view(data,width=f'{w:02X}',seeded=True))
+        for data,meta in ((b'DGR\1\x28\x30\0\0'+bytes([0x55])*960,0),
+                          (bytes([0x55])*1024,0x400),(self.text_page(),0x400)):
+            self.assertEqual(self.view(data,aux=meta,seeded=True,keys='Ff'),self.view(data,aux=meta,seeded=True))
+
+    def test_reset_restores_original_pixels_and_options(self):
+        for w,h in ((1,1),(5,3),(20,12),(80,48)):
+            data=bytes(((i%16)<<4)|((i*7+3)%16) for i in range(w*h))
+            original=self.view(data,width=f'{w:02X}',seeded=True)
+            for keys in ('R','r','RR','ZCHVMR','ZZCHVMr','hvzmcrR'):
+                self.assertEqual(self.view(data,width=f'{w:02X}',seeded=True,keys=keys),original)
+                self.assertIn('R: reset',original[2])
+                self.assertLess(len(original[2]),80)
+            # Each option must start from its default after reset.
+            for key in 'ZCMHV':
+                self.assertEqual(self.view(data,width=f'{w:02X}',seeded=True,keys='ZZCHVMR'+key),
+                                 self.view(data,width=f'{w:02X}',seeded=True,keys=key))
+        for data,meta in ((b'DGR\1\x28\x30\0\0'+bytes([0x55])*960,0),
+                          (bytes([0x55])*1024,0x400),(self.text_page(),0x400)):
+            self.assertEqual(self.view(data,aux=meta,seeded=True,keys='Rr'),self.view(data,aux=meta,seeded=True))
+
     def test_the_widest_pixmap_reaches_both_edges(self):
-        """80 wide is the whole screen across; 2,048 bytes is all this reads,
-        so 80 x 25 is the tallest that fits. Both corners must be lit."""
-        data = bytes([0xF9] * (80 * 25))
+        """A complete 80x48 pixmap reaches all four edges and both banks."""
+        data = bytes([0xF9] * (80 * 48))
         shown, _, note, aux, main = self.view(data, width='50')     # $50 = 80
         self.assertEqual(shown, 1)
-        self.assertIn('80 x 25', note)
-        y0 = (48 - 25) // 2
+        self.assertIn('80 x 48', note)
+        y0 = 0
         self.assertEqual(self.pixel(aux, main, 0, y0), 9)           # left, aux bank
-        self.assertEqual(self.pixel(aux, main, 79, y0 + 24), 9)     # right, main bank
+        self.assertEqual(self.pixel(aux, main, 79, 47), 9)
         lit = sum(1 for y in range(48) for x in range(80) if self.pixel(aux, main, x, y))
-        self.assertEqual(lit, 80 * 25)
+        self.assertEqual(lit, 80 * 48)
 
-    def test_a_pixmap_over_2048_bytes_is_refused(self):
-        """Only 2,048 bytes are read, so a bigger sprite cannot be shown at
-        all rather than shown truncated."""
-        shown, _, note, _, _ = self.view(bytes([0xF1] * 3000), width='50')
+    def test_a_pixmap_over_3840_bytes_is_refused(self):
+        shown, _, note, aux, main = self.view(bytes([0xF1] * 3841), width='50',seeded=True)
         self.assertEqual(shown, 0)
-        self.assertIn('Over 2048', note)
+        self.assertIn('3840', note);self.assertEqual((aux,main),(SEED_AUX,SEED_MAIN))
+
+    def test_read_close_errors_and_oversized_saved_pages_preserve_banks(self):
+        for data,meta in ((b'DGR\1\x50\x30\1\0'+bytes(1920),0),(bytes(2048),0x400),(bytes([0xF9])*3840,0)):
+            for fault in (1,2,3,4):
+                shown,_,note,aux,main=self.view(data,width='50',aux=meta,seeded=True,keys='OFZ',fault=fault)
+                self.assertEqual(shown,0);self.assertTrue(note);self.assertEqual((aux,main),(SEED_AUX,SEED_MAIN))
+        shown,_,note,aux,main=self.view(bytes(3000),aux=0x400,seeded=True)
+        self.assertEqual(shown,0);self.assertIn('2048',note);self.assertEqual((aux,main),(SEED_AUX,SEED_MAIN))
 
     def test_a_width_that_does_not_divide_is_refused(self):
         shown, _, note, _, _ = self.view(bytes([0xF1] * 100), width='07')
@@ -373,6 +577,19 @@ class DgrView(unittest.TestCase):
         shown, _, note, _, _ = self.view(bytes([0xF1] * 12), width='04')
         self.assertEqual(shown, 1)
         self.assertIn('pixmap', note)
+
+    def test_both_cpus_actual_reader(self):
+        if not shutil.which('cl65') or not shutil.which('sim65'):self.skipTest('cc65 unavailable')
+        path=Path(subprocess.check_output(['cl65','--print-target-path'],text=True).strip())
+        for cpu,target in (('6502','sim6502'),('65c02','sim65c02')):
+            cfg=self.p/(target+'.cfg');cfg.write_text((path.parent/'cfg'/(target+'.cfg')).read_text().replace('\n    CODE:','\n    OVLHDR: load = MAIN, type = ro;\n    CODE:',1))
+            exe=self.p/target
+            subprocess.run(['cl65','-t',target,'--cpu',cpu,'-Oirs','-Cl','-C',str(cfg),'-I',str(ROOT),str(self.p/'test.c'),'-o',str(exe)],check=True,capture_output=True)
+            self.command=['sim65',str(exe)]
+            try:
+                for name in sorted(dir(self)):
+                    if name.startswith('test_') and name!='test_both_cpus_actual_reader':getattr(self,name)()
+            finally:self.command=[str(self.exe)]
 
 
 if __name__ == '__main__':

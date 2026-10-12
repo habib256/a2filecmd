@@ -70,6 +70,8 @@ class PfsPlan(unittest.TestCase):
         path=Path(subprocess.check_output(['cl65','--print-target-path'],text=True).strip())
         bad=bytearray(sheet());bad[3584]=1
         samples=[(sheet(),False),(bytes(bad),True)]+[(d,False) for _,d in originals()]
+        for exponent in range(11):
+            d=bytearray(sheet());d[2048:2054]=b'\x10\0\0\0\0'+bytes([exponent]);samples.append((bytes(d),False))
         for cpu,target in (('6502','sim6502'),('65c02','sim65c02')):
             cfg=self.p/(target+'.cfg');cfg.write_text((path.parent/'cfg'/(target+'.cfg')).read_text().replace('\n    CODE:','\n    OVLHDR: load = MAIN, type = ro;\n    CODE:',1));exe=self.p/target
             subprocess.run(['cl65','-t',target,'--cpu',cpu,'-Oirs','-Cl','-C',str(cfg),'-I',str(ROOT),'-DRT_SOURCE="src/plugins/pfsplan.c"','-o',str(exe),str(self.p/'h.c')],check=True,capture_output=True)

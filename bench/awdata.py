@@ -14,6 +14,7 @@ MATH.QUIZ des essais de CiderPress II s'y ajoutent quand ils sont la
 rend les panneaux avec le curseur sur le fichier, resident et pile C
 intacts."""
 import struct
+import random
 import sys
 import tempfile
 from pathlib import Path
@@ -23,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 from xplug import boot_hd, menu_run, ok_all, RET, ESC
 import awdata_ref as ref
 import cp2_samples
+from test_awdata import make_db
 
 PORT = 6855
 
@@ -54,6 +56,8 @@ def screen(s):
 def main():
     sheet = numbers_sheet()
     files = {'WORK/NUMBERS#1B0000': sheet}
+    database=make_db(random.Random(67),3,130)
+    files['WORK/LASTREC#190000']=database
     v = cp2_samples.volume()
     real = {}
     for name, key in (('PRESIDENTS', '/DOCS/PRESIDENTS'), ('MATH.QUIZ', '/DOCS/MATH.QUIZ')):
@@ -70,6 +74,8 @@ def main():
             s.wait(lambda: s.rows()[0].startswith('/WORKHD '), 'la racine'); p.stable()
             s.select('WORK'); s.key(RET)
             s.wait(lambda: s.has('/WORKHD/WORK'), 'WORK'); p.stable()
+            s.ram_occupied();aux=p.peek(0x0800,0xB800,'aux');volume=Path(p.hdv).read_bytes()
+            floor=s.sym['__HIMEM__']-s.sym['__STACKSIZE__'];p.poke(floor,b'\xA5'*8)
 
             # 1. La grille et les nombres par la ROM : Retour sur un $1B.
             grid1, end = ref.ss_screen(sheet, 0)
@@ -91,6 +97,14 @@ def main():
             s.key(b'B'); p.stable()
             s.ok('NUMBERS : B revient a la page 1', 'NUMBERS  page 1' in s.rows()[23])
 
+            for key in (b'L', b'l'):
+                s.key(key); p.stable()
+                rows, bar = screen(s)
+                s.ok('NUMBERS : L/l retrouve la page indexee dans la grille',
+                     'page 2 (end)' in bar and
+                     all(ref.same_line(g, w.rstrip()) for g, w in zip(rows, grid2)))
+                s.key(b'B'); p.stable()
+
             # F : la vue cellule par cellule, avec la formule ; F de nouveau
             # revient a la grille, depuis le haut.
             lines, _ = ref.ss_lines(sheet)
@@ -104,6 +118,14 @@ def main():
             s.ok('F : la page 2 porte la formule',
                  any('@' in r for r in rows) and
                  all(ref.same_line(g, w.rstrip()) for g, w in zip(rows, lines[22:])), rows[:2])
+            s.key(b'B'); p.stable()
+            for key in (b'L', b'l'):
+                s.key(key); p.stable()
+                rows, bar = screen(s)
+                s.ok('F : L/l retrouve la page indexee avec toutes les formules',
+                     'page 2 (end)' in bar and
+                     all(ref.same_line(g, w.rstrip()) for g, w in zip(rows, lines[22:])))
+                s.key(b'B'); p.stable()
             s.key(b'F'); p.stable()
             rows, bar = screen(s)
             s.ok('F de nouveau : la grille, page 1',
@@ -134,6 +156,20 @@ def main():
                      'record 1 of' in s.rows()[23] and screen(s)[0][0] == ref.db_screen(names, recs[0])[0].rstrip())
                 s.key(ESC)
                 s.wait(lambda: s.has('! More'), 'retour aux panneaux', 60); p.stable()
+
+            # Last record across the 64-record checkpoints, not the stale
+            # panel/header count; compare all category values independently.
+            names,recs,end=ref.db_records(database)
+            s.select('LASTREC');s.key(RET)
+            for key,k in ((None,0),(b'L',len(recs)-1),(b'l',len(recs)-1),
+                          (b'B',len(recs)-2),(b'R',0),(b'L',len(recs)-1)):
+                if key:s.key(key)
+                s.wait(lambda:f'record {k+1} of {len(recs)}' in s.rows()[23],'last record navigation',60);p.stable()
+                want=ref.db_screen(names,recs[k]);rows,bar=screen(s)
+                s.ok('LASTREC record '+str(k+1)+' all fields',
+                     all(ref.same_line(g,w.rstrip()) for g,w in zip(rows,want)))
+                s.ok('LASTREC record '+str(k+1)+' checked count',f'record {k+1} of {len(recs)}' in bar)
+            s.key(ESC);s.wait(lambda:s.has('! More'),'last record exit',60);p.stable()
 
             # 3. Le tableur reel : la grille, page par page, puis les colonnes.
             if 'MATH.QUIZ' in real:
@@ -173,6 +209,9 @@ def main():
                      all(ref.same_line(g, w.rstrip()) for g, w in zip(rows, first)), rows[:2])
                 s.key(ESC)
                 s.wait(lambda: s.has('! More'), 'retour aux panneaux', 60); p.stable()
+            s.ok('AppleWorks occupied AUX /RAM preserved',p.peek(0x0800,0xB800,'aux')==aux)
+            s.ok('AppleWorks stack floor preserved',p.peek(floor,8)==b'\xA5'*8)
+            p.sync_disks();s.ok('Whole AppleWorks source volume preserved',Path(p.hdv).read_bytes()==volume)
     return ok_all(s, 'awdata')
 
 

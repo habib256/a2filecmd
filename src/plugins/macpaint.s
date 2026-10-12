@@ -137,7 +137,32 @@ keys:   ldy     MPO_CGETC
         cmp     #$0B                    ; Up, as cc65 reads it
         beq     up
         cmp     #$0A                    ; Down
+        beq     down
+        cmp     #'+'
+        beq     fine_down
+        cmp     #'-'
+        beq     fine_up
+        and     #$DF                    ; T/B, either case
+        cmp     #'T'
+        beq     first
+        cmp     #'B'
         bne     keys
+        lda     #11                     ; last complete view: lines 528-719
+        bne     move
+first:  lda     #0
+        beq     move
+fine_down:
+        lda     top
+        cmp     #11
+        beq     keys
+        adc     #1                      ; carry clear, one 48-line checkpoint
+        bne     move
+fine_up:
+        lda     top
+        beq     keys
+        sbc     #1                      ; carry set from matching '-'
+        bcs     move
+down:
         lda     top                     ; in 48 lines: 0 to 11
         cmp     #11
         beq     keys
@@ -281,7 +306,7 @@ field:  lda     api
 rb:     .asciiz "rb"
 pntg:   .byte   "PNTG"
 m_bad:  .asciiz "Not a whole MacPaint picture."
-m_cut:  .asciiz "Picture could not be read."
+m_cut:  .asciiz "Picture read error."
 m_ram:  .asciiz "/RAM rebuilt."
         .segment "CODE"
 _mp_read = mp_read

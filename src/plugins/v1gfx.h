@@ -5,6 +5,9 @@
 #include <stddef.h>
 #include <string.h>
 #include "../a2fc_plugin.h"
+#ifndef VG_TOGGLE
+#define VG_TOGGLE 0
+#endif
 void __fastcall__ plugin_entry(const struct A2fcApi*);
 unsigned int vg_addr,vg_count;
 unsigned char* vg_buf;
@@ -72,6 +75,10 @@ unsigned char __fastcall__ vg_run(const struct A2fcApi* a){
  for(vg_addr=0x4000;vg_addr<0x8000;++vg_addr)vg_write(VG_CLEAR);
  if(!vg_pass(1)){a->strcpy(a->note,"Picture read/structure error; /RAM erased.");return 1;}
  a->strcpy(a->reselect,a->selected->name);
- a->strcpy(a->note,VG_LABEL " preview; /RAM erased and rebuilt.");
- return 5|VG_DOUBLE;
+ a->strcpy(a->note,VG_LABEL " preview; "
+#if VG_TOGGLE
+ "O: background/objects; "
+#endif
+ "/RAM erased and rebuilt.");
+ return 5|VG_DOUBLE|VG_TOGGLE;
 }

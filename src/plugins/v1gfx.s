@@ -6,6 +6,7 @@
  .segment "VGDATA"
 safe_api: .word 0
 flags: .byte 0
+plane: .byte 0
  .segment "VGTAIL"
 _plugin_entry:
  sta safe_api
@@ -15,6 +16,7 @@ _plugin_entry:
  and #4
  beq @cleanup
  lda #$40
+ sta plane
  jsr commit             ; AUX $4000 -> MAIN $2000
  lda flags
  and #2
@@ -57,8 +59,20 @@ _plugin_entry:
  sta $C054
  sta $C052
  sta $C050
+@wait:
  ldy #34               ; api->wait_key()
  jsr callback
+ and #$5F
+ cmp #'O'
+ bne @cleanup
+ lda flags
+ and #8
+ beq @cleanup
+ lda plane
+ eor #$20               ; PCS full preview $4000 / original bitmap $6000
+ sta plane
+ jsr commit
+ jmp @wait
 @cleanup:
  sta $C000
  sta $C002

@@ -11,6 +11,7 @@ see docs/NEWSROOM-FORMAT.md) are run when present.
 import glob
 import os
 import random
+import re
 import shutil
 import subprocess
 import sys
@@ -35,6 +36,7 @@ HARNESS = r'''
 #include "src/a2fc_plugin.h"
 void __fastcall__ plugin_entry(const struct A2fcApi*);
 static int fault, at, calls, waits;
+static const char* keys;
 static FILE* opn(const char* p, const char* m) { return fault == 4 ? NULL : fopen(p, m); }
 static size_t rd(void* p, size_t s, size_t n, FILE* f)
 {
@@ -44,7 +46,8 @@ static size_t rd(void* p, size_t s, size_t n, FILE* f)
     return fread(p, s, n, f);
 }
 static int cls(FILE* f) { int r = fclose(f); return fault == 3 ? EOF : r; }
-static char wait(void) { ++waits; return 27; }
+static char wait(void) { ++waits; return *keys ? *keys++ : 27; }
+static unsigned char media(unsigned char k){return k==27 || k==21 || k==8;}
 int main(int argc, char** argv)
 {
     static struct A2fcApi api;
@@ -59,11 +62,11 @@ int main(int argc, char** argv)
     if (!ferror(t)) return 21;
     fclose(t);
     e.type = atoi(argv[1]); e.aux = atoi(argv[2]); e.size = atol(argv[3]);
-    fault = atoi(argv[4]); at = atoi(argv[5]);
+    fault = atoi(argv[4]); at = atoi(argv[5]);keys=argc>6?argv[6]:"";
     strcpy(e.name, "PH.SOURCE");
     api.full = full; api.selected = &e; api.note = note; api.reselect = sel;
     api.fopen = opn; api.fread = rd; api.fclose = cls; api.strcpy = strcpy;
-    api.media_wait = wait;
+    api.cgetc = wait;api.media_key=media;
     memset((void*)0x2000, 0xEE, 0x4000);
     memset((void*)0xC050, 0xFF, 16);
     plugin_entry(&api);
@@ -89,6 +92,25 @@ def corpus():
     return out
 
 
+def mirror_reference(page, keys):
+    """Independent 280×192 pixel matrix; retain all page holes."""
+    rows = [[(page[ref.row_address(y) + x // 7] >> (x % 7)) & 1
+             for x in range(280)] for y in range(192)]
+    for key in keys.upper():
+        if key == 'H':
+            rows = [list(reversed(row)) for row in rows]
+        elif key == 'V':
+            rows.reverse()
+        elif key == 'I':
+            rows = [[1 - pixel for pixel in row] for row in rows]
+    result = bytearray(page)
+    for y, row in enumerate(rows):
+        at = ref.row_address(y)
+        for col in range(40):
+            result[at + col] = sum(row[col * 7 + bit] << bit for bit in range(7))
+    return bytes(result)
+
+
 class Newsroom(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -105,8 +127,9 @@ class Newsroom(unittest.TestCase):
         for cpu in ('6502', '65c02'):
             base = 'sim65c02' if cpu == '65c02' else 'sim6502'
             cfg = (target.parent / f'cfg/{base}.cfg').read_text()
-            cfg = cfg.replace('start = $0200, size = $FDF0 - __STACKSIZE__',
-                              f'start = {CFG_START}, size = $BF00 - {CFG_START} - __STACKSIZE__')
+            cfg,count = re.subn(r'(MAIN:[^\n]*start = )[^,]+, size = [^;]+;',
+                               rf'\g<1>{CFG_START}, size = $BF00 - {CFG_START} - __STACKSIZE__;',cfg,count=1)
+            assert count==1, 'sim65 MAIN layout changed; refuse unsafe harness placement'
             (cls.dir / f'{cpu}.cfg').write_text(cfg)
             exe = cls.dir / f'harness-{cpu}'
             subprocess.run(['cl65', '-t', base, '-I', str(ROOT), '-I', str(ROOT / 'src/plugins'), '-DNR_TEST',
@@ -120,11 +143,11 @@ class Newsroom(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def run_nr(self, cpu, body, size=None, fault=0, at=0, typ=6, aux=0x4000):
+    def run_nr(self, cpu, body, size=None, fault=0, at=0, typ=6, aux=0x4000, keys=''):
         (self.dir / 'pic.bin').write_bytes(body)
         size = len(body) if size is None else size
         out = subprocess.run(['sim65', str(self.programs[cpu]), str(typ), str(aux), str(size),
-                              str(fault), str(at)], cwd=self.dir, capture_output=True, timeout=120)
+                              str(fault), str(at),keys], cwd=self.dir, capture_output=True, timeout=120)
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertEqual((self.dir / 'pic.bin').read_bytes(), body, 'the file is only read')
         o = out.stdout
@@ -153,6 +176,45 @@ class Newsroom(unittest.TestCase):
             for cpu in self.programs:
                 with self.subTest(cpu=cpu, picture=i):
                     self.good(cpu, body)
+
+    def test_inverse_pixels_holes_restore_navigation_and_io(self):
+        rng=random.Random(19)
+        for wb,h in ((1,1),(37,192),(8,43)):
+            body=ref.make(rng,wb,h)
+            original=ref.page(body);negative=bytearray(original)
+            for y in range(192):
+                at=(y&7)*1024+(y&56)*16+(y>>6)*40
+                for x in range(40):negative[at+x]^=127
+            for cpu in self.programs:
+                for keys in ('I','i','II','Ii','xI','IxI','I\x15','ii\x08'):
+                    waits,hires,note,sel,main,rest=self.run_nr(cpu,body,keys=keys)
+                    self.assertEqual(main,negative if keys.upper().count('I')%2 else original,(cpu,wb,h,keys))
+                    self.assertEqual((waits,hires,note,sel),(len(keys) if keys[-1] in '\x15\x08' else len(keys)+1,1,'','PH.SOURCE'))
+                    self.assertEqual(rest,b'\xee'*0x2000)
+                for fault in (3,4):
+                    waits,hires,note,sel,main,rest=self.run_nr(cpu,body,keys='I',fault=fault)
+                    self.assertEqual((waits,hires),(0,0));self.assertTrue(note)
+
+    def test_mirrors_pixels_holes_restore_composition_and_navigation(self):
+        rng = random.Random(87)
+        for wb, height in ((1, 1), (37, 192), (8, 43), (37, 1), (1, 192)):
+            body = ref.make(rng, wb, height)
+            original = ref.page(body)
+            for cpu in self.programs:
+                for keys in ('H', 'h', 'V', 'v', 'HH', 'Vv', 'HV', 'VH',
+                             'HVHV', 'IH', 'VIh', 'hIv', 'xHV', 'H\x15', 'v\x08'):
+                    with self.subTest(cpu=cpu, shape=(wb, height), keys=repr(keys)):
+                        waits, hires, note, sel, main, rest = self.run_nr(cpu, body, keys=keys)
+                        self.assertEqual(main, mirror_reference(original, keys))
+                        self.assertEqual((waits, hires, note, sel),
+                                         (len(keys) if keys[-1] in '\x15\x08' else len(keys)+1,
+                                          1, '', 'PH.SOURCE'))
+                        self.assertEqual(rest, b'\xee' * 0x2000)
+                for fault in (3, 4):
+                    waits, hires, note, sel, main, rest = self.run_nr(cpu, body, keys='HV', fault=fault)
+                    self.assertEqual((waits, hires), (0, 0))
+                    self.assertTrue(note)
+                    self.assertEqual(rest, b'\xee' * 0x2000)
 
     def test_ff_in_the_history_and_a_long_history(self):
         rng = random.Random(3)

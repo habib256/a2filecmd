@@ -10,7 +10,7 @@ tourner la surcouche livree, point d'entree compris : les en-tetes (MacPaint
 et MacBinary), le passage de verification avant toute ecriture en AUX, les
 deux plans relus contre tools/macpaint_ref.py a chaque position du
 defilement, les butees, les refus, /RAM refait, et l'ouverture par Retour
-(le suffixe .MAC ; un .PNTG passe par le menu). Les images viennent de l'encodeur de
+(.MAC/.PNTG ou en-tête MacBinary PNTG). Les images viennent de l'encodeur de
 reference, plus ESCHERWATER.MAC des fichiers d'essai de CiderPress II quand
 ils sont la (tools/cp2_samples.py)."""
 import random
@@ -52,13 +52,79 @@ def shown(p, data, top):
     return visible(main) == visible(want_main) and visible(aux) == visible(want_aux)
 
 
+def import_checks(p,s,short,volume,floor):
+    for name in ('MBBIN','MBPAGE','RAW.PNTG'):
+        for key in (RET,b'I'):
+            s.select(name);s.ram_occupied();aux=p.peek(0x1000,0xB000,'aux');s.key(key)
+            s.wait(lambda:s.has('ALL /RAM files will be LOST'),name+' consent',60)
+            s.ok(name+' waits before AUX '+repr(key),p.peek(0x1000,0xB000,'aux')==aux)
+            s.key(b'N');p.stable();s.ok(name+' refusal preserves AUX '+repr(key),p.peek(0x1000,0xB000,'aux')==aux)
+            s.select(name);s.key(key);s.allow_aux()
+            s.wait(lambda:shown(p,short,0),name+' first pixels',120)
+            s.ok(name+' automatic MacPaint pixels '+repr(key),True)
+            s.key(DOWN);s.ok(name+' scrolled pixels '+repr(key),shown(p,short,96))
+            s.key(ESC);s.wait(lambda:s.has('Type  Aux'),name+' exit',60)
+            s.ok(name+' RAM rebuilt empty '+repr(key),s.ram_files()==0)
+    # A complete container can still contain a malformed PackBits body.
+    for key in (RET,b'I'):
+        s.select('BADMB');aux=p.peek(0x1000,0xB000,'aux');s.key(key)
+        s.wait(lambda:s.has('Not a whole MacPaint picture.'),'malformed import refused',120)
+        s.ok('Malformed MacBinary import refused '+repr(key),True)
+        s.ok('Malformed MacBinary preserves AUX '+repr(key),p.peek(0x1000,0xB000,'aux')==aux)
+    s.ok('Import stack floor preserved',p.peek(floor,8)==b'\xa5'*8)
+    p.sync_disks();s.ok('Whole import source volume preserved',Path(p.hdv).read_bytes()==volume)
+
+
+def album_checks(p,s,first,second,volume,floor):
+    s.select('NEXT.PNTG');s.ram_occupied();aux=p.peek(0x1000,0xB000,'aux');s.key(RET)
+    s.wait(lambda:s.has('ALL /RAM files will be LOST'),'PNTG album consent',60)
+    s.ok('PNTG album waits before AUX',p.peek(0x1000,0xB000,'aux')==aux)
+    s.key(b'N');p.stable();s.ok('PNTG album refusal preserves AUX',p.peek(0x1000,0xB000,'aux')==aux)
+    s.select('NEXT.PNTG');s.key(RET);s.allow_aux()
+    s.wait(lambda:shown(p,first,0),'PNTG album first',120);s.ok('PNTG album first pixels',True)
+    s.key(b'\x15');s.wait(lambda:shown(p,second,0),'PNTG album next',120);s.ok('PNTG album right pixels',True)
+    s.key(b'\x08');s.wait(lambda:shown(p,first,0),'PNTG album previous',120);s.ok('PNTG album left pixels',True)
+    s.key(ESC);s.wait(lambda:s.has('Type  Aux'),'PNTG album exit',60)
+    s.ok('PNTG album rebuilds empty RAM',s.ram_files()==0)
+    s.ok('PNTG album stack floor preserved',p.peek(floor,8)==b'\xa5'*8)
+    p.sync_disks();s.ok('Whole PNTG album volume preserved',Path(p.hdv).read_bytes()==volume)
+
+
+def navigation_checks(p,s,data,volume,floor):
+    s.select('NAV.MAC');s.ram_occupied();aux=p.peek(0x0800,0xB800,'aux');s.key(RET)
+    s.wait(lambda:s.has('ALL /RAM files will be LOST'),'navigation RAM consent',60)
+    s.ok('Navigation waits before AUX',p.peek(0x0800,0xB800,'aux')==aux)
+    s.key(b'N');p.stable();s.ok('Navigation refusal preserves RAM',p.peek(0x0800,0xB800,'aux')==aux)
+    s.select('NAV.MAC');s.key(RET);s.allow_aux()
+    for key,top,label in ((None,0,'initial'),(b'+',48,'fine down'),(b'-',0,'fine up'),(b'-',0,'fine up at top'),
+                          (b'B',528,'bottom'),(b'+',528,'fine down at bottom'),(b'-',480,'fine up from bottom'),
+                          (b'+',528,'fine down to bottom'),(DOWN,528,'down at bottom'),
+                          (UP,432,'up after bottom'),(b'T',0,'top'),(UP,0,'up at top'),
+                          (DOWN,96,'down after top'),(b'b',528,'lowercase bottom'),
+                          (b'B',528,'bottom again'),(b't',0,'lowercase top'),(b'+',48,'fine down after top'),
+                          (DOWN,144,'coarse after fine')):
+        if key:s.key(key)
+        s.wait(lambda:shown(p,data,top),label+' pixels',120)
+        s.ok('MacPaint '+label+' pixels',True)
+    s.key(ESC);s.wait(lambda:s.has('Type  Aux'),'navigation exit',60)
+    s.ok('Navigation rebuilds empty RAM',s.ram_files()==0)
+    s.ok('Navigation stack floor preserved',p.peek(floor,8)==b'\xa5'*8)
+    p.sync_disks();s.ok('Whole navigation volume preserved',Path(p.hdv).read_bytes()==volume)
+
+
 def main():
     rng = random.Random(11)
     full = ref.pack(ref.random_lines(rng), rng, version=2)
     mbin = ref.pack(ref.random_lines(rng), rng, version=0, macbinary=True, noise=True)
+    short=ref.pack([bytes([0x55 if (y//48)%2 else 0xAA])*72 for y in range(720)],macbinary=True)
+    reverse=ref.pack([bytes([0xAA if (y//48)%2 else 0x55])*72 for y in range(720)])
     files = {
         'WORK/FULL.MAC#000000': full,
-        'WORK/WRAPPED.PNTG#000000': mbin,    # not a routed suffix: opened from the menu
+        'WORK/WRAPPED.PNTG#000000': mbin,
+        'WORK/MBBIN#060000':short,
+        'WORK/MBPAGE#062000':short+bytes(8192-len(short)),
+        'WORK/RAW.PNTG#000000':short[128:],
+        'WORK/BADMB#060000':short[:640]+b'\xFF\0'+short[642:],
         'WORK/CUT.MAC#000000': full[:len(full) - 3],
         'WORK/OLDHEAD.MAC#000000': b'\0\0\0\x01' + full[4:],
         'WORK/PLAIN.BIN#062000': bytes(8192),
@@ -66,8 +132,13 @@ def main():
     real = cp2_samples.volume().get('/GRAPHICS/ESCHERWATER.MAC')
     if real:
         files['WORK/ESCHER.MAC#000000'] = real[2]
+    if '--album-only' in sys.argv:
+        files={'WORK/NEXT.PNTG#000000':reverse,'WORK/RAW.PNTG#000000':short[128:]}
+    if '--navigation-only' in sys.argv:
+        nav=ref.pack([bytes([((y//48)*17+y%13)&255])*72 for y in range(720)])
+        files={'WORK/NAV.MAC#000000':nav}
     with tempfile.TemporaryDirectory(prefix='a2fc-macpaint-') as tmp:
-        with boot_hd(tmp, files, port=PORT, plugins=['macpaint']) as (p, s):
+        with boot_hd(tmp, files, port=PORT, plugins=['macpaint'],speed=4000000) as (p, s):
             stack = p.peek(0x80, 2)
             p.poke(s.sym['_a2fc_ops'], b'\x2a\x00')
             s.key(b'/'); s.wait(lambda: s.has('[Volumes]'), 'volumes')
@@ -75,6 +146,16 @@ def main():
             s.wait(lambda: s.rows()[0].startswith('/WORKHD '), 'la racine'); p.stable()
             s.select('WORK'); s.key(RET)
             s.wait(lambda: s.has('/WORKHD/WORK'), 'WORK'); p.stable()
+            if '--imports-only' in sys.argv or '--album-only' in sys.argv or '--navigation-only' in sys.argv:
+                volume=Path(p.hdv).read_bytes();floor=s.sym['__HIMEM__']-s.sym['__STACKSIZE__'];p.poke(floor,b'\xa5'*8)
+                if '--navigation-only' in sys.argv:
+                    navigation_checks(p,s,nav,volume,floor)
+                    return ok_all(s,'macpaint navigation')
+                if '--album-only' in sys.argv:
+                    album_checks(p,s,reverse,short,volume,floor)
+                    return ok_all(s,'macpaint album')
+                import_checks(p,s,short,volume,floor)
+                return ok_all(s,'macpaint imports')
 
             # 1. Les refus : un fichier quelconque, un flux coupe, une
             #    version d'en-tete inconnue -- et AUX (ou vit /RAM) intacte.

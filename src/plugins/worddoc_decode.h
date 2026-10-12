@@ -42,12 +42,12 @@ static signed char wd_para;
 static unsigned char wd_start(void){
  int start=wd_left;
  if(wd_first)start+=wd_para;
- if(start<0)start=0;if(start>=wd_right)start=wd_left;
+ if(start<0)start=0;if(start>=(int)wd_right)start=wd_left;
  return (unsigned char)start;
 }
 static void wd_flush(unsigned char paragraph){
  unsigned char i,start=wd_start(),extra=0;
- if(wd_mode==1)extra=(wd_right-start-wd_len)/2;
+ if(wd_mode==1)extra=((int)wd_right-(int)start-(int)wd_len)/2;
  if(wd_mode==2)extra=wd_right-start-wd_len;
  rt_spaces(start+extra);
  for(i=0;i<wd_len && !rt_cancel;++i)rt_put(wd_line[i]);
@@ -83,8 +83,8 @@ static unsigned char wd_command(unsigned char n){
   if(negative)value=-value;
   if(a=='p'){wd_para=value;return 1;}
   if(negative)return 0;
-  if(a=='l' && value<wd_right){wd_left=value;return 1;}
-  if(a=='r' && value>wd_left && value<=79){wd_right=value;return 1;}
+  if(a=='l' && value<(int)wd_right){wd_left=value;return 1;}
+  if(a=='r' && value>(int)wd_left && value<=79){wd_right=value;return 1;}
   return 0;
  }
  if(n!=3)return 0;

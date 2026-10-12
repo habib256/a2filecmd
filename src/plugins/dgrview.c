@@ -47,9 +47,11 @@
  * The picture lives at $400-$7FF, the TEXT page, not the graphics page: the
  * even columns in the auxiliary bank, the odd ones in the main bank, as in
  * 80-column text, and each byte holds TWO pixels stacked, the low nibble
- * above the high one. That is why the file is staged at $2000 first -- a
+ * above the high one. That is why the file is staged at $3000 first -- a
  * big overlay owns the graphics page -- and only then moved into the two
  * halves of the text page, which is the screen A2FC was drawing on.
+ * Pixmaps can fill all 80 x 48 pixels (3,840 bytes); saved pages remain
+ * limited to 2,048 bytes.
  *
  * The staging area is $3000, NOT $2000: this overlay is loaded at $1B00 and
  * its own code runs past $2000, so staging there overwrote it and the
@@ -61,6 +63,12 @@
  * text screen, and only the core's return path for a big overlay puts the
  * display back to text and redraws both panels. */
 #include "../a2fc_plugin.h"
+#ifndef PLUGIN_HOST
+#define dg_error(f) (((unsigned char*)(f))[1]&4)
+#else
+#define dg_error(f) ferror(f)
+#endif
+#define PIXMAP_MAX 3840
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api);
 struct Header {
@@ -80,13 +88,14 @@ const struct Header __plugin_header = {
  * $400 is not a screen and $C05E is not a soft switch: it supplies its own
  * memory and watches which half the writes go to. */
 #ifdef PLUGIN_HOST
-extern unsigned char host_main[1024], host_aux[1024], host_stage[2049];
+extern unsigned char host_main[1024], host_aux[1024], host_stage[PIXMAP_MAX+1];
 extern unsigned char host_bank;             /* 0 main, 1 auxiliary */
 extern unsigned char host_shown;            /* show() was reached */
 extern unsigned char host_text, host_alt;   /* how show() left the screen */
 extern unsigned char host_altchar;          /* RDALTCHAR, read and put back */
 #define STAGE host_stage
-#define PAGE  (host_bank ? host_aux : host_main)
+static unsigned char* host_page(void){if(host_bank)return host_aux;return host_main;}
+#define PAGE  host_page()
 #else
 #define STAGE ((unsigned char*)0x3000)      /* the file, before it is spread out */
 #define PAGE  ((unsigned char*)0x0400)      /* the text page: where lo-res lives */
@@ -104,16 +113,23 @@ static unsigned char wide;                  /* 1: double lo-res, 80 columns */
 static unsigned char page;                  /* 1: a saved page, which T reads both ways */
 static unsigned char text;                  /* 1: shown as text rather than lo-res */
 static unsigned char alt;                   /* 1: the alternate character set */
+static unsigned char pix_w,pix_h,pix_scale;   /* zero scale outside a pixmap */
+static unsigned char pix_dw,pix_dh;          /* displayed dimensions before zoom */
+static unsigned char pix_check;              /* checkerboard behind transparent pixels */
+static unsigned char pix_mask;               /* inspect opacity without changing source */
+static unsigned char pix_flip;               /* H, V, then transpose before H/V */
 
 static const char m_pick[] = "Select a lo-res picture or an a2dgrx pixmap.";
 static const char m_open[] = "Cannot open it.";
-static const char m_big[]  = "Over 2048 bytes: not a lo-res screen or a sprite.";
+static const char m_big[]  = "Empty picture or over 3840 bytes.";
+static const char m_page[] = "Saved screen exceeds 2048 bytes.";
+static const char m_io[]   = "Picture read/close error.";
 static const char m_ask[]  = "Pixmap width in pixels (2 hex digits, 01-50)";
 static const char m_hdr[]  = "Invalid or truncated DGR picture.";
 static const char m_wide[] = "Invalid sprite width or height.";
 static const char m_scr[]  = "Lo-res screen, %u x %u.";
 static const char m_txt[]  = "Text screen, %u columns. T: lo-res, A: character set.";
-static const char m_spr[]  = "a2dgrx pixmap, %u x %u.";
+static const char m_spr[]  = "pixmap %u x %u x%u. Z: zoom F: fit C: grid M: mask H/V: flip O: turn R: reset.";
 
 /* The byte row `r` of the text page, 0 to 23: the Apple II's three thirds
  * of eight rows, $80 apart, forty bytes to a row. */
@@ -246,25 +262,40 @@ static void show(void)
 /* An a2dgrx pixmap, centred: one byte a pixel, the colour in the low
  * nibble, the high nibble a mask that leaves the background alone when it
  * is zero. The width has to be asked for -- the file does not carry it. */
-static unsigned char pixmap(void)
+static void draw_pixmap(void)
 {
     unsigned int i = 0;
-    unsigned char w, h, x, y, x0, y0, b;
+    unsigned char x,y,x0,y0,b,xx,yy,dx,dy;
+    wide = 1;
+    clear();
+    if(pix_check && !pix_mask)
+        for(y=0;y<TALL;++y)
+            /* Gray/white: the two lo-res grays can merge on composite. */
+            for(x=0;x<WIDE;++x)plot(x,y,((x^y)&4)?15:5);
+    x0 = (WIDE - (unsigned int)pix_dw * pix_scale) / 2;
+    y0 = (TALL - (unsigned int)pix_dh * pix_scale) / 2;
+    for (y = 0; y < pix_h; ++y)
+        for (x = 0; x < pix_w; ++x) {
+            b = STAGE[i++];
+            if (!(b & 0xF0)) continue;
+            dx=(pix_flip&4)?y:x;dy=(pix_flip&4)?x:y;
+            if(pix_flip&1)dx=pix_dw-1-dx;
+            if(pix_flip&2)dy=pix_dh-1-dy;
+            dx=x0+(unsigned int)dx*pix_scale;dy=y0+(unsigned int)dy*pix_scale;
+            for(yy=0;yy<pix_scale;++yy)
+                for(xx=0;xx<pix_scale;++xx)plot(dx+xx,dy+yy,pix_mask?15:b&15);
+        }
+    A->sprintf(A->note,m_spr,(unsigned int)pix_dw,(unsigned int)pix_dh,(unsigned int)pix_scale);
+}
+static unsigned char pixmap(void)
+{
+    unsigned char w;
     if (!A->prompt(m_ask, 0, 2)) return 0;
     w = (unsigned char)((A->input[0] <= '9' ? A->input[0] - '0' : A->input[0] - 'A' + 10) * 16
                         + (A->input[1] <= '9' ? A->input[1] - '0' : A->input[1] - 'A' + 10));
     if (!w || w > WIDE || len % w || len / w > TALL) { A->strcpy(A->note, m_wide); return 0; }
-    h = (unsigned char)(len / w);
-    wide = 1;
-    clear();
-    x0 = (unsigned char)(WIDE - w) >> 1;    /* w <= WIDE and h <= TALL: checked above */
-    y0 = (unsigned char)(TALL - h) >> 1;
-    for (y = 0; y < h; ++y)
-        for (x = 0; x < w; ++x) {
-            b = STAGE[i++];
-            if (b & 0xF0) plot(x0 + x, y0 + y, b & 0x0F);   /* zero mask: see through */
-        }
-    A->sprintf(A->note, m_spr, w, h);
+    pix_dw=pix_w=w;pix_dh=pix_h=len/w;pix_scale=1;
+    draw_pixmap();
     return 1;
 }
 
@@ -312,16 +343,18 @@ void __fastcall__ plugin_entry(const struct A2fcApi* a)
 {
     const struct Entry* e = a->selected;
     FILE* in;
-    unsigned char k, c, was;
+    unsigned char k, c, was, bad;
 
     A = a;
-    page = text = alt = 0;
+    page = text = alt = pix_scale = pix_check = pix_mask = pix_flip = 0;
     if (!e->name[0] || e->type == 0x0F || !a->full[0]) { a->strcpy(a->note, m_pick); return; }
     in = a->fopen(a->full, "rb");
     if (!in) { a->strcpy(a->note, m_open); return; }
-    len = a->fread(STAGE, 1, 2049, in);      /* one over, to catch what is too big */
-    a->fclose(in);
-    if (!len || len > 2048) { a->strcpy(a->note, m_big); return; }
+    len = a->fread(STAGE, 1, PIXMAP_MAX+1, in); /* one over, never show a prefix */
+    bad = dg_error(in);
+    if (a->fclose(in)) bad = 1;
+    if (bad) { a->strcpy(a->note, m_io); return; }
+    if (!len || len > PIXMAP_MAX) { a->strcpy(a->note, m_big); return; }
 
     if (len >= 3 && STAGE[0] == 'D' && STAGE[1] == 'G' && STAGE[2] == 'R') {
         unsigned char w, h, lines;
@@ -343,6 +376,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* a)
         } else rows_of(STAGE + 8, 0, lines);
         a->sprintf(a->note, m_scr, (unsigned int)w, (unsigned int)h);
     } else if (e->aux == 0x0400 || len == 1024 || len == 2048) {
+        if (len > 2048) { a->strcpy(a->note, m_page); return; }
         page = 1;
         wide = len > 1024;
         clear();
@@ -376,6 +410,38 @@ void __fastcall__ plugin_entry(const struct A2fcApi* a)
             c = k & 0x5F;                   /* either case, Open-Apple or not */
             if (page && c == 'T') { text ^= 1; break; }
             if (text && c == 'A') { alt ^= 1; break; }
+            if (pix_scale && (c == 'Z' || c == 'F')) {
+                unsigned char scale=c=='F'?4:pix_scale*2;
+                if(scale>4)scale=1;
+                while((unsigned int)pix_dw*scale>WIDE || (unsigned int)pix_dh*scale>TALL)
+                    scale=c=='F'?scale/2:1;
+                pix_scale=scale;draw_pixmap();break;
+            }
+            if (pix_scale && c == 'C') {
+                pix_check^=1;draw_pixmap();break;
+            }
+            if (pix_scale && c == 'M') {
+                pix_mask^=1;draw_pixmap();break;
+            }
+            if (pix_scale && (c == 'H' || c == 'V')) {
+                pix_flip^=c=='H'?1:2;draw_pixmap();break;
+            }
+            if (pix_scale && c == 'O') {
+                unsigned char d;
+                /* Reject before changing state: the new height must fit x1. */
+                if(pix_dw>TALL)continue;
+                d=pix_dw;pix_dw=pix_dh;pix_dh=d;
+                /* Rotate the current display clockwise, including its mirrors. */
+                pix_flip=(((pix_flip&1)<<1)|((pix_flip&2)>>1)|(pix_flip&4))^5;
+                while((unsigned int)pix_dw*pix_scale>WIDE || (unsigned int)pix_dh*pix_scale>TALL)
+                    pix_scale/=2;
+                draw_pixmap();break;
+            }
+            if (pix_scale && c == 'R') {
+                pix_scale=1;pix_check=pix_mask=pix_flip=0;
+                pix_dw=pix_w;pix_dh=pix_h;
+                draw_pixmap();break;
+            }
             if (a->media_key(k)) goto done;
         }
     }

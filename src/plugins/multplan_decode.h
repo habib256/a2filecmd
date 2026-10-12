@@ -33,7 +33,7 @@ static unsigned char mp_number(const unsigned char* v,unsigned char show){
  if(exp<=0){rt_put('0');rt_put('.');for(point=exp;point<0;++point)rt_put('0');for(i=0;i<last;++i)rt_put('0'+digits[i]);}
  else {
   for(point=0;point<exp;++point)rt_put('0'+(point<14?digits[point]:0));
-  if(last>exp){rt_put('.');for(i=exp;i<last;++i)rt_put('0'+digits[i]);}
+  if((int)last>exp){rt_put('.');for(i=exp;i<last;++i)rt_put('0'+digits[i]);}
  }
  return 1;
 }
@@ -61,7 +61,7 @@ static unsigned char mp_cell(unsigned int offset,unsigned char show){
 static void rt_decode(void){
  unsigned int i,rows,cols,cells,offset,next,r,c;unsigned long size;int raw;
  char label[20];
- if(rt_api.selected->type!=0xF4){rt_invalid();return;}
+ if(rt_api.selected->type!=0xF4 && rt_api.selected->type!=6){rt_invalid();return;}
  for(i=0;i<666;++i){raw=rt_get();if(raw<0){rt_invalid();return;}mp_header[i]=raw;}
  while(rt_get()>=0)if(rt_off>65535UL){rt_invalid();return;}
  if(rt_bad)return;size=rt_off;

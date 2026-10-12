@@ -28,6 +28,7 @@ A2FILE.SYSTEM and counts at $0200 the returns to it. For each movie:
 """
 import argparse
 import random
+import re
 import os
 import shutil
 import subprocess
@@ -136,7 +137,7 @@ def launcher(tmp):
 
 def movies():
     counted = ref.synthetic(11, frames=3, speed=2, count=1)
-    looping = ref.synthetic(12, frames=3, speed=1, count=0)
+    looping = ref.synthetic(12, frames=3, speed=4, count=0)
     bad = bytearray(ref.synthetic(13, frames=2))
     bad[3] = 5
     cut = bytearray(ref.synthetic(14, frames=4, speed=2, count=1))
@@ -184,6 +185,7 @@ def main():
                    'the stand-in launcher waiting', 60)
             p.poke(RUNS, b'\x00')
             bitmap = p.peek(0xBF58, 24)
+            aux_before = p.peek(0x0800, 0xB800, 'aux')
             runs = [0]
 
             def launch(name):
@@ -236,10 +238,13 @@ def main():
                 bd = ref.Player(films['M.PARADIES'], picture)
                 list(bd.play())
                 launch(command)
-                s.wait(lambda: p.peek(0x2000, 0x2000) == bytes(bd.pages[1]) and
-                       p.peek(0x4000, 0x2000) == bytes(bd.pages[2]), command + ': the last frame', 120)
+                # Read one snapshot: at turbo speed a separate background
+                # peek could land during the automatic file reload.
+                wanted = bytes(bd.pages[1])+bytes(bd.pages[2])+bytes(bd.bg)
+                s.wait(lambda: p.peek(0x2000, 0x6000) == wanted,
+                       command + ': the last frame and backdrop', 120)
                 s.ok('backdrop %s: pages and background copy as the reference' % command,
-                     p.peek(0x6000, 0x2000) == bytes(bd.bg))
+                     True)
                 s.key(b'\x1b')
                 returned('backdrop ' + command)
             launch('M.COUNT,NOPE')
@@ -271,7 +276,7 @@ def main():
             # A looping movie: keys.
             launch('M.LOOP')
             loop = ref.Player(films['M.LOOP'])
-            seen = {bytes(pg) for _, pg, _ in loop.play(limit=6)}
+            seen = {bytes(pg) for _, pg, _ in loop.play(limit=80)}
             s.wait(lambda: p.peek(0x2000, 0x2000) in seen, 'the looping movie drawn', 120)
             snaps = set()
             for _ in range(20):
@@ -286,6 +291,42 @@ def main():
             time.sleep(1.0)
             b = p.peek(0x2000, 0x2000) + p.peek(0x4000, 0x2000)
             s.ok('looping movie: Space pauses', a == b)
+            # Independent next-frame oracle, including both draw pages and
+            # the selected display page. Keep all matching phases in case
+            # a movie contains visually identical consecutive frames.
+            oracle = ref.Player(films['M.LOOP'])
+            states = []
+            for page, _, _ in oracle.play(limit=80):
+                states.append((bytes(oracle.pages[1])+bytes(oracle.pages[2]),page*0x20))
+            shown_addr = int(re.search(r'fv_shown\s+([0-9A-F]{6})',
+                                      (fanta.parent/'fanta.map').read_text()).group(1),16)
+            def state():
+                return (p.peek(0x2000,0x4000),p.peek(shown_addr,1)[0])
+            current = state()
+            phases = [i for i,frame in enumerate(states[:-1]) if frame==current]
+            s.ok('paused frame matches independent Fantavision reference',bool(phases))
+            for key,label in ((b'\x15','Right'),(b'\r','Return'),(b'\x15','Right original speed')):
+                if label.endswith('original speed'):s.key(b'\x09')
+                wanted = {states[i+1] for i in phases if i+1<len(states)}
+                s.key(key);s.wait(lambda:state() in wanted,'paused step '+label,60)
+                current=state()
+                s.ok('paused '+label+' draws exactly the next frame and page',current in wanted)
+                phases=[i+1 for i in phases if i+1<len(states) and states[i+1]==current]
+                time.sleep(1)
+                s.ok('paused '+label+' stays on that frame',state()==current)
+            for key in (b'N', b'n', b'N'):
+                targets = {((i // oracle.S) + 1) * oracle.S for i in phases}
+                targets = {i for i in targets if i < len(states)}
+                wanted = {states[i] for i in targets}
+                s.key(key)
+                s.wait(lambda: state() in wanted, 'next stored key frame', 60)
+                current = state()
+                phases = [i for i in targets if states[i] == current]
+                s.ok('N/n skips interpolation to exactly the next stored pose', bool(phases))
+                time.sleep(1)
+                s.ok('N/n remains paused at the stored pose', state() == current)
+            s.ok('paused stepping preserves movie bytes',p.peek(0x8000,len(films['M.LOOP']))==films['M.LOOP'])
+            b=current[0]
             s.key(b' ')                          # resume
             s.wait(lambda: p.peek(0x2000, 0x2000) + p.peek(0x4000, 0x2000) != b,
                    'playing again', 60)
@@ -318,6 +359,7 @@ def main():
                  p.peek(RUNS, 1)[0] == runs[0])
             s.key(b'\x1b')
             returned('slideshow, Escape')
+            s.ok('all Fantavision playback preserves AUX /RAM',p.peek(0x0800,0xB800,'aux')==aux_before)
         s.ok('disk image unchanged: nothing written', hdv.read_bytes() == before)
     passed = sum(1 for c in s.checks if c['ok'])
     print('\n%d/%d controles (fantavision %s)' % (passed, len(s.checks), args.preset), flush=True)

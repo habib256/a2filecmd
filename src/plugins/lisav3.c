@@ -1,4 +1,5 @@
-/* LISA v3 standard mnemonic dialect; v4/v5 are separate formats. */
+/* LISA v3 standard mnemonic dialect, native FA or imported BIN.
+ * v4/v5 are separate formats. MAIN only, read-only sources. */
 #define RT_FORMAT 12
 #define RT_LABEL "LISA v3"
 #define RT_DESCRIPTION "List LISA v3 sources and packed symbols"

@@ -159,6 +159,8 @@ static const char* text(void)
 #ifdef PLUGIN_HOST
 #include "id_formats.h"
 #include "id_v1.h"
+#include "id_merlin.h"
+#include "id_psfont.h"
 #endif
 #ifdef PLUGIN_HOST
 #include "id_routes.h"
@@ -306,7 +308,7 @@ extra_stage:
         n=frd(b,1,512,f);if(ferror(f))io_failed=1;
         if(n<512)A->memset(b+n,0,512-n);
     }
-    what=extra_v1();if(!what)what=extra();if(!what)what=identify();
+    what=extra_v1();if(!what)what=extra();if(!what)what=psfont_content();if(!what)what=merlin_content();if(!what)what=identify();
 #endif
 #ifdef PLUGIN_HOST
     if(!reader)route(what);

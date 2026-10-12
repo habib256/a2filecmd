@@ -41,7 +41,7 @@ static void rt_decode(void){
 static unsigned char mw_line[120];
 static void rt_decode(void){
  unsigned int i;unsigned char count,end,width=0;int c;
- if(rt_api.selected->type!=0xF1 || rt_api.selected->aux){rt_invalid();return;}
+ if((rt_api.selected->type!=0xF1 && rt_api.selected->type!=6) || rt_api.selected->aux){rt_invalid();return;}
  for(i=0;i<512;++i){
   c=rt_get();if(c<0){rt_invalid();return;}
   if(i==26)width=c;

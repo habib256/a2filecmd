@@ -3,6 +3,7 @@
  * MVM command that embeds machine code. Fully reads, validates and closes
  * the film before displaying a frame. */
 #include "../a2fc_plugin.h"
+#include "mv_layout.h"
 void __fastcall__ plugin_entry(const struct A2fcApi*);
 struct MvHeader {unsigned int signature;unsigned char flags;void __fastcall__ (*entry)(const struct A2fcApi*);unsigned char r[3];char desc[44];};
 #pragma rodata-name(push,"OVLHDR")
@@ -14,9 +15,10 @@ const struct MvHeader __plugin_header={MEDIA_PLUGIN_MAGIC,OVERLAY_BIG,plugin_ent
 static const struct A2fcApi* M;
 static FILE* mv_file;
 static unsigned char mv_input[128],mv_shapes[256],mv_sprites[192],mv_pixels[1920],mv_rowdata[40];
-static unsigned int mv_at,mv_have,mv_size[2],mv_start[2],mv_base[2];
+static unsigned int mv_at,mv_have,mv_size[2],mv_start[2],mv_base[2],mv_total;
 static unsigned long mv_off;
-static unsigned char mv_bad,mv_draw,mv_cancel,mv_nsprites,mv_cached,mv_y;
+static unsigned char mv_bad,mv_draw,mv_cancel,mv_nsprites,mv_cached,mv_y,mv_back,mv_background,mv_flip,mv_play,mv_delay,mv_repeat;
+unsigned char __fastcall__ mv_key_wait(unsigned char);
 static void mv_invalid(void){if(!mv_bad)mv_bad=2;}
 static int mv_get(void){
  if(mv_at==mv_have){mv_at=0;mv_have=M->fread(mv_input,1,128,mv_file);if(ferror(mv_file)){mv_bad=1;return -1;}if(!mv_have)return -1;}
@@ -56,33 +58,66 @@ static void mv_display(void){
 #endif
 }
 static void mv_scene(void){
- unsigned int at=mv_off,i,p,source_y,source_x;unsigned char x,y,id,sx,sy,w,h,xx,yy;int dx,dy;
+ unsigned int at=mv_off,i,p,source_y,source_x;unsigned char x,y,id,sx,sy,w,h,xx,yy;int dx,dy;char key;
  if(!mv_draw)return;
+ for(;;){
  mv_cached=255;
  for(y=0;y<48;++y){
   if(!mv_row(1,y*4))return;
   for(x=0;x<40;++x)mv_pixels[(unsigned int)y*40+x]=mv_color((unsigned int)x*7/2);
  }
- for(i=0;i<mv_nsprites;++i){
+ for(i=0;!mv_background && i<mv_nsprites;++i){
   p=i*3;id=mv_sprites[p];sx=mv_shapes[(id-1)*4];sy=mv_shapes[(id-1)*4+1];w=mv_shapes[(id-1)*4+2];h=mv_shapes[(id-1)*4+3];
   dx=mv_sprites[p+1];if(dx>=140)dx-=256;dy=mv_sprites[p+2];
   for(y=0;y<48;++y){
-   if((int)y*4<dy || (int)y*4>=dy+h)continue;source_y=sy+(int)y*4-dy;if(source_y>=192)continue;yy=source_y;
+   if((int)y*4<dy || (int)y*4>=dy+(int)h)continue;source_y=sy+(int)y*4-dy;if(source_y>=192)continue;yy=source_y;
    if(!mv_row(0,yy))return;
    for(x=0;x<40;++x){
     xx=(unsigned int)x*7/2;
-    if((int)xx<dx || (int)xx>=dx+w)continue;
+    if((int)xx<dx || (int)xx>=dx+(int)w)continue;
     source_x=sx+xx-dx;if(source_x>=140)continue;xx=source_x;
     /* A reduced preview treats the shape rectangle as opaque. */
     mv_pixels[(unsigned int)y*40+x]=mv_color(xx);
    }
   }
  }
- if(!mv_seek(at))return;mv_display();
- if(M->wait_key()==KEY_ESC)mv_cancel=1;
+ if(!mv_seek(at))return;
+ /* Reflect the reduced, clipped scene. Every redraw rebuilds this buffer
+  * from checked source reads, so no source or frame history is modified. */
+ if(mv_flip&1)for(y=0;y<48;++y)for(x=0;x<20;++x){
+  p=(unsigned int)y*40+x;i=(unsigned int)y*40+39-x;
+  xx=mv_pixels[p];mv_pixels[p]=mv_pixels[i];mv_pixels[i]=xx;
+ }
+ if(mv_flip&2)for(y=0;y<24;++y)for(x=0;x<40;++x){
+  p=(unsigned int)y*40+x;i=(unsigned int)(47-y)*40+x;
+  xx=mv_pixels[p];mv_pixels[p]=mv_pixels[i];mv_pixels[i]=xx;
+ }
+ mv_display();
+ for(;;){
+  if(mv_play && !mv_key_wait(mv_delay))return;
+  key=M->wait_key();
+  if(key>='1' && key<='3'){
+   mv_delay=key=='1'?1:key=='2'?4:8;continue;
+  }
+  if(key=='S' || key=='s'){mv_play^=1;continue;}
+  if(key=='Q' || key=='q'){mv_repeat^=1;continue;}
+  mv_play=0;
+  if(key==KEY_ESC){mv_cancel=1;return;}
+  if(key=='O' || key=='o'){mv_background^=1;break;}
+  if(key=='H' || key=='h' || key=='V' || key=='v'){
+   mv_flip^=key=='H' || key=='h'?1:2;break;
+  }
+  if(key=='B' || key=='b' || key==KEY_LEFT || key==KEY_UP){mv_back=1;return;}
+  if(key=='R' || key=='r'){mv_back=2;return;}
+  if(key=='L' || key=='l'){mv_back=3;return;}
+  if(key=='+'){mv_back=4;return;}
+  if(key=='-'){mv_back=5;return;}
+  if(key==' ' || key==KEY_RETURN || key==KEY_DOWN || key==KEY_RIGHT)return;
+ }
+ }
 }
 static void mv_decode(void){
- unsigned int length,left,i,nframes=0;unsigned char tag,phase=0,op,n,id,trail=0;int raw;
+ unsigned int length,left,i,nframes=0,first=0,target=1;unsigned char tag,phase=0,op,n,id,trail=0;int raw;
  mv_nsprites=0;
  for(;;){
   raw=mv_get();if(raw<0){mv_invalid();return;}tag=raw;length=mv_word();if(mv_bad)return;
@@ -91,12 +126,12 @@ static void mv_decode(void){
   if(phase==1 || phase==2){
    if(tag!=phase+1 || length<2 || length>8194){mv_invalid();return;}
    i=phase-1;mv_start[i]=mv_word();mv_size[i]=length-2;mv_base[i]=mv_off;
-   if(mv_start[i]>8192 || mv_size[i]>8192-mv_start[i]){mv_invalid();return;}
+   if(!mv_plane_valid(length,mv_start[i])){mv_invalid();return;}
    for(left=length-2;left;--left)if(mv_get()<0){mv_invalid();return;}++phase;continue;
   }
   if(phase==3){if(tag!=6 || length){mv_invalid();return;}phase=4;continue;}
   if(phase==4){
-   if(tag!=5 || !length){mv_invalid();return;}left=length;
+   if(tag!=5 || !length){mv_invalid();return;}left=length;first=mv_off;
    while(left && !mv_cancel){
     raw=mv_get();--left;if(raw<0){mv_invalid();return;}op=raw;
     if(op<16){
@@ -108,7 +143,21 @@ static void mv_decode(void){
       raw=mv_get();if(raw<0){mv_invalid();return;}mv_sprites[mv_nsprites*3+1]=raw;
       raw=mv_get();if(raw<0){mv_invalid();return;}mv_sprites[mv_nsprites*3+2]=raw;++mv_nsprites;left-=3;
      }
-    }else if(op==0x30){++nframes;mv_scene();mv_nsprites=0;if(mv_bad)return;}
+    }else if(op==0x30){
+     ++nframes;mv_back=0;if(nframes>=target)mv_scene();mv_nsprites=0;if(mv_bad)return;
+     /* Only an automatic timeout at the last frame repeats. Manual next,
+      * cancellation and failed reads keep their normal checked exit. */
+     if(mv_play && mv_repeat && nframes==mv_total)mv_back=2;
+     /* Rebuild the requested frame from the animation stream. No history
+      * in AUX or an unbounded frame table; every seek/read stays checked. */
+     if(mv_back){
+      if(mv_back==3)target=mv_total;
+      else if(mv_back==4)target=mv_total-nframes<10U?mv_total:nframes+10U;
+      else if(mv_back==5)target=nframes<=10U?1:nframes-10U;
+      else target=mv_back==2 || nframes==1?1:nframes-1;
+      if(!mv_seek(first))return;left=length;nframes=0;
+     }
+    }
     else if(op==0xC0){if(left || mv_nsprites || !nframes){mv_invalid();return;}}
     else {mv_invalid();return;}
    }
@@ -118,6 +167,7 @@ static void mv_decode(void){
   if(tag!=7 || length){mv_invalid();return;}break;
  }
  while(mv_get()>=0)if(++trail>4){mv_invalid();return;}
+ if(!mv_draw && !mv_bad)mv_total=nframes;
 }
 static unsigned char mv_pass(unsigned char draw){
  mv_at=mv_have=0;mv_off=0;mv_bad=mv_cancel=0;mv_draw=draw;
@@ -125,12 +175,12 @@ static unsigned char mv_pass(unsigned char draw){
  mv_decode();if(M->fclose(mv_file))mv_bad=1;return !mv_bad;
 }
 void __fastcall__ plugin_entry(const struct A2fcApi* a){
- M=a;
+ M=a;mv_background=mv_flip=mv_play=mv_repeat=0;mv_delay=4;
  if(!a->full[0] || a->selected->type!=6){a->strcpy(a->note,"Select a BIN MVM film.");return;}
  if(!mv_pass(0)){a->strcpy(a->note,mv_bad==1?"Read/open/close error.":"Unsupported/malformed MVM film.");return;}
  a->clrscr();
  if(!mv_pass(1))a->strcpy(a->note,mv_bad==1?"Read/open/close error.":"Malformed MVM film.");
- else a->strcpy(a->note,"MVM: 40x48 opaque frames; Space next, ESC back.");
+ else a->strcpy(a->note,"MVM: S auto, Q loop, 1-3 speed, SPC/B, +/-10, R/L ends, O actors, H/V, ESC.");
 #ifndef PLUGIN_HOST
  *((unsigned char*)0xC051)=0;*((unsigned char*)0xC00D)=0;
 #endif

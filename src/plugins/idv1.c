@@ -5,10 +5,13 @@
 void __fastcall__ plugin_entry(const struct A2fcApi*);
 #include "id_stage.h"
 #include "id_context.h"
-/* All 1.0 readers in this relay consume ProDOS files. DOS candidates keep
- * the read-only DOS text fallback; no generic routing table is needed here. */
+/* Explicit read-only DOS readers; other candidates keep the generic fallback. */
 static void id_finish(const struct A2fcApi* a,const struct Entry* e,const char* what,const char* reader,unsigned char dos){
- if(a->arg=='O' || a->arg=='I' || a->arg==13){if(dos)reader="DOSVIEW";a->strcpy(a->input,reader);return;}
+ if(a->arg=='O' || a->arg=='I' || a->arg==13){
+  if(dos && strcmp(reader,"LISAV2") && strcmp(reader,"DOSFONT") &&
+     strcmp(reader,"MERLIN") && strcmp(reader,"MAGWIN") && strcmp(reader,"PSFONT"))reader="DOSVIEW";
+  a->strcpy(a->input,reader);return;
+ }
  a->sprintf((char*)a->copy_buf,"%s (%lu bytes): %s",e->name,e->size,what);
  a->copy_buf[79]=0;a->strcpy(a->note,(char*)a->copy_buf);
 }
@@ -25,20 +28,56 @@ static unsigned int n;
 static unsigned char id_dos;
 static const char* reader;
 static union {unsigned long l;unsigned int w[2];} sz;
-static unsigned char suffix(const char* name,const char* end){unsigned int n=strlen(name),k=strlen(end);return n>k && !strcmp(name+n-k,end);}
+static unsigned char suffix(const char* name,const char* end){unsigned char n=strlen(name),k=strlen(end);return n>k && !strcmp(name+n-k,end);}
 #include "id_v1.h"
+/* IDREAD retained the complete catalog name, stripped of high bits, at
+ * context[10..39]. It is space padded, not NUL terminated. Never inspect
+ * the following context bytes as part of the name. Display names can
+ * truncate a suffix or replace spaces/punctuation; they remain the entry
+ * identity used by the reader, together with the fresh T/S key. */
+static unsigned char dos_suffix(const unsigned char* name,const char* end){
+ unsigned char len=30,k=strlen(end),i,c;
+ while(len && name[len-1]==' ')--len;
+ if(len<=k)return 0;
+ for(i=0;i<k;++i){
+  c=name[(unsigned int)len-k+i];if(c>='a' && c<='z')c-=32;
+  if(c!=(unsigned char)end[i])return 0;
+ }
+ return 1;
+}
+#include "id_merlin.h"
+#include "id_psfont.h"
+static const char* dos_named(const unsigned char* name){
+ const char* what=psfont_content();if(what)return what;
+ if(!id_dos)return merlin_content();
+ if(e->type==6 && (sz.l==768 || sz.l==1024) &&
+    (dos_suffix(name,".SET") || dos_suffix(name,".FONT"))){
+  reader="DOSFONT";return "HRCG hi-res font";
+ }
+ if(e->type==6 && n>=256 && b[0]==0x8D && b[2]>=32 && dos_suffix(name,".MW")){
+  reader="MAGWIN";return "Magic Window?";
+ }
+ if(e->type==4 && n && b[0]>=128 &&
+    (dos_suffix(name,".ASM") || dos_suffix(name,".S"))){
+  reader="MERLIN";return "Merlin assembler source?";
+ }
+ return merlin_content();
+}
 unsigned char __fastcall__ md_entrypoint(const struct A2fcApi* a){
- const char* what;unsigned char* m=(unsigned char*)a->other_full;
+ const char* what;const char* next;unsigned char* m=(unsigned char*)a->other_full;
  reader=NULL;e=&actual;b=ID_SAMPLE;id_dos=a->panels[*a->active].fs==FS_DOS33;
  if(!id_restore(a,&actual,&n))goto failed;
  sz.l=e->size;
- if(m[42])goto failed;what=extra_v1();
+ if(m[42]==4){
+  what=dos_named(m+10);m[42]=1;next="IDENT.PLG";
+ }else {
+  if(m[42])goto failed;what=extra_v1();m[42]=3;next="IDFORMATS.PLG";
+ }
  if(what){m[40]=m[41]=0;id_finish(a,e,what,reader,id_dos);return 0;}
- m[42]=3;
 #ifdef PLUGIN_HOST
  return 1;
 #else
- if(id_open_stage(a,"IDFORMATS.PLG"))return 1;
+ if(id_open_stage(a,next))return 1;
 #endif
 failed:
  m[40]=m[41]=0;a->strcpy(a->note,"Invalid identification context/stage.");return 0;

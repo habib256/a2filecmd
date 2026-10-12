@@ -219,6 +219,14 @@ class FileViewers(unittest.TestCase):
         for exe in self.exes[:2]: subprocess.run(exe, check=True)
 
     def test_specialized_images_use_their_decoder_for_return_and_i(self):
+        for typ in (6,0xf8):
+            for size in (8,8192,16384):
+                for picture in (0,1):
+                    # Metadata alone still describes a raw-page-size BIN;
+                    # the content probe must select Arlequin in both modes.
+                    self.route('IMPORTED',typ,0,size,'ARLEQUIN',picture,raw=typ==6 and size!=8,data=b'\x09\x51gsXXXX')
+        for fail in (2,3,4):
+            self.route('IMPORTED',6,0,8192,'ERROR',fail=fail,raw=True,data=b'\x09\x51gsXXXX')
         for typ, aux, size, viewer in [(0xF2, 0, 4012, 'EXTASIE'),
                 (0x08, 0x4000, 64, 'PACKFOT'), (0x08, 0x4001, 128, 'PACKFOT'),
                 (0x06, 0xE001, 123, 'PAINT816'), (0x06, 0xE002, 6130, 'PAINT816'),
@@ -463,9 +471,9 @@ class FileViewers(unittest.TestCase):
 
     def test_macpaint_suffixes(self):
         for picture in (0, 1):
-            for name, typ in (('SEAGULL.MAC', 0), ('A.MAC', 0x08)):
+            for name, typ in (('SEAGULL.MAC', 0), ('A.MAC', 0x08), ('A.PNTG',0), ('A.PNTG',0x08)):
                 self.route(name, typ, 0x2000, 40000, 'MACPAINT', picture)
-        for name in ('.MAC', 'MAC', 'A.MACX', 'A.MA', 'A.PNTG'):
+        for name in ('.MAC', 'MAC', 'A.MACX', 'A.MA', '.PNTG','A.PNTGX','A.PNT'):
             self.route(name, 0, 0, 40000, 'HEX')
 
     def test_audio_scan_filter_and_format_precedence(self):

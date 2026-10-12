@@ -16,6 +16,9 @@ of `make test` -- written down for the benches instead:
 import re
 import sys
 import unittest
+import os
+import tempfile
+from unittest.mock import patch
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,6 +30,19 @@ CI = (ROOT / '.github/workflows/ci.yml').read_text()
 
 
 class Inventory(unittest.TestCase):
+    def test_stale_legacy_boot_is_refused(self):
+        with tempfile.TemporaryDirectory(prefix='bench-freshness-') as tmp:
+            root=Path(tmp)
+            (root/'build-6502/legacy').mkdir(parents=True)
+            resident=root/'build-6502/A2FILE.CODE.BIN'
+            boot=root/'build-6502/legacy/BOOT.po'
+            resident.write_bytes(b'new resident');boot.write_bytes(b'old fixture')
+            os.utime(resident,(20,20));os.utime(boot,(10,10))
+            with patch.object(runner,'ROOT',root):
+                self.assertEqual(runner.stale(),[boot])
+                os.utime(boot,(30,30))
+                self.assertEqual(runner.stale(),[])
+
     def test_every_bench_is_played(self):
         played = {s.bench for s in runner.STEPS} | set(overlay_benches.BENCHES) | set(runner.HELPERS)
         forgotten = sorted(p.stem for p in (ROOT / 'bench').glob('*.py') if p.stem not in played)

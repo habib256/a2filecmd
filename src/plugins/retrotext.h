@@ -20,10 +20,15 @@ static struct A2fcApi rt_api;
 static FILE* rt_file;
 #ifdef RT_DOS
 /* S-C sources saved as DOS Integer BASIC have a two-byte exact EOF.
+ * Merlin sources use DOS TXT's first NUL as a logical terminator;
+ * their complete allocation is still read to check backend errors.
  * Sources stay read-only; the two validation/display passes reopen them. */
 static unsigned char rt_dos;
 #define A (&rt_api)
 #define DS_SECTORS 257
+#if RT_FORMAT == 4
+#define DS_OTHER_TYPES
+#endif
 #define DS_NO_SEEK
 #define DS_DATA_BUFFER rt_api.copy_buf
 #define DS_MLI rt_api.mli
@@ -152,8 +157,14 @@ static void rt_decode(void){
 static void rt_decode(void){
  int raw;
  unsigned char c,field=0,quote=0,start=1,previous=0,col=0,target;
+#ifdef RT_DOS
+ unsigned char ended=0;
+#endif
  static const unsigned char stops[4]={0,9,15,26};
  while(!rt_cancel && (raw=rt_get())>=0){
+#ifdef RT_DOS
+  if(rt_dos){if(!raw)ended=1;if(ended)continue;}
+#endif
   if(raw<128 && raw!=32){rt_invalid();return;}
   c=raw&127;
   /* Macro comparisons can contain a single quote (IF "=]1). Match
@@ -289,8 +300,10 @@ static unsigned char rt_pass(unsigned char render){
  if(rt_dos){
   dv_file=NULL;
   if(!dv_open(&rt_api.panels[*rt_api.active]) || !ds_open(rt_api.selected) ||
-#if RT_FORMAT == 10
+#if RT_FORMAT == 10 || RT_FORMAT == 3
      ds_kind!=0){
+#elif RT_FORMAT == 4
+     ds_kind!=0x40){
 #elif RT_FORMAT == 11
      ds_kind!=4){
 #elif RT_FORMAT == 7
@@ -316,8 +329,10 @@ void __fastcall__ plugin_entry(const struct A2fcApi* a){
 #ifdef RT_DOS
  rt_dos=a->panels!=NULL && a->active!=NULL && a->panels[*a->active].fs==FS_DOS33;
  if(rt_dos && a->selected->type!=
-#if RT_FORMAT == 10
+#if RT_FORMAT == 10 || RT_FORMAT == 3
     4
+#elif RT_FORMAT == 4
+    0
 #elif RT_FORMAT == 7 || RT_FORMAT == 8 || RT_FORMAT == 11
     6
 #else

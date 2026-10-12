@@ -4,6 +4,7 @@
 #define VG_CLEAR 255
 #define VG_DOUBLE 2
 #include "v1gfx.h"
+#include "dg_layout.h"
 #include "dgmagi_data.h"
 static unsigned int dg_px,dg_tx;
 static unsigned char dg_py,dg_ty,dg_colour,dg_pattern,dg_brushno;
@@ -79,7 +80,7 @@ static void vg_decode(void){
   }
   if(t!=1 && t!=7 && t!=8 && t!=10 && t!=12 && t!=14){vg_invalid();return;}
   a=vg_get();b=vg_get();x=((unsigned int)arg<<8)|a;
-  if(a<0 || b<0 || x>=560 || b>=192){vg_invalid();return;}
+  if(a<0 || b<0 || !dg_point_valid(x,(unsigned char)b)){vg_invalid();return;}
   if(t==1){dg_tx=x;dg_ty=b;continue;}
   if(t==8){dg_px=x;dg_py=b;pen=1;continue;}
   if(t==7){vg_invalid();return;} /* transient colour-line mode unqualified */

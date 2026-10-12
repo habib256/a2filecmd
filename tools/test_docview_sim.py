@@ -126,7 +126,9 @@ int main(int argc, char** argv)
     int in;
     (void)argc;
     in = open("rom.bin", O_RDONLY);
-    if (read(in, (void*)0xD000, 0x3000) != 0x3000) return 9;
+    /* Keep sim65 HEAD peripheral aperture $FFC0+ intact; calculations
+       use the actual BASIC ROM and monitor below it, never reset vectors. */
+    if (read(in, (void*)0xD000, 0x2FC0) != 0x2FC0) return 9;
     close(in);
     keys = argv[1];
     e.type = 4; e.size = atol(argv[2]);
@@ -177,8 +179,10 @@ class DocviewSim(unittest.TestCase):
         cls.exe = {}
         for cpu in ('sim6502', 'sim65c02'):
             cfg = (target.parent / f'cfg/{cpu}.cfg').read_text()
-            cfg = cfg.replace('start = $0200, size = $FDF0 - __STACKSIZE__',
-                              'start = $4000, size = $C000 - $4000 - __STACKSIZE__')
+            import re
+            cfg,count = re.subn(r'(MAIN:[^\n]*start = )[^,]+, size = [^;]+;',
+                                r'\g<1>$4000, size = $C000 - $4000 - __STACKSIZE__;',cfg,count=1)
+            assert count==1
             assert '$C000 - $4000' in cfg
             cfg = cfg.replace('    RODATA:', '    OVLHDR:   load = MAIN, type = ro;\n    RODATA:', 1)
             (d / f'{cpu}.cfg').write_text(cfg)
@@ -265,6 +269,37 @@ class DocviewSim(unittest.TestCase):
         firsts = [int(rows[1].strip()) for rows, _ in shots]
         self.assertEqual(firsts, [1, 22, 43, 22, 43, 43])
 
+
+    def test_latest_visited_page_preserves_calculations_and_restart(self):
+        doc=b'_ND0'+b''.join(b'#:N=N+1]#:?N]\r' for _ in range(60))
+        shots=self.pages(doc,keys='L  BBLlRLB')
+        self.assertEqual([int(rows[1].strip()) for rows,_ in shots],
+                         [1,1,22,43,22,1,43,43,1,1,1])
+        self.assertEqual(shots[3],shots[6]);self.assertEqual(shots[6],shots[7])
+
+    def test_history_start_retains_latest_calculations_and_wrapped_layout(self):
+        doc = b'#:N=0]' + b'#:N=N+1]#:?N]\r' * 60
+        shots = self.pages(doc, keys='  HhLHRHL')
+        self.assertEqual([int(rows[1].strip().replace(',00', '')) for rows, _ in shots],
+                         [1, 22, 43, 1, 1, 43, 1, 1, 1, 1])
+        self.assertEqual(shots[2][0][1:22], shots[5][0][1:22])
+        doc = b'_MG3' + b''.join(f'ROW{i:03d}\r'.encode() for i in range(420))
+        shots = self.pages(doc, keys=' '*19 + 'HhLh RHL')
+        expected = list(range(1, 21)) + [5, 5, 20, 5, 6, 1, 1, 1]
+        self.assertEqual([rows[1].rstrip() for rows, _ in shots],
+                         [f'   ROW{(page-1)*21:03d}' for page in expected])
+        self.assertEqual(shots[19][0][1:22], shots[22][0][1:22])
+        self.assertEqual(shots[4][0][1:22], shots[20][0][1:22])
+
+    def test_latest_page_after_history_wrap_uses_original_layout(self):
+        doc=b'_MG3'+b''.join(f'ROW{i:03d}\r'.encode() for i in range(420))
+        keys=' '*19+'B'*15+'LlRLB'
+        shots=self.pages(doc,keys=keys)
+        pages=list(range(1,21))+list(range(19,4,-1))+[20,20,1,1,1]
+        self.assertEqual(len(shots),len(pages))
+        for (rows,_),page in zip(shots,pages):
+            self.assertEqual(rows[1].rstrip(),f'   ROW{(page-1)*21:03d}')
+        self.assertEqual(shots[19],shots[35]);self.assertEqual(shots[35],shots[36])
 
     def test_decimal_tab_and_letters_set_apart(self):
         # _TD: a number's comma at the tab's column, from the margin, on the

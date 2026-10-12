@@ -42,7 +42,8 @@ column 10, row 46). All eleven pictures consume their stream exactly.
 
 **In A2 File Cmd.** `tools/arlequin_ref.py` is the reference decoder and an
 encoder for synthetic pictures (the maker's pictures are not distributed
-here). Return sends a `$F8` file to ARLEQUIN when bytes 2–3 are `gs`,
+here). Return/I sends a `$F8` file or intact ProDOS BIN import to ARLEQUIN
+when bytes 2–3 are `gs`,
 whatever its auxiliary type; the overlay itself refuses any other file type
 and a header outside the limits above. Its use of the auxiliary memory is
 confirmed first, like every viewer that writes it (no question when `/RAM`
@@ -53,3 +54,33 @@ checks the whole stream before writing the auxiliary bank, and rebuilds
 `tools/test_arlequin.py` runs the 6502 decoder under sim65 on both
 processors, with the maker's pictures when `/GISTDATA` is available;
 `bench/arlequin.py` runs the overlay under POM2 with a Féline card.
+
+**BIN import qualification, 12 October 2026.** OPEN's actual assembly and
+the IDENT relay accept the same BIN signature. The content probe takes
+priority over coincidental 8192/16384-byte raw-page sizes; explicit packed
+metadata keeps its earlier priority. The full decoder still rejects invalid
+dimensions or a truncated stream before drawing. Direct DOS BIN is not
+added. A successful first-pass decode with the FILE error flag set is refused,
+as is a close failure. Dry-run state is reset on every entry, including a
+wrong type, so a refusal after a previous render cannot rebuild `/RAM`.
+
+The Arlequin suite (9), OPEN routing (35), real IDENT stages (14) and DOS
+identification (12) pass with cc65 2.19 and HEAD on both CPUs. Arlequin's
+actual C orchestration runs on the host and both sim65 CPUs with injected
+open/read/close failures; the real assembly separately compares full-screen
+and window pixels against the reference, including original pictures when
+the sample disk is available. Source bytes are preserved throughout.
+
+POM2 `bench/arlequin.py --imports-only` passes **16/16 checks per CPU**:
+Return/I, MAIN and AUX planes including the black border, occupied-RAM warning
+before writes, refusal preserving the AUX bank, RAM rebuilt empty after
+acceptance, truncated BIN preserving AUX, stack floor and whole source volume.
+All destructive checks use disposable volumes and RAM files. The full legacy
+Arlequin bench has not been rerun for this qualification; physical Apple II
+hardware remains untested.
+
+Both native builds and all four distribution images pass with layout guards
+active. ARLEQUIN ends at `$1FC0` (65C02) / `$1FDC` (6502), below the `$2000`
+graphics boundary; OPEN ends at `$1F46` on both CPUs. IDFORMATS ends at `$3EE1`
+/ `$3FD9`, below `$4000`. The IDENT handoff and bench inventory pass, and
+signedness analysis reports zero sites.

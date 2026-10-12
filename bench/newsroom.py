@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 from xplug import boot_hd, ok_all, RET, ESC
 import newsroom_ref as ref
-from test_newsroom import corpus
+from test_newsroom import corpus, mirror_reference
 
 PORT = 6860
 RIGHT = b'\x15'
@@ -59,20 +59,47 @@ def main():
             s.key(b'/'); s.select('/WORKHD'); s.key(RET); p.stable()
             s.select('WORK'); s.key(RET); p.stable()
             s.select('BN.LUMBER')
-            aux = bytes(p.peek(0x1000, 0xB000, 'aux'))
+            s.ram_occupied()
+            aux = bytes(p.peek(0x0800, 0xB800, 'aux'))
+            volume=Path(p.hdv).read_bytes()
+            floor=s.sym['__HIMEM__']-s.sym['__STACKSIZE__'];p.poke(floor,b'\xA5'*8)
             s.key(RET)
             for i, name in enumerate(sorted(pics)):
                 want = ref.page(pics[name])
                 s.wait(lambda: bytes(p.peek(0x2000, 8192)) == want, name + ' rendered', 60)
                 s.ok(name + ' page matches the reference', settled(p) == want)
+                inverse=bytearray(want)
+                for y in range(192):
+                    at=(y&7)*1024+(y&56)*16+(y>>6)*40
+                    for x in range(40):inverse[at+x]^=127
+                for key,expected,label in ((b'I',bytes(inverse),'inverse'),
+                                           (b'i',want,'restored'),
+                                           (b'II',want,'double inversion'),
+                                           (b'xI',bytes(inverse),'ignored key then inverse')):
+                    s.key(key)
+                    s.wait(lambda:bytes(p.peek(0x2000,8192))==expected,name+' '+label,60)
+                    s.ok(name+' '+label+' pixels and screen holes',settled(p)==expected)
+                commands = 'I'       # the preceding xI leaves the negative page
+                for key, label in ((b'H', 'horizontal'), (b'h', 'horizontal restored'),
+                                   (b'V', 'vertical'), (b'v', 'vertical restored'),
+                                   (b'HV', 'both mirrors'), (b'VH', 'both restored'),
+                                   (b'I', 'original colors'), (b'hv', 'lowercase mirrors')):
+                    commands += key.decode('ascii')
+                    expected = mirror_reference(want, commands)
+                    s.key(key)
+                    s.wait(lambda: bytes(p.peek(0x2000, 8192)) == expected,
+                           name + ' ' + label, 60)
+                    s.ok(name + ' ' + label + ' exact pixels and holes', settled(p) == expected)
                 if i + 1 < len(pics):
                     s.key(RIGHT)
-            s.ok('AUX and /RAM untouched', bytes(p.peek(0x1000, 0xB000, 'aux')) == aux)
+            s.ok('AUX and occupied /RAM untouched', bytes(p.peek(0x0800, 0xB800, 'aux')) == aux)
             s.key(ESC)
             s.wait(lambda: s.has('Type  Aux'), 'panels restored', 60); p.stable()
             s.select('PH.ZZBAD'); s.key(RET)
             s.wait(lambda: s.has('Not a whole Newsroom picture'), 'refusal message', 60)
             s.ok('malformed file refused with its message', True)
+            s.ok('Newsroom stack floor preserved',p.peek(floor,8)==b'\xA5'*8)
+            p.sync_disks();s.ok('Whole source volume preserved',Path(p.hdv).read_bytes()==volume)
     return ok_all(s, 'newsroom')
 
 

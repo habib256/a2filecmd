@@ -4,19 +4,13 @@
  * then read/close each glyph before showing it. 32-row glyphs combine two
  * bitmap rows per screen row. Reference: CiderPress II Fontrix notes,
  * reverse engineered by Mark Long (Apache-2.0; NOTICE). */
-#include <string.h>
-#include "../a2fc_plugin.h"
-void __fastcall__ plugin_entry(const struct A2fcApi*);
-struct Header {unsigned int signature;unsigned char flags;
- void __fastcall__ (*entry)(const struct A2fcApi*);unsigned char r[3];char desc[50];};
+#define DS_SECTORS 81
+#include "ps_source.h"
 #pragma rodata-name(push,"OVLHDR")
-const struct Header __plugin_header={PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry,
- {0,0,0},"Preview Fontrix font glyphs (monochrome text)"};
+const struct PsHeader __plugin_header={PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry,
+ {0,0,0},"Preview Fontrix font glyphs (DOS/ProDOS)"};
 #pragma rodata-name(pop)
-#ifndef PLUGIN_HOST
-#define ferror(f) (((unsigned char*)(f))[1]&4)
-#endif
-static struct A2fcApi a;
+#define a ps_api
 static unsigned char header[384],glyph[128];
 static unsigned char first,count,height,index_,width;
 static unsigned long actual;
@@ -25,18 +19,16 @@ static unsigned int getptr(unsigned char c){
  return (unsigned int)header[p]|((unsigned int)header[p+1]<<8);
 }
 static unsigned char load(void){
- FILE* f;
- unsigned int n,p,q,len;
- unsigned char c,bad=0;
- f=a.fopen(a.full,"rb");if(!f)return 0;
- actual=a.fread(header,1,sizeof header,f);
- if(actual!=sizeof header || ferror(f))bad=1;
- do{
-  n=a.fread(a.copy_buf,1,512,f);actual+=n;
-  if(ferror(f) || actual>20480UL)bad=1;
- }while(n && !bad);
- if(a.fclose(f))bad=1;
- if(bad)return 0;
+ unsigned int p,q,len;
+ unsigned char c;
+ int byte;
+ if(!ps_open())return 0;
+ actual=0;
+ while((byte=ps_get())>=0){
+  if(actual<sizeof header)header[(unsigned int)actual]=byte;
+  if(++actual>20480UL)break;
+ }
+ if(!ps_close() || actual<sizeof header || actual>20480UL)return 0;
  if(!((header[24]==0x90 && header[25]==0xF7 && header[26]==0xB2)||
       (header[24]==0x6F && header[25]==0x08 && header[26]==0x4D)))return 0;
  count=header[16];first=header[17];height=header[20];
@@ -51,16 +43,15 @@ static unsigned char load(void){
  return 1;
 }
 static unsigned char read_glyph(void){
- FILE* f;
- unsigned int p,len;
- unsigned char bad;
+ unsigned int p,len,i;
+ int c;
  p=getptr(first+index_);len=getptr(first+index_+1)-p;width=len/height;
- f=a.fopen(a.full,"rb");if(!f)return 0;
- bad=a.fseek(f,(long)p,SEEK_SET)!=0;
- if(!bad && (a.fread(glyph,1,len,f)!=len || ferror(f)))bad=1;
- if(a.fclose(f))bad=1;
- return !bad;
+ if(!ps_open())return 0;
+ if(!ps_seek(p)){ps_close();return 0;}
+ for(i=0;i<len;++i){c=ps_get();if(c<0){ps_bad=1;break;}glyph[i]=c;}
+ return ps_close();
 }
+
 static void show(void){
  unsigned char x,y,k,scale,ink;
  unsigned int p;
@@ -83,7 +74,8 @@ static void show(void){
 void __fastcall__ plugin_entry(const struct A2fcApi* api){
  unsigned char key;
  a=*api;
- if(!a.full[0] || !a.selected->name[0] || a.selected->type==15){
+ ps_dos=a.panels!=NULL && a.active!=NULL && a.panels[*a.active].fs==FS_DOS33;
+ if((!ps_dos && !a.full[0]) || !a.selected->name[0] || a.selected->type==15){
   a.strcpy(a.note,"Select a Fontrix font.");return;}
  if(!load()){a.strcpy(a.note,"Bad Fontrix font/read/close error.");return;}
  index_=0;

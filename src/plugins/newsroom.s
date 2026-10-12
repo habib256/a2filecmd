@@ -29,9 +29,10 @@ NRO_FOPEN   = _nr_ofs+4
 NRO_FREAD   = _nr_ofs+5
 NRO_FCLOSE  = _nr_ofs+6
 NRO_STRCPY  = _nr_ofs+7
-NRO_MWAIT   = _nr_ofs+8
+NRO_GETKEY  = _nr_ofs+8
 NRO_ETYPE   = _nr_ofs+9
 NRO_ESIZE   = _nr_ofs+10
+NRO_MKEY    = _nr_ofs+11
 
         .segment "BSS"
 api:    .res    2
@@ -232,10 +233,110 @@ fin1:   lda     in
         beq     fin2
         sta     bad
 fin2:   lda     bad
-        bne     fin3
+        jne     fin3
         jsr     _hv_show
-        ldy     NRO_MWAIT
+view:   ldy     NRO_GETKEY
         jsr     call
+        pha
+        and     #$5F
+        cmp     #'I'
+        beq     inverse
+        cmp     #'H'
+        beq     horizontal
+        cmp     #'V'
+        jeq     vertical
+        pla
+        ldy     NRO_MKEY
+        jsr     call
+        cmp     #0
+        beq     view
+        jmp     fin3
+inverse:
+        pla
+        lda     #0
+        sta     row
+invrow: lda     row
+        jsr     _hv_row
+        sta     ptr2
+        stx     ptr2+1
+        ldy     #39
+invbyte:
+        lda     (ptr2),y
+        eor     #$7F                    ; dots only, preserve palette and holes
+        sta     (ptr2),y
+        dey
+        bpl     invbyte
+        inc     row
+        lda     row
+        cmp     #192
+        bne     invrow
+        jmp     view
+; Mirror the 280 visible dots. Reuse the closed stream's 64-byte buffer;
+; palette bits travel with their bytes, screen holes are never touched.
+horizontal:
+        pla
+        lda     #0
+        sta     row
+hrow:   lda     row
+        jsr     _hv_row
+        sta     ptr2
+        stx     ptr2+1
+        ldy     #39
+hbyte:  lda     #0
+        sta     tmp1
+        ldx     #7
+        lda     (ptr2),y
+hbit:   lsr     a
+        rol     tmp1
+        dex
+        bne     hbit
+        lda     (ptr2),y
+        and     #$80
+        ora     tmp1
+        sta     buf,y
+        dey
+        bpl     hbyte
+        ldx     #39
+        ldy     #0
+hwrite: lda     buf,x
+        sta     (ptr2),y
+        dex
+        iny
+        cpy     #40
+        bne     hwrite
+        inc     row
+        lda     row
+        cmp     #192
+        bne     hrow
+        jmp     view
+; Exchange rows 0/191 through 95/96, 40 visible bytes per row only.
+vertical:
+        pla
+        lda     #0
+        sta     row
+vrow:   lda     row
+        jsr     _hv_row
+        sta     ptr2
+        stx     ptr2+1
+        lda     #191
+        sec
+        sbc     row
+        jsr     _hv_row
+        sta     ptr1                    ; include the row's 40/80-byte third
+        ldy     #39
+vbyte:  lda     (ptr2),y
+        tax
+        lda     (ptr1),y
+        sta     (ptr2),y
+        txa
+        sta     (ptr1),y
+        dey
+        bpl     vbyte
+        inc     row
+        lda     row
+        cmp     #96
+        bne     vrow
+        jmp     view
 fin3:   ldy     NRO_RESELECT            ; strcpy(api->reselect, selected->name)
         jsr     field
         jsr     pushax

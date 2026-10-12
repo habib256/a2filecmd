@@ -7,6 +7,10 @@ CONFIG = ROOT / 'config/packages.mk'
 VALUES = dict(re.findall(r'^(\w+)\s*=\s*(.*?)\s*$', CONFIG.read_text(), re.M))
 ROLES = VALUES['PACKAGE_ROLES'].split()
 PACKAGES = {role: VALUES['PACKAGE_' + role].split() for role in ROLES}
+BENCH_PACKAGES = {role: VALUES['BENCH_PACKAGE_' + role].split() for role in ROLES}
+for role, names in BENCH_PACKAGES.items():
+    if len(names) != len(set(names)) or not set(names) <= set(PACKAGES[role]):
+        raise ValueError('invalid bench package: ' + role)
 VOLUMES = {role: VALUES['PACKAGE_VOLUME_' + role] for role in ROLES}
 BASIC = VALUES['PACKAGE_BASIC']
 RUNTIMES = VALUES['PACKAGE_RUNTIMES'].split()

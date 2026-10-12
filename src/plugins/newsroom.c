@@ -23,7 +23,7 @@ struct Header { unsigned int signature; unsigned char flags;
     char desc[36]; };
 #pragma rodata-name (push, "OVLHDR")
 const struct Header __plugin_header = { MEDIA_PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry,
-    {0,0,0}, "The Newsroom photos and banners" };
+    {0,0,0}, "Newsroom photos/banners: I/H/V" };
 #pragma rodata-name (pop)
 #endif
 
@@ -31,6 +31,6 @@ const struct Header __plugin_header = { MEDIA_PLUGIN_MAGIC, OVERLAY_BIG, plugin_
 #define OFS(field) offsetof(struct A2fcApi, field)
 const unsigned char nr_ofs[] = {
     OFS(full), OFS(note), OFS(reselect), OFS(selected), OFS(fopen), OFS(fread),
-    OFS(fclose), OFS(strcpy), OFS(media_wait),
-    offsetof(struct Entry, type), offsetof(struct Entry, size)
+    OFS(fclose), OFS(strcpy), OFS(cgetc),
+    offsetof(struct Entry, type), offsetof(struct Entry, size), OFS(media_key)
 };

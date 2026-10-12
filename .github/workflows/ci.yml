@@ -120,7 +120,7 @@ jobs:
     runs-on: ${{ vars.POM2_RUNNER }}
     steps:
       - uses: actions/checkout@v4
-      - run: make disk && make benchfloppy ARCH=enh && make benchfloppy ARCH=6502 && make xplugins ARCH=6502 && make benchpackages ARCH=6502
+      - run: make disk && make benchboot ARCH=6502 && make benchfloppy ARCH=enh && make benchfloppy ARCH=6502 && make xplugins ARCH=6502 && make benchpackages ARCH=6502
       - name: Amorcage des disquettes publiees et noyau des surcouches
         run: python3 bench/all.py --setup --strict --out bench-out --group boot core
       - name: DOS 3.3 physique, images et nibbles ; ce qui ne doit perdre aucun octet

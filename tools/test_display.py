@@ -268,6 +268,7 @@ static void reference(unsigned char x,const char*spec){
             (p / 'test.c').write_text(ASM_C.replace('/* REFERENCE */', reference))
             # Only relocate LC for the simulator; execute the production code.
             (p / 'display.s').write_text((ROOT / 'src/display.s').read_text().replace('.segment "LC"', '.segment "CODE"'))
+            (p / 'key_wait.inc').write_text((ROOT / 'src/key_wait.inc').read_text())
             # Keep simulator code away from the actual Apple II text page.
             cfg = Path(shutil.which('cl65')).resolve().parents[1] / 'share/cc65/cfg/sim6502.cfg'
             (p / 'sim.cfg').write_text(cfg.read_text().replace('start = $0200, size = $FDF0', 'start = $2000, size = $DFF0'))
@@ -301,6 +302,7 @@ int main(void){KBD=0;slideshow=0x81;
             p = Path(tmp)
             (p / 'test.c').write_text(prog)
             (p / 'display.s').write_text((ROOT / 'src/display.s').read_text().replace('.segment "LC"', '.segment "CODE"'))
+            (p / 'key_wait.inc').write_text((ROOT / 'src/key_wait.inc').read_text())
             cfg = Path(shutil.which('cl65')).resolve().parents[1] / 'share/cc65/cfg/sim6502.cfg'
             (p / 'sim.cfg').write_text(cfg.read_text().replace('start = $0200, size = $FDF0', 'start = $2000, size = $DFF0'))
             for cpu, target in [('6502', 'sim6502'), ('65c02', 'sim65c02')]:
@@ -314,6 +316,36 @@ int main(void){KBD=0;slideshow=0x81;
                     seconds = (cycles[1] - cycles[0]) / 1_023_000
                     self.assertGreater(seconds, 9.5)
                     self.assertLess(seconds, 10.5)
+
+
+    def test_movie_delay_and_immediate_keyboard_interrupt(self):
+        prog = r'''
+#define KBD (*(volatile unsigned char*)0xC000)
+unsigned char __fastcall__ mv_key_wait(unsigned char);
+int main(void){
+ KBD=0;
+#ifdef PENDING
+ KBD=128;if(mv_key_wait(SPEED)!=1 || KBD!=128)return 1;
+#elif defined(WAIT)
+ if(mv_key_wait(SPEED)!=0)return 2;
+#endif
+ return 0;}
+'''
+        with tempfile.TemporaryDirectory(prefix='a2fc-movie-delay-') as tmp:
+            p=Path(tmp);(p/'test.c').write_text(prog)
+            (p/'movie.s').write_text((ROOT/'src/plugins/mvmovie.s').read_text().replace('../key_wait.inc','key_wait.inc'))
+            (p/'key_wait.inc').write_text((ROOT/'src/key_wait.inc').read_text())
+            for cpu,target in (('6502','sim6502'),('65c02','sim65c02')):
+                for units in (1,4,8):
+                    cycles=[]
+                    for define in ([],['-DWAIT'],['-DPENDING']):
+                        subprocess.run(['cl65',f'-DSPEED={units}',*define,'-t',target,'--cpu',cpu,'-O','-o',str(p/'test'),
+                                        str(p/'test.c'),str(p/'movie.s')],check=True)
+                        r=subprocess.run(['sim65','-c',str(p/'test')],capture_output=True,text=True,check=True,timeout=60)
+                        cycles.append(int(re.search(r'(\d+) cycles',r.stdout+r.stderr).group(1)))
+                    seconds=(cycles[1]-cycles[0])/1_000_000
+                    self.assertGreater(seconds,units*0.70);self.assertLess(seconds,units*0.74)
+                    self.assertLess(cycles[2]-cycles[0],100)
 
 
 if __name__ == '__main__':

@@ -4,7 +4,9 @@
 #define VG_LABEL "PCS outlines"
 #define VG_CLEAR 0
 #define VG_DOUBLE 0
+#define VG_TOGGLE 8
 #include "v1gfx.h"
+#include "pcs_layout.h"
 static unsigned char pc_len[255],pc_x[64],pc_y[64];
 static int pc_cross[64];
 static unsigned char pc_count;
@@ -48,7 +50,7 @@ static unsigned char pc_objects(unsigned char render){
  unsigned char i,j,n,type,color,length;int raw;
  for(i=0;i<pc_count;++i){
   length=pc_len[i];type=vg_get();color=vg_get();n=vg_get();
-  if(vg_bad || type<1 || type>10 || color>16 || (color&1) || n<3 || n>64 || length<3+2*n){vg_invalid();return 0;}
+  if(vg_bad || !pc_object_valid(type,color,n,length)){vg_invalid();return 0;}
   for(j=0;j<n;++j){raw=vg_get();if(raw<0 || raw>=154){vg_invalid();return 0;}pc_x[j]=raw;}
   for(j=0;j<n;++j){raw=vg_get();if(raw<0 || raw>=192){vg_invalid();return 0;}pc_y[j]=raw;}
   for(j=3+2*n;j<length;++j)if(vg_get()<0){vg_invalid();return 0;}
@@ -71,7 +73,7 @@ static void vg_decode(void){
   if((unsigned long)out+count>8448UL){vg_invalid();return;}
   for(i=0;i<count;++i){
    raw=t==1?0:vg_get();if(raw<0){vg_invalid();return;}
-   if(vg_draw && out<8192){vg_addr=0x4000+out;vg_write(raw);}
+   if(vg_draw && out<8192){vg_addr=0x4000+out;vg_write(raw);vg_addr+=0x2000;vg_write(raw);}
    ++out;
   }
  }

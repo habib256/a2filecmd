@@ -14,7 +14,7 @@
 # every time by tools/check_layout.py, which catches the two overflows that
 # ld65 lets through silently. See docs/MANUAL.md.
 
-A2FC_VERSION = 0.9.6
+A2FC_VERSION = 0.9.7
 VOLUME       = A2FC$(CPU)
 
 # The .2mg hard disk: another volume name, to coexist with the floppy.
@@ -108,7 +108,8 @@ XPLUGINS = $(sort $(basename $(notdir $(wildcard $(SRC)/plugins/*.c))))
 include config/800k.mk
 XPLG800 = $(patsubst %,$(BUILD)/%.PLG,$(XPLUGINS800))
 # Overlays in the historical compact BOOT regression fixture.
-BENCH_BOOT_PLUGINS = $(filter dosview move movecopy verify,$(XPLUGINS))
+# DOS readers use their dedicated HD fixtures; leave room on this 140K disk.
+BENCH_BOOT_PLUGINS = $(filter move movecopy verify,$(XPLUGINS))
 # The cc65 target library for the plugin link: the one of the machine's cc65
 # for apple2enh, the one of cc65 master for apple2.
 ifeq ($(ARCH),6502)
@@ -129,7 +130,7 @@ XPLUGINS_SCRATCH = music bootblk find goto favrun mdview wipe dgrview fixtypes
 # sets the tags aside and rereads the panels) but their CODE must still stop
 # before $2000: they are linked with the small window, which makes ld65
 # enforce that boundary instead of leaving it to luck.
-XPLUGINS_HGR = purple extasie arlequin macpaint shapes packfot paint816 fontview printshop lz4fh newsroom
+XPLUGINS_HGR = purple extasie arlequin macpaint shapes packfot paint816 fontview lz4fh newsroom
 # NRCLIP and GMAGIC draw there too, but their code also runs from $0C00
 # and $2000 (sdk/nrclip.cfg, sdk/gmagic.cfg, which set and check their
 # own limits).
@@ -168,6 +169,9 @@ $(BUILD) $(DIST):
 
 $(BUILD)/%.o: $(SRC)/%.s | $(BUILD)
 	$(AS) -t $(TARGET) $(ASDEFS) -o $@ $<
+
+$(BUILD)/display.o: $(SRC)/key_wait.inc
+$(BUILD)/mvmovie.PLG: $(SRC)/key_wait.inc
 
 $(BUILD)/memory_swap.o: $(SRC)/memory_swap.c $(SRC)/memory_swap.h | $(BUILD)
 	$(CL) $(CFLAGS) -c -o $@ $<
@@ -349,7 +353,7 @@ ifeq ($(ARCH),6502)
 # Historical category fixtures, used only by the disk-swap regression benches.
 benchpackages: $(CATALOG) $(XPLG)
 	@mkdir -p $(BUILD)/legacy
-	@for role in $(PACKAGE_ROLES); do python3 $(TOOLS)/mkpackage.py $(BUILD) $(BUILD)/legacy/$$role.po --role $$role --cpu $(CPU) || exit; done
+	@for role in $(PACKAGE_ROLES); do python3 $(TOOLS)/mkpackage.py $(BUILD) $(BUILD)/legacy/$$role.po --role $$role --cpu $(CPU) --bench || exit; done
 
 $(PO800): STAGE = $(BUILD)/vol800
 $(PO800): $(STAGE_DEPS) $(XPLG800) config/800k.mk $(TOOLS)/check_800k.py $(TOOLS)/distribution.py $(TOOLS)/prodos_check.py $(TOOLS)/prodos_read.py $(PPT3) $(FANTA) $(TAKE1) $(DATA)/BASIC.SYSTEM.SYS $(DATA)/INTBASIC.SYSTEM.SYS | $(DIST)
@@ -395,8 +399,9 @@ $(FULLPO): STAGE = $(BUILD)/benchvol
 # COMPARE is left out too (0.9.5; bench/find.py stages its own floppy with it),
 # so that A2FILE.CFG can still be saved -- a full floppy made RUN and Q ask
 # "Configuration warning ... anyway?" (bench/run.py, vdrive_printer.py).
+# DOSGET lives on the FILES companion; omit it here to retain config space.
 $(FULLPO): $(STAGE_DEPS) $(FLOPPY_SYSTEM) $(DATA)/BASIC.SYSTEM.SYS
-	$(call stage,$(filter-out UNSHRINK BINARY2 AWP SEARCH COMPARE,$(PLUGINS)),)
+	$(call stage,$(filter-out UNSHRINK BINARY2 AWP SEARCH COMPARE DOSGET,$(PLUGINS)),)
 	cp $(FLOPPY_SYSTEM) $(STAGE)/A2FILE.SYSTEM.SYS
 	cp $(DATA)/BASIC.SYSTEM.SYS $(STAGE)/
 	python3 $(TOOLS)/mkvolume.py $(STAGE) $(FULLPO) --volume A2FILECMD \
@@ -523,6 +528,10 @@ test: test-mini $(TAKE1)
 	python3 $(TOOLS)/test_mcs_handoff.py
 	python3 $(TOOLS)/test_ident_handoff.py
 	python3 $(TOOLS)/test_retrotext.py
+	python3 $(TOOLS)/test_dosmerlin.py
+	python3 $(TOOLS)/test_doslisa.py
+	python3 $(TOOLS)/test_dos_names.py
+	python3 $(TOOLS)/test_merlin_ident.py
 	python3 $(TOOLS)/test_mkvolume_sparse.py
 	python3 $(TOOLS)/test_v1text.py
 	python3 $(TOOLS)/test_v1media.py
@@ -533,6 +542,8 @@ test: test-mini $(TAKE1)
 	python3 $(TOOLS)/test_pfsfile.py
 	python3 $(TOOLS)/test_pfsplan.py
 	python3 $(TOOLS)/test_printshop_extras.py
+	python3 $(TOOLS)/test_direct_readers.py
+	python3 $(TOOLS)/test_dosfont.py
 	python3 $(TOOLS)/test_corpus_read.py
 	python3 $(TOOLS)/test_fontrix.py
 	python3 $(TOOLS)/test_pt3.py
@@ -597,8 +608,10 @@ test: test-mini $(TAKE1)
 	python3 $(TOOLS)/fantavision_ref.py --selftest
 	python3 $(TOOLS)/test_fantavision.py
 	python3 $(TOOLS)/test_fanta_wait.py
+	python3 $(TOOLS)/test_fanta_keys.py
 	python3 $(TOOLS)/take1_ref.py --selftest
 	python3 $(TOOLS)/test_take1.py
+	python3 $(TOOLS)/test_take1_keys.py
 
 # The headless POM2 test host the benches drive, built from its source kept
 # here (bench/pom2_playtest/) against the POM2 emulator library (POM2_ROOT,
@@ -615,6 +628,7 @@ bench: disk
 # every bench with the machine and the image it needs, one log per step, and
 # a missing fixture counted as a failure instead of a silent gap.
 qualify: disk
+	$(MAKE) ARCH=6502 benchboot
 	$(MAKE) ARCH=enh benchfloppy
 	$(MAKE) ARCH=6502 benchfloppy
 	$(MAKE) ARCH=6502 xplugins benchpackages

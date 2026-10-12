@@ -3,6 +3,7 @@
  * optional FOUR-BYTE PREFIX, not a trailer. Derived from original BOEDIT
  * SETBORD/GETMASK source. MAIN/text only, complete read+close before display. */
 #include "ps_source.h"
+#include "ps_border_layout.h"
 #pragma rodata-name(push,"OVLHDR")
 const struct PsHeader __plugin_header={PLUGIN_MAGIC,OVERLAY_BIG,plugin_entry,
  {0,0,0},"Preview Print Shop border patterns (24x14)"};
@@ -33,12 +34,10 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api){
  if(!ps_open())goto fail;
  while((c=ps_get())>=0){if(n<264)border[n]=c;if(++n>264)break;}
  if(!ps_close())goto fail;
+ if(!ps_border_layout(ps_aux,n,ps_new))goto malformed;
  if(ps_new){
-  if(ps_aux!=0x2000 || n!=264)goto malformed;
   show(0);api->strcpy(api->reselect,api->selected->name);return;
  }
- if(n!=144 && n!=148)goto malformed;
- if((ps_aux&0xCFFF)!=0x4800)goto malformed;
  show(n==148?4:0);api->strcpy(api->reselect,api->selected->name);return;
 malformed:api->strcpy(api->note,"Malformed/unsupported Print Shop border.");return;
 fail:if(ps_bad)api->strcpy(api->note,"Print Shop read/open/close error.");

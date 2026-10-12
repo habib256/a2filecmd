@@ -31,7 +31,10 @@ non séquentielle ; elles ne sont pas comptées comme documents validés.
 
 ## LISA v3 standard
 
-ProDOS INT ($FA), auxiliaire $1000–$3FFF. Deux mots de l'en-tête donnent
+ProDOS INT ($FA) ou import BIN ($06), auxiliaire $1000–$3FFF. Entrée/I
+réutilise LISAV3 pour les deux types : les longueurs déclarées doivent
+correspondre exactement à l'EOF réellement lu, et non à la taille du panneau.
+Deux mots de l'en-tête donnent
 les longueurs du code et des symboles. La table doit contenir au maximum
 512 entrées de huit octets : six octets compactent huit caractères de
 six bits, les deux derniers portent une valeur inutilisée par l'aperçu.
@@ -71,17 +74,31 @@ rouvre et affiche le texte. Les échecs d'ouverture, lecture et fermeture
 sont distincts d'EOF et signalés, y compris pendant cette seconde passe.
 Une annulation du défilement ferme la source sans la modifier.
 
-- Sept tests du vrai C sur l'hôte : contrôles Magic Window, en-têtes,
+- Huit tests du vrai C sur l'hôte : contrôles Magic Window, en-têtes,
   limites, troncatures, indices dans les deux banques de symboles, nombres,
   chaînes, macros, commentaires, erreurs d'I/O, tailles périmées et annulation.
+  Les imports BIN donnent le même listing que les deux sources INT originales
+  et la table complète de 512 symboles ; mauvais types/auxiliaires, ANIX,
+  références invalides, troncatures et octets supplémentaires sont refusés.
 - Le même code exécuté par sim65 sur 6502 et 65C02 : documents réels,
   référence au symbole 511 et valeurs 16 bits, sortie identique à l'hôte.
-- Banc natif sur images jetables : **10/10 sur chaque CPU**, ouverture automatique des deux formats,
+- Banc natif sur images jetables : **14/14 sur chaque CPU** (imports BIN
+  qualifiés le 12 octobre 2026), ouverture automatique des deux formats,
   512 symboles avec passage à la deuxième banque, refus de référence invalide,
-  Magic Window DOS, AUX, limite de pile et octets sources conservés.
+  imports LISA v3 BIN par Entrée/I et refus des références invalides,
+  Magic Window DOS, AUX, limite de pile et volume source intégral conservés.
 - Builds complets des deux architectures : tous les contrôles de disposition
-  actifs ; [budgets mesurés](MEMORY-BUDGETS.md). IDFORMATS 6502 garde 13 octets,
+  actifs ; [budgets mesurés](MEMORY-BUDGETS.md). Après l'ajout des imports BIN,
+  IDFORMATS finit à `$3EFB` (65C02) / `$3FF3` (6502), LISAV3 à `$3B74` / `$3BDA`.
+  IDFORMATS 6502 garde 12 octets avant `$4000`,
   donc une prochaine extension devra récupérer de la place ou scinder le code.
+
+Les suites lecteurs (8), détecteur en trois étapes (12) et identification DOS
+(12) passent avec cc65 2.19 et HEAD sur les deux CPU. L'identification DOS
+conserve son fallback : cette extension concerne les imports ProDOS, sans
+backend LISA v3 DOS. Les quatre images de distribution, relais IDENT et
+inventaire des bancs passent ; l'analyse de signedness reste à zéro site.
+Le matériel Apple II physique reste non testé.
 
 Le contrôle dans Magic Window original porte sur les dix libellés du fichier
 `PRINTER TEST.MW`, également présents dans le résultat du vrai C. Ce n'est

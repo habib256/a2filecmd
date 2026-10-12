@@ -1,5 +1,6 @@
 """Execute the resident loader with disposable code and failed stream I/O."""
 import re
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -234,5 +235,103 @@ int main(int argc,char** argv) {
     with self.subTest(mode=mode):
      result=subprocess.run([str(p/'test'),str(mode)],capture_output=True)
      self.assertEqual(result.returncode,0,result.stderr)
+
+class MenuCapacity(unittest.TestCase):
+ @classmethod
+ def setUpClass(cls):
+  cls.tmp=tempfile.TemporaryDirectory(prefix='menu-capacity-');cls.p=Path(cls.tmp.name)
+  menu=source[source.index('static const char mn_catalog[]'):source.index('/* File operations')]
+  menu=menu[:menu.rindex('/* ---------------------------------------------------------------------- */')]
+  menu='\n'.join(l for l in menu.splitlines() if not l.startswith('#pragma'))
+  menu=menu.replace('((struct MenuItem*)0x2C00)','((struct MenuItem*)(guarded+8))')
+  prefix=r'''
+#define __fastcall__
+#define PLUGIN_HOST
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+struct A2fcApi;
+#define Overlay ApiOverlay
+#include "src/a2fc_plugin.h"
+#undef Overlay
+#ifndef __CC65__
+#pragma pack(push,1)
+#endif
+struct Overlay {unsigned short signature;unsigned char flags;unsigned short entry;unsigned char reserved[3];char desc[66];};
+#ifndef __CC65__
+#pragma pack(pop)
+#endif
+static unsigned short a2fc_link_id=0x1234;
+static unsigned char copy_buf[512],guarded[128*40+16];
+static char input[81],note[81],other_full[81];static struct Entry dir_entry;
+static unsigned int mode,at,total,keys;static const char *header_path,*catalog_path;
+static const char* extra[]={"PURPLE","PSBORDER","PSFONT","SHAPES","RUN","MVMOVIE","DGMAGI","PCSVW"};
+static void a2file_file(const char* n){strcpy(other_full,"/VOL/A2FILE/");strcat(other_full,n);}
+static unsigned char companion_path(const char* n){(void)n;return 0;}
+static unsigned char dir_open(const char* p){(void)p;at=0;return 1;}
+static unsigned char dir_next(void){
+ if(at>=total)return 0;dir_entry.type=6;
+ if(at>=100 && at<108)sprintf(dir_entry.name,"%s.PLG",extra[at-100]);
+ else sprintf(dir_entry.name,"T%03u.PLG",at);
+ ++at;return 1;
+}
+static void dir_close(void){} static void activity_tick(void){}
+static FILE* open_overlay(const char* n,unsigned char ask){(void)ask;if(!strcmp(n,"T005"))return NULL;return fopen(header_path,"rb");}
+static FILE* menu_open(const char* p,const char* m){(void)p;if(strcmp(m,"rb"))abort();return mode==3?fopen(catalog_path,m):NULL;}
+static void gotoxy(unsigned char x,unsigned char y){} static void revers(unsigned char n){}
+static void clrscr(void){} static void cclearxy(unsigned char x,unsigned char y,unsigned char n){}
+static void cputsxy(unsigned char x,unsigned char y,const char* s){}
+static int cprintf(const char* s,...){return 0;} static void bar_begin(void){}
+static void keys_bar(unsigned char x,const char* s){}
+static char cgetc(void){if(mode==4){if(keys++<4)return KEY_DOWN;return KEY_RETURN;}return KEY_ESC;}
+#define fopen menu_open
+'''
+  main=r'''
+#undef fopen
+int main(int argc,char**argv){
+ unsigned int i,n,want;unsigned char found=0;struct MenuItem* m=MENU_ITEMS;
+ mode=atoi(argv[3]);header_path=argv[1];catalog_path=argv[2];
+ total=mode==2?140:mode==3?90:115;want=mode==2?128:mode==3?93:115;
+ memset(guarded,0xA5,sizeof guarded);memset(m,0,128*40);
+ menu_entry(NULL);
+ n=0;for(i=0;i<8;++i){if(guarded[i]!=0xA5 || guarded[sizeof guarded-8+i]!=0xA5)return 1;n+=copy_buf[2*MENU_MAX+i];}
+ if(n!=want || sizeof(struct MenuItem)!=40)return 2;
+ for(i=0;i<n;++i){
+  if(!memchr(m[i].name,0,12) || !memchr(m[i].desc,0,28))return 3;
+  if(!strcmp(m[i].name,"IDV1"))return 4;
+  if(!strcmp(m[i].name,"T005") && strcmp(m[i].desc,"(unreadable)"))return 5;
+  if(!strcmp(m[i].name,"RUN"))found|=1;
+  if(!strcmp(m[i].name,"PSFONT"))found|=2;
+  if(!strcmp(m[i].name,"PURPLE"))found|=4;
+ }
+ if(found!=7 || (mode==4?strcmp(input,"RUN"):input[0]!=0))return 6;
+ return 0;
+}
+'''
+  (cls.p/'h.c').write_text(prefix+menu+main)
+  header=bytes.fromhex('3412000100000000')+b'A long image reader description with intentionally nonzero padding'*2
+  cls.header=cls.p/'header';cls.header.write_bytes(header)
+  cls.catalog=cls.p/'catalog';cls.catalog.write_bytes(b''.join(name.encode().ljust(12,b'\0')+b'X'*65+b'\0' for name in ('IDV1','PURPLE','PSFONT','RUN')))
+  exe=cls.p/'host';subprocess.run(['cc','-std=c99','-fsanitize=address,undefined','-I',str(ROOT),str(cls.p/'h.c'),'-o',str(exe)],check=True,capture_output=True)
+  cls.commands=[[str(exe)]]
+  if shutil.which('cl65') and shutil.which('sim65'):
+   for cpu,target in (('6502','sim6502'),('65c02','sim65c02')):
+    exe=cls.p/target
+    subprocess.run(['cl65','-t',target,'--cpu',cpu,'-O','-Cl','-I',str(ROOT),str(cls.p/'h.c'),'-o',str(exe)],check=True,capture_output=True)
+    cls.commands.append(['sim65',str(exe)])
+ @classmethod
+ def tearDownClass(cls):cls.tmp.cleanup()
+ def test_complete_xl_menu_capacity_catalog_and_last_reader_selection(self):
+  for cmd in self.commands:
+   for mode in (1,2,3,4):
+    with self.subTest(cmd=cmd,mode=mode):
+     before=(self.header.read_bytes(),self.catalog.read_bytes())
+     r=subprocess.run(cmd+[str(self.header),str(self.catalog),str(mode)],capture_output=True)
+     self.assertEqual(r.returncode,0,r.stderr);self.assertEqual((self.header.read_bytes(),self.catalog.read_bytes()),before)
+ def test_menu_memory_contract_keeps_guards_active(self):
+  import check_layout
+  self.assertEqual(check_layout.OVERLAYS['MENU'],0x2c00)
+  self.assertIn('#define MENU_ITEMS ((struct MenuItem*)0x2C00)',source)
+  self.assertEqual(0x2c00+128*40,0x4000)
 
 if __name__=='__main__':unittest.main()

@@ -5,6 +5,301 @@ downloads and installation.
 
 ## [Unreleased]
 
+## [0.9.7] — 2026-10-13
+
+- Better playback and navigation in Take 1, Fantavision, Epistole and AppleWorks.
+- More image controls: Newsroom inversion/mirrors, pixmap rotation/zoom and backdrop previews.
+- Broader legacy-reader detection and direct DOS support, expanded menus and regression coverage.
+
+[Full changelog](https://github.com/habib256/a2filecmd/blob/v0.9.7/CHANGELOG.md#097-in-detail).
+
+## 0.9.7 in detail
+
+- Rebuild BOOT before qualification and reject stale legacy boot fixtures.
+  Keep disk-swap companions within 140K using explicit bench selections,
+  with filtered catalogs and byte-preservation regression checks.
+
+- Keep identifying other formats after rejecting a tentative S-C Assembler
+  match, so valid Newsroom panels retain their reader. Add regression
+  coverage for the ambiguous header and read/seek/close failures.
+
+- Extend AppleWorks L/l navigation to spreadsheets: reach the furthest
+  indexed page in the grid or cell/formula view, keeping the column window.
+  Reuse checked page starts, reset the index on F view changes, and retain
+  database last-record behavior. No whole-sheet scan or new buffer; shorten
+  the sheet help bar to fit and save seven bytes in both native editions.
+
+- Add H/h to DOCVIEW: jump to the oldest page still retained in the existing
+  16-page history, without discarding it. L/l returns to the latest visited
+  page; R still restarts the document and resets history. Reuse checked
+  layout/calculation replay and retain accents, source bytes and AUX /RAM.
+
+- Add N/n to paused Fantavision playback: advance through the existing
+  interpolation engine to the next stored key frame and stay paused.
+  Keep Right/Return single-image advance, counted/single-frame ends,
+  speed/delay/slideshow settings and Escape. Reuse the loaded movie and
+  backdrops without AUX or file writes; retain both memory windows.
+
+- Add H/h and V/v horizontal/vertical mirrors to the existing Newsroom
+  photo/banner preview. Reuse the loaded HGR page and the closed stream's
+  row buffer; combine with I inversion and toggle again to restore exactly.
+  Preserve screen holes, source files, AUX /RAM and media navigation.
+
+- Add Take 1 paused advance with Right/Return: continue the existing engine
+  to its next page flip, then wait again. Space resumes, Tab changes speed
+  while paused, Escape returns. Fades run normally and scene waits retain
+  their original answers; no new file reads/writes or AUX access in the key
+  handlers. Reuse copied text-row code without expanding memory windows.
+
+- Add L/l to AppleWorks database navigation: use the walked record count
+  and existing checkpoints to show the last readable record, retaining
+  category paging and B/R controls.
+  Group R/L in the help bar so the new hint fits without wrapping.
+
+- Add L/l to DOCVIEW: return to the latest already visited page, including
+  after its 16-page history wraps. Reuse saved layout and checked replay
+  of Epistole calculations; preserve accent mode, and reset history with R.
+
+- Add I/i negative preview to the existing Newsroom photo/banner viewer.
+  Invert only the seven visible HGR dots per byte, preserving palette bits
+  and screen holes; toggle again to restore exactly. Reuse the loaded page
+  and media navigation without source reads/writes or AUX /RAM access.
+
+- Add Fantavision paused single-frame advance: Right or Return draws the
+  next engine frame, selects its HGR page and remains paused. Keep the last
+  frame at the end of a counted or single-frame movie. Preserve original
+  speed, backdrops, slideshow controls, source files and AUX /RAM.
+
+- Add Movie Maker Q/q automatic looping without advancing on selection or
+  stopping auto. Replay the checked animation stream at the last frame,
+  preserve speed/background/mirrors, and reset looping on reopening.
+  Manual next and Escape retain their normal exits; no AUX or source writes.
+
+- Add O clockwise quarter turns to DGRVIEW pixmaps, reusing the loaded
+  pixels and renderer. Retain masks, backgrounds and displayed mirrors;
+  reduce zoom to fit, refuse rotations taller than 48 pixels, and let R
+  restore the original orientation. Preserve source pixels and AUX /RAM.
+
+- Add Movie Maker 1/2/3 automatic preview speeds using the existing
+  interruptible delay. Change speed while playing or paused without
+  advancing a frame; retain it during navigation and reset on reopening.
+  Keep checked rendering, source preservation and MAIN-only buffers.
+
+- Reuse the slideshow's interruptible delay for Movie Maker S automatic
+  frame advance. S again pauses on the current frame; another key stops
+  auto and performs its usual action. Preserve checked replay, MAIN-only
+  rendering and full validation; return at the end and reset on reopening.
+
+- Add F to DGRVIEW's existing pixmap zoom renderer: select the largest
+  x1/x2/x4 view that fits entirely within 80x48. Retain checkerboard,
+  mask and mirrors, with no extra source reads or AUX RAM allocation.
+
+- Add H/V mirrors to Movie Maker's existing 40x48 scene renderer,
+  including background-only views. Keep orientation during navigation,
+  restore it by toggling again and reset on reopening. MAIN-only preview,
+  complete validation and checked bitmap reads/seeks remain in place.
+
+- Add R to DGRVIEW's pixmap preview: restore x1, original orientation,
+  colors and black background after combining Z/C/M/H/V. Redraw the staged
+  pixels without rereading or changing the source, screen holes or AUX RAM.
+
+- Reuse MacPaint's existing checkpoints for +/- fine scrolling by 48
+  lines, alongside the 96-line arrows and T/B jumps. Clamp at both ends
+  and keep full preflight, AUX/RAM consent and source preservation.
+
+- Reuse Movie Maker's scene renderer for O (background/actors). Redraw the
+  same frame, retain the choice during navigation and reset on reopening.
+  Check bitmap reads/seeks before display; keep MAIN-only rendering and
+  source preservation, without an AUX frame history.
+
+- Reuse DGRVIEW's sprite renderer for H/V horizontal/vertical mirrors.
+  Combine either orientation with zoom, checkerboard and mask preview;
+  toggle again to restore it without changing staged or source pixels.
+
+- Reuse PCS's staged bitmap for O (background/objects), preserving the
+  original bitmap separately from polygon rendering. Toggle either case
+  without rereading the source; keep complete validation, AUX consent,
+  safe display tail and RAM rebuild. Retain DGMAGI's single-view behavior.
+
+- Reuse DGRVIEW's masked sprite renderer for M (opacity preview): white
+  opaque pixels on black, including black source pixels and x2/x4 zoom.
+  Toggle back to original colors and the chosen background without
+  modifying staged data, screen holes or AUX /RAM.
+
+- Reuse Movie Maker's checked replay for +/- ten-frame jumps, clamped
+  to the first/last validated frame. Skip intermediate rendering and keep
+  single-frame navigation, restart, AUX/RAM and source preservation.
+
+- Reuse MacPaint's existing 48-line checkpoints for T (top) and B
+  (bottom, lines 528-719), alongside Up/Down scrolling. Preserve the full
+  preflight and AUX/RAM consent; compare both graphics planes at each
+  jump and boundary on both CPUs.
+
+- Add C checkerboard to DGRVIEW's existing masked pixmap renderer.
+  Distinguish transparent pixels from opaque black, including at x2/x4;
+  toggle back to the original black background without changing source
+  bytes, screen holes or AUX /RAM.
+
+- Reuse the validated Movie Maker frame count for L (last frame).
+  Replay the existing checked command stream without intermediate renders
+  or AUX allocation; retain previous/restart navigation and source bytes.
+
+- Add Z zoom (x1/x2/x4, within 80x48) to DGRVIEW's existing a2dgrx
+  pixmap renderer. Keep source dimensions, transparency and centering;
+  redraw staged bytes without rereading the file or touching AUX /RAM.
+
+- Use DGRVIEW's existing pixmap renderer for complete 80x48 a2dgrx images
+  (3840 bytes), instead of rejecting them above 2048. Keep saved screen
+  pages limited to 2048, stage only in MAIN $3000-$3F00 and preserve masks
+  and screen holes. Refuse read/close errors before writing either screen
+  bank; qualify the actual reader and preserved source bytes on both CPUs.
+
+- Reuse MACPAINT automatically for renamed ProDOS BIN/typeless MacBinary
+  imports with the PNTG type field and sufficient actual length, including
+  8K/16K raw-size collisions. Also recognize .PNTG alongside .MAC. Preserve
+  the existing 720-row validation, scrolling and AUX/RAM consent. Keep DOS
+  fallback and generic routing for raw zero headers without a suffix.
+
+- Reuse the Movie Maker frame decoder for previous-frame navigation and
+  restart: B/Up/Left step back, R restarts, Space/Return/Down/Right advance.
+  Rebuild frames by checked reads/seeks through the existing command stream,
+  without AUX or an unbounded history. Keep full initial validation and
+  source preservation; compare actual pixels and rewind I/O faults on both CPUs.
+
+- Make all 115 XL commands accessible through the tools menu, including
+  image/movie readers previously dropped by its 88-entry limit. Store
+  128 entries in MAIN with full names and 27-character descriptions;
+  retain layout guards at the new table boundary ($2C00). Classify DOSFONT
+  under Images and hide the internal IDV1 relay. Qualify directory/catalog
+  loading, duplicates, saturation and preservation on both CPUs.
+
+- Reuse ARLEQUIN for intact ProDOS BIN imports through Return/I and the
+  same `gs` signature probe, including raw-page-size collisions. Preserve
+  full decoding and AUX consent; refuse first-pass read/close errors and
+  reset dry-run state so a wrong type cannot rebuild RAM after an earlier
+  display. Qualify exact MAIN/AUX pixels and occupied-RAM refusal on both CPUs.
+- Reuse MVMOVIE automatically for renamed Movie Maker BIN imports with
+  auxiliary address zero, alongside $6000. Preserve shape/bitmap/EOF checks,
+  refusal of embedded machine code and MAIN-only preview; qualify all
+  thirteen original films and both CPU/compiler editions.
+
+- Reuse SCASM automatically for S-C Assembler sources imported as ProDOS
+  BIN, using the existing complete first-record discriminator and full
+  read/close validation. Qualify all twelve original sources and BIN faults
+  on both CPU/compiler editions. Keep direct DOS type I and DOS BIN fallback.
+  Recover identification space by removing two size comparisons already
+  implied by the validated sample length and actual EOF.
+
+- Reuse LISAV3 automatically for standard LISA v3 sources imported as
+  ProDOS BIN, with the original $1000–$3FFF auxiliary range, exact EOF
+  and full token/symbol validation. Preserve the ANIX.EQUATES exclusion
+  and DOS fallback. Qualify the two originals, 512 symbols and BIN I/O
+  failures on both CPU/compiler editions without source or AUX writes.
+
+- Reuse MULTPLAN for normal 1.06 worksheets imported intact as ProDOS
+  BIN, in addition to F4. Preserve the eight-byte format signature and
+  complete workspace/pool/pointer/BCD validation before display. Qualify
+  all seven originals and BIN I/O faults on both CPU/compiler editions;
+  cached values and formula tokens remain read-only, without evaluation.
+
+- Reuse MOUSEWR for intact MouseWrite documents imported as ProDOS
+  BIN/$0000, in addition to F1/$0000. Preserve version/width, complete-row,
+  EOF and close checks; align identification with the reader's header flag.
+  Qualify all 41 originals and BIN I/O faults on both CPUs/compiler versions;
+  no source or AUX writes and no new direct DOS backend.
+
+- Reuse MULTISCR automatically for intact MultiScribe documents imported
+  as ProDOS BIN, using the existing TXT/WPF header rules. Keep full reader
+  validation and DOS fallback; no source or AUX writes. Qualify 12 original
+  documents, stale sizes, malformed styles and both CPU/compiler editions.
+
+- Reuse DGMAGI for renamed ProDOS BIN/$4000 pictures when valid sampled
+  commands include drawing and coordinates beyond 280 columns. Preserve
+  ambiguous narrow pictures' existing routing; share 560x192 bounds with
+  the reader. Full preflight and AUX consent still precede graphics writes.
+  Qualify the original palette, malformed commands and both CPU/compiler
+  editions, including saved-sample boundaries and real EOF limits.
+
+- Reuse PCSVW for renamed ProDOS BIN/$4000 PCS tables. Validate the saved
+  object-length table, complete sampled polygons and fresh EOF before routing;
+  share object bounds with the reader. Full-file preflight and AUX consent
+  remain mandatory. Qualify six original tables, malformed coordinates,
+  maximum object counts and both CPUs/compiler versions.
+
+- Reuse PSBORDER for renamed legacy BIN borders on ProDOS and DOS. Share
+  exact length/load-address profiles with the reader, using fresh EOF;
+  preserve complete read/close validation before MAIN-only display.
+  Qualify 77 original BIN borders, every DOS source I/O fault, both CPUs
+  and both compiler versions; keep malformed inputs in generic fallback.
+
+- Reuse MVMOVIE for renamed ProDOS BIN/$6000 films using bounded shape and
+  bitmap headers plus freshly measured EOF. Share bitmap bounds with the
+  reader; preserve full validation, embedded-code refusal and MAIN-only
+  previews. Qualify 13 original films, malformed planes and both CPUs.
+
+- Reuse PSFONT for renamed Print Shop BIN/F5 fonts by sharing the reader's
+  complete glyph-table bounds with identification. Reuse PSBORDER for
+  renamed ProDOS F5/$2000 borders with exact EOF. Concrete formats keep
+  priority; readers still validate and close complete sources before pixels.
+  Add PSFONT/PSBORDER to 800K as well as XL. Qualify original renamed data,
+  malformed final glyphs, DOS I/O faults and both CPU/compiler editions.
+
+- Recognize ProDOS Merlin TXT sources without filename suffixes using
+  the existing DOS content detector and MERLIN reader. Share the bounded
+  sample rule after concrete format detection, including host/corpus
+  classification, and preserve generic fallback and actual file sizes.
+  Qualify real detector stages, original sources and both CPU editions;
+  no source, AUX or temporary writes.
+
+- Fix all 21 signedness findings across the LISA, Apple Writer, Multiplan,
+  PFS:Plan, Movie Maker and Print Shop font readers. Make bounded arithmetic
+  explicit without suppressing the checker. Correct negative sprite clipping
+  under cc65 2.19; add independent pixel checks and decoder boundary cases
+  on both CPUs and both compiler versions. Preserve source bytes and all
+  native layout checks.
+
+- Reuse MERLIN automatically for DOS TXT sources without `.S`/`.ASM`
+  when the saved sample contains three complete assembly statements.
+  Preserve concrete readers' priority and generic text fallback; qualify
+  original Merlin macro/equate sources, both CPUs and source I/O faults.
+  Identification writes only MAIN state; no source disk or AUX writes.
+
+- Recognize DOS HRCG, Merlin and Magic Window files using their complete
+  30-byte catalog names, including suffixes lost from the shortened panel
+  name, trailing padding and lowercase names. Reuse IDREAD's saved name
+  after concrete format detection, preserving other readers' priority and
+  the catalog identity used by the reader. Add real relay/fault tests and
+  native DOS-drive/image checks; no source disk or AUX writes.
+
+- Reuse LISAV2 directly for original DOS alternate-B sources through
+  Return/I and the Programming menu on 800K/XL. Identify the verified
+  `$1800` editor header, then check the raw catalog kind, line bounds,
+  mandatory terminator and every trailing sector before display. Keep
+  source disks and AUX unchanged. Qualify the real detector relay and
+  decoder on both CPUs, including the largest declared source body.
+
+- Reuse MERLIN directly for DOS TXT sources named `.S`/`.ASM` through
+  Return/I or the Programming menu. Preserve aligned columns, quotes and
+  comments on DOS drives and DOS-order images. Treat the first DOS NUL as
+  the text terminator, while validating every allocated sector and closing
+  successfully before display; no extraction, disk writes or AUX use.
+
+- Open DOS HRCG BIN fonts (`.SET`/`.FONT`, 768 or 1,024 bytes) directly
+  through Return/I, using FONTVIEW's shared raw-font renderer in DOSFONT.
+  Validate and close the whole source before HGR; preserve AUX and source
+  disks. Include the adapter on 800K and XL. Qualify both CPUs, I/O faults,
+  actual EOF, malformed sector maps and unchanged source bytes.
+- Refuse a ProDOS FONTVIEW raw-font preview when the initial close fails,
+  before reopening the source; add the native regression on both CPUs.
+
+- Route DOS Print Shop clip art and Fontrix fonts directly to their existing
+  readers through Return/I, on real DOS drives and DOS-order DSK/DO/2IMG.
+  Validate and close sources before display; preserve disks and AUX.
+  Keep Print Shop's renderer and buffered bitmap below HGR memory.
+  Add real-C fault tests, both CPU builds and disposable POM2 regressions.
+- Check the 800K image against its explicit practical selection, while XL
+  continues to require every overlay.
+
 - Add the seven readers selected for 1.0: WORDPERF, MOUSEWR, BSFILER,
   MULTPLAN, MVMOVIE, DGMAGI and PCSVW, with IDENT routing and both CPUs.
   MVM is a 40×48 opaque frame preview; PCS is static with library outlines.

@@ -67,7 +67,7 @@ La déduplication des images utilise SHA-256. Celle des fichiers utilise (SHA-25
 | PAINT816 | candidat | 1 | 1 |
 | PT3 | candidat | 1 | 1 |
 
-Le repli DOSVIEW comprend aussi des formats déjà reconnus mais sans raccordement à leur lecteur spécialisé en DOS : notamment 1 162 candidats clip art Print Shop, 216 HRCG et 44 Fontrix. Ce ne sont pas 1 422 nouveaux formats. DOSVIEW sait lui-même afficher certaines images HGR brutes ; il ne faut pas classer tous ses fichiers comme illisibles.
+Le repli DOSVIEW comprend aussi des formats déjà reconnus mais sans raccordement à leur lecteur spécialisé en DOS : notamment 1 162 candidats clip art Print Shop, 216 HRCG et 44 Fontrix. Ces chiffres décrivent le routage du 10 octobre. Depuis le 12 octobre, les clip art Print Shop, Fontrix et HRCG sont raccordés à leurs lecteurs directs DOS ([qualification](DOS-VIEWERS.md)). Ce ne sont pas 1 422 nouveaux formats. DOSVIEW sait lui-même afficher certaines images HGR brutes ; il ne faut pas classer tous ses fichiers comme illisibles.
 
 ## Lacunes et refus du scan
 

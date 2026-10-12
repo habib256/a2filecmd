@@ -1,13 +1,19 @@
 /* Detection and routing use the same reader result. DOS eligibility is explicit. */
 static void id_finish(const struct A2fcApi* a,const struct Entry* e,const char* what,const char* reader,unsigned char dos){
+ static const char* const direct[]={"PRINTSHOP","FONTRIX","MAGWIN","PSBORDER","PSFONT","APPLEWR","SCASM","MERLIN","LISAV2","NEWSPAN","NEWSPAGE"};
+ unsigned char i;
  unsigned char automatic=a->arg=='O'||a->arg=='I'||a->arg==13;
  if(automatic){
   if(dos){
    if(!strcmp(reader,"BASLIST"))reader="DOSBAS";
    else if(!strcmp(reader,"INTBASIC"))reader="DOSINT";
+   else if(!strcmp(reader,"FONTVIEW"))reader="DOSFONT";
    else if(!strcmp(reader,"MCS"))reader="DOSMCS";
    else if(!strcmp(reader,"NEWSROOM"))reader="DOSNEWS";
-   else if(strcmp(reader,"MAGWIN") && strcmp(reader,"PSBORDER") && strcmp(reader,"PSFONT") && strcmp(reader,"APPLEWR") && strcmp(reader,"SCASM") && strcmp(reader,"NEWSPAN") && strcmp(reader,"NEWSPAGE"))reader="DOSVIEW";
+   else {
+    for(i=0;i<sizeof direct/sizeof direct[0];++i)if(!strcmp(reader,direct[i]))break;
+    if(i==sizeof direct/sizeof direct[0])reader="DOSVIEW";
+   }
   }
   a->strcpy(a->input,reader);return;
  }

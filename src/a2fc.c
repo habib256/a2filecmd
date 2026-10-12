@@ -3811,7 +3811,7 @@ static const char mn_catalog_path[] = "/A2FILE/EXTRAS.CAT";
 static const char mn_dir[] = "/A2FILE";
 static const char mn_suffix[] = ".PLG";
 /* Routing overlays the core loads by itself: never a menu command. */
-static const char mn_hidden[] = "|MOVECOPY|MCSIMPORT|MCSPLAY|IDREAD|IDFORMATS|MENU|COPY|OPEN|NAV|BATCH|CATALOG|DOSIMAGE|DOSPUT|";
+static const char mn_hidden[] = "|MOVECOPY|MCSIMPORT|MCSPLAY|IDREAD|IDFORMATS|IDV1|MENU|COPY|OPEN|NAV|BATCH|CATALOG|DOSIMAGE|DOSPUT|";
 static const char mn_bad[] = "(unreadable)";
 static const char mn_stale[] = "(other A2FC build)";
 static const char mn_noentry[] = "(no entry point)";
@@ -3841,7 +3841,7 @@ static const char* const mn_whats[] = {
     mn_what0, mn_what1, mn_what2, mn_what3, mn_what4, mn_what5, mn_what6, mn_what7
 };
 static const char mn_group0[] = "|TEXT|HEX|EDIT|SEARCH|FIND|FIXTYPES|GOTO|MDVIEW|DOCVIEW|NEWSPAN|NEWSPAGE|RENAME|SYNC|MOVE|TREE|DELETE|ATTR|TXTCONV|TAGPAT|COMPARE|AWP|AWDATA|VISICALC|GUTTEXT|TEACHTXT|APPLEWR|MULTISCR|MAGWIN|DOSREC|PFSWRITE|PFSFILE|PFSPLAN|WORDPERF|MOUSEWR|BSFILER|MULTPLAN|";
-static const char mn_group1[] = "|MVMOVIE|DGMAGI|PCSVW|IMAGE|DGRVIEW|EXTASIE|ARLEQUIN|MACPAINT|SHAPES|PACKFOT|PAINT816|PURPLE|LZ4FH|PRINTSHOP|NEWSROOM|DOSNEWS|NRCLIP|GMAGIC|FONTVIEW|FONTRIX|PSBORDER|PSFONT|";
+static const char mn_group1[] = "|MVMOVIE|DGMAGI|PCSVW|IMAGE|DGRVIEW|EXTASIE|ARLEQUIN|MACPAINT|SHAPES|PACKFOT|PAINT816|PURPLE|LZ4FH|PRINTSHOP|NEWSROOM|DOSNEWS|NRCLIP|GMAGIC|FONTVIEW|DOSFONT|FONTRIX|PSBORDER|PSFONT|";
 static const char mn_group2[] = "|MUSIC|PT3|DUET|MCS|DOSMCS|";
 static const char mn_group3[] = "|FORMAT|DISKIMG|IMGFS|IMGPUT|DOSGET|DOSWRITE|DOS33W|DOSREPL|PASCAL|PASCALW|CPM|CPMW|SMALLDOS|BOOTBLK|BLKVIEW|BLKEDIT|DISKCMP|NIBCOPY|IMGCONV|MKIMAGE|RESCUE|UNDELETE|VOLNAME|VOLINFO|FIXIT|REPAIR|WIPE|VERIFY|";
 static const char mn_group4[] = "|FAVRUN|BASLIST|DISASM|INTBASIC|DOSINT|DOSBAS|RUN|CRC|IDENT|PASTEXT|SCASM|MERLIN|LISAV2|LISAV3|LISAV4|";
@@ -3878,12 +3878,12 @@ static const char mn_nodir[]   = "No program folder.";
 static const char mn_row[]     = "  %-12s%-65.51s";
 /* A category row: its name, how many overlays it holds, what they do. */
 static const char mn_catrow[]  = "  %-12s%3u   %-59.59s";
-struct MenuItem { char name[12]; char desc[52]; };
-/* 88 x 64 bytes: $2A00-$3FFF, above MENU's code (check_layout.py holds
- * that code under $2A00). 64 items were too few once the visible
- * overlays passed that many: the last ones read were dropped. */
-#define MENU_ITEMS ((struct MenuItem*)0x2A00)
-#define MENU_MAX 88
+struct MenuItem { char name[12]; char desc[28]; };
+/* 128 x 40 bytes: $2C00-$3FFF. Keep full command names and a short
+ * description without AUX; check_layout.py keeps MENU below $2C00.
+ * The previous 88-item list hid distributed image/movie readers on XL. */
+#define MENU_ITEMS ((struct MenuItem*)0x2C00)
+#define MENU_MAX 128
 #define MENU_ROWS 18                /* rows 2..19 per page, like a panel */
 #define MENU_STEP 6                 /* horizontal arrows: six entries */
 /* A category row, on the category page and above a category's list. */
@@ -3929,7 +3929,7 @@ void __fastcall__ menu_entry(const struct A2fcApi* a)
         if (!f) continue;
         len = fread(copy_buf, 1, 80, f);
         fclose(f);
-        copy_buf[8 + 51] = 0;
+        copy_buf[8 + sizeof(m[i].desc) - 1] = 0;
         /* the three signatures load_overlay accepts from the menu */
         if (len < 9 || (hdr->signature != a2fc_link_id && hdr->signature != PLUGIN_MAGIC && hdr->signature != MEDIA_PLUGIN_MAGIC)) strcpy(m[i].desc, mn_stale);
         else if (!hdr->entry) strcpy(m[i].desc, mn_noentry);
@@ -3942,10 +3942,10 @@ void __fastcall__ menu_entry(const struct A2fcApi* a)
     if (!f && companion_path(mn_catalog_path)) f = fopen(other_full, "rb");
     if (f) {
         while (n < MENU_MAX && fread(copy_buf, 1, 78, f) == 78) {
-            if (copy_buf[11]) continue; /* routing-only catalog record */
+            if (copy_buf[11] || mn_listed(mn_hidden, (char*)copy_buf)) continue; /* routing only */
             copy_buf[77] = 0;
             for (i = 0; i < n; ++i) if (!strcmp(m[i].name, (char*)copy_buf)) break;
-            if (i == n) { memcpy(&m[n], copy_buf, sizeof(struct MenuItem)); m[n].desc[51] = 0; ++n; }
+            if (i == n) { memcpy(&m[n], copy_buf, sizeof(struct MenuItem)); m[n].desc[sizeof(m[n].desc) - 1] = 0; ++n; }
         }
         fclose(f);
     }
@@ -5417,12 +5417,12 @@ static unsigned char open_image(struct Panel* pan, const struct Entry* e)
 const unsigned char image_viewers[] = {V_HEX, V_RAW, V_EXT, V_PACK, V_PAINT, V_DGR, V_ARL, V_NEWS, V_RUN, V_DOC, V_VISI, V_GM};
 /* The viewers a suffix names: the music (V_DUET and below) and formats with
  * no ProDOS type of their own. */
-const char fv_ext[] = ".MB\0.PT3\0.ED\0.FOTO1\0.FOTO2\0.MAC\0.AS\0.BSC\0.BSQ\0.SHAPE\0"
+const char fv_ext[] = ".MB\0.PT3\0.ED\0.FOTO1\0.FOTO2\0.MAC\0.PNTG\0.AS\0.BSC\0.BSQ\0.SHAPE\0"
                       ".QQ\0.ACU\0.BA3\0.LOGO\0.SET\0.FONT\0";
 /* .SET (Apple's DOS Tool Kit HRCG sets) and .FONT (Beagle's copies of them)
  * name FONTVIEW only for a BIN of 768 or 1,024 bytes: open.s drops the
  * suffix otherwise. */
-const unsigned char fv_ids[] = { V_MUSIC, V_PT3, V_DUET, V_PURPLE, V_PURPLE, V_MAC,
+const unsigned char fv_ids[] = { V_MUSIC, V_PT3, V_DUET, V_PURPLE, V_PURPLE, V_MAC, V_MAC,
     V_UNWRAP, V_SCII, V_SCII, V_SHAPES, V_UNSQ, V_UNSQ, V_BASLIST, V_TEXT, V_FONT, V_FONT };
 /* The viewers a ProDOS type names on its own, once no suffix, no picture
  * and no music has answered: text, Business BASIC ($09, like T), the two

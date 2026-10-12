@@ -199,25 +199,8 @@ slide_done:
 ; short by a key, which is left in the keyboard for cgetc. Returns 0 at
 ; the end of the time, 1 for a key (X = 0 both ways). Only the keyboard
 ; is read: the slideshow's pause, and the title page's at start-up.
-        .export _key_wait
-_key_wait:
-        ldx #0
-        ldy #0
-key_wait_loop:
-        bit $C000
-        bmi key_wait_key
-        dex
-        bne key_wait_loop
-        dey
-        bne key_wait_loop
-        sec
-        sbc #1
-        bne key_wait_loop
-        rts
-key_wait_key:
-        ldx #0
-        lda #1                  ; last: Z clear for the caller's bne
-        rts
+        .include "key_wait.inc"
+        a2fc_key_wait _key_wait
 
 ; Temporary phase on the information row. Result/error row 22 is preserved.
 ; The panels redraw row 21 when the operation returns. No disk or AUX above

@@ -39,7 +39,7 @@ const char* corpus_ident(const char* name,int typ,int aux,const unsigned char* b
   * temporary copy is written. Original disks and files stay read-only. */
  f=tmpfile();if(!f)return NULL;
  if(fwrite(bytes,1,len,f)!=len || fseek(f,0,SEEK_SET)){fclose(f);return NULL;}
- label=extra_v1();if(!label)label=extra();if(!label)label=identify();if(!reader)route(label);
+ label=extra_v1();if(!label)label=extra();if(!label)label=psfont_content();if(!label)label=merlin_content();if(!label)label=identify();if(!reader)route(label);
  snprintf(result,sizeof result,"%s",label);ca.strcpy=strcpy;ca.input=output;ca.arg='O';id_finish(&ca,&ce,result,reader,dos);
  if(fclose(f)||io_failed)return NULL;
  return result;

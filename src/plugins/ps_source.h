@@ -15,7 +15,9 @@ static unsigned int ps_aux,ps_pos,ps_len;
 static unsigned long ps_off;
 #define A (&ps_api)
 /* Largest supported font is 16 KiB plus the DOS BIN header: 65 sectors. */
+#ifndef DS_SECTORS
 #define DS_SECTORS 65
+#endif
 #define DS_DATA_BUFFER ps_api.copy_buf
 #define DS_MLI ps_api.mli
 #define DS_SEEK ps_api.fseek

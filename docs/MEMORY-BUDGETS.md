@@ -77,7 +77,7 @@ contrôlent cette limite avant les tampons, sans chevauchement.
 | Surcouche à table de services | Fenêtre (code + BSS) | Fichier 65C02 / 6502 | Libres 65C02 / 6502 |
 | --- | --- | ---: | ---: |
 | ARLEQUIN (big) | `$1B00-$1FFF` | 1 154 / 1 171 | 99 / 82 |
-| AWDATA (big) | `$1B00-$3FFF` | 7 985 / 8 164 | 205 / 26 |
+| AWDATA (big) | `$1B00-$3FFF` | 7 993 / 8 172 | 197 / 18 |
 | BLKEDIT (big) | `$1B00-$3F9D` | 8 261 / 8 228 | 359 / 391 |
 | BLKVIEW (big) | `$1B00-$3F9D` | 8 990 / 8 978 | 31 / 43 |
 | BOOTBLK (big) | `$1B00-$2FFF` | 2 415 / 2 412 | 1 809 / 1 812 |
@@ -88,7 +88,7 @@ contrôlent cette limite avant les tampons, sans chevauchement.
 | DGRVIEW (big) | `$1B00-$2FFF` | 3 753 / 3 844 | 1 555 / 1 464 |
 | DISASM (big) | `$1B00-$3FFF` | 7 940 / 7 935 | 885 / 890 |
 | DISKCMP (big) | `$1B00-$3FFF` | 6 940 / 6 905 | 854 / 889 |
-| DOCVIEW (big) | `$1B00-$3D5F` | 8 404 / 8 405 | 42 / 41 |
+| DOCVIEW (big) | `$1B00-$3D5F` | 8 429 / 8 432 | 17 / 14 |
 | DOS33W (big) | `$1B00-$3FFF` | 4 922 / 4 987 | 3 117 / 3 052 |
 | DOSIMAGE (big) | `$1B00-$3FFF` | 7 337 / 7 467 | 1 474 / 1 343 |
 | DOSPUT (big) | `$1B00-$3FFF` | 7 346 / 7 431 | 372 / 286 |
@@ -112,7 +112,7 @@ contrôlent cette limite avant les tampons, sans chevauchement.
 | MKIMAGE (big) | `$1B00-$3FFF` | 4 019 / 4 097 | 5 157 / 5 079 |
 | MOVE (big) | `$1B00-$3FFF` | 8 344 / 8 364 | 321 / 300 |
 | MUSIC (big) | `$1B00-$2FFF` | 2 752 / 2 713 | 2 551 / 2 589 |
-| NEWSROOM (big) | `$1B00-$1FFF` | 948 / 954 | 250 / 243 |
+| NEWSROOM (big) | `$1B00-$1FFF` | 1151 / 1157 | 47 / 40 |
 | NIBCOPY (big) | `$1B00-$3FFF` | 7 443 / 7 474 | 1 053 / 1 022 |
 | NRCLIP (big) | `$1B00-$1FFF`, HGR `$2000-$3FFF`, LOW `$0C00-$0FFF` | 2 681 / 2 681 | 85 + 7 583 + 101 / 82 + 7 583 + 101 |
 | PACKFOT (big) | `$1B00-$1FFF` | 1 218 / 1 249 | 43 / 12 |
@@ -5703,3 +5703,828 @@ n’alloue pas AUX. DGMAGI/PCSVW ont une queue $1B00–$1C9F et une phase C
 $1CA0–$3FFF ; la queue engage le bitmap seulement après retour du C. AUX
 $4000–$7FFF est réservé après consentement, puis /RAM est reconstruit.
 Les limites sont imposées par sdk/v1gfx.cfg et les deux linkers natifs.
+
+## Menu complet des lecteurs (2026-10-12)
+
+La liste passe de 88 entrées de 64 octets à 128 entrées de 40 octets :
+12 octets pour le nom complet, 28 pour la description terminée (27 visibles).
+Elle occupe exactement MAIN `$2C00–$3FFF`, soit 5 120 octets, sans AUX ni
+écriture sur volume. Le plafond de MENU dans `tools/check_layout.py` suit
+la nouvelle frontière `$2C00` ; tous les contrôles restent actifs.
+
+MENURO finit à `$2A08` (65C02) / `$2A31` (6502), laissant **503/462 octets**
+avant la table. Les 115 commandes visibles XL sont accessibles, y compris
+les lecteurs d'images et de films auparavant perdus en fin de liste.
+Les enregistrements du catalogue restent à 78 octets sur disque et sont
+compactés lors de la lecture ; les doublons et relais internes sont exclus.
+
+Le vrai C passe 9 tests avec cc65 2.19 et HEAD, hôte ASan/UBSan et les deux
+CPU sim65 : gardes avant/après la table, saturation, description longue,
+catalogue, doublons et choix d'une commande tardive. Les builds et quatre
+images distribuées sont validés. `bench/menu.py` passe **60/60 contrôles par
+CPU**, avec AUX, volume entier et garde de pile conservés.
+Le banc complet `bench/retrotext.py` passe **16/16 par CPU**, dont FONTRIX
+depuis le menu et le lecteur SCASM auparavant masqué.
+
+## Navigation Movie Maker (2026-10-12)
+
+MVMOVIE réutilise son décodeur de commandes pour revenir à une image ou
+redémarrer : seules des positions et un numéro d'image sont ajoutés.
+Le flux d'animation est relu jusqu'à l'image demandée ; recherches et lectures
+restent contrôlées. Aucun historique proportionnel au film, aucune écriture
+AUX ou volume. La page lores reste dans MAIN `$0400–$07FF` et les pixels dans
+la BSS du lecteur. Validation et fermeture complètes avant le premier affichage.
+
+Fichiers MVMOVIE : **5031/5096 octets**, BSS **2633 octets** (65C02/6502).
+Fin BSS `$38EF/$3930`, marges **1808/1743 octets** avant `$4000`.
+Les deux builds et les quatre images passent avec les gardes actives.
+Les 11 tests du vrai C passent avec cc65 2.19 et HEAD, dont les deux CPU sim65,
+pixels après retour/redémarrage, limite de première image et erreurs de
+recherche/lecture au retour. POM2 : **15/15 contrôles par CPU**, pages lores
+comparées, AUX, volume source complet et garde de pile conservés.
+L'aperçu conserve ses limites : rectangles opaques 40×48, cadence originale
+et masque transparent non reproduits. Le retour peut relire beaucoup de
+commandes pour une image tardive ; aucune durée constante n'est promise.
+
+## Imports MacPaint (2026-10-12)
+
+IDV1 reconnaît les imports MacBinary PNTG ProDOS BIN/typeless sur un
+échantillon MAIN d'au moins 128 octets, avec octet initial nul, type PNTG
+aux offsets 65–68 et EOF réel d'au moins 2080 octets (640 d'en-têtes,
+720 lignes compressées à deux octets minimum). IDFORMATS et OPEN ajoutent
+le suffixe `.PNTG`. Aucun décodeur ni accès AUX n'est ajouté au détecteur ;
+MACPAINT conserve sa validation, son défilement et le consentement AUX.
+
+Le type est lu une fois dans `extra_v1`. Les longueurs des suffixes IDV1
+tiennent dans un octet (noms de panneau bornés à 17) ; le test EOF >=256
+de Magic Window DOS était déjà impliqué par n>=256 et `id_restore`.
+Ces économies conservent les plafonds existants, sans retirer de garde.
+IDV1 mesure **9156/9277 octets**, BSS 121, finit à `$3F3C/$3FB5`,
+marges **195/74 octets**. IDFORMATS mesure **9143/9391**, BSS 68,
+finit à `$3EFA/$3FF2`, marges **261/13 octets** (65C02/6502).
+La réserve IDFORMATS 6502 reste très faible.
+
+Les deux builds et quatre images passent. Détecteur (15), routage C/OPEN
+assembleur (35), décodeur MacPaint (5) et DOS (12) passent avec cc65 2.19
+et HEAD sur les deux CPU. Handoff (4), inventaire (7), signedness (zéro site)
+et contrôles de disposition passent. Les tests couvrent les collisions
+8K/16K, les noms trompeurs, les en-têtes courts et les tailles périmées.
+Les fichiers sources sont comparés octet par octet.
+OPEN finit exactement à `$1FFF` sur les deux CPU après l'ajout de `.PNTG`
+à la table des suffixes : **aucun octet libre avant `$2000`**. Le contrôle
+reste actif et refusera toute croissance qui empiète sur la page graphique.
+POM2 imports : **36/36 par CPU**, Entrée/I, pixels après défilement,
+avertissement/refus avant AUX, reconstruction de RAM vide, entrée malformée,
+garde de pile et volume source entier inchangé.
+POM2 sur le build final, navigation entre deux `.PNTG` via OPEN : **8/8
+par CPU**, pixels après Droite/Gauche, refus AUX, RAM vide reconstruite,
+garde de pile et volume entier conservés.
+
+## Pixmaps DGR complets (2026-10-12)
+
+DGRVIEW réutilise son tracé masqué pour 80×48 pixels, soit 3840 octets.
+Un octet de dépassement détecte les sources trop grandes : staging MAIN
+`$3000–$3F00` inclus, sans allocation AUX. Le plafond code/BSS reste
+`$3000` ; les pages sauvegardées restent bornées à 2048 octets. Les écritures
+de rendu restent sur les pages texte/lores MAIN et AUX `$0400–$07FF`, trous
+d'écran exclus. Aucun accès au contenu du disque RAM AUX `$0800–$BFFF`,
+aucune reconstruction de `/RAM` ni écriture source.
+
+Une erreur de lecture (même avec des octets retournés) ou de fermeture
+refuse l'affichage avant toute écriture de page. Les tests comparent les
+deux banques préremplies et les octets source pour ouverture impossible,
+lecture partielle/en erreur, fermeture en erreur et page trop grande.
+L'adaptateur sim65 utilise des pointeurs de banque explicites : le ternaire
+de tableaux du banc hôte était mal compilé par HEAD ; le code matériel
+conserve ses commutations explicites.
+
+Fichiers DGRVIEW **3894/3987 octets**, BSS **69**, fin `$2A7A/$2AD7`,
+marges **1413/1320 octets** avant `$3000` (65C02/6502). Tous les contrôles
+de disposition restent actifs, les deux builds et quatre images passent.
+Les **30 tests** exécutent le vrai C sur l'hôte et les deux CPU sim65,
+avec cc65 2.19 et HEAD. POM2 sur volumes jetables : **11/11 par CPU**,
+pixels et masques 80×48, quatre bords, garde `$3F01–$3FFF`, annulation de
+largeur, source trop grande, page sauvegardée trop grande, RAM occupé,
+garde de pile et volume entier conservés. Les deux variantes du banc
+figurent dans le runner de qualification.
+
+## Zoom des pixmaps DGR (2026-10-12)
+
+Z réutilise le rendu DGRVIEW pour agrandir les pixmaps ×2/×4, en revenant
+à ×1 dès que le niveau suivant dépasse 80×48. Le rendu initial reste ×1 ;
+dimensions source, centrage et masque sont conservés. Le staging MAIN
+`$3000–$3F00` n'est ni relu ni modifié. Seuls les pixels visibles MAIN/AUX
+`$0400–$07FF` sont écrits ; trous d'écran et AUX `/RAM` restent intacts.
+Les pages sauvegardées et les images à en-tête DGR ne sont pas zoomées.
+
+Fichiers DGRVIEW **4162/4250 octets**, BSS **76**, fin `$2B8D/$2BE5`,
+marges **1138/1050 octets** avant `$3000` (65C02/6502). Les deux builds,
+quatre images et contrôles de disposition passent sans retirer de garde.
+Les **31 tests** passent avec cc65 2.19 et HEAD : vrai C hôte et deux CPU
+sim65, comparaison de chaque pixel, masques, centrage, limites des niveaux,
+retour à ×1, trous d'écran et absence de zoom sur les autres formats.
+POM2 sur volumes jetables : **19/19 par CPU**, dont le cycle ×1/×2/×4/×1
+et la conservation du contenu RAM à chaque niveau, garde de pile et volume
+source entier inchangé.
+
+## Dernière image Movie Maker (2026-10-12)
+
+L utilise le compteur 16 bits obtenu pendant la validation initiale
+complète du film. Le saut reconstruit l'image cible par les recherches et
+lectures contrôlées existantes, sans afficher les images intermédiaires ni
+conserver une table d'images. B et R restent disponibles après le saut.
+Sur les films longs, la relecture depuis le début peut prendre du temps.
+
+Écritures : buffers MAIN de l'overlay et pixels visibles de la page lores
+MAIN `$0400–$07FF`, trous exclus. Aucun accès AUX, reconstruction RAM,
+écriture sur volume ou modification du fichier source.
+Fichiers MVMOVIE **5106/5172 octets**, BSS **2635**, fin `$393C/$397E`,
+marges **1731/1665 octets** avant `$4000` (65C02/6502). Les contrôles
+de disposition restent actifs ; les deux builds et quatre images passent.
+Les 12 tests médias passent avec cc65 2.19 et HEAD, vrai C hôte et deux
+CPU sim65 : L/l, film à une image, compteur au-delà de 255, B/R après L,
+erreurs de recherche/lecture et octets source conservés. POM2 passe
+19/19 contrôles par CPU sur volumes jetables : pixels suivant/précédent,
+redémarrage/dernière image, AUX, garde de pile et volume entier inchangés.
+
+## Damier DGRVIEW (2026-10-12)
+
+C affiche un damier gris/blanc derrière les pixmaps a2dgrx, à ×1/×2/×4,
+puis rétablit le fond noir. Le masque existant conserve le damier pour les
+pixels transparents ; un pixel noir opaque reste noir. Les cases de 4×4
+utilisent les couleurs 5/15 : les deux gris lores 5/10 peuvent se confondre
+en composite. L'entrée du lecteur initialise toujours le fond noir.
+
+Le fichier et son staging MAIN ne sont pas modifiés. Le rendu écrit
+uniquement les pixels visibles MAIN/AUX `$0400–$07FF`, sans toucher aux
+trous d'écran, à AUX `/RAM` ni aux volumes. C ne change pas les pages
+sauvegardées ou les images DGR à en-tête.
+Fichiers DGRVIEW **4278/4371 octets**, BSS **77**, fin `$2C02/$2C5F`,
+marges **1021/928 octets** avant `$3000` (65C02/6502). Les deux builds,
+quatre images et contrôles de disposition passent avec toutes les gardes.
+Les **32 tests** passent avec cc65 2.19 et HEAD : vrai C hôte et deux CPU
+sim65, chaque pixel du damier et du sprite, noir opaque, masques, zoom,
+activation/désactivation, autres formats inchangés et trous conservés.
+POM2 final gris/blanc : **27/27 contrôles par CPU** sur volumes jetables,
+pixels/masques à ×1/×2/×4, restauration du fond noir à ×4, contenu RAM
+occupé inchangé à chaque rendu, garde de pile et volume source conservés.
+
+## Extrémités MacPaint (2026-10-12)
+
+T/B (majuscules ou minuscules) choisissent directement les vues indexées
+0 et 11, lignes 0–191 et 528–719. Les flèches conservent leurs pas de
+96 lignes, y compris après un saut. Le lecteur réutilise les checkpoints
+48 lignes et le décodeur PackBits existants, sans nouvelle allocation.
+
+Écritures : buffers et code auto-modifié MAIN sous `$2000`, pages DHGR
+MAIN/AUX `$2000–$3FFF`, cellule d'activité MAIN `$06F7` et reconstruction
+du disque RAM par le service existant au retour. Le consentement avant
+réutilisation de la mémoire AUX reste obligatoire si RAM n'est pas vide
+avec certitude : tous ses fichiers seraient perdus. Aucune écriture source
+ni sur les volumes d'entrée ; essais sur HD jetables seulement.
+
+Fichiers MACPAINT **1129/1132 octets**, BSS **123**, fin `$1FE3/$1FE6`,
+marges **28/25 octets** avant `$2000` (65C02/6502). Cette réserve reste
+faible ; aucune garde n'est retirée. Les deux builds et quatre images
+passent. Les 5 tests du décodeur assembleur passent avec cc65 2.19 et HEAD
+sur les deux CPU sim65 ; aucun changement du décodage des pixels.
+POM2 : **15/15 contrôles par CPU**, vrai point d'entrée et overlay livré,
+deux plans graphiques comparés à chaque saut T/B, répétitions, minuscules,
+butées et flèches après saut. Avertissement avant AUX, refus conservant
+RAM, reconstruction de RAM vide, garde de pile et volume source entier
+inchangé. Les deux variantes figurent dans `bench/all.py` ; inventaire 7/7.
+
+## Sauts de dix images Movie Maker (2026-10-12)
+
++/− réutilisent la relecture MVMOVIE pour atteindre dix images plus loin
+ou plus tôt, bornées au nombre validé d'images et à la première. Les
+recherches/lectures restent contrôlées et les images intermédiaires ne sont
+pas rendues. B, R et L restent disponibles après un saut ; la relecture
+depuis le début peut prendre du temps sur un film long.
+
+Écritures inchangées : buffers MAIN de l'overlay et pixels visibles de
+la page lores MAIN `$0400–$07FF`, trous exclus. Aucun nouveau buffer,
+accès AUX, reconstruction RAM ou écriture source/volume.
+Fichiers MVMOVIE **5243/5314 octets**, BSS **2635**, fin `$39C5/$3A0C`,
+marges **1594/1523 octets** avant `$4000` (65C02/6502). Les deux builds,
+quatre images et contrôles de disposition passent avec toutes les gardes.
+Les **13 tests médias** passent avec cc65 2.19 et HEAD, vrai C hôte et
+deux CPU sim65 : films de 1/9/10/11/12/300 images, bornes des sauts,
+combinaisons avec L/B/R et erreurs de recherche/lecture, sources conservées.
+POM2 : **29/29 contrôles par CPU** sur HD jetables, pixels exacts après
+les sauts et aux extrémités, retour/redémarrage, AUX et garde de pile
+intacts, volume source entier inchangé. Les deux variantes sont inscrites
+dans `bench/all.py` ; inventaire 7/7, signedness zéro site.
+
+## Aperçu du masque DGRVIEW (2026-10-12)
+
+M affiche l'opacité des pixmaps en blanc sur noir, en réutilisant le tracé
+existant : tout nibble de masque non nul est opaque, y compris quand la
+couleur source est noire. Le zoom reste actif ; le damier est masqué pendant
+cet aperçu, puis couleurs et fond choisi sont restaurés avec M. C peut
+changer le fond à restaurer. Chaque entrée initialise le mode couleurs.
+
+Écritures limitées aux pixels visibles MAIN/AUX `$0400–$07FF`, trous
+exclus. Le staging MAIN, les fichiers et AUX `/RAM` restent intacts ;
+aucune relecture, reconstruction RAM ou écriture volume. Les pages
+sauvegardées et les images DGR à en-tête ignorent cette commande.
+Fichiers DGRVIEW **4335/4426 octets**, BSS **78**, fin `$2C3C/$2C97`,
+marges **963/872 octets** avant `$3000` (65C02/6502). Les deux builds,
+quatre images et contrôles de disposition passent avec toutes les gardes.
+Les **33 tests** passent avec cc65 2.19 et HEAD : vrai C hôte et deux
+CPU sim65, tous les nibbles de masque, noir opaque, combinaisons M/C/Z,
+restauration des couleurs et du fond, autres formats et trous conservés.
+POM2 : **37/37 contrôles par CPU** sur HD jetables, pixels exacts du masque
+à ×1/×2/×4 et retour au damier en couleurs, contenu RAM occupé inchangé
+à chaque rendu, garde de pile et volume source entier conservés.
+
+## Décor et acteurs Movie Maker (2026-10-12)
+
+O/o réutilise `mv_scene` pour redessiner la même image avec le décor seul
+ou avec les acteurs de l'aperçu. Les sprites du frame courant restent
+disponibles pendant la bascule. Le choix suit les déplacements B/R/L/+/-
+et est remis au mode acteurs à l'entrée. Chaque redessin contrôle les
+lectures/recherches de bitmaps et ne publie l'image qu'après succès.
+
+Écritures : buffers MAIN de l'overlay et pixels visibles de la page lores
+MAIN `$0400–$07FF`, trous exclus. Aucun accès AUX, reconstruction RAM ou
+écriture source/volume. Le rendu reste un aperçu opaque 40×48, sans
+reproduction du masque transparent ni de la cadence originale du film.
+Fichiers MVMOVIE **5286/5359 octets**, BSS **2636**, fin `$39F1/$3A3A`,
+marges **1550/1477 octets** avant `$4000` (65C02/6502). Les deux builds,
+quatre images et contrôles de disposition passent avec toutes les gardes.
+Les **15 tests médias** passent avec cc65 2.19 et HEAD, vrai C hôte et
+deux CPU sim65 : décors colorés, O/o sur la même image, navigation avec et
+sans acteurs, restauration et erreurs de recherche/lecture, sources intactes.
+POM2 : **42/42 contrôles par CPU** sur HD jetables, pixels exacts après
+les bascules et déplacements, acteurs restaurés à la réouverture, AUX et
+garde de pile intacts, volume source entier inchangé.
+
+## Fond et objets PCS (2026-10-12)
+
+PCSVW conserve le bitmap original dans AUX `$6000–$7FFF` avant de tracer
+les polygones dans AUX `$4000–$5FFF`. Ces deux plans appartenaient déjà à
+la zone initialisée du lecteur. O/o engage alternativement une vue dans
+MAIN `$2000–$3FFF`, par la routine ROM existante, sans lecture de fichier
+ni modification des vues AUX. Aucun code de jeu n'est exécuté.
+
+Le passage complet de validation et la fermeture précèdent le consentement
+et la première écriture AUX. Réutiliser AUX détruit tous les fichiers de
+RAM ; l'avertissement/refus restent obligatoires si elle n'est pas vide
+avec certitude. La reconstruction RAM au retour reste dans la queue
+protégée. Aucune écriture sur les sources ; les HD d'essai sont jetables.
+
+La queue partagée avec DGMAGI a besoin de 30 octets de code et d'un octet
+d'état supplémentaires. `sdk/v1gfx.cfg` réserve désormais `$1B00–$1CFF`
+à la queue et `$1D00–$3FFF` à la phase C, toujours détruite seulement après
+son retour. Les limites restent imposées par le linker, sans désactivation.
+VGTAIL finit à `$1CAD`, VGDATA à `$1CB1`, soit **78 octets libres**.
+PCSVW mesure **5327/5367 octets**, BSS **826**, fin `$3308/$3330`,
+marges **3319/3279 octets** avant `$4000` (65C02/6502).
+DGMAGI mesure **6745/6822**, BSS **332**, fin `$36A4/$36F1`,
+marges **2395/2318** ; il conserve son comportement à une seule vue.
+Les deux builds et quatre images passent avec toutes les gardes actives.
+Les **14 tests médias** passent avec cc65 2.19 et HEAD, vrai C hôte et deux
+CPU sim65 : bitmap original conservé, aperçu comparé octet par octet,
+corpus PCS/DPC, erreurs d'E/S et validation avant consentement.
+POM2 PCS : **28/28 contrôles par CPU**, Entrée/I, fond et aperçu exacts,
+O/o répétés, deux vues AUX intactes, avertissement/refus RAM, reconstruction,
+garde de pile et volume entier inchangé. Les deux variantes sont inscrites
+dans `bench/all.py` ; inventaire 7/7.
+POM2 DGMAGI avec la nouvelle queue : **10/10 par CPU**, mêmes pixels
+DHGR, sortie par O, consentement/refus, RAM vide reconstruite, garde de
+pile et volume entier inchangé.
+
+## Miroirs des sprites DGRVIEW (2026-10-12)
+
+H/V inversent les coordonnées horizontales/verticales du sprite dans son
+rectangle centré, sans modifier le staging MAIN. Chaque touche restaure
+son orientation lorsqu'elle est pressée à nouveau. Zoom, damier et masque
+restent combinables ; le fond du damier reste fixé à l'écran. Les pages
+sauvegardées et les images DGR à en-tête ignorent H/V.
+
+Écritures inchangées : pixels visibles MAIN/AUX `$0400–$07FF`, trous
+exclus. Aucun accès au contenu AUX `/RAM`, reconstruction RAM, écriture
+source/volume ou nouvelle lecture. L'orientation est réinitialisée à l'entrée.
+Fichiers DGRVIEW **4485/4580 octets**, BSS **79**, fin `$2CD3/$2D32`,
+marges **812/717 octets** avant `$3000` (65C02/6502). Les deux builds,
+quatre images et contrôles de disposition passent avec toutes les gardes.
+Les **34 tests** passent avec cc65 2.19 et HEAD : vrai C hôte et deux
+CPU sim65, chaque pixel après H/V et les combinaisons avec Z/C/M, dimensions
+impaires, limites 80×48, couleurs/masques, restauration, trous et sources
+conservés ; la note reste sous 80 caractères.
+POM2 : **49/49 contrôles par CPU** sur HD jetables, pixels exacts après
+H/V puis M et restauration des orientations, contenu RAM occupé inchangé
+à chaque rendu, garde de pile et volume source entier conservés.
+
+## Défilement fin MacPaint (2026-10-12)
+
++/− déplacent la vue d'un checkpoint de 48 lignes, entre les positions
+0 et 11. Les flèches gardent leurs pas de 96 lignes et T/B leurs sauts
+aux extrémités. Le décodeur et l'index existants sont réutilisés sans
+nouvelle allocation ni modification des données de l'image.
+
+Écritures inchangées : buffers et code auto-modifié MAIN sous `$2000`,
+pages DHGR MAIN/AUX `$2000–$3FFF`, cellule d'activité MAIN `$06F7` et
+reconstruction RAM au retour. Le consentement précède toute réutilisation
+AUX si RAM n'est pas vide avec certitude ; tous ses fichiers seraient
+perdus. Les sources et volumes d'entrée ne sont pas écrits.
+
+Huit octets de padding inutilisé de l'en-tête et un message d'erreur
+raccourci permettent de garder toutes les gardes mémoire actives.
+Fichiers MACPAINT **1142/1145 octets**, BSS **123**, fin `$1FF0/$1FF3`,
+marges **15/12 octets** avant `$2000` (65C02/6502). La réserve reste faible.
+Les deux builds et quatre images passent. Les **5 tests** du décodeur
+assembleur passent avec cc65 2.19 et HEAD sur les deux CPU sim65.
+POM2 : **23/23 contrôles par CPU** sur HD jetables, deux plans comparés
+à chaque déplacement fin, saut T/B et déplacement grossier, butées,
+avertissement/refus avant AUX, reconstruction de RAM vide, garde de pile
+et volume source entier conservés. Les deux variantes restent inscrites
+dans `bench/all.py`.
+
+## Réinitialisation des sprites DGRVIEW (2026-10-12)
+
+R/r restaure la vue ×1, les orientations d'origine, les couleurs et le
+fond noir après combinaison de Z/C/M/H/V. Le lecteur redessine le staging
+existant sans lecture supplémentaire ; les pages sauvegardées, textes et
+images DGR à en-tête ignorent cette commande.
+
+Écritures : état et pixels visibles MAIN/AUX `$0400–$07FF`, trous exclus.
+Le staging MAIN `$3000–$3F00` reste inchangé après chaque réinitialisation.
+Aucun accès au contenu AUX `/RAM`, reconstruction RAM ou écriture source
+et volume. Les essais natifs utilisent des HD jetables.
+Fichiers DGRVIEW **4519/4616 octets**, BSS **79**, fin `$2CF5/$2D56`,
+marges **778/681 octets** avant `$3000` (65C02/6502). Les deux builds et
+quatre images passent avec toutes les gardes de disposition actives.
+Les **35 tests** passent avec cc65 2.19 et HEAD : vrai C hôte et deux CPU
+sim65, comparaison de tous les pixels, masques et trous après R/r répétés,
+dimensions 1×1, impaires et 80×48, options réactivées après réinitialisation,
+formats inchangés, sources conservées et note sous 80 caractères.
+POM2 : **74/74 contrôles par CPU**, pixels et RAM occupé après chaque
+option, réinitialisation de toutes les options, staging inchangé après
+R/r, garde de pile et volume source entier préservés. Les deux variantes
+restent inscrites dans `bench/all.py`.
+
+## Miroirs Movie Maker (2026-10-12)
+
+H/V inversent horizontalement/verticalement la scène réduite 40×48,
+après composition et découpage des acteurs. Chaque touche restaure son
+orientation au second appui. Les miroirs s'appliquent au décor seul O,
+restent actifs pendant B/R/L/+/− et sont réinitialisés à l'ouverture.
+
+Le tampon MAIN existant de 1920 pixels est inversé en place, sans tableau
+d'historique ni nouveau tampon d'image. Toute nouvelle vue reconstruit
+ce tampon par les lectures contrôlées existantes avant de l'inverser.
+La recherche de retour au flux doit réussir avant la transformation et
+l'affichage. Écritures : état et tampon MAIN de l'overlay, pixels visibles
+MAIN `$0400–$07FF`, trous exclus. Aucun accès au contenu AUX `/RAM`,
+reconstruction RAM, écriture source ou volume ; essais sur HD jetables.
+
+Fichiers MVMOVIE **5686/5777 octets**, BSS **2637**, fin `$3B82/$3BDD`,
+marges **1149/1058 octets** avant `$4000` (65C02/6502). Les deux builds
+et quatre images passent avec toutes les gardes de disposition actives.
+Les **16 tests médias** passent avec cc65 2.19 et HEAD, vrai C hôte et
+deux CPU sim65 : miroirs répétés, décor coloré, acteurs coupés aux bords,
+navigation et erreurs de lecture/recherche sans nouvelle image affichée.
+POM2 : **60/60 contrôles par CPU**, tous les pixels comparés à un oracle
+indépendant après H/V, O, avance/retour/redémarrage/fin et sauts de dix,
+réouverture sans miroir, trous d'écran, AUX, garde de pile et volume source
+entier conservés. Les deux variantes restent inscrites dans `bench/all.py`.
+L'aperçu conserve ses limites : acteurs opaques, résolution réduite et
+navigation manuelle, sans reproduction de la cadence d'animation originale.
+
+## Zoom ajusté DGRVIEW (2026-10-12)
+
+F/f choisit directement le plus grand facteur ×1/×2/×4 qui tient dans
+80×48, en conservant damier, masque et miroirs. Z garde son cycle existant ;
+après F, Z revient à ×1. R conserve sa réinitialisation complète.
+Les pages sauvegardées, textes et images DGR à en-tête ignorent F.
+
+Le rendu utilise le staging MAIN existant sans lecture supplémentaire.
+Écritures : état et pixels visibles MAIN/AUX `$0400–$07FF`, trous exclus.
+Aucun accès au contenu AUX `/RAM`, reconstruction RAM, écriture source
+ou volume. Les essais natifs utilisent des HD jetables.
+Fichiers DGRVIEW **4549/4649 octets**, BSS **79**, fin `$2D13/$2D77`,
+marges **748/648 octets** avant `$3000` (65C02/6502). Les deux builds et
+quatre images passent avec toutes les gardes de disposition actives.
+Les **36 tests** passent avec cc65 2.19 et HEAD : vrai C hôte et deux CPU
+sim65, limites exactes 20×12/40×24, dépassement par un pixel horizontal ou
+vertical, facteur ×1/×2/×4, F/f répétés, options conservées, Z/R après F,
+pixels et trous conservés, autres formats inchangés et note sous 80 caractères.
+POM2 : **95/95 contrôles par CPU**, image 80×48 à ×1 et petit sprite à
+×4, masque/damier/miroirs avant et après F, Z puis F et réinitialisation,
+RAM occupé, staging, garde de pile et volume source entier conservés.
+Les deux variantes restent inscrites dans `bench/all.py`.
+
+## Avance automatique Movie Maker (2026-10-12)
+
+S/s active l'avance automatique et l'arrête sur l'image courante sans
+redessin ni saut. Une autre touche arrête l'automatisme puis effectue sa
+commande habituelle. L'expiration de l'attente réutilise la progression
+normale du décodeur ; la fin du film revient aux panneaux. Une ouverture
+réinitialise le mode manuel, le décor et les orientations.
+
+La routine clavier du diaporama est partagée dans `src/key_wait.inc`,
+avec les mêmes instructions pour le résident. MVMOVIE utilise quatre
+périodes, environ **2,88 secondes à 1 MHz**, plus le rendu. L'attente lit
+seulement `$C000` et laisse la touche en place pour le service clavier.
+Pas de nouvelle banque ni tampon d'image : état et rendu MAIN existants,
+pixels visibles MAIN `$0400–$07FF`, trous exclus. Aucun accès au contenu
+AUX `/RAM`, reconstruction RAM, écriture source ou volume.
+
+Fichiers MVMOVIE **5758/5853 octets**, BSS **2638**, fin `$3BCB/$3C2A`,
+marges **1076/981 octets** avant `$4000` (65C02/6502). Les deux builds
+et quatre images passent avec toutes les gardes de disposition actives.
+L'aide respecte la limite de 79 caractères, vérifiée par les tests.
+Les **17 tests médias** passent avec cc65 2.19 et HEAD, vrai C hôte et
+deux CPU sim65 : expiration, pause, interruption, annulation, film à une
+image, fin, erreurs de recherche/lecture/fermeture et sources conservées.
+Les tests de présentation exécutent le vrai assembleur : diaporama
+inchangé, délai Movie Maker mesuré en cycles et interruption immédiate
+sans consommer la touche, sur les deux processeurs.
+Les **4 tests de présentation** passent avec cc65 2.19. Avec HEAD, les
+tests du délai et du rendu C passent, mais le test d'interface assembleur
+dépasse le délai sur les deux CPU, même avec 120 secondes : cette suite
+n'est pas entièrement qualifiée avec HEAD. Le délai partagé produit les
+mêmes octets que la routine précédente sur les deux processeurs ; la
+limite du banc reste à 60 secondes et aucune garde mémoire n'est retirée.
+POM2 : **67/67 contrôles par CPU** sur HD jetables, pause stable, reprise,
+commande B et Échap interrompant l'attente, réouverture manuelle, pixels
+des images suivantes et retour à la fin, AUX, garde de pile et volume
+source entier conservés. Les deux variantes restent dans `bench/all.py`.
+L'aperçu conserve ses acteurs opaques et sa résolution 40×48 ; sa vitesse
+dépend du processeur et ne reproduit pas la cadence d'animation originale.
+
+## Vitesses Movie Maker (2026-10-12)
+
+1/2/3 choisissent les délais rapide/normal/lent, sans redessiner ni
+avancer l'image. L'automatisme reste actif pendant le réglage et reprend
+une attente complète à la nouvelle vitesse. À l'arrêt, seul le réglage
+change. B/R/L/+/− conservent la vitesse ; une ouverture rétablit normale.
+
+La routine interruptible existante reçoit 1/4/8 périodes, soit environ
+**0,72/2,88/5,77 secondes à 1 MHz**, plus le rendu, plus court sur machine
+accélérée. Aucun nouveau tampon ni écriture source/volume : état et rendu
+MAIN existants, pixels visibles MAIN `$0400–$07FF`, trous exclus. Aucun
+accès au contenu AUX `/RAM` ni reconstruction RAM ; essais sur HD jetables.
+
+Fichiers MVMOVIE **5799/5897 octets**, BSS **2639**, fin `$3BF5/$3C57`,
+marges **1034/936 octets** avant `$4000` (65C02/6502). Les deux builds
+et quatre images passent avec toutes les gardes de disposition actives.
+La note reste sous 80 caractères. Les **18 tests médias** passent avec
+cc65 2.19 et HEAD, vrai C hôte et deux CPU sim65 : délais transmis,
+changement pendant l'automatisme, sélection manuelle, pause/reprise,
+navigation conservant la vitesse, erreurs de recherche/lecture et sources
+conservées. Le test ciblé de temporisation passe avec les deux compilateurs
+et CPU : cycles pour 1/4/8 périodes, interruption immédiate et touche non
+consommée. Le code du délai et du résident reste inchangé dans cette étape ;
+la limite HEAD du banc d'interface décrite précédemment reste applicable.
+POM2 ciblé : **22/22 contrôles par CPU**, imports, sélection à l'arrêt, trois vitesses,
+pauses stables, réglage pendant l'avance, redémarrage puis reprise, sortie,
+pixels, AUX, garde de pile et volume source entier conservés. Les deux
+variantes restent inscrites dans `bench/all.py`.
+
+Les 72 premiers contrôles du parcours complet ont réussi sur les deux CPU,
+avant le refus HTTP lors de la restauration d'une vitesse hors plage.
+Après correction par le preset officiel `max`, les contrôles ciblés
+incluent les vérifications finales de conservation. Le parcours complet
+de 75 contrôles n'a pas été intégralement relancé après cette correction
+du banc ; le code du lecteur n'a pas changé pendant ce diagnostic.
+
+Le banc temporisé utilise le preset émulateur 1×, et observe chaque pause
+pendant sept secondes. `--speed 4000000` désigne des cycles par image vidéo,
+pas 4 MHz : le turbo pouvait avancer avant que la commande du banc arrive.
+Le contrôle garde ses comparaisons exactes, puis rétablit le turbo pour les
+vérifications finales. `--auto-only` permet 22 contrôles ciblés par CPU.
+
+
+### Rotations des pixmaps DGRVIEW — 2026-10-12
+
+O tourne l'affichage courant de 90° dans le sens horaire. Le rendu existant
+compose une transposition et les miroirs sans modifier les pixels chargés ;
+les dimensions affichées suivent la transformation. Le zoom diminue pour
+tenir dans 80×48, F/Z utilisent ces dimensions, R restaure aussi la rotation.
+Si la nouvelle hauteur dépasserait 48 à ×1, la commande est ignorée avant
+toute modification de l'état ou du rendu. La note tient dans 80 octets.
+
+Écritures : état MAIN de l'overlay, staging MAIN `$3000–$3F00` au chargement
+seulement, pixels visibles MAIN/AUX `$0400–$07FF` au rendu, trous exclus.
+Aucun tampon supplémentaire, aucune écriture source/volume, aucun accès AUX
+`$0800–$BFFF` de `/RAM`, aucune reconstruction RAM ni nouvelle confirmation.
+Les commandes utilisent les pixels déjà chargés, après lecture et fermeture
+contrôlées. Les pages sauvegardées et DGR à en-tête ignorent O.
+
+Fichiers **4685/4773 octets**, BSS **82**, fin `$2D9F/$2DF7`, marges
+**609/521 octets** avant `$3000` (65C02/6502). Builds des deux architectures
+et quatre images validés avec les gardes de disposition actives.
+Les **38 tests** passent avec cc65 2.19 et HEAD : vrai C hôte et sim65 des
+deux CPU, comparaison indépendante de chaque pixel après rotation, miroirs,
+zoom, fit, masque et damier, limites 48/49/80, quatre tours et reset, erreurs
+d'ouverture/lecture/fermeture refusées avant écriture, sources et trous
+d'écran conservés.
+
+POM2 : **137/137 contrôles par CPU**, sur volumes jetables : pixels des deux
+banques, rotations combinées avec miroirs et masque, zoom réduit puis fit,
+refus du plein écran trop haut, staging inchangé après O/R, AUX occupée,
+garde de pile et volume source entier conservés. Les deux parcours restent
+inscrits dans `bench/all.py`.
+
+### Fantavision image par image et boucle Movie Maker — 2026-10-12
+
+Fantavision : pendant la pause, Droite/Entrée appelle une fois `fv_next`,
+affiche la page qu'il vient de construire et reste dans l'attente clavier.
+La fin d'un film compté ou d'une image unique conserve la dernière vue.
+Space/Échap, Tab, chiffres et S restent disponibles. Aucun décodage parallèle,
+aucun tampon ajouté : moteur, transitions et backdrops existants réutilisés.
+Les helpers getkey/pause/unit sont déplacés dans FCOLD, toujours présent en
+LOW après le chargement, afin de conserver les deux fenêtres de liaison.
+
+Écritures du moteur : variables MAIN/ZP existantes, extents MAIN
+`$0800–$0BFF`, pages MAIN `$2000–$5FFF` et copie de décor MAIN `$6000–$7FFF`
+(selon les objets Background). Commandes source MAIN `$8000–$A3FF` conservées,
+aucune écriture fichier/disque ni accès AUX `/RAM`. Le lecteur autonome
+sauvegarde/restaure toujours le bitmap ProDOS et le chemin de retour.
+FANTA.SYSTEM **10605 octets**, identique dans les deux éditions 6502 et
+65C02 : BSS **2994**, ZP **122**, TABLES `$17B2–$1D78`, FCOLD
+`$1D79–$1FED` (629 octets), **18 octets libres avant `$2000`** ;
+CODE/RODATA jusqu'à `$BEF6`, **9 octets libres avant `$BF00`**.
+Aucune fenêtre ou garde de disposition agrandie/désactivée. Les quatre
+images ont été contrôlées après compilation des deux architectures.
+
+Les **16 tests Fantavision** passent (moteur, chargement, retour Échap et
+Reset, deux CPU). Les deux tests de temporisation passent sur les deux CPU.
+Le nouveau test de touches exécute les vraies routines pause/key avec moteur
+instrumenté, cinq séquences sur chaque CPU, avec cc65 2.19 et HEAD.
+POM2 : **37/37 contrôles par CPU**, référence indépendante des deux pages
+et de la page sélectionnée, Right/Return en vitesse accélérée/originale,
+pause après chaque pas, reprise, backdrops, retour/reset, diaporama,
+source et AUX `$0800–$BFFF` et volume entier conservés. Le banc capture
+ensemble pages et décor pour éviter qu'une lecture séparée du décor tombe
+pendant le rechargement automatique en turbo ; comparaison exacte maintenue.
+
+Movie Maker : Q/q active/désactive la boucle sans avancer ni arrêter auto.
+Au dernier timeout automatique, le parcours vérifié relit le début de
+l'animation. Vitesse, décor et miroirs persistent ; S pause/reprend, sortie
+manuelle et Échap restent normales, ouverture avec boucle désactivée.
+Écritures limitées à l'état/tampon MAIN et pixels visibles MAIN
+`$0400–$07FF`, trous exclus. Aucun accès AUX, aucune écriture source/disque.
+Fichiers MVMOVIE **5852/5951 octets**, BSS **2640**, fin `$3C2C/$3C8F`,
+marges **980/881 octets** avant `$4000` (65C02/6502).
+Les **19 tests médias** passent avec cc65 2.19 et HEAD, vrai C hôte et deux
+CPU sim65 : boucles à une/plusieurs images, activation/désactivation en
+lecture, pause/reprise, fin manuelle, décor/miroirs, erreurs de recherche,
+lecture et fermeture pendant la boucle, sources conservées. POM2 complet :
+**83/83 contrôles par CPU**, AUX, garde de pile et volume entier préservés.
+Ce parcours complet valide aussi la restauration du preset turbo corrigée
+précédemment. `--auto-only` regroupe désormais 30 contrôles du même parcours.
+
+
+### Newsroom noir/blanc inversé — 2026-10-12
+
+I/i réutilise la page HGR chargée : XOR $7F sur 40 octets visibles de
+chacune des 192 lignes, décor autour de l'image compris. Bit de palette et
+512 octets de trous conservés ; deux appuis restaurent les 8192 octets
+exactement. La boucle reprend cgetc/media_key, comme l'attente média
+existante, avec navigation/diaporama et retour Échap conservés. Chaque
+ouverture reprend les couleurs originales. Les lecteurs DOS restent distincts.
+
+Écritures supplémentaires : uniquement pixels visibles MAIN `$2000–$3FFF`
+et compteurs/pointeurs MAIN existants. Chargement et activité MAIN `$06F7`
+existants conservés, fermeture contrôlée avant affichage/commandes. Aucun
+accès AUX `/RAM`, aucune reconstruction RAM, aucun nouveau tampon ni
+réouverture/écriture source ou volume. Le menu indique I: inverse.
+
+Fichiers **1010/1016 octets**, BSS **82/83**, fin `$1F44/$1F4B`, marges
+**188/181 octets** avant `$2000` (65C02/6502). Les deux architectures et
+quatre images passent avec les gardes de disposition actives.
+Les **7 tests** passent avec cc65 2.19 et HEAD, overlay assembleur réel
+sous sim65 des deux CPU : pixels inversés par référence indépendante,
+restauration, lettres minuscules, navigation, octets hors page, données
+malformées, tailles périmées, erreurs de lecture/fermeture et source intacte.
+Le banc requiert la relocalisation effective de la région MAIN à `$8000` :
+l'expression de taille du cfg HEAD avait changé et l'ancien remplacement
+silencieux laissait le banc dans la zone d'activité du lecteur. Cette garde
+refuse désormais une configuration inconnue au lieu de lancer ce placement.
+POM2 : **24/24 contrôles par CPU**, quatre photos/bannières, dimensions
+maximales 37×192, page entière et trous, navigation, refus, AUX occupée
+`$0800–$BFFF`, garde de pile et volume source entier conservés ; disques jetables.
+
+
+### AppleWorks dernière fiche et Epistole dernière page visitée — 2026-10-12
+
+AWDATA : L/l choisit `nrecs-1` uniquement dans une base de données après
+le parcours existant, jamais dans un tableur ou une base sans fiche lisible.
+Le décompte parcouru et les repères de 64 fiches sont réutilisés ; les
+catégories supplémentaires et B/R restent disponibles. La barre R/L Ends
+tient dans ses 36 colonnes : un premier essai avec une sixième touche
+faisait revenir le texte sur la première ligne, détecté et corrigé par les
+comparaisons natives. L'en-tête de description passe de 52 à 28 caractères
+pour garder la fenêtre mémoire, sans nouveau tampon ni changement ABI.
+
+Écritures : état et tampon de lecture MAIN existants, texte conio
+MAIN/AUX `$0400–$07FF`, sauvegarde/restauration de la ZP pour le FOUT ROM
+existant. Aucun accès AUX `/RAM` à partir de `$0800`, aucune reconstruction,
+aucune écriture source/volume. Fichiers **8000/8179 octets**, BSS **1282**,
+fin `$3F42/$3FF5`, marges **190/11 octets** avant `$4000` (65C02/6502).
+Les contrôles de disposition restent actifs ; marge 6502 très serrée.
+Les **9 tests AWDATA** passent avec cc65 2.19 et HEAD, C hôte réel et
+conversion assembleur sur les deux CPU : dernier élément, repères
+63/64/65/130, catégories conservées, base vide, compte d'en-tête périmé,
+erreurs de lecture et sources inchangées ; tableurs également couverts.
+POM2 complet : **62/62 contrôles par CPU**, tous les champs et décompte
+d'une base de 130 fiches, bases/tableurs réels, aide sans débordement,
+AUX occupée, pile et volume source entier conservés, images jetables.
+
+DOCVIEW : L/l choisit la page la plus avancée déjà visitée, dans les
+16 positions d'historique existantes, avec wrap conservé. Aucun balayage
+des pages inconnues ; layout/accents et calculs reprennent les procédures
+de relecture vérifiées. R remet la destination à la première page.
+Écritures MAIN : état, scratch `$3D60–$3FFF`, tampon copy_buf et ZP ROM
+existants ; conio MAIN/AUX `$0400–$07FF` pour les pages et leur barre.
+Aucun accès AUX `/RAM` `$0800–$BFFF`, aucune écriture source/volume.
+Fichiers **8417/8418 octets**, BSS **354**, fin `$3D43/$3D44`, marges
+**29/28 octets** avant le scratch `$3D60`. La barre reste sous 80
+caractères, même avec numéro maximal et erreur de lecture.
+Les **13 tests de rendu hôte** et **15 tests C/ROM sim65** passent, ces
+derniers avec cc65 2.19 et HEAD sur les deux CPU : calculs, erreurs, limites
+d'écran et pile, dernière page après retours, wrap sur 20 pages et R.
+POM2 : **31/31 contrôles par CPU**, accents/layout, totaux calculés,
+historique complet, AUX occupée, pile et volume source entier conservés.
+Les deux architectures et quatre images disque sont contrôlées.
+
+Les bancs ROM sim65 requièrent un remplacement exact de la région MAIN,
+dont l'expression de taille a changé dans HEAD. Ils chargent les vrais
+octets ROM `$D000–$FFBF` : l'aperture périphérique sim65 à `$FFC0` et
+au-delà reste intacte. Écrire ces adresses avec les octets ROM activait
+la trace du simulateur et polluait les sorties de tests. Calculs et FOUT
+utilisent la ROM réelle sous cette limite ; les vecteurs Reset ne font
+pas partie de ces bancs. POM2 qualifie le lecteur avec sa ROM complète.
+
+## 12 octobre 2026 — Take 1 : avance pendant la pause
+
+Droite/Entrée dans `pause` pose un octet `step` en HIBSS. Le prochain
+`t1_show` reste dans `pause` ; Espace remet l'octet à zéro, Tab conserve la
+pause et Échap reprend le retour existant. Le moteur, ses décors, sa scène
+et ses attentes sont réutilisés. Les fondus se déroulent entièrement et
+les attentes interactives restent à acquitter ; l'arrêt se fait au prochain
+basculement de page, pas à chaque étape d'un fondu.
+
+Écritures : octet HIBSS et état MAIN/ZP existant ; le moteur continue ses
+écritures MAIN aux mêmes emplacements (variables, pages HGR $2000–$7FFF,
+chargements vérifiés $8000–$AFFF et buffers dans la page cachée). Aucun
+accès AUX n'est ajouté ; $0800–$BFFF AUX et /RAM restent intacts. Aucun
+appel disque dans les nouvelles commandes. Le lecteur conserve ses appels
+MLI de lecture uniquement. Le lancement RUN existant sauvegarde A2FILE.CFG
+avant transfert ; cette sauvegarde explique pourquoi tout le volume n'est
+pas identique après plusieurs lancements. Le banc contrôle séparément tout
+le volume pendant l'exécution de TAKE1, puis les octets et entrées de tous
+les autres fichiers après retour.
+
+Budget identique pour les deux éditions : SYS **11593 octets**, CODE finit
+à **$1FFE** (1 octet libre avant $2000), TIMED **118 octets** à $0800–$0875,
+HIBSS **111 octets** à $0600–$066E (9 libres), TXC6/TXC7 **119 octets chacun**
+(1 libre par fenêtre). `unit` passe en TXC7, l'aide froide `incw` en TXC6,
+et la décision à l'affichage utilise les octets restants de TXC6. Ces
+routines sont copiées avant lecture du film ; `getkey`, utilisé aussi lors
+d'un refus avant copie et après effacement du texte, reste dans CODE.
+Les boucles de délai déplacées restent dans une page ; les contrôles de
+placement, les fenêtres et le code de retour sont conservés. La marge de
+CODE reste extrêmement serrée ; ne pas agrandir cette zone.
+
+Validation : quatre tests de commandes réelles sur les deux CPU, cc65 2.19
+et HEAD ; 14 tests existants du moteur/chargeur/interpréteur et chronométrie,
+y compris erreurs de lecture, formats malformés, retours Échap/reset et
+comparaison des octets des images à la référence. Banc POM2 : **33/33 contrôles par CPU** sur des HD
+jetables pour les deux architectures, avec AUX occupé et conservation des
+fichiers. Les quatre images de distribution sont contrôlées.
+
+## 12 octobre 2026 — Newsroom : miroirs H/V
+
+H/h retourne les 280 pixels de chaque ligne ; V/v échange les lignes
+visibles 0/191 à 95/96. Les transformations portent sur la page chargée,
+y compris son fond, se composent avec I/i et s'annulent par un second appui.
+Aucun second lecteur ni tampon de page : H réutilise les 64 octets `buf`
+après fermeture réussie du fichier, V échange les octets avec X. Les 512
+trous HGR restent intacts. La nouvelle image est chargée dans son orientation
+et ses couleurs d'origine par la navigation média existante.
+
+Écritures ajoutées : pixels MAIN $2000–$3FFF, `buf` et `row` dans la BSS
+existante, ZP `ptr1`, `ptr2` et `tmp1`. Les fichiers et volumes ne sont pas
+écrits, et aucun appel de lecture, recherche ou fermeture n'est ajouté
+aux commandes. Pas d'accès AUX ni de reconstruction /RAM. Les commandes
+n'existent qu'après validation et fermeture réussie ; une erreur d'ouverture
+ou de fermeture ne montre pas la page et ne consomme pas les touches.
+Le calcul de ligne réutilise `_hv_row` : son résultat A/X complet est stocké
+pour les deux lignes, y compris les tiers de 40/80 octets.
+
+Fichiers **1151/1157 octets** (enhanced/6502), BSS **82/83 octets** inchangée,
+fin code+données+BSS **$1FD1/$1FD8**, donc **47/40 octets libres** avant $2000.
+La fenêtre $1B00–$1FFF et les contrôles du lieur restent inchangés ; aucun
+agrandissement sur la page HGR. La pile réutilise le seul octet de touche
+sauvé, retiré avant chaque transformation.
+
+Validation : **8 tests** du vrai assembleur sous sim65, deux CPU avec cc65
+2.19 et HEAD, oracle indépendant en matrice 280×192, formes 1×1, 37×192,
+8×43, 37×1 et 1×192, doubles retournements et H/V/I combinés, navigation,
+refus de données malformées/tailles périmées et erreurs d'E/S. POM2 passe
+**56/56 contrôles par CPU**, compare les pages complètes, préserve le volume jetable, AUX occupé $0800–$BFFF et
+la garde de pile sur les deux architectures. Les quatre images de
+publication respectent les contrôles de disposition.
+
+## 12 octobre 2026 — Fantavision : prochaine pose enregistrée
+
+N/n dans la pause appelle le moteur `fv_next` jusqu'au prochain `fv_vkey`,
+puis sélectionne `fv_shown` et reste en pause. Droite/Entrée conserve son
+avance d'une seule image, y compris intermédiaire. La fin comptée ou un
+film à une seule image garde la vue courante. Le moteur continue de dessiner
+les images intermédiaires et leurs objets de décor ; aucune accélération
+par décodage parallèle ni saut dans les données. Tab, délai, diaporama,
+Espace et Échap conservent leur état et leur comportement existants.
+
+Écritures : les mêmes pages MAIN $2000–$7FFF (affichage et décor), variables
+MAIN/ZP et compteurs du moteur. Pas de nouveau tampon, allocation, état BSS,
+accès AUX ou appel disque dans N/n. Le film chargé en $8000–$A3FF reste
+identique, /RAM n'est ni touché ni reconstruit. La pile ne s'accumule pas :
+chaque appel de `fv_next` revient avant l'itération suivante, puis la routine
+saute vers la pause/affichage existant. Les transferts des fichiers et la
+restauration du bitmap restent ceux du lecteur en lecture seule.
+
+Les deux éditions ont les mêmes **10630 octets**. BSS **2994**, ZP **122**
+inchangés. FCOLD $1D79–$1FFD : **645 octets**, **2 libres** avant $2000.
+CODE/RODATA $A455–$BEFF : **0 libre** avant ProDOS $BF00. La décision N/n
+consomme les 9 derniers octets hauts ; les 16 octets du helper vont dans
+FCOLD déjà copié au démarrage. Les fenêtres et assertions de placement
+restent inchangées. Ces zones sont désormais pleines ou presque : toute
+extension doit dégager de la place, sans élargir la fenêtre dans ProDOS.
+
+Validation : dix scénarios exécutant les vraies commandes et le helper,
+sous sim65 sur les deux processeurs, cc65 2.19 et HEAD ; **16 tests** du
+moteur/chargement/retour, dont formats malformés, erreurs de lecture,
+décors, tous modes, temporisation, Échap et reset. POM2 : **43/43 contrôles
+par CPU**, film à huit étapes par transition, oracle indépendant de chaque
+image et des deux pages, trois avances N/n à la prochaine pose, pauses
+stables et reprise. Le banc couvre toutes les phases d'interpolation pour
+la détection initiale (80 images de référence, plutôt que les six premières).
+Film, AUX $0800–$BFFF et volume jetable conservés octet par octet. Les quatre
+images disque passent les contrôles de construction et de disposition.
+
+## 12 octobre 2026 — DOCVIEW : début de l'historique
+
+H/h pose `page` à zéro dans l'historique existant. Après 20 pages visitées,
+les 16 positions gardées couvrent les pages 5–20 : H va à 5, L revient à 20.
+Contrairement au redémarrage R, H ne modifie ni `known`, ni `head`, ni `first`.
+L'affichage reprend les mêmes offsets, états de mise en page et replay
+vérifié des calculs ; le mode accents reste conservé. Aucune exploration
+supplémentaire des pages non visitées et aucun nouveau tableau.
+
+Écritures : état/scratch MAIN existant, tampons existants, variables de
+calcul et ZP ROM, texte MAIN/AUX $0400–$07FF via conio. Aucun accès AUX
+$0800 ou au-delà, aucune reconstruction /RAM ni écriture sur les sources
+ou volumes. Les seuls accès fichiers restent la relecture contrôlée des
+pages existantes ; les erreurs de lecture ne deviennent pas des EOF.
+
+DOCVIEW **8429/8432 octets**, BSS **354 octets** inchangée. Fin BSS exclusive
+**$3D4F/$3D52**, donc **17/14 octets libres** avant le scratch $3D60.
+Les fenêtres, buffers, limites et assertions restent inchangés. L'aide
+H/L réunit les deux extrémités de l'historique ; son maximum avec une page
+65535 et « (read error) » est **79 caractères**, sans débordement de ligne.
+
+Validation : **16 tests** du vrai C et de la ROM de calcul sur les deux CPU,
+cc65 2.19 et HEAD, plus les **13 tests** de rendu hôte. Nouveau scénario
+H/h/L/R sur calculs cumulatifs et document de 420 lignes, historique cyclique,
+marges, retour aux mêmes lignes, avance normale et remise à zéro. Banc POM2 :
+**35/35 contrôles par CPU**, conservation du volume jetable, AUX occupé
+et garde de pile. Les quatre images de distribution restent valides.
+
+## 12 octobre 2026 — AppleWorks : page indexée des tableurs
+
+L/l utilise désormais `last - 1` : le nombre de fiches vérifié pour une
+base, le nombre de pages indexées pour une feuille. Le point de départ
+le plus avancé peut être celui de la page suivante, préparé par le rendu
+précédent. Aucun parcours complet de la feuille n'est ajouté. La colonne
+courante reste en place, B revient d'une page, R reprend en haut à gauche,
+et F réinitialise les repères de la nouvelle vue grille/cellules.
+
+Écritures : index `k` existant, état/tampons MAIN, ZP de calcul et écran
+texte MAIN/AUX $0400–$07FF via les services existants. Aucun nouveau buffer,
+état BSS ou appel fichier dans la commande. La relecture de la page reste
+contrôlée ; les erreurs ne sont pas des fins normales. Pas d'accès AUX
+$0800–$BFFF, de reconstruction /RAM ni d'écriture des sources ou volumes.
+`known` reste au moins 1, plafonné à 42 ; `marks` dispose des 43 entrées
+existantes pour la page courante et son successeur. Le dernier indice est
+donc borné avant son accès, même au plafond et après changement de vue.
+
+AWDATA **7993/8172 octets**, BSS **1282 octets** inchangée ; fin exclusive
+**$3F3B/$3FEE**, donc **197/18 libres** avant $4000. La condition spécifique
+aux bases disparaît, et l'aide des feuilles regroupe SPC/B pour garder cinq
+commandes dans les 36 colonnes de la barre. Fenêtre, pile, buffers et
+contrôles de placement inchangés ; sept octets gagnés dans chaque édition.
+
+Validation : **10 tests** avec cc65 2.19 et HEAD, vrai C hôte et conversion
+numérique réelle sur les deux CPU. Oracle indépendant des grilles et
+formules pour feuilles vides, courtes ou longues, L/l après B/R, maintien
+de la colonne, changement F et erreurs de lecture. Les bases continuent
+de passer les tests de comptage, repères de 64 fiches, catégories, tailles
+périmées et erreurs d'E/S. Banc POM2 : **66/66 contrôles par CPU** sur HD
+jetables, avec conservation des nombres ROM, volume, AUX occupé et garde de pile.
+Les quatre images disque passent leurs contrôles de disposition.

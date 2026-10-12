@@ -188,7 +188,11 @@ colsl:  lda     buf                     ; a plane at copy_buf + 128
 fail2:  jmp     fail
 
 raw:    jsr     close                   ; back to the first byte
-        jsr     open
+        stx     t
+        ora     t
+        beq     :+
+        jmp     say_bad                 ; a close error is never a successful probe
+:       jsr     open
         bcc     reopened
         jmp     say_bad
 reopened:
@@ -209,34 +213,7 @@ glyph:  lda     #8
         bcs     fail2
         lda     #0
         sta     fr
-grow:   lda     g                       ; row (g / 16) * 10 + r
-        lsr     a
-        lsr     a
-        lsr     a
-        lsr     a
-        sta     t
-        asl     a
-        asl     a
-        adc     t
-        asl     a
-        adc     fr
-        jsr     hv_row
-        sta     ptr1
-        stx     ptr1+1
-        ldy     fr
-        lda     (ptr3),y
-        pha
-        lda     g                       ; byte 4 + (g % 16) * 2
-        and     #15
-        asl     a
-        adc     #4
-        tay
-        pla
-        sta     (ptr1),y
-        inc     fr
-        lda     fr
-        cmp     #8
-        bne     grow
+        .include "font_raw_glyph.inc"
         inc     g
         lda     g
         cmp     fn
@@ -365,76 +342,7 @@ field:  lda     api
         pla
         rts
 
-hv_clear:
-        lda     #0
-        sta     $C000
-        sta     $C002
-        sta     $C004
-        sta     $C054
-        sta     ptr1
-        lda     #$20
-        sta     ptr1+1
-        ldy     #0
-        lda     #0
-@byte:  sta     (ptr1),y
-        iny
-        bne     @byte
-        inc     ptr1+1
-        ldx     ptr1+1
-        cpx     #$40
-        bne     @byte
-        rts
-
-; hv_row: A = the screen row; A/X its address.
-hv_row: pha
-        and     #7
-        asl     a
-        asl     a
-        ora     #$20
-        sta     ptr1+1
-        pla
-        pha
-        and     #$38
-        lsr     a
-        lsr     a
-        lsr     a
-        lsr     a
-        ora     ptr1+1
-        sta     ptr1+1
-        pla
-        pha
-        and     #8
-        beq     @even
-        lda     #$80
-@even:  sta     ptr1
-        pla
-        lsr     a
-        lsr     a
-        lsr     a
-        lsr     a
-        lsr     a
-        lsr     a
-        tax
-        lda     offsets,x
-        clc
-        adc     ptr1
-        ldx     ptr1+1
-        rts
-
-hv_show:
-        lda     #0
-        sta     $C000
-        sta     $C00D
-        sta     $C05E
-        sta     $C05F
-        sta     $C05E
-        sta     $C05F
-        sta     $C00C
-        sta     $C057
-        sta     $C054
-        sta     $C052
-        sta     $C050
-        rts
+        .include "font_hgr_screen.inc"
 
 ; The plane at ptr3 + 128 of row fr, column fc, the widths at ptr3.
 font_draw:

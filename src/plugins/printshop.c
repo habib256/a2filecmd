@@ -1,49 +1,43 @@
-/* Main-bank HGR only: no AUX or disk writes. */
-#include "../a2fc_plugin.h"
-void __fastcall__ plugin_entry(const struct A2fcApi*);
+/* Read-only DOS/ProDOS clip art. Validate and close the complete source
+ * before MAIN HGR writes. Renderer and bitmap stay below $2000; no AUX. */
+#include <stddef.h>
+#define DS_SECTORS 3
+#include "ps_source.h"
+#pragma rodata-name(push,"OVLHDR")
+const struct PsHeader __plugin_header={MEDIA_PLUGIN_MAGIC, OVERLAY_BIG,plugin_entry,
+ {0,0,0},"Print Shop clip art (DOS/ProDOS)"};
+#pragma rodata-name(pop)
+const unsigned char ps_wait_offset=offsetof(struct A2fcApi,media_wait);
+#ifdef PLUGIN_HOST
+static unsigned char ps_bitmap[572];
+unsigned char py;
 void hv_clear(void);
 void hv_show(void);
-unsigned char* __fastcall__ hv_row(unsigned char y);
-struct Header { unsigned int signature; unsigned char flags;
- void __fastcall__ (*entry)(const struct A2fcApi*); unsigned char r[3]; char desc[12]; };
-#pragma rodata-name(push, "OVLHDR")
-const struct Header __plugin_header = { MEDIA_PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry,
- {0,0,0}, "Print Shop" };
-#pragma rodata-name(pop)
-static const struct A2fcApi* A;
-#include "hgr_io.h"
-static FILE* f;
-static unsigned char bad;
-static unsigned char readn(void* p, unsigned int n) {
- if (frd(p,1,n,f)!=n) { bad=1; return 0; }
- return 1;
-}
-static void finish(void) {
- unsigned char b;
- if (frd(&b,1,1,f) || ferror(f)) bad=1;
- if (fcls(f)) bad=1;
- if (!bad) { hv_show(); getkey(0); }
- scpy(A->reselect,A->selected->name);
- if (bad) scpy(A->note,"Bad data/I/O");
-}
-
-/* Print Shop clip art: 88x52, MSB left, black ink; 572 bytes plus an
- * optional four-byte trailer. Scale 2x3, centered on a white HGR page. */
-
-unsigned char py;
 void __fastcall__ ps_draw(unsigned char*);
-void __fastcall__ plugin_entry(const struct A2fcApi* api) {
- unsigned char tail;
-
- A=api; bad=0;
- if(A->selected->type!=6)return;
- f=fopn(A->full,"rb"); if(!f) {scpy(A->note,"Bad data/I/O");return;}
- hv_clear();
- for(py=18;py<174;py+=3) {
-  if(!readn(A->copy_buf,11))goto end;
-  ps_draw(A->copy_buf);
+#else
+extern unsigned char ps_bitmap[572];
+#endif
+unsigned char __fastcall__ ps_preflight(const struct A2fcApi* api){
+ unsigned int n=0;int c;
+ if(api->selected->type!=6){api->strcpy(api->note,"Select a Print Shop BIN file.");return 0;}
+ if(!ps_select(api))return 0;
+ if(!ps_open())goto bad;
+ while((c=ps_get())>=0){
+  if(n<572)ps_bitmap[n]=c;
+  if(++n>576)break;
  }
- tail=frd(A->copy_buf,1,5,f);
- if(tail && tail!=4)bad=1;
-end: finish();
+ if(!ps_close())goto bad;
+ if(n!=572 && n!=576)goto bad;
+ api->strcpy(api->reselect,api->selected->name);
+ return 1;
+bad:api->strcpy(api->note,"Bad Print Shop data/read/close error.");return 0;
 }
+#ifdef PLUGIN_HOST
+void __fastcall__ plugin_entry(const struct A2fcApi* api){
+ unsigned int off=0;
+ if(!ps_preflight(api))return;
+ hv_clear();
+ for(py=18;py<174;py+=3){ps_draw(ps_bitmap+off);off+=11;}
+ hv_show();api->media_wait();api->strcpy(api->reselect,api->selected->name);
+}
+#endif

@@ -198,5 +198,72 @@ class Arlequin(unittest.TestCase):
         self.assertGreater(found, 0, 'the sample disk has Arlequin pictures')
 
 
+class ArlequinControl(unittest.TestCase):
+    """Real C orchestration; decoder errors are injected separately from ASM."""
+    @classmethod
+    def setUpClass(cls):
+        from test_six_plugins import PREFIX
+        cls.tmp=tempfile.TemporaryDirectory(prefix='arlequin-control-');cls.p=Path(cls.tmp.name)
+        harness=PREFIX+r'''
+static int fault,opens,closes,reads,ioerr,writes,formats,shown;
+static int ferr(FILE* f){return ioerr || ferror(f);}
+#define ferror ferr
+#include "src/plugins/arlequin.c"
+#undef ferror
+unsigned char ar_dry,ar_win;
+unsigned char ar_decode(void){
+ unsigned char head[4];unsigned int count,total=0,i;
+ while((count=ar_read())!=0){for(i=0;i<count && total+i<4;++i)head[total+i]=ar_buf[i];total+=count;}
+ ar_win=0;
+ if(total<4 || head[2]!='g' || head[3]!='s')return 2;
+ if(total<8)return 0;
+ if(!ar_dry)++writes;return 1;
+}
+void ar_main_bank(void){} void ar_aux_move(void){++writes;} void ar_show(void){++shown;}
+static FILE* opn(const char* p,const char* m){++opens;ioerr=0;if(strcmp(m,"rb"))abort();if(fault==1)return NULL;return fopen(p,m);}
+static size_t rd(void* p,size_t z,size_t n,FILE* f){++reads;if(fault==2 && reads==2){ioerr=1;return 0;}return fread(p,z,n,f);}
+static int close_(FILE* f){++closes;return fclose(f) || fault==3?EOF:0;}
+static unsigned char ram(void){++formats;return 1;} static char key(void){return 27;}
+int main(int argc,char**argv){
+ static struct A2fcApi api;static struct Entry e;static unsigned char buf[512];static char note[80],sel[80];
+ fault=atoi(argv[2]);e.type=atoi(argv[3]);strcpy(e.name,"IMPORTED");
+ api.full=argv[1];api.selected=&e;api.copy_buf=buf;api.note=note;api.reselect=sel;
+ api.fopen=opn;api.fread=rd;api.fclose=close_;api.strcpy=strcpy;api.memset=memset;api.media_wait=key;api.ram_format=ram;
+ ar_dry=0; /* State left by an earlier successful render. */
+ plugin_entry(&api);printf("%d %d %d %d %d %s\n",opens,closes,writes,formats,shown,note);return 0;
+}
+'''
+        (cls.p/'h.c').write_text(harness);cls.exe=cls.p/'host'
+        subprocess.run(['cc','-std=c99','-Wno-unknown-pragmas','-I',str(ROOT),str(cls.p/'h.c'),'-o',str(cls.exe)],check=True,capture_output=True)
+        cls.commands=[[str(cls.exe)]]
+        if shutil.which('cl65') and shutil.which('sim65'):
+            target_path=Path(subprocess.check_output(['cl65','--print-target-path'],text=True).strip())
+            for cpu,target in (('6502','sim6502'),('65c02','sim65c02')):
+                cfg=cls.p/(target+'.cfg');cfg.write_text((target_path.parent/'cfg'/(target+'.cfg')).read_text().replace('\n    CODE:','\n    OVLHDR: load = MAIN, type = ro;\n    CODE:',1))
+                exe=cls.p/target
+                subprocess.run(['cl65','-t',target,'--cpu',cpu,'-O','-Cl','-C',str(cfg),'-I',str(ROOT),'-o',str(exe),str(cls.p/'h.c')],check=True,capture_output=True)
+                cls.commands.append(['sim65',str(exe)])
+    @classmethod
+    def tearDownClass(cls):cls.tmp.cleanup()
+    def run_control(self,data,typ=6,fault=0,cmd=None):
+        source=self.p/'source';source.write_bytes(data)
+        r=subprocess.run((cmd or [str(self.exe)])+[str(source),str(fault),str(typ)],check=True,capture_output=True,text=True)
+        self.assertEqual(source.read_bytes(),data)
+        fields=r.stdout.strip().split(' ',5);return [int(v) for v in fields[:5]],fields[5] if len(fields)>5 else ''
+    def test_bin_native_and_wrong_type_do_not_rebuild_ram_on_refusal(self):
+        data=b'\x14\xc0gs'+bytes(251)
+        for cmd in self.commands:
+            for typ in (6,0xf8):self.assertEqual(self.run_control(data,typ,cmd=cmd)[0],[2,2,1,1,1])
+            self.assertEqual(self.run_control(data,4,cmd=cmd)[0],[0,0,0,0,0])
+    def test_read_error_and_close_failure_before_render_preserve_ram(self):
+        data=b'\x14\xc0gs'+bytes(251)
+        for cmd in self.commands:
+            for fault in (1,2,3):
+                counts,note=self.run_control(data,fault=fault,cmd=cmd)
+                self.assertEqual(counts[2:],[0,0,0]);self.assertTrue(note)
+            for bad in (b'',b'\x14\xc0gs',b'\x14\xc0xx'+bytes(251)):
+                counts,note=self.run_control(bad,cmd=cmd)
+                self.assertEqual(counts[2:],[0,0,0]);self.assertTrue(note)
+
 if __name__ == '__main__':
     unittest.main()

@@ -55,6 +55,7 @@ pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 | `mdview.py` | Markdown, repliement, CRLF/bit haut, document de 67 pages, historique circulaire de 64 pages, ligne de 22 Ko sans saut (280 lignes écran), UTF-8 majoritaire/BOM/caractère coupé à 2 Ko, blocs de code, retour et reprise par R |
 | `tree.py` | parcours de la racine XL jusqu’au résultat complet, totaux exacts comparés à l’image et pile préservée |
 | `memory.py` | le creux maximal de la pile C, mesure en faisant travailler le programme |
+| `direct_readers.py` | Print Shop clip art, renamed BIN/F5 fonts and borders, Fontrix/HRCG fonts and Merlin/LISA v2 sources through Return/I on ProDOS, DOS images and real DOS drives; complete DOS names, Merlin without suffix, generic fallback, exact pixels/listings, unchanged AUX/source disks and stack floor, both CPUs. `--borders-only` runs the border and preservation checks. |
 | `dazzledraw.py` | MONARCH, ROOM et SCREEN.SHOE du corpus Dazzle Draw local : DD.PICLOADER original sous Applesoft/POM2, les 16 384 octets des banques et le rendu écran comparés à A2FC par Retour et I ; refus RAM avant toute modification, sources et volumes inchangés, 14/14 sur chaque CPU ; `--corpus` et `--out` ; corpus absent = échec en qualification stricte |
 | `mini33.py` | the Apple II+ 48 KB DOS 3.3 edition on an NMOS core: panels, pagination, long names, preview, malformed and missing disks, quit and relaunch, and changed-character-only screen writes through watchpoints |
 | `mini33_write.py` | the same edition's real DOS writes on disposable images: cancel, hardware write protection, a copy that stays on the panels, a refused collision, then DOS BLOAD and SAVE over the result |
@@ -78,6 +79,7 @@ pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 | `recovery.py` | la ligne d'aide, le guide RECOVER livre, puis une recuperation sur volume jetable (voir plus bas) |
 | `plugin.py` | l'exemple du SDK (`sdk/`) construit hors de l'arbre avec seulement `a2fc_plugin.h` et lance depuis la categorie Other, sur chaque CPU |
 | `textscreen.py` | DGRVIEW montre une page texte (40 et 80 colonnes, inverse, clignotant, MouseText), comparee pixel pour pixel au rendu de la ROM de caracteres |
+| `dgr_pixmaps.py` | DGRVIEW depuis le menu : pixmap 80×48 complet, masques et quatre bords, zoom Z ×1/×2/×4/×1 et F/f au plus grand facteur qui tient à l'écran, damier C, aperçu du masque M, miroirs H/V, rotations O/o (quatre quarts de tour, réduction du zoom, refus 80×48) et réinitialisation R/r avec comparaison des pixels (noir opaque, retour aux couleurs et à l'orientation originale), staging inchangé après O et R, largeur annulée, données trop grandes et pages sauvegardées limitées à 2048 ; RAM occupé, garde de pile et volume entier conservés. 137 contrôles par CPU ; les deux CPU figurent dans `bench/all.py`. |
 | `extasie.py` | EXTASIE : les images `$F2` de Purplesoft en mode MIXTE de la carte Le Chat Mauve, la geometrie colonne par colonne |
 | `fantavision.py` | FANTA.SYSTEM derriere un lanceur de substitution : chaque film joue jusqu'a sa derniere image, retour au lanceur |
 | `chain_reset.py` | Ctrl-Reset dans un programme lance par A2FC (src/chain.s) ramene A2FC au lieu de sauter dans les octets du programme |
@@ -117,6 +119,11 @@ Les deux passent sur IIe enhanced et non enhanced avec le code 6502.
 `check_images.py` relit les quatre images et compare leurs fichiers aux builds.
 Les anciennes catégories ne sont fabriquées que dans `build-6502/legacy/`
 par `make benchpackages ARCH=6502`, pour les tests de chargement optionnel.
+Elles utilisent les sélections `BENCH_PACKAGE_*` de `config/packages.mk` :
+les outils nécessaires aux échanges tiennent sur 140 Ko, et leur catalogue
+ne propose que les outils de ces fixtures et de BOOT. Les lecteurs complets
+sont testés sur les volumes jetables dédiés ; ces compagnons ne sont pas publiés.
+`make qualify` reconstruit BOOT et les deux disquettes de session avant le rejeu.
 
 Avec `A2FC_PRESET=iie_unenh`, POM2 est le IIe de 1983 (`pom2_playtest
 --preset iie_unenh` : 6502 NMOS, firmware sans MouseText, `$FBC0 = $EA`) --
@@ -514,6 +521,13 @@ le volume entier, AUX et la garde de pile de 192 octets. Le banc C
 `tools/test_overlay_load.py` injecte en plus les erreurs de lecture/fermeture
 et vérifie qu'un échec du menu ne relance pas une ancienne commande.
 
+`tools/test_overlay_load.py` exécute aussi le vrai menu C sur l'hôte
+(ASan/UBSan) et les deux CPU sim65 : 115 commandes, doublons, saturation à
+128, descriptions bornées, en-tête inaccessible et catalogue de 78 octets.
+Des gardes encadrent la table de 128 × 40 octets. `bench/menu.py` vérifie
+les huit catégories XL et la conservation du volume, d'AUX et de la garde
+de pile : **60/60 contrôles sur chaque CPU**.
+
 ```sh
 A2FC_IMG=A2FILECMD-full python3 bench/overlay_load.py
 A2FC_PRESET=iie_unenh A2FC_PORT_OFFSET=1 python3 bench/overlay_load.py
@@ -543,8 +557,9 @@ For startup and panel cycle measurements, see
 [the 0.9.2 methodology](../docs/PERFORMANCE-0.9.2.md).
 
 `worddocs.py` qualifies MultiScribe and Apple Writer on disposable volumes,
-including automatic Return, direct DOS reading, paging, malformed records,
-source bytes, AUX and stack preservation (10/10 per CPU). Set
+including automatic Return/I for both MultiScribe variants imported as BIN,
+direct DOS reading, paging, malformed records, whole source volume, AUX and
+stack preservation (17/17 per CPU). Set
 `A2FC_WORDPRO_CORPUS` to the directory containing the downloaded `extracted/`
 fixtures; the qualification bench fails when these fixtures are absent.
 `tools/test_worddocs.py` runs the actual C on the host and both sim65 CPUs;
@@ -561,14 +576,23 @@ errors. `printshop_original.py` compares the 77 borders and the 'A' glyph
 of all 36 fonts to original Print Shop Companion HGR on disposable copies.
 
 `nexttext.py` qualifies MAGWIN/LISAV3 on disposable ProDOS and DOS images:
-10/10 per CPU, automatic Return, 512-symbol paging, malformed references,
-AUX, stack floor and source files unchanged. Requires `A2FC_NEXT_CORPUS`
+14/14 per CPU, automatic Return, 512-symbol paging, malformed references, LISA v3 imports
+in BIN through Return/I, AUX, stack floor and whole source volume unchanged.
+Requires `A2FC_NEXT_CORPUS`
 (default `/tmp/a2fc-next-corpus`) and local CiderPress `cp2/test-files.po`;
 missing mandatory fixtures are reported by `bench/all.py`.
 `tools/test_nexttext.py` executes the actual C on the host and both sim65
 CPUs, including six real Magic Window documents, two standard LISA v3
 sources and explicit refusal of ANIX.EQUATES. Truncations, both symbol
 index banks, numeric/string tokens, I/O faults and stale sizes are covered.
+
+`retrotext.py --sc-only` checks automatic S-C Assembler BIN imports through
+Return/I, rejection of a truncated final record, AUX, stack floor and whole
+source volume preservation. It requires the cached original
+`s-c/S-C Macro Assembler IIe (v1.1).dsk`, declared in `bench/all.py`.
+The menu now holds 128 commands, exposing SCASM and all distributed readers
+on XL; the full legacy bench passes **16/16 controls on each CPU**, including
+all seven readers selected through their categories and FONTRIX navigation.
 
 
 `dos_records.py` qualifie DOSREC sur Disk II, DSK et 2MG jetables : longueur
@@ -605,4 +629,156 @@ au logiciel original, sans adaptation du clavier ni comparaison exhaustive.
 
 `v1viewers.py` qualifies the seven 1.0 readers on disposable ProDOS HDs,
 including AUX consent, both graphics planes, stack canary and complete HD
-preservation. Local inputs and profiles: [V1-FORMATS](../docs/V1-FORMATS.md).
+preservation. PCS is opened under a neutral name through Return and I;
+each path verifies no AUX write before confirmation, refusal preserving
+occupied RAM, all HGR pixels after acceptance, and RAM reconstruction.
+The renamed DHGR palette uses the same checks, comparing both HGR planes.
+`--pcs-only` and `--dpc-only` run the corresponding graphics checks plus
+the stack and whole-volume comparisons.
+`--text-only` exercises the four text readers, MouseWrite BIN imports of
+versions 1/4/5 through Return/I, truncated BIN refusal, the Movie Maker
+frame, Multiplan BIN cached values/formula tokens and invalid-pointer refusal,
+and preserved AUX, stack floor and whole source volume. `--mp-only` runs
+the Multiplan import and preservation checks independently.
+Local inputs and profiles: [V1-FORMATS](../docs/V1-FORMATS.md).
+
+`arlequin.py --imports-only` qualifies ProDOS BIN opening through Return/I:
+16/16 checks per CPU, exact MAIN/AUX window pixels, occupied-RAM consent and
+refusal, empty-RAM reconstruction, malformed input, stack and source volume.
+`v1viewers.py --movies-only` qualifies Movie Maker imports with auxiliary
+address zero and frame navigation (83 checks per CPU in the full target): Return/I frames,
+previous/next/restart/last pixels, +/- ten-frame jumps and first/last-frame
+boundaries, truncated-film refusal,
+unchanged AUX, stack floor and whole source volume.
+O/o background/actor views are compared across next/previous/last/restart;
+reopening must restore the actor view. H/V mirrors are compared against
+all visible pixels of a colored background and actor preview, including
+navigation and restoration; reopening resets orientation and screen holes
+remain unchanged.
+S/s automatic advance is checked through pause, resume, interruption by
+B and Escape, manual mode on reopening, all remaining frames and end return.
+1/2/3 are tested while paused and playing: no frame advance on selection,
+each speed advances normally, S pauses, changing speed retains auto,
+and restarting still allows auto at the selected speed.
+Q/q is checked before and during auto: last-to-first wrap, pause/reprise,
+disabling loop while retaining auto, end return, manual end exit, Escape
+and resetting on reopening.
+`--auto-only` runs the import, auto, speed and loop checks independently (30
+checks per CPU). Timed controls run at the emulator's 1x preset; pauses
+are observed for seven seconds, longer than the slowest delay. Turbo is
+restored for final preservation checks.
+The targeted movie navigation runs on both CPUs in `bench/all.py`.
+`v1viewers.py --pcs-only` also compares a patterned bitmap and polygon
+preview while O/o switches between them. The two staged AUX views must
+stay unchanged across toggles; consent/refusal, RAM rebuild, stack floor
+and the whole source volume are checked on both CPUs in `bench/all.py`.
+The PCS target passes 28/28 checks per CPU.
+
+`macpaint.py --navigation-only` checks +/- fine scrolling by 48 lines,
+T/B top/bottom jumps, both cases, repeated jumps, Up/Down boundaries and
+96-line scrolling after a fine move or jump. Both planes
+are compared to the independent decoder at each position; occupied-RAM
+warning/refusal, empty-RAM rebuild, stack floor and the whole disposable
+source volume are checked. Both CPU variants are in `bench/all.py`.
+The targeted navigation bench passes 23/23 checks per CPU.
+
+`macpaint.py --imports-only` checks renamed MacBinary BIN imports, the
+8K raw-size collision and raw `.PNTG` pictures through Return/I. It compares
+both graphics planes before/after scrolling, occupied-RAM warning/refusal,
+empty-RAM reconstruction, malformed PackBits refusal, AUX, stack floor and
+whole source volume on disposable disks. `tools/test_merlin_ident.py` runs
+the actual detector stages with fresh EOF, stale panel sizes, malformed
+headers and host-classifier parity; `tools/test_macpaint.py` runs the existing
+assembly decoder on both CPUs.
+The import bench passes **36/36 controls per CPU**. `--album-only` targets
+Right/Left browsing between two `.PNTG` pictures through the native OPEN
+classifier, with RAM refusal, pixel comparisons and source preservation:
+**8/8 controls per CPU** on the final build.
+
+Fantavision paused stepping: `tools/test_fanta_keys.py` runs the actual
+pause/key assembly on both CPUs (Right, Return, speed/delay/slideshow,
+counted end and Escape). `bench/fantavision.py` passes 37 controls per CPU,
+including independent next-frame/page snapshots at accelerated/original
+speed, staying paused after each step, source bytes, AUX /RAM and the whole
+volume preserved. Backdrop/page comparisons use one memory snapshot so an
+automatic reload at turbo speed cannot race a later background read.
+
+`newsroom.py` checks I/i negative preview on four photos/banners, including
+the maximum 37×192 bitmap: exact pixels and screen holes, restoration, two
+inversions, ignored keys, next-picture reset, malformed refusal, occupied
+AUX /RAM, stack floor and whole volume preserved (24 controls per CPU).
+`tools/test_newsroom.py` runs seven tests using the actual overlay assembly
+on both CPUs with cc65 2.19 and HEAD. Its simulator MAIN placement is
+checked explicitly before building, including the updated HEAD config.
+
+AppleWorks/DOCVIEW navigation: `tools/test_awdata.py` includes L/l over
+64-record checkpoints, retained categories, stale header counts, empty
+files and read errors; sheet controls remain separate. `bench/awdata.py`
+adds a 130-record database and compares every field after L/l/B/R, with
+occupied AUX /RAM, stack floor and full source volume preserved (62 checks
+per CPU).
+`tools/test_docview_sim.py` checks latest-visited L/l with the real C and
+ROM calculations on both CPUs, including a wrapped 16-page history and R.
+`bench/docview.py` compares accents, layout, totals and all rows after L,
+plus a 20-page history, AUX /RAM, stack and full volume (31 checks per CPU).
+
+ROM-backed simulator harnesses relocate MAIN by its named region, with
+exactly one required replacement. They load ROM $D000–$FFBF, preserving
+the HEAD simulator's peripheral aperture at $FFC0 and above; the evaluated
+BASIC/monitor routines remain real ROM code. Native POM2 uses the full ROM.
+
+Take 1 paused advance: `tools/test_take1_keys.py` executes the real show,
+pause and key assembly on both CPUs (4 tests): Right/Return, Tab while
+paused, ignored keys, resume/re-pause, Escape stack unwind. Only keyboard
+reads are supplied by the simulator harness. `tools/test_take1.py` retains
+14 full engine/loader/system/timing tests, including malformed input and
+I/O errors, hundreds of exact reference frames and all fades. `take1.py`
+now passes 33 checks per CPU, including eight consecutive reference frames with alternating Right and
+Return, crossing a movie repeat, stable pauses at 1x, Tab, resume, Escape,
+occupied AUX from $0800 through $BFFF, a wholly unchanged volume while the
+player runs, and unchanged file bytes/entries across launch and return.
+A2FC itself saves A2FILE.CFG before RUN; that documented preferences file
+is the only file excluded from the launch/return comparison. The disposable
+volume is 8000 blocks to fit the current complete distribution.
+
+Newsroom mirror previews: `tools/test_newsroom.py` adds an independent
+280×192 pixel-matrix oracle for H/h, V/v, combinations with I, exact double
+restores, tiny/maximal shapes, navigation and failed open/close. All eight
+actual assembly tests pass on both CPUs with cc65 2.19 and HEAD. The native
+`newsroom.py` passes 56/56 checks per CPU, adding eight mirror/composition
+checks per picture, including
+lowercase keys and opening the next picture in its original orientation.
+Full pages including screen holes, source volume, occupied AUX and stack
+floor are checked on both editions.
+
+Fantavision next stored pose: the pause-key test now runs ten scripts per
+CPU, including N/n skipping three simulated intermediate images, repeated
+key advances, speed/delay/slideshow persistence, counted end and Escape.
+It executes the actual key/FCOLD assembly; engine calls are instrumented.
+The complete `tools/test_fantavision.py` suite passes 16 tests on both CPUs.
+The native `fantavision.py` passes 43/43 checks per CPU. Its looping fixture
+now has eight interpolation
+steps per stored pose. Three N/n commands are compared to the next pose
+in the independent reference, including both pages and the selected page,
+then checked for a stable pause. Source movie, AUX and the whole disposable
+volume remain checked by the full bench.
+
+DOCVIEW history start: H/h jumps to the oldest of the 16 retained pages
+without losing the latest destination. The real C/ROM sim suite now passes
+16 tests on both CPUs with cc65 2.19 and HEAD. New scripts check H/h/L/R
+on calculated values and on 20 pages: H goes to page 5, L still restores
+page 20, normal next reaches page 6, R resets both destinations to page 1.
+Exact rows and margins are compared with the original visits. The native
+`docview.py` passes 35/35 checks per CPU, including H/h, the unchanged
+latest page and restart, retaining
+its source-volume, occupied AUX and stack-floor checks.
+
+AppleWorks indexed spreadsheet navigation: the ten `tools/test_awdata.py`
+tests pass with cc65 2.19 and HEAD, including real numeric conversion on
+both CPUs. L/l uses the furthest ready page mark in grids and cell/formula
+views. New scripts compare every row and page bar for 0/1/21/22/43/90/150
+input rows, L/l after B and R, retained horizontal columns, view changes
+and persistent read failures. Database L remains based on its checked
+record count. The native `awdata.py` passes 66/66 checks per CPU, with L/l comparisons in both sheet
+views, retaining real ROM numbers, databases, source volume, occupied AUX
+and stack-floor checks.

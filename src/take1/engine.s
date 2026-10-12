@@ -3304,10 +3304,13 @@ pright: inc     pbit
         lda     #0
         sta     pen
 :       rts
+; Cold helper in a copied text row; leaves room for the pause controls.
+        .segment "TXC6"
 incw:   inc     twid
         bne     :+
         dec     twid
 :       rts
+        .code
 inch:   inc     thgt
         bne     :+
         dec     thgt

@@ -4,14 +4,14 @@ from pathlib import Path
 from xplug import boot_hd, menu_category_names, menu_run, ok_all, RET, ESC
 
 EXPECTED = {
- 'Files': 'ATTR AWDATA AWP COMPARE DELETE DOCVIEW EDIT FIND FIXTYPES GOTO HEX MDVIEW MOVE RENAME SEARCH SYNC TAGPAT TEXT TREE TXTCONV VISICALC',
- 'Images': 'ARLEQUIN DGRVIEW EXTASIE FONTVIEW GMAGIC IMAGE LZ4FH MACPAINT NEWSROOM NRCLIP PACKFOT PAINT816 PRINTSHOP PURPLE SHAPES',
- 'Music': 'DUET MUSIC PT3',
- 'Disks': 'BLKEDIT BLKVIEW BOOTBLK CPM CPMW DISKCMP DISKIMG DOS33W DOSGET DOSREPL DOSWRITE FIXIT FORMAT IMGCONV IMGFS IMGPUT MKIMAGE NIBCOPY PASCAL PASCALW REPAIR RESCUE UNDELETE VERIFY VOLINFO VOLNAME WIPE',
- 'Programming': 'BASLIST CRC DISASM IDENT INTBASIC RUN',
+ 'Files': 'APPLEWR ATTR AWDATA AWP BSFILER COMPARE DELETE DOCVIEW DOSREC EDIT FIND FIXTYPES GOTO GUTTEXT HEX MAGWIN MDVIEW MOUSEWR MOVE MULTISCR MULTPLAN NEWSPAGE NEWSPAN PFSFILE PFSPLAN PFSWRITE RENAME SEARCH SYNC TAGPAT TEACHTXT TEXT TREE TXTCONV VISICALC WORDPERF',
+ 'Images': 'ARLEQUIN DGMAGI DGRVIEW DOSFONT DOSNEWS EXTASIE FONTRIX FONTVIEW GMAGIC IMAGE LZ4FH MACPAINT MVMOVIE NEWSROOM NRCLIP PACKFOT PAINT816 PCSVW PRINTSHOP PSBORDER PSFONT PURPLE SHAPES',
+ 'Music': 'DOSMCS DUET MCS MUSIC PT3',
+ 'Disks': 'BLKEDIT BLKVIEW BOOTBLK CPM CPMW DISKCMP DISKIMG DOS33W DOSGET DOSREPL DOSWRITE FIXIT FORMAT IMGCONV IMGFS IMGPUT MKIMAGE NIBCOPY PASCAL PASCALW REPAIR RESCUE SMALLDOS UNDELETE VERIFY VOLINFO VOLNAME WIPE',
+ 'Programming': 'BASLIST CRC DISASM DOSBAS DOSINT FAVRUN IDENT INTBASIC LISAV2 LISAV3 LISAV4 MERLIN PASTEXT RUN SCASM',
  'System': 'DATE HELP',
  'Archives': 'BINARY2 SCIIBIN UNSHRINK UNSQ UNWRAP',
- 'Other': '',
+ 'Other': 'DOSVIEW',
 }
 
 def cells(p, row=22):
@@ -30,6 +30,7 @@ def main():
         with boot_hd(Path(tmp),{'WORK/NOTE#040000':b'Preserve this file.\r'},port=6891) as (p,s):
             s.select('WORK');s.key(RET);s.select('NOTE')
             aux=p.peek(0x1000,0xb000,'aux')
+            original=Path(p.hdv).read_bytes();floor=s.sym['__HIMEM__']-s.sym['__STACKSIZE__'];p.poke(floor,b'\xa5'*8)
             s.key(b'!');s.wait(lambda:s.has('the overlays'),'categories');p.stable()
             for number,(name,names) in enumerate(EXPECTED.items()):
                 row=s.rows()[2+number]
@@ -48,6 +49,8 @@ def main():
             s.key(ESC);p.stable()
             s.ok('menu preserves AUX RAM',p.peek(0x1000,0xb000,'aux')==aux)
             s.ok('escape returns to panels',s.has('Type  Aux'))
+            s.ok('Menu stack floor preserved',p.peek(floor,8)==b'\xa5'*8)
+            p.sync_disks();s.ok('Menu source volume preserved',Path(p.hdv).read_bytes()==original)
             s.key(b'R');s.wait(lambda:'NOTE' in s.rows()[22],'rename prompt');question(s,p,'Rename')
             s.key(ESC);p.stable()
             s.key(b'D');s.wait(lambda:'Y/N' in s.rows()[22],'delete confirmation');question(s,p,'Delete')

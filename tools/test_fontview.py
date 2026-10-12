@@ -58,7 +58,7 @@ static struct A2fcApi api;
 static struct Entry sel;
 static char full[] = "font.bin", note[80], reselect[20];
 static unsigned char copy[512];
-static int fault, reads;
+static int fault, reads, closes;
 static FILE* __fastcall__ h_fopen(const char* p, const char* m) { return fault == 1 ? 0 : fopen(p, m); }
 static size_t __fastcall__ h_fread(void* p, size_t s, size_t n, FILE* f)
 {
@@ -70,7 +70,7 @@ static size_t __fastcall__ h_fread(void* p, size_t s, size_t n, FILE* f)
     }
     return fread(p, s, n, f);
 }
-static int __fastcall__ h_fclose(FILE* f) { int r = fclose(f); return fault == 3 ? -1 : r; }
+static int __fastcall__ h_fclose(FILE* f) { int r = fclose(f); ++closes; return fault == 3 || (fault == 5 && closes == 1) ? -1 : r; }
 static char* __fastcall__ h_strcpy(char* d, const char* s) { return strcpy(d, s); }
 static char h_wait(void)
 {
@@ -122,6 +122,8 @@ class FontView(unittest.TestCase):
                                               text=True).strip())
         shutil.copyfile(ROOT / 'src/plugins/fontview.c', cls.dir / 'fontview.c')
         shutil.copyfile(ROOT / 'src/plugins/fontview.s', cls.dir / 'fontview_svc.s')
+        for name in ('font_raw_glyph.inc','font_hgr_screen.inc'):
+            shutil.copyfile(ROOT / 'src/plugins' / name, cls.dir / name)
         (cls.dir / 'harness.c').write_text(HARNESS)
         cls.programs = {}
         for cpu in ('6502', '65c02'):
@@ -148,6 +150,7 @@ class FontView(unittest.TestCase):
         out = subprocess.run(['sim65', str(self.programs[cpu]), str(ftype), str(fault)],
                              cwd=self.dir, capture_output=True, timeout=120)
         self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual((self.dir / 'font.bin').read_bytes(), data)
         o = out.stdout
         page = None
         if o[0] == 0xA5:
@@ -179,6 +182,10 @@ class FontView(unittest.TestCase):
         exact = mgtk(rng, 85, 8, 1)           # an MGTK font of exactly 768 bytes
         self.assertEqual(len(exact), 768)
         self.shows(exact, mgtk_page(exact))
+
+    def test_first_close_error_before_raw_reopen(self):
+        for size in (768, 1024):
+            self.refused(bytes((i*37)&255 for i in range(size)), ftype=6, fault=5)
 
     def test_hires_fonts(self):
         rng = random.Random(2)

@@ -71,7 +71,7 @@ static unsigned char pp_number(unsigned char* p){
  if(flags&16)rt_put('-');
  if(exponent<=0){rt_put('0');rt_put('.');for(n=0;n<(unsigned char)-exponent;++n)rt_put('0');}
  for(i=0;i<last;++i){if(exponent>0 && i==exponent)rt_put('.');rt_put(digit[i]);}
- if(exponent>last)for(i=last;i<exponent;++i)rt_put('0');
+ if(exponent>(int)last)for(i=last;(int)i<exponent;++i)rt_put('0');
  return 1;
 }
 static unsigned char pp_formulas(unsigned char count,char kind){

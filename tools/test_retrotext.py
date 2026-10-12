@@ -47,7 +47,7 @@ static int close_(FILE* f){++closes;return fclose(f) || fault==3 || (fault==4 &&
 int main(int argc,char**argv){
  static struct A2fcApi api;static struct Entry e;static unsigned char buf[512];
  static char note[80],reselect[80];fault=atoi(argv[2]);keys=argv[3];
- memset(screen,' ',sizeof screen);strcpy(e.name,"SAMPLE");e.size=strtoul(argv[4],0,10);
+ memset(screen,' ',sizeof screen);strcpy(e.name,"SAMPLE");e.size=strtoul(argv[4],0,10);e.type=argc>5?atoi(argv[5]):0;
  api.full=argv[1];api.selected=&e;api.copy_buf=buf;api.note=note;api.reselect=reselect;
  api.fopen=opn;api.fread=rd;api.fclose=close_;api.strcpy=strcpy;api.sprintf=sprintf;
  api.gotoxy=xy;api.cputc=put;api.clrscr=clear;api.message=message;api.wait_key=key;
@@ -62,6 +62,15 @@ def pascal(*chunks):
 
 def sc_line(number, content):
     return bytes([len(content) + 4]) + number.to_bytes(2, 'little') + content + b'\0'
+
+
+def sc_originals():
+    from corpus_read import files
+    path=Path.home()/'.cache/a2fc/asimov_corpus/raw/images/programming/assembler/s-c/S-C Macro Assembler IIe (v1.1).dsk'
+    if path.exists():
+        _,entries=files(path.read_bytes())
+        for name,typ,aux,data in entries:
+            if typ==0xfa:yield name,data
 
 
 def lisa(*lines):
@@ -87,9 +96,10 @@ class RetroText(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def run_file(self, name, data, fault=0, keys='', size=1, refused=False):
+    def run_file(self, name, data, fault=0, keys='', size=1, refused=False,typ=0,exe=None):
         src = self.p / 'source';src.write_bytes(data)
-        r = subprocess.run([str(self.executables[name]), str(src), str(fault), keys, str(size)],
+        cmd=[str(self.executables[name])] if exe is None else ['sim65',str(exe)]
+        r = subprocess.run(cmd+[str(src), str(fault), keys, str(size),str(typ)],
                            check=True, capture_output=True, text=True, timeout=10)
         self.assertEqual(src.read_bytes(), data)
         opens, closes, note = r.stderr.rstrip('\n').split(' ', 2)
@@ -100,6 +110,33 @@ class RetroText(unittest.TestCase):
         else:
             self.assertEqual(note, '', r.stderr)
         return rows, (int(opens), int(closes)), note
+
+    def sc_bin_cases(self,exe=None):
+        good=sc_line(100,b'\x89LDA\x83#0')+sc_line(65535,b'\xc0\x05*')
+        samples=[good,sc_line(1,b'A'*251),good*100]
+        originals=list(sc_originals())
+        if originals:self.assertEqual(len(originals),12)
+        samples.extend(data for name,data in originals)
+        for data in samples:
+            reference=self.run_file('scasm',data,typ=0xfa,exe=exe)[0]
+            for size in (0,1,0xffffff):
+                rows,_,_=self.run_file('scasm',data,typ=6,size=size,exe=exe)
+                self.assertEqual(rows,reference)
+        for data in (good[:-1],good+b'X',good+b'\0',sc_line(1,b'\xc0'),sc_line(1,b'\xc0\xff\0'),sc_line(1,b'\xc1'),sc_line(1,b'\0X')):
+            self.run_file('scasm',data,typ=6,exe=exe,refused=True)
+        # Failures late in the complete first pass must still prevent display.
+        for fault in (1,2,3):
+            _,_,note=self.run_file('scasm',good*100,typ=6,fault=fault,exe=exe,refused=True)
+            self.assertIn('error',note)
+        for fault in (4,5):
+            src=self.p/'source';src.write_bytes(good)
+            cmd=[str(self.executables['scasm'])] if exe is None else ['sim65',str(exe)]
+            r=subprocess.run(cmd+[str(src),str(fault),'','1','6'],check=True,capture_output=True,text=True)
+            self.assertIn('error',r.stderr);self.assertEqual(src.read_bytes(),good)
+        rows,counts,_=self.run_file('scasm',good*100,typ=6,keys='E',exe=exe)
+        self.assertEqual(len([r for r in rows if r]),21);self.assertEqual(counts,(2,2))
+
+    def test_sc_bin_originals_bounds_and_faults(self):self.sc_bin_cases()
 
     def test_pascal_pages_and_zero_space_indentation(self):
         data = pascal(b'\x10\x23PROGRAM HELLO;\r\x10\x20BEGIN\r', b'END.\r')
@@ -243,6 +280,7 @@ class RetroText(unittest.TestCase):
                     self.assertEqual(actual.stdout, expected.stdout)
                     self.assertEqual(actual.stderr, expected.stderr)
                     self.assertEqual(src.read_bytes(), data)
+                    if name=='scasm':self.sc_bin_cases(exe)
 
 
 if __name__ == '__main__':

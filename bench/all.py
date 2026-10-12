@@ -76,6 +76,7 @@ FIXTURES = {
     'printshop-original': Fixture([Path(os.environ.get('A2FC_PRINTSHOP_CORPUS','/tmp/a2fc-printshop-corpus'))/'images/productivity/graphics/printshop/PrintShop.Companion.dsk'], None),
     'lisa4': Fixture([Path.home()/'.cache/a2fc/cp2/test-files.po'], None),
     'nexttext': Fixture([Path(os.environ.get('A2FC_NEXT_CORPUS','/tmp/a2fc-next-corpus'))/'images/productivity/word_processing/magic_window/MagicWindowIIe.DSK', Path.home()/'.cache/a2fc/cp2/test-files.po'], None),
+    'scasm': Fixture([Path.home()/'.cache/a2fc/asimov_corpus/raw/images/programming/assembler/s-c/S-C Macro Assembler IIe (v1.1).dsk'], None),
     'wordpro': Fixture([Path(os.environ.get('A2FC_WORDPRO_CORPUS','/tmp/a2fc-wordpro-corpus'))/'extracted/Multiscribe disk 2__PHOENIX', Path(os.environ.get('A2FC_WORDPRO_CORPUS','/tmp/a2fc-wordpro-corpus'))/'extracted/MultiScribe Data Disk__FONT.SAMPLES', Path(os.environ.get('A2FC_WORDPRO_CORPUS','/tmp/a2fc-wordpro-corpus'))/'extracted/APPLE_WRITER_DOS33__ENCOMIUM1'], None),
     'dazzle': Fixture([Path.home() / '.cache/a2fc/dazzle/132_DAZZLE_DRAW_SLIDE_SHOW.dsk'], None),
     'v1viewers': Fixture([Path(os.environ.get('A2FC_V1_CORPUS','/tmp/a2fc-v1-corpus'))/'extracted/MP_GRID.bin', Path(os.environ.get('A2FC_V1_CORPUS','/tmp/a2fc-v1-corpus'))/'pal-original.raw'], None),
@@ -117,6 +118,8 @@ step('format', '6502', 'core', UNENH)
 step('format', 'enh', 'core', FULL, needs=('host', 'boot', 'full-enh'))
 step('open_images', '6502', 'core', UNENH)
 step('open_images', 'enh', 'core', FULL, needs=('host', 'boot', 'full-enh'))
+step('dgr_pixmaps', '6502', 'core', FULL_6502, needs=('host', 'boot', 'full-6502'))
+step('dgr_pixmaps', 'enh', 'core', FULL, needs=('host', 'boot', 'full-enh'))
 step('dazzledraw', '6502', 'media', FULL_6502, needs=('host', 'boot', 'full-6502', 'dazzle'))
 step('dazzledraw', 'enh', 'media', FULL, needs=('host', 'boot', 'full-enh', 'dazzle'))
 step('koala', '6502', 'core', UNENH)
@@ -240,16 +243,24 @@ step('nexttext', '6502', 'readers', SIX_BUILD, needs=('host','boot','nexttext'))
 step('nexttext', '65c02', 'readers', ENH_BUILD, needs=('host','boot','nexttext'))
 step('dos_records', '6502', 'readers', SIX_BUILD, needs=('host','boot'))
 step('dos_records', '65c02', 'readers', ENH_BUILD, needs=('host','boot'))
+step('direct_readers', '6502', 'readers', SIX_BUILD, needs=('host','boot'))
+step('direct_readers', '65c02', 'readers', ENH_BUILD, needs=('host','boot'))
 step('printshop_extras', '6502', 'readers', SIX_BUILD, needs=('host','boot','printshop'))
 step('printshop_extras', '65c02', 'readers', ENH_BUILD, needs=('host','boot','printshop'))
-step('retrotext', '6502', 'readers', SIX_BUILD)
-step('retrotext', '65c02', 'readers', ENH_BUILD)
+step('retrotext', '6502', 'readers', SIX_BUILD, needs=('host','boot','scasm'))
+step('retrotext', '65c02', 'readers', ENH_BUILD, needs=('host','boot','scasm'))
 step('pt3', 'player', 'media', PT3_HOST, needs=('host', 'boot', 'sample', 'pt3-host'))
 step('pt3_dual', 'two-ay', 'media', PT3_HOST, needs=('host', 'boot', 'pt3-host'))
 step('pt3_large', 'cache', 'media', PT3_HOST, needs=('host', 'boot', 'pt3-host'))
 step('media', 'transitions', 'media', {})
 step('textscreen', '6502', 'media', FULL_6502, needs=('host', 'boot', 'full-6502'))
 step('textscreen', 'enh', 'media', FULL, needs=('host', 'boot', 'full-enh'))
+step('macpaint', 'navigation-6502', 'media', SIX_BUILD, args=('--navigation-only',), needs=('host', 'boot', 'plg-6502'))
+step('macpaint', 'navigation-enh', 'media', ENH_BUILD, args=('--navigation-only',), needs=('host', 'boot', 'plg-enh'))
+step('v1viewers', 'movies-6502', 'media', SIX_BUILD, args=('--movies-only',), needs=('host', 'boot', 'plg-6502', 'v1viewers'))
+step('v1viewers', 'movies-enh', 'media', ENH_BUILD, args=('--movies-only',), needs=('host', 'boot', 'plg-enh', 'v1viewers'))
+step('v1viewers', 'pcs-6502', 'media', SIX_BUILD, args=('--pcs-only',), needs=('host', 'boot', 'plg-6502', 'v1viewers'))
+step('v1viewers', 'pcs-enh', 'media', ENH_BUILD, args=('--pcs-only',), needs=('host', 'boot', 'plg-enh', 'v1viewers'))
 step('sample_media', 'corpus', 'media', {}, needs=('host', 'boot', 'sample'))
 step('paint816', 'pictures', 'media', {}, needs=('host', 'boot', 'sample'))
 step('extasie', 'pictures', 'media', {})
@@ -329,6 +340,9 @@ def stale():
             continue
         made = resident.stat().st_mtime
         images = list((ROOT / build).glob('*.po'))          # the bench floppies
+        boot = ROOT / build / 'legacy/BOOT.po'
+        if boot.exists():
+            images.append(boot)
         cpu = '6502' if build.endswith('6502') else '65C02'
         names = (['A2FILECMD-PRODOS-800K-%s.po' % VERSION,
                   'A2FILECMD-PRODOS-XL-%s.2mg' % VERSION] if cpu == '6502' else

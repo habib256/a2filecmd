@@ -111,7 +111,7 @@ static unsigned char l_number(unsigned char c,unsigned char mode){
   n=c-0x24;l_put('?');l_put(n==';'?'#':n);return n==':';
  }else if(c>=0x60 && c<0x80){
   n=c&31;if(!n)n=l_get();
-  if(rt_bad || n>l_len-l_at){rt_invalid();return 0;}
+  if(rt_bad || (int)n>(int)l_len-(int)l_at){rt_invalid();return 0;}
   quote=n && l_line[l_at]>=128?'"':'\'';l_put(quote);
   while(n--){c=l_get()&127;if(c==quote)l_put(quote);l_put(c);}l_put(quote);
  }else if(c==0xFA || c==0xFB)l_ref(c);
@@ -167,7 +167,7 @@ static void rt_decode(void){
  unsigned int bytes,i,j;
  unsigned char c,k;
  int n;
- if(!strcmp(rt_api.selected->name,"ANIX.EQUATES") || rt_api.selected->type!=0xFA || rt_api.selected->aux<0x1000 || rt_api.selected->aux>=0x4000){rt_invalid();return;}
+ if(!strcmp(rt_api.selected->name,"ANIX.EQUATES") || (rt_api.selected->type!=0xFA && rt_api.selected->type!=6) || rt_api.selected->aux<0x1000 || rt_api.selected->aux>=0x4000){rt_invalid();return;}
  l_remaining=l_word();bytes=l_word();
  if(rt_bad || !l_remaining || bytes>4096 || (bytes&7)){rt_invalid();return;}
  l_count=bytes/8;

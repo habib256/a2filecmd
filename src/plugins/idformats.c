@@ -19,7 +19,8 @@ static unsigned int n;
 static unsigned char id_dos;
 static const char* reader;
 static union {unsigned long l;unsigned int w[2];} sz;
-static unsigned char suffix(const char* name,const char* end){unsigned int n=strlen(name),k=strlen(end);return n>k && !strcmp(name+n-k,end);}
+/* Entry names fit NAME_LEN (17), and every suffix here is shorter. */
+static unsigned char suffix(const char* name,const char* end){unsigned char n=strlen(name),k=strlen(end);return n>k && !strcmp(name+n-k,end);}
 #include "id_formats.h"
 #include "id_routes.h"
 unsigned char __fastcall__ md_entrypoint(const struct A2fcApi* a){
@@ -29,12 +30,13 @@ unsigned char __fastcall__ md_entrypoint(const struct A2fcApi* a){
  sz.l=e->size;
  if(m[42]==2){what=(const char*)ID_SAMPLE;route(what);}else what=extra();
  if(what){m[40]=m[41]=0;id_finish(a,e,what,reader,id_dos);return 0;}
- m[42]=1;
+ /* Saved-name/content fallback follows concrete formats, before HEX/TEXT. */
+ m[42]=4;
 #ifdef PLUGIN_HOST
  return 1;
 #else
- if(id_open_stage(a,"IDENT.PLG"))return 1;
+ if(id_open_stage(a,"IDV1.PLG"))return 1;
 #endif
 failed:
- m[40]=m[41]=0;a->strcpy(a->note,"Invalid identification context/stage.");return 0;
+ m[40]=m[41]=0;a->strcpy(a->note,"Invalid format context/stage.");return 0;
 }

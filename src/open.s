@@ -277,9 +277,12 @@ _file_viewer:
         bpl     @dg
         ldx     #5
         bne     @dx                     ; always
-@arl:   lda     type                    ; Arlequin: $F8 and "gs" after its size
+@arl:   lda     type                    ; Arlequin: native $F8 or imported BIN
         cmp     #$F8
+        beq     @args
+        cmp     #$06
         bne     @rle
+@args:
         lda     n
         cmp     #4
         bcc     @rle

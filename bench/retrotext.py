@@ -6,8 +6,18 @@ from pathlib import Path
 from xplug import boot_hd, menu_run, RET, ESC, ok_all
 from pom2 import ROOT
 sys.path.insert(0, str(ROOT / 'tools'))
-from test_retrotext import pascal, sc_line, lisa
+from test_retrotext import pascal, sc_line, lisa, sc_originals
 from test_fontrix import fixture
+
+def sc_checks(p,s):
+    for key in (RET,b'I'):
+        s.select('SCIMPORT');s.key(key)
+        s.wait(lambda:s.has('1000 ; STRATEGY'),'S-C BIN listing',30)
+        s.ok('SCASM BIN automatic '+repr(key),True)
+        s.key(ESC);s.wait(lambda:s.has('Type  Aux'),'S-C BIN exit',30)
+        s.select('BADSC');s.key(key)
+        s.wait(lambda:s.has('Malformed S-C Assembler'),'S-C BIN last record rejected',30)
+        s.ok('SCASM BIN truncated last record refused '+repr(key),True)
 
 
 def main():
@@ -23,12 +33,22 @@ def main():
     }
     files = {'WORK/' + name + '#040000': data for name, (data, _) in samples.items()}
     files['WORK/BAD.LISA#040000'] = samples['LISAV2'][0][:-1]
+    source=dict(sc_originals())['STRAT']
+    files['WORK/SCIMPORT#060000']=source
+    files['WORK/BADSC#060000']=source[:-1]
     with tempfile.TemporaryDirectory(prefix='legacy-native-') as tmp:
         with boot_hd(Path(tmp), files, port=6918, plugins=[n.lower() for n in samples]) as (p, s):
             s.key(b'/');s.select('/WORKHD');s.key(RET);s.select('WORK');s.key(RET);p.stable()
             before = p.peek(0x1000, 0xb000, 'aux')
+            volume=Path(p.hdv).read_bytes()
             floor = s.sym['__HIMEM__'] - s.sym['__STACKSIZE__']
             p.poke(floor, b'\xa5'*8)
+            if '--sc-only' in sys.argv:
+                sc_checks(p,s)
+                s.ok('AUX unchanged by SCASM',p.peek(0x1000,0xb000,'aux')==before)
+                s.ok('C-stack floor unchanged',p.peek(floor,8)==b'\xa5'*8)
+                p.sync_disks();s.ok('Whole source volume unchanged',Path(p.hdv).read_bytes()==volume)
+                return ok_all(s,'retrotext SCASM')
             for name, (_, expected) in samples.items():
                 s.select(name);menu_run(s, p, name)
                 s.wait(lambda: s.has(expected), name + ' visible', 30)
@@ -42,8 +62,10 @@ def main():
                 s.key(ESC);s.wait(lambda: s.has('Type  Aux'), name + ' exit', 30);p.stable()
             s.select('BAD.LISA');menu_run(s, p, 'LISAV2')
             s.wait(lambda: s.has('Malformed LISA v2 file.'), 'bad LISA rejected', 30)
+            sc_checks(p,s)
             s.ok('AUX unchanged by all readers', p.peek(0x1000, 0xb000, 'aux') == before)
             s.ok('C-stack floor unchanged', p.peek(floor, 8) == b'\xa5'*8)
+            p.sync_disks();s.ok('Whole source volume unchanged',Path(p.hdv).read_bytes()==volume)
     return ok_all(s, 'retrotext')
 
 

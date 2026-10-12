@@ -9,7 +9,7 @@ from prodos_read import Image
 ROOT = Path(__file__).resolve().parents[1]
 MAKEFILE = (ROOT / 'Makefile').read_text()
 VERSION = re.search(r'^A2FC_VERSION\s*=\s*(\S+)', MAKEFILE, re.M)[1]
-from distribution import RUNTIMES, inventories, image_name
+from distribution import RUNTIMES, inventories, image_name, floppy_inventory
 
 
 def entries(image, block):
@@ -69,7 +69,7 @@ def check_cpu(cpu):
         directory = entries(image, key)
         check_config_room(image, directory, key, path)
         plugins = {name for name in directory if name.endswith('.PLG')}
-        required = complete
+        required = complete if xl else floppy_inventory()
         assert plugins == {name + '.PLG' for name in required}, (path, plugins ^ {n + '.PLG' for n in required})
         assert 'EXTRAS.CAT' not in directory, (path, 'obsolete companion catalog')
         assert 'FORMAT.SYS' not in directory, path

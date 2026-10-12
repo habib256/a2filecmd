@@ -301,3 +301,23 @@ movie's path.
   (the user asked for it); a same-name file that is not a hi-res page, or
   cannot be read, is simply not used. A read error while reading it is
   never taken for a picture.
+
+### Next stored pose while paused (12 October 2026)
+
+N/n continues `fv_next` until the engine signals `fv_vkey`, the next
+stored key frame, then selects `fv_shown` and stays in the pause loop.
+Right/Return still advances one displayed image, including an interpolated
+image. At a counted end or a single-frame movie, the current view is kept.
+The intermediate images are rendered by the existing engine into its
+normal pages; they are not separately held for display. No source reread
+or new decoder is used. Original/accelerated speed, delay and slideshow
+settings persist, and Space/Escape retain their existing meanings.
+
+The key helper uses the remaining FCOLD bytes; the high CODE/RODATA window
+still stops before ProDOS at $BF00. MAIN pages, backgrounds and engine
+state are written as during normal playback. No AUX or disk writes are
+added. Ten scripted pause scenarios run the real key assembly on both CPUs
+with cc65 2.19 and HEAD; the complete engine/loader/return suite retains
+16 passing tests. The native bench passes 43/43 checks per CPU, using an eight-step interpolation film
+and compares both pages plus the selected page with the independent
+reference for N/n and single-image advance, pause and resume.

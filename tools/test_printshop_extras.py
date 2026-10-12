@@ -21,7 +21,9 @@ static int seek_(FILE*f,long p,int w){
 }
 static void message(const char* s)''')
 H=H.replace('#include PS_SOURCE','#include <stdarg.h>\n#include PS_SOURCE')
-H=H.replace('e.size=strtoul(argv[4],0,10);','e.size=strtoul(argv[4],0,10);e.type=argc>6?atoi(argv[6]):6;e.aux=atoi(argv[5]);')
+entry_setup='e.size=strtoul(argv[4],0,10);e.type=argc>5?atoi(argv[5]):0;'
+assert entry_setup in H
+H=H.replace(entry_setup,'e.size=strtoul(argv[4],0,10);e.type=argc>6?atoi(argv[6]):6;e.aux=atoi(argv[5]);')
 H=H.replace('api.fopen=opn;','api.cprintf=print_;api.fseek=seek_;api.fopen=opn;')
 
 H=H.replace('#include PS_SOURCE',r'''
@@ -171,10 +173,28 @@ class PrintShop(unittest.TestCase):
                     output=ctypes.create_string_buffer(80)
                     self.assertTrue(identify(name.encode(),0xf5,aux,data,len(data),dos,output))
                     self.assertEqual(output.value.decode(),expected if not dos else 'DOSVIEW')
-                for wrongname,wrongaux,body in (('OTHER',aux,data),(name,aux+1,data),(name,aux,data[:247])):
+                output=ctypes.create_string_buffer(80)
+                self.assertTrue(identify(b'OTHER',0xf5,aux,data,len(data),0,output))
+                self.assertEqual(output.value.decode(),expected)
+                for wrongname,wrongaux,body in ((name,aux+1,data),(name,aux,data[:247])):
                     output=ctypes.create_string_buffer(80)
                     self.assertTrue(identify(wrongname.encode(),0xf5,wrongaux,body,len(body),0,output))
                     self.assertNotEqual(output.value.decode(),expected)
+            root=Path(os.environ.get('A2FC_PRINTSHOP_CORPUS','/tmp/a2fc-printshop-corpus'))/'images'
+            if root.is_dir():
+                from corpus_read import files
+                seen=set()
+                for p in root.rglob('*.dsk'):
+                    if not ('Borders' in p.name or 'Fonts' in p.name):continue
+                    original=p.read_bytes();_,entries=files(original)
+                    for name,typ,aux,data in entries:
+                        expected='PSFONT' if (typ==6 and aux==0x5ff4 and name.rsplit('/',1)[-1].startswith('FONT.')) or (typ==0xf5 and aux==0x1000) else 'PSBORDER' if (typ==0xf5 and aux==0x2000) or (typ==6 and (aux&0xcfff)==0x4800 and len(data) in (144,148)) else None
+                        if expected is None:continue
+                        output=ctypes.create_string_buffer(80)
+                        self.assertTrue(identify(b'RENAMED',typ,aux,data,len(data),0,output))
+                        self.assertEqual(output.value.decode(),expected,name);seen.add((typ,aux,name))
+                    self.assertEqual(p.read_bytes(),original)
+                self.assertEqual(len(seen),226)
 
     def test_cc65_both_cpus(self):
         if not shutil.which('cl65') or not shutil.which('sim65'):self.skipTest('cc65/sim65 absent')
@@ -184,7 +204,7 @@ class PrintShop(unittest.TestCase):
             for name,data,aux in (('psborder',bytes(144),0x7800),('psfont',font(),0x5ff4),('psborder',bytes(264),0x2000),('psfont',font5(),0x1000)):
                 exe=self.p/(target+'-'+name)
                 subprocess.run(['cl65','-t',target,'--cpu',cpu,'-O','-Cl','-C',str(config),'-I',str(ROOT),*(['-DPS_TEST_FONT'] if name=='psfont' else []),'-DPS_SOURCE="src/plugins/'+name+'.c"','-o',str(exe),str(self.p/'h.c')],check=True,capture_output=True)
-                src=self.p/'native-source';src.write_bytes(data);args=[str(src),'0','','0',str(aux),str(0xf5 if aux in (0x1000,0x2000) else 6)]
+                src=self.p/'native-source';src.write_bytes(data);args=[str(src),'0','R'*100+'L'*100 if name=='psfont' else '','0',str(aux),str(0xf5 if aux in (0x1000,0x2000) else 6)]
                 expected=subprocess.run([str(self.executables[name])]+args,check=True,capture_output=True)
                 actual=subprocess.run(['sim65',str(exe)]+args,check=True,capture_output=True,timeout=20)
                 self.assertEqual(actual.stdout,expected.stdout);self.assertEqual(actual.stderr,expected.stderr);self.assertEqual(src.read_bytes(),data)

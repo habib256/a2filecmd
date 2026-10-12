@@ -55,16 +55,48 @@ class NextText(unittest.TestCase):
             cls.executables[name]=exe
     @classmethod
     def tearDownClass(cls):cls.tmp.cleanup()
-    def run_file(self,name,data,fault=0,keys='',size=0,refused=False,aux=None,filename='SAMPLE'):
+    def run_file(self,name,data,fault=0,keys='',size=0,refused=False,aux=None,filename='SAMPLE',typ=None,exe=None):
         src=self.p/'source';src.write_bytes(data)
-        args=[str(src),str(fault),keys,str(size),'6' if name=='magwin' else '250',str(aux if aux is not None else 0x2000),filename[:15]]
-        r=subprocess.run([str(self.executables[name])]+args,check=True,capture_output=True,text=True,timeout=10)
+        if typ is None:typ=6 if name=='magwin' else 250
+        args=[str(src),str(fault),keys,str(size),str(typ),str(aux if aux is not None else 0x2000),filename[:15]]
+        cmd=[str(self.executables[name])] if exe is None else ['sim65',str(exe)]
+        r=subprocess.run(cmd+args,check=True,capture_output=True,text=True,timeout=30)
         self.assertEqual(src.read_bytes(),data)
         opens,closes,note=r.stderr.rstrip('\n').split(' ',2)
         rows=[r[1:].rstrip() for r in r.stdout.splitlines() if r.startswith('|')]
         if refused:self.assertTrue(note);self.assertFalse(any(rows))
         else:self.assertEqual(note,'',r.stderr)
         return rows,(int(opens),int(closes)),note
+    def lisa_bin_cases(self,exe=None):
+        labels=['S%03d'%i for i in range(512)]
+        many=lisa(b''.join(bytes((250+(i>>8),i&255)) for i in range(512))+b'\0',labels)
+        good=lisa(big(b'\xfa\0\x05\0\x1d\x34\x12')+b'\0',['LABEL'])
+        originals=[(d,a,n) for kind,n,t,a,d in real_files() if kind=='lisav3' and n!='ANIX.EQUATES']
+        for data,aux,name in [(many,0x2000,'SYMBOLS'),(good,0x1000,'SOURCE')]+originals:
+            reference=self.run_file('lisav3',data,aux=aux,filename=name,exe=exe)[0]
+            for size in (0,1,0xffffff):
+                rows,_,_=self.run_file('lisav3',data,typ=6,aux=aux,filename=name,size=size,exe=exe)
+                self.assertEqual(rows,reference)
+        for aux in (0x1000,0x3fff):self.run_file('lisav3',good,typ=6,aux=aux,exe=exe)
+        for aux in (0,0xfff,0x4000,0xffff):self.run_file('lisav3',good,typ=6,aux=aux,exe=exe,refused=True)
+        for typ in (0,4,0xf4):self.run_file('lisav3',good,typ=typ,exe=exe,refused=True)
+        self.run_file('lisav3',good,typ=6,filename='ANIX.EQUATES',exe=exe,refused=True)
+        for n in range(len(good)):self.run_file('lisav3',good[:n],typ=6,exe=exe,refused=True)
+        for data in (good+b'X',good[:2]+b'\x01\0'+good[4:],lisa(b'\xfa\xff\0'),lisa(big(b'\x34\x63AB')+b'\0'),lisa(b'\x80\0')):
+            self.run_file('lisav3',data,typ=6,exe=exe,refused=True)
+        for fault in (1,2,3):
+            rows,_,note=self.run_file('lisav3',many,typ=6,fault=fault,exe=exe,refused=True)
+            self.assertIn('error',note)
+        # The same actual C also reports second-pass read/close failures.
+        for fault in (4,5):
+            src=self.p/'source';src.write_bytes(good)
+            cmd=[str(self.executables['lisav3'])] if exe is None else ['sim65',str(exe)]
+            r=subprocess.run(cmd+[str(src),str(fault),'','1','6','8192','SOURCE'],check=True,capture_output=True,text=True)
+            self.assertIn('error',r.stderr);self.assertEqual(src.read_bytes(),good)
+        rows,_,_=self.run_file('lisav3',many,typ=6,keys='E',exe=exe)
+        self.assertEqual(len([r for r in rows if r]),21)
+
+    def test_lisa_bin_imports_bounds_faults_and_originals(self):self.lisa_bin_cases()
     def test_magic_header_ascii_controls_and_limit(self):
         for high in (False,True):
             rows,_,_=self.run_file('magwin',magic(b'Hello\r\x1dBold\x1d\r\x1bA\0Z',high))
@@ -123,6 +155,7 @@ class NextText(unittest.TestCase):
         if not shutil.which('cl65') or not shutil.which('sim65'):self.skipTest('cc65/sim65 unavailable')
         path=Path(subprocess.check_output(['cl65','--print-target-path'],text=True).strip())
         samples=[('lisav3',lisa(b'\xfb\xff\0',['S%03d'%i for i in range(512)]),8192),('magwin',magic(b'Hello\r\x1bA'),8192),('lisav3',lisa(big(b'\xfa\0\x34\x1b\xff\xff')+b'\xce\0',['LABEL']),8192)]
+        samples += [('lisav3',lisa(big(b'\x34'+s)+b'\0'),8192) for s in (b'\x63ABC',b'\x63AB',b'\x60\xffA')]
         for name,n,t,a,d in real_files():
             if n!='ANIX.EQUATES':samples.append((name,d,a))
         for cpu,target in (('6502','sim6502'),('65c02','sim65c02')):
@@ -136,5 +169,6 @@ class NextText(unittest.TestCase):
                     expected=subprocess.run([str(self.executables[name])]+args,check=True,capture_output=True)
                     actual=subprocess.run(['sim65',str(exe)]+args,check=True,capture_output=True,timeout=30)
                     self.assertEqual(actual.stdout,expected.stdout);self.assertEqual(actual.stderr,expected.stderr);self.assertEqual(src.read_bytes(),d)
+                if name=='lisav3':self.lisa_bin_cases(exe)
 
 if __name__=='__main__':unittest.main()

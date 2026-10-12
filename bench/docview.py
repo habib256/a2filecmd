@@ -59,11 +59,14 @@ def holes(p):
 def main():
     files = {'WORK/LETTRE#040000': LETTRE, 'WORK/JARDINS#040000': PAPYRUS,
              'WORK/FACTURE#040000': FACTURE, 'WORK/TABMARGE#040000': TABMARGE,
-             'WORK/BLOCS#040000': BLOCS, 'WORK/ETROIT#040000': ETROIT}
+             'WORK/BLOCS#040000': BLOCS, 'WORK/ETROIT#040000': ETROIT,
+             'WORK/HISTORY#040000':b'_MG3'+b''.join(f'ROW{i:03d}\r'.encode() for i in range(420))}
     with tempfile.TemporaryDirectory(prefix='a2fc-docview-') as tmp:
         with boot_hd(Path(tmp), files, port=PORT, plugins=['docview']) as (p, s):
             s.key(b'/'); s.select('/WORKHD'); s.key(RET); p.stable()
             s.select('WORK'); s.key(RET); p.stable()
+            s.ram_occupied();aux=p.peek(0x0800,0xB800,'aux');volume=Path(p.hdv).read_bytes()
+            floor=s.sym['__HIMEM__']-s.sym['__STACKSIZE__'];p.poke(floor,b'\xA5'*8)
             s.select('LETTRE'); s.key(RET)
             s.wait(lambda: s.has('Page 1'), 'first page', 60)
             rows = s.rows()
@@ -78,6 +81,11 @@ def main():
             s.ok('A shows the ISO 646-FR codes as stored', True)
             s.key(b' '); s.wait(lambda: s.has('Page 2'), 'second page', 30)
             s.ok('Space turns the page', any('Ligne' in r for r in s.rows()))
+            latest=s.rows()[1:22]
+            s.key(b'B');s.wait(lambda:s.has('Page 1:'),'latest back',30)
+            for key in (b'L',b'l'):
+                s.key(key);s.wait(lambda:s.has('Page 2'),'latest visited',30)
+                s.ok('Latest visited preserves accents and layout',s.rows()[1:22]==latest)
             s.key(ESC); s.wait(lambda: s.has('Type  Aux'), 'panels restored', 60); p.stable()
             s.select('JARDINS'); s.key(RET)
             s.wait(lambda: s.has('Page 1'), 'Papyrus page', 60)
@@ -100,6 +108,8 @@ def main():
                  suite.endswith('23548,00') and suite.rfind(',') == 47, suite)
             s.key(b'B'); s.wait(lambda: s.has('Page 1'), 'back to page 1', 60)
             s.ok('page 1 again, the same numbers', any(r.rstrip().endswith('11774,00') for r in s.rows()))
+            s.key(b'L');s.wait(lambda:s.has('Page 2'),'latest calculation page',60)
+            s.ok('Latest visited preserves calculated total',any(r.rstrip()==suite for r in s.rows()))
             s.key(ESC); s.wait(lambda: s.has('Type  Aux'), 'panels restored', 60); p.stable()
             s.select('LETTRE')
             s.ok('the panels answer after the ROM was used', s.has('LETTRE'))
@@ -133,6 +143,30 @@ def main():
                                            enumerate(zip(before, after)) if a != b))
             s.select('LETTRE')
             s.ok('the panels answer still', s.has('LETTRE'))
+            s.select('HISTORY');s.key(RET);s.wait(lambda:s.has('Page 1:'),'history start',60)
+            for page in range(2,21):
+                s.key(b' ');s.wait(lambda:s.rows()[22].startswith('Page '+str(page)), 'history forward',60)
+            latest=s.rows()[1:22]
+            for key in (b'H', b'h'):
+                s.key(key);s.wait(lambda:s.has('Page 5:'),'oldest retained page',60)
+                s.ok('H/h jumps to the oldest retained page with its original margin',
+                     s.rows()[1].rstrip()=='   ROW084')
+            s.key(b'L');s.wait(lambda:s.has('Page 20'),'latest retained after H',60)
+            s.ok('H preserves latest page and all its rows',s.rows()[1:22]==latest)
+            for page in range(19,4,-1):
+                s.key(b'B');s.wait(lambda:s.rows()[22].startswith('Page '+str(page)+':'),'history back',60)
+            s.ok('History keeps the oldest retained page after wrap',s.rows()[1].rstrip()=='   ROW084')
+            s.key(b'L');s.wait(lambda:s.has('Page 20'),'latest after history wrap',60)
+            s.ok('Latest after history wrap restores every row',s.rows()[1:22]==latest)
+            s.key(b'R');s.wait(lambda:s.has('Page 1:'),'history restart',60)
+            s.key(b'L');p.stable()
+            s.ok('Restart resets latest visited page',s.rows()[22].startswith('Page 1:') and s.rows()[1].rstrip()=='   ROW000')
+            s.key(b'H');s.wait(lambda:s.has('Page 1:'),'oldest after restart',60)
+            s.ok('H after restart remains on the first page',s.rows()[1].rstrip()=='   ROW000')
+            s.key(ESC);s.wait(lambda:s.has('Type  Aux'),'history exit',60)
+            s.ok('Epistole occupied AUX /RAM preserved',p.peek(0x0800,0xB800,'aux')==aux)
+            s.ok('Epistole stack floor preserved',p.peek(floor,8)==b'\xA5'*8)
+            p.sync_disks();s.ok('Whole Epistole source volume preserved',Path(p.hdv).read_bytes()==volume)
     return ok_all(s, 'docview')
 
 

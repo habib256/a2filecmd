@@ -7,7 +7,9 @@
  *
  * The screen shows 560 dots of the 576 -- eight are cut at each edge -- and
  * 192 lines of the 720, in double hi-res black and white. Up and Down move
- * the view by half a screen; Escape, Left and Right are the media keys.
+ * the view by half a screen; T/B jump to the top/bottom using the same
+ * checkpoints; +/- move by one checkpoint (48 lines). Escape, Left and
+ * Right are the media keys.
  *
  * The whole file is unpacked once without storing anything: the auxiliary
  * plane is the bank where /RAM lives, so a file that is no whole MacPaint
@@ -26,7 +28,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi*);   /* macpaint.s */
 
 struct Header { unsigned int signature; unsigned char flags;
     void __fastcall__ (*entry)(const struct A2fcApi*); unsigned char r[3];
-    char desc[52]; };
+    char desc[44]; };
 #pragma rodata-name (push, "OVLHDR")
 const struct Header __plugin_header = { MEDIA_PLUGIN_MAGIC, OVERLAY_BIG | OVERLAY_AUX, plugin_entry,
     {0,0,0}, "MacPaint pictures (576 x 720, scrolled)" };

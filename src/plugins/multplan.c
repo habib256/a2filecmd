@@ -1,4 +1,4 @@
-/* Normal Apple II Multiplan 1.06 saved sheets, copied intact as ProDOS $F4.
+/* Normal Apple II Multiplan 1.06 saved sheets, intact as ProDOS $F4 or BIN.
  * MAIN/text only; no AUX and no disk writes or formula evaluation. */
 #define RT_FORMAT 20
 #define RT_LABEL "Multiplan"

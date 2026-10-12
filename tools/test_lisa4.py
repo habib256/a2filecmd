@@ -94,6 +94,8 @@ class Lisa4(unittest.TestCase):
         if not shutil.which('cl65'):self.skipTest('cc65 unavailable')
         path=Path(subprocess.check_output(['cl65','--print-target-path'],text=True).strip())
         samples=[lisa4(big(b'\x43\x33\0\xff\xff\xff\xff')+b'\xfa\x8f\x01\0',['S%03d'%i for i in range(400)])]+[d for _,_,d in real_lisa4()]
+        samples += [lisa4(big(b'\x43'+bytes([c])+bytes([255])*(1+(c&1)))+b'\0') for c in range(26,32)]
+        samples += [lisa4(big(b'\x43'+s)+b'\0') for s in (b'\x63ABC',b'\x63AB',b'\x60\xffA',b'\x33\x03\xffA',b'\x33\x04\xffA')]
         for cpu,target in (('6502','sim6502'),('65c02','sim65c02')):
             cfg=self.p/(target+'.cfg');cfg.write_text((path.parent/'cfg'/(target+'.cfg')).read_text().replace('\n    CODE:','\n    OVLHDR: load = MAIN, type = ro;\n    CODE:',1));exe=self.p/target
             subprocess.run(['cl65','-t',target,'--cpu',cpu,'-Oirs','-Cl','-C',str(cfg),'-I',str(ROOT),'-DRT_SOURCE="src/plugins/lisav4.c"','-o',str(exe),str(self.p/'h.c')],check=True,capture_output=True)

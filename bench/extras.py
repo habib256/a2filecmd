@@ -9,7 +9,7 @@ from pom2 import VERSION, Pom2, Session, ROOT, BUILD
 from smoke import scratch
 from xplug import menu_inventory, menu_run, ok_all, RET, ESC
 sys.path.insert(0, str(ROOT / 'tools'))
-from distribution import image_name, inventories
+from distribution import image_name, inventories, floppy_inventory
 from check_images import check_cpu
 
 
@@ -24,7 +24,8 @@ def check_menu(s, p, expected):
 
 def main():
     check_cpu('6502')
-    essential, complete = inventories()
+    essential, _ = inventories()
+    complete = floppy_inventory()
     with tempfile.TemporaryDirectory(prefix='a2fc-distribution-') as directory:
         tmp = Path(directory)
         floppy = tmp / 'essential.po'
@@ -39,7 +40,7 @@ def main():
             s.key(ESC); p.stable()
             if not s.has('Type  Aux'): s.key(b'Q')
             s.wait(lambda: s.has('Type  Aux'), 'panels', 30)
-            s.key(b'W'); s.wait(lambda: s.has('DISKIMG.PLG is missing or stale'), 'unavailable command returns immediately', 30)
+            s.key(b'W'); s.wait(lambda: s.has('A2FILE/DISKIMG.PLG not valid.'), 'unavailable command returns immediately', 30)
             s.ok('no obsolete companion request for an unavailable tool', not s.has('Insert '))
             s.key(b'T'); s.wait(lambda: s.has('scratch volume'), 'text reader after refusal', 30)
             s.ok('normal commands still work after an unavailable tool', True)

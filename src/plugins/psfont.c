@@ -7,43 +7,23 @@
 const struct PsHeader __plugin_header={PLUGIN_MAGIC,OVERLAY_BIG,plugin_entry,
  {0,0,0},"Preview Print Shop font glyphs (scrollable)"};
 #pragma rodata-name(pop)
+#include "ps_font_layout.h"
 static unsigned char head[392],glyph[384];
-static unsigned char start,index_,top,width,height,stride,count;
-static unsigned int actual,base,data_start,aux;
-static unsigned int pointer(unsigned char i){
- return (unsigned int)head[start+(unsigned int)count*2+i]|((unsigned int)head[start+(unsigned int)count*3+i]<<8);
-}
+static unsigned char index_,top,width,height,stride;
+static unsigned int aux;
 static unsigned char validate(void){
- unsigned int n=0,p,len;
- unsigned char i,w,h;
- int c;
+ unsigned int n=0;int c;
  if(!ps_open())return 0;
- aux=ps_aux;base=ps_new?0:aux;
+ aux=ps_aux;
  while((c=ps_get())>=0){if(n<392)head[n]=c;if(++n>16384)break;}
  if(!ps_close())return 0;
- actual=n;
- if(ps_new){if(aux!=0x1000)return 0;start=12;count=95;}
- else {if(base!=0x6000 && base!=0x5FF4)return 0;start=base==0x6000?0:12;count=59;}
- data_start=start+(unsigned int)count*4;
- if(n<data_start || n>16384)return 0;
- if(ps_new && ((unsigned int)head[6]|((unsigned int)head[7]<<8))!=n-data_start)return 0;
- /* Space has no bitmap; '@' is an external graphic placeholder. */
- for(i=1;i<count;++i){
-  if(i==32)continue;
-  w=head[start+i]&127;h=head[start+count+i];p=pointer(i);
-  if(w>48 || h>64)return 0;
-  if(ps_new){if(p>actual-data_start)return 0;p+=data_start;}
-  else if(p<base+data_start)return 0;
-  len=((unsigned int)w+7)/8*h;
-  if((unsigned long)p+len>(unsigned long)base+actual)return 0;
- }
- return 1;
+ return ps_font_layout(head,n,aux,ps_new);
 }
 static unsigned char load_glyph(void){
  unsigned int p,len,i;
  int c;
- width=head[start+index_]&127;height=head[start+count+index_];stride=(width+7)/8;
- p=pointer(index_)-base;if(ps_new)p+=data_start;len=(unsigned int)stride*height;
+ width=head[psf_start+index_]&127;height=head[psf_start+psf_count+index_];stride=(width+7)/8;
+ p=ps_font_pointer(index_)-psf_base;if(ps_new)p+=psf_data_start;len=(unsigned int)stride*height;
  if(!ps_open())return 0;
  if(ps_aux!=aux || !ps_seek(p)){ps_close();return 0;}
  for(i=0;i<len;++i){c=ps_get();if(c<0){ps_bad=1;break;}glyph[i]=c;}
@@ -73,7 +53,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api){
   if(!load_glyph()){api->strcpy(api->note,"Print Shop read/seek/close error.");break;}
   show();key=api->wait_key();if(key==KEY_ESC)break;
   if(key==KEY_LEFT){if(index_>1){--index_;if(index_==32)--index_;top=0;}}
-  else if(key==KEY_RIGHT || key==' '){if(index_<count-1){++index_;if(index_==32)++index_;top=0;}}
+  else if(key==KEY_RIGHT || key==' '){if(index_+1<psf_count){++index_;if(index_==32)++index_;top=0;}}
   else if(key==KEY_DOWN){if(top+20<height)++top;}
   else if(key==KEY_UP && top)--top;
  }

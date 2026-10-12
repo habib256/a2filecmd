@@ -96,8 +96,8 @@ unsigned char ref_file_viewer(const struct Entry* e, unsigned char pictures)
         if (failed) return 0;
         if (candidate && n==8 && copy_buf[0] && copy_buf[3]) music=V_DUET;
         if (n >= 3 && !memcmp(copy_buf, open_dgr, 3)) kind = 5;
-        /* An Arlequin picture: type $F8 and "gs" after its size. */
-        else if (type == 0xF8 && n >= 4 && copy_buf[2] == 'g' && copy_buf[3] == 's') kind = 6;
+        /* An Arlequin picture: native $F8 or imported BIN and "gs". */
+        else if ((type == 0xF8 || type == 6) && n >= 4 && copy_buf[2] == 'g' && copy_buf[3] == 's') kind = 6;
         else if (n == 8 && (!memcmp(copy_buf, "HGRR\1\0\0\x20", 8) ||
                            !memcmp(copy_buf, "DHRR\1\0\0\x40", 8))) kind = 1;
         /* An Epistole document opens on a `_` command, a Papyrus or

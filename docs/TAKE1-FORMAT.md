@@ -653,7 +653,12 @@ wherever its drawing costs more.
 **Keys**: Escape returns to A2 File Cmd; Space pauses and resumes; Tab
 switches between the original speed and the accelerated one (no frame
 waits, no pauses, fades without delays); Return and the paddle buttons
-answer a wait. Other keys are ignored. Ctrl-Reset returns to A2 File Cmd
+answer a wait. While paused, Right or Return lets the existing engine run
+until its next `t1_show` page flip and pauses there. Space clears that step
+state and resumes. Tab changes speed while keeping the pause. Fades are not
+broken into individual steps; they run normally, and interactive scene
+waits still need their usual answer. Other keys are ignored.
+Ctrl-Reset returns to A2 File Cmd
 too: the player sets the reset vector to its way back (A2 File Cmd's own
 vector would point into the hi-res page the player draws on).
 

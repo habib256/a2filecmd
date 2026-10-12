@@ -218,3 +218,42 @@ display, reopen the source for rendering, and report second-pass failures.
 They support original DOS drives/images and BIN copies on ProDOS, use MAIN
 only, and preserve source bytes and AUX. No extraction or neighbouring-file
 creation is involved.
+
+### Negative preview (12 October 2026)
+
+The ProDOS NEWSROOM viewer accepts I/i while displaying a photo or banner.
+It XORs $7F over the 40 visible bytes of each of the 192 HGR rows, including
+the surrounding background. Bit 7 and the 512 screen-hole bytes are kept.
+A second inversion restores all 8192 page bytes exactly. The loaded page
+is reused: no source reopen or AUX /RAM write. The existing media key
+handler retains Escape/Left/Right and slideshow navigation; a new picture
+starts with its original colors. Direct DOS Newsroom readers are separate.
+
+Seven sim65 tests pass with cc65 2.19 and HEAD on both CPUs, including
+independent full-page inversion, masks/holes, repeated and lowercase keys,
+ignored keys, navigation, stale sizes, malformed data and I/O failures.
+POM2 passes 24/24 checks per CPU: four photos/banners including 37×192,
+exact normal/negative/restored pages, source volume, occupied AUX /RAM and
+stack guard preserved. The HEAD simulator configuration changed its MAIN
+size expression: the harness now relocates MAIN by its named region and
+requires exactly one replacement, retaining its $8000 placement and bound.
+
+### Mirrored preview (12 October 2026)
+
+H/h mirrors the full 280×192 preview horizontally; V/v mirrors it vertically.
+Both include the surrounding background, combine with I/i, and restore the
+whole page exactly when repeated. A new picture starts in its original
+orientation and colors. Source bytes are never rewritten or reopened for a
+preview transform. Only the 40 visible bytes per HGR row are touched; the
+512 screen holes remain unchanged. H reverses the seven dots of each byte
+and the 40 bytes per row, retaining bit 7 with its byte. V exchanges visible
+rows 0/191 through 95/96. The existing 64-byte read buffer is reused after
+successful fclose; there is no new allocation or AUX access.
+
+Eight actual-viewer sim65 tests pass on both CPUs with cc65 2.19 and HEAD.
+The mirror oracle expands the page into a 280×192 pixel matrix independently
+of the assembly. It checks tiny/full-width/full-height pictures, lowercase
+commands, double restores, H/V/I composition, navigation and failed open
+or close. Existing tests retain malformed, stale-size, read-error and real
+corpus checks. The native bench passes 56/56 checks per CPU: exact normal/negative/mirrored pages,
+next-picture reset, source volume, occupied AUX /RAM and the stack guard.

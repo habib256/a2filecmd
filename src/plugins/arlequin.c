@@ -46,6 +46,13 @@ const struct Header __plugin_header = { MEDIA_PLUGIN_MAGIC, OVERLAY_BIG | OVERLA
 static const struct A2fcApi* A;
 static FILE* in;
 unsigned char* ar_buf;                  /* api->copy_buf, read by ar_decode */
+/* cc65 _FILE::f_flags, offset 1, _FERROR=4 (asminc/_file.inc),
+ * as in DOCVIEW: keep the error check below the $2000 screen boundary. */
+#ifndef PLUGIN_HOST
+#define ar_error(f) (((unsigned char*)(f))[1] & 4)
+#else
+#define ar_error(f) ferror(f)
+#endif
 
 #ifndef PLUGIN_HOST
 #pragma optimize (push, off)
@@ -116,13 +123,14 @@ static unsigned char pass(void)
     in = s_fopen(A->full, "rb");
     if (!in) return 2;
     k = ar_decode();
+    if (ar_error(in)) k = 0;
     if (s_fclose(in) && k == 1) k = 0;
     return k;
 }
 
 static void note(const char* s) { s_strcpy(A->note, s); }
 
-static const char m_bad[] = "Not an Arlequin $F8 picture.";
+static const char m_bad[] = "Not an Arlequin picture.";
 static const char m_cut[] = "Picture truncated.";
 static const char m_ram[] = "/RAM rebuilt.";
 
@@ -132,9 +140,9 @@ void __fastcall__ plugin_entry(const struct A2fcApi* a)
 
     A = a;
     ar_buf = a->copy_buf;
+    ar_dry = 1;
     k = 2;
-    if (a->selected->type == 0xF8) {
-        ar_dry = 1;
+    if (a->selected->type == 0xF8 || a->selected->type == 6) {
         k = pass();
     }
     if (k == 1) {

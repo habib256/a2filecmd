@@ -20,7 +20,9 @@
 ; modelled time, the engine's own drawing time taken off -- t1_hold, see
 ; engine.s -- with the original's pauses and fade delays) and the
 ; accelerated one (none of them); Return and the paddle buttons answer a
-; wait. Other keys are ignored.
+; wait. While paused, Right or Return advances to the next shown image
+; and pauses there. Fades run through; scene waits still need an answer.
+; Other keys are ignored.
 ;
 ; The label t1_shown is the instant a frame becomes visible: right after
 ; the soft switch that shows it (an emulator may break there to capture
@@ -38,6 +40,7 @@
         .import t1_play, t1_name, t1_err, t1_front, t1_hold, dstart, t1_txc3
         .export t1_show, t1_wait, t1_fc, t1_delay, t1_tick, t1_shown, path0
         .export t1_mode := mode, t1_sound := sound, t1_back := back
+        .export t1_keywait := getkey, t1_step := step
         .import __HICODE_LOAD__, __HICODE_RUN__, __HICODE_SIZE__, __HIDATA_SIZE__
         .import __RODATA_LOAD__, __RODATA_RUN__, __RODATA_SIZE__
         .import __HIDATA_LOAD__, __HIDATA_RUN__, __LOADER_RUN__, __LOADER_SIZE__
@@ -88,6 +91,9 @@ savebm: .res 24                 ; the system bitmap as it was
 mode:   .res 1                  ; 1 original speed, 0 accelerated
 seed:   .res 2                  ; the sounds' random numbers
 scnt:   .res 2
+
+        .segment "HIBSS"
+step:   .res 1                  ; stop at the next t1_show (zeroed at start)
 
 ; -- at $2000: the interpreter header, then the start ------------------------
         .segment "LOADER"
@@ -405,6 +411,8 @@ steps:  tax
         bne     @s
         rts
 
+; In the copied text-row code: the timed loop stays within one page.
+        .segment "TXC7"
 ; About 250 cycles with the jsr and rts; X and Y kept.
 unit:   lda     #33
 :       sec
@@ -412,6 +420,7 @@ unit:   lda     #33
         bne     :-
         rts
 
+        .assert >unit = >(unit+7), error, "unit must stay in one page"
         .assert __TIMED_SIZE__ <= 256, error, "TIMED over one page"
         .code
 
@@ -424,7 +433,15 @@ t1_show:
         bcs     t1_shown
 :       sta     LOWSCR
 t1_shown:                               ; the frame is visible
-        jmp     keys
+        jmp     shown_keys
+
+        .segment "TXC6"
+shown_keys:
+        lda     step
+        beq     :+
+        jmp     pause
+:       jmp     keys
+        .code
 
 ; A fade's D(A) (the monitor's WAIT loop), at the original speed.
 t1_delay:
@@ -434,7 +451,7 @@ t1_delay:
 ; Fade 14's ticks: the keys only.
 t1_tick:
 ; Reads a key if there is one: Escape returns, Space pauses (until Space
-; again), Tab switches the speed.
+; again), Right/Return steps to the next shown image, Tab switches speed.
 keys:   lda     KBD
         bpl     knone
         sta     KBDSTRB
@@ -444,7 +461,15 @@ keys:   lda     KBD
 pause:  jsr     getkey
         jsr     key
         cmp     #' '
+        beq     @resume
+        cmp     #$15
+        beq     @step
+        cmp     #$0D
         bne     pause
+@step:  lda     #1
+        bne     @save
+@resume: lda    #0
+@save:  sta     step
 knone:  rts
 
 ; One key in A: Escape returns, Tab switches; A = the key without bit 7.

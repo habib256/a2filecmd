@@ -65,7 +65,7 @@ static void v_numeric(unsigned char n,unsigned char kind){
 }
 static void v_string(unsigned char n,unsigned char quote){
  unsigned char c;
- if(n>v_len-v_at){rt_invalid();return;}
+ if((int)n>(int)v_len-(int)v_at){rt_invalid();return;}
  if(quote)v_put(quote);
  while(n--){c=v_get()&127;v_put(c);if(quote && c==quote)v_put(c);}
  if(quote)v_put(quote);
@@ -75,11 +75,11 @@ static unsigned char v_number(unsigned char c){
  unsigned char n,q;
  if(c<14){static const char op[]="+-*/&|^=<>%<><";v_put(op[c]);if(c==11 || c==12)v_put('=');else if(c==13)v_put('>');}
  else if(c>=16 && c<=25)v_put('0'+c-16);
- else if(c>=26 && c<=31)v_numeric((c&1)?2:1,(c-26)/2);
+ else if(c>=26 && c<=31)v_numeric((c&1)?2:1,(c>>1)-13);
  else if(c>=52 && c<=54)v_numeric(3,c-52);
  else if(c==51){
   n=v_get();if(n<=2)v_numeric(4,n);
-  else if(n==3){n=v_get();if(n>v_len-v_at){rt_invalid();return 0;}while(n--)v_hex(v_get());}
+  else if(n==3){n=v_get();if((int)n>(int)v_len-(int)v_at){rt_invalid();return 0;}while(n--)v_hex(v_get());}
   else if(n==4){n=v_get();v_string(n,0);}else rt_invalid();
  }else if(c==55 || c==56){
   if(v_at<v_len && v_line[v_at]==250)++v_at;
@@ -94,7 +94,7 @@ static unsigned char v_number(unsigned char c){
  else if(c==95)v_text("?#");
  else if(c>=96 && c<=127){
   n=c&31;if(!n)n=v_get();
-  if(rt_bad || n>v_len-v_at){rt_invalid();return 0;}
+  if(rt_bad || (int)n>(int)v_len-(int)v_at){rt_invalid();return 0;}
   q=n && v_line[v_at]>=128?'"':'\'';v_string(n,q);
  }else if(c==250)v_symbol(v_word());
  else rt_invalid();
@@ -155,7 +155,7 @@ static void rt_decode(void){
  for(i=0;i<v_count;++i){
   if(off>=v_bytes){rt_invalid();return;}n=v_symbols[off];
   if(n<2 || n>v_bytes-off || v_symbols[off+n-1]){rt_invalid();return;}
-  for(j=1;j<n-1;++j)if(!v_symbols[off+j]){rt_invalid();return;}
+  for(j=1;j+1<n;++j)if(!v_symbols[off+j]){rt_invalid();return;}
   off+=n;
  }
  if(off!=v_bytes){rt_invalid();return;}

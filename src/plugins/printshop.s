@@ -1,7 +1,7 @@
 ; Main bank only; no auxiliary memory or ProDOS RAM disk writes.
 .export _hv_clear, _hv_show, _hv_row
 .importzp ptr1
-.segment "CODE"
+.segment "HGRSAFE"
 _hv_clear:
  lda #0
  sta $C000
@@ -74,15 +74,16 @@ _hv_show:
  rts
 
 .export _ps_draw
-.import _py
+.export _py, _ps_bitmap
+.import _ps_preflight, _ps_wait_offset
 .importzp ptr2
-.segment "BSS"
+.segment "HGRSAFE"
 row: .res 1
 sx: .res 1
 srcbit: .res 1
 col: .res 1
 mask: .res 1
-.segment "CODE"
+.segment "HGRSAFE"
 _ps_draw:
  sta ptr2
  stx ptr2+1
@@ -147,3 +148,63 @@ advance:
  sta mask
  inc col
 @ret: rts
+
+; C returns before graphics overwrite its code/state above $2000.
+.export _plugin_entry
+_plugin_entry:
+ sta apilo+1
+ sta apihi+1
+ stx apilo+2
+ stx apihi+2
+ jsr _ps_preflight
+ cmp #1
+ beq draw
+ rts
+draw:
+ lda _ps_wait_offset
+ sta waitfield+1
+ jsr _hv_clear
+ lda #18
+ sta _py
+ lda #<_ps_bitmap
+ sta source+1
+ lda #>_ps_bitmap
+ sta source+3
+nextrow:
+source:
+ lda #0
+ ldx #0
+ jsr _ps_draw
+ lda source+1
+ clc
+ adc #11
+ sta source+1
+ bcc :+
+ inc source+3
+: lda _py
+ clc
+ adc #3
+ sta _py
+ cmp #174
+ bne nextrow
+ jsr _hv_show
+ ; media_wait preserves album arrows/slideshow; resident callback only.
+waitfield:
+ ldy #0
+apilo:
+ lda $FFFF,y
+ sta wait+1
+ iny
+apihi:
+ lda $FFFF,y
+ sta wait+2
+wait:
+ jsr $FFFF
+ lda #0
+ sta $C051
+ sta $C00D
+ rts
+_py: .res 1
+_ps_bitmap: .res 572
+end:
+.assert end <= $2000, lderror, "Print Shop renderer/bitmap overlaps HGR"

@@ -105,6 +105,16 @@ class Formats(unittest.TestCase):
   cases=[('FONT',7,0,b'x','font'),('A.FOTO1',6,0,b'x','Purplesoft'),('A',8,0x8066,b'x','LZ4FH'),('A',6,0x5800,bytes(572),'Print Shop'),('A',6,0x400,bytes(1024),'Lo-res'),('A',6,0,b'DGR','DGR pixmap'),('A.PT3',6,0,b'x','PT3'),('A',6,0,b'ProTracker 3.7','ProTracker 3 music'),('A.MD',4,0,b'hello','Markdown'),('A',8,0x4001,bytes(8192),'Packed DHGR'),('A',6,0xE001,bytes(8192),'816/Paint'),('A',0xF2,0,bytes(8192),'Extasie'),('A',8,0x2000,bytes(16384),'DHGR'),('A',6,0,b'MB1','Mockingboard'),('A.NIB',6,0,bytes(232960),'nibble'),('A.HDV',6,0,bytes(1028)+b'\xF1'+bytes(1019),'ProDOS block')]
   for name,typ,aux,data,label in cases:
    with self.subTest(name=name,typ=typ,aux=aux):self.assertIn(label,self.call('ident',data,name,typ=typ,aux=aux))
+ def test_rejected_sc_candidate_preserves_newsroom_detection(self):
+  from test_newsdoc import panel
+  data=panel()
+  # This valid panel also passes the tentative S-C line-length/terminator
+  # probe. Its invalid assembly body must not suppress the Newsroom rule.
+  self.assertTrue(4<=data[0]<=len(data) and data[data[0]-1]==0)
+  for dos in (False,True):
+   self.assertIn('Newsroom panel',self.call('ident',data,'PN.PANEL',aux=0x4000,dos=dos))
+   for fault in (1,2,3):
+    if not dos:self.assertEqual(self.call('ident',data,'PN.PANEL',aux=0x4000,arg=13,fault=fault).strip(),'')
  def test_automatic_routing_has_explicit_dos_eligibility(self):
   from test_newsdoc import panel,page
   cases=[('PN.PANEL',6,0x4000,panel(),'NEWSPAN','NEWSPAN'),('PG.PAGE',6,0x98a5,page(),'NEWSPAGE','NEWSPAGE'),

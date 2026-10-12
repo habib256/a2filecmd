@@ -5,10 +5,49 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from disk_packages import ROOT, PACKAGES, assignments
+from disk_packages import ROOT, PACKAGES, BENCH_PACKAGES, RUNTIMES, BASIC, assignments
 
 
 class Distribution(unittest.TestCase):
+    def test_compact_companions_keep_bytes_and_only_advertise_available_tools(self):
+        import sys
+        from prodos_read import Image
+        with tempfile.TemporaryDirectory(prefix='compact-packages-') as tmp:
+            tmp = Path(tmp)
+            names = {'MENU'} | {n for ns in BENCH_PACKAGES.values() for n in ns}
+            payloads = {}
+            for name in names:
+                filename = (name.lower() + '.PLG' if (ROOT/'src/plugins'/
+                            (name.lower()+'.c')).exists() else 'A2FILE.CODE.BIN.'+name)
+                payloads[name] = bytes(range(256))*3 + name.encode()
+                (tmp/filename).write_bytes(payloads[name])
+            records = [b'INTBASIC.SYS'+b'A2DEVTOOLS6502: INTBASIC.SYSTEM'.ljust(66,b'\0'),
+                       b'UNUSED'.ljust(12,b'\0')+b'A2MEDIA6502: unused'.ljust(66,b'\0'),
+                       b'DOSVIEW'.ljust(12,b'\0')+b'A2FC6502: absent'.ljust(66,b'\0')]
+            (tmp/'EXTRAS.CAT').write_bytes(b''.join(records))
+            for role, tools in BENCH_PACKAGES.items():
+                out=tmp/(role+'.po')
+                subprocess.run([sys.executable,str(ROOT/'tools/mkpackage.py'),str(tmp),
+                                str(out),'--role',role,'--cpu','6502','--bench'],
+                               check=True,capture_output=True)
+                image=Image(out.read_bytes())
+                self.assertEqual(image.header()['blocks'],280)
+                self.assertGreater(image.free_blocks(),0)
+                directory=next(e for e in image.entries(2) if e[1:7]==b'A2FILE')
+                files={e[1:1+(e[0]&15)].decode():image.read(e)
+                       for e in image.entries(int.from_bytes(directory[17:19],'little'))}
+                self.assertEqual(set(files),{'MENU.PLG','EXTRAS.CAT'} |
+                                 {n+'.PLG' for n in tools})
+                for name in ['MENU']+tools:
+                    self.assertEqual(files[name+'.PLG'],payloads[name])
+                self.assertEqual(files['EXTRAS.CAT'],records[0])
+                if role==BASIC:
+                    for runtime in RUNTIMES:
+                        entry=next(e for e in image.entries(2)
+                                   if e[1:1+(e[0]&15)].decode()==runtime)
+                        self.assertEqual(image.read(entry),
+                                         (ROOT/'data'/(runtime+'.SYS')).read_bytes())
+
     def test_every_overlay_has_exactly_one_location(self):
         makefile = (ROOT / 'Makefile').read_text()
         native = re.search(r'^PLUGINS = (.+)$', makefile, re.M)[1].split()
@@ -18,6 +57,7 @@ class Distribution(unittest.TestCase):
         self.assertEqual(locations['COPY'], 'BOOT')
         self.assertEqual(locations['DOSVIEW'], 'BOOT')
         self.assertEqual(locations['DOSMCS'], 'MEDIA')
+        self.assertEqual(locations['DOSFONT'], 'MEDIA')
         self.assertEqual(locations['MCSIMPORT'], 'MEDIA')
         self.assertEqual(locations['MCSPLAY'], 'MEDIA')
         self.assertEqual(locations['DOSINT'], 'DEVTOOLS')

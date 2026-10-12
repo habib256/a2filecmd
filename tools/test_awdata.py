@@ -12,6 +12,7 @@ runs under sim65 on both processors against the reference's mbf(). What
 Applesoft's FOUT then prints is bench/awdata.py's, on POM2's ROM.
 """
 import random
+import re
 import shutil
 import struct
 import subprocess
@@ -330,6 +331,7 @@ class AwData(unittest.TestCase):
         out = subprocess.run([str(self.exe), str(f), typ, keys] + args,
                              capture_output=True, timeout=30)
         self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(f.read_bytes(), data, 'source bytes preserved')
         screens, note = [], None
         for line in out.stdout.decode('latin-1').splitlines():
             if line == 'SCREEN':
@@ -411,6 +413,78 @@ class AwData(unittest.TestCase):
                 continue
             with self.subTest(i=i):
                 self.check_db(data)
+
+    def test_last_record_reuses_count_checkpoints_categories_and_errors(self):
+        for count in (1,63,64,65,130):
+            data=make_db(random.Random(32),3,count)
+            _,want=db_screens(data)
+            last=len(want)-1
+            for keys,order in (('LlBRL',[0,last,last,max(0,last-1),0,last]),
+                               (' LBL',[0,min(1,last),last,max(0,last-1),last])):
+                got,note=self.run_host(data,'19',keys)
+                self.assertEqual(len(got),len(order))
+                for (rows,bar),k in zip(got,order):
+                    expected,expected_bar=want[k]
+                    self.assertEqual(bar,expected_bar)
+                    self.assertEqual([r.rstrip() for r in rows],
+                                     [r.rstrip() for r in expected]+['']*(ref.ROWS-len(expected)))
+        got,note=self.run_host(make_db(random.Random(32),3,0),'19','L')
+        self.assertEqual(got,[]);self.assertTrue(note)
+        data=make_db(random.Random(12),30,2)
+        names,recs,_=ref.db_records(data)
+        got,_=self.run_host(data,'19','\tLBl')
+        for (rows,_),k,cat in zip(got,(0,0,len(recs)-1,max(0,len(recs)-2),len(recs)-1),(0,22,22,22,22)):
+            expected=ref.db_screen(names,recs[k],first=cat)
+            self.assertEqual([r.rstrip() for r in rows],
+                             [r.rstrip() for r in expected]+['']*(ref.ROWS-len(expected)))
+        # A sheet uses its furthest indexed page, with the next mark ready.
+        sheet=make_ss(random.Random(8),50)
+        a,_=self.run_host(sheet,'1B',' L')
+        b,_=self.run_host(sheet,'1B','  ')
+        self.assertEqual(a[-1],b[-1])
+        data=make_db(random.Random(13),3,65)
+        clean,_=self.run_host(data,'19','L')
+        for declared in (0,1,65535):
+            stale=data[:36]+declared.to_bytes(2,'little')+data[38:]
+            got,_=self.run_host(stale,'19','L')
+            self.assertEqual(got,clean,'last record uses walked count, not header')
+        for fail in (0,600,len(data)-10):
+            got,_=self.run_host(data,'19','L',fail=fail)
+            if got:
+                self.assertTrue(all('read error' in bar for _,bar in got))
+
+    def test_sheet_last_indexed_page_preserves_grid_columns_and_cells(self):
+        def order(keys, pages):
+            current, known = 0, 1
+            result = []
+            for key in '\0' + keys:
+                if key == ' ' and current + 1 < known: current += 1
+                if key.lower() == 'b' and current: current -= 1
+                if key.lower() == 'l': current = known - 1
+                if key.lower() == 'r': current = 0
+                if current + 1 == known and current + 1 < pages and known < 42:
+                    known += 1
+                result.append(current)
+            return result
+        keys = '  BLLRlBL'
+        for count in (0, 1, 21, 22, 43, 90, 150):
+            data = make_ss(random.Random(92), count)
+            want = ss_screens(data)
+            got, note = self.run_host(data, '1B', keys)
+            self.compare(got, order(keys, len(want)), want, 'indexed grid page')
+            cells = ss_cell_screens(data)
+            got, note = self.run_host(data, '1B', 'F' + keys)
+            self.compare(got[1:], order(keys, len(cells)), cells, 'indexed cell page')
+            first = ref.ss_next_col(data)
+            if first:
+                shifted = ss_screens(data, first)
+                got, note = self.run_host(data, '1B', '>  BLlB')
+                self.compare(got[1:], order('  BLlB', len(shifted)), shifted,
+                             'indexed page retains column window')
+        for fail in (0, 400, 800):
+            got, note = self.run_host(make_ss(random.Random(93), 90), '1B', 'LBlL', fail=fail)
+            if got:
+                self.assertTrue(all('read error' in bar for _, bar in got))
 
     def test_synthetic_spreadsheets(self):
         rng = random.Random(4)
@@ -567,7 +641,9 @@ int main(void)
     unsigned char d[8];
     unsigned char n;
     int in = open("rom.bin", O_RDONLY);
-    if (read(in, (void*)0xD000, 0x3000) != 0x3000) return 9;
+    /* Keep sim65 HEAD peripheral aperture $FFC0+ intact; calculations
+       use the actual BASIC ROM and monitor below it, never reset vectors. */
+    if (read(in, (void*)0xD000, 0x2FC0) != 0x2FC0) return 9;
     close(in);
     in = open("nums.bin", O_RDONLY);
     while (read(in, d, 8) == 8) {
@@ -584,8 +660,9 @@ int main(void)
         target = Path(subprocess.check_output([shutil.which('cl65'), '--print-target-path'],
                                               text=True).strip())
         cfg = (target.parent / 'cfg/sim6502.cfg').read_text()
-        cfg = cfg.replace('start = $0200, size = $FDF0 - __STACKSIZE__',
-                          'start = $0800, size = $C000 - $0800 - __STACKSIZE__')
+        cfg,count = re.subn(r'(MAIN:[^\n]*start = )[^,]+, size = [^;]+;',
+                            r'\g<1>$0800, size = $C000 - $0800 - __STACKSIZE__;',cfg,count=1)
+        assert count==1
         (self.dir / 'romsim.cfg').write_text(cfg)
         shutil.copyfile(ROOT / 'src/plugins/awdata.s', self.dir / 'awdata.s')
         exe = self.dir / 'romsim'

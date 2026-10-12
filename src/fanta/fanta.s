@@ -18,7 +18,9 @@
 ; between the original speed (the default: each frame held until the
 ; original player's time for it has passed, fv_timing) and the accelerated
 ; one (as fast as the engine draws, plus a delay per frame set by the
-; digits 1-9, 0 for none), S starts or stops the slideshow.
+; digits 1-9, 0 for none), S starts or stops the slideshow. While paused,
+; Right or Return draws one next frame and stays paused; N/n advances
+; to the next stored key frame, still paused.
 ;
 ; The end: a movie always starts again. A counted movie stays two seconds
 ; on its last frame, then plays from the start: in place, or, with a
@@ -310,16 +312,34 @@ hold:   lda     #30
 ; Reads a key if there is one: Escape returns, Space pauses, Tab switches
 ; the speed, a digit sets the delay, S starts or stops the slideshow.
 keys:   lda     KBD
-        bpl     @none
+        bpl     kreturn
         sta     KBDSTRB
         jsr     key
         cmp     #' '
-        bne     @none
-@pause: jsr     getkey          ; paused: until Space again (or Escape)
+        bne     kreturn
+kpaused: jsr     getkey          ; paused: until Space again (or Escape)
+        and     #$7F
+        cmp     #$15            ; Right/Return: one frame, still paused
+        beq     kstep
+        cmp     #$0D
+        beq     kstep
         jsr     key
         cmp     #' '
-        bne     @pause
-@none:  rts
+        beq     kreturn
+        ora     #$20
+        cmp     #'n'
+        bne     kpaused
+        jmp     next_key
+kreturn:  rts
+kstep:  jsr     fv_next
+        bne     kpaused          ; counted/single-frame end: keep last view
+kshow:  lda     fv_shown
+        cmp     #$20
+        beq     :+
+        sta     HISCR
+        bne     kpaused          ; (always)
+:       sta     LOWSCR
+        jmp     kpaused
 
 ; One key in A (high bit set): acts on it, returns it without the high bit.
 key:    and     #$7F
@@ -353,6 +373,19 @@ key:    and     #$7F
         pla
 :       rts
 
+; N/n in pause: replay interpolation until the next stored key frame.
+; Every checked movie reaches a key frame or its counted end.
+        .segment "FCOLD"
+next_key:
+        jsr     fv_next
+        jne     kpaused
+        lda     fv_vkey
+        beq     next_key
+        jmp     kshow
+
+; These helpers remain callable in LOW after startup. Free their high
+; CODE bytes for paused stepping without enlarging either memory window.
+        .segment "FCOLD"
 getkey: lda     KBD
         bpl     getkey
         sta     KBDSTRB
@@ -380,6 +413,7 @@ unit:   lda     #33
 ; wl is bytes 1 and 2 of the wait: only byte 3 makes it too long. Byte 2
 ; set is a wait of 65,536 cycles or more, which a frame of large solids
 ; takes (up to 240,000), not one to clip to 16 million.
+        .segment "CODE"
 waitorig:
         lda     fv_wait+3
         beq     :+

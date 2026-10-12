@@ -48,7 +48,7 @@ static int close_(FILE* f){++closes;return fclose(f) || fault==3 || (fault==4 &&
 int main(int argc,char**argv){
  static struct A2fcApi api;static struct Entry e;static unsigned char buf[512];
  static char note[80],reselect[80];fault=atoi(argv[2]);keys=argv[3];
- memset(screen,' ',sizeof screen);strcpy(e.name,"SAMPLE");e.size=strtoul(argv[4],0,10);
+ memset(screen,' ',sizeof screen);strcpy(e.name,"SAMPLE");e.size=strtoul(argv[4],0,10);e.type=argc>5?atoi(argv[5]):0;
  api.full=argv[1];api.selected=&e;api.copy_buf=buf;api.note=note;api.reselect=reselect;
  api.fopen=opn;api.fread=rd;api.fclose=close_;api.strcpy=strcpy;api.sprintf=sprintf;
  api.gotoxy=xy;api.cputc=put;api.clrscr=clear;api.message=message;api.wait_key=key;
@@ -75,9 +75,9 @@ class WordDocs(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def run_file(self, name, data, fault=0, keys='', size=1, refused=False):
+    def run_file(self, name, data, fault=0, keys='', size=1, refused=False,typ=0):
         src = self.p / 'source';src.write_bytes(data)
-        r = subprocess.run([str(self.executables[name]), str(src), str(fault), keys, str(size)],
+        r = subprocess.run([str(self.executables[name]), str(src), str(fault), keys, str(size),str(typ)],
                            check=True, capture_output=True, text=True, timeout=10)
         self.assertEqual(src.read_bytes(), data)
         opens, closes, note = r.stderr.rstrip('\n').split(' ', 2)
@@ -98,6 +98,20 @@ class WordDocs(unittest.TestCase):
             self.run_file('multiscr',data[:n],refused=True)
         for suffix in (b'\x01',b'\x01\x00\x00\x00\x02',b'\x02'+bytes(27),b'\x04'):
             self.run_file('multiscr',header+suffix,refused=True)
+
+    def test_imported_bin_same_text_and_validation(self):
+        root=Path(os.environ.get('A2FC_WORDPRO_CORPUS','/tmp/a2fc-wordpro-corpus'))/'extracted'
+        originals=[p for p in root.glob('*') if p.is_file() and p.read_bytes()[:2]==b'\x80\x19']
+        for p in originals:
+            data=p.read_bytes()
+            expected=self.run_file('multiscr',data,typ=4)[0]
+            self.assertEqual(self.run_file('multiscr',data,typ=6)[0],expected)
+            self.assertEqual(p.read_bytes(),data)
+        if root.exists():self.assertEqual(len(originals),12)
+        data=b'\x80\x19\x01\0\x01\0\xb1\xe2\x02'+bytes(27)+b'\x02'+b'Hello\r'*100
+        for fault in (1,2,3):self.run_file('multiscr',data,typ=6,fault=fault,refused=True)
+        for bad in (data[:36],data[:40]+b'\x04',data[:36]+b'\x01'+data[37:]):
+            self.run_file('multiscr',bad,typ=6,refused=True)
 
     def test_applewriter_layout_and_literal_commands(self):
         data=b'.lm2\r.rm20\r.pm+3\rHello world again today\r.cj\rTitle\r.inAddress\r'
@@ -143,26 +157,31 @@ class WordDocs(unittest.TestCase):
     def test_cc65_on_both_processors(self):
         if not shutil.which('cl65') or not shutil.which('sim65'):
             self.skipTest('cc65/sim65 unavailable')
-        samples = {'multiscr': b'\x80\x19\x01\x00\x01\x00\xb1\xe2\x02'+bytes(27)+b'\x02HELLO\r', 'applewr':b'.lm2\r.rm20\rHello world\r'}
+        samples = {'multiscr': [b'\x80\x19\x01\x00\x01\x00\xb1\xe2\x02'+bytes(27)+b'\x02HELLO\r'],
+                   'applewr':[b'.lm2\r.rm20\rHello world\r',
+                              b'.lm2\r.rm20\r.pm-79\r.cj\rTitle\r.rj\rA\r',
+                              b'.lm2\r.rm20\r.pm+79\r.cj\rTitle\r',
+                              b'.lm78\r.rm79\r.cj\rABCD\r.rm0\r.lm79\r']}
         target_path = Path(subprocess.check_output(['cl65', '--print-target-path'], text=True).strip())
         for cpu, target in (('6502', 'sim6502'), ('65c02', 'sim65c02')):
             cfg = (target_path.parent / 'cfg' / (target + '.cfg')).read_text()
             config = self.p / (target + '.cfg')
             config.write_text(cfg.replace('\n    CODE:', '\n    OVLHDR: load = MAIN, type = ro;\n    CODE:', 1))
-            for name, data in samples.items():
+            for name, docs in samples.items():
                 with self.subTest(cpu=cpu, format=name):
                     exe = self.p / (target + '-' + name)
                     subprocess.run(['cl65', '-t', target, '--cpu', cpu, '-O', '-Cl',
                                     '-C', str(config), '-I', str(ROOT),
                                     '-DRT_SOURCE="src/plugins/' + name + '.c"',
                                     '-o', str(exe), str(self.p / 'h.c')], check=True, capture_output=True)
-                    src = self.p / 'native-source';src.write_bytes(data)
-                    args = [str(src), '0', '', '0']
-                    expected = subprocess.run([str(self.executables[name])] + args, check=True, capture_output=True)
-                    actual = subprocess.run(['sim65', str(exe)] + args, check=True, capture_output=True, timeout=20)
-                    self.assertEqual(actual.stdout, expected.stdout)
-                    self.assertEqual(actual.stderr, expected.stderr)
-                    self.assertEqual(src.read_bytes(), data)
+                    for data in docs:
+                        src = self.p / 'native-source';src.write_bytes(data)
+                        args = [str(src), '0', '', '0','6' if name=='multiscr' else '4']
+                        expected = subprocess.run([str(self.executables[name])] + args, check=True, capture_output=True)
+                        actual = subprocess.run(['sim65', str(exe)] + args, check=True, capture_output=True, timeout=20)
+                        self.assertEqual(actual.stdout, expected.stdout)
+                        self.assertEqual(actual.stderr, expected.stderr)
+                        self.assertEqual(src.read_bytes(), data)
 
 
 if __name__ == '__main__':

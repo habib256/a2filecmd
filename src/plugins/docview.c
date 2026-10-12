@@ -161,7 +161,7 @@ static const char vowels[] = "aeiou";      /* Papyrus $18-$1C */
 static const char m_pick[] = "Select a document.";
 static const char m_open[] = "Open failed.";
 static const char m_big[]  = "Over 64 KB: too long.";
-static const char m_page[] = "Page %u%s: Space/Down next, Up back, R start, A accents, ESC quits";
+static const char m_page[] = "Page %u%s: SPC next, B back, H/L history, R start, A accents, ESC";
 static const char m_end[]  = " (end)";
 static const char m_err[]  = " (read error)";
 static const char m_nil[]  = "";
@@ -695,6 +695,8 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
             }
         }
         if (l == 'a') raw ^= 1;
+        if (l == 'h') page = 0;           /* oldest retained page, keep history */
+        if (l == 'l') page = known - 1;
         if (l == 'r') { page = head = 0; known = first = 1; first_page(); }
         if ((l == 'b' || k == KEY_LEFT || k == KEY_UP) && page) --page;
     }
