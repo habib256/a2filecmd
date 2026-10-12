@@ -108,8 +108,19 @@ static const char m_fail[]   = "%s failed.";
 static const char f_path[]   = "%s/%s";
 
 /* Nothing zeroes the BSS: each of these is written before it is read. */
+/* No configuration, media or AUX services are used. Keep the original
+ * field offsets for the service trampolines, but omit that unused tail. */
+#ifndef PLUGIN_HOST
+#include <stddef.h>
+#define IMGCONV_API_COPY offsetof(struct A2fcApi,cfg_path)
+static unsigned char imgconv_api[IMGCONV_API_COPY];
+#define T (*(struct A2fcApi*)imgconv_api)
+#define SERVICE_API imgconv_api
+#else
 static struct A2fcApi T;
+#define IMGCONV_API_COPY sizeof T
 #define SERVICE_API T
+#endif
 #include "service_stubs.h"
 #define replace_backup ((char*)T.copy_buf + 256)
 #include "replace.h"
@@ -174,13 +185,21 @@ static void make_dc_header(void)
     TRACK[0x52] = 1;
 }
 
+/* Consume ESC consistently at every I/O boundary. No file or AUX write. */
+static unsigned char stopped(void)
+{
+    if (*KBD != (KEY_ESC | 0x80)) return 0;
+    *STROBE = 0;
+    return 1;
+}
+
 /* Refuse an errored or cancelled source read before its bytes can be
  * written. The source and AUX are read-only; only our exclusive output
  * may be written or cleaned. Shared by headers, blocks and DSK halves. */
 static unsigned char read_source(void* p, unsigned int len)
 {
     if (RF(fread)(p, 1, len, in) != len || ferror(in)) return 0;
-    if (*KBD == (KEY_ESC | 0x80)) { *STROBE = 0; return 0; }
+    if (stopped()) return 0;
     return 1;
 }
 
@@ -205,19 +224,29 @@ static unsigned char read_block(void)
  * read; DSK fetches its two physical sectors from the source first. DSK to
  * DSK is refused before opening the destination, so this source is always
  * PO or 2MG and its data offset is known. Every seek/read/write is checked. */
+static unsigned char write_output(const void* p, unsigned int len)
+{
+    /* Even a complete count may signal an error or ESC. Refuse before
+     * another write (including DiskCopy's final checksum) or verification.
+     * Only the exclusive output is owned; source and AUX stay intact. */
+    if (RF(fwrite)(p, 1, len, out) != len || ferror(out)) return 0;
+    if (stopped()) return 0;
+    return 1;
+}
+
 static unsigned char write_block(void)
 {
     unsigned char half, sector, i;
     long off;
     if (dkind != K_DSK)
-        return RF(fwrite)(buf, 1, 512, out) == 512;
+        return write_output(buf, 512);
     off = sbase + ((long)(n >> 3) << 12);
     sector = (unsigned char)(n & 7) << 1;
     for (half = 0; half < 2; ++half) {
         for (i = 0; SECT[i] != sector + half; ++i) {}
         if (RF(fseek)(in, off + ((long)i << 8), SEEK_SET) ||
             !read_source(buf, 256) ||
-            RF(fwrite)(buf, 1, 256, out) != 256) return 0;
+            !write_output(buf, 256)) return 0;
     }
     return 1;
 }
@@ -247,10 +276,18 @@ static void make_2mg_header(void)
  * generated header and exact EOF. The original destination is still named
  * normally here. Only a successful verification may install its replacement. */
 static unsigned char check[256];
+static unsigned char read_output(unsigned int len)
+{
+    /* Refuse before comparing or reading another half/header. Only our
+     * exclusive output is read/cleaned; source and AUX remain intact. */
+    if (RF(fread)(check, 1, len, out) != len || ferror(out)) return 0;
+    if (stopped()) return 0;
+    return 1;
+}
 static unsigned char header_matches(unsigned char len)
 {
     unsigned char i;
-    if (RF(fread)(check, 1, len, out) != len) return 0;
+    if (!read_output(len)) return 0;
     for (i = 0; i < len; ++i) if (check[i] != TRACK[i]) return 0;
     return 1;
 }
@@ -271,7 +308,7 @@ static unsigned char verify_output(const char* path)
         bad = !header_matches(84);
     }
     for (n = 0; n < blocks && !bad; ++n) {
-        if (*KBD == (KEY_ESC | 0x80)) { *STROBE = 0; bad = 1; break; }
+        if (stopped()) { bad = 1; break; }
         if (!(n & 7)) T.progress_bar(nname, n, blocks);   /* n = 0 redraws it: the check restarts */
         if (!read_block()) { bad = 1; break; }
         /* Half a block at a time: check holds 256 bytes. */
@@ -279,7 +316,7 @@ static unsigned char verify_output(const char* path)
         off = (long)(n >> 3) << 12;
         for (half = 0; half < 2 && !bad; ++half) {
             if ((dkind == K_DSK && RF(fseek)(out, off + ((long)SECT[sector + half] << 8), SEEK_SET)) ||
-                RF(fread)(check, 1, 256, out) != 256) {
+                !read_output(256)) {
                 bad = 1;
                 break;
             }
@@ -299,7 +336,7 @@ static unsigned char verify_output(const char* path)
     if (out) { if (ferror(out)) bad = 1; if (RF(fclose)(out)) bad = 1; }
     /* A late ESC must refuse installation while the original is intact.
      * Only our temporary/output may be cleaned by the caller; no AUX. */
-    if (*KBD == (KEY_ESC | 0x80)) { *STROBE = 0; bad = 1; }
+    if (stopped()) bad = 1;
     return !bad;
 }
 
@@ -313,7 +350,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     char* target;
     unsigned char k;
 
-    api->memcpy(&T, api, sizeof T);
+    api->memcpy(&T, api, IMGCONV_API_COPY);
     buf = T.copy_buf;
     pan = T.panels;
     oth = pan + 1;
@@ -430,27 +467,34 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     }
     k = dkind == K_DC ? 0xE0 : 0x06;
     *T.filetype = k; *T.auxtype = dkind == K_DC ? 0x8005 : 0;
+    /* Metadata/confirmation can deliver ESC. No output is owned yet;
+     * close only the read-only source, without any cleanup attempt. */
+    what = "Stopped";
+    if (stopped()) goto badsource;
     what = "Create";
     if (newfile(target, k, *T.auxtype, 1)) { RF(fclose)(in); goto err; }
     out = RF(fopen)(target, "wb");
     if (!out) { RF(fclose)(in); goto errrm2; }
 
+    /* CREATE/OPEN can deliver ESC too. Only this exclusive file is
+     * cleaned; neither the original destination nor AUX is modified. */
+    what = "Stopped";
+    if (stopped()) goto errrm;
     what = "Write";
     if (dkind == K_2MG) {
         make_2mg_header();
-        if (RF(fwrite)(TRACK, 1, 64, out) != 64) goto errrm;
+        if (!write_output(TRACK, 64)) goto errrm;
     }
     dc_sum = 0;
     if (dkind == K_DC) {                /* the checksum is filled in after */
         make_dc_header();
-        if (RF(fwrite)(TRACK, 1, 84, out) != 84) goto errrm;
+        if (!write_output(TRACK, 84)) goto errrm;
     }
     what = "Read";
     for (n = 0; n < blocks; ++n) {
         if (!(n & 7)) {
             T.progress_bar(nname, n, blocks);
-            if (*KBD == (KEY_ESC | 0x80)) {
-                *STROBE = 0;
+            if (stopped()) {
                 RF(fclose)(in);
                 RF(fclose)(out);
                 if (!replace_discard(target)) return;
@@ -466,7 +510,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     if (dkind == K_DC) {
         make_dc_header();
         what = "Write";
-        if (RF(fseek)(out, 0x48, SEEK_SET) || RF(fwrite)(TRACK + 0x48, 1, 4, out) != 4) goto errrm;
+        if (RF(fseek)(out, 0x48, SEEK_SET) || !write_output(TRACK + 0x48, 4)) goto errrm;
     }
     k = ferror(in) || ferror(out);
     if (RF(fclose)(in)) k = 1;

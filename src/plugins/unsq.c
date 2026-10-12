@@ -63,6 +63,7 @@ static unsigned long ocount;
 static unsigned long expected;          /* ACU's maximum output length */
 static unsigned char hdr[0x36];
 static char name[16];
+static unsigned char name_length;
 static char dest[PATH_LEN + 1];
 static unsigned char type, bad, checked, kept, folder;
 /* Counts of files, 16 bits: an ACU archive holds up to 65,535 records. */
@@ -116,7 +117,10 @@ static unsigned long le32(const unsigned char* p)
 
 static void flush(void)
 {
-    if (olen && RF(fwrite)(obuf, 1, olen, out) != olen) bad = 1;
+    /* ESC from a source refill must also precede the final partial flush.
+     * Only our exclusive output is owned; source and AUX stay read-only.
+     * Stop on write errors or ESC even with a complete byte count. */
+    if (olen && (stop() || RF(fwrite)(obuf, 1, olen, out) != olen || ferror(out) || stop())) bad = 1;
     olen = 0;
 }
 
@@ -124,7 +128,7 @@ static void putb(unsigned char c)
 {
     /* Refuse the first excess byte, including inside an RLE run. Only
      * the exclusively created output is writable; no source/AUX writes. */
-    if (ocount >= expected) { bad = 1; return; }
+    if (bad || ocount >= expected) { bad = 1; return; }
     osum += c;
     ++ocount;
     if (comparing) {
@@ -296,28 +300,37 @@ static void wrapper_name(void)
 /* A ProDOS name from n bytes of a name, its last component: upper case,
  * anything but letters, digits and periods a period, no leading
  * non-letter, 15 characters at most. */
-static void set_name(const unsigned char* s, unsigned char n)
+static void name_byte(unsigned char c)
 {
-    unsigned char k = 0, c;
-    while (n--) {
-        c = *s++;
-        if (c == '/' || c == ':') { k = 0; continue; }
+    if (c == '/' || c == ':') name_length = 0;
+    else {
         if (c >= 'a' && c <= 'z') c -= 32;
         if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.')) c = '.';
-        if (!k && !(c >= 'A' && c <= 'Z')) continue;
-        if (k < 15) name[k++] = c;
+        if ((name_length || (c >= 'A' && c <= 'Z')) && name_length < 15) {
+            name[name_length] = c;
+            ++name_length;
+        }
     }
-    name[k] = 0;
+    name[name_length] = 0;
+}
+
+static void set_name(const unsigned char* s, unsigned char n)
+{
+    name_length = 0; name[0] = 0;
+    while (n--) name_byte(*s++);
 }
 
 static unsigned char standalone(void)
 {
     unsigned int check;
-    unsigned char raw[64], n = 0, c;
+    unsigned char c;
     check = get16();
-    while ((c = getb()) != 0 && !eof) if (n < sizeof raw) raw[n++] = c;
+    /* Scan every component, retaining only the bounded ProDOS name.
+     * Truncating the header at 64 bytes could select a directory instead
+     * of its final name and incorrectly skip a collision. MAIN only. */
+    name_length = 0; name[0] = 0;
+    while ((c = getb()) != 0 && !eof) name_byte(c);
     if (eof) return 0;
-    set_name(raw, n);
     if (!name[0]) wrapper_name();
     type = a.selected->type;
     aux = a.selected->aux;

@@ -243,7 +243,7 @@ static unsigned char chunk(void)
         /* A refill can receive ESC while returning a complete text line.
          * Refuse before appending its bytes to our exclusive output. */
         if (stop()) { why = "Stopped"; return 0; }
-        if (RF(fwrite)(bytes, 1, k, out) != k) { why = "Write"; return 0; }
+        if (RF(fwrite)(bytes, 1, k, out) != k || ferror(out)) { why = "Write"; return 0; }
         if (!(++lines & 15)) a.progress_bar(name, written + seglen - left + k, total);
         if (stop()) { why = "Stopped"; return 0; }
     }
@@ -266,7 +266,10 @@ static unsigned char read_back(void)
         bs_sum = 0;
         for (left = lens[s]; left; left -= k) {
             k = left > 48 ? 48 : left;
-            if (stop() || RF(fread)(bytes, 1, k, f) != k) goto failed;
+            /* A full count can still carry an error or ESC. Refuse before
+             * CRC/progress or another read of our exclusively created file.
+             * Sources and AUX /RAM remain untouched. */
+            if (stop() || RF(fread)(bytes, 1, k, f) != k || ferror(f) || stop()) goto failed;
             if (k < 48) a.memset(bytes + k, 0, 48 - k);
             bs_crc(bytes);
             done += k;

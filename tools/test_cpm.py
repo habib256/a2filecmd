@@ -49,6 +49,7 @@ static int mode, reads, fail_at, creates,image_reads,image_seeks,output_writes;
 static char outdir[256], imagepath[256];
 static unsigned int completed, pending_reads;
 static unsigned char measuring_target;
+static unsigned int data_reads;
 
 /* The destination directory is a real one: CREATE, and the writes that
  * follow, work on files under it. */
@@ -74,7 +75,7 @@ static FILE* open_(const char* p,const char* m){
  if(!strcmp(p,full_)){image_file=fopen(imagepath,m);return image_file;}
  joinpath(path,p);f=fopen(path,m);verify_file=!strcmp(m,"rb")?f:NULL;return f;
 }
-static int remove_(const char* p){char path[300];joinpath(path,p);if((mode==11 || mode==16 || mode==18 || mode==20) && creates==fail_at)return -1;return remove(path);}
+static int remove_(const char* p){char path[300];joinpath(path,p);if(mode==45 || mode==46 || mode==48)return -1;if((mode==11 || mode==16 || mode==18 || mode==20) && creates==fail_at)return -1;return remove(path);}
 static unsigned long directory_offset(unsigned char logical){
  unsigned char physical=SKEW[skew][logical],k=physical==0 || physical==15?physical:15-physical;
  unsigned int block=RESERVED*8+(k>>1);
@@ -93,6 +94,9 @@ static size_t read_(void* p,size_t s,size_t n,FILE* f){
   if(mode==10 && n>1)errored=f; /* full count, error flag set */
  }
  result=fread(p,s,n,f);
+ if(mode>=43 && mode<=46 && f==image_file && creates==1 && !verify_file && dsec_at==0 && ++data_reads==fail_at){
+  cancelled=1;if(mode==44 || mode==46)errored=f;
+ }
  if((mode==41 || mode==42) && f==image_file && creates==1 && completed==0 && dsec_at==7){
   unsigned long offset=directory_offset(0)+(mode==42?32:0)+15;
   if(position<=(long)offset && position+(long)(s*result)>(long)offset)
@@ -139,6 +143,7 @@ static int seek_(FILE* f,long off,int whence){
 }
 static size_t write_(const void* p,size_t s,size_t n,FILE* f){
  ++output_writes;
+ if((mode==47 || mode==48) && output_writes==fail_at)cancelled=1;
  if(mode==3 && --fail_at==0) return 0;
  return fwrite(p,s,n,f);
 }
@@ -253,6 +258,32 @@ class Cpm(unittest.TestCase):
         return sorted(p.name for p in self.out.iterdir())
 
     # -- what must happen ---------------------------------------------------
+
+    def test_cancel_during_data_io_stops_before_later_output(self):
+        for size in (128,1536,17000):
+            payload=bytes(i%251 for i in range(size))
+            for skew in P.SKEWS:
+                po=P.make([('TARGET',payload)],skew=skew)
+                padded=P.contents(po,P.volume(po)['files'][0],skew)
+                sectors=(len(padded)+255)//256
+                for fmt,wrap in (('PO',bytes),('DSK',to_dsk),('2MG',to_2mg)):
+                    self.image=self.dir/('VOL.'+fmt);self.data=wrap(po)
+                    factor=2 if fmt=='DSK' else 1
+                    for mode in range(43,49):
+                        count=sectors*factor if mode<=46 else sectors
+                        for at in sorted({1,(count+1)//2,count}):
+                            with self.subTest(size=size,skew=skew,fmt=fmt,mode=mode,at=at):
+                                for p in self.out.iterdir():p.unlink()
+                                (self.out/'KEEP').write_bytes(b'preserve existing bytes')
+                                self.image.write_bytes(self.data)
+                                note=self.run_op(mode,at)
+                                writes=(at-1)//factor if mode<=46 else at
+                                self.assertEqual(self.output_writes,writes)
+                                expected={'KEEP':b'preserve existing bytes'}
+                                if mode in (45,46,48):expected['TARGET']=padded[:256*writes]
+                                self.assertEqual({p.name:p.read_bytes() for p in self.out.iterdir()},expected)
+                                self.assertEqual(self.creates,1);self.assertEqual(self.image_closes,1)
+                                self.assertIn('Cleanup failed' if mode in (45,46,48) else 'stopped',note)
 
     def test_changed_record_counts_never_verify_stale_size(self):
         for size in (1,1536,17000):

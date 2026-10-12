@@ -45,6 +45,7 @@ static unsigned char scratch[512], active_;
 static char note_text[120], full_[80];
 static int mode, reads, fail_at, creates, catalogue_reads;
 static unsigned int data_reads_, written_;
+static unsigned int verify_reads_,verify_source_reads_;
 static char outdir[256], imagepath[256];
 
 /* The destination directory is a real one: CREATE, and the writes that
@@ -71,10 +72,19 @@ static FILE* open_(const char* p,const char* m){
  if(!strcmp(p,full_)){image_file=fopen(imagepath,m);return image_file;}
  joinpath(path,p);f=fopen(path,m);verify_file=!strcmp(m,"rb")?f:NULL;return f;
 }
-static int remove_(const char* p){char path[300];joinpath(path,p);if(mode==51 || mode==54)return -1;if((mode==11 || mode==16 || mode==18 || mode==20) && creates==fail_at)return -1;return remove(path);}
+static int remove_(const char* p){char path[300];joinpath(path,p);if(mode>=59 && mode<=62)return -1;if(mode==51 || mode==54)return -1;if((mode==11 || mode==16 || mode==18 || mode==20) && creates==fail_at)return -1;return remove(path);}
 static size_t read_(void* p,size_t s,size_t n,FILE* f){
  long position=ftell(f);
  size_t result;
+ if(mode>=55 && mode<=62) {
+  if(f==image_file && verify_file)++verify_source_reads_;
+  if(f==verify_file && ++verify_reads_==fail_at) {
+   unsigned char event=(mode-55)%4;
+   if(event!=1)errored=f;
+   if(event==1 || event==2)cancelled=1;
+   if(event==3)return fread(p,s,n-1,f);
+  }
+ }
  ++reads; if(mode==2 && reads==fail_at) return 0;
  if(f==image_file && ((mode==14 && reads==fail_at) ||
     ((mode==15 || mode==16) && verify_file && creates==fail_at)))errored=f;
@@ -174,6 +184,7 @@ int main(int argc,char** argv){
  fprintf(stderr,"SOURCE-CLOSE %u\n",image_closes);
  fprintf(stderr,"CREATES %d\n",creates);
  fprintf(stderr,"DATA-WRITES %u\n",written_);
+ fprintf(stderr,"VERIFY-READS %u %u\n",verify_reads_,verify_source_reads_);
  printf("%s\n",note_text);
  return 0;
 }
@@ -226,6 +237,28 @@ class Pascal(unittest.TestCase):
         return sorted(p.name for p in self.out.iterdir())
 
     # -- what must happen ---------------------------------------------------
+
+    def test_readback_fault_stops_before_any_later_read(self):
+        for size in (1,513,1536):
+            payload=bytes(i%251 for i in range(size))
+            po=P.make('MYVOL',[('TARGET',3,payload)])
+            for fmt,wrap in (('PO',bytes),('DSK',to_dsk),('2MG',to_2mg)):
+                self.image=self.dir/('VOL.'+fmt);self.data=wrap(po)
+                count=(size+255)//256
+                for at in sorted({1,(count+1)//2,count}):
+                    for mode in range(55,63):
+                        with self.subTest(size=size,fmt=fmt,at=at,mode=mode):
+                            for p in self.out.iterdir():p.unlink()
+                            (self.out/'KEEP').write_bytes(b'preserve existing bytes')
+                            self.image.write_bytes(self.data)
+                            note=self.run_op(mode,at)
+                            reads=list(map(int,next(l.split()[1:] for l in self.trace if l.startswith('VERIFY-READS '))))
+                            self.assertEqual(reads,[at,((at+1)//2)*(2 if fmt=='DSK' else 1)])
+                            expected={'KEEP':b'preserve existing bytes'}
+                            if mode>=59:expected['TARGET']=payload
+                            self.assertEqual({p.name:p.read_bytes() for p in self.out.iterdir()},expected)
+                            self.assertEqual(self.creates,1);self.assertEqual(self.image_closes,1)
+                            self.assertIn('Cleanup failed' if mode>=59 else 'stopped',note)
 
     def test_every_file_comes_out_with_the_bytes_the_reference_reads(self):
         note = self.run_op()

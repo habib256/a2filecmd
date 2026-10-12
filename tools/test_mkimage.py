@@ -17,6 +17,7 @@ static const char* host;
 static char format;
 static char size_key;
 static int cancel_write;
+static unsigned int verify_reads;
 static int stream_error(FILE* f){return f==errored || ferror(f);}
 static unsigned char mli_(unsigned char cmd,void* p){
  struct Create* c=p;FILE* f;
@@ -42,6 +43,13 @@ static size_t write_(const void* p,size_t z,size_t n,FILE* f){
  return fwrite(p,z,n,f);
 }
 static size_t read_(void* p,size_t z,size_t n,FILE* f){
+ ++verify_reads;
+ if(fault>=30 && fault<=37 && verify_reads==cancel_write){
+  unsigned char event=(fault-30)%4;
+  if(event!=1 && event!=3)cancelled=1;
+  if(event)errored=f;
+  if(event==3)return fread(p,z,n-1,f);
+ }
  if(fault==17 && n==1)cancelled=1;
  if(fault==9 && n>1)return fread(p,z,n-1,f);
  if(fault==10 && n==1){errored=f;return 0;}
@@ -55,7 +63,7 @@ static int close_(FILE* f){
  if(verifying && fault>=18 && fault<=20)cancelled=1;
  return (fault==12 && closes==1) || ((fault==13 || fault==20) && closes==2)?-1:r;
 }
-static int remove_(const char* p){(void)p;++removes;return fault==14 || fault==19 || fault==24 || fault==25 || fault==28 || fault==29?-1:remove(host);}
+static int remove_(const char* p){(void)p;++removes;return (fault>=34 && fault<=37) || fault==14 || fault==19 || fault==24 || fault==25 || fault==28 || fault==29?-1:remove(host);}
 static char key_(void){return keys++? size_key:format;}
 static unsigned char prompt_(const char* l,const char* i,unsigned char h){(void)l;(void)i;(void)h;strcpy(a.input,"EMPTY");if(fault==21)cancelled=1;return 1;}
 static void message_(const char* p){(void)p;}
@@ -71,7 +79,8 @@ int main(int argc,char** argv){
  api.filetype=&type;api.auxtype=&aux;api.memcpy=memcpy;api.memset=memset;api.strcpy=strcpy;
  api.strlen=strlen;api.sprintf=sprintf;api.mli=mli_;api.fopen=open_;api.fwrite=write_;api.fread=read_;
  api.fclose=close_;api.remove=remove_;api.cgetc=key_;api.prompt=prompt_;api.message=message_;api.progress_bar=progress_;
- plugin_entry(&api);fprintf(stderr,"STATE %d %d %d %d\n",creates,opens,writes,closes);printf("%d|%s\n",removes,note);return 0;
+ plugin_entry(&api);fprintf(stderr,"STATE %d %d %d %d\n",creates,opens,writes,closes);
+ fprintf(stderr,"READS %u\n",verify_reads);printf("%d|%s\n",removes,note);return 0;
 }
 '''
 
@@ -96,7 +105,8 @@ class Mkimage(unittest.TestCase):
             path = Path(directory)/'image'
             if existing is not None:path.write_bytes(existing)
             result = subprocess.run([self.exe,path,str(fault),fmt,size,str(cancel_write)],text=True,capture_output=True,check=True)
-            self.state=list(map(int,result.stderr.split()[1:]))
+            self.state=list(map(int,next(l.split()[1:] for l in result.stderr.splitlines() if l.startswith('STATE '))))
+            self.verify_reads=int(next(l.split()[1] for l in result.stderr.splitlines() if l.startswith('READS ')))
             out=result.stdout.strip()
             return out, path.read_bytes() if path.exists() else None
 
@@ -198,6 +208,24 @@ class Mkimage(unittest.TestCase):
                                 self.assertTrue(retry.startswith('0|'),retry)
                                 self.assertEqual(self.state,[1,0,0,0])
                                 self.assertEqual(kept,prefix)
+                            else:self.assertIsNone(data)
+
+    def test_faulted_verification_read_prevents_later_reads(self):
+        for size,blocks in (('1',280),('2',1600),('6',32767)):
+            for fmt in ('P','2'):
+                _,expected=self.run_case(fmt=fmt,size=size)
+                count=blocks+int(fmt=='2')
+                for target in sorted({1,2,(count+1)//2,count}):
+                    for fault in range(30,38):
+                        with self.subTest(size=size,fmt=fmt,target=target,fault=fault):
+                            out,data=self.run_case(fault,fmt,size=size,cancel_write=target)
+                            self.assertEqual(self.verify_reads,target)
+                            self.assertEqual(self.state,[1,2,count,2])
+                            self.assertNotIn('Created',out)
+                            self.assertTrue(out.startswith('1|'),out)
+                            if fault>=34:
+                                self.assertIn('Cleanup failed',out)
+                                self.assertEqual(data,expected)
                             else:self.assertIsNone(data)
 
     def test_cancel_at_final_read_or_close_refuses_success(self):

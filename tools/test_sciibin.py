@@ -29,6 +29,7 @@ static int error_(FILE*);
 static FILE *errored,*verifying,*reading;
 static int error_(FILE* f){return f==errored || ferror(f);}
 static int fault, writes, argn;
+static unsigned int write_target,verify_target,verify_reads,verify_probes,verify_crc;
 static unsigned long output_bytes;
 static unsigned int verify_closes;
 static unsigned long verify_end;
@@ -64,6 +65,10 @@ static FILE* open_(const char* p, const char* m)
 static size_t write_(const void* p, size_t s, size_t n, FILE* f)
 {
     output_bytes+=s*n;
+    if(fault>=46 && fault<=49 && ++writes==write_target){
+        if(fault==47 || fault==49)return fwrite(p,s,n-1,f);
+        errored=f;
+    }
     if ((fault == 1 || fault == 4) && ++writes == 3) return n - 1;
     if (fault == 2 && ++writes == 3) { unsigned char c[64]; memcpy(c, p, n); c[0] ^= 1; return fwrite(c, s, n, f); }
     if(fault==5)errored=f;
@@ -74,7 +79,7 @@ static int close_(FILE* f)
     if (fault == 3 && f == writing) fputc('!', f);
     {
         int bad=((fault==9 || fault==19) && f==verifying) || (fault==10 && f==reading) || (fault==11 && f==writing);
-        if(f==verifying){++verify_closes;verify_end=ftell(f);}
+        if(f==verifying){++verify_closes;verify_end=ftell(f);verify_crc=bs_sum;}
         if(f==verifying && fault>=17 && fault<=19)cancelled=1;
         if(fault==15 && f==writing)cancelled=1;
         int r=fclose(f);if(f==errored)errored=NULL;
@@ -82,7 +87,7 @@ static int close_(FILE* f)
         return bad?-1:r;
     }
 }
-static int remove_(const char* p) { printf("REMOVE %s\n", strrchr(p, '/') + 1); return fault == 4 || fault==12 || fault==16 || fault==18 || fault==29 || fault==31 || fault==33 || fault==38 || fault==40 || fault==42 ? -1 : remove(p); }
+static int remove_(const char* p) { printf("REMOVE %s\n", strrchr(p, '/') + 1); return fault == 4 || fault==12 || fault==16 || fault==18 || fault==29 || fault==31 || fault==33 || fault==38 || fault==40 || fault==42 || fault==48 || fault==49 || (fault>=50 && fault<=57 && (fault&1)) ? -1 : remove(p); }
 static size_t read_(void* p, size_t s, size_t n, FILE* f) {
  if(f==reading && created && fault>=37 && fault<=45){
   unsigned char refill=fault>=43?fault-42:(fault-37)/2+1;
@@ -93,6 +98,13 @@ static size_t read_(void* p, size_t s, size_t n, FILE* f) {
   if((unsigned long)ftell(f)==512UL*refill){cancelled=1;if(fault>=34)errored=f;}
  }
  if(f==verifying){
+  if((unsigned long)ftell(f)>=written)++verify_probes;
+  else if(++verify_reads==verify_target && fault>=50 && fault<=57){
+   unsigned char event=(fault-50)/2;
+   if(event!=1)errored=f;
+   if(event==1 || event==2)cancelled=1;
+   if(event==3)return fread(p,s,n-1,f);
+  }
   if((fault==7 || fault==12) && n==1 && (unsigned long)ftell(f)>=written){errored=f;return 0;}
   if(fault==6 && (unsigned long)ftell(f)<written)errored=f;
  }
@@ -132,6 +144,8 @@ int main(int argc, char** argv)
     strcpy(sel.name, argv[3]);
     sel.type = 4;
     fault = atoi(argv[4]);
+    if(fault>=10000){verify_target=(fault-10000)/8;fault=50+(fault-10000)%8;}
+    else if(fault>=1000){write_target=(fault-1000)/4;fault=46+(fault-1000)%4;}
     sprintf(full, "%s/%s", argv[1], argv[3]);
     api.panels = panels; api.active = &active; api.selected = &sel; api.full = full;
     api.note = note; api.copy_buf = copy; api.dir_entry = &dirent;
@@ -143,9 +157,11 @@ int main(int argc, char** argv)
     plugin_entry(&api);
     printf("BARS %lu %lu\n", bars, overflows);
     printf("CHECK %u %lu\n",verify_closes,verify_end);
+    printf("VERIFY %u %u %u\n",verify_reads,verify_probes,verify_crc);
     printf("LIST %u %u\n",opens,dir_closes);
     printf("CALLS %u\n",create_calls);
     printf("WRITTEN %lu\n",output_bytes);
+    printf("WRITES %d\n",writes);
     printf("NOTE %s\n", note);
     return 0;
 }
@@ -207,7 +223,9 @@ class Sciibin(unittest.TestCase):
         removed = [l.split()[1] for l in lines if l.startswith('REMOVE ')]
         self.bars = [int(v) for l in lines if l.startswith('BARS ') for v in l.split()[1:]]
         self.verification = [int(v) for l in lines if l.startswith('CHECK ') for v in l.split()[1:]]
+        self.verify_reads,self.verify_probes,self.verify_crc=map(int,next(l[7:] for l in lines if l.startswith('VERIFY ')).split())
         self.output_bytes=int(next(l[8:] for l in lines if l.startswith('WRITTEN ')))
+        self.write_calls=int(next(l[7:] for l in lines if l.startswith('WRITES ')))
         self.list_state = [int(v) for l in lines if l.startswith('LIST ') for v in l.split()[1:]]
         self.create_calls = [int(l.split()[1]) for l in lines if l.startswith('CALLS ')][0]
         made = {p.name: p.read_bytes() for p in (case / 'D').iterdir() if p.is_file()}
@@ -241,6 +259,25 @@ class Sciibin(unittest.TestCase):
                     self.assertEqual(removed,['DOC'])
                     self.assertEqual(made,{'KEEP':b'old',**({'DOC':payload} if fault==12 else {})})
                     self.assertIn('Cleanup failed' if fault==12 else 'removed',note)
+
+    def test_write_error_stops_before_any_later_output(self):
+        for size in (49,2560,12289):
+            payload=bytes(i&255 for i in range(size))
+            encoded=ref.encode('DOC',payload)
+            count=(size+47)//48
+            for target in sorted({1,2,(count+1)//2,count}):
+                for mode in range(4):
+                    with self.subTest(size=size,target=target,mode=mode):
+                        note,created,removed,made=self.run_sb(
+                            [('D.BSC',encoded)],'D.BSC',1000+4*target+mode,existing=('KEEP',))
+                        self.assertEqual(created,[['DOC','06','0000']])
+                        self.assertEqual(removed,['DOC'])
+                        self.assertEqual(self.write_calls,target)
+                        self.assertEqual(self.output_bytes,min(48*target,size))
+                        self.assertEqual(self.verification,[0,0])
+                        kept=min(48*target,size)-(mode%2)
+                        self.assertEqual(made,{'KEEP':b'old',**({'DOC':payload[:kept]} if mode>=2 else {})})
+                        self.assertIn('Cleanup failed' if mode>=2 else 'removed',note)
 
     def test_cancel_during_data_refill_precedes_appending_decoded_bytes(self):
         for size in (768,1536,ref.SEGMENT+48):
@@ -283,6 +320,34 @@ class Sciibin(unittest.TestCase):
                     kept=fault in (38,40,42)
                     self.assertEqual(made,{'KEEP':b'old',**({'DOC':payload[:prefix]} if kept else {})})
                     self.assertIn('Cleanup failed' if kept else 'Read:',note)
+
+    def test_verify_fault_stops_before_checksum_or_later_reads(self):
+        for size in (1,49,513,2560,12289):
+            payload=bytes((i*17+23)&255 for i in range(size))
+            text=ref.encode('DOC',payload)
+            count=(size+47)//48
+            for multipart in (False,True):
+                files=([('P.%02d'%i,part) for i,part in enumerate(self.split(text))]
+                       if multipart else [('P.00',text)])
+                for target in sorted({1,min(2,count),(count+1)//2,count}):
+                    for event in range(4):
+                        for keep in (False,True):
+                            with self.subTest(size=size,multipart=multipart,target=target,event=event,keep=keep):
+                                note,created,removed,made=self.run_sb(files,'P.00',
+                                    10000+8*target+2*event+int(keep),existing=('KEEP',))
+                                self.assertEqual(created,[['DOC','06','0000']])
+                                self.assertEqual(removed,['DOC'])
+                                self.assertEqual(made,{'KEEP':b'old',**({'DOC':payload} if keep else {})})
+                                self.assertIn('Cleanup failed' if keep else 'removed',note)
+                                self.assertEqual(self.output_bytes,size)
+                                self.assertEqual(self.verify_reads,target)
+                                self.assertEqual(self.verify_probes,0)
+                                self.assertEqual(self.verification[0],1)
+                                before=48*(target-1)
+                                start=(before//ref.SEGMENT)*ref.SEGMENT
+                                self.assertEqual(self.verify_crc,ref.crc16(payload[start:before]))
+                                expected_end=min(48*target,size)-int(event==3)
+                                self.assertEqual(self.verification[1],expected_end)
 
     def test_chunks_cannot_exceed_declared_total_before_create_or_append(self):
         for size in (2,48,513):

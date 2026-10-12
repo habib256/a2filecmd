@@ -50,6 +50,9 @@ static int sync_ferror(FILE*);
 #include "src/plugins/sync.c"
 #undef ferror
 static unsigned int mode, opens, closes;
+static unsigned int renames, metadata_writes;
+static unsigned int creates, removes;
+static unsigned int io_target, io_counts[4];
 static unsigned char tree;
 static FILE* catalog;
 static FILE *verify_source, *verify_target, *read_error;
@@ -61,9 +64,14 @@ static FILE* sync_open(const char* p, const char* m) {
         data[4]=0xE1;data[35]=39;data[36]=13;
         for(i=0;i<2;++i) {
             e=data+43+39*i;e[0]=0x24+i;memcpy(e+1,i?"DATA2":"DATA",4+i);
+            if((mode==93 || mode==94) && !i)e[0]=0xD4;
             if(mode==34 && !i){e[0]=0x29;memcpy(e+1,"../VICTIM",9);}
             e[16]=6;e[19]=5;e[21]=0x40;e[22]=6;e[30]=0xE3;
             e[33]=33;e[34]=52;
+            if(mode>=95 && mode<=102) {
+                e[21]=size;e[22]=size>>8;
+                e[33]=meta.mdate;e[34]=meta.mdate>>8;
+            }
             if(mode==36)e[33]=1; /* month zero, date present */
             if(mode==37){e[33]=0xA1;e[34]=53;} /* month 13 */
             if(mode==38)e[33]=32; /* day zero */
@@ -85,32 +93,63 @@ static FILE* sync_open(const char* p, const char* m) {
     return f;
 }
 static size_t sync_read(void* p,size_t z,size_t n,FILE* f) {
+    if(mode>=64 && mode<=87) {
+        unsigned int phase=opens==2?0:f==verify_source?2:3;
+        unsigned int event=(mode-64)%6/2;
+        ++io_counts[phase];
+        if(phase==(mode-64)/6 && io_counts[phase]==io_target) {
+            if(!event)cancelled=1;else read_error=f;
+            if(event==2)return fread(p,z,n-1,f);
+        }
+    }
     if(n==1 && ((mode==6 && f==verify_source) || (mode==7 && f==verify_target))) {
         read_error=f;return 0;
     }
     {size_t got=fread(p,z,n,f);
     if(mode==35 && f==catalog)read_error=f;
+    if((mode==92 || mode==94) && f==catalog)cancelled=1;
     return got;}
 }
 static int sync_close(FILE* f) {
     int r=fclose(f);
     if(f==catalog){catalog=NULL;read_error=NULL;return r;}
     ++closes;
+    if(mode>=95 && mode<=100 && closes==4) {
+        FILE* changed=fopen(target,"wb");if(!changed)abort();
+        fputs("changed during copy",changed);fclose(changed);
+    }
+    if(mode>=54 && mode<=61 && closes==1+(mode-54)%4)cancelled=1;
     return ((mode>=8 && mode<=11 && closes==mode-7) || (mode==16 && closes==2)) ? EOF : r;
 }
 static int sync_remove(const char* p) {
+    ++removes;
     if(mode==13 && strstr(p,"A2FC.BAK"))return -1;
     if(mode>=15 && mode<=17 && strstr(p,"A2FC.SYNC"))return -1;
+    if(((mode>=58 && mode<=61) || mode==63) && strstr(p,"A2FC.SYNC"))return -1;
+    if(mode>=64 && mode<=87 && (mode-64)%2 && strstr(p,"A2FC.SYNC"))return -1;
     return remove(p);
 }
 static char oldpath[80],newpath[80];
 static unsigned char mock(unsigned char cmd,void* p) {
     FILE* f;unsigned char* pp;
-    if(cmd==0xC0){pp=((struct Create*)p)->path;memcpy(oldpath,pp+1,pp[0]);oldpath[pp[0]]=0;
+    if(cmd==0xC0){++creates;pp=((struct Create*)p)->path;memcpy(oldpath,pp+1,pp[0]);oldpath[pp[0]]=0;
         f=fopen(oldpath,"wx");if(!f)return 0x47;fclose(f);return 0;}
     if(cmd==0xC4){pp=((struct Info*)p)->path;memcpy(oldpath,pp+1,pp[0]);oldpath[pp[0]]=0;
+        if(mode==89 && !strcmp(oldpath,bak))cancelled=1;
         struct Info* ip=p;ip->access=0xE3;ip->storage=2;ip->mdate=ip->mtime=0;
         if(!strcmp(oldpath,target)) {
+            if(mode>=95 && mode<=102 && closes>=4) {
+                ip->mdate=meta.mdate;
+                if(mode==96)ip->mtime=1;
+                if(mode==97)++ip->mdate;
+                if(mode==98)ip->mdate+=512;
+                if(mode==99)ip->mdate=33;             /* 1999 -> 2000 */
+                if(mode==100)ip->mdate=(39<<9)|33;   /* 1940 -> 2039 */
+                if(mode==101)ip->mdate=(99<<9)|33;   /* 2000 > 1999 */
+                if(mode==102)ip->mdate=(40<<9)|33;   /* 2039 > 1940 */
+            }
+            if(mode==91 || mode==93)cancelled=1;
+            if((mode==62 || mode==63) && closes>=4)cancelled=1;
             if(mode==19 || (mode==20 && closes>=4))ip->access=0xC1;
             if(mode==21 && closes>=4)return 0x27;
             if(mode==22 && closes>=4)ip->storage=5;
@@ -128,7 +167,7 @@ static unsigned char mock(unsigned char cmd,void* p) {
             if(!strcmp(oldpath,sdir)){ip->storage=13;ip->blocks=1;return 0;}
         }
         f=fopen(oldpath,"rb");if(!f)return 0x46;fclose(f);return 0;}
-    if(cmd==0xC2){pp=((struct Rename*)p)->old;memcpy(oldpath,pp+1,pp[0]);oldpath[pp[0]]=0;
+    if(cmd==0xC2){++renames;pp=((struct Rename*)p)->old;memcpy(oldpath,pp+1,pp[0]);oldpath[pp[0]]=0;
         pp=((struct Rename*)p)->newpath;memcpy(newpath,pp+1,pp[0]);newpath[pp[0]]=0;
         if((mode==2 || mode==12) && strstr(oldpath,"A2FC.SYNC"))return 0x27;
         if(mode==12 && strstr(oldpath,"A2FC.BAK"))return 0x27;
@@ -139,11 +178,19 @@ static unsigned char mock(unsigned char cmd,void* p) {
         /* ProDOS RENAME never replaces an existing destination. */
         f=fopen(newpath,"rb");if(f){fclose(f);return 0x47;}
         return rename(oldpath,newpath)?0x27:0;}
-    if(cmd==0xC3)return mode==4?0x27:0;
+    if(cmd==0xC3){++metadata_writes;return mode==4?0x27:0;}
     abort();
 }
 static size_t write_fail(const void* p,size_t s,size_t n,FILE* f) {
     size_t written;
+    if(mode>=64 && mode<=87) {
+        unsigned int event=(mode-64)%6/2;
+        ++io_counts[1];
+        if((mode-64)/6==1 && io_counts[1]==io_target) {
+            if(!event)cancelled=1;else read_error=f;
+            if(event==2)return fwrite(p,s,n-1,f);
+        }
+    }
     if(mode==1 || mode==15)return 0;
     written=fwrite(p,s,n,f);
     if(mode==5 && ftell(f)==1600)fputc('X',f);
@@ -152,7 +199,7 @@ static size_t write_fail(const void* p,size_t s,size_t n,FILE* f) {
 static void clear_screen(void) {}
 static int print_screen(const char* s,...) {return 0;}
 static unsigned char confirm_sync(const char* s) {return 1;}
-static void show_source(const char* s) {if(mode==17)cancelled=1;}
+static void show_source(const char* s) {if(mode==17 || mode==90)cancelled=1;}
 static void sync_bar(const char* s,unsigned long d,unsigned long t) {fprintf(stderr,"BAR %s %lu %lu\n",s,d,t);}
 int main(int argc,char** argv) {
     unsigned char scratch[512], result;char msg[80]={0};
@@ -164,7 +211,13 @@ int main(int argc,char** argv) {
     strcpy(sdir,argv[1]);strcpy(ddir,argv[2]);join(source,sdir,"DATA");join(target,ddir,"DATA");
     if(!newer((30<<9)|33,0,(26<<9)|33,0) || newer((99<<9)|33,0,(0<<9)|33,0) ||
        !newer((26<<9)|33,0x0D00,(26<<9)|33,0x0C00))abort();
-    mode=atoi(argv[3]);cancelled=mode==3 || mode==17;size=strtoul(argv[4],0,10);meta.type=6;meta.aux=0;meta.access=0xE3;
+    mode=atoi(argv[3]);cancelled=mode==3 || mode==17 || mode==88;size=strtoul(argv[4],0,10);meta.type=6;meta.aux=0;meta.access=0xE3;
+    meta.mdate=(26<<9)|33;meta.mtime=0;
+    if(mode==99)meta.mdate=(99<<9)|33;
+    if(mode==100)meta.mdate=(40<<9)|33;
+    if(mode==101)meta.mdate=33;
+    if(mode==102)meta.mdate=(39<<9)|33;
+    if(mode>=1000){io_target=(mode-1000)/24;mode=64+(mode-1000)%24;}
     if(argc>5) {
         tree=1;strcpy(panels[0].path,sdir);strcpy(panels[1].path,ddir);
         a.panels=panels;a.active=&active;a.copy_buf=scratch;
@@ -173,6 +226,9 @@ int main(int argc,char** argv) {
         api=a;recovery=1; /* a fresh invocation must clear stale recovery state */
         plugin_entry(&api);result=copied;
     } else result=copy_file(1);
+    fprintf(stderr,"STATE %u %u %u %u\n",renames,metadata_writes,opens,closes);
+    fprintf(stderr,"IO %u %u %u %u\n",io_counts[0],io_counts[1],io_counts[2],io_counts[3]);
+    fprintf(stderr,"OWNED %u %u\n",creates,removes);
     printf("%u\n%u\n%s\n",result,recovery,msg);return 0;
 }
 '''
@@ -243,10 +299,29 @@ static unsigned char cancel_write,cancel_bar,cancel_close;
 static unsigned int write_calls,fail_write,read_calls,fail_read;
 static unsigned char keep_partial,show_creates;
 static unsigned int creates,index_reads,bitmap_reads;
+static unsigned int recovery_reads,cancel_data_read,error_data_read;
+static unsigned int validation_bitmaps,validation_indexes,cancel_bitmap,cancel_index;
+static FILE *recovery_output,*recovery_verify;
+static unsigned int corrupt_write,verify_reads,verify_probes,verify_closes;
+static unsigned int verify_error_at,verify_short_at,verify_cancel_at;
+static unsigned char append_output,verify_eof_error,verify_close_error,verify_cancel_close;
+static unsigned char verify_open_error;
+static unsigned int verify_source_reads,verify_source_error,verify_source_cancel;
 static unsigned char layout_fault;
 static FILE* undelete_errored;
 static int undelete_error(FILE* f){return f==undelete_errored;}
 static size_t read_directory(void* p,size_t s,size_t n,FILE* f){
+    if(f==recovery_verify) {
+        if((unsigned long)ftell(f)<size) {
+            ++verify_reads;
+            if(verify_reads==verify_error_at)undelete_errored=f;
+            if(verify_reads==verify_cancel_at)cancelled=1;
+            if(verify_reads==verify_short_at)return fread(p,s,n-1,f);
+        } else {
+            ++verify_probes;
+            if(verify_eof_error){undelete_errored=f;return 0;}
+        }
+    }
     size_t got=fread(p,s,n,f);
     if(f==directory_file && ++read_calls==fail_read)undelete_errored=f;
     return got;
@@ -261,7 +336,20 @@ static unsigned char mli(unsigned char cmd,void* p) {
             if(at==1+phase || at==3+phase)return 0x27;
         }
         if(fseek(diskfile,(long)b->block*512,SEEK_SET))return 0x27;
-        return fread(b->buffer,1,512,diskfile)==512?0:0x27;
+        if(fread(b->buffer,1,512,diskfile)!=512)return 0x27;
+        if(writing==2 && b->buffer==buf) {
+            ++verify_source_reads;
+            if(verify_source_reads==verify_source_cancel)cancelled=1;
+            if(verify_source_reads==verify_source_error)return 0x27;
+        }
+        if(!writing && b->block==6 && ++validation_bitmaps==cancel_bitmap)cancelled=1;
+        if(!writing && b->block==20 && b->buffer==idx && ++validation_indexes==cancel_index)cancelled=1;
+        if(writing && b->buffer==buf) {
+            ++recovery_reads;
+            if(recovery_reads==cancel_data_read)cancelled=1;
+            if(recovery_reads==error_data_read)return 0x27;
+        }
+        return 0;
     }
     if(cmd==0xC4) {                 /* the source volume: every block in use, as ProDOS says */
         struct Info* i=p;
@@ -288,18 +376,31 @@ static unsigned char mli(unsigned char cmd,void* p) {
 }
 /* The volume directory read as a file: its linked blocks, end to end. */
 static FILE* open_file(const char* path,const char* mode){
+    if(verify_open_error && strcmp(path,"/V") && !strcmp(mode,"rb"))return NULL;
     FILE* f=fopen(strcmp(path,"/V")?path:dirfile,mode);
+    if(strcmp(path,"/V")) {
+        if(!strcmp(mode,"wb"))recovery_output=f;
+        else if(!strcmp(mode,"rb"))recovery_verify=f;
+    }
     if(!strcmp(path,"/V"))directory_file=f;return f;
 }
 static int close_file(FILE* f){
-    unsigned char directory=f==directory_file;int result=fclose(f);
+    unsigned char directory=f==directory_file,verify=f==recovery_verify;
+    if(f==recovery_output && append_output)fputc('!',f);
+    int result=fclose(f);
+    if(f==recovery_output)recovery_output=0;
+    if(verify){++verify_closes;recovery_verify=0;if(verify_cancel_close)cancelled=1;if(verify_close_error)result=EOF;}
     if(f==undelete_errored)undelete_errored=0;
     if(directory){directory_file=0;if(++directory_closes==fail_close)return EOF;}
     else if(cancel_close)cancelled=1;
     return result;
 }
 static size_t write_file(const void* p,size_t size,size_t count,FILE* f){
-    size_t result=fwrite(p,size,count,f);
+    size_t result;
+    if(write_calls+1==corrupt_write) {
+        unsigned char changed[512];memcpy(changed,p,count);changed[0]^=1;
+        result=fwrite(changed,size,count,f);
+    } else result=fwrite(p,size,count,f);
     if(++write_calls==fail_write)undelete_errored=f;
     if(cancel_write)cancelled=1;return result;
 }
@@ -329,6 +430,21 @@ int main(int argc,char** argv) {
         else if(!strcmp(argv[i],"cancel-write"))cancel_write=1;
         else if(!strcmp(argv[i],"cancel-bar"))cancel_bar=1;
         else if(!strcmp(argv[i],"cancel-close"))cancel_close=1;
+        else if(!strncmp(argv[i],"cancel-data-read=",17))cancel_data_read=atoi(argv[i]+17);
+        else if(!strncmp(argv[i],"data-read-error=",16))error_data_read=atoi(argv[i]+16);
+        else if(!strncmp(argv[i],"cancel-bitmap=",14))cancel_bitmap=atoi(argv[i]+14);
+        else if(!strncmp(argv[i],"cancel-index=",13))cancel_index=atoi(argv[i]+13);
+        else if(!strncmp(argv[i],"corrupt-write=",14))corrupt_write=atoi(argv[i]+14);
+        else if(!strcmp(argv[i],"append-output"))append_output=1;
+        else if(!strncmp(argv[i],"verify-read-error=",18))verify_error_at=atoi(argv[i]+18);
+        else if(!strncmp(argv[i],"verify-short=",13))verify_short_at=atoi(argv[i]+13);
+        else if(!strncmp(argv[i],"verify-cancel-read=",19))verify_cancel_at=atoi(argv[i]+19);
+        else if(!strcmp(argv[i],"verify-eof-error"))verify_eof_error=1;
+        else if(!strcmp(argv[i],"verify-close-error"))verify_close_error=1;
+        else if(!strcmp(argv[i],"verify-cancel-close"))verify_cancel_close=1;
+        else if(!strcmp(argv[i],"verify-open-error"))verify_open_error=1;
+        else if(!strncmp(argv[i],"verify-source-error=",20))verify_source_error=atoi(argv[i]+20);
+        else if(!strncmp(argv[i],"verify-source-cancel=",21))verify_source_cancel=atoi(argv[i]+21);
     }
     api.panels=panels;api.active=&active;api.selected=&selected;api.note=note;api.copy_buf=scratch;
     api.mli=mli;api.fopen=open_file;api.fread=read_directory;api.fwrite=write_file;api.fseek=fseek;api.fclose=close_file;
@@ -337,6 +453,9 @@ int main(int argc,char** argv) {
     api.sprintf=sprintf;api.cgetc=getkey;api.confirm=yes;api.message=quiet;api.cputs=quiet;
     api.cprintf=noprint;api.clrscr=nothing;
     plugin_entry(&api);puts(note);fclose(diskfile);
+    fprintf(stderr,"RECOVERY %u %u\n",recovery_reads,write_calls);
+    fprintf(stderr,"CREATED %u\n",creates);
+    fprintf(stderr,"VERIFY %u %u %u\n",verify_reads,verify_probes,verify_closes);
     if(show_creates)printf("%u\n",creates);
     if(cancel_bar && write_calls!=7)return 31;
     if(cancel_write && write_calls!=1)return 32;
@@ -515,11 +634,112 @@ class SixPlugins(unittest.TestCase):
         out=self.root/'recovered';shutil.rmtree(out,ignore_errors=True);out.mkdir()
         if 'nested-output' in mode:
             (out/'A').mkdir();(out/'A'/'KEEP').write_bytes(b'preserve nested bytes')
-        note=subprocess.check_output([str(self.exe['undelete_root']),str(img),str(dirs),str(used),key,str(out)]+list(mode),
-                                     text=True,timeout=20).strip()
+        if 'keep-file' in mode:(out/'KEEP').write_bytes(b'preserve existing bytes')
+        if 'existing-data' in mode:(out/'DATA').write_bytes(b'preserve existing DATA')
+        run=subprocess.run([str(self.exe['undelete_root']),str(img),str(dirs),str(used),key,str(out)]+list(mode),
+                           text=True,capture_output=True,check=True,timeout=20)
+        note=run.stdout.strip()
+        self.recovery_io=list(map(int,next(l.split()[1:] for l in run.stderr.splitlines() if l.startswith('RECOVERY '))))
+        self.recovery_creates=int(next(l.split()[1] for l in run.stderr.splitlines() if l.startswith('CREATED ')))
+        self.recovery_verification=list(map(int,next(l.split()[1:] for l in run.stderr.splitlines() if l.startswith('VERIFY '))))
         self.assertEqual(img.read_bytes(),image,'the source volume was written')
         self.assertEqual(dirs.read_bytes(),directory,'the source directory was written')
         return note,out
+    def test_undelete_cancel_during_data_read_prevents_its_output_write(self):
+        for size in (1,513,4097):
+            payload=bytes(i%251 for i in range(size))
+            blocks=(size+511)//512
+            index=bytearray(512)
+            for i in range(blocks):index[i]=21+i
+            body=payload if blocks==1 else index+payload
+            deleted=[(3,4,b'DATA',20,1 if blocks==1 else blocks+1,size,body)]
+            for at in sorted({1,(blocks+1)//2,blocks}):
+                for event in ('cancel','error','both'):
+                    for keep in (False,True):
+                        with self.subTest(size=size,at=at,event=event,keep=keep):
+                            modes=['','keep-file']
+                            if event!='error':modes.append(f'cancel-data-read={at}')
+                            if event!='cancel':modes.append(f'data-read-error={at}')
+                            if keep:modes.append('keep-partial')
+                            note,out=self.undelete_root(deleted,'r',*modes)
+                            self.assertEqual(self.recovery_io,[at,at-1])
+                            expected={'KEEP':b'preserve existing bytes'}
+                            if keep:expected['DATA']=payload[:512*(at-1)]
+                            self.assertEqual({p.name:p.read_bytes() for p in out.iterdir()},expected)
+                            self.assertNotIn('Recovered',note)
+                            if keep:self.assertIn('Cleanup failed',note)
+
+    def test_undelete_cancel_during_final_validation_prevents_create(self):
+        for size in (0,1,513,4097):
+            payload=bytes(i%251 for i in range(size))
+            blocks=(size+511)//512
+            index=bytearray(512)
+            for i in range(blocks):index[i]=21+i
+            body=payload if blocks<=1 else index+payload
+            deleted=[(3,4,b'DATA',20,1 if blocks<=1 else blocks+1,size,body)]
+            events=['cancel-bitmap=2'] if blocks<=1 else ['cancel-bitmap=4','cancel-index=4']
+            for event in events:
+                for keep in (False,True):
+                    for collision in (False,True):
+                        with self.subTest(size=size,event=event,keep=keep,collision=collision):
+                            modes=['','keep-file',event]
+                            if keep:modes.append('keep-partial')
+                            if collision:modes.append('existing-data')
+                            note,out=self.undelete_root(deleted,'r',*modes)
+                            self.assertEqual(self.recovery_creates,0)
+                            self.assertEqual(self.recovery_io,[0,0])
+                            expected={'KEEP':b'preserve existing bytes'}
+                            if collision:expected['DATA']=b'preserve existing DATA'
+                            self.assertEqual({p.name:p.read_bytes() for p in out.iterdir()},expected)
+                            self.assertIn('Cancelled',note)
+
+    def test_undelete_verifies_closed_output_bytes_eof_and_io_before_success(self):
+        for size in (0,1,513,4097):
+            payload=bytes(i%251 for i in range(size))
+            blocks=(size+511)//512
+            index=bytearray(512)
+            for i in range(blocks):index[i]=21+i
+            body=payload if blocks<=1 else index+payload
+            deleted=[(3,4,b'DATA',20,1 if blocks<=1 else blocks+1,size,body)]
+            faults=['append-output','verify-eof-error','verify-close-error','verify-cancel-close','verify-open-error']
+            for at in sorted({1,(blocks+1)//2,blocks}) if blocks else ():
+                faults.extend(f'{kind}={at}' for kind in ('corrupt-write','verify-read-error','verify-short','verify-cancel-read','verify-source-error','verify-source-cancel'))
+            for fault in faults:
+                for keep in (False,True):
+                    with self.subTest(size=size,fault=fault,keep=keep):
+                        modes=['','keep-file',fault]
+                        if keep:modes.append('keep-partial')
+                        note,out=self.undelete_root(deleted,'r',*modes)
+                        self.assertNotIn('Recovered',note)
+                        self.assertEqual(self.recovery_verification[2],0 if fault=='verify-open-error' else 1)
+                        expected={'KEEP':b'preserve existing bytes'}
+                        if keep:
+                            actual=bytearray(payload)
+                            if fault=='append-output':actual+=b'!'
+                            if fault.startswith('corrupt-write='):actual[512*(int(fault.split('=')[1])-1)]^=1
+                            expected['DATA']=bytes(actual)
+                            self.assertIn('Cleanup failed',note)
+                        self.assertEqual({p.name:p.read_bytes() for p in out.iterdir()},expected)
+
+    def test_undelete_verifies_empty_seedling_and_sparse_index_layouts(self):
+        cases=[(0,1,b'',b''),(1,1,b'x',b'x')]
+        for tree in (False,True):
+            size=131073 if tree else 513
+            data=b'A'*512
+            index=bytearray(512);index[0]=22 if tree else 21
+            master=bytearray(512);master[0]=21
+            for swapped in (False,True):
+                transform=lambda b:b[256:]+b[:256] if swapped else b
+                body=(transform(master) if tree else b'')+transform(index)+data
+                cases.append((size,3 if tree else 2,body,data+bytes(size-512)))
+        for size,blocks,body,payload in cases:
+            with self.subTest(size=size,body=body[:2]):
+                note,out=self.undelete_root([(3,4,b'DATA',20,blocks,size,body)],'r','','keep-file')
+                self.assertIn('Recovered DATA',note)
+                self.assertEqual({p.name:p.read_bytes() for p in out.iterdir()},
+                                 {'KEEP':b'preserve existing bytes','DATA':payload})
+                self.assertEqual(self.recovery_verification,[(size+511)//512,1,1])
+
     def test_undelete_refuses_directory_close_errors(self):
         for block,slot,name,close in [(2,1,b'EARLY',1),(2,1,b'EARLY',2),(5,12,b'LAST',52)]:
             with self.subTest(block=block,slot=slot,close=close):
@@ -691,7 +911,7 @@ class SixPlugins(unittest.TestCase):
             output=subprocess.check_output([str(self.exe['sync']),str(s),str(d),str(mode),
                                         str(cached_size)]).splitlines()
             ok=output[0]==b'1'
-            self.assertEqual(output[1], b'1' if mode in (2,4,12,13,14,15,16,17,18,19,20,21,22,23) and not reserved else b'0')
+            self.assertEqual(output[1], b'1' if mode in (2,4,12,13,14,15,16,18,19,20,21,22,23) and not reserved else b'0')
             self.assertEqual((s/'DATA').read_bytes(),replacement)
             if mode==12:self.assertFalse((d/'DATA').exists())
             elif mode==18:self.assertEqual((d/'DATA').read_bytes(),b'late arrival')
@@ -699,11 +919,11 @@ class SixPlugins(unittest.TestCase):
             if reserved:self.assertEqual((d/reserved).read_bytes(),b'preexisting')
             else:
                 if mode in (2,12,14,16,18,19,20,21,22,23):self.assertEqual((d/'A2FC.SYNC').read_bytes(),replacement)
-                elif mode in (15,17):self.assertEqual((d/'A2FC.SYNC').read_bytes(),b'')
+                elif mode==15:self.assertEqual((d/'A2FC.SYNC').read_bytes(),b'')
                 else:self.assertFalse((d/'A2FC.SYNC').exists())
                 if mode in (4,12,13,18):self.assertEqual((d/'A2FC.BAK').read_bytes(),original)
                 else:self.assertFalse((d/'A2FC.BAK').exists())
-            if mode in (15,16,17):self.assertIn(b'cleanup failed',output[2])
+            if mode in (15,16):self.assertIn(b'cleanup failed',output[2])
             if mode in (12,18):self.assertIn(b'restore failed',output[2])
             return ok
     def test_sync_verified_replace(self):self.assertTrue(self.sync(0))
@@ -817,6 +1037,112 @@ class SixPlugins(unittest.TestCase):
             bars=[l.split()[1:] for l in run.stderr.decode().splitlines() if l.startswith('BAR ')]
             steps=[int(k) for k in range(0,1600,256)]
             self.assertEqual(bars,[['DATA',str(k),'1600'] for k in steps*2])
+    def test_sync_cancel_during_close_or_fresh_target_check_preserves_original(self):
+        for size in (0,1,1600):
+            replacement=bytes(i&255 for i in range(size))
+            for mode in range(54,64):
+                with self.subTest(size=size,mode=mode), tempfile.TemporaryDirectory(prefix='sync-stop-',dir='/tmp') as t:
+                    s=Path(t)/'S';d=Path(t)/'D';s.mkdir();d.mkdir()
+                    (s/'DATA').write_bytes(replacement)
+                    (d/'DATA').write_bytes(b'original')
+                    (d/'KEEP').write_bytes(b'untouched')
+                    run=subprocess.run([str(self.exe['sync']),str(s),str(d),str(mode),str(size)],
+                                       capture_output=True,text=True,check=True)
+                    self.assertEqual(run.stdout.splitlines()[0],'0')
+                    state=next(l.split()[1:] for l in run.stderr.splitlines() if l.startswith('STATE '))
+                    early=mode<=61 and (mode-54)%4<2
+                    self.assertEqual(list(map(int,state)),[0,0,2 if early else 4,2 if early else 4])
+                    self.assertEqual((s/'DATA').read_bytes(),replacement)
+                    keep=mode>=58 and mode<=61 or mode==63
+                    files={p.name:p.read_bytes() for p in d.iterdir()}
+                    self.assertEqual(files,{'DATA':b'original','KEEP':b'untouched',
+                                            **({'A2FC.SYNC':replacement} if keep else {})})
+                    if keep:self.assertIn('cleanup failed',run.stdout)
+
+    def test_sync_faulted_block_stops_before_any_later_io(self):
+        for size in (1,257,1600):
+            payload=bytes(i&255 for i in range(size))
+            blocks=(size+255)//256
+            for target in sorted({1,min(2,blocks),(blocks+1)//2,blocks}):
+                for phase in range(4):
+                    for event in range(3):
+                        for cleanup in range(2):
+                            with self.subTest(size=size,target=target,phase=phase,event=event,cleanup=cleanup), tempfile.TemporaryDirectory(prefix='sync-io-',dir='/tmp') as t:
+                                s=Path(t)/'S';d=Path(t)/'D';s.mkdir();d.mkdir()
+                                (s/'DATA').write_bytes(payload);(d/'DATA').write_bytes(b'original')
+                                (d/'KEEP').write_bytes(b'untouched')
+                                mode=1000+24*target+6*phase+2*event+cleanup
+                                run=subprocess.run([str(self.exe['sync']),str(s),str(d),str(mode),str(size)],
+                                                   capture_output=True,text=True,check=True)
+                                self.assertEqual(run.stdout.splitlines()[0],'0')
+                                io=next(l.split()[1:] for l in run.stderr.splitlines() if l.startswith('IO '))
+                                expected=([target,target-1,0,0] if phase==0 else
+                                          [target,target,0,0] if phase==1 else
+                                          [blocks,blocks,target,target-1] if phase==2 else
+                                          [blocks,blocks,target,target])
+                                self.assertEqual(list(map(int,io)),expected)
+                                state=next(l.split()[1:] for l in run.stderr.splitlines() if l.startswith('STATE '))
+                                self.assertEqual(list(map(int,state)),[0,0,2 if phase<2 else 4,2 if phase<2 else 4])
+                                prefix=(256*(target-1) if phase==0 else
+                                        min(256*target,size)-(event==2) if phase==1 else size)
+                                self.assertEqual({p.name:p.read_bytes() for p in d.iterdir()},
+                                                 {'DATA':b'original','KEEP':b'untouched',
+                                                  **({'A2FC.SYNC':payload[:prefix]} if cleanup else {})})
+                                self.assertEqual((s/'DATA').read_bytes(),payload)
+                                if cleanup:self.assertIn('cleanup failed',run.stdout)
+
+    def test_sync_cancel_before_create_never_mutates_destination(self):
+        for size in (0,1,1600):
+            payload=bytes(i&255 for i in range(size))
+            for mode in range(88,95):
+                for reserved in (None,'A2FC.SYNC','A2FC.BAK'):
+                    with self.subTest(size=size,mode=mode,reserved=reserved), tempfile.TemporaryDirectory(prefix='sync-create-stop-',dir='/tmp') as t:
+                        s=Path(t)/'S';d=Path(t)/'D';s.mkdir();d.mkdir()
+                        for name in ('DATA','DATA2'):(s/name).write_bytes(payload)
+                        original={'KEEP':b'untouched'}
+                        if mode<93:original.update(DATA=b'original',DATA2=b'another original')
+                        if reserved:original[reserved]=b'preexisting reserved file'
+                        for name,data in original.items():(d/name).write_bytes(data)
+                        args=[str(self.exe['sync']),str(s),str(d),str(mode),str(size)]
+                        if mode>=90:args.append('tree')
+                        run=subprocess.run(args,capture_output=True,text=True,check=True)
+                        owned=next(l.split()[1:] for l in run.stderr.splitlines() if l.startswith('OWNED '))
+                        self.assertEqual(list(map(int,owned)),[0,0])
+                        self.assertEqual(run.stdout.splitlines()[0],'0')
+                        self.assertEqual({p.name:p.read_bytes() for p in d.iterdir()},original)
+                        self.assertEqual({p.name:p.read_bytes() for p in s.iterdir()},
+                                         {'DATA':payload,'DATA2':payload})
+                        state=next(l.split()[1:] for l in run.stderr.splitlines() if l.startswith('STATE '))
+                        self.assertEqual(list(map(int,state)),[0,0,0,0])
+
+    def test_sync_rechecks_newer_timestamp_before_replacing_changed_target(self):
+        for size in (0,1,1600):
+            payload=bytes(i&255 for i in range(size))
+            for mode in range(95,103):
+                for tree in (False,True):
+                    with self.subTest(size=size,mode=mode,tree=tree), tempfile.TemporaryDirectory(prefix='sync-newer-',dir='/tmp') as t:
+                        s=Path(t)/'S';d=Path(t)/'D';s.mkdir();d.mkdir()
+                        names=('DATA','DATA2') if tree else ('DATA',)
+                        for name in names:
+                            (s/name).write_bytes(payload);(d/name).write_bytes(b'original')
+                        (d/'KEEP').write_bytes(b'untouched')
+                        args=[str(self.exe['sync']),str(s),str(d),str(mode),str(size)]
+                        if tree:args.append('tree')
+                        run=subprocess.run(args,capture_output=True,text=True,check=True)
+                        refused=mode<=100
+                        self.assertEqual(int(run.stdout.splitlines()[0]),0 if refused else len(names))
+                        state=list(map(int,next(l.split()[1:] for l in run.stderr.splitlines() if l.startswith('STATE '))))
+                        self.assertEqual(state[:2],[0,0] if refused else [2*len(names),len(names)])
+                        expected={'KEEP':b'untouched'}
+                        if refused:
+                            expected.update(DATA=b'changed during copy',**{'A2FC.SYNC':payload})
+                            if tree:expected['DATA2']=b'original'
+                            self.assertIn('SYNC stopped:',run.stdout)
+                        else:expected.update({name:payload for name in names})
+                        self.assertEqual({p.name:p.read_bytes() for p in d.iterdir()},expected)
+                        self.assertEqual({p.name:p.read_bytes() for p in s.iterdir()},
+                                         {name:payload for name in names})
+
     def test_sync_empty_file_replace(self):self.assertTrue(self.sync(0,cached_size=0,payload=b''))
     def test_sync_write_failure_keeps_original(self):self.assertFalse(self.sync(1))
     def test_sync_install_failure_rolls_back(self):self.assertFalse(self.sync(2))
@@ -841,8 +1167,10 @@ class SixPlugins(unittest.TestCase):
     def test_sync_backup_rename_failure_preserves_original(self):self.assertFalse(self.sync(14))
 
     def test_sync_combined_failure_and_cleanup_failure_keeps_output(self):
-        for mode in (15,16,17):
+        for mode in (15,16):
             with self.subTest(mode=mode):self.assertFalse(self.sync(mode))
+
+    def test_sync_already_cancelled_needs_no_cleanup(self):self.assertFalse(self.sync(17))
 
     def test_sync_late_collision_preserves_arrival_and_recovery_files(self):
         self.assertFalse(self.sync(18))
@@ -857,13 +1185,15 @@ class SixPlugins(unittest.TestCase):
                 output=subprocess.check_output([str(self.exe['sync']),str(s),str(d),str(mode),'1600','tree'],timeout=10).splitlines()
                 for name in ('DATA','DATA2'):self.assertEqual((s/name).read_bytes(),replacement)
                 self.assertEqual((d/'DATA2').read_bytes(),b'original' if mode else replacement)
-                self.assertEqual(output[1],b'1' if mode else b'0')
-                if mode:self.assertIn(b'SYNC stopped:',output[2])
+                self.assertEqual(output[1],b'1' if mode and mode!=17 else b'0')
+                if mode==17:self.assertIn(b'SYNC cancelled:',output[2])
+                elif mode:self.assertIn(b'SYNC stopped:',output[2])
                 else:self.assertIn(b'2 copied',output[2])
                 if mode in (12,18):self.assertIn(b'restore failed',output[2])
-                if mode in (15,16,17):self.assertIn(b'cleanup failed',output[2])
+                if mode in (15,16):self.assertIn(b'cleanup failed',output[2])
                 if mode in (2,12,14,16,18):self.assertEqual((d/'A2FC.SYNC').read_bytes(),replacement)
-                if mode in (15,17):self.assertEqual((d/'A2FC.SYNC').read_bytes(),b'')
+                if mode==15:self.assertEqual((d/'A2FC.SYNC').read_bytes(),b'')
+                if mode==17:self.assertFalse((d/'A2FC.SYNC').exists())
                 if mode in (4,12,13,18):self.assertEqual((d/'A2FC.BAK').read_bytes(),b'original')
 
 if __name__=='__main__':unittest.main()

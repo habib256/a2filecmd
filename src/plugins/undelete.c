@@ -5,8 +5,12 @@
 #define UTIL_INFO
 #define UTIL_CREATE
 #define UTIL_DISCARD
+#define UTIL_STUBS
+/* No configuration or media/AUX service is used; copy through selected. */
+#define UTIL_API_END cfg_path
 #include "util.h"
 #include "spin.h"
+#include <string.h>
 void __fastcall__ plugin_entry(const struct A2fcApi*);
 struct Header {unsigned int magic;unsigned char flags;void __fastcall__ (*entry)(const struct A2fcApi*);unsigned char r[3];char desc[22];};
 #pragma rodata-name(push,"OVLHDR")
@@ -42,11 +46,18 @@ static void data(unsigned int b) {
     if(!(logical&7))a.progress_bar(name,written,size);   /* logical 1 draws it */
     if(stop()){invalid=1;return;}
     n=size-written>512?512:(unsigned int)(size-written);
-    if(b){if(layout_read(b,buf)){invalid=1;return;}}
-    else a.memset(buf,0,512);
+    /* ESC can arrive during a successful block read. Refuse its bytes
+     * before writing to our exclusive output; source and AUX stay intact. */
+    if(b){if(layout_read(b,buf) || stop()){invalid=1;return;}}
+    else RF(memset)(buf,0,512);
     /* Only this run's exclusive output is written; a full count alone
      * cannot establish recovery success. Source and AUX stay untouched. */
-    if(a.fwrite(buf,1,n,out)!=n || ferror(out))invalid=1;written+=n;
+    /* Bitmap storage is free after validation. Reuse it for byte-for-byte
+     * read-back, without another buffer or AUX writes. */
+    if(writing==2) {
+        if(RF(fread)(bits,1,n,out)!=n || ferror(out) || stop() || memcmp(bits,buf,n))invalid=1;
+    } else if(RF(fwrite)(buf,1,n,out)!=n || ferror(out))invalid=1;
+    written+=n;
 }
 /* DESTROY swaps index halves: https://prodos8.com/docs/technote/23/
  * Normalize in RAM; never rewrite a freed source index. */
@@ -58,7 +69,7 @@ static void indexblock(unsigned int b) {
     unsigned int i;
     spin();   /* a tree file is up to 128 index blocks, checked twice */
     if(b){touch(b);if(invalid||layout_read(b,idx)){invalid=1;return;}}
-    else a.memset(idx,0,512);
+    else RF(memset)(idx,0,512);
     unflip(idx);
     for(i=0;i<256 && !invalid;++i)data(idx[i]|((unsigned int)idx[i+256]<<8));
 }
@@ -86,7 +97,7 @@ static unsigned char validate_layout(void) {
     if(e[16]==15 || !key || !rd16(e+19))return 0;
     do {
         if(stop()||layout_read(bitmap+base/4096,bits))return 0;
-        a.memset(seen,0,512);walk();if(invalid)return 0;
+        RF(memset)(seen,0,512);walk();if(invalid)return 0;
         if(total-base<=4096)break;base+=4096;
     }while(1);
     return 1;
@@ -104,16 +115,16 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
     FILE* f;unsigned int blocks,b;unsigned char slot,n,k,eligible,dunit;
     init(api);out=0;
     if(pan->fs || other->fs || !other->path[0]){note("Open recovery on another ProDOS volume.");return;}
-    a.strcpy(dir,pan->path[0]?pan->path:a.selected->name);
+    RF(strcpy)(dir,pan->path[0]?pan->path:a.selected->name);
     if(dir[0]!='/' || getinfo(dir) || (info.storage!=13 && info.storage!=15)){note("Select ProDOS source directory.");return;}
     blocks=info.blocks;
     if(info.storage==15) {
         /* On a volume GET_FILE_INFO counts every block in use, not the root
          * directory's: count the root's linked blocks, bounded by that. */
-        f=a.fopen(dir,"rb");if(!f){note("Cannot read source directory.");return;}
+        f=RF(fopen)(dir,"rb");if(!f){note("Cannot read source directory.");return;}
         b=0;
-        do{if(stop()||b==info.blocks||a.fread(db,1,512,f)!=512||ferror(f)){a.fclose(f);note("Directory read failed.");return;}++b;}while(rd16(db+2));
-        if(a.fclose(f)){note("Directory read failed.");return;}blocks=b;
+        do{if(stop()||b==info.blocks||RF(fread)(db,1,512,f)!=512||ferror(f)){RF(fclose)(f);note("Directory read failed.");return;}++b;}while(rd16(db+2));
+        if(RF(fclose)(f)){note("Directory read failed.");return;}blocks=b;
     }
     /* The directory is read through ProDOS by its path, the blocks by unit:
      * both must be the one volume. By name always -- unit_of refuses a name
@@ -128,10 +139,10 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
     for(b=0;b<blocks && !stop();++b) {
         for(slot=b?0:1;slot<13 && !stop();++slot) {
         spin();   /* each slot reopens the directory: seconds between candidates */
-        f=a.fopen(dir,"rb");if(!f){note("Cannot read source directory.");return;}
-        if(a.fseek(f,(unsigned long)b*512,SEEK_SET)||a.fread(db,1,512,f)!=512||ferror(f)){a.fclose(f);note("Directory read failed.");return;}
-        if(a.fclose(f)){note("Directory read failed.");return;}
-            a.memcpy(e,db+4+39*slot,39);
+        f=RF(fopen)(dir,"rb");if(!f){note("Cannot read source directory.");return;}
+        if(RF(fseek)(f,(unsigned long)b*512,SEEK_SET)||RF(fread)(db,1,512,f)!=512||ferror(f)){RF(fclose)(f);note("Directory read failed.");return;}
+        if(RF(fclose)(f)){note("Directory read failed.");return;}
+            RF(memcpy)(e,db+4+39*slot,39);
             if(e[0]>>4 || e[1]<'A' || e[1]>'Z')continue;
             /* A retained name length does not validate its bytes. Require
              * one ProDOS path component; retain prefix inference only when
@@ -139,7 +150,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
             for(n=0;n<15 && ((e[n+1]>='A'&&e[n+1]<='Z') || (e[n+1]>='0'&&e[n+1]<='9') || e[n+1]=='.');++n);
             if(!n || (e[0]&15)>n)continue;
             if(e[0]&15)n=e[0]&15;
-            a.memcpy(name,e+1,n);name[n]=0;
+            RF(memcpy)(name,e+1,n);name[n]=0;
             eligible=valid();if(cancelled)break;
             a.clrscr();a.cprintf("UNDELETE - READ ONLY\r\n%s/%s\r\n%lu bytes, %u blocks\r\n",dir,name,rd24(e+21),rd16(e+19));
             a.cputs(eligible?"Candidate: referenced blocks free.\r\n":"REFUSED: reused/ambiguous/invalid blocks.\r\n");
@@ -148,13 +159,26 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
             do{k=a.cgetc();}while(k!='n'&&k!='N'&&k!='r'&&k!='R'&&k!=KEY_ESC);
             if(k==KEY_ESC){note("Finished; source unchanged.");return;}
             if((k=='r'||k=='R') && eligible) {
-                if(!a.confirm("Recover to other volume?"))continue;
-                if(!valid()){a.message("Candidate no longer safe.");continue;}
-                if(!join(dest,other->path,name)||newfile(dest,e[16],rd16(e+31),1)){a.message("Cannot create output (name in use?).");continue;}
-                out=a.fopen(dest,"wb");if(!out){if(!discard(dest))return;a.message("Cannot open output.");continue;}
+                if(!RF(confirm)("Recover to other volume?"))continue;
+                /* Validation can receive ESC while its last read succeeds.
+                 * Refuse before CREATE, including empty recovered files. */
+                if(!valid() || stop()){RF(message)("Candidate no longer safe.");continue;}
+                if(!join(dest,other->path,name)||newfile(dest,e[16],rd16(e+31),1)){RF(message)("Cannot create output (name in use?).");continue;}
+                out=RF(fopen)(dest,"wb");if(!out){if(!discard(dest))return;RF(message)("Cannot open output.");continue;}
                 invalid=0;writing=1;walk();writing=0;
-                if(a.fclose(out)||stop())invalid=1;out=0;
-                if(invalid){if(!discard(dest))return;a.message("Recovery failed; partial output removed.");}
+                if(RF(fclose)(out)||stop())invalid=1;out=0;
+                /* Only the owned, closed recovery is read back. Replay
+                 * the source layout, compare every byte and require EOF. */
+                if(!invalid) {
+                    out=RF(fopen)(dest,"rb");
+                    if(!out)invalid=1;
+                    else {
+                        writing=2;walk();writing=0;
+                        if(!invalid && (RF(fread)(bits,1,1,out) || ferror(out)))invalid=1;
+                        if(RF(fclose)(out) || stop())invalid=1;out=0;
+                    }
+                }
+                if(invalid){if(!discard(dest))return;RF(message)("Recovery failed; partial output removed.");}
                 else {a.sprintf(a.note,"Recovered %s; source unchanged.",name);return;}
             }
         }
