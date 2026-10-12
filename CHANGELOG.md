@@ -15,6 +15,10 @@ downloads and installation.
 
 ## 0.9.7 in detail
 
+- Preserve automatic IMAGE routing for extracted Koala HGR saves at $4000
+  with 8,184–8,191 bytes. Check both load addresses and reject read/seek/close
+  errors; retain both native overlay limits.
+
 - Rebuild BOOT before qualification and reject stale legacy boot fixtures.
   Keep disk-swap companions within 140K using explicit bench selections,
   with filtered catalogs and byte-preservation regression checks.

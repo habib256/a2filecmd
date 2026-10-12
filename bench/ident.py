@@ -120,13 +120,13 @@ def main():
             return '%s (%d bytes): %s' % (name, size[name], what)
 
         cases = [
-            ('SAMPLE.SHK', expect('SAMPLE.SHK', 'ShrinkIt archive (NuFX)')),
+            ('SAMPLE.SHK', expect('SAMPLE.SHK', 'ShrinkIt (NuFX)')),
             ('SAMPLE.BNY', expect('SAMPLE.BNY', 'Binary II archive')),
-            ('LETTER', expect('LETTER', 'AppleWorks word processor')),
-            ('HELLO', expect('HELLO', 'Applesoft BASIC program')),
-            ('HELLO2', expect('HELLO2', 'Applesoft BASIC program')),
-            ('HGR', expect('HGR', 'HGR picture, 8K')),
-            ('DHGR', expect('DHGR', 'DHGR picture, 16K (two planes)')),
+            ('LETTER', expect('LETTER', 'AppleWorks word')),
+            ('HELLO', expect('HELLO', 'Applesoft BASIC')),
+            ('HELLO2', expect('HELLO2', 'Applesoft BASIC')),
+            ('HGR', expect('HGR', 'HGR picture 8K')),
+            ('DHGR', expect('DHGR', 'DHGR picture 16K')),
             ('WELCOME.MB', expect('WELCOME.MB', 'Mockingboard music (MB1)')),
             ('TINY.PO', expect('TINY.PO', 'ProDOS disk image, 140K')),
             ('TINY.2MG', expect('TINY.2MG', '2IMG disk image')),

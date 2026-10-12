@@ -115,6 +115,16 @@ class Formats(unittest.TestCase):
    self.assertIn('Newsroom panel',self.call('ident',data,'PN.PANEL',aux=0x4000,dos=dos))
    for fault in (1,2,3):
     if not dos:self.assertEqual(self.call('ident',data,'PN.PANEL',aux=0x4000,arg=13,fault=fault).strip(),'')
+ def test_koala_saved_hgr_metadata_routes_after_complete_checked_read(self):
+  for aux in (0x2000,0x4000):
+   for size in (8184,8188,8191,8192):
+    data=bytes(size)
+    for key in (ord('O'),ord('I'),13):
+     self.assertEqual(self.call('ident',data,'PICTR.HOUSE',aux=aux,arg=key).strip(),'IMAGE')
+    for fault in (1,2,3):
+     self.assertEqual(self.call('ident',data,'PICTR.HOUSE',aux=aux,arg=13,fault=fault).strip(),'')
+  for aux,size in ((0x4000,8183),(0x6000,8184)):
+   self.assertEqual(self.call('ident',bytes(size),'DATA',aux=aux,arg=13).strip(),'HEX')
  def test_automatic_routing_has_explicit_dos_eligibility(self):
   from test_newsdoc import panel,page
   cases=[('PN.PANEL',6,0x4000,panel(),'NEWSPAN','NEWSPAN'),('PG.PAGE',6,0x98a5,page(),'NEWSPAGE','NEWSPAGE'),

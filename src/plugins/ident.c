@@ -240,9 +240,9 @@ static const char* identify(void)
         return e->aux == 0xE001 ? "816/Paint packed HGR"
                                 : "816/Paint packed DHGR";
     if (!SZ[1]) {
-        if (SZ[0] == 16384) return "DHGR picture, 16K";
-        if (SZ[0] == 8192 || (SZ[0] >= 8184 && SZ[0] < 8192 && t == 6 && e->aux == 0x2000))
-            return "HGR picture, 8K";
+        if (SZ[0] == 16384) return "DHGR picture 16K";
+        if (SZ[0] == 8192 || (SZ[0] >= 8184 && SZ[0] < 8192 && t == 6 && (e->aux == 0x2000 || e->aux == 0x4000)))
+            return "HGR picture 8K";
     }
     if (t == 8) return "Hi-res picture (FOT), raw";
     if (magic("MB1")) return "Mockingboard music (MB1)";
