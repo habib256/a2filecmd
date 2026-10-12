@@ -106,7 +106,9 @@ static unsigned char pass(const unsigned char* e,FILE* out,unsigned char verify)
          * The image and AUX remain untouched. */
         if(!sector(start+j) || stop())return 0;
         if(verify) {
-            if(RF(fread)(back,1,256,out)!=256 || ferror(out) || memcmp(back,buf,256))return 0;
+            /* ESC during read-back must precede comparison and progress.
+             * Only our exclusive output is read; image and AUX stay intact. */
+            if(RF(fread)(back,1,256,out)!=256 || ferror(out) || stop() || memcmp(back,buf,256))return 0;
         } else if(RF(fwrite)(buf,1,256,out)!=256 || ferror(out))return 0;
         a.progress_bar(name,j+1,e[1]);
         if(stop())return 0;

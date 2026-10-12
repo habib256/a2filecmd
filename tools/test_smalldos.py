@@ -29,12 +29,34 @@ static void progress_(const char* n,unsigned long d,unsigned long t){
 ''')
 HARNESS = HARNESS.replace('api.fseek=fseek;','api.fseek=seek_;')
 
+# Track use of a destination read after the injected cancellation/error.
+HARNESS=HARNESS.replace('#include "src/plugins/smalldos.c"',
+    'static int compare_(const void*,const void*,size_t);\n#define memcmp compare_\n'
+    '#include "src/plugins/smalldos.c"\n#undef memcmp')
+HARNESS=HARNESS.replace('static unsigned int verify_reads_,verify_source_reads_;',
+    'static unsigned int verify_reads_,verify_source_reads_;\n'
+    'static unsigned int faulted_read_,compares_after_,progress_after_;\n'
+    'static int compare_(const void* x,const void* y,size_t n){'
+    'if(faulted_read_)++compares_after_;return memcmp(x,y,n);}')
+HARNESS=HARNESS.replace('static void progress_(const char* n,unsigned long d,unsigned long t){',
+    'static void progress_(const char* n,unsigned long d,unsigned long t){'
+    'if(faulted_read_)++progress_after_;')
+HARNESS=HARNESS.replace('static int remove_(const char* p){',
+    'static int remove_(const char* p){if(mode>=47 && mode<=50)return -1;')
+
 # Keep the SMALLDOS reader independent of Pascal catalogue fault hooks.
 # The shared service setup can evolve without importing Pascal globals.
 read_start=HARNESS.index('static size_t read_(')
 read_end=HARNESS.index('static size_t write_(',read_start)
 HARNESS=HARNESS[:read_start]+r'''static size_t read_(void* p,size_t s,size_t n,FILE* f){
  size_t result;
+ if(f==verify_file && n==256 && mode>=43 && mode<=50 && ++verify_reads_==fail_at){
+  unsigned char event=(mode-43)%4;
+  faulted_read_=1;
+  if(event!=0)errored=f;
+  if(event==0 || event==2)cancelled=1;
+  return fread(p,s,event==3 ? n-1 : n,f);
+ }
  ++reads;if(mode==2 && reads==fail_at)return 0;
  if(f==image_file && ((mode==14 && reads==fail_at) ||
     ((mode==15 || mode==16) && verify_file && creates==fail_at)))errored=f;
@@ -58,7 +80,8 @@ HARNESS=HARNESS.replace(" strcpy(sel.name,strrchr(imagepath,'/')+1);",
 HARNESS=HARNESS.replace('static size_t write_(const void* p,size_t s,size_t n,FILE* f){','static size_t write_(const void* p,size_t s,size_t n,FILE* f){++writes;')
 HARNESS=HARNESS.replace('static int remove_(const char* p){','static int remove_(const char* p){if(mode==42)return -1;')
 HARNESS=HARNESS.replace(' fprintf(stderr,"CREATES %d\\n",creates);',
-                        ' fprintf(stderr,"CREATES %d\\n",creates);fprintf(stderr,"WRITES %d\\n",writes);')
+                        ' fprintf(stderr,"CREATES %d\\n",creates);fprintf(stderr,"WRITES %d\\n",writes);'
+                        'fprintf(stderr,"VERIFY-USE %u %u %u\\n",verify_reads_,compares_after_,progress_after_);')
 
 
 FILES=[('MENU','A',b'\x08\x08\x0a\0\x80\0\0\0'),
@@ -90,6 +113,7 @@ class SmallDos(unittest.TestCase):
             self.creates=int(next(l.split()[1] for l in trace if l.startswith('CREATES ')))
             self.closes=int(next(l.split()[1] for l in trace if l.startswith('SOURCE-CLOSE ')))
             self.writes=int(next(l.split()[1] for l in trace if l.startswith('WRITES ')))
+            self.verify_reads,self.compares_after,self.progress_after=map(int,next(l for l in trace if l.startswith('VERIFY-USE ')).split()[1:])
             self.types=[tuple(map(int,l.split()[1:])) for l in trace if l.startswith('TYPE ')]
             return result.stdout.strip(),{f.name:f.read_bytes() for f in out.iterdir()}
 
@@ -114,6 +138,28 @@ class SmallDos(unittest.TestCase):
                                 self.assertEqual(self.writes,at-1)
                                 self.assertEqual(self.creates,1);self.assertEqual(self.closes,1)
                                 self.assertIn('Cleanup failed' if mode==42 else 'stopped',note)
+
+    def test_verify_cancel_stops_before_comparison_and_progress(self):
+        for size in (1,513,4097):
+            payload=bytes(i%251 for i in range(size))
+            sectors=(size+255)//256
+            for flip in (False,True):
+                for order in ('dos','prodos'):
+                    data=ref.make([('TARGET','B',payload)],flip=flip,order=order)
+                    padded=self.expected(data,order)['TARGET']
+                    for at in sorted({1,(sectors+1)//2,sectors}):
+                        for mode in range(43,51):
+                            with self.subTest(size=size,flip=flip,order=order,mode=mode,at=at):
+                                note,files=self.run_image(data,mode,at,order)
+                                expected={'KEEP':b'existing bytes'}
+                                if mode>=47:expected['TARGET']=padded
+                                self.assertEqual(files,expected)
+                                self.assertEqual(self.writes,sectors)
+                                self.assertEqual(self.creates,1);self.assertEqual(self.closes,1)
+                                self.assertIn('Cleanup failed' if mode>=47 else 'stopped',note)
+                                self.assertEqual(self.verify_reads,at)
+                                self.assertEqual(self.compares_after,0)
+                                self.assertEqual(self.progress_after,0)
 
     def test_both_track_directions_and_sector_orders(self):
         for flip in (False,True):
