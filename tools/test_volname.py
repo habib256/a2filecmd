@@ -94,6 +94,9 @@ int main(int argc, char** argv) {
     api.mli = mock_mli; api.strcpy = strcpy; api.strlen = strlen;
     api.read_panel = reread; api.draw_all = redraw;
     plugin_entry(&api);
+    /* Native panel tables overlap a big overlay. The resident owns the
+     * redraw after return; no scenario may request it while executing. */
+    if (reads || draws) return 45;
     if (note[0] && strcmp(note, shown)) return 41;
     if (scenario == 18) {
         if (memcmp(disk, before, 512) || sets || renames || reads || draws || reports) return 42;
@@ -110,7 +113,7 @@ int main(int argc, char** argv) {
             if (!strstr(shown, "Path too long")) return 34;
         } else {
             before[4] = 0xF6; memcpy(before + 5, "LONGER", 6);
-            if (memcmp(disk, before, 512) || renames != 1 || reads != 2 || draws != 1 || reports) return 35;
+            if (memcmp(disk, before, 512) || renames != 1 || reports) return 35;
             if (strcmp(panels[0].path, "/LONGER/WORK") || strcmp(panels[1].path, "/LONGER/DATA")) return 36;
             if (scenario == 16 && (strlen(cfg) != 63 || memcmp(cfg, "/LONGER/", 8))) return 37;
             if (scenario == 17 && (strlen(cfg) != 63 || memcmp(cfg, "/OLDISH/", 8))) return 38;
@@ -121,7 +124,7 @@ int main(int argc, char** argv) {
     if (scenario == 0 || scenario == 10 || scenario == 12) {
         before[4] = 0xF3; memcpy(before + 5, "NEW", 3);
         if (memcmp(disk, before, 512)) return 10;
-        if (renames != (scenario == 12 ? 2 : 1) || reads != 2 || draws != 1 || reports != (scenario == 10)) return 11;
+        if (renames != (scenario == 12 ? 2 : 1) || reports != (scenario == 10)) return 11;
         if (strcmp(panels[0].path, "/NEW/WORK") || strcmp(panels[1].path, "/NEW/DATA")) return 12;
         if (strcmp(cfg, "/NEW/A2FILE/A2FILE.CFG")) return 13;
         if (scenario != 10 && (prefix[0] != 4 || memcmp(prefix + 1, "/NEW", 4))) return 14;

@@ -6568,6 +6568,9 @@ retour, pour survivre au rafraîchissement des panneaux. Les confirmations
 et écritures de renommage restent les mêmes ; aucune écriture AUX n'est
 ajoutée. **19 scénarios par CPU** exécutent le vrai C et l'assembleur,
 avec contrôle des octets du volume et du préfixe lors des erreurs MLI,
-annulations et refus d'une image. VOLNAME mesure **1 302/1 287 octets** en
+annulations et refus d'une image. Aucun scénario ne relit les panneaux
+pendant l'exécution : leurs tables à $2000 peuvent écraser les DATA/BSS
+d'une grande surcouche. Le résident assure cette relecture après le retour.
+VOLNAME mesure **1 259/1 244 octets** en
 65C02/6502. Après ces deux corrections, **258 des 262 binaires sont
 identiques** : seuls IDFORMATS et VOLNAME changent sur chaque architecture.

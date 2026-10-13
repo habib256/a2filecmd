@@ -39,6 +39,7 @@ def main():
                     if name=='FONT.LONDON':
                         s.key(b'\x15');s.wait(lambda:s.has('$22'),'next glyph',10)
                         for _ in range(20):s.key(b'\x0a',pause=0.04)
+                        s.wait(lambda:s.has('rows'),'font redraw after scrolling',15)
                         s.ok('Font vertical scrolling',s.has('rows') and not s.has('error'))
                     s.key(ESC);s.wait(lambda:s.has('Type  Aux'),'reader exit',30);p.stable()
                 if not dos:

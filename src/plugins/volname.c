@@ -101,8 +101,6 @@ static void tramp(void)
 static void __fastcall__ display_message(const char* s) STUB(message)
 static unsigned char __fastcall__ prompt(const char* label, const char* initial, unsigned int hex) STUB(prompt)
 static void __fastcall__ report_error(const char* what) STUB(report_error)
-static void __fastcall__ draw_all(unsigned int unused) STUB(draw_all)
-static unsigned char __fastcall__ read_panel(unsigned int i) STUB(read_panel)
 static unsigned char __fastcall__ mli(unsigned char cmd, void* block) STUB(mli)
 static char* __fastcall__ scpy(char* d, const char* s) STUB(strcpy)
 static unsigned char __fastcall__ slen(const char* s) STUB(strlen)
@@ -252,12 +250,11 @@ restore:
     fix((char*)api->cfg_path);
 
     scpy(done + DONE_NAME, (char*)NEW + 1);
-    read_panel(0);
-    read_panel(1);
-    draw_all(0);
-    /* Report this last MLI error after the panel reads, which may change
-     * ProDOS's error byte. The volume and its absolute paths already moved;
-     * never rename it again or announce complete success on prefix failure. */
+    /* The resident rereads both panels AFTER this big overlay returns.
+     * Their entry tables start at $2000 and can overwrite this overlay's
+     * DATA/BSS while it is still running. Do not call read_panel here.
+     * The volume and its absolute paths already moved; never rename it
+     * again or announce complete success on prefix failure. */
     if (set_prefix(NEW)) report_error(m_fail);
     else msg(done);
 }
