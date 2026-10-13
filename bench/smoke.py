@@ -58,7 +58,7 @@ def main():
             head = s.rows()[1]
             s.key(b'S'); p.stable()
             s.ok('S change le tri depuis la disquette (TEXT.PLG)',
-                 s.rows()[1] != head and not s.has('missing or stale'), s.rows()[1][:38])
+                 s.rows()[1] != head and not s.has('not valid.'), s.rows()[1][:38])
             s.key(b'S'); p.stable(); s.key(b'S'); p.stable()
             s.ok('trois S ramenent au tri par nom', s.rows()[1] == head, s.rows()[1][:38])
             s.key(b"'"); s.wait(lambda: s.has('Jump to name'), 'saut par initiale', 30)

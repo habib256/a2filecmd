@@ -20,9 +20,9 @@ def main():
    guard=bytes([0xEE])*(end-start);p.poke(start,guard)
    aux=p.peek(0x1000,0xB000,'aux')
    for attempt in range(2):
-    s.key(b'!');s.wait(lambda:s.has('MENU.PLG is missing or stale'),'oversized code refused')
+    s.key(b'!');s.wait(lambda:s.has('A2FILE/MENU.PLG not valid.'),'oversized code refused')
     p.stable();s.ok('Failed big load restores file names '+str(attempt),s.has('KEEP'))
-   s.key(b'?');s.wait(lambda:not s.has('MENU.PLG is missing or stale'),'normal help loads')
+   s.key(b'?');s.wait(lambda:not s.has('A2FILE/MENU.PLG not valid.'),'normal help loads')
    s.key(b'\x1b');p.stable();s.ok('Normal overlay returns to intact panels',s.has('KEEP'))
    s.ok('192-byte stack guard preserved',p.peek(start,len(guard))==guard)
    s.ok('AUX untouched',p.peek(0x1000,0xB000,'aux')==aux)

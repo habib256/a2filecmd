@@ -6528,3 +6528,22 @@ de passer les tests de comptage, repères de 64 fiches, catégories, tailles
 périmées et erreurs d'E/S. Banc POM2 : **66/66 contrôles par CPU** sur HD
 jetables, avec conservation des nombres ROM, volume, AUX occupé et garde de pile.
 Les quatre images disque passent leurs contrôles de disposition.
+
+## 13 octobre 2026 — Koala et qualification de la pile
+
+IDENT accepte les images HGR Koala sauvegardées en BIN $4000 de
+8 184 à 8 191 octets, comme celles à $2000. Les descriptions des pages
+HGR/DHGR perdent une virgule pour conserver la limite native inchangée.
+IDENT : **9 160/9 352 octets**, BSS **120**, fin exclusive
+**$3F40/$4000** en 65C02/6502, soit **192/0 octets libres**. Aucune
+réserve supplémentaire n'est disponible dans la version 6502.
+
+Les essais du vrai C refusent les erreurs de lecture, recherche et fermeture,
+ainsi que les tailles et adresses hors des cas prévus, et contrôlent les
+octets des sources. Le banc Koala passe **11/11 contrôles par CPU** et les
+relais natifs **4 tests**, avec les gardes de disposition actives.
+
+Le banc `memory:stack` utilise une installation complète sur deux volumes
+jetables, affiche une image DHGR compressée et copie les 135 fichiers de
+l'arborescence des outils. Ses **4/4 contrôles** passent : **145 octets
+utilisés sur 192**, soit **47 octets de marge**.

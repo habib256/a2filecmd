@@ -66,13 +66,19 @@ dispatch:
         beq done
         cmp #'T'
         beq done
-        pha
         cmp #13
         beq legacy_dos
+        ; OPEN's legacy ABI is a boolean: O/Return = 0, I = 1.
+        ; Values >= 2 select album/music filters rather than a file reader.
+        lsr a
+        and #1
+        eor #1
+        pha
         lda #<oldopen
         ldx #>oldopen
         bne legacy
 legacy_dos:
+        pha
         lda #<dosview
         ldx #>dosview
 legacy: jsr pushax
@@ -88,8 +94,8 @@ resolved:
         jmp _overlay_run
 done:   rts
 ident:  .asciiz "IDENT"
-oldopen:.asciiz "OPEN"
         .segment "LC"
+oldopen:.asciiz "OPEN"
 guard:  ldx #11
 block:  cmp blocked,x
         beq refuse

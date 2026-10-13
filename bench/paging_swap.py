@@ -98,7 +98,7 @@ def main():
         order = {k: big_order(v, 'BIG') for k, v in orig.items()}
         files = {f'BIG/F{i:04}#040000': b'data %d' % i for i in range(300)}
         files['SRC/NEWFILE#040000'] = b'new file'
-        with boot_hd(tmp, files, port=6908, blocks=2000, floppy=floppies['A'], boot=None) as (p, s):
+        with boot_hd(tmp, files, port=6908, blocks=4000, floppy=floppies['A'], boot=None) as (p, s):
             hdv = Path(p.hdv)
             path, *_ = window(p, s, 0)
             s.ok('the panel table is found at the start of LOWBSS', path.startswith('/WORKHD'), path)

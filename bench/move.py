@@ -32,7 +32,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='a2fc-move-') as tmp:
         # Leave room for the complete distribution and the test directories.
         # DST itself still has exactly one full block and must grow on MOVE.
-        with boot_hd(tmp, files, port=PORT, blocks=1600,
+        with boot_hd(tmp, files, port=PORT, blocks=4000,
                      plugins=['move', 'volinfo']) as (p, s):
             # Le panneau de gauche sur SRC, celui de droite sur DST.
             s.select('SRC'); s.key(RET)

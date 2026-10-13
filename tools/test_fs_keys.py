@@ -56,7 +56,7 @@ void overlay_run(const char* name,unsigned char arg){
   if(mode==0)strcpy(input,"NEWSPAN");else if(mode==3)strcpy(input,"DOSVIEW");else if(mode==2)strcpy(note,"Source read error.");
  }else if(mode==0||mode==3){assert(calls==2);assert(!strcmp(name,mode==0?"NEWSPAN":"DOSVIEW"));assert(arg==13);}
  else if(mode==1){
-  if(calls==2){assert(!strcmp(name,key==13?"DOSVIEW":"OPEN"));assert(arg==key);if(key!=13)strcpy(input,"TEXT");}
+  if(calls==2){assert(!strcmp(name,key==13?"DOSVIEW":"OPEN"));assert(arg==(key==13?13:key=='I'));if(key!=13)strcpy(input,"TEXT");}
   else{assert(calls==3);assert(!strcmp(name,"TEXT"));assert(arg==13);}
  }else assert(0);
 }
