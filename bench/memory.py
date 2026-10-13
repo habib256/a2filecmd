@@ -9,15 +9,15 @@ compris.
 
     make disk && POM2=... python3 bench/memory.py
 """
-import shutil
 import sys
 import tempfile
 import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from pom2 import Pom2, Session, ROOT, labels, DISK
+from pom2 import Pom2, Session, ROOT, labels
 from run import scratch_volume, ESC, RET, DOWN, TAB
+from xplug import stage_hd, ok_all
 
 def main():
     sym = labels()
@@ -25,9 +25,11 @@ def main():
     lo, hi = sym['__ONCE_RUN__'], sym['__HIMEM__']
     with tempfile.TemporaryDirectory(prefix='a2fc-stack-') as tmp:
         tmp = Path(tmp)
-        floppy = tmp / 'A2FILECMD.po'
-        shutil.copyfile(DISK, floppy)
-        with Pom2(scratch_volume(tmp), floppy=floppy, port=6620) as p:
+        # Exercise the release's IDENT relay, absent from the compact bench
+        # floppy. Both disks are disposable; retain the real resident binary
+        # and its symbols, and copy its complete tool directory at the end.
+        program = stage_hd(tmp, name='A2FILECMD')
+        with Pom2(program, hd2=scratch_volume(tmp, blocks=4000), port=6620) as p:
             s = Session(p, sym)
             s.boot()
             # ONCE est mort une fois main() lance : tout ce qui est au-dessus
@@ -70,7 +72,8 @@ def main():
             s.wait(lambda: s.rows()[0][40:].startswith('/SCRATCH '), 'scratch'); p.stable()
             s.key(TAB)
             s.select('A2FILE'); s.key(b'C')
-            s.wait(lambda: s.has('copied') or s.has('failed'), 'copie recursive', 180); p.stable()
+            s.wait(lambda: s.has('files copied.') or s.has('Failed'), 'copie recursive', 180); p.stable()
+            s.ok('la copie recursive aboutit', s.has('files copied.'), s.rows()[22])
             deep = low_water()
             used = hi - deep
             print(f'creux apres les visionneuses : ${after_views:04X}', flush=True)
@@ -84,7 +87,7 @@ def main():
             # 0.8.6 and 0.8.7). What must hold is a real margin at the lowest
             # point, not half of it.
             s.ok('et garde au moins 32 octets de marge', used <= budget - 32, f'{used} octets, {budget - used} de marge')
-    return 0
+    return ok_all(s, 'memory stack')
 
 
 if __name__ == '__main__':
