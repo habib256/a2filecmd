@@ -127,13 +127,14 @@ class Formats(unittest.TestCase):
    self.assertEqual(self.call('ident',bytes(size),'DATA',aux=aux,arg=13).strip(),'HEX')
  def test_visicalc_high_bit_routing_preserves_source_and_fails_closed(self):
   plain=b'>L40:1140\r>A1:@SUM(B40...L40)\r'
-  for data in (plain,bytes(c|128 for c in plain),bytes(c|128 if i%2 else c for i,c in enumerate(plain))):
+  double=b'>BJ90:"All rights reserved.\r>BK69:1\r'
+  for data in (plain,bytes(c|128 for c in plain),bytes(c|128 if i%2 else c for i,c in enumerate(plain)),double,bytes(c|128 for c in double),bytes(c|128 if i%2 else c for i,c in enumerate(double))):
    self.assertIn('VisiCalc',self.call('ident',data,'SHEET',typ=4))
    for key in (ord('O'),ord('I'),13):
     self.assertEqual(self.call('ident',data,'SHEET',typ=4,arg=key).strip(),'VISICALC')
     for fault in (1,2,3):
      self.assertEqual(self.call('ident',data,'SHEET',typ=4,arg=key,fault=fault).strip(),'')
-  for data in (b'> a quoted line\r',b'>A?:not a row\r',b'>@1:not a column\r',b'>A1'):
+  for data in (b'> a quoted line\r',b'>A?:not a row\r',b'>@1:not a column\r',b'>A1',b'>AAx:bad row\r',b'>A@1:bad column\r',b'>AAA1:too many letters\r'):
    self.assertNotEqual(self.call('ident',data,'QUOTE',typ=4,arg=13).strip(),'VISICALC')
  def test_automatic_routing_has_explicit_dos_eligibility(self):
   from test_newsdoc import panel,page

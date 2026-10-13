@@ -7,10 +7,10 @@ void __fastcall__ plugin_entry(const struct A2fcApi*);
 #include "id_context.h"
 #include "id_finish.h"
 struct Header {unsigned int signature;unsigned char flags;
- void __fastcall__ (*entry)(const struct A2fcApi*);unsigned char r[3];char desc[40];};
+ void __fastcall__ (*entry)(const struct A2fcApi*);unsigned char r[3];char desc[16];};
 #pragma rodata-name(push,"OVLHDR")
 const struct Header __plugin_header={MEDIA_PLUGIN_MAGIC, OVERLAY_BIG,plugin_entry,
- {0,0,ID_CPU_TAG},"Internal content format detector"};
+ {0,0,ID_CPU_TAG},"Internal formats"};
 #pragma rodata-name(pop)
 static struct Entry actual;
 static const struct Entry* e;

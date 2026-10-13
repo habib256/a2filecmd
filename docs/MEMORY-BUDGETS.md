@@ -6556,11 +6556,15 @@ dispatch assembleur sur les deux CPU. Après reconstruction, les marges
 LOWRAM** et **18/594 pour la garde de pile**, sans désactiver de contrôle.
 
 La détection VisiCalc normalise aussi le bit haut des caractères de colonne
-et de ligne. Les **11 tests du vrai C** et **16 tests des vrais relais**
+et de ligne, y compris les colonnes à deux lettres (BJ, BK). Les
+**11 tests du vrai C** et **16 tests des vrais relais**
 passent, avec simulations 6502/65C02, sources inchangées et refus des erreurs
-d'E/S ou contextes invalides. IDFORMATS mesure **9 137/9 377 octets** en
+d'E/S ou contextes invalides. La description de son en-tête interne utilise
+16 octets, comme les surcouches ordinaires, pour conserver les gardes.
+IDFORMATS mesure **9 148/9 394 octets** en
 65C02/6502 ; les deux constructions et les quatre images passent leurs
-gardes. La comparaison des 262 binaires confirme que seuls les deux
+gardes, avec **256/10 octets libres** après la BSS. La comparaison des
+262 binaires confirme que seuls les deux
 IDFORMATS.PLG changent, sans modification du résident ni de l'ABI.
 
 VOLNAME conserve ses messages dans la note MAIN du résident avant son

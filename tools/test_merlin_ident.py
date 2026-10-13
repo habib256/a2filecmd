@@ -85,11 +85,12 @@ class MerlinIdentification(unittest.TestCase):
 
     def visicalc_cases(self,exe=None):
         plain=b'>L40:1140\r>A1:@SUM(B40...L40)\r'
-        for data in (plain,high(plain),bytes(c|128 if i%2 else c for i,c in enumerate(plain))):
+        double=b'>BJ90:"All rights reserved.\r>BK69:1\r'
+        for data in (plain,high(plain),bytes(c|128 if i%2 else c for i,c in enumerate(plain)),double,high(double),bytes(c|128 if i%2 else c for i,c in enumerate(double))):
             for arg in (13,ord('I'),ord('O')):
                 self.check(data,'VISICALC',arg=arg,exe=exe)
             for bad in (1,2,3,4,5):self.check(data,'',bad=bad,exe=exe)
-        for data in (b'> a quoted line\r',b'>A?:not a row\r',b'>@1:not a column\r',b'>A1'):
+        for data in (b'> a quoted line\r',b'>A?:not a row\r',b'>@1:not a column\r',b'>A1',b'>AAx:bad row\r',b'>A@1:bad column\r',b'>AAA1:too many letters\r'):
             self.check(data,'FALLBACK',exe=exe)
 
     def test_visicalc_high_bit_in_real_stages(self):self.visicalc_cases()
