@@ -78,10 +78,11 @@ def main():
                 s.ok(backend+': missing pair keeps card silent',not any(ay_snapshot(p,'orphan')[8:11]))
                 s.ok(backend+': AUX RAM-disk storage unchanged',p.peek(0x1000,0xb000,'aux')==aux)
                 if backend=='Disk II':
-                    # Leave the physical catalog before removing its disk:
-                    # later menus refresh both panels, including this one.
+                    # Leave the physical catalog, but keep its protected
+                    # disk online until shutdown: later menus refresh the
+                    # volume list, whose ProDOS unit still names this drive.
                     s.key(ESC);s.wait(lambda:s.rows()[0][40:].startswith('[Volumes]'),'leave physical DOS catalog',30);p.stable()
-                    p.eject(1);s.ok('physical DOS source unchanged',floppy.read_bytes()==raw)
+                    s.ok('physical DOS source unchanged',floppy.read_bytes()==raw)
                     s.key(b'\t');s.select('DIRECT.DSK');s.key(RET)
                 elif backend=='DSK':
                     s.key(ESC);s.wait(lambda:s.has('DIRECT.2MG'),'leave DOS image',30)

@@ -15,6 +15,9 @@ downloads and installation.
 
 ## 0.9.7 in detail
 
+- Recognize high-bit VisiCalc worksheets and two-letter columns on both CPUs.
+  Preserve VOLNAME results and defer panel rereads until its overlay returns.
+
 - Keep the legacy OPEN fallback's boolean calling convention when IDENT is
   absent, preserving automatic RLE image opening on compact installations.
   Check the dispatcher on both processors without relaxing memory guards.

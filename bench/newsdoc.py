@@ -42,7 +42,7 @@ def main():
     s.ok(backend+': AUX unchanged',p.peek(0x1000,0xb000,'aux')==aux)
     if backend=='Disk II':
      s.key(ESC);s.wait(lambda:s.rows()[0][40:].startswith('[Volumes]'),'leave physical DOS catalog',30);p.stable()
-     p.eject(1);s.key(b'\t');s.select('DIRECT.DSK');s.key(RET)
+     s.key(b'\t');s.select('DIRECT.DSK');s.key(RET)
     elif backend=='DSK':s.key(ESC);s.wait(lambda:s.has('DIRECT.2MG'),'image parent',30);s.select('DIRECT.2MG');s.key(RET)
     if backend!='2IMG':s.wait(lambda:s.has('PN.PANEL'),'next DOS source',30);p.stable()
    s.ok('stack floor unchanged',p.peek(floor,8)==b'\xa5'*8);p.sync_disks()

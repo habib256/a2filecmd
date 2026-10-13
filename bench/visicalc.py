@@ -34,7 +34,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'bench'))
 sys.path.insert(0, str(ROOT / 'tools'))
-from xplug import boot_hd, ok_all, RET, ESC
+from xplug import boot_hd, menu_run, ok_all, RET, ESC
 from pom2 import BUILD
 import mkdemo_viewers
 import mkdos33
@@ -197,6 +197,10 @@ def main():
                  [r.rstrip() for r in got] == [r.rstrip() for r in want])
             s.key(ESC); s.wait(lambda: s.has('Type  Aux'), 'panels restored', 60); p.stable()
             s.select('QUOTE'); s.key(RET)
+            s.wait(lambda: s.has('page 1') and s.has('> a quoted line'), 'quoted text opens as text', 30)
+            s.ok('a quoted line is automatically routed to text', s.has('QUOTE') and not s.has('<> Cols'))
+            s.key(ESC); s.wait(lambda: s.has('Type  Aux'), 'text reader exit', 30); p.stable()
+            s.select('QUOTE'); menu_run(s,p,'VISICALC')
             s.wait(lambda: s.has('Not a VisiCalc worksheet'), 'refusal of a quoted text', 60)
             s.ok('a text starting with > is refused, T suggested', s.has('T shows it as text'))
             p.stable()

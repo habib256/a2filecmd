@@ -136,7 +136,7 @@ def main():
             # 6502 floppy finds no card there at all (also before 0.9.6's
             # receive-loop rewrite). Either way port 1 is not taken.
             ok('%s: VDrive does not take slot 1' % preset,
-               ('serial card in slot 1' not in vd and 'VDrive: serial card in slot 2' in vd
+               ('VDrive: serial 1,' not in vd and 'VDrive: serial 2,' in vd
                 or vd.startswith('VDrive: no free slot') or 'VDrive' not in vd)
                if preset == 'iic' else 'VDrive' not in vd, vd[:70])
             ok('%s: the slot-1 printer card is never accessed' % preset, not acc, describe(acc))
@@ -152,7 +152,7 @@ def main():
         finally:
             server.close()
         acc = accesses(log)
-        ok('%s + VDrive host: VDrive installs on slot 2' % PRESET, 'VDrive: serial card in slot 2' in vd, vd[:70])
+        ok('%s + VDrive host: VDrive installs on slot 2' % PRESET, 'VDrive: serial 2,' in vd, vd[:70])
         ok('%s + VDrive host: the remote volume is listed' % PRESET, '/REMOTE' in vols, vols[:80])
         ok('%s + VDrive host: the host served reads' % PRESET, any(e[0] == 'read' for e in server.log), len(server.log))
         ok('%s + VDrive host: the slot-1 printer card is never accessed' % PRESET, not acc, describe(acc))
@@ -182,7 +182,7 @@ def main():
             acc = accesses(log)
             w = [a for a in acc if a[0] == 'W']
             ok('%s, printer slot 2 + host slot 4: VDrive takes slot 4' % PRESET,
-               'VDrive: serial card in slot 4' in vd, vd[:70])
+               'VDrive: serial 4,' in vd, vd[:70])
             ok('%s, printer slot 2 + host slot 4: the remote volume is listed' % PRESET, '/REMOTE' in vols, vols[:80])
             ok('%s, printer slot 2 + host slot 4: the host served reads' % PRESET,
                any(e[0] == 'read' for e in server.log), len(server.log))

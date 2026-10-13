@@ -149,7 +149,9 @@ def main():
             s.key(b'\x1b'); back_in_a2fc(s)
             s.ok('Escape returns to A2FC from the stepped pause', True)
             s.ok('step playback leaves occupied AUX and /RAM intact', p.peek(0x0800, 0xB800, 'aux') == aux)
-            p.rq('/speed', {'preset': 'max'})
+            # Keep frame snapshots coherent while the player writes HGR:
+            # unlimited speed can redraw a page during the HTTP memory read.
+            p.rq('/speed', {'cycles_per_frame': 200000})
             p.stable()
             s.select('MOVIE.DSK'); s.key(RET); p.stable()
             s.wait(lambda: s.has('MV.DEMO'), 'the DOS 3.3 catalog', 60)
