@@ -94,7 +94,7 @@ def ask_wipe(s, p, vol, key):
     volume_list(s, p)
     s.select(vol)
     menu_run(s, p, 'WIPE')
-    s.wait(lambda: s.has('F) the free blocks'), 'la question de WIPE', 20)
+    s.wait(lambda: s.has('F) free blocks'), 'la question de WIPE', 20)
     s.key(key)
 
 

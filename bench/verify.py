@@ -17,7 +17,7 @@ PORT = 6804
 # programme et de ses surcouches. 800 blocs ne suffisaient plus (504 Ko
 # poses depuis la 0.8.7) ; le compte annonce par VERIFY est celui-ci, il
 # n'est pas recopie a la main.
-BLOCKS = 1200
+BLOCKS = 4000  # Complete tool installation plus the verification sources.
 BAR = re.compile(r'\[#*\.*\] ')      # le nom du volume du programme, quarante cases
 FAST = 200000                        # cycles par trame : le reglage de bench/pom2.py
 SLOW = 17030                         # la vitesse reelle, pour voir passer la barre

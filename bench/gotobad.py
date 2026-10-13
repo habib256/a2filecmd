@@ -33,7 +33,7 @@ def main():
                 menu_run(s, p, 'GOTO')
                 s.wait(lambda: s.has('Invalid GOTO.CFG'), 'invalid config'); p.stable()
                 s.ok(name + ': refusal before showing favourites',
-                     s.has('Type  Aux') and not s.has('GOTO -- favourite directories'))
+                     s.has('Type  Aux') and not s.has('GOTO -- favourites'))
                 s.ok(name + ': active directory preserved', s.rows()[0].startswith('/WORKHD/A2FILE '))
                 if name in CHECK_BYTES:
                     s.select('GOTO.CFG'); menu_run(s, p, 'CRC')

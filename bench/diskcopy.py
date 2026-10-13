@@ -82,7 +82,7 @@ def main():
                     s.key(TAB)
                 s.select(name, 0); p.stable()
                 menu_run(s, p, 'IMGCONV')
-                s.wait(lambda: s.has('Convert to P)'), 'la question du format', 20)
+                s.wait(lambda: s.has('To P) PO'), 'la question du format', 20)
                 s.key(key)
                 s.wait(lambda: s.rows()[22] != before and any(m in s.rows()[22] for m in DONE),
                        'la fin de la conversion', seconds)

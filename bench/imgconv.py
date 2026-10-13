@@ -143,7 +143,7 @@ def main():
             def convert(name, x, key, seconds=180):
                 before = s.rows()[22]
                 launch(name, x)
-                s.wait(lambda: s.has('Convert to P)'), 'la question du format', 20)
+                s.wait(lambda: s.has('To P) PO'), 'la question du format', 20)
                 s.key(key)
                 return finished(before, seconds)
 
@@ -162,10 +162,10 @@ def main():
 
             # 2. ESC a la question annule.
             launch('TINY.PO', 0)
-            s.wait(lambda: s.has('C) DiskCopy, ESC'), 'la question du format', 20); p.stable()
+            s.wait(lambda: s.has('C) DiskCopy ESC'), 'la question du format', 20); p.stable()
             # m_keys, sans son \1 de video inverse.
             s.ok('la question du format est celle de m_keys',
-                 s.rows()[22].strip() == 'Convert to P) .PO, D) .DSK, 2) .2MG, C) DiskCopy, ESC',
+                 s.rows()[22].strip() == 'To P) PO D) DSK 2) 2MG C) DiskCopy ESC',
                  s.rows()[22].strip())
             s.key(ESC)
             # imgconv.c rend la main sans note : la ligne 22 finit vide.

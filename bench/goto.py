@@ -22,7 +22,7 @@ from xplug import boot_hd, menu_run, ok_all, RET, TAB, ESC
 PORT = 6812
 DEEP = '/WORKHD/WORK/SUB/DEEP'
 OTHER = '/WORKHD/OTHER'
-TITLE = 'GOTO -- favourite directories'
+TITLE = 'GOTO -- favourites'
 LONG = '/WORKHD/'+'A'*15+'/'+'B'*15+'/'+'C'*15+'/'+'D'*7
 
 HD_FILES = {'A2FILE/GOTO.RES#040000':b'keep this recovery file\r', 'WORK/SUB/DEEP/X.TXT': b'deep\r', 'OTHER/Y.TXT': b'other\r', LONG[len('/WORKHD/'):]+ '/X.TXT':b'long\r'}

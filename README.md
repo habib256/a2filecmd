@@ -142,7 +142,7 @@ With the cc65 toolchain installed:
 ```sh
 make mini    # standalone DOS3.3 binary
 make         # ProDOS program and overlays
-make disk    # all five distribution images
+make disk    # all four distribution images
 make test    # host checks
 ```
 

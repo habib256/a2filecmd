@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from xplug import boot_hd, menu_run, ok_all, ESC
 
-TITLE = 'GOTO -- favourite directories'
+TITLE = 'GOTO -- favourites'
 PATHS = ['/WORKHD/DIR%d' % i for i in range(1, 10)]
 CONFIG = b'\r\n\n' + b''.join(p.encode() + (b'\r', b'\n', b'\r\n')[i % 3] + b'\n'
                               for i, p in enumerate(PATHS[:-1])) + PATHS[-1].encode()

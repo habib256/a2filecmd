@@ -125,6 +125,16 @@ class Formats(unittest.TestCase):
      self.assertEqual(self.call('ident',data,'PICTR.HOUSE',aux=aux,arg=13,fault=fault).strip(),'')
   for aux,size in ((0x4000,8183),(0x6000,8184)):
    self.assertEqual(self.call('ident',bytes(size),'DATA',aux=aux,arg=13).strip(),'HEX')
+ def test_visicalc_high_bit_routing_preserves_source_and_fails_closed(self):
+  plain=b'>L40:1140\r>A1:@SUM(B40...L40)\r'
+  for data in (plain,bytes(c|128 for c in plain),bytes(c|128 if i%2 else c for i,c in enumerate(plain))):
+   self.assertIn('VisiCalc',self.call('ident',data,'SHEET',typ=4))
+   for key in (ord('O'),ord('I'),13):
+    self.assertEqual(self.call('ident',data,'SHEET',typ=4,arg=key).strip(),'VISICALC')
+    for fault in (1,2,3):
+     self.assertEqual(self.call('ident',data,'SHEET',typ=4,arg=key,fault=fault).strip(),'')
+  for data in (b'> a quoted line\r',b'>A?:not a row\r',b'>@1:not a column\r',b'>A1'):
+   self.assertNotEqual(self.call('ident',data,'QUOTE',typ=4,arg=13).strip(),'VISICALC')
  def test_automatic_routing_has_explicit_dos_eligibility(self):
   from test_newsdoc import panel,page
   cases=[('PN.PANEL',6,0x4000,panel(),'NEWSPAN','NEWSPAN'),('PG.PAGE',6,0x98a5,page(),'NEWSPAGE','NEWSPAGE'),

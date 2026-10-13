@@ -78,7 +78,7 @@ not_sc:
  }
  if((!id_dos || e->type==4) && (suffix(e->name,".ASM") || suffix(e->name,".S")) && n && b[0]>=128)
   return known("Merlin assembler source?","MERLIN");
- if(n>=4 && (b[0]&127)=='>' && b[1]>='A' && b[1]<='Z' && b[2]>='0' && b[2]<='9')
+ if(n>=4 && (b[0]&127)=='>' && (unsigned char)((b[1]&127)-'A')<26 && (unsigned char)((b[2]&127)-'0')<10)
   return known("VisiCalc worksheet?","VISICALC");
  if(suffix(e->name,".MAC") || suffix(e->name,".PNTG"))return known("MacPaint picture?","MACPAINT");
  if(suffix(e->name,".AS") || (e->type==0xE0 && e->aux==1))return known("AppleSingle wrapper","UNWRAP");

@@ -13,7 +13,7 @@ back to the first), O draws a room's overlay over it; a picture with text is
 V84 (A2FC's font), D changes nothing; Right goes to the next picture of the
 folder, past a program, and round; S brings the next one by itself; Escape
 gives the panels back; the auxiliary bank (/RAM) is untouched; a program
-BIN opens in hex, a picture damaged past its first bytes is refused with
+BIN opens in the disassembler, a picture damaged past its first bytes is refused with
 GMAGIC's message; on disk, every file is unchanged (read-only).
 """
 import sys
@@ -112,9 +112,10 @@ def main():
             s.ok('AUX and /RAM untouched', bytes(p.peek(0x0800, 0xB700, 'aux')) == aux)
 
             s.select('PROGRAM'); s.key(RET)
-            s.wait(lambda: s.value('view', 1) == 3, 'the program in hex', 30)
-            s.ok('a program BIN opens in hex', True)
-            s.key(ESC); panels('hex')
+            s.wait(lambda: s.has('DISASM -'), 'the recognized program in DISASM', 30)
+            s.ok('a program BIN opens in the disassembler with its load address',
+                 s.has('Load $4000') and s.has('JMP $4000') and s.has('LDA #$00'))
+            s.key(ESC); panels('disassembly')
 
             s.key(b'<'); s.select('..'); s.key(RET); p.stable()
             s.select('OTHER'); s.key(RET); p.stable()

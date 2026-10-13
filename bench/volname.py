@@ -35,14 +35,14 @@ PORT = 6808
 DEL = b'\x7f'
 
 
-def make_po(tmp, name, files):
+def make_po(tmp, name, files, blocks=280):
     stage = tmp / ('stage_' + name)
     stage.mkdir()
     for rel, data in files.items():
         (stage / rel).write_bytes(data)
     po = tmp / (name + '.po')
     subprocess.run([sys.executable, str(ROOT / 'tools/mkvolume.py'), str(stage), str(po),
-                    '--volume', name, '--blocks', '280'], check=True, capture_output=True)
+                    '--volume', name, '--blocks', str(blocks)], check=True, capture_output=True)
     return po
 
 
@@ -70,8 +70,8 @@ def volumes(s):
 def main():
     with tempfile.TemporaryDirectory(prefix='a2fc-volname-') as tmp:
         tmp = Path(tmp)
-        tiny = make_po(tmp, 'TINY', {'INSIDE.TXT': b'inside\r'})
-        po = make_po(tmp, 'WORKPO', {'NOTE.TXT': b'note\r'})
+        tiny = make_po(tmp, 'TINY', {'INSIDE.TXT': b'inside\r'}, blocks=16)
+        po = make_po(tmp, 'WORKPO', {'NOTE.TXT': b'note\r', 'TINY.PO': tiny.read_bytes()})
         files = {'WORK/NOTE.TXT': b'hello\r', 'WORK/TINY.PO': tiny.read_bytes()}
         with boot_hd(tmp, files, port=PORT, plugins=['volname'], floppy2=po) as (p, s):
             # Au demarrage : /WORKHD a gauche (actif), la liste des volumes a
@@ -88,17 +88,18 @@ def main():
                  all(v in vols for v in ('/WORKHD', '/RAM', '/WORKPO')), vols)
 
             # 2. Une image ouverte comme un dossier est refusee.
-            s.select('/WORKHD'); s.key(RET)
-            s.wait(lambda: s.rows()[0][:8] == '/WORKHD ', 'WORKHD'); p.stable()
-            s.select('WORK'); s.key(RET); s.wait(lambda: s.rows()[0].startswith('/WORKHD/WORK'), 'WORK'); p.stable()
+            s.select('/WORKPO'); s.key(RET)
+            s.wait(lambda: s.rows()[0][:8] == '/WORKPO ', 'WORKPO'); p.stable()
             s.select('TINY.PO'); s.key(RET)
             s.wait(lambda: s.has('INSIDE '), "l'image ouverte comme un dossier", 30); p.stable()
             menu_run(s, p, 'VOLNAME')
-            s.wait(lambda: s.rows()[22].strip() != '', "le refus de l'image", 20); p.stable()
-            # m_sel de src/plugins/volname.c, seul sur la ligne 22.
+            # Refreshing the image catalog clears the transient refusal
+            # message. Require refusal without a rename prompt, and verify
+            # the complete image bytes on the write-back floppy after exit.
+            s.wait(lambda: s.has('INSIDE ') and s.has('! More'), "retour dans l'image", 20); p.stable()
             s.ok("refuse une image ouverte comme un dossier",
-                 s.rows()[22].strip() == 'Select a ProDOS volume.', s.rows()[22].strip())
-            s.key(ESC); s.wait(lambda: s.rows()[0].startswith('/WORKHD/WORK') and s.has('TINY.PO'), 'retour dans WORK'); p.stable()
+                 s.rows()[0].startswith('/WORKPO/TINY.PO') and not s.has('New name for /'))
+            s.key(ESC); s.wait(lambda: s.rows()[0].startswith('/WORKPO ') and s.has('TINY.PO'), 'retour dans WORKPO'); p.stable()
 
             # 3. Le volume d'amorcage, renomme depuis la liste des volumes.
             s.key(b'/'); s.wait(lambda: s.rows()[0].startswith('[Volumes]'), 'volumes'); p.stable()
@@ -193,7 +194,10 @@ def main():
         img = Image(po.read_bytes())
         names = [e[1:1 + (e[0] & 15)].decode() for e in img.entries(2)]
         s.ok('le repertoire de la disquette est intact : NOTE toujours la',
-             img.header()['name'] == 'FLOPPY' and names == ['NOTE'], (img.header(), names))
+             img.header()['name'] == 'FLOPPY' and names == ['NOTE', 'TINY.PO'], (img.header(), names))
+        e = next(e for e in img.entries(2) if e[1:1 + (e[0] & 15)] == b'TINY.PO')
+        s.ok('le refus de VOLNAME conserve tous les octets de l image montee',
+             img.read(e) == tiny.read_bytes())
     return ok_all(s, 'volname')
 
 

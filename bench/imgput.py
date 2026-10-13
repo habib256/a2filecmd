@@ -191,7 +191,7 @@ def main():
             # 3. Le meme nom une seconde fois : refuse.
             asked, line = run('HELLO.TXT', b'Y')
             s.ok('un nom deja dans l image est refuse',
-                 line == 'No room for that name here.', line)
+                 line == 'Cannot add file here.', line)
             saved = catalog(Path(p.hdv), 'IMG')['TARGET.PO'][2]
 
             # 4. Un second fichier, a cote du premier.
