@@ -510,7 +510,6 @@ def main():
                 (files_stage / 'DOSGET.PLG#061B00').write_bytes(
                     (build / 'A2FILE.CODE.BIN.DOSGET').read_bytes())
                 files_disk = volume(files_stage.parent, tmp / 'FILES.po', 'FILES', 280)
-                p.eject(1)
                 p.insert(1, str(files_disk))
             s.select('GREETINGS', 40); s.key(b'C')
             s.wait(lambda: s.has('extracted') or s.has('folder') or s.has('failed'), 'extraction DOS', 30)
