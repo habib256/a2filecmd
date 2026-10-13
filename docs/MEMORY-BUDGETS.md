@@ -6554,3 +6554,20 @@ placé en LC pour conserver les limites existantes. Les tests exécutent le
 dispatch assembleur sur les deux CPU. Après reconstruction, les marges
 65C02/6502 restent **1/388 octets en MAIN**, **8/6 en LC**, **87/112 en
 LOWRAM** et **18/594 pour la garde de pile**, sans désactiver de contrôle.
+
+La détection VisiCalc normalise aussi le bit haut des caractères de colonne
+et de ligne. Les **11 tests du vrai C** et **16 tests des vrais relais**
+passent, avec simulations 6502/65C02, sources inchangées et refus des erreurs
+d'E/S ou contextes invalides. IDFORMATS mesure **9 137/9 377 octets** en
+65C02/6502 ; les deux constructions et les quatre images passent leurs
+gardes. La comparaison des 262 binaires confirme que seuls les deux
+IDFORMATS.PLG changent, sans modification du résident ni de l'ABI.
+
+VOLNAME conserve ses messages dans la note MAIN du résident avant son
+retour, pour survivre au rafraîchissement des panneaux. Les confirmations
+et écritures de renommage restent les mêmes ; aucune écriture AUX n'est
+ajoutée. **19 scénarios par CPU** exécutent le vrai C et l'assembleur,
+avec contrôle des octets du volume et du préfixe lors des erreurs MLI,
+annulations et refus d'une image. VOLNAME mesure **1 302/1 287 octets** en
+65C02/6502. Après ces deux corrections, **258 des 262 binaires sont
+identiques** : seuls IDFORMATS et VOLNAME changent sur chaque architecture.

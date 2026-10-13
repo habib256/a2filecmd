@@ -19,7 +19,7 @@ HARNESS = r'''
 static unsigned char disk[512], before[512], prefix[65];
 static unsigned char get_error, probe_error, rename_error, cancelled, scenario;
 static unsigned int sets, renames, reports, reads, draws;
-static char shown[80], input[17], cfg[64], paths_before[2][64], cfg_before[64];
+static char shown[80], note[80], input[17], cfg[64], paths_before[2][64], cfg_before[64];
 static unsigned char __fastcall__ mock_mli(unsigned char cmd, void* block) {
     struct Pfx* p = block;
     if (cmd == 0xC7) {
@@ -71,7 +71,8 @@ int main(int argc, char** argv) {
     strcpy(panels[0].path, "/OLD/WORK");
     strcpy(panels[1].path, "/OLD/DATA");
     strcpy(cfg, "/OLD/A2FILE/A2FILE.CFG");
-    if (scenario >= 13) {
+    if (scenario == 18) panels[0].fs = 1;
+    if (scenario >= 13 && scenario <= 17) {
         char* path = scenario == 13 ? panels[0].path : scenario == 14 ? panels[1].path : cfg;
         strcpy(path, "/OLD/"); memset(path + 5, 'A', 57); path[62] = 0;
         path[20] = path[36] = path[52] = '/'; /* legal ProDOS components, each <= 15 */
@@ -88,11 +89,18 @@ int main(int argc, char** argv) {
     rename_error = scenario == 5 || scenario == 7 || scenario == 9 || scenario == 11 || scenario == 12 ? 0x27 : 0;
     cancelled = scenario == 6;
     api.panels = panels; api.active = &active; api.selected = &selected;
-    api.input = input; api.copy_buf = copy; api.cfg_path = cfg;
+    api.input = input; api.copy_buf = copy; api.cfg_path = cfg; api.note = note;
     api.message = show; api.prompt = answer; api.report_error = report;
     api.mli = mock_mli; api.strcpy = strcpy; api.strlen = strlen;
     api.read_panel = reread; api.draw_all = redraw;
     plugin_entry(&api);
+    if (note[0] && strcmp(note, shown)) return 41;
+    if (scenario == 18) {
+        if (memcmp(disk, before, 512) || sets || renames || reads || draws || reports) return 42;
+        if (prefix[0] != 9 || memcmp(prefix + 1, "/OLD/WORK", 9)) return 43;
+        if (strcmp(note, "Select a ProDOS volume.")) return 44;
+        return 0;
+    }
     if (scenario >= 13) {
         if (scenario <= 15) {
             if (memcmp(disk, before, 512) || sets || renames || reads || draws) return 31;
@@ -153,7 +161,7 @@ class VolnameNative(unittest.TestCase):
                 executable = tmp / target
                 result = subprocess.run([compiler, '-t', target, '-O', '-Oirs', '-Cl', '--codesize', '100', '-I', str(ROOT / 'src'), '-o', str(executable), str(tmp / 'test.c')], env={**os.environ, **extra}, capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                for scenario in range(18):
+                for scenario in range(19):
                     with self.subTest(target=target, scenario=scenario):
                         run = subprocess.run([shutil.which('sim65'), str(executable), str(scenario)], capture_output=True, text=True, timeout=10)
                         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)

@@ -93,12 +93,12 @@ def main():
             s.select('TINY.PO'); s.key(RET)
             s.wait(lambda: s.has('INSIDE '), "l'image ouverte comme un dossier", 30); p.stable()
             menu_run(s, p, 'VOLNAME')
-            # Refreshing the image catalog clears the transient refusal
-            # message. Require refusal without a rename prompt, and verify
-            # the complete image bytes on the write-back floppy after exit.
-            s.wait(lambda: s.has('INSIDE ') and s.has('! More'), "retour dans l'image", 20); p.stable()
+            # The resident note preserves the refusal through the image
+            # catalog redraw. Verify complete image bytes after exit too.
+            s.wait(lambda: s.has('Select a ProDOS volume.'), "le refus de l'image", 20); p.stable()
             s.ok("refuse une image ouverte comme un dossier",
-                 s.rows()[0].startswith('/WORKPO/TINY.PO') and not s.has('New name for /'))
+                 s.rows()[0].startswith('/WORKPO/TINY.PO') and not s.has('New name for /')
+                 and s.rows()[22].strip() == 'Select a ProDOS volume.')
             s.key(ESC); s.wait(lambda: s.rows()[0].startswith('/WORKPO ') and s.has('TINY.PO'), 'retour dans WORKPO'); p.stable()
 
             # 3. Le volume d'amorcage, renomme depuis la liste des volumes.

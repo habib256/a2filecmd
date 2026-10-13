@@ -98,7 +98,7 @@ static void tramp(void)
     asm("jmp jmpvec");
 }
 #define STUB(field) { asm("ldy #%b", offsetof(struct A2fcApi, field)); asm("jmp %v", tramp); }
-static void __fastcall__ msg(const char* s) STUB(message)
+static void __fastcall__ display_message(const char* s) STUB(message)
 static unsigned char __fastcall__ prompt(const char* label, const char* initial, unsigned int hex) STUB(prompt)
 static void __fastcall__ report_error(const char* what) STUB(report_error)
 static void __fastcall__ draw_all(unsigned int unused) STUB(draw_all)
@@ -108,6 +108,15 @@ static char* __fastcall__ scpy(char* d, const char* s) STUB(strcpy)
 static unsigned char __fastcall__ slen(const char* s) STUB(strlen)
 #pragma warn (unused-param, pop)
 #pragma optimize (pop)
+
+/* A big overlay's return redraws both panels. Keep the bounded message in
+ * the resident note so it remains visible after that redraw, including a
+ * refusal on an image panel. This writes MAIN only, never disk or AUX. */
+static void __fastcall__ msg(const char* s)
+{
+    scpy(A->note, s);
+    display_message(A->note);
+}
 
 static unsigned char __fastcall__ set_prefix(const unsigned char* p) { pfx.path = (unsigned char*)p; return mli(0xC6, &pfx); }
 static unsigned char rename_volume(void) { return mli(0xC2, &rn); }
