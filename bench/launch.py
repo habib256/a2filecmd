@@ -3,7 +3,7 @@
 import sys,tempfile,shutil,subprocess
 from contextlib import contextmanager
 from pathlib import Path
-from xplug import boot_hd,RET,ok_all
+from xplug import boot_hd,RET,ok_all,menu_run
 from pom2 import ROOT, BUILD, VERSION, Pom2, Session
 from smoke import scratch
 sys.path.insert(0,str(ROOT/'tools'))
@@ -53,10 +53,10 @@ def main():
                 s.select(name);s.key(b'T');s.wait(lambda:s.has('PRINT'),'BASIC source listing',30)
                 s.ok(name+': T lists source without executing',True)
                 s.key(b'\x1b');s.wait(lambda:s.has('Type  Aux'),'panels after listing',30)
-                s.select(name);s.key(RET);s.wait(lambda:s.has('Run '+name+'?'),'confirm',30)
+                s.select(name);menu_run(s,p,'RUN');s.wait(lambda:s.has('Run '+name+'?'),'confirm',30)
                 s.key(b'N');s.wait(lambda:s.has('Type  Aux'),'cancel',30)
                 s.ok(name+': cancellation restores panels',True)
-                s.select(name);s.key(RET);s.wait(lambda:s.has('Run '+name+'?'),'confirm again',30)
+                s.select(name);menu_run(s,p,'RUN');s.wait(lambda:s.has('Run '+name+'?'),'confirm again',30)
                 s.key(b'Y')
                 expected='INTEGER BASIC OK' if name=='INTEGER' else 'APPLESOFT BASIC OK'
                 s.wait(lambda:s.has('Configuration warning.') or

@@ -15,6 +15,10 @@ downloads and installation.
 
 ## 0.9.7 in detail
 
+- Keep the legacy OPEN fallback's boolean calling convention when IDENT is
+  absent, preserving automatic RLE image opening on compact installations.
+  Check the dispatcher on both processors without relaxing memory guards.
+
 - Preserve automatic IMAGE routing for extracted Koala HGR saves at $4000
   with 8,184–8,191 bytes. Check both load addresses and reject read/seek/close
   errors; retain both native overlay limits.

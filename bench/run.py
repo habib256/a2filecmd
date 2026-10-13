@@ -502,6 +502,16 @@ def main():
                  any(r[40:].startswith('GREETINGS ') and 'TXT' in r for r in s.rows())
                  and any(r[40:].startswith('MYPROG ') and 'BAS' in r for r in s.rows())
                  and any(r[40:].startswith('BINFILE ') and 'BIN' in r for r in s.rows()))
+            if not xl:
+                # DOSGET no longer fits on the compact bench floppy. Its
+                # companion must match this resident's CPU and link ID.
+                files_stage = tmp / 'dosget-companion' / 'A2FILE'
+                files_stage.mkdir(parents=True)
+                (files_stage / 'DOSGET.PLG#061B00').write_bytes(
+                    (build / 'A2FILE.CODE.BIN.DOSGET').read_bytes())
+                files_disk = volume(files_stage.parent, tmp / 'FILES.po', 'FILES', 280)
+                p.eject(1)
+                p.insert(1, str(files_disk))
             s.select('GREETINGS', 40); s.key(b'C')
             s.wait(lambda: s.has('extracted') or s.has('folder') or s.has('failed'), 'extraction DOS', 30)
             p.stable()
@@ -663,7 +673,9 @@ def main():
                  s.has('10  HOME') and s.has('PRINT "A2 FILE CMD RUNS APPLESOFT."'),
                  s.rows()[0].strip()[:40])
             s.key(ESC); s.wait(lambda: s.value('view', 1) == 0, 'retour liste'); p.stable()
-            s.select('HELLO'); s.key(RET)
+            # Return now opens the BASIC listing; execution is explicit.
+            from xplug import menu_run
+            s.select('HELLO'); menu_run(s, p, 'RUN')
             s.wait(lambda: s.has('Run HELLO?'), 'confirmation')
             # La confirmation epelle la commande de retour : le prefixe de
             # BASIC.SYSTEM restera sur le dossier du programme lance, donc le

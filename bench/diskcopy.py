@@ -62,7 +62,8 @@ def main():
             'IMG/MAC.IMAGE': foreign,
         }
         out_hd = volume(tmp, 'out', 'WORKDC', 4000, {'OUT/KEEP.TXT': b'keep\r'})
-        with boot_hd(tmp, hd_files, port=PORT, blocks=8000, plugins=['imgconv'], hd2=out_hd) as (p, s):
+        # Four 800K sources plus the complete current tool installation.
+        with boot_hd(tmp, hd_files, port=PORT, blocks=12000, plugins=['imgconv'], hd2=out_hd) as (p, s):
             def open_panel(x, vol, *names):
                 if s.cursor_row(x) is None:
                     s.key(TAB)

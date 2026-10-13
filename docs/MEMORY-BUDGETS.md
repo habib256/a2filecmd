@@ -6547,3 +6547,10 @@ Le banc `memory:stack` utilise une installation complète sur deux volumes
 jetables, affiche une image DHGR compressée et copie les 135 fichiers de
 l'arborescence des outils. Ses **4/4 contrôles** passent : **145 octets
 utilisés sur 192**, soit **47 octets de marge**.
+
+Le repli vers OPEN lorsque IDENT est absent convertit la commande O/I en
+argument booléen attendu par l'ancien lecteur. Le nom constant `OPEN` est
+placé en LC pour conserver les limites existantes. Les tests exécutent le
+dispatch assembleur sur les deux CPU. Après reconstruction, les marges
+65C02/6502 restent **1/388 octets en MAIN**, **8/6 en LC**, **87/112 en
+LOWRAM** et **18/594 pour la garde de pile**, sans désactiver de contrôle.

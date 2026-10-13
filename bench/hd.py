@@ -60,9 +60,12 @@ def main():
             s.select('ALBUM', 40); s.key(RET); s.wait(lambda: s.has('/PICTURES/ALBUM'), 'ALBUM'); p.stable()
             imgs = [r[40:56].split(' ')[0] for r in s.rows()[2:20] if r[40:56].strip() and not r[40:].startswith('..')]
             ok('neuf pages HGR de POM1, aux noms ProDOS anglais', len(imgs) == 9 and 'TIGER' in imgs and 'VILLAGE' in imgs and 'LIZARD' in imgs, imgs)
-            s.select('TIGER', 40); s.key(RET); s.allow_aux()
+            hgr_aux = p.peek(0x1000, 0xB000, 'aux')
+            s.select('TIGER', 40); s.key(RET)
             s.wait(lambda: s.value('view', 1) == 1, 'image TIGER', 40); time.sleep(1)
             ok('une page HGR de la collection s affiche', s.value('view', 1) == 1)
+            ok('la page HGR conserve la memoire auxiliaire',
+               p.peek(0x1000, 0xB000, 'aux') == hgr_aux)
             s.key(ESC); s.wait(lambda: s.value('view', 1) == 0, 'retour'); p.stable()
             s.select('..', 40); s.key(RET); s.wait(lambda: s.has('ESCHERWATER'), 'PICTURES'); p.stable()
             s.select('CARDS', 40); s.key(RET); s.wait(lambda: s.has('/PICTURES/CARDS'), 'CARDS'); p.stable()

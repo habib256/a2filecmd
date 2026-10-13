@@ -37,6 +37,10 @@ def main():
             s.ok('third-party plugin is in Other',
                  s.rows()[1].split()[:1]==['Other'] and s.has('Example third-party plugin'),
                  s.rows()[1].strip())
+            s.key(b'H');p.stable()
+            r=s.cursor_row(2)
+            s.ok('the selected independent plugin is HELLO',
+                 r is not None and s.rows()[r][2:14].strip()=='HELLO')
             s.key(RET);p.stable()
             row=s.rows()[22]
             s.ok('plugin reads selected name/type/path','"NOTE"' in row and '04' in row and '/WORKHD/WORK' in row,row)
