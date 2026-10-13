@@ -76,6 +76,7 @@ def main():
                 s.ok(backend+': write and execution commands remain blocked',True)
                 s.ok(backend+': AUX RAM-disk storage preserved',p.peek(0x1000,0xb000,'aux')==aux)
                 if backend.startswith('Disk II'):
+                    s.key(ESC);s.wait(lambda:s.rows()[0][40:].startswith('[Volumes]'),'leave physical DOS catalog',30);p.stable()
                     p.eject(1);s.ok('physical DOS source byte-identical',floppy.read_bytes()==raw)
                     s.key(b'\t');s.select('DIRECT.DSK');s.key(RET)
                     s.wait(lambda:s.has('COLORS') and s.has('BYTES'),'DOS image catalog',30);p.stable()

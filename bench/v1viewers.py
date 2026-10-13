@@ -207,7 +207,7 @@ def main():
  files['WORK/MIRRORFILM#060000']=movie_navigation(background=0x2A)
  toggle,background,objects=pcs_pattern();files['WORK/TOGGLE#064000']=toggle
  with tempfile.TemporaryDirectory(prefix='v1viewers-native-') as tmp:
-  with boot_hd(Path(tmp),files,port=6969 if os.environ.get('A2FC_BUILD')=='build' else 6968,plugins=['wordperf','mousewr','bsfiler','multplan','mvmovie','dgmagi','pcsvw'],speed=4000000) as (p,s):
+  with boot_hd(Path(tmp),files,port=6969 if os.environ.get('A2FC_BUILD')=='build' else 6968,plugins=['wordperf','mousewr','bsfiler','multplan','mvmovie','dgmagi','pcsvw'],speed=200000) as (p,s):
    s.key(b'/');s.select('/WORKHD');s.key(RET);s.select('WORK');s.key(RET);p.stable()
    before=Path(p.hdv).read_bytes();aux=bytes(p.peek(0x1000,0xB000,'aux'));floor=s.sym['__HIMEM__']-s.sym['__STACKSIZE__'];p.poke(floor,b'\xa5'*8)
    if '--movies-only' in sys.argv or '--auto-only' in sys.argv:

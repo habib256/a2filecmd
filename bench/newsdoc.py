@@ -32,7 +32,7 @@ def main():
     column=40 if backend=='Disk II' else 0
     for name,expected in (('PN.PANEL','RECOVERED NEWSROOM TEXT'),('PG.PAGE','BN.BANNER')):
      s.select(name,column);menu_run(s,p,'IDENT');s.wait(lambda:s.has('Newsroom '),'IDENT description',30)
-     s.ok(backend+': IDENT '+name,s.has('Newsroom text panel' if name.startswith('PN') else 'Newsroom page layout'))
+     s.ok(backend+': IDENT '+name,s.has('Newsroom panel' if name.startswith('PN') else 'Newsroom page layout'))
      for key in (RET,b'I'):
       s.select(name,column);s.key(key);s.wait(lambda:s.has(expected) and s.has('End - press'),'automatic '+name,30)
       s.ok(backend+': '+repr(key)+' decodes '+name,s.has(expected));s.key(ESC);s.wait(lambda:s.has('Type  Aux'),'panels',30)
@@ -40,7 +40,9 @@ def main():
      s.select('PH.PHOTO',column);s.key(key);s.wait(lambda:p.peek(0x2000,8192)==picture_page(ph),'Newsroom bitmap',30)
      s.ok(backend+': photo all pixels exact',p.peek(0x2000,8192)==picture_page(ph));s.key(ESC);s.wait(lambda:s.has('Type  Aux'),'photo panels',30)
     s.ok(backend+': AUX unchanged',p.peek(0x1000,0xb000,'aux')==aux)
-    if backend=='Disk II':p.eject(1);s.key(b'\t');s.select('DIRECT.DSK');s.key(RET)
+    if backend=='Disk II':
+     s.key(ESC);s.wait(lambda:s.rows()[0][40:].startswith('[Volumes]'),'leave physical DOS catalog',30);p.stable()
+     p.eject(1);s.key(b'\t');s.select('DIRECT.DSK');s.key(RET)
     elif backend=='DSK':s.key(ESC);s.wait(lambda:s.has('DIRECT.2MG'),'image parent',30);s.select('DIRECT.2MG');s.key(RET)
     if backend!='2IMG':s.wait(lambda:s.has('PN.PANEL'),'next DOS source',30);p.stable()
    s.ok('stack floor unchanged',p.peek(floor,8)==b'\xa5'*8);p.sync_disks()

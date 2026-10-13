@@ -36,7 +36,7 @@ def main():
                      s.has('Type  Aux') and not s.has('GOTO -- favourites'))
                 s.ok(name + ': active directory preserved', s.rows()[0].startswith('/WORKHD/A2FILE '))
                 if name in CHECK_BYTES:
-                    s.select('GOTO.CFG'); menu_run(s, p, 'CRC')
+                    s.select('GOTO.CFG', tries=250); menu_run(s, p, 'CRC')
                     s.wait(lambda: s.has('CRC-32'), 'checksum'); p.stable()
                     expected = 'GOTO.CFG: CRC-32 $%08X, %d bytes' % (zlib.crc32(data), len(data))
                     s.ok(name + ': original bytes preserved', s.rows()[22].strip() == expected, s.rows()[22].strip())

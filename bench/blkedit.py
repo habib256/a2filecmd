@@ -66,8 +66,8 @@ def main():
             p.stable()
             s.ok('a locked image still opens to be looked at', s.has('BLKEDIT - unchanged'), s.rows()[0])
             s.key(b'5'); s.key(b'5'); s.key(b'W'); p.stable()
-            s.wait(lambda: s.has('locked or read-only') or s.has('Type ERASE'), 'the refusal', 20)
-            refused = s.has('locked or read-only')
+            s.wait(lambda: s.has('read-only: nothing written') or s.has('Type ERASE'), 'the refusal', 20)
+            refused = s.has('read-only: nothing written')
             if not refused:                     # never type ERASE here: leave the prompt
                 s.key(ESC); p.stable()
             s.ok('W on a locked image is refused before any prompt', refused, s.rows()[22])
@@ -83,8 +83,8 @@ def main():
             s.ok('a write-protected 2MG still opens to be looked at',
                  s.has('BLKEDIT - unchanged'), s.rows()[0])
             s.key(b'5'); s.key(b'5'); s.key(b'W'); p.stable()
-            s.wait(lambda: s.has('locked or read-only') or s.has('Type ERASE'), 'the refusal', 20)
-            refused = s.has('locked or read-only')
+            s.wait(lambda: s.has('read-only: nothing written') or s.has('Type ERASE'), 'the refusal', 20)
+            refused = s.has('read-only: nothing written')
             if not refused:                     # never type ERASE here: leave the prompt
                 s.key(ESC); p.stable()
             s.ok('W on a write-protected 2MG is refused before any prompt', refused, s.rows()[22])

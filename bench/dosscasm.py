@@ -49,6 +49,7 @@ def main():
                 s.ok(backend+': malformed source refused',s.has('Malformed S-C Assembler'))
                 s.ok(backend+': AUX storage unchanged',p.peek(0x1000,0xb000,'aux')==aux)
                 if backend=='Disk II':
+                    s.key(ESC);s.wait(lambda:s.rows()[0][40:].startswith('[Volumes]'),'leave physical DOS catalog',30);p.stable()
                     p.eject(1);s.ok('physical DOS source unchanged',floppy.read_bytes()==raw)
                     s.key(b'\t');s.select('DIRECT.DSK');s.key(RET)
                 elif backend=='DSK':
