@@ -1,7 +1,7 @@
-# Préparation de la version 0.9.7
+# Qualification de la version 0.9.7
 
-Date : 12 octobre 2026. Version préparée localement sur `main`, sans tag ni
-publication. Les sources comprennent les modifications locales des lecteurs.
+Date : 13 octobre 2026. Rapport associé à la version `v0.9.7`.
+Qualification automatisée achevée après un passage complet et des reprises ciblées.
 
 ## Paquet préparé
 
@@ -19,20 +19,19 @@ publication. Les sources comprennent les modifications locales des lecteurs.
 
 ## Validation des lecteurs
 
-Toutes les commandes de la cible `make test` ont été validées : **2 423
-tests unittest dans 189 rapports**, plus les oracles, simulations et
-campagnes de mutation intégrés. Après correction des échecs, la dernière
-exécution complète a passé toutes les suites précédant Print Shop ; la
-suite a repris à `test_printshop_extras.py` via une copie temporaire du
-Makefile contenant les commandes restantes inchangées, et s'est terminée
-avec le code 0. Journaux : `/tmp/a2fc-097-test.log` (préfixe réussi avant
-Print Shop) et `/tmp/a2fc-097-test-remaining.log` (reprise réussie).
+La [CI du code natif final, commit 24dc327](https://github.com/habib256/a2filecmd/actions/runs/38368937710)
+est verte : cible `make test` complète, constructions 6502 et 65C02,
+gardes mémoire et contrôles des quatre images. Les corpus externes absents
+sur GitHub sont explicitement distingués des tests synthétiques, erreurs
+d'E/S et contrôles de préservation qui restent obligatoires.
 
-Les vérifications ont corrigé un arrêt prématuré de la détection S-C
-Assembler qui masquait des panneaux Newsroom, l'affectation manquante de
-DOSFONT dans l'inventaire historique et une initialisation périmée du banc
-Print Shop. Le test `compress` exige l'exécution hors sandbox. Les images
-et leurs empreintes ont été contrôlées à nouveau après les tests.
+Les vérifications ont notamment corrigé le repli booléen OPEN, la détection
+VisiCalc avec bit haut et colonnes à deux lettres, ainsi que la conservation
+des résultats VOLNAME. La relecture de ses panneaux est différée jusqu'au
+retour de la surcouche pour éviter l'écrasement de ses DATA/BSS.
+Les essais du vrai C et de l'assembleur
+contrôlent aussi les sources, volumes et préfixes conservés.
+Les détails et limites mémoire figurent dans [MEMORY-BUDGETS.md](MEMORY-BUDGETS.md).
 
 Les bancs POM2 ciblés suivants passent sur chaque processeur ; les essais
 utilisent des images jetables et vérifient les données conservées :
@@ -47,10 +46,36 @@ utilisent des images jetables et vérifient les données conservées :
 | Pixmaps / DGRVIEW | 137/137 |
 | MovieMaker | 83/83 |
 
-## Avant publication
+## Qualification complète et reprises
 
-Le rejeu intégral `make qualify` de cette version reste à exécuter ; les
-bancs ciblés ci-dessus ne le remplacent pas. La recette sur matériel physique
+Le passage intégral `make qualify` a exécuté **169 scénarios, sans aucun
+scénario ignoré**. Son premier résultat était **147/169**, avec un retour
+non nul. Les 22 échecs ont été examinés et rejoués après correction :
+la couverture finale est **169/169**, sans échec restant. Ce résultat
+combine le passage complet et les reprises ; il ne décrit pas un premier
+passage intégral réussi.
+
+Les deux groupes d'outils atteignent **39/39 bancs par processeur** après
+reprise. VisiCalc passe 49/49 contrôles, VOLNAME 20/20, DOS MCS 49/49,
+les lecteurs V1 37/37 et MovieMaker 83/83 sur chaque architecture.
+Les sessions finales passent 73 contrôles sur la disquette enhanced,
+66 sur XL 6502 et 74 sur XL 65C02.
+
+Les corrections natives après le passage complet ne modifient que
+IDFORMATS et VOLNAME sur chaque CPU : **258 des 262 binaires restent
+identiques**. Les quatre binaires modifiés ont leurs tests C/assembleur
+et leurs reprises POM2 sur les deux CPU. Les **262 binaires finaux**
+correspondent octet par octet à la construction isolée utilisée pour ces
+reprises ; les quatre images sont relues et leurs empreintes régénérées.
+
+Les preuves locales sont conservées sous `build/bench/` : journaux du
+passage complet, `retry-097/`, `final-097/`, journaux `*-final.log`,
+`run-enh-last.log` et `qualification-0.9.7-audit.json`. L'audit recoupe
+la table des 169 scénarios et l'inventaire des 39 outils.
+
+## Limites restantes
+
+La recette sur matériel physique
 reste également à faire ([HARDWARE-CHECKLIST.md](HARDWARE-CHECKLIST.md)).
 Les contrôles automatisés ne garantissent pas l'atomicité d'une écriture
 physique ProDOS en cas de coupure.

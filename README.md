@@ -46,16 +46,16 @@ The [guide](docs/MANUAL.md) lists the supported formats and each tool's limits.
 
 ## Choose your disk
 
-**[0.9.6 is the published release](https://github.com/habib256/a2filecmd/releases/tag/v0.9.6).**
-See the [qualification report](docs/QUALIFICATION-0.9.6.md) for checks and remaining limits.
+**[0.9.7 is the published release](https://github.com/habib256/a2filecmd/releases/tag/v0.9.7).**
+See the [qualification report](docs/QUALIFICATION-0.9.7.md) for checks and remaining limits.
 No build is needed to use the release downloads.
 
-| Your setup | Download from 0.9.6 |
+| Your setup | Download from 0.9.7 |
 |---|---|
-| **ProDOS · hard disk or emulator, any IIe** | [XL — complete with demonstrations](https://github.com/habib256/a2filecmd/releases/download/v0.9.6/A2FILECMD-PRODOS-XL-0.9.6.2mg) |
-| **ProDOS · enhanced IIe, //c or IIgs** | [XL enhanced — MouseText, optional mouse](https://github.com/habib256/a2filecmd/releases/download/v0.9.6/A2FILECMD-PRODOS-XL-65C02-enhanced-0.9.6.2mg) |
-| **ProDOS · practical tools on a floppy** | [800K — selected tools](https://github.com/habib256/a2filecmd/releases/download/v0.9.6/A2FILECMD-PRODOS-800K-0.9.6.po) |
-| **Apple II+ · 48 KB · two Disk II drives** | [DOS3.3 — standalone 40-column edition](https://github.com/habib256/a2filecmd/releases/download/v0.9.6/A2FILECMD-DOS3.3-0.9.6.dsk) |
+| **ProDOS · hard disk or emulator, any IIe** | [XL — complete with demonstrations](https://github.com/habib256/a2filecmd/releases/download/v0.9.7/A2FILECMD-PRODOS-XL-0.9.7.2mg) |
+| **ProDOS · enhanced IIe, //c or IIgs** | [XL enhanced — MouseText, optional mouse](https://github.com/habib256/a2filecmd/releases/download/v0.9.7/A2FILECMD-PRODOS-XL-65C02-enhanced-0.9.7.2mg) |
+| **ProDOS · practical tools on a floppy** | [800K — selected tools](https://github.com/habib256/a2filecmd/releases/download/v0.9.7/A2FILECMD-PRODOS-800K-0.9.7.po) |
+| **Apple II+ · 48 KB · two Disk II drives** | [DOS3.3 — standalone 40-column edition](https://github.com/habib256/a2filecmd/releases/download/v0.9.7/A2FILECMD-DOS3.3-0.9.7.dsk) |
 
 - Every ProDOS edition needs **128 KB and 80 columns**.
 - **Enhanced or not** is the only choice: the enhanced XL is for an enhanced
