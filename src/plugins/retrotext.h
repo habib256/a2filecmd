@@ -142,8 +142,10 @@ static void rt_decode(void){
    else if(c>=128 && c<192)rt_spaces(c-128);
    else if(c==192 && i+2<(unsigned int)n){
     k=rt_line[++i];v=rt_line[++i];
-    if(v<32 || v>=127){rt_invalid();return;}
-    while(k-- && !rt_cancel)rt_put(v);
+    if(!v || v>=127){rt_invalid();return;}
+    /* A run of a control character (the backspaces of a *SAVE line) is
+     * valid source; this listing cannot back up, so it shows nothing. */
+    if(v>=32)while(k-- && !rt_cancel)rt_put(v);
    }else {rt_invalid();return;}
   }
   rt_put(13);

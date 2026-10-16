@@ -161,6 +161,9 @@ class RetroText(unittest.TestCase):
         data = sc_line(100, b'\x89LDA\x83#0') + sc_line(65535, b'\xc0\x05*')
         rows, _, _ = self.run_file('scasm', data)
         self.assertEqual([r for r in rows if r], ['0100          LDA   #0', '65535 *****'])
+        # S-C's *SAVE trick: a run of backspaces is source, shown as nothing.
+        rows, _, _ = self.run_file('scasm', sc_line(1000, b'*\xc0\x06\x08SAVE S.X') + sc_line(1010, b'*\xc0\x21-'))
+        self.assertEqual([r for r in rows if r], ['1000 *SAVE S.X', '1010 *' + '-' * 33])
         for content in (b'\0X', b'\xc0', b'\xc0\x04', b'\xc1', b'\xc0\xff\0'):
             self.run_file('scasm', sc_line(1, content), refused=True)
         for n in range(len(data)):
