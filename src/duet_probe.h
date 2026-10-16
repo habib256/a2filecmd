@@ -26,7 +26,7 @@ static int dp_get(void)
 static unsigned char duet_probe(FILE* f, unsigned char* b)
 {
     unsigned int total = 0, tail = 0;
-    unsigned char phase = 0, duration = 0, audible = 0, notes = 0, ended = 0;
+    unsigned char phase = 0, duration = 0, audible = 0, notes = 0, ended = 0, wide = 0;
     int c;
     DP_START(f,b);
     while ((c = DP_GET()) >= 0) {
@@ -34,7 +34,10 @@ static unsigned char duet_probe(FILE* f, unsigned char* b)
         if (ended) { if (++tail > 255) return 0; continue; }
         if (!phase) { duration = c; audible = 0; }
         else {
-            if (duration == 1 && c > 8) return 0;
+            /* Voice records (duration 1) mostly hold shifts of 0-8; real
+             * songs also carry 10 or 231 there, which the player skips.
+             * Code has them too, so such a file must end on its terminator. */
+            if (duration == 1 && c > 8) wide = 1;
             audible |= c != 0;
         }
         if (++phase == 3) {
@@ -44,5 +47,5 @@ static unsigned char duet_probe(FILE* f, unsigned char* b)
         }
     }
     if (DP_ERROR(f)) return 2;
-    return ended && notes == 4;
+    return ended && notes == 4 && (!wide || !tail);
 }

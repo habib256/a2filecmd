@@ -88,7 +88,7 @@ class Formats(unittest.TestCase):
   for fault in (1,2,3,4,5,6,7,8):
    out=self.call('fix',fault=fault).split();self.assertEqual(out[0],'6');self.assertEqual(out[6],'0');self.assertEqual(out[5],str(int(fault==7)))
  def test_malformed_candidates_never_repair(self):
-  for data in (b'',b'MB1'+bytes(100),SONG[:-1],SONG+bytes(256),bytes([12,1,2])*4,bytes([1,9,1])+SONG,bytes(7169)):
+  for data in (b'',b'MB1'+bytes(100),SONG[:-1],SONG+bytes(256),bytes([12,1,2])*4,bytes([1,9,1])+SONG+bytes(1),bytes(7169)):
    out=self.call('fix',data);self.assertEqual(out.split()[5:8],['0','0','0'],out)
  def test_suffix_confirmation_collision_and_lookup_errors(self):
   for fault in (0,3,9,10,11):
@@ -97,6 +97,18 @@ class Formats(unittest.TestCase):
    if fault!=3:self.assertEqual(out[:5],['4','0','227','123','42'])
  def test_bin_suffix_keeps_dos_address(self):
   out=self.call('fix',b'hello',name='HELLO.BIN');self.assertTrue(out.startswith('6 4660 '));self.assertEqual(out.split()[5],'0')
+ def test_duet_wide_voice_records_need_an_exact_end(self):
+  # Real songs (Where's Santa M.WE THREE, M.HOP867) carry 10 or 231 in a
+  # voice record; code does too, but never ends on its terminator.
+  wide=SONG[:3]+bytes((1,10,231))+SONG[6:]
+  # A wide voice record before an exactly ending song is a song.
+  self.assertTrue(self.call('fix',bytes([1,9,1])+SONG).startswith('213 53479 '))
+  self.assertIn('Electric Duet compatible',self.call('ident',wide))
+  out=self.call('fix',wide);self.assertTrue(out.startswith('213 53479 227 123 42 1 0 1 '),out)
+  for tail in (bytes(1),bytes(3),bytes(234)):
+   self.assertIn('Invalid Electric Duet?',self.call('ident',wide+tail))
+   self.assertEqual(self.call('fix',wide+tail).split()[5:8],['0','0','0'])
+   self.assertIn('Electric Duet compatible',self.call('ident',SONG+tail))
  def test_ident_duet_and_invalid_candidates(self):
   self.assertIn('Electric Duet compatible',self.call('ident'))
   self.assertIn('Invalid Electric Duet?',self.call('ident',SONG[:-1]))
@@ -105,6 +117,28 @@ class Formats(unittest.TestCase):
   cases=[('FONT',7,0,b'x','font'),('A.FOTO1',6,0,b'x','Purplesoft'),('A',8,0x8066,b'x','LZ4FH'),('A',6,0x5800,bytes(572),'Print Shop'),('A',6,0x400,bytes(1024),'Lo-res'),('A',6,0,b'DGR','DGR pixmap'),('A.PT3',6,0,b'x','PT3'),('A',6,0,b'ProTracker 3.7','ProTracker 3 music'),('A.MD',4,0,b'hello','Markdown'),('A',8,0x4001,bytes(8192),'Packed DHGR'),('A',6,0xE001,bytes(8192),'816/Paint'),('A',0xF2,0,bytes(8192),'Extasie'),('A',8,0x2000,bytes(16384),'DHGR'),('A',6,0,b'MB1','Mockingboard'),('A.NIB',6,0,bytes(232960),'nibble'),('A.HDV',6,0,bytes(1028)+b'\xF1'+bytes(1019),'ProDOS block')]
   for name,typ,aux,data,label in cases:
    with self.subTest(name=name,typ=typ,aux=aux):self.assertIn(label,self.call('ident',data,name,typ=typ,aux=aux))
+ def test_return_keeps_opens_metadata_routes(self):
+  O=ord('O');hi=lambda t:bytes(c|0x80 for c in t)
+  gm=bytes.fromhex('2280000AA1170A25')
+  cases=[  # name, type, aux, data, Return's reader
+   ('NOTES',4,0,b'',"TEXT"),('NOTES',4,0,b'page one\x0c\rpage two\r','TEXT'),
+   ('NOTES',4,0,b'A\r'*4096,'TEXT'),('NOTES',4,0,bytes(16384),'TEXT'),
+   ('JIMMY',6,0x63D0,hi(b'Dear Jimmy,\r\rThanks.\r')*30,'DOCVIEW'),
+   ('JIMMY',6,0x0840,hi(b'Hello\r'),'DOCVIEW'),('JIMMY',6,0,hi(b'Hello\r'),'DOCVIEW'),
+   ('JIMMY',6,0x2000,hi(b'Hello there\r'),'TEXT'),('JIMMY',6,0,hi(b'Hello')+b'\0'+hi(b'x'),'HEX'),
+   ('DOG.SHP',6,0x1DF0,b'\x4c\0\x20'+bytes(8717),'IMAGE'),('DOG.SHP',6,0x1DF0,bytes(8719),'HEX'),
+   ('SET.H',6,0x2000,gm+bytes(8184),'IMAGE'),('SET.S',6,0x2000,hi(b' LDA #0\r')*1024,'IMAGE'),
+   ('PIC',6,0x2000,b'\x4c\0\x20'+bytes(16373),'IMAGE'),('GM',6,0x2000,gm+bytes(100),'GMAGIC'),
+   ('PIXMAP',6,0,b'DGR\1\x50\x30\1\0'+bytes(8184),'DGRVIEW'),
+   ('AN',6,0xE000,b'\x4c\0\x20'+bytes(8188),'IMAGE'),('FONTS8',0xA6,0xABC8,bytes(8192),'HEX'),('REGS',0xB9,0x100,bytes(16384),'HEX'),
+   ('MOVIE',6,0x8400,bytes(8192),'RUN'),('PAINT',6,0xE001,bytes(8192),'PAINT816'),
+   ('ROCKET.LOGO',6,0x2000,b'TO ROCKET\rFD 10\rEND\r','TEXT'),('BT.LOGO',6,0x2000,bytes(8192),'IMAGE'),
+   ('NARROW',6,0,bytes((5,10))+b'gs\0'+bytes(60),'ARLEQUIN'),('IMPORTED',6,0,b'\x09\x51gsXXXX'+bytes(8184),'ARLEQUIN'),
+   ('MAKE.TEXT',0xFC,0x0801,bytes((0x0A,8,10,0,0xBA,0x22,0x41,0x22,0,0,0)),'BASLIST'),
+  ]
+  for name,typ,aux,data,reader in cases:
+   with self.subTest(name=name,typ=typ,aux=aux,size=len(data)):
+    self.assertEqual(self.call('ident',data,name,typ=typ,aux=aux,arg=O).strip(),reader)
  def test_rejected_sc_candidate_preserves_newsroom_detection(self):
   from test_newsdoc import panel
   data=panel()
@@ -123,8 +157,11 @@ class Formats(unittest.TestCase):
      self.assertEqual(self.call('ident',data,'PICTR.HOUSE',aux=aux,arg=key).strip(),'IMAGE')
     for fault in (1,2,3):
      self.assertEqual(self.call('ident',data,'PICTR.HOUSE',aux=aux,arg=13,fault=fault).strip(),'')
-  for aux,size in ((0x4000,8183),(0x6000,8184)):
+  for aux,size in ((0x4000,8183),(0x6000,8200),(0x6000,16392)):
    self.assertEqual(self.call('ident',bytes(size),'DATA',aux=aux,arg=13).strip(),'HEX')
+  # OPEN's rule: any BIN nearly a page long is a page, whatever its address.
+  for aux,size in ((0x6000,8184),(0,8194),(0x0840,16376)):
+   self.assertEqual(self.call('ident',bytes(size),'DATA',aux=aux,arg=13).strip(),'IMAGE')
  def test_visicalc_high_bit_routing_preserves_source_and_fails_closed(self):
   plain=b'>L40:1140\r>A1:@SUM(B40...L40)\r'
   double=b'>BJ90:"All rights reserved.\r>BK69:1\r'

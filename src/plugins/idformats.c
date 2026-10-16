@@ -13,8 +13,10 @@ const struct Header __plugin_header={MEDIA_PLUGIN_MAGIC, OVERLAY_BIG,plugin_entr
  {0,0,ID_CPU_TAG},"Internal formats"};
 #pragma rodata-name(pop)
 static struct Entry actual;
-static const struct Entry* e;
-static unsigned char* b;
+/* The entry is always the restored copy: a fixed address, not a pointer. */
+#define e (&actual)
+/* The sample is always at ID_SAMPLE: a fixed address, not a pointer. */
+#define b ID_SAMPLE
 static unsigned int n;
 static unsigned char id_dos;
 static const char* reader;
@@ -25,7 +27,7 @@ static unsigned char suffix(const char* name,const char* end){unsigned char n=st
 #include "id_routes.h"
 unsigned char __fastcall__ md_entrypoint(const struct A2fcApi* a){
  const char* what;unsigned char* m=(unsigned char*)a->other_full;
- reader=NULL;e=&actual;b=ID_SAMPLE;id_dos=a->panels[*a->active].fs==FS_DOS33;
+ reader=NULL;id_dos=a->panels[*a->active].fs==FS_DOS33;
  if(!id_restore(a,&actual,&n))goto failed;
  sz.l=e->size;
  if(m[42]==2){what=(const char*)ID_SAMPLE;route(what);}else what=extra();

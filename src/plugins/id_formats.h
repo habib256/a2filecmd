@@ -19,8 +19,34 @@ static unsigned char gm_candidate(void){
  return end==8 && memcmp(b,b+3,3);
 }
 static const char* extra(void){
- unsigned int k,count;unsigned char c;
+ unsigned int k,count,prev;unsigned char c;const unsigned char* q;const unsigned char* line;
  /* n comes from the completed read and id_restore checks n <= fresh EOF. */
+ /* OPEN's metadata first, as its classifier had it before any probe. A
+  * Movie Maker sheet, or a BIN nearly a page long (8,184-8,199 or
+  * 16,376-16,391 bytes; not 816/Paint's $E001-$E002 nor Fantavision's $8400)
+  * unless it opens like a DGR pixmap or an Arlequin picture: a coincidence
+  * in its first bytes (Graphics Magician, Merlin, code) must not take a
+  * picture away from IMAGE. A FOT already goes there from identify(). */
+ c=e->type;
+ if(c==6){
+  k=e->aux;
+  if(k==0x1DF0 && !sz.w[1] && sz.w[0]==8720)return known("Movie Maker shape sheet","IMAGE");
+  if(k!=0x8400 && k!=0xE001 && k!=0xE002 && !sz.w[1] && memcmp(b,"DGR",3) && (b[2]!='g' || b[3]!='s')){
+   count=(sz.w[0]+8)&0xFFF0;
+   if(count==8192 || count==16384)return known("Hi-res page","IMAGE");
+  }
+  /* A Bank Street Writer document: a BIN at $0840 or $63D0 (DOS
+   * editions) or 0 (ProDOS), high-bit text throughout the sample; a
+   * Merlin source keeps its .S. */
+  if((!k || k==0x0840 || k==0x63D0) && !suffix(e->name,".S")){
+   /* Walked with a pointer: cc65 2.19 miscompiles b[16-bit] on the
+    * page-aligned sample (the pointer's low byte is never written). */
+   for(q=b;q<b+n && *q>=128;++q);
+   if(n && q==b+n)return known("Bank Street Writer document?","DOCVIEW");
+  }
+ }
+ /* Terrapin Logo procedures: CR-ended text, often a B file at $2000. */
+ if((c==4 || c==6) && suffix(e->name,".LOGO"))return known("Terrapin Logo procedures?","TEXT");
  if(e->type==6 && n>=256 && b[0]==0x8D && b[2]>=32 && suffix(e->name,".MW"))return known("Magic Window?","MAGWIN");
  if(!id_dos && (e->type==0xFA || e->type==6) && e->aux>=0x1000 && e->aux<0x4000 && n>=4 && !(word(b+2)&7) && word(b+2)<=4096 && word(b)>0 && sz.l==4UL+word(b)+word(b+2) && strcmp(e->name,"ANIX.EQUATES"))return known("LISA v3?","LISAV3");
  if((e->type==6 || (!id_dos && e->type==0xF5)) && sz.l<=264 &&
@@ -41,12 +67,27 @@ static const char* extra(void){
      (c=='p' && k=='m') || (c=='c' && k=='j') || (c=='f' && (k=='j'||k=='f')))
    return known("Apple Writer layout?","APPLEWR");
  }
- if((e->type==0xFA || (!id_dos && e->type==6)) && n>=4 && b[0]>=4 && b[0]<=n && !b[b[0]-1]){
-  k=3;while(k<(unsigned int)b[0]-1U){c=b[k++];
-   if(c>=32 && c<192)continue;
-   if(c!=192 || k+1>=(unsigned int)b[0]-1U || b[k+1]<32 || b[k+1]>=127)goto not_sc;
-   k+=2;
-  }
+ /* Before S-C: a narrow Arlequin picture can pass for one source line. */
+ if(!id_dos && (e->type==0xF8 || e->type==6) && n>=4 && b[2]=='g' && b[3]=='s')return known("Arlequin picture","ARLEQUIN");
+ /* S-C source: every whole line of the sample is a length, a line number
+  * (rising, as the editor keeps them), text and a 0. Only a last line cut
+  * by a full 512-byte sample goes unchecked. One line was not enough:
+  * Take 1 actors and VCR Companion borders passed for source. */
+ if((e->type==0xFA || (!id_dos && e->type==6)) && n>=4){
+  /* Pointers, not b[16-bit]: see the Bank Street walk above. */
+  line=b;prev=0;
+  do{
+   c=*line;
+   if(line+c>b+n){if(line!=b && n==512)break;goto not_sc;}
+   if(c<4 || line[c-1] || (line!=b && word(line+1)<=prev))goto not_sc;
+   prev=word(line+1);
+   q=line+3;line+=c;
+   while(q<line-1){c=*q++;
+    if(c>=32 && c<192)continue;
+    if(c!=192 || q+1>=line-1 || !q[1] || q[1]>=127)goto not_sc;   /* a run may repeat a control (*SAVE's backspaces) */
+    q+=2;
+   }
+  }while(line<b+n);
   return known("S-C Assembler source","SCASM");
  }
 not_sc:
@@ -70,9 +111,12 @@ not_sc:
  if(!id_dos){
   if(e->type==6 && gm_candidate())return known("Graphics Magician picture?","GMAGIC");
   if(e->type==0xF4 && n>=4 && word(b+2)>=2)return known("LISA v2 source?","LISAV2");
-  if(e->type==0x03 || suffix(e->name,".TEXT"))return known("Apple Pascal text?","PASTEXT");
+  /* A .TEXT name alone: a Pascal text file is a 1,024-byte header and
+   * whole 1,024-byte pages, never a TXT, a program or a system file. */
+  if(e->type==0x03 || (e->type!=4 && e->type<0xF0 && suffix(e->name,".TEXT") &&
+     !(sz.w[0]&1023) && (sz.w[1] || sz.w[0]>=2048)))
+   return known("Apple Pascal text?","PASTEXT");
   if(e->type==0x50 && e->aux==0x5445)return known("Teach text","TEACHTXT");
-  if((e->type==0xF8 || e->type==6) && n>=4 && b[2]=='g' && b[3]=='s')return known("Arlequin picture","ARLEQUIN");
   if(e->type==4 && n && b[0]=='_')return known("Epistole document?","DOCVIEW");
   if(e->type==4 && n && (b[0]==0xFF || b[0]==0xDF))return known("Papyrus/HomeWord?","DOCVIEW");
  }

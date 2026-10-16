@@ -13,5 +13,6 @@ static const struct Route routes[]={
 static void route(const char* label){
  unsigned char i;for(i=0;i<sizeof(routes)/sizeof(routes[0]);++i)
   if(!strncmp(label,routes[i].label,strlen(routes[i].label))){reader=routes[i].view;return;}
- reader="HEX";
+ /* A TXT stays text, even with control bytes or empty. */
+ reader=e->type==4?"TEXT":"HEX";
 }

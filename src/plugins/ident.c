@@ -165,6 +165,8 @@ static const char* text(void)
 #ifdef PLUGIN_HOST
 #include "id_routes.h"
 #endif
+/* identify() always runs on the checked copy: a fixed address, not a pointer. */
+#define e (&actual)
 static const char* identify(void)
 {
     unsigned char t = e->type, i;
@@ -239,7 +241,7 @@ static const char* identify(void)
     if (t == 6 && (e->aux == 0xE001 || e->aux == 0xE002))
         return e->aux == 0xE001 ? "816/Paint packed HGR"
                                 : "816/Paint packed DHGR";
-    if (!SZ[1]) {
+    if (!SZ[1] && (t == 6 || t == 8 || !t)) {  /* BIN, FOT or untyped: never a TXT or a font */
         if (SZ[0] == 16384) return "DHGR picture 16K";
         if (SZ[0] == 8192 || (SZ[0] >= 8184 && SZ[0] < 8192 && t == 6 && (e->aux == 0x2000 || e->aux == 0x4000)))
             return "HGR picture 8K";
@@ -254,6 +256,7 @@ static const char* identify(void)
         }
     return text();
 }
+#undef e
 
 unsigned char __fastcall__ md_entrypoint(const struct A2fcApi* api)
 {

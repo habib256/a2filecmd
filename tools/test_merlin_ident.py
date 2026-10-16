@@ -67,6 +67,26 @@ class MerlinIdentification(unittest.TestCase):
         if bad:self.assertTrue(result.stdout.startswith('FALLBACK|Invalid'),result.stdout)
         else:self.assertEqual(result.stdout,expected+'|\n')
 
+    def test_return_runs_sys_and_other_keys_still_read(self):
+        code=bytes([0x4C,0,0x20])+bytes(64)
+        self.check(code,'RUN',typ=255,arg=ord('O'),size=len(code),name='PROG.SYSTEM')
+        for arg in (ord('I'),13):self.check(code,'FALLBACK',typ=255,arg=arg,size=len(code),name='PROG.SYSTEM')
+        # BIN keeps its content routing on Return.
+        self.check(code,'FALLBACK',typ=6,arg=ord('O'),size=len(code),name='PROG')
+
+    def basint_cases(self,exe=None):
+        # Return runs a ProDOS BAS or INT; I and T-like keys still read it,
+        # and source typed INT keeps its reader.
+        bas=bytes((0x0A,8,10,0,0xBA,0x22,0x41,0x22,0,0,0))
+        for typ,data in ((252,bas),(250,bytes(32)),(252,b'')):
+            self.check(data,'RUN',typ=typ,arg=ord('O'),size=len(data),name='PROG',exe=exe)
+            for arg in (ord('I'),13):self.check(data,'FALLBACK',typ=typ,arg=arg,size=len(data),name='PROG',exe=exe)
+        self.check(bytes((5,10,0,65,0)),'SCASM',typ=250,arg=ord('O'),size=5,name='SOURCE',exe=exe)
+        merlin=high(b'*Shared source\rLABEL LDA #0\r STA $300\r RTS\r')
+        self.check(merlin,'MERLIN',typ=250,arg=ord('O'),size=len(merlin),name='T.S',exe=exe)
+
+    def test_return_runs_bas_and_int(self):self.basint_cases()
+
     def cases(self,exe=None):
         body=high(b'*Shared source\rLABEL LDA #0\r STA $300\r RTS\r')
         for size in (0,1,0xffffff):
@@ -74,7 +94,9 @@ class MerlinIdentification(unittest.TestCase):
         for b in (b'',b'ordinary text\r',high(b' LDA #0\r STA $300\r'),
                   high(b'* LDA\r* STA\r* RTS\r'),high(b' LDA #0\r STA $300\r RTS'),body+b'\x01'):
             self.check(b,'FALLBACK',exe=exe)
-        for typ in (0,6,250):self.check(body,'FALLBACK',typ=typ,exe=exe)
+        for typ in (0,250):self.check(body,'FALLBACK',typ=typ,exe=exe)
+        # A BIN at 0 of high-bit text is a Bank Street Writer document, as OPEN had it.
+        self.check(body,'DOCVIEW',typ=6,exe=exe)
         self.check(high(b'.lm2\r LDA #0\r STA $300\r RTS\r'),'APPLEWR',exe=exe)
         for bad in (1,2,3,4,5):self.check(body,'',bad=bad,exe=exe)
         # The third statement cut by the 512-byte sample must not count.
@@ -350,8 +372,18 @@ class MerlinIdentification(unittest.TestCase):
         for data in (good[:3],b'\x03'+good[1:],good[:len(sc_line(100,b'\x89LDA\x83#0'))-1],sc_line(1,b'\xc0'),sc_line(1,b'\xc0\xff\0'),sc_line(1,b'\xc1'),sc_line(1,b'\0X')):
             self.check(data,'FALLBACK',typ=6,exe=exe)
         self.check(sc_line(1,b'A'*251),'SCASM',typ=6,exe=exe)
-        # Matching first record does not bypass full-reader validation.
-        self.check(good[:-1],'SCASM',typ=6,exe=exe)
+        # Every whole line of the sample must be source: a cut last line only
+        # when the 512-byte sample is full, numbers strictly rising.
+        self.check(good[:-1],'FALLBACK',typ=6,exe=exe)
+        self.check(sc_line(100,b'\x89LDA')+bytes((150,1,2,3,4,5)),'FALLBACK',typ=6,exe=exe)
+        self.check(sc_line(100,b'\x89LDA')+sc_line(100,b'\x89RTS'),'FALLBACK',typ=6,exe=exe)
+        self.check(sc_line(100,b'\x89LDA')+sc_line(90,b'\x89RTS'),'FALLBACK',typ=6,exe=exe)
+        long=b''.join(sc_line(10*i+10,b'\x89LDA\x83#0 '+b'*'*21) for i in range(40))
+        self.check(long,'SCASM',typ=6,exe=exe);self.check(long,'SCASM',typ=0xfa,exe=exe)
+        self.check(long[:511],'FALLBACK',typ=6,exe=exe)
+        save=sc_line(1000,b'.LIF')+sc_line(1010,b'*\xc0\x06\x08SAVE S.X')+sc_line(1020,b'*\xc0\x21-')
+        for typ in (6,0xfa):self.check(save,'SCASM',typ=typ,arg=ord('O'),exe=exe)
+        self.check(sc_line(1000,b'.LIF')+sc_line(1010,b'*\xc0\x06\0'),'FALLBACK',typ=6,exe=exe)
         originals=list(sc_originals())
         if originals:self.assertEqual(len(originals),12)
         for name,source in originals:
@@ -403,9 +435,30 @@ class MerlinIdentification(unittest.TestCase):
 
     def test_macbinary_content_and_pntg_suffix(self):self.macpaint_cases()
 
+    def open_metadata_cases(self,exe=None):
+        # OPEN's metadata rules in IDFORMATS, before any content probe.
+        hi=lambda t:bytes(c|0x80 for c in t);gm=bytes.fromhex('2280000AA1170A25');O=ord('O')
+        for name,typ,aux,data,expected in (
+            ('PIC',6,0x2000,gm+bytes(8184),'IMAGE'),('PIC',6,0,hi(b' LDA #0\r')*1023,'IMAGE'),
+            ('PIC',6,0xE000,bytes(16376),'IMAGE'),('PIC',6,0x2000,bytes(8183),'FALLBACK'),
+            ('PIC',6,0x2000,bytes(8200),'FALLBACK'),('PIC',6,0xE001,bytes(8192),'FALLBACK'),
+            ('PIC',6,0x8400,bytes(8192),'RUN'),('PIC',8,0x2000,bytes(8192),'FALLBACK'),
+            ('PIC',6,0,b'DGR\1\x50\x30\1\0'+bytes(8184),'FALLBACK'),
+            ('DOG.SHP',6,0x1DF0,b'\x4c\0\x20'+bytes(8717),'IMAGE'),('DOG.SHP',6,0x1DF0,bytes(8721),'FALLBACK'),
+            ('JIMMY',6,0x63D0,hi(b'Dear Jimmy,\r')*60,'DOCVIEW'),('JIMMY',6,0x0840,hi(b'Hi\r'),'DOCVIEW'),
+            ('JIMMY',6,0x2000,hi(b'Hi\r'),'FALLBACK'),('JIMMY',6,0,hi(b'Hi')+b'\r','FALLBACK'),('T.S',6,0,hi(b' LDA #0\r'),'MERLIN'),
+            ('ROCKET.LOGO',6,0x2000,b'TO ROCKET\rFD 10\rEND\r','TEXT'),('.LOGO',6,0x2000,b'TO X\r','FALLBACK'),
+            ('NARROW',6,0,bytes((5,10))+b'gs\0'+bytes(60),'ARLEQUIN'),
+            ('MAKE.TEXT',0xFC,0x0801,b'\x0a\x08\x0a\0\xba"A"\0\0\0','RUN'),('MAKE.TEXT',4,0,b'x\r','FALLBACK'),('PROG.TEXT',6,0,bytes(2048),'PASTEXT'),('PROG.TEXT',0,0,bytes(3072),'PASTEXT'),
+            ('PROG.TEXT',6,0,bytes(1024),'FALLBACK'),('PROG.TEXT',6,0,bytes(2049),'FALLBACK'),('PROG.TEXT',4,0,bytes(2048),'FALLBACK'),('PROG',3,0,b'x','PASTEXT')):
+            with self.subTest(name=name,typ=typ,aux=aux,size=len(data),exe=exe):
+                self.check(data,expected,typ=typ,aux=aux,size=len(data),arg=O,exe=exe,name=name)
+
+    def test_open_metadata_routes(self):self.open_metadata_cases()
+
     def test_both_cpus(self):
         if not shutil.which('cl65') or not shutil.which('sim65'):self.skipTest('cc65 unavailable')
         for cpu,target in (('6502','sim6502'),('65c02','sim65c02')):
-            exe=self.p/target;self.compile(exe,target,cpu);self.cases(exe);self.visicalc_cases(exe);self.originals(exe);self.printshop_cases(exe);self.movie_cases(exe);self.pcs_cases(exe);self.dpc_cases(exe);self.multiscr_cases(exe);self.mouse_bin_cases(exe);self.multiplan_bin_cases(exe);self.lisa_bin_cases(exe);self.sc_bin_cases(exe);self.arlequin_bin_cases(exe);self.macpaint_cases(exe)
+            exe=self.p/target;self.compile(exe,target,cpu);self.cases(exe);self.visicalc_cases(exe);self.originals(exe);self.printshop_cases(exe);self.movie_cases(exe);self.pcs_cases(exe);self.dpc_cases(exe);self.multiscr_cases(exe);self.mouse_bin_cases(exe);self.multiplan_bin_cases(exe);self.lisa_bin_cases(exe);self.sc_bin_cases(exe);self.arlequin_bin_cases(exe);self.macpaint_cases(exe);self.open_metadata_cases(exe);self.basint_cases(exe)
 
 if __name__=='__main__':unittest.main()

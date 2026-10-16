@@ -22,7 +22,8 @@ const struct Header __plugin_header={MEDIA_PLUGIN_MAGIC, OVERLAY_BIG,plugin_entr
  {0,0,ID_CPU_TAG},"Internal 1.0 format detector"};
 #pragma rodata-name(pop)
 static struct Entry actual;
-static const struct Entry* e;
+/* The entry is always the restored copy: a fixed address, not a pointer. */
+#define e (&actual)
 static unsigned char* b;
 static unsigned int n;
 static unsigned char id_dos;
@@ -65,13 +66,21 @@ static const char* dos_named(const unsigned char* name){
 }
 unsigned char __fastcall__ md_entrypoint(const struct A2fcApi* a){
  const char* what;const char* next;unsigned char* m=(unsigned char*)a->other_full;
- reader=NULL;e=&actual;b=ID_SAMPLE;id_dos=a->panels[*a->active].fs==FS_DOS33;
+ reader=NULL;b=ID_SAMPLE;id_dos=a->panels[*a->active].fs==FS_DOS33;
  if(!id_restore(a,&actual,&n))goto failed;
  sz.l=e->size;
  if(m[42]==4){
   what=dos_named(m+10);m[42]=1;next="IDENT.PLG";
+  /* Return runs a ProDOS BAS or INT (RUN asks first) that no source
+   * format has claimed: IDFORMATS found no S-C or LISA, nor this Merlin. */
+  if(!what && a->arg=='O' && !id_dos && (actual.type==0xFC || actual.type==0xFA))what=reader="RUN";
  }else {
-  if(m[42])goto failed;what=extra_v1();m[42]=3;next="IDFORMATS.PLG";
+  if(m[42])goto failed;
+  /* Return on a ProDOS SYS runs it (RUN asks first); I still reads it.
+   * BAS and INT wait for the source formats: see the second visit. */
+  if(a->arg=='O' && !id_dos && actual.type==0xFF)what=reader="RUN";
+  else what=extra_v1();
+  m[42]=3;next="IDFORMATS.PLG";
  }
  if(what){m[40]=m[41]=0;id_finish(a,e,what,reader,id_dos);return 0;}
 #ifdef PLUGIN_HOST

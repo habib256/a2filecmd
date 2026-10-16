@@ -33,7 +33,7 @@ const char* corpus_ident(const char* name,int typ,int aux,const unsigned char* b
  const char* label;static char result[256];
  memset(&ce,0,sizeof ce);strncpy(ce.name,name,NAME_LEN-1);ce.type=typ;ce.aux=aux;ce.size=len;
  memset(&ca,0,sizeof ca);ca.sprintf=sprintf;ca.fseek=fseek;ca.fread=fread;
- A=&ca;e=&ce;b=sample;sz.l=len;n=len<512?len:512;id_dos=dos;reader=NULL;io_failed=0;
+ A=&ca;actual=ce;e=&actual;b=sample;sz.l=len;n=len<512?len:512;id_dos=dos;reader=NULL;io_failed=0;
  memset(sample,0,sizeof sample);memcpy(sample,bytes,n);
  /* identify() may seek or inspect complete Duet data. Only this disposable
   * temporary copy is written. Original disks and files stay read-only. */
