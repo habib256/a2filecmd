@@ -5,6 +5,15 @@ downloads and installation.
 
 ## [Unreleased]
 
+## [0.9.8] — 2026-10-18
+
+- Restore automatic Return routing for recognized file formats, including
+  system, Applesoft BASIC and Integer BASIC programs.
+- Accept S-C Assembler text with repeated control characters, while retaining
+  checks that prevent ambiguous or malformed files from claiming another reader.
+
+[Full changelog](https://github.com/habib256/a2filecmd/compare/v0.9.7...v0.9.8).
+
 ## [0.9.7] — 2026-10-13
 
 - Better playback and navigation in Take 1, Fantavision, Epistole and AppleWorks.

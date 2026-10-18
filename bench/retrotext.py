@@ -15,9 +15,12 @@ def sc_checks(p,s):
         s.wait(lambda:s.has('1000 ; STRATEGY'),'S-C BIN listing',30)
         s.ok('SCASM BIN automatic '+repr(key),True)
         s.key(ESC);s.wait(lambda:s.has('Type  Aux'),'S-C BIN exit',30)
-        s.select('BADSC');s.key(key)
-        s.wait(lambda:s.has('Malformed S-C Assembler'),'S-C BIN last record rejected',30)
-        s.ok('SCASM BIN truncated last record refused '+repr(key),True)
+    # IDENT deliberately rejects an incomplete final line before routing
+    # Return/I. Force the reader through its menu to verify the full-pass
+    # refusal as well; the source volume is compared below.
+    s.select('BADSC');menu_run(s,p,'SCASM')
+    s.wait(lambda:s.has('Malformed S-C Assembler'),'S-C BIN last record rejected',30)
+    s.ok('SCASM BIN truncated last record refused',True)
 
 
 def main():
