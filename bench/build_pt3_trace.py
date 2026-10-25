@@ -39,8 +39,6 @@ s='#include <cstdio>\n'+s.replace(needle,'''while (!stopped) {
                 std::fflush(stdout);
             }
         }''')
-s=s.replace('diskCard = hdv.get();', 'hdv->setWriteBackEnabled(true); // only disposable bench images\n            diskCard = hdv.get();')
-s=s.replace('if (floppyCard) (void)floppyCard->flushPendingWrites();', 'if (floppyCard) (void)floppyCard->flushPendingWrites();\n        if (diskCard && !diskCard->saveDirty()) throw std::runtime_error(\"HDV flush failed\");')
 core=Path('/tmp/a2fc-pom2-native')
 subprocess.run(['cmake','-S',str(pom),'-B',str(core),'-DCMAKE_BUILD_TYPE=Release','-DPOM2_ENABLE_TESTS=OFF','-DPOM2_ENABLE_SLIRP=OFF'],check=True)
 subprocess.run(['cmake','--build',str(core),'--target','pom2_core','-j','6'],check=True)

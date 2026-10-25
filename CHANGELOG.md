@@ -5,6 +5,15 @@ downloads and installation.
 
 ## [Unreleased]
 
+- Add a README link that boots the published 800K edition directly in POM2
+  WebAssembly, and reconcile the roadmap with shipped tools and current checks.
+
+- Align the POM2 test host's Disk II/IWM mode with the emulated machine and
+  keep the slot-5 DOS controller's internal slot consistent with its bus slot.
+- Fail emulator benches on image write-back errors or forced shutdown;
+  clean up failed starts and stop only the process owned by the bench.
+  Add hardware-setup and persistence-failure regression coverage.
+
 ## [0.9.8] — 2026-10-18
 
 - Restore automatic Return routing for recognized file formats, including

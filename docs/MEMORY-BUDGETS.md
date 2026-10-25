@@ -1,8 +1,28 @@
 # Consolidation : budgets mémoire
 
-## État actuel (7 octobre 2026, sources b4cd129, candidat 0.9.6)
+## Relevé actuel (25 octobre 2026, sources 0.9.8)
 
-Le seul tableau à jour de ce document. Relevé sur une construction neuve des
+Les constructions 6502 et 65C02 et leurs gardes de disposition passent.
+Le relevé de `tools/check_layout.py` est le suivant, en octets libres :
+
+| Réserve | 65C02 | 6502 |
+| --- | ---: | ---: |
+| MAIN | 1 | 388 |
+| Carte langage | 8 | 6 |
+| LOWRAM | 87 | 112 |
+| Écart sous la pile C réservée | 18 | 594 |
+| OPEN | 0 | 0 |
+| COPY | 8 | 5 |
+
+Ces zones se recouvrent et ne s'additionnent pas. L'écart sous la pile
+réservée n'est pas une mesure de sa consommation. Le Mini conserve MAIN
+et LOW pleins. Les corrections de l'hôte POM2 du même jour ne modifient
+pas les binaires Apple II. Les tableaux détaillés ci-dessous restent des
+relevés historiques, à ne pas substituer à une nouvelle sortie du lien.
+
+## Relevé historique (7 octobre 2026, sources b4cd129, candidat 0.9.6)
+
+Relevé historique sur une construction neuve des
 deux éditions (`make ARCH=enh`, `make ARCH=6502`, puis `make mini`) :
 65C02 avec cc65 V2.18 (Homebrew), 6502 avec cc65 V2.19 Git e11fb5c
 (`~/opt/cc65-head`). Octets libres ; les zones se recouvrent, **rien ne

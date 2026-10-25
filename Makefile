@@ -475,6 +475,7 @@ test: test-mini $(TAKE1)
 	python3 $(TOOLS)/test_imgconv_safety.py
 	python3 $(TOOLS)/test_check_layout.py
 	python3 $(TOOLS)/test_bench_inventory.py
+	python3 $(TOOLS)/test_pom2_host.py
 	python3 $(TOOLS)/test_mkvolume.py
 	python3 $(TOOLS)/test_prodos_read.py
 	python3 $(TOOLS)/test_mkdemo.py
