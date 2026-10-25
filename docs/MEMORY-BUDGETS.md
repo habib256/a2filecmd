@@ -1,6 +1,6 @@
 # Consolidation : budgets mémoire
 
-## Relevé actuel (25 octobre 2026, sources 0.9.8)
+## Relevé actuel (25 octobre 2026, sources 0.9.9)
 
 Les constructions 6502 et 65C02 et leurs gardes de disposition passent.
 Le relevé de `tools/check_layout.py` est le suivant, en octets libres :

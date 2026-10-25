@@ -1,6 +1,6 @@
 # The A2 File Cmd manual
 
-**Version 0.9.8**. By Arnaud Verhille, GNU GPL v3.
+**Version 0.9.9**. By Arnaud Verhille, GNU GPL v3.
 
 ![A2 File Cmd ProDOS XL 0.9.6 in 80 columns: two panels captured in POM2](screenshots/prodos-panels-0.9.6.png)
 
@@ -28,7 +28,7 @@ selecting, reading, editing and verified copying. It uses an **Apple II+ with
 48 KB**, NMOS 6502, 40 columns and **two Disk II drives on the boot controller**.
 The following chapters extend this workflow with ProDOS folders and tools.
 
-Boot `A2FILECMD-DOS3.3-0.9.8.dsk`, or use **BRUN A2FC** from DOS 3.3. Both panels
+Boot `A2FILECMD-DOS3.3-0.9.9.dsk`, or use **BRUN A2FC** from DOS 3.3. Both panels
 start on the boot disk; each remembers drive, selection and scroll. Catalogs
 hold up to 105 files and show 19 rows. `?` opens help.
 
@@ -101,10 +101,10 @@ and recovery filenames do not apply to the DOS3.3 edition introduced first.
 
 | Image | Choose it for |
 |---|---|
-| `A2FILECMD-DOS3.3-0.9.8.dsk` | Standalone DOS 3.3 file manager for Apple II+ and two Disk II drives. |
-| `A2FILECMD-PRODOS-800K-0.9.8.po` | Selected practical tools, BASIC runtimes and free space for files; any IIe. |
-| `A2FILECMD-PRODOS-XL-0.9.8.2mg` | Complete 32 MB ProDOS edition with tools and demonstrations; any IIe. |
-| `A2FILECMD-PRODOS-XL-65C02-enhanced-0.9.8.2mg` | Complete XL for an enhanced IIe, //c or IIgs: MouseText and optional mouse support. |
+| `A2FILECMD-DOS3.3-0.9.9.dsk` | Standalone DOS 3.3 file manager for Apple II+ and two Disk II drives. |
+| `A2FILECMD-PRODOS-800K-0.9.9.po` | Selected practical tools, BASIC runtimes and free space for files; any IIe. |
+| `A2FILECMD-PRODOS-XL-0.9.9.2mg` | Complete 32 MB ProDOS edition with tools and demonstrations; any IIe. |
+| `A2FILECMD-PRODOS-XL-65C02-enhanced-0.9.9.2mg` | Complete XL for an enhanced IIe, //c or IIgs: MouseText and optional mouse support. |
 
 The choice is **enhanced or not**. The enhanced XL needs an enhanced IIe,
 a //c or a IIgs; every other ProDOS image runs on any IIe, enhanced or not.
@@ -118,7 +118,7 @@ XL uses `.2mg`. Renaming an extension does not convert an image. With all
 release images and the PDF in the same directory, check their downloads:
 
 ```sh
-sha256sum -c SHA256SUMS-0.9.8.txt
+sha256sum -c SHA256SUMS-0.9.9.txt
 ```
 
 ### Install and start
@@ -1124,7 +1124,7 @@ reuses; `data/CP2/README.TXT` describes that corpus.
   `bench/README.md` describe development and test workflows.
 - **Bugs and source:** [A2 File Cmd on GitHub](https://github.com/habib256/a2filecmd).
 
-This is the guide for **0.9.8**. It describes supported behavior and
+This is the guide for **0.9.9**. It describes supported behavior and
 limits; it is not a claim that physical hardware qualification has finished.
 Keep original disks safe, use matching program/tools, and read each operation's
 result before starting the next one.

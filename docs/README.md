@@ -36,6 +36,7 @@ dans `history/`.
 
 | Rapport | Objet |
 | --- | --- |
+| [QUALIFICATION-0.9.9.md](QUALIFICATION-0.9.9.md) | Qualification de la 0.9.9 |
 | [QUALIFICATION-0.9.8.md](QUALIFICATION-0.9.8.md) | Qualification de la 0.9.8 |
 | [QUALIFICATION-0.9.7.md](QUALIFICATION-0.9.7.md) | Qualification de la 0.9.7 |
 | [QUALIFICATION-0.9.6.md](QUALIFICATION-0.9.6.md) | Qualification de la 0.9.6 |
