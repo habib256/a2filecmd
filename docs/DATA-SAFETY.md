@@ -148,6 +148,26 @@ Ce retour complète les tests automatisés. Voir le
   W) et BOOTBLK relisent le bloc 2 après la réponse, BLKEDIT son CRC-32
   (bloc 0 d’une image de 1 ou 2 blocs), et refusent un disque changé ou
   illisible.
+- **DIRSORT** : réordonne les entrées d'un répertoire ProDOS par
+  WRITE_BLOCK, après une confirmation qui le nomme. Refuse ce qu'il ne peut
+  pas justifier en entier (compteur, chaînage, types de stockage, lien
+  parent de chaque sous-répertoire et de la cible elle-même), plus de 4
+  blocs, un répertoire ou volume protégé, un sous-répertoire verrouillé qui
+  devrait bouger, une image, la liste des volumes et un nom porté par deux
+  lecteurs. Relit tout avant la première écriture, relit chaque bloc écrit,
+  remet en place ce qui a été écrit (un bloc refusé et intact n'est pas
+  réécrit) et nomme le premier bloc qui ne revient pas. L'en-tête d'un
+  sous-répertoire déplacé est contrôlé par ses champs et une somme
+  Fletcher-16, son original n'étant pas en mémoire. Une remise en place est
+  jugée par sa relecture, pas par le code d'erreur de l'écriture.
+  `test_dirsort.py` : hôte à BSS et locales empoisonnées, le binaire cc65
+  des deux éditions sous sim65 (stubs d'écran compris), fuzz de 600
+  scénarios (volumes `mkvolume`, touches et pannes aléatoires, oracle
+  `prodos_check.py`). `bench/dirsort.py` : vrai ProDOS 8 sous POM2, ProDOS
+  agrandit ensuite le sous-répertoire déplacé par son lien réécrit, le
+  volume est contrôlé et l'amorçage lance le `.SYSTEM` annoncé. Limite :
+  une coupure pendant les écritures peut laisser une entrée en double ou
+  absente.
 - **REPAIR** : écritures brutes après le diagnostic de FIXIT et une
   confirmation ; voir [FIXIT.md](FIXIT.md), section 5 pour ce qu’il refuse
   de croire. Sur un volume de plus de 4 096 blocs, FIXIT et REPAIR

@@ -106,6 +106,7 @@ contrôlent cette limite avant les tampons, sans chevauchement.
 | CRC (small) | `$1B00-$1FFF` | 1 152 / 1 161 | 13 / 4 |
 | DATE (small) | `$1B00-$1FFF` | 1 227 / 1 228 | 8 / 7 |
 | DGRVIEW (big) | `$1B00-$2FFF` | 3 753 / 3 844 | 1 555 / 1 464 |
+| DIRSORT (big) | `$1B00-$3FFF` | 6 685 / 6 827 | 147 / 5 |
 | DISASM (big) | `$1B00-$3FFF` | 7 940 / 7 935 | 885 / 890 |
 | DISKCMP (big) | `$1B00-$3FFF` | 6 940 / 6 905 | 854 / 889 |
 | DOCVIEW (big) | `$1B00-$3D5F` | 8 429 / 8 432 | 17 / 14 |
@@ -149,7 +150,7 @@ contrôlent cette limite avant les tampons, sans chevauchement.
 | SHAPES (big) | `$1B00-$1FFF` | 1 236 / 1 239 | 3 / 0 |
 | SYNC (big) | `$1B00-$3FFF` | 6 981 / 7 008 | 745 / 717 |
 | TAGPAT (small) | `$1B00-$1FFF` | 1 228 / 1 228 | 6 / 6 |
-| TREE (big) | `$1B00-$3FFF` | 4 979 / 5 002 | 3 362 / 3 339 |
+| TREE (big) | `$1B00-$3FFF` | 5 764 / 5 809 | 2 568 / 2 522 |
 | TXTCONV (big) | `$1B00-$3FFF` | 6 096 / 6 134 | 2 782 / 2 743 |
 | UNDELETE (big) | `$1B00-$3FFF` | 6 909 / 6 924 | 48 / 33 |
 | UNSQ (big) | `$1B00-$3FFF` | 6 056 / 6 127 | 1 329 / 1 257 |

@@ -30,6 +30,7 @@ menu. Every overlay is on the 800K and XL images.
 | DATE | System | small |  | Date |
 | DGRVIEW | Images | big, media |  | Lo-res and double lo-res pictures, a2dgrx sprites |
 | DISASM | Programming | big |  | Disassemble BIN/SYS: 6502 or 65C02, read only |
+| DIRSORT | Disks | big |  | Reorder a ProDOS directory on the disk |
 | DISKCMP | Disks | big |  | Compare volumes or disk images block by block |
 | DOCVIEW | Files | big |  | Read Epistole, Papyrus, HomeWord, Bank Street docs |
 | DOS33W | Disks | big |  | DOS 3.3: delete or rename the selected file |

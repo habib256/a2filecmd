@@ -84,7 +84,7 @@ REPAIR, VOLINFO et FIND.
 **Hors du contrat de fichier, assumé et documenté :**
 
 - les écritures de blocs bruts (DISKIMG W/O, BLKEDIT, WIPE, BOOTBLK, REPAIR,
-  MOVE sur un même volume, FORMAT, NIBCOPY) : chacune a sa confirmation, sa
+  DIRSORT, MOVE sur un même volume, FORMAT, NIBCOPY) : chacune a sa confirmation, sa
   relecture et sa restauration propres, décrites avec l'outil ;
 - DOSWRITE sur un vrai disque DOS 3.3 (section plus bas) ;
 - les écritures en place dans une image ou un volume non ProDOS (IMGPUT,
