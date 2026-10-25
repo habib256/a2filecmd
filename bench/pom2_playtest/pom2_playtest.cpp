@@ -289,6 +289,9 @@ int main(int argc, char** argv) {
         // and the HDV on slot 5 is never found. Plug it empty if need be.
         if (!floppy.empty() || !floppy2.empty() || iic) {
             auto card = std::make_unique<DiskIICard>();
+            // A slotted Disk II has no IWM mode/status registers. The
+            // constructor defaults to IWM for standalone //c tests.
+            card->setIwmHost(iic);
             if (!card->loadBootRom(POM2_ROOT "/roms/disk2.rom")) throw std::runtime_error("disk2.rom unavailable");
             (void)card->loadLssRom(POM2_ROOT "/roms/diskii_p6.rom");
             // Ecriture autorisee, sinon le lecteur se presente protege en
@@ -347,15 +350,27 @@ int main(int argc, char** argv) {
         while (!stopped) std::this_thread::sleep_for(std::chrono::milliseconds(100));
         server.stop();
         ctrl.stop();
-        if (floppyCard) (void)floppyCard->flushPendingWrites();
+        bool saved = true;
+        if (floppyCard && !floppyCard->flushPendingWrites()) {
+            std::cerr << "Disk II write-back failed\n";
+            saved = false;
+        }
         if (diskCard) {
             std::string err;
-            if (!diskCard->flushBay(0, err)) std::cerr << "HDV write-back failed: " << err << '\n';
-            if (!disk2.empty() && !diskCard->flushBay(1, err))
+            if (!diskCard->flushBay(0, err)) {
+                std::cerr << "HDV write-back failed: " << err << '\n';
+                saved = false;
+            }
+            if (!disk2.empty() && !diskCard->flushBay(1, err)) {
                 std::cerr << "HDV 2 write-back failed: " << err << '\n';
+                saved = false;
+            }
         }
-        if (spUnit && !spUnit->saveDirty()) std::cerr << "SmartPort HDV write-back failed\n";
-        return 0;
+        if (spUnit && !spUnit->saveDirty()) {
+            std::cerr << "SmartPort HDV write-back failed\n";
+            saved = false;
+        }
+        return saved ? 0 : 1;
     } catch (const std::exception& e) {
         std::cerr << e.what() << '\n';
         return 1;

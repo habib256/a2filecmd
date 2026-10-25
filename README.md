@@ -11,7 +11,10 @@ From the essentials of DOS3.3 to a complete ProDOS workspace.
 [![Build](https://github.com/habib256/a2filecmd/actions/workflows/ci.yml/badge.svg)](https://github.com/habib256/a2filecmd/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/license-GPL_v3-blue.svg)](LICENSE)
 
-**[Download](https://github.com/habib256/a2filecmd/releases/latest) · [Read the guide](docs/MANUAL.md) · [PDF guide](docs/A2FILECMD-MANUAL-EN.pdf)**
+**[Try in your browser](https://habib256.github.io/pom2/wasm/?preset=iie&url=https://raw.githubusercontent.com/habib256/a2filecmd/main/web/A2FILECMD-PRODOS-800K-0.9.8.po) · [Download](https://github.com/habib256/a2filecmd/releases/latest) · [Read the guide](docs/MANUAL.md) · [PDF guide](docs/A2FILECMD-MANUAL-EN.pdf)**
+
+The browser demo boots the published 0.9.8 **800K edition** automatically in
+POM2 WebAssembly on an emulated Apple IIe. Nothing to install.
 
 ![A2 File Cmd ProDOS XL in 80 columns: the volume root on the left, the DEMO folder on the right](docs/screenshots/prodos-panels-0.9.6.png)
 

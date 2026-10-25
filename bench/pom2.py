@@ -140,34 +140,59 @@ class Pom2:
         if self.chatmauve:
             args += ['--chatmauve'] + ([self.chatmauve] if isinstance(self.chatmauve, str) else [])
         args += [os.path.basename(self.hdv)]
-        self.proc = subprocess.Popen(args, cwd=cwd, stdout=log, stderr=subprocess.STDOUT,
-                                     start_new_session=True)
+        try:
+            self.proc = subprocess.Popen(args, cwd=cwd, stdout=log, stderr=subprocess.STDOUT,
+                                         start_new_session=True)
+        finally:
+            log.close()
         deadline = time.time() + 30
         while time.time() < deadline:
+            if self.proc.poll() is not None:
+                code = self.proc.returncode
+                self.proc = None
+                raise RuntimeError('POM2 termine au demarrage (code %d), voir %s' %
+                                   (code, os.path.join(cwd, 'pom2.log')))
             try:
                 self.rq('/status')
                 return self
             except Exception:
                 time.sleep(0.2)
-        raise RuntimeError('POM2 ne repond pas sur le port %d' % self.port)
+        try:
+            self.stop()
+        finally:
+            raise RuntimeError('POM2 ne repond pas sur le port %d' % self.port)
 
     def stop(self):
         if self.proc is not None:
-            for sig in (signal.SIGTERM, signal.SIGKILL):
+            proc = self.proc
+            forced = False
+            if proc.poll() is None:
                 try:
-                    os.killpg(os.getpgid(self.proc.pid), sig)
-                    self.proc.wait(timeout=5)
-                    break
-                except Exception:
+                    os.killpg(proc.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass  # exited between poll and signal; still reap it
+            try:
+                code = proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                forced = True
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except ProcessLookupError:
                     pass
+                code = proc.wait(timeout=5)
             self.proc = None
-        subprocess.call(['pkill', '-f', 'ai-control=%d' % self.port])
+            if forced or code != 0:
+                raise RuntimeError('POM2 arrete sans sauvegarde confirmee (code %d), voir pom2.log' % code)
 
     def __enter__(self):
         return self.start()
 
     def __exit__(self, *exc):
-        self.stop()
+        try:
+            self.stop()
+        except RuntimeError:
+            if exc[0] is None:
+                raise
 
     # ── transport ──────────────────────────────────────────────────────────
     def rq(self, path, body=None, timeout=10):

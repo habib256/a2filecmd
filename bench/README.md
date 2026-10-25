@@ -11,6 +11,49 @@ Les bancs disquette utilisent l’image interne `build-6502/legacy/BOOT.po`
 La conversion DSK publiée conserve les mêmes blocs ProDOS ; les `.po` ne sont
 pas joints aux releases. Les bancs XL amorcent directement leur `.2mg`.
 
+## Compatibilité POM2 — audit du 25 octobre 2026
+
+Relecture des changements POM2 depuis la publication A2FC 0.9.8 du
+18 octobre (`27726681` → `f6d8a146`, releases POM2 0.9.8 et 0.9.9).
+Le code natif A2FC et ses formats sur disque restent inchangés par cet audit.
+Les corrections portent sur le matériel et les verdicts de ses bancs.
+
+| Changements POM2 examinés | Conséquence pour A2FC et ses bancs |
+|---|---|
+| Disk II et IWM, phases au changement de lecteur, accès hors piste, écritures WOZ | Le constructeur `DiskIICard` active les hooks IWM par défaut. Le banc les désactive maintenant sur les IIe, comme `SlotCardFactory` et le SDK POM2 ; seul le //c les conserve. L'adaptateur DOS slot 5 construit également un contrôleur dont le numéro interne est 5. |
+| SmartPort FORMAT/EJECT, taille dans la ROM, erreurs et registres de retour conformes au Liron | A2FC passe par les pilotes ProDOS pour ses E/S ; le chemin de formatage consulte les capacités et contrôle les erreurs. Les copies //c disquette → SmartPort et SmartPort → SmartPort sont relues intégralement dans les images hôtes. |
+| Souris //c : limites, transitions et déblocage de READMOUSE sous SEI (`307808a0`) | Le verrouillage pouvait provenir de POM2 lui-même. Le banc //c vérifie déplacement, borne et clics avec le code A2FC existant. |
+| `$CFFF` transmis à la carte, journal vidéo, références Féline Arlequin/Extasie | A2FC libère déjà `$C800` après ses appels souris. Les comparaisons BASIC/A2FC HGR et DHGR restent exécutées sur Féline, Video7 et Eve. |
+| SSC : IRQ de réception acquittée par STATUS, DTR et transmission ; réseau W5100/CS8900A | VDrive lit STATUS et protège les transferts série par SEI ; ses essais de débit et de préservation des imprimantes sont conservés. Les correctifs Ethernet ne justifient pas un changement du pilote série A2FC. |
+| WAI, accélérateurs, snapshots, rewind, persistance et API publique du cœur | Pas de nouvelle dépendance A2FC à ces services ; les essais actuels ne qualifient pas le //c+, les accélérateurs ni les restaurations de sessions. |
+
+Le banc natif retourne désormais un échec lorsqu'un flush Disk II, HDV ou
+SmartPort échoue, tout en tentant les autres sauvegardes. Le pilote Python
+propage ce verdict, refuse un arrêt forcé comme preuve de persistance,
+détecte une sortie prématurée au démarrage et nettoie un démarrage expiré.
+Il ne lance plus `pkill` sur un motif de port susceptible de viser un autre
+processus. Les adaptateurs DOS et PT3 utilisent le même chemin de sauvegarde.
+
+`python3 tools/test_pom2_host.py` couvre ces erreurs et le cycle de vie.
+Sur macOS avec la bibliothèque POM2, le test compile aussi le vrai hôte,
+instrumente ses frontières de démarrage/arrêt et injecte des échecs de
+sauvegarde pour le Disk II, les deux HDV et le SmartPort ; les octets
+des images jetables restent intacts. Ce contrôle ne simule pas une coupure
+pendant une écriture physique et ne garantit pas l'atomicité ProDOS.
+
+Validation ciblée avec ce cœur : construction des quatre distributions et
+contrôle des images, gardes mémoire 6502/65C02 actifs ; session générale
+73/73, //c 20/20, RGB 18/18, DOSWRITE slot 5 17/17 sur chaque CPU,
+sécurité des données 16/16 et protection des imprimantes 19/19 sur chaque
+CPU, VDrive 13/13. NIBCOPY passe
+sur les deux CPU avec DSK et WOZ, secteurs et sources relus, protections,
+bornes MAIN/AUX et pile contrôlées. Les huit nouvelles régressions de
+l'hôte passent, ainsi que les tests ciblés de formatage, touches,
+Arlequin, Extasie et inventaire des bancs. Ces résultats ne constituent
+pas une nouvelle qualification intégrale ni une recette sur matériel réel.
+
+## Inventaire
+
 | | |
 |---|---|
 | `smoke.py` | la disquette publiee demarre-t-elle sur les panneaux ? |
