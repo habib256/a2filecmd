@@ -380,7 +380,7 @@ lecture Movie Maker `.MVM` fidèle à l'original au-delà de l'aperçu actuel
 (MMA.OBJ, oracle AUTOPLAY sous POM2) ; jouer une table
 `.PB` seule en y greffant le moteur d'un jeu autonome de l'utilisateur
 (rien de redistribué ; chemin LOAD/PLAY d'EDIT/PPAK à rétro-concevoir) ;
-DIRSORT, BACKUP, SHRINK ; NIBCOPY reprise de piste **ou** `.NIB` (pas
+BACKUP, SHRINK ; NIBCOPY reprise de piste **ou** `.NIB` (pas
 les deux, pas de 3½) ; XMODEM, ADTPro blocs, TFTP ; PASSWORD ;
 `GISTDATA.hdv` ; CPMW à plusieurs extents si la fenêtre se libère.
 

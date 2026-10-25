@@ -182,7 +182,7 @@ shows the sort order. Messages and progress appear below the panels.
 | 1 … 0 | Activate the corresponding bottom key-bar button. |
 
 **!** lists tools by category. The menu holds up to **128 commands**, enough
-for all 115 visible commands in XL. Names are complete; descriptions show
+for all 116 visible commands in XL. Names are complete; descriptions show
 their first 27 characters. **Images** includes MVMOVIE, DGMAGI, PCSVW,
 PURPLE, PSBORDER, PSFONT and DOSFONT. Select the file in the panel before
 choosing its reader. The menu itself uses MAIN only; readers that need AUX
@@ -877,7 +877,8 @@ especially partial scans, skipped files and failed cleanup.
   high-bit, tabs or UTF-8 accent conversion. Conflicting names are preserved.
 - **IDENT / FIXTYPES:** identify formats; confirm attribute changes individually.
   Hints do not prove a damaged file is valid.
-- **SYNC / TREE:** copy missing/newer files recursively; show directory sizes.
+- **SYNC / TREE:** copy missing/newer files recursively; show the directory
+  tree, read only, in disk order, with file types and directory sizes.
 
 TAGPAT uses `=` for any string and `?` for one character; comma filters include
 `T04`, `>2000`, `<2000` and `D` (today). T adds tags, U removes, X replaces.
@@ -887,6 +888,9 @@ files, refuses overlapping trees and stops if replacement/recovery fails. An
 unknown source date does not authorize replacement. Keep `A2FC.SYNC/A2FC.BAK`.
 TREE counts a forked (GS/OS extended) file as a file, with the size its
 directory entry gives, as the panels show it; its forks are not opened.
+At the top of a volume, TREE marks `<- boots` on the first SYS file whose
+name ends in `.SYSTEM`: the one ProDOS 8 starts. An unknown or forked entry
+before it leaves the volume unmarked.
 
 ### Volumes and recovery
 
@@ -930,6 +934,28 @@ partially applied plan. Large scans can take minutes. REPAIR cannot see a
 volume header whose block count was lowered: it then clears the bitmap bits
 past the new end.
 
+**DIRSORT** changes the order of the entries of the directory the active
+panel shows, on the disk itself: the order ProDOS searches, and the one it
+boots by (ProDOS 8 starts the first SYS file whose name ends in `.SYSTEM` in
+the volume directory, marked `<- boots`). Space carries the entry under the
+cursor, Up/Down move it, Space drops it; N sorts by name, T by type then
+name, D by modification date and time (oldest first; undated entries first)
+then name; R returns to the disk order; W writes after a confirmation that
+names the directory; Escape writes nothing. Only the order changes: deleted entries keep their slots,
+the header and file count are untouched, and a subdirectory that moves has
+its header's parent link rewritten. DIRSORT refuses an image, the volume
+list, a volume whose name is on two drives, a directory of more than 4
+blocks (51 entries), a write-protected directory or volume, an order that
+would move a locked subdirectory (its header would be written), and anything
+FIXIT would question (file count, block links, storage types, a
+subdirectory that does not point back at its entry). Just before writing it
+reads everything again and writes nothing if the disk changed. Each block
+written is read back; on a failure what was written is put back and the
+message says so, or `RESTORE FAILED (block N)` if that fails too. A
+subdirectory header is checked by its link and a checksum, its original not
+being kept in memory. A power cut during the writes can leave an entry twice
+or missing: back the disk up first.
+
 **UNDELETE** recovers validated deleted files to another volume without changing
 the source. Reused/ambiguous allocation, deleted directories and resource forks
 are refused. **RESCUE** retries reads and zero-fills unreadable chunks, recording
@@ -964,7 +990,7 @@ UNDELETE refuse with their usual message (UNDELETE from the volume list
 too, since it reads the directory through its path); BOOTBLK refuses when
 the volume it was started from has a twin; MOVE copies and verifies through
 ProDOS instead of moving entries in place. Rename one of the two (VOLNAME)
-to work by path again.
+to work by path again. DIRSORT works by path only and refuses such a volume.
 
 <!-- pagebreak -->
 

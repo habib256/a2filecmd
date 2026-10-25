@@ -5,6 +5,15 @@ downloads and installation.
 
 ## [Unreleased]
 
+- Add DIRSORT (Disks menu): reorder the entries of a ProDOS directory on the
+  disk, by hand or by name, type or date, to choose what ProDOS 8 boots. It refuses any
+  directory it cannot account for whole, rereads everything before writing,
+  reads back every block written and puts back what was written on a
+  failure. A power cut during the writes is not covered.
+- TREE draws the directory tree in disk order, names indented under their
+  directory with their file type, and marks the `.SYSTEM` file ProDOS 8
+  starts at the top of a volume. It still reads only.
+
 - Add a README link that boots the published 800K edition directly in POM2
   WebAssembly, and reconcile the roadmap with shipped tools and current checks.
 

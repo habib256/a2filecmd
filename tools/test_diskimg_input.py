@@ -27,7 +27,10 @@ static int seek(FILE* f,long off,int whence) {return fault?-1:fseek(f,off,whence
 #define fseek seek
 '''+section('static unsigned char di_open_image(', 'static const char* di_error(')+r'''
 int main(int argc,char**argv) {
-    struct Entry e;struct Side s;unsigned char ok;
+    /* s.f starts NULL, as the caller sets it (src->f = dst->f = NULL):
+     * a name that is no image returns before fopen, and the fclose below
+     * would otherwise close whatever the stack held. */
+    struct Entry e;struct Side s={0};unsigned char ok;
     strcpy(full,argv[1]);strcpy(e.name,argv[2]);e.size=strtoul(argv[3],0,10);fault=atoi(argv[4]);
     ok=di_open_image(&s,&e);if(s.f)fclose(s.f);
     printf("%u\n",ok);return 0;
