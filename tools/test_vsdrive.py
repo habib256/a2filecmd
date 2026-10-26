@@ -278,6 +278,8 @@ void patch_ld(void);
 unsigned char __fastcall__ drv(unsigned char cmd);
 unsigned char vsdrive_install(void);
 void vsdrive_uninstall(void);
+void vsdrive_reset(void);
+extern unsigned char _BATCH_RUN__[], _BATCH_SIZE__[];
 #define DEVADR ((unsigned int*)0xBF10)
 #define PEEK(a) (*(unsigned char*)(a))
 #define ACIA_STATUS PEEK(0xC0A9)          /* slot 2 */
@@ -305,6 +307,11 @@ int main(void){
  unsigned char* h;
  unsigned char i,j,r;
  buf=hbuf;
+ /* No startup overlay (missing, bad read or close): only the resident reset
+  * runs. Garbage in page 3 must not activate the destructor. */
+ PEEK(0x03B7)=0xA5;PEEK(0xC0AA)=0x53;
+ vsdrive_reset();vsdrive_uninstall();
+ if(PEEK(0x03B7)||PEEK(0xC0AA)!=0x53||mli_cmds)return 90;
  PEEK(0xBF00)=0x4C;*(unsigned int*)0xBF01=(unsigned int)mli;
  /* Slot 1 is the printer's (//e SSC, //c port 1): a serial card there alone
   * is not VDrive's. Its 6551 registers ($C098-$C09B) must keep every byte:
@@ -385,6 +392,10 @@ int main(void){
  h=(unsigned char*)irq_handler;
  if(irq_handler<0x0300||irq_handler>=0x03B0)return 4;
  if(h[0]!=0xD8||h[1]!=0xAD||h[2]!=0xA9||h[3]!=0xC0)return 5;   /* cld; lda $C0A9 */
+ /* Replace every byte of the actual install segment, as the next overlay
+  * does in A2FC. Reads, writes, IRQ handling and uninstall below must still
+  * run with their original byte/cycle oracles. */
+ memset(_BATCH_RUN__,0xEA,(unsigned)_BATCH_SIZE__);
  unit=0x10;
  if(drv(0)||res_x||res_y||(res_p&1))return 6;                  /* STATUS: 0 blocks */
  /* A good read of block 7, drive 1: the reply armed once the five bytes
@@ -540,7 +551,7 @@ def prepare(tmp,host):
  (tmp/'vsdrive.s').write_text(src)
  target=Path(subprocess.check_output([shutil.which('cl65'),'--print-target-path'],text=True).strip())
  cfg=(target.parent/'cfg/sim6502.cfg').read_text().replace('start = $0200, size = $FDF0','start = $4000, size = $7000')
- cfg=cfg.replace('    CODE:     load = MAIN,   type = ro;','    CODE:     load = MAIN,   type = ro;\n    LC:       load = MAIN,   type = ro;')
+ cfg=cfg.replace('    CODE:     load = MAIN,   type = ro;','    CODE:     load = MAIN,   type = ro;\n    LC:       load = MAIN,   type = ro;\n    BATCH:    load = MAIN,   type = ro, define = yes;')
  (tmp/'test.cfg').write_text(cfg)
 def build(tmp,tgt,cpu,*sources):
  subprocess.run([shutil.which('cl65'),'-t',tgt,'--cpu',cpu,'-C',str(tmp/'test.cfg'),'-O','-o',str(tmp/'test')]+[str(tmp/s) for s in sources]+[str(tmp/'vsdrive.s')],check=True)

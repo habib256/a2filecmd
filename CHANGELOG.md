@@ -5,6 +5,17 @@ downloads and installation.
 
 ## [Unreleased]
 
+- Recover resident MAIN space without raising memory limits: 322 bytes free
+  on 65C02 and 676 on 6502. VDrive's install-only code and page-3 relay
+  source move to BATCH; collective tagging and the T/H selection helper move
+  into the language card. Boot loads BATCH before reading panels, with the
+  uninstall marker disarmed before the load. Active drivers and uninstall
+  remain resident; normal navigation needs no extra overlay load.
+
+- Fit VERIFY's 6502 code and BSS back into its existing window: shorten its
+  menu description and compact equivalent expressions and summary arguments,
+  retaining the DOS 3.3 refusal and all read checks.
+
 - S cycles disk order (the default, no header star), then name, size and
   type. Returning to disk order rereads both panels, so tags are not kept
   on that step. Saved `S0`/`S1`/`S2` still mean name, size and type.

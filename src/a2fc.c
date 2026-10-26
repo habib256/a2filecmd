@@ -52,7 +52,8 @@ unsigned char ram_empty(void);        /* a2fc_mli.s: /RAM on line and without a 
 extern unsigned int chain_addr;                    /* chain.s */
 void __fastcall__ chain_load(const char* path);
 void __fastcall__ chain_command(const char* name);
-unsigned char vsdrive_install(void);                /* vsdrive.s : VDrive, two volumes over the serial line */
+unsigned char vsdrive_install(void);  /* vsdrive.s: startup-only, in BATCH */
+void vsdrive_reset(void);             /* resident: disarm before loading BATCH */
 extern const unsigned int a2fc_link_id;            /* overlay.s : the address of main, the identity of the overlays' link */
 unsigned char __fastcall__ mli_sfi(void* params);
 unsigned char __fastcall__ mli_call(unsigned char cmd, void* params);
@@ -5510,6 +5511,9 @@ static void toggle_tag(void)
 /* Ctrl-T tags every entry of the panel (mode 1), Ctrl-N untags them all
  * (0), * inverts the tags (2); ".." is never tagged. Directories carry a
  * tag like files since 0.8.6: C, V, D and the marked MOVE walk them. */
+/* VDrive installation now lives in BATCH, leaving resident LC room for
+ * tag changes. Only the existing panel memory is written here. */
+#pragma code-name (push, "LC")
 static void retag(unsigned char mode)
 {
     struct Panel* pan = pan_at(active);
@@ -5519,6 +5523,8 @@ static void retag(unsigned char mode)
         set_tag(pan, i, !is_up(&pan->e[i]) && (mode == 2 ? !tagged(pan, i) : mode));
     show_active();
 }
+
+#pragma code-name (pop)
 
 /* ' then a key: the next entry whose name starts with it. Hosted in TEXT,
  * alongside sort, to leave resident space for the companion-disk loader. */
@@ -5695,6 +5701,7 @@ static const char* const ov_names[] = { "COMPARE", "TEXT", "RUN", "FORMAT", "EDI
 /* The file under the cursor, with `full` built for it, or nothing when the
  * panel is empty, the entry is a directory, or the path does not fit. T and
  * H wrote this sequence out; one copy is what pays for it. */
+#pragma code-name (push, "LC")
 static struct Entry* file_at_cursor(void)
 {
     struct Panel* pan = pan_at(active);
@@ -5704,6 +5711,8 @@ static struct Entry* file_at_cursor(void)
     if (is_dir(e) || !build_full(full, pan, e)) return 0;
     return e;
 }
+
+#pragma code-name (pop)
 
 /* The service table: what a third party's overlay receives at its entry
  * point (a2fc_plugin.h). The program's own overlays do not need it, they
@@ -5764,7 +5773,10 @@ int main(void)
     /* VDrive: a serial card and two more volumes in DEVLST, before reading
      * the panels (the volume list shows them). */
 #ifndef A2FC_NOVDRIVE
-    key = vsdrive_install();
+    /* BATCH's install-only code never survives into a driver callback.
+     * A failed load must also leave the page-3 destructor marker clear. */
+    vsdrive_reset();
+    key = overlay("BATCH") ? vsdrive_install() : 0;
 #else
     key = 0;                    /* ARCH=6502: no VDrive, no room for it */
 #endif

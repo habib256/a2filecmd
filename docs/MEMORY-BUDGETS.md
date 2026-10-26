@@ -1,6 +1,68 @@
 # Consolidation : budgets mémoire
 
-## Relevé actuel (26 octobre 2026, après bug hunt 1.0 passages 1 à 4)
+## Relevé actuel (26 octobre 2026, marge résident restaurée)
+
+Constructions complètes avec cc65 Homebrew V2.18 pour le 65C02 et cc65
+V2.19 `e11fb5c39371046ebe25485f984f644c5a0d65d3` pour le 6502.
+Les gardes de disposition restent inchangées. Réserves en octets :
+
+| Réserve | 65C02 | 6502 |
+| --- | ---: | ---: |
+| MAIN | 322 | 676 |
+| Carte langage | 40 | 40 |
+| LOWRAM | 85 | 110 |
+| Écart sous la pile C réservée | 339 | 882 |
+| BATCH, sous `$3000` | 2 377 | 2 381 |
+| OPEN | 0 | 0 |
+| COPY | 1 | 40 |
+
+Ces zones se recouvrent et ne s'additionnent pas. Sur les mêmes chaînes,
+`c374522` avant cette modification donne MAIN **0 / 345**, LC **5 / 3**, LOWRAM
+**85 / 110**, écart sous la pile **17 / 551** : le gain MAIN est donc
+**322 / 331 octets**. Les anciens relevés plus bas ne sont pas directement
+comparables. Le Mini n'est pas modifié.
+
+L'installateur VDrive, ses tables de détection et la source du relais copié
+en page 3 résident maintenant dans BATCH, déjà présent dans les distributions.
+Le pilote actif demeure en carte langage ; le relais copié en page 3 et
+la désinstallation en MAIN ne dépendent plus des octets de BATCH. La place
+libérée en carte langage accueille `retag` et `file_at_cursor`. Leurs accès
+restent limités aux panneaux, aux marques et aux chemins en mémoire principale.
+Aucun nouveau fichier, bloc disque ou octet AUX n'est écrit par ce déplacement.
+
+Le démarrage charge BATCH une fois de plus, avant la lecture des panneaux ;
+les commandes de navigation et de marquage ne chargent pas de surcouche
+supplémentaire. Avant ce chargement, `vsdrive_reset` désarme le marqueur
+résident de désinstallation : un échec d'ouverture, de lecture, d'identité
+ou de fermeture ne doit pas désinstaller un pilote qui n'a pas été installé.
+Les fenêtres et la réserve de pile C de 192 octets restent identiques.
+
+La reconstruction révèle aussi un dépassement de 15 octets de VERIFY 6502.
+La description de menu est raccourcie, le `%s` toujours vide du bilan est
+retiré et la sélection d'unité est exprimée par une condition équivalente.
+Les refus des lignes DOS 3.3 et les contrôles de lecture restent en place.
+
+Validation : les deux tests sim65 VDrive exécutent les deux CPU, dont un
+marqueur de page 3 initialement sale et l'effacement intégral de BATCH après
+installation, avant les lectures, écritures et la désinstallation. Les
+oracles d'octets et de temps du pilote restent actifs. Les tests du chargeur,
+des marques et de la pagination passent. POM2 passe VDrive 13/13, protection
+des imprimantes 19/19 et VERIFY 12/12 sur chaque édition ; la pile consomme
+145 octets sur les 192 réservés sur les deux CPU. Le banc `memory.py` ajoute
+la comparaison des deux panneaux, de leurs entrées et d'AUX hors écran
+après Ctrl-T, deux inversions et Ctrl-N (10 contrôles par CPU). L'hôte est
+reconstruit contre POM2 `886390a`, ses ROM étant absentes du chemin de
+l'ancien hôte local. Les quatre images se reconstruisent et
+`tools/check_images.py` les compare aux binaires.
+
+La suite `make test` s'arrête au fuzzing ProDOS : cas **59159155060** et
+**59159155099**, graine 1, `failall`. Les images restent identiques, mais
+l'oracle exige encore « not restored » quand REPAIR indique zéro bloc appliqué.
+Le code REPAIR et ce harnais ne sont pas modifiés ici. Ce résultat ne vaut
+pas qualification complète ; `make qualify` et la recette physique restent
+à faire.
+
+## Relevé précédent (26 octobre 2026, après bug hunt 1.0 passages 1 à 4)
 
 Les constructions 6502 et 65C02 et leurs gardes de disposition passent.
 Le relevé de `tools/check_layout.py` est le suivant, en octets libres :
