@@ -30,7 +30,7 @@ struct A2fcApi;
 #include "src/plugins/dirsort.c"
 static FILE *disk, *swapdisk;
 static int nwrite, fail_write, fail_mode, fail_after, read_fail = -1, yes = 1, confirmed, twin, protect;
-static int read_pre = -1, read_after_writes = 0;
+static int read_pre = -1, read_after_writes = 0, close_error;
 static const char* keys = "";
 static char screen[8192], asked[128];
 /* The one unit, $60, named by the volume header of the disk in place. */
@@ -111,7 +111,7 @@ static unsigned char d_next(void) {
         return 1;
     }
 }
-static void d_close(void) {}
+static unsigned char d_close(void) { return close_error; }
 static unsigned char confirm(const char* s) {
     strcpy(asked, s); confirmed = 1;
     if (swapdisk) { fclose(disk); disk = swapdisk; swapdisk = 0; }
@@ -153,6 +153,7 @@ int main(int argc, char** argv) {
         else if (!strncmp(argv[i], "fs=", 3)) panels[0].fs = 1;
         else if (!strncmp(argv[i], "twin=", 5)) twin = 1;
         else if (!strncmp(argv[i], "protect=", 8)) protect = 1;
+        else if (!strncmp(argv[i], "closeerr=", 9)) close_error = 1;
         else return 3;
     }
     api.panels = panels; api.active = &active; api.selected = &selected;
@@ -162,7 +163,7 @@ int main(int argc, char** argv) {
     api.cprintf = show; api.cputs = put; api.cputc = put_c; api.gotoxy = at;
     api.clrscr = cls; api.revers = rev; api.cgetc = next_key; api.keys_bar = bar;
     api.confirm = confirm;
-    api.dir_open = d_open; api.dir_next = d_next; api.dir_close = d_close; api.dir_entry = &entry_out;
+    api.dir_open = d_open; api.dir_next = d_next; api.dir_close = (void (*)(void))d_close; api.dir_entry = &entry_out;
     /* The overlay's BSS is not zeroed on the Apple II: it holds what the
      * last occupant of the window left. Its tables start as garbage here
      * too, and the locals (statics under cc65 -Cl) are poisoned by the
@@ -472,6 +473,47 @@ class DirSort(unittest.TestCase):
         self.assertEqual(writes, 0)
         self.assertEqual(bytes((self.work/'o.po').read_bytes()), bytes(o.d))
 
+    def test_parent_entry_is_revalidated_after_confirmation(self):
+        for change in ('access','name','key','storage','read'):
+            with self.subTest(change=change):
+                v=Volume()
+                p=v.subdir(v.root,0,b'P',[50])
+                d=v.subdir(p,0,b'D',[55])
+                v.entry(d,0,b'B');v.entry(d,1,b'A')
+                other=bytearray(v.d);at=50*512+43
+                opts=[]
+                expected='Directory inconsistent (see FIXIT): nothing written.'
+                if change=='access':
+                    other[at+30]&=~2;expected='Write-protected: nothing written.'
+                elif change=='name':other[at+1]=ord('X')
+                elif change=='key':word(other,at+17,56)
+                elif change=='storage':other[at]=0x11
+                else:
+                    opts=['readfail=50'];expected='Directory changed or unreadable: nothing written.'
+                writes,note,_,_,after=self.run_sort(v,'/V/P/D','NW',*opts,other=other)
+                self.assertEqual(writes,0,note)
+                self.assertEqual(note,expected)
+                self.assertEqual(after,v.d)
+                self.assertEqual((self.work/'o.po').read_bytes(),other)
+
+    def test_malformed_parent_name_cannot_read_past_a_long_path(self):
+        v=Volume();p=v.root;parts=[]
+        for name,block in ((b'A'*15,50),(b'B'*15,51),(b'C'*15,52),(b'D'*12,55)):
+            p=v.subdir(p,0,name,[block]);parts.append(name.decode())
+        v.entry(p,0,b'B');v.entry(p,1,b'A')
+        # Catalog mock exposes the C name, as if raw metadata changed
+        # after lookup: its length nibble now exceeds the path's leaf.
+        v.d[52*512+43]=0xDF
+        path='/V/'+'/'.join(parts);self.assertEqual(len(path),63)
+        executable=self.work/'asan'
+        subprocess.run(['cc','-std=c99','-w','-fsanitize=address','-I',str(ROOT),
+                        str(self.work/'h.c'),'-o',str(executable)],check=True,capture_output=True)
+        previous=self.exe;self.exe=executable
+        try:
+            self.assertEqual(self.unchanged(v,path,'NW'),
+                             'Directory inconsistent (see FIXIT): nothing written.')
+        finally:self.exe=previous
+
     def test_refusals(self):
         bad = 'Directory inconsistent (see FIXIT): nothing written.'
         cases = []
@@ -496,6 +538,38 @@ class DirSort(unittest.TestCase):
         d = v.subdir(v.root, 0, b'D', [50], access=0x01)
         v.entry(d, 0, b'B'); v.entry(d, 1, b'A')
         self.assertEqual(self.unchanged(v, '/V/D', 'NW'), 'Write-protected: nothing written.')
+
+    def test_locked_volume_refuses_subdirectory_writes(self):
+        v = Volume()
+        d = v.subdir(v.root, 0, b'D', [50])
+        v.entry(d, 0, b'B'); v.entry(d, 1, b'A')
+        v.d[2*512+0x22] &= ~2
+        self.assertEqual(self.unchanged(v, '/V/D', 'NW'), 'Write-protected: nothing written.')
+
+    def test_volume_locked_during_confirmation_refuses_subdirectory_writes(self):
+        v = Volume()
+        d = v.subdir(v.root, 0, b'D', [50])
+        v.entry(d, 0, b'B'); v.entry(d, 1, b'A')
+        other = bytearray(v.d)
+        other[2*512+0x22] &= ~2
+        writes, note, _, _, _ = self.run_sort(v, '/V/D', 'NW', other=other)
+        self.assertEqual(writes, 0)
+        self.assertEqual(note, 'Directory changed or unreadable: nothing written.')
+        self.assertEqual((self.work/'o.po').read_bytes(), other)
+
+    def test_parent_directory_close_error_refuses_writes(self):
+        v = Volume()
+        d = v.subdir(v.root, 0, b'D', [50])
+        v.entry(d, 0, b'B'); v.entry(d, 1, b'A')
+        self.assertEqual(self.unchanged(v, '/V/D', 'NW', 'closeerr=1'),
+                         'Directory changed or unreadable: nothing written.')
+
+    def test_locked_child_header_does_not_move(self):
+        v = Volume()
+        v.subdir(v.root, 0, b'S', [40])
+        v.entry(v.root, 1, b'B'); v.entry(v.root, 2, b'A')
+        v.d[40*512+0x22] &= ~2
+        self.assertEqual(self.unchanged(v, '/V', 'NW'), 'Locked subdirectory: nothing written.')
 
     def test_locked_child_subdirectory_does_not_move(self):
         """Its header is in the subdirectory itself: a locked one is never
@@ -790,7 +864,7 @@ SIM_HARNESS = r"""
 #define NB 24
 static unsigned char disk[NB * 512u];
 static unsigned int nwrite, fail_write;
-static unsigned char fail_mode, protect, yes = 1;
+static unsigned char fail_mode, protect, close_error, lock_answer, parent_fault, answered, yes = 1;
 static const char* keys;
 static char screen[1600];
 static unsigned int sl;
@@ -807,7 +881,10 @@ static unsigned char mock_mli(unsigned char cmd, void* p)
     if ((cmd != 0x80 && cmd != 0x81) || b->n != 3) exit(7);
     if (b->u != 0x60) return 0x28;
     if (b->block >= NB) return 0x27;
-    if (cmd == 0x80) { memcpy(b->buf, disk + b->block * 512u, 512); return 0; }
+    if (cmd == 0x80) {
+        if(answered && parent_fault==5 && b->block==10)return 0x27;
+        memcpy(b->buf, disk + b->block * 512u, 512); return 0;
+    }
     ++nwrite;
     if (protect) return 0x2B;
     if (nwrite == fail_write) {
@@ -862,7 +939,7 @@ static unsigned char d_next(void)
         return 1;
     }
 }
-static void d_close(void) {}
+static unsigned char d_close(void) { return close_error; }
 /* The screen services: what reaches them, through the stubs. */
 static void s_gotoxy(unsigned char x, unsigned char y) { char t[12]; sprintf(t, "@%u,%u ", x, y); out(t); }
 static unsigned char s_revers(unsigned char on) { out(on ? "[R1]" : "[R0]"); return 0; }
@@ -871,7 +948,16 @@ static char s_cgetc(void) { char k = *keys ? *keys++ : 'e'; return k == 'u' ? 11
 static void s_cputs(const char* s) { out(s); }
 static void s_bar(unsigned char x, const char* s) { char t[10]; sprintf(t, "<BAR%u>", x); out(t); out(s); }
 static int s_cprintf(const char* f, ...) { char t[100]; va_list ap; va_start(ap, f); vsprintf(t, f, ap); va_end(ap); out(t); return 0; }
-static unsigned char s_confirm(const char* s) { out("[ASK]"); out(s); return yes; }
+static unsigned char s_confirm(const char* s) {
+    out("[ASK]"); out(s);
+    answered=1;
+    if(lock_answer)disk[2*512u+0x22]&=~2;
+    if(parent_fault==1)disk[10*512u+43+30]&=~2;
+    if(parent_fault==2)disk[10*512u+43+1]='X';
+    if(parent_fault==3)disk[10*512u+43+17]=13;
+    if(parent_fault==4)disk[10*512u+43]=0x11;
+    return yes;
+}
 int main(int argc, char** argv)
 {
     static struct A2fcApi api;
@@ -888,6 +974,9 @@ int main(int argc, char** argv)
     fail_write = atoi(argv[3]);
     fail_mode = atoi(argv[4]);
     protect = strchr(argv[5], 'p') != 0;
+    close_error = strchr(argv[5], 'c') != 0;
+    lock_answer = strchr(argv[5], 'v') != 0;
+    parent_fault = argv[5][0]>='1' && argv[5][0]<='5' ? argv[5][0]-'0' : 0;
     yes = strchr(argv[5], 'n') == 0;
     api.panels = panels; api.active = &active; api.selected = &selected;
     api.copy_buf = copy; api.note = note_;
@@ -896,7 +985,7 @@ int main(int argc, char** argv)
     api.cprintf = s_cprintf; api.cputs = s_cputs; api.gotoxy = s_gotoxy;
     api.clrscr = s_clrscr; api.revers = s_revers; api.cgetc = s_cgetc; api.keys_bar = s_bar;
     api.confirm = s_confirm;
-    api.dir_open = d_open; api.dir_next = d_next; api.dir_close = d_close; api.dir_entry = &dent;
+    api.dir_open = d_open; api.dir_next = d_next; api.dir_close = (void (*)(void))d_close; api.dir_entry = &dent;
     /* BSS as the Apple II leaves it: stale indexes that name real entries. */
     memset(order, 0, sizeof order); memset(eb, 0, sizeof eb); memset(es, 0, sizeof es);
     memset(csum, 0xAA, sizeof csum);
@@ -1036,6 +1125,60 @@ class DirSortCc65(unittest.TestCase):
         disk, writes, note, _ = self.run_sim(v, '/V/D', 'NW')
         self.assertEqual([n for n, _, _ in listing(disk, 10)], ['E', 'Z'])
         self.assertEqual(note, 'Order unchanged: nothing written.')
+
+    def test_parent_changes_and_errors_refuse_native_writes(self):
+        for reason in range(1,6):
+            with self.subTest(reason=reason):
+                v=Volume(total=self.BLOCKS)
+                p=v.subdir(v.root,0,b'P',[10])
+                d=v.subdir(p,0,b'D',[12])
+                v.entry(d,0,b'B');v.entry(d,1,b'A')
+                after,writes,note,_=self.run_sim(v,'/V/P/D','NW',flags=str(reason))
+                at=10*512+43
+                if reason==1:v.d[at+30]&=~2
+                if reason==2:v.d[at+1]=ord('X')
+                if reason==3:v.d[at+17]=13
+                if reason==4:v.d[at]=0x11
+                expected=('Write-protected: nothing written.' if reason==1 else
+                          'Directory changed or unreadable: nothing written.' if reason==5 else
+                          'Directory inconsistent (see FIXIT): nothing written.')
+                self.assertEqual((writes,note),(0,expected))
+                self.assertEqual(after,v.d)
+
+    def test_long_path_and_malformed_parent_length_refuse_native_writes(self):
+        v=Volume(total=self.BLOCKS);p=v.root;parts=[]
+        for name,block in ((b'A'*15,10),(b'B'*15,11),(b'C'*15,12),(b'D'*12,13)):
+            p=v.subdir(p,0,name,[block]);parts.append(name.decode())
+        v.entry(p,0,b'B');v.entry(p,1,b'A')
+        v.d[12*512+43]=0xDF
+        path='/V/'+'/'.join(parts);self.assertEqual(len(path),63)
+        after,writes,note,_=self.run_sim(v,path,'NW')
+        self.assertEqual((writes,note),(0,'Directory inconsistent (see FIXIT): nothing written.'))
+        self.assertEqual(after,v.d)
+
+    def test_protections_and_close_errors_refuse_native_writes(self):
+        for reason in ('volume', 'child', 'close', 'answer'):
+            with self.subTest(reason=reason):
+                v = Volume(total=self.BLOCKS)
+                d = v.subdir(v.root, 0, b'D', [10])
+                v.entry(d, 0, b'B'); v.entry(d, 1, b'A')
+                path, flags = '/V/D', '-'
+                if reason == 'volume':
+                    v.d[2*512+0x22] &= ~2
+                    expected = 'Write-protected: nothing written.'
+                elif reason == 'child':
+                    v.d[10*512+0x22] &= ~2
+                    v.entry(v.root, 1, b'B'); v.entry(v.root, 2, b'A')
+                    path = '/V'
+                    expected = 'Locked subdirectory: nothing written.'
+                else:
+                    flags = 'c' if reason == 'close' else 'v'
+                    expected = 'Directory changed or unreadable: nothing written.'
+                after, writes, note, _ = self.run_sim(v, path, 'NW', flags=flags)
+                if reason == 'answer':
+                    v.d[2*512+0x22] &= ~2  # only the injected protection change
+                self.assertEqual((writes, note), (0, expected))
+                self.assertEqual(after, v.d)
 
 
 if __name__ == '__main__':

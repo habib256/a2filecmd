@@ -106,6 +106,24 @@ REPAIR, VOLINFO et FIND.
 Aucune garantie de coupure d'alimentation : ProDOS n'offre pas de
 transaction sur plusieurs blocs.
 
+## Annulation au dernier contrôle avant remplacement — 26 octobre 2026
+
+Les trois appelants de `replace_commit` (TXTCONV, IMGCONV, DOSIMAGE)
+fournissent `REPLACE_CANCEL()`, leur lecture du clavier ou de l'annulation
+mémorisée. Le service la consulte après les contrôles de métadonnées de la
+cible et de `A2FC.BAK`, juste avant le premier renommage. Échap peut arriver
+pendant ces appels, même s'ils réussissent. `REPLACE_CANCELLED` signifie
+qu'aucun original n'a été renommé ; l'appelant peut supprimer uniquement son
+temporaire réservé. Un échec de nettoyage conserve ses octets et reste signalé.
+
+Une fois le premier renommage engagé, le service termine l'installation
+ou la restauration sans nouvelle interruption par Échap. Cela ne garantit
+pas l'atomicité en cas de coupure. Les trois tests hôtes exécutent les vrais
+appelants avec annulation pendant chaque contrôle, puis avec nettoyage
+refusé ; `tools/test_file_install.py` exécute aussi le code partagé sur les
+deux CPU, avec erreurs de métadonnées, collisions, échecs d'installation et
+de restauration, protections et limites de chemin.
+
 ## Erreur du flux de destination après une écriture complète
 
 COPY et EDIT contrôlent `ferror` sur le flux de destination avant fermeture,

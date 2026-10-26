@@ -5,6 +5,32 @@ downloads and installation.
 
 ## [Unreleased]
 
+- DIRSORT revalidates a subdirectory's parent entry after confirmation,
+  refusing raw writes if its protection, name, key or storage changed, or
+  the parent block cannot be read. Check the actual leaf-name length before
+  comparing malformed parent metadata, avoiding an out-of-bounds path read.
+  Add host/ASan and both-CPU regressions, plus a POM2 disk-swap check during
+  confirmation with every disk byte, AUX and the C stack guard preserved.
+
+- Honor ESC received by the final metadata checks before TXTCONV, IMGCONV
+  or DOSIMAGE replaces an original. Poll before the first rename, preserve
+  originals on cancellation and report failed temporary cleanup. Add
+  byte-preservation regressions for all three callers and execute the shared
+  replacement/rollback code on both CPUs, including cancellation after the
+  transaction has started.
+
+- DIRSORT now checks the volume's write protection when sorting a
+  subdirectory, including after confirmation, and the header protection of
+  each child directory it would update. Refuse writes after a parent-catalog
+  close error. Add host and both-CPU regressions plus POM2 checks that
+  protected volumes retain every byte, AUX and the C stack guard.
+
+- Honor ESC received during either verification close before publishing a
+  core copy or allowing a move to delete its source. Preserve the original
+  destination and discard only the exclusively created temporary. Add
+  byte-preservation regressions for all four closes, empty and nonempty
+  sources, and existing or absent destinations; retain both CPU layout guards.
+
 ## [0.9.9] — 2026-10-25
 
 - Add DIRSORT (Disks menu): reorder the entries of a ProDOS directory on the

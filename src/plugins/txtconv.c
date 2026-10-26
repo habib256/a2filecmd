@@ -41,6 +41,8 @@ static unsigned int olen;
 static unsigned long nin, nout;
 static unsigned char mode, prev, col, pend, lead, fail;
 static unsigned char checking, check[256];
+static void poll_cancel(void);
+#define REPLACE_CANCEL() (poll_cancel(), fail)
 #include "replace.h"
 static char final_path[PATH_LEN];
 /* GET_FILE_INFO writes fifteen result bytes after the Pascal-path pointer. */
@@ -276,6 +278,10 @@ convert_pass:
     }
     if (inplace || replace) {
         k = replace_commit(target, final_path);
+        if (k == REPLACE_CANCELLED) {
+            if (replace_discard(target)) T.strcpy(T.note, "Stopped; originals kept.");
+            return;
+        }
         if (k == REPLACE_RESTORE_FAILED) { T.strcpy(T.note, "Restore failed: A2FC.BAK, TXTCONV.TMP kept."); return; }
         if (k == REPLACE_REFUSED) {
             /* Nothing was renamed: the original is intact and the temporary

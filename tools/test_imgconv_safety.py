@@ -34,6 +34,8 @@ static unsigned char mli(unsigned char cmd,void* params) {
     unsigned char* p=((struct Param*)params)->path;
     memcpy(old,p+1,p[0]);old[p[0]]=0;
     if(cmd==0xC4) {
+        if(closes==4 && ((fault==76 || fault==78) ||
+           ((fault==77 || fault==79) && strstr(old,"A2FC.BAK"))))keyboard=0x9B;
         if(fault==68 || fault==69)keyboard=0x9B;
         struct stat st;
         if(fault==1)return 0x27;
@@ -139,6 +141,7 @@ static unsigned char yes(const char* p){++confirm_calls;if(fault==70 || fault==7
 static int remove_file(const char* p) {
     ++removes;
     if(fault>=68 && fault<=75 && (fault&1))return -1;
+    if(fault==78 || fault==79)return -1;
     if((fault>=24 && fault<=26) || fault==40)return -1;
     if(fault>=48 && fault<=51)return -1;
     if(fault>=56 && fault<=59)return -1;
@@ -187,6 +190,24 @@ class ImgconvSafety(unittest.TestCase):
         self.p=Path(self.case.name);self.s=self.p/'S';self.d=self.p/'D';self.s.mkdir();self.d.mkdir()
         self.src=self.s/'INPUT.PO';self.dst=self.d/'INPUT.2MG';self.data=bytes(range(256))*32
         self.src.write_bytes(self.data);self.dst.write_bytes(b'old image')
+    def test_cancel_during_install_metadata_preserves_originals(self):
+        temp=self.d/'IMGCONV.TMP'
+        for fault in range(76,80):
+            with self.subTest(fault=fault):
+                temp.unlink(missing_ok=True)
+                (self.d/'A2FC.BAK').unlink(missing_ok=True)
+                self.dst.write_bytes(b'old image')
+                note=self.convert(fault)
+                self.assertEqual(self.dst.read_bytes(),b'old image')
+                self.assertEqual(self.state[:3],(4,4,0))
+                self.assertFalse((self.d/'A2FC.BAK').exists())
+                if fault>=78:
+                    self.assertIn('Cleanup failed',note)
+                    self.assertEqual(temp.read_bytes(),to_2mg(self.data))
+                else:
+                    self.assertIn('Stopped',note)
+                    self.assertFalse(temp.exists())
+
     def test_source_close_failure_preserves_both_originals(self):
         self.convert(9)
         self.assertEqual(self.src.read_bytes(), self.data)

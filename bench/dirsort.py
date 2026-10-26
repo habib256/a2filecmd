@@ -6,7 +6,10 @@
 
 A disposable floppy in drive 2 holds PRODOS, A.SYSTEM, B.SYSTEM, fourteen
 data files and ZSUB, a subdirectory of twelve files whose entry sits in the
-second block of the volume directory. Under A2FC, DIRSORT carries ZSUB to
+second block of the volume directory. Protected copies, including a parent
+entry locked by a disk swap during confirmation, first prove that raw
+writes are refused with disk bytes, AUX and stack guard preserved.
+Under A2FC, DIRSORT then carries ZSUB to
 the top (into the first block: its header's parent link must follow) and
 B.SYSTEM above A.SYSTEM, and writes. Then ProDOS itself works through what
 DIRSORT wrote: K creates a directory in ZSUB, its thirteenth entry, so
@@ -22,7 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-from pom2 import Pom2, ROOT
+from pom2 import Pom2, ROOT, BUILD
 from xplug import boot_hd, menu_run, ok_all, wait_note, RET
 import subprocess
 from prodos_read import Image
@@ -78,7 +81,62 @@ def main():
         order = names(img)
         assert order[:2] == ['A.SYSTEM', 'B.SYSTEM'] and order[-1] == 'ZSUB', order
         assert not check(before).findings, 'the fixture itself must be healthy'
-        with boot_hd(tmp, {}, port=PORT, plugins=['dirsort'], floppy2=po) as (p, s):
+        # Keep the disposable host's resident and its overlays from this
+        # same link; BUILD/vol may still contain the previous release.
+        program = {'A2FILE/A2FILE.CODE.BIN': (BUILD/'A2FILE.CODE.BIN').read_bytes()}
+        for source in BUILD.glob('A2FILE.CODE.BIN.*'):
+            if source.suffix[1:].isupper():
+                program['A2FILE/'+source.suffix[1:]+'.PLG#061B00'] = source.read_bytes()
+        safety_checks = []
+        zkey = int.from_bytes(next(e for e in img.entries(2) if e[1:5] == b'ZSUB')[17:19], 'little')
+        zparent,zslot=next((b,k) for b in [2,3,4,5] for k in range(13)
+                          if before[b*512+4+39*k:b*512+9+39*k]==b'\xD4ZSUB')
+        for reason in ('volume', 'child', 'late-parent'):
+            case = tmp / ('locked-' + reason); case.mkdir()
+            protected = bytearray(before)
+            if reason!='late-parent':
+                protected[(2 if reason == 'volume' else zkey)*512+0x22] &= ~2
+            locked = case/'LOCKED.po'; locked.write_bytes(protected)
+            with boot_hd(case, program, port=PORT, plugins=['dirsort'], floppy2=locked) as (p, s):
+                s.key(b'/');s.wait(lambda:s.rows()[0].startswith('[Volumes]'),'volumes');p.stable()
+                s.select('/SORTME');s.key(RET);s.wait(lambda:s.has('ZSUB'),'protected floppy');p.stable()
+                if reason in ('volume','late-parent'):
+                    s.select('ZSUB');s.key(RET);s.wait(lambda:s.has('Z12'),'protected volume subdirectory');p.stable()
+                floor = s.sym['__HIMEM__']-s.sym['__STACKSIZE__'];p.poke(floor,b'\xA5'*8)
+                aux = p.peek(0x1000,0xB000,'aux')
+                menu_run(s,p,'DIRSORT')
+                if reason == 'late-parent':
+                    s.wait(lambda:s.has('DIRSORT /SORTME/ZSUB'),'DIRSORT child');p.stable()
+                    s.key(b' ');s.key(DOWN);s.key(b' ');s.key(b'W')
+                    s.wait(lambda:s.has('Write this order'),'parent change confirmation');p.stable()
+                    # Swap only disposable media while the question waits.
+                    # ZSUB's own blocks stay identical; its parent entry locks.
+                    p.eject(1)
+                    protected[zparent*512+4+39*zslot+30]&=~2
+                    changed=case/'CHANGED.po';changed.write_bytes(protected)
+                    p.insert(1,str(changed))
+                    s.key(b'Y');note=wait_note(s,p,gone='Write this order')
+                elif reason == 'child':
+                    s.wait(lambda:s.has('DIRSORT /SORTME'),'DIRSORT');p.stable()
+                    for _ in range(len(order)-1):s.key(DOWN,0.05)
+                    s.key(b' ')
+                    for _ in range(len(order)-1):s.key(UP,0.05)
+                    s.key(b' ');s.key(b'W')
+                    s.wait(lambda:s.has('Write this order'),'protected child confirmation');s.key(b'Y')
+                    note = wait_note(s,p,gone='Write this order')
+                else:
+                    note = wait_note(s,p)
+                expected = ('Write-protected: nothing written.' if reason != 'child' else
+                            'Locked subdirectory: nothing written.')
+                s.ok(reason+' protection refuses raw directory writes',note==expected,note)
+                s.ok(reason+' refusal preserves AUX and the C stack guard',
+                     p.peek(0x1000,0xB000,'aux')==aux and p.peek(floor,8)==b'\xA5'*8)
+            if reason=='late-parent':
+                s.ok('old floppy untouched before the parent protection changed',locked.read_bytes()==before)
+                locked=changed
+            s.ok(reason+' protection preserves every floppy byte',locked.read_bytes()==protected)
+            safety_checks.extend(s.checks)
+        with boot_hd(tmp, program, port=PORT, plugins=['dirsort'], floppy2=po) as (p, s):
             s.key(b'/'); s.wait(lambda: s.rows()[0].startswith('[Volumes]'), 'volumes'); p.stable()
             s.select('/SORTME'); s.key(RET)
             s.wait(lambda: s.has('ZSUB'), 'the floppy', 30); p.stable()
@@ -136,6 +194,7 @@ def main():
                 if mark in (0xC1, 0xC2):
                     break
             s.ok('ProDOS 8 boots B.SYSTEM, as DIRSORT showed', mark == 0xC2, hex(mark))
+        s.checks.extend(safety_checks)
         return ok_all(s, 'dirsort')
 
 

@@ -63,6 +63,7 @@ static int remove_file(const char* p) {
     if (fault==34) return -1;
     if ((fault>=40 && fault<=43) || fault==45) return -1;
     if(fault>=50 && fault<=53)return -1;
+    if(fault==60 || fault==61)return -1;
     return remove(p);
 }
 static void message(const char* s) { (void)s; }
@@ -95,6 +96,8 @@ static unsigned char mli(unsigned char cmd, void* p) {
         FILE* f;
         if (fault == 3) return 0x27;
         memcpy(from, i->path + 1, i->path[0]); from[i->path[0]] = 0;
+        if(closes==4 && ((fault==58 || fault==60) ||
+           ((fault==59 || fault==61) && strstr(from,"A2FC.BAK"))))keyboard=KEY_ESC|0x80;
         f = fopen(from, "rb");
         if (!f) return errno == ENOENT ? 0x46 : 0x27;
         fclose(f); memset(i->result,0,15); i->result[0]=0xC3; i->result[4]=1;
@@ -332,6 +335,35 @@ class Txtconv(unittest.TestCase):
                         self.assertEqual(keep.read_bytes(),b'unrelated bytes')
                         for parent in (self.root,dest.parent):
                             self.assertFalse((parent/'A2FC.BAK').exists())
+
+    def test_cancel_during_install_metadata_preserves_originals(self):
+        dest=self.root/'D'/'TEXT';dest.parent.mkdir(exist_ok=True)
+        self.addCleanup(dest.unlink,missing_ok=True)
+        for parent in (self.root,dest.parent):
+            for name in ('TXTCONV.TMP','A2FC.BAK'):
+                self.addCleanup((parent/name).unlink,missing_ok=True)
+        for inplace in (False,True):
+            parent=self.root if inplace else dest.parent
+            temp=parent/'TXTCONV.TMP'
+            for size in (0,256,800):
+                for fault in range(58,62):
+                    with self.subTest(inplace=inplace,size=size,fault=fault):
+                        temp.unlink(missing_ok=True)
+                        (parent/'A2FC.BAK').unlink(missing_ok=True)
+                        dest.write_bytes(b'old destination')
+                        payload=b'\xC1'*size
+                        note,data=self.convert(payload,fault=fault,inplace=inplace,overwrite=not inplace)
+                        self.assertEqual(data,payload)
+                        self.assertEqual(dest.read_bytes(),b'old destination')
+                        self.assertEqual(self.state,(4,4,0))
+                        self.assertNotIn('Converted',note)
+                        self.assertFalse((parent/'A2FC.BAK').exists())
+                        if fault>=60:
+                            self.assertIn('Cleanup failed',note)
+                            self.assertEqual(temp.read_bytes(),b'A'*size)
+                        else:
+                            self.assertIn('Stopped',note)
+                            self.assertFalse(temp.exists())
 
     def test_unreadable_destination_still_requires_overwrite_confirmation(self):
         dest = self.root / 'D' / 'TEXT'
