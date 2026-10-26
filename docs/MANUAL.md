@@ -166,7 +166,7 @@ had leave to use auxiliary memory, it also rebuilds /RAM empty on the way out.
 
 **TAB** changes the active panel. The highlighted row is the cursor; `*` marks
 a tagged entry and `L` a locked one. Directories end in `/`. The header's star
-shows the sort order. Messages and progress appear below the panels.
+shows the sort column; disk order, the default, has none. Messages and progress appear below the panels.
 
 | Keys | Action |
 |---|---|
@@ -174,7 +174,7 @@ shows the sort order. Messages and progress appear below the panels.
 | Return / Escape / / | Open; parent directory; list volumes. Return detects and opens the appropriate reader; X launches programs with confirmation. |
 | TAB / = / Ctrl-R | Other panel; same directory opposite; reread both panels. |
 | Space / * / Ctrl-T / Ctrl-N | Tag one; invert tags; tag all; clear tags. |
-| S / M / ' then initial | Next sort (name, size, type); tag files missing opposite or of another size/date; jump to a name. |
+| S / M / ' then initial | Next sort (disk order, name, size, type); tag files missing opposite or of another size/date; jump to a name. |
 | C / V / D | Copy; move; delete. Use tags, or the cursor when none are tagged. |
 | R / K / A / L | Rename; new directory; type/auxtype; lock/unlock. |
 | T / H / I / E / X | Text; hex; picture; edit; run after confirmation. |

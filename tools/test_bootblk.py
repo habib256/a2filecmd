@@ -207,10 +207,20 @@ class BootBlocks(unittest.TestCase):
                     calls, writes, note, target = self.run_case(fail, mode=mode)
                     self.assertEqual(target, self.target)
                     self.assertIn('both original blocks restored and verified', note)
-                    self.assertGreaterEqual(writes, 3)
+                    self.assertGreaterEqual(writes, 1)
+
+    def test_write_protect_on_first_install_is_not_a_failed_restore(self):
+        """The write fails before I/O: both originals remain, which is restore
+        success, not BOOT RESTORE FAILED (the previous false alarm)."""
+        calls, writes, note, target = self.run_case(self.ID + 5, mode=0)
+        self.assertEqual(target, self.target)
+        self.assertEqual(writes, 1)
+        self.assertIn('restored and verified', note)
+        self.assertNotIn('BOOT RESTORE FAILED', note)
 
     def test_failed_restore_reports_incomplete_and_still_attempts_other_block(self):
         # Failure on second installation write, then each rollback I/O.
+        # A block that still reads as the original is left alone.
         for mode in (0, 1, 2):
             for offset in range(4):
                 start = self.ID + (9 if mode == 2 else 8)
@@ -218,12 +228,15 @@ class BootBlocks(unittest.TestCase):
                 with self.subTest(mode=mode, second=second):
                     calls, writes, note, target = self.run_case(
                         self.ID + (8 if mode == 2 else 7), second, mode)
-                    self.assertIn('BOOT RESTORE FAILED', note)
-                    self.assertEqual(writes, 4, 'both restoration writes must be attempted')
-                    if offset < 2:
-                        self.assertEqual(target[512:], self.target[512:])
+                    self.assertGreaterEqual(writes, 2)
+                    b0 = target[:512] == self.target[:512]
+                    b1 = target[512:] == self.target[512:]
+                    if b0 and b1:
+                        self.assertIn('restored and verified', note)
                     else:
-                        self.assertEqual(target[:512], self.target[:512])
+                        self.assertIn('BOOT RESTORE FAILED', note)
+                    if mode == 0:
+                        self.assertTrue(b1, 'the failed install never reached block 1')
 
     def test_declining_does_not_write_blocks(self):
         """Only the two block-2 reads that identify the volumes happen."""

@@ -131,6 +131,24 @@ hv_done:
         ldx ptr2+1
         rts
 
+; Header star for S (name / size / type). Disk order, the default, has none.
+; A is the panel's left column. Freed by removing the unused VIEW_KEYS string.
+        .export _mark_sort
+        .import _sort_mode, _cputcxy
+_mark_sort:
+        ldx _sort_mode
+        cpx #3
+        beq @done
+        clc
+        adc @col,x
+        jsr pusha
+        lda #1
+        jsr pusha
+        lda #'*'
+        jmp _cputcxy
+@done:  rts
+@col:   .byte 4, 35, 21
+
 ; A heartbeat at row 21, column 79: odd columns of the 80-column display
 ; are MAIN RAM ($06F7). No conio state, AUX or file is touched, and no soft
 ; switch is changed: RDTEXT ($C01A, bit 7 set in text mode) is only read,

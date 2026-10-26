@@ -88,9 +88,9 @@ int main(int argc,char** argv){
  int s=atoi(argv[1]);unsigned r;
  pool=(struct Mini*)table;strcpy(full,"/V/T");strcpy(other_full,"/D/T");
  if(s==1){ bushy();r=walk_count();if(r!=7||strcmp(full,"/V/T")||strcmp(other_full,"/D/T")||errors||toolongs||dirfails)return 1;return 0; }
- if(s==2){ deep(29);r=walk_count();if(r!=1||strcmp(full,"/V/T"))return 1;   /* a 64-character file path, walked */
-  fs_n=0;strcpy(full,"/V/T");strcpy(other_full,"/D/T");deep(30);r=walk_count();if(r!=0xFFFF||dirfails||toolongs!=1)return 3;   /* the deepest directory is 64 characters, its file's path 66: the count refuses the tree before anything is copied or erased, and says "Path too long" (bug hunt 2: it said nothing, its callers "Directory unreadable or too large/deep.") */
-  fs_n=0;strcpy(full,"/V/T");strcpy(other_full,"/D/T");toolongs=0;deep(31);r=walk_count();if(r!=0xFFFF||dirfails||toolongs!=1)return 2;  /* one more: the path bound */
+ if(s==2){ deep(24);r=walk_count();if(r!=1||strcmp(full,"/V/T"))return 1;   /* dest dir 52 characters: /A2FC.COPY still fits */
+  fs_n=0;strcpy(full,"/V/T");strcpy(other_full,"/D/T");deep(26);r=walk_count();if(r!=0xFFFF||dirfails||toolongs!=1)return 3;   /* dest dir 56: the file path fits, A2FC.COPY does not */
+  fs_n=0;strcpy(full,"/V/T");strcpy(other_full,"/D/T");toolongs=0;deep(31);r=walk_count();if(r!=0xFFFF||dirfails||toolongs!=1)return 2;  /* past the path bound as well */
   return 0; }
  if(s==3){ unsigned k;char n[PATH_LEN];add("/V",1);add("/V/T",1);for(k=0;k<200;++k){sprintf(n,"/V/T/F%03u",k);add(n,0);}
   add("/V/T/S",1);for(k=0;k<20;++k){sprintf(n,"/V/T/S/G%02u",k);add(n,0);}
@@ -121,7 +121,7 @@ int main(int argc,char** argv){
   if(r!=0||dirfails!=1||removes||rmdirs||alive()!=fs_n)return 1;   /* the count refuses first: nothing erased */
   return 0; }
  if(s==10){ deep(29);add("/V/T/A/A/A/A/A/A/A/A/A/A/A/A/A/A/A/A/A/A/A/A/A/A/A/A/A/A/A/A/A/LONGNAME",0);
-  r=walk_copy();if(r!=0xFFFF||toolongs!=1||copies!=1)return 1;   /* F copied, then a 71-character file path: refused, reported (the callers count first, and the count now refuses this tree) */
+  r=walk_copy();if(r!=0xFFFF||toolongs!=1||copies)return 1;   /* dest cannot hold A2FC.COPY: nothing copied (used to copy F, then stop) */
   fs_n=0;strcpy(full,"/V/T");strcpy(other_full,"/D/T");memset(fs_gone,0,sizeof fs_gone);toolongs=0;copies=0;deep(31);r=walk_copy();
   if(r!=0xFFFF||toolongs!=1||copies)return 2;   /* a directory beyond 64 characters: the tree is refused */
   return 0; }
@@ -173,6 +173,17 @@ int main(int argc,char** argv){
   r=walk_copy();if(r!=0||errors!=1||strcmp(errname,"Mkdir")||_oserror!=0x47)return 1;
   if(find("/D/T/E")<0||fs_dir[find("/D/T/E")])return 2;   /* the file is left as it was */
   return 0; }
+ if(s==15){ /* Dest directory PATH_LEN-10, files "A" and "B": each file path
+  * fits, /A2FC.COPY does not. Measured before the fix: count=2, then a copy
+  * that stopped on the temporary name, a partial tree. */
+  char dest[80];unsigned k;
+  dest[0]='/';for(k=1;k<PATH_LEN-10;++k)dest[k]='X';dest[PATH_LEN-10]=0;
+  strcpy(other_full,dest);
+  add("/V",1);add("/V/T",1);add("/V/T/A",0);add("/V/T/B",0);
+  r=walk_count();if(r!=0xFFFF||toolongs!=1||dirfails||copies)return 1;
+  dest[PATH_LEN-11]=0;strcpy(full,"/V/T");strcpy(other_full,dest);toolongs=0;
+  r=walk_count();if(r!=2||toolongs||strcmp(other_full,dest))return 2;
+  return 0; }
  return 9;
 }
 '''
@@ -184,7 +195,7 @@ class TreeWalk(unittest.TestCase):
             p = Path(d)
             (p / 'test.c').write_text(HARNESS)
             subprocess.run(['cc', '-std=c99', '-fsanitize=address,undefined', '-I', str(ROOT), str(p / 'test.c'), '-o', str(p / 'test')], check=True, capture_output=True)
-            for scenario in range(1, 15):
+            for scenario in range(1, 16):
                 self.assertEqual(subprocess.run([str(p / 'test'), str(scenario)]).returncode, 0, 'scenario %d' % scenario)
 
     def test_a_directory_is_not_moved_onto_its_own_ancestor(self):

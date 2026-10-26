@@ -26,7 +26,7 @@ def main():
    with boot_hd(Path(t),files,port=6904) as(p,s):
     original=Path(p.hdv).read_bytes();select_tree(p,s,'TREE')
     floor=s.sym['__HIMEM__']-s.sym['__STACKSIZE__'];p.poke(floor,b'\xA5'*8)
-    s.key(b'C');s.wait(lambda:s.has('copied') or s.has('Directory unreadable') or s.has('Failed; source kept'),'tree copy',120);p.stable()
+    s.key(b'C');s.wait(lambda:s.has('copied') or s.has('Directory unreadable') or s.has('Failed; source kept') or s.has('Path too long'),'tree copy',120);p.stable()
     s.ok(f'{depth} copy stays within stack',p.peek(floor,8)==b'\xA5'*8)
     if depth=='wide':
      s.ok('a tree beyond the pool is refused before transfer',s.has('Directory unreadable'))
@@ -35,7 +35,7 @@ def main():
      s.ok('wide delete stays within stack',p.peek(floor,8)==b'\xA5'*8)
     elif depth==20:
      # /WORKHD/DEST/TREE/Z x20/A2FC.COPY: the recoverable copy's temporary name passes 64 characters
-     s.ok('a destination path beyond 64 characters stops the copy, source kept',s.has('Failed; source kept'))
+     s.ok('a destination that cannot hold A2FC.COPY is refused before any write',s.has('Path too long'))
      s.select('TREE');s.key(b'D');s.wait(lambda:s.has('Delete TREE'),'delete confirmation');s.key(b'Y')
      s.wait(lambda:s.has('deleted'),'20-level delete',120);p.stable()
      s.ok('20-level delete stays within stack',p.peek(floor,8)==b'\xA5'*8)
@@ -44,7 +44,7 @@ def main():
      s.ok(f'{depth}-level copy completes',s.has('copied'))
    if depth=='wide':s.ok('refused copy and delete preserve every disk byte',Path(p.hdv).read_bytes()==original)
    elif depth==20:
-    s.ok('the source of the stopped copy was kept until deleted, and DEST/NOTE is intact',
+    s.ok('the refused copy preserves every disk byte until the source is deleted, and DEST/NOTE is intact',
          contents(Path(p.hdv),['DEST','NOTE'])==b'destination original')
    else:
     leaf=['TREE']+['Z']*depth+['KEEP']

@@ -5,6 +5,26 @@ downloads and installation.
 
 ## [Unreleased]
 
+- S cycles disk order (the default, no header star), then name, size and
+  type. Returning to disk order rereads both panels, so tags are not kept
+  on that step. Saved `S0`/`S1`/`S2` still mean name, size and type.
+
+- IMGCONV Escape after CREATE, during replace or between blocks prints
+  « Stopped. », not « Stopped failed. » or « Aborted, DEST removed. »
+  while DEST is still the original.
+
+- Tree copy count refuses a destination directory that cannot hold
+  `A2FC.COPY`: a file whose own name fitted used to pass the count, then
+  stop the copy mid-tree with a partial destination. « Path too long for
+  ProDOS. » now, before the first byte.
+
+- VERIFY refuses a DOS 3.3 volume-list row instead of READ_BLOCK on unit
+  `$00` (those rows store the unshifted unit and `access = 0`).
+
+- REPAIR and BOOTBLK judge a failed write by the bytes that remain: a
+  write-protected disk that still holds the original is not reported as a
+  failed restore.
+
 - NIBCOPY reads the target's volume name again after the first "Erase
   TARGET" question and writes nothing if it changed or is now the
   program's disk: a disk swapped during that question received track 0

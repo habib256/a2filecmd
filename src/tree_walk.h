@@ -17,13 +17,31 @@
  * The count walks `other_full` along with `full`: before a copy it holds
  * the destination directory, and a deeper one used to pass the count
  * (source paths only) and stop the copy on the first file whose TARGET
- * path did not fit, the files before it copied (bug hunt 2). A count
- * before a delete has nothing to copy to: delete_tree empties other_full
- * first, so the pushes cost nothing there. */
+ * path did not fit, the files before it copied (bug hunt 2). It also
+ * refuses a destination directory that cannot hold `/A2FC.COPY` (9
+ * characters): the file's own name could fit, the recoverable copy's
+ * could not, and the copy used to stop mid-tree. A count before a
+ * delete has nothing to copy to: delete_tree empties other_full first,
+ * so the pushes cost nothing there. */
 enum { WALK_COUNT, WALK_COPY, WALK_DELETE };
 static unsigned char walk_mode;
 static unsigned char push_paths(const char* name)
 {
+    /* Dest dir of PATH_LEN-10 or more cannot hold /A2FC.COPY. Count to the
+     * terminator: leftover bytes after pop_name must not refuse a short dest. */
+#ifdef __CC65__
+    asm("ldy #0");
+fit:
+    asm("lda %v,y", other_full);
+    asm("beq %g", fits);
+    asm("iny");
+    asm("cpy #%b", PATH_LEN - 10);
+    asm("bcc %g", fit);
+    return 0;
+fits:
+#else
+    if (strlen(other_full) >= PATH_LEN - 10) return 0;
+#endif
     return push_name(full, name) && (walk_mode == WALK_DELETE || push_name(other_full, name));
 }
 static void pop_paths(void)

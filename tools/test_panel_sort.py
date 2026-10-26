@@ -24,7 +24,7 @@ static void activity_begin(const char* text) {}
 #include <string.h>
 #define __fastcall__
 #include "src/a2fc_plugin.h"
-enum { SORT_NAME, SORT_SIZE, SORT_TYPE, SORT_MODES };
+enum { SORT_NAME, SORT_SIZE, SORT_TYPE, SORT_DISK, SORT_MODES };
 static unsigned char sort_mode, dir_error, copy_buf[512];
 static struct Panel panels[2];
 #define pan_at(p) (&panels[p])   /* the resident helper: the same address */
@@ -109,6 +109,23 @@ int main(int argc, char** argv) {
         pan->tags[0] = 1;
         sort_entries(pan);
         show(pan);
+    } else if (!strcmp(argv[1], "disk")) {
+        strcpy(pan->path, "/V/DIR");
+        put(pan, "ZED", 6, 1); put(pan, "ABC", 6, 2);
+        pan->tags[0] = 1;
+        sort_mode = SORT_DISK;
+        sort_entries(pan);
+        show(pan);
+    } else if (!strcmp(argv[1], "wrap")) {
+        strcpy(pan->path, "/V/DIR");
+        put(pan, "ZED", 6, 1); put(pan, "ABC", 6, 2);
+        pan->cursor = 1;
+        strcpy(other->path, "/V/OTHER");
+        put(other, "ONE", 6, 1);
+        sort_mode = SORT_TYPE;
+        resort();
+        printf("mode=%u rereads=%d cursor=%s\n", sort_mode, rereads,
+               pan->count ? pan->e[pan->cursor].name : "");
     }
     return 0;
 }
@@ -155,6 +172,12 @@ class PanelSort(unittest.TestCase):
         for mode in ('0', '1', '2'):
             with self.subTest(mode=mode):
                 self.assertTrue(self.run_case('keep', mode).startswith('ZED* ABC |'))
+
+    def test_disk_order_leaves_the_table_and_its_tags(self):
+        self.assertTrue(self.run_case('disk').startswith('ZED* ABC |'))
+
+    def test_wrapping_to_disk_order_rereads_both_panels(self):
+        self.assertEqual(self.run_case('wrap'), 'mode=3 rereads=2 cursor=ABC')
 
 
 if __name__ == '__main__':

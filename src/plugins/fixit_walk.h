@@ -568,8 +568,11 @@ spun:
 static unsigned char verified(unsigned int b, unsigned char* w)
 {
     io.block = b; io.buf = w;
-    if (v_mli(0x81, &io)) return 0;
-    io.block = b; io.buf = buf;
+    /* A write error is judged by the bytes that remain, as DIRSORT asis()
+     * does: write-protected media refuse the write and keep every original
+     * byte, which is not a failed restore. */
+    v_mli(0x81, &io);
+    io.buf = buf;
     if (v_mli(0x80, &io)) return 0;
     return samebytes(buf, w, 512);
 }
@@ -577,8 +580,10 @@ static unsigned char verified(unsigned int b, unsigned char* w)
 /* The write failed, the read back failed or the bytes differ: `w` holds the
  * original again, so put it on the disk and prove it. An error may still
  * have reached the medium, so this is tried in every case, as in bootblk.c
- * and the fail: of move.c. If even this fails the block is named and nothing
- * else is attempted -- `failed` stops the walk where it stands. */
+ * and the fail: of move.c. If the disk already holds `w`, verified()
+ * succeeds even when the restoring write returned an error. If even this
+ * fails the block is named and nothing else is attempted -- `failed` stops
+ * the walk where it stands. */
 static unsigned char restored(unsigned int b, unsigned char* w)
 {
     hurt = 1;

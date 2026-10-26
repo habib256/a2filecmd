@@ -21,7 +21,7 @@
 1,13,R,Rename
 41,13,D,Delete, directories too
 1,14,K,Make a directory
-41,14,S,Sort by name, size or type
+41,14,S,Sort: disk, name, size, type
 1,15,M,Mark files differing from other
 41,15,A,Change type and auxtype
 1,16,L,Lock / unlock (L after name)

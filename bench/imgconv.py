@@ -34,7 +34,7 @@ PORT = 6815
 
 # Ce qui met fin a une execution de la surcouche, sur la ligne 22 (note).
 DONE = (' -> ', 'failed', 'already in that format', 'Other panel',
-        'whole tracks', 'Aborted', 'Select a disk image', 'Not a ProDOS-order 2IMG')
+        'whole tracks', 'Stopped', 'Select a disk image', 'Not a ProDOS-order 2IMG')
 
 # Les refus de src/plugins/imgconv.c, mot pour mot : ce que l'utilisateur lit.
 M_PICK  = 'Select a disk image (.PO .DSK .2MG .DC...).'

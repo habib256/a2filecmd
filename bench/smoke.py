@@ -53,14 +53,17 @@ def main():
                  s.has('A2FILE/') and not s.has('DEMO/'))
             s.ok('l edition disquette n a pas BASIC.SYSTEM',
                  not any(r.startswith('BASIC.SYSTEM') for r in s.rows()))
-            # S (le tri) vit dans TEXT.PLG, present sur la disquette : trois S
-            # font le tour des ordres et reviennent au tri par nom
+            # S (le tri) vit dans TEXT.PLG, present sur la disquette : quatre S
+            # font le tour (ordre disque, nom, taille, type) et reviennent
+            # a l'ordre disque, sans etoile dans l'en-tete
             head = s.rows()[1]
+            s.ok('l ordre disque est le tri par defaut, sans etoile',
+                 'Name*' not in head and 'Type*' not in head and 'Size*' not in head, head[:38])
             s.key(b'S'); p.stable()
             s.ok('S change le tri depuis la disquette (TEXT.PLG)',
                  s.rows()[1] != head and not s.has('not valid.'), s.rows()[1][:38])
-            s.key(b'S'); p.stable(); s.key(b'S'); p.stable()
-            s.ok('trois S ramenent au tri par nom', s.rows()[1] == head, s.rows()[1][:38])
+            s.key(b'S'); p.stable(); s.key(b'S'); p.stable(); s.key(b'S'); p.stable()
+            s.ok('quatre S ramenent a l ordre disque', s.rows()[1] == head, s.rows()[1][:38])
             s.key(b"'"); s.wait(lambda: s.has('Jump to name'), 'saut par initiale', 30)
             s.key(b'P'); p.stable()
             s.ok('apostrophe charge TEXT et trouve PRODOS', s.line().startswith('PRODOS '))
