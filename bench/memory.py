@@ -32,6 +32,33 @@ def main():
         with Pom2(program, hd2=scratch_volume(tmp, blocks=4000), port=6620) as p:
             s = Session(p, sym)
             s.boot()
+            # The relocated LC tag routine must preserve entry identities,
+            # cursor, the other panel and all non-screen AUX bytes. Panel
+            # offsets are frozen by tools/test_abi_freeze.py (98 bytes).
+            s.select('A2FILE'); s.key(RET)
+            s.wait(lambda: '/A2FILE ' in s.rows()[0][:40], 'A2FILE tags'); p.stable()
+            panel = sym['_panels']
+            before = p.peek(panel, 196)
+            count = before[64]
+            entries = int.from_bytes(before[74:76], 'little')
+            table = p.peek(entries, count * 29)
+            aux = p.peek(0x0800, 0xB800, 'aux')
+            expected = bytearray(18)
+            for i in range(count):
+                if table[i * 29:i * 29 + 3] != b'..\0':
+                    expected[i >> 3] |= 1 << (i & 7)
+            s.ok('tag fixture includes parent and files',
+                 count > 1 and table[:3] == b'..\0')
+            for key, marks in ((b'\x14', bytes(expected)), (b'*', bytes(18)),
+                               (b'*', bytes(expected)), (b'\x0e', bytes(18))):
+                s.key(key); p.stable()
+                after = p.peek(panel, 196)
+                want = before[:76] + marks + before[94:]
+                s.ok('LC tags %r preserve both panels and entry bytes' % key,
+                     after == want and p.peek(entries, count * 29) == table)
+            s.ok('LC tags preserve AUX outside screen memory',
+                 p.peek(0x0800, 0xB800, 'aux') == aux)
+            s.key(ESC); p.stable()
             # ONCE est mort une fois main() lance : tout ce qui est au-dessus
             # du bout froid est a la pile, et a personne d'autre.
             p.poke(lo, bytes([0xEE]) * (hi - lo))

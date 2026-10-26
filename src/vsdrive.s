@@ -62,7 +62,7 @@
 ; drained (drain): the late reply of a call that timed out must not be
 ; taken for the echo of the next one, which would fail in turn, and so on.
 
-        .export         _vsdrive_install, _vsdrive_uninstall
+        .export         _vsdrive_install, _vsdrive_uninstall, _vsdrive_reset
         .destructor     _vsdrive_uninstall, 9
         .importzp       ptr1
 
@@ -136,6 +136,12 @@ vs_bufhi        = $03CB         ; $45 as ProDOS gave it (the loop moves it)
 ; ----------------------------------------------------------------------
         .segment "CODE"
 
+; Called before loading BATCH: even a missing/bad overlay must leave the
+; destructor inactive. Page 3 is not initialized by the C runtime.
+_vsdrive_reset:
+        ZERO    vs_on
+        rts
+
 _vsdrive_uninstall:
         lda     vs_on
         beq     un_done
@@ -190,9 +196,9 @@ sw_byte:
 sw_ofs: .byte   0, 1, 16, 17
 
 ; ----------------------------------------------------------------------
-; The rest in the language card.
+; Install-only tables live with the installer in BATCH.
 ; ----------------------------------------------------------------------
-        .segment "LC"
+        .segment "BATCH"
 
 ; The Pascal 1.1 signature of a type 1 serial or parallel card.
 id_ofs: .byte   $05, $07, $0B, $0C
@@ -213,9 +219,8 @@ id_val: .byte   $38, $18, $01, $31
 SLOT_FIRST      = $C2           ; the ROM page of the first slot probed
 SLOT_END        = $C8           ; one past the last
 
-; The thunk, copied to $0300. Its source is in main memory (segment CODE),
-; not in the language card: the LC image is full, and a source that is
-; only ever copied has no business there.
+; The thunk, copied to $0300. Its source lives in BATCH with the installer;
+; only the page-3 copy is used after installation.
 ;
 ; The driver lives in bank 2 of the language card ($D400-$DFFF, the LC
 ; image of cc65) and ProDOS in bank 1 -- with its general buffer GBUF at
@@ -229,7 +234,7 @@ SLOT_END        = $C8           ; one past the last
 ; to bank 2 to find the driver again. (POM2 bench, bench/vdrive.py,
 ; 2026-09-08.) The whole receive loop of a block is here (rd_src): a
 ; thunk per byte cost more than a byte time (see the header).
-        .segment "CODE"
+        .segment "BATCH"
 thunk_src:
         bit     $C080                   ; bank 2 readable: us
         jsr     vs_driver
@@ -303,6 +308,7 @@ ld_buf  = THUNK + (ld_src - thunk_src)
 ; parameter block vs_ip, from the main window: the MLI reads the bytes
 ; behind a `jsr $BF00` with ProDOS's bank 1 in, so no call may be inlined
 ; in the language card. Main RAM: the command byte is written in place.
+        .segment "CODE"
 int_mli:
         sta     int_cmd
         jsr     $BF00
@@ -322,10 +328,10 @@ del_irq:
         jsr     int_mli
 :       rts
 
-; The install runs once, from the language card like the driver, on both
-; editions: on the 6502 one, in main memory, it made A2FILE.CODE a block
-; longer on the floppy, while the language image has a fixed size.
-        .segment "LC"
+; Installation runs once, before reading the panels. BATCH is loaded by
+; main and may be replaced after this routine returns. Runtime entry points
+; and the destructor must never refer to this segment.
+        .segment "BATCH"
 ; Registering the handler. The thunk is in place: the address of the
 ; 6551's status register goes into its lda ($C0 is there already). Z set
 ; on failure, vs_int 0.

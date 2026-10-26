@@ -9,12 +9,12 @@ void plugin_entry(void);
 struct PluginHeader {
     unsigned int signature; unsigned char flags;
     void (*entry)(void);
-    unsigned char r0, r1, r2; char desc[22];
+    unsigned char r0, r1, r2; char desc[18];
 };
 #pragma rodata-name (push, "OVLHDR")
 const struct PluginHeader __plugin_header = {
     PLUGIN_MAGIC, 0, plugin_entry, 0, 0, 0,
-    "Read files or volume"
+    "Read files/volume"
 };
 #pragma rodata-name (pop)
 
@@ -127,8 +127,7 @@ checked:
  * device $00. WIPE already refuses those rows. */
 static unsigned char volume_unit(void)
 {
-    if (e->name[0] != '/' || !e->access) return 0;
-    return (unsigned char)(e->mdate << 4);
+    return e->name[0] == '/' && e->access ? (unsigned char)(e->mdate << 4) : 0;
 }
 
 /* Volume entries carry the driver unit and physical block count. */
@@ -238,7 +237,7 @@ ready:
         asm("inc %v+1", e);
 walked: ;
     }
-    print((char*)buf, "VERIFY: %s%u read, %u errors%s", "", did, errors,
+    print((char*)buf, "VERIFY: %u read, %u errors%s", did, errors,
                         aborted ? ", cancelled" : "");
     t_message((const char*)buf);
 }

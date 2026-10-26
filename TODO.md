@@ -54,9 +54,12 @@ se ferme avec un oracle hôte et un banc POM2 sur images jetables.
 ## 1.0 — travail restant, par ordre
 
 1. **Dégager de la marge mémoire sans relâcher les gardes.**
-   - [ ] Réexaminer le partage résident/surcouches, particulièrement en
-     65C02 ; objectif de réserve MAIN : 256 octets. Mesurer tout gain sur
-     les deux CPU avec les contrôles de disposition et de pile.
+   - [x] Réserve MAIN supérieure à l'objectif de 256 octets : **322 / 676**
+     (65C02 / 6502), carte langage **40 / 40**. Installateur VDrive dans
+     BATCH ; marquage collectif et sélection T/H dans la carte langage.
+     Gardes inchangées ; voir [le relevé du 26 octobre](docs/MEMORY-BUDGETS.md).
+     `make test` reste bloqué par deux attentes de message du fuzzing REPAIR
+     (`failall`, cas 59159155060 et 59159155099), images conservées.
    - [x] Cache des informations de volume : prototype écarté pour préserver
      les marges ; étude reportée après la 1.0.
 2. **Fermer les vérifications fonctionnelles restantes.**
@@ -125,8 +128,9 @@ directement les exports de 2304 octets et les paires éditeur depuis les
 disques DOS réels et DSK/DO/2IMG. Restent les réglages stockés de MCS,
 les variantes non reconnues et les autres formats audio.
 
-Les budgets du relevé du 25 octobre ci-dessus priment sur les anciens
-chiffres. OPEN est plein ; le résident 65C02 n'a qu'un octet de réserve.
+Les budgets du [relevé du 26 octobre](docs/MEMORY-BUDGETS.md) priment sur
+les anciens chiffres. OPEN est plein ; MAIN garde 322 octets sur 65C02
+et 676 sur 6502, la carte langage 40 sur les deux CPU.
 Les nouvelles fonctions doivent rester en surcouches, avec identification
 par les étapes IDENT quand nécessaire et contrôles des deux compilateurs.
 Les XL contiennent tous les lecteurs ; la sélection 800 Ko est explicite.
