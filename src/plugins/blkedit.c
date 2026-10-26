@@ -290,6 +290,7 @@ static void banner(const char* f)
 /* W: the block back to the disk, once, with everything that guards it. */
 static void write_block(void)
 {
+    unsigned char key;
     if (!dirty) { v_message(m_none); v_cgetc(); return; }
     if (boot_volume()) { v_message(m_boot); v_cgetc(); return; }
     if (!source.unit && image_readonly) { v_message(m_ro); v_cgetc(); return; }
@@ -306,6 +307,17 @@ static void write_block(void)
      * Image files retain their file/container guards above. No AUX. */
     if (source.unit && !(check[34] & 2)) { v_message(m_ro); v_cgetc(); return; }
     if (!source_write(&source, block, buf)) { v_message(m_wfail); v_cgetc(); return; }
+    /* An image's block waits in ProDOS's file buffer until the close: read
+     * back before it, it came from that buffer, and the error of the flush
+     * (a write-protected or failing disk) was lost after "identical". The
+     * close is checked and the image opened again for the read back (not
+     * by image_open: its 2MG header read lands in buf, the block written);
+     * one that does not open again ends the session (source.file 0). */
+    if (!source.unit) {
+        key = IMG(fclose)(source.file);
+        if (!(source.file = IMG(fopen)(source.path, "r+b"))) { note(m_open); return; }
+        if (key) { v_message(m_wfail); v_cgetc(); return; }
+    }
     /* Read back into `check`, never over the buffer we just wrote: if the
      * readback fails the edit is still there to try again. */
     if (!source_read(&source, block, check)) {
@@ -412,7 +424,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
         if (key == KEY_ESC) { if (may_leave()) break; else continue; }
         if (key == KEY_TAB) { page ^= 1; continue; }
         key &= 0xDF;
-        if (key == 'W') { write_block(); continue; }
+        if (key == 'W') { write_block(); if (!source.unit && !source.file) return; continue; }
         if (key == 'T' || key == 'Y') { if (may_leave()) follow(key == 'Y'); continue; }
         if (key == 'G') { if (may_leave()) jump(); continue; }
         if (key == 'N' && block + 1 < source.blocks) { if (may_leave()) ++block; continue; }

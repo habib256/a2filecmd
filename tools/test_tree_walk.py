@@ -22,8 +22,10 @@ static unsigned char table[MAX_ENTRIES * sizeof(struct Entry)];
 static char full[PATH_LEN], other_full[PATH_LEN];
 /* The fake file system: absolute paths, directories flagged. */
 #define FS_MAX 600
-static char fs_path[FS_MAX][80];   /* longer than a ProDOS path: the walk must refuse, not the harness */ static unsigned char fs_dir[FS_MAX], fs_gone[FS_MAX]; static unsigned fs_n;
-static void add(const char* path, unsigned char dir){strcpy(fs_path[fs_n],path);fs_dir[fs_n]=dir;fs_gone[fs_n]=0;++fs_n;}
+static char fs_path[FS_MAX][80];   /* longer than a ProDOS path: the walk must refuse, not the harness */ static unsigned char fs_dir[FS_MAX], fs_gone[FS_MAX], fs_fake[FS_MAX]; static unsigned fs_n;
+/* dir 2: a plain file typed $0F whose first block reads as an empty
+ * directory header -- listed by dir_open, storage type 1 for GET_FILE_INFO. */
+static void add(const char* path, unsigned char dir){strcpy(fs_path[fs_n],path);fs_dir[fs_n]=dir==1;fs_fake[fs_n]=dir==2;fs_gone[fs_n]=0;++fs_n;}
 static int find(const char* path){unsigned i;for(i=0;i<fs_n;++i)if(!fs_gone[i]&&!strcmp(fs_path[i],path))return i;return -1;}
 static int parent_is(const char* path,const char* dir){size_t d=strlen(dir);return !strncmp(path,dir,d)&&path[d]=='/'&&!strchr(path+d+1,'/');}
 static char unreadable[PATH_LEN];
@@ -33,19 +35,23 @@ static unsigned lists,mkdirs,copies,removes,rmdirs,aborts,errors,toolongs,dirfai
 static char log_[8192],errname[32];
 static unsigned char progress_abort;static unsigned int progress_total,progress_done,a2fc_ops;
 static unsigned char tree_stack_ok(void){return tree_room;}
-static unsigned char dir_error;
-static unsigned char list_dir(const char* path,unsigned char base,unsigned char* count){
- unsigned i,n=0;++lists;
- if(!tree_stack_ok()||find(path)<0||!strcmp(path,unreadable))return 0;
- for(i=0;i<fs_n;++i){
-  if(fs_gone[i]||!parent_is(fs_path[i],path))continue;
-  if(base+n>=POOL_SIZE)return 0;
-  strcpy(pool[base+n].name,strrchr(fs_path[i],'/')+1);pool[base+n].type=fs_dir[i]?0x0F:4;pool[base+n].aux=i;++n;
- }
- *count=n;return 1;
-}
-''' + section('/* Appends "/name" to a path;', '/* GET_FILE_INFO: lighter than an fopen') + r'''
-static unsigned char exists(const char* path){return find(path)>=0;}
+static unsigned char dir_error,gfi[18],_oserror;
+static struct { char name[16]; unsigned char type; unsigned aux; } dir_entry;
+static int dir_cur;static unsigned dir_pos;
+static unsigned char file_info(const char* path){int i=find(path);
+ if(i<0){_oserror=0x46;return 0;}
+ gfi[7]=!fs_dir[i]?1:strchr(path+1,'/')?0x0D:0x0F;return 1;}
+static unsigned char dir_open(const char* path){int i=find(path);++lists;
+ if(i<0||!strcmp(path,unreadable)||!(fs_dir[i]||fs_fake[i]))return 0;
+ dir_cur=i;dir_pos=0;dir_error=0;return 1;}
+static unsigned char dir_next(void){
+ while(dir_pos<fs_n){unsigned i=dir_pos++;
+  if(fs_gone[i]||!parent_is(fs_path[i],fs_path[dir_cur]))continue;
+  strcpy(dir_entry.name,strrchr(fs_path[i],'/')+1);dir_entry.type=fs_dir[i]||fs_fake[i]?0x0F:4;dir_entry.aux=i;return 1;}
+ return 0;}
+static void dir_close(void){}
+''' + section('/* Reads the directory `full` into pool', '/* GET_FILE_INFO: lighter than an fopen') + r'''
+static unsigned char exists(const char* path){return file_info(path);}
 static int mkdir(const char* path){++mkdirs;if(fail_mkdir)return -1;add(path,1);strcat(log_,"M ");strcat(log_,path);strcat(log_,"\n");return 0;}
 static unsigned char copy_file(const char* name,unsigned char type,unsigned aux){
  ++copies;if(fail_copy&&copies>=fail_copy)return 0;
@@ -148,6 +154,25 @@ int main(int argc,char** argv){
   add("/V",1);add("/V/T",1);add("/D",1);add("/D/T",1);add("/V/T/AFILE",0);add("/V/T/BFILE",0);add("/V/T/LONGFILENAME15",0);
   r=walk_count();if(r!=3||toolongs||strcmp(other_full,"/D/T"))return 3;
   return 0; }
+ if(s==13){ /* A plain file typed $0F (storage 1) whose first block reads as
+  * an empty directory. Before the fix the count took it for an empty
+  * directory: copied as one, then destroyed by the move's delete walk.
+  * Now every walk refuses the tree before any write. */
+  bushy();add("/V/T/S/FLAT",2);
+  r=walk_count();if(r!=0xFFFF||dirfails!=1)return 1;
+  strcpy(full,"/V/T");r=delete_tree();if(r!=0||removes||rmdirs||alive()!=fs_n)return 2;
+  strcpy(full,"/V/T");strcpy(other_full,"/D/T");r=walk_copy();if(r!=0xFFFF||find("/D/T/S/FLAT")>=0)return 3;
+  fs_n=0;dirfails=0;bushy();add("/V/T/S/FLAT",2);   /* the walk's own root */
+  strcpy(full,"/V/T/S/FLAT");strcpy(other_full,"/D/T/FLAT");r=walk_count();if(r!=0xFFFF||dirfails!=1)return 4;
+  strcpy(full,"/V/T/S/FLAT");r=delete_tree();if(r!=0||rmdirs||find("/V/T/S/FLAT")<0)return 5;
+  return 0; }
+ if(s==14){ /* The destination of a subdirectory is a FILE of that name:
+  * before, "exists" was enough and nothing was made; an empty source
+  * directory was then deleted by the move, gone everywhere. */
+  bushy();add("/D/T/E",0);
+  r=walk_copy();if(r!=0||errors!=1||strcmp(errname,"Mkdir")||_oserror!=0x47)return 1;
+  if(find("/D/T/E")<0||fs_dir[find("/D/T/E")])return 2;   /* the file is left as it was */
+  return 0; }
  return 9;
 }
 '''
@@ -159,7 +184,7 @@ class TreeWalk(unittest.TestCase):
             p = Path(d)
             (p / 'test.c').write_text(HARNESS)
             subprocess.run(['cc', '-std=c99', '-fsanitize=address,undefined', '-I', str(ROOT), str(p / 'test.c'), '-o', str(p / 'test')], check=True, capture_output=True)
-            for scenario in range(1, 13):
+            for scenario in range(1, 15):
                 self.assertEqual(subprocess.run([str(p / 'test'), str(scenario)]).returncode, 0, 'scenario %d' % scenario)
 
     def test_a_directory_is_not_moved_onto_its_own_ancestor(self):
@@ -198,6 +223,7 @@ int main(int argc,char** argv){
  unsigned i;
  pool=(struct Mini*)table;
  add("/V",1);add("/V/A",1);add("/V/A/A",1);add("/V/A/A/A",1);add("/V/A/A/A/G",0);add("/V/A/A/KEEP",0);add("/W",1);
+ if(argc>2)add("/W/A",0);   /* a FILE named like the directory moved */
  strcpy(panels[0].path,"/V/A");strcpy(panels[0].e[0].name,"A");panels[0].e[0].type=0x0F;
  strcpy(panels[1].path,argv[1]);active=0;
  if(!copy_one(&panels[0].e[0]))puts("copy refused");
@@ -215,7 +241,7 @@ int main(int argc,char** argv){
             (p / 't.c').write_text(h)
             subprocess.run(['cc', '-std=c99', '-fsanitize=address,undefined', '-I', str(ROOT), str(p / 't.c'), '-o', str(p / 't')],
                            check=True, capture_output=True)
-            run = lambda other: subprocess.run([str(p / 't'), other], capture_output=True, text=True, check=True).stdout.splitlines()
+            run = lambda *a: subprocess.run([str(p / 't'), *a], capture_output=True, text=True, check=True).stdout.splitlines()
             before = ['left ' + n for n in ('/V', '/V/A', '/V/A/A', '/V/A/A/A', '/V/A/A/A/G', '/V/A/A/KEEP', '/W')]
             # onto the grandparent, onto itself, into itself: refused, nothing written or erased
             for other in ('/V', '/V/A', '/V/A/A', '/V/A/A/A'):
@@ -229,6 +255,8 @@ int main(int argc,char** argv){
             self.assertIn('source deleted', out)
             self.assertEqual([l for l in out if l.startswith('left ')],
                              ['left ' + n for n in ('/V', '/V/A', '/W', '/W/A', '/W/A/A', '/W/A/A/G', '/W/A/KEEP')])
+            # onto a FILE named A: refused before any write, the source and the file kept
+            self.assertEqual(run('/W', 'file'), ['copy refused'] + before + ['left /W/A'])
 
 
 if __name__ == '__main__':

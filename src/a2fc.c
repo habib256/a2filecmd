@@ -4060,12 +4060,15 @@ static void settle_panels(void)
     if (stale) { draw_status(); draw_info(); }
 }
 
-/* Reads a directory into pool[base..]: names, types, auxtypes. Returns 0
- * if the directory cannot be read or if the pool overflows. */
-static unsigned char list_dir(const char* path, unsigned char base, unsigned char* count)
+/* Reads the directory `full` into pool[base..]: names, types, auxtypes.
+ * Returns 0 if it cannot be read, if the pool overflows, or if `full` is
+ * not a directory by its storage type ($F: a volume): a plain file typed
+ * $0F whose first block reads as a directory header was listed, copied
+ * as an empty directory, then destroyed by a move. */
+static unsigned char list_dir(unsigned char base, unsigned char* count)
 {
     unsigned char n = 0;
-    if (!tree_stack_ok() || !dir_open(path)) return 0;
+    if (!tree_stack_ok() || !file_info(full) || (gfi[7] | 2) != 0x0F || !dir_open(full)) return 0;
     while (dir_next()) {
         if (base + n >= POOL_SIZE) { dir_close(); return 0; }
         strcpy(pool[base + n].name, dir_entry.name);
@@ -4209,11 +4212,7 @@ static unsigned char copy_one(const struct Entry* e)
         { extern const char msg_intoself[]; message(msg_intoself); };
         return 0;
     }
-    if (!exists(other_full)) {
-        if (mkdir(other_full)) { report_error("Mkdir"); return 0; }
-        ++a2fc_ops;
-    }
-    return walk_tree(WALK_COPY) == 1;
+    return dest_dir() && walk_tree(WALK_COPY) == 1;
 }
 
 static const char msg_treekept[] = "Tree not verified; source kept.";
@@ -5315,6 +5314,7 @@ static const char at_rename[]  = "Select something to rename.";
 static const char at_novol[]   = "Open a volume first.";
 static const char at_pick[]    = "Select a file or directory.";
 static const char at_dirtype[] = "A directory keeps its type.";
+static const char at_filedir[] = "$0F is the directory type.";
 static void rename_selected(const struct Entry* e)
 {
     if (is_up(e) || !pan_at(active)->path[0]) { message(at_rename); return; }
@@ -5356,6 +5356,7 @@ static void change_attributes(const struct Entry* e, unsigned char lock)
         sprintf(input, "%02X", e->type);
         if (!prompt(at_type, input, 2)) return;
         type = (unsigned char)hex_value(input);
+        if (type == 0x0F) { message(at_filedir); return; }
         sprintf(input, "%04X", e->aux);
         if (!prompt(at_aux, input, 4)) return;
         aux = hex_value(input);

@@ -35,7 +35,7 @@ static unsigned char confirm(const char* s) {
 }
 struct Ol { unsigned char n,unit; unsigned char* buffer; };
 static unsigned char mli(unsigned char cmd,void* p) {
- struct Ol* o=p;const char* name=mode==15?"BOOT":"DISPOSABLE";
+ struct Ol* o=p;const char* name=mode==15||(mode==20&&confirms)?"BOOT":mode==21&&confirms?"OTHER":"DISPOSABLE";
  ++mlis;
  if(cmd!=0xC5 || o->n!=2 || o->unit!=0xE0+(mode==10||mode==11||mode==17?-0x80:0))abort();
  if(mode==18)return 0x52;
@@ -97,7 +97,7 @@ void reset(void){
  api.memcpy=memcpy;api.strcpy=strcpy;api.copy_buf=(unsigned char*)scratch;api.panels=panels;api.active=&active;
  api.note=result;api.other_full=other_full;api.cgetc=keymock;api.message=msg;api.confirm=confirm;
  api.clrscr=nothing;api.cprintf=print;api.cputs=puts_mock;api.progress_bar=progress;api.sprintf=sprintf;api.ram_format=ram;
- api.mli=mli;api.cfg_path="/BOOT/A2FILE/A2FILE.CFG";api.strcpy=strcpy;api.memcpy=memcpy;
+ api.mli=mli;api.cfg_path="/BOOT/A2FILE/A2FILE.CFG";api.strcpy=strcpy;api.strcmp=strcmp;api.memcpy=memcpy;
  plugin_entry(&api);
 }
 int source_same(void){return !memcmp(before[0],disks[0],sizeof disks[0]);}
@@ -208,5 +208,14 @@ class Nibcopy(unittest.TestCase):
         self.assertEqual(self.val('writes'),1);self.assertTrue(self.lib.alt_same())
     def test_single_drive_names_target_each_exchange(self):
         self.assertIn(b'Copy verified',self.run_copy(10))
-        self.assertEqual(self.val('mlis'),35);self.assertEqual(self.asked(),b'Erase TARGET S6,D1 /DISPOSABLE ALL files? Y confirms')
+        self.assertEqual(self.val('mlis'),36);self.assertEqual(self.asked(),b'Erase TARGET S6,D1 /DISPOSABLE ALL files? Y confirms')
+    def test_disk_swapped_during_first_question_is_not_written(self):
+        """Before: the name was read before the first question only; the
+        program's disk (20) or another volume (21) inserted while it was
+        asked received track 0 -- boot, root directory and bitmap."""
+        for mode in (20,21):
+            with self.subTest(mode=mode):
+                self.setUp()
+                self.assertEqual(self.run_copy(mode),b'Target changed; nothing written; 0/35 tracks verified.')
+                self.assertEqual(self.val('writes'),0);self.assertEqual(self.val('confirms'),1);self.assertTrue(self.lib.target_same())
 if __name__=='__main__':unittest.main()

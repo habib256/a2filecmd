@@ -56,6 +56,9 @@ _format_driver_call:
 dispatch:
         jmp (vector)
 vector: .word 0
+; NMOS 6502: JMP ($xxFF) takes its high byte from $xx00 -- the driver
+; call of a FORMAT, or of the /RAM rebuild, would jump anywhere.
+.assert <vector <> $FF, lderror, "format_driver_call's JMP (vector) must not straddle a page (NMOS 6502)"
 lcflag: .byte 0
 
 ; unsigned int __fastcall__ block_fold(unsigned int sig);

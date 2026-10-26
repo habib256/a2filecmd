@@ -436,6 +436,7 @@ test: test-mini $(TAKE1)
 	python3 $(TOOLS)/test_keep_tags.py
 	python3 $(TOOLS)/test_catalog_overlay.py
 	python3 $(TOOLS)/test_tree_walk.py
+	python3 $(TOOLS)/test_attr_type.py
 	python3 $(TOOLS)/test_batch_target.py
 	python3 $(TOOLS)/test_goto_safety.py
 	python3 $(TOOLS)/test_favrun.py

@@ -5,6 +5,26 @@ downloads and installation.
 
 ## [Unreleased]
 
+- NIBCOPY reads the target's volume name again after the first "Erase
+  TARGET" question and writes nothing if it changed or is now the
+  program's disk: a disk swapped during that question received track 0
+  (boot, root directory and bitmap). Two disks of one name, or both
+  without a ProDOS volume, are still not told apart there.
+
+- Tree copy, move and delete treat an entry as a directory only when its
+  storage type says so: a plain file typed $0F whose first block read as
+  a directory header was copied as an empty directory, then destroyed by
+  V. A refuses type $0F on a file. A copy whose destination holds a file
+  of the directory's name is refused ($47) instead of reporting success.
+
+- BLKEDIT on an image closes the file, checking the close, and opens it
+  again before reading the block back: the read back came from ProDOS's
+  file buffer, and a flush failing at the close (write-protected or
+  failing disk) was lost after "written and read back identical".
+
+- The two remaining `JMP (vector)` of FORMAT and NIBCOPY are checked at
+  link time against the NMOS 6502 page-boundary bug.
+
 - DISKIMG W and two-drive O read the device list again after ERASE and
   refuse ($2E) when the target drive no longer holds the volume the warning
   named, or now holds the program's disk or the image's. Two disks of one

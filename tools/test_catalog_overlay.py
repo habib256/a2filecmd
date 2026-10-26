@@ -30,7 +30,7 @@ static unsigned char read_panel(unsigned char p){++panel_reads[p];panels[p].coun
 static void draw_panel(unsigned char p){++draws[p];}
 static void draw_status(void){++status;}
 static void draw_info(void){++info;}
-''' + section('static void settle_panels(void)\n{', '/* Reads a directory into pool[base..]') + r'''
+''' + section('static void settle_panels(void)\n{', '/* Reads the directory `full` into pool') + r'''
 int main(int argc,char**argv){
  int scenario=atoi(argv[1]);
  panels[0].count=3;panels[1].count=4;panels[1].more=1;memset(panels[1].tags,0xFF,18);

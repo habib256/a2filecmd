@@ -31,13 +31,27 @@ static void pop_paths(void)
     pop_name(full);
     if (walk_mode != WALK_DELETE) pop_name(other_full);
 }
+/* The destination directory of a copy: one already there is filled in,
+ * a file of that name is refused ($47), not taken for it. */
+static unsigned char dest_dir(void)
+{
+    if (exists(other_full)) {
+        if (gfi[7] == 0x0D) return 1;
+        _oserror = 0x47;
+    } else if (!mkdir(other_full)) {
+        ++a2fc_ops;
+        return 1;
+    }
+    report_error("Mkdir");
+    return 0;
+}
 static unsigned int walk_tree(unsigned char mode)
 {
     unsigned char d = 0, i, n, dir;
     const struct Mini* m;
     unsigned int files = 0;
     walk_mode = mode;
-    if (!list_dir(full, 0, &n)) goto unreadable;
+    if (!list_dir(0, &n)) goto unreadable;
     lv_base[0] = 0; lv_n[0] = n; lv_i[0] = 0;
     if (mode == WALK_DELETE) progress_total += n;
     for (;;) {
@@ -68,9 +82,9 @@ static unsigned int walk_tree(unsigned char mode)
         }
         if (dir) {                                /* its entries follow this level's in the pool */
             if (d + 1 >= TREE_DEPTH) goto unreadable;
-            if (mode == WALK_COPY && !exists(other_full) && mkdir(other_full)) { report_error("Mkdir"); return 0; }
             n = lv_base[d] + lv_n[d];
-            if (!list_dir(full, n, &i)) goto unreadable;
+            if (!list_dir(n, &i)) goto unreadable;
+            if (mode == WALK_COPY && !dest_dir()) return 0;
             ++d;
             lv_base[d] = n; lv_n[d] = i; lv_i[d] = 0;
             if (mode == WALK_DELETE) progress_total += i;
