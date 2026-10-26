@@ -56,6 +56,7 @@ struct Pfx { unsigned char n; unsigned char* path; };
 static const char m_sel[]  = "Select a ProDOS volume.";
 static const char m_used[] = "Name in use.";
 static const char m_fail[] = "Rename volume";
+static const char m_twin[] = "Two volumes of this name: rename refused.";
 static const unsigned char nopfx = 0;       /* a zero-length Pascal path: no prefix */
 /* The two lines built in place (DATA, loaded with the file): the prompt's
  * label "Rename volume /OLD to", the last message "Volume renamed to /NEW"
@@ -114,6 +115,31 @@ static void __fastcall__ msg(const char* s)
 {
     scpy(A->note, s);
     display_message(A->note);
+}
+
+/* ON_LINE $C5 on unit 0: {2, unit, buffer}, 16 bytes a record. */
+static struct Ol { unsigned char n, unit; unsigned char* buf; } ol = { 2, 0, 0 };
+
+/* RENAME goes by path, and ProDOS resolves "/OLD" to either of two volumes
+ * of that name: the one renamed may not be the one chosen. 0: one volume
+ * at most answers to OLD; 1: two or more; 2: ON_LINE failed. The table
+ * goes to copy_buf + 128, past the saved prefix (65 bytes at most); it ends
+ * at the first record whose byte 0 is zero. */
+static unsigned char twins(void)
+{
+    static unsigned char *p, k, m, j;
+    p = PFX + 128; ol.buf = p;
+    if (mli(0xC5, &ol)) return 2;
+    m = 0; k = 16;
+    do {
+        if (!*p) break;
+        if ((unsigned char)((*p & 15) + 1) == n) {
+            for (j = 1; j < n && p[j] == OLD[j + 1]; ++j) ;
+            if (j == n) ++m;
+        }
+        p += 16;
+    } while (--k);
+    return m > 1;
 }
 
 static unsigned char __fastcall__ set_prefix(const unsigned char* p) { pfx.path = (unsigned char*)p; return mli(0xC6, &pfx); }
@@ -227,6 +253,12 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     /* Do not change the prefix or volume without a restorable prefix.
      * GET_PREFIX failure leaves copy_buf holding unrelated scratch data. */
     if (mli(0xC7, &pfx)) { report_error(m_fail); return; }
+    /* Read after the question: a disk inserted while it was asked counts.
+     * Nothing has changed yet, so a refusal leaves the prefix as it is. */
+    switch (twins()) {
+    case 1: msg(m_twin); return;
+    case 2: report_error(m_fail); return;
+    }
     /* ProDOS renames a volume to the name of another volume on line, and
      * two volumes then answer to one path. SET_PREFIX finds no volume
      * ($45) only when "/NEW" is free; anything else refuses, the prefix

@@ -39,6 +39,7 @@ unsigned int __fastcall__ block_fold(unsigned int sig);   /* format_mli.s: rotat
 unsigned char __fastcall__ online_unit(const char* name, unsigned char skip);
 unsigned char __fastcall__ format_driver_call(unsigned char unit, unsigned char cmd, unsigned char lc);
 extern unsigned int format_driver_blocks;
+extern unsigned char aux_dirty;     /* a2fc.c: crt0.s rebuilds /RAM on Ctrl-Reset when set */
 unsigned char __fastcall__ diskii_begin(unsigned char slotdrive);
 unsigned char __fastcall__ diskii_track(unsigned char track);
 void diskii_end(void);
@@ -514,6 +515,11 @@ static unsigned char do_format(void)
     bar(fm_wait_text);
     if (target->kind == KIND_DISKII) {
         r = diskii_begin((unsigned char)((slot_of(target->unit) << 4) | (drive_of(target->unit) == 2 ? 0x80 : 0)));
+        /* From the first track on, AUX holds the borrowed code, not /RAM's
+         * blocks: a Ctrl-Reset before the rebuild below must rebuild /RAM
+         * rather than leave its directory on line over them. The main loop
+         * clears the flag once FORMAT has returned. */
+        if (!r) aux_dirty = 1;
         for (t = 0; t < 35 && !r; ++t) {
             gotoxy(1, 5);
             cprintf(fm_track_format, t + 1);

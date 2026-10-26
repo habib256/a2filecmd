@@ -18,13 +18,30 @@ HARNESS = r'''
 #include "volname.c"
 static unsigned char disk[512], before[512], prefix[65];
 static unsigned char get_error, probe_error, rename_error, cancelled, scenario;
-static unsigned int sets, renames, reports, reads, draws;
+static unsigned int sets, renames, reports, reads, draws, onlines, misplaced;
+static unsigned char* saved;
 static char shown[80], note[80], input[17], cfg[64], paths_before[2][64], cfg_before[64];
 static unsigned char __fastcall__ mock_mli(unsigned char cmd, void* block) {
     struct Pfx* p = block;
     if (cmd == 0xC7) {
         if (get_error) return get_error; /* leave the scratch buffer stale */
+        saved = p->path;
         memcpy(p->path, prefix, prefix[0] + 1); return 0;
+    }
+    if (cmd == 0xC5) {
+        struct Ol* o = block;
+        ++onlines;
+        /* Before any change, on unit 0, clear of the saved prefix. */
+        if (sets || renames || o->n != 2 || o->unit || o->buf < saved + 65 || o->buf + 256 > saved + 512) ++misplaced;
+        if (scenario == 20) return 0x28;
+        memset(o->buf, 0xEE, 256);
+        o->buf[0] = 0x63; memcpy(o->buf + 1, "OLD", 3);
+        o->buf[16] = 0x54; memcpy(o->buf + 17, "OLDX", 4);   /* a longer name, not a twin */
+        o->buf[32] = 0x52; memcpy(o->buf + 33, "OL", 2);     /* a shorter one */
+        o->buf[48] = 0x70; o->buf[49] = 0x2F;                /* an error record: no name */
+        if (scenario == 19) { o->buf[64] = 0xE3; memcpy(o->buf + 65, "OLD", 3); o->buf[80] = 0; }
+        else { o->buf[64] = 0; o->buf[80] = 0xE3; memcpy(o->buf + 81, "OLD", 3); } /* stale, past the end */
+        return 0;
     }
     if (cmd == 0xC6) {
         ++sets;
@@ -50,7 +67,7 @@ static unsigned char __fastcall__ mock_mli(unsigned char cmd, void* block) {
 static void __fastcall__ show(const char* s) { strcpy(shown, s); }
 static void __fastcall__ report(const char* s) { ++reports; show(s); }
 static unsigned char __fastcall__ answer(const char* s, const char* initial, unsigned char hex)
-{ (void)s; (void)initial; (void)hex; strcpy(input, scenario >= 13 ? "LONGER" : "NEW"); return !cancelled; }
+{ (void)s; (void)initial; (void)hex; strcpy(input, scenario >= 13 && scenario <= 17 ? "LONGER" : "NEW"); return !cancelled; }
 static unsigned char __fastcall__ reread(unsigned char i) { (void)i; ++reads; return 1; }
 static void redraw(void) { ++draws; }
 int main(int argc, char** argv) {
@@ -97,14 +114,25 @@ int main(int argc, char** argv) {
     /* Native panel tables overlap a big overlay. The resident owns the
      * redraw after return; no scenario may request it while executing. */
     if (reads || draws) return 45;
+    if (misplaced) return 46;
     if (note[0] && strcmp(note, shown)) return 41;
+    if (scenario == 19 || scenario == 20) {
+        /* Refused before the first change: every disk byte, the prefix and
+         * the paths stay; only ON_LINE was asked. */
+        if (memcmp(disk, before, 512) || sets || renames || onlines != 1) return 47;
+        if (prefix[0] != 9 || memcmp(prefix + 1, "/OLD/WORK", 9)) return 48;
+        if (strcmp(panels[0].path, "/OLD/WORK") || strcmp(panels[1].path, "/OLD/DATA") || strcmp(cfg, "/OLD/A2FILE/A2FILE.CFG")) return 49;
+        if (scenario == 19 && (reports || strcmp(note, "Two volumes of this name: rename refused."))) return 50;
+        if (scenario == 20 && reports != 1) return 51;
+        return 0;
+    }
     if (scenario == 18) {
         if (memcmp(disk, before, 512) || sets || renames || reads || draws || reports) return 42;
         if (prefix[0] != 9 || memcmp(prefix + 1, "/OLD/WORK", 9)) return 43;
         if (strcmp(note, "Select a ProDOS volume.")) return 44;
         return 0;
     }
-    if (scenario >= 13) {
+    if (scenario >= 13 && scenario <= 17) {
         if (scenario <= 15) {
             if (memcmp(disk, before, 512) || sets || renames || reads || draws) return 31;
             if (prefix[0] != 9 || memcmp(prefix + 1, "/OLD/WORK", 9)) return 32;
@@ -121,7 +149,8 @@ int main(int argc, char** argv) {
         }
         return 0;
     }
-    if (scenario == 0 || scenario == 10 || scenario == 12) {
+    if ((scenario == 0 || scenario == 21) && onlines != 1) return 52;
+    if (scenario == 0 || scenario == 10 || scenario == 12 || scenario == 21) {
         before[4] = 0xF3; memcpy(before + 5, "NEW", 3);
         if (memcmp(disk, before, 512)) return 10;
         if (renames != (scenario == 12 ? 2 : 1) || reports != (scenario == 10)) return 11;
@@ -164,7 +193,7 @@ class VolnameNative(unittest.TestCase):
                 executable = tmp / target
                 result = subprocess.run([compiler, '-t', target, '-O', '-Oirs', '-Cl', '--codesize', '100', '-I', str(ROOT / 'src'), '-o', str(executable), str(tmp / 'test.c')], env={**os.environ, **extra}, capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                for scenario in range(19):
+                for scenario in range(22):
                     with self.subTest(target=target, scenario=scenario):
                         run = subprocess.run([shutil.which('sim65'), str(executable), str(scenario)], capture_output=True, text=True, timeout=10)
                         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
