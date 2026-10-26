@@ -5,6 +5,23 @@ downloads and installation.
 
 ## [Unreleased]
 
+- DISKIMG W and two-drive O read the device list again after ERASE and
+  refuse ($2E) when the target drive no longer holds the volume the warning
+  named, or now holds the program's disk or the image's. Two disks of one
+  name, or both without a ProDOS volume, are still not told apart.
+
+- A copy or move batch stops when the target panel can no longer be read
+  after an item: the next item is no longer written under the prefix as a
+  bare name, nor its source deleted. ESC pressed during an item still stops.
+
+- VOLNAME refuses to rename when two volumes on line answer to the chosen
+  name (ProDOS could rename either), and reports an ON_LINE failure, before
+  any change.
+
+- FORMAT marks AUX as in use from the first Disk II track, so a Ctrl-Reset
+  before the rebuild rebuilds /RAM instead of leaving its directory on line
+  over overwritten blocks.
+
 - DIRSORT revalidates a subdirectory's parent entry after confirmation,
   refusing raw writes if its protection, name, key or storage changed, or
   the parent block cannot be read. Check the actual leaf-name length before

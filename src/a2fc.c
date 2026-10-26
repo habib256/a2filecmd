@@ -3636,6 +3636,21 @@ static unsigned char di_erase(const struct Dev* d)
     return prompt(S_ERASE, NULL, 0) && !strcmp(input, S_WORD);
 }
 
+/* After ERASE, before the first write: the list read again must still
+ * show, on that unit, the volume the warning named, and it must still be
+ * free to write -- neither the program's disk nor the one holding the
+ * image. The pick and the prompt left all the time needed to swap disks.
+ * Two disks of one name (or both without a ProDOS volume) are not told
+ * apart: one drive, di_ask's check of the mark covers it. */
+static unsigned char di_still(const struct Dev* d)
+{
+    /* DEVCNT and DEVLST do not change here: di_scan fills the same entry
+     * with the same unit. */
+    strcpy(question, d->name);
+    di_scan();
+    return !d->inuse && !strcmp(d->name, question);
+}
+
 /* Opens the image `full` (entry e): the sector order from its name (.DSK
  * or .DO: DOS 3.3; .2MG: its header says; .PO: ProDOS; any other name is
  * not an image), the number of blocks from its size. Returns 0 if it is
@@ -3741,6 +3756,7 @@ void __fastcall__ diskimg_entry(const struct A2fcApi* a)
         if (!(to = di_pick(S_TO, 1))) goto out;
         if (to->blocks && to->blocks < DI->total) { strcpy(note, S_SMALL); goto out; }
         if (!di_erase(to)) goto out;
+        if (!di_still(to)) { r = 0x2E; goto out; }
         dst->kind = SIDE_DEVICE;
         dst->unit = to->unit;
         r = di_copy(0);
@@ -3783,6 +3799,7 @@ void __fastcall__ diskimg_entry(const struct A2fcApi* a)
         }
         if (to->blocks && to->blocks < DI->total) { strcpy(note, S_SMALL); goto out; }
         if (!di_erase(to)) goto out;
+        if (!di_still(to)) { r = 0x2E; goto out; }
         r = di_copy(from == to);
     }
     if (!r) sprintf(note, S_DONE, DI->total, verb, di_where(to->unit), dst->kind == SIDE_DEVICE ? S_VERIFIED : S_EMPTY);
@@ -5137,7 +5154,7 @@ static void copy_dos(unsigned char move)
 static void copy_or_move(unsigned char move)
 {
     struct Panel* pan = pan_at(active);
-    unsigned char n, i, done = 0, removed = 0;
+    unsigned char n, i, k, other, done = 0, removed = 0;
     unsigned int sub;
     if (pan->fs == FS_DOS33) { overlay_run("DOSGET", 'C'); return; }   /* DOS 3.3 extraction */
     if (pan->fs) { overlay_run("IMGFS", 0); return; }   /* extraction from a ProDOS image */
@@ -5153,7 +5170,7 @@ static void copy_or_move(unsigned char move)
     if (!target_check()) return;
     n = pick_targets();
     if (!n) return;
-    pool = (struct Mini*)pan_at(!active)->e;
+    pool = (struct Mini*)pan_at(other = !active)->e;
     /* The "file x of y" counter needs to know y: a first pass counts the
      * files, directories included. */
     progress_total = 0;
@@ -5174,9 +5191,9 @@ static void copy_or_move(unsigned char move)
         progress_total += sub;
     }
     for (i = 0; i < n; ++i) {
-        const struct Entry* e = &pan->e[(unsigned char)(picked[i] - removed)];
+        const struct Entry* e = &pan->e[k = picked[i] - removed];
         unsigned int skipped_before = progress_skipped;
-        if (is_up(e)) { ++done; continue; }
+        if (is_up(e)) goto next;
         if (abort_key() || !copy_one(e)) break;
         /* Moving is copying then deleting: a skipped file (Skip) has not
          * been copied, it stays; a directory in which a file was skipped
@@ -5189,13 +5206,21 @@ static void copy_or_move(unsigned char move)
             /* the delete walk counts files and directories too: the summary
              * counts copies, and moved_tree_delete puts the counters back */
             if (is_dir(e) ? !(overlay("DELETE") && moved_tree_delete()) : remove(full) != 0) { if (!is_dir(e) && !progress_abort) report_error("Delete source"); break; }
-            drop_entry(pan, picked[i] - removed);      /* gone: the source shows it right away */
+            drop_entry(pan, k);                        /* gone: the source shows it right away */
             ++removed;
             draw_panel(active);
         }
+        /* Arrived: the target shows it right away. A target that no longer
+         * reads stops the batch: a failed open empties its path, and the
+         * next item would be built as a bare name, under the prefix --
+         * written there, and with V its source deleted. Said as an
+         * interruption, and abort_key ends the loop before the next item:
+         * the core has no room for more. Never cleared here: an ESC
+         * pressed during this item still stops the batch. */
+        if (!read_panel(other)) progress_abort = 1;
+        draw_panel(other);
+next:
         ++done;
-        read_panel(!active);                           /* arrived: the target shows it right away */
-        draw_panel(!active);
     }
     refresh_both();
     if (progress_abort) { sprintf(question, "Interrupted: %u of %u done.", done, n); message(question); }

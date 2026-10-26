@@ -436,6 +436,7 @@ test: test-mini $(TAKE1)
 	python3 $(TOOLS)/test_keep_tags.py
 	python3 $(TOOLS)/test_catalog_overlay.py
 	python3 $(TOOLS)/test_tree_walk.py
+	python3 $(TOOLS)/test_batch_target.py
 	python3 $(TOOLS)/test_goto_safety.py
 	python3 $(TOOLS)/test_favrun.py
 	python3 $(TOOLS)/test_file_safety.py
@@ -502,6 +503,7 @@ test: test-mini $(TAKE1)
 	python3 $(TOOLS)/test_diskimg_input.py
 	python3 $(TOOLS)/test_diskimg_output.py
 	python3 $(TOOLS)/test_diskimg_scan.py
+	python3 $(TOOLS)/test_diskimg_still.py
 	python3 $(TOOLS)/test_delete_confirm.py
 	python3 $(TOOLS)/test_dirscan.py
 	python3 $(TOOLS)/test_blkview.py

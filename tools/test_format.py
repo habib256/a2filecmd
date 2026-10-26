@@ -84,9 +84,11 @@ unsigned char format_driver_call(unsigned char unit, unsigned char cmd, unsigned
 }
 /* The Disk II writer: begin may refuse (write protect); each track borrows AUX. */
 static int dii_unit;
+unsigned char aux_dirty;                         /* a2fc.c: crt0.s rebuilds /RAM on Ctrl-Reset when set */
+static int dirty_unset_at_track;                 /* AUX borrowed while a Ctrl-Reset would not rebuild /RAM */
 unsigned char diskii_begin(unsigned char sd){ dii_unit=(sd>>4)|(sd&0x80?8:0); return (unsigned char)begin_result; }
 unsigned char diskii_track(unsigned char t){
-  int b; aux_borrowed=1; ++tracks;
+  int b; if(!aux_dirty) dirty_unset_at_track=1; aux_borrowed=1; ++tracks;
   for(b=t*8;b<t*8+8;++b){ memset(disk[dii_unit][b],0,512); fail_read_block[dii_unit][b]=0; }
   return 0;
 }
@@ -205,8 +207,8 @@ int main(int argc,char** argv){
   }
   format_entry(&api);
   for(i=0;i<NB;++i) n+=reads[6][i]>0;
-  printf("RESULT tracks=%d aux_borrowed=%d ram_rebuilt=%d ram_files=%d blocks_read=%d\n",
-         tracks,aux_borrowed,ram_rebuilt,ram_files,n);
+  printf("RESULT tracks=%d aux_borrowed=%d ram_rebuilt=%d ram_files=%d blocks_read=%d aux_dirty=%d dirty_late=%d\n",
+         tracks,aux_borrowed,ram_rebuilt,ram_files,n,aux_dirty,dirty_unset_at_track);
   printf("NOTE %s\n",note);
   printf("SCREEN %s\n",screen);
   if(argc>2) dump(argv[2]);
@@ -352,6 +354,23 @@ class Format(unittest.TestCase):
         self.assertEqual(r['ram_rebuilt'], '0')
         self.assertEqual(r['ram_files'], '1')
         self.assertEqual(r['disk'](6, 2)[5:11], b'FLOPPY')
+        self.assertEqual(r['aux_dirty'], '0')
+
+    def test_ctrl_reset_during_tracks_rebuilds_ram(self):
+        """Before: aux_dirty stayed 0 while the Disk II writer borrowed AUX;
+        a Ctrl-Reset between the first track and the rebuild left /RAM's
+        directory on line over the resident's bytes. The flag must be up
+        before the first track is written."""
+        for case in ('dos_same', 'eleven'):
+            with self.subTest(case=case):
+                r = self.run_case(case)
+                self.assertEqual(r['tracks'], '35')
+                self.assertEqual(r['dirty_late'], '0')
+                self.assertEqual(r['aux_dirty'], '1')
+
+    def test_block_device_leaves_flag_alone(self):
+        r = self.run_case('block')
+        self.assertEqual(r['aux_dirty'], '0')
 
     # -- finding 4: what "verified" means ----------------------------------
     def test_disk_ii_reads_every_block_back(self):
