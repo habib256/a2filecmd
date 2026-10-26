@@ -193,7 +193,7 @@ static unsigned char same_target(void) {
 }
 /* The target's ProDOS volume, through ON_LINE: "/NAME", or a placeholder.
  * 1 when it is the volume A2 File Cmd runs from (cfg_path "/NAME/..."). */
-static char tname[19];
+static char tname[19],named[19];
 static unsigned char target_name(unsigned char unit) {
  static struct { unsigned char n,unit; unsigned char* buffer; } ol;
  static unsigned char online[16];
@@ -254,6 +254,13 @@ unsigned char __fastcall__ nb_run(const struct A2fcApi* api) {
    if(target_name(target) && !done){status="Target holds A2 File Cmd's volume; nothing written";goto end;}
    a.sprintf(a.other_full,"Erase TARGET S%u,D%u %s ALL files? Y confirms",slot,(target>>7)+1,tname);
    if(!a.confirm(a.other_full))goto end;
+   /* Track 0 has no verified track to compare (same_target): the volume
+    * named in the question must still be on line. Two disks of one name,
+    * or both without a ProDOS volume, are not told apart. */
+   if(!done) {
+    a.strcpy(named,tname);
+    if(target_name(target) || a.strcmp(named,tname)){status="Target changed; nothing written";goto end;}
+   }
   }
   if(stop())goto end;
   nb_begin(target);

@@ -28,6 +28,9 @@ FinishDone:
  rts
 FormatRam:
  jmp (_nb_cleanup_fn)
+; NMOS 6502: JMP ($xxFF) takes its high byte from $xx00. Here AUX is
+; already borrowed: the /RAM rebuild would jump anywhere.
+.assert <_nb_cleanup_fn <> $FF, lderror, "NIBCOPY's JMP (_nb_cleanup_fn) must not straddle a page (NMOS 6502)"
 _nb_note: .word 0
 _nb_ram_note: .res 48,0
 .assert * <= $2000, lderror, "NIBCOPY cleanup exceeds low window"

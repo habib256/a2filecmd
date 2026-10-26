@@ -233,17 +233,29 @@ static struct DirEntry entry;
 static unsigned char listed;
 static char input[18], notes[80], full[90], said[8192];
 static void mock_clearerr(FILE* f) { (void)f; errflag = 0; }
+static int opens;
+/* error_mode 4: ProDOS keeps the block in the file's buffer and the flush
+ * at the close fails (write-protected disk): reads before the close see
+ * the edit, the disk never gets it. error_mode 5: the image does not open
+ * again after the close. */
+static unsigned char pending[512]; static long pending_at = -1;
 static FILE* open_image(const char* path, const char* mode) {
-    (void)path; fprintf(stderr,"OPEN %s\n",mode); return fopen(host_image, mode);
+    (void)path; fprintf(stderr,"OPEN %s\n",mode);
+    if (error_mode==5 && opens++) return NULL;
+    return fopen(host_image, mode);
 }
 static size_t read_data(void* p, size_t s, size_t n, FILE* f) {
-    size_t r; ++reads; if (errflag) return 0; r = fread(p, s, n, f);
+    size_t r; long at = ftell(f); ++reads; if (errflag) return 0; r = fread(p, s, n, f);
+    if (pending_at >= 0 && at >= pending_at && at < pending_at + 512) memcpy(p, pending + (at - pending_at), n);
     if (r != n || (error_mode==1 && reads==fail_at)) errflag = 1; return r;
 }
 static size_t write_data(const void* p, size_t s, size_t n, FILE* f) {
-    size_t r; ++writes; if (errflag) return 0; r = fwrite(p, s, n, f);
+    size_t r; ++writes; if (errflag) return 0;
+    if (error_mode==4) { long at = ftell(f); if (pending_at < 0) pending_at = at; memcpy(pending + (at - pending_at), p, n); fseek(f, (long)n, SEEK_CUR); return n; }
+    r = fwrite(p, s, n, f);
     if (r != n || (error_mode==2 && writes==fail_at)) errflag = 1; return r;
 }
+static int close_data(FILE* f) { int r = fclose(f); if (error_mode==4 && pending_at >= 0) { pending_at = -1; return EOF; } return r; }
 static unsigned char dir_open(const char* path) { (void)path; listed = 0; return 1; }
 static unsigned char dir_next(void) { return !listed++; }
 static unsigned char dir_close(void) { return error_mode==3?fail_at:0; }
@@ -291,7 +303,7 @@ int main(int argc, char** argv)
     api.message = say; api.cprintf = out; api.cputs = puts_; api.cputc = putc_;
     api.gotoxy = xy; api.revers = rev; api.clrscr = cls;
     api.fread = read_data; api.fwrite = write_data; api.fseek = fseek;
-    api.fopen = open_image; api.fclose = fclose;
+    api.fopen = open_image; api.fclose = close_data;
     api.dir_open = dir_open; api.dir_next = dir_next; api.dir_close = (void (*)(void))dir_close;
     api.dir_entry = &entry;
     plugin_entry(&api);
@@ -508,7 +520,7 @@ class SmallImage(unittest.TestCase):
                 self.assertEqual(after,encode(edited,kind))
                 self.assertIn('written and read back identical',out)
                 self.assertEqual(self.erase_prompts,1)
-                self.assertEqual(self.open_modes,['r+b'])
+                self.assertEqual(self.open_modes,['r+b','r+b'])   # opened again after the checked close
 
     def test_full_count_image_errors_never_report_a_verified_write(self):
         data=bytes((i*7+i//512)&255 for i in range(4096))
@@ -546,6 +558,40 @@ class SmallImage(unittest.TestCase):
                 self.assertNotIn('written and read back identical',out)
                 self.assertEqual(after,encode(edited,kind))
                 self.assertEqual(self.state[2],1)
+
+    def test_a_flush_failing_at_the_close_is_not_a_verified_write(self):
+        """Before: the read back came from ProDOS's file buffer -- the edit
+        -- and "written and read back identical" was shown while the flush,
+        at the close on leaving, failed and was ignored: the block never
+        reached the disk. Now the close comes before the read back."""
+        data=bytes((i*7+i//512)&255 for i in range(4096))
+        for kind in (0,2):
+            with self.subTest(kind=kind):
+                raw=encode(data,kind)
+                out,after=self.run_image(raw,'ABWx!',NAMES[kind],4,0)
+                self.assertNotIn('written and read back identical',out)
+                self.assertIn('Write failed',out)
+                self.assertEqual(after,raw)
+                self.assertEqual(self.state[2],1)          # still dirty: "changes lost?" asked on leaving
+
+    def test_a_2mg_block_0_round_trips_through_the_reopen(self):
+        """The header of a 2MG is not read again into the block buffer."""
+        data=bytes((i*7+i//512)&255 for i in range(4096))
+        edited=bytearray(data);edited[0]=0xAB
+        out,after=self.run_image(encode(data,2),'ABWx!',NAMES[2])
+        self.assertIn('written and read back identical',out)
+        self.assertEqual(after,encode(edited,2))
+
+    def test_an_image_that_does_not_open_again_ends_the_session(self):
+        data=bytes((i*7+i//512)&255 for i in range(4096))
+        edited=bytearray(data);edited[0]=0xAB
+        for kind in (0,1,2):
+            with self.subTest(kind=kind):
+                out,after=self.run_image(encode(data,kind),'ABWx!',NAMES[kind],5,0)
+                self.assertNotIn('written and read back identical',out)
+                self.assertTrue(out.startswith('Invalid or unreadable image.'),out[:60])
+                self.assertEqual(after,encode(edited,kind))
+                self.assertEqual(self.open_modes,['r+b','r+b'])
 
     def test_one_and_two_block_images_open_and_take_an_edit(self):
         for n in (1, 2):

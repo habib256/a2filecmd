@@ -35,9 +35,15 @@ static unsigned char img_read_block(unsigned int b,unsigned char* buf) {
  if(valid_chain){buf[0]=b-1;buf[2]=b==3?4:0;}else{buf[0]=2;buf[2]=3;}
  return 1;
 }
-''' + DIR_COUNT_BLOCK_C + section('static unsigned char dir_open(const char* path)\n{', '/* ---------------------------------------------------------------------- */\n/* Display') + section('static unsigned char list_dir(const char* path,', '/* Appends "/name"') + r'''
+static char full[256];
+static unsigned char gfi[18],storage=0x0D,opened;
+static unsigned char file_info(const char* p){(void)p;gfi[7]=storage;return 1;}
+''' + DIR_COUNT_BLOCK_C + section('static unsigned char dir_open(const char* path)\n{', '/* ---------------------------------------------------------------------- */\n/* Display') + section('static unsigned char list_dir(unsigned char base,', '/* Appends "/name"') + r'''
 int main(int argc,char**argv) {
-    unsigned char n=0,ok;fail_close=argc>2;if(argc>2 && !strcmp(argv[2],"stack-low"))tree_room=0;ok=list_dir(argv[1],0,&n);
+    unsigned char n=0,ok;fail_close=argc>2;if(argc>2 && !strcmp(argv[2],"stack-low"))tree_room=0;
+    if(argc>2 && !strcmp(argv[2],"flat")){storage=1;fail_close=0;}       /* a plain file typed $0F */
+    if(argc>2 && !strcmp(argv[2],"volume")){storage=0x0F;fail_close=0;}  /* a volume directory */
+    strcpy(full,argv[1]);ok=list_dir(0,&n);
     printf("%u %u %u\n",ok,n,dir_error);return 0;
 }
 '''
@@ -176,6 +182,14 @@ class CoreDirscan(unittest.TestCase):
         result=subprocess.check_output([self.exe,'unused','stack-low'],text=True,timeout=3)
         self.assertEqual(result.split(),['0','0','0'])
 
+    def test_a_plain_file_that_reads_as_a_directory_is_not_listed(self):
+        """Storage type 1 with a valid directory header in its first block:
+        before, listed as a directory (one entry here); now refused."""
+        d=bytearray(512);d[4]=0xF1;d[35:37]=bytes([39,13]);d[43:45]=b'\x11A';d[59]=6
+        f=self.p/'flat';f.write_bytes(d)
+        self.assertEqual(subprocess.check_output([self.exe,f,'flat'],text=True).split(),['0','0','0'])
+        self.assertEqual(subprocess.check_output([self.exe,f,'volume'],text=True).split(),['1','1','0'])
+        self.assertEqual(f.read_bytes(),d)
     def test_normal_end(self):self.assertEqual(self.scan(512,0),[1,1,0])
     def test_missing_next_block(self):self.assertEqual(self.scan(512,3),[0,1,1])
     def test_partial_next_block(self):self.assertEqual(self.scan(768,3),[0,1,1])
