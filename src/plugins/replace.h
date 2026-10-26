@@ -10,6 +10,12 @@
 /* A pre-check refused (A2FC.BAK present, target locked or not a standard
  * file, path too long): nothing was renamed, the caller may drop its tmp. */
 #define REPLACE_REFUSED 4
+#define REPLACE_CANCELLED 5
+/* The caller supplies its keyboard/latch policy. Poll only before the
+ * transaction: once the old entry moves, finish installation or rollback. */
+#ifndef REPLACE_CANCEL
+#error "Define REPLACE_CANCEL() before including replace.h"
+#endif
 #ifndef RF
 #define RF(name) T.name
 #endif
@@ -47,17 +53,21 @@ static unsigned char replace_commit(const char* tmp, const char* target)
 {
     unsigned char i = RF(strlen)(target);
     while (i && target[i] != '/') --i;
-    if (!i || i + 10 >= PATH_LEN) return REPLACE_REFUSED;
+    if (!i || i >= PATH_LEN - 10) return REPLACE_REFUSED;
     /* The target first: if it cannot be read, tmp may be the only copy of
      * the data left, so that is a failure that keeps it, not a refusal. */
     if (replace_info(target)) return REPLACE_FAILED;
     if ((replace_ip.result[0] & 0xC2) != 0xC2 ||
-        replace_ip.result[4] < 1 || replace_ip.result[4] > 3) return REPLACE_REFUSED;
+        (unsigned char)(replace_ip.result[4] - 1) >= 3) return REPLACE_REFUSED;
     RF(memcpy)(replace_backup, target, i + 1);
     RF(strcpy)(replace_backup + i + 1, "A2FC.BAK");
     if (replace_info(replace_backup) != 0x46) return REPLACE_REFUSED;
+    /* Either metadata lookup may receive ESC while succeeding. Writes so
+     * far belong only to tmp; the original and AUX are still untouched. */
+    if (REPLACE_CANCEL()) return REPLACE_CANCELLED;
     i = file_install(tmp, target, replace_backup, 1);
     if (i == FILE_RESTORE_FAILED) return REPLACE_RESTORE_FAILED;
     if (i != FILE_INSTALLED) return REPLACE_FAILED;
     return RF(remove)(replace_backup) ? REPLACE_BACKUP : REPLACE_DONE;
 }
+#undef REPLACE_CANCEL

@@ -65,18 +65,21 @@
 #define UTIL_STUBS
 #define UTIL_VOLUME
 #define UTIL_WRITE
+#define UTIL_API_END ram_format /* MOVE uses cfg_path, no media/AUX services */
 #include "util.h"
+#include <string.h>
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api);
+#define MOVE_DESCRIPTION "Move without copying data"
 struct Header {
     unsigned int signature; unsigned char flags;
     void __fastcall__ (*entry)(const struct A2fcApi*);
-    unsigned char r[3]; char desc[52];
+    unsigned char r[3]; char desc[sizeof MOVE_DESCRIPTION];
 };
 #pragma rodata-name (push, "OVLHDR")
 const struct Header __plugin_header = {
     PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry, {0,0,0},
-    "Move without copying: rewrite the directory entry"
+    MOVE_DESCRIPTION
 };
 #pragma rodata-name (pop)
 
@@ -98,6 +101,7 @@ const struct Header __plugin_header = {
 
 /* BSS: nothing zeroes it; everything below is written before it is read. */
 static unsigned char unit;              /* the ProDOS unit of the volume */
+static unsigned int volume_blocks;      /* logical volume, not backing-device size */
 static unsigned int srckey, dstkey;     /* the two directories, by key block */
 static unsigned int dirmax;             /* the longest chain a walk follows */
 /* Where the move reads and writes, as examine() found it. */
@@ -134,7 +138,7 @@ static const char m_dirs[]  = "ProDOS directories in both panels.";
 static const char m_same[]  = "Both panels: same directory.";
 static const char m_btree[] = "\2";   /* a tree across volumes: the core walks it itself, marked or not */
 static const char m_prog[]  = "Cannot move the program's A2FILE files.";
-static const char m_pick[]  = "Select an entry to move.";
+static const char m_pick[]  = "Select an entry.";
 static const char m_locked[] = "Source is locked.";
 static const char m_readonly[] = "Write protected.";
 static const char m_self[]  = "Cannot move inside itself.";
@@ -148,11 +152,18 @@ static const char m_changed[] = "Disk changed: nothing written.";
 static const char m_ok[]    = "%s moved: %u block%s untouched, nothing copied.";
 static const char m_ask[]   = "Move %s into %s without copying it?";
 
+/* Raw device calls need not reject blocks outside the logical ProDOS
+ * volume. Boot blocks are never directory/bitmap storage for MOVE. */
+static unsigned char __fastcall__ block_valid(unsigned int b)
+{
+    return b >= 2 && b < volume_blocks;
+}
+
 /* One block into api->copy_buf, added to the sum. */
 static unsigned char rd(unsigned int b)
 {
     unsigned int i;
-    if (readblk(unit, b, buf)) return 0;
+    if (!block_valid(b) || readblk(unit, b, buf)) return 0;
     for (i = 0; i < 512; ++i) { sum1 += buf[i]; sum2 += sum1; }
     return 1;
 }
@@ -161,11 +172,15 @@ static unsigned char rd(unsigned int b)
  * accepts the write and keeps its old contents must not pass for done. */
 static unsigned char wr(unsigned int b)
 {
-    unsigned int i;
-    if (writeblk(unit, b, buf)) return 0;
-    if (readblk(unit, b, scratch)) return 0;
-    for (i = 0; i < 512 && buf[i] == scratch[i]; ++i) ;
-    return i == 512;
+    if (!block_valid(b)) return 0;
+    /* Both commands use the same unit/block. Reuse their input parameter
+     * block rather than two generic wrappers; this leaves room for bounds
+     * checks without widening the overlay. */
+    bio.n=3;bio.unit=unit;bio.buffer=buf;bio.block=b;
+    if (RF(mli)(0x81,&bio)) return 0;
+    bio.buffer=scratch;
+    if (RF(mli)(0x80,&bio)) return 0;
+    return !memcmp(buf, scratch, 512);
 }
 
 /* The name of entry `k` of the block in copy_buf, into `found`. */
@@ -360,7 +375,7 @@ static unsigned char grow_dir(unsigned int key)
     nb = alloc_block();
     if (!nb) return 0;
 
-    a.memset(buf, 0, 512);                      /* every entry free, pointing back */
+    RF(memset)(buf, 0, 512);                    /* every entry free, pointing back */
     wr16(buf, last);
     if (!wr(nb)) return 0;
 
@@ -445,12 +460,15 @@ static const char* examine(void)
     unsigned char k;
 
     sum1 = sum2 = 0;
+    /* Only the fixed header is read before its logical bound is known.
+     * Reset on every examination: overlay BSS and prior media are stale. */
+    volume_blocks = 0xFFFF;
     if (!rd(2) || (buf[4] >> 4) != 15) return m_walk;
     /* WRITE_BLOCK bypasses ProDOS access checks. Both directory entries,
      * their counts and any growth bitmap belong to this volume. Check its
      * fresh header before asking, and again after the user answers. */
     if (!(buf[0x22] & 0x02)) return m_readonly;
-    dirmax = rd16(buf + 4 + H_TOTAL);
+    dirmax = volume_blocks = rd16(buf + 4 + H_TOTAL);
     if (dirmax > DIR_MAX) dirmax = DIR_MAX;
 
     srckey = key_of(pan->path);

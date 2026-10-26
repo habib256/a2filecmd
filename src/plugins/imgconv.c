@@ -30,15 +30,16 @@
 
 void __fastcall__ plugin_entry(const struct A2fcApi* api);
 
+#define IMGCONV_DESCRIPTION "Convert PO/DSK/DO/2MG/DiskCopy images"
 struct PluginHeader {
     unsigned int signature; unsigned char flags;
     void __fastcall__ (*entry)(const struct A2fcApi*);
-    unsigned char r0, r1, r2; char desc[52];
+    unsigned char r0, r1, r2; char desc[sizeof IMGCONV_DESCRIPTION];
 };
 #pragma rodata-name (push, "OVLHDR")
 const struct PluginHeader __plugin_header = {
     PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry, 0, 0, 0,
-    "Convert a disk image: .DSK/.DO, .PO, .2MG, DiskCopy"
+    IMGCONV_DESCRIPTION
 };
 #pragma rodata-name (pop)
 
@@ -123,6 +124,8 @@ static struct A2fcApi T;
 #endif
 #include "service_stubs.h"
 #define replace_backup ((char*)T.copy_buf + 256)
+static unsigned char stopped(void);
+#define REPLACE_CANCEL() stopped()
 #include "replace.h"
 #define final_path T.note /* idle until the final result is reported */
 /* The shared exclusive CREATE, its Pascal path at the head of copy_buf. */
@@ -523,6 +526,9 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
 
     if (replacing) {
         k = replace_commit(target, final_path);
+        if (k == REPLACE_CANCELLED) {
+            what = "Stopped"; goto errrm2;
+        }
         if (k == REPLACE_RESTORE_FAILED) { RF(strcpy)(T.note, "Restore failed: original in A2FC.BAK; IMGCONV.TMP kept."); return; }
         if (k == REPLACE_REFUSED) {
             /* Nothing was renamed: the old image is intact and the temporary

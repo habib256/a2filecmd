@@ -1,24 +1,47 @@
 # Consolidation : budgets mémoire
 
-## Relevé actuel (25 octobre 2026, sources 0.9.9)
+## Relevé actuel (26 octobre 2026, après bug hunt 1.0 passages 1 à 4)
 
 Les constructions 6502 et 65C02 et leurs gardes de disposition passent.
 Le relevé de `tools/check_layout.py` est le suivant, en octets libres :
 
 | Réserve | 65C02 | 6502 |
 | --- | ---: | ---: |
-| MAIN | 1 | 388 |
+| MAIN | 1 | 346 |
 | Carte langage | 8 | 6 |
 | LOWRAM | 87 | 112 |
-| Écart sous la pile C réservée | 18 | 594 |
+| Écart sous la pile C réservée | 18 | 552 |
 | OPEN | 0 | 0 |
-| COPY | 8 | 5 |
+| COPY | 1 | 40 |
+| DIRSORT, code et BSS inclus | 97 | 4 |
+| TXTCONV, code et BSS inclus | 2 652 | 2 563 |
+| IMGCONV, code et BSS inclus | 171 | 5 |
+| DOSIMAGE, code et BSS inclus | 1 397 | 1 266 |
 
 Ces zones se recouvrent et ne s'additionnent pas. L'écart sous la pile
 réservée n'est pas une mesure de sa consommation. Le Mini conserve MAIN
-et LOW pleins. Les corrections de l'hôte POM2 du même jour ne modifient
-pas les binaires Apple II. Les tableaux détaillés ci-dessous restent des
-relevés historiques, à ne pas substituer à une nouvelle sortie du lien.
+et LOW pleins. La copie contrôle désormais Échap après ses fermetures de
+vérification ; son relais de progression réside dans MAIN sur le 6502
+pour conserver la fenêtre COPY de 1 280 octets. Le placement 65C02 est
+inchangé. Aucun plafond n'est relevé. Les tableaux détaillés ci-dessous
+restent des relevés historiques, à ne pas substituer à une nouvelle sortie du lien.
+
+DIRSORT conserve sa fenêtre `$1B00-$3FFF`. Ses contrôles de protection et
+de fermeture supplémentaires tiennent grâce au partage du tampon de nom
+avec une clé de tri, à la copie du seul préfixe d'API utilisé et à `memcmp`
+pour les comparaisons intégrales. Les 51 places utiles de quatre blocs
+restent disponibles (la 52e est l'en-tête).
+
+La validation du parent est réutilisée après confirmation. Son nom de menu
+est raccourci, de même sens, pour conserver les contrôles dans la fenêtre
+existante ; le nom de chemin est comparé par sa longueur réelle, sans lire
+au-delà du tampon si une entrée malformée annonce un nom plus long.
+
+Le dernier contrôle d'annulation de `replace_commit` tient aussi dans les
+fenêtres des trois appelants. IMGCONV utilise une description de menu plus
+courte, de même sens, et le contrôle des chemins et du stockage est exprimé
+avec des comparaisons équivalentes plus compactes. Aucun contrôle ni plafond
+n'est supprimé pour faire passer le lien.
 
 ## Relevé historique (7 octobre 2026, sources b4cd129, candidat 0.9.6)
 

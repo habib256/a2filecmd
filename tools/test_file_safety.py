@@ -123,7 +123,12 @@ static void progress_bar(const char* s,unsigned long d,unsigned long t) {
         last_verified=d;++verify_events;
     }
 }
-static unsigned char abort_key(void) {if(fault==16 || fault==23)progress_abort=1;return progress_abort;}
+static unsigned char abort_key(void) {
+    /* A key delivered by each close stays pending until the next poll. */
+    if(fault==16 || fault==23 ||
+       (fault>=70 && fault<=73 && copy_closes>=fault-69))progress_abort=1;
+    return progress_abort;
+}
 static unsigned char overlay(const char* s) {strcpy(other_full,"/overlay/clobbered");return fault!=17;}
 static unsigned char push_name(char* p,const char* n) {
     if(strlen(p)+strlen(n)+1>=PATH_LEN)return 0;strcat(p,"/");strcat(p,n);return 1;
@@ -276,6 +281,27 @@ class FileSafety(unittest.TestCase):
         self.assertEqual(self.src.read_bytes(), self.original)
         self.assertEqual(self.dst.read_bytes(), self.original)
         self.assertFalse((self.p/'A2FC.BAK').exists())
+
+    def test_cancel_during_each_close_preserves_originals(self):
+        for existing in (False, True):
+            for size in (0, 256, 1050):
+                for fault in range(70, 74):
+                    with self.subTest(existing=existing, size=size, fault=fault):
+                        data = self.original[:size]
+                        self.src.write_bytes(data)
+                        if existing:
+                            self.dst.write_bytes(self.previous)
+                        else:
+                            self.dst.unlink(missing_ok=True)
+                        result, _ = self.run_op(fault=fault)
+                        self.assertEqual(result, 0)
+                        self.assertEqual(self.src.read_bytes(), data)
+                        if existing:
+                            self.assertEqual(self.dst.read_bytes(), self.previous)
+                        else:
+                            self.assertFalse(self.dst.exists())
+                        self.assertFalse((self.p/'A2FC.COPY').exists())
+                        self.assertFalse((self.p/'A2FC.BAK').exists())
 
     def test_full_write_count_with_stream_error_preserves_originals(self):
         for mode in ('copy','edit'):

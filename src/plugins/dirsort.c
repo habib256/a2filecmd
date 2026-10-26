@@ -20,7 +20,8 @@
  * the number of entries, a storage type that is not a file or a
  * subdirectory, an entry whose header pointer is not this directory, a
  * subdirectory header that does not point back at its entry, a directory
- * or volume that is write-disabled. FIXIT says what is wrong; DIRSORT only
+ * or volume that is write-disabled, including a moved child's header, or
+ * a failed close of the parent listing. FIXIT says what is wrong; DIRSORT only
  * reorders a directory it can account for whole.
  *
  * HOW IT WRITES. Every block, and the header of every subdirectory that
@@ -38,8 +39,11 @@
 #define UTIL_VOLUME
 #define UTIL_WRITE
 #define UTIL_STUBS
+/* Only the v1 prefix through note is used; keep its ABI offsets intact. */
+#define UTIL_API_END selected
 #define r_sprintf a.sprintf     /* variadic: no stub, through the table */
 #include "util.h"
+#include <string.h>
 /* The screen services through stubs too (service_stubs.h): a call through
  * the table costs cc65 a dozen bytes more at each site. A stub's last
  * argument is 16 bits; a service without one takes a dummy. */
@@ -66,15 +70,16 @@ static void __fastcall__ r_bar(unsigned char x,const char* s) SERVICE(keys_bar)
 #define S_bar(s) r_bar(0,s)
 #endif
 void __fastcall__ plugin_entry(const struct A2fcApi*);
-struct Header {unsigned int magic;unsigned char flags;void __fastcall__ (*entry)(const struct A2fcApi*);unsigned char r[3];char desc[40];};
+#define DIRSORT_DESCRIPTION "Reorder a ProDOS directory"
+struct Header {unsigned int magic;unsigned char flags;void __fastcall__ (*entry)(const struct A2fcApi*);unsigned char r[3];char desc[sizeof DIRSORT_DESCRIPTION];};
 #pragma rodata-name(push,"OVLHDR")
-const struct Header __plugin_header={PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry,{0,0,0},"Reorder a ProDOS directory on the disk"};
+const struct Header __plugin_header={PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry,{0,0,0},DIRSORT_DESCRIPTION};
 #pragma rodata-name(pop)
 
 #ifndef MAXBLK
 #define MAXBLK 4
 #endif
-#define MAXENT (MAXBLK*13)
+#define MAXENT (MAXBLK*13-1)      /* the key block's header is never an entry */
 #define LIST_ROWS 19
 /* In a directory key block: the header starts at 4. */
 #define H_ACCESS 0x22
@@ -92,6 +97,7 @@ const struct Header __plugin_header={PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry,{0,
 static const char m_bad[]="Directory inconsistent (see FIXIT): nothing written.";
 static const char m_changed[]="Directory changed or unreadable: nothing written.";
 static const char m_none[]="Nothing written.";
+static const char m_locked[]="Write-protected: nothing written.";
 
 static unsigned char dir[MAXBLK][512];  /* the blocks as checked */
 static unsigned int blk[MAXBLK],key,total,lastkey,lost;
@@ -101,15 +107,17 @@ static unsigned char nblk,nent,root,unit,pacc,cur,top,held,mode,by;
  * is the entry that goes there. */
 static unsigned char eb[MAXENT],es[MAXENT],order[MAXENT];
 static unsigned int csum[MAXENT];       /* position k: its child header's sum before any write */
-static char path[PATH_LEN],nm[16];
+static char path[PATH_LEN];
+/* Drawing names and building sort keys never run together. */
+static unsigned char kp[20],kq[20];
+#define nm ((char*)kp)
 static const char* leaf;                /* the last name of a subdirectory's path */
 
 static unsigned char fail(const char* s){note(s);return 0;}
 static unsigned char* ep(unsigned char k){return dir[eb[k]]+4+39*es[k];}
-static unsigned char same(const unsigned char* p,const unsigned char* q,unsigned int n) {
-    while(n--)if(*p++!=*q++)return 0;
-    return 1;
-}
+/* The library comparison avoids the C loop's stack arithmetic helpers,
+ * leaving room for protection checks without changing the overlay limit. */
+#define same(p,q,n) (!memcmp((p),(q),(n)))
 static unsigned char up(unsigned char c){return c>='a' && c<='z'?c-32:c;}
 /* READ_BLOCK of b into buf: 0 done, else the ProDOS error. */
 static unsigned char rd(unsigned int b){return readblk(unit,b,buf);}
@@ -157,7 +165,9 @@ static unsigned char find(unsigned char l) {
     if(!a.dir_open(path)){path[l]='/';return fail(m_changed);}
     path[l]='/';
     while(a.dir_next())if(d->type==0x0F && !RF(strcmp)(d->name,path+l+1)){key=d->key;break;}
-    a.dir_close();
+    /* The frozen service-table slot is void, but the resident returns
+     * listing/close errors in A. A found entry does not excuse either. */
+    if(((unsigned char (*)(void))a.dir_close)())return fail(m_changed);
     return key!=2 || fail(m_bad);
 }
 
@@ -194,12 +204,12 @@ static unsigned int sum(void) {
 static unsigned char link(unsigned char k) {
     unsigned char o=order[k],*e=ep(o);unsigned int x;
     if(o==k || (e[0]>>4)!=13)return 1;
-    /* Its header is in the subdirectory itself: a locked one is not
-     * written, so it does not move (lastkey 0: the note is said). */
-    if(!(e[E_ACCESS]&2)){lastkey=0;return fail("Locked subdirectory: nothing written.");}
     /* From the old slot to the new one; back the other way in mode 2. */
     slotof(mode==2,o);slotof(mode!=2,k);
     if(rd(lastkey=rd16(e+E_KEY)))return 0;
+    /* Raw link updates bypass ProDOS. The child's own header must allow
+     * writes as well as its entry; undo still restores our earlier write. */
+    if(mode!=2 && !(e[E_ACCESS]&buf[H_ACCESS]&2)){lastkey=0;return fail("Locked subdirectory: nothing written.");}
     /* Back as it was already (its write never reached the disk): nothing
      * to write, so a disk that refuses writes is not a failed restore. */
     if(mode==2 && parent_is(1) && sum()==csum[k])return 1;
@@ -213,9 +223,11 @@ static unsigned char link(unsigned char k) {
     return (!k || mode==2) && !rd(lastkey) && parent_is(1) && sum()==x;
 }
 
-/* The whole directory accounted for, or refused. */
-static unsigned char check(void) {
-    unsigned char b,s,st,*e;
+/* Prove the directory's identity and protections, including the entry in
+ * its parent. Reused after confirmation: that parent block is outside
+ * the snapshots of the directory being reordered. No writes or AUX use. */
+static unsigned char parent_check(void) {
+    unsigned char s,*e;
     if(!hdr(dir[0],root?15:14))return fail(m_bad);
     if(!root) {
         /* The entry the header names as its parent: a subdirectory whose
@@ -226,11 +238,18 @@ static unsigned char check(void) {
         if(rd(rd16(dir[0]+H_PARENT)))return fail(m_changed);
         e=buf+4+39*s;
         s=e[0]&15;
-        if((e[0]>>4)!=13 || rd16(e+E_KEY)!=key || leaf[s] || !same(e+1,(const unsigned char*)leaf,s))
+        if((e[0]>>4)!=13 || rd16(e+E_KEY)!=key || RF(strlen)(leaf)!=s || !same(e+1,(const unsigned char*)leaf,s))
             return fail(m_bad);
-        pacc=e[E_ACCESS];
+        pacc &= e[E_ACCESS];
     }
-    if(!(dir[0][H_ACCESS]&2) || !(pacc&2))return fail("Write-protected: nothing written.");
+    if(!(dir[0][H_ACCESS]&pacc&2))return fail(m_locked);
+    return 1;
+}
+
+/* The whole directory accounted for, or refused. */
+static unsigned char check(void) {
+    unsigned char b,s,st,*e;
+    if(!parent_check())return 0;
     nent=0;
     for(b=0;b<nblk;++b)for(s=!b,e=dir[b]+4+39*s;s<13;++s,e+=39) {
         st=e[0]>>4;
@@ -251,7 +270,7 @@ static unsigned char check(void) {
 static void draw(void) {
     unsigned char r,i,n,boot=bootat(),*e;
     S_clrscr();
-    a.cprintf("DIRSORT %s",path);
+    S_cputs("DIRSORT ");S_cputs(path);
     for(r=0;r<LIST_ROWS && (i=top+r)<nent;++r) {
         e=ep(order[i]);n=e[0]&15;
         RF(memcpy)(nm,e+1,n);nm[n]=0;
@@ -280,7 +299,6 @@ static void mk(unsigned char* k,const unsigned char* e) {
     }
     RF(memcpy)(k+5,e+1,e[0]&15);
 }
-static unsigned char kp[20],kq[20];
 /* Insertion sort, stable. */
 static unsigned char after(unsigned char x,unsigned char y) {
     unsigned char i;
@@ -318,7 +336,11 @@ static void commit(void) {
     unsigned char i,w,c;
     /* Nothing has moved since the check: the blocks, then each child. */
     mode=0;lastkey=1;
+    /* A subdirectory snapshot does not include the volume header. Recheck
+     * its write bit after confirmation, before any raw block write. */
+    if(rd(2) || !(buf[H_ACCESS]&2))goto changed;
     for(i=0;i<nblk;++i)if(!asis(i))goto changed;
+    if(!parent_check())return;
     for(i=0;i<nent;++i)if(!link(i))goto changed;
     /* No child is written before every block is: a block that fails
      * leaves none to undo (c is BSS under -Cl, never zeroed). */
@@ -360,7 +382,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
     /* The volume header (ON_LINE matched its name): its size. */
     if(rd(2)){note(m_changed);return;}
     if((buf[4]>>4)!=15){note(m_bad);return;}
-    total=rd16(buf+H_TOTAL);key=2;pacc=2;
+    total=rd16(buf+H_TOTAL);key=2;pacc=buf[H_ACCESS];
     for(n=0,i=1;path[i];++i)if(path[i]=='/')n=i;
     root=!n;
     if((!root && !find(n)) || !load() || !check())return;

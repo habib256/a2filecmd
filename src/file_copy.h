@@ -24,11 +24,18 @@ static unsigned char copy_replaceable(void)
 #pragma code-name(push, "COPY")
 #pragma rodata-name(push, "COPYRO")
 static const char copy_tempname[] = "A2FC.COPY";
+/* The 6502 has resident room but needs more bytes for the final ESC poll
+ * in COPY. Keep its progress wrapper resident; the 65C02 resident is full. */
+#ifdef A2FC_6502
+#pragma code-name(push, "CODE")
+#endif
 static void __fastcall__ copy_progress(unsigned long checked)
 {
     progress_bar(CP->name, checked, CP->size);
 }
-
+#ifdef A2FC_6502
+#pragma code-name(pop)
+#endif
 static unsigned char may_overwrite(const char* name)
 {
     char key;
@@ -114,7 +121,10 @@ static void copy_check(void)
         }
         if (in) { if (ferror(in)) CP->ok = 0; if (fclose(in)) CP->ok = 0; }
         if (out) { if (ferror(out)) CP->ok = 0; if (fclose(out)) CP->ok = 0; }
-        if (checked != CP->size) CP->ok = 0;
+        /* Closing either verification handle can receive ESC. No source,
+         * original destination or AUX writes yet: refuse publication and discard
+         * only this run's exclusively reserved temporary. */
+        if (checked != CP->size || abort_key()) CP->ok = 0;
     }
 }
 #pragma rodata-name(pop)

@@ -115,6 +115,7 @@ static unsigned char mock_mli(unsigned char cmd, void* p)
     }
     if (cmd == 0x80 && b->block == fail_read) { fail_read = 0xFFFF; return 0x27; }   /* once */
     if (cmd == 0x80 || cmd == 0x81) {
+        if (io_fault == 54) fprintf(stderr,"IO %u %u\n",cmd,b->block);
         if (fseek(disk, (long)b->block * 512, SEEK_SET)) return 0x27;
         if (cmd == 0x80) return fread(b->buffer, 1, 512, disk) == 512 ? 0 : 0x27;
         if (io_fault == 21) fprintf(stderr, "WRITE\n");
@@ -138,7 +139,7 @@ static unsigned char mock_confirm(const char* q)
 {
     unsigned char block[512];
     (void)q;
-    if (io_fault == 21) fprintf(stderr, "CONFIRM\n");
+    if (io_fault == 21 || io_fault == 54) fprintf(stderr, "CONFIRM\n");
     if (poke_at >= 0) {
         fseek(disk, poke_at, SEEK_SET); fread(block, 1, 1, disk);
         block[0] ^= poke_xor;
@@ -1053,6 +1054,31 @@ void cancel_copy(void) { cancelled = 1; }
                         self.assertNotIn('WRITE', result.stderr)
                         self.assertNotIn('CONFIRM', result.stderr)
                         self.assertIn('cannot be walked', result.stdout)
+
+    def test_raw_directory_references_stay_inside_the_volume(self):
+        # The backing device may be larger than the declared ProDOS
+        # volume. A successful physical READ_BLOCK is not a bounds check.
+        for target in ('SRC','DST','SUB'):
+            for block in (0,1,280,299):
+                with self.subTest(target=target,block=block):
+                    img=self.volume();original=img.read_bytes();image=Image(original)
+                    src=child_key(image,2,'SRC')
+                    parent=src if target=='SUB' else 2
+                    b,slot,entry=find(image,parent,target)
+                    old=int.from_bytes(entry[17:19],'little')
+                    data=bytearray(original+bytes([0xA7])*(20*512))
+                    data[block*512:(block+1)*512]=original[old*512:(old+1)*512]
+                    at=b*512+4+39*slot
+                    data[at+17:at+19]=block.to_bytes(2,'little')
+                    img.write_bytes(data)
+                    result=subprocess.run([str(self.exe),str(img),'MOVE','/MOVE/SRC','/MOVE/DST',
+                                           'SUB' if target=='SUB' else 'HELLO','1','0','0','-1','54'],
+                                          capture_output=True,text=True,check=True)
+                    self.assertEqual(img.read_bytes(),data,'raw MOVE changed a malformed volume/device')
+                    self.assertNotIn('CONFIRM',result.stderr)
+                    io=[tuple(map(int,line.split()[1:])) for line in result.stderr.splitlines() if line.startswith('IO ')]
+                    self.assertTrue(all(cmd==0x80 and 2<=b<280 for cmd,b in io),result.stderr)
+                    self.assertIn('cannot be walked',result.stdout)
 
     def test_directory_header_is_revalidated_after_confirmation(self):
         for directory in ('SRC', 'DST'):

@@ -1,6 +1,7 @@
 /* Image writes are confined to an exclusively created sibling. The original
  * stays available until the closed copy is verified and safely renamed. */
 #define T a
+#define REPLACE_CANCEL() stop()
 #include "replace.h"
 static FILE* image;
 static unsigned long image_base;
@@ -116,6 +117,7 @@ static void image_finish(void) {
  }
  if(!image_unchanged()){note("Original image changed or unreadable; A2FC.DOS retained.");return;}
  result=replace_commit(image_temp,other->path);
+ if(result==REPLACE_CANCELLED){if(replace_discard(image_temp))note("Stopped; original image kept.");return;}
  /* A pre-check refused (A2FC.BAK present, image locked): nothing was
   * renamed, the original is intact and A2FC.DOS is this run's own copy. */
  if(result==REPLACE_REFUSED){if(replace_discard(image_temp))note("A2FC.BAK exists or image locked: nothing changed.");return;}

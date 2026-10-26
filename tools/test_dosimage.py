@@ -47,6 +47,8 @@ static unsigned char mli(unsigned char cmd,void* p){
  path(name,i->path);
  if(cmd==0xC0){if(mode==8)return 0x48;fd=open(name,O_CREAT|O_EXCL|O_WRONLY,0600);if(fd<0)return 0x47;return close(fd)?0x27:0;}
  if(cmd!=0xC4)abort();
+ if(phase==3 && ((mode==30 || mode==32) ||
+    ((mode==31 || mode==33) && ends(name,"A2FC.BAK"))))cancel_image();
  if(mode==9)return 0x27;
  /* mode 17: A2FC.BAK appears during the copy, so the install pre-check refuses. */
  if(mode==17 && phase==3 && ends(name,"A2FC.BAK")){unsigned char* q=(unsigned char*)p+offsetof(struct Info,access);memset(q,0,15);q[0]=0xC3;q[4]=1;return 0;}
@@ -80,7 +82,7 @@ static int cl(FILE* f){int bad=0;
  if(phase==3 && f==finish_original && mode>=27 && mode<=29){cancel_image();bad=mode==29;}
  int r=fclose(f);++closes;return bad || (mode==3 && closes==at)?-1:r;}
 static int sk(FILE* f,long at_,int w){++seeks;if(mode==4 && seeks==at)return -1;return fseek(f,at_,w);}
-static int rm(const char* p){if(mode==5 || mode==25 || mode==28)return -1;return remove(p);}
+static int rm(const char* p){if(mode==5 || mode==25 || mode==28 || mode==32 || mode==33)return -1;return remove(p);}
 static unsigned char cf(const char* p){
  if(mode==15){FILE* changed=fopen(panels[1].path,"r+b");fseek(changed,at,SEEK_SET);fputc(0x80,changed);fclose(changed);}
  return mode!=11;
@@ -309,6 +311,24 @@ int main(void) {
       self.assertEqual(self.disk.read_bytes(),before)
       self.assertEqual(temp.read_bytes(),kept)
    (self.p/'A2FC.DOS').unlink(missing_ok=True)
+ def test_cancel_during_install_metadata_preserves_original_image(self):
+  _,out=self.run_op();self.assertIn('Copied to DOS 3.3 image',out)
+  imported=self.disk.read_bytes()
+  for mode in range(30,34):
+   with self.subTest(mode=mode):
+    (self.p/'A2FC.DOS').unlink(missing_ok=True)
+    (self.p/'A2FC.BAK').unlink(missing_ok=True)
+    self.disk.write_bytes(self.original)
+    counts,out=self.run_op(mode)
+    self.assertEqual(counts[4],0)
+    self.assertEqual(self.disk.read_bytes(),self.original)
+    self.assertFalse((self.p/'A2FC.BAK').exists())
+    if mode>=32:
+     self.assertIn('Cleanup failed',out)
+     self.assertEqual((self.p/'A2FC.DOS').read_bytes(),imported)
+    else:
+     self.assertIn('Stopped',out)
+     self.assertFalse((self.p/'A2FC.DOS').exists())
  def test_malformed_catalog_end_and_ts_offsets_preserve_image(self):
   before=make_disk([('KEEP',0x80,b'K'*32000)])
   for at,value in ((48*256+5,1),(49*256+5,0),((17*16+1)*256+1,17)):

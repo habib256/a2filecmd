@@ -946,10 +946,12 @@ the header and file count are untouched, and a subdirectory that moves has
 its header's parent link rewritten. DIRSORT refuses an image, the volume
 list, a volume whose name is on two drives, a directory of more than 4
 blocks (51 entries), a write-protected directory or volume, an order that
-would move a locked subdirectory (its header would be written), and anything
-FIXIT would question (file count, block links, storage types, a
+would move a locked subdirectory (its header would be written), and
+inconsistent directory metadata (file count, block links, storage types, a
 subdirectory that does not point back at its entry). Just before writing it
-reads everything again and writes nothing if the disk changed. Each block
+rereads the directory blocks and checks the child headers and the entry
+that names this directory in its parent, including its identity and write
+permission. Failed reads or failed checks refuse the writes. Each block
 written is read back; on a failure what was written is put back and the
 message says so, or `RESTORE FAILED (block N)` if that fails too. A
 subdirectory header is checked by its link and a checksum, its original not
