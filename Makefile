@@ -525,6 +525,7 @@ test: test-mini $(TAKE1)
 	python3 $(TOOLS)/test_txtconv.py
 	python3 $(TOOLS)/test_imgconv.py
 	python3 $(TOOLS)/test_wipe.py
+	python3 $(TOOLS)/test_verify.py
 	python3 $(TOOLS)/test_music.py
 	python3 $(TOOLS)/test_duet.py
 	python3 $(TOOLS)/test_mcs.py

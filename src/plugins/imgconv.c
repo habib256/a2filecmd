@@ -103,7 +103,6 @@ static const char m_dc[]     = "Not a DiskCopy 4.2 image.";
 static const char m_dcsize[] = "DiskCopy holds 400K, 800K, 720K or 1440K.";
 static const char m_dcsum[]  = "DiskCopy checksum";
 static const char m_over[]   = "Overwrite destination?";
-static const char m_stop[]   = "Aborted, %s removed.";
 static const char m_done[]   = "%s -> %s, %u blocks";
 static const char m_fail[]   = "%s failed.";
 static const char f_path[]   = "%s/%s";
@@ -497,13 +496,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
     for (n = 0; n < blocks; ++n) {
         if (!(n & 7)) {
             T.progress_bar(nname, n, blocks);
-            if (stopped()) {
-                RF(fclose)(in);
-                RF(fclose)(out);
-                if (!replace_discard(target)) return;
-                T.sprintf(T.note, m_stop, nname);
-                return;
-            }
+            if (stopped()) { what = "Stopped"; goto errrm; }
         }
         if (dkind != K_DSK && !read_block()) goto errrm;
         if (!write_block()) { what = "Write"; goto errrm; }
@@ -549,6 +542,10 @@ errrm:
 errrm2:
     if (!replace_discard(target)) return;
 err:
+    /* "Stopped" is an abort, not a failed I/O step. m_fail would print
+     * "Stopped failed." after REPLACE_CANCELLED or ESC once the exclusive
+     * temp is already gone. */
+    if (*what == 'S') goto note;
     T.sprintf(T.note, m_fail, what);    /* report_error would not survive the redraw */
     return;
 sumbad:

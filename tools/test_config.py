@@ -14,7 +14,7 @@ C=r'''
 #include <errno.h>
 #include <sys/stat.h>
 #define PATH_LEN 64
-#define SORT_MODES 3
+#define SORT_MODES 4
 static struct {char path[64];} panels[2];
 #define pan_at(p) (&panels[p])   /* the resident helper: the same address */
 static char cfg_path[64],note[80];
@@ -164,6 +164,11 @@ class Config(unittest.TestCase):
                      (b'/\r\rS0A0\r','/||0|0|')):
    with self.subTest(value=value):
     out,files=self.run_case(old=value,load=True);self.assertTrue(out.startswith(want),out);self.assertEqual(files,{'A2FILE.CFG':value})
+ def test_disk_order_is_saved_and_a_missing_file_defaults_to_it(self):
+  out,files=self.run_case(old=b'/A\r/B\rS3A0\r',load=True)
+  self.assertTrue(out.startswith('/A|/B|3|0|'),out)
+  out,files=self.run_case(old=None,load=True)
+  self.assertTrue(out.startswith('/NEW/LEFT|/NEW/RIGHT|3|1|'),out)
  def test_malformed_existing_config_is_not_replaced(self):
   out,files=self.run_case(old=b'personal bytes');self.assertTrue(out.startswith('0|'));self.assertEqual(files,{'A2FILE.CFG':b'personal bytes'})
 if __name__=='__main__':unittest.main()

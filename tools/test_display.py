@@ -13,7 +13,8 @@ C = r'''
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
-#define SORT_MODES 3
+#define SORT_MODES 4
+#define SORT_DISK 3
 #define ROWS 18
 #define KEY_ESC 27
 #define KEY_RETURN 13
@@ -36,6 +37,7 @@ static unsigned char tag_count(const struct Panel*p){unsigned i,n=0;for(i=0;i<p-
 static void entry_label(const char*s){unsigned char n=0;while(*s){cputc(*s++);++n;}while(n++<15)cputc(' ');}
 static void panel_label(const char*s){unsigned char n;for(n=0;n<38;++n)cputc(*s?*s++:' ');}
 static void cputcxy(unsigned char x,unsigned char y,char c){gotoxy(x,y);cputc(c);}
+static void mark_sort(unsigned char x){static const unsigned char col[]={4,35,21};if(sort_mode!=3)cputcxy(x+col[sort_mode],1,'*');}
 static void cclearxy(unsigned char x,unsigned char y,unsigned char n){gotoxy(x,y);while(n--)cputc(' ');}
 static void cprintf(const char*f,...){char b[512];va_list a;va_start(a,f);vsnprintf(b,sizeof b,f,a);va_end(a);cputs(b);}
 static char cgetc(void){assert(ki<256);return keys[ki++];}
@@ -46,10 +48,10 @@ static void line_is(unsigned y,const char*s){unsigned n=strlen(s);assert(!memcmp
 int main(void){
  unsigned t,p,m,i; char expected[128]; const char*known[9]={"TXT","BIN","DIR","AWP","S16","INT","BAS","VAR","SYS"};
  unsigned char codes[9]={4,6,15,26,179,250,252,253,255};
- const char*headers[3]={"Name*            Type  Aux     Size","Name             Type  Aux     Size*","Name             Type* Aux     Size"};
+ const char*headers[4]={"Name*            Type  Aux     Size","Name             Type  Aux     Size*","Name             Type* Aux     Size","Name             Type  Aux     Size"};
  struct Entry*e=&panels[0].e[0];
  for(t=0;t<256;++t){sprintf(expected,"$%02X",t);for(i=0;i<9;++i)if(t==codes[i])strcpy(expected,known[i]);assert(!strcmp(type_name(t),expected));}
- for(p=0;p<2;++p)for(m=0;m<3;++m){reset();strcpy(panels[p].path,"/VOL");sort_mode=m;draw_panel(p);sprintf(expected,"%-38s",headers[m]);assert(!memcmp(screen[1]+p*40,expected,38));assert(screen[1][38]=='#'&&screen[1][39]=='#'&&screen[1][78]=='#'&&screen[1][79]=='#');}
+ for(p=0;p<2;++p)for(m=0;m<4;++m){reset();strcpy(panels[p].path,"/VOL");sort_mode=m;draw_panel(p);sprintf(expected,"%-38s",headers[m]);assert(!memcmp(screen[1]+p*40,expected,38));assert(screen[1][38]=='#'&&screen[1][39]=='#'&&screen[1][78]=='#'&&screen[1][79]=='#');}
  /* A directory's line carries the tag and the lock in the same two columns
   * as a file's: tagging a directory used to change nothing on screen. */
  panels[0].count=1;panels[0].top=0;strcpy(panels[0].path,"/VOL");
@@ -109,6 +111,8 @@ static unsigned char rev,bad;
 void gotoxy(unsigned char x,unsigned char y){if(x!=7||y!=23)bad=1;}
 unsigned char __fastcall__ revers(unsigned char r){unsigned char old=rev;rev=r;return old;}
 void __fastcall__ cputc(char c){if(n>=1024){bad=1;return;}text[n]=c;colors[n++]=rev;}
+unsigned char sort_mode;
+void __fastcall__ cputcxy(unsigned char x,unsigned char y,char c){(void)x;(void)y;(void)c;}
 /* The keyboard of the slideshow: $C000 holds bit 7 while a key waits,
  * cgetc takes the next one. The address is ordinary RAM under sim65. */
 #define KBD (*(volatile unsigned char*)0xC000)
@@ -290,6 +294,8 @@ void cputsxy(unsigned char x,unsigned char y,const char*t){(void)x;(void)y;(void
 void gotoxy(unsigned char x,unsigned char y){(void)x;(void)y;}
 unsigned char __fastcall__ revers(unsigned char r){return r;}
 void __fastcall__ cputc(char c){(void)c;}
+unsigned char sort_mode;
+void __fastcall__ cputcxy(unsigned char x,unsigned char y,char c){(void)x;(void)y;(void)c;}
 extern unsigned char slideshow;
 unsigned int slide_getc(void);
 int main(void){KBD=0;slideshow=0x81;

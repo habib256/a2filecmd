@@ -93,7 +93,7 @@ static void dir_fail(void);
  * them means updating it. */
 unsigned int __fastcall__ panel_hash(const struct Panel* pan);
 
-enum { SORT_NAME, SORT_SIZE, SORT_TYPE, SORT_MODES };
+enum { SORT_NAME, SORT_SIZE, SORT_TYPE, SORT_DISK, SORT_MODES };
 enum { ASK, OVERWRITE_ALL, SKIP_ALL };
 
 #define ENTRIES ((struct Entry*)0x2000)   /* the HGR MAIN page, see the header */
@@ -110,7 +110,8 @@ extern char _LOWBSS_SIZE__[];
 #pragma bss-name (push, "LOWBSS")
 struct Panel panels[2];             /* not static: keep_tags (a2fc_mli.s) reads it */
 unsigned char active;           /* fs_keys.s reads the active panel */
-static unsigned char sort_mode, over_policy;
+unsigned char sort_mode;        /* display.s LC reads it for the header star */
+static unsigned char over_policy;
 static unsigned char batch_snapshot;
 static unsigned int progress_done, progress_total, progress_skipped;
 static unsigned char progress_abort;   /* ESC during an operation: we stop at the current file */
@@ -523,7 +524,7 @@ extern unsigned char tree_stack_ok(void);
  * beyond column 78: conio would wrap to the next line on the 80th and
  * scroll the screen. */
 extern const char MAIN_KEYS[];   /* defined in the language card, further down (LC) */
-extern const char VIEW_KEYS[];   /* in the language card, defined further down */
+void __fastcall__ mark_sort(unsigned char x);   /* display.s LC: header star, none for disk order */
 
 void __fastcall__ panel_label(const char* text);
 void __fastcall__ entry_label(const char* text);
@@ -633,7 +634,6 @@ static void draw_panel(unsigned char p)
     struct Panel* pan = pan_at(p);
     unsigned char x = p ? 40 : 0, i;
     extern const char a2fc_header[];
-    static const unsigned char sort_column[SORT_MODES] = { 4, 35, 21 };
     ++a2fc_draws;
     if (p == active) revers(1);
     gotoxy(x, 0);
@@ -645,7 +645,7 @@ static void draw_panel(unsigned char p)
     else if (pan->first || pan->more) cprintf("%-4u+ disk order    Type  Aux     Size", pan->first);
     else {
         panel_label(a2fc_header);
-        cputcxy(x + sort_column[sort_mode], 1, '*');
+        mark_sort(x);
     }
     for (i = 0; i < ROWS; ++i) draw_entry(p, pan->top + i);
 }
@@ -739,17 +739,17 @@ static int compare(const void* a, const void* b)
  * directories on disk arrive almost sorted. ".." needs no special case: a
  * directory whose '.' sorts before the letter every ProDOS name starts
  * with, it stays first -- and an image root, which has none, sorts its
- * first entry too. A window of a larger directory (first, more), a DOS 3.3
- * catalog and the volume list keep their disk order. Each tag moves with
- * its entry: S sorts the table in place and the marks stay on their files. */
+ * first entry too. Disk order (the default), a window of a larger
+ * directory (first, more), a DOS 3.3 catalog and the volume list keep
+ * the order they were read. Each tag moves with its entry: S sorts the
+ * table in place and the marks stay on their files. */
 static void sort_entries(struct Panel* pan)
 {
     unsigned char i, j, t;
     struct Entry tmp;
     struct Entry* e;
-    if (!pan->path[0] || pan->fs == FS_DOS33 || pan->first || pan->more) return;
+    if (sort_mode == SORT_DISK || !pan->path[0] || pan->fs == FS_DOS33 || pan->first || pan->more) return;
     for (i = 1; i < pan->count; ++i) {
-        activity_tick();
         e = pan->e + i;             /* a pointer: no multiply per step */
         tmp = *e;
         t = tagged(pan, i);
@@ -857,8 +857,9 @@ static void read_volumes(struct Panel* pan)
 }
 
 /* Fills the panel and forgets its tags. The window starts at entry
- * pan->first of the disk; ".." only appears in the first one, and sorting
- * only applies if the whole directory fits. Returns 0 if the directory
+ * pan->first of the disk; ".." only appears in the first one, and name,
+ * size or type sorting only applies if the whole directory fits. Returns 0
+ * if the directory
  * cannot be read: the panel then falls back to the volume list, never to
  * an empty screen. */
 /* read_image_panel, dos33_type and read_dos33_panel keep their locals on
@@ -974,7 +975,8 @@ static unsigned char dir_open_image(unsigned int key)
 
 /* Fills the panel from the ProDOS directory dir_key of the open image
  * (img_f): ".." for a subdirectory, then the entries, sorted when they all
- * fit. Returns 1, 0 on a read error, or 2 when the key block is not a
+ * fit and the mode is not disk order. Returns 1, 0 on a read error, or 2
+ * when the key block is not a
  * ProDOS directory. The image stays open: the caller closes it. */
 static unsigned char read_image_dir(struct Panel* pan)
 {
@@ -1312,8 +1314,7 @@ const char msg_parent[] = "Parent directory";
 const char msg_samedir[] = "Both panels show the same directory.";
 const char msg_otherro[] = "The other panel is a read-only disk image.";
 const char msg_intoself[] = "Cannot copy a directory into itself.";
-const char VIEW_KEYS[] = "SPC Next,B Prev,ESC Back";
-/* Shared text; draw_panel adds the sort marker over a space. */
+/* Shared text; mark_sort adds the sort marker over a space. */
 const char a2fc_header[] = "Name             Type  Aux     Size";
 const char MAIN_KEYS[] = "TAB Panel,RET Open,SPC Tag,C Copy,V Move,R Ren,D Del,K Mkdir,! More,? Help";
 /* ---------------------------------------------------------------------- */
@@ -1459,9 +1460,10 @@ static void view_text(const char* path)
 }
 
 /* S: the next sort order. Hosted by the TEXT overlay, which has room and is
- * on the floppy edition (the low RAM and the resident being full). The
- * tables are sorted in place, not reread: a reread forgot the tags, and
- * sort_entries moves each tag with its file. */
+ * on the floppy edition (the low RAM and the resident being full). Name,
+ * size and type sort the tables in place: a reread forgot the tags, and
+ * sort_entries moves each tag with its file. Disk order rereads: the
+ * original sequence is not kept alongside the sorted table. */
 static void resort(void)
 {
     unsigned char p;
@@ -1469,7 +1471,8 @@ static void resort(void)
     sort_mode = (sort_mode + 1) % SORT_MODES;
     for (p = 0; p < 2; ++p) {
         strcpy(keep, pan_at(p)->count ? pan_at(p)->e[pan_at(p)->cursor].name : "");
-        sort_entries(pan_at(p));
+        if (sort_mode == SORT_DISK) read_panel(p);
+        else sort_entries(pan_at(p));
         select_name(pan_at(p), keep);
         draw_panel(p);
     }

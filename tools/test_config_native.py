@@ -13,7 +13,7 @@ class NativeConfig(unittest.TestCase):
   parser=source[source.index('static unsigned char cfg_parse'):source.index('static unsigned char cfg_verify')]
   code='''#include <string.h>
 #define PATH_LEN 64
-#define SORT_MODES 3
+#define SORT_MODES 4
 #define CONFIG_STATE ((struct ConfigState*)0x6000)
 static struct {char path[64];} panels[2];
 #define pan_at(p) (&panels[p])   /* the resident helper: the same address */
@@ -30,6 +30,10 @@ int main(void){
  /* bug hunt 2: upshifted, a trailing slash dropped, as both compilers build it */
  strcpy(CF->read,"/workhd/Dir.1/\\r/v\\rS0A0\\r");CF->size=strlen(CF->read);
  if(!cfg_parse(1)||strcmp(panels[0].path,"/WORKHD/DIR.1")||strcmp(panels[1].path,"/V"))return 5;
+ strcpy(CF->read,"/A\\r/B\\rS3A1\\r");CF->size=strlen(CF->read);
+ if(!cfg_parse(1)||sort_mode!=3||active!=1)return 6;
+ strcpy(CF->read,"/A\\r/B\\rS4A0\\r");CF->size=strlen(CF->read);
+ if(cfg_parse(1))return 7;
  return 0;
 }
 '''

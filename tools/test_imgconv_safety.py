@@ -150,7 +150,10 @@ static int remove_file(const char* p) {
     return remove(p);
 }
 static void message(const char* p){}
-static void progress(const char* p,unsigned long n,unsigned long t){fprintf(stderr,"BAR %s %lu %lu\n",p,n,t);}
+static void progress(const char* p,unsigned long n,unsigned long t){
+    fprintf(stderr,"BAR %s %lu %lu\n",p,n,t);
+    if(fault==80 && n)keyboard=0x9B;
+}
 int main(int argc,char**argv) {
     static struct A2fcApi api;static struct Panel panels[2];static struct Entry e;
     static char source[64],dest[64],note[80],reselect[17];
@@ -206,6 +209,7 @@ class ImgconvSafety(unittest.TestCase):
                     self.assertEqual(temp.read_bytes(),to_2mg(self.data))
                 else:
                     self.assertIn('Stopped',note)
+                    self.assertNotIn('failed',note)
                     self.assertFalse(temp.exists())
 
     def test_source_close_failure_preserves_both_originals(self):
@@ -323,7 +327,10 @@ class ImgconvSafety(unittest.TestCase):
                         if owned and fault&1:
                             self.assertIn('Cleanup failed',note)
                             self.assertEqual(output.read_bytes(),b'')
-                        else:self.assertFalse(output.exists())
+                        else:
+                            self.assertFalse(output.exists())
+                            self.assertIn('Stopped',note)
+                            self.assertNotIn('failed',note)
 
     def test_output_verify_fault_stops_before_any_later_read(self):
         dsk=lambda data:to_dsk(data+bytes(143360-len(data)))[:len(data)]
@@ -573,6 +580,17 @@ class ImgconvSafety(unittest.TestCase):
         self.assertIn('Converted; A2FC.BAK retained', self.convert(27))
         self.assertEqual(self.dst.read_bytes()[64:], self.data)
         self.assertEqual((self.d / 'A2FC.BAK').read_bytes(), b'old image')
+    def test_cancel_between_blocks_names_the_discarded_temp(self):
+        """ESC at the next progress bar discards IMGCONV.TMP; the original
+        destination is still there and must not be named as removed."""
+        note=self.convert(80)
+        self.assertIn('Stopped',note)
+        self.assertNotIn(self.dst.name+' removed',note)
+        self.assertNotIn('failed',note)
+        self.assertEqual(self.dst.read_bytes(),b'old image')
+        self.assertFalse((self.d/'IMGCONV.TMP').exists())
+        self.assertFalse((self.d/'A2FC.BAK').exists())
+
     def test_precheck_refusal_removes_this_runs_temporary_only(self):
         """A2FC.BAK present or target locked: nothing renamed, an accurate
         message, and no IMGCONV.TMP left to block the next run."""

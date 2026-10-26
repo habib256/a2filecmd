@@ -15,16 +15,20 @@ Le relevé de `tools/check_layout.py` est le suivant, en octets libres :
 | COPY | 1 | 40 |
 | DIRSORT, code et BSS inclus | 97 | 4 |
 | TXTCONV, code et BSS inclus | 2 652 | 2 563 |
-| IMGCONV, code et BSS inclus | 171 | 5 |
+| IMGCONV, code et BSS inclus | 241 | 5 |
 | DOSIMAGE, code et BSS inclus | 1 397 | 1 266 |
 
 Ces zones se recouvrent et ne s'additionnent pas. L'écart sous la pile
 réservée n'est pas une mesure de sa consommation. Le Mini conserve MAIN
 et LOW pleins. La copie contrôle désormais Échap après ses fermetures de
 vérification ; son relais de progression réside dans MAIN sur le 6502
-pour conserver la fenêtre COPY de 1 280 octets. Le placement 65C02 est
-inchangé. Aucun plafond n'est relevé. Les tableaux détaillés ci-dessous
-restent des relevés historiques, à ne pas substituer à une nouvelle sortie du lien.
+pour conserver la fenêtre COPY de 1 280 octets. IMGCONV 65C02 mesure
+8 754 octets, BSS fin `$3F0F`, 241 libres ; l'abandon entre blocs
+réutilise le nettoyage existant. La chaîne 6502 est absente sur cette
+machine : la marge 5 est le plancher du relevé précédent, et la
+surcouche a perdu du code. Aucun plafond n'est relevé. Les tableaux
+détaillés ci-dessous restent des relevés historiques, à ne pas
+substituer à une nouvelle sortie du lien.
 
 DIRSORT conserve sa fenêtre `$1B00-$3FFF`. Ses contrôles de protection et
 de fermeture supplémentaires tiennent grâce au partage du tampon de nom
@@ -6622,3 +6626,17 @@ d'une grande surcouche. Le résident assure cette relecture après le retour.
 VOLNAME mesure **1 259/1 244 octets** en
 65C02/6502. Après ces deux corrections, **258 des 262 binaires sont
 identiques** : seuls IDFORMATS et VOLNAME changent sur chaque architecture.
+
+## IMGCONV : abandon sans « failed » ni faux nom de destination (26 octobre 2026)
+
+Escape après CREATE, pendant `replace_commit` ou entre blocs passait
+par `m_fail` (« Stopped failed. ») ou par « Aborted, DEST removed. »
+alors que DEST, en remplacement, était toujours l'original : seul
+`IMGCONV.TMP` était jeté. L'abandon entre blocs rejoint maintenant le
+nettoyage unique (`errrm`) ; « Stopped. » est copié tel quel, sans
+`%s failed.`. Source, destination d'origine, `A2FC.BAK` et AUX inchangés.
+
+31 tests de préservation, 6 de formats et 5 DiskCopy passent sur le
+vrai C. IMGCONV 65C02 : **8 754 octets**, BSS fin `$3F0F`, **241** libres
+avant `$4000`. Chaîne 6502 absente ici. Aucune garde de disposition
+retirée. Aucune atomicité physique n'est promise.

@@ -122,12 +122,22 @@ checked:
 
 }
 
+/* Volume-list unit for READ_BLOCK. 0: not a ProDOS volume. DOS 3.3 rows
+ * store the unshifted unit in mdate and access=0; shifting them addressed
+ * device $00. WIPE already refuses those rows. */
+static unsigned char volume_unit(void)
+{
+    if (e->name[0] != '/' || !e->access) return 0;
+    return (unsigned char)(e->mdate << 4);
+}
+
 /* Volume entries carry the driver unit and physical block count. */
 static void verify_volume(void)
 {
     unsigned int bad = 0;
     t_message((const char*)e);
-    bp.n = 3; bp.unit = (unsigned char)(e->mdate << 4); bp.buf = buf;
+    bp.n = 3; bp.unit = volume_unit(); bp.buf = buf;
+    if (!bp.unit) return;
     for (bp.block = 0; bp.block < e->blocks; ++bp.block) {
         if (stop()) break;
         if (t_mli(0x80, &bp)) ++bad;
@@ -216,7 +226,7 @@ ready:
         if (any ? bit : i == cursor) {
             /* The volume list: one volume keeps its own report; tagged
              * volumes are each read, then counted in the summary. */
-            if (!pan->path[0]) { verify_volume(); if (!any) return; }
+            if (!pan->path[0]) { verify_volume(); if (!any && did) return; }
             else if (!any || e->type != 0x0F) verify_file();
         }
         asm("inc %v", i);             /* the next entry, 29 bytes on */

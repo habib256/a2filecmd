@@ -248,6 +248,19 @@ static unsigned char write_checked(unsigned char* bytes)
     return 1;
 }
 
+/* Does block `blk.block` already hold `bytes`? Write-protected media refuse
+ * the restoring write and keep every original byte: that is not a failed
+ * restore (DIRSORT asis). */
+static unsigned char already(const unsigned char* bytes)
+{
+    unsigned int i;
+    blk.unit = tunit;
+    blk.buf = BUF;
+    if (mli(0x80, &blk)) return 0;
+    for (i = 0; i < 512; ++i) if (BUF[i] != bytes[i]) return 0;
+    return 1;
+}
+
 /* Block 2 of `unit` into `to`. 1: read. */
 static unsigned char block2(unsigned char unit, unsigned char* to)
 {
@@ -361,7 +374,10 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api)
             failed = 0;
             for (b = 0; b < 2; ++b) {
                 blk.block = b;
-                if (!write_checked(ORIGINAL + (unsigned int)b * 512)) failed = 1;
+                if (!already(ORIGINAL + (unsigned int)b * 512) &&
+                    !write_checked(ORIGINAL + (unsigned int)b * 512) &&
+                    !already(ORIGINAL + (unsigned int)b * 512))
+                    failed = 1;
             }
             msg(failed ? m_failed : m_restored);
             return;

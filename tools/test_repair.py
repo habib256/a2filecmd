@@ -937,14 +937,25 @@ class Repair(unittest.TestCase):
         self.assertTrue(r['note'].startswith('Applied 0 of 1 blocks'), r['note'])
 
     def test_a_restore_that_fails_names_the_block_and_stops(self):
+        """Write-protected: every write fails, the disk never changes.
+        Before: 'Block N not restored' though every original byte remained.
+        The read back now sees the original, which is not a failed restore."""
         data, _ = self.corrupted('bitmap_lost')
         r, after = self.fix(data, failall=1)
-        self.assertEqual(r['nwrite'], 2, 'the write, the restore, then nothing')
-        self.assertEqual([w['ok'] for w in r['writes']], [0, 0])
-        self.assertEqual(r['hurt'], 2)
+        self.assertTrue(r['nwrite'] >= 1, r)
+        self.assertTrue(all(w['ok'] == 0 for w in r['writes']), r)
+        self.assertEqual(r['hurt'], 1, r)
+        self.assertNotIn('not restored', r['note'], r['note'])
+        self.assertEqual(after, data)
+
+    def test_a_restore_that_cannot_put_back_a_write_that_reached_the_disk(self):
+        """The correction landed, the restoring write does not: name the block."""
+        data, _ = self.corrupted('bitmap_lost')
+        r, after = self.fix(data, badread=1, errwrite=2)
+        self.assertEqual(r['hurt'], 2, r)
         block = sorted(bitmap_range(data))[0]
         self.assertEqual(r['note'], M_NOREST % block, r['note'])
-        self.assertEqual(after, data)
+        self.assertNotEqual(after, data, 'the first write reached the disk')
 
     # -- (e) the confirmation ------------------------------------------------
     def test_escape_at_the_question_writes_nothing(self):
@@ -1174,22 +1185,23 @@ class Repair(unittest.TestCase):
         self.assertEqual(after, data, 'the original was written back')
 
     def test_a_directory_restore_that_fails_names_the_block_and_stops(self):
-        data, result = self.corrupted('parent_wrong')
+        data, _ = self.corrupted('parent_wrong')
         r, after = self.fix(data, failall=1)
-        self.assertEqual(r['nwrite'], 2, 'the write, the restore, then nothing')
-        self.assertEqual([w['ok'] for w in r['writes']], [0, 0])
-        self.assertEqual(r['hurt'], 2)
-        self.assertEqual(r['note'], M_NOREST % result.findings[0].block, r['note'])
+        self.assertTrue(r['nwrite'] >= 1, r)
+        self.assertTrue(all(w['ok'] == 0 for w in r['writes']), r)
+        self.assertEqual(r['hurt'], 1, r)
+        self.assertNotIn('not restored', r['note'], r['note'])
         self.assertEqual(after, data)
 
     def test_a_restore_that_fails_stops_a_plan_that_had_more_to_write(self):
-        """Nothing is written after a block that could not be put back."""
+        """Write-protected: nothing reaches the disk, and that is not a
+        failed restore -- every original byte is still there."""
         data, _ = self.corrupted(*REPAIRABLE)
         r, after = self.fix(data, failall=1)
-        self.assertEqual(r['nwrite'], 2, r)
-        self.assertEqual(r['hurt'], 2)
+        self.assertTrue(r['nwrite'] >= 1, r)
+        self.assertEqual(r['hurt'], 1, r)
         self.assertEqual(after, data, 'not one byte reached the disk')
-        self.assertIn('not restored', r['note'])
+        self.assertNotIn('not restored', r['note'])
 
     def two_faults_on_one_entry(self):
         """One entry with a wrong header pointer AND a wrong block count.
@@ -1218,12 +1230,13 @@ class Repair(unittest.TestCase):
         self.assertEqual(after, corrected(data, prodos_check.check(data).findings))
 
     def test_nothing_is_written_after_a_block_that_could_not_be_put_back(self):
-        """The second correction must not slip past on a block still in hand."""
-        data, block = self.two_faults_on_one_entry()
+        """Write-protected: both corrections of one block fail to write,
+        the disk is still the original, which is not a failed restore."""
+        data, _ = self.two_faults_on_one_entry()
         r, after = self.fix(data, failall=1)
-        self.assertEqual(r['nwrite'], 2, 'the write, the restore, then nothing')
-        self.assertEqual(r['hurt'], 2)
-        self.assertEqual(r['note'], M_NOREST % block, r['note'])
+        self.assertTrue(r['nwrite'] >= 1, r)
+        self.assertEqual(r['hurt'], 1, r)
+        self.assertNotIn('not restored', r['note'], r['note'])
         self.assertEqual(after, data, 'not one byte reached the disk')
 
     def test_escape_or_a_wrong_word_writes_no_directory_block(self):

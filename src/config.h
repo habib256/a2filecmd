@@ -164,6 +164,7 @@ static void load_config(void)
         path = CF->backup;
         if (!file_info(path)) {
             if (_oserror != 0x46) strcpy(note, cfg_recovery);
+            else sort_mode = SORT_MODES - 1;
             return;
         }
         strcpy(note, cfg_recovery);
