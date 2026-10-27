@@ -886,6 +886,10 @@ GOTO paths are at most 63 characters. DATE accepts `DDMMYYYYHHMM`, 1940–2039;
 creation dates remain unchanged. SYNC preserves destination-only and newer
 files, refuses overlapping trees and stops if replacement/recovery fails. An
 unknown source date does not authorize replacement. Keep `A2FC.SYNC/A2FC.BAK`.
+Before publishing a verified copy, SYNC rereads the source metadata. If it
+changed or cannot be read, it keeps the destination and `A2FC.SYNC` and stops
+before the next file. Cancellation before renaming discards only its own
+temporary, reporting it if cleanup fails.
 TREE counts a forked (GS/OS extended) file as a file, with the size its
 directory entry gives, as the panels show it; its forks are not opened.
 At the top of a volume, TREE marks `<- boots` on the first SYS file whose
@@ -948,7 +952,8 @@ list, a volume whose name is on two drives, a directory of more than 4
 blocks (51 entries), a write-protected directory or volume, an order that
 would move a locked subdirectory (its header would be written), and
 inconsistent directory metadata (file count, block links, storage types, a
-subdirectory that does not point back at its entry). Just before writing it
+subdirectory that does not point back at its entry, or a parent/child pointer
+to a boot block or outside the declared volume). Just before writing it
 rereads the directory blocks and checks the child headers and the entry
 that names this directory in its parent, including its identity and write
 permission. Failed reads or failed checks refuse the writes. Each block

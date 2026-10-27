@@ -76,7 +76,7 @@ Ce retour complète les tests automatisés. Voir le
 | C, V et D sur un dossier | Dossier copié sur l’un de ses ancêtres (`/V/A` vers `/V` : `/V/A/A/A` écrit dans la source, puis effacé par le déplacement) ; arbre à moitié supprimé quand le chemin d’un fichier ne tient pas ; copie partielle quand le fichier cible tenait mais pas `A2FC.COPY` | `paths_nested` (`src/a2fc_mli.s`) refuse un dossier copié dans lui-même, dans un descendant ou sur un ancêtre. Le comptage de `walk_tree` (`src/tree_walk.h`) contrôle le chemin de chaque fichier et dossier source, pas seulement des dossiers : l’arbre trop profond est refusé entier avant tout effacement, et avant le premier octet d’une copie marquée. Le comptage parcourt aussi les chemins de destination, y compris la place pour `/A2FC.COPY` (9 caractères) dans le dossier cible : un arbre dont un chemin cible ne tient pas est refusé (« Path too long for ProDOS. ») avant le premier octet. `test_tree_walk.py`, `test_keep_tags.py` (modèle de `paths_nested` sur les deux processeurs), `bench/tree_safety.py`. |
 | Marques après une grande surcouche | Marques rendues par index à un panneau qui avait changé (MOVE, GOTO, FIND, extraction, éditeur, autre fenêtre d’un grand dossier) : D supprimait alors d’autres fichiers que ceux choisis | `keep_tags` ne rend les marques qu’à un panneau de même chemin, mêmes noms et mêmes types aux mêmes index ; sinon il revient sans marque. L’empreinte `panel_hash` (16 bits) mélange chaque octet de façon non linéaire (rotation, ou exclusif, addition) depuis la seconde chasse : deux entrées échangées à 8 rangs ou « AB » devenu « CA » passaient avec la première. Un album est sauvegardé une fois par session. Limite : une modification quelconque passe encore pour inchangée environ une fois sur 65 536 (`test_keep_tags.py` le mesure). `test_keep_tags.py` (vrai assembleur sous sim65, 6502 et 65C02). |
 | Éditeur E | Ouverture tronquante de l’original ; lecture initiale incomplète acceptée | Écriture exclusive dans `A2FC.EDIT`, fermeture et relecture octet par octet avant installation ; original conservé sous `A2FC.ED.BAK` pendant le renommage. Une sauvegarde échouée conserve le tampon modifié. Le chargement lit un octet de plus que la capacité : un fichier plus long que sa taille de panneau périmée est refusé au lieu d’être tronqué par la sauvegarde. `test_file_safety.py`, `bench/data_safety.py`. |
-| Binary II, ShrinkIt, extraction ProDOS/DOS 3.3 | Écrasement silencieux de fichiers existants ; erreurs de fermeture ignorées | Création exclusive commune, aucune suppression d’un fichier préexistant en nettoyage, contrôle de fermeture. Bornes supplémentaires des noms et chemins Binary II/ShrinkIt ; erreurs des grandes surcouches conservées dans le message final. La réservation est un seul appel MLI CREATE (`reserve_output`, `src/file_output.h`) : l’entrée est créée ou rien ; l’`open()` de cc65 laissait, sur un OPEN refusé, un fichier vide (A2FC.COPY, A2FC.EDIT, A2MOVE.LST) qui bloquait les copies suivantes. `test_file_output.py`. |
+| Binary II, ShrinkIt, extraction ProDOS/DOS 3.3 | Écrasement silencieux de fichiers existants ; erreurs de fermeture ignorées | Création exclusive commune, aucune suppression d’un fichier préexistant en nettoyage, contrôle de fermeture. Bornes supplémentaires des noms et chemins Binary II/ShrinkIt ; erreurs des grandes surcouches conservées dans le message final. Binary II vérifie aussi `ferror(out)` après écriture, relecture et sonde EOF : une lecture nulle en erreur ne prouve pas l'absence de données restantes. Le bilan tient dans 64 octets même avec deux compteurs de cinq chiffres. `test_binary2_safety.py` exécute le vrai extracteur sur l'hôte et les deux CPU, avec comparaison des octets et gardes mémoire. La réservation est un seul appel MLI CREATE (`reserve_output`, `src/file_output.h`) : l’entrée est créée ou rien ; l’`open()` de cc65 laissait, sur un OPEN refusé, un fichier vide (A2FC.COPY, A2FC.EDIT, A2MOVE.LST) qui bloquait les copies suivantes. `test_file_output.py`. |
 | TXTCONV | Suppression de la source avant renommage ; suppression immédiate d’une destination confirmée | Conversion dans un temporaire exclusif, contrôle du nombre d’octets lus et des fermetures, installation avec sauvegarde et restauration. Temporaires et sauvegardes existants conservés. `test_txtconv.py`, `bench/txtconv.py`. |
 | IMGCONV | Sonde `fopen(rb)` confondue avec une preuve d’absence ; suppression avant conversion ; un abandon nommait « Stopped failed. » ou « Aborted, DEST removed. » alors que DEST était intacte | GET_FILE_INFO distingue absence et erreur ; CREATE exclusif ; conversion temporaire avant remplacement avec sauvegarde. Escape après CREATE, pendant le remplacement ou entre blocs dit « Stopped. », sans nommer DEST. `test_imgconv_safety.py`, `test_imgconv.py`, `bench/imgconv.py`. |
 | MOVE, déplacement rapide sur un volume | Erreur entre les écritures brutes laissant deux entrées partageant les mêmes blocs ; backlink de sous-répertoire non validé | Validation du backlink et du stockage ; relecture des écritures ; sur erreur signalée, restauration de l’entrée source, du backlink et des compteurs avant suppression de la copie d’entrée. Avertissement interdisant de supprimer les entrées si la restauration échoue. Tests avant **et après** écriture effective à chaque étape dans `test_move.py`, puis `bench/move.py`. |
@@ -106,8 +106,16 @@ Ce retour complète les tests automatisés. Voir le
 
 - **SYNC** : copie dans `A2FC.SYNC` créé exclusivement, comparaison complète,
   sauvegarde `A2FC.BAK` (refus s’il existe) puis installation ; source
-  conservée. `test_six_plugins.py` (pannes, fermetures, tailles périmées,
-  échecs de renommage et de restauration).
+  conservée. Après fermeture des deux lectures de vérification, relit tous
+  les résultats GET_FILE_INFO de la source et les compare au catalogue qui
+  avait autorisé la copie. Un changement ou une erreur conserve la
+  destination et `A2FC.SYNC`, puis arrête l'arbre. La destination est ensuite
+  relue et doit toujours être remplaçable et plus ancienne. Une annulation
+  avant renommage ne nettoie que le temporaire possédé. Pas de mémoire AUX
+  empruntée ni de reconstruction de `/RAM` ; une destination `/RAM` reste
+  un fichier ProDOS écrit normalement. `test_six_plugins.py` (pannes,
+  fermetures, tailles et métadonnées périmées, annulation tardive, échecs de
+  renommage et de restauration ; comparaison native avec les deux CPU).
 - **Déplacement marqué (MOVE)** : la liste `A2MOVE.LST`, créée exclusivement
   dans la destination, porte un CRC par enregistrement ; un panneau ou une
   source changés arrêtent le lot, sources restantes conservées. `test_batch.py`,
@@ -156,7 +164,10 @@ Ce retour complète les tests automatisés. Voir le
   parent de chaque sous-répertoire et de la cible elle-même), plus de 4
   blocs, un répertoire ou volume protégé, un sous-répertoire verrouillé qui
   devrait bouger, une image, la liste des volumes et un nom porté par deux
-  lecteurs. Relit tout avant la première écriture, relit chaque bloc écrit,
+  lecteurs. Refuse aussi les pointeurs parent/enfant vers les blocs
+  d'amorçage 0 et 1 ou hors du volume déclaré, même si le périphérique
+  contient à cet endroit un faux en-tête lisible. Relit tout avant la
+  première écriture, relit chaque bloc écrit,
   remet en place ce qui a été écrit (un bloc refusé et intact n'est pas
   réécrit) et nomme le premier bloc qui ne revient pas. L'en-tête d'un
   sous-répertoire déplacé est contrôlé par ses champs et une somme

@@ -1,5 +1,11 @@
-"""Run the real Binary II extractor on disposable files with injected I/O faults."""
+"""Run the real Binary II extractor on disposable files with I/O faults.
+
+Both native compilers also run the extractor against bounded memory streams:
+full-count errors, failed EOF probes hiding extra data, cleanup failures and
+unchanged archive bytes. A canary surrounds the real 64-byte summary buffer.
+"""
 import subprocess
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -25,9 +31,15 @@ static struct Panel panels[2];
 static struct Entry selected;
 static unsigned char active, copy_buf[512], _filetype;
 static unsigned int _auxtype;
-static char full[64], other_full[64], note[100], question[100];
+static char full[64], other_full[64], note[100];
+static struct {char text[64];unsigned char guard[8];} question_region;
+#define question question_region.text
 static int fault, cleanup_bad, read_calls, failed_read, output_open, removes;
 static FILE *archive, *output;
+static FILE* output_error;
+static unsigned char output_reading, output_selected;
+static unsigned long output_size;
+static unsigned int output_reads, output_writes;
 static int is_dir(struct Entry* e) { return 0; }
 static void report_error(const char* s) { strcpy(note,s); }
 static int reserve(const char* p, int flags) {
@@ -44,24 +56,48 @@ static FILE* open_file(const char* p,const char* mode) {
     if(!strcmp(mode,"rb") && strcmp(p,full)) { if(fault==12)return NULL; }   /* the output, read back */
     f=fopen(p,mode);
     if(!strcmp(p,full))archive=f;
-    else {output=f;output_open=f!=NULL;}
+    else {
+        const char* leaf=strrchr(p,'/');
+        output=f;output_open=f!=NULL;output_reading=!strcmp(mode,"rb");
+        output_selected=fault>=14 && leaf && !strcmp(leaf+1,"DATA");
+        if(!output_reading)output_size=0;
+    }
     return f;
 }
 static size_t read_file(void* p,size_t s,size_t n,FILE* f) {
+    size_t got;
     ++read_calls;
     if((fault==4 && read_calls==2) || (fault==10 && read_calls==3) || (fault==11 && read_calls==4)) {
         failed_read=1;return 0;
     }
-    return fread(p,s,n,f);
+    if(f==output && output_reading && output_selected) {
+        ++output_reads;
+        /* A failed EOF probe is not proof that no unread bytes remain. */
+        if((fault==16 || fault==17) && n==1 && (unsigned long)ftell(f)==output_size) {
+            output_error=f;return 0;
+        }
+    }
+    got=fread(p,s,n,f);
+    if(f==output && output_reading && output_selected && fault==15)output_error=f;
+    return got;
 }
-static int error_file(FILE* f) { return failed_read || ferror(f); }
+static int error_file(FILE* f) { return failed_read || f==output_error || ferror(f); }
 static size_t write_file(const void* p,size_t s,size_t n,FILE* f) {
+    size_t got;
     if(fault==5)return fwrite(p,s,n/2,f);
     if(fault==13){unsigned char c[512];memcpy(c,p,n);c[3]^=1;return fwrite(c,s,n,f);}   /* a wrong byte on the medium */
-    return fwrite(p,s,n,f);
+    got=fwrite(p,s,n,f);
+    if(f==output)output_size+=s*got;
+    if(f==output && output_selected) {
+        ++output_writes;
+        if(fault==14)output_error=f;
+    }
+    return got;
 }
 static int close_file(FILE* f) {
     int is_output=output_open && f==output;
+    if(is_output && output_selected && !output_reading && fault==17)fwrite("EXTRA",1,5,f);
+    if(f==output_error)output_error=NULL;
     int r=fclose(f);
     if(is_output)output_open=0;
     return (fault==6 && is_output) || (fault==7 && !is_output)?-1:r;
@@ -81,9 +117,14 @@ static void progress_bar(const char* s,unsigned long d,unsigned long t) {
 #define remove remove_file
 ''' + '#define HOST_CREATE_FAULT (fault==2)\n#include "' + str(ROOT / 'tools/host_reserve.h') + '"\n' + (ROOT / 'src/file_output.h').read_text() + SOURCE[START:END] + r'''
 int main(int argc,char**argv) {
+    unsigned char i;
     strcpy(full,argv[1]);strcpy(panels[1].path,argv[2]);strcpy(selected.name,"TEST.BNY");
-    fault=atoi(argv[3]);cleanup_bad=atoi(argv[4]);binary2_entry(NULL);
-    printf("%s\nremoves=%d\n",note,removes);
+    fault=atoi(argv[3]);cleanup_bad=atoi(argv[4]);
+    memset(question_region.guard,0xA5,sizeof question_region.guard);
+    if(fault==18){sprintf(question,b2_done,65535U,65535U);strcpy(note,question);}
+    else binary2_entry(NULL);
+    for(i=0;i<sizeof question_region.guard;++i)if(question_region.guard[i]!=0xA5)return 86;
+    printf("%s\nremoves=%d\noutwrites=%u outreads=%u\n",note,removes,output_writes,output_reads);
     return 0;
 }
 '''
@@ -214,6 +255,36 @@ class Binary2Safety(unittest.TestCase):
         self.assertIn('removes=0', out)
         self.assertEqual((self.dst/'DATA').read_bytes(), self.payload)
 
+    def test_output_stream_errors_never_commit_a_record(self):
+        keep=self.dst/'KEEP';keep.write_bytes(b'unrelated bytes')
+        for fault in (14,15,16,17):
+            for size in ((1,256,512,515,1024) if fault<16 else (0,1,256,512,515,1024)):
+                for cleanup in (False,True):
+                    with self.subTest(fault=fault,size=size,cleanup=cleanup):
+                        for name in ('FIRST','DATA','LAST'):(self.dst/name).unlink(missing_ok=True)
+                        payload=bytes(i&255 for i in range(size))
+                        self.src.write_bytes(record('FIRST',b'completed',True)+record('DATA',payload,True)
+                                             +record('LAST',b'must not be extracted'))
+                        out=self.run_extract(fault,cleanup)
+                        self.assertNotIn('file(s) extracted',out)
+                        self.assertIn('removes=1',out)
+                        expected={'FIRST':b'completed','KEEP':b'unrelated bytes'}
+                        if cleanup:
+                            self.assertIn('Cleanup failed: DATA retained',out)
+                            expected['DATA']=(payload[:512] if fault==14 else payload)+(b'EXTRA' if fault==17 else b'')
+                        else:self.assertIn('failed',out)
+                        self.assertEqual({p.name:p.read_bytes() for p in self.dst.iterdir()},expected)
+                        if fault==14:self.assertIn('outwrites=1 outreads=0',out)
+                        if fault==15:self.assertIn('outreads=1',out)
+                        for name in ('FIRST','DATA'):(self.dst/name).unlink(missing_ok=True)
+
+    def test_summary_fits_the_real_64_byte_buffer_at_counter_limits(self):
+        out=self.run_extract(18)
+        self.assertLess(len(out.splitlines()[0]),64)
+        self.assertIn('65535 file(s) extracted, 65535 skipped',out)
+        self.assertIn('removes=0',out)
+        self.assertEqual(list(self.dst.iterdir()),[])
+
     def test_second_record_failure_does_not_remove_first(self):
         self.src.write_bytes(record('FIRST', self.payload, True) + record('LAST', b'end')[:-1])
         self.assertIn('Extract failed', self.run_extract())
@@ -228,7 +299,7 @@ class Binary2Safety(unittest.TestCase):
         self.src.write_bytes(folder('SUB') + record('SUB/DATA', self.payload, True)
                              + folder('SUB/DEEP', bytes(range(39))) + record('SUB/DEEP/END', b'end'))
         out = self.run_extract()
-        self.assertIn('2 file(s) extracted, 2 skipped (folder/phantom/squeezed)', out)
+        self.assertIn('2 file(s) extracted, 2 skipped (dir/phantom/squeezed)', out)
         self.assertEqual(sorted(x.name for x in self.dst.iterdir()), ['DATA', 'END'])
         self.assertEqual((self.dst/'DATA').read_bytes(), self.payload)
         self.assertEqual((self.dst/'END').read_bytes(), b'end')
@@ -238,7 +309,7 @@ class Binary2Safety(unittest.TestCase):
         for filetype, storage in ((0x0F, 1), (6, 0x0D)):
             with self.subTest(filetype=filetype, storage=storage):
                 self.src.write_bytes(folder('DIR', b'x' * 600, True, filetype, storage) + record('LAST', b'end'))
-                self.assertIn('1 file(s) extracted, 1 skipped (folder/phantom/squeezed)', self.run_extract())
+                self.assertIn('1 file(s) extracted, 1 skipped (dir/phantom/squeezed)', self.run_extract())
                 self.assertEqual(sorted(x.name for x in self.dst.iterdir()), ['LAST'])
                 (self.dst/'LAST').unlink()
         # A folder record cut short (data or padding) is a failure, never success.
@@ -268,7 +339,7 @@ class Binary2Safety(unittest.TestCase):
                              + rec('SQUEEZED', b'\x76\xff' + b'?' * 300, True, x7D=0x80)
                              + rec('LAST', b'end', False))
         out = self.run_extract()
-        self.assertIn('2 file(s) extracted, 2 skipped (folder/phantom/squeezed)', out)
+        self.assertIn('2 file(s) extracted, 2 skipped (dir/phantom/squeezed)', out)
         self.assertEqual(sorted(x.name for x in self.dst.iterdir()), ['LAST', 'REAL'])
         self.assertEqual((self.dst/'REAL').read_bytes(), b'real\r' * 10)
         self.assertEqual((self.dst/'LAST').read_bytes(), b'end')
@@ -283,6 +354,144 @@ class Binary2Safety(unittest.TestCase):
         self.src.write_bytes(record('A-B', b'first', True) + record('A?B', b'second'))
         self.assertIn('Create failed', self.run_extract())
         self.assertEqual((self.dst/'A.B').read_bytes(), b'first')
+
+
+NATIVE = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#define A2FC_BIG_BINARY2
+#define PATH_LEN 64
+#define OUTPUT_RESERVED 1
+struct A2fcApi {unsigned char unused;};
+struct Entry {char name[17];};
+struct Panel {char path[64];unsigned char fs;};
+static struct Panel panels[2];
+#define pan_at(p) (&panels[p])
+static struct Entry selected;
+static unsigned char active,copy_buf[512],_filetype;
+static unsigned int _auxtype,progress_done,progress_total;
+static char full[]="S/ARCHIVE",other_full[64],note[100];
+static struct {char text[64];unsigned char guard[8];} question_region;
+#define question question_region.text
+static unsigned char input[768],snapshot[768],data[1024];
+struct Stream {unsigned int pos,len;unsigned char error,writing,open;};
+static struct Stream archive_stream,target_stream;
+static unsigned char fault,cleanup_bad,created,removes;
+static unsigned int expected,reads,writes;
+static int is_dir(struct Entry* e){return 0;}
+static void report_error(const char* s){strcpy(note,s);}
+static unsigned char reserve_output(const char* p){if(created)return 0;created=1;return 1;}
+static void progress_bar(const char* s,unsigned long d,unsigned long t){}
+static FILE* m_open(const char* path,const char* mode){
+    struct Stream* f;
+    if(!strcmp(path,full))f=&archive_stream;
+    else {if(!created)return NULL;f=&target_stream;}
+    f->pos=f->error=0;f->writing=*mode=='w';f->open=1;
+    if(f->writing)f->len=0;
+    return (FILE*)f;
+}
+static size_t m_read(void* p,size_t size,size_t n,FILE* file){
+    struct Stream* f=(struct Stream*)file;
+    unsigned char* bytes=f==&archive_stream?input:data;
+    if(size!=1 || !f->open)exit(9);
+    if(f==&target_stream){
+        ++reads;
+        if((fault==3 || fault==4) && f->pos==expected){f->error=1;return 0;}
+    }
+    if(f->error)return 0;
+    if(n>f->len-f->pos)n=f->len-f->pos;
+    memcpy(p,bytes+f->pos,n);f->pos+=n;
+    /* The final complete verification read may also report an error. */
+    if(f==&target_stream && fault==2 && f->pos==expected)f->error=1;
+    return n;
+}
+static size_t m_write(const void* p,size_t size,size_t n,FILE* file){
+    struct Stream* f=(struct Stream*)file;
+    if(size!=1 || f!=&target_stream || !f->open || n>sizeof data-f->pos)exit(9);
+    ++writes;if(f->error)return 0;
+    memcpy(data+f->pos,p,n);f->pos+=n;f->len=f->pos;
+    /* Error on the last full-count write, before a successful close. */
+    if(fault==1 && f->len==515)f->error=1;
+    return n;
+}
+static int m_error(FILE* file){return ((struct Stream*)file)->error;}
+static int m_close(FILE* file){
+    struct Stream* f=(struct Stream*)file;
+    if(!f->open)exit(9);
+    if(f==&target_stream && f->writing){
+        expected=f->len;
+        if(fault==4){memcpy(data+f->len,"EXTRA",5);f->len+=5;}
+    }
+    f->open=0;return 0;
+}
+static long m_tell(FILE* file){return ((struct Stream*)file)->pos;}
+static int m_seek(FILE* file,long off,int whence){
+    struct Stream* f=(struct Stream*)file;
+    if(whence!=SEEK_SET || off<0 || off>f->len)return -1;
+    f->pos=(unsigned int)off;return 0;
+}
+static int m_remove(const char* path){++removes;if(cleanup_bad)return -1;created=0;return 0;}
+#define fopen m_open
+#define fread m_read
+#define fwrite m_write
+#define ferror m_error
+#define fclose m_close
+#define ftell m_tell
+#define fseek m_seek
+#define remove m_remove
+#pragma static-locals(push,off)
+''' + SOURCE[START:END] + r'''
+#pragma static-locals(pop)
+int main(int argc,char** argv){
+    unsigned int i;
+    fault=atoi(argv[1]);cleanup_bad=atoi(argv[2]);
+    memset(question_region.guard,0xA5,sizeof question_region.guard);
+    if(fault==5){
+        sprintf(question,b2_done,65535U,65535U);
+        if(strlen(question)>=64)return 8;
+    } else {
+        strcpy(panels[1].path,"D");strcpy(selected.name,"TEST.BNY");
+        input[0]=0x0A;input[1]='G';input[2]='L';input[4]=6;
+        input[20]=3;input[21]=2;input[23]=4;memcpy(input+24,"DATA",4);
+        for(i=0;i<515;++i)input[128+i]=(unsigned char)(i*17);
+        memcpy(snapshot,input,sizeof input);archive_stream.len=sizeof input;
+        binary2_entry(NULL);
+        if(memcmp(input,snapshot,sizeof input) || archive_stream.open || target_stream.open)return 1;
+        if(!fault){
+            if(!strstr(note,"1 file(s) extracted") || !created || removes || target_stream.len!=515)return 2;
+        } else {
+            if(strstr(note,"file(s) extracted") || removes!=1 || created!=cleanup_bad)return 3;
+            if(!strstr(note,cleanup_bad?"Cleanup failed":"failed"))return 4;
+            if(fault==1 && (writes!=2 || reads))return 5;
+            if(fault==2 && reads!=3)return 6;
+        }
+        if(created && (memcmp(data,input+128,515) || target_stream.len!=(fault==4?520:515) ||
+                       (fault==4 && memcmp(data+515,"EXTRA",5))))return 7;
+    }
+    for(i=0;i<sizeof question_region.guard;++i)if(question_region.guard[i]!=0xA5)return 10;
+    return 0;
+}
+'''
+
+
+class Binary2Native(unittest.TestCase):
+    def test_real_extractor_on_both_processors(self):
+        from test_wipe import toolchains
+        chains=toolchains()
+        if not chains:self.skipTest('no cc65 toolchain')
+        with tempfile.TemporaryDirectory(prefix='binary2-native-') as tmp:
+            p=Path(tmp);source=p/'h.c';source.write_text(NATIVE)
+            for cpu,cl65,sim65,extra,_ in chains:
+                env={**os.environ,**extra};exe=p/cpu
+                subprocess.run([cl65,'-t',cpu,'-O','-Oirs','-Cl','--codesize','100',
+                                '-o',str(exe),str(source)],env=env,check=True,capture_output=True)
+                for fault in range(6):
+                    for cleanup in (0,1):
+                        with self.subTest(cpu=cpu,fault=fault,cleanup=cleanup):
+                            run=subprocess.run([sim65,str(exe),str(fault),str(cleanup)],
+                                               env=env,capture_output=True,timeout=30)
+                            self.assertEqual(run.returncode,0,(cpu,fault,cleanup,run.stdout,run.stderr))
 
 
 if __name__ == '__main__':

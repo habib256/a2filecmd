@@ -99,7 +99,7 @@ def main():
             locked = case/'LOCKED.po'; locked.write_bytes(protected)
             with boot_hd(case, program, port=PORT, plugins=['dirsort'], floppy2=locked) as (p, s):
                 s.key(b'/');s.wait(lambda:s.rows()[0].startswith('[Volumes]'),'volumes');p.stable()
-                s.select('/SORTME');s.key(RET);s.wait(lambda:s.has('ZSUB'),'protected floppy');p.stable()
+                s.select('/SORTME');s.key(RET);s.wait(lambda:s.rows()[0].startswith('/SORTME '),'protected floppy');p.stable()
                 if reason in ('volume','late-parent'):
                     s.select('ZSUB');s.key(RET);s.wait(lambda:s.has('Z12'),'protected volume subdirectory');p.stable()
                 floor = s.sym['__HIMEM__']-s.sym['__STACKSIZE__'];p.poke(floor,b'\xA5'*8)
@@ -139,7 +139,8 @@ def main():
         with boot_hd(tmp, program, port=PORT, plugins=['dirsort'], floppy2=po) as (p, s):
             s.key(b'/'); s.wait(lambda: s.rows()[0].startswith('[Volumes]'), 'volumes'); p.stable()
             s.select('/SORTME'); s.key(RET)
-            s.wait(lambda: s.has('ZSUB'), 'the floppy', 30); p.stable()
+            # ZSUB is last in disk order and can be below the visible rows.
+            s.wait(lambda: s.rows()[0].startswith('/SORTME '), 'the floppy', 30); p.stable()
             menu_run(s, p, 'DIRSORT')
             s.wait(lambda: s.has('DIRSORT /SORTME'), 'DIRSORT', 30); p.stable()
             s.ok('the volume directory in disk order, A.SYSTEM boots',
@@ -160,7 +161,7 @@ def main():
                  '\n'.join(s.rows()))
             s.key(b'W')
             s.wait(lambda: s.has('Write this order to /SORTME?'), 'the confirmation', 20); p.stable()
-            s.ok('the warning names the risk', s.has('A power cut while writing can damage this directory.'))
+            s.ok('the warning names the risk', s.has('A power cut can damage this directory.'))
             s.key(b'Y')
             note = wait_note(s, p, 60, gone='Write this order')
             s.ok('written and read back', note == 'Reordered: every block read back.', note)

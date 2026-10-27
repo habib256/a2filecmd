@@ -5,6 +5,31 @@ downloads and installation.
 
 ## [Unreleased]
 
+- Binary II extraction checks output stream errors after full-count writes,
+  verification reads and the EOF probe. An errored zero-byte probe could
+  previously hide an unverified output tail and report success. Only the
+  owned failed record is cleaned; prior records, the archive and unrelated
+  files remain intact. The summary now fits its 64-byte buffer even with
+  five-digit counters from a malformed archive.
+
+- SYNC rechecks all source metadata after its copy/readback closes and
+  before publication. A changed or unreadable source could previously replace
+  a newer destination using the source's stale catalog timestamp or type.
+  Refusal keeps the original destination and the verified `A2FC.SYNC`, and
+  stops the tree before the next file. Late cancellation still discards only
+  the owned temporary and reports a failed cleanup if it cannot do so.
+
+- DIRSORT refuses parent and child directory pointers to boot blocks or
+  blocks outside the declared volume. A malformed child header could
+  previously authorize raw writes to those blocks while reporting success.
+  Host and both native compiler regressions verify zero writes and unchanged
+  disk bytes, even when the underlying device can read the invalid block.
+
+- Fix the fuzz campaign's refused-write expectation: REPAIR can verify that
+  the original bytes remain intact even if every write is refused. Require
+  zero applied corrections and an unchanged image, with a regression replay
+  of the 150-case CI campaign.
+
 - Recover resident MAIN space without raising memory limits: 322 bytes free
   on 65C02 and 676 on 6502. VDrive's install-only code and page-3 relay
   source move to BATCH; collective tagging and the T/H selection helper move

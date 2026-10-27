@@ -61,6 +61,7 @@ import hashlib
 import json
 import os
 import random
+import re
 import subprocess
 import sys
 import tempfile
@@ -952,8 +953,12 @@ def injection(case, exe, work, before, repaired, written, timeout, rng, nwrite):
     if kind == 'failall':
         if after != before:
             case.fail('7-injection', 'failall: the image moved although no write landed')
-        if 'not restored' not in r['note']:
-            case.fail('7-injection', 'failall: note is %r, not a refusal' % r['note'])
+        # A refused write leaves the original bytes in place. REPAIR proves
+        # that by readback even when the restoring write is refused too;
+        # this is zero applied corrections, not an unverified restoration.
+        if not re.fullmatch(r'Applied 0 of \d+ blocks; rescan still reports \d+ findings\.',
+                            r['note']):
+            case.fail('7-injection', 'failall: note is %r, not zero applied corrections' % r['note'])
         return r
     moved = changed_blocks(before, after)
     for b in sorted(moved):

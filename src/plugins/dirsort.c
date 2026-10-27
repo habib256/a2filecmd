@@ -70,7 +70,7 @@ static void __fastcall__ r_bar(unsigned char x,const char* s) SERVICE(keys_bar)
 #define S_bar(s) r_bar(0,s)
 #endif
 void __fastcall__ plugin_entry(const struct A2fcApi*);
-#define DIRSORT_DESCRIPTION "Reorder a ProDOS directory"
+#define DIRSORT_DESCRIPTION "Sort directory"
 struct Header {unsigned int magic;unsigned char flags;void __fastcall__ (*entry)(const struct A2fcApi*);unsigned char r[3];char desc[sizeof DIRSORT_DESCRIPTION];};
 #pragma rodata-name(push,"OVLHDR")
 const struct Header __plugin_header={PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry,{0,0,0},DIRSORT_DESCRIPTION};
@@ -95,7 +95,7 @@ const struct Header __plugin_header={PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry,{0,
 #define E_HEADER 37
 
 static const char m_bad[]="Directory inconsistent (see FIXIT): nothing written.";
-static const char m_changed[]="Directory changed or unreadable: nothing written.";
+static const char m_changed[]="Changed/unreadable: nothing written.";
 static const char m_none[]="Nothing written.";
 static const char m_locked[]="Write-protected: nothing written.";
 
@@ -119,8 +119,10 @@ static unsigned char* ep(unsigned char k){return dir[eb[k]]+4+39*es[k];}
  * leaving room for protection checks without changing the overlay limit. */
 #define same(p,q,n) (!memcmp((p),(q),(n)))
 static unsigned char up(unsigned char c){return c>='a' && c<='z'?c-32:c;}
-/* READ_BLOCK of b into buf: 0 done, else the ProDOS error. */
-static unsigned char rd(unsigned int b){return readblk(unit,b,buf);}
+/* Directory and parent/child links must never reach boot blocks or blocks
+ * outside the declared volume, even if the device can read those blocks.
+ * No WRITE_BLOCK may be authorized by an out-of-range header lookalike. */
+static unsigned char rd(unsigned int b){if(b<2 || b>=total)return 1;return readblk(unit,b,buf);}
 /* Is p a directory key block of storage `kind` with 39-byte entries,
  * 13 a block? */
 static unsigned char hdr(const unsigned char* p,unsigned char kind) {
@@ -146,7 +148,7 @@ static unsigned char load(void) {
     unsigned int b=key,prev=0;
     nblk=0;
     do {
-        if(nblk==MAXBLK)return fail("Directory too big: nothing written.");
+        if(nblk==MAXBLK)return fail("Too big: nothing written.");
         if(b<2 || b>=total)return fail(m_bad);
         if(readblk(unit,b,dir[nblk]))return fail(m_changed);
         if(rd16(dir[nblk])!=prev)return fail(m_bad);
@@ -379,7 +381,8 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
      * it refuses rather than pointing at the volume list. */
     unit=unit_of(path,0);
     if(!unit){note("Volume not on line, or two with this name.");return;}
-    /* The volume header (ON_LINE matched its name): its size. */
+    /* Before the volume header supplies total, admit only its block 2. */
+    total=3;
     if(rd(2)){note(m_changed);return;}
     if((buf[4]>>4)!=15){note(m_bad);return;}
     total=rd16(buf+H_TOTAL);key=2;pacc=buf[H_ACCESS];
@@ -407,7 +410,7 @@ void __fastcall__ plugin_entry(const struct A2fcApi* api) {
     }
     for(i=0;i<nent && order[i]==i;++i);
     if(i==nent){note("Order unchanged: nothing written.");return;}
-    S_gotoxy(0,21);S_cputs("A power cut while writing can damage this directory.");
+    S_gotoxy(0,21);S_cputs("A power cut can damage this directory.");
     a.sprintf((char*)buf,"Write this order to %s?",path);
     if(!RF(confirm)((char*)buf)){note(m_none);return;}
     commit();

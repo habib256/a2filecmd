@@ -1,5 +1,119 @@
 # Consolidation : budgets mémoire
 
+## Binary II : erreurs de flux et bilan borné (27 octobre 2026)
+
+L'extracteur vérifie désormais les erreurs du flux de sortie après chaque
+écriture, chaque lecture de comparaison et la sonde EOF. Un retour nul en
+erreur pouvait masquer un suffixe non vérifié et laisser annoncer une
+extraction réussie. La suppression reste limitée au fichier créé pour cet
+enregistrement ; une suppression refusée nomme le fichier conservé. Aucun
+espace de travail AUX ni reconstruction de `/RAM` n'est ajouté.
+
+Le bilan pouvait atteindre 65 caractères, plus le zéro final, avec deux
+compteurs de cinq chiffres : `question` ne contient que 64 octets. Le mot
+`folder` devient `dir` dans ce bilan, qui mesure maintenant au plus 62
+caractères plus le zéro, même si les compteurs des en-têtes sont malformés.
+
+Les constructions complètes et leurs gardes passent, sans changement de
+fenêtre ni de BSS :
+
+| Réserve (octets) | 65C02 | 6502 |
+| --- | ---: | ---: |
+| BINARY2, sous `$2800` | 911 | 929 |
+| MAIN | 322 | 676 |
+| Carte langage | 40 | 40 |
+| LOWRAM | 85 | 110 |
+| Écart sous la pile C réservée | 339 | 882 |
+
+Les 16 tests exécutent l'extracteur réel, avec 44 injections sur fichiers
+jetables et 24 cas natifs sous sim65, dont la conversion normale, les erreurs
+au dernier transfert et une sonde EOF en erreur qui cache `EXTRA`. Les
+compilateurs exécutent le même code C contre des flux mémoire bornés, en
+convention native et avec les locales sur pile comme dans BINARY2. Les
+gardes entourent le vrai tampon de 64 octets. Les octets de l'archive, du
+premier fichier déjà terminé, des fichiers préexistants et du fichier
+éventuellement conservé sont contrôlés. Une coupure physique peut toujours
+laisser une extraction partielle ; l'extraction ProDOS n'est pas atomique.
+
+Le banc Binary II sous ProDOS/POM2 passe **5/5 contrôles sur chaque CPU**,
+dont les types TXT/BIN, l'auxtype `$1234`, les tailles et le texte relu. Les
+quatre images sont reconstruites et relues. L'oracle de fuzzing reprend le
+libellé borné `dir/phantom/squeezed`, sans changer les invariants d'octets :
+300 cas passent, avec 619 sorties comparées aux références et les 15 tests
+de la campagne, dont les corruptions volontairement plantées.
+La suite complète `make test` passe après cet ajustement de libellé, avec
+zéro avertissement natif inattendu sur les deux architectures.
+
+## SYNC : métadonnées source fraîches (27 octobre 2026)
+
+Après les fermetures de copie et de vérification, SYNC relit GET_FILE_INFO
+de la source. Les quinze octets de résultat doivent encore correspondre au
+catalogue initial : accès, type, auxtype, stockage, blocs, dates et heures
+de modification et de création. Le compteur de paramètres et le pointeur
+de chemin ne font pas partie des données comparées. La destination ne peut
+plus être remplacée sur la foi d'une date source devenue périmée. Une erreur
+ou une différence garde la destination et `A2FC.SYNC` et arrête l'arbre.
+
+La comparaison utilise `info` et `meta` existants et `memcmp`, sans nouvelle
+BSS ni emprunt de mémoire AUX. Le descripteur de menu garde son texte et
+supprime seulement cinq octets de remplissage inutilisés. La fenêtre reste
+`$1B00-$3FFF` et les gardes ne changent pas :
+
+| SYNC | 65C02 | 6502 |
+| --- | ---: | ---: |
+| Fin de BSS incluse | `$3FE0` | `$3FFA` |
+| Octets libres avant `$4000` | 31 | 5 |
+
+Les 77 tests de `test_six_plugins.py` passent : injections après la dernière
+fermeture sur fichiers vides, courts et multiblocs, en copie individuelle et
+récursive, destinations existantes et nouvelles. Ils contrôlent tous les
+octets, zéro renommage et zéro SET_FILE_INFO en cas de refus. Le vrai
+contrôle C est aussi exécuté sous sim65 par les deux compilateurs, sur tous
+les champs et sur les erreurs de lecture des métadonnées. La publication
+ProDOS et ses renommages ne sont pas atomiques en cas de coupure physique.
+
+Le banc des six surcouches sous POM2 passe **16/16 contrôles sur chaque
+CPU** : copie SYNC nouvelle, remplacement plus récent, sous-dossiers, second
+passage sans recopie, octets des fichiers relus et garde de pile préservée.
+Les quatre images sont reconstruites et relues par `check_images.py` ; la
+suite complète `make test` passe, sans avertissement natif inattendu sur les
+deux architectures.
+
+## DIRSORT : bornes des blocs (27 octobre 2026)
+
+Le lecteur des en-têtes parent/enfant refuse les blocs 0 et 1 et tout bloc
+supérieur ou égal au total déclaré du volume. Avant la lecture initiale de
+l'en-tête, une borne provisoire de 3 n'autorise que le bloc 2. Les écritures
+restent limitées au répertoire réordonné et aux en-têtes des enfants déplacés ;
+les tampons sont en MAIN, sans emprunter la mémoire AUX du disque `/RAM`.
+
+Les libellés de menu, d'erreur et d'avertissement sont raccourcis pour tenir
+dans la même fenêtre `$1B00-$3FFF`, sans modifier les 51 places utiles ni les
+gardes. Constructions complètes avec les mêmes compilateurs que ci-dessous :
+
+| DIRSORT | 65C02 | 6502 |
+| --- | ---: | ---: |
+| Fin de BSS incluse | `$3F95` | `$3FF4` |
+| Octets libres avant `$4000` | 106 | 11 |
+
+Les 46 tests exécutent le vrai C sur l'hôte et sous sim65 avec les deux
+compilateurs, plus 600 scénarios aléatoires. Les nouvelles images malformées
+ont des faux en-têtes parfaitement lisibles dans les blocs interdits ; les
+tests contrôlent zéro écriture et tous les octets du support, pas seulement
+le message de refus. Une coupure pendant les écritures physiques reste hors
+garantie.
+
+Le banc DIRSORT sous POM2 passe **19/19 contrôles sur chaque CPU**, dont les
+protections du volume, de l'enfant et du parent après confirmation, tous les
+octets des fichiers, AUX hors écran et la garde de pile. Le vrai ProDOS 8
+agrandit ensuite le répertoire déplacé et amorce le `.SYSTEM` annoncé. Le
+banc attend le chemin ouvert plutôt qu'un enfant potentiellement hors écran
+depuis le choix de l'ordre du disque par défaut.
+
+Après reconstruction des quatre images, `tools/check_images.py` et la suite
+complète `make test` passent localement avec cc65 master installé. Le contrôle
+des avertissements annonce zéro avertissement inattendu sur chaque édition.
+
 ## Relevé actuel (26 octobre 2026, marge résident restaurée)
 
 Constructions complètes avec cc65 Homebrew V2.18 pour le 65C02 et cc65
