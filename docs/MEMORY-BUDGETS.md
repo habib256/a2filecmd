@@ -1,5 +1,40 @@
 # Consolidation : budgets mémoire
 
+## SYNC : métadonnées source fraîches (27 octobre 2026)
+
+Après les fermetures de copie et de vérification, SYNC relit GET_FILE_INFO
+de la source. Les quinze octets de résultat doivent encore correspondre au
+catalogue initial : accès, type, auxtype, stockage, blocs, dates et heures
+de modification et de création. Le compteur de paramètres et le pointeur
+de chemin ne font pas partie des données comparées. La destination ne peut
+plus être remplacée sur la foi d'une date source devenue périmée. Une erreur
+ou une différence garde la destination et `A2FC.SYNC` et arrête l'arbre.
+
+La comparaison utilise `info` et `meta` existants et `memcmp`, sans nouvelle
+BSS ni emprunt de mémoire AUX. Le descripteur de menu garde son texte et
+supprime seulement cinq octets de remplissage inutilisés. La fenêtre reste
+`$1B00-$3FFF` et les gardes ne changent pas :
+
+| SYNC | 65C02 | 6502 |
+| --- | ---: | ---: |
+| Fin de BSS incluse | `$3FE0` | `$3FFA` |
+| Octets libres avant `$4000` | 31 | 5 |
+
+Les 77 tests de `test_six_plugins.py` passent : injections après la dernière
+fermeture sur fichiers vides, courts et multiblocs, en copie individuelle et
+récursive, destinations existantes et nouvelles. Ils contrôlent tous les
+octets, zéro renommage et zéro SET_FILE_INFO en cas de refus. Le vrai
+contrôle C est aussi exécuté sous sim65 par les deux compilateurs, sur tous
+les champs et sur les erreurs de lecture des métadonnées. La publication
+ProDOS et ses renommages ne sont pas atomiques en cas de coupure physique.
+
+Le banc des six surcouches sous POM2 passe **16/16 contrôles sur chaque
+CPU** : copie SYNC nouvelle, remplacement plus récent, sous-dossiers, second
+passage sans recopie, octets des fichiers relus et garde de pile préservée.
+Les quatre images sont reconstruites et relues par `check_images.py` ; la
+suite complète `make test` passe, sans avertissement natif inattendu sur les
+deux architectures.
+
 ## DIRSORT : bornes des blocs (27 octobre 2026)
 
 Le lecteur des en-têtes parent/enfant refuse les blocs 0 et 1 et tout bloc

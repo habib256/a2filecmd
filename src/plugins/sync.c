@@ -4,12 +4,14 @@
 #define UTIL_INFO
 #define UTIL_CREATE
 #include "util.h"
+#include <string.h>
 #include "dirscan.h"
 #include "spin.h"
 void __fastcall__ plugin_entry(const struct A2fcApi*);
-struct Header {unsigned int magic;unsigned char flags;void __fastcall__ (*entry)(const struct A2fcApi*);unsigned char r[3];char desc[52];};
+#define SYNC_DESCRIPTION "Copy missing or newer files to the other panel"
+struct Header {unsigned int magic;unsigned char flags;void __fastcall__ (*entry)(const struct A2fcApi*);unsigned char r[3];char desc[sizeof SYNC_DESCRIPTION];};
 #pragma rodata-name(push,"OVLHDR")
-const struct Header __plugin_header={PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry,{0,0,0},"Copy missing or newer files to the other panel"};
+const struct Header __plugin_header={PLUGIN_MAGIC, OVERLAY_BIG, plugin_entry,{0,0,0},SYNC_DESCRIPTION};
 #pragma rodata-name(pop)
 struct Frame {unsigned long pos;unsigned int blocks;unsigned char slen,dlen;};
 struct Rename {unsigned char n;unsigned char *old,*newpath;};
@@ -54,6 +56,14 @@ static unsigned char newer(unsigned int sd,unsigned int st,unsigned int dd,unsig
     sd &= 511;dd &= 511;if(sd!=dd)return sd>dd;
     return st>dt;
 }
+/* Compare all GET_FILE_INFO result fields with the catalog snapshot that
+ * authorized the copy. The count and Pascal-path pointer are unrelated.
+ * Refuse stale dates/types/forks or an unreadable source before publication.
+ * The owned temporary is the only writable file; no AUX workspace is used. */
+static unsigned char same_source(void) {
+    return !getinfo(source) &&
+        !memcmp(&info.access,&meta.access,sizeof info - offsetof(struct Info,access));
+}
 static unsigned char copy_file(unsigned char exists) {
     FILE *in,*out;unsigned long left;unsigned int n,i;unsigned char error;
     if(!join(tmp,ddir,"A2FC.SYNC") || !join(bak,ddir,"A2FC.BAK"))return 0;
@@ -97,11 +107,11 @@ static unsigned char copy_file(unsigned char exists) {
      * the source: a destination now as new or newer must survive.
      * Keep the verified copy on any such refusal. Only
      * owned tmp was written so far, with no AUX or source modifications. */
-    if(exists && (getinfo(target) || info.storage<1 || info.storage>3 ||
+    if(!same_source() || (exists && (getinfo(target) || info.storage<1 || info.storage>3 ||
                   (info.access&0xC2)!=0xC2 ||
                   !timestamp_valid(info.mdate,info.mtime) ||
-                  !newer(meta.mdate,meta.mtime,info.mdate,info.mtime))) {
-        recovery_note("SYNC stopped: target changed/protected; A2FC.SYNC kept.");
+                  !newer(meta.mdate,meta.mtime,info.mdate,info.mtime)))) {
+        recovery_note("SYNC stopped: source/target changed; A2FC.SYNC kept.");
         return 0;
     }
     /* Closes and the fresh target check can receive ESC. Until the first

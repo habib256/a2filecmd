@@ -1,5 +1,6 @@
 """Run actual overlay C routines against damaged images and failed writes."""
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -68,7 +69,7 @@ static FILE* sync_open(const char* p, const char* m) {
             if(mode==34 && !i){e[0]=0x29;memcpy(e+1,"../VICTIM",9);}
             e[16]=6;e[19]=5;e[21]=0x40;e[22]=6;e[30]=0xE3;
             e[33]=33;e[34]=52;
-            if(mode>=95 && mode<=102) {
+            if(mode>=95 && mode<=114) {
                 e[21]=size;e[22]=size>>8;
                 e[33]=meta.mdate;e[34]=meta.mdate>>8;
             }
@@ -137,7 +138,26 @@ static unsigned char mock(unsigned char cmd,void* p) {
     if(cmd==0xC4){pp=((struct Info*)p)->path;memcpy(oldpath,pp+1,pp[0]);oldpath[pp[0]]=0;
         if(mode==89 && !strcmp(oldpath,bak))cancelled=1;
         struct Info* ip=p;ip->access=0xE3;ip->storage=2;ip->mdate=ip->mtime=0;
+        if(!strcmp(oldpath,source)) {
+            memcpy(&ip->access,&meta.access,sizeof *ip - offsetof(struct Info,access));
+            if(mode>=103 && mode<=114 && closes>=4) {
+                /* Catalog 2026, target 2025, but the source is now 2024. */
+                if(mode==103)ip->mdate=(24<<9)|33;
+                if(mode==104)ip->mtime=1;
+                if(mode==105)ip->type=4;
+                if(mode==106)ip->aux=0x2000;
+                if(mode==107)ip->storage=5;
+                if(mode==108)ip->access=0xC1;
+                if(mode==109)++ip->blocks;
+                if(mode==110)ip->cdate=33;
+                if(mode==111)ip->ctime=1;
+                if(mode==112)return 0x27;
+                if(mode==113)return 0x46;
+                if(mode==114)cancelled=1;
+            }
+        }
         if(!strcmp(oldpath,target)) {
+            if(mode>=103 && mode<=114)ip->mdate=(25<<9)|33;
             if(mode>=95 && mode<=102 && closes>=4) {
                 ip->mdate=meta.mdate;
                 if(mode==96)ip->mtime=1;
@@ -212,7 +232,7 @@ int main(int argc,char** argv) {
     if(!newer((30<<9)|33,0,(26<<9)|33,0) || newer((99<<9)|33,0,(0<<9)|33,0) ||
        !newer((26<<9)|33,0x0D00,(26<<9)|33,0x0C00))abort();
     mode=atoi(argv[3]);cancelled=mode==3 || mode==17 || mode==88;size=strtoul(argv[4],0,10);meta.type=6;meta.aux=0;meta.access=0xE3;
-    meta.mdate=(26<<9)|33;meta.mtime=0;
+    meta.mdate=(26<<9)|33;meta.mtime=0;meta.storage=2;meta.blocks=5;
     if(mode==99)meta.mdate=(99<<9)|33;
     if(mode==100)meta.mdate=(40<<9)|33;
     if(mode==101)meta.mdate=33;
@@ -1148,7 +1168,52 @@ class SixPlugins(unittest.TestCase):
                         self.assertEqual({p.name:p.read_bytes() for p in s.iterdir()},
                                          {name:payload for name in names})
 
+    def test_sync_source_recheck_also_guards_new_destinations(self):
+        for size in (0,1600):
+            payload=bytes(i&255 for i in range(size))
+            for mode in (103,112,113,114):
+                with self.subTest(size=size,mode=mode), tempfile.TemporaryDirectory(prefix='sync-source-new-',dir='/tmp') as t:
+                    s=Path(t)/'S';d=Path(t)/'D';s.mkdir();d.mkdir()
+                    for name in ('DATA','DATA2'):(s/name).write_bytes(payload)
+                    (d/'KEEP').write_bytes(b'untouched')
+                    run=subprocess.run([str(self.exe['sync']),str(s),str(d),str(mode),str(size),'tree'],
+                                       capture_output=True,text=True,check=True)
+                    self.assertEqual(int(run.stdout.splitlines()[0]),0,run.stdout)
+                    state=list(map(int,next(l.split()[1:] for l in run.stderr.splitlines() if l.startswith('STATE '))))
+                    self.assertEqual(state,[0,0,4,4])
+                    expected={'KEEP':b'untouched'}
+                    if mode!=114:expected['A2FC.SYNC']=payload
+                    self.assertEqual({p.name:p.read_bytes() for p in d.iterdir()},expected)
+                    self.assertEqual({p.name:p.read_bytes() for p in s.iterdir()},
+                                     {name:payload for name in ('DATA','DATA2')})
+
     def test_sync_empty_file_replace(self):self.assertTrue(self.sync(0,cached_size=0,payload=b''))
+
+    def test_sync_changed_or_unreadable_source_cannot_replace_destination(self):
+        for size in (0, 1, 1600):
+            payload=bytes(i&255 for i in range(size))
+            for mode in range(103,115):
+                for tree in (False,True):
+                    with self.subTest(size=size,mode=mode,tree=tree), tempfile.TemporaryDirectory(prefix='sync-source-',dir='/tmp') as t:
+                        s=Path(t)/'S';d=Path(t)/'D';s.mkdir();d.mkdir()
+                        names=('DATA','DATA2') if tree else ('DATA',)
+                        for name in names:
+                            (s/name).write_bytes(payload);(d/name).write_bytes(b'newer destination')
+                        (d/'KEEP').write_bytes(b'untouched')
+                        args=[str(self.exe['sync']),str(s),str(d),str(mode),str(size)]
+                        if tree:args.append('tree')
+                        run=subprocess.run(args,capture_output=True,text=True,check=True)
+                        self.assertEqual(int(run.stdout.splitlines()[0]),0,run.stdout)
+                        state=list(map(int,next(l.split()[1:] for l in run.stderr.splitlines() if l.startswith('STATE '))))
+                        self.assertEqual(state,[0,0,4,4])
+                        expected={name:b'newer destination' for name in names}
+                        expected['KEEP']=b'untouched'
+                        if mode!=114:
+                            expected['A2FC.SYNC']=payload
+                            self.assertIn('SYNC stopped:',run.stdout)
+                        self.assertEqual({p.name:p.read_bytes() for p in d.iterdir()},expected)
+                        self.assertEqual({p.name:p.read_bytes() for p in s.iterdir()},
+                                         {name:payload for name in names})
     def test_sync_write_failure_keeps_original(self):self.assertFalse(self.sync(1))
     def test_sync_install_failure_rolls_back(self):self.assertFalse(self.sync(2))
     def test_sync_cancel_keeps_original(self):self.assertFalse(self.sync(3))
@@ -1200,5 +1265,57 @@ class SixPlugins(unittest.TestCase):
                 if mode==15:self.assertEqual((d/'A2FC.SYNC').read_bytes(),b'')
                 if mode==17:self.assertFalse((d/'A2FC.SYNC').exists())
                 if mode in (4,12,13,18):self.assertEqual((d/'A2FC.BAK').read_bytes(),b'original')
+
+class SyncSourceCc65(unittest.TestCase):
+    def test_native_metadata_recheck_ignores_only_count_and_path(self):
+        from test_wipe import toolchains
+        chains=toolchains()
+        if not chains:self.skipTest('no cc65 toolchain')
+        source=(ROOT/'src/plugins/sync.c').read_text()
+        helper=source[source.index('static unsigned char same_source(void)'):source.index('static unsigned char copy_file(')]
+        harness=r'''
+#include <stdlib.h>
+#include <string.h>
+#define PLUGIN_HOST
+#define UTIL_INFO
+#include "src/plugins/util.h"
+static struct Info meta,reply;
+static char source[]="S/DATA";
+static unsigned char error;
+static unsigned char __fastcall__ mock_info(unsigned char cmd,void* p) {
+    struct Info* ip=p;
+    if(cmd!=0xC4 || ip->n!=10 || ip->path[0]!=6 || strcmp((char*)ip->path+1,source))exit(9);
+    if(error)return error;
+    *ip=reply;ip->n=10;ip->path=pas;
+    return 0;
+}
+''' + helper + r'''
+#define CHANGED(member) reply=meta; ++reply.member; if(same_source())return 2;
+int main(void) {
+    a.strlen=strlen;a.strcpy=strcpy;a.mli=mock_info;
+    meta.n=7;meta.path=(unsigned char*)"unrelated";
+    meta.access=0xE3;meta.type=6;meta.aux=0x2000;meta.storage=2;meta.blocks=5;
+    meta.mdate=0x3421;meta.mtime=0x0C15;meta.cdate=0x3221;meta.ctime=0x0810;
+    reply=meta;memset(&info,0xA5,sizeof info);
+    if(!same_source())return 1;
+    CHANGED(access);CHANGED(type);CHANGED(aux);CHANGED(storage);CHANGED(blocks);
+    CHANGED(mdate);CHANGED(mtime);CHANGED(cdate);CHANGED(ctime);
+    reply=meta;reply.ctime^=0x0100;if(same_source())return 6;
+    reply=meta;info=meta;error=0x27;if(same_source())return 3;
+    error=0x46;if(same_source())return 4;
+    error=0;if(!same_source())return 5;
+    return 0;
+}
+'''
+        with tempfile.TemporaryDirectory(prefix='sync-native-') as tmp:
+            p=Path(tmp);c=p/'h.c';c.write_text(harness)
+            for cpu,cl65,sim65,extra,_ in chains:
+                with self.subTest(cpu=cpu):
+                    env={**os.environ,**extra};exe=p/cpu
+                    subprocess.run([cl65,'-t',cpu,'-O','-Oirs','-Cl','--codesize','100',
+                                    '-I',str(ROOT),'-o',str(exe),str(c)],env=env,
+                                   check=True,capture_output=True)
+                    run=subprocess.run([sim65,str(exe)],env=env,capture_output=True,timeout=30)
+                    self.assertEqual(run.returncode,0,(cpu,run.stdout,run.stderr))
 
 if __name__=='__main__':unittest.main()

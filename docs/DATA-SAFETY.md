@@ -106,8 +106,16 @@ Ce retour complète les tests automatisés. Voir le
 
 - **SYNC** : copie dans `A2FC.SYNC` créé exclusivement, comparaison complète,
   sauvegarde `A2FC.BAK` (refus s’il existe) puis installation ; source
-  conservée. `test_six_plugins.py` (pannes, fermetures, tailles périmées,
-  échecs de renommage et de restauration).
+  conservée. Après fermeture des deux lectures de vérification, relit tous
+  les résultats GET_FILE_INFO de la source et les compare au catalogue qui
+  avait autorisé la copie. Un changement ou une erreur conserve la
+  destination et `A2FC.SYNC`, puis arrête l'arbre. La destination est ensuite
+  relue et doit toujours être remplaçable et plus ancienne. Une annulation
+  avant renommage ne nettoie que le temporaire possédé. Pas de mémoire AUX
+  empruntée ni de reconstruction de `/RAM` ; une destination `/RAM` reste
+  un fichier ProDOS écrit normalement. `test_six_plugins.py` (pannes,
+  fermetures, tailles et métadonnées périmées, annulation tardive, échecs de
+  renommage et de restauration ; comparaison native avec les deux CPU).
 - **Déplacement marqué (MOVE)** : la liste `A2MOVE.LST`, créée exclusivement
   dans la destination, porte un CRC par enregistrement ; un panneau ou une
   source changés arrêtent le lot, sources restantes conservées. `test_batch.py`,

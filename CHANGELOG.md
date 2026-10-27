@@ -5,6 +5,13 @@ downloads and installation.
 
 ## [Unreleased]
 
+- SYNC rechecks all source metadata after its copy/readback closes and
+  before publication. A changed or unreadable source could previously replace
+  a newer destination using the source's stale catalog timestamp or type.
+  Refusal keeps the original destination and the verified `A2FC.SYNC`, and
+  stops the tree before the next file. Late cancellation still discards only
+  the owned temporary and reports a failed cleanup if it cannot do so.
+
 - DIRSORT refuses parent and child directory pointers to boot blocks or
   blocks outside the declared volume. A malformed child header could
   previously authorize raw writes to those blocks while reporting success.
