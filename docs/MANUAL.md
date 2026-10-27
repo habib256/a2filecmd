@@ -948,7 +948,8 @@ list, a volume whose name is on two drives, a directory of more than 4
 blocks (51 entries), a write-protected directory or volume, an order that
 would move a locked subdirectory (its header would be written), and
 inconsistent directory metadata (file count, block links, storage types, a
-subdirectory that does not point back at its entry). Just before writing it
+subdirectory that does not point back at its entry, or a parent/child pointer
+to a boot block or outside the declared volume). Just before writing it
 rereads the directory blocks and checks the child headers and the entry
 that names this directory in its parent, including its identity and write
 permission. Failed reads or failed checks refuse the writes. Each block

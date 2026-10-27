@@ -1,5 +1,40 @@
 # Consolidation : budgets mémoire
 
+## DIRSORT : bornes des blocs (27 octobre 2026)
+
+Le lecteur des en-têtes parent/enfant refuse les blocs 0 et 1 et tout bloc
+supérieur ou égal au total déclaré du volume. Avant la lecture initiale de
+l'en-tête, une borne provisoire de 3 n'autorise que le bloc 2. Les écritures
+restent limitées au répertoire réordonné et aux en-têtes des enfants déplacés ;
+les tampons sont en MAIN, sans emprunter la mémoire AUX du disque `/RAM`.
+
+Les libellés de menu, d'erreur et d'avertissement sont raccourcis pour tenir
+dans la même fenêtre `$1B00-$3FFF`, sans modifier les 51 places utiles ni les
+gardes. Constructions complètes avec les mêmes compilateurs que ci-dessous :
+
+| DIRSORT | 65C02 | 6502 |
+| --- | ---: | ---: |
+| Fin de BSS incluse | `$3F95` | `$3FF4` |
+| Octets libres avant `$4000` | 106 | 11 |
+
+Les 46 tests exécutent le vrai C sur l'hôte et sous sim65 avec les deux
+compilateurs, plus 600 scénarios aléatoires. Les nouvelles images malformées
+ont des faux en-têtes parfaitement lisibles dans les blocs interdits ; les
+tests contrôlent zéro écriture et tous les octets du support, pas seulement
+le message de refus. Une coupure pendant les écritures physiques reste hors
+garantie.
+
+Le banc DIRSORT sous POM2 passe **19/19 contrôles sur chaque CPU**, dont les
+protections du volume, de l'enfant et du parent après confirmation, tous les
+octets des fichiers, AUX hors écran et la garde de pile. Le vrai ProDOS 8
+agrandit ensuite le répertoire déplacé et amorce le `.SYSTEM` annoncé. Le
+banc attend le chemin ouvert plutôt qu'un enfant potentiellement hors écran
+depuis le choix de l'ordre du disque par défaut.
+
+Après reconstruction des quatre images, `tools/check_images.py` et la suite
+complète `make test` passent localement avec cc65 master installé. Le contrôle
+des avertissements annonce zéro avertissement inattendu sur chaque édition.
+
 ## Relevé actuel (26 octobre 2026, marge résident restaurée)
 
 Constructions complètes avec cc65 Homebrew V2.18 pour le 65C02 et cc65

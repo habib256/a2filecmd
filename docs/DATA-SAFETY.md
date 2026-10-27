@@ -156,7 +156,10 @@ Ce retour complète les tests automatisés. Voir le
   parent de chaque sous-répertoire et de la cible elle-même), plus de 4
   blocs, un répertoire ou volume protégé, un sous-répertoire verrouillé qui
   devrait bouger, une image, la liste des volumes et un nom porté par deux
-  lecteurs. Relit tout avant la première écriture, relit chaque bloc écrit,
+  lecteurs. Refuse aussi les pointeurs parent/enfant vers les blocs
+  d'amorçage 0 et 1 ou hors du volume déclaré, même si le périphérique
+  contient à cet endroit un faux en-tête lisible. Relit tout avant la
+  première écriture, relit chaque bloc écrit,
   remet en place ce qui a été écrit (un bloc refusé et intact n'est pas
   réécrit) et nomme le premier bloc qui ne revient pas. L'en-tête d'un
   sous-répertoire déplacé est contrôlé par ses champs et une somme

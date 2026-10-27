@@ -5,6 +5,12 @@ downloads and installation.
 
 ## [Unreleased]
 
+- DIRSORT refuses parent and child directory pointers to boot blocks or
+  blocks outside the declared volume. A malformed child header could
+  previously authorize raw writes to those blocks while reporting success.
+  Host and both native compiler regressions verify zero writes and unchanged
+  disk bytes, even when the underlying device can read the invalid block.
+
 - Fix the fuzz campaign's refused-write expectation: REPAIR can verify that
   the original bytes remain intact even if every write is refused. Require
   zero applied corrections and an unchanged image, with a regression replay

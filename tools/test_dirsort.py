@@ -396,6 +396,36 @@ class DirSort(unittest.TestCase):
         self.assertEqual([n for n, _, _ in listing(after, 55)], ['A', 'B'])
         self.assertEqual(writes, 1)
 
+    def test_child_key_cannot_rewrite_boot_or_off_volume_blocks(self):
+        for child_key in (0, 1, 280, 281):
+            with self.subTest(child_key=child_key):
+                v = Volume()
+                # Even a block that looks exactly like a child header must
+                # not authorize raw writes outside the filesystem bounds.
+                # Extend the mock device beyond the declared volume so an
+                # out-of-range READ_BLOCK succeeds, as on a larger device.
+                if child_key >= v.total:
+                    v.d.extend(bytes((child_key + 1 - v.total) * 512))
+                v.subdir(v.root, 0, b'ZDIR', [child_key])
+                v.entry(v.root, 1, b'ALPHA')
+                writes, note, _, _, after = self.run_sort(v, '/V', 'NW')
+                self.assertEqual(writes, 0, note)
+                self.assertIn('nothing written', note)
+                self.assertEqual(after, v.d)
+
+    def test_parent_pointer_cannot_authorize_writes_from_outside_volume(self):
+        for parent in (0, 1, 280):
+            with self.subTest(parent=parent):
+                v = Volume()
+                d = v.subdir(v.root, 0, b'D', [50])
+                v.entry(d, 0, b'B'); v.entry(d, 1, b'A')
+                if parent >= v.total:
+                    v.d.extend(bytes(512))
+                v.d[parent*512+43:parent*512+82] = v.d[2*512+43:2*512+82]
+                word(v.d, 50*512+0x27, parent)
+                self.assertEqual(self.unchanged(v, '/V/D', 'NW'),
+                                 'Changed/unreadable: nothing written.')
+
     def test_target_proved_from_its_parent_entry(self):
         """The core's reader gives a file type, not a storage type: a plain
         file of type $0F, or a header whose parent entry is not this
@@ -460,7 +490,7 @@ class DirSort(unittest.TestCase):
         o = self.boot_volume()
         o.entry(o.root, 6, b'NEW')
         writes, note, _, _, after = self.run_sort(v, '/V', 'NW', other=o.d)
-        self.assertEqual(note, 'Directory changed or unreadable: nothing written.')
+        self.assertEqual(note, 'Changed/unreadable: nothing written.')
         self.assertEqual(writes, 0)
         self.assertEqual(bytes((self.work/'o.po').read_bytes()), bytes(o.d))
 
@@ -469,7 +499,7 @@ class DirSort(unittest.TestCase):
         o = self.spread_volume()
         word(o.d, 41*512+0x27, 2)          # ADIR's header now names block 2
         writes, note, _, _, _ = self.run_sort(v, '/V', 'NW', other=o.d)
-        self.assertEqual(note, 'Directory changed or unreadable: nothing written.')
+        self.assertEqual(note, 'Changed/unreadable: nothing written.')
         self.assertEqual(writes, 0)
         self.assertEqual(bytes((self.work/'o.po').read_bytes()), bytes(o.d))
 
@@ -489,7 +519,7 @@ class DirSort(unittest.TestCase):
                 elif change=='key':word(other,at+17,56)
                 elif change=='storage':other[at]=0x11
                 else:
-                    opts=['readfail=50'];expected='Directory changed or unreadable: nothing written.'
+                    opts=['readfail=50'];expected='Changed/unreadable: nothing written.'
                 writes,note,_,_,after=self.run_sort(v,'/V/P/D','NW',*opts,other=other)
                 self.assertEqual(writes,0,note)
                 self.assertEqual(note,expected)
@@ -528,7 +558,7 @@ class DirSort(unittest.TestCase):
         v = self.boot_volume(); v.d[2*512+0x22] = 0x01
         cases.append(('volume write-protected', v, 'Write-protected: nothing written.'))
         v = Volume(root_blocks=5); v.entry(v.root, 0, b'A'); v.entry(v.root, 1, b'B')
-        cases.append(('five blocks', v, 'Directory too big: nothing written.'))
+        cases.append(('five blocks', v, 'Too big: nothing written.'))
         for what, v, note in cases:
             with self.subTest(what):
                 self.assertEqual(self.unchanged(v, '/V', 'NW'), note)
@@ -554,7 +584,7 @@ class DirSort(unittest.TestCase):
         other[2*512+0x22] &= ~2
         writes, note, _, _, _ = self.run_sort(v, '/V/D', 'NW', other=other)
         self.assertEqual(writes, 0)
-        self.assertEqual(note, 'Directory changed or unreadable: nothing written.')
+        self.assertEqual(note, 'Changed/unreadable: nothing written.')
         self.assertEqual((self.work/'o.po').read_bytes(), other)
 
     def test_parent_directory_close_error_refuses_writes(self):
@@ -562,7 +592,7 @@ class DirSort(unittest.TestCase):
         d = v.subdir(v.root, 0, b'D', [50])
         v.entry(d, 0, b'B'); v.entry(d, 1, b'A')
         self.assertEqual(self.unchanged(v, '/V/D', 'NW', 'closeerr=1'),
-                         'Directory changed or unreadable: nothing written.')
+                         'Changed/unreadable: nothing written.')
 
     def test_locked_child_header_does_not_move(self):
         v = Volume()
@@ -677,7 +707,7 @@ class DirSort(unittest.TestCase):
     def test_read_errors_before_anything_is_shown(self):
         """A block of the chain, a child header, the parent entry's block:
         none can be read, nothing is shown and nothing written."""
-        changed = 'Directory changed or unreadable: nothing written.'
+        changed = 'Changed/unreadable: nothing written.'
         for block, note in ((3, changed), (40, changed), (41, changed)):
             with self.subTest(block=block):
                 self.assertEqual(self.unchanged(self.spread_volume(), '/V', 'NW', 'readpre=%d' % block), note)
@@ -714,7 +744,7 @@ class DirSort(unittest.TestCase):
     def test_read_error_after_the_confirmation(self):
         v = self.boot_volume()
         writes, note, _, _, after = self.run_sort(v, '/V', 'NW', 'readfail=2')
-        self.assertEqual(note, 'Directory changed or unreadable: nothing written.')
+        self.assertEqual(note, 'Changed/unreadable: nothing written.')
         self.assertEqual(writes, 0)
         self.assertEqual(after, v.d)
 
@@ -843,7 +873,7 @@ class DirSortFuzz(unittest.TestCase):
             else:
                 self.assertIn(note, ('Nothing written.', 'Order unchanged: nothing written.',
                                      'Write failed: put back as it was.',
-                                     'Directory too big: nothing written.',
+                                     'Too big: nothing written.',
                                      'Locked subdirectory: nothing written.'), what)
                 self.assertEqual(after, d, what)
         # The fuzz reached what it is for.
@@ -1081,6 +1111,32 @@ class DirSortCc65(unittest.TestCase):
         self.assertEqual(parent_of(disk, 10), where['ZDIR'])
         self.assertEqual(parent_of(disk, 11), where['ADIR'])
 
+    def test_child_key_bounds_preserve_every_byte(self):
+        for child_key in (0, 1, self.BLOCKS - 1):
+            with self.subTest(child_key=child_key):
+                v = self.volume()
+                # The device has 24 blocks; its volume declares only 23.
+                word(v.d, 2*512+0x29, self.BLOCKS - 1)
+                v.subdir(v.root, 15, b'ZZDIR', [child_key])
+                disk, writes, note, _ = self.run_sim(v, '/V', 'NW')
+                self.assertEqual(writes, 0, note)
+                self.assertIn('nothing written', note)
+                self.assertEqual(disk, v.d)
+
+    def test_parent_pointer_bounds_preserve_every_byte(self):
+        for parent in (0, 1, self.BLOCKS - 1):
+            with self.subTest(parent=parent):
+                v = Volume(total=self.BLOCKS, root_blocks=2)
+                d = v.subdir(v.root, 0, b'D', [10])
+                v.entry(d, 0, b'B'); v.entry(d, 1, b'A')
+                word(v.d, 2*512+0x29, self.BLOCKS - 1)
+                v.d[parent*512+43:parent*512+82] = v.d[2*512+43:2*512+82]
+                word(v.d, 10*512+0x27, parent)
+                disk, writes, note, _ = self.run_sim(v, '/V/D', 'NW')
+                self.assertEqual(writes, 0, note)
+                self.assertEqual(note, 'Changed/unreadable: nothing written.')
+                self.assertEqual(disk, v.d)
+
     def test_screen_services_through_the_stubs(self):
         """Each stub hands its service the arguments it was given: the
         rows of the list, the reverse line, the key bar at column 0."""
@@ -1100,7 +1156,7 @@ class DirSortCc65(unittest.TestCase):
         disk, writes, note, screen = self.run_sim(v, '/V', 'NW', flags='n')
         self.assertEqual((writes, note), (0, 'Nothing written.'))
         self.assertEqual(disk, v.d[:self.BLOCKS * 512])
-        self.assertIn('@0,21 A power cut while writing can damage this directory.[ASK]Write this order to /V?', screen)
+        self.assertIn('@0,21 A power cut can damage this directory.[ASK]Write this order to /V?', screen)
 
     def test_failures_put_back_or_say_so(self):
         v = self.volume()
@@ -1140,7 +1196,7 @@ class DirSortCc65(unittest.TestCase):
                 if reason==3:v.d[at+17]=13
                 if reason==4:v.d[at]=0x11
                 expected=('Write-protected: nothing written.' if reason==1 else
-                          'Directory changed or unreadable: nothing written.' if reason==5 else
+                          'Changed/unreadable: nothing written.' if reason==5 else
                           'Directory inconsistent (see FIXIT): nothing written.')
                 self.assertEqual((writes,note),(0,expected))
                 self.assertEqual(after,v.d)
@@ -1173,7 +1229,7 @@ class DirSortCc65(unittest.TestCase):
                     expected = 'Locked subdirectory: nothing written.'
                 else:
                     flags = 'c' if reason == 'close' else 'v'
-                    expected = 'Directory changed or unreadable: nothing written.'
+                    expected = 'Changed/unreadable: nothing written.'
                 after, writes, note, _ = self.run_sim(v, path, 'NW', flags=flags)
                 if reason == 'answer':
                     v.d[2*512+0x22] &= ~2  # only the injected protection change
