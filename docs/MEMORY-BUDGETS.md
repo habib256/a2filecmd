@@ -1,5 +1,49 @@
 # Consolidation : budgets mémoire
 
+## Binary II : erreurs de flux et bilan borné (27 octobre 2026)
+
+L'extracteur vérifie désormais les erreurs du flux de sortie après chaque
+écriture, chaque lecture de comparaison et la sonde EOF. Un retour nul en
+erreur pouvait masquer un suffixe non vérifié et laisser annoncer une
+extraction réussie. La suppression reste limitée au fichier créé pour cet
+enregistrement ; une suppression refusée nomme le fichier conservé. Aucun
+espace de travail AUX ni reconstruction de `/RAM` n'est ajouté.
+
+Le bilan pouvait atteindre 65 caractères, plus le zéro final, avec deux
+compteurs de cinq chiffres : `question` ne contient que 64 octets. Le mot
+`folder` devient `dir` dans ce bilan, qui mesure maintenant au plus 62
+caractères plus le zéro, même si les compteurs des en-têtes sont malformés.
+
+Les constructions complètes et leurs gardes passent, sans changement de
+fenêtre ni de BSS :
+
+| Réserve (octets) | 65C02 | 6502 |
+| --- | ---: | ---: |
+| BINARY2, sous `$2800` | 911 | 929 |
+| MAIN | 322 | 676 |
+| Carte langage | 40 | 40 |
+| LOWRAM | 85 | 110 |
+| Écart sous la pile C réservée | 339 | 882 |
+
+Les 16 tests exécutent l'extracteur réel, avec 44 injections sur fichiers
+jetables et 24 cas natifs sous sim65, dont la conversion normale, les erreurs
+au dernier transfert et une sonde EOF en erreur qui cache `EXTRA`. Les
+compilateurs exécutent le même code C contre des flux mémoire bornés, en
+convention native et avec les locales sur pile comme dans BINARY2. Les
+gardes entourent le vrai tampon de 64 octets. Les octets de l'archive, du
+premier fichier déjà terminé, des fichiers préexistants et du fichier
+éventuellement conservé sont contrôlés. Une coupure physique peut toujours
+laisser une extraction partielle ; l'extraction ProDOS n'est pas atomique.
+
+Le banc Binary II sous ProDOS/POM2 passe **5/5 contrôles sur chaque CPU**,
+dont les types TXT/BIN, l'auxtype `$1234`, les tailles et le texte relu. Les
+quatre images sont reconstruites et relues. L'oracle de fuzzing reprend le
+libellé borné `dir/phantom/squeezed`, sans changer les invariants d'octets :
+300 cas passent, avec 619 sorties comparées aux références et les 15 tests
+de la campagne, dont les corruptions volontairement plantées.
+La suite complète `make test` passe après cet ajustement de libellé, avec
+zéro avertissement natif inattendu sur les deux architectures.
+
 ## SYNC : métadonnées source fraîches (27 octobre 2026)
 
 Après les fermetures de copie et de vérification, SYNC relit GET_FILE_INFO

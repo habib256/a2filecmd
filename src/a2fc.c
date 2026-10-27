@@ -1920,9 +1920,9 @@ static const char b2_pick[]  = "Select a Binary II archive.";
 static const char b2_notdir[] = "Other panel must be a ProDOS folder.";
 static const char b2_bad[]   = "Not a Binary II archive.";
 static const char b2_path[]  = "%s/%s";
-/* 62 characters at most with three-digit counts (a record counts the files
- * to follow in a byte): `question` holds 63. */
-static const char b2_done[]  = "%u file(s) extracted, %u skipped (folder/phantom/squeezed).";
+/* Even if header counts lie, both counters are 16 bits: at most 62
+ * characters with five-digit counts, plus the terminator in question[64]. */
+static const char b2_done[]  = "%u file(s) extracted, %u skipped (dir/phantom/squeezed).";
 
 /* A ProDOS name out of the one in the archive: letters, digits and
  * periods, a letter first, 15 at most. */
@@ -2014,7 +2014,7 @@ void __fastcall__ binary2_entry(const struct A2fcApi* a)
             progress_bar(name, size - eof, size * 2);
             n = eof > 512 ? 512 : (unsigned int)eof;
             if (fread(copy_buf, 1, n, in) != n || ferror(in) ||
-                fwrite(copy_buf, 1, n, out) != n) goto failed;
+                fwrite(copy_buf, 1, n, out) != n || ferror(out)) goto failed;
             eof -= n;
         }
         n = fclose(out); out = NULL;
@@ -2026,11 +2026,12 @@ void __fastcall__ binary2_entry(const struct A2fcApi* a)
             progress_bar(name, size + size - eof, size * 2);
             n = eof > 256 ? 256 : (unsigned int)eof;
             if (fread(copy_buf, 1, n, in) != n || ferror(in) ||
-                fread(copy_buf + 256, 1, n, out) != n || memcmp(copy_buf, copy_buf + 256, n)) {
+                fread(copy_buf + 256, 1, n, out) != n || ferror(out) || memcmp(copy_buf, copy_buf + 256, n)) {
                 error = b2_verify; goto failed;
             }
         }
-        if (fread(copy_buf, 1, 1, out)) { error = b2_verify; goto failed; }
+        /* A zero-byte probe with an I/O error cannot prove exact EOF. */
+        if (fread(copy_buf, 1, 1, out) || ferror(out)) { error = b2_verify; goto failed; }
         n = fclose(out); out = NULL;
         if (n) goto failed;
         /* Seeking beyond EOF can succeed: read the padding to detect truncation. */

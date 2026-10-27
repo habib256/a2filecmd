@@ -5,6 +5,13 @@ downloads and installation.
 
 ## [Unreleased]
 
+- Binary II extraction checks output stream errors after full-count writes,
+  verification reads and the EOF probe. An errored zero-byte probe could
+  previously hide an unverified output tail and report success. Only the
+  owned failed record is cleaned; prior records, the archive and unrelated
+  files remain intact. The summary now fits its 64-byte buffer even with
+  five-digit counters from a malformed archive.
+
 - SYNC rechecks all source metadata after its copy/readback closes and
   before publication. A changed or unreadable source could previously replace
   a newer destination using the source's stale catalog timestamp or type.

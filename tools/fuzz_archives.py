@@ -409,7 +409,7 @@ def b2_reference(data, existing):
 def b2_verdict(note, expect):
     """The message BINARY2 must print for this input."""
     if expect.whole:
-        return '%u file(s) extracted, %u skipped (folder/phantom/squeezed).' % (len(expect.files),
+        return '%u file(s) extracted, %u skipped (dir/phantom/squeezed).' % (len(expect.files),
                                                                                 expect.extra)
     return None                   # any of the failure messages; never a success
 
@@ -1670,7 +1670,7 @@ def core_run(exe, work, fmt, stream, size, timeout):
 # the campaign
 # ===========================================================================
 SUCCESS = {
-    'binary2': r'^\d+ file\(s\) extracted, \d+ skipped \(folder/phantom/squeezed\)\.$',
+    'binary2': r'^\d+ file\(s\) extracted, \d+ skipped \(dir/phantom/squeezed\)\.$',
     'unshrink': r'^\d+ file\(s\) extracted(\.|, \d+ part\(s\) skipped\.)$',
     'imgfs': r'^\d+ files? extracted(\.|, \d+ not supported \(tree/fork\)\.)$',
     'dos33': r'^\d+ files? extracted\.$',
