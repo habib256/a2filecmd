@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,6 +48,45 @@ def summary(text):
 
 
 class Campaign(unittest.TestCase):
+    def test_refused_write_invariant_rejects_changed_bytes_or_false_success(self):
+        class FailAll:
+            def choice(self, choices):
+                return 'failall'
+
+            def randrange(self, start, end):
+                return start
+
+        before = bytes(512)
+        for changed, note, expected in (
+            (False, 'Applied 0 of 1 blocks; rescan still reports 4 findings.', False),
+            (True, 'Applied 0 of 1 blocks; rescan still reports 4 findings.', True),
+            (False, 'Applied 1 of 1 blocks; rescan clean: repaired.', True),
+            (False, 'Block 2 not restored: recover this volume before using it.', True),
+        ):
+            with self.subTest(changed=changed, note=note), tempfile.TemporaryDirectory() as tmp:
+                case = fuzz_prodos.Case(0, 'test', 'none', before)
+
+                def repair(exe, path, timeout, **kwargs):
+                    self.assertEqual(kwargs['failall'], 1)
+                    if changed:
+                        path.write_bytes(b'X' + before[1:])
+                    return {'note': note}
+
+                with patch.object(fuzz_prodos, 'run_repair', side_effect=repair):
+                    fuzz_prodos.injection(case, None, Path(tmp), before, before,
+                                          set(), 5, FailAll(), 1)
+                self.assertEqual(bool(case.failures), expected, case.failures)
+
+    def test_ci_slice_accepts_verified_originals_after_refused_writes(self):
+        """Cases 59159155060 and 59159155099 used to falsely require a
+        failed-restore note although the real C proved every byte intact.
+        Replay the CI slice, including its byte-preservation invariant.
+        """
+        code, out, err, kept = run('--count', '150', '--seed', '1')
+        self.assertEqual(code, 0, out + err)
+        self.assertEqual(summary(out)['failing cases'], '0')
+        self.assertEqual(kept, [])
+
     def test_a_short_campaign_runs_and_reports(self):
         code, out, err, kept = run('--count', '20', '--seed', '1')
         self.assertEqual(code, 0, out + err)

@@ -5,6 +5,11 @@ downloads and installation.
 
 ## [Unreleased]
 
+- Fix the fuzz campaign's refused-write expectation: REPAIR can verify that
+  the original bytes remain intact even if every write is refused. Require
+  zero applied corrections and an unchanged image, with a regression replay
+  of the 150-case CI campaign.
+
 - Recover resident MAIN space without raising memory limits: 322 bytes free
   on 65C02 and 676 on 6502. VDrive's install-only code and page-3 relay
   source move to BATCH; collective tagging and the T/H selection helper move
