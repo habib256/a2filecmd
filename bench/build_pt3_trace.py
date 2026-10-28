@@ -5,11 +5,12 @@ Does not edit POM2. Builds an isolated core library in /tmp and uses the usual h
 bench driver, adding a periodic dump of both AY chips and VIA IER and flushing the
 disposable hard disk on orderly shutdown for byte-exact persistence checks.
 """
+import os
+import hashlib
 import subprocess
 import tempfile
 from pathlib import Path
-root=Path.home()/'src'
-pom=root/'pom2'
+pom=Path(os.environ.get('POM2_ROOT', Path.home()/'src/pom2'))
 source=Path(__file__).resolve().parent/'pom2_playtest/pom2_playtest.cpp'
 needle='while (!stopped) std::this_thread::sleep_for(std::chrono::milliseconds(100));'
 s=source.read_text()
@@ -39,7 +40,7 @@ s='#include <cstdio>\n'+s.replace(needle,'''while (!stopped) {
                 std::fflush(stdout);
             }
         }''')
-core=Path('/tmp/a2fc-pom2-native')
+core=Path('/tmp/a2fc-pom2-native-' + hashlib.sha256(str(pom.resolve()).encode()).hexdigest()[:12])
 subprocess.run(['cmake','-S',str(pom),'-B',str(core),'-DCMAKE_BUILD_TYPE=Release','-DPOM2_ENABLE_TESTS=OFF','-DPOM2_ENABLE_SLIRP=OFF'],check=True)
 subprocess.run(['cmake','--build',str(core),'--target','pom2_core','-j','6'],check=True)
 with tempfile.TemporaryDirectory(prefix='a2fc-pt3-host-') as tmp:
@@ -47,6 +48,6 @@ with tempfile.TemporaryDirectory(prefix='a2fc-pt3-host-') as tmp:
     cmd=['c++','-std=c++17','-O2','-DNDEBUG']
     for sub in ('src','include','imgui'):cmd+=['-I'+str(pom/sub)]
     cmd+=['-I'+str(core/'generated')]
-    cmd+=['-DPOM2_ROOT="'+str(pom)+'"',str(src),str(core/'libpom2_core.a'),'-framework','CoreAudio','-framework','AudioToolbox','-framework','AudioUnit','-o','/tmp/a2fc-pt3-trace']
+    cmd+=['-DPOM2_ROOT="'+str(pom)+'"',str(src),str(core/'libpom2_core.a'),'-framework','CoreAudio','-framework','AudioToolbox','-framework','AudioUnit','-framework','CoreFoundation','-o','/tmp/a2fc-pt3-trace']
     subprocess.run(cmd,check=True)
 print('/tmp/a2fc-pt3-trace')

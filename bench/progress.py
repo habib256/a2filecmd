@@ -44,9 +44,9 @@ def sample(p, s, done, seconds=240):
     resident's loader ticks the same cell while the tool loads -- a few
     blocks -- so only dozens of changes are the tool's own."""
     turns, last = 0, None
-    deadline = time.time() + seconds
+    deadline = time.monotonic() + seconds
     while not done():
-        if time.time() > deadline:
+        if time.monotonic() > deadline:
             print('\n'.join(s.rows()), flush=True)
             raise AssertionError('timed out')
         c = p.peek(0x6F7, 1)[0]

@@ -70,10 +70,34 @@ func newPage() {
 }
 func ensure(_ needed: CGFloat) { if y + needed > H-55 { newPage() } }
 func paragraph(_ s: String, size: CGFloat = 10.3, font: String = "ArialMT", indent: CGFloat = 0, gap: CGFloat = 6) {
-    let text = attributed(s, size, font)
-    let h = height(text, width-indent)
-    ensure(h+gap)
-    draw(text, margin+indent, y, width-indent, h); y += h+gap
+    var text = attributed(s, size, font)
+    let w = width-indent
+    while text.length > 0 {
+        let h = height(text, w)
+        let available = H-55-y
+        if h <= available {
+            draw(text, margin+indent, y, w, h); y += h+gap
+            return
+        }
+        // Fill the current page with complete lines. Keep at least two lines
+        // on either side of a split, without shrinking the type.
+        if available < size*3+3 { newPage(); continue }
+        let frame = CTFramesetterCreateFrame(CTFramesetterCreateWithAttributedString(text),
+            CFRange(location: 0, length: 0),
+            CGPath(rect: CGRect(x: 0, y: 0, width: w, height: available-3), transform: nil), nil)
+        let lines = CTFrameGetLines(frame) as! [CTLine]
+        var count = CTFrameGetVisibleStringRange(frame).length
+        if lines.count < 2 || count == 0 { newPage(); continue }
+        if count < text.length && height(text.attributedSubstring(from: NSRange(location: count, length: text.length-count)), w) < size*2+3 {
+            if lines.count < 3 { newPage(); continue }
+            count = CTLineGetStringRange(lines.last!).location
+        }
+        if count == 0 { newPage(); continue }
+        let part = text.attributedSubstring(from: NSRange(location: 0, length: count))
+        draw(part, margin+indent, y, w, available)
+        text = text.attributedSubstring(from: NSRange(location: count, length: text.length-count))
+        newPage()
+    }
 }
 newPage()
 y = 84
@@ -106,6 +130,26 @@ draw(attributed(sourceText.substring(with:imageMatch.range(at:1)),8),margin,430,
 let contentsIndex = page-1
 newPage()
 let lines = source.components(separatedBy: .newlines)
+// Keep consecutive chapter/subsection headings together with opening text.
+func openingHeight(at start: Int) -> CGFloat {
+    var next = start
+    while next < lines.count && lines[next].isEmpty { next += 1 }
+    if next >= lines.count { return 0 }
+    let line = lines[next]
+    if line.hasPrefix("#") {
+        let level = line.prefix(while: {$0 == "#"}).count
+        let title = String(line.dropFirst(level)).trimmingCharacters(in: .whitespaces)
+        return height(attributed(title, level <= 2 ? 18 : 13, "Arial-BoldMT"), width)
+            + 22 + openingHeight(at: next+1)
+    }
+    if line.hasPrefix("|") || line.hasPrefix("```") { return 65 }
+    var text = line
+    next += 1
+    while next < lines.count && !lines[next].isEmpty && !lines[next].hasPrefix("#") && !lines[next].hasPrefix("|") && !lines[next].hasPrefix("```") {
+        text += " " + lines[next]; next += 1
+    }
+    return min(42, height(attributed(text), width-10)+6)
+}
 var i = 0
 while i < lines.count {
     let line = lines[i]
@@ -125,18 +169,10 @@ while i < lines.count {
         let level = line.prefix(while: {$0 == "#"}).count
         let title = String(line.dropFirst(level)).trimmingCharacters(in: .whitespaces)
         if level == 1 { i += 1; continue }
-        // Paragraphs are kept whole: reserve the first one with its heading,
-        // otherwise a title can be stranded at the foot of the previous page.
-        var next = i + 1
-        while next < lines.count && lines[next].isEmpty { next += 1 }
-        var firstText = ""
-        while next < lines.count && !lines[next].isEmpty && !lines[next].hasPrefix("#") && !lines[next].hasPrefix("|") && !lines[next].hasPrefix("```") {
-            if !firstText.isEmpty && (lines[next].hasPrefix("- ") || lines[next].range(of: #"^\d+\. "#, options: .regularExpression) != nil) { break }
-            firstText += " " + lines[next]; next += 1
-        }
-        let firstHeight = firstText.isEmpty ? 65 : height(attributed(firstText), width-10)+6
+        // Reserve the opening lines with the heading; long paragraphs can
+        // continue on the next page without leaving a large empty area.
         let titleHeight = height(attributed(title, level <= 2 ? 18 : 13, "Arial-BoldMT"), width)
-        ensure(titleHeight + 22 + firstHeight)
+        ensure(titleHeight + 22 + openingHeight(at: i+1))
         y += level <= 2 ? 10 : 5
         if level <= 2 { headings.append((plain(title),page-1,y)) }
         paragraph(title, size: level <= 2 ? 18 : 13, font: "Arial-BoldMT", gap: 12)
@@ -164,9 +200,14 @@ while i < lines.count {
         let recoveryCatalog = rows[0] == ["Operation", "New candidate", "Previous version"]
         let ratios: [CGFloat] = imageCatalog ? [0.55,0.45] : recoveryCatalog ? [0.34,0.33,0.33] : companionCatalog ? [0.18,0.55,0.27] :
             (count == 2 ? [0.25,0.75] : (count == 3 ? [0.22,0.16,0.62] : Array(repeating: 1/CGFloat(count), count: count)))
+        func rowHeight(_ cells: [String], header: Bool) -> CGFloat {
+            return max(21, cells.enumerated().map {
+                height(attributed($0.element, header ? 9 : 9.2, header ? "Arial-BoldMT" : "ArialMT"), width*ratios[$0.offset]-14)+8
+            }.max() ?? 24)
+        }
         func tableRow(_ cells: [String], header: Bool) {
             let texts = cells.enumerated().map { (j,s) in attributed(s, header ? 9 : 9.2, header ? "Arial-BoldMT" : "ArialMT") }
-            let h = max(21, texts.enumerated().map { height($0.element, width*ratios[$0.offset]-14)+8 }.max() ?? 24)
+            let h = rowHeight(cells, header: header)
             ensure(h)
             if header { ctx.setFillColor(CGColor(red:0.90,green:0.94,blue:0.96,alpha:1));ctx.fill(CGRect(x:margin,y:H-y-h,width:width,height:h)) }
             var x = margin
@@ -178,9 +219,11 @@ while i < lines.count {
             ctx.move(to:CGPoint(x:margin,y:H-y-h));ctx.addLine(to:CGPoint(x:W-margin,y:H-y-h));ctx.strokePath()
             y += h
         }
+        // Never leave a table header alone at the foot of a page.
+        ensure(rowHeight(rows[0], header:true) + (rows.count > 1 ? rowHeight(rows[1], header:false) : 0))
         tableRow(rows[0], header:true)
         for row in rows.dropFirst() {
-            let h = row.enumerated().map { height(attributed($0.element,9.2),width*ratios[$0.offset]-14)+8 }.max() ?? 24
+            let h = rowHeight(row, header:false)
             if y+h > H-55 { newPage(); tableRow(rows[0],header:true) }
             tableRow(row,header:false)
         }

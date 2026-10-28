@@ -58,8 +58,8 @@ def main():
             # 1. la barre, lue pendant la copie, puis ESC
             s.select('BIG', 0); p.stable()
             s.key(b'C')
-            seen, t0 = None, time.time()
-            while time.time() - t0 < 30:
+            seen, t0 = None, time.monotonic()
+            while time.monotonic() - t0 < 30:
                 row = s.rows()[22].rstrip()
                 if BAR.match(row) and '#' in row:
                     seen = row; break
@@ -75,8 +75,8 @@ def main():
             p.stable()
             s.key(b'C')
             phases = set()
-            deadline = time.time() + 60
-            while time.time() < deadline:
+            deadline = time.monotonic() + 60
+            while time.monotonic() < deadline:
                 rows = s.rows()
                 for phase in ('Copying...', 'Verifying...'):
                     if phase in rows[21]: phases.add(phase)

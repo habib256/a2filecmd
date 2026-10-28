@@ -114,8 +114,8 @@ def main():
             open_panel(40)                           # droite : /SCRATCH (BIG)
             s.select('BIG', 40); p.stable()
             s.key(b'C')
-            seen, t0 = None, time.time()
-            while time.time() - t0 < 30:
+            seen, t0 = None, time.monotonic()
+            while time.monotonic() - t0 < 30:
                 row = s.rows()[22].rstrip()
                 if BAR.match(row) and '#' in row:
                     seen = row; break

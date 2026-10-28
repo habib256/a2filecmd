@@ -97,7 +97,8 @@ def main():
             s.key(b'Q');s.wait(lambda:s.has('Quit to ProDOS?'),'quit question');s.key(b'Y');s.wait(lambda:not s.has('/WORKHD/S9'), 'return to ProDOS', 120);p.stable()
             s.ok('preferences save without a warning',not s.has('Configuration warning'))
         image=Image((tmp/'WORKHD.hdv').read_bytes());dest=Image(disk.read_bytes())
-        s.ok('saved configuration exact',data(image,'A2FILE/A2FILE.CFG')==b'/WORKHD/S9\r/TARGET/DST9\rS0A0\r')
+        saved=data(image,'A2FILE/A2FILE.CFG')
+        s.ok('saved configuration exact (S3: default disk order)',saved==b'/WORKHD/S9\r/TARGET/DST9\rS3A0\r',repr(saved))
         for name in ('A','C'):
             s.ok('same-volume bytes '+name,data(image,'D1/'+name)==files['S1/'+name+('#041234' if name=='A' else '#040000')])
             s.ok('right-panel moved bytes '+name,data(image,'D6/'+name)==files['S6/'+name+('#041234' if name=='A' else '#040000')])
@@ -115,5 +116,6 @@ def main():
         with Pom2(tmp/'WORKHD.hdv',floppy2=disk,port=6893+int(os.environ.get('A2FC_PORT_OFFSET','0'))) as p:
             s2=Session(p);s2.boot();p.stable()
             s.ok('verified configuration loads on restart',s2.rows()[0].startswith('/WORKHD/S9') and s2.rows()[0][40:].startswith('/TARGET/DST9'))
+            s.ok('disk order restored without a sort-column star',not any(label in s2.rows()[1] for label in ('Name*','Size*','Type*')))
         return ok_all(s,'configuration and batch MOVE')
 if __name__=='__main__':raise SystemExit(main())

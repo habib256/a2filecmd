@@ -271,6 +271,13 @@ restaurer ensuite `p.speed` avec `cycles_per_frame`, plutôt que le préréglage
 faire durer une navigation plusieurs minutes. Les assertions restent les
 mêmes ; le scénario reprend son budget initial.
 
+Pour les temporisations Movie Maker, naviguer dans les panneaux à `p.speed`,
+attendre leur stabilisation, puis passer en `1x` avant d'ouvrir le film.
+À 1 MHz, le redessin peut dépasser l'intervalle entre les touches du pilote :
+des touches encore en file déplacent alors le curseur après sa sélection.
+Les délais du pilote utilisent `time.monotonic()` pour exclure les sauts de
+l'heure civile ; sur macOS, cette horloge exclut aussi la veille de l'hôte.
+
 VOLINFO utilise une disquette de banc autonome jetable sur chaque CPU,
 avec VOLINFO à la place de FORMAT et DISKIMG. La disquette essentielle
 publiée ne propose plus les anciennes catégories BOOT/DISKTOOLS.
@@ -327,9 +334,17 @@ quand l'outil abandonne sans rien dire.
 ```sh
 make disk benchboot ARCH=6502
 make xplugins ARCH=6502
-A2FC_PRESET=iie_unenh python3 bench/plugins.py --jobs 3 --out /tmp/plugins-6502
-A2FC_BUILD=build python3 bench/plugins.py --jobs 3 --out /tmp/plugins-enh
+A2FC_PRESET=iie_unenh python3 bench/plugins.py --out /tmp/plugins-6502
+A2FC_BUILD=build python3 bench/plugins.py --out /tmp/plugins-enh
 ```
+
+La qualification se fait en série, avec le défaut `--jobs 1`. Le lanceur
+global conserve aussi ce défaut à l’intérieur du composite et lui accorde
+six fois le délai d’une étape simple pour exécuter les 39 bancs (trois
+heures par défaut ; les premiers passages mesurés prennent 95 à 115 minutes,
+veille de l'hôte comprise).
+`--jobs 3` reste disponible pour les itérations locales ; les délais des
+scénarios interactifs peuvent alors dépendre de la charge de la machine.
 
 Les noms de bancs peuvent suivre les options pour une reprise ciblée
 (`date fixtypes`, par exemple). Deux suites simultanées doivent utiliser

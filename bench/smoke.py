@@ -71,7 +71,14 @@ def main():
             s.key(b'\x1b'); p.stable()
             s.key(b"'"); s.wait(lambda: s.has('Jump to name'), 'saut apres aide', 30)
             s.key(b'A'); p.stable()
-            s.ok('le saut recharge TEXT apres HELP', s.line().startswith('A2FILE/'))
+            # Disk order puts A2FILE.SYSTEM before A2FILE/. From PRODOS,
+            # the next A is the launcher; a second jump reaches the folder.
+            s.ok('le saut recharge TEXT apres HELP',
+                 s.line().startswith('A2FILE.SYSTEM'), s.line())
+            s.key(b"'"); s.wait(lambda: s.has('Jump to name'), 'second saut', 30)
+            s.key(b'A'); p.stable()
+            s.ok('le saut suivant trouve le dossier en ordre disque',
+                 s.line().startswith('A2FILE/'), s.line())
 
     return 0
 

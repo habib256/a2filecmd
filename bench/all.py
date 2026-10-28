@@ -79,7 +79,7 @@ FIXTURES = {
     'scasm': Fixture([Path.home()/'.cache/a2fc/asimov_corpus/raw/images/programming/assembler/s-c/S-C Macro Assembler IIe (v1.1).dsk'], None),
     'wordpro': Fixture([Path(os.environ.get('A2FC_WORDPRO_CORPUS','/tmp/a2fc-wordpro-corpus'))/'extracted/Multiscribe disk 2__PHOENIX', Path(os.environ.get('A2FC_WORDPRO_CORPUS','/tmp/a2fc-wordpro-corpus'))/'extracted/MultiScribe Data Disk__FONT.SAMPLES', Path(os.environ.get('A2FC_WORDPRO_CORPUS','/tmp/a2fc-wordpro-corpus'))/'extracted/APPLE_WRITER_DOS33__ENCOMIUM1'], None),
     'dazzle': Fixture([Path.home() / '.cache/a2fc/dazzle/132_DAZZLE_DRAW_SLIDE_SHOW.dsk'], None),
-    'v1viewers': Fixture([Path(os.environ.get('A2FC_V1_CORPUS','/tmp/a2fc-v1-corpus'))/'extracted/MP_GRID.bin', Path(os.environ.get('A2FC_V1_CORPUS','/tmp/a2fc-v1-corpus'))/'pal-original.raw'], None),
+    'v1viewers': Fixture([ROOT/'tools/fixtures/multiplan/MP_GRID.bin', Path(os.environ.get('A2FC_V1_CORPUS','/tmp/a2fc-v1-corpus'))/'pal-original.raw'], None),
     'sample': Fixture([SAMPLE_DISK], None),              # the media corpus, not in the repository
     'mini': Fixture([ROOT / ('dist/A2FILECMD-DOS3.3-%s.dsk' % VERSION)], ['make', 'mini-disk']),   # the .dsk name carries MINI_VERSION
     'pom2-src': Fixture([POM2_ROOT / 'build/libpom2_core.a'], None),
@@ -138,7 +138,8 @@ step('dosimage', 'enh', 'dos', FULL, needs=('host', 'boot', 'full-enh'))
 step('physical', 'd2', 'dos', {})
 step('nibcopy', 'transport', 'dos', {}, args=('--pom2-root', str(POM2_ROOT)), needs=('host', 'boot', 'pom2-src'))
 step('nibcopy_ui', '6502', 'dos', UNENH, needs=('host', 'boot', 'categories'))
-step('purple', 'grload', 'dos', {})
+step('purple', 'grload', 'dos', UNENH)
+step('purple', 'enh', 'dos', FULL, needs=('host', 'boot', 'full-enh'))
 
 # -- What must never lose a byte ---------------------------------------------
 step('data_safety', '6502', 'safety', {**UNENH, 'A2FC_IMG': 'BOOT'})
@@ -185,8 +186,10 @@ step('run', 'xl-65c02', 'xl', {}, args=('--xl', '65C02'), needs=('host', 'boot',
 step('iic', 'smartport', 'xl', {}, needs=('host', 'boot', 'xl'))
 
 # -- The service-table overlays (bench/plugins.py owns their list) ------------
-step('plugins', '6502', 'plugins', UNENH, args=('--jobs', '3'), needs=('host', 'boot', 'plg-6502'))
-step('plugins', 'enh', 'plugins', {'A2FC_BUILD': 'build'}, args=('--jobs', '3'),
+# Keep the composite's default of one emulator, too: outer --jobs 1 must
+# not silently run three inner emulators and disturb timed safety checks.
+step('plugins', '6502', 'plugins', UNENH, needs=('host', 'boot', 'plg-6502'))
+step('plugins', 'enh', 'plugins', {'A2FC_BUILD': 'build'},
      needs=('host', 'boot', 'plg-enh'))
 
 # -- Readers, editors and the rest of the panels -----------------------------
@@ -378,7 +381,7 @@ def run_step(step_, out, timeout):
     elif step_.bench == 'run':
         argv += ['--out', str(out / step_.name.replace(':', '-'))]
     log = out / (step_.name.replace(':', '-') + '.log')
-    start = time.time()
+    start = time.monotonic()
     with log.open('w') as handle:
         handle.write('$ %s %s\n\n' % (' '.join('%s=%s' % kv for kv in sorted(step_.env.items())),
                                       ' '.join(argv)))
@@ -386,7 +389,9 @@ def run_step(step_, out, timeout):
         process = subprocess.Popen(argv, cwd=ROOT, stdout=handle, stderr=subprocess.STDOUT,
                                    env={**os.environ, **step_.env}, start_new_session=True)
         try:
-            code = process.wait(timeout)
+            # A composite runs 39 benches serially; its aggregate deadline
+            # must allow the same per-bench work as the standalone steps.
+            code = process.wait(timeout * 6 if step_.bench == 'plugins' else timeout)
         except subprocess.TimeoutExpired:
             # Its own session: the emulator dies with the bench, instead of
             # keeping its port and failing whatever runs there next.
@@ -394,7 +399,7 @@ def run_step(step_, out, timeout):
             process.wait()
             handle.write('\n== no answer after %d s\n' % timeout)
             code = 'timeout'
-    return code, time.time() - start, log
+    return code, time.monotonic() - start, log
 
 
 def main():

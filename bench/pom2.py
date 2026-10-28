@@ -145,8 +145,8 @@ class Pom2:
                                          start_new_session=True)
         finally:
             log.close()
-        deadline = time.time() + 30
-        while time.time() < deadline:
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
             if self.proc.poll() is not None:
                 code = self.proc.returncode
                 self.proc = None
@@ -358,8 +358,8 @@ class Session:
         return int.from_bytes(self.p.peek(self.sym['_a2fc_' + name], n), 'little')
 
     def wait(self, test, what, seconds=30):
-        deadline = time.time() + seconds
-        while time.time() < deadline:
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
             if test():
                 return
             time.sleep(0.05)

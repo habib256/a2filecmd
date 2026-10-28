@@ -118,6 +118,9 @@ jobs:
     needs: build
     if: ${{ vars.POM2_RUNNER != '' }}
     runs-on: ${{ vars.POM2_RUNNER }}
+    # The complete serial replay includes two 39-bench plugin suites.
+    # Allow their three-hour budgets plus the reader/media groups.
+    timeout-minutes: 720
     steps:
       - uses: actions/checkout@v4
       - run: make disk && make benchboot ARCH=6502 && make benchfloppy ARCH=enh && make benchfloppy ARCH=6502 && make xplugins ARCH=6502 && make benchpackages ARCH=6502

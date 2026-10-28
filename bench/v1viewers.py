@@ -5,7 +5,7 @@ from pathlib import Path
 from xplug import boot_hd,RET,ESC,ok_all
 from pom2 import ROOT
 sys.path.insert(0,str(ROOT/'tools'))
-from test_v1text import mouse,filer,SOURCE_ROOT
+from test_v1text import mouse,filer,SOURCE_ROOT,MULTIPLAN_ROOT
 from test_v1media import movie,movie_navigation,pcs_pattern
 
 def graphics_checks(p,s,name,expected,double=False,background=None):
@@ -44,6 +44,16 @@ def text_checks(p,s):
  s.select('MOVIE.MVM');s.key(RET);s.wait(lambda:p.peek(0x400,3)==b'\xff'*3,'Movie Maker first colour frame',60);s.ok('Movie Maker colour frame',True);s.key(ESC);s.wait(lambda:s.has('Type  Aux'),'movie exit',60)
 
 def multiplan_checks(p,s):
+ for name in ('MPMULTI','MPSAMPLE'):
+  for key in (RET,b'I'):
+   s.select(name);s.key(key)
+   s.wait(lambda:s.has('R2C2 = -1.25') and s.has('R5C3 = 3 [formula tokens:'),name+' saved grid independent of cursor',60)
+   s.ok(name+' reads the saved grid '+repr(key),s.has('R1C1 = 42'))
+   if name=='MPSAMPLE':s.ok('Saved text outside cursor row',s.has('R3C4 = ORIGINAL SAMPLE'))
+   s.key(ESC);s.wait(lambda:s.has('Type  Aux'),name+' exit',60)
+ for key in (RET,b'I'):
+  s.select('BADDIM');s.key(key);s.wait(lambda:s.has('Malformed Multiplan'),'invalid saved dimensions',60)
+  s.ok('Invalid dimensions refused despite valid cursor '+repr(key),True)
  for key in (RET,b'I'):
   s.select('MPIMPORT');s.key(key);s.wait(lambda:s.has('R2C2 = -1.25'),'Multiplan BIN values',60)
   s.ok('Multiplan BIN cached value/formula '+repr(key),s.has('R5C3 = 3 [formula tokens:'))
@@ -128,8 +138,16 @@ def movie_navigation_checks(p,s,auto_only=False):
 def movie_auto_checks(p,s,expected,displayed):
  # --speed is cycles per video frame, not Hz. Turbo can outrun the
  # control connection before a pause key arrives; use real 1x for timers.
- p.rq('/speed',{'preset':'1x'})
- s.select('LONGFILM');s.key(RET)
+ def select_movie(name):
+  # At 1 MHz a panel redraw can outlast the driver's key interval.
+  # The API queues those keys: a transient NAVFILM highlight was followed
+  # by more Down keys, opening WP. Navigate at the normal bench speed,
+  # then use real 1x for every viewer/timer assertion.
+  p.rq('/speed',{'cycles_per_frame':p.speed})
+  p.stable();s.select(name);p.stable()
+  assert s.line().startswith(name+' '), s.line()
+  p.rq('/speed',{'preset':'1x'})
+ select_movie('LONGFILM');s.key(RET)
  s.wait(lambda:displayed()==expected(0),'auto initial',60)
  s.key(b'S');s.wait(lambda:displayed()==expected(7),'automatic next frame',60)
  s.key(b's');p.stable();paused=displayed();time.sleep(7)
@@ -139,17 +157,17 @@ def movie_auto_checks(p,s,expected,displayed):
  s.ok('Movie Maker command stops auto and acts',displayed()==expected(7))
  s.key(b'S');s.key(ESC);s.wait(lambda:s.has('Type  Aux'),'auto escape',60)
  s.ok('Movie Maker Escape interrupts auto',True)
- s.select('LONGFILM');s.key(RET);s.wait(lambda:displayed()==expected(0),'manual reopen',60);time.sleep(7)
+ select_movie('LONGFILM');s.key(RET);s.wait(lambda:displayed()==expected(0),'manual reopen',60);time.sleep(7)
  s.ok('Movie Maker auto resets on reopening',displayed()==expected(0))
  s.key(ESC);s.wait(lambda:s.has('Type  Aux'),'auto reopen exit',60)
- s.select('NAVFILM');s.key(RET);s.wait(lambda:displayed()==expected(0),'auto short first',60)
+ select_movie('NAVFILM');s.key(RET);s.wait(lambda:displayed()==expected(0),'auto short first',60)
  s.key(b'S');s.wait(lambda:displayed()==expected(14),'auto short second',60)
  s.ok('Movie Maker auto renders second frame',True)
  s.wait(lambda:displayed()==expected(28),'auto short last',60)
  s.ok('Movie Maker auto renders last frame',True)
  s.wait(lambda:s.has('Type  Aux'),'auto end',60)
  s.ok('Movie Maker auto returns at end',True)
- s.select('LONGFILM');s.key(RET);s.wait(lambda:displayed()==expected(0),'speed first',60)
+ select_movie('LONGFILM');s.key(RET);s.wait(lambda:displayed()==expected(0),'speed first',60)
  s.key(b'3');p.stable();time.sleep(1)
  s.ok('Movie Maker speed selection keeps manual frame',displayed()==expected(0))
  s.key(b'S');s.wait(lambda:displayed()==expected(7),'slow auto advance',60);s.key(b's');time.sleep(7)
@@ -167,7 +185,7 @@ def movie_auto_checks(p,s,expected,displayed):
  s.ok('Movie Maker selected speed works after restart',displayed()==expected(7))
  s.key(ESC);s.wait(lambda:s.has('Type  Aux'),'speed exit',60)
  s.ok('Movie Maker speed controls exit normally',True)
- s.select('NAVFILM');s.key(RET);s.wait(lambda:displayed()==expected(0),'loop first',60)
+ select_movie('NAVFILM');s.key(RET);s.wait(lambda:displayed()==expected(0),'loop first',60)
  s.key(b'Q');p.stable();time.sleep(1)
  s.ok('Movie Maker Q keeps the manual frame',displayed()==expected(0))
  s.key(b'S');s.wait(lambda:displayed()==expected(28),'loop last',60)
@@ -180,26 +198,29 @@ def movie_auto_checks(p,s,expected,displayed):
  s.ok('Movie Maker q disables loop while retaining auto',True)
  s.wait(lambda:s.has('Type  Aux'),'disabled loop end',60)
  s.ok('Movie Maker disabled loop returns at end',True)
- s.select('NAVFILM');s.key(RET);s.wait(lambda:displayed()==expected(0),'loop reopen',60)
+ select_movie('NAVFILM');s.key(RET);s.wait(lambda:displayed()==expected(0),'loop reopen',60)
  s.key(b'L');s.wait(lambda:displayed()==expected(28),'loop reopen last',60)
  s.key(b'S');s.wait(lambda:s.has('Type  Aux'),'loop resets on reopen',60)
  s.ok('Movie Maker loop resets on reopening',True)
- s.select('NAVFILM');s.key(RET);s.wait(lambda:displayed()==expected(0),'manual loop first',60)
+ select_movie('NAVFILM');s.key(RET);s.wait(lambda:displayed()==expected(0),'manual loop first',60)
  s.key(b'Q');s.key(b'L');s.wait(lambda:displayed()==expected(28),'manual loop last',60)
  s.key(b' ');s.wait(lambda:s.has('Type  Aux'),'manual loop end',60)
  s.ok('Movie Maker loop keeps manual next exit at end',True)
- s.select('NAVFILM');s.key(RET);s.wait(lambda:displayed()==expected(0),'loop escape first',60)
+ select_movie('NAVFILM');s.key(RET);s.wait(lambda:displayed()==expected(0),'loop escape first',60)
  s.key(b'Q');s.key(b'S');s.wait(lambda:displayed()==expected(14),'loop escape next',60)
  s.key(ESC);s.wait(lambda:s.has('Type  Aux'),'loop escape',60)
  s.ok('Movie Maker Escape exits repeated playback',True)
- p.rq('/speed',{'preset':'max'})
+ p.rq('/speed',{'cycles_per_frame':p.speed})
 
 def main():
- files={'WORK/WP#A00000':b'Hello WordPerfect\x0a','WORK/MW#F10000':mouse(b'Hello MouseWrite\r'),'WORK/BS#06D3C2':filer(),'WORK/MP#F40000':(SOURCE_ROOT/'extracted/MP_GRID.bin').read_bytes(),'WORK/MOVIE.MVM#066000':movie(),'WORK/PALETTE#064000':(SOURCE_ROOT/'pal-no-text.dpc').read_bytes(),'WORK/TABLE#064000':(SOURCE_ROOT/'extracted/DEMO1.PB#064000').read_bytes(),'WORK/BAD.DPC#064000':b'\x80\xFF\xFF'}
+ files={'WORK/WP#A00000':b'Hello WordPerfect\x0a','WORK/MW#F10000':mouse(b'Hello MouseWrite\r'),'WORK/BS#06D3C2':filer(),'WORK/MP#F40000':(MULTIPLAN_ROOT/'MP_GRID.bin').read_bytes(),'WORK/MOVIE.MVM#066000':movie(),'WORK/PALETTE#064000':(SOURCE_ROOT/'pal-no-text.dpc').read_bytes(),'WORK/TABLE#064000':(SOURCE_ROOT/'extracted/DEMO1.PB#064000').read_bytes(),'WORK/BAD.DPC#064000':b'\x80\xFF\xFF'}
  expected=(SOURCE_ROOT/'pal-original.raw').read_bytes();pcs=(SOURCE_ROOT/'DEMO1.PB.raw').read_bytes()[:8192]
  for version in (1,4,5):files['WORK/MWIMPORT'+str(version)+'#060000']=mouse(('Hello MouseWrite V'+str(version)+'\r').encode(),version=version)
  files['WORK/BADMW#060000']=mouse()[:-1]
  sheet=files['WORK/MP#F40000'];files['WORK/MPIMPORT#060000']=sheet
+ for name in ('MULTI','SAMPLE'):
+  files['WORK/MP'+name+'#060000']=(MULTIPLAN_ROOT/('MP_'+name+'.bin')).read_bytes()
+ bad=bytearray(files['WORK/MPMULTI#060000']);bad[250:252]=bytes(2);files['WORK/BADDIM#060000']=bytes(bad)
  bad=bytearray(sheet);bad[666:668]=b'\xff\xff';files['WORK/BADMP#060000']=bytes(bad)
  files['WORK/FILM#060000']=movie();files['WORK/BADFILM#060000']=movie()[:-1]
  files['WORK/NAVFILM#060000']=movie_navigation()

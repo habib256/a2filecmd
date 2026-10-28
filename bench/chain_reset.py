@@ -67,8 +67,8 @@ def main():
             s.select('PROG'); s.key(b'X')
             s.wait(lambda: s.has('Run PROG?'), 'the question', 30)
             s.key(b'Y')
-            t0 = time.time()
-            while time.time() - t0 < 60 and not 0x4025 <= pc() <= 0x4027:
+            t0 = time.monotonic()
+            while time.monotonic() - t0 < 60 and not 0x4025 <= pc() <= 0x4027:
                 if s.has('Configuration warning.'):
                     s.key(b'Y')
                 time.sleep(0.2)

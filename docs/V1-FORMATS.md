@@ -266,10 +266,33 @@ préservation AUX des lecteurs texte/MVM et comparaison complète du HD jetable.
 Les images de référence PCS vérifient la stabilité de notre aperçu : elles ne
 constituent pas un oracle du rendu original de tous les objets du jeu.
 
+## Requalification du 27 octobre 2026
+
+Sept feuilles ont été recréées avec Microsoft Multiplan 1.06 original sur
+un disque DOS jetable : vide, texte, nombre, formule, grille et deux variantes
+à plusieurs cellules. Les valeurs saisies et les feuilles affichées par le
+programme original servent d'oracle ; les fichiers ne sont pas produits par
+le lecteur A2FC. Le [manifeste](corpus/2026-10-27-multiplan-requalification.json)
+porte leurs empreintes. Les sept [fichiers de régression](../tools/fixtures/multiplan)
+sont versionnés ; ils ne contiennent pas le programme original. Le manifeste
+ne remplace pas les empreintes historiques du
+10 octobre, dont les sept fichiers locaux n'étaient plus disponibles.
+
+Cette reconstruction a révélé une confusion entre les dimensions sauvegardées
+(mots aux offsets décimaux 250 et 252) et la position du curseur (628 et 630).
+Une grille de 5 lignes et 3 colonnes était refusée après retour du curseur en
+R1C1. MULTPLAN utilise maintenant les dimensions de la grille ; les contrôles
+de taille, pointeurs de cellules, limites du pool et BCD restent actifs.
+Les régressions indépendantes font varier le curseur sans changer les
+cellules et refusent des dimensions nulles, excessives ou incohérentes.
+Le vrai code C est exécuté sur l'hôte et sous sim65 pour les deux CPU, avec
+erreurs d'ouverture, lecture, recherche et fermeture, et sources préservées.
+
 ## Distribution et compression
 
-Les deux XL se construisent avec les sept lecteurs et IDV1. L'édition 800 Ko
-complète dépasse encore sa capacité ; elle doit être corrigée avant la 1.0.
+Les deux XL se construisent avec les sept lecteurs et IDV1. Pour la 1.0,
+la 800 Ko contient la sélection de `config/800k.mk` (99 surcouches), sans
+corpus de démonstration ; les lecteurs spécialisés omis nécessitent XL.
 L'essai de trous ProDOS pour les blocs nuls et le placement compact du code
 graphique ne suffisent pas, aucun outil n'a été retiré pour masquer cela.
 

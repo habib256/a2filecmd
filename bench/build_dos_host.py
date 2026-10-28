@@ -6,12 +6,13 @@ host: it writes their guest changes back on exit, like the usual runner.
 --slot 5 reproduces Disk II S5 / ProDOS hard disk S6.
 """
 import argparse
+import os
 import subprocess
 import tempfile
 from pathlib import Path
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--slot',type=int,choices=(5,6),default=6)
-p.add_argument('--pom2',type=Path,default=Path.home()/'src/pom2')
+p.add_argument('--pom2',type=Path,default=Path(os.environ.get('POM2_ROOT', Path.home()/'src/pom2')))
 p.add_argument('--source',type=Path,default=Path(__file__).resolve().parent/'pom2_playtest/pom2_playtest.cpp')
 p.add_argument('--output',type=Path,help='override the disposable host output path')
 a=p.parse_args();s=a.source.read_text()
@@ -31,6 +32,6 @@ with tempfile.TemporaryDirectory(prefix='dos-host-',dir='/tmp') as d:
  cmd=['c++','-std=c++17','-O2','-DNDEBUG']
  for sub in ('src','include','build/generated','imgui'):cmd+=['-I'+str(a.pom2/sub)]
  cmd+=['-DPOM2_ROOT="'+str(a.pom2)+'"',str(src),str(a.pom2/'build/libpom2_core.a'),
-       '-framework','CoreAudio','-framework','AudioToolbox','-framework','AudioUnit','-o',out]
+       '-framework','CoreAudio','-framework','AudioToolbox','-framework','AudioUnit','-framework','CoreFoundation','-o',out]
  subprocess.run(cmd,check=True)
 print(out)

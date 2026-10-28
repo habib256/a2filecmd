@@ -40,6 +40,7 @@ def main():
   with boot_hd(tmp,files,port=6980,plugins=['purple'],chatmauve=os.environ.get('A2FC_RGB','eve')) as(p,s):
    disk=Path(p.hdv);original=disk.read_bytes()
    s.key(b'/');s.select('/WORKHD');s.key(RET);s.select('WORK');s.key(RET);p.stable()
+   floor=s.sym['__HIMEM__']-s.sym['__STACKSIZE__'];p.poke(floor,b'\xa5'*8)
    s.select('G5.FOTO1');s.ram_occupied();before=p.peek(0x800,0xF800,'aux');s.key(RET)
    s.wait(lambda:s.has('ALL /RAM files will be LOST'),'first consent');s.key(b'N');p.stable()
    s.ok('refusal preserves AUX before loading',p.peek(0x800,0xF800,'aux')==before)
@@ -47,7 +48,11 @@ def main():
     s.select(name+'.FOTO2');s.key(RET);s.allow_aux()
     s.wait(lambda:p.peek(0x2000,8192)==main,name+' main plane',60)
     s.ok(name+' exact main plane from FOTO2',True)
-    if aux[0x79]>=5:s.ok(name+' exact auxiliary plane from FOTO1',p.peek(0x2000,8192,'aux')==aux)
+    if aux[0x79]>=5:
+     observed=p.peek(0x2000,8192,'aux')
+     different=[(0x2000+i,a,b) for i,(a,b) in enumerate(zip(aux,observed)) if a!=b]
+     s.ok(name+' exact auxiliary plane from FOTO1',not different,
+          '%d differing bytes; first: %s; CPU: %s' % (len(different),different[:8],p.rq('/cpu')))
     if name in ('JIM1','SDDD'):
      time.sleep(.2)
      with urllib.request.urlopen(p.base+'/screen.ppm') as response:Path('/tmp/a2fc-purple-'+name+'-'+os.environ.get('A2FC_BUILD','build')+'.ppm').write_bytes(response.read())
@@ -64,6 +69,7 @@ def main():
    s.key(ESC);s.wait(lambda:s.has('Type  Aux'),'final panels');p.stable()
    s.ram_occupied();before=p.peek(0x800,0xF800,'aux');s.key(RET);s.wait(lambda:s.has('ALL /RAM files will be LOST'),'new session consent');s.key(b'N');p.stable()
    s.ok('new session asks again and refusal preserves AUX',p.peek(0x800,0xF800,'aux')==before)
+   s.ok('stack floor preserved',p.peek(floor,8)==b'\xa5'*8)
   s.ok('source disk unchanged',disk.read_bytes()==original)
  return ok_all(s,'Purplesoft')
 if __name__=='__main__':raise SystemExit(main())

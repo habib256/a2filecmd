@@ -15,6 +15,6 @@ c++ -std=c++17 -O2 -DNDEBUG -I"$pom2_root/src" -I"$pom2_root/include" \
     -I"$pom2_root/build/generated" -I"$pom2_root/imgui" \
     -DPOM2_ROOT=\""$pom2_root"\" "${SOURCE:-$here/pom2_playtest.cpp}" \
     "$pom2_root/build/libpom2_core.a" \
-    -framework CoreAudio -framework AudioToolbox -framework AudioUnit \
+    -framework CoreAudio -framework AudioToolbox -framework AudioUnit -framework CoreFoundation \
     -o "$out"
 echo "$out"

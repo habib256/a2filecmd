@@ -1,0 +1,81 @@
+{
+  "date": "2026-10-27",
+  "scope": "New regression sheets saved by original Microsoft Multiplan 1.06 on disposable DOS disks through normal keyboard commands. Historical local sheets from 2026-10-10 were unavailable; their recorded hashes are unchanged. No input is synthesized from the A2FC decoder. Expected cells come from entered text/numbers/formulas and original visible worksheets.",
+  "machine": "POM2 NMOS 6502, Apple IIe ROM; core dbf7673d0ca938884419335f3d88e9029c15494f",
+  "source_boot": "MICROSOFT_MULTIPLAN_BOOT_FIXED.dsk",
+  "source_boot_sha256": "b57488c228ba6aeb67d9ee71a77cf8ddae435b2fcc5840d1037a02c84dea261f",
+  "source_system_sha256": "fb3084da645c615839e4bbc34b73bbf5c4d9c9bc67c82a83cff217d456126e5f",
+  "authored_disk_sha256": "ac57aef45e7a5fe374df5d852a941c34985fa01801ba00adabc69dadc421ad3f",
+  "files": [
+    {
+      "file": "MP_EMPTY.bin",
+      "bytes": 768,
+      "sha256": "9f304f85f1512554f9c22b00d8ab1765555ae1e63b045b3fad9d84b5b6782ac2",
+      "expected_cells": [
+        "Empty worksheet"
+      ]
+    },
+    {
+      "file": "MP_LABEL.bin",
+      "bytes": 768,
+      "sha256": "c1b35dc656d62095f3b75de7e9c35e9306ac2492ea6fb92aeb3b7a2365df273a",
+      "expected_cells": [
+        "R1C1 = HELLO"
+      ]
+    },
+    {
+      "file": "MP_NUMBER.bin",
+      "bytes": 768,
+      "sha256": "30f8785dbf823268f04c14bd451e771c20db0d3a65cbd4a26a7c4ea2fb034307",
+      "expected_cells": [
+        "R1C1 = 42"
+      ]
+    },
+    {
+      "file": "MP_FORMULA.bin",
+      "bytes": 768,
+      "sha256": "3e31f2c72c965aa8502df6ff93a7281a86907ce977c71a6815966875733d0753",
+      "expected_cells": [
+        "R1C1 = 3 [formula tokens:"
+      ]
+    },
+    {
+      "file": "MP_GRID.bin",
+      "bytes": 768,
+      "sha256": "47f2334c5c83f0b7c3b6bc50019022f4045034f3d12740902b5920c486f35b23",
+      "expected_cells": [
+        "R2C2 = -1.25",
+        "R5C3 = 3 [formula tokens:"
+      ]
+    },
+    {
+      "file": "MP_MULTI.bin",
+      "bytes": 768,
+      "sha256": "7f326b9f99bd152bbfa9718f002e900f0e1aa605617c692b356b6a82894207ff",
+      "expected_cells": [
+        "R1C1 = 42",
+        "R2C2 = -1.25",
+        "R5C3 = 3 [formula tokens:"
+      ]
+    },
+    {
+      "file": "MP_SAMPLE.bin",
+      "bytes": 1024,
+      "sha256": "ba484d6045ecc902e3cd68599842a5dbd37ae22e081f4344afcd2862f1c07fdc",
+      "expected_cells": [
+        "R3C4 = ORIGINAL SAMPLE",
+        "R1C1 = 42",
+        "R2C2 = -1.25",
+        "R5C3 = 3 [formula tokens:"
+      ]
+    }
+  ],
+  "original_reload": {
+    "worksheet": "MULTI",
+    "R1C1": "42",
+    "R2C2": "-1.25",
+    "R5C3": "3; formula 1+2",
+    "authored_disk_unchanged": true
+  },
+  "tracked_directory": "tools/fixtures/multiplan"
+}

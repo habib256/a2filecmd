@@ -10,7 +10,7 @@ Chaque séance suit la même forme : **ce qu'on prépare**, **ce qu'on tape**,
 chaque contrôle doit afficher viennent des mêmes oracles que les bancs :
 
 ```sh
-python3 tools/hw_media.py --out dist/hw          # les trois disquettes
+python3 tools/hw_media.py --out dist/hw          # les images jetables
 python3 tools/hw_media.py --out dist/hw --big    # plus le volume de 20 000 blocs
 ```
 
@@ -32,11 +32,12 @@ cette fiche ne prescrit pas le transfert, seulement ce qu'on fait ensuite.
 
 ## Avant de commencer
 
-- Les disquettes publiées de la version, gravées : `140K`, `800K`, les deux XL et la Mini DOS 3.3.
+- Les quatre images publiées de la version sur des supports jetables :
+  `800K`, les deux XL et la Mini DOS 3.3.
 - **Aucun disque personnel dans un lecteur.** Tout ce que ces séances
   écrivent est jetable ; un disque irremplaçable n'a rien à faire dans la
   machine pendant une recette.
-- De quoi noter : la version (`A2 FILE CMD x.y.z` en haut de l'écran), la
+- De quoi noter : la version (`A2 FILE CMD <version>` en haut de l'écran), la
   machine, le slot et le lecteur de chaque disque.
 - En cas d'écran faux : photographier l'écran **avant** de toucher une
   touche, et garder la disquette telle quelle. Une image relue ensuite sur
@@ -169,7 +170,8 @@ question, l'état de `/RAM` après un refus puis après un accord.
 
 ## 5. Apple IIgs : amorçage
 
-**Préparer** : la XL `.2mg` sur un support SmartPort, et la disquette 140K.
+**Préparer** : la XL `.2mg` sur un support SmartPort, et la 800K sur un
+lecteur 3,5 pouces ou un périphérique compatible.
 
 **Taper et voir**
 
@@ -182,13 +184,13 @@ question, l'état de `/RAM` après un refus puis après un accord.
    chargent.
 3. Ouvrir une image HGR puis une DHGR, feuilleter avec les flèches.
    *Entre deux images, l'écran ne porte que le nom en cours de chargement.*
-4. Amorcer ensuite la disquette 140K dans un Disk II, s'il y en a un :
-   noter ce que fait le Disk II.
+4. Amorcer ensuite la 800K sur son lecteur 3,5 pouces ou périphérique
+   compatible : noter le lecteur utilisé et le résultat.
 5. `Q` puis `Y` : retour à ProDOS, préfixe placé sur le dossier du panneau
    actif.
 
 **Noter** : la vitesse ressentie (le IIgs tourne plus vite), tout écran qui
-diffère du IIe, et l'état du Disk II.
+diffère du IIe, et l'état du lecteur utilisé.
 
 ---
 

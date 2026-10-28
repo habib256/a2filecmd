@@ -5,6 +5,50 @@ downloads and installation.
 
 ## [Unreleased]
 
+## [1.0] — 2026-10-27
+
+A2 File Cmd 1.0 brings the two-panel workspace to ProDOS on the Apple IIe,
+//c and IIgs, with a separate DOS 3.3 edition for the 48 KB Apple II+.
+Four self-contained disk images cover the complete XL workspace, enhanced
+XL, the practical 800K selection and DOS 3.3. This release consolidates
+0.9.9 with the data-preservation fixes below; physical writes remain
+vulnerable to power loss.
+
+- Sense Disk II write protection with its sequencer running in read mode.
+  A stopped motor could leave stale data in the latch, causing DOS33W to
+  refuse a writable disk or misread a protected one. Native regressions
+  cover both CPUs, slots 5/6, both drives and stopped/running motors, with
+  unchanged disk bytes and AUX.
+
+- Route named `.FOTO1`/`.FOTO2` image pairs to PURPLE before the generic
+  raw HGR fallback, preserving complete pair validation and both planes.
+
+- Read fixed sample prefixes through isolated accessors. cc65 2.19 could
+  reuse an uninitialized or clobbered scratch pointer across branches,
+  opening VisiCalc as text and Arlequin as hex on 65C02. Compare the real
+  production stage against the host C classifier on 4,996 cases per CPU,
+  including every file type, malformed prefixes and original-format fixtures.
+
+- Recognize LISA 8/16 source files before the generic Integer BASIC run
+  fallback. Return could offer to execute an INT-typed source instead of
+  opening LISAV4. Both CPU regressions retain normal BAS/INT execution and
+  verify real LISA sources, header bounds and source-byte preservation.
+
+- Read Multiplan grid dimensions independently of the saved cursor. A
+  valid sheet saved after moving back to the top left could be refused.
+  Recreate seven sheets with original Multiplan 1.06 and add byte-preserving
+  host, both-CPU and native regressions, including invalid dimensions.
+
+- Link the macOS POM2 test hosts with CoreFoundation, required by the
+  current emulator library. Respect `POM2_ROOT` for disposable host builds
+  and run the composite plugin qualification serially by default.
+  Use monotonic deadlines in the benches so host sleep or clock changes
+  do not produce false UI timeouts; keep the active-time limits unchanged.
+
+- Reorganize the English manual: reader descriptions join the reading chapter;
+  continuous pagination reduces the PDF from 25 to 19 pages without smaller
+  type. Keep headings with opening text and repeat table headers.
+
 - Binary II extraction checks output stream errors after full-count writes,
   verification reads and the EOF probe. An errored zero-byte probe could
   previously hide an unverified output tail and report success. Only the
@@ -123,6 +167,8 @@ downloads and installation.
   destination and discard only the exclusively created temporary. Add
   byte-preservation regressions for all four closes, empty and nonempty
   sources, and existing or absent destinations; retain both CPU layout guards.
+
+[Full changelog](https://github.com/habib256/a2filecmd/compare/v0.9.9...v1.0).
 
 ## [0.9.9] — 2026-10-25
 

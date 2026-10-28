@@ -57,6 +57,11 @@ _dw_protected:
 drive2:
  lda $C08B,x
 sense:
+ ; The sequencer must run to shift the protection input into its latch.
+ ; With the motor stopped, the latch can contain stale disk data instead.
+ ; Select read mode BEFORE enabling the motor: never open the write gate.
+ lda $C08E,x
+ lda $C089,x
  lda $C080,x
  lda $C082,x
  lda $C084,x
@@ -66,6 +71,7 @@ sense:
  and #$80
  pha
  lda $C08C,x
+ lda $C088,x
  pla
  ldx #0
  plp

@@ -156,10 +156,16 @@ def main():
             # 3. Retour ouvre une image $F8 signee (le tri du resident).
             s.select('WINDOW', 0); p.stable()
             s.key(RET)
+            want_aux, want_main = ref.screen(window)
+            def opened():
+                return (bytes(p.peek(0x2000, 8192)) == want_main and
+                        bytes(p.peek(0x2000, 8192, 'aux')) == want_aux)
+            s.wait(lambda: s.has('ALL /RAM files will be LOST') or opened(),
+                   'ouverture de WINDOW par Retour', 90)
             if s.has('ALL /RAM files will be LOST'):
                 s.allow_aux()
+            s.wait(opened, 'les deux plans de WINDOW', 90)
             got_main, got_aux = settled(p)
-            want_aux, want_main = ref.screen(window)
             s.ok('Retour ouvre ARLEQUIN', got_main == want_main and got_aux == want_aux)
             s.key(ESC)
             s.wait(lambda: s.has('! More'), 'retour aux panneaux', 60); p.stable()

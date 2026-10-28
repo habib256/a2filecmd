@@ -257,14 +257,14 @@ def main():
                 finally:p.poke(address,saved)
                 return result
             def rename_saved(old,new):
-                path_to('/WORKHD/A2FILE');s.select(old)
+                path_to('/WORKHD/A2FILE');s.select(old, tries=300)
                 s.key(b'R');s.wait(lambda:s.has('New name'),'rename recovery file',20)
-                s.key(b'\x7f'*len(old));s.type(new);s.key(RET);p.stable();s.select(new)
+                s.key(b'\x7f'*len(old));s.type(new);s.key(RET);p.stable();s.select(new, tries=300)
             def discard_temp():
                 # The recoverable installation keeps the verified GOTO.TMP after
                 # any failure and refuses to overwrite it: the user reviews it,
                 # then removes it before saving again.
-                path_to('/WORKHD/A2FILE');s.select('GOTO.TMP');s.key(b'D')
+                path_to('/WORKHD/A2FILE');s.select('GOTO.TMP', tries=300);s.key(b'D')
                 s.wait(lambda:s.has('Delete GOTO.TMP'),'delete kept temporary',20);s.key(b'Y');p.stable()
             for call in (1,2):
                 line=fail_rename((call,))
@@ -279,7 +279,7 @@ def main():
             line=fail_rename((2,3))
             s.ok('failed rollback retains named recovery files',line=='Save failed; restore GOTO.BAK. GOTO.TMP kept.')
             rename_saved('GOTO.BAK','GOTO.CFG')
-            s.select('GOTO.TMP');s.key(b'D');s.wait(lambda:s.has('Delete GOTO.TMP'),'delete test temporary',20)
+            s.select('GOTO.TMP', tries=300);s.key(b'D');s.wait(lambda:s.has('Delete GOTO.TMP'),'delete test temporary',20)
             s.key(b'Y');p.stable()
             s.ok('original list can be recovered from backup',favourites()==current);leave(ESC)
             for reserved in ('GOTO.TMP','GOTO.BAK'):

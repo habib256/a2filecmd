@@ -99,10 +99,18 @@ def main():
                 s.key(b'!'); s.wait(lambda: s.has('the overlays'), 'menu', 30); p.stable()
                 from xplug import menu_category
                 menu_category(s, p, 'UNSHRINK')
-                s.key(b'U'); p.stable(); s.key(RET, pause=0); s.allow_aux()
+                s.key(b'U'); p.stable()
+                # Start sampling from explicit consent, without allow_aux's
+                # stabilization wait hiding an already-completed fast copy.
+                # A classic 1 MHz cadence keeps intermediate progress visible.
+                s.ram_occupied()
+                p.rq('/speed', {'cycles_per_frame': 16667})
+                s.key(RET, pause=0)
+                s.wait(lambda: s.has('ALL /RAM files will be LOST'), 'AUX warning')
+                s.key(b'Y', pause=0)
                 progress = []
-                deadline = time.time() + 60
-                while time.time() < deadline:
+                deadline = time.monotonic() + 60
+                while time.monotonic() < deadline:
                     rows = s.rows()
                     line = rows[22]
                     if re.match(r'\s*\d+/\d+\s+\S+\s+\[', line):
@@ -110,6 +118,7 @@ def main():
                     if any(word in line for word in ('extracted', 'failed', 'Corrupt', 'Unsupported')):
                         break
                     time.sleep(0.01)
+                p.rq('/speed', {'cycles_per_frame': p.speed})
                 p.stable()
                 ok(label + ' : progression initialisee sur deux fichiers',
                    bool(progress) and all(re.match(r'\s*[12]/2\s', line) for line in progress),

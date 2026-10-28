@@ -67,7 +67,9 @@ static void rt_decode(void){
  if(rt_bad)return;size=rt_off;
  if(mp_header[0]!=8 || mp_header[1]!=0xE7 || mp_word(mp_header+2) ||
     mp_word(mp_header+4)!=0x10D6 || mp_word(mp_header+6)!=1){rt_invalid();return;}
- rows=mp_word(mp_header+628)+1;cols=mp_word(mp_header+630)+1;
+ /* 250/252 hold the saved grid dimensions. 628/630 are the cursor,
+  * which can move without changing the grid or its cell pointers. */
+ rows=mp_word(mp_header+250);cols=mp_word(mp_header+252);
  if(!rows || rows>255 || !cols || cols>63 || (unsigned long)rows*cols>4096UL){rt_invalid();return;}
  cells=rows*cols;mp_grid=mp_word(mp_header+652);mp_length=mp_word(mp_header+658);
  if(mp_grid!=cells*2 || mp_word(mp_header+654)!=mp_grid || mp_word(mp_header+656)!=mp_grid ||

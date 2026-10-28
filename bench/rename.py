@@ -79,7 +79,7 @@ def main():
 
             go(0, 'WORK')
             s.ok('le panneau gauche est sur /WORKHD/WORK et montre les cinq fichiers',
-                 names(s) == ['..', 'A.TXT', 'B.TXT', 'C', 'D.TXT', 'OLDD.TXT'], names(s))
+                 sorted(names(s)) == ['..', 'A.TXT', 'B.TXT', 'C', 'D.TXT', 'OLDD.TXT'], names(s))
 
             # 2. ESC a la question : rien ne bouge.
             menu_run(s, p, 'RENAME')
@@ -89,7 +89,7 @@ def main():
                  s.rows()[22].strip() == 'P)refix S)uffix E)xt X)strip N)um ESC', s.rows()[22].strip())
             s.key(ESC); p.stable()
             s.ok('ESC a la question ne renomme rien',
-                 not s.has(' renamed, ') and names(s) == ['..', 'A.TXT', 'B.TXT', 'C', 'D.TXT', 'OLDD.TXT'],
+                 not s.has(' renamed, ') and sorted(names(s)) == ['..', 'A.TXT', 'B.TXT', 'C', 'D.TXT', 'OLDD.TXT'],
                  s.rows()[22].strip())
 
             # 3. P : un prefixe sur les deux fichiers marques, les autres intacts.
@@ -98,27 +98,27 @@ def main():
             line = rename(b'P', 'OLD')
             s.ok('P OLD : "2 renamed, 0 skipped"', line == '2 renamed, 0 skipped', line)
             s.ok('le panneau montre OLDA.TXT et OLDB.TXT, C et D.TXT intacts',
-                 names(s) == ['..', 'C', 'D.TXT', 'OLDA.TXT', 'OLDB.TXT', 'OLDD.TXT'], names(s))
+                 sorted(names(s)) == ['..', 'C', 'D.TXT', 'OLDA.TXT', 'OLDB.TXT', 'OLDD.TXT'], names(s))
             s.ok('les marques sont levees par la relecture', not s.has('tagged'), s.rows()[21][60:].strip())
 
             # 4. E : l'extension remplacee.
             tag(0, 'OLDA.TXT', 'OLDB.TXT')
             line = rename(b'E', 'MD')
             s.ok('E MD : OLDA.MD et OLDB.MD', line == '2 renamed, 0 skipped'
-                 and names(s) == ['..', 'C', 'D.TXT', 'OLDA.MD', 'OLDB.MD', 'OLDD.TXT'], (line, names(s)))
+                 and sorted(names(s)) == ['..', 'C', 'D.TXT', 'OLDA.MD', 'OLDB.MD', 'OLDD.TXT'], (line, names(s)))
 
             # 5. X : l'extension retiree.
             tag(0, 'OLDA.MD', 'OLDB.MD')
             line = rename(b'X')
             s.ok('X : OLDA et OLDB, sans point', line == '2 renamed, 0 skipped'
-                 and names(s) == ['..', 'C', 'D.TXT', 'OLDA', 'OLDB', 'OLDD.TXT'], (line, names(s)))
+                 and sorted(names(s)) == ['..', 'C', 'D.TXT', 'OLDA', 'OLDB', 'OLDD.TXT'], (line, names(s)))
 
             # 6. N : le numero d'ordre ajoute, dans l'ordre du panneau.
             tag(0, 'OLDA', 'OLDB')
             line = rename(b'N')
             s.ok('N : OLDA1 et OLDB2, numerotes dans l ordre du panneau',
                  line == '2 renamed, 0 skipped'
-                 and names(s) == ['..', 'C', 'D.TXT', 'OLDA1', 'OLDB2', 'OLDD.TXT'], (line, names(s)))
+                 and sorted(names(s)) == ['..', 'C', 'D.TXT', 'OLDA1', 'OLDB2', 'OLDD.TXT'], (line, names(s)))
 
             # 7. X sur un nom sans point : le nom ne change pas, ProDOS refuse.
             tag(0, 'C')
@@ -131,14 +131,14 @@ def main():
             line = rename(b'P', 'OLD')
             s.ok('P OLD sur D.TXT, dont OLDD.TXT est deja pris : "0 renamed, 1 skipped"',
                  line == '0 renamed, 1 skipped'
-                 and names(s) == ['..', 'C', 'D.TXT', 'OLDA1', 'OLDB2', 'OLDD.TXT'], (line, names(s)))
+                 and sorted(names(s)) == ['..', 'C', 'D.TXT', 'OLDA1', 'OLDB2', 'OLDD.TXT'], (line, names(s)))
 
             # 9. Sans marque : l'entree sous le curseur, et elle seule.
             s.select('C', 0); p.stable()
             line = rename(b'S', 'Z')
             s.ok('sans marque, S Z ne renomme que l entree sous le curseur : CZ',
                  line == '1 renamed, 0 skipped'
-                 and names(s) == ['..', 'CZ', 'D.TXT', 'OLDA1', 'OLDB2', 'OLDD.TXT'], (line, names(s)))
+                 and sorted(names(s)) == ['..', 'CZ', 'D.TXT', 'OLDA1', 'OLDB2', 'OLDD.TXT'], (line, names(s)))
 
             # 10. Le panneau actif est le droit : mêmes services, autre panneau.
             s.key(TAB)
@@ -147,7 +147,7 @@ def main():
             line = rename(b'E', 'BAK', x=40)
             s.ok('dans le panneau droit : OLDA1.BAK et OLDB2.BAK',
                  line == '2 renamed, 0 skipped'
-                 and names(s, 40) == ['..', 'CZ', 'D.TXT', 'OLDA1.BAK', 'OLDB2.BAK', 'OLDD.TXT'],
+                 and sorted(names(s, 40)) == ['..', 'CZ', 'D.TXT', 'OLDA1.BAK', 'OLDB2.BAK', 'OLDD.TXT'],
                  (line, names(s, 40)))
             s.ok('le panneau gauche, lui, garde ce qu il montrait',
                  s.rows()[0].startswith('/WORKHD/WORK'), s.rows()[0][:38])

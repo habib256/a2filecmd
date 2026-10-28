@@ -1,13 +1,17 @@
 """Run real C viewers on both CPUs; original corpus stays read-only."""
-import hashlib, os, shutil, subprocess, tempfile, unittest
+import hashlib, json, os, shutil, subprocess, tempfile, unittest
 from pathlib import Path
 from test_pfswrite import H, ROOT
 
 SOURCE_ROOT=Path(os.environ.get('A2FC_V1_CORPUS','/tmp/a2fc-v1-corpus'))
+MULTIPLAN_ROOT=ROOT/'tools/fixtures/multiplan'
 
 def originals(kind):
     seen=set();suffix={'wordperf':'#A00000','mousewr':'#F10000','bsfiler':'#06D3C2','multplan':'.bin'}[kind]
-    for p in sorted((SOURCE_ROOT/'extracted').glob('*'+suffix)):
+    paths=sorted((SOURCE_ROOT/'extracted').glob('*'+suffix))
+    if kind=='multplan' and not any(p.name.startswith('MP_') for p in paths):
+        paths=sorted(MULTIPLAN_ROOT.glob('MP_*.bin'))
+    for p in paths:
         d=p.read_bytes();
         if kind=='multplan' and not p.name.startswith('MP_'):continue
         h=hashlib.sha256(d).hexdigest()
@@ -29,6 +33,7 @@ def filer_long():
 def multiplan_number(exponent):
     pool=b'\0\0\0\0\x08'+bytes([exponent+64])+b'\x12\x34\x50'+bytes(4)
     h=bytearray(666);h[:8]=bytes.fromhex('08E70000D6100100')
+    h[250:254]=b'\x01\0\x01\0'
     for off,v in ((652,2),(654,2),(656,2),(658,len(pool)),(660,2+len(pool)),(662,2+len(pool)),(664,3+len(pool))):h[off:off+2]=v.to_bytes(2,'little')
     return bytes(h)+b'\x01\0'+pool
 
@@ -129,6 +134,7 @@ int main(int argc,char**argv){''').replace('fault=atoi(argv[2]);','source_path=a
             rows,counts,note=self.run_file(name,d,keys='E');self.assertEqual(counts,['2','2']);self.assertEqual(note,'')
     def test_multiplan_cells_pool_and_bcd(self):
         h=bytearray(666);h[:8]=bytes.fromhex('08E70000D6100100')
+        h[250:254]=b'\x01\0\x01\0'
         def sheet(pool,pointer=1):
             data=bytearray(h)
             for off,v in ((652,2),(654,2),(656,2),(658,len(pool)),(660,2+len(pool)),(662,2+len(pool)),(664,3+len(pool))):data[off:off+2]=v.to_bytes(2,'little')
@@ -146,6 +152,18 @@ int main(int argc,char**argv){''').replace('fault=atoi(argv[2]);','source_path=a
         for label,d in originals('multplan'):
             rows,_,_=self.run_file('multplan',d)
             if 'GRID' in label:self.assertIn('R2C2 = -1.25',rows);self.assertTrue(any(r.startswith('R5C3 = 3 [formula tokens:') for r in rows))
+    def test_versioned_multiplan_original_app_fixtures(self):
+        manifest=json.loads((ROOT/'docs/corpus/2026-10-27-multiplan-requalification.json').read_text())
+        self.assertEqual(len(manifest['files']),7)
+        for item in manifest['files']:
+            data=(MULTIPLAN_ROOT/item['file']).read_bytes()
+            self.assertEqual(len(data),item['bytes'])
+            self.assertEqual(hashlib.sha256(data).hexdigest(),item['sha256'])
+            rows,_,_=self.run_file('multplan',data)
+            for expected in item['expected_cells']:
+                if expected.endswith('[formula tokens:'):
+                    self.assertTrue(any(r.startswith(expected) for r in rows), (item['file'],expected,rows))
+                else:self.assertIn(expected,rows,item['file'])
     def multiplan_bin_cases(self,exe=None):
         docs=list(originals('multplan'))
         for label,data in docs:
@@ -153,7 +171,7 @@ int main(int argc,char**argv){''').replace('fault=atoi(argv[2]);','source_path=a
         if (SOURCE_ROOT/'extracted').exists():self.assertEqual(len(docs),7)
         data=multiplan_number(1)
         for size in (0,1,0xffffff):self.run_file('multplan',data,typ=6,exe=exe,size=size)
-        for offset,value in ((0,0),(628,255),(630,255),(652,3),(658,255),(666,2),(667,255),(674,0xfa)):
+        for offset,value in ((0,0),(250,255),(252,255),(652,3),(658,255),(666,2),(667,255),(674,0xfa)):
             bad=bytearray(data);bad[offset]=value
             self.run_file('multplan',bytes(bad),typ=6,exe=exe,refused=True)
         for bad in (data[:665],data[:-1]):self.run_file('multplan',bad,typ=6,exe=exe,refused=True)
@@ -164,6 +182,27 @@ int main(int argc,char**argv){''').replace('fault=atoi(argv[2]);','source_path=a
             if fault in (1,2,3,6,7):self.assertFalse(any(rows))
 
     def test_multiplan_bin_imports_full_validation(self):self.multiplan_bin_cases()
+    def multiplan_grid_dimensions(self,exe=None):
+        # Independent 2x2 grid: the only number is at R2C2. Moving the
+        # saved cursor to R1C1 must not shrink the table to one cell.
+        h=bytearray(666);h[:8]=bytes.fromhex('08E70000D6100100')
+        h[250:254]=b'\x02\0\x02\0'
+        for off,value in ((652,8),(654,8),(656,8),(658,13),(660,21),(662,21),(664,22)):
+            h[off:off+2]=value.to_bytes(2,'little')
+        data=h+b'\0\0'*3+b'\x01\0'+b'\0\0\0\0\x08\x42\x42'+bytes(6)
+        for row,col in ((0,0),(1,1),(254,62)):
+            saved=bytearray(data);saved[628:632]=row.to_bytes(2,'little')+col.to_bytes(2,'little')
+            rows,counts,_=self.run_file('multplan',saved,exe=exe)
+            self.assertEqual([r for r in rows if r],['R2C2 = 42']);self.assertEqual(counts,['2','2'])
+        # A cursor that agrees with a damaged header cannot authorize it.
+        for row,col in ((0,2),(2,0),(256,2),(2,64),(255,63),(1,1)):
+            bad=bytearray(data);bad[250:254]=row.to_bytes(2,'little')+col.to_bytes(2,'little')
+            bad[628:632]=bytes(4)
+            self.run_file('multplan',bad,exe=exe,refused=True)
+        for fault in range(1,8):
+            _,_,note=self.run_file('multplan',data,exe=exe,fault=fault)
+            self.assertIn('error',note)
+    def test_multiplan_grid_is_independent_of_saved_cursor(self):self.multiplan_grid_dimensions()
     def test_cc65_both_cpus(self):
         if not shutil.which('cl65'):self.skipTest('cc65 unavailable')
         path=Path(subprocess.check_output(['cl65','--print-target-path'],text=True).strip())
@@ -175,6 +214,7 @@ int main(int argc,char**argv){''').replace('fault=atoi(argv[2]);','source_path=a
                 for label,d in originals(name):self.assertEqual(self.run_file(name,d),self.run_file(name,d,exe=['sim65',str(exe)]),label)
                 if name=='mousewr':self.mouse_bin_cases(['sim65',str(exe)])
                 if name=='multplan':
+                    self.multiplan_grid_dimensions(['sim65',str(exe)])
                     self.multiplan_bin_cases(['sim65',str(exe)])
                     for exp in (-63,-7,-6,0,1,5,14,15,63):
                         d=multiplan_number(exp)

@@ -1,7 +1,7 @@
 # PDF manual
 
 `A2FILECMD-MANUAL-EN.pdf` is the printable English edition of `MANUAL.md`.
-The guide (twenty-one pages in the 0.9.6 edition) starts with DOS3.3, then
+The guide (19 pages in the 1.0 edition) starts with DOS3.3, then
 develops the same workflow under ProDOS. Its cover includes a current
 two-panel screenshot and twelve clickable contents entries, followed by section bookmarks, page numbers and
 repeated table headings. The release workflow copies it into `dist/` as
@@ -19,10 +19,18 @@ DOS3.3 capture (`screenshots/dos33-panels-0.9.2.png`, recorded in
 `screenshots/panels-0.9.2.json`) illustrates the DOS3.3 chapter; the PDF
 shows only the cover image.
 
-Explicit `<!-- pagebreak -->` markers keep related chapters together without
-reducing the text size. After regeneration, verify the page count against
-the previous edition, 12 bookmarks, the first chapter DOS3.3, and the cover
-image and contents layout.
+Chapters flow continuously. Headings stay with their opening lines, including
+consecutive chapter/subsection headings. Long paragraphs split at complete
+lines, retaining at least two lines on each side. Table headers repeat on
+continuations and stay with the first data row. The body remains 10.3 pt;
+space savings come from pagination, not smaller type. Specialized reader
+descriptions belong in the reading chapter, before music, rather than after
+the credits.
+
+After regeneration, inspect every page for clipping, stranded headings and
+large gaps. Verify the page count, 12 bookmarks, linked contents, the first
+chapter DOS3.3, and the cover image. Compare extracted text when changing the
+renderer so that better pagination cannot silently omit content.
 
 Regenerate the PDF after updating the manual, before publishing a release.
 On macOS, no additional packages are needed:

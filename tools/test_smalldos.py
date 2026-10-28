@@ -1,4 +1,5 @@
 """Run the actual SMALLDOS C against disposable images and stream faults."""
+import os
 import subprocess
 import tempfile
 import unittest
@@ -279,7 +280,7 @@ class SmallDos(unittest.TestCase):
                 self.assertIn('failed, stopped',note);self.assertEqual(self.closes,1)
 
     def test_real_wilderness_images_and_prodos_conversion(self):
-        base=ROOT.parent/'pom2games/wilderness'
+        base=Path(os.environ.get('A2FC_WILDERNESS_CORPUS',str(ROOT.parent/'pom2games/wilderness')))
         sources=[(base/'build/SIERRA.dsk',True,20),
                  (base/'original/WILDERNESS_DEMO.dsk',False,10)]
         if not all(p.is_file() for p,_,_ in sources):self.skipTest('local Wilderness fixtures absent')

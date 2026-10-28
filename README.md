@@ -49,6 +49,9 @@ The [guide](docs/MANUAL.md) lists the supported formats and each tool's limits.
 
 ## Choose your disk
 
+**Version 1.0 has completed automated qualification and awaits publication.**
+See its [qualification report](docs/QUALIFICATION-1.0.md) for results and the remaining physical-hardware checks.
+
 **[0.9.9 is the published release](https://github.com/habib256/a2filecmd/releases/tag/v0.9.9).**
 See the [qualification report](docs/QUALIFICATION-0.9.9.md) for checks and remaining limits.
 No build is needed to use the release downloads.

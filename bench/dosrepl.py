@@ -25,7 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-from pom2 import Pom2, Session, BUILD
+from pom2 import Pom2, Session, BUILD, Timeout
 from xplug import menu_run, ok_all
 from mini33_fixture import make_disk, read_files, offset
 from prodos_read import Image
@@ -137,11 +137,19 @@ def main():
                 """`name` sous le curseur a gauche, DOSREPL, puis la question."""
                 s.select(name, 0)
                 p.stable()
-                menu_run(s, p, 'DOSREPL')
+                try:
+                    menu_run(s, p, 'DOSREPL')
+                except Timeout:
+                    # Preserve the failure and expose whether the CPU is
+                    # waiting in the disk driver or in the resident UI.
+                    print('DOSREPL menu timeout CPU:', p.rq('/cpu'), flush=True)
+                    print('DOSREPL menu timeout status:', p.rq('/status'), flush=True)
+                    print('DOSREPL menu timeout C stack:', p.peek(0x80, 2).hex(), flush=True)
+                    raise
                 q = 'Replace %s on DOS S%s,D2?' % (name, slot)
-                # audit() annonce sa lecture du disque sur la ligne 22 :
-                # ce n'est ni la question ni le refus
-                s.wait(lambda: s.has(q) or s.rows()[22].strip() not in ('', 'Checking DOS 3.3 disk...'),
+                # The resident redraws the panels before writing the final
+                # note. A stale or half-painted row is not a refusal.
+                s.wait(lambda: s.has(q) or s.rows()[22].strip() == 'Not enough free sectors.',
                        'la question de DOSREPL ou son refus', 90)
                 return s.has(q)
 

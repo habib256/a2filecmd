@@ -77,6 +77,7 @@ class Routing(unittest.TestCase):
  def test_actual_ident_classifier_for_dos_and_prodos(self):
   import ctypes
   from corpus_census import C_SOURCE
+  from test_purple import planes
   with tempfile.TemporaryDirectory(prefix='direct-ident-') as tmp:
    p=Path(tmp);(p/'id.c').write_text(C_SOURCE)
    for cpu in ('6502','65c02'):
@@ -93,6 +94,17 @@ class Routing(unittest.TestCase):
       out=ctypes.create_string_buffer(80);fn(name.encode(),6,aux,b,len(b),dos,out)
       if expected:self.assertEqual(out.value.decode(),expected)
       else:self.assertNotIn(out.value.decode(),('PRINTSHOP','FONTRIX'))
+     # Both entry names own the pair; generic raw pages still use IMAGE.
+     # DOS has no direct pair reader and must keep the DOSVIEW refusal.
+     for name,body in zip(('PAIR.FOTO1','PAIR.FOTO2'),planes(5)):
+      original=bytes(bytearray(body));out=ctypes.create_string_buffer(80)
+      self.assertTrue(fn(name.encode(),6,0x2000,body,len(body),dos,out))
+      self.assertEqual(out.value.decode(),'DOSVIEW' if dos else 'PURPLE')
+      self.assertEqual(body,original)
+     for name in ('ORDINARY','PAIR.FOTO3'):
+      body=planes(5)[1];out=ctypes.create_string_buffer(80)
+      self.assertTrue(fn(name.encode(),6,0x2000,body,len(body),dos,out))
+      self.assertEqual(out.value.decode(),'DOSVIEW' if dos else 'IMAGE')
 
 class ClipRenderer(unittest.TestCase):
  def test_native_handoff_full_page_stack_and_both_cpus(self):

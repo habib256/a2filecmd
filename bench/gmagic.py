@@ -112,7 +112,8 @@ def main():
             s.ok('AUX and /RAM untouched', bytes(p.peek(0x0800, 0xB700, 'aux')) == aux)
 
             s.select('PROGRAM'); s.key(RET)
-            s.wait(lambda: s.has('DISASM -'), 'the recognized program in DISASM', 30)
+            s.wait(lambda: s.has('DISASM -') and s.has('Load $4000') and s.has('JMP $4000') and s.has('LDA #$00'),
+                   'the complete recognized program in DISASM', 60)
             s.ok('a program BIN opens in the disassembler with its load address',
                  s.has('Load $4000') and s.has('JMP $4000') and s.has('LDA #$00'))
             s.key(ESC); panels('disassembly')

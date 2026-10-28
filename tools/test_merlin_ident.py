@@ -85,6 +85,24 @@ class MerlinIdentification(unittest.TestCase):
         merlin=high(b'*Shared source\rLABEL LDA #0\r STA $300\r RTS\r')
         self.check(merlin,'MERLIN',typ=250,arg=ord('O'),size=len(merlin),name='T.S',exe=exe)
 
+    def lisa4_cases(self,exe=None):
+        from test_lisa4 import lisa4,real_lisa4
+        sources=[('SOURCE.A',0x50e1,lisa4())]+list(real_lisa4())
+        for name,aux,data in sources:
+            for size in (0,1,0xffffff):
+                for arg in (13,ord('I'),ord('O')):
+                    self.check(data,'LISAV4',typ=250,aux=aux,size=size,arg=arg,name=name,exe=exe)
+        good=lisa4()
+        for aux in (0,0x3fff,0x6000):
+            self.check(good,'RUN',typ=250,aux=aux,arg=ord('O'),exe=exe)
+            self.check(good,'FALLBACK',typ=250,aux=aux,arg=ord('I'),exe=exe)
+        for offset,value in ((2,0),(3,255),(6,0),(7,1),(8,2)):
+            bad=bytearray(good);bad[offset]=value
+            self.check(bytes(bad),'RUN',typ=250,aux=0x50e1,arg=ord('O'),exe=exe)
+            self.check(bytes(bad),'FALLBACK',typ=250,aux=0x50e1,arg=ord('I'),exe=exe)
+
+    def test_lisa4_sources_precede_integer_basic_execution(self):self.lisa4_cases()
+
     def test_return_runs_bas_and_int(self):self.basint_cases()
 
     def cases(self,exe=None):
@@ -459,6 +477,6 @@ class MerlinIdentification(unittest.TestCase):
     def test_both_cpus(self):
         if not shutil.which('cl65') or not shutil.which('sim65'):self.skipTest('cc65 unavailable')
         for cpu,target in (('6502','sim6502'),('65c02','sim65c02')):
-            exe=self.p/target;self.compile(exe,target,cpu);self.cases(exe);self.visicalc_cases(exe);self.originals(exe);self.printshop_cases(exe);self.movie_cases(exe);self.pcs_cases(exe);self.dpc_cases(exe);self.multiscr_cases(exe);self.mouse_bin_cases(exe);self.multiplan_bin_cases(exe);self.lisa_bin_cases(exe);self.sc_bin_cases(exe);self.arlequin_bin_cases(exe);self.macpaint_cases(exe);self.open_metadata_cases(exe);self.basint_cases(exe)
+            exe=self.p/target;self.compile(exe,target,cpu);self.cases(exe);self.visicalc_cases(exe);self.originals(exe);self.printshop_cases(exe);self.movie_cases(exe);self.pcs_cases(exe);self.dpc_cases(exe);self.multiscr_cases(exe);self.mouse_bin_cases(exe);self.multiplan_bin_cases(exe);self.lisa_bin_cases(exe);self.sc_bin_cases(exe);self.arlequin_bin_cases(exe);self.macpaint_cases(exe);self.open_metadata_cases(exe);self.basint_cases(exe);self.lisa4_cases(exe)
 
 if __name__=='__main__':unittest.main()
