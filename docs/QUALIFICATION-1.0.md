@@ -1,12 +1,13 @@
 # Préparation et qualification de la version 1.0
 
-Préparation : 27 octobre 2026. Contrôles finaux : 28 octobre 2026. Version préparée : `1.0`, futur tag `v1.0`.
+Préparation : 27 octobre 2026. Contrôles finaux : 28 octobre 2026. Version publiée : `1.0`, tag `v1.0`.
 
 **Qualification automatisée terminée : 172/172 étapes natives validées,
 aucune ignorée, et 2 437 tests hôtes sans échec.** Les corrections et les
 rejeux ciblés sont détaillés ci-dessous ; les premiers journaux d’échec
 restent conservés. La recette sur matériel physique reste à effectuer.
-Le tag et la publication GitHub ne sont pas créés par cette préparation.
+La release a ensuite été publiée le 28 octobre 2026 ; les contrôles de
+publication sont consignés à la fin de ce rapport.
 
 ## Périmètre
 
@@ -256,12 +257,25 @@ présents pour exécuter leurs tests optionnels.
   disques de même nom, ni deux disques sans volume ProDOS reconnu ; voir le
   changelog et le manuel avant les copies physiques.
 
-## Publication à effectuer
+## Publication du 28 octobre 2026
 
-Après revue de cette préparation, committer les sources et le PDF, puis créer
-et pousser `v1.0`. La CI vérifie la concordance tag/version, reconstruit les
-quatre images, exécute les tests et publie les cinq fichiers avec leurs
-empreintes. Le job POM2 dépend de la configuration d'un runner auto-hébergé.
-À la publication, remplacer les liens de téléchargement et la démo Web
-0.9.9 du README par les artefacts 1.0 réellement publiés. Les liens actuels
-restent utilisables pendant cette préparation.
+La [release 1.0](https://github.com/habib256/a2filecmd/releases/tag/v1.0)
+est publiée comme version stable et dernière release. Le tag annoté `v1.0`
+pointe sur le commit `70d60f4449857016d14150433fe7f2e652250b23`.
+
+Le [workflow de publication](https://github.com/habib256/a2filecmd/actions/runs/40639049572)
+est terminé avec succès : contrôle du tag, tests hôtes sous Linux,
+construction des quatre images, gardes mémoire, relecture des images,
+calcul des empreintes et publication. Le job POM2 GitHub est ignoré car la
+variable `POM2_RUNNER` n’est pas configurée ; les 172 étapes POM2 ont été
+qualifiées localement comme décrit ci-dessus.
+
+Les six pièces jointes sont disponibles : quatre images, le manuel PDF et
+`SHA256SUMS-1.0.txt`. Les cinq fichiers ont été retéléchargés depuis la
+release et leurs empreintes vérifiées ; ils sont tous identiques octet
+par octet aux artefacts qualifiés localement. Les preuves sont conservées
+dans `build/release-1.0/publication-ci.json`, `publication-artifacts.json`
+et `published/`.
+
+Le README pointe vers les téléchargements 1.0. La démo Web utilise la copie
+exacte de l’image 800K publiée, sous `web/A2FILECMD-PRODOS-800K-1.0.po`.

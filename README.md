@@ -11,9 +11,9 @@ From the essentials of DOS3.3 to a complete ProDOS workspace.
 [![Build](https://github.com/habib256/a2filecmd/actions/workflows/ci.yml/badge.svg)](https://github.com/habib256/a2filecmd/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/license-GPL_v3-blue.svg)](LICENSE)
 
-**[Try in your browser](https://habib256.github.io/pom2/wasm/?preset=iie&url=https://raw.githubusercontent.com/habib256/a2filecmd/main/web/A2FILECMD-PRODOS-800K-0.9.9.po) · [Download](https://github.com/habib256/a2filecmd/releases/latest) · [Read the guide](docs/MANUAL.md) · [PDF guide](docs/A2FILECMD-MANUAL-EN.pdf)**
+**[Try in your browser](https://habib256.github.io/pom2/wasm/?preset=iie&url=https://raw.githubusercontent.com/habib256/a2filecmd/main/web/A2FILECMD-PRODOS-800K-1.0.po) · [Download](https://github.com/habib256/a2filecmd/releases/latest) · [Read the guide](docs/MANUAL.md) · [PDF guide](docs/A2FILECMD-MANUAL-EN.pdf)**
 
-The browser demo boots the published 0.9.9 **800K edition** automatically in
+The browser demo boots the published 1.0 **800K edition** automatically in
 POM2 WebAssembly on an emulated Apple IIe. Nothing to install.
 
 ![A2 File Cmd ProDOS XL in 80 columns: the volume root on the left, the DEMO folder on the right](docs/screenshots/prodos-panels-0.9.6.png)
@@ -49,19 +49,17 @@ The [guide](docs/MANUAL.md) lists the supported formats and each tool's limits.
 
 ## Choose your disk
 
-**Version 1.0 has completed automated qualification and awaits publication.**
-See its [qualification report](docs/QUALIFICATION-1.0.md) for results and the remaining physical-hardware checks.
-
-**[0.9.9 is the published release](https://github.com/habib256/a2filecmd/releases/tag/v0.9.9).**
-See the [qualification report](docs/QUALIFICATION-0.9.9.md) for checks and remaining limits.
+**[1.0 is the published release](https://github.com/habib256/a2filecmd/releases/tag/v1.0).**
+Its [qualification report](docs/QUALIFICATION-1.0.md) records 172 native steps,
+2,437 host tests and the remaining physical-hardware checks.
 No build is needed to use the release downloads.
 
-| Your setup | Download from 0.9.9 |
+| Your setup | Download from 1.0 |
 |---|---|
-| **ProDOS · hard disk or emulator, any IIe** | [XL — complete with demonstrations](https://github.com/habib256/a2filecmd/releases/download/v0.9.9/A2FILECMD-PRODOS-XL-0.9.9.2mg) |
-| **ProDOS · enhanced IIe, //c or IIgs** | [XL enhanced — MouseText, optional mouse](https://github.com/habib256/a2filecmd/releases/download/v0.9.9/A2FILECMD-PRODOS-XL-65C02-enhanced-0.9.9.2mg) |
-| **ProDOS · practical tools on a floppy** | [800K — selected tools](https://github.com/habib256/a2filecmd/releases/download/v0.9.9/A2FILECMD-PRODOS-800K-0.9.9.po) |
-| **Apple II+ · 48 KB · two Disk II drives** | [DOS3.3 — standalone 40-column edition](https://github.com/habib256/a2filecmd/releases/download/v0.9.9/A2FILECMD-DOS3.3-0.9.9.dsk) |
+| **ProDOS · hard disk or emulator, any IIe** | [XL — complete with demonstrations](https://github.com/habib256/a2filecmd/releases/download/v1.0/A2FILECMD-PRODOS-XL-1.0.2mg) |
+| **ProDOS · enhanced IIe, //c or IIgs** | [XL enhanced — MouseText, optional mouse](https://github.com/habib256/a2filecmd/releases/download/v1.0/A2FILECMD-PRODOS-XL-65C02-enhanced-1.0.2mg) |
+| **ProDOS · practical tools on a floppy** | [800K — selected tools](https://github.com/habib256/a2filecmd/releases/download/v1.0/A2FILECMD-PRODOS-800K-1.0.po) |
+| **Apple II+ · 48 KB · two Disk II drives** | [DOS3.3 — standalone 40-column edition](https://github.com/habib256/a2filecmd/releases/download/v1.0/A2FILECMD-DOS3.3-1.0.dsk) |
 
 - Every ProDOS edition needs **128 KB and 80 columns**.
 - **Enhanced or not** is the only choice: the enhanced XL is for an enhanced
